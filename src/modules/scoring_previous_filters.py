@@ -1,4 +1,6 @@
-"""Persistent background jobs and result caching for CDR scoring."""
+"""Previous Filters of Scoring & GAP Analysis: every selection used (CDRs, filters, Split by, GAP reference,
+methodology and National & area summary), reusable, with its result calculated in the background and saved until
+its CDRs, methodology or Operator Maps change."""
 
 from __future__ import annotations
 
@@ -34,7 +36,8 @@ from src.modules.scoring_config import (
 CDR_DATASET_KINDS = frozenset({'data', 'voice', 'speech'})
 DEFAULT_BASELINE_OPERATOR = 'EE'
 DEFAULT_LEVELS = ('Operator',)
-INTERRUPTED_JOB_MESSAGE = 'Interrupted because the application restarted. Retry the job to run it again.'
+PREVIOUS_FILTERS_TABLE = 'scoring_previous_filters'
+INTERRUPTED_CALCULATION_MESSAGE = 'Interrupted because the application restarted. Calculate these filters again.'
 AGGREGATION_CONTRACT_VERSION = 2
 SCORING_CONTEXT_FILTER_FIELDS = ('Region', 'Cluster', 'City', 'Operator', 'Operator_Vendor', 'Vendor_Operator', 'Vendor', 'Campaign')
 SCORING_CONTEXT_FILTER_COLUMNS = {
@@ -48,12 +51,12 @@ SCORING_CONTEXT_FILTER_COLUMNS = {
     'Vendor': ('Vendor',),
     'Campaign': ('Campaign',),
 }
-# Filters added after cached jobs existed only take part in a job's identity when used.
+# Filters added after saved results existed only take part in their identity when used.
 SCORING_OPTIONAL_CONTEXT_FILTERS = frozenset({'Cluster', 'Operator_Vendor', 'Vendor_Operator'})
 
 
 def _scoring_engine():
-    """Load the calculation engine only when a scoring job needs it."""
+    """Load the calculation engine only when a calculation needs it."""
     return importlib.import_module('src.modules.scoring')
 
 
@@ -533,7 +536,26 @@ def _normalize_levels(
     return resolved_levels
 
 
-def _job_payload(
+def previous_filter_key(
+    dataset_ids: Iterable[int], levels: Iterable[str], nr_mode: str, baseline_operator: str,
+    context_filters: dict[str, list[str]] | None, scoring_profile_id: str, area_summary: dict[str, Any] | None,
+) -> str:
+    """The identity of a selection: its CDRs, Split by, NR Mode, GAP reference, filters, methodology and National &
+    area summary. The same selection is one Previous Filter, whatever its CDRs or methodology hold today."""
+    payload = {
+        'dataset_ids': sorted({int(value) for value in dataset_ids}),
+        'levels': [str(level) for level in levels],
+        'nr_mode': str(nr_mode or ''),
+        'baseline_operator': str(baseline_operator or '').strip(),
+        'context_filters': _context_filter_cache_values(_normalize_context_filters(context_filters)),
+        'scoring_profile_id': str(scoring_profile_id or ''),
+        'area_summary': area_summary or None,
+    }
+    canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
+    return hashlib.sha256(canonical.encode('utf-8')).hexdigest()
+
+
+def _result_key(
     levels: list[str], nr_mode: str, baseline_operator: str,
     method_version: str, source_fingerprint: str, config_hash: str = '',
     baseline_aliases: list[str] | None = None,
@@ -544,6 +566,8 @@ def _job_payload(
     scoring_profile_name: str = '',
     area_summary: dict[str, Any] | None = None,
 ) -> tuple[str, str]:
+    """The identity of a result: the selection with what its CDRs, methodology and Operator Maps hold today. A saved
+    result whose key differs is calculated again."""
     key_payload = {
         'method_version': method_version,
         'configuration_hash': config_hash,
@@ -574,40 +598,30 @@ def _job_payload(
     return hashlib.sha256(canonical.encode('utf-8')).hexdigest(), canonical
 
 
-def _row_to_job(
+def _row_to_previous_filter(
     row: Any, *, include_result: bool = False, include_snapshot: bool = True,
     include_internal_snapshot: bool = False,
 ) -> dict[str, Any]:
     if row is None:
-        raise ValueError('Scoring job was not found.')
-    source_metadata_payload = _decode_json(row['source_metadata_json'], [])
+        raise ValueError('The Previous Filter was not found.')
+    source_metadata_payload = _decode_json(row['source_metadata_json'], {})
     dataset_ids = _decode_json(row['dataset_ids_json'], [])
     levels = _decode_json(row['levels_json'], [])
+    cdr_refs = _decode_json(row['cdr_refs_json'], [])
     result = _decode_json(row['result_json'], None) if include_result else None
-    if isinstance(source_metadata_payload, dict):
-        metadata_list = source_metadata_payload.get('sources', [])
-        configuration_payload = source_metadata_payload.get('configuration')
-        scoring_profile_id = str(source_metadata_payload.get('scoring_profile_id') or '')
-        scoring_profile_name = str(source_metadata_payload.get('scoring_profile_name') or '')
-        baseline_aliases = source_metadata_payload.get('baseline_aliases', [])
-        context_filters = source_metadata_payload.get('context_filters', {})
-        resolved_context_filters = source_metadata_payload.get('resolved_context_filters', context_filters)
-        aggregation_hierarchy = source_metadata_payload.get('aggregation_hierarchy', [])
-        aggregation_contract_version = source_metadata_payload.get('aggregation_contract_version', 1)
-        operator_mappings = source_metadata_payload.get('operator_mappings', {})
-        area_summary = source_metadata_payload.get('area_summary')
-    else:
-        metadata_list = source_metadata_payload if isinstance(source_metadata_payload, list) else []
-        configuration_payload = None
-        scoring_profile_id = ''
-        scoring_profile_name = ''
-        baseline_aliases = []
-        context_filters = {}
-        resolved_context_filters = {}
-        aggregation_hierarchy = []
-        aggregation_contract_version = 1
-        operator_mappings = {}
-        area_summary = None
+    if not isinstance(source_metadata_payload, dict):
+        source_metadata_payload = {}
+    metadata_list = source_metadata_payload.get('sources', [])
+    configuration_payload = source_metadata_payload.get('configuration')
+    scoring_profile_id = str(source_metadata_payload.get('scoring_profile_id') or '')
+    scoring_profile_name = str(source_metadata_payload.get('scoring_profile_name') or '')
+    baseline_aliases = source_metadata_payload.get('baseline_aliases', [])
+    context_filters = source_metadata_payload.get('context_filters', {})
+    resolved_context_filters = source_metadata_payload.get('resolved_context_filters', context_filters)
+    aggregation_hierarchy = source_metadata_payload.get('aggregation_hierarchy', [])
+    aggregation_contract_version = source_metadata_payload.get('aggregation_contract_version', 1)
+    operator_mappings = source_metadata_payload.get('operator_mappings', {})
+    area_summary = source_metadata_payload.get('area_summary')
     if not isinstance(context_filters, dict):
         context_filters = {}
     if not isinstance(resolved_context_filters, dict):
@@ -616,6 +630,8 @@ def _row_to_job(
         aggregation_hierarchy = []
     if not isinstance(operator_mappings, dict):
         operator_mappings = {}
+    if not isinstance(cdr_refs, list):
+        cdr_refs = []
     try:
         aggregation_contract_version = max(1, int(aggregation_contract_version))
     except (TypeError, ValueError):
@@ -638,12 +654,20 @@ def _row_to_job(
     baseline_aliases = list(dict.fromkeys(
         [baseline, *(str(alias).strip() for alias in baseline_aliases if str(alias).strip())]
     )) if include_snapshot else []
-    job = {
+    previous_filter = {
         'id': int(row['id']),
-        'cache_key': str(row['cache_key'] or ''),
+        'filter_key': str(row['filter_key'] or ''),
+        'name': str(row['name'] or ''),
+        'pinned': bool(row['pinned']),
+        'use_count': max(1, int(row['use_count'] or 1)),
+        'last_used_at': str(row['last_used_at'] or ''),
+        'result_key': str(row['result_key'] or ''),
         'method_version': str(row['method_version'] or ''),
         'source_fingerprint': str(row['source_fingerprint'] or ''),
         'dataset_ids': [int(value) for value in dataset_ids if str(value).strip().lstrip('-').isdigit()],
+        # The CDRs of a Previous Filter imported from another workspace until they are found here (by file).
+        'missing_cdrs': [str(item.get('name') or '') for item in cdr_refs if isinstance(item, dict)]
+        if not dataset_ids else [],
         'source_metadata': metadata_list,
         'context_filters': {
             str(field): [str(value) for value in values if str(value).strip()]
@@ -665,7 +689,7 @@ def _row_to_job(
         'baseline_operator': str(row['baseline_operator'] or DEFAULT_BASELINE_OPERATOR),
         'scoring_profile_id': scoring_profile_id,
         'scoring_profile_name': scoring_profile_name,
-        'status': str(row['status'] or 'queued'),
+        'status': str(row['status'] or 'saved'),
         'progress': max(0, min(100, int(row['progress'] or 0))),
         'message': str(row['message'] or ''),
         'error': str(row['last_error'] or ''),
@@ -677,23 +701,23 @@ def _row_to_job(
         'result': result,
     }
     if include_snapshot:
-        job['configuration'] = configuration
-        job['baseline_aliases'] = baseline_aliases
+        previous_filter['configuration'] = configuration
+        previous_filter['baseline_aliases'] = baseline_aliases
     if include_internal_snapshot:
-        job['resolved_context_filters'] = {
+        previous_filter['resolved_context_filters'] = {
             str(field): [str(value) for value in values if str(value).strip()]
             for field, values in resolved_context_filters.items()
             if isinstance(values, (list, tuple, set))
         }
-        job['operator_mappings'] = {
+        previous_filter['operator_mappings'] = {
             str(alias).strip().casefold(): str(canonical).strip()
             for alias, canonical in operator_mappings.items()
             if str(alias).strip() and str(canonical).strip()
         }
-    return job
+    return previous_filter
 
 
-def _prepare_scoring_job(
+def _prepare_previous_filter(
     repository: Repository,
     dataset_ids: list[int],
     levels: list[str],
@@ -703,8 +727,8 @@ def _prepare_scoring_job(
     context_filters: dict[str, list[str]] | None = None,
     scoring_profile_id: str | None = None,
     area_summary: dict[str, Any] | None = None,
-) -> tuple[str, str, str, list[int], dict[str, Any], str, list[str], str]:
-    """Prepare the canonical identity and snapshot shared by matching and submission."""
+) -> dict[str, Any]:
+    """The identity of a selection and of its result today, with the snapshot its calculation uses."""
     normalized_ids = list(dict.fromkeys(int(dataset_id) for dataset_id in dataset_ids))
     normalized_context_filters = _normalize_context_filters(context_filters)
     normalized_area_summary = normalize_area_summary_request(area_summary, normalized_context_filters)
@@ -728,7 +752,7 @@ def _prepare_scoring_job(
         configuration = validate_scoring_configuration(scoring_profile['configuration'])
     else:
         if scoring_profile_id is not None:
-            raise ValueError('This workspace does not support selecting scoring methodologies for a job.')
+            raise ValueError('This workspace does not support selecting scoring methodologies.')
         configuration = _workspace_scoring_configuration(repository)
         scoring_profile = {'id': '', 'name': ''}
     sources, _campaigns, source_fingerprint = _source_snapshot(
@@ -752,17 +776,18 @@ def _prepare_scoring_job(
     } if isinstance(raw_operator_mappings, dict) else {}
     config_hash = configuration_hash(configuration)
     version = _method_version(configuration)
-    cache_key, _canonical = _job_payload(
+    profile_id = str(scoring_profile.get('id') or '')
+    profile_name = str(scoring_profile.get('name') or '')
+    result_key, _canonical = _result_key(
         normalized_levels, selected_mode, baseline, version, source_fingerprint, config_hash, baseline_aliases,
-        normalized_context_filters, resolved_context_filters, operator_mappings,
-        str(scoring_profile.get('id') or ''), str(scoring_profile.get('name') or ''), normalized_area_summary,
+        normalized_context_filters, resolved_context_filters, operator_mappings, profile_id, profile_name,
+        normalized_area_summary,
     )
-    source_metadata = [source['metadata'] for source in sources]
-    source_snapshot = {
-        'sources': source_metadata,
+    snapshot = {
+        'sources': [source['metadata'] for source in sources],
         'configuration': configuration,
-        'scoring_profile_id': str(scoring_profile.get('id') or ''),
-        'scoring_profile_name': str(scoring_profile.get('name') or ''),
+        'scoring_profile_id': profile_id,
+        'scoring_profile_name': profile_name,
         'baseline_aliases': baseline_aliases,
         'context_filters': normalized_context_filters,
         'resolved_context_filters': resolved_context_filters,
@@ -771,58 +796,68 @@ def _prepare_scoring_job(
         'operator_mappings': operator_mappings,
     }
     if normalized_area_summary:
-        source_snapshot['area_summary'] = normalized_area_summary
-    return (cache_key, version, source_fingerprint, normalized_ids, source_snapshot,
-            selected_mode, normalized_levels, baseline)
+        snapshot['area_summary'] = normalized_area_summary
+    return {
+        'filter_key': previous_filter_key(normalized_ids, normalized_levels, selected_mode, baseline,
+                                          normalized_context_filters, profile_id, normalized_area_summary),
+        'result_key': result_key, 'method_version': version, 'source_fingerprint': source_fingerprint,
+        'dataset_ids': normalized_ids, 'snapshot': snapshot, 'nr_mode': selected_mode, 'levels': normalized_levels,
+        'baseline_operator': baseline,
+    }
 
 
-def _matching_saved_job(connection: Any, cache_key: str, version: str,
-                        dataset_ids: list[int], source_fingerprint: str) -> Any:
-    """Match saved inputs even when an engine upgrade changed their cache digest."""
-    rows = connection.execute(
-        "SELECT * FROM scoring_jobs WHERE cache_key = ? OR source_fingerprint = ? "
-        "ORDER BY status IN ('queued', 'processing') DESC, id DESC",
-        (cache_key, source_fingerprint),
-    ).fetchall()
-    for row in rows:
-        if row['cache_key'] == cache_key:
-            return row
-        try:
-            job = _row_to_job(row, include_internal_snapshot=True)
-            if sorted(job['dataset_ids']) != sorted(dataset_ids) or not job.get('configuration'):
-                continue
-            saved_key, _ = _job_payload(
-                job['levels'], job['nr_mode'], job['baseline_operator'], version,
-                job['source_fingerprint'], configuration_hash(job['configuration']),
-                job['baseline_aliases'], job['context_filters'], job['resolved_context_filters'],
-                job['operator_mappings'], job['scoring_profile_id'], job['scoring_profile_name'],
-                job.get('area_summary'),
-            )
-        except (ValueError, TypeError, KeyError):
-            continue
-        if saved_key == cache_key:
-            return row
-    return None
+def _prepare_saved_selection(repository: Repository, previous_filter: dict[str, Any]) -> dict[str, Any]:
+    """The identity of the result of a saved Previous Filter with today's CDRs, methodology and Operator Maps."""
+    return _prepare_previous_filter(
+        repository, previous_filter['dataset_ids'], previous_filter['levels'], previous_filter['nr_mode'],
+        baseline_operator=previous_filter['baseline_operator'], context_filters=previous_filter['context_filters'],
+        scoring_profile_id=previous_filter['scoring_profile_id'] or None, area_summary=previous_filter['area_summary'],
+    )
 
 
-def find_matching_scoring_job(
+def _queue_calculation(connection: Any, filter_id: int, prepared: dict[str, Any], username: str, now: str) -> None:
+    """Queue the calculation of a Previous Filter with today's CDRs and methodology."""
+    connection.execute(
+        f"""UPDATE {PREVIOUS_FILTERS_TABLE} SET status = 'queued', progress = 0,
+           message = 'Waiting to calculate scoring', result_json = NULL, last_error = NULL, started_at = NULL,
+           finished_at = NULL, updated_at = ?, created_by = ?, source_metadata_json = ?, result_key = ?,
+           method_version = ?, source_fingerprint = ?, dataset_ids_json = ?, levels_json = ?, nr_mode = ?,
+           baseline_operator = ?, cdr_refs_json = '[]'
+           WHERE id = ?""",
+        (now, str(username or 'system'), json.dumps(prepared['snapshot'], ensure_ascii=False, separators=(',', ':')),
+         prepared['result_key'], prepared['method_version'], prepared['source_fingerprint'],
+         json.dumps(prepared['dataset_ids']), json.dumps(prepared['levels'], ensure_ascii=False), prepared['nr_mode'],
+         prepared['baseline_operator'], int(filter_id)),
+    )
+
+
+def _is_up_to_date(row: Any, result_key: str) -> bool:
+    return row['status'] == 'completed' and row['result_key'] == result_key and bool(row['result_json'])
+
+
+def find_previous_filter(
     repository: Repository, dataset_ids: list[int], levels: list[str], nr_mode: str | None,
     *, baseline_operator: str = DEFAULT_BASELINE_OPERATOR,
     context_filters: dict[str, list[str]] | None = None,
     scoring_profile_id: str | None = None,
     area_summary: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
-    """Find a saved calculation using the same identity as job submission."""
-    cache_key, version, source_fingerprint, normalized_ids, *_ = _prepare_scoring_job(
+    """The Previous Filter of a selection, without changing it, and whether its saved result is up to date."""
+    prepared = _prepare_previous_filter(
         repository, dataset_ids, levels, nr_mode, baseline_operator=baseline_operator,
         context_filters=context_filters, scoring_profile_id=scoring_profile_id, area_summary=area_summary,
     )
     with repository.connection() as connection:
-        row = _matching_saved_job(connection, cache_key, version, normalized_ids, source_fingerprint)
-    return _row_to_job(row, include_snapshot=False) if row else None
+        row = connection.execute(f'SELECT * FROM {PREVIOUS_FILTERS_TABLE} WHERE filter_key = ?',
+                                 (prepared['filter_key'],)).fetchone()
+    if row is None:
+        return None
+    previous_filter = _row_to_previous_filter(row, include_snapshot=False)
+    previous_filter['up_to_date'] = _is_up_to_date(row, prepared['result_key'])
+    return previous_filter
 
 
-def create_scoring_job(
+def save_previous_filter(
     repository: Repository,
     dataset_ids: list[int],
     levels: list[str],
@@ -835,125 +870,190 @@ def create_scoring_job(
     scoring_profile_id: str | None = None,
     area_summary: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], bool]:
-    """Reuse a matching result, requeue the existing job, or create a new calculation.
+    """Use a selection: its Previous Filter (saved the first time it is used) with its result.
 
-    ``area_summary`` (a breakdown level, chosen cities and a time split) adds the National & Area
-    Summary calculations to a job without Region, Cluster or City filters.
+    Returns the Previous Filter and whether its result is ready or already being calculated (``True``), or must be
+    calculated (``False``): the first time, when its CDRs, methodology or Operator Maps changed since its result was
+    saved, after a failure, or with ``force``. ``area_summary`` (a breakdown level, chosen cities and a time split)
+    adds the National & Area Summary to a selection without Region, Cluster or City filters.
     """
-    (cache_key, version, source_fingerprint, normalized_ids, source_snapshot,
-     selected_mode, normalized_levels, baseline) = _prepare_scoring_job(
+    prepared = _prepare_previous_filter(
         repository, dataset_ids, levels, nr_mode, baseline_operator=baseline_operator,
         context_filters=context_filters, scoring_profile_id=scoring_profile_id, area_summary=area_summary,
     )
     now = local_now_iso()
     with repository.connection() as connection:
         connection.execute('BEGIN IMMEDIATE')
-        if not force:
-            cached_row = connection.execute(
-                "SELECT * FROM scoring_jobs WHERE cache_key = ? AND status = 'completed' "
-                'AND result_json IS NOT NULL ORDER BY id DESC LIMIT 1',
-                (cache_key,),
-            ).fetchone()
-            if cached_row:
-                return _row_to_job(cached_row, include_result=True), True
-        active_row = connection.execute(
-            "SELECT * FROM scoring_jobs WHERE cache_key = ? AND status IN ('queued', 'processing') "
-            'ORDER BY id DESC LIMIT 1',
-            (cache_key,),
-        ).fetchone()
-        if active_row:
-            return _row_to_job(active_row), True
-        previous_row = _matching_saved_job(connection, cache_key, version, normalized_ids, source_fingerprint)
-        if previous_row and previous_row['status'] in ('queued', 'processing'):
-            return _row_to_job(previous_row), True
-        if previous_row:
+        row = connection.execute(f'SELECT * FROM {PREVIOUS_FILTERS_TABLE} WHERE filter_key = ?',
+                                 (prepared['filter_key'],)).fetchone()
+        if row is not None:
             connection.execute(
-                """UPDATE scoring_jobs SET status = 'queued', progress = 0,
-                   message = 'Waiting to calculate scoring', result_json = NULL,
-                   last_error = NULL, started_at = NULL, finished_at = NULL,
-                   created_at = ?, updated_at = ?, created_by = ?, source_metadata_json = ?,
-                   cache_key = ?, method_version = ?
-                   WHERE id = ?""",
-                (now, now, str(username or 'system'),
-                 json.dumps(source_snapshot, ensure_ascii=False, separators=(',', ':')),
-                 cache_key, version, previous_row['id']),
+                f'UPDATE {PREVIOUS_FILTERS_TABLE} SET use_count = use_count + 1, last_used_at = ? WHERE id = ?',
+                (now, row['id']),
             )
-            job = connection.execute('SELECT * FROM scoring_jobs WHERE id = ?', (previous_row['id'],)).fetchone()
-            return _row_to_job(job), False
+            if row['status'] in ('queued', 'processing'):
+                row = connection.execute(f'SELECT * FROM {PREVIOUS_FILTERS_TABLE} WHERE id = ?', (row['id'],)).fetchone()
+                return _row_to_previous_filter(row), True
+            if not force and _is_up_to_date(row, prepared['result_key']):
+                row = connection.execute(f'SELECT * FROM {PREVIOUS_FILTERS_TABLE} WHERE id = ?', (row['id'],)).fetchone()
+                return _row_to_previous_filter(row, include_result=True), True
+            _queue_calculation(connection, int(row['id']), prepared, username, now)
+            row = connection.execute(f'SELECT * FROM {PREVIOUS_FILTERS_TABLE} WHERE id = ?', (row['id'],)).fetchone()
+            return _row_to_previous_filter(row), False
         cursor = connection.execute(
-            """
-            INSERT INTO scoring_jobs (
-                cache_key, method_version, source_fingerprint, dataset_ids_json,
+            f"""
+            INSERT INTO {PREVIOUS_FILTERS_TABLE} (
+                filter_key, last_used_at, result_key, method_version, source_fingerprint, dataset_ids_json,
                 source_metadata_json, nr_mode, levels_json, baseline_operator,
                 status, progress, message, created_by, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'queued', 0, 'Waiting to calculate scoring', ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', 0, 'Waiting to calculate scoring', ?, ?, ?)
             """,
             (
-                cache_key, version, source_fingerprint, json.dumps(normalized_ids),
-                json.dumps(source_snapshot, ensure_ascii=False, separators=(',', ':')), selected_mode,
-                json.dumps(normalized_levels, ensure_ascii=False), baseline,
+                prepared['filter_key'], now, prepared['result_key'], prepared['method_version'],
+                prepared['source_fingerprint'], json.dumps(prepared['dataset_ids']),
+                json.dumps(prepared['snapshot'], ensure_ascii=False, separators=(',', ':')), prepared['nr_mode'],
+                json.dumps(prepared['levels'], ensure_ascii=False), prepared['baseline_operator'],
                 str(username or 'system'), now, now,
             ),
         )
-        job_id = int(cursor.lastrowid)
-        job = connection.execute('SELECT * FROM scoring_jobs WHERE id = ?', (job_id,)).fetchone()
-    return _row_to_job(job), False
+        row = connection.execute(f'SELECT * FROM {PREVIOUS_FILTERS_TABLE} WHERE id = ?',
+                                 (int(cursor.lastrowid),)).fetchone()
+    return _row_to_previous_filter(row), False
 
 
-def list_scoring_jobs(repository: Repository) -> list[dict[str, Any]]:
-    """Return all scoring job summaries without loading result payloads."""
+def refresh_previous_filter(repository: Repository, filter_id: int, username: str = 'system') -> tuple[bool, str]:
+    """Queue the calculation of an opened Previous Filter whose saved result no longer matches its CDRs, methodology
+    or Operator Maps (or that has none yet).
+
+    Returns whether it was queued, and why it cannot be calculated (its CDRs or methodology are gone) otherwise.
+    """
+    _resolve_imported_filters(repository)
+    previous_filter = get_previous_filter(repository, filter_id)
+    if previous_filter is None or previous_filter['status'] in ('queued', 'processing'):
+        return False, ''
+    if not previous_filter['dataset_ids']:
+        names = ', '.join(previous_filter['missing_cdrs']) or 'its CDRs'
+        return False, f'The CDRs of these filters are not in this workspace: {names}.'
+    try:
+        prepared = _prepare_saved_selection(repository, previous_filter)
+    except ValueError as exc:
+        return False, str(exc)
+    with repository.connection() as connection:
+        connection.execute('BEGIN IMMEDIATE')
+        row = connection.execute(f'SELECT * FROM {PREVIOUS_FILTERS_TABLE} WHERE id = ?', (int(filter_id),)).fetchone()
+        if row is None or row['status'] in ('queued', 'processing') or _is_up_to_date(row, prepared['result_key']):
+            return False, ''
+        # A failed calculation is not repeated on its own until something it uses changes.
+        if row['status'] == 'failed' and row['result_key'] == prepared['result_key']:
+            return False, ''
+        _queue_calculation(connection, int(filter_id), prepared, username, local_now_iso())
+    return True, ''
+
+
+def list_previous_filters(repository: Repository) -> list[dict[str, Any]]:
+    """Every Previous Filter, pinned first and then the latest used, without their results.
+
+    Each one lists its CDRs that have been replaced by newer ones (``newer_cdrs``): a Final CDR of the same
+    campaign, or a newer cumulative Weekly or Daily CDR.
+    """
+    _resolve_imported_filters(repository)
     with repository.connection() as connection:
         rows = connection.execute(
-            'SELECT id, cache_key, method_version, source_fingerprint, dataset_ids_json, '
-            'source_metadata_json, nr_mode, levels_json, baseline_operator, status, progress, '
-            'message, last_error, created_by, created_at, started_at, updated_at, finished_at '
-            'FROM scoring_jobs ORDER BY julianday(created_at) DESC, id DESC'
+            'SELECT id, filter_key, name, pinned, use_count, last_used_at, cdr_refs_json, result_key, method_version, '
+            'source_fingerprint, dataset_ids_json, source_metadata_json, nr_mode, levels_json, baseline_operator, '
+            'status, progress, message, NULL AS result_json, last_error, created_by, created_at, started_at, '
+            f'updated_at, finished_at FROM {PREVIOUS_FILTERS_TABLE} '
+            'ORDER BY pinned DESC, julianday(last_used_at) DESC, id DESC'
         ).fetchall()
-    return [_row_to_job(row, include_snapshot=False) for row in rows]
+    previous_filters = [_row_to_previous_filter(row, include_snapshot=False) for row in rows]
+    replacements = _replaced_cdrs(repository) if previous_filters else {}
+    for previous_filter in previous_filters:
+        previous_filter['newer_cdrs'] = [replacements[dataset_id] for dataset_id in previous_filter['dataset_ids']
+                                         if dataset_id in replacements]
+    return previous_filters
 
 
-def recover_interrupted_scoring_jobs(repository: Repository) -> list[int]:
-    """Fail persisted scoring work when its workspace is first opened after restart."""
+def _replaced_cdrs(repository: Repository) -> dict[int, dict[str, Any]]:
+    """The CDRs replaced by newer ones in the combined tables, with the newest CDR that replaces each one."""
+    from src.modules.cdr_stage import combined_inclusion
+    try:
+        inclusion = combined_inclusion(repository)
+    except Exception:  # The notice is optional: without it the Previous Filters are still listed.
+        return {}
+    names = {int(row['id']): str(row['file_name'] or '') for row in repository.list_datasets()}
+    replacements = {}
+    for dataset_id, item in inclusion.items():
+        newer, seen = item.get('replaced_by'), {dataset_id}
+        while newer is not None and inclusion.get(newer, {}).get('replaced_by') is not None and newer not in seen:
+            seen.add(newer)
+            newer = inclusion[newer]['replaced_by']
+        if newer is not None and not item.get('included'):
+            replacements[int(dataset_id)] = {'id': int(dataset_id), 'name': names.get(int(dataset_id), ''),
+                                             'replaced_by': int(newer), 'replaced_by_name': names.get(int(newer), '')}
+    return replacements
+
+
+def update_previous_filter(repository: Repository, filter_id: int, *, name: str | None = None,
+                           pinned: bool | None = None) -> dict[str, Any] | None:
+    """Rename a Previous Filter (an empty name shows its filters) or pin it at the top of the list."""
+    updates: dict[str, Any] = {}
+    if name is not None:
+        text = ' '.join(str(name).split())
+        if len(text) > 120:
+            raise ValueError('The name of a Previous Filter can have up to 120 characters.')
+        updates['name'] = text
+    if pinned is not None:
+        updates['pinned'] = 1 if pinned else 0
+    if updates:
+        assignments = ', '.join(f'{column} = ?' for column in updates)
+        with repository.connection() as connection:
+            connection.execute(f'UPDATE {PREVIOUS_FILTERS_TABLE} SET {assignments} WHERE id = ?',
+                               (*updates.values(), int(filter_id)))
+    return get_previous_filter(repository, filter_id)
+
+
+def recover_interrupted_previous_filters(repository: Repository) -> list[int]:
+    """Fail the calculations left running when the application stopped, when the workspace is first opened."""
     now = local_now_iso()
     with repository.connection() as connection:
         rows = connection.execute(
-            "SELECT id FROM scoring_jobs WHERE status IN ('queued', 'processing') ORDER BY id",
+            f"SELECT id FROM {PREVIOUS_FILTERS_TABLE} WHERE status IN ('queued', 'processing') ORDER BY id",
         ).fetchall()
-        job_ids = [int(row['id']) for row in rows]
-        if job_ids:
-            placeholders = ','.join('?' for _ in job_ids)
+        filter_ids = [int(row['id']) for row in rows]
+        if filter_ids:
+            placeholders = ','.join('?' for _ in filter_ids)
             connection.execute(
-                f"UPDATE scoring_jobs SET status = 'failed', last_error = ?, message = ?, updated_at = ?, finished_at = ? "
-                f"WHERE id IN ({placeholders}) AND status IN ('queued', 'processing')",
-                (INTERRUPTED_JOB_MESSAGE, INTERRUPTED_JOB_MESSAGE, now, now, *job_ids),
+                f"UPDATE {PREVIOUS_FILTERS_TABLE} SET status = 'failed', last_error = ?, message = ?, updated_at = ?, "
+                f"finished_at = ? WHERE id IN ({placeholders}) AND status IN ('queued', 'processing')",
+                (INTERRUPTED_CALCULATION_MESSAGE, INTERRUPTED_CALCULATION_MESSAGE, now, now, *filter_ids),
             )
-    return job_ids
+    return filter_ids
 
 
-def get_scoring_job(
-    repository: Repository, job_id: int, include_result: bool = False,
+def get_previous_filter(
+    repository: Repository, filter_id: int, include_result: bool = False,
     include_internal_snapshot: bool = False,
 ) -> dict[str, Any] | None:
-    """Return a job and optionally decode its persisted scoring tables."""
+    """A Previous Filter and, optionally, its saved result."""
     with repository.connection() as connection:
-        row = connection.execute('SELECT * FROM scoring_jobs WHERE id = ?', (int(job_id),)).fetchone()
+        row = connection.execute(f'SELECT * FROM {PREVIOUS_FILTERS_TABLE} WHERE id = ?', (int(filter_id),)).fetchone()
     if row is None:
         return None
-    job = _row_to_job(
+    previous_filter = _row_to_previous_filter(
         row, include_result=include_result, include_internal_snapshot=include_internal_snapshot,
     )
     if include_result and not include_internal_snapshot:
-        _apply_current_environment_labels(repository, job)
+        _apply_current_environment_labels(repository, previous_filter)
         # Results saved before environment scaling existed are scaled when they are opened.
         from src.modules.scoring import apply_environment_scaling
-        apply_environment_scaling(job.get('result'), str(job.get('baseline_operator') or 'EE'))
-    return job
+        apply_environment_scaling(previous_filter.get('result'), str(previous_filter.get('baseline_operator') or 'EE'))
+    return previous_filter
 
 
-def _apply_current_environment_labels(repository: Repository, job: dict[str, Any]) -> None:
+def _apply_current_environment_labels(repository: Repository, previous_filter: dict[str, Any]) -> None:
     """Project current profile labels without changing stored rules or environment keys."""
     try:
-        profile = repository.get_scoring_profile(job.get('scoring_profile_id') or None)
+        profile = repository.get_scoring_profile(previous_filter.get('scoring_profile_id') or None)
     except ValueError:
         return
     current = profile['configuration'].get('scope', {}).get('environments', {})
@@ -968,7 +1068,7 @@ def _apply_current_environment_labels(repository: Repository, job: dict[str, Any
 
     labels = {source_identity(scope): str(scope.get('display_name') or name)
               for name, scope in current.items()}
-    for configuration in (job.get('configuration'), (job.get('result') or {}).get('configuration')):
+    for configuration in (previous_filter.get('configuration'), (previous_filter.get('result') or {}).get('configuration')):
         if not isinstance(configuration, dict):
             continue
         for name, scope in configuration.get('scope', {}).get('environments', {}).items():
@@ -978,18 +1078,18 @@ def _apply_current_environment_labels(repository: Repository, job: dict[str, Any
                 scope['display_name'] = label
 
 
-def delete_scoring_job(repository: Repository, job_id: int) -> bool:
-    """Remove a saved job and its result without modifying source CDRs."""
+def delete_previous_filter(repository: Repository, filter_id: int) -> bool:
+    """Remove a Previous Filter and its saved result; its CDRs and the Scoring History stay."""
     with repository.connection() as connection:
-        cursor = connection.execute('DELETE FROM scoring_jobs WHERE id = ?', (int(job_id),))
+        cursor = connection.execute(f'DELETE FROM {PREVIOUS_FILTERS_TABLE} WHERE id = ?', (int(filter_id),))
         return cursor.rowcount > 0
 
 
-class _ScoringJobDeleted(Exception):
-    """Stop further processing at a checkpoint after a job is removed."""
+class _PreviousFilterDeleted(Exception):
+    """Stop a calculation at a checkpoint once its Previous Filter is removed."""
 
 
-def _update_scoring_job(repository: Repository, job_id: int, **fields: Any) -> None:
+def _update_previous_filter(repository: Repository, filter_id: int, **fields: Any) -> None:
     allowed_fields = {
         'status', 'progress', 'message', 'result_json', 'last_error', 'started_at', 'finished_at',
     }
@@ -1001,9 +1101,219 @@ def _update_scoring_job(repository: Repository, job_id: int, **fields: Any) -> N
     values = [updates[column] for column in updates]
     with repository.connection() as connection:
         connection.execute(
-            f"UPDATE scoring_jobs SET {assignments} WHERE id = ? AND status <> 'stopped'",
-            (*values, int(job_id)),
+            f'UPDATE {PREVIOUS_FILTERS_TABLE} SET {assignments} WHERE id = ?',
+            (*values, int(filter_id)),
         )
+
+
+# -- Export, import, transfers and backups -----------------------------------------------------------------------
+# A Previous Filter travels with the Scoring Configuration, without its result: its CDRs are named by the SHA-256 of
+# their files, so the workspace that receives it finds them whatever their name or id there.
+
+PREVIOUS_FILTERS_FORMAT = 'drivetest-analyzer-scoring-previous-filters'
+PREVIOUS_FILTERS_VERSION = 1
+
+
+def _cdr_hashes(repository: Repository) -> dict[int, dict[str, str]]:
+    """The SHA-256 of the file, the name and the type of every CDR of the workspace, and of the deleted CDRs whose
+    Scoring History is kept."""
+    from src.modules.scoring_history import HISTORY_SOURCES_TABLE, ensure_history_tables, file_sha256
+    ensure_history_tables(repository)
+    hashes: dict[int, dict[str, str]] = {}
+    with repository.connection() as connection:
+        for row in connection.execute(
+                f'SELECT dataset_id, file_sha256, name, kind FROM {HISTORY_SOURCES_TABLE} ORDER BY indexed_at').fetchall():
+            if row['file_sha256']:
+                hashes[int(row['dataset_id'])] = {'sha256': str(row['file_sha256']), 'name': str(row['name'] or ''),
+                                                  'kind': str(row['kind'] or '')}
+    for row in repository.list_datasets():
+        if str(row['dataset_kind'] or '').strip().casefold() not in CDR_DATASET_KINDS:
+            continue
+        sha = file_sha256(repository, row)
+        if sha:
+            hashes[int(row['id'])] = {'sha256': sha, 'name': str(row['file_name'] or ''),
+                                      'kind': str(row['dataset_kind'] or '').casefold()}
+    return hashes
+
+
+def previous_filters_document(repository: Repository) -> dict[str, Any]:
+    """Every Previous Filter of the workspace, without its result, with its CDRs named by their file."""
+    hashes: dict[int, dict[str, str]] | None = None
+    entries = []
+    with repository.connection() as connection:
+        rows = connection.execute(f'SELECT * FROM {PREVIOUS_FILTERS_TABLE} ORDER BY id').fetchall()
+    for row in rows:
+        previous_filter = _row_to_previous_filter(row, include_snapshot=False)
+        refs = _decode_json(row['cdr_refs_json'], [])
+        if previous_filter['dataset_ids']:
+            hashes = hashes if hashes is not None else _cdr_hashes(repository)
+            refs = [hashes.get(dataset_id) for dataset_id in previous_filter['dataset_ids']]
+            if not all(refs):
+                # Without the file of one of its CDRs, the selection could not be found again elsewhere.
+                continue
+        if not refs:
+            continue
+        entries.append({
+            'name': previous_filter['name'], 'pinned': previous_filter['pinned'],
+            'use_count': previous_filter['use_count'], 'last_used_at': previous_filter['last_used_at'],
+            'cdrs': refs, 'nr_mode': previous_filter['nr_mode'], 'levels': previous_filter['levels'],
+            'baseline_operator': previous_filter['baseline_operator'],
+            'context_filters': previous_filter['context_filters'],
+            'scoring_profile_id': previous_filter['scoring_profile_id'],
+            'area_summary': previous_filter['area_summary'],
+        })
+    return {'format': PREVIOUS_FILTERS_FORMAT, 'version': PREVIOUS_FILTERS_VERSION, 'previous_filters': entries}
+
+
+def import_previous_filters(repository: Repository, document: Any) -> int:
+    """Add the Previous Filters of a document to the workspace (those it already has keep their name, favourite and
+    use). Their CDRs are found by file; until they are processed here, they wait for them. Returns how many were
+    added."""
+    if (not isinstance(document, dict) or document.get('format') != PREVIOUS_FILTERS_FORMAT
+            or document.get('version') != PREVIOUS_FILTERS_VERSION or not isinstance(document.get('previous_filters'), list)):
+        raise ValueError('The Previous Filters are invalid.')
+    added = 0
+    now = local_now_iso()
+    for entry in document['previous_filters']:
+        if not isinstance(entry, dict):
+            raise ValueError('The Previous Filters are invalid.')
+        refs = [
+            {'sha256': str(item.get('sha256') or ''), 'name': str(item.get('name') or ''), 'kind': str(item.get('kind') or '')}
+            for item in entry.get('cdrs') or [] if isinstance(item, dict) and item.get('sha256')
+        ]
+        levels = [str(level) for level in entry.get('levels') or [] if str(level).strip()]
+        nr_mode = normalize_nr_mode(entry.get('nr_mode'))
+        if not refs or not levels or nr_mode is None:
+            raise ValueError('The Previous Filters are invalid.')
+        context_filters = _normalize_context_filters(entry.get('context_filters') or {})
+        area_summary = entry.get('area_summary') if isinstance(entry.get('area_summary'), dict) else None
+        selection = {'levels': levels, 'nr_mode': nr_mode, 'baseline_operator': str(entry.get('baseline_operator') or DEFAULT_BASELINE_OPERATOR),
+                     'context_filters': context_filters, 'scoring_profile_id': str(entry.get('scoring_profile_id') or ''),
+                     'area_summary': area_summary}
+        pending_key = 'pending:' + hashlib.sha256(json.dumps(
+            {**selection, 'cdrs': sorted(ref['sha256'] for ref in refs)}, ensure_ascii=False, sort_keys=True,
+            separators=(',', ':')).encode('utf-8')).hexdigest()
+        snapshot = {'sources': [{'name': ref['name'], 'kind': ref['kind']} for ref in refs],
+                    'scoring_profile_id': selection['scoring_profile_id'], 'context_filters': context_filters,
+                    'resolved_context_filters': context_filters}
+        if area_summary:
+            snapshot['area_summary'] = area_summary
+        with repository.connection() as connection:
+            if connection.execute(f'SELECT 1 FROM {PREVIOUS_FILTERS_TABLE} WHERE filter_key = ?', (pending_key,)).fetchone():
+                continue
+            connection.execute(
+                f"""INSERT INTO {PREVIOUS_FILTERS_TABLE} (
+                    filter_key, name, pinned, use_count, last_used_at, cdr_refs_json, dataset_ids_json,
+                    source_metadata_json, nr_mode, levels_json, baseline_operator, status, message, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, '[]', ?, ?, ?, ?, 'saved', 'Imported; calculated when it is opened', ?, ?)""",
+                (pending_key, ' '.join(str(entry.get('name') or '').split())[:120], 1 if entry.get('pinned') else 0,
+                 max(1, int(entry.get('use_count') or 1)), str(entry.get('last_used_at') or now),
+                 json.dumps(refs, ensure_ascii=False), json.dumps(snapshot, ensure_ascii=False, separators=(',', ':')),
+                 nr_mode, json.dumps(levels, ensure_ascii=False), selection['baseline_operator'], now, now),
+            )
+        added += 1
+    _resolve_imported_filters(repository)
+    return added
+
+
+def _resolve_imported_filters(repository: Repository) -> None:
+    """Give the imported Previous Filters their CDRs once every one of them is in the workspace (found by file). One
+    that matches a Previous Filter of the workspace joins it."""
+    with repository.connection() as connection:
+        pending = connection.execute(
+            f"SELECT * FROM {PREVIOUS_FILTERS_TABLE} WHERE dataset_ids_json = '[]' AND cdr_refs_json <> '[]'"
+        ).fetchall()
+    if not pending:
+        return
+    by_hash: dict[str, int] = {}
+    for row in repository.list_datasets():
+        if str(row['status'] or '').casefold() != 'ready' or str(row['dataset_kind'] or '').casefold() not in CDR_DATASET_KINDS:
+            continue
+        from src.modules.scoring_history import ensure_history_tables, file_sha256
+        ensure_history_tables(repository)
+        sha = file_sha256(repository, row)
+        if sha:
+            by_hash.setdefault(sha, int(row['id']))
+    for row in pending:
+        refs = _decode_json(row['cdr_refs_json'], [])
+        dataset_ids = [by_hash.get(str(ref.get('sha256') or '')) for ref in refs if isinstance(ref, dict)]
+        if not dataset_ids or not all(dataset_ids):
+            continue
+        previous_filter = _row_to_previous_filter(row, include_snapshot=False)
+        try:
+            prepared = _prepare_previous_filter(
+                repository, dataset_ids, previous_filter['levels'], previous_filter['nr_mode'],
+                baseline_operator=previous_filter['baseline_operator'], context_filters=previous_filter['context_filters'],
+                scoring_profile_id=previous_filter['scoring_profile_id'] or None, area_summary=previous_filter['area_summary'],
+            )
+        except ValueError:
+            continue
+        with repository.connection() as connection:
+            existing = connection.execute(f'SELECT * FROM {PREVIOUS_FILTERS_TABLE} WHERE filter_key = ?',
+                                          (prepared['filter_key'],)).fetchone()
+            if existing is not None:
+                connection.execute(
+                    f"UPDATE {PREVIOUS_FILTERS_TABLE} SET name = CASE WHEN name = '' THEN ? ELSE name END, "
+                    'pinned = MAX(pinned, ?), use_count = MAX(use_count, ?) WHERE id = ?',
+                    (row['name'], row['pinned'], row['use_count'], existing['id']),
+                )
+                connection.execute(f'DELETE FROM {PREVIOUS_FILTERS_TABLE} WHERE id = ?', (row['id'],))
+                continue
+            connection.execute(
+                f"""UPDATE {PREVIOUS_FILTERS_TABLE} SET filter_key = ?, result_key = ?, method_version = ?,
+                   source_fingerprint = ?, dataset_ids_json = ?, levels_json = ?, nr_mode = ?, baseline_operator = ?,
+                   source_metadata_json = ?, cdr_refs_json = '[]', message = 'Calculated when it is opened'
+                   WHERE id = ?""",
+                (prepared['filter_key'], prepared['result_key'], prepared['method_version'],
+                 prepared['source_fingerprint'], json.dumps(prepared['dataset_ids']),
+                 json.dumps(prepared['levels'], ensure_ascii=False), prepared['nr_mode'], prepared['baseline_operator'],
+                 json.dumps(prepared['snapshot'], ensure_ascii=False, separators=(',', ':')), row['id']),
+            )
+
+
+def convert_scoring_jobs(connection: Any) -> None:
+    """Turn the Scoring Jobs of a workspace saved by earlier versions into Previous Filters, once: the jobs of the same
+    selection become one, with the latest result and how many times it was calculated."""
+    if not connection.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'scoring_jobs'").fetchone():
+        return
+    rows = connection.execute('SELECT * FROM scoring_jobs ORDER BY julianday(created_at), id').fetchall()
+    merged: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        snapshot = _decode_json(row['source_metadata_json'], {})
+        if not isinstance(snapshot, dict):
+            snapshot = {'sources': snapshot if isinstance(snapshot, list) else []}
+        dataset_ids = _decode_json(row['dataset_ids_json'], [])
+        levels = _decode_json(row['levels_json'], [])
+        try:
+            key = previous_filter_key(dataset_ids, levels, row['nr_mode'], row['baseline_operator'],
+                                      snapshot.get('context_filters') or {}, snapshot.get('scoring_profile_id') or '',
+                                      snapshot.get('area_summary'))
+        except (TypeError, ValueError):
+            continue
+        status = {'ready': 'completed', 'stopped': 'failed', 'queued': 'failed', 'processing': 'failed'}.get(
+            str(row['status']), str(row['status']))
+        entry = merged.setdefault(key, {'use_count': 0})
+        entry['use_count'] += 1
+        entry['last_used_at'] = row['created_at']
+        # The latest calculation with a result, else the latest one.
+        if row['result_json'] or not entry.get('row') or not entry['row']['result_json']:
+            entry.update(row=row, status=status, snapshot=snapshot)
+    for key, entry in merged.items():
+        row = entry['row']
+        connection.execute(
+            f"""INSERT OR IGNORE INTO {PREVIOUS_FILTERS_TABLE} (
+                filter_key, use_count, last_used_at, result_key, method_version, source_fingerprint, dataset_ids_json,
+                source_metadata_json, nr_mode, levels_json, baseline_operator, status, progress, message, result_json,
+                last_error, created_by, created_at, started_at, updated_at, finished_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (key, entry['use_count'], entry['last_used_at'], row['cache_key'], row['method_version'],
+             row['source_fingerprint'], row['dataset_ids_json'],
+             json.dumps(entry['snapshot'], ensure_ascii=False, separators=(',', ':')), row['nr_mode'], row['levels_json'],
+             row['baseline_operator'], entry['status'], row['progress'], row['message'], row['result_json'],
+             row['last_error'], row['created_by'], row['created_at'], row['started_at'], row['updated_at'],
+             row['finished_at']),
+        )
+    connection.execute('DROP TABLE scoring_jobs')
 
 
 def _load_source_frames(
@@ -1101,98 +1411,101 @@ def _attach_mapping_boundaries(repository: Repository, dataset_ids: list[int], r
         document['boundaries'] = boundaries
 
 
-def run_scoring_job(repository: Repository, job_id: int) -> dict[str, Any] | None:
-    """Calculate one queued job, persist its result, and retain failures for review."""
-    job = get_scoring_job(repository, job_id, include_internal_snapshot=True)
-    if job is None:
+def calculate_previous_filter(repository: Repository, filter_id: int) -> dict[str, Any] | None:
+    """Calculate the queued result of a Previous Filter, save it, and keep a failure with its reason."""
+    previous_filter = get_previous_filter(repository, filter_id, include_internal_snapshot=True)
+    if previous_filter is None:
         return None
-    if job['status'] == 'completed':
-        return get_scoring_job(repository, job_id, include_result=True)
-    if job['status'] == 'stopped':
-        return job
-    if job['status'] == 'processing':
-        return job
+    if previous_filter['status'] == 'completed':
+        return get_previous_filter(repository, filter_id, include_result=True)
+    if previous_filter['status'] == 'processing':
+        return previous_filter
     now = local_now_iso()
-    _update_scoring_job(
-        repository, job_id, status='processing', progress=2,
+    _update_previous_filter(
+        repository, filter_id, status='processing', progress=2,
         message='Checking selected CDR datasets', last_error='', started_at=now,
     )
 
     def update_progress(progress: int, message: str) -> None:
-        if get_scoring_job(repository, job_id) is None:
-            raise _ScoringJobDeleted()
-        _update_scoring_job(
-            repository, job_id, progress=max(2, min(95, int(progress))), message=message,
+        if get_previous_filter(repository, filter_id) is None:
+            raise _PreviousFilterDeleted()
+        _update_previous_filter(
+            repository, filter_id, progress=max(2, min(95, int(progress))), message=message,
         )
 
     try:
-        configuration = job.get('configuration')
+        configuration = previous_filter.get('configuration')
         if configuration is None:
             raise ValueError(
-                'This scoring job has no saved configuration snapshot. Import a Scoring Configuration and create a new scoring job.'
+                'These filters have no saved methodology. Import a Scoring Configuration and calculate them again.'
             )
         current_version = _method_version(configuration)
-        if current_version != job['method_version']:
-            raise ValueError('The scoring methodology changed after this job was queued. Create a new scoring job.')
+        if current_version != previous_filter['method_version']:
+            raise ValueError(
+                'The scoring methodology changed after this calculation was queued. Calculate these filters again.')
         configuration = validate_scoring_configuration(configuration)
-        dataset_ids = [int(value) for value in job['dataset_ids']]
+        dataset_ids = [int(value) for value in previous_filter['dataset_ids']]
         sources, _campaigns, current_fingerprint = _source_snapshot(
-            repository, dataset_ids, expected_nr_mode=job['nr_mode'],
+            repository, dataset_ids, expected_nr_mode=previous_filter['nr_mode'],
         )
-        if current_fingerprint != job['source_fingerprint']:
-            raise ValueError('A selected CDR changed after this job was queued. Create a new scoring job.')
+        if current_fingerprint != previous_filter['source_fingerprint']:
+            raise ValueError('A selected CDR changed after this calculation was queued. Calculate these filters again.')
         engine = _scoring_engine()
-        context_filters = job.get('resolved_context_filters', job.get('context_filters', {}))
-        result = _history_result(repository, job, configuration, dataset_ids, context_filters, engine, update_progress)
+        context_filters = previous_filter.get('resolved_context_filters', previous_filter.get('context_filters', {}))
+        result = _history_result(repository, previous_filter, configuration, dataset_ids, context_filters, engine,
+                                 update_progress)
         if result is not None:
-            _save_scoring_result(repository, job, job_id, dataset_ids, configuration, result, points_loss_pending=True)
+            _save_scoring_result(repository, previous_filter, filter_id, dataset_ids, configuration, result,
+                                 points_loss_pending=True)
             # The Points Lost Map needs the rows of the tests: it is added once they are read.
-            _complete_points_loss(repository, job, job_id, sources, dataset_ids, configuration, context_filters, engine)
-            return get_scoring_job(repository, job_id, include_result=True)
+            _complete_points_loss(repository, previous_filter, filter_id, sources, dataset_ids, configuration,
+                                  context_filters, engine)
+            return get_previous_filter(repository, filter_id, include_result=True)
         update_progress(6, 'Reading processed CDR rows')
         # The points-lost map also reads the area and coordinate columns.
         required_columns = getattr(engine, 'load_input_columns', None) or getattr(engine, 'required_input_columns')
         # The area summary also reads its breakdown and City columns, and the test start time for its time split.
         for source in sources:
-            source['levels'] = [*job['levels'], *area_summary_levels(job['levels'], job.get('area_summary'))]
+            source['levels'] = [*previous_filter['levels'],
+                                *area_summary_levels(previous_filter['levels'], previous_filter.get('area_summary'))]
         frames = _load_source_frames(repository, sources, update_progress, required_columns, context_filters)
         _current_sources, _campaigns, post_load_fingerprint = _source_snapshot(
-            repository, dataset_ids, expected_nr_mode=job['nr_mode'],
+            repository, dataset_ids, expected_nr_mode=previous_filter['nr_mode'],
         )
-        if post_load_fingerprint != job['source_fingerprint']:
+        if post_load_fingerprint != previous_filter['source_fingerprint']:
             raise ValueError('A selected CDR changed while its scoring rows were being loaded.')
         update_progress(62, 'Calculating KPIs and interpolated scores')
         calculate = engine.calculate_scoring
-        call_kwargs = _engine_kwargs(repository, job, configuration, calculate)
-        result = calculate(frames, job['levels'], **call_kwargs)
+        call_kwargs = _engine_kwargs(repository, previous_filter, configuration, calculate)
+        result = calculate(frames, previous_filter['levels'], **call_kwargs)
         if not isinstance(result, dict):
             raise TypeError('The scoring engine must return a result object.')
-        if job.get('area_summary'):
-            summary = calculate_area_summary(calculate, frames, job['levels'], job['area_summary'], call_kwargs,
-                                             update_progress)
+        if previous_filter.get('area_summary'):
+            summary = calculate_area_summary(calculate, frames, previous_filter['levels'],
+                                             previous_filter['area_summary'], call_kwargs, update_progress)
             result['warnings'] = [*(result.get('warnings') or []), *summary.pop('warnings')]
             result['area_summary'] = summary
-        _save_scoring_result(repository, job, job_id, dataset_ids, configuration, result)
-    except _ScoringJobDeleted:
+        _save_scoring_result(repository, previous_filter, filter_id, dataset_ids, configuration, result)
+    except _PreviousFilterDeleted:
         return None
     except Exception as exc:
-        _fail_scoring_job(repository, job, job_id, exc)
-    return get_scoring_job(repository, job_id, include_result=True)
+        _fail_calculation(repository, previous_filter, filter_id, exc)
+    return get_previous_filter(repository, filter_id, include_result=True)
 
 
-def _engine_kwargs(repository: Repository, job: dict[str, Any], configuration: dict[str, Any],
+def _engine_kwargs(repository: Repository, previous_filter: dict[str, Any], configuration: dict[str, Any],
                    calculate: Callable[..., Any]) -> dict[str, Any]:
     """The options of the engine's calculation: reference, methodology, operator names and Map Areas."""
     parameters = inspect.signature(calculate).parameters
     call_kwargs = {
-        'baseline_operator': job['baseline_operator'],
+        'baseline_operator': previous_filter['baseline_operator'],
         'configuration': configuration,
     }
     accepts_keywords = any(parameter.kind == inspect.Parameter.VAR_KEYWORD for parameter in parameters.values())
     if 'operator_mappings' in parameters or accepts_keywords:
-        call_kwargs['operator_mappings'] = job.get('operator_mappings', {})
+        call_kwargs['operator_mappings'] = previous_filter.get('operator_mappings', {})
     if 'baseline_aliases' in parameters or accepts_keywords:
-        call_kwargs['baseline_aliases'] = job.get('baseline_aliases', [])
+        call_kwargs['baseline_aliases'] = previous_filter.get('baseline_aliases', [])
     if 'map_areas' in parameters:
         # The tests are placed in the workspace's Map Areas of their country (the ITL3 areas in the UK).
         from src.modules.map_areas import area_index
@@ -1200,31 +1513,31 @@ def _engine_kwargs(repository: Repository, job: dict[str, Any], configuration: d
     return call_kwargs
 
 
-def _history_result(repository: Repository, job: dict[str, Any], configuration: dict[str, Any], dataset_ids: list[int],
+def _history_result(repository: Repository, previous_filter: dict[str, Any], configuration: dict[str, Any], dataset_ids: list[int],
                     context_filters: dict[str, list[str]], engine: Any, update_progress) -> dict[str, Any] | None:
-    """The scoring (and area summary) of the job from the Scoring History when it holds every selected CDR at its
+    """The scoring (and area summary) of the previous_filter from the Scoring History when it holds every selected CDR at its
     current revision with every KPI of the methodology, and the split and filters are its dimensions; else None."""
     from src.modules import scoring as scoring_engine
     from src.modules.scoring_history import HistoryUnavailable, calculate_scoring_from_history, history_covers
 
-    if engine is not scoring_engine or not history_covers(repository, dataset_ids, job['levels'], configuration,
+    if engine is not scoring_engine or not history_covers(repository, dataset_ids, previous_filter['levels'], configuration,
                                                            context_filters):
         return None
     update_progress(20, 'Calculating from the Scoring History')
     catalogues = repository.cdr_catalogues_by_dataset(dataset_ids)
     options = {
-        'baseline_operator': job['baseline_operator'], 'configuration': configuration,
-        'baseline_aliases': job.get('baseline_aliases', []), 'operator_mappings': job.get('operator_mappings', {}),
+        'baseline_operator': previous_filter['baseline_operator'], 'configuration': configuration,
+        'baseline_aliases': previous_filter.get('baseline_aliases', []), 'operator_mappings': previous_filter.get('operator_mappings', {}),
         'context_filters': context_filters,
         'vendor_operators': scoring_vendor_operators(catalogues, repository.list_operator_mapping_groups()),
     }
     try:
-        result = calculate_scoring_from_history(repository, dataset_ids, job['levels'], **options)
-        if job.get('area_summary'):
+        result = calculate_scoring_from_history(repository, dataset_ids, previous_filter['levels'], **options)
+        if previous_filter.get('area_summary'):
             def calculate(levels: list[str], *, time_split: str | None = None, cities=None) -> dict[str, Any]:
                 return calculate_scoring_from_history(repository, dataset_ids, levels, time_split=time_split,
                                                       cities=cities, **options)
-            summary = calculate_area_summary_from_history(calculate, job['levels'], job['area_summary'], update_progress)
+            summary = calculate_area_summary_from_history(calculate, previous_filter['levels'], previous_filter['area_summary'], update_progress)
             result['warnings'] = [*(result.get('warnings') or []), *summary.pop('warnings')]
             result['area_summary'] = summary
     except HistoryUnavailable:
@@ -1233,35 +1546,35 @@ def _history_result(repository: Repository, job: dict[str, Any], configuration: 
     return result
 
 
-def _complete_points_loss(repository: Repository, job: dict[str, Any], job_id: int, sources: list[dict[str, Any]],
+def _complete_points_loss(repository: Repository, previous_filter: dict[str, Any], filter_id: int, sources: list[dict[str, Any]],
                           dataset_ids: list[int], configuration: dict[str, Any],
                           context_filters: dict[str, list[str]], engine: Any) -> None:
     """Read the rows of the tests and add the Points Lost Map to a result calculated from the Scoring History."""
     try:
         for source in sources:
-            source['levels'] = list(job['levels'])
+            source['levels'] = list(previous_filter['levels'])
         required_columns = getattr(engine, 'load_input_columns', None) or getattr(engine, 'required_input_columns')
         frames = _load_source_frames(repository, sources, lambda *_args: None, required_columns, context_filters)
         calculate = engine.calculate_scoring
-        points_loss = calculate(frames, job['levels'], **_engine_kwargs(repository, job, configuration, calculate))['points_loss']
+        points_loss = calculate(frames, previous_filter['levels'], **_engine_kwargs(repository, previous_filter, configuration, calculate))['points_loss']
         document = {'points_loss': points_loss}
         _attach_mapping_boundaries(repository, dataset_ids, document)
     except Exception as exc:  # The scores stay; only the map is missing.
         document = {'points_loss': {'version': 2, 'error': str(exc)}}
     with repository.connection() as connection:
-        row = connection.execute('SELECT status, result_json FROM scoring_jobs WHERE id = ?', (int(job_id),)).fetchone()
+        row = connection.execute(f'SELECT status, result_json FROM {PREVIOUS_FILTERS_TABLE} WHERE id = ?', (int(filter_id),)).fetchone()
     if row is None or row['status'] != 'completed' or not row['result_json']:
         return
     result = json.loads(row['result_json'])
     if not (isinstance(result.get('points_loss'), dict) and result['points_loss'].get('pending')):
         return
     result['points_loss'] = _serialize_result_value(document['points_loss'])
-    _update_scoring_job(repository, job_id, result_json=json.dumps(result, ensure_ascii=False, separators=(',', ':'),
+    _update_previous_filter(repository, filter_id, result_json=json.dumps(result, ensure_ascii=False, separators=(',', ':'),
                                                                    allow_nan=False),
                         message='Scoring tables, GAP analysis and Points Lost Map are ready')
 
 
-def _save_scoring_result(repository: Repository, job: dict[str, Any], job_id: int, dataset_ids: list[int],
+def _save_scoring_result(repository: Repository, previous_filter: dict[str, Any], filter_id: int, dataset_ids: list[int],
                          configuration: dict[str, Any], result: dict[str, Any], *, points_loss_pending: bool = False) -> None:
     """Store the result of a calculation once the selected CDRs are checked unchanged."""
     if not isinstance(result, dict):
@@ -1270,14 +1583,14 @@ def _save_scoring_result(repository: Repository, job: dict[str, Any], job_id: in
     result.setdefault('configuration', configuration)
     result.setdefault('configuration_hash', configuration_hash(configuration))
     result.setdefault('gap_direction', 'operator_minus_reference')
-    result.setdefault('baseline_aliases', job.get('baseline_aliases', []))
-    result.setdefault('aggregation_levels', job['levels'])
-    result.setdefault('aggregation_contract_version', job['aggregation_contract_version'])
-    result.setdefault('campaigns', job['campaigns'])
+    result.setdefault('baseline_aliases', previous_filter.get('baseline_aliases', []))
+    result.setdefault('aggregation_levels', previous_filter['levels'])
+    result.setdefault('aggregation_contract_version', previous_filter['aggregation_contract_version'])
+    result.setdefault('campaigns', previous_filter['campaigns'])
     _latest_sources, _latest_campaigns, final_fingerprint = _source_snapshot(
-        repository, dataset_ids, expected_nr_mode=job['nr_mode'],
+        repository, dataset_ids, expected_nr_mode=previous_filter['nr_mode'],
     )
-    if final_fingerprint != job['source_fingerprint']:
+    if final_fingerprint != previous_filter['source_fingerprint']:
         raise ValueError('A selected CDR changed while its scoring calculation was running.')
     result_payload = {
         'scoring': result.get('scoring', []),
@@ -1289,24 +1602,24 @@ def _save_scoring_result(repository: Repository, job: dict[str, Any], job_id: in
     encoded_result = json.dumps(
         _serialize_result_value(result_payload), ensure_ascii=False, separators=(',', ':'), allow_nan=False,
     )
-    _update_scoring_job(
-        repository, job_id, status='completed', progress=100,
+    _update_previous_filter(
+        repository, filter_id, status='completed', progress=100,
         message=('Scoring tables and GAP analysis are ready; preparing the Points Lost Map' if points_loss_pending
                  else 'Scoring tables and GAP analysis are ready'),
         result_json=encoded_result, last_error='', finished_at=local_now_iso(),
     )
 
 
-def _fail_scoring_job(repository: Repository, job: dict[str, Any], job_id: int, exc: Exception) -> None:
+def _fail_calculation(repository: Repository, previous_filter: dict[str, Any], filter_id: int, exc: Exception) -> None:
     """Keep a failed calculation with its reason, for review."""
-    _update_scoring_job(
-        repository, job_id, status='failed', progress=100,
+    _update_previous_filter(
+        repository, filter_id, status='failed', progress=100,
         message='Scoring calculation failed', last_error=str(exc), finished_at=local_now_iso(),
     )
     # App Logs show why a calculation failed, with where it happened.
     if hasattr(repository, 'try_add_log'):
         import traceback
-        repository.try_add_log(str(job.get('created_by') or 'system'), 'scoring_job_failed', json.dumps({
-            'job_id': job_id, 'error': f'{type(exc).__name__}: {exc}',
+        repository.try_add_log(str(previous_filter.get('created_by') or 'system'), 'scoring_calculation_failed', json.dumps({
+            'filter_id': filter_id, 'error': f'{type(exc).__name__}: {exc}',
             'location': ''.join(traceback.format_exception(exc)[-3:]).strip()[-1500:],
         }, ensure_ascii=False))

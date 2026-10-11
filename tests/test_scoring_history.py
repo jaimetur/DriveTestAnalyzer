@@ -8,7 +8,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from src.modules import scoring, scoring_history, scoring_jobs
+from src.modules import scoring, scoring_history, scoring_previous_filters
 from src.modules.repository import Repository, local_now_iso
 from tests.scoring_fixtures import load_initial_scoring_configuration
 
@@ -87,10 +87,10 @@ def history_repository(tmp_path):
 
 
 def _by_rows(repository, ids, levels, configuration, context_filters=None, time_split=None):
-    sources, _campaigns, _fingerprint = scoring_jobs._source_snapshot(repository, ids)
+    sources, _campaigns, _fingerprint = scoring_previous_filters._source_snapshot(repository, ids)
     for source in sources:
         source['levels'] = [*levels, *(scoring.START_TIME_COLUMNS if time_split else ())]
-    frames = scoring_jobs._load_source_frames(repository, sources, lambda *args: None, scoring.load_input_columns,
+    frames = scoring_previous_filters._load_source_frames(repository, sources, lambda *args: None, scoring.load_input_columns,
                                               context_filters or {})
     return scoring.calculate_scoring(frames, levels, baseline_operator='EE', configuration=configuration,
                                      time_split=time_split)
@@ -181,9 +181,9 @@ def test_a_cdr_is_identified_by_its_file_and_processing_not_its_name(history_rep
 def test_a_job_is_calculated_from_the_history_and_gets_its_points_lost_map(history_repository):
     repository, ids, _configuration = history_repository
     scoring_history.sync_history(repository)
-    job, cached = scoring_jobs.create_scoring_job(repository, ids, ['Operator', 'Campaign'], 'NSA')
+    job, cached = scoring_previous_filters.save_previous_filter(repository, ids, ['Operator', 'Campaign'], 'NSA')
     assert not cached
-    finished = scoring_jobs.run_scoring_job(repository, job['id'])
+    finished = scoring_previous_filters.calculate_previous_filter(repository, job['id'])
     assert finished['status'] == 'completed'
     result = finished['result']
     assert result['source'] == 'history' and result['scoring']

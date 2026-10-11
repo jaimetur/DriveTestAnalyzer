@@ -91,15 +91,18 @@ from src.modules.cdr_stage import (
     dataset_cdr_stage, infer_cdr_stage, normalize_cdr_stage, normalize_in_combined,
 )
 from src.modules.scoring_vendors import normalize_scoring_vendor_result, scoring_vendor_name, scoring_vendor_names, scoring_vendor_operators
-from src.modules.scoring_jobs import (
-    create_scoring_job,
-    delete_scoring_job,
-    get_scoring_job,
-    list_scoring_jobs,
-    recover_interrupted_scoring_jobs,
-    run_scoring_job,
+from src.modules.scoring_previous_filters import (
+    calculate_previous_filter,
+    delete_previous_filter,
+    find_previous_filter,
+    get_previous_filter,
+    list_previous_filters,
+    recover_interrupted_previous_filters,
+    refresh_previous_filter,
+    save_previous_filter,
     select_all_complete_cdrs,
     select_latest_companion_cdrs,
+    update_previous_filter,
     validate_complete_scoring_cdr_selection,
 )
 from src.modules.scoring_selection import (
@@ -2662,10 +2665,10 @@ def activate_workspace(workspace_id: str, *, initialize: bool = True) -> Workspa
                 migrate_workspace_database(workspace.database_path)
                 repository.initialize()
                 migrate_output_layout(workspace.output_dir, workspace.database_path)
-                recovered_scoring_ids = recover_interrupted_scoring_jobs(repository)
+                recovered_scoring_ids = recover_interrupted_previous_filters(repository)
                 if recovered_scoring_ids:
-                    repository.try_add_log('system', 'recover_interrupted_scoring_jobs', json.dumps({
-                        'scoring_jobs': recovered_scoring_ids,
+                    repository.try_add_log('system', 'recover_interrupted_previous_filters', json.dumps({
+                        'previous_filters': recovered_scoring_ids,
                     }))
                 try:
                     initialized_inode = database_path.stat().st_ino
@@ -2907,7 +2910,7 @@ PASSIVE_APPLICATION_REQUEST_PATHS = {
 
 
 # Requests sent by pages on their own with a method other than GET (the polling refresh of a Scoring calculation).
-PASSIVE_APPLICATION_MUTATIONS = {'/api/scoring/jobs/match'}
+PASSIVE_APPLICATION_MUTATIONS = {'/api/scoring/previous-filters/match'}
 
 
 def is_interactive_request(method: str, path: str, accept: str, background_refresh: bool = False) -> bool:
@@ -3699,28 +3702,6 @@ def submit_background_task(callback: Callable[..., Any], /, *args: Any) -> Futur
     return BACKGROUND_TASK_SCHEDULER.submit(callback, *args)
 
 
-def queue_dataset_scoring(task_repository: Repository, dataset_id: int, username: str) -> None:
-    """Persist the default operator scoring job when all three CDR types are ready."""
-    dataset = task_repository.get_dataset(dataset_id)
-    if not dataset or dataset['status'] != 'ready' or dataset['dataset_kind'] not in CDR_DATASET_KINDS:
-        return
-    try:
-        selected_ids = select_latest_companion_cdrs(task_repository, dataset_id)
-        job, cached = create_scoring_job(
-            task_repository, selected_ids, ['Operator'],
-            dataset_nr_mode(dataset['dataset_kind'], dataset['nr_mode'], dataset['file_name']),
-            username=username,
-        )
-        if not cached:
-            _submit_workspace_job(task_repository, run_scoring_job, task_repository, job['id'], phase=4)
-    except Exception as exc:
-        if isinstance(exc, ValueError) and str(exc).startswith('No processed '):
-            return
-        task_repository.try_add_log(username, 'scoring_queue_failed', json.dumps({
-            'dataset_id': dataset_id, 'error': str(exc),
-        }))
-
-
 def _dataset_processing_lock(task_repository: Repository):
     """Coordinate schema-wide maintenance with ordinary Workspace writes."""
     return workspace_write_lock(task_repository.db_path)
@@ -4049,7 +4030,6 @@ def process_dataset(
             task_repository, workspace, region_mapping_dataset_id,
         )
         if workspace and combined_kind:
-            queue_dataset_scoring(task_repository, dataset_id, username)
             start_combined_cdr_recreation_job(
                 workspace, combined_kind, username, background=True,
             )
@@ -4213,7 +4193,6 @@ def enqueue_dataset_processing(
                         task_workspace and completed and str(completed['status']) == 'ready'
                         and completed_kind in CDR_DATASET_KINDS
                     ):
-                        queue_dataset_scoring(task_repository, dataset_id, username)
                         start_combined_cdr_recreation_job(task_workspace, completed_kind, username)
                 except Exception as exc:
                     task_repository.update_dataset_profile(
@@ -4385,7 +4364,6 @@ def _resume_dataset_in_worker(
         if completed and str(completed['status']) == 'ready':
             completed_kind = str(completed['dataset_kind'] or '').casefold()
             if completed_kind in CDR_DATASET_KINDS:
-                queue_dataset_scoring(task_repository, dataset_id, username)
                 start_combined_cdr_recreation_job(workspace, completed_kind, username)
     finally:
         _unregister_dataset_processing(dataset_id, task_repository)
@@ -6729,6 +6707,7 @@ def create_recurring_database_backup(
         if 'scoring_configuration' in components:
             total_bytes += len(_scoring_configuration_archive_payload(workspace))
             total_bytes += len(_scoring_report_configurations_archive_payload(workspace))
+            total_bytes += len(_scoring_previous_filters_archive_payload(workspace))
         if 'query_builder_queries' in components:
             total_bytes += len(json.dumps(_query_builder_queries_payload(workspace), ensure_ascii=False).encode('utf-8'))
         if 'reporting_jobs' in components:
@@ -7284,6 +7263,9 @@ def restore_database_backup(
                     reports_member = _scoring_report_configurations_member(member)
                     _restore_workspace_scoring_report_configurations(
                         workspace, archive.read(reports_member) if reports_member in names else None)
+                    filters_member = _scoring_previous_filters_member(member)
+                    _restore_workspace_scoring_previous_filters(
+                        workspace, archive.read(filters_member) if filters_member in names else None)
                     advance(f'Scoring & GAP Analysis Configuration restored for {workspace_name}')
             if 'auto_calculated_fields' in selected:
                 member = next((candidate for candidate in (
@@ -7635,8 +7617,11 @@ def _archive_workspace_scoring_configuration(
     # Saved Scoring report configurations travel with the methodologies.
     reports = _scoring_report_configurations_archive_payload(workspace)
     archive.writestr(f'{archive_prefix}/scoring-configuration/{SCORING_REPORT_CONFIGURATIONS_MEMBER}', reports)
+    # So do the Previous Filters, without their results.
+    previous_filters = _scoring_previous_filters_archive_payload(workspace)
+    archive.writestr(f'{archive_prefix}/scoring-configuration/{SCORING_PREVIOUS_FILTERS_MEMBER}', previous_filters)
     if progress_callback:
-        progress_callback(len(payload) + len(reports))
+        progress_callback(len(payload) + len(reports) + len(previous_filters))
 
 
 SCORING_REPORT_CONFIGURATIONS_MEMBER = 'scoring-report-configurations.json'
@@ -7653,6 +7638,37 @@ def _scoring_report_configurations_archive_payload(workspace: Workspace) -> byte
 
 def _scoring_report_configurations_member(member: str) -> str:
     return member.rsplit('/', 1)[0] + '/' + SCORING_REPORT_CONFIGURATIONS_MEMBER
+
+
+SCORING_PREVIOUS_FILTERS_MEMBER = 'scoring-previous-filters.json'
+
+
+def _scoring_previous_filters_archive_payload(workspace: Workspace) -> bytes:
+    """The Previous Filters of a workspace without their results, their CDRs named by the SHA-256 of their files."""
+    from src.modules.scoring_previous_filters import previous_filters_document
+    task_repository = Repository(
+        workspace.database_path, repository.global_db_path, workspace_registry.registry_path,
+    )
+    return json.dumps(previous_filters_document(task_repository), ensure_ascii=False, indent=2).encode('utf-8')
+
+
+def _scoring_previous_filters_member(member: str) -> str:
+    return member.rsplit('/', 1)[0] + '/' + SCORING_PREVIOUS_FILTERS_MEMBER
+
+
+def _restore_workspace_scoring_previous_filters(workspace: Workspace, payload: bytes | None) -> None:
+    """Add the Previous Filters of a package to a workspace (they find their CDRs there by file); packages created
+    before they existed have none."""
+    if payload is None:
+        return
+    from src.modules.scoring_previous_filters import import_previous_filters
+    try:
+        task_repository = Repository(
+            workspace.database_path, repository.global_db_path, workspace_registry.registry_path,
+        )
+        import_previous_filters(task_repository, json.loads(payload.decode('utf-8')))
+    except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
+        raise ValueError(f'Scoring Previous Filters for "{workspace.name}" are invalid.') from exc
 
 
 def _restore_workspace_scoring_report_configurations(workspace: Workspace, payload: bytes | None) -> None:
@@ -9572,9 +9588,12 @@ def _apply_import_archive(
             payload = archive.read(member)
             reports_member = _scoring_report_configurations_member(member)
             reports = archive.read(reports_member) if reports_member in archive.namelist() else None
+            filters_member = _scoring_previous_filters_member(member)
+            previous_filters = archive.read(filters_member) if filters_member in archive.namelist() else None
             for workspace in destinations:
                 _restore_workspace_scoring_configuration(workspace, payload)
                 _restore_workspace_scoring_report_configurations(workspace, reports)
+                _restore_workspace_scoring_previous_filters(workspace, previous_filters)
             return f'Imported Scoring & GAP Analysis Configuration into {len(destinations)} workspaces.'
         if kind == 'auto-calculated-fields':
             try:
@@ -10606,7 +10625,7 @@ def render_admin_template(
         'dataset_source_columns': 'Dataset source columns',
         'datasets': 'Datasets',
         'generated_jobs': 'Generated jobs',
-        'scoring_jobs': 'Scoring And GAP Analysis Jobs',
+        'scoring_previous_filters': 'Scoring Previous Filters',
         'scoring_history': 'Scoring History',
         'scoring_history_sources': 'Scoring History Sources',
         'scoring_history_files': 'Scoring History Files',
@@ -11930,11 +11949,13 @@ def _workspace_background_tasks(workspace: Workspace) -> list[dict[str, Any]]:
                         'progress': max(0, min(100, int(row['progress'] or 0))),
                         **timestamps,
                     })
-            if 'scoring_jobs' in tables:
-                # Scoring & GAP Analysis calculations run in the background too, with their elapsed time.
+            if 'scoring_previous_filters' in tables:
+                # The Scoring & GAP Analysis calculations of the Previous Filters run in the background too, with their
+                # elapsed time.
                 recent = (datetime.now().astimezone() - timedelta(seconds=5)).isoformat()
                 for row in connection.execute(
-                    "SELECT id, nr_mode, status, progress, message, created_at, started_at, finished_at FROM scoring_jobs "
+                    "SELECT id, nr_mode, status, progress, message, updated_at AS created_at, started_at, finished_at "
+                    "FROM scoring_previous_filters "
                     "WHERE status IN ('queued', 'processing') OR (finished_at IS NOT NULL AND finished_at >= ?) ORDER BY id",
                     (recent,),
                 ).fetchall():
@@ -11944,7 +11965,7 @@ def _workspace_background_tasks(workspace: Workspace) -> list[dict[str, Any]]:
                         timestamps[key] = moment.timestamp() if moment else None
                     status = str(row['status'] or 'queued')
                     tasks.append({
-                        'id': f'scoring-job:{workspace.id}:{row["id"]}',
+                        'id': f'scoring-previous-filter:{workspace.id}:{row["id"]}',
                         'label': f'Scoring calculation #{row["id"]} ({row["nr_mode"]})',
                         'detail': str(row['message'] or '').strip() or ('Waiting to calculate scoring' if status == 'queued' else 'Calculating'),
                         'status': {'completed': 'ready', 'failed': 'failed', 'stopped': 'failed'}.get(status, status),
@@ -16374,7 +16395,7 @@ def retry_report_chart_job(job_id: int, user: SessionUser = Depends(current_user
     return JSONResponse({'job_id': job_id, 'status': 'queued'}, status_code=status.HTTP_202_ACCEPTED)
 
 
-class ScoringJobRequest(BaseModel):
+class PreviousFilterRequest(BaseModel):
     dataset_ids: list[int]
     aggregation_levels: list[str] = ['Operator']
     nr_mode: str = 'NSA'
@@ -16561,9 +16582,9 @@ def scoring_page(request: Request, user: SessionUser = Depends(current_user)) ->
     })
 
 
-@app.get('/api/scoring/jobs')
-def scoring_jobs_list(user: SessionUser = Depends(current_user)) -> dict[str, Any]:
-    return {'jobs': list_scoring_jobs(scoring_repository(user))}
+@app.get('/api/scoring/previous-filters')
+def scoring_previous_filters_list(user: SessionUser = Depends(current_user)) -> dict[str, Any]:
+    return {'previous_filters': list_previous_filters(scoring_repository(user))}
 
 
 @app.get('/api/scoring/selection')
@@ -16605,32 +16626,33 @@ def scoring_selection_put(
     return {'selection': selection, 'warnings': warnings, 'accepted': accepted}
 
 
-@app.post('/api/scoring/jobs/match')
-def scoring_jobs_match(payload: ScoringJobRequest, user: SessionUser = Depends(current_user)) -> dict[str, Any]:
-    from src.modules.scoring_jobs import find_matching_scoring_job
+@app.post('/api/scoring/previous-filters/match')
+def scoring_previous_filters_match(payload: PreviousFilterRequest, user: SessionUser = Depends(current_user)) -> dict[str, Any]:
+    """The Previous Filter of the selection being made, if it was used before, and whether its result is up to date."""
     task_repository = scoring_repository(user)
     try:
         selected_ids = validate_complete_scoring_cdr_selection(
             task_repository, payload.dataset_ids, payload.nr_mode, context_filters=payload.context_filters,
         )
-        job = find_matching_scoring_job(
+        previous_filter = find_previous_filter(
             task_repository, selected_ids, payload.aggregation_levels, payload.nr_mode,
             baseline_operator=payload.baseline_operator, context_filters=payload.context_filters,
             scoring_profile_id=payload.scoring_profile_id, area_summary=payload.area_summary,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return {'job': job}
+    return {'previous_filter': previous_filter}
 
 
-@app.post('/api/scoring/jobs')
-def scoring_jobs_create(payload: ScoringJobRequest, user: SessionUser = Depends(current_user)) -> dict[str, Any]:
+@app.post('/api/scoring/previous-filters')
+def scoring_previous_filters_save(payload: PreviousFilterRequest, user: SessionUser = Depends(current_user)) -> dict[str, Any]:
+    """Use a selection: its Previous Filter with its saved result, calculated in the background when needed."""
     task_repository = scoring_repository(user)
     try:
         selected_ids = validate_complete_scoring_cdr_selection(
             task_repository, payload.dataset_ids, payload.nr_mode, context_filters=payload.context_filters,
         )
-        job, cached = create_scoring_job(
+        previous_filter, cached = save_previous_filter(
             task_repository, selected_ids, payload.aggregation_levels, payload.nr_mode,
             force=payload.force, username=user.username, baseline_operator=payload.baseline_operator,
             context_filters=payload.context_filters,
@@ -16639,38 +16661,67 @@ def scoring_jobs_create(payload: ScoringJobRequest, user: SessionUser = Depends(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if not cached:
-        _submit_workspace_job(task_repository, run_scoring_job, task_repository, job['id'], phase=4)
-    return {'job': job, 'cached': cached}
+        _submit_workspace_job(task_repository, calculate_previous_filter, task_repository, previous_filter['id'], phase=4)
+    return {'previous_filter': previous_filter, 'cached': cached}
 
 
-# The results of completed scoring jobs, as served (JSON compressed with gzip), so opening a job again does not
-# build its views again. A recalculation or a change of the Operator or Vendor Maps gives another key.
+class PreviousFilterUpdate(BaseModel):
+    name: str | None = None
+    pinned: bool | None = None
+
+
+@app.patch('/api/scoring/previous-filters/{filter_id}')
+def scoring_previous_filters_update(filter_id: int, payload: PreviousFilterUpdate,
+                                    user: SessionUser = Depends(workspace_editor_user)) -> dict[str, Any]:
+    """Rename a Previous Filter or pin it at the top of the list."""
+    task_repository = scoring_repository(user)
+    try:
+        previous_filter = update_previous_filter(task_repository, filter_id, name=payload.name, pinned=payload.pinned)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if previous_filter is None:
+        raise HTTPException(status_code=404, detail='Previous Filter not found.')
+    task_repository.try_add_log(user.username, 'update_previous_filter', json.dumps({
+        'filter_id': filter_id, 'name': payload.name, 'pinned': payload.pinned,
+    }, ensure_ascii=False))
+    return {'previous_filter': previous_filter}
+
+
+# The results of the Previous Filters, as served (JSON compressed with gzip), so opening one again does not build its
+# views again. A recalculation or a change of the Operator or Vendor Maps gives another key.
 SCORING_RESULTS_CACHE: OrderedDict[tuple, bytes] = OrderedDict()
 SCORING_RESULTS_CACHE_SIZE = 6
 SCORING_RESULTS_CACHE_LOCK = Lock()
 
 
-@app.get('/api/scoring/jobs/{job_id}')
-def scoring_jobs_result(job_id: int, request: Request, user: SessionUser = Depends(current_user)) -> Response:
+@app.get('/api/scoring/previous-filters/{filter_id}')
+def scoring_previous_filters_result(filter_id: int, request: Request, user: SessionUser = Depends(current_user)) -> Response:
+    """A Previous Filter with its result. A result saved before its CDRs, methodology or Operator Maps changed (or a
+    Previous Filter without one yet) is calculated again in the background."""
     task_repository = scoring_repository(user)
-    job = get_scoring_job(task_repository, job_id, include_result=True)
-    if not job:
-        raise HTTPException(status_code=404, detail='Scoring job not found.')
+    queued, unavailable = refresh_previous_filter(task_repository, filter_id, user.username)
+    if queued:
+        _submit_workspace_job(task_repository, calculate_previous_filter, task_repository, filter_id, phase=4)
+    previous_filter = get_previous_filter(task_repository, filter_id, include_result=True)
+    if not previous_filter:
+        raise HTTPException(status_code=404, detail='Previous Filter not found.')
+    # Why a saved result is shown as it was (its CDRs or methodology are gone).
+    previous_filter['unavailable'] = unavailable
     operator_groups = task_repository.list_operator_mapping_groups()
     vendor_groups = task_repository.list_vendor_mapping_groups()
     fallback = (task_repository.get_scoring_configuration()
-                if not (job.get('result') or {}).get('configuration') and not job.get('configuration') else None)
+                if not (previous_filter.get('result') or {}).get('configuration') and not previous_filter.get('configuration') else None)
     key = None
-    if str(job.get('status') or '') == 'completed':
+    if str(previous_filter.get('status') or '') == 'completed':
         fingerprint = hashlib.sha1(json.dumps([operator_groups, vendor_groups, fallback], sort_keys=True,
                                               default=str).encode('utf-8')).hexdigest()
-        key = (str(task_repository.db_path), job_id, job.get('updated_at'), job.get('finished_at'), fingerprint)
+        key = (str(task_repository.db_path), filter_id, previous_filter.get('updated_at'), previous_filter.get('finished_at'), fingerprint)
     with SCORING_RESULTS_CACHE_LOCK:
         packed = SCORING_RESULTS_CACHE.get(key) if key else None
         if packed is not None:
             SCORING_RESULTS_CACHE.move_to_end(key)
     if packed is None:
-        payload = _scoring_job_payload(job, operator_groups, vendor_groups, fallback)
+        payload = _previous_filter_payload(previous_filter, operator_groups, vendor_groups, fallback)
         packed = gzip.compress(json.dumps(jsonable_encoder(payload), ensure_ascii=False, allow_nan=False,
                                           separators=(',', ':')).encode('utf-8'), 5)
         if key:
@@ -16683,40 +16734,40 @@ def scoring_jobs_result(job_id: int, request: Request, user: SessionUser = Depen
     return Response(gzip.decompress(packed), media_type='application/json')
 
 
-def _scoring_job_payload(job: dict[str, Any], operator_groups: list[dict], vendor_groups: list[dict],
-                         fallback: dict[str, Any] | None) -> dict[str, Any]:
-    """The saved results of a scoring job with the views of both scorings and their National & area summaries."""
+def _previous_filter_payload(previous_filter: dict[str, Any], operator_groups: list[dict], vendor_groups: list[dict],
+                             fallback: dict[str, Any] | None) -> dict[str, Any]:
+    """The saved result of a Previous Filter with the views of both scorings and their National & area summaries."""
     from src.modules.scoring_views import build_scoring_views, normalize_result_gaps, refresh_baseline_warning, scoring_coverage_notes
-    result = normalize_scoring_vendor_result(normalize_result_gaps(job.get('result') or {}), operator_groups)
+    result = normalize_scoring_vendor_result(normalize_result_gaps(previous_filter.get('result') or {}), operator_groups)
     views = {}
     scorings = {}
     if result.get('scoring') or result.get('score_rows'):
         from src.modules.scoring import most_reliable_result
         from src.modules.scoring_config import MOST_RELIABLE_SCORING, SCORING_LABELS
-        baseline = str(job.get('baseline_operator') or 'EE')
+        baseline = str(previous_filter.get('baseline_operator') or 'EE')
         try:
             views = build_scoring_views(
-                job, result, operator_groups, fallback,
+                previous_filter, result, operator_groups, fallback,
                 vendor_mapping_groups=vendor_groups,
             )
             refresh_baseline_warning(result, views, baseline)
-            # The National & area summary of the job, shown with the scoring charts.
+            # The National & area summary of the Previous Filter, shown with the scoring charts.
             from src.modules.scoring_area_summary import build_area_summary
             views.setdefault('insights', {})['area_summaries'] = build_area_summary(
-                job if job.get('configuration') or result.get('configuration') else {**job, 'configuration': fallback},
+                previous_filter if previous_filter.get('configuration') or result.get('configuration') else {**previous_filter, 'configuration': fallback},
                 result, operator_groups,
                 vendor_mapping_groups=vendor_groups,
             )
             # The Most Reliable scoring is derived from the same saved KPI scores and filters.
-            reliable = most_reliable_result(result, baseline, job.get('configuration') or fallback)
+            reliable = most_reliable_result(result, baseline, previous_filter.get('configuration') or fallback)
             if reliable is not None:
                 reliable_views = build_scoring_views(
-                    job, reliable, operator_groups,
+                    previous_filter, reliable, operator_groups,
                     vendor_mapping_groups=vendor_groups,
                 )
                 refresh_baseline_warning(reliable, reliable_views, baseline)
                 reliable_views.setdefault('insights', {})['area_summaries'] = build_area_summary(
-                    {**job, 'configuration': reliable['configuration']}, reliable,
+                    {**previous_filter, 'configuration': reliable['configuration']}, reliable,
                     operator_groups,
                     vendor_mapping_groups=vendor_groups,
                 )
@@ -16732,52 +16783,52 @@ def _scoring_job_payload(job: dict[str, Any], operator_groups: list[dict], vendo
     result['coverage_notes'] = scoring_coverage_notes(result)
     # The points-lost shares and polygons reach the page through the views' insights and the boundaries endpoint.
     points_loss = result.get('points_loss')
-    return {'job': {key: value for key, value in job.items() if key != 'result'},
+    return {'previous_filter': {key: value for key, value in previous_filter.items() if key != 'result'},
             **{key: value for key, value in result.items() if key not in {'points_loss', 'area_summary'}},
             # A result from the Scoring History gets its Points Lost Map once the rows of the tests are read.
             'points_loss_pending': bool(isinstance(points_loss, dict) and points_loss.get('pending')),
             'views': views, 'scorings': scorings}
 
 
-@app.get('/api/scoring/jobs/{job_id}/boundaries/{field}')
-def scoring_jobs_boundaries(job_id: int, field: str, user: SessionUser = Depends(current_user)) -> dict[str, Any]:
+@app.get('/api/scoring/previous-filters/{filter_id}/boundaries/{field}')
+def scoring_previous_filters_boundaries(filter_id: int, field: str, user: SessionUser = Depends(current_user)) -> dict[str, Any]:
     """Polygons of a points-lost map layer: the map areas (with the outlines of their countries) or the job's
     Clusters or Region Mapping."""
     from src.modules.scoring_points_loss import MAP_FIELDS, map_background, map_boundaries
     if field not in MAP_FIELDS:
         raise HTTPException(status_code=404, detail='Unknown points-lost map layer.')
-    job = get_scoring_job(scoring_repository(user), job_id, include_result=True)
-    if not job:
-        raise HTTPException(status_code=404, detail='Scoring job not found.')
-    result = job.get('result') or {}
+    previous_filter = get_previous_filter(scoring_repository(user), filter_id, include_result=True)
+    if not previous_filter:
+        raise HTTPException(status_code=404, detail='Previous Filter not found.')
+    result = previous_filter.get('result') or {}
     return {'field': field, 'boundaries': map_boundaries(result, field), 'background': map_background(result, field)}
 
 
-@app.delete('/api/scoring/jobs/{job_id}')
-def scoring_jobs_delete(job_id: int, user: SessionUser = Depends(workspace_editor_user)) -> dict[str, Any]:
+@app.delete('/api/scoring/previous-filters/{filter_id}')
+def scoring_previous_filters_delete(filter_id: int, user: SessionUser = Depends(workspace_editor_user)) -> dict[str, Any]:
     task_repository = scoring_repository(user)
-    if not delete_scoring_job(task_repository, job_id):
-        raise HTTPException(status_code=404, detail='Scoring job not found.')
-    task_repository.try_add_log(user.username, 'delete_scoring_job', json.dumps({'job_id': job_id}))
-    return {'deleted': job_id}
+    if not delete_previous_filter(task_repository, filter_id):
+        raise HTTPException(status_code=404, detail='Previous Filter not found.')
+    task_repository.try_add_log(user.username, 'delete_previous_filter', json.dumps({'filter_id': filter_id}))
+    return {'deleted': filter_id}
 
 
-def build_scoring_job_powerpoint(task_repository: Repository, job_id: int) -> tuple[bytes, str, dict[str, Any]]:
-    """PowerPoint of a completed scoring job with the default export options (all environments)."""
+def build_previous_filter_powerpoint(task_repository: Repository, filter_id: int) -> tuple[bytes, str, dict[str, Any]]:
+    """PowerPoint of the result of a Previous Filter with the default export options (all environments)."""
     from src.modules.scoring_exports import export_scoring_powerpoint, prepare_scoring_display_selections
     from src.modules.scoring_views import normalize_result_gaps
     from src.modules.cdr_report_filenames import build_scoring_report_filename
 
-    job = get_scoring_job(task_repository, job_id, include_result=True)
-    if not job:
-        raise ValueError(f'Scoring job {job_id} was not found.')
-    if job['status'] != 'completed':
-        raise ValueError(f'Scoring job {job_id} has not completed ({job["status"]}).')
+    previous_filter = get_previous_filter(task_repository, filter_id, include_result=True)
+    if not previous_filter:
+        raise ValueError(f'Previous Filter {filter_id} was not found.')
+    if previous_filter['status'] != 'completed':
+        raise ValueError(f'The scoring of Previous Filter {filter_id} has not completed ({previous_filter["status"]}).')
     operator_mapping_groups = task_repository.list_operator_mapping_groups()
-    result = normalize_scoring_vendor_result(normalize_result_gaps(job.get('result') or {}), operator_mapping_groups)
-    if not job.get('configuration') and not result.get('configuration'):
-        job['configuration'] = task_repository.get_scoring_configuration()
-    export_job = _scoring_export_job_with_catalogue_defaults(task_repository, job)
+    result = normalize_scoring_vendor_result(normalize_result_gaps(previous_filter.get('result') or {}), operator_mapping_groups)
+    if not previous_filter.get('configuration') and not result.get('configuration'):
+        previous_filter['configuration'] = task_repository.get_scoring_configuration()
+    export_job = _scoring_export_job_with_catalogue_defaults(task_repository, previous_filter)
     template = settings.powerpoint_templates_dir / TEMPLATE_NAMES['nsa']
     export_job['_scoring_display_selections'] = prepare_scoring_display_selections(export_job, result, template)
     content = export_scoring_powerpoint(
@@ -16791,9 +16842,9 @@ def build_scoring_job_powerpoint(task_repository: Repository, job_id: int) -> tu
     return content, filename, export_job
 
 
-@app.get('/scoring/jobs/{job_id}/export/{export_kind}')
-def scoring_job_export(
-    job_id: int,
+@app.get('/scoring/previous-filters/{filter_id}/export/{export_kind}')
+def scoring_previous_filter_export(
+    filter_id: int,
     export_kind: str,
     table_mode: str | None = None,
     gap_layout: str | None = None,
@@ -16810,18 +16861,18 @@ def scoring_job_export(
     if gap_layout is not None and gap_layout not in {'end', 'adjacent'}:
         raise HTTPException(status_code=400, detail='GAP layout must be end or adjacent.')
     task_repository = scoring_repository(user)
-    job = get_scoring_job(task_repository, job_id, include_result=True)
-    if not job:
-        raise HTTPException(status_code=404, detail='Scoring job not found.')
-    if job['status'] != 'completed':
-        raise HTTPException(status_code=409, detail='The scoring job must finish before export.')
+    previous_filter = get_previous_filter(task_repository, filter_id, include_result=True)
+    if not previous_filter:
+        raise HTTPException(status_code=404, detail='Previous Filter not found.')
+    if previous_filter['status'] != 'completed':
+        raise HTTPException(status_code=409, detail='The scoring of these filters must finish before export.')
     from src.modules.scoring_views import normalize_result_gaps
     result = normalize_scoring_vendor_result(
-        normalize_result_gaps(job.get('result') or {}), task_repository.list_operator_mapping_groups(),
+        normalize_result_gaps(previous_filter.get('result') or {}), task_repository.list_operator_mapping_groups(),
     )
     operator_mapping_groups = task_repository.list_operator_mapping_groups()
     vendor_mapping_groups = task_repository.list_vendor_mapping_groups()
-    export_configuration = job.get('configuration') or result.get('configuration')
+    export_configuration = previous_filter.get('configuration') or result.get('configuration')
     selected_environment = str(environment or 'all').strip() or 'all'
     if selected_environment.casefold() == 'all':
         selected_environment = 'all'
@@ -16836,7 +16887,7 @@ def scoring_job_export(
             export_configuration = workspace_configuration
         try:
             saved_views = build_scoring_views(
-                job, result, operator_mapping_groups, workspace_configuration,
+                previous_filter, result, operator_mapping_groups, workspace_configuration,
                 vendor_mapping_groups=vendor_mapping_groups,
             )
         except ValueError as exc:
@@ -16848,27 +16899,27 @@ def scoring_job_export(
             and str(matrix['context']['environment']).casefold() != 'combined'
         }
         if selected_environment not in valid_environments:
-            raise HTTPException(status_code=400, detail='The selected scoring environment is not available for this job.')
+            raise HTTPException(status_code=400, detail='The selected scoring environment is not available for these filters.')
     if export_kind in {'scoring', 'gap'}:
         if scoring == 'most_reliable':
             # The CSV keeps its schema; it carries the Most Reliable points instead of the Best Network ones.
             from src.modules.scoring import most_reliable_result
-            reliable = most_reliable_result(result, str(job.get('baseline_operator') or 'EE'), export_configuration)
+            reliable = most_reliable_result(result, str(previous_filter.get('baseline_operator') or 'EE'), export_configuration)
             if reliable is None:
-                raise HTTPException(status_code=400, detail='This scoring job has no Most Reliable scoring.')
+                raise HTTPException(status_code=400, detail='These filters have no Most Reliable scoring.')
             result = reliable
         if table_mode is not None:
             from src.modules.scoring_exports import export_scoring_csv
             try:
                 content = export_scoring_csv(
-                    job, result, export_kind, table_mode,
+                    previous_filter, result, export_kind, table_mode,
                     operator_mapping_groups,
                     environment=selected_environment, vendor_mapping_groups=vendor_mapping_groups,
                 )
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
             return Response(content.encode('utf-8-sig'), media_type='text/csv', headers={
-                'Content-Disposition': f'attachment; filename="scoring-job-{job_id}-{export_kind}.csv"',
+                'Content-Disposition': f'attachment; filename="scoring-previous-filter-{filter_id}-{export_kind}.csv"',
             })
         rows = result.get(export_kind, [])
         summaries = result.get('totals' if export_kind == 'scoring' else 'gap_totals', [])
@@ -16888,15 +16939,15 @@ def scoring_job_export(
                     + [{'row_type': 'kpi', **row} for row in rows])
         content = pd.DataFrame(rows).to_csv(index=False)
         return Response(content.encode('utf-8-sig'), media_type='text/csv', headers={
-            'Content-Disposition': f'attachment; filename="scoring-job-{job_id}-{export_kind}.csv"',
+            'Content-Disposition': f'attachment; filename="scoring-previous-filter-{filter_id}-{export_kind}.csv"',
         })
     if export_kind in {'ppt', 'word'}:
         from src.modules.scoring_exports import export_scoring_powerpoint, prepare_scoring_display_selections
         from src.modules.cdr_report_filenames import build_scoring_report_filename
         try:
-            if not job.get('configuration') and not result.get('configuration'):
-                job['configuration'] = export_configuration or task_repository.get_scoring_configuration()
-            export_job = _scoring_export_job_with_catalogue_defaults(task_repository, job)
+            if not previous_filter.get('configuration') and not result.get('configuration'):
+                previous_filter['configuration'] = export_configuration or task_repository.get_scoring_configuration()
+            export_job = _scoring_export_job_with_catalogue_defaults(task_repository, previous_filter)
             export_job['_scoring_display_selections'] = prepare_scoring_display_selections(
                 export_job, result, settings.powerpoint_templates_dir / TEMPLATE_NAMES['nsa'],
             )
@@ -16928,12 +16979,12 @@ def scoring_job_export(
     raise HTTPException(status_code=404, detail='Unknown scoring export format.')
 
 
-_SCENARIO_JOB_WAIT_SECONDS = 15 * 60
+_SCENARIO_CALCULATION_WAIT_SECONDS = 15 * 60
 
 
-def _scenario_scoring_job(task_repository: Repository, base: dict[str, Any], scenario: dict[str, Any],
-                          username: str) -> dict[str, Any]:
-    """The completed scoring job of a report scenario: an identical saved job, or a new calculation.
+def _scenario_previous_filter(task_repository: Repository, base: dict[str, Any], scenario: dict[str, Any],
+                              username: str) -> dict[str, Any]:
+    """The Previous Filter of a report scenario with its result: one used before, or a new calculation.
 
     Aggregation levels with a single value in the selected CDRs (for example one Campaign)
     split nothing, so the scenario is calculated again without them.
@@ -16951,14 +17002,14 @@ def _scenario_scoring_job(task_repository: Repository, base: dict[str, Any], sce
     except ValueError as exc:
         raise ValueError(f'Scenario "{scenario["name"]}": {exc}') from exc
     levels = list(scenario['aggregation_levels'])
-    job = _completed_scenario_job(task_repository, base, scenario, selected, levels, context_filters, username,
-                                  area_summary)
-    single = single_value_levels(levels, job.get('result') or {})
+    previous_filter = _completed_scenario_calculation(task_repository, base, scenario, selected, levels,
+                                                      context_filters, username, area_summary)
+    single = single_value_levels(levels, previous_filter.get('result') or {})
     if single:
         levels = [level for level in levels if level not in single]
-        job = _completed_scenario_job(task_repository, base, scenario, selected, levels, context_filters, username,
-                                      area_summary)
-    return job
+        previous_filter = _completed_scenario_calculation(task_repository, base, scenario, selected, levels,
+                                                          context_filters, username, area_summary)
+    return previous_filter
 
 
 def _scenario_area_summary(task_repository: Repository, scenario: dict[str, Any]) -> dict[str, Any] | None:
@@ -16978,35 +17029,38 @@ def _scenario_area_summary(task_repository: Repository, scenario: dict[str, Any]
             'time_split': summary.get('time_split') or 'Campaign'}
 
 
-def _completed_scenario_job(task_repository: Repository, base: dict[str, Any], scenario: dict[str, Any],
-                            selected: Any, levels: list[str], context_filters: dict[str, Any],
-                            username: str, area_summary: dict[str, Any] | None = None) -> dict[str, Any]:
+def _completed_scenario_calculation(task_repository: Repository, base: dict[str, Any], scenario: dict[str, Any],
+                                   selected: Any, levels: list[str], context_filters: dict[str, Any],
+                                   username: str, area_summary: dict[str, Any] | None = None) -> dict[str, Any]:
     try:
-        job, cached = create_scoring_job(
+        previous_filter, cached = save_previous_filter(
             task_repository, selected, levels, base['nr_mode'], username=username,
             baseline_operator=base.get('baseline_operator') or 'EE', context_filters=context_filters,
             scoring_profile_id=base.get('scoring_profile_id') or None, area_summary=area_summary,
         )
     except ValueError as exc:
         raise ValueError(f'Scenario "{scenario["name"]}": {exc}') from exc
-    if job['status'] != 'completed' and not cached:
-        run_scoring_job(task_repository, int(job['id']))
-    deadline = time_module.monotonic() + _SCENARIO_JOB_WAIT_SECONDS
+    if previous_filter['status'] != 'completed' and not cached:
+        calculate_previous_filter(task_repository, int(previous_filter['id']))
+    deadline = time_module.monotonic() + _SCENARIO_CALCULATION_WAIT_SECONDS
     while True:
-        job = get_scoring_job(task_repository, int(job['id']), include_result=True)
-        if job is None or job['status'] in {'completed', 'failed'} or time_module.monotonic() > deadline:
+        previous_filter = get_previous_filter(task_repository, int(previous_filter['id']), include_result=True)
+        points_loss = ((previous_filter or {}).get('result') or {}).get('points_loss')
+        map_pending = isinstance(points_loss, dict) and points_loss.get('pending')
+        if (previous_filter is None or previous_filter['status'] == 'failed'
+                or (previous_filter['status'] == 'completed' and not map_pending) or time_module.monotonic() > deadline):
             break
-        # An identical calculation is already running: wait for it.
+        # An identical calculation (or its Points Lost Map) is still running: wait for it.
         time_module.sleep(2)
-    if job is None or job['status'] != 'completed':
-        detail = (job or {}).get('error') or 'the calculation did not finish'
+    if previous_filter is None or previous_filter['status'] != 'completed':
+        detail = (previous_filter or {}).get('error') or 'the calculation did not finish'
         raise ValueError(f'Scenario "{scenario["name"]}" could not be calculated: {detail}.')
-    return job
+    return previous_filter
 
 
 def build_scoring_report_document(task_repository: Repository, base: dict[str, Any], configuration: Any,
                                   username: str, *, split_charts: bool = True) -> tuple[bytes, str, dict[str, Any]]:
-    """PowerPoint of a scoring report: every scenario of the configuration, from its own scoring job.
+    """PowerPoint of a scoring report: every scenario of the configuration, from its own Previous Filter.
 
     ``base`` gives the CDRs, NR Mode, GAP reference and methodology shared by the scenarios.
     """
@@ -17020,11 +17074,12 @@ def build_scoring_report_document(task_repository: Repository, base: dict[str, A
     template = settings.powerpoint_templates_dir / TEMPLATE_NAMES['nsa']
     entries = []
     for scenario in report['scenarios']:
-        job = _scenario_scoring_job(task_repository, base, scenario, username)
-        result = normalize_scoring_vendor_result(normalize_result_gaps(job.get('result') or {}), operator_mapping_groups)
-        if not job.get('configuration') and not result.get('configuration'):
-            job['configuration'] = task_repository.get_scoring_configuration()
-        export_job = _scoring_export_job_with_catalogue_defaults(task_repository, job)
+        previous_filter = _scenario_previous_filter(task_repository, base, scenario, username)
+        result = normalize_scoring_vendor_result(normalize_result_gaps(previous_filter.get('result') or {}),
+                                                 operator_mapping_groups)
+        if not previous_filter.get('configuration') and not result.get('configuration'):
+            previous_filter['configuration'] = task_repository.get_scoring_configuration()
+        export_job = _scoring_export_job_with_catalogue_defaults(task_repository, previous_filter)
         export_job['_scoring_display_selections'] = prepare_scoring_display_selections(export_job, result, template)
         entries.append({'scenario': scenario, 'job': export_job, 'result': result})
     content = export_scoring_report(

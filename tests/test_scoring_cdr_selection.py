@@ -6,7 +6,7 @@ import pandas as pd
 import pytest
 
 import src.DriveTestAnalyzer as app_module
-from src.modules import scoring_jobs
+from src.modules import scoring_previous_filters
 from src.modules.repository import Repository, local_now_iso
 from tests.scoring_fixtures import scoring_configuration
 
@@ -81,7 +81,7 @@ def test_manual_scoring_requires_all_three_cdr_types_before_queueing(cdr_selecti
     data_id, voice_id, speech_id = cdr_selection_workspace['dataset_ids']
 
     for selected_ids, missing_label in (([data_id], 'Voice, Speech'), ([data_id, voice_id], 'Speech')):
-        response = client.post('/api/scoring/jobs', json={
+        response = client.post('/api/scoring/previous-filters', json={
             'dataset_ids': selected_ids,
             'aggregation_levels': ['Operator'],
             'nr_mode': 'NSA',
@@ -89,16 +89,16 @@ def test_manual_scoring_requires_all_three_cdr_types_before_queueing(cdr_selecti
         assert response.status_code == 400
         assert missing_label in response.json()['detail']
 
-    assert scoring_jobs.list_scoring_jobs(cdr_selection_workspace['repository']) == []
+    assert scoring_previous_filters.list_previous_filters(cdr_selection_workspace['repository']) == []
     assert cdr_selection_workspace['submitted'] == []
 
-    accepted = client.post('/api/scoring/jobs', json={
+    accepted = client.post('/api/scoring/previous-filters', json={
         'dataset_ids': [data_id, voice_id, speech_id],
         'aggregation_levels': ['Operator'],
         'nr_mode': 'NSA',
     })
     assert accepted.status_code == 200, accepted.text
-    assert set(accepted.json()['job']['dataset_ids']) == {data_id, voice_id, speech_id}
+    assert set(accepted.json()['previous_filter']['dataset_ids']) == {data_id, voice_id, speech_id}
 
 
 def test_latest_companions_match_anchor_campaign_and_ignore_profile_recency(cdr_selection_workspace):
@@ -116,22 +116,10 @@ def test_latest_companions_match_anchor_campaign_and_ignore_profile_recency(cdr_
             (old_voice_id,),
         )
 
-    selected = scoring_jobs.select_latest_companion_cdrs(repository, anchor_id)
+    selected = scoring_previous_filters.select_latest_companion_cdrs(repository, anchor_id)
 
     assert selected == [anchor_id, newer_voice_id, speech_id]
     assert unrelated_voice_id not in selected
-
-
-def test_auto_scoring_waits_for_matching_campaign_companions(cdr_selection_workspace):
-    repository = cdr_selection_workspace['repository']
-    newer_data_id = cdr_selection_workspace['add_cdr'](
-        name='UK_Q3_NSA_Data.csv', kind='data', campaign='2026-Q3',
-    )
-
-    app_module.queue_dataset_scoring(repository, newer_data_id, 'admin')
-
-    assert scoring_jobs.list_scoring_jobs(repository) == []
-    assert cdr_selection_workspace['submitted'] == []
 
 
 def test_scoring_api_rejects_mixed_campaign_coverage(cdr_selection_workspace):
@@ -141,7 +129,7 @@ def test_scoring_api_rejects_mixed_campaign_coverage(cdr_selection_workspace):
         name='UK_Q1_NSA_Speech.csv', kind='speech', campaign='2026-Q1',
     )
 
-    response = client.post('/api/scoring/jobs', json={
+    response = client.post('/api/scoring/previous-filters', json={
         'dataset_ids': [data_id, voice_id, speech_id],
         'aggregation_levels': ['Operator'],
         'nr_mode': 'NSA',
@@ -149,7 +137,7 @@ def test_scoring_api_rejects_mixed_campaign_coverage(cdr_selection_workspace):
 
     assert response.status_code == 400
     assert 'must cover each campaign with Data, Voice and Speech' in response.json()['detail']
-    assert scoring_jobs.list_scoring_jobs(cdr_selection_workspace['repository']) == []
+    assert scoring_previous_filters.list_previous_filters(cdr_selection_workspace['repository']) == []
 
 
 def test_all_complete_cdrs_select_every_cdr_of_campaigns_with_data_voice_and_speech(cdr_selection_workspace):
@@ -162,9 +150,9 @@ def test_all_complete_cdrs_select_every_cdr_of_campaigns_with_data_voice_and_spe
     incomplete = [add_cdr(name=f'UK_Q3_NSA_{kind.title()}.csv', kind=kind, campaign='2026-Q3') for kind in ('data', 'voice')]
     sa_data = add_cdr(name='UK_Q2_SA_Data.csv', kind='data', nr_mode='SA')
 
-    selected = scoring_jobs.select_all_complete_cdrs(repository, 'NSA')
+    selected = scoring_previous_filters.select_all_complete_cdrs(repository, 'NSA')
 
     assert set(selected) == {*q2_ids, *q1_ids, second_q2_voice}
     assert not set(selected) & {*incomplete, sa_data}
     with pytest.raises(ValueError, match='no complete set'):
-        scoring_jobs.select_all_complete_cdrs(repository, 'SA')
+        scoring_previous_filters.select_all_complete_cdrs(repository, 'SA')

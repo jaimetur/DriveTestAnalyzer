@@ -102,59 +102,72 @@
   .scoring-calculation-message:empty { display: none; }
   .scoring-calculation-message[data-kind="error"] { color: var(--danger); }
   .scoring-calculation-message[data-kind="success"], .scoring-calculation-message[data-kind="warning"] { color: #765514; font-weight: 750; }
-  .scoring-jobs-layout { display: grid; grid-template-columns: minmax(0,1fr); gap: 1rem; align-items: start; }
-  .scoring-jobs-panel, .scoring-results-panel { min-width: 0; }
+  .scoring-previous-filters-layout { display: grid; grid-template-columns: minmax(0,1fr); gap: 1rem; align-items: start; }
+  .scoring-previous-filters-panel, .scoring-results-panel { min-width: 0; }
   .scoring-results-panel { position: relative; z-index: 2; overflow: visible; }
-  .scoring-job-list { display: grid; gap: .55rem; max-height: 32rem; overflow: auto; }
-  .scoring-job-row { position: relative; box-sizing: border-box; min-width: 0; }
-  .scoring-job-row .scoring-job-item { box-sizing: border-box; display: grid; grid-template-columns: minmax(0,1fr); min-width: 0; width: 100%; padding-right: 7.5rem; }
-  .scoring-job-delete { position: absolute; right: .65rem; bottom: .65rem; display: inline-flex; align-items: center; justify-content: center; width: 1.55rem; min-width: 1.55rem; height: 1.55rem; min-height: 1.55rem; padding: 0; border: 1px solid rgba(164,61,47,.28); border-radius: 50%; background: #fff3f1; color: #a43d2f; font-size: 1rem; font-weight: 800; line-height: 1; box-shadow: none; }
-  .scoring-job-cdrs { position: absolute; right: 3rem; bottom: .65rem; display: inline-flex; align-items: center; width: auto; min-height: 1.55rem; padding: .18rem .48rem; border: 1px solid #a9c5dc; border-radius: 999px; background: #eaf3fa; color: #244e70; font-size: .72rem; font-weight: 750; box-shadow: none; }
-  .scoring-selected-job .scoring-job-cdrs { position: static; justify-self: start; }
-  .scoring-job-delete:hover:not(:disabled) { border-color: rgba(164,61,47,.52); background: #fde4e0; color: #842d23; box-shadow: none; transform: none; }
-  .scoring-job-delete:focus-visible { outline: 3px solid rgba(164,61,47,.25); outline-offset: 2px; }
-  .scoring-job-item { display: grid; gap: .4rem; width: 100%; padding: .75rem .8rem; border: 1px solid var(--line); border-radius: 13px; background: rgba(255,255,255,.68); color: var(--text); text-align: left; box-shadow: none; }
-  .scoring-job-item:hover:not(:disabled) { background: rgba(11,122,117,.08); box-shadow: none; transform: none; }
-  .scoring-job-item[aria-current="true"] { border-color: rgba(11,122,117,.58); background: rgba(11,122,117,.11); box-shadow: inset 3px 0 0 var(--brand); }
-  .scoring-job-item-top { display: flex; justify-content: space-between; align-items: center; gap: .6rem; min-width: 0; }
-  .scoring-job-item-top strong { flex: 1 1 auto; min-width: 0; overflow: hidden; font-size: .83rem; text-overflow: ellipsis; white-space: nowrap; }
-  .scoring-job-title-separator, .scoring-job-title-neutral { color: var(--text); }
-  .scoring-job-title-nr-mode { color: #a14c16; }
-  .scoring-job-title-operator { color: #2458a6; }
-  .scoring-job-title-vendor { color: #6941a5; }
-  .scoring-job-title-region { color: #087e75; }
-  .scoring-job-title-cluster { color: #4d7c0f; }
-  .scoring-job-title-city { color: #966300; }
-  .scoring-job-title-campaign { color: #b4234d; }
-  .scoring-job-item-top .scoring-status { flex: 0 0 auto; }
-  .scoring-job-aggregation { display: flex; flex-wrap: wrap; align-items: baseline; gap: .3rem .5rem; align-self: flex-start; max-width: 100%; padding: .3rem .55rem; border: 1px solid #cbdce9; border-radius: .5rem; background: #edf4fa; color: #34566f; font-size: .75rem; line-height: 1.45; overflow-wrap: anywhere; }
-  .scoring-job-aggregation strong { font-weight: 800; }
-  .scoring-job-meta { min-width: 0; color: var(--muted); font-size: .72rem; line-height: 1.45; white-space: normal; overflow-wrap: anywhere; }
-  .scoring-job-meta .scoring-job-reference { color: #245bb0; font-weight: 700; }
-  .scoring-job-meta .scoring-job-profile { color: #6940ad; font-weight: 700; }
+  .scoring-previous-filter-list { display: grid; gap: .55rem; max-height: 32rem; overflow: auto; }
+  .scoring-previous-filter-row { position: relative; box-sizing: border-box; min-width: 0; }
+  /* Each Previous Filter: its card, with its actions (CDRs, name, pin and delete) under its text. */
+  .scoring-previous-filter-row .scoring-previous-filter-item { box-sizing: border-box; display: grid; grid-template-columns: minmax(0,1fr); min-width: 0; width: 100%; padding-bottom: 2.7rem; }
+  .scoring-previous-filter-actions { position: absolute; right: .65rem; bottom: .65rem; left: .8rem; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: .3rem; pointer-events: none; }
+  .scoring-previous-filter-actions > * { pointer-events: auto; }
+  .scoring-previous-filter-delete, .scoring-previous-filter-pin, .scoring-previous-filter-rename { display: inline-flex; align-items: center; justify-content: center; width: 1.55rem; min-width: 1.55rem; height: 1.55rem; min-height: 1.55rem; padding: 0; border: 1px solid rgba(164,61,47,.28); border-radius: 50%; background: #fff3f1; color: #a43d2f; font-size: 1rem; font-weight: 800; line-height: 1; box-shadow: none; }
+  .scoring-previous-filter-cdrs { display: inline-flex; align-items: center; width: auto; min-height: 1.55rem; padding: .18rem .48rem; border: 1px solid #a9c5dc; border-radius: 999px; background: #eaf3fa; color: #244e70; font-size: .72rem; font-weight: 750; box-shadow: none; }
+  .scoring-selected-previous-filter .scoring-previous-filter-actions { position: static; justify-content: flex-start; }
+  .scoring-previous-filter-delete:hover:not(:disabled) { border-color: rgba(164,61,47,.52); background: #fde4e0; color: #842d23; box-shadow: none; transform: none; }
+  .scoring-previous-filter-delete:focus-visible { outline: 3px solid rgba(164,61,47,.25); outline-offset: 2px; }
+  .scoring-previous-filter-pin, .scoring-previous-filter-rename { border-color: #c9d6de; background: #f4f8fa; color: #46606d; }
+  .scoring-previous-filter-pin[aria-pressed="true"] { border-color: #e2b23a; background: #fff6d8; color: #a26b00; }
+  .scoring-previous-filter-pin:hover, .scoring-previous-filter-rename:hover { border-color: #8fa9b8; background: #e8f0f4; color: #23404f; box-shadow: none; transform: none; }
+  .scoring-previous-filter-use-newer { min-height: 1.55rem; padding: .18rem .55rem; border: 1px solid #e0a23a; border-radius: 999px; background: #fff3d6; color: #8a5300; font-size: .72rem; font-weight: 800; box-shadow: none; }
+  .scoring-previous-filter-use-newer:hover { background: #ffe7b0; box-shadow: none; transform: none; }
+  /* The name given to a Previous Filter, above its filters. */
+  .scoring-previous-filter-name { color: var(--brand); font-size: .9rem; font-weight: 850; overflow-wrap: anywhere; }
+  .scoring-previous-filter-meta.scoring-previous-filter-newer { color: #8a5300; font-weight: 700; }
+  .scoring-previous-filter-meta.scoring-previous-filter-waiting { color: #8b5c08; font-weight: 700; }
+  .scoring-previous-filter-item { display: grid; gap: .4rem; width: 100%; padding: .75rem .8rem; border: 1px solid var(--line); border-radius: 13px; background: rgba(255,255,255,.68); color: var(--text); text-align: left; box-shadow: none; }
+  .scoring-previous-filter-item:hover:not(:disabled) { background: rgba(11,122,117,.08); box-shadow: none; transform: none; }
+  .scoring-previous-filter-item[aria-current="true"] { border-color: rgba(11,122,117,.58); background: rgba(11,122,117,.11); box-shadow: inset 3px 0 0 var(--brand); }
+  .scoring-previous-filter-item-top { display: flex; justify-content: space-between; align-items: center; gap: .6rem; min-width: 0; }
+  /* Every filter of a Previous Filter is shown, on as many lines as it needs. */
+  .scoring-previous-filter-item-top { align-items: flex-start; }
+  .scoring-previous-filter-item-top strong { flex: 1 1 auto; min-width: 0; font-size: .83rem; white-space: normal; overflow-wrap: anywhere; }
+  .scoring-previous-filter-title-separator, .scoring-previous-filter-title-neutral { color: var(--text); }
+  .scoring-previous-filter-title-nr-mode { color: #a14c16; }
+  .scoring-previous-filter-title-operator { color: #2458a6; }
+  .scoring-previous-filter-title-vendor { color: #6941a5; }
+  .scoring-previous-filter-title-region { color: #087e75; }
+  .scoring-previous-filter-title-cluster { color: #4d7c0f; }
+  .scoring-previous-filter-title-city { color: #966300; }
+  .scoring-previous-filter-title-campaign { color: #b4234d; }
+  .scoring-previous-filter-item-top .scoring-status { flex: 0 0 auto; }
+  .scoring-previous-filter-aggregation { display: flex; flex-wrap: wrap; align-items: baseline; gap: .3rem .5rem; align-self: flex-start; max-width: 100%; padding: .3rem .55rem; border: 1px solid #cbdce9; border-radius: .5rem; background: #edf4fa; color: #34566f; font-size: .75rem; line-height: 1.45; overflow-wrap: anywhere; }
+  .scoring-previous-filter-aggregation strong { font-weight: 800; }
+  .scoring-previous-filter-meta { min-width: 0; color: var(--muted); font-size: .72rem; line-height: 1.45; white-space: normal; overflow-wrap: anywhere; }
+  .scoring-previous-filter-meta .scoring-previous-filter-reference { color: #245bb0; font-weight: 700; }
+  .scoring-previous-filter-meta .scoring-previous-filter-profile { color: #6940ad; font-weight: 700; }
   .scoring-status { display: inline-flex; align-items: center; gap: .3rem; padding: .2rem .48rem; border-radius: 999px; background: #e9eff1; color: #47606b; font-size: .68rem; font-weight: 800; text-transform: capitalize; white-space: nowrap; }
   .scoring-status[data-status="completed"] { background: #e2f4e9; color: #247048; }
   .scoring-status[data-status="failed"] { background: #fde9e5; color: #a43d2f; }
   .scoring-status[data-status="processing"], .scoring-status[data-status="queued"] { background: #fff2d4; color: #8b5c08; }
-  .scoring-job-progress { height: .3rem; overflow: hidden; border-radius: 999px; background: rgba(25,42,53,.1); }
-  .scoring-job-progress span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg,var(--brand),#43b189); transition: width .2s ease; }
+  .scoring-status[data-status="saved"] { background: #eef1f6; color: #4c5a75; }
+  .scoring-previous-filter-progress { height: .3rem; overflow: hidden; border-radius: 999px; background: rgba(25,42,53,.1); }
+  .scoring-previous-filter-progress span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg,var(--brand),#43b189); transition: width .2s ease; }
   .scoring-results-head { display: grid; grid-template-columns: fit-content(38rem) minmax(0,1fr); align-items: start; gap: 1rem; }
   .scoring-results-primary { display: contents; }
   .scoring-results-primary h3 { margin: 0; }
   .scoring-results-controls { grid-column: 1; grid-row: 2; display: flex; flex-direction: column; align-items: flex-start; width: fit-content; min-width: 16.5rem; max-width: 100%; gap: .6rem; }
   .scoring-results-tools { grid-column: 2; grid-row: 1; display: flex; align-items: center; justify-content: flex-end; flex-wrap: nowrap; gap: .45rem; min-width: 0; }
-  .scoring-job-selector { grid-column: 2; grid-row: 2; justify-self: end; position: relative; width: 100%; min-width: 0; contain: inline-size; }
-  .scoring-job-selector > summary { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: .65rem; cursor: pointer; list-style: none; border-color: rgba(11,122,117,.58); background: rgba(11,122,117,.11); box-shadow: inset 3px 0 0 var(--brand); }
-  .scoring-job-selector > summary::-webkit-details-marker { display: none; }
-  .scoring-job-selector > summary::after { content: '▾'; color: var(--brand); font-size: 1.1rem; }
-  .scoring-job-selector[open] > summary::after { content: '▴'; }
-  .scoring-job-selector > summary:focus-visible { outline: 3px solid rgba(11,122,117,.3); outline-offset: 3px; }
-  .scoring-selected-job { display: grid; gap: .35rem; min-width: 0; }
-  .scoring-job-selector .scoring-job-item-top { align-items: flex-start; }
-  .scoring-job-selector .scoring-job-item-top strong { white-space: normal; overflow-wrap: anywhere; }
-  .scoring-job-picker { position: absolute; top: calc(100% + .4rem); left: 0; right: 0; z-index: 30; padding: .65rem; border: 1px solid var(--line); border-radius: 13px; background: #fff; box-shadow: 0 8px 24px rgba(25,42,53,.18); }
-  .scoring-job-picker .section-head { margin-bottom: .65rem; }
-  .scoring-job-picker .scoring-job-list { max-height: min(28rem,55vh); }
+  .scoring-previous-filter-selector { grid-column: 2; grid-row: 2; justify-self: end; position: relative; width: 100%; min-width: 0; contain: inline-size; }
+  .scoring-previous-filter-selector > summary { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: .65rem; cursor: pointer; list-style: none; border-color: rgba(11,122,117,.58); background: rgba(11,122,117,.11); box-shadow: inset 3px 0 0 var(--brand); }
+  .scoring-previous-filter-selector > summary::-webkit-details-marker { display: none; }
+  .scoring-previous-filter-selector > summary::after { content: '▾'; color: var(--brand); font-size: 1.1rem; }
+  .scoring-previous-filter-selector[open] > summary::after { content: '▴'; }
+  .scoring-previous-filter-selector > summary:focus-visible { outline: 3px solid rgba(11,122,117,.3); outline-offset: 3px; }
+  .scoring-selected-previous-filter { display: grid; gap: .35rem; min-width: 0; }
+  .scoring-previous-filter-picker { position: absolute; top: calc(100% + .4rem); left: 0; right: 0; z-index: 30; padding: .65rem; border: 1px solid var(--line); border-radius: 13px; background: #fff; box-shadow: 0 8px 24px rgba(25,42,53,.18); }
+  .scoring-previous-filter-picker .section-head { margin-bottom: .65rem; }
+  .scoring-previous-filter-picker .scoring-previous-filter-list { max-height: min(28rem,55vh); }
   .scoring-results-selector-row, .scoring-results-value-row { display: flex; align-items: center; justify-content: flex-start; flex-wrap: wrap; gap: .5rem; }
   .scoring-results-selector-row { width: 100%; padding: .48rem .58rem; border: 1px solid #a9c5dc; border-radius: 12px; background: #eaf3fa; }
   .scoring-results-selector-row .scoring-environment-filter { flex: 1 1 auto; width: auto; min-width: 0; color: #244e70; }
@@ -426,7 +439,7 @@
   .scoring-tone-3 { --operator-accent: #927031; }
   .scoring-tone-4 { --operator-accent: #795a9c; }
   .scoring-empty { padding: 2rem 1rem; color: var(--muted); text-align: center; font-size: .84rem; }
-  /* A calculating job: blue and white stripes moving along the bar, like a barber pole. */
+  /* A calculation: blue and white stripes moving along the bar, like a barber pole. */
   .scoring-calculating { --calc-strong: #1f6fd1; --calc-soft: #6aa8f0; --calc-title: #1450a8; --calc-track: #eef5fe; --calc-border: #9cc1ef;
     display: grid; justify-items: center; gap: .7rem; padding: 2.4rem 1rem; }
   /* In Scoring Tables and GAP Analysis the bar takes the colour of their tab. */
@@ -495,8 +508,8 @@
   @media(max-width:1050px) { .scoring-dataset-groups { grid-template-columns: 1fr; } .scoring-dataset-group .scoring-dataset-list { max-height: 12rem; } .scoring-best-network-layout { grid-template-columns: 1fr; } }
   @media(max-width:1050px) { .scoring-context-filter-grid { grid-template-columns: repeat(3,minmax(0,1fr)); } }
   .scoring-warning-maximum { font-size: 1.15em; font-weight: 800; }
-  @media(max-width:1300px) { .scoring-notes-stack { grid-row: 5; } .scoring-results-head { grid-template-columns: minmax(0,1fr); } .scoring-results-controls { grid-column: 1; } .scoring-job-selector { grid-column: 1; grid-row: 4; } .scoring-results-tools { grid-column: 1; grid-row: 3; justify-content: flex-start; width: 100%; overflow-x: auto; padding: .2rem 0; } .scoring-results-config-shortcuts, .scoring-results-tools > .scoring-export-actions { justify-content: flex-end; } }
-  @media(max-width:900px) { .scoring-filter-grid,.scoring-jobs-layout { grid-template-columns: 1fr; } .scoring-job-list { max-height: 22rem; } }
+  @media(max-width:1300px) { .scoring-notes-stack { grid-row: 5; } .scoring-results-head { grid-template-columns: minmax(0,1fr); } .scoring-results-controls { grid-column: 1; } .scoring-previous-filter-selector { grid-column: 1; grid-row: 4; } .scoring-results-tools { grid-column: 1; grid-row: 3; justify-content: flex-start; width: 100%; overflow-x: auto; padding: .2rem 0; } .scoring-results-config-shortcuts, .scoring-results-tools > .scoring-export-actions { justify-content: flex-end; } }
+  @media(max-width:900px) { .scoring-filter-grid,.scoring-previous-filters-layout { grid-template-columns: 1fr; } .scoring-previous-filter-list { max-height: 22rem; } }
   @media(max-width:600px) { .scoring-context-filter-grid { grid-template-columns: repeat(2,minmax(0,1fr)); } .scoring-dataset-list { grid-template-columns: 1fr; } .scoring-controls-foot { align-items: stretch; } .scoring-actions { width: 100%; } .scoring-actions button { flex: 1 1 100%; } .scoring-chart-expanded-dialog { padding: .65rem; gap: .5rem; border-radius: 14px; } .scoring-chart-expanded-header h3 { font-size: 1rem; } .scoring-chart-expanded-header p:not(.eyebrow) { display: none; } }
   .scoring-calculation-actions { display: flex; align-items: stretch; justify-content: space-between; flex-wrap: wrap; gap: 1rem; }
   .scoring-calculation-actions > .scoring-calculation-shortcuts { align-items: stretch; grid-column: auto; grid-row: auto; justify-content: flex-end; width: auto; max-width: 100%; margin-left: auto; padding: 0; overflow: visible; }
@@ -508,13 +521,11 @@
     .scoring-results-tools, .scoring-calculation-actions > .scoring-calculation-shortcuts { flex-wrap: wrap; justify-content: stretch; width: 100%; margin-left: 0; overflow-x: visible; }
     .scoring-results-tools > *, .scoring-export-actions { flex: 1 1 100%; flex-wrap: wrap; }
     .scoring-results-tools a { flex: 1 1 auto; justify-content: center; white-space: normal; }
-    /* A job uses the whole width of its card: its CDRs and delete button go under the text instead of beside it. */
-    .scoring-job-row .scoring-job-item, .scoring-job-selector > .scoring-job-item { padding-right: .8rem; }
-    .scoring-job-row .scoring-job-item { padding-bottom: 2.6rem; }
+    .scoring-previous-filter-selector > .scoring-previous-filter-item { padding-right: .8rem; }
   }
 </style>
 
-<section class="dashboard-stack spacious-stack scoring-stack" data-scoring-workspace data-scoring-workspace-id="{{ active_workspace.id if active_workspace else '' }}" data-configuration-error="{{ scoring_configuration_error or '' }}" data-jobs-url="/api/scoring/jobs" data-selection-url="/api/scoring/selection" data-export-base="/scoring/jobs">
+<section class="dashboard-stack spacious-stack scoring-stack" data-scoring-workspace data-scoring-workspace-id="{{ active_workspace.id if active_workspace else '' }}" data-configuration-error="{{ scoring_configuration_error or '' }}" data-previous-filters-url="/api/scoring/previous-filters" data-selection-url="/api/scoring/selection" data-export-base="/scoring/previous-filters">
   <article class="panel scoring-hero">
     <div class="section-head tight-head">
       <div>
@@ -666,7 +677,7 @@
     </div>
   </article>
 
-  <section class="scoring-jobs-layout" aria-label="Scoring jobs and results">
+  <section class="scoring-previous-filters-layout" aria-label="Previous Filters and results">
     <article class="panel scoring-results-panel" aria-labelledby="scoring-results-title">
       <div class="scoring-results-head">
         <div class="scoring-results-primary">
@@ -674,7 +685,7 @@
           <div class="scoring-results-controls">
             <div class="scoring-results-selector-row" data-scoring-results-selector-row>
               <label class="scoring-environment-filter" data-result-scoring-control hidden>Scoring
-                <select data-result-scoring aria-label="Show the Best Network or the Most Reliable Network scoring of the selected job" disabled>
+                <select data-result-scoring aria-label="Show the Best Network or the Most Reliable Network scoring of the selected filters" disabled>
                   <option value="best_network">Best Network</option>
                   <option value="most_reliable">Most Reliable</option>
                 </select>
@@ -699,17 +710,17 @@
           <nav class="scoring-config-shortcuts scoring-results-config-shortcuts" aria-label="Scoring configuration sections">
             <a data-config-shortcut="kpi" href="/workspace-config#scoring-methodology-environments"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2 17h16M3 17V7h5v10M5 10h1M5 13h1M12 3l-2 14M16 3l2 14M14 4v2m0 3v2m0 3v2"/></svg><span>Scoring Methodologies</span></a>
           </nav>
-          <div class="scoring-export-actions" aria-label="Export selected job">
+          <div class="scoring-export-actions" aria-label="Export the selected filters">
             <a href="#" data-export-ppt aria-disabled="true" tabindex="-1"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2 3h16M10 3V1M10 14v4m-3 0h6"/><rect x="3" y="3" width="14" height="11" rx="1"/><path d="m8 6 5 3-5 3z"/></svg><span>Export Selected Scoring Report (PPT/Word)</span></a>
           </div>
         </div>
-        <details class="scoring-job-selector" data-scoring-job-selector>
-          <summary class="scoring-job-item" title="Choose a scoring job">
-            <span class="scoring-selected-job" data-selected-job-card>Loading saved jobs…</span>
+        <details class="scoring-previous-filter-selector" data-scoring-previous-filter-selector>
+          <summary class="scoring-previous-filter-item" title="Choose previous filters">
+            <span class="scoring-selected-previous-filter" data-selected-previous-filter-card>Loading previous filters…</span>
           </summary>
-          <div class="scoring-job-picker">
-            <div class="section-head tight-head"><strong>Scoring jobs</strong><span class="pill" data-job-count>0 jobs</span></div>
-            <div class="scoring-job-list" data-job-list aria-label="Saved scoring jobs" aria-live="polite"><div class="scoring-empty">Loading saved jobs…</div></div>
+          <div class="scoring-previous-filter-picker">
+            <div class="section-head tight-head"><strong>Previous Filters</strong><span class="pill" data-previous-filter-count>0 filters</span></div>
+            <div class="scoring-previous-filter-list" data-previous-filter-list aria-label="Previous Filters" aria-live="polite"><div class="scoring-empty">Loading previous filters…</div></div>
           </div>
         </details>
       <div class="scoring-notes-stack">
@@ -731,9 +742,9 @@
       </div>
 
     </article>
-    <article class="panel scoring-jobs-panel">
-      <div class="section-head tight-head"><div><p class="eyebrow">Background processing</p><h3>Scoring jobs</h3></div><span class="pill" data-job-count>0 jobs</span></div>
-      <div class="scoring-job-list" data-job-list aria-label="Scoring job history" aria-live="polite"><div class="scoring-empty">Loading saved jobs…</div></div>
+    <article class="panel scoring-previous-filters-panel">
+      <div class="section-head tight-head"><div><p class="eyebrow">Reusable selections</p><h3>Previous Filters</h3></div><span class="pill" data-previous-filter-count>0 filters</span></div>
+      <div class="scoring-previous-filter-list" data-previous-filter-list aria-label="Previous Filters" aria-live="polite"><div class="scoring-empty">Loading previous filters…</div></div>
     </article>
   </section>
   <div class="scoring-chart-overlay" data-scoring-chart-overlay hidden>

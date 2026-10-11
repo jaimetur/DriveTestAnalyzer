@@ -284,7 +284,7 @@ MODULE_SECTIONS: dict[str, list[tuple[Any, ...]]] = {
                 ('Scoring results', 'Scoring Results', 'chart', [
                     ('scoring-results-charts', 'Scoring Charts', 'chart'), ('scoring-results-tables', 'Scoring Tables', 'table'),
                     ('scoring-results-gap', 'GAP Analysis', 'trend')]),
-                ('Scoring jobs', 'Scoring Jobs', 'jobs')],
+                ('Previous Filters', 'Previous Filters', 'filter')],
     'network-insights': [('Analysis Selection', 'Analysis Selection', 'select'), ('Overview', 'Overview', 'summary'),
                          ('RF Quality', 'RF Quality', 'activity'), ('Coverage & Interference Maps', 'Coverage & Interference Maps', 'map'),
                          ('Network Deployment', 'Network Deployment', 'antenna'),

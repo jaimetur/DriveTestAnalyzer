@@ -84,11 +84,11 @@
     }
   });
 
-  const jobsUrl = root.dataset.jobsUrl || '/api/scoring/jobs';
+  const previousFiltersUrl = root.dataset.previousFiltersUrl || '/api/scoring/previous-filters';
   const selectionUrl = root.dataset.selectionUrl || '/api/scoring/selection';
-  const exportBase = root.dataset.exportBase || '/scoring/jobs';
-  const requestedJobId = new URLSearchParams(window.location.search).get('job_id');
-  const requestedJobIdPending = {value: requestedJobId};
+  const exportBase = root.dataset.exportBase || '/scoring/previous-filters';
+  const requestedPreviousFilterId = new URLSearchParams(window.location.search).get('previous_filter_id');
+  const requestedPreviousFilterIdPending = {value: requestedPreviousFilterId};
   const scoringViewStorageKey = [
     'drivetest-analyzer', 'scoring-view',
     encodeURIComponent(document.body.dataset.authenticatedUser || 'anonymous'),
@@ -100,7 +100,7 @@
       const stored = JSON.parse(window.sessionStorage.getItem(scoringViewStorageKey) || 'null');
       if (!stored || typeof stored !== 'object' || Array.isArray(stored)) return {};
       return {
-        jobId: typeof stored.job_id === 'string' && stored.job_id ? stored.job_id : null,
+        previousFilterId: typeof stored.job_id === 'string' && stored.job_id ? stored.job_id : null,
         resultTab: stored.result_tab === 'best-network' ? 'charts'
           : resultTabNames.has(stored.result_tab) ? stored.result_tab : null,
         scrollY: Number.isFinite(stored.scroll_y) && stored.scroll_y >= 0 ? stored.scroll_y : null,
@@ -134,7 +134,7 @@
   function persistScoringViewState() {
     try {
       window.sessionStorage.setItem(scoringViewStorageKey, JSON.stringify({
-        job_id: selectedJobId,
+        job_id: selectedPreviousFilterId,
         result_tab: activeResultTab,
         // While the saved position is restored, the page is still growing: keep the saved one.
         scroll_y: typeof scoringViewScrollRestoring !== 'undefined' && (scoringViewScrollRestorePending || scoringViewScrollRestoring)
@@ -269,10 +269,10 @@
   const areaSummaryCities = root.querySelector('[data-scoring-area-cities]');
   const geographicFilterKeys = ['Region', 'Cluster', 'City'];
   const message = root.querySelector('[data-scoring-message]');
-  const jobLists = [...root.querySelectorAll('[data-job-list]')];
-  const jobList = jobLists[0];
-  const jobSelector = root.querySelector('[data-scoring-job-selector]');
-  const selectedJobCard = root.querySelector('[data-selected-job-card]');
+  const previousFilterLists = [...root.querySelectorAll('[data-previous-filter-list]')];
+  const previousFilterList = previousFilterLists[0];
+  const previousFilterSelector = root.querySelector('[data-scoring-previous-filter-selector]');
+  const selectedPreviousFilterCard = root.querySelector('[data-selected-previous-filter-card]');
   const environmentControl = root.querySelector('[data-result-environment-control]');
   const environmentSelect = root.querySelector('[data-result-environment]');
   const scoringKindControl = root.querySelector('[data-result-scoring-control]');
@@ -296,28 +296,28 @@
   const contextSelections = new Map();
   const gapComparisonSelections = new Map(Object.entries(restoredScoringViewState.gapComparisons || {}));
   const scoringValueObservers = new Map();
-  const deletedJobIds = new Set();
-  const deletingJobIds = new Set();
-  let jobs = [];
+  const deletedPreviousFilterIds = new Set();
+  const deletingPreviousFilterIds = new Set();
+  let previousFilters = [];
   let calculationMatchKey = '';
-  // Set by the job polling: check the same selection again without disabling the buttons meanwhile.
+  // Set by the Previous Filter polling: check the same selection again without disabling the buttons meanwhile.
   let calculationMatchRefresh = false;
   // The status of the selected CDRs and filters (calculating, recalculating, already calculated or ready) stays
-  // while the job list refreshes every few seconds; jobs submitted with Recalculate say so.
+  // while the Previous Filter list refreshes every few seconds; Previous Filters submitted with Recalculate say so.
   let selectionStatus = {key: '', text: '', kind: ''};
-  const recalculatingJobs = new Set();
+  const recalculatingPreviousFilters = new Set();
   let calculationMatchRevision = 0;
   let calculationMatchTimer = null;
   let submittingCalculation = false;
-  let selectedJobId = restoredScoringViewState.jobId;
-  let selectedJob = null;
+  let selectedPreviousFilterId = restoredScoringViewState.previousFilterId;
+  let selectedPreviousFilter = null;
   let selectedEnvironment = restoredScoringViewState.environment || 'all';
-  // Best Network or Most Reliable: both scorings share the job, its filters and its aggregation.
+  // Best Network or Most Reliable: both scorings share the Previous Filter, its filters and its aggregation.
   let selectedScoring = restoredScoringViewState.scoring || 'best_network';
   let currentEffectiveEnvironment = null;
-  let environmentDefaultJobId = null;
+  let environmentDefaultPreviousFilterId = null;
   let currentResults = null;
-  let currentResultsJobId = null;
+  let currentResultsPreviousFilterId = null;
   // Reloading the page keeps the selected results tab; opening the page again
   // from another page always starts on Scoring Charts.
   const pageReloaded = (() => {
@@ -339,7 +339,7 @@
   showResultTab(activeResultTab);
   let chartFocusReturn = null;
   let previousBodyOverflow = '';
-  let userSelectedJob = Boolean(selectedJobId);
+  let userSelectedPreviousFilter = Boolean(selectedPreviousFilterId);
   let refreshInFlight = false;
   let timer = null;
   let selectionLoaded = false;
@@ -362,17 +362,17 @@
     }
     return fallback;
   };
-  const jobIdOf = job => String(valueOf(job, ['id', 'job_id', 'scoring_job_id'], ''));
-  const normalizeStatus = job => {
-    const raw = String(valueOf(job, ['status', 'state'], 'queued')).toLowerCase();
+  const previousFilterIdOf = previousFilter => String(valueOf(previousFilter, ['id'], ''));
+  const normalizeStatus = previousFilter => {
+    const raw = String(valueOf(previousFilter, ['status', 'state'], 'queued')).toLowerCase();
     if (['done', 'success', 'succeeded', 'complete', 'completed', 'finished', 'ready'].includes(raw)) return 'completed';
     if (['error', 'failure', 'failed', 'cancelled', 'canceled', 'stopped'].includes(raw)) return 'failed';
     if (['processing', 'running', 'in_progress', 'in-progress'].includes(raw)) return 'processing';
     if (['queued', 'pending', 'created'].includes(raw)) return 'queued';
     return raw.replaceAll('_', ' ') || 'queued';
   };
-  const isActive = job => ['queued', 'processing'].includes(normalizeStatus(job));
-  const isComplete = job => normalizeStatus(job) === 'completed';
+  const isActive = previousFilter => ['queued', 'processing'].includes(normalizeStatus(previousFilter));
+  const isComplete = previousFilter => normalizeStatus(previousFilter) === 'completed';
   const selectedLevels = () => currentHierarchy.filter(level => aggregationInputByLevel.get(level)?.checked);
   const selectedDatasetIds = () => datasetInputs.filter(input => input.checked && !input.closest('[data-dataset-option]')?.hidden).map(input => input.value);
 
@@ -838,16 +838,16 @@
     }
   }
 
-  function restoreCalculationSelectionFromJob(job) {
+  function restoreCalculationSelectionFromPreviousFilter(previousFilter) {
     applySavedCalculationSelection({
-      dataset_ids: job.dataset_ids || [],
-      aggregation_levels: job.aggregation_levels || job.levels || [],
-      nr_mode: job.nr_mode,
-      baseline_operator: job.baseline_operator,
-      scoring_profile_id: job.scoring_profile_id,
-      context_filters: job.context_filters || {},
-      // A job without the National & area summary leaves it out and keeps its settings.
-      area_summary: job.area_summary ? {...job.area_summary, breakdown: job.area_summary.breakdown || 'None', enabled: true}
+      dataset_ids: previousFilter.dataset_ids || [],
+      aggregation_levels: previousFilter.aggregation_levels || previousFilter.levels || [],
+      nr_mode: previousFilter.nr_mode,
+      baseline_operator: previousFilter.baseline_operator,
+      scoring_profile_id: previousFilter.scoring_profile_id,
+      context_filters: previousFilter.context_filters || {},
+      // A Previous Filter without the National & area summary leaves it out and keeps its settings.
+      area_summary: previousFilter.area_summary ? {...previousFilter.area_summary, breakdown: previousFilter.area_summary.breakdown || 'None', enabled: true}
         : {enabled: false},
     });
     scheduleSelectionSave();
@@ -907,9 +907,9 @@
     }).catch(() => {});
   }
 
-  function contextFilterSummary(job) {
-    const filters = job?.context_filters && typeof job.context_filters === 'object'
-      ? job.context_filters : {};
+  function contextFilterSummary(previousFilter) {
+    const filters = previousFilter?.context_filters && typeof previousFilter.context_filters === 'object'
+      ? previousFilter.context_filters : {};
     const entries = contextFilterDefinitions.flatMap(({key}) => {
       const values = filters[key] ?? filters[key.toLowerCase()];
       const normalized = uniqueCatalogueValues(Array.isArray(values) ? values : (values ? [values] : []));
@@ -961,25 +961,29 @@
     if (!ready || !payload.baseline_operator) return;
     calculationMatchTimer = window.setTimeout(async () => {
       try {
-        const response = await requestJson(`${jobsUrl}/match`, {method: 'POST', body: JSON.stringify(payload)});
+        const response = await requestJson(`${previousFiltersUrl}/match`, {method: 'POST', body: JSON.stringify(payload)});
         if (revision !== calculationMatchRevision || submittingCalculation) return;
-        const existing = response.job;
-        calculateButton.disabled = Boolean(existing);
+        // The selection was used before: Calculate opens its Previous Filter (calculated again when its CDRs or
+        // methodology changed), Recalculate calculates it again anyway.
+        const existing = response.previous_filter;
+        calculateButton.disabled = Boolean(existing) && isActive(existing);
         recalculateButton.disabled = !existing || isActive(existing);
-        let text = 'Ready to calculate a new scoring job.';
+        let text = 'Ready to calculate the scoring of these filters.';
         let kind = '';
         if (existing && isActive(existing)) {
-          const verb = recalculatingJobs.has(String(jobIdOf(existing))) ? 'Recalculating' : 'Calculating';
+          const verb = recalculatingPreviousFilters.has(String(previousFilterIdOf(existing))) ? 'Recalculating' : 'Calculating';
           text = `${verb} the scoring of the selected CDRs and filters…`;
           kind = 'busy';
+        } else if (existing?.up_to_date) {
+          text = 'These filters were used before and their result is up to date: Calculate opens it, Recalculate calculates it again.';
         } else if (existing) {
-          text = 'A scoring job with these parameters already exists. Use Recalculate to update it.';
+          text = 'These filters were used before: Calculate updates their result with the current CDRs and methodology.';
         }
         selectionStatus = {key, text, kind};
         setMessage(text, kind);
       } catch (error) {
         if (revision === calculationMatchRevision && !submittingCalculation) {
-          setMessage(error.message || 'Unable to check existing scoring jobs.', 'error');
+          setMessage(error.message || 'Unable to check the Previous Filters.', 'error');
         }
       }
     }, 180);
@@ -1100,41 +1104,41 @@
     return parsed.toLocaleString(undefined, {dateStyle: 'medium', timeStyle: 'short'});
   }
 
-  function jobSummary(job) {
-    const names = valueOf(job, ['dataset_names', 'cdr_names', 'campaigns'], null);
+  function previousFilterSummary(previousFilter) {
+    const names = valueOf(previousFilter, ['dataset_names', 'cdr_names', 'campaigns'], null);
     if (Array.isArray(names) && names.length) return names.join(', ');
-    const ids = valueOf(job, ['dataset_ids', 'cdr_ids'], []);
-    const count = Array.isArray(ids) ? ids.length : Number(valueOf(job, ['dataset_count'], 0));
-    const campaign = valueOf(job, ['campaign', 'campaign_name', 'campaigns'], '');
+    const ids = valueOf(previousFilter, ['dataset_ids', 'cdr_ids'], []);
+    const count = Array.isArray(ids) ? ids.length : Number(valueOf(previousFilter, ['dataset_count'], 0));
+    const campaign = valueOf(previousFilter, ['campaign', 'campaign_name', 'campaigns'], '');
     return [campaign || `${count || 'Selected'} CDR${count === 1 ? '' : 's'}`].filter(Boolean).join('');
   }
 
-  function jobCdrNames(job) {
-    let names = valueOf(job, ['dataset_names', 'cdr_names', 'source_names'], null);
+  function previousFilterCdrNames(previousFilter) {
+    let names = valueOf(previousFilter, ['dataset_names', 'cdr_names', 'source_names'], null);
     if (!Array.isArray(names) || !names.length) {
-      const metadata = job?.source_metadata;
+      const metadata = previousFilter?.source_metadata;
       const entries = Array.isArray(metadata) ? metadata : (metadata && typeof metadata === 'object' ? Object.values(metadata) : []);
       names = entries.map(entry => firstValue(entry, ['name', 'dataset_name', 'cdr_name'], '')).filter(Boolean);
     }
     return Array.isArray(names) ? uniqueCatalogueValues(names) : [];
   }
 
-  function jobCdrSummary(job) {
-    const names = jobCdrNames(job);
+  function previousFilterCdrSummary(previousFilter) {
+    const names = previousFilterCdrNames(previousFilter);
     if (names.length) return names.join(', ');
-    const ids = valueOf(job, ['dataset_ids', 'cdr_ids'], []);
-    const count = Array.isArray(ids) ? ids.length : Number(valueOf(job, ['dataset_count'], 0));
+    const ids = valueOf(previousFilter, ['dataset_ids', 'cdr_ids'], []);
+    const count = Array.isArray(ids) ? ids.length : Number(valueOf(previousFilter, ['dataset_count'], 0));
     return `${count || 'Selected'} CDR${count === 1 ? '' : 's'}`;
   }
 
-  function savedJobFilterValues(job, key) {
-    for (const filters of [job?.context_filters, job?.resolved_context_filters]) {
+  function savedPreviousFilterValues(previousFilter, key) {
+    for (const filters of [previousFilter?.context_filters, previousFilter?.resolved_context_filters]) {
       if (!filters || typeof filters !== 'object') continue;
       const value = firstValue(filters, [key], null);
       if (value === null || value === undefined) continue;
       const rawValues = Array.isArray(value) ? value : [value];
       const values = uniqueCatalogueValues(key === 'Vendor' ? rawValues.map(scoringVendorName) : rawValues);
-      const datasetIds = valueOf(job, ['dataset_ids', 'cdr_ids'], []);
+      const datasetIds = valueOf(previousFilter, ['dataset_ids', 'cdr_ids'], []);
       const catalogueKey = catalogueKeyByLevel.get(key);
       if (values.length && Array.isArray(datasetIds) && datasetIds.length
           && datasetIds.every(id => Array.isArray(datasetCatalogues.get(String(id))?.[catalogueKey]))) {
@@ -1148,17 +1152,17 @@
     return [];
   }
 
-  function jobCardTitleSegments(job) {
-    const filterValue = (key, fallback) => savedJobFilterValues(job, key).join(', ') || fallback;
-    const campaignFilter = savedJobFilterValues(job, 'Campaign');
+  function previousFilterCardTitleSegments(previousFilter) {
+    const filterValue = (key, fallback) => savedPreviousFilterValues(previousFilter, key).join(', ') || fallback;
+    const campaignFilter = savedPreviousFilterValues(previousFilter, 'Campaign');
     const campaigns = campaignFilter.length
       ? [...new Set(campaignFilter.map(value => hierarchyDisplayValue({level: 'Campaign', value})))]
         .sort((left, right) => insightCampaignKey(left) - insightCampaignKey(right) || left.localeCompare(right))
-      : jobCampaigns(job).filter(value => value !== 'Unspecified');
+      : previousFilterCampaigns(previousFilter).filter(value => value !== 'Unspecified');
     const campaignValue = campaigns.length ? campaigns.join(', ') : 'All Campaigns';
     return [
-      {dimension: 'neutral', value: formatDate(valueOf(job, ['created_at', 'submitted_at', 'started_at'], ''))},
-      {dimension: 'nr-mode', value: valueOf(job, ['nr_mode'], 'All NR Modes')},
+      {dimension: 'neutral', value: formatDate(valueOf(previousFilter, ['last_used_at', 'created_at'], ''))},
+      {dimension: 'nr-mode', value: valueOf(previousFilter, ['nr_mode'], 'All NR Modes')},
       {dimension: 'region', value: filterValue('Region', 'All Regions')},
       {dimension: 'cluster', value: filterValue('Cluster', 'All Clusters')},
       {dimension: 'city', value: filterValue('City', 'All Cities')},
@@ -1168,8 +1172,8 @@
     ];
   }
 
-  function jobCardTitle(job) {
-    return jobCardTitleSegments(job).map(segment => segment.value).join(' ● ');
+  function previousFilterCardTitle(previousFilter) {
+    return previousFilterCardTitleSegments(previousFilter).map(segment => segment.value).join(' ● ');
   }
 
   function campaignLabels(value) {
@@ -1181,11 +1185,11 @@
     });
   }
 
-  function jobCampaigns(job) {
-    let campaigns = campaignLabels(job?.campaigns);
-    if (!campaigns.length) campaigns = campaignLabels(valueOf(job, ['campaign', 'campaign_name'], null));
+  function previousFilterCampaigns(previousFilter) {
+    let campaigns = campaignLabels(previousFilter?.campaigns);
+    if (!campaigns.length) campaigns = campaignLabels(valueOf(previousFilter, ['campaign', 'campaign_name'], null));
     if (!campaigns.length) {
-      const metadata = job?.source_metadata;
+      const metadata = previousFilter?.source_metadata;
       const entries = Array.isArray(metadata) ? metadata : (metadata && typeof metadata === 'object' ? Object.values(metadata) : []);
       campaigns = entries.flatMap(entry => campaignLabels(entry));
     }
@@ -1195,14 +1199,14 @@
     return unique.length ? unique : ['Unspecified'];
   }
 
-  function jobLevels(job) {
-    const levels = valueOf(job, ['aggregation_levels', 'levels'], []);
+  function previousFilterLevels(previousFilter) {
+    const levels = valueOf(previousFilter, ['aggregation_levels', 'levels'], []);
     return Array.isArray(levels) ? (levels.length ? levels.join(' → ') : 'Operator') : String(levels || 'Operator');
   }
 
-  // The settings of the National & area summary of a job, or '' when it has none.
-  function jobAreaSummaryText(job) {
-    const summary = job?.area_summary;
+  // The settings of the National & area summary of a Previous Filter, or '' when it has none.
+  function previousFilterAreaSummaryText(previousFilter) {
+    const summary = previousFilter?.area_summary;
     if (!summary || typeof summary !== 'object') return '';
     const split = {All: 'All selected CDRs'}[summary.time_split] || summary.time_split || 'Campaign';
     const cities = (Array.isArray(summary.cities) ? summary.cities : []).filter(Boolean);
@@ -1210,12 +1214,12 @@
       `Separate cities: ${cities.length ? cities.join(', ') : 'None'}`].join(' · ');
   }
 
-  // The calculation time of a job (start to finish), or its elapsed time while it runs.
-  function jobDurationText(job, now = Date.now()) {
-    const started = Date.parse(valueOf(job, ['started_at'], '') || '');
+  // The calculation time of a Previous Filter (start to finish), or its elapsed time while it runs.
+  function previousFilterDurationText(previousFilter, now = Date.now()) {
+    const started = Date.parse(valueOf(previousFilter, ['started_at'], '') || '');
     if (!Number.isFinite(started)) return '';
-    const finished = Date.parse(valueOf(job, ['finished_at'], '') || '');
-    const end = Number.isFinite(finished) ? finished : (isActive(job) ? now : NaN);
+    const finished = Date.parse(valueOf(previousFilter, ['finished_at'], '') || '');
+    const end = Number.isFinite(finished) ? finished : (isActive(previousFilter) ? now : NaN);
     if (!Number.isFinite(end)) return '';
     const seconds = Math.max(0, Math.round((end - started) / 1000));
     if (seconds < 60) return `${seconds} s`;
@@ -1223,169 +1227,237 @@
     return `${Math.floor(seconds / 3600)} h ${String(Math.floor((seconds % 3600) / 60)).padStart(2, '0')} min`;
   }
 
-  function progressValue(job) {
-    const raw = Number(valueOf(job, ['progress', 'progress_percent', 'percentage'], 0));
+  function progressValue(previousFilter) {
+    const raw = Number(valueOf(previousFilter, ['progress', 'progress_percent', 'percentage'], 0));
     if (!Number.isFinite(raw)) return 0;
     return Math.max(0, Math.min(100, raw <= 1 ? raw * 100 : raw));
   }
 
-  function sortedJobs(records) {
+  // The pinned Previous Filters first, then the latest used.
+  function sortedPreviousFilters(records) {
     return [...records].sort((left, right) => {
-      const leftDate = new Date(valueOf(left, ['created_at', 'submitted_at', 'started_at'], 0)).getTime() || 0;
-      const rightDate = new Date(valueOf(right, ['created_at', 'submitted_at', 'started_at'], 0)).getTime() || 0;
-      return rightDate - leftDate || Number(right.id || 0) - Number(left.id || 0);
+      const leftDate = new Date(valueOf(left, ['last_used_at', 'created_at'], 0)).getTime() || 0;
+      const rightDate = new Date(valueOf(right, ['last_used_at', 'created_at'], 0)).getTime() || 0;
+      return Number(Boolean(right.pinned)) - Number(Boolean(left.pinned)) || rightDate - leftDate
+        || Number(right.id || 0) - Number(left.id || 0);
     });
   }
 
-  function syncJobLists() {
-    for (const list of jobLists.slice(1)) {
-      list.replaceChildren(...Array.from(jobList.children, row => row.cloneNode(true)));
+  function syncPreviousFilterLists() {
+    for (const list of previousFilterLists.slice(1)) {
+      list.replaceChildren(...Array.from(previousFilterList.children, row => row.cloneNode(true)));
     }
   }
 
-  function renderJobs() {
-    const ordered = sortedJobs(jobs);
-    for (const countBadge of root.querySelectorAll('[data-job-count]')) {
-      countBadge.textContent = `${ordered.length} job${ordered.length === 1 ? '' : 's'}`;
+  function renderPreviousFilters() {
+    const ordered = sortedPreviousFilters(previousFilters);
+    for (const countBadge of root.querySelectorAll('[data-previous-filter-count]')) {
+      countBadge.textContent = `${ordered.length} filter${ordered.length === 1 ? '' : 's'}`;
     }
-    jobList.replaceChildren();
-    selectedJobCard.textContent = ordered.length ? 'Select a scoring job' : 'No saved scoring jobs';
+    previousFilterList.replaceChildren();
+    selectedPreviousFilterCard.textContent = ordered.length ? 'Select previous filters' : 'No previous filters yet';
     if (!ordered.length) {
       const empty = document.createElement('div');
       empty.className = 'scoring-empty';
-      empty.textContent = 'No scoring jobs have been run in this workspace.';
-      jobList.append(empty);
-      syncJobLists();
+      empty.textContent = 'No scoring has been calculated in this workspace yet: the filters of each calculation are kept here.';
+      previousFilterList.append(empty);
+      syncPreviousFilterLists();
       return;
     }
-    for (const job of ordered) {
-      const id = jobIdOf(job);
-      const status = normalizeStatus(job);
+    for (const previousFilter of ordered) {
+      const id = previousFilterIdOf(previousFilter);
+      const status = normalizeStatus(previousFilter);
       const button = document.createElement('button');
       button.type = 'button';
-      button.className = 'scoring-job-item';
-      button.dataset.jobId = id;
-      button.setAttribute('aria-current', String(id === selectedJobId));
+      button.className = 'scoring-previous-filter-item';
+      button.dataset.previousFilterId = id;
+      button.setAttribute('aria-current', String(id === selectedPreviousFilterId));
+      if (previousFilter.name) {
+        // The name given to these filters, above them.
+        const name = document.createElement('span');
+        name.className = 'scoring-previous-filter-name';
+        name.textContent = previousFilter.name;
+        button.append(name);
+      }
       const top = document.createElement('span');
-      top.className = 'scoring-job-item-top';
+      top.className = 'scoring-previous-filter-item-top';
       const title = document.createElement('strong');
-      const titleSegments = jobCardTitleSegments(job);
+      const titleSegments = previousFilterCardTitleSegments(previousFilter);
       titleSegments.forEach((segment, index) => {
         if (index) {
           const separator = document.createElement('span');
-          separator.className = 'scoring-job-title-separator';
+          separator.className = 'scoring-previous-filter-title-separator';
           separator.dataset.dimension = 'neutral';
           separator.textContent = ' ● ';
           title.append(separator);
         }
         const value = document.createElement('span');
-        value.className = `scoring-job-title-segment scoring-job-title-${segment.dimension}`;
+        value.className = `scoring-previous-filter-title-segment scoring-previous-filter-title-${segment.dimension}`;
         value.dataset.dimension = segment.dimension;
         value.textContent = segment.value;
         title.append(value);
       });
-      title.setAttribute('aria-label', jobCardTitle(job));
-      title.title = jobCardTitle(job);
+      title.setAttribute('aria-label', previousFilterCardTitle(previousFilter));
+      title.title = previousFilterCardTitle(previousFilter);
       const statusBadge = document.createElement('span');
       statusBadge.className = 'scoring-status';
       statusBadge.dataset.status = status;
-      statusBadge.textContent = status;
+      // Imported filters are calculated when they are first opened.
+      statusBadge.textContent = status === 'saved' ? 'not calculated' : status;
       top.append(title, statusBadge);
       button.append(top);
       const aggregation = document.createElement('span');
-      aggregation.className = 'scoring-job-aggregation';
+      aggregation.className = 'scoring-previous-filter-aggregation';
       const aggregationLabel = document.createElement('span');
       aggregationLabel.textContent = 'Split by:';
       const aggregationLevels = document.createElement('strong');
-      aggregationLevels.textContent = jobLevels(job);
+      aggregationLevels.textContent = previousFilterLevels(previousFilter);
       aggregation.append(aggregationLabel, aggregationLevels);
       button.append(aggregation);
       const meta = document.createElement('span');
-      meta.className = 'scoring-job-meta';
-      const baseline = valueOf(job, ['baseline_operator'], 'EE');
+      meta.className = 'scoring-previous-filter-meta';
+      const baseline = valueOf(previousFilter, ['baseline_operator'], 'EE');
       meta.textContent = 'GAP Reference: ';
       const referenceValue = document.createElement('strong');
-      referenceValue.className = 'scoring-job-reference';
+      referenceValue.className = 'scoring-previous-filter-reference';
       referenceValue.textContent = baseline;
       meta.append(referenceValue);
       button.append(meta);
-      const areaSummary = jobAreaSummaryText(job);
+      const areaSummary = previousFilterAreaSummaryText(previousFilter);
       if (areaSummary) {
-        // The National & area summary of the job, when it includes one: its time split, breakdown and cities.
+        // The National & area summary of the Previous Filter, when it includes one: its time split, breakdown and cities.
         const areaMeta = document.createElement('span');
-        areaMeta.className = 'scoring-job-meta';
+        areaMeta.className = 'scoring-previous-filter-meta';
         areaMeta.textContent = 'National & area summary: ';
         const areaValue = document.createElement('strong');
-        areaValue.className = 'scoring-job-area-summary';
+        areaValue.className = 'scoring-previous-filter-area-summary';
         areaValue.textContent = areaSummary;
         areaMeta.append(areaValue);
         button.append(areaMeta);
       }
-      const cdrNames = jobCdrNames(job);
+      const cdrNames = previousFilterCdrNames(previousFilter);
       const cdrButton = document.createElement('button');
       cdrButton.type = 'button';
-      cdrButton.className = 'scoring-job-cdrs';
-      cdrButton.dataset.jobCdrs = id;
-      const cdrCount = cdrNames.length || (job.dataset_ids || []).length;
+      cdrButton.className = 'scoring-previous-filter-cdrs';
+      cdrButton.dataset.previousFilterCdrs = id;
+      const cdrCount = cdrNames.length || (previousFilter.dataset_ids || []).length;
       cdrButton.textContent = cdrCount ? `${cdrCount} CDR${cdrCount === 1 ? '' : 's'}` : 'Selected CDRs';
-      cdrButton.title = cdrNames.length ? cdrNames.join('\n') : jobCdrSummary(job);
-      cdrButton.setAttribute('aria-label', `Show CDRs for scoring job ${id}`);
-      const profileName = valueOf(job, ['scoring_profile_name', 'profile_name'], '');
+      cdrButton.title = cdrNames.length ? cdrNames.join('\n') : previousFilterCdrSummary(previousFilter);
+      cdrButton.setAttribute('aria-label', `Show the CDRs of Previous Filter ${id}`);
+      const profileName = valueOf(previousFilter, ['scoring_profile_name', 'profile_name'], '');
       if (profileName) {
         const profileMeta = document.createElement('span');
-        profileMeta.className = 'scoring-job-meta';
+        profileMeta.className = 'scoring-previous-filter-meta';
         profileMeta.textContent = 'Scoring Methodology: ';
         const profileValue = document.createElement('strong');
-        profileValue.className = 'scoring-job-profile';
+        profileValue.className = 'scoring-previous-filter-profile';
         profileValue.textContent = profileName;
         profileMeta.append(profileValue);
         button.append(profileMeta);
       }
-      const duration = jobDurationText(job);
+      const duration = previousFilterDurationText(previousFilter);
       if (duration) {
         // How long the calculation took, or has taken so far while it runs.
         const durationMeta = document.createElement('span');
-        durationMeta.className = 'scoring-job-meta';
-        durationMeta.textContent = isActive(job) ? 'Elapsed: ' : 'Calculation time: ';
+        durationMeta.className = 'scoring-previous-filter-meta';
+        durationMeta.textContent = isActive(previousFilter) ? 'Elapsed: ' : 'Calculation time: ';
         const durationValue = document.createElement('strong');
-        durationValue.className = 'scoring-job-duration';
+        durationValue.className = 'scoring-previous-filter-duration';
         durationValue.textContent = duration;
         durationMeta.append(durationValue);
         button.append(durationMeta);
       }
-      if (isActive(job)) {
+      if (isActive(previousFilter)) {
         const progress = document.createElement('span');
-        progress.className = 'scoring-job-progress';
-        progress.setAttribute('aria-label', `Job ${progressValue(job)} percent complete`);
+        progress.className = 'scoring-previous-filter-progress';
+        progress.setAttribute('aria-label', `Calculation ${progressValue(previousFilter)} percent complete`);
         const bar = document.createElement('span');
-        bar.style.width = `${progressValue(job)}%`;
+        bar.style.width = `${progressValue(previousFilter)}%`;
         progress.append(bar);
         button.append(progress);
       }
-      const error = valueOf(job, ['error', 'error_message', 'last_error'], '');
+      const uses = Number(previousFilter.use_count || 1);
+      const useMeta = document.createElement('span');
+      useMeta.className = 'scoring-previous-filter-meta';
+      useMeta.textContent = 'Used: ';
+      const useValue = document.createElement('strong');
+      useValue.className = 'scoring-previous-filter-uses';
+      useValue.textContent = `${uses} time${uses === 1 ? '' : 's'}`;
+      useMeta.append(useValue);
+      button.append(useMeta);
+      const missing = Array.isArray(previousFilter.missing_cdrs) ? previousFilter.missing_cdrs.filter(Boolean) : [];
+      if (missing.length) {
+        // Filters imported from another workspace wait until their CDRs are processed here.
+        const waiting = document.createElement('span');
+        waiting.className = 'scoring-previous-filter-meta scoring-previous-filter-waiting';
+        waiting.textContent = `Waiting for its CDRs: ${missing.join(', ')}`;
+        button.append(waiting);
+      }
+      const newer = Array.isArray(previousFilter.newer_cdrs) ? previousFilter.newer_cdrs : [];
+      if (newer.length) {
+        // A Final CDR (or a newer cumulative one) replaces some of its CDRs.
+        const notice = document.createElement('span');
+        notice.className = 'scoring-previous-filter-meta scoring-previous-filter-newer';
+        notice.textContent = `Newer CDRs available: ${newer.map(item => `${item.replaced_by_name} replaces ${item.name}`).join('; ')}`;
+        button.append(notice);
+      }
+      const error = valueOf(previousFilter, ['error', 'error_message', 'last_error'], '');
       if (status === 'failed' && error) {
         const detail = document.createElement('span');
-        detail.className = 'scoring-job-meta';
+        detail.className = 'scoring-previous-filter-meta';
         detail.textContent = error;
         button.append(detail);
       }
-      if (id === selectedJobId) {
-        selectedJobCard.replaceChildren(...Array.from(button.children, child => child.cloneNode(true)), cdrButton.cloneNode(true));
-      }
       const row = document.createElement('div');
-      row.className = 'scoring-job-row';
+      row.className = 'scoring-previous-filter-row';
+      const actions = document.createElement('span');
+      actions.className = 'scoring-previous-filter-actions';
+      if (newer.length) {
+        const useNewer = document.createElement('button');
+        useNewer.type = 'button';
+        useNewer.className = 'scoring-previous-filter-use-newer';
+        useNewer.dataset.previousFilterNewer = id;
+        useNewer.textContent = 'Use newer CDRs';
+        useNewer.title = 'Select these filters with the newer CDRs and calculate them';
+        actions.append(useNewer);
+      }
+      const pin = document.createElement('button');
+      pin.type = 'button';
+      pin.className = 'scoring-previous-filter-pin';
+      pin.dataset.previousFilterPin = id;
+      pin.textContent = previousFilter.pinned ? '★' : '☆';
+      pin.title = previousFilter.pinned ? 'Unpin these filters' : 'Pin these filters at the top of the list';
+      pin.setAttribute('aria-label', `${previousFilter.pinned ? 'Unpin' : 'Pin'} Previous Filter ${id}`);
+      pin.setAttribute('aria-pressed', String(Boolean(previousFilter.pinned)));
+      const rename = document.createElement('button');
+      rename.type = 'button';
+      rename.className = 'scoring-previous-filter-rename';
+      rename.dataset.previousFilterRename = id;
+      rename.textContent = '✎';
+      rename.title = previousFilter.name ? 'Rename these filters' : 'Name these filters';
+      rename.setAttribute('aria-label', `Name Previous Filter ${id}`);
       const remove = document.createElement('button');
       remove.type = 'button';
-      remove.className = 'scoring-job-delete';
-      remove.dataset.deleteJobId = id;
+      remove.className = 'scoring-previous-filter-delete';
+      remove.dataset.deletePreviousFilterId = id;
       remove.textContent = '×';
-      remove.title = 'Delete scoring job and saved results';
-      remove.setAttribute('aria-label', `Delete scoring job ${id}`);
-      remove.disabled = deletingJobIds.has(id);
-      row.append(button, cdrButton, remove);
-      jobList.append(row);
+      remove.title = 'Delete these filters and their saved result';
+      remove.setAttribute('aria-label', `Delete Previous Filter ${id}`);
+      remove.disabled = deletingPreviousFilterIds.has(id);
+      actions.append(cdrButton, rename, pin, remove);
+      row.append(button, actions);
+      previousFilterList.append(row);
+      if (id === selectedPreviousFilterId) {
+        // The selected card of the Scoring Results dropdown, with its CDRs, name and pin buttons (deleting is done in
+        // the lists).
+        const selectedActions = document.createElement('span');
+        selectedActions.className = 'scoring-previous-filter-actions';
+        selectedActions.append(...Array.from(actions.children, child => child.cloneNode(true))
+          .filter(child => !child.dataset?.deletePreviousFilterId));
+        selectedPreviousFilterCard.replaceChildren(...Array.from(button.children, child => child.cloneNode(true)), selectedActions);
+      }
     }
-    syncJobLists();
+    syncPreviousFilterLists();
   }
 
   async function requestJson(url, options = {}) {
@@ -1486,7 +1558,7 @@
   function activeScoringConfiguration() {
     return effectiveScoring() === 'most_reliable'
       ? activeScoringPayload()?.configuration || {}
-      : selectedJob?.configuration || currentResults?.configuration || {};
+      : selectedPreviousFilter?.configuration || currentResults?.configuration || {};
   }
 
   function syncResultScoring(payload) {
@@ -1497,7 +1569,7 @@
     scoringKindSelect.value = effectiveScoring(payload);
   }
 
-  function setExportLinks(jobId, enabled) {
+  function setExportLinks(previousFilterId, enabled) {
     for (const [kind, link] of Object.entries(exportLinks).flatMap(([name, links]) => [links].flat().map(item => [name, item]))) {
       if (!link) continue;
       link.hidden = false;
@@ -1508,7 +1580,7 @@
       // CSV files carry the selected scoring; PowerPoint and Word carry both scorings.
       const scoringOption = kind !== 'ppt' && typeof effectiveScoring === 'function'
         && effectiveScoring() === 'most_reliable' ? '&scoring=most_reliable' : '';
-      link.href = enabled ? `${exportBase}/${encodeURIComponent(jobId)}/export/${kind}?${query}${gapOption}${scoringOption}` : '#';
+      link.href = enabled ? `${exportBase}/${encodeURIComponent(previousFilterId)}/export/${kind}?${query}${gapOption}${scoringOption}` : '#';
     }
   }
 
@@ -1556,7 +1628,7 @@
       });
   }
 
-  // Export Selected Scoring Report (Results panel) exports the selected job as it was calculated (its
+  // Export Selected Scoring Report (Results panel) exports the selected Previous Filter as it was calculated (its
   // CDRs, Split by levels and filters): it only asks for PowerPoint or Word.
   async function exportSelectedScoringReport(link) {
     const message = 'Export the selected scoring report with the CDRs, Split by levels and filters it was calculated with.';
@@ -1574,7 +1646,7 @@
 
   async function downloadScoringDocument(href, label, init = {}) {
     globalThis.showLoadingOverlay?.(`Preparing the ${label} document`,
-      `Preparing the Scoring & GAP Analysis ${label} of the selected job with its tables and charts. The document downloads when it is ready.`);
+      `Preparing the Scoring & GAP Analysis ${label} of the selected filters with its tables and charts. The document downloads when it is ready.`);
     try {
       const response = await fetch(href, {credentials: 'same-origin', ...init});
       if (!response.ok) {
@@ -1689,7 +1761,7 @@
   }
 
   function gapComparisonIdentity(table, kind) {
-    return JSON.stringify([selectedJobId || currentResultsJobId || '', kind, comparisonIdentity(table, kind)]);
+    return JSON.stringify([selectedPreviousFilterId || currentResultsPreviousFilterId || '', kind, comparisonIdentity(table, kind)]);
   }
 
   function comparisonLabel(table, kind) {
@@ -3024,7 +3096,7 @@
     if (!tables.length) {
       const empty = document.createElement('div');
       empty.className = 'scoring-empty';
-      empty.textContent = 'No scoring comparison tables are available for this job.';
+      empty.textContent = 'No scoring comparison tables are available for these filters.';
       pane.append(empty);
       return;
     }
@@ -3057,7 +3129,7 @@
     if (!tables.length) {
       const empty = document.createElement('div');
       empty.className = 'scoring-empty';
-      empty.textContent = 'No GAP comparison tables are available for this job.';
+      empty.textContent = 'No GAP comparison tables are available for these filters.';
       pane.append(empty);
       return;
     }
@@ -4018,7 +4090,7 @@
     if (!rows.length) {
       const empty = document.createElement('div');
       empty.className = 'scoring-empty';
-      empty.textContent = 'No chart rows are available for this scoring job.';
+      empty.textContent = 'No chart rows are available for these filters.';
       pane.append(empty);
       return;
     }
@@ -5382,10 +5454,10 @@
     return `rgb(${lossLow.map((low, index) => Math.round(low + (lossHigh[index] - low) * value)).join(',')})`;
   }
 
-  function lossBoundaries(jobId, field) {
-    const key = `${jobId}:${field}`;
+  function lossBoundaries(previousFilterId, field) {
+    const key = `${previousFilterId}:${field}`;
     if (!lossBoundaryCache.has(key)) {
-      lossBoundaryCache.set(key, requestJson(`${jobsUrl}/${encodeURIComponent(jobId)}/boundaries/${encodeURIComponent(field)}`)
+      lossBoundaryCache.set(key, requestJson(`${previousFiltersUrl}/${encodeURIComponent(previousFilterId)}/boundaries/${encodeURIComponent(field)}`)
         .then(body => ({boundaries: body?.boundaries || {}, outlines: body?.background || []}))
         .catch(() => ({boundaries: {}, outlines: []})));
     }
@@ -5476,8 +5548,8 @@
 
   // Points Lost Map: choose the location (for example London), the operators (their maps side by
   // side) and the analysis per City, Region or Cluster.
-  function renderPointsLossMaps(pane, payload, environment, jobId) {
-    if (!environment || !jobId) return;
+  function renderPointsLossMaps(pane, payload, environment, previousFilterId) {
+    if (!environment || !previousFilterId) return;
     if (payload.points_loss_pending) {
       // Calculated from the Scoring History: the map follows once the rows of the tests are read.
       const section = document.createElement('section');
@@ -5556,7 +5628,7 @@
     const grid = document.createElement('div');
     grid.className = `scoring-loss-map-grid${chosen.length > 1 ? ' is-multiple' : ''}`;
     const cards = candidates.filter(item => chosen.includes(item.ranking.operator))
-      .map(entry => pointsLossMapCard(entry, payload, jobId, chosen.length > 1, mode));
+      .map(entry => pointsLossMapCard(entry, payload, previousFilterId, chosen.length > 1, mode));
     grid.append(...cards);
     modeSelect?.addEventListener('change', () => {
       insightSelections.set('points-loss-colour', modeSelect.value);
@@ -5564,7 +5636,7 @@
       cards.forEach(card => card.setColourMode?.(modeSelect.value));
     });
     section.append(heading, controls);
-    // Tests in a country without map areas: the whole country is one area until its areas are added and the job calculated again.
+    // Tests in a country without map areas: the whole country is one area until its areas are added and the filters calculated again.
     const unmapped = view === 'City' ? candidates.find(entry => entry.layer?.unmapped_countries?.length)?.layer.unmapped_countries || [] : [];
     if (unmapped.length) {
       const warning = document.createElement('p');
@@ -5578,7 +5650,7 @@
   }
 
   // One operator's map with the note and the ranking of the areas where it loses most points.
-  function pointsLossMapCard(entry, payload, jobId, compact, mode = 'top') {
+  function pointsLossMapCard(entry, payload, previousFilterId, compact, mode = 'top') {
     const {ranking, layer} = entry;
     const card = document.createElement('article');
     card.className = 'scoring-loss-map-card';
@@ -5650,7 +5722,7 @@
       row.dataset.area = bars[index]?.name || '';
       row.dataset.points = String(bars[index]?.points || 0);
     });
-    renderLoads.push((layer ? lossBoundaries(jobId, layer.field) : Promise.resolve({boundaries: {}, outlines: []})).then(({boundaries, outlines}) => {
+    renderLoads.push((layer ? lossBoundaries(previousFilterId, layer.field) : Promise.resolve({boundaries: {}, outlines: []})).then(({boundaries, outlines}) => {
       // Each colouring: each city or route with its map areas (the share of its tests in each, or the points it
       // loses in each one) and the colour of every area.
       const colourings = {};
@@ -6210,7 +6282,7 @@
     return values.length > 0 && values.every(cell => cell.complete === true);
   }
 
-  function scoringCoverageWarnings(payload, job, environment, {concise = false} = {}) {
+  function scoringCoverageWarnings(payload, previousFilter, environment, {concise = false} = {}) {
     const genericNotice = 'Incomplete KPI or environment coverage: partial points are shown without renormalizing weights; a complete benchmark score is unavailable.';
     const warnings = Array.isArray(payload?.warnings) ? payload.warnings : (payload?.warnings ? [payload.warnings] : []);
     const totals = scoringCoverageTotals(payload, environment);
@@ -6256,11 +6328,11 @@
       return low === high ? formatChartNumber(low) : `${formatChartNumber(low)}–${formatChartNumber(high)}`;
     };
     if (available.length && maximum.length) message += ` Available maximum points: ${range(available)} of ${range(maximum)}; these are scoring weights, not earned scores.`;
-    const cities = job?.context_filters?.City || [];
+    const cities = previousFilter?.context_filters?.City || [];
     if (missing.size && Array.isArray(cities) && cities.length) {
       message += ` The saved City filter is ${cities.join(', ')}. Only matching City names are included; road routes with different City names are excluded.`;
     }
-    if (environment === 'Combined' && (payload.aggregation_levels || job?.aggregation_levels || []).includes('City')) {
+    if (environment === 'Combined' && (payload.aggregation_levels || previousFilter?.aggregation_levels || []).includes('City')) {
       message += ' City is a Split by level: cities and road routes are scored separately, and environment coverage is checked within each group.';
     }
     message += ' Available points keep their original weights; missing contributions are not scaled up to a complete benchmark.';
@@ -6324,7 +6396,7 @@
   // Drawing the results again (another operator, environment or option) keeps the card being looked at
   // where it was on the screen: each pane keeps its height until its maps are drawn, and the page
   // scrolls by what the cards above that card grew or shrank.
-  function renderResult(savedPayload, job, panesToRender = [activeResultTab]) {
+  function renderResult(savedPayload, previousFilter, panesToRender = [activeResultTab]) {
     const held = panesToRender.map(name => root.querySelector(`[data-result-pane="${name}"]`))
       .filter(pane => pane && pane.childElementCount && pane.offsetHeight).map(pane => [pane, pane.offsetHeight]);
     // The card of the panes that fills most of the window, by its pane, position and class.
@@ -6355,7 +6427,7 @@
     held.forEach(([pane, height]) => { pane.style.minHeight = `${height}px`; });
     renderLoads = [];
     try {
-      renderResultContent(savedPayload, job, panesToRender);
+      renderResultContent(savedPayload, previousFilter, panesToRender);
     } finally {
       if (held.length) {
         keepAnchor();
@@ -6369,9 +6441,9 @@
     }
   }
 
-  function renderResultContent(savedPayload, job, panesToRender) {
+  function renderResultContent(savedPayload, previousFilter, panesToRender) {
     currentResults = savedPayload;
-    currentResultsJobId = jobIdOf(job || savedPayload.job || {}) || null;
+    currentResultsPreviousFilterId = previousFilterIdOf(previousFilter || savedPayload.previous_filter || {}) || null;
     syncResultScoring(savedPayload);
     const payload = activeScoringPayload(savedPayload);
     const shouldRenderPane = name => panesToRender.includes(name);
@@ -6386,11 +6458,11 @@
     const allGapSummaryTables = normalizeRows(views.gap_summary_tables ?? payload.gap_summary_tables ?? payload.scoring_views?.gap_summary_tables ?? []);
     const allHierarchyScoreTables = normalizeRows(views.hierarchy_score_tables ?? []);
     const allHierarchyGapTables = normalizeRows(views.hierarchy_gap_tables ?? []);
-    const applyCoverageDefault = environmentDefaultJobId !== currentResultsJobId;
+    const applyCoverageDefault = environmentDefaultPreviousFilterId !== currentResultsPreviousFilterId;
     const environmentSelection = syncResultEnvironment([...allScoreTables, ...allHierarchyScoreTables], {
       payload, applyCoverageDefault,
     });
-    environmentDefaultJobId = currentResultsJobId;
+    environmentDefaultPreviousFilterId = currentResultsPreviousFilterId;
     const effectiveEnvironment = environmentSelection.effective;
     const scoreTables = allScoreTables.filter(table => environmentOf(table) === effectiveEnvironment);
     const gapTables = allGapTables.filter(table => environmentOf(table) === effectiveEnvironment);
@@ -6431,7 +6503,7 @@
         scoringPane.append(detailHeading, detailTable);
       } else {
         scoringPane.replaceChildren();
-        renderTable(scoringPane, detailRows, 'This job has no scoring table rows.', {hideGapColumns: true});
+        renderTable(scoringPane, detailRows, 'These filters have no scoring table rows.', {hideGapColumns: true});
       }
       renderCampaignComparisons(scoringPane, payload, effectiveEnvironment);
       if (tableExports.scoring) scoringPane.prepend(tableExports.scoring);
@@ -6472,21 +6544,21 @@
       gapTablesCard.append(...gapPane.childNodes);
       if (gapTablesCard.childNodes.length) gapPane.append(gapTablesCard);
       renderKpiGapProfiles(gapPane, payload, effectiveEnvironment);
-      renderPointsLossMaps(gapPane, payload, effectiveEnvironment, jobIdOf(job || payload.job || {}));
+      renderPointsLossMaps(gapPane, payload, effectiveEnvironment, previousFilterIdOf(previousFilter || payload.previous_filter || {}));
       if (tableExports.gap) gapPane.prepend(tableExports.gap);
     }
-    const warnings = payload.warnings ?? job?.warnings ?? [];
-    renderWarnings(scoringCoverageWarnings({...payload, warnings}, job, effectiveEnvironment));
+    const warnings = payload.warnings ?? previousFilter?.warnings ?? [];
+    renderWarnings(scoringCoverageWarnings({...payload, warnings}, previousFilter, effectiveEnvironment));
     // Scaling concerns the Combined scores, not the score of a single environment.
-    renderNotices(!effectiveEnvironment || ['all', 'Combined'].includes(effectiveEnvironment) ? payload.notices ?? job?.notices ?? [] : []);
-    setExportLinks(jobIdOf(job || payload.job || {}), true);
+    renderNotices(!effectiveEnvironment || ['all', 'Combined'].includes(effectiveEnvironment) ? payload.notices ?? previousFilter?.notices ?? [] : []);
+    setExportLinks(previousFilterIdOf(previousFilter || payload.previous_filter || {}), true);
   }
 
-  // While the selected job calculates, the results show an animated progress bar. Each poll updates it in place,
+  // While the selected Previous Filter calculates, the results show an animated progress bar. Each poll updates it in place,
   // so the stripes keep moving instead of starting again.
-  function renderCalculating(job) {
-    const progress = Math.round(progressValue(job));
-    const detail = String(valueOf(job, ['message'], '') || '').trim();
+  function renderCalculating(previousFilter) {
+    const progress = Math.round(progressValue(previousFilter));
+    const detail = String(valueOf(previousFilter, ['message'], '') || '').trim();
     const update = (element) => {
       element.querySelector('.scoring-calculating-fill').style.width = `${Math.max(6, progress)}%`;
       element.querySelector('.scoring-calculating-bar').setAttribute('aria-valuenow', String(progress));
@@ -6510,7 +6582,7 @@
     }
   }
 
-  // While the results of a saved job load, the results show the same striped bar, moving across its whole width.
+  // While the results of a saved Previous Filter load, the results show the same striped bar, moving across its whole width.
   function renderLoadingResults() {
     renderNoResult('');
     for (const pane of resultPanes) {
@@ -6543,29 +6615,31 @@
 
   let pointsLossTimer = 0;
 
-  async function loadJob(job, force = false, updateJobList = true) {
-    const id = jobIdOf(job);
+  async function loadPreviousFilter(previousFilter, force = false, updatePreviousFilterList = true) {
+    const id = previousFilterIdOf(previousFilter);
     if (!id) return;
-    selectedJobId = id;
-    selectedJob = job;
-    if (updateJobList) renderJobs();
-    if (!force && resultCache.has(id) && isComplete(job)) {
+    selectedPreviousFilterId = id;
+    selectedPreviousFilter = previousFilter;
+    if (updatePreviousFilterList) renderPreviousFilters();
+    if (!force && resultCache.has(id) && isComplete(previousFilter)) {
       const cached = resultCache.get(id);
-      if (currentResultsJobId !== id || currentResults !== cached) renderResult(cached, job);
+      if (currentResultsPreviousFilterId !== id || currentResults !== cached) renderResult(cached, previousFilter);
       return;
     }
-    if (currentResultsJobId !== id) {
+    if (currentResultsPreviousFilterId !== id) {
       currentResults = null;
-      currentResultsJobId = null;
-      if (isActive(job)) renderCalculating(job);
+      currentResultsPreviousFilterId = null;
+      if (isActive(previousFilter)) renderCalculating(previousFilter);
       else renderLoadingResults();
     }
     try {
-      const payload = await requestJson(`${jobsUrl}/${encodeURIComponent(id)}`);
-      if (deletedJobIds.has(id) || selectedJobId !== id) return;
-      const record = payload.job || payload;
-      selectedJob = record;
+      const payload = await requestJson(`${previousFiltersUrl}/${encodeURIComponent(id)}`);
+      if (deletedPreviousFilterIds.has(id) || selectedPreviousFilterId !== id) return;
+      const record = payload.previous_filter || payload;
+      selectedPreviousFilter = record;
       const status = normalizeStatus(record);
+      // A saved result whose CDRs or methodology are gone is shown as it was, saying why.
+      if (record.unavailable) setMessage(`${record.unavailable} The saved result is shown.`, 'error');
       if (isComplete(record) || payload.scoring || payload.gap) {
         currentResults = payload;
         resultCache.set(id, payload);
@@ -6574,84 +6648,86 @@
         window.clearTimeout(pointsLossTimer);
         if (payload.points_loss_pending) {
           pointsLossTimer = window.setTimeout(() => {
-            if (selectedJobId !== id) return;
+            if (selectedPreviousFilterId !== id) return;
             resultCache.delete(id);
-            loadJob(selectedJob, true, false);
+            loadPreviousFilter(selectedPreviousFilter, true, false);
           }, 5000);
         }
       } else if (status === 'failed') {
         currentResults = null;
-        currentResultsJobId = null;
-        const error = valueOf(record, ['error', 'error_message', 'last_error'], 'This scoring job failed without an error message.');
+        currentResultsPreviousFilterId = null;
+        const error = valueOf(record, ['error', 'error_message', 'last_error'], 'The scoring of these filters failed without an error message.');
         renderNoResult(error);
       } else if (isActive(record)) {
         currentResults = null;
-        currentResultsJobId = null;
+        currentResultsPreviousFilterId = null;
         renderCalculating(record);
         setExportLinks('', false);
+        // Opening filters whose CDRs or methodology changed calculates them again: follow the calculation.
+        if (!timer) timer = window.setInterval(refreshPreviousFilters, 3500);
       } else {
         currentResults = null;
-        currentResultsJobId = null;
-        renderNoResult('Scoring results will appear here when the job completes.');
+        currentResultsPreviousFilterId = null;
+        renderNoResult('Scoring results will appear here when the calculation completes.');
         setExportLinks('', false);
       }
     } catch (error) {
-      if (deletedJobIds.has(id) || selectedJobId !== id) return;
+      if (deletedPreviousFilterIds.has(id) || selectedPreviousFilterId !== id) return;
       currentResults = null;
-      currentResultsJobId = null;
-      renderNoResult(error.message || 'The selected job could not be loaded.');
-      setMessage(error.message || 'The selected job could not be loaded.', 'error');
+      currentResultsPreviousFilterId = null;
+      renderNoResult(error.message || 'The selected filters could not be loaded.');
+      setMessage(error.message || 'The selected filters could not be loaded.', 'error');
     }
   }
 
-  async function refreshJobs() {
+  async function refreshPreviousFilters() {
     if (refreshInFlight) return;
     refreshInFlight = true;
     try {
-      const payload = await requestJson(jobsUrl);
-      jobs = (Array.isArray(payload) ? payload : (Array.isArray(payload.jobs) ? payload.jobs : []))
-        .filter(job => !deletedJobIds.has(jobIdOf(job)));
-      for (const job of jobs) {
-        const id = jobIdOf(job);
+      const payload = await requestJson(previousFiltersUrl);
+      previousFilters = (Array.isArray(payload) ? payload : (Array.isArray(payload.previous_filters) ? payload.previous_filters : []))
+        .filter(previousFilter => !deletedPreviousFilterIds.has(previousFilterIdOf(previousFilter)));
+      for (const previousFilter of previousFilters) {
+        const id = previousFilterIdOf(previousFilter);
         const cached = resultCache.get(id);
-        if (cached && (isActive(job) || cached.job?.updated_at !== job.updated_at)) resultCache.delete(id);
+        if (cached && (isActive(previousFilter) || cached.previous_filter?.updated_at !== previousFilter.updated_at)) resultCache.delete(id);
       }
-      const ordered = sortedJobs(jobs);
-      const requested = requestedJobIdPending.value
-        ? ordered.find(job => jobIdOf(job) === requestedJobIdPending.value) : null;
-      requestedJobIdPending.value = null;
-      const retained = !requested && userSelectedJob && selectedJobId
-        ? ordered.find(job => jobIdOf(job) === selectedJobId) : null;
-      selectedJob = requested || retained || ordered.find(isComplete) || ordered[0] || null;
-      selectedJobId = selectedJob ? jobIdOf(selectedJob) : null;
-      userSelectedJob = Boolean(requested || retained);
-      renderJobs();
-      if (selectedJob) {
-        const hasCached = resultCache.has(jobIdOf(selectedJob)) && isComplete(selectedJob);
-        if (!hasCached || isActive(selectedJob)) await loadJob(selectedJob, isActive(selectedJob), false);
+      const ordered = sortedPreviousFilters(previousFilters);
+      const requested = requestedPreviousFilterIdPending.value
+        ? ordered.find(previousFilter => previousFilterIdOf(previousFilter) === requestedPreviousFilterIdPending.value) : null;
+      requestedPreviousFilterIdPending.value = null;
+      const retained = !requested && userSelectedPreviousFilter && selectedPreviousFilterId
+        ? ordered.find(previousFilter => previousFilterIdOf(previousFilter) === selectedPreviousFilterId) : null;
+      selectedPreviousFilter = requested || retained || ordered.find(isComplete) || ordered[0] || null;
+      selectedPreviousFilterId = selectedPreviousFilter ? previousFilterIdOf(selectedPreviousFilter) : null;
+      userSelectedPreviousFilter = Boolean(requested || retained);
+      renderPreviousFilters();
+      if (selectedPreviousFilter) {
+        const hasCached = resultCache.has(previousFilterIdOf(selectedPreviousFilter)) && isComplete(selectedPreviousFilter);
+        if (!hasCached || isActive(selectedPreviousFilter)) await loadPreviousFilter(selectedPreviousFilter, isActive(selectedPreviousFilter), false);
         else {
-          const id = jobIdOf(selectedJob);
+          const id = previousFilterIdOf(selectedPreviousFilter);
           const cached = resultCache.get(id);
-          if (currentResultsJobId !== id || currentResults !== cached) renderResult(cached, selectedJob);
+          if (currentResultsPreviousFilterId !== id || currentResults !== cached) renderResult(cached, selectedPreviousFilter);
         }
       } else {
         currentResults = null;
-        currentResultsJobId = null;
-        renderNoResult('Run a scoring job or select a saved job to see its results.');
+        currentResultsPreviousFilterId = null;
+        renderNoResult('Calculate a scoring or choose Previous Filters to see their results.');
       }
       calculationMatchRefresh = true;
       updateSelection();
-      const anyActive = jobs.some(isActive);
-      if (anyActive && !timer) timer = window.setInterval(refreshJobs, 3500);
+      const anyActive = previousFilters.some(isActive);
+      if (anyActive && !timer) timer = window.setInterval(refreshPreviousFilters, 3500);
       if (!anyActive && timer) { window.clearInterval(timer); timer = null; }
     } catch (error) {
-      jobList.innerHTML = '';
+      previousFilterList.innerHTML = '';
       const empty = document.createElement('div');
       empty.className = 'scoring-empty';
-      empty.textContent = error.message || 'Scoring jobs could not be loaded.';
-      jobList.append(empty);
-      syncJobLists();
-      setMessage(error.message || 'Scoring jobs could not be loaded.', 'error');
+      empty.textContent = error.message || 'The Previous Filters could not be loaded.';
+      previousFilterList.append(empty);
+      syncPreviousFilterLists();
+      setMessage(error.message || 'The Previous Filters could not be loaded.', 'error');
     } finally {
       refreshInFlight = false;
       if (scoringViewScrollRestorePending) restoreScoringViewScroll();
@@ -6659,43 +6735,43 @@
     }
   }
 
-  async function deleteJob(id) {
-    const job = jobs.find(record => jobIdOf(record) === id);
-    if (!job || deletingJobIds.has(id)) return;
-    const copy = `Delete scoring job ${id} and its saved results?${isActive(job) ? ' Its pending result will be discarded.' : ''}`;
+  async function deletePreviousFilter(id) {
+    const previousFilter = previousFilters.find(record => previousFilterIdOf(record) === id);
+    if (!previousFilter || deletingPreviousFilterIds.has(id)) return;
+    const copy = `Delete these filters and their saved result?${isActive(previousFilter) ? ' Its pending result will be discarded.' : ''} The CDRs and the Scoring History stay.`;
     const accepted = typeof showConfirmDialog === 'function'
-      ? await showConfirmDialog(copy, {title: 'Delete scoring job', confirmLabel: 'Delete'})
+      ? await showConfirmDialog(copy, {title: 'Delete Previous Filter', confirmLabel: 'Delete'})
       : window.confirm(copy);
     if (!accepted) return;
-    deletingJobIds.add(id);
-    renderJobs();
+    deletingPreviousFilterIds.add(id);
+    renderPreviousFilters();
     try {
-      await requestJson(`${jobsUrl}/${encodeURIComponent(id)}`, {method: 'DELETE'});
-      deletedJobIds.add(id);
+      await requestJson(`${previousFiltersUrl}/${encodeURIComponent(id)}`, {method: 'DELETE'});
+      deletedPreviousFilterIds.add(id);
       resultCache.delete(id);
-      jobs = jobs.filter(record => jobIdOf(record) !== id);
+      previousFilters = previousFilters.filter(record => previousFilterIdOf(record) !== id);
       calculationMatchKey = '';
       updateSelection();
-      if (selectedJobId === id) {
-        selectedJobId = null;
-        selectedJob = null;
+      if (selectedPreviousFilterId === id) {
+        selectedPreviousFilterId = null;
+        selectedPreviousFilter = null;
         currentResults = null;
-        currentResultsJobId = null;
-        userSelectedJob = false;
-        renderNoResult('Run a scoring job or select a saved job to see its results.');
+        currentResultsPreviousFilterId = null;
+        userSelectedPreviousFilter = false;
+        renderNoResult('Calculate a scoring or choose Previous Filters to see their results.');
       }
-      renderJobs();
-      setMessage('Scoring job and saved results deleted.', 'success');
-      await refreshJobs();
+      renderPreviousFilters();
+      setMessage('Previous Filter and its saved result deleted.', 'success');
+      await refreshPreviousFilters();
     } catch (error) {
-      setMessage(error.message || 'The scoring job could not be deleted.', 'error');
+      setMessage(error.message || 'The Previous Filter could not be deleted.', 'error');
     } finally {
-      deletingJobIds.delete(id);
-      renderJobs();
+      deletingPreviousFilterIds.delete(id);
+      renderPreviousFilters();
     }
   }
 
-  async function createJob(force) {
+  async function createPreviousFilter(force) {
     const datasetIds = selectedDatasetIds();
     if (!datasetIds.length) {
       setMessage('Select one or more CDR datasets first.', 'error');
@@ -6728,34 +6804,34 @@
     setMessage(force ? 'Submitting a fresh scoring calculation…' : 'Submitting scoring calculation…');
     try {
       await persistCalculationSelection();
-      const body = await requestJson(jobsUrl, {method: 'POST', body: JSON.stringify(payload)});
-      const job = body.job || body;
-      const id = jobIdOf(job);
-      if (!id) throw new Error('The scoring service did not return a job identifier.');
-      if (force) recalculatingJobs.add(String(id)); else recalculatingJobs.delete(String(id));
-      if (isActive(job)) {
+      const body = await requestJson(previousFiltersUrl, {method: 'POST', body: JSON.stringify(payload)});
+      const previousFilter = body.previous_filter || body;
+      const id = previousFilterIdOf(previousFilter);
+      if (!id) throw new Error('The scoring service did not return the Previous Filter.');
+      if (force) recalculatingPreviousFilters.add(String(id)); else recalculatingPreviousFilters.delete(String(id));
+      if (isActive(previousFilter)) {
         selectionStatus = {key: JSON.stringify(calculationPayload()), kind: 'busy',
           text: `${force ? 'Recalculating' : 'Calculating'} the scoring of the selected CDRs and filters…`};
       }
-      selectedJobId = id;
-      selectedJob = job;
-      userSelectedJob = true;
+      selectedPreviousFilterId = id;
+      selectedPreviousFilter = previousFilter;
+      userSelectedPreviousFilter = true;
       if (force) resultCache.delete(id);
       const cached = Boolean(body.cached);
       if (cached && (body.scoring || body.gap)) {
-        const result = {job, scoring: body.scoring || [], gap: body.gap || [], warnings: body.warnings || []};
+        const result = {previous_filter: previousFilter, scoring: body.scoring || [], gap: body.gap || [], warnings: body.warnings || []};
         resultCache.set(id, result);
       }
       if (cached) setMessage('Loaded the previously calculated result.', 'success');
-      else if (isActive(job)) setMessage(selectionStatus.text, 'busy');
-      else setMessage('Scoring job added to the background queue.', 'success');
-      await refreshJobs();
-      if (isActive(selectedJob)) {
-        renderJobs();
-        if (!timer) timer = window.setInterval(refreshJobs, 3500);
+      else if (isActive(previousFilter)) setMessage(selectionStatus.text, 'busy');
+      else setMessage('Scoring calculation added to the background queue.', 'success');
+      await refreshPreviousFilters();
+      if (isActive(selectedPreviousFilter)) {
+        renderPreviousFilters();
+        if (!timer) timer = window.setInterval(refreshPreviousFilters, 3500);
       }
     } catch (error) {
-      setMessage(error.message || 'The scoring job could not be started.', 'error');
+      setMessage(error.message || 'The scoring calculation could not be started.', 'error');
     } finally {
       submittingCalculation = false;
       calculationMatchKey = '';
@@ -6815,31 +6891,31 @@
     }
     if (event.target === environmentSelect && currentResults) {
       selectedEnvironment = environmentSelect.value;
-      renderResult(currentResults, selectedJob);
+      renderResult(currentResults, selectedPreviousFilter);
       return;
     }
     if (event.target.matches?.('[data-insight-select]') && currentResults) {
       insightSelections.set(event.target.dataset.insightSelect, event.target.value);
       persistScoringViewState();
-      renderResult(currentResults, selectedJob);
+      renderResult(currentResults, selectedPreviousFilter);
       return;
     }
     if (event.target === scoringKindSelect && currentResults) {
-      renderResult(currentResults, selectedJob);
+      renderResult(currentResults, selectedPreviousFilter);
       return;
     }
     if (event.target === showGapValuesToggle) {
       syncGapValueControls();
-      if (currentResults) renderResult(currentResults, selectedJob, ['scoring']);
+      if (currentResults) renderResult(currentResults, selectedPreviousFilter, ['scoring']);
       return;
     }
     if (event.target === showKpiValuesToggle && currentResults) {
-      renderResult(currentResults, selectedJob);
+      renderResult(currentResults, selectedPreviousFilter);
       return;
     }
     if (event.target === gapLayoutSelect && currentResults) {
-      renderResult(currentResults, selectedJob);
-      setExportLinks(currentResultsJobId, true);
+      renderResult(currentResults, selectedPreviousFilter);
+      setExportLinks(currentResultsPreviousFilterId, true);
       return;
     }
     const gapSummaryOperator = event.target.closest('[data-gap-summary-operator]');
@@ -6851,7 +6927,7 @@
         insightSelections.set('gap-insight-operators-offered', JSON.stringify('*'));
       }
       persistScoringViewState();
-      renderResult(currentResults, selectedJob);
+      renderResult(currentResults, selectedPreviousFilter);
       return;
     }
     const hierarchyGapOperator = event.target.closest('[data-hierarchy-gap-operator]');
@@ -6863,7 +6939,7 @@
         insightSelections.set('gap-insight-operators-offered', JSON.stringify('*'));
       }
       persistScoringViewState();
-      renderResult(currentResults, selectedJob);
+      renderResult(currentResults, selectedPreviousFilter);
       return;
     }
     const select = event.target.closest('[data-comparison-context]');
@@ -6872,7 +6948,7 @@
     if (select.dataset.contextSource === 'chart') {
       const identity = select.selectedOptions[0]?.dataset.contextIdentity;
       if (identity) contextSelections.set(kind, identity);
-      renderResult(currentResults, selectedJob);
+      renderResult(currentResults, selectedPreviousFilter);
       return;
     }
     const activeResults = activeScoringPayload(currentResults);
@@ -6886,53 +6962,97 @@
     const selected = Array.isArray(tables) ? tables[Number(select.value)] : null;
     if (!selected) return;
     contextSelections.set(kind, comparisonIdentity(selected, kind));
-    renderResult(currentResults, selectedJob);
+    renderResult(currentResults, selectedPreviousFilter);
   });
   baselineInput.addEventListener('input', updateSelection);
-  calculateButton.addEventListener('click', () => createJob(false));
-  recalculateButton.addEventListener('click', () => createJob(true));
+  calculateButton.addEventListener('click', () => createPreviousFilter(false));
+  recalculateButton.addEventListener('click', () => createPreviousFilter(true));
   document.addEventListener('click', event => {
-    if (!jobSelector.contains(event.target)) jobSelector.open = false;
+    if (!previousFilterSelector.contains(event.target)) previousFilterSelector.open = false;
   });
-  jobSelector.addEventListener('keydown', event => {
+  previousFilterSelector.addEventListener('keydown', event => {
     if (event.key !== 'Escape') return;
-    jobSelector.open = false;
-    jobSelector.querySelector('summary').focus();
+    previousFilterSelector.open = false;
+    previousFilterSelector.querySelector('summary').focus();
   });
-  for (const list of jobLists) list.addEventListener('click', async event => {
-    const remove = event.target.closest('[data-delete-job-id]');
+  // The name, pin and Use newer CDRs buttons of a Previous Filter, in the lists and in the selected card of the
+  // Scoring Results dropdown. Returns whether the click was one of them.
+  async function previousFilterAction(event) {
+    const pin = event.target.closest('[data-previous-filter-pin]');
+    const rename = event.target.closest('[data-previous-filter-rename]');
+    const useNewer = event.target.closest('[data-previous-filter-newer]');
+    if (pin || rename || useNewer) {
+      event.preventDefault();
+      const id = pin?.dataset.previousFilterPin || rename?.dataset.previousFilterRename || useNewer?.dataset.previousFilterNewer;
+      const previousFilter = previousFilters.find(record => previousFilterIdOf(record) === id);
+      if (!previousFilter) return true;
+      if (useNewer) {
+        // The same filters with the CDRs that replace the older ones, calculated as a new selection.
+        const replacements = new Map((previousFilter.newer_cdrs || []).map(item => [String(item.id), String(item.replaced_by)]));
+        restoreCalculationSelectionFromPreviousFilter({
+          ...previousFilter,
+          dataset_ids: [...new Set((previousFilter.dataset_ids || []).map(value => replacements.get(String(value)) || String(value)))],
+        });
+        previousFilterSelector.open = false;
+        await createPreviousFilter(false);
+        return true;
+      }
+      const changes = pin ? {pinned: !previousFilter.pinned} : (() => {
+        const name = window.prompt('Name of these filters (leave it empty to show their filters only):', previousFilter.name || '');
+        return name === null ? null : {name};
+      })();
+      if (!changes) return true;
+      try {
+        await requestJson(`${previousFiltersUrl}/${encodeURIComponent(id)}`, {method: 'PATCH', body: JSON.stringify(changes)});
+        await refreshPreviousFilters();
+      } catch (error) {
+        setMessage(error.message || 'The Previous Filter could not be updated.', 'error');
+      }
+      return true;
+    }
+    return false;
+  }
+
+  for (const list of previousFilterLists) list.addEventListener('click', async event => {
+    if (await previousFilterAction(event)) return;
+    const remove = event.target.closest('[data-delete-previous-filter-id]');
     if (remove) {
-      deleteJob(remove.dataset.deleteJobId);
+      deletePreviousFilter(remove.dataset.deletePreviousFilterId);
       return;
     }
-    const button = event.target.closest('[data-job-id]');
+    const button = event.target.closest('[data-previous-filter-id]');
     if (!button) return;
-    const job = jobs.find(record => jobIdOf(record) === button.dataset.jobId);
-    if (!job) return;
-    userSelectedJob = true;
-    selectedJobId = jobIdOf(job);
-    selectedJob = job;
-    restoreCalculationSelectionFromJob(job);
-    const fromDropdown = jobSelector.contains(button);
-    jobSelector.open = false;
-    if (fromDropdown) jobSelector.querySelector('summary').focus();
+    const previousFilter = previousFilters.find(record => previousFilterIdOf(record) === button.dataset.previousFilterId);
+    if (!previousFilter) return;
+    userSelectedPreviousFilter = true;
+    selectedPreviousFilterId = previousFilterIdOf(previousFilter);
+    selectedPreviousFilter = previousFilter;
+    restoreCalculationSelectionFromPreviousFilter(previousFilter);
+    const fromDropdown = previousFilterSelector.contains(button);
+    previousFilterSelector.open = false;
+    if (fromDropdown) previousFilterSelector.querySelector('summary').focus();
     persistScoringViewState();
-    await loadJob(job, true);
-    if (!fromDropdown && selectedJobId === jobIdOf(job)) {
+    await loadPreviousFilter(previousFilter, true);
+    if (!fromDropdown && selectedPreviousFilterId === previousFilterIdOf(previousFilter)) {
       root.querySelector('.scoring-results-panel')?.scrollIntoView({behavior: 'smooth', block: 'start'});
     }
   });
   root.addEventListener('click', event => {
-    const cdrButton = event.target.closest('[data-job-cdrs]');
+    // In the selected card of the dropdown, the buttons do not open it.
+    if (event.target.closest('summary') && event.target.closest('[data-previous-filter-pin], [data-previous-filter-rename], [data-previous-filter-newer]')) {
+      previousFilterAction(event);
+      return;
+    }
+    const cdrButton = event.target.closest('[data-previous-filter-cdrs]');
     if (cdrButton) {
       event.preventDefault();
-      const job = jobs.find(record => jobIdOf(record) === cdrButton.dataset.jobCdrs);
-      if (!job) return;
+      const previousFilter = previousFilters.find(record => previousFilterIdOf(record) === cdrButton.dataset.previousFilterCdrs);
+      if (!previousFilter) return;
       const copy = document.getElementById('info-copy');
       const previousWhiteSpace = copy?.style.whiteSpace || '';
       if (copy) copy.style.whiteSpace = 'pre-line';
-      showInfoDialog(jobCdrNames(job).join('\n') || jobCdrSummary(job), {
-        title: `Scoring job ${jobIdOf(job)} — CDRs`,
+      showInfoDialog(previousFilterCdrNames(previousFilter).join('\n') || previousFilterCdrSummary(previousFilter), {
+        title: `Previous Filter ${previousFilterIdOf(previousFilter)} — CDRs`,
         onClose: () => {
           if (copy) copy.style.whiteSpace = previousWhiteSpace;
           cdrButton.focus();
@@ -6957,7 +7077,7 @@
         gapComparisonSelections.set(key, `operator:${chosen[0]}`);
         persistScoringViewState();
       }
-      renderResult(currentResults, selectedJob, ['gap']);
+      renderResult(currentResults, selectedPreviousFilter, ['gap']);
       return;
     }
     if (event.target.closest('[data-generate-report]')) {
@@ -6988,7 +7108,7 @@
     }
     for (const pane of root.querySelectorAll('[data-result-pane]')) pane.hidden = pane.dataset.resultPane !== name;
     persistScoringViewState();
-    if (currentResults) renderResult(currentResults, selectedJob, [name]);
+    if (currentResults) renderResult(currentResults, selectedPreviousFilter, [name]);
   });
   expandedChartClose?.addEventListener('click', closeExpandedChart);
   // The Scoring Results entries of the Scoring tab menu (#scoring-results-charts, -tables or -gap) open that
@@ -7056,5 +7176,5 @@
   syncResultTableControls();
   applyNrFilter(false);
   loadCalculationSelection();
-  refreshJobs();
+  refreshPreviousFilters();
 })();

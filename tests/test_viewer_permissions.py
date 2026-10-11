@@ -45,7 +45,7 @@ def _ready_cdr(tmp_path):
     ('put', '/api/workspace/calculated-dimensions', {'json': {'dimensions': []}}),
     ('post', '/api/query-builder/save', {'json': {'name': 'q', 'query': 'SELECT 1'}}),
     ('delete', '/api/query-builder/saved/1', {}),
-    ('delete', '/api/scoring/jobs/1', {}),
+    ('delete', '/api/scoring/previous-filters/1', {}),
     ('put', '/api/ppt-dashboards/d1', {'json': {'name': 'D'}}),
     ('delete', '/api/ppt-dashboards/d1', {}),
     ('patch', '/api/ppt-dashboards/d1/name', {'json': {'name': 'D'}}),
@@ -69,7 +69,7 @@ def test_user_viewer_still_explores_and_generates_jobs(client, tmp_path):
     page = client.get('/ppt-dashboards')
     assert page.status_code == 200 and 'data-ds-manage-only' in page.text
     assert 'data-authenticated-role="user-viewer"' in page.text
-    assert client.post('/api/scoring/jobs/match', json={}).status_code != 403
+    assert client.post('/api/scoring/previous-filters/match', json={}).status_code != 403
     # Editors keep changing the workspace.
     _viewer(client, 'editor', 'user-editor')
     assert client.post('/workspace/stop-datasets', follow_redirects=False).status_code != 403

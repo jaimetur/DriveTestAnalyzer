@@ -503,7 +503,7 @@ A methodology defines the complete scoring setup: its title, environments, KPI d
 | --- | --- |
 | Create / Duplicate Methodology | Start a new definition or use an existing methodology as the basis for a revision. |
 | Rename / edit title | Change the methodology identity or descriptive title. |
-| Set Default | Choose the saved methodology initially offered for future scoring jobs. |
+| Set Default | Choose the saved methodology initially offered for future scoring calculations. |
 | Save Methodology | Validate and persist the complete methodology, including every subpanel. |
 | Export Methodology (JSON) | Download the selected methodology only. |
 | Import Methodology (JSON) | Import a portable methodology document. |

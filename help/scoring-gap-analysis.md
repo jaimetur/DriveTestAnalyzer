@@ -2,10 +2,10 @@
 
 Calculate KPI scores from processed Data, Voice and Speech CDRs, then compare each operator with a reference operator. Results belong to the workspace and do not require a Dashboard or Report Template.
 
-Each job calculates the NetCheck **Best Network** scoring, which rates every KPI of the methodology. When the methodology has Most Reliable points, the job also shows the **Most Reliable** scoring, which rates a subset of KPIs with its own maximum points, with the same CDRs, filters, aggregation and GAP reference (see [Most Reliable Network scoring](#most-reliable-network-scoring)).
+Each calculation gives the NetCheck **Best Network** scoring, which rates every KPI of the methodology. When the methodology has Most Reliable points, it also shows the **Most Reliable** scoring, which rates a subset of KPIs with its own maximum points, with the same CDRs, filters, aggregation and GAP reference (see [Most Reliable Network scoring](#most-reliable-network-scoring)).
 
 > [!NOTE]
-> **Start with a saved methodology.** It defines the environments, KPI formulas, thresholds and maximum points. The selected job keeps a snapshot of these rules.
+> **Start with a saved methodology.** It defines the environments, KPI formulas, thresholds and maximum points. Each result keeps a snapshot of the rules it was calculated with.
 
 ## Choose your task
 
@@ -30,7 +30,7 @@ Each job calculates the NetCheck **Best Network** scoring, which rates every KPI
 1. Open the correct workspace and finish processing the required CDRs.
 2. If no methodology is configured, import one under **Workspace Config → Scoring & GAP Analysis Setup**.
 3. Open **Scoring & GAP Analysis** and expand **Select CDRs, filters, Split by & GAP reference**.
-4. Choose **NSA** or **SA** above **CDR datasets**. A job cannot mix both modes.
+4. Choose **NSA** or **SA** above **CDR datasets**. A calculation cannot mix both modes.
 
 > [!IMPORTANT]
 > Include at least one ready **Data**, **Voice** and **Speech** CDR for every campaign included in the calculation. Complete CDR selection does not guarantee complete KPI measurements: inspect Calculation notes after processing.
@@ -57,38 +57,46 @@ On first use, the module selects the latest ready CDR of each type for the chose
 4. In **GAP reference operator**, select the operator to compare against. The initial reference is **EE**.
 5. Choose the saved **Scoring Methodology** beside Calculate and Recalculate.
 
-The aggregation hierarchy determines the order of the filter controls and of the Split by levels and headers. It is an application setting shared by every workspace and methodology. **Aggregation hierarchy**, at the right of the Split by levels, opens a dialog to reorder it; editors save it for everyone. The initial order is **Operator → Vendor → Region → Cluster → City → Campaign**, and calculated jobs keep the order they were calculated with.
+The aggregation hierarchy determines the order of the filter controls and of the Split by levels and headers. It is an application setting shared by every workspace and methodology. **Aggregation hierarchy**, at the right of the Split by levels, opens a dialog to reorder it; editors save it for everyone. The initial order is **Operator → Vendor → Region → Cluster → City → Campaign**, and saved results keep the order they were calculated with.
 
 ### 4. Calculate or recalculate
 
+Every selection you calculate is kept as a **Previous Filter**: its CDRs, NR Mode, filters, Split by levels, GAP reference, methodology and National & area summary. Calculating the same selection again reuses it instead of adding another one.
+
 | Situation | Action |
 | --- | --- |
-| No matching job exists | **Calculate Scoring** creates a job |
-| A matching job already exists | **Calculate Scoring** is disabled; **Recalculate** updates that job |
-| An identical job is queued or running | Both actions are disabled until it finishes, and the yellow notice says *Calculating* (or *Recalculating*) *the scoring of the selected CDRs and filters…* until then; while the selected job runs, the results show an animated **Calculating Scoring…** bar, in the colour of the result tab, with its progress and step, and the floating background tasks card shows the calculation with its elapsed time |
+| The selection was never calculated | **Calculate Scoring** calculates it and saves it in **Previous Filters** |
+| The selection was used before | **Calculate Scoring** opens its Previous Filter, calculated again first when its CDRs, methodology or Operator Maps changed since its result was saved; **Recalculate** calculates it again anyway |
+| Its calculation is queued or running | Both actions are disabled until it finishes, and the yellow notice says *Calculating* (or *Recalculating*) *the scoring of the selected CDRs and filters…* until then; while it runs, the results show an animated **Calculating Scoring…** bar, in the colour of the result tab, with its progress and step, and the floating background tasks card shows the calculation with its elapsed time |
 
-Matching checks the CDR content, NR Mode, filters, Split by levels, GAP reference and saved methodology. A change to these inputs can produce a different job, even when its visible title looks similar.
-
-Recalculation keeps the job identifier, replaces its results and updates the displayed date/time to the recalculation submission time. Job lists show the latest calculations first.
+A selection is the same when it has the same CDRs, NR Mode, filters, Split by levels, GAP reference, methodology and National & area summary, whatever its CDRs or methodology hold today. Its result, instead, is identified by what it was calculated with: reprocessing a CDR, editing the methodology or changing the Operator Maps makes it out of date.
 
 > [!TIP]
-> Read the **yellow message below the methodology selector** when an action is unavailable. It explains duplicate jobs, incomplete selections and other calculation conditions.
+> Read the **yellow message below the methodology selector** when an action is unavailable. It tells whether the selection was used before and explains incomplete selections and other calculation conditions.
 
-### 5. Open a saved job
+### 5. Reuse Previous Filters
 
-Select a job in the **Scoring Results** dropdown or the **Scoring Jobs** history. The module loads its saved results, with an animated **Loading Scoring Results…** bar meanwhile (the results of completed jobs are kept ready on the server, so opening a job again is quick), and restores its calculation inputs so you can relaunch it.
+Choose a Previous Filter in the **Scoring Results** dropdown or in the **Previous Filters** panel. The module restores its selection in the Calculation panel and loads its saved result, with an animated **Loading Scoring Results…** bar meanwhile (the results are kept ready on the server, so opening them again is quick). A saved result that is out of date (its CDRs were reprocessed, or the methodology or the Operator Maps changed) is calculated again on its own, usually in a moment from the [Scoring History](#scoring-history). When its CDRs or its methodology no longer exist, the saved result is shown as it was and the yellow notice says why.
 
-Job cards show filters, ordered Split by levels, the **Calculation time** (or the time **Elapsed** while the job runs), **GAP Reference**, the **National & area summary** (its time split, breakdown and separate cities) when the job includes it, and **Scoring Methodology**. The job name lists the date, NR Mode, Regions, **Clusters** (in their own colour), Cities, Operators, Vendors and Campaigns, and the generated PowerPoint is named `yyyymmdd_hhmmss - Scoring & GAP Analysis - <NR Mode> - <Regions> - <Clusters> - <Cities> - <Operators> - <Vendors> - <Campaigns>.pptx`. A complete vendor selection appears as **All Vendors**. Hover or click the **CDRs** button to inspect the source files.
+The pinned Previous Filters come first, then the latest used. Each card shows:
 
-Deleting a job removes its saved results after confirmation; it does not delete its source CDRs. Running work stops at a processing checkpoint or discards its pending result.
+- its **name**, when it has one (**✎** names or renames it), and its filters: the date it was last used, NR Mode, Regions, **Clusters** (in their own colour), Cities, Operators, Vendors and Campaigns;
+- the ordered **Split by** levels, the **GAP Reference**, the **National & area summary** (its time split, breakdown and separate cities) when it has one, the **Scoring Methodology**, the **Calculation time** (or the time **Elapsed** while it runs) and how many times it was **Used**;
+- **Newer CDRs available** when a Final CDR of the same campaign (or a newer cumulative Weekly or Daily CDR) replaces one of its CDRs: **Use newer CDRs** selects the same filters with the newer CDRs and calculates them;
+- **Waiting for its CDRs** for a Previous Filter imported from another workspace whose CDRs are not processed here yet (it finds them by file, whatever their name);
+- the **CDRs** button (hover or click it to inspect the source files), **☆** to pin it at the top of the list and **×** to delete it.
+
+The generated PowerPoint is named `yyyymmdd_hhmmss - Scoring & GAP Analysis - <NR Mode> - <Regions> - <Clusters> - <Cities> - <Operators> - <Vendors> - <Campaigns>.pptx`. A complete vendor selection appears as **All Vendors**.
+
+Deleting a Previous Filter removes it and its saved result after confirmation; its CDRs and the Scoring History stay. A running calculation stops at a processing checkpoint or discards its pending result. Viewers can open Previous Filters but not name, pin or delete them.
 
 ### What is remembered?
 
 - **Shared across workspace users and browsers:** CDRs, NR Mode, methodology, filters, Split by levels, National & area summary and GAP reference. These calculation selections save automatically.
 - **Within the browser session:** result tab, environment, display controls, comparison selection and scroll position.
-- **Inside each job:** source metadata, rules, grouping, results and warnings captured for that calculation.
+- **In each Previous Filter:** its selection, name, pin and use, and the source metadata, rules, grouping, result and warnings of its last calculation.
 
-Automatic job refreshes do not overwrite edits to the calculation controls. Removed or unready inputs produce a notice when a saved selection is restored.
+Automatic refreshes of the Previous Filters do not overwrite edits to the calculation controls. Removed or unready inputs produce a notice when a saved selection is restored.
 
 ## Filters and Split by
 
@@ -132,7 +140,7 @@ Filter choices use cached CDR catalogues. If an older CDR lacks expected choices
 
 ### Choose a scoring
 
-The **Scoring** selector, beside Environment, switches the tables, charts, GAP analysis, notes and CSV exports between **Best Network** and **Most Reliable**. It appears when the job's methodology has Most Reliable points; otherwise the job shows only Best Network. The browser remembers the choice for the session.
+The **Scoring** selector, beside Environment, switches the tables, charts, GAP analysis, notes and CSV exports between **Best Network** and **Most Reliable**. It appears when the methodology of the result has Most Reliable points; otherwise the result shows only Best Network. The browser remembers the choice for the session.
 
 ### Choose an environment
 
@@ -149,7 +157,7 @@ For the initial NetCheck 2026 allocation:
 | Walk | 0 initial points |
 | All Environments | 1,000 points |
 
-Custom methodologies can change these allocations. When the combined result has incomplete coverage, opening a job prefers an available environment with complete coverage. You can still select All Environments.
+Custom methodologies can change these allocations. When the combined result has incomplete coverage, opening a result prefers an available environment with complete coverage. You can still select All Environments.
 
 ### Scoring Tables
 
@@ -226,7 +234,7 @@ Click a row of the ranking to show its areas alone on the map, which centres and
 | **per City** | The **map areas** of the countries of the tests, coloured from yellow to red as chosen in **Colour areas by**: the [Map Areas](workspace-config.md#map-areas) of the workspace or the ones shipped with the application for its main markets (for example the UK **ITL3 areas**, the NUTS3 level, the provinces of Spain or the counties of the USA), and the whole country for any other; hover an area for its points and its cities and routes | The cities (`City`, or `G_Level_4`) and Connecting Roads routes (for example *Sheffield to Leeds*) that lose most, with their points and share |
 | **per Cluster / Region** | The polygons of the workspace's **Clusters** or **Regions** dataset applied to the CDRs, coloured the same way | The clusters or regions that lose most |
 
-How the points are placed: each KPI loses its maximum points minus the points scored, and the loss is shared among the tests that cause it. For ratio KPIs every test that misses the KPI (a failed call, a POLQA below 1.6, a transfer below its threshold…) weighs one; for averages, medians and P90 each test weighs what it misses the KPI's High threshold by; for packet loss, the packets lost. Each test belongs to the City of its CDR row (a Connecting Roads route is a City value such as *Manchester to Sheffield*, with every test of the drive between both cities) and to the map area of its country that contains its coordinates, and the job keeps the points each city or route loses in each area. A country without Map Areas is coloured as one area, the whole country, and a note above the maps names it. The map uses the same points as the selected scoring (Best Network or Most Reliable); calculate the jobs again after adding Map Areas, and jobs calculated before this version only offer the first way of colouring.
+How the points are placed: each KPI loses its maximum points minus the points scored, and the loss is shared among the tests that cause it. For ratio KPIs every test that misses the KPI (a failed call, a POLQA below 1.6, a transfer below its threshold…) weighs one; for averages, medians and P90 each test weighs what it misses the KPI's High threshold by; for packet loss, the packets lost. Each test belongs to the City of its CDR row (a Connecting Roads route is a City value such as *Manchester to Sheffield*, with every test of the drive between both cities) and to the map area of its country that contains its coordinates, and the result keeps the points each city or route loses in each area. A country without Map Areas is coloured as one area, the whole country, and a note above the maps names it. The map uses the same points as the selected scoring (Best Network or Most Reliable); calculate the Previous Filters again after adding Map Areas; results calculated before this version only offer the first way of colouring.
 
 The sources and licences of the areas shipped with the application, such as the ITL3 boundaries of the Office for National Statistics, are listed in `assets/map-areas/README.md`. To map your own clusters, import a Clusters GeoJSON in Workspace Management and apply it to the CDRs before calculating: the job keeps a simplified copy of its polygons.
 
@@ -238,7 +246,7 @@ The sources and licences of the areas shipped with the application, such as the 
 | **Best Network / Most Reliable Network Scoring per Category** | Compare category contributions within each operator/context stack |
 | **Best Network / Most Reliable Network Scoring per Category (Breakdown)** | Compare operators directly within each category |
 | **Maximum score allocation donuts** | Inspect configured environment, service and category maxima and shares |
-| **National & Areas** | When the job includes the National & area summary: the National scoring, the separate cities and each area of the breakdown with each operator's score in the latest campaign or period, its change from the previous one and its GAP to the reference, and a trend chart per area on the same scale, as tall as the table beside them (labels tilted when they do not fit), titled in one colour for National, another for the separate cities and another for the breakdown; a double click on a chart or on the table enlarges it alone (a single separate city next to National, several after the breakdown). An area not measured in the latest campaign or period is listed without a score, and its chart shows the earlier ones |
+| **National & Areas** | When the selection includes the National & area summary: the National scoring, the separate cities and each area of the breakdown with each operator's score in the latest campaign or period, its change from the previous one and its GAP to the reference, and a trend chart per area on the same scale, as tall as the table beside them (labels tilted when they do not fit), titled in one colour for National, another for the separate cities and another for the breakdown; a double click on a chart or on the table enlarges it alone (a single separate city next to National, several after the breakdown). An area not measured in the latest campaign or period is listed without a score, and its chart shows the earlier ones |
 | **Scoring per City / Cluster / Region** | When City, Cluster or Region is a Split by level with 2 to 12 values: one card per value with each operator's Voice and Data points and its total, labelled with the operator names of the mapping table (hover a bar for its points) |
 | **Scoring Trend** | When Campaign is a Split by level with more than four campaigns: each operator's total points per campaign, one line per operator |
 
@@ -257,7 +265,7 @@ The pale yellow **Calculation notes** card lists affected combinations, missing 
 > [!WARNING]
 > **Missing points are not redistributed.** An incomplete result keeps the original weights and configured benchmark maximum. Available contributions are not scaled up to a complete score.
 
-**Environments without results in any series are scaled.** When the filters leave an environment without results for every operator and series of the calculation (for example, City = London only covers Drive - City), the Combined scores use the environments with results and scale them to the full maximum scoring: an environment without results gets 0 points and the others share its points in proportion, the same for every operator, so GAPs stay comparable. An orange **Scaled results** card explains which environments were scaled and the factor applied; scaled values are not marked as incomplete. The *Maximum score per environment* donuts show the configured points of every environment struck through beside the points finally allocated, and the PowerPoint and Word exports show the same notice in orange on their first page. When an environment has results in any series it is never scaled, and the series without it keep their partial score and their notes. Saved jobs are scaled when they are opened, without calculating them again.
+**Environments without results in any series are scaled.** When the filters leave an environment without results for every operator and series of the calculation (for example, City = London only covers Drive - City), the Combined scores use the environments with results and scale them to the full maximum scoring: an environment without results gets 0 points and the others share its points in proportion, the same for every operator, so GAPs stay comparable. An orange **Scaled results** card explains which environments were scaled and the factor applied; scaled values are not marked as incomplete. The *Maximum score per environment* donuts show the configured points of every environment struck through beside the points finally allocated, and the PowerPoint and Word exports show the same notice in orange on their first page. When an environment has results in any series it is never scaled, and the series without it keep their partial score and their notes. Saved results are scaled when they are opened, without calculating them again.
 
 Example: **VF_UK / Samsung / Q1: maximum 583.2645 of 650 points**, with the unavailable KPI names listed below. Another campaign can have a different achievable maximum because different KPIs are missing.
 
@@ -267,7 +275,7 @@ Example: **VF_UK / Samsung / Q1: maximum 583.2645 of 650 points**, with the unav
 - All Environments GAP uses valid environment contributions common to both sides. A subset is partial; no common contribution is unavailable.
 - Tooltips explain partial GAP coverage; PowerPoint slide notes include the coverage details.
 
-All Environments raw KPI values are calculated from pooled source rows, not averaged from environment KPI values. Older jobs without these saved measurements show N/A until recalculated. Weighted scoring points still sum the separately calculated environment contributions.
+All Environments raw KPI values are calculated from pooled source rows, not averaged from environment KPI values. Older results without these saved measurements show N/A until recalculated. Weighted scoring points still sum the separately calculated environment contributions.
 
 ## Methodology
 
@@ -291,9 +299,9 @@ The toolbar and the sibling panels offer the same **Save Methodology** action:
 > [!NOTE]
 > **Save Methodology commits all pending settings together.** The buttons are convenient entry points to one complete save, not separate panel-specific saves. The shared status above the panels indicates saved or pending changes.
 
-Selecting a methodology does not change the workspace default. **Set Default** chooses the methodology used by future default/automatic calculations. You can choose another saved methodology for a manual job.
+Selecting a methodology does not change the workspace default. **Set Default** chooses the methodology initially offered for future calculations. You can choose another saved methodology for each calculation.
 
-The default methodology cannot be deleted until another is set as default. Completed jobs keep their captured rules and results after editing or deleting a methodology.
+The default methodology cannot be deleted until another is set as default. Saved results keep their captured rules; opened again after the methodology is edited, they are calculated with its new rules, and after it is deleted they are shown as they were.
 
 #### Save versus export
 
@@ -304,7 +312,7 @@ The default methodology cannot be deleted until another is set as default. Compl
 | **Import Methodology (JSON)** | One methodology or a collection | Adds IDs and replaces matching IDs after confirmation, preserving other methodologies and the existing default |
 | **Admin Scoring Configuration export/import** | Complete collection and default | Transfers the workspace's methodology setup |
 | **Configuration backup / restore** | Included scoring configuration component | Preserves/restores the collection and default |
-| **Workspace database backup / restore** | Whole workspace database | Also preserves jobs, results and local calculation selections |
+| **Workspace database backup / restore** | Whole workspace database | Also preserves the Previous Filters with their results and the local calculation selections |
 
 > [!TIP]
 > Save pending edits before exporting. Duplicate a methodology before revising a benchmark, and export or back up the collection before replacing it through Admin.
@@ -363,7 +371,7 @@ Distribution changes points, not formulas or thresholds. Relative shares can be 
 1. Select the environment.
 2. Expand the pastel red **KPI Definitions, Scoring & Thresholds** subpanel.
 3. Edit the definition and its environment-specific scoring settings.
-4. Save the complete methodology, then calculate or recalculate a job.
+4. Save the complete methodology, then calculate or recalculate the scoring.
 
 | Setting | What it controls |
 | --- | --- |
@@ -446,9 +454,9 @@ NetCheck publishes two rankings. **Best Network** rates every KPI. **Most Reliab
 
 1. Open **Workspace Config → Scoring & GAP Analysis Setup** and the methodology.
 2. In **KPI Definitions, Scoring & Thresholds**, set **Type** to **Reliable** for the KPIs of the Most Reliable scoring (the NetCheck 2026 methodology already does) and enter their **Most Reliable points** in each environment (see [Most Reliable reference points](#most-reliable-reference-points)). The column can only be edited on Reliable KPIs. The line above the table counts the Reliable KPIs and their points in the selected environment and in all environments, and warns about Reliable KPIs without points.
-3. **Save Methodology**, then calculate or recalculate the job.
+3. **Save Methodology**, then calculate or recalculate the scoring.
 
-Most Reliable points are part of the methodology: changing them gives the methodology a different identity, so **Calculate Scoring** creates a new job and **Recalculate** updates a selected one. The Most Reliable results are derived from the saved KPI scores of the job, so they never read the CDRs again. A new environment or a new KPI starts without Most Reliable points. A KPI whose Type is not Reliable never takes part, even if it had Most Reliable points (they are dropped when the methodology is saved).
+Most Reliable points are part of the methodology: changing them gives the methodology a different identity, so the saved results of the Previous Filters that use it are calculated again when they are opened. The Most Reliable results are derived from the saved KPI scores of the result, so they never read the CDRs again. A new environment or a new KPI starts without Most Reliable points. A KPI whose Type is not Reliable never takes part, even if it had Most Reliable points (they are dropped when the methodology is saved).
 
 Most Reliable points copied with two decimals can miss an environment's total by a few hundredths (650.02 for 650): when the Most Reliable total of an environment is within 0.1 points of its Best Network total, its Most Reliable points are scaled to match it exactly.
 
@@ -534,20 +542,20 @@ Reference filenames, workbook cells, denominator descriptions and Tableau groupi
 Version-2 exchange envelopes must be replaced with a new export. Existing supported workspace records are normalized on read; this is different from accepting an obsolete exchange envelope.
 
 > [!IMPORTANT]
-> JSON import/export, ZIP configuration packages, transfers and configuration backup/restore use the same methodology format. They do not transfer CDR-dependent job results unless the workspace database is included.
+> JSON import/export, ZIP configuration packages, transfers and configuration backup/restore use the same methodology format. Admin's Scoring Configuration packages, transfers and backups also carry the Previous Filters without their results (each one finds its CDRs by file in the receiving workspace); the results travel only with the workspace database.
 
 ### Reference Prep flow and implemented calculation
 
 #### From raw rows to points
 
-1. Apply environment source selectors and job filters.
+1. Apply environment source selectors and the selected filters.
 2. Group raw rows by the selected Operator/Vendor/Region/City/Campaign levels.
 3. Calculate each KPI from its formula and source filters.
 4. Map the measurement to a normalized score between 0 and 1.
 5. Multiply by the KPI's configured maximum points.
 6. Sum weighted points for categories, environments and total scoring.
 
-Operator aliases use the mapping snapshot saved with the job. When Campaign is not selected as a Split by level, campaign rows are pooled before KPI calculation.
+Operator aliases use the mapping snapshot saved with the result. When Campaign is not selected as a Split by level, campaign rows are pooled before KPI calculation.
 
 Unlike the source Prep flow's inner joins, the application preserves groups with missing measurements as N/A and reports their incomplete coverage.
 
@@ -574,7 +582,7 @@ All Environments sums configured maxima and separately calculated environment po
 Global raw KPI values are recalculated from pooled source rows across configured environments. They are not averages of environment KPI measurements. Zero-point environments can contribute raw measurements without adding weighted points.
 
 > [!WARNING]
-> **A zero-point environment does not cause incomplete weighted scoring.** A missing positive-point contribution does. Historical jobs without saved global raw measurements require recalculation to display those values.
+> **A zero-point environment does not cause incomplete weighted scoring.** A missing positive-point contribution does. Older results without saved global raw measurements require recalculation to display those values.
 
 #### GAP calculations and aggregates
 
@@ -602,7 +610,7 @@ The **Scoring History** keeps, in the workspace database, the components of ever
 - **What it keeps**: the tests of each CDR grouped by day (of their start time), campaign, operator, vendor, environment, Region, Cluster and City (every city, not only the Main Cities), and for each group and KPI of the workspace methodologies what the KPI needs to be calculated again over any set of groups: the sums and counts of its ratios and averages, and a mergeable sketch of the values of its medians and 90th percentiles (approximate, within a quarter of a percent). Scores and points are never stored: they are calculated with the thresholds of the methodology chosen, so any methodology, period (days, weeks, months, quarters, campaigns or years) and area can be scored from the same history.
 - **When it is filled**: as a background task, shown in the floating background tasks card (**Scoring History indexing**), once nobody has used the application for two minutes (the pages refreshing themselves do not count). Each CDR is read once; it is read again only when it is processed again (or its Vendor, Region or Cluster mapping changes) or a methodology adds a KPI it has not indexed.
 - **How a CDR is identified**: by the SHA-256 of its whole source file (about half a second per GB, kept until the file changes) and the signature of its processing, never by its name or ID, so renaming a CDR, reordering the IDs or transferring the workspace keeps its history. The history of a deleted CDR is kept as a record; a CDR processed again replaces the history of its former processing. Each source records its stage (Daily, Weekly or Final), campaigns and days, so a Final CDR can supersede the Daily and Weekly CDRs it contains.
-- **Calculations from the history**: a scoring job whose CDRs are all indexed at their current processing, whose **Split by** uses Operator, Vendor, Region, Cluster, City, Campaign or Dataset Type and whose filters are Region, Cluster, City, Operator, Vendor, Operator_Vendor or Campaign is calculated from the history in seconds, with its National & area summary. Its scores, tables and charts show at once; the **Points Lost Map**, which needs the rows of each test, is prepared next from the CDRs (the results show *Preparing the Points Lost Map…* and update themselves). Any other job reads the CDR rows as before.
+- **Calculations from the history**: a calculation whose CDRs are all indexed at their current processing, whose **Split by** uses Operator, Vendor, Region, Cluster, City, Campaign or Dataset Type and whose filters are Region, Cluster, City, Operator, Vendor, Operator_Vendor or Campaign is calculated from the history in seconds, with its National & area summary. Its scores, tables and charts show at once; the **Points Lost Map**, which needs the rows of each test, is prepared next from the CDRs (the results show *Preparing the Points Lost Map…* and update themselves). Any other job reads the CDR rows as before.
 - **Where it is**: the **Scoring History**, **Scoring History Sources** and **Scoring History Files** tables of Database Management. It is part of the workspace database, so it travels with workspace exports, transfers and backups of the Workspace Database; it has no export of its own because the application rebuilds it from the CDRs.
 
 ## Persistence and exports
@@ -614,14 +622,14 @@ The **Scoring History** keeps, in the workspace database, the components of ever
 | **Export to CSV** above the Scoring table | The scoring table shown: expanded results, category subtotals and totals of the selected scoring and environment |
 | **Export to CSV** above the GAP table | The GAP table shown: expanded GAP results and their existing numeric fields of the selected scoring and environment |
 | **Generate Scoring Report (PPT/Word)** (Calculation panel) | A report of one or more scenarios chosen in the report editor, from the CDRs, NR Mode, methodology and GAP reference selected in the Calculation panel |
-| **Export Selected Scoring Report (PPT/Word)** (Results panel) | The selected job as it was calculated (its CDRs, Split by levels and filters), with editable tables and charts, covers and environment transitions, for both scorings; it only asks for PowerPoint or Word |
+| **Export Selected Scoring Report (PPT/Word)** (Results panel) | The selected Previous Filter as it was calculated (its CDRs, Split by levels and filters), with editable tables and charts, covers and environment transitions, for both scorings; it only asks for PowerPoint or Word |
 | **Word** | The same report as the PowerPoint, one landscape page per slide exactly as in PowerPoint (rendered with LibreOffice, included in the Docker image; without it the slide tables and charts are rebuilt) |
 
-**Generate Scoring Report (PPT/Word)** opens the **report editor** (see [Report scenarios](#report-scenarios)) and calculates its scenarios from the CDRs, NR Mode, methodology and GAP reference selected in the Calculation panel. **Export Selected Scoring Report (PPT/Word)** exports the selected job without the editor. A progress dialog stays open while either document is generated.
+**Generate Scoring Report (PPT/Word)** opens the **report editor** (see [Report scenarios](#report-scenarios)) and calculates its scenarios from the CDRs, NR Mode, methodology and GAP reference selected in the Calculation panel. **Export Selected Scoring Report (PPT/Word)** exports the selected Previous Filter without the editor. A progress dialog stays open while either document is generated.
 
 ### Report scenarios
 
-A report has one or more **scenarios**, in order: for example *National*, then *London*, then the *Main Cities*, then by Vendor. Every scenario uses the CDRs, NR Mode, methodology and GAP reference selected in the Calculation panel with its own **filters** (Operator, Operator_Vendor, Vendor_Operator, Vendor, Region, Cluster, City with **Main Cities**, Campaign) and **Split by** levels. Each filter list has a search box that narrows the values as you type, **Select All / None** for the listed values, and closes when you click outside it or open another one. Its **All** option keeps no restriction, so the scenario always includes every value of the CDRs when the report is generated, also values that appear in later CDRs (for example a new Operator); **Main Cities** checks the workspace main cities and uses that list when the report is generated. The values stay editable with All or Main Cities checked: changing one keeps exactly the values checked. A closed list shows one chosen value by name and several by their number (for example `2/4 selected` or `Main Cities (5/12)`; hover it to see the values); campaigns are shown with the workspace [Campaign Maps](workspace-config.md#campaign-maps). When the document is generated, each scenario reuses an identical saved scoring job or calculates it, so it can take longer the first time. A Split by level with a single value (for example **Campaign** when the CDRs hold one campaign, or **City** filtered to one city) splits nothing, so it is left out of the scenario, as it is of every chart, table and document of Scoring & GAP Analysis.
+A report has one or more **scenarios**, in order: for example *National*, then *London*, then the *Main Cities*, then by Vendor. Every scenario uses the CDRs, NR Mode, methodology and GAP reference selected in the Calculation panel with its own **filters** (Operator, Operator_Vendor, Vendor_Operator, Vendor, Region, Cluster, City with **Main Cities**, Campaign) and **Split by** levels. Each filter list has a search box that narrows the values as you type, **Select All / None** for the listed values, and closes when you click outside it or open another one. Its **All** option keeps no restriction, so the scenario always includes every value of the CDRs when the report is generated, also values that appear in later CDRs (for example a new Operator); **Main Cities** checks the workspace main cities and uses that list when the report is generated. The values stay editable with All or Main Cities checked: changing one keeps exactly the values checked. A closed list shows one chosen value by name and several by their number (for example `2/4 selected` or `Main Cities (5/12)`; hover it to see the values); campaigns are shown with the workspace [Campaign Maps](workspace-config.md#campaign-maps). When the document is generated, each scenario reuses its Previous Filter (the same selection used before, with its result up to date) or calculates it, so it can take longer the first time. A Split by level with a single value (for example **Campaign** when the CDRs hold one campaign, or **City** filtered to one city) splits nothing, so it is left out of the scenario, as it is of every chart, table and document of Scoring & GAP Analysis.
 
 For each scenario and each scoring (**Best Network** and **Most Reliable Network**, which can be left out), choose:
 
@@ -632,21 +640,21 @@ For each scenario and each scoring (**Best Network** and **Most Reliable Network
 | Scoring Tables | Category table and Breakdown table (on), Show KPI values and Show GAP values (off), Campaign comparison (on) |
 | GAP Analysis | **Operators to compare** (Vodafone and Three when available; none chosen compares every operator), the table of all the chosen operators, the individual tables against the reference, the KPI GAP Profile and the Points lost per City map (all on) |
 
-Below the Split by levels, each scenario has a small panel headed by **Include National & area summary**, which adds the National & Areas slide to each scoring of the scenario. It is only available for the whole country: including it clears and disables the Region, Cluster, City and Main Cities filters, and it is included by default in scenarios without them. Its settings are enabled only while it is included and apply to that slide and its calculations only. **Time split** says how the slide splits time: **All selected CDRs** aggregates every selected CDR into one value (for example 24 weekly CDRs into the score of those 24 weeks), **Campaign** (the default) splits by campaign, and **Daily**, **Weekly** (ISO weeks, such as `2026-W07`), **Monthly**, **Quarterly** and **Yearly** split by the period of the start time of each test, whatever the CDRs are (daily, weekly or per campaign), so 28 daily CDRs give four weekly points. **Breakdown** chooses the areas of the summary (**Region**, the default, Cluster, City or None) and **Separate cities** the cities shown on their own (**London** by default, any other city and the workspace **Main Cities**). The scenario's scoring job then also scores, from the CDR rows it reads once, the National scoring with that time split, the chosen cities and each value of the breakdown, every one with its own measurements: KPI values (rates, medians, P90…) are not additive and their points come from non-linear thresholds, so an area score is not a share of the National points.
+Below the Split by levels, each scenario has a small panel headed by **Include National & area summary**, which adds the National & Areas slide to each scoring of the scenario. It is only available for the whole country: including it clears and disables the Region, Cluster, City and Main Cities filters, and it is included by default in scenarios without them. Its settings are enabled only while it is included and apply to that slide and its calculations only. **Time split** says how the slide splits time: **All selected CDRs** aggregates every selected CDR into one value (for example 24 weekly CDRs into the score of those 24 weeks), **Campaign** (the default) splits by campaign, and **Daily**, **Weekly** (ISO weeks, such as `2026-W07`), **Monthly**, **Quarterly** and **Yearly** split by the period of the start time of each test, whatever the CDRs are (daily, weekly or per campaign), so 28 daily CDRs give four weekly points. **Breakdown** chooses the areas of the summary (**Region**, the default, Cluster, City or None) and **Separate cities** the cities shown on their own (**London** by default, any other city and the workspace **Main Cities**). The scenario's calculation then also scores, from the CDR rows it reads once, the National scoring with that time split, the chosen cities and each value of the breakdown, every one with its own measurements: KPI values (rates, medians, P90…) are not additive and their points come from non-linear thresholds, so an area score is not a share of the National points.
 
 With several scenarios, every setting whose value is not the same in all of them (a filter, a Split by level, the area summary, a scoring, its environments or one of its options) is highlighted in amber in each scenario, so what changes from one scenario to another stands out; the highlights follow every change.
 
 The document starts with a cover listing the scenarios; each scenario then has a cover per scoring (for example *London — Best Network Scoring*) with its filters, and its slide subtitles name the scenario and the scoring. With All Environments only, the subtitles omit *All Environments*; each environment block names its environment. Show KPI values adds a **Value** column before each Score of the Breakdown tables.
 
-The editor opens with the scenarios of the last report, remembered as soon as **Generate PowerPoint** or **Generate Word** is pressed. Its selector always tells the saved configuration (or **Default**) whose scenarios are the ones shown, and **<Not saved configuration>** when no saved configuration has them; it follows every change of the scenarios. The editor's toolbar saves (**Save as…**) and deletes **named configurations** of the workspace, and exports or imports them as JSON. Choosing a configuration in its selector loads it at once, **Default** included (one scenario with the job's filters and aggregation plus **Campaign**, which is left out when there is a single campaign; *Default* is always listed, cannot be deleted and is not available as a saved name). When the scenarios have unsaved changes, choosing another configuration asks first: **Cancel** keeps them, **Discard changes** loads the chosen configuration and **Save as…** saves them before loading it. The last configuration used to generate a document opens again in any later session. Saved configurations and the last one used travel with the **Scoring & GAP Analysis Configuration** in Import / Export, transfers and backups.
+The editor opens with the scenarios of the last report, remembered as soon as **Generate PowerPoint** or **Generate Word** is pressed. Its selector always tells the saved configuration (or **Default**) whose scenarios are the ones shown, and **<Not saved configuration>** when no saved configuration has them; it follows every change of the scenarios. The editor's toolbar saves (**Save as…**) and deletes **named configurations** of the workspace, and exports or imports them as JSON. Choosing a configuration in its selector loads it at once, **Default** included (one scenario with the filters and aggregation of the selected Previous Filter plus **Campaign**, which is left out when there is a single campaign; *Default* is always listed, cannot be deleted and is not available as a saved name). When the scenarios have unsaved changes, choosing another configuration asks first: **Cancel** keeps them, **Discard changes** loads the chosen configuration and **Save as…** saves them before loading it. The last configuration used to generate a document opens again in any later session. Saved configurations and the last one used travel with the **Scoring & GAP Analysis Configuration** in Import / Export, transfers and backups.
 
-Exports use saved job results; they do not recalculate KPIs of existing jobs. Both **Export to CSV** buttons export the selected job.
+Exports use the saved results; they do not recalculate KPIs. Both **Export to CSV** buttons export the selected Previous Filter.
 
-CSV preserves stored names, numeric values and its schema, with a `cluster` column after `region` for jobs aggregated by Cluster; the Most Reliable CSV has the same columns with the Most Reliable points (`scoring=most_reliable` in the export address). Its existing category/final GAP aggregates remain valid-KPI means. The new **Total KPI GAP** footer is a web/PowerPoint display total; it does not redefine CSV GAP fields. `gap_partial` and `gap_environments` identify partial coverage.
+CSV preserves stored names, numeric values and its schema, with a `cluster` column after `region` for results split by Cluster; the Most Reliable CSV has the same columns with the Most Reliable points (`scoring=most_reliable` in the export address). Its existing category/final GAP aggregates remain valid-KPI means. The new **Total KPI GAP** footer is a web/PowerPoint display total; it does not redefine CSV GAP fields. `gap_partial` and `gap_environments` identify partial coverage.
 
 ### What is in the PowerPoint?
 
-When the job has a Most Reliable scoring, each scenario contains both scorings: a **Best Network Scoring** section and then a **Most Reliable Network Scoring** section. Slide subtitles name the scoring (and the environment of an environment block, for example *Most Reliable Network — Drive - City*) and slide notes carry the notes of that scoring. Reporting Jobs generate the same document for their Scoring artifact. Without Most Reliable points the document has only the Best Network sections. Cover and transition titles that are wider than the slide are reduced to fit on one line.
+When the result has a Most Reliable scoring, each scenario contains both scorings: a **Best Network Scoring** section and then a **Most Reliable Network Scoring** section. Slide subtitles name the scoring (and the environment of an environment block, for example *Most Reliable Network — Drive - City*) and slide notes carry the notes of that scoring. Reporting Jobs generate the same document for their Scoring artifact. Without Most Reliable points the document has only the Best Network sections. Cover and transition titles that are wider than the slide are reduced to fit on one line.
 
 Each block contains, as chosen in the scenario:
 
@@ -689,25 +697,25 @@ Keep all bars for one slide, or split for more readable charts. Splitting preser
 | **Save Methodology** | Commit edits to the workspace database |
 | **Export Methodology (JSON)** | Download the selected saved methodology |
 | **Admin → Import / Export → Scoring Configuration** | Transfer the complete methodology collection and its default |
-| **Workspace database backup / restore** | Preserve methodologies, CDR-dependent jobs, results and shared selections |
+| **Workspace database backup / restore** | Preserve methodologies, Previous Filters with their results and shared selections |
 
-Configuration-only packages do not carry scoring jobs or workspace-local CDR selections. Workspace duplication, database exports, transfers and ZIP database backups preserve jobs with the workspace database.
+Scoring Configuration packages carry the Previous Filters without their results, nor the workspace-local CDR selection: in the receiving workspace each Previous Filter finds its CDRs by the SHA-256 of their files and waits until they are processed there. Workspace duplication, database exports, transfers and ZIP database backups preserve the Previous Filters with their results in the workspace database.
 
-After a restart, interrupted jobs are retained as failed and can be recalculated. After CDR processing, compatible Data/Voice/Speech companions can trigger a default Operator calculation.
+After a restart, interrupted calculations are kept as failed and can be recalculated. Processing CDRs calculates nothing on its own: the [Scoring History](#scoring-history) indexes them when the server is idle, so their first calculation is quick.
 
 ## Troubleshooting
 
 | Symptom | Check or action |
 | --- | --- |
 | No selectable CDRs | Verify workspace, NR Mode and ready processing status |
-| Calculate is disabled | Read the yellow notice; complete each campaign's three source types or use Recalculate for a matching job |
+| Calculate is disabled | Read the yellow notice; complete each campaign's three source types, or wait for the running calculation of the same selection |
 | Expected vendor/city choices are missing | Check mappings and the selected CDRs; reprocess older incomplete catalogues |
 | GAP is N/A* | Verify the reference and matching context, including common valid environment coverage |
 | Maximum achievable points differ between columns | Read the excluded KPI list for each combination; unavailable contributions can differ |
 | Results differ from another report | Compare methodology revision, filters, Split by levels, thresholds and coverage |
 | CDR changed during calculation | Wait for processing/mapping to finish and recalculate |
 | Older All Environments KPI values are N/A | Recalculate to save pooled global measurements |
-| Job failed after interruption | Recalculate the existing job; delete it only if no longer needed |
+| A calculation failed after an interruption | Recalculate the Previous Filter; delete it only if no longer needed |
 
 > [!NOTE]
 > **NR Mode selects the dataset universe.** It does not supply a different SA methodology automatically. Validate copied or customized environment rules before using them for a new benchmark.

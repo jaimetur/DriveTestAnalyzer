@@ -833,7 +833,7 @@ def test_gap_value_toggle_defaults_off_and_only_changes_scoring_tables():
     assert "if (showGapValuesToggle) showGapValuesToggle.checked = restoredScoringViewState.showGapValues === true;" in script
     assert "function showGapValues() {\n    return Boolean(showGapValuesToggle?.checked);" in script
     assert "if (!showGapValues()) {\n      for (const [operatorIndex, operator] of operators.entries()) appendScore(operator, operatorIndex);\n      return;" in script
-    assert "if (event.target === showGapValuesToggle) {\n      syncGapValueControls();\n      if (currentResults) renderResult(currentResults, selectedJob, ['scoring']);" in script
+    assert "if (event.target === showGapValuesToggle) {\n      syncGapValueControls();\n      if (currentResults) renderResult(currentResults, selectedPreviousFilter, ['scoring']);" in script
     assert "function renderTable(pane, source, emptyCopy, {hideGapColumns = false} = {})" in script
     assert "renderTable(gapPane, gapRows, 'No GAP rows are available for the selected baseline operator.');" in script
     assert "function appendScoringGapScale(pane, tableData) {\n    if (!showGapValues()) return;" in script
@@ -858,7 +858,7 @@ def test_gap_value_choice_is_sent_only_to_powerpoint_export():
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
 
     assert "const gapOption = kind === 'ppt' ? `&show_gap_values=${showGapValues() ? 'true' : 'false'}` : '';" in script
-    assert "link.href = enabled ? `${exportBase}/${encodeURIComponent(jobId)}/export/${kind}?${query}${gapOption}${scoringOption}` : '#';" in script
+    assert "link.href = enabled ? `${exportBase}/${encodeURIComponent(previousFilterId)}/export/${kind}?${query}${gapOption}${scoringOption}` : '#';" in script
     assert "const scoringOption = kind !== 'ppt' && typeof effectiveScoring === 'function'" in script
     assert "const query = `table_mode=${encodeURIComponent(selectedTableMode())}&gap_layout=${encodeURIComponent(selectedGapLayout())}&environment=${encodeURIComponent(selectedEnvironment || 'all')}`;" in script
 
@@ -881,7 +881,7 @@ const results = [];
     };
     vm.createContext(context);
     vm.runInContext(Object.values(payload.snippets).join('\\n'), context);
-    await vm.runInContext("exportSelectedScoringReport({href: 'https://example.test/scoring/jobs/7/export/ppt?environment=all'})", context);
+    await vm.runInContext("exportSelectedScoringReport({href: 'https://example.test/scoring/previous-filters/7/export/ppt?environment=all'})", context);
     results.push({downloaded, dialog});
   }
   process.stdout.write(JSON.stringify(results));
@@ -889,8 +889,8 @@ const results = [];
 """
     result = _run_node_json(program, payload)
     assert [item['downloaded'] for item in result] == [
-        {'url': 'https://example.test/scoring/jobs/7/export/ppt?environment=all', 'label': 'PowerPoint'},
-        {'url': 'https://example.test/scoring/jobs/7/export/word?environment=all', 'label': 'Word'},
+        {'url': 'https://example.test/scoring/previous-filters/7/export/ppt?environment=all', 'label': 'PowerPoint'},
+        {'url': 'https://example.test/scoring/previous-filters/7/export/word?environment=all', 'label': 'Word'},
         None,
     ]
     dialog = result[0]['dialog']
@@ -1024,7 +1024,7 @@ def test_scoring_view_state_round_trips_filters_and_false_checkboxes():
         'snippets': snippets,
         'storageKey': 'drivetest-analyzer:scoring-view:jaime:workspace-a',
         'initial': {
-            'job_id': 'job-17', 'result_tab': 'gap', 'scroll_y': 321,
+            'job_id': 'previousFilter-17', 'result_tab': 'gap', 'scroll_y': 321,
             'environment': 'DriveCity', 'gap_layout': 'sideways',
             'show_kpi_values': False, 'show_gap_values': False,
         },
@@ -1040,7 +1040,7 @@ const context = {
     getItem: key => values.get(key) ?? null,
     setItem: (key, value) => values.set(key, String(value)),
   }},
-  selectedJobId: null,
+  selectedPreviousFilterId: null,
   activeResultTab: 'scoring',
   selectedEnvironment: 'all',
   gapLayoutSelect: {value: 'end'},
@@ -1050,7 +1050,7 @@ const context = {
 vm.createContext(context);
 vm.runInContext(Object.values(payload.snippets).join('\n') + '\nglobalThis.restored = readScoringViewState();', context);
 const restored = context.restored;
-context.selectedJobId = restored.jobId;
+context.selectedPreviousFilterId = restored.previousFilterId;
 context.activeResultTab = restored.resultTab;
 context.selectedEnvironment = restored.environment;
 context.gapLayoutSelect.value = restored.gapLayout;
@@ -1279,19 +1279,19 @@ def test_scoring_job_title_and_cdr_summary_use_saved_filters_and_source_names():
         _function_source(script, 'firstValue'),
         _function_source(script, 'formatDate'),
         _function_source(script, 'selectedContextFilters'),
-        _function_source(script, 'savedJobFilterValues'),
+        _function_source(script, 'savedPreviousFilterValues'),
         _function_source(script, 'campaignLabels'),
         _function_source(script, 'hierarchyDisplayValue'),
         _function_source(script, 'insightCampaignKey'),
-        _function_source(script, 'jobCampaigns'),
-        _function_source(script, 'jobCardTitleSegments'),
-        _function_source(script, 'jobCardTitle'),
-        _function_source(script, 'jobCdrNames'),
-        _function_source(script, 'jobCdrSummary'),
+        _function_source(script, 'previousFilterCampaigns'),
+        _function_source(script, 'previousFilterCardTitleSegments'),
+        _function_source(script, 'previousFilterCardTitle'),
+        _function_source(script, 'previousFilterCdrNames'),
+        _function_source(script, 'previousFilterCdrSummary'),
     ]
     payload = {
         'snippets': snippets,
-        'job': {
+        'previousFilter': {
             'created_at': '2026-10-01T12:00:00Z', 'nr_mode': 'NSA',
             'dataset_names': ['data.csv', 'voice.csv', 'voice.csv'],
             'context_filters': {'Operator': [], 'Vendor': [], 'Region': [], 'City': [], 'Campaign': []},
@@ -1305,7 +1305,7 @@ def test_scoring_job_title_and_cdr_summary_use_saved_filters_and_source_names():
     program = r"""
 const vm = require('node:vm');
 const payload = JSON.parse(require('node:fs').readFileSync(0, 'utf8'));
-const context = {job: payload.job,
+const context = {previousFilter: payload.previousFilter,
   operatorGroups: [],
   catalogueKeyByLevel: new Map([['Vendor', 'vendors']]),
   datasetCatalogues: new Map([['1', {vendors: ['Nokia']}], ['2', {vendors: ['Ericsson']}]]),
@@ -1313,15 +1313,15 @@ const context = {job: payload.job,
   contextFilterSelects: new Map([['Vendor', {options: [{value: 'Nokia'}, {value: 'Ericsson'}], selectedOptions: [{value: 'Nokia'}, {value: 'Ericsson'}]}]])};
 vm.createContext(context);
 vm.runInContext(payload.snippets.join('\n') + `
-  globalThis.completeVendors = savedJobFilterValues({dataset_ids: [1, 2], context_filters: {Vendor: ['Ericsson', 'Nokia']}}, 'Vendor');
-  globalThis.subsetVendors = savedJobFilterValues({dataset_ids: [1, 2], context_filters: {Vendor: ['Nokia']}}, 'Vendor');
+  globalThis.completeVendors = savedPreviousFilterValues({dataset_ids: [1, 2], context_filters: {Vendor: ['Ericsson', 'Nokia']}}, 'Vendor');
+  globalThis.subsetVendors = savedPreviousFilterValues({dataset_ids: [1, 2], context_filters: {Vendor: ['Nokia']}}, 'Vendor');
   globalThis.submittedFilters = selectedContextFilters();
-  globalThis.title = jobCardTitle(job);
-  globalThis.cdrSummary = jobCdrSummary(job);
-  globalThis.metadataCdrSummary = jobCdrSummary({source_metadata: {data: {name: 'data.csv'}, voice: {name: 'voice.csv'}}});
-  globalThis.partialVendors = savedJobFilterValues({context_filters: {Vendor: ['Nokia']}, resolved_context_filters: {Vendor: ['Nokia', 'Ericsson']}}, 'Vendor');
-  globalThis.legacyVendors = savedJobFilterValues({resolved_context_filters: {Vendor: ['Ericsson']}}, 'Vendor');
-  globalThis.fallbackTitle = jobCardTitle({created_at: 'not-a-date', nr_mode: 'SA', dataset_ids: [1], source_metadata: [{campaigns: ['UK_Q3_2026']}]});`, context);
+  globalThis.title = previousFilterCardTitle(previousFilter);
+  globalThis.cdrSummary = previousFilterCdrSummary(previousFilter);
+  globalThis.metadataCdrSummary = previousFilterCdrSummary({source_metadata: {data: {name: 'data.csv'}, voice: {name: 'voice.csv'}}});
+  globalThis.partialVendors = savedPreviousFilterValues({context_filters: {Vendor: ['Nokia']}, resolved_context_filters: {Vendor: ['Nokia', 'Ericsson']}}, 'Vendor');
+  globalThis.legacyVendors = savedPreviousFilterValues({resolved_context_filters: {Vendor: ['Ericsson']}}, 'Vendor');
+  globalThis.fallbackTitle = previousFilterCardTitle({created_at: 'not-a-date', nr_mode: 'SA', dataset_ids: [1], source_metadata: [{campaigns: ['UK_Q3_2026']}]});`, context);
 process.stdout.write(JSON.stringify({title: context.title, cdrSummary: context.cdrSummary,
   metadataCdrSummary: context.metadataCdrSummary, fallbackTitle: context.fallbackTitle,
   partialVendors: context.partialVendors, legacyVendors: context.legacyVendors,
@@ -1509,13 +1509,13 @@ const messages = [];
 const requests = [];
 const context = {
   calculationMatchKey: '', calculationMatchRevision: 0, calculationMatchTimer: null, calculationMatchRefresh: false,
-  submittingCalculation: false, jobsUrl: '/api/scoring/jobs',
+  submittingCalculation: false, previousFiltersUrl: '/api/scoring/previous-filters',
   calculateButton: {disabled: false}, recalculateButton: {disabled: false},
   selectedLevels: () => ['City'], selectedDatasetIds: () => [12, 14],
   scoringProfileSelect: {value: 'profile-a'}, nrFilter: {value: 'NSA'},
   baselineInput: {value: 'Operator A'}, selectedContextFilters: () => ({Region: ['North']}),
   areaSummaryPayload: () => null,
-  normalizeStatus: job => job?.status || '', isActive: job => ['queued', 'processing'].includes(job?.status),
+  normalizeStatus: previousFilter => previousFilter?.status || '', isActive: previousFilter => ['queued', 'processing'].includes(previousFilter?.status),
   setMessage: (text, kind = '') => messages.push({text, kind}),
   requestJson: (...args) => new Promise((resolve, reject) => requests.push({args, resolve, reject})),
   window: {
@@ -1530,31 +1530,31 @@ async function main() {
   context.updateCalculationMatch(true);
   const pending = [context.calculateButton.disabled, context.recalculateButton.disabled];
   timers[0]();
-  requests[0].resolve({job: null});
+  requests[0].resolve({previous_filter: null});
   await flush();
   const noMatch = [context.calculateButton.disabled, context.recalculateButton.disabled, messages.at(-1)?.text];
 
   context.calculationMatchKey = '';
   context.updateCalculationMatch(true);
   timers[1]();
-  requests[1].resolve({job: {id: 8, status: 'completed'}});
+  requests[1].resolve({previous_filter: {id: 8, status: 'completed'}});
   await flush();
   const completed = [context.calculateButton.disabled, context.recalculateButton.disabled];
 
   context.calculationMatchKey = '';
   context.updateCalculationMatch(true);
   timers[2]();
-  requests[2].resolve({job: {id: 9, status: 'queued'}});
+  requests[2].resolve({previous_filter: {id: 9, status: 'queued'}});
   await flush();
   const active = [context.calculateButton.disabled, context.recalculateButton.disabled];
 
-  // The job polling checks the same selection again without enabling or disabling the buttons meanwhile.
+  // The previousFilter polling checks the same selection again without enabling or disabling the buttons meanwhile.
   context.calculateButton.disabled = false;
   context.calculationMatchRefresh = true;
   context.updateCalculationMatch(true);
   const refreshing = [context.calculateButton.disabled, context.recalculateButton.disabled, requests.length];
   timers.at(-1)();
-  requests.at(-1).resolve({job: {id: 9, status: 'queued'}});
+  requests.at(-1).resolve({previous_filter: {id: 9, status: 'queued'}});
   await flush();
   const refreshed = [context.calculateButton.disabled, context.recalculateButton.disabled];
   timers.splice(3); requests.splice(3);
@@ -1566,10 +1566,10 @@ async function main() {
   context.baselineInput.value = 'Operator B';
   context.updateCalculationMatch(true);
   timers[4]();
-  requests[4].resolve({job: null});
+  requests[4].resolve({previous_filter: null});
   await flush();
   const latestMessage = messages.at(-1)?.text;
-  requests[3].resolve({job: {id: 10, status: 'completed'}});
+  requests[3].resolve({previous_filter: {id: 10, status: 'completed'}});
   await flush();
   const staleResponseIgnored = context.calculationMatchRevision > staleRevision
     && context.calculateButton.disabled === false && context.recalculateButton.disabled === true
@@ -1581,12 +1581,13 @@ main().catch(error => { console.error(error); process.exitCode = 1; });
 """
     result = _run_node_json(program, payload)
     assert result['pending'] == [True, True]
-    assert result['noMatch'] == [False, True, 'Ready to calculate a new scoring job.']
-    assert result['completed'] == [True, False]
+    assert result['noMatch'] == [False, True, 'Ready to calculate the scoring of these filters.']
+    # Filters used before: Calculate opens them (calculated again when out of date), Recalculate calculates them again.
+    assert result['completed'] == [False, False]
     assert result['active'] == [True, True]
     assert result['refreshing'] == [False, True, 3] and result['refreshed'] == [True, True]
     assert result['staleResponseIgnored'] is True
-    assert result['matchUrl'] == '/api/scoring/jobs/match'
+    assert result['matchUrl'] == '/api/scoring/previous-filters/match'
     assert result['matchPayload'] == {
         'dataset_ids': [12, 14], 'aggregation_levels': ['Operator', 'City'],
         'scoring_profile_id': 'profile-a', 'nr_mode': 'NSA', 'baseline_operator': 'Operator A',
@@ -1626,7 +1627,7 @@ def test_kpi_gap_profile_and_points_lost_map_share_location_and_operators():
     # City, Region and Cluster are always listed; those without results are disabled.
     assert "insightSelect('points-loss-view', allViews.map(item => [item, item]), 'Maps per')" in maps
     assert "option.disabled = !views.includes(option.value);" in maps
-    assert ".map(entry => pointsLossMapCard(entry, payload, jobId, chosen.length > 1, mode));" in maps
+    assert ".map(entry => pointsLossMapCard(entry, payload, previousFilterId, chosen.length > 1, mode));" in maps
     # Every operator is chosen by default.
     assert "if (!chosen.length) chosen = [...names];" in controls
     # Maps zoom with a dragged rectangle or the floating buttons, which hide as soon as the pointer leaves.
@@ -1674,7 +1675,7 @@ def test_the_calculation_message_stays_while_the_selected_job_calculates():
     script = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/scoring.js').read_text(encoding='utf-8')
     # The status of the selected CDRs and filters is kept while the job list refreshes every few seconds.
     assert "text = `${verb} the scoring of the selected CDRs and filters…`;" in script
-    assert "const verb = recalculatingJobs.has(String(jobIdOf(existing))) ? 'Recalculating' : 'Calculating';" in script
+    assert "const verb = recalculatingPreviousFilters.has(String(previousFilterIdOf(existing))) ? 'Recalculating' : 'Calculating';" in script
     assert "} else if (selectionStatus.key && selectionStatus.key === JSON.stringify(calculationPayload())) {" in script
     assert 'already queued or running' not in script
 
@@ -1682,9 +1683,9 @@ def test_the_calculation_message_stays_while_the_selected_job_calculates():
 def test_a_calculating_job_shows_an_animated_progress_bar_instead_of_placeholders():
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
     template = SCORING_TEMPLATE.read_text(encoding='utf-8')
-    load_job = _function_source(script, 'loadJob')
+    load_job = _function_source(script, 'loadPreviousFilter')
     # The selected active job shows the bar at once and at every poll, never Loading… or the waiting message.
-    assert 'if (isActive(job)) renderCalculating(job);' in load_job
+    assert 'if (isActive(previousFilter)) renderCalculating(previousFilter);' in load_job
     # The results of a saved job load under the same striped bar, across its whole width.
     assert 'else renderLoadingResults();' in load_job
     assert 'Loading Scoring Results…' in _function_source(script, 'renderLoadingResults')
@@ -1693,27 +1694,27 @@ def test_a_calculating_job_shows_an_animated_progress_bar_instead_of_placeholder
     assert 'Calculating Scoring…' in calculating and "current.forEach(update);" in calculating
     assert '@keyframes scoring-calculating-stripes' in template
     # The job polling checks the selection again without toggling the buttons.
-    assert 'calculationMatchRefresh = true;' in _function_source(script, 'refreshJobs')
+    assert 'calculationMatchRefresh = true;' in _function_source(script, 'refreshPreviousFilters')
 
 
 @pytest.mark.skipif(not shutil.which('node'), reason='Node.js is required')
 def test_scoring_jobs_show_their_calculation_time_or_elapsed_time():
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
     program = r'''
-const valueOf = (job, keys, fallback) => keys.map(key => job[key]).find(value => value !== undefined && value !== null && value !== '') ?? fallback;
-const isActive = job => ['queued', 'processing'].includes(job.status);
-''' + _function_source(script, 'jobDurationText') + r'''
+const valueOf = (previousFilter, keys, fallback) => keys.map(key => previousFilter[key]).find(value => value !== undefined && value !== null && value !== '') ?? fallback;
+const isActive = previousFilter => ['queued', 'processing'].includes(previousFilter.status);
+''' + _function_source(script, 'previousFilterDurationText') + r'''
 const now = Date.parse('2026-10-09T18:00:00+02:00');
 process.stdout.write(JSON.stringify([
-  jobDurationText({status: 'completed', started_at: '2026-10-09T17:58:35+02:00', finished_at: '2026-10-09T17:59:20+02:00'}, now),
-  jobDurationText({status: 'completed', started_at: '2026-10-09T17:55:00+02:00', finished_at: '2026-10-09T17:58:07+02:00'}, now),
-  jobDurationText({status: 'processing', started_at: '2026-10-09T16:40:00+02:00'}, now),
-  jobDurationText({status: 'queued', started_at: ''}, now),
-  jobDurationText({status: 'failed', started_at: '2026-10-09T17:55:00+02:00'}, now),
+  previousFilterDurationText({status: 'completed', started_at: '2026-10-09T17:58:35+02:00', finished_at: '2026-10-09T17:59:20+02:00'}, now),
+  previousFilterDurationText({status: 'completed', started_at: '2026-10-09T17:55:00+02:00', finished_at: '2026-10-09T17:58:07+02:00'}, now),
+  previousFilterDurationText({status: 'processing', started_at: '2026-10-09T16:40:00+02:00'}, now),
+  previousFilterDurationText({status: 'queued', started_at: ''}, now),
+  previousFilterDurationText({status: 'failed', started_at: '2026-10-09T17:55:00+02:00'}, now),
 ]));
 '''
     assert _run_node_json(program, {}) == ['45 s', '3 min 07 s', '1 h 20 min', '', '']
-    assert "durationMeta.textContent = isActive(job) ? 'Elapsed: ' : 'Calculation time: ';" in script
+    assert "durationMeta.textContent = isActive(previousFilter) ? 'Elapsed: ' : 'Calculation time: ';" in script
 
 
 @pytest.mark.skipif(not shutil.which('node'), reason='Node.js is required')
@@ -1740,12 +1741,12 @@ process.stdout.write(JSON.stringify([campaignComparisonRows(comparison, 0, 2), c
 @pytest.mark.skipif(not shutil.which('node'), reason='Node.js is required')
 def test_scoring_jobs_show_their_national_and_area_summary():
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
-    assert "areaMeta.textContent = 'National & area summary: ';" in _function_source(script, 'renderJobs')
-    program = _function_source(script, 'jobAreaSummaryText') + r'''
+    assert "areaMeta.textContent = 'National & area summary: ';" in _function_source(script, 'renderPreviousFilters')
+    program = _function_source(script, 'previousFilterAreaSummaryText') + r'''
 process.stdout.write(JSON.stringify([
-  jobAreaSummaryText({area_summary: {time_split: 'Campaign', breakdown: 'Region', cities: ['London']}}),
-  jobAreaSummaryText({area_summary: {time_split: 'All', breakdown: null, cities: ['London', 'Leeds']}}),
-  jobAreaSummaryText({area_summary: null}),
+  previousFilterAreaSummaryText({area_summary: {time_split: 'Campaign', breakdown: 'Region', cities: ['London']}}),
+  previousFilterAreaSummaryText({area_summary: {time_split: 'All', breakdown: null, cities: ['London', 'Leeds']}}),
+  previousFilterAreaSummaryText({area_summary: null}),
 ]));
 '''
     shown = json.loads(subprocess.run(['node', '-e', program], capture_output=True, text=True, check=True).stdout)

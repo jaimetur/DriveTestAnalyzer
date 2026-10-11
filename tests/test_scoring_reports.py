@@ -161,7 +161,7 @@ def test_report_api_generates_scenarios_and_remembers_the_configuration(scoring_
     import pandas as pd
 
     from src.modules import scoring as scoring_engine
-    from src.modules import scoring_jobs
+    from src.modules import scoring_previous_filters
     from tests.test_scoring_most_reliable import _reliable_configuration
 
     client = scoring_api['client']
@@ -176,13 +176,13 @@ def test_report_api_generates_scenarios_and_remembers_the_configuration(scoring_
     engine.calculate_scoring = lambda frames, levels, *, baseline_operator, configuration=None: (
         scoring_engine.calculate_scoring({'voice': pd.DataFrame(rows)}, levels, baseline_operator=baseline_operator,
                                          configuration=configuration))
-    monkeypatch.setattr(scoring_jobs, '_scoring_engine', lambda: engine)
-    created = client.post('/api/scoring/jobs', json={
+    monkeypatch.setattr(scoring_previous_filters, '_scoring_engine', lambda: engine)
+    created = client.post('/api/scoring/previous-filters', json={
         'dataset_ids': scoring_api['complete_dataset_ids'], 'aggregation_levels': ['Operator'],
         'nr_mode': 'NSA', 'baseline_operator': 'EE',
     })
-    job_id = created.json()['job']['id']
-    scoring_jobs.run_scoring_job(repository, job_id)
+    job_id = created.json()['previous_filter']['id']
+    scoring_previous_filters.calculate_previous_filter(repository, job_id)
 
     national = default_scenario(name='National', operators=['Three UK'])
     leeds = default_scenario(name='Leeds', context_filters={'City': ['Leeds']}, operators=['Three UK'])
@@ -194,7 +194,7 @@ def test_report_api_generates_scenarios_and_remembers_the_configuration(scoring_
     assert 'Weekly' in [item['name'] for item in client.get('/api/scoring/report-configurations').json()['configurations']]
 
     # The report uses the CDRs, NR Mode, methodology and GAP reference of the Calculation panel.
-    job = scoring_jobs.get_scoring_job(repository, job_id)
+    job = scoring_previous_filters.get_previous_filter(repository, job_id)
     selection = {key: job[key] for key in ('dataset_ids', 'nr_mode', 'baseline_operator', 'scoring_profile_id')}
     assert client.post('/api/scoring/report/ppt', json={'configuration': configuration}).status_code == 400
     response = client.post('/api/scoring/report/ppt', json={'configuration': configuration, **selection})
@@ -205,7 +205,7 @@ def test_report_api_generates_scenarios_and_remembers_the_configuration(scoring_
     assert 'Leeds — Most Reliable Network Scoring' not in titles
     assert client.get('/api/scoring/report-configurations').json()['last']['scenarios'][1]['name'] == 'Leeds'
     # The Leeds scenario has its own scoring job with its filter.
-    jobs = scoring_jobs.list_scoring_jobs(repository)
+    jobs = scoring_previous_filters.list_previous_filters(repository)
     assert any((job.get('context_filters') or {}).get('City') == ['Leeds'] for job in jobs)
 
     exported = client.get('/api/scoring/report-configurations/export').json()
@@ -235,12 +235,12 @@ def test_levels_with_a_single_value_are_left_out_of_report_scenarios(monkeypatch
         return {'id': len(calculated), 'status': 'completed', 'levels': list(levels)}, True
 
     monkeypatch.setattr(core, 'validate_complete_scoring_cdr_selection', lambda *_args, **_kwargs: [1])
-    monkeypatch.setattr(core, 'create_scoring_job', create)
-    monkeypatch.setattr(core, 'get_scoring_job', lambda _repository, job_id, include_result=False: {
+    monkeypatch.setattr(core, 'save_previous_filter', create)
+    monkeypatch.setattr(core, 'get_previous_filter', lambda _repository, job_id, include_result=False: {
         'id': job_id, 'status': 'completed', 'aggregation_levels': calculated[job_id - 1], 'result': one_campaign,
     })
     scenario = default_scenario(aggregation_levels=['Operator', 'City', 'Campaign'])
-    job = core._scenario_scoring_job(None, {'dataset_ids': [1], 'nr_mode': 'NSA'}, scenario, 'super')
+    job = core._scenario_previous_filter(None, {'dataset_ids': [1], 'nr_mode': 'NSA'}, scenario, 'super')
     # The Campaign level splits nothing: the scenario is calculated again without it.
     assert calculated == [['Operator', 'City', 'Campaign'], ['Operator', 'City']]
     assert job['aggregation_levels'] == ['Operator', 'City']
