@@ -161,3 +161,29 @@ def test_overlapping_methodologies_saved_before_are_read_but_not_saved_again(tmp
         repository.replace_scoring_profiles(profiles)
     profiles['profiles'][0]['campaigns'] = {'to': '2026-Q2'}
     assert repository.replace_scoring_profiles(profiles)['profiles'][0]['campaigns'] == {'from': '', 'to': '2026-Q2'}
+
+
+def test_each_campaign_of_a_result_by_campaign_is_shown_with_its_methodology():
+    from src.modules import scoring
+    from src.modules.scoring_views import build_scoring_views
+    from tests.test_scoring_history import _rows
+
+    profiles = two_methodologies({'to': '2026-Q2'}, {'from': '2026-Q3'})
+    groups = methodology_groups(profiles, ['2026-Q2', '2026-Q3'])
+    parts = []
+    for group, campaign in zip(groups, ('2026-Q2', '2026-Q3')):
+        frames = {kind: _rows(kind).assign(Campaign=campaign) for kind in ('data', 'voice', 'speech')}
+        parts.append((group, scoring.calculate_scoring(frames, ['Operator', 'Campaign'], baseline_operator='EE',
+                                                       configuration=group['configuration'])))
+    merged = merge_results(parts)
+    views = build_scoring_views({'levels': ['Operator', 'Campaign']}, merged)
+    by_campaign = {}
+    for table in views['score_tables']:
+        by_campaign.setdefault(table['context'].get('campaign'), []).append(table)
+    assert set(by_campaign) == {'2026-Q2', '2026-Q3'}
+
+    def codes(tables):
+        return {row.get('kpi_code') or row.get('code') for table in tables for row in table['rows']}
+    # The earlier campaign has no TikTok and is not incomplete for lacking it; the later one has it.
+    assert 'TIKTOK' not in codes(by_campaign['2026-Q2']) and 'TIKTOK' in codes(by_campaign['2026-Q3'])
+    assert not any('Incomplete KPI coverage' in json.dumps(table) for table in by_campaign['2026-Q2'])

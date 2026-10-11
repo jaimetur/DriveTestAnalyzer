@@ -230,16 +230,32 @@ def build_scoring_views(job: dict[str, Any] | None, result: dict[str, Any] | Non
     for record in global_kpi_records:
         global_kpis_by_scope.setdefault(_scope_key(record, include_dataset_type), []).append(record)
 
+    # A result By campaign: each campaign is shown with the methodology it was scored with (its rows name it).
+    group_configurations: dict[str, dict[str, Any]] = {}
+    for group in result.get('methodology_groups') or []:
+        try:
+            group_configurations[str(group['profile_id'])] = validate_scoring_configuration(group['configuration'])
+        except (KeyError, TypeError, ValueError):
+            continue
+
     score_tables: list[dict[str, Any]] = []
     gap_tables: list[dict[str, Any]] = []
     gap_summary_tables: list[dict[str, Any]] = []
     for scope in sorted(contexts, key=_scope_sort_key):
         environment_records = contexts[scope]
+        scope_configuration, scope_metrics, scope_combined = configuration, metrics, combined_environments
+        if group_configurations:
+            tags = {record.get('methodology') for records in environment_records.values() for record in records
+                    if record.get('methodology')}
+            if len(tags) == 1 and (tag := next(iter(tags))) in group_configurations:
+                scope_configuration = group_configurations[tag]
+                scope_metrics = scope_configuration['metrics']
+                scope_combined = _positive_scoring_environments(scope_configuration)
         styles = _operator_styles(all_operators.get(scope, set()), operator_mapping_groups or [])
         operators = sorted(styles, key=lambda name: (styles[name]['position'], styles[name]['label'].casefold(), name.casefold()))
         actual_environments = {environment for environment in environment_records if environment != 'Combined'}
         environments = sorted(actual_environments, key=_environment_sort_key)
-        if combined_environments:
+        if scope_combined:
             environments.append('Combined')
 
         for environment in environments:
@@ -247,8 +263,8 @@ def build_scoring_views(job: dict[str, Any] | None, result: dict[str, Any] | Non
             baseline_operator = _matching_baseline(operators, requested_baseline, baseline_aliases)
             table = _build_score_table(
                 context, operators, baseline_operator,
-                environment_records, combined_environments, include_dataset_type,
-                actual_environments, metrics, configuration, baseline_aliases,
+                environment_records, scope_combined, include_dataset_type,
+                actual_environments, scope_metrics, scope_configuration, baseline_aliases,
                 gap_priority_rank, global_kpis_by_scope.get(scope, []),
                 scaled_environments=scaled_environments,
             )
