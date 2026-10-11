@@ -1353,7 +1353,26 @@
         profileMeta.textContent = 'Scoring Methodology: ';
         const profileValue = document.createElement('strong');
         profileValue.className = 'saved-filter-profile';
-        profileValue.textContent = profileName;
+        // By campaign (NetCheck 2026: 2026-Q1, 2026-Q2 · …): the campaigns of each methodology in their own colour.
+        const byCampaign = /^By campaign \((.*)\)$/.exec(profileName);
+        if (byCampaign) {
+          profileValue.append('By campaign (');
+          byCampaign[1].split(' · ').forEach((part, index) => {
+            if (index) profileValue.append(' · ');
+            const split = part.lastIndexOf(': ');
+            if (split < 0) {
+              profileValue.append(part);
+              return;
+            }
+            const campaigns = document.createElement('span');
+            campaigns.className = 'saved-filter-profile-campaigns';
+            campaigns.textContent = part.slice(split + 2);
+            profileValue.append(part.slice(0, split + 2), campaigns);
+          });
+          profileValue.append(')');
+        } else {
+          profileValue.textContent = profileName;
+        }
         profileMeta.append(profileValue);
         button.append(profileMeta);
       }
@@ -1436,7 +1455,8 @@
       pin.className = 'saved-filter-pin';
       pin.dataset.savedFilterPin = id;
       pin.textContent = savedFilter.pinned ? '★' : '☆';
-      pin.title = savedFilter.pinned ? 'Unpin this Saved Filter' : 'Pin this Saved Filter at the top of the list';
+      pin.title = savedFilter.pinned ? 'Unstar this Saved Filter: it goes when another one is calculated or opened'
+        : 'Star this Saved Filter to keep it (only starred ones are kept), at the top of the list';
       pin.setAttribute('aria-label', `${savedFilter.pinned ? 'Unpin' : 'Pin'} Saved Filter ${id}`);
       pin.setAttribute('aria-pressed', String(Boolean(savedFilter.pinned)));
       const rename = document.createElement('button');

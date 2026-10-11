@@ -1126,6 +1126,21 @@ def delete_saved_filter(repository: Repository, filter_id: int) -> bool:
         return cursor.rowcount > 0
 
 
+def prune_unpinned_saved_filters(repository: Repository, keep_id: int, username: str) -> list[int]:
+    """Only the Saved Filters marked with the star are kept: remove the other unstarred ones of a user when they use
+    another one (``keep_id``), except those still calculating or drawing their Points Lost Map."""
+    workspace = str(Path(repository.db_path).resolve())
+    with _points_loss_guard:
+        drawing = {filter_id for path, filter_id in _points_loss_jobs if path == workspace}
+    with repository.connection() as connection:
+        rows = connection.execute(
+            f"SELECT id FROM {SAVED_FILTERS_TABLE} WHERE pinned = 0 AND id != ? AND created_by = ? "
+            "AND status NOT IN ('queued', 'processing')", (int(keep_id), str(username or 'system'))).fetchall()
+        removed = [int(row['id']) for row in rows if int(row['id']) not in drawing]
+        connection.executemany(f'DELETE FROM {SAVED_FILTERS_TABLE} WHERE id = ?', [(filter_id,) for filter_id in removed])
+    return removed
+
+
 class _SavedFilterDeleted(Exception):
     """Stop a calculation at a checkpoint once its Saved Filter is removed."""
 

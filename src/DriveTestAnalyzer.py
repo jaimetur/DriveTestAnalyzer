@@ -99,6 +99,7 @@ from src.modules.saved_filters import (
     get_saved_filter,
     list_saved_filters,
     mark_saved_filter_used,
+    prune_unpinned_saved_filters,
     recover_interrupted_saved_filters,
     refresh_saved_filter,
     save_saved_filter,
@@ -16714,6 +16715,8 @@ def saved_filters_save(payload: SavedFilterRequest, user: SessionUser = Depends(
     if not cached:
         _queue_saved_filter_calculation(task_repository, saved_filter['id'])
     _prioritize_saved_filter(task_repository, saved_filter['id'])
+    # Only the starred Saved Filters are kept: the user's other unstarred ones go.
+    prune_unpinned_saved_filters(task_repository, saved_filter['id'], user.username)
     return {'saved_filter': saved_filter, 'cached': cached}
 
 
@@ -16751,9 +16754,11 @@ def _prioritize_saved_filter(task_repository: Repository, filter_id: int, *, onl
 @app.post('/api/scoring/saved-filters/{filter_id}/use')
 def scoring_saved_filters_use(filter_id: int, user: SessionUser = Depends(current_user)) -> dict[str, Any]:
     """Count the opening of a Saved Filter from its card as a use."""
-    saved_filter = mark_saved_filter_used(scoring_repository(user), filter_id)
+    task_repository = scoring_repository(user)
+    saved_filter = mark_saved_filter_used(task_repository, filter_id)
     if saved_filter is None:
         raise HTTPException(status_code=404, detail='Saved Filter not found.')
+    prune_unpinned_saved_filters(task_repository, filter_id, user.username)
     return {'saved_filter': saved_filter}
 
 

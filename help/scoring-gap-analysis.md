@@ -61,7 +61,7 @@ The aggregation hierarchy determines the order of the filter controls and of the
 
 ### 4. Calculate or recalculate
 
-Every selection you calculate is kept as a **Saved Filter**: its CDRs, NR Mode, filters, Split by levels, GAP reference, methodology and National & area summary. Calculating the same selection again reuses it instead of adding another one.
+Every selection you calculate becomes a **Saved Filter**: its CDRs, NR Mode, filters, Split by levels, GAP reference, methodology and National & area summary. Only the Saved Filters marked with the star (**☆**) are kept: an unstarred one stays while it is the one you are looking at, and goes when you calculate or open another (unless it is still calculating or drawing its Points Lost Map). Calculating the same selection again reuses it instead of adding another one.
 
 | Situation | Action |
 | --- | --- |
@@ -78,13 +78,13 @@ A selection is the same when it has the same CDRs, NR Mode, filters, Split by le
 
 Choose a Saved Filter in the **Scoring Results** dropdown or in the **Saved Filters** panel. The module restores its selection in the Calculation panel and loads its saved result, with an animated **Loading Scoring Results…** bar meanwhile (the results are kept ready on the server, so opening them again is quick). A saved result that is out of date (its CDRs were reprocessed, or the methodology or the Operator Maps changed) is calculated again on its own, usually in a moment from the [Scoring History](#scoring-history). When its CDRs or its methodology no longer exist, the saved result is shown as it was and the yellow notice says why.
 
-The pinned Saved Filters come first, then the latest used. Each card shows:
+The starred Saved Filters come first, then the latest used. Each card shows:
 
 - its **name**, when it has one (**✎** names or renames it), and its filters: the date it was last used, NR Mode, Regions, **Clusters** (in their own colour), Cities, Operators, Vendors and Campaigns;
 - the ordered **Split by** levels, the **GAP Reference**, the **National & area summary** (its time split, breakdown and separate cities) when it has one, the **Scoring Methodology**, the **Calculation time** (or the time **Elapsed** while it runs), and on one line how many times it was **Used** (each Calculate Scoring or Recalculate of its selection, each report scenario that uses it, and each opening from its card) and **Calculated** (each calculation that finished);
 - **Newer CDRs available** when a Final CDR of the same campaign (or a newer cumulative Weekly or Daily CDR) replaces one of its CDRs: **Use newer CDRs** selects the same filters with the newer CDRs and calculates them;
 - **Waiting for its CDRs** for a Saved Filter imported from another workspace whose CDRs are not processed here yet (it finds them by file, whatever their name);
-- the **CDRs** button (hover or click it to inspect the source files), **☆** to pin it at the top of the list and **×** to delete it.
+- the **CDRs** button (hover or click it to inspect the source files), **☆** to keep it (starred, at the top of the list) and **×** to delete it.
 
 The generated PowerPoint is named `yyyymmdd_hhmmss - Scoring & GAP Analysis - <NR Mode> - <Regions> - <Clusters> - <Cities> - <Operators> - <Vendors> - <Campaigns>.pptx`. A complete vendor selection appears as **All Vendors**.
 

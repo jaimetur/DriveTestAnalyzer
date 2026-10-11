@@ -1050,3 +1050,31 @@ def test_saved_filters_of_earlier_versions_get_their_calculation_count(repositor
     repository.initialize()
     counts = {item['selection_key']: item['calculation_count'] for item in saved_filters.list_saved_filters(repository)}
     assert counts == {'done': 1, 'waiting': 0}
+
+
+def test_only_starred_saved_filters_are_kept_when_another_one_is_used(repository, scoring_engine):
+    dataset_id = add_dataset(repository)
+
+    def calculated(levels, username='ana'):
+        saved, _reused = saved_filters.save_saved_filter(repository, [dataset_id], levels, 'NSA', username=username)
+        saved_filters.calculate_saved_filter(repository, saved['id'])
+        return saved['id']
+
+    starred = calculated(['Region'])
+    saved_filters.update_saved_filter(repository, starred, pinned=True)
+    unstarred = calculated(['City'])
+    drawing = calculated(['Vendor'])
+    someone_else = calculated(['Region', 'City'], username='bob')
+    queued, _reused = saved_filters.save_saved_filter(repository, [dataset_id], ['Region', 'Vendor'], 'NSA',
+                                                      username='ana')
+    current = calculated(['City', 'Vendor'])
+    saved_filters._points_loss_jobs[saved_filters._points_loss_key(repository.db_path, drawing)] = {'status': 'queued'}
+    try:
+        removed = saved_filters.prune_unpinned_saved_filters(repository, current, 'ana')
+    finally:
+        saved_filters._points_loss_jobs.clear()
+    # The unstarred one goes; the starred, the one in use, those still calculating or drawing their map and those of
+    # other users stay.
+    assert removed == [unstarred]
+    assert {item['id'] for item in saved_filters.list_saved_filters(repository)} == {
+        starred, drawing, someone_else, queued['id'], current}
