@@ -485,7 +485,19 @@ class AreaIndex:
             return self._trees[code]
 
     def names_of(self, latitude: pd.Series, longitude: pd.Series) -> pd.Series:
-        """Name of the area containing each coordinate (missing outside every area)."""
+        """Name of the area containing each coordinate (missing outside every area).
+
+        Each coordinate is placed once, however many tests share it."""
+        pairs = pd.DataFrame({'latitude': latitude, 'longitude': longitude})
+        groups = pairs.groupby(['latitude', 'longitude'], dropna=False, sort=False).ngroup()
+        first = ~groups.duplicated()
+        if first.all():
+            return self._names_of(latitude, longitude)
+        unique = self._names_of(latitude[first], longitude[first])
+        by_group = pd.Series(unique.to_numpy(), index=groups[first].to_numpy())
+        return pd.Series(by_group.reindex(groups.to_numpy()).to_numpy(), index=latitude.index, dtype='string')
+
+    def _names_of(self, latitude: pd.Series, longitude: pd.Series) -> pd.Series:
         import numpy as np
         from shapely import points
 

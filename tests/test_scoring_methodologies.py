@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import json
 from pathlib import Path
 
 import pandas as pd
@@ -10,7 +11,7 @@ from src.modules import saved_filters
 from src.modules.repository import Repository, local_now_iso
 from src.modules.scoring_config import validate_scoring_profiles
 from src.modules.scoring_methodologies import (
-    BY_CAMPAIGN, campaign_quarters, display_configuration, merge_results, methodology_for, methodology_groups,
+    BY_CAMPAIGN, campaign_quarters, check_campaign_overlaps, display_configuration, merge_results, methodology_for, methodology_groups,
     methodology_label, normalize_campaign_range, split_result,
 )
 from scoring_fixtures import scoring_configuration
@@ -40,10 +41,10 @@ def test_campaign_ranges_are_validated_and_open_ends_are_kept():
     with pytest.raises(ValueError, match='before its last one'):
         normalize_campaign_range({'from': '2026-Q3', 'to': '2026-Q1'})
     with pytest.raises(ValueError, match='NetCheck 2026 and NetCheck 2026-Q3 overlap'):
-        two_methodologies({'to': '2026-Q3'}, {'from': '2026-Q3'})
+        check_campaign_overlaps(two_methodologies({'to': '2026-Q3'}, {'from': '2026-Q3'})['profiles'])
     with pytest.raises(ValueError, match='overlap'):
-        two_methodologies({'from': '2025-Q1'}, {'from': '2026-Q3', 'to': '2026-Q4'})
-    assert two_methodologies({'from': '2025-Q1', 'to': '2026-Q2'}, {'from': '2026-Q3'})
+        check_campaign_overlaps(two_methodologies({'from': '2025-Q1'}, {'from': '2026-Q3', 'to': '2026-Q4'})['profiles'])
+    check_campaign_overlaps(two_methodologies({'from': '2025-Q1', 'to': '2026-Q2'}, {'from': '2026-Q3'})['profiles'])
     with pytest.raises(ValueError):
         validate_scoring_profiles({'active_profile_id': BY_CAMPAIGN, 'profiles': [
             {'id': BY_CAMPAIGN, 'name': 'By campaign', 'configuration': scoring_configuration()}]})
@@ -142,3 +143,17 @@ def test_campaign_ranges_travel_in_methodology_exports():
     restored = unwrap_scoring_profiles_payload(scoring_profiles_document(profiles))
     assert [profile.get('campaigns') for profile in restored['profiles']] == [
         {'from': '', 'to': '2026-Q2'}, {'from': '2026-Q3', 'to': ''}]
+
+
+def test_overlapping_methodologies_saved_before_are_read_but_not_saved_again(tmp_path):
+    repository = Repository(tmp_path / 'workspace.db')
+    repository.initialize()
+    overlapping = two_methodologies({'to': '2026-Q3'}, {'from': '2026-Q3'})
+    repository.set_workspace_state('scoring_configuration', json.dumps(overlapping))
+    profiles = repository.get_scoring_profiles()
+    # The shared campaign takes the methodology that starts latest.
+    assert methodology_for(profiles, '2026-Q3')['id'] == 'netcheck-2026-q3'
+    with pytest.raises(ValueError, match='overlap'):
+        repository.replace_scoring_profiles(profiles)
+    profiles['profiles'][0]['campaigns'] = {'to': '2026-Q2'}
+    assert repository.replace_scoring_profiles(profiles)['profiles'][0]['campaigns'] == {'from': '', 'to': '2026-Q2'}

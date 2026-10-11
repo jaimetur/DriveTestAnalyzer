@@ -77,11 +77,11 @@ def applies_to(profile: dict[str, Any], campaign: object) -> bool:
 
 
 def methodology_for(profiles: dict[str, Any], campaign: object) -> dict[str, Any]:
-    """The methodology of a campaign: the one whose campaigns include it (they never overlap), else the default
-    methodology."""
-    candidate = next((profile for profile in profiles['profiles'] if applies_to(profile, campaign)), None)
-    if candidate is not None:
-        return candidate
+    """The methodology of a campaign: the one whose campaigns include it (the one starting latest if methodologies
+    saved before overlaps were refused share it), else the default methodology."""
+    candidates = [profile for profile in profiles['profiles'] if applies_to(profile, campaign)]
+    if candidates:
+        return max(candidates, key=lambda profile: _quarter((profile.get('campaigns') or {}).get('from')) or (0, 0))
     return next(profile for profile in profiles['profiles'] if profile['id'] == profiles['active_profile_id'])
 
 

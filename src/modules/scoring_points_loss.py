@@ -36,6 +36,8 @@ CITY_AREA_SEPARATOR = '\x1f'
 MAP_FIELDS = (*AREA_FIELDS, AREA)
 NOT_SPECIFIED = 'Not specified'
 AREA_COLUMN = '__area_{}'
+# The area of each test as a category (empty areas as Not specified), to sum the weights of each area at once.
+SHARE_COLUMN = '__share_{}'
 LATITUDE, LONGITUDE, PLACE = '__latitude', '__longitude', '__place'
 MAX_AREA_POINTS = 60
 MAX_BACKGROUND_POINTS = 4000
@@ -69,6 +71,11 @@ def attach_location(frame: pd.DataFrame, source: pd.DataFrame, kind: str, resolv
                 areas = area_index(None)
             frame[AREA_COLUMN.format(AREA)] = areas.names_of(frame[LATITUDE], frame[LONGITUDE])
             break
+    for field in MAP_FIELDS:
+        column = AREA_COLUMN.format(field)
+        if column in frame:
+            frame[SHARE_COLUMN.format(field)] = pd.Categorical(
+                frame[column].fillna(NOT_SPECIFIED).replace('', NOT_SPECIFIED).astype(str))
     level_2 = resolve(source.columns, 'G_Level_2')
     # Drive City tests are places; other tests (Connecting Roads) follow a route.
     frame[PLACE] = (source[level_2].astype('string').str.casefold() == 'city') if level_2 is not None else True
@@ -181,11 +188,42 @@ def test_weights(frame: pd.DataFrame, metric: dict[str, Any], thresholds: dict[s
     return weights
 
 
+def _category_shares(frame: pd.DataFrame, weights: pd.Series, total: float) -> dict[str, dict[str, float]]:
+    """``area_shares`` from the area categories of the rows (see ``attach_location``)."""
+    import numpy as np
+
+    values = weights.to_numpy(dtype=float)
+    shares: dict[str, dict[str, float]] = {}
+    codes = {}
+    for field in MAP_FIELDS:
+        column = SHARE_COLUMN.format(field)
+        if column not in frame:
+            continue
+        category = frame[column].cat
+        codes[field] = (category.codes.to_numpy(), list(category.categories))
+        by_area = np.bincount(codes[field][0], weights=values, minlength=len(codes[field][1]))
+        shares[field] = {str(codes[field][1][index]): round(float(by_area[index]) / total, 6)
+                         for index in np.flatnonzero(by_area > 0)}
+    if 'City' in codes and AREA in codes:
+        # Where each City (or route) loses: the share of each City in each map area.
+        (city_codes, cities), (area_codes, areas) = codes['City'], codes[AREA]
+        lost = values > 0
+        if lost.any():
+            pairs = city_codes[lost].astype(np.int64) * len(areas) + area_codes[lost]
+            by_pair = pd.Series(values[lost]).groupby(pairs).sum()
+            shares[CITY_AREA] = {
+                f'{cities[pair // len(areas)]}{CITY_AREA_SEPARATOR}{areas[pair % len(areas)]}': round(float(value) / total, 6)
+                for pair, value in by_pair.items() if value > 0}
+    return shares
+
+
 def area_shares(frame: pd.DataFrame, weights: pd.Series) -> dict[str, dict[str, float]]:
     """Share of the KPI's weight in each area, for every area field of the rows."""
     total = float(weights.sum())
     if total <= 0:
         return {}
+    if any(SHARE_COLUMN.format(field) in frame for field in MAP_FIELDS):
+        return _category_shares(frame, weights, total)
     shares: dict[str, dict[str, float]] = {}
     for field in MAP_FIELDS:
         column = AREA_COLUMN.format(field)

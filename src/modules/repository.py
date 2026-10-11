@@ -2484,8 +2484,11 @@ class Repository:
     def replace_scoring_profiles(self, payload: object) -> dict[str, Any]:
         """Validate and persist a complete named scoring profile collection."""
         from src.modules.scoring_config import validate_scoring_profiles
+        from src.modules.scoring_methodologies import check_campaign_overlaps
 
         profiles = validate_scoring_profiles(payload)
+        # Saved methodologies cannot share a campaign (those saved before are still read).
+        check_campaign_overlaps(profiles['profiles'])
         self.set_workspace_state(
             SCORING_CONFIGURATION_STATE_KEY,
             json.dumps(profiles, ensure_ascii=False, separators=(',', ':')),

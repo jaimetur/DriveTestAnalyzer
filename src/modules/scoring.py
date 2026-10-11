@@ -187,6 +187,25 @@ def _filter(frame: pd.DataFrame, filters: dict) -> pd.DataFrame:
     return frame
 
 
+def _prefiltered_metrics(frame: pd.DataFrame, metrics: list[dict]) -> list[dict]:
+    """The KPIs of a frame with their filters applied once to all its rows: each one filters its groups by a column
+    of the rows it keeps (the filters only look at each row), instead of testing them again in every group."""
+    prepared = []
+    for metric in metrics:
+        filters = metric['calculation']['filters']
+        if not filters:
+            prepared.append(metric)
+            continue
+        column = f"__kpi_rows_{metric['code']}"
+        try:
+            frame[column] = frame.index.isin(_filter(frame, filters).index)
+        except (KeyError, ValueError, TypeError):
+            prepared.append(metric)  # Its groups report the error, as before.
+            continue
+        prepared.append({**metric, 'calculation': {**metric['calculation'], 'filters': {column: [True]}}})
+    return prepared
+
+
 def _condition(frame: pd.DataFrame, expression: str) -> pd.Series:
     if ' AND ' in expression:
         left, right = expression.split(' AND ', 1)
@@ -525,9 +544,10 @@ def calculate_points_loss(
     loss_shares: list[dict] = []
     for kind, frame, valid in _prepared_frames(frames, dimensions, config, mappings, map_areas, time_split,
                                                campaign_selected, []):
+        metrics = _prefiltered_metrics(frame, [m for m in config['metrics'] if m['source_kind'] == kind])
         for values, group in frame[valid].groupby(group_fields, dropna=False, sort=False):
             metadata = {key: (None if pd.isna(value) else value) for key, value in zip(keys, values)}
-            for metric in (m for m in config['metrics'] if m['source_kind'] == kind):
+            for metric in metrics:
                 try:
                     value, _count = _aggregate(group, metric)
                 except KeyError:

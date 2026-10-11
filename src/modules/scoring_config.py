@@ -801,8 +801,6 @@ def validate_scoring_profiles(payload: object) -> dict[str, Any]:
         normalized_profiles.append(normalized_profile)
     if not isinstance(active_profile_id, str) or active_profile_id not in seen_ids:
         raise ValueError('The active scoring methodology must reference an existing methodology.')
-    from src.modules.scoring_methodologies import check_campaign_overlaps
-    check_campaign_overlaps(normalized_profiles)
     return {'active_profile_id': active_profile_id, 'profiles': normalized_profiles}
 
 
