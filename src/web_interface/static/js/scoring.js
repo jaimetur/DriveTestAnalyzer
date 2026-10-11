@@ -1946,6 +1946,8 @@
 
   function formatScoreCell(cell) {
     if (!cell || typeof cell !== 'object') return {text: 'N/A*', complete: false};
+    // A KPI the methodology of the campaign does not have (By campaign).
+    if (cell.not_applicable) return {text: 'N/A', complete: true};
     const points = firstValue(cell, ['points', 'weighted_points', 'weighted_score'], null);
     const complete = firstValue(cell, ['complete', 'complete_coverage'], false) === true;
     if (points === null || points === undefined || (typeof points === 'string' && points.trim() === '')) return {text: 'N/A*', complete: false};

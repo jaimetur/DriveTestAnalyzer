@@ -279,7 +279,7 @@ def build_scoring_views(job: dict[str, Any] | None, result: dict[str, Any] | Non
     hierarchy_score_tables, hierarchy_gap_tables = _build_hierarchy_tables(
         score_tables, hierarchy_levels, requested_baseline, baseline_aliases,
         operator_mapping_groups or [], metrics, gap_priority_rank,
-        vendor_mapping_groups=vendor_mapping_groups or [],
+        vendor_mapping_groups=vendor_mapping_groups or [], by_campaign=bool(group_configurations),
     ) if hierarchy_levels else ([], [])
 
     selected_levels = [level for level in (_HIERARCHY_LEVELS.get(_level_identity(item)) for item in levels) if level]
@@ -464,13 +464,24 @@ def _missing_hierarchy_value() -> dict[str, Any]:
     }
 
 
+def _not_applicable_hierarchy_value() -> dict[str, Any]:
+    """A KPI the methodology of a campaign does not have (By campaign): no points of the campaign's maximum."""
+    return {
+        'points': 0.0, 'complete': True, 'not_applicable': True, 'value': None, 'score': None, 'sample_count': 0,
+        'threshold_band': 'Unavailable', 'color': THRESHOLD_COLORS['Unavailable'],
+    }
+
+
 def _build_hierarchy_tables(
     score_tables: list[dict[str, Any]], hierarchy_levels: list[str], requested_baseline: str,
     baseline_aliases: list[str], operator_mapping_groups: list[dict[str, Any]],
     metrics: list[dict[str, Any]], gap_priority_rank: dict[str, int], *,
-    vendor_mapping_groups: list[dict[str, Any]] | None = None,
+    vendor_mapping_groups: list[dict[str, Any]] | None = None, by_campaign: bool = False,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """Flatten new-contract per-context views into one complete leaf matrix per Environment."""
+    """Flatten new-contract per-context views into one complete leaf matrix per Environment.
+
+    ``by_campaign``: the campaigns were scored with different methodologies, and a KPI a campaign's table does not
+    have is not one of its methodology (not missing)."""
     levels = [level for level in hierarchy_levels if level == 'Operator' or level in _HIERARCHY_CONTEXT_FIELDS]
     if 'Operator' not in levels:
         return [], []
@@ -570,7 +581,12 @@ def _build_hierarchy_tables(
                 table, raw_operator = leaf_sources[leaf_id]
                 source_row = source_rows[leaf_id].get(code)
                 cell = source_row.get('values', {}).get(raw_operator) if source_row else None
-                row['values'][leaf_id] = copy.deepcopy(cell) if cell is not None else _missing_hierarchy_value()
+                if cell is not None:
+                    row['values'][leaf_id] = copy.deepcopy(cell)
+                elif by_campaign and source_row is None and source_rows[leaf_id]:
+                    row['values'][leaf_id] = _not_applicable_hierarchy_value()
+                else:
+                    row['values'][leaf_id] = _missing_hierarchy_value()
             row['gaps'] = {}
             row['gap_partial'] = {}
             row['gap_environments'] = {}

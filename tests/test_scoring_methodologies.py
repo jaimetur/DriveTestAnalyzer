@@ -176,7 +176,9 @@ def test_each_campaign_of_a_result_by_campaign_is_shown_with_its_methodology():
         parts.append((group, scoring.calculate_scoring(frames, ['Operator', 'Campaign'], baseline_operator='EE',
                                                        configuration=group['configuration'])))
     merged = merge_results(parts)
-    views = build_scoring_views({'levels': ['Operator', 'Campaign']}, merged)
+    from src.modules.saved_filters import AGGREGATION_CONTRACT_VERSION
+    views = build_scoring_views({'levels': ['Operator', 'Campaign'],
+                                 'aggregation_contract_version': AGGREGATION_CONTRACT_VERSION}, merged)
     by_campaign = {}
     for table in views['score_tables']:
         by_campaign.setdefault(table['context'].get('campaign'), []).append(table)
@@ -187,3 +189,10 @@ def test_each_campaign_of_a_result_by_campaign_is_shown_with_its_methodology():
     # The earlier campaign has no TikTok and is not incomplete for lacking it; the later one has it.
     assert 'TIKTOK' not in codes(by_campaign['2026-Q2']) and 'TIKTOK' in codes(by_campaign['2026-Q3'])
     assert not any('Incomplete KPI coverage' in json.dumps(table) for table in by_campaign['2026-Q2'])
+    # The table of every campaign together: TikTok does not apply to the earlier campaign, which stays complete.
+    assert views['hierarchy_score_tables']
+    for table in views['hierarchy_score_tables']:
+        assert not table['coverage_note']
+        tiktok = next(row for row in table['rows'] if row['kpi_code'] == 'TIKTOK')
+        assert {cell.get('not_applicable', False) for cell in tiktok['values'].values()} == {True, False}
+        assert all(cell['complete'] for row in table['rows'] for cell in row['values'].values() if cell.get('not_applicable'))
