@@ -2179,7 +2179,8 @@ th { color: var(--muted); font-weight: 600; position: sticky; top: 0; background
 .workspace-switcher-panel .workspace-select-form .ghost-link, .workspace-switcher-panel .workspace-management summary { color: #ffffff; border-color: rgba(255,255,255,0.45); background: rgba(255,255,255,0.12); }
 .workspace-switcher-panel .workspace-action-close { padding: 0.86rem 1.24rem; }
 .workspace-switcher-panel .workspace-action-close:disabled { background: rgba(255,255,255,0.10); border-color: rgba(255,255,255,0.20); color: rgba(255,255,255,0.54); box-shadow: none; cursor: not-allowed; }
-.workspace-management { flex: 0 0 auto; align-self: end; }
+/* The panel never grows past its page: a table wider than it scrolls inside it. */
+.workspace-management { flex: 0 0 auto; align-self: end; min-width: 0; max-width: 100%; box-sizing: border-box; }
 .workspace-management summary { cursor: pointer; font-weight: 700; border: 1px solid rgba(255,255,255,0.45); border-radius: 12px; padding: 0.68rem 0.85rem; }
 .workspace-management[open] { flex: 1 1 100%; border: 1px solid rgba(255,255,255,0.28); border-radius: 14px; padding: 0.7rem 0.85rem; background: rgba(0,0,0,0.12); }
 .workspace-management-forms { margin-top: 0.8rem; }
@@ -2193,14 +2194,15 @@ th { color: var(--muted); font-weight: 600; position: sticky; top: 0; background
 .workspace-management-forms form:first-child > label:first-child { width: auto; }
 .workspace-management-forms .workspace-create-name { width: 100%; min-width: 0; }
 .workspace-library { margin-top: 0.9rem; border: 1px solid rgba(255,255,255,0.2); border-radius: 12px; }
-.workspace-library-table { width: 100%; min-width: 1320px; border-collapse: separate; border-spacing: 0; table-layout: auto; }
+.workspace-library { max-width: 100%; overflow-x: auto; }
+.workspace-library-table { width: 100%; min-width: 60rem; border-collapse: separate; border-spacing: 0; table-layout: auto; }
 .workspace-library-table th { position: static; padding: 0.62rem 0.7rem; background: rgba(0,0,0,0.18); color: rgba(255,255,255,0.86); font-size: 0.76rem; letter-spacing: 0.04em; text-transform: uppercase; }
 .workspace-library-table td { padding: 0.55rem 0.7rem; border-top: 1px solid rgba(255,255,255,0.14); background: rgba(255,255,255,0.06); vertical-align: middle; }
 .workspace-library-row.active-workspace-row td { background: rgba(255,255,255,0.16); }
 .workspace-library-row.workspace-no-access-row td { background: rgba(7, 16, 24, 0.46); color: rgba(255,255,255,0.48); }
 .workspace-library-row.workspace-no-access-row .workspace-size { color: rgba(255,255,255,0.52); }
 .workspace-library-row.workspace-no-access-row input:disabled { background: rgba(184, 194, 201, 0.32); border-color: rgba(218, 225, 229, 0.22); color: rgba(238, 242, 244, 0.55); -webkit-text-fill-color: rgba(238, 242, 244, 0.55); opacity: 1; }
-.workspace-library-table .workspace-name-column { width: 42.5rem; min-width: 42.5rem; }
+.workspace-library-table .workspace-name-column { width: auto; min-width: 12rem; }
 .workspace-library-table td:first-child input { width: 100%; min-width: 0; }
 .workspace-library-table .workspace-access-column { width: 12rem; min-width: 12rem; }
 .workspace-library-table .workspace-access-column .workspace-access-editor,
@@ -2208,7 +2210,7 @@ th { color: var(--muted); font-weight: 600; position: sticky; top: 0; background
 .workspace-size { color: rgba(255,255,255,0.82); font-size: 0.84rem; font-weight: 700; white-space: nowrap; }
 .workspace-library-table form { margin: 0; }
 .workspace-row-actions { display: flex; align-items: center; gap: 0.45rem; white-space: nowrap; }
-.workspace-library-table th:last-child, .workspace-library-table td:last-child { width: 10rem; }
+.workspace-library-table th:last-child, .workspace-library-table td:last-child { width: 12.5rem; }
 .workspace-row-actions .icon-action { width: 2rem; min-width: 2rem; height: 2rem; min-height: 2rem; padding: 0.15rem !important; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; font-size: 1rem; }
 .workspace-library-table button { padding: 0.55rem 0.7rem; font-size: 0.82rem; }
 .workspace-action-open { background: linear-gradient(135deg, #155d83, #248caf); border-color: rgba(255,255,255,0.32); color: #fff; }

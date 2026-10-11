@@ -5043,7 +5043,10 @@ def test_workspace_management_reports_every_supported_row_status(client, tmp_pat
     assert "d='m7 21-4-4a2 2 0 0 1 0-2.83L12.17 5" in stylesheet
     assert '.workspace-action-close { background: linear-gradient(135deg, #08736d, #20a797);' in stylesheet
     assert '.workspace-action-duplicate { background: linear-gradient(135deg, #b97813, #e0a33e);' in stylesheet
-    assert '.workspace-library-table .workspace-name-column { width: 42.5rem; min-width: 42.5rem; }' in stylesheet
+    # The workspaces table stays inside its panel: a narrower window scrolls it inside the panel.
+    assert '.workspace-library-table .workspace-name-column { width: auto; min-width: 12rem; }' in stylesheet
+    assert '.workspace-library { max-width: 100%; overflow-x: auto; }' in stylesheet
+    assert '.workspace-management { flex: 0 0 auto; align-self: end; min-width: 0; max-width: 100%; box-sizing: border-box; }' in stylesheet
     assert '.workspace-library-table .workspace-access-column { width: 12rem; min-width: 12rem; }' in stylesheet
 
     active = app_module.workspace_table_status(workspace, [])
