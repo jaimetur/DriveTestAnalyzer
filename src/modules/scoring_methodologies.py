@@ -186,8 +186,10 @@ def merge_results(parts: list[tuple[dict[str, Any], dict[str, Any]]]) -> dict[st
     for field in _RESULT_LISTS:
         merged[field] = [row for group, result in parts for row in _tag(result.get(field), group['profile_id'])]
     # A warning of the area summary concerns the campaigns of one methodology only.
+    from src.modules.column_names import format_campaign
+    # (Its campaigns as the workspace Campaign Maps name them.)
     merged['warnings'] = list(dict.fromkeys(
-        (f"{group['profile_name']} ({', '.join(group['campaigns'])}): {warning}"
+        (f"{group['profile_name']} ({', '.join(format_campaign(value) or value for value in group['campaigns'])}): {warning}"
          if str(warning).startswith('National & Area Summary:') else warning)
         for group, result in parts for warning in result.get('warnings') or []))
     merged['notices'] = [notice for _group, result in parts for notice in result.get('notices') or []]

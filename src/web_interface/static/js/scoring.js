@@ -1369,7 +1369,9 @@
             }
             const campaigns = document.createElement('span');
             campaigns.className = 'saved-filter-profile-campaigns';
-            campaigns.textContent = part.slice(split + 2);
+            // Each campaign as the workspace Campaign Maps name it.
+            campaigns.textContent = part.slice(split + 2).split(', ')
+              .map(value => hierarchyDisplayValue({level: 'Campaign', value})).join(', ');
             profileValue.append(part.slice(0, split + 2), campaigns);
           });
           profileValue.append(')');
