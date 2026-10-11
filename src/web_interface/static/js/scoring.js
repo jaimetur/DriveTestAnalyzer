@@ -84,11 +84,11 @@
     }
   });
 
-  const previousFiltersUrl = root.dataset.previousFiltersUrl || '/api/scoring/previous-filters';
+  const savedFiltersUrl = root.dataset.savedFiltersUrl || '/api/scoring/saved-filters';
   const selectionUrl = root.dataset.selectionUrl || '/api/scoring/selection';
-  const exportBase = root.dataset.exportBase || '/scoring/previous-filters';
-  const requestedPreviousFilterId = new URLSearchParams(window.location.search).get('previous_filter_id');
-  const requestedPreviousFilterIdPending = {value: requestedPreviousFilterId};
+  const exportBase = root.dataset.exportBase || '/scoring/saved-filters';
+  const requestedSavedFilterId = new URLSearchParams(window.location.search).get('saved_filter_id');
+  const requestedSavedFilterIdPending = {value: requestedSavedFilterId};
   const scoringViewStorageKey = [
     'drivetest-analyzer', 'scoring-view',
     encodeURIComponent(document.body.dataset.authenticatedUser || 'anonymous'),
@@ -100,7 +100,7 @@
       const stored = JSON.parse(window.sessionStorage.getItem(scoringViewStorageKey) || 'null');
       if (!stored || typeof stored !== 'object' || Array.isArray(stored)) return {};
       return {
-        previousFilterId: typeof stored.job_id === 'string' && stored.job_id ? stored.job_id : null,
+        savedFilterId: typeof stored.saved_filter_id === 'string' && stored.saved_filter_id ? stored.saved_filter_id : null,
         resultTab: stored.result_tab === 'best-network' ? 'charts'
           : resultTabNames.has(stored.result_tab) ? stored.result_tab : null,
         scrollY: Number.isFinite(stored.scroll_y) && stored.scroll_y >= 0 ? stored.scroll_y : null,
@@ -134,7 +134,7 @@
   function persistScoringViewState() {
     try {
       window.sessionStorage.setItem(scoringViewStorageKey, JSON.stringify({
-        job_id: selectedPreviousFilterId,
+        saved_filter_id: selectedSavedFilterId,
         result_tab: activeResultTab,
         // While the saved position is restored, the page is still growing: keep the saved one.
         scroll_y: typeof scoringViewScrollRestoring !== 'undefined' && (scoringViewScrollRestorePending || scoringViewScrollRestoring)
@@ -269,10 +269,10 @@
   const areaSummaryCities = root.querySelector('[data-scoring-area-cities]');
   const geographicFilterKeys = ['Region', 'Cluster', 'City'];
   const message = root.querySelector('[data-scoring-message]');
-  const previousFilterLists = [...root.querySelectorAll('[data-previous-filter-list]')];
-  const previousFilterList = previousFilterLists[0];
-  const previousFilterSelector = root.querySelector('[data-scoring-previous-filter-selector]');
-  const selectedPreviousFilterCard = root.querySelector('[data-selected-previous-filter-card]');
+  const savedFilterLists = [...root.querySelectorAll('[data-saved-filter-list]')];
+  const savedFilterList = savedFilterLists[0];
+  const savedFilterSelector = root.querySelector('[data-saved-filter-selector]');
+  const selectedSavedFilterCard = root.querySelector('[data-selected-saved-filter-card]');
   const environmentControl = root.querySelector('[data-result-environment-control]');
   const environmentSelect = root.querySelector('[data-result-environment]');
   const scoringKindControl = root.querySelector('[data-result-scoring-control]');
@@ -296,28 +296,28 @@
   const contextSelections = new Map();
   const gapComparisonSelections = new Map(Object.entries(restoredScoringViewState.gapComparisons || {}));
   const scoringValueObservers = new Map();
-  const deletedPreviousFilterIds = new Set();
-  const deletingPreviousFilterIds = new Set();
-  let previousFilters = [];
+  const deletedSavedFilterIds = new Set();
+  const deletingSavedFilterIds = new Set();
+  let savedFilters = [];
   let calculationMatchKey = '';
-  // Set by the Previous Filter polling: check the same selection again without disabling the buttons meanwhile.
+  // Set by the Saved Filter polling: check the same selection again without disabling the buttons meanwhile.
   let calculationMatchRefresh = false;
   // The status of the selected CDRs and filters (calculating, recalculating, already calculated or ready) stays
-  // while the Previous Filter list refreshes every few seconds; Previous Filters submitted with Recalculate say so.
+  // while the Saved Filter list refreshes every few seconds; Saved Filters submitted with Recalculate say so.
   let selectionStatus = {key: '', text: '', kind: ''};
-  const recalculatingPreviousFilters = new Set();
+  const recalculatingSavedFilters = new Set();
   let calculationMatchRevision = 0;
   let calculationMatchTimer = null;
   let submittingCalculation = false;
-  let selectedPreviousFilterId = restoredScoringViewState.previousFilterId;
-  let selectedPreviousFilter = null;
+  let selectedSavedFilterId = restoredScoringViewState.savedFilterId;
+  let selectedSavedFilter = null;
   let selectedEnvironment = restoredScoringViewState.environment || 'all';
-  // Best Network or Most Reliable: both scorings share the Previous Filter, its filters and its aggregation.
+  // Best Network or Most Reliable: both scorings share the Saved Filter, its filters and its aggregation.
   let selectedScoring = restoredScoringViewState.scoring || 'best_network';
   let currentEffectiveEnvironment = null;
-  let environmentDefaultPreviousFilterId = null;
+  let environmentDefaultSavedFilterId = null;
   let currentResults = null;
-  let currentResultsPreviousFilterId = null;
+  let currentResultsSavedFilterId = null;
   // Reloading the page keeps the selected results tab; opening the page again
   // from another page always starts on Scoring Charts.
   const pageReloaded = (() => {
@@ -339,7 +339,7 @@
   showResultTab(activeResultTab);
   let chartFocusReturn = null;
   let previousBodyOverflow = '';
-  let userSelectedPreviousFilter = Boolean(selectedPreviousFilterId);
+  let userSelectedSavedFilter = Boolean(selectedSavedFilterId);
   let refreshInFlight = false;
   let timer = null;
   let selectionLoaded = false;
@@ -362,17 +362,17 @@
     }
     return fallback;
   };
-  const previousFilterIdOf = previousFilter => String(valueOf(previousFilter, ['id'], ''));
-  const normalizeStatus = previousFilter => {
-    const raw = String(valueOf(previousFilter, ['status', 'state'], 'queued')).toLowerCase();
+  const savedFilterIdOf = savedFilter => String(valueOf(savedFilter, ['id'], ''));
+  const normalizeStatus = savedFilter => {
+    const raw = String(valueOf(savedFilter, ['status', 'state'], 'queued')).toLowerCase();
     if (['done', 'success', 'succeeded', 'complete', 'completed', 'finished', 'ready'].includes(raw)) return 'completed';
     if (['error', 'failure', 'failed', 'cancelled', 'canceled', 'stopped'].includes(raw)) return 'failed';
     if (['processing', 'running', 'in_progress', 'in-progress'].includes(raw)) return 'processing';
     if (['queued', 'pending', 'created'].includes(raw)) return 'queued';
     return raw.replaceAll('_', ' ') || 'queued';
   };
-  const isActive = previousFilter => ['queued', 'processing'].includes(normalizeStatus(previousFilter));
-  const isComplete = previousFilter => normalizeStatus(previousFilter) === 'completed';
+  const isActive = savedFilter => ['queued', 'processing'].includes(normalizeStatus(savedFilter));
+  const isComplete = savedFilter => normalizeStatus(savedFilter) === 'completed';
   const selectedLevels = () => currentHierarchy.filter(level => aggregationInputByLevel.get(level)?.checked);
   const selectedDatasetIds = () => datasetInputs.filter(input => input.checked && !input.closest('[data-dataset-option]')?.hidden).map(input => input.value);
 
@@ -838,16 +838,16 @@
     }
   }
 
-  function restoreCalculationSelectionFromPreviousFilter(previousFilter) {
+  function restoreCalculationSelectionFromSavedFilter(savedFilter) {
     applySavedCalculationSelection({
-      dataset_ids: previousFilter.dataset_ids || [],
-      aggregation_levels: previousFilter.aggregation_levels || previousFilter.levels || [],
-      nr_mode: previousFilter.nr_mode,
-      baseline_operator: previousFilter.baseline_operator,
-      scoring_profile_id: previousFilter.scoring_profile_id,
-      context_filters: previousFilter.context_filters || {},
-      // A Previous Filter without the National & area summary leaves it out and keeps its settings.
-      area_summary: previousFilter.area_summary ? {...previousFilter.area_summary, breakdown: previousFilter.area_summary.breakdown || 'None', enabled: true}
+      dataset_ids: savedFilter.dataset_ids || [],
+      aggregation_levels: savedFilter.aggregation_levels || savedFilter.levels || [],
+      nr_mode: savedFilter.nr_mode,
+      baseline_operator: savedFilter.baseline_operator,
+      scoring_profile_id: savedFilter.scoring_profile_id,
+      context_filters: savedFilter.context_filters || {},
+      // A Saved Filter without the National & area summary leaves it out and keeps its settings.
+      area_summary: savedFilter.area_summary ? {...savedFilter.area_summary, breakdown: savedFilter.area_summary.breakdown || 'None', enabled: true}
         : {enabled: false},
     });
     scheduleSelectionSave();
@@ -907,9 +907,9 @@
     }).catch(() => {});
   }
 
-  function contextFilterSummary(previousFilter) {
-    const filters = previousFilter?.context_filters && typeof previousFilter.context_filters === 'object'
-      ? previousFilter.context_filters : {};
+  function contextFilterSummary(savedFilter) {
+    const filters = savedFilter?.context_filters && typeof savedFilter.context_filters === 'object'
+      ? savedFilter.context_filters : {};
     const entries = contextFilterDefinitions.flatMap(({key}) => {
       const values = filters[key] ?? filters[key.toLowerCase()];
       const normalized = uniqueCatalogueValues(Array.isArray(values) ? values : (values ? [values] : []));
@@ -961,29 +961,29 @@
     if (!ready || !payload.baseline_operator) return;
     calculationMatchTimer = window.setTimeout(async () => {
       try {
-        const response = await requestJson(`${previousFiltersUrl}/match`, {method: 'POST', body: JSON.stringify(payload)});
+        const response = await requestJson(`${savedFiltersUrl}/match`, {method: 'POST', body: JSON.stringify(payload)});
         if (revision !== calculationMatchRevision || submittingCalculation) return;
-        // The selection was used before: Calculate opens its Previous Filter (calculated again when its CDRs or
+        // The selection was used before: Calculate opens its Saved Filter (calculated again when its CDRs or
         // methodology changed), Recalculate calculates it again anyway.
-        const existing = response.previous_filter;
+        const existing = response.saved_filter;
         calculateButton.disabled = Boolean(existing) && isActive(existing);
         recalculateButton.disabled = !existing || isActive(existing);
         let text = 'Ready to calculate the scoring of these filters.';
         let kind = '';
         if (existing && isActive(existing)) {
-          const verb = recalculatingPreviousFilters.has(String(previousFilterIdOf(existing))) ? 'Recalculating' : 'Calculating';
+          const verb = recalculatingSavedFilters.has(String(savedFilterIdOf(existing))) ? 'Recalculating' : 'Calculating';
           text = `${verb} the scoring of the selected CDRs and filters…`;
           kind = 'busy';
         } else if (existing?.up_to_date) {
-          text = 'These filters were used before and their result is up to date: Calculate opens it, Recalculate calculates it again.';
+          text = 'This selection is a Saved Filter with its result up to date: Calculate opens it, Recalculate calculates it again.';
         } else if (existing) {
-          text = 'These filters were used before: Calculate updates their result with the current CDRs and methodology.';
+          text = 'This selection is a Saved Filter: Calculate updates its result with the current CDRs and methodology.';
         }
         selectionStatus = {key, text, kind};
         setMessage(text, kind);
       } catch (error) {
         if (revision === calculationMatchRevision && !submittingCalculation) {
-          setMessage(error.message || 'Unable to check the Previous Filters.', 'error');
+          setMessage(error.message || 'Unable to check the Saved Filters.', 'error');
         }
       }
     }, 180);
@@ -1104,41 +1104,41 @@
     return parsed.toLocaleString(undefined, {dateStyle: 'medium', timeStyle: 'short'});
   }
 
-  function previousFilterSummary(previousFilter) {
-    const names = valueOf(previousFilter, ['dataset_names', 'cdr_names', 'campaigns'], null);
+  function savedFilterSummary(savedFilter) {
+    const names = valueOf(savedFilter, ['dataset_names', 'cdr_names', 'campaigns'], null);
     if (Array.isArray(names) && names.length) return names.join(', ');
-    const ids = valueOf(previousFilter, ['dataset_ids', 'cdr_ids'], []);
-    const count = Array.isArray(ids) ? ids.length : Number(valueOf(previousFilter, ['dataset_count'], 0));
-    const campaign = valueOf(previousFilter, ['campaign', 'campaign_name', 'campaigns'], '');
+    const ids = valueOf(savedFilter, ['dataset_ids', 'cdr_ids'], []);
+    const count = Array.isArray(ids) ? ids.length : Number(valueOf(savedFilter, ['dataset_count'], 0));
+    const campaign = valueOf(savedFilter, ['campaign', 'campaign_name', 'campaigns'], '');
     return [campaign || `${count || 'Selected'} CDR${count === 1 ? '' : 's'}`].filter(Boolean).join('');
   }
 
-  function previousFilterCdrNames(previousFilter) {
-    let names = valueOf(previousFilter, ['dataset_names', 'cdr_names', 'source_names'], null);
+  function savedFilterCdrNames(savedFilter) {
+    let names = valueOf(savedFilter, ['dataset_names', 'cdr_names', 'source_names'], null);
     if (!Array.isArray(names) || !names.length) {
-      const metadata = previousFilter?.source_metadata;
+      const metadata = savedFilter?.source_metadata;
       const entries = Array.isArray(metadata) ? metadata : (metadata && typeof metadata === 'object' ? Object.values(metadata) : []);
       names = entries.map(entry => firstValue(entry, ['name', 'dataset_name', 'cdr_name'], '')).filter(Boolean);
     }
     return Array.isArray(names) ? uniqueCatalogueValues(names) : [];
   }
 
-  function previousFilterCdrSummary(previousFilter) {
-    const names = previousFilterCdrNames(previousFilter);
+  function savedFilterCdrSummary(savedFilter) {
+    const names = savedFilterCdrNames(savedFilter);
     if (names.length) return names.join(', ');
-    const ids = valueOf(previousFilter, ['dataset_ids', 'cdr_ids'], []);
-    const count = Array.isArray(ids) ? ids.length : Number(valueOf(previousFilter, ['dataset_count'], 0));
+    const ids = valueOf(savedFilter, ['dataset_ids', 'cdr_ids'], []);
+    const count = Array.isArray(ids) ? ids.length : Number(valueOf(savedFilter, ['dataset_count'], 0));
     return `${count || 'Selected'} CDR${count === 1 ? '' : 's'}`;
   }
 
-  function savedPreviousFilterValues(previousFilter, key) {
-    for (const filters of [previousFilter?.context_filters, previousFilter?.resolved_context_filters]) {
+  function savedSavedFilterValues(savedFilter, key) {
+    for (const filters of [savedFilter?.context_filters, savedFilter?.resolved_context_filters]) {
       if (!filters || typeof filters !== 'object') continue;
       const value = firstValue(filters, [key], null);
       if (value === null || value === undefined) continue;
       const rawValues = Array.isArray(value) ? value : [value];
       const values = uniqueCatalogueValues(key === 'Vendor' ? rawValues.map(scoringVendorName) : rawValues);
-      const datasetIds = valueOf(previousFilter, ['dataset_ids', 'cdr_ids'], []);
+      const datasetIds = valueOf(savedFilter, ['dataset_ids', 'cdr_ids'], []);
       const catalogueKey = catalogueKeyByLevel.get(key);
       if (values.length && Array.isArray(datasetIds) && datasetIds.length
           && datasetIds.every(id => Array.isArray(datasetCatalogues.get(String(id))?.[catalogueKey]))) {
@@ -1152,17 +1152,17 @@
     return [];
   }
 
-  function previousFilterCardTitleSegments(previousFilter) {
-    const filterValue = (key, fallback) => savedPreviousFilterValues(previousFilter, key).join(', ') || fallback;
-    const campaignFilter = savedPreviousFilterValues(previousFilter, 'Campaign');
+  function savedFilterCardTitleSegments(savedFilter) {
+    const filterValue = (key, fallback) => savedSavedFilterValues(savedFilter, key).join(', ') || fallback;
+    const campaignFilter = savedSavedFilterValues(savedFilter, 'Campaign');
     const campaigns = campaignFilter.length
       ? [...new Set(campaignFilter.map(value => hierarchyDisplayValue({level: 'Campaign', value})))]
         .sort((left, right) => insightCampaignKey(left) - insightCampaignKey(right) || left.localeCompare(right))
-      : previousFilterCampaigns(previousFilter).filter(value => value !== 'Unspecified');
+      : savedFilterCampaigns(savedFilter).filter(value => value !== 'Unspecified');
     const campaignValue = campaigns.length ? campaigns.join(', ') : 'All Campaigns';
     return [
-      {dimension: 'neutral', value: formatDate(valueOf(previousFilter, ['last_used_at', 'created_at'], ''))},
-      {dimension: 'nr-mode', value: valueOf(previousFilter, ['nr_mode'], 'All NR Modes')},
+      {dimension: 'neutral', value: formatDate(valueOf(savedFilter, ['last_used_at', 'created_at'], ''))},
+      {dimension: 'nr-mode', value: valueOf(savedFilter, ['nr_mode'], 'All NR Modes')},
       {dimension: 'region', value: filterValue('Region', 'All Regions')},
       {dimension: 'cluster', value: filterValue('Cluster', 'All Clusters')},
       {dimension: 'city', value: filterValue('City', 'All Cities')},
@@ -1172,8 +1172,8 @@
     ];
   }
 
-  function previousFilterCardTitle(previousFilter) {
-    return previousFilterCardTitleSegments(previousFilter).map(segment => segment.value).join(' ● ');
+  function savedFilterCardTitle(savedFilter) {
+    return savedFilterCardTitleSegments(savedFilter).map(segment => segment.value).join(' ● ');
   }
 
   function campaignLabels(value) {
@@ -1185,11 +1185,11 @@
     });
   }
 
-  function previousFilterCampaigns(previousFilter) {
-    let campaigns = campaignLabels(previousFilter?.campaigns);
-    if (!campaigns.length) campaigns = campaignLabels(valueOf(previousFilter, ['campaign', 'campaign_name'], null));
+  function savedFilterCampaigns(savedFilter) {
+    let campaigns = campaignLabels(savedFilter?.campaigns);
+    if (!campaigns.length) campaigns = campaignLabels(valueOf(savedFilter, ['campaign', 'campaign_name'], null));
     if (!campaigns.length) {
-      const metadata = previousFilter?.source_metadata;
+      const metadata = savedFilter?.source_metadata;
       const entries = Array.isArray(metadata) ? metadata : (metadata && typeof metadata === 'object' ? Object.values(metadata) : []);
       campaigns = entries.flatMap(entry => campaignLabels(entry));
     }
@@ -1199,14 +1199,14 @@
     return unique.length ? unique : ['Unspecified'];
   }
 
-  function previousFilterLevels(previousFilter) {
-    const levels = valueOf(previousFilter, ['aggregation_levels', 'levels'], []);
+  function savedFilterLevels(savedFilter) {
+    const levels = valueOf(savedFilter, ['aggregation_levels', 'levels'], []);
     return Array.isArray(levels) ? (levels.length ? levels.join(' → ') : 'Operator') : String(levels || 'Operator');
   }
 
-  // The settings of the National & area summary of a Previous Filter, or '' when it has none.
-  function previousFilterAreaSummaryText(previousFilter) {
-    const summary = previousFilter?.area_summary;
+  // The settings of the National & area summary of a Saved Filter, or '' when it has none.
+  function savedFilterAreaSummaryText(savedFilter) {
+    const summary = savedFilter?.area_summary;
     if (!summary || typeof summary !== 'object') return '';
     const split = {All: 'All selected CDRs'}[summary.time_split] || summary.time_split || 'Campaign';
     const cities = (Array.isArray(summary.cities) ? summary.cities : []).filter(Boolean);
@@ -1214,12 +1214,12 @@
       `Separate cities: ${cities.length ? cities.join(', ') : 'None'}`].join(' · ');
   }
 
-  // The calculation time of a Previous Filter (start to finish), or its elapsed time while it runs.
-  function previousFilterDurationText(previousFilter, now = Date.now()) {
-    const started = Date.parse(valueOf(previousFilter, ['started_at'], '') || '');
+  // The calculation time of a Saved Filter (start to finish), or its elapsed time while it runs.
+  function savedFilterDurationText(savedFilter, now = Date.now()) {
+    const started = Date.parse(valueOf(savedFilter, ['started_at'], '') || '');
     if (!Number.isFinite(started)) return '';
-    const finished = Date.parse(valueOf(previousFilter, ['finished_at'], '') || '');
-    const end = Number.isFinite(finished) ? finished : (isActive(previousFilter) ? now : NaN);
+    const finished = Date.parse(valueOf(savedFilter, ['finished_at'], '') || '');
+    const end = Number.isFinite(finished) ? finished : (isActive(savedFilter) ? now : NaN);
     if (!Number.isFinite(end)) return '';
     const seconds = Math.max(0, Math.round((end - started) / 1000));
     if (seconds < 60) return `${seconds} s`;
@@ -1227,14 +1227,14 @@
     return `${Math.floor(seconds / 3600)} h ${String(Math.floor((seconds % 3600) / 60)).padStart(2, '0')} min`;
   }
 
-  function progressValue(previousFilter) {
-    const raw = Number(valueOf(previousFilter, ['progress', 'progress_percent', 'percentage'], 0));
+  function progressValue(savedFilter) {
+    const raw = Number(valueOf(savedFilter, ['progress', 'progress_percent', 'percentage'], 0));
     if (!Number.isFinite(raw)) return 0;
     return Math.max(0, Math.min(100, raw <= 1 ? raw * 100 : raw));
   }
 
-  // The pinned Previous Filters first, then the latest used.
-  function sortedPreviousFilters(records) {
+  // The pinned Saved Filters first, then the latest used.
+  function sortedSavedFilters(records) {
     return [...records].sort((left, right) => {
       const leftDate = new Date(valueOf(left, ['last_used_at', 'created_at'], 0)).getTime() || 0;
       const rightDate = new Date(valueOf(right, ['last_used_at', 'created_at'], 0)).getTime() || 0;
@@ -1243,62 +1243,62 @@
     });
   }
 
-  function syncPreviousFilterLists() {
-    for (const list of previousFilterLists.slice(1)) {
-      list.replaceChildren(...Array.from(previousFilterList.children, row => row.cloneNode(true)));
+  function syncSavedFilterLists() {
+    for (const list of savedFilterLists.slice(1)) {
+      list.replaceChildren(...Array.from(savedFilterList.children, row => row.cloneNode(true)));
     }
   }
 
-  function renderPreviousFilters() {
-    const ordered = sortedPreviousFilters(previousFilters);
-    for (const countBadge of root.querySelectorAll('[data-previous-filter-count]')) {
+  function renderSavedFilters() {
+    const ordered = sortedSavedFilters(savedFilters);
+    for (const countBadge of root.querySelectorAll('[data-saved-filter-count]')) {
       countBadge.textContent = `${ordered.length} filter${ordered.length === 1 ? '' : 's'}`;
     }
-    previousFilterList.replaceChildren();
-    selectedPreviousFilterCard.textContent = ordered.length ? 'Select previous filters' : 'No previous filters yet';
+    savedFilterList.replaceChildren();
+    selectedSavedFilterCard.textContent = ordered.length ? 'Select a Saved Filter' : 'No Saved Filters yet';
     if (!ordered.length) {
       const empty = document.createElement('div');
       empty.className = 'scoring-empty';
       empty.textContent = 'No scoring has been calculated in this workspace yet: the filters of each calculation are kept here.';
-      previousFilterList.append(empty);
-      syncPreviousFilterLists();
+      savedFilterList.append(empty);
+      syncSavedFilterLists();
       return;
     }
-    for (const previousFilter of ordered) {
-      const id = previousFilterIdOf(previousFilter);
-      const status = normalizeStatus(previousFilter);
+    for (const savedFilter of ordered) {
+      const id = savedFilterIdOf(savedFilter);
+      const status = normalizeStatus(savedFilter);
       const button = document.createElement('button');
       button.type = 'button';
-      button.className = 'scoring-previous-filter-item';
-      button.dataset.previousFilterId = id;
-      button.setAttribute('aria-current', String(id === selectedPreviousFilterId));
-      if (previousFilter.name) {
-        // The name given to these filters, above them.
+      button.className = 'saved-filter-item';
+      button.dataset.savedFilterId = id;
+      button.setAttribute('aria-current', String(id === selectedSavedFilterId));
+      if (savedFilter.name) {
+        // The name given to the Saved Filter, above its filters.
         const name = document.createElement('span');
-        name.className = 'scoring-previous-filter-name';
-        name.textContent = previousFilter.name;
+        name.className = 'saved-filter-name';
+        name.textContent = savedFilter.name;
         button.append(name);
       }
       const top = document.createElement('span');
-      top.className = 'scoring-previous-filter-item-top';
+      top.className = 'saved-filter-item-top';
       const title = document.createElement('strong');
-      const titleSegments = previousFilterCardTitleSegments(previousFilter);
+      const titleSegments = savedFilterCardTitleSegments(savedFilter);
       titleSegments.forEach((segment, index) => {
         if (index) {
           const separator = document.createElement('span');
-          separator.className = 'scoring-previous-filter-title-separator';
+          separator.className = 'saved-filter-title-separator';
           separator.dataset.dimension = 'neutral';
           separator.textContent = ' ● ';
           title.append(separator);
         }
         const value = document.createElement('span');
-        value.className = `scoring-previous-filter-title-segment scoring-previous-filter-title-${segment.dimension}`;
+        value.className = `saved-filter-title-segment saved-filter-title-${segment.dimension}`;
         value.dataset.dimension = segment.dimension;
         value.textContent = segment.value;
         title.append(value);
       });
-      title.setAttribute('aria-label', previousFilterCardTitle(previousFilter));
-      title.title = previousFilterCardTitle(previousFilter);
+      title.setAttribute('aria-label', savedFilterCardTitle(savedFilter));
+      title.title = savedFilterCardTitle(savedFilter);
       const statusBadge = document.createElement('span');
       statusBadge.className = 'scoring-status';
       statusBadge.dataset.status = status;
@@ -1307,157 +1307,165 @@
       top.append(title, statusBadge);
       button.append(top);
       const aggregation = document.createElement('span');
-      aggregation.className = 'scoring-previous-filter-aggregation';
+      aggregation.className = 'saved-filter-aggregation';
       const aggregationLabel = document.createElement('span');
       aggregationLabel.textContent = 'Split by:';
       const aggregationLevels = document.createElement('strong');
-      aggregationLevels.textContent = previousFilterLevels(previousFilter);
+      aggregationLevels.textContent = savedFilterLevels(savedFilter);
       aggregation.append(aggregationLabel, aggregationLevels);
       button.append(aggregation);
       const meta = document.createElement('span');
-      meta.className = 'scoring-previous-filter-meta';
-      const baseline = valueOf(previousFilter, ['baseline_operator'], 'EE');
+      meta.className = 'saved-filter-meta';
+      const baseline = valueOf(savedFilter, ['baseline_operator'], 'EE');
       meta.textContent = 'GAP Reference: ';
       const referenceValue = document.createElement('strong');
-      referenceValue.className = 'scoring-previous-filter-reference';
+      referenceValue.className = 'saved-filter-reference';
       referenceValue.textContent = baseline;
       meta.append(referenceValue);
       button.append(meta);
-      const areaSummary = previousFilterAreaSummaryText(previousFilter);
+      const areaSummary = savedFilterAreaSummaryText(savedFilter);
       if (areaSummary) {
-        // The National & area summary of the Previous Filter, when it includes one: its time split, breakdown and cities.
+        // The National & area summary of the Saved Filter, when it includes one: its time split, breakdown and cities.
         const areaMeta = document.createElement('span');
-        areaMeta.className = 'scoring-previous-filter-meta';
+        areaMeta.className = 'saved-filter-meta';
         areaMeta.textContent = 'National & area summary: ';
         const areaValue = document.createElement('strong');
-        areaValue.className = 'scoring-previous-filter-area-summary';
+        areaValue.className = 'saved-filter-area-summary';
         areaValue.textContent = areaSummary;
         areaMeta.append(areaValue);
         button.append(areaMeta);
       }
-      const cdrNames = previousFilterCdrNames(previousFilter);
+      const cdrNames = savedFilterCdrNames(savedFilter);
       const cdrButton = document.createElement('button');
       cdrButton.type = 'button';
-      cdrButton.className = 'scoring-previous-filter-cdrs';
-      cdrButton.dataset.previousFilterCdrs = id;
-      const cdrCount = cdrNames.length || (previousFilter.dataset_ids || []).length;
+      cdrButton.className = 'saved-filter-cdrs';
+      cdrButton.dataset.savedFilterCdrs = id;
+      const cdrCount = cdrNames.length || (savedFilter.dataset_ids || []).length;
       cdrButton.textContent = cdrCount ? `${cdrCount} CDR${cdrCount === 1 ? '' : 's'}` : 'Selected CDRs';
-      cdrButton.title = cdrNames.length ? cdrNames.join('\n') : previousFilterCdrSummary(previousFilter);
-      cdrButton.setAttribute('aria-label', `Show the CDRs of Previous Filter ${id}`);
-      const profileName = valueOf(previousFilter, ['scoring_profile_name', 'profile_name'], '');
+      cdrButton.title = cdrNames.length ? cdrNames.join('\n') : savedFilterCdrSummary(savedFilter);
+      cdrButton.setAttribute('aria-label', `Show the CDRs of Saved Filter ${id}`);
+      const profileName = valueOf(savedFilter, ['scoring_profile_name', 'profile_name'], '');
       if (profileName) {
         const profileMeta = document.createElement('span');
-        profileMeta.className = 'scoring-previous-filter-meta';
+        profileMeta.className = 'saved-filter-meta';
         profileMeta.textContent = 'Scoring Methodology: ';
         const profileValue = document.createElement('strong');
-        profileValue.className = 'scoring-previous-filter-profile';
+        profileValue.className = 'saved-filter-profile';
         profileValue.textContent = profileName;
         profileMeta.append(profileValue);
         button.append(profileMeta);
       }
-      const duration = previousFilterDurationText(previousFilter);
+      const duration = savedFilterDurationText(savedFilter);
       if (duration) {
         // How long the calculation took, or has taken so far while it runs.
         const durationMeta = document.createElement('span');
-        durationMeta.className = 'scoring-previous-filter-meta';
-        durationMeta.textContent = isActive(previousFilter) ? 'Elapsed: ' : 'Calculation time: ';
+        durationMeta.className = 'saved-filter-meta';
+        durationMeta.textContent = isActive(savedFilter) ? 'Elapsed: ' : 'Calculation time: ';
         const durationValue = document.createElement('strong');
-        durationValue.className = 'scoring-previous-filter-duration';
+        durationValue.className = 'saved-filter-duration';
         durationValue.textContent = duration;
         durationMeta.append(durationValue);
         button.append(durationMeta);
       }
-      if (isActive(previousFilter)) {
+      if (isActive(savedFilter)) {
         const progress = document.createElement('span');
-        progress.className = 'scoring-previous-filter-progress';
-        progress.setAttribute('aria-label', `Calculation ${progressValue(previousFilter)} percent complete`);
+        progress.className = 'saved-filter-progress';
+        progress.setAttribute('aria-label', `Calculation ${progressValue(savedFilter)} percent complete`);
         const bar = document.createElement('span');
-        bar.style.width = `${progressValue(previousFilter)}%`;
+        bar.style.width = `${progressValue(savedFilter)}%`;
         progress.append(bar);
         button.append(progress);
       }
-      const uses = Number(previousFilter.use_count || 1);
+      // How many times it has been used (calculated or opened) and calculated, on one line.
+      const times = count => `${count} time${count === 1 ? '' : 's'}`;
+      const uses = Number(savedFilter.use_count || 1);
+      const calculations = Number(savedFilter.calculation_count || 0);
       const useMeta = document.createElement('span');
-      useMeta.className = 'scoring-previous-filter-meta';
-      useMeta.textContent = 'Used: ';
+      useMeta.className = 'saved-filter-meta';
       const useValue = document.createElement('strong');
-      useValue.className = 'scoring-previous-filter-uses';
-      useValue.textContent = `${uses} time${uses === 1 ? '' : 's'}`;
-      useMeta.append(useValue);
+      useValue.className = 'saved-filter-uses';
+      useValue.textContent = times(uses);
+      const calculationValue = document.createElement('strong');
+      calculationValue.className = 'saved-filter-calculations';
+      calculationValue.textContent = times(calculations);
+      const calculationLabel = document.createElement('span');
+      calculationLabel.textContent = ' · Calculated: ';
+      useMeta.textContent = 'Used: ';
+      useMeta.append(useValue, calculationLabel, calculationValue);
       button.append(useMeta);
-      const missing = Array.isArray(previousFilter.missing_cdrs) ? previousFilter.missing_cdrs.filter(Boolean) : [];
+      const missing = Array.isArray(savedFilter.missing_cdrs) ? savedFilter.missing_cdrs.filter(Boolean) : [];
       if (missing.length) {
         // Filters imported from another workspace wait until their CDRs are processed here.
         const waiting = document.createElement('span');
-        waiting.className = 'scoring-previous-filter-meta scoring-previous-filter-waiting';
+        waiting.className = 'saved-filter-meta saved-filter-waiting';
         waiting.textContent = `Waiting for its CDRs: ${missing.join(', ')}`;
         button.append(waiting);
       }
-      const newer = Array.isArray(previousFilter.newer_cdrs) ? previousFilter.newer_cdrs : [];
+      const newer = Array.isArray(savedFilter.newer_cdrs) ? savedFilter.newer_cdrs : [];
       if (newer.length) {
         // A Final CDR (or a newer cumulative one) replaces some of its CDRs.
         const notice = document.createElement('span');
-        notice.className = 'scoring-previous-filter-meta scoring-previous-filter-newer';
+        notice.className = 'saved-filter-meta saved-filter-newer';
         notice.textContent = `Newer CDRs available: ${newer.map(item => `${item.replaced_by_name} replaces ${item.name}`).join('; ')}`;
         button.append(notice);
       }
-      const error = valueOf(previousFilter, ['error', 'error_message', 'last_error'], '');
+      const error = valueOf(savedFilter, ['error', 'error_message', 'last_error'], '');
       if (status === 'failed' && error) {
         const detail = document.createElement('span');
-        detail.className = 'scoring-previous-filter-meta';
+        detail.className = 'saved-filter-meta';
         detail.textContent = error;
         button.append(detail);
       }
       const row = document.createElement('div');
-      row.className = 'scoring-previous-filter-row';
+      row.className = 'saved-filter-row';
       const actions = document.createElement('span');
-      actions.className = 'scoring-previous-filter-actions';
+      actions.className = 'saved-filter-actions';
       if (newer.length) {
         const useNewer = document.createElement('button');
         useNewer.type = 'button';
-        useNewer.className = 'scoring-previous-filter-use-newer';
-        useNewer.dataset.previousFilterNewer = id;
+        useNewer.className = 'saved-filter-use-newer';
+        useNewer.dataset.savedFilterNewer = id;
         useNewer.textContent = 'Use newer CDRs';
-        useNewer.title = 'Select these filters with the newer CDRs and calculate them';
+        useNewer.title = 'Select this scoring with the newer CDRs and calculate it';
         actions.append(useNewer);
       }
       const pin = document.createElement('button');
       pin.type = 'button';
-      pin.className = 'scoring-previous-filter-pin';
-      pin.dataset.previousFilterPin = id;
-      pin.textContent = previousFilter.pinned ? '★' : '☆';
-      pin.title = previousFilter.pinned ? 'Unpin these filters' : 'Pin these filters at the top of the list';
-      pin.setAttribute('aria-label', `${previousFilter.pinned ? 'Unpin' : 'Pin'} Previous Filter ${id}`);
-      pin.setAttribute('aria-pressed', String(Boolean(previousFilter.pinned)));
+      pin.className = 'saved-filter-pin';
+      pin.dataset.savedFilterPin = id;
+      pin.textContent = savedFilter.pinned ? '★' : '☆';
+      pin.title = savedFilter.pinned ? 'Unpin this Saved Filter' : 'Pin this Saved Filter at the top of the list';
+      pin.setAttribute('aria-label', `${savedFilter.pinned ? 'Unpin' : 'Pin'} Saved Filter ${id}`);
+      pin.setAttribute('aria-pressed', String(Boolean(savedFilter.pinned)));
       const rename = document.createElement('button');
       rename.type = 'button';
-      rename.className = 'scoring-previous-filter-rename';
-      rename.dataset.previousFilterRename = id;
+      rename.className = 'saved-filter-rename';
+      rename.dataset.savedFilterRename = id;
       rename.textContent = '✎';
-      rename.title = previousFilter.name ? 'Rename these filters' : 'Name these filters';
-      rename.setAttribute('aria-label', `Name Previous Filter ${id}`);
+      rename.title = savedFilter.name ? 'Rename this Saved Filter' : 'Name this Saved Filter';
+      rename.setAttribute('aria-label', `Name Saved Filter ${id}`);
       const remove = document.createElement('button');
       remove.type = 'button';
-      remove.className = 'scoring-previous-filter-delete';
-      remove.dataset.deletePreviousFilterId = id;
+      remove.className = 'saved-filter-delete';
+      remove.dataset.deleteSavedFilterId = id;
       remove.textContent = '×';
-      remove.title = 'Delete these filters and their saved result';
-      remove.setAttribute('aria-label', `Delete Previous Filter ${id}`);
-      remove.disabled = deletingPreviousFilterIds.has(id);
+      remove.title = 'Delete this Saved Filter and its result';
+      remove.setAttribute('aria-label', `Delete Saved Filter ${id}`);
+      remove.disabled = deletingSavedFilterIds.has(id);
       actions.append(cdrButton, rename, pin, remove);
       row.append(button, actions);
-      previousFilterList.append(row);
-      if (id === selectedPreviousFilterId) {
+      savedFilterList.append(row);
+      if (id === selectedSavedFilterId) {
         // The selected card of the Scoring Results dropdown, with its CDRs, name and pin buttons (deleting is done in
         // the lists).
         const selectedActions = document.createElement('span');
-        selectedActions.className = 'scoring-previous-filter-actions';
+        selectedActions.className = 'saved-filter-actions';
         selectedActions.append(...Array.from(actions.children, child => child.cloneNode(true))
-          .filter(child => !child.dataset?.deletePreviousFilterId));
-        selectedPreviousFilterCard.replaceChildren(...Array.from(button.children, child => child.cloneNode(true)), selectedActions);
+          .filter(child => !child.dataset?.deleteSavedFilterId));
+        selectedSavedFilterCard.replaceChildren(...Array.from(button.children, child => child.cloneNode(true)), selectedActions);
       }
     }
-    syncPreviousFilterLists();
+    syncSavedFilterLists();
   }
 
   async function requestJson(url, options = {}) {
@@ -1558,7 +1566,7 @@
   function activeScoringConfiguration() {
     return effectiveScoring() === 'most_reliable'
       ? activeScoringPayload()?.configuration || {}
-      : selectedPreviousFilter?.configuration || currentResults?.configuration || {};
+      : selectedSavedFilter?.configuration || currentResults?.configuration || {};
   }
 
   function syncResultScoring(payload) {
@@ -1569,7 +1577,7 @@
     scoringKindSelect.value = effectiveScoring(payload);
   }
 
-  function setExportLinks(previousFilterId, enabled) {
+  function setExportLinks(savedFilterId, enabled) {
     for (const [kind, link] of Object.entries(exportLinks).flatMap(([name, links]) => [links].flat().map(item => [name, item]))) {
       if (!link) continue;
       link.hidden = false;
@@ -1580,7 +1588,7 @@
       // CSV files carry the selected scoring; PowerPoint and Word carry both scorings.
       const scoringOption = kind !== 'ppt' && typeof effectiveScoring === 'function'
         && effectiveScoring() === 'most_reliable' ? '&scoring=most_reliable' : '';
-      link.href = enabled ? `${exportBase}/${encodeURIComponent(previousFilterId)}/export/${kind}?${query}${gapOption}${scoringOption}` : '#';
+      link.href = enabled ? `${exportBase}/${encodeURIComponent(savedFilterId)}/export/${kind}?${query}${gapOption}${scoringOption}` : '#';
     }
   }
 
@@ -1628,7 +1636,7 @@
       });
   }
 
-  // Export Selected Scoring Report (Results panel) exports the selected Previous Filter as it was calculated (its
+  // Export Selected Scoring Report (Results panel) exports the selected Saved Filter as it was calculated (its
   // CDRs, Split by levels and filters): it only asks for PowerPoint or Word.
   async function exportSelectedScoringReport(link) {
     const message = 'Export the selected scoring report with the CDRs, Split by levels and filters it was calculated with.';
@@ -1646,7 +1654,7 @@
 
   async function downloadScoringDocument(href, label, init = {}) {
     globalThis.showLoadingOverlay?.(`Preparing the ${label} document`,
-      `Preparing the Scoring & GAP Analysis ${label} of the selected filters with its tables and charts. The document downloads when it is ready.`);
+      `Preparing the Scoring & GAP Analysis ${label} of the selected Saved Filter with its tables and charts. The document downloads when it is ready.`);
     try {
       const response = await fetch(href, {credentials: 'same-origin', ...init});
       if (!response.ok) {
@@ -1761,7 +1769,7 @@
   }
 
   function gapComparisonIdentity(table, kind) {
-    return JSON.stringify([selectedPreviousFilterId || currentResultsPreviousFilterId || '', kind, comparisonIdentity(table, kind)]);
+    return JSON.stringify([selectedSavedFilterId || currentResultsSavedFilterId || '', kind, comparisonIdentity(table, kind)]);
   }
 
   function comparisonLabel(table, kind) {
@@ -3096,7 +3104,7 @@
     if (!tables.length) {
       const empty = document.createElement('div');
       empty.className = 'scoring-empty';
-      empty.textContent = 'No scoring comparison tables are available for these filters.';
+      empty.textContent = 'No scoring comparison tables are available for this Saved Filter.';
       pane.append(empty);
       return;
     }
@@ -3129,7 +3137,7 @@
     if (!tables.length) {
       const empty = document.createElement('div');
       empty.className = 'scoring-empty';
-      empty.textContent = 'No GAP comparison tables are available for these filters.';
+      empty.textContent = 'No GAP comparison tables are available for this Saved Filter.';
       pane.append(empty);
       return;
     }
@@ -4090,7 +4098,7 @@
     if (!rows.length) {
       const empty = document.createElement('div');
       empty.className = 'scoring-empty';
-      empty.textContent = 'No chart rows are available for these filters.';
+      empty.textContent = 'No chart rows are available for this Saved Filter.';
       pane.append(empty);
       return;
     }
@@ -5454,10 +5462,10 @@
     return `rgb(${lossLow.map((low, index) => Math.round(low + (lossHigh[index] - low) * value)).join(',')})`;
   }
 
-  function lossBoundaries(previousFilterId, field) {
-    const key = `${previousFilterId}:${field}`;
+  function lossBoundaries(savedFilterId, field) {
+    const key = `${savedFilterId}:${field}`;
     if (!lossBoundaryCache.has(key)) {
-      lossBoundaryCache.set(key, requestJson(`${previousFiltersUrl}/${encodeURIComponent(previousFilterId)}/boundaries/${encodeURIComponent(field)}`)
+      lossBoundaryCache.set(key, requestJson(`${savedFiltersUrl}/${encodeURIComponent(savedFilterId)}/boundaries/${encodeURIComponent(field)}`)
         .then(body => ({boundaries: body?.boundaries || {}, outlines: body?.background || []}))
         .catch(() => ({boundaries: {}, outlines: []})));
     }
@@ -5548,8 +5556,8 @@
 
   // Points Lost Map: choose the location (for example London), the operators (their maps side by
   // side) and the analysis per City, Region or Cluster.
-  function renderPointsLossMaps(pane, payload, environment, previousFilterId) {
-    if (!environment || !previousFilterId) return;
+  function renderPointsLossMaps(pane, payload, environment, savedFilterId) {
+    if (!environment || !savedFilterId) return;
     if (payload.points_loss_pending) {
       // Calculated from the Scoring History: the map follows once the rows of the tests are read.
       const section = document.createElement('section');
@@ -5628,7 +5636,7 @@
     const grid = document.createElement('div');
     grid.className = `scoring-loss-map-grid${chosen.length > 1 ? ' is-multiple' : ''}`;
     const cards = candidates.filter(item => chosen.includes(item.ranking.operator))
-      .map(entry => pointsLossMapCard(entry, payload, previousFilterId, chosen.length > 1, mode));
+      .map(entry => pointsLossMapCard(entry, payload, savedFilterId, chosen.length > 1, mode));
     grid.append(...cards);
     modeSelect?.addEventListener('change', () => {
       insightSelections.set('points-loss-colour', modeSelect.value);
@@ -5650,7 +5658,7 @@
   }
 
   // One operator's map with the note and the ranking of the areas where it loses most points.
-  function pointsLossMapCard(entry, payload, previousFilterId, compact, mode = 'top') {
+  function pointsLossMapCard(entry, payload, savedFilterId, compact, mode = 'top') {
     const {ranking, layer} = entry;
     const card = document.createElement('article');
     card.className = 'scoring-loss-map-card';
@@ -5722,7 +5730,7 @@
       row.dataset.area = bars[index]?.name || '';
       row.dataset.points = String(bars[index]?.points || 0);
     });
-    renderLoads.push((layer ? lossBoundaries(previousFilterId, layer.field) : Promise.resolve({boundaries: {}, outlines: []})).then(({boundaries, outlines}) => {
+    renderLoads.push((layer ? lossBoundaries(savedFilterId, layer.field) : Promise.resolve({boundaries: {}, outlines: []})).then(({boundaries, outlines}) => {
       // Each colouring: each city or route with its map areas (the share of its tests in each, or the points it
       // loses in each one) and the colour of every area.
       const colourings = {};
@@ -5922,9 +5930,28 @@
       toolbar.append(button);
     }
     box.append(toolbar);
-    box.addEventListener('pointerenter', () => toolbar.classList.add('is-visible'));
-    box.addEventListener('pointerleave', () => toolbar.classList.remove('is-visible'));
+    let hideTimer = 0;
+    const show = () => { window.clearTimeout(hideTimer); toolbar.classList.add('is-visible'); };
+    const hide = () => { window.clearTimeout(hideTimer); toolbar.classList.remove('is-visible'); };
+    // With a mouse the buttons show while the pointer is over the chart or map.
+    box.addEventListener('pointerenter', event => { if (event.pointerType === 'mouse') show(); });
+    box.addEventListener('pointerleave', event => { if (event.pointerType === 'mouse') hide(); });
+    // On touch screens a tap shows them: they stay a few seconds after the last tap, or until a tap elsewhere.
+    box.addEventListener('pointerup', event => {
+      if (event.pointerType === 'mouse') return;
+      show();
+      hideTimer = window.setTimeout(hide, 5000);
+    });
   }
+
+  // A tap elsewhere hides the zoom buttons shown by a tap. One listener for the page: charts drawn again do not keep
+  // listeners of their own (which would keep the charts they replace in memory).
+  document.addEventListener('pointerdown', event => {
+    if (event.pointerType === 'mouse') return;
+    for (const toolbar of document.querySelectorAll('.scoring-map-zoom.is-visible')) {
+      if (!toolbar.parentElement?.contains(event.target)) toolbar.classList.remove('is-visible');
+    }
+  });
 
   // Zoom for content that is not one SVG (such as the location cards): the content is scaled inside
   // its box, which keeps its size; a dragged rectangle or the floating buttons zoom it.
@@ -6282,7 +6309,7 @@
     return values.length > 0 && values.every(cell => cell.complete === true);
   }
 
-  function scoringCoverageWarnings(payload, previousFilter, environment, {concise = false} = {}) {
+  function scoringCoverageWarnings(payload, savedFilter, environment, {concise = false} = {}) {
     const genericNotice = 'Incomplete KPI or environment coverage: partial points are shown without renormalizing weights; a complete benchmark score is unavailable.';
     const warnings = Array.isArray(payload?.warnings) ? payload.warnings : (payload?.warnings ? [payload.warnings] : []);
     const totals = scoringCoverageTotals(payload, environment);
@@ -6328,11 +6355,11 @@
       return low === high ? formatChartNumber(low) : `${formatChartNumber(low)}–${formatChartNumber(high)}`;
     };
     if (available.length && maximum.length) message += ` Available maximum points: ${range(available)} of ${range(maximum)}; these are scoring weights, not earned scores.`;
-    const cities = previousFilter?.context_filters?.City || [];
+    const cities = savedFilter?.context_filters?.City || [];
     if (missing.size && Array.isArray(cities) && cities.length) {
       message += ` The saved City filter is ${cities.join(', ')}. Only matching City names are included; road routes with different City names are excluded.`;
     }
-    if (environment === 'Combined' && (payload.aggregation_levels || previousFilter?.aggregation_levels || []).includes('City')) {
+    if (environment === 'Combined' && (payload.aggregation_levels || savedFilter?.aggregation_levels || []).includes('City')) {
       message += ' City is a Split by level: cities and road routes are scored separately, and environment coverage is checked within each group.';
     }
     message += ' Available points keep their original weights; missing contributions are not scaled up to a complete benchmark.';
@@ -6396,7 +6423,7 @@
   // Drawing the results again (another operator, environment or option) keeps the card being looked at
   // where it was on the screen: each pane keeps its height until its maps are drawn, and the page
   // scrolls by what the cards above that card grew or shrank.
-  function renderResult(savedPayload, previousFilter, panesToRender = [activeResultTab]) {
+  function renderResult(savedPayload, savedFilter, panesToRender = [activeResultTab]) {
     const held = panesToRender.map(name => root.querySelector(`[data-result-pane="${name}"]`))
       .filter(pane => pane && pane.childElementCount && pane.offsetHeight).map(pane => [pane, pane.offsetHeight]);
     // The card of the panes that fills most of the window, by its pane, position and class.
@@ -6427,7 +6454,7 @@
     held.forEach(([pane, height]) => { pane.style.minHeight = `${height}px`; });
     renderLoads = [];
     try {
-      renderResultContent(savedPayload, previousFilter, panesToRender);
+      renderResultContent(savedPayload, savedFilter, panesToRender);
     } finally {
       if (held.length) {
         keepAnchor();
@@ -6441,9 +6468,9 @@
     }
   }
 
-  function renderResultContent(savedPayload, previousFilter, panesToRender) {
+  function renderResultContent(savedPayload, savedFilter, panesToRender) {
     currentResults = savedPayload;
-    currentResultsPreviousFilterId = previousFilterIdOf(previousFilter || savedPayload.previous_filter || {}) || null;
+    currentResultsSavedFilterId = savedFilterIdOf(savedFilter || savedPayload.saved_filter || {}) || null;
     syncResultScoring(savedPayload);
     const payload = activeScoringPayload(savedPayload);
     const shouldRenderPane = name => panesToRender.includes(name);
@@ -6458,11 +6485,11 @@
     const allGapSummaryTables = normalizeRows(views.gap_summary_tables ?? payload.gap_summary_tables ?? payload.scoring_views?.gap_summary_tables ?? []);
     const allHierarchyScoreTables = normalizeRows(views.hierarchy_score_tables ?? []);
     const allHierarchyGapTables = normalizeRows(views.hierarchy_gap_tables ?? []);
-    const applyCoverageDefault = environmentDefaultPreviousFilterId !== currentResultsPreviousFilterId;
+    const applyCoverageDefault = environmentDefaultSavedFilterId !== currentResultsSavedFilterId;
     const environmentSelection = syncResultEnvironment([...allScoreTables, ...allHierarchyScoreTables], {
       payload, applyCoverageDefault,
     });
-    environmentDefaultPreviousFilterId = currentResultsPreviousFilterId;
+    environmentDefaultSavedFilterId = currentResultsSavedFilterId;
     const effectiveEnvironment = environmentSelection.effective;
     const scoreTables = allScoreTables.filter(table => environmentOf(table) === effectiveEnvironment);
     const gapTables = allGapTables.filter(table => environmentOf(table) === effectiveEnvironment);
@@ -6503,7 +6530,7 @@
         scoringPane.append(detailHeading, detailTable);
       } else {
         scoringPane.replaceChildren();
-        renderTable(scoringPane, detailRows, 'These filters have no scoring table rows.', {hideGapColumns: true});
+        renderTable(scoringPane, detailRows, 'This Saved Filter has no scoring table rows.', {hideGapColumns: true});
       }
       renderCampaignComparisons(scoringPane, payload, effectiveEnvironment);
       if (tableExports.scoring) scoringPane.prepend(tableExports.scoring);
@@ -6544,21 +6571,21 @@
       gapTablesCard.append(...gapPane.childNodes);
       if (gapTablesCard.childNodes.length) gapPane.append(gapTablesCard);
       renderKpiGapProfiles(gapPane, payload, effectiveEnvironment);
-      renderPointsLossMaps(gapPane, payload, effectiveEnvironment, previousFilterIdOf(previousFilter || payload.previous_filter || {}));
+      renderPointsLossMaps(gapPane, payload, effectiveEnvironment, savedFilterIdOf(savedFilter || payload.saved_filter || {}));
       if (tableExports.gap) gapPane.prepend(tableExports.gap);
     }
-    const warnings = payload.warnings ?? previousFilter?.warnings ?? [];
-    renderWarnings(scoringCoverageWarnings({...payload, warnings}, previousFilter, effectiveEnvironment));
+    const warnings = payload.warnings ?? savedFilter?.warnings ?? [];
+    renderWarnings(scoringCoverageWarnings({...payload, warnings}, savedFilter, effectiveEnvironment));
     // Scaling concerns the Combined scores, not the score of a single environment.
-    renderNotices(!effectiveEnvironment || ['all', 'Combined'].includes(effectiveEnvironment) ? payload.notices ?? previousFilter?.notices ?? [] : []);
-    setExportLinks(previousFilterIdOf(previousFilter || payload.previous_filter || {}), true);
+    renderNotices(!effectiveEnvironment || ['all', 'Combined'].includes(effectiveEnvironment) ? payload.notices ?? savedFilter?.notices ?? [] : []);
+    setExportLinks(savedFilterIdOf(savedFilter || payload.saved_filter || {}), true);
   }
 
-  // While the selected Previous Filter calculates, the results show an animated progress bar. Each poll updates it in place,
+  // While the selected Saved Filter calculates, the results show an animated progress bar. Each poll updates it in place,
   // so the stripes keep moving instead of starting again.
-  function renderCalculating(previousFilter) {
-    const progress = Math.round(progressValue(previousFilter));
-    const detail = String(valueOf(previousFilter, ['message'], '') || '').trim();
+  function renderCalculating(savedFilter) {
+    const progress = Math.round(progressValue(savedFilter));
+    const detail = String(valueOf(savedFilter, ['message'], '') || '').trim();
     const update = (element) => {
       element.querySelector('.scoring-calculating-fill').style.width = `${Math.max(6, progress)}%`;
       element.querySelector('.scoring-calculating-bar').setAttribute('aria-valuenow', String(progress));
@@ -6582,7 +6609,7 @@
     }
   }
 
-  // While the results of a saved Previous Filter load, the results show the same striped bar, moving across its whole width.
+  // While the results of a saved Saved Filter load, the results show the same striped bar, moving across its whole width.
   function renderLoadingResults() {
     renderNoResult('');
     for (const pane of resultPanes) {
@@ -6615,28 +6642,28 @@
 
   let pointsLossTimer = 0;
 
-  async function loadPreviousFilter(previousFilter, force = false, updatePreviousFilterList = true) {
-    const id = previousFilterIdOf(previousFilter);
+  async function loadSavedFilter(savedFilter, force = false, updateSavedFilterList = true) {
+    const id = savedFilterIdOf(savedFilter);
     if (!id) return;
-    selectedPreviousFilterId = id;
-    selectedPreviousFilter = previousFilter;
-    if (updatePreviousFilterList) renderPreviousFilters();
-    if (!force && resultCache.has(id) && isComplete(previousFilter)) {
+    selectedSavedFilterId = id;
+    selectedSavedFilter = savedFilter;
+    if (updateSavedFilterList) renderSavedFilters();
+    if (!force && resultCache.has(id) && isComplete(savedFilter)) {
       const cached = resultCache.get(id);
-      if (currentResultsPreviousFilterId !== id || currentResults !== cached) renderResult(cached, previousFilter);
+      if (currentResultsSavedFilterId !== id || currentResults !== cached) renderResult(cached, savedFilter);
       return;
     }
-    if (currentResultsPreviousFilterId !== id) {
+    if (currentResultsSavedFilterId !== id) {
       currentResults = null;
-      currentResultsPreviousFilterId = null;
-      if (isActive(previousFilter)) renderCalculating(previousFilter);
+      currentResultsSavedFilterId = null;
+      if (isActive(savedFilter)) renderCalculating(savedFilter);
       else renderLoadingResults();
     }
     try {
-      const payload = await requestJson(`${previousFiltersUrl}/${encodeURIComponent(id)}`);
-      if (deletedPreviousFilterIds.has(id) || selectedPreviousFilterId !== id) return;
-      const record = payload.previous_filter || payload;
-      selectedPreviousFilter = record;
+      const payload = await requestJson(`${savedFiltersUrl}/${encodeURIComponent(id)}`);
+      if (deletedSavedFilterIds.has(id) || selectedSavedFilterId !== id) return;
+      const record = payload.saved_filter || payload;
+      selectedSavedFilter = record;
       const status = normalizeStatus(record);
       // A saved result whose CDRs or methodology are gone is shown as it was, saying why.
       if (record.unavailable) setMessage(`${record.unavailable} The saved result is shown.`, 'error');
@@ -6647,87 +6674,102 @@
         // A result from the Scoring History is reloaded once its Points Lost Map is ready.
         window.clearTimeout(pointsLossTimer);
         if (payload.points_loss_pending) {
-          pointsLossTimer = window.setTimeout(() => {
-            if (selectedPreviousFilterId !== id) return;
-            resultCache.delete(id);
-            loadPreviousFilter(selectedPreviousFilter, true, false);
-          }, 5000);
+          // The list of Saved Filters (light) is checked until the map is saved; only then are the results loaded
+          // and drawn again.
+          const loadedAt = record.updated_at;
+          const checkPointsLoss = async () => {
+            if (selectedSavedFilterId !== id) return;
+            try {
+              const list = await requestJson(savedFiltersUrl);
+              const current = (list.saved_filters || []).find(item => savedFilterIdOf(item) === id);
+              if (selectedSavedFilterId !== id) return;
+              if (!current || current.updated_at !== loadedAt) {
+                resultCache.delete(id);
+                loadSavedFilter(selectedSavedFilter, true, false);
+                return;
+              }
+            } catch (_error) {
+              // Checked again a moment later.
+            }
+            pointsLossTimer = window.setTimeout(checkPointsLoss, 5000);
+          };
+          pointsLossTimer = window.setTimeout(checkPointsLoss, 5000);
         }
       } else if (status === 'failed') {
         currentResults = null;
-        currentResultsPreviousFilterId = null;
-        const error = valueOf(record, ['error', 'error_message', 'last_error'], 'The scoring of these filters failed without an error message.');
+        currentResultsSavedFilterId = null;
+        const error = valueOf(record, ['error', 'error_message', 'last_error'], 'This Saved Filter failed without an error message.');
         renderNoResult(error);
       } else if (isActive(record)) {
         currentResults = null;
-        currentResultsPreviousFilterId = null;
+        currentResultsSavedFilterId = null;
         renderCalculating(record);
         setExportLinks('', false);
         // Opening filters whose CDRs or methodology changed calculates them again: follow the calculation.
-        if (!timer) timer = window.setInterval(refreshPreviousFilters, 3500);
+        if (!timer) timer = window.setInterval(refreshSavedFilters, 3500);
       } else {
         currentResults = null;
-        currentResultsPreviousFilterId = null;
+        currentResultsSavedFilterId = null;
         renderNoResult('Scoring results will appear here when the calculation completes.');
         setExportLinks('', false);
       }
     } catch (error) {
-      if (deletedPreviousFilterIds.has(id) || selectedPreviousFilterId !== id) return;
+      if (deletedSavedFilterIds.has(id) || selectedSavedFilterId !== id) return;
       currentResults = null;
-      currentResultsPreviousFilterId = null;
+      currentResultsSavedFilterId = null;
       renderNoResult(error.message || 'The selected filters could not be loaded.');
       setMessage(error.message || 'The selected filters could not be loaded.', 'error');
     }
   }
 
-  async function refreshPreviousFilters() {
+  async function refreshSavedFilters() {
     if (refreshInFlight) return;
     refreshInFlight = true;
     try {
-      const payload = await requestJson(previousFiltersUrl);
-      previousFilters = (Array.isArray(payload) ? payload : (Array.isArray(payload.previous_filters) ? payload.previous_filters : []))
-        .filter(previousFilter => !deletedPreviousFilterIds.has(previousFilterIdOf(previousFilter)));
-      for (const previousFilter of previousFilters) {
-        const id = previousFilterIdOf(previousFilter);
+      const payload = await requestJson(savedFiltersUrl);
+      savedFilters = (Array.isArray(payload) ? payload : (Array.isArray(payload.saved_filters) ? payload.saved_filters : []))
+        .filter(savedFilter => !deletedSavedFilterIds.has(savedFilterIdOf(savedFilter)));
+      for (const savedFilter of savedFilters) {
+        const id = savedFilterIdOf(savedFilter);
         const cached = resultCache.get(id);
-        if (cached && (isActive(previousFilter) || cached.previous_filter?.updated_at !== previousFilter.updated_at)) resultCache.delete(id);
+        if (cached && (isActive(savedFilter) || cached.saved_filter?.updated_at !== savedFilter.updated_at)) resultCache.delete(id);
       }
-      const ordered = sortedPreviousFilters(previousFilters);
-      const requested = requestedPreviousFilterIdPending.value
-        ? ordered.find(previousFilter => previousFilterIdOf(previousFilter) === requestedPreviousFilterIdPending.value) : null;
-      requestedPreviousFilterIdPending.value = null;
-      const retained = !requested && userSelectedPreviousFilter && selectedPreviousFilterId
-        ? ordered.find(previousFilter => previousFilterIdOf(previousFilter) === selectedPreviousFilterId) : null;
-      selectedPreviousFilter = requested || retained || ordered.find(isComplete) || ordered[0] || null;
-      selectedPreviousFilterId = selectedPreviousFilter ? previousFilterIdOf(selectedPreviousFilter) : null;
-      userSelectedPreviousFilter = Boolean(requested || retained);
-      renderPreviousFilters();
-      if (selectedPreviousFilter) {
-        const hasCached = resultCache.has(previousFilterIdOf(selectedPreviousFilter)) && isComplete(selectedPreviousFilter);
-        if (!hasCached || isActive(selectedPreviousFilter)) await loadPreviousFilter(selectedPreviousFilter, isActive(selectedPreviousFilter), false);
+      const ordered = sortedSavedFilters(savedFilters);
+      const requested = requestedSavedFilterIdPending.value
+        ? ordered.find(savedFilter => savedFilterIdOf(savedFilter) === requestedSavedFilterIdPending.value) : null;
+      requestedSavedFilterIdPending.value = null;
+      const retained = !requested && userSelectedSavedFilter && selectedSavedFilterId
+        ? ordered.find(savedFilter => savedFilterIdOf(savedFilter) === selectedSavedFilterId) : null;
+      selectedSavedFilter = requested || retained || ordered.find(isComplete) || ordered[0] || null;
+      selectedSavedFilterId = selectedSavedFilter ? savedFilterIdOf(selectedSavedFilter) : null;
+      userSelectedSavedFilter = Boolean(requested || retained);
+      renderSavedFilters();
+      if (selectedSavedFilter) {
+        const hasCached = resultCache.has(savedFilterIdOf(selectedSavedFilter)) && isComplete(selectedSavedFilter);
+        if (!hasCached || isActive(selectedSavedFilter)) await loadSavedFilter(selectedSavedFilter, isActive(selectedSavedFilter), false);
         else {
-          const id = previousFilterIdOf(selectedPreviousFilter);
+          const id = savedFilterIdOf(selectedSavedFilter);
           const cached = resultCache.get(id);
-          if (currentResultsPreviousFilterId !== id || currentResults !== cached) renderResult(cached, selectedPreviousFilter);
+          if (currentResultsSavedFilterId !== id || currentResults !== cached) renderResult(cached, selectedSavedFilter);
         }
       } else {
         currentResults = null;
-        currentResultsPreviousFilterId = null;
-        renderNoResult('Calculate a scoring or choose Previous Filters to see their results.');
+        currentResultsSavedFilterId = null;
+        renderNoResult('Calculate a scoring or choose Saved Filters to see their results.');
       }
       calculationMatchRefresh = true;
       updateSelection();
-      const anyActive = previousFilters.some(isActive);
-      if (anyActive && !timer) timer = window.setInterval(refreshPreviousFilters, 3500);
+      const anyActive = savedFilters.some(isActive);
+      if (anyActive && !timer) timer = window.setInterval(refreshSavedFilters, 3500);
       if (!anyActive && timer) { window.clearInterval(timer); timer = null; }
     } catch (error) {
-      previousFilterList.innerHTML = '';
+      savedFilterList.innerHTML = '';
       const empty = document.createElement('div');
       empty.className = 'scoring-empty';
-      empty.textContent = error.message || 'The Previous Filters could not be loaded.';
-      previousFilterList.append(empty);
-      syncPreviousFilterLists();
-      setMessage(error.message || 'The Previous Filters could not be loaded.', 'error');
+      empty.textContent = error.message || 'The Saved Filters could not be loaded.';
+      savedFilterList.append(empty);
+      syncSavedFilterLists();
+      setMessage(error.message || 'The Saved Filters could not be loaded.', 'error');
     } finally {
       refreshInFlight = false;
       if (scoringViewScrollRestorePending) restoreScoringViewScroll();
@@ -6735,43 +6777,43 @@
     }
   }
 
-  async function deletePreviousFilter(id) {
-    const previousFilter = previousFilters.find(record => previousFilterIdOf(record) === id);
-    if (!previousFilter || deletingPreviousFilterIds.has(id)) return;
-    const copy = `Delete these filters and their saved result?${isActive(previousFilter) ? ' Its pending result will be discarded.' : ''} The CDRs and the Scoring History stay.`;
+  async function deleteSavedFilter(id) {
+    const savedFilter = savedFilters.find(record => savedFilterIdOf(record) === id);
+    if (!savedFilter || deletingSavedFilterIds.has(id)) return;
+    const copy = `Delete this Saved Filter and its result?${isActive(savedFilter) ? ' Its pending result will be discarded.' : ''} The CDRs and the Scoring History stay.`;
     const accepted = typeof showConfirmDialog === 'function'
-      ? await showConfirmDialog(copy, {title: 'Delete Previous Filter', confirmLabel: 'Delete'})
+      ? await showConfirmDialog(copy, {title: 'Delete Saved Filter', confirmLabel: 'Delete'})
       : window.confirm(copy);
     if (!accepted) return;
-    deletingPreviousFilterIds.add(id);
-    renderPreviousFilters();
+    deletingSavedFilterIds.add(id);
+    renderSavedFilters();
     try {
-      await requestJson(`${previousFiltersUrl}/${encodeURIComponent(id)}`, {method: 'DELETE'});
-      deletedPreviousFilterIds.add(id);
+      await requestJson(`${savedFiltersUrl}/${encodeURIComponent(id)}`, {method: 'DELETE'});
+      deletedSavedFilterIds.add(id);
       resultCache.delete(id);
-      previousFilters = previousFilters.filter(record => previousFilterIdOf(record) !== id);
+      savedFilters = savedFilters.filter(record => savedFilterIdOf(record) !== id);
       calculationMatchKey = '';
       updateSelection();
-      if (selectedPreviousFilterId === id) {
-        selectedPreviousFilterId = null;
-        selectedPreviousFilter = null;
+      if (selectedSavedFilterId === id) {
+        selectedSavedFilterId = null;
+        selectedSavedFilter = null;
         currentResults = null;
-        currentResultsPreviousFilterId = null;
-        userSelectedPreviousFilter = false;
-        renderNoResult('Calculate a scoring or choose Previous Filters to see their results.');
+        currentResultsSavedFilterId = null;
+        userSelectedSavedFilter = false;
+        renderNoResult('Calculate a scoring or choose Saved Filters to see their results.');
       }
-      renderPreviousFilters();
-      setMessage('Previous Filter and its saved result deleted.', 'success');
-      await refreshPreviousFilters();
+      renderSavedFilters();
+      setMessage('Saved Filter and its saved result deleted.', 'success');
+      await refreshSavedFilters();
     } catch (error) {
-      setMessage(error.message || 'The Previous Filter could not be deleted.', 'error');
+      setMessage(error.message || 'The Saved Filter could not be deleted.', 'error');
     } finally {
-      deletingPreviousFilterIds.delete(id);
-      renderPreviousFilters();
+      deletingSavedFilterIds.delete(id);
+      renderSavedFilters();
     }
   }
 
-  async function createPreviousFilter(force) {
+  async function createSavedFilter(force) {
     const datasetIds = selectedDatasetIds();
     if (!datasetIds.length) {
       setMessage('Select one or more CDR datasets first.', 'error');
@@ -6804,31 +6846,31 @@
     setMessage(force ? 'Submitting a fresh scoring calculation…' : 'Submitting scoring calculation…');
     try {
       await persistCalculationSelection();
-      const body = await requestJson(previousFiltersUrl, {method: 'POST', body: JSON.stringify(payload)});
-      const previousFilter = body.previous_filter || body;
-      const id = previousFilterIdOf(previousFilter);
-      if (!id) throw new Error('The scoring service did not return the Previous Filter.');
-      if (force) recalculatingPreviousFilters.add(String(id)); else recalculatingPreviousFilters.delete(String(id));
-      if (isActive(previousFilter)) {
+      const body = await requestJson(savedFiltersUrl, {method: 'POST', body: JSON.stringify(payload)});
+      const savedFilter = body.saved_filter || body;
+      const id = savedFilterIdOf(savedFilter);
+      if (!id) throw new Error('The scoring service did not return the Saved Filter.');
+      if (force) recalculatingSavedFilters.add(String(id)); else recalculatingSavedFilters.delete(String(id));
+      if (isActive(savedFilter)) {
         selectionStatus = {key: JSON.stringify(calculationPayload()), kind: 'busy',
           text: `${force ? 'Recalculating' : 'Calculating'} the scoring of the selected CDRs and filters…`};
       }
-      selectedPreviousFilterId = id;
-      selectedPreviousFilter = previousFilter;
-      userSelectedPreviousFilter = true;
+      selectedSavedFilterId = id;
+      selectedSavedFilter = savedFilter;
+      userSelectedSavedFilter = true;
       if (force) resultCache.delete(id);
       const cached = Boolean(body.cached);
       if (cached && (body.scoring || body.gap)) {
-        const result = {previous_filter: previousFilter, scoring: body.scoring || [], gap: body.gap || [], warnings: body.warnings || []};
+        const result = {saved_filter: savedFilter, scoring: body.scoring || [], gap: body.gap || [], warnings: body.warnings || []};
         resultCache.set(id, result);
       }
       if (cached) setMessage('Loaded the previously calculated result.', 'success');
-      else if (isActive(previousFilter)) setMessage(selectionStatus.text, 'busy');
+      else if (isActive(savedFilter)) setMessage(selectionStatus.text, 'busy');
       else setMessage('Scoring calculation added to the background queue.', 'success');
-      await refreshPreviousFilters();
-      if (isActive(selectedPreviousFilter)) {
-        renderPreviousFilters();
-        if (!timer) timer = window.setInterval(refreshPreviousFilters, 3500);
+      await refreshSavedFilters();
+      if (isActive(selectedSavedFilter)) {
+        renderSavedFilters();
+        if (!timer) timer = window.setInterval(refreshSavedFilters, 3500);
       }
     } catch (error) {
       setMessage(error.message || 'The scoring calculation could not be started.', 'error');
@@ -6891,31 +6933,31 @@
     }
     if (event.target === environmentSelect && currentResults) {
       selectedEnvironment = environmentSelect.value;
-      renderResult(currentResults, selectedPreviousFilter);
+      renderResult(currentResults, selectedSavedFilter);
       return;
     }
     if (event.target.matches?.('[data-insight-select]') && currentResults) {
       insightSelections.set(event.target.dataset.insightSelect, event.target.value);
       persistScoringViewState();
-      renderResult(currentResults, selectedPreviousFilter);
+      renderResult(currentResults, selectedSavedFilter);
       return;
     }
     if (event.target === scoringKindSelect && currentResults) {
-      renderResult(currentResults, selectedPreviousFilter);
+      renderResult(currentResults, selectedSavedFilter);
       return;
     }
     if (event.target === showGapValuesToggle) {
       syncGapValueControls();
-      if (currentResults) renderResult(currentResults, selectedPreviousFilter, ['scoring']);
+      if (currentResults) renderResult(currentResults, selectedSavedFilter, ['scoring']);
       return;
     }
     if (event.target === showKpiValuesToggle && currentResults) {
-      renderResult(currentResults, selectedPreviousFilter);
+      renderResult(currentResults, selectedSavedFilter);
       return;
     }
     if (event.target === gapLayoutSelect && currentResults) {
-      renderResult(currentResults, selectedPreviousFilter);
-      setExportLinks(currentResultsPreviousFilterId, true);
+      renderResult(currentResults, selectedSavedFilter);
+      setExportLinks(currentResultsSavedFilterId, true);
       return;
     }
     const gapSummaryOperator = event.target.closest('[data-gap-summary-operator]');
@@ -6927,7 +6969,7 @@
         insightSelections.set('gap-insight-operators-offered', JSON.stringify('*'));
       }
       persistScoringViewState();
-      renderResult(currentResults, selectedPreviousFilter);
+      renderResult(currentResults, selectedSavedFilter);
       return;
     }
     const hierarchyGapOperator = event.target.closest('[data-hierarchy-gap-operator]');
@@ -6939,7 +6981,7 @@
         insightSelections.set('gap-insight-operators-offered', JSON.stringify('*'));
       }
       persistScoringViewState();
-      renderResult(currentResults, selectedPreviousFilter);
+      renderResult(currentResults, selectedSavedFilter);
       return;
     }
     const select = event.target.closest('[data-comparison-context]');
@@ -6948,7 +6990,7 @@
     if (select.dataset.contextSource === 'chart') {
       const identity = select.selectedOptions[0]?.dataset.contextIdentity;
       if (identity) contextSelections.set(kind, identity);
-      renderResult(currentResults, selectedPreviousFilter);
+      renderResult(currentResults, selectedSavedFilter);
       return;
     }
     const activeResults = activeScoringPayload(currentResults);
@@ -6962,97 +7004,101 @@
     const selected = Array.isArray(tables) ? tables[Number(select.value)] : null;
     if (!selected) return;
     contextSelections.set(kind, comparisonIdentity(selected, kind));
-    renderResult(currentResults, selectedPreviousFilter);
+    renderResult(currentResults, selectedSavedFilter);
   });
   baselineInput.addEventListener('input', updateSelection);
-  calculateButton.addEventListener('click', () => createPreviousFilter(false));
-  recalculateButton.addEventListener('click', () => createPreviousFilter(true));
+  calculateButton.addEventListener('click', () => createSavedFilter(false));
+  recalculateButton.addEventListener('click', () => createSavedFilter(true));
   document.addEventListener('click', event => {
-    if (!previousFilterSelector.contains(event.target)) previousFilterSelector.open = false;
+    if (!savedFilterSelector.contains(event.target)) savedFilterSelector.open = false;
   });
-  previousFilterSelector.addEventListener('keydown', event => {
+  savedFilterSelector.addEventListener('keydown', event => {
     if (event.key !== 'Escape') return;
-    previousFilterSelector.open = false;
-    previousFilterSelector.querySelector('summary').focus();
+    savedFilterSelector.open = false;
+    savedFilterSelector.querySelector('summary').focus();
   });
-  // The name, pin and Use newer CDRs buttons of a Previous Filter, in the lists and in the selected card of the
+  // The name, pin and Use newer CDRs buttons of a Saved Filter, in the lists and in the selected card of the
   // Scoring Results dropdown. Returns whether the click was one of them.
-  async function previousFilterAction(event) {
-    const pin = event.target.closest('[data-previous-filter-pin]');
-    const rename = event.target.closest('[data-previous-filter-rename]');
-    const useNewer = event.target.closest('[data-previous-filter-newer]');
+  async function savedFilterAction(event) {
+    const pin = event.target.closest('[data-saved-filter-pin]');
+    const rename = event.target.closest('[data-saved-filter-rename]');
+    const useNewer = event.target.closest('[data-saved-filter-newer]');
     if (pin || rename || useNewer) {
       event.preventDefault();
-      const id = pin?.dataset.previousFilterPin || rename?.dataset.previousFilterRename || useNewer?.dataset.previousFilterNewer;
-      const previousFilter = previousFilters.find(record => previousFilterIdOf(record) === id);
-      if (!previousFilter) return true;
+      const id = pin?.dataset.savedFilterPin || rename?.dataset.savedFilterRename || useNewer?.dataset.savedFilterNewer;
+      const savedFilter = savedFilters.find(record => savedFilterIdOf(record) === id);
+      if (!savedFilter) return true;
       if (useNewer) {
         // The same filters with the CDRs that replace the older ones, calculated as a new selection.
-        const replacements = new Map((previousFilter.newer_cdrs || []).map(item => [String(item.id), String(item.replaced_by)]));
-        restoreCalculationSelectionFromPreviousFilter({
-          ...previousFilter,
-          dataset_ids: [...new Set((previousFilter.dataset_ids || []).map(value => replacements.get(String(value)) || String(value)))],
+        const replacements = new Map((savedFilter.newer_cdrs || []).map(item => [String(item.id), String(item.replaced_by)]));
+        restoreCalculationSelectionFromSavedFilter({
+          ...savedFilter,
+          dataset_ids: [...new Set((savedFilter.dataset_ids || []).map(value => replacements.get(String(value)) || String(value)))],
         });
-        previousFilterSelector.open = false;
-        await createPreviousFilter(false);
+        savedFilterSelector.open = false;
+        await createSavedFilter(false);
         return true;
       }
-      const changes = pin ? {pinned: !previousFilter.pinned} : (() => {
-        const name = window.prompt('Name of these filters (leave it empty to show their filters only):', previousFilter.name || '');
+      const changes = pin ? {pinned: !savedFilter.pinned} : (() => {
+        const name = window.prompt('Name of this Saved Filter (leave it empty to show its filters only):', savedFilter.name || '');
         return name === null ? null : {name};
       })();
       if (!changes) return true;
       try {
-        await requestJson(`${previousFiltersUrl}/${encodeURIComponent(id)}`, {method: 'PATCH', body: JSON.stringify(changes)});
-        await refreshPreviousFilters();
+        await requestJson(`${savedFiltersUrl}/${encodeURIComponent(id)}`, {method: 'PATCH', body: JSON.stringify(changes)});
+        await refreshSavedFilters();
       } catch (error) {
-        setMessage(error.message || 'The Previous Filter could not be updated.', 'error');
+        setMessage(error.message || 'The Saved Filter could not be updated.', 'error');
       }
       return true;
     }
     return false;
   }
 
-  for (const list of previousFilterLists) list.addEventListener('click', async event => {
-    if (await previousFilterAction(event)) return;
-    const remove = event.target.closest('[data-delete-previous-filter-id]');
+  for (const list of savedFilterLists) list.addEventListener('click', async event => {
+    if (await savedFilterAction(event)) return;
+    const remove = event.target.closest('[data-delete-saved-filter-id]');
     if (remove) {
-      deletePreviousFilter(remove.dataset.deletePreviousFilterId);
+      deleteSavedFilter(remove.dataset.deleteSavedFilterId);
       return;
     }
-    const button = event.target.closest('[data-previous-filter-id]');
+    const button = event.target.closest('[data-saved-filter-id]');
     if (!button) return;
-    const previousFilter = previousFilters.find(record => previousFilterIdOf(record) === button.dataset.previousFilterId);
-    if (!previousFilter) return;
-    userSelectedPreviousFilter = true;
-    selectedPreviousFilterId = previousFilterIdOf(previousFilter);
-    selectedPreviousFilter = previousFilter;
-    restoreCalculationSelectionFromPreviousFilter(previousFilter);
-    const fromDropdown = previousFilterSelector.contains(button);
-    previousFilterSelector.open = false;
-    if (fromDropdown) previousFilterSelector.querySelector('summary').focus();
+    const savedFilter = savedFilters.find(record => savedFilterIdOf(record) === button.dataset.savedFilterId);
+    if (!savedFilter) return;
+    userSelectedSavedFilter = true;
+    selectedSavedFilterId = savedFilterIdOf(savedFilter);
+    selectedSavedFilter = savedFilter;
+    restoreCalculationSelectionFromSavedFilter(savedFilter);
+    // Opening it from its card counts as a use.
+    requestJson(`${savedFiltersUrl}/${encodeURIComponent(selectedSavedFilterId)}/use`, {method: 'POST'})
+      .then(() => refreshSavedFilters())
+      .catch(() => { /* The count is not essential to open it. */ });
+    const fromDropdown = savedFilterSelector.contains(button);
+    savedFilterSelector.open = false;
+    if (fromDropdown) savedFilterSelector.querySelector('summary').focus();
     persistScoringViewState();
-    await loadPreviousFilter(previousFilter, true);
-    if (!fromDropdown && selectedPreviousFilterId === previousFilterIdOf(previousFilter)) {
+    await loadSavedFilter(savedFilter, true);
+    if (!fromDropdown && selectedSavedFilterId === savedFilterIdOf(savedFilter)) {
       root.querySelector('.scoring-results-panel')?.scrollIntoView({behavior: 'smooth', block: 'start'});
     }
   });
   root.addEventListener('click', event => {
     // In the selected card of the dropdown, the buttons do not open it.
-    if (event.target.closest('summary') && event.target.closest('[data-previous-filter-pin], [data-previous-filter-rename], [data-previous-filter-newer]')) {
-      previousFilterAction(event);
+    if (event.target.closest('summary') && event.target.closest('[data-saved-filter-pin], [data-saved-filter-rename], [data-saved-filter-newer]')) {
+      savedFilterAction(event);
       return;
     }
-    const cdrButton = event.target.closest('[data-previous-filter-cdrs]');
+    const cdrButton = event.target.closest('[data-saved-filter-cdrs]');
     if (cdrButton) {
       event.preventDefault();
-      const previousFilter = previousFilters.find(record => previousFilterIdOf(record) === cdrButton.dataset.previousFilterCdrs);
-      if (!previousFilter) return;
+      const savedFilter = savedFilters.find(record => savedFilterIdOf(record) === cdrButton.dataset.savedFilterCdrs);
+      if (!savedFilter) return;
       const copy = document.getElementById('info-copy');
       const previousWhiteSpace = copy?.style.whiteSpace || '';
       if (copy) copy.style.whiteSpace = 'pre-line';
-      showInfoDialog(previousFilterCdrNames(previousFilter).join('\n') || previousFilterCdrSummary(previousFilter), {
-        title: `Previous Filter ${previousFilterIdOf(previousFilter)} — CDRs`,
+      showInfoDialog(savedFilterCdrNames(savedFilter).join('\n') || savedFilterCdrSummary(savedFilter), {
+        title: `Saved Filter ${savedFilterIdOf(savedFilter)} — CDRs`,
         onClose: () => {
           if (copy) copy.style.whiteSpace = previousWhiteSpace;
           cdrButton.focus();
@@ -7077,7 +7123,7 @@
         gapComparisonSelections.set(key, `operator:${chosen[0]}`);
         persistScoringViewState();
       }
-      renderResult(currentResults, selectedPreviousFilter, ['gap']);
+      renderResult(currentResults, selectedSavedFilter, ['gap']);
       return;
     }
     if (event.target.closest('[data-generate-report]')) {
@@ -7108,7 +7154,7 @@
     }
     for (const pane of root.querySelectorAll('[data-result-pane]')) pane.hidden = pane.dataset.resultPane !== name;
     persistScoringViewState();
-    if (currentResults) renderResult(currentResults, selectedPreviousFilter, [name]);
+    if (currentResults) renderResult(currentResults, selectedSavedFilter, [name]);
   });
   expandedChartClose?.addEventListener('click', closeExpandedChart);
   // The Scoring Results entries of the Scoring tab menu (#scoring-results-charts, -tables or -gap) open that
@@ -7118,6 +7164,8 @@
       decodeURIComponent(window.location.hash.slice(1))];
     if (!name) return;
     root.querySelector(`[data-result-tab="${name}"]`)?.click();
+    // Shown once: a reload then returns to the tab and position being read instead of this one.
+    window.history.replaceState(window.history.state, '', `${window.location.pathname}${window.location.search}`);
     window.requestAnimationFrame(() => {
       const panel = root.querySelector('.scoring-result-tabs') || root.querySelector('.scoring-results-panel');
       if (!panel) return;
@@ -7176,5 +7224,5 @@
   syncResultTableControls();
   applyNrFilter(false);
   loadCalculationSelection();
-  refreshPreviousFilters();
+  refreshSavedFilters();
 })();

@@ -310,14 +310,15 @@ CREATE TABLE IF NOT EXISTS generated_jobs (
     finished_at TEXT
 );
 
--- The Previous Filters of Scoring & GAP Analysis: every selection used, with its saved result (see
--- scoring_previous_filters). filter_key identifies the selection, result_key what its result was calculated with.
-CREATE TABLE IF NOT EXISTS scoring_previous_filters (
+-- The Saved Filters of Scoring & GAP Analysis: every selection used, with its saved result (see
+-- saved_filters). selection_key identifies the selection, result_key what its result was calculated with.
+CREATE TABLE IF NOT EXISTS saved_filters (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    filter_key TEXT NOT NULL UNIQUE,
+    selection_key TEXT NOT NULL UNIQUE,
     name TEXT NOT NULL DEFAULT '',
     pinned INTEGER NOT NULL DEFAULT 0,
     use_count INTEGER NOT NULL DEFAULT 1,
+    calculation_count INTEGER NOT NULL DEFAULT 0,
     last_used_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     cdr_refs_json TEXT NOT NULL DEFAULT '[]',
     result_key TEXT NOT NULL DEFAULT '',
@@ -340,8 +341,8 @@ CREATE TABLE IF NOT EXISTS scoring_previous_filters (
     finished_at TEXT
 );
 
-CREATE INDEX IF NOT EXISTS idx_scoring_previous_filters_order
-ON scoring_previous_filters(pinned DESC, last_used_at DESC);
+CREATE INDEX IF NOT EXISTS idx_saved_filters_order
+ON saved_filters(pinned DESC, last_used_at DESC);
 
 """
 
@@ -645,7 +646,9 @@ class Repository:
         with self.connection() as conn:
             self._configure_database_journal(conn)
             self._migrate_calculated_dimensions_table(conn)
+            self._rename_earlier_saved_filters_table(conn)
             conn.executescript(SCHEMA)
+            self._ensure_saved_filter_columns(conn)
             self._convert_scoring_jobs(conn)
             self._ensure_chart_mapping_groups(conn)
             self._ensure_dashboard_filter_selection_columns(conn)
@@ -1524,9 +1527,30 @@ class Repository:
             conn.execute('DROP TABLE report_chart_jobs')
 
     @staticmethod
+    def _rename_earlier_saved_filters_table(conn: sqlite3.Connection) -> None:
+        """Keep the Saved Filters of a workspace opened while they were called Previous Filters or Saved Scorings."""
+        tables = {str(row['name']) for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'").fetchall()}
+        earlier = next((name for name in ('scoring_previous_filters', 'saved_scorings') if name in tables), None)
+        if earlier is None or 'saved_filters' in tables:
+            return
+        conn.execute(f'DROP INDEX IF EXISTS idx_{earlier}_order')
+        conn.execute(f'ALTER TABLE {earlier} RENAME TO saved_filters')
+        columns = {str(row['name']) for row in conn.execute('PRAGMA table_info(saved_filters)').fetchall()}
+        if 'filter_key' in columns:
+            conn.execute('ALTER TABLE saved_filters RENAME COLUMN filter_key TO selection_key')
+
+    @staticmethod
+    def _ensure_saved_filter_columns(conn: sqlite3.Connection) -> None:
+        """Add how many times each Saved Filter has been calculated (once for those with a result)."""
+        columns = {str(row['name']) for row in conn.execute('PRAGMA table_info(saved_filters)').fetchall()}
+        if 'calculation_count' not in columns:
+            conn.execute('ALTER TABLE saved_filters ADD COLUMN calculation_count INTEGER NOT NULL DEFAULT 0')
+            conn.execute("UPDATE saved_filters SET calculation_count = 1 WHERE status = 'completed'")
+
+    @staticmethod
     def _convert_scoring_jobs(conn: sqlite3.Connection) -> None:
-        """Turn the Scoring Jobs saved by earlier versions into Previous Filters."""
-        from src.modules.scoring_previous_filters import convert_scoring_jobs
+        """Turn the Scoring Jobs saved by earlier versions into Saved Filters."""
+        from src.modules.saved_filters import convert_scoring_jobs
         convert_scoring_jobs(conn)
 
     def _ensure_generated_job_columns(self, conn: sqlite3.Connection) -> None:
@@ -4084,7 +4108,7 @@ class Repository:
             json_columns = {
                 'dataset_profiles': [('processing_options_json', False)],
                 'generated_jobs': [('dataset_ids_json', True)],
-                'scoring_previous_filters': [('dataset_ids_json', True), ('source_metadata_json', False)],
+                'saved_filters': [('dataset_ids_json', True), ('source_metadata_json', False)],
                 'audit_logs': [('details', False)],
                 'workspace_state': [('value', False)],
             }
@@ -4274,8 +4298,8 @@ class Repository:
                 "SELECT id FROM generated_jobs WHERE job_type = 'report' AND status IN ('queued', 'processing')"
             ).fetchall() if 'generated_jobs' in tables else []
             scoring_rows = conn.execute(
-                "SELECT id FROM scoring_previous_filters WHERE status IN ('queued', 'processing')"
-            ).fetchall() if 'scoring_previous_filters' in tables else []
+                "SELECT id FROM saved_filters WHERE status IN ('queued', 'processing')"
+            ).fetchall() if 'saved_filters' in tables else []
             dataset_ids = [int(row['dataset_id']) for row in dataset_rows] if fail_datasets else []
             report_ids = [int(row['id']) for row in report_rows]
             if dataset_ids:
@@ -4296,7 +4320,7 @@ class Repository:
             if scoring_ids:
                 placeholders = ','.join('?' for _ in scoring_ids)
                 conn.execute(
-                    f"UPDATE scoring_previous_filters SET status = 'failed', last_error = ?, message = ?, updated_at = ?, finished_at = ? "
+                    f"UPDATE saved_filters SET status = 'failed', last_error = ?, message = ?, updated_at = ?, finished_at = ? "
                     f"WHERE id IN ({placeholders})",
                     (message, message, now, now, *scoring_ids),
                 )

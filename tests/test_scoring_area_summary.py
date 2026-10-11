@@ -248,10 +248,10 @@ def test_scenarios_of_the_whole_country_calculate_their_area_summary(monkeypatch
         return {'id': 1, 'status': 'completed', 'levels': list(levels)}, True
 
     monkeypatch.setattr(core, 'validate_complete_scoring_cdr_selection', lambda *_args, **_kwargs: [1])
-    monkeypatch.setattr(core, 'save_previous_filter', create)
-    monkeypatch.setattr(core, 'get_previous_filter', lambda _repository, job_id, include_result=False: {
+    monkeypatch.setattr(core, 'save_saved_filter', create)
+    monkeypatch.setattr(core, 'get_saved_filter', lambda _repository, job_id, include_result=False: {
         'id': job_id, 'status': 'completed', 'result': {}})
-    core._scenario_previous_filter(Repository(), {'dataset_ids': [1], 'nr_mode': 'NSA'},
+    core._scenario_saved_filter(Repository(), {'dataset_ids': [1], 'nr_mode': 'NSA'},
                                normalize_report_configuration({'scenarios': [default_scenario()]})['scenarios'][0], 'super')
     # Also when the scenario is calculated again without a Campaign level of a single value.
     assert calculated and all(item == {'breakdown': 'Region', 'cities': ['London'], 'time_split': 'Campaign'}
@@ -330,7 +330,7 @@ def test_the_area_summary_has_its_own_time_split(monkeypatch):
 def test_the_scoring_page_calculates_and_shows_the_national_and_areas(scoring_api, monkeypatch):
     from types import ModuleType
 
-    from src.modules import scoring_previous_filters
+    from src.modules import saved_filters
 
     client = scoring_api['client']
     repository = scoring_api['repository']
@@ -341,21 +341,21 @@ def test_the_scoring_page_calculates_and_shows_the_national_and_areas(scoring_ap
     engine.calculate_scoring = lambda frames, levels, *, baseline_operator, configuration=None, **kwargs: (
         scoring_engine.calculate_scoring({'voice': pd.DataFrame(ROWS)}, levels, baseline_operator=baseline_operator,
                                          configuration=configuration, **kwargs))
-    monkeypatch.setattr(scoring_previous_filters, '_scoring_engine', lambda: engine)
+    monkeypatch.setattr(saved_filters, '_scoring_engine', lambda: engine)
     request = {'dataset_ids': scoring_api['complete_dataset_ids'], 'aggregation_levels': ['Operator'], 'nr_mode': 'NSA',
                'baseline_operator': 'EE', 'area_summary': {'time_split': 'All', 'breakdown': 'Region', 'cities': []}}
     # The summary needs the whole country.
-    filtered = client.post('/api/scoring/previous-filters', json={**request, 'context_filters': {'City': ['London']}})
+    filtered = client.post('/api/scoring/saved-filters', json={**request, 'context_filters': {'City': ['London']}})
     assert filtered.status_code == 400 and 'whole country' in filtered.json()['detail']
-    created = client.post('/api/scoring/previous-filters', json=request)
+    created = client.post('/api/scoring/saved-filters', json=request)
     assert created.status_code == 200, created.text
-    job_id = created.json()['previous_filter']['id']
-    assert created.json()['previous_filter']['area_summary'] == {'breakdown': 'Region', 'cities': [], 'time_split': 'All'}
-    scoring_previous_filters.calculate_previous_filter(repository, job_id)
-    assert client.post('/api/scoring/previous-filters/match', json=request).json()['previous_filter']['id'] == job_id
+    job_id = created.json()['saved_filter']['id']
+    assert created.json()['saved_filter']['area_summary'] == {'breakdown': 'Region', 'cities': [], 'time_split': 'All'}
+    saved_filters.calculate_saved_filter(repository, job_id)
+    assert client.post('/api/scoring/saved-filters/match', json=request).json()['saved_filter']['id'] == job_id
     # A calculation without the summary is another job.
-    assert client.post('/api/scoring/previous-filters/match', json={**request, 'area_summary': None}).json()['previous_filter'] is None
-    result = client.get(f'/api/scoring/previous-filters/{job_id}').json()
+    assert client.post('/api/scoring/saved-filters/match', json={**request, 'area_summary': None}).json()['saved_filter'] is None
+    result = client.get(f'/api/scoring/saved-filters/{job_id}').json()
     assert 'area_summary' not in result
     summaries = result['views']['insights']['area_summaries']
     combined = next(item for item in summaries if item['environment'] == 'Combined')

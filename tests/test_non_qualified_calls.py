@@ -1107,8 +1107,8 @@ def test_page_polls_are_not_activity():
     # Pages poll the API on their own: only the pages opened and what someone sends count as activity.
     assert core.is_interactive_request('GET', '/non-qualified-calls', 'text/html,application/xhtml+xml')
     assert not core.is_interactive_request('GET', '/api/non-qualified-calls/index-status', 'application/json')
-    assert not core.is_interactive_request('GET', '/api/scoring/previous-filters', '*/*')
+    assert not core.is_interactive_request('GET', '/api/scoring/saved-filters', '*/*')
     assert core.is_interactive_request('POST', '/api/non-qualified-calls/calls', 'application/json')
     assert not core.is_interactive_request('POST', '/api/non-qualified-calls/calls', 'application/json', background_refresh=True)
-    assert not core.is_interactive_request('POST', '/api/scoring/previous-filters/match', 'application/json')
+    assert not core.is_interactive_request('POST', '/api/scoring/saved-filters/match', 'application/json')
 

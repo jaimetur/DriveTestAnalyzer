@@ -272,7 +272,7 @@ def test_scoring_selection_saves_are_debounced_serialized_and_flushed_on_navigat
 def test_job_selection_restoration_maps_job_fields_and_schedules_persistence():
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
     functions = '\n'.join(_function_source(script, name) for name in (
-        'restoreCalculationSelectionFromPreviousFilter', 'scheduleSelectionSave',
+        'restoreCalculationSelectionFromSavedFilter', 'scheduleSelectionSave',
     ))
     program = r'''
 let applied, persisted = false, timeoutDelay, timeoutCallback;
@@ -285,7 +285,7 @@ const window = {
   setTimeout: (callback, delay) => {timeoutCallback = callback; timeoutDelay = delay; return 42;},
 };
 ''' + functions + r'''
-restoreCalculationSelectionFromPreviousFilter({
+restoreCalculationSelectionFromSavedFilter({
   dataset_ids: [12, '13'], aggregation_levels: ['City', 'Vendor'], levels: ['Legacy'],
   nr_mode: 'NR', baseline_operator: 'EE', scoring_profile_id: 'profile-7',
   context_filters: {Region: ['North'], City: [], Operator: ['EE'], Vendor: [], Campaign: ['Spring']},
@@ -312,13 +312,13 @@ process.stdout.write(JSON.stringify({queued, persisted}));
 
 def test_job_selection_restoration_uses_legacy_levels_field():
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
-    restore = _function_source(script, 'restoreCalculationSelectionFromPreviousFilter')
+    restore = _function_source(script, 'restoreCalculationSelectionFromSavedFilter')
     program = r'''
 let applied;
 const applySavedCalculationSelection = selection => {applied = selection;};
 const scheduleSelectionSave = () => {};
 ''' + restore + r'''
-restoreCalculationSelectionFromPreviousFilter({dataset_ids: [5], levels: ['Operator', 'City']});
+restoreCalculationSelectionFromSavedFilter({dataset_ids: [5], levels: ['Operator', 'City']});
 process.stdout.write(JSON.stringify(applied));
 '''
     result = _run_node_json(program, {})
@@ -330,7 +330,7 @@ process.stdout.write(JSON.stringify(applied));
 def test_job_selection_restoration_clears_filters_on_actual_controls():
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
     apply_saved = _function_source(script, 'applySavedCalculationSelection')
-    restore = _function_source(script, 'restoreCalculationSelectionFromPreviousFilter')
+    restore = _function_source(script, 'restoreCalculationSelectionFromSavedFilter')
     program = r'''
 let restoringSelection = false, message = '';
 const areaSummaryEnabled = null, areaSummaryTimeSplit = null, areaSummaryBreakdown = null, areaSummaryCities = null;
@@ -361,7 +361,7 @@ const Event = class {constructor(type, options) {this.type = type; this.options 
 const setMessage = text => {message = text;};
 const scheduleSelectionSave = () => {};
 ''' + apply_saved + restore + r'''
-restoreCalculationSelectionFromPreviousFilter({dataset_ids: [], aggregation_levels: ['Operator'], context_filters: {}});
+restoreCalculationSelectionFromSavedFilter({dataset_ids: [], aggregation_levels: ['Operator'], context_filters: {}});
 process.stdout.write(JSON.stringify({
   datasetChecked: datasetInput.checked,
   aggregationChecked: aggregationInputs.map(input => input.checked),
@@ -378,14 +378,14 @@ process.stdout.write(JSON.stringify({
 
 def test_only_explicit_job_list_selection_restores_saved_calculation_selection():
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
-    handler_start = script.index("  for (const list of previousFilterLists) list.addEventListener('click', async event => {")
+    handler_start = script.index("  for (const list of savedFilterLists) list.addEventListener('click', async event => {")
     handler_end = script.index("\n  root.addEventListener('click',", handler_start)
     job_list_handler = script[handler_start:handler_end]
-    load_job = _function_source(script, 'loadPreviousFilter')
+    load_job = _function_source(script, 'loadSavedFilter')
 
-    assert job_list_handler.count('restoreCalculationSelectionFromPreviousFilter(previousFilter);') == 1
-    assert 'await loadPreviousFilter(previousFilter, true);' in job_list_handler
-    assert 'restoreCalculationSelectionFromPreviousFilter' not in load_job
+    assert job_list_handler.count('restoreCalculationSelectionFromSavedFilter(savedFilter);') == 1
+    assert 'await loadSavedFilter(savedFilter, true);' in job_list_handler
+    assert 'restoreCalculationSelectionFromSavedFilter' not in load_job
 
 
 def test_context_filters_keep_all_values_and_remembered_values_when_the_cdrs_change():

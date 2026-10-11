@@ -8990,6 +8990,8 @@ function openMappingHashTarget() {
     }
     window.requestAnimationFrame(() => window.requestAnimationFrame(() => showSectionAtTop(target)));
     keepSectionInView(target, find);
+    // Shown once: a reload then returns to where the page was being read instead of this section.
+    window.history.replaceState(window.history.state, '', `${window.location.pathname}${window.location.search}`);
   };
   const target = find();
   if (target) {

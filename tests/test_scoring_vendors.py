@@ -9,7 +9,7 @@ import pandas as pd
 from pptx import Presentation
 
 from src.modules.scoring import calculate_scoring
-from src.modules import scoring_previous_filters
+from src.modules import saved_filters
 from src.modules.scoring_vendors import normalize_scoring_vendor_result, scoring_vendor_name
 from src.modules.scoring_views import build_scoring_views, scoring_coverage_notes
 from tests.scoring_fixtures import scoring_configuration
@@ -201,42 +201,42 @@ def test_vendor_filter_selects_all_matching_operator_prefixes_and_outputs_legacy
             operators=['3', 'EE', 'VF_UK', 'O2'],
         )
 
-    response = scoring_api['client'].post('/api/scoring/previous-filters', json={
+    response = scoring_api['client'].post('/api/scoring/saved-filters', json={
         'dataset_ids': scoring_api['complete_dataset_ids'], 'nr_mode': 'NSA',
         'aggregation_levels': ['Operator'],
         'context_filters': {'Vendor': ['Ericsson', 'Huawei']},
     })
     assert response.status_code == 200, response.text
-    job = response.json()['previous_filter']
+    job = response.json()['saved_filter']
     assert job['context_filters']['Vendor'] == ['Ericsson', 'Huawei']
-    completed = scoring_previous_filters.calculate_previous_filter(repository, job['id'])
+    completed = saved_filters.calculate_saved_filter(repository, job['id'])
     assert completed['status'] == 'completed', completed.get('error')
     frames = scoring_api['calls'][0]['frames']
     source_frames = frames.values() if isinstance(frames, dict) else [item[-1] for item in frames]
     actual_operators = {operator for frame in source_frames for operator in frame['Operator']}
     assert actual_operators == expected_operators
 
-    alias_filter_response = scoring_api['client'].post('/api/scoring/previous-filters', json={
+    alias_filter_response = scoring_api['client'].post('/api/scoring/saved-filters', json={
         'dataset_ids': scoring_api['complete_dataset_ids'], 'nr_mode': 'NSA',
         'aggregation_levels': ['Operator'],
         'context_filters': {'Vendor': ['VF_UK - All Vendors']},
     })
     assert alias_filter_response.status_code == 200, alias_filter_response.text
-    alias_filter_job = alias_filter_response.json()['previous_filter']
-    alias_filter = scoring_previous_filters.calculate_previous_filter(repository, alias_filter_job['id'])
+    alias_filter_job = alias_filter_response.json()['saved_filter']
+    alias_filter = saved_filters.calculate_saved_filter(repository, alias_filter_job['id'])
     assert alias_filter['status'] == 'completed', alias_filter.get('error')
     alias_frames = scoring_api['calls'][1]['frames']
     alias_source_frames = alias_frames.values() if isinstance(alias_frames, dict) else [item[-1] for item in alias_frames]
     assert {operator for frame in alias_source_frames for operator in frame['Operator']} == {'VF_UK'}
 
-    operator_scoped_response = scoring_api['client'].post('/api/scoring/previous-filters', json={
+    operator_scoped_response = scoring_api['client'].post('/api/scoring/saved-filters', json={
         'dataset_ids': scoring_api['complete_dataset_ids'], 'nr_mode': 'NSA',
         'aggregation_levels': ['Operator'],
         'context_filters': {'Vendor': ['Ericsson', 'Huawei'], 'Operator': ['3', 'EE', 'VF_UK']},
     })
     assert operator_scoped_response.status_code == 200, operator_scoped_response.text
-    operator_scoped_job = operator_scoped_response.json()['previous_filter']
-    operator_scoped = scoring_previous_filters.calculate_previous_filter(repository, operator_scoped_job['id'])
+    operator_scoped_job = operator_scoped_response.json()['saved_filter']
+    operator_scoped = saved_filters.calculate_saved_filter(repository, operator_scoped_job['id'])
     assert operator_scoped['status'] == 'completed', operator_scoped.get('last_error')
     scoped_frames = scoring_api['calls'][2]['frames']
     scoped_source_frames = scoped_frames.values() if isinstance(scoped_frames, dict) else [item[-1] for item in scoped_frames]
@@ -245,19 +245,19 @@ def test_vendor_filter_selects_all_matching_operator_prefixes_and_outputs_legacy
 
     # A legacy result can still contain prefixed identities. API views and PPT
     # output should normalize copies while the saved result keeps its original data.
-    saved = scoring_previous_filters.get_previous_filter(repository, job['id'], include_result=True)['result']
+    saved = saved_filters.get_saved_filter(repository, job['id'], include_result=True)['result']
     for row, vendor in zip(saved['scoring'], ['3_Ericsson', 'EE_Ericsson', 'VF_UK_Huawei', 'O2']):
         row['vendor'] = vendor
     saved['charts'][0]['vendor'] = 'EE'
     saved['gap'][0]['vendor'] = 'O2'
     with sqlite3.connect(repository.db_path) as connection:
         connection.execute(
-            'UPDATE scoring_previous_filters SET result_json = ? WHERE id = ?',
+            'UPDATE saved_filters SET result_json = ? WHERE id = ?',
             (json.dumps(saved, ensure_ascii=False), job['id']),
         )
 
     legacy_snapshot = deepcopy(saved)
-    api_result = scoring_api['client'].get(f'/api/scoring/previous-filters/{job["id"]}')
+    api_result = scoring_api['client'].get(f'/api/scoring/saved-filters/{job["id"]}')
     assert api_result.status_code == 200, api_result.text
     body = api_result.json()
     assert {row['vendor'] for row in body['scoring']} == {'Ericsson', 'Huawei', 'All'}
@@ -266,14 +266,14 @@ def test_vendor_filter_selects_all_matching_operator_prefixes_and_outputs_legacy
     assert '3_Ericsson' not in json.dumps(body)
     assert 'VF_UK_Huawei' not in json.dumps(body)
 
-    ppt = scoring_api['client'].get(f'/scoring/previous-filters/{job["id"]}/export/ppt')
+    ppt = scoring_api['client'].get(f'/scoring/saved-filters/{job["id"]}/export/ppt')
     assert ppt.status_code == 200, ppt.text
     deck = Presentation(BytesIO(ppt.content))
     deck_text = _presentation_text(deck)
     assert 'Ericsson' in deck_text and 'Huawei' in deck_text and 'All' in deck_text
     assert '3_Ericsson' not in deck_text and 'VF_UK_Huawei' not in deck_text
 
-    persisted = scoring_previous_filters.get_previous_filter(repository, job['id'], include_result=True)['result']
+    persisted = saved_filters.get_saved_filter(repository, job['id'], include_result=True)['result']
     assert persisted == legacy_snapshot
 
 
@@ -294,16 +294,16 @@ def test_vendor_result_normalization_returns_copy_and_respects_underscore_operat
 
 def test_legacy_all_vendor_baseline_warning_is_refreshed_for_api_and_ppt(scoring_api):
     repository = scoring_api['repository']
-    response = scoring_api['client'].post('/api/scoring/previous-filters', json={
+    response = scoring_api['client'].post('/api/scoring/saved-filters', json={
         'dataset_ids': scoring_api['complete_dataset_ids'], 'nr_mode': 'NSA',
         'aggregation_levels': ['Operator', 'Vendor'],
     })
     assert response.status_code == 200, response.text
-    job = response.json()['previous_filter']
-    completed = scoring_previous_filters.calculate_previous_filter(repository, job['id'])
+    job = response.json()['saved_filter']
+    completed = saved_filters.calculate_saved_filter(repository, job['id'])
     assert completed['status'] == 'completed', completed.get('error')
 
-    saved = scoring_previous_filters.get_previous_filter(repository, job['id'], include_result=True)['result']
+    saved = saved_filters.get_saved_filter(repository, job['id'], include_result=True)['result']
     vendor_by_operator = {
         'EE': 'All', 'O2': 'Ericsson', 'Three UK': 'Nokia', 'Vodafone UK': 'Huawei',
     }
@@ -317,26 +317,26 @@ def test_legacy_all_vendor_baseline_warning_is_refreshed_for_api_and_ppt(scoring
     saved['warnings'] = [legacy_warning]
     with sqlite3.connect(repository.db_path) as connection:
         connection.execute(
-            'UPDATE scoring_previous_filters SET result_json = ? WHERE id = ?',
+            'UPDATE saved_filters SET result_json = ? WHERE id = ?',
             (json.dumps(saved, ensure_ascii=False), job['id']),
         )
     saved_snapshot = deepcopy(saved)
 
-    api_result = scoring_api['client'].get(f'/api/scoring/previous-filters/{job["id"]}')
+    api_result = scoring_api['client'].get(f'/api/scoring/saved-filters/{job["id"]}')
     assert api_result.status_code == 200, api_result.text
     assert legacy_warning not in api_result.json()['warnings']
     assert any(
         row['vendor'] == 'All' for row in api_result.json()['scoring']
     )
 
-    ppt = scoring_api['client'].get(f'/scoring/previous-filters/{job["id"]}/export/ppt')
+    ppt = scoring_api['client'].get(f'/scoring/saved-filters/{job["id"]}/export/ppt')
     assert ppt.status_code == 200, ppt.text
     deck = Presentation(BytesIO(ppt.content))
     assert all(
         legacy_warning not in slide.notes_slide.notes_text_frame.text
         for slide in deck.slides
     )
-    persisted = scoring_previous_filters.get_previous_filter(repository, job['id'], include_result=True)['result']
+    persisted = saved_filters.get_saved_filter(repository, job['id'], include_result=True)['result']
     assert persisted == saved_snapshot
 
 

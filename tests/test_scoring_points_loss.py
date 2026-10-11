@@ -142,7 +142,7 @@ def test_powerpoint_maps_the_points_lost_of_the_compared_operators():
 def test_job_api_serves_the_map_layers_without_the_raw_shares(scoring_api, monkeypatch):
     from types import ModuleType
 
-    from src.modules import scoring_previous_filters
+    from src.modules import saved_filters
 
     client = scoring_api['client']
     repository = scoring_api['repository']
@@ -152,25 +152,25 @@ def test_job_api_serves_the_map_layers_without_the_raw_shares(scoring_api, monke
     engine.METHOD_VERSION = 'points-loss-api-test'
     engine.required_input_columns = lambda kind, levels: [*levels, 'score']
     engine.calculate_scoring = lambda frames, levels, *, baseline_operator, configuration=None: computed
-    monkeypatch.setattr(scoring_previous_filters, '_scoring_engine', lambda: engine)
-    created = client.post('/api/scoring/previous-filters', json={
+    monkeypatch.setattr(saved_filters, '_scoring_engine', lambda: engine)
+    created = client.post('/api/scoring/saved-filters', json={
         'dataset_ids': scoring_api['complete_dataset_ids'], 'aggregation_levels': ['Operator'],
         'nr_mode': 'NSA', 'baseline_operator': 'EE',
     })
     assert created.status_code == 200, created.text
-    job_id = created.json()['previous_filter']['id']
-    assert scoring_previous_filters.calculate_previous_filter(repository, job_id)['status'] == 'completed'
+    job_id = created.json()['saved_filter']['id']
+    assert saved_filters.calculate_saved_filter(repository, job_id)['status'] == 'completed'
 
-    payload = client.get(f'/api/scoring/previous-filters/{job_id}').json()
+    payload = client.get(f'/api/scoring/saved-filters/{job_id}').json()
     assert 'points_loss' not in payload
     assert any(item['field'] == 'Area' for item in payload['views']['insights']['points_loss_maps'])
     # UK tests use the ITL3 areas shipped with the application, over the outline of the country.
-    layer = client.get(f'/api/scoring/previous-filters/{job_id}/boundaries/Area').json()
+    layer = client.get(f'/api/scoring/saved-filters/{job_id}/boundaries/Area').json()
     assert layer['field'] == 'Area' and len(layer['boundaries']) == 182 and layer['background']
-    assert client.get(f'/api/scoring/previous-filters/{job_id}/boundaries/ITL3').status_code == 404
+    assert client.get(f'/api/scoring/saved-filters/{job_id}/boundaries/ITL3').status_code == 404
     # Without a Clusters dataset applied to the CDRs the Cluster layer has no polygons.
-    assert client.get(f'/api/scoring/previous-filters/{job_id}/boundaries/Cluster').json()['boundaries'] == {}
-    assert client.get(f'/api/scoring/previous-filters/{job_id}/boundaries/Unknown').status_code == 404
+    assert client.get(f'/api/scoring/saved-filters/{job_id}/boundaries/Cluster').json()['boundaries'] == {}
+    assert client.get(f'/api/scoring/saved-filters/{job_id}/boundaries/Unknown').status_code == 404
 
 
 def test_the_web_map_links_the_ranking_and_the_areas():

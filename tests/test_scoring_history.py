@@ -8,7 +8,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from src.modules import scoring, scoring_history, scoring_previous_filters
+from src.modules import saved_filters, scoring, scoring_history
 from src.modules.repository import Repository, local_now_iso
 from tests.scoring_fixtures import load_initial_scoring_configuration
 
@@ -87,10 +87,10 @@ def history_repository(tmp_path):
 
 
 def _by_rows(repository, ids, levels, configuration, context_filters=None, time_split=None):
-    sources, _campaigns, _fingerprint = scoring_previous_filters._source_snapshot(repository, ids)
+    sources, _campaigns, _fingerprint = saved_filters._source_snapshot(repository, ids)
     for source in sources:
         source['levels'] = [*levels, *(scoring.START_TIME_COLUMNS if time_split else ())]
-    frames = scoring_previous_filters._load_source_frames(repository, sources, lambda *args: None, scoring.load_input_columns,
+    frames = saved_filters._load_source_frames(repository, sources, lambda *args: None, scoring.load_input_columns,
                                               context_filters or {})
     return scoring.calculate_scoring(frames, levels, baseline_operator='EE', configuration=configuration,
                                      time_split=time_split)
@@ -181,9 +181,9 @@ def test_a_cdr_is_identified_by_its_file_and_processing_not_its_name(history_rep
 def test_a_job_is_calculated_from_the_history_and_gets_its_points_lost_map(history_repository):
     repository, ids, _configuration = history_repository
     scoring_history.sync_history(repository)
-    job, cached = scoring_previous_filters.save_previous_filter(repository, ids, ['Operator', 'Campaign'], 'NSA')
+    job, cached = saved_filters.save_saved_filter(repository, ids, ['Operator', 'Campaign'], 'NSA')
     assert not cached
-    finished = scoring_previous_filters.calculate_previous_filter(repository, job['id'])
+    finished = saved_filters.calculate_saved_filter(repository, job['id'])
     assert finished['status'] == 'completed'
     result = finished['result']
     assert result['source'] == 'history' and result['scoring']
@@ -193,3 +193,38 @@ def test_a_job_is_calculated_from_the_history_and_gets_its_points_lost_map(histo
     # Without the history the same job reads the rows, with the same scores.
     by_rows = _by_rows(repository, ids, ['Operator', 'Campaign'], result['configuration'])
     _assert_same(by_rows, result)
+
+
+def test_the_points_lost_map_of_a_result_from_the_history_is_a_job_of_its_own(history_repository):
+    repository, ids, _configuration = history_repository
+    scoring_history.sync_history(repository)
+    saved, _cached = saved_filters.save_saved_filter(repository, ids, ['Operator', 'Campaign'], 'NSA')
+    submitted = []
+    finished = saved_filters.calculate_saved_filter(repository, saved['id'], submitted.append)
+    # The scores are ready at once; the map waits in its own job, shown among the background tasks.
+    assert finished['status'] == 'completed' and finished['result']['points_loss'] == {'version': 2, 'pending': True}
+    [task] = saved_filters.points_loss_tasks(repository.db_path)
+    assert task['label'] == f"Points Lost Map #{saved['id']}" and task['status'] == 'queued'
+    [job] = submitted
+    assert saved_filters.is_saved_filter_work(job, (), saved['id']) and not saved_filters.is_saved_filter_work(job, (), 0)
+    job()
+    result = saved_filters.get_saved_filter(repository, saved['id'], include_result=True)['result']
+    assert 'pending' not in result['points_loss'] and 'shares' in result['points_loss']
+    assert saved_filters.points_loss_tasks(repository.db_path) == []
+
+
+def test_queued_work_of_the_saved_filter_being_looked_at_goes_first():
+    from threading import Event
+    from src.modules.background_scheduler import BackgroundTaskScheduler
+
+    scheduler = BackgroundTaskScheduler(max_workers=1)
+    release, order = Event(), []
+    scheduler.submit_ordered(release.wait, workspace_key='w', priority=(0, 0))
+    futures = [scheduler.submit_ordered(order.append, name, workspace_key='w', priority=(4, 0, 0))
+               for name in ('first', 'second', 'selected')]
+    assert scheduler.promote(lambda _callback, args: args == ('selected',), (4, -1, -1)) == 1
+    release.set()
+    for future in futures:
+        future.result(timeout=5)
+    scheduler.shutdown()
+    assert order == ['selected', 'first', 'second']

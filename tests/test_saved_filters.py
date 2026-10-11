@@ -9,7 +9,7 @@ from types import ModuleType
 import pandas as pd
 import pytest
 
-from src.modules import scoring_previous_filters
+from src.modules import saved_filters
 from src.modules.repository import Repository, SCHEMA, SCORING_CONFIGURATION_STATE_KEY, local_now_iso
 from src.modules.scoring_config import save_aggregation_hierarchy
 from scoring_fixtures import scoring_configuration
@@ -41,7 +41,7 @@ def scoring_engine(monkeypatch):
         }
 
     engine.calculate_scoring = calculate_scoring
-    monkeypatch.setattr(scoring_previous_filters, '_scoring_engine', lambda: engine)
+    monkeypatch.setattr(saved_filters, '_scoring_engine', lambda: engine)
     return engine, calls
 
 
@@ -121,7 +121,7 @@ def test_legacy_operator_alias_filter_matches_current_all_suffix(repository):
     assert matched['Vendor'].tolist() == ['Vodafone UK - All']
 
 
-def test_scoring_previous_filters_persist_results_and_reuse_completed_cache(repository, scoring_engine):
+def test_saved_filters_persist_results_and_reuse_completed_cache(repository, scoring_engine):
     _engine, calls = scoring_engine
     global_kpi = {
         'campaign': '2026-Q2', 'region': 'North', 'operator': 'EE',
@@ -139,24 +139,24 @@ def test_scoring_previous_filters_persist_results_and_reuse_completed_cache(repo
     _engine.calculate_scoring = calculate_with_global_kpis
     dataset_id = add_dataset(repository)
 
-    job, reused = scoring_previous_filters.save_previous_filter(
+    job, reused = saved_filters.save_saved_filter(
         repository, [dataset_id], ['Region', 'City'], 'NSA', username='tester',
     )
     assert not reused
     assert job['status'] == 'queued'
     assert job['aggregation_levels'] == ['Operator', 'Region', 'City']
     assert job['campaigns'] == ['2026-Q2']
-    duplicate, reused = scoring_previous_filters.save_previous_filter(
+    duplicate, reused = saved_filters.save_saved_filter(
         repository, [dataset_id], ['Region', 'City'], 'NSA', username='other-user',
     )
     assert reused
     assert duplicate['id'] == job['id']
 
-    completed = scoring_previous_filters.calculate_previous_filter(repository, job['id'])
+    completed = saved_filters.calculate_saved_filter(repository, job['id'])
     assert completed['status'] == 'completed'
     assert completed['result']['scoring'] == [{'Operator': 'EE', 'Score': 4}]
     assert completed['result']['global_kpis'] == [global_kpi]
-    reloaded = scoring_previous_filters.get_previous_filter(repository, job['id'], include_result=True)
+    reloaded = saved_filters.get_saved_filter(repository, job['id'], include_result=True)
     assert reloaded['result']['global_kpis'] == [global_kpi]
     assert len(calls) == 1
     loaded_frames, levels, baseline = calls[0]
@@ -164,17 +164,17 @@ def test_scoring_previous_filters_persist_results_and_reuse_completed_cache(repo
     assert baseline == 'EE'
     assert 'unused_payload' not in loaded_frames['data'].columns
 
-    cached, reused = scoring_previous_filters.save_previous_filter(
+    cached, reused = saved_filters.save_saved_filter(
         repository, [dataset_id], ['Region', 'City'], 'NSA', username='tester',
     )
     assert reused
     assert cached['id'] == job['id']
     assert cached['result']['gap'] == [{'Operator': 'EE', 'Gap': 0}]
-    summaries = scoring_previous_filters.list_previous_filters(repository)
+    summaries = saved_filters.list_saved_filters(repository)
     assert len(summaries) == 1
     assert summaries[0]['result'] is None
     assert 'configuration' not in summaries[0]
-    assert scoring_previous_filters.get_previous_filter(repository, 9999) is None
+    assert saved_filters.get_saved_filter(repository, 9999) is None
 
 
 def test_scoring_job_creation_requires_a_persisted_configuration(repository):
@@ -182,31 +182,31 @@ def test_scoring_job_creation_requires_a_persisted_configuration(repository):
     repository.set_workspace_state(SCORING_CONFIGURATION_STATE_KEY, '')
 
     with pytest.raises(ValueError, match='Import a Scoring Configuration'):
-        scoring_previous_filters.save_previous_filter(repository, [dataset_id], ['Region'], 'NSA')
+        saved_filters.save_saved_filter(repository, [dataset_id], ['Region'], 'NSA')
 
 
 def test_force_creates_a_fresh_calculation_and_method_baseline_are_cached(repository, scoring_engine):
     _engine, calls = scoring_engine
     dataset_id = add_dataset(repository)
-    first, _ = scoring_previous_filters.save_previous_filter(repository, [dataset_id], [], 'NSA')
-    active, reused_active = scoring_previous_filters.save_previous_filter(
+    first, _ = saved_filters.save_saved_filter(repository, [dataset_id], [], 'NSA')
+    active, reused_active = saved_filters.save_saved_filter(
         repository, [dataset_id], [], 'NSA', force=True,
     )
     assert reused_active
     assert active['id'] == first['id']
-    assert len(scoring_previous_filters.list_previous_filters(repository)) == 1
-    scoring_previous_filters.calculate_previous_filter(repository, first['id'])
+    assert len(saved_filters.list_saved_filters(repository)) == 1
+    saved_filters.calculate_saved_filter(repository, first['id'])
 
-    forced, reused = scoring_previous_filters.save_previous_filter(repository, [dataset_id], [], 'NSA', force=True)
+    forced, reused = saved_filters.save_saved_filter(repository, [dataset_id], [], 'NSA', force=True)
     assert not reused
     assert forced['id'] == first['id']
     assert forced['status'] == 'queued'
     assert forced['result'] is None
     assert forced['error'] == ''
-    assert len(scoring_previous_filters.list_previous_filters(repository)) == 1
-    assert scoring_previous_filters.calculate_previous_filter(repository, forced['id'])['status'] == 'completed'
+    assert len(saved_filters.list_saved_filters(repository)) == 1
+    assert saved_filters.calculate_saved_filter(repository, forced['id'])['status'] == 'completed'
 
-    other_baseline, reused = scoring_previous_filters.save_previous_filter(
+    other_baseline, reused = saved_filters.save_saved_filter(
         repository, [dataset_id], [], 'NSA', baseline_operator='O2',
     )
     assert not reused
@@ -216,28 +216,28 @@ def test_force_creates_a_fresh_calculation_and_method_baseline_are_cached(reposi
 
 def test_filters_used_again_move_to_the_top_with_their_last_use(repository, scoring_engine, monkeypatch):
     dataset_id = add_dataset(repository)
-    monkeypatch.setattr(scoring_previous_filters, 'local_now_iso', lambda: '2026-10-02T12:00:00+02:00')
-    first, _ = scoring_previous_filters.save_previous_filter(repository, [dataset_id], [], 'NSA')
-    scoring_previous_filters.calculate_previous_filter(repository, first['id'])
-    monkeypatch.setattr(scoring_previous_filters, 'local_now_iso', lambda: '2026-10-02T11:00:00+00:00')
-    second, _ = scoring_previous_filters.save_previous_filter(
+    monkeypatch.setattr(saved_filters, 'local_now_iso', lambda: '2026-10-02T12:00:00+02:00')
+    first, _ = saved_filters.save_saved_filter(repository, [dataset_id], [], 'NSA')
+    saved_filters.calculate_saved_filter(repository, first['id'])
+    monkeypatch.setattr(saved_filters, 'local_now_iso', lambda: '2026-10-02T11:00:00+00:00')
+    second, _ = saved_filters.save_saved_filter(
         repository, [dataset_id], [], 'NSA', baseline_operator='O2',
     )
-    assert [job['id'] for job in scoring_previous_filters.list_previous_filters(repository)] == [second['id'], first['id']]
+    assert [job['id'] for job in saved_filters.list_saved_filters(repository)] == [second['id'], first['id']]
 
-    monkeypatch.setattr(scoring_previous_filters, 'local_now_iso', lambda: '2026-10-02T12:00:00+00:00')
-    recalculated, reused = scoring_previous_filters.save_previous_filter(repository, [dataset_id], [], 'NSA', force=True)
+    monkeypatch.setattr(saved_filters, 'local_now_iso', lambda: '2026-10-02T12:00:00+00:00')
+    recalculated, reused = saved_filters.save_saved_filter(repository, [dataset_id], [], 'NSA', force=True)
     assert not reused
     assert recalculated['id'] == first['id']
     assert recalculated['last_used_at'] == '2026-10-02T12:00:00+00:00'
     assert recalculated['updated_at'] == recalculated['last_used_at']
     assert recalculated['created_at'] == '2026-10-02T12:00:00+02:00' and recalculated['use_count'] == 2
-    assert [job['id'] for job in scoring_previous_filters.list_previous_filters(repository)] == [first['id'], second['id']]
-    active, reused = scoring_previous_filters.save_previous_filter(repository, [dataset_id], [], 'NSA', force=True)
+    assert [job['id'] for job in saved_filters.list_saved_filters(repository)] == [first['id'], second['id']]
+    active, reused = saved_filters.save_saved_filter(repository, [dataset_id], [], 'NSA', force=True)
     assert reused and active['use_count'] == 3
-    # A pinned Previous Filter stays first.
-    scoring_previous_filters.update_previous_filter(repository, second['id'], pinned=True, name='  O2   reference ')
-    listed = scoring_previous_filters.list_previous_filters(repository)
+    # A pinned Saved Filter stays first.
+    saved_filters.update_saved_filter(repository, second['id'], pinned=True, name='  O2   reference ')
+    listed = saved_filters.list_saved_filters(repository)
     assert [job['id'] for job in listed] == [second['id'], first['id']]
     assert listed[0]['name'] == 'O2 reference' and listed[0]['pinned']
 
@@ -245,18 +245,18 @@ def test_filters_used_again_move_to_the_top_with_their_last_use(repository, scor
 def test_force_retries_failed_calculation_in_place(repository, scoring_engine):
     _engine, _calls = scoring_engine
     dataset_id = add_dataset(repository)
-    job, _ = scoring_previous_filters.save_previous_filter(repository, [dataset_id], [], 'NSA')
-    scoring_previous_filters.calculate_previous_filter(repository, job['id'])
+    job, _ = saved_filters.save_saved_filter(repository, [dataset_id], [], 'NSA')
+    saved_filters.calculate_saved_filter(repository, job['id'])
     with repository.connection() as connection:
         connection.execute(
-            """UPDATE scoring_previous_filters SET status = 'failed', progress = 100,
+            """UPDATE saved_filters SET status = 'failed', progress = 100,
                result_json = ?, last_error = ?, started_at = ?, finished_at = ?, message = ?
                WHERE id = ?""",
             ('{"old":true}', 'previous error', '2026-01-01T00:00:00+00:00',
              '2026-01-01T00:01:00+00:00', 'Failed', job['id']),
         )
 
-    retry, reused = scoring_previous_filters.save_previous_filter(
+    retry, reused = saved_filters.save_saved_filter(
         repository, [dataset_id], [], 'NSA', force=True,
     )
 
@@ -268,115 +268,115 @@ def test_force_retries_failed_calculation_in_place(repository, scoring_engine):
     assert retry['error'] == ''
     assert retry['started_at'] == ''
     assert retry['finished_at'] == ''
-    assert len(scoring_previous_filters.list_previous_filters(repository)) == 1
-    assert scoring_previous_filters.calculate_previous_filter(repository, retry['id'])['status'] == 'completed'
+    assert len(saved_filters.list_saved_filters(repository)) == 1
+    assert saved_filters.calculate_saved_filter(repository, retry['id'])['status'] == 'completed'
 
 
 @pytest.mark.parametrize('status', ['completed', 'queued', 'failed'])
 def test_engine_upgrade_matches_saved_inputs_and_recalculates_in_place(repository, scoring_engine, status):
     dataset_id = add_dataset(repository)
-    job, _ = scoring_previous_filters.save_previous_filter(repository, [dataset_id], ['Region'], 'NSA')
+    job, _ = saved_filters.save_saved_filter(repository, [dataset_id], ['Region'], 'NSA')
     with repository.connection() as connection:
         connection.execute(
-            'UPDATE scoring_previous_filters SET result_key = ?, method_version = ?, status = ? WHERE id = ?',
+            'UPDATE saved_filters SET result_key = ?, method_version = ?, status = ? WHERE id = ?',
             ('old-cache-format', 'previous-engine-version', status, job['id']),
         )
-    match = scoring_previous_filters.find_previous_filter(repository, [dataset_id], ['Region'], 'NSA')
+    match = saved_filters.find_saved_filter(repository, [dataset_id], ['Region'], 'NSA')
     assert match['id'] == job['id']
     assert match['result_key'] == 'old-cache-format'
-    assert scoring_previous_filters.find_previous_filter(
+    assert saved_filters.find_saved_filter(
         repository, [dataset_id], ['City'], 'NSA',
     ) is None
-    assert scoring_previous_filters.find_previous_filter(
+    assert saved_filters.find_saved_filter(
         repository, [dataset_id], ['Region'], 'NSA', baseline_operator='O2',
     ) is None
-    retry, reused = scoring_previous_filters.save_previous_filter(
+    retry, reused = saved_filters.save_saved_filter(
         repository, [dataset_id], ['Region'], 'NSA', force=True,
     )
     assert retry['id'] == job['id']
     assert reused is (status == 'queued')
-    assert len(scoring_previous_filters.list_previous_filters(repository)) == 1
+    assert len(saved_filters.list_saved_filters(repository)) == 1
     if not reused:
         assert retry['result_key'] == job['result_key']
         assert retry['method_version'] == job['method_version']
-        assert scoring_previous_filters.calculate_previous_filter(repository, retry['id'])['status'] == 'completed'
+        assert saved_filters.calculate_saved_filter(repository, retry['id'])['status'] == 'completed'
 
 
-def test_find_previous_filter_is_read_only_and_tells_whether_its_result_is_up_to_date(repository, scoring_engine):
+def test_find_saved_filter_is_read_only_and_tells_whether_its_result_is_up_to_date(repository, scoring_engine):
     _engine, _calls = scoring_engine
     dataset_ids = add_complete_scoring_sources(repository, 'MatchIdentity')
     filters = {'Region': ['South', 'North'], 'Vendor': ['Nokia', 'Ericsson']}
-    assert scoring_previous_filters.find_previous_filter(
+    assert saved_filters.find_saved_filter(
         repository, dataset_ids, ['Region'], 'NSA', context_filters=filters,
     ) is None
-    assert scoring_previous_filters.list_previous_filters(repository) == []
+    assert saved_filters.list_saved_filters(repository) == []
 
-    job, reused = scoring_previous_filters.save_previous_filter(
+    job, reused = saved_filters.save_saved_filter(
         repository, dataset_ids, ['Region'], 'NSA', context_filters=filters,
     )
     assert not reused
-    match = scoring_previous_filters.find_previous_filter(
+    match = saved_filters.find_saved_filter(
         repository, [*reversed(dataset_ids), dataset_ids[0]], ['Region'], 'NSA',
         context_filters={'region': ['north', 'south'], 'vendor': ['ericsson', 'nokia']},
     )
     assert match['id'] == job['id']
     assert match['result_key'] == job['result_key']
-    assert scoring_previous_filters.find_previous_filter(
+    assert saved_filters.find_saved_filter(
         repository, dataset_ids, ['City'], 'NSA', context_filters=filters,
     ) is None
-    assert scoring_previous_filters.find_previous_filter(
+    assert saved_filters.find_saved_filter(
         repository, dataset_ids, ['Region'], 'NSA', baseline_operator='O2', context_filters=filters,
     ) is None
-    assert len(scoring_previous_filters.list_previous_filters(repository)) == 1
+    assert len(saved_filters.list_saved_filters(repository)) == 1
 
     original_configuration = repository.get_scoring_configuration()
     changed_configuration = scoring_configuration()
     changed_configuration['metrics'][0]['contexts']['DriveCity']['thresholds']['low'] += 1
-    scoring_previous_filters.calculate_previous_filter(repository, job['id'])
-    assert scoring_previous_filters.find_previous_filter(
+    saved_filters.calculate_saved_filter(repository, job['id'])
+    assert saved_filters.find_saved_filter(
         repository, dataset_ids, ['Region'], 'NSA', context_filters=filters,
     )['up_to_date']
-    # The same selection is the same Previous Filter whatever its methodology or CDRs hold today; its saved result
+    # The same selection is the same Saved Filter whatever its methodology or CDRs hold today; its saved result
     # is then out of date.
     repository.replace_scoring_configuration(changed_configuration)
-    match = scoring_previous_filters.find_previous_filter(
+    match = saved_filters.find_saved_filter(
         repository, dataset_ids, ['Region'], 'NSA', context_filters=filters,
     )
     assert match['id'] == job['id'] and not match['up_to_date']
     repository.replace_scoring_configuration(original_configuration)
-    assert scoring_previous_filters.find_previous_filter(
+    assert saved_filters.find_saved_filter(
         repository, dataset_ids, ['Region'], 'NSA', context_filters=filters,
     )['up_to_date']
     repository.update_dataset_profile(dataset_ids[0], processed_at=local_now_iso())
-    match = scoring_previous_filters.find_previous_filter(
+    match = saved_filters.find_saved_filter(
         repository, dataset_ids, ['Region'], 'NSA', context_filters=filters,
     )
     assert match['id'] == job['id'] and not match['up_to_date']
-    assert len(scoring_previous_filters.list_previous_filters(repository)) == 1
+    assert len(saved_filters.list_saved_filters(repository)) == 1
 
 
 def test_a_queued_calculation_keeps_its_methodology_and_a_new_one_recalculates_the_filters(repository, scoring_engine):
     engine, _calls = scoring_engine
     dataset_id = add_dataset(repository)
-    initial, _ = scoring_previous_filters.save_previous_filter(repository, [dataset_id], ['Region'], 'NSA')
+    initial, _ = saved_filters.save_saved_filter(repository, [dataset_id], ['Region'], 'NSA')
     original_configuration = copy.deepcopy(initial['configuration'])
 
     changed_configuration = scoring_configuration()
     c5 = next(metric for metric in changed_configuration['metrics'] if metric['code'] == 'K1')
     c5['contexts']['DriveCity']['thresholds']['low'] = 86
     repository.replace_scoring_configuration(changed_configuration)
-    # The same selection is the same Previous Filter, still calculating with the methodology it was queued with.
-    same, reused = scoring_previous_filters.save_previous_filter(repository, [dataset_id], ['Region'], 'NSA')
+    # The same selection is the same Saved Filter, still calculating with the methodology it was queued with.
+    same, reused = saved_filters.save_saved_filter(repository, [dataset_id], ['Region'], 'NSA')
     assert reused and same['id'] == initial['id']
-    completed = scoring_previous_filters.calculate_previous_filter(repository, initial['id'])
+    completed = saved_filters.calculate_saved_filter(repository, initial['id'])
     assert completed['status'] == 'completed'
     assert completed['result']['configuration'] == original_configuration
     assert engine.configuration_snapshots[0] == original_configuration
     # Opened again, its result is calculated with the methodology of today.
-    assert scoring_previous_filters.refresh_previous_filter(repository, initial['id']) == (True, '')
-    recalculated = scoring_previous_filters.calculate_previous_filter(repository, initial['id'])
+    assert saved_filters.refresh_saved_filter(repository, initial['id']) == (True, '')
+    recalculated = saved_filters.calculate_saved_filter(repository, initial['id'])
     assert recalculated['result']['configuration']['metrics'][0]['contexts']['DriveCity']['thresholds']['low'] == 86
-    assert scoring_previous_filters.refresh_previous_filter(repository, initial['id']) == (False, '')
+    assert saved_filters.refresh_saved_filter(repository, initial['id']) == (False, '')
 
 
 def test_legacy_job_configuration_snapshot_is_returned_without_walk_migration(repository, scoring_engine):
@@ -385,7 +385,7 @@ def test_legacy_job_configuration_snapshot_is_returned_without_walk_migration(re
 
     engine.method_version_for_configuration = method_version_for_configuration
     dataset_id = add_dataset(repository)
-    job, _reused = scoring_previous_filters.save_previous_filter(repository, [dataset_id], [], 'NSA')
+    job, _reused = saved_filters.save_saved_filter(repository, [dataset_id], [], 'NSA')
     legacy = copy.deepcopy(job['configuration'])
     legacy['scope']['environments'].pop('Walk')
     for metric in legacy['metrics']:
@@ -393,34 +393,34 @@ def test_legacy_job_configuration_snapshot_is_returned_without_walk_migration(re
 
     with repository.connection() as connection:
         row = connection.execute(
-            'SELECT source_metadata_json FROM scoring_previous_filters WHERE id = ?', (job['id'],),
+            'SELECT source_metadata_json FROM saved_filters WHERE id = ?', (job['id'],),
         ).fetchone()
         snapshot = json.loads(row['source_metadata_json'])
         snapshot['configuration'] = legacy
         connection.execute(
-            'UPDATE scoring_previous_filters SET source_metadata_json = ?, method_version = ? WHERE id = ?',
+            'UPDATE saved_filters SET source_metadata_json = ?, method_version = ? WHERE id = ?',
             (json.dumps(snapshot), method_version_for_configuration(legacy), job['id']),
         )
 
-    loaded = scoring_previous_filters.get_previous_filter(repository, job['id'])
+    loaded = saved_filters.get_saved_filter(repository, job['id'])
     assert loaded['configuration'] == legacy
     assert 'Walk' not in loaded['configuration']['scope']['environments']
-    completed = scoring_previous_filters.calculate_previous_filter(repository, job['id'])
+    completed = saved_filters.calculate_saved_filter(repository, job['id'])
     assert completed['status'] == 'completed'
     assert completed['configuration'] == legacy
     with repository.connection() as connection:
         stored = connection.execute(
-            'SELECT source_metadata_json FROM scoring_previous_filters WHERE id = ?', (job['id'],),
+            'SELECT source_metadata_json FROM saved_filters WHERE id = ?', (job['id'],),
         ).fetchone()
     assert json.loads(stored['source_metadata_json'])['configuration'] == legacy
 
 
 def test_active_profile_identity_partitions_cache_and_is_saved_with_job(repository, scoring_engine):
     dataset_id = add_dataset(repository)
-    first, reused = scoring_previous_filters.save_previous_filter(repository, [dataset_id], ['Region'], 'NSA')
+    first, reused = saved_filters.save_saved_filter(repository, [dataset_id], ['Region'], 'NSA')
     assert not reused
     assert first['scoring_profile_id'] == 'netcheck-2026'
-    assert scoring_previous_filters.calculate_previous_filter(repository, first['id'])['status'] == 'completed'
+    assert saved_filters.calculate_saved_filter(repository, first['id'])['status'] == 'completed'
 
     profiles = repository.get_scoring_profiles()
     second_profile = copy.deepcopy(profiles['profiles'][0])
@@ -429,7 +429,7 @@ def test_active_profile_identity_partitions_cache_and_is_saved_with_job(reposito
     profiles['active_profile_id'] = second_profile['id']
     repository.replace_scoring_profiles(profiles)
 
-    second, reused = scoring_previous_filters.save_previous_filter(repository, [dataset_id], ['Region'], 'NSA')
+    second, reused = saved_filters.save_saved_filter(repository, [dataset_id], ['Region'], 'NSA')
     assert not reused
     assert second['id'] != first['id']
     assert second['scoring_profile_id'] == 'netcheck-alt'
@@ -437,7 +437,7 @@ def test_active_profile_identity_partitions_cache_and_is_saved_with_job(reposito
 
     profiles['active_profile_id'] = 'netcheck-2026'
     repository.replace_scoring_profiles(profiles)
-    cached, reused = scoring_previous_filters.save_previous_filter(repository, [dataset_id], ['Region'], 'NSA')
+    cached, reused = saved_filters.save_saved_filter(repository, [dataset_id], ['Region'], 'NSA')
     assert reused
     assert cached['id'] == first['id']
 
@@ -458,7 +458,7 @@ def test_explicit_inactive_profile_sets_job_snapshot_and_hierarchy_without_switc
     profiles['profiles'].append(inactive)
     repository.replace_scoring_profiles(profiles)
 
-    selected, reused = scoring_previous_filters.save_previous_filter(
+    selected, reused = saved_filters.save_saved_filter(
         repository, [dataset_id], ['Region', 'City'], 'NSA', scoring_profile_id='netcheck-2025',
     )
 
@@ -471,11 +471,11 @@ def test_explicit_inactive_profile_sets_job_snapshot_and_hierarchy_without_switc
     assert repository.get_scoring_profiles()['active_profile_id'] == active_id
     assert repository.get_scoring_configuration() == active_configuration
 
-    completed = scoring_previous_filters.calculate_previous_filter(repository, selected['id'])
+    completed = saved_filters.calculate_saved_filter(repository, selected['id'])
     assert completed['status'] == 'completed'
     assert engine.configuration_snapshots[0]['metrics'][0]['contexts']['DriveCity']['max_points'] == 88
 
-    default_job, default_reused = scoring_previous_filters.save_previous_filter(
+    default_job, default_reused = saved_filters.save_saved_filter(
         repository, [dataset_id], ['Region', 'City'], 'NSA',
     )
     assert not default_reused
@@ -491,8 +491,8 @@ def test_explicit_same_configuration_profile_uses_separate_cache_entry(repositor
     profiles['profiles'].append(alternate)
     repository.replace_scoring_profiles(profiles)
 
-    active, reused_active = scoring_previous_filters.save_previous_filter(repository, [dataset_id], ['Region'], 'NSA')
-    explicit, reused_explicit = scoring_previous_filters.save_previous_filter(
+    active, reused_active = saved_filters.save_saved_filter(repository, [dataset_id], ['Region'], 'NSA')
+    explicit, reused_explicit = saved_filters.save_saved_filter(
         repository, [dataset_id], ['Region'], 'NSA', scoring_profile_id='netcheck-copy',
     )
 
@@ -505,7 +505,7 @@ def test_unknown_explicit_profile_is_rejected(repository):
     dataset_id = add_dataset(repository)
 
     with pytest.raises(ValueError, match='Scoring methodology missing-profile was not found\\.'):
-        scoring_previous_filters.save_previous_filter(
+        saved_filters.save_saved_filter(
             repository, [dataset_id], ['Region'], 'NSA', scoring_profile_id='missing-profile',
         )
 
@@ -518,7 +518,7 @@ def test_job_levels_follow_configured_hierarchy_and_snapshot_contract(repository
     ])
     dataset_ids = add_complete_scoring_sources(repository, 'Hierarchy')
 
-    job, reused = scoring_previous_filters.save_previous_filter(
+    job, reused = saved_filters.save_saved_filter(
         repository, dataset_ids, ['Vendor', 'Region', 'City', 'Campaign'], 'NSA',
     )
 
@@ -527,7 +527,7 @@ def test_job_levels_follow_configured_hierarchy_and_snapshot_contract(repository
     assert job['aggregation_levels'] == job['levels']
     assert job['aggregation_hierarchy'] == ['Campaign', 'City', 'Operator', 'Region', 'Cluster', 'Vendor']
     assert job['aggregation_contract_version'] == 2
-    completed = scoring_previous_filters.calculate_previous_filter(repository, job['id'])
+    completed = saved_filters.calculate_saved_filter(repository, job['id'])
     assert completed['status'] == 'completed'
     assert completed['result']['aggregation_levels'] == job['levels']
     assert completed['result']['aggregation_contract_version'] == 2
@@ -543,22 +543,22 @@ def test_baseline_alias_snapshot_is_cached_and_passed_to_engine(repository, scor
         {'canonical': 'Vodafone UK', 'aliases': ['VF_UK', 'VF UK'], 'color': '#FF0000'},
     ])
 
-    job, reused = scoring_previous_filters.save_previous_filter(
+    job, reused = saved_filters.save_saved_filter(
         repository, [dataset_id], ['Region'], 'NSA', baseline_operator='Vodafone UK',
     )
     assert not reused
     assert set(job['baseline_aliases']) == {'Vodafone UK', 'VF_UK', 'VF UK'}
-    completed = scoring_previous_filters.calculate_previous_filter(repository, job['id'])
+    completed = saved_filters.calculate_saved_filter(repository, job['id'])
     assert completed['result']['baseline_aliases'] == job['baseline_aliases']
     assert engine.baseline_alias_snapshots[0] == job['baseline_aliases']
 
     repository.replace_operator_mapping_groups([
         {'canonical': 'Vodafone UK', 'aliases': ['VF_UK', 'VF UK', 'Voda'], 'color': '#FF0000'},
     ])
-    updated, reused = scoring_previous_filters.save_previous_filter(
+    updated, reused = saved_filters.save_saved_filter(
         repository, [dataset_id], ['Region'], 'NSA', baseline_operator='Vodafone UK',
     )
-    # The same Previous Filter is calculated again with the new aliases.
+    # The same Saved Filter is calculated again with the new aliases.
     assert not reused
     assert updated['id'] == job['id']
     assert 'Voda' in updated['baseline_aliases']
@@ -583,15 +583,15 @@ def test_scoring_context_filters_are_pushed_down_and_persisted(repository, scori
 
     monkeypatch.setattr(repository, 'load_dataset_rows', record_load)
 
-    job, reused = scoring_previous_filters.save_previous_filter(
+    job, reused = saved_filters.save_saved_filter(
         repository, dataset_ids, ['Region'], 'NSA', context_filters=filters,
     )
 
     assert not reused
     assert job['context_filters'] == filters
-    assert scoring_previous_filters.get_previous_filter(repository, job['id'])['context_filters'] == filters
-    assert scoring_previous_filters.list_previous_filters(repository)[0]['context_filters'] == filters
-    completed = scoring_previous_filters.calculate_previous_filter(repository, job['id'])
+    assert saved_filters.get_saved_filter(repository, job['id'])['context_filters'] == filters
+    assert saved_filters.list_saved_filters(repository)[0]['context_filters'] == filters
+    completed = saved_filters.calculate_saved_filter(repository, job['id'])
     assert completed['status'] == 'completed'
     loaded_frames, _levels, _baseline = calls[0]
     assert set(loaded_frames) == {'data', 'voice', 'speech'}
@@ -613,16 +613,16 @@ def test_scoring_context_filter_cache_is_order_independent_and_scope_specific(re
     _engine, _calls = scoring_engine
     dataset_ids = add_complete_scoring_sources(repository)
 
-    first, reused = scoring_previous_filters.save_previous_filter(
+    first, reused = saved_filters.save_saved_filter(
         repository, dataset_ids, [], 'NSA', context_filters={'Region': ['North', 'South']},
     )
-    reordered, reused_reordered = scoring_previous_filters.save_previous_filter(
+    reordered, reused_reordered = saved_filters.save_saved_filter(
         repository, dataset_ids, [], 'NSA', context_filters={'Region': ['South', 'North']},
     )
-    different_case, reused_different_case = scoring_previous_filters.save_previous_filter(
+    different_case, reused_different_case = saved_filters.save_saved_filter(
         repository, dataset_ids, [], 'NSA', context_filters={'Region': ['north', 'south']},
     )
-    narrowed, reused_narrowed = scoring_previous_filters.save_previous_filter(
+    narrowed, reused_narrowed = saved_filters.save_saved_filter(
         repository, dataset_ids, [], 'NSA', context_filters={'Region': ['North']},
     )
 
@@ -655,18 +655,18 @@ def test_scoring_context_filters_skip_empty_sources_and_fail_when_a_type_has_no_
         voice_missing_region_id, row_count=1, column_count=len(missing_region_frame.columns),
     )
 
-    job, _ = scoring_previous_filters.save_previous_filter(
+    job, _ = saved_filters.save_saved_filter(
         repository, [*dataset_ids, data_empty_id, voice_missing_region_id], [], 'NSA',
         context_filters={'Region': ['North']},
     )
-    completed = scoring_previous_filters.calculate_previous_filter(repository, job['id'])
+    completed = saved_filters.calculate_saved_filter(repository, job['id'])
     assert completed['status'] == 'completed'
     assert len(completed['result']['scoring']) == 1
 
-    no_matches, _ = scoring_previous_filters.save_previous_filter(
+    no_matches, _ = saved_filters.save_saved_filter(
         repository, dataset_ids, [], 'NSA', context_filters={'Region': ['Nowhere']},
     )
-    failed = scoring_previous_filters.calculate_previous_filter(repository, no_matches['id'])
+    failed = saved_filters.calculate_saved_filter(repository, no_matches['id'])
     assert failed['status'] == 'failed'
     assert 'Missing: Data, Voice, Speech' in failed['error']
 
@@ -686,12 +686,12 @@ def test_scoring_geography_filters_resolve_legacy_g_level_columns(repository, sc
         )
         dataset_ids.append(dataset_id)
 
-    job, _ = scoring_previous_filters.save_previous_filter(
+    job, _ = saved_filters.save_saved_filter(
         repository, dataset_ids, [], 'NSA', context_filters={
             'Region': ['North'], 'City': ['Leeds'],
         },
     )
-    completed = scoring_previous_filters.calculate_previous_filter(repository, job['id'])
+    completed = saved_filters.calculate_saved_filter(repository, job['id'])
 
     assert completed['status'] == 'completed'
     loaded_frames, _levels, _baseline = calls[0]
@@ -713,27 +713,27 @@ def test_campaign_completeness_checks_only_selected_campaigns(repository):
         )
 
     with pytest.raises(ValueError, match=r'2026-Q2 \(Voice, Speech\)'):
-        scoring_previous_filters.validate_complete_scoring_cdr_selection(
+        saved_filters.validate_complete_scoring_cdr_selection(
             repository, [data_q1, data_q2, voice_q1, speech_q1], 'NSA',
         )
 
-    selected = scoring_previous_filters.validate_complete_scoring_cdr_selection(
+    selected = saved_filters.validate_complete_scoring_cdr_selection(
         repository, [data_q1, data_q2, voice_q1, speech_q1], 'NSA',
         context_filters={'Campaign': ['2026-Q1']},
     )
     assert selected == [data_q1, data_q2, voice_q1, speech_q1]
 
 
-def test_legacy_scoring_previous_filters_default_to_no_context_filters(repository):
+def test_legacy_saved_filters_default_to_no_context_filters(repository):
     dataset_id = add_dataset(repository)
-    job, _ = scoring_previous_filters.save_previous_filter(repository, [dataset_id], [], 'NSA')
+    job, _ = saved_filters.save_saved_filter(repository, [dataset_id], [], 'NSA')
     with repository.connection() as connection:
         connection.execute(
-            'UPDATE scoring_previous_filters SET source_metadata_json = ? WHERE id = ?',
+            'UPDATE saved_filters SET source_metadata_json = ? WHERE id = ?',
             ('[{"name":"Legacy CDR"}]', job['id']),
         )
 
-    reloaded = scoring_previous_filters.get_previous_filter(repository, job['id'])
+    reloaded = saved_filters.get_saved_filter(repository, job['id'])
 
     assert reloaded['context_filters'] == {}
     assert reloaded['aggregation_contract_version'] == 1
@@ -743,15 +743,15 @@ def test_legacy_scoring_previous_filters_default_to_no_context_filters(repositor
 def test_scoring_cache_invalidates_when_materialized_cdr_changes(repository, scoring_engine):
     _engine, calls = scoring_engine
     dataset_id = add_dataset(repository)
-    job, _ = scoring_previous_filters.save_previous_filter(repository, [dataset_id], ['Region'], 'NSA')
-    scoring_previous_filters.calculate_previous_filter(repository, job['id'])
+    job, _ = saved_filters.save_saved_filter(repository, [dataset_id], ['Region'], 'NSA')
+    saved_filters.calculate_saved_filter(repository, job['id'])
 
     repository.update_dataset_profile(dataset_id, processed_at=local_now_iso())
-    refreshed, reused = scoring_previous_filters.save_previous_filter(repository, [dataset_id], ['Region'], 'NSA')
-    # The same Previous Filter, with its result calculated again.
+    refreshed, reused = saved_filters.save_saved_filter(repository, [dataset_id], ['Region'], 'NSA')
+    # The same Saved Filter, with its result calculated again.
     assert not reused
     assert refreshed['id'] == job['id']
-    scoring_previous_filters.calculate_previous_filter(repository, refreshed['id'])
+    saved_filters.calculate_saved_filter(repository, refreshed['id'])
 
     repository.update_dataset_profile(dataset_id, processed_at=local_now_iso())
     with repository.connection() as connection:
@@ -759,7 +759,7 @@ def test_scoring_cache_invalidates_when_materialized_cdr_changes(repository, sco
             "UPDATE dataset_profiles SET updated_at = '2099-01-01T00:00:00+00:00' WHERE dataset_id = ?",
             (dataset_id,),
         )
-    edited, reused = scoring_previous_filters.save_previous_filter(repository, [dataset_id], ['Region'], 'NSA')
+    edited, reused = saved_filters.save_saved_filter(repository, [dataset_id], ['Region'], 'NSA')
     assert not reused
     assert edited['id'] == refreshed['id']
     assert len(calls) == 2
@@ -769,12 +769,12 @@ def test_scoring_cache_survives_dataset_reordering(repository, scoring_engine):
     _engine, _calls = scoring_engine
     first_id = add_dataset(repository, 'First_NSA_Data.csv')
     second_id = add_dataset(repository, 'Second_NSA_Voice.csv', kind='voice')
-    job, _ = scoring_previous_filters.save_previous_filter(repository, [first_id, second_id], ['Region'], 'NSA')
-    scoring_previous_filters.calculate_previous_filter(repository, job['id'])
+    job, _ = saved_filters.save_saved_filter(repository, [first_id, second_id], ['Region'], 'NSA')
+    saved_filters.calculate_saved_filter(repository, job['id'])
 
     id_mapping = repository.reorder_dataset_ids([second_id, first_id])
     assert id_mapping == {first_id: 2, second_id: 1}
-    reordered, reused = scoring_previous_filters.save_previous_filter(repository, [1, 2], ['Region'], 'NSA')
+    reordered, reused = saved_filters.save_saved_filter(repository, [1, 2], ['Region'], 'NSA')
 
     assert reused
     assert reordered['id'] == job['id']
@@ -784,13 +784,13 @@ def test_scoring_cache_survives_dataset_reordering(repository, scoring_engine):
 def test_database_management_row_edits_invalidate_the_scoring_cache(repository, scoring_engine):
     _engine, _calls = scoring_engine
     dataset_id = add_dataset(repository)
-    job, _ = scoring_previous_filters.save_previous_filter(repository, [dataset_id], ['Region'], 'NSA')
-    scoring_previous_filters.calculate_previous_filter(repository, job['id'])
+    job, _ = saved_filters.save_saved_filter(repository, [dataset_id], ['Region'], 'NSA')
+    saved_filters.calculate_saved_filter(repository, job['id'])
 
     repository.update_database_table_row(
         repository.dataset_rows_table_name(dataset_id), 1, {'score': 99.0},
     )
-    edited, reused = scoring_previous_filters.save_previous_filter(repository, [dataset_id], ['Region'], 'NSA')
+    edited, reused = saved_filters.save_saved_filter(repository, [dataset_id], ['Region'], 'NSA')
 
     assert not reused
     assert edited['id'] == job['id'] and edited['status'] == 'queued'
@@ -808,59 +808,59 @@ def test_scoring_job_validates_cdr_mode_and_levels(repository, scoring_engine, i
     _engine, _calls = scoring_engine
     add_dataset(repository)
     with pytest.raises(ValueError, match=expected_error):
-        scoring_previous_filters.save_previous_filter(repository, ids, levels, mode)
+        saved_filters.save_saved_filter(repository, ids, levels, mode)
 
 
-def test_scoring_previous_filters_are_visible_and_interrupted_jobs_become_retryable(repository, scoring_engine):
+def test_saved_filters_are_visible_and_interrupted_jobs_become_retryable(repository, scoring_engine):
     _engine, _calls = scoring_engine
     dataset_id = add_dataset(repository)
-    job, _ = scoring_previous_filters.save_previous_filter(repository, [dataset_id], [], 'NSA')
+    job, _ = saved_filters.save_saved_filter(repository, [dataset_id], [], 'NSA')
 
-    assert 'scoring_previous_filters' in repository.list_database_tables()
+    assert 'saved_filters' in repository.list_database_tables()
     interrupted_datasets, interrupted_reports = repository.fail_interrupted_background_jobs(fail_datasets=False)
 
     assert interrupted_datasets == []
     assert interrupted_reports == []
-    recovered = scoring_previous_filters.get_previous_filter(repository, job['id'])
+    recovered = saved_filters.get_saved_filter(repository, job['id'])
     assert recovered['status'] == 'failed'
     assert 'application restarted' in recovered['error']
 
 
-def test_recover_interrupted_previous_filters_on_workspace_reopen(repository, scoring_engine):
+def test_recover_interrupted_saved_filters_on_workspace_reopen(repository, scoring_engine):
     _engine, _calls = scoring_engine
     dataset_id = add_dataset(repository)
 
-    completed_job, _ = scoring_previous_filters.save_previous_filter(repository, [dataset_id], ['Region'], 'NSA')
-    scoring_previous_filters.calculate_previous_filter(repository, completed_job['id'])
-    completed_before = scoring_previous_filters.get_previous_filter(
+    completed_job, _ = saved_filters.save_saved_filter(repository, [dataset_id], ['Region'], 'NSA')
+    saved_filters.calculate_saved_filter(repository, completed_job['id'])
+    completed_before = saved_filters.get_saved_filter(
         repository, completed_job['id'], include_result=True,
     )
 
-    queued_job, _ = scoring_previous_filters.save_previous_filter(repository, [dataset_id], ['City'], 'NSA')
-    processing_job, _ = scoring_previous_filters.save_previous_filter(
+    queued_job, _ = saved_filters.save_saved_filter(repository, [dataset_id], ['City'], 'NSA')
+    processing_job, _ = saved_filters.save_saved_filter(
         repository, [dataset_id], ['Vendor'], 'NSA', baseline_operator='O2',
     )
     with repository.connection() as connection:
         connection.execute(
-            "UPDATE scoring_previous_filters SET status = 'processing', progress = 45 WHERE id = ?",
+            "UPDATE saved_filters SET status = 'processing', progress = 45 WHERE id = ?",
             (processing_job['id'],),
         )
 
     reopened_repository = Repository(Path(repository.db_path))
     reopened_repository.initialize()
-    recovered_ids = scoring_previous_filters.recover_interrupted_previous_filters(reopened_repository)
+    recovered_ids = saved_filters.recover_interrupted_saved_filters(reopened_repository)
 
     assert recovered_ids == sorted([queued_job['id'], processing_job['id']])
     for job_id in recovered_ids:
-        recovered = scoring_previous_filters.get_previous_filter(reopened_repository, job_id)
+        recovered = saved_filters.get_saved_filter(reopened_repository, job_id)
         assert recovered['status'] == 'failed'
         assert 'application restarted' in recovered['error']
 
-    completed_after = scoring_previous_filters.get_previous_filter(
+    completed_after = saved_filters.get_saved_filter(
         reopened_repository, completed_job['id'], include_result=True,
     )
     assert completed_after == completed_before
-    assert scoring_previous_filters.recover_interrupted_previous_filters(reopened_repository) == []
+    assert saved_filters.recover_interrupted_saved_filters(reopened_repository) == []
 
 
 LEGACY_SCORING_JOBS_DDL = """CREATE TABLE scoring_jobs (
@@ -886,7 +886,7 @@ LEGACY_SCORING_JOBS_DDL = """CREATE TABLE scoring_jobs (
 )"""
 
 
-def test_initialize_turns_the_scoring_jobs_of_earlier_versions_into_previous_filters(repository):
+def test_initialize_turns_the_scoring_jobs_of_earlier_versions_into_saved_filters(repository):
     result_json = '{"scoring":[{"Operator":"EE","Score":4}],"gap":[],"charts":[],"warnings":[]}'
     snapshot = '{"sources":[{"name":"Q2 CDR"}],"scoring_profile_id":"default","context_filters":{"Region":["North"]}}'
 
@@ -898,7 +898,7 @@ def test_initialize_turns_the_scoring_jobs_of_earlier_versions_into_previous_fil
                 'created_at': created_at, 'started_at': created_at, 'updated_at': created_at, 'finished_at': created_at}
 
     legacy_jobs = [
-        # Two calculations of the same selection: one Previous Filter with the latest result, used twice.
+        # Two calculations of the same selection: one Saved Filter with the latest result, used twice.
         job(7, 'old-key', 'ready', '2026-09-29T10:00:00+00:00', result_json),
         job(9, 'new-key', 'completed', '2026-09-30T10:00:00+00:00', result_json.replace('4', '5')),
         # A calculation interrupted by the upgrade is kept as failed.
@@ -917,19 +917,20 @@ def test_initialize_turns_the_scoring_jobs_of_earlier_versions_into_previous_fil
 
     with repository.connection() as connection:
         assert connection.execute("SELECT 1 FROM sqlite_master WHERE name = 'scoring_jobs'").fetchone() is None
-    converted = {item['dataset_ids'][0]: item for item in scoring_previous_filters.list_previous_filters(repository)}
+    converted = {item['dataset_ids'][0]: item for item in saved_filters.list_saved_filters(repository)}
     assert len(converted) == 2
     merged = converted[3]
     assert merged['use_count'] == 2 and merged['last_used_at'] == '2026-09-30T10:00:00+00:00'
+    assert merged['calculation_count'] == 2
     assert merged['status'] == 'completed' and merged['result_key'] == 'new-key'
-    assert scoring_previous_filters.get_previous_filter(repository, merged['id'], include_result=True)['result']['scoring'] == [
+    assert saved_filters.get_saved_filter(repository, merged['id'], include_result=True)['result']['scoring'] == [
         {'Operator': 'EE', 'Score': 5}]
     assert merged['context_filters']['Region'] == ['North'] and merged['scoring_profile_id'] == 'default'
-    assert converted[9]['status'] == 'failed' and converted[9]['use_count'] == 1
+    assert converted[9]['status'] == 'failed' and converted[9]['use_count'] == 1 and converted[9]['calculation_count'] == 0
 
     # A second start finds nothing to convert.
     repository.initialize()
-    assert len(scoring_previous_filters.list_previous_filters(repository)) == 2
+    assert len(saved_filters.list_saved_filters(repository)) == 2
 
 
 def test_workspace_database_backup_restore_keeps_completed_scoring_results(client, tmp_path: Path, scoring_engine):
@@ -940,10 +941,10 @@ def test_workspace_database_backup_restore_keeps_completed_scoring_results(clien
     assert workspace is not None
     app_module.repository.replace_scoring_configuration(scoring_configuration())
     dataset_id = add_dataset(app_module.repository, 'Backup_NSA_Data.csv')
-    job, _ = scoring_previous_filters.save_previous_filter(
+    job, _ = saved_filters.save_saved_filter(
         app_module.repository, [dataset_id], ['Region'], 'NSA', username='tester',
     )
-    completed = scoring_previous_filters.calculate_previous_filter(app_module.repository, job['id'])
+    completed = saved_filters.calculate_saved_filter(app_module.repository, job['id'])
     assert completed['status'] == 'completed'
 
     backup_path = app_module.create_recurring_database_backup({
@@ -953,12 +954,12 @@ def test_workspace_database_backup_restore_keeps_completed_scoring_results(clien
         'max_backups': 2,
     })
     with app_module.repository.connection() as connection:
-        connection.execute('DELETE FROM scoring_previous_filters WHERE id = ?', (job['id'],))
-    assert scoring_previous_filters.get_previous_filter(app_module.repository, job['id']) is None
+        connection.execute('DELETE FROM saved_filters WHERE id = ?', (job['id'],))
+    assert saved_filters.get_saved_filter(app_module.repository, job['id']) is None
 
     app_module.restore_database_backup(backup_path, ['workspace_database'])
 
-    restored = scoring_previous_filters.get_previous_filter(app_module.repository, job['id'], include_result=True)
+    restored = saved_filters.get_saved_filter(app_module.repository, job['id'], include_result=True)
     assert restored is not None
     assert restored['status'] == 'completed'
     assert restored['result']['scoring'] == completed['result']['scoring']
@@ -966,9 +967,9 @@ def test_workspace_database_backup_restore_keeps_completed_scoring_results(clien
 
 def test_historical_jobs_use_current_environment_labels_without_rewriting_snapshots(repository, scoring_engine):
     dataset_id = add_dataset(repository)
-    created, _ = scoring_previous_filters.save_previous_filter(repository, [dataset_id], ['Region'], 'NSA')
-    scoring_previous_filters.calculate_previous_filter(repository, created['id'])
-    original = scoring_previous_filters.get_previous_filter(repository, created['id'], include_result=True)
+    created, _ = saved_filters.save_saved_filter(repository, [dataset_id], ['Region'], 'NSA')
+    saved_filters.calculate_saved_filter(repository, created['id'])
+    original = saved_filters.get_saved_filter(repository, created['id'], include_result=True)
     configuration = repository.get_scoring_configuration()
     scope = configuration['scope']
     scope['environments']['Drive - City'] = scope['environments'].pop('DriveCity')
@@ -977,16 +978,16 @@ def test_historical_jobs_use_current_environment_labels_without_rewriting_snapsh
         metric['contexts']['Drive - City'] = metric['contexts'].pop('DriveCity')
     repository.replace_scoring_configuration(configuration)
 
-    displayed = scoring_previous_filters.get_previous_filter(repository, created['id'], include_result=True)
+    displayed = saved_filters.get_saved_filter(repository, created['id'], include_result=True)
     assert displayed['configuration']['scope']['environments']['DriveCity']['display_name'] == 'Drive - City'
     assert displayed['result']['configuration']['scope']['environments']['DriveCity']['display_name'] == 'Drive - City'
     assert displayed['result']['scoring'] == original['result']['scoring']
     assert displayed['configuration']['metrics'] == original['configuration']['metrics']
-    stored = scoring_previous_filters.get_previous_filter(repository, created['id'], include_result=True,
+    stored = saved_filters.get_saved_filter(repository, created['id'], include_result=True,
                                            include_internal_snapshot=True)
     assert stored['configuration'] == original['configuration']
     assert stored['result'] == original['result']
-    new, reused = scoring_previous_filters.save_previous_filter(repository, [dataset_id], ['Region'], 'NSA')
+    new, reused = saved_filters.save_saved_filter(repository, [dataset_id], ['Region'], 'NSA')
     assert not reused
     assert 'Drive - City' in new['configuration']['scope']['environments']
 
@@ -999,9 +1000,53 @@ def test_failed_calculations_are_written_to_the_app_logs(repository, scoring_eng
 
     engine.calculate_scoring = failing
     dataset_id = add_dataset(repository)
-    job, _ = scoring_previous_filters.save_previous_filter(repository, [dataset_id], [], 'NSA')
-    assert scoring_previous_filters.calculate_previous_filter(repository, job['id'])['status'] == 'failed'
+    job, _ = saved_filters.save_saved_filter(repository, [dataset_id], [], 'NSA')
+    assert saved_filters.calculate_saved_filter(repository, job['id'])['status'] == 'failed'
     entry = next(row for row in repository.list_logs() if row['action'] == 'scoring_calculation_failed')
     details = json.loads(entry['details'])
     assert details['filter_id'] == job['id'] and details['error'] == 'ValueError: side location conflict'
     assert 'failing' in details['location']
+
+
+@pytest.mark.parametrize('earlier, key_column', [('scoring_previous_filters', 'filter_key'), ('saved_scorings', 'selection_key')])
+def test_initialize_keeps_the_saved_filters_of_a_workspace_opened_with_their_earlier_names(repository, earlier, key_column):
+    with repository.connection() as connection:
+        ddl = connection.execute("SELECT sql FROM sqlite_master WHERE name = 'saved_filters'").fetchone()['sql']
+        connection.execute('DROP TABLE saved_filters')
+        connection.execute(ddl.replace('saved_filters', earlier).replace('selection_key', key_column))
+        connection.execute(f'CREATE INDEX idx_{earlier}_order ON {earlier}(pinned DESC, last_used_at DESC)')
+        connection.execute(f"INSERT INTO {earlier} ({key_column}, name, nr_mode, status) VALUES ('selection', 'Kept', 'NSA', 'completed')")
+
+    repository.initialize()
+
+    [kept] = saved_filters.list_saved_filters(repository)
+    assert kept['name'] == 'Kept' and kept['selection_key'] == 'selection' and kept['status'] == 'completed'
+    with repository.connection() as connection:
+        names = {row['name'] for row in connection.execute('SELECT name FROM sqlite_master').fetchall()}
+    assert earlier not in names and f'idx_{earlier}_order' not in names and 'idx_saved_filters_order' in names
+
+
+def test_saved_filters_count_their_uses_and_their_calculations(repository, scoring_engine):
+    dataset_id = add_dataset(repository)
+    saved, _ = saved_filters.save_saved_filter(repository, [dataset_id], [], 'NSA')
+    assert (saved['use_count'], saved['calculation_count']) == (1, 0)
+    saved_filters.calculate_saved_filter(repository, saved['id'])
+    # Calculate with its result up to date opens it: a use, not a calculation.
+    opened, reused = saved_filters.save_saved_filter(repository, [dataset_id], [], 'NSA')
+    assert reused and (opened['use_count'], opened['calculation_count']) == (2, 1)
+    # Recalculate is a use and, once it finishes, a calculation.
+    saved_filters.save_saved_filter(repository, [dataset_id], [], 'NSA', force=True)
+    recalculated = saved_filters.calculate_saved_filter(repository, saved['id'])
+    assert (recalculated['use_count'], recalculated['calculation_count']) == (3, 2)
+    # Opening it from its card is a use.
+    assert saved_filters.mark_saved_filter_used(repository, saved['id'])['use_count'] == 4
+
+
+def test_saved_filters_of_earlier_versions_get_their_calculation_count(repository):
+    with repository.connection() as connection:
+        connection.execute("INSERT INTO saved_filters (selection_key, nr_mode, status) VALUES ('done', 'NSA', 'completed')")
+        connection.execute("INSERT INTO saved_filters (selection_key, nr_mode, status) VALUES ('waiting', 'NSA', 'saved')")
+        connection.execute('ALTER TABLE saved_filters DROP COLUMN calculation_count')
+    repository.initialize()
+    counts = {item['selection_key']: item['calculation_count'] for item in saved_filters.list_saved_filters(repository)}
+    assert counts == {'done': 1, 'waiting': 0}

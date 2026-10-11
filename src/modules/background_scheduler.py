@@ -78,6 +78,18 @@ class BackgroundTaskScheduler:
             self._condition.notify_all()
         return future
 
+    def promote(self, matches: Callable[[Callable[..., Any], tuple[Any, ...]], bool], priority: tuple[int, ...]) -> int:
+        """Give the queued jobs whose callback and arguments match a new priority; returns how many."""
+        with self._condition:
+            promoted = 0
+            for task in self._pending:
+                if matches(task.callback, task.args):
+                    task.priority = priority
+                    promoted += 1
+            if promoted:
+                self._condition.notify_all()
+            return promoted
+
     @contextmanager
     def defer_dispatch(self):
         """Queue a related batch atomically before a worker can start it."""

@@ -87,7 +87,7 @@ Reporting Jobs can only include artifacts of the modules active for their author
 - PPT Templates from the active workspace
 - Main Cities from the active workspace
 - Mappings & Reference Data from the active workspace
-- Scoring & GAP Analysis Configuration from the active workspace (all saved methodologies, default methodology, KPI definitions and GAP KPI priorities, and the Previous Filters without their results, whose CDRs are found by file in the receiving workspace)
+- Scoring & GAP Analysis Configuration from the active workspace (all saved methodologies, default methodology, KPI definitions and GAP KPI priorities, and the Saved Filters without their results, whose CDRs are found by file in the receiving workspace)
 - Auto-calculated Fields from the active workspace
 - Query Builder Queries from the active workspace
 - Reporting Jobs from the active workspace
@@ -178,7 +178,7 @@ In **Backup**, select one or more content types:
 - **Workspace Content: PPT Templates** stores one CSV file for each PPT Template.
 - **Workspace Content: Main Cities** stores the workspace city selection.
 - **Workspace Content: Mappings & Reference Data** stores one JSON file containing every canonical Operator and Vendor, alias, row position and thematic colour, plus the Spectrum Holdings and Campaign Maps.
-- **Workspace Content: Scoring & GAP Analysis Configuration** stores all saved methodologies, their default selection, KPI definitions and GAP KPI priorities, and the Previous Filters without their results; import and restore recover every Scoring Setup subpanel together and add the Previous Filters the workspace does not have yet, each finding its CDRs by the SHA-256 of their files (it waits for those not processed there yet).
+- **Workspace Content: Scoring & GAP Analysis Configuration** stores all saved methodologies, their default selection, KPI definitions and GAP KPI priorities, and the Saved Filters without their results; import and restore recover every Scoring Setup subpanel together and add the Saved Filters the workspace does not have yet, each finding its CDRs by the SHA-256 of their files (it waits for those not processed there yet).
 - **Workspace Content: Auto-calculated Fields** stores one JSON file containing every selected workspace definition.
 - **Workspace Content: NQ Call Tracking** stores one JSON file with the Non-Qualified Calls Analysis Center (sections, field catalog, statuses, teams, Status Rules, root cause catalog and RCA script results), follow-up, comments and history; restore merges it into the workspace without duplicating comments, history or RCA results.
 - **Workspace Content: NQ Calls Configuration** stores one JSON file with only the configuration of the Non-Qualified Calls Analysis Center (sections, field catalog, statuses, teams, Status Rules, root cause catalog and table columns); restore merges it into the workspace like the configuration part of NQ Call Tracking.

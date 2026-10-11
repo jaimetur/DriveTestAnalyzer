@@ -11005,6 +11005,9 @@ def test_a_section_chosen_in_a_menu_opens_at_the_top_of_its_page():
     assert "{{ restored_address | tojson }} + window.location.hash" in template
     # A panel drawn again with fresh data is found again while it is followed.
     assert 'if (!target.isConnected) target = find?.() || target;' in app_script
+    # The section is shown once: a reload returns to where the page was being read.
+    assert "window.history.replaceState(window.history.state, '', `${window.location.pathname}${window.location.search}`);" in app_script
+    assert "window.history.replaceState(window.history.state, '', `${window.location.pathname}${window.location.search}`);" in scoring_script
     # The Scoring Results entries bring its tabs to the top.
     assert "const panel = root.querySelector('.scoring-result-tabs') || root.querySelector('.scoring-results-panel');" in scoring_script
 

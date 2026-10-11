@@ -281,7 +281,7 @@ def test_scoring_job_api_returns_and_exports_the_most_reliable_scoring(scoring_a
     from types import ModuleType
 
     from src.modules import scoring as scoring_engine
-    from src.modules import scoring_previous_filters
+    from src.modules import saved_filters
 
     client = scoring_api['client']
     repository = scoring_api['repository']
@@ -296,16 +296,16 @@ def test_scoring_job_api_returns_and_exports_the_most_reliable_scoring(scoring_a
     engine.calculate_scoring = lambda frames, levels, *, baseline_operator, configuration=None: (
         scoring_engine.calculate_scoring({'voice': pd.DataFrame(rows)}, levels, baseline_operator=baseline_operator,
                                          configuration=configuration))
-    monkeypatch.setattr(scoring_previous_filters, '_scoring_engine', lambda: engine)
-    created = client.post('/api/scoring/previous-filters', json={
+    monkeypatch.setattr(saved_filters, '_scoring_engine', lambda: engine)
+    created = client.post('/api/scoring/saved-filters', json={
         'dataset_ids': scoring_api['complete_dataset_ids'], 'aggregation_levels': ['Operator'],
         'nr_mode': 'NSA', 'baseline_operator': 'EE',
     })
     assert created.status_code == 200, created.text
-    job_id = created.json()['previous_filter']['id']
-    assert scoring_previous_filters.calculate_previous_filter(repository, job_id)['status'] == 'completed'
+    job_id = created.json()['saved_filter']['id']
+    assert saved_filters.calculate_saved_filter(repository, job_id)['status'] == 'completed'
 
-    payload = client.get(f'/api/scoring/previous-filters/{job_id}').json()
+    payload = client.get(f'/api/scoring/saved-filters/{job_id}').json()
     reliable = payload['scorings']['most_reliable']
     assert reliable['label'] == 'Most Reliable Network'
     assert [metric['code'] for metric in reliable['configuration']['metrics']] == list(RELIABLE_POINTS)
@@ -313,14 +313,14 @@ def test_scoring_job_api_returns_and_exports_the_most_reliable_scoring(scoring_a
     assert {row['kpi_code'] for row in city['expanded_rows'] if row.get('kpi_code')} == set(RELIABLE_POINTS)
     assert any(row['category'] == 'Overall' for row in reliable['totals'])
 
-    best_csv = client.get(f'/scoring/previous-filters/{job_id}/export/scoring?table_mode=expanded').content.decode('utf-8-sig')
+    best_csv = client.get(f'/scoring/saved-filters/{job_id}/export/scoring?table_mode=expanded').content.decode('utf-8-sig')
     reliable_csv = client.get(
-        f'/scoring/previous-filters/{job_id}/export/scoring?table_mode=expanded&scoring=most_reliable').content.decode('utf-8-sig')
+        f'/scoring/saved-filters/{job_id}/export/scoring?table_mode=expanded&scoring=most_reliable').content.decode('utf-8-sig')
     assert 'CALL SETUP TIME' in best_csv
     assert 'CALL SETUP TIME' not in reliable_csv and 'CALL SUCCESS RATIO' in reliable_csv
-    assert client.get(f'/scoring/previous-filters/{job_id}/export/scoring?scoring=unknown').status_code == 400
+    assert client.get(f'/scoring/saved-filters/{job_id}/export/scoring?scoring=unknown').status_code == 400
 
-    ppt = client.get(f'/scoring/previous-filters/{job_id}/export/ppt')
+    ppt = client.get(f'/scoring/saved-filters/{job_id}/export/ppt')
     assert ppt.status_code == 200, ppt.text
     titles = _slide_titles(ppt.content)
     assert any(title.startswith('Best Network Scoring') for title in titles)

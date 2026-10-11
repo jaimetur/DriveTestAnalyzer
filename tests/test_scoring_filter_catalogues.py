@@ -8,7 +8,7 @@ import sqlite3
 from pptx import Presentation
 
 import src.DriveTestAnalyzer as app_module
-from src.modules import scoring_previous_filters
+from src.modules import saved_filters
 from src.modules.repository import Repository
 from tests.test_scoring_api import scoring_api
 
@@ -81,7 +81,7 @@ def test_operator_catalogue_replacement_preserves_unspecified_values_and_databas
     catalogue = repository.cdr_catalogues_by_dataset([dataset_id])[dataset_id]
     assert catalogue['operators'] == ['EE', 'O2']
     assert catalogue['campaigns'] == ['2026-Q2']
-    job, _ = scoring_previous_filters.save_previous_filter(
+    job, _ = saved_filters.save_saved_filter(
         repository, scoring_api['complete_dataset_ids'], ['Operator'], 'NSA',
         context_filters={'City': ['York']},
     )
@@ -91,7 +91,7 @@ def test_operator_catalogue_replacement_preserves_unspecified_values_and_databas
     restored = Repository(destination)
     restored.initialize()
     assert restored.cdr_catalogues_by_dataset([dataset_id])[dataset_id] == catalogue
-    restored_job = scoring_previous_filters.get_previous_filter(restored, job['id'])
+    restored_job = saved_filters.get_saved_filter(restored, job['id'])
     assert restored_job['context_filters']['City'] == ['York']
     assert restored_job['configuration'] == job['configuration']
 
@@ -136,21 +136,21 @@ def test_scoring_export_labels_collapse_full_catalogue_filters_and_preserve_inco
 
 
 def test_scoring_api_filters_before_calculation_and_ppt_preserves_scope(scoring_api):
-    response = scoring_api['client'].post('/api/scoring/previous-filters', json={
+    response = scoring_api['client'].post('/api/scoring/saved-filters', json={
         'dataset_ids': scoring_api['complete_dataset_ids'], 'nr_mode': 'NSA',
         'aggregation_levels': ['Operator'],
         'context_filters': {'Region': ['North'], 'City': ['Leeds'], 'Operator': ['O2'],
                             'Vendor': ['Nokia'], 'Campaign': ['2026-Q2']},
     })
     assert response.status_code == 200, response.text
-    job = response.json()['previous_filter']
+    job = response.json()['saved_filter']
     assert job['context_filters']['City'] == ['Leeds']
-    completed = scoring_previous_filters.calculate_previous_filter(scoring_api['repository'], job['id'])
+    completed = saved_filters.calculate_saved_filter(scoring_api['repository'], job['id'])
     assert completed['status'] == 'completed', completed.get('error')
     frames = scoring_api['calls'][0]['frames']
     source_frames = frames.values() if isinstance(frames, dict) else [item[-1] for item in frames]
     assert all(set(frame['Operator']) == {'O2'} for frame in source_frames)
-    exported = scoring_api['client'].get(f'/scoring/previous-filters/{job["id"]}/export/ppt')
+    exported = scoring_api['client'].get(f'/scoring/saved-filters/{job["id"]}/export/ppt')
     assert exported.status_code == 200, exported.text
     assert re.search(
         r'\d{8}_\d{6} - Scoring & GAP Analysis - NSA - North - All Clusters - Leeds - O2 - Nokia - 2026-Q2\.pptx',
@@ -160,7 +160,7 @@ def test_scoring_api_filters_before_calculation_and_ppt_preserves_scope(scoring_
     for slide in list(deck.slides)[:2]:
         text = '\n'.join(shape.text for shape in slide.shapes if shape.has_text_frame)
         assert 'Leeds' in text and 'North' in text and 'Nokia' in text and 'O2' in text
-    saved = scoring_previous_filters.get_previous_filter(scoring_api['repository'], job['id'])
+    saved = saved_filters.get_saved_filter(scoring_api['repository'], job['id'])
     assert saved['context_filters'] == job['context_filters']
 
 
@@ -192,15 +192,15 @@ def test_scoring_ppt_export_labels_full_selected_catalogues_as_all(scoring_api):
             'Vendor': 'vendors_only', 'Campaign': 'campaigns',
         }.items()
     }
-    response = scoring_api['client'].post('/api/scoring/previous-filters', json={
+    response = scoring_api['client'].post('/api/scoring/saved-filters', json={
         'dataset_ids': selected_ids, 'nr_mode': 'NSA', 'aggregation_levels': ['Operator'],
         'context_filters': selected_values,
     })
     assert response.status_code == 200, response.text
-    job = response.json()['previous_filter']
-    scoring_previous_filters.calculate_previous_filter(repository, job['id'])
+    job = response.json()['saved_filter']
+    saved_filters.calculate_saved_filter(repository, job['id'])
 
-    exported = scoring_api['client'].get(f'/scoring/previous-filters/{job["id"]}/export/ppt')
+    exported = scoring_api['client'].get(f'/scoring/saved-filters/{job["id"]}/export/ppt')
     assert exported.status_code == 200, exported.text
     filename = unquote(exported.headers['content-disposition'])
     assert 'All Regions' in filename and 'All Cities' in filename
@@ -217,5 +217,5 @@ def test_scoring_ppt_export_labels_full_selected_catalogues_as_all(scoring_api):
     assert 'Campaigns: 2026-Q2' in cover_text
     assert 'South' not in cover_text and 'London' not in cover_text and 'Huawei' not in cover_text
 
-    saved = scoring_previous_filters.get_previous_filter(repository, job['id'])
+    saved = saved_filters.get_saved_filter(repository, job['id'])
     assert saved['context_filters'] == selected_values
