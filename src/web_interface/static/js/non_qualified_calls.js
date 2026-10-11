@@ -4350,6 +4350,8 @@
   // -- RCA script results dialog ----------------------------------------------------------------
   const rcaDialog = $('nq-rca-dialog');
   let rcaFile = null;
+  // Whether the script categories and causes missing from the Root Cause Catalog are added with the results.
+  let rcaAddToCatalog = true;
   const smallTable = (headers, rows) => {
     const wrap = node('div', undefined, 'nq-table-wrap');
     const table = node('table', undefined, 'nq-table nq-stats-table');
@@ -4387,13 +4389,28 @@
       `RCA columns: ${preview.columns.join(', ')}.`,
       preview.extra.length ? `Other columns kept with the call: ${preview.extra.join(', ')}.` : '',
       preview.skipped ? `${number(preview.skipped)} ${preview.skipped === 1 ? 'row' : 'rows'} without a JOIN_ID left out.` : '',
-      preview.duplicates ? `${number(preview.duplicates)} repeated JOIN_IDs: the last row of each wins.` : '',
+      preview.duplicates ? `${number(preview.duplicates)} JOIN_IDs have several rows (the A and B sides, or several samples): `
+        + 'each side fills its own fields, the suggestion is the first one naming a cause and the evidence and other columns keep every row.' : '',
     ].filter(Boolean);
     const list = node('ul');
     list.append(...facts.map((fact) => node('li', fact)));
     const keys = Object.keys(state.rcaRefs).filter((key) => preview.preview.some((row) => row[key]));
     host.replaceChildren(node('h3', `Preview of ${preview.file_name}`), list,
       smallTable(['JOIN_ID', ...keys.map((key) => state.rcaRefs[key])], preview.preview.map((row) => [row.join_id, ...keys.map((key) => row[key] || '—')])));
+    // The script values the catalog cannot map (by name or keywords), to add with the results.
+    if (preview.unmapped?.length) {
+      const toggle = node('label', undefined, 'nq-toggle');
+      const box = node('input');
+      box.type = 'checkbox';
+      box.checked = rcaAddToCatalog;
+      box.addEventListener('change', () => { rcaAddToCatalog = box.checked; });
+      toggle.append(box, ' Add them to the Root Cause Catalog with the results');
+      host.append(node('h3', 'Not in the Root Cause Catalog'),
+        node('p', 'The recommendation cannot use these script values: no Root Category or Root Cause of the catalog has their name or keywords.', 'form-note'),
+        smallTable(['Kind', 'Value', 'Proposed domain', 'Results'], preview.unmapped.map((item) => [
+          item.kind === 'category' ? 'Root Category' : 'Root Cause', item.name, item.domain || 'No domain', number(item.results)])),
+        toggle);
+    }
     host.hidden = false;
   };
   const rcaRequest = async (preview) => {
@@ -4401,6 +4418,7 @@
     body.append('file', rcaFile);
     if ($('nq-rca-replace').checked) body.append('replace', '1');
     if (preview) body.append('preview', '1');
+    if (rcaAddToCatalog) body.append('add_to_catalog', '1');
     const response = await fetch('/api/non-qualified-calls/rca/import', {method: 'POST', credentials: 'same-origin', body});
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(typeof payload.detail === 'string' ? payload.detail : 'The RCA file could not be read.');
@@ -4409,6 +4427,7 @@
   if (rcaDialog) {
     document.querySelectorAll('[data-nq-rca-open]').forEach((button) => button.addEventListener('click', async () => {
       rcaFile = null;
+      rcaAddToCatalog = true;
       $('nq-rca-format').textContent = state.rcaResults.format || '';
       $('nq-rca-preview').hidden = true;
       $('nq-rca-import').disabled = true;
@@ -4458,11 +4477,14 @@
       button.disabled = true;
       try {
         const result = await rcaRequest(false);
-        toast(`${number(result.rows)} RCA results imported; ${number(result.matched)} match calls.`);
+        const added = result.added_to_catalog?.length ? ` ${number(result.added_to_catalog.length)} values added to the Root Cause Catalog.` : '';
+        toast(`${number(result.rows)} RCA results imported; ${number(result.matched)} match calls.${added}`);
         rcaFile = null;
         $('nq-rca-preview').hidden = true;
         state.rcaResults = await api('/api/non-qualified-calls/rca');
         renderRcaCurrent(state.rcaResults);
+        // New catalog values reach the root cause pickers with the state of the page.
+        if (added) await loadState();
         loadCalls({quiet: true});
         if (state.detail) openDetail(state.detail.call.call_key, {keepTab: true});
       } catch (error) {

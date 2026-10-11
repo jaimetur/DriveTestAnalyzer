@@ -118,9 +118,11 @@ STATUS_RULES_STATE_KEY = 'nq_calls_status_rules'
 ANALYSIS_CENTER_STATE_KEY = 'nq_analysis_center_v1'
 # The second layout of the Analysis Center (section colours and the order of the Analysis fields), applied once.
 ANALYSIS_CENTER_V2_STATE_KEY = 'nq_analysis_center_v2'
+# The RCA Evidence field of the RCA script, added once to the workspaces created before it.
+ANALYSIS_CENTER_V3_STATE_KEY = 'nq_analysis_center_v3'
 # Set once the tables and columns of this version exist, so the requests check the schema without writing.
 SCHEMA_STATE_KEY = 'nq_calls_schema'
-SCHEMA_VERSION = '2026-10-10.2'
+SCHEMA_VERSION = '2026-10-12.1'
 # Indexed call fields that the suggestion rule can read, with their labels.
 RULE_FIELDS = {
     'failure_classification': 'Failure Classification', 'failure_category': 'Failure Category',
@@ -447,11 +449,10 @@ def _schema_ready(task_repository: Any) -> bool:
         tables = {str(row[0]) for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
         if not set(NQ_TABLE_TITLES) <= tables or 'workspace_state' not in tables:
             return False
-        keys = (SCHEMA_STATE_KEY, ANALYSIS_CENTER_STATE_KEY, ANALYSIS_CENTER_V2_STATE_KEY)
+        keys = (SCHEMA_STATE_KEY, ANALYSIS_CENTER_STATE_KEY, ANALYSIS_CENTER_V2_STATE_KEY, ANALYSIS_CENTER_V3_STATE_KEY)
         states = {str(row[0]): str(row[1]) for row in connection.execute(
             f"SELECT key, value FROM workspace_state WHERE key IN ({', '.join('?' for _ in keys)})", keys)}
-    return states.get(SCHEMA_STATE_KEY) == SCHEMA_VERSION and bool(states.get(ANALYSIS_CENTER_STATE_KEY)) \
-        and bool(states.get(ANALYSIS_CENTER_V2_STATE_KEY))
+    return states.get(SCHEMA_STATE_KEY) == SCHEMA_VERSION and all(states.get(key) for key in keys[1:])
 
 
 def ensure_nq_tables(task_repository: Any) -> None:
@@ -516,6 +517,8 @@ def ensure_nq_tables(task_repository: Any) -> None:
         _install_analysis_center(task_repository, fresh=not existed)
     if not task_repository.get_workspace_state(ANALYSIS_CENTER_V2_STATE_KEY):
         _upgrade_analysis_center_v2(task_repository)
+    if not task_repository.get_workspace_state(ANALYSIS_CENTER_V3_STATE_KEY):
+        _upgrade_analysis_center_v3(task_repository)
     task_repository.set_workspace_state(SCHEMA_STATE_KEY, SCHEMA_VERSION)
 
 
@@ -656,11 +659,33 @@ def _upgrade_analysis_center_v2(task_repository: Any) -> None:
         by_key = {field['key']: field for field in fields}
         for position, key in zip(sorted(keys.index(key) for key in first), order):
             fields[position] = by_key[key]
-    # The new fields of the CDR, each after the field it follows by default (or at the end of its section).
+    # The new fields of the CDR.
+    _add_default_fields(fields, {'last_cell_id', 'failure_comment'})
+    for field in fields:
+        if field['key'] == 'serving_cell_when_failure' and field.get('suggest_from') == 'cell_id':
+            field['suggest_from'] = 'last_cell_id'
+    _store_fields(task_repository, nq_catalog.normalize_fields(fields, {field['key']: field for field in list_fields(task_repository)},
+                                                               CATALOG_CALL_FIELDS))
+    task_repository.set_workspace_state(ANALYSIS_CENTER_V2_STATE_KEY, '1')
+
+
+def _upgrade_analysis_center_v3(task_repository: Any) -> None:
+    """The RCA Evidence of the RCA script after its suggestion, once."""
+    fields = list_fields(task_repository)
+    if _add_default_fields(fields, {'rca_evidence'}):
+        _store_fields(task_repository, nq_catalog.normalize_fields(fields, {field['key']: field for field in list_fields(task_repository)},
+                                                                   CATALOG_CALL_FIELDS))
+    task_repository.set_workspace_state(ANALYSIS_CENTER_V3_STATE_KEY, '1')
+
+
+def _add_default_fields(fields: list[dict[str, Any]], keys: set[str]) -> bool:
+    """Insert the default fields of ``keys`` a catalog lacks (by key or name), each after the field it follows by
+    default or at the end of its section; whether any was added."""
     default_fields = nq_catalog.default_fields()
     labels = {field['label'].casefold() for field in fields}
+    added = False
     for index, default in enumerate(default_fields):
-        if default['key'] not in {'last_cell_id', 'failure_comment'} or default['key'] in {field['key'] for field in fields} \
+        if default['key'] not in keys or default['key'] in {field['key'] for field in fields} \
                 or default['label'].casefold() in labels:
             continue
         previous = [field['key'] for field in default_fields[:index]]
@@ -669,12 +694,8 @@ def _upgrade_analysis_center_v2(task_repository: Any) -> None:
         if place is None:
             place = max((position for position, field in enumerate(fields) if field['section'] == default['section']), default=len(fields) - 1)
         fields.insert(place + 1, default)
-    for field in fields:
-        if field['key'] == 'serving_cell_when_failure' and field.get('suggest_from') == 'cell_id':
-            field['suggest_from'] = 'last_cell_id'
-    _store_fields(task_repository, nq_catalog.normalize_fields(fields, {field['key']: field for field in list_fields(task_repository)},
-                                                               CATALOG_CALL_FIELDS))
-    task_repository.set_workspace_state(ANALYSIS_CENTER_V2_STATE_KEY, '1')
+        added = True
+    return added
 
 
 # ---------------------------------------------------------------------------
@@ -3454,20 +3475,25 @@ def delete_comment(task_repository: Any, comment_id: int, username: str, moderat
 # RCA script results: imported by JOIN_ID
 # ---------------------------------------------------------------------------
 def import_rca_results(task_repository: Any, content: bytes, file_name: str, username: str, *, replace: bool = False,
-                       dry_run: bool = False) -> dict[str, Any]:
-    """Read an RCA results file and (unless ``dry_run``) store its rows by JOIN_ID; ``replace`` forgets the previous ones."""
+                       dry_run: bool = False, add_to_catalog: bool = False) -> dict[str, Any]:
+    """Read an RCA results file and (unless ``dry_run``) store its rows by JOIN_ID; ``replace`` forgets the previous ones
+    and ``add_to_catalog`` adds the script categories and causes the Root Cause Catalog has no entry for, in the domain
+    proposed for each one."""
     parsed = nq_rca.read_rca_file(content, file_name)
     results = parsed['results']
+    ensure_nq_tables(task_repository)
     with task_repository.connection() as connection:
         known = {str(row[0]) for row in connection.execute(
             f"SELECT DISTINCT lower(join_id) FROM {NQ_CALLS_TABLE} WHERE join_id <> ''")}
         matched = sum(1 for item in results if item['join_id'].casefold() in known)
         existing = {str(row[0]) for row in connection.execute(f'SELECT join_id FROM {NQ_RCA_RESULTS_TABLE}')}
+        unmapped = nq_rca.unmapped_values(results, _read_root_catalog(connection))
         summary = {
             'file_name': file_name, 'rows': len(results), 'matched': matched, 'unmatched': len(results) - matched,
             'columns': parsed['columns'], 'extra': parsed['extra'], 'skipped': parsed['skipped'], 'duplicates': parsed['duplicates'],
             'new': sum(1 for item in results if item['join_id'].casefold() not in existing),
-            'replace': replace, 'preview': [{'join_id': item['join_id'], **item['values']} for item in results[:8]],
+            'replace': replace, 'unmapped': unmapped, 'added_to_catalog': [],
+            'preview': [{'join_id': item['join_id'], **item['values']} for item in results[:8]],
         }
         if dry_run:
             return summary
@@ -3479,9 +3505,17 @@ def import_rca_results(task_repository: Any, content: bytes, file_name: str, use
             'VALUES (?, ?, ?, ?, ?, ?)',
             [(item['join_id'].casefold(), item['join_id'], json.dumps(item['values'], ensure_ascii=False), file_name, username, when)
              for item in results])
+        if add_to_catalog and unmapped:
+            catalog = _read_root_catalog(connection)
+            for item in unmapped:
+                catalog['categories' if item['kind'] == 'category' else 'causes'].append(
+                    {'name': item['name'], 'domain': item['domain'], 'keywords': []})
+            _write_root_catalog(connection, nq_catalog.normalize_root_catalog(catalog))
+            summary['added_to_catalog'] = unmapped
     if hasattr(task_repository, 'try_add_log'):
         task_repository.try_add_log(username, 'nq_rca_import', json.dumps(
-            {'file': file_name, 'rows': len(results), 'matched': matched, 'replace': replace}))
+            {'file': file_name, 'rows': len(results), 'matched': matched, 'replace': replace,
+             'added_to_catalog': [item['name'] for item in summary['added_to_catalog']]}))
     return summary
 
 
@@ -4594,13 +4628,15 @@ def install_non_qualified_calls_routes(core: Any) -> None:
 
     @core.app.post('/api/non-qualified-calls/rca/import')
     async def nq_rca_import(request: Request, user=Depends(editor_user)) -> JSONResponse:
-        """Preview (``preview=1``) or import RCA script results by JOIN_ID; ``replace=1`` forgets the previous results."""
+        """Preview (``preview=1``) or import RCA script results by JOIN_ID; ``replace=1`` forgets the previous results and
+        ``add_to_catalog=1`` adds the script categories and causes missing from the Root Cause Catalog."""
         repository = workspace_repository(user)
         content, name, form = await uploaded_file(request, 'file', 100)
         try:
             return JSONResponse(import_rca_results(repository, content, name, user.username,
                                                    replace=str(form.get('replace') or '') == '1',
-                                                   dry_run=str(form.get('preview') or '') == '1'))
+                                                   dry_run=str(form.get('preview') or '') == '1',
+                                                   add_to_catalog=str(form.get('add_to_catalog') or '') == '1'))
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
         except Exception as exc:  # noqa: BLE001 - an unreadable file is a user error.

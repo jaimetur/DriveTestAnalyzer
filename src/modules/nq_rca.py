@@ -28,20 +28,37 @@ from src.modules.nq_catalog import RCA_REFS, keyword_found, normalized_text
 RCA_FILE_FORMAT_HELP = (
     'A CSV (comma, semicolon or tab separated) or Excel file with a JOIN_ID column and the RCA columns '
     'Auto_RCA_Category_A, Auto_RCA_Subcategory_A, Auto_RCA_Category_B, Auto_RCA_Subcategory_B, '
-    'RCA_Suggested_Category and RCA_Suggested_Cause; any other column is kept and shown with the call.'
+    'RCA_Suggested_Category, RCA_Suggested_Cause and RCA_Evidence, or the RCA_Summary.csv of the Auto RCA script '
+    '(JoinID, UE, Final_RCA_Category, Final_RCA_Subcategory, RCA_Category, RCA_Subcategory and RCA_Evidence: the rows '
+    'of the A and B sides fill the fields of each side, and the rows of one JOIN_ID are combined); any other column '
+    'is kept and shown with the call.'
 )
 RCA_TEMPLATE_COLUMNS = ('JOIN_ID', 'Auto_RCA_Category_A', 'Auto_RCA_Subcategory_A', 'Auto_RCA_Category_B',
-                        'Auto_RCA_Subcategory_B', 'RCA_Suggested_Category', 'RCA_Suggested_Cause')
+                        'Auto_RCA_Subcategory_B', 'RCA_Suggested_Category', 'RCA_Suggested_Cause', 'RCA_Evidence')
 MAX_RCA_ROWS = 500_000
-MAX_EXTRA_COLUMNS = 40
-# Column identities (letters and digits only) of the known RCA columns.
+MAX_EXTRA_COLUMNS = 80
+MAX_COMBINED_TEXT = 2000
+# Column identities (letters and digits only) of the known RCA columns: the value they hold and their tier. A row
+# takes its category and cause from the highest tier it has one of them in (Final_RCA_* before RCA_*); the columns
+# of a lower tier are also kept with the call.
 _RCA_COLUMNS = {
-    'joinid': 'join_id',
-    'autorcacategorya': 'auto_rca_category_a', 'autorcasubcategorya': 'auto_rca_subcategory_a',
-    'autorcacategoryb': 'auto_rca_category_b', 'autorcasubcategoryb': 'auto_rca_subcategory_b',
-    'rcasuggestedcategory': 'rca_category', 'rcacategory': 'rca_category', 'suggestedcategory': 'rca_category',
-    'rcasuggestedcause': 'rca_cause', 'rcacause': 'rca_cause', 'suggestedcause': 'rca_cause',
+    'joinid': ('join_id', 0), 'ue': ('side', 0), 'side': ('side', 0),
+    'autorcacategorya': ('auto_rca_category_a', 0), 'autorcasubcategorya': ('auto_rca_subcategory_a', 0),
+    'autorcacategoryb': ('auto_rca_category_b', 0), 'autorcasubcategoryb': ('auto_rca_subcategory_b', 0),
+    'rcasuggestedcategory': ('rca_category', 1), 'rcacategory': ('rca_category', 1), 'suggestedcategory': ('rca_category', 1),
+    'rcasuggestedcause': ('rca_cause', 1), 'rcacause': ('rca_cause', 1), 'suggestedcause': ('rca_cause', 1),
+    'rcasubcategory': ('rca_cause', 1),
+    'finalrcacategory': ('rca_category', 2), 'finalrcasubcategory': ('rca_cause', 2), 'finalrcacause': ('rca_cause', 2),
+    'rcaevidence': ('rca_evidence', 0), 'evidence': ('rca_evidence', 0),
 }
+_SIDES = {'a': 'a', 'uea': 'a', 'b': 'b', 'ueb': 'b'}
+# Categories that name no cause (the script found none): another row of the same JOIN_ID suggests better.
+_GENERIC = re.compile(r'^(other\b|unknown$|unclear$|n/?a$|none$|-+$)', re.IGNORECASE)
+# The domain proposed for a category or cause missing from the catalog, by the words of its name (when the domain
+# exists): "Other" results are radio results when they name a technology.
+_DOMAIN_HINTS = (('unknown', ''), ('unclear', ''), ('mobility', 'RAN'), ('handover', 'RAN'), ('coverage', 'RF'),
+                 ('interference', 'RF'))
+_TECHNOLOGY = re.compile(r'\b(lte|nr|gsm|umts|wcdma|2g|3g|4g|5g)\b', re.IGNORECASE)
 SOURCE_LABELS = {'script': 'RCA script', 'netcheck': 'NetCheck RCA', 'comments': 'Comments', 'learned': 'Previous decisions'}
 SOURCE_WEIGHTS = {'script': 3, 'learned': 3, 'netcheck': 2, 'comments': 1}
 
@@ -66,21 +83,19 @@ def _table(content: bytes, file_name: str) -> list[list[Any]]:
         workbook = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
         return [list(row) for row in workbook.worksheets[0].iter_rows(values_only=True)]
     text = content.decode('utf-8-sig', errors='replace')
-    sample = text[:20000]
-    try:
-        dialect = csv.Sniffer().sniff(sample, delimiters=',;\t|')
-    except csv.Error:
-        dialect = csv.excel
-    return [row for row in csv.reader(io.StringIO(text), dialect)]
+    # The separator is the one the header row uses most: the values (evidence texts) may hold any of them.
+    header = text.split('\n', 1)[0]
+    delimiter = max(',;\t|', key=header.count)
+    return [row for row in csv.reader(io.StringIO(text), delimiter=delimiter if header.count(delimiter) else ',')]
 
 
 def read_rca_file(content: bytes, file_name: str) -> dict[str, Any]:
-    """The RCA results of a file: one entry per JOIN_ID (the last row wins), the recognized columns and the rest."""
+    """The RCA results of a file: one entry per JOIN_ID (its rows combined), the recognized columns and the rest."""
     rows = _table(content, file_name)
     if not rows:
         raise ValueError('The RCA file is empty.')
     headers = [_cell(value) for value in rows[0]]
-    columns: dict[int, str] = {}
+    columns: dict[int, tuple[str, int]] = {}
     extra: dict[int, str] = {}
     for index, header in enumerate(headers):
         known = _RCA_COLUMNS.get(_identity(header))
@@ -88,28 +103,125 @@ def read_rca_file(content: bytes, file_name: str) -> dict[str, Any]:
             columns[index] = known
         elif header and len(extra) < MAX_EXTRA_COLUMNS:
             extra[index] = header
-    if 'join_id' not in columns.values():
+    keys = {key for key, _tier in columns.values()}
+    if 'join_id' not in keys:
         raise ValueError('The RCA file needs a JOIN_ID column.')
-    if not any(value in RCA_REFS for value in columns.values()):
-        raise ValueError('The RCA file has none of the RCA columns (Auto_RCA_Category_A… RCA_Suggested_Cause).')
-    join_index = next(index for index, value in columns.items() if value == 'join_id')
-    results: dict[str, dict[str, Any]] = {}
-    skipped = duplicates = 0
+    if not keys & set(RCA_REFS):
+        raise ValueError('The RCA file has none of the RCA columns (Auto_RCA_Category_A… RCA_Suggested_Cause, Final_RCA_Category).')
+    # A category or cause column of a lower tier stays with the call beside the one it gives way to.
+    top = {key: max(tier for other, tier in columns.values() if other == key) for key in keys}
+    for index, (key, tier) in columns.items():
+        if tier < top[key] and len(extra) < MAX_EXTRA_COLUMNS:
+            extra[index] = headers[index]
+    join_index = next(index for index, (key, _tier) in columns.items() if key == 'join_id')
+    side_index = next((index for index, (key, _tier) in columns.items() if key == 'side'), None)
+    groups: dict[str, dict[str, Any]] = {}
+    skipped = 0
     for row in rows[1:MAX_RCA_ROWS + 1]:
-        join_id = _cell(row[join_index] if join_index < len(row) else '')
+        cells = {index: _cell(value) for index, value in enumerate(row)}
+        join_id = cells.get(join_index, '')
         if not join_id:
-            if any(_cell(value) for value in row):
+            if any(cells.values()):
                 skipped += 1
             continue
-        values = {key: _cell(row[index]) for index, key in columns.items() if key != 'join_id' and index < len(row)}
-        values.update({f'extra:{name}': _cell(row[index]) for index, name in extra.items() if index < len(row) and _cell(row[index])})
-        values = {key: value for key, value in values.items() if value}
-        key = join_id.casefold()
-        if key in results:
-            duplicates += 1
-        results[key] = {'join_id': join_id, 'values': values}
-    return {'results': list(results.values()), 'columns': [RCA_REFS[value] for value in columns.values() if value in RCA_REFS],
-            'extra': list(extra.values()), 'skipped': skipped, 'duplicates': duplicates}
+        found = [tier for index, (key, tier) in columns.items() if key in {'rca_category', 'rca_cause'} and cells.get(index)]
+        tier = max(found, default=None)
+        values: dict[str, str] = {}
+        for index, (key, column_tier) in columns.items():
+            if key in {'join_id', 'side'} or not cells.get(index):
+                continue
+            if key in {'rca_category', 'rca_cause'} and column_tier != tier:
+                continue
+            values.setdefault(key, cells[index])
+        side = _SIDES.get(_identity(cells.get(side_index, ''))) if side_index is not None else None
+        extras = {name: cells[index] for index, name in extra.items() if cells.get(index)}
+        groups.setdefault(join_id.casefold(), {'join_id': join_id, 'rows': []})['rows'].append(
+            {'side': side, 'values': values, 'extras': extras})
+    results = [{'join_id': group['join_id'], 'values': _combine_rows(group['rows'])} for group in groups.values()]
+    present = {key for result in results for key in result['values']}
+    return {'results': results, 'columns': [label for key, label in RCA_REFS.items() if key in present],
+            'extra': list(extra.values()), 'skipped': skipped,
+            'duplicates': sum(1 for group in groups.values() if len(group['rows']) > 1)}
+
+
+def _combine_rows(rows: list[dict[str, Any]]) -> dict[str, str]:
+    """The values of a JOIN_ID from its rows: the A and B sides fill their own fields, the suggestion is the first
+    one naming a cause (the A side first), and the evidence and other columns keep the value of every row."""
+    ordered = sorted(enumerate(rows), key=lambda item: ({'a': 0, 'b': 1}.get(item[1]['side'], 2), item[0]))
+    labels = {}
+    for position, (index, row) in enumerate(ordered, start=1):
+        labels[index] = row['side'].upper() if row['side'] else str(position)
+    values: dict[str, str] = {}
+    for _index, row in ordered:
+        for key, value in row['values'].items():
+            if key.startswith('auto_rca_'):
+                values.setdefault(key, value)
+        if row['side']:
+            if row['values'].get('rca_category'):
+                values.setdefault(f"auto_rca_category_{row['side']}", row['values']['rca_category'])
+            if row['values'].get('rca_cause'):
+                values.setdefault(f"auto_rca_subcategory_{row['side']}", row['values']['rca_cause'])
+    pairs = [(row['values'].get('rca_category', ''), row['values'].get('rca_cause', '')) for _index, row in ordered
+             if row['values'].get('rca_category') or row['values'].get('rca_cause')]
+    if pairs:
+        category, cause = next((pair for pair in pairs if not _GENERIC.match(pair[0] or pair[1])), pairs[0])
+        values.update({key: value for key, value in (('rca_category', category), ('rca_cause', cause)) if value})
+
+    def combined(found: list[tuple[int, str]], name: str = '') -> str:
+        distinct = list(dict.fromkeys(value for _index, value in found))
+        if len(distinct) <= 1:
+            return distinct[0] if distinct else ''
+        # The rows of different categories say which one they explain.
+        categories = {row['values'].get('rca_category', '') for row in rows}
+        def label(index: int) -> str:
+            text = labels[index]
+            category = rows[index]['values'].get('rca_category', '')
+            return f'{text} ({category})' if name == 'evidence' and len(categories) > 1 and category else text
+        return ' | '.join(f'{label(index)}: {value}' for index, value in found)[:MAX_COMBINED_TEXT]
+
+    evidence = combined([(index, row['values']['rca_evidence']) for index, row in ordered if row['values'].get('rca_evidence')], 'evidence')
+    if evidence:
+        values['rca_evidence'] = evidence
+    names = list(dict.fromkeys(name for _index, row in ordered for name in row['extras']))
+    for name in names:
+        value = combined([(index, row['extras'][name]) for index, row in ordered if row['extras'].get(name)])
+        if value:
+            values[f'extra:{name}'] = value
+    return values
+
+
+def proposed_domain(name: str, domains: list[str]) -> str:
+    """The domain of the catalog a missing category or cause belongs to, by the words of its name ('' when unsure)."""
+    words = normalized_text(name)
+    known = {domain.casefold(): domain for domain in domains}
+    for word, domain in _DOMAIN_HINTS:
+        if word in words:
+            return known.get(domain.casefold(), '')
+    if words.startswith('other') and _TECHNOLOGY.search(words):
+        return known.get('ran', '')
+    return ''
+
+
+def unmapped_values(results: list[dict[str, Any]], root: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:
+    """The script categories and causes the catalog has no entry for (by name or keywords), with their number of
+    results and the domain proposed for them, the categories first."""
+    pairs: Counter = Counter()
+    for result in results:
+        values = result['values']
+        found = {(values.get('rca_category', ''), values.get('rca_cause', '')),
+                 (values.get('auto_rca_category_a', ''), values.get('auto_rca_subcategory_a', '')),
+                 (values.get('auto_rca_category_b', ''), values.get('auto_rca_subcategory_b', ''))}
+        pairs.update(pair for pair in found if any(pair))
+    missing: dict[tuple[str, str], dict[str, Any]] = {}
+    domains = [domain['name'] for domain in root.get('domains') or []]
+    for (category, cause), count in pairs.items():
+        mapped = map_to_catalog(category, cause, root)
+        for kind, name, hit in (('category', category, mapped['category']), ('cause', cause, mapped['cause'])):
+            if not name or hit:
+                continue
+            entry = missing.setdefault((kind, name.casefold()), {'kind': kind, 'name': name, 'domain': proposed_domain(name, domains), 'results': 0})
+            entry['results'] += count
+    return sorted(missing.values(), key=lambda item: (item['kind'] != 'category', -item['results'], item['name'].casefold()))
 
 
 def rca_template() -> bytes:
@@ -118,7 +230,7 @@ def rca_template() -> bytes:
     writer = csv.writer(output)
     writer.writerow(RCA_TEMPLATE_COLUMNS)
     writer.writerow(['0x0123ABCD', 'RF Problems', 'Coverage problem', 'RF Problems', 'Coverage problem',
-                     'Poor Coverage LTE', 'NLOS due to clutter or terrain profile'])
+                     'Poor Coverage LTE', 'NLOS due to clutter or terrain profile', 'LTE PCell RSRP=-118 dBm < RSRP_Low=-115 dBm'])
     return output.getvalue().encode('utf-8')
 
 

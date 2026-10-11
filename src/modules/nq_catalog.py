@@ -72,7 +72,7 @@ TRACKING_REFS = {
 RCA_REFS = {
     'auto_rca_category_a': 'Auto_RCA_Category_A', 'auto_rca_subcategory_a': 'Auto_RCA_Subcategory_A',
     'auto_rca_category_b': 'Auto_RCA_Category_B', 'auto_rca_subcategory_b': 'Auto_RCA_Subcategory_B',
-    'rca_category': 'RCA Suggested Category', 'rca_cause': 'RCA Suggested Cause',
+    'rca_category': 'RCA Suggested Category', 'rca_cause': 'RCA Suggested Cause', 'rca_evidence': 'RCA Evidence',
 }
 MAX_FIELDS = 120
 MAX_FIELD_TEXT = 2000
@@ -109,8 +109,8 @@ def _field(key: str, label: str, section: str, field_type: str, source: str = 'u
 
 _GREY, _AMBER, _GREEN, _RED, _BLUE, _SLATE = '#9aa5ad', '#e08a1e', '#2e8b57', '#b0234f', '#245a96', '#7b8790'
 # The 37 fields of the meeting workbook, in its order (the order of the table and of the Excel export), with the
-# Last Cell ID and Failure Comment of the CDR in Failure Details and the Analysis fields in the order of the call
-# panel: the long texts (Proposed Measure, Findings) last.
+# evidence of the RCA script after its suggestion, the Last Cell ID and Failure Comment of the CDR in Failure Details
+# and the Analysis fields in the order of the call panel: the long texts (Proposed Measure, Findings) last.
 DEFAULT_FIELDS = (
     _field('auto_rca_category_a', 'Auto_RCA_Category_A', 'rca', 'text', 'rca', 'auto_rca_category_a',
            description='Root cause category of the A side found by the RCA script (imported by JOIN_ID).'),
@@ -124,6 +124,8 @@ DEFAULT_FIELDS = (
            description='Root category suggested by the RCA script.'),
     _field('rca_suggested_cause', 'RCA Suggested Cause', 'rca', 'text', 'rca', 'rca_cause', in_table=True,
            description='Root cause suggested by the RCA script.'),
+    _field('rca_evidence', 'RCA Evidence', 'rca', 'long_text', 'rca', 'rca_evidence',
+           description='Why the RCA script chose its category: the measurements and the condition that matched.'),
     _field('netcheck_failure_classification', 'Netcheck Failure Classification', 'rca', 'text', 'cdr', 'failure_classification',
            description='Failure classification of the NetCheck RCA (CDR Failure_Classification).'),
     _field('netcheck_suggested_category', 'Netcheck Suggested Category', 'rca', 'text', 'cdr', 'failure_category',
