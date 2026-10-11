@@ -623,6 +623,7 @@ def test_methodology_save_commits_every_section_and_clears_all_dirty_sections():
     program = '''
 const activeProfileId = 'methodology', environmentSelect = {value: 'City'};
 const kpiStatus = {}, kpiSave = {disabled: false};
+const campaignFromInput = null, campaignToInput = null;
 const setKpiSaveDisabled = disabled => {kpiSave.disabled = disabled;};
 let kpiDirty = true, priorityDirty = true;
 let configuration = {title: 'Old title'};
@@ -665,6 +666,7 @@ const currentProfile = () => profileCollection.profiles.find(profile => profile.
 const exportLink = {href: '', attributes: {}, setAttribute(name, value) {this.attributes[name] = value;}, addEventListener(name, handler) {this.handler = handler;}};
 const root = {querySelector: () => exportLink};
 const profileSelect = null, methodologyTitleInput = null, profileActions = [];
+const campaignFromInput = null, campaignToInput = null, fillCampaignSelect = () => {};
 const hasUnsavedChanges = () => dirty;
 let message = '';
 const setStatus = (_status, value) => {message = value;};
