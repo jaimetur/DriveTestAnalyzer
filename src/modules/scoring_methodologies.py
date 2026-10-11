@@ -185,7 +185,11 @@ def merge_results(parts: list[tuple[dict[str, Any], dict[str, Any]]]) -> dict[st
     merged = copy.deepcopy(parts[-1][1])
     for field in _RESULT_LISTS:
         merged[field] = [row for group, result in parts for row in _tag(result.get(field), group['profile_id'])]
-    merged['warnings'] = list(dict.fromkeys(warning for _group, result in parts for warning in result.get('warnings') or []))
+    # A warning of the area summary concerns the campaigns of one methodology only.
+    merged['warnings'] = list(dict.fromkeys(
+        (f"{group['profile_name']} ({', '.join(group['campaigns'])}): {warning}"
+         if str(warning).startswith('National & Area Summary:') else warning)
+        for group, result in parts for warning in result.get('warnings') or []))
     merged['notices'] = [notice for _group, result in parts for notice in result.get('notices') or []]
     merged['campaigns'] = sorted({campaign for _group, result in parts for campaign in result.get('campaigns') or []},
                                  key=lambda value: (campaign_sort_key(value), value))

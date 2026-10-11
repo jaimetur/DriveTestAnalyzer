@@ -65,7 +65,7 @@ const savedFilterCdrSummary = () => 'Example CDR.xlsx';
 const isActive = savedFilter => savedFilter.status === 'processing';
 const progressValue = () => 40;
 const deletingSavedFilterIds = new Set();
-''' + _function_source(script, 'savedFilterAreaSummaryText') + _function_source(script, 'savedFilterDurationText') + _function_source(script, 'syncSavedFilterLists') + _function_source(script, 'renderSavedFilters') + r'''
+''' + _function_source(script, 'savedFilterAreaSummaryParts') + _function_source(script, 'savedFilterDurationText') + _function_source(script, 'syncSavedFilterLists') + _function_source(script, 'renderSavedFilters') + r'''
 renderSavedFilters();
 const latest = selectedSavedFilterCard.textContent;
 const cards = savedFilterList.children.map(row => ({id: row.children[0].dataset.savedFilterId,

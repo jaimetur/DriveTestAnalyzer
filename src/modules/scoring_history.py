@@ -717,7 +717,8 @@ def calculate_scoring_from_history(
         for values, _group in kept:
             if values['campaign'] and values['campaign'].strip():
                 campaign_values.setdefault(values['campaign'].strip().casefold(), values['campaign'].strip())
-    if filters:
+    if filters and city_filter is None:
+        # (A city of the National & area summary without measurements is left out of it, with a warning.)
         labels = {'data': 'Data', 'voice': 'Voice', 'speech': 'Speech'}
         missing_kinds = [kind for kind in CDR_KINDS if not rows_by_kind.get(kind)]
         if missing_kinds:

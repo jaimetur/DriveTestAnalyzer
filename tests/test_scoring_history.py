@@ -228,3 +228,25 @@ def test_queued_work_of_the_saved_filter_being_looked_at_goes_first():
         future.result(timeout=5)
     scheduler.shutdown()
     assert order == ['selected', 'first', 'second']
+
+
+def test_a_city_without_measurements_in_the_filtered_campaigns_is_left_out_of_the_area_summary(history_repository):
+    repository, ids, configuration = history_repository
+    scoring_history.sync_history(repository)
+    filters = {'Campaign': ['2026-Q3']}
+    # A city of the area summary the filtered campaigns never measured gives no rows instead of failing the scoring.
+    result = scoring_history.calculate_scoring_from_history(repository, ids, ['Operator'], configuration=configuration,
+                                                            context_filters=filters, cities=['Madrid'])
+    assert result['scoring'] == []
+    from src.modules.scoring_area_summary import calculate_area_summary_from_history
+
+    def calculate(levels, *, time_split=None, cities=None):
+        return scoring_history.calculate_scoring_from_history(repository, ids, levels, configuration=configuration,
+                                                              context_filters=filters, time_split=time_split, cities=cities)
+    summary = calculate_area_summary_from_history(
+        calculate, ['Operator'], {'breakdown': 'Region', 'cities': ['Madrid'], 'time_split': 'Monthly'})
+    assert 'National & Area Summary: the selected CDRs have no Madrid measurements.' in summary['warnings']
+    # A filter that leaves a CDR type without rows still fails the scoring.
+    with pytest.raises(ValueError, match='no matching processed rows'):
+        scoring_history.calculate_scoring_from_history(repository, ids, ['Operator'], configuration=configuration,
+                                                       context_filters={'Campaign': ['2025-Q1']})

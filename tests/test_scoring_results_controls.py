@@ -1752,16 +1752,19 @@ process.stdout.write(JSON.stringify([campaignComparisonRows(comparison, 0, 2), c
 def test_scoring_jobs_show_their_national_and_area_summary():
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
     assert "areaMeta.textContent = 'National & area summary: ';" in _function_source(script, 'renderSavedFilters')
-    program = _function_source(script, 'savedFilterAreaSummaryText') + r'''
+    # Each value in its own colour, after its label.
+    assert "areaValue.className = 'saved-filter-area-summary';" in _function_source(script, 'renderSavedFilters')
+    program = _function_source(script, 'savedFilterAreaSummaryParts') + r'''
 process.stdout.write(JSON.stringify([
-  savedFilterAreaSummaryText({area_summary: {time_split: 'Campaign', breakdown: 'Region', cities: ['London']}}),
-  savedFilterAreaSummaryText({area_summary: {time_split: 'All', breakdown: null, cities: ['London', 'Leeds']}}),
-  savedFilterAreaSummaryText({area_summary: null}),
+  savedFilterAreaSummaryParts({area_summary: {time_split: 'Campaign', breakdown: 'Region', cities: ['London']}}),
+  savedFilterAreaSummaryParts({area_summary: {time_split: 'All', breakdown: null, cities: ['London', 'Leeds']}}),
+  savedFilterAreaSummaryParts({area_summary: null}),
 ]));
 '''
     shown = json.loads(subprocess.run(['node', '-e', program], capture_output=True, text=True, check=True).stdout)
-    assert shown == ['Time split: Campaign · Breakdown: Region · Separate cities: London',
-                     'Time split: All selected CDRs · Breakdown: None · Separate cities: London, Leeds', '']
+    assert shown == [[['Time split', 'Campaign'], ['Breakdown', 'Region'], ['Separate cities', 'London']],
+                     [['Time split', 'All selected CDRs'], ['Breakdown', 'None'], ['Separate cities', 'London, Leeds']],
+                     []]
 
 
 def test_the_scoring_trend_comes_before_the_national_and_areas():

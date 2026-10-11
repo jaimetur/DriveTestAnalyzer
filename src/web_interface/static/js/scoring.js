@@ -1206,14 +1206,14 @@
     return Array.isArray(levels) ? (levels.length ? levels.join(' → ') : 'Operator') : String(levels || 'Operator');
   }
 
-  // The settings of the National & area summary of a Saved Filter, or '' when it has none.
-  function savedFilterAreaSummaryText(savedFilter) {
+  // The settings of the National & area summary of a Saved Filter as [label, value] pairs, or [] when it has none.
+  function savedFilterAreaSummaryParts(savedFilter) {
     const summary = savedFilter?.area_summary;
-    if (!summary || typeof summary !== 'object') return '';
+    if (!summary || typeof summary !== 'object') return [];
     const split = {All: 'All selected CDRs'}[summary.time_split] || summary.time_split || 'Campaign';
     const cities = (Array.isArray(summary.cities) ? summary.cities : []).filter(Boolean);
-    return [`Time split: ${split}`, `Breakdown: ${summary.breakdown || 'None'}`,
-      `Separate cities: ${cities.length ? cities.join(', ') : 'None'}`].join(' · ');
+    return [['Time split', split], ['Breakdown', summary.breakdown || 'None'],
+      ['Separate cities', cities.length ? cities.join(', ') : 'None']];
   }
 
   // The calculation time of a Saved Filter (start to finish), or its elapsed time while it runs.
@@ -1325,16 +1325,19 @@
       referenceValue.textContent = baseline;
       meta.append(referenceValue);
       button.append(meta);
-      const areaSummary = savedFilterAreaSummaryText(savedFilter);
-      if (areaSummary) {
-        // The National & area summary of the Saved Filter, when it includes one: its time split, breakdown and cities.
+      const areaSummary = savedFilterAreaSummaryParts(savedFilter);
+      if (areaSummary.length) {
+        // The National & area summary of the Saved Filter, when it includes one: its time split, breakdown and cities,
+        // each value in its own colour.
         const areaMeta = document.createElement('span');
         areaMeta.className = 'saved-filter-meta';
         areaMeta.textContent = 'National & area summary: ';
-        const areaValue = document.createElement('strong');
-        areaValue.className = 'saved-filter-area-summary';
-        areaValue.textContent = areaSummary;
-        areaMeta.append(areaValue);
+        areaSummary.forEach(([label, value], index) => {
+          const areaValue = document.createElement('strong');
+          areaValue.className = 'saved-filter-area-summary';
+          areaValue.textContent = value;
+          areaMeta.append(`${index ? ' · ' : ''}${label}: `, areaValue);
+        });
         button.append(areaMeta);
       }
       const cdrNames = savedFilterCdrNames(savedFilter);

@@ -78,9 +78,13 @@ def test_results_of_each_methodology_keep_their_rows_and_split_back():
         (groups[0], {'scoring': [{'Campaign': '2026-Q2', 'Score': 1}], 'totals': [], 'campaigns': ['2026-Q2'],
                      'warnings': ['a']}),
         (groups[1], {'scoring': [{'Campaign': '2026-Q3', 'Score': 2}], 'totals': [], 'campaigns': ['2026-Q3'],
-                     'warnings': ['a', 'b']}),
+                     'warnings': ['a', 'b', 'National & Area Summary: the selected CDRs have no London measurements.']}),
     ]
     merged = merge_results(parts)
+    # A warning of the area summary names the methodology and campaigns it concerns.
+    assert merged['warnings'][-1] == ('NetCheck 2026-Q3 (2026-Q3): National & Area Summary: the selected CDRs have no '
+                                      'London measurements.')
+    merged['warnings'] = merged['warnings'][:-1]
     assert [(row['Campaign'], row['methodology']) for row in merged['scoring']] == [
         ('2026-Q2', 'netcheck-2026'), ('2026-Q3', 'netcheck-2026-q3')]
     assert merged['warnings'] == ['a', 'b']
