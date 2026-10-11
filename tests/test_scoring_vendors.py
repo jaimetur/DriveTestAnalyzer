@@ -211,6 +211,8 @@ def test_vendor_filter_selects_all_matching_operator_prefixes_and_outputs_legacy
     assert job['context_filters']['Vendor'] == ['Ericsson', 'Huawei']
     completed = saved_filters.calculate_saved_filter(repository, job['id'])
     assert completed['status'] == 'completed', completed.get('error')
+    # Starred, so it is kept when the other selections are calculated (its result is read again below).
+    saved_filters.update_saved_filter(repository, job['id'], pinned=True)
     frames = scoring_api['calls'][0]['frames']
     source_frames = frames.values() if isinstance(frames, dict) else [item[-1] for item in frames]
     actual_operators = {operator for frame in source_frames for operator in frame['Operator']}
