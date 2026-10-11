@@ -160,8 +160,10 @@ def queue_fill(repository: Any, submit: Callable[[Callable[[], None]], Any]) -> 
         follow = False
         try:
             stale = [item for item in stale_datasets(repository) if (key, item[0]) not in _failed]
+            # Counted over every ready CDR of the workspace, whatever was placed before.
+            ready = len(_ready_cdrs(repository))
             with _jobs_guard:
-                _jobs[key]['total'] = max(_jobs[key]['total'], _jobs[key]['done'] + len(stale))
+                _jobs[key].update(total=ready, done=ready - len(stale))
             if stale:
                 dataset_id, kind = stale[0]
                 name = next((str(row['file_name'] or '') for row in repository.list_datasets()
@@ -200,9 +202,10 @@ def fill_tasks(database_path: Any) -> list[dict[str, Any]]:
         job = dict(_jobs.get(_key(database_path)) or {})
     if not job:
         return []
-    detail = ((f"{job['done']} of {job['total']} CDRs placed; waiting for the work before the next" if job['done']
-               else 'Waiting for the work before it') if job['status'] == 'queued' else
-              f"{job['name']} ({job['done'] + 1} of {job['total']})" if job['total'] else 'Finding the CDRs to place')
+    detail = ((f"{job['done']} of {job['total']} CDRs of the workspace placed; waiting for the work before the next"
+               if job['total'] else 'Waiting for the work before it') if job['status'] == 'queued' else
+              f"{job['name']} (CDR {job['done'] + 1} of {job['total']} of the workspace)" if job['total']
+              else 'Finding the CDRs to place')
     return [{
         'id': 'map-area-fill', 'label': 'Map Areas of the tests', 'detail': detail, 'status': job['status'],
         'progress': round(100 * job['done'] / job['total']) if job['total'] else None,

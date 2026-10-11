@@ -83,7 +83,7 @@ def test_the_background_job_places_one_cdr_per_job(repository):
     # The newest CDR first; the next one waits behind the work queued meanwhile.
     assert map_area_columns.current_datasets(repository, [first, second]) == {second}
     assert map_area_columns.fill_tasks(repository.db_path)[0]['detail'] == (
-        '1 of 2 CDRs placed; waiting for the work before the next')
+        '1 of 2 CDRs of the workspace placed; waiting for the work before the next')
     queued.pop()()
     assert map_area_columns.current_datasets(repository, [first, second]) == {first, second}
     assert map_area_columns.fill_tasks(repository.db_path) == [] and queued == []

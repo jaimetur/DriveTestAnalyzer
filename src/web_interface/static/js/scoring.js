@@ -7117,12 +7117,16 @@
       const savedFilter = savedFilters.find(record => savedFilterIdOf(record) === cdrButton.dataset.savedFilterCdrs);
       if (!savedFilter) return;
       const copy = document.getElementById('info-copy');
+      const overlay = document.getElementById('info-overlay');
       const previousWhiteSpace = copy?.style.whiteSpace || '';
       if (copy) copy.style.whiteSpace = 'pre-line';
+      // A wider panel: each CDR on one line.
+      overlay?.classList.add('info-cdr-list');
       showInfoDialog(savedFilterCdrNames(savedFilter).join('\n') || savedFilterCdrSummary(savedFilter), {
         title: `Saved Filter ${savedFilterIdOf(savedFilter)} — CDRs`,
         onClose: () => {
           if (copy) copy.style.whiteSpace = previousWhiteSpace;
+          overlay?.classList.remove('info-cdr-list');
           cdrButton.focus();
         },
       });

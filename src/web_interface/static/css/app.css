@@ -2557,6 +2557,8 @@ body[data-embedded-dataset-preview] > .shell > main { width: 100%; max-width: no
 .confirm-actions { display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 1.35rem; flex-wrap: wrap; }
 .confirm-overlay.confirm-wide-actions .confirm-panel { width: min(92vw, 680px); }
 .confirm-overlay.confirm-four-actions .confirm-panel { width: min(96vw, 900px); }
+.confirm-overlay.info-cdr-list .confirm-panel { width: min(94vw, 760px); }
+.confirm-overlay.info-cdr-list #info-copy { white-space: pre !important; overflow-x: auto; }
 .confirm-overlay.confirm-wide-actions .confirm-actions { flex-wrap: nowrap; }
 .confirm-overlay.confirm-wide-actions .confirm-actions > button { flex: 0 0 auto; white-space: nowrap; }
 .confirm-cancel { cursor: pointer; color: #44515d; box-shadow: 0 8px 20px rgba(18, 32, 43, 0.08); }
