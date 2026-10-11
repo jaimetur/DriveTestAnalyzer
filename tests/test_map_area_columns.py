@@ -105,3 +105,18 @@ def test_the_map_reads_the_areas_kept_in_the_rows(repository, monkeypatch):
                                map_areas=map_areas.area_index(repository))['points_loss']
     assert stored['shares'] == placed['shares']
     assert stored['map_areas'] == placed['map_areas']
+
+
+def test_placing_stops_with_the_application_and_starts_again_later(repository, monkeypatch):
+    dataset_id = add_voice_cdr(repository)
+    monkeypatch.setattr(map_area_columns, 'FILL_BATCH_ROWS', 25)
+    stops = iter([False, True])
+    # Stopped between two short writes: the CDR is placed again later.
+    assert map_area_columns.fill_dataset(repository, dataset_id, 'voice', lambda: next(stops)) == -1
+    assert map_area_columns.stale_datasets(repository) == [(dataset_id, 'voice')]
+    queued = []
+    map_area_columns.queue_fill(repository, queued.append, lambda: True)
+    queued.pop()()
+    assert queued == [] and map_area_columns.fill_tasks(repository.db_path) == []
+    assert map_area_columns.fill_dataset(repository, dataset_id, 'voice') == 60
+    assert map_area_columns.stale_datasets(repository) == []

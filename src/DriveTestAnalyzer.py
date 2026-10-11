@@ -3718,7 +3718,9 @@ def queue_map_area_fill(task_repository: Repository) -> None:
     background, after the calculations waiting)."""
     from src.modules.map_area_columns import queue_fill
     try:
-        queue_fill(task_repository, lambda run: _submit_workspace_job(task_repository, run, phase=6))
+        # Stopped at once when the application stops (its shutdown waits for the running job).
+        queue_fill(task_repository, lambda run: _submit_workspace_job(task_repository, run, phase=6),
+                   APP_SHUTTING_DOWN.is_set)
     except RuntimeError:  # The scheduler is shutting down.
         pass
 

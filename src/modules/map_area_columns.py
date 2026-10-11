@@ -80,8 +80,15 @@ def _coordinate_columns(available: list[str], kind: str) -> tuple[str, str] | No
     return None
 
 
-def fill_dataset(repository: Any, dataset_id: int, kind: str) -> int:
-    """Place the tests of a CDR in the current Map Areas and keep their areas in its rows; returns how many."""
+# The rows written in each transaction: the workspace database is never held for long.
+FILL_BATCH_ROWS = 10_000
+
+
+def fill_dataset(repository: Any, dataset_id: int, kind: str, should_stop: Callable[[], bool] = lambda: False) -> int:
+    """Place the tests of a CDR in the current Map Areas and keep their areas in its rows; returns how many.
+
+    The areas are written in short transactions; ``should_stop`` (the application stopping) leaves the CDR to be
+    placed again later, and returns -1."""
     from src.modules.map_areas import area_index
 
     ensure_table(repository)
@@ -102,26 +109,27 @@ def fill_dataset(repository: Any, dataset_id: int, kind: str) -> int:
                                                   pd.to_numeric(frame['longitude'], errors='coerce'))
         frame['area'] = places['name'].fillna('').astype(str).to_numpy()
         frame['country'] = places['country'].fillna('').astype(str).to_numpy()
+    area, country = (repository._quote_identifier(name) for name in (MAP_AREA_COLUMN, MAP_AREA_COUNTRY_COLUMN))
     with repository.connection() as connection:
-        connection.execute('BEGIN IMMEDIATE')
         columns = {row['name'] for row in connection.execute(f'PRAGMA table_info({quoted})').fetchall()}
         if not columns:
             return 0  # The CDR was deleted meanwhile.
-        area, country = (repository._quote_identifier(name) for name in (MAP_AREA_COLUMN, MAP_AREA_COUNTRY_COLUMN))
         for name, quoted_name in ((MAP_AREA_COLUMN, area), (MAP_AREA_COUNTRY_COLUMN, country)):
             if name not in columns:
                 connection.execute(f'ALTER TABLE {quoted} ADD COLUMN {quoted_name} TEXT')
-        if coordinates is None or frame.empty:
+    if coordinates is None or frame.empty:
+        with repository.connection() as connection:
             # Tests without coordinates lie in no area.
             connection.execute(f"UPDATE {quoted} SET {area} = '', {country} = ''")
-        else:
-            connection.execute('CREATE TEMP TABLE IF NOT EXISTS map_area_fill (rid INTEGER PRIMARY KEY, area TEXT, country TEXT)')
-            connection.execute('DELETE FROM map_area_fill')
-            connection.executemany('INSERT INTO map_area_fill (rid, area, country) VALUES (?, ?, ?)',
-                                   zip(frame['rid'].astype(int).tolist(), frame['area'].tolist(), frame['country'].tolist()))
-            connection.execute(f'UPDATE {quoted} SET ({area}, {country}) = '
-                               f'(SELECT area, country FROM map_area_fill WHERE map_area_fill.rid = {quoted}.rowid)')
-            connection.execute('DROP TABLE map_area_fill')
+    else:
+        rows = list(zip(frame['area'].tolist(), frame['country'].tolist(), frame['rid'].astype(int).tolist()))
+        for start in range(0, len(rows), FILL_BATCH_ROWS):
+            if should_stop():
+                return -1
+            with repository.connection() as connection:
+                connection.executemany(f'UPDATE {quoted} SET {area} = ?, {country} = ? WHERE rowid = ?',
+                                       rows[start:start + FILL_BATCH_ROWS])
+    with repository.connection() as connection:
         connection.execute(
             f'INSERT INTO {FILLS_TABLE} (dataset_id, version, filled_at) VALUES (?, ?, ?) '
             'ON CONFLICT(dataset_id) DO UPDATE SET version = excluded.version, filled_at = excluded.filled_at',
@@ -140,7 +148,8 @@ def _key(database_path: Any) -> str:
     return str(Path(database_path).resolve())
 
 
-def queue_fill(repository: Any, submit: Callable[[Callable[[], None]], Any]) -> bool:
+def queue_fill(repository: Any, submit: Callable[[Callable[[], None]], Any],
+               should_stop: Callable[[], bool] = lambda: False) -> bool:
     """Queue the placing of the tests of the CDRs not placed with the current Map Areas (once per workspace)."""
     key = _key(repository.db_path)
     with _jobs_guard:
@@ -159,6 +168,8 @@ def queue_fill(repository: Any, submit: Callable[[Callable[[], None]], Any]) -> 
             _jobs[key].update(status='processing', started_at=_jobs[key]['started_at'] or time.time())
         follow = False
         try:
+            if should_stop():
+                return  # The application is stopping: the CDRs are placed after it starts again.
             stale = [item for item in stale_datasets(repository) if (key, item[0]) not in _failed]
             # Counted over every ready CDR of the workspace, whatever was placed before.
             ready = len(_ready_cdrs(repository))
@@ -171,7 +182,8 @@ def queue_fill(repository: Any, submit: Callable[[Callable[[], None]], Any]) -> 
                 with _jobs_guard:
                     _jobs[key]['name'] = name
                 try:
-                    fill_dataset(repository, dataset_id, kind)
+                    if fill_dataset(repository, dataset_id, kind, should_stop) < 0:
+                        return
                 except Exception as exc:  # noqa: BLE001 - a CDR that cannot be placed is placed by each map.
                     _failed.add((key, dataset_id))
                     if hasattr(repository, 'try_add_log'):
@@ -189,8 +201,8 @@ def queue_fill(repository: Any, submit: Callable[[Callable[[], None]], Any]) -> 
                 with _jobs_guard:
                     again = _jobs[key].get('again')
                     _jobs.pop(key, None)
-                if again:
-                    queue_fill(repository, submit)
+                if again and not should_stop():
+                    queue_fill(repository, submit, should_stop)
 
     submit(run)
     return True
