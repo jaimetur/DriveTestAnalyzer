@@ -288,6 +288,83 @@ def _is_baseline(value: str, baseline_operator: str, baseline_aliases: Iterable[
     return _operator_identity(str(value)) in _baseline_identities(str(baseline_operator), tuple(baseline_aliases))
 
 
+def _prepared_frames(frames: dict[str, pd.DataFrame], dimensions: list[str], config: dict, operator_mappings: dict[str, str],
+                     map_areas, time_split: str | None, campaign_selected: bool, warnings: list[str]):
+    """Each source with the grouping fields, the map location and the environment of its tests, and which of its
+    rows can be scored."""
+    for kind, source in frames.items():
+        if kind not in _FIELDS or source.empty:
+            continue
+        frame = pd.DataFrame(index=source.index)
+        for field in required_input_columns(kind, dimensions):
+            aliases = _LEVEL_SOURCE_ALIASES.get(field, (field,))
+            resolved = next((
+                column for alias in aliases
+                if (column := resolve_column_name(source.columns, alias)) is not None
+            ), None)
+            if resolved:
+                frame[field] = source[resolved]
+        if 'Vendor' in frame:
+            vendor_operators = [*operator_mappings, *operator_mappings.values()]
+            if 'Operator' in frame:
+                vendor_operators.extend(frame['Operator'].dropna().unique())
+            vendor_labels = {
+                value: scoring_vendor_group(value, vendor_operators)
+                for value in frame['Vendor'].dropna().unique()
+            }
+            frame['Vendor'] = frame['Vendor'].map(vendor_labels).fillna('All')
+        if operator_mappings and 'Operator' in frame:
+            frame['Operator'] = frame['Operator'].map(
+                lambda value: value if pd.isna(value) else operator_mappings.get(
+                    str(value).strip().casefold(), str(value).strip(),
+                )
+            )
+        if not campaign_selected:
+            frame['Campaign'] = None
+        elif time_split:
+            start = next((column for name in START_TIME_COLUMNS
+                          if (column := resolve_column_name(source.columns, name)) is not None), None)
+            if start is None:
+                warnings.append(f'{kind.title()}: no test start time; its rows cannot be split by {time_split.lower()} period.')
+                frame['Campaign'] = None
+            else:
+                frame['Campaign'] = period_labels(source[start], time_split)
+        if 'Dataset Type' in dimensions:
+            frame['Dataset Type'] = kind.title()
+        missing_group = [field for field in _SHARED + [d for d in dimensions if d != 'Dataset Type'] if field not in frame]
+        if missing_group:
+            warnings.append(f'{kind.title()}: missing grouping columns: {", ".join(missing_group)}; no scores calculated.')
+            continue
+        points_loss.attach_location(frame, source, kind, resolve_column_name, map_areas)
+        frame['environment'] = None
+        environment_masks = {}
+        for environment, context in config['scope']['environments'].items():
+            filters = context['source_filters']
+            mask = frame['G_Level_1'] == filters['G_Level_1']
+            if 'G_Level_2' in filters:
+                mask &= frame['G_Level_2'] == filters['G_Level_2']
+            environment_masks[environment] = mask
+            frame.loc[mask, 'environment'] = environment
+        # Preserve one pooled copy per source row, while remembering every
+        # matching selector so overlapping configured environments cannot
+        # inflate a global raw KPI.
+        environment_names = list(environment_masks)
+        environment_match_arrays = [
+            mask.fillna(False).to_numpy(dtype=bool) for mask in environment_masks.values()
+        ]
+        frame['__matched_environments'] = [
+            tuple(name for name, matched in zip(environment_names, matches) if matched)
+            for matches in zip(*environment_match_arrays)
+        ]
+        valid = frame['environment'].notna() & frame['Operator'].notna()
+        if campaign_selected:
+            valid &= frame['Campaign'].notna()
+        if (~valid).any():
+            missing_context = 'environment, operator or campaign' if campaign_selected else 'environment or operator'
+            warnings.append(f'{kind.title()}: {int((~valid).sum())} rows have unsupported or missing {missing_context} and were excluded.')
+        yield kind, frame, valid
+
+
 def calculate_scoring(
     frames: dict[str, pd.DataFrame], levels: Iterable[str] = ('Operator',),
     baseline_operator: str = 'EE', configuration: dict | None = None,
@@ -348,76 +425,8 @@ def calculate_scoring(
     for missing_kind in _FIELDS.keys() - frames.keys():
         warnings.append(f'{missing_kind.title()} source is missing; full benchmark coverage is unavailable.')
     time_split = normalize_time_split(time_split) if campaign_selected else None
-    for kind, source in frames.items():
-        if kind not in _FIELDS or source.empty:
-            continue
-        frame = pd.DataFrame(index=source.index)
-        for field in required_input_columns(kind, dimensions):
-            aliases = _LEVEL_SOURCE_ALIASES.get(field, (field,))
-            resolved = next((
-                column for alias in aliases
-                if (column := resolve_column_name(source.columns, alias)) is not None
-            ), None)
-            if resolved:
-                frame[field] = source[resolved]
-        if 'Vendor' in frame:
-            vendor_operators = [*normalized_operator_mappings, *normalized_operator_mappings.values()]
-            if 'Operator' in frame:
-                vendor_operators.extend(frame['Operator'].dropna().unique())
-            vendor_labels = {
-                value: scoring_vendor_group(value, vendor_operators)
-                for value in frame['Vendor'].dropna().unique()
-            }
-            frame['Vendor'] = frame['Vendor'].map(vendor_labels).fillna('All')
-        if normalized_operator_mappings and 'Operator' in frame:
-            frame['Operator'] = frame['Operator'].map(
-                lambda value: value if pd.isna(value) else normalized_operator_mappings.get(
-                    str(value).strip().casefold(), str(value).strip(),
-                )
-            )
-        if not campaign_selected:
-            frame['Campaign'] = None
-        elif time_split:
-            start = next((column for name in START_TIME_COLUMNS
-                          if (column := resolve_column_name(source.columns, name)) is not None), None)
-            if start is None:
-                warnings.append(f'{kind.title()}: no test start time; its rows cannot be split by {time_split.lower()} period.')
-                frame['Campaign'] = None
-            else:
-                frame['Campaign'] = period_labels(source[start], time_split)
-        if 'Dataset Type' in dimensions:
-            frame['Dataset Type'] = kind.title()
-        missing_group = [field for field in _SHARED + [d for d in dimensions if d != 'Dataset Type'] if field not in frame]
-        if missing_group:
-            warnings.append(f'{kind.title()}: missing grouping columns: {", ".join(missing_group)}; no scores calculated.')
-            continue
-        points_loss.attach_location(frame, source, kind, resolve_column_name, map_areas)
-        frame['environment'] = None
-        environment_masks = {}
-        for environment, context in config['scope']['environments'].items():
-            filters = context['source_filters']
-            mask = frame['G_Level_1'] == filters['G_Level_1']
-            if 'G_Level_2' in filters:
-                mask &= frame['G_Level_2'] == filters['G_Level_2']
-            environment_masks[environment] = mask
-            frame.loc[mask, 'environment'] = environment
-        # Preserve one pooled copy per source row, while remembering every
-        # matching selector so overlapping configured environments cannot
-        # inflate a global raw KPI.
-        environment_names = list(environment_masks)
-        environment_match_arrays = [
-            mask.fillna(False).to_numpy(dtype=bool) for mask in environment_masks.values()
-        ]
-        frame['__matched_environments'] = [
-            tuple(name for name, matched in zip(environment_names, matches) if matched)
-            for matches in zip(*environment_match_arrays)
-        ]
-        valid = frame['environment'].notna() & frame['Operator'].notna()
-        if campaign_selected:
-            valid &= frame['Campaign'].notna()
-        if (~valid).any():
-            missing_context = 'environment, operator or campaign' if campaign_selected else 'environment or operator'
-            warnings.append(f'{kind.title()}: {int((~valid).sum())} rows have unsupported or missing {missing_context} and were excluded.')
+    for kind, frame, valid in _prepared_frames(frames, dimensions, config, normalized_operator_mappings, map_areas,
+                                               time_split, campaign_selected, warnings):
         for values, group in frame[valid].groupby(group_fields, dropna=False, sort=False):
             metadata = dict(zip(keys, values))
             metadata = {key: (None if pd.isna(value) else value) for key, value in metadata.items()}
@@ -480,6 +489,61 @@ def calculate_scoring(
         points_loss_document={'version': 2, **geometry.document(), 'map_areas': geometry.map_areas(map_areas),
                               'shares': loss_shares},
     )
+
+
+def calculate_points_loss(
+    frames: dict[str, pd.DataFrame], levels: Iterable[str] = ('Operator',), configuration: dict | None = None,
+    operator_mappings: dict[str, str] | None = None, map_areas=None, time_split: str | None = None,
+) -> dict:
+    """The Points Lost Map of a scoring, as ``calculate_scoring`` places it, without calculating the scores.
+
+    It reads the same rows but skips what only the scores need (the All Environments KPIs and the scoring of each
+    KPI), so a result calculated from the Scoring History gets its map in a fraction of the time.
+    """
+    config = _required_configuration(configuration)
+    dimensions = []
+    for level in levels:
+        canonical = {'operator': 'Operator', 'region': 'Region', 'cluster': 'Cluster', 'city': 'City', 'vendor': 'Vendor',
+                     'ranvendor': 'Vendor', 'campaign': 'Campaign', 'datasettype': 'Dataset Type',
+                     'datasetkind': 'Dataset Type'}.get(column_identity(level))
+        if canonical is None:
+            raise ValueError(f'Unsupported scoring level: {level}')
+        if canonical not in dimensions:
+            dimensions.append(canonical)
+    if 'Operator' not in dimensions:
+        dimensions.append('Operator')
+    campaign_selected = 'Campaign' in dimensions
+    group_fields = list(dict.fromkeys(['Campaign', *dimensions, 'environment']))
+    keys = [_key_name(field) for field in group_fields]
+    if map_areas is None:
+        from src.modules.map_areas import area_index
+        map_areas = area_index(None)
+    mappings = {str(alias).strip().casefold(): str(canonical).strip()
+                for alias, canonical in (operator_mappings or {}).items() if str(alias).strip() and str(canonical).strip()}
+    time_split = normalize_time_split(time_split) if campaign_selected else None
+    geometry = points_loss.AreaGeometry()
+    loss_shares: list[dict] = []
+    for kind, frame, valid in _prepared_frames(frames, dimensions, config, mappings, map_areas, time_split,
+                                               campaign_selected, []):
+        for values, group in frame[valid].groupby(group_fields, dropna=False, sort=False):
+            metadata = {key: (None if pd.isna(value) else value) for key, value in zip(keys, values)}
+            for metric in (m for m in config['metrics'] if m['source_kind'] == kind):
+                try:
+                    value, _count = _aggregate(group, metric)
+                except KeyError:
+                    continue
+                if value is None:
+                    continue
+                context = metric['contexts'][metadata['environment']]
+                try:
+                    weights = points_loss.test_weights(group, metric, context['thresholds'], _condition, _filter)
+                except (KeyError, ValueError, TypeError):
+                    weights = None
+                shares = points_loss.area_shares(group, weights) if weights is not None else {}
+                if shares:
+                    loss_shares.append({**metadata, 'kpi_code': metric['code'], 'areas': shares})
+        geometry.add(frame[valid])
+    return {'version': 2, **geometry.document(), 'map_areas': geometry.map_areas(map_areas), 'shares': loss_shares}
 
 
 def finish_scoring(
@@ -556,6 +620,20 @@ def most_reliable_result(result: dict, baseline_operator: str = 'EE', configurat
     """
     if not isinstance(result, dict):
         return None
+    groups = result.get('methodology_groups')
+    if isinstance(groups, list) and len(groups) > 1:
+        # Scored By campaign: each campaign with the Most Reliable points of its own methodology.
+        from src.modules.scoring_methodologies import merge_results, split_result
+        parts = []
+        for group in groups:
+            reliable = most_reliable_result(split_result(result, group), baseline_operator, group['configuration'])
+            if reliable is not None:
+                parts.append(({**group, 'configuration': reliable['configuration']}, reliable))
+        if not parts:
+            return None
+        merged = merge_results(parts)
+        return {**merged, 'configuration_hash': configuration_hash(merged['configuration']),
+                'scoring_kind': MOST_RELIABLE_SCORING}
     rows = result.get('scoring')
     snapshot = result.get('configuration') or configuration
     if not isinstance(rows, list) or not isinstance(snapshot, dict):

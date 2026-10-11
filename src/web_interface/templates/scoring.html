@@ -605,7 +605,7 @@
         <div class="scoring-levels" data-aggregation-levels>
           {% for level in aggregation_levels %}
           <label class="scoring-level-option{% if level == 'Operator' %} is-required{% endif %}">
-            <input type="checkbox" value="{{ level }}" data-aggregation-level {% if level == 'Operator' %}checked disabled{% endif %}>
+            <input type="checkbox" value="{{ level }}" data-aggregation-level {% if level == 'Operator' %}checked disabled{% elif level == 'Campaign' %}checked{% endif %}>
             <span>{{ level }}</span>
           </label>
           {% endfor %}
@@ -657,6 +657,7 @@
           {% else %}
           <option value="{{ scoring_active_profile_id | default('', true) }}" selected>{{ scoring_active_profile_name | default('Default', true) }}</option>
           {% endfor %}
+          {% if scoring_profile_options | length > 1 %}<option value="by-campaign">By campaign (each campaign with its methodology)</option>{% endif %}
         </select>
       </label>
       <div class="scoring-actions">

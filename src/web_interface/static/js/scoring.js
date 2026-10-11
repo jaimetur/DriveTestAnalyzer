@@ -228,6 +228,8 @@
   const scoringProfiles = (Array.isArray(scoringConfig.scoring_profiles) ? scoringConfig.scoring_profiles : [])
     .filter(profile => profile && typeof profile.id === 'string' && typeof profile.name === 'string');
   const scoringProfileById = new Map(scoringProfiles.map(profile => [profile.id, profile]));
+  // By campaign: each campaign scored with the methodology whose campaigns include it.
+  if (scoringProfiles.length > 1) scoringProfileById.set('by-campaign', {id: 'by-campaign', name: 'each campaign with its methodology'});
   const activeProfileId = String(scoringConfig.active_profile_id || '');
   // The aggregation hierarchy is an application setting shared by every workspace and methodology.
   let currentHierarchy = [...(validHierarchy(scoringConfig.aggregation_hierarchy) || defaultHierarchy)];

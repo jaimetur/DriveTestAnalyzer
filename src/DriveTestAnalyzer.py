@@ -2672,6 +2672,8 @@ def activate_workspace(workspace_id: str, *, initialize: bool = True) -> Workspa
                     repository.try_add_log('system', 'recover_interrupted_saved_filters', json.dumps({
                         'saved_filters': recovered_scoring_ids,
                     }))
+                # The CDRs the Scoring History does not hold yet are indexed in the background.
+                queue_scoring_history(repository)
                 try:
                     initialized_inode = database_path.stat().st_ino
                 except OSError:
@@ -3699,6 +3701,15 @@ def _submit_workspace_job(
     )
 
 
+def queue_scoring_history(task_repository: Repository) -> None:
+    """Index the CDRs the Scoring History does not hold yet, after the other background work."""
+    from src.modules.scoring_history import queue_history_sync
+    try:
+        queue_history_sync(task_repository, BACKGROUND_TASK_SCHEDULER)
+    except RuntimeError:  # The scheduler is shutting down.
+        pass
+
+
 def submit_background_task(callback: Callable[..., Any], /, *args: Any) -> Future[Any]:
     """Submit application work to the shared FIFO background scheduler."""
     return BACKGROUND_TASK_SCHEDULER.submit(callback, *args)
@@ -4035,6 +4046,7 @@ def process_dataset(
             start_combined_cdr_recreation_job(
                 workspace, combined_kind, username, background=True,
             )
+            queue_scoring_history(task_repository)
         elif workspace:
             queue_workspace_dimension_materialization(workspace)
     finally:
@@ -4196,6 +4208,7 @@ def enqueue_dataset_processing(
                         and completed_kind in CDR_DATASET_KINDS
                     ):
                         start_combined_cdr_recreation_job(task_workspace, completed_kind, username)
+                        queue_scoring_history(task_repository)
                 except Exception as exc:
                     task_repository.update_dataset_profile(
                         dataset_id, status='failed',
@@ -4367,6 +4380,7 @@ def _resume_dataset_in_worker(
             completed_kind = str(completed['dataset_kind'] or '').casefold()
             if completed_kind in CDR_DATASET_KINDS:
                 start_combined_cdr_recreation_job(workspace, completed_kind, username)
+                queue_scoring_history(task_repository)
     finally:
         _unregister_dataset_processing(dataset_id, task_repository)
 
@@ -10606,6 +10620,8 @@ def render_admin_template(
     else:
         all_main_cities = []
     selected_main_cities = repository.list_main_cities() if active_workspace else []
+    workspace_campaigns = workspace_campaign_values() if active_workspace else []
+    from src.modules.scoring_methodologies import campaign_quarters
     dataset_names = {
         int(dataset['id']): str(dataset['file_name'])
         for dataset in admin_datasets
@@ -10753,7 +10769,8 @@ def render_admin_template(
             'vendor_mapping_groups': repository.list_vendor_mapping_groups() if active_workspace else [],
             'mapping_assignments': mapping_assignment_rows() if active_workspace else {},
             'vendor_mapping_notice': request.query_params.get('vendor_mapping_notice') or None,
-            'workspace_campaigns': workspace_campaign_values() if active_workspace else [],
+            'workspace_campaigns': workspace_campaigns,
+            'methodology_campaign_quarters': campaign_quarters(workspace_campaigns),
             'default_campaign_map': DEFAULT_CAMPAIGN_MAP,
             'vendor_mapping_error': request.query_params.get('vendor_mapping_error') or None,
             **spectrum_holdings_context(request),

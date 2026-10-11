@@ -113,7 +113,10 @@ def _fallback_selection(
     baseline = next((value for value in operator_options if value.casefold() == 'ee'), operator_options[0])
     return {
         'dataset_ids': [],
-        'aggregation_levels': ['Operator'],
+        # Split by Operator and Campaign, in the order of the aggregation hierarchy.
+        'aggregation_levels': [level for level in load_aggregation_hierarchy(repository)
+                               if column_identity(level) in {column_identity('Operator'), column_identity('Campaign')}]
+                              or ['Operator'],
         'nr_mode': selected_mode,
         'baseline_operator': baseline,
         'scoring_profile_id': active_profile_id if profiles else '',
@@ -181,7 +184,9 @@ def _normalize_selection(
 
     profiles, active_profile_id = _profile_context(repository)
     selected_profile_id = str(raw_selection.get('scoring_profile_id') or '').strip()
-    if profiles and selected_profile_id not in profiles:
+    if profiles and selected_profile_id == 'by-campaign':
+        pass  # Each campaign with the methodology that applies to it.
+    elif profiles and selected_profile_id not in profiles:
         if selected_profile_id:
             warnings.append('The saved scoring methodology is no longer available; the active methodology was selected.')
         selected_profile_id = active_profile_id

@@ -63,6 +63,8 @@ if (typeof module !== 'undefined' && module.exports) module.exports = globalThis
   const methodologyTitleInput = root.querySelector('[data-methodology-title]');
   const profileSelect = root.querySelector('[data-scoring-profile-select]');
   const profileActions = Array.from(root.querySelectorAll('[data-scoring-profile-action]'));
+  const campaignFromInput = root.querySelector('[data-methodology-campaign-from]');
+  const campaignToInput = root.querySelector('[data-methodology-campaign-to]');
   const weightModeSelect = root.querySelector('[data-scoring-weight-mode]');
   const environmentTotalPointsInput = root.querySelector('[data-environment-total-points]');
   const environmentTotalWeightInput = root.querySelector('[data-environment-total-weight]');
@@ -165,7 +167,8 @@ if (typeof module !== 'undefined' && module.exports) module.exports = globalThis
     if (Array.isArray(payload?.profiles)) {
       const profiles = payload.profiles
         .filter((profile) => profile && typeof profile.id === 'string' && profile.configuration)
-        .map((profile) => ({id: profile.id, name: String(profile.name || 'Scoring methodology'), configuration: profile.configuration}));
+        .map((profile) => ({id: profile.id, name: String(profile.name || 'Scoring methodology'), configuration: profile.configuration,
+          ...(profile.campaigns ? {campaigns: profile.campaigns} : {})}));
       const requestedActiveId = String(payload.active_profile_id || '');
       const activeId = profiles.some((profile) => profile.id === requestedActiveId) ? requestedActiveId : profiles[0]?.id || '';
       return {active_profile_id: activeId, profiles};
@@ -1274,6 +1277,10 @@ if (typeof module !== 'undefined' && module.exports) module.exports = globalThis
       methodologyTitleInput.value = configuration?.title || '';
       methodologyTitleInput.disabled = !currentProfile();
     }
+    // The campaigns the methodology applies to when scoring By campaign.
+    const campaigns = currentProfile()?.campaigns || {};
+    fillCampaignSelect(campaignFromInput, campaigns.from);
+    fillCampaignSelect(campaignToInput, campaigns.to);
     const exportLink = root.querySelector('[data-scoring-config-export]');
     if (exportLink) {
       exportLink.href = `${endpoint}/export?profile_id=${encodeURIComponent(activeProfileId || '')}`;
@@ -1556,7 +1563,16 @@ if (typeof module !== 'undefined' && module.exports) module.exports = globalThis
     setStatus(kpiStatus, 'Saving methodology…');
     setKpiSaveDisabled(true);
     try {
-      await saveConfiguration((latest) => readKpiRows(latest, environment), profileId, false, true);
+      const range = {from: campaignFromInput?.value.trim() || '', to: campaignToInput?.value.trim() || ''};
+      await enqueueProfileUpdate((latest) => {
+        const profile = latest.profiles.find((item) => item.id === profileId);
+        if (!profile) throw new Error('The selected scoring methodology is no longer available.');
+        profile.configuration = readKpiRows(profile.configuration, environment);
+        // The campaigns the methodology applies to are saved with it.
+        if (range.from || range.to) profile.campaigns = range;
+        else delete profile.campaigns;
+        return latest;
+      }, false, true);
       kpiDirty = false;
       priorityDirty = false;
       render();
@@ -1843,6 +1859,29 @@ if (typeof module !== 'undefined' && module.exports) module.exports = globalThis
       setProfileControlsDisabled(false);
     }
   };
+
+  // The quarters a methodology can start or end at: those of the workspace's campaigns (and its saved ones).
+  const campaignQuarters = (() => {
+    try {
+      return JSON.parse(root.querySelector('[data-methodology-campaign-quarters]')?.textContent || '[]');
+    } catch (_error) {
+      return [];
+    }
+  })();
+  function fillCampaignSelect(select, value) {
+    if (!select) return;
+    const quarters = [...campaignQuarters];
+    if (value && !quarters.includes(value)) quarters.push(value);
+    quarters.sort();
+    select.replaceChildren(select.options[0] || new Option('', ''), ...quarters.map((quarter) => new Option(quarter, quarter)));
+    select.value = value || '';
+    select.disabled = !currentProfile();
+  }
+
+  [campaignFromInput, campaignToInput].forEach((select) => select?.addEventListener('change', () => {
+    kpiDirty = true;
+    setStatus(kpiStatus, 'Unsaved campaigns. Save Methodology to apply them.');
+  }));
 
   const selectProfile = async (profileId) => {
     if (profileId === activeProfileId || !profileCollection?.profiles?.some((profile) => profile.id === profileId)) return;
@@ -2339,7 +2378,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = globalThis
 
   kpiForm.addEventListener('input', (event) => {
     const target = event.target;
-    if (target.matches('[data-scoring-environment], [data-scoring-weight-mode], [data-scoring-profile-select]')) return;
+    if (target.matches('[data-scoring-environment], [data-scoring-weight-mode], [data-scoring-profile-select], [data-methodology-campaign-from], [data-methodology-campaign-to]')) return;
     kpiDirty = true;
     if (target.matches('[data-methodology-title]')) {
       configuration.title = target.value;
@@ -2398,7 +2437,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = globalThis
   });
   kpiForm.addEventListener('change', (event) => {
     const target = event.target;
-    if (target.matches('[data-scoring-environment], [data-scoring-weight-mode], [data-scoring-profile-select]')) return;
+    if (target.matches('[data-scoring-environment], [data-scoring-weight-mode], [data-scoring-profile-select], [data-methodology-campaign-from], [data-methodology-campaign-to]')) return;
     kpiDirty = true;
     if (target.matches('[data-max-points]')) commitPointInput(target);
     if (target.matches('[data-kpi-category]')) renderCategoryGroups();

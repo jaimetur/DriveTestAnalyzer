@@ -767,11 +767,15 @@ def validate_scoring_profiles(payload: object) -> dict[str, Any]:
     seen_ids: set[str] = set()
     seen_names: set[str] = set()
     for profile in profiles:
-        if not isinstance(profile, dict) or set(profile) != {'id', 'name', 'configuration'}:
-            raise ValueError('Each scoring methodology must contain only id, name and configuration.')
+        if (not isinstance(profile, dict) or not {'id', 'name', 'configuration'} <= set(profile)
+                or not set(profile) <= {'id', 'name', 'configuration', 'campaigns'}):
+            raise ValueError('Each scoring methodology must contain only id, name, configuration and campaigns.')
         profile_id = profile.get('id')
         if not isinstance(profile_id, str) or not _PROFILE_ID.fullmatch(profile_id):
             raise ValueError('Scoring methodology id must be a lowercase identifier of up to 64 characters.')
+        from src.modules.scoring_methodologies import BY_CAMPAIGN, normalize_campaign_range
+        if profile_id == BY_CAMPAIGN:
+            raise ValueError(f'Scoring methodology id {BY_CAMPAIGN} is reserved for scoring each campaign with its methodology.')
         if profile_id in seen_ids:
             raise ValueError(f'Scoring methodology id {profile_id} is duplicated.')
         seen_ids.add(profile_id)
@@ -785,13 +789,20 @@ def validate_scoring_profiles(payload: object) -> dict[str, Any]:
         configuration = _normalize_legacy_kpi_codes(
             validate_scoring_configuration(profile.get('configuration')),
         )
-        normalized_profiles.append({
+        normalized_profile = {
             'id': profile_id,
             'name': normalized_name,
             'configuration': configuration,
-        })
+        }
+        # The campaigns the methodology applies to, when scoring each campaign with its methodology.
+        campaigns = normalize_campaign_range(profile.get('campaigns'))
+        if campaigns:
+            normalized_profile['campaigns'] = campaigns
+        normalized_profiles.append(normalized_profile)
     if not isinstance(active_profile_id, str) or active_profile_id not in seen_ids:
         raise ValueError('The active scoring methodology must reference an existing methodology.')
+    from src.modules.scoring_methodologies import check_campaign_overlaps
+    check_campaign_overlaps(normalized_profiles)
     return {'active_profile_id': active_profile_id, 'profiles': normalized_profiles}
 
 

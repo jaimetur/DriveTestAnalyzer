@@ -504,6 +504,7 @@ A methodology defines the complete scoring setup: its title, environments, KPI d
 | Create / Duplicate Methodology | Start a new definition or use an existing methodology as the basis for a revision. |
 | Rename / edit title | Change the methodology identity or descriptive title. |
 | Set Default | Choose the saved methodology initially offered for future scoring calculations. |
+| Applies to campaigns | Choose the first and last campaign (or No start / No end) that **By campaign** calculations score with this methodology, saved by Save Methodology; the campaigns of two methodologies cannot overlap. |
 | Save Methodology | Validate and persist the complete methodology, including every subpanel. |
 | Export Methodology (JSON) | Download the selected methodology only. |
 | Import Methodology (JSON) | Import a portable methodology document. |

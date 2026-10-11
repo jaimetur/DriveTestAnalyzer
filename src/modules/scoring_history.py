@@ -551,18 +551,30 @@ def history_covers(repository: Any, dataset_ids: Iterable[int], levels: Iterable
                    configuration: dict[str, Any], context_filters: dict[str, list[str]] | None = None) -> bool:
     """Whether every CDR is indexed at its current revision with every KPI of the methodology, and the split and
     filters are dimensions of the history."""
+    return not history_gap(repository, dataset_ids, levels, configuration, context_filters)
+
+
+def history_gap(repository: Any, dataset_ids: Iterable[int], levels: Iterable[str],
+                configuration: dict[str, Any], context_filters: dict[str, list[str]] | None = None) -> str:
+    """Why a calculation cannot be done from the Scoring History, or '' when it can."""
     try:
         _dimensions(levels)
     except HistoryUnavailable:
-        return False
+        return 'the Scoring History does not keep this Split by'
     if any(values and field not in FILTER_DIMENSIONS for field, values in (context_filters or {}).items()):
-        return False
-    try:
-        ensure_history_tables(repository)
-        _sources(repository, list(dataset_ids), validate_scoring_configuration(configuration))
-    except HistoryUnavailable:
-        return False
-    return True
+        return 'the Scoring History does not keep these filters'
+    ensure_history_tables(repository)
+    config = validate_scoring_configuration(configuration)
+    ids = [int(value) for value in dataset_ids]
+    missing = 0
+    for dataset_id in ids:
+        try:
+            _sources(repository, [dataset_id], config)
+        except HistoryUnavailable:
+            missing += 1
+    if missing:
+        return f'the Scoring History is still indexing {missing} of its {len(ids)} CDRs'
+    return ''
 
 
 def _dimensions(levels: Iterable[str]) -> list[str]:
@@ -850,6 +862,12 @@ def start_history_sync(repository: Any, submit: Callable[..., Any]) -> dict[str,
             job.update(status='processing', started_at=time.time())
         try:
             result = sync_history(repository, progress)
+            # CDRs processed while it indexed are indexed too (a few rounds at most).
+            for _round in range(2):
+                if not history_changes(repository)[0]:
+                    break
+                more = sync_history(repository, progress)
+                result = {'indexed': result['indexed'] + more['indexed']}
         except Exception as exc:  # The next idle period tries again.
             with _history_jobs_guard:
                 job.update(status='failed', error=str(exc), finished_at=time.time())
@@ -860,6 +878,15 @@ def start_history_sync(repository: Any, submit: Callable[..., Any]) -> dict[str,
     submit(run)
     with _history_jobs_guard:
         return dict(job)
+
+
+HISTORY_SYNC_PRIORITY = (9, 0)
+
+
+def queue_history_sync(repository: Any, scheduler: Any) -> dict[str, Any]:
+    """Index the new or changed CDRs of a workspace as soon as possible, after the other background work: when a CDR
+    finishes processing and when the workspace is first opened."""
+    return start_history_sync(repository, lambda run: scheduler.submit_ordered(run, priority=HISTORY_SYNC_PRIORITY))
 
 
 def install_scoring_history(core: Any) -> None:
@@ -888,6 +915,9 @@ def install_scoring_history(core: Any) -> None:
     def history_tasks(workspace: Any) -> list[dict[str, Any]]:
         job = history_job(workspace.database_path)
         if not job or (job['status'] in {'ready', 'failed'} and time.time() - (job['finished_at'] or 0) > 5):
+            return []
+        # A check that finds nothing to index is not shown.
+        if job['status'] != 'failed' and not job['total']:
             return []
         detail = job['error'] or (f"Indexing {job['current']} ({job['done'] + 1} of {job['total']})" if job['current']
                                   else 'Indexing the KPIs of new or changed CDRs')

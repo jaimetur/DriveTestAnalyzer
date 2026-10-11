@@ -204,7 +204,7 @@ def test_scoring_selection_defaults_use_catalogue_metadata_without_reading_cdr_r
     assert response.json() == {
         'selection': {
             'dataset_ids': scoring_api['complete_dataset_ids'],
-            'aggregation_levels': ['Operator'],
+            'aggregation_levels': ['Operator', 'Campaign'],
             'nr_mode': 'NSA',
             'baseline_operator': 'EE',
             'scoring_profile_id': 'netcheck-2026',

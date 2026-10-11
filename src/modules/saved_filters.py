@@ -718,6 +718,8 @@ def _row_to_saved_filter(
             for alias, canonical in operator_mappings.items()
             if str(alias).strip() and str(canonical).strip()
         }
+        groups = source_metadata_payload.get('methodology_groups')
+        saved_filter['methodology_groups'] = groups if isinstance(groups, list) else []
     return saved_filter
 
 
@@ -743,8 +745,28 @@ def _prepare_saved_filter(
     }, key=str.casefold)
     resolved_context_filters = _expand_operator_context_filter(repository, normalized_context_filters)
     resolved_context_filters = _expand_vendor_context_filters(repository, resolved_context_filters, vendor_catalogues)
+    from src.modules.scoring_methodologies import (
+        BY_CAMPAIGN, display_configuration, methodology_groups, methodology_label,
+    )
+    sources, _campaigns, source_fingerprint = _source_snapshot(
+        repository, normalized_ids, expected_nr_mode=nr_mode,
+    )
+    aggregation_hierarchy = load_aggregation_hierarchy(repository)
+    normalized_levels = _normalize_levels(levels, sources, aggregation_hierarchy)
+    groups: list[dict[str, Any]] = []
     profile_getter = getattr(repository, 'get_scoring_profile', None)
-    if callable(profile_getter):
+    if scoring_profile_id == BY_CAMPAIGN:
+        # Each campaign with the methodology that applies to it (the default one when none does).
+        wanted = {value.casefold() for value in normalized_context_filters.get('Campaign') or []}
+        campaigns = [campaign for source in sources for campaign in source['metadata'].get('campaigns') or []
+                     if not wanted or campaign.casefold() in wanted]
+        groups = methodology_groups(repository.get_scoring_profiles(), campaigns or [''])
+        if len(groups) > 1 and 'Campaign' not in normalized_levels:
+            raise ValueError('Scoring By campaign with campaigns of different methodologies needs Campaign in the Split by.')
+        configuration = validate_scoring_configuration(
+            groups[0]['configuration'] if len(groups) == 1 else display_configuration(groups))
+        scoring_profile = {'id': BY_CAMPAIGN, 'name': methodology_label(groups)}
+    elif callable(profile_getter):
         if scoring_profile_id is None or (
             isinstance(scoring_profile_id, str) and not scoring_profile_id.strip()
         ):
@@ -759,11 +781,6 @@ def _prepare_saved_filter(
             raise ValueError('This workspace does not support selecting scoring methodologies.')
         configuration = _workspace_scoring_configuration(repository)
         scoring_profile = {'id': '', 'name': ''}
-    sources, _campaigns, source_fingerprint = _source_snapshot(
-        repository, normalized_ids, expected_nr_mode=nr_mode,
-    )
-    aggregation_hierarchy = load_aggregation_hierarchy(repository)
-    normalized_levels = _normalize_levels(levels, sources, aggregation_hierarchy)
     selected_mode = normalize_nr_mode(nr_mode) if nr_mode else str(sources[0]['metadata']['nr_mode'])
     if selected_mode not in NR_MODES:
         raise ValueError('NR Mode must be NSA or SA.')
@@ -779,6 +796,11 @@ def _prepare_saved_filter(
         if str(alias).strip() and str(canonical).strip()
     } if isinstance(raw_operator_mappings, dict) else {}
     config_hash = configuration_hash(configuration)
+    if len(groups) > 1:
+        # The result changes with the methodology of any of its campaigns.
+        config_hash = hashlib.sha256(json.dumps(
+            [[group['profile_id'], configuration_hash(group['configuration']), group['campaigns']] for group in groups],
+            sort_keys=True).encode('utf-8')).hexdigest()
     version = _method_version(configuration)
     profile_id = str(scoring_profile.get('id') or '')
     profile_name = str(scoring_profile.get('name') or '')
@@ -801,6 +823,8 @@ def _prepare_saved_filter(
     }
     if normalized_area_summary:
         snapshot['area_summary'] = normalized_area_summary
+    if len(groups) > 1:
+        snapshot['methodology_groups'] = groups
     return {
         'selection_key': saved_filter_key(normalized_ids, normalized_levels, selected_mode, baseline,
                                           normalized_context_filters, profile_id, normalized_area_summary),
@@ -1472,48 +1496,83 @@ def calculate_saved_filter(repository: Repository, filter_id: int,
             raise ValueError('A selected CDR changed after this calculation was queued. Calculate it again.')
         engine = _scoring_engine()
         context_filters = saved_filter.get('resolved_context_filters', saved_filter.get('context_filters', {}))
-        result = _history_result(repository, saved_filter, configuration, dataset_ids, context_filters, engine,
-                                 update_progress)
-        if result is not None:
-            _save_scoring_result(repository, saved_filter, filter_id, dataset_ids, configuration, result,
-                                 points_loss_pending=True)
+        groups = saved_filter.get('methodology_groups') or []
+        if len(groups) > 1:
+            # By campaign: the campaigns of each methodology are scored with it, then put together.
+            from src.modules.scoring_methodologies import merge_results
+            parts, map_pending = [], False
+            share = 90 / len(groups)
+            for index, group in enumerate(groups):
+                group_configuration = validate_scoring_configuration(group['configuration'])
+                group_filter = {**saved_filter, 'configuration': group_configuration}
+
+                def group_progress(progress: int, message: str, index: int = index, name: str = group['profile_name']) -> None:
+                    update_progress(round(index * share + progress * share / 100), f'{name}: {message}')
+                group_result, from_history = _scoring_result(
+                    repository, group_filter, group_configuration, dataset_ids, [dict(source) for source in sources],
+                    {**context_filters, 'Campaign': list(group['campaigns'])}, engine, group_progress)
+                map_pending = map_pending or from_history
+                parts.append((group, group_result))
+            result = merge_results(parts)
+            if map_pending:
+                result['points_loss'] = {'version': 2, 'pending': True}
+        else:
+            result, map_pending = _scoring_result(repository, saved_filter, configuration, dataset_ids, sources,
+                                                  context_filters, engine, update_progress)
+        _save_scoring_result(repository, saved_filter, filter_id, dataset_ids, configuration, result,
+                             points_loss_pending=map_pending)
+        if map_pending:
             # The Points Lost Map needs the rows of the tests: it is added once they are read.
             if submit_points_loss is None:
-                _complete_points_loss(repository, saved_filter, filter_id, sources, dataset_ids, configuration,
-                                      context_filters, engine)
+                complete_saved_filter_points_loss(repository, filter_id)
             else:
                 queue_points_loss(repository, filter_id, submit_points_loss)
-            return get_saved_filter(repository, filter_id, include_result=True)
-        update_progress(6, 'Reading processed CDR rows')
-        # The points-lost map also reads the area and coordinate columns.
-        required_columns = getattr(engine, 'load_input_columns', None) or getattr(engine, 'required_input_columns')
-        # The area summary also reads its breakdown and City columns, and the test start time for its time split.
-        for source in sources:
-            source['levels'] = [*saved_filter['levels'],
-                                *area_summary_levels(saved_filter['levels'], saved_filter.get('area_summary'))]
-        frames = _load_source_frames(repository, sources, update_progress, required_columns, context_filters)
-        _current_sources, _campaigns, post_load_fingerprint = _source_snapshot(
-            repository, dataset_ids, expected_nr_mode=saved_filter['nr_mode'],
-        )
-        if post_load_fingerprint != saved_filter['source_fingerprint']:
-            raise ValueError('A selected CDR changed while its scoring rows were being loaded.')
-        update_progress(62, 'Calculating KPIs and interpolated scores')
-        calculate = engine.calculate_scoring
-        call_kwargs = _engine_kwargs(repository, saved_filter, configuration, calculate)
-        result = calculate(frames, saved_filter['levels'], **call_kwargs)
-        if not isinstance(result, dict):
-            raise TypeError('The scoring engine must return a result object.')
-        if saved_filter.get('area_summary'):
-            summary = calculate_area_summary(calculate, frames, saved_filter['levels'],
-                                             saved_filter['area_summary'], call_kwargs, update_progress)
-            result['warnings'] = [*(result.get('warnings') or []), *summary.pop('warnings')]
-            result['area_summary'] = summary
-        _save_scoring_result(repository, saved_filter, filter_id, dataset_ids, configuration, result)
     except _SavedFilterDeleted:
         return None
     except Exception as exc:
         _fail_calculation(repository, saved_filter, filter_id, exc)
     return get_saved_filter(repository, filter_id, include_result=True)
+
+
+def _scoring_result(repository: Repository, saved_filter: dict[str, Any], configuration: dict[str, Any],
+                    dataset_ids: list[int], sources: list[dict[str, Any]], context_filters: dict[str, list[str]],
+                    engine: Any, update_progress: Callable[[int, str], None]) -> tuple[dict[str, Any], bool]:
+    """The scoring (and area summary) of a Saved Filter with one methodology, and whether it came from the Scoring
+    History (its Points Lost Map then follows from the rows of the tests)."""
+    result = _history_result(repository, saved_filter, configuration, dataset_ids, context_filters, engine,
+                             update_progress)
+    if result is not None:
+        return result, True
+    if saved_filter.get('history_gap'):
+        # Every step says why the rows of the CDRs are read (and the Scoring History not used).
+        reason = saved_filter['history_gap']
+        report = update_progress
+        update_progress = lambda progress, message: report(progress, f'{message} (from the CDR rows: {reason})')
+    update_progress(6, 'Reading processed CDR rows')
+    # The points-lost map also reads the area and coordinate columns.
+    required_columns = getattr(engine, 'load_input_columns', None) or getattr(engine, 'required_input_columns')
+    # The area summary also reads its breakdown and City columns, and the test start time for its time split.
+    for source in sources:
+        source['levels'] = [*saved_filter['levels'],
+                            *area_summary_levels(saved_filter['levels'], saved_filter.get('area_summary'))]
+    frames = _load_source_frames(repository, sources, update_progress, required_columns, context_filters)
+    _current_sources, _campaigns, post_load_fingerprint = _source_snapshot(
+        repository, dataset_ids, expected_nr_mode=saved_filter['nr_mode'],
+    )
+    if post_load_fingerprint != saved_filter['source_fingerprint']:
+        raise ValueError('A selected CDR changed while its scoring rows were being loaded.')
+    update_progress(62, 'Calculating KPIs and interpolated scores')
+    calculate = engine.calculate_scoring
+    call_kwargs = _engine_kwargs(repository, saved_filter, configuration, calculate)
+    result = calculate(frames, saved_filter['levels'], **call_kwargs)
+    if not isinstance(result, dict):
+        raise TypeError('The scoring engine must return a result object.')
+    if saved_filter.get('area_summary'):
+        summary = calculate_area_summary(calculate, frames, saved_filter['levels'],
+                                         saved_filter['area_summary'], call_kwargs, update_progress)
+        result['warnings'] = [*(result.get('warnings') or []), *summary.pop('warnings')]
+        result['area_summary'] = summary
+    return result, False
 
 
 def _engine_kwargs(repository: Repository, saved_filter: dict[str, Any], configuration: dict[str, Any],
@@ -1541,10 +1600,14 @@ def _history_result(repository: Repository, saved_filter: dict[str, Any], config
     """The scoring (and area summary) of the saved_filter from the Scoring History when it holds every selected CDR at its
     current revision with every KPI of the methodology, and the split and filters are its dimensions; else None."""
     from src.modules import scoring as scoring_engine
-    from src.modules.scoring_history import HistoryUnavailable, calculate_scoring_from_history, history_covers
+    from src.modules.scoring_history import HistoryUnavailable, calculate_scoring_from_history, history_gap
 
-    if engine is not scoring_engine or not history_covers(repository, dataset_ids, saved_filter['levels'], configuration,
-                                                           context_filters):
+    if engine is not scoring_engine:
+        return None
+    # Why the rows of the CDRs are read instead, told while they are read.
+    saved_filter['history_gap'] = history_gap(repository, dataset_ids, saved_filter['levels'], configuration,
+                                              context_filters)
+    if saved_filter['history_gap']:
         return None
     update_progress(20, 'Calculating from the Scoring History')
     catalogues = repository.cdr_catalogues_by_dataset(dataset_ids)
@@ -1605,7 +1668,7 @@ def complete_saved_filter_points_loss(repository: Repository, filter_id: int) ->
         except ValueError:
             sources = []
         _complete_points_loss(repository, saved_filter, filter_id, sources, dataset_ids, configuration, context_filters,
-                              _scoring_engine())
+                              _scoring_engine(), saved_filter.get('methodology_groups') or [])
     finally:
         with _points_loss_guard:
             _points_loss_jobs.pop(key, None)
@@ -1632,17 +1695,39 @@ def is_saved_filter_work(task_callback: Any, task_args: tuple[Any, ...], filter_
             and int(task_callback.args[1]) == int(filter_id))
 
 
+def _points_loss_of(repository: Repository, saved_filter: dict[str, Any], sources: list[dict[str, Any]],
+                    configuration: dict[str, Any], context_filters: dict[str, list[str]], engine: Any) -> Any:
+    """The Points Lost Map of a Saved Filter with one methodology, from the rows of its tests."""
+    for source in sources:
+        source['levels'] = list(saved_filter['levels'])
+    required_columns = getattr(engine, 'load_input_columns', None) or getattr(engine, 'required_input_columns')
+    frames = _load_source_frames(repository, sources, lambda *_args: None, required_columns, context_filters)
+    calculate = engine.calculate_scoring
+    options = _engine_kwargs(repository, saved_filter, configuration, calculate)
+    if hasattr(engine, 'calculate_points_loss'):
+        # Only the map: the scores are already saved.
+        return engine.calculate_points_loss(
+            frames, saved_filter['levels'], configuration=configuration,
+            operator_mappings=options.get('operator_mappings'), map_areas=options.get('map_areas'))
+    return calculate(frames, saved_filter['levels'], **options)['points_loss']
+
+
 def _complete_points_loss(repository: Repository, saved_filter: dict[str, Any], filter_id: int, sources: list[dict[str, Any]],
                           dataset_ids: list[int], configuration: dict[str, Any],
-                          context_filters: dict[str, list[str]], engine: Any) -> None:
-    """Read the rows of the tests and add the Points Lost Map to a result calculated from the Scoring History."""
+                          context_filters: dict[str, list[str]], engine: Any,
+                          groups: list[dict[str, Any]] | None = None) -> None:
+    """Read the rows of the tests and add the Points Lost Map to a result calculated from the Scoring History (By
+    campaign, the map of the campaigns of each methodology with it)."""
     try:
-        for source in sources:
-            source['levels'] = list(saved_filter['levels'])
-        required_columns = getattr(engine, 'load_input_columns', None) or getattr(engine, 'required_input_columns')
-        frames = _load_source_frames(repository, sources, lambda *_args: None, required_columns, context_filters)
-        calculate = engine.calculate_scoring
-        points_loss = calculate(frames, saved_filter['levels'], **_engine_kwargs(repository, saved_filter, configuration, calculate))['points_loss']
+        if groups and len(groups) > 1:
+            from src.modules.scoring_methodologies import _merge_points_loss
+            points_loss = _merge_points_loss([
+                _points_loss_of(repository, saved_filter, [dict(source) for source in sources],
+                                validate_scoring_configuration(group['configuration']),
+                                {**context_filters, 'Campaign': list(group['campaigns'])}, engine)
+                for group in groups])
+        else:
+            points_loss = _points_loss_of(repository, saved_filter, sources, configuration, context_filters, engine)
         document = {'points_loss': points_loss}
         _attach_mapping_boundaries(repository, dataset_ids, document)
     except Exception as exc:  # The scores stay; only the map is missing.
