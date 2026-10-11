@@ -10982,6 +10982,32 @@ def test_every_tab_lists_its_sections_with_icons_in_the_colour_of_its_module(cli
             assert section_anchor(heading) in headings, (module, heading)
 
 
+
+def test_a_section_chosen_in_a_menu_opens_at_the_top_of_its_page():
+    root = Path(__file__).parents[1] / 'src/web_interface/static/js'
+    app_script = (root / 'app.js').read_text(encoding='utf-8')
+    # The chosen panel goes to the top, with room below it when it is near the end of the page.
+    assert 'function showSectionAtTop(target) {' in app_script and "room.dataset.sectionScrollRoom = '';" in app_script
+    # It stays there while the page fills (only the last chosen section is followed), and a section added once its
+    # data arrives is waited for.
+    assert 'stopKeepingSection?.();' in app_script and 'observer.observe(document.body, {childList: true, subtree: true});' in app_script
+    # Choosing again the section being shown opens it again.
+    assert "window.setTimeout(() => window.dispatchEvent(new HashChangeEvent('hashchange')));" in app_script
+    # The pages that return to their earlier position do not when they open at a section.
+    assert "if (target <= 0 || window.location.hash || !('ResizeObserver' in window)) return;" in (root / 'non_qualified_calls.js').read_text(encoding='utf-8')
+    scoring_script = (root / 'scoring.js').read_text(encoding='utf-8')
+    assert '&& !window.location.hash;' in scoring_script
+    assert "|| window.location.hash) return;" in (root / 'ppt_dashboards.js').read_text(encoding='utf-8')
+    assert 'top > 0 && !window.location.hash' in app_script
+    # A page that opens again with its saved selection (CDR Analysis) keeps the section.
+    assert 'if (!target.hash && window.location.hash && target.pathname === window.location.pathname) target.hash = window.location.hash;' in app_script
+    template = (root.parent.parent / 'templates/datasets_analysis.html').read_text(encoding='utf-8')
+    assert "{{ restored_address | tojson }} + window.location.hash" in template
+    # A panel drawn again with fresh data is found again while it is followed.
+    assert 'if (!target.isConnected) target = find?.() || target;' in app_script
+    # The Scoring Results entries bring its tabs to the top.
+    assert "const panel = root.querySelector('.scoring-result-tabs') || root.querySelector('.scoring-results-panel');" in scoring_script
+
 def test_documents_read_without_an_account_show_a_prominent_sign_in(client):
     page = client.get('/documents/view/help')
     assert page.status_code == 200

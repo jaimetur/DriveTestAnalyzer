@@ -4894,7 +4894,8 @@ function restoreAdminScrollPosition() {
     if (value === null) return;
     window.sessionStorage.removeItem(adminScrollRestoreKey);
     const top = Number(value);
-    if (Number.isFinite(top) && top > 0) {
+    // A section chosen in a menu (#section-…) opens the page there instead.
+    if (Number.isFinite(top) && top > 0 && !window.location.hash) {
       requestAnimationFrame(() => window.scrollTo({top, behavior: 'auto'}));
     }
   } catch (_error) {
@@ -4956,7 +4957,10 @@ function restoreActiveDatasetState() {
 
 function replaceLocation(url) {
   hasPendingLocationRestore = true;
-  window.location.replace(url);
+  // The page opened again with its saved selection keeps the section chosen in a menu (#section-…).
+  const target = new URL(url, window.location.href);
+  if (!target.hash && window.location.hash && target.pathname === window.location.pathname) target.hash = window.location.hash;
+  window.location.replace(target.href);
 }
 
 function buildDatasetsAnalysisParamsFromForm(form) {
@@ -8971,19 +8975,105 @@ function sectionPanel(anchor) {
     && slug(panel.querySelector('h1, h2, h3')?.textContent) === wanted) || null;
 }
 
-// A link to a map table (#operator-assignments, #vendor-assignments or #campaign-maps) or to a panel of a
-// page (the sections of the Config menu and of the module tabs) opens its panels and scrolls to it.
+// A link to a map table (#operator-assignments, #vendor-assignments or #campaign-maps), to a panel of a page (the
+// sections of the Config menu and of the module tabs) or to another element opens its panels and shows it at the
+// top of the page. Parts added once their data arrives (the analysis of a CDR…) are waited for.
+let stopWaitingForSection = null;
 function openMappingHashTarget() {
+  stopWaitingForSection?.();
   const id = decodeURIComponent(window.location.hash.slice(1));
-  const target = id ? (document.getElementById(id) || (id.startsWith('section-') ? sectionPanel(id) : null)) : null;
-  if (!target || !target.matches('[data-mapping-assignments], #campaign-maps, .panel')) return;
-  for (let element = target; element; element = element.parentElement) {
-    if (element.tagName === 'DETAILS') element.open = true;
+  if (!id) return;
+  const find = () => document.getElementById(id) || (id.startsWith('section-') ? sectionPanel(id) : null);
+  const open = (target) => {
+    for (let element = target; element; element = element.parentElement) {
+      if (element.tagName === 'DETAILS') element.open = true;
+    }
+    window.requestAnimationFrame(() => window.requestAnimationFrame(() => showSectionAtTop(target)));
+    keepSectionInView(target, find);
+  };
+  const target = find();
+  if (target) {
+    open(target);
+    return;
   }
-  window.requestAnimationFrame(() => window.requestAnimationFrame(() => target.scrollIntoView({behavior: 'smooth', block: 'start'})));
+  if (typeof MutationObserver !== 'function') return;
+  const observer = new MutationObserver(() => {
+    const found = find();
+    if (!found) return;
+    stop();
+    open(found);
+  });
+  const events = ['wheel', 'touchstart', 'keydown', 'pointerdown'];
+  const stop = () => {
+    observer.disconnect();
+    events.forEach((name) => window.removeEventListener(name, stop, true));
+    if (stopWaitingForSection === stop) stopWaitingForSection = null;
+  };
+  stopWaitingForSection = stop;
+  events.forEach((name) => window.addEventListener(name, stop, {capture: true, passive: true}));
+  observer.observe(document.body, {childList: true, subtree: true});
+  window.setTimeout(stop, 15000);
+}
+
+// The chosen panel at the top of the page; a panel near the end gets room below it to get there.
+function showSectionAtTop(target) {
+  if (target.hidden || !target.getClientRects().length) return;
+  let room = document.querySelector('[data-section-scroll-room]');
+  if (!room) {
+    room = document.createElement('div');
+    room.dataset.sectionScrollRoom = '';
+    room.setAttribute('aria-hidden', 'true');
+    document.body.append(room);
+  }
+  const current = room.offsetHeight;
+  const top = target.getBoundingClientRect().top + window.scrollY;
+  const needed = Math.max(0, Math.ceil(top + window.innerHeight - (document.documentElement.scrollHeight - current)));
+  if (Math.abs(needed - current) > 1) room.style.height = `${needed}px`;
+  if (Math.abs(target.getBoundingClientRect().top) > 2) window.scrollTo({top, behavior: 'auto'});
+}
+
+// Pages that fill or show their panels once their data arrives (Non-Qualified Calls, Scoring…) grow above the
+// section opened from a menu: it is kept at the top while the page settles, until the user scrolls or for 15 seconds.
+let stopKeepingSection = null;
+function keepSectionInView(target, find = null) {
+  // Only the last section chosen is followed.
+  stopKeepingSection?.();
+  if (typeof ResizeObserver !== 'function') return;
+  let frame = 0;
+  const observer = new ResizeObserver(() => {
+    window.cancelAnimationFrame(frame);
+    frame = window.requestAnimationFrame(() => {
+      // A panel drawn again with fresh data (the Datasets table…) is found again.
+      if (!target.isConnected) target = find?.() || target;
+      if (target.isConnected) showSectionAtTop(target);
+    });
+  });
+  const events = ['wheel', 'touchstart', 'keydown', 'pointerdown'];
+  const stop = () => {
+    observer.disconnect();
+    window.cancelAnimationFrame(frame);
+    events.forEach((name) => window.removeEventListener(name, stop, true));
+    if (stopKeepingSection === stop) stopKeepingSection = null;
+  };
+  stopKeepingSection = stop;
+  events.forEach((name) => window.addEventListener(name, stop, {capture: true, passive: true}));
+  observer.observe(document.body);
+  window.setTimeout(stop, 15000);
 }
 window.addEventListener('hashchange', openMappingHashTarget);
 if (window.location.hash) window.requestAnimationFrame(openMappingHashTarget);
+// A section of the page being shown opens there again when it is chosen again: the address does not change, so the
+// browser announces no new section.
+document.addEventListener('click', (event) => {
+  const link = event.target instanceof Element
+    ? event.target.closest('.module-sections-menu a[href*="#"], .module-config-options a[href*="#"], .module-builders-options a[href*="#"]')
+    : null;
+  if (!link || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+  const url = new URL(link.href, window.location.href);
+  if (url.pathname !== window.location.pathname || url.search !== window.location.search || !url.hash
+      || url.hash !== window.location.hash) return;
+  window.setTimeout(() => window.dispatchEvent(new HashChangeEvent('hashchange')));
+});
 
 // The sections of each main module open below its tab on hover or focus; the tab itself still opens the module,
 // at its top when it is the page being shown.

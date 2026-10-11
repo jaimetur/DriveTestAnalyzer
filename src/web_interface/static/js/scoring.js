@@ -124,7 +124,8 @@
     }
   }
   const restoredScoringViewState = readScoringViewState();
-  let scoringViewScrollRestorePending = Number.isFinite(restoredScoringViewState.scrollY);
+  // A section chosen in a menu (#section-… or a Scoring Results tab) opens the page there instead.
+  let scoringViewScrollRestorePending = Number.isFinite(restoredScoringViewState.scrollY) && !window.location.hash;
   let scoringViewScrollRestoreStarted = false;
   let scoringViewScrollRestoring = false;
   // The page restores its own position, once its results are drawn.
@@ -6991,13 +6992,21 @@
   });
   expandedChartClose?.addEventListener('click', closeExpandedChart);
   // The Scoring Results entries of the Scoring tab menu (#scoring-results-charts, -tables or -gap) open that
-  // results tab and scroll to the results.
+  // results tab and show the results tabs at the top of the page.
   const openResultTabFromHash = () => {
     const name = {'scoring-results-charts': 'charts', 'scoring-results-tables': 'scoring', 'scoring-results-gap': 'gap'}[
       decodeURIComponent(window.location.hash.slice(1))];
     if (!name) return;
     root.querySelector(`[data-result-tab="${name}"]`)?.click();
-    window.requestAnimationFrame(() => root.querySelector('.scoring-results-panel')?.scrollIntoView({block: 'start'}));
+    window.requestAnimationFrame(() => {
+      const panel = root.querySelector('.scoring-result-tabs') || root.querySelector('.scoring-results-panel');
+      if (!panel) return;
+      // The results are drawn after the page opens: the panel stays at the top while they arrive (see app.js).
+      if (typeof showSectionAtTop === 'function') {
+        showSectionAtTop(panel);
+        keepSectionInView(panel);
+      } else panel.scrollIntoView({block: 'start'});
+    });
   };
   window.addEventListener('hashchange', openResultTabFromHash);
   openResultTabFromHash();

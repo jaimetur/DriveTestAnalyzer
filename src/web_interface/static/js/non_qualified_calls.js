@@ -3204,7 +3204,8 @@
     } catch (_error) {
       target = 0;
     }
-    if (target <= 0 || !('ResizeObserver' in window)) return;
+    // A section chosen in a menu (#section-…) opens the page there instead.
+    if (target <= 0 || window.location.hash || !('ResizeObserver' in window)) return;
     if ('scrollRestoration' in window.history) window.history.scrollRestoration = 'manual';
     // The panels fill in after the page opens, so the position is applied again as the page grows,
     // until the reader scrolls or the page has settled.

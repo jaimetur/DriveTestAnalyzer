@@ -74,7 +74,8 @@
   const restoreScroll = () => {
     try {
       const top = Number(sessionStorage.getItem(scrollStorageKey));
-      if (!Number.isFinite(top) || top <= 0) return;
+      // A section chosen in a menu (#section-…) opens the page there instead.
+      if (!Number.isFinite(top) || top <= 0 || window.location.hash) return;
       let attempts = 0;
       const restore = () => {
         window.scrollTo({top, left: 0, behavior: 'auto'});
