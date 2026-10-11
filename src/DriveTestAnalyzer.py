@@ -3703,14 +3703,17 @@ def _submit_workspace_job(
 
 
 def queue_scoring_history(task_repository: Repository) -> None:
-    """Index the CDRs the Scoring History does not hold yet, after the other background work, and place their tests in
-    the Map Areas."""
+    """Index the CDRs the Scoring History does not hold yet, after the other background work."""
     from src.modules.scoring_history import queue_history_sync
     try:
         queue_history_sync(task_repository, BACKGROUND_TASK_SCHEDULER)
     except RuntimeError:  # The scheduler is shutting down.
         pass
-    queue_map_area_fill(task_repository)
+
+
+# The tests of the CDRs are placed in the Map Areas while the application is idle (after a minute without use and
+# with no background work queued): a processed CDR, or new Map Areas, never delay other work.
+MAP_AREA_FILL_IDLE_SECONDS = 60
 
 
 def queue_map_area_fill(task_repository: Repository) -> None:
@@ -7575,7 +7578,6 @@ def _restore_workspace_mappings_reference_data(workspace: Workspace, payload: by
             import_layers_document(task_repository, document['map_areas'], 'system', replace=True)
         except ValueError as exc:
             raise ValueError(f'Map Areas for "{workspace.name}" are invalid: {exc}') from exc
-        queue_map_area_fill(task_repository)
     if active_workspace and workspace.id == active_workspace.id:
         ANALYSIS_CACHE.clear()
         PREPARED_ANALYSIS_FRAME_CACHE.clear()
@@ -12044,6 +12046,20 @@ def _map_area_fill_tasks(workspace: Workspace) -> list[dict[str, Any]]:
 
 
 BACKGROUND_TASK_PROVIDERS.append(_map_area_fill_tasks)
+
+
+def _place_tests_when_idle() -> None:
+    """Place the tests of the active workspace's CDRs not placed with its current Map Areas."""
+    if not active_workspace or APP_SHUTTING_DOWN.is_set():
+        return
+    from src.modules.map_area_columns import stale_datasets
+    task_repository = Repository(active_workspace.database_path, global_db_path=repository.global_db_path,
+                                 workspace_registry_db_path=workspace_registry.registry_path)
+    if stale_datasets(task_repository):
+        queue_map_area_fill(task_repository)
+
+
+register_idle_task(_place_tests_when_idle, MAP_AREA_FILL_IDLE_SECONDS)
 
 
 def _global_background_tasks(user: SessionUser, accessible_ids: set[str]) -> list[dict[str, Any]]:
@@ -21118,8 +21134,6 @@ def download_workspace_map_areas(payload: MapAreaDownloadPayload, user: SessionU
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     repository.add_log(user.username, 'map_areas_download', json.dumps(
         {'country': layer['country_code'], 'level': layer['level'], 'areas': layer['unit_count']}))
-    # The tests of the CDRs are placed again in the new Map Areas.
-    queue_map_area_fill(repository)
     return {'layer': layer}
 
 
@@ -21139,8 +21153,6 @@ async def import_workspace_map_areas(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     repository.add_log(user.username, 'map_areas_import', json.dumps(
         {'country': layer['country_code'], 'file': file.filename, 'areas': layer['unit_count']}))
-    # The tests of the CDRs are placed again in the new Map Areas.
-    queue_map_area_fill(repository)
     return {'layer': layer}
 
 
@@ -21151,8 +21163,6 @@ def delete_workspace_map_areas(layer_id: int, user: SessionUser = Depends(config
     if not delete_layer(repository, layer_id):
         raise HTTPException(status_code=404, detail='Map Areas not found.')
     repository.add_log(user.username, 'map_areas_delete', json.dumps({'layer_id': layer_id}))
-    # The tests of the CDRs are placed again in the new Map Areas.
-    queue_map_area_fill(repository)
     return {'deleted': layer_id}
 
 
