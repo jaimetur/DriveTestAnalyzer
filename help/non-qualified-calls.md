@@ -38,7 +38,7 @@ The **Filters** panel restricts the summary, the table and the Excel export toge
 - **Search** finds text in the call fields (Operator, Vendor, Campaign, Region, City, Technology, test, result, failure fields, cell, `JOIN_ID` and the CDR columns of the table), in the fields entered by the analysts and in the comments.
 - **Open calls only**, **Assigned to me** and **Without comments**.
 
-Selecting every value of a filter, or none, applies no restriction. Active filters appear as chips at the top of every panel (Summary, NQ Rate by Campaign and Operator, Progress View, Lifecycle & Phases, Root Cause Analysis, Root Cause Sources and the table), including those set from the Progress View and the Root Cause Analysis (NR Mode, Call Type, Period, Age of Open Calls, root domain and cause with suggestions, eNB/gNB); click a chip to remove it. The NQ Rate panel dims the chips of the filters it does not use. **Reset Filters** clears them all.
+Selecting every value of a filter, or none, applies no restriction. Active filters appear as chips at the top of every panel (Filters, Summary, NQ Rate by Campaign and Operator, Progress View, Lifecycle & Phases, Root Cause Analysis, Root Cause Sources and the table), including those set from the Progress View and the Root Cause Analysis (NR Mode, Call Type, Period, Age of Open Calls, root domain and cause with suggestions, eNB/gNB); click a chip to remove it. The NQ Rate panel dims the chips of the filters it does not use. **Reset Filters** clears them all.
 
 The selection is shared: it is saved in the workspace, so every user finds the last filters applied, in any session and on any device. **Assigned to me** always refers to the user viewing the page.
 
