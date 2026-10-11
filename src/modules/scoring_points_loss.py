@@ -66,10 +66,24 @@ def attach_location(frame: pd.DataFrame, source: pd.DataFrame, kind: str, resolv
         if latitude is not None and longitude is not None:
             frame[LATITUDE] = pd.to_numeric(source[latitude], errors='coerce')
             frame[LONGITUDE] = pd.to_numeric(source[longitude], errors='coerce')
-            if areas is None:
+            # The areas kept in the rows of the CDR when placed with the current Map Areas (empty outside every
+            # area); the tests without one are placed here.
+            stored = resolve(source.columns, 'Map_Area')
+            names = (source[stored].astype('string') if stored is not None
+                     else pd.Series(pd.NA, index=source.index, dtype='string'))
+            unplaced = names.isna()
+            if areas is None and (unplaced.any() or stored is not None):
                 from src.modules.map_areas import area_index
                 areas = area_index(None)
-            frame[AREA_COLUMN.format(AREA)] = areas.names_of(frame[LATITUDE], frame[LONGITUDE])
+            if stored is not None and not unplaced.all():
+                # The map draws the areas of the countries of the tests placed before.
+                country = resolve(source.columns, 'Map_Area_Country')
+                if country is not None:
+                    areas.note_countries(source.loc[~unplaced, country].dropna().astype(str).unique())
+            if unplaced.any():
+                names = names.copy()
+                names[unplaced] = areas.names_of(frame.loc[unplaced, LATITUDE], frame.loc[unplaced, LONGITUDE])
+            frame[AREA_COLUMN.format(AREA)] = names.replace('', pd.NA)
             break
     for field in MAP_FIELDS:
         column = AREA_COLUMN.format(field)

@@ -119,7 +119,8 @@ def _fallback_selection(
                               or ['Operator'],
         'nr_mode': selected_mode,
         'baseline_operator': baseline,
-        'scoring_profile_id': active_profile_id if profiles else '',
+        # Each campaign with the methodology that applies to it (the default one when none does).
+        'scoring_profile_id': 'by-campaign' if profiles else '',
         'context_filters': {field: [] for field in SCORING_CONTEXT_FILTER_FIELDS if field not in SCORING_OPTIONAL_CONTEXT_FILTERS},
         'area_summary': _normalize_area_summary(None),
     }
@@ -195,7 +196,7 @@ def _normalize_selection(
             warnings.append('The saved scoring methodology is unavailable; import a scoring configuration before calculating.')
         selected_profile_id = ''
     elif not selected_profile_id:
-        selected_profile_id = active_profile_id
+        selected_profile_id = 'by-campaign'
     hierarchy = load_aggregation_hierarchy(repository)
     hierarchy_by_identity = {column_identity(level): level for level in hierarchy}
 

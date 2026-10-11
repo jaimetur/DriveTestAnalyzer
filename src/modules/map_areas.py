@@ -485,26 +485,38 @@ class AreaIndex:
             return self._trees[code]
 
     def names_of(self, latitude: pd.Series, longitude: pd.Series) -> pd.Series:
-        """Name of the area containing each coordinate (missing outside every area).
+        """Name of the area containing each coordinate (missing outside every area)."""
+        return self.places_of(latitude, longitude)['name']
 
-        Each coordinate is placed once, however many tests share it."""
+    def places_of(self, latitude: pd.Series, longitude: pd.Series) -> pd.DataFrame:
+        """The area containing each coordinate and the country of its Map Areas (``name`` and ``country``, missing
+        outside every area). Each coordinate is placed once, however many tests share it."""
         pairs = pd.DataFrame({'latitude': latitude, 'longitude': longitude})
         groups = pairs.groupby(['latitude', 'longitude'], dropna=False, sort=False).ngroup()
         first = ~groups.duplicated()
         if first.all():
-            return self._names_of(latitude, longitude)
-        unique = self._names_of(latitude[first], longitude[first])
-        by_group = pd.Series(unique.to_numpy(), index=groups[first].to_numpy())
-        return pd.Series(by_group.reindex(groups.to_numpy()).to_numpy(), index=latitude.index, dtype='string')
+            return self._places_of(latitude, longitude)
+        unique = self._places_of(latitude[first], longitude[first])
+        unique.index = groups[first].to_numpy()
+        placed = unique.reindex(groups.to_numpy())
+        placed.index = latitude.index
+        return placed.astype('string')
 
-    def _names_of(self, latitude: pd.Series, longitude: pd.Series) -> pd.Series:
+    def note_countries(self, codes: Iterable[str]) -> None:
+        """Countries whose areas were named before (kept in the rows of a CDR): the map draws their areas."""
+        for code in codes:
+            if code in self.codes:
+                self._tree(str(code))
+
+    def _places_of(self, latitude: pd.Series, longitude: pd.Series) -> pd.DataFrame:
         import numpy as np
         from shapely import points
 
         names = pd.Series(pd.NA, index=latitude.index, dtype='string')
+        owners = pd.Series(pd.NA, index=latitude.index, dtype='string')
         located = latitude.notna() & longitude.notna() & ~((latitude == 0) & (longitude == 0))
         if not located.any() or not self.codes:
-            return names
+            return pd.DataFrame({'name': names, 'country': owners})
         countries = country_codes(latitude.where(located), longitude.where(located))
 
         def place(mask: pd.Series, code: str) -> None:
@@ -516,6 +528,7 @@ class AreaIndex:
                 first = pd.Series(polygons, index=rows).groupby(level=0).first()
                 positions = np.flatnonzero(mask.to_numpy())[first.index.to_numpy()]
                 names.iloc[positions] = [area_names[polygon] for polygon in first.to_numpy()]
+                owners.iloc[positions] = code
 
         for code in countries.dropna().unique():
             if code in self.codes:
@@ -523,7 +536,7 @@ class AreaIndex:
         # Tests by a border can lie in the areas of the neighbouring country.
         for code in list(self._trees):
             place(located & names.isna(), code)
-        return names
+        return pd.DataFrame({'name': names, 'country': owners})
 
     def document(self, used: Iterable[str]) -> dict[str, Any]:
         """The countries of the used areas, the polygons of those not shipped with the application, the

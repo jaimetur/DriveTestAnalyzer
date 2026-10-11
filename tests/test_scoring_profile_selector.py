@@ -41,7 +41,7 @@ class _ScoringProfileSelectParser(HTMLParser):
             self.in_profile_select = False
 
 
-def test_scoring_calculation_selector_lists_profiles_and_defaults_to_active(client):
+def test_scoring_calculation_selector_lists_profiles_and_defaults_to_by_campaign(client):
     client.post('/login', data={'username': 'admin', 'password': 'admin123'}, follow_redirects=False)
     workspace = app_module.active_workspace
     repository = Repository(
@@ -66,8 +66,9 @@ def test_scoring_calculation_selector_lists_profiles_and_defaults_to_active(clie
     assert '<label class="scoring-profile-choice">Scoring Methodology' in page.text
     parser = _ScoringProfileSelectParser()
     parser.feed(page.text)
-    assert [profile['id'] for profile in parser.profiles] == [active_id, 'netcheck-alt']
-    assert [profile['selected'] for profile in parser.profiles] == [True, False]
+    # By campaign first and chosen: each campaign with the methodology that applies to it.
+    assert [profile['id'] for profile in parser.profiles] == ['by-campaign', active_id, 'netcheck-alt']
+    assert [profile['selected'] for profile in parser.profiles] == [True, False, False]
 
     config_match = re.search(
         r'<script type="application/json" data-scoring-config>(.*?)</script>', page.text, re.DOTALL,

@@ -207,7 +207,7 @@ def test_scoring_selection_defaults_use_catalogue_metadata_without_reading_cdr_r
             'aggregation_levels': ['Operator', 'Campaign'],
             'nr_mode': 'NSA',
             'baseline_operator': 'EE',
-            'scoring_profile_id': 'netcheck-2026',
+            'scoring_profile_id': 'by-campaign',
             'context_filters': {
                 'Region': [], 'City': [], 'Operator': [], 'Vendor': [], 'Campaign': [],
             },

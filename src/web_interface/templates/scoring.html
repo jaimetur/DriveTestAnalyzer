@@ -114,6 +114,8 @@
   .saved-filter-delete, .saved-filter-pin, .saved-filter-rename { display: inline-flex; align-items: center; justify-content: center; width: 1.55rem; min-width: 1.55rem; height: 1.55rem; min-height: 1.55rem; padding: 0; border: 1px solid rgba(164,61,47,.28); border-radius: 50%; background: #fff3f1; color: #a43d2f; font-size: 1rem; font-weight: 800; line-height: 1; box-shadow: none; }
   .saved-filter-cdrs { display: inline-flex; align-items: center; width: auto; min-height: 1.55rem; padding: .18rem .48rem; border: 1px solid #a9c5dc; border-radius: 999px; background: #eaf3fa; color: #244e70; font-size: .72rem; font-weight: 750; box-shadow: none; }
   .selected-saved-filter .saved-filter-actions { position: static; justify-content: flex-start; }
+  /* The CDRs of a Saved Filter on the left, its buttons on the right. */
+  .saved-filter-actions .saved-filter-cdrs { margin-right: auto; }
   .saved-filter-delete:hover:not(:disabled) { border-color: rgba(164,61,47,.52); background: #fde4e0; color: #842d23; box-shadow: none; transform: none; }
   .saved-filter-delete:focus-visible { outline: 3px solid rgba(164,61,47,.25); outline-offset: 2px; }
   .saved-filter-pin, .saved-filter-rename { border-color: #c9d6de; background: #f4f8fa; color: #46606d; }
@@ -652,12 +654,12 @@
       <label class="scoring-profile-choice">Scoring Methodology
         <select data-scoring-profile aria-label="Choose the scoring methodology for this calculation">
           {% set scoring_profile_options = scoring_profiles | default([], true) %}
+          {% if scoring_profile_options %}<option value="by-campaign" selected>By campaign (each campaign with its methodology)</option>{% endif %}
           {% for profile in scoring_profile_options %}
-          <option value="{{ profile.id }}" {% if profile.id == scoring_active_profile_id %}selected{% endif %}>{{ profile.name }}</option>
+          <option value="{{ profile.id }}">{{ profile.name }}</option>
           {% else %}
           <option value="{{ scoring_active_profile_id | default('', true) }}" selected>{{ scoring_active_profile_name | default('Default', true) }}</option>
           {% endfor %}
-          {% if scoring_profile_options | length > 1 %}<option value="by-campaign">By campaign (each campaign with its methodology)</option>{% endif %}
         </select>
       </label>
       <div class="scoring-actions">

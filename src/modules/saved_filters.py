@@ -260,6 +260,9 @@ def _read_campaigns(repository: Repository, dataset_ids: list[int]) -> dict[int,
     return campaigns
 
 
+DERIVED_ROW_COLUMNS = {'Map_Area', 'Map_Area_Country'}
+
+
 def _source_snapshot(
     repository: Repository,
     dataset_ids: list[int],
@@ -325,7 +328,8 @@ def _source_snapshot(
             'vendor_mapping_applied': int(row['vendor_mapping_applied'] or 0),
             'region_mapping_applied': int(row['region_mapping_applied'] or 0),
             'row_count': row_count,
-            'columns': columns,
+            # The map areas of the tests, kept in the rows in the background, do not change the scores.
+            'columns': [column for column in columns if column not in DERIVED_ROW_COLUMNS],
             'campaigns': campaigns,
         }
         sources.append({'metadata': metadata, 'signature': signature, 'columns': columns, 'table_name': table_name})
@@ -1364,6 +1368,9 @@ def _load_source_frames(
     active_filters = {field: values for field, values in normalized_filters.items() if values}
     catalogues = repository.cdr_catalogues_by_dataset([int(source['metadata']['dataset_id']) for source in sources])
     vendor_operators = scoring_vendor_operators(catalogues, repository.list_operator_mapping_groups())
+    from src.modules.map_area_columns import MAP_AREA_COLUMN, MAP_AREA_COUNTRY_COLUMN, current_datasets
+    # The CDRs whose tests are placed in the current Map Areas give the map their areas.
+    placed = current_datasets(repository, [int(source['metadata']['dataset_id']) for source in sources])
     total = max(1, len(sources))
     for index, source in enumerate(sources, start=1):
         dataset_id = int(source['metadata']['dataset_id'])
@@ -1371,6 +1378,8 @@ def _load_source_frames(
             repository.ensure_vendor_column(dataset_id)
         columns = repository.list_dataset_row_columns(dataset_id)
         requested = required_columns(str(source['metadata']['kind']), source['levels'])
+        if dataset_id in placed:
+            requested = [*requested, MAP_AREA_COLUMN, MAP_AREA_COUNTRY_COLUMN]
         if any(column_identity(level) == 'datasettype' for level in source['levels']):
             requested = [*requested, 'Dataset_Kind']
         requested = [
