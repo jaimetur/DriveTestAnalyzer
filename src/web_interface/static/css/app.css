@@ -384,8 +384,17 @@ a.topnav-link-logout { background: linear-gradient(135deg, #ffd8d8, #ffc6c6); bo
 .menu-item-icon { display: block; flex: 0 0 auto; align-self: center; width: 1.1rem; height: 1.1rem; margin: 0; fill: none; stroke: var(--menu-accent); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 /* The sections of each main module, below its tab on hover or focus. */
 .module-sections-menu { position: fixed; inset: auto; box-sizing: border-box; width: max-content; min-width: 13rem; max-width: calc(100vw - 1rem); margin: 0; padding: .4rem; border: 1px solid var(--menu-border); border-radius: 12px; }
-.module-sections-menu:popover-open { display: grid; gap: .15rem; overflow-y: auto; }
+.module-sections-menu:popover-open { display: grid; align-content: start; gap: .15rem; height: max-content; overflow-y: auto; }
 .module-sections-menu.module-sections-menu-grouped:popover-open { overflow: visible; }
+/* On small screens the sections of a group are listed below it, indented, instead of beside the menu (where they
+   would not fit), and a long menu scrolls. */
+@media (max-width: 640px) {
+  .module-sections-menu.module-sections-menu-grouped:popover-open { overflow-y: auto; }
+  :is(.module-config-options, .module-builders-options, .module-sections-menu) .module-config-sections { position: static; display: grid; min-width: 0; padding: 0 0 .2rem 1.1rem; border: 0; background: none; box-shadow: none; }
+  :is(.module-config-options, .module-builders-options, .module-sections-menu) .module-config-sections::before { display: none; }
+  :is(.module-config-options, .module-builders-options, .module-sections-menu) .module-config-chevron { display: none; }
+  :is(.module-config-options, .module-builders-options) { max-height: calc(100vh - 2rem); max-height: calc(100dvh - 2rem); overflow-y: auto; }
+}
 .module-sections-menu a { padding: .5rem .75rem; border-radius: 8px; font-size: .92rem; font-weight: 700; white-space: nowrap; }
 .topnav-user-options button { width: 100%; padding: .55rem .8rem; border: 0; border-radius: 8px; background: transparent; font: inherit; font-weight: 700; text-align: left; box-shadow: none; cursor: pointer; }
 .module-sections-menu button { width: 100%; min-height: 0; padding: .5rem .75rem; border: 0; border-radius: 8px; background: transparent; font: inherit; font-size: .92rem; font-weight: 700; text-align: left; box-shadow: none; cursor: pointer; }

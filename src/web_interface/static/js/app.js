@@ -8997,6 +8997,10 @@ if (window.location.hash) window.requestAnimationFrame(openMappingHashTarget);
     if (!menu.matches(':popover-open')) menu.showPopover();
     const bounds = tab.getBoundingClientRect();
     const width = menu.getBoundingClientRect().width;
+    // Explicit opposite edges keep the menu content-sized in browsers (Safari on iOS) whose popover defaults would
+    // otherwise stretch it to the bottom of the screen.
+    menu.style.right = 'auto';
+    menu.style.bottom = 'auto';
     menu.style.left = `${Math.max(8, Math.min(bounds.left, window.innerWidth - width - 8))}px`;
     menu.style.top = `${bounds.bottom + 4}px`;
     menu.style.maxHeight = `${Math.max(160, window.innerHeight - bounds.bottom - 12)}px`;
