@@ -10996,8 +10996,15 @@ def test_a_section_chosen_in_a_menu_opens_at_the_top_of_its_page():
     assert 'stopKeepingSection?.();' in app_script and 'observer.observe(document.body, {childList: true, subtree: true});' in app_script
     # Choosing again the section being shown opens it again.
     assert "window.setTimeout(() => window.dispatchEvent(new HashChangeEvent('hashchange')));" in app_script
-    # The pages that return to their earlier position do not when they open at a section.
-    assert "if (target <= 0 || window.location.hash || !('ResizeObserver' in window)) return;" in (root / 'non_qualified_calls.js').read_text(encoding='utf-8')
+    # The pages that return to their earlier position do not when they open at a section, also once the address no
+    # longer has it.
+    assert ("if (target <= 0 || window.location.hash || (typeof sectionKeptInView === 'function' && sectionKeptInView())"
+            in (root / 'non_qualified_calls.js').read_text(encoding='utf-8'))
+    assert 'function sectionKeptInView() {' in app_script
+    # The section of the address opens after the deferred scripts of the page, which read it (Non-Qualified Calls
+    # shows the view of the panel), and panels above it that change size keep it at the top too.
+    assert "document.addEventListener('DOMContentLoaded', openAddressSection, {once: true});" in app_script
+    assert 'sibling = sibling.previousElementSibling) observer.observe(sibling);' in app_script
     scoring_script = (root / 'scoring.js').read_text(encoding='utf-8')
     assert '&& !window.location.hash;' in scoring_script
     assert "|| window.location.hash) return;" in (root / 'ppt_dashboards.js').read_text(encoding='utf-8')
