@@ -63,8 +63,49 @@
       {% endfor %}
     </div>
     {% endif %}
+    <button type="button" class="login-request-access" data-access-request-open>Request Access</button>
   </article>
 </section>
+{# A new user asks for access: the user is created inactive and the administrator is asked by email to activate it. #}
+<dialog class="access-request-dialog" data-access-request-dialog aria-labelledby="access-request-title">
+  <form class="access-request-form" data-access-request-form novalidate>
+    <header>
+      <h3 id="access-request-title">Request Access</h3>
+      <p class="form-note" data-access-request-intro>Your user is created when you submit the request and stays inactive until the administrator activates it.</p>
+    </header>
+    <div class="alert" role="alert" data-access-request-error hidden></div>
+    <div class="alert alert-warning" role="status" data-access-request-existing hidden></div>
+    <label>Username (Ericsson signum)
+      <input class="access-request-signum" type="text" name="username" autocomplete="username" maxlength="7" required
+             pattern="[Ee][A-Za-z]{6}" placeholder="EABCDEF" title="Your Ericsson signum: 7 letters starting with E">
+    </label>
+    <label data-access-request-password><span>Password</span><input type="password" name="password" autocomplete="new-password" required></label>
+    <label data-access-request-confirmation>Confirm Password<input type="password" name="password_confirmation" autocomplete="new-password" required></label>
+    <fieldset>
+      <legend>Workspaces <small>(choose at least one)</small></legend>
+      <div class="access-request-options" data-access-request-workspaces><p class="form-note">Loading…</p></div>
+    </fieldset>
+    <fieldset>
+      <legend>Modules <small>(choose one)</small></legend>
+      <div class="access-request-options" data-access-request-modules></div>
+    </fieldset>
+    <div class="access-request-actions">
+      <button type="button" class="access-request-secondary" data-access-request-cancel>Cancel</button>
+      <button type="submit" data-access-request-submit>Submit Request</button>
+    </div>
+  </form>
+  <section class="access-request-done" data-access-request-done hidden>
+    <header>
+      <h3 data-access-request-done-title>User Created</h3>
+      <p class="form-note"><span data-access-request-done-note>Your user has been created but it is not active yet: ask the administrator to activate it.</span> <strong>Request Activation</strong> opens an email to the administrator with your request.</p>
+    </header>
+    <dl class="access-request-summary" data-access-request-summary></dl>
+    <div class="access-request-actions">
+      <button type="button" class="access-request-secondary" data-access-request-close>Close</button>
+      <button type="button" data-access-request-mail>Request Activation</button>
+    </div>
+  </section>
+</dialog>
 {% endblock %}
 {% block extra_scripts %}
 <script>
@@ -77,6 +118,155 @@
     password.type = reveal ? 'text' : 'password';
     toggle.title = reveal ? 'Hide password' : 'Show password';
     toggle.setAttribute('aria-label', toggle.title);
+  });
+})();
+// Access requests: the workspaces (user groups that open them) and modules (module access groups) to choose, the new
+// inactive user, and the email that asks the administrator to activate it.
+(() => {
+  const dialog = document.querySelector('[data-access-request-dialog]');
+  const open = document.querySelector('[data-access-request-open]');
+  if (!(dialog instanceof HTMLDialogElement) || !(open instanceof HTMLButtonElement)) return;
+  const form = dialog.querySelector('[data-access-request-form]');
+  const done = dialog.querySelector('[data-access-request-done]');
+  const error = dialog.querySelector('[data-access-request-error]');
+  const workspaces = dialog.querySelector('[data-access-request-workspaces]');
+  const modules = dialog.querySelector('[data-access-request-modules]');
+  const submit = dialog.querySelector('[data-access-request-submit]');
+  const warning = dialog.querySelector('[data-access-request-existing]');
+  const passwordLabel = dialog.querySelector('[data-access-request-password] span');
+  const confirmation = dialog.querySelector('[data-access-request-confirmation]');
+  let email = null;
+  // The user of the signum when it already exists: the request then changes its access (with its current password).
+  let existing = null;
+  const element = (tag, text, className) => {
+    const node = document.createElement(tag);
+    if (text !== undefined) node.textContent = text;
+    if (className) node.className = className;
+    return node;
+  };
+  // Nothing is chosen beforehand: at least one workspace and the modules must be chosen.
+  const option = (type, name, value, title, note) => {
+    const label = element('label', undefined, 'access-request-option');
+    const input = element('input');
+    Object.assign(input, {type, name, value: String(value)});
+    label.append(input, element('strong', title), element('small', note));
+    return label;
+  };
+  const showError = (message) => {
+    error.textContent = message;
+    error.hidden = !message;
+  };
+  const loadOptions = async () => {
+    try {
+      const response = await fetch('/api/access-requests/options', {cache: 'no-store'});
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || 'The options could not be loaded.');
+      workspaces.replaceChildren(...(data.workspace_groups.length
+        ? data.workspace_groups.map((group) => option('checkbox', 'workspace_group_ids', group.id, group.name, group.workspaces.join(', ')))
+        : [element('p', 'No workspace can be requested yet: ask the administrator.', 'form-note')]));
+      modules.replaceChildren(...(data.module_groups.length
+        ? data.module_groups.map((group) => option('radio', 'module_group_id', group.id, group.name, group.modules.join(', ')))
+        : [element('p', 'No modules can be requested yet: ask the administrator.', 'form-note')]));
+    } catch (exc) {
+      showError(exc.message);
+    }
+  };
+  // Submit Request is enabled once every required field is filled in: the signum, both passwords, a workspace and
+  // the modules.
+  const updateSubmit = () => {
+    const data = new FormData(form);
+    const filled = String(data.get('username') || '').trim() && data.get('password') && (existing || data.get('password_confirmation'))
+      && data.getAll('workspace_group_ids').length && data.get('module_group_id') && !existing?.administrator;
+    submit.disabled = !filled;
+    submit.title = filled ? '' : 'Fill in every field to submit the request';
+  };
+  form.addEventListener('input', updateSubmit);
+  form.addEventListener('change', updateSubmit);
+  const showExisting = (user) => {
+    existing = user;
+    warning.hidden = !user;
+    warning.textContent = !user ? '' : user.administrator
+      ? `${user.username} is an administrator account: change its access in Admin.`
+      : `The user ${user.username} already exists. Submitting this request replaces its workspaces and modules with the ones chosen here and deactivates it until the administrator activates it again. Enter its current password.`;
+    passwordLabel.textContent = user ? 'Current Password' : 'Password';
+    dialog.querySelector('[data-access-request-intro]').textContent = user
+      ? 'Your request changes the access of your user, which stays inactive until the administrator activates it again.'
+      : 'Your user is created when you submit the request and stays inactive until the administrator activates it.';
+    confirmation.hidden = Boolean(user);
+    form.password.autocomplete = user ? 'current-password' : 'new-password';
+    updateSubmit();
+  };
+  let lookup = 0;
+  form.username.addEventListener('input', () => {
+    const value = form.username.value.trim();
+    const token = ++lookup;
+    if (!/^[Ee][A-Za-z]{6}$/.test(value)) {
+      showExisting(null);
+      return;
+    }
+    window.setTimeout(async () => {
+      if (token !== lookup) return;
+      try {
+        const response = await fetch(`/api/access-requests/users/${encodeURIComponent(value)}`, {cache: 'no-store'});
+        const user = await response.json();
+        if (token === lookup) showExisting(user.exists ? user : null);
+      } catch (_error) {
+        if (token === lookup) showExisting(null);
+      }
+    }, 250);
+  });
+  open.addEventListener('click', async () => {
+    form.reset();
+    form.hidden = false;
+    done.hidden = true;
+    showError('');
+    showExisting(null);
+    dialog.showModal();
+    await loadOptions();
+    updateSubmit();
+  });
+  dialog.querySelectorAll('[data-access-request-cancel], [data-access-request-close]').forEach((button) => button.addEventListener('click', () => dialog.close()));
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const data = new FormData(form);
+    const username = String(data.get('username') || '').trim();
+    if (!/^[Ee][A-Za-z]{6}$/.test(username)) { showError('The username must be your Ericsson signum: 7 letters starting with E.'); return; }
+    if (!data.get('password')) { showError('Choose a password.'); return; }
+    if (!existing && data.get('password') !== data.get('password_confirmation')) { showError('The passwords do not match.'); return; }
+    if (!data.getAll('workspace_group_ids').length) { showError('Choose at least one workspace.'); return; }
+    if (!data.get('module_group_id')) { showError('Choose the modules to access.'); return; }
+    showError('');
+    submit.disabled = true;
+    try {
+      const response = await fetch('/api/access-requests', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          username, password: data.get('password'), password_confirmation: data.get('password_confirmation'),
+          workspace_group_ids: data.getAll('workspace_group_ids').map(Number), module_group_id: Number(data.get('module_group_id')),
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.detail || 'The request could not be submitted.');
+      email = result.email;
+      const summary = dialog.querySelector('[data-access-request-summary]');
+      summary.replaceChildren(...[['User', result.username], ['Role', result.role], ['Workspaces', result.workspaces], ['Modules', result.modules]]
+        .flatMap(([term, value]) => [element('dt', term), element('dd', value)]));
+      dialog.querySelector('[data-access-request-done-title]').textContent = result.existing ? 'Access Changed' : 'User Created';
+      dialog.querySelector('[data-access-request-done-note]').textContent = result.existing
+        ? 'The access of your user has been changed and it is inactive until the administrator activates it again.'
+        : 'Your user has been created but it is not active yet: ask the administrator to activate it.';
+      form.hidden = true;
+      done.hidden = false;
+    } catch (exc) {
+      showError(exc.message);
+    } finally {
+      updateSubmit();
+    }
+  });
+  dialog.querySelector('[data-access-request-mail]').addEventListener('click', () => {
+    if (!email) return;
+    const encode = (text) => encodeURIComponent(text.replace(/\r?\n/g, '\r\n'));
+    window.location.href = `mailto:${email.to}?subject=${encode(email.subject)}&body=${encode(email.body)}`;
   });
 })();
 </script>

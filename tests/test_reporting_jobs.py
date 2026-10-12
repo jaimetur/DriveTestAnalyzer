@@ -101,13 +101,14 @@ def test_features_activation_controls_modules_by_role_group_and_user(client):
     assert client.get('/scoring').status_code == 200
     # Rules saved with the former Reporting default (super-admins only) open Reporting to everyone once.
     core.repository.set_application_state(core.FEATURE_ACTIVATION_STATE_KEY, json.dumps({'reporting': core.LEGACY_REPORTING_RULE}))
+    core.repository.set_application_state(core.REPORTING_FOR_ALL_USERS_STATE_KEY, '')
     core._feature_activation_cache = None
     assert core.feature_activation_settings()['reporting']['default'] == 'all'
     # A user group activates Reporting for its members.
     login(client)
     assert client.post('/admin/user-groups', data={'name': 'Analysts', 'description': 'Team', 'member_ids': [analyst_id]},
                        follow_redirects=False).status_code == 303
-    group_id = core.repository.list_user_groups()[0]['id']
+    group_id = next(group['id'] for group in core.repository.list_user_groups() if group['name'] == 'Analysts')
     form = {f'default__{key}': 'all' for key in core.FEATURE_KEYS}
     form.update({'default__reporting': 'none', 'allow__reporting': [f'group:{group_id}'],
                  'default__scoring': 'none', 'allow__scoring': ['role:super-admin']})
@@ -447,7 +448,7 @@ def test_workspace_access_by_role_group_and_user(client):
     # A user group opens it to its members only.
     assert client.post('/admin/user-groups', data={'name': 'Field', 'description': '', 'member_ids': [field_id]},
                        follow_redirects=False).status_code == 303
-    group_id = core.repository.list_user_groups()[0]['id']
+    group_id = next(group['id'] for group in core.repository.list_user_groups() if group['name'] == 'Field')
     client.post('/admin/workspace-access', data={f'access__{workspace_id}': [f'group:{group_id}']}, follow_redirects=False)
     assert core.repository.workspace_access_rules()[workspace_id] == {'roles': [], 'groups': [group_id]}
     assert core.repository.user_has_workspace_access('field', workspace_id)
@@ -478,12 +479,12 @@ def test_users_table_assigns_groups_and_lists_workspaces_granted_by_groups(clien
     assert response.json()['user']['group_ids'] == [group_id]
     assert core.repository.user_has_workspace_access('analyst', workspace.id)
     page = client.get('/admin').text
-    assert '<th>Groups</th><th>Workspaces</th>' in page
+    assert '<th>Role</th><th>Groups</th><th>Active</th><th>Workspaces</th>' in page
     assert f'<span>{workspace.name} <small>· Analysts</small></span>' in page
     # A form without the group selector keeps the memberships.
     client.post(f'/admin/users/{analyst_id}/update', data={'username': 'analyst', 'role': 'user-viewer', 'active': '1'},
                 headers={'X-Requested-With': 'XMLHttpRequest'})
-    assert core.repository.list_user_groups()[0]['member_ids'] == [analyst_id]
+    assert next(group for group in core.repository.list_user_groups() if group['name'] == 'Analysts')['member_ids'] == [analyst_id]
 
 
 def test_cdr_analysis_artifact_keeps_metrics_filters_and_single_choices():

@@ -2085,7 +2085,8 @@ class Repository:
                 (user_id,),
             ).fetchone()
 
-    def create_user(self, username: str, password: str, role: str) -> None:
+    def create_user(self, username: str, password: str, role: str, *, active: bool = True) -> int:
+        """Create a user (inactive until an administrator activates it with ``active=False``); returns its ID."""
         normalized_username = username.strip()
         with self.global_connection() as conn:
             duplicate = conn.execute(
@@ -2094,10 +2095,10 @@ class Repository:
             ).fetchone()
             if duplicate:
                 raise ValueError('A user with that username already exists.')
-            conn.execute(
-                "INSERT INTO users (username, password_hash, role, active, created_at) VALUES (?, ?, ?, 1, ?)",
-                (normalized_username, hash_password(password), role, local_now_iso()),
-            )
+            return int(conn.execute(
+                "INSERT INTO users (username, password_hash, role, active, created_at) VALUES (?, ?, ?, ?, ?)",
+                (normalized_username, hash_password(password), role, int(active), local_now_iso()),
+            ).lastrowid)
 
     def update_user(self, user_id: int, username: str, role: str, active: bool, password: str | None = None) -> None:
         normalized_username = username.strip()

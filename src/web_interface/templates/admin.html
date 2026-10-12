@@ -119,13 +119,13 @@
       <div>
         <p class="eyebrow">Identity</p>
         <h2>Users</h2>
-        <p class="summary-description">Every account with its role, active status, groups and workspaces. Change any of them in place, including the password.</p>
+        <p class="summary-description">Every account with its role, groups, active status and workspaces. Change any of them in place, including the password.</p>
       </div>
       <span class="collapse-chip">Collapse</span>
     </summary>
     <div class="table-wrap">
       <table class="users-table">
-        <thead><tr><th>ID</th><th>Username</th><th>Password</th><th>Role</th><th>Active</th><th>Groups</th><th>Workspaces</th><th>Created</th><th>Actions</th></tr></thead>
+        <thead><tr><th>ID</th><th>Username</th><th>Password</th><th>Role</th><th>Groups</th><th>Active</th><th>Workspaces</th><th>Created</th><th>Actions</th></tr></thead>
         <tbody>
           {% for row in users %}
           <tr data-user-row>
@@ -158,12 +158,6 @@
               {% endif %}
             </td>
             <td>
-              <label class="toggle-switch" aria-label="Toggle active state for {{ row['username'] }}">
-                <input type="checkbox" name="active" value="1" form="user-update-{{ row['id'] }}" {% if row['active'] %}checked{% endif %} {% if user.role != 'super-admin' and row['role'] == 'super-admin' %}disabled{% endif %}>
-                <span class="toggle-slider"></span>
-              </label>
-            </td>
-            <td>
               {% set groups_locked = user.role != 'super-admin' and row['role'] == 'super-admin' %}
               <input type="hidden" name="groups_submitted" value="1" form="user-update-{{ row['id'] }}">
               <details class="workspace-user-picker" data-workspace-user-picker>
@@ -173,6 +167,12 @@
                   {% for group in user_groups %}<label><input type="checkbox" name="group_ids" value="{{ group.id }}" form="user-update-{{ row['id'] }}" {% if group.id in row['group_ids'] %}checked{% endif %} {% if groups_locked %}disabled{% endif %}><span>{{ group.name }}</span></label>{% else %}<p class="table-help">No user groups yet.</p>{% endfor %}
                 </div>
               </details>
+            </td>
+            <td>
+              <label class="toggle-switch" aria-label="Toggle active state for {{ row['username'] }}">
+                <input type="checkbox" name="active" value="1" form="user-update-{{ row['id'] }}" {% if row['active'] %}checked{% endif %} {% if user.role != 'super-admin' and row['role'] == 'super-admin' %}disabled{% endif %}>
+                <span class="toggle-slider"></span>
+              </label>
             </td>
             <td>
               <details class="workspace-user-picker" data-workspace-user-picker>

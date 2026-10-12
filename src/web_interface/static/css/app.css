@@ -1671,6 +1671,31 @@ body[data-embedded-template-editor] .slides-templates-editor-table-wrap .form-ac
 .login-default-role-super-admin { color: #b0197e; }
 .login-default-role-admin { color: #b33131; }
 .login-default-role-user { color: #1f5fae; }
+/* Access requests: the button below the sign-in and its dialog. */
+.login-request-access { justify-self: start; min-height: 3.2rem; padding: 0.6rem 1.7rem; background: linear-gradient(135deg, #e0701b, #f2a33a); color: #fff; box-shadow: 0 8px 20px rgba(224, 112, 27, 0.28); font-size: 1.3rem; font-weight: 800; line-height: 1.2; }
+.login-request-access:hover, .login-request-access:focus-visible { background: linear-gradient(135deg, #c95f10, #e0901f); box-shadow: 0 10px 24px rgba(201, 95, 16, 0.34); }
+.access-request-dialog { width: min(560px, calc(100vw - 2rem)); max-height: calc(100dvh - 2rem); border: 1px solid var(--line); border-radius: 20px; padding: 0; color: var(--text); background: var(--panel-strong); box-shadow: 0 24px 72px rgba(7, 21, 31, 0.34); }
+.access-request-dialog::backdrop { background: rgba(9, 28, 40, 0.48); backdrop-filter: blur(3px); }
+.access-request-dialog [hidden] { display: none !important; }
+.access-request-form, .access-request-done { display: grid; gap: 0.9rem; padding: 1.45rem; }
+.access-request-dialog header { display: grid; gap: 0.35rem; }
+.access-request-dialog h3, .access-request-dialog p { margin: 0; }
+.access-request-form > label { display: grid; gap: 0.35rem; font-weight: 600; }
+.access-request-signum { text-transform: uppercase; }
+.access-request-signum::placeholder { text-transform: none; }
+.access-request-dialog fieldset { display: grid; gap: 0.45rem; margin: 0; padding: 0.7rem 0.9rem 0.85rem; border: 1px solid var(--line); border-radius: 14px; }
+.access-request-dialog legend { padding: 0 0.35rem; font-weight: 700; }
+.access-request-dialog legend small { color: var(--muted); font-weight: 500; }
+.access-request-options { display: grid; gap: 0.55rem; }
+.access-request-option { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: 0.1rem 0.6rem; cursor: pointer; }
+.access-request-option input { width: auto; margin: 0.2rem 0 0; }
+.access-request-option small { grid-column: 2; color: var(--muted); }
+.access-request-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.6rem; }
+.access-request-secondary { background: #e7ecef; color: #3e5562; box-shadow: none; }
+.access-request-secondary:hover { background: #d1dce2; color: #243f4d; }
+.access-request-summary { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.4rem 0.9rem; margin: 0; padding: 0.85rem 1rem; border-radius: 14px; background: rgba(16, 49, 74, 0.05); }
+.access-request-summary dt { color: var(--muted); font-weight: 700; }
+.access-request-summary dd { margin: 0; overflow-wrap: anywhere; }
 .summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.9rem; }
 .summary-grid article, .compact-summary article { padding: 1rem; border-radius: 18px; background: rgba(255,255,255,0.84); border: 1px solid var(--line); }
 .summary-grid span, .compact-summary span { display: block; color: var(--muted); font-size: 0.86rem; }
@@ -3052,10 +3077,11 @@ body:has(.release-navigator) .help-navigator{top:37%}
   .users-table td:nth-child(2)::before { content: 'Username'; }
   .users-table td:nth-child(3)::before { content: 'Password'; }
   .users-table td:nth-child(4)::before { content: 'Role'; }
-  .users-table td:nth-child(5)::before { content: 'Active'; }
-  .users-table td:nth-child(6)::before { content: 'Workspaces'; }
-  .users-table td:nth-child(7)::before { content: 'Created'; }
-  .users-table td:nth-child(8)::before { content: 'Actions'; }
+  .users-table td:nth-child(5)::before { content: 'Groups'; }
+  .users-table td:nth-child(6)::before { content: 'Active'; }
+  .users-table td:nth-child(7)::before { content: 'Workspaces'; }
+  .users-table td:nth-child(8)::before { content: 'Created'; }
+  .users-table td:nth-child(9)::before { content: 'Actions'; }
   .catalogue-workspace-table td:nth-child(1)::before { content: 'Template name'; }
   .catalogue-workspace-table td:nth-child(2)::before { content: 'NR Mode'; }
   .catalogue-workspace-table td:nth-child(3)::before { content: 'Created'; }
@@ -3093,7 +3119,7 @@ body:has(.release-navigator) .help-navigator{top:37%}
   .catalogue-workspace-table tbody tr { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .reporting-stack .report-jobs-table tbody tr { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .catalogue-workspace-table td:nth-child(2) { grid-column: 1 / -1; }
-  .users-table td:nth-child(6), .users-table td:nth-child(8),
+  .users-table td:nth-child(7), .users-table td:nth-child(9),
   .catalogue-workspace-table td:nth-child(1), .catalogue-workspace-table td:nth-child(7),
   .report-jobs-table td:nth-child(13),
   .workspace-library-table td[data-label="Workspace"], .workspace-library-table td[data-label="Users with access"],

@@ -12,6 +12,7 @@ Administrator Config centralises user, portability, database and dataset adminis
 | --- | --- |
 | Roles | [Open section](#roles) |
 | Create user and Users | [Open section](#create-user-and-users) |
+| Access Requests | [Open section](#access-requests) |
 | User Groups | [Open section](#user-groups) |
 | Features Activation | [Open section](#features-activation) |
 | Workspace Access | [Open section](#workspace-access) |
@@ -47,11 +48,26 @@ Administrators can:
 - manage workspace access where authorised;
 - delete eligible accounts.
 
-The **Groups** column chooses the user groups each account belongs to (the same membership edited in [User Groups](#user-groups)). The **Workspaces** column lists the workspaces granted to the account under **User**, followed, read-only, by the workspaces it opens through its user groups (**Groups**, with the group names) and through its role (**Role**). Only a super-admin can change the workspaces of an account here; admins grant the workspaces they manage in [Workspace Access](#workspace-access). Leave a password field empty when an edit should preserve the current password. **Reset password** restores `super123`, `admin123` or `demo123` for the three bootstrap names and uses `Ericsson123` for another account; the dialog displays the resulting password so it can be changed or communicated securely.
+The **Groups** column, after the role, chooses the user groups each account belongs to (the same membership edited in [User Groups](#user-groups)), such as its workspace groups and its module access group. The **Workspaces** column lists the workspaces granted to the account under **User**, followed, read-only, by the workspaces it opens through its user groups (**Groups**, with the group names) and through its role (**Role**). Only a super-admin can change the workspaces of an account here; admins grant the workspaces they manage in [Workspace Access](#workspace-access). Leave a password field empty when an edit should preserve the current password. **Reset password** restores `super123`, `admin123` or `demo123` for the three bootstrap names and uses `Ericsson123` for another account; the dialog displays the resulting password so it can be changed or communicated securely.
+
+## Access Requests
+
+**Request Access**, below the sign-in of the login page, lets a new user ask for access without an account. Its dialog asks for:
+
+- the **Username**: the Ericsson signum, 7 letters starting with E (stored in capitals; sign-in ignores the case);
+- a **Password**, typed twice;
+- the **Workspaces**, at least one: the user groups that open workspaces in [Workspace Access](#workspace-access) (for example DE or UK), each with the workspaces it opens;
+- the **Modules**, required: one of the module access groups — **NQ Calls**, **Benchmarking** or **All Modules** — each with the main modules it gives (see [User Groups](#user-groups)).
+
+Nothing is chosen beforehand: **Submit Request** is enabled once every field is filled in, and the request is not sent without a valid signum, matching passwords, a workspace and the modules.
+
+**Submit Request** creates the user, inactive, with the `user-editor` role, in the chosen workspace groups and module group. A dialog then says that the user has been created but must be activated by the administrator, and **Request Activation** opens an email in the default mail application, addressed to the administrator (the author of the application), with the user, its role, workspaces and modules, the time of the request and the address of the Admin page. The administrator reviews it and activates the user with its **Active** switch in [Users](#create-user-and-users), where its groups can also be changed. When the signum already has a user, the dialog warns of it as soon as it is typed and asks for its **Current Password** instead of a new one: the request then replaces the workspace and module groups of that user with the chosen ones (its other groups and its role stay), deactivates it and ends its open sessions until the administrator activates it again, and the email (**Access Changed**) also lists its previous workspaces and modules. Administrator accounts change their access in Admin, not with a request. Every request is written to App Logs (`access_request`, or `access_change_request` for an existing user).
 
 ## User Groups
 
 **User Groups** creates custom groups of users for Features Activation and Workspace Access. Admins and super-admins create a group with a name, an optional description and its members, then edit or delete it from the same table. Deleting a group or a user keeps every other account and group unchanged. Groups and their members are stored in the application database (`User Groups` and `User Group Members` tables), so configuration exports, transfers and backups include them.
+
+Module access is managed by group: every deployment gets once the **NQ Calls** (Workspace and Non-Qualified Calls), **Benchmarking** (every main module except Non-Qualified Calls) and **All Modules** (every main module) groups, each Allowed in [Features Activation](#features-activation) the modules it gives and Forbidden the others (PPT Reporting (old) keeps its own setting). Moving a user to another of these groups changes its modules at once, and changing their rules changes the modules of all their members. A user should belong to one of them only, since Forbidden wins. [Access requests](#access-requests) offer these three groups by name while they exist.
 
 ## Features Activation
 
@@ -67,7 +83,7 @@ Each feature has three settings:
 
 An account matching both lists loses the feature: Forbidden always wins. For example, set **By default: Nobody** and allow the `admin` role, or keep **All users** and forbid one user group. Each list combines Roles, Groups and Users in one selector with a filter; the selector summarises the selection, such as `1 role · 2 users`.
 
-A feature that is not active for a user disappears from the main tabs and the Modules menu, and its pages and API answer 403. Workspace switching, dataset uploads and processing remain available everywhere. A new deployment starts with every module active for all users except PPT Reporting (old), which is off (**Nobody**) for every role, group and user until an admin activates it. [Reporting](reporting.md) is active for all users; settings saved while it was restricted to super-admins by default are opened to everyone once. Saved settings keep their values. The settings are stored in the application database.
+A feature that is not active for a user disappears from the main tabs and the Modules menu, and its pages and API answer 403. Workspace switching, dataset uploads and processing remain available everywhere. A new deployment starts with every module active for all users except PPT Reporting (old), which is off (**Nobody**) for every role, group and user until an admin activates it, and with the rules of the module access groups ([User Groups](#user-groups)). [Reporting](reporting.md) is active for all users; settings saved while it was restricted to super-admins by default are opened to everyone once. Saved settings keep their values. The settings are stored in the application database.
 
 Reporting Jobs can only include artifacts of the modules active for their author; see [Reporting](reporting.md).
 

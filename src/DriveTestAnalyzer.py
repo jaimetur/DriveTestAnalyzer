@@ -513,6 +513,19 @@ FEATURE_ACTIVATION_CACHE_SECONDS = 5.0
 FEATURE_DEFAULTS: dict[str, dict[str, Any]] = {
     'ppt-reporting-old': {'default': 'none'},
 }
+# The user groups that give the main modules, so access is managed by group: created once per deployment, each one
+# Allowed in Features Activation the modules it gives and Forbidden the others (PPT Reporting (old) stays apart).
+MODULE_ACCESS_GROUPS: tuple[dict[str, Any], ...] = (
+    {'name': 'NQ Calls', 'description': 'Workspace and Non-Qualified Calls.',
+     'features': ('workspace', 'non-qualified-calls')},
+    {'name': 'Benchmarking', 'description': 'Every main module except Non-Qualified Calls.',
+     'features': tuple(key for key in FEATURE_KEYS if key not in {'non-qualified-calls', 'ppt-reporting-old'})},
+    {'name': 'All Modules', 'description': 'Every main module.',
+     'features': tuple(key for key in FEATURE_KEYS if key != 'ppt-reporting-old')},
+)
+MODULE_ACCESS_GROUPS_STATE_KEY = 'module_access_groups_v1'
+# An Ericsson signum: an E and six more letters, stored in capitals (sign-in ignores the case).
+SIGNUM_PATTERN = re.compile(r'[Ee][A-Za-z]{6}')
 _feature_activation_cache: tuple[float, str, dict[str, Any]] | None = None
 
 
@@ -598,6 +611,26 @@ def _feature_activation_snapshot() -> dict[str, Any]:
 def invalidate_feature_activation_cache() -> None:
     global _feature_activation_cache
     _feature_activation_cache = None
+
+
+def ensure_module_access_groups() -> None:
+    """Create the module access groups and their Features Activation rules, once per deployment."""
+    if repository.get_application_state(MODULE_ACCESS_GROUPS_STATE_KEY) == '1':
+        return
+    existing = {str(group['name']).casefold(): int(group['id']) for group in repository.list_user_groups()}
+    rules = feature_activation_settings()
+    for group in MODULE_ACCESS_GROUPS:
+        group_id = existing.get(group['name'].casefold()) or repository.save_user_group(None, group['name'], group['description'], [])
+        for key in FEATURE_KEYS:
+            if key == 'ppt-reporting-old':
+                continue
+            granted, refused = (rules[key]['allow'], rules[key]['deny']) if key in group['features'] else (rules[key]['deny'], rules[key]['allow'])
+            if group_id not in granted['groups']:
+                granted['groups'].append(group_id)
+            if group_id in refused['groups']:
+                refused['groups'].remove(group_id)
+    save_feature_activation_settings(rules)
+    repository.set_application_state(MODULE_ACCESS_GROUPS_STATE_KEY, '1')
 
 
 def feature_rule_allows(rule: dict[str, Any], role: str, user_id: int | None, groups: set[int], username: str) -> bool:
@@ -3067,6 +3100,7 @@ async def lifespan(_: FastAPI):
     stored_runtime_configuration = runtime_configuration()
     if stored_runtime_configuration['configured']:
         apply_runtime_configuration(stored_runtime_configuration)
+    ensure_module_access_groups()
     migrate_workspace_template_registries()
     migrate_ppt_module_names()
     submit_background_task(empty_workspace_trash)
@@ -11298,6 +11332,152 @@ def login(
         'workspace': active_workspace.name if active_workspace else '',
     }))
     return response
+
+
+# -- access requests from the login page ---------------------------------------------------------
+def access_request_options() -> dict[str, Any]:
+    """What the access request of the login page offers: the user groups that open workspaces, with their workspaces,
+    and the module access groups, with the main modules an editor in them gets."""
+    groups = repository.list_user_groups()
+    names = {workspace.id: workspace.name for workspace in workspace_registry.list()}
+    workspaces_by_group: dict[int, list[str]] = {}
+    for workspace_id, rule in repository.workspace_access_rules().items():
+        if workspace_id in names:
+            for group_id in rule['groups']:
+                workspaces_by_group.setdefault(int(group_id), []).append(names[workspace_id])
+    module_group_names = [group['name'].casefold() for group in MODULE_ACCESS_GROUPS]
+    labels = load_module_labels(repository)
+    rules = feature_activation_settings()
+
+    def modules(group_id: int) -> list[str]:
+        return [labels[key]['title'] for key in labels
+                if key in rules and feature_rule_allows(rules[key], 'user-editor', None, {group_id}, '')]
+
+    by_name = {str(group['name']).casefold(): group for group in groups}
+    return {
+        'workspace_groups': [{'id': int(group['id']), 'name': group['name'],
+                              'workspaces': sorted(workspaces_by_group[int(group['id'])], key=str.casefold)}
+                             for group in groups if int(group['id']) in workspaces_by_group
+                             and str(group['name']).casefold() not in module_group_names],
+        'module_groups': [{'id': int(by_name[name]['id']), 'name': by_name[name]['name'], 'modules': modules(int(by_name[name]['id']))}
+                          for name in module_group_names if name in by_name],
+    }
+
+
+class AccessRequestPayload(BaseModel):
+    username: str = ''
+    password: str = ''
+    password_confirmation: str = ''
+    workspace_group_ids: list[int] = Field(default_factory=list)
+    module_group_id: int | None = None
+
+
+@app.get('/api/access-requests/options')
+def access_request_options_endpoint() -> JSONResponse:
+    return JSONResponse(access_request_options(), headers={'Cache-Control': 'no-store'})
+
+
+# Roles whose access a request can change; administrators change theirs in Admin.
+ACCESS_REQUEST_ROLES = ('user-viewer', 'user-editor')
+
+
+@app.get('/api/access-requests/users/{username}')
+def access_request_user(username: str) -> JSONResponse:
+    """Whether a signum already has a user, so the request changes its access instead of creating it."""
+    signum = username.strip()
+    record = repository.get_user(signum) if SIGNUM_PATTERN.fullmatch(signum) else None
+    return JSONResponse({'exists': record is not None, 'username': record.username if record else signum.upper(),
+                         'administrator': bool(record) and record.role not in ACCESS_REQUEST_ROLES},
+                        headers={'Cache-Control': 'no-store'})
+
+
+@app.post('/api/access-requests', status_code=status.HTTP_201_CREATED)
+def create_access_request(request: Request, payload: AccessRequestPayload) -> JSONResponse:
+    """Create the requested user, inactive until an administrator activates it: an editor in the user groups of the
+    chosen workspaces and in the chosen module access group. For a user that already exists (with its current password)
+    its workspace and module groups are replaced and it is deactivated until an administrator activates it again.
+    Returns the email that asks for the activation."""
+    from src.modules.repository import local_now_iso
+
+    signum = payload.username.strip()
+    if not SIGNUM_PATTERN.fullmatch(signum):
+        raise HTTPException(status_code=400, detail='The username must be your Ericsson signum: 7 letters starting with E.')
+    if not payload.password:
+        raise HTTPException(status_code=400, detail='Choose a password.')
+    options = access_request_options()
+    chosen = set(payload.workspace_group_ids)
+    workspace_groups = [group for group in options['workspace_groups'] if group['id'] in chosen]
+    if not chosen or len(workspace_groups) != len(chosen):
+        raise HTTPException(status_code=400, detail='Choose at least one workspace of the list.')
+    module_group = next((group for group in options['module_groups'] if group['id'] == payload.module_group_id), None)
+    if module_group is None:
+        raise HTTPException(status_code=400, detail='Choose the modules to access.')
+
+    def describe(groups: list[dict[str, Any]], key: str) -> str:
+        return '; '.join(f"{group['name']} ({', '.join(group[key])})" for group in groups) or 'None'
+
+    requested_groups = [group['id'] for group in workspace_groups] + [module_group['id']]
+    record = repository.get_user(signum)
+    previous: list[str] = []
+    if record:
+        if record.role not in ACCESS_REQUEST_ROLES:
+            raise HTTPException(status_code=403, detail=f'{record.username} is an administrator account: change its access in Admin.')
+        if not verify_password(payload.password, record.password_hash):
+            raise HTTPException(status_code=403, detail=f'The password is not the current password of {record.username}.')
+        username, role = record.username, record.role
+        user_id = next(int(row['id']) for row in repository.list_users() if str(row['username']).casefold() == username.casefold())
+        member_of = {int(group['id']) for group in repository.list_user_groups() if user_id in group['member_ids']}
+        offered = [*options['workspace_groups'], *options['module_groups']]
+        previous = [f"Previous workspaces: {describe([group for group in options['workspace_groups'] if group['id'] in member_of], 'workspaces')}",
+                    f"Previous modules: {describe([group for group in options['module_groups'] if group['id'] in member_of], 'modules')}"]
+        # Other groups are kept; the workspace and module groups become the requested ones.
+        kept = [group_id for group_id in member_of if group_id not in {group['id'] for group in offered}]
+        repository.set_user_groups(user_id, kept + requested_groups)
+        repository.update_user(user_id, username, role, False)
+        for token, session in list(SESSIONS.items()):
+            if session.username.casefold() == username.casefold():
+                SESSIONS.pop(token, None)
+    else:
+        if payload.password != payload.password_confirmation:
+            raise HTTPException(status_code=400, detail='The passwords do not match.')
+        username, role = signum.upper(), 'user-editor'
+        try:
+            user_id = repository.create_user(username, payload.password, role, active=False)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=f'The user {username} already exists.') from exc
+        repository.set_user_groups(user_id, requested_groups)
+    invalidate_feature_activation_cache()
+    workspaces = describe(workspace_groups, 'workspaces')
+    modules = describe([module_group], 'modules')
+    requested = local_now_iso()[:16].replace('T', ' ')
+    repository.add_log(username, 'access_change_request' if record else 'access_request', json.dumps({
+        'role': role, 'groups': [group['name'] for group in workspace_groups] + [module_group['name']],
+    }))
+    opening = (f'I have requested a change of the access of my user to {__app_name__}. The new access has been applied and my '
+               'user is inactive until you review it: please activate it again in Admin › Users.' if record else
+               f'I have requested access to {__app_name__}. My user has been created but it is not active yet: please review '
+               'the request and activate it in Admin › Users.')
+    body = '\n'.join([
+        f"Hello {__author__.split()[0]},",
+        '',
+        opening,
+        '',
+        f'User: {username}',
+        f'Role: {role}',
+        f'Workspaces: {workspaces}',
+        f'Modules: {modules}',
+        *previous,
+        f'Requested on: {requested}',
+        f"Server: {str(request.base_url).rstrip('/')}/admin",
+        '',
+        'Thank you,',
+        username,
+    ])
+    subject = f"{__app_name__} access {'change ' if record else ''}request: {username}"
+    return JSONResponse({
+        'username': username, 'role': role, 'existing': record is not None, 'workspaces': workspaces, 'modules': modules,
+        'email': {'to': __author_email__, 'subject': subject, 'body': body},
+    }, status_code=status.HTTP_201_CREATED)
 
 
 @app.get('/logout')
