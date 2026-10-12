@@ -13,6 +13,18 @@
   {% if not active_workspace %}
   <article class="panel"><p class="form-note">Open a workspace to review its Non-Qualified Calls.</p></article>
   {% else %}
+  {# Above the filters: the calls table, one panel or every panel below them; each browser remembers the choice. #}
+  <nav class="nq-view-switch" id="nq-view-switch" role="tablist" aria-label="View">
+    <button type="button" role="tab" data-nq-view="calls" aria-selected="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>NQ Calls <span class="nq-view-count" id="nq-view-count"></span></button>
+    <button type="button" role="tab" data-nq-view="summary" aria-selected="false" title="The Executive Summary of the filtered calls"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>Summary</button>
+    <button type="button" role="tab" data-nq-view="rates" aria-selected="false" title="NQ Rate by Campaign and Operator"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 5 5 19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>NQ Rate</button>
+    <button type="button" role="tab" data-nq-view="progress" aria-selected="false" title="Progress View"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 17 6-6 4 4 8-8"/><path d="M14 7h7v7"/></svg>Progress</button>
+    <button type="button" role="tab" data-nq-view="lifecycle" aria-selected="false" title="Lifecycle &amp; Phases"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.9-4M4 13a8 8 0 0 0 14.9 4"/><path d="M5 3v4h4M19 21v-4h-4"/></svg>Lifecycle</button>
+    <button type="button" role="tab" data-nq-view="root" aria-selected="false" title="Root Cause Analysis"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1"/></svg>Root Causes</button>
+    <button type="button" role="tab" data-nq-view="sources" aria-selected="false" title="Root Cause Sources"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 3 8l9 5 9-5-9-5z"/><path d="m3 13 9 5 9-5"/></svg>RCA Sources</button>
+    <button type="button" role="tab" data-nq-view="all" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>All panels</button>
+  </nav>
+
   <details class="panel collapsible-panel nq-filters-panel" open data-panel-state-key="non-qualified-calls:filters">
     <summary class="collapsible-summary"><div><p class="eyebrow">Selection</p><h2>Filters</h2></div><span class="collapse-chip">Collapse</span></summary>
     <div class="collapsible-panel-body">
@@ -76,18 +88,6 @@
       </div>
     </div>
   </details>
-
-  {# The calls table or the dashboards right below the filters, or the whole page; each browser remembers the choice. #}
-  <nav class="nq-view-switch" id="nq-view-switch" role="tablist" aria-label="View">
-    <button type="button" role="tab" data-nq-view="calls" aria-selected="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>NQ Calls <span class="nq-view-count" id="nq-view-count"></span></button>
-    <button type="button" role="tab" data-nq-view="summary" aria-selected="false" title="The Executive Summary of the filtered calls"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>Summary</button>
-    <button type="button" role="tab" data-nq-view="rates" aria-selected="false" title="NQ Rate by Campaign and Operator"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 5 5 19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>NQ Rate</button>
-    <button type="button" role="tab" data-nq-view="progress" aria-selected="false" title="Progress View"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 17 6-6 4 4 8-8"/><path d="M14 7h7v7"/></svg>Progress</button>
-    <button type="button" role="tab" data-nq-view="lifecycle" aria-selected="false" title="Lifecycle &amp; Phases"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.9-4M4 13a8 8 0 0 0 14.9 4"/><path d="M5 3v4h4M19 21v-4h-4"/></svg>Lifecycle</button>
-    <button type="button" role="tab" data-nq-view="root" aria-selected="false" title="Root Cause Analysis"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1"/></svg>Root Causes</button>
-    <button type="button" role="tab" data-nq-view="sources" aria-selected="false" title="Root Cause Sources"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 3 8l9 5 9-5-9-5z"/><path d="m3 13 9 5 9-5"/></svg>RCA Sources</button>
-    <button type="button" role="tab" data-nq-view="all" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>All panels</button>
-  </nav>
 
   <details class="panel collapsible-panel nq-summary-panel" data-nq-view-panel="summary" data-nq-loader="summary" open data-panel-state-key="non-qualified-calls:summary">
     <summary class="collapsible-summary"><div><p class="eyebrow">Executive view</p><h2>Summary</h2></div><span class="collapse-chip">Collapse</span></summary>
