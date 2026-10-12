@@ -9028,10 +9028,12 @@ function showSectionAtTop(target) {
     document.body.append(room);
   }
   const current = room.offsetHeight;
-  const top = target.getBoundingClientRect().top + window.scrollY;
+  // A page with a sticky bar above its sections keeps them clear of it (the --section-top-offset of the section).
+  const offset = parseFloat(getComputedStyle(target).getPropertyValue('--section-top-offset')) || 0;
+  const top = target.getBoundingClientRect().top + window.scrollY - offset;
   const needed = Math.max(0, Math.ceil(top + window.innerHeight - (document.documentElement.scrollHeight - current)));
   if (Math.abs(needed - current) > 1) room.style.height = `${needed}px`;
-  if (Math.abs(target.getBoundingClientRect().top) > 2) window.scrollTo({top, behavior: 'auto'});
+  if (Math.abs(target.getBoundingClientRect().top - offset) > 2) window.scrollTo({top, behavior: 'auto'});
 }
 
 // Pages that fill or show their panels once their data arrives (Non-Qualified Calls, Scoring…) grow above the

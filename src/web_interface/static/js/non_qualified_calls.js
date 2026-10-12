@@ -1531,6 +1531,13 @@
   $('nq-view-switch').querySelectorAll('[data-nq-view]').forEach((button) => button.addEventListener('click', () => {
     applyView(button.dataset.nqView);
     refreshStale();
+    // The chosen panel (the first one for every panel) opens at the top of the page, below the bar, and stays there
+    // while its data arrives.
+    const panel = root.querySelector('[data-nq-view-panel]:not([hidden])');
+    if (panel && typeof showSectionAtTop === 'function') {
+      showSectionAtTop(panel);
+      if (typeof keepSectionInView === 'function') keepSectionInView(panel);
+    }
   }));
   root.querySelectorAll('[data-nq-loader]').forEach((panel) => panel.addEventListener('toggle', () => { if (panel.open) refreshStale(); }));
   applyView((() => {
