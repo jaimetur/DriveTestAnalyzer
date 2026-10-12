@@ -8480,7 +8480,8 @@ def test_vfuk_preview_limits_mapping_sheets_and_displays_materialised_gcid(clien
     assert 'name="source_sheet"' in default_preview.text
     assert '<option value="4G" selected>4G</option>' in default_preview.text
     assert '<option value="5G">5G</option>' in default_preview.text
-    assert '2G' not in default_preview.text
+    # No 2G sheet is offered (the random session marker of the page may contain the letters 2G).
+    assert '<option value="2G"' not in default_preview.text and '>2G<' not in default_preview.text
     assert '3330049' in default_preview.text
     assert '>Source_Sheet<' in default_preview.text
     assert 'class="gcid-column"' in default_preview.text
