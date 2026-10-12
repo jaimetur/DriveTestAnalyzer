@@ -19,7 +19,7 @@
       <div class="nq-active-filters" data-nq-active-filters hidden></div>
       <div class="nq-sync-bar">
         <div class="nq-sync-status">
-          <p class="nq-sync" id="nq-sync" role="status">Indexing Non-Qualified Calls…</p>
+          <p class="nq-sync" id="nq-sync" role="status">Loading Non-Qualified Calls…</p>
           <button type="button" class="nq-hero-action" id="nq-refresh" title="Index the calls of every CDR again (their follow-up is kept)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg>Reindex</button>
         </div>
         <div class="nq-sync-exports">
@@ -148,16 +148,16 @@
       <div class="nq-active-filters" data-nq-active-filters hidden></div>
       <div class="nq-progress-head">
         <p class="nq-hint">Where the filtered calls fail: their root cause domain and cause, Classic and WhatsApp calls, NSA and SA, each technology and the eNB/gNB of the last cell of the call, with its site, host and vendor from the workspace cell mappings.</p>
-        <span class="nq-root-head-actions"><label class="nq-toggle" title="Calls without a root cause count with the one suggested by their CDR failure classification"><input type="checkbox" id="nq-root-suggestions" checked> Count suggested root causes</label>
+        <span class="nq-root-head-actions"><span class="nq-rate-tabs" id="nq-root-source" role="tablist" aria-label="Root causes counted"><button type="button" role="tab" class="nq-rate-tab is-active" aria-selected="true" data-nq-root-source="analysts" title="The Root Category and Root Cause the analysts chose">Analysts</button><button type="button" role="tab" class="nq-rate-tab" aria-selected="false" data-nq-root-source="netcheck" title="The NetCheck RCA of the CDR (Failure Classification, Category and Subcategory) mapped onto the Root Cause Catalog">NetCheck RCA</button><button type="button" role="tab" class="nq-rate-tab" aria-selected="false" data-nq-root-source="script" title="The imported results of the RCA script mapped onto the Root Cause Catalog">RCA Script</button></span>
         <button type="button" class="nq-secondary-action" data-nq-rule-open title="See how root causes are suggested; admins and super-admins change it">Suggestion Rule</button></span>
       </div>
       <div class="nq-kpis" id="nq-root-kpis"></div>
       <div class="nq-breakdowns nq-root-breakdowns" id="nq-root-breakdowns"></div>
       <div class="nq-progress-grid">
-        <section class="nq-progress-section"><h3>Classic vs WhatsApp</h3><div class="nq-table-wrap"><table class="nq-table nq-stats-table" id="nq-root-call-types"></table></div></section>
-        <section class="nq-progress-section"><h3>NSA vs SA</h3><div class="nq-table-wrap"><table class="nq-table nq-stats-table" id="nq-root-nr-modes"></table></div></section>
+        <section class="nq-progress-section"><h3>Classic vs WhatsApp</h3><div class="nq-stack-chart" id="nq-root-call-types"></div></section>
+        <section class="nq-progress-section"><h3>NSA vs SA</h3><div class="nq-stack-chart" id="nq-root-nr-modes"></div></section>
       </div>
-      <section class="nq-progress-section"><h3>Technology</h3><div class="nq-table-wrap"><table class="nq-table nq-stats-table" id="nq-root-technologies"></table></div></section>
+      <section class="nq-progress-section"><h3>Technology</h3><div class="nq-stack-chart" id="nq-root-technologies"></div></section>
       <section class="nq-progress-section"><h3>eNB / gNB with most calls</h3><div class="nq-table-wrap"><table class="nq-table nq-stats-table" id="nq-root-nodes"></table></div></section>
     </div>
   </details>
@@ -249,6 +249,7 @@
       <p class="eyebrow" id="nq-drawer-eyebrow">Call</p>
       <h2 id="nq-drawer-title">Call details</h2>
       <p class="nq-drawer-meta" id="nq-drawer-meta"></p>
+      <p class="nq-drawer-join" id="nq-drawer-join" hidden><span>JOIN_ID</span><code id="nq-drawer-join-id"></code><button type="button" class="nq-copy-button" id="nq-drawer-join-copy" title="Copy the JOIN_ID" aria-label="Copy the JOIN_ID"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button></p>
     </div>
     <button type="button" class="nq-drawer-close" id="nq-drawer-close" aria-label="Close the call details">&times;</button>
   </header>

@@ -22,6 +22,9 @@
     nr_mode: 'NR Mode', call_type: 'Call Type', period: 'Period',
     age: 'Age of Open Calls', root_pair: 'Root Domain · Cause', effective_domain: 'Root Domain (with suggestions)',
     effective_cause: 'Root Domain · Cause (with suggestions)', node: 'eNB / gNB', state: 'Follow-up', rca_state: 'Root Cause',
+    netcheck_domain: 'Root Domain (NetCheck RCA)', netcheck_category: 'Root Domain · Category (NetCheck RCA)',
+    netcheck_cause: 'Root Domain · Cause (NetCheck RCA)', script_domain: 'Root Domain (RCA Script)',
+    script_category: 'Root Domain · Category (RCA Script)', script_cause: 'Root Domain · Cause (RCA Script)',
     version: 'CDR Version',
   };
   // How the CDRs see a call; "current" is the latest version with nothing to tell.
@@ -36,6 +39,7 @@
     identified: 'RCA identified', not_identified: 'RCA not identified'};
   // Filters set by clicking the Progress View and the Root Cause Analysis; they have no select of their own.
   const EXTRA_FILTERS = ['nr_mode', 'call_type', 'period', 'age', 'root_pair', 'effective_domain', 'effective_cause', 'node',
+    'netcheck_domain', 'netcheck_category', 'netcheck_cause', 'script_domain', 'script_category', 'script_cause',
     'state', 'rca_state'];
   const HISTORY_LABELS = {status: 'Status', status_auto: 'Status (automatic)', status_mode: 'Status Set', team: 'Team',
     assignee: 'Assignee', root_domain: 'Root Domain', root_category: 'Root Category', root_cause: 'Root Cause'};
@@ -1289,6 +1293,8 @@
       });
       return row;
     }));
+    showCard({scroll: state.cardScroll});
+    state.cardScroll = false;
   };
   const renderSortHeaders = () => {
     $('nq-table').querySelectorAll('[data-sort]').forEach((header) => {
@@ -1298,7 +1304,58 @@
       header.setAttribute('aria-sort', active ? (state.direction === 'asc' ? 'ascending' : 'descending') : 'none');
     });
   };
+  // On phones the calls are cards shown one at a time, with the pager of every card list of the application; the
+  // card moves to the next or previous page of calls by itself.
+  const phoneCards = window.matchMedia('(max-width: 640px)');
+  const callRows = () => [...$('nq-rows').rows].filter((row) => row.dataset.callKey);
+  const showCard = ({scroll = false} = {}) => {
+    const rows = callRows();
+    rows.forEach((row, index) => row.classList.toggle('mobile-card-page-hidden', phoneCards.matches && index !== state.card));
+    if (scroll && phoneCards.matches && rows[state.card] && rows[state.card].getBoundingClientRect().top < 0) {
+      rows[state.card].scrollIntoView({block: 'start'});
+    }
+  };
+  const pagerArrow = (name, path, disabled, onClick) => {
+    const element = node('button');
+    element.type = 'button';
+    element.disabled = disabled;
+    element.setAttribute('aria-label', `${name} page`);
+    element.title = `${name} page`;
+    element.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${path}"/></svg>`;
+    element.addEventListener('click', onClick);
+    return element;
+  };
+  const ARROWS = {First: 'M5 5v14M18 6l-6 6 6 6M12 6l-6 6 6 6', Previous: 'M15 6l-6 6 6 6', Next: 'M9 6l6 6-6 6',
+    Last: 'M19 5v14M6 6l6 6-6 6M12 6l6 6-6 6'};
+  const renderCardPager = (result) => {
+    const host = $('nq-pagination');
+    const rows = result.calls.length;
+    if (result.total <= 1 || !rows) { host.replaceChildren(); return; }
+    const position = (result.page - 1) * result.page_size + state.card + 1;
+    const go = (page, card) => {
+      if (page === result.page) {
+        state.card = card === 'last' ? rows - 1 : card;
+        showCard({scroll: true});
+        renderCardPager(result);
+        return;
+      }
+      state.page = page;
+      state.card = card === 'last' ? 0 : card;
+      state.cardLast = card === 'last';
+      state.cardScroll = true;
+      loadCalls();
+    };
+    const atStart = position <= 1;
+    const atEnd = position >= result.total;
+    host.replaceChildren(
+      pagerArrow('First', ARROWS.First, atStart, () => go(1, 0)),
+      pagerArrow('Previous', ARROWS.Previous, atStart, () => (state.card > 0 ? go(result.page, state.card - 1) : go(result.page - 1, 'last'))),
+      node('span', `Call ${number(position)} of ${number(result.total)}`, 'nq-card-status'),
+      pagerArrow('Next', ARROWS.Next, atEnd, () => (state.card < rows - 1 ? go(result.page, state.card + 1) : go(result.page + 1, 0))),
+      pagerArrow('Last', ARROWS.Last, atEnd, () => go(result.pages, 'last')));
+  };
   const renderPagination = (result) => {
+    if (phoneCards.matches) { renderCardPager(result); return; }
     const host = $('nq-pagination');
     if (result.pages <= 1) { host.replaceChildren(); return; }
     const button = (label, page, disabled = false, current = false) => {
@@ -1309,30 +1366,25 @@
       element.addEventListener('click', () => { state.page = page; loadCalls(); });
       return element;
     };
-    // First, previous, next and last are arrows, as in every pager of the application.
-    const arrow = (name, path, page, disabled) => {
-      const element = button('', page, disabled);
-      element.className = '';
-      element.setAttribute('aria-label', `${name} page`);
-      element.title = `${name} page`;
-      element.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${path}"/></svg>`;
-      return element;
-    };
+    const go = (page) => () => { state.page = page; loadCalls(); };
     const pages = new Set([1, result.pages, result.page - 1, result.page, result.page + 1]);
-    const items = [arrow('First', 'M5 5v14M18 6l-6 6 6 6M12 6l-6 6 6 6', 1, result.page <= 1),
-      arrow('Previous', 'M15 6l-6 6 6 6', result.page - 1, result.page <= 1)];
+    const items = [pagerArrow('First', ARROWS.First, result.page <= 1, go(1)),
+      pagerArrow('Previous', ARROWS.Previous, result.page <= 1, go(result.page - 1))];
     let previous = 0;
     [...pages].filter((page) => page >= 1 && page <= result.pages).sort((a, b) => a - b).forEach((page) => {
       if (page - previous > 1) items.push(node('span', '…', 'nq-ellipsis'));
       items.push(button(String(page), page, false, page === result.page));
       previous = page;
     });
-    // On phones the page among the pages takes the place of the page numbers.
-    items.push(node('span', `Page ${number(result.page)} of ${number(result.pages)}`, 'nq-page-status'),
-      arrow('Next', 'M9 6l6 6-6 6', result.page + 1, result.page >= result.pages),
-      arrow('Last', 'M19 5v14M6 6l6 6-6 6M12 6l6 6-6 6', result.pages, result.page >= result.pages));
+    items.push(pagerArrow('Next', ARROWS.Next, result.page >= result.pages, go(result.page + 1)),
+      pagerArrow('Last', ARROWS.Last, result.page >= result.pages, go(result.pages)));
     host.replaceChildren(...items);
   };
+  phoneCards.addEventListener('change', () => {
+    if (!state.result) return;
+    showCard();
+    renderPagination(state.result);
+  });
   // The actions of the selected calls cover the toolbar right above the table, so the table
   // does not move, and stay at the top of the window while the table is scrolled.
   const placeBulk = () => {
@@ -1472,6 +1524,26 @@
       return 'calls';
     }
   })());
+  // A panel chosen in the sections menu of the module (#section-…) is shown with its view: when the bar hides it, the
+  // page changes to its view before going there (on opening the page, or with a click while it is open).
+  const panelOfHash = (hash) => {
+    const wanted = decodeURIComponent(String(hash || '').replace(/^#/, '')).replace(/^section-/, '');
+    const slug = (text) => String(text || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    return wanted ? [...root.querySelectorAll('[data-nq-view-panel]')].find((panel) => slug(panel.querySelector('h2')?.textContent) === wanted) : null;
+  };
+  const revealPanel = (hash) => {
+    const panel = panelOfHash(hash);
+    if (!panel?.hidden) return;
+    applyView(panel.dataset.nqViewPanel);
+    refreshStale();
+  };
+  revealPanel(window.location.hash);
+  document.addEventListener('click', (event) => {
+    const link = event.target instanceof Element ? event.target.closest('a[href*="#"]') : null;
+    if (!link) return;
+    const url = new URL(link.href, window.location.href);
+    if (url.pathname === window.location.pathname) revealPanel(url.hash);
+  }, true);
 
   // -- loading ----------------------------------------------------------------
   // The indexing runs in the background (when the server is idle, the first time, or on Reindex): the badge says
@@ -1509,6 +1581,7 @@
   async function loadCalls({quiet = false} = {}) {
     const token = ++state.requestToken;
     const filters = currentFilters();
+    const signature = JSON.stringify([filters, state.sort, state.direction, state.pageSize]);
     if (state.filtersRestored) saveFilters(filters);
     if (!quiet) {
       $('nq-count').textContent = 'Loading calls…';
@@ -1526,6 +1599,11 @@
       if (token !== state.requestToken) return;
       state.result = result;
       state.page = result.page;
+      // The card shown on phones: the first one of a new query, the last one when coming back from the next page,
+      // the same one when the calls are only refreshed.
+      if (signature !== state.cardSignature) { state.card = 0; state.cardSignature = signature; }
+      if (state.cardLast) { state.card = result.calls.length - 1; state.cardLast = false; }
+      state.card = Math.min(Math.max(0, state.card || 0), Math.max(0, result.calls.length - 1));
       renderSync(result.sync);
       renderActiveFilters(filters);
       renderColumnFilters();
@@ -1841,77 +1919,96 @@
     });
     return card;
   };
-  // The filter of a root domain or domain·cause, counting the suggestions as the panel does.
-  const domainPair = (domain) => ($('nq-root-suggestions').checked
-    ? ['effective_domain', domain === NOT_CLASSIFIED ? state.unassigned : domain]
-    : ['root_domain', domain === NOT_CLASSIFIED ? state.unassigned : domain]);
-  const causePair = (domain, cause) => [$('nq-root-suggestions').checked ? 'effective_cause' : 'root_pair', `${domain}||${cause}`];
-  // Calls of every group per root domain, each domain with its colour; a group or a cell filters its calls.
-  const domainTable = (table, title, rows, columns, colors, groupPair = null) => {
-    const head = node('thead');
-    const headRow = node('tr');
-    headRow.append(node('th', title));
+  // The root causes the panel counts: those the analysts chose, or what the NetCheck RCA or the RCA script gives each
+  // call on the catalog; a domain, domain·category or domain·cause filters the calls of that source.
+  state.rootSource = 'analysts';
+  const ROOT_SOURCE_NAMES = {analysts: 'the analysts', netcheck: 'the NetCheck RCA', script: 'the RCA script'};
+  const domainPair = (domain) => [state.rootSource === 'analysts' ? 'root_domain' : `${state.rootSource}_domain`,
+    domain === NOT_CLASSIFIED ? state.unassigned : domain];
+  const causePair = (domain, cause) => [state.rootSource === 'analysts' ? 'root_pair' : `${state.rootSource}_cause`, `${domain}||${cause}`];
+  const categoryPairs = (domain, category) => (state.rootSource === 'analysts'
+    ? [domainPair(domain), ['root_category', category || state.unassigned]] : [[`${state.rootSource}_category`, `${domain}||${category}`]]);
+  const ROOT_FILTERS = ['rca_state', 'state', 'effective_domain', 'effective_cause', 'root_pair', 'netcheck_domain', 'netcheck_category',
+    'netcheck_cause', 'script_domain', 'script_category', 'script_cause'];
+  // Calls of every group per root domain: a bar per group split in the colours of its domains, with the count of each
+  // wide enough part and, below it, the count of every domain; the group filters its calls, and each part or count
+  // the calls of its domain.
+  const readableText = (color) => {
+    const hex = /^#([0-9a-f]{6})$/i.exec(color || '');
+    if (!hex) return '#fff';
+    const [r, g, b] = [0, 2, 4].map((index) => parseInt(hex[1].slice(index, index + 2), 16));
+    return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.62 ? 'var(--nq-dark)' : '#fff';
+  };
+  const domainBars = (container, rows, columns, colors, groupPair = null) => {
+    const legend = node('div', undefined, 'nq-stack-legend');
     columns.forEach((column) => {
-      const cell = node('th', undefined, 'nq-root-domain-head');
       const swatch = node('span', '', 'nq-swatch');
       swatch.style.background = colors[column] || '#b8c0c6';
-      cell.append(swatch, column);
-      headRow.append(cell);
+      const item = node('span', undefined, 'nq-stack-key');
+      item.append(swatch, column);
+      legend.append(item);
     });
-    headRow.append(node('th', 'Total'));
-    head.append(headRow);
-    const body = node('tbody');
-    const drillCell = (cell, pairs, title) => {
-      if (!pairs) return cell;
-      cell.classList.add('nq-drill-cell');
-      cell.classList.toggle('is-active', isDrilled(pairs));
-      cell.tabIndex = 0;
-      cell.title = `${title}: show only these calls; click again to remove the filter`;
-      cell.addEventListener('click', () => drill(pairs));
-      cell.addEventListener('keydown', (event) => { if (event.key === 'Enter') drill(pairs); });
-      return cell;
+    const drillable = (element, pairs, title) => {
+      element.title = pairs ? `${title}: show only these calls; click again to remove the filter` : title;
+      if (!pairs) return element;
+      element.classList.add('is-drill');
+      element.classList.toggle('is-active', isDrilled(pairs));
+      element.tabIndex = 0;
+      element.setAttribute('role', 'button');
+      element.addEventListener('click', () => drill(pairs));
+      element.addEventListener('keydown', (event) => { if (event.key === 'Enter') drill(pairs); });
+      return element;
     };
-    rows.forEach((row) => {
-      const line = node('tr');
+    const lines = rows.map((row) => {
       const group = groupPair?.(row.name);
-      line.append(drillCell(node('td', row.name), group && [group], row.name));
-      columns.forEach((column) => {
+      const line = node('div', undefined, 'nq-stack-row');
+      const track = node('div', undefined, 'nq-stack-track');
+      const counts = node('div', undefined, 'nq-stack-counts');
+      columns.filter((column) => row.counts[column]).forEach((column) => {
         const count = row.counts[column];
-        line.append(drillCell(node('td', count ? number(count) : '—', 'nq-number'), group && count ? [group, domainPair(column)] : null,
-          `${row.name} · ${column}`));
+        const share = (count / Math.max(1, row.total)) * 100;
+        const title = `${row.name} · ${column}: ${number(count)} · ${percent(count, row.total)}`;
+        const pairs = group ? [group, domainPair(column)] : null;
+        const part = node('span', share >= 9 ? number(count) : '', 'nq-stack-part');
+        part.style.flexBasis = `${share}%`;
+        part.style.background = colors[column] || '#b8c0c6';
+        part.style.color = readableText(colors[column] || '#b8c0c6');
+        track.append(drillable(part, pairs, title));
+        const swatch = node('span', '', 'nq-swatch');
+        swatch.style.background = colors[column] || '#b8c0c6';
+        const item = node('span', undefined, 'nq-stack-count');
+        item.append(swatch, number(count));
+        counts.append(drillable(item, pairs, title));
       });
-      line.append(drillCell(node('td', number(row.total), 'nq-number'), group && [group], row.name));
-      body.append(line);
+      line.append(drillable(node('span', row.name, 'nq-stack-name'), group ? [group] : null, row.name), track,
+        node('span', number(row.total), 'nq-stack-total'), counts);
+      return line;
     });
-    if (!rows.length) {
-      const line = node('tr');
-      const cell = node('td', 'No data for this selection.', 'nq-empty');
-      cell.colSpan = columns.length + 2;
-      line.append(cell);
-      body.append(line);
-    }
-    table.replaceChildren(head, body);
+    container.replaceChildren(legend, ...(lines.length ? lines : [node('p', 'No data for this selection.', 'form-note')]));
   };
   const renderRootCauses = (stats) => {
     const summary = stats.summary;
+    const source = ROOT_SOURCE_NAMES[stats.source] || ROOT_SOURCE_NAMES.analysts;
     $('nq-root-kpis').replaceChildren(
-      drillCard(kpiCard('Calls', number(summary.total), 'Non-Qualified Calls of the selection', 'total'),
-        {clear: ['rca_state', 'state', 'effective_domain', 'effective_cause', 'root_pair']}),
-      drillCard(kpiCard('Labelled', number(summary.labelled), `${percent(summary.labelled, summary.total)} have a root cause`, 'closed'), {pairs: [['state', 'labelled']]}),
-      drillCard(kpiCard('Suggested', number(summary.suggested), stats.include_suggestions ? 'Counted with their suggested root cause' : 'Not counted', 'team'), {pairs: [['rca_state', 'suggested']]}),
-      drillCard(kpiCard(NOT_CLASSIFIED, number(summary.unclassified), `${percent(summary.unclassified, summary.total)} without a root cause`, 'open'), {pairs: [domainPair(NOT_CLASSIFIED)]}),
+      drillCard(kpiCard('Calls', number(summary.total), 'Non-Qualified Calls of the selection', 'total'), {clear: ROOT_FILTERS}),
+      stats.source === 'analysts'
+        ? drillCard(kpiCard('Labelled', number(summary.labelled), `${percent(summary.labelled, summary.total)} have a root cause chosen by the analysts`, 'closed'), {pairs: [['state', 'labelled']]})
+        : kpiCard('With a Root Cause', number(summary.labelled), `${percent(summary.labelled, summary.total)} mapped onto the catalog by ${source}`, 'closed'),
+      drillCard(kpiCard(NOT_CLASSIFIED, number(summary.unclassified), `${percent(summary.unclassified, summary.total)} without a root cause from ${source}`, 'open'), {pairs: [domainPair(NOT_CLASSIFIED)]}),
     );
     $('nq-root-breakdowns').replaceChildren(
       staticBars('By Root Domain', stats.domains.map((item) => ({label: item.value, count: item.count, color: item.color,
         pairs: [domainPair(item.value)]}))),
+      staticBars('By Root Category', (stats.categories || []).map((item) => ({label: `${item.domain} · ${item.category}`, count: item.count,
+        color: item.color, pairs: categoryPairs(item.domain, item.value ?? '')}))),
       staticBars('By Root Cause', stats.causes.map((item) => ({label: `${item.domain} · ${item.cause}`, count: item.count, color: item.color,
         pairs: [causePair(item.domain, item.value ?? '')]}))),
     );
     const colors = Object.fromEntries(stats.domains.map((item) => [item.value, item.color]));
-    domainTable($('nq-root-call-types'), 'Call Type', stats.call_types, stats.columns, colors, (name) => ['call_type', name]);
-    domainTable($('nq-root-nr-modes'), 'NR Mode', stats.nr_modes, stats.columns, colors, (name) => ['nr_mode', name === 'Unknown' ? state.unassigned : name]);
+    domainBars($('nq-root-call-types'), stats.call_types, stats.columns, colors, (name) => ['call_type', name]);
+    domainBars($('nq-root-nr-modes'), stats.nr_modes, stats.columns, colors, (name) => ['nr_mode', name === 'Unknown' ? state.unassigned : name]);
     // Technologies are a filter of the Filters panel; calls without a technology cannot be selected there.
-    domainTable($('nq-root-technologies'), 'Technology', stats.technologies, stats.columns, colors,
+    domainBars($('nq-root-technologies'), stats.technologies, stats.columns, colors,
       (name) => (name === 'Unknown' ? null : ['technology', name]));
     statsTable($('nq-root-nodes'), ['eNB / gNB', 'Operator', 'Site', 'Host', 'Vendor', 'Calls', 'Main Domain'],
       stats.nodes.map((row) => [row.node, row.operator, row.site || '—', row.host || '—', row.vendor || '—', number(row.calls), row.top_domain || '—']),
@@ -1926,14 +2023,21 @@
     const token = ++rootToken;
     try {
       const stats = await api('/api/non-qualified-calls/root-causes/stats', {
-        method: 'POST', body: JSON.stringify({filters: currentFilters(), include_suggestions: $('nq-root-suggestions').checked}),
+        method: 'POST', body: JSON.stringify({filters: currentFilters(), include_suggestions: false, source: state.rootSource}),
       });
       if (token === rootToken) renderRootCauses(stats);
     } catch (error) {
       if (token === rootToken) $('nq-root-kpis').replaceChildren(node('p', error.message, 'nq-muted'));
     }
   }
-  $('nq-root-suggestions').addEventListener('change', () => loadRootCauses());
+  $('nq-root-source').querySelectorAll('[data-nq-root-source]').forEach((tab) => tab.addEventListener('click', () => {
+    state.rootSource = tab.dataset.nqRootSource;
+    $('nq-root-source').querySelectorAll('[data-nq-root-source]').forEach((other) => {
+      other.classList.toggle('is-active', other === tab);
+      other.setAttribute('aria-selected', String(other === tab));
+    });
+    loadRootCauses();
+  }));
 
   // -- lifecycle & phases (Analysis Center) ---------------------------------------------------
   // A Status Rule in words: "Analysis Status is Finished and Planned Status is not Planned".
@@ -2887,13 +2991,16 @@
     });
     if (!sources.length) cards.append(node('p', 'No RCA source proposes a root cause for this call yet: import the RCA script results or choose the values by hand.', 'form-note'));
     card.append(node('h4', 'What each source proposes'), cards);
-    // Other columns of the RCA script file.
+    return card;
+  };
+  // The other columns of the RCA script file, after the values of the RCA sources.
+  const rcaExtrasCard = (call) => {
     const extras = Object.entries(call.rca || {}).filter(([key, value]) => key.startsWith('extra:') && value);
-    if (extras.length) {
-      const list = node('dl', undefined, 'nq-detail-grid nq-rca-extra');
-      extras.forEach(([key, value]) => list.append(node('dt', key.slice(6)), node('dd', String(value))));
-      card.append(node('h4', 'Other RCA script columns'), list);
-    }
+    if (!extras.length) return null;
+    const card = node('section', undefined, 'nq-decision nq-rca-extra-card');
+    const list = node('dl', undefined, 'nq-detail-grid nq-rca-extra');
+    extras.forEach(([key, value]) => list.append(node('dt', key.slice(6)), node('dd', String(value))));
+    card.append(node('h4', 'Other RCA script columns'), list);
     return card;
   };
   // The fields of every section, each one in its tab; the tabs count the fields filled in.
@@ -2936,7 +3043,8 @@
         parts.push(node('p', state.user.can_edit ? 'No fields in this section yet: add them in Analysis Center › Fields & Sections.'
           : 'No fields in this section.', 'form-note'));
       }
-      host.replaceChildren(...parts);
+      if (group.key === 'rca') parts.push(rcaExtrasCard(call));
+      host.replaceChildren(...parts.filter(Boolean));
       const badge = drawer.querySelector(`[data-nq-tab="${CSS.escape(group.key)}"] .nq-tab-badge`);
       if (!badge) return;
       let text = '';
@@ -3012,6 +3120,8 @@
     $('nq-drawer-eyebrow').replaceChildren(...eyebrow);
     $('nq-drawer-title').textContent = [call.operator, call.campaign && campaignLabel(call.campaign)].filter(Boolean).join(' · ') || 'Call details';
     $('nq-drawer-meta').textContent = [cdrTime(call.start_time), call.city, call.technology, call.test_name].filter((value) => value && value !== '—').join(' · ');
+    $('nq-drawer-join-id').textContent = call.join_id || '';
+    $('nq-drawer-join').hidden = !call.join_id;
     renderTracking(call);
     renderSections(detail);
     renderSamples(detail);
@@ -3205,7 +3315,8 @@
       target = 0;
     }
     // A section chosen in a menu (#section-…) opens the page there instead.
-    if (target <= 0 || window.location.hash || !('ResizeObserver' in window)) return;
+    if (target <= 0 || window.location.hash || (typeof sectionKeptInView === 'function' && sectionKeptInView())
+        || !('ResizeObserver' in window)) return;
     if ('scrollRestoration' in window.history) window.history.scrollRestoration = 'manual';
     // The panels fill in after the page opens, so the position is applied again as the page grows,
     // until the reader scrolls or the page has settled.
@@ -3305,7 +3416,7 @@
       const response = await fetch(`/api/non-qualified-calls/export/${kind}`, {
         method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({filters: currentFilters(), granularity: $('nq-granularity').value,
-          include_suggestions: $('nq-root-suggestions').checked}),
+          include_suggestions: false, source: state.rootSource}),
       });
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
@@ -3362,6 +3473,39 @@
     }
   });
   $('nq-drawer-close').addEventListener('click', closeDrawer);
+  // Copies a text, also where the page is not a secure context (served by address on the network), which has no
+  // clipboard API, or where the browser refuses it: a hidden field is selected and copied instead.
+  const copyText = async (text) => {
+    if (navigator.clipboard && window.isSecureContext) {
+      try {
+        await navigator.clipboard.writeText(text);
+        return;
+      } catch (_error) {
+        // The hidden field below.
+      }
+    }
+    const field = node('textarea');
+    field.value = text;
+    field.setAttribute('readonly', '');
+    field.style.cssText = 'position: fixed; top: 0; left: 0; opacity: 0; font-size: 16px;';
+    document.body.append(field);
+    field.select();
+    field.setSelectionRange(0, text.length);
+    const copied = document.execCommand('copy');
+    field.remove();
+    if (!copied) throw new Error('The browser did not let the page copy the text.');
+  };
+  $('nq-drawer-join-copy').addEventListener('click', async (event) => {
+    const button = event.currentTarget;
+    try {
+      await copyText($('nq-drawer-join-id').textContent);
+      button.classList.add('is-copied');
+      toast('JOIN_ID copied.');
+      window.setTimeout(() => button.classList.remove('is-copied'), 1500);
+    } catch (error) {
+      toast(error.message, 'error');
+    }
+  });
   backdrop.addEventListener('click', closeDrawer);
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && drawer.classList.contains('is-open') && !document.querySelector('dialog[open]')) closeDrawer();

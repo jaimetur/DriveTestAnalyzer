@@ -401,27 +401,45 @@ def table_panels(title: str, columns: list[str], rows: list[list[str]], rows_per
     return panels
 
 
+# The source of the root causes counted, named in the titles unless it is the decision of the analysts.
+ROOT_SOURCE_TITLES = {'netcheck': 'NetCheck RCA', 'script': 'RCA Script'}
+
+
 def root_cause_panels(stats: dict[str, Any]) -> list[tuple[str, BytesIO]]:
-    """The Root Cause Analysis: the calls per domain and per cause, and Classic vs WhatsApp per domain."""
+    """The Root Cause Analysis: the calls per domain, category and cause, and Classic vs WhatsApp per domain."""
     summary = stats.get('summary') or {}
     total = int(summary.get('total') or 0)
-    cards = [
-        ('Calls', _number(total), 'Non-Qualified Calls of the selection', 'total'),
-        ('Labelled', _number(summary.get('labelled')), f"{_share(summary.get('labelled') or 0, total)} have a root cause", 'closed'),
-        ('Suggested', _number(summary.get('suggested')),
-         'Counted with their suggested root cause' if stats.get('include_suggestions') else 'Not counted', 'team'),
-        ('Not Classified', _number(summary.get('unclassified')), f"{_share(summary.get('unclassified') or 0, total)} without a root cause", 'open'),
-    ]
+    source = ROOT_SOURCE_TITLES.get(str(stats.get('source') or ''), '')
+    title = f'Root Cause Analysis · {source}' if source else 'Root Cause Analysis'
+    if source:
+        cards = [
+            ('Calls', _number(total), 'Non-Qualified Calls of the selection', 'total'),
+            ('With a Root Cause', _number(summary.get('labelled')),
+             f"{_share(summary.get('labelled') or 0, total)} mapped onto the catalog by the {source}", 'closed'),
+            ('Not Classified', _number(summary.get('unclassified')),
+             f"{_share(summary.get('unclassified') or 0, total)} without a root cause from the {source}", 'open'),
+        ]
+    else:
+        cards = [
+            ('Calls', _number(total), 'Non-Qualified Calls of the selection', 'total'),
+            ('Labelled', _number(summary.get('labelled')), f"{_share(summary.get('labelled') or 0, total)} have a root cause", 'closed'),
+            ('Suggested', _number(summary.get('suggested')),
+             'Counted with their suggested root cause' if stats.get('include_suggestions') else 'Not counted', 'team'),
+            ('Not Classified', _number(summary.get('unclassified')), f"{_share(summary.get('unclassified') or 0, total)} without a root cause", 'open'),
+        ]
     first = Panel()
     _kpi_row(first, cards, 0, 1.25)
     gap = 0.18
-    half = (first.width - gap) / 2
-    _bar_card(first, 0, 1.45, half, first.height - 1.45, 'By Root Domain',
+    third = (first.width - 2 * gap) / 3
+    _bar_card(first, 0, 1.45, third, first.height - 1.45, 'By Root Domain',
               [(item['value'], int(item['count']), item.get('color') or RASPBERRY) for item in stats.get('domains') or []])
-    _bar_card(first, half + gap, 1.45, half, first.height - 1.45, 'By Root Cause',
+    _bar_card(first, third + gap, 1.45, third, first.height - 1.45, 'By Root Category',
+              [(f"{item['domain']} · {item['category']}", int(item['count']), item.get('color') or RASPBERRY)
+               for item in stats.get('categories') or []])
+    _bar_card(first, 2 * (third + gap), 1.45, third, first.height - 1.45, 'By Root Cause',
               [(f"{item['domain']} · {item['cause']}", int(item['count']), item.get('color') or RASPBERRY)
                for item in stats.get('causes') or []])
-    panels = [('Root Cause Analysis', first.png())]
+    panels = [(title, first.png())]
     colours = {item['value']: item.get('color') or RASPBERRY for item in stats.get('domains') or []}
     types = stats.get('call_types') or []
     if types:
@@ -431,7 +449,7 @@ def root_cause_panels(stats: dict[str, Any]) -> list[tuple[str, BytesIO]]:
             items = [(name, int(row['counts'].get(name, 0)), colours.get(name, RASPBERRY))
                      for name in stats.get('columns') or [] if row['counts'].get(name)]
             _donut_card(panel, index * (width + gap), 0, width, panel.height, f"{row['name']} · {_number(row['total'])} calls", items)
-        panels.append(('Root Cause Analysis · Classic vs WhatsApp', panel.png()))
+        panels.append((f'{title} · Classic vs WhatsApp', panel.png()))
     return panels
 
 

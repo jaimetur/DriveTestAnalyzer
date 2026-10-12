@@ -28,10 +28,10 @@ from src.modules.nq_catalog import RCA_REFS, keyword_found, normalized_text
 RCA_FILE_FORMAT_HELP = (
     'A CSV (comma, semicolon or tab separated) or Excel file with a JOIN_ID column and the RCA columns '
     'Auto_RCA_Category_A, Auto_RCA_Subcategory_A, Auto_RCA_Category_B, Auto_RCA_Subcategory_B, '
-    'RCA_Suggested_Category, RCA_Suggested_Cause and RCA_Evidence, or the RCA_Summary.csv of the Auto RCA script '
-    '(JoinID, UE, Final_RCA_Category, Final_RCA_Subcategory, RCA_Category, RCA_Subcategory and RCA_Evidence: the rows '
-    'of the A and B sides fill the fields of each side, and the rows of one JOIN_ID are combined); any other column '
-    'is kept and shown with the call.'
+    'RCA_Category, RCA_Subcategory, RCA_Suggested_Category, RCA_Suggested_Cause and RCA_Evidence, or the RCA_Summary.csv '
+    'of the Auto RCA script (JoinID, UE, RCA_Category, RCA_Subcategory, Final_RCA_Category, Final_RCA_Subcategory and '
+    'RCA_Evidence: the rows of the A and B sides fill the fields of each side, and the rows of one JOIN_ID are combined); '
+    'any other column is kept and shown with the call.'
 )
 RCA_TEMPLATE_COLUMNS = ('JOIN_ID', 'Auto_RCA_Category_A', 'Auto_RCA_Subcategory_A', 'Auto_RCA_Category_B',
                         'Auto_RCA_Subcategory_B', 'RCA_Suggested_Category', 'RCA_Suggested_Cause', 'RCA_Evidence')
@@ -39,21 +39,24 @@ MAX_RCA_ROWS = 500_000
 MAX_EXTRA_COLUMNS = 80
 MAX_COMBINED_TEXT = 2000
 # Column identities (letters and digits only) of the known RCA columns: the value they hold and their tier. A row
-# takes its category and cause from the highest tier it has one of them in (Final_RCA_* before RCA_*); the columns
-# of a lower tier are also kept with the call.
+# takes its suggested category and cause from the highest tier it has one of them in (Final_RCA_* before
+# RCA_Suggested_*), or else from its initial RCA_Category and RCA_Subcategory; the columns of a lower tier are also
+# kept with the call.
 _RCA_COLUMNS = {
     'joinid': ('join_id', 0), 'ue': ('side', 0), 'side': ('side', 0),
     'autorcacategorya': ('auto_rca_category_a', 0), 'autorcasubcategorya': ('auto_rca_subcategory_a', 0),
     'autorcacategoryb': ('auto_rca_category_b', 0), 'autorcasubcategoryb': ('auto_rca_subcategory_b', 0),
-    'rcasuggestedcategory': ('rca_category', 1), 'rcacategory': ('rca_category', 1), 'suggestedcategory': ('rca_category', 1),
+    'rcacategory': ('rca_initial_category', 0), 'rcasubcategory': ('rca_initial_cause', 0),
+    'rcasuggestedcategory': ('rca_category', 1), 'suggestedcategory': ('rca_category', 1),
     'rcasuggestedcause': ('rca_cause', 1), 'rcacause': ('rca_cause', 1), 'suggestedcause': ('rca_cause', 1),
-    'rcasubcategory': ('rca_cause', 1),
     'finalrcacategory': ('rca_category', 2), 'finalrcasubcategory': ('rca_cause', 2), 'finalrcacause': ('rca_cause', 2),
     'rcaevidence': ('rca_evidence', 0), 'evidence': ('rca_evidence', 0),
 }
 _SIDES = {'a': 'a', 'uea': 'a', 'b': 'b', 'ueb': 'b'}
 # Categories that name no cause (the script found none): another row of the same JOIN_ID suggests better.
 _GENERIC = re.compile(r'^(other\b|unknown$|unclear$|n/?a$|none$|-+$)', re.IGNORECASE)
+# A row without a result (no category, or UNKNOWN when the script had no measurements of the session).
+_NO_RESULT = re.compile(r'^(unknown)?$', re.IGNORECASE)
 # The domain proposed for a category or cause missing from the catalog, by the words of its name (when the domain
 # exists): "Other" results are radio results when they name a technology.
 _DOMAIN_HINTS = (('unknown', ''), ('unclear', ''), ('mobility', 'RAN'), ('handover', 'RAN'), ('coverage', 'RF'),
@@ -133,6 +136,10 @@ def read_rca_file(content: bytes, file_name: str) -> dict[str, Any]:
             if key in {'rca_category', 'rca_cause'} and column_tier != tier:
                 continue
             values.setdefault(key, cells[index])
+        if tier is None:
+            # Without a suggestion the initial category and subcategory suggest.
+            values.update({key: values[initial] for key, initial in (('rca_category', 'rca_initial_category'),
+                                                                     ('rca_cause', 'rca_initial_cause')) if values.get(initial)})
         side = _SIDES.get(_identity(cells.get(side_index, ''))) if side_index is not None else None
         extras = {name: cells[index] for index, name in extra.items() if cells.get(index)}
         groups.setdefault(join_id.casefold(), {'join_id': join_id, 'rows': []})['rows'].append(
@@ -145,8 +152,14 @@ def read_rca_file(content: bytes, file_name: str) -> dict[str, Any]:
 
 
 def _combine_rows(rows: list[dict[str, Any]]) -> dict[str, str]:
-    """The values of a JOIN_ID from its rows: the A and B sides fill their own fields, the suggestion is the first
-    one naming a cause (the A side first), and the evidence and other columns keep the value of every row."""
+    """The values of a JOIN_ID from its rows: the A and B sides fill their own fields with their own (initial)
+    diagnosis, the suggestion (and the initial category and subcategory) is the first one naming a cause (the A side
+    first), and the evidence and other columns keep the value of every row."""
+    # A side repeated without a result (the session without its measurements) adds nothing to a row with one.
+    def result(row: dict[str, Any]) -> str:
+        return row['values'].get('rca_category') or row['values'].get('rca_initial_category') or ''
+    found = {row['side'] for row in rows if not _NO_RESULT.match(result(row))}
+    rows = [row for row in rows if row['side'] not in found or not _NO_RESULT.match(result(row))]
     ordered = sorted(enumerate(rows), key=lambda item: ({'a': 0, 'b': 1}.get(item[1]['side'], 2), item[0]))
     labels = {}
     for position, (index, row) in enumerate(ordered, start=1):
@@ -157,15 +170,20 @@ def _combine_rows(rows: list[dict[str, Any]]) -> dict[str, str]:
             if key.startswith('auto_rca_'):
                 values.setdefault(key, value)
         if row['side']:
-            if row['values'].get('rca_category'):
-                values.setdefault(f"auto_rca_category_{row['side']}", row['values']['rca_category'])
-            if row['values'].get('rca_cause'):
-                values.setdefault(f"auto_rca_subcategory_{row['side']}", row['values']['rca_cause'])
-    pairs = [(row['values'].get('rca_category', ''), row['values'].get('rca_cause', '')) for _index, row in ordered
-             if row['values'].get('rca_category') or row['values'].get('rca_cause')]
-    if pairs:
-        category, cause = next((pair for pair in pairs if not _GENERIC.match(pair[0] or pair[1])), pairs[0])
-        values.update({key: value for key, value in (('rca_category', category), ('rca_cause', cause)) if value})
+            # Each side keeps its own diagnosis (the initial one): the final one is that of the whole call.
+            initial = bool(row['values'].get('rca_initial_category'))
+            category = row['values'].get('rca_initial_category' if initial else 'rca_category')
+            cause = row['values'].get('rca_initial_cause' if initial else 'rca_cause')
+            if category:
+                values.setdefault(f"auto_rca_category_{row['side']}", category)
+            if cause:
+                values.setdefault(f"auto_rca_subcategory_{row['side']}", cause)
+    for category_key, cause_key in (('rca_initial_category', 'rca_initial_cause'), ('rca_category', 'rca_cause')):
+        pairs = [(row['values'].get(category_key, ''), row['values'].get(cause_key, '')) for _index, row in ordered
+                 if row['values'].get(category_key) or row['values'].get(cause_key)]
+        if pairs:
+            category, cause = next((pair for pair in pairs if not _GENERIC.match(pair[0] or pair[1])), pairs[0])
+            values.update({key: value for key, value in ((category_key, category), (cause_key, cause)) if value})
 
     def combined(found: list[tuple[int, str]], name: str = '') -> str:
         distinct = list(dict.fromkeys(value for _index, value in found))

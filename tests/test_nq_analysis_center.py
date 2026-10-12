@@ -59,8 +59,8 @@ def test_new_workspaces_get_the_catalog_of_the_meeting_workbook(client, tmp_path
     setup_calls(client, tmp_path)
     state = client.get('/api/non-qualified-calls/state').json()
     fields = state['fields']
-    # The 37 fields of the meeting workbook, with the RCA Evidence and the Last Cell ID and Failure Comment of the CDR.
-    assert len(fields) == 40
+    # The 37 fields of the meeting workbook, with the Auto RCA fields and the Last Cell ID and Failure Comment of the CDR.
+    assert len(fields) == 42
     assert [field['key'] for field in fields if field['section'] == 'failure_event'][-2:] == ['vendor_when_failure', 'failure_comment']
     assert next(field for field in fields if field['key'] == 'last_cell_id')['source_ref'] == 'last_cell_id'
     assert [field['key'] for field in fields if field['section'] == 'analysis'][:3] == ['analysis_status', 'tunnel_failure', 'needed_technology']
@@ -301,7 +301,7 @@ def test_catalog_workbook_round_trip_and_the_meeting_layout(client, tmp_path):
     assert imported.status_code == 200, imported.text
     route = next(field for field in imported.json()['fields'] if field['label'] == 'Drive Route')
     assert [option['name'] for option in route['options']] == ['M25', 'A1'] and route['section'] == 'analysis' and route['in_table']
-    assert len(imported.json()['fields']) == 41
+    assert len(imported.json()['fields']) == 43
     # The workbook of the meeting: sections in the first row, fields in the second, values below.
     meeting = Workbook()
     sheet = meeting.active
@@ -382,7 +382,7 @@ def test_first_version_workspaces_move_to_the_analysis_center(client, tmp_path):
     assert [item['name'] for item in nq.list_options(repository)['statuses']][0] == 'Not Attended'
     # The workspace's field keeps its key and values and takes its place in the catalog.
     findings = next(field for field in nq.list_fields(repository) if field['label'] == 'Findings')
-    assert findings['key'] == 'findings' and findings['section'] == 'analysis' and len(nq.list_fields(repository)) == 40
+    assert findings['key'] == 'findings' and findings['section'] == 'analysis' and len(nq.list_fields(repository)) == 42
 
 
 def test_recommendation_engine_maps_each_source_onto_the_catalog():
@@ -483,58 +483,96 @@ def test_first_layout_workspaces_take_the_second_one(client, tmp_path):
 
 
 
-def test_workspaces_before_the_rca_evidence_get_it_after_the_suggestion(client, tmp_path):
+def test_workspaces_before_the_auto_rca_fields_get_them_around_the_suggestion(client, tmp_path):
     setup_calls(client, tmp_path)
     repository = core.repository
-    nq._store_fields(repository, [field for field in nq.list_fields(repository) if field['key'] != 'rca_evidence'])
-    repository.set_workspace_state(nq.ANALYSIS_CENTER_V3_STATE_KEY, '')
+    new = {'rca_initial_category', 'rca_initial_subcategory', 'rca_evidence'}
+    nq._store_fields(repository, [field for field in nq.list_fields(repository) if field['key'] not in new])
+    repository.set_workspace_state(nq.ANALYSIS_CENTER_V4_STATE_KEY, '')
     nq.ensure_nq_tables(repository)
     keys = [field['key'] for field in nq.list_fields(repository)]
-    assert keys.index('rca_evidence') == keys.index('rca_suggested_cause') + 1
+    assert keys[keys.index('auto_rca_subcategory_b') + 1:keys.index('rca_evidence') + 1] == [
+        'rca_initial_category', 'rca_initial_subcategory', 'rca_suggested_category', 'rca_suggested_cause', 'rca_evidence']
 
 
 def test_auto_rca_summary_fills_each_side_combines_rows_and_completes_the_catalog(client, tmp_path):
     setup_calls(client, tmp_path)
     csv = ('Log_Day,JoinID,UE,RCA_Category,RCA_Subcategory,Final_RCA_Category,Final_RCA_Subcategory,LTE_Avg_PCell_RSRP,RCA_Evidence\n'
-           '2026-09-03,0xA1,B,Other LTE,,Mobility Issue LTE,Missing or Late Handover LTE,-98.1,Late handover on the B side.\n'
-           '2026-09-03,0xA1,A,Other LTE,,Other LTE,,-102.3,No condition matched on the A side.\n'
+           # A call: each side has its own diagnosis and the final one, that of the call, is the same on both sides.
+           '2026-09-03,0xA1,B,Mobility Issue LTE,Missing or Late Handover LTE,Poor Coverage LTE,,-98.1,Late handover on the B side.\n'
+           '2026-09-03,0xA1,A,Poor Coverage LTE,,Poor Coverage LTE,,-102.3,Weak signal on the A side.\n'
            '2026-09-03,0xB2,Data,Poor Coverage LTE,,Poor Coverage LTE,,-118.0,RSRP below the threshold.\n'
            '2026-09-03,0xB2,Data,DL Interference LTE,,DL Interference LTE,,-101.0,SINR below the threshold.\n'
-           '2026-09-03,0xC3,Data,Other NR,,,,,No NR condition matched.\n').encode()
+           '2026-09-03,0xC3,Data,Other NR,,,,,No NR condition matched.\n'
+           # The same session again without its measurements: nothing to add.
+           '2026-09-03,0xC3,Data,UNKNOWN,,UNKNOWN,,,Anchor Access could not be determined.\n').encode()
     preview = client.post('/api/non-qualified-calls/rca/import', data={'preview': '1'},
                           files={'file': ('RCA_Summary.csv', io.BytesIO(csv), 'text/csv')}).json()
-    assert (preview['rows'], preview['matched'], preview['duplicates']) == (3, 3, 2)
-    assert {'RCA Suggested Category', 'Auto_RCA_Category_B', 'RCA Evidence'} <= set(preview['columns'])
-    # The preliminary columns stay with the call beside the final ones.
-    assert {'RCA_Category', 'RCA_Subcategory', 'LTE_Avg_PCell_RSRP', 'Log_Day'} <= set(preview['extra'])
+    assert (preview['rows'], preview['matched'], preview['duplicates']) == (3, 3, 3)
+    assert {'RCA Category', 'RCA Suggested Category', 'Auto_RCA_Category_B', 'RCA Evidence'} <= set(preview['columns'])
+    # The initial category and subcategory have their own fields; the other columns stay with the call.
+    assert {'LTE_Avg_PCell_RSRP', 'Log_Day'} <= set(preview['extra']) and 'RCA_Category' not in preview['extra']
     # Mobility Issue and the late handover map onto the catalog by keywords; the generic results do not.
-    assert [(item['kind'], item['name'], item['domain']) for item in preview['unmapped']] == [
-        ('category', 'Other LTE', 'RAN'), ('category', 'Other NR', 'RAN')]
+    assert [(item['kind'], item['name'], item['domain']) for item in preview['unmapped']] == [('category', 'Other NR', 'RAN')]
     imported = client.post('/api/non-qualified-calls/rca/import', data={'add_to_catalog': '1'},
                            files={'file': ('RCA_Summary.csv', io.BytesIO(csv), 'text/csv')}).json()
-    assert [item['name'] for item in imported['added_to_catalog']] == ['Other LTE', 'Other NR']
+    assert [item['name'] for item in imported['added_to_catalog']] == ['Other NR']
     categories = {item['name']: item for item in client.get('/api/non-qualified-calls/state').json()['root_causes']['categories']}
-    assert categories['Other LTE']['domain'] == 'RAN'
+    assert categories['Other NR']['domain'] == 'RAN'
     calls = {item['join_id']: item for item in query(client)['calls']}
     voice = calls['0xA1']['values']
-    # Each side fills its own fields and the suggestion is the side that names a cause.
+    # Each side fills its own fields with its own diagnosis; the suggestion is the final one of the call.
     assert (voice['auto_rca_category_a'], voice['auto_rca_category_b'], voice['auto_rca_subcategory_b']) == (
-        'Other LTE', 'Mobility Issue LTE', 'Missing or Late Handover LTE')
-    assert (voice['rca_suggested_category'], voice['rca_suggested_cause']) == ('Mobility Issue LTE', 'Missing or Late Handover LTE')
-    assert voice['rca_evidence'] == ('A (Other LTE): No condition matched on the A side. | '
-                                     'B (Mobility Issue LTE): Late handover on the B side.')
+        'Poor Coverage LTE', 'Mobility Issue LTE', 'Missing or Late Handover LTE')
+    assert (voice['rca_suggested_category'], voice['rca_suggested_cause']) == ('Poor Coverage LTE', '')
+    assert (voice['rca_initial_category'], voice['rca_initial_subcategory']) == ('Poor Coverage LTE', '')
+    assert voice['rca_evidence'] == 'A: Weak signal on the A side. | B: Late handover on the B side.'
     data = calls['0xB2']['values']
     assert data['rca_suggested_category'] == 'Poor Coverage LTE' and not data['auto_rca_category_a']
+    assert data['rca_initial_category'] == 'Poor Coverage LTE'
     assert data['rca_evidence'] == ('1 (Poor Coverage LTE): RSRP below the threshold. | '
                                     '2 (DL Interference LTE): SINR below the threshold.')
     # A row without a final category keeps the preliminary one.
-    assert calls['0xC3']['values']['rca_suggested_category'] == 'Other NR'
+    assert calls['0xC3']['values']['rca_suggested_category'] == calls['0xC3']['values']['rca_initial_category'] == 'Other NR'
+    assert calls['0xC3']['values']['rca_evidence'] == 'No NR condition matched.'
     detail = client.get(f"/api/non-qualified-calls/calls/{calls['0xA1']['call_key']}").json()
     assert detail['call']['rca']['extra:LTE_Avg_PCell_RSRP'] == 'A: -102.3 | B: -98.1'
     assert detail['call']['rca']['extra:Log_Day'] == '2026-09-03'
     recommendation = calls['0xA1']['rca_recommendation']
     script = next(source for source in recommendation['sources'] if source['source'] == 'script')
-    assert (script['category'], script['cause']) == ('Mobility LTE', 'Missing or late handover')
+    assert (script['category'], script['cause']) == ('Poor Coverage LTE', 'Coverage')
+
+
+def test_root_cause_analysis_counts_each_source_apart_and_filters_by_it(client, tmp_path):
+    calls = setup_calls(client, tmp_path)
+    csv = ('JOIN_ID,RCA_Suggested_Category\n0xA1,Poor Coverage LTE\n0xC3,DL Interference LTE\n').encode()
+    assert client.post('/api/non-qualified-calls/rca/import', files={'file': ('rca.csv', io.BytesIO(csv), 'text/csv')}).status_code == 200
+    patch(client, calls['0xB2'], {'root_category': 'E2E'})
+
+    def stats(source):
+        return client.post('/api/non-qualified-calls/root-causes/stats',
+                           json={'filters': {}, 'source': source, 'include_suggestions': False}).json()
+
+    analysts, netcheck, script = stats('analysts'), stats('netcheck'), stats('script')
+    assert (analysts['source'], analysts['summary']['labelled'], analysts['summary']['unclassified']) == ('analysts', 1, 2)
+    assert {item['value']: item['count'] for item in analysts['domains']} == {'IMS/E2E': 1, 'Not classified': 2}
+    # The RCA script counts the two calls it has results for, mapped onto the catalog.
+    assert (script['summary']['labelled'], script['summary']['unclassified']) == (2, 1)
+    assert {item['value']: item['count'] for item in script['domains']} == {'RF': 2, 'Not classified': 1}
+    # The root categories keep the technology of the script values.
+    assert {(item['domain'], item['category']): item['count'] for item in script['categories']} == {
+        ('RF', 'Poor Coverage LTE'): 1, ('RF', 'DL Interference LTE'): 1}
+    assert [(item['domain'], item['category']) for item in analysts['categories']] == [('IMS/E2E', 'E2E')]
+    # NetCheck counts every call by its Failure Classification, Category and Subcategory, never by the analysts.
+    assert netcheck['summary']['labelled'] == 3 and netcheck['summary']['suggested'] == 0
+    assert {item['value'] for item in netcheck['domains']} >= {'RF'}
+    # A domain, domain·category or domain·cause of a source filters its calls.
+    joins = lambda filters: sorted(item['join_id'] for item in query(client, filters=filters)['calls'])
+    assert joins({'script_domain': ['RF']}) == ['0xA1', '0xC3']
+    assert joins({'script_domain': [nq.UNASSIGNED]}) == ['0xB2']
+    assert joins({'script_category': ['RF||DL Interference LTE']}) == ['0xC3']
+    cause = next(item for item in netcheck['causes'] if item['domain'] == 'RF' and item['value'] == 'Coverage')
+    assert joins({'netcheck_cause': [f"RF||{cause['value']}"]}) == ['0xA1']
 
 
 def test_lifecycle_counts_the_rca_identification(client, tmp_path):

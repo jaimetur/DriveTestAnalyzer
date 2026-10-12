@@ -9035,8 +9035,12 @@ function showSectionAtTop(target) {
 }
 
 // Pages that fill or show their panels once their data arrives (Non-Qualified Calls, Scoring…) grow above the
-// section opened from a menu: it is kept at the top while the page settles, until the user scrolls or for 15 seconds.
+// section opened from a menu: it is kept at the top while the page settles, until the user scrolls or for a minute.
 let stopKeepingSection = null;
+// Whether a section chosen in a menu is being kept at the top (pages then leave their own scroll position alone).
+function sectionKeptInView() {
+  return Boolean(stopKeepingSection);
+}
 function keepSectionInView(target, find = null) {
   // Only the last section chosen is followed.
   stopKeepingSection?.();
@@ -9060,10 +9064,21 @@ function keepSectionInView(target, find = null) {
   stopKeepingSection = stop;
   events.forEach((name) => window.addEventListener(name, stop, {capture: true, passive: true}));
   observer.observe(document.body);
-  window.setTimeout(stop, 15000);
+  // The panels above the section can change height while others below change the other way, leaving the page as
+  // tall as before.
+  for (let element = target; element && element !== document.body; element = element.parentElement) {
+    for (let sibling = element.previousElementSibling; sibling; sibling = sibling.previousElementSibling) observer.observe(sibling);
+  }
+  window.setTimeout(stop, 60000);
 }
 window.addEventListener('hashchange', openMappingHashTarget);
-if (window.location.hash) window.requestAnimationFrame(openMappingHashTarget);
+// The section of the address is opened once the deferred scripts of the page have run: they read it to prepare the
+// page (Non-Qualified Calls shows the view of the panel) before it is removed from the address.
+if (window.location.hash) {
+  const openAddressSection = () => window.requestAnimationFrame(openMappingHashTarget);
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', openAddressSection, {once: true});
+  else openAddressSection();
+}
 // A section of the page being shown opens there again when it is chosen again: the address does not change, so the
 // browser announces no new section.
 document.addEventListener('click', (event) => {

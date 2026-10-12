@@ -118,11 +118,12 @@ STATUS_RULES_STATE_KEY = 'nq_calls_status_rules'
 ANALYSIS_CENTER_STATE_KEY = 'nq_analysis_center_v1'
 # The second layout of the Analysis Center (section colours and the order of the Analysis fields), applied once.
 ANALYSIS_CENTER_V2_STATE_KEY = 'nq_analysis_center_v2'
-# The RCA Evidence field of the RCA script, added once to the workspaces created before it.
-ANALYSIS_CENTER_V3_STATE_KEY = 'nq_analysis_center_v3'
+# The fields of the Auto RCA script (its initial category and subcategory and its evidence), added once to the
+# workspaces created before them.
+ANALYSIS_CENTER_V4_STATE_KEY = 'nq_analysis_center_v4'
 # Set once the tables and columns of this version exist, so the requests check the schema without writing.
 SCHEMA_STATE_KEY = 'nq_calls_schema'
-SCHEMA_VERSION = '2026-10-12.1'
+SCHEMA_VERSION = '2026-10-12.2'
 # Indexed call fields that the suggestion rule can read, with their labels.
 RULE_FIELDS = {
     'failure_classification': 'Failure Classification', 'failure_category': 'Failure Category',
@@ -201,7 +202,11 @@ TRACKING_FIELDS = ('status', 'team', 'assignee', 'root_domain', 'root_category',
 # Suggested card by the calls without a root cause that have a suggestion.
 EXTRA_FILTERS = ('nr_mode', 'call_type', 'period', 'age', 'root_pair', 'effective_domain', 'effective_cause', 'node',
                  'state', 'rca_state')
-KEY_FILTERS = ('effective_domain', 'effective_cause', 'node', 'rca_state')
+KEY_FILTERS = ('effective_domain', 'effective_cause', 'node', 'rca_state', 'netcheck_domain', 'netcheck_category',
+               'netcheck_cause', 'script_domain', 'script_category', 'script_cause')
+# The sources the Root Cause Analysis counts the calls with: the decision of the analysts, or the NetCheck RCA of the
+# CDR or the RCA script mapped onto the Root Cause Catalog.
+ROOT_SOURCES = ('analysts', 'netcheck', 'script')
 _ATTENDED_SQL = "(updated_at <> '' OR comment_count > 0)"
 STATE_SQL = {
     'attended': _ATTENDED_SQL, 'not_attended': f'NOT {_ATTENDED_SQL}', 'with_team': "team <> ''",
@@ -449,7 +454,7 @@ def _schema_ready(task_repository: Any) -> bool:
         tables = {str(row[0]) for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
         if not set(NQ_TABLE_TITLES) <= tables or 'workspace_state' not in tables:
             return False
-        keys = (SCHEMA_STATE_KEY, ANALYSIS_CENTER_STATE_KEY, ANALYSIS_CENTER_V2_STATE_KEY, ANALYSIS_CENTER_V3_STATE_KEY)
+        keys = (SCHEMA_STATE_KEY, ANALYSIS_CENTER_STATE_KEY, ANALYSIS_CENTER_V2_STATE_KEY, ANALYSIS_CENTER_V4_STATE_KEY)
         states = {str(row[0]): str(row[1]) for row in connection.execute(
             f"SELECT key, value FROM workspace_state WHERE key IN ({', '.join('?' for _ in keys)})", keys)}
     return states.get(SCHEMA_STATE_KEY) == SCHEMA_VERSION and all(states.get(key) for key in keys[1:])
@@ -517,8 +522,8 @@ def ensure_nq_tables(task_repository: Any) -> None:
         _install_analysis_center(task_repository, fresh=not existed)
     if not task_repository.get_workspace_state(ANALYSIS_CENTER_V2_STATE_KEY):
         _upgrade_analysis_center_v2(task_repository)
-    if not task_repository.get_workspace_state(ANALYSIS_CENTER_V3_STATE_KEY):
-        _upgrade_analysis_center_v3(task_repository)
+    if not task_repository.get_workspace_state(ANALYSIS_CENTER_V4_STATE_KEY):
+        _upgrade_analysis_center_v4(task_repository)
     task_repository.set_workspace_state(SCHEMA_STATE_KEY, SCHEMA_VERSION)
 
 
@@ -669,13 +674,14 @@ def _upgrade_analysis_center_v2(task_repository: Any) -> None:
     task_repository.set_workspace_state(ANALYSIS_CENTER_V2_STATE_KEY, '1')
 
 
-def _upgrade_analysis_center_v3(task_repository: Any) -> None:
-    """The RCA Evidence of the RCA script after its suggestion, once."""
+def _upgrade_analysis_center_v4(task_repository: Any) -> None:
+    """The fields of the Auto RCA script, once: its initial RCA Category and Subcategory before the suggestion and the
+    RCA Evidence after it."""
     fields = list_fields(task_repository)
-    if _add_default_fields(fields, {'rca_evidence'}):
+    if _add_default_fields(fields, {'rca_initial_category', 'rca_initial_subcategory', 'rca_evidence'}):
         _store_fields(task_repository, nq_catalog.normalize_fields(fields, {field['key']: field for field in list_fields(task_repository)},
                                                                    CATALOG_CALL_FIELDS))
-    task_repository.set_workspace_state(ANALYSIS_CENTER_V3_STATE_KEY, '1')
+    task_repository.set_workspace_state(ANALYSIS_CENTER_V4_STATE_KEY, '1')
 
 
 def _add_default_fields(fields: list[dict[str, Any]], keys: set[str]) -> bool:
@@ -2251,6 +2257,8 @@ def _resolve_key_filters(task_repository: Any, filters: dict[str, Any]) -> dict[
     if not any(wanted.values()):
         return filters
     suggestions_needed = bool(wanted['effective_domain'] or wanted['effective_cause'] or wanted['rca_state'])
+    sources_needed = [source for source in ('netcheck', 'script')
+                      if any(wanted[f'{source}_{level}'] for level in ('domain', 'category', 'cause'))]
     options = list_options(task_repository)
     taxonomy = list_root_causes(task_repository)
     base, base_params = _base_sql(untracked_status(task_repository, options), task_repository, _scope(filters))
@@ -2258,7 +2266,8 @@ def _resolve_key_filters(task_repository: Any, filters: dict[str, Any]) -> dict[
     with task_repository.connection() as connection:
         stamp = [tuple(connection.execute(sql).fetchone()) for sql in (
             f'SELECT COUNT(*), SUM(version), MAX(updated_at) FROM {NQ_CALL_TRACKING_TABLE}',
-            f'SELECT COUNT(*), MAX(id), MAX(edited_at), MAX(deleted_at) FROM {NQ_CALL_COMMENTS_TABLE}')]
+            f'SELECT COUNT(*), MAX(id), MAX(edited_at), MAX(deleted_at) FROM {NQ_CALL_COMMENTS_TABLE}',
+            f'SELECT COUNT(*), MAX(imported_at) FROM {NQ_RCA_RESULTS_TABLE}')]
     cache_key = (_workspace_key(task_repository.db_path), hashlib.sha1(json.dumps(
         [base, base_params, stamp, taxonomy, {field: sorted(values) for field, values in wanted.items()}],
         sort_keys=True, default=str).encode()).hexdigest())
@@ -2266,7 +2275,8 @@ def _resolve_key_filters(task_repository: Any, filters: dict[str, Any]) -> dict[
         cached = _key_filters_cache.get(cache_key)
     if cached is not None:
         return {**filters, '_call_keys': list(cached)}
-    columns = ', '.join(dict.fromkeys(('call_key', 'root_domain', 'root_cause', 'cell_id', 'operator', *RULE_FIELDS)))
+    columns = ', '.join(dict.fromkeys(('call_key', 'root_domain', 'root_cause', 'cell_id', 'operator', *RULE_FIELDS,
+                                       'failure_classification', 'failure_category', 'failure_subcategory', 'rca_json')))
     with task_repository.connection() as connection:
         calls = connection.execute(f'WITH calls AS ({base}) SELECT {columns} FROM calls', base_params).fetchall()
         notes = _comment_texts(connection, [str(call['call_key']) for call in calls if not call['root_domain']]) \
@@ -2285,6 +2295,11 @@ def _resolve_key_filters(task_repository: Any, filters: dict[str, Any]) -> dict[
                 continue
             if wanted['effective_cause'] and f'{domain}||{cause}' not in wanted['effective_cause']:
                 continue
+        # The root domain, domain·category or domain·cause the NetCheck RCA or the RCA script gives the call.
+        if any(not _source_matches(source_root(call, source, taxonomy), wanted[f'{source}_domain'],
+                                   wanted[f'{source}_category'], wanted[f'{source}_cause'])
+               for source in sources_needed):
+            continue
         if wanted['node']:
             node = serving_node(call['cell_id'])
             if node is None or f"{call['operator'] or ''}||{node[0]} {node[1]}" not in wanted['node']:
@@ -2295,6 +2310,14 @@ def _resolve_key_filters(task_repository: Any, filters: dict[str, Any]) -> dict[
             _key_filters_cache.pop(next(iter(_key_filters_cache)))
         _key_filters_cache[cache_key] = tuple(keys)
     return {**filters, '_call_keys': keys}
+
+
+def _source_matches(mapped: dict[str, str], domains: set[str], categories: set[str], causes: set[str]) -> bool:
+    if domains and (mapped['domain'] or UNASSIGNED) not in domains:
+        return False
+    if categories and f"{mapped['domain']}||{mapped['category']}" not in categories:
+        return False
+    return not causes or f"{mapped['domain']}||{mapped['cause']}" in causes
 
 
 def _filter_sql(filters: dict[str, Any], username: str, closed_statuses: list[str],
@@ -2856,15 +2879,39 @@ def _node_mappings(connection: Any, dataset: Any) -> dict[tuple[str, int], dict[
     return nodes
 
 
+def source_root(call: Any, source: str, taxonomy: dict[str, Any]) -> dict[str, str]:
+    """The domain, category and cause the NetCheck RCA of the CDR (its fields, never the comments) or the RCA script
+    gives a call on the Root Cause Catalog; empty values when the source says nothing the catalog knows."""
+    rule = taxonomy.get('rule') or DEFAULT_ROOT_CAUSE_RULE
+    mapped: dict[str, str] | None = None
+    if source == 'netcheck':
+        if any(str(call[key] or '') for key in ('failure_classification', 'failure_category', 'failure_subcategory')):
+            mapped = nq_rca.suggest_from_text(call, taxonomy, {**rule, 'comments': False, 'comment_domain': False})
+    elif source == 'script':
+        try:
+            rca = json.loads(call['rca_json'] or '{}') or {}
+        except (TypeError, ValueError):
+            rca = {}
+        raw = (str(rca.get('rca_category') or rca.get('auto_rca_category_a') or ''),
+               str(rca.get('rca_cause') or rca.get('auto_rca_subcategory_a') or ''))
+        if any(raw):
+            mapped = nq_rca.map_to_catalog(*raw, taxonomy, rule.get('match', 'words'))
+    mapped = mapped or {}
+    return {'domain': mapped.get('domain') or '', 'category': mapped.get('category') or '', 'cause': mapped.get('cause') or ''}
+
+
 def root_cause_stats(task_repository: Any, filters: dict[str, Any], username: str,
-                     include_suggestions: bool = True) -> dict[str, Any]:
+                     include_suggestions: bool = True, source: str = 'analysts') -> dict[str, Any]:
     """Root Cause Analysis of the calls matching the filters.
 
-    Calls are counted per root domain and cause, Classic/WhatsApp/Data call type, NR
+    Calls are counted per root domain, category and cause, Classic/WhatsApp/Data call type, NR
     mode (NSA or SA), technology and the eNB/gNB of their last cell, with its site,
-    host and vendor from the workspace cell mappings. Calls without a root cause
-    count with their suggested one when ``include_suggestions`` is set.
+    host and vendor from the workspace cell mappings. With the ``analysts`` source the calls count with the root
+    cause the analysts chose, and those without one with their suggested one when ``include_suggestions`` is set; the
+    ``netcheck`` and ``script`` sources count every call with what that source gives it on the catalog.
     """
+    source = source if source in ROOT_SOURCES else 'analysts'
+    include_suggestions = include_suggestions and source == 'analysts'
     options = list_options(task_repository)
     taxonomy = list_root_causes(task_repository)
     base, base_params = _base_sql(untracked_status(task_repository, options), task_repository, _scope(filters))
@@ -2886,20 +2933,26 @@ def root_cause_stats(task_repository: Any, filters: dict[str, Any], username: st
     order = [domain['name'] for domain in taxonomy['domains']]
     counts = {'labelled': 0, 'suggested': 0, 'unclassified': 0}
     domains: dict[str, int] = {}
+    categories: dict[tuple[str, str], int] = {}
     causes: dict[tuple[str, str], int] = {}
     matrices: dict[str, dict[str, dict[str, int]]] = {'call_type': {}, 'nr_mode': {}, 'technology': {}}
     nodes: dict[tuple[str, str, int], dict[str, Any]] = {}
     for call in calls:
-        domain, cause = str(call['root_domain'] or ''), str(call['root_cause'] or '')
+        if source == 'analysts':
+            domain, category, cause = (str(call[key] or '') for key in ('root_domain', 'root_category', 'root_cause'))
+        else:
+            mapped = source_root(call, source, taxonomy)
+            domain, category, cause = mapped['domain'], mapped['category'], mapped['cause']
         if domain:
             counts['labelled'] += 1
         elif include_suggestions and (suggestion := suggest_root_cause(call, taxonomy, notes.get(str(call['call_key']), ''))):
-            domain, cause = suggestion['domain'], suggestion['cause']
+            domain, category, cause = suggestion['domain'], suggestion['category'], suggestion['cause']
             counts['suggested'] += 1
         else:
             counts['unclassified'] += 1
         domain = domain or NOT_CLASSIFIED
         domains[domain] = domains.get(domain, 0) + 1
+        categories[(domain, category)] = categories.get((domain, category), 0) + 1
         causes[(domain, cause)] = causes.get((domain, cause), 0) + 1
         groups = {'call_type': call_type(str(call['service']), str(call['test_name'] or '')),
                   'nr_mode': str(call['nr_mode'] or '') or 'Unknown', 'technology': str(call['technology'] or '') or 'Unknown'}
@@ -2937,9 +2990,13 @@ def root_cause_stats(task_repository: Any, filters: dict[str, Any], username: st
         entry['top_domain'] = max(entry['domains'], key=lambda name: (entry['domains'][name], name)) if entry['domains'] else ''
         entry['node'] = f"{entry['type']} {entry['id']}"
     return {
-        'include_suggestions': include_suggestions,
+        'include_suggestions': include_suggestions, 'source': source,
         'summary': {'total': len(calls), **counts},
         'domains': [{'value': name, 'count': domains[name], 'color': colors.get(name, '#b8c0c6')} for name in columns],
+        'categories': [{'domain': domain, 'category': category or 'No category', 'value': category, 'count': count,
+                        'color': colors.get(domain, '#b8c0c6')}
+                       for (domain, category), count in sorted(categories.items(), key=lambda item: (-item[1], item[0][0], item[0][1]))
+                       if domain != NOT_CLASSIFIED],
         'causes': [{'domain': domain, 'cause': cause or 'No cause', 'value': cause, 'count': count,
                     'color': colors.get(domain, '#b8c0c6')}
                    for (domain, cause), count in sorted(causes.items(), key=lambda item: (-item[1], item[0][0], item[0][1]))
@@ -4339,11 +4396,13 @@ def install_non_qualified_calls_routes(core: Any) -> None:
     class RootCauseStatsPayload(BaseModel):
         filters: dict[str, Any] = Field(default_factory=dict)
         include_suggestions: bool = True
+        source: str = 'analysts'
 
     class ProgressPayload(BaseModel):
         filters: dict[str, Any] = Field(default_factory=dict)
         granularity: str = 'month'
         include_suggestions: bool = True
+        source: str = 'analysts'
 
     class ExportPayload(BaseModel):
         filters: dict[str, Any] = Field(default_factory=dict)
@@ -4446,7 +4505,8 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         values['version'] = [[key, label] for key, label in VERSION_LABELS.items()]
         return values
 
-    def summary_parts(repository, filters: dict[str, Any], username: str, granularity: str, include_suggestions: bool = True):
+    def summary_parts(repository, filters: dict[str, Any], username: str, granularity: str, include_suggestions: bool = True,
+                      source: str = 'analysts'):
         """The executive summary, progress status, options and selection lines of one NQ selection.
 
         The options carry the Root Cause Analysis of the selection under ``root_causes``.
@@ -4456,7 +4516,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         executive = query_calls(repository, {'filters': filters, 'page_size': 25}, username)
         progress = progress_stats(repository, filters, username, granularity)
         options = {**list_options(repository),
-                   'root_causes': root_cause_stats(repository, filters, username, include_suggestions),
+                   'root_causes': root_cause_stats(repository, filters, username, include_suggestions, source),
                    'rates': nq_rates(repository, filters),
                    'lifecycle': lifecycle_stats(repository, filters, username),
                    'rca_insights': rca_insights(repository, filters, username),
@@ -4764,7 +4824,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
     @core.app.post('/api/non-qualified-calls/root-causes/stats')
     def nq_root_cause_stats(payload: RootCauseStatsPayload, user=Depends(core.current_user)) -> JSONResponse:
         repository = workspace_repository(user)
-        return JSONResponse(root_cause_stats(repository, payload.filters, user.username, payload.include_suggestions))
+        return JSONResponse(root_cause_stats(repository, payload.filters, user.username, payload.include_suggestions, payload.source))
 
     @core.app.post('/api/non-qualified-calls/progress')
     def nq_progress(payload: ProgressPayload, user=Depends(core.current_user)) -> JSONResponse:
@@ -4778,7 +4838,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
             raise HTTPException(404, 'Unsupported export type.')
         repository = workspace_repository(user)
         executive, progress, options, lines = summary_parts(repository, payload.filters, user.username, payload.granularity,
-                                                            payload.include_suggestions)
+                                                            payload.include_suggestions, payload.source)
         suffix = '.pptx' if export_format == 'powerpoint' else '.docx'
         stamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         name = re.sub(r'[^A-Za-z0-9._ -]+', '_', f'{stamp} - Non-Qualified Calls - {core.active_workspace.name}{suffix}')

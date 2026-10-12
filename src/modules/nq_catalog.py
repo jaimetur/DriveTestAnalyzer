@@ -72,6 +72,7 @@ TRACKING_REFS = {
 RCA_REFS = {
     'auto_rca_category_a': 'Auto_RCA_Category_A', 'auto_rca_subcategory_a': 'Auto_RCA_Subcategory_A',
     'auto_rca_category_b': 'Auto_RCA_Category_B', 'auto_rca_subcategory_b': 'Auto_RCA_Subcategory_B',
+    'rca_initial_category': 'RCA Category', 'rca_initial_cause': 'RCA Subcategory',
     'rca_category': 'RCA Suggested Category', 'rca_cause': 'RCA Suggested Cause', 'rca_evidence': 'RCA Evidence',
 }
 MAX_FIELDS = 120
@@ -109,7 +110,8 @@ def _field(key: str, label: str, section: str, field_type: str, source: str = 'u
 
 _GREY, _AMBER, _GREEN, _RED, _BLUE, _SLATE = '#9aa5ad', '#e08a1e', '#2e8b57', '#b0234f', '#245a96', '#7b8790'
 # The 37 fields of the meeting workbook, in its order (the order of the table and of the Excel export), with the
-# evidence of the RCA script after its suggestion, the Last Cell ID and Failure Comment of the CDR in Failure Details
+# initial category and subcategory of the RCA script before its suggestion and its evidence after it, the Last Cell ID
+# and Failure Comment of the CDR in Failure Details
 # and the Analysis fields in the order of the call panel: the long texts (Proposed Measure, Findings) last.
 DEFAULT_FIELDS = (
     _field('auto_rca_category_a', 'Auto_RCA_Category_A', 'rca', 'text', 'rca', 'auto_rca_category_a',
@@ -120,10 +122,14 @@ DEFAULT_FIELDS = (
            description='Root cause category of the B side found by the RCA script.'),
     _field('auto_rca_subcategory_b', 'Auto_RCA_Subcategory_B', 'rca', 'text', 'rca', 'auto_rca_subcategory_b',
            description='Root cause subcategory of the B side found by the RCA script.'),
+    _field('rca_initial_category', 'RCA Category', 'rca', 'text', 'rca', 'rca_initial_category',
+           description='First category of the RCA script, before its final checks (RCA_Category of the Auto RCA script).'),
+    _field('rca_initial_subcategory', 'RCA Subcategory', 'rca', 'text', 'rca', 'rca_initial_cause',
+           description='First subcategory of the RCA script, before its final checks (RCA_Subcategory of the Auto RCA script).'),
     _field('rca_suggested_category', 'RCA Suggested Category', 'rca', 'text', 'rca', 'rca_category',
-           description='Root category suggested by the RCA script.'),
+           description='Root category suggested by the RCA script (Final_RCA_Category of the Auto RCA script).'),
     _field('rca_suggested_cause', 'RCA Suggested Cause', 'rca', 'text', 'rca', 'rca_cause', in_table=True,
-           description='Root cause suggested by the RCA script.'),
+           description='Root cause suggested by the RCA script (Final_RCA_Subcategory of the Auto RCA script).'),
     _field('rca_evidence', 'RCA Evidence', 'rca', 'long_text', 'rca', 'rca_evidence',
            description='Why the RCA script chose its category: the measurements and the condition that matched.'),
     _field('netcheck_failure_classification', 'Netcheck Failure Classification', 'rca', 'text', 'cdr', 'failure_classification',

@@ -173,10 +173,9 @@
 .nq-open-cell { width: 2rem; text-align: center; }
 .non-qualified-calls .nq-open-button { display: inline-grid; place-items: center; width: 1.9rem; height: 1.9rem; min-height: 0; padding: 0; border: 1px solid var(--nq-border); border-radius: 50%; background: #fff; color: var(--nq-color); font-size: 1.2rem; font-weight: 800; box-shadow: none; }
 .nq-table tbody tr:hover .nq-open-button { border-color: var(--nq-color); background: var(--nq-color); color: #fff; }
-/* The pager of the calls (see .app-pager): the page numbers, or the page among the pages on phones. */
+/* The pager of the calls (see .app-pager): the page numbers, or on phones the call among the calls. */
 .nq-pagination { --pager-accent: var(--nq-color); }
 .nq-pagination:empty { display: none; }
-.nq-pagination .nq-page-status { display: none; }
 .nq-ellipsis { align-self: center; padding: 0 .1rem; color: var(--nq-muted); }
 
 /* Call drawer */
@@ -188,6 +187,15 @@
 .nq-drawer-head .eyebrow { display: flex; gap: .35rem; margin: 0 0 .35rem; }
 .nq-drawer-head h2 { margin: 0; color: #fff; font-size: 1.25rem; }
 .nq-drawer-meta { margin: .3rem 0 0; color: #ffe6ee; font-size: .85rem; }
+/* The JOIN_ID of the call, to copy with one tap. */
+.nq-drawer-join { display: grid; grid-template-columns: minmax(0, max-content) auto; justify-content: start; align-items: center; gap: .3rem .45rem; margin: .4rem 0 0; color: #ffe6ee; font-size: .74rem; font-weight: 800; letter-spacing: .03em; }
+.nq-drawer-join > span { grid-column: 1 / -1; }
+.nq-drawer-join[hidden] { display: none; }
+.nq-drawer-join code { min-width: 0; padding: .12rem .45rem; border-radius: 7px; background: rgba(255, 255, 255, .16); color: #fff; font: 700 .78rem ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0; overflow-wrap: anywhere; }
+.nq-drawer .nq-copy-button { display: inline-grid; flex: 0 0 auto; place-items: center; width: 1.85rem; height: 1.85rem; min-height: 0; padding: 0; border: 1px solid rgba(255, 255, 255, .5); border-radius: 50%; background: rgba(255, 255, 255, .15); color: #fff; box-shadow: none; }
+.nq-drawer .nq-copy-button:hover { background: rgba(255, 255, 255, .3); }
+.nq-drawer .nq-copy-button.is-copied { border-color: #fff; background: #2e8b57; }
+.nq-copy-button svg { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .nq-drawer .nq-drawer-close { flex: 0 0 auto; width: 2.2rem; height: 2.2rem; min-height: 0; padding: 0; border: 1px solid rgba(255, 255, 255, .5); border-radius: 50%; background: rgba(255, 255, 255, .15); color: #fff; font-size: 1.4rem; line-height: 1; box-shadow: none; }
 .nq-drawer .nq-drawer-close:hover { background: rgba(255, 255, 255, .3); }
 .nq-drawer-tracking { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .6rem .8rem; padding: .9rem 1.2rem; border-bottom: 1px solid var(--nq-border); background: var(--nq-softer); }
@@ -363,9 +371,34 @@ span.nq-root-suggestion { cursor: default; }
 .nq-option-row .nq-root-keywords { flex: 1.4 1 auto; color: var(--nq-muted); }
 .nq-root-domain > .nq-secondary-action { justify-self: start; margin-left: 2.2rem; min-height: 2rem; padding: .3rem .8rem; }
 .nq-root-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .6rem; }
-.nq-root-breakdowns { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-bottom: 14px; }
-.non-qualified-calls .nq-root-breakdowns .nq-bar { grid-template-columns: minmax(0, 15rem) minmax(0, 1fr) auto; }
-@media (max-width: 900px) { .nq-root-breakdowns { grid-template-columns: minmax(0, 1fr); } }
+.nq-root-breakdowns { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-bottom: 14px; }
+.non-qualified-calls .nq-root-breakdowns .nq-bar { grid-template-columns: minmax(0, 48%) minmax(3rem, 1fr) auto; }
+/* The technology at the end of a root category (Poor Coverage LTE or NR) is never cut off. */
+.nq-root-breakdowns .nq-bar-label { white-space: normal; overflow-wrap: anywhere; }
+@media (max-width: 1100px) { .nq-root-breakdowns { grid-template-columns: minmax(0, 1fr); } }
+/* Calls of each group per root domain: one bar per group split in the colours of the domains. */
+.nq-stack-chart { display: grid; gap: .45rem; }
+.nq-stack-legend { display: flex; flex-wrap: wrap; gap: .3rem .8rem; margin-bottom: .2rem; color: var(--nq-muted); font-size: .74rem; font-weight: 750; }
+.nq-stack-key { display: inline-flex; align-items: center; gap: .3rem; }
+.nq-stack-row { display: grid; grid-template-columns: minmax(0, 9rem) minmax(3rem, 1fr) auto; align-items: center; gap: .6rem; font-size: .82rem; }
+.nq-stack-name { overflow: hidden; color: var(--nq-text); font-weight: 750; text-overflow: ellipsis; white-space: nowrap; }
+.nq-stack-total { min-width: 2.5rem; color: var(--nq-dark); font-weight: 850; font-variant-numeric: tabular-nums; text-align: right; }
+.nq-stack-track { display: flex; height: 1.15rem; overflow: hidden; border-radius: 999px; background: #f3dfe6; }
+.nq-stack-part { display: flex; flex: 0 0 auto; align-items: center; justify-content: center; min-width: 3px; overflow: hidden; font-size: .68rem; font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.nq-stack-part + .nq-stack-part { box-shadow: inset 1px 0 0 rgba(255, 255, 255, .7); }
+.nq-stack-chart .is-drill { cursor: pointer; }
+.nq-stack-name.is-drill:hover, .nq-stack-name.is-active { color: var(--nq-color); text-decoration: underline; }
+.nq-stack-part.is-drill:hover { filter: brightness(1.08); }
+.nq-stack-part.is-active { outline: 2px solid var(--nq-dark); outline-offset: -2px; }
+.nq-stack-counts { display: flex; flex-wrap: wrap; grid-column: 2 / -1; gap: .15rem .7rem; margin-top: -.3rem; color: var(--nq-muted); font-size: .72rem; font-weight: 750; font-variant-numeric: tabular-nums; }
+.nq-stack-count { display: inline-flex; align-items: center; gap: .25rem; border-radius: 4px; }
+.nq-stack-count.is-drill:hover, .nq-stack-count.is-active { color: var(--nq-dark); text-decoration: underline; }
+@media (max-width: 640px) {
+  .nq-stack-row { grid-template-columns: minmax(0, 1fr) auto; gap: .25rem .5rem; }
+  .nq-stack-track, .nq-stack-counts { grid-column: 1 / -1; }
+  .nq-stack-track { grid-row: 2; }
+  .nq-stack-counts { margin-top: 0; }
+}
 .nq-stats-table .nq-root-domain-head { white-space: nowrap; text-align: right; }
 .nq-stats-table .nq-root-domain-head .nq-swatch { margin-right: .3rem; vertical-align: middle; }
 
@@ -580,6 +613,9 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 .nq-section-fields:empty { display: none; }
 #nq-general-fields { margin-bottom: 1rem; }
 .nq-section-form h4, .nq-decision h4 { margin: .2rem 0 .5rem; color: var(--nq-dark); font-size: .82rem; letter-spacing: .03em; text-transform: uppercase; }
+.nq-rca-extra-card { margin-top: 1rem; }
+/* The names of the RCA script columns in the colour of its tag, apart from their values. */
+.nq-rca-extra dt { color: #7a5a06; }
 .nq-field-title { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; }
 .nq-source-tag, .nq-required-tag { padding: 0 .4rem; border-radius: 999px; background: #eceff1; color: #4b5a63; font-size: .64rem; font-weight: 800; }
 .nq-source-tag.is-rca { background: #fff2cc; color: #7a5a06; }
@@ -900,8 +936,10 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
   #nq-table .nq-stacked strong, #nq-table .nq-stacked span, #nq-table .nq-failure strong, #nq-table .nq-failure span { white-space: normal; overflow-wrap: anywhere; }
   .non-qualified-calls #nq-table :is(.nq-pill-select, .nq-pill-assignee, .nq-root-select) { min-width: 0; max-width: 100%; }
   #nq-table .nq-root-suggestion { max-width: 100%; }
-  .nq-pagination :is(.nq-page-number, .nq-ellipsis) { display: none; }
-  .nq-pagination .nq-page-status { display: inline; }
+  /* The names and the values share the width in halves, both wrapping when needed. */
+  .nq-detail-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .35rem .7rem; font-size: .82rem; }
+  .nq-detail-grid dt { overflow-wrap: anywhere; }
+  .nq-drawer-join code { font-size: .68rem; }
   /* The call fills the screen: its phases go two per row and the floating page controls stay hidden behind it. */
   .nq-drawer-tracking .nq-phase-strip { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .3rem; }
   .nq-drawer .nq-phase-step { flex-direction: column; align-items: flex-start; gap: .15rem; }
