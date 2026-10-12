@@ -614,7 +614,7 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 #nq-general-fields { margin-bottom: 1rem; }
 .nq-section-form h4, .nq-decision h4 { margin: .2rem 0 .5rem; color: var(--nq-dark); font-size: .82rem; letter-spacing: .03em; text-transform: uppercase; }
 .nq-rca-extra-card { margin-top: 1rem; }
-/* The names of the RCA script columns in the colour of its tag, apart from their values. */
+/* The names of the Ericsson RCA columns in the colour of its tag, apart from their values. */
 .nq-rca-extra dt { color: #7a5a06; }
 .nq-field-title { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; }
 .nq-source-tag, .nq-required-tag { padding: 0 .4rem; border-radius: 999px; background: #eceff1; color: #4b5a63; font-size: .64rem; font-weight: 800; }
@@ -760,7 +760,7 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 .nq-condition-values[hidden] { display: none; }
 .nq-condition-value { padding: .25rem .6rem; border-left: 4px solid var(--nq-chip, var(--nq-border)); font-size: .76rem; }
 .nq-status-rule > .nq-link-action { justify-self: start; margin-left: 2.2rem; }
-/* RCA Script Results. */
+/* Ericsson RCA Results. */
 .nq-rca-dialog { width: min(900px, calc(100vw - 32px)); }
 .nq-rca-current, .nq-rca-preview { display: grid; gap: .4rem; }
 .nq-rca-preview { padding: .7rem .9rem; border: 1px solid var(--nq-color); border-radius: 12px; background: var(--nq-softer); }

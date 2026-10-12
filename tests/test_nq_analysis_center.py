@@ -65,7 +65,9 @@ def test_new_workspaces_get_the_catalog_of_the_meeting_workbook(client, tmp_path
     assert next(field for field in fields if field['key'] == 'last_cell_id')['source_ref'] == 'last_cell_id'
     assert [field['key'] for field in fields if field['section'] == 'analysis'][:3] == ['analysis_status', 'tunnel_failure', 'needed_technology']
     assert [section['label'] for section in state['sections']][2] == 'Failure Details'
-    assert [field['label'] for field in fields[:3]] == ['Auto_RCA_Category_A', 'Auto_RCA_Subcategory_A', 'Auto_RCA_Category_B']
+    # The NetCheck RCA comes before the Ericsson RCA.
+    assert [field['label'] for field in fields[:4]] == ['Netcheck Failure Classification', 'Netcheck Suggested Category',
+                                                         'Netcheck Suggested Cause', 'Auto_RCA_Category_A']
     by_key = {field['key']: field for field in fields}
     assert by_key['rca_suggested_cause']['source'] == 'rca' and by_key['rca_suggested_cause']['in_table']
     assert by_key['netcheck_suggested_cause']['source_ref'] == 'failure_subcategory'
@@ -256,7 +258,8 @@ def test_excel_export_groups_the_catalog_by_section_with_its_colours(client, tmp
     assert sections[:3] == ['CALL', 'RCA', 'GENERAL'] and sections[-4:-1] == ['ANALYSIS', 'IMPLEMENTATION', 'PLANNING']
     headers = [cell.value for cell in sheet[2]]
     # The catalog in its order, each field after its section title, with the follow-up companions.
-    assert headers.index('Auto_RCA_Category_A') < headers.index('Selected Root Cause') < headers.index('NQ Call Status') \
+    assert headers.index('Netcheck Suggested Cause') < headers.index('Auto_RCA_Category_A') < headers.index('Selected Root Cause') \
+        < headers.index('NQ Call Status') \
         < headers.index('Session Type') < headers.index('Findings') < headers.index('Planned Date')
     # JOIN_ID and the call key first; the root cause decision ends the RCA block; the last update last.
     assert headers[:3] == ['JOIN_ID', 'Call Key', 'CDR'] and headers[-2:] == ['Updated By', 'Updated At']
@@ -270,7 +273,7 @@ def test_excel_export_groups_the_catalog_by_section_with_its_colours(client, tmp
     assert fill('Analysis Status') == nq._tint('#7030A0', nq.KEY_FIELD_TINT) != fill('Findings')
     assert fill('Implementation Status') == nq._tint('#00B050', nq.KEY_FIELD_TINT)
     assert fill('Planned Status') == nq._tint('#00843D', nq.KEY_FIELD_TINT)
-    rca_fill = sheet.cell(1, headers.index('Auto_RCA_Category_A') + 1).fill.fgColor.rgb
+    rca_fill = sheet.cell(1, headers.index('Netcheck Failure Classification') + 1).fill.fgColor.rgb
     assert rca_fill.endswith('FFC000')
     rows = [dict(zip(headers, (cell.value for cell in row))) for row in sheet.iter_rows(min_row=3)]
     row = next(item for item in rows if item['JOIN_ID'] == '0xA1')
@@ -497,6 +500,27 @@ def test_workspaces_before_the_auto_rca_fields_get_them_around_the_suggestion(cl
     keys = [field['key'] for field in nq.list_fields(repository)]
     assert keys[keys.index('auto_rca_subcategory_b') + 1:keys.index('rca_evidence') + 1] == [
         'rca_initial_category', 'rca_initial_subcategory', 'rca_suggested_category', 'rca_suggested_cause', 'rca_evidence']
+
+
+def test_workspaces_before_the_ericsson_rca_name_get_netcheck_first(client, tmp_path):
+    setup_calls(client, tmp_path)
+    repository = core.repository
+    fields = nq.list_fields(repository)
+    netcheck = [field for field in fields if field['section'] == 'rca' and field['source'] == 'cdr']
+    rest = [field for field in fields if field not in netcheck]
+    # The earlier layout: the NetCheck fields after the script ones, with the descriptions that named the RCA script.
+    place = max(position for position, field in enumerate(rest) if field['section'] == 'rca' and field['source'] == 'rca')
+    rest[place + 1:place + 1] = netcheck
+    rest[0]['description'] = 'Root cause category of the A side found by the RCA script (imported by JOIN_ID).'
+    nq._store_fields(repository, rest)
+    repository.set_workspace_state(nq.ANALYSIS_CENTER_V5_STATE_KEY, '')
+    nq.ensure_nq_tables(repository)
+    upgraded = nq.list_fields(repository)
+    rca = [field['key'] for field in upgraded if field['section'] == 'rca']
+    assert rca[:4] == ['netcheck_failure_classification', 'netcheck_suggested_category', 'netcheck_suggested_cause', 'auto_rca_category_a']
+    assert rca[-2:] == ['selected_root_category', 'selected_root_cause'] and len(upgraded) == len(fields)
+    assert next(field for field in upgraded if field['key'] == 'auto_rca_category_a')['description'] == \
+        'Root cause category of the A side found by the Ericsson RCA (imported by JOIN_ID).'
 
 
 def test_auto_rca_summary_fills_each_side_combines_rows_and_completes_the_catalog(client, tmp_path):

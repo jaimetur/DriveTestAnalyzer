@@ -23,8 +23,8 @@
     age: 'Age of Open Calls', root_pair: 'Root Domain · Cause', effective_domain: 'Root Domain (with suggestions)',
     effective_cause: 'Root Domain · Cause (with suggestions)', node: 'eNB / gNB', state: 'Follow-up', rca_state: 'Root Cause',
     netcheck_domain: 'Root Domain (NetCheck RCA)', netcheck_category: 'Root Domain · Category (NetCheck RCA)',
-    netcheck_cause: 'Root Domain · Cause (NetCheck RCA)', script_domain: 'Root Domain (RCA Script)',
-    script_category: 'Root Domain · Category (RCA Script)', script_cause: 'Root Domain · Cause (RCA Script)',
+    netcheck_cause: 'Root Domain · Cause (NetCheck RCA)', script_domain: 'Root Domain (Ericsson RCA)',
+    script_category: 'Root Domain · Category (Ericsson RCA)', script_cause: 'Root Domain · Cause (Ericsson RCA)',
     version: 'CDR Version',
   };
   // How the CDRs see a call; "current" is the latest version with nothing to tell.
@@ -53,7 +53,7 @@
   // The status selects offer this value to give the status back to the Status Rules.
   const AUTO_STATUS = '__auto__';
   // Where a catalog field takes its value from, as a short tag.
-  const SOURCE_TAGS = {user: 'Analyst', tracking: 'Follow-up', cdr: 'CDR', rca: 'RCA script', derived: 'Derived'};
+  const SOURCE_TAGS = {user: 'Analyst', tracking: 'Follow-up', cdr: 'CDR', rca: 'Ericsson RCA', derived: 'Derived'};
   const CONFIDENCE_LABELS = {high: 'High confidence', medium: 'Medium confidence', low: 'Low confidence'};
   // The sections whose first list field is a phase of the follow-up.
   const PHASE_SECTIONS = ['analysis', 'implementation', 'planning'];
@@ -70,7 +70,7 @@
     result: null, selected: new Set(), detail: null, requestToken: 0, busy: false, extraFilters: {}, stale: new Set(), view: 'calls',
     fields: [], fieldTypes: {}, tableColumns: {builtin: [], cdr: []}, optionalColumns: {}, cdrColumns: [], versionLabels: {},
     rateService: '', sections: [], statusRules: [], conditionFields: {}, ruleOperators: {}, fieldSources: {}, trackingRefs: {},
-    rcaRefs: {}, callFields: [], rcaResults: {}, rcaSources: {}, matrixSource: 'script',
+    rcaRefs: {}, callFields: [], rcaResults: {}, rcaSources: {}, matrixSource: 'netcheck',
   };
 
   // -- helpers --------------------------------------------------------------
@@ -1136,9 +1136,9 @@
   const saveFieldValue = (call, key, value, control) => patchCall(call, {fields: {[key]: value}}, control,
     `${historyLabel(`field:${key}`)} updated.`);
   // A list or Yes / No field of the analysts is chosen in the row; the other fields are shown here and
-  // edited in the call; fields from the CDR, the RCA script or derived are read only.
+  // edited in the call; fields from the CDR, the Ericsson RCA or derived are read only.
   // The cause columns of the RCA sources show, for a call whose source gives a category without a cause (most results
-  // of the Auto RCA script), that category, marked as such.
+  // of the Ericsson RCA), that category, marked as such.
   const CAUSE_FALLBACKS = {rca_suggested_cause: 'rca_suggested_category', netcheck_suggested_cause: 'netcheck_suggested_category'};
   const fieldCell = (call, field) => {
     const cell = node('td', undefined, 'nq-tracking-cell nq-field-cell');
@@ -1931,10 +1931,10 @@
     });
     return card;
   };
-  // The root causes the panel counts: those the analysts chose, or what the NetCheck RCA or the RCA script gives each
+  // The root causes the panel counts: those the analysts chose, or what the NetCheck RCA or the Ericsson RCA gives each
   // call on the catalog; a domain, domain·category or domain·cause filters the calls of that source.
   state.rootSource = 'analysts';
-  const ROOT_SOURCE_NAMES = {analysts: 'the analysts', netcheck: 'the NetCheck RCA', script: 'the RCA script'};
+  const ROOT_SOURCE_NAMES = {analysts: 'the analysts', netcheck: 'the NetCheck RCA', script: 'the Ericsson RCA'};
   const domainPair = (domain) => [state.rootSource === 'analysts' ? 'root_domain' : `${state.rootSource}_domain`,
     domain === NOT_CLASSIFIED ? state.unassigned : domain];
   const causePair = (domain, cause) => [state.rootSource === 'analysts' ? 'root_pair' : `${state.rootSource}_cause`, `${domain}||${cause}`];
@@ -2277,7 +2277,7 @@
   const renderMatrix = (insights) => {
     const matrix = insights.confusion[state.matrixSource] || {rows: [], columns: [], cells: []};
     const tabs = $('nq-sources-matrix-tabs');
-    tabs.replaceChildren(...[['script', 'RCA Script'], ['netcheck', 'NetCheck']].map(([source, label]) => {
+    tabs.replaceChildren(...[['netcheck', 'NetCheck RCA'], ['script', 'Ericsson RCA']].map(([source, label]) => {
       const tab = node('button', label, 'nq-rate-tab');
       tab.type = 'button';
       tab.setAttribute('role', 'tab');
@@ -2289,7 +2289,7 @@
     const table = $('nq-sources-matrix');
     const head = node('thead');
     const headRow = node('tr');
-    headRow.append(node('th', `${state.matrixSource === 'script' ? 'RCA Script' : 'NetCheck'} ↓ · Selected →`));
+    headRow.append(node('th', `${state.matrixSource === 'script' ? 'Ericsson RCA' : 'NetCheck RCA'} ↓ · Selected →`));
     matrix.columns.forEach((column) => headRow.append(node('th', column)));
     head.append(headRow);
     const body = node('tbody');
@@ -2319,20 +2319,20 @@
     const {coverage, agreement} = insights;
     const results = insights.rca_results || {};
     $('nq-sources-results').textContent = results.total
-      ? `${number(results.total)} RCA script results · ${number(results.matched)} match calls` : 'No RCA script results imported yet';
+      ? `${number(results.total)} Ericsson RCA results · ${number(results.matched)} match calls` : 'No Ericsson RCA results imported yet';
     const rate = (item) => (item.rate === null ? '—' : `${item.rate.toFixed(1)}%`);
     $('nq-sources-kpis').replaceChildren(
       kpiCard('Calls', number(coverage.total), 'Non-Qualified Calls of the selection', 'total'),
-      kpiCard('RCA Script', number(coverage.script), `${percent(coverage.script, coverage.total)} have script results`, 'attended'),
       kpiCard('NetCheck RCA', number(coverage.netcheck), `${percent(coverage.netcheck, coverage.total)} classified by NetCheck`, 'team'),
+      kpiCard('Ericsson RCA', number(coverage.script), `${percent(coverage.script, coverage.total)} have Ericsson RCA results`, 'attended'),
       kpiCard('Selected', number(coverage.selected), `${percent(coverage.selected, coverage.total)} have a root category or cause`, 'closed'),
-      kpiCard('Script ↔ Selected', rate(agreement.selected_script), `${number(agreement.selected_script.agree)} of ${number(agreement.selected_script.compared)} calls agree`, 'commented'),
       kpiCard('NetCheck ↔ Selected', rate(agreement.selected_netcheck), `${number(agreement.selected_netcheck.agree)} of ${number(agreement.selected_netcheck.compared)} calls agree`, 'commented'),
-      kpiCard('Script ↔ NetCheck', rate(agreement.script_netcheck), `${number(agreement.script_netcheck.agree)} of ${number(agreement.script_netcheck.compared)} calls agree`, 'open'),
+      kpiCard('Ericsson RCA ↔ Selected', rate(agreement.selected_script), `${number(agreement.selected_script.agree)} of ${number(agreement.selected_script.compared)} calls agree`, 'commented'),
+      kpiCard('NetCheck ↔ Ericsson RCA', rate(agreement.netcheck_script), `${number(agreement.netcheck_script.agree)} of ${number(agreement.netcheck_script.compared)} calls agree`, 'open'),
     );
     $('nq-sources-hierarchies').replaceChildren(
-      hierarchyCard('RCA Script', 'Suggested Category → Cause of the script', insights.hierarchies.script, false),
       hierarchyCard('NetCheck RCA', 'Failure Category → Subcategory of the CDR', insights.hierarchies.netcheck, false),
+      hierarchyCard('Ericsson RCA', 'Suggested Category → Cause of the Ericsson RCA', insights.hierarchies.script, false),
       hierarchyCard('Selected by the Analysts', 'Root Category → Root Cause; click to drill down', insights.hierarchies.selected, true),
     );
     $('nq-sources-domains').replaceChildren(staticBars('Selected Root Domains', insights.domains.map((item) => ({
@@ -2851,7 +2851,7 @@
     control.setAttribute('aria-label', field.label);
     return control;
   };
-  // A field from the CDR, the RCA script, the follow-up or derived from the call: shown, never edited.
+  // A field from the CDR, the Ericsson RCA, the follow-up or derived from the call: shown, never edited.
   const readonlyValue = (field, value) => {
     const box = node('div', undefined, 'nq-readonly-value');
     const text = value === null || value === undefined ? '' : String(value);
@@ -2932,7 +2932,7 @@
     }
   };
   // The Root Cause Decision of the RCA section: the selected Root Category and Cause, the recommendation
-  // merged from every source, and what each source (NetCheck, RCA script, comments, previous decisions) proposes.
+  // merged from every source, and what each source (NetCheck, Ericsson RCA, comments, previous decisions) proposes.
   const rootDecisionCard = (call) => {
     const card = node('section', undefined, 'nq-decision');
     const head = node('header');
@@ -3001,32 +3001,23 @@
       }
       cards.append(item);
     });
-    if (!sources.length) cards.append(node('p', 'No RCA source proposes a root cause for this call yet: import the RCA script results or choose the values by hand.', 'form-note'));
+    if (!sources.length) cards.append(node('p', 'No RCA source proposes a root cause for this call yet: import the Ericsson RCA results or choose the values by hand.', 'form-note'));
     card.append(node('h4', 'What each source proposes'), cards);
     return card;
   };
-  // The other columns of the RCA script file, after the values of the RCA sources.
+  // The other columns of the Ericsson RCA file, after the values of the RCA sources.
   const rcaExtrasCard = (call) => {
     const extras = Object.entries(call.rca || {}).filter(([key, value]) => key.startsWith('extra:') && value);
     if (!extras.length) return null;
     const card = node('section', undefined, 'nq-decision nq-rca-extra-card');
     const list = node('dl', undefined, 'nq-detail-grid nq-rca-extra');
     extras.forEach(([key, value]) => list.append(node('dt', key.slice(6)), node('dd', String(value))));
-    card.append(node('h4', 'Other RCA script columns'), list);
+    card.append(node('h4', 'Other Ericsson RCA columns'), list);
     return card;
   };
   // The fields of every section, each one in its tab; the tabs count the fields filled in.
   // The fields of every tab; a tab of several sections (Implementation & Planning) shows each one in its own subpanel.
   // The tabs count the fields filled in.
-  // The values of the NetCheck RCA (fields from the CDR) come before those of the RCA script, as NetCheck goes first.
-  const netcheckFirst = (fields) => {
-    const netcheck = fields.filter((field) => field.source === 'cdr');
-    const others = fields.filter((field) => field.source !== 'cdr');
-    const script = others.findIndex((field) => field.source === 'rca');
-    if (script < 0 || !netcheck.length) return fields;
-    others.splice(script, 0, ...netcheck);
-    return others;
-  };
   const renderSections = (detail) => {
     const call = detail.call;
     drawerTabs().forEach((group) => {
@@ -3041,7 +3032,7 @@
         const form = node('form', undefined, 'nq-analysis-form nq-section-form');
         if (group.key === 'rca') form.append(node('h4', 'Values of the RCA sources'));
         group.sections.forEach((section) => {
-          const sectionFields = group.key === 'rca' ? netcheckFirst(ofSection(section.key)) : ofSection(section.key);
+          const sectionFields = ofSection(section.key);
           if (!sectionFields.length) return;
           const grid = node('div', undefined, 'nq-analysis-grid');
           grid.append(...sectionFields.map((field) => fieldBlock(field, call)));
@@ -3891,7 +3882,7 @@
     wrapper.append(box, ` ${label}`);
     return wrapper;
   };
-  // Where a field of each source reads its value: call fields, CDR columns or RCA script columns.
+  // Where a field of each source reads its value: call fields, CDR columns or Ericsson RCA columns.
   const refChoices = (source) => (source === 'rca' ? Object.entries(state.rcaRefs)
     : source === 'cdr' ? [...state.callFields.map((name) => [name, name]), ...state.cdrColumns.map((name) => [`column:${name}`, `CDR column ${name}`])]
       : source === 'derived' ? state.callFields.map((name) => [name, name]) : []);
@@ -3960,7 +3951,7 @@
       if (kind === 'derived') type.value = 'list';
       type.disabled = tracking || kind === 'derived';
       ref.hidden = tracking || kind === 'user';
-      ref.querySelector('span').textContent = kind === 'derived' ? 'Call values read (comma separated)' : kind === 'rca' ? 'RCA script column' : 'CDR value';
+      ref.querySelector('span').textContent = kind === 'derived' ? 'Call values read (comma separated)' : kind === 'rca' ? 'Ericsson RCA column' : 'CDR value';
       datalist.replaceChildren(...refChoices(kind).map(([value, text]) => {
         const option = node('option', text);
         option.value = value;
@@ -4512,10 +4503,10 @@
     });
   }
 
-  // -- RCA script results dialog ----------------------------------------------------------------
+  // -- Ericsson RCA results dialog ----------------------------------------------------------------
   const rcaDialog = $('nq-rca-dialog');
   let rcaFile = null;
-  // Whether the script categories and causes missing from the Root Cause Catalog are added with the results.
+  // Whether the Ericsson RCA categories and causes missing from the Root Cause Catalog are added with the results.
   let rcaAddToCatalog = true;
   const smallTable = (headers, rows) => {
     const wrap = node('div', undefined, 'nq-table-wrap');
@@ -4562,7 +4553,7 @@
     const keys = Object.keys(state.rcaRefs).filter((key) => preview.preview.some((row) => row[key]));
     host.replaceChildren(node('h3', `Preview of ${preview.file_name}`), list,
       smallTable(['JOIN_ID', ...keys.map((key) => state.rcaRefs[key])], preview.preview.map((row) => [row.join_id, ...keys.map((key) => row[key] || '—')])));
-    // The script values the catalog cannot map (by name or keywords), to add with the results.
+    // The Ericsson RCA values the catalog cannot map (by name or keywords), to add with the results.
     if (preview.unmapped?.length) {
       const toggle = node('label', undefined, 'nq-toggle');
       const box = node('input');
@@ -4571,7 +4562,7 @@
       box.addEventListener('change', () => { rcaAddToCatalog = box.checked; });
       toggle.append(box, ' Add them to the Root Cause Catalog with the results');
       host.append(node('h3', 'Not in the Root Cause Catalog'),
-        node('p', 'The recommendation cannot use these script values: no Root Category or Root Cause of the catalog has their name or keywords.', 'form-note'),
+        node('p', 'The recommendation cannot use these Ericsson RCA values: no Root Category or Root Cause of the catalog has their name or keywords.', 'form-note'),
         smallTable(['Kind', 'Value', 'Proposed domain', 'Results'], preview.unmapped.map((item) => [
           item.kind === 'category' ? 'Root Category' : 'Root Cause', item.name, item.domain || 'No domain', number(item.results)])),
         toggle);
@@ -4659,7 +4650,7 @@
       }
     });
     $('nq-rca-clear').addEventListener('click', async () => {
-      const message = 'Delete every imported RCA script result? The calls lose their script values and recommendations from the script; their selected root cause stays.';
+      const message = 'Delete every imported Ericsson RCA result? The calls lose their Ericsson RCA values and recommendations; their selected root cause stays.';
       const accepted = typeof window.showConfirmDialog === 'function'
         ? await window.showConfirmDialog(message, {title: 'Delete RCA results', confirmLabel: 'Delete'}) : window.confirm(message);
       if (!accepted) return;

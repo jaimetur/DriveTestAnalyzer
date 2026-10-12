@@ -118,12 +118,14 @@ STATUS_RULES_STATE_KEY = 'nq_calls_status_rules'
 ANALYSIS_CENTER_STATE_KEY = 'nq_analysis_center_v1'
 # The second layout of the Analysis Center (section colours and the order of the Analysis fields), applied once.
 ANALYSIS_CENTER_V2_STATE_KEY = 'nq_analysis_center_v2'
-# The fields of the Auto RCA script (its initial category and subcategory and its evidence), added once to the
-# workspaces created before them.
+# The fields of the Auto RCA output of the Ericsson RCA (its initial category and subcategory and its evidence),
+# added once to the workspaces created before them.
 ANALYSIS_CENTER_V4_STATE_KEY = 'nq_analysis_center_v4'
+# The NetCheck RCA fields before those of the Ericsson RCA, and the descriptions that named the RCA script, once.
+ANALYSIS_CENTER_V5_STATE_KEY = 'nq_analysis_center_v5'
 # Set once the tables and columns of this version exist, so the requests check the schema without writing.
 SCHEMA_STATE_KEY = 'nq_calls_schema'
-SCHEMA_VERSION = '2026-10-12.2'
+SCHEMA_VERSION = '2026-10-12.3'
 # Indexed call fields that the suggestion rule can read, with their labels.
 RULE_FIELDS = {
     'failure_classification': 'Failure Classification', 'failure_category': 'Failure Category',
@@ -205,7 +207,7 @@ EXTRA_FILTERS = ('nr_mode', 'call_type', 'period', 'age', 'root_pair', 'effectiv
 KEY_FILTERS = ('effective_domain', 'effective_cause', 'node', 'rca_state', 'netcheck_domain', 'netcheck_category',
                'netcheck_cause', 'script_domain', 'script_category', 'script_cause')
 # The sources the Root Cause Analysis counts the calls with: the decision of the analysts, or the NetCheck RCA of the
-# CDR or the RCA script mapped onto the Root Cause Catalog.
+# CDR or the Ericsson RCA mapped onto the Root Cause Catalog.
 ROOT_SOURCES = ('analysts', 'netcheck', 'script')
 _ATTENDED_SQL = "(updated_at <> '' OR comment_count > 0)"
 STATE_SQL = {
@@ -454,7 +456,8 @@ def _schema_ready(task_repository: Any) -> bool:
         tables = {str(row[0]) for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
         if not set(NQ_TABLE_TITLES) <= tables or 'workspace_state' not in tables:
             return False
-        keys = (SCHEMA_STATE_KEY, ANALYSIS_CENTER_STATE_KEY, ANALYSIS_CENTER_V2_STATE_KEY, ANALYSIS_CENTER_V4_STATE_KEY)
+        keys = (SCHEMA_STATE_KEY, ANALYSIS_CENTER_STATE_KEY, ANALYSIS_CENTER_V2_STATE_KEY, ANALYSIS_CENTER_V4_STATE_KEY,
+                ANALYSIS_CENTER_V5_STATE_KEY)
         states = {str(row[0]): str(row[1]) for row in connection.execute(
             f"SELECT key, value FROM workspace_state WHERE key IN ({', '.join('?' for _ in keys)})", keys)}
     return states.get(SCHEMA_STATE_KEY) == SCHEMA_VERSION and all(states.get(key) for key in keys[1:])
@@ -524,6 +527,8 @@ def ensure_nq_tables(task_repository: Any) -> None:
         _upgrade_analysis_center_v2(task_repository)
     if not task_repository.get_workspace_state(ANALYSIS_CENTER_V4_STATE_KEY):
         _upgrade_analysis_center_v4(task_repository)
+    if not task_repository.get_workspace_state(ANALYSIS_CENTER_V5_STATE_KEY):
+        _upgrade_analysis_center_v5(task_repository)
     task_repository.set_workspace_state(SCHEMA_STATE_KEY, SCHEMA_VERSION)
 
 
@@ -675,18 +680,44 @@ def _upgrade_analysis_center_v2(task_repository: Any) -> None:
 
 
 def _upgrade_analysis_center_v4(task_repository: Any) -> None:
-    """The fields of the Auto RCA script, once: its initial RCA Category and Subcategory before the suggestion and the
-    RCA Evidence after it."""
+    """The fields of the Auto RCA output of the Ericsson RCA, once: its initial RCA Category and Subcategory
+    before the suggestion and the RCA Evidence after it."""
     fields = list_fields(task_repository)
-    if _add_default_fields(fields, {'rca_initial_category', 'rca_initial_subcategory', 'rca_evidence'}):
+    if _add_default_fields(fields, {'rca_initial_category', 'rca_initial_subcategory', 'rca_evidence'}, same_source=True):
         _store_fields(task_repository, nq_catalog.normalize_fields(fields, {field['key']: field for field in list_fields(task_repository)},
                                                                    CATALOG_CALL_FIELDS))
     task_repository.set_workspace_state(ANALYSIS_CENTER_V4_STATE_KEY, '1')
 
 
-def _add_default_fields(fields: list[dict[str, Any]], keys: set[str]) -> bool:
-    """Insert the default fields of ``keys`` a catalog lacks (by key or name), each after the field it follows by
-    default or at the end of its section; whether any was added."""
+def _upgrade_analysis_center_v5(task_repository: Any) -> None:
+    """NetCheck before the Ericsson RCA, once: the RCA fields from the CDR move before the first field of the
+    script (keeping their order), and the default fields whose description named the RCA script take the new one."""
+    fields = list_fields(task_repository)
+    defaults = {field['key']: field for field in nq_catalog.default_fields()}
+    changed = False
+    rca = [field for field in fields if field['section'] == 'rca']
+    script = next((position for position, field in enumerate(rca) if field['source'] == 'rca'), None)
+    if script is not None and any(field['source'] == 'cdr' for field in rca[script:]):
+        netcheck = [field for field in rca if field['source'] == 'cdr']
+        others = [field for field in rca if field['source'] != 'cdr']
+        first = next(position for position, field in enumerate(others) if field['source'] == 'rca')
+        others[first:first] = netcheck
+        ordered = iter(others)
+        fields = [next(ordered) if field['section'] == 'rca' else field for field in fields]
+        changed = True
+    for field in fields:
+        if 'RCA script' in str(field.get('description') or '') and field['key'] in defaults:
+            field['description'] = defaults[field['key']]['description']
+            changed = True
+    if changed:
+        _store_fields(task_repository, nq_catalog.normalize_fields(fields, {field['key']: field for field in list_fields(task_repository)},
+                                                                   CATALOG_CALL_FIELDS))
+    task_repository.set_workspace_state(ANALYSIS_CENTER_V5_STATE_KEY, '1')
+
+
+def _add_default_fields(fields: list[dict[str, Any]], keys: set[str], same_source: bool = False) -> bool:
+    """Insert the default fields of ``keys`` a catalog lacks (by key or name), each after the field (of its source with
+    ``same_source``) it follows by default or at the end of its section; whether any was added."""
     default_fields = nq_catalog.default_fields()
     labels = {field['label'].casefold() for field in fields}
     added = False
@@ -694,7 +725,7 @@ def _add_default_fields(fields: list[dict[str, Any]], keys: set[str]) -> bool:
         if default['key'] not in keys or default['key'] in {field['key'] for field in fields} \
                 or default['label'].casefold() in labels:
             continue
-        previous = [field['key'] for field in default_fields[:index]]
+        previous = [field['key'] for field in default_fields[:index] if not same_source or field['source'] == default['source']]
         place = max((position for position, field in enumerate(fields) if field['key'] in previous
                      and field['section'] == default['section']), default=None)
         if place is None:
@@ -1511,7 +1542,7 @@ def _call_value(call: Any, key: str) -> Any:
 
 
 def catalog_value(field: dict[str, Any], call: Any, rca: dict[str, str] | None = None, stored: dict[str, str] | None = None) -> Any:
-    """The value of a catalog field for a call: entered, followed up, from the CDR, the RCA script or derived."""
+    """The value of a catalog field for a call: entered, followed up, from the CDR, the Ericsson RCA or derived."""
     source, ref = field['source'], field['source_ref']
     if source == 'user':
         return (stored or {}).get(field['key'], '')
@@ -2295,7 +2326,7 @@ def _resolve_key_filters(task_repository: Any, filters: dict[str, Any]) -> dict[
                 continue
             if wanted['effective_cause'] and f'{domain}||{cause}' not in wanted['effective_cause']:
                 continue
-        # The root domain, domain·category or domain·cause the NetCheck RCA or the RCA script gives the call.
+        # The root domain, domain·category or domain·cause the NetCheck RCA or the Ericsson RCA gives the call.
         if any(not _source_matches(source_root(call, source, taxonomy), wanted[f'{source}_domain'],
                                    wanted[f'{source}_category'], wanted[f'{source}_cause'])
                for source in sources_needed):
@@ -2356,7 +2387,7 @@ def _filter_sql(filters: dict[str, Any], username: str, closed_statuses: list[st
             continue
         definition = known.get(str(key))
         if definition is not None and definition['source'] != 'user':
-            # Fields from the follow-up, the CDR, the RCA script or derived: compared with their value.
+            # Fields from the follow-up, the CDR, the Ericsson RCA or derived: compared with their value.
             chosen = ['' if value == UNASSIGNED else value for value in values]
             clauses.append(f"{field_sql(definition)} IN ({', '.join('?' for _ in chosen)})")
             params.extend(chosen)
@@ -2880,8 +2911,8 @@ def _node_mappings(connection: Any, dataset: Any) -> dict[tuple[str, int], dict[
 
 
 def source_root(call: Any, source: str, taxonomy: dict[str, Any]) -> dict[str, str]:
-    """The domain, category and cause the NetCheck RCA of the CDR (its fields, never the comments) or the RCA script
-    gives a call on the Root Cause Catalog; empty values when the source says nothing the catalog knows."""
+    """The domain, category and cause the NetCheck RCA of the CDR (its fields, never the comments) or the Ericsson
+    Script RCA gives a call on the Root Cause Catalog; empty values when the source says nothing the catalog knows."""
     rule = taxonomy.get('rule') or DEFAULT_ROOT_CAUSE_RULE
     mapped: dict[str, str] | None = None
     if source == 'netcheck':
@@ -3529,7 +3560,7 @@ def delete_comment(task_repository: Any, comment_id: int, username: str, moderat
 
 
 # ---------------------------------------------------------------------------
-# RCA script results: imported by JOIN_ID
+# Ericsson RCA results: imported by JOIN_ID
 # ---------------------------------------------------------------------------
 def import_rca_results(task_repository: Any, content: bytes, file_name: str, username: str, *, replace: bool = False,
                        dry_run: bool = False, add_to_catalog: bool = False) -> dict[str, Any]:
@@ -3595,7 +3626,7 @@ def clear_rca_results(task_repository: Any, username: str) -> int:
     with task_repository.connection() as connection:
         deleted = connection.execute(f'DELETE FROM {NQ_RCA_RESULTS_TABLE}').rowcount
     if hasattr(task_repository, 'try_add_log'):
-        task_repository.try_add_log(username, 'nq_rca_clear', f'{deleted} RCA script results deleted.')
+        task_repository.try_add_log(username, 'nq_rca_clear', f'{deleted} Ericsson RCA results deleted.')
     return int(deleted or 0)
 
 
@@ -3708,11 +3739,11 @@ def rca_insights(task_repository: Any, filters: dict[str, Any], username: str) -
     cdr_rule = {**rule, 'comments': False, 'comment_domain': False}
     colors = {item['name']: item['color'] for item in taxonomy['domains']}
     coverage = Counter()
-    agreement = {name: Counter() for name in ('selected_script', 'selected_netcheck', 'script_netcheck')}
-    hierarchies: dict[str, dict[str, Counter]] = {'script': {}, 'netcheck': {}, 'selected': {}}
-    confusion: dict[str, Counter] = {'script': Counter(), 'netcheck': Counter()}
+    agreement = {name: Counter() for name in ('selected_netcheck', 'selected_script', 'netcheck_script')}
+    hierarchies: dict[str, dict[str, Counter]] = {'netcheck': {}, 'script': {}, 'selected': {}}
+    confusion: dict[str, Counter] = {'netcheck': Counter(), 'script': Counter()}
     domains: Counter = Counter()
-    mapped_counts: dict[str, Counter] = {'script': Counter(), 'netcheck': Counter(), 'selected': Counter()}
+    mapped_counts: dict[str, Counter] = {'netcheck': Counter(), 'script': Counter(), 'selected': Counter()}
     for row in rows:
         try:
             rca = json.loads(row['rca_json'] or '{}') or {}
@@ -3739,7 +3770,7 @@ def rca_insights(task_repository: Any, filters: dict[str, Any], username: str) -
             domains[domain] += 1
             hierarchies['selected'].setdefault(selected[0] or '—', Counter())[selected[1] or '—'] += 1
             mapped_counts['selected'][selected[0] or '—'] += 1
-            for source, mapped in (('script', script), ('netcheck', netcheck)):
+            for source, mapped in (('netcheck', netcheck), ('script', script)):
                 if mapped and (mapped.get('category') or mapped.get('cause')):
                     confusion[source][(mapped.get('category') or '—', selected[0] or '—')] += 1
                     target = agreement[f'selected_{source}']
@@ -3748,8 +3779,8 @@ def rca_insights(task_repository: Any, filters: dict[str, Any], username: str) -
                         (not mapped.get('category') and mapped.get('cause') and mapped['cause'] == selected[1])
                     target['agree'] += int(bool(same))
         if script and netcheck and (script.get('category') or netcheck.get('category')):
-            agreement['script_netcheck']['compared'] += 1
-            agreement['script_netcheck']['agree'] += int(bool(script.get('category')) and script.get('category') == netcheck.get('category'))
+            agreement['netcheck_script']['compared'] += 1
+            agreement['netcheck_script']['agree'] += int(bool(script.get('category')) and script.get('category') == netcheck.get('category'))
 
     def hierarchy(name: str, limit: int = 12) -> list[dict[str, Any]]:
         groups = hierarchies[name]
@@ -3775,7 +3806,7 @@ def rca_insights(task_repository: Any, filters: dict[str, Any], username: str) -
                 'rate': round(target['agree'] * 100 / target['compared'], 1) if target['compared'] else None}
 
     return {
-        'coverage': {key: coverage.get(key, 0) for key in ('total', 'script', 'netcheck', 'selected')},
+        'coverage': {key: coverage.get(key, 0) for key in ('total', 'netcheck', 'script', 'selected')},
         'agreement': {name: rate(name) for name in agreement},
         'hierarchies': {name: hierarchy(name) for name in hierarchies},
         'mapped': {name: [{'category': category, 'count': count} for category, count in counts.most_common(12)]
@@ -3808,7 +3839,7 @@ EXPORT_COMPANIONS = {'status': [('Status Set', 'status_set')]}
 EXPORT_ROOT_COMPANIONS = [('Root Domain', 'root_domain'), ('Recommended Root Category', 'recommended_category'),
                           ('Recommended Root Cause', 'recommended_cause'), ('Recommendation Sources', 'recommendation_sources')]
 # Header shades: the status of each block darker than its section, the fields of the analysts and the follow-up light,
-# the values from the CDR, the RCA script or derived lighter.
+# the values from the CDR, the Ericsson RCA or derived lighter.
 KEY_FIELD_TINT = -0.2
 EDITABLE_FIELD_TINT = 0.35
 COMPUTED_FIELD_TINT = 0.65
@@ -4688,7 +4719,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
 
     @core.app.post('/api/non-qualified-calls/rca/import')
     async def nq_rca_import(request: Request, user=Depends(editor_user)) -> JSONResponse:
-        """Preview (``preview=1``) or import RCA script results by JOIN_ID; ``replace=1`` forgets the previous results and
+        """Preview (``preview=1``) or import Ericsson RCA results by JOIN_ID; ``replace=1`` forgets the previous results and
         ``add_to_catalog=1`` adds the script categories and causes missing from the Root Cause Catalog."""
         repository = workspace_repository(user)
         content, name, form = await uploaded_file(request, 'file', 100)

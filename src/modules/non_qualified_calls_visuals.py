@@ -402,7 +402,7 @@ def table_panels(title: str, columns: list[str], rows: list[list[str]], rows_per
 
 
 # The source of the root causes counted, named in the titles unless it is the decision of the analysts.
-ROOT_SOURCE_TITLES = {'netcheck': 'NetCheck RCA', 'script': 'RCA Script'}
+ROOT_SOURCE_TITLES = {'netcheck': 'NetCheck RCA', 'script': 'Ericsson RCA'}
 
 
 def root_cause_panels(stats: dict[str, Any]) -> list[tuple[str, BytesIO]]:
@@ -580,17 +580,17 @@ def rca_insight_panels(insights: dict[str, Any]) -> list[tuple[str, BytesIO]]:
 
     panel = Panel()
     _kpi_row(panel, [
-        ('RCA script', _number(coverage.get('script')), f"{_share(int(coverage.get('script') or 0), total)} of the calls", 'team'),
         ('NetCheck RCA', _number(coverage.get('netcheck')), f"{_share(int(coverage.get('netcheck') or 0), total)} of the calls", 'attended'),
+        ('Ericsson RCA', _number(coverage.get('script')), f"{_share(int(coverage.get('script') or 0), total)} of the calls", 'team'),
         ('Selected', _number(coverage.get('selected')), f"{_share(int(coverage.get('selected') or 0), total)} of the calls", 'closed'),
-        ('Selected = script', *rate('selected_script'), 'commented'),
         ('Selected = NetCheck', *rate('selected_netcheck'), 'open'),
-        ('Script = NetCheck', *rate('script_netcheck'), 'total'),
+        ('Selected = Ericsson RCA', *rate('selected_script'), 'commented'),
+        ('NetCheck = Ericsson RCA', *rate('netcheck_script'), 'total'),
     ], 0, 1.05, compact=True)
     mapped = insights.get('mapped') or {}
     cards = [
-        ('RCA script → Root Category', [(item['category'], item['count'], '#e0a400') for item in mapped.get('script') or []]),
         ('NetCheck RCA → Root Category', [(item['category'], item['count'], '#0f6f7d') for item in mapped.get('netcheck') or []]),
+        ('Ericsson RCA → Root Category', [(item['category'], item['count'], '#e0a400') for item in mapped.get('script') or []]),
         ('Selected Root Category', [(item['category'], item['count'], RASPBERRY) for item in mapped.get('selected') or []]),
         ('Selected by Domain', [(item['domain'], item['count'], item.get('color') or RASPBERRY) for item in insights.get('domains') or []]),
     ]

@@ -1,11 +1,11 @@
-"""Root Cause Analysis of the NQ Analysis Center: the RCA script results and the recommendation.
+"""Root Cause Analysis of the NQ Analysis Center: the Ericsson RCA results and the recommendation.
 
 Three sources describe the root cause of a Non-Qualified Call:
 
-- the **RCA script** (a Python script of the team) writes, for each JOIN_ID, the categories and
+- the **NetCheck RCA** of the CDR (Failure Classification, Category and Subcategory);
+- the **Ericsson RCA** (a Python script of the team) writes, for each JOIN_ID, the categories and
   subcategories of both sides and a suggested category and cause; its CSV or Excel files are
   imported and linked to the calls by JOIN_ID;
-- the **NetCheck RCA** of the CDR (Failure Classification, Category and Subcategory);
 - the **analysts**, who choose the Selected Root Category and Root Cause.
 
 Both RCAs keep their own category → cause hierarchy. The recommendation maps each one onto the
@@ -29,7 +29,7 @@ RCA_FILE_FORMAT_HELP = (
     'A CSV (comma, semicolon or tab separated) or Excel file with a JOIN_ID column and the RCA columns '
     'Auto_RCA_Category_A, Auto_RCA_Subcategory_A, Auto_RCA_Category_B, Auto_RCA_Subcategory_B, '
     'RCA_Category, RCA_Subcategory, RCA_Suggested_Category, RCA_Suggested_Cause and RCA_Evidence, or the RCA_Summary.csv '
-    'of the Auto RCA script (JoinID, UE, RCA_Category, RCA_Subcategory, Final_RCA_Category, Final_RCA_Subcategory and '
+    'of the Auto RCA output of the Ericsson RCA (JoinID, UE, RCA_Category, RCA_Subcategory, Final_RCA_Category, Final_RCA_Subcategory and '
     'RCA_Evidence: the rows of the A and B sides fill the fields of each side, and the rows of one JOIN_ID are combined); '
     'any other column is kept and shown with the call.'
 )
@@ -62,7 +62,7 @@ _NO_RESULT = re.compile(r'^(unknown)?$', re.IGNORECASE)
 _DOMAIN_HINTS = (('unknown', ''), ('unclear', ''), ('mobility', 'RAN'), ('handover', 'RAN'), ('coverage', 'RF'),
                  ('interference', 'RF'))
 _TECHNOLOGY = re.compile(r'\b(lte|nr|gsm|umts|wcdma|2g|3g|4g|5g)\b', re.IGNORECASE)
-SOURCE_LABELS = {'script': 'RCA script', 'netcheck': 'NetCheck RCA', 'comments': 'Comments', 'learned': 'Previous decisions'}
+SOURCE_LABELS = {'netcheck': 'NetCheck RCA', 'script': 'Ericsson RCA', 'comments': 'Comments', 'learned': 'Previous decisions'}
 SOURCE_WEIGHTS = {'netcheck': 3, 'learned': 3, 'script': 2, 'comments': 1}
 
 
@@ -395,7 +395,7 @@ def recommend(call: Any, rca: dict[str, str], root: dict[str, list[dict[str, Any
                         'category': suggestion['category'], 'cause': suggestion['cause']})
     voters: dict[tuple[str, str], set[str]] = {}
     own = _value(call, 'call_key')
-    for source, category, cause in (('script', script_category, script_cause), ('netcheck', netcheck_category, netcheck_cause)):
+    for source, category, cause in (('netcheck', netcheck_category, netcheck_cause), ('script', script_category, script_cause)):
         if category or cause:
             for choice, keys in learned.get(learned_key(source, category, cause), {}).items():
                 voters.setdefault(choice, set()).update(keys - {own})

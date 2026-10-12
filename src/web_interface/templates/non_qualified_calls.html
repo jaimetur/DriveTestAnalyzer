@@ -6,7 +6,7 @@
     <div class="nq-hero-copy">
       <p class="eyebrow">Non-Qualified Calls · Analysis Center</p>
       <h2>Follow up every call and test that did not complete</h2>
-      <p class="lede">Every Voice and Speech call and every Data test whose result is not Completed (Failed, Dropped, Cutoff…) in the ready CDRs of this workspace. Review the overall health, drill down from the summary into the calls, and follow each one through the sections of the Analysis Center: its root cause decided from the RCA script, NetCheck and the analysts, its failure event, and its analysis, implementation and planning phases, with a status set by rules, a responsible team, an assignee and a shared comment thread.</p>
+      <p class="lede">Every Voice and Speech call and every Data test whose result is not Completed (Failed, Dropped, Cutoff…) in the ready CDRs of this workspace. Review the overall health, drill down from the summary into the calls, and follow each one through the sections of the Analysis Center: its root cause decided from NetCheck, the Ericsson RCA and the analysts, its failure event, and its analysis, implementation and planning phases, with a status set by rules, a responsible team, an assignee and a shared comment thread.</p>
     </div>
   </article>
 
@@ -148,7 +148,7 @@
       <div class="nq-active-filters" data-nq-active-filters hidden></div>
       <div class="nq-progress-head">
         <p class="nq-hint">Where the filtered calls fail: their root cause domain and cause, Classic and WhatsApp calls, NSA and SA, each technology and the eNB/gNB of the last cell of the call, with its site, host and vendor from the workspace cell mappings.</p>
-        <span class="nq-root-head-actions"><span class="nq-rate-tabs" id="nq-root-source" role="tablist" aria-label="Root causes counted"><button type="button" role="tab" class="nq-rate-tab is-active" aria-selected="true" data-nq-root-source="analysts" title="The Root Category and Root Cause the analysts chose">Analysts</button><button type="button" role="tab" class="nq-rate-tab" aria-selected="false" data-nq-root-source="netcheck" title="The NetCheck RCA of the CDR (Failure Classification, Category and Subcategory) mapped onto the Root Cause Catalog">NetCheck RCA</button><button type="button" role="tab" class="nq-rate-tab" aria-selected="false" data-nq-root-source="script" title="The imported results of the RCA script mapped onto the Root Cause Catalog">RCA Script</button></span>
+        <span class="nq-root-head-actions"><span class="nq-rate-tabs" id="nq-root-source" role="tablist" aria-label="Root causes counted"><button type="button" role="tab" class="nq-rate-tab is-active" aria-selected="true" data-nq-root-source="analysts" title="The Root Category and Root Cause the analysts chose">Analysts</button><button type="button" role="tab" class="nq-rate-tab" aria-selected="false" data-nq-root-source="netcheck" title="The NetCheck RCA of the CDR (Failure Classification, Category and Subcategory) mapped onto the Root Cause Catalog">NetCheck RCA</button><button type="button" role="tab" class="nq-rate-tab" aria-selected="false" data-nq-root-source="script" title="The imported results of the Ericsson RCA mapped onto the Root Cause Catalog">Ericsson RCA</button></span>
         <button type="button" class="nq-secondary-action" data-nq-rule-open title="See how root causes are suggested; admins and super-admins change it">Suggestion Rule</button></span>
       </div>
       <div class="nq-kpis" id="nq-root-kpis"></div>
@@ -167,8 +167,8 @@
     <div class="collapsible-panel-body">
       <div class="nq-active-filters" data-nq-active-filters hidden></div>
       <div class="nq-progress-head">
-        <p class="nq-hint">The three root cause sources of the filtered calls side by side: the RCA script results imported by JOIN_ID, the NetCheck RCA of the CDR and the Root Category and Cause selected by the analysts. See how many calls each one covers, how often they agree and how the analysts' choices relate to each RCA.</p>
-        <span class="nq-root-head-actions"><span class="nq-muted" id="nq-sources-results"></span>{% if nq_can_edit %}<button type="button" class="nq-secondary-action" data-nq-rca-open title="Import the results of the RCA script by JOIN_ID">RCA Script Results</button>{% endif %}</span>
+        <p class="nq-hint">The three root cause sources of the filtered calls side by side: the NetCheck RCA of the CDR, the Ericsson RCA results imported by JOIN_ID and the Root Category and Cause selected by the analysts. See how many calls each one covers, how often they agree and how the analysts' choices relate to each RCA.</p>
+        <span class="nq-root-head-actions"><span class="nq-muted" id="nq-sources-results"></span>{% if nq_can_edit %}<button type="button" class="nq-secondary-action" data-nq-rca-open title="Import the results of the Ericsson RCA by JOIN_ID">Ericsson RCA Results</button>{% endif %}</span>
       </div>
       <div class="nq-kpis" id="nq-sources-kpis"></div>
       <div class="nq-hierarchies" id="nq-sources-hierarchies"></div>
@@ -194,7 +194,7 @@
               <button type="button" role="menuitem" id="nq-options-open"><strong>Statuses &amp; Teams</strong><span>The NQ Call Statuses and the responsible teams with their members</span></button>
               <button type="button" role="menuitem" id="nq-status-rules-open" data-nq-status-rules-open><strong>Status Rules</strong><span>How the status follows the Analysis, Implementation and Planning fields</span></button>
               <button type="button" role="menuitem" id="nq-root-open"><strong>Root Cause Catalog</strong><span>Domains, Root Categories and Root Causes, with their keywords</span></button>
-              <button type="button" role="menuitem" id="nq-rca-open" data-nq-rca-open><strong>RCA Script Results</strong><span>Import the results of the RCA script by JOIN_ID</span></button>
+              <button type="button" role="menuitem" id="nq-rca-open" data-nq-rca-open><strong>Ericsson RCA Results</strong><span>Import the results of the Ericsson RCA by JOIN_ID</span></button>
               <button type="button" role="menuitem" id="nq-columns-open"><strong>Additional Columns</strong><span>The columns of the table and of the Excel export, including CDR columns</span></button>
             </div>
           </div>{% endif %}
@@ -309,7 +309,7 @@
 </dialog>
 <dialog class="nq-options-dialog nq-root-dialog" id="nq-root-dialog" aria-labelledby="nq-root-title">
   <form method="dialog" class="nq-options-form" id="nq-root-form">
-    <header><h2 id="nq-root-title">Root Cause Catalog</h2><p class="form-note">Shared by every user of this workspace. Each call gets a Root Category and a Root Cause, chosen independently; the technical Domain of each one gives its colour, groups the lists (the causes of the domain of the chosen category come first) and the domain of the call. The keywords map the RCA script and NetCheck values and the comments onto the catalog. Renaming a value updates every call; a value in use cannot be removed.</p>
+    <header><h2 id="nq-root-title">Root Cause Catalog</h2><p class="form-note">Shared by every user of this workspace. Each call gets a Root Category and a Root Cause, chosen independently; the technical Domain of each one gives its colour, groups the lists (the causes of the domain of the chosen category come first) and the domain of the call. The keywords map the NetCheck and Ericsson RCA values and the comments onto the catalog. Renaming a value updates every call; a value in use cannot be removed.</p>
       <div class="nq-rule-summary"><p class="form-note" id="nq-root-rule-text"></p><button type="button" class="nq-secondary-action" id="nq-rule-open" data-nq-rule-open title="See how root causes are suggested; admins and super-admins change it">Suggestion Rule</button></div></header>
     <div class="nq-catalog-tabs" role="tablist" aria-label="Root cause catalog">
       <button type="button" role="tab" class="is-active" data-nq-catalog-tab="categories" aria-selected="true">Root Categories <small></small></button>
@@ -331,7 +331,7 @@
 </dialog>
 <dialog class="nq-options-dialog nq-fields-dialog" id="nq-fields-dialog" aria-labelledby="nq-fields-title">
   <form method="dialog" class="nq-options-form" id="nq-fields-form">
-    <header><h2 id="nq-fields-title">Fields &amp; Sections</h2><p class="form-note">The fields every call is followed up with, shared by every user of this workspace, in the order of the Excel export. Each field belongs to a section (a tab of the call) and takes its value from the analysts, the follow-up of the call, the CDR, the RCA script or keywords of the call. A list offers its values, each with a colour; text, long text, number, date and Yes / No fields are typed in. Renaming a list value updates every call and the Status Rules; a value or field in use cannot be removed.</p>
+    <header><h2 id="nq-fields-title">Fields &amp; Sections</h2><p class="form-note">The fields every call is followed up with, shared by every user of this workspace, in the order of the Excel export. Each field belongs to a section (a tab of the call) and takes its value from the analysts, the follow-up of the call, the CDR, the Ericsson RCA or keywords of the call. A list offers its values, each with a colour; text, long text, number, date and Yes / No fields are typed in. Renaming a list value updates every call and the Status Rules; a value or field in use cannot be removed.</p>
       <div class="nq-fields-import">
         <a class="nq-secondary-action" id="nq-catalog-export" href="/api/non-qualified-calls/catalog/export" download title="Sections, fields, lists, root cause catalog, statuses, teams and status rules in one workbook to edit and import again">Export Catalog</a>
         <label class="nq-secondary-action nq-file-action" title="A catalog workbook exported here, or the field list of the meeting workbook">Import Catalog<input type="file" id="nq-fields-workbook" accept=".xlsx,.xlsm" hidden></label>
@@ -371,7 +371,7 @@
 </dialog>
 <dialog class="nq-options-dialog nq-rca-dialog" id="nq-rca-dialog" aria-labelledby="nq-rca-title">
   <form method="dialog" class="nq-options-form" id="nq-rca-form">
-    <header><h2 id="nq-rca-title">RCA Script Results</h2><p class="form-note" id="nq-rca-format"></p>
+    <header><h2 id="nq-rca-title">Ericsson RCA Results</h2><p class="form-note" id="nq-rca-format"></p>
       <div class="nq-fields-import"><a class="nq-secondary-action" href="/api/non-qualified-calls/rca/template" download>Download Template</a>
         <label class="nq-secondary-action nq-file-action">Choose File<input type="file" id="nq-rca-file" accept=".csv,.txt,.tsv,.xlsx,.xlsm" hidden></label>
         <label class="nq-toggle" title="Forget every result imported before; otherwise the file adds results and replaces those of the same JOIN_ID"><input type="checkbox" id="nq-rca-replace"> Replace the previous results</label></div>
