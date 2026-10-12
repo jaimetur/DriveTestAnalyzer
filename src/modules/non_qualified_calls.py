@@ -3613,9 +3613,10 @@ def rca_results_summary(task_repository: Any) -> dict[str, Any]:
     """The imported RCA results: how many, how many match a call, and each imported file."""
     with task_repository.connection() as connection:
         total = connection.execute(f'SELECT COUNT(*) FROM {NQ_RCA_RESULTS_TABLE}').fetchone()[0]
+        # The JOIN_IDs of the calls are read once (a lookup of lower(join_id) per result scanned every call each time).
         matched = connection.execute(
-            f"SELECT COUNT(*) FROM {NQ_RCA_RESULTS_TABLE} r WHERE EXISTS "
-            f"(SELECT 1 FROM {NQ_CALLS_TABLE} c WHERE c.join_id <> '' AND lower(c.join_id) = r.join_id)").fetchone()[0]
+            f"SELECT COUNT(*) FROM {NQ_RCA_RESULTS_TABLE} WHERE join_id IN "
+            f"(SELECT lower(join_id) FROM {NQ_CALLS_TABLE} WHERE join_id <> '')").fetchone()[0]
         files = [{'name': str(row['source_file']), 'rows': int(row['rows']), 'imported_at': str(row['imported_at']),
                   'imported_by': str(row['imported_by'])}
                  for row in connection.execute(
