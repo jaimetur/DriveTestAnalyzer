@@ -165,7 +165,10 @@ def test_scoring_page_exposes_profile_choices_and_active_profile(scoring_api, mo
 
     assert page.status_code == 200
     profiles = captured['scoring_profiles']
-    assert profiles == [{'id': 'netcheck-2026', 'name': 'NetCheck 2026'}]
+    # Every methodology of the workspace (the shipped ones, NetCheck 2026 first), with the active one.
+    stored = scoring_api['repository'].get_scoring_profiles()['profiles']
+    assert profiles == [{'id': profile['id'], 'name': profile['name']} for profile in stored]
+    assert profiles[0] == {'id': 'netcheck-2026', 'name': 'NetCheck 2026'} and {'id': 'netcheck-2026-q3', 'name': 'NetCheck 2026-Q3'} in profiles
     assert captured['scoring_active_profile_id'] == 'netcheck-2026'
     assert captured['aggregation_levels'] == load_aggregation_hierarchy(scoring_api['repository'])
 
@@ -397,7 +400,8 @@ def test_scoring_profiles_api_edits_inactive_profile_and_switches_active(scoring
     assert client.get('/api/workspace-config/scoring-configuration').json() == active_configuration
 
     inactive_edit = deepcopy(saved.json())
-    inactive_edit['profiles'][1]['configuration']['metrics'][0]['contexts']['DriveCity']['max_points'] = 81
+    added = lambda payload: next(profile for profile in payload['profiles'] if profile['id'] == 'netcheck-2025')
+    added(inactive_edit)['configuration']['metrics'][0]['contexts']['DriveCity']['max_points'] = 81
     edited = client.put('/api/workspace-config/scoring-profiles', json=inactive_edit)
     assert edited.status_code == 200, edited.text
     assert client.get('/api/workspace-config/scoring-configuration').json() == active_configuration
@@ -406,7 +410,7 @@ def test_scoring_profiles_api_edits_inactive_profile_and_switches_active(scoring
     selected['active_profile_id'] = 'netcheck-2025'
     switched = client.put('/api/workspace-config/scoring-profiles', json=selected)
     assert switched.status_code == 200
-    assert client.get('/api/workspace-config/scoring-configuration').json() == selected['profiles'][1]['configuration']
+    assert client.get('/api/workspace-config/scoring-configuration').json() == added(selected)['configuration']
 
 
 def test_scoring_job_can_select_inactive_profile_without_changing_workspace_default(scoring_api):

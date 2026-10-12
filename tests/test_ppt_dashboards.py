@@ -2173,8 +2173,9 @@ def test_ready_dashboard_exports_ppt_and_persistent_chart_files(client, monkeypa
         time.sleep(0.05)
     assert core.repository.get_dataset(1)['status'] == 'ready'
     initial_status = client.get('/api/ppt-dashboards/statuses').json()[dashboard_id]
-    assert initial_status['state'] in {'loading-data', 'ready'}
-    assert initial_status['label'] == 'Ready' or initial_status['label'].startswith('Pre-Caching Universe ')
+    # Loading its data, data cached with its charts waiting to be rendered, or ready, as the background work goes.
+    assert initial_status['state'] in {'loading-data', 'charts-queued', 'ready'}
+    assert initial_status['label'] == 'Ready' or initial_status['label'].startswith(('Pre-Caching Universe ', 'Data Cached · Charts'))
 
     with core.repository.connection() as connection:
         connection.execute('UPDATE dataset_profiles SET vendor_mapping_applied = 1')
@@ -2461,11 +2462,11 @@ def test_closed_dashboard_status_uses_its_remembered_session_universe(client):
     assert prepared.status_code == 200, prepared.text
 
     background_status = client.get('/api/ppt-dashboards/statuses').json()[dashboard_id]
-    assert background_status['state'] in {'loading-data', 'ready'}
+    assert background_status['state'] in {'loading-data', 'charts-queued', 'ready'}
     session_status = client.post('/api/ppt-dashboards/statuses', json={
         dashboard_id: session_definition,
     }).json()[dashboard_id]
-    assert session_status['state'] in {'loading-data', 'ready'}
+    assert session_status['state'] in {'loading-data', 'charts-queued', 'ready'}
 
 
 def test_saving_dashboard_prepares_data_in_background_without_rendering_charts(client, monkeypatch):
@@ -2480,8 +2481,9 @@ def test_saving_dashboard_prepares_data_in_background_without_rendering_charts(c
     assert client.put(f'/api/ppt-dashboards/{dashboard_id}', json=payload).status_code == 200
     assert client.get(f'/api/ppt-dashboards/prefetched/{dashboard_id}').status_code == 409
     saved_status = client.get('/api/ppt-dashboards/statuses').json()[dashboard_id]
-    assert saved_status['state'] in {'loading-data', 'ready'}
-    assert saved_status['label'] == 'Ready' or saved_status['label'].startswith('Pre-Caching Universe ')
+    # Its data is being cached in the background, or already cached with its charts waiting to be rendered.
+    assert saved_status['state'] in {'loading-data', 'charts-queued'}
+    assert saved_status['label'].startswith(('Pre-Caching Universe ', 'Data Cached · Charts'))
 
 
 def test_direct_dashboard_preparation_separates_queue_and_execution_timestamps(client, monkeypatch):
@@ -3578,6 +3580,10 @@ def test_background_work_builds_one_dashboard_at_a_time_in_creation_order(client
     # The newest Dashboard is queued again first, yet the oldest is built first.
     assert client.put('/api/ppt-dashboards/third', json={**payload, 'name': 'Third'}).status_code == 200
     core.IDLE_DASHBOARD_WARMUP_CALLBACK()
+    # The call stands for the idle monitor's: the monitor of the server must not queue every Dashboard again while
+    # they are built (it would rebuild the first ones before the third).
+    with core.APPLICATION_ACTIVITY_LOCK:
+        monkeypatch.setattr(core, 'LAST_IDLE_DASHBOARD_WARMUP_ACTIVITY', core.LAST_INTERACTIVE_APPLICATION_ACTIVITY)
     monkeypatch.setattr(core, 'IDLE_DASHBOARD_WARMUP_SECONDS', 0)
     assert _wait_for(lambda: len(finished) == 3), finished
     assert [dashboard_id for dashboard_id, _thread in finished] == ['first', 'second', 'third']
