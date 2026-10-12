@@ -1505,6 +1505,20 @@
       }
     });
   };
+  // Every panel shows, in a badge below its Collapse button, how many calls match the filters.
+  const panelCounts = [...root.querySelectorAll('details.panel > summary.collapsible-summary')].map((summary) => {
+    const chip = summary.querySelector(':scope > .collapse-chip');
+    if (!chip) return null;
+    const corner = node('span', undefined, 'nq-panel-corner');
+    const badge = node('span', '…', 'nq-panel-count');
+    badge.title = 'Non-Qualified Calls that match the current filters';
+    chip.replaceWith(corner);
+    corner.append(chip, badge);
+    return badge;
+  }).filter(Boolean);
+  const renderPanelCounts = (total) => panelCounts.forEach((badge) => {
+    badge.textContent = `${number(total)} ${total === 1 ? 'call' : 'calls'}`;
+  });
   const VIEW_STORAGE = `nq-view:${$('nq-table').dataset.workspace || ''}`;
   // The bar shows the calls, one panel at a time, or every panel.
   const VIEWS = ['calls', 'summary', 'rates', 'progress', 'lifecycle', 'root', 'sources', 'all'];
@@ -1641,6 +1655,7 @@
       renderPagination(result);
       renderBulk();
       $('nq-view-count').textContent = number(result.total);
+      renderPanelCounts(result.total);
       // Only the panels on screen (shown and unfolded) are calculated; the others when they are opened.
       Object.entries(PANEL_LOADERS).forEach(([name, load]) => {
         if (panelShown(name)) {
@@ -1944,7 +1959,8 @@
   };
   // The root causes the panel counts: those the analysts chose, or what the NetCheck RCA or the Ericsson RCA gives each
   // call on the catalog; a domain, domain·category or domain·cause filters the calls of that source.
-  state.rootSource = 'analysts';
+  // The panel opens on its first tab, the NetCheck RCA.
+  state.rootSource = 'netcheck';
   const ROOT_SOURCE_NAMES = {analysts: 'the analysts', netcheck: 'the NetCheck RCA', script: 'the Ericsson RCA'};
   const domainPair = (domain) => [state.rootSource === 'analysts' ? 'root_domain' : `${state.rootSource}_domain`,
     domain === NOT_CLASSIFIED ? state.unassigned : domain];

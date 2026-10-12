@@ -884,6 +884,8 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
   .nq-sync-bar { gap: .45rem; margin-bottom: .7rem; }
   .nq-sync-status, .nq-sync-exports { width: 100%; margin-left: 0; }
   .nq-sync-exports > * { flex: 1 1 0; justify-content: center; }
+  /* Import RCA & Analyses on its own row, the two exports side by side below it. */
+  .nq-sync-exports > .nq-import-wrap { flex: 1 1 100%; }
   .nq-sync-bar .nq-hero-action { padding: .5rem .65rem; font-size: .8rem; }
   .nq-filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 10px; }
   .nq-filter-grid label { gap: .2rem; font-size: .76rem; }
@@ -977,7 +979,10 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 /* Import RCA & Analyses: the menu at the top of the page, and the Previous NQ Analyses dialog (admins and super-admins). */
 .nq-import-wrap { position: relative; }
 .nq-import-wrap .nq-menu { left: 0; right: auto; min-width: min(22rem, calc(100vw - 2rem)); }
-.document-export-action.nq-import-action { background: linear-gradient(125deg, #8f1d43, #c8336a); }
+.document-export-action.nq-import-action { padding-inline: 1.35rem; background: linear-gradient(125deg, #8f1d43, #c8336a); }
+/* The import and export buttons: larger icons, all of one size, and one height for the three buttons. */
+.nq-sync-exports .document-export-action svg { width: 1.4rem; height: 1.4rem; }
+.nq-sync-exports .document-export-action { box-sizing: border-box; height: 2.6rem; padding-block: 0; white-space: nowrap; }
 /* An entry the account cannot use stays in the menu, dimmed, with the reason as its tooltip. */
 .non-qualified-calls .nq-menu button[aria-disabled="true"] { opacity: .5; cursor: not-allowed; }
 .non-qualified-calls .nq-menu button[aria-disabled="true"]:hover { background: transparent; }
@@ -992,3 +997,13 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 .nq-analyses-summary p { margin: 0; font-weight: 650; }
 .nq-analyses-list { display: grid; gap: 0.15rem; font-size: 0.86rem; }
 .nq-analyses-list span { color: var(--nq-muted); overflow-wrap: anywhere; }
+/* The calls that match the filters, in every panel: a badge below its Collapse button. */
+.nq-panel-corner { display: flex; flex: 0 0 auto; flex-direction: column; align-items: flex-end; gap: .35rem; margin-left: auto; }
+.nq-panel-corner .collapse-chip { margin-left: 0; }
+.nq-panel-count { padding: .2rem .6rem; border: 1px solid var(--nq-border); border-radius: 999px; background: var(--nq-soft); color: var(--nq-dark); font-size: .74rem; font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
+@media (max-width: 640px) {
+  .non-qualified-calls .collapsible-summary:has(> .nq-panel-corner) { min-height: 3.9rem; }
+  .non-qualified-calls .collapsible-summary > .nq-panel-corner { position: absolute; top: .7rem; right: .75rem; z-index: 1; gap: .3rem; }
+  .non-qualified-calls .nq-panel-corner .collapse-chip { position: static; }
+  .nq-panel-count { padding: .15rem .45rem; font-size: .66rem; }
+}
