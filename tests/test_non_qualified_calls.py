@@ -242,8 +242,11 @@ def test_excel_export_lists_calls_comments_and_history(client, tmp_path):
     row = dict(zip(header, calls[2]))
     assert (row['Result'], row['NQ Call Status'], row['Status Set']) == ('Cutoff', 'Under Planning', 'By hand')
     assert row['Comments'].endswith('super: Check the interference.')
-    assert list(workbook['Comments'].values)[1][4] == 'Check the interference.'
-    assert list(workbook['History'].values)[1][4:7] == ('Status', 'Not Attended', 'Under Planning')
+    # Comments and History start with the JOIN_ID of the call, as the NQ Calls sheet does.
+    comments, history = list(workbook['Comments'].values), list(workbook['History'].values)
+    assert comments[0][0] == history[0][0] == 'JOIN_ID' and comments[1][0] == history[1][0] == row['JOIN_ID']
+    assert comments[1][5] == 'Check the interference.'
+    assert history[1][5:8] == ('Status', 'Not Attended', 'Under Planning')
 
 
 def test_tracking_travels_with_workspace_packages_and_imports_once(client, tmp_path):
@@ -897,6 +900,10 @@ def test_speech_calls_are_listed_once_and_their_samples_keep_their_own_follow_up
     assert [sample['status'] for sample in detail['samples']] == ['Not Attended', 'Closed']
     workbook = load_workbook(io.BytesIO(client.post('/api/non-qualified-calls/export', json={'filters': {}}).content))
     assert 'Speech Samples' in workbook.sheetnames and len(list(workbook['Speech Samples'].values)) == 3
+    samples = list(workbook['Speech Samples'].values)
+    assert samples[0][0] == 'JOIN_ID' and samples[1][0] == query(client)['calls'][0]['join_id']
+    # The comments of a sample follow its call.
+    assert [row[0] for row in list(workbook['Comments'].values)[1:]] == [samples[1][0]]
 
 
 def test_nq_rate_of_each_campaign_and_operator(client, tmp_path):

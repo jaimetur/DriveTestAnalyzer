@@ -1506,7 +1506,8 @@
     });
   };
   const VIEW_STORAGE = `nq-view:${$('nq-table').dataset.workspace || ''}`;
-  const VIEWS = ['calls', 'dashboards', 'all'];
+  // The bar shows the calls, one panel at a time, or every panel.
+  const VIEWS = ['calls', 'summary', 'rates', 'progress', 'lifecycle', 'root', 'sources', 'all'];
   const applyView = (view) => {
     state.view = VIEWS.includes(view) ? view : 'calls';
     root.querySelectorAll('[data-nq-view-panel]').forEach((panel) => {
@@ -1516,6 +1517,9 @@
       const active = button.dataset.nqView === state.view;
       button.classList.toggle('is-active', active);
       button.setAttribute('aria-selected', String(active));
+      // On a narrow window the bar scrolls sideways: the chosen view stays in sight (the page does not move).
+      const bar = $('nq-view-switch');
+      if (active && bar.scrollWidth > bar.clientWidth) bar.scrollLeft = button.offsetLeft - (bar.clientWidth - button.offsetWidth) / 2;
     });
     try {
       localStorage.setItem(VIEW_STORAGE, state.view);
@@ -2079,7 +2083,7 @@
       });
       select.dispatchEvent(new Event('multiselect:options-updated'));
     });
-    toast(`Showing the calls that meet rule ${index + 1}${state.view === 'dashboards' ? ': open Calls to see them' : ''}.`);
+    toast(`Showing the calls that meet rule ${index + 1}${['calls', 'all'].includes(state.view) ? '' : ': open NQ Calls to see them'}.`);
     scheduleLoad();
   };
   // What moves a call to a status: each rule as chips, the field name and its values in their colours.
@@ -4331,47 +4335,48 @@
       saveRule(rule);
     });
   }
-  // -- Analysis Center menu -------------------------------------------------------------------
-  const configMenu = $('nq-config-menu');
-  const closeConfigMenu = () => {
-    if (!configMenu || configMenu.hidden) return;
-    configMenu.hidden = true;
-    $('nq-config-toggle').setAttribute('aria-expanded', 'false');
-  };
-  if (configMenu) {
-    // The menu opens where it fits: below the button, or above it near the bottom of the window, scrolling inside if needed,
-    // and moved right when the button is too close to the left edge for it.
-    const placeConfigMenu = () => {
-      const button = $('nq-config-toggle').getBoundingClientRect();
-      configMenu.style.maxHeight = '';
-      configMenu.style.right = '';
-      configMenu.classList.remove('is-up');
-      const left = configMenu.getBoundingClientRect().left;
-      if (left < 8) configMenu.style.right = `${left - 8}px`;
-      const height = configMenu.scrollHeight;
+  // -- Analysis Center and Import RCA & Analyses menus -----------------------------------------------------
+  // A menu opens where it fits: below its button, or above it near the bottom of the window, scrolling inside if needed,
+  // and moved right when the button is too close to the left edge for it. Every entry opens its dialog and closes it.
+  const dropdownMenu = (toggle, menu) => {
+    if (!toggle || !menu) return;
+    const close = () => {
+      if (menu.hidden) return;
+      menu.hidden = true;
+      toggle.setAttribute('aria-expanded', 'false');
+    };
+    const place = () => {
+      const button = toggle.getBoundingClientRect();
+      menu.style.maxHeight = '';
+      menu.style.right = '';
+      menu.classList.remove('is-up');
+      const left = menu.getBoundingClientRect().left;
+      if (left < 8) menu.style.right = `${left - 8}px`;
+      const height = menu.scrollHeight;
       const below = window.innerHeight - button.bottom - 16;
       const above = button.top - 16;
       const up = height > below && above > below;
-      configMenu.classList.toggle('is-up', up);
-      configMenu.style.maxHeight = `${Math.max(160, up ? above : below)}px`;
+      menu.classList.toggle('is-up', up);
+      menu.style.maxHeight = `${Math.max(160, up ? above : below)}px`;
     };
-    $('nq-config-toggle').addEventListener('click', (event) => {
+    toggle.addEventListener('click', (event) => {
       event.stopPropagation();
-      configMenu.hidden = !configMenu.hidden;
-      $('nq-config-toggle').setAttribute('aria-expanded', String(!configMenu.hidden));
-      if (!configMenu.hidden) {
-        placeConfigMenu();
-        configMenu.querySelector('button')?.focus({preventScroll: true});
+      menu.hidden = !menu.hidden;
+      toggle.setAttribute('aria-expanded', String(!menu.hidden));
+      if (!menu.hidden) {
+        place();
+        menu.querySelector('button')?.focus({preventScroll: true});
       }
     });
-    window.addEventListener('resize', () => { if (!configMenu.hidden) placeConfigMenu(); });
-    // Every entry opens its dialog and closes the menu.
-    configMenu.addEventListener('click', () => window.setTimeout(closeConfigMenu));
-    document.addEventListener('click', (event) => { if (!configMenu.contains(event.target)) closeConfigMenu(); });
+    window.addEventListener('resize', () => { if (!menu.hidden) place(); });
+    menu.addEventListener('click', () => window.setTimeout(close));
+    document.addEventListener('click', (event) => { if (!menu.contains(event.target) && event.target !== toggle) close(); });
     document.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape' && !configMenu.hidden) { closeConfigMenu(); $('nq-config-toggle').focus(); }
+      if (event.key === 'Escape' && !menu.hidden) { close(); toggle.focus(); }
     });
-  }
+  };
+  dropdownMenu($('nq-config-toggle'), $('nq-config-menu'));
+  dropdownMenu($('nq-import-toggle'), $('nq-import-menu'));
 
   // -- status rules dialog --------------------------------------------------------------------
   const statusRulesDialog = $('nq-status-rules-dialog');
@@ -4500,6 +4505,87 @@
       } finally {
         save.disabled = false;
       }
+    });
+  }
+
+  // -- Previous NQ Analyses dialog (admins and super-admins) -------------------------------------
+  // Preview the file, then import it (only after a preview of the same file and option).
+  const analysesDialog = $('nq-analyses-dialog');
+  if (analysesDialog) {
+    const form = analysesDialog.querySelector('[data-nq-analyses-form]');
+    const file = form.querySelector('[data-nq-analyses-file]');
+    const previewButton = form.querySelector('[data-nq-analyses-preview]');
+    const importButton = form.querySelector('[data-nq-analyses-import]');
+    const error = form.querySelector('[data-nq-analyses-error]');
+    const summary = form.querySelector('[data-nq-analyses-summary]');
+    const reset = () => {
+      importButton.disabled = true;
+      previewButton.disabled = !file.files.length;
+      form.querySelector('[data-nq-analyses-name]').textContent = file.files[0]?.name || 'No file chosen';
+      summary.hidden = true;
+      error.textContent = '';
+    };
+    file.addEventListener('change', reset);
+    form.querySelectorAll('input[name="overwrite"]').forEach((input) => input.addEventListener('change', reset));
+    const list = (title, items) => {
+      if (!items.length) return null;
+      const block = node('div', undefined, 'nq-analyses-list');
+      block.append(node('strong', title), node('span', items.join(', ')));
+      return block;
+    };
+    const count = (value, singular, plural = `${singular}s`) => `${number(value)} ${value === 1 ? singular : plural}`;
+    const render = (result) => {
+      const lines = result.dry_run ? [
+        `${count(result.calls, 'call')} in ${count(result.rows, 'row')}: ${number(result.matched)} found in the workspace, ${number(result.unmatched)} not found.`,
+        `${count(result.changed, 'call')} would change and ${count(result.comments, 'comment')} would be added; ${count(result.analysed, 'call')} already ${result.analysed === 1 ? 'has' : 'have'} an analysis.`,
+      ] : [
+        `${count(result.changed, 'call')} changed and ${count(result.comments, 'comment')} added (${number(result.matched)} of ${count(result.calls, 'call')} found).`,
+      ];
+      summary.replaceChildren(
+        ...lines.map((line) => node('p', line)),
+        ...[
+          list('Columns imported:', result.columns),
+          list('Read-only columns left out:', result.read_only),
+          list('Unknown columns left out:', result.ignored),
+          list('JOIN_IDs not found:', result.unmatched_ids),
+          list(`Values that do not exist, left out (${number(result.invalid_total)}):`, result.invalid.map((item) => `${item.column} = ${item.value} (${item.rows})`)),
+          list('Calls that could not be changed:', result.failures),
+        ].filter(Boolean),
+      );
+      summary.hidden = false;
+    };
+    const send = async (preview) => {
+      error.textContent = '';
+      const body = new FormData();
+      body.append('file', file.files[0]);
+      body.append('overwrite', form.querySelector('input[name="overwrite"]:checked').value);
+      if (preview) body.append('preview', '1');
+      previewButton.disabled = importButton.disabled = true;
+      try {
+        const response = await fetch('/api/non-qualified-calls/analyses/import', {method: 'POST', credentials: 'same-origin', body});
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(typeof result.detail === 'string' ? result.detail : 'The file could not be imported.');
+        render(result);
+        importButton.disabled = !preview || !result.matched;
+        if (!preview) loadState();
+      } catch (exc) {
+        error.textContent = exc.message;
+      } finally {
+        previewButton.disabled = !file.files.length;
+      }
+    };
+    $('nq-analyses-open').addEventListener('click', () => {
+      form.reset();
+      reset();
+      analysesDialog.showModal();
+    });
+    analysesDialog.querySelector('[data-nq-analyses-close]').addEventListener('click', () => analysesDialog.close());
+    previewButton.addEventListener('click', () => send(true));
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const overwrite = form.querySelector('input[name="overwrite"]:checked').value === '1';
+      if (overwrite && !window.confirm('Replace the values the calls already have with those of the file?')) return;
+      send(false);
     });
   }
 

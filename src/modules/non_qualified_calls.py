@@ -30,7 +30,9 @@ Its Executive Summary and Progress Status report is a Reporting artifact
 (PowerPoint, Word or Excel) registered with ``register_report_artifact_provider``.
 """
 
+import csv
 import hashlib
+import io
 import json
 import math
 import re
@@ -3631,6 +3633,237 @@ def clear_rca_results(task_repository: Any, username: str) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Analyses of the previous tool: imported by JOIN_ID (admins and super-admins)
+# ---------------------------------------------------------------------------
+# Follow-up columns named otherwise than their catalog field; the catalog fields are found by name or key.
+ANALYSES_ALIASES = {
+    'status': 'status', 'nqcallstatus': 'status', 'callstatus': 'status', 'team': 'team', 'teamresponsible': 'team',
+    'assignee': 'assignee', 'asignee': 'assignee', 'rootcategory': 'root_category', 'selectedrootcategory': 'root_category',
+    'rootcause': 'root_cause', 'selectedrootcause': 'root_cause', 'comment': 'comments', 'comments': 'comments',
+}
+ANALYSES_TRACKING = ('status', 'team', 'assignee', 'root_category', 'root_cause')
+MAX_ANALYSES_ROWS = 50000
+MAX_ANALYSES_ISSUES = 20
+
+
+def _analyses_cell(value: Any) -> str:
+    """A cell of an analyses file as text, keeping its line breaks (long texts and comments)."""
+    if value is None:
+        return ''
+    if isinstance(value, datetime):
+        return value.strftime('%Y-%m-%d') if not (value.hour or value.minute or value.second) else value.isoformat(sep=' ')
+    if isinstance(value, float) and value.is_integer():
+        value = int(value)
+    text = str(value).replace('\r\n', '\n').strip()
+    return '' if text.casefold() in {'nan', 'none', 'null', '<na>'} else text
+
+
+def _analyses_columns(header: list[str], definitions: list[dict[str, Any]]) -> dict[str, Any]:
+    """What each column of an analyses file fills: a follow-up value, an analysts' field, comments, or nothing."""
+    targets: dict[str, tuple[str, str]] = {}
+    read_only: set[str] = set()
+    for field in definitions:
+        if field['source'] == 'user':
+            target: tuple[str, str] | None = ('field', field['key'])
+        elif field['source'] == 'tracking' and field['source_ref'] in (*ANALYSES_TRACKING, 'comments'):
+            target = ('comments', '') if field['source_ref'] == 'comments' else ('tracking', field['source_ref'])
+        else:
+            target = None
+        for name in (field['label'], field['key']):
+            if target is None:
+                read_only.add(nq_rca._identity(name))
+            else:
+                targets.setdefault(nq_rca._identity(name), target)
+    for alias, ref in ANALYSES_ALIASES.items():
+        targets.setdefault(alias, ('comments', '') if ref == 'comments' else ('tracking', ref))
+    columns: dict[int, tuple[str, str]] = {}
+    recognized, ignored, skipped = [], [], []
+    join_index = key_index = None
+    for index, name in enumerate(header):
+        identity = nq_rca._identity(name)
+        if not identity:
+            continue
+        if identity == 'joinid' and join_index is None:
+            join_index = index
+        elif identity == 'callkey' and key_index is None:
+            key_index = index
+        elif identity in targets and targets[identity] not in columns.values():
+            columns[index] = targets[identity]
+            recognized.append(name)
+        elif identity in read_only or identity in targets:
+            skipped.append(name)
+        else:
+            ignored.append(name)
+    return {'columns': columns, 'join': join_index, 'key': key_index, 'recognized': recognized,
+            'read_only': skipped, 'ignored': ignored}
+
+
+def read_analyses_file(content: bytes, file_name: str, definitions: list[dict[str, Any]]) -> dict[str, Any]:
+    """The analyses of a file, one row per call identified by JOIN_ID (or Call Key): the simple layout with one header
+    row, or the Excel export of Non-Qualified Calls (its first row names the sections)."""
+    rows = nq_rca._table(content, file_name)
+    header_row = next((index for index, row in enumerate(rows[:3])
+                       if any(nq_rca._identity(value) in {'joinid', 'callkey'} for value in row)), None)
+    if header_row is None:
+        raise ValueError('The file needs a JOIN_ID column (or Call Key) in one of its first three rows.')
+    layout = _analyses_columns([_analyses_cell(value) for value in rows[header_row]], definitions)
+    if not layout['columns']:
+        raise ValueError('The file has none of the analysis columns (the names of the fields, such as Analysis Status, '
+                         'Selected Root Category, NQ Call Status or Comments).')
+    entries: dict[str, dict[str, Any]] = {}
+    skipped = 0
+    for row in rows[header_row + 1:header_row + 1 + MAX_ANALYSES_ROWS]:
+        cells = [_analyses_cell(value) for value in row]
+
+        def cell(index: int | None) -> str:
+            return cells[index] if index is not None and index < len(cells) else ''
+
+        identity = cell(layout['join']) or cell(layout['key'])
+        if not identity:
+            skipped += any(cells)
+            continue
+        values = {target: cell(index) for index, target in layout['columns'].items() if cell(index)}
+        entry = entries.setdefault(identity.casefold(), {'join_id': cell(layout['join']), 'call_key': cell(layout['key']), 'values': {}, 'rows': 0})
+        entry['rows'] += 1
+        for target, value in values.items():
+            entry['values'].setdefault(target, value)
+    return {**layout, 'entries': list(entries.values()), 'skipped': skipped,
+            'duplicates': sum(1 for entry in entries.values() if entry['rows'] > 1)}
+
+
+def import_analyses(task_repository: Any, content: bytes, file_name: str, username: str, users: set[str], *,
+                    overwrite: bool = False, dry_run: bool = False) -> dict[str, Any]:
+    """Import the analyses of the previous tool into the follow-up of the calls, by JOIN_ID.
+
+    Every value is checked as if it were chosen in the call (statuses, teams, users, the Root Cause Catalog and the
+    lists of the fields); values that do not exist are left out and reported. Without ``overwrite`` only empty values
+    are filled (a status only when it follows the Status Rules). Comments are added unless the call already has the
+    same text. ``dry_run`` only reports what the import would do.
+    """
+    definitions = list_fields(task_repository)
+    parsed = read_analyses_file(content, file_name, definitions)
+    by_key = {field['key']: field for field in definitions}
+    options = list_options(task_repository)
+    taxonomy = list_root_causes(task_repository)
+    names = {
+        'status': {item['name'].casefold(): item['name'] for item in options['statuses']},
+        'team': {item['name'].casefold(): item['name'] for item in options['teams']},
+        'assignee': {name.casefold(): name for name in users},
+        'root_category': {item['name'].casefold(): item['name'] for item in taxonomy['categories']},
+        'root_cause': {item['name'].casefold(): item['name'] for item in taxonomy['causes']},
+    }
+    labels = {('tracking', ref): label for ref, label in nq_catalog.TRACKING_REFS.items()}
+    labels.update({('tracking' if field['source'] == 'tracking' else 'field', field['source_ref'] if field['source'] == 'tracking' else field['key']):
+                   field['label'] for field in definitions if field['source'] in {'user', 'tracking'}})
+    with task_repository.connection() as connection:
+        known = {}
+        for row in connection.execute(f"SELECT DISTINCT call_key, join_id FROM {NQ_CALLS_TABLE}"):
+            known[str(row['call_key']).casefold()] = str(row['call_key'])
+            if row['join_id']:
+                known.setdefault(str(row['join_id']).casefold(), str(row['call_key']))
+        matched = {entry_id: known[entry_id] for entry_id in
+                   ({(entry['join_id'] or entry['call_key']).casefold() for entry in parsed['entries']}) if entry_id in known}
+        keys = list(dict.fromkeys(matched.values()))
+        tracking = {str(row['call_key']): row for row in _rows_of_calls(
+            connection, f'SELECT * FROM {NQ_CALL_TRACKING_TABLE}', keys)} if keys else {}
+        values = field_values(connection, keys) if keys else {}
+        # The comments a call has, as texts and as the comment log of the Excel export (imported back unchanged).
+        comment_rows: dict[str, list[Any]] = {}
+        for row in (_rows_of_calls(connection, f"SELECT call_key, body, created_by, created_at, deleted_at FROM {NQ_CALL_COMMENTS_TABLE}",
+                                   keys, order='created_at, id') if keys else []):
+            comment_rows.setdefault(str(row['call_key']), []).append(row)
+        comments = {key: {str(row['body']).strip() for row in rows if not row['deleted_at']} | {_comment_log(rows)}
+                    for key, rows in comment_rows.items()}
+    default = untracked_status(task_repository, options)
+    invalid: dict[tuple[str, str], int] = {}
+    unmatched: list[str] = []
+    analysed = changed = added_comments = 0
+    failures: list[str] = []
+    for entry in parsed['entries']:
+        identity = entry['join_id'] or entry['call_key']
+        call_key = matched.get(identity.casefold())
+        if call_key is None:
+            unmatched.append(identity)
+            continue
+        current = tracking.get(call_key)
+        current_fields = values.get(call_key, {})
+        if (current and any(str(current[ref] or '') for ref in ('team', 'assignee', 'root_category', 'root_cause'))) or current_fields:
+            analysed += 1
+        changes: dict[str, Any] = {}
+        fields: dict[str, str] = {}
+        new_comment = ''
+        for (kind, ref), value in entry['values'].items():
+            if kind == 'comments':
+                new_comment = value
+                continue
+            label = labels.get((kind, ref), ref)
+            if kind == 'tracking':
+                proper = names[ref].get(value.casefold())
+                if proper is None:
+                    invalid[(label, value)] = invalid.get((label, value), 0) + 1
+                    continue
+                present = str(current[ref] or '') if current is not None else (default if ref == 'status' else '')
+                # A value the call already has stays as it is (a status keeps following the Status Rules).
+                if proper.casefold() == present.casefold() or (not overwrite and current is not None and (
+                        (ref == 'status' and str(current['status_mode'] or '') == 'manual')
+                        or (ref != 'status' and present))):
+                    continue
+                changes[ref] = proper
+            else:
+                try:
+                    proper = _field_value(by_key[ref], value)
+                except ValueError:
+                    invalid[(label, value[:60])] = invalid.get((label, value[:60]), 0) + 1
+                    continue
+                if proper == current_fields.get(ref, '') or (not overwrite and current_fields.get(ref)):
+                    continue
+                fields[ref] = proper
+        if fields:
+            changes['fields'] = fields
+        comment = new_comment and new_comment.strip() not in comments.get(call_key, set())
+        if not changes and not comment:
+            continue
+        if dry_run:
+            changed += bool(changes)
+            added_comments += bool(comment)
+            continue
+        try:
+            if changes:
+                changed += bool(update_tracking(task_repository, [call_key], changes, username, users))
+            if comment:
+                add_comment(task_repository, call_key, new_comment, username)
+                added_comments += 1
+        except (ValueError, LookupError, PermissionError, TrackingConflict) as exc:
+            if len(failures) < MAX_ANALYSES_ISSUES:
+                failures.append(f'{identity}: {exc}')
+    summary = {
+        'rows': sum(entry['rows'] for entry in parsed['entries']) + parsed['skipped'], 'calls': len(parsed['entries']),
+        'matched': len(parsed['entries']) - len(unmatched), 'unmatched': len(unmatched),
+        'unmatched_ids': unmatched[:MAX_ANALYSES_ISSUES], 'skipped': parsed['skipped'], 'duplicates': parsed['duplicates'],
+        'analysed': analysed, 'columns': parsed['recognized'], 'read_only': parsed['read_only'], 'ignored': parsed['ignored'],
+        'invalid': [{'column': column, 'value': value, 'rows': count}
+                    for (column, value), count in sorted(invalid.items(), key=lambda item: -item[1])[:MAX_ANALYSES_ISSUES]],
+        'invalid_total': sum(invalid.values()), 'changed': changed, 'comments': added_comments, 'failures': failures,
+        'overwrite': overwrite, 'dry_run': dry_run,
+    }
+    if not dry_run and hasattr(task_repository, 'try_add_log'):
+        task_repository.try_add_log(username, 'nq_analyses_import', json.dumps({
+            'file': file_name, 'overwrite': overwrite, 'matched': summary['matched'], 'changed': changed,
+            'comments': added_comments, 'failures': len(failures),
+        }))
+    return summary
+
+
+def analyses_template(task_repository: Any) -> bytes:
+    """An empty analyses file: JOIN_ID and every follow-up and analysts' field in the catalog order, then Comments."""
+    columns = ['JOIN_ID'] + [field['label'] for field in list_fields(task_repository)
+                             if field['source'] == 'user' or (field['source'] == 'tracking' and field['source_ref'] in ANALYSES_TRACKING)]
+    output = io.StringIO()
+    csv.writer(output).writerow([*columns, 'Comments'])
+    return output.getvalue().encode('utf-8-sig')
+
+
+# ---------------------------------------------------------------------------
 # Lifecycle and RCA insights
 # ---------------------------------------------------------------------------
 STALLED_DAYS = 14
@@ -4026,7 +4259,8 @@ def export_workbook(task_repository: Any, filters: dict[str, Any], username: str
 
     if samples:
         # Speech samples with their own follow-up, below the call they belong to.
-        sample_columns = [('Call Start Time', lambda sample: by_key.get(str(sample['parent_key']), {}).get('start_time', '')),
+        sample_columns = [('JOIN_ID', lambda sample: sample.get('join_id')),
+                          ('Call Start Time', lambda sample: by_key.get(str(sample['parent_key']), {}).get('start_time', '')),
                           ('Operator', lambda sample: sample.get('operator')), ('Campaign', lambda sample: sample.get('campaign')),
                           ('Sample', lambda sample: sample.get('sample_id')), ('Start Time', lambda sample: sample.get('start_time')),
                           ('Result', lambda sample: sample.get('result')),
@@ -4040,23 +4274,33 @@ def export_workbook(task_repository: Any, filters: dict[str, Any], username: str
 
     def call_context(call_key: str) -> list[Any]:
         call = by_key.get(call_key, {})
-        return [call.get('service_label', ''), call.get('operator', ''), call.get('campaign', ''), call.get('start_time', '')]
+        return [call.get('join_id', ''), call.get('service_label', ''), call.get('operator', ''), call.get('campaign', ''),
+                call.get('start_time', '')]
+
+    # The comments and changes of each call together, in the order of the NQ Calls sheet (a Speech sample with its
+    # call), then by date.
+    position = {call['call_key']: index for index, call in enumerate(calls)}
+    position.update({sample['call_key']: position.get(str(sample['parent_key']), len(calls)) for sample in samples})
+
+    def by_call(rows: list[Any], moment: str) -> list[Any]:
+        return sorted(rows, key=lambda row: (position.get(str(row['call_key']), len(calls)), str(row['call_key']),
+                                             str(row[moment] or ''), int(row['id'])))
 
     write_sheet(
         workbook.create_sheet('Comments'),
-        ['Service', 'Operator', 'Campaign', 'Start Time', 'Comment', 'Author', 'Created At', 'Edited By', 'Edited At',
-         'Deleted By', 'Deleted At', 'Call Key'],
+        ['JOIN_ID', 'Service', 'Operator', 'Campaign', 'Start Time', 'Comment', 'Author', 'Created At', 'Edited By',
+         'Edited At', 'Deleted By', 'Deleted At', 'Call Key'],
         [[*call_context(str(row['call_key'])), str(row['body']), row['created_by'], row['created_at'], row['edited_by'],
-          row['edited_at'], row['deleted_by'], row['deleted_at'], row['call_key']] for row in comments],
-        [10, 16, 16, 24, 70, 16, 26, 16, 26, 16, 26, 28],
+          row['edited_at'], row['deleted_by'], row['deleted_at'], row['call_key']] for row in by_call(comments, 'created_at')],
+        [36, 10, 16, 16, 24, 70, 16, 26, 16, 26, 16, 26, 28],
     )
     write_sheet(
         workbook.create_sheet('History'),
-        ['Service', 'Operator', 'Campaign', 'Start Time', 'Change', 'Previous Value', 'New Value', 'Changed By',
+        ['JOIN_ID', 'Service', 'Operator', 'Campaign', 'Start Time', 'Change', 'Previous Value', 'New Value', 'Changed By',
          'Changed At', 'Call Key'],
         [[*call_context(str(row['call_key'])), history_label(str(row['field']), definitions),
-          row['old_value'], row['new_value'], row['changed_by'], row['changed_at'], row['call_key']] for row in history],
-        [10, 16, 16, 24, 18, 40, 40, 16, 26, 28],
+          row['old_value'], row['new_value'], row['changed_by'], row['changed_at'], row['call_key']] for row in by_call(history, 'changed_at')],
+        [36, 10, 16, 16, 24, 18, 40, 40, 16, 26, 28],
     )
     for target in workbook.worksheets[1:]:
         for row in target.iter_rows(min_row=2):
@@ -4605,7 +4849,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
     @core.app.get('/non-qualified-calls', response_class=HTMLResponse)
     def non_qualified_calls_page(request: Request, user=Depends(core.current_user)):
         return core.render_template(request, 'non_qualified_calls.html', {
-            'user': user, 'nq_can_edit': can_edit(user), 'nq_page_sizes': PAGE_SIZES,
+            'user': user, 'nq_can_edit': can_edit(user), 'nq_can_import_analyses': can_moderate(user), 'nq_page_sizes': PAGE_SIZES,
         })
 
     @core.app.get('/api/non-qualified-calls/state')
@@ -4732,6 +4976,31 @@ def install_non_qualified_calls_routes(core: Any) -> None:
             raise HTTPException(400, str(exc)) from exc
         except Exception as exc:  # noqa: BLE001 - an unreadable file is a user error.
             raise HTTPException(400, f'The RCA file could not be read: {exc}') from exc
+
+    def analyses_user(user=Depends(core.current_user)):
+        if not can_moderate(user):
+            raise HTTPException(403, 'Only admins and super-admins can import the analyses of the previous tool.')
+        return user
+
+    @core.app.get('/api/non-qualified-calls/analyses/template')
+    def nq_analyses_template(user=Depends(analyses_user)) -> Response:
+        return Response(analyses_template(workspace_repository(user)), media_type='text/csv',
+                        headers={'Content-Disposition': 'attachment; filename="NQ_analyses_template.csv"'})
+
+    @core.app.post('/api/non-qualified-calls/analyses/import')
+    async def nq_analyses_import(request: Request, user=Depends(analyses_user)) -> JSONResponse:
+        """Preview (``preview=1``) or import the analyses of the previous tool by JOIN_ID into the active workspace;
+        ``overwrite=1`` replaces the values the calls already have instead of filling only the empty ones."""
+        repository = workspace_repository(user)
+        content, name, form = await uploaded_file(request, 'file', 100)
+        try:
+            return JSONResponse(import_analyses(repository, content, name, user.username, set(workspace_users()),
+                                                overwrite=str(form.get('overwrite') or '') == '1',
+                                                dry_run=str(form.get('preview') or '') == '1'))
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        except Exception as exc:  # noqa: BLE001 - an unreadable file is a user error.
+            raise HTTPException(400, f'The analyses file could not be read: {exc}') from exc
 
     @core.app.delete('/api/non-qualified-calls/rca')
     def nq_rca_clear(user=Depends(editor_user)) -> JSONResponse:

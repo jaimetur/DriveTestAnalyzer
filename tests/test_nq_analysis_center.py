@@ -283,6 +283,18 @@ def test_excel_export_groups_the_catalog_by_section_with_its_colours(client, tmp
     assert row['Netcheck Suggested Cause'] == 'DL coverage problems' and row['Session Type'] == 'CALL'
 
 
+
+def test_excel_export_keeps_the_comments_and_changes_of_each_call_together(client, tmp_path):
+    calls = setup_calls(client, tmp_path)
+    for join_id, body in (('0xB2', 'First on B'), ('0xA1', 'Only on A'), ('0xB2', 'Second on B')):
+        assert client.post(f"/api/non-qualified-calls/calls/{calls[join_id]['call_key']}/comments", json={'body': body}).status_code == 200
+    workbook = load_workbook(io.BytesIO(client.post('/api/non-qualified-calls/export', json={'filters': {}}).content))
+    order = [row[0] for row in list(workbook['NQ Calls'].values)[2:]]
+    comments = [(row[0], row[5]) for row in list(workbook['Comments'].values)[1:]]
+    # In the order of the calls of the NQ Calls sheet, each call by date.
+    expected = sorted([('0xB2', 'First on B'), ('0xA1', 'Only on A'), ('0xB2', 'Second on B')], key=lambda item: order.index(item[0]))
+    assert comments == expected
+
 def test_catalog_workbook_round_trip_and_the_meeting_layout(client, tmp_path):
     setup_calls(client, tmp_path)
     exported = client.get('/api/non-qualified-calls/catalog/export')
@@ -610,3 +622,55 @@ def test_lifecycle_counts_the_rca_identification(client, tmp_path):
     assert life['rca'] == {'identified': 1, 'not_identified': 2}
     assert [item['join_id'] for item in query(client, filters={'state': ['identified']})['calls']] == ['0xA1']
     assert query(client, filters={'state': ['not_identified']})['total'] == 2
+
+
+def test_admins_import_the_analyses_of_the_previous_tool_by_join_id(client, tmp_path):
+    calls = setup_calls(client, tmp_path)
+    template = client.get('/api/non-qualified-calls/analyses/template').text.lstrip('﻿').splitlines()[0].split(',')
+    assert template[0] == 'JOIN_ID' and template[-1] == 'Comments' and {'NQ Call Status', 'Analysis Status', 'Findings'} <= set(template)
+    patch(client, calls['0xB2'], {'fields': {'analysis_status': 'Ongoing'}})
+    csv = ('JOIN_ID,Analysis Status,Selected Root Category,Team Responsible,Findings,Comments,Netcheck Suggested Cause,Old Column\n'
+           '0xa1,Finished,Poor Coverage LTE,RAN Planning Coverage,"Hill behind the site\nNo dominant cell",Reviewed in the old tool,x,y\n'
+           '0xB2,Bogus,,,Interference,,,\n'
+           '0xZZ,Finished,,,,,,\n').encode()
+    send = lambda **form: client.post('/api/non-qualified-calls/analyses/import', data=form,
+                                      files={'file': ('analyses.csv', io.BytesIO(csv), 'text/csv')})
+    preview = send(preview='1').json()
+    assert (preview['calls'], preview['matched'], preview['unmatched_ids']) == (3, 2, ['0xZZ'])
+    assert preview['read_only'] == ['Netcheck Suggested Cause'] and preview['ignored'] == ['Old Column']
+    assert preview['invalid'] == [{'column': 'Analysis Status', 'value': 'Bogus', 'rows': 1}]
+    assert (preview['changed'], preview['comments'], preview['analysed']) == (2, 1, 1)
+    assert query(client, filters={'fields': {'analysis_status': ['Finished']}})['total'] == 0
+    # Only the empty values are filled: 0xB2 keeps its Analysis Status and gets its Findings.
+    result = send().json()
+    assert (result['changed'], result['comments'], result['failures']) == (2, 1, [])
+    imported = {call['join_id']: call for call in query(client)['calls']}
+    assert imported['0xA1']['values']['analysis_status'] == 'Finished' and imported['0xA1']['root_category'] == 'Poor Coverage LTE'
+    assert imported['0xA1']['team'] == 'RAN Planning Coverage'
+    assert imported['0xA1']['values']['findings'] == 'Hill behind the site\nNo dominant cell'
+    assert imported['0xB2']['values']['analysis_status'] == 'Ongoing' and imported['0xB2']['values']['findings'] == 'Interference'
+    detail = client.get(f"/api/non-qualified-calls/calls/{calls['0xA1']['call_key']}").json()
+    assert [comment['body'] for comment in detail['comments']] == ['Reviewed in the old tool']
+    # Importing again changes nothing and never repeats a comment; replacing overwrites what the calls have.
+    assert (send().json()['changed'], send().json()['comments']) == (0, 0)
+    csv = b'JOIN_ID,Analysis Status\n0xB2,Finished\n'
+    assert send(overwrite='1').json()['changed'] == 1
+    assert {call['join_id']: call for call in query(client)['calls']}['0xB2']['values']['analysis_status'] == 'Finished'
+    # The Excel export of Non-Qualified Calls (its first row names the sections) can be imported too.
+    exported = client.post('/api/non-qualified-calls/export', json={'filters': {}}).content
+    again = client.post('/api/non-qualified-calls/analyses/import', data={'preview': '1'},
+                        files={'file': ('export.xlsx', io.BytesIO(exported), 'application/octet-stream')}).json()
+    assert again['matched'] == 3 and 'Analysis Status' in again['columns'] and again['changed'] == 0
+    # Import RCA & Analyses, at the top of the page, gathers both imports; only admins and super-admins import analyses.
+    page = client.get('/non-qualified-calls').text
+    assert 'id="nq-import-toggle"' in page and 'Import RCA &amp; Analyses</button>' in page
+    assert 'id="nq-rca-open"' in page and 'id="nq-analyses-open"' in page
+    token = 'analyses-editor'
+    core.SESSIONS[token] = core.SessionUser(username='editor', role='user-editor')
+    client.cookies.set(core.SESSION_COOKIE, token)
+    assert send(preview='1').status_code == 403
+    # Editors see the entry dimmed, with the reason as its tooltip, and without its dialog.
+    page = client.get('/non-qualified-calls').text
+    assert 'id="nq-rca-open"' in page and 'id="nq-analyses-dialog"' not in page
+    assert ('id="nq-analyses-open" aria-disabled="true" title="Only admins and super-admins can import the analyses of the previous tool"'
+            in page)

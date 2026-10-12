@@ -23,6 +23,15 @@
           <button type="button" class="nq-hero-action" id="nq-refresh" title="Index the calls of every CDR again (their follow-up is kept)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg>Reindex</button>
         </div>
         <div class="nq-sync-exports">
+          {# Every import of root causes in one place: the Ericsson RCA results and the analyses of the previous tool. #}
+          {% if nq_can_edit %}<div class="nq-menu-wrap nq-import-wrap">
+            <button type="button" class="document-export-action nq-import-action nq-menu-toggle" id="nq-import-toggle" aria-haspopup="menu" aria-expanded="false" aria-controls="nq-import-menu" title="Import the root causes of the calls: the Ericsson RCA results and the analyses of the previous tool"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0-4-4m4 4 4-4"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>Import RCA &amp; Analyses</button>
+            <div class="nq-menu" id="nq-import-menu" role="menu" hidden>
+              <button type="button" role="menuitem" id="nq-rca-open" data-nq-rca-open><strong>Ericsson RCA Results</strong><span>Import the results of the Ericsson RCA by JOIN_ID</span></button>
+              {# Shown to every editor; only admins and super-admins can use it. #}
+              <button type="button" role="menuitem" id="nq-analyses-open"{% if not nq_can_import_analyses %} aria-disabled="true" title="Only admins and super-admins can import the analyses of the previous tool"{% endif %}><strong>Previous NQ Analyses</strong><span>The analyses made with the previous tool, by JOIN_ID (admins and super-admins)</span></button>
+            </div>
+          </div>{% endif %}
           <button type="button" class="document-export-action document-export-powerpoint" data-nq-document-export="powerpoint" title="Executive Summary and Progress Status of the filtered calls"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4M7 13l3-3 2 2 4-4"/></svg>Export PowerPoint</button>
           <button type="button" class="document-export-action document-export-word" data-nq-document-export="word" title="Executive Summary and Progress Status of the filtered calls"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M8.5 12l1.2 5 1.8-4 1.8 4 1.2-5"/></svg>Export Word</button>
         </div>
@@ -70,12 +79,17 @@
 
   {# The calls table or the dashboards right below the filters, or the whole page; each browser remembers the choice. #}
   <nav class="nq-view-switch" id="nq-view-switch" role="tablist" aria-label="View">
-    <button type="button" role="tab" data-nq-view="calls" aria-selected="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>Calls <span class="nq-view-count" id="nq-view-count"></span></button>
-    <button type="button" role="tab" data-nq-view="dashboards" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Dashboards</button>
+    <button type="button" role="tab" data-nq-view="calls" aria-selected="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>NQ Calls <span class="nq-view-count" id="nq-view-count"></span></button>
+    <button type="button" role="tab" data-nq-view="summary" aria-selected="false" title="The Executive Summary of the filtered calls"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>Summary</button>
+    <button type="button" role="tab" data-nq-view="rates" aria-selected="false" title="NQ Rate by Campaign and Operator"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 5 5 19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>NQ Rate</button>
+    <button type="button" role="tab" data-nq-view="progress" aria-selected="false" title="Progress View"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 17 6-6 4 4 8-8"/><path d="M14 7h7v7"/></svg>Progress</button>
+    <button type="button" role="tab" data-nq-view="lifecycle" aria-selected="false" title="Lifecycle &amp; Phases"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.9-4M4 13a8 8 0 0 0 14.9 4"/><path d="M5 3v4h4M19 21v-4h-4"/></svg>Lifecycle</button>
+    <button type="button" role="tab" data-nq-view="root" aria-selected="false" title="Root Cause Analysis"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1"/></svg>Root Causes</button>
+    <button type="button" role="tab" data-nq-view="sources" aria-selected="false" title="Root Cause Sources"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 3 8l9 5 9-5-9-5z"/><path d="m3 13 9 5 9-5"/></svg>RCA Sources</button>
     <button type="button" role="tab" data-nq-view="all" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>All panels</button>
   </nav>
 
-  <details class="panel collapsible-panel nq-summary-panel" data-nq-view-panel="dashboards" data-nq-loader="summary" open data-panel-state-key="non-qualified-calls:summary">
+  <details class="panel collapsible-panel nq-summary-panel" data-nq-view-panel="summary" data-nq-loader="summary" open data-panel-state-key="non-qualified-calls:summary">
     <summary class="collapsible-summary"><div><p class="eyebrow">Executive view</p><h2>Summary</h2></div><span class="collapse-chip">Collapse</span></summary>
     <div class="collapsible-panel-body">
       <div class="nq-active-filters" data-nq-active-filters hidden></div>
@@ -85,7 +99,7 @@
     </div>
   </details>
 
-  <details class="panel collapsible-panel nq-rates-panel" data-nq-view-panel="dashboards" data-nq-loader="rates" open data-panel-state-key="non-qualified-calls:rates">
+  <details class="panel collapsible-panel nq-rates-panel" data-nq-view-panel="rates" data-nq-loader="rates" open data-panel-state-key="non-qualified-calls:rates">
     <summary class="collapsible-summary"><div><p class="eyebrow">Management view</p><h2>NQ Rate by Campaign and Operator</h2></div><span class="collapse-chip">Collapse</span></summary>
     <div class="collapsible-panel-body">
       <div class="nq-active-filters" data-nq-active-filters="rates" hidden></div>
@@ -99,7 +113,7 @@
     </div>
   </details>
 
-  <details class="panel collapsible-panel nq-progress-panel" data-nq-view-panel="dashboards" data-nq-loader="progress" open data-panel-state-key="non-qualified-calls:progress">
+  <details class="panel collapsible-panel nq-progress-panel" data-nq-view-panel="progress" data-nq-loader="progress" open data-panel-state-key="non-qualified-calls:progress">
     <summary class="collapsible-summary"><div><p class="eyebrow">Follow-up</p><h2>Progress View</h2></div><span class="collapse-chip">Collapse</span></summary>
     <div class="collapsible-panel-body">
       <div class="nq-active-filters" data-nq-active-filters hidden></div>
@@ -123,7 +137,7 @@
     </div>
   </details>
 
-  <details class="panel collapsible-panel nq-life-panel" data-nq-view-panel="dashboards" data-nq-loader="lifecycle" open data-panel-state-key="non-qualified-calls:lifecycle">
+  <details class="panel collapsible-panel nq-life-panel" data-nq-view-panel="lifecycle" data-nq-loader="lifecycle" open data-panel-state-key="non-qualified-calls:lifecycle">
     <summary class="collapsible-summary"><div><p class="eyebrow">Analysis Center</p><h2>Lifecycle &amp; Phases</h2></div><span class="collapse-chip">Collapse</span></summary>
     <div class="collapsible-panel-body">
       <div class="nq-active-filters" data-nq-active-filters hidden></div>
@@ -142,7 +156,7 @@
     </div>
   </details>
 
-  <details class="panel collapsible-panel nq-root-panel" data-nq-view-panel="dashboards" data-nq-loader="root" open data-panel-state-key="non-qualified-calls:root-causes">
+  <details class="panel collapsible-panel nq-root-panel" data-nq-view-panel="root" data-nq-loader="root" open data-panel-state-key="non-qualified-calls:root-causes">
     <summary class="collapsible-summary"><div><p class="eyebrow">Diagnosis</p><h2>Root Cause Analysis</h2></div><span class="collapse-chip">Collapse</span></summary>
     <div class="collapsible-panel-body">
       <div class="nq-active-filters" data-nq-active-filters hidden></div>
@@ -162,13 +176,13 @@
     </div>
   </details>
 
-  <details class="panel collapsible-panel nq-sources-panel" data-nq-view-panel="dashboards" data-nq-loader="sources" open data-panel-state-key="non-qualified-calls:rca-sources">
+  <details class="panel collapsible-panel nq-sources-panel" data-nq-view-panel="sources" data-nq-loader="sources" open data-panel-state-key="non-qualified-calls:rca-sources">
     <summary class="collapsible-summary"><div><p class="eyebrow">Analysis Center</p><h2>Root Cause Sources</h2></div><span class="collapse-chip">Collapse</span></summary>
     <div class="collapsible-panel-body">
       <div class="nq-active-filters" data-nq-active-filters hidden></div>
       <div class="nq-progress-head">
         <p class="nq-hint">The three root cause sources of the filtered calls side by side: the NetCheck RCA of the CDR, the Ericsson RCA results imported by JOIN_ID and the Root Category and Cause selected by the analysts. See how many calls each one covers, how often they agree and how the analysts' choices relate to each RCA.</p>
-        <span class="nq-root-head-actions"><span class="nq-muted" id="nq-sources-results"></span>{% if nq_can_edit %}<button type="button" class="nq-secondary-action" data-nq-rca-open title="Import the results of the Ericsson RCA by JOIN_ID">Ericsson RCA Results</button>{% endif %}</span>
+        <span class="nq-root-head-actions"><span class="nq-muted" id="nq-sources-results"></span></span>
       </div>
       <div class="nq-kpis" id="nq-sources-kpis"></div>
       <div class="nq-hierarchies" id="nq-sources-hierarchies"></div>
@@ -194,7 +208,6 @@
               <button type="button" role="menuitem" id="nq-options-open"><strong>Statuses &amp; Teams</strong><span>The NQ Call Statuses and the responsible teams with their members</span></button>
               <button type="button" role="menuitem" id="nq-status-rules-open" data-nq-status-rules-open><strong>Status Rules</strong><span>How the status follows the Analysis, Implementation and Planning fields</span></button>
               <button type="button" role="menuitem" id="nq-root-open"><strong>Root Cause Catalog</strong><span>Domains, Root Categories and Root Causes, with their keywords</span></button>
-              <button type="button" role="menuitem" id="nq-rca-open" data-nq-rca-open><strong>Ericsson RCA Results</strong><span>Import the results of the Ericsson RCA by JOIN_ID</span></button>
               <button type="button" role="menuitem" id="nq-columns-open"><strong>Additional Columns</strong><span>The columns of the table and of the Excel export, including CDR columns</span></button>
             </div>
           </div>{% endif %}
@@ -380,6 +393,29 @@
     <section class="nq-rca-preview" id="nq-rca-preview" hidden></section>
     <p class="nq-options-error" id="nq-rca-error" role="alert"></p>
     <footer><button type="button" class="nq-link-action is-danger" id="nq-rca-clear">Delete every result</button><span class="nq-rule-spacer"></span><button type="button" class="nq-secondary-action" id="nq-rca-cancel">Close</button><button type="submit" class="nq-primary-action" id="nq-rca-import" disabled>Import</button></footer>
+  </form>
+</dialog>
+{% endif %}
+{% if nq_can_import_analyses %}
+{# The analyses made with the previous tool, imported into the follow-up of the calls (admins and super-admins). #}
+<dialog class="nq-options-dialog nq-analyses-dialog" id="nq-analyses-dialog" aria-labelledby="nq-analyses-title">
+  <form class="nq-options-form nq-analyses-import-form" data-nq-analyses-form>
+    <header><h2 id="nq-analyses-title">Previous NQ Analyses</h2>
+      <p class="form-note">Bring the analyses made with the previous tool into the calls of this workspace: one row per call with its <code>JOIN_ID</code> and the fields named as in the Analysis Center (or the Excel export of Non-Qualified Calls). Preview the file, then import it.</p>
+      <div class="nq-fields-import"><a class="nq-secondary-action" href="/api/non-qualified-calls/analyses/template" download>Download Template</a>
+        <label class="nq-secondary-action nq-file-action">Choose File<input type="file" name="file" accept=".csv,.txt,.xlsx,.xlsm" hidden data-nq-analyses-file></label>
+        <span class="nq-muted" data-nq-analyses-name>No file chosen</span></div>
+    </header>
+    <fieldset class="nq-analyses-mode">
+      <legend>Values the calls already have</legend>
+      <label><input type="radio" name="overwrite" value="0" checked> Keep them: fill only the empty values</label>
+      <label><input type="radio" name="overwrite" value="1"> Replace them with the values of the file</label>
+    </fieldset>
+    <div class="nq-analyses-summary" data-nq-analyses-summary hidden></div>
+    <p class="nq-options-error" role="alert" data-nq-analyses-error></p>
+    <footer><span class="nq-rule-spacer"></span><button type="button" class="nq-secondary-action" data-nq-analyses-close>Close</button>
+      <button type="button" class="nq-secondary-action" data-nq-analyses-preview disabled>Preview</button>
+      <button type="submit" class="nq-primary-action" data-nq-analyses-import disabled>Import Analyses</button></footer>
   </form>
 </dialog>
 {% endif %}
