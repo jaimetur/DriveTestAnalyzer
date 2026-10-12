@@ -818,6 +818,9 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 .nq-table th.nq-dynamic-col span[data-sort] { white-space: normal; }
 .nq-table td.nq-field-cell { max-width: 8.5rem; }
 .nq-table .nq-field-cell .nq-field-text { display: -webkit-box; overflow: hidden; white-space: normal; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-height: 1.25; }
+/* A cause column showing the category of its source when the source gives no cause. */
+.nq-field-cell .nq-field-fallback { font-style: italic; }
+.nq-field-fallback-label { display: block; margin-top: .1rem; color: var(--nq-muted); font-size: .62rem; font-weight: 800; letter-spacing: .03em; text-transform: uppercase; }
 .non-qualified-calls .nq-table .nq-pill-select, .non-qualified-calls .nq-table .nq-pill-assignee { min-width: 7rem; max-width: 9.5rem; }
 .non-qualified-calls .nq-table .nq-root-select { min-width: 7.5rem; max-width: 9.5rem; }
 .non-qualified-calls .nq-table .nq-comment-button { max-width: 9.5rem; }

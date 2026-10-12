@@ -190,7 +190,8 @@ def test_rca_script_results_are_imported_by_join_id_and_recommend_the_root_cause
     # The RCA script and NetCheck (mapped by keywords) agree on the category.
     assert sources['script']['category'] == 'Poor Coverage LTE' and sources['netcheck']['category'] == 'Poor Coverage LTE'
     assert recommendation['recommendation']['category'] == 'Poor Coverage LTE'
-    assert recommendation['recommendation']['cause'] == 'NLOS due to clutter or terrain profile'
+    # NetCheck weighs more, so its cause wins among the sources that agree on the category.
+    assert recommendation['recommendation']['cause'] == sources['netcheck']['cause'] == 'Coverage'
     assert recommendation['recommendation']['confidence'] == 'high'
     # Accepting the recommendations of several calls at once.
     keys = [calls['0xA1']['call_key'], calls['0xB2']['call_key']]
@@ -201,7 +202,7 @@ def test_rca_script_results_are_imported_by_join_id_and_recommend_the_root_cause
     # Previous decisions teach the recommendation of calls with the same NetCheck values.
     learned = nq.learned_decisions(sqlite3.connect(core.repository.db_path, factory=_RowConnection))
     assert learned[nq_rca.learned_key('netcheck', 'Coverage problem', 'DL coverage problems')] == {
-        ('Poor Coverage LTE', 'NLOS due to clutter or terrain profile'): {calls['0xA1']['call_key']}}
+        ('Poor Coverage LTE', 'Coverage'): {calls['0xA1']['call_key']}}
     # A decision never teaches the call that made it.
     assert 'learned' not in {source['source'] for source in decided['0xA1']['rca_recommendation']['sources']}
     # Filtering and sorting by catalog fields of any source.
@@ -400,8 +401,11 @@ def test_recommendation_engine_maps_each_source_onto_the_catalog():
     assert nq_catalog.keyword_found(['coverage+lte'], 'dl coverage problems | lte')
     assert not nq_catalog.keyword_found(['coverage+lte'], 'dl coverage problems | nr')
     result = nq_rca.recommend(call, {'rca_category': 'UL Interference NR', 'rca_cause': 'External UL interference'}, root, rule)
-    # The script (weight 3) wins over NetCheck (weight 2) when they disagree, with medium confidence.
-    assert result['recommendation']['category'] == 'UL Interference NR' and result['recommendation']['confidence'] == 'medium'
+    # NetCheck (weight 3) wins over the script (weight 2) when they disagree, with medium confidence; the script alone
+    # gives a low one.
+    assert result['recommendation']['category'] == 'DL Interference NR' and result['recommendation']['confidence'] == 'medium'
+    alone = nq_rca.recommend({'technology': 'NR'}, {'rca_category': 'UL Interference NR', 'rca_cause': 'External UL interference'}, root, rule)
+    assert alone['recommendation']['category'] == 'UL Interference NR' and alone['recommendation']['confidence'] == 'low'
     # Two other calls with the same NetCheck values chose a category: it is proposed once per call, never for the call itself.
     choice = ('DL Interference NR', 'DL interference')
     learned = {nq_rca.learned_key('netcheck', 'Interference problem', 'DL interference problems'): {choice: {'k1', 'k2', 'own'}},

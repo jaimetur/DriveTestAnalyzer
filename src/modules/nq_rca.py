@@ -63,7 +63,7 @@ _DOMAIN_HINTS = (('unknown', ''), ('unclear', ''), ('mobility', 'RAN'), ('handov
                  ('interference', 'RF'))
 _TECHNOLOGY = re.compile(r'\b(lte|nr|gsm|umts|wcdma|2g|3g|4g|5g)\b', re.IGNORECASE)
 SOURCE_LABELS = {'script': 'RCA script', 'netcheck': 'NetCheck RCA', 'comments': 'Comments', 'learned': 'Previous decisions'}
-SOURCE_WEIGHTS = {'script': 3, 'learned': 3, 'netcheck': 2, 'comments': 1}
+SOURCE_WEIGHTS = {'netcheck': 3, 'learned': 3, 'script': 2, 'comments': 1}
 
 
 def _identity(value: Any) -> str:
@@ -376,12 +376,8 @@ def recommend(call: Any, rca: dict[str, str], root: dict[str, list[dict[str, Any
     """
     match = rule.get('match', 'words')
     learned = learned or {}
+    # NetCheck first: it weighs more and its card comes first.
     sources: list[dict[str, Any]] = []
-    script_category = rca.get('rca_category') or rca.get('auto_rca_category_a') or ''
-    script_cause = rca.get('rca_cause') or rca.get('auto_rca_subcategory_a') or ''
-    if script_category or script_cause:
-        mapped = map_to_catalog(script_category, script_cause, root, match)
-        sources.append({'source': 'script', 'raw_category': script_category, 'raw_cause': script_cause, **mapped})
     netcheck_category = _value(call, 'failure_category') or _value(call, 'failure_classification')
     netcheck_cause = _value(call, 'failure_subcategory')
     suggestion = suggest_from_text(call, root, rule, comments)
@@ -389,6 +385,11 @@ def recommend(call: Any, rca: dict[str, str], root: dict[str, list[dict[str, Any
         mapped = suggestion if suggestion and suggestion['source'] == 'netcheck' else {'domain': '', 'category': '', 'cause': ''}
         sources.append({'source': 'netcheck', 'raw_category': netcheck_category, 'raw_cause': netcheck_cause,
                         'domain': mapped['domain'], 'category': mapped['category'], 'cause': mapped['cause']})
+    script_category = rca.get('rca_category') or rca.get('auto_rca_category_a') or ''
+    script_cause = rca.get('rca_cause') or rca.get('auto_rca_subcategory_a') or ''
+    if script_category or script_cause:
+        mapped = map_to_catalog(script_category, script_cause, root, match)
+        sources.append({'source': 'script', 'raw_category': script_category, 'raw_cause': script_cause, **mapped})
     if suggestion and suggestion['source'] == 'comments':
         sources.append({'source': 'comments', 'raw_category': '', 'raw_cause': '', 'domain': suggestion['domain'],
                         'category': suggestion['category'], 'cause': suggestion['cause']})
@@ -438,7 +439,7 @@ def _consensus(sources: list[dict[str, Any]], root: dict[str, list[dict[str, Any
                 if (best_category and source['category'] == best_category) or (not best_category and source['cause'] == best_cause)]
     if len(agreeing) >= 2:
         confidence = 'high'
-    elif agreeing and agreeing[0] in {'script', 'learned'}:
+    elif agreeing and agreeing[0] in {'netcheck', 'learned'}:
         confidence = 'medium'
     else:
         confidence = 'low'

@@ -1137,6 +1137,9 @@
     `${historyLabel(`field:${key}`)} updated.`);
   // A list or Yes / No field of the analysts is chosen in the row; the other fields are shown here and
   // edited in the call; fields from the CDR, the RCA script or derived are read only.
+  // The cause columns of the RCA sources show, for a call whose source gives a category without a cause (most results
+  // of the Auto RCA script), that category, marked as such.
+  const CAUSE_FALLBACKS = {rca_suggested_cause: 'rca_suggested_category', netcheck_suggested_cause: 'netcheck_suggested_category'};
   const fieldCell = (call, field) => {
     const cell = node('td', undefined, 'nq-tracking-cell nq-field-cell');
     const value = String((field.source === 'user' ? call.fields?.[field.key] : call.values?.[field.key]) ?? '');
@@ -1152,6 +1155,15 @@
       paintPill(element, field.type === 'yes_no' ? YES_NO_COLORS[value] || '' : optionColorOf(field, value));
       cell.append(element);
     } else {
+      const fallbackKey = value ? '' : CAUSE_FALLBACKS[field.key];
+      const fallback = fallbackKey ? String(call.values?.[fallbackKey] ?? '') : '';
+      if (fallback) {
+        const category = state.fields.find((item) => item.key === fallbackKey)?.label || 'Category';
+        const text = node('span', fallback, 'nq-field-text nq-field-fallback');
+        text.title = `${fallback}: ${category} (no ${field.label})`;
+        cell.append(text, node('span', category, 'nq-field-fallback-label'));
+        return cell;
+      }
       const text = node('span', field.type === 'date' ? value : value || '—', value ? 'nq-field-text' : 'nq-muted');
       if (value) text.title = value;
       cell.append(text);
@@ -2920,7 +2932,7 @@
     }
   };
   // The Root Cause Decision of the RCA section: the selected Root Category and Cause, the recommendation
-  // merged from every source, and what each source (RCA script, NetCheck, comments, previous decisions) proposes.
+  // merged from every source, and what each source (NetCheck, RCA script, comments, previous decisions) proposes.
   const rootDecisionCard = (call) => {
     const card = node('section', undefined, 'nq-decision');
     const head = node('header');
@@ -3006,6 +3018,15 @@
   // The fields of every section, each one in its tab; the tabs count the fields filled in.
   // The fields of every tab; a tab of several sections (Implementation & Planning) shows each one in its own subpanel.
   // The tabs count the fields filled in.
+  // The values of the NetCheck RCA (fields from the CDR) come before those of the RCA script, as NetCheck goes first.
+  const netcheckFirst = (fields) => {
+    const netcheck = fields.filter((field) => field.source === 'cdr');
+    const others = fields.filter((field) => field.source !== 'cdr');
+    const script = others.findIndex((field) => field.source === 'rca');
+    if (script < 0 || !netcheck.length) return fields;
+    others.splice(script, 0, ...netcheck);
+    return others;
+  };
   const renderSections = (detail) => {
     const call = detail.call;
     drawerTabs().forEach((group) => {
@@ -3020,7 +3041,7 @@
         const form = node('form', undefined, 'nq-analysis-form nq-section-form');
         if (group.key === 'rca') form.append(node('h4', 'Values of the RCA sources'));
         group.sections.forEach((section) => {
-          const sectionFields = ofSection(section.key);
+          const sectionFields = group.key === 'rca' ? netcheckFirst(ofSection(section.key)) : ofSection(section.key);
           if (!sectionFields.length) return;
           const grid = node('div', undefined, 'nq-analysis-grid');
           grid.append(...sectionFields.map((field) => fieldBlock(field, call)));
