@@ -4,7 +4,7 @@
 ---
 
 ## Release: v0.7.0
-### Release Date: 2026-10-14
+### Release Date: 2026-10-14 (First Public Release)
 #### ⚠️ Breaking Changes:
 
 #### 🌟 New Features:
