@@ -117,14 +117,10 @@
   };
   const cdrTime = (value) => (value ? String(value).replace('T', ' ').replace(/\.\d+$/, '') : '—');
   const percent = (part, total) => (total ? `${Math.round((part / total) * 100)}%` : '0%');
-  // Every number with its thousands separator: some locales (Spanish, for one) leave it out of four-digit numbers.
-  const numberFormat = new Intl.NumberFormat(undefined, {useGrouping: 'always'});
-  const groupSeparator = new Intl.NumberFormat().formatToParts(10000).find((part) => part.type === 'group')?.value ?? ',';
-  const number = (value) => {
-    const text = numberFormat.format(Number(value || 0));
-    // Browsers without the 'always' grouping still leave it out.
-    return /^-?\d{4}(?!\d)/.test(text) ? text.replace(/^(-?\d)(\d{3})/, `$1${groupSeparator}$2`) : text;
-  };
+  // Numbers read as in English, the language of the app, whatever the browser's: a comma between thousands (also
+  // in four-digit numbers) and a point before decimals.
+  const numberFormat = new Intl.NumberFormat('en-US');
+  const number = (value) => numberFormat.format(Number(value || 0));
   // Readable text on any option colour.
   const contrastText = (hex) => {
     const match = /^#?([0-9a-f]{6})$/i.exec(hex || '');
