@@ -368,13 +368,17 @@ TABLE_FOOT = 0.15
 
 
 def _table_card(panel: Panel, top: float, height: float, heading: str, columns: list[str], rows: list[list[str]],
-                total: int, row_height: float, head: float = TABLE_HEAD) -> None:
-    """One detail table in its card: raspberry header, alternate rows and muted zeros."""
-    panel.card(0, top, panel.width, height)
-    panel.text(0.2, top + 0.14, heading, 12, bold=True, color=DARK)
+                total: int, row_height: float, head: float = TABLE_HEAD, *, left: float = 0.0, width: float | None = None,
+                numeric: set[int] | None = None) -> None:
+    """One detail table in its card (the width of the panel unless given): raspberry header, alternate rows and muted zeros;
+    the ``numeric`` columns (every one but the first unless given) are aligned to the right."""
+    numeric = set(range(1, len(columns))) if numeric is None else numeric
+    width = panel.width - left if width is None else width
+    panel.card(left, top, width, height)
+    panel.text(left + 0.2, top + 0.14, heading, 12, bold=True, color=DARK)
     if len(rows) < total:
-        panel.text(panel.width - 0.2, top + 0.16, f'First {len(rows)} of {total}', 9.5, bold=True, color=MUTED, anchor='ra')
-    left, right, top = 0.2, panel.width - 0.2, top + head
+        panel.text(left + width - 0.2, top + 0.16, f'First {len(rows)} of {total}', 9.5, bold=True, color=MUTED, anchor='ra')
+    left, right, top = left + 0.2, left + width - 0.2, top + head
     size = min(8.5, row_height * 72 * 0.5)
     header_font, body_font = _font(size, True), _font(size)
     widths = []
@@ -387,10 +391,9 @@ def _table_card(panel: Panel, top: float, height: float, heading: str, columns: 
     panel.draw.rounded_rectangle([_px(left), _px(top), _px(right), _px(top + row_height)], radius=_px(0.06), fill='#fcedf2')
     x = left
     for index, column in enumerate(columns):
-        numeric = index > 0
-        anchor = 'rm' if numeric else 'lm'
-        panel.text(x + widths[index] - 0.12 if numeric else x + 0.12, top + row_height / 2, column, size,
-                   bold=True, color=DARK, width=widths[index] - 0.18, anchor=anchor)
+        right_aligned = index in numeric
+        panel.text(x + widths[index] - 0.12 if right_aligned else x + 0.12, top + row_height / 2, column, size,
+                   bold=True, color=DARK, width=widths[index] - 0.18, anchor='rm' if right_aligned else 'lm')
         x += widths[index]
     if not rows:
         panel.text(left + 0.12, top + row_height * 1.6, 'No data for this selection.', 9, color=MUTED, anchor='lm')
@@ -403,15 +406,15 @@ def _table_card(panel: Panel, top: float, height: float, heading: str, columns: 
         for index, value in enumerate(row):
             text = str(value)
             muted = text in {'0', '—', ''}
-            numeric = index > 0
-            panel.text(x + widths[index] - 0.12 if numeric else x + 0.12, y + row_height / 2, text, size,
-                       bold=not numeric, color=MUTED if muted else TEXT, width=widths[index] - 0.18,
-                       anchor='rm' if numeric else 'lm')
+            right_aligned = index in numeric
+            panel.text(x + widths[index] - 0.12 if right_aligned else x + 0.12, y + row_height / 2, text, size,
+                       bold=index == 0, color=MUTED if muted else TEXT, width=widths[index] - 0.18,
+                       anchor='rm' if right_aligned else 'lm')
             x += widths[index]
 
 
 def table_panels(title: str, columns: list[str], rows: list[list[str]], rows_per_panel: int = 13,
-                 single: bool = False) -> list[tuple[str, BytesIO]]:
+                 single: bool = False, numeric: set[int] | None = None) -> list[tuple[str, BytesIO]]:
     """A detail table drawn like the page's tables: raspberry header, alternate rows and muted zeros.
 
     A long table takes several slides; with ``single`` it keeps to one: its rows get closer, and the
@@ -426,7 +429,8 @@ def table_panels(title: str, columns: list[str], rows: list[list[str]], rows_per
         # The card is as tall as its rows, so a short table does not leave an empty slide-sized card.
         panel = Panel(height=min(PANEL_HEIGHT, TABLE_HEAD + 0.3 * (max(1, len(page)) + 1) + 0.2))
         row_height = min(0.3, (panel.height - TABLE_HEAD - TABLE_FOOT) / (len(page) + 1))
-        _table_card(panel, 0, panel.height, title.split(' · ', 1)[-1], columns, page, total if single else len(page), row_height)
+        _table_card(panel, 0, panel.height, title.split(' · ', 1)[-1], columns, page, total if single else len(page), row_height,
+                    numeric=numeric)
         panels.append((title + (f' · {number}/{len(pages)}' if len(pages) > 1 else ''), panel.png()))
     return panels
 
@@ -807,35 +811,277 @@ def rate_panels(rates: dict[str, Any]) -> list[tuple[str, BytesIO]]:
             for number, page in enumerate(pages, start=1)]
 
 
-def lifecycle_panels(lifecycle: dict[str, Any]) -> list[tuple[str, BytesIO]]:
-    """The Analysis Center lifecycle: how many calls are in each NQ Call Status and in each value of the phase fields."""
+def _dashes(panel: Panel, start: tuple[float, float], end: tuple[float, float], colour: str = BORDER) -> None:
+    """A dashed straight line, as the dashed borders of the page."""
+    (x0, y0), (x1, y1) = start, end
+    length = math.hypot(x1 - x0, y1 - y0)
+    steps = max(1, int(length / 0.1))
+    for step in range(steps):
+        a, b = step / steps, min(1.0, (step + 0.55) / steps)
+        panel.draw.line([_px(x0 + (x1 - x0) * a), _px(y0 + (y1 - y0) * a), _px(x0 + (x1 - x0) * b), _px(y0 + (y1 - y0) * b)],
+                        fill=colour, width=max(2, _px(0.01)))
+
+
+def _dashed_frame(panel: Panel, left: float, top: float, width: float, height: float, colour: str) -> None:
+    """A rounded frame of dashes: the Open frame around the phase statuses."""
+    radius = 0.14
+    _dashes(panel, (left + radius, top), (left + width - radius, top), colour)
+    _dashes(panel, (left + radius, top + height), (left + width - radius, top + height), colour)
+    _dashes(panel, (left, top + radius), (left, top + height - radius), colour)
+    _dashes(panel, (left + width, top + radius), (left + width, top + height - radius), colour)
+    for cx, cy, angle in ((left + radius, top + radius, 180), (left + width - radius, top + radius, 270),
+                          (left + width - radius, top + height - radius, 0), (left + radius, top + height - radius, 90)):
+        panel.draw.arc([_px(cx - radius), _px(cy - radius), _px(cx + radius), _px(cy + radius)], angle, angle + 90,
+                       fill=colour, width=max(2, _px(0.01)))
+
+
+def _pill(panel: Panel, x: float, y: float, text: str, points: float, fill: str, ink: str) -> float:
+    """A rounded pill centred on ``y``; its width."""
+    width = panel.draw.textlength(text, font=_font(points, True)) / DPI + 0.14
+    height = points / 72 * 1.55
+    panel.draw.rounded_rectangle([_px(x), _px(y - height / 2), _px(x + width), _px(y + height / 2)], radius=_px(height / 2), fill=fill)
+    panel.text(x + 0.07, y, text, points, bold=True, color=ink, anchor='lm')
+    return width
+
+
+# The fields the Status Rules read besides those of the catalog.
+RULE_FIELD_LABELS = {'@attended': 'Attended', '@team': 'Team', '@assignee': 'Assignee', '@root_category': 'Root Category',
+                     '@root_cause': 'Root Cause'}
+
+
+def _rule_tokens(status: str, lifecycle: dict[str, Any]) -> list[list[tuple[str, str, str]]]:
+    """The Status Rules that set a status as tokens, as the page shows them: Rule N, the field and its values in their colours."""
+    fields = lifecycle.get('rule_fields') or {}
+    rules = []
+    for number, rule in enumerate(lifecycle.get('rules') or [], start=1):
+        if rule.get('status') != status:
+            continue
+        tokens: list[tuple[str, str, str]] = [('pill', f'Rule {number}', '#fcedf2')]
+        for position, condition in enumerate(rule.get('conditions') or []):
+            field = str(condition.get('field') or '')
+            if position:
+                tokens.append(('text', '+', MUTED))
+            if field == '@attended':
+                tokens.append(('text', 'Not attended' if 'No' in (condition.get('values') or []) and condition.get('op') == 'in'
+                               else 'Attended', MUTED))
+                continue
+            tokens.append(('text', (fields.get(field) or {}).get('label') or RULE_FIELD_LABELS.get(field, field), MUTED))
+            if condition.get('op') in {'empty', 'not_empty'}:
+                tokens.append(('text', 'EMPTY' if condition['op'] == 'empty' else 'SET', DARK))
+                continue
+            if condition.get('op') == 'not_in':
+                tokens.append(('text', 'NOT', DARK))
+            colours = (fields.get(field) or {}).get('colors') or {}
+            tokens.extend(('pill', str(value), colours.get(value) or '#b8c0c6') for value in condition.get('values') or [])
+        rules.append(tokens)
+    return rules
+
+
+def _rule_layout(panel: Panel, left: float, top: float, width: float, rules: list[list[tuple[str, str, str]]],
+                 points: float) -> tuple[list[tuple[str, str, str, float, float]], float]:
+    """Where each token of the rules goes (wrapping within ``width``), and the bottom of the last line."""
+    line = points / 72 * 2.2
+    placed = []
+    y = top
+    for tokens in rules:
+        x = left
+        for kind, value, colour in tokens:
+            needed = panel.draw.textlength(value, font=_font(points, True)) / DPI + (0.14 if kind == 'pill' else 0)
+            if x > left and x + needed > left + width:
+                x, y = left + 0.12, y + line
+            placed.append((kind, value, colour, x, y))
+            x += needed + 0.05
+        y += line * 1.2
+    return placed, y - line * 0.7
+
+
+def _rule_lines(panel: Panel, left: float, top: float, width: float, bottom: float, status: str,
+                lifecycle: dict[str, Any]) -> None:
+    """The Status Rules that set a status, as large as they fit in the card down to ``bottom``."""
+    rules = _rule_tokens(status, lifecycle)
+    if not rules:
+        if status == (lifecycle.get('pipeline') or [{}])[0].get('status'):
+            panel.text(left, top, 'When no rule applies', 7, color=MUTED, anchor='lm')
+        return
+    for points in (7, 6.5, 6, 5.5, 5, 4.5):
+        placed, end = _rule_layout(panel, left, top, width, rules, points)
+        if end <= bottom:
+            break
+    for kind, value, colour, x, y in placed:
+        if y > bottom:
+            break
+        if kind == 'pill':
+            _pill(panel, x, y, value, points, colour, DARK if colour == '#fcedf2' else _readable(colour))
+        else:
+            panel.text(x, y, value, points, bold=True, color=colour, anchor='lm')
+
+
+def _pipeline_panel(lifecycle: dict[str, Any]) -> BytesIO:
+    """The indicators and the NQ Call Status pipeline of the page: the calls not attended, Open (the phase statuses, its
+    total being theirs) and the closed statuses, each card with its calls, share and age and the rules that set it."""
     total = int(lifecycle.get('total') or 0)
-    if not total:
-        return []
     pipeline = lifecycle.get('pipeline') or []
     closed = sum(item['count'] for item in pipeline if item.get('closed'))
+    open_names = list(lifecycle.get('open_statuses') or [])
+    open_total = int(lifecycle.get('open', total - closed) or 0)
     modes = lifecycle.get('modes') or {}
     panel = Panel()
     _kpi_row(panel, [
-        ('Calls', _number(total), 'in the selection', 'total'),
-        ('Closed', _number(closed), _share(closed, total), 'closed'),
-        ('Open', _number(lifecycle.get('open', total - closed)), _share(lifecycle.get('open', total - closed), total), 'open'),
-        ('Automatic status', _number(modes.get('auto', 0)), 'set by the status rules', 'team'),
-        ('Status by hand', _number(modes.get('manual', 0)), 'chosen by the analysts', 'commented'),
-        (f"No change for {lifecycle.get('stalled_days', 14)} days", _number(lifecycle.get('stalled_total', 0)), 'open calls', 'attended'),
-    ], 0, 1.05, compact=True)
-    cards = [('NQ Call Status', [(item['status'], item['count'], item['color'] or RASPBERRY) for item in pipeline])]
-    for phase in (lifecycle.get('phases') or [])[:3]:
-        items = [(item['value'], item['count'], item['color'] or PALETTE[index % len(PALETTE)])
-                 for index, item in enumerate(phase['items'])]
+        ('Calls', _number(total), 'In the selection', 'total'),
+        ('Automatic Status', _number(modes.get('auto', 0)), f"{_share(modes.get('auto', 0), total)} follow the Status Rules", 'team'),
+        ('Status by Hand', _number(modes.get('manual', 0)), f"{_share(modes.get('manual', 0), total)} chosen by an analyst", 'commented'),
+        ('Open', _number(open_total), f'{_share(open_total, total)} attended and not closed', 'open'),
+        ('Closed', _number(closed), f'{_share(closed, total)} closed', 'closed'),
+        ('Stalled', _number(lifecycle.get('stalled_total', 0)), f"Open, no change for {lifecycle.get('stalled_days', 14)}+ days", 'attended'),
+    ], 0, 0.95, compact=True)
+    steps = [*(item for item in pipeline if not item.get('closed')), *(item for item in pipeline if item.get('closed'))]
+    # The bar with the share of each status.
+    x, bar_top = 0.0, 1.12
+    for item in steps:
+        width = panel.width * item['count'] / max(1, total)
+        if width > 0:
+            panel.draw.rectangle([_px(x), _px(bar_top), _px(x + width), _px(bar_top + 0.09)], fill=item.get('color') or '#b8c0c6')
+        x += width
+    # The cards: as wide as one another, with arrows between them and the Open frame around the phase statuses.
+    arrow, pad, card_top, card_bottom = 0.32, 0.12, 1.62, panel.height - 0.16
+    grouped = [item for item in steps if item['status'] in open_names]
+    arrows = (len(steps) - 1) - max(0, len([item for item in steps if item.get('closed')]) - 1)
+    width = (panel.width - arrows * arrow - (2 * pad if grouped else 0)
+             - 0.08 * max(0, len([item for item in steps if item.get('closed')]) - 1)) / max(1, len(steps))
+    head_top, rules_top = card_top + 0.2, card_top + 1.05
+    x = 0.0
+    frame_left = None
+    for index, item in enumerate(steps):
+        in_group = item['status'] in open_names
+        previous = steps[index - 1] if index else None
+        if previous is not None:
+            if item.get('closed') and previous.get('closed'):
+                x += 0.08
+            else:
+                if previous['status'] in open_names and not in_group:
+                    x += pad
+                # The arrow to the closed statuses is green, as the page's.
+                panel.text(x + arrow / 2, (card_top + card_bottom) / 2, '→', 13, bold=True,
+                           color='#2e8b57' if item.get('closed') else MUTED, anchor='mm')
+                x += arrow
+        if in_group and frame_left is None:
+            frame_left = x
+            x += pad
+        panel.card(x, card_top, width, card_bottom - card_top, item.get('color') or '#b8c0c6')
+        if item.get('closed'):
+            panel.draw.rounded_rectangle([_px(x + 0.01), _px(card_top + 0.08), _px(x + width - 0.01), _px(card_bottom - 0.01)],
+                                         radius=_px(0.1), fill='#f7fbf8')
+        inner = width - 0.28
+        panel.text(x + 0.14, head_top, str(item['status']).upper(), 7.5, bold=True, color=MUTED, width=inner)
+        panel.text(x + 0.14, head_top + 0.2, _number(item['count']), 18, bold=True, color=DARK, width=inner)
+        age = '' if item.get('avg_age_days') is None else f" · {item['avg_age_days']} d old on average"
+        panel.text(x + 0.14, head_top + 0.62, f"{_share(item['count'], total)}{age}", 7.5, color=MUTED, width=inner)
+        _dashes(panel, (x + 0.14, rules_top), (x + width - 0.14, rules_top))
+        _rule_lines(panel, x + 0.14, rules_top + 0.2, inner, card_bottom - 0.14, item['status'], lifecycle)
+        x += width
+        if in_group and (index + 1 == len(steps) or steps[index + 1]['status'] not in open_names):
+            right = x + pad
+            _dashed_frame(panel, frame_left, card_top - 0.24, right - frame_left, card_bottom - card_top + 0.36, RASPBERRY)
+            label = f"{_share(open_total, total)} · attended and not closed: {' + '.join(open_names)}"
+            label_width = min(right - frame_left - 0.4, 0.95 + panel.draw.textlength(label, font=_font(7.5)) / DPI)
+            panel.draw.rounded_rectangle([_px(frame_left + 0.2), _px(card_top - 0.38), _px(frame_left + 0.2 + label_width),
+                                          _px(card_top - 0.1)], radius=_px(0.14), fill='white', outline=RASPBERRY,
+                                         width=max(2, _px(0.01)))
+            panel.text(frame_left + 0.32, card_top - 0.24, 'OPEN', 7.5, bold=True, color=MUTED, anchor='lm')
+            panel.text(frame_left + 0.68, card_top - 0.24, _number(open_total), 10, bold=True, color=DARK, anchor='lm')
+            panel.text(frame_left + 0.68 + panel.draw.textlength(_number(open_total), font=_font(10, True)) / DPI + 0.1,
+                       card_top - 0.24, label, 7.5, color=MUTED, width=label_width - 0.95, anchor='lm')
+            frame_left = None
+    return panel.png()
+
+
+def _phases_panel(lifecycle: dict[str, Any], sections: dict[str, dict[str, Any]]) -> BytesIO | None:
+    """The phase cards of the page in one row: RCA Identification and each list field of the Analysis, Implementation
+    and Planning sections, with the share of each value (of the calls with a value, unless Empty is shown)."""
+    total = int(lifecycle.get('total') or 0)
+    cards = []
+    if lifecycle.get('rca'):
+        cards.append(('rca', 'RCA Identification', [('Identified', lifecycle['rca'].get('identified', 0), '#2e8b57'),
+                                                    ('Not identified', lifecycle['rca'].get('not_identified', 0), '#e7dde1')], total))
+    for phase in lifecycle.get('phases') or []:
+        items = [(item['value'], int(item['count']), item.get('color') or '#d9cfd3') for item in phase.get('items') or []]
         if phase.get('empty'):
-            items.append(('Not set', phase['empty'], '#c9cfd4'))
-        cards.append((phase['label'], items))
-    gap = 0.15
+            items.append(('Empty', int(phase['empty']), '#e7dde1'))
+        base = total if phase.get('empty') else sum(count for _label, count, _colour in items)
+        cards.append((phase.get('section') or '', phase['label'], items, base))
+    if not cards:
+        return None
+    panel = Panel()
+    gap = 0.1
     width = (panel.width - gap * (len(cards) - 1)) / len(cards)
-    for index, (title, items) in enumerate(cards):
-        _bar_card(panel, index * (width + gap), 1.2, width, panel.height - 1.2, title, items, label_above=True, compact=True)
-    return [('Analysis Center · Lifecycle', panel.png())]
+    for index, (section, title, items, base) in enumerate(cards):
+        left = index * (width + gap)
+        colour = (sections.get(section) or {}).get('color') or RASPBERRY
+        panel.card(left, 0, width, panel.height, colour)
+        inner = width - 0.24
+        tag = str((sections.get(section) or {}).get('label') or section.title())
+        panel.draw.ellipse([_px(left + 0.12), _px(0.2), _px(left + 0.2), _px(0.28)], fill=colour)
+        panel.text(left + 0.25, 0.24, tag, 7, bold=True, color=MUTED, width=inner - 0.13, anchor='lm')
+        panel.text(left + 0.12, 0.36, title, 9, bold=True, color=DARK, width=inner)
+        y = 0.62
+        if base != total:
+            panel.text(left + 0.12, y, f'{_number(base)} of {_number(total)} with a value', 6.5, bold=True, color=MUTED, width=inner)
+            y += 0.18
+        x = left + 0.12
+        bar_width = inner
+        for _label, count, item_colour in items:
+            part = bar_width * count / max(1, base)
+            if part > 0:
+                panel.draw.rectangle([_px(x), _px(y), _px(x + part), _px(y + 0.07)], fill=item_colour)
+            x += part
+        y += 0.24
+        row = 0.21
+        for label, count, item_colour in items[:max(0, int((panel.height - 0.1 - y) / row))]:
+            panel.draw.rounded_rectangle([_px(left + 0.12), _px(y - 0.045), _px(left + 0.21), _px(y + 0.045)], radius=_px(0.02),
+                                         fill=item_colour)
+            share = _share(count, base)
+            share_width = panel.draw.textlength(share, font=_font(6.5)) / DPI
+            count_width = panel.draw.textlength(_number(count), font=_font(6.5, True)) / DPI
+            panel.text(left + 0.26, y, label, 6.5, bold=True, color=TEXT, width=inner - 0.3 - share_width - count_width - 0.08,
+                       anchor='lm')
+            panel.text(left + width - 0.12 - share_width - 0.06, y, _number(count), 6.5, bold=True, color=DARK, anchor='rm')
+            panel.text(left + width - 0.12, y, share, 6.5, color=MUTED, anchor='rm')
+            y += row
+    return panel.png()
+
+
+def lifecycle_title(subtitle: str) -> SlideTitle:
+    """The title of the Lifecycle & Phases slides, with what each one shows in its subtitle."""
+    return SlideTitle('Lifecycle & Phases', '', subtitle)
+
+
+def lifecycle_panels(lifecycle: dict[str, Any], sections: list[dict[str, Any]] | None = None) -> list[tuple[SlideTitle, BytesIO]]:
+    """The Lifecycle & Phases of the page: its indicators and NQ Call Status pipeline with the rules of each status, the
+    phase cards, the time in each status and the most frequent moves, and the stalled open calls."""
+    if not int(lifecycle.get('total') or 0):
+        return []
+    panels = [(lifecycle_title('NQ Call Status Pipeline'), _pipeline_panel(lifecycle))]
+    phases = _phases_panel(lifecycle, {str(item.get('key')): item for item in sections or []})
+    if phases is not None:
+        panels.append((lifecycle_title('Phases'), phases))
+    times = [[item['status'], f"{item['avg_days']:.1f}", _number(item['moves'])] for item in lifecycle.get('time_in_status') or []]
+    moves = [[item['from'], item['to'], _number(item['count'])] for item in lifecycle.get('moves') or []]
+    rows = max(len(times), len(moves), 1)
+    panel = Panel(height=min(PANEL_HEIGHT, TABLE_HEAD + 0.3 * (rows + 1) + 0.2))
+    row_height = min(0.3, (panel.height - TABLE_HEAD - TABLE_FOOT) / (rows + 1))
+    half = (panel.width - 0.18) / 2
+    _table_card(panel, 0, panel.height, 'Time in Each Status', ['Status', 'Average Days', 'Calls Moved Out'], times, len(times),
+                row_height, left=0, width=half)
+    _table_card(panel, 0, panel.height, 'Most Frequent Moves', ['From', 'To', 'Times'], moves, len(moves), row_height,
+                left=half + 0.18, width=half, numeric={2})
+    panels.append((lifecycle_title('Time in Each Status and Most Frequent Moves'), panel.png()))
+    stalled = [[item['status'], item.get('operator') or '—', campaign_label(item.get('campaign') or '') or '—', item.get('city') or '—',
+                _number(item['days']), 'Yes' if item.get('followed_up') else 'Not yet'] for item in lifecycle.get('stalled') or []]
+    heading = f"Stalled Open Calls, no change for {lifecycle.get('stalled_days', 14)}+ days ({_number(lifecycle.get('stalled_total', 0))})"
+    panels += [(lifecycle_title(heading), image) for _title, image in
+               table_panels(heading, ['Status', 'Operator', 'Campaign', 'City', 'Days Without Change', 'Followed Up'], stalled,
+                            single=True, numeric={4})]
+    return panels
 
 
 def _domain_tag(panel: Panel, left: float, y: float, domains: list[dict[str, Any]], size: float = 7) -> None:

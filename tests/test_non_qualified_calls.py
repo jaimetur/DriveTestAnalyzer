@@ -608,7 +608,10 @@ def test_root_cause_taxonomy_imports_with_the_tracking_and_shows_in_exports(clie
         return next(index for index, title in enumerate(titles) if title.startswith(prefix))
 
     assert (first('NQ Rate') < first('Root Cause Sources') < first('Root Cause Analysis')
-            < first('Analysis Center · Lifecycle') < first('Progress View'))
+            < first('Lifecycle & Phases') < first('Progress View'))
+    # The Lifecycle & Phases of the page: its pipeline with the rules, its phases, its times and moves and its stalled calls.
+    assert {('Lifecycle & Phases', 'NQ Call Status Pipeline'), ('Lifecycle & Phases', 'Phases'),
+            ('Lifecycle & Phases', 'Time in Each Status and Most Frequent Moves')} <= subtitles
     page = client.get('/admin').text
     assert '>NQ Root Catalog<' in page or '"NQ Root Catalog"' in page
 

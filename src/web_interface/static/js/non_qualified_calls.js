@@ -3823,7 +3823,8 @@
     try {
       const response = await fetch(`/api/non-qualified-calls/export/${kind}`, {
         method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({filters: currentFilters(), granularity: $('nq-granularity').value, include_suggestions: false}),
+        body: JSON.stringify({filters: currentFilters(), granularity: $('nq-granularity').value, include_suggestions: false,
+          show_not_classified: $('nq-root-show-unclassified').checked, show_empty: $('nq-life-show-empty').checked}),
       });
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));

@@ -1405,6 +1405,39 @@ def test_rf_is_blue_also_in_workspaces_before(client, tmp_path):
     assert domains()['RF'] == '#123456'
 
 
+def test_the_documents_leave_out_not_classified_and_empty_unless_asked(monkeypatch):
+    from src.modules import non_qualified_calls_export as export
+    from src.modules import non_qualified_calls_visuals as visuals
+
+    stats = {'source': 'netcheck', 'summary': {'total': 10}, 'columns': ['RF', 'Not classified'],
+             'domains': [{'value': 'RF', 'count': 4}, {'value': 'Not classified', 'count': 6}],
+             'categories': [{'domain': 'RF', 'category': 'Coverage', 'count': 4}], 'causes': [],
+             'call_types': [{'name': 'Data', 'total': 7, 'counts': {'RF': 1, 'Not classified': 6}},
+                            {'name': 'Classic', 'total': 3, 'counts': {'RF': 3}}],
+             'nr_modes': [{'name': 'SA', 'total': 6, 'counts': {'Not classified': 6}}],
+             'technologies': [{'name': 'LTE', 'total': 7, 'counts': {'RF': 1, 'Not classified': 6}},
+                              {'name': 'NR', 'total': 3, 'counts': {'RF': 3}}], 'nodes': []}
+    shown = export.classified_root_stats(stats)
+    assert shown['columns'] == ['RF'] and [item['value'] for item in shown['domains']] == ['RF']
+    assert [(row['name'], row['total']) for row in shown['call_types']] == [('Data', 1), ('Classic', 3)]
+    assert shown['nr_modes'] == [] and [row['name'] for row in shown['technologies']] == ['NR', 'LTE']
+    # The documents draw the panels from these, unless Show Not classified and Show Empty Status are asked for.
+    drawn = {}
+    monkeypatch.setattr(visuals, 'root_cause_panels', lambda value: drawn.setdefault('root', value) and [])
+    monkeypatch.setattr(visuals, 'lifecycle_panels', lambda value, sections=None: drawn.setdefault('life', value) and [])
+    for name in ('executive_summary_panels', 'progress_view_panels', 'rate_panels', 'rca_insight_panels'):
+        monkeypatch.setattr(visuals, name, lambda *args, **kwargs: [])
+    monkeypatch.setattr(export, 'root_cause_table_panels', lambda value: [])
+    monkeypatch.setattr(export, 'detail_tables', lambda progress: [])
+    life = {'phases': [{'key': 'analysis_status', 'empty': 5, 'items': []}]}
+    export.report_panels({}, [], {'granularity': 'month'}, {'root_causes': [stats], 'lifecycle': life})
+    assert drawn['root']['columns'] == ['RF'] and drawn['life']['phases'][0]['empty'] == 0
+    drawn.clear()
+    export.report_panels({}, [], {'granularity': 'month'}, {'root_causes': [stats], 'lifecycle': life,
+                                                            'show_not_classified': True, 'show_empty': True})
+    assert drawn['root'] is stats and drawn['life']['phases'][0]['empty'] == 5
+
+
 @pytest.mark.parametrize('no_team_exists', [False, True])
 def test_successful_call_excluded_is_no_longer_a_team_and_its_calls_go_to_no_team(client, tmp_path, no_team_exists):
     calls = setup_calls(client, tmp_path)

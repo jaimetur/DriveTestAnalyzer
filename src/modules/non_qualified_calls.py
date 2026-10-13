@@ -5566,6 +5566,11 @@ def lifecycle_stats(task_repository: Any, filters: dict[str, Any], username: str
         'moves': [{'from': old, 'to': new, 'count': count} for (old, new), count in moves.most_common(12)],
         'stalled_days': STALLED_DAYS, 'stalled_total': len(stalled), 'stalled': stalled[:15],
         'rules': status_rules(task_repository),
+        # The names of the fields the rules read and the colours of their values, to draw the rules as the page does.
+        'rule_fields': {key: {'label': item['label'], 'colors': {option['name']: option.get('color', '')
+                                                                  for field in definitions if field['key'] == key
+                                                                  for option in field['options']}}
+                        for key, item in nq_catalog.condition_fields(definitions).items()},
     }
 
 
@@ -6318,6 +6323,9 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         filters: dict[str, Any] = Field(default_factory=dict)
         granularity: str = 'week'
         include_suggestions: bool = True
+        # The PowerPoint and Word follow these checkboxes of the page (both unchecked by default).
+        show_not_classified: bool = False
+        show_empty: bool = False
 
     class ExportPayload(BaseModel):
         filters: dict[str, Any] = Field(default_factory=dict)
@@ -6852,6 +6860,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         repository = workspace_repository(user)
         executive, progress, options, lines = summary_parts(repository, payload.filters, user.username, payload.granularity,
                                                             payload.include_suggestions)
+        options = {**options, 'show_not_classified': payload.show_not_classified, 'show_empty': payload.show_empty}
         suffix = '.pptx' if export_format == 'powerpoint' else '.docx'
         stamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         name = re.sub(r'[^A-Za-z0-9._ -]+', '_', f'{stamp} - Non-Qualified Calls - {core.active_workspace.name}{suffix}')

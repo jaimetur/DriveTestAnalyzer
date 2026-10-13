@@ -245,6 +245,29 @@ def _cover_selection(cover, lines: list[str]) -> None:
     remove_empty_placeholders(cover)
 
 
+# The root domain of the calls a source gives no root cause (as non_qualified_calls.NOT_CLASSIFIED).
+NOT_CLASSIFIED = 'Not classified'
+
+
+def classified_root_stats(stats: dict[str, Any]) -> dict[str, Any]:
+    """The Root Cause Analysis of the calls the source gives a root cause: Not classified leaves its domains, categories,
+    causes and charts, and every group of calls counts only those (as the page without Show Not classified)."""
+    def classified(item: dict[str, Any]) -> bool:
+        return item.get('value') != NOT_CLASSIFIED and item.get('domain') != NOT_CLASSIFIED
+
+    columns = [column for column in stats.get('columns') or [] if column != NOT_CLASSIFIED]
+
+    def groups(rows: list[dict[str, Any]], ordered: bool = False) -> list[dict[str, Any]]:
+        kept = [{**row, 'total': sum(int((row.get('counts') or {}).get(column) or 0) for column in columns)} for row in rows or []]
+        kept = [row for row in kept if row['total']]
+        return sorted(kept, key=lambda row: -row['total']) if ordered else kept
+
+    return {**stats, 'columns': columns,
+            **{key: [item for item in stats.get(key) or [] if classified(item)] for key in ('domains', 'categories', 'causes')},
+            'call_types': groups(stats.get('call_types')), 'nr_modes': groups(stats.get('nr_modes')),
+            'technologies': groups(stats.get('technologies'), ordered=True)}
+
+
 def report_panels(summary: dict[str, Any], breakdowns: list[dict[str, Any]], progress: dict[str, Any],
                   options: dict[str, Any]) -> list[tuple[str, Any]]:
     """The Executive Summary, NQ rates, Root Cause Sources and Analysis, Lifecycle and Progress View drawn like the page, as panels."""
@@ -260,12 +283,18 @@ def report_panels(summary: dict[str, Any], breakdowns: list[dict[str, Any]], pro
         pages = table_panels(subtitle, columns, rows)
         tables.extend((progress_title(label, subtitle + (f' · {number}/{len(pages)}' if len(pages) > 1 else '')), image)
                       for number, (_title, image) in enumerate(pages, start=1))
-    # The Root Cause Sources that compare the sources, then the Root Cause Analysis of each one with its tables.
+    # The Root Cause Sources that compare the sources, then the Root Cause Analysis of each one with its tables. As on
+    # the page by default, the charts leave out the Not classified calls and the phases the calls without a value,
+    # unless the options ask for them (Show Not classified, Show Empty Status).
     analysis = [panel for stats in options.get('root_causes') or []
-                for panel in (*root_cause_panels(stats), *root_cause_table_panels(stats))]
+                for shown in [stats if options.get('show_not_classified') else classified_root_stats(stats)]
+                for panel in (*root_cause_panels(shown), *root_cause_table_panels(shown))]
     sources = rca_insight_panels(options['rca_insights']) if options.get('rca_insights') else []
     rates = rate_panels(options['rates']) if options.get('rates') else []
-    lifecycle = lifecycle_panels(options['lifecycle']) if options.get('lifecycle') else []
+    life = options.get('lifecycle')
+    if life and not options.get('show_empty'):
+        life = {**life, 'phases': [{**phase, 'empty': 0} for phase in life.get('phases') or []]}
+    lifecycle = lifecycle_panels(life, options.get('sections')) if life else []
     return [*executive_summary_panels(summary, breakdowns, options), *rates, *sources, *analysis, *lifecycle,
             *progress_view_panels(progress, options, label), *tables]
 
@@ -283,7 +312,7 @@ def root_cause_table_panels(stats: dict[str, Any]) -> list[tuple[str, Any]]:
 
     nodes = 'eNB / gNB with Most Non-Qualified Calls'
     return [(root_cause_title(stats, 'Root Domains by Technology'), technology_panel(stats)),
-            (root_cause_title(stats, nodes), table_panels(nodes, *node_table(stats), single=True)[0][1])]
+            (root_cause_title(stats, nodes), table_panels(nodes, *node_table(stats), single=True, numeric={5})[0][1])]
 
 
 def detail_tables(progress: dict[str, Any]) -> list[tuple[str, list[str], list[list[str]]]]:
