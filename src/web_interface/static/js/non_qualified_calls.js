@@ -2060,10 +2060,12 @@
         const text = number(count);
         if (length >= text.length * 4.6 + 6) {
           const angle = ((offset + length / 2) / circumference) * 2 * Math.PI - Math.PI / 2;
-          const value = svgNode('text', {x: 60 + radius * Math.cos(angle), y: 60 + radius * Math.sin(angle) + 2.8,
-            'text-anchor': 'middle', class: 'nq-domain-donut-value'});
+          const value = svgNode('text', {x: 60 + radius * Math.cos(angle), y: 60 + radius * Math.sin(angle),
+            'text-anchor': 'middle', 'dominant-baseline': 'central', class: 'nq-domain-donut-value'});
           value.textContent = text;
           value.style.fill = readableText(color);
+          // A small donut writes its values larger: those too long for their slice then wait for the hover.
+          value.classList.toggle('is-tight', length < text.length * 6.4 + 6);
           values.push(value);
         }
         offset += length;
