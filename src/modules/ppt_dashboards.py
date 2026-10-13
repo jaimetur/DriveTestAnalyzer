@@ -1683,6 +1683,9 @@ def install_dashboard_routes(core):
             archive.unlink(missing_ok=True)
             raise
         safe_name = re.sub(r'[^A-Za-z0-9._-]+', '_', str(definition.get('name') or dashboard_id)).strip('._') or 'Dashboard'
+        task_repository.try_add_log(user.username, 'export_dashboard_definition', json.dumps({
+            'id': dashboard_id, 'name': str(definition.get('name') or ''),
+        }))
         return FileResponse(
             archive, filename=f'{safe_name}_dashboard.zip', media_type='application/zip',
             background=BackgroundTask(archive.unlink, missing_ok=True),
@@ -1968,10 +1971,12 @@ def install_dashboard_routes(core):
 
     @app.get('/api/ppt-dashboards/ppt-jobs/{job_id}/download')
     def download_dashboard_ppt(job_id: int, user=Depends(dashboard_user)):
-        row = dashboard_ppt_job(bound_repository(), job_id)
+        task_repository = bound_repository()
+        row = dashboard_ppt_job(task_repository, job_id)
         path = Path(str(row['output_path'])) if row else None
         if row is None or str(row['status']) != 'ready' or not path.is_file():
             raise HTTPException(404, 'Dashboard PowerPoint is not available.')
+        task_repository.try_add_log(user.username, 'download_dashboard_ppt', json.dumps({'job_id': job_id, 'file': path.name}))
         return FileResponse(
             path, filename=path.name,
             media_type='application/vnd.openxmlformats-officedocument.presentationml.presentation',
@@ -2247,6 +2252,9 @@ def install_dashboard_routes(core):
         ) if filter_column else (chart_dataset_filter_values(frame) if include_filter_values else {})
         frame = apply_chart_column_filters(frame, selected_column_filters)
         if download:
+            task_repository.try_add_log(user.username, 'export_dashboard_chart_data_csv', json.dumps({
+                'job_id': job_id, 'chart_index': chart_index, 'rows': len(frame),
+            }))
             return Response(
                 frame.to_csv(index=False), media_type='text/csv',
                 headers={'Content-Disposition': 'attachment; filename="dashboard-chart-data.csv"'},
@@ -2274,10 +2282,12 @@ def install_dashboard_routes(core):
 
     @app.get('/api/ppt-dashboards/ppt-jobs/{job_id}/charts.zip')
     def download_dashboard_ppt_charts(job_id: int, user=Depends(dashboard_user)):
-        row = dashboard_ppt_job(bound_repository(), job_id)
+        task_repository = bound_repository()
+        row = dashboard_ppt_job(task_repository, job_id)
         charts_dir = Path(str(row['output_path'])).parent / 'dashboard-charts' if row else None
         if charts_dir is None or not (charts_dir / 'manifest.json').is_file():
             raise HTTPException(404, 'Dashboard charts are not available.')
+        task_repository.try_add_log(user.username, 'download_dashboard_ppt_charts', json.dumps({'job_id': job_id}))
         temporary = tempfile.NamedTemporaryFile(prefix='dashboard-ppt-charts-', suffix='.zip', delete=False)
         temporary.close()
         archive = Path(temporary.name)
@@ -2299,6 +2309,7 @@ def install_dashboard_routes(core):
             task_repository, job_id, status='stopped',
             finished_at=datetime.now(timezone.utc).isoformat(),
         )
+        task_repository.try_add_log(user.username, 'stop_dashboard_ppt_job', json.dumps({'job_id': job_id}))
         return {'stopped': job_id}
 
     @app.post('/api/ppt-dashboards/ppt-jobs/{job_id}/retry')
@@ -2380,6 +2391,9 @@ def install_dashboard_routes(core):
         remove_dashboard_ppt_job_folder(task_repository, row['output_path'])
         with task_repository.connection() as connection:
             connection.execute(f'DELETE FROM {DASHBOARD_PPT_JOBS_TABLE} WHERE id = ?', (job_id,))
+        task_repository.try_add_log(user.username, 'delete_dashboard_ppt', json.dumps({
+            'job_id': job_id, 'file': str(row['output_file'] or ''),
+        }))
         return {'deleted': job_id}
 
     def ensure_unique_dashboard_name(dashboards, dashboard_id, name, nr_mode) -> None:
@@ -6124,6 +6138,9 @@ def install_dashboard_routes(core):
         ) if filter_column else (chart_dataset_filter_values(frame) if include_filter_values else {})
         frame = apply_chart_column_filters(frame, selected_column_filters)
         if download:
+            bound_repository().try_add_log(user.username, 'export_dashboard_chart_data_csv', json.dumps({
+                'dashboard': snapshot.definition.name, 'chart_index': index, 'rows': len(frame),
+            }))
             return Response(frame.to_csv(index=False), media_type='text/csv', headers={'Content-Disposition': 'attachment; filename="dashboard-chart-data.csv"'})
         page = max(page, 0)
         visible = frame.iloc[page*100:(page+1)*100].fillna('').astype(str)

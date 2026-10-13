@@ -1387,6 +1387,11 @@ def install_network_insights_routes(core: Any) -> None:
             stored.touch()
         if cached is None and cached_only:
             return Response(status_code=204)
+        if not cached_only:
+            task_repository.try_add_log(user.username, 'network_insights_analysis', json.dumps({
+                'datasets': sum(len(ids) for ids in request.datasets.values()), 'technology': request.technology,
+                'stored_result': cached is not None,
+            }))
         if cached is None:
             cached = json.dumps(run_analysis(request), ensure_ascii=False, allow_nan=False, separators=(',', ':')).encode('utf-8')
             write_cache_file(folder, stored.name, cached, keep=40, pattern='analysis-*.json')
@@ -1969,6 +1974,10 @@ def install_network_insights_routes(core: Any) -> None:
             except Exception:
                 destination.unlink(missing_ok=True)
                 raise
+        source = 'observed' if request.source == 'observed' else 'inventory'
+        task_repository.try_add_log(user.username, f'export_network_insights_{source}_sites', json.dumps({
+            'file': name, 'rows': len(frame),
+        }))
         return FileResponse(destination, media_type='text/csv', filename=name,
                             background=BackgroundTask(destination.unlink, missing_ok=True))
 
@@ -2007,6 +2016,9 @@ def install_network_insights_routes(core: Any) -> None:
             raise HTTPException(404, 'Ready Vodafone or Three inventory not found in the active workspace.')
         if download:
             columns = task_repository.list_dataset_row_columns(dataset_id)
+            task_repository.try_add_log(user.username, 'export_network_insights_inventory', json.dumps({
+                'dataset_id': dataset_id, 'operator': dataset['operator'],
+            }))
             return StreamingResponse(
                 task_repository.stream_dataset_preview_csv(dataset_id, columns, {}),
                 media_type='text/csv',
@@ -2029,6 +2041,9 @@ def install_network_insights_routes(core: Any) -> None:
         writer.writerow([DEPLOYMENT_GROUPINGS[group] if group in summary['available_groups'] else 'Inventory',
                          'Sites', 'Cells'])
         writer.writerows((row['group'], row['sites'], row['cells']) for row in summary['rows'])
+        task_repository.try_add_log(user.username, 'export_network_insights_deployment', json.dumps({
+            'group': group, 'dataset_id': dataset_id, 'operator': dataset['operator'],
+        }))
         return StreamingResponse(
             iter([output.getvalue()]), media_type='text/csv',
             headers={'Content-Disposition': f'attachment; filename="network-deployment-{group}{table_suffix([dataset["operator"]])}.csv"'},
@@ -2046,6 +2061,9 @@ def install_network_insights_routes(core: Any) -> None:
             writer.writerows((inventory['operator'], inventory['id'], inventory['file_name'],
                               row['group'], row['sites'], row['cells']) for row in inventory['rows'])
         suffix = table_suffix([inventory['operator'] for inventory in deployment['inventories']])
+        bound_repository().try_add_log(user.username, 'export_network_insights_deployment', json.dumps({
+            'group': group, 'operators': [inventory['operator'] for inventory in deployment['inventories']],
+        }))
         return StreamingResponse(iter([output.getvalue()]), media_type='text/csv',
                                  headers={'Content-Disposition': f'attachment; filename="network-deployment-{group}{suffix}.csv"'})
 

@@ -10,6 +10,7 @@
 #### 🌟 New Features:
 
 #### 🚀 Enhancements:
+- **App Events of every user action:** App Events also record deleting a workspace (in the workspace open at that moment), cancelling an upload, Network Insights analyses, Scoring & GAP Analysis calculations, cancelling a Query Builder run, the NQ Analysis Center follow-up (changes to one call or in bulk, comments, catalog imports and exports, equivalences and Excel, PowerPoint and Word exports), stopping and deleting single Dashboard PPT and PPT Reporting (old) jobs and deleting Reporting Job runs, the downloads of generated reports, Dashboard PPTs, chart sets, Reporting Job runs and export packages, the CSV exports of dataset previews, chart data and Network Insights tables, the exports of PPT Templates, Dashboards, Scoring results and reports, methodologies and report configurations (and saving, deleting and importing these), export packages and outgoing server transfers with their outcome, importing a recovered transfer package, creating backup folders and the requests to stop background tasks.
 
 #### 🐛 Bug fixes:
 

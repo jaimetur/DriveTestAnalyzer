@@ -1510,22 +1510,30 @@ def install_report_task_routes(core: Any) -> None:
 
     @app.get('/api/reporting/runs/{run_id}/download')
     def reporting_jobs_download_run(run_id: int, user=Depends(reporting_user)):
-        run = run_or_404(reporting_repository(user), run_id)
+        task_repository = reporting_repository(user)
+        run = run_or_404(task_repository, run_id)
         ready = [item for item in run['artifacts'] if item.get('status') == 'ready' and (Path(run['output_dir']) / item['file_name']).is_file()]
         if not ready:
             raise HTTPException(404, 'This run has no artifacts to download.')
         name = safe_file_name(f"{run_stamp(run)} - Reporting - {run['task_name']}")
+        task_repository.try_add_log(user.username, 'download_reporting_job_run', json.dumps({
+            'run_id': run_id, 'name': run['task_name'], 'artifacts': len(ready),
+        }))
         return StreamingResponse(zip_artifacts(run), media_type='application/zip',
                                  headers={'Content-Disposition': f'attachment; filename="{name}.zip"'})
 
     @app.get('/api/reporting/runs/{run_id}/artifacts/{index}')
     def reporting_jobs_download_artifact(run_id: int, index: int, user=Depends(reporting_user)):
-        run = run_or_404(reporting_repository(user), run_id)
+        task_repository = reporting_repository(user)
+        run = run_or_404(task_repository, run_id)
         if not 0 <= index < len(run['artifacts']) or run['artifacts'][index].get('status') != 'ready':
             raise HTTPException(404, 'Artifact not found.')
         path = Path(run['output_dir']) / run['artifacts'][index]['file_name']
         if not path.is_file():
             raise HTTPException(404, 'The artifact file is no longer available.')
+        task_repository.try_add_log(user.username, 'download_reporting_job_artifact', json.dumps({
+            'run_id': run_id, 'name': run['task_name'], 'file': path.name,
+        }))
         return FileResponse(path, filename=path.name)
 
     @app.delete('/api/reporting/runs/{run_id}')
@@ -1539,4 +1547,7 @@ def install_report_task_routes(core: Any) -> None:
         path = Path(run['output_dir']).resolve() if run['output_dir'] else None
         if path and output_root().resolve() in path.parents:
             shutil.rmtree(path, ignore_errors=True)
+        task_repository.try_add_log(user.username, 'delete_reporting_job_run', json.dumps({
+            'run_id': run_id, 'name': run['task_name'],
+        }))
         return JSONResponse({'deleted': run_id})

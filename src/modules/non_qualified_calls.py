@@ -6498,6 +6498,11 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         formats=('powerpoint', 'word', 'excel'), filters=report_filters, settings=report_settings, values=report_values,
     )
 
+    def log_action(repository: Any, user: Any, action: str, details: dict[str, Any]) -> None:
+        """Write a user action of the module to the App Events of the workspace."""
+        if hasattr(repository, 'try_add_log'):
+            repository.try_add_log(user.username, action, json.dumps(details, ensure_ascii=False))
+
     @core.app.get('/non-qualified-calls', response_class=HTMLResponse)
     def non_qualified_calls_page(request: Request, user=Depends(core.current_user)):
         return core.render_template(request, 'non_qualified_calls.html', {
@@ -6589,6 +6594,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         """The catalog (sections, fields, lists, root cause catalog, statuses, teams and status rules) as Excel."""
         repository = workspace_repository(user)
         name = re.sub(r'[^A-Za-z0-9._-]+', '_', f'{core.active_workspace.name}_NQ_Analysis_Center_catalog.xlsx')
+        log_action(repository, user, 'nq_catalog_export', {'file': name})
         return Response(catalog_document(repository),
                         media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                         headers={'Content-Disposition': f'attachment; filename="{name}"'})
@@ -6597,11 +6603,13 @@ def install_non_qualified_calls_routes(core: Any) -> None:
     async def nq_catalog_import(request: Request, user=Depends(editor_user)) -> JSONResponse:
         """Preview (``preview=1``) or import a catalog workbook: its format, or the layout of the meeting workbook."""
         repository = workspace_repository(user)
-        content, _name, form = await uploaded_file(request, 'workbook', 10)
+        content, name, form = await uploaded_file(request, 'workbook', 10)
         try:
             if str(form.get('preview') or '') == '1':
                 return JSONResponse(preview_catalog(repository, content))
-            return JSONResponse(import_catalog(repository, content, user.username, set(workspace_users())))
+            imported = import_catalog(repository, content, user.username, set(workspace_users()))
+            log_action(repository, user, 'nq_catalog_import', {'file': name})
+            return JSONResponse(imported)
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
         except HTTPException:
@@ -6695,13 +6703,16 @@ def install_non_qualified_calls_routes(core: Any) -> None:
             raise HTTPException(400, str(exc)) from exc
         except Exception as exc:  # noqa: BLE001 - an unreadable file is a user error.
             raise HTTPException(400, f'The analyses file could not be read: {exc}') from exc
+        log_action(repository, user, 'nq_analyses_equivalences_export', {'file': name})
         return Response(workbook, media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                         headers={'Content-Disposition': 'attachment; filename="NQ_analyses_equivalences.xlsx"'})
 
     @core.app.get('/api/non-qualified-calls/analyses/equivalences')
     def nq_analyses_rules_download(user=Depends(analyses_user)) -> Response:
         """The equivalences the import uses (the rules of the tool and those of the workspace), to review and upload back."""
-        workbook = analyses_equivalences_workbook(workspace_repository(user), None, '', set(workspace_users()))
+        repository = workspace_repository(user)
+        workbook = analyses_equivalences_workbook(repository, None, '', set(workspace_users()))
+        log_action(repository, user, 'nq_analyses_equivalences_export', {})
         return Response(workbook, media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                         headers={'Content-Disposition': 'attachment; filename="NQ_analyses_equivalences.xlsx"'})
 
@@ -6709,9 +6720,11 @@ def install_non_qualified_calls_routes(core: Any) -> None:
     async def nq_analyses_equivalences_upload(request: Request, user=Depends(analyses_user)) -> JSONResponse:
         """Keep the equivalences of a reviewed workbook for the imports of the workspace."""
         repository = workspace_repository(user)
-        content, _name, _form = await uploaded_file(request, 'file', 20)
+        content, name, _form = await uploaded_file(request, 'file', 20)
         try:
-            return JSONResponse(save_analyses_equivalences(repository, content, set(workspace_users())))
+            saved = save_analyses_equivalences(repository, content, set(workspace_users()))
+            log_action(repository, user, 'nq_analyses_equivalences_save', {'file': name})
+            return JSONResponse(saved)
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
         except Exception as exc:  # noqa: BLE001 - an unreadable file is a user error.
@@ -6767,8 +6780,10 @@ def install_non_qualified_calls_routes(core: Any) -> None:
     @core.app.patch('/api/non-qualified-calls/calls/{call_key}')
     def nq_update_call(call_key: str, payload: TrackingPayload, user=Depends(editor_user)) -> JSONResponse:
         repository = workspace_repository(user)
-        translate(lambda: update_tracking(repository, [call_key], payload.changes, user.username,
-                                          set(workspace_users()), payload.version))
+        changed = translate(lambda: update_tracking(repository, [call_key], payload.changes, user.username,
+                                                    set(workspace_users()), payload.version))
+        if changed:
+            log_action(repository, user, 'nq_call_update', {'call_key': call_key, 'fields': sorted(payload.changes)})
         return JSONResponse(call_detail(repository, call_key))
 
     @core.app.post('/api/non-qualified-calls/calls/bulk')
@@ -6780,24 +6795,31 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         repository = workspace_repository(user)
         changed = translate(lambda: update_tracking(repository, payload.call_keys, payload.changes, user.username,
                                                     set(workspace_users())))
+        if changed:
+            log_action(repository, user, 'nq_calls_bulk_update', {
+                'selected': len(payload.call_keys), 'changed': len(changed), 'fields': sorted(payload.changes),
+            })
         return JSONResponse({'changed': len(changed)})
 
     @core.app.post('/api/non-qualified-calls/calls/{call_key}/comments')
     def nq_add_comment(call_key: str, payload: CommentPayload, user=Depends(editor_user)) -> JSONResponse:
         repository = workspace_repository(user)
         comment = translate(lambda: add_comment(repository, call_key, payload.body, user.username))
+        log_action(repository, user, 'nq_comment_add', {'call_key': call_key, 'comment_id': comment['id']})
         return JSONResponse({'comment': comment})
 
     @core.app.patch('/api/non-qualified-calls/comments/{comment_id}')
     def nq_edit_comment(comment_id: int, payload: CommentPayload, user=Depends(editor_user)) -> JSONResponse:
         repository = workspace_repository(user)
         comment = translate(lambda: edit_comment(repository, comment_id, payload.body, user.username, can_moderate(user)))
+        log_action(repository, user, 'nq_comment_edit', {'comment_id': comment_id})
         return JSONResponse({'comment': comment})
 
     @core.app.delete('/api/non-qualified-calls/comments/{comment_id}')
     def nq_delete_comment(comment_id: int, user=Depends(editor_user)) -> JSONResponse:
         repository = workspace_repository(user)
         comment = translate(lambda: delete_comment(repository, comment_id, user.username, can_moderate(user)))
+        log_action(repository, user, 'nq_comment_delete', {'comment_id': comment_id})
         return JSONResponse({'comment': comment})
 
     @core.app.delete('/api/non-qualified-calls/history/{entry_id}')
@@ -6870,6 +6892,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
             content = destination.read_bytes()
         media_type = ('application/vnd.openxmlformats-officedocument.presentationml.presentation' if export_format == 'powerpoint'
                       else 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+        log_action(repository, user, f'nq_summary_export_{export_format}', {'file': name})
         return Response(content, media_type=media_type, headers={'Content-Disposition': f'attachment; filename="{name}"'})
 
     @core.app.post('/api/non-qualified-calls/export')
@@ -6878,5 +6901,6 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         content = export_workbook(repository, payload.filters, user.username)
         stamp = datetime.now().strftime('%Y%m%d-%H%M%S')
         name = re.sub(r'[^A-Za-z0-9._-]+', '_', f'{core.active_workspace.name}_non-qualified-calls_{stamp}.xlsx')
+        log_action(repository, user, 'nq_calls_export', {'file': name})
         return Response(content, media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                         headers={'Content-Disposition': f'attachment; filename="{name}"'})

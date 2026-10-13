@@ -8797,16 +8797,25 @@ def _run_export_job(
         partial_path.replace(destination)
         with EXPORT_JOBS_LOCK:
             job.update({'status': 'ready', 'filename': filename, 'size': destination.stat().st_size, 'bytes_done': bytes_total, 'progress': 100, 'finished_at': datetime.now(timezone.utc).timestamp()})
+        repository.try_add_log(str(job.get('owner') or 'system'), 'export_package_completed', json.dumps({
+            'job_id': job_id, 'targets': targets, 'file': filename, 'executed_by': 'system',
+        }))
     except InterruptedError as exc:
         partial_path.unlink(missing_ok=True)
         destination.unlink(missing_ok=True)
         with EXPORT_JOBS_LOCK:
             job.update({'status': 'cancelled', 'error': str(exc), 'finished_at': datetime.now(timezone.utc).timestamp()})
+        repository.try_add_log(str(job.get('owner') or 'system'), 'export_package_stopped', json.dumps({
+            'job_id': job_id, 'targets': targets, 'executed_by': 'system',
+        }))
     except Exception as exc:
         partial_path.unlink(missing_ok=True)
         destination.unlink(missing_ok=True)
         with EXPORT_JOBS_LOCK:
             job.update({'status': 'failed', 'error': str(exc), 'finished_at': datetime.now(timezone.utc).timestamp()})
+        repository.try_add_log(str(job.get('owner') or 'system'), 'export_package_failed', json.dumps({
+            'job_id': job_id, 'targets': targets, 'error': str(exc), 'executed_by': 'system',
+        }))
 
 
 def start_export_job(
@@ -8849,6 +8858,10 @@ def start_export_job(
     }
     with EXPORT_JOBS_LOCK:
         EXPORT_JOBS[job_id] = job
+    repository.try_add_log(owner or 'system', 'export_package_queued', json.dumps({
+        'job_id': job_id, 'targets': targets, 'workspace_ids': selected_workspace_ids,
+        'include_generated_outputs': include_generated_outputs, 'include_input_files': include_input_files,
+    }))
     EXPORT_TASK_SCHEDULER.submit(
         _run_export_job, job_id, targets, selected_workspace_ids, include_generated_outputs, include_input_files,
     )
@@ -10441,6 +10454,9 @@ def _run_transfer_job(job_id: str) -> None:
                 if remote_status == 'ready':
                     with TRANSFER_LOCK:
                         job.update({'status': 'ready', 'progress': 100.0, 'notice': remote_payload.get('notice') or 'Transfer imported successfully.', 'finished_at': datetime.now(timezone.utc).timestamp()})
+                    repository.try_add_log(str(job['owner']), 'outgoing_server_transfer_completed', json.dumps({
+                        'job_id': job_id, 'destination': destination, 'targets': targets, 'executed_by': 'system',
+                    }))
                     return
                 if remote_status in {'rejected', 'failed', 'expired', 'cancelled'}:
                     raise ValueError(remote_payload.get('error') or 'The destination server could not import the package.')
@@ -10454,6 +10470,9 @@ def _run_transfer_job(job_id: str) -> None:
                 pass
         with TRANSFER_LOCK:
             job.update({'status': 'cancelled', 'error': str(exc), 'finished_at': datetime.now(timezone.utc).timestamp()})
+        repository.try_add_log(str(job['owner']), 'outgoing_server_transfer_stopped', json.dumps({
+            'job_id': job_id, 'destination': destination, 'targets': targets, 'executed_by': 'system',
+        }))
     except Exception as exc:
         # Do not strand an accepted or pending destination offer when the
         # source has definitively abandoned the job. The remote DELETE is
@@ -10469,6 +10488,9 @@ def _run_transfer_job(job_id: str) -> None:
                 pass
         with TRANSFER_LOCK:
             job.update({'status': 'failed', 'error': error, 'finished_at': datetime.now(timezone.utc).timestamp()})
+        repository.try_add_log(str(job['owner']), 'outgoing_server_transfer_failed', json.dumps({
+            'job_id': job_id, 'destination': destination, 'targets': targets, 'error': error, 'executed_by': 'system',
+        }))
     finally:
         progress_reports_stop.set()
         package_path.unlink(missing_ok=True)
@@ -10513,6 +10535,10 @@ def start_transfer_job(
     }
     with TRANSFER_LOCK:
         TRANSFER_JOBS[job_id] = job
+    repository.try_add_log(user.username, 'outgoing_server_transfer_queued', json.dumps({
+        'job_id': job_id, 'destination': destination, 'targets': targets,
+        'include_generated_outputs': include_generated_outputs, 'include_input_files': include_input_files,
+    }))
     # A server-to-server transfer is initiated by a foreground user action.
     # Keep its offer, archive stream and remote status polling out of the
     # shared background queue, whose workers may be occupied by CDR work.
@@ -12703,12 +12729,20 @@ def stop_background_task(
             WORKSPACE_DUPLICATION_STOP_REQUESTS.add(workspace_id)
     else:
         raise HTTPException(status_code=400, detail='This background task cannot be stopped.')
+    if prefix in {'export', 'import', 'transfer', 'workspace-cache-clear', 'bulk-delete', 'workspace-duplicate'}:
+        task_repository.try_add_log(user.username, 'stop_background_task', json.dumps({'task_id': task_id}))
     return JSONResponse({'stopping': task_id})
 
 
 @app.post('/api/server-background-tasks/stop')
 def stop_server_background_task(task_id: str = Form(...), user: SessionUser = Depends(current_user)) -> JSONResponse:
     """Stop an owner-visible server task that does not belong to one workspace."""
+    response = _stop_server_background_task(task_id, user)
+    repository.try_add_log(user.username, 'stop_server_background_task', json.dumps({'task_id': task_id}))
+    return response
+
+
+def _stop_server_background_task(task_id: str, user: SessionUser) -> JSONResponse:
     prefix, _, job_id = str(task_id).partition(':')
     if prefix not in {'manual-backup', 'scheduled-backup', 'manual-restore', 'transfer', 'incoming-transfer'} or not job_id:
         raise HTTPException(status_code=400, detail='This background task cannot be stopped.')
@@ -13227,6 +13261,11 @@ def delete_workspace(
                     job.update(status='failed', error=str(exc), finished_at=datetime.now(timezone.utc).timestamp())
 
     submit_background_task(run_deletion)
+    if active_workspace:
+        # The removed workspace loses its own events: the deletion is written to the open one.
+        add_workspace_audit_log(active_workspace, user.username, 'delete_workspace', {
+            'workspace': workspace_id, 'name': registered_workspace.name, 'delete_files': delete_workspace_files,
+        })
     return RedirectResponse(
         '/workspace?workspace_notice=Workspace+deletion+started.+The+workspace+will+disappear+when+the+operation+finishes.',
         status_code=status.HTTP_303_SEE_OTHER,
@@ -13949,6 +13988,9 @@ async def dataset_preview_data(
     payload = await request.json()
     page, filters, filter_column = _dataset_preview_request(payload, columns)
     if bool(payload.get('download')):
+        repository.try_add_log(user.username, 'export_dataset_preview_csv', json.dumps({
+            'dataset_id': dataset_id, 'file': dataset.get('file_name') or '', 'filtered': bool(filters),
+        }))
         return StreamingResponse(
             repository.stream_dataset_preview_csv(dataset_id, columns, filters),
             media_type='text/csv',
@@ -14096,6 +14138,9 @@ async def combined_dataset_preview_data(
     payload = await request.json()
     page, filters, filter_column = _dataset_preview_request(payload, columns)
     if bool(payload.get('download')):
+        repository.try_add_log(user.username, 'export_combined_cdr_preview_csv', json.dumps({
+            'kind': normalized_kind, 'filtered': bool(filters),
+        }))
         return StreamingResponse(
             repository.stream_reporting_preview_csv(normalized_kind, columns, filters),
             media_type='text/csv',
@@ -15048,6 +15093,10 @@ async def temporary_chart_preview_data(request: Request, user: SessionUser = Dep
         values_preview = _apply_preview_column_filters(full_preview, filters_for_values)
         filtered_preview = _apply_preview_column_filters(full_preview, column_filters)
         if download:
+            repository.try_add_log(user.username, 'export_chart_data_csv', json.dumps({
+                'source': source, 'identifier': identifier, 'chart_index': chart_index,
+                'rows': len(filtered_preview.index),
+            }))
             return Response(
                 content=filtered_preview.to_csv(index=False),
                 media_type='text/csv',
@@ -15686,6 +15735,7 @@ def cancel_query_builder_run(execution_id: str, user: SessionUser = Depends(curr
         if not cancellation:
             raise HTTPException(status_code=404, detail='Query execution is no longer active.')
         cancellation.set()
+    repository.try_add_log(user.username, 'cancel_query_builder_run', json.dumps({'execution_id': execution_id}))
     return JSONResponse({'cancelling': True})
 
 
@@ -16442,7 +16492,9 @@ def download_report_chart_set(generation: str, user: SessionUser = Depends(curre
     if not _valid_report_chart_generation(generation) or load_persisted_report_charts(generation) is None:
         raise HTTPException(status_code=404, detail='Chart set not found.')
     directory = safe_join(report_charts_directory(), generation)
-    return _chart_png_zip_response(directory, f'Chart_Set_{generation}.zip')
+    response = _chart_png_zip_response(directory, f'Chart_Set_{generation}.zip')
+    repository.try_add_log(user.username, 'download_report_chart_set', json.dumps({'generation': generation}))
+    return response
 
 
 @app.get('/api/ppt-reporting-old/chart-sets/{generation}')
@@ -16912,6 +16964,10 @@ def saved_filters_save(payload: SavedFilterRequest, user: SessionUser = Depends(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if not cached:
         _queue_saved_filter_calculation(task_repository, saved_filter['id'])
+    task_repository.try_add_log(user.username, 'scoring_calculation_requested', json.dumps({
+        'saved_filter_id': saved_filter['id'], 'name': saved_filter.get('name') or '',
+        'datasets': len(selected_ids), 'nr_mode': payload.nr_mode, 'force': payload.force, 'cached': cached,
+    }))
     _prioritize_saved_filter(task_repository, saved_filter['id'])
     # Only the starred Saved Filters are kept: the user's other unstarred ones go.
     prune_unpinned_saved_filters(task_repository, saved_filter['id'], user.username)
@@ -17162,6 +17218,12 @@ def scoring_saved_filter_export(
         raise HTTPException(status_code=404, detail='Saved Filter not found.')
     if saved_filter['status'] != 'completed':
         raise HTTPException(status_code=409, detail='The Saved Filter must finish calculating before export.')
+
+    def logged_export(response: Response) -> Response:
+        task_repository.try_add_log(user.username, f'export_scoring_{export_kind}', json.dumps({
+            'saved_filter_id': filter_id, 'name': saved_filter.get('name') or '', 'environment': environment,
+        }))
+        return response
     from src.modules.scoring_views import normalize_result_gaps
     result = normalize_scoring_vendor_result(
         normalize_result_gaps(saved_filter.get('result') or {}), task_repository.list_operator_mapping_groups(),
@@ -17214,9 +17276,9 @@ def scoring_saved_filter_export(
                 )
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
-            return Response(content.encode('utf-8-sig'), media_type='text/csv', headers={
+            return logged_export(Response(content.encode('utf-8-sig'), media_type='text/csv', headers={
                 'Content-Disposition': f'attachment; filename="saved-filter-{filter_id}-{export_kind}.csv"',
-            })
+            }))
         rows = result.get(export_kind, [])
         summaries = result.get('totals' if export_kind == 'scoring' else 'gap_totals', [])
         if selected_environment != 'all':
@@ -17234,9 +17296,9 @@ def scoring_saved_filter_export(
             rows = ([{'row_type': 'summary', **row} for row in summaries]
                     + [{'row_type': 'kpi', **row} for row in rows])
         content = pd.DataFrame(rows).to_csv(index=False)
-        return Response(content.encode('utf-8-sig'), media_type='text/csv', headers={
+        return logged_export(Response(content.encode('utf-8-sig'), media_type='text/csv', headers={
             'Content-Disposition': f'attachment; filename="saved-filter-{filter_id}-{export_kind}.csv"',
-        })
+        }))
     if export_kind in {'ppt', 'word'}:
         from src.modules.scoring_exports import export_scoring_powerpoint, prepare_scoring_display_selections
         from src.modules.cdr_report_filenames import build_scoring_report_filename
@@ -17269,9 +17331,9 @@ def scoring_saved_filter_export(
             filename = str(Path(filename).with_suffix('.docx'))
             media_type = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
         disposition = f"attachment; filename*=UTF-8''{quote(filename)}"
-        return Response(content, media_type=media_type, headers={
+        return logged_export(Response(content, media_type=media_type, headers={
             'Content-Disposition': disposition,
-        })
+        }))
     raise HTTPException(status_code=404, detail='Unknown scoring export format.')
 
 
@@ -17438,6 +17500,9 @@ def scoring_report(export_kind: str, payload: ScoringReportRequest, user: Sessio
         content = pptx_to_docx(content, 'Scoring & GAP Analysis')
         filename = str(Path(filename).with_suffix('.docx'))
         media_type = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    task_repository.try_add_log(user.username, f'export_scoring_report_{export_kind}', json.dumps({
+        'file': filename, 'datasets': len(payload.dataset_ids), 'nr_mode': payload.nr_mode,
+    }))
     return Response(content, media_type=media_type, headers={
         'Content-Disposition': f"attachment; filename*=UTF-8''{quote(filename)}",
     })
@@ -17455,11 +17520,14 @@ def scoring_report_configuration_save(
 ) -> dict[str, Any]:
     from src.modules.repository import local_now_iso
     from src.modules.scoring_reports import save_named_configuration
+    task_repository = scoring_repository(user)
     try:
-        return save_named_configuration(scoring_repository(user), payload.name, payload.configuration,
-                                        updated_at=local_now_iso())
+        state = save_named_configuration(task_repository, payload.name, payload.configuration,
+                                         updated_at=local_now_iso())
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    task_repository.try_add_log(user.username, 'save_scoring_report_configuration', json.dumps({'name': payload.name}))
+    return state
 
 
 @app.put('/api/scoring/report-configurations/last')
@@ -17481,14 +17549,21 @@ def scoring_report_configuration_delete(
     name: str, user: SessionUser = Depends(workspace_editor_user),
 ) -> dict[str, Any]:
     from src.modules.scoring_reports import delete_named_configuration
-    return delete_named_configuration(scoring_repository(user), name)
+    task_repository = scoring_repository(user)
+    state = delete_named_configuration(task_repository, name)
+    task_repository.try_add_log(user.username, 'delete_scoring_report_configuration', json.dumps({'name': name}))
+    return state
 
 
 @app.get('/api/scoring/report-configurations/export')
 def scoring_report_configurations_export(user: SessionUser = Depends(current_user)) -> Response:
     from src.modules.scoring_reports import load_report_state, report_configurations_document
-    content = json.dumps(report_configurations_document(load_report_state(scoring_repository(user))),
-                         ensure_ascii=False, indent=2)
+    task_repository = scoring_repository(user)
+    document = report_configurations_document(load_report_state(task_repository))
+    content = json.dumps(document, ensure_ascii=False, indent=2)
+    task_repository.try_add_log(user.username, 'export_scoring_report_configurations', json.dumps({
+        'configurations': len(document['configurations']),
+    }))
     return Response(content.encode('utf-8'), media_type='application/json', headers={
         'Content-Disposition': 'attachment; filename="scoring-report-configurations.json"',
     })
@@ -17500,16 +17575,21 @@ async def scoring_report_configurations_import(
     user: SessionUser = Depends(workspace_editor_user),
 ) -> dict[str, Any]:
     from src.modules.scoring_reports import import_report_configurations
+    task_repository = scoring_repository(user)
     try:
         payload = await package.read(2 * 1024 * 1024 + 1)
         if len(payload) > 2 * 1024 * 1024:
             raise ValueError('Scoring report configurations JSON must not exceed 2 MiB.')
-        return import_report_configurations(scoring_repository(user), json.loads(payload.decode('utf-8')),
-                                            replace=replace)
+        state = import_report_configurations(task_repository, json.loads(payload.decode('utf-8')),
+                                             replace=replace)
     except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     finally:
         await package.close()
+    task_repository.try_add_log(user.username, 'import_scoring_report_configurations', json.dumps({
+        'file': package.filename or '', 'replace': replace,
+    }))
+    return state
 
 
 @app.get('/api/ppt-reporting-old/jobs')
@@ -17533,6 +17613,9 @@ def _report_job_file(report_id: int) -> tuple[dict[str, Any], Path]:
 @app.get('/ppt-reporting-old/jobs/{report_id}/download')
 def download_report_job(report_id: int, user: SessionUser = Depends(current_user)) -> FileResponse:
     payload, path = _report_job_file(report_id)
+    repository.try_add_log(user.username, 'download_report_job', json.dumps({
+        'report_id': report_id, 'file': payload['report_name'],
+    }))
     return FileResponse(path, filename=payload['report_name'], media_type='application/vnd.openxmlformats-officedocument.presentationml.presentation')
 
 
@@ -17559,7 +17642,9 @@ def download_report_job_charts(report_id: int, user: SessionUser = Depends(curre
     if directory is None or _report_job_charts_payload(report) is None:
         raise HTTPException(status_code=404, detail='Rendered report charts are not available.')
     report_name = Path(str(report['output_file'] or 'report')).stem
-    return _chart_png_zip_response(directory, f'{report_name}_charts.zip')
+    response = _chart_png_zip_response(directory, f'{report_name}_charts.zip')
+    repository.try_add_log(user.username, 'download_report_job_charts', json.dumps({'report_id': report_id}))
+    return response
 
 
 @app.get('/ppt-reporting-old/jobs/{report_id}/charts/{chart_file}')
@@ -17596,6 +17681,9 @@ def delete_report_job(report_id: int, user: SessionUser = Depends(admin_user)) -
         raise HTTPException(status_code=404, detail='Report job not found.')
     _delete_report_job_artifacts(report)
     invalidate_workspace_size_cache()
+    repository.try_add_log(user.username, 'delete_report_job', json.dumps({
+        'report_id': report_id, 'file': report['output_file'] or '',
+    }))
     return JSONResponse({'deleted': report_id})
 
 
@@ -18174,9 +18262,10 @@ def complete_dataset_upload(
 def cancel_dataset_upload(workspace_id: str, upload_id: str, user: SessionUser = Depends(workspace_editor_user)) -> JSONResponse:
     from src.modules.upload_sessions import delete_session, sessions_root
 
-    workspace, _task_repository = _upload_workspace(user, workspace_id)
+    workspace, task_repository = _upload_workspace(user, workspace_id)
     _upload_session_of(user, workspace, upload_id)
     delete_session(sessions_root(workspace.database_path.parent), upload_id)
+    task_repository.try_add_log(user.username, 'cancel_dataset_upload', json.dumps({'upload_id': upload_id}))
     return JSONResponse({'ok': True})
 
 
@@ -19789,6 +19878,9 @@ def export_workspace_scoring_configuration(
         profiles = {'active_profile_id': profile_id, 'profiles': [profile]}
     from src.modules.scoring_config import scoring_profiles_document
     content = json.dumps(scoring_profiles_document(profiles), ensure_ascii=False, indent=2)
+    task_repository.try_add_log(user.username, 'export_scoring_configuration', json.dumps({
+        'methodologies': [profile['name'] for profile in profiles['profiles']],
+    }))
     return Response(content, media_type='application/json', headers={
         'Content-Disposition': 'attachment; filename="scoring-methodology.json"' if profile_id is not None
         else 'attachment; filename="scoring-configuration.json"',
@@ -20065,6 +20157,7 @@ def create_backup_directory(
         created.mkdir(parents=False, exist_ok=True)
     except (OSError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=f'Unable to create the directory: {exc}') from exc
+    repository.try_add_log(user.username, 'create_backup_directory', json.dumps({'path': str(created.resolve())}))
     return JSONResponse({'path': str(created.resolve())})
 
 
@@ -20494,6 +20587,9 @@ def import_recovered_transfer_package(offer_id: str, user: SessionUser = Depends
         offer.update({'status': 'importing', 'phase': 'validating', 'progress': 0.0, 'accepted_by': user.username})
         _save_transfer_offer(offer)
         ACTIVE_TRANSFER_IMPORTS.add(offer_id)
+    repository.try_add_log(user.username, 'import_recovered_transfer_package', json.dumps({
+        'offer_id': offer_id, 'content': offer.get('content') or '', 'source': offer.get('source') or '',
+    }))
     _start_received_transfer(offer_id)
     return JSONResponse({'offer_id': offer_id, 'status': 'importing'})
 
@@ -20651,6 +20747,7 @@ def cancel_admin_transfer_job(job_id: str, user: SessionUser = Depends(admin_use
         if job.get('status') in {'ready', 'failed', 'cancelled'}:
             return JSONResponse({'status': job.get('status')})
         job.update({'cancel_requested': True, 'status': 'cancelling', 'phase': 'cancellation requested'})
+    repository.try_add_log(user.username, 'stop_outgoing_server_transfer', json.dumps({'job_id': job_id}))
     return JSONResponse({'status': 'cancelling'})
 
 
@@ -20666,6 +20763,9 @@ def export_admin_package(
         filename = build_export_archive_file(export_target, destination)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    repository.try_add_log(user.username, 'export_package_completed', json.dumps({
+        'targets': [export_target], 'file': filename,
+    }))
     return FileResponse(destination, filename=filename, media_type='application/zip')
 
 
@@ -20712,6 +20812,9 @@ def download_admin_export_job(job_id: str, user: SessionUser = Depends(admin_use
         path = Path(str(EXPORT_JOBS[job_id]['path']))
     if not path.is_file():
         raise HTTPException(status_code=404, detail='The prepared export package is no longer available.')
+    repository.try_add_log(user.username, 'download_export_package', json.dumps({
+        'job_id': job_id, 'file': str(payload['filename']),
+    }))
     return FileResponse(path, filename=str(payload['filename']), media_type='application/zip')
 
 
@@ -20911,6 +21014,9 @@ async def import_admin_package(
                 raise ValueError('Select destination workspaces using the Import / Export / Transfer panel.')
         notice = _apply_import_archive(package_path, manifest, destination_workspace_ids=destinations, importing_user=user.username)
     except (ValueError, OSError, sqlite3.Error, zipfile.BadZipFile) as exc:
+        repository.try_add_log(user.username, 'import_package_failed', json.dumps({
+            'file': package.filename or '', 'error': str(exc),
+        }))
         return RedirectResponse(
             f'/admin?{urlencode({"import_export_error": str(exc)})}',
             status_code=status.HTTP_303_SEE_OTHER,
@@ -20918,6 +21024,9 @@ async def import_admin_package(
     finally:
         await package.close()
         package_path.unlink(missing_ok=True)
+    repository.try_add_log(user.username, 'import_package_completed', json.dumps({
+        'file': package.filename or '', 'kind': manifest.get('kind'),
+    }))
     return RedirectResponse(
         f'/admin?{urlencode({"import_export_notice": notice})}',
         status_code=status.HTTP_303_SEE_OTHER,
@@ -22064,6 +22173,10 @@ async def preview_report_template_chart(
         values_preview = _apply_preview_column_filters(full_preview, filters_for_values)
         filtered_preview = _apply_preview_column_filters(full_preview, column_filters)
         if download:
+            repository.try_add_log(user.username, 'export_chart_data_csv', json.dumps({
+                'technology': technology, 'template': catalogue_id, 'row_index': row_index,
+                'rows': len(filtered_preview.index),
+            }))
             return Response(
                 content=filtered_preview.to_csv(index=False),
                 media_type='text/csv',
@@ -22163,6 +22276,9 @@ def export_report_catalogue(technology: str, user: SessionUser = Depends(config_
     # intact even when they cannot be executed as current Filter Builder rules.
     entries = load_template_catalogue(active['content'], technology, validate_filters=False)
     filename = template_download_filename(active['name']) if active else f'{technology.upper()} Slide Template.csv'
+    repository.try_add_log(user.username, 'export_report_template', json.dumps({
+        'technology': technology, 'template': active['name'],
+    }))
     return Response(
         content=catalogue_csv(entries),
         media_type='text/csv; charset=utf-8',
@@ -22184,6 +22300,9 @@ def export_selected_report_catalogue(
     catalogue = next((item for item in report_catalogue_options(technology) if item['identifier'] == catalogue_id), None)
     if not catalogue:
         raise HTTPException(status_code=404, detail='Report Template not found')
+    repository.try_add_log(user.username, 'export_report_template', json.dumps({
+        'technology': technology, 'template': catalogue['name'],
+    }))
     return Response(
         content=catalogue_csv(load_template_catalogue(catalogue['content'], technology, validate_filters=False)),
         media_type='text/csv; charset=utf-8',
@@ -22201,6 +22320,9 @@ def export_named_report_catalogue(technology: str, catalogue_id: str, user: Sess
         raise HTTPException(status_code=404, detail='Report Template not found')
     entries = load_template_catalogue(catalogue['content'], technology, validate_filters=False)
     filename = template_download_filename(catalogue['name'])
+    repository.try_add_log(user.username, 'export_report_template', json.dumps({
+        'technology': technology, 'template': catalogue['name'],
+    }))
     return Response(
         content=catalogue_csv(entries),
         media_type='text/csv; charset=utf-8',
