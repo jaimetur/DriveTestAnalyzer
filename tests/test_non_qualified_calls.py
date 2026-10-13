@@ -574,14 +574,19 @@ def test_root_cause_taxonomy_imports_with_the_tracking_and_shows_in_exports(clie
     assert {'Selected Root Category', 'Selected Root Cause', 'Root Domain', 'Recommended Root Category',
             'Recommended Root Cause'} <= set(headers)
     deck = client.post('/api/non-qualified-calls/export/powerpoint', json={'filters': {}, 'granularity': 'month'})
-    titles = [slide.shapes.title.text_frame.text for slide in Presentation(io.BytesIO(deck.content)).slides
-              if slide.shapes.title is not None]
-    # The Root Cause Sources, then the Root Cause Analysis of every source with its tables, between the NQ rates and the Lifecycle.
-    assert [title for title in titles if title.startswith('Root Cause Analysis') and title.count('·') == 1] == [
+    headers = [slide.shapes.title.text_frame.paragraphs for slide in Presentation(io.BytesIO(deck.content)).slides
+               if slide.shapes.title is not None]
+    titles = [paragraphs[0].text for paragraphs in headers]
+    # The Root Cause Sources, then the Root Cause Analysis of every source with its tables, between the NQ rates and the Lifecycle:
+    # the source in bold in the title, and what each slide shows in its subtitle.
+    assert list(dict.fromkeys(title for title in titles if title.startswith('Root Cause Analysis'))) == [
         'Root Cause Analysis · NetCheck RCA', 'Root Cause Analysis · Ericsson RCA', 'Root Cause Analysis · Analysts']
-    assert 'Root Cause Analysis · Ericsson RCA · eNB / gNB' in titles and 'Root Cause Analysis · Analysts · eNB / gNB' in titles
-    assert {'Root Cause Analysis · NetCheck RCA · Root Domains by Call Type and NSA vs SA',
-            'Root Cause Analysis · NetCheck RCA · Technology'} <= set(titles)
+    subtitles = {(paragraphs[0].text, paragraphs[1].text) for paragraphs in headers if len(paragraphs) > 1}
+    assert {('Root Cause Analysis · NetCheck RCA', 'Root Domains by Call Type and NSA vs SA'),
+            ('Root Cause Analysis · Ericsson RCA', 'Root Domains by Technology'),
+            ('Root Cause Analysis · Analysts', 'eNB / gNB with Most Non-Qualified Calls')} <= subtitles
+    source = next(paragraphs[0].runs[-1] for paragraphs in headers if paragraphs[0].text == 'Root Cause Analysis · Ericsson RCA')
+    assert source.text == 'Ericsson RCA' and source.font.bold
     assert [title for title in titles if title.startswith('NQ Rate')] == ['NQ Rate by Campaign and Operator']
 
     def first(prefix):

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import math
 import re
+from dataclasses import dataclass
 from io import BytesIO
 from typing import Any
 
@@ -555,10 +556,10 @@ def domain_donuts_panel(stats: dict[str, Any]) -> BytesIO | None:
 
 
 def technology_panel(stats: dict[str, Any]) -> BytesIO:
-    """The Technology: a bar per technology split by root domain, every one of them (thinner when they are many)."""
+    """The Root Domains by Technology: a bar per technology split by root domain, every one of them (thinner when they are many)."""
     colours = {item['value']: item.get('color') or RASPBERRY for item in stats.get('domains') or []}
     panel = Panel()
-    _stack_card(panel, 0, 0, panel.width, panel.height, 'Technology', stats.get('technologies') or [],
+    _stack_card(panel, 0, 0, panel.width, panel.height, 'Root Domains by Technology', stats.get('technologies') or [],
                 list(stats.get('columns') or []), colours)
     return panel.png()
 
@@ -567,12 +568,27 @@ def technology_panel(stats: dict[str, Any]) -> BytesIO:
 ROOT_SOURCE_TITLES = {'netcheck': 'NetCheck RCA', 'script': 'Ericsson RCA', 'analysts': 'Analysts'}
 
 
-def root_cause_title(stats: dict[str, Any]) -> str:
-    """The title of the Root Cause Analysis of one source: NetCheck RCA, Ericsson RCA or the analysts."""
-    return f"Root Cause Analysis · {ROOT_SOURCE_TITLES.get(str(stats.get('source') or ''), 'Analysts')}"
+@dataclass(frozen=True)
+class SlideTitle:
+    """A slide title that ends in a part in bold, with a subtitle below it; as text, all of it."""
+    text: str
+    bold: str = ''
+    subtitle: str = ''
+
+    @property
+    def heading(self) -> str:
+        return ' · '.join(part for part in (self.text, self.bold) if part)
+
+    def __str__(self) -> str:
+        return ' · '.join(part for part in (self.heading, self.subtitle) if part)
 
 
-def root_cause_panels(stats: dict[str, Any]) -> list[tuple[str, BytesIO]]:
+def root_cause_title(stats: dict[str, Any], subtitle: str = '') -> SlideTitle:
+    """The title of the Root Cause Analysis of one source (NetCheck RCA, Ericsson RCA or the analysts), in bold."""
+    return SlideTitle('Root Cause Analysis', ROOT_SOURCE_TITLES.get(str(stats.get('source') or ''), 'Analysts'), subtitle)
+
+
+def root_cause_panels(stats: dict[str, Any]) -> list[tuple[SlideTitle, BytesIO]]:
     """The Root Cause Analysis: the calls per domain, category and cause, and the root domains of each call type and NR mode."""
     summary = stats.get('summary') or {}
     total = int(summary.get('total') or 0)
@@ -609,7 +625,7 @@ def root_cause_panels(stats: dict[str, Any]) -> list[tuple[str, BytesIO]]:
     panels = [(title, first.png())]
     donuts = domain_donuts_panel(stats)
     if donuts is not None:
-        panels.append((f'{title} · Root Domains by Call Type and NSA vs SA', donuts))
+        panels.append((root_cause_title(stats, 'Root Domains by Call Type and NSA vs SA'), donuts))
     return panels
 
 

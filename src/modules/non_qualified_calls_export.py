@@ -276,8 +276,9 @@ def root_cause_table_panels(stats: dict[str, Any]) -> list[tuple[str, Any]]:
     """The Technology bars on one slide, and the eNB / gNB with most calls on another (the first ones that fit)."""
     from src.modules.non_qualified_calls_visuals import root_cause_title, table_panels, technology_panel
 
-    title = root_cause_title(stats)
-    return [(f'{title} · Technology', technology_panel(stats)), *table_panels(f'{title} · eNB / gNB', *node_table(stats), single=True)]
+    nodes = 'eNB / gNB with Most Non-Qualified Calls'
+    return [(root_cause_title(stats, 'Root Domains by Technology'), technology_panel(stats)),
+            (root_cause_title(stats, nodes), table_panels(nodes, *node_table(stats), single=True)[0][1])]
 
 
 def detail_tables(progress: dict[str, Any]) -> list[tuple[str, list[str], list[list[str]]]]:
@@ -293,6 +294,7 @@ def export_powerpoint(destination: Path, lines: list[str], summary: dict[str, An
 
     from src.config import settings
     from src.modules.cdr_reporting import _named_slide_layout, _remove_all_slides, _set_structural_slide_text
+    from src.modules.non_qualified_calls_visuals import SlideTitle
 
     presentation = Presentation(template or settings.powerpoint_templates_dir / 'Template_01.pptx')
     _remove_all_slides(presentation)
@@ -300,7 +302,15 @@ def export_powerpoint(destination: Path, lines: list[str], summary: dict[str, An
     _set_structural_slide_text(cover, 'Non-Qualified Calls', 'Executive Summary and Progress Status')
     _cover_selection(cover, lines)
     for title, image in report_panels(summary, breakdowns, progress, options):
-        slide = _slide(presentation, title)
+        heading = title if isinstance(title, SlideTitle) else SlideTitle(title)
+        slide = _slide(presentation, heading.heading, heading.subtitle)
+        if heading.bold:
+            # The title ends in its part in bold, such as the source of the root causes.
+            paragraph = slide.shapes.title.text_frame.paragraphs[0]
+            paragraph.text = f'{heading.text} · '
+            run = paragraph.add_run()
+            run.text = heading.bold
+            run.font.bold = True
         left, top, width, height = _content_frame(slide)
         with Image.open(image) as raster:
             ratio = raster.width / raster.height
@@ -317,6 +327,8 @@ def export_powerpoint(destination: Path, lines: list[str], summary: dict[str, An
 
 def export_word(destination: Path, lines: list[str], summary: dict[str, Any], breakdowns: list[dict[str, Any]],
                 progress: dict[str, Any], options: dict[str, Any] | None = None) -> Path:
+    from src.modules.non_qualified_calls_visuals import SlideTitle
+
     document = Document()
     section = document.sections[0]
     section.orientation = WD_ORIENT.LANDSCAPE
@@ -329,9 +341,14 @@ def export_word(destination: Path, lines: list[str], summary: dict[str, Any], br
         document.add_paragraph(line, style='List Bullet')
     usable = (section.page_width - section.left_margin - section.right_margin) / 914400
     for title, image in report_panels(summary, breakdowns, progress, options or {'statuses': [], 'teams': []}):
-        heading = document.add_heading(title, level=1)
+        title = title if isinstance(title, SlideTitle) else SlideTitle(title)
+        heading = document.add_heading(f'{title.text} · ' if title.bold else title.text, level=1)
+        if title.bold:
+            heading.add_run(title.bold).bold = True
         # Every section starts on its own page, as each one has its own slide in PowerPoint.
         heading.paragraph_format.page_break_before = True
+        if title.subtitle:
+            document.add_paragraph(title.subtitle, style='Subtitle')
         document.add_picture(image, width=DocxInches(usable))
     document.save(destination)
     return destination
