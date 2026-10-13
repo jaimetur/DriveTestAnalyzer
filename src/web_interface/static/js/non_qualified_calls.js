@@ -1978,52 +1978,104 @@
     const [r, g, b] = [0, 2, 4].map((index) => parseInt(hex[1].slice(index, index + 2), 16));
     return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.62 ? 'var(--nq-dark)' : '#fff';
   };
-  const domainBars = (container, rows, columns, colors, groupPair = null) => {
-    const legend = node('div', undefined, 'nq-stack-legend');
-    columns.forEach((column) => {
+  const drillable = (element, pairs, title) => {
+    element.title = pairs ? `${title}: show only these calls; click again to remove the filter` : title;
+    if (!pairs) return element;
+    element.classList.add('is-drill');
+    element.classList.toggle('is-active', isDrilled(pairs));
+    element.tabIndex = 0;
+    element.setAttribute('role', 'button');
+    element.addEventListener('click', () => drill(pairs));
+    element.addEventListener('keydown', (event) => { if (event.key === 'Enter') drill(pairs); });
+    return element;
+  };
+  // The root domains in their colours, above the charts that split the calls by them.
+  const domainLegend = (legend, columns, colors) => {
+    legend.replaceChildren(...columns.map((column) => {
       const swatch = node('span', '', 'nq-swatch');
       swatch.style.background = colors[column] || '#b8c0c6';
       const item = node('span', undefined, 'nq-stack-key');
       item.append(swatch, column);
-      legend.append(item);
-    });
-    const drillable = (element, pairs, title) => {
-      element.title = pairs ? `${title}: show only these calls; click again to remove the filter` : title;
-      if (!pairs) return element;
-      element.classList.add('is-drill');
-      element.classList.toggle('is-active', isDrilled(pairs));
-      element.tabIndex = 0;
-      element.setAttribute('role', 'button');
-      element.addEventListener('click', () => drill(pairs));
-      element.addEventListener('keydown', (event) => { if (event.key === 'Enter') drill(pairs); });
-      return element;
-    };
+      return item;
+    }));
+    return legend;
+  };
+  // One bar per group split in the colours of its root domains, with their legend above.
+  const domainBars = (container, rows, columns, colors, groupPair = null) => {
+    const legend = domainLegend(node('div', undefined, 'nq-stack-legend'), columns, colors);
     const lines = rows.map((row) => {
       const group = groupPair?.(row.name);
       const line = node('div', undefined, 'nq-stack-row');
       const track = node('div', undefined, 'nq-stack-track');
-      const counts = node('div', undefined, 'nq-stack-counts');
       columns.filter((column) => row.counts[column]).forEach((column) => {
         const count = row.counts[column];
         const share = (count / Math.max(1, row.total)) * 100;
         const title = `${row.name} · ${column}: ${number(count)} · ${percent(count, row.total)}`;
-        const pairs = group ? [group, domainPair(column)] : null;
         const part = node('span', share >= 9 ? number(count) : '', 'nq-stack-part');
         part.style.flexBasis = `${share}%`;
         part.style.background = colors[column] || '#b8c0c6';
         part.style.color = readableText(colors[column] || '#b8c0c6');
-        track.append(drillable(part, pairs, title));
-        const swatch = node('span', '', 'nq-swatch');
-        swatch.style.background = colors[column] || '#b8c0c6';
-        const item = node('span', undefined, 'nq-stack-count');
-        item.append(swatch, number(count));
-        counts.append(drillable(item, pairs, title));
+        track.append(drillable(part, group ? [group, domainPair(column)] : null, title));
       });
       line.append(drillable(node('span', row.name, 'nq-stack-name'), group ? [group] : null, row.name), track,
-        node('span', number(row.total), 'nq-stack-total'), counts);
+        node('span', number(row.total), 'nq-stack-total'));
       return line;
     });
     container.replaceChildren(legend, ...(lines.length ? lines : [node('p', 'No data for this selection.', 'form-note')]));
+  };
+  // One donut per group (call type, NR mode) split in the colours of its root domains, under the legend they share:
+  // each slice shows its calls when it is long enough for them, and all of them on hover.
+  const domainDonuts = (container, rows, columns, colors, groupPair) => {
+    // The groups share the row by their number of donuts, so every donut gets the same width.
+    container.parentElement.style.setProperty('--nq-donuts', Math.max(1, rows.length));
+    const radius = 44;
+    const band = 26;
+    const circumference = 2 * Math.PI * radius;
+    const cards = rows.map((row) => {
+      const group = groupPair(row.name);
+      const label = `${row.name} · ${number(row.total)} calls`;
+      const svg = svgNode('svg', {viewBox: '0 0 120 120', class: 'nq-domain-donut-chart', role: 'img', 'aria-label': label});
+      svg.append(svgNode('circle', {cx: 60, cy: 60, r: radius, fill: 'none', stroke: '#f3dfe6', 'stroke-width': band}));
+      const values = [];
+      let offset = 0;
+      columns.filter((column) => row.counts[column]).forEach((column) => {
+        const count = row.counts[column];
+        const length = (count / Math.max(1, row.total)) * circumference;
+        const color = colors[column] || '#b8c0c6';
+        const pairs = [group, domainPair(column)];
+        const slice = svgNode('circle', {
+          cx: 60, cy: 60, r: radius, fill: 'none', stroke: color, 'stroke-width': band,
+          'stroke-dasharray': `${length} ${circumference - length}`, 'stroke-dashoffset': -offset, transform: 'rotate(-90 60 60)',
+        });
+        slice.classList.add('nq-pie-slice');
+        slice.classList.toggle('is-active', isDrilled(pairs));
+        slice.addEventListener('pointermove', (event) => chartTooltip.show(event, label,
+          [[column, `${number(count)} · ${percent(count, row.total)}`, color]]));
+        slice.addEventListener('pointerleave', chartTooltip.hide);
+        slice.addEventListener('click', () => {
+          chartTooltip.hide();
+          drill(pairs);
+        });
+        svg.append(slice);
+        const text = number(count);
+        if (length >= text.length * 4.6 + 6) {
+          const angle = ((offset + length / 2) / circumference) * 2 * Math.PI - Math.PI / 2;
+          const value = svgNode('text', {x: 60 + radius * Math.cos(angle), y: 60 + radius * Math.sin(angle) + 2.8,
+            'text-anchor': 'middle', class: 'nq-domain-donut-value'});
+          value.textContent = text;
+          value.style.fill = readableText(color);
+          values.push(value);
+        }
+        offset += length;
+      });
+      const centre = svgNode('text', {x: 60, y: 64, 'text-anchor': 'middle', class: 'nq-pie-total'});
+      centre.textContent = number(row.total);
+      svg.append(...values, centre);
+      const card = node('div', undefined, 'nq-domain-donut');
+      card.append(drillable(node('h4', label), [group], row.name), svg);
+      return card;
+    });
+    container.replaceChildren(...(cards.length ? cards : [node('p', 'No data for this selection.', 'form-note')]));
   };
   const renderRootCauses = (stats) => {
     const summary = stats.summary;
@@ -2044,8 +2096,9 @@
         pairs: [causePair(item.domain, item.value ?? '')]}))),
     );
     const colors = Object.fromEntries(stats.domains.map((item) => [item.value, item.color]));
-    domainBars($('nq-root-call-types'), stats.call_types, stats.columns, colors, (name) => ['call_type', name]);
-    domainBars($('nq-root-nr-modes'), stats.nr_modes, stats.columns, colors, (name) => ['nr_mode', name === 'Unknown' ? state.unassigned : name]);
+    domainLegend($('nq-root-donut-legend'), stats.columns, colors);
+    domainDonuts($('nq-root-call-types'), stats.call_types, stats.columns, colors, (name) => ['call_type', name]);
+    domainDonuts($('nq-root-nr-modes'), stats.nr_modes, stats.columns, colors, (name) => ['nr_mode', name === 'Unknown' ? state.unassigned : name]);
     // Technologies are a filter of the Filters panel; calls without a technology cannot be selected there.
     domainBars($('nq-root-technologies'), stats.technologies, stats.columns, colors,
       (name) => (name === 'Unknown' ? null : ['technology', name]));

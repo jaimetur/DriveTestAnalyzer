@@ -11,7 +11,7 @@ import re
 from io import BytesIO
 from typing import Any
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageColor, ImageDraw
 
 from src.utils.fonts import load_image_font
 
@@ -424,17 +424,142 @@ def table_panels(title: str, columns: list[str], rows: list[list[str]], rows_per
     return panels
 
 
-def table_group_panel(tables: list[tuple[str, list[str], list[list[str]]]]) -> BytesIO:
-    """Short tables on one slide, one below the other, whole: when they do not fit, their rows and text get smaller."""
-    gap, head, foot = 0.15, 0.5, 0.1
-    free = PANEL_HEIGHT - gap * (len(tables) - 1) - (head + foot) * len(tables)
-    row_height = min(0.3, free / sum(max(1, len(rows)) + 1 for _heading, _columns, rows in tables))
-    heights = [head + foot + row_height * (max(1, len(rows)) + 1) for _heading, _columns, rows in tables]
-    panel = Panel(height=min(PANEL_HEIGHT, sum(heights) + gap * (len(tables) - 1)))
-    top = 0.0
-    for (heading, columns, rows), height in zip(tables, heights):
-        _table_card(panel, top, height, heading, columns, rows, len(rows), row_height, head)
-        top += height + gap
+def _readable(color: str) -> str:
+    """Dark text on a light colour and white on a dark one, as in the bars of the page."""
+    red, green, blue = ImageColor.getrgb(color)[:3]
+    return DARK if (0.299 * red + 0.587 * green + 0.114 * blue) / 255 > 0.62 else 'white'
+
+
+def _stack_card(panel: Panel, left: float, top: float, width: float, height: float, title: str,
+                rows: list[dict[str, Any]], columns: list[str], colours: dict[str, str]) -> None:
+    """A bar per group split in the colours of its root domains, with their legend above and its total at the end.
+
+    Every group is drawn: when they are many, the bars get thinner.
+    """
+    panel.card(left, top, width, height)
+    pad = 0.18
+    panel.text(left + pad, top + 0.16, title, 12, bold=True, color=DARK, width=width - 2 * pad)
+    first = _domain_legend(panel, left + pad, top + 0.66, width - 2 * pad, columns, colours) + 0.22
+    if not rows:
+        panel.text(left + pad, first + 0.12, 'No data for this selection.', 9, color=MUTED, anchor='lm')
+        return
+    row = min(0.42, (top + height - 0.12 - first) / len(rows))
+    size = min(9, row * 72 * 0.55)
+    label_width = min(1.5, width * 0.24)
+    track_left = left + pad + label_width + 0.1
+    track_width = width - 2 * pad - label_width - 0.1 - 0.7
+    thickness = max(0.04, min(0.24, row * 0.6))
+    inner = min(7.5, thickness * 72 * 0.6)
+    for index, group in enumerate(rows):
+        y = first + row * (index + 0.5)
+        panel.text(left + pad, y, group['name'], size, bold=True, color=TEXT, width=label_width, anchor='lm')
+        bar = Image.new('RGB', (_px(track_width), max(1, _px(thickness))), TRACK)
+        draw = ImageDraw.Draw(bar)
+        total = max(1, int(group.get('total') or 0))
+        labels, x = [], 0.0
+        for column in columns:
+            count = int(group['counts'].get(column) or 0)
+            if not count:
+                continue
+            part = track_width * count / total
+            colour = colours.get(column, RASPBERRY)
+            draw.rectangle([_px(x), 0, _px(x + part), bar.height], fill=colour)
+            if x > 0:
+                draw.line([_px(x), 0, _px(x), bar.height], fill='white', width=2)
+            # As in the page, a part shows its calls when it is wide enough for them.
+            if inner >= 5 and panel.draw.textlength(_number(count), font=_font(inner, True)) / DPI + 0.1 <= part:
+                labels.append((_number(count), track_left + x + part / 2, _readable(colour)))
+            x += part
+        mask = Image.new('L', bar.size, 0)
+        ImageDraw.Draw(mask).rounded_rectangle([0, 0, bar.width - 1, bar.height - 1], radius=bar.height // 2, fill=255)
+        panel.image.paste(bar, (_px(track_left), _px(y - thickness / 2)), mask)
+        for value, centre, ink in labels:
+            panel.text(centre, y, value, inner, bold=True, color=ink, anchor='mm')
+        panel.text(left + width - pad, y, _number(group.get('total')), size, bold=True, color=DARK, anchor='rm')
+
+
+def _domain_legend(panel: Panel, left: float, top: float, width: float, columns: list[str], colours: dict[str, str]) -> float:
+    """The root domains in their colours, on as many lines as they need; the centre of the last line."""
+    x, y = left, top
+    for column in columns:
+        item_width = 0.2 + panel.draw.textlength(column, font=_font(8.5, True)) / DPI
+        if x > left and x + item_width > left + width:
+            x, y = left, y + 0.24
+        panel.draw.rounded_rectangle([_px(x), _px(y - 0.06), _px(x + 0.12), _px(y + 0.06)], radius=_px(0.03),
+                                     fill=colours.get(column, RASPBERRY))
+        panel.text(x + 0.17, y, column, 8.5, bold=True, color=MUTED, anchor='lm')
+        x += item_width + 0.22
+    return y
+
+
+def _value_donut(panel: Panel, cx: float, cy: float, size: float, items: list[tuple[int, str]], total: int) -> None:
+    """A donut with the total in its centre and, on each slice long enough for them, its calls."""
+    box = [_px(cx - size / 2), _px(cy - size / 2), _px(cx + size / 2), _px(cy + size / 2)]
+    band = size * 0.24
+    panel.draw.ellipse(box, outline=TRACK, width=_px(band))
+    radius = size / 2 - band / 2
+    points = min(9, band * 72 * 0.45)
+    start = -90.0
+    labels = []
+    for count, colour in items:
+        if not total or not count:
+            continue
+        sweep = count / total * 360
+        panel.draw.arc(box, start, start + sweep + 0.4, fill=colour, width=_px(band))
+        if start > -90:
+            angle = math.radians(start)
+            panel.draw.line([_px(cx + (radius - band / 2) * math.cos(angle)), _px(cy + (radius - band / 2) * math.sin(angle)),
+                             _px(cx + (radius + band / 2) * math.cos(angle)), _px(cy + (radius + band / 2) * math.sin(angle))],
+                            fill='white', width=3)
+        value = _number(count)
+        if radius * math.radians(sweep) >= panel.draw.textlength(value, font=_font(points, True)) / DPI + 0.08:
+            middle = math.radians(start + sweep / 2)
+            labels.append((value, cx + radius * math.cos(middle), cy + radius * math.sin(middle), _readable(colour)))
+        start += sweep
+    for value, x, y, ink in labels:
+        panel.text(x, y, value, points, bold=True, color=ink, anchor='mm')
+    panel.text(cx, cy, _number(total), min(15, size * 72 * 0.11), bold=True, color=DARK, anchor='mm')
+
+
+def domain_donuts_panel(stats: dict[str, Any]) -> BytesIO | None:
+    """The Root Domains by Call Type and NSA vs SA: a donut per group under the legend of the domains they share."""
+    colours = {item['value']: item.get('color') or RASPBERRY for item in stats.get('domains') or []}
+    columns = list(stats.get('columns') or [])
+    groups = [(heading, rows) for heading, rows in (('Root Domains by Call Type', stats.get('call_types') or []),
+                                                    ('NSA vs SA', stats.get('nr_modes') or [])) if rows]
+    if not groups:
+        return None
+    panel = Panel()
+    top = _domain_legend(panel, 0.1, 0.12, panel.width - 0.2, columns, colours) + 0.22
+    gap = 0.18
+    # The groups share the width by their number of donuts, so every donut gets the same room.
+    unit = (panel.width - gap * (len(groups) - 1)) / sum(len(rows) for _heading, rows in groups)
+    height = panel.height - top
+    left = 0.0
+    for heading, rows in groups:
+        width = unit * len(rows)
+        panel.card(left, top, width, height)
+        panel.text(left + 0.18, top + 0.16, heading, 12, bold=True, color=DARK, width=width - 0.36)
+        slot = (width - 0.2) / len(rows)
+        size = min(slot - 0.3, height - 1.0)
+        # Each donut right below its name, both in the middle of the card under its heading.
+        cy = top + 0.5 + (height - 0.5 - size - 0.4) / 2 + 0.4 + size / 2
+        for index, row in enumerate(rows):
+            cx = left + 0.1 + slot * (index + 0.5)
+            panel.text(cx, cy - size / 2 - 0.24, f"{row['name']} · {_number(row['total'])} calls", 10, bold=True, color=DARK,
+                       width=slot - 0.1, anchor='mm')
+            items = [(int(row['counts'].get(name) or 0), colours.get(name, RASPBERRY)) for name in columns]
+            _value_donut(panel, cx, cy, size, items, int(row.get('total') or 0))
+        left += width + gap
+    return panel.png()
+
+
+def technology_panel(stats: dict[str, Any]) -> BytesIO:
+    """The Technology: a bar per technology split by root domain, every one of them (thinner when they are many)."""
+    colours = {item['value']: item.get('color') or RASPBERRY for item in stats.get('domains') or []}
+    panel = Panel()
+    _stack_card(panel, 0, 0, panel.width, panel.height, 'Technology', stats.get('technologies') or [],
+                list(stats.get('columns') or []), colours)
     return panel.png()
 
 
@@ -448,7 +573,7 @@ def root_cause_title(stats: dict[str, Any]) -> str:
 
 
 def root_cause_panels(stats: dict[str, Any]) -> list[tuple[str, BytesIO]]:
-    """The Root Cause Analysis: the calls per domain, category and cause, and the root domains of each call type."""
+    """The Root Cause Analysis: the calls per domain, category and cause, and the root domains of each call type and NR mode."""
     summary = stats.get('summary') or {}
     total = int(summary.get('total') or 0)
     title = root_cause_title(stats)
@@ -482,16 +607,9 @@ def root_cause_panels(stats: dict[str, Any]) -> list[tuple[str, BytesIO]]:
               [(f"{item['domain']} · {item['cause']}", int(item['count']), item.get('color') or RASPBERRY)
                for item in stats.get('causes') or []])
     panels = [(title, first.png())]
-    colours = {item['value']: item.get('color') or RASPBERRY for item in stats.get('domains') or []}
-    types = stats.get('call_types') or []
-    if types:
-        panel = Panel()
-        width = (panel.width - gap * (len(types) - 1)) / len(types)
-        for index, row in enumerate(types):
-            items = [(name, int(row['counts'].get(name, 0)), colours.get(name, RASPBERRY))
-                     for name in stats.get('columns') or [] if row['counts'].get(name)]
-            _donut_card(panel, index * (width + gap), 0, width, panel.height, f"{row['name']} · {_number(row['total'])} calls", items)
-        panels.append((f'{title} · Root Domains by Call Type', panel.png()))
+    donuts = domain_donuts_panel(stats)
+    if donuts is not None:
+        panels.append((f'{title} · Root Domains by Call Type and NSA vs SA', donuts))
     return panels
 
 

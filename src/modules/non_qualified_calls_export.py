@@ -265,15 +265,6 @@ def report_panels(summary: dict[str, Any], breakdowns: list[dict[str, Any]], pro
             *progress_view_panels(progress, options, label), *tables]
 
 
-def matrix_table(stats: dict[str, Any], key: str, title: str) -> tuple[list[str], list[list[str]]]:
-    """Calls of each group (call type, NR mode or technology) per root domain."""
-    columns = stats['columns']
-    return [title, *columns, 'Total'], [
-        [row['name'], *[f"{row['counts'].get(column, 0):,}" for column in columns], f"{row['total']:,}"]
-        for row in stats[key]
-    ]
-
-
 def node_table(stats: dict[str, Any]) -> tuple[list[str], list[list[str]]]:
     return ['eNB / gNB', 'Operator', 'Site', 'Host', 'Vendor', 'Calls', 'Main Domain'], [
         [row['node'], row['operator'], row['site'] or '—', row['host'] or '—', row['vendor'] or '—',
@@ -281,25 +272,12 @@ def node_table(stats: dict[str, Any]) -> tuple[list[str], list[list[str]]]:
     ]
 
 
-def root_cause_tables(stats: dict[str, Any]) -> list[tuple[str, list[str], list[list[str]]]]:
-    """The Root Cause Analysis tables of one source: NR mode and technology per domain, and the eNB/gNB with most calls."""
-    from src.modules.non_qualified_calls_visuals import root_cause_title
+def root_cause_table_panels(stats: dict[str, Any]) -> list[tuple[str, Any]]:
+    """The Technology bars on one slide, and the eNB / gNB with most calls on another (the first ones that fit)."""
+    from src.modules.non_qualified_calls_visuals import root_cause_title, table_panels, technology_panel
 
     title = root_cause_title(stats)
-    return [(f'{title} · NSA vs SA', *matrix_table(stats, 'nr_modes', 'NR Mode')),
-            (f'{title} · Technology', *matrix_table(stats, 'technologies', 'Technology')),
-            (f'{title} · eNB / gNB', *node_table(stats))]
-
-
-def root_cause_table_panels(stats: dict[str, Any]) -> list[tuple[str, Any]]:
-    """The tables of the Root Cause Analysis of one source: NSA vs SA with Technology on one slide, and the eNB / gNB
-    with most calls on another (the first ones that fit)."""
-    from src.modules.non_qualified_calls_visuals import root_cause_title, table_group_panel, table_panels
-
-    modes, technology, nodes = root_cause_tables(stats)
-    return [(f'{root_cause_title(stats)} · NSA vs SA and Technology',
-             table_group_panel([(title.rsplit(' · ', 1)[-1], columns, rows) for title, columns, rows in (modes, technology)])),
-            *table_panels(*nodes, single=True)]
+    return [(f'{title} · Technology', technology_panel(stats)), *table_panels(f'{title} · eNB / gNB', *node_table(stats), single=True)]
 
 
 def detail_tables(progress: dict[str, Any]) -> list[tuple[str, list[str], list[list[str]]]]:

@@ -390,14 +390,23 @@ span.nq-root-suggestion { cursor: default; }
 .nq-stack-name.is-drill:hover, .nq-stack-name.is-active { color: var(--nq-color); text-decoration: underline; }
 .nq-stack-part.is-drill:hover { filter: brightness(1.08); }
 .nq-stack-part.is-active { outline: 2px solid var(--nq-dark); outline-offset: -2px; }
-.nq-stack-counts { display: flex; flex-wrap: wrap; grid-column: 2 / -1; gap: .15rem .7rem; margin-top: -.3rem; color: var(--nq-muted); font-size: .72rem; font-weight: 750; font-variant-numeric: tabular-nums; }
-.nq-stack-count { display: inline-flex; align-items: center; gap: .25rem; border-radius: 4px; }
-.nq-stack-count.is-drill:hover, .nq-stack-count.is-active { color: var(--nq-dark); text-decoration: underline; }
+/* Root Domains by Call Type and NSA vs SA: each in its own card under the legend they share, sharing the row by their number
+   of donuts; the donuts of a card stay on one row, smaller on a narrow screen. */
+.nq-root-donut-groups { display: flex; flex-wrap: wrap; gap: 12px; margin-top: .5rem; }
+.nq-root-donut-group { flex: var(--nq-donuts, 1) 1 0; min-width: min(100%, 300px); padding: 10px 12px 12px; border: 1px solid var(--nq-border); border-radius: 12px; background: #fff; }
+.nq-root-pies { display: grid; grid-template-columns: repeat(var(--nq-donuts, 1), minmax(0, 1fr)); gap: 10px; }
+.nq-domain-donut { display: grid; justify-items: center; align-content: start; gap: .3rem; min-width: 0; container-type: inline-size; }
+.nq-domain-donut h4 { margin: 0; color: var(--nq-dark); font-size: .85rem; text-align: center; }
+.nq-domain-donut h4.is-drill { cursor: pointer; }
+.nq-domain-donut h4.is-drill:hover, .nq-domain-donut h4.is-active { color: var(--nq-color); text-decoration: underline; }
+.nq-domain-donut-chart { width: 100%; max-width: 210px; height: auto; aspect-ratio: 1; }
+.nq-domain-donut .nq-pie-slice:hover, .nq-domain-donut .nq-pie-slice.is-active { stroke-width: 30; }
+.nq-domain-donut-value { font: 800 8px "Space Grotesk", "Segoe UI", sans-serif; font-variant-numeric: tabular-nums; pointer-events: none; }
+/* Too small a donut for readable values: they show on hover only. */
+@container (max-width: 125px) { .nq-domain-donut-value { display: none; } }
 @media (max-width: 640px) {
   .nq-stack-row { grid-template-columns: minmax(0, 1fr) auto; gap: .25rem .5rem; }
-  .nq-stack-track, .nq-stack-counts { grid-column: 1 / -1; }
-  .nq-stack-track { grid-row: 2; }
-  .nq-stack-counts { margin-top: 0; }
+  .nq-stack-track { grid-column: 1 / -1; grid-row: 2; }
 }
 .nq-stats-table .nq-root-domain-head { white-space: nowrap; text-align: right; }
 .nq-stats-table .nq-root-domain-head .nq-swatch { margin-right: .3rem; vertical-align: middle; }

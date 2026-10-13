@@ -141,10 +141,13 @@
       </div>
       <div class="nq-kpis" id="nq-root-kpis"></div>
       <div class="nq-breakdowns nq-root-breakdowns" id="nq-root-breakdowns"></div>
-      <div class="nq-progress-grid">
-        <section class="nq-progress-section"><h3>Root Domains by Call Type</h3><div class="nq-stack-chart" id="nq-root-call-types"></div></section>
-        <section class="nq-progress-section"><h3>NSA vs SA</h3><div class="nq-stack-chart" id="nq-root-nr-modes"></div></section>
-      </div>
+      <section class="nq-progress-section nq-root-donuts">
+        <div class="nq-stack-legend" id="nq-root-donut-legend"></div>
+        <div class="nq-root-donut-groups">
+          <div class="nq-root-donut-group"><h3>Root Domains by Call Type</h3><div class="nq-root-pies" id="nq-root-call-types"></div></div>
+          <div class="nq-root-donut-group"><h3>NSA vs SA</h3><div class="nq-root-pies" id="nq-root-nr-modes"></div></div>
+        </div>
+      </section>
       <section class="nq-progress-section"><h3>Technology</h3><div class="nq-stack-chart" id="nq-root-technologies"></div></section>
       <section class="nq-progress-section"><h3>eNB / gNB with most calls</h3><div class="nq-table-wrap"><table class="nq-table nq-stats-table" id="nq-root-nodes"></table></div></section>
     </div>
