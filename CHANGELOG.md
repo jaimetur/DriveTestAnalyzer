@@ -92,6 +92,7 @@
 - **Clear history of a call:** the Clear history button of the call panel is shown only for calls with a history (formerly it was shown for every call to admins and super-admins).
 - **Zoom buttons on touch screens:** a tap on a Scoring chart or map shows its floating zoom buttons, which stay a few seconds or until a tap elsewhere; formerly they only showed while the finger touched it.
 - **Panels chosen in a module menu:** a panel chosen in the sections menu of a module stays at the top of the page while the page loads its data, also when that takes longer than 15 seconds or the panels above it change size (until you scroll, for up to a minute), and Non-Qualified Calls always opens it in its view instead of returning to where the page was read last.
+- **Thousands separators in Non-Qualified Calls:** every number of the page shows its thousands separator, also the four-digit ones that browsers in some languages (Spanish, for one) wrote without it.
 
 #### 📚 Documentation:
 - The **Vendor mapping rule** card of Workspace describes the current rule: every Vodafone and Three Operator is mapped (other spellings, such as Vodafone SA or VF_SA, keep their own name as prefix), Operators without a Vendor get `<Operator> - All`, and the result fills `Operator_Vendor`, `Vendor` and `Vendor_Operator`.

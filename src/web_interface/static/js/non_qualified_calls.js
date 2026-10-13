@@ -117,7 +117,14 @@
   };
   const cdrTime = (value) => (value ? String(value).replace('T', ' ').replace(/\.\d+$/, '') : '—');
   const percent = (part, total) => (total ? `${Math.round((part / total) * 100)}%` : '0%');
-  const number = (value) => Number(value || 0).toLocaleString();
+  // Every number with its thousands separator: some locales (Spanish, for one) leave it out of four-digit numbers.
+  const numberFormat = new Intl.NumberFormat(undefined, {useGrouping: 'always'});
+  const groupSeparator = new Intl.NumberFormat().formatToParts(10000).find((part) => part.type === 'group')?.value ?? ',';
+  const number = (value) => {
+    const text = numberFormat.format(Number(value || 0));
+    // Browsers without the 'always' grouping still leave it out.
+    return /^-?\d{4}(?!\d)/.test(text) ? text.replace(/^(-?\d)(\d{3})/, `$1${groupSeparator}$2`) : text;
+  };
   // Readable text on any option colour.
   const contrastText = (hex) => {
     const match = /^#?([0-9a-f]{6})$/i.exec(hex || '');
@@ -2031,6 +2038,15 @@
     const radius = 44;
     const band = 26;
     const circumference = 2 * Math.PI * radius;
+    const point = (distance, angle) => `${60 + distance * Math.cos(angle)} ${60 + distance * Math.sin(angle)}`;
+    // Each slice is a filled ring sector: a dashed stroke leaves a spike where the circle closes on some browsers.
+    const sector = (start, end) => {
+      const outer = radius + band / 2;
+      const inner = radius - band / 2;
+      const large = end - start > Math.PI ? 1 : 0;
+      return `M ${point(outer, start)} A ${outer} ${outer} 0 ${large} 1 ${point(outer, end)} L ${point(inner, end)} `
+        + `A ${inner} ${inner} 0 ${large} 0 ${point(inner, start)} Z`;
+    };
     const cards = rows.map((row) => {
       const group = groupPair(row.name);
       const label = `${row.name} · ${number(row.total)} calls`;
@@ -2043,11 +2059,10 @@
         const length = (count / Math.max(1, row.total)) * circumference;
         const color = colors[column] || '#b8c0c6';
         const pairs = [group, domainPair(column)];
-        const slice = svgNode('circle', {
-          cx: 60, cy: 60, r: radius, fill: 'none', stroke: color, 'stroke-width': band,
-          'stroke-dasharray': `${length} ${circumference - length}`, 'stroke-dashoffset': -offset, transform: 'rotate(-90 60 60)',
-        });
-        slice.classList.add('nq-pie-slice');
+        const start = (offset / circumference) * 2 * Math.PI - Math.PI / 2;
+        // A whole ring stops a hair short of its start, as an arc cannot end where it begins.
+        const slice = svgNode('path', {d: sector(start, start + Math.min(length / radius, 2 * Math.PI - 0.0005)), fill: color});
+        slice.classList.add('nq-domain-donut-slice');
         slice.classList.toggle('is-active', isDrilled(pairs));
         slice.addEventListener('pointermove', (event) => chartTooltip.show(event, label,
           [[column, `${number(count)} · ${percent(count, row.total)}`, color]]));

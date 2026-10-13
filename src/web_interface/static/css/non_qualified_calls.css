@@ -400,7 +400,9 @@ span.nq-root-suggestion { cursor: default; }
 .nq-domain-donut h4.is-drill { cursor: pointer; }
 .nq-domain-donut h4.is-drill:hover, .nq-domain-donut h4.is-active { color: var(--nq-color); text-decoration: underline; }
 .nq-domain-donut-chart { width: 100%; max-width: 210px; height: auto; aspect-ratio: 1; }
-.nq-domain-donut .nq-pie-slice:hover, .nq-domain-donut .nq-pie-slice.is-active { stroke-width: 30; }
+.nq-domain-donut-slice { cursor: pointer; stroke: #fff; stroke-width: .6; transition: filter .12s ease; }
+.nq-domain-donut-slice:hover { filter: brightness(1.1); }
+.nq-domain-donut-slice.is-active { stroke: var(--nq-dark); stroke-width: 1.6; }
 .nq-domain-donut-value { font: 800 8px "Space Grotesk", "Segoe UI", sans-serif; font-variant-numeric: tabular-nums; pointer-events: none; }
 /* A small donut writes its values larger, on the slices long enough for them. */
 @container (max-width: 110px) {
