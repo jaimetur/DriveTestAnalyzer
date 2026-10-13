@@ -256,9 +256,8 @@ def report_panels(summary: dict[str, Any], breakdowns: list[dict[str, Any]], pro
     label = GRANULARITY_LABELS.get(progress['granularity'], 'Month')
     tables = [panel for title, columns, rows in detail_tables(progress) for panel in table_panels(title, columns, rows)]
     # The Root Cause Sources that compare the sources, then the Root Cause Analysis of each one with its tables.
-    analysis = [panel for stats in options.get('root_causes') or [] for panel in (
-        *root_cause_panels(stats),
-        *(table for title, columns, rows in root_cause_tables(stats) for table in table_panels(title, columns, rows)))]
+    analysis = [panel for stats in options.get('root_causes') or []
+                for panel in (*root_cause_panels(stats), *root_cause_table_panels(stats))]
     sources = rca_insight_panels(options['rca_insights']) if options.get('rca_insights') else []
     rates = rate_panels(options['rates']) if options.get('rates') else []
     lifecycle = lifecycle_panels(options['lifecycle']) if options.get('lifecycle') else []
@@ -290,6 +289,17 @@ def root_cause_tables(stats: dict[str, Any]) -> list[tuple[str, list[str], list[
     return [(f'{title} · NSA vs SA', *matrix_table(stats, 'nr_modes', 'NR Mode')),
             (f'{title} · Technology', *matrix_table(stats, 'technologies', 'Technology')),
             (f'{title} · eNB / gNB', *node_table(stats))]
+
+
+def root_cause_table_panels(stats: dict[str, Any]) -> list[tuple[str, Any]]:
+    """The tables of the Root Cause Analysis of one source: NSA vs SA with Technology on one slide, and the eNB / gNB
+    with most calls on another (the first ones that fit)."""
+    from src.modules.non_qualified_calls_visuals import root_cause_title, table_group_panel, table_panels
+
+    modes, technology, nodes = root_cause_tables(stats)
+    return [(f'{root_cause_title(stats)} · NSA vs SA and Technology',
+             table_group_panel([(title.rsplit(' · ', 1)[-1], columns, rows) for title, columns, rows in (modes, technology)])),
+            *table_panels(*nodes, single=True)]
 
 
 def detail_tables(progress: dict[str, Any]) -> list[tuple[str, list[str], list[list[str]]]]:

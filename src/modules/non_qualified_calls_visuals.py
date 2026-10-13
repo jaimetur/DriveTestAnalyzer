@@ -354,51 +354,88 @@ def _timeline_panel(periods: list[dict[str, Any]], granularity_label: str) -> By
     return panel.png()
 
 
-def table_panels(title: str, columns: list[str], rows: list[list[str]], rows_per_panel: int = 13) -> list[tuple[str, BytesIO]]:
-    """A detail table drawn like the page's tables: raspberry header, alternate rows and muted zeros."""
-    pages = [rows[index:index + rows_per_panel] for index in range(0, len(rows), rows_per_panel)] or [[]]
+TABLE_MIN_ROW = 0.22
+# The heading above a table and the space below its last row, in its card.
+TABLE_HEAD = 0.6
+TABLE_FOOT = 0.15
+
+
+def _table_card(panel: Panel, top: float, height: float, heading: str, columns: list[str], rows: list[list[str]],
+                total: int, row_height: float, head: float = TABLE_HEAD) -> None:
+    """One detail table in its card: raspberry header, alternate rows and muted zeros."""
+    panel.card(0, top, panel.width, height)
+    panel.text(0.2, top + 0.14, heading, 12, bold=True, color=DARK)
+    if len(rows) < total:
+        panel.text(panel.width - 0.2, top + 0.16, f'First {len(rows)} of {total}', 9.5, bold=True, color=MUTED, anchor='ra')
+    left, right, top = 0.2, panel.width - 0.2, top + head
+    size = min(8.5, row_height * 72 * 0.5)
+    header_font, body_font = _font(size, True), _font(size)
+    widths = []
+    for index, column in enumerate(columns):
+        longest = max([panel.draw.textlength(column, font=header_font),
+                       *(panel.draw.textlength(str(row[index]), font=body_font) for row in rows)]) / DPI
+        widths.append(longest + 0.24)
+    scale = (right - left) / max(sum(widths), 0.1)
+    widths = [width * scale for width in widths]
+    panel.draw.rounded_rectangle([_px(left), _px(top), _px(right), _px(top + row_height)], radius=_px(0.06), fill='#fcedf2')
+    x = left
+    for index, column in enumerate(columns):
+        numeric = index > 0
+        anchor = 'rm' if numeric else 'lm'
+        panel.text(x + widths[index] - 0.12 if numeric else x + 0.12, top + row_height / 2, column, size,
+                   bold=True, color=DARK, width=widths[index] - 0.18, anchor=anchor)
+        x += widths[index]
+    if not rows:
+        panel.text(left + 0.12, top + row_height * 1.6, 'No data for this selection.', 9, color=MUTED, anchor='lm')
+    for row_index, row in enumerate(rows):
+        y = top + row_height * (row_index + 1)
+        if row_index % 2:
+            panel.draw.rectangle([_px(left), _px(y), _px(right), _px(y + row_height)], fill='#fff7fa')
+        panel.draw.line([_px(left), _px(y + row_height), _px(right), _px(y + row_height)], fill='#f6e3ea', width=2)
+        x = left
+        for index, value in enumerate(row):
+            text = str(value)
+            muted = text in {'0', '—', ''}
+            numeric = index > 0
+            panel.text(x + widths[index] - 0.12 if numeric else x + 0.12, y + row_height / 2, text, size,
+                       bold=not numeric, color=MUTED if muted else TEXT, width=widths[index] - 0.18,
+                       anchor='rm' if numeric else 'lm')
+            x += widths[index]
+
+
+def table_panels(title: str, columns: list[str], rows: list[list[str]], rows_per_panel: int = 13,
+                 single: bool = False) -> list[tuple[str, BytesIO]]:
+    """A detail table drawn like the page's tables: raspberry header, alternate rows and muted zeros.
+
+    A long table takes several slides; with ``single`` it keeps to one: its rows get closer, and the
+    last ones are left out when they still do not fit.
+    """
+    total = len(rows)
+    if single:
+        rows = rows[:max(1, int((PANEL_HEIGHT - TABLE_HEAD - TABLE_FOOT) / TABLE_MIN_ROW) - 1)]
+    pages = ([rows] if single else [rows[index:index + rows_per_panel] for index in range(0, len(rows), rows_per_panel)]) or [[]]
     panels = []
     for number, page in enumerate(pages, start=1):
         # The card is as tall as its rows, so a short table does not leave an empty slide-sized card.
-        panel = Panel(height=min(PANEL_HEIGHT, 0.6 + 0.3 * (max(1, len(page)) + 1) + 0.2))
-        panel.card(0, 0, panel.width, panel.height)
-        panel.text(0.2, 0.16, title.split(' · ', 1)[-1], 12, bold=True, color=DARK)
-        left, right, top = 0.2, panel.width - 0.2, 0.6
-        header_font, body_font = _font(8.5, True), _font(8.5)
-        widths = []
-        for index, column in enumerate(columns):
-            longest = max([panel.draw.textlength(column, font=header_font),
-                           *(panel.draw.textlength(str(row[index]), font=body_font) for row in page)]) / DPI
-            widths.append(longest + 0.24)
-        scale = (right - left) / max(sum(widths), 0.1)
-        widths = [width * scale for width in widths]
-        row_height = min(0.3, (panel.height - top - 0.15) / (len(page) + 1))
-        panel.draw.rounded_rectangle([_px(left), _px(top), _px(right), _px(top + row_height)], radius=_px(0.06), fill='#fcedf2')
-        x = left
-        for index, column in enumerate(columns):
-            numeric = index > 0
-            anchor = 'rm' if numeric else 'lm'
-            panel.text(x + widths[index] - 0.12 if numeric else x + 0.12, top + row_height / 2, column, 8.5,
-                       bold=True, color=DARK, width=widths[index] - 0.18, anchor=anchor)
-            x += widths[index]
-        if not page:
-            panel.text(left + 0.12, top + row_height * 1.6, 'No data for this selection.', 9, color=MUTED, anchor='lm')
-        for row_index, row in enumerate(page):
-            y = top + row_height * (row_index + 1)
-            if row_index % 2:
-                panel.draw.rectangle([_px(left), _px(y), _px(right), _px(y + row_height)], fill='#fff7fa')
-            panel.draw.line([_px(left), _px(y + row_height), _px(right), _px(y + row_height)], fill='#f6e3ea', width=2)
-            x = left
-            for index, value in enumerate(row):
-                text = str(value)
-                muted = text in {'0', '—', ''}
-                numeric = index > 0
-                panel.text(x + widths[index] - 0.12 if numeric else x + 0.12, y + row_height / 2, text, 8.5,
-                           bold=not numeric, color=MUTED if muted else TEXT, width=widths[index] - 0.18,
-                           anchor='rm' if numeric else 'lm')
-                x += widths[index]
+        panel = Panel(height=min(PANEL_HEIGHT, TABLE_HEAD + 0.3 * (max(1, len(page)) + 1) + 0.2))
+        row_height = min(0.3, (panel.height - TABLE_HEAD - TABLE_FOOT) / (len(page) + 1))
+        _table_card(panel, 0, panel.height, title.split(' · ', 1)[-1], columns, page, total if single else len(page), row_height)
         panels.append((title + (f' · {number}/{len(pages)}' if len(pages) > 1 else ''), panel.png()))
     return panels
+
+
+def table_group_panel(tables: list[tuple[str, list[str], list[list[str]]]]) -> BytesIO:
+    """Short tables on one slide, one below the other, whole: when they do not fit, their rows and text get smaller."""
+    gap, head, foot = 0.15, 0.5, 0.1
+    free = PANEL_HEIGHT - gap * (len(tables) - 1) - (head + foot) * len(tables)
+    row_height = min(0.3, free / sum(max(1, len(rows)) + 1 for _heading, _columns, rows in tables))
+    heights = [head + foot + row_height * (max(1, len(rows)) + 1) for _heading, _columns, rows in tables]
+    panel = Panel(height=min(PANEL_HEIGHT, sum(heights) + gap * (len(tables) - 1)))
+    top = 0.0
+    for (heading, columns, rows), height in zip(tables, heights):
+        _table_card(panel, top, height, heading, columns, rows, len(rows), row_height, head)
+        top += height + gap
+    return panel.png()
 
 
 # The source of the root causes counted, named in the titles unless it is the decision of the analysts.
@@ -411,7 +448,7 @@ def root_cause_title(stats: dict[str, Any]) -> str:
 
 
 def root_cause_panels(stats: dict[str, Any]) -> list[tuple[str, BytesIO]]:
-    """The Root Cause Analysis: the calls per domain, category and cause, and Classic vs WhatsApp per domain."""
+    """The Root Cause Analysis: the calls per domain, category and cause, and the root domains of each call type."""
     summary = stats.get('summary') or {}
     total = int(summary.get('total') or 0)
     title = root_cause_title(stats)
@@ -454,7 +491,7 @@ def root_cause_panels(stats: dict[str, Any]) -> list[tuple[str, BytesIO]]:
             items = [(name, int(row['counts'].get(name, 0)), colours.get(name, RASPBERRY))
                      for name in stats.get('columns') or [] if row['counts'].get(name)]
             _donut_card(panel, index * (width + gap), 0, width, panel.height, f"{row['name']} · {_number(row['total'])} calls", items)
-        panels.append((f'{title} · Classic vs WhatsApp', panel.png()))
+        panels.append((f'{title} · Root Domains by Call Type', panel.png()))
     return panels
 
 

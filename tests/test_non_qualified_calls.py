@@ -580,6 +580,8 @@ def test_root_cause_taxonomy_imports_with_the_tracking_and_shows_in_exports(clie
     assert [title for title in titles if title.startswith('Root Cause Analysis') and title.count('·') == 1] == [
         'Root Cause Analysis · NetCheck RCA', 'Root Cause Analysis · Ericsson RCA', 'Root Cause Analysis · Analysts']
     assert 'Root Cause Analysis · Ericsson RCA · eNB / gNB' in titles and 'Root Cause Analysis · Analysts · eNB / gNB' in titles
+    assert 'Root Cause Analysis · NetCheck RCA · NSA vs SA and Technology' in titles
+    assert not any(title.endswith(('· NSA vs SA', '· Technology')) for title in titles)
     assert [title for title in titles if title.startswith('NQ Rate')] == ['NQ Rate by Campaign and Operator']
 
     def first(prefix):
@@ -968,6 +970,24 @@ def test_nq_rates_take_one_slide_or_two_when_the_operators_or_campaigns_are_many
     assert titles(rate_panels(rates([f'Operator {index}' for index in range(8)], [f'Q{index}' for index in range(9)]))) == pages
     assert titles(rate_panels(rates(['EE', 'VF'], [f'Campaign {index}' for index in range(30)]))) == pages
     assert titles(rate_panels(rates([f'Operator {index}' for index in range(20)], [f'Q{index}' for index in range(40)]))) == pages
+
+
+def test_root_cause_tables_keep_to_one_slide_with_the_first_rows_that_fit():
+    from PIL import Image
+
+    from src.modules.non_qualified_calls_visuals import DPI, PANEL_HEIGHT, table_group_panel, table_panels
+
+    rows = [[f'gNB {index}', 'VF', '—', '—', 'Ericsson', '3', 'RF'] for index in range(25)]
+    columns = ['eNB / gNB', 'Operator', 'Site', 'Host', 'Vendor', 'Calls', 'Main Domain']
+    assert [title for title, _image in table_panels('Root Cause Analysis · eNB / gNB', columns, rows)] == [
+        'Root Cause Analysis · eNB / gNB · 1/2', 'Root Cause Analysis · eNB / gNB · 2/2']
+    assert [title for title, _image in table_panels('Root Cause Analysis · eNB / gNB', columns, rows, single=True)] == [
+        'Root Cause Analysis · eNB / gNB']
+    # NSA vs SA and Technology share one slide whole, however many technologies there are: their rows get smaller.
+    domains = ['NR Mode', 'RF', 'IMS/E2E', 'Total']
+    group = table_group_panel([('NSA vs SA', domains, [['NSA', '1', '2', '3'], ['SA', '1', '2', '3']]),
+                               ('Technology', ['Technology', *domains[1:]], [[f'Tech {index}', '1', '2', '3'] for index in range(40)])])
+    assert Image.open(group).height <= round(PANEL_HEIGHT * DPI)
 
 
 def test_analysis_fields_are_configured_filled_filtered_required_and_exported(client, tmp_path):
