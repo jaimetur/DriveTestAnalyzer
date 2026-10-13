@@ -70,10 +70,10 @@ TRACKING_REFS = {
 }
 # Values of the imported Ericsson RCA results; any other column of the file is kept as well.
 RCA_REFS = {
-    'auto_rca_category_a': 'Auto_RCA_Category_A', 'auto_rca_subcategory_a': 'Auto_RCA_Subcategory_A',
-    'auto_rca_category_b': 'Auto_RCA_Category_B', 'auto_rca_subcategory_b': 'Auto_RCA_Subcategory_B',
-    'rca_initial_category': 'RCA Category', 'rca_initial_cause': 'RCA Subcategory',
-    'rca_category': 'RCA Suggested Category', 'rca_cause': 'RCA Suggested Cause', 'rca_evidence': 'RCA Evidence',
+    'auto_rca_category_a': 'Ericsson RCA Category A', 'auto_rca_subcategory_a': 'Ericsson RCA Subcategory A',
+    'auto_rca_category_b': 'Ericsson RCA Category B', 'auto_rca_subcategory_b': 'Ericsson RCA Subcategory B',
+    'rca_initial_category': 'Ericsson RCA Initial Category', 'rca_initial_cause': 'Ericsson RCA Initial Subcategory',
+    'rca_category': 'Ericsson RCA Suggested Category', 'rca_cause': 'Ericsson RCA Suggested Cause', 'rca_evidence': 'Ericsson RCA Evidence',
 }
 MAX_FIELDS = 120
 MAX_FIELD_TEXT = 2000
@@ -116,35 +116,35 @@ DEFAULT_TEAMS = (
     ('PCI Planning Team', '#e08a1e'),
 )
 # The 37 fields of the meeting workbook and those its analyses add (the initial root category and cause, the priority,
-# analyst and reviewer, a description, the implementation stream and the planned fiscal year), in its order (the order
+# analyst and reviewer, a description, the implementation team and the planned fiscal year), in its order (the order
 # of the table and of the Excel export) but with the NetCheck RCA before the Ericsson RCA, with the initial category and
 # subcategory of the script before its suggestion and its evidence after it, the Last Cell ID and Failure Comment of
 # the CDR in Failure Details and the Analysis fields in the order of the call panel: the long texts (Description,
-# Proposed Measure, Findings) last.
+# Findings, Proposed Measure) last.
 DEFAULT_FIELDS = (
-    _field('netcheck_failure_classification', 'Netcheck Failure Classification', 'rca', 'text', 'cdr', 'failure_classification',
+    _field('netcheck_failure_classification', 'NetCheck RCA Failure Classification', 'rca', 'text', 'cdr', 'failure_classification',
            description='Failure classification of the NetCheck RCA (CDR Failure_Classification).'),
-    _field('netcheck_suggested_category', 'Netcheck Suggested Category', 'rca', 'text', 'cdr', 'failure_category',
+    _field('netcheck_suggested_category', 'NetCheck RCA Suggested Category', 'rca', 'text', 'cdr', 'failure_category',
            description='Category suggested by the NetCheck RCA (CDR Failure_Category).'),
-    _field('netcheck_suggested_cause', 'Netcheck Suggested Cause', 'rca', 'text', 'cdr', 'failure_subcategory', in_table=True,
+    _field('netcheck_suggested_cause', 'NetCheck RCA Suggested Cause', 'rca', 'text', 'cdr', 'failure_subcategory',
            description='Cause suggested by the NetCheck RCA (CDR Failure_Subcategory).'),
-    _field('auto_rca_category_a', 'Auto_RCA_Category_A', 'rca', 'text', 'rca', 'auto_rca_category_a',
+    _field('auto_rca_category_a', 'Ericsson RCA Category A', 'rca', 'text', 'rca', 'auto_rca_category_a',
            description='Root cause category of the A side found by the Ericsson RCA (imported by JOIN_ID).'),
-    _field('auto_rca_subcategory_a', 'Auto_RCA_Subcategory_A', 'rca', 'text', 'rca', 'auto_rca_subcategory_a',
+    _field('auto_rca_subcategory_a', 'Ericsson RCA Subcategory A', 'rca', 'text', 'rca', 'auto_rca_subcategory_a',
            description='Root cause subcategory of the A side found by the Ericsson RCA.'),
-    _field('auto_rca_category_b', 'Auto_RCA_Category_B', 'rca', 'text', 'rca', 'auto_rca_category_b',
+    _field('auto_rca_category_b', 'Ericsson RCA Category B', 'rca', 'text', 'rca', 'auto_rca_category_b',
            description='Root cause category of the B side found by the Ericsson RCA.'),
-    _field('auto_rca_subcategory_b', 'Auto_RCA_Subcategory_B', 'rca', 'text', 'rca', 'auto_rca_subcategory_b',
+    _field('auto_rca_subcategory_b', 'Ericsson RCA Subcategory B', 'rca', 'text', 'rca', 'auto_rca_subcategory_b',
            description='Root cause subcategory of the B side found by the Ericsson RCA.'),
-    _field('rca_initial_category', 'RCA Category', 'rca', 'text', 'rca', 'rca_initial_category',
+    _field('rca_initial_category', 'Ericsson RCA Initial Category', 'rca', 'text', 'rca', 'rca_initial_category',
            description='First category of the Ericsson RCA, before its final checks (RCA_Category of its Auto RCA output).'),
-    _field('rca_initial_subcategory', 'RCA Subcategory', 'rca', 'text', 'rca', 'rca_initial_cause',
+    _field('rca_initial_subcategory', 'Ericsson RCA Initial Subcategory', 'rca', 'text', 'rca', 'rca_initial_cause',
            description='First subcategory of the Ericsson RCA, before its final checks (RCA_Subcategory of its Auto RCA output).'),
-    _field('rca_suggested_category', 'RCA Suggested Category', 'rca', 'text', 'rca', 'rca_category',
+    _field('rca_suggested_category', 'Ericsson RCA Suggested Category', 'rca', 'text', 'rca', 'rca_category',
            description='Root category suggested by the Ericsson RCA (Final_RCA_Category of its Auto RCA output).'),
-    _field('rca_suggested_cause', 'RCA Suggested Cause', 'rca', 'text', 'rca', 'rca_cause', in_table=True,
+    _field('rca_suggested_cause', 'Ericsson RCA Suggested Cause', 'rca', 'text', 'rca', 'rca_cause',
            description='Root cause suggested by the Ericsson RCA (Final_RCA_Subcategory of its Auto RCA output).'),
-    _field('rca_evidence', 'RCA Evidence', 'rca', 'long_text', 'rca', 'rca_evidence',
+    _field('rca_evidence', 'Ericsson RCA Evidence', 'rca', 'long_text', 'rca', 'rca_evidence',
            description='Why the Ericsson RCA chose its category: the measurements and the condition that matched.'),
     _field('initial_root_category', 'Initial Root Category', 'rca', 'text',
            description='The first root category the analysts gave the call, before the selected one.'),
@@ -206,14 +206,14 @@ DEFAULT_FIELDS = (
     _field('solution_location', 'Solution Location', 'analysis', 'text'),
     _field('polygon_area', 'Polygon Area', 'analysis', 'text', description='The area (polygon) of an analysis of several data tests.'),
     _field('description', 'Description', 'analysis', 'long_text', description='How the failure happened, as the analysts describe it.'),
-    _field('proposed_measure', 'Proposed Measure', 'analysis', 'long_text'),
     _field('findings', 'Findings', 'analysis', 'long_text'),
+    _field('proposed_measure', 'Proposed Measure', 'analysis', 'long_text'),
     _field('implementation_status', 'Implementation Status', 'implementation', 'list', options=(
-        _option('Not yet evaluated', _GREY), _option('Under evaluation', _AMBER), _option('Evaluated', _BLUE),
-        _option('Implemented', _GREEN)), in_summary=True),
-    _field('implementation_stream', 'Implementation Stream', 'implementation', 'list',
+        _option('Not yet evaluated', _RED), _option('Under evaluation', _AMBER), _option('Evaluated', _BLUE),
+        _option('Implemented', _GREEN), _option('Not Applicable', _SLATE)), in_table=True, in_summary=True),
+    _field('implementation_team', 'Implementation Team', 'implementation', 'list',
            options=tuple(_option(name, color) for name, color in DEFAULT_TEAMS),
-           description='The stream responsible for the implementation (it can differ from the team that analysed the call).'),
+           description='The team responsible for the implementation (it can differ from the team that analysed the call).'),
     _field('implementation_proposal', 'Implementation Proposal', 'implementation', 'list', options=tuple(_option(name) for name in (
         'New Site', 'NNS', 'Tilt', 'E2E Analysis', 'NR SA Layer Addition', 'NR Digital Tilt', 'RS Power', 'NR Power Boost'))),
     _field('implementation_site', 'Implementation Site', 'implementation', 'text'),
@@ -222,14 +222,14 @@ DEFAULT_FIELDS = (
         _option('Not Planned', _GREY), _option('Planned', _GREEN)), in_summary=True),
     _field('planned_date', 'Planned Date', 'planning', 'date', description='Today by default; choose the date in the calendar.'),
     _field('planned_fy', 'Planned FY', 'planning', 'list', options=tuple(_option(f'FY{year}') for year in range(26, 32)),
-           description='The fiscal year (or year) the measure is planned for, when there is no exact date.'),
+           description='The fiscal year (FY27) the measure is planned for, when there is no exact date.'),
 )
 
 # -- statuses, teams and status rules ---------------------------------------------------------
-# (name, colour, closed)
+# (name, colour, closed). An attended call is open: Under Analysis, then Under Implementation or Under Planning (Open,
+# their group, is their sum), until it is closed.
 DEFAULT_STATUSES = (
     ('Not Attended', '#9aa5ad', False),
-    ('Open', '#d14a68', False),
     ('Under Analysis', '#7030A0', False),
     ('Under Implementation', '#C55A11', False),
     ('Under Planning', '#e0464e', False),
@@ -239,15 +239,20 @@ DEFAULT_STATUSES = (
 # (the call has been followed up or commented).
 ATTENDED_FIELD = '@attended'
 RULE_OPERATORS = {'in': 'is one of', 'not_in': 'is not one of', 'empty': 'is empty', 'not_empty': 'is not empty'}
+# The first rule that holds gives the status, so they go from the end of the pipeline to its start: Closed, Under
+# Planning, Under Implementation and Under Analysis (a finished analysis closes only a call neither planned nor in
+# implementation).
+_IMPLEMENTING = ['Not yet evaluated', 'Under evaluation', 'Evaluated']
 DEFAULT_STATUS_RULES = (
     {'status': 'Closed', 'conditions': [{'field': 'analysis_status', 'op': 'in', 'values': ['Rejected', 'Invalidated']}]},
     {'status': 'Closed', 'conditions': [{'field': 'implementation_status', 'op': 'in', 'values': ['Implemented']}]},
+    {'status': 'Closed', 'conditions': [{'field': 'analysis_status', 'op': 'in', 'values': ['Finished']},
+                                        {'field': 'planned_status', 'op': 'not_in', 'values': ['Planned']},
+                                        {'field': 'implementation_status', 'op': 'not_in', 'values': _IMPLEMENTING}]},
     {'status': 'Under Planning', 'conditions': [{'field': 'planned_status', 'op': 'in', 'values': ['Planned']}]},
-    {'status': 'Under Implementation', 'conditions': [
-        {'field': 'implementation_status', 'op': 'in', 'values': ['Not yet evaluated', 'Under evaluation', 'Evaluated']}]},
-    {'status': 'Closed', 'conditions': [{'field': 'analysis_status', 'op': 'in', 'values': ['Finished']}]},
+    {'status': 'Under Implementation', 'conditions': [{'field': 'implementation_status', 'op': 'in', 'values': _IMPLEMENTING}]},
     {'status': 'Under Analysis', 'conditions': [{'field': 'analysis_status', 'op': 'in', 'values': ['Ongoing']}]},
-    {'status': 'Open', 'conditions': [{'field': ATTENDED_FIELD, 'op': 'in', 'values': ['Yes']}]},
+    {'status': 'Under Analysis', 'conditions': [{'field': ATTENDED_FIELD, 'op': 'in', 'values': ['Yes']}]},
 )
 
 # -- root cause catalog -----------------------------------------------------------------------

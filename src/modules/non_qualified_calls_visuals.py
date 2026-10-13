@@ -256,7 +256,7 @@ def progress_view_panels(progress: dict[str, Any], options: dict[str, Any], gran
         ('Not Attended', _number(summary.get('not_attended')), 'No change or comment yet', 'total'),
         ('Closure Rate', f"{float(summary.get('closure_rate') or 0):.1f}%", f"{_number(summary.get('closed'))} of {_number(total)} closed", 'closed'),
         ('First Follow-up', _days(summary.get('avg_days_to_first_follow_up')), 'Average from the call', 'team'),
-        ('Time to Close', _days(summary.get('avg_days_to_close')), 'Average from the first follow-up', 'commented'),
+        ('Time to Close', _days(summary.get('avg_days_to_close')), 'Average from the call', 'commented'),
         ('Activity', _number((summary.get('comments') or 0) + (summary.get('changes') or 0)),
          f"{_number(summary.get('comments'))} comments · {_number(summary.get('changes'))} changes", ''),
     ]
@@ -819,7 +819,7 @@ def lifecycle_panels(lifecycle: dict[str, Any]) -> list[tuple[str, BytesIO]]:
     _kpi_row(panel, [
         ('Calls', _number(total), 'in the selection', 'total'),
         ('Closed', _number(closed), _share(closed, total), 'closed'),
-        ('Open', _number(total - closed), _share(total - closed, total), 'open'),
+        ('Open', _number(lifecycle.get('open', total - closed)), _share(lifecycle.get('open', total - closed), total), 'open'),
         ('Automatic status', _number(modes.get('auto', 0)), 'set by the status rules', 'team'),
         ('Status by hand', _number(modes.get('manual', 0)), 'chosen by the analysts', 'commented'),
         (f"No change for {lifecycle.get('stalled_days', 14)} days", _number(lifecycle.get('stalled_total', 0)), 'open calls', 'attended'),

@@ -7948,12 +7948,17 @@ function showConfirmDialog(message, options = {}) {
     confirmOptionInput.checked = Boolean(options.optionChecked);
     confirmOption.hidden = false;
   }
+  // Over an open modal dialog (in the top layer, the rest of the page inert) the panel opens inside it.
+  const modal = [...document.querySelectorAll('dialog[open]')].reverse().find((dialog) => dialog.matches(':modal'));
+  const home = {parent: confirmOverlay.parentNode, next: confirmOverlay.nextSibling};
+  if (modal) modal.append(confirmOverlay);
   confirmOverlay.hidden = false;
   document.body.classList.add('loading-active');
 
   return new Promise((resolve) => {
     const close = (accepted) => {
       confirmOverlay.hidden = true;
+      if (modal) home.parent.insertBefore(confirmOverlay, home.next);
       document.body.classList.remove('loading-active');
       confirmAccept.removeEventListener('click', handleAccept);
       confirmCancel.removeEventListener('click', handleCancel);
@@ -7992,6 +7997,8 @@ function showConfirmDialog(message, options = {}) {
     };
     const handleKeydown = (event) => {
       if (event.key === 'Escape') {
+        // Only the panel closes, not the dialog it opened over.
+        event.preventDefault();
         close(hasAlternatives ? null : false);
       }
     };

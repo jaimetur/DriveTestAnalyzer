@@ -35,8 +35,10 @@ import hashlib
 import io
 import json
 import math
+import queue
 import re
 import tempfile
+import threading
 import time
 import uuid
 from collections import Counter
@@ -103,6 +105,8 @@ CONFIGURATION_FORMAT_VERSION = 1
 UNASSIGNED = '__unassigned__'
 MAX_COMMENT_LENGTH = 5000
 PAGE_SIZES = (25, 50, 100, 200)
+# The calls All panels shows a page, below the Filters.
+ALL_PANELS_PAGE_SIZE = 10
 OPTION_KINDS = ('status', 'team')
 COLOR_PATTERN = re.compile(r'#[0-9a-fA-F]{6}')
 DEFAULT_STATUSES = nq_catalog.DEFAULT_STATUSES
@@ -126,10 +130,10 @@ ANALYSIS_CENTER_V4_STATE_KEY = 'nq_analysis_center_v4'
 # The NetCheck RCA fields before those of the Ericsson RCA, and the descriptions that named the RCA script, once.
 ANALYSIS_CENTER_V5_STATE_KEY = 'nq_analysis_center_v5'
 # The fields the analyses of the previous tool bring (initial root category and cause, priority, analyst, reviewer,
-# description, implementation stream and planned fiscal year), added once to the workspaces created before them.
+# description, implementation team and planned fiscal year), added once to the workspaces created before them.
 ANALYSIS_CENTER_V6_STATE_KEY = 'nq_analysis_center_v6'
 ANALYSES_FIELD_KEYS = {'initial_root_category', 'initial_root_cause', 'priority', 'analyst', 'reviewer', 'description',
-                       'implementation_stream', 'planned_fy'}
+                       'implementation_team', 'planned_fy'}
 # Vendor 1 and Vendor 2 when Failure, the priorities P1 to P4, the E2E Team (formerly E2E stream) and the Core domain
 # (formerly Core 2G/4G/5G), once.
 ANALYSIS_CENTER_V9_STATE_KEY = 'nq_analysis_center_v9'
@@ -139,9 +143,60 @@ ANALYSIS_CENTER_V10_STATE_KEY = 'nq_analysis_center_v10'
 # The Unique ID and Polygon Area of the analyses of the previous tool, once.
 ANALYSIS_CENTER_V11_STATE_KEY = 'nq_analysis_center_v11'
 ANALYSES_V11_FIELD_KEYS = {'unique_id', 'polygon_area'}
+# The Implementation Stream becomes the Implementation Team, once.
+ANALYSIS_CENTER_V12_STATE_KEY = 'nq_analysis_center_v12'
+# The Planned FY writes its years as fiscal years (2030 is FY30), in order, once.
+ANALYSIS_CENTER_V13_STATE_KEY = 'nq_analysis_center_v13'
+V13_FORMER_DESCRIPTION = 'The fiscal year (or year) the measure is planned for, when there is no exact date.'
+# The suggested causes of the NetCheck RCA and the Ericsson RCA leave the table (shown from Columns), once.
+ANALYSIS_CENTER_V14_STATE_KEY = 'nq_analysis_center_v14'
+V14_HIDDEN_COLUMNS = ('netcheck_suggested_cause', 'rca_suggested_cause')
+# The Implementation Status joins the table after the Analysis Status, once.
+ANALYSIS_CENTER_V16_STATE_KEY = 'nq_analysis_center_v16'
+V16_SHOWN_COLUMNS = ('implementation_status',)
+# Findings follows the Description, before the Proposed Measure, once.
+ANALYSIS_CENTER_V17_STATE_KEY = 'nq_analysis_center_v17'
+# The Implementation Status keeps implementation values only, once: Planned and Not Planned move to the Planned Status,
+# Invalidated is Not Applicable and Closed is Implemented; Not yet evaluated turns red.
+ANALYSIS_CENTER_V18_STATE_KEY = 'nq_analysis_center_v18'
+V18_IMPLEMENTATION_RENAMES = {'invalidated': 'Not Applicable', 'closed': 'Implemented'}
+V18_FORMER_NOT_EVALUATED_COLOR = '#9aa5ad'
+# Open is no longer a status but the group of the phase statuses: an attended call is Under Analysis until a later
+# phase, once: (former status, status its calls take).
+ANALYSIS_CENTER_V19_STATE_KEY = 'nq_analysis_center_v19'
+V19_FORMER_OPEN = ('Open', 'Under Analysis')
+# Once: the Analysis Status values of the previous tool that invalidate an analysis are Invalidated, and the default
+# Status Rules go from the end of the pipeline to its start (those of before, still unchanged, give way to them).
+ANALYSIS_CENTER_V20_STATE_KEY = 'nq_analysis_center_v20'
+V20_INVALIDATED_ANALYSES = ('No_Vendor_B', 'No_JoinID Missing')
+V20_FORMER_RULES = (
+    ('Closed', (('analysis_status', 'in', ('Rejected', 'Invalidated')),)),
+    ('Closed', (('implementation_status', 'in', ('Implemented',)),)),
+    ('Under Planning', (('planned_status', 'in', ('Planned',)),)),
+    ('Under Implementation', (('implementation_status', 'in', ('Not yet evaluated', 'Under evaluation', 'Evaluated')),)),
+    ('Closed', (('analysis_status', 'in', ('Finished',)),)),
+    ('Under Analysis', (('analysis_status', 'in', ('Ongoing',)),)),
+    ('Under Analysis', (('@attended', 'in', ('Yes',)),)),
+)
+# The fields of the NetCheck RCA and of the Ericsson RCA named after their source, once: (key, former label).
+ANALYSIS_CENTER_V15_STATE_KEY = 'nq_analysis_center_v15'
+V15_FORMER_LABELS = (
+    ('netcheck_failure_classification', 'Netcheck Failure Classification'),
+    ('netcheck_suggested_category', 'Netcheck Suggested Category'),
+    ('netcheck_suggested_cause', 'Netcheck Suggested Cause'),
+    ('auto_rca_category_a', 'Auto_RCA_Category_A'),
+    ('auto_rca_subcategory_a', 'Auto_RCA_Subcategory_A'),
+    ('auto_rca_category_b', 'Auto_RCA_Category_B'),
+    ('auto_rca_subcategory_b', 'Auto_RCA_Subcategory_B'),
+    ('rca_initial_category', 'RCA Category'),
+    ('rca_initial_subcategory', 'RCA Subcategory'),
+    ('rca_suggested_category', 'RCA Suggested Category'),
+    ('rca_suggested_cause', 'RCA Suggested Cause'),
+    ('rca_evidence', 'RCA Evidence'),
+)
 # Set once the tables and columns of this version exist, so the requests check the schema without writing.
 SCHEMA_STATE_KEY = 'nq_calls_schema'
-SCHEMA_VERSION = '2026-10-13.2'
+SCHEMA_VERSION = '2026-10-13.11'
 # Indexed call fields that the suggestion rule can read, with their labels.
 RULE_FIELDS = {
     'failure_classification': 'Failure Classification', 'failure_category': 'Failure Category',
@@ -475,7 +530,10 @@ def _schema_ready(task_repository: Any) -> bool:
             return False
         keys = (SCHEMA_STATE_KEY, ANALYSIS_CENTER_STATE_KEY, ANALYSIS_CENTER_V2_STATE_KEY, ANALYSIS_CENTER_V4_STATE_KEY,
                 ANALYSIS_CENTER_V5_STATE_KEY, ANALYSIS_CENTER_V6_STATE_KEY, ANALYSIS_CENTER_V9_STATE_KEY,
-                ANALYSIS_CENTER_V10_STATE_KEY, ANALYSIS_CENTER_V11_STATE_KEY)
+                ANALYSIS_CENTER_V10_STATE_KEY, ANALYSIS_CENTER_V11_STATE_KEY, ANALYSIS_CENTER_V12_STATE_KEY,
+                ANALYSIS_CENTER_V13_STATE_KEY, ANALYSIS_CENTER_V14_STATE_KEY, ANALYSIS_CENTER_V15_STATE_KEY,
+                ANALYSIS_CENTER_V16_STATE_KEY, ANALYSIS_CENTER_V17_STATE_KEY, ANALYSIS_CENTER_V18_STATE_KEY,
+                ANALYSIS_CENTER_V19_STATE_KEY, ANALYSIS_CENTER_V20_STATE_KEY)
         states = {str(row[0]): str(row[1]) for row in connection.execute(
             f"SELECT key, value FROM workspace_state WHERE key IN ({', '.join('?' for _ in keys)})", keys)}
     return states.get(SCHEMA_STATE_KEY) == SCHEMA_VERSION and all(states.get(key) for key in keys[1:])
@@ -559,6 +617,24 @@ def ensure_nq_tables(task_repository: Any) -> None:
         _upgrade_analysis_center_v10(task_repository)
     if not task_repository.get_workspace_state(ANALYSIS_CENTER_V11_STATE_KEY):
         _upgrade_analysis_center_v11(task_repository)
+    if not task_repository.get_workspace_state(ANALYSIS_CENTER_V12_STATE_KEY):
+        _upgrade_analysis_center_v12(task_repository)
+    if not task_repository.get_workspace_state(ANALYSIS_CENTER_V13_STATE_KEY):
+        _upgrade_analysis_center_v13(task_repository)
+    if not task_repository.get_workspace_state(ANALYSIS_CENTER_V14_STATE_KEY):
+        _upgrade_analysis_center_v14(task_repository)
+    if not task_repository.get_workspace_state(ANALYSIS_CENTER_V15_STATE_KEY):
+        _upgrade_analysis_center_v15(task_repository)
+    if not task_repository.get_workspace_state(ANALYSIS_CENTER_V16_STATE_KEY):
+        _upgrade_analysis_center_v16(task_repository)
+    if not task_repository.get_workspace_state(ANALYSIS_CENTER_V17_STATE_KEY):
+        _upgrade_analysis_center_v17(task_repository)
+    if not task_repository.get_workspace_state(ANALYSIS_CENTER_V18_STATE_KEY):
+        _upgrade_analysis_center_v18(task_repository)
+    if not task_repository.get_workspace_state(ANALYSIS_CENTER_V19_STATE_KEY):
+        _upgrade_analysis_center_v19(task_repository)
+    if not task_repository.get_workspace_state(ANALYSIS_CENTER_V20_STATE_KEY):
+        _upgrade_analysis_center_v20(task_repository)
     task_repository.set_workspace_state(SCHEMA_STATE_KEY, SCHEMA_VERSION)
 
 
@@ -843,7 +919,7 @@ def _upgrade_analysis_center_v11(task_repository: Any) -> None:
     task_repository.set_workspace_state(ANALYSIS_CENTER_V11_STATE_KEY, '1')
 
 
-# A former default team and Implementation Stream, and the value its calls take.
+# A former default team and Implementation Stream (now Implementation Team), and the value its calls take.
 V10_REMOVED_TEAM = ('Successful Call-Excluded', 'No Team')
 
 
@@ -889,6 +965,382 @@ def _upgrade_analysis_center_v10(task_repository: Any) -> None:
         _store_fields(task_repository, nq_catalog.normalize_fields(fields, {field['key']: field for field in list_fields(task_repository)},
                                                                    CATALOG_CALL_FIELDS))
     task_repository.set_workspace_state(ANALYSIS_CENTER_V10_STATE_KEY, '1')
+
+
+# The former key, label and description of the Implementation Team.
+V12_FORMER_TEAM_FIELD = ('implementation_stream', 'Implementation Stream',
+                         'The stream responsible for the implementation (it can differ from the team that analysed the call).')
+
+
+def _upgrade_analysis_center_v12(task_repository: Any) -> None:
+    """Once: the field Implementation Stream becomes Implementation Team (its label and description too unless they
+    were changed), with its values, history, Status Rules, shared filters and reviewed equivalences."""
+    old_key, old_label, old_description = V12_FORMER_TEAM_FIELD
+    new_key = 'implementation_team'
+    fields = list_fields(task_repository)
+    field = next((field for field in fields if field['key'] == old_key), None)
+    if field is not None and all(other['key'] != new_key for other in fields):
+        default = next(item for item in nq_catalog.DEFAULT_FIELDS if item['key'] == new_key)
+        before = [dict(item, options=[dict(option) for option in item['options']]) for item in fields]
+        field['key'] = new_key
+        if field['label'].casefold() == old_label.casefold():
+            field['label'] = default['label']
+        if field.get('description') == old_description:
+            field['description'] = default['description']
+        with task_repository.connection() as connection:
+            connection.execute(f'UPDATE {NQ_FIELD_VALUES_TABLE} SET field_key = ? WHERE field_key = ?', (new_key, old_key))
+            connection.execute(f'UPDATE {NQ_CALL_HISTORY_TABLE} SET field = ? WHERE field = ?', (f'field:{new_key}', f'field:{old_key}'))
+        try:
+            rules = json.loads(task_repository.get_workspace_state(STATUS_RULES_STATE_KEY) or '[]')
+        except (TypeError, ValueError):
+            rules = []
+        if isinstance(rules, list) and rules:
+            for rule in rules:
+                for condition in (rule.get('conditions') or []) if isinstance(rule, dict) else []:
+                    if isinstance(condition, dict) and condition.get('field') == old_key:
+                        condition['field'] = new_key
+            task_repository.set_workspace_state(STATUS_RULES_STATE_KEY, json.dumps(rules, ensure_ascii=False))
+        try:
+            saved = json.loads(task_repository.get_workspace_state(SAVED_FILTERS_STATE_KEY) or '{}')
+        except (TypeError, ValueError):
+            saved = {}
+        if isinstance(saved, dict) and isinstance(saved.get('fields'), dict) and old_key in saved['fields']:
+            saved['fields'][new_key] = saved['fields'].pop(old_key)
+            task_repository.set_workspace_state(SAVED_FILTERS_STATE_KEY, json.dumps(saved, ensure_ascii=False, sort_keys=True))
+        equivalences = workspace_equivalences(task_repository)
+        if f'field:{old_key}' in equivalences:
+            equivalences.setdefault(f'field:{new_key}', {}).update(equivalences.pop(f'field:{old_key}'))
+            _save_equivalences(task_repository, equivalences)
+        _store_fields(task_repository, nq_catalog.normalize_fields(fields, {item['key']: item for item in before}, CATALOG_CALL_FIELDS))
+    task_repository.set_workspace_state(ANALYSIS_CENTER_V12_STATE_KEY, '1')
+
+
+def _upgrade_analysis_center_v13(task_repository: Any) -> None:
+    """Once: the values of the Planned FY written as years or quarters become fiscal years (2030 is FY30, merged with
+    FY30 when the list has it), the fiscal years in order, with the values of the calls, the Status Rules, the shared
+    filters and the reviewed equivalences; and its default description names the fiscal years."""
+    fields = list_fields(task_repository)
+    field = next((item for item in fields if item['key'] == FISCAL_FIELD and item['type'] == 'list'), None)
+    if field is not None and field.get('description') == V13_FORMER_DESCRIPTION:
+        field['description'] = next(item for item in nq_catalog.DEFAULT_FIELDS if item['key'] == FISCAL_FIELD)['description']
+        _store_fields(task_repository, nq_catalog.normalize_fields(fields, {item['key']: item for item in list_fields(task_repository)},
+                                                                   CATALOG_CALL_FIELDS))
+        fields = list_fields(task_repository)
+        field = next(item for item in fields if item['key'] == FISCAL_FIELD)
+    if field is not None:
+        before = {item['key']: dict(item, options=[dict(option) for option in item['options']]) for item in fields}
+        names = {option['name']: nq_analyses.fiscal_year(option['name']) for option in field['options']}
+        names = {old: new for old, new in names.items() if new and new != old}
+        options: dict[str, dict[str, Any]] = {}
+        for option in field['options']:
+            name = names.get(option['name'], option['name'])
+            kept = options.setdefault(name.casefold(), dict(option, name=name))
+            if not kept.get('color') and option.get('color'):
+                kept['color'] = option['color']
+        ordered = _in_fiscal_order(list(options.values()))
+        if names or [option['name'] for option in ordered] != [option['name'] for option in field['options']]:
+            field['options'] = ordered
+            renamed = {old.casefold(): new for old, new in names.items()}
+            with task_repository.connection() as connection:
+                for old, new in names.items():
+                    connection.execute(f'UPDATE {NQ_FIELD_VALUES_TABLE} SET value = ? WHERE field_key = ? AND value = ? COLLATE NOCASE',
+                                       (new, FISCAL_FIELD, old))
+            try:
+                rules = json.loads(task_repository.get_workspace_state(STATUS_RULES_STATE_KEY) or '[]')
+            except (TypeError, ValueError):
+                rules = []
+            if names and isinstance(rules, list) and rules:
+                for rule in rules:
+                    for condition in (rule.get('conditions') or []) if isinstance(rule, dict) else []:
+                        if isinstance(condition, dict) and condition.get('field') == FISCAL_FIELD and isinstance(condition.get('values'), list):
+                            condition['values'] = list(dict.fromkeys(renamed.get(str(value).casefold(), value) for value in condition['values']))
+                task_repository.set_workspace_state(STATUS_RULES_STATE_KEY, json.dumps(rules, ensure_ascii=False))
+            try:
+                saved = json.loads(task_repository.get_workspace_state(SAVED_FILTERS_STATE_KEY) or '{}')
+            except (TypeError, ValueError):
+                saved = {}
+            if names and isinstance(saved, dict) and isinstance((saved.get('fields') or {}).get(FISCAL_FIELD), list):
+                saved['fields'][FISCAL_FIELD] = list(dict.fromkeys(renamed.get(str(value).casefold(), value)
+                                                                   for value in saved['fields'][FISCAL_FIELD]))
+                task_repository.set_workspace_state(SAVED_FILTERS_STATE_KEY, json.dumps(saved, ensure_ascii=False, sort_keys=True))
+            equivalences = workspace_equivalences(task_repository)
+            if names and f'field:{FISCAL_FIELD}' in equivalences:
+                for item in equivalences[f'field:{FISCAL_FIELD}'].values():
+                    item['to'] = renamed.get(item['to'].casefold(), item['to'])
+                _save_equivalences(task_repository, equivalences)
+            _store_fields(task_repository, nq_catalog.normalize_fields(fields, before, CATALOG_CALL_FIELDS))
+    task_repository.set_workspace_state(ANALYSIS_CENTER_V13_STATE_KEY, '1')
+
+
+def _upgrade_analysis_center_v14(task_repository: Any) -> None:
+    """Once: the suggested cause columns of the NetCheck RCA and of the Ericsson RCA leave the table."""
+    fields = list_fields(task_repository)
+    before = {item['key']: dict(item, options=[dict(option) for option in item['options']]) for item in fields}
+    changed = False
+    for field in fields:
+        if field['key'] in V14_HIDDEN_COLUMNS and field['in_table']:
+            field['in_table'] = False
+            changed = True
+    if changed:
+        _store_fields(task_repository, nq_catalog.normalize_fields(fields, before, CATALOG_CALL_FIELDS))
+    task_repository.set_workspace_state(ANALYSIS_CENTER_V14_STATE_KEY, '1')
+
+
+def _upgrade_analysis_center_v15(task_repository: Any) -> None:
+    """Once: the fields of the NetCheck RCA start with NetCheck RCA and those of the Ericsson RCA with Ericsson RCA
+    (those renamed by hand keep their name)."""
+    fields = list_fields(task_repository)
+    before = {item['key']: dict(item, options=[dict(option) for option in item['options']]) for item in fields}
+    defaults = {item['key']: item['label'] for item in nq_catalog.DEFAULT_FIELDS}
+    former = dict(V15_FORMER_LABELS)
+    taken = {field['label'].casefold() for field in fields}
+    changed = False
+    for field in fields:
+        label = defaults.get(field['key'], '')
+        if field['key'] in former and field['label'].casefold() == former[field['key']].casefold() and label.casefold() not in taken:
+            field['label'] = label
+            changed = True
+    if changed:
+        _store_fields(task_repository, nq_catalog.normalize_fields(fields, before, CATALOG_CALL_FIELDS))
+    task_repository.set_workspace_state(ANALYSIS_CENTER_V15_STATE_KEY, '1')
+
+
+def _upgrade_analysis_center_v16(task_repository: Any) -> None:
+    """Once: the Implementation Status is a column of the table, after the Analysis Status."""
+    fields = list_fields(task_repository)
+    before = {item['key']: dict(item, options=[dict(option) for option in item['options']]) for item in fields}
+    shown = [field for field in fields if field['key'] in V16_SHOWN_COLUMNS and not field['in_table']]
+    for field in shown:
+        field['in_table'] = True
+    if shown:
+        _store_fields(task_repository, nq_catalog.normalize_fields(fields, before, CATALOG_CALL_FIELDS))
+    task_repository.set_workspace_state(ANALYSIS_CENTER_V16_STATE_KEY, '1')
+
+
+def _upgrade_analysis_center_v17(task_repository: Any) -> None:
+    """Once: the Findings move right after the Description when they followed the Proposed Measure."""
+    fields = list_fields(task_repository)
+    keys = [field['key'] for field in fields]
+    if {'description', 'proposed_measure', 'findings'} <= set(keys) \
+            and keys.index('description') < keys.index('proposed_measure') < keys.index('findings'):
+        findings = fields.pop(keys.index('findings'))
+        fields.insert(keys.index('description') + 1, findings)
+        _store_fields(task_repository, nq_catalog.normalize_fields(fields, {item['key']: item for item in list_fields(task_repository)},
+                                                                   CATALOG_CALL_FIELDS))
+    task_repository.set_workspace_state(ANALYSIS_CENTER_V17_STATE_KEY, '1')
+
+
+def _upgrade_analysis_center_v18(task_repository: Any) -> None:
+    """Once: the Implementation Status keeps implementation values only. Its Planned and Not Planned move to the
+    Planned Status of their calls (one that already has another keeps it, and the history tells the value removed),
+    Invalidated becomes Not Applicable and Closed becomes Implemented, with the Status Rules, the shared filters and the
+    reviewed equivalences; Not yet evaluated turns red. The statuses follow."""
+    fields = list_fields(task_repository)
+    by_key = {field['key']: field for field in fields}
+    implementation, planned = by_key.get('implementation_status'), by_key.get('planned_status')
+    if not implementation or implementation['type'] != 'list' or implementation['source'] != 'user':
+        task_repository.set_workspace_state(ANALYSIS_CENTER_V18_STATE_KEY, '1')
+        return
+    before = {item['key']: dict(item, options=[dict(option) for option in item['options']]) for item in fields}
+    defaults = {option['name']: option['color'] for field in nq_catalog.DEFAULT_FIELDS if field['key'] == 'implementation_status'
+                for option in field['options']}
+    planning = nq_analyses.PLANNING_STATUSES if planned and planned['type'] == 'list' and planned['source'] == 'user' else ()
+    planned_names = {option['name'].casefold(): option['name'] for option in (planned or {}).get('options', [])}
+    renamed: dict[str, str] = {}
+    moved: set[str] = set()
+    when = now_iso()
+    with task_repository.connection() as connection:
+        for old, new in V18_IMPLEMENTATION_RENAMES.items():
+            rows = connection.execute(f"SELECT call_key, value FROM {NQ_FIELD_VALUES_TABLE} WHERE field_key = 'implementation_status' "
+                                      'AND value = ? COLLATE NOCASE', (old,)).fetchall()
+            for row in rows:
+                _record_history(connection, str(row['call_key']), 'field:implementation_status', str(row['value']), new, 'system', when)
+            if rows:
+                renamed[old] = new
+                connection.execute(f"UPDATE {NQ_FIELD_VALUES_TABLE} SET value = ? WHERE field_key = 'implementation_status' "
+                                   'AND value = ? COLLATE NOCASE', (new, old))
+        for row in connection.execute(f"SELECT call_key, value, updated_by, updated_at FROM {NQ_FIELD_VALUES_TABLE} "
+                                      f"WHERE field_key = 'implementation_status' AND lower(value) IN ({', '.join('?' for _ in planning) or "''"})",
+                                      list(planning)).fetchall():
+            call_key, value = str(row['call_key']), str(row['value'])
+            name = planned_names.get(value.casefold(), value)
+            moved.add(name)
+            current = connection.execute(f"SELECT value FROM {NQ_FIELD_VALUES_TABLE} WHERE call_key = ? AND field_key = 'planned_status'",
+                                         (call_key,)).fetchone()
+            if not current or not str(current['value']).strip():
+                connection.execute(
+                    f'INSERT INTO {NQ_FIELD_VALUES_TABLE} (call_key, field_key, value, updated_by, updated_at) VALUES (?, ?, ?, ?, ?) '
+                    'ON CONFLICT(call_key, field_key) DO UPDATE SET value = excluded.value',
+                    (call_key, 'planned_status', name, row['updated_by'], row['updated_at']))
+                _record_history(connection, call_key, 'field:planned_status', '', name, 'system', when)
+            _record_history(connection, call_key, 'field:implementation_status', value, '', 'system', when)
+            connection.execute(f"DELETE FROM {NQ_FIELD_VALUES_TABLE} WHERE call_key = ? AND field_key = 'implementation_status'",
+                               (call_key,))
+    # The lists: the Implementation Status without the planning, invalidated and closed values (Not Applicable and
+    # Implemented in their place), the Planned Status with the planning values it lacked.
+    dropped = {*planning, *V18_IMPLEMENTATION_RENAMES}
+    options = [option for option in implementation['options'] if option['name'].casefold() not in dropped]
+    for name in dict.fromkeys(V18_IMPLEMENTATION_RENAMES.values()):
+        if name.casefold() not in {option['name'].casefold() for option in options} \
+                and (name in renamed.values() or any(option['name'].casefold() == name.casefold() for option in implementation['options'])):
+            options.append({'name': name, 'color': defaults.get(name, '')})
+    for option in options:
+        if option['name'] == 'Not yet evaluated' and option.get('color', '').casefold() == V18_FORMER_NOT_EVALUATED_COLOR:
+            option['color'] = defaults['Not yet evaluated']
+        if not option.get('color') and defaults.get(option['name']):
+            option['color'] = defaults[option['name']]
+    implementation['options'] = options
+    if planned:
+        for name in sorted(moved):
+            if name.casefold() not in {option['name'].casefold() for option in planned['options']}:
+                planned['options'].append({'name': name, 'color': ''})
+    mapping = {**{old: new for old, new in V18_IMPLEMENTATION_RENAMES.items()}}
+    def implementation_values(values: list[Any]) -> list[str]:
+        return list(dict.fromkeys(mapping.get(str(value).casefold(), str(value)) for value in values
+                                  if str(value).casefold() not in planning))
+    try:
+        rules = json.loads(task_repository.get_workspace_state(STATUS_RULES_STATE_KEY) or '[]')
+    except (TypeError, ValueError):
+        rules = []
+    if isinstance(rules, list) and rules:
+        for rule in rules:
+            for condition in (rule.get('conditions') or []) if isinstance(rule, dict) else []:
+                if isinstance(condition, dict) and condition.get('field') == 'implementation_status' and isinstance(condition.get('values'), list):
+                    condition['values'] = implementation_values(condition['values'])
+        task_repository.set_workspace_state(STATUS_RULES_STATE_KEY, json.dumps(rules, ensure_ascii=False))
+    try:
+        saved = json.loads(task_repository.get_workspace_state(SAVED_FILTERS_STATE_KEY) or '{}')
+    except (TypeError, ValueError):
+        saved = {}
+    chosen = (saved.get('fields') or {}).get('implementation_status') if isinstance(saved, dict) and isinstance(saved.get('fields'), dict) else None
+    if isinstance(chosen, list):
+        moved_filter = [planned_names.get(str(value).casefold(), str(value)) for value in chosen if str(value).casefold() in planning]
+        saved['fields']['implementation_status'] = implementation_values(chosen)
+        if moved_filter:
+            saved['fields']['planned_status'] = list(dict.fromkeys([*saved['fields'].get('planned_status', []), *moved_filter]))
+        if not saved['fields']['implementation_status']:
+            del saved['fields']['implementation_status']
+        task_repository.set_workspace_state(SAVED_FILTERS_STATE_KEY, json.dumps(saved, ensure_ascii=False, sort_keys=True))
+    equivalences = workspace_equivalences(task_repository)
+    if 'field:implementation_status' in equivalences:
+        for item in equivalences['field:implementation_status'].values():
+            item['to'] = mapping.get(item['to'].casefold(), item['to'])
+        _save_equivalences(task_repository, equivalences)
+    _store_fields(task_repository, nq_catalog.normalize_fields(fields, before, CATALOG_CALL_FIELDS))
+    task_repository.set_workspace_state(ANALYSIS_CENTER_V18_STATE_KEY, '1')
+    recompute_statuses(task_repository, 'system')
+
+
+def _upgrade_analysis_center_v19(task_repository: Any) -> None:
+    """Once: the status Open leaves the statuses and becomes the group of the phase statuses. Its rules (the attended
+    calls) give Under Analysis, its calls set by hand are Under Analysis by hand (the history tells it), the shared
+    filters choose the phase statuses instead, and the statuses follow the rules again."""
+    old, new = V19_FORMER_OPEN
+    statuses = list_options(task_repository)['statuses']
+    names = {item['name'].casefold(): item for item in statuses}
+    if old.casefold() not in names or new.casefold() not in names or names[old.casefold()]['closed'] \
+            or statuses[0]['name'].casefold() == old.casefold():
+        task_repository.set_workspace_state(ANALYSIS_CENTER_V19_STATE_KEY, '1')
+        return
+    old_name, new_name = names[old.casefold()]['name'], names[new.casefold()]['name']
+    group = [item['name'] for item in statuses[1:] if not item['closed'] and item['name'] != old_name]
+    try:
+        rules = json.loads(task_repository.get_workspace_state(STATUS_RULES_STATE_KEY) or '[]')
+    except (TypeError, ValueError):
+        rules = []
+    if isinstance(rules, list) and rules:
+        for rule in rules:
+            if isinstance(rule, dict) and str(rule.get('status') or '').casefold() == old.casefold():
+                rule['status'] = new_name
+        task_repository.set_workspace_state(STATUS_RULES_STATE_KEY, json.dumps(rules, ensure_ascii=False))
+    try:
+        saved = json.loads(task_repository.get_workspace_state(SAVED_FILTERS_STATE_KEY) or '{}')
+    except (TypeError, ValueError):
+        saved = {}
+    if isinstance(saved, dict) and isinstance(saved.get('status'), list) \
+            and any(str(value).casefold() == old.casefold() for value in saved['status']):
+        saved['status'] = list(dict.fromkeys(name for value in saved['status']
+                                             for name in (group if str(value).casefold() == old.casefold() else [value])))
+        task_repository.set_workspace_state(SAVED_FILTERS_STATE_KEY, json.dumps(saved, ensure_ascii=False, sort_keys=True))
+    when = now_iso()
+    with task_repository.connection() as connection:
+        for row in connection.execute(f"SELECT call_key FROM {NQ_CALL_TRACKING_TABLE} WHERE status = ? COLLATE NOCASE AND status_mode = 'manual'",
+                                      (old,)).fetchall():
+            _record_history(connection, str(row['call_key']), 'status', old_name, new_name, 'system', when)
+        connection.execute(f"UPDATE {NQ_CALL_TRACKING_TABLE} SET status = ? WHERE status = ? COLLATE NOCASE AND status_mode = 'manual'",
+                           (new_name, old))
+        connection.execute(f"DELETE FROM {NQ_CALL_OPTIONS_TABLE} WHERE kind = 'status' AND name = ? COLLATE NOCASE", (old,))
+    task_repository.set_workspace_state(ANALYSIS_CENTER_V19_STATE_KEY, '1')
+    recompute_statuses(task_repository, 'system')
+
+
+def _rules_shape(rules: Any) -> list[tuple[str, list[tuple[str, str, list[str]]]]]:
+    """The rules as comparable data: status, then each condition's field, operator and values, ignoring case."""
+    if not isinstance(rules, (list, tuple)):
+        return []
+    return [(str(rule.get('status', '')).casefold(), [(str(condition.get('field', '')), str(condition.get('op', '')),
+                                                       sorted(str(value).casefold() for value in condition.get('values') or []))
+                                                      for condition in rule.get('conditions') or [] if isinstance(condition, dict)])
+            for rule in rules if isinstance(rule, dict)]
+
+
+def _upgrade_analysis_center_v20(task_repository: Any) -> None:
+    """Once: No_Vendor_B and No_JoinID Missing of the Analysis Status become Invalidated (the history keeps the value of
+    before, and the Status Rules, shared filters and reviewed equivalences follow), and Status Rules still equal to the
+    defaults of before take the new defaults, numbered from the end of the pipeline (they give every call the same
+    status). The statuses follow."""
+    fields = list_fields(task_repository)
+    analysis = next((field for field in fields if field['key'] == 'analysis_status' and field['type'] == 'list'), None)
+    renames = {name.casefold(): 'Invalidated' for name in V20_INVALIDATED_ANALYSES}
+    if analysis is not None:
+        target = next((option['name'] for option in analysis['options'] if option['name'].casefold() == 'invalidated'), 'Invalidated')
+        renames = {old: target for old in renames}
+        before = {item['key']: dict(item, options=[dict(option) for option in item['options']]) for item in fields}
+        when = now_iso()
+        with task_repository.connection() as connection:
+            for old in V20_INVALIDATED_ANALYSES:
+                rows = connection.execute(f"SELECT call_key, value FROM {NQ_FIELD_VALUES_TABLE} WHERE field_key = 'analysis_status' "
+                                          'AND value = ? COLLATE NOCASE', (old,)).fetchall()
+                for row in rows:
+                    _record_history(connection, str(row['call_key']), 'field:analysis_status', str(row['value']), target, 'system', when)
+                connection.execute(f"UPDATE {NQ_FIELD_VALUES_TABLE} SET value = ? WHERE field_key = 'analysis_status' AND value = ? COLLATE NOCASE",
+                                   (target, old))
+        options = [option for option in analysis['options'] if option['name'].casefold() not in renames]
+        if target.casefold() not in {option['name'].casefold() for option in options}:
+            options.append({'name': target, 'color': '#7b8790'})
+        if len(options) != len(analysis['options']) or options != analysis['options']:
+            analysis['options'] = options
+            _store_fields(task_repository, nq_catalog.normalize_fields(fields, before, CATALOG_CALL_FIELDS))
+    try:
+        rules = json.loads(task_repository.get_workspace_state(STATUS_RULES_STATE_KEY) or '[]')
+    except (TypeError, ValueError):
+        rules = []
+    former = [{'status': status, 'conditions': [{'field': field, 'op': op, 'values': list(values)} for field, op, values in conditions]}
+              for status, conditions in V20_FORMER_RULES]
+    if isinstance(rules, list) and rules:
+        if _rules_shape(rules) == _rules_shape(former):
+            rules = nq_catalog.default_status_rules()
+        else:
+            for rule in rules:
+                for condition in (rule.get('conditions') or []) if isinstance(rule, dict) else []:
+                    if isinstance(condition, dict) and condition.get('field') == 'analysis_status' and isinstance(condition.get('values'), list):
+                        condition['values'] = list(dict.fromkeys(renames.get(str(value).casefold(), value) for value in condition['values']))
+        task_repository.set_workspace_state(STATUS_RULES_STATE_KEY, json.dumps(rules, ensure_ascii=False))
+    try:
+        saved = json.loads(task_repository.get_workspace_state(SAVED_FILTERS_STATE_KEY) or '{}')
+    except (TypeError, ValueError):
+        saved = {}
+    chosen = (saved.get('fields') or {}).get('analysis_status') if isinstance(saved, dict) and isinstance(saved.get('fields'), dict) else None
+    if isinstance(chosen, list) and any(str(value).casefold() in renames for value in chosen):
+        saved['fields']['analysis_status'] = list(dict.fromkeys(renames.get(str(value).casefold(), value) for value in chosen))
+        task_repository.set_workspace_state(SAVED_FILTERS_STATE_KEY, json.dumps(saved, ensure_ascii=False, sort_keys=True))
+    equivalences = workspace_equivalences(task_repository)
+    if 'field:analysis_status' in equivalences:
+        for item in equivalences['field:analysis_status'].values():
+            item['to'] = renames.get(item['to'].casefold(), item['to'])
+        _save_equivalences(task_repository, equivalences)
+    task_repository.set_workspace_state(ANALYSIS_CENTER_V20_STATE_KEY, '1')
+    recompute_statuses(task_repository, 'system')
 
 
 def _add_default_fields(fields: list[dict[str, Any]], keys: set[str], same_source: bool = False) -> bool:
@@ -1608,6 +2060,15 @@ def save_fields(task_repository: Any, items: Any, username: str) -> list[dict[st
     items = [*items, *(field for field in existing.values() if field['source'] == 'tracking' and field['source_ref'] not in given)]
     normalized = nq_catalog.normalize_fields(items, existing, CATALOG_CALL_FIELDS)
     kept = {field['key'] for field in normalized}
+    # The new values of the Planned FY are fiscal years (2027 is FY27).
+    for field in normalized:
+        if field['key'] == FISCAL_FIELD and field['type'] == 'list':
+            known = {option['name'].casefold() for option in (existing.get(FISCAL_FIELD) or {}).get('options', [])}
+            options: dict[str, dict[str, Any]] = {}
+            for option in field['options']:
+                name = option['name'] if option['name'].casefold() in known else _fiscal_value(field, option['name'])
+                options.setdefault(name.casefold(), dict(option, name=name))
+            field['options'] = list(options.values())
     with task_repository.connection() as connection:
         def used(key: str, value: str | None = None) -> int:
             sql = f"SELECT COUNT(*) FROM {NQ_FIELD_VALUES_TABLE} WHERE field_key = ? AND value <> ''"
@@ -1656,6 +2117,53 @@ def list_sections(task_repository: Any) -> list[dict[str, str]]:
     except (TypeError, ValueError):
         stored = []
     return nq_catalog.normalize_sections(stored if isinstance(stored, list) else [])
+
+
+# The field of the fiscal years: its values are written FY27 (the year 2027 is FY27).
+FISCAL_FIELD = 'planned_fy'
+
+
+def _fiscal_value(field: dict[str, Any], value: str) -> str:
+    fiscal = nq_analyses.fiscal_year(value)
+    if fiscal is None:
+        raise ValueError(f'{field["label"]} takes fiscal years such as FY27 (the year 2027 is FY27), not "{value}".')
+    return fiscal
+
+
+def _in_fiscal_order(options: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The fiscal years first, from the earliest, then any other value in its order."""
+    fiscal = [option for option in options if nq_analyses.fiscal_year(option['name']) == option['name']]
+    return sorted(fiscal, key=lambda option: int(option['name'][2:])) + [option for option in options if option not in fiscal]
+
+
+def add_field_option(task_repository: Any, key: str, name: Any, username: str) -> dict[str, Any]:
+    """A new value of a list field of the analysts, typed in the list of a call: at the end of its list (a fiscal year
+    of the Planned FY in its order, a year written as a fiscal year), or the value of the same name when the list has
+    it; the field, the value and whether it was added."""
+    fields = list_fields(task_repository)
+    field = next((item for item in fields if item['key'] == key), None)
+    if field is None:
+        raise LookupError('The field does not exist.')
+    if field['type'] != 'list' or field['source'] != 'user':
+        raise ValueError(f'{field["label"]} does not take new values.')
+    value = re.sub(r'\s+', ' ', str(name if name is not None else '')).strip()
+    if not value:
+        raise ValueError('Type the new value.')
+    if len(value) > 80:
+        raise ValueError('A value has 80 characters at most.')
+    if key == FISCAL_FIELD:
+        value = _fiscal_value(field, value)
+    found = next((option['name'] for option in field['options'] if option['name'].casefold() == value.casefold()), None)
+    if found is None:
+        before = {item['key']: dict(item, options=[dict(option) for option in item['options']]) for item in fields}
+        field['options'].append({'name': value, 'color': ''})
+        if key == FISCAL_FIELD:
+            field['options'] = _in_fiscal_order(field['options'])
+        _store_fields(task_repository, nq_catalog.normalize_fields(fields, before, CATALOG_CALL_FIELDS))
+        if hasattr(task_repository, 'try_add_log'):
+            task_repository.try_add_log(username, 'nq_analysis_fields', f'Non-Qualified Calls value {value} added to {field["label"]}.')
+    return {'field': next(item for item in list_fields(task_repository) if item['key'] == key), 'value': found or value,
+            'added': found is None}
 
 
 def save_sections(task_repository: Any, items: Any, username: str) -> list[dict[str, str]]:
@@ -2756,7 +3264,7 @@ def query_calls(task_repository: Any, request: dict[str, Any], username: str) ->
     sort = _order_sql(sort_key, task_repository)
     direction = 'ASC' if str(request.get('direction') or '').lower() == 'asc' else 'DESC'
     page_size = int(request.get('page_size') or 50)
-    page_size = page_size if page_size in PAGE_SIZES else 50
+    page_size = page_size if page_size in (*PAGE_SIZES, ALL_PANELS_PAGE_SIZE) else 50
     # The breakdowns of the Summary are left out while it is not shown.
     with_breakdowns = request.get('breakdowns', True) is not False
     with task_repository.connection() as connection:
@@ -2984,7 +3492,8 @@ def progress_stats(task_repository: Any, filters: dict[str, Any], username: str,
         target = bucket(moment)
         if target is not None:
             target['changes'] += 1
-        if row['field'] != 'status' or target is None:
+        # A status chosen by hand or set by the Status Rules (as importing analyses does) moves the call alike.
+        if row['field'] not in {'status', 'status_auto'} or target is None:
             continue
         new_value, old_value = str(row['new_value']), str(row['old_value'])
         target['statuses'][new_value] = target['statuses'].get(new_value, 0) + 1
@@ -3008,9 +3517,12 @@ def progress_stats(task_repository: Any, filters: dict[str, Any], username: str,
             target['detected'] += 1
     for key, moment in first_followup.items():
         bucket(moment)['attended'] += 1
-    for key, moment in closed_at.items():
-        if key in first_followup:
-            bucket(moment)['close_days'].append((moment - first_followup[key]).total_seconds() / 86400)
+    # The days to close count from the call (imported analyses follow a call up and close it at once).
+    starts = {str(row['call_key']): _parse_time(row['start_time']) for row in calls}
+    close_days = {key: (moment - starts[key]).total_seconds() / 86400 for key, moment in closed_at.items()
+                  if starts.get(key) is not None and moment >= starts[key]}
+    for key, days in close_days.items():
+        bucket(closed_at[key])['close_days'].append(days)
 
     periods = []
     backlog = 0
@@ -3044,12 +3556,9 @@ def progress_stats(task_repository: Any, filters: dict[str, Any], username: str,
 
     attended = [key for key in keys if key in first_followup]
     response_days = []
-    starts = {str(row['call_key']): _parse_time(row['start_time']) for row in calls}
     for key in attended:
         if starts.get(key) is not None and first_followup[key] >= starts[key]:
             response_days.append((first_followup[key] - starts[key]).total_seconds() / 86400)
-    close_days = [(closed_at[key] - first_followup[key]).total_seconds() / 86400
-                  for key in closed_at if key in first_followup]
     total = len(calls)
     closed_total = total - len(open_calls)
     return {
@@ -3061,7 +3570,7 @@ def progress_stats(task_repository: Any, filters: dict[str, Any], username: str,
             'comments': sum(1 for row in comments if not row['deleted_at']),
             'changes': len(history), 'contributors': len(activity),
             'avg_days_to_first_follow_up': round(sum(response_days) / len(response_days), 1) if response_days else None,
-            'avg_days_to_close': round(sum(close_days) / len(close_days), 1) if close_days else None,
+            'avg_days_to_close': round(sum(close_days.values()) / len(close_days), 1) if close_days else None,
         },
         'distributions': [
             {'field': 'status', 'label': 'By Status', 'items': distribution('status', '—', [item['name'] for item in options['statuses']])},
@@ -3074,7 +3583,8 @@ def progress_stats(task_repository: Any, filters: dict[str, Any], username: str,
         ],
         'aging': [{'value': label, 'count': count} for label, count in ages.items() if count or label != 'Unknown date'],
         'periods': periods,
-        'statuses': [item['name'] for item in options['statuses']],
+        # The moves to each open status (those to a closed status are the closures of the Closed column).
+        'statuses': [item['name'] for item in options['statuses'] if not item['closed']],
         'teams': workload('team'),
         'assignees': workload('assignee')[:20],
         'activity': sorted(({'name': name, **values} for name, values in activity.items()),
@@ -4091,6 +4601,15 @@ class _AnalysesTranslator:
                 value = nq_analyses.failed_party(value, direction) or value
             elif ref == 'band_when_failure':
                 value = nq_analyses.band_name(value)
+            elif ref == 'implementation_status' and value.strip().casefold() in nq_analyses.PLANNING_STATUSES \
+                    and (self.fields.get('planned_status') or {}).get('source') == 'user':
+                # Planned and Not Planned are planning statuses.
+                return self.translate(('field', 'planned_status'), value, direction)
+            elif ref == FISCAL_FIELD:
+                # The Planned FY takes fiscal years only: 2030 is FY30, and another value stays in the import note.
+                value = nq_analyses.fiscal_year(value) or ''
+                if not value:
+                    return None
             value = BUILTIN_ANALYSES_VALUES.get(ref, {}).get(value.casefold(), value)
             found = nq_analyses.list_choice(value, options)
             if found is None:
@@ -4104,11 +4623,11 @@ class _AnalysesTranslator:
                 return ('field', ref, parsed)
             # A fiscal year or a year has no day: it goes to the Planned FY (the first one when the cell lists several,
             # the cell staying in the import note as it is written).
-            fiscal = self.fields.get('planned_fy')
+            fiscal = self.fields.get(FISCAL_FIELD)
             periods = [part for part in re.split(r'[\n,;/]+', value) if part.strip()]
             if ref == 'planned_date' and fiscal and fiscal['source'] == 'user' and periods \
-                    and all(nq_analyses.FISCAL_PERIOD.match(part.strip()) for part in periods):
-                return self.translate(('field', 'planned_fy'), re.sub(r'\s+', '', periods[0]).upper())
+                    and all(nq_analyses.fiscal_year(part) for part in periods):
+                return self.translate(('field', FISCAL_FIELD), periods[0])
             return None
         try:
             return ('field', ref, _field_value(field, value))
@@ -4149,12 +4668,12 @@ def _session_keys(session: dict[str, Any]) -> dict[str, str]:
             for service, identifier in session['ids'].items()}
 
 
-def read_analyses(content: bytes, file_name: str, definitions: list[dict[str, Any]]) -> dict[str, Any]:
+def read_analyses(content: bytes, file_name: str, definitions: list[dict[str, Any]], on_sheet: Any = None) -> dict[str, Any]:
     """The analyses of a file by call: every visible sheet with a JOIN_ID (or Call Key) column, each row giving the
     values of its call (an analysis of several calls gives them to each one), its comments and its import note. A row
     without JOIN_ID is its call by the Operator, Campaign and session of the CDR it repeats, as the CDR index names
     calls without JOIN_ID."""
-    tables, skipped_sheets = nq_analyses.read_tables(content, file_name)
+    tables, skipped_sheets = nq_analyses.read_tables(content, file_name, on_sheet)
     if not tables:
         raise ValueError('The file needs a JOIN_ID column (or Call Key) in one of the first three rows of a visible sheet.')
     keys = {field['key'] for field in definitions}
@@ -4312,7 +4831,8 @@ def _analyses_note(source: str, lines: list[str]) -> str:
 
 
 def import_analyses(task_repository: Any, content: bytes, file_name: str, username: str, users: set[str], *,
-                    overwrite: bool = False, dry_run: bool = False) -> dict[str, Any]:
+                    overwrite: bool = False, dry_run: bool = False,
+                    progress: Callable[[str, float], None] | None = None) -> dict[str, Any]:
     """Import the analyses of the previous tool into the follow-up of the calls, by JOIN_ID.
 
     Every visible sheet with a JOIN_ID column is read. Values are checked as if they were chosen in the call, after the
@@ -4320,9 +4840,14 @@ def import_analyses(task_repository: Any, content: bytes, file_name: str, userna
     equivalence that gives their domain; anything else, and every column without a field, stays in the import note of
     the call. Each comment column becomes a comment. Calls not in the workspace yet keep their analysis for when their
     CDR is added. Without ``overwrite`` only empty values are filled. ``dry_run`` only reports what the import would do.
+    ``progress(step, fraction)`` is told how far the import is.
     """
+    report = progress or (lambda _step, _fraction: None)
     definitions = list_fields(task_repository)
-    parsed = read_analyses(content, file_name, definitions)
+    report('Reading the file', 0.02)
+    parsed = read_analyses(content, file_name, definitions, lambda name, index, count: report(
+        f'Reading the sheet {name}', 0.02 + 0.33 * index / max(count, 1)))
+    report('Finding the calls in the workspace', 0.36)
     translator = _AnalysesTranslator(task_repository, users)
     # Every way a name of an analyst or a reviewer is written becomes its most used spelling.
     translator.names = nq_analyses.canonical_names([value for entry in parsed['entries'] for (kind, ref), value in entry['values'].items()
@@ -4359,7 +4884,9 @@ def import_analyses(task_repository: Any, content: bytes, file_name: str, userna
     invalid: Counter = Counter()
     unmatched: list[str] = []
     unplaced: list[str] = []
-    for entry in parsed['entries']:
+    for number, entry in enumerate(parsed['entries']):
+        if number % 200 == 0:
+            report('Translating the values', 0.42 + 0.13 * number / max(len(parsed['entries']), 1))
         identity = entry['label']
         hit = found(entry)
         if hit:
@@ -4376,6 +4903,7 @@ def import_analyses(task_repository: Any, content: bytes, file_name: str, userna
             call_key = key
         changes: dict[tuple[str, str], str] = {}
         written: dict[tuple[str, str], str] = {}
+        routed: dict[tuple[str, str], tuple[tuple[str, str], str]] = {}
         # The copies of the CDR or of the Ericsson RCA that say what the tool has of the call are left out of the note.
         repeated = call_values.get(call_key, {}) if hit else {}
         lines = [f'{column}: {value}' for column, value in entry['notes'] if not _repeats_the_call(repeated, column, value, mapper)]
@@ -4388,12 +4916,26 @@ def import_analyses(task_repository: Any, content: bytes, file_name: str, userna
                 invalid[(label, value[:60])] += 1
                 lines.append(f'{label} (not a value of the field): {value}')
                 continue
-            changes.setdefault((result[0], result[1]), result[2])
-            written.setdefault((result[0], result[1]), value)
+            key = (result[0], result[1])
+            if key in changes and nq_analyses.identity(changes[key]) != nq_analyses.identity(result[2]):
+                # Two columns of the row give the field a value: its own column wins over one that only leads to it
+                # (Planned in an implementation column), and the other value stays in the note.
+                if key == target and key in routed:
+                    routed_target, routed_value = routed.pop(key)
+                    lines.append(f'{translator.label(routed_target)}: {routed_value}')
+                    changes[key], written[key] = result[2], value
+                else:
+                    lines.append(f'{translator.label(target)}: {value}')
+                continue
+            changes.setdefault(key, result[2])
+            written.setdefault(key, value)
+            if key != target:
+                routed.setdefault(key, (target, value))
             # A cell the field takes only part of (several fiscal years or bands), and a value the reviewed equivalences
             # name otherwise, stay in the note as they are written.
             partial = '\n' in value.strip() and ((result[0], result[1]) != target or result[2] != value)
-            renamed = translator.reviewed(target, value) and nq_analyses.identity(result[2]) != nq_analyses.identity(value)
+            renamed = (translator.reviewed(target, value) or value.strip().casefold() in nq_analyses.KEPT_IN_NOTE.get(target[1], ())) \
+                and nq_analyses.identity(result[2]) != nq_analyses.identity(value)
             if partial or renamed:
                 lines.append(f'{translator.label(target)} (as written): {value}')
         # A call the analysts invalidated is an invalidated analysis.
@@ -4417,11 +4959,15 @@ def import_analyses(task_repository: Any, content: bytes, file_name: str, userna
         plan['changes'] = {(kind, ref): translator.canonical(kind, ref, value) for (kind, ref), value in plan['changes'].items()}
     keys = [plan['call_key'] for plan in plans]
     labels = {target: translator.label(target) for plan in plans for target in plan['changes']}
-    result = _write_analyses(task_repository, plans, username, labels, overwrite=overwrite, dry_run=dry_run)
+    result = _write_analyses(task_repository, plans, username, labels, overwrite=overwrite, dry_run=dry_run,
+                             progress=lambda done, total: report('Comparing with the calls' if dry_run else 'Writing the analyses',
+                                                                 0.55 + 0.35 * done / max(total, 1)))
     # The catalog gets the new values some call takes (a value no call takes, as the calls keep theirs, stays out).
     applied = result.pop('applied')
     if not dry_run and applied:
+        report('Adding the new values to the catalog', 0.96)
         _add_analyses_catalog(task_repository, translator, applied)
+    report('Done', 1.0)
     summary_new = {
         'new_options': [{'field': translator.fields[ref]['label'], 'value': name, 'rows': count}
                         for ref, names in translator.added_options().items()
@@ -4515,7 +5061,7 @@ def _add_analyses_catalog(task_repository: Any, translator: _AnalysesTranslator,
 
 
 def _write_analyses(task_repository: Any, plans: list[dict[str, Any]], username: str, labels: dict[tuple[str, str], str], *,
-                    overwrite: bool, dry_run: bool) -> dict[str, Any]:
+                    overwrite: bool, dry_run: bool, progress: Callable[[int, int], None] | None = None) -> dict[str, Any]:
     """Write (or count) what each call gets: its follow-up and fields (only the empty ones without ``overwrite``: the
     values a call keeps go to the note), the texts added to its fields, its comments and its import note; the statuses
     follow the Status Rules afterwards. ``applied`` holds every value written (kind, ref, lowercase value)."""
@@ -4534,7 +5080,9 @@ def _write_analyses(task_repository: Any, plans: list[dict[str, Any]], username:
         for row in (_rows_of_calls(connection, f'SELECT id, call_key, body, created_by, created_at, deleted_at FROM {NQ_CALL_COMMENTS_TABLE}',
                                    keys, order='created_at, id') if keys else []):
             comment_rows.setdefault(str(row['call_key']), []).append(row)
-        for plan in plans:
+        for number, plan in enumerate(plans):
+            if progress is not None and number % 100 == 0:
+                progress(number, len(plans))
             call_key = plan['call_key']
             current = tracking.get(call_key) or {'status': default, 'status_mode': 'auto', 'team': '', 'assignee': '',
                                                   'root_domain': '', 'root_category': '', 'root_cause': '', 'version': 0}
@@ -4611,6 +5159,8 @@ def _write_analyses(task_repository: Any, plans: list[dict[str, Any]], username:
                     (uuid.uuid4().hex, call_key, body, username, when))
             touched[call_key] = when
     if touched:
+        if progress is not None:
+            progress(len(plans), len(plans))
         recompute_statuses(task_repository, username, list(touched), when_of=touched)
     return {'changed': changed, 'pending': pending, 'comments': added_comments, 'notes': notes, 'dated': dated,
             'estimated': estimated, 'failures': [], 'applied': applied}
@@ -4995,8 +5545,12 @@ def lifecycle_stats(task_repository: Any, filters: dict[str, Any], username: str
     time_in_status.sort(key=lambda item: order.index(item['status']) if item['status'] in order else len(order))
     stalled.sort(key=lambda item: -item['days'])
     identified = sum(1 for row in rows if row['root_category'] or row['root_cause'])
+    # Open: the attended calls not closed yet, every status between the first one (not attended) and the closed ones.
+    first = statuses[0]['name'] if statuses else ''
+    open_statuses = [item['status'] for item in pipeline if not item['closed'] and item['status'] != first]
     return {
         'total': len(rows), 'pipeline': pipeline, 'modes': {'auto': modes.get('auto', 0), 'manual': modes.get('manual', 0)},
+        'open': sum(item['count'] for item in pipeline if item['status'] in open_statuses), 'open_statuses': open_statuses,
         'rca': {'identified': identified, 'not_identified': len(rows) - identified},
         'phases': phases, 'time_in_status': time_in_status,
         'moves': [{'from': old, 'to': new, 'count': count} for (old, new), count in moves.most_common(12)],
@@ -5698,7 +6252,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
 
     core.register_idle_task(index_when_idle, NQ_INDEX_IDLE_SECONDS)
     core.BACKGROUND_TASK_PROVIDERS.append(index_tasks)
-    from fastapi.responses import HTMLResponse, JSONResponse, Response
+    from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
     from pydantic import BaseModel, Field
 
     class QueryPayload(BaseModel):
@@ -5760,6 +6314,9 @@ def install_non_qualified_calls_routes(core: Any) -> None:
 
     class FieldsPayload(BaseModel):
         fields: list[dict[str, Any]] = Field(default_factory=list)
+
+    class FieldOptionPayload(BaseModel):
+        name: str = ''
 
     class TableColumnsPayload(BaseModel):
         builtin: list[str] = Field(default_factory=list)
@@ -5949,7 +6506,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
             'root_cause_rule_fields': RULE_FIELDS, 'default_root_cause_rule': DEFAULT_ROOT_CAUSE_RULE,
             'fields': list_fields(repository), 'field_types': FIELD_TYPES, 'field_sources': nq_catalog.FIELD_SOURCES,
             'tracking_refs': nq_catalog.TRACKING_REFS, 'rca_refs': nq_catalog.RCA_REFS, 'call_fields': list(CATALOG_CALL_FIELDS),
-            'sections': list_sections(repository), 'default_sections': nq_catalog.default_sections(),
+            'sections': list_sections(repository), 'default_sections': nq_catalog.default_sections(), 'call_section': CALL_SECTION,
             'status_rules': status_rules(repository), 'default_status_rules': nq_catalog.default_status_rules(),
             'default_options': {'statuses': [{'name': name, 'color': color, 'closed': closed} for name, color, closed in DEFAULT_STATUSES],
                                 'teams': [{'name': name, 'color': color, 'members': []} for name, color in DEFAULT_TEAMS]},
@@ -5979,6 +6536,12 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         """The analysis fields of the workspace (user-editor and above)."""
         repository = workspace_repository(user)
         return JSONResponse({'fields': translate(lambda: save_fields(repository, payload.fields, user.username))})
+
+    @core.app.post('/api/non-qualified-calls/fields/{key}/options')
+    def nq_add_field_option(key: str, payload: FieldOptionPayload, user=Depends(editor_user)) -> JSONResponse:
+        """A new value of a list field, typed in the list of a call (user-editor and above)."""
+        repository = workspace_repository(user)
+        return JSONResponse(translate(lambda: add_field_option(repository, key, payload.name, user.username)))
 
     async def uploaded_file(request: Request, name: str, limit_mb: int) -> tuple[bytes, str, dict[str, Any]]:
         form = await request.form()
@@ -6065,19 +6628,43 @@ def install_non_qualified_calls_routes(core: Any) -> None:
                         headers={'Content-Disposition': 'attachment; filename="NQ_analyses_template.csv"'})
 
     @core.app.post('/api/non-qualified-calls/analyses/import')
-    async def nq_analyses_import(request: Request, user=Depends(analyses_user)) -> JSONResponse:
+    async def nq_analyses_import(request: Request, user=Depends(analyses_user)) -> Response:
         """Preview (``preview=1``) or import the analyses of the previous tool by JOIN_ID into the active workspace;
-        ``overwrite=1`` replaces the values the calls already have instead of filling only the empty ones."""
+        ``overwrite=1`` replaces the values the calls already have instead of filling only the empty ones. With
+        ``stream=1`` the answer is one JSON object per line: the progress (``step`` and ``progress`` from 0 to 1) while
+        the import runs, then its ``result`` (or its ``error``)."""
         repository = workspace_repository(user)
         content, name, form = await uploaded_file(request, 'file', 100)
-        try:
-            return JSONResponse(import_analyses(repository, content, name, user.username, set(workspace_users()),
-                                                overwrite=str(form.get('overwrite') or '') == '1',
-                                                dry_run=str(form.get('preview') or '') == '1'))
-        except ValueError as exc:
-            raise HTTPException(400, str(exc)) from exc
-        except Exception as exc:  # noqa: BLE001 - an unreadable file is a user error.
-            raise HTTPException(400, f'The analyses file could not be read: {exc}') from exc
+        users = set(workspace_users())
+        options = {'overwrite': str(form.get('overwrite') or '') == '1', 'dry_run': str(form.get('preview') or '') == '1'}
+        if str(form.get('stream') or '') != '1':
+            try:
+                return JSONResponse(import_analyses(repository, content, name, user.username, users, **options))
+            except ValueError as exc:
+                raise HTTPException(400, str(exc)) from exc
+            except Exception as exc:  # noqa: BLE001 - an unreadable file is a user error.
+                raise HTTPException(400, f'The analyses file could not be read: {exc}') from exc
+        events: queue.Queue = queue.Queue()
+
+        def run() -> None:
+            try:
+                result = import_analyses(repository, content, name, user.username, users, **options,
+                                         progress=lambda step, fraction: events.put({'step': step, 'progress': round(fraction, 3)}))
+                events.put({'result': result})
+            except ValueError as exc:
+                events.put({'error': str(exc)})
+            except Exception as exc:  # noqa: BLE001 - an unreadable file is a user error.
+                events.put({'error': f'The analyses file could not be read: {exc}'})
+            finally:
+                events.put(None)
+
+        threading.Thread(target=run, name='nq-analyses-import', daemon=True).start()
+
+        def lines() -> Any:
+            while (event := events.get()) is not None:
+                yield json.dumps(event, ensure_ascii=False) + '\n'
+
+        return StreamingResponse(lines(), media_type='application/x-ndjson')
 
     @core.app.post('/api/non-qualified-calls/analyses/equivalences')
     async def nq_analyses_equivalences_download(request: Request, user=Depends(analyses_user)) -> Response:

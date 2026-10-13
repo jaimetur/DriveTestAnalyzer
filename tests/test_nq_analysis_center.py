@@ -4,6 +4,8 @@ recommendation from the three root cause sources, lifecycle and RCA insights, th
 import io
 import json
 import sqlite3
+from collections import Counter
+from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -64,7 +66,7 @@ def test_new_workspaces_get_the_catalog_of_the_meeting_workbook(client, tmp_path
     assert len(fields) == 53
     keys = [field['key'] for field in fields]
     for before, after in (('nq_call_status', 'priority'), ('assignee', 'analyst'), ('analyst', 'reviewer'),
-                          ('planned_date', 'planned_fy'), ('implementation_status', 'implementation_stream'),
+                          ('planned_date', 'planned_fy'), ('implementation_status', 'implementation_team'),
                           ('initial_root_category', 'initial_root_cause'),
                           ('vendor_when_failure', 'vendor_2_when_failure'), ('reviewer', 'unique_id'),
                           ('solution_location', 'polygon_area'), ('polygon_area', 'description')):
@@ -74,19 +76,26 @@ def test_new_workspaces_get_the_catalog_of_the_meeting_workbook(client, tmp_path
         'vendor_when_failure', 'vendor_2_when_failure', 'failure_comment']
     assert next(field for field in fields if field['key'] == 'last_cell_id')['source_ref'] == 'last_cell_id'
     assert [field['key'] for field in fields if field['section'] == 'analysis'][:3] == ['analysis_status', 'tunnel_failure', 'needed_technology']
+    assert [field['key'] for field in fields if field['section'] == 'analysis'][-3:] == ['description', 'findings', 'proposed_measure']
     assert [section['label'] for section in state['sections']][2] == 'Failure Details'
     # The NetCheck RCA comes before the Ericsson RCA.
-    assert [field['label'] for field in fields[:4]] == ['Netcheck Failure Classification', 'Netcheck Suggested Category',
-                                                         'Netcheck Suggested Cause', 'Auto_RCA_Category_A']
+    assert [field['label'] for field in fields[:4]] == ['NetCheck RCA Failure Classification', 'NetCheck RCA Suggested Category',
+                                                         'NetCheck RCA Suggested Cause', 'Ericsson RCA Category A']
     by_key = {field['key']: field for field in fields}
-    assert by_key['rca_suggested_cause']['source'] == 'rca' and by_key['rca_suggested_cause']['in_table']
+    assert by_key['rca_suggested_cause']['source'] == 'rca' and by_key['rca_suggested_cause']['label'] == 'Ericsson RCA Suggested Cause'
+    assert [field['label'] for field in fields if field['source'] == 'rca'][-1] == 'Ericsson RCA Evidence'
     assert by_key['netcheck_suggested_cause']['source_ref'] == 'failure_subcategory'
+    # The suggested causes are columns only when chosen in Columns; every column shows the colour of its group,
+    # the call columns that of the call, as in the Excel export.
+    assert not by_key['rca_suggested_cause']['in_table'] and not by_key['netcheck_suggested_cause']['in_table']
+    assert [field['key'] for field in fields if field['in_table'] and field['source'] != 'tracking'] == ['analysis_status', 'implementation_status']
+    assert state['call_section'] == nq.CALL_SECTION
     assert by_key['selected_root_category']['source'] == 'tracking' and by_key['nq_call_status']['section'] == 'general'
     assert by_key['analysis_status']['section'] == 'analysis'
     assert [option['name'] for option in by_key['planned_status']['options']] == ['Not Planned', 'Planned']
     assert [section['key'] for section in state['sections']] == list(nq_catalog.SECTION_KEYS)
     assert state['sections'][1]['color'] == '#FFC000'
-    assert [item['name'] for item in state['options']['statuses']][:2] == ['Not Attended', 'Open']
+    assert [item['name'] for item in state['options']['statuses']][:2] == ['Not Attended', 'Under Analysis']
     assert 'RAN Planning Coverage' in [item['name'] for item in state['options']['teams']]
     root = state['root_causes']
     assert 'Poor Coverage LTE' in [item['name'] for item in root['categories']]
@@ -100,9 +109,9 @@ def test_status_follows_the_phase_fields_until_it_is_set_by_hand(client, tmp_pat
     calls = setup_calls(client, tmp_path)
     call = calls['0xA1']
     assert call['status'] == 'Not Attended' and call['status_mode'] == 'auto'
-    # A comment attends the call.
+    # A comment attends the call: it is open, Under Analysis.
     assert client.post(f"/api/non-qualified-calls/calls/{call['call_key']}/comments", json={'body': 'Looking at it'}).status_code == 200
-    assert {item['join_id']: item for item in query(client)['calls']}['0xA1']['status'] == 'Open'
+    assert {item['join_id']: item for item in query(client)['calls']}['0xA1']['status'] == 'Under Analysis'
     updated = patch(client, call, {'fields': {'analysis_status': 'Ongoing'}})
     assert updated['status'] == 'Under Analysis'
     updated = patch(client, call, {'fields': {'implementation_status': 'Under evaluation'}})
@@ -121,7 +130,7 @@ def test_status_follows_the_phase_fields_until_it_is_set_by_hand(client, tmp_pat
     assert {'status_auto', 'status', 'status_mode'} <= {entry['field'] for entry in detail['history']}
     # A status set by the rules follows, in the history, the change that moved it.
     fields = [entry['field'] for entry in detail['history']]
-    assert fields[fields.index('field:analysis_status') + 1] == 'status_auto' and fields[-2:] == ['status_mode', 'status_auto']
+    assert fields[fields.index('field:implementation_status') + 1] == 'status_auto' and fields[-2:] == ['status_mode', 'status_auto']
     # The rules adapt to renamed list values and the calls follow new rules at once.
     fields = client.get('/api/non-qualified-calls/state').json()['fields']
     for field in fields:
@@ -257,7 +266,10 @@ def test_lifecycle_and_rca_insights_compare_the_three_sources(client, tmp_path):
         'Poor Coverage LTE'] == ['RF']
     lifecycle = client.post('/api/non-qualified-calls/lifecycle', json={'filters': {}}).json()
     pipeline = {item['status']: item['count'] for item in lifecycle['pipeline']}
-    assert pipeline['Under Analysis'] == 1 and pipeline['Open'] == 1 and pipeline['Not Attended'] == 1
+    assert pipeline['Under Analysis'] == 2 and 'Open' not in pipeline and pipeline['Not Attended'] == 1
+    # Open is the sum of the statuses of the attended calls not closed yet.
+    assert lifecycle['open_statuses'] == ['Under Analysis', 'Under Implementation', 'Under Planning']
+    assert lifecycle['open'] == sum(pipeline[name] for name in lifecycle['open_statuses'])
     phases = {phase['key']: phase for phase in lifecycle['phases']}
     assert next(item['count'] for item in phases['analysis_status']['items'] if item['value'] == 'Ongoing') == 1
     assert lifecycle['modes'] == {'auto': 3, 'manual': 0}
@@ -278,7 +290,7 @@ def test_excel_export_groups_the_catalog_by_section_with_its_colours(client, tmp
     assert sections[:3] == ['CALL', 'RCA', 'GENERAL'] and sections[-4:-1] == ['ANALYSIS', 'IMPLEMENTATION', 'PLANNING']
     headers = [cell.value for cell in sheet[2]]
     # The catalog in its order, each field after its section title, with the follow-up companions.
-    assert headers.index('Netcheck Suggested Cause') < headers.index('Auto_RCA_Category_A') < headers.index('Selected Root Cause') \
+    assert headers.index('NetCheck RCA Suggested Cause') < headers.index('Ericsson RCA Category A') < headers.index('Selected Root Cause') \
         < headers.index('NQ Call Status') \
         < headers.index('Session Type') < headers.index('Findings') < headers.index('Planned Date')
     # JOIN_ID and the call key first; the root cause decision ends the RCA block; the last update last.
@@ -293,14 +305,14 @@ def test_excel_export_groups_the_catalog_by_section_with_its_colours(client, tmp
     assert fill('Analysis Status') == nq._tint('#7030A0', nq.KEY_FIELD_TINT) != fill('Findings')
     assert fill('Implementation Status') == nq._tint('#00B050', nq.KEY_FIELD_TINT)
     assert fill('Planned Status') == nq._tint('#00843D', nq.KEY_FIELD_TINT)
-    rca_fill = sheet.cell(1, headers.index('Netcheck Failure Classification') + 1).fill.fgColor.rgb
+    rca_fill = sheet.cell(1, headers.index('NetCheck RCA Failure Classification') + 1).fill.fgColor.rgb
     assert rca_fill.endswith('FFC000')
     rows = [dict(zip(headers, (cell.value for cell in row))) for row in sheet.iter_rows(min_row=3)]
     row = next(item for item in rows if item['JOIN_ID'] == '0xA1')
     assert row['Findings'] == 'Hill behind the site' and row['Tunnel Failure'] == 'No'
     comments = row['Comments'].split('\n')
     assert len(comments) == 2 and comments[0].endswith('super: First look') and comments[1].endswith('super: Coverage hole')
-    assert row['Netcheck Suggested Cause'] == 'DL coverage problems' and row['Session Type'] == 'CALL'
+    assert row['NetCheck RCA Suggested Cause'] == 'DL coverage problems' and row['Session Type'] == 'CALL'
 
 
 
@@ -450,7 +462,7 @@ def test_recommendation_engine_maps_each_source_onto_the_catalog():
     sources = {source['source']: source for source in taught['sources']}
     assert sources['learned']['count'] == 2 and sources['learned']['category'] == 'DL Interference NR'
     assert nq_catalog.evaluate_status(nq_catalog.default_status_rules(), {'analysis_status': 'Finished'}, 'Not Attended') == 'Closed'
-    assert nq_catalog.evaluate_status(nq_catalog.default_status_rules(), {'@attended': 'Yes'}, 'Not Attended') == 'Open'
+    assert nq_catalog.evaluate_status(nq_catalog.default_status_rules(), {'@attended': 'Yes'}, 'Not Attended') == 'Under Analysis'
 
 
 def test_calls_are_read_from_their_latest_versions_kept_up_to_date(client, tmp_path):
@@ -517,7 +529,7 @@ def test_first_layout_workspaces_take_the_second_one(client, tmp_path):
     fields = nq.list_fields(repository)
     failure = [field['key'] for field in fields if field['section'] == 'failure_event']
     assert failure.index('last_cell_id') == failure.index('serving_cell_when_failure') - 1 and failure[-1] == 'failure_comment'
-    assert [field['key'] for field in fields if field['section'] == 'analysis'][-2:] == ['proposed_measure', 'findings']
+    assert [field['key'] for field in fields if field['section'] == 'analysis'][-2:] == ['findings', 'proposed_measure']
     assert next(field for field in fields if field['key'] == 'serving_cell_when_failure')['suggest_from'] == 'last_cell_id'
 
 
@@ -579,7 +591,8 @@ def test_auto_rca_summary_fills_each_side_combines_rows_and_completes_the_catalo
     preview = client.post('/api/non-qualified-calls/rca/import', data={'preview': '1'},
                           files={'file': ('RCA_Summary.csv', io.BytesIO(csv), 'text/csv')}).json()
     assert (preview['rows'], preview['matched'], preview['duplicates']) == (3, 3, 3)
-    assert {'RCA Category', 'RCA Suggested Category', 'Auto_RCA_Category_B', 'RCA Evidence'} <= set(preview['columns'])
+    assert {'Ericsson RCA Initial Category', 'Ericsson RCA Suggested Category', 'Ericsson RCA Category B',
+            'Ericsson RCA Evidence'} <= set(preview['columns'])
     # The initial category and subcategory have their own fields; the other columns stay with the call.
     assert {'LTE_Avg_PCell_RSRP', 'Log_Day'} <= set(preview['extra']) and 'RCA_Category' not in preview['extra']
     # Mobility Issue and the late handover map onto the catalog by keywords; the generic results do not.
@@ -703,10 +716,39 @@ def test_admins_import_the_analyses_of_the_previous_tool_by_join_id(client, tmp_
     again = client.post('/api/non-qualified-calls/analyses/import', data={'preview': '1'},
                         files={'file': ('export.xlsx', io.BytesIO(exported), 'application/octet-stream')}).json()
     assert again['matched'] == 4 and 'Analysis Status' in again['columns'] and again['changed'] == 0
-    # Import RCA & Analyses, at the top of the page, gathers both imports; only admins and super-admins import analyses.
+    # The Analysis Center menu ends with both imports after a line, and the sections menu of the module lists the
+    # Analysis Center after a line with every option (the page opens them); only admins and super-admins import analyses.
     page = client.get('/non-qualified-calls').text
-    assert 'id="nq-import-toggle"' in page and 'Import RCA &amp; Analyses</button>' in page
-    assert 'id="nq-rca-open"' in page and 'id="nq-analyses-open"' in page
+    center = page.split('id="nq-config-menu"', 1)[1].split('</div>\n  </div>', 1)[0]
+    assert center.index('nq-menu-separator') < center.index('id="nq-rca-open"') < center.index('id="nq-analyses-open"')
+    assert 'Import Ericsson RCA Results</strong>' in center and 'Import Previous NQ Analyses</strong>' in center
+    assert 'nq-import-toggle' not in page
+    menu = page.split('data-module-sections-for="non-qualified-calls"', 1)[1].split('</nav>', 1)[0]
+    assert menu.index('<span>Non-Qualified Calls</span>') < menu.index('module-sections-separator') < menu.index('<span>Analysis Center</span>')
+    script = (Path(__file__).parents[1] / 'src/web_interface/static/js/non_qualified_calls.js').read_text(encoding='utf-8')
+    anchors = ('fields-and-sections', 'statuses-and-teams', 'status-rules', 'root-cause-catalog', 'import-ericsson-rca-results',
+               'import-previous-nq-analyses')
+    for anchor in ('section-analysis-center', *anchors):
+        assert f'href="/non-qualified-calls#{anchor}"' in menu and f"'{anchor}':" in script, anchor
+    assert menu.index('#root-cause-catalog') < menu.rindex('module-sections-separator') < menu.index('#import-ericsson-rca-results')
+    # Columns is a button of the table, before Default column order, not an option of the Analysis Center.
+    assert 'nq-columns-open' not in center and 'additional-columns' not in menu
+    toolbar = page.split('class="nq-toolbar-actions"', 1)[1].split('</div>', 1)[0]
+    assert toolbar.index('id="nq-columns-open"') < toolbar.index('id="nq-column-order-reset"')
+    assert 'for every user of the workspace">Columns</button>' in toolbar
+    # The Global Status and the Team / Assignee come before the comments; the calls panel follows the Filters.
+    head = page.split('<thead>', 1)[1].split('</thead>', 1)[0]
+    assert head.index('data-sort="root_category"') < head.index('data-sort="status"') < head.index('data-sort="team"') \
+        < head.index('data-sort="comments"') and '>Global Status</span>' in head
+    assert page.index('nq-filters-panel') < page.index('nq-calls-panel') < page.index('nq-summary-panel')
+    # The phase cards leave out the calls without a value unless Show Empty Status (unchecked) is checked.
+    assert '<input type="checkbox" id="nq-life-show-empty"> Show Empty Status</label>' in page
+    assert "const base = phase.drill || showEmpty ? total : items.reduce((sum, item) => sum + item.count, 0);" in script
+    # The rules of the pipeline cards start on one line, Open frames the phase statuses and the phase cards share a row.
+    assert "const top = node('div', undefined, 'nq-pipeline-head');" in script and "'nq-pipeline-group-head'" in script
+    assert "style.setProperty('--nq-phase-count'" in script
+    # The Progress View shows the calls per month by default.
+    assert '<option value="month" selected>Month</option>' in page
     token = 'analyses-editor'
     core.SESSIONS[token] = core.SessionUser(username='editor', role='user-editor')
     client.cookies.set(core.SESSION_COOKIE, token)
@@ -853,14 +895,16 @@ def test_analyses_of_the_previous_tool_keep_everything_through_reviewed_equivale
 def test_workspaces_before_the_vendor_2_get_it_with_p1_to_p4_and_the_e2e_team(client, tmp_path):
     calls = setup_calls(client, tmp_path)
     repository = core.repository
-    # The layout before: Vendor when Failure alone, priorities 1 to 4 and the team E2E stream with a call and a member.
+    # The layout before: Vendor when Failure alone, priorities 1 to 4, the Implementation Stream and the team E2E stream
+    # with a call and a member.
     fields = [field for field in nq.list_fields(repository) if field['key'] != 'vendor_2_when_failure']
     for field in fields:
         if field['key'] == 'vendor_when_failure':
             field['label'] = 'Vendor when Failure'
         if field['key'] == 'priority':
             field['options'] = [{'name': str(number), 'color': ''} for number in range(1, 5)]
-        if field['key'] == 'implementation_stream':
+        if field['key'] == 'implementation_team':
+            field['key'], field['label'] = 'implementation_stream', 'Implementation Stream'
             field['options'] = [dict(option, name='E2E stream' if option['name'] == 'E2E Team' else option['name']) for option in field['options']]
     nq._store_fields(repository, fields)
     with repository.connection() as connection:
@@ -875,6 +919,7 @@ def test_workspaces_before_the_vendor_2_get_it_with_p1_to_p4_and_the_e2e_team(cl
         connection.execute(f"UPDATE {nq.NQ_CALL_TRACKING_TABLE} SET root_domain = 'Core 2G/4G/5G' WHERE root_domain = 'Core'")
     repository.set_workspace_state(nq.SAVED_FILTERS_STATE_KEY, json.dumps({'root_domain': ['Core 2G/4G/5G', 'RF']}))
     repository.set_workspace_state(nq.ANALYSIS_CENTER_V9_STATE_KEY, '')
+    repository.set_workspace_state(nq.ANALYSIS_CENTER_V12_STATE_KEY, '')
     nq.ensure_nq_tables(repository)
     upgraded = {field['key']: field for field in nq.list_fields(repository)}
     keys = list(upgraded)
@@ -882,7 +927,8 @@ def test_workspaces_before_the_vendor_2_get_it_with_p1_to_p4_and_the_e2e_team(cl
     assert keys.index('vendor_2_when_failure') == keys.index('vendor_when_failure') + 1
     assert [option['name'] for option in upgraded['priority']['options']] == ['P1', 'P2', 'P3', 'P4']
     call = {item['join_id']: item for item in query(client)['calls']}['0xA1']
-    assert (call['team'], call['values']['priority'], call['values']['implementation_stream']) == ('E2E Team', 'P2', 'E2E Team')
+    assert (call['team'], call['values']['priority'], call['values']['implementation_team']) == ('E2E Team', 'P2', 'E2E Team')
+    assert upgraded['implementation_team']['label'] == 'Implementation Team' and 'implementation_stream' not in upgraded
     teams = {team['name']: team for team in nq.list_options(repository)['teams']}
     assert 'E2E stream' not in teams and teams['E2E Team']['members'] == ['super']
     root = nq.list_root_causes(repository)
@@ -1063,6 +1109,281 @@ def test_the_rules_of_the_tool_import_the_previous_workbooks_without_uploading_e
     assert [row[5] for row in rows.iter_rows(min_row=2, values_only=True) if row[1] == 'E2E Issue'] == ['Reviewed in this workspace']
 
 
+def test_the_implementation_stream_becomes_the_implementation_team(client, tmp_path):
+    calls = setup_calls(client, tmp_path)
+    repository = core.repository
+    # A workspace of before: the Implementation Stream with a value, its history, a Status Rule, a shared filter and a
+    # reviewed equivalence.
+    fields = nq.list_fields(repository)
+    stream = next(field for field in fields if field['key'] == 'implementation_team')
+    stream['key'], stream['label'] = 'implementation_stream', 'Implementation Stream'
+    stream['description'] = nq.V12_FORMER_TEAM_FIELD[2]
+    nq._store_fields(repository, fields)
+    patch(client, calls['0xA1'], {'fields': {'implementation_stream': 'Operations'}})
+    rules = nq.status_rules(repository)
+    rules[0]['conditions'].append({'field': 'implementation_stream', 'op': 'in', 'values': ['Operations']})
+    repository.set_workspace_state(nq.STATUS_RULES_STATE_KEY, json.dumps(rules))
+    repository.set_workspace_state(nq.SAVED_FILTERS_STATE_KEY, json.dumps({'fields': {'implementation_stream': ['Operations']}}))
+    repository.set_workspace_state(nq.ANALYSES_EQUIVALENCES_STATE_KEY, json.dumps(
+        {'field:implementation_stream': {'acp': {'value': 'ACP', 'to': 'Operations', 'domain': ''}}}))
+    repository.set_workspace_state(nq.ANALYSIS_CENTER_V12_STATE_KEY, '')
+    nq.ensure_nq_tables(repository)
+    upgraded = {field['key']: field for field in nq.list_fields(repository)}
+    assert 'implementation_stream' not in upgraded
+    assert upgraded['implementation_team']['label'] == 'Implementation Team'
+    assert upgraded['implementation_team']['description'].startswith('The team responsible for the implementation')
+    call = {item['join_id']: item for item in query(client)['calls']}['0xA1']
+    assert call['values']['implementation_team'] == 'Operations'
+    with repository.connection() as connection:
+        assert connection.execute(f"SELECT COUNT(*) FROM {nq.NQ_CALL_HISTORY_TABLE} WHERE field = 'field:implementation_team'").fetchone()[0]
+        assert not connection.execute(f"SELECT COUNT(*) FROM {nq.NQ_CALL_HISTORY_TABLE} WHERE field LIKE '%implementation_stream'").fetchone()[0]
+    assert {'field': 'implementation_team', 'op': 'in', 'values': ['Operations']} in nq.status_rules(repository)[0]['conditions']
+    assert json.loads(repository.get_workspace_state(nq.SAVED_FILTERS_STATE_KEY))['fields'] == {'implementation_team': ['Operations']}
+    assert set(nq.workspace_equivalences(repository)) == {'field:implementation_team'}
+
+
+def test_a_list_takes_a_value_typed_in_the_call_and_the_planned_fy_only_fiscal_years(client, tmp_path):
+    calls = setup_calls(client, tmp_path)
+    repository = core.repository
+    add = lambda key, name: client.post(f'/api/non-qualified-calls/fields/{key}/options', json={'name': name})
+    # A list takes the value as typed, at the end of its values, and the call can take it.
+    added = add('implementation_proposal', 'Small Cell').json()
+    assert (added['value'], added['added'], added['field']['options'][-1]['name']) == ('Small Cell', True, 'Small Cell')
+    patch(client, calls['0xA1'], {'fields': {'implementation_proposal': 'Small Cell'}})
+    assert add('implementation_proposal', 'small  cell').json() == {**add('implementation_proposal', 'Small Cell').json(), 'added': False}
+    assert add('description', 'Anything').status_code == 400
+    # The Planned FY writes a year as a fiscal year, in its order, and refuses what is not one.
+    fiscal = add('planned_fy', '2034').json()
+    assert (fiscal['value'], fiscal['added']) == ('FY34', True)
+    assert [option['name'] for option in fiscal['field']['options']] == [f'FY{year}' for year in (*range(26, 32), 34)]
+    assert (add('planned_fy', 'fy 2034').json()['value'], add('planned_fy', 'fy 2034').json()['added']) == ('FY34', False)
+    assert add('planned_fy', 'next year').status_code == 400
+    # So do the new values of Fields & Sections.
+    fields = nq.list_fields(repository)
+    next(field for field in fields if field['key'] == 'planned_fy')['options'].append({'name': '2035', 'color': ''})
+    saved = client.put('/api/non-qualified-calls/fields', json={'fields': fields})
+    assert saved.status_code == 200, saved.text
+    assert 'FY35' in [option['name'] for field in saved.json()['fields'] if field['key'] == 'planned_fy' for option in field['options']]
+    next(field for field in fields if field['key'] == 'planned_fy')['options'].append({'name': 'Soon', 'color': ''})
+    assert client.put('/api/non-qualified-calls/fields', json={'fields': fields}).status_code == 400
+    # And the import: a year is its fiscal year, and what is not one stays in the import note.
+    csv = b'JOIN_ID,Planned FY\n0xA1,2030\n0xB2,next year\n'
+    client.post('/api/non-qualified-calls/analyses/import', files={'file': ('fy.csv', io.BytesIO(csv), 'text/csv')})
+    found = {item['join_id']: item for item in query(client)['calls']}
+    assert found['0xA1']['values']['planned_fy'] == 'FY30' and not found['0xB2']['values'].get('planned_fy')
+
+
+def test_workspaces_before_write_their_planned_years_as_fiscal_years(client, tmp_path):
+    calls = setup_calls(client, tmp_path)
+    repository = core.repository
+    # A workspace of before: years among the fiscal years, with calls and a shared filter.
+    fields = nq.list_fields(repository)
+    planned = next(field for field in fields if field['key'] == 'planned_fy')
+    planned['options'] += [{'name': '2030', 'color': ''}, {'name': '2033', 'color': '#123456'}, {'name': 'FY32', 'color': ''}]
+    nq._store_fields(repository, fields)
+    patch(client, calls['0xA1'], {'fields': {'planned_fy': '2030'}})
+    patch(client, calls['0xB2'], {'fields': {'planned_fy': '2033'}})
+    repository.set_workspace_state(nq.SAVED_FILTERS_STATE_KEY, json.dumps({'fields': {'planned_fy': ['2030', 'FY30']}}))
+    repository.set_workspace_state(nq.ANALYSIS_CENTER_V13_STATE_KEY, '')
+    nq.ensure_nq_tables(repository)
+    options = next(field for field in nq.list_fields(repository) if field['key'] == 'planned_fy')['options']
+    assert [option['name'] for option in options] == [f'FY{year}' for year in range(26, 34)]
+    assert next(option for option in options if option['name'] == 'FY33')['color'] == '#123456'
+    found = {item['join_id']: item for item in query(client)['calls']}
+    assert (found['0xA1']['values']['planned_fy'], found['0xB2']['values']['planned_fy']) == ('FY30', 'FY33')
+    assert json.loads(repository.get_workspace_state(nq.SAVED_FILTERS_STATE_KEY))['fields'] == {'planned_fy': ['FY30']}
+
+
+def test_workspaces_before_hide_the_suggested_causes_and_show_the_implementation_status(client, tmp_path):
+    setup_calls(client, tmp_path)
+    repository = core.repository
+    fields = nq.list_fields(repository)
+    for field in fields:
+        field['in_table'] = field['in_table'] or field['key'] in nq.V14_HIDDEN_COLUMNS
+        if field['key'] in nq.V16_SHOWN_COLUMNS:
+            field['in_table'] = False
+    nq._store_fields(repository, fields)
+    repository.set_workspace_state(nq.ANALYSIS_CENTER_V14_STATE_KEY, '')
+    repository.set_workspace_state(nq.ANALYSIS_CENTER_V16_STATE_KEY, '')
+    nq.ensure_nq_tables(repository)
+    upgraded = {field['key']: field for field in nq.list_fields(repository)}
+    assert not upgraded['netcheck_suggested_cause']['in_table'] and not upgraded['rca_suggested_cause']['in_table']
+    assert upgraded['implementation_status']['in_table']
+
+
+def test_workspaces_before_name_the_rca_fields_after_their_source(client, tmp_path):
+    setup_calls(client, tmp_path)
+    repository = core.repository
+    # The former names, one of them changed by hand.
+    former = dict(nq.V15_FORMER_LABELS)
+    fields = nq.list_fields(repository)
+    for field in fields:
+        if field['key'] in former:
+            field['label'] = 'My evidence' if field['key'] == 'rca_evidence' else former[field['key']]
+    nq._store_fields(repository, fields)
+    repository.set_workspace_state(nq.ANALYSIS_CENTER_V15_STATE_KEY, '')
+    nq.ensure_nq_tables(repository)
+    labels = {field['key']: field['label'] for field in nq.list_fields(repository)}
+    assert labels['netcheck_suggested_cause'] == 'NetCheck RCA Suggested Cause'
+    assert labels['auto_rca_subcategory_b'] == 'Ericsson RCA Subcategory B'
+    assert labels['rca_initial_category'] == 'Ericsson RCA Initial Category'
+    assert labels['rca_evidence'] == 'My evidence'
+
+
+def test_workspaces_before_put_the_findings_after_the_description(client, tmp_path):
+    setup_calls(client, tmp_path)
+    repository = core.repository
+    fields = nq.list_fields(repository)
+    findings = next(field for field in fields if field['key'] == 'findings')
+    fields.remove(findings)
+    fields.insert([field['key'] for field in fields].index('proposed_measure') + 1, findings)
+    nq._store_fields(repository, fields)
+    repository.set_workspace_state(nq.ANALYSIS_CENTER_V17_STATE_KEY, '')
+    nq.ensure_nq_tables(repository)
+    keys = [field['key'] for field in nq.list_fields(repository)]
+    assert keys.index('description') + 1 == keys.index('findings') == keys.index('proposed_measure') - 1
+
+
+def test_the_implementation_status_keeps_implementation_values_on_import(client, tmp_path):
+    calls = setup_calls(client, tmp_path)
+    # Planned and Not Planned are planning statuses, Closed is Implemented and Invalidated Not Applicable; a Status column
+    # that already gives the Planned Status keeps it, and the other value stays in the note.
+    csv = (b'JOIN_ID,Evaluation,Status\n0xA1,Not planned,\n0xB2,Closed,\n0xC3,Planned,Not planned\n'
+           b'0xD4,Invalidated,\n')
+    result = client.post('/api/non-qualified-calls/analyses/import', files={'file': ('mtl.csv', io.BytesIO(csv), 'text/csv')}).json()
+    assert result['new_options'] == [] or all(item['field'] != 'Implementation Status' for item in result['new_options'])
+    found = {call['join_id']: call['values'] for call in query(client)['calls']}
+    assert (found['0xA1'].get('implementation_status', ''), found['0xA1']['planned_status']) == ('', 'Not Planned')
+    assert found['0xB2']['implementation_status'] == 'Implemented'
+    assert (found['0xC3'].get('implementation_status', ''), found['0xC3']['planned_status']) == ('', 'Not Planned')
+    notes = [comment['body'] for comment in client.get(f"/api/non-qualified-calls/calls/{calls['0xC3']['call_key']}").json()['comments']]
+    assert any('Implementation Status: Planned' in body for body in notes)
+    options = [option['name'] for field in nq.list_fields(core.repository) if field['key'] == 'implementation_status'
+               for option in field['options']]
+    assert options == ['Not yet evaluated', 'Under evaluation', 'Evaluated', 'Implemented', 'Not Applicable']
+
+
+def test_workspaces_before_move_the_planning_values_out_of_the_implementation_status(client, tmp_path):
+    calls = setup_calls(client, tmp_path)
+    repository = core.repository
+    # A workspace of before: planning, invalidated and closed values in the Implementation Status, its first value grey.
+    fields = nq.list_fields(repository)
+    implementation = next(field for field in fields if field['key'] == 'implementation_status')
+    implementation['options'] = [dict(option, color=nq.V18_FORMER_NOT_EVALUATED_COLOR) if option['name'] == 'Not yet evaluated' else option
+                                 for option in implementation['options'] if option['name'] != 'Not Applicable']
+    implementation['options'] += [{'name': name, 'color': ''} for name in ('Not Planned', 'Planned', 'Invalidated', 'Closed')]
+    nq._store_fields(repository, fields)
+    patch(client, calls['0xA1'], {'fields': {'implementation_status': 'Not Planned'}})
+    patch(client, calls['0xB2'], {'fields': {'implementation_status': 'Planned', 'planned_status': 'Not Planned'}})
+    patch(client, calls['0xC3'], {'fields': {'implementation_status': 'Closed'}})
+    repository.set_workspace_state(nq.SAVED_FILTERS_STATE_KEY, json.dumps({'fields': {'implementation_status': ['Planned', 'Invalidated']}}))
+    repository.set_workspace_state(nq.ANALYSIS_CENTER_V18_STATE_KEY, '')
+    nq.ensure_nq_tables(repository)
+    upgraded = {field['key']: field for field in nq.list_fields(repository)}
+    assert [option['name'] for option in upgraded['implementation_status']['options']] == [
+        'Not yet evaluated', 'Under evaluation', 'Evaluated', 'Implemented']
+    assert upgraded['implementation_status']['options'][0]['color'] == '#b0234f'
+    found = {call['join_id']: call for call in query(client)['calls']}
+    assert (found['0xA1']['values'].get('implementation_status', ''), found['0xA1']['values']['planned_status']) == ('', 'Not Planned')
+    # 0xB2 keeps its own Planned Status; its history tells the value removed.
+    assert (found['0xB2']['values'].get('implementation_status', ''), found['0xB2']['values']['planned_status']) == ('', 'Not Planned')
+    history = client.get(f"/api/non-qualified-calls/calls/{calls['0xB2']['call_key']}").json()['history']
+    assert any(entry['field'] == 'field:implementation_status' and entry['old_value'] == 'Planned' for entry in history)
+    # Closed is Implemented, so the call is closed by the Status Rules.
+    assert found['0xC3']['values']['implementation_status'] == 'Implemented' and found['0xC3']['status'] == 'Closed'
+    assert json.loads(repository.get_workspace_state(nq.SAVED_FILTERS_STATE_KEY))['fields'] == {
+        'implementation_status': ['Not Applicable'], 'planned_status': ['Planned']}
+
+
+def test_workspaces_before_make_open_the_group_of_the_phase_statuses(client, tmp_path):
+    calls = setup_calls(client, tmp_path)
+    repository = core.repository
+    # A workspace of before: the status Open, given by the rule of the attended calls and set by hand on one call.
+    with repository.connection() as connection:
+        connection.execute(f"UPDATE {nq.NQ_CALL_OPTIONS_TABLE} SET position = position + 1 WHERE kind = 'status' AND position > 0")
+        connection.execute(f"INSERT INTO {nq.NQ_CALL_OPTIONS_TABLE} (kind, name, color, position, is_closed) VALUES ('status', 'Open', '#d14a68', 1, 0)")
+    rules = nq.status_rules(repository)
+    rules[-1]['status'] = 'Open'
+    repository.set_workspace_state(nq.STATUS_RULES_STATE_KEY, json.dumps(rules))
+    client.post(f"/api/non-qualified-calls/calls/{calls['0xA1']['call_key']}/comments", json={'body': 'Looking at it'})
+    patch(client, calls['0xB2'], {'status': 'Open'})
+    assert {item['join_id']: item['status'] for item in query(client)['calls']} == {'0xA1': 'Open', '0xB2': 'Open', '0xC3': 'Not Attended'}
+    repository.set_workspace_state(nq.SAVED_FILTERS_STATE_KEY, json.dumps({'status': ['Open', 'Closed']}))
+    repository.set_workspace_state(nq.ANALYSIS_CENTER_V19_STATE_KEY, '')
+    nq.ensure_nq_tables(repository)
+    assert 'Open' not in [item['name'] for item in nq.list_options(repository)['statuses']]
+    assert nq.status_rules(repository)[-1]['status'] == 'Under Analysis'
+    found = {item['join_id']: item for item in query(client)['calls']}
+    assert (found['0xA1']['status'], found['0xA1']['status_mode']) == ('Under Analysis', 'auto')
+    assert (found['0xB2']['status'], found['0xB2']['status_mode']) == ('Under Analysis', 'manual')
+    assert json.loads(repository.get_workspace_state(nq.SAVED_FILTERS_STATE_KEY))['status'] == [
+        'Under Analysis', 'Under Implementation', 'Under Planning', 'Closed']
+
+
+def test_the_progress_view_counts_the_statuses_the_rules_set(client, tmp_path):
+    calls = setup_calls(client, tmp_path)
+    # The Status Rules close the call (Implemented) and move another one Under Implementation, without a status by hand.
+    patch(client, calls['0xA1'], {'fields': {'implementation_status': 'Implemented'}})
+    patch(client, calls['0xB2'], {'fields': {'implementation_status': 'Under evaluation'}})
+    progress = client.post('/api/non-qualified-calls/progress', json={'filters': {}, 'granularity': 'week'}).json()
+    assert sum(period['closed'] for period in progress['periods']) == 1
+    moved = Counter()
+    for period in progress['periods']:
+        moved.update(period['statuses'])
+    assert moved['Closed'] == 1 and moved['Under Implementation'] == 1
+    # The moves to a closed status are the Closed column, not one of their own; the days to close count from the call.
+    assert 'Closed' not in progress['statuses'] and 'Under Implementation' in progress['statuses']
+    assert progress['summary']['avg_days_to_close'] > 1
+
+
+def test_the_default_rules_go_from_the_end_of_the_pipeline_and_invalid_analyses_are_invalidated(client, tmp_path):
+    calls = setup_calls(client, tmp_path)
+    rules = nq_catalog.default_status_rules()
+    assert [rule['status'] for rule in rules] == ['Closed', 'Closed', 'Closed', 'Under Planning', 'Under Implementation',
+                                                 'Under Analysis', 'Under Analysis']
+    # A finished analysis closes the call unless it is planned or in implementation.
+    evaluate = lambda values: nq_catalog.evaluate_status(rules, {'@attended': 'Yes', **values}, 'Not Attended')
+    assert evaluate({'analysis_status': 'Finished'}) == 'Closed'
+    assert evaluate({'analysis_status': 'Finished', 'planned_status': 'Planned'}) == 'Under Planning'
+    assert evaluate({'analysis_status': 'Finished', 'implementation_status': 'Under evaluation'}) == 'Under Implementation'
+    # No_Vendor_B and No_JoinID Missing of the analyses are Invalidated, the note keeping them as written.
+    csv = b'JOIN_ID,Analysis Finished\n0xA1,No_Vendor_B\n0xB2,No_JoinID Missing\n'
+    client.post('/api/non-qualified-calls/analyses/import', files={'file': ('mtl.csv', io.BytesIO(csv), 'text/csv')})
+    found = {call['join_id']: call for call in query(client)['calls']}
+    assert found['0xA1']['values']['analysis_status'] == found['0xB2']['values']['analysis_status'] == 'Invalidated'
+    assert found['0xA1']['status'] == 'Closed'
+    notes = [comment['body'] for comment in client.get(f"/api/non-qualified-calls/calls/{calls['0xA1']['call_key']}").json()['comments']]
+    assert any('Analysis Status (as written): No_Vendor_B' in body for body in notes)
+
+
+def test_workspaces_before_invalidate_the_invalid_analyses_and_renumber_their_default_rules(client, tmp_path):
+    calls = setup_calls(client, tmp_path)
+    repository = core.repository
+    fields = nq.list_fields(repository)
+    analysis = next(field for field in fields if field['key'] == 'analysis_status')
+    analysis['options'] += [{'name': 'No_Vendor_B', 'color': ''}, {'name': 'No_JoinID Missing', 'color': ''}]
+    nq._store_fields(repository, fields)
+    patch(client, calls['0xA1'], {'fields': {'analysis_status': 'No_Vendor_B'}})
+    former = [{'status': status, 'conditions': [{'field': field, 'op': op, 'values': list(values)} for field, op, values in conditions]}
+              for status, conditions in nq.V20_FORMER_RULES]
+    repository.set_workspace_state(nq.STATUS_RULES_STATE_KEY, json.dumps(former))
+    repository.set_workspace_state(nq.ANALYSIS_CENTER_V20_STATE_KEY, '')
+    nq.ensure_nq_tables(repository)
+    assert nq.status_rules(repository) == nq_catalog.default_status_rules()
+    options = [option['name'] for field in nq.list_fields(repository) if field['key'] == 'analysis_status' for option in field['options']]
+    assert 'No_Vendor_B' not in options and 'No_JoinID Missing' not in options and 'Invalidated' in options
+    call = {item['join_id']: item for item in query(client)['calls']}['0xA1']
+    assert (call['values']['analysis_status'], call['status']) == ('Invalidated', 'Closed')
+    history = client.get(f"/api/non-qualified-calls/calls/{calls['0xA1']['call_key']}").json()['history']
+    assert any(entry['field'] == 'field:analysis_status' and entry['old_value'] == 'No_Vendor_B' for entry in history)
+    # Rules changed by the workspace stay as they are.
+    custom = [{'status': 'Closed', 'conditions': [{'field': 'analysis_status', 'op': 'in', 'values': ['Finished']}]}]
+    repository.set_workspace_state(nq.STATUS_RULES_STATE_KEY, json.dumps(custom))
+    repository.set_workspace_state(nq.ANALYSIS_CENTER_V20_STATE_KEY, '')
+    nq.ensure_nq_tables(repository)
+    assert nq.status_rules(repository) == custom
+
+
 @pytest.mark.parametrize('no_team_exists', [False, True])
 def test_successful_call_excluded_is_no_longer_a_team_and_its_calls_go_to_no_team(client, tmp_path, no_team_exists):
     calls = setup_calls(client, tmp_path)
@@ -1070,7 +1391,8 @@ def test_successful_call_excluded_is_no_longer_a_team_and_its_calls_go_to_no_tea
     assert 'Successful Call-Excluded' not in [team['name'] for team in nq.list_options(repository)['teams']]
     # A workspace of before: the team and the Implementation Stream, with a call.
     fields = nq.list_fields(repository)
-    stream = next(field for field in fields if field['key'] == 'implementation_stream')
+    stream = next(field for field in fields if field['key'] == 'implementation_team')
+    stream['key'], stream['label'] = 'implementation_stream', 'Implementation Stream'
     stream['options'].append({'name': 'Successful Call-Excluded', 'color': ''})
     priority = next(field for field in fields if field['key'] == 'priority')
     assert [option['name'] for option in priority['options']] == ['P1', 'P2', 'P3', 'P4', 'P5']
@@ -1083,16 +1405,35 @@ def test_successful_call_excluded_is_no_longer_a_team_and_its_calls_go_to_no_tea
             connection.execute(f"INSERT INTO {nq.NQ_CALL_OPTIONS_TABLE} (kind, name, color, position, is_closed) VALUES ('team', 'No Team', '', 51, 0)")
     patch(client, calls['0xA1'], {'team': 'Successful Call-Excluded', 'fields': {'implementation_stream': 'Successful Call-Excluded'}})
     repository.set_workspace_state(nq.ANALYSIS_CENTER_V10_STATE_KEY, '')
+    repository.set_workspace_state(nq.ANALYSIS_CENTER_V12_STATE_KEY, '')
     nq.ensure_nq_tables(repository)
     teams = [team['name'] for team in nq.list_options(repository)['teams']]
     assert 'Successful Call-Excluded' not in teams and teams.count('No Team') == 1
-    options = [option['name'] for field in nq.list_fields(repository) if field['key'] == 'implementation_stream' for option in field['options']]
+    options = [option['name'] for field in nq.list_fields(repository) if field['key'] == 'implementation_team' for option in field['options']]
     assert 'Successful Call-Excluded' not in options and 'No Team' in options
     assert [option['name'] for field in nq.list_fields(repository) if field['key'] == 'priority' for option in field['options']] == [
         'P1', 'P2', 'P3', 'P4', 'P5']
     call = {item['join_id']: item for item in query(client)['calls']}['0xA1']
-    assert (call['team'], call['values']['implementation_stream']) == ('No Team', 'No Team')
+    assert (call['team'], call['values']['implementation_team']) == ('No Team', 'No Team')
     # The analysis workbooks that still name it give No Team too.
     csv = b'JOIN_ID,Responsible Stream\n0xB2,Successful Call-Excluded\n'
     client.post('/api/non-qualified-calls/analyses/import', files={'file': ('mtl.csv', io.BytesIO(csv), 'text/csv')})
     assert {item['join_id']: item for item in query(client)['calls']}['0xB2']['team'] == 'No Team'
+
+
+def test_the_import_of_previous_analyses_streams_its_progress(client, tmp_path):
+    setup_calls(client, tmp_path)
+    csv = b'JOIN_ID,Analysis Status,Findings\n0xA1,Finished,Weak DL\n0xZZ,Finished,\n'
+    response = client.post('/api/non-qualified-calls/analyses/import', data={'stream': '1'},
+                           files={'file': ('analyses.csv', io.BytesIO(csv), 'text/csv')})
+    assert response.status_code == 200 and response.headers['content-type'].startswith('application/x-ndjson')
+    events = [json.loads(line) for line in response.text.splitlines() if line.strip()]
+    steps = [event for event in events if 'step' in event]
+    assert steps[0]['step'] == 'Reading the file' and steps[-1] == {'step': 'Done', 'progress': 1.0}
+    assert [event['progress'] for event in steps] == sorted(event['progress'] for event in steps)
+    assert 'Writing the analyses' in {event['step'] for event in steps}
+    assert events[-1]['result']['changed'] == 1 and events[-1]['result']['pending'] == 1
+    # A file that cannot be read ends the stream with its error.
+    bad = client.post('/api/non-qualified-calls/analyses/import', data={'stream': '1'},
+                      files={'file': ('analyses.csv', io.BytesIO(b'Nothing,Here\n1,2\n'), 'text/csv')})
+    assert 'JOIN_ID column' in [json.loads(line) for line in bad.text.splitlines() if line.strip()][-1]['error']

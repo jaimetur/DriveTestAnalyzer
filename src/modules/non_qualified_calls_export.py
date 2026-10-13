@@ -121,7 +121,7 @@ def progress_summary_table(summary: dict[str, Any]) -> tuple[list[str], list[lis
         ['Follow-up changes', f"{summary['changes']:,}"],
         ['Contributors', f"{summary['contributors']:,}"],
         ['Average days from the call to its first follow-up', _days(summary['avg_days_to_first_follow_up'])],
-        ['Average days from the first follow-up to closing', _days(summary['avg_days_to_close'])],
+        ['Average days from the call to its closing', _days(summary['avg_days_to_close'])],
     ]
 
 

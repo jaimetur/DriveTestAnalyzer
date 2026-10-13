@@ -123,10 +123,10 @@ ANALYSES_RULES: tuple[tuple[str, str, str, str], ...] = (
     ('field:vendor_when_failure', 'Ericsson/Huawei', 'Ericsson', ''),
     ('field:vendor_when_failure', 'Nokia', 'NSN', ''),
     ('field:vendor_when_failure', 'Not Found', '', ''),
-    # Implementation Stream
-    ('field:implementation_stream', 'Invalidated', '', ''),
-    ('field:implementation_stream', 'RF Shaping (ACP)', 'RF Coverage Planning', ''),
-    ('field:implementation_stream', 'Under Evaluation', '', ''),
+    # Implementation Team
+    ('field:implementation_team', 'Invalidated', '', ''),
+    ('field:implementation_team', 'RF Shaping (ACP)', 'RF Coverage Planning', ''),
+    ('field:implementation_team', 'Under Evaluation', '', ''),
     # Implementation Proposal
     ('field:implementation_proposal', 'ACP', 'RF Coverage Planning', ''),
     ('field:implementation_proposal', 'MO UE redirected to VoiceMial', 'MO UE redirected to VoiceMail', ''),

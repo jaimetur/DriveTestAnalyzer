@@ -13,7 +13,9 @@
   {% if not active_workspace %}
   <article class="panel"><p class="form-note">Open a workspace to review its Non-Qualified Calls.</p></article>
   {% else %}
-  {# Above the filters: the calls table, one panel or every panel below them; each browser remembers the choice. #}
+  {# Above the filters: the calls table, one panel or every panel below them (each browser remembers the choice), and
+     the Analysis Center of the workspace beside them, both always at hand while scrolling. #}
+  <div class="nq-view-dock">
   <nav class="nq-view-switch" id="nq-view-switch" role="tablist" aria-label="View">
     <button type="button" role="tab" data-nq-view="calls" aria-selected="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>NQ Calls <span class="nq-view-count" id="nq-view-count"></span></button>
     <button type="button" role="tab" data-nq-view="summary" aria-selected="false" title="The Executive Summary of the filtered calls"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>Summary</button>
@@ -24,6 +26,21 @@
     <button type="button" role="tab" data-nq-view="progress" aria-selected="false" title="Progress View"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 17 6-6 4 4 8-8"/><path d="M14 7h7v7"/></svg>Progress</button>
     <button type="button" role="tab" data-nq-view="all" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>All panels</button>
   </nav>
+  {% if nq_can_edit %}<div class="nq-menu-wrap nq-center-wrap">
+    <button type="button" class="nq-center-toggle nq-menu-toggle" id="nq-config-toggle" aria-haspopup="menu" aria-expanded="false" aria-controls="nq-config-menu" aria-label="Analysis Center" title="Configure the Analysis Center of this workspace"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg><span>Analysis Center</span></button>
+    <div class="nq-menu" id="nq-config-menu" role="menu" hidden>
+      <button type="button" role="menuitem" id="nq-fields-open"><strong>Fields &amp; Sections</strong><span>The fields of every section, their lists, columns and Excel order</span></button>
+      <button type="button" role="menuitem" id="nq-options-open"><strong>Statuses &amp; Teams</strong><span>The NQ Call Statuses and the responsible teams with their members</span></button>
+      <button type="button" role="menuitem" id="nq-status-rules-open" data-nq-status-rules-open><strong>Status Rules</strong><span>How the status follows the Analysis, Implementation and Planning fields</span></button>
+      <button type="button" role="menuitem" id="nq-root-open"><strong>Root Cause Catalog</strong><span>Domains, Root Categories and Root Causes, with their keywords</span></button>
+      {# The imports of root causes: the Ericsson RCA results, and the analyses of the previous tool (shown to every
+         editor; only admins and super-admins can use it). #}
+      <div class="nq-menu-separator" role="separator"></div>
+      <button type="button" role="menuitem" id="nq-rca-open" data-nq-rca-open><strong>Import Ericsson RCA Results</strong><span>The results of the Ericsson RCA, by JOIN_ID</span></button>
+      <button type="button" role="menuitem" id="nq-analyses-open"{% if not nq_can_import_analyses %} aria-disabled="true" title="Only admins and super-admins can import the analyses of the previous tool"{% endif %}><strong>Import Previous NQ Analyses</strong><span>The analyses made with the previous tool, by JOIN_ID (admins and super-admins)</span></button>
+    </div>
+  </div>{% endif %}
+  </div>
 
   <details class="panel collapsible-panel nq-filters-panel" open data-panel-state-key="non-qualified-calls:filters">
     <summary class="collapsible-summary"><div><p class="eyebrow">Selection</p><h2>Filters</h2></div><span class="collapse-chip">Collapse</span></summary>
@@ -35,15 +52,6 @@
           <button type="button" class="nq-hero-action" id="nq-refresh" title="Index the calls of every CDR again (their follow-up is kept)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg>Reindex</button>
         </div>
         <div class="nq-sync-exports">
-          {# Every import of root causes in one place: the Ericsson RCA results and the analyses of the previous tool. #}
-          {% if nq_can_edit %}<div class="nq-menu-wrap nq-import-wrap">
-            <button type="button" class="document-export-action nq-import-action nq-menu-toggle" id="nq-import-toggle" aria-haspopup="menu" aria-expanded="false" aria-controls="nq-import-menu" title="Import the root causes of the calls: the Ericsson RCA results and the analyses of the previous tool"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0-4-4m4 4 4-4"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>Import RCA &amp; Analyses</button>
-            <div class="nq-menu" id="nq-import-menu" role="menu" hidden>
-              <button type="button" role="menuitem" id="nq-rca-open" data-nq-rca-open><strong>Ericsson RCA Results</strong><span>Import the results of the Ericsson RCA by JOIN_ID</span></button>
-              {# Shown to every editor; only admins and super-admins can use it. #}
-              <button type="button" role="menuitem" id="nq-analyses-open"{% if not nq_can_import_analyses %} aria-disabled="true" title="Only admins and super-admins can import the analyses of the previous tool"{% endif %}><strong>Previous NQ Analyses</strong><span>The analyses made with the previous tool, by JOIN_ID (admins and super-admins)</span></button>
-            </div>
-          </div>{% endif %}
           <button type="button" class="document-export-action document-export-powerpoint" data-nq-document-export="powerpoint" title="Executive Summary and Progress Status of the filtered calls"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4M7 13l3-3 2 2 4-4"/></svg>Export PPT</button>
           <button type="button" class="document-export-action document-export-word" data-nq-document-export="word" title="Executive Summary and Progress Status of the filtered calls"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M8.5 12l1.2 5 1.8-4 1.8 4 1.2-5"/></svg>Export Word</button>
         </div>
@@ -65,7 +73,7 @@
         <label>Result<select data-nq-filter="result" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Result"></select></label>
         <label>Failure Classification<select data-nq-filter="failure_classification" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Failure Classification"></select></label>
         <label>Failure Category<select data-nq-filter="failure_category" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Failure Category"></select></label>
-        <label>Status<select data-nq-filter="status" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Status"></select></label>
+        <label>Global Status<select data-nq-filter="status" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Global Status"></select></label>
         <label title="Whether the status follows the Status Rules or was set by hand">Status Set<select data-nq-filter="status_mode" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Status Set"></select></label>
         <label>Team<select data-nq-filter="team" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Team"></select></label>
         <label>Assignee<select data-nq-filter="assignee" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Assignee"></select></label>
@@ -86,6 +94,44 @@
         <label class="nq-toggle"><input type="checkbox" data-nq-flag="without_comments"> Without comments</label>
         <button type="button" class="nq-secondary-action" id="nq-reset">Reset Filters</button>
       </div>
+    </div>
+  </details>
+
+  <details class="panel collapsible-panel nq-calls-panel" data-nq-view-panel="calls" data-nq-loader="calls" open data-panel-state-key="non-qualified-calls:calls">
+    <summary class="collapsible-summary"><div><p class="eyebrow">Drill-down</p><h2>Non-Qualified Calls</h2></div>{# Finds calls by their JOIN_ID (one or more, typed or pasted), centred beside the title. #}<label class="nq-join-search" data-nq-join-search><span>Join ID</span><input type="search" data-nq-typed-filter="join_id" placeholder="Find calls by one or more JOIN_IDs…" autocomplete="off" aria-label="Join ID" title="Paste one or more JOIN_IDs, separated by commas, spaces or lines"></label><span class="collapse-chip">Collapse</span></summary>
+    <div class="collapsible-panel-body">
+      <div class="nq-active-filters" data-nq-active-filters hidden></div>
+      <div class="nq-toolbar">
+        <p class="nq-count" id="nq-count" role="status">Loading calls…</p>
+        <div class="nq-toolbar-actions">
+          <label class="nq-page-size">Rows<select id="nq-page-size">{% for size in nq_page_sizes %}<option value="{{ size }}"{% if size == 50 %} selected{% endif %}>{{ size }}</option>{% endfor %}</select></label>
+          {% if nq_can_edit %}<button type="button" class="nq-secondary-action" id="nq-columns-open" title="The columns of the table and of the Excel export, including CDR columns, for every user of the workspace">Columns</button>{% endif %}
+          <button type="button" class="nq-secondary-action" id="nq-column-order-reset" title="Put the columns of the table back in their default order" hidden>Default column order</button>
+          <button type="button" class="nq-primary-action" id="nq-export" title="Every call that matches the filters, with its comments and history">Export Excel</button>
+        </div>
+      </div>
+      <div class="nq-table-wrap">
+        <table class="nq-table" id="nq-table" data-workspace="{{ active_workspace.id if active_workspace else '' }}">
+          <thead>
+            <tr>
+              {% if nq_can_edit %}<th class="nq-select-cell"><input type="checkbox" id="nq-select-page" aria-label="Select every call on this page"></th>{% endif %}
+              <!-- Every name of a header sorts by it; those with data-filter also filter by it. -->
+              <th class="nq-sort-pair"><span class="nq-header-item"><span data-sort="start_time">Start Time</span></span><span class="nq-header-item"><span data-sort="service" data-filter="service">Service</span></span></th>
+              <th class="nq-sort-pair"><span class="nq-header-item"><span data-sort="operator" data-filter="operator">Operator</span></span><span class="nq-header-item"><span data-sort="vendor" data-filter="vendor">Vendor</span></span></th>
+              <th class="nq-sort-pair"><span class="nq-header-item"><span data-sort="region" data-filter="region">Region</span></span><span class="nq-header-item"><span data-sort="cluster" data-filter="cluster">Cluster</span></span></th>
+              <th class="nq-sort-pair"><span class="nq-header-item"><span data-sort="city" data-filter="city">City</span></span><span class="nq-header-item"><span data-sort="campaign" data-filter="campaign">Campaign</span></span></th>
+              <th class="nq-sort-pair"><span class="nq-header-item"><span data-sort="test_name" data-filter="test_name">Test</span></span><span class="nq-header-item"><span data-sort="technology" data-filter="technology">Technology</span></span></th>
+              <th class="nq-sort-pair"><span class="nq-header-item"><span data-sort="result" data-filter="result">Result</span></span><span class="nq-header-item"><span data-sort="failure" data-filter="failure_classification">Failure</span></span></th>
+              <th class="nq-sort-pair"><span class="nq-header-item"><span data-sort="root_category" data-filter="root_category">Root Category</span></span><span class="nq-header-item"><span data-sort="cause" data-filter="root_cause">Root Cause</span></span></th>
+              <th class="nq-sort-pair"><span class="nq-header-item"><span data-sort="status" data-filter="status">Global Status</span></span></th>
+              <th class="nq-sort-pair"><span class="nq-header-item"><span data-sort="team" data-filter="team">Team</span></span><span class="nq-header-item"><span data-sort="assignee" data-filter="assignee">Assignee</span></span></th>
+              <th class="nq-sort-pair"><span class="nq-header-item"><span data-sort="comments">Comments</span></span></th>
+            </tr>
+          </thead>
+          <tbody id="nq-rows"></tbody>
+        </table>
+      </div>
+      <nav class="nq-pagination app-pager" id="nq-pagination" aria-label="Pages of calls"></nav>
     </div>
   </details>
 
@@ -164,6 +210,8 @@
       </div>
       <div class="nq-kpis" id="nq-life-kpis"></div>
       <section class="nq-progress-section"><h3>NQ Call Status Pipeline</h3><div class="nq-pipeline" id="nq-life-pipeline"></div></section>
+      {# The calls without a value of a phase field (Empty) are left out of its card unless shown. #}
+      <label class="nq-toggle nq-phase-empty-toggle"><input type="checkbox" id="nq-life-show-empty"> Show Empty Status</label>
       <div class="nq-phase-cards" id="nq-life-phases"></div>
       <div class="nq-progress-grid">
         <section class="nq-progress-section"><h3>Time in Each Status</h3><div class="nq-table-wrap"><table class="nq-table nq-stats-table" id="nq-life-times"></table></div></section>
@@ -179,7 +227,7 @@
       <div class="nq-active-filters" data-nq-active-filters hidden></div>
       <div class="nq-progress-head">
         <p class="nq-hint">How the filtered calls are being followed up: their distribution, how many were attended, moved between statuses, closed and reopened in each period, the age of open calls and the workload of teams, assignees and users.</p>
-        <label class="nq-page-size">Periods<select id="nq-granularity"><option value="week" selected>Week</option><option value="month">Month</option><option value="quarter">Quarter</option><option value="year">Year</option></select></label>
+        <label class="nq-page-size">Periods<select id="nq-granularity"><option value="week">Week</option><option value="month" selected>Month</option><option value="quarter">Quarter</option><option value="year">Year</option></select></label>
       </div>
       <div class="nq-kpis" id="nq-progress-kpis"></div>
       <div class="nq-pies" id="nq-pies"></div>
@@ -194,53 +242,6 @@
         <section class="nq-progress-section"><h3>Assignee Workload</h3><div class="nq-table-wrap"><table class="nq-table nq-stats-table" id="nq-assignee-workload"></table></div></section>
         <section class="nq-progress-section"><h3>User Activity</h3><div class="nq-table-wrap"><table class="nq-table nq-stats-table" id="nq-activity"></table></div></section>
       </div>
-    </div>
-  </details>
-
-  <details class="panel collapsible-panel nq-calls-panel" data-nq-view-panel="calls" data-nq-loader="calls" open data-panel-state-key="non-qualified-calls:calls">
-    <summary class="collapsible-summary"><div><p class="eyebrow">Drill-down</p><h2>Non-Qualified Calls</h2></div>{# Finds calls by their JOIN_ID (one or more, typed or pasted), centred beside the title. #}<label class="nq-join-search" data-nq-join-search><span>Join ID</span><input type="search" data-nq-typed-filter="join_id" placeholder="Find calls by one or more JOIN_IDs…" autocomplete="off" aria-label="Join ID" title="Paste one or more JOIN_IDs, separated by commas, spaces or lines"></label><span class="collapse-chip">Collapse</span></summary>
-    <div class="collapsible-panel-body">
-      <div class="nq-active-filters" data-nq-active-filters hidden></div>
-      <div class="nq-toolbar">
-        <p class="nq-count" id="nq-count" role="status">Loading calls…</p>
-        <div class="nq-toolbar-actions">
-          <label class="nq-page-size">Rows<select id="nq-page-size">{% for size in nq_page_sizes %}<option value="{{ size }}"{% if size == 50 %} selected{% endif %}>{{ size }}</option>{% endfor %}</select></label>
-          {% if nq_can_edit %}<div class="nq-menu-wrap">
-            <button type="button" class="nq-secondary-action nq-menu-toggle" id="nq-config-toggle" aria-haspopup="menu" aria-expanded="false" aria-controls="nq-config-menu" title="Configure the Analysis Center of this workspace"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>Analysis Center</button>
-            <div class="nq-menu" id="nq-config-menu" role="menu" hidden>
-              <button type="button" role="menuitem" id="nq-fields-open"><strong>Fields &amp; Sections</strong><span>The fields of every section, their lists, columns and Excel order</span></button>
-              <button type="button" role="menuitem" id="nq-options-open"><strong>Statuses &amp; Teams</strong><span>The NQ Call Statuses and the responsible teams with their members</span></button>
-              <button type="button" role="menuitem" id="nq-status-rules-open" data-nq-status-rules-open><strong>Status Rules</strong><span>How the status follows the Analysis, Implementation and Planning fields</span></button>
-              <button type="button" role="menuitem" id="nq-root-open"><strong>Root Cause Catalog</strong><span>Domains, Root Categories and Root Causes, with their keywords</span></button>
-              <button type="button" role="menuitem" id="nq-columns-open"><strong>Additional Columns</strong><span>The columns of the table and of the Excel export, including CDR columns</span></button>
-            </div>
-          </div>{% endif %}
-          <button type="button" class="nq-secondary-action" id="nq-column-order-reset" title="Put the columns of the table back in their default order" hidden>Default column order</button>
-          <button type="button" class="nq-primary-action" id="nq-export" title="Every call that matches the filters, with its comments and history">Export Excel</button>
-        </div>
-      </div>
-      <div class="nq-table-wrap">
-        <table class="nq-table" id="nq-table" data-workspace="{{ active_workspace.id if active_workspace else '' }}">
-          <thead>
-            <tr>
-              {% if nq_can_edit %}<th class="nq-select-cell"><input type="checkbox" id="nq-select-page" aria-label="Select every call on this page"></th>{% endif %}
-              <!-- Every name of a header sorts by it; those with data-filter also filter by it. -->
-              <th class="nq-sort-pair"><span class="nq-header-item"><span data-sort="start_time">Start Time</span></span><span class="nq-header-item"><span data-sort="service" data-filter="service">Service</span></span></th>
-              <th class="nq-sort-pair"><span class="nq-header-item"><span data-sort="operator" data-filter="operator">Operator</span></span><span class="nq-header-item"><span data-sort="vendor" data-filter="vendor">Vendor</span></span></th>
-              <th class="nq-sort-pair"><span class="nq-header-item"><span data-sort="region" data-filter="region">Region</span></span><span class="nq-header-item"><span data-sort="cluster" data-filter="cluster">Cluster</span></span></th>
-              <th class="nq-sort-pair"><span class="nq-header-item"><span data-sort="city" data-filter="city">City</span></span><span class="nq-header-item"><span data-sort="campaign" data-filter="campaign">Campaign</span></span></th>
-              <th class="nq-sort-pair"><span class="nq-header-item"><span data-sort="test_name" data-filter="test_name">Test</span></span><span class="nq-header-item"><span data-sort="technology" data-filter="technology">Technology</span></span></th>
-              <th class="nq-sort-pair"><span class="nq-header-item"><span data-sort="result" data-filter="result">Result</span></span><span class="nq-header-item"><span data-sort="failure" data-filter="failure_classification">Failure</span></span></th>
-              <th class="nq-sort-pair"><span class="nq-header-item"><span data-sort="team" data-filter="team">Team</span></span><span class="nq-header-item"><span data-sort="assignee" data-filter="assignee">Assignee</span></span></th>
-              <th class="nq-sort-pair"><span class="nq-header-item"><span data-sort="root_category" data-filter="root_category">Root Category</span></span><span class="nq-header-item"><span data-sort="cause" data-filter="root_cause">Root Cause</span></span></th>
-              <th class="nq-sort-pair"><span class="nq-header-item"><span data-sort="status" data-filter="status">Status</span></span></th>
-              <th class="nq-sort-pair"><span class="nq-header-item"><span data-sort="comments">Comments</span></span></th>
-            </tr>
-          </thead>
-          <tbody id="nq-rows"></tbody>
-        </table>
-      </div>
-      <nav class="nq-pagination app-pager" id="nq-pagination" aria-label="Pages of calls"></nav>
     </div>
   </details>
   <!-- The actions of the selected calls float above the bottom of the window, outside the panels. -->
@@ -268,7 +269,16 @@
       <p class="nq-drawer-meta" id="nq-drawer-meta"></p>
       <p class="nq-drawer-join" id="nq-drawer-join" hidden><span>JOIN_ID</span><code id="nq-drawer-join-id"></code><button type="button" class="nq-copy-button" id="nq-drawer-join-copy" title="Copy the JOIN_ID" aria-label="Copy the JOIN_ID"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button></p>
     </div>
-    <button type="button" class="nq-drawer-close" id="nq-drawer-close" aria-label="Close the call details">&times;</button>
+    {# The calls of the list one after another, and any call found by its JOIN_ID. #}
+    <div class="nq-drawer-tools">
+      <div class="nq-drawer-nav" role="group" aria-label="Calls of the list">
+        <button type="button" class="nq-drawer-step" id="nq-drawer-prev" aria-label="Previous call" title="Previous call of the list">&lsaquo;</button>
+        <span class="nq-drawer-position" id="nq-drawer-position" aria-live="polite"></span>
+        <button type="button" class="nq-drawer-step" id="nq-drawer-next" aria-label="Next call" title="Next call of the list">&rsaquo;</button>
+      </div>
+      <form class="nq-drawer-find" id="nq-drawer-find" role="search"><input type="search" id="nq-drawer-find-input" placeholder="Go to a JOIN_ID…" autocomplete="off" aria-label="Go to the call of a JOIN_ID" title="Paste a JOIN_ID and press Enter to open its call"></form>
+      <button type="button" class="nq-drawer-close" id="nq-drawer-close" aria-label="Close the call details">&times;</button>
+    </div>
   </header>
   <div class="nq-drawer-tracking" id="nq-drawer-tracking"></div>
   {# One tab per section of the Analysis Center (built by the script), then the call details. #}
@@ -368,7 +378,7 @@
 </dialog>
 <dialog class="nq-options-dialog nq-columns-dialog" id="nq-columns-dialog" aria-labelledby="nq-columns-title">
   <form method="dialog" class="nq-options-form" id="nq-columns-form">
-    <header><h2 id="nq-columns-title">Additional Columns</h2><p class="form-note">The additional columns of the Calls table and of its Excel export, for every user of this workspace. The fields of the Analysis Center are columns of the table when chosen here or in Fields &amp; Sections, and every field marked for Excel is exported in the catalog order. CDR columns show the value of the CDR version shown for each call: those of the table are exported too, and more can be exported to Excel only. Changing the CDR columns indexes the calls again.</p></header>
+    <header><h2 id="nq-columns-title">Columns</h2><p class="form-note">The additional columns of the Calls table and of its Excel export, for every user of this workspace. The fields of the Analysis Center are columns of the table when chosen here or in Fields &amp; Sections, and every field marked for Excel is exported in the catalog order. CDR columns show the value of the CDR version shown for each call: those of the table are exported too, and more can be exported to Excel only. Changing the CDR columns indexes the calls again.</p></header>
     <div class="nq-options-columns">
       <section><h3>Call columns</h3><div class="nq-rule-fields" id="nq-columns-builtin"></div>
         <h3 class="nq-columns-fields-title">Analysis Center fields</h3><div class="nq-columns-fields" id="nq-columns-fields"></div></section>
@@ -426,9 +436,27 @@
     <div class="nq-analyses-summary" data-nq-analyses-summary hidden></div>
     <p class="nq-options-error" role="alert" data-nq-analyses-error></p>
     <footer><span class="nq-rule-spacer"></span><button type="button" class="nq-secondary-action" data-nq-analyses-close>Close</button>
-      <button type="button" class="nq-secondary-action" data-nq-analyses-preview disabled>Preview</button>
-      <button type="submit" class="nq-primary-action" data-nq-analyses-import disabled>Import Analyses</button></footer>
+      <button type="button" class="nq-primary-action" data-nq-analyses-preview disabled title="Choose a file first: Preview reads it without changing anything">Preview</button>
+      <button type="submit" class="nq-primary-action" data-nq-analyses-import disabled title="Preview the file first: its preview enables the import">Import Analyses</button></footer>
   </form>
+  <div class="nq-analyses-progress" data-nq-analyses-progress hidden>
+    <div class="nq-analyses-progress-card" role="status" aria-live="polite">
+      <strong data-nq-analyses-progress-title>Importing the analyses</strong>
+      <span data-nq-analyses-progress-step>Sending the file</span>
+      <div class="nq-analyses-progress-track"><span data-nq-analyses-progress-bar></span></div>
+      <small data-nq-analyses-progress-time></small>
+    </div>
+  </div>
+</dialog>
+{# Once imported: what the file brought, at a glance (showImportDone in non_qualified_calls.js). #}
+<dialog class="nq-options-dialog nq-analyses-done" id="nq-analyses-done" aria-labelledby="nq-analyses-done-title">
+  <div class="nq-options-form">
+    <header class="nq-analyses-done-head"><span class="nq-analyses-done-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></span>
+      <div><h2 id="nq-analyses-done-title">Import completed</h2><p class="form-note" data-nq-analyses-done-file></p></div></header>
+    <div class="nq-analyses-done-body" data-nq-analyses-done-body></div>
+    <footer><span class="nq-rule-spacer"></span><button type="button" class="nq-secondary-action" data-nq-analyses-done-details>See the details</button>
+      <button type="button" class="nq-primary-action" data-nq-analyses-done-close>Done</button></footer>
+  </div>
 </dialog>
 {% endif %}
 <dialog class="nq-options-dialog nq-rule-dialog" id="nq-rule-dialog" aria-labelledby="nq-rule-title">

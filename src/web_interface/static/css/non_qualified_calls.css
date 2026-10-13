@@ -198,6 +198,17 @@
 .nq-copy-button svg { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .nq-drawer .nq-drawer-close { flex: 0 0 auto; width: 2.2rem; height: 2.2rem; min-height: 0; padding: 0; border: 1px solid rgba(255, 255, 255, .5); border-radius: 50%; background: rgba(255, 255, 255, .15); color: #fff; font-size: 1.4rem; line-height: 1; box-shadow: none; }
 .nq-drawer .nq-drawer-close:hover { background: rgba(255, 255, 255, .3); }
+/* The calls of the list one after another, and a JOIN_ID to go to. */
+.nq-drawer-tools { display: flex; flex: 0 1 auto; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: .5rem; }
+.nq-drawer-nav { display: inline-flex; align-items: center; gap: .3rem; }
+.nq-drawer .nq-drawer-step { display: inline-grid; place-items: center; width: 2.2rem; height: 2.2rem; min-height: 0; padding: 0; border: 1px solid rgba(255, 255, 255, .5); border-radius: 50%; background: rgba(255, 255, 255, .15); color: #fff; font-size: 1.5rem; line-height: 1; box-shadow: none; }
+.nq-drawer .nq-drawer-step:hover:not(:disabled) { background: rgba(255, 255, 255, .3); }
+.nq-drawer .nq-drawer-step:disabled { opacity: .4; cursor: default; }
+.nq-drawer-position { min-width: 5.5rem; color: #ffe6ee; font-size: .78rem; font-weight: 800; text-align: center; white-space: nowrap; }
+.nq-drawer-find { margin: 0; }
+.nq-drawer .nq-drawer-find input { box-sizing: border-box; width: 13.5rem; min-height: 2.2rem; padding: .4rem .75rem; border: 1px solid rgba(255, 255, 255, .5); border-radius: 999px; background: rgba(255, 255, 255, .15); color: #fff; font: inherit; font-size: .82rem; font-weight: 700; }
+.nq-drawer .nq-drawer-find input::placeholder { color: rgba(255, 230, 238, .85); }
+.nq-drawer .nq-drawer-find input:focus { border-color: #fff; background: rgba(255, 255, 255, .25); outline: none; }
 .nq-drawer-tracking { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .6rem .8rem; padding: .9rem 1.2rem; border-bottom: 1px solid var(--nq-border); background: var(--nq-softer); }
 .nq-tracking-field { display: grid; gap: .3rem; color: var(--nq-muted); font-size: .72rem; font-weight: 850; letter-spacing: .04em; text-transform: uppercase; }
 .nq-tracking-field .nq-pill-select, .nq-tracking-field .nq-pill { max-width: 100%; justify-self: start; text-transform: none; letter-spacing: 0; }
@@ -589,6 +600,7 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 .nq-menu-toggle svg { width: 1.05rem; height: 1.05rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
 .nq-menu { position: absolute; top: calc(100% + 6px); right: 0; z-index: 40; display: grid; gap: 2px; width: min(23rem, 90vw); padding: .4rem; border: 1px solid var(--nq-border); border-radius: 14px; background: #fff; box-shadow: 0 18px 40px rgba(60, 10, 30, .22); }
 .nq-menu[hidden] { display: none; }
+.nq-menu-separator { height: 1px; margin: .25rem .4rem; background: var(--nq-border); }
 .non-qualified-calls .nq-menu button { display: grid; gap: .1rem; min-height: 0; padding: .5rem .7rem; border: 0; border-radius: 10px; background: transparent; color: var(--nq-text); text-align: left; box-shadow: none; }
 .non-qualified-calls .nq-menu button:hover, .non-qualified-calls .nq-menu button:focus-visible { background: var(--nq-soft); outline: none; }
 .nq-menu strong { color: var(--nq-dark); font-size: .86rem; }
@@ -607,6 +619,12 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 .nq-root-suggestion.is-high .nq-confidence-dot { background: #2e8b57; }
 .nq-root-suggestion.is-medium .nq-confidence-dot { background: #e08a1e; }
 .nq-root-suggestion > span:last-child { overflow: hidden; text-overflow: ellipsis; }
+/* The recommendation: its RCA sources above it, small, and its category and cause on up to two lines. */
+.nq-root-suggestion { align-items: flex-start; max-width: 100%; padding: .2rem .5rem; border-radius: 10px; font-size: .66rem; text-align: left; white-space: normal; }
+.nq-root-suggestion .nq-confidence-dot { margin-top: .25rem; }
+.nq-root-suggestion-body { display: grid; min-width: 0; gap: .05rem; line-height: 1.2; }
+.nq-root-suggestion-source { color: var(--nq-muted); font-size: .56rem; font-weight: 850; letter-spacing: .04em; text-transform: uppercase; }
+.nq-root-suggestion-text { display: -webkit-box; overflow: hidden; color: var(--nq-text); -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; }
 .nq-column-filter-group.is-proposed { color: var(--nq-color); }
 
 /* Catalog fields in the table: the colour of their section above their name. */
@@ -680,8 +698,21 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 .nq-pipeline-steps { display: flex; flex-wrap: wrap; align-items: stretch; gap: .5rem; }
 .nq-pipeline-arrow { align-self: center; color: var(--nq-muted); font-size: 1.1rem; font-weight: 850; }
 .nq-pipeline-arrow.is-closing { color: #2e8b57; }
+/* Open: the phase statuses of the attended calls in one frame, its total on its border, so that its cards and the
+   others line up. */
+.nq-pipeline-steps { padding-top: .8rem; }
+.nq-pipeline-group { position: relative; display: flex; flex: 3 1 28rem; padding: 1rem .6rem .6rem; border: 1px dashed var(--nq-color); border-radius: 14px; background: var(--nq-softer); }
+.nq-pipeline-steps > .nq-pipeline-step { margin: calc(1rem + 1px) 0 calc(.6rem + 1px); }
+.nq-pipeline-group-head { position: absolute; top: -.8rem; left: .9rem; display: inline-flex; align-items: baseline; gap: .45rem; max-width: calc(100% - 1.8rem); padding: .1rem .65rem; border: 1px dashed var(--nq-color); border-radius: 999px; background: #fff; white-space: nowrap; }
+.nq-pipeline-group-head strong { color: var(--nq-dark); font-size: 1rem; line-height: 1.1; }
+.nq-pipeline-group-head .nq-kpi-note { overflow: hidden; text-overflow: ellipsis; }
+.nq-pipeline-group-head.is-active { box-shadow: 0 0 0 2px var(--nq-color); }
+.nq-pipeline-group-steps { display: flex; flex: 1 1 auto; flex-wrap: wrap; align-items: stretch; gap: .5rem; }
 .non-qualified-calls .nq-pipeline-step { display: grid; flex: 1 1 9rem; gap: .1rem; min-width: 8.5rem; min-height: 0; padding: .55rem .75rem; border: 1px solid var(--nq-border); border-top: 5px solid var(--nq-step); border-radius: 12px; background: #fff; color: var(--nq-text); text-align: left; box-shadow: 0 6px 14px rgba(125, 18, 56, .06); }
 .non-qualified-calls .nq-pipeline-step:hover { border-color: var(--nq-step); background: var(--nq-softer); }
+/* The rules of every card start on one line: the status, its calls and their age are as tall in every card. */
+.non-qualified-calls .nq-pipeline-step { align-content: start; }
+.nq-pipeline-head { display: grid; align-content: start; gap: .1rem; min-height: 5.6rem; }
 .non-qualified-calls .nq-pipeline-step.is-active { box-shadow: 0 0 0 2px var(--nq-step); }
 .non-qualified-calls .nq-pipeline-step.is-closed { background: #f7fbf8; }
 .nq-pipeline-name { color: var(--nq-muted); font-size: .72rem; font-weight: 850; letter-spacing: .03em; text-transform: uppercase; }
@@ -691,8 +722,17 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 .nq-rule-list li.is-fallback { color: var(--nq-muted); }
 .nq-rule-number { display: inline-grid; place-items: center; width: 1.3rem; height: 1.3rem; border-radius: 50%; background: #f1dfe5; color: var(--nq-dark); font-size: .7rem; font-weight: 850; }
 .nq-phase-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 14px; margin-top: 14px; }
+/* On wide screens every phase card goes in one row, with compact rows. */
+@media (min-width: 1200px) {
+  .nq-phase-cards { grid-template-columns: repeat(var(--nq-phase-count, 4), minmax(0, 1fr)); gap: 10px; }
+  .nq-phase-cards .nq-phase-card { min-width: 0; padding: 10px; }
+  .nq-phase-cards .nq-phase-card h3 { font-size: .86rem; }
+  .non-qualified-calls .nq-phase-cards .nq-phase-value { grid-template-columns: auto minmax(0, 1fr) auto 2.3rem; gap: .3rem; padding: .2rem .25rem; font-size: .76rem; }
+}
 .nq-phase-card { padding: 12px 14px; border: 1px solid var(--nq-border); border-top: 5px solid var(--nq-section); border-radius: 12px; background: #fff; }
 .nq-phase-card header { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.nq-phase-base { flex-basis: 100%; font-size: .74rem; font-weight: 700; }
+.nq-phase-empty-toggle { margin-top: 14px; }
 .nq-phase-card h3 { margin: 0; color: var(--nq-dark); font-size: .95rem; }
 .nq-phase-card .nq-stacked-bar { margin-top: .6rem; }
 .nq-phase-values { display: grid; gap: .1rem; }
@@ -802,7 +842,9 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 /* Analysis Center fields of Additional Columns. */
 .nq-columns-fields-title { margin-top: 1rem !important; }
 .nq-columns-fields { display: grid; gap: .5rem; max-height: 22rem; overflow-y: auto; }
-.nq-columns-field-group { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem; padding: .4rem; border-left: 4px solid var(--nq-section); border-radius: 8px; background: var(--nq-softer); }
+.nq-columns-field-group { display: grid; gap: .4rem; padding: .45rem .5rem; border-left: 4px solid var(--nq-section); border-radius: 8px; background: var(--nq-softer); }
+.nq-columns-field-head { display: flex; padding-bottom: .35rem; border-bottom: 1px solid var(--nq-border); }
+.nq-columns-field-list { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem; }
 .nq-columns-field-group .nq-toggle { padding: .3rem .6rem; font-size: .78rem; }
 @media (max-width: 760px) {
   .nq-field-setting, .nq-condition { grid-template-columns: minmax(0, 1fr); }
@@ -838,14 +880,22 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 .nq-drawer .nq-analysis-field :is(select, input:not([type="checkbox"])) { box-sizing: border-box; min-height: 2.75rem; }
 .nq-drawer .nq-analysis-field .nq-pill-select { min-height: 2.75rem; padding-top: .45rem; padding-bottom: .45rem; font-size: .86rem; }
 /* Calls, Dashboards or every panel right below the Filters, always at hand while scrolling. */
-.nq-view-switch { position: sticky; top: 8px; z-index: 26; display: flex; flex-wrap: nowrap; gap: .35rem; justify-self: center; box-sizing: border-box; width: max-content; max-width: 100%; margin: 0 auto; padding: .3rem; overflow-x: auto; scrollbar-width: none; border: 1px solid var(--nq-border); border-radius: 999px; background: rgba(255, 255, 255, .94); box-shadow: 0 10px 26px rgba(60, 10, 30, .14); backdrop-filter: blur(6px); }
+/* A dark band in the colour of the module, so it stands out from the panels it floats over. */
+.nq-view-switch { position: sticky; top: 8px; z-index: 26; display: flex; flex-wrap: nowrap; gap: .35rem; justify-self: center; box-sizing: border-box; width: max-content; max-width: 100%; margin: 0 auto; padding: .3rem; overflow-x: auto; scrollbar-width: none; border: 1px solid rgba(255, 255, 255, .18); border-radius: 999px; background: linear-gradient(135deg, #5a0c27, var(--nq-dark) 55%, #9c1d47); box-shadow: 0 12px 28px rgba(60, 10, 30, .32); }
 .nq-view-switch::-webkit-scrollbar { display: none; }
-.non-qualified-calls .nq-view-switch button { display: inline-flex; flex: 0 0 auto; align-items: center; gap: .45rem; min-height: 0; padding: .5rem 1rem; white-space: nowrap; border: 0; border-radius: 999px; background: transparent; color: var(--nq-dark); font-size: .9rem; font-weight: 850; box-shadow: none; }
-.non-qualified-calls .nq-view-switch button:hover { background: var(--nq-soft); }
-.non-qualified-calls .nq-view-switch button.is-active { background: linear-gradient(135deg, #7d1238, #c8365f); color: #fff; box-shadow: 0 6px 14px rgba(125, 18, 56, .25); }
+/* The bar and the Analysis Center beside it float together; only they take clicks, not the space around them. */
+.nq-view-dock { position: sticky; top: 8px; z-index: 26; display: flex; align-items: center; justify-content: center; gap: .5rem; box-sizing: border-box; width: 100%; pointer-events: none; }
+.nq-view-dock > * { pointer-events: auto; }
+.nq-view-dock .nq-view-switch { position: static; flex: 0 1 auto; min-width: 0; margin: 0; }
+.nq-center-wrap { flex: 0 0 auto; }
+.non-qualified-calls .nq-center-toggle { display: inline-flex; align-items: center; gap: .45rem; min-height: 0; padding: .8rem 1.1rem; border: 1px solid rgba(255, 255, 255, .18); border-radius: 999px; background: linear-gradient(135deg, #5a0c27, var(--nq-dark) 55%, #9c1d47); color: rgba(255, 255, 255, .9); font-size: .9rem; font-weight: 850; white-space: nowrap; box-shadow: 0 12px 28px rgba(60, 10, 30, .32); }
+.non-qualified-calls .nq-center-toggle:hover, .non-qualified-calls .nq-center-toggle[aria-expanded="true"] { color: #fff; filter: brightness(1.15); }
+.non-qualified-calls .nq-view-switch button { display: inline-flex; flex: 0 0 auto; align-items: center; gap: .45rem; min-height: 0; padding: .5rem 1rem; white-space: nowrap; border: 0; border-radius: 999px; background: transparent; color: rgba(255, 255, 255, .9); font-size: .9rem; font-weight: 850; box-shadow: none; }
+.non-qualified-calls .nq-view-switch button:hover { background: rgba(255, 255, 255, .14); color: #fff; }
+.non-qualified-calls .nq-view-switch button.is-active { background: #fff; color: var(--nq-dark); box-shadow: 0 4px 12px rgba(30, 4, 14, .3); }
 .nq-view-switch svg { width: 1.05rem; height: 1.05rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.nq-view-count { padding: .05rem .5rem; border-radius: 999px; background: rgba(125, 18, 56, .12); font-size: .78rem; }
-.nq-view-switch .is-active .nq-view-count { background: rgba(255, 255, 255, .25); }
+.nq-view-count { padding: .05rem .5rem; border-radius: 999px; background: rgba(255, 255, 255, .2); font-size: .78rem; }
+.nq-view-switch .is-active .nq-view-count { background: rgba(125, 18, 56, .12); }
 .nq-view-count:empty { display: none; }
 .non-qualified-calls [data-nq-view-panel][hidden] { display: none !important; }
 /* A panel opened from the bar or the sections menu stops below the bar, which stays at the top of the window. */
@@ -853,6 +903,9 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 /* The default columns fit the panel: field values wrap on two lines and the selects are narrower. */
 .nq-table th.nq-dynamic-col span[data-sort] { white-space: normal; }
 .nq-table td.nq-field-cell { max-width: 8.5rem; }
+/* A list column is as narrow as its picker: a two-word name (Analysis Status) goes on two lines, with its sort and filter. */
+.nq-table th.nq-choice-col { width: 6.2rem; }
+.non-qualified-calls .nq-table td.nq-field-cell .nq-pill-select { min-width: 6rem; }
 .nq-table .nq-field-cell .nq-field-text { display: -webkit-box; overflow: hidden; white-space: normal; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-height: 1.25; }
 /* A cause column showing the category of its source when the source gives no cause. */
 .nq-field-cell .nq-field-fallback { font-style: italic; }
@@ -864,7 +917,10 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 .non-qualified-calls .nq-table .nq-comment-button { max-width: 8rem; }
 .nq-table td.nq-stacked { max-width: 6.2rem; }
 @media (max-width: 1599px) {
-  .non-qualified-calls .nq-table .nq-pill-select, .non-qualified-calls .nq-table .nq-pill-assignee { min-width: 6.2rem; }
+  /* The default columns fit 1440 px: narrower selects, field values and cell paddings. */
+  .non-qualified-calls .nq-table .nq-pill-select, .non-qualified-calls .nq-table .nq-pill-assignee { min-width: 6.2rem; max-width: 8rem; }
+  .nq-table td.nq-field-cell { max-width: 7.5rem; }
+  .nq-table th, .nq-table td { padding-left: 4px; padding-right: 4px; }
   .non-qualified-calls .nq-table .nq-root-select { min-width: 6.8rem; }
   .nq-table td.nq-failure { max-width: 7.5rem; }
   .nq-table td.nq-stacked { max-width: 5.6rem; }
@@ -882,8 +938,18 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 .nq-phase-step .nq-pill { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: .74rem; }
 .nq-phase-step .nq-phase-name { white-space: nowrap; font-size: .64rem; }
 .nq-phase-arrow { flex: 0 0 auto; }
+/* The phases in a subpanel of their own: one card per phase, its name above its value, across the panel. */
+.nq-drawer-tracking .nq-phase-panel { display: grid; grid-column: 1 / -1; gap: .45rem; padding: .6rem .7rem .7rem; border: 1px solid var(--nq-border); border-radius: 12px; background: #fff; }
+.nq-phase-panel-title { color: var(--nq-muted); font-size: .68rem; font-weight: 850; letter-spacing: .04em; text-transform: uppercase; }
+.nq-drawer-tracking .nq-phase-panel .nq-phase-strip { display: flex; flex-wrap: nowrap; align-items: stretch; gap: .35rem; }
+.nq-drawer .nq-phase-panel .nq-phase-step { flex: 1 1 0; flex-direction: column; align-items: flex-start; justify-content: center; gap: .3rem; padding: .45rem .6rem; background: var(--nq-softer); }
+.nq-drawer .nq-phase-panel .nq-phase-step .nq-pill { max-width: 100%; overflow: visible; font-size: .78rem; line-height: 1.25; white-space: normal; text-overflow: clip; overflow-wrap: anywhere; }
+.nq-phase-panel .nq-phase-arrow { align-self: center; }
 /* Long texts (Proposed Measure, Findings…) are tall from the start, framed like the other fields. */
 .nq-drawer .nq-analysis-field textarea { min-height: 11rem; padding: .6rem .75rem; border: 1px solid var(--nq-border); border-radius: 12px; line-height: 1.4; resize: vertical; }
+/* The Description and the Findings, the longest, are taller; the Proposed Measure is two lines. */
+.nq-drawer .nq-analysis-field textarea:is([data-field-key="description"], [data-field-key="findings"]) { min-height: 17rem; }
+.nq-drawer .nq-analysis-field textarea[data-field-key="proposed_measure"] { height: 4.1rem; min-height: 4.1rem; }
 .nq-drawer .nq-analysis-field textarea:focus { border-color: var(--nq-color); outline: 3px solid rgba(176, 35, 79, .15); }
 /* The coloured pickers of lists, statuses, teams and assignees: every choice as a pill in its colour. */
 :is(.non-qualified-calls, .nq-drawer) .nq-choice { width: 100%; text-align: left; }
@@ -896,6 +962,10 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 .nq-choice-picker .nq-choice-option.is-selected::after { content: '✓'; margin-left: auto; color: var(--nq-color, #b0234f); font-weight: 900; }
 .nq-choice-picker .nq-choice-option .nq-pill { max-width: 18rem; font-size: .82rem; }
 .nq-choice-picker .nq-choice-option.is-action { margin-top: .25rem; border-top: 1px dashed var(--nq-border, #f0c4d3); border-radius: 0 0 10px 10px; }
+.nq-choice-picker .nq-choice-option[hidden] { display: none; }
+/* A value typed that the list lacks, offered first to add it. */
+.nq-choice-picker .nq-choice-option.nq-choice-add { margin: 0 0 .25rem; border-top: 0; border-bottom: 1px dashed var(--nq-border, #f0c4d3); border-radius: 10px 10px 0 0; }
+.nq-choice-picker .nq-choice-add .nq-pill { border: 1px dashed var(--nq-color, #b0234f); background: #fff; color: var(--nq-dark, #7d1238); }
 /* Each rule of a status is a button that shows its calls. */
 .non-qualified-calls button.nq-trigger { min-height: 0; padding: .2rem .3rem; border: 1px solid transparent; border-radius: 8px; background: transparent; color: inherit; text-align: left; box-shadow: none; cursor: pointer; }
 .non-qualified-calls button.nq-trigger:hover, .non-qualified-calls button.nq-trigger:focus-visible { border-color: var(--nq-border); background: #fff; outline: none; }
@@ -917,8 +987,7 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
   .nq-sync-bar { gap: .45rem; margin-bottom: .7rem; }
   .nq-sync-status, .nq-sync-exports { width: 100%; margin-left: 0; }
   .nq-sync-exports > * { flex: 1 1 0; justify-content: center; }
-  /* Import RCA & Analyses on its own row, the two exports side by side below it. */
-  .nq-sync-exports > .nq-import-wrap { flex: 1 1 100%; }
+  /* The two exports side by side. */
   .nq-sync-bar .nq-hero-action { padding: .5rem .65rem; font-size: .8rem; }
   .nq-filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 10px; }
   .nq-filter-grid label { gap: .2rem; font-size: .76rem; }
@@ -926,6 +995,11 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
   .nq-filter-row { gap: 8px; }
   .nq-search { flex-basis: 100%; }
   .nq-view-switch { top: 4px; width: 100%; box-sizing: border-box; flex-wrap: nowrap; }
+  .nq-view-dock { top: 4px; gap: .35rem; }
+  .nq-view-dock .nq-view-switch { flex: 1 1 auto; width: auto; }
+  /* Only its icon on a phone, so the bar keeps its room. */
+  .non-qualified-calls .nq-center-toggle { padding: .7rem; }
+  .nq-center-toggle span { display: none; }
   .non-qualified-calls .nq-view-switch button { flex: 0 0 auto; justify-content: center; gap: .3rem; padding: .45rem .7rem; font-size: .8rem; white-space: nowrap; }
   .nq-view-switch svg { width: .95rem; height: .95rem; }
   .nq-view-count { padding: 0 .35rem; font-size: .68rem; }
@@ -942,6 +1016,10 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
   .nq-pie { grid-template-columns: 88px minmax(0, 1fr); padding: 10px; }
   .nq-pie-chart { width: 88px; height: 88px; }
   .nq-pipeline-steps { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+  .nq-pipeline-group { grid-column: 1 / -1; margin-top: .9rem; }
+  .nq-pipeline-steps > .nq-pipeline-step { margin: 0; }
+  .nq-pipeline-head { min-height: 0; }
+  .nq-pipeline-group-steps { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .non-qualified-calls .nq-pipeline-step { min-width: 0; }
   .nq-pipeline-arrow { display: none; }
   .nq-phase-cards { gap: 10px; }
@@ -981,8 +1059,13 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
   .nq-detail-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .35rem .7rem; font-size: .82rem; }
   .nq-detail-grid dt { overflow-wrap: anywhere; }
   .nq-drawer-join code { font-size: .68rem; }
+  /* The navigation, the JOIN_ID and Close go above the call, across the width. */
+  .nq-drawer-head { flex-direction: column-reverse; align-items: stretch; gap: .6rem; }
+  .nq-drawer-tools { flex-wrap: nowrap; }
+  .nq-drawer-find { flex: 1 1 auto; min-width: 0; }
+  .nq-drawer .nq-drawer-find input { width: 100%; }
   /* The call fills the screen: its phases go two per row and the floating page controls stay hidden behind it. */
-  .nq-drawer-tracking .nq-phase-strip { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .3rem; }
+  .nq-drawer-tracking .nq-phase-panel .nq-phase-strip { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .3rem; }
   .nq-drawer .nq-phase-step { flex-direction: column; align-items: flex-start; gap: .15rem; }
   .nq-drawer .nq-phase-step .nq-pill { max-width: 100%; }
   .nq-drawer-tracking .nq-phase-arrow { display: none; }
@@ -1009,29 +1092,75 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
   .nq-status-rule > .nq-link-action, .nq-rule-missing { margin-left: 0; }
   .nq-field-def > .nq-option-row .nq-root-name { min-width: 0; }
 }
-/* Import RCA & Analyses: the menu at the top of the page, and the Previous NQ Analyses dialog (admins and super-admins). */
-.nq-import-wrap { position: relative; }
-.nq-import-wrap .nq-menu { left: 0; right: auto; min-width: min(22rem, calc(100vw - 2rem)); }
-.document-export-action.nq-import-action { padding-inline: 1.35rem; background: linear-gradient(125deg, #8f1d43, #c8336a); }
-/* The import and export buttons: larger icons, all of one size, and one height for the three buttons. */
+/* The export buttons: larger icons, all of one size, and one height for both. */
 .nq-sync-exports .document-export-action svg { width: 1.4rem; height: 1.4rem; }
 .nq-sync-exports .document-export-action { box-sizing: border-box; height: 2.6rem; padding-block: 0; white-space: nowrap; }
 /* An entry the account cannot use stays in the menu, dimmed, with the reason as its tooltip. */
 .non-qualified-calls .nq-menu button[aria-disabled="true"] { opacity: .5; cursor: not-allowed; }
 .non-qualified-calls .nq-menu button[aria-disabled="true"]:hover { background: transparent; }
-@media (max-width: 640px) { .nq-import-wrap .nq-import-action { width: 100%; } }
-.nq-analyses-dialog { width: min(760px, calc(100vw - 2rem)); }
+.nq-analyses-dialog { width: min(1080px, calc(100vw - 2rem)); }
 .nq-analyses-equivalences { display: grid; gap: 0.4rem; padding: 0.7rem 0.9rem; border: 1px solid var(--nq-border); border-radius: 12px; }
 .nq-analyses-equivalences .form-note { margin: 0; }
 .nq-analyses-mode { display: grid; gap: 0.35rem; margin: 0; padding: 0.7rem 0.9rem; border: 1px solid var(--nq-border); border-radius: 12px; }
 .nq-analyses-mode legend { padding: 0 0.35rem; font-weight: 750; }
 .nq-analyses-mode label { display: flex; align-items: center; gap: 0.5rem; }
 .nq-analyses-mode input { width: auto; margin: 0; }
-.nq-analyses-summary { display: grid; gap: 0.5rem; padding: 0.85rem 1rem; border-radius: 12px; background: var(--nq-softer); }
+.nq-analyses-summary { display: grid; gap: 0.7rem; padding: 0.85rem 1rem; border-radius: 12px; background: var(--nq-softer); }
 .nq-analyses-summary[hidden] { display: none; }
 .nq-analyses-summary p { margin: 0; font-weight: 650; }
 .nq-analyses-list { display: grid; gap: 0.15rem; font-size: 0.86rem; }
 .nq-analyses-list span { color: var(--nq-muted); overflow-wrap: anywhere; }
+/* The summary of a preview or an import: the numbers first, then folded sections of chips. */
+.nq-analyses-summary .nq-analyses-headline { color: var(--nq-dark); font-weight: 800; }
+.nq-analyses-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: 0.5rem; }
+.nq-analyses-kpi { display: grid; gap: 0.15rem; padding: 0.6rem 0.75rem; border: 1px solid var(--nq-border); border-radius: 12px; background: #fff; }
+.nq-analyses-kpi span { color: var(--nq-muted); font-size: 0.74rem; font-weight: 800; letter-spacing: .02em; text-transform: uppercase; }
+.nq-analyses-kpi strong { color: var(--nq-dark); font-size: 1.5rem; line-height: 1.1; }
+.nq-analyses-kpi small { color: var(--nq-muted); font-size: 0.76rem; }
+.nq-analyses-section { border: 1px solid var(--nq-border); border-radius: 12px; background: #fff; }
+.nq-analyses-section > summary { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; padding: 0.55rem 0.8rem; color: var(--nq-dark); font-weight: 800; cursor: pointer; }
+.nq-analyses-section[open] > summary { border-bottom: 1px solid var(--nq-border); }
+.nq-analyses-section > :not(summary) { margin: 0.6rem 0.8rem; }
+.nq-analyses-count { padding: 0.05rem 0.55rem; border-radius: 999px; background: var(--nq-soft); font-size: 0.78rem; }
+.nq-analyses-group { display: grid; gap: 0.3rem; }
+.nq-analyses-group > strong { color: var(--nq-text); font-size: 0.8rem; }
+.nq-analyses-chips { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.nq-analyses-chip { display: inline-flex; align-items: baseline; gap: 0.35rem; padding: 0.15rem 0.55rem; border-radius: 999px; background: var(--nq-soft); color: var(--nq-text); font-size: 0.78rem; font-weight: 650; }
+.nq-analyses-chip small { color: var(--nq-muted); font-size: 0.7rem; font-weight: 700; }
+/* While a file is previewed or imported: a panel over the dialog with the step, a bar and the time. */
+.nq-analyses-progress { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; background: rgba(255, 247, 250, .72); backdrop-filter: blur(2px); }
+.nq-analyses-progress[hidden] { display: none; }
+.nq-analyses-progress-card { display: grid; gap: 0.6rem; width: min(26rem, calc(100vw - 3rem)); padding: 1.2rem 1.4rem; border: 1px solid var(--nq-border); border-radius: 16px; background: #fff; box-shadow: 0 24px 60px rgba(60, 10, 30, .3); }
+.nq-analyses-progress-card strong { color: var(--nq-dark); font-size: 1.1rem; }
+.nq-analyses-progress-card span { color: var(--nq-text); font-weight: 650; }
+.nq-analyses-progress-track { height: 0.6rem; overflow: hidden; border-radius: 999px; background: var(--nq-soft); }
+.nq-analyses-progress-track span { display: block; width: 3%; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--nq-dark), #c8365f); transition: width .3s ease; }
+.nq-analyses-progress-card small { color: var(--nq-muted); }
+/* Import completed: where the calls of the file went and what they got, at a glance. */
+.nq-analyses-done { width: min(780px, calc(100vw - 2rem)); }
+.nq-analyses-done-head { display: flex; align-items: center; gap: 0.9rem; }
+.nq-analyses-done-head h2 { margin: 0; }
+.nq-analyses-done-head .form-note { margin: 0.2rem 0 0; }
+.nq-analyses-done-icon { display: grid; flex: none; place-items: center; width: 2.8rem; height: 2.8rem; border-radius: 50%; background: linear-gradient(135deg, #2e8c58, #4cb07a); box-shadow: 0 8px 18px rgba(46, 140, 88, .3); }
+.nq-analyses-done-icon svg { width: 1.5rem; height: 1.5rem; fill: none; stroke: #fff; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.nq-analyses-done-body { display: grid; gap: 0.9rem; }
+.nq-done-calls { display: grid; gap: 0.75rem; padding: 1rem 1.1rem; border: 1px solid var(--nq-border); border-radius: 14px; background: var(--nq-softer); }
+.nq-done-total { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.3rem 0.55rem; color: var(--nq-dark); }
+.nq-done-total strong { font-size: 2.3rem; line-height: 1; }
+.nq-done-total span { font-weight: 800; }
+.nq-done-total small { margin-left: auto; color: var(--nq-muted); font-weight: 700; }
+.nq-done-bar { display: flex; gap: 2px; height: 0.85rem; overflow: hidden; border-radius: 999px; background: var(--nq-soft); }
+.nq-done-bar span { min-width: 4px; background: var(--done-color); }
+.nq-done-legend { display: grid; grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr)); gap: 0.5rem; margin: 0; padding: 0; list-style: none; }
+.nq-done-legend li { display: grid; align-content: start; gap: 0.1rem; padding: 0.55rem 0.7rem; border: 1px solid var(--nq-border); border-left: 5px solid var(--done-color); border-radius: 10px; background: #fff; }
+.nq-done-legend strong { color: var(--nq-text); font-size: 1.4rem; line-height: 1.1; }
+.nq-done-legend span { color: var(--nq-text); font-size: 0.84rem; font-weight: 800; }
+.nq-done-legend small { color: var(--nq-muted); font-size: 0.74rem; }
+.nq-done-changed { --done-color: #2e8c58; }
+.nq-done-same { --done-color: #9fd3b4; }
+.nq-done-pending { --done-color: #e59a2b; }
+.nq-done-left { --done-color: #b9a8ae; }
+.nq-done-warning { margin: 0; padding: 0.5rem 0.75rem; border-radius: 10px; background: #fff4e0; color: #7a4a00; font-size: 0.84rem; font-weight: 650; }
 /* The calls that match the filters, in every panel: a badge below its Collapse button. */
 .nq-panel-corner { display: flex; flex: 0 0 auto; flex-direction: column; align-items: flex-end; gap: .35rem; margin-left: auto; }
 .nq-panel-corner .collapse-chip { margin-left: 0; }

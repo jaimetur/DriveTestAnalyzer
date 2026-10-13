@@ -10982,8 +10982,10 @@ def test_every_tab_lists_its_sections_with_icons_in_the_colour_of_its_module(cli
     for module, sections in MODULE_SECTIONS.items():
         headings = {section_anchor(re.sub(r'<[^>]+>', '', heading).replace('&amp;', '&'))
                     for heading in re.findall(r'<h[123][^>]*>(.*?)</h[123]>', (templates / pages[module]).read_text(encoding='utf-8'), re.S)}
-        for heading, *_rest in sections:
-            assert section_anchor(heading) in headings, (module, heading)
+        for heading, *_rest in filter(None, sections):
+            # The Analysis Center is not a panel: the page opens its menu, and its options their dialogs.
+            if (module, heading) != ('non-qualified-calls', 'Analysis Center'):
+                assert section_anchor(heading) in headings, (module, heading)
 
 
 

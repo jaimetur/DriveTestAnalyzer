@@ -269,8 +269,8 @@ SECTION_ICONS: dict[str, str] = {
 
 # The sections each module lists below its tab: the heading of the panel (its anchor, see section_anchor),
 # the name in the menu and its icon, plus the parts of the section (anchor, name and icon) listed beside it on hover.
-# Builders lists them for each builder; App Logs and Admin are administrative tabs.
-MODULE_SECTIONS: dict[str, list[tuple[Any, ...]]] = {
+# Builders lists them for each builder; App Logs and Admin are administrative tabs. None draws a line between them.
+MODULE_SECTIONS: dict[str, list[tuple[Any, ...] | None]] = {
     'workspace': [('Select Workspace', 'Workspaces Management', 'folder'), ('Data Ingestion', 'Data Ingestion', 'upload'),
                   ('Datasets', 'Datasets', 'table'), ('Auto-calculated Fields', 'Auto-calculated Fields', 'function')],
     'datasets-analysis': [('Select CDR to Analyze', 'Select CDR', 'select'), ('Dataset Summary', 'Dataset Summary', 'summary'),
@@ -289,12 +289,20 @@ MODULE_SECTIONS: dict[str, list[tuple[Any, ...]]] = {
                          ('RF Quality', 'RF Quality', 'activity'), ('Coverage & Interference Maps', 'Coverage & Interference Maps', 'map'),
                          ('Network Deployment', 'Network Deployment', 'antenna'),
                          ('Cluster Sites Density', 'Cluster Sites Density', 'pin'), ('Spectrum', 'Spectrum', 'spectrum')],
-    'non-qualified-calls': [('Filters', 'Filters', 'filter'), ('Summary', 'Summary', 'summary'),
+    'non-qualified-calls': [('Filters', 'Filters', 'filter'), ('Non-Qualified Calls', 'Non-Qualified Calls', 'phone'),
+                            ('Summary', 'Summary', 'summary'),
                             ('NQ Rate by Campaign and Operator', 'NQ Rate by Campaign and Operator', 'chart'),
                             ('Root Cause Sources', 'Root Cause Sources', 'database'),
                             ('Root Cause Analysis', 'Root Cause Analysis', 'search'),
                             ('Lifecycle & Phases', 'Lifecycle & Phases', 'activity'), ('Progress View', 'Progress View', 'trend'),
-                            ('Non-Qualified Calls', 'Non-Qualified Calls', 'phone')],
+                            # Not a panel: the page opens its menu, and its options their dialogs (non_qualified_calls.js).
+                            None, ('Analysis Center', 'Analysis Center', 'sliders', [
+                                ('fields-and-sections', 'Fields & Sections', 'tag'),
+                                ('statuses-and-teams', 'Statuses & Teams', 'users'),
+                                ('status-rules', 'Status Rules', 'function'),
+                                ('root-cause-catalog', 'Root Cause Catalog', 'book'), None,
+                                ('import-ericsson-rca-results', 'Import Ericsson RCA Results', 'upload'),
+                                ('import-previous-nq-analyses', 'Import Previous NQ Analyses', 'upload')])],
     'reporting': [('Reporting Jobs', 'Reporting Jobs', 'jobs'), ('Run History', 'Run History', 'log')],
     'chart-builder': [('Interactive Preview', 'Interactive Preview', 'eye')],
     'query-builder': [('Selected CDR tables', 'Query editor', 'code'), ('Saved queries', 'Saved queries', 'bookmark'),
@@ -313,11 +321,13 @@ def section_anchor(heading: str) -> str:
     return 'section-' + re.sub(r'[^a-z0-9]+', '-', str(heading).casefold()).strip('-')
 
 
-def section_links(href: str, module: str) -> list[tuple[str, str, str, list[tuple[str, str, str]]]]:
-    """The links (address, name, icon and the links of its parts) of the sections of a module page."""
-    return [(f'{href}#{section_anchor(heading)}', name, SECTION_ICONS[icon],
-             [(f'{href}#{anchor}', part, SECTION_ICONS[part_icon]) for anchor, part, part_icon in (parts[0] if parts else [])])
-            for heading, name, icon, *parts in MODULE_SECTIONS.get(module, [])]
+def section_links(href: str, module: str) -> list[tuple[str, str, str, list[tuple[str, str, str] | None]] | None]:
+    """The links (address, name, icon and the links of its parts) of the sections of a module page, None for a line
+    (also between parts)."""
+    return [None if entry is None else
+            (f'{href}#{section_anchor(entry[0])}', entry[1], SECTION_ICONS[entry[2]],
+             [part and (f'{href}#{part[0]}', part[1], SECTION_ICONS[part[2]]) for part in (entry[3] if len(entry) > 3 else [])])
+            for entry in MODULE_SECTIONS.get(module, [])]
 
 
 def module_tabs(labels: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:

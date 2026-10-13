@@ -17,7 +17,7 @@
     service: 'Service', campaign: 'Campaign', operator: 'Operator', operator_vendor: 'Operator_Vendor', vendor_operator: 'Vendor_Operator', vendor: 'Vendor',
     region: 'Region', cluster: 'Cluster', city: 'City', dataset_id: 'CDR', join_id: 'Join ID',
     technology: 'Technology', test_name: 'Test Name', result: 'Result', failure_classification: 'Failure Classification',
-    failure_category: 'Failure Category', status: 'Status', team: 'Team', assignee: 'Assignee', datasets: 'CDR',
+    failure_category: 'Failure Category', status: 'Global Status', team: 'Team', assignee: 'Assignee', datasets: 'CDR',
     root_domain: 'Root Domain', root_category: 'Root Category', root_cause: 'Root Cause', status_mode: 'Status Set',
     nr_mode: 'NR Mode', call_type: 'Call Type', period: 'Period',
     age: 'Age of Open Calls', root_pair: 'Root Domain · Cause', effective_domain: 'Root Domain (with suggestions)',
@@ -349,6 +349,18 @@
     [...select.options].forEach((option) => { option.selected = !toggleOff && option.value === target; });
     select.dispatchEvent(new Event('change', {bubbles: true}));
   };
+  // Several values of a filter at once (the statuses of Open); choosing the same ones again removes them.
+  const manySelected = (field, values) => {
+    const chosen = filterValues(currentFilters(), field) || [];
+    return chosen.length === values.length && values.every((value) => chosen.includes(value));
+  };
+  const selectMany = (field, values) => {
+    const select = root.querySelector(`[data-nq-filter="${field}"]`);
+    if (!select) return;
+    const same = manySelected(field, values);
+    [...select.options].forEach((option) => { option.selected = !same && values.includes(option.value); });
+    select.dispatchEvent(new Event('change', {bubbles: true}));
+  };
   // Drill-down from a chart or table value: each [field, value] becomes the only value of its
   // filter (a select of the Filters panel, a flag or one of the extra filters); clicking the
   // same value again removes those filters.
@@ -395,15 +407,15 @@
     scheduleLoad();
   };
   // An indicator card that filters the calls (pairs) or clears its panel's card filters (clear).
-  const drillCard = (card, {pairs = null, clear = null} = {}) => {
-    if (!pairs && !clear) return card;
+  const drillCard = (card, {pairs = null, clear = null, many = null} = {}) => {
+    if (!pairs && !clear && !many) return card;
     card.classList.add('nq-drill-card');
     card.tabIndex = 0;
     card.setAttribute('role', 'button');
-    const active = pairs ? isDrilled(pairs) : false;
+    const active = pairs ? isDrilled(pairs) : many ? manySelected(...many) : false;
     card.classList.toggle('is-active', active);
     card.title = clear ? 'Show every call of the other filters' : active ? 'Remove this filter' : 'Show only these calls';
-    const act = () => (pairs ? drill(pairs) : clearDrill(clear));
+    const act = () => (pairs ? drill(pairs) : many ? selectMany(...many) : clearDrill(clear));
     card.addEventListener('click', act);
     card.addEventListener('keydown', (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); act(); } });
     return card;
@@ -818,8 +830,9 @@
   }, {passive: true, capture: true});
   window.addEventListener('resize', closeRootPicker);
   // A modern dropdown: the value as a pill in its colour, and every choice in its colour in a popover (with a search
-  // for long lists). Items are {value, label, color, action}; an action (Back to automatic) is not a value.
-  const openChoicePicker = (anchor, items, current, choose, label) => {
+  // for long lists). Items are {value, label, color, action}; an action (Back to automatic) is not a value. With
+  // ``add``, a value typed in the search that the list lacks is offered first, to add to the list and choose.
+  const openChoicePicker = (anchor, items, current, choose, label, add = null) => {
     closeRootPicker();
     const popover = node('div', undefined, 'nq-column-filter nq-cause-picker nq-choice-picker');
     popover.setAttribute('role', 'listbox');
@@ -845,18 +858,43 @@
       return [option, item.label];
     });
     let search = null;
-    if (items.length > 10) {
+    if (items.length > 10 || add) {
       search = node('input');
       search.type = 'search';
-      search.placeholder = 'Search…';
+      search.placeholder = add ? 'Search or type a new value…' : 'Search…';
+      const typed = () => search.value.trim().replace(/\s+/g, ' ');
+      let addOption = null;
+      if (add) {
+        addOption = node('button', undefined, 'nq-choice-option is-action nq-choice-add');
+        addOption.type = 'button';
+        addOption.hidden = true;
+        addOption.addEventListener('click', async () => {
+          const name = typed();
+          closeRootPicker();
+          try {
+            const value = await add(name);
+            choose({value, label: value});
+          } catch (error) {
+            toast(error.message, 'error');
+          }
+        });
+        list.prepend(addOption);
+      }
       search.addEventListener('input', () => {
         const query = search.value.trim().toLowerCase();
         options.forEach(([option, text]) => { option.hidden = Boolean(query) && !text.toLowerCase().includes(query); });
+        if (addOption) {
+          const name = typed();
+          addOption.hidden = !name || items.some((item) => !item.action && item.value.toLowerCase() === name.toLowerCase());
+          addOption.replaceChildren(node('span', `+ Add “${name}”`, 'nq-pill'));
+          addOption.title = `Add ${name} to the values of ${label.replace(/ of the call$/, '')} and choose it`;
+        }
       });
+      // Enter chooses the first value found, else adds the value typed.
       search.addEventListener('keydown', (event) => {
         if (event.key === 'Enter') {
           event.preventDefault();
-          list.querySelector('.nq-choice-option:not([hidden])')?.click();
+          (list.querySelector('.nq-choice-option:not([hidden]):not(.nq-choice-add)') || list.querySelector('.nq-choice-add:not([hidden])'))?.click();
         }
       });
       popover.append(search);
@@ -879,7 +917,7 @@
     const next = event.key === 'ArrowDown' ? Math.min(options.length - 1, index + 1) : Math.max(0, index - 1);
     options[next].focus();
   });
-  const choiceControl = ({items, value, empty = '—', label, onChange, title = null}) => {
+  const choiceControl = ({items, value, empty = '—', label, onChange, title = null, onAdd = null}) => {
     const button = node('button', undefined, 'nq-pill-select nq-cause-picker-button nq-choice');
     button.type = 'button';
     button.setAttribute('aria-haspopup', 'listbox');
@@ -903,7 +941,11 @@
           paint();
         }
         onChange(item.value, item);
-      }, label);
+      }, label, onAdd && (async (name) => {
+        const added = await onAdd(name);
+        if (!items.some((item) => !item.action && item.value === added.value)) items.push(added);
+        return added.value;
+      }));
     });
     button.setValue = (chosen) => { current = chosen || ''; paint(); };
     return button;
@@ -916,6 +958,15 @@
     return [{value: '', label: '—'}, ...names.map((name) => ({value: name, label: name,
       color: field.type === 'yes_no' ? YES_NO_COLORS[name] : optionColorOf(field, name)}))];
   };
+  // A list field of the analysts takes a new value typed in its list (user-editor and above, as in Fields & Sections):
+  // it joins the values of the field (the Planned FY writes a year as a fiscal year: 2030 is FY30).
+  const listAdder = (field) => (field.type === 'list' && field.source === 'user' && state.user.can_edit ? async (name) => {
+    const {field: saved, value, added} = await api(`/api/non-qualified-calls/fields/${encodeURIComponent(field.key)}/options`,
+      {method: 'POST', body: JSON.stringify({name})});
+    state.fields = state.fields.map((item) => (item.key === saved.key ? saved : item));
+    if (added) toast(`${value} added to the values of ${saved.label}.`);
+    return {value, label: value, color: optionColorOf(saved, value)};
+  } : null);
   // A picker button for the root category (filled with its domain colour) or cause (outlined).
   const rootPickerButton = (kind, call) => {
     const value = call[kind] || '';
@@ -944,7 +995,13 @@
     const title = `Recommended: ${text}${recommendation.domain ? ` (${recommendation.domain})` : ''}\n`
       + `${CONFIDENCE_LABELS[recommendation.confidence] || ''} · ${sourceNames(recommendation.sources)}`;
     const chip = node(state.user.can_edit ? 'button' : 'span', undefined, `nq-root-suggestion is-${recommendation.confidence}`);
-    chip.append(node('span', '', 'nq-confidence-dot'), node('span', text));
+    // The RCA it comes from above it, small, so that it fits its column (every source in its tooltip).
+    const sources = recommendation.sources || [];
+    const rcas = sources.filter((name) => ['netcheck', 'script'].includes(name));
+    const body = node('span', undefined, 'nq-root-suggestion-body');
+    body.append(node('small', sourceNames(rcas.length ? rcas : sources).replace(/, /g, ' + ') || 'Recommended', 'nq-root-suggestion-source'),
+      node('span', text, 'nq-root-suggestion-text'));
+    chip.append(node('span', '', 'nq-confidence-dot'), body);
     chip.title = state.user.can_edit ? `${title}\nClick to accept it` : title;
     if (state.user.can_edit) {
       chip.type = 'button';
@@ -1007,7 +1064,7 @@
     if (filterKey) name.dataset.filter = filterKey;
     item.append(name);
     cell.append(item);
-    // A catalog field shows the colour of its section above its name.
+    // A column shows the colour of its group above its name (the section of its field, or the call).
     if (section) {
       cell.classList.add('nq-section-col');
       cell.style.setProperty('--nq-section', section.color);
@@ -1119,27 +1176,39 @@
     if (cells.length !== naturalColumns.length) return;
     row.append(...shownColumns.map((key) => cells[naturalColumns.indexOf(key)]));
   };
+  // Every column shows the colour of its group above its name, as the Excel export: the call columns that of the call,
+  // the follow-up columns (status, team and assignee, root category and cause, comments) that of the section of their field.
+  const callSection = () => state.callSection || {key: 'call', label: 'Call', color: '#5e6b75'};
+  const trackingSection = (ref) => sectionOf(state.fields.find((field) => field.source === 'tracking' && field.source_ref === ref)?.section || 'general');
+  const FOLLOW_UP_HEADERS = {team: 'team', root_category: 'root_category', status: 'status', comments: 'comments'};
+  const paintHeader = (cell, section) => {
+    cell.classList.add('nq-section-col');
+    cell.style.setProperty('--nq-section', section.color);
+  };
   // The optional columns follow Result / Failure, the analysis fields follow the root cause; then the column order applies.
   const renderDynamicHeaders = () => {
     const row = $('nq-table').tHead.rows[0];
     row.querySelectorAll('.nq-dynamic-col').forEach((cell) => cell.remove());
     // The fixed columns go back to the order of the page before the others are placed.
     row.append(...STATIC_HEADERS);
+    STATIC_HEADERS.forEach((cell) => {
+      const key = columnKeyOf(cell);
+      if (key) paintHeader(cell, FOLLOW_UP_HEADERS[key] ? trackingSection(FOLLOW_UP_HEADERS[key]) : callSection());
+    });
     const after = (sortKey) => row.querySelector(`[data-sort="${sortKey}"]`)?.closest('th');
     let anchor = after('result');
     optionalColumns().forEach((column) => {
-      const cell = headerCell(column.label, column.sort, columnFilterKey(column));
+      const cell = headerCell(column.label, column.sort, columnFilterKey(column), callSection());
       anchor.after(cell);
       anchor = cell;
     });
     // The RCA fields come before the root category and cause they lead to, the other fields after them.
     const rootHeader = after('root_category');
-    rootHeader.classList.add('nq-section-col');
-    rootHeader.style.setProperty('--nq-section', sectionOf('rca').color);
     const filterable = new Set(filterableFields().map((field) => field.key));
     anchor = rootHeader;
     fieldColumns().forEach((field) => {
       const cell = headerCell(field.label, `field:${field.key}`, filterable.has(field.key) ? `field:${field.key}` : '', sectionOf(field.section));
+      if (['list', 'yes_no'].includes(field.type)) cell.classList.add('nq-choice-col');
       if (field.section === 'rca') rootHeader.before(cell);
       else { anchor.after(cell); anchor = cell; }
     });
@@ -1158,7 +1227,7 @@
     const value = String((field.source === 'user' ? call.fields?.[field.key] : call.values?.[field.key]) ?? '');
     if (['list', 'yes_no'].includes(field.type) && field.source === 'user' && state.user.can_edit) {
       const picker = choiceControl({items: fieldChoices(field, value), value, label: `${field.label} of the call`,
-        onChange: (chosen) => saveFieldValue(call, field.key, chosen, picker)});
+        onChange: (chosen) => saveFieldValue(call, field.key, chosen, picker), onAdd: listAdder(field)});
       picker.classList.add('nq-field-select');
       cell.append(picker);
       return cell;
@@ -1307,8 +1376,9 @@
       row.append(
         start, stacked(call.operator, call.vendor), stacked(call.region, call.cluster), stacked(call.city, campaignLabel(call.campaign)),
         stacked(call.test_name, call.technology), failure, ...optionalColumns().map((column) => optionalCell(call, column)),
-        tracking('team', 'assignee'), ...fieldColumns().filter((field) => field.section === 'rca').map((field) => fieldCell(call, field)),
-        root, ...fieldColumns().filter((field) => field.section !== 'rca').map((field) => fieldCell(call, field)), status, comments,
+        ...fieldColumns().filter((field) => field.section === 'rca').map((field) => fieldCell(call, field)),
+        root, ...fieldColumns().filter((field) => field.section !== 'rca').map((field) => fieldCell(call, field)), status,
+        tracking('team', 'assignee'), comments,
       );
       orderRowCells(row);
       [...row.cells].forEach((cell, index) => { if (labels[index]) cell.dataset.label = labels[index]; });
@@ -1535,8 +1605,17 @@
   const VIEW_STORAGE = `nq-view:${$('nq-table').dataset.workspace || ''}`;
   // The bar shows the calls, one panel at a time, or every panel.
   const VIEWS = ['calls', 'summary', 'rates', 'sources', 'root', 'lifecycle', 'progress', 'all'];
+  // All panels shows the first calls, ten a page (the size chosen in Rows is that of NQ Calls).
+  const ALL_PANELS_PAGE_SIZE = 10;
+  const shownPageSize = () => (state.view === 'all' ? ALL_PANELS_PAGE_SIZE : state.pageSize);
   const applyView = (view) => {
+    const size = shownPageSize();
     state.view = VIEWS.includes(view) ? view : 'calls';
+    $('nq-page-size').closest('label').hidden = state.view === 'all';
+    if (state.result && shownPageSize() !== size) {
+      state.page = 1;
+      loadCalls({quiet: true});
+    }
     root.querySelectorAll('[data-nq-view-panel]').forEach((panel) => {
       panel.hidden = state.view !== 'all' && panel.dataset.nqViewPanel !== state.view;
     });
@@ -1631,7 +1710,7 @@
   async function loadCalls({quiet = false} = {}) {
     const token = ++state.requestToken;
     const filters = currentFilters();
-    const signature = JSON.stringify([filters, state.sort, state.direction, state.pageSize]);
+    const signature = JSON.stringify([filters, state.sort, state.direction, shownPageSize()]);
     if (state.filtersRestored) saveFilters(filters);
     if (!quiet) {
       $('nq-count').textContent = 'Loading calls…';
@@ -1642,7 +1721,7 @@
       const breakdowns = panelShown('summary');
       const result = await api('/api/non-qualified-calls/calls', {
         method: 'POST',
-        body: JSON.stringify({filters, sort: state.sort, direction: state.direction, page: state.page, page_size: state.pageSize, breakdowns}),
+        body: JSON.stringify({filters, sort: state.sort, direction: state.direction, page: state.page, page_size: shownPageSize(), breakdowns}),
         // A quiet reload is the page keeping itself current, not someone using the application.
         ...(quiet ? {headers: {'X-Background-Refresh': '1'}} : {}),
       });
@@ -1667,6 +1746,7 @@
       renderSortHeaders();
       renderPagination(result);
       renderBulk();
+      if (state.detail) renderDetailNav();
       $('nq-view-count').textContent = number(result.total);
       renderPanelCounts(result.total);
       // Only the panels on screen (shown and unfolded) are calculated; the others when they are opened.
@@ -1891,7 +1971,7 @@
       drillCard(kpiCard('Not Attended', number(summary.not_attended), 'No change or comment yet', 'total'), {pairs: [['state', 'not_attended']]}),
       drillCard(kpiCard('Closure Rate', `${summary.closure_rate.toFixed(1)}%`, `${number(summary.closed)} of ${number(summary.total)} closed`, 'closed'), {pairs: [['state', 'closed']]}),
       drillCard(kpiCard('First Follow-up', days(summary.avg_days_to_first_follow_up), 'Average from the call', 'team'), {pairs: [['state', 'attended']]}),
-      drillCard(kpiCard('Time to Close', days(summary.avg_days_to_close), 'Average from the first follow-up', 'commented'), {pairs: [['state', 'closed']]}),
+      drillCard(kpiCard('Time to Close', days(summary.avg_days_to_close), 'Average from the call', 'commented'), {pairs: [['state', 'closed']]}),
       drillCard(kpiCard('Activity', number(summary.comments + summary.changes), `${number(summary.comments)} comments · ${number(summary.changes)} changes · ${number(summary.contributors)} users`), {pairs: [['state', 'attended']]}),
     );
     $('nq-pies').replaceChildren(...progress.distributions.map(donut));
@@ -2237,6 +2317,7 @@
     return bar;
   };
   const renderLifecycle = (life) => {
+    state.life = life;
     const total = life.total;
     const closed = life.pipeline.filter((item) => item.closed).reduce((sum, item) => sum + item.count, 0);
     $('nq-life-kpis').replaceChildren(
@@ -2245,30 +2326,48 @@
         {pairs: [['status_mode', 'auto']]}),
       drillCard(kpiCard('Status by Hand', number(life.modes.manual), `${percent(life.modes.manual, total)} chosen by an analyst`, 'commented'),
         {pairs: [['status_mode', 'manual']]}),
-      drillCard(kpiCard('Open', number(total - closed), `${percent(total - closed, total)} still in follow-up`, 'open'), {pairs: [['open_only', true]]}),
+      drillCard(kpiCard('Open', number(life.open), `${percent(life.open, total)} attended and not closed`, 'open'),
+        {many: ['status', life.open_statuses || []]}),
       drillCard(kpiCard('Closed', number(closed), `${percent(closed, total)} closed`, 'closed'), {pairs: [['state', 'closed']]}),
       kpiCard('Stalled', number(life.stalled_total), `Open, no change for ${life.stalled_days}+ days`, 'attended'),
     );
-    // The pipeline: the open statuses in order, then the closed ones.
+    // The pipeline: the calls not attended, Open (the phase statuses an attended call goes through, its total being
+    // theirs), then the closed statuses.
     const steps = [...life.pipeline.filter((item) => !item.closed), ...life.pipeline.filter((item) => item.closed)];
     const pipeline = $('nq-life-pipeline');
     pipeline.replaceChildren(stackedBar(steps.map((item) => ({label: item.status, count: item.count, color: item.color})), total));
     const flow = node('div', undefined, 'nq-pipeline-steps');
+    const openNames = life.open_statuses || [];
+    let group = null;
     steps.forEach((item, index) => {
-      if (index && !item.closed) flow.append(node('span', '→', 'nq-pipeline-arrow'));
+      const inOpen = openNames.includes(item.status);
+      if (inOpen && !group) {
+        flow.append(node('span', '→', 'nq-pipeline-arrow'));
+        group = node('div', undefined, 'nq-pipeline-group');
+        const head = drillCard(node('div', undefined, 'nq-pipeline-group-head'), {many: ['status', openNames]});
+        head.append(node('span', 'Open', 'nq-pipeline-name'), node('strong', number(life.open)),
+          node('span', `${percent(life.open, total)} · attended and not closed: ${openNames.join(' + ')}`, 'nq-kpi-note'));
+        group.append(head, node('div', undefined, 'nq-pipeline-group-steps'));
+        flow.append(group);
+      }
+      const host = inOpen ? group.lastChild : flow;
+      if (index && !item.closed && (!inOpen || host.childElementCount)) host.append(node('span', '→', 'nq-pipeline-arrow'));
       if (item.closed && !steps[index - 1]?.closed && index) flow.append(node('span', '⇒', 'nq-pipeline-arrow is-closing'));
       const step = node('button', undefined, `nq-pipeline-step${item.closed ? ' is-closed' : ''}`);
       step.type = 'button';
       step.style.setProperty('--nq-step', item.color || '#b8c0c6');
       const filters = currentFilters();
       step.classList.toggle('is-active', (filters.status || []).length === 1 && filters.status[0] === item.status);
-      step.append(node('span', item.status, 'nq-pipeline-name'), node('strong', number(item.count)),
+      // The status, its calls and their age, as tall in every card, so that the rules start on one line.
+      const top = node('div', undefined, 'nq-pipeline-head');
+      top.append(node('span', item.status, 'nq-pipeline-name'), node('strong', number(item.count)),
         node('span', `${percent(item.count, total)}${item.avg_age_days === null ? '' : ` · ${item.avg_age_days} d old on average`}`, 'nq-kpi-note'));
+      step.append(top);
       const triggers = ruleTriggers(item.status, life.rules || []);
       if (triggers) step.append(triggers);
       step.title = `Show only the calls ${item.status}`;
       step.addEventListener('click', () => selectOnly('status', item.status));
-      flow.append(step);
+      host.append(step);
     });
     pipeline.append(flow);
     // RCA Identification, then one card per phase field: how its values split the calls.
@@ -2277,15 +2376,21 @@
       items: [{value: 'Identified', count: life.rca.identified, color: '#2e8b57', filter: 'identified'},
         {value: 'Not identified', count: life.rca.not_identified, color: '#e7dde1', filter: 'not_identified'}],
     }] : [];
+    // Every phase card in one row.
+    $('nq-life-phases').style.setProperty('--nq-phase-count', String(rcaPhase.length + life.phases.length || 1));
     $('nq-life-phases').replaceChildren(...[...rcaPhase, ...life.phases].map((phase) => {
       const section = sectionOf(phase.section);
       const card = node('section', undefined, 'nq-phase-card');
       card.style.setProperty('--nq-section', section.color);
       const head = node('header');
       head.append(sectionTag(phase.section), node('h3', phase.label));
+      // Without Empty, the values share the calls that have one.
+      const showEmpty = $('nq-life-show-empty').checked;
       const items = phase.drill ? phase.items.map((item) => ({label: item.value, value: item.filter, count: item.count, color: item.color}))
         : [...phase.items.map((item) => ({label: item.value, value: item.value, count: item.count, color: item.color})),
-          {label: 'Empty', value: '', count: phase.empty, color: '#e7dde1'}];
+          ...(showEmpty ? [{label: 'Empty', value: '', count: phase.empty, color: '#e7dde1'}] : [])];
+      const base = phase.drill || showEmpty ? total : items.reduce((sum, item) => sum + item.count, 0);
+      if (base !== total) head.append(node('span', `${number(base)} of ${number(total)} calls with a value`, 'nq-muted nq-phase-base'));
       const field = phase.drill || `field:${phase.key}`;
       const rows = node('div', undefined, 'nq-phase-values');
       items.forEach((item) => {
@@ -2296,12 +2401,12 @@
         const swatch = node('span', '', 'nq-swatch');
         swatch.style.background = item.color || '#d9cfd3';
         row.append(swatch, node('span', item.label, 'nq-bar-label'), node('strong', number(item.count)),
-          node('span', percent(item.count, total), 'nq-muted'));
+          node('span', percent(item.count, base), 'nq-muted'));
         row.title = `Show only the calls with ${phase.label}: ${item.label}`;
         row.addEventListener('click', () => drill(pairs));
         rows.append(row);
       });
-      card.append(head, stackedBar(items, total), rows);
+      card.append(head, stackedBar(items, base), rows);
       return card;
     }));
     if (!life.phases.length) $('nq-life-phases').append(node('p', 'No list field in the Analysis, Implementation or Planning sections.', 'nq-muted'));
@@ -2326,6 +2431,7 @@
       row.addEventListener('keydown', (event) => { if (event.key === 'Enter') openDetail(item.call_key); });
     });
   };
+  $('nq-life-show-empty').addEventListener('change', () => { if (state.life) renderLifecycle(state.life); });
   let lifeToken = 0;
   async function loadLifecycle() {
     const token = ++lifeToken;
@@ -2527,6 +2633,7 @@
       state.ruleOperators = payload.rule_operators || {};
       state.conditionFields = payload.condition_fields || {};
       state.rcaResults = payload.rca_results || {};
+      state.callSection = payload.call_section || null;
       state.rcaSources = payload.rca_sources || {};
       buildDrawerTabs();
       state.tableColumns = payload.table_columns || {builtin: [], cdr: []};
@@ -2918,6 +3025,7 @@
         const control = choiceControl({
           items: fieldChoices(priorityField, value), value, empty: 'Not set', label: `${priorityField.label} of the call`,
           onChange: (chosen) => patchCall(call, {fields: {priority: chosen}}, control, `${priorityField.label} updated.`),
+          onAdd: listAdder(priorityField),
         });
         priority.append(control);
       } else {
@@ -2961,8 +3069,12 @@
       const value = String(call.values?.[phase.key] || '');
       phaseStep(phase.section, sectionOf(phase.section).label, value, optionColorOf(phase, value), phase.label);
     });
+    // The phases in a subpanel of their own.
+    const phasePanel = node('section', undefined, 'nq-phase-panel');
+    phasePanel.setAttribute('aria-label', 'Phases of the call');
+    phasePanel.append(node('span', 'Phases', 'nq-phase-panel-title'), phases);
     host.replaceChildren(status, ...(priority ? [priority] : []), field('team', 'Team'), field('assignee', 'Assignee'), rootField,
-      ...(phases.childElementCount ? [phases] : []), updated);
+      ...(phases.childElementCount ? [phasePanel] : []), updated);
   };
   const DETAIL_FIELDS = [
     ['Service', 'service_label'], ['Result', 'result'], ['Operator', 'operator'], ['Vendor', 'vendor'], ['Campaign', 'campaign'],
@@ -3006,7 +3118,7 @@
         input.value = chosen;
         input.dispatchEvent(new Event('change', {bubbles: true}));
       };
-      const picker = choiceControl({items: fieldChoices(field, value), value, label: field.label, onChange: changed});
+      const picker = choiceControl({items: fieldChoices(field, value), value, label: field.label, onChange: changed, onAdd: listAdder(field)});
       picker.disabled = !state.user.can_edit;
       wrapper.append(picker, input);
       wrapper.setValue = (chosen) => { picker.setValue(chosen); changed(chosen); };
@@ -3313,6 +3425,7 @@
     $('nq-drawer-meta').textContent = [cdrTime(call.start_time), call.city, call.technology, call.test_name].filter((value) => value && value !== '—').join(' · ');
     $('nq-drawer-join-id').textContent = call.join_id || '';
     $('nq-drawer-join').hidden = !call.join_id;
+    renderDetailNav();
     renderTracking(call);
     renderSections(detail);
     renderSamples(detail);
@@ -3365,6 +3478,64 @@
       if (error.status === 404) closeDrawer();
     }
   }
+
+  // The call panel goes through the calls of the list (its page and the pages around it), and to any call by its
+  // JOIN_ID; changes not saved yet are confirmed first.
+  const detailPlace = () => {
+    const calls = state.result?.calls || [];
+    return {calls, index: calls.findIndex((call) => call.call_key === state.detail?.call.call_key)};
+  };
+  function renderDetailNav() {
+    const {index} = detailPlace();
+    const result = state.result;
+    const position = index < 0 ? 0 : (result.page - 1) * result.page_size + index + 1;
+    $('nq-drawer-prev').disabled = index < 0 || position <= 1;
+    $('nq-drawer-next').disabled = index < 0 || position >= result.total;
+    const where = $('nq-drawer-position');
+    where.textContent = index < 0 ? 'Not in the list' : `${number(position)} of ${number(result.total)}`;
+    where.title = index < 0 ? 'The call is not on the page of the list shown: the arrows go through the calls of the list'
+      : 'Position of the call in the list of the filters';
+  }
+  const leaveDetail = async () => {
+    if (!Object.keys(changedFields()).length) return true;
+    const message = 'This call has changes not saved yet. Leave them?';
+    return typeof window.showConfirmDialog === 'function'
+      ? window.showConfirmDialog(message, {title: 'Unsaved changes', confirmLabel: 'Leave them'}) : window.confirm(message);
+  };
+  const stepDetail = async (offset) => {
+    let {calls, index} = detailPlace();
+    if (index < 0 || !(await leaveDetail())) return;
+    let target = index + offset;
+    if (target < 0 || target >= calls.length) {
+      const page = state.result.page + offset;
+      if (page < 1 || page > state.result.pages) return;
+      state.page = page;
+      await loadCalls({quiet: true});
+      calls = state.result?.calls || [];
+      target = offset < 0 ? calls.length - 1 : 0;
+    }
+    if (calls[target]) await openDetail(calls[target].call_key, {keepTab: true});
+  };
+  $('nq-drawer-prev').addEventListener('click', () => stepDetail(-1));
+  $('nq-drawer-next').addEventListener('click', () => stepDetail(1));
+  $('nq-drawer-find').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const input = $('nq-drawer-find-input');
+    const joinId = input.value.trim();
+    if (!joinId) return;
+    try {
+      const {calls} = await api('/api/non-qualified-calls/calls', {method: 'POST', body: JSON.stringify({filters: {join_id: [joinId]}, page_size: 25})});
+      if (!calls.length) {
+        toast(`No Non-Qualified Call has the JOIN_ID ${joinId}.`, 'error');
+        return;
+      }
+      if (calls[0].call_key === state.detail?.call.call_key || !(await leaveDetail())) return;
+      input.value = '';
+      await openDetail(calls[0].call_key, {keepTab: true});
+    } catch (error) {
+      toast(error.message, 'error');
+    }
+  });
 
   // -- statuses and teams dialog --------------------------------------------------
   const optionsDialog = $('nq-options-dialog');
@@ -4044,9 +4215,11 @@
         return;
       }
       const one = preview.calls === 1;
-      // The page confirm panel stays under the open catalog dialog: the browser one shows above it.
-      if (!window.confirm(`${number(preview.calls)} call${one ? '' : 's'} with a root cause and no root category will take the category `
-        + `of ${one ? 'its' : 'their'} cause. Continue?`)) {
+      const message = `${number(preview.calls)} call${one ? '' : 's'} with a root cause and no root category will take the category `
+        + `of ${one ? 'its' : 'their'} cause. Continue?`;
+      const accepted = typeof window.showConfirmDialog === 'function'
+        ? await window.showConfirmDialog(message, {title: 'Apply to Calls', confirmLabel: 'Apply'}) : window.confirm(message);
+      if (!accepted) {
         status.textContent = 'The catalog is saved; the calls are unchanged.';
         return;
       }
@@ -4593,13 +4766,18 @@
       $('nq-columns-fields').replaceChildren(...state.sections.map((section) => {
         const fields = state.fields.filter((field) => field.section === section.key && field.source !== 'tracking');
         if (!fields.length) return null;
+        // The section on its own row, above its fields.
         const group = node('div', undefined, 'nq-columns-field-group');
         group.style.setProperty('--nq-section', section.color);
-        group.append(sectionTag(section.key), ...fields.map((field) => {
+        const head = node('div', undefined, 'nq-columns-field-head');
+        head.append(sectionTag(section.key));
+        const list = node('div', undefined, 'nq-columns-field-list');
+        list.append(...fields.map((field) => {
           const option = checkbox(field.key, field.label, field.in_table);
           option.title = `${SOURCE_TAGS[field.source] || field.source} · ${field.description || field.label}`;
           return option;
         }));
+        group.append(head, list);
         return group;
       }).filter(Boolean));
       const inTable = new Set(state.tableColumns.cdr);
@@ -4722,7 +4900,7 @@
       saveRule(rule);
     });
   }
-  // -- Analysis Center and Import RCA & Analyses menus -----------------------------------------------------
+  // -- Analysis Center menu -------------------------------------------------------------------------------
   // A menu opens where it fits: below its button, or above it near the bottom of the window, scrolling inside if needed,
   // and moved right when the button is too close to the left edge for it. Every entry opens its dialog and closes it.
   const dropdownMenu = (toggle, menu) => {
@@ -4763,7 +4941,6 @@
     });
   };
   dropdownMenu($('nq-config-toggle'), $('nq-config-menu'));
-  dropdownMenu($('nq-import-toggle'), $('nq-import-menu'));
 
   // -- status rules dialog --------------------------------------------------------------------
   const statusRulesDialog = $('nq-status-rules-dialog');
@@ -4905,9 +5082,15 @@
     const importButton = form.querySelector('[data-nq-analyses-import]');
     const error = form.querySelector('[data-nq-analyses-error]');
     const summary = form.querySelector('[data-nq-analyses-summary]');
+    // Import Analyses waits for the preview of the chosen file, and tells why while it is disabled.
+    const importReady = (ready, reason = 'Preview the file first: its preview enables the import') => {
+      importButton.disabled = !ready;
+      importButton.title = ready ? '' : reason;
+    };
     const reset = () => {
-      importButton.disabled = true;
+      importReady(false);
       previewButton.disabled = !file.files.length;
+      previewButton.title = file.files.length ? 'Read the file without changing anything' : 'Choose a file first: Preview reads it without changing anything';
       form.querySelector('[data-nq-analyses-equivalences-download]').title = file.files.length
         ? 'Every value of the follow-up and list columns of the chosen file, with what it becomes'
         : 'The equivalences the import uses: the rules of the tool and those of this workspace';
@@ -4924,50 +5107,175 @@
       return block;
     };
     const count = (value, singular, plural = `${singular}s`) => `${number(value)} ${value === 1 ? singular : plural}`;
+    // A folded part of the summary: its title with how many items it has (none for the details), and its content.
+    const section = (title, size, content, open = false) => {
+      const parts = [content].flat().filter(Boolean);
+      if (!parts.length || size === 0) return null;
+      const block = node('details', undefined, 'nq-analyses-section');
+      block.open = open;
+      const head = node('summary');
+      head.append(node('span', title));
+      if (size !== null) head.append(node('span', number(size), 'nq-analyses-count'));
+      block.append(head, ...parts);
+      return block;
+    };
+    const chips = (items) => {
+      const box = node('div', undefined, 'nq-analyses-chips');
+      items.forEach(([label, extra]) => {
+        const chip = node('span', label, 'nq-analyses-chip');
+        if (extra) chip.append(node('small', extra));
+        box.append(chip);
+      });
+      return box;
+    };
+    const group = (title, items) => {
+      const block = node('div', undefined, 'nq-analyses-group');
+      block.append(node('strong', `${title} (${number(items.length)})`), chips(items));
+      return block;
+    };
+    // The summary of a preview or an import: the numbers that matter first, then what the catalog gets and what stays
+    // only in the notes, and the details of the file folded.
     const render = (result) => {
-      const sheets = (result.sheets || []).map((item) => `${item.sheet} (${count(item.rows, 'row')})`);
-      const lines = result.dry_run ? [
-        `${count(result.calls, 'call')} in ${count(result.rows, 'row')}: ${number(result.matched)} found in the workspace, ${number(result.unmatched)} not loaded yet.`,
-        `${count(result.changed, 'call')} would change, ${count(result.pending, 'call')} not loaded yet would keep ${result.pending === 1 ? 'its' : 'their'} analysis, ${count(result.comments, 'comment')} and ${count(result.notes, 'import note')} would be added; ${count(result.analysed, 'call')} already ${result.analysed === 1 ? 'has' : 'have'} an analysis.`,
-      ] : [
-        `${count(result.changed, 'call')} changed, ${count(result.pending, 'call')} not loaded yet kept, ${count(result.comments, 'comment')} and ${count(result.notes, 'import note')} added (${number(result.matched)} of ${count(result.calls, 'call')} found).`,
-      ];
-      const created = (title, items, describe) => list(title, (items || []).map(describe));
-      const inDomain = (domain) => (domain ? `in ${domain}` : 'with the domain of the keywords');
-      // What the import cannot place, and the calls of several rows (the note keeps the values of the other rows).
+      const kpis = node('div', undefined, 'nq-analyses-kpis');
+      [
+        ['Calls in the file', result.calls, `${count(result.rows, 'row')} in ${count((result.sheets || []).length, 'sheet')}`],
+        ['Found in the workspace', result.matched, `${count(result.changed, 'call')} ${result.dry_run ? 'would change' : 'changed'}`],
+        ['Waiting for their CDR', result.pending, 'Shown when their CDR is loaded'],
+        ['Comments', result.comments, result.dry_run ? 'Would be added' : 'Added'],
+        ['Import notes', result.notes, 'What has no field, one per call'],
+      ].forEach(([label, value, note]) => {
+        const card = node('div', undefined, 'nq-analyses-kpi');
+        card.append(node('span', label), node('strong', number(value)), node('small', note));
+        kpis.append(card);
+      });
+      const headline = node('p', result.dry_run
+        ? 'Preview: nothing has changed yet; Import Analyses applies it.'
+        : 'Imported: the calls show their analyses.', 'nq-analyses-headline');
+      const roots = (items) => (items || []).map((item) => [item.value, `${item.domain || 'Auto domain'} · ${number(item.rows)}`]);
+      const byField = {};
+      (result.new_options || []).forEach((item) => { (byField[item.field] ||= []).push([item.value, number(item.rows)]); });
+      const groups = [
+        ['Teams', (result.new_teams || []).map((item) => [item.value, number(item.rows)])],
+        ['Root Categories', roots(result.new_categories)],
+        ['Root Causes', roots(result.new_causes)],
+        ...Object.entries(byField),
+      ].filter(([, items]) => items.length);
+      const dates = [
+        result.dated ? `${count(result.dated, 'call')} with the date of their analysis` : '',
+        result.estimated ? `${count(result.estimated, 'call')} with the date of the call a week later` : '',
+      ].filter(Boolean);
       const apart = [
         result.skipped ? `${count(result.skipped, 'row')} without JOIN_ID or session` : '',
         result.unplaced ? `${count(result.unplaced, 'call')} not loaded yet whose service the file does not tell` : '',
       ].filter(Boolean);
-      summary.replaceChildren(
-        ...lines.map((line) => node('p', line)),
-        ...[
-          list('Sheets read:', sheets),
+      summary.replaceChildren(...[
+        headline,
+        kpis,
+        dates.length ? list('Dates of the analyses:', dates) : null,
+        apart.length ? list('Left out:', apart) : null,
+        section('New values in the catalog', groups.reduce((sum, [, items]) => sum + items.length, 0),
+          groups.map(([title, items]) => group(title, items)), true),
+        section('Domains that change in the catalog', (result.domain_changes || []).length, chips((result.domain_changes || []).map((item) => [
+          `${item.value}: ${item.from || 'no domain'} → ${item.to}`, `${item.kind} · ${number(item.rows)}`]))),
+        section('Values kept only in the import note', result.invalid_total,
+          chips((result.invalid || []).map((item) => [`${item.column}: ${item.value}`, number(item.rows)]))),
+        section('Details of the file', null, [
+          list('Sheets read:', (result.sheets || []).map((item) => `${item.sheet} (${count(item.rows, 'row')})`)),
           list('Sheets without a JOIN_ID column, left out:', result.sheets_skipped || []),
-          list('Columns imported:', result.columns),
+          list('Columns imported:', result.columns || []),
           list('Columns kept in the import note:', result.noted || []),
           result.cdr_columns ? list('CDR columns before the analysis (already in the tool):', [count(result.cdr_columns, 'column')]) : null,
-          list('Read-only columns left out:', result.read_only),
-          created('New list values:', result.new_options, (item) => `${item.field} = ${item.value} (${item.rows})`),
-          created('New teams:', result.new_teams, (item) => `${item.value} (${item.rows})`),
-          created('New root categories:', result.new_categories, (item) => `${item.value} ${inDomain(item.domain)} (${item.rows})`),
-          created('New root causes:', result.new_causes, (item) => `${item.value} ${inDomain(item.domain)} (${item.rows})`),
-          created('Domains the review changes:', result.domain_changes, (item) => `${item.kind} ${item.value}: ${item.from || 'no domain'} → ${item.to}`
-            + ` (${item.rows})${item.others.length ? `, also given ${item.others.join(', ')}` : ''}`),
-          result.dated || result.estimated ? list('Dates of the analyses (of their changes, comments and note):', [
-            result.dated ? `${count(result.dated, 'call')} with the date of their analysis (Date last modification)` : '',
-            result.estimated ? `${count(result.estimated, 'call')} without it, with the date of the call a week later` : '',
-          ].filter(Boolean)) : null,
-          list('Calls not loaded yet (first ones):', result.unmatched_ids),
-          list('Left out:', apart),
-          result.duplicates ? list('Calls in several rows (the first row gives the values, the note keeps the others):', [count(result.duplicates, 'call')]) : null,
-          list(`Values that are not values of their field, kept in the import note (${number(result.invalid_total)}):`,
-            result.invalid.map((item) => `${item.column} = ${item.value} (${item.rows})`)),
-          list('Calls that could not be changed:', result.failures),
-        ].filter(Boolean),
-      );
+          list('Read-only columns left out:', result.read_only || []),
+          result.duplicates ? list('Calls in several rows (the first row gives the values, the note keeps the others):',
+            [count(result.duplicates, 'call')]) : null,
+          list('Calls not loaded yet (first ones):', result.unmatched_ids || []),
+          list('Calls that could not be changed:', result.failures || []),
+        ]),
+      ].filter(Boolean));
       summary.hidden = false;
     };
+    // Once imported, a dialog over the import tells what the file brought: where its calls went, what they got and what
+    // the catalog gained. See the details leaves the whole summary of the import; Done closes both.
+    const doneDialog = $('nq-analyses-done');
+    const showImportDone = (result, seconds) => {
+      doneDialog.querySelector('[data-nq-analyses-done-file]').textContent = [file.files[0]?.name || 'The file',
+        `${count(result.rows, 'row')} in ${count((result.sheets || []).length, 'sheet')}`, `${number(seconds)} s`].join(' · ');
+      const segments = [
+        ['changed', 'Updated', result.changed, 'In the workspace, with their analysis now'],
+        ['same', 'Already up to date', Math.max(0, result.matched - result.changed), 'In the workspace, with these values already'],
+        ['pending', 'Imported, not in the workspace yet', result.pending, 'Shown when their CDR is loaded'],
+        ['left', 'Left out', result.unplaced, 'Not loaded yet, and the file does not tell their service'],
+      ].filter(([, , value]) => value);
+      const total = Math.max(1, segments.reduce((sum, [, , value]) => sum + value, 0));
+      const calls = node('div', undefined, 'nq-done-calls');
+      const head = node('div', undefined, 'nq-done-total');
+      head.append(node('strong', number(result.calls)), node('span', `call${result.calls === 1 ? '' : 's'} in the file`),
+        node('small', `${number(result.matched)} in the workspace · ${number(result.pending)} imported for later`));
+      const bar = node('div', undefined, 'nq-done-bar');
+      bar.setAttribute('role', 'img');
+      bar.setAttribute('aria-label', segments.map(([, label, value]) => `${label}: ${number(value)}`).join(', '));
+      const legend = node('ul', undefined, 'nq-done-legend');
+      segments.forEach(([kind, label, value, note]) => {
+        const part = node('span', undefined, `nq-done-${kind}`);
+        part.style.flexGrow = String(value);
+        part.title = `${label}: ${number(value)}`;
+        bar.append(part);
+        const item = node('li', undefined, `nq-done-${kind}`);
+        item.append(node('strong', number(value)), node('span', label), node('small', `${Math.round((value * 100) / total)}% · ${note}`));
+        legend.append(item);
+      });
+      calls.append(head, bar, legend);
+      const added = ['new_teams', 'new_categories', 'new_causes', 'new_options'].reduce((sum, key) => sum + (result[key] || []).length, 0);
+      const kpis = node('div', undefined, 'nq-analyses-kpis');
+      [
+        ['Comments added', result.comments, 'From the comment columns'],
+        ['Import notes', result.notes, 'What has no field, one per call'],
+        ['Dated by their analysis', result.dated, result.estimated ? `${number(result.estimated)} a week after the call` : 'Every call'],
+        ['New in the catalog', added, `${count((result.domain_changes || []).length, 'domain')} changed`],
+        ['Values only in the note', result.invalid_total, 'Not valid for their field'],
+      ].forEach(([label, value, note]) => {
+        const card = node('div', undefined, 'nq-analyses-kpi');
+        card.append(node('span', label), node('strong', number(value || 0)), node('small', note));
+        kpis.append(card);
+      });
+      const apart = [
+        result.skipped ? `${count(result.skipped, 'row')} without JOIN_ID or session` : '',
+        (result.failures || []).length ? `${count(result.failures.length, 'call')} that could not be changed` : '',
+      ].filter(Boolean);
+      doneDialog.querySelector('[data-nq-analyses-done-body]').replaceChildren(...[
+        calls, kpis, apart.length ? node('p', `Left out: ${apart.join('; ')}.`, 'nq-done-warning') : null,
+      ].filter(Boolean));
+      doneDialog.showModal();
+    };
+    doneDialog.querySelector('[data-nq-analyses-done-details]').addEventListener('click', () => doneDialog.close());
+    doneDialog.querySelector('[data-nq-analyses-done-close]').addEventListener('click', () => {
+      doneDialog.close();
+      analysesDialog.close();
+    });
+    // While the file is previewed or imported, a panel over the dialog tells the step, how far it is and the time.
+    const progressBox = analysesDialog.querySelector('[data-nq-analyses-progress]');
+    let busy = false;
+    let ticker = 0;
+    const setProgress = (step, fraction) => {
+      progressBox.querySelector('[data-nq-analyses-progress-step]').textContent = step;
+      progressBox.querySelector('[data-nq-analyses-progress-bar]').style.width = `${Math.round(Math.min(1, Math.max(0.03, fraction)) * 100)}%`;
+    };
+    const showProgress = (title) => {
+      busy = true;
+      const started = Date.now();
+      const time = progressBox.querySelector('[data-nq-analyses-progress-time]');
+      progressBox.querySelector('[data-nq-analyses-progress-title]').textContent = title;
+      setProgress('Sending the file', 0);
+      time.textContent = '0 s';
+      ticker = window.setInterval(() => { time.textContent = `${number(Math.round((Date.now() - started) / 1000))} s`; }, 1000);
+      progressBox.hidden = false;
+    };
+    const hideProgress = () => {
+      busy = false;
+      window.clearInterval(ticker);
+      progressBox.hidden = true;
+    };
+    analysesDialog.addEventListener('cancel', (event) => { if (busy) event.preventDefault(); });
     // The equivalences of the chosen file, downloaded to review and uploaded back.
     const equivalencesStatus = form.querySelector('[data-nq-analyses-equivalences-status]');
     const downloadEquivalences = form.querySelector('[data-nq-analyses-equivalences-download]');
@@ -5009,7 +5317,7 @@
         const result = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(typeof result.detail === 'string' ? result.detail : 'The equivalences could not be saved.');
         equivalencesStatus.textContent = `${count(result.saved, 'equivalence')} saved (${number(result.total)} in the workspace). Preview the file again.`;
-        importButton.disabled = true;
+        importReady(false, 'Preview the file again: the equivalences changed');
         summary.hidden = true;
       } catch (exc) {
         error.textContent = exc.message;
@@ -5022,20 +5330,53 @@
       const body = new FormData();
       body.append('file', file.files[0]);
       body.append('overwrite', form.querySelector('input[name="overwrite"]:checked').value);
+      body.append('stream', '1');
       if (preview) body.append('preview', '1');
       previewButton.disabled = importButton.disabled = true;
+      showProgress(preview ? 'Previewing the file' : 'Importing the analyses');
+      const started = Date.now();
+      let completed = null;
       try {
         const response = await fetch('/api/non-qualified-calls/analyses/import', {method: 'POST', credentials: 'same-origin', body});
-        const result = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(typeof result.detail === 'string' ? result.detail : 'The file could not be imported.');
+        if (!response.ok) {
+          const failure = await response.json().catch(() => ({}));
+          throw new Error(typeof failure.detail === 'string' ? failure.detail : 'The file could not be imported.');
+        }
+        // One JSON object per line: the progress while the import runs, then its result or its error.
+        let result = null;
+        const handle = (line) => {
+          if (!line.trim()) return;
+          const event = JSON.parse(line);
+          if (event.error) throw new Error(event.error);
+          if (event.result) result = event.result;
+          else if (event.step) setProgress(event.step, event.progress);
+        };
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        for (;;) {
+          const {value, done} = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, {stream: true});
+          const lines = buffer.split('\n');
+          buffer = lines.pop();
+          lines.forEach(handle);
+        }
+        handle(buffer);
+        if (!result) throw new Error('The import stopped before its end: try it again.');
         render(result);
-        importButton.disabled = !preview || !(result.matched || result.pending);
-        if (!preview) loadState();
+        importReady(preview && Boolean(result.matched || result.pending), preview ? 'The file has no call to import' : 'Preview the file again to import it again');
+        if (!preview) {
+          loadState();
+          completed = result;
+        }
       } catch (exc) {
         error.textContent = exc.message;
       } finally {
+        hideProgress();
         previewButton.disabled = !file.files.length;
       }
+      if (completed) showImportDone(completed, Math.round((Date.now() - started) / 1000));
     };
     $('nq-analyses-open').addEventListener('click', () => {
       form.reset();
@@ -5044,10 +5385,12 @@
     });
     analysesDialog.querySelector('[data-nq-analyses-close]').addEventListener('click', () => analysesDialog.close());
     previewButton.addEventListener('click', () => send(true));
-    form.addEventListener('submit', (event) => {
+    form.addEventListener('submit', async (event) => {
       event.preventDefault();
       const overwrite = form.querySelector('input[name="overwrite"]:checked').value === '1';
-      if (overwrite && !window.confirm('Replace the values the calls already have with those of the file?')) return;
+      const message = 'Replace the values the calls already have with those of the file?';
+      if (overwrite && !(typeof window.showConfirmDialog === 'function'
+        ? await window.showConfirmDialog(message, {title: 'Replace values', confirmLabel: 'Replace'}) : window.confirm(message))) return;
       send(false);
     });
   }
@@ -5214,6 +5557,27 @@
       }
     });
   }
+  // The Analysis Center of the sections menu of the module opens its menu, and its options their dialogs (once the
+  // page has its state).
+  const CENTER_HASHES = {
+    'section-analysis-center': 'nq-config-toggle', 'fields-and-sections': 'nq-fields-open', 'statuses-and-teams': 'nq-options-open',
+    'status-rules': 'nq-status-rules-open', 'root-cause-catalog': 'nq-root-open',
+    'import-ericsson-rca-results': 'nq-rca-open', 'import-previous-nq-analyses': 'nq-analyses-open',
+  };
+  const openCenterFromHash = () => {
+    const opener = CENTER_HASHES[decodeURIComponent(window.location.hash.slice(1))];
+    if (!opener) return;
+    window.history.replaceState(window.history.state, '', `${window.location.pathname}${window.location.search}`);
+    const button = $(opener);
+    if (!button || button.getAttribute('aria-disabled') === 'true') {
+      toast(button?.title || 'The user-viewer role can read Non-Qualified Calls but cannot change them.', 'error');
+      return;
+    }
+    if (opener !== 'nq-config-toggle') button.click();
+    else if ($('nq-config-menu').hidden) window.setTimeout(() => button.click());
+  };
+  window.addEventListener('hashchange', openCenterFromHash);
+
   // Keep the shared follow-up current while the page stays open.
   window.setInterval(() => {
     if (document.visibilityState !== 'visible' || state.busy) return;
@@ -5225,5 +5589,5 @@
     if (state.detail && !composerBody.value.trim() && !drawer.querySelector('.nq-comment-editor')) openDetail(state.detail.call.call_key, {keepTab: true});
   }, REFRESH_INTERVAL_MS);
 
-  loadState();
+  loadState().then(openCenterFromHash);
 })();

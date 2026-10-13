@@ -42,7 +42,7 @@ COLUMN_ALIASES: dict[str, tuple[str, str]] = {
     'analysisfinished': ('field', 'analysis_status'),
     'status': ('field', 'planned_status'),
     'evaluation': ('field', 'implementation_status'),
-    'streamresponsible': ('field', 'implementation_stream'),
+    'streamresponsible': ('field', 'implementation_team'),
     'actionproposal': ('field', 'implementation_proposal'),
     'site': ('field', 'implementation_site'),
     'servingcell': ('field', 'serving_cell_when_failure'),
@@ -66,15 +66,30 @@ ANALYSIS_MARKERS = {'uniqueid', 'priority', 'itemserialnumber'}
 WHEN_COLUMNS = ('datelastmodification', 'date')
 # Built-in translations of list values and teams, by field: the old names of the values of the catalog.
 BUILTIN_VALUES: dict[str, dict[str, str]] = {
-    'analysis_status': {'yes': 'Finished', 'finished': 'Finished', 'no': 'Pending'},
-    'implementation_status': {'solved': 'Implemented'},
+    'analysis_status': {'yes': 'Finished', 'finished': 'Finished', 'no': 'Pending', 'no_vendor_b': 'Invalidated',
+                        'no_joinid missing': 'Invalidated'},
+    'implementation_status': {'solved': 'Implemented', 'closed': 'Implemented', 'invalidated': 'Not Applicable'},
     'priority': {str(number): f'P{number}' for number in range(1, 6)},
-    'implementation_stream': {'e2e stream': 'E2E Team', 'successful call-excluded': 'No Team'},
+    'implementation_team': {'e2e stream': 'E2E Team', 'successful call-excluded': 'No Team'},
     'team': {'e2e stream': 'E2E Team', 'successful call-excluded': 'No Team'},
     'domain': {'core 2g/4g/5g': 'Core'},
 }
-FISCAL_PERIOD = re.compile(r'^(?:FY\s*\d{2,4}|\d{4}|Q[1-4][\s\-]*\d{2,4})$', re.IGNORECASE)
+# Values the built-in translation gives a broader name: the import note keeps them as they are written.
+KEPT_IN_NOTE = {'analysis_status': {'no_vendor_b', 'no_joinid missing'}}
+# The values of the implementation columns that are planning statuses: they fill the Planned Status.
+PLANNING_STATUSES = ('planned', 'not planned')
+# A fiscal year (FY27, FY 2027), a year (2027) or a quarter (Q1-27, Q3 2027).
+FISCAL_PERIOD = re.compile(r'^(?:FY\s*-?\s*(20\d{2}|\d{2})|(20\d{2})|Q[1-4][\s\-]*(20\d{2}|\d{2}))$', re.IGNORECASE)
 JOIN_TOKEN = re.compile(r'0x[0-9a-fA-F]+|[0-9a-fA-F]{24,}')
+
+
+def fiscal_year(value: Any) -> str | None:
+    """A fiscal year as the Planned FY writes it (FY27): FY2027, FY 27, the year 2027 and its quarters are FY27; None
+    when the value is not a fiscal year."""
+    match = FISCAL_PERIOD.match(re.sub(r'\s+', ' ', str(value if value is not None else '')).strip())
+    if not match:
+        return None
+    return f"FY{next(group for group in match.groups() if group)[-2:]}"
 
 
 def identity(value: Any) -> str:
@@ -141,16 +156,20 @@ def _table_from_rows(sheet: str, rows: Any) -> Table | None:
     return table
 
 
-def read_tables(content: bytes, file_name: str) -> tuple[list[Table], list[str]]:
-    """Every visible sheet with a JOIN_ID (or Call Key) column in its first three rows, and the sheets left out."""
+def read_tables(content: bytes, file_name: str, on_sheet: Any = None) -> tuple[list[Table], list[str]]:
+    """Every visible sheet with a JOIN_ID (or Call Key) column in its first three rows, and the sheets left out.
+    ``on_sheet(name, index, count)`` is told each sheet before it is read."""
     if file_name.casefold().endswith(('.xlsx', '.xlsm')):
         from openpyxl import load_workbook
 
         workbook = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
         tables, skipped = [], []
+        visible = [sheet for sheet in workbook.worksheets if sheet.sheet_state == 'visible']
         for sheet in workbook.worksheets:
             if sheet.sheet_state != 'visible':
                 continue
+            if on_sheet is not None:
+                on_sheet(sheet.title, visible.index(sheet), len(visible))
             table = _table_from_rows(sheet.title, sheet.iter_rows(values_only=True))
             if table is None:
                 skipped.append(sheet.title)

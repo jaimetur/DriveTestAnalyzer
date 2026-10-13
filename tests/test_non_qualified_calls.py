@@ -129,7 +129,7 @@ def test_nq_calls_are_indexed_tracked_and_commented(client, tmp_path):
 
     state = client.get('/api/non-qualified-calls/state').json()
     assert state['sync']['calls'] == 4 and state['sync']['datasets'] == 2
-    assert [item['name'] for item in state['options']['statuses']][:2] == ['Not Attended', 'Open']
+    assert [item['name'] for item in state['options']['statuses']][:2] == ['Not Attended', 'Under Analysis']
     assert state['filter_options']['result'] == ['Cutoff', 'Dropped', 'Failed']
     assert {'super', 'editor', 'viewer'} <= set(state['users'])
 
@@ -195,8 +195,10 @@ def test_nq_calls_are_indexed_tracked_and_commented(client, tmp_path):
     core.repository.replace_dataset_rows(voice_id, voice_rows())
     core.repository.update_dataset_profile(voice_id, processed_at=local_now_iso(), updated_at=local_now_iso())
     assert client.get('/api/non-qualified-calls/index-status').json()['sync']['pending'] == 1
+    # (The other Voice call, attended by the bulk assignment, is Under Analysis too.)
     again = query(client, filters={'service': ['voice'], 'status': ['Under Analysis']})
-    assert again['sync']['pending'] == 0 and again['total'] == 1 and again['calls'][0]['call_key'] == key
+    assert again['sync']['pending'] == 0 and again['total'] == 2 and key in [call['call_key'] for call in again['calls']]
+    assert next(call for call in again['calls'] if call['call_key'] == key)['status_mode'] == 'manual'
     assert query(client, filters={'open_only': True})['total'] == 4
     client.patch(url, json={'changes': {'status': 'Closed'}})
     assert query(client, filters={'open_only': True})['total'] == 3
@@ -356,7 +358,7 @@ def test_configuration_travels_without_the_follow_up(client, tmp_path):
     state = client.get('/api/non-qualified-calls/state').json()
     assert 'Waiting Vendor' in [item['name'] for item in state['options']['statuses']]
     # Statuses & Teams can put the defaults back.
-    assert [item['name'] for item in state['default_options']['statuses']][:2] == ['Not Attended', 'Open']
+    assert [item['name'] for item in state['default_options']['statuses']][:2] == ['Not Attended', 'Under Analysis']
     detail = client.get(f'/api/non-qualified-calls/calls/{key}').json()
     assert detail['call']['status'] == 'Closed' and detail['comments'] == []
 
