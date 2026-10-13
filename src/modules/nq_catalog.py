@@ -109,10 +109,18 @@ def _field(key: str, label: str, section: str, field_type: str, source: str = 'u
 
 
 _GREY, _AMBER, _GREEN, _RED, _BLUE, _SLATE = '#9aa5ad', '#e08a1e', '#2e8b57', '#b0234f', '#245a96', '#7b8790'
-# The 37 fields of the meeting workbook, in its order (the order of the table and of the Excel export) but with the
-# NetCheck RCA before the Ericsson RCA, with the initial category and subcategory of the script before its
-# suggestion and its evidence after it, the Last Cell ID and Failure Comment of the CDR in Failure Details
-# and the Analysis fields in the order of the call panel: the long texts (Proposed Measure, Findings) last.
+# The teams of a new workspace: (name, colour). They are also the streams an implementation can be given to.
+DEFAULT_TEAMS = (
+    ('E2E Team', '#b85b20'), ('RAN Planning Coverage', '#0f6f7d'), ('RAN Planning Capacity', '#245a96'),
+    ('RF OPT (Hot Spots) WP2a', '#c8102e'), ('Operations', '#5b6b2e'), ('Netcheck', '#6941a4'),
+    ('PCI Planning Team', '#e08a1e'),
+)
+# The 37 fields of the meeting workbook and those its analyses add (the initial root category and cause, the priority,
+# analyst and reviewer, a description, the implementation stream and the planned fiscal year), in its order (the order
+# of the table and of the Excel export) but with the NetCheck RCA before the Ericsson RCA, with the initial category and
+# subcategory of the script before its suggestion and its evidence after it, the Last Cell ID and Failure Comment of
+# the CDR in Failure Details and the Analysis fields in the order of the call panel: the long texts (Description,
+# Proposed Measure, Findings) last.
 DEFAULT_FIELDS = (
     _field('netcheck_failure_classification', 'Netcheck Failure Classification', 'rca', 'text', 'cdr', 'failure_classification',
            description='Failure classification of the NetCheck RCA (CDR Failure_Classification).'),
@@ -138,15 +146,26 @@ DEFAULT_FIELDS = (
            description='Root cause suggested by the Ericsson RCA (Final_RCA_Subcategory of its Auto RCA output).'),
     _field('rca_evidence', 'RCA Evidence', 'rca', 'long_text', 'rca', 'rca_evidence',
            description='Why the Ericsson RCA chose its category: the measurements and the condition that matched.'),
+    _field('initial_root_category', 'Initial Root Category', 'rca', 'text',
+           description='The first root category the analysts gave the call, before the selected one.'),
+    _field('initial_root_cause', 'Initial Root Cause', 'rca', 'text',
+           description='The first root cause the analysts gave the call, before the selected one.'),
     _field('selected_root_category', 'Selected Root Category', 'rca', 'list', 'tracking', 'root_category', in_table=True,
            description='Final root category of the call, from the Root Categories of the root cause catalog.'),
     _field('selected_root_cause', 'Selected Root Cause', 'rca', 'list', 'tracking', 'root_cause', in_table=True,
            description='Final root cause of the call, from the Root Causes of the root cause catalog.'),
     _field('nq_call_status', 'NQ Call Status', 'general', 'list', 'tracking', 'status', in_table=True,
            description='Set by the status rules from the phase fields, or by hand.'),
+    _field('priority', 'Priority', 'general', 'list', options=tuple(_option(f'P{number}') for number in range(1, 6)),
+           description='How urgent the analysis of the call is; shown after the NQ Call Status at the top of the call.'),
     _field('team_responsible', 'Team Responsible', 'general', 'list', 'tracking', 'team', in_table=True),
     _field('assignee', 'Asignee', 'general', 'list', 'tracking', 'assignee', in_table=True,
            description='A member of the responsible team (any user of the workspace when the team has no members).'),
+    _field('analyst', 'Analyst', 'general', 'text',
+           description='Who analysed the call, also when that person is not a user of the tool (the analyses of the previous tool).'),
+    _field('reviewer', 'Reviewer', 'general', 'text', description='Who reviewed the analysis of the call.'),
+    _field('unique_id', 'Unique ID', 'general', 'text',
+           description='The identifier of the analysis in the workbooks of the previous tool (their Unique ID).'),
     _field('date_last_modification', 'Date last modification', 'general', 'date', 'tracking', 'updated_at',
            description='Set automatically each time the call is changed.'),
     _field('comments', 'Comments', 'general', 'long_text', 'tracking', 'comments', in_table=True,
@@ -168,8 +187,12 @@ DEFAULT_FIELDS = (
     _field('band_when_failure', 'Band when Failure', 'failure_event', 'list', options=tuple(_option(name) for name in (
         'LTE2100', 'LTE1400', 'LTE1800', 'LTE700', 'LTE800', 'LTE800-NBIoT', 'LTE900', 'LTE2300', 'LTE2600TDD', 'LTE2600',
         'LTE2100-NBIoT', 'NR3600', 'NR3400', 'NR2100', 'NR700', 'NR900', 'NR3700', 'GSM900', 'GSM1800'))),
-    _field('vendor_when_failure', 'Vendor when Failure', 'failure_event', 'list', options=(
-        _option('Ericsson'), _option('Huawei'), _option('NSN'), _option('Samsung')), suggest_from='vendor'),
+    _field('vendor_when_failure', 'Vendor 1 when Failure', 'failure_event', 'list', options=(
+        _option('Ericsson'), _option('Huawei'), _option('NSN'), _option('Samsung')), suggest_from='vendor',
+        description='The vendor where the call failed (the first one when the failure involves two).'),
+    _field('vendor_2_when_failure', 'Vendor 2 when Failure', 'failure_event', 'list', options=(
+        _option('Ericsson'), _option('Huawei'), _option('NSN'), _option('Samsung')),
+        description='The second vendor when the failure involves two.'),
     _field('failure_comment', 'Failure Comment', 'failure_event', 'long_text', 'cdr', 'failure_comment',
            description='The comment NetCheck writes on the failure in the CDR (Failure_Comment).'),
     _field('analysis_status', 'Analysis Status', 'analysis', 'list', options=(
@@ -181,11 +204,16 @@ DEFAULT_FIELDS = (
     _field('failure_longitude', 'Failure Longitude', 'analysis', 'number', suggest_from='longitude'),
     _field('problem_location', 'Problem Location', 'analysis', 'text'),
     _field('solution_location', 'Solution Location', 'analysis', 'text'),
+    _field('polygon_area', 'Polygon Area', 'analysis', 'text', description='The area (polygon) of an analysis of several data tests.'),
+    _field('description', 'Description', 'analysis', 'long_text', description='How the failure happened, as the analysts describe it.'),
     _field('proposed_measure', 'Proposed Measure', 'analysis', 'long_text'),
     _field('findings', 'Findings', 'analysis', 'long_text'),
     _field('implementation_status', 'Implementation Status', 'implementation', 'list', options=(
         _option('Not yet evaluated', _GREY), _option('Under evaluation', _AMBER), _option('Evaluated', _BLUE),
         _option('Implemented', _GREEN)), in_summary=True),
+    _field('implementation_stream', 'Implementation Stream', 'implementation', 'list',
+           options=tuple(_option(name, color) for name, color in DEFAULT_TEAMS),
+           description='The stream responsible for the implementation (it can differ from the team that analysed the call).'),
     _field('implementation_proposal', 'Implementation Proposal', 'implementation', 'list', options=tuple(_option(name) for name in (
         'New Site', 'NNS', 'Tilt', 'E2E Analysis', 'NR SA Layer Addition', 'NR Digital Tilt', 'RS Power', 'NR Power Boost'))),
     _field('implementation_site', 'Implementation Site', 'implementation', 'text'),
@@ -193,6 +221,8 @@ DEFAULT_FIELDS = (
     _field('planned_status', 'Planned Status', 'planning', 'list', options=(
         _option('Not Planned', _GREY), _option('Planned', _GREEN)), in_summary=True),
     _field('planned_date', 'Planned Date', 'planning', 'date', description='Today by default; choose the date in the calendar.'),
+    _field('planned_fy', 'Planned FY', 'planning', 'list', options=tuple(_option(f'FY{year}') for year in range(26, 32)),
+           description='The fiscal year (or year) the measure is planned for, when there is no exact date.'),
 )
 
 # -- statuses, teams and status rules ---------------------------------------------------------
@@ -204,11 +234,6 @@ DEFAULT_STATUSES = (
     ('Under Implementation', '#C55A11', False),
     ('Under Planning', '#e0464e', False),
     ('Closed', '#2e8b57', True),
-)
-DEFAULT_TEAMS = (
-    ('E2E stream', '#b85b20'), ('RAN Planning Coverage', '#0f6f7d'), ('RAN Planning Capacity', '#245a96'),
-    ('RF OPT (Hot Spots) WP2a', '#c8102e'), ('Operations', '#5b6b2e'), ('Netcheck', '#6941a4'),
-    ('Successful Call-Excluded', '#7b8790'), ('PCI Planning Team', '#e08a1e'),
 )
 # Conditions read list and Yes / No fields of the catalog, the team and assignee, and "@attended"
 # (the call has been followed up or commented).
@@ -230,7 +255,7 @@ DEFAULT_STATUS_RULES = (
 DEFAULT_DOMAINS = (
     ('RF', '#c8102e', ('rf',)),
     ('RAN', '#e08a1e', ('ran', 'paging')),
-    ('Core 2G/4G/5G', '#6941a4', ('core', 'gsm')),
+    ('Core', '#6941a4', ('core', 'gsm')),
     ('Core EPSFB', '#245a96', ('epsfb', 'eps fallback')),
     ('IMS/E2E', '#b85b20', ('volte', 'ims')),
     ('AAA', '#2e8b57', ('aaa',)),
@@ -260,7 +285,7 @@ DEFAULT_CATEGORIES = (
     ('Mobility LTE', 'RAN', ('handover+lte', 'mobility+lte', 'handover+4g')),
     ('Mobility NR', 'RAN', ('handover+nr', 'mobility+nr', 'handover+5g')),
     ('No Failure/ Drop', 'Operational', ()),
-    ('IMSI Issue', 'Core 2G/4G/5G', ('imsi',)),
+    ('IMSI Issue', 'Core', ('imsi',)),
     ('VONR not Enabled in Source/Neighbor Site', 'IMS/E2E', ('vonr',)),
 )
 # Root Causes: those of the meeting workbook, then the causes of the first catalog, each in its domain.
@@ -282,8 +307,8 @@ DEFAULT_CAUSES = (
     ('Potential E2E Issue', 'IMS/E2E', ('potential e2e',)),
     ('CRQ implementation on Site or Neighbour', 'Operational', ('crq',)),
     ('Cell/Site Outage', 'Operational', ('outage', 'site down', 'cell down')),
-    ('MME/PCRF/IMS issue', 'Core 2G/4G/5G', ('mme', 'pcrf')),
-    ('Tunnel Issue', 'Core 2G/4G/5G', ('tunnel',)),
+    ('MME/PCRF/IMS issue', 'Core', ('mme', 'pcrf')),
+    ('Tunnel Issue', 'Core', ('tunnel',)),
     ('PCI Collision/PCI MOD 3 Collision', 'RAN', ('pci',)),
     ('Call not initiated', 'Device', ('not initiated',)),
     # The causes of the first catalog, with their keywords.
@@ -296,10 +321,10 @@ DEFAULT_CAUSES = (
     ('Inter-RAT transition', 'RAN', ('inter-rat',)),
     ('Low throughput', 'RAN', ('low throughput',)),
     ('Paging', 'RAN', ('paging',)),
-    ('EPS bearer deactivation', 'Core 2G/4G/5G', ('bearer deactivation', 'eps mobility management')),
-    ('TAU reject', 'Core 2G/4G/5G', ('tracking area update', 'tau')),
-    ('NAS mobility management', 'Core 2G/4G/5G', ('nnas', 'nas')),
-    ('WhatsApp session in GSM', 'Core 2G/4G/5G', ('session in gsm',)),
+    ('EPS bearer deactivation', 'Core', ('bearer deactivation', 'eps mobility management')),
+    ('TAU reject', 'Core', ('tracking area update', 'tau')),
+    ('NAS mobility management', 'Core', ('nnas', 'nas')),
+    ('WhatsApp session in GSM', 'Core', ('session in gsm',)),
     ('EPS fallback failure', 'Core EPSFB', ('epsfb', 'eps fallback')),
     ('No QCI1 established', 'IMS/E2E', ('qci1', 'qci 1')),
     ('VoLTE core', 'IMS/E2E', ('volte core',)),
@@ -492,7 +517,8 @@ def normalize_fields(items: Any, existing: dict[str, dict[str, Any]], call_field
 
 
 def normalize_root_catalog(catalog: Any) -> dict[str, list[dict[str, Any]]]:
-    """Valid domains (unique, coloured) and categories and causes (unique, each in a known domain or none)."""
+    """Valid domains (unique, coloured) and categories and causes (unique, each in a known domain or none, the domain
+    chosen by hand), each cause with the known root category it is mapped to or none."""
     if not isinstance(catalog, dict):
         raise ValueError('The root cause catalog is invalid.')
     result: dict[str, list[dict[str, Any]]] = {'domains': [], 'categories': [], 'causes': []}
@@ -511,6 +537,7 @@ def normalize_root_catalog(catalog: Any) -> dict[str, list[dict[str, Any]]]:
                                   'keywords': keywords(item.get('keywords')), 'previous': _clean(item.get('previous'), 60)})
     domains = {domain['name'].casefold(): domain['name'] for domain in result['domains']}
     renamed = {domain['previous'].casefold(): domain['name'] for domain in result['domains'] if domain['previous']}
+    categories: dict[str, str] = {}
     for kind, plural, title in (('category', 'categories', 'Root Category'), ('cause', 'causes', 'Root Cause')):
         names: set[str] = set()
         for item in catalog.get(plural) or []:
@@ -524,9 +551,59 @@ def normalize_root_catalog(catalog: Any) -> dict[str, list[dict[str, Any]]]:
             names.add(name.casefold())
             domain = _clean(item.get('domain'), 60)
             domain = domains.get(domain.casefold()) or renamed.get(domain.casefold()) or ''
-            result[plural].append({'name': name, 'domain': domain, 'keywords': keywords(item.get('keywords')),
-                                   'previous': _clean(item.get('previous'))})
+            entry = {'name': name, 'domain': domain, 'keywords': keywords(item.get('keywords')), 'previous': _clean(item.get('previous'))}
+            if kind == 'cause':
+                category = _clean(item.get('category'))
+                entry['category'] = categories.get(category.casefold(), '')
+            result[plural].append(entry)
+        if kind == 'category':
+            # A cause mapped to a renamed category follows it.
+            categories = {item['previous'].casefold(): item['name'] for item in result['categories'] if item['previous']}
+            categories.update({item['name'].casefold(): item['name'] for item in result['categories']})
     return result
+
+
+def resolve_root_catalog(catalog: dict[str, list[dict[str, Any]]]) -> dict[str, list[dict[str, Any]]]:
+    """The domain of every root category and cause: the one chosen for it by hand; else, for a cause, that of the root
+    category it is mapped to; else the first domain whose keywords appear in its name or keywords. Each entry keeps
+    the domain chosen by hand (``manual_domain``) and where its domain comes from (``domain_from``: manual, category,
+    keywords, or empty without a domain)."""
+    domains = catalog.get('domains') or []
+
+    def by_keywords(item: dict[str, Any]) -> str:
+        text = normalized_text(' | '.join([item['name'], *(item.get('keywords') or [])]))
+        return next((domain['name'] for domain in domains if keyword_found(domain.get('keywords') or [], text)), '')
+
+    resolved: dict[str, dict[str, Any]] = {}
+    for item in catalog.get('categories') or []:
+        manual = item.get('manual_domain', item.get('domain')) or ''
+        automatic = '' if manual else by_keywords(item)
+        item.update(manual_domain=manual, domain=manual or automatic,
+                    domain_from='manual' if manual else 'keywords' if automatic else '')
+        resolved[item['name'].casefold()] = item
+    for item in catalog.get('causes') or []:
+        manual = item.get('manual_domain', item.get('domain')) or ''
+        category = resolved.get(str(item.get('category') or '').casefold())
+        inherited = '' if manual or category is None else category['domain']
+        automatic = '' if manual or inherited else by_keywords(item)
+        item.update(manual_domain=manual, category=category['name'] if category else '', domain=manual or inherited or automatic,
+                    domain_from='manual' if manual else 'category' if inherited else 'keywords' if automatic else '')
+    return catalog
+
+
+def stored_root_catalog(catalog: dict[str, list[dict[str, Any]]]) -> dict[str, list[dict[str, Any]]]:
+    """The catalog as it is stored: each root category and cause with the domain chosen by hand (empty when it
+    follows its category or the keywords) and each cause with its root category."""
+    def stored(item: dict[str, Any], cause: bool) -> dict[str, Any]:
+        entry = {key: value for key, value in item.items() if key not in {'manual_domain', 'domain_from', 'color'}}
+        entry['domain'] = item.get('manual_domain', item.get('domain')) or ''
+        if cause:
+            entry['category'] = item.get('category') or ''
+        return entry
+
+    return {'domains': [dict(item) for item in catalog.get('domains') or []],
+            'categories': [stored(item, False) for item in catalog.get('categories') or []],
+            'causes': [stored(item, True) for item in catalog.get('causes') or []]}
 
 
 def normalize_status_rules(rules: Any, statuses: list[str], fields: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -687,7 +764,8 @@ def catalog_workbook(sections: list[dict[str, str]], fields: list[dict[str, Any]
         ['Sections: the name and colour of the six sections (their keys are fixed).'],
         ['Fields: one row per field, in the order of the table and of the Excel export. Source is user, tracking, cdr, rca or derived.'],
         ['Lists: the values of every list field (List = field key), with their colour and, for derived lists, their keywords.'],
-        ['Root Catalog: Domains, Root Categories and Root Causes; categories and causes name their domain. Keywords suggest them.'],
+        ['Root Catalog: Domains, Root Categories and Root Causes. A category names its domain, a cause its root category and its domain; '
+         'an empty domain follows the category of the cause, else the keywords of the domains. Keywords suggest them.'],
         ['Statuses and Teams: the NQ Call Status values (Closed = Yes ends the follow-up) and the responsible teams.'],
         ['Status Rules: the first rule whose conditions all hold sets the status; Field "@attended" is Yes once the call is followed up.'],
     ):
@@ -709,11 +787,13 @@ def catalog_workbook(sections: list[dict[str, str]], fields: list[dict[str, Any]
                  for field in fields if field['type'] == 'list' and field['source'] in {'user', 'derived'}
                  for option in field['options']]
     sheet('Lists', ['List', 'Value', 'Colour', 'Keywords'], list_rows, [30, 40, 12, 60])
-    root_rows = [['Domain', item['name'], '', item.get('color', ''), ', '.join(item.get('keywords') or [])] for item in root['domains']]
-    root_rows += [['Root Category', item['name'], item.get('domain', ''), '', ', '.join(item.get('keywords') or [])]
-                  for item in root['categories']]
-    root_rows += [['Root Cause', item['name'], item.get('domain', ''), '', ', '.join(item.get('keywords') or [])] for item in root['causes']]
-    sheet('Root Catalog', ['Kind', 'Name', 'Domain', 'Colour', 'Keywords'], root_rows, [16, 44, 18, 12, 60])
+    stored = stored_root_catalog(root)
+    root_rows = [['Domain', item['name'], '', '', item.get('color', ''), ', '.join(item.get('keywords') or [])] for item in stored['domains']]
+    root_rows += [['Root Category', item['name'], '', item['domain'], '', ', '.join(item.get('keywords') or [])]
+                  for item in stored['categories']]
+    root_rows += [['Root Cause', item['name'], item['category'], item['domain'], '', ', '.join(item.get('keywords') or [])]
+                  for item in stored['causes']]
+    sheet('Root Catalog', ['Kind', 'Name', 'Root Category', 'Domain', 'Colour', 'Keywords'], root_rows, [16, 44, 34, 18, 12, 60])
     option_rows = [['Status', item['name'], item['color'], 'Yes' if item.get('closed') else 'No', ''] for item in statuses]
     option_rows += [['Team', item['name'], item['color'], '', ', '.join(item.get('members') or [])] for item in teams]
     sheet('Statuses and Teams', ['Kind', 'Name', 'Colour', 'Closed', 'Members'], option_rows, [10, 34, 12, 9, 50])
@@ -795,6 +875,8 @@ def read_catalog_workbook(content: bytes) -> dict[str, Any]:
                 item['color'] = row.get('colour') or row.get('color') or ''
             else:
                 item['domain'] = row.get('domain') or ''
+            if target == 'causes':
+                item['category'] = row.get('root category') or ''
             root[target].append(item)
         catalog['root'] = root
     if 'statuses and teams' in names:

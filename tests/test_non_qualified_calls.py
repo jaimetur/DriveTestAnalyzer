@@ -221,6 +221,16 @@ def test_statuses_and_teams_can_be_renamed_but_not_removed_while_in_use(client, 
     assert client.put('/api/non-qualified-calls/options', json={'statuses': [], 'teams': teams}).status_code == 400
     repeated = [{'name': 'Open'}, {'name': 'open'}]
     assert client.put('/api/non-qualified-calls/options', json={'statuses': repeated, 'teams': teams}).status_code == 400
+    # A team merged into another one gives it its calls and its members and leaves the list.
+    other = next(team['name'] for team in teams if team['name'] != 'Backhaul')
+    merged = [{**team, 'previous': team['name'], 'members': ['super'] if team['name'] == other else [],
+               'merged': ['Backhaul'] if team['name'] == other else []} for team in teams if team['name'] != 'Backhaul']
+    saved = client.put('/api/non-qualified-calls/options', json={'statuses': options['statuses'], 'teams': merged})
+    assert saved.status_code == 200, saved.text
+    assert client.get(f'/api/non-qualified-calls/calls/{key}').json()['call']['team'] == other
+    teams_now = client.get('/api/non-qualified-calls/state').json()['options']['teams']
+    assert 'Backhaul' not in [team['name'] for team in teams_now]
+    assert next(team for team in teams_now if team['name'] == other)['members'] == ['super']
 
 
 def test_excel_export_lists_calls_comments_and_history(client, tmp_path):

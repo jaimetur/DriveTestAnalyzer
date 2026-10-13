@@ -55,7 +55,7 @@ from src.modules.nq_catalog import (
     ATTENDED_FIELD, FIELD_TYPES, MAX_LONG_TEXT, YES_NO, evaluate_status, keyword_found, keywords as _keywords,
     normalized_text as _normalized_text,
 )
-from src.modules import nq_rca
+from src.modules import nq_analyses, nq_analyses_rules, nq_rca
 
 NQ_CALLS_TABLE = 'nq_calls'
 NQ_CALL_SOURCES_TABLE = 'nq_call_sources'
@@ -125,9 +125,23 @@ ANALYSIS_CENTER_V2_STATE_KEY = 'nq_analysis_center_v2'
 ANALYSIS_CENTER_V4_STATE_KEY = 'nq_analysis_center_v4'
 # The NetCheck RCA fields before those of the Ericsson RCA, and the descriptions that named the RCA script, once.
 ANALYSIS_CENTER_V5_STATE_KEY = 'nq_analysis_center_v5'
+# The fields the analyses of the previous tool bring (initial root category and cause, priority, analyst, reviewer,
+# description, implementation stream and planned fiscal year), added once to the workspaces created before them.
+ANALYSIS_CENTER_V6_STATE_KEY = 'nq_analysis_center_v6'
+ANALYSES_FIELD_KEYS = {'initial_root_category', 'initial_root_cause', 'priority', 'analyst', 'reviewer', 'description',
+                       'implementation_stream', 'planned_fy'}
+# Vendor 1 and Vendor 2 when Failure, the priorities P1 to P4, the E2E Team (formerly E2E stream) and the Core domain
+# (formerly Core 2G/4G/5G), once.
+ANALYSIS_CENTER_V9_STATE_KEY = 'nq_analysis_center_v9'
+# Successful Call-Excluded is no longer a team (nor an Implementation Stream): its calls go to No Team; and the
+# priorities go to P5, once.
+ANALYSIS_CENTER_V10_STATE_KEY = 'nq_analysis_center_v10'
+# The Unique ID and Polygon Area of the analyses of the previous tool, once.
+ANALYSIS_CENTER_V11_STATE_KEY = 'nq_analysis_center_v11'
+ANALYSES_V11_FIELD_KEYS = {'unique_id', 'polygon_area'}
 # Set once the tables and columns of this version exist, so the requests check the schema without writing.
 SCHEMA_STATE_KEY = 'nq_calls_schema'
-SCHEMA_VERSION = '2026-10-12.3'
+SCHEMA_VERSION = '2026-10-13.2'
 # Indexed call fields that the suggestion rule can read, with their labels.
 RULE_FIELDS = {
     'failure_classification': 'Failure Classification', 'failure_category': 'Failure Category',
@@ -394,6 +408,7 @@ CREATE TABLE IF NOT EXISTS {NQ_ROOT_CATALOG_TABLE} (
     kind TEXT NOT NULL CHECK(kind IN ('domain', 'category', 'cause')),
     name TEXT NOT NULL COLLATE NOCASE,
     domain TEXT NOT NULL DEFAULT '',
+    category TEXT NOT NULL DEFAULT '',
     color TEXT NOT NULL DEFAULT '',
     keywords TEXT NOT NULL DEFAULT '[]',
     position INTEGER NOT NULL DEFAULT 0,
@@ -459,7 +474,8 @@ def _schema_ready(task_repository: Any) -> bool:
         if not set(NQ_TABLE_TITLES) <= tables or 'workspace_state' not in tables:
             return False
         keys = (SCHEMA_STATE_KEY, ANALYSIS_CENTER_STATE_KEY, ANALYSIS_CENTER_V2_STATE_KEY, ANALYSIS_CENTER_V4_STATE_KEY,
-                ANALYSIS_CENTER_V5_STATE_KEY)
+                ANALYSIS_CENTER_V5_STATE_KEY, ANALYSIS_CENTER_V6_STATE_KEY, ANALYSIS_CENTER_V9_STATE_KEY,
+                ANALYSIS_CENTER_V10_STATE_KEY, ANALYSIS_CENTER_V11_STATE_KEY)
         states = {str(row[0]): str(row[1]) for row in connection.execute(
             f"SELECT key, value FROM workspace_state WHERE key IN ({', '.join('?' for _ in keys)})", keys)}
     return states.get(SCHEMA_STATE_KEY) == SCHEMA_VERSION and all(states.get(key) for key in keys[1:])
@@ -502,6 +518,10 @@ def ensure_nq_tables(task_repository: Any) -> None:
                                    ('sample_id', "TEXT NOT NULL DEFAULT ''"), ('extra_json', "TEXT NOT NULL DEFAULT '{}'")):
             if indexed and column not in indexed:
                 connection.execute(f'ALTER TABLE {NQ_CALLS_TABLE} ADD COLUMN {column} {definition}')
+        # The root category each root cause is mapped to.
+        catalog_columns = _columns_of(connection, NQ_ROOT_CATALOG_TABLE)
+        if catalog_columns and 'category' not in catalog_columns:
+            connection.execute(f"ALTER TABLE {NQ_ROOT_CATALOG_TABLE} ADD COLUMN category TEXT NOT NULL DEFAULT ''")
         sources = _columns_of(connection, NQ_CALL_SOURCES_TABLE)
         for column, definition in (('stage_rank', 'INTEGER NOT NULL DEFAULT 1'), ('data_date', "TEXT NOT NULL DEFAULT ''"),
                                    ('population_count', 'INTEGER NOT NULL DEFAULT 0')):
@@ -531,6 +551,14 @@ def ensure_nq_tables(task_repository: Any) -> None:
         _upgrade_analysis_center_v4(task_repository)
     if not task_repository.get_workspace_state(ANALYSIS_CENTER_V5_STATE_KEY):
         _upgrade_analysis_center_v5(task_repository)
+    if not task_repository.get_workspace_state(ANALYSIS_CENTER_V6_STATE_KEY):
+        _upgrade_analysis_center_v6(task_repository)
+    if not task_repository.get_workspace_state(ANALYSIS_CENTER_V9_STATE_KEY):
+        _upgrade_analysis_center_v9(task_repository)
+    if not task_repository.get_workspace_state(ANALYSIS_CENTER_V10_STATE_KEY):
+        _upgrade_analysis_center_v10(task_repository)
+    if not task_repository.get_workspace_state(ANALYSIS_CENTER_V11_STATE_KEY):
+        _upgrade_analysis_center_v11(task_repository)
     task_repository.set_workspace_state(SCHEMA_STATE_KEY, SCHEMA_VERSION)
 
 
@@ -715,6 +743,152 @@ def _upgrade_analysis_center_v5(task_repository: Any) -> None:
         _store_fields(task_repository, nq_catalog.normalize_fields(fields, {field['key']: field for field in list_fields(task_repository)},
                                                                    CATALOG_CALL_FIELDS))
     task_repository.set_workspace_state(ANALYSIS_CENTER_V5_STATE_KEY, '1')
+
+
+def _upgrade_analysis_center_v6(task_repository: Any) -> None:
+    """The fields of the analyses of the previous tool, once, each after the field it follows by default."""
+    fields = list_fields(task_repository)
+    if _add_default_fields(fields, ANALYSES_FIELD_KEYS):
+        _store_fields(task_repository, nq_catalog.normalize_fields(fields, {field['key']: field for field in list_fields(task_repository)},
+                                                                   CATALOG_CALL_FIELDS))
+    task_repository.set_workspace_state(ANALYSIS_CENTER_V6_STATE_KEY, '1')
+
+
+# The default values renamed once by the ninth version: (field, former value, value).
+V9_OPTION_RENAMES = (*(('priority', str(number), f'P{number}') for number in range(1, 6)),
+                     ('implementation_stream', 'E2E stream', 'E2E Team'))
+V9_TEAM_RENAMES = (('E2E stream', 'E2E Team'),)
+V9_DOMAIN_RENAMES = (('Core 2G/4G/5G', 'Core'),)
+# The vendor fields: former labels of the first one, and the former key and label of the second one.
+V9_VENDOR_LABELS = {'vendor when failure', 'vendor a when failure'}
+V9_SECOND_VENDOR = ('vendor_b_when_failure', 'Vendor B when Failure')
+
+
+def _upgrade_analysis_center_v9(task_repository: Any) -> None:
+    """Once: Vendor when Failure becomes Vendor 1 when Failure, followed by Vendor 2 when Failure (with the values of
+    the former Vendor B when Failure); the default priorities 1 to 4 become P1 to P4, the team E2E stream becomes
+    E2E Team and the domain Core 2G/4G/5G becomes Core, with their calls (unless the workspace already has the new
+    name)."""
+    defaults = {field['key']: field for field in nq_catalog.DEFAULT_FIELDS}
+    fields = list_fields(task_repository)
+    before = [dict(field, options=[dict(option) for option in field['options']]) for field in fields]
+    by_key = {field['key']: field for field in fields}
+    vendor = by_key.get('vendor_when_failure')
+    if vendor and vendor['label'].casefold() in V9_VENDOR_LABELS:
+        vendor['label'] = defaults['vendor_when_failure']['label']
+        vendor['description'] = vendor.get('description') or defaults['vendor_when_failure']['description']
+    second = by_key.get(V9_SECOND_VENDOR[0])
+    if second and 'vendor_2_when_failure' not in by_key:
+        second['key'] = 'vendor_2_when_failure'
+        if second['label'] == V9_SECOND_VENDOR[1]:
+            second['label'] = defaults['vendor_2_when_failure']['label']
+    _add_default_fields(fields, {'vendor_2_when_failure'})
+    renamed: list[tuple[str, str, str]] = []
+    for key, old, new in V9_OPTION_RENAMES:
+        options = (by_key.get(key) or {}).get('options') or []
+        names = {option['name'].casefold() for option in options}
+        option = next((option for option in options if option['name'].casefold() == old.casefold()), None)
+        if option and new.casefold() not in names:
+            option['previous'], option['name'] = option['name'], new
+            renamed.append((key, old, new))
+    with task_repository.connection() as connection:
+        if second is not None and second['key'] == 'vendor_2_when_failure':
+            connection.execute(f'UPDATE {NQ_FIELD_VALUES_TABLE} SET field_key = ? WHERE field_key = ?', ('vendor_2_when_failure', V9_SECOND_VENDOR[0]))
+            connection.execute(f'UPDATE {NQ_CALL_HISTORY_TABLE} SET field = ? WHERE field = ?',
+                               ('field:vendor_2_when_failure', f'field:{V9_SECOND_VENDOR[0]}'))
+        for key, old, new in renamed:
+            connection.execute(f'UPDATE {NQ_FIELD_VALUES_TABLE} SET value = ? WHERE field_key = ? AND value = ? COLLATE NOCASE',
+                               (new, key, old))
+        teams = {str(row[0]).casefold() for row in connection.execute(f"SELECT name FROM {NQ_CALL_OPTIONS_TABLE} WHERE kind = 'team'")}
+        for old, new in V9_TEAM_RENAMES:
+            if old.casefold() in teams and new.casefold() not in teams:
+                connection.execute(f"UPDATE {NQ_CALL_OPTIONS_TABLE} SET name = ? WHERE kind = 'team' AND name = ? COLLATE NOCASE", (new, old))
+                connection.execute(f'UPDATE {NQ_CALL_TRACKING_TABLE} SET team = ? WHERE team = ? COLLATE NOCASE', (new, old))
+                connection.execute(f'UPDATE {NQ_TEAM_MEMBERS_TABLE} SET team = ? WHERE team = ? COLLATE NOCASE', (new, old))
+        domains = {str(row[0]).casefold() for row in connection.execute(f"SELECT name FROM {NQ_ROOT_CATALOG_TABLE} WHERE kind = 'domain'")}
+        renamed_domains = [(old, new) for old, new in V9_DOMAIN_RENAMES if old.casefold() in domains and new.casefold() not in domains]
+        for old, new in renamed_domains:
+            connection.execute(f"UPDATE {NQ_ROOT_CATALOG_TABLE} SET name = ? WHERE kind = 'domain' AND name = ? COLLATE NOCASE", (new, old))
+            connection.execute(f"UPDATE {NQ_ROOT_CATALOG_TABLE} SET domain = ? WHERE kind <> 'domain' AND domain = ? COLLATE NOCASE", (new, old))
+            connection.execute(f'UPDATE {NQ_CALL_TRACKING_TABLE} SET root_domain = ? WHERE root_domain = ? COLLATE NOCASE', (new, old))
+    normalized = nq_catalog.normalize_fields(fields, {field['key']: field for field in before}, CATALOG_CALL_FIELDS)
+    if renamed:
+        rules = nq_catalog.rules_after_field_changes(status_rules(task_repository), before, normalized)
+        task_repository.set_workspace_state(STATUS_RULES_STATE_KEY, json.dumps(rules, ensure_ascii=False))
+    _store_fields(task_repository, normalized)
+    # The reviewed equivalences of the analyses and the shared filters name the renamed domain too.
+    if renamed_domains:
+        names = {old.casefold(): new for old, new in renamed_domains}
+        equivalences = workspace_equivalences(task_repository)
+        for values in equivalences.values():
+            for item in values.values():
+                item['domain'] = names.get(item['domain'].casefold(), item['domain'])
+        _save_equivalences(task_repository, equivalences)
+        try:
+            saved = json.loads(task_repository.get_workspace_state(SAVED_FILTERS_STATE_KEY) or '{}')
+        except (TypeError, ValueError):
+            saved = {}
+        if isinstance(saved, dict) and isinstance(saved.get('root_domain'), list):
+            saved['root_domain'] = [names.get(str(value).casefold(), value) for value in saved['root_domain']]
+            task_repository.set_workspace_state(SAVED_FILTERS_STATE_KEY, json.dumps(saved, ensure_ascii=False, sort_keys=True))
+    task_repository.set_workspace_state(ANALYSIS_CENTER_V9_STATE_KEY, '1')
+
+
+def _upgrade_analysis_center_v11(task_repository: Any) -> None:
+    """The Unique ID and Polygon Area fields, once, each after the field it follows by default."""
+    fields = list_fields(task_repository)
+    if _add_default_fields(fields, ANALYSES_V11_FIELD_KEYS):
+        _store_fields(task_repository, nq_catalog.normalize_fields(fields, {field['key']: field for field in list_fields(task_repository)},
+                                                                   CATALOG_CALL_FIELDS))
+    task_repository.set_workspace_state(ANALYSIS_CENTER_V11_STATE_KEY, '1')
+
+
+# A former default team and Implementation Stream, and the value its calls take.
+V10_REMOVED_TEAM = ('Successful Call-Excluded', 'No Team')
+
+
+def _upgrade_analysis_center_v10(task_repository: Any) -> None:
+    """Once: the team Successful Call-Excluded is removed; its calls (and members) go to No Team, which it becomes
+    when the workspace has none. The value of Implementation Stream follows the same way. The priorities P1 to P4
+    get P5 after them."""
+    old, new = V10_REMOVED_TEAM
+    with task_repository.connection() as connection:
+        teams = {str(row[0]).casefold(): str(row[0]) for row in connection.execute(
+            f"SELECT name FROM {NQ_CALL_OPTIONS_TABLE} WHERE kind = 'team'")}
+        if old.casefold() in teams:
+            used = connection.execute(f'SELECT COUNT(*) FROM {NQ_CALL_TRACKING_TABLE} WHERE team = ? COLLATE NOCASE', (old,)).fetchone()[0]
+            if used and new.casefold() not in teams:
+                connection.execute(f"UPDATE {NQ_CALL_OPTIONS_TABLE} SET name = ? WHERE kind = 'team' AND name = ? COLLATE NOCASE", (new, old))
+            else:
+                connection.execute(f"DELETE FROM {NQ_CALL_OPTIONS_TABLE} WHERE kind = 'team' AND name = ? COLLATE NOCASE", (old,))
+            target = teams.get(new.casefold(), new)
+            connection.execute(f'UPDATE {NQ_CALL_TRACKING_TABLE} SET team = ? WHERE team = ? COLLATE NOCASE', (target, old))
+            connection.execute(f'UPDATE OR IGNORE {NQ_TEAM_MEMBERS_TABLE} SET team = ? WHERE team = ? COLLATE NOCASE', (target, old))
+            connection.execute(f'DELETE FROM {NQ_TEAM_MEMBERS_TABLE} WHERE team = ? COLLATE NOCASE', (old,))
+        used_stream = connection.execute(
+            f"SELECT COUNT(*) FROM {NQ_FIELD_VALUES_TABLE} WHERE field_key = 'implementation_stream' AND value = ? COLLATE NOCASE",
+            (old,)).fetchone()[0]
+        if used_stream:
+            connection.execute(f"UPDATE {NQ_FIELD_VALUES_TABLE} SET value = ? WHERE field_key = 'implementation_stream' AND value = ? COLLATE NOCASE",
+                               (new, old))
+    fields = list_fields(task_repository)
+    changed = False
+    priority = next((field for field in fields if field['key'] == 'priority'), None)
+    if priority is not None and [option['name'] for option in priority['options']] == [f'P{number}' for number in range(1, 5)]:
+        priority['options'].append({'name': 'P5', 'color': ''})
+        changed = True
+    stream = next((field for field in fields if field['key'] == 'implementation_stream'), None)
+    if stream is not None and any(option['name'].casefold() == old.casefold() for option in stream['options']):
+        names = {option['name'].casefold() for option in stream['options']}
+        if used_stream and new.casefold() not in names:
+            stream['options'] = [dict(option, name=new) if option['name'].casefold() == old.casefold() else option for option in stream['options']]
+        else:
+            stream['options'] = [option for option in stream['options'] if option['name'].casefold() != old.casefold()]
+        changed = True
+    if changed:
+        _store_fields(task_repository, nq_catalog.normalize_fields(fields, {field['key']: field for field in list_fields(task_repository)},
+                                                                   CATALOG_CALL_FIELDS))
+    task_repository.set_workspace_state(ANALYSIS_CENTER_V10_STATE_KEY, '1')
 
 
 def _add_default_fields(fields: list[dict[str, Any]], keys: set[str], same_source: bool = False) -> bool:
@@ -1273,6 +1447,10 @@ def _normalize_option_list(items: Any, kind: str) -> list[dict[str, Any]]:
             option['members'] = list(dict.fromkeys(
                 str(member).strip() for member in item['members'] if str(member).strip()
             ))
+        # The teams merged into this one: their calls (and members) move here.
+        if kind == 'team' and isinstance(item.get('merged'), list):
+            option['merged'] = list(dict.fromkeys(
+                name for name in (re.sub(r'\s+', ' ', str(merged)).strip() for merged in item['merged']) if name))
         normalized.append(option)
     return normalized
 
@@ -1283,7 +1461,8 @@ def save_options(
     """Replace the statuses and teams; renamed values follow on every call, removed ones must be unused (a status
     only by the calls that have it set by hand: the automatic ones follow the Status Rules again).
 
-    Team members must be users of the workspace when ``users`` is given.
+    A team lists in ``merged`` the teams merged into it: their calls move to it and they are removed. Team members
+    must be users of the workspace when ``users`` is given.
     """
     current = list_options(task_repository)
     lists = {'status': _normalize_option_list(statuses, 'status'), 'team': _normalize_option_list(teams, 'team')}
@@ -1308,8 +1487,11 @@ def save_options(
     with task_repository.connection() as connection:
         for kind, column in (('status', 'status'), ('team', 'team')):
             existing = {item['name'].casefold(): item['name'] for item in current['statuses' if kind == 'status' else 'teams']}
-            renamed = {item['previous'].casefold(): item['name'] for item in lists[kind]
-                       if item['previous'] and item['previous'].casefold() in existing}
+            # A merged team is renamed to the team it is merged into, before the other renames.
+            renamed = {name.casefold(): item['name'] for item in lists[kind] for name in item.get('merged', [])
+                       if name.casefold() in existing and name.casefold() != item['name'].casefold()}
+            renamed.update({item['previous'].casefold(): item['name'] for item in lists[kind]
+                            if item['previous'] and item['previous'].casefold() in existing})
             kept = {item['name'].casefold() for item in lists[kind]} | set(renamed)
             for old_key, old_name in existing.items():
                 if old_key in kept:
@@ -1323,7 +1505,7 @@ def save_options(
                     raise ValueError(f'The status "{old_name}" is set by hand on {used} call{"" if used == 1 else "s"}; '
                                      'rename it or move those calls first.')
                 if used:
-                    raise ValueError(f'The {kind} "{old_name}" is in use; rename it or move its calls first.')
+                    raise ValueError(f'The {kind} "{old_name}" is in use; rename it, merge it into another team or move its calls first.')
             for old_key, new_name in renamed.items():
                 old_name = existing[old_key]
                 if old_name != new_name:
@@ -1343,6 +1525,10 @@ def save_options(
                 for item in lists['team']:
                     members = item['members'] if 'members' in item else previous_members.get(
                         (item['previous'] or item['name']).casefold(), previous_members.get(item['name'].casefold(), []))
+                    # A team with members takes the members of the teams merged into it (one for everyone stays so).
+                    if 'members' not in item and members:
+                        members = list(dict.fromkeys(members + [member for name in item.get('merged', [])
+                                                                 for member in previous_members.get(name.casefold(), [])]))
                     rows.extend((item['name'], member) for member in members)
                 connection.executemany(
                     f'INSERT OR IGNORE INTO {NQ_TEAM_MEMBERS_TABLE} (team, username) VALUES (?, ?)', rows,
@@ -1646,7 +1832,8 @@ def _merged_catalog(task_repository: Any, incoming: dict[str, Any]) -> dict[str,
         else:
             teams = ordered
     root = list_root_causes(task_repository)
-    catalog = {plural: [dict(item, previous=item['name']) for item in root[plural]] for plural in ('domains', 'categories', 'causes')}
+    stored = nq_catalog.stored_root_catalog(root)
+    catalog = {plural: [dict(item, previous=item['name']) for item in stored[plural]] for plural in ('domains', 'categories', 'causes')}
     for plural, items in (incoming.get('root') or {}).items():
         names = {item['name'].casefold(): item for item in catalog.get(plural, [])}
         for item in items:
@@ -1709,19 +1896,25 @@ def import_catalog(task_repository: Any, content: bytes, username: str, users: s
 # Root cause catalog: domains, root categories and root causes
 # ---------------------------------------------------------------------------
 def _write_root_catalog(connection: Any, catalog: dict[str, list[dict[str, Any]]]) -> None:
+    """Store a catalog in its stored form: the domain chosen by hand of each root category and cause, and the root
+    category of each cause."""
     connection.execute(f'DELETE FROM {NQ_ROOT_CATALOG_TABLE}')
-    rows = [('domain', item['name'], '', item.get('color') or '#7b8790', json.dumps(_keywords(item.get('keywords'))), index)
+    rows = [('domain', item['name'], '', '', item.get('color') or '#7b8790', json.dumps(_keywords(item.get('keywords'))), index)
             for index, item in enumerate(catalog['domains'])]
     for kind, plural in (('category', 'categories'), ('cause', 'causes')):
-        rows += [(kind, item['name'], item.get('domain') or '', '', json.dumps(_keywords(item.get('keywords'))), index)
+        rows += [(kind, item['name'], item.get('domain') or '', (item.get('category') or '') if kind == 'cause' else '', '',
+                  json.dumps(_keywords(item.get('keywords'))), index)
                  for index, item in enumerate(catalog[plural])]
     connection.executemany(
-        f'INSERT INTO {NQ_ROOT_CATALOG_TABLE} (kind, name, domain, color, keywords, position) VALUES (?, ?, ?, ?, ?, ?)', rows)
+        f'INSERT INTO {NQ_ROOT_CATALOG_TABLE} (kind, name, domain, category, color, keywords, position) VALUES (?, ?, ?, ?, ?, ?, ?)', rows)
 
 
 def _read_root_catalog(connection: Any) -> dict[str, list[dict[str, Any]]]:
+    """The catalog with the domain of every root category and cause resolved (``nq_catalog.resolve_root_catalog``);
+    ``nq_catalog.stored_root_catalog`` gives it back in its stored form to change and write it."""
     rows = connection.execute(
-        f'SELECT kind, name, domain, color, keywords FROM {NQ_ROOT_CATALOG_TABLE} ORDER BY position, name COLLATE NOCASE').fetchall()
+        f'SELECT kind, name, domain, category, color, keywords FROM {NQ_ROOT_CATALOG_TABLE} '
+        'ORDER BY position, name COLLATE NOCASE').fetchall()
     catalog: dict[str, list[dict[str, Any]]] = {'domains': [], 'categories': [], 'causes': []}
     plural = {'domain': 'domains', 'category': 'categories', 'cause': 'causes'}
     for row in rows:
@@ -1730,7 +1923,10 @@ def _read_root_catalog(connection: Any) -> dict[str, list[dict[str, Any]]]:
             item['color'] = str(row['color'] or '#7b8790')
         else:
             item['domain'] = str(row['domain'] or '')
+        if row['kind'] == 'cause':
+            item['category'] = str(row['category'] or '')
         catalog[plural[str(row['kind'])]].append(item)
+    nq_catalog.resolve_root_catalog(catalog)
     colors = {item['name']: item['color'] for item in catalog['domains']}
     for plural_name in ('categories', 'causes'):
         for item in catalog[plural_name]:
@@ -1798,6 +1994,12 @@ def list_root_causes(task_repository: Any) -> dict[str, Any]:
     return {**catalog, **root_cause_settings(task_repository)}
 
 
+def root_category_of(catalog: dict[str, Any], cause: str) -> str:
+    """The root category a root cause is mapped to (empty when it has none)."""
+    item = next((entry for entry in catalog.get('causes') or [] if cause and entry['name'].casefold() == cause.casefold()), None)
+    return str((item or {}).get('category') or '')
+
+
 def domain_of(catalog: dict[str, Any], category: str, cause: str) -> str:
     """The domain of a root category, else of a root cause."""
     for plural, name in (('categories', category), ('causes', cause)):
@@ -1837,13 +2039,51 @@ def save_root_causes(task_repository: Any, catalog: Any, require_to_close: bool,
     return list_root_causes(task_repository)
 
 
+def apply_cause_categories(task_repository: Any, username: str, dry_run: bool = False) -> int:
+    """Give every call with a root cause and no root category the category its cause is mapped to (``dry_run`` only
+    counts them); the history, the domain and the Status Rules of the calls follow. Returns how many calls."""
+    taxonomy = list_root_causes(task_repository)
+    mapped = {item['name'].casefold(): item['category'] for item in taxonomy['causes'] if item.get('category')}
+    if not mapped:
+        return 0
+    when = now_iso()
+    changed: list[str] = []
+    with task_repository.connection() as connection:
+        rows = connection.execute(
+            f"SELECT call_key, root_cause FROM {NQ_CALL_TRACKING_TABLE} WHERE root_category = '' AND root_cause <> ''").fetchall()
+        for row in rows:
+            category = mapped.get(str(row['root_cause']).casefold())
+            if not category:
+                continue
+            changed.append(str(row['call_key']))
+            if dry_run:
+                continue
+            connection.execute(
+                f'UPDATE {NQ_CALL_TRACKING_TABLE} SET root_category = ?, root_domain = ?, version = version + 1, updated_by = ?, '
+                'updated_at = ? WHERE call_key = ?',
+                (category, domain_of(taxonomy, category, str(row['root_cause'])), username, when, row['call_key']))
+            _record_history(connection, str(row['call_key']), 'root_category', '', category, username, when)
+    if changed and not dry_run:
+        recompute_statuses(task_repository, username, changed)
+        if hasattr(task_repository, 'try_add_log'):
+            task_repository.try_add_log(username, 'nq_root_causes',
+                                        f'{len(changed)} Non-Qualified Calls took the root category of their root cause.')
+    return len(changed)
+
+
 def _refresh_root_domains(connection: Any, catalog: dict[str, Any]) -> None:
-    """The stored domain of every call follows the domain of its root category (else of its root cause)."""
+    """The stored domain of every call follows the domain of its root category (else of its root cause) as the
+    catalog resolves it; a call whose values the catalog does not know keeps its domain."""
+    catalog = nq_catalog.resolve_root_catalog(nq_catalog.stored_root_catalog(catalog))
+    known = {plural: {item['name'].casefold() for item in catalog[plural]} for plural in ('categories', 'causes')}
     rows = connection.execute(
         f"SELECT call_key, root_domain, root_category, root_cause FROM {NQ_CALL_TRACKING_TABLE} "
         "WHERE root_category <> '' OR root_cause <> ''").fetchall()
     for row in rows:
-        domain = domain_of(catalog, str(row['root_category']), str(row['root_cause'])) or str(row['root_domain'] or '')
+        category, cause = str(row['root_category']), str(row['root_cause'])
+        domain = domain_of(catalog, category, cause)
+        if not domain and category.casefold() not in known['categories'] and cause.casefold() not in known['causes']:
+            domain = str(row['root_domain'] or '')
         if domain != str(row['root_domain'] or ''):
             connection.execute(f'UPDATE {NQ_CALL_TRACKING_TABLE} SET root_domain = ? WHERE call_key = ?', (domain, row['call_key']))
 
@@ -1919,8 +2159,10 @@ def untracked_status(task_repository: Any, options: dict[str, list[dict[str, Any
     return evaluate_status(rules, _status_inputs(None, {}, [], {}, False), fallback) if rules else fallback
 
 
-def recompute_statuses(task_repository: Any, username: str, keys: list[str] | None = None) -> int:
-    """Set again the automatic status of the followed-up or commented calls; returns how many changed."""
+def recompute_statuses(task_repository: Any, username: str, keys: list[str] | None = None,
+                       when_of: dict[str, str] | None = None) -> int:
+    """Set again the automatic status of the followed-up or commented calls; returns how many changed. ``when_of``
+    dates the change of some calls (the date of the analyses imported for them)."""
     options = list_options(task_repository)
     fallback = default_status(options)
     rules = status_rules(task_repository)
@@ -1958,7 +2200,7 @@ def recompute_statuses(task_repository: Any, username: str, keys: list[str] | No
                 f"INSERT INTO {NQ_CALL_TRACKING_TABLE} (call_key, status, status_mode, version, updated_by, updated_at) "
                 "VALUES (?, ?, 'auto', 1, '', '') ON CONFLICT(call_key) DO UPDATE SET status = excluded.status, version = version + 1",
                 (key, status))
-            _record_history(connection, key, 'status_auto', current, status, username, when)
+            _record_history(connection, key, 'status_auto', current, status, username, (when_of or {}).get(key) or when)
             changed += 1
     return changed
 
@@ -3374,7 +3616,8 @@ def update_tracking(
 
     A team with members only accepts them as assignees: assigning anybody else is refused, and
     moving a call to such a team clears an assignee who is not a member. ``apply_recommendation``
-    gives the calls without a root category and cause the recommended ones. Choosing a status sets
+    gives the calls without a root category and cause the recommended ones, and a root cause chosen for
+    a call without root category brings the category it is mapped to. Choosing a status sets
     it by hand; otherwise (or after going back to automatic) the status rules set it from the
     fields. A call cannot be closed without the fields required to close it.
     """
@@ -3415,6 +3658,9 @@ def update_tracking(
                 elif not validated and not field_changes:
                     # Nothing to accept: the call stays as it is.
                     continue
+            # A root cause chosen for a call without root category brings the category the cause is mapped to.
+            if validated.get('root_cause') and 'root_category' not in validated and not current['root_category']:
+                current['root_category'] = root_category_of(taxonomy, current['root_cause'])
             current['root_domain'] = domain_of(taxonomy, current['root_category'], current['root_cause'])
             # An assignee chosen alone brings the call to their team (the first one when they are in several),
             # unless the call already has a team they belong to.
@@ -3596,7 +3842,7 @@ def import_rca_results(task_repository: Any, content: bytes, file_name: str, use
             [(item['join_id'].casefold(), item['join_id'], json.dumps(item['values'], ensure_ascii=False), file_name, username, when)
              for item in results])
         if add_to_catalog and unmapped:
-            catalog = _read_root_catalog(connection)
+            catalog = nq_catalog.stored_root_catalog(_read_root_catalog(connection))
             for item in unmapped:
                 catalog['categories' if item['kind'] == 'category' else 'causes'].append(
                     {'name': item['name'], 'domain': item['domain'], 'keywords': []})
@@ -3637,222 +3883,1020 @@ def clear_rca_results(task_repository: Any, username: str) -> int:
 # Analyses of the previous tool: imported by JOIN_ID (admins and super-admins)
 # ---------------------------------------------------------------------------
 # Follow-up columns named otherwise than their catalog field; the catalog fields are found by name or key.
-ANALYSES_ALIASES = {
-    'status': 'status', 'nqcallstatus': 'status', 'callstatus': 'status', 'team': 'team', 'teamresponsible': 'team',
-    'assignee': 'assignee', 'asignee': 'assignee', 'rootcategory': 'root_category', 'selectedrootcategory': 'root_category',
-    'rootcause': 'root_cause', 'selectedrootcause': 'root_cause', 'comment': 'comments', 'comments': 'comments',
-}
 ANALYSES_TRACKING = ('status', 'team', 'assignee', 'root_category', 'root_cause')
-MAX_ANALYSES_ROWS = 50000
 MAX_ANALYSES_ISSUES = 20
+# The equivalences reviewed for the analyses of the previous tool: what each value of their workbooks becomes.
+ANALYSES_EQUIVALENCES_STATE_KEY = 'nq_analyses_equivalences'
+# Columns of the analysis that repeat a value the tool has from the CDR (by the identity of their name): the import
+# note leaves them out when they say what the CDR of the call says.
+ANALYSES_CDR_COPIES = {
+    'campaign': 'campaign', 'region': 'region', 'operator': 'operator', 'city': 'city', 'vendor': 'vendor',
+    'netcheckfailureclassification': 'failure_classification', 'failureclassification': 'failure_classification',
+    'netcheckcategory': 'failure_category', 'failurecategory': 'failure_category', 'netchecksuggestedcategory': 'failure_category',
+    'netchecksubcategory': 'failure_subcategory', 'failuresubcategory': 'failure_subcategory',
+    'netchecksuggestedcause': 'failure_subcategory',
+}
+# A call whose analysis has no date takes the date of the call this many days later (the analysts' usual delay).
+ANALYSES_DAYS_AFTER_CALL = 7
+# A cell of these fields with two values (one per line, or Ericsson/Huawei) gives the second one to its pair.
+ANALYSES_PAIRS = {('field', 'vendor_when_failure'): ('field', 'vendor_2_when_failure')}
+# Values of a list the import may add to it (every list but these, whose values say which UE failed).
+ANALYSES_CLOSED_LISTS = {'failed_party'}
+# Name lengths of the catalog: teams and domains, list values, root categories and causes.
+TEAM_NAME_LIMIT, OPTION_NAME_LIMIT = 60, 80
+# The colours of the teams and domains the import adds.
+ANALYSES_COLORS = ('#0f6f7d', '#b85b20', '#6941a4', '#2e8b57', '#245a96', '#c8102e', '#e08a1e', '#5b6b2e', '#7b8790', '#d14a68')
 
 
-def _analyses_cell(value: Any) -> str:
-    """A cell of an analyses file as text, keeping its line breaks (long texts and comments)."""
-    if value is None:
-        return ''
-    if isinstance(value, datetime):
-        return value.strftime('%Y-%m-%d') if not (value.hour or value.minute or value.second) else value.isoformat(sep=' ')
-    if isinstance(value, float) and value.is_integer():
-        value = int(value)
-    text = str(value).replace('\r\n', '\n').strip()
-    return '' if text.casefold() in {'nan', 'none', 'null', '<na>'} else text
+def analyses_equivalences(task_repository: Any) -> dict[str, dict[str, dict[str, str]]]:
+    """The equivalences the import uses: target (``tracking:root_cause``, ``field:analysis_status``) -> value
+    (lowercase) -> ``{'value', 'to', 'domain'}``; an empty ``to`` leaves the value out of the field (it stays in the
+    import note). The rules of the tool (``nq_analyses_rules``) with those the workspace reviewed over them."""
+    merged = builtin_equivalences()
+    for target, values in workspace_equivalences(task_repository).items():
+        merged.setdefault(target, {}).update(values)
+    return merged
 
 
-def _analyses_columns(header: list[str], definitions: list[dict[str, Any]]) -> dict[str, Any]:
-    """What each column of an analyses file fills: a follow-up value, an analysts' field, comments, or nothing."""
-    targets: dict[str, tuple[str, str]] = {}
-    read_only: set[str] = set()
-    for field in definitions:
-        if field['source'] == 'user':
-            target: tuple[str, str] | None = ('field', field['key'])
-        elif field['source'] == 'tracking' and field['source_ref'] in (*ANALYSES_TRACKING, 'comments'):
-            target = ('comments', '') if field['source_ref'] == 'comments' else ('tracking', field['source_ref'])
-        else:
-            target = None
-        for name in (field['label'], field['key']):
-            if target is None:
-                read_only.add(nq_rca._identity(name))
+def builtin_equivalences() -> dict[str, dict[str, dict[str, str]]]:
+    """The equivalences of the analysis workbooks of the previous tool every workspace uses."""
+    rules: dict[str, dict[str, dict[str, str]]] = {}
+    for target, value, to, domain in nq_analyses_rules.ANALYSES_RULES:
+        rules.setdefault(target, {})[value.casefold()] = {'value': value, 'to': to, 'domain': domain}
+    return _normalize_equivalences(rules)
+
+
+def workspace_equivalences(task_repository: Any) -> dict[str, dict[str, dict[str, str]]]:
+    """The equivalences the workspace reviewed (uploaded in Previous NQ Analyses), which come before the rules."""
+    try:
+        stored = json.loads(task_repository.get_workspace_state(ANALYSES_EQUIVALENCES_STATE_KEY) or '{}')
+    except (TypeError, ValueError):
+        return {}
+    return _normalize_equivalences(stored)
+
+
+def _normalize_equivalences(stored: Any) -> dict[str, dict[str, dict[str, str]]]:
+    result: dict[str, dict[str, dict[str, str]]] = {}
+    for target, values in (stored.items() if isinstance(stored, dict) else []):
+        if not isinstance(values, dict) or not re.fullmatch(r'(tracking|field):[a-z0-9_]+', str(target)):
+            continue
+        for key, item in values.items():
+            if isinstance(item, dict) and str(key).strip():
+                result.setdefault(str(target), {})[str(key).strip().casefold()] = {
+                    'value': str(item.get('value') or key).strip(), 'to': re.sub(r'\s+', ' ', str(item.get('to') or '')).strip(),
+                    'domain': re.sub(r'\s+', ' ', str(item.get('domain') or '')).strip()[:TEAM_NAME_LIMIT]}
+    return result
+
+
+def _save_equivalences(task_repository: Any, equivalences: dict[str, dict[str, dict[str, str]]]) -> None:
+    task_repository.set_workspace_state(ANALYSES_EQUIVALENCES_STATE_KEY,
+                                        json.dumps(_normalize_equivalences(equivalences), ensure_ascii=False))
+
+
+class _AnalysesTranslator:
+    """Turns the values of the analyses into values of the Analysis Center: the reviewed equivalences first, then the
+    values of the catalog (same name or same letters), the old names of some values, and new values where the catalog
+    accepts them (list values and teams; root categories and causes only through an equivalence with their domain)."""
+
+    def __init__(self, task_repository: Any, users: set[str]) -> None:
+        self.fields = {field['key']: field for field in list_fields(task_repository)}
+        options = list_options(task_repository)
+        self.statuses = [item['name'] for item in options['statuses']]
+        self.teams = [item['name'] for item in options['teams']]
+        self.users = {name.casefold(): name for name in users}
+        self.taxonomy = list_root_causes(task_repository)
+        self.domains = [item['name'] for item in self.taxonomy['domains']]
+        self.equivalences = analyses_equivalences(task_repository)
+        self.labels = {('tracking', ref): label for ref, label in nq_catalog.TRACKING_REFS.items()}
+        self.labels.update({('tracking', field['source_ref']) if field['source'] == 'tracking' else ('field', key): field['label']
+                            for key, field in self.fields.items() if field['source'] in {'user', 'tracking'}})
+        # What the import adds to the catalog: list values by field and teams, each way of writing them counted (the
+        # most used spelling names the new value: Not Planned and Not planned are one value).
+        self.new_options: dict[str, dict[str, Counter]] = {}
+        self.new_teams: dict[str, Counter] = {}
+        self.new_roots: dict[str, dict[str, dict[str, Any]]] = {'categories': {}, 'causes': {}}
+        # The domains the review gives root categories and causes of the catalog: name -> {'name', 'from', 'to': Counter}.
+        self.domain_changes: dict[str, dict[str, dict[str, Any]]] = {'categories': {}, 'causes': {}}
+        self.names: dict[str, str] = {}
+
+    def label(self, target: tuple[str, str]) -> str:
+        return self.labels.get(target, target[1])
+
+    def blank(self, target: tuple[str, str], value: str) -> bool:
+        """Whether a cell says nothing for its field (0 for an initial category of the first analyses)."""
+        field = self.fields.get(target[1]) if target[0] == 'field' else None
+        return bool(field and field['type'] in {'text', 'list'} and value.strip() in nq_analyses.EMPTY_TEXTS)
+
+    @staticmethod
+    def _count_new(pool: dict[str, Counter], value: str) -> str:
+        pool.setdefault(nq_analyses.identity(value), Counter())[value] += 1
+        return value
+
+    @staticmethod
+    def _spellings(pool: dict[str, Counter]) -> dict[str, tuple[str, int]]:
+        return {key: (counts.most_common(1)[0][0], sum(counts.values())) for key, counts in pool.items()}
+
+    def canonical(self, kind: str, ref: str, value: str) -> str:
+        """The name of a new list value or team: the spelling of it most rows use."""
+        pool = self.new_teams if (kind, ref) == ('tracking', 'team') else self.new_options.get(ref, {}) if kind == 'field' else {}
+        counts = pool.get(nq_analyses.identity(value))
+        return counts.most_common(1)[0][0] if counts else value
+
+    def added_options(self) -> dict[str, dict[str, tuple[str, int]]]:
+        return {ref: self._spellings(pool) for ref, pool in self.new_options.items()}
+
+    def added_teams(self) -> dict[str, tuple[str, int]]:
+        return self._spellings(self.new_teams)
+
+    def added_teams_names(self) -> set[str]:
+        return {name for name, _count in self.added_teams().values()} | {
+            value for counts in self.new_teams.values() for value in counts}
+
+    def added_option_names(self, ref: str) -> set[str]:
+        return {value for counts in self.new_options.get(ref, {}).values() for value in counts}
+
+    def _equivalence(self, target: tuple[str, str], value: str) -> dict[str, str] | None:
+        return self.equivalences.get(f'{target[0]}:{target[1]}', {}).get(value.casefold())
+
+    def reviewed(self, target: tuple[str, str], value: str) -> bool:
+        """Whether the reviewed equivalences say what the value becomes."""
+        return self._equivalence(target, value) is not None
+
+    def _root(self, plural: str, value: str, target: tuple[str, str]) -> str | None:
+        """The root category or cause of a value: through its equivalence (a new one is added, with the domain of the
+        review or, without one, the domain its category or the keywords give it; the domain the review gives a value of
+        the catalog becomes its own), else the value of the catalog with its name."""
+        names = [item['name'] for item in self.taxonomy[plural]]
+        equivalence = self._equivalence(target, value)
+        if equivalence is not None:
+            wanted = equivalence['to'][:OPTION_NAME_LIMIT]
+            if not wanted:
+                return None
+            # A domain the catalog has renamed since the review takes its new name.
+            domain = BUILTIN_ANALYSES_VALUES['domain'].get(equivalence['domain'].casefold(), equivalence['domain'])
+            domain = (nq_analyses.list_choice(domain, self.domains) or domain) if domain else ''
+            existing = nq_analyses.list_choice(wanted, names)
+            if existing:
+                current = next(item for item in self.taxonomy[plural] if item['name'] == existing)
+                if domain and domain.casefold() != (current.get('domain') or '').casefold():
+                    change = self.domain_changes[plural].setdefault(existing.casefold(), {
+                        'name': existing, 'from': current.get('domain') or '', 'to': Counter()})
+                    change['to'][domain] += 1
+                return existing
+            item = self.new_roots[plural].setdefault(wanted.casefold(), {'name': wanted, 'domain': domain, 'rows': 0})
+            item['domain'] = item['domain'] or domain
+            item['rows'] += 1
+            return item['name']
+        return next((name for name in names if name.casefold() == value.casefold()), None)
+
+    def translate(self, target: tuple[str, str], value: str, direction: str = '') -> tuple[str, str, str] | None:
+        """The (kind, ref, value) a value fills, or None when it is not a value of the field."""
+        kind, ref = target
+        if kind == 'tracking':
+            if ref == 'root_category':
+                found = self._root('categories', value, target)
+            elif ref == 'root_cause':
+                found = self._root('causes', value, target)
+            elif ref == 'status':
+                equivalence = self._equivalence(target, value)
+                found = nq_analyses.list_choice(equivalence['to'] if equivalence else value, self.statuses)
+            elif ref == 'assignee':
+                found = self.users.get((self._equivalence(target, value) or {}).get('to', value).casefold())
             else:
-                targets.setdefault(nq_rca._identity(name), target)
-    for alias, ref in ANALYSES_ALIASES.items():
-        targets.setdefault(alias, ('comments', '') if ref == 'comments' else ('tracking', ref))
-    columns: dict[int, tuple[str, str]] = {}
-    recognized, ignored, skipped = [], [], []
-    join_index = key_index = None
-    for index, name in enumerate(header):
-        identity = nq_rca._identity(name)
-        if not identity:
-            continue
-        if identity == 'joinid' and join_index is None:
-            join_index = index
-        elif identity == 'callkey' and key_index is None:
-            key_index = index
-        elif identity in targets and targets[identity] not in columns.values():
-            columns[index] = targets[identity]
-            recognized.append(name)
-        elif identity in read_only or identity in targets:
-            skipped.append(name)
-        else:
-            ignored.append(name)
-    return {'columns': columns, 'join': join_index, 'key': key_index, 'recognized': recognized,
-            'read_only': skipped, 'ignored': ignored}
+                equivalence = self._equivalence(target, value)
+                wanted = (equivalence['to'] if equivalence else BUILTIN_ANALYSES_VALUES['team'].get(value.casefold(), value))[:TEAM_NAME_LIMIT]
+                found = nq_analyses.list_choice(wanted, self.teams) if wanted else None
+                if wanted and found is None:
+                    found = self._count_new(self.new_teams, re.sub(r'\s+', ' ', wanted).strip())
+            return (kind, ref, found) if found else None
+        field = self.fields.get(ref)
+        if field is None or field['source'] != 'user':
+            return None
+        if field['type'] in {'text', 'list'} and value.strip() in nq_analyses.EMPTY_TEXTS:
+            return None
+        if ref in {'analyst', 'reviewer'}:
+            value = self.names.get(nq_analyses.identity(value), value)
+        equivalence = self._equivalence(target, value)
+        if equivalence is not None:
+            if not equivalence['to']:
+                return None
+            value = equivalence['to']
+        if field['type'] == 'list':
+            # A cell with several values (two bands, one per line) gives the field the first one; the note keeps the cell.
+            lines = [line.strip() for line in value.splitlines() if line.strip()]
+            if equivalence is None and len(lines) > 1:
+                return self.translate(target, lines[0], direction)
+            options = [option['name'] for option in field['options']]
+            if ref == 'failed_party':
+                value = nq_analyses.failed_party(value, direction) or value
+            elif ref == 'band_when_failure':
+                value = nq_analyses.band_name(value)
+            value = BUILTIN_ANALYSES_VALUES.get(ref, {}).get(value.casefold(), value)
+            found = nq_analyses.list_choice(value, options)
+            if found is None:
+                if ref in ANALYSES_CLOSED_LISTS:
+                    return None
+                found = self._count_new(self.new_options.setdefault(ref, {}), re.sub(r'\s+', ' ', value).strip()[:OPTION_NAME_LIMIT])
+            return ('field', ref, found)
+        if field['type'] == 'date':
+            parsed = nq_analyses.parse_date(value)
+            if parsed:
+                return ('field', ref, parsed)
+            # A fiscal year or a year has no day: it goes to the Planned FY (the first one when the cell lists several,
+            # the cell staying in the import note as it is written).
+            fiscal = self.fields.get('planned_fy')
+            periods = [part for part in re.split(r'[\n,;/]+', value) if part.strip()]
+            if ref == 'planned_date' and fiscal and fiscal['source'] == 'user' and periods \
+                    and all(nq_analyses.FISCAL_PERIOD.match(part.strip()) for part in periods):
+                return self.translate(('field', 'planned_fy'), re.sub(r'\s+', '', periods[0]).upper())
+            return None
+        try:
+            return ('field', ref, _field_value(field, value))
+        except ValueError:
+            return None
 
 
-def read_analyses_file(content: bytes, file_name: str, definitions: list[dict[str, Any]]) -> dict[str, Any]:
-    """The analyses of a file, one row per call identified by JOIN_ID (or Call Key): the simple layout with one header
-    row, or the Excel export of Non-Qualified Calls (its first row names the sections)."""
-    rows = nq_rca._table(content, file_name)
-    header_row = next((index for index, row in enumerate(rows[:3])
-                       if any(nq_rca._identity(value) in {'joinid', 'callkey'} for value in row)), None)
-    if header_row is None:
-        raise ValueError('The file needs a JOIN_ID column (or Call Key) in one of its first three rows.')
-    layout = _analyses_columns([_analyses_cell(value) for value in rows[header_row]], definitions)
-    if not layout['columns']:
-        raise ValueError('The file has none of the analysis columns (the names of the fields, such as Analysis Status, '
-                         'Selected Root Category, NQ Call Status or Comments).')
+BUILTIN_ANALYSES_VALUES = nq_analyses.BUILTIN_VALUES
+
+
+def _session_columns(header: list[str]) -> dict[str, Any]:
+    """Where a sheet that repeats the CDR keeps what identifies a call without JOIN_ID, as the CDR index reads it: the
+    Operator and Campaign columns and the test or session identifier of each service."""
+    def first(columns: list[str]) -> list[int]:
+        return [header.index(column) for column in columns]
+
+    return {'operator': first(_resolve_columns(header, FIELD_SOURCES['operator'])),
+            'campaign': first(_resolve_columns(header, FIELD_SOURCES['campaign'])),
+            'ids': {service: header.index(column) for service, sources in IDENTIFIER_SOURCES.items()
+                    if (column := _resolve_column(header, sources))}}
+
+
+def _analyses_session(columns: dict[str, Any], cells: list[str]) -> dict[str, Any] | None:
+    """The Operator, Campaign and identifier (by service) of a row without JOIN_ID, when it has an identifier."""
+    def cell(index: int) -> str:
+        return cells[index] if index < len(cells) else ''
+
+    ids = {service: cell(index) for service, index in columns['ids'].items() if cell(index)}
+    if not ids:
+        return None
+    return {'operator': next((cell(index) for index in columns['operator'] if cell(index)), ''),
+            'campaign': next((cell(index) for index in columns['campaign'] if cell(index)), ''), 'ids': ids}
+
+
+def _session_keys(session: dict[str, Any]) -> dict[str, str]:
+    """The call key a row without JOIN_ID has in each service it can belong to."""
+    return {service: call_key_for(service, {'operator': session['operator'], 'campaign': session['campaign']}, identifier)
+            for service, identifier in session['ids'].items()}
+
+
+def read_analyses(content: bytes, file_name: str, definitions: list[dict[str, Any]]) -> dict[str, Any]:
+    """The analyses of a file by call: every visible sheet with a JOIN_ID (or Call Key) column, each row giving the
+    values of its call (an analysis of several calls gives them to each one), its comments and its import note. A row
+    without JOIN_ID is its call by the Operator, Campaign and session of the CDR it repeats, as the CDR index names
+    calls without JOIN_ID."""
+    tables, skipped_sheets = nq_analyses.read_tables(content, file_name)
+    if not tables:
+        raise ValueError('The file needs a JOIN_ID column (or Call Key) in one of the first three rows of a visible sheet.')
+    keys = {field['key'] for field in definitions}
     entries: dict[str, dict[str, Any]] = {}
-    skipped = 0
-    for row in rows[header_row + 1:header_row + 1 + MAX_ANALYSES_ROWS]:
-        cells = [_analyses_cell(value) for value in row]
-
-        def cell(index: int | None) -> str:
-            return cells[index] if index is not None and index < len(cells) else ''
-
-        identity = cell(layout['join']) or cell(layout['key'])
-        if not identity:
-            skipped += any(cells)
+    recognized: list[str] = []
+    read_only: list[str] = []
+    noted: list[str] = []
+    cdr = skipped = 0
+    sheets = []
+    for table in tables:
+        layout = nq_analyses.resolve_layout(table, definitions, ANALYSES_TRACKING)
+        if not (layout.targets or layout.comments or layout.appends or layout.notes):
+            skipped_sheets.append(table.sheet)
             continue
-        values = {target: cell(index) for index, target in layout['columns'].items() if cell(index)}
-        entry = entries.setdefault(identity.casefold(), {'join_id': cell(layout['join']), 'call_key': cell(layout['key']), 'values': {}, 'rows': 0})
-        entry['rows'] += 1
-        for target, value in values.items():
-            entry['values'].setdefault(target, value)
-    return {**layout, 'entries': list(entries.values()), 'skipped': skipped,
+        sheets.append({'sheet': table.sheet, 'rows': len(table.rows), 'export': table.export})
+        recognized += [name for name in layout.recognized(table.header) if name not in recognized]
+        read_only += [name for name in layout.read_only if name not in read_only]
+        noted += [table.header[index] for index in layout.notes if table.header[index] not in noted]
+        cdr = max(cdr, len(layout.cdr))
+        session_columns = _session_columns(table.header)
+        start_column = next((table.header.index(column) for column in _resolve_columns(table.header, FIELD_SOURCES['start_time'])), None)
+        for number, cells in table.rows:
+            def cell(index: int | None) -> str:
+                return cells[index] if index is not None and index < len(cells) else ''
+
+            identities = nq_analyses.join_ids(cell(layout.join)) if layout.join is not None else []
+            if not identities and cell(layout.key):
+                identities = [cell(layout.key)]
+            session = None if identities else _analyses_session(session_columns, cells)
+            if session:
+                identities = [f"{session['operator']} · {session['campaign']} · session "
+                              f"{next(iter(session['ids'].values()))}"]
+            if not identities:
+                skipped += any(cells)
+                continue
+            origin = f'{table.sheet}, row {number}' if table.sheet != 'CSV' else f'row {number}'
+            values: list[tuple[int, tuple[str, str], str]] = []
+            for index, target in layout.targets.items():
+                value = cell(index)
+                if nq_analyses.is_empty(value):
+                    continue
+                pair = ANALYSES_PAIRS.get(target)
+                parts = [part.strip() for part in re.split(r'[\n/]+', value) if part.strip()] if pair else []
+                # Two vendors fill Vendor 1 and Vendor 2 (unless the sheet has its own column for the second one).
+                if len(parts) > 1 and pair[1] in keys and pair not in layout.targets.values():
+                    values += [(index, target, parts[0]), (index, pair, parts[1])]
+                    if len(parts) > 2:
+                        values.append((index, ('note', ''), value))
+                else:
+                    values.append((index, target, value))
+            comments = [(table.header[index], cell(index)) for index in layout.comments if not nq_analyses.is_empty(cell(index))]
+            appends = [(ref, table.header[index], cell(index)) for index, ref in layout.appends.items()
+                       if not nq_analyses.is_empty(cell(index))]
+            # A second column of a value with the same value as the first one says nothing more.
+            filled = {nq_analyses.identity(table.header[index]): cell(index).strip().casefold() for index in layout.targets}
+            notes = [(table.header[index], cell(index)) for index in layout.notes if not nq_analyses.is_empty(cell(index))
+                     and filled.get(nq_analyses.identity(table.header[index])) != cell(index).strip().casefold()]
+            # The date of the row dates the changes of its call; a cell that is not a date stays in the note.
+            moment = nq_analyses.parse_moment(cell(layout.when)) if layout.when is not None and cell(layout.when) else None
+            if layout.when is not None and cell(layout.when) and moment is None and not nq_analyses.is_empty(cell(layout.when)):
+                notes.append((table.header[layout.when], cell(layout.when)))
+            for identity in identities:
+                by_join = layout.join is not None and identity != cell(layout.key) and not session
+                entry = entries.setdefault(identity.casefold(), {
+                    'join_id': identity if by_join else '', 'call_key': '' if by_join or session else identity,
+                    'session': session, 'label': identity, 'values': {}, 'comments': [], 'appends': [], 'notes': [],
+                    'origins': [], 'direction': '', 'rows': 0, 'sheet': table.sheet, 'service_hint': _service_hint(table.header),
+                    'when': '', 'call_date': ''})
+                entry['rows'] += 1
+                entry['when'] = max(entry['when'], moment or '')
+                entry['call_date'] = entry['call_date'] or cell(start_column)
+                entry['origins'].append(origin)
+                entry['direction'] = entry['direction'] or cell(layout.direction)
+                # A call in several rows takes the values of the first one; the note keeps the others (and a cell of
+                # more values than its fields take).
+                for index, target, value in values:
+                    if target[0] == 'note':
+                        if (f'{table.header[index]} (as written)', value) not in entry['notes']:
+                            entry['notes'].append((f'{table.header[index]} (as written)', value))
+                        continue
+                    kept = entry['values'].setdefault(target, value)
+                    if kept.strip().casefold() != value.strip().casefold():
+                        entry['notes'].append((f'{table.header[index]} ({origin})', value))
+                for item in comments:
+                    if item not in entry['comments']:
+                        entry['comments'].append(item)
+                for item in appends:
+                    if item not in entry['appends']:
+                        entry['appends'].append(item)
+                for item in notes:
+                    if item not in entry['notes']:
+                        entry['notes'].append(item)
+    return {'entries': list(entries.values()), 'skipped': skipped, 'columns': recognized, 'read_only': read_only,
+            'noted': noted, 'cdr_columns': cdr, 'sheets': sheets, 'sheets_skipped': skipped_sheets,
             'duplicates': sum(1 for entry in entries.values() if entry['rows'] > 1)}
+
+
+def _service_hint(header: list[str]) -> str:
+    """The service of the calls of a sheet when none of them is in the workspace: voice calls name their session type."""
+    names = {nq_analyses.identity(name) for name in header}
+    if names & {'sessiontype', 'callstatus', 'calldirection'}:
+        return 'voice'
+    if names & {'testtype', 'datathroughput', 'findingsbucketization'}:
+        return 'data'
+    return ''
+
+
+def _known_call_values(connection: Any, keys: list[str], join_ids: list[str], mapper: ValueMapper) -> dict[str, dict[str, set[str]]]:
+    """What the tool has of each call to compare the copies of the analyses with: the values of its CDRs (every
+    version) by field (the Operator as the Operator Maps name it), and its Ericsson RCA results by the identity of
+    their column, all as normalized text."""
+    known: dict[str, dict[str, set[str]]] = {}
+    fields = sorted(set(ANALYSES_CDR_COPIES.values()))
+    for row in _rows_of_calls(connection, f'SELECT call_key, {", ".join(fields)} FROM {NQ_CALLS_TABLE}', keys) if keys else []:
+        values = known.setdefault(str(row['call_key']), {})
+        for field in fields:
+            value = mapper.map('operator', row[field]) if field == 'operator' else row[field]
+            values.setdefault(field, set()).add(_normalized_text(value))
+    by_join = {join_id.casefold(): key for key, join_id in zip(keys, join_ids) if join_id}
+    for start in range(0, len(by_join), 500):
+        chunk = list(by_join)[start:start + 500]
+        for row in connection.execute(f"SELECT join_id, values_json FROM {NQ_RCA_RESULTS_TABLE} "
+                                      f"WHERE join_id IN ({', '.join('?' for _ in chunk)})", chunk):
+            values = known.setdefault(by_join[str(row['join_id'])], {})
+            for name, value in (json.loads(row['values_json'] or '{}') or {}).items():
+                for column in {name, nq_catalog.RCA_REFS.get(name, name)}:
+                    values.setdefault(f'rca:{nq_analyses.identity(column)}', set()).add(_normalized_text(value))
+    return known
+
+
+def _repeats_the_call(known: dict[str, set[str]], column: str, value: str, mapper: ValueMapper) -> bool:
+    """Whether a column of the analysis repeats what the tool has of the call (its CDR or its Ericsson RCA), also as the
+    workbooks write it: the Operator by the Operator Maps, the Region as the letter of its Vendor area (B for Vendor B)
+    and the Campaign as a part of its name (Q3 for UK_Q3_2025)."""
+    name = nq_analyses.identity(column)
+    field = ANALYSES_CDR_COPIES.get(name)
+    values = known.get(field) if field else known.get(f'rca:{name}')
+    if not values:
+        return False
+    text = _normalized_text(mapper.map('operator', value) if field == 'operator' else value)
+    if text in values:
+        return True
+    if field == 'region':
+        return f'vendor {text}' in values
+    if field == 'campaign':
+        return any(text in re.split(r'[\s_\-]+', campaign) for campaign in values)
+    return False
+
+
+def _analyses_note(source: str, lines: list[str]) -> str:
+    """What the import keeps of a call that no field holds (the columns of the analysis without a field, the values that
+    are not values of their field, the cells a field takes only part of and the values the call already had otherwise),
+    after where they come from."""
+    return '\n'.join([source, *lines])[:MAX_COMMENT_LENGTH] if lines else ''
 
 
 def import_analyses(task_repository: Any, content: bytes, file_name: str, username: str, users: set[str], *,
                     overwrite: bool = False, dry_run: bool = False) -> dict[str, Any]:
     """Import the analyses of the previous tool into the follow-up of the calls, by JOIN_ID.
 
-    Every value is checked as if it were chosen in the call (statuses, teams, users, the Root Cause Catalog and the
-    lists of the fields); values that do not exist are left out and reported. Without ``overwrite`` only empty values
-    are filled (a status only when it follows the Status Rules). Comments are added unless the call already has the
-    same text. ``dry_run`` only reports what the import would do.
+    Every visible sheet with a JOIN_ID column is read. Values are checked as if they were chosen in the call, after the
+    reviewed equivalences: list values and teams the catalog lacks are added, root categories and causes only through an
+    equivalence that gives their domain; anything else, and every column without a field, stays in the import note of
+    the call. Each comment column becomes a comment. Calls not in the workspace yet keep their analysis for when their
+    CDR is added. Without ``overwrite`` only empty values are filled. ``dry_run`` only reports what the import would do.
     """
     definitions = list_fields(task_repository)
-    parsed = read_analyses_file(content, file_name, definitions)
-    by_key = {field['key']: field for field in definitions}
-    options = list_options(task_repository)
-    taxonomy = list_root_causes(task_repository)
-    names = {
-        'status': {item['name'].casefold(): item['name'] for item in options['statuses']},
-        'team': {item['name'].casefold(): item['name'] for item in options['teams']},
-        'assignee': {name.casefold(): name for name in users},
-        'root_category': {item['name'].casefold(): item['name'] for item in taxonomy['categories']},
-        'root_cause': {item['name'].casefold(): item['name'] for item in taxonomy['causes']},
-    }
-    labels = {('tracking', ref): label for ref, label in nq_catalog.TRACKING_REFS.items()}
-    labels.update({('tracking' if field['source'] == 'tracking' else 'field', field['source_ref'] if field['source'] == 'tracking' else field['key']):
-                   field['label'] for field in definitions if field['source'] in {'user', 'tracking'}})
+    parsed = read_analyses(content, file_name, definitions)
+    translator = _AnalysesTranslator(task_repository, users)
+    # Every way a name of an analyst or a reviewer is written becomes its most used spelling.
+    translator.names = nq_analyses.canonical_names([value for entry in parsed['entries'] for (kind, ref), value in entry['values'].items()
+                                                   if (kind, ref) in {('field', 'analyst'), ('field', 'reviewer')}])
     with task_repository.connection() as connection:
-        known = {}
-        for row in connection.execute(f"SELECT DISTINCT call_key, join_id FROM {NQ_CALLS_TABLE}"):
-            known[str(row['call_key']).casefold()] = str(row['call_key'])
+        known: dict[str, tuple[str, str]] = {}
+        for row in connection.execute(f'SELECT DISTINCT call_key, join_id, service FROM {NQ_CALLS_TABLE}'):
+            known[str(row['call_key']).casefold()] = (str(row['call_key']), str(row['service']))
             if row['join_id']:
-                known.setdefault(str(row['join_id']).casefold(), str(row['call_key']))
-        matched = {entry_id: known[entry_id] for entry_id in
-                   ({(entry['join_id'] or entry['call_key']).casefold() for entry in parsed['entries']}) if entry_id in known}
-        keys = list(dict.fromkeys(matched.values()))
-        tracking = {str(row['call_key']): row for row in _rows_of_calls(
-            connection, f'SELECT * FROM {NQ_CALL_TRACKING_TABLE}', keys)} if keys else {}
-        values = field_values(connection, keys) if keys else {}
-        # The comments a call has, as texts and as the comment log of the Excel export (imported back unchanged).
-        comment_rows: dict[str, list[Any]] = {}
-        for row in (_rows_of_calls(connection, f"SELECT call_key, body, created_by, created_at, deleted_at FROM {NQ_CALL_COMMENTS_TABLE}",
-                                   keys, order='created_at, id') if keys else []):
-            comment_rows.setdefault(str(row['call_key']), []).append(row)
-        comments = {key: {str(row['body']).strip() for row in rows if not row['deleted_at']} | {_comment_log(rows)}
-                    for key, rows in comment_rows.items()}
-    default = untracked_status(task_repository, options)
-    invalid: dict[tuple[str, str], int] = {}
-    unmatched: list[str] = []
-    analysed = changed = added_comments = 0
-    failures: list[str] = []
+                known.setdefault(str(row['join_id']).casefold(), (str(row['call_key']), str(row['service'])))
+        tracked = {str(row[0]) for row in connection.execute(f'SELECT call_key FROM {NQ_CALL_TRACKING_TABLE}')}
+
+    def found(entry: dict[str, Any]) -> tuple[str, str] | None:
+        if entry['session']:
+            return next((known[key] for key in _session_keys(entry['session']).values() if key in known), None)
+        return known.get((entry['join_id'] or entry['call_key']).casefold())
+
+    # What the tool has of the calls found, to leave their copies out of the note.
+    located = list(dict.fromkeys(hit[0] for entry in parsed['entries'] if (hit := found(entry))))
+    with task_repository.connection() as connection:
+        join_of = {str(row['call_key']): str(row['join_id']) for row in _rows_of_calls(
+            connection, f"SELECT call_key, join_id FROM {NQ_CALLS_TABLE}", located, where="join_id <> ''")} if located else {}
+        mapper = ValueMapper.from_repository(task_repository)
+        call_values = _known_call_values(connection, located, [join_of.get(key, '') for key in located], mapper)
+        starts = {str(row['call_key']): str(row['start_time'] or '') for row in _rows_of_calls(
+            connection, f'SELECT call_key, start_time FROM {NQ_CALLS_TABLE}', located)} if located else {}
+    # The service of the calls a sheet does not find: the one most of its found calls have, else what its columns say.
+    services: dict[str, Counter] = {}
     for entry in parsed['entries']:
-        identity = entry['join_id'] or entry['call_key']
-        call_key = matched.get(identity.casefold())
-        if call_key is None:
+        hit = found(entry)
+        if hit:
+            services.setdefault(entry['sheet'], Counter())[hit[1]] += 1
+    plans: list[dict[str, Any]] = []
+    invalid: Counter = Counter()
+    unmatched: list[str] = []
+    unplaced: list[str] = []
+    for entry in parsed['entries']:
+        identity = entry['label']
+        hit = found(entry)
+        if hit:
+            call_key = hit[0]
+        else:
             unmatched.append(identity)
-            continue
-        current = tracking.get(call_key)
-        current_fields = values.get(call_key, {})
-        if (current and any(str(current[ref] or '') for ref in ('team', 'assignee', 'root_category', 'root_cause'))) or current_fields:
-            analysed += 1
-        changes: dict[str, Any] = {}
-        fields: dict[str, str] = {}
-        new_comment = ''
-        for (kind, ref), value in entry['values'].items():
-            if kind == 'comments':
-                new_comment = value
+            service = (services.get(entry['sheet']) or Counter()).most_common(1)
+            service = service[0][0] if service else entry['service_hint']
+            key = (_session_keys(entry['session']).get(service) if entry['session'] else
+                   call_key_for(service, {}, join_id=entry['join_id']) if entry['join_id'] else '') if service else ''
+            if not key:
+                unplaced.append(identity)
                 continue
-            label = labels.get((kind, ref), ref)
-            if kind == 'tracking':
-                proper = names[ref].get(value.casefold())
-                if proper is None:
-                    invalid[(label, value)] = invalid.get((label, value), 0) + 1
-                    continue
-                present = str(current[ref] or '') if current is not None else (default if ref == 'status' else '')
-                # A value the call already has stays as it is (a status keeps following the Status Rules).
-                if proper.casefold() == present.casefold() or (not overwrite and current is not None and (
-                        (ref == 'status' and str(current['status_mode'] or '') == 'manual')
-                        or (ref != 'status' and present))):
-                    continue
-                changes[ref] = proper
-            else:
-                try:
-                    proper = _field_value(by_key[ref], value)
-                except ValueError:
-                    invalid[(label, value[:60])] = invalid.get((label, value[:60]), 0) + 1
-                    continue
-                if proper == current_fields.get(ref, '') or (not overwrite and current_fields.get(ref)):
-                    continue
-                fields[ref] = proper
-        if fields:
-            changes['fields'] = fields
-        comment = new_comment and new_comment.strip() not in comments.get(call_key, set())
-        if not changes and not comment:
-            continue
-        if dry_run:
-            changed += bool(changes)
-            added_comments += bool(comment)
-            continue
-        try:
-            if changes:
-                changed += bool(update_tracking(task_repository, [call_key], changes, username, users))
-            if comment:
-                add_comment(task_repository, call_key, new_comment, username)
-                added_comments += 1
-        except (ValueError, LookupError, PermissionError, TrackingConflict) as exc:
-            if len(failures) < MAX_ANALYSES_ISSUES:
-                failures.append(f'{identity}: {exc}')
+            call_key = key
+        changes: dict[tuple[str, str], str] = {}
+        written: dict[tuple[str, str], str] = {}
+        # The copies of the CDR or of the Ericsson RCA that say what the tool has of the call are left out of the note.
+        repeated = call_values.get(call_key, {}) if hit else {}
+        lines = [f'{column}: {value}' for column, value in entry['notes'] if not _repeats_the_call(repeated, column, value, mapper)]
+        for target, value in entry['values'].items():
+            if translator.blank(target, value):
+                continue
+            result = translator.translate(target, value, entry['direction'])
+            if result is None:
+                label = translator.label(target)
+                invalid[(label, value[:60])] += 1
+                lines.append(f'{label} (not a value of the field): {value}')
+                continue
+            changes.setdefault((result[0], result[1]), result[2])
+            written.setdefault((result[0], result[1]), value)
+            # A cell the field takes only part of (several fiscal years or bands), and a value the reviewed equivalences
+            # name otherwise, stay in the note as they are written.
+            partial = '\n' in value.strip() and ((result[0], result[1]) != target or result[2] != value)
+            renamed = translator.reviewed(target, value) and nq_analyses.identity(result[2]) != nq_analyses.identity(value)
+            if partial or renamed:
+                lines.append(f'{translator.label(target)} (as written): {value}')
+        # A call the analysts invalidated is an invalidated analysis.
+        if (changes.get(('tracking', 'root_category'), '').casefold() == 'invalidated' and ('field', 'analysis_status') not in changes
+                and nq_analyses.list_choice('Invalidated', [option['name'] for option in
+                                                            translator.fields.get('analysis_status', {}).get('options') or []])):
+            changes[('field', 'analysis_status')] = 'Invalidated'
+        # Without the date of its analysis, the call takes its own date a week later (from the CDR of the row, or of the call).
+        when, estimated = entry['when'], False
+        if not when:
+            when = nq_analyses.moment_after(entry['call_date'] or starts.get(call_key, ''), ANALYSES_DAYS_AFTER_CALL) or ''
+            estimated = bool(when)
+        plans.append({'identity': identity, 'call_key': call_key, 'found': bool(hit), 'changes': changes, 'when': when,
+                      'estimated': estimated,
+                      'written': written, 'appends': entry['appends'], 'lines': lines,
+                      'source': f"Imported from {file_name} · {'; '.join(dict.fromkeys(entry['origins']))}",
+                      'comments': [value if nq_analyses.identity(column) == 'comments' else f'[{column}] {value}'
+                                   for column, value in entry['comments']]})
+    # New list values and teams take the spelling most rows use.
+    for plan in plans:
+        plan['changes'] = {(kind, ref): translator.canonical(kind, ref, value) for (kind, ref), value in plan['changes'].items()}
+    keys = [plan['call_key'] for plan in plans]
+    labels = {target: translator.label(target) for plan in plans for target in plan['changes']}
+    result = _write_analyses(task_repository, plans, username, labels, overwrite=overwrite, dry_run=dry_run)
+    # The catalog gets the new values some call takes (a value no call takes, as the calls keep theirs, stays out).
+    applied = result.pop('applied')
+    if not dry_run and applied:
+        _add_analyses_catalog(task_repository, translator, applied)
+    summary_new = {
+        'new_options': [{'field': translator.fields[ref]['label'], 'value': name, 'rows': count}
+                        for ref, names in translator.added_options().items()
+                        for name, count in sorted(names.values(), key=lambda item: -item[1])
+                        if ('field', ref, name.casefold()) in applied],
+        'new_teams': [{'value': name, 'rows': count} for name, count in sorted(translator.added_teams().values(), key=lambda item: -item[1])
+                      if ('tracking', 'team', name.casefold()) in applied],
+        'new_categories': [{'value': item['name'], 'domain': item['domain'], 'rows': item['rows']}
+                           for item in translator.new_roots['categories'].values()
+                           if ('tracking', 'root_category', item['name'].casefold()) in applied],
+        'new_causes': [{'value': item['name'], 'domain': item['domain'], 'rows': item['rows']}
+                       for item in translator.new_roots['causes'].values()
+                       if ('tracking', 'root_cause', item['name'].casefold()) in applied],
+        'domain_changes': [{'kind': title, 'value': item['name'], 'from': item['from'], 'to': item['to'].most_common(1)[0][0],
+                            'rows': sum(item['to'].values()), 'others': [name for name in item['to'] if name != item['to'].most_common(1)[0][0]]}
+                           for plural, ref, title in (('categories', 'root_category', 'Root Category'), ('causes', 'root_cause', 'Root Cause'))
+                           for item in translator.domain_changes[plural].values()
+                           if ('tracking', ref, item['name'].casefold()) in applied],
+    }
     summary = {
         'rows': sum(entry['rows'] for entry in parsed['entries']) + parsed['skipped'], 'calls': len(parsed['entries']),
         'matched': len(parsed['entries']) - len(unmatched), 'unmatched': len(unmatched),
-        'unmatched_ids': unmatched[:MAX_ANALYSES_ISSUES], 'skipped': parsed['skipped'], 'duplicates': parsed['duplicates'],
-        'analysed': analysed, 'columns': parsed['recognized'], 'read_only': parsed['read_only'], 'ignored': parsed['ignored'],
+        'unmatched_ids': unmatched[:MAX_ANALYSES_ISSUES], 'unplaced': len(unplaced),
+        'skipped': parsed['skipped'], 'duplicates': parsed['duplicates'],
+        'analysed': sum(1 for key in keys if key in tracked), 'columns': parsed['columns'], 'read_only': parsed['read_only'],
+        'noted': parsed['noted'], 'cdr_columns': parsed['cdr_columns'], 'sheets': parsed['sheets'],
+        'sheets_skipped': parsed['sheets_skipped'],
         'invalid': [{'column': column, 'value': value, 'rows': count}
-                    for (column, value), count in sorted(invalid.items(), key=lambda item: -item[1])[:MAX_ANALYSES_ISSUES]],
-        'invalid_total': sum(invalid.values()), 'changed': changed, 'comments': added_comments, 'failures': failures,
-        'overwrite': overwrite, 'dry_run': dry_run,
+                    for (column, value), count in invalid.most_common(MAX_ANALYSES_ISSUES)],
+        'invalid_total': sum(invalid.values()), **result, **summary_new, 'overwrite': overwrite, 'dry_run': dry_run,
     }
     if not dry_run and hasattr(task_repository, 'try_add_log'):
         task_repository.try_add_log(username, 'nq_analyses_import', json.dumps({
-            'file': file_name, 'overwrite': overwrite, 'matched': summary['matched'], 'changed': changed,
-            'comments': added_comments, 'failures': len(failures),
+            'file': file_name, 'overwrite': overwrite, 'matched': summary['matched'], 'pending': summary['pending'],
+            'changed': summary['changed'], 'comments': summary['comments'], 'notes': summary['notes'],
         }))
     return summary
+
+
+def _add_analyses_catalog(task_repository: Any, translator: _AnalysesTranslator, applied: set[tuple[str, str, str]]) -> None:
+    """Add to the catalog the list values, teams, domains, root categories and causes the analyses bring to some call
+    (``applied``: kind, ref and lowercase value of every value written)."""
+    added = translator.added_options()
+    if added:
+        fields = list_fields(task_repository)
+        for field in fields:
+            for name, _count in added.get(field['key'], {}).values():
+                if ('field', field['key'], name.casefold()) in applied \
+                        and name.casefold() not in {option['name'].casefold() for option in field['options']}:
+                    field['options'].append({'name': name, 'color': '', 'keywords': []})
+        _store_fields(task_repository, nq_catalog.normalize_fields(fields, {field['key']: field for field in list_fields(task_repository)},
+                                                                   CATALOG_CALL_FIELDS))
+    with task_repository.connection() as connection:
+        teams = [name for name, _count in translator.added_teams().values() if ('tracking', 'team', name.casefold()) in applied]
+        if teams:
+            position = connection.execute(
+                f"SELECT COALESCE(MAX(position), -1) FROM {NQ_CALL_OPTIONS_TABLE} WHERE kind = 'team'").fetchone()[0]
+            for index, name in enumerate(teams):
+                connection.execute(
+                    f"INSERT OR IGNORE INTO {NQ_CALL_OPTIONS_TABLE} (kind, name, color, position, is_closed) VALUES ('team', ?, ?, ?, 0)",
+                    (name, ANALYSES_COLORS[index % len(ANALYSES_COLORS)], position + 1 + index))
+        refs = (('categories', 'root_category'), ('causes', 'root_cause'))
+        roots = {plural: {key: item for key, item in translator.new_roots[plural].items()
+                          if ('tracking', ref, item['name'].casefold()) in applied} for plural, ref in refs}
+        # The domain the review gives a root category or cause of the catalog (the one most of its rows give).
+        changes = {plural: {key: item['to'].most_common(1)[0][0] for key, item in translator.domain_changes[plural].items()
+                            if ('tracking', ref, item['name'].casefold()) in applied} for plural, ref in refs}
+        if any(roots.values()) or any(changes.values()):
+            catalog = nq_catalog.stored_root_catalog(_read_root_catalog(connection))
+            domains = {item['name'].casefold() for item in catalog['domains']}
+
+            def domain_of_review(name: str) -> str:
+                if name and name.casefold() not in domains:
+                    catalog['domains'].append({'name': name, 'keywords': [],
+                                               'color': ANALYSES_COLORS[len(catalog['domains']) % len(ANALYSES_COLORS)]})
+                    domains.add(name.casefold())
+                return name
+
+            for plural in ('categories', 'causes'):
+                names = {item['name'].casefold() for item in catalog[plural]}
+                for item in catalog[plural]:
+                    if item['name'].casefold() in changes[plural]:
+                        item['domain'] = domain_of_review(changes[plural][item['name'].casefold()])
+                for key, item in roots[plural].items():
+                    if key not in names:
+                        catalog[plural].append({'name': item['name'], 'domain': domain_of_review(item['domain']), 'keywords': []})
+                        names.add(key)
+            normalized = nq_catalog.normalize_root_catalog(catalog)
+            _write_root_catalog(connection, normalized)
+            _refresh_root_domains(connection, normalized)
+
+
+def _write_analyses(task_repository: Any, plans: list[dict[str, Any]], username: str, labels: dict[tuple[str, str], str], *,
+                    overwrite: bool, dry_run: bool) -> dict[str, Any]:
+    """Write (or count) what each call gets: its follow-up and fields (only the empty ones without ``overwrite``: the
+    values a call keeps go to the note), the texts added to its fields, its comments and its import note; the statuses
+    follow the Status Rules afterwards. ``applied`` holds every value written (kind, ref, lowercase value)."""
+    taxonomy = list_root_causes(task_repository)
+    default = untracked_status(task_repository)
+    now = now_iso()
+    changed = pending = added_comments = notes = dated = estimated = 0
+    touched: dict[str, str] = {}
+    applied: set[tuple[str, str, str]] = set()
+    with task_repository.connection() as connection:
+        keys = [plan['call_key'] for plan in plans]
+        tracking = {str(row['call_key']): dict(row) for row in _rows_of_calls(
+            connection, f'SELECT * FROM {NQ_CALL_TRACKING_TABLE}', keys)} if keys else {}
+        values = field_values(connection, keys) if keys else {}
+        comment_rows: dict[str, list[Any]] = {}
+        for row in (_rows_of_calls(connection, f'SELECT id, call_key, body, created_by, created_at, deleted_at FROM {NQ_CALL_COMMENTS_TABLE}',
+                                   keys, order='created_at, id') if keys else []):
+            comment_rows.setdefault(str(row['call_key']), []).append(row)
+        for plan in plans:
+            call_key = plan['call_key']
+            current = tracking.get(call_key) or {'status': default, 'status_mode': 'auto', 'team': '', 'assignee': '',
+                                                  'root_domain': '', 'root_category': '', 'root_cause': '', 'version': 0}
+            stored = values.get(call_key, {})
+            existing = {str(row['body']).strip() for row in comment_rows.get(call_key, []) if not row['deleted_at']} \
+                | {_comment_log(comment_rows.get(call_key, []))}
+            follow_up = {ref: value for (kind, ref), value in plan['changes'].items() if kind == 'tracking'
+                         and (overwrite or not str(current.get(ref) or '') or (ref == 'status' and current.get('status_mode') != 'manual'))
+                         and str(current.get(ref) or '') != value}
+            fields = {ref: value for (kind, ref), value in plan['changes'].items() if kind == 'field'
+                      and (overwrite or not stored.get(ref)) and stored.get(ref, '') != value}
+            # A root cause without root category brings the category it is mapped to, as when it is chosen in the call.
+            if follow_up.get('root_cause') and not follow_up.get('root_category') and not str(current.get('root_category') or ''):
+                mapped = root_category_of(taxonomy, follow_up['root_cause'])
+                if mapped:
+                    follow_up['root_category'] = mapped
+            # A value the call keeps (it has another one) stays in the note as the file writes it; a text the import
+            # added a column to (Findings Comments after the Findings) is the same value.
+            lines = list(plan['lines'])
+            for (kind, ref), value in plan['changes'].items():
+                had = str(current.get(ref) or '') if kind == 'tracking' else stored.get(ref, '')
+                same = had.casefold() == value.casefold() or had.startswith(f'{value}\n\n[')
+                if ref not in (follow_up if kind == 'tracking' else fields) and not same:
+                    lines.append(f"{labels.get((kind, ref), ref)} (the call keeps {had}): {plan['written'][(kind, ref)]}")
+            applied.update(('tracking', ref, value.casefold()) for ref, value in follow_up.items())
+            applied.update(('field', ref, value.casefold()) for ref, value in fields.items())
+            for ref, column, text in plan['appends']:
+                base = fields.get(ref, stored.get(ref, ''))
+                addition = f'[{column}] {text}'
+                if addition not in base:
+                    fields[ref] = f'{base}\n\n{addition}'.strip()[:nq_catalog.MAX_LONG_TEXT]
+            comments = [body[:MAX_COMMENT_LENGTH] for body in dict.fromkeys(plan['comments']) if body[:MAX_COMMENT_LENGTH] not in existing]
+            note = _analyses_note(plan['source'], lines)
+            note = note if note not in existing else ''
+            if not follow_up and not fields and not comments and not note:
+                continue
+            changed += bool((follow_up or fields) and plan['found'])
+            pending += not plan['found']
+            added_comments += len(comments)
+            notes += bool(note)
+            dated += bool(plan['when']) and not plan['estimated']
+            estimated += plan['estimated']
+            if dry_run:
+                continue
+            # The changes of the call take the date the analysts last changed its analysis (else the date of the call a
+            # week later, else the time of the import); its last modification does not go back before a later change.
+            when = plan['when'] or now
+            last = max(str(current.get('updated_at') or ''), when)
+            row = {**current, **follow_up}
+            if 'status' in follow_up:
+                row['status_mode'] = 'manual'
+            row['root_domain'] = domain_of(taxonomy, str(row['root_category']), str(row['root_cause'])) or str(row['root_domain'] or '')
+            # As a change made in the call, a change of its fields is its last modification too.
+            if follow_up or fields:
+                connection.execute(
+                    f'INSERT INTO {NQ_CALL_TRACKING_TABLE} (call_key, status, team, assignee, root_domain, root_category, root_cause, '
+                    'status_mode, version, updated_by, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?) ON CONFLICT(call_key) DO UPDATE SET '
+                    'status = excluded.status, team = excluded.team, assignee = excluded.assignee, root_domain = excluded.root_domain, '
+                    'root_category = excluded.root_category, root_cause = excluded.root_cause, status_mode = excluded.status_mode, '
+                    'version = version + 1, updated_by = excluded.updated_by, updated_at = excluded.updated_at',
+                    (call_key, row['status'], row['team'], row['assignee'], row['root_domain'], row['root_category'], row['root_cause'],
+                     row['status_mode'], username, last))
+                for ref, value in follow_up.items():
+                    _record_history(connection, call_key, ref, str(current.get(ref) or ''), value, username, when)
+            for ref, value in fields.items():
+                connection.execute(
+                    f'INSERT INTO {NQ_FIELD_VALUES_TABLE} (call_key, field_key, value, updated_by, updated_at) VALUES (?, ?, ?, ?, ?) '
+                    'ON CONFLICT(call_key, field_key) DO UPDATE SET value = excluded.value, updated_by = excluded.updated_by, '
+                    'updated_at = excluded.updated_at', (call_key, ref, value, username, when))
+                _record_history(connection, call_key, f'field:{ref}', stored.get(ref, ''), value, username, when)
+            for body in [*comments, *([note] if note else [])]:
+                connection.execute(
+                    f'INSERT INTO {NQ_CALL_COMMENTS_TABLE} (uid, call_key, body, created_by, created_at) VALUES (?, ?, ?, ?, ?)',
+                    (uuid.uuid4().hex, call_key, body, username, when))
+            touched[call_key] = when
+    if touched:
+        recompute_statuses(task_repository, username, list(touched), when_of=touched)
+    return {'changed': changed, 'pending': pending, 'comments': added_comments, 'notes': notes, 'dated': dated,
+            'estimated': estimated, 'failures': [], 'applied': applied}
+
+
+EQUIVALENCES_SHEET = 'Equivalences'
+EQUIVALENCES_COLUMNS = ('Field', 'Value in the file', 'Rows', 'Maps to', 'Domain', 'How', 'Target')
+
+
+def analyses_equivalences_workbook(task_repository: Any, content: bytes | None, file_name: str, users: set[str]) -> bytes:
+    """The values of the follow-up and list fields an analyses file brings, each with what it becomes (an equivalence
+    of the tool or of the workspace, the same value, a value the catalog writes another way, a suggestion or a new
+    value) for the users to review: change Maps to (and the Domain of a root category or cause) and upload the workbook
+    back. Without a file, the equivalences the import uses: the rules of the tool and those the workspace reviewed."""
+    definitions = list_fields(task_repository)
+    translator = _AnalysesTranslator(task_repository, users)
+    if content is None:
+        rows = _rule_equivalence_rows(task_repository, translator, definitions)
+    else:
+        rows = _file_equivalence_rows(task_repository, content, file_name, translator, definitions)
+    return _equivalences_workbook(task_repository, rows, translator, definitions, users)
+
+
+def _equivalence_origin(task_repository: Any, target: str, value: str) -> str:
+    """Where the equivalence of a value comes from: the workspace (its review) or the rules of the tool."""
+    if value.casefold() in workspace_equivalences(task_repository).get(target, {}):
+        return 'Reviewed in this workspace'
+    return 'Rule of the tool'
+
+
+def _rule_equivalence_rows(task_repository: Any, translator: _AnalysesTranslator,
+                           definitions: list[dict[str, Any]]) -> list[tuple[Any, ...]]:
+    """One row per equivalence the import uses, in the order of the catalog."""
+    reviewed = workspace_equivalences(task_repository)
+    rows = []
+    for target, values in translator.equivalences.items():
+        kind, ref = target.split(':', 1)
+        for key, item in values.items():
+            how = 'Reviewed in this workspace' if key in reviewed.get(target, {}) else 'Rule of the tool'
+            rows.append((translator.label((kind, ref)), item['value'], None, item['to'], item['domain'], how, target))
+    return _sorted_equivalence_rows(rows, definitions)
+
+
+def _sorted_equivalence_rows(rows: list[tuple[Any, ...]], definitions: list[dict[str, Any]]) -> list[tuple[Any, ...]]:
+    """The follow-up first, then the fields in the order of the catalog; the values most rows use first."""
+    position = {f'tracking:{ref}': index for index, ref in enumerate(ANALYSES_TRACKING)}
+    position.update({f"field:{field['key']}": len(ANALYSES_TRACKING) + index for index, field in enumerate(definitions)})
+    return sorted(rows, key=lambda row: (position.get(row[6], len(position)), -(row[2] or 0), str(row[1]).casefold()))
+
+
+def _file_equivalence_rows(task_repository: Any, content: bytes, file_name: str, translator: _AnalysesTranslator,
+                           definitions: list[dict[str, Any]]) -> list[tuple[Any, ...]]:
+    """One row per value of the follow-up and list columns of an analyses file, with what it becomes and why."""
+    parsed = read_analyses(content, file_name, definitions)
+    translator.names = nq_analyses.canonical_names([value for entry in parsed['entries'] for (kind, ref), value in entry['values'].items()
+                                                   if (kind, ref) in {('field', 'analyst'), ('field', 'reviewer')}])
+    reviewable = {('tracking', ref) for ref in ANALYSES_TRACKING} | {
+        ('field', field['key']) for field in definitions if field['source'] == 'user' and field['type'] in {'list', 'yes_no'}}
+    counts: Counter = Counter()
+    categories_of: dict[str, Counter] = {}
+    for entry in parsed['entries']:
+        for target, value in entry['values'].items():
+            if target in reviewable and not translator.blank(target, value):
+                counts[(target, value.strip())] += 1
+        cause = entry['values'].get(('tracking', 'root_cause'), '').strip()
+        category = entry['values'].get(('tracking', 'root_category'), '').strip()
+        if cause and category:
+            categories_of.setdefault(cause.casefold(), Counter())[category] += 1
+    taxonomy = translator.taxonomy
+    rule_match = (taxonomy.get('rule') or DEFAULT_ROOT_CAUSE_RULE).get('match', 'words')
+    category_domains = {item['name'].casefold(): item['domain'] for item in taxonomy['categories']}
+    results = {key: translator.translate(key[0], key[1], 'A->B') for key in counts}
+    # A new value takes the spelling most rows use (Not Planned and Not planned are one value).
+    spellings: dict[tuple[str, str, str], Counter] = {}
+    for (target, value), result in results.items():
+        if result:
+            spellings.setdefault((result[0], result[1], nq_analyses.identity(result[2])), Counter())[result[2]] += counts[(target, value)]
+    rows = []
+    for (target, value), count in counts.items():
+        stored = translator.equivalences.get(f'{target[0]}:{target[1]}', {}).get(value.casefold())
+        result = results[(target, value)]
+        maps_to, domain = (result[2] if result else ''), ''
+        new = result is not None and (target == ('tracking', 'team') and maps_to in translator.added_teams_names()
+                                      or target[0] == 'field' and maps_to in translator.added_option_names(target[1]))
+        if new:
+            maps_to = spellings[(result[0], result[1], nq_analyses.identity(maps_to))].most_common(1)[0][0]
+        if stored is not None:
+            how, maps_to, domain = _equivalence_origin(task_repository, f'{target[0]}:{target[1]}', value), stored['to'], stored['domain']
+        elif target == ('field', 'failed_party') and nq_analyses.failed_party(value, 'A->B'):
+            how = 'By the direction of the call (UE_A or UE_B)'
+        elif result is not None and len([line for line in value.splitlines() if line.strip()]) > 1 and maps_to != value:
+            how = 'Several values: the field takes the first one (the note keeps the cell)'
+        elif result is None and target in {('tracking', 'root_category'), ('tracking', 'root_cause')}:
+            # A root category or cause the catalog lacks: the one its words suggest, else a new one in a domain to choose.
+            suggestion = nq_rca.map_to_catalog(value, '', taxonomy, rule_match) if target[1] == 'root_category' \
+                else nq_rca.map_to_catalog('', value, taxonomy, rule_match)
+            suggested = suggestion['category'] if target[1] == 'root_category' else suggestion['cause']
+            if suggested:
+                how, maps_to = 'Suggested: check it', suggested
+            else:
+                how, maps_to = 'New value: choose its Domain (empty: the keywords give it)', value
+                if target[1] == 'root_cause':
+                    category = (categories_of.get(value.casefold()) or Counter()).most_common(1)
+                    domain = category_domains.get(category[0][0].casefold(), '') if category else ''
+        elif result is None:
+            how = 'Not a value of the field: kept in the import note'
+        elif new:
+            how = 'New value'
+        elif maps_to.casefold() == value.casefold():
+            how = 'Same value'
+        else:
+            how = 'Value of the catalog'
+        rows.append((translator.label(target), value, count, maps_to, domain, how, f'{target[0]}:{target[1]}'))
+    return _sorted_equivalence_rows(rows, definitions)
+
+
+def _catalog_domains(taxonomy: dict[str, Any]) -> dict[str, dict[str, str]]:
+    """The domain each root category and cause of the catalog has, by target and lowercase name."""
+    return {'tracking:root_category': {item['name'].casefold(): item['domain'] for item in taxonomy['categories']},
+            'tracking:root_cause': {item['name'].casefold(): item['domain'] for item in taxonomy['causes']}}
+
+
+def _equivalences_workbook(task_repository: Any, rows: list[tuple[Any, ...]], translator: _AnalysesTranslator,
+                           definitions: list[dict[str, Any]], users: set[str]) -> bytes:
+    """The Equivalences sheet, with lists of the values each Maps to and Domain cell takes (those of the catalog and
+    those the equivalences add; a new name can be typed too), and how to review it."""
+    from openpyxl import Workbook
+    from openpyxl.formatting.rule import FormulaRule
+    from openpyxl.styles import Font, PatternFill
+    from openpyxl.utils import get_column_letter
+    from openpyxl.workbook.defined_name import DefinedName
+    from openpyxl.worksheet.datavalidation import DataValidation
+
+    taxonomy = translator.taxonomy
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = EQUIVALENCES_SHEET
+    sheet.append(EQUIVALENCES_COLUMNS)
+    # The domain the catalog gives each root category and cause, for the Domain cells to look up.
+    catalog = workbook.create_sheet('Catalog')
+    catalog.sheet_state = 'hidden'
+    catalog.append(['Root Category', 'Domain', None, 'Root Cause', 'Domain'])
+    categories = [(item['name'], item['domain']) for item in taxonomy['categories']]
+    causes = [(item['name'], item['domain']) for item in taxonomy['causes']]
+    for index in range(max(len(categories), len(causes))):
+        catalog.append([*(categories[index] if index < len(categories) else (None, None)), None,
+                        *(causes[index] if index < len(causes) else (None, None))])
+    workbook.defined_names['CategoryDomains'] = DefinedName('CategoryDomains', attr_text='Catalog!$A:$B')
+    workbook.defined_names['CauseDomains'] = DefinedName('CauseDomains', attr_text='Catalog!$D:$E')
+
+    def catalog_domain(row: int, target: str) -> str:
+        table = 'CategoryDomains' if target == 'tracking:root_category' else 'CauseDomains'
+        return f'IFERROR(VLOOKUP($D{row},{table},2,FALSE),"")'
+
+    # A root category or cause without a domain of its own shows the domain the catalog gives the value of Maps to (it
+    # follows Maps to); choosing a domain in the list replaces it.
+    for index, row in enumerate(rows, start=2):
+        domain = row[4]
+        if not domain and row[6] in {'tracking:root_category', 'tracking:root_cause'}:
+            domain = f'={catalog_domain(index, row[6])}'
+        sheet.append((*row[:4], domain, *row[5:]))
+    header = PatternFill('solid', fgColor='B0234F')
+    for cell in sheet[1]:
+        cell.font = Font(bold=True, color='FFFFFF')
+        cell.fill = header
+    editable = PatternFill('solid', fgColor='FFF4D6')
+    for row in sheet.iter_rows(min_row=2, min_col=4, max_col=5):
+        for cell in row:
+            cell.fill = editable
+    # In grey while it is the domain of the catalog (nothing changes), in black when another one is chosen.
+    if rows:
+        lookup = (f'IF($G2="tracking:root_category",{catalog_domain(2, "tracking:root_category")},'
+                  f'{catalog_domain(2, "tracking:root_cause")})')
+        sheet.conditional_formatting.add(f'E2:E{len(rows) + 1}', FormulaRule(
+            formula=[f'AND($E2<>"",OR($G2="tracking:root_category",$G2="tracking:root_cause"),$E2={lookup})'],
+            font=Font(italic=True, color='7B8790')))
+    for letter, width in zip('ABCDEFG', (28, 48, 8, 48, 26, 44, 30)):
+        sheet.column_dimensions[letter].width = width
+    sheet.column_dimensions['G'].hidden = True
+    sheet.freeze_panes = 'C2'
+    sheet.auto_filter.ref = sheet.dimensions
+    # The values each target takes: those of the catalog, then the new ones the equivalences name.
+    choices: dict[str, list[str]] = {
+        'tracking:status': list(translator.statuses), 'tracking:team': list(translator.teams), 'tracking:assignee': sorted(users, key=str.casefold),
+        'tracking:root_category': [item['name'] for item in taxonomy['categories']],
+        'tracking:root_cause': [item['name'] for item in taxonomy['causes']]}
+    for field in definitions:
+        if field['source'] == 'user' and field['type'] in {'list', 'yes_no'}:
+            choices[f"field:{field['key']}"] = [option['name'] for option in field['options']] if field['type'] == 'list' else list(YES_NO)
+    domains = [item['name'] for item in taxonomy['domains']]
+    for values in translator.equivalences.values():
+        for item in values.values():
+            if item['domain'] and item['domain'].casefold() not in {name.casefold() for name in domains}:
+                domains.append(item['domain'])
+    for row in rows:
+        names = choices.setdefault(row[6], [])
+        if row[3] and str(row[3]).casefold() not in {name.casefold() for name in names}:
+            names.append(str(row[3]))
+    lists = workbook.create_sheet('Lists')
+    lists.sheet_state = 'hidden'
+    columns = {'domain': (1, domains)}
+    for index, target in enumerate(sorted({row[6] for row in rows}), start=2):
+        columns[target] = (index, choices.get(target) or [])
+    for target, (column, names) in columns.items():
+        lists.cell(1, column, 'Domain' if target == 'domain' else translator.label(tuple(target.split(':', 1))))
+        for offset, name in enumerate(names, start=2):
+            lists.cell(offset, column, name)
+    for target, (column, names) in columns.items():
+        cells = [f'{"E" if target == "domain" else "D"}{index}' for index, row in enumerate(rows, start=2)
+                 if (row[6] in {'tracking:root_category', 'tracking:root_cause'} if target == 'domain' else row[6] == target)]
+        if not names or not cells:
+            continue
+        letter = get_column_letter(column)
+        validation = DataValidation(type='list', formula1=f'=Lists!${letter}$2:${letter}${len(names) + 1}', allow_blank=True,
+                                    showErrorMessage=False)
+        sheet.add_data_validation(validation)
+        for cell in cells:
+            validation.add(cell)
+    notes = workbook.create_sheet('How to review')
+    for line in (
+        'Each row is a value of the analysis workbooks in a follow-up or list field: Maps to is what the calls get.',
+        'Rule of the tool: the import uses it in every workspace; Reviewed in this workspace: uploaded here, it comes before the rules.',
+        'Maps to and Domain list the values of the catalog and those the equivalences add: choose one, or type a new name '
+        '(list values and teams are added to the catalog).',
+        'Domain: the domain the Root Category or Root Cause takes in the catalog (an existing one or a new name, which becomes a domain). '
+        'In grey, the one the catalog gives the value of Maps to (it follows Maps to): left so, or empty, the catalog keeps it; '
+        'another one turns black and changes it. Empty for a new value, it takes the domain of its keywords.',
+        'Leave Maps to empty to leave a value out of its field: it stays in the import note of the call.',
+        'Upload the workbook in Previous NQ Analyses: the rows that differ from the rules of the tool are kept in the workspace '
+        'for its next imports.',
+    ):
+        notes.append([line])
+    notes.column_dimensions['A'].width = 110
+    output = BytesIO()
+    workbook.save(output)
+    return output.getvalue()
+
+
+def save_analyses_equivalences(task_repository: Any, content: bytes, users: set[str]) -> dict[str, Any]:
+    """Keep the equivalences of a reviewed workbook in the workspace: the values whose Maps to (or Domain) the review
+    changed from what the import does with the rules of the tool replace those of the same values; a value left as the
+    rules take it forgets the equivalence of the workspace."""
+    from openpyxl import load_workbook
+
+    workbook = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
+    if EQUIVALENCES_SHEET not in workbook.sheetnames:
+        raise ValueError('The workbook has no Equivalences sheet: download it from Previous NQ Analyses first.')
+    rows = [[nq_analyses.cell_text(value) for value in row] for row in workbook[EQUIVALENCES_SHEET].iter_rows(values_only=True)]
+    if not rows:
+        raise ValueError('The Equivalences sheet is empty.')
+    header = {name: index for index, name in enumerate(rows[0])}
+    missing = [name for name in ('Value in the file', 'Maps to', 'Domain', 'Target') if name not in header]
+    if missing:
+        raise ValueError(f'The Equivalences sheet lacks its {", ".join(missing)} column.')
+    equivalences = workspace_equivalences(task_repository)
+    rules = builtin_equivalences()
+    # What the import does with each value with the rules of the tool alone (MOC and MTC as for an A->B call, as the
+    # workbook shows them): a row the review left so needs no equivalence of the workspace.
+    translator = _AnalysesTranslator(task_repository, users)
+    translator.equivalences = rules
+    current = _catalog_domains(translator.taxonomy)
+    saved = 0
+    for row in rows[1:]:
+        def cell(name: str) -> str:
+            index = header[name]
+            return row[index].strip() if index < len(row) else ''
+
+        target, value = cell('Target'), cell('Value in the file')
+        if not value or not re.fullmatch(r'(tracking|field):[a-z0-9_]+', target):
+            continue
+        kind, ref = target.split(':', 1)
+        default = translator.translate((kind, ref), value, 'A->B')
+        # A Domain other than that of the rule (or, without one, than that of the catalog) is kept: it becomes the domain
+        # of the root category or cause in the catalog.
+        rule = rules.get(target, {}).get(value.casefold())
+        if rule is not None and rule['domain']:
+            same_domain = cell('Domain').casefold() == rule['domain'].casefold()
+        else:
+            same_domain = cell('Domain').casefold() in {'', current.get(target, {}).get(cell('Maps to').casefold(), '').casefold()}
+        if cell('Maps to').casefold() == (default[2] if default else '').casefold() and same_domain:
+            equivalences.get(target, {}).pop(value.casefold(), None)
+            continue
+        equivalences.setdefault(target, {})[value.casefold()] = {'value': value, 'to': cell('Maps to'), 'domain': cell('Domain')}
+        saved += 1
+    _save_equivalences(task_repository, equivalences)
+    return {'saved': saved, 'total': sum(len(values) for values in workspace_equivalences(task_repository).values())}
 
 
 def analyses_template(task_repository: Any) -> bytes:
@@ -4386,6 +5430,7 @@ def _configuration(task_repository: Any) -> dict[str, Any]:
         'options': list_options(task_repository), 'root_causes': list_root_causes(task_repository),
         'fields': list_fields(task_repository), 'sections': list_sections(task_repository),
         'status_rules': status_rules(task_repository), 'table_columns': table_columns(task_repository),
+        'analyses_equivalences': workspace_equivalences(task_repository),
     }
 
 
@@ -4420,7 +5465,9 @@ def _incoming_root_catalog(document: dict[str, Any]) -> dict[str, list[dict[str,
                 catalog['causes'].append({'name': cause['name'], 'domain': domain['name'], 'keywords': cause.get('keywords') or []})
     for plural in ('categories', 'causes'):
         catalog[plural] += [item for item in root.get(plural) or [] if isinstance(item, dict) and item.get('name')]
-    return catalog
+    # The domains chosen by hand travel, not those the categories or keywords give.
+    stored = nq_catalog.stored_root_catalog(catalog)
+    return {'domains': catalog['domains'], 'categories': stored['categories'], 'causes': stored['causes']}
 
 
 def _merge_configuration(task_repository: Any, document: dict[str, Any]) -> None:
@@ -4452,6 +5499,14 @@ def _merge_configuration(task_repository: Any, document: dict[str, Any]) -> None
             _store_fields(task_repository, nq_catalog.normalize_fields(merged, by_key, CATALOG_CALL_FIELDS))
     if isinstance(document.get('sections'), list):
         task_repository.set_workspace_state(SECTIONS_STATE_KEY, json.dumps(nq_catalog.normalize_sections(document['sections'])))
+    # The reviewed equivalences of the analyses imports: those of values the workspace has not reviewed itself.
+    incoming = _normalize_equivalences(document.get('analyses_equivalences'))
+    if incoming:
+        equivalences = workspace_equivalences(task_repository)
+        for target, values in incoming.items():
+            for key, item in values.items():
+                equivalences.setdefault(target, {}).setdefault(key, item)
+        _save_equivalences(task_repository, equivalences)
     columns = document.get('table_columns')
     if isinstance(columns, dict) and not task_repository.get_workspace_state(TABLE_COLUMNS_STATE_KEY):
         try:
@@ -4475,7 +5530,7 @@ def _merge_configuration(task_repository: Any, document: dict[str, Any]) -> None
                 )
         incoming = _incoming_root_catalog(document)
         if any(incoming.values()):
-            current = _read_root_catalog(connection)
+            current = nq_catalog.stored_root_catalog(_read_root_catalog(connection))
             for plural in ('domains', 'categories', 'causes'):
                 names = {item['name'].casefold() for item in current[plural]}
                 current[plural] += [item for item in incoming[plural] if str(item['name']).casefold() not in names]
@@ -4677,6 +5732,9 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         categories: list[dict[str, Any]] = Field(default_factory=list)
         causes: list[dict[str, Any]] = Field(default_factory=list)
         require_to_close: bool = False
+
+    class ApplyCategoriesPayload(BaseModel):
+        preview: bool = False
 
     class SectionsPayload(BaseModel):
         sections: list[dict[str, Any]] = Field(default_factory=list)
@@ -5021,6 +6079,39 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         except Exception as exc:  # noqa: BLE001 - an unreadable file is a user error.
             raise HTTPException(400, f'The analyses file could not be read: {exc}') from exc
 
+    @core.app.post('/api/non-qualified-calls/analyses/equivalences')
+    async def nq_analyses_equivalences_download(request: Request, user=Depends(analyses_user)) -> Response:
+        """The values of an analyses file with what each one becomes, to review before importing it."""
+        repository = workspace_repository(user)
+        content, name, _form = await uploaded_file(request, 'file', 100)
+        try:
+            workbook = analyses_equivalences_workbook(repository, content, name, set(workspace_users()))
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        except Exception as exc:  # noqa: BLE001 - an unreadable file is a user error.
+            raise HTTPException(400, f'The analyses file could not be read: {exc}') from exc
+        return Response(workbook, media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                        headers={'Content-Disposition': 'attachment; filename="NQ_analyses_equivalences.xlsx"'})
+
+    @core.app.get('/api/non-qualified-calls/analyses/equivalences')
+    def nq_analyses_rules_download(user=Depends(analyses_user)) -> Response:
+        """The equivalences the import uses (the rules of the tool and those of the workspace), to review and upload back."""
+        workbook = analyses_equivalences_workbook(workspace_repository(user), None, '', set(workspace_users()))
+        return Response(workbook, media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                        headers={'Content-Disposition': 'attachment; filename="NQ_analyses_equivalences.xlsx"'})
+
+    @core.app.put('/api/non-qualified-calls/analyses/equivalences')
+    async def nq_analyses_equivalences_upload(request: Request, user=Depends(analyses_user)) -> JSONResponse:
+        """Keep the equivalences of a reviewed workbook for the imports of the workspace."""
+        repository = workspace_repository(user)
+        content, _name, _form = await uploaded_file(request, 'file', 20)
+        try:
+            return JSONResponse(save_analyses_equivalences(repository, content, set(workspace_users())))
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        except Exception as exc:  # noqa: BLE001 - an unreadable file is a user error.
+            raise HTTPException(400, f'The equivalences workbook could not be read: {exc}') from exc
+
     @core.app.delete('/api/non-qualified-calls/rca')
     def nq_rca_clear(user=Depends(editor_user)) -> JSONResponse:
         repository = workspace_repository(user)
@@ -5133,6 +6224,12 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         repository = workspace_repository(user)
         catalog = {'domains': payload.domains, 'categories': payload.categories, 'causes': payload.causes}
         return JSONResponse(translate(lambda: save_root_causes(repository, catalog, payload.require_to_close, user.username)))
+
+    @core.app.post('/api/non-qualified-calls/root-causes/apply-categories')
+    def nq_apply_cause_categories(payload: ApplyCategoriesPayload, user=Depends(editor_user)) -> JSONResponse:
+        """Give the calls with a root cause and no root category the category of their cause (``preview`` counts them)."""
+        repository = workspace_repository(user)
+        return JSONResponse({'calls': apply_cause_categories(repository, user.username, dry_run=payload.preview)})
 
     @core.app.put('/api/non-qualified-calls/root-causes/rule')
     def nq_save_root_cause_rule(payload: RootCauseRulePayload, user=Depends(rule_user)) -> JSONResponse:

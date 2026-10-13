@@ -307,7 +307,7 @@
 {% if nq_can_edit %}
 <dialog class="nq-options-dialog" id="nq-options-dialog" aria-labelledby="nq-options-title">
   <form method="dialog" class="nq-options-form" id="nq-options-form">
-    <header><h2 id="nq-options-title">Statuses &amp; Teams</h2><p class="form-note">Shared by every user of this workspace. The NQ Call Status of each call follows the Status Rules (the first status when no rule applies) unless it is set by hand; statuses marked Closed count as closed in the summary. Renaming a value updates every call and the Status Rules; a value in use cannot be removed.</p></header>
+    <header><h2 id="nq-options-title">Statuses &amp; Teams</h2><p class="form-note">Shared by every user of this workspace. The NQ Call Status of each call follows the Status Rules (the first status when no rule applies) unless it is set by hand; statuses marked Closed count as closed in the summary. Renaming a value updates every call and the Status Rules; a value in use cannot be removed, but a team can be merged into another one (⤳): its calls and members move there.</p></header>
     <div class="nq-options-columns">
       <section><h3>Statuses</h3><ul class="nq-option-list" data-nq-options="statuses"></ul><div class="nq-option-actions"><button type="button" class="nq-secondary-action" data-nq-option-add="statuses">Add Status</button><button type="button" class="nq-secondary-action" data-nq-option-defaults="statuses" title="Leave only the default statuses, in their order and colours; Save applies it">Default Statuses</button></div></section>
       <section><h3>Teams</h3><ul class="nq-option-list" data-nq-options="teams"></ul><div class="nq-option-actions"><button type="button" class="nq-secondary-action" data-nq-option-add="teams">Add Team</button><button type="button" class="nq-secondary-action" data-nq-option-defaults="teams" title="Leave only the default teams, in their order and colours; Save applies it">Default Teams</button></div></section>
@@ -326,17 +326,19 @@
 </dialog>
 <dialog class="nq-options-dialog nq-root-dialog" id="nq-root-dialog" aria-labelledby="nq-root-title">
   <form method="dialog" class="nq-options-form" id="nq-root-form">
-    <header><h2 id="nq-root-title">Root Cause Catalog</h2><p class="form-note">Shared by every user of this workspace. Each call gets a Root Category and a Root Cause, chosen independently; the technical Domain of each one gives its colour, groups the lists (the causes of the domain of the chosen category come first) and the domain of the call. The keywords map the NetCheck and Ericsson RCA values and the comments onto the catalog. Renaming a value updates every call; a value in use cannot be removed.</p>
+    <header><h2 id="nq-root-title">Root Cause Catalog</h2><p class="form-note">Shared by every user of this workspace. Each call gets a Root Category and a Root Cause; a cause can be mapped to its root category, which a call without root category takes when the cause is chosen. The technical Domain of each one (chosen by hand, or Auto: for a cause that of its root category, else the domain whose keywords appear in its name or keywords) gives its colour, groups the lists (the causes of the chosen category, then those of its domain, come first) and the domain of the call. The keywords map the NetCheck and Ericsson RCA values and the comments onto the catalog. Renaming a value updates every call; a value in use cannot be removed.</p>
       <div class="nq-rule-summary"><p class="form-note" id="nq-root-rule-text"></p><button type="button" class="nq-secondary-action" id="nq-rule-open" data-nq-rule-open title="See how root causes are suggested; admins and super-admins change it">Suggestion Rule</button></div></header>
     <div class="nq-catalog-tabs" role="tablist" aria-label="Root cause catalog">
       <button type="button" role="tab" class="is-active" data-nq-catalog-tab="categories" aria-selected="true">Root Categories <small></small></button>
       <button type="button" role="tab" data-nq-catalog-tab="causes" aria-selected="false">Root Causes <small></small></button>
       <button type="button" role="tab" data-nq-catalog-tab="domains" aria-selected="false">Domains <small></small></button>
+      <button type="button" role="tab" data-nq-catalog-tab="mapping" aria-selected="false" title="Every root cause with its root category and domain, and every root category with its domain, in one table">Mapping <small></small></button>
       <input type="search" id="nq-root-search" placeholder="Filter values…" aria-label="Filter the values of the catalog">
     </div>
     <ul class="nq-root-domains nq-catalog-list" id="nq-root-domains" data-nq-catalog-list="domains" hidden></ul>
     <ul class="nq-root-domains nq-catalog-list" id="nq-root-categories" data-nq-catalog-list="categories"></ul>
     <ul class="nq-root-domains nq-catalog-list" id="nq-root-causes" data-nq-catalog-list="causes" hidden></ul>
+    <div class="nq-root-mapping nq-catalog-list" id="nq-root-mapping" data-nq-catalog-list="mapping" hidden></div>
     <div class="nq-root-actions">
       <span><button type="button" class="nq-secondary-action" id="nq-root-add">Add Root Category</button>
       <button type="button" class="nq-secondary-action" id="nq-root-defaults" title="Add the default domains, root categories and root causes that are missing; existing values and keywords stay">Add missing defaults</button></span>
@@ -405,14 +407,20 @@
 <dialog class="nq-options-dialog nq-analyses-dialog" id="nq-analyses-dialog" aria-labelledby="nq-analyses-title">
   <form class="nq-options-form nq-analyses-import-form" data-nq-analyses-form>
     <header><h2 id="nq-analyses-title">Previous NQ Analyses</h2>
-      <p class="form-note">Bring the analyses made with the previous tool into the calls of this workspace: one row per call with its <code>JOIN_ID</code> and the fields named as in the Analysis Center (or the Excel export of Non-Qualified Calls). Preview the file, then import it.</p>
+      <p class="form-note">Bring the analyses made with the previous tool into the calls of this workspace: every visible sheet with a <code>JOIN_ID</code> column (several JOIN_IDs in a cell share the analysis), its columns named as in the Analysis Center or as in the analysis workbooks of the previous tool (or the Excel export of Non-Qualified Calls). Columns without a field travel in an import note of each call, and calls not loaded yet keep their analysis for when their CDR is added. Preview the file, then import it: the equivalences of the workbooks of the previous tool are built in, and Equivalences below changes them for this workspace.</p>
       <div class="nq-fields-import"><a class="nq-secondary-action" href="/api/non-qualified-calls/analyses/template" download>Download Template</a>
         <label class="nq-secondary-action nq-file-action">Choose File<input type="file" name="file" accept=".csv,.txt,.xlsx,.xlsm" hidden data-nq-analyses-file></label>
         <span class="nq-muted" data-nq-analyses-name>No file chosen</span></div>
     </header>
+    <div class="nq-analyses-equivalences" data-nq-analyses-equivalences>
+      <p class="form-note">Equivalences: what each value of the analysis workbooks becomes. The tool has those of the workbooks of the previous tool; to change them for this workspace, download them (with a file chosen, every value of that file), review Maps to and the Domain (each cell lists the values it takes) and upload the workbook.</p>
+      <div class="nq-fields-import"><button type="button" class="nq-secondary-action" data-nq-analyses-equivalences-download title="The equivalences the import uses: the rules of the tool and those of this workspace">Download Equivalences</button>
+        <label class="nq-secondary-action nq-file-action">Upload Equivalences<input type="file" accept=".xlsx" hidden data-nq-analyses-equivalences-file></label>
+        <span class="nq-muted" data-nq-analyses-equivalences-status></span></div>
+    </div>
     <fieldset class="nq-analyses-mode">
       <legend>Values the calls already have</legend>
-      <label><input type="radio" name="overwrite" value="0" checked> Keep them: fill only the empty values</label>
+      <label><input type="radio" name="overwrite" value="0" checked> Keep them: fill only the empty values (the import note keeps the others)</label>
       <label><input type="radio" name="overwrite" value="1"> Replace them with the values of the file</label>
     </fieldset>
     <div class="nq-analyses-summary" data-nq-analyses-summary hidden></div>

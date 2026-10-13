@@ -251,7 +251,7 @@
 .nq-options-form { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; padding: 1.3rem; }
 .nq-options-form header h2 { margin: 0 0 .3rem; color: var(--nq-dark); }
 .nq-options-form header p { margin: 0; }
-.nq-options-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.2rem; }
+.nq-options-columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 1.2rem; }
 .nq-options-columns h3 { margin: 0 0 .5rem; color: var(--nq-dark); font-size: 1rem; }
 .nq-option-list { display: grid; gap: .45rem; margin: 0 0 .7rem; padding: 0; list-style: none; }
 .nq-option-row { display: flex; align-items: center; gap: .4rem; padding: .35rem .45rem; border: 1px solid var(--nq-border); border-radius: 10px; background: var(--nq-softer); }
@@ -265,6 +265,7 @@
 .nq-options-form footer { display: flex; justify-content: flex-end; gap: .6rem; }
 .nq-options-dialog .nq-members-action { flex: 0 0 auto; min-height: 1.9rem; padding: .2rem .6rem; border: 1px solid var(--nq-border); border-radius: 999px; background: #fff; color: var(--nq-dark); font-size: .76rem; font-weight: 800; white-space: nowrap; box-shadow: none; }
 .nq-options-dialog .nq-members-action:hover { background: var(--nq-soft); }
+.nq-options-dialog .nq-merge-select { flex: 0 0 9rem; min-width: 0; min-height: 1.9rem; padding: .2rem .4rem; font-size: .78rem; }
 .nq-members-dialog { width: min(440px, calc(100vw - 32px)); }
 .nq-members-tools { display: flex; gap: .5rem; }
 .nq-members-tools input { flex: 1 1 auto; min-width: 0; min-height: 2.2rem; padding: .3rem .6rem; }
@@ -740,6 +741,18 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 .nq-catalog-row[hidden] { display: none; }
 .nq-catalog-row .nq-root-name { flex: 1 1 12rem; font-weight: 800; }
 .nq-catalog-row .nq-domain-select { flex: 0 0 11rem; max-width: 11rem; }
+.nq-catalog-row .nq-category-select { flex: 0 0 12rem; max-width: 12rem; }
+/* Mapping: every root cause with its root category and domain, then every root category with its domain. */
+.nq-root-mapping { display: grid; gap: .8rem; max-height: min(60vh, 640px); overflow-y: auto; }
+.nq-root-mapping .form-note { margin: 0; }
+.nq-mapping-intro { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .6rem; }
+.nq-mapping-intro .form-note { flex: 1 1 24rem; }
+.nq-mapping-table { width: 100%; border-collapse: collapse; font-size: .84rem; }
+.nq-mapping-table th { position: sticky; top: 0; z-index: 1; padding: .4rem .5rem; background: var(--nq-soft); color: var(--nq-dark); font-weight: 800; text-align: left; }
+.nq-mapping-table td { padding: .25rem .5rem; border-top: 1px solid var(--nq-border); }
+.nq-mapping-table tr[hidden] { display: none; }
+.nq-mapping-table .nq-mapping-name { font-weight: 750; }
+.nq-options-dialog .nq-mapping-table .nq-pill-select { width: 100%; max-width: 16rem; }
 /* Fields & Sections. */
 .nq-sections-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); gap: .4rem; }
 .nq-catalog-preview { display: grid; gap: .5rem; margin-top: .6rem; padding: .7rem .9rem; border: 1px solid var(--nq-color); border-radius: 12px; background: var(--nq-soft); }
@@ -1008,6 +1021,8 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 .non-qualified-calls .nq-menu button[aria-disabled="true"]:hover { background: transparent; }
 @media (max-width: 640px) { .nq-import-wrap .nq-import-action { width: 100%; } }
 .nq-analyses-dialog { width: min(760px, calc(100vw - 2rem)); }
+.nq-analyses-equivalences { display: grid; gap: 0.4rem; padding: 0.7rem 0.9rem; border: 1px solid var(--nq-border); border-radius: 12px; }
+.nq-analyses-equivalences .form-note { margin: 0; }
 .nq-analyses-mode { display: grid; gap: 0.35rem; margin: 0; padding: 0.7rem 0.9rem; border: 1px solid var(--nq-border); border-radius: 12px; }
 .nq-analyses-mode legend { padding: 0 0.35rem; font-weight: 750; }
 .nq-analyses-mode label { display: flex; align-items: center; gap: 0.5rem; }

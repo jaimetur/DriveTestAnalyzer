@@ -11,7 +11,7 @@ from openpyxl import Workbook, load_workbook
 
 import src.DriveTestAnalyzer as core
 from src.modules import non_qualified_calls as nq
-from src.modules import nq_catalog, nq_rca
+from src.modules import nq_analyses_rules, nq_catalog, nq_rca
 from tests.test_non_qualified_calls import add_cdr, enable_module, login, query
 
 
@@ -59,9 +59,19 @@ def test_new_workspaces_get_the_catalog_of_the_meeting_workbook(client, tmp_path
     setup_calls(client, tmp_path)
     state = client.get('/api/non-qualified-calls/state').json()
     fields = state['fields']
-    # The 37 fields of the meeting workbook, with the Auto RCA fields and the Last Cell ID and Failure Comment of the CDR.
-    assert len(fields) == 42
-    assert [field['key'] for field in fields if field['section'] == 'failure_event'][-2:] == ['vendor_when_failure', 'failure_comment']
+    # The 37 fields of the meeting workbook, with the Auto RCA fields, the Last Cell ID and Failure Comment of the CDR and
+    # the fields of the analyses of the previous tool, each next to the field it goes with in the Excel export.
+    assert len(fields) == 53
+    keys = [field['key'] for field in fields]
+    for before, after in (('nq_call_status', 'priority'), ('assignee', 'analyst'), ('analyst', 'reviewer'),
+                          ('planned_date', 'planned_fy'), ('implementation_status', 'implementation_stream'),
+                          ('initial_root_category', 'initial_root_cause'),
+                          ('vendor_when_failure', 'vendor_2_when_failure'), ('reviewer', 'unique_id'),
+                          ('solution_location', 'polygon_area'), ('polygon_area', 'description')):
+        assert keys.index(after) == keys.index(before) + 1, (before, after)
+    assert keys.index('initial_root_cause') < keys.index('selected_root_category')
+    assert [field['key'] for field in fields if field['section'] == 'failure_event'][-3:] == [
+        'vendor_when_failure', 'vendor_2_when_failure', 'failure_comment']
     assert next(field for field in fields if field['key'] == 'last_cell_id')['source_ref'] == 'last_cell_id'
     assert [field['key'] for field in fields if field['section'] == 'analysis'][:3] == ['analysis_status', 'tunnel_failure', 'needed_technology']
     assert [section['label'] for section in state['sections']][2] == 'Failure Details'
@@ -327,7 +337,7 @@ def test_catalog_workbook_round_trip_and_the_meeting_layout(client, tmp_path):
     assert imported.status_code == 200, imported.text
     route = next(field for field in imported.json()['fields'] if field['label'] == 'Drive Route')
     assert [option['name'] for option in route['options']] == ['M25', 'A1'] and route['section'] == 'analysis' and route['in_table']
-    assert len(imported.json()['fields']) == 43
+    assert len(imported.json()['fields']) == 54
     # The workbook of the meeting: sections in the first row, fields in the second, values below.
     meeting = Workbook()
     sheet = meeting.active
@@ -408,7 +418,7 @@ def test_first_version_workspaces_move_to_the_analysis_center(client, tmp_path):
     assert [item['name'] for item in nq.list_options(repository)['statuses']][0] == 'Not Attended'
     # The workspace's field keeps its key and values and takes its place in the catalog.
     findings = next(field for field in nq.list_fields(repository) if field['label'] == 'Findings')
-    assert findings['key'] == 'findings' and findings['section'] == 'analysis' and len(nq.list_fields(repository)) == 42
+    assert findings['key'] == 'findings' and findings['section'] == 'analysis' and len(nq.list_fields(repository)) == 53
 
 
 def test_recommendation_engine_maps_each_source_onto_the_catalog():
@@ -522,6 +532,16 @@ def test_workspaces_before_the_auto_rca_fields_get_them_around_the_suggestion(cl
     keys = [field['key'] for field in nq.list_fields(repository)]
     assert keys[keys.index('auto_rca_subcategory_b') + 1:keys.index('rca_evidence') + 1] == [
         'rca_initial_category', 'rca_initial_subcategory', 'rca_suggested_category', 'rca_suggested_cause', 'rca_evidence']
+
+
+def test_workspaces_before_the_fields_of_the_previous_analyses_get_them_in_place(client, tmp_path):
+    setup_calls(client, tmp_path)
+    repository = core.repository
+    expected = [field['key'] for field in nq.list_fields(repository)]
+    nq._store_fields(repository, [field for field in nq.list_fields(repository) if field['key'] not in nq.ANALYSES_FIELD_KEYS])
+    repository.set_workspace_state(nq.ANALYSIS_CENTER_V6_STATE_KEY, '')
+    nq.ensure_nq_tables(repository)
+    assert [field['key'] for field in nq.list_fields(repository)] == expected
 
 
 def test_workspaces_before_the_ericsson_rca_name_get_netcheck_first(client, tmp_path):
@@ -646,23 +666,35 @@ def test_admins_import_the_analyses_of_the_previous_tool_by_join_id(client, tmp_
     send = lambda **form: client.post('/api/non-qualified-calls/analyses/import', data=form,
                                       files={'file': ('analyses.csv', io.BytesIO(csv), 'text/csv')})
     preview = send(preview='1').json()
-    assert (preview['calls'], preview['matched'], preview['unmatched_ids']) == (3, 2, ['0xZZ'])
-    assert preview['read_only'] == ['Netcheck Suggested Cause'] and preview['ignored'] == ['Old Column']
-    assert preview['invalid'] == [{'column': 'Analysis Status', 'value': 'Bogus', 'rows': 1}]
-    assert (preview['changed'], preview['comments'], preview['analysed']) == (2, 1, 1)
+    assert (preview['calls'], preview['matched'], preview['unmatched_ids'], preview['pending']) == (3, 2, ['0xZZ'], 1)
+    # The columns without a field go to the import note of each call: nothing of the file is left out.
+    assert preview['read_only'] == [] and preview['noted'] == ['Netcheck Suggested Cause', 'Old Column']
+    # Bogus would be a new Analysis Status, but 0xB2 keeps its own: the note keeps it and the catalog gets nothing.
+    assert preview['invalid'] == [] and preview['new_options'] == []
+    assert (preview['changed'], preview['comments'], preview['notes'], preview['analysed']) == (2, 1, 2, 1)
     assert query(client, filters={'fields': {'analysis_status': ['Finished']}})['total'] == 0
     # Only the empty values are filled: 0xB2 keeps its Analysis Status and gets its Findings.
     result = send().json()
-    assert (result['changed'], result['comments'], result['failures']) == (2, 1, [])
+    assert (result['changed'], result['pending'], result['comments'], result['notes'], result['failures']) == (2, 1, 1, 2, [])
     imported = {call['join_id']: call for call in query(client)['calls']}
     assert imported['0xA1']['values']['analysis_status'] == 'Finished' and imported['0xA1']['root_category'] == 'Poor Coverage LTE'
     assert imported['0xA1']['team'] == 'RAN Planning Coverage'
     assert imported['0xA1']['values']['findings'] == 'Hill behind the site\nNo dominant cell'
     assert imported['0xB2']['values']['analysis_status'] == 'Ongoing' and imported['0xB2']['values']['findings'] == 'Interference'
-    detail = client.get(f"/api/non-qualified-calls/calls/{calls['0xA1']['call_key']}").json()
-    assert [comment['body'] for comment in detail['comments']] == ['Reviewed in the old tool']
-    # Importing again changes nothing and never repeats a comment; replacing overwrites what the calls have.
-    assert (send().json()['changed'], send().json()['comments']) == (0, 0)
+    assert 'Bogus' not in [option['name'] for field in client.get('/api/non-qualified-calls/state').json()['fields']
+                           if field['key'] == 'analysis_status' for option in field['options']]
+    bodies = lambda call_key: sorted(comment['body'] for comment in
+                                     client.get(f'/api/non-qualified-calls/calls/{call_key}').json()['comments'])
+    assert bodies(calls['0xA1']['call_key']) == [
+        'Imported from analyses.csv · row 2\nNetcheck Suggested Cause: x\nOld Column: y', 'Reviewed in the old tool']
+    assert bodies(calls['0xB2']['call_key']) == ['Imported from analyses.csv · row 3\nAnalysis Status (the call keeps Ongoing): Bogus']
+    # Importing again changes nothing and never repeats a comment or a note; replacing overwrites what the calls have.
+    again = send().json()
+    assert (again['changed'], again['comments'], again['notes']) == (0, 0, 0)
+    # 0xZZ is not in the workspace yet: its analysis waits for its CDR.
+    frame = calls_frame().iloc[[0]].assign(JOIN_ID='0xZZ', Session_ID_A=9)
+    add_cdr(tmp_path, 'UK_Voice_Q4.xlsx', 'voice', frame)
+    assert {call['join_id']: call for call in query(client)['calls']}['0xZZ']['values']['analysis_status'] == 'Finished'
     csv = b'JOIN_ID,Analysis Status\n0xB2,Finished\n'
     assert send(overwrite='1').json()['changed'] == 1
     assert {call['join_id']: call for call in query(client)['calls']}['0xB2']['values']['analysis_status'] == 'Finished'
@@ -670,7 +702,7 @@ def test_admins_import_the_analyses_of_the_previous_tool_by_join_id(client, tmp_
     exported = client.post('/api/non-qualified-calls/export', json={'filters': {}}).content
     again = client.post('/api/non-qualified-calls/analyses/import', data={'preview': '1'},
                         files={'file': ('export.xlsx', io.BytesIO(exported), 'application/octet-stream')}).json()
-    assert again['matched'] == 3 and 'Analysis Status' in again['columns'] and again['changed'] == 0
+    assert again['matched'] == 4 and 'Analysis Status' in again['columns'] and again['changed'] == 0
     # Import RCA & Analyses, at the top of the page, gathers both imports; only admins and super-admins import analyses.
     page = client.get('/non-qualified-calls').text
     assert 'id="nq-import-toggle"' in page and 'Import RCA &amp; Analyses</button>' in page
@@ -684,3 +716,383 @@ def test_admins_import_the_analyses_of_the_previous_tool_by_join_id(client, tmp_
     assert 'id="nq-rca-open"' in page and 'id="nq-analyses-dialog"' not in page
     assert ('id="nq-analyses-open" aria-disabled="true" title="Only admins and super-admins can import the analyses of the previous tool"'
             in page)
+
+
+def mtl_workbook() -> bytes:
+    """A workbook of the previous tool: the CDR export and the analysis after it, one sheet per operator, a sheet of
+    area analyses listing several calls and a hidden sheet of lists."""
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = 'Vodafone NSA'
+    sheet.append(['JOIN_ID', 'Campaign', 'Operator', 'Session_ID_A', 'Call_Direction', 'Session_Type', 'Unique ID', 'Priority', 'Team',
+                  'Responsible Stream', 'Asignee', 'Final Category/Classification', 'Final Cause/Subcategory',
+                  'Initial Category/Classification', 'Analysis Finished', 'Failed Party', 'Status', 'Evaluation', 'Planned Date',
+                  'Findings', 'Findings Comments', 'Comments', 'Comments only to fill out by BNP NQ stream', 'Polygon Area', 'Band', 'Vendor',
+                  'Date last modification'])
+    sheet.append(['0xA1', 'UK_Q3_2026', 'Vodafone UK', 1, 'B->A', 'CALL', 'U1', 'P2', 'Raj Kumar', 'RAN planning coverage', None,
+                  'Additional Investigation LTE', 'Pending Investigation', 0, 'Yes', 'MTC', 'Not planned', 'Solved', 'FY27\nFY28',
+                  'Weak DL', 'Checked twice', 'Old tool comment', 'Stream comment', 'Leeds North', 'L800', 'Ericsson\nHuawei', '2026-03-12'])
+    # 0xD4 completed: its analysis waits for the call.
+    sheet.append(['0xD4', 'UK_Q3_2026', 'EE', 4, 'A->B', 'CALL', 'U2', 'P1', 'Rajkumar', 'Transport Stream', None, 'Poor Coverage LTE',
+                  None, None, 'No', 'MOC', None, None, None, None, None, None, None, None, None, None, None])
+    # A WhatsApp call without JOIN_ID is its Operator, Campaign and session, as in the CDR.
+    sheet.append([None, 'UK_Q3_2026', 'Vodafone UK', 77, 'A->B', 'WhatsApp CALL', 'U3', 'P4', 'Sujay', 'E2E Team', None, 'E2E', None,
+                  None, 'Yes', None, None, None, None, 'No answer from the server', None, None, None, None, None, 'Samsung/NSN/Huawei',
+                  'last week'])
+    area = workbook.create_sheet('MBB Data Analysis')
+    area.append(['JOIN_ID', 'Test Type', 'Priority', 'Campaign', 'Final Category/Classification', 'Analysis Finished', 'Comments'])
+    area.append(['0xB2\n0xC3', 'HTTP', 'P3', 'UK_Q3_2026', 'Poor LTE Coverage', 'Yes', 'Area analysis'])
+    # 0xC3 in a second area: the first row gives its values, the note keeps the others.
+    area.append(['0xC3', 'HTTP', 'P1', 'UK_Q2_2026', 'Poor LTE Coverage', 'Yes', 'Second area'])
+    lists = workbook.create_sheet('Lists')
+    lists.append(['JOIN_ID', 'Priority'])
+    lists.append(['0xC3', 4])
+    lists.sheet_state = 'hidden'
+    output = io.BytesIO()
+    workbook.save(output)
+    return output.getvalue()
+
+
+def test_analyses_of_the_previous_tool_keep_everything_through_reviewed_equivalences(client, tmp_path, monkeypatch):
+    calls = setup_calls(client, tmp_path)
+    whatsapp = calls_frame().iloc[[1]].assign(JOIN_ID='', Session_ID_A=77, Session_Type='WhatsApp CALL', Campaign='UK_Q3_2026')
+    add_cdr(tmp_path, 'UK_Voice_WhatsApp.xlsx', 'voice', whatsapp)
+    whatsapp_key = next(call['call_key'] for call in query(client)['calls'] if not call['join_id'])
+    content = mtl_workbook()
+    upload = lambda url, method='post', **form: client.request(method, url, data=form, files={
+        'file': ('MTL.xlsx', io.BytesIO(content), 'application/octet-stream')})
+    # The equivalences of the values of the file, to review: the new root category gets a new domain, the cause stays
+    # in the note.
+    review = upload('/api/non-qualified-calls/analyses/equivalences')
+    assert review.status_code == 200, review.text
+    workbook = load_workbook(io.BytesIO(review.content))
+    sheet = workbook['Equivalences']
+    header = [cell.value for cell in sheet[1]]
+    assert header == list(nq.EQUIVALENCES_COLUMNS)
+    rows = {(row[0], row[1]): row for row in sheet.iter_rows(min_row=2, values_only=True)}
+    assert rows[('Failed Party (MOC/MTC) (UE1/UE2)', 'MTC')][3:6] == ('UE_B (MT)', None, 'By the direction of the call (UE_A or UE_B)')
+    assert rows[('Analysis Status', 'Yes')][3] == 'Finished' and rows[('Implementation Status', 'Solved')][3:6:2] == ('Implemented', 'Value of the catalog')
+    assert rows[('Team Responsible', 'Transport Stream')][5] == 'New value'
+    for row in sheet.iter_rows(min_row=2):
+        if row[1].value == 'Additional Investigation LTE':
+            row[3].value, row[4].value = 'Additional Investigation LTE', 'Additional Investigation'
+        if row[1].value == 'Pending Investigation':
+            row[3].value = None
+        if row[1].value == 'Poor LTE Coverage':
+            row[3].value = 'Poor Coverage LTE'
+    output = io.BytesIO()
+    workbook.save(output)
+    content, reviewed = output.getvalue(), content
+    saved = upload('/api/non-qualified-calls/analyses/equivalences', 'put')
+    assert saved.status_code == 200, saved.text
+    content = reviewed
+    preview = upload('/api/non-qualified-calls/analyses/import', preview='1').json()
+    assert [item['sheet'] for item in preview['sheets']] == ['Vodafone NSA', 'MBB Data Analysis']
+    assert (preview['calls'], preview['matched'], preview['pending'], preview['duplicates'], preview['skipped']) == (5, 4, 1, 1, 0)
+    assert preview['noted'] == ['Campaign'] and preview['cdr_columns'] == 5
+    assert preview['new_categories'] == [{'value': 'Additional Investigation LTE', 'domain': 'Additional Investigation', 'rows': 1}]
+    assert preview['new_teams'] == [{'value': 'Transport Stream', 'rows': 1}]
+    assert query(client, filters={'fields': {'analysis_status': ['Finished']}})['total'] == 0
+    result = upload('/api/non-qualified-calls/analyses/import').json()
+    assert (result['changed'], result['pending'], result['comments']) == (4, 1, 5)
+    imported = {call['join_id']: call for call in query(client)['calls']}
+    first = imported['0xA1']
+    assert (first['root_category'], first['root_domain'], first['root_cause'], first['team']) == (
+        'Additional Investigation LTE', 'Additional Investigation', '', 'RAN Planning Coverage')
+    values = first['values']
+    assert (values['priority'], values['analyst'], values['analysis_status'], values['failed_party']) == ('P2', 'Raj Kumar', 'Finished', 'UE_A (MT)')
+    # Two vendors in one cell are Vendor 1 and Vendor 2.
+    assert (values['band_when_failure'], values['vendor_when_failure'], values['vendor_2_when_failure']) == ('LTE800', 'Ericsson', 'Huawei')
+    assert (values['planned_status'], values['implementation_status'], values['planned_fy']) == ('Not Planned', 'Implemented', 'FY27')
+    assert values['findings'] == 'Weak DL\n\n[Findings Comments] Checked twice' and not values.get('initial_root_category')
+    # The changes, comments and note of the call take the date of its analysis, also the status the rules give it.
+    detail = client.get(f"/api/non-qualified-calls/calls/{calls['0xA1']['call_key']}").json()
+    assert detail['call']['updated_at'].startswith('2026-03-12')
+    assert {comment['created_at'][:10] for comment in detail['comments']} == {'2026-03-12'}
+    assert {entry['changed_at'][:10] for entry in detail['history']} == {'2026-03-12'}
+    assert (result['dated'], result['estimated']) == (1, 3)
+    # Without the date of its analysis, a call found takes its own date a week later (0xB2 started on 2026-09-02).
+    detail = client.get(f"/api/non-qualified-calls/calls/{calls['0xB2']['call_key']}").json()
+    assert detail['call']['updated_at'].startswith('2026-09-09') and {entry['changed_at'][:10] for entry in detail['history']} == {'2026-09-09'}
+    # Each comment column is a comment; what no field holds is in the import note of the call.
+    bodies = sorted(comment['body'] for comment in client.get(f"/api/non-qualified-calls/calls/{calls['0xA1']['call_key']}").json()['comments'])
+    assert (values['unique_id'], values['polygon_area']) == ('U1', 'Leeds North')
+    assert bodies == ['Imported from MTL.xlsx · Vodafone NSA, row 2\n'
+                      'Selected Root Cause (not a value of the field): Pending Investigation\nPlanned Date (as written): FY27\nFY28',
+                      'Old tool comment', '[Comments only to fill out by BNP NQ stream] Stream comment']
+    # The analysis of an area goes to each of its calls; the hidden sheet is not read.
+    assert imported['0xB2']['values']['priority'] == imported['0xC3']['values']['priority'] == 'P3'
+    assert imported['0xC3']['root_category'] == 'Poor Coverage LTE'
+    # The note keeps how the file names a root category the equivalences turn into another one, the values of another
+    # row of the same call and a copy of the CDR that does not say what the CDR of the call says (the other is left out).
+    assert ('Imported from MTL.xlsx · MBB Data Analysis, row 2; MBB Data Analysis, row 3\n'
+            'Priority (MBB Data Analysis, row 3): P1\nCampaign: UK_Q2_2026\nSelected Root Category (as written): Poor LTE Coverage'
+            in [comment['body'] for comment in client.get(f"/api/non-qualified-calls/calls/{calls['0xC3']['call_key']}").json()['comments']])
+    by_key = {call['call_key']: call for call in query(client)['calls']}
+    assert (by_key[whatsapp_key]['root_category'], by_key[whatsapp_key]['values']['findings']) == ('E2E', 'No answer from the server')
+    # Three vendors: the first two fill Vendor 1 and 2 and the note keeps the cell.
+    assert (by_key[whatsapp_key]['values']['vendor_when_failure'], by_key[whatsapp_key]['values']['vendor_2_when_failure']) == ('Samsung', 'NSN')
+    assert any('Vendor (as written): Samsung/NSN/Huawei' in comment['body'] and 'Date last modification: last week' in comment['body']
+               for comment in client.get(f'/api/non-qualified-calls/calls/{whatsapp_key}').json()['comments'])
+    # Importing again adds nothing, also when the comments of the calls are read in several reads.
+    monkeypatch.setattr(nq, 'KEYED_READ_CHUNK', 1)
+    again = upload('/api/non-qualified-calls/analyses/import').json()
+    assert (again['changed'], again['pending'], again['comments'], again['notes']) == (0, 0, 0, 0)
+    state = client.get('/api/non-qualified-calls/state').json()
+    assert 'Transport Stream' in [team['name'] for team in state['options']['teams']]
+    # The equivalences travel with the configuration of the workspace.
+    assert 'tracking:root_category' in nq.analyses_equivalences(core.repository)
+    # The pending call takes its analysis (and the analyst its most used spelling) when its CDR comes.
+    frame = calls_frame().iloc[[3]].assign(Call_Status='Failed', status='Failed')
+    add_cdr(tmp_path, 'UK_Voice_Q4.xlsx', 'voice', frame)
+    later = {call['join_id']: call for call in query(client)['calls']}['0xD4']
+    assert (later['values']['analysis_status'], later['values']['analyst'], later['values']['failed_party'], later['team']) == (
+        'Pending', 'Raj Kumar', 'UE_A (MO)', 'Transport Stream')
+
+
+def test_workspaces_before_the_vendor_2_get_it_with_p1_to_p4_and_the_e2e_team(client, tmp_path):
+    calls = setup_calls(client, tmp_path)
+    repository = core.repository
+    # The layout before: Vendor when Failure alone, priorities 1 to 4 and the team E2E stream with a call and a member.
+    fields = [field for field in nq.list_fields(repository) if field['key'] != 'vendor_2_when_failure']
+    for field in fields:
+        if field['key'] == 'vendor_when_failure':
+            field['label'] = 'Vendor when Failure'
+        if field['key'] == 'priority':
+            field['options'] = [{'name': str(number), 'color': ''} for number in range(1, 5)]
+        if field['key'] == 'implementation_stream':
+            field['options'] = [dict(option, name='E2E stream' if option['name'] == 'E2E Team' else option['name']) for option in field['options']]
+    nq._store_fields(repository, fields)
+    with repository.connection() as connection:
+        connection.execute(f"UPDATE {nq.NQ_CALL_OPTIONS_TABLE} SET name = 'E2E stream' WHERE kind = 'team' AND name = 'E2E Team'")
+        connection.execute(f"INSERT INTO {nq.NQ_TEAM_MEMBERS_TABLE} (team, username) VALUES ('E2E stream', 'super')")
+    patch(client, calls['0xA1'], {'team': 'E2E stream', 'root_cause': 'Tunnel Issue',
+                                  'fields': {'priority': '2', 'implementation_stream': 'E2E stream'}})
+    # And the domain Core 2G/4G/5G, with a call in it and in the shared filters.
+    with repository.connection() as connection:
+        connection.execute(f"UPDATE {nq.NQ_ROOT_CATALOG_TABLE} SET name = 'Core 2G/4G/5G' WHERE kind = 'domain' AND name = 'Core'")
+        connection.execute(f"UPDATE {nq.NQ_ROOT_CATALOG_TABLE} SET domain = 'Core 2G/4G/5G' WHERE kind <> 'domain' AND domain = 'Core'")
+        connection.execute(f"UPDATE {nq.NQ_CALL_TRACKING_TABLE} SET root_domain = 'Core 2G/4G/5G' WHERE root_domain = 'Core'")
+    repository.set_workspace_state(nq.SAVED_FILTERS_STATE_KEY, json.dumps({'root_domain': ['Core 2G/4G/5G', 'RF']}))
+    repository.set_workspace_state(nq.ANALYSIS_CENTER_V9_STATE_KEY, '')
+    nq.ensure_nq_tables(repository)
+    upgraded = {field['key']: field for field in nq.list_fields(repository)}
+    keys = list(upgraded)
+    assert upgraded['vendor_when_failure']['label'] == 'Vendor 1 when Failure'
+    assert keys.index('vendor_2_when_failure') == keys.index('vendor_when_failure') + 1
+    assert [option['name'] for option in upgraded['priority']['options']] == ['P1', 'P2', 'P3', 'P4']
+    call = {item['join_id']: item for item in query(client)['calls']}['0xA1']
+    assert (call['team'], call['values']['priority'], call['values']['implementation_stream']) == ('E2E Team', 'P2', 'E2E Team')
+    teams = {team['name']: team for team in nq.list_options(repository)['teams']}
+    assert 'E2E stream' not in teams and teams['E2E Team']['members'] == ['super']
+    root = nq.list_root_causes(repository)
+    assert 'Core' in [domain['name'] for domain in root['domains']] and 'Core 2G/4G/5G' not in [domain['name'] for domain in root['domains']]
+    assert next(item for item in root['causes'] if item['name'] == 'Tunnel Issue')['domain'] == 'Core'
+    assert call['root_domain'] == 'Core'
+    assert json.loads(repository.get_workspace_state(nq.SAVED_FILTERS_STATE_KEY))['root_domain'] == ['Core', 'RF']
+
+
+def test_root_causes_map_to_their_category_and_take_their_domain_by_hand_or_automatically(client, tmp_path):
+    calls = setup_calls(client, tmp_path)
+    root = client.get('/api/non-qualified-calls/root-causes').json()
+    # Stored by hand: every default category and cause keeps its domain.
+    assert all(item['domain_from'] == 'manual' for item in root['categories'] + root['causes'])
+    payload = {'domains': root['domains'], 'require_to_close': False,
+               'categories': [{'name': item['name'], 'previous': item['name'], 'keywords': item['keywords'],
+                               'domain': '' if item['name'] in {'E2E', 'Mobility LTE'} else item['manual_domain']} for item in root['categories']],
+               'causes': [{'name': item['name'], 'previous': item['name'], 'keywords': item['keywords'],
+                           'domain': '' if item['name'] in {'Tunnel Issue', 'Paging'} else item['manual_domain'],
+                           'category': 'Mobility LTE' if item['name'] == 'Tunnel Issue' else ''} for item in root['causes']]}
+    saved = client.put('/api/non-qualified-calls/root-causes', json=payload)
+    assert saved.status_code == 200, saved.text
+    catalog = saved.json()
+    categories = {item['name']: item for item in catalog['categories']}
+    causes = {item['name']: item for item in catalog['causes']}
+    # E2E has no domain keyword in its name or keywords; Mobility LTE neither: they have no domain.
+    assert (categories['E2E']['domain'], categories['E2E']['domain_from']) == ('', '')
+    # A cause takes the domain of its root category, else the keywords of the domains (paging is a RAN keyword).
+    assert (causes['Tunnel Issue']['category'], causes['Tunnel Issue']['domain_from']) == ('Mobility LTE', '')
+    assert (causes['Paging']['domain'], causes['Paging']['domain_from']) == ('RAN', 'keywords')
+    payload['categories'] = [dict(item, domain='RAN' if item['name'] == 'Mobility LTE' else item['domain']) for item in payload['categories']]
+    causes = {item['name']: item for item in client.put('/api/non-qualified-calls/root-causes', json=payload).json()['causes']}
+    assert (causes['Tunnel Issue']['domain'], causes['Tunnel Issue']['domain_from']) == ('RAN', 'category')
+    # Choosing a cause for a call without root category gives it the category of the cause, never over a chosen one.
+    updated = patch(client, calls['0xA1'], {'root_cause': 'Tunnel Issue'})
+    assert (updated['root_category'], updated['root_cause'], updated['root_domain']) == ('Mobility LTE', 'Tunnel Issue', 'RAN')
+    updated = patch(client, calls['0xB2'], {'root_category': 'Poor Coverage LTE'})
+    assert patch(client, updated, {'root_cause': 'Tunnel Issue'})['root_category'] == 'Poor Coverage LTE'
+    # A category renamed or given another domain carries its causes and the domain of their calls.
+    payload['categories'] = [dict(item, name='LTE Mobility', domain='Core') if item['name'] == 'Mobility LTE' else item
+                             for item in payload['categories']]
+    causes = {item['name']: item for item in client.put('/api/non-qualified-calls/root-causes', json=payload).json()['causes']}
+    assert (causes['Tunnel Issue']['category'], causes['Tunnel Issue']['domain']) == ('LTE Mobility', 'Core')
+    call = client.get(f"/api/non-qualified-calls/calls/{calls['0xA1']['call_key']}").json()['call']
+    assert (call['root_category'], call['root_domain']) == ('LTE Mobility', 'Core')
+    # The catalog workbook and the configuration carry the category of each cause and only the domains chosen by hand.
+    workbook = load_workbook(io.BytesIO(client.get('/api/non-qualified-calls/catalog/export').content))
+    rows = {row[1]: row for row in workbook['Root Catalog'].iter_rows(min_row=2, values_only=True)}
+    assert [cell.value for cell in workbook['Root Catalog'][1]][:4] == ['Kind', 'Name', 'Root Category', 'Domain']
+    assert rows['Tunnel Issue'][2:4] == ('LTE Mobility', None) and rows['Paging'][3] is None
+    document = json.loads(nq.export_configuration_document(core.repository))
+    with core.repository.connection() as connection:
+        connection.execute(f'DELETE FROM {nq.NQ_ROOT_CATALOG_TABLE}')
+    nq.import_configuration_document(core.repository, json.dumps(document))
+    causes = {item['name']: item for item in nq.list_root_causes(core.repository)['causes']}
+    assert (causes['Paging']['domain_from'], causes['Tunnel Issue']['domain_from'], causes['Tunnel Issue']['category']) == (
+        'keywords', 'category', 'LTE Mobility')
+
+
+def test_reviewed_domains_change_the_catalog_and_new_causes_take_the_domain_of_the_keywords(client, tmp_path):
+    calls = setup_calls(client, tmp_path)
+    content = b'JOIN_ID,Final Category/Classification,Final Cause/Subcategory\n0xA1,Poor LTE Coverage,Waiting for paging\n'
+    upload = lambda url, method='post', **form: client.request(method, url, data=form, files={
+        'file': ('analyses.csv', io.BytesIO(content), 'text/csv')})
+    workbook = load_workbook(io.BytesIO(upload('/api/non-qualified-calls/analyses/equivalences').content))
+    for row in workbook['Equivalences'].iter_rows(min_row=2):
+        if row[1].value == 'Poor LTE Coverage':
+            row[3].value, row[4].value = 'Poor Coverage LTE', 'RAN'
+        if row[1].value == 'Waiting for paging':
+            row[3].value, row[4].value = 'Waiting for paging', None
+    output = io.BytesIO()
+    workbook.save(output)
+    content, analyses = output.getvalue(), content
+    assert upload('/api/non-qualified-calls/analyses/equivalences', 'put').json()['saved'] == 2
+    content = analyses
+    preview = upload('/api/non-qualified-calls/analyses/import', preview='1').json()
+    assert preview['domain_changes'] == [{'kind': 'Root Category', 'value': 'Poor Coverage LTE', 'from': 'RF', 'to': 'RAN', 'rows': 1, 'others': []}]
+    assert preview['new_causes'] == [{'value': 'Waiting for paging', 'domain': '', 'rows': 1}]
+    assert upload('/api/non-qualified-calls/analyses/import').status_code == 200
+    root = nq.list_root_causes(core.repository)
+    category = next(item for item in root['categories'] if item['name'] == 'Poor Coverage LTE')
+    cause = next(item for item in root['causes'] if item['name'] == 'Waiting for paging')
+    assert (category['domain'], category['domain_from']) == ('RAN', 'manual')
+    assert (cause['domain'], cause['domain_from']) == ('RAN', 'keywords')
+    call = client.get(f"/api/non-qualified-calls/calls/{calls['0xA1']['call_key']}").json()['call']
+    assert (call['root_category'], call['root_cause'], call['root_domain']) == ('Poor Coverage LTE', 'Waiting for paging', 'RAN')
+
+
+def test_calls_with_a_cause_and_no_category_take_the_category_of_their_cause_on_demand(client, tmp_path):
+    calls = setup_calls(client, tmp_path)
+    patch(client, calls['0xA1'], {'root_cause': 'Paging'})
+    patch(client, calls['0xB2'], {'root_category': 'E2E', 'root_cause': 'Paging'})
+    apply = lambda preview: client.post('/api/non-qualified-calls/root-causes/apply-categories', json={'preview': preview}).json()['calls']
+    assert apply(True) == 0
+    root = client.get('/api/non-qualified-calls/root-causes').json()
+    payload = {'domains': root['domains'], 'require_to_close': False,
+               'categories': [{'name': item['name'], 'previous': item['name'], 'domain': item['manual_domain'], 'keywords': item['keywords']}
+                              for item in root['categories']],
+               'causes': [{'name': item['name'], 'previous': item['name'], 'domain': item['manual_domain'], 'keywords': item['keywords'],
+                           'category': 'Mobility LTE' if item['name'] == 'Paging' else ''} for item in root['causes']]}
+    assert client.put('/api/non-qualified-calls/root-causes', json=payload).status_code == 200
+    # Only the call without root category takes it; the preview changes nothing.
+    assert apply(True) == 1 and apply(True) == 1
+    assert apply(False) == 1 and apply(True) == 0
+    detail = client.get(f"/api/non-qualified-calls/calls/{calls['0xA1']['call_key']}").json()
+    assert (detail['call']['root_category'], detail['call']['root_domain']) == ('Mobility LTE', 'RAN')
+    assert any(entry.get('field') == 'root_category' and entry.get('new_value') == 'Mobility LTE' for entry in detail['history'])
+    assert client.get(f"/api/non-qualified-calls/calls/{calls['0xB2']['call_key']}").json()['call']['root_category'] == 'E2E'
+
+
+def test_the_second_vendor_of_earlier_upgrades_keeps_its_values_as_vendor_2(client, tmp_path):
+    calls = setup_calls(client, tmp_path)
+    repository = core.repository
+    fields = nq.list_fields(repository)
+    for field in fields:
+        if field['key'] == 'vendor_when_failure':
+            field['label'] = 'Vendor A when Failure'
+        if field['key'] == 'vendor_2_when_failure':
+            field['key'], field['label'] = 'vendor_b_when_failure', 'Vendor B when Failure'
+    nq._store_fields(repository, fields)
+    patch(client, calls['0xA1'], {'fields': {'vendor_b_when_failure': 'Huawei'}})
+    repository.set_workspace_state(nq.ANALYSIS_CENTER_V9_STATE_KEY, '')
+    nq.ensure_nq_tables(repository)
+    upgraded = {field['key']: field for field in nq.list_fields(repository)}
+    assert 'vendor_b_when_failure' not in upgraded and upgraded['vendor_2_when_failure']['label'] == 'Vendor 2 when Failure'
+    assert upgraded['vendor_when_failure']['label'] == 'Vendor 1 when Failure'
+    call = {item['join_id']: item for item in query(client)['calls']}['0xA1']
+    assert call['values']['vendor_2_when_failure'] == 'Huawei'
+    history = client.get(f"/api/non-qualified-calls/calls/{calls['0xA1']['call_key']}").json()['history']
+    assert any(entry.get('field') == 'field:vendor_2_when_failure' for entry in history)
+
+
+def test_the_rules_of_the_tool_import_the_previous_workbooks_without_uploading_equivalences(client, tmp_path):
+    calls = setup_calls(client, tmp_path)
+    csv = ('JOIN_ID,Final Category/Classification,Final Cause/Subcategory,Responsible Stream,Priority\n'
+           '0xA1,E2E Issue,Poor LTE Coverage,Operation Team,B\n'
+           '0xB2,Additional Investigation LTE,,E2E stream,1\n').encode()
+    result = client.post('/api/non-qualified-calls/analyses/import', files={'file': ('mtl.csv', io.BytesIO(csv), 'text/csv')}).json()
+    assert result['new_categories'] == [{'value': 'Additional Investigation LTE', 'domain': 'Additional Investigation', 'rows': 1}]
+    imported = {call['join_id']: call for call in query(client)['calls']}
+    first, second = imported['0xA1'], imported['0xB2']
+    assert (first['root_category'], first['root_cause'], first['team'], first['values']['priority']) == ('E2E', 'Coverage', 'Operations', 'P2')
+    assert (second['root_category'], second['root_domain'], second['team'], second['values']['priority']) == (
+        'Additional Investigation LTE', 'Additional Investigation', 'E2E Team', 'P1')
+    # The rules, with the values each cell takes, can be downloaded without a file; uploaded as they are, the workspace
+    # keeps nothing of its own.
+    response = client.get('/api/non-qualified-calls/analyses/equivalences')
+    assert response.status_code == 200
+    workbook = load_workbook(io.BytesIO(response.content))
+    rows = list(workbook['Equivalences'].iter_rows(min_row=2, values_only=True))
+    assert len(rows) == len(nq_analyses_rules.ANALYSES_RULES) and {row[5] for row in rows} == {'Rule of the tool'}
+    lists = workbook['Lists']
+    assert lists['A1'].value == 'Domain' and 'Additional Investigation' in [cell.value for cell in lists['A']]
+    # A rule without a domain of its own shows the domain the catalog gives the value of Maps to (it follows Maps to),
+    # in grey while it is that one.
+    coverage = next(row for row in workbook['Equivalences'].iter_rows(min_row=2) if row[1].value == 'Poor LTE Coverage')
+    assert coverage[3].value == 'Coverage' and coverage[4].value == f'=IFERROR(VLOOKUP($D{coverage[4].row},CauseDomains,2,FALSE),"")'
+    assert ('Coverage', 'RF') in [(row[3], row[4]) for row in workbook['Catalog'].iter_rows(min_row=2, values_only=True)]
+    assert workbook['Equivalences'].conditional_formatting
+    assert workbook['Equivalences'].data_validations.dataValidation
+    saved = client.put('/api/non-qualified-calls/analyses/equivalences', files={'file': ('rules.xlsx', io.BytesIO(response.content))})
+    assert saved.json() == {'saved': 0, 'total': 0}
+    # A change for this workspace comes before the rule.
+    for row in workbook['Equivalences'].iter_rows(min_row=2):
+        if row[1].value == 'E2E Issue':
+            row[3].value = 'Unclear'
+        if row[1].value == 'Poor LTE Coverage':
+            row[4].value = 'RAN'
+    output = io.BytesIO()
+    workbook.save(output)
+    saved = client.put('/api/non-qualified-calls/analyses/equivalences', files={'file': ('rules.xlsx', io.BytesIO(output.getvalue()))})
+    assert saved.json() == {'saved': 2, 'total': 2}
+    equivalences = nq.analyses_equivalences(core.repository)
+    assert equivalences['tracking:root_category']['e2e issue']['to'] == 'Unclear'
+    assert (equivalences['tracking:root_cause']['poor lte coverage']['to'], equivalences['tracking:root_cause']['poor lte coverage']['domain']) == (
+        'Coverage', 'RAN')
+    rows = load_workbook(io.BytesIO(client.get('/api/non-qualified-calls/analyses/equivalences').content))['Equivalences']
+    assert [row[5] for row in rows.iter_rows(min_row=2, values_only=True) if row[1] == 'E2E Issue'] == ['Reviewed in this workspace']
+
+
+@pytest.mark.parametrize('no_team_exists', [False, True])
+def test_successful_call_excluded_is_no_longer_a_team_and_its_calls_go_to_no_team(client, tmp_path, no_team_exists):
+    calls = setup_calls(client, tmp_path)
+    repository = core.repository
+    assert 'Successful Call-Excluded' not in [team['name'] for team in nq.list_options(repository)['teams']]
+    # A workspace of before: the team and the Implementation Stream, with a call.
+    fields = nq.list_fields(repository)
+    stream = next(field for field in fields if field['key'] == 'implementation_stream')
+    stream['options'].append({'name': 'Successful Call-Excluded', 'color': ''})
+    priority = next(field for field in fields if field['key'] == 'priority')
+    assert [option['name'] for option in priority['options']] == ['P1', 'P2', 'P3', 'P4', 'P5']
+    priority['options'] = priority['options'][:4]
+    nq._store_fields(repository, fields)
+    with repository.connection() as connection:
+        connection.execute(f"INSERT INTO {nq.NQ_CALL_OPTIONS_TABLE} (kind, name, color, position, is_closed) "
+                           "VALUES ('team', 'Successful Call-Excluded', '#7b8790', 50, 0)")
+        if no_team_exists:
+            connection.execute(f"INSERT INTO {nq.NQ_CALL_OPTIONS_TABLE} (kind, name, color, position, is_closed) VALUES ('team', 'No Team', '', 51, 0)")
+    patch(client, calls['0xA1'], {'team': 'Successful Call-Excluded', 'fields': {'implementation_stream': 'Successful Call-Excluded'}})
+    repository.set_workspace_state(nq.ANALYSIS_CENTER_V10_STATE_KEY, '')
+    nq.ensure_nq_tables(repository)
+    teams = [team['name'] for team in nq.list_options(repository)['teams']]
+    assert 'Successful Call-Excluded' not in teams and teams.count('No Team') == 1
+    options = [option['name'] for field in nq.list_fields(repository) if field['key'] == 'implementation_stream' for option in field['options']]
+    assert 'Successful Call-Excluded' not in options and 'No Team' in options
+    assert [option['name'] for field in nq.list_fields(repository) if field['key'] == 'priority' for option in field['options']] == [
+        'P1', 'P2', 'P3', 'P4', 'P5']
+    call = {item['join_id']: item for item in query(client)['calls']}['0xA1']
+    assert (call['team'], call['values']['implementation_stream']) == ('No Team', 'No Team')
+    # The analysis workbooks that still name it give No Team too.
+    csv = b'JOIN_ID,Responsible Stream\n0xB2,Successful Call-Excluded\n'
+    client.post('/api/non-qualified-calls/analyses/import', files={'file': ('mtl.csv', io.BytesIO(csv), 'text/csv')})
+    assert {item['join_id']: item for item in query(client)['calls']}['0xB2']['team'] == 'No Team'

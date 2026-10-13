@@ -701,7 +701,8 @@
   const recommendationOf = (call) => call.rca_recommendation?.recommendation || null;
   const sourceNames = (names) => (names || []).map((name) => state.rcaSources[name] || name).join(', ');
   // Root category and cause pickers: the catalog values grouped by domain, with the values the RCA
-  // sources propose first and, for a cause, the causes of the domain of the chosen category next.
+  // sources propose first, then the causes mapped to the chosen category (or the category of the chosen
+  // cause) and, for a cause, the causes of the domain of the chosen category.
   let rootPicker = null;
   const closeRootPicker = () => {
     rootPicker?.popover.remove();
@@ -768,6 +769,15 @@
     if (proposed.length) {
       const element = heading('Proposed by the RCA sources', '#b0234f', ' is-proposed');
       groups.push([element, proposed.map((item) => option(item.name, item.name, 'proposed'))]);
+    }
+    // The causes mapped to the chosen category, or the category the chosen cause is mapped to.
+    const mapped = kind === 'root_cause'
+      ? (call.root_category ? items.filter((item) => (item.category || '').toLowerCase() === call.root_category.toLowerCase()) : [])
+      : [rootItem('root_category', rootItem('root_cause', call.root_cause)?.category)].filter(Boolean);
+    if (mapped.length) {
+      const element = heading(kind === 'root_cause' ? `Causes of ${call.root_category}` : `Category of ${call.root_cause}`,
+        domainColor(mapped[0].domain), ' is-proposed');
+      groups.push([element, mapped.map((item) => option(item.name, item.name, 'mapped'))]);
     }
     // A cause follows the domain of the chosen category; a category the domain of the chosen cause.
     const affinity = kind === 'root_cause' ? rootItem('root_category', call.root_category)?.domain
@@ -2897,6 +2907,25 @@
     };
     const status = field('status', 'NQ Call Status');
     status.querySelector('span').append(' ', statusModeBadge(call));
+    // The Priority of the call follows its status, chosen there like it.
+    const priorityField = state.fields.find((item) => item.key === 'priority' && item.source === 'user' && item.type === 'list');
+    let priority = null;
+    if (priorityField) {
+      const value = String(call.values?.priority || '');
+      priority = node('label', undefined, 'nq-tracking-field nq-tracking-priority');
+      priority.append(node('span', priorityField.label));
+      if (state.user.can_edit) {
+        const control = choiceControl({
+          items: fieldChoices(priorityField, value), value, empty: 'Not set', label: `${priorityField.label} of the call`,
+          onChange: (chosen) => patchCall(call, {fields: {priority: chosen}}, control, `${priorityField.label} updated.`),
+        });
+        priority.append(control);
+      } else {
+        const shown = node('span', value || 'Not set', 'nq-pill');
+        paintPill(shown, optionColorOf(priorityField, value));
+        priority.append(shown);
+      }
+    }
     const updated = node('p', call.updated_by
       ? `Last follow-up by ${call.updated_by} · ${exactTime(call.updated_at)}` : 'Not followed up yet.', 'nq-tracking-note');
     const rootField = node('div', undefined, 'nq-tracking-field nq-tracking-root');
@@ -2932,7 +2961,7 @@
       const value = String(call.values?.[phase.key] || '');
       phaseStep(phase.section, sectionOf(phase.section).label, value, optionColorOf(phase, value), phase.label);
     });
-    host.replaceChildren(status, field('team', 'Team'), field('assignee', 'Assignee'), rootField,
+    host.replaceChildren(status, ...(priority ? [priority] : []), field('team', 'Team'), field('assignee', 'Assignee'), rootField,
       ...(phases.childElementCount ? [phases] : []), updated);
   };
   const DETAIL_FIELDS = [
@@ -3173,7 +3202,8 @@
       const host = group.key === 'general' ? $('nq-general-fields')
         : drawer.querySelector(`[data-nq-panel="${CSS.escape(group.key)}"] .nq-section-fields`);
       if (!host) return;
-      const ofSection = (key) => state.fields.filter((field) => field.section === key && field.source !== 'tracking');
+      const ofSection = (key) => state.fields.filter((field) => field.section === key && field.source !== 'tracking'
+        && !(field.key === 'priority' && field.source === 'user' && field.type === 'list'));
       const fields = group.sections.flatMap((section) => ofSection(section.key));
       const editable = fields.filter((field) => field.source === 'user');
       const parts = group.key === 'rca' ? [rootDecisionCard(call)] : [];
@@ -3367,7 +3397,13 @@
       members.type = 'button';
       members.title = 'Choose the users of this team';
       members.addEventListener('click', () => openMembers(row));
-      row.append(members);
+      row.merged = [...(item.merged || [])];
+      const merge = node('button', '⤳', 'nq-icon-action');
+      merge.type = 'button';
+      merge.title = 'Merge into another team: on Save its calls and members move there and it is removed';
+      merge.setAttribute('aria-label', 'Merge into another team');
+      merge.addEventListener('click', () => chooseMerge(row, merge));
+      row.append(members, merge);
     }
     const move = (offset) => {
       const sibling = offset < 0 ? row.previousElementSibling : row.nextElementSibling;
@@ -3382,6 +3418,34 @@
       row.append(button);
     });
     return row;
+  };
+  // The team of the row goes into the chosen one: the calls of a saved team follow it on Save, the members join the
+  // target (a target open to everyone stays so) and the row leaves the list.
+  const chooseMerge = (row, button) => {
+    const nameOf = (other) => other.querySelector('input[type="text"]').value.trim();
+    const targets = [...row.parentElement.querySelectorAll('.nq-option-row')].filter((other) => other !== row && nameOf(other));
+    if (!targets.length) return;
+    const select = node('select', undefined, 'nq-merge-select');
+    select.setAttribute('aria-label', `Merge ${nameOf(row) || 'this team'} into`);
+    select.append(new Option('Merge into…', ''), ...targets.map((other, index) => new Option(nameOf(other), String(index))));
+    const restore = () => { if (select.isConnected) select.replaceWith(button); };
+    select.addEventListener('blur', restore);
+    select.addEventListener('change', () => {
+      const target = targets[Number(select.value)];
+      if (!select.value || !target) return restore();
+      const name = nameOf(row) || 'The new team';
+      target.merged = [...new Set([...(target.merged || []), ...(row.dataset.previous ? [row.dataset.previous] : []), ...(row.merged || [])])];
+      if (target.members.length) {
+        target.members = [...new Set([...target.members, ...row.members])];
+        target.querySelector('.nq-members-action').textContent = membersLabel(target.members);
+      }
+      row.remove();
+      $('nq-options-error').style.color = 'var(--nq-muted)';
+      $('nq-options-error').textContent = `${name} will be merged into ${nameOf(target)}: Save moves its calls`
+        + (target.members.length ? ' and members' : '') + ' there and removes it.';
+    });
+    button.replaceWith(select);
+    select.focus();
   };
   const membersLabel = (members) => (members.length ? `${members.length} member${members.length === 1 ? '' : 's'}` : 'Everyone');
   const membersDialog = $('nq-members-dialog');
@@ -3420,7 +3484,7 @@
     const [color, name] = row.querySelectorAll('input');
     return {name: name.value.trim(), color: color.value, previous: row.dataset.previous,
       closed: Boolean(row.querySelector('.nq-option-closed input')?.checked),
-      ...(kind === 'teams' ? {members: row.members || []} : {})};
+      ...(kind === 'teams' ? {members: row.members || [], merged: row.merged || []} : {})};
   });
 
   // -- events -------------------------------------------------------------------
@@ -3826,18 +3890,56 @@
   // The domains of the catalog being edited, with the name each one had when the dialog opened.
   const catalogDomains = () => [...$('nq-root-domains').children].map((row) => ({
     name: row.querySelector('.nq-root-name').value.trim(), color: row.querySelector('input[type="color"]').value,
+    keywords: keywordList(row.querySelector('.nq-root-keywords').value),
   })).filter((domain) => domain.name);
-  // A select of the domains, painted in the colour of the chosen one.
-  const domainSelect = (current) => {
+  // Keywords as the catalog matches them: lower case, underscores as spaces, whole words, "a+b" needing both.
+  const keywordText = (value) => String(value || '').replace(/[_\u00a0]/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+  const keywordList = (value) => String(value || '').split(/[,;\n]/).map((keyword) => keyword.split('+').map(keywordText))
+    .filter((parts) => parts.every(Boolean)).map((parts) => parts.join('+'));
+  const wordFound = (part, text) => text.includes(part)
+    && new RegExp(`(?<![a-z0-9])${part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![a-z0-9])`).test(text);
+  const keywordFound = (keywords, text) => Boolean(text) && keywords.some((keyword) => keyword.split('+').every((part) => wordFound(part, text)));
+  // The domain of a root category or cause row without a domain chosen by hand: for a cause, that of the root category
+  // it is mapped to; else the first domain whose keywords appear in its name or keywords.
+  const keywordDomain = (row) => {
+    const text = keywordText([row.querySelector('.nq-root-name').value, ...keywordList(row.querySelector('.nq-root-keywords').value)].join(' | '));
+    return catalogDomains().find((domain) => keywordFound(domain.keywords, text))?.name || '';
+  };
+  const categoryRow = (name) => [...$('nq-root-categories').children]
+    .find((row) => name && row.querySelector('.nq-root-name').value.trim().toLowerCase() === name.toLowerCase());
+  const automaticDomain = (row) => {
+    const category = row.closest('#nq-root-causes') ? categoryRow(row.querySelector('.nq-category-select')?.value || '') : null;
+    if (category) {
+      const domain = category.querySelector('.nq-domain-select').value || keywordDomain(category);
+      if (domain) return {domain, from: 'category'};
+    }
+    const domain = keywordDomain(row);
+    return {domain, from: domain ? 'keywords' : ''};
+  };
+  // A select of the domains, painted in the colour of the domain of the row: the one chosen, or Auto (its automatic one).
+  const domainSelect = (current, row) => {
     const select = node('select', undefined, 'nq-domain-select nq-pill-select');
     select.setAttribute('aria-label', 'Domain');
     select.dataset.current = current || '';
-    const paint = () => paintPill(select, catalogDomains().find((domain) => domain.name === select.value)?.color || '');
-    select.addEventListener('change', () => { select.dataset.current = select.value; paint(); });
+    select.source = row;
+    const paint = () => {
+      const automatic = select.value ? null : automaticDomain(select.source);
+      if (automatic) {
+        select.options[0].textContent = automatic.domain ? `Auto · ${automatic.domain}` : 'Auto · no domain';
+        select.title = automatic.domain ? `Automatic: from the ${automatic.from === 'category' ? 'root category of the cause' : 'keywords of the domains'}`
+          : 'Automatic: no domain keyword appears in its name or keywords';
+      } else {
+        select.options[0].textContent = 'Auto';
+        select.title = 'Chosen by hand: the keywords are not used';
+      }
+      paintPill(select, catalogDomains().find((domain) => domain.name === (select.value || automatic?.domain))?.color || '');
+    };
+    select.paint = paint;
+    select.addEventListener('change', () => { select.dataset.current = select.value; refreshAutomaticDomains(); });
     select.refresh = () => {
       const names = catalogDomains().map((domain) => domain.name);
       const value = select.dataset.current;
-      select.replaceChildren(node('option', 'No domain'), ...names.map((name) => {
+      select.replaceChildren(node('option', 'Auto'), ...names.map((name) => {
         const option = node('option', name);
         option.value = name;
         return option;
@@ -3848,7 +3950,31 @@
     };
     return select;
   };
-  const refreshDomainSelects = () => rootDialog.querySelectorAll('.nq-domain-select').forEach((select) => select.refresh());
+  // The root category a cause is mapped to.
+  const categorySelect = (current) => {
+    const select = node('select', undefined, 'nq-category-select nq-pill-select');
+    select.setAttribute('aria-label', 'Root category');
+    select.dataset.current = current || '';
+    select.addEventListener('change', () => { select.dataset.current = select.value; refreshAutomaticDomains(); });
+    select.refresh = () => {
+      const names = [...$('nq-root-categories').children].map((row) => row.querySelector('.nq-root-name').value.trim()).filter(Boolean);
+      const value = select.dataset.current;
+      select.replaceChildren(node('option', 'No root category'), ...names.map((name) => {
+        const option = node('option', name);
+        option.value = name;
+        return option;
+      }));
+      select.options[0].value = '';
+      select.value = names.find((name) => name.toLowerCase() === value.toLowerCase()) || '';
+      select.dataset.current = select.value;
+    };
+    return select;
+  };
+  const refreshAutomaticDomains = () => rootDialog.querySelectorAll('.nq-domain-select').forEach((select) => select.paint?.());
+  const refreshDomainSelects = () => {
+    rootDialog.querySelectorAll('.nq-category-select').forEach((select) => select.refresh());
+    rootDialog.querySelectorAll('.nq-domain-select').forEach((select) => select.refresh());
+  };
   const domainRow = (domain = {name: '', color: '#6a63c9', keywords: []}) => {
     const row = node('li', undefined, 'nq-option-row nq-catalog-row');
     row.dataset.previous = domain.name || '';
@@ -3871,21 +3997,130 @@
     iconButtons(row, row, () => { row.remove(); refreshDomainSelects(); countCatalog(); });
     return row;
   };
+  // A root category or cause: its name, its domain (Auto, or chosen by hand) and its keywords; a cause also the root
+  // category it is mapped to.
   const entryRow = (kind, item = {name: '', domain: '', keywords: []}) => {
     const row = node('li', undefined, 'nq-option-row nq-catalog-row');
     row.dataset.previous = item.name || '';
-    const select = domainSelect(item.domain);
-    row.append(textInput(item.name, kind === 'categories' ? 'Root category name' : 'Root cause name', 'nq-root-name'), select,
-      textInput((item.keywords || []).join(', '), 'Keywords', 'nq-root-keywords'));
-    iconButtons(row, row, () => { row.remove(); countCatalog(); });
+    row.dataset.current = item.name || '';
+    const name = textInput(item.name, kind === 'categories' ? 'Root category name' : 'Root cause name', 'nq-root-name');
+    const select = domainSelect(item.manual_domain ?? item.domain, row);
+    if (kind === 'categories') {
+      // Renaming a category renames it in the causes mapped to it.
+      name.addEventListener('change', () => {
+        const before = row.dataset.current;
+        const after = name.value.trim();
+        rootDialog.querySelectorAll('.nq-category-select').forEach((other) => {
+          if (before && other.dataset.current.toLowerCase() === before.toLowerCase()) other.dataset.current = after;
+        });
+        row.dataset.current = after;
+        refreshDomainSelects();
+      });
+      row.append(name, select);
+    } else {
+      row.append(name, categorySelect(item.category || ''), select);
+    }
+    row.append(textInput((item.keywords || []).join(', '), 'Keywords', 'nq-root-keywords'));
+    iconButtons(row, row, () => { row.remove(); refreshDomainSelects(); countCatalog(); });
     return row;
   };
-  const CATALOG_LISTS = {domains: 'nq-root-domains', categories: 'nq-root-categories', causes: 'nq-root-causes'};
-  const CATALOG_ADD = {domains: 'Add Domain', categories: 'Add Root Category', causes: 'Add Root Cause'};
+  const saveCatalog = () => api('/api/non-qualified-calls/root-causes', {
+    method: 'PUT', body: JSON.stringify({domains: collectCatalogRows('domains'), categories: collectCatalogRows('categories'),
+      causes: collectCatalogRows('causes'), require_to_close: $('nq-root-require').checked}),
+  });
+  // Saves the catalog, then gives the calls with a root cause and no root category the category of their cause.
+  const applyCauseCategories = async (button) => {
+    const status = $('nq-root-error');
+    button.disabled = true;
+    try {
+      const saved = await saveCatalog();
+      state.rootCauses = {...state.rootCauses, ...saved};
+      fillCatalog(state.rootCauses);
+      renderMapping();
+      const preview = await api('/api/non-qualified-calls/root-causes/apply-categories', {method: 'POST', body: JSON.stringify({preview: true})});
+      status.style.color = 'var(--nq-muted)';
+      if (!preview.calls) {
+        status.textContent = 'The catalog is saved; no call has a root cause mapped to a category and no root category.';
+        return;
+      }
+      const one = preview.calls === 1;
+      // The page confirm panel stays under the open catalog dialog: the browser one shows above it.
+      if (!window.confirm(`${number(preview.calls)} call${one ? '' : 's'} with a root cause and no root category will take the category `
+        + `of ${one ? 'its' : 'their'} cause. Continue?`)) {
+        status.textContent = 'The catalog is saved; the calls are unchanged.';
+        return;
+      }
+      const result = await api('/api/non-qualified-calls/root-causes/apply-categories', {method: 'POST', body: JSON.stringify({preview: false})});
+      status.textContent = `${number(result.calls)} call${result.calls === 1 ? ' took the root category of its' : 's took the root category of their'} cause.`;
+      toast(status.textContent);
+      await loadState();
+    } catch (error) {
+      status.style.color = '';
+      status.textContent = error.message;
+    } finally {
+      button.disabled = false;
+    }
+  };
+  const CATALOG_LISTS = {domains: 'nq-root-domains', categories: 'nq-root-categories', causes: 'nq-root-causes', mapping: 'nq-root-mapping'};
+  const CATALOG_ADD = {domains: 'Add Domain', categories: 'Add Root Category', causes: 'Add Root Cause', mapping: ''};
   let catalogTab = 'categories';
   const countCatalog = () => rootDialog.querySelectorAll('[data-nq-catalog-tab]').forEach((tab) => {
-    tab.querySelector('small').textContent = `(${$(CATALOG_LISTS[tab.dataset.nqCatalogTab]).children.length})`;
+    const kind = tab.dataset.nqCatalogTab;
+    tab.querySelector('small').textContent = kind === 'mapping'
+      ? `(${[...$('nq-root-causes').querySelectorAll('.nq-category-select')].filter((select) => select.value).length}/${$('nq-root-causes').children.length})`
+      : `(${$(CATALOG_LISTS[kind]).children.length})`;
   });
+  // Mapping: one table with every root cause, its root category and its domain, and one with every root category and
+  // its domain. Its lists change the rows of the Root Causes and Root Categories tabs.
+  const mappingSelect = (source) => {
+    const proxy = source.classList.contains('nq-category-select') ? categorySelect(source.dataset.current) : domainSelect(source.dataset.current, source.source);
+    proxy.refresh();
+    proxy.addEventListener('change', () => {
+      source.value = proxy.value;
+      source.dataset.current = proxy.value;
+      refreshAutomaticDomains();
+      countCatalog();
+    });
+    return proxy;
+  };
+  const renderMapping = () => {
+    const table = (headers, rows) => {
+      const element = node('table', undefined, 'nq-mapping-table');
+      const head = node('tr');
+      headers.forEach((header) => head.append(node('th', header)));
+      element.append(node('thead'), node('tbody'));
+      element.tHead.append(head);
+      rows.forEach((row) => element.tBodies[0].append(row));
+      return element;
+    };
+    const line = (row, controls) => {
+      const element = node('tr');
+      const name = row.querySelector('.nq-root-name').value.trim();
+      element.dataset.name = name;
+      element.append(node('td', name || '(no name)', 'nq-mapping-name'), ...controls.map((control) => {
+        const cell = node('td');
+        cell.append(mappingSelect(control));
+        return cell;
+      }));
+      return element;
+    };
+    const apply = node('button', 'Apply to Calls', 'nq-secondary-action');
+    apply.type = 'button';
+    apply.title = 'Save the catalog and give the calls with a root cause and no root category the category of their cause';
+    apply.addEventListener('click', () => applyCauseCategories(apply));
+    const intro = node('div', undefined, 'nq-mapping-intro');
+    intro.append(node('p', 'Map each root cause to its root category and domain. Auto takes, for a cause, the domain of its root category, '
+      + 'else the domain whose keywords appear in its name or keywords; a domain chosen here ignores the keywords. Choosing a '
+      + 'cause for a call without root category gives it the category of the cause; Apply to Calls gives it to the calls that '
+      + 'already have a cause and no category.', 'form-note'), apply);
+    $('nq-root-mapping').replaceChildren(
+      intro,
+      table(['Root Cause', 'Root Category', 'Domain'], [...$('nq-root-causes').children]
+        .map((row) => line(row, [row.querySelector('.nq-category-select'), row.querySelector('.nq-domain-select')]))),
+      table(['Root Category', 'Domain'], [...$('nq-root-categories').children].map((row) => line(row, [row.querySelector('.nq-domain-select')]))),
+    );
+    filterCatalog();
+  };
   const selectCatalogTab = (name) => {
     catalogTab = name;
     rootDialog.querySelectorAll('[data-nq-catalog-tab]').forEach((tab) => {
@@ -3895,12 +4130,15 @@
     });
     Object.entries(CATALOG_LISTS).forEach(([key, id]) => { $(id).hidden = key !== name; });
     $('nq-root-add').textContent = CATALOG_ADD[name];
+    $('nq-root-add').hidden = name === 'mapping';
+    if (name === 'mapping') renderMapping();
     filterCatalog();
   };
   const filterCatalog = () => {
     const query = $('nq-root-search').value.trim().toLowerCase();
-    $(CATALOG_LISTS[catalogTab]).querySelectorAll(':scope > li').forEach((row) => {
-      const text = [...row.querySelectorAll('input[type="text"], select')].map((control) => control.value).join(' ').toLowerCase();
+    $(CATALOG_LISTS[catalogTab]).querySelectorAll(':scope > li, tbody > tr').forEach((row) => {
+      const text = [row.dataset.name || '', ...[...row.querySelectorAll('input[type="text"], select')]
+        .map((control) => control.selectedOptions?.[0]?.textContent || control.value)].join(' ').toLowerCase();
       row.hidden = Boolean(query) && !text.includes(query);
     });
   };
@@ -3909,6 +4147,7 @@
     keywords: row.querySelector('.nq-root-keywords').value,
     ...(kind === 'domains' ? {color: row.querySelector('input[type="color"]').value}
       : {domain: row.querySelector('.nq-domain-select').value}),
+    ...(kind === 'causes' ? {category: row.querySelector('.nq-category-select').value} : {}),
   }));
   const fillCatalog = (catalog) => {
     $('nq-root-domains').replaceChildren(...catalog.domains.map((domain) => domainRow(domain)));
@@ -3929,6 +4168,13 @@
     });
     rootDialog.querySelectorAll('[data-nq-catalog-tab]').forEach((tab) => tab.addEventListener('click', () => selectCatalogTab(tab.dataset.nqCatalogTab)));
     $('nq-root-search').addEventListener('input', filterCatalog);
+    // The automatic domains follow the names and keywords being typed.
+    let pendingAutomatic = 0;
+    rootDialog.addEventListener('input', (event) => {
+      if (!event.target.matches('.nq-root-name, .nq-root-keywords')) return;
+      cancelAnimationFrame(pendingAutomatic);
+      pendingAutomatic = requestAnimationFrame(refreshAutomaticDomains);
+    });
     $('nq-root-cancel').addEventListener('click', () => rootDialog.close());
     // Adds the default domains, root categories and root causes that are missing; existing ones keep their keywords.
     $('nq-root-defaults').addEventListener('click', () => {
@@ -3951,7 +4197,7 @@
     $('nq-root-add').addEventListener('click', () => {
       const row = catalogTab === 'domains' ? domainRow() : entryRow(catalogTab);
       $(CATALOG_LISTS[catalogTab]).append(row);
-      if (catalogTab !== 'domains') row.querySelector('.nq-domain-select').refresh();
+      refreshDomainSelects();
       countCatalog();
       row.querySelector('.nq-root-name').focus();
     });
@@ -3960,10 +4206,7 @@
       const save = $('nq-root-save');
       save.disabled = true;
       try {
-        await api('/api/non-qualified-calls/root-causes', {
-          method: 'PUT', body: JSON.stringify({domains: collectCatalogRows('domains'), categories: collectCatalogRows('categories'),
-            causes: collectCatalogRows('causes'), require_to_close: $('nq-root-require').checked}),
-        });
+        await saveCatalog();
         rootDialog.close();
         toast('Root cause catalog saved.');
         await loadState();
@@ -4665,6 +4908,9 @@
     const reset = () => {
       importButton.disabled = true;
       previewButton.disabled = !file.files.length;
+      form.querySelector('[data-nq-analyses-equivalences-download]').title = file.files.length
+        ? 'Every value of the follow-up and list columns of the chosen file, with what it becomes'
+        : 'The equivalences the import uses: the rules of the tool and those of this workspace';
       form.querySelector('[data-nq-analyses-name]').textContent = file.files[0]?.name || 'No file chosen';
       summary.hidden = true;
       error.textContent = '';
@@ -4679,25 +4925,98 @@
     };
     const count = (value, singular, plural = `${singular}s`) => `${number(value)} ${value === 1 ? singular : plural}`;
     const render = (result) => {
+      const sheets = (result.sheets || []).map((item) => `${item.sheet} (${count(item.rows, 'row')})`);
       const lines = result.dry_run ? [
-        `${count(result.calls, 'call')} in ${count(result.rows, 'row')}: ${number(result.matched)} found in the workspace, ${number(result.unmatched)} not found.`,
-        `${count(result.changed, 'call')} would change and ${count(result.comments, 'comment')} would be added; ${count(result.analysed, 'call')} already ${result.analysed === 1 ? 'has' : 'have'} an analysis.`,
+        `${count(result.calls, 'call')} in ${count(result.rows, 'row')}: ${number(result.matched)} found in the workspace, ${number(result.unmatched)} not loaded yet.`,
+        `${count(result.changed, 'call')} would change, ${count(result.pending, 'call')} not loaded yet would keep ${result.pending === 1 ? 'its' : 'their'} analysis, ${count(result.comments, 'comment')} and ${count(result.notes, 'import note')} would be added; ${count(result.analysed, 'call')} already ${result.analysed === 1 ? 'has' : 'have'} an analysis.`,
       ] : [
-        `${count(result.changed, 'call')} changed and ${count(result.comments, 'comment')} added (${number(result.matched)} of ${count(result.calls, 'call')} found).`,
+        `${count(result.changed, 'call')} changed, ${count(result.pending, 'call')} not loaded yet kept, ${count(result.comments, 'comment')} and ${count(result.notes, 'import note')} added (${number(result.matched)} of ${count(result.calls, 'call')} found).`,
       ];
+      const created = (title, items, describe) => list(title, (items || []).map(describe));
+      const inDomain = (domain) => (domain ? `in ${domain}` : 'with the domain of the keywords');
+      // What the import cannot place, and the calls of several rows (the note keeps the values of the other rows).
+      const apart = [
+        result.skipped ? `${count(result.skipped, 'row')} without JOIN_ID or session` : '',
+        result.unplaced ? `${count(result.unplaced, 'call')} not loaded yet whose service the file does not tell` : '',
+      ].filter(Boolean);
       summary.replaceChildren(
         ...lines.map((line) => node('p', line)),
         ...[
+          list('Sheets read:', sheets),
+          list('Sheets without a JOIN_ID column, left out:', result.sheets_skipped || []),
           list('Columns imported:', result.columns),
+          list('Columns kept in the import note:', result.noted || []),
+          result.cdr_columns ? list('CDR columns before the analysis (already in the tool):', [count(result.cdr_columns, 'column')]) : null,
           list('Read-only columns left out:', result.read_only),
-          list('Unknown columns left out:', result.ignored),
-          list('JOIN_IDs not found:', result.unmatched_ids),
-          list(`Values that do not exist, left out (${number(result.invalid_total)}):`, result.invalid.map((item) => `${item.column} = ${item.value} (${item.rows})`)),
+          created('New list values:', result.new_options, (item) => `${item.field} = ${item.value} (${item.rows})`),
+          created('New teams:', result.new_teams, (item) => `${item.value} (${item.rows})`),
+          created('New root categories:', result.new_categories, (item) => `${item.value} ${inDomain(item.domain)} (${item.rows})`),
+          created('New root causes:', result.new_causes, (item) => `${item.value} ${inDomain(item.domain)} (${item.rows})`),
+          created('Domains the review changes:', result.domain_changes, (item) => `${item.kind} ${item.value}: ${item.from || 'no domain'} → ${item.to}`
+            + ` (${item.rows})${item.others.length ? `, also given ${item.others.join(', ')}` : ''}`),
+          result.dated || result.estimated ? list('Dates of the analyses (of their changes, comments and note):', [
+            result.dated ? `${count(result.dated, 'call')} with the date of their analysis (Date last modification)` : '',
+            result.estimated ? `${count(result.estimated, 'call')} without it, with the date of the call a week later` : '',
+          ].filter(Boolean)) : null,
+          list('Calls not loaded yet (first ones):', result.unmatched_ids),
+          list('Left out:', apart),
+          result.duplicates ? list('Calls in several rows (the first row gives the values, the note keeps the others):', [count(result.duplicates, 'call')]) : null,
+          list(`Values that are not values of their field, kept in the import note (${number(result.invalid_total)}):`,
+            result.invalid.map((item) => `${item.column} = ${item.value} (${item.rows})`)),
           list('Calls that could not be changed:', result.failures),
         ].filter(Boolean),
       );
       summary.hidden = false;
     };
+    // The equivalences of the chosen file, downloaded to review and uploaded back.
+    const equivalencesStatus = form.querySelector('[data-nq-analyses-equivalences-status]');
+    const downloadEquivalences = form.querySelector('[data-nq-analyses-equivalences-download]');
+    // With a file, its values; without one, the equivalences the import uses (the rules of the tool and the workspace).
+    downloadEquivalences.addEventListener('click', async () => {
+      error.textContent = '';
+      const body = new FormData();
+      if (file.files.length) body.append('file', file.files[0]);
+      downloadEquivalences.disabled = true;
+      equivalencesStatus.textContent = 'Preparing the equivalences…';
+      try {
+        const response = await fetch('/api/non-qualified-calls/analyses/equivalences', file.files.length
+          ? {method: 'POST', credentials: 'same-origin', body} : {credentials: 'same-origin'});
+        if (!response.ok) {
+          const result = await response.json().catch(() => ({}));
+          throw new Error(typeof result.detail === 'string' ? result.detail : 'The equivalences could not be prepared.');
+        }
+        const link = node('a');
+        link.href = URL.createObjectURL(await response.blob());
+        link.download = 'NQ_analyses_equivalences.xlsx';
+        link.click();
+        URL.revokeObjectURL(link.href);
+        equivalencesStatus.textContent = 'Review Maps to and the Domain (each cell lists the values it takes), then upload the workbook.';
+      } catch (exc) {
+        error.textContent = exc.message;
+        equivalencesStatus.textContent = '';
+      } finally {
+        downloadEquivalences.disabled = false;
+      }
+    });
+    const equivalencesFile = form.querySelector('[data-nq-analyses-equivalences-file]');
+    equivalencesFile.addEventListener('change', async () => {
+      if (!equivalencesFile.files.length) return;
+      error.textContent = '';
+      const body = new FormData();
+      body.append('file', equivalencesFile.files[0]);
+      try {
+        const response = await fetch('/api/non-qualified-calls/analyses/equivalences', {method: 'PUT', credentials: 'same-origin', body});
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(typeof result.detail === 'string' ? result.detail : 'The equivalences could not be saved.');
+        equivalencesStatus.textContent = `${count(result.saved, 'equivalence')} saved (${number(result.total)} in the workspace). Preview the file again.`;
+        importButton.disabled = true;
+        summary.hidden = true;
+      } catch (exc) {
+        error.textContent = exc.message;
+      } finally {
+        equivalencesFile.value = '';
+      }
+    });
     const send = async (preview) => {
       error.textContent = '';
       const body = new FormData();
@@ -4710,7 +5029,7 @@
         const result = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(typeof result.detail === 'string' ? result.detail : 'The file could not be imported.');
         render(result);
-        importButton.disabled = !preview || !result.matched;
+        importButton.disabled = !preview || !(result.matched || result.pending);
         if (!preview) loadState();
       } catch (exc) {
         error.textContent = exc.message;
