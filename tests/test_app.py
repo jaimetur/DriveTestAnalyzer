@@ -10983,8 +10983,8 @@ def test_every_tab_lists_its_sections_with_icons_in_the_colour_of_its_module(cli
         headings = {section_anchor(re.sub(r'<[^>]+>', '', heading).replace('&amp;', '&'))
                     for heading in re.findall(r'<h[123][^>]*>(.*?)</h[123]>', (templates / pages[module]).read_text(encoding='utf-8'), re.S)}
         for heading, *_rest in filter(None, sections):
-            # The Analysis Center is not a panel: the page opens its menu, and its options their dialogs.
-            if (module, heading) != ('non-qualified-calls', 'Analysis Center'):
+            # The NQ Analysis Configuration is not a panel: the page opens its menu, and its options their dialogs.
+            if (module, heading) != ('non-qualified-calls', 'NQ Analysis Configuration'):
                 assert section_anchor(heading) in headings, (module, heading)
 
 

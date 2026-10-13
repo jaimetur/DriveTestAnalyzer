@@ -2557,6 +2557,104 @@ def save_root_causes(task_repository: Any, catalog: Any, require_to_close: bool,
     return list_root_causes(task_repository)
 
 
+# Who analysed each call, as the analysis workbooks name them (also before they had an account).
+ANALYST_FIELD = 'analyst'
+
+
+def _analyst_rows(connection: Any) -> list[Any]:
+    """The Analyst of every call of the workspace (its CDR loaded), with its assignee and team."""
+    return connection.execute(
+        f"SELECT f.call_key, f.value, COALESCE(t.assignee, '') AS assignee, COALESCE(t.team, '') AS team "
+        f"FROM {NQ_FIELD_VALUES_TABLE} f LEFT JOIN {NQ_CALL_TRACKING_TABLE} t ON t.call_key = f.call_key "
+        f"WHERE f.field_key = ? AND f.value <> '' AND f.call_key IN (SELECT call_key FROM {NQ_CALLS_TABLE})", (ANALYST_FIELD,)).fetchall()
+
+
+def _analyst_user(spellings: list[str], users: Any) -> str:
+    """The only user named as the analyst: the whole name (Raj Kumar is rajkumar), then the first part of the user
+    (Anudeep is anudeep.kumar), then the first part of both (Raj Kumar is raj.k)."""
+    whole = lambda value: nq_analyses.identity(value)
+    first = lambda value: nq_analyses.identity(re.split(r'[\s._@-]+', str(value).strip())[0])
+    for analyst_part, user_part in ((whole, whole), (whole, first), (first, first)):
+        names = {analyst_part(spelling) for spelling in spellings} - {''}
+        found = [user for user in users if user_part(user) in names]
+        if len(found) == 1:
+            return found[0]
+    return ''
+
+
+def analyst_assignments(task_repository: Any, users: Any = ()) -> dict[str, Any]:
+    """The analysts of the calls: each name with the spellings it is written with (the same letters: Raj Kumar is
+    Rajkumar), its calls, those without an assignee and the suggested user (the only user named as the analyst, or
+    the assignee most of its calls have); and the calls whose CDR is not loaded yet, which wait for it."""
+    groups: dict[str, dict[str, Any]] = {}
+    with task_repository.connection() as connection:
+        rows = _analyst_rows(connection)
+        waiting = int(connection.execute(
+            f"SELECT COUNT(*) FROM {NQ_FIELD_VALUES_TABLE} WHERE field_key = ? AND value <> '' "
+            f"AND call_key NOT IN (SELECT call_key FROM {NQ_CALLS_TABLE})", (ANALYST_FIELD,)).fetchone()[0])
+    for row in rows:
+        key = nq_analyses.identity(row['value'])
+        group = groups.setdefault(key, {'spellings': Counter(), 'calls': 0, 'unassigned': 0, 'assignees': Counter()})
+        group['spellings'][str(row['value'])] += 1
+        group['calls'] += 1
+        if row['assignee']:
+            group['assignees'][str(row['assignee'])] += 1
+        else:
+            group['unassigned'] += 1
+    analysts = []
+    for key, group in groups.items():
+        spellings = [spelling for spelling, _count in group['spellings'].most_common()]
+        analysts.append({'key': key, 'name': spellings[0], 'spellings': spellings, 'calls': group['calls'],
+                         'unassigned': group['unassigned'], 'suggested': _analyst_user(spellings, users)
+                         or (group['assignees'].most_common(1)[0][0] if group['assignees'] else '')})
+    return {'analysts': sorted(analysts, key=lambda item: (-item['calls'], item['name'].casefold())), 'waiting': waiting}
+
+
+def assign_analysts(task_repository: Any, assignments: Any, username: str, users: set[str], *, overwrite: bool = False,
+                    preview: bool = False) -> dict[str, Any]:
+    """Give the calls of each analyst the user chosen for them (``assignments``: analyst key → user name) as assignee:
+    only the calls without an assignee unless ``overwrite``. Every call keeps its team: the user joins the teams with
+    members they are not one of. ``preview`` counts the calls and teams without changing anything."""
+    lookup = {name.casefold(): name for name in users}
+    chosen = {str(key): str(name).strip() for key, name in (assignments.items() if isinstance(assignments, dict) else []) if str(name).strip()}
+    unknown = [name for name in chosen.values() if name.casefold() not in lookup]
+    if unknown:
+        raise ValueError(f'{unknown[0]} is not a user of this workspace.')
+    options = list_options(task_repository)
+    members = team_members(options)
+    team_names = {team['name'].casefold(): team['name'] for team in options['teams']}
+    batches: dict[tuple[str, str], list[str]] = {}
+    joins: set[tuple[str, str]] = set()
+    per_analyst: Counter = Counter()
+    with task_repository.connection() as connection:
+        rows = _analyst_rows(connection)
+    for row in rows:
+        key = nq_analyses.identity(row['value'])
+        if key not in chosen:
+            continue
+        user = lookup[chosen[key].casefold()]
+        assignee, team = str(row['assignee']), team_names.get(str(row['team']).casefold(), str(row['team']))
+        if assignee.casefold() == user.casefold() or (assignee and not overwrite):
+            continue
+        if team and members.get(team.casefold()) and user.casefold() not in members[team.casefold()]:
+            joins.add((team, user))
+        batches.setdefault((user, team), []).append(str(row['call_key']))
+        per_analyst[key] += 1
+    summary = {'calls': sum(per_analyst.values()), 'analysts': dict(per_analyst),
+               'joins': [{'team': team, 'user': user} for team, user in sorted(joins)]}
+    if preview or not summary['calls']:
+        return summary
+    if joins:
+        with task_repository.connection() as connection:
+            connection.executemany(f'INSERT OR IGNORE INTO {NQ_TEAM_MEMBERS_TABLE} (team, username) VALUES (?, ?)', sorted(joins))
+    for (user, team), keys in batches.items():
+        update_tracking(task_repository, keys, {'assignee': user, 'team': team}, username, users)
+    if hasattr(task_repository, 'try_add_log'):
+        task_repository.try_add_log(username, 'nq_analyst_assignees', json.dumps(
+            {'calls': summary['calls'], 'overwrite': overwrite, 'assignments': chosen}, ensure_ascii=False))
+    return summary
+
+
 def apply_cause_categories(task_repository: Any, username: str, dry_run: bool = False) -> int:
     """Give every call with a root cause and no root category the category its cause is mapped to (``dry_run`` only
     counts them); the history, the domain and the Status Rules of the calls follow. Returns how many calls."""
@@ -3354,6 +3452,10 @@ def query_calls(task_repository: Any, request: dict[str, Any], username: str) ->
     }
 
 
+# The text fields of people (who analysed and who reviewed each call): filtered, like lists, by the names they hold.
+VALUE_FILTER_FIELDS = ('analyst', 'reviewer')
+
+
 def filter_options(task_repository: Any) -> dict[str, list[str]]:
     """Distinct values of every indexed filter; Operators and Vendors with their mapped labels."""
     values: dict[str, list[str]] = {}
@@ -3384,6 +3486,12 @@ def filter_options(task_repository: Any) -> dict[str, list[str]]:
                 f"ORDER BY value COLLATE NOCASE LIMIT {MAX_COLUMN_FILTER_VALUES}"
             ).fetchall()
             values[f'column:{key}'] = [str(row['value']) for row in rows]
+        # The names of the people of the calls (Analyst, Reviewer), as the calls of the workspace hold them.
+        for key in VALUE_FILTER_FIELDS:
+            values[f'field:{key}'] = [str(row[0]) for row in connection.execute(
+                f"SELECT DISTINCT value FROM {NQ_FIELD_VALUES_TABLE} WHERE field_key = ? AND value <> '' "
+                f"AND call_key IN (SELECT call_key FROM {NQ_CALLS_TABLE}) ORDER BY value COLLATE NOCASE "
+                f"LIMIT {MAX_COLUMN_FILTER_VALUES}", (key,))]
     values['assignee'] = [str(row['assignee']) for row in assignees]
     return values
 
@@ -6305,6 +6413,11 @@ def install_non_qualified_calls_routes(core: Any) -> None:
     class ApplyCategoriesPayload(BaseModel):
         preview: bool = False
 
+    class AnalystAssignmentsPayload(BaseModel):
+        assignments: dict[str, str] = Field(default_factory=dict)
+        overwrite: bool = False
+        preview: bool = False
+
     class SectionsPayload(BaseModel):
         sections: list[dict[str, Any]] = Field(default_factory=list)
 
@@ -6530,6 +6643,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
             'fields': list_fields(repository), 'field_types': FIELD_TYPES, 'field_sources': nq_catalog.FIELD_SOURCES,
             'tracking_refs': nq_catalog.TRACKING_REFS, 'rca_refs': nq_catalog.RCA_REFS, 'call_fields': list(CATALOG_CALL_FIELDS),
             'sections': list_sections(repository), 'default_sections': nq_catalog.default_sections(), 'call_section': CALL_SECTION,
+            'value_filter_fields': list(VALUE_FILTER_FIELDS),
             'status_rules': status_rules(repository), 'default_status_rules': nq_catalog.default_status_rules(),
             'default_options': {'statuses': [{'name': name, 'color': color, 'closed': closed} for name, color, closed in DEFAULT_STATUSES],
                                 'teams': [{'name': name, 'color': color, 'members': []} for name, color in DEFAULT_TEAMS]},
@@ -6851,6 +6965,20 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         repository = workspace_repository(user)
         catalog = {'domains': payload.domains, 'categories': payload.categories, 'causes': payload.causes}
         return JSONResponse(translate(lambda: save_root_causes(repository, catalog, payload.require_to_close, user.username)))
+
+    @core.app.get('/api/non-qualified-calls/analysts')
+    def nq_analysts(user=Depends(editor_user)) -> JSONResponse:
+        """The analysts of the calls with their calls and assignees, and the users of the workspace."""
+        repository = workspace_repository(user)
+        users = workspace_users()
+        return JSONResponse({**analyst_assignments(repository, users), 'users': users})
+
+    @core.app.post('/api/non-qualified-calls/analysts/assign')
+    def nq_assign_analysts(payload: AnalystAssignmentsPayload, user=Depends(editor_user)) -> JSONResponse:
+        """The calls of each analyst assigned to the user chosen for them (``preview`` counts them)."""
+        repository = workspace_repository(user)
+        return JSONResponse(translate(lambda: assign_analysts(repository, payload.assignments, user.username, set(workspace_users()),
+                                                              overwrite=payload.overwrite, preview=payload.preview)))
 
     @core.app.post('/api/non-qualified-calls/root-causes/apply-categories')
     def nq_apply_cause_categories(payload: ApplyCategoriesPayload, user=Depends(editor_user)) -> JSONResponse:

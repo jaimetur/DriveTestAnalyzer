@@ -506,6 +506,57 @@ def test_an_assignee_brings_the_call_to_their_team(client, tmp_path):
     assert other['team'] == 'Operations' and patch(client, calls['0xB2'], {'assignee': 'analyst'})['team'] == 'Netcheck'
 
 
+def test_analysts_become_the_asignees_of_their_calls(client, tmp_path):
+    calls = setup_calls(client, tmp_path)
+    for username in ('rajkumar.s', 'anudeep.kumar', 'ashish.a', 'ashish.b'):
+        core.repository.create_user(username, 'analyst123', 'user-editor')
+        user_id = next(int(row['id']) for row in core.repository.list_users() if row['username'] == username)
+        core.repository.set_user_workspace_access(user_id, [core.active_workspace.id])
+    state = client.get('/api/non-qualified-calls/state').json()
+    statuses = [{**status, 'previous': status['name']} for status in state['options']['statuses']]
+    teams = [{**team, 'previous': team['name'], 'members': ['super'] if team['name'] == 'Netcheck' else []}
+             for team in state['options']['teams']]
+    assert client.put('/api/non-qualified-calls/options', json={'statuses': statuses, 'teams': teams}).status_code == 200
+    patch(client, calls['0xA1'], {'fields': {'analyst': 'Raj Kumar'}, 'team': 'Netcheck'})
+    patch(client, calls['0xB2'], {'fields': {'analyst': 'rajkumar'}, 'assignee': 'super'})
+    patch(client, calls['0xC3'], {'fields': {'analyst': 'Anudeep', 'reviewer': 'Jorge'}})
+    # Analyst and Reviewer filter the calls by the names they hold.
+    state = client.get('/api/non-qualified-calls/state').json()
+    assert state['value_filter_fields'] == ['analyst', 'reviewer']
+    assert state['filter_options']['field:analyst'] == ['Anudeep', 'Raj Kumar', 'rajkumar']
+    assert state['filter_options']['field:reviewer'] == ['Jorge']
+    assert [call['join_id'] for call in query(client, filters={'fields': {'analyst': ['Raj Kumar', 'rajkumar']}})['calls']] == ['0xB2', '0xA1']
+    assert [call['join_id'] for call in query(client, filters={'fields': {'reviewer': [nq.UNASSIGNED]}})['calls']] == ['0xB2', '0xA1']
+    # One row per analyst (the same letters are one name), with the user named as them.
+    listed = client.get('/api/non-qualified-calls/analysts').json()
+    assert [(item['key'], item['calls'], item['unassigned'], item['suggested']) for item in listed['analysts']] == [
+        ('rajkumar', 2, 1, 'rajkumar.s'), ('anudeep', 1, 1, 'anudeep.kumar')]
+    assert sorted(listed['analysts'][0]['spellings']) == ['Raj Kumar', 'rajkumar'] and 'ashish.a' in listed['users']
+    assert nq._analyst_user(['Ashish'], listed['users']) == ''
+    # The preview counts the calls without an assignee and the teams the user joins, and changes nothing.
+    assignments = {'rajkumar': 'rajkumar.s', 'anudeep': 'anudeep.kumar'}
+    preview = client.post('/api/non-qualified-calls/analysts/assign', json={'assignments': assignments, 'preview': True}).json()
+    assert preview == {'calls': 2, 'analysts': {'rajkumar': 1, 'anudeep': 1}, 'joins': [{'team': 'Netcheck', 'user': 'rajkumar.s'}]}
+    assert client.get(f"/api/non-qualified-calls/calls/{calls['0xA1']['call_key']}").json()['call']['assignee'] == ''
+    applied = client.post('/api/non-qualified-calls/analysts/assign', json={'assignments': assignments}).json()
+    assert applied['calls'] == 2
+    detail = client.get(f"/api/non-qualified-calls/calls/{calls['0xA1']['call_key']}").json()
+    assert (detail['call']['assignee'], detail['call']['team']) == ('rajkumar.s', 'Netcheck')
+    assert any(entry['field'] == 'assignee' and entry['new_value'] == 'rajkumar.s' for entry in detail['history'])
+    third = client.get(f"/api/non-qualified-calls/calls/{calls['0xC3']['call_key']}").json()['call']
+    assert (third['assignee'], third['team']) == ('anudeep.kumar', '')
+    netcheck = next(team for team in nq.list_options(core.repository)['teams'] if team['name'] == 'Netcheck')
+    assert sorted(netcheck['members']) == ['rajkumar.s', 'super']
+    # The Asignee a call already has stays unless replaced.
+    assert client.post('/api/non-qualified-calls/analysts/assign', json={'assignments': assignments}).json()['calls'] == 0
+    replaced = client.post('/api/non-qualified-calls/analysts/assign', json={'assignments': assignments, 'overwrite': True}).json()
+    assert replaced['calls'] == 1
+    assert client.get(f"/api/non-qualified-calls/calls/{calls['0xB2']['call_key']}").json()['call']['assignee'] == 'rajkumar.s'
+    assert client.get('/api/non-qualified-calls/analysts').json()['analysts'][0]['unassigned'] == 0
+    unknown = client.post('/api/non-qualified-calls/analysts/assign', json={'assignments': {'anudeep': 'nobody'}})
+    assert unknown.status_code == 400 and 'nobody' in unknown.json()['detail']
+
+
 def test_first_layout_workspaces_take_the_second_one(client, tmp_path):
     setup_calls(client, tmp_path)
     repository = core.repository
@@ -716,22 +767,24 @@ def test_admins_import_the_analyses_of_the_previous_tool_by_join_id(client, tmp_
     again = client.post('/api/non-qualified-calls/analyses/import', data={'preview': '1'},
                         files={'file': ('export.xlsx', io.BytesIO(exported), 'application/octet-stream')}).json()
     assert again['matched'] == 4 and 'Analysis Status' in again['columns'] and again['changed'] == 0
-    # The Analysis Center menu ends with both imports after a line, and the sections menu of the module lists the
-    # Analysis Center after a line with every option (the page opens them); only admins and super-admins import analyses.
+    # The NQ Analysis Configuration menu ends with both imports and Analysts → Asignees after a line, and the sections
+    # menu of the module lists it after a line with every option (the page opens them); only admins and super-admins
+    # import analyses.
     page = client.get('/non-qualified-calls').text
     center = page.split('id="nq-config-menu"', 1)[1].split('</div>\n  </div>', 1)[0]
-    assert center.index('nq-menu-separator') < center.index('id="nq-rca-open"') < center.index('id="nq-analyses-open"')
+    assert center.index('nq-menu-separator') < center.index('id="nq-rca-open"') < center.index('id="nq-analyses-open"') \
+        < center.index('id="nq-assign-analysts-open"')
     assert 'Import Ericsson RCA Results</strong>' in center and 'Import Previous NQ Analyses</strong>' in center
     assert 'nq-import-toggle' not in page
     menu = page.split('data-module-sections-for="non-qualified-calls"', 1)[1].split('</nav>', 1)[0]
-    assert menu.index('<span>Non-Qualified Calls</span>') < menu.index('module-sections-separator') < menu.index('<span>Analysis Center</span>')
+    assert menu.index('<span>Non-Qualified Calls</span>') < menu.index('module-sections-separator') < menu.index('<span>NQ Analysis Configuration</span>')
     script = (Path(__file__).parents[1] / 'src/web_interface/static/js/non_qualified_calls.js').read_text(encoding='utf-8')
     anchors = ('fields-and-sections', 'statuses-and-teams', 'status-rules', 'root-cause-catalog', 'import-ericsson-rca-results',
-               'import-previous-nq-analyses')
-    for anchor in ('section-analysis-center', *anchors):
+               'import-previous-nq-analyses', 'analysts-to-asignees')
+    for anchor in ('section-nq-analysis-configuration', *anchors):
         assert f'href="/non-qualified-calls#{anchor}"' in menu and f"'{anchor}':" in script, anchor
     assert menu.index('#root-cause-catalog') < menu.rindex('module-sections-separator') < menu.index('#import-ericsson-rca-results')
-    # Columns is a button of the table, before Default column order, not an option of the Analysis Center.
+    # Columns is a button of the table, before Default column order, not an option of the NQ Analysis Configuration.
     assert 'nq-columns-open' not in center and 'additional-columns' not in menu
     toolbar = page.split('class="nq-toolbar-actions"', 1)[1].split('</div>', 1)[0]
     assert toolbar.index('id="nq-columns-open"') < toolbar.index('id="nq-column-order-reset"')

@@ -201,9 +201,10 @@
     && (state.user.can_moderate || comment.created_by.toLowerCase() === state.user.username.toLowerCase());
 
   // -- filters --------------------------------------------------------------
-  // The list and Yes / No fields chosen among their values: entered by the analysts or derived from the call.
-  const filterableFields = () => state.fields.filter((field) => ['list', 'yes_no'].includes(field.type)
-    && ['user', 'derived'].includes(field.source));
+  // The list and Yes / No fields chosen among their values: entered by the analysts or derived from the call; and the
+  // people of the calls (Analyst, Reviewer), chosen among the names they hold.
+  const filterableFields = () => state.fields.filter((field) => (['list', 'yes_no'].includes(field.type)
+    || (state.valueFilterFields || []).includes(field.key)) && ['user', 'derived'].includes(field.source));
   const filterSelects = () => [...root.querySelectorAll('[data-nq-filter]')];
   const fillSelect = (select, entries) => {
     const previous = new Set([...select.selectedOptions].map((option) => option.value));
@@ -231,7 +232,7 @@
       status_mode: Object.entries(STATUS_MODE_LABELS),
       version: Object.entries(state.versionLabels),
     };
-    // A filter for every list and Yes / No field of the Analysis Center, after the others.
+    // A filter for every list and Yes / No field of the Analysis Center (and Analyst and Reviewer), after the others.
     const fieldHost = $('nq-field-filters');
     const filterable = filterableFields();
     const present = new Set(filterable.map((field) => `field:${field.key}`));
@@ -240,8 +241,8 @@
     });
     filterable.forEach((field) => {
       const name = `field:${field.key}`;
-      entries[name] = [[state.unassigned, 'Empty'], ...(field.type === 'yes_no' ? ['Yes', 'No'] : field.options.map((option) => option.name))
-        .map((value) => (Array.isArray(value) ? value : [value, value]))];
+      const choices = {yes_no: ['Yes', 'No'], list: (field.options || []).map((option) => option.name)}[field.type] || values[name] || [];
+      entries[name] = [[state.unassigned, 'Empty'], ...choices.map((value) => [value, value])];
       if (fieldHost.querySelector(`[data-nq-filter="${CSS.escape(name)}"]`)) return;
       const label = node('label', field.label);
       const select = node('select');
@@ -2646,6 +2647,7 @@
       state.conditionFields = payload.condition_fields || {};
       state.rcaResults = payload.rca_results || {};
       state.callSection = payload.call_section || null;
+      state.valueFilterFields = payload.value_filter_fields || [];
       state.rcaSources = payload.rca_sources || {};
       buildDrawerTabs();
       state.tableColumns = payload.table_columns || {builtin: [], cdr: []};
@@ -3355,7 +3357,7 @@
         }
         parts.push(form);
       } else if (!['general', 'rca'].includes(group.key)) {
-        parts.push(node('p', state.user.can_edit ? 'No fields in this section yet: add them in Analysis Center › Fields & Sections.'
+        parts.push(node('p', state.user.can_edit ? 'No fields in this section yet: add them in NQ Analysis Configuration › Fields & Sections.'
           : 'No fields in this section.', 'form-note'));
       }
       if (group.key === 'rca') parts.push(rcaExtrasCard(call));
@@ -4913,7 +4915,7 @@
       saveRule(rule);
     });
   }
-  // -- Analysis Center menu -------------------------------------------------------------------------------
+  // -- NQ Analysis Configuration menu -------------------------------------------------------------------------------
   // A menu opens where it fits: below its button, or above it near the bottom of the window, scrolling inside if needed,
   // and moved right when the button is too close to the left edge for it. Every entry opens its dialog and closes it.
   const dropdownMenu = (toggle, menu) => {
@@ -4937,8 +4939,7 @@
       menu.classList.toggle('is-up', up);
       menu.style.maxHeight = `${Math.max(160, up ? above : below)}px`;
     };
-    toggle.addEventListener('click', (event) => {
-      event.stopPropagation();
+    toggle.addEventListener('click', () => {
       menu.hidden = !menu.hidden;
       toggle.setAttribute('aria-expanded', String(!menu.hidden));
       if (!menu.hidden) {
@@ -4948,7 +4949,8 @@
     });
     window.addEventListener('resize', () => { if (!menu.hidden) place(); });
     menu.addEventListener('click', () => window.setTimeout(close));
-    document.addEventListener('click', (event) => { if (!menu.contains(event.target) && event.target !== toggle) close(); });
+    // Any other click closes it, and a click on the toggle reaches the other dropdowns of the page, which close.
+    document.addEventListener('click', (event) => { if (!menu.contains(event.target) && !toggle.contains(event.target)) close(); });
     document.addEventListener('keydown', (event) => {
       if (event.key === 'Escape' && !menu.hidden) { close(); toggle.focus(); }
     });
@@ -5570,12 +5572,118 @@
       }
     });
   }
-  // The Analysis Center of the sections menu of the module opens its menu, and its options their dialogs (once the
+  // -- Analysts → Asignees dialog ----------------------------------------------------------------
+  // The user account chosen for each Analyst becomes the Asignee of their calls; the counts follow every choice.
+  const assignDialog = $('nq-assign-analysts-dialog');
+  if (assignDialog) {
+    let assignToken = 0;
+    let assignWaiting = 0;
+    const assignSelects = () => [...$('nq-assign-analysts-rows').querySelectorAll('select[data-analyst]')];
+    const assignRequest = (preview) => api('/api/non-qualified-calls/analysts/assign', {method: 'POST', body: JSON.stringify({
+      assignments: Object.fromEntries(assignSelects().filter((select) => select.value).map((select) => [select.dataset.analyst, select.value])),
+      overwrite: $('nq-assign-analysts-overwrite').checked, preview,
+    })});
+    const assignSummary = (result) => {
+      const chosen = assignSelects().some((select) => select.value);
+      const joins = result.joins.map((item) => `${item.user} joins ${item.team}`);
+      return [
+        !chosen ? 'Choose the user account of an analyst.' : result.calls
+          ? `${number(result.calls)} ${result.calls === 1 ? 'call gets' : 'calls get'} a new Asignee.` : 'No call changes with these choices.',
+        joins.length ? `Team members added: ${joins.join(', ')}.` : '',
+        assignWaiting ? `${number(assignWaiting)} ${assignWaiting === 1 ? 'call' : 'calls'} with an Analyst but without its CDR loaded ${assignWaiting === 1 ? 'is' : 'are'} not changed.` : '',
+      ].filter(Boolean).join(' ');
+    };
+    const previewAssign = debounce(async () => {
+      const token = ++assignToken;
+      const apply = $('nq-assign-analysts-apply');
+      apply.disabled = true;
+      try {
+        const result = await assignRequest(true);
+        if (token !== assignToken) return;
+        assignSelects().forEach((select) => {
+          select.closest('tr').querySelector('[data-analyst-change]').textContent = select.value ? number(result.analysts[select.dataset.analyst] || 0) : '—';
+        });
+        $('nq-assign-analysts-summary').textContent = assignSummary(result);
+        $('nq-assign-analysts-error').textContent = '';
+        apply.disabled = !result.calls;
+      } catch (error) {
+        if (token === assignToken) $('nq-assign-analysts-error').textContent = error.message;
+      }
+    }, 250);
+    const renderAssign = (payload) => {
+      assignWaiting = payload.waiting || 0;
+      $('nq-assign-analysts-rows').replaceChildren(...payload.analysts.map((analyst) => {
+        const row = node('tr');
+        const name = node('td');
+        name.append(node('strong', analyst.name));
+        if (analyst.spellings.length > 1) name.append(node('small', `Also written ${analyst.spellings.slice(1).join(', ')}`, 'nq-muted'));
+        const select = node('select');
+        select.dataset.analyst = analyst.key;
+        select.setAttribute('aria-label', `User account of ${analyst.name}`);
+        select.append(node('option', 'Leave unchanged'), ...payload.users.map((user) => node('option', user)));
+        select.options[0].value = '';
+        select.value = payload.users.includes(analyst.suggested) ? analyst.suggested : '';
+        select.addEventListener('change', previewAssign);
+        const account = node('td');
+        account.append(select);
+        const change = node('td', '—', 'nq-number');
+        change.dataset.analystChange = '';
+        row.append(name, node('td', number(analyst.calls), 'nq-number'), node('td', number(analyst.unassigned), 'nq-number'), account, change);
+        return row;
+      }));
+      if (!payload.analysts.length) {
+        const empty = node('td', 'No call of this workspace has an Analyst.', 'nq-muted');
+        empty.colSpan = 5;
+        const row = node('tr');
+        row.append(empty);
+        $('nq-assign-analysts-rows').append(row);
+      }
+    };
+    $('nq-assign-analysts-open').addEventListener('click', async () => {
+      $('nq-assign-analysts-overwrite').checked = false;
+      $('nq-assign-analysts-error').textContent = '';
+      $('nq-assign-analysts-summary').textContent = 'Reading the analysts of the calls…';
+      $('nq-assign-analysts-rows').replaceChildren();
+      $('nq-assign-analysts-apply').disabled = true;
+      assignDialog.showModal();
+      try {
+        renderAssign(await api('/api/non-qualified-calls/analysts'));
+        previewAssign();
+      } catch (error) {
+        $('nq-assign-analysts-summary').textContent = '';
+        $('nq-assign-analysts-error').textContent = error.message;
+      }
+    });
+    $('nq-assign-analysts-overwrite').addEventListener('change', previewAssign);
+    $('nq-assign-analysts-cancel').addEventListener('click', () => assignDialog.close());
+    $('nq-assign-analysts-form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const message = 'Replace the Asignee the calls already have with the user account of their Analyst?';
+      if ($('nq-assign-analysts-overwrite').checked && !(typeof window.showConfirmDialog === 'function'
+        ? await window.showConfirmDialog(message, {title: 'Replace Asignees', confirmLabel: 'Replace'}) : window.confirm(message))) return;
+      const button = $('nq-assign-analysts-apply');
+      button.disabled = true;
+      try {
+        const result = await assignRequest(false);
+        toast(`${number(result.calls)} ${result.calls === 1 ? 'call' : 'calls'} assigned to the account of their Analyst.`);
+        assignDialog.close();
+        // The new team members reach the pickers with the state of the page.
+        await loadState();
+        loadCalls({quiet: true});
+        if (state.detail) openDetail(state.detail.call.call_key, {keepTab: true});
+      } catch (error) {
+        $('nq-assign-analysts-error').textContent = error.message;
+        button.disabled = false;
+      }
+    });
+  }
+  // The NQ Analysis Configuration of the sections menu of the module opens its menu, and its options their dialogs (once the
   // page has its state).
   const CENTER_HASHES = {
-    'section-analysis-center': 'nq-config-toggle', 'fields-and-sections': 'nq-fields-open', 'statuses-and-teams': 'nq-options-open',
+    'section-nq-analysis-configuration': 'nq-config-toggle', 'fields-and-sections': 'nq-fields-open', 'statuses-and-teams': 'nq-options-open',
     'status-rules': 'nq-status-rules-open', 'root-cause-catalog': 'nq-root-open',
     'import-ericsson-rca-results': 'nq-rca-open', 'import-previous-nq-analyses': 'nq-analyses-open',
+    'analysts-to-asignees': 'nq-assign-analysts-open',
   };
   const openCenterFromHash = () => {
     const opener = CENTER_HASHES[decodeURIComponent(window.location.hash.slice(1))];

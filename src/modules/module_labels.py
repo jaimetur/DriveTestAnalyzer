@@ -296,13 +296,14 @@ MODULE_SECTIONS: dict[str, list[tuple[Any, ...] | None]] = {
                             ('Root Cause Analysis', 'Root Cause Analysis', 'search'),
                             ('Lifecycle & Phases', 'Lifecycle & Phases', 'activity'), ('Progress View', 'Progress View', 'trend'),
                             # Not a panel: the page opens its menu, and its options their dialogs (non_qualified_calls.js).
-                            None, ('Analysis Center', 'Analysis Center', 'sliders', [
+                            None, ('NQ Analysis Configuration', 'NQ Analysis Configuration', 'sliders', [
                                 ('fields-and-sections', 'Fields & Sections', 'tag'),
                                 ('statuses-and-teams', 'Statuses & Teams', 'users'),
                                 ('status-rules', 'Status Rules', 'function'),
                                 ('root-cause-catalog', 'Root Cause Catalog', 'book'), None,
                                 ('import-ericsson-rca-results', 'Import Ericsson RCA Results', 'upload'),
-                                ('import-previous-nq-analyses', 'Import Previous NQ Analyses', 'upload')])],
+                                ('import-previous-nq-analyses', 'Import Previous NQ Analyses', 'upload'),
+                                ('analysts-to-asignees', 'Analysts → Asignees', 'user-plus')])],
     'reporting': [('Reporting Jobs', 'Reporting Jobs', 'jobs'), ('Run History', 'Run History', 'log')],
     'chart-builder': [('Interactive Preview', 'Interactive Preview', 'eye')],
     'query-builder': [('Selected CDR tables', 'Query editor', 'code'), ('Saved queries', 'Saved queries', 'bookmark'),

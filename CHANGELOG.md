@@ -8,12 +8,16 @@
 #### ⚠️ Breaking Changes:
 
 #### 🌟 New Features:
+- **NQ Analysts → Asignees:** a dialog of the NQ Analysis Configuration menu lists every Analyst of the Non-Qualified Calls (the names written with the same letters as one analyst) with their calls, proposes the user account named as each one and gives it as the Asignee of their calls: only those without one unless asked to replace it, every call keeping its team (the user joins it when it has members), with the calls that change counted before applying and the change in the history of each call.
 
 #### 🚀 Enhancements:
 - **App Events of every user action:** App Events also record deleting a workspace (in the workspace open at that moment), cancelling an upload, Network Insights analyses, Scoring & GAP Analysis calculations, cancelling a Query Builder run, the NQ Analysis Center follow-up (changes to one call or in bulk, comments, catalog imports and exports, equivalences and Excel, PowerPoint and Word exports), stopping and deleting single Dashboard PPT and PPT Reporting (old) jobs and deleting Reporting Job runs, the downloads of generated reports, Dashboard PPTs, chart sets, Reporting Job runs and export packages, the CSV exports of dataset previews, chart data and Network Insights tables, the exports of PPT Templates, Dashboards, Scoring results and reports, methodologies and report configurations (and saving, deleting and importing these), export packages and outgoing server transfers with their outcome, importing a recovered transfer package, creating backup folders and the requests to stop background tasks.
+- **NQ Analyst and Reviewer filters:** the Analysis Center Filters of Non-Qualified Calls, and the funnels of their columns, filter the calls by every Analyst and Reviewer name they hold, with Empty for the calls without one.
+- **NQ Analysis Configuration:** the Analysis Center button of Non-Qualified Calls, and its entry in the sections menu of the module, is now NQ Analysis Configuration.
 
 #### 🐛 Bug fixes:
 - **PPT Dashboards background charts after changing workspace:** the charts of the Dashboards of a closed workspace wait until it is opened again, instead of being retried continuously while the application is idle and holding back the charts of the Dashboards of the open workspace.
+- **NQ Analysis Configuration menu under the Filters:** the menu opens above the Filters panel instead of under it when a filter list is open, and opening it closes that list.
 
 #### 📚 Documentation:
 
