@@ -1521,7 +1521,7 @@
   });
   const VIEW_STORAGE = `nq-view:${$('nq-table').dataset.workspace || ''}`;
   // The bar shows the calls, one panel at a time, or every panel.
-  const VIEWS = ['calls', 'summary', 'rates', 'progress', 'lifecycle', 'root', 'sources', 'all'];
+  const VIEWS = ['calls', 'summary', 'rates', 'sources', 'root', 'lifecycle', 'progress', 'all'];
   const applyView = (view) => {
     state.view = VIEWS.includes(view) ? view : 'calls';
     root.querySelectorAll('[data-nq-view-panel]').forEach((panel) => {
@@ -3454,8 +3454,7 @@
     try {
       const response = await fetch(`/api/non-qualified-calls/export/${kind}`, {
         method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({filters: currentFilters(), granularity: $('nq-granularity').value,
-          include_suggestions: false, source: state.rootSource}),
+        body: JSON.stringify({filters: currentFilters(), granularity: $('nq-granularity').value, include_suggestions: false}),
       });
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));

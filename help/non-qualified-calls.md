@@ -38,13 +38,13 @@ The **Filters** panel restricts the summary, the table and the Excel export toge
 - **Search** finds text in the call fields (Operator, Vendor, Campaign, Region, City, Technology, test, result, failure fields, cell, `JOIN_ID` and the CDR columns of the table), in the fields entered by the analysts and in the comments.
 - **Open calls only**, **Assigned to me** and **Without comments**.
 
-Selecting every value of a filter, or none, applies no restriction. Active filters appear as chips at the top of every panel (Filters, Summary, NQ Rate by Campaign and Operator, Progress View, Lifecycle & Phases, Root Cause Analysis, Root Cause Sources and the table), including those set from the Progress View and the Root Cause Analysis (NR Mode, Call Type, Period, Age of Open Calls, root domain and cause with suggestions, eNB/gNB); click a chip to remove it. The NQ Rate panel dims the chips of the filters it does not use. **Reset Filters** clears them all.
+Selecting every value of a filter, or none, applies no restriction. Active filters appear as chips at the top of every panel (Filters, Summary, NQ Rate by Campaign and Operator, Root Cause Sources, Root Cause Analysis, Lifecycle & Phases, Progress View and the table), including those set from the Progress View and the Root Cause Analysis (NR Mode, Call Type, Period, Age of Open Calls, root domain and cause with suggestions, eNB/gNB); click a chip to remove it. The NQ Rate panel dims the chips of the filters it does not use. **Reset Filters** clears them all.
 
 The selection is shared: it is saved in the workspace, so every user finds the last filters applied, in any session and on any device. **Assigned to me** always refers to the user viewing the page.
 
 ## NQ Calls, one panel or every panel
 
-A bar above the Filters, which stays at the top of the window while you scroll, chooses what the page shows below them: **NQ Calls** (the [Non-Qualified Calls](#non-qualified-calls-panel) table, with the number of calls that match the filters), one panel at a time — **Summary**, **NQ Rate** (NQ Rate by Campaign and Operator), **Progress** (Progress View), **Lifecycle** (Lifecycle & Phases), **Root Causes** (Root Cause Analysis) and **RCA Sources** (Root Cause Sources) — or **All panels**. The chosen panel (the first one with All panels) opens at the top of the page, right below the bar, and stays there while its data arrives. Only the panels shown are calculated, and each browser remembers the choice for each workspace. Every panel shows, in a badge below its **Collapse** button, how many calls match the filters. A panel chosen in the sections menu of the module opens with its own view. A click on a chart filters the calls as usual, and the bar tells how many calls are left. On a narrow window the bar scrolls sideways, keeping the chosen view in sight.
+A bar above the Filters, which stays at the top of the window while you scroll, chooses what the page shows below them: **NQ Calls** (the [Non-Qualified Calls](#non-qualified-calls-panel) table, with the number of calls that match the filters), one panel at a time — **Summary**, **NQ Rate** (NQ Rate by Campaign and Operator), **RCA Sources** (Root Cause Sources), **Root Causes** (Root Cause Analysis), **Lifecycle** (Lifecycle & Phases) and **Progress** (Progress View) — or **All panels**. The chosen panel (the first one with All panels) opens at the top of the page, right below the bar, and stays there while its data arrives. Only the panels shown are calculated, and each browser remembers the choice for each workspace. Every panel shows, in a badge below its **Collapse** button, how many calls match the filters. A panel chosen in the sections menu of the module opens with its own view. A click on a chart filters the calls as usual, and the bar tells how many calls are left. On a narrow window the bar scrolls sideways, keeping the chosen view in sight.
 
 Only the panels on screen are calculated: a panel of the other view, or a folded one, is calculated when it is shown, so a change of the filters only waits for what you are looking at.
 
@@ -63,32 +63,18 @@ The **NQ Rate by Campaign and Operator** panel, below the Summary, is the manage
 - A heat map: each cell shows the rate and *Non-Qualified / all calls*, coloured in pastel tones from soft mint (none) through apricot to dusty rose (the highest rate of the table); the Total column and row sum each campaign and operator.
 - A click on a cell or card shows only those calls in the other panels; a second click removes the filter.
 
-Only the **CDRs**, **Service**, **Campaign**, **Operator** and **NR Mode** filters apply: the other filters describe Non-Qualified Calls only, so changing them does not recalculate the panel, and its counts are reused until the CDRs are indexed again. The PowerPoint and Word exports and the Reporting artifact include the heat map of each service after the Executive Summary.
+Only the **CDRs**, **Service**, **Campaign**, **Operator** and **NR Mode** filters apply: the other filters describe Non-Qualified Calls only, so changing them does not recalculate the panel, and its counts are reused until the CDRs are indexed again. The PowerPoint and Word exports and the Reporting artifact show it after the Executive Summary as one heat map with a column per service (and their total) under each operator, on one slide, or on two when the operators or campaigns are many (each slide with half of the operators or of the campaigns).
 
-## Progress View
+## Root Cause Sources
 
-The **Progress View** below the Summary shows how the follow-up advances for the filtered calls:
+The **Root Cause Sources** panel of the Analysis Center compares the three root cause sources of the filtered calls:
 
-- Indicators: calls, open and closed calls, calls attended (with a follow-up change or a comment), commented, with a team and assigned, and the average days to close.
-- Donut charts **By Status**, **By Team**, **By Assignee**, **By Service** and **By Result**; each legend shows the full name with its count and share; hovering a slice shows its value, count and share, and a click on a slice or a legend entry filters the calls by that value.
-- A timeline per **week**, **month**, **quarter** or **year** of the calls detected, attended, commented, closed and reopened (hover a period to read all its values), with a table that adds the status changes, the open backlog at the end of each period and the average days to close.
-- The age of the open calls, the workload of each team and assignee (open, closed and total calls) and the recent activity.
+- Indicators: how many calls have a **NetCheck RCA** classification, **Ericsson RCA** results and a **Selected** Root Category or Cause, and how often the sources agree: **NetCheck ↔ Selected** and **Ericsson RCA ↔ Selected** (the category, or the cause when the source maps to no category, the analysts selected is the one the source proposes, mapped onto the catalog by its keywords) and **NetCheck ↔ Ericsson RCA**.
+- Three hierarchies side by side: the **NetCheck RCA** Failure Category → Subcategory of the CDR, the **Ericsson RCA** Suggested Category → Cause and the Root Category → Root Cause **Selected by the Analysts**; a category or cause of the analysts drills down into its calls.
+- **Selected Root Domains**, in the colour of each domain, drilling down by domain.
+- **RCA → Selected Root Category**: for the NetCheck RCA tab (the first) or the Ericsson RCA tab, how the categories the source maps to relate to the categories the analysts chose; the cells where both agree are outlined.
 
-As in the Summary, a click drills down into the calls: a slice or legend entry of a donut, a period of the timeline (in the chart or its table: the calls detected in that period), an age bar (the open calls of that age) or a team or assignee row shows only those calls; click it again to remove that filter. The User Activity table is informative only.
-
-## Lifecycle & Phases
-
-The **Lifecycle & Phases** panel of the Analysis Center follows the filtered calls through their follow-up:
-
-- Indicators: the calls, how many have an **Automatic Status** (following the Status Rules) and a **Status by Hand**, how many are open and closed, and how many are **Stalled** (open without any change for 14 days or more). A click on Automatic, By Hand, Open or Closed shows only those calls.
-- **NQ Call Status Pipeline**: a bar with the share of each status and one card per status, the open ones in their order and then the closed ones, with its calls, share and average age; a click on a card filters by that status. Each card shows the [Status Rules](#status-rules) that set it: **Rule N** (the order they are tried in) with the field and its values in their colours, for example *Rule 6 · Analysis Status · Ongoing* on Under Analysis, and *When no rule applies* on the first status. A click on a rule shows the calls that meet it.
-- **RCA Identification**: how many calls have a root category or cause selected and how many not, each row drilling down into its calls.
-- One card per list field of the **Analysis**, **Implementation** and **Planning** sections (for example Analysis Status, Implementation Status and Planned Status): a bar with the share of each value and a row per value (and **Empty**) that drills down into its calls.
-- **Time in Each Status**: the average days the calls stayed in each status before moving, from the history of their status (set by hand or by the rules).
-- **Most Frequent Moves** between statuses.
-- **Stalled Open Calls**: the open calls without changes for the longest, with their status, Operator, Campaign, City and days without change; click one to open it.
-
-**Status Rules** (for `user-editor` accounts and above) opens the rules from the panel.
+The panel shows how many Ericsson RCA results are imported and how many match calls; they are imported with **Import RCA & Analyses** (see [Import RCA & Analyses](#import-rca-analyses)).
 
 ## Root Cause Analysis
 
@@ -104,18 +90,32 @@ The **Root Cause Analysis** panel shows where the filtered calls fail, by the ro
 - **eNB / gNB with most calls**: the node of the last cell of each call's `Cell_ID` chain (the cell where it ended): identities above 28 bits are NR cells (gNB = NCI / 4096), LTE cells give their eNB (ECI / 256) and smaller identities are 2G/3G cells. The site, host (OSS) and vendor come from the workspace **Vodafone** and **Three** cell mapping datasets when they list the node; otherwise the vendor is the call's.
 - A click on a bar, on the name of a group, on a domain of its bar or on its count, or on an eNB/gNB row shows only those calls (for example the NSA calls of RF), and a second click removes the filter. The domains, categories and causes filter the calls of the chosen source (for example the calls the Ericsson RCA puts in Poor Coverage LTE).
 
-**Export PPT** and **Export Word** of the Filters panel take the Root Cause Analysis of the chosen source, named in its titles unless it is the analysts. The Non-Qualified Calls artifact of the Reporting Jobs keeps its **Root Cause Analysis** option: the root causes of the analysts, the calls without one with their suggested root cause.
+**Export PPT** and **Export Word** include the Root Cause Analysis of every source, each with its tables and named in its titles (*Root Cause Analysis · NetCheck RCA*, *· Ericsson RCA* and *· Analysts*), after the NQ Rate by Campaign and Operator and the Root Cause Sources, and before the Lifecycle & Phases and the Progress View. The Non-Qualified Calls artifact of the Reporting Jobs includes them too, and its **Root Cause Analysis** option decides whether the analysts count the calls without a root cause with their suggested one.
 
-## Root Cause Sources
+## Lifecycle & Phases
 
-The **Root Cause Sources** panel of the Analysis Center compares the three root cause sources of the filtered calls:
+The **Lifecycle & Phases** panel of the Analysis Center follows the filtered calls through their follow-up:
 
-- Indicators: how many calls have a **NetCheck RCA** classification, **Ericsson RCA** results and a **Selected** Root Category or Cause, and how often the sources agree: **NetCheck ↔ Selected** and **Ericsson RCA ↔ Selected** (the category, or the cause when the source maps to no category, the analysts selected is the one the source proposes, mapped onto the catalog by its keywords) and **NetCheck ↔ Ericsson RCA**.
-- Three hierarchies side by side: the **NetCheck RCA** Failure Category → Subcategory of the CDR, the **Ericsson RCA** Suggested Category → Cause and the Root Category → Root Cause **Selected by the Analysts**; a category or cause of the analysts drills down into its calls.
-- **Selected Root Domains**, in the colour of each domain, drilling down by domain.
-- **RCA → Selected Root Category**: for the NetCheck RCA tab (the first) or the Ericsson RCA tab, how the categories the source maps to relate to the categories the analysts chose; the cells where both agree are outlined.
+- Indicators: the calls, how many have an **Automatic Status** (following the Status Rules) and a **Status by Hand**, how many are open and closed, and how many are **Stalled** (open without any change for 14 days or more). A click on Automatic, By Hand, Open or Closed shows only those calls.
+- **NQ Call Status Pipeline**: a bar with the share of each status and one card per status, the open ones in their order and then the closed ones, with its calls, share and average age; a click on a card filters by that status. Each card shows the [Status Rules](#status-rules) that set it: **Rule N** (the order they are tried in) with the field and its values in their colours, for example *Rule 6 · Analysis Status · Ongoing* on Under Analysis, and *When no rule applies* on the first status. A click on a rule shows the calls that meet it.
+- **RCA Identification**: how many calls have a root category or cause selected and how many not, each row drilling down into its calls.
+- One card per list field of the **Analysis**, **Implementation** and **Planning** sections (for example Analysis Status, Implementation Status and Planned Status): a bar with the share of each value and a row per value (and **Empty**) that drills down into its calls.
+- **Time in Each Status**: the average days the calls stayed in each status before moving, from the history of their status (set by hand or by the rules).
+- **Most Frequent Moves** between statuses.
+- **Stalled Open Calls**: the open calls without changes for the longest, with their status, Operator, Campaign, City and days without change; click one to open it.
 
-The panel shows how many Ericsson RCA results are imported and how many match calls; they are imported with **Import RCA & Analyses** (see [Import RCA & Analyses](#import-rca-analyses)).
+**Status Rules** (for `user-editor` accounts and above) opens the rules from the panel.
+
+## Progress View
+
+The **Progress View**, the last panel, shows how the follow-up advances for the filtered calls:
+
+- Indicators: calls, open and closed calls, calls attended (with a follow-up change or a comment), commented, with a team and assigned, and the average days to close.
+- Donut charts **By Status**, **By Team**, **By Assignee**, **By Service** and **By Result**; each legend shows the full name with its count and share; hovering a slice shows its value, count and share, and a click on a slice or a legend entry filters the calls by that value.
+- A timeline per **week**, **month**, **quarter** or **year** of the calls detected, attended, commented, closed and reopened (hover a period to read all its values), with a table that adds the status changes, the open backlog at the end of each period and the average days to close.
+- The age of the open calls, the workload of each team and assignee (open, closed and total calls) and the recent activity.
+
+As in the Summary, a click drills down into the calls: a slice or legend entry of a donut, a period of the timeline (in the chart or its table: the calls detected in that period), an age bar (the open calls of that age) or a team or assignee row shows only those calls; click it again to remove that filter. The User Activity table is informative only.
 
 ## Non-Qualified Calls panel
 
@@ -272,7 +272,7 @@ A status from the file is set by hand. Values that do not exist are left out, a 
 
 ## Reporting Jobs
 
-Reporting Jobs include a **Non-Qualified Calls** artifact with the Executive Summary, the NQ Rate by Campaign and Operator, the Progress Status, the Lifecycle & Phases, the Root Cause Analysis and the Root Cause Sources of the calls in PowerPoint, Word and/or Excel (the Excel export of the page). Each job chooses its own filters (the same as the Filters panel, including **CDR Version**), the period of the progress timeline, whether to include only open calls and whether the Root Cause Analysis counts the suggested root causes. See [Reporting](reporting.md).
+Reporting Jobs include a **Non-Qualified Calls** artifact with the Executive Summary, the NQ Rate by Campaign and Operator, the Root Cause Sources, the Root Cause Analysis of each source, the Lifecycle & Phases and the Progress Status of the calls in PowerPoint, Word and/or Excel (the Excel export of the page). Each job chooses its own filters (the same as the Filters panel, including **CDR Version**), the period of the progress timeline, whether to include only open calls and whether the Root Cause Analysis of the analysts counts the suggested root causes. See [Reporting](reporting.md).
 
 ## Storage and portability
 

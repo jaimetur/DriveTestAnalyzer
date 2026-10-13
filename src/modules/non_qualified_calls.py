@@ -4678,7 +4678,6 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         filters: dict[str, Any] = Field(default_factory=dict)
         granularity: str = 'month'
         include_suggestions: bool = True
-        source: str = 'analysts'
 
     class ExportPayload(BaseModel):
         filters: dict[str, Any] = Field(default_factory=dict)
@@ -4781,18 +4780,19 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         values['version'] = [[key, label] for key, label in VERSION_LABELS.items()]
         return values
 
-    def summary_parts(repository, filters: dict[str, Any], username: str, granularity: str, include_suggestions: bool = True,
-                      source: str = 'analysts'):
+    def summary_parts(repository, filters: dict[str, Any], username: str, granularity: str, include_suggestions: bool = True):
         """The executive summary, progress status, options and selection lines of one NQ selection.
 
-        The options carry the Root Cause Analysis of the selection under ``root_causes``.
+        The options carry the Root Cause Analysis of the selection under ``root_causes``, one per source:
+        NetCheck RCA, Ericsson RCA and the analysts (with the suggested root causes when ``include_suggestions``).
         """
         from src.modules.non_qualified_calls_export import selection_lines
 
         executive = query_calls(repository, {'filters': filters, 'page_size': 25}, username)
         progress = progress_stats(repository, filters, username, granularity)
         options = {**list_options(repository),
-                   'root_causes': root_cause_stats(repository, filters, username, include_suggestions, source),
+                   'root_causes': [root_cause_stats(repository, filters, username, include_suggestions, source)
+                                   for source in ('netcheck', 'script', 'analysts')],
                    'rates': nq_rates(repository, filters),
                    'lifecycle': lifecycle_stats(repository, filters, username),
                    'rca_insights': rca_insights(repository, filters, username),
@@ -5139,7 +5139,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
             raise HTTPException(404, 'Unsupported export type.')
         repository = workspace_repository(user)
         executive, progress, options, lines = summary_parts(repository, payload.filters, user.username, payload.granularity,
-                                                            payload.include_suggestions, payload.source)
+                                                            payload.include_suggestions)
         suffix = '.pptx' if export_format == 'powerpoint' else '.docx'
         stamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         name = re.sub(r'[^A-Za-z0-9._ -]+', '_', f'{stamp} - Non-Qualified Calls - {core.active_workspace.name}{suffix}')

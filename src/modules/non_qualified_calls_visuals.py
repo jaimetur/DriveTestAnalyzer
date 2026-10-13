@@ -191,7 +191,7 @@ def _option_colours(options: dict[str, Any]) -> dict[tuple[str, str], str]:
     colours = {('status', item['name']): item['color'] for item in options.get('statuses') or [] if item.get('color')}
     colours.update({('team', item['name']): item['color'] for item in options.get('teams') or [] if item.get('color')})
     # The root domains in their colours, from the Root Cause Analysis of the report.
-    domains = (options.get('root_causes') or {}).get('domains') or []
+    domains = [item for stats in options.get('root_causes') or [] for item in stats.get('domains') or []]
     colours.update({('root_domain', item['value']): item['color'] for item in domains if item.get('color')})
     return colours
 
@@ -402,16 +402,21 @@ def table_panels(title: str, columns: list[str], rows: list[list[str]], rows_per
 
 
 # The source of the root causes counted, named in the titles unless it is the decision of the analysts.
-ROOT_SOURCE_TITLES = {'netcheck': 'NetCheck RCA', 'script': 'Ericsson RCA'}
+ROOT_SOURCE_TITLES = {'netcheck': 'NetCheck RCA', 'script': 'Ericsson RCA', 'analysts': 'Analysts'}
+
+
+def root_cause_title(stats: dict[str, Any]) -> str:
+    """The title of the Root Cause Analysis of one source: NetCheck RCA, Ericsson RCA or the analysts."""
+    return f"Root Cause Analysis · {ROOT_SOURCE_TITLES.get(str(stats.get('source') or ''), 'Analysts')}"
 
 
 def root_cause_panels(stats: dict[str, Any]) -> list[tuple[str, BytesIO]]:
     """The Root Cause Analysis: the calls per domain, category and cause, and Classic vs WhatsApp per domain."""
     summary = stats.get('summary') or {}
     total = int(summary.get('total') or 0)
+    title = root_cause_title(stats)
     source = ROOT_SOURCE_TITLES.get(str(stats.get('source') or ''), '')
-    title = f'Root Cause Analysis · {source}' if source else 'Root Cause Analysis'
-    if source:
+    if source and stats.get('source') != 'analysts':
         cards = [
             ('Calls', _number(total), 'Non-Qualified Calls of the selection', 'total'),
             ('With a Root Cause', _number(summary.get('labelled')),
@@ -469,69 +474,129 @@ def _heat(rate: float | None, highest: float) -> tuple[str, str]:
     return '#%02x%02x%02x' % rgb, ('#ffffff' if luminance < 0.55 else TEXT)
 
 
-def rate_panels(rates: dict[str, Any], rows_per_panel: int = 8) -> list[tuple[str, BytesIO]]:
-    """The NQ rate of each campaign and operator as a heat map: the share, and the NQ and total calls below it."""
-    panels: list[tuple[str, BytesIO]] = []
-    for matrix in rates.get('matrices') or []:
-        campaigns, operators = matrix['campaigns'], matrix['operators']
-        if not campaigns or not operators:
-            continue
-        values = [cell['rate'] for row in matrix['cells'].values() for cell in row.values() if cell['rate'] is not None]
-        highest = max(values or [0])
-        pages = [campaigns[index:index + rows_per_panel] for index in range(0, len(campaigns), rows_per_panel)]
-        for number, page in enumerate(pages, start=1):
-            # As tall as its rows, so a short matrix does not leave an empty slide-sized card.
-            panel = Panel(height=min(PANEL_HEIGHT, 0.62 + 0.5 * (len(page) + 2) + 0.2))
-            panel.card(0, 0, panel.width, panel.height)
-            total = matrix['total']
-            panel.text(0.2, 0.16, f"{matrix['label']} · NQ rate by Campaign and Operator", 12, bold=True, color=DARK)
-            overall = f"{total['rate']:.1f}%" if total['rate'] is not None else '—'
-            panel.text(panel.width - 0.2, 0.18, f"Overall {overall} · {_number(total['nq'])} of {_number(total['total'])} calls",
-                       10, bold=True, color=RASPBERRY, anchor='ra')
-            left, top = 0.2, 0.62
-            label_width = 1.5
-            columns = [*operators, 'Total']
-            cell_width = (panel.width - 0.4 - label_width) / len(columns)
-            row_height = min(0.5, (panel.height - top - 0.15) / (len(page) + 2))
-            panel.draw.rounded_rectangle([_px(left), _px(top), _px(panel.width - 0.2), _px(top + row_height)],
-                                         radius=_px(0.06), fill='#fcedf2')
-            panel.text(left + 0.12, top + row_height / 2, 'Campaign', 9, bold=True, color=DARK, anchor='lm')
-            for index, operator in enumerate(columns):
-                x = left + label_width + cell_width * index
-                panel.text(x + cell_width / 2, top + row_height / 2, operator, 9, bold=True, color=DARK,
-                           width=cell_width - 0.1, anchor='mm')
+RATE_ROW = 0.5
+RATE_CELL = 0.8
+RATE_LABEL = 1.35
+RATE_GROUP_GAP = 0.06
+# Below this share of the full row height or cell width, the table takes a second slide.
+RATE_DENSE = 0.5
 
-            def draw_cell(x: float, y: float, cell: dict[str, Any] | None, bold: bool = False) -> None:
-                rate = cell['rate'] if cell else None
-                fill, ink = _heat(rate, highest)
-                pad = 0.04
-                panel.draw.rounded_rectangle([_px(x + pad), _px(y + pad), _px(x + cell_width - pad), _px(y + row_height - pad)],
-                                             radius=_px(0.06), fill=fill)
-                if cell is None:
-                    panel.text(x + cell_width / 2, y + row_height / 2, '—', 9, color=MUTED, anchor='mm')
-                    return
-                panel.text(x + cell_width / 2, y + row_height * 0.38, f'{rate:.1f}%' if rate is not None else '—',
-                           10.5, bold=True, color=ink, anchor='mm')
-                panel.text(x + cell_width / 2, y + row_height * 0.74, f"{_number(cell['nq'])} / {_number(cell['total'])}",
-                           7.5, bold=bold, color=ink, width=cell_width - 0.12, anchor='mm')
 
-            for row_index, campaign in enumerate([*page, 'Total']):
-                y = top + row_height * (row_index + 1)
-                is_total = campaign == 'Total'
-                panel.text(left + 0.12, y + row_height / 2, campaign if is_total else campaign_label(campaign), 9,
-                           bold=True, color=DARK if is_total else TEXT, width=label_width - 0.16, anchor='lm')
-                for index, operator in enumerate(columns):
-                    x = left + label_width + cell_width * index
-                    if is_total:
-                        cell = total if operator == 'Total' else matrix['operator_totals'].get(operator)
-                    elif operator == 'Total':
-                        cell = matrix['campaign_totals'].get(campaign)
-                    else:
-                        cell = matrix['cells'].get(campaign, {}).get(operator)
-                    draw_cell(x, y, cell, bold=is_total or operator == 'Total')
-            suffix = f' · {number}/{len(pages)}' if len(pages) > 1 else ''
-            panels.append((f"NQ Rate by Campaign and Operator · {matrix['label']}{suffix}", panel.png()))
-    return panels
+def _fit_size(draw: ImageDraw.ImageDraw, text: str, points: float, bold: bool, width: float) -> float:
+    """The largest size up to ``points`` at which a figure fits its cell, as figures must never be cut."""
+    length = draw.textlength(text, font=_font(points, bold)) / DPI
+    return points if length <= width else max(4.0, points * width / length)
+
+
+def _rate_shape(campaigns: list[str], groups: int, services: int, width: float, height: float) -> tuple[float, float, float]:
+    """The row height and cell width of the NQ rate table, and how close they are to their full size (1 when they are)."""
+    header = 1.8 if services > 1 else 1
+    row = min(RATE_ROW, (height - 0.4) / (len(campaigns) + 1 + header))
+    cell = (width - 0.4 - RATE_LABEL - RATE_GROUP_GAP * (groups - 1)) / (groups * services)
+    return row, cell, min(row / RATE_ROW, cell / RATE_CELL)
+
+
+def _rate_table(matrices: list[dict[str, Any]], campaigns: list[str], operators: list[str], with_total: bool) -> BytesIO:
+    """The NQ rate of each campaign under each operator, with one column per service and their total below it."""
+    groups = [*operators, *(['Total'] if with_total else [])]
+    services = len(matrices)
+    row, cell_width, _score = _rate_shape(campaigns, len(groups), services, PANEL_WIDTH, PANEL_HEIGHT)
+    double = services > 1
+    head_rows = 1.8 if double else 1
+    # As tall as its rows, so a short table does not leave an empty slide-sized card.
+    panel = Panel(height=min(PANEL_HEIGHT, 0.4 + row * (len(campaigns) + 1 + head_rows)))
+    panel.card(0, 0, panel.width, panel.height)
+    left, top = 0.2, 0.2
+    head_size = min(9, row * 72 * 0.45)
+    rate_size = min(10.5, row * 72 * 0.4)
+    calls_size = min(7.5, row * 72 * 0.28)
+    highest = {matrix['service']: max([cell['rate'] for line in matrix['cells'].values() for cell in line.values()
+                                       if cell['rate'] is not None] or [0]) for matrix in matrices}
+    group_width = cell_width * services
+
+    def group_left(index: int) -> float:
+        return left + RATE_LABEL + index * (group_width + RATE_GROUP_GAP)
+
+    panel.text(left + 0.12, top + row * head_rows / 2, 'Campaign', head_size, bold=True, color=DARK, anchor='lm')
+    colours = next((matrix.get('operator_colors') or {} for matrix in matrices if matrix['service'] == 'all'), {})
+    for index, group in enumerate(groups):
+        x = group_left(index)
+        panel.draw.rounded_rectangle([_px(x + 0.02), _px(top), _px(x + group_width - 0.02), _px(top + row)], radius=_px(0.06),
+                                     fill='#fcedf2')
+        if colours.get(group):
+            panel.draw.rounded_rectangle([_px(x + 0.08), _px(top + row - 0.07), _px(x + group_width - 0.08), _px(top + row - 0.035)],
+                                         radius=_px(0.02), fill=colours[group])
+        panel.text(x + group_width / 2, top + row / 2, group, head_size, bold=True, color=DARK, width=group_width - 0.1, anchor='mm')
+        if double:
+            for position, matrix in enumerate(matrices):
+                label = 'Total' if matrix['service'] == 'all' else matrix['label']
+                panel.text(x + cell_width * (position + 0.5), top + row * 1.4, label, head_size * 0.9, bold=True,
+                           color=DARK if matrix['service'] == 'all' else MUTED, width=cell_width - 0.06, anchor='mm')
+
+    def draw_cell(x: float, y: float, service: str, cell: dict[str, Any] | None, bold: bool) -> None:
+        rate = cell['rate'] if cell else None
+        fill, ink = _heat(rate, highest[service])
+        pad = min(0.03, row * 0.06)
+        panel.draw.rounded_rectangle([_px(x + pad), _px(y + pad), _px(x + cell_width - pad), _px(y + row - pad)],
+                                     radius=_px(0.05), fill=fill)
+        if cell is None:
+            panel.text(x + cell_width / 2, y + row / 2, '—', rate_size * 0.86, color=MUTED, anchor='mm')
+            return
+        share = f'{rate:.1f}%' if rate is not None else '—'
+        calls = f"{_number(cell['nq'])}/{_number(cell['total'])}"
+        both = calls_size >= 5
+        panel.text(x + cell_width / 2, y + row * (0.38 if both else 0.5), share,
+                   _fit_size(panel.draw, share, rate_size, True, cell_width - 0.08), bold=True, color=ink, anchor='mm')
+        if both:
+            panel.text(x + cell_width / 2, y + row * 0.74, calls, _fit_size(panel.draw, calls, calls_size, bold, cell_width - 0.08),
+                       bold=bold, color=ink, anchor='mm')
+
+    for row_index, campaign in enumerate([*campaigns, 'Total']):
+        y = top + row * (head_rows + row_index)
+        is_total = campaign == 'Total'
+        panel.text(left + 0.12, y + row / 2, campaign if is_total else campaign_label(campaign), head_size,
+                   bold=True, color=DARK if is_total else TEXT, width=RATE_LABEL - 0.16, anchor='lm')
+        for index, group in enumerate(groups):
+            for position, matrix in enumerate(matrices):
+                if is_total:
+                    cell = matrix['total'] if group == 'Total' else matrix['operator_totals'].get(group)
+                elif group == 'Total':
+                    cell = matrix['campaign_totals'].get(campaign)
+                else:
+                    cell = matrix['cells'].get(campaign, {}).get(group)
+                draw_cell(group_left(index) + cell_width * position, y, matrix['service'], cell,
+                          is_total or group == 'Total' or matrix['service'] == 'all')
+    return panel.png()
+
+
+def rate_panels(rates: dict[str, Any]) -> list[tuple[str, BytesIO]]:
+    """The NQ rate of each campaign and operator in one table, every service under each operator.
+
+    The table takes one slide, or two when the operators or campaigns are many: then the operators,
+    or the campaigns, are split between both.
+    """
+    matrices = [matrix for matrix in rates.get('matrices') or [] if matrix['campaigns'] and matrix['operators']]
+    if not matrices:
+        return []
+    # "All services" holds every campaign and operator of the selection, in their order.
+    widest = next((matrix for matrix in matrices if matrix['service'] == 'all'), matrices[0])
+    campaigns, operators = list(widest['campaigns']), list(widest['operators'])
+    title = 'NQ Rate by Campaign and Operator'
+
+    def score(page: tuple[list[str], list[str], bool]) -> float:
+        return _rate_shape(page[0], len(page[1]) + page[2], len(matrices), PANEL_WIDTH, PANEL_HEIGHT)[2]
+
+    pages = [(campaigns, operators, True)]
+    if score(pages[0]) < RATE_DENSE and (len(operators) > 1 or len(campaigns) > 1):
+        half = (len(operators) + 1) // 2
+        middle = (len(campaigns) + 1) // 2
+        splits = [split for split in (
+            [(campaigns, operators[:half], False), (campaigns, operators[half:], True)] if len(operators) > 1 else None,
+            [(campaigns[:middle], operators, True), (campaigns[middle:], operators, True)] if len(campaigns) > 1 else None,
+        ) if split]
+        pages = max(splits, key=lambda split: min(score(page) for page in split))
+    return [(f'{title} · {number}/{len(pages)}' if len(pages) > 1 else title, _rate_table(matrices, *page))
+            for number, page in enumerate(pages, start=1)]
 
 
 def lifecycle_panels(lifecycle: dict[str, Any]) -> list[tuple[str, BytesIO]]:
@@ -598,4 +663,4 @@ def rca_insight_panels(insights: dict[str, Any]) -> list[tuple[str, BytesIO]]:
     width = (panel.width - gap * (len(cards) - 1)) / len(cards)
     for index, (title, items) in enumerate(cards):
         _bar_card(panel, index * (width + gap), 1.2, width, panel.height - 1.2, title, items, label_above=True, compact=True)
-    return [('Analysis Center · Root Cause Sources', panel.png())]
+    return [('Root Cause Sources', panel.png())]

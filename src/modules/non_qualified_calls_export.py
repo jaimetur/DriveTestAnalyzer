@@ -247,7 +247,7 @@ def _cover_selection(cover, lines: list[str]) -> None:
 
 def report_panels(summary: dict[str, Any], breakdowns: list[dict[str, Any]], progress: dict[str, Any],
                   options: dict[str, Any]) -> list[tuple[str, Any]]:
-    """The Executive Summary and Progress View drawn like the page, as (title, PNG) panels."""
+    """The Executive Summary, NQ rates, Root Cause Sources and Analysis, Lifecycle and Progress View drawn like the page, as panels."""
     from src.modules.non_qualified_calls_visuals import (
         executive_summary_panels, lifecycle_panels, progress_view_panels, rate_panels, rca_insight_panels, root_cause_panels,
         table_panels,
@@ -255,18 +255,15 @@ def report_panels(summary: dict[str, Any], breakdowns: list[dict[str, Any]], pro
 
     label = GRANULARITY_LABELS.get(progress['granularity'], 'Month')
     tables = [panel for title, columns, rows in detail_tables(progress) for panel in table_panels(title, columns, rows)]
-    root_causes = options.get('root_causes')
-    analysis = []
-    if root_causes:
-        analysis = [*root_cause_panels(root_causes),
-                    *(panel for title, columns, rows in root_cause_tables(root_causes)
-                      for panel in table_panels(title, columns, rows))]
+    # The Root Cause Sources that compare the sources, then the Root Cause Analysis of each one with its tables.
+    analysis = [panel for stats in options.get('root_causes') or [] for panel in (
+        *root_cause_panels(stats),
+        *(table for title, columns, rows in root_cause_tables(stats) for table in table_panels(title, columns, rows)))]
+    sources = rca_insight_panels(options['rca_insights']) if options.get('rca_insights') else []
     rates = rate_panels(options['rates']) if options.get('rates') else []
-    # The Analysis Center: where the calls are in their lifecycle and how the root cause sources compare.
-    center = [*(lifecycle_panels(options['lifecycle']) if options.get('lifecycle') else []),
-              *(rca_insight_panels(options['rca_insights']) if options.get('rca_insights') else [])]
-    return [*executive_summary_panels(summary, breakdowns, options), *rates, *center, *progress_view_panels(progress, options, label),
-            *tables, *analysis]
+    lifecycle = lifecycle_panels(options['lifecycle']) if options.get('lifecycle') else []
+    return [*executive_summary_panels(summary, breakdowns, options), *rates, *sources, *analysis, *lifecycle,
+            *progress_view_panels(progress, options, label), *tables]
 
 
 def matrix_table(stats: dict[str, Any], key: str, title: str) -> tuple[list[str], list[list[str]]]:
@@ -286,10 +283,13 @@ def node_table(stats: dict[str, Any]) -> tuple[list[str], list[list[str]]]:
 
 
 def root_cause_tables(stats: dict[str, Any]) -> list[tuple[str, list[str], list[list[str]]]]:
-    """The Root Cause Analysis tables: NR mode and technology per domain, and the eNB/gNB with most calls."""
-    return [('Root Cause Analysis · NSA vs SA', *matrix_table(stats, 'nr_modes', 'NR Mode')),
-            ('Root Cause Analysis · Technology', *matrix_table(stats, 'technologies', 'Technology')),
-            ('Root Cause Analysis · eNB / gNB', *node_table(stats))]
+    """The Root Cause Analysis tables of one source: NR mode and technology per domain, and the eNB/gNB with most calls."""
+    from src.modules.non_qualified_calls_visuals import root_cause_title
+
+    title = root_cause_title(stats)
+    return [(f'{title} · NSA vs SA', *matrix_table(stats, 'nr_modes', 'NR Mode')),
+            (f'{title} · Technology', *matrix_table(stats, 'technologies', 'Technology')),
+            (f'{title} · eNB / gNB', *node_table(stats))]
 
 
 def detail_tables(progress: dict[str, Any]) -> list[tuple[str, list[str], list[list[str]]]]:

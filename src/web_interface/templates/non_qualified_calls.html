@@ -18,10 +18,10 @@
     <button type="button" role="tab" data-nq-view="calls" aria-selected="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>NQ Calls <span class="nq-view-count" id="nq-view-count"></span></button>
     <button type="button" role="tab" data-nq-view="summary" aria-selected="false" title="The Executive Summary of the filtered calls"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>Summary</button>
     <button type="button" role="tab" data-nq-view="rates" aria-selected="false" title="NQ Rate by Campaign and Operator"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 5 5 19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>NQ Rate</button>
-    <button type="button" role="tab" data-nq-view="progress" aria-selected="false" title="Progress View"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 17 6-6 4 4 8-8"/><path d="M14 7h7v7"/></svg>Progress</button>
-    <button type="button" role="tab" data-nq-view="lifecycle" aria-selected="false" title="Lifecycle &amp; Phases"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.9-4M4 13a8 8 0 0 0 14.9 4"/><path d="M5 3v4h4M19 21v-4h-4"/></svg>Lifecycle</button>
-    <button type="button" role="tab" data-nq-view="root" aria-selected="false" title="Root Cause Analysis"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1"/></svg>Root Causes</button>
     <button type="button" role="tab" data-nq-view="sources" aria-selected="false" title="Root Cause Sources"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 3 8l9 5 9-5-9-5z"/><path d="m3 13 9 5 9-5"/></svg>RCA Sources</button>
+    <button type="button" role="tab" data-nq-view="root" aria-selected="false" title="Root Cause Analysis"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1"/></svg>Root Causes</button>
+    <button type="button" role="tab" data-nq-view="lifecycle" aria-selected="false" title="Lifecycle &amp; Phases"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.9-4M4 13a8 8 0 0 0 14.9 4"/><path d="M5 3v4h4M19 21v-4h-4"/></svg>Lifecycle</button>
+    <button type="button" role="tab" data-nq-view="progress" aria-selected="false" title="Progress View"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 17 6-6 4 4 8-8"/><path d="M14 7h7v7"/></svg>Progress</button>
     <button type="button" role="tab" data-nq-view="all" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>All panels</button>
   </nav>
 
@@ -113,46 +113,20 @@
     </div>
   </details>
 
-  <details class="panel collapsible-panel nq-progress-panel" data-nq-view-panel="progress" data-nq-loader="progress" open data-panel-state-key="non-qualified-calls:progress">
-    <summary class="collapsible-summary"><div><p class="eyebrow">Follow-up</p><h2>Progress View</h2></div><span class="collapse-chip">Collapse</span></summary>
+  <details class="panel collapsible-panel nq-sources-panel" data-nq-view-panel="sources" data-nq-loader="sources" open data-panel-state-key="non-qualified-calls:rca-sources">
+    <summary class="collapsible-summary"><div><p class="eyebrow">Analysis Center</p><h2>Root Cause Sources</h2></div><span class="collapse-chip">Collapse</span></summary>
     <div class="collapsible-panel-body">
       <div class="nq-active-filters" data-nq-active-filters hidden></div>
       <div class="nq-progress-head">
-        <p class="nq-hint">How the filtered calls are being followed up: their distribution, how many were attended, moved between statuses, closed and reopened in each period, the age of open calls and the workload of teams, assignees and users.</p>
-        <label class="nq-page-size">Periods<select id="nq-granularity"><option value="week">Week</option><option value="month" selected>Month</option><option value="quarter">Quarter</option><option value="year">Year</option></select></label>
+        <p class="nq-hint">The three root cause sources of the filtered calls side by side: the NetCheck RCA of the CDR, the Ericsson RCA results imported by JOIN_ID and the Root Category and Cause selected by the analysts. See how many calls each one covers, how often they agree and how the analysts' choices relate to each RCA.</p>
+        <span class="nq-root-head-actions"><span class="nq-muted" id="nq-sources-results"></span></span>
       </div>
-      <div class="nq-kpis" id="nq-progress-kpis"></div>
-      <div class="nq-pies" id="nq-pies"></div>
-      <section class="nq-progress-section">
-        <h3 id="nq-timeline-title">Progress per Month</h3>
-        <div class="nq-timeline-chart" id="nq-timeline-chart"></div>
-        <div class="nq-table-wrap"><table class="nq-table nq-stats-table" id="nq-timeline-table"></table></div>
-      </section>
+      <div class="nq-kpis" id="nq-sources-kpis"></div>
+      <div class="nq-hierarchies" id="nq-sources-hierarchies"></div>
       <div class="nq-progress-grid">
-        <section class="nq-progress-section"><h3>Age of Open Calls</h3><div id="nq-aging"></div></section>
-        <section class="nq-progress-section"><h3>Team Workload</h3><div class="nq-table-wrap"><table class="nq-table nq-stats-table" id="nq-team-workload"></table></div></section>
-        <section class="nq-progress-section"><h3>Assignee Workload</h3><div class="nq-table-wrap"><table class="nq-table nq-stats-table" id="nq-assignee-workload"></table></div></section>
-        <section class="nq-progress-section"><h3>User Activity</h3><div class="nq-table-wrap"><table class="nq-table nq-stats-table" id="nq-activity"></table></div></section>
+        <div class="nq-sources-domains" id="nq-sources-domains"></div>
+        <section class="nq-progress-section nq-matrix-section"><div class="nq-matrix-head"><h3>RCA → Selected Root Category</h3><div class="nq-rate-tabs" id="nq-sources-matrix-tabs" role="tablist" aria-label="RCA source"></div></div><div class="nq-table-wrap"><table class="nq-table nq-stats-table nq-matrix" id="nq-sources-matrix"></table></div></section>
       </div>
-    </div>
-  </details>
-
-  <details class="panel collapsible-panel nq-life-panel" data-nq-view-panel="lifecycle" data-nq-loader="lifecycle" open data-panel-state-key="non-qualified-calls:lifecycle">
-    <summary class="collapsible-summary"><div><p class="eyebrow">Analysis Center</p><h2>Lifecycle &amp; Phases</h2></div><span class="collapse-chip">Collapse</span></summary>
-    <div class="collapsible-panel-body">
-      <div class="nq-active-filters" data-nq-active-filters hidden></div>
-      <div class="nq-progress-head">
-        <p class="nq-hint">Where the filtered calls are in their follow-up: the NQ Call Status pipeline, each status with the Status Rules that set it, whether each status follows the rules or was set by hand, the RCA identification and the values of the phase fields (Analysis, Implementation and Planning), how long calls stay in each status, the most frequent moves and the open calls without changes for a while. Click a status, a value or a card to drill down into its calls.</p>
-        {% if nq_can_edit %}<button type="button" class="nq-secondary-action" data-nq-status-rules-open title="How the NQ Call Status is set from the phase fields">Status Rules</button>{% endif %}
-      </div>
-      <div class="nq-kpis" id="nq-life-kpis"></div>
-      <section class="nq-progress-section"><h3>NQ Call Status Pipeline</h3><div class="nq-pipeline" id="nq-life-pipeline"></div></section>
-      <div class="nq-phase-cards" id="nq-life-phases"></div>
-      <div class="nq-progress-grid">
-        <section class="nq-progress-section"><h3>Time in Each Status</h3><div class="nq-table-wrap"><table class="nq-table nq-stats-table" id="nq-life-times"></table></div></section>
-        <section class="nq-progress-section"><h3>Most Frequent Moves</h3><div class="nq-table-wrap"><table class="nq-table nq-stats-table" id="nq-life-moves"></table></div></section>
-      </div>
-      <section class="nq-progress-section"><h3 id="nq-life-stalled-title">Stalled Open Calls</h3><div class="nq-table-wrap"><table class="nq-table nq-stats-table" id="nq-life-stalled"></table></div></section>
     </div>
   </details>
 
@@ -176,19 +150,45 @@
     </div>
   </details>
 
-  <details class="panel collapsible-panel nq-sources-panel" data-nq-view-panel="sources" data-nq-loader="sources" open data-panel-state-key="non-qualified-calls:rca-sources">
-    <summary class="collapsible-summary"><div><p class="eyebrow">Analysis Center</p><h2>Root Cause Sources</h2></div><span class="collapse-chip">Collapse</span></summary>
+  <details class="panel collapsible-panel nq-life-panel" data-nq-view-panel="lifecycle" data-nq-loader="lifecycle" open data-panel-state-key="non-qualified-calls:lifecycle">
+    <summary class="collapsible-summary"><div><p class="eyebrow">Analysis Center</p><h2>Lifecycle &amp; Phases</h2></div><span class="collapse-chip">Collapse</span></summary>
     <div class="collapsible-panel-body">
       <div class="nq-active-filters" data-nq-active-filters hidden></div>
       <div class="nq-progress-head">
-        <p class="nq-hint">The three root cause sources of the filtered calls side by side: the NetCheck RCA of the CDR, the Ericsson RCA results imported by JOIN_ID and the Root Category and Cause selected by the analysts. See how many calls each one covers, how often they agree and how the analysts' choices relate to each RCA.</p>
-        <span class="nq-root-head-actions"><span class="nq-muted" id="nq-sources-results"></span></span>
+        <p class="nq-hint">Where the filtered calls are in their follow-up: the NQ Call Status pipeline, each status with the Status Rules that set it, whether each status follows the rules or was set by hand, the RCA identification and the values of the phase fields (Analysis, Implementation and Planning), how long calls stay in each status, the most frequent moves and the open calls without changes for a while. Click a status, a value or a card to drill down into its calls.</p>
+        {% if nq_can_edit %}<button type="button" class="nq-secondary-action" data-nq-status-rules-open title="How the NQ Call Status is set from the phase fields">Status Rules</button>{% endif %}
       </div>
-      <div class="nq-kpis" id="nq-sources-kpis"></div>
-      <div class="nq-hierarchies" id="nq-sources-hierarchies"></div>
+      <div class="nq-kpis" id="nq-life-kpis"></div>
+      <section class="nq-progress-section"><h3>NQ Call Status Pipeline</h3><div class="nq-pipeline" id="nq-life-pipeline"></div></section>
+      <div class="nq-phase-cards" id="nq-life-phases"></div>
       <div class="nq-progress-grid">
-        <div class="nq-sources-domains" id="nq-sources-domains"></div>
-        <section class="nq-progress-section nq-matrix-section"><div class="nq-matrix-head"><h3>RCA → Selected Root Category</h3><div class="nq-rate-tabs" id="nq-sources-matrix-tabs" role="tablist" aria-label="RCA source"></div></div><div class="nq-table-wrap"><table class="nq-table nq-stats-table nq-matrix" id="nq-sources-matrix"></table></div></section>
+        <section class="nq-progress-section"><h3>Time in Each Status</h3><div class="nq-table-wrap"><table class="nq-table nq-stats-table" id="nq-life-times"></table></div></section>
+        <section class="nq-progress-section"><h3>Most Frequent Moves</h3><div class="nq-table-wrap"><table class="nq-table nq-stats-table" id="nq-life-moves"></table></div></section>
+      </div>
+      <section class="nq-progress-section"><h3 id="nq-life-stalled-title">Stalled Open Calls</h3><div class="nq-table-wrap"><table class="nq-table nq-stats-table" id="nq-life-stalled"></table></div></section>
+    </div>
+  </details>
+
+  <details class="panel collapsible-panel nq-progress-panel" data-nq-view-panel="progress" data-nq-loader="progress" open data-panel-state-key="non-qualified-calls:progress">
+    <summary class="collapsible-summary"><div><p class="eyebrow">Follow-up</p><h2>Progress View</h2></div><span class="collapse-chip">Collapse</span></summary>
+    <div class="collapsible-panel-body">
+      <div class="nq-active-filters" data-nq-active-filters hidden></div>
+      <div class="nq-progress-head">
+        <p class="nq-hint">How the filtered calls are being followed up: their distribution, how many were attended, moved between statuses, closed and reopened in each period, the age of open calls and the workload of teams, assignees and users.</p>
+        <label class="nq-page-size">Periods<select id="nq-granularity"><option value="week">Week</option><option value="month" selected>Month</option><option value="quarter">Quarter</option><option value="year">Year</option></select></label>
+      </div>
+      <div class="nq-kpis" id="nq-progress-kpis"></div>
+      <div class="nq-pies" id="nq-pies"></div>
+      <section class="nq-progress-section">
+        <h3 id="nq-timeline-title">Progress per Month</h3>
+        <div class="nq-timeline-chart" id="nq-timeline-chart"></div>
+        <div class="nq-table-wrap"><table class="nq-table nq-stats-table" id="nq-timeline-table"></table></div>
+      </section>
+      <div class="nq-progress-grid">
+        <section class="nq-progress-section"><h3>Age of Open Calls</h3><div id="nq-aging"></div></section>
+        <section class="nq-progress-section"><h3>Team Workload</h3><div class="nq-table-wrap"><table class="nq-table nq-stats-table" id="nq-team-workload"></table></div></section>
+        <section class="nq-progress-section"><h3>Assignee Workload</h3><div class="nq-table-wrap"><table class="nq-table nq-stats-table" id="nq-assignee-workload"></table></div></section>
+        <section class="nq-progress-section"><h3>User Activity</h3><div class="nq-table-wrap"><table class="nq-table nq-stats-table" id="nq-activity"></table></div></section>
       </div>
     </div>
   </details>

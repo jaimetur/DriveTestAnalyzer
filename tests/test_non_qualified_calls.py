@@ -576,8 +576,17 @@ def test_root_cause_taxonomy_imports_with_the_tracking_and_shows_in_exports(clie
     deck = client.post('/api/non-qualified-calls/export/powerpoint', json={'filters': {}, 'granularity': 'month'})
     titles = [slide.shapes.title.text_frame.text for slide in Presentation(io.BytesIO(deck.content)).slides
               if slide.shapes.title is not None]
-    assert any(title.startswith('Root Cause Analysis') for title in titles)
-    assert any('eNB / gNB' in title for title in titles)
+    # The Root Cause Sources, then the Root Cause Analysis of every source with its tables, between the NQ rates and the Lifecycle.
+    assert [title for title in titles if title.startswith('Root Cause Analysis') and title.count('·') == 1] == [
+        'Root Cause Analysis · NetCheck RCA', 'Root Cause Analysis · Ericsson RCA', 'Root Cause Analysis · Analysts']
+    assert 'Root Cause Analysis · Ericsson RCA · eNB / gNB' in titles and 'Root Cause Analysis · Analysts · eNB / gNB' in titles
+    assert [title for title in titles if title.startswith('NQ Rate')] == ['NQ Rate by Campaign and Operator']
+
+    def first(prefix):
+        return next(index for index, title in enumerate(titles) if title.startswith(prefix))
+
+    assert (first('NQ Rate') < first('Root Cause Sources') < first('Root Cause Analysis')
+            < first('Analysis Center · Lifecycle') < first('Progress View'))
     page = client.get('/admin').text
     assert '>NQ Root Catalog<' in page or '"NQ Root Catalog"' in page
 
@@ -932,6 +941,33 @@ def test_nq_rate_of_each_campaign_and_operator(client, tmp_path):
     assert client.post('/api/non-qualified-calls/rates', json={'filters': {}}).json()['matrices'][0]['total']['nq'] == 0
     document = client.post('/api/non-qualified-calls/export/powerpoint', json={'filters': {}})
     assert document.status_code == 200
+
+
+def test_nq_rates_take_one_slide_or_two_when_the_operators_or_campaigns_are_many():
+    from src.modules.non_qualified_calls_visuals import rate_panels
+
+    def cell(nq, total):
+        return {'nq': nq, 'total': total, 'rate': round(nq * 100 / total, 2)}
+
+    def rates(operators, campaigns):
+        return {'matrices': [{
+            'service': service, 'label': label, 'campaigns': campaigns, 'operators': operators, 'operator_colors': {},
+            'cells': {campaign: {operator: cell(3, 100) for operator in operators} for campaign in campaigns},
+            'campaign_totals': {campaign: cell(3 * len(operators), 100 * len(operators)) for campaign in campaigns},
+            'operator_totals': {operator: cell(3 * len(campaigns), 100 * len(campaigns)) for operator in operators},
+            'total': cell(9, 300),
+        } for service, label in (('voice', 'Voice'), ('speech', 'Speech'), ('data', 'Data'), ('all', 'All services'))]}
+
+    def titles(panels):
+        return [title for title, _image in panels]
+
+    # Every service under each operator, in one table on one slide.
+    assert titles(rate_panels(rates(['EE', 'VF', 'O2', '3'], ['Q1', 'Q2', 'Q3']))) == ['NQ Rate by Campaign and Operator']
+    # Never more than two slides: the operators, or the campaigns, split between them.
+    pages = ['NQ Rate by Campaign and Operator · 1/2', 'NQ Rate by Campaign and Operator · 2/2']
+    assert titles(rate_panels(rates([f'Operator {index}' for index in range(8)], [f'Q{index}' for index in range(9)]))) == pages
+    assert titles(rate_panels(rates(['EE', 'VF'], [f'Campaign {index}' for index in range(30)]))) == pages
+    assert titles(rate_panels(rates([f'Operator {index}' for index in range(20)], [f'Q{index}' for index in range(40)]))) == pages
 
 
 def test_analysis_fields_are_configured_filled_filtered_required_and_exported(client, tmp_path):
