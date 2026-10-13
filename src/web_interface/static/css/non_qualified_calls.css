@@ -526,6 +526,9 @@ span.nq-root-suggestion { cursor: default; }
 .nq-rate-table { width: 100%; border-collapse: separate; border-spacing: 6px; }
 .nq-rate-table th { padding: .45rem .6rem; color: var(--nq-dark); font-size: .8rem; font-weight: 850; text-align: center; white-space: nowrap; }
 .nq-rate-table thead th { border-radius: 10px; background: var(--nq-soft); }
+/* The Campaign and Total headers in the fuchsia of the Overall card, and each operator with its colour below its name. */
+.nq-rate-table thead tr th.nq-rate-strong-head { background: linear-gradient(135deg, var(--nq-dark), var(--nq-light)); color: #fff; }
+.nq-rate-operator-bar { display: block; height: 4px; margin: .3rem .2rem 0; border-radius: 2px; }
 .nq-rate-table .nq-rate-campaign, .nq-rate-totals th { text-align: left; }
 .nq-rate-cell { padding: 0; }
 .nq-rate-box { display: grid; place-items: center; gap: .1rem; width: 100%; min-width: 7.5rem; min-height: 3.6rem; padding: .45rem .5rem; border: 0; border-radius: 12px; font: inherit; box-shadow: inset 0 0 0 1px rgba(125, 18, 56, .08); transition: transform .12s ease, box-shadow .12s ease; }
@@ -705,7 +708,10 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 .non-qualified-calls .nq-hierarchy-row.is-category { font-weight: 800; }
 .non-qualified-calls .nq-hierarchy-row.is-cause { padding-left: 1.2rem; color: var(--nq-muted); font-size: .76rem; }
 .nq-hierarchy-row.is-cause .nq-bar-track { height: .45rem; opacity: .75; }
-.nq-sources-domains { margin-top: 14px; }
+.nq-hierarchy-label { display: flex; align-items: center; gap: .35rem; min-width: 0; }
+.nq-hierarchy-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The root domain of a category, as small as its name. */
+.nq-category-domain { flex: none; padding: 0 .3rem; border-radius: 4px; font-size: .62rem; font-weight: 800; line-height: 1.3; white-space: nowrap; }
 .nq-matrix-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem; margin-bottom: .6rem; }
 .nq-matrix-head h3 { margin: 0; }
 .nq-matrix th, .nq-matrix td { white-space: nowrap; }

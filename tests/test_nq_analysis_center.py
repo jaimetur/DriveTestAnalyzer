@@ -233,8 +233,18 @@ def test_lifecycle_and_rca_insights_compare_the_three_sources(client, tmp_path):
     assert insights['coverage'] == {'total': 3, 'script': 2, 'netcheck': 3, 'selected': 2}
     assert insights['agreement']['selected_script'] == {'agree': 1, 'compared': 2, 'rate': 50.0}
     assert insights['agreement']['selected_netcheck']['agree'] == 2
-    assert insights['confusion']['script']['rows'] and insights['domains'][0]['domain'] == 'RF'
+    assert insights['confusion']['script']['rows'] and insights['domains']['selected'][0]['domain'] == 'RF'
+    # The root domains of each source count the calls it covers.
+    assert sum(item['count'] for item in insights['domains']['script']) == 2
+    assert sum(item['count'] for item in insights['domains']['netcheck']) == 3
     assert insights['hierarchies']['netcheck'][0]['causes']
+    # Each category of a hierarchy names the root domains its calls fall in.
+    selected = {group['category']: group['domains'] for group in insights['hierarchies']['selected']}
+    assert [item['domain'] for item in selected['Poor Coverage LTE']] == ['RF']
+    assert all(group['domains'] for name in ('netcheck', 'script') for group in insights['hierarchies'][name])
+    # And so does each category of the catalog a source translates its own onto.
+    assert {item['category']: [domain['domain'] for domain in item['domains']] for item in insights['mapped']['script']}[
+        'Poor Coverage LTE'] == ['RF']
     lifecycle = client.post('/api/non-qualified-calls/lifecycle', json={'filters': {}}).json()
     pipeline = {item['status']: item['count'] for item in lifecycle['pipeline']}
     assert pipeline['Under Analysis'] == 1 and pipeline['Open'] == 1 and pipeline['Not Attended'] == 1

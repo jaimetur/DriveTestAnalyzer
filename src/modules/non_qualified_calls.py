@@ -2680,7 +2680,7 @@ def _rows_of_calls(connection: Any, select: str, keys: list[str], where: str = '
     return rows
 
 
-def progress_stats(task_repository: Any, filters: dict[str, Any], username: str, granularity: str = 'month') -> dict[str, Any]:
+def progress_stats(task_repository: Any, filters: dict[str, Any], username: str, granularity: str = 'week') -> dict[str, Any]:
     """Follow-up progress of the calls matching the filters.
 
     Distributions by status, team, assignee, service and result; how many calls
@@ -2689,7 +2689,7 @@ def progress_stats(task_repository: Any, filters: dict[str, Any], username: str,
     backlog, the age of open calls, the workload of teams and assignees and the
     activity of every user.
     """
-    granularity = granularity if granularity in PROGRESS_GRANULARITIES else 'month'
+    granularity = granularity if granularity in PROGRESS_GRANULARITIES else 'week'
     options = list_options(task_repository)
     closed_names = {item['name'].casefold() for item in options['statuses'] if item['closed']}
     base, base_params = _base_sql(untracked_status(task_repository, options), task_repository, _scope(filters))
@@ -3963,7 +3963,10 @@ def lifecycle_stats(task_repository: Any, filters: dict[str, Any], username: str
 
 def rca_insights(task_repository: Any, filters: dict[str, Any], username: str) -> dict[str, Any]:
     """The three root cause sources of the filtered calls compared: how many calls each one covers, how often they
-    agree, their category → cause hierarchies and how the analysts' choices relate to each RCA."""
+    agree, the root domains and category → cause hierarchies of each one and how the analysts' choices relate to each RCA.
+
+    The root domains of a source count the calls it covers: those its values map onto no catalog domain are Not classified.
+    """
     rows, _context = _filtered_calls(task_repository, filters, username,
                                      'call_key, rca_json, failure_classification, failure_category, failure_subcategory, '
                                      'failure_comment, technology, failure_technology, root_domain, root_category, root_cause')
@@ -3976,8 +3979,17 @@ def rca_insights(task_repository: Any, filters: dict[str, Any], username: str) -
     agreement = {name: Counter() for name in ('selected_netcheck', 'selected_script', 'netcheck_script')}
     hierarchies: dict[str, dict[str, Counter]] = {'netcheck': {}, 'script': {}, 'selected': {}}
     confusion: dict[str, Counter] = {'netcheck': Counter(), 'script': Counter()}
-    domains: Counter = Counter()
+    domains: dict[str, Counter] = {'netcheck': Counter(), 'script': Counter(), 'selected': Counter()}
+    # The root domains the calls of each category fall in: the categories of the source, and those of the catalog.
+    category_domains: dict[str, dict[str, Counter]] = {'netcheck': {}, 'script': {}, 'selected': {}}
+    mapped_domains: dict[str, dict[str, Counter]] = {'netcheck': {}, 'script': {}, 'selected': {}}
     mapped_counts: dict[str, Counter] = {'netcheck': Counter(), 'script': Counter(), 'selected': Counter()}
+
+    def count_domain(source: str, category: str, mapped: str, domain: str) -> None:
+        domains[source][domain] += 1
+        category_domains[source].setdefault(category, Counter())[domain] += 1
+        mapped_counts[source][mapped] += 1
+        mapped_domains[source].setdefault(mapped, Counter())[domain] += 1
     for row in rows:
         try:
             rca = json.loads(row['rca_json'] or '{}') or {}
@@ -3992,18 +4004,18 @@ def rca_insights(task_repository: Any, filters: dict[str, Any], username: str) -
         coverage['total'] += 1
         if script is not None:
             coverage['script'] += 1
+            count_domain('script', script_raw[0] or '—', script['category'] or '—', script.get('domain') or NOT_CLASSIFIED)
             hierarchies['script'].setdefault(script_raw[0] or '—', Counter())[script_raw[1] or '—'] += 1
-            mapped_counts['script'][script['category'] or '—'] += 1
         if any(netcheck_raw):
             coverage['netcheck'] += 1
+            count_domain('netcheck', netcheck_raw[0] or '—', (netcheck or {}).get('category') or '—',
+                         (netcheck or {}).get('domain') or NOT_CLASSIFIED)
             hierarchies['netcheck'].setdefault(netcheck_raw[0] or '—', Counter())[netcheck_raw[1] or '—'] += 1
-            mapped_counts['netcheck'][(netcheck or {}).get('category') or '—'] += 1
         if any(selected):
             coverage['selected'] += 1
-            domain = str(row['root_domain'] or '') or domain_of(taxonomy, *selected) or NOT_CLASSIFIED
-            domains[domain] += 1
+            count_domain('selected', selected[0] or '—', selected[0] or '—',
+                         str(row['root_domain'] or '') or domain_of(taxonomy, *selected) or NOT_CLASSIFIED)
             hierarchies['selected'].setdefault(selected[0] or '—', Counter())[selected[1] or '—'] += 1
-            mapped_counts['selected'][selected[0] or '—'] += 1
             for source, mapped in (('netcheck', netcheck), ('script', script)):
                 if mapped and (mapped.get('category') or mapped.get('cause')):
                     confusion[source][(mapped.get('category') or '—', selected[0] or '—')] += 1
@@ -4016,10 +4028,14 @@ def rca_insights(task_repository: Any, filters: dict[str, Any], username: str) -
             agreement['netcheck_script']['compared'] += 1
             agreement['netcheck_script']['agree'] += int(bool(script.get('category')) and script.get('category') == netcheck.get('category'))
 
+    def domain_list(counts: Counter | None) -> list[dict[str, Any]]:
+        return [{'domain': domain, 'count': count, 'color': colors.get(domain, '#b8c0c6')}
+                for domain, count in (counts or Counter()).most_common()]
+
     def hierarchy(name: str, limit: int = 12) -> list[dict[str, Any]]:
         groups = hierarchies[name]
         ordered = sorted(groups.items(), key=lambda item: -sum(item[1].values()))[:limit]
-        return [{'category': category, 'count': sum(causes.values()),
+        return [{'category': category, 'count': sum(causes.values()), 'domains': domain_list(category_domains[name].get(category)),
                  'causes': [{'cause': cause, 'count': count} for cause, count in causes.most_common(8)]} for category, causes in ordered]
 
     def matrix(source: str) -> dict[str, Any]:
@@ -4043,9 +4059,11 @@ def rca_insights(task_repository: Any, filters: dict[str, Any], username: str) -
         'coverage': {key: coverage.get(key, 0) for key in ('total', 'netcheck', 'script', 'selected')},
         'agreement': {name: rate(name) for name in agreement},
         'hierarchies': {name: hierarchy(name) for name in hierarchies},
-        'mapped': {name: [{'category': category, 'count': count} for category, count in counts.most_common(12)]
-                   for name, counts in mapped_counts.items()},
-        'domains': [{'domain': name, 'count': count, 'color': colors.get(name, '#b8c0c6')} for name, count in domains.most_common()],
+        # What each source proposes on the Root Cause Catalog: its categories translated onto the catalog ('—' for none).
+        'mapped': {name: [{'category': category, 'count': count, 'domains': domain_list(mapped_domains[name].get(category))}
+                          for category, count in counts.most_common(12)] for name, counts in mapped_counts.items()},
+        'domains': {name: [{'domain': domain, 'count': count, 'color': colors.get(domain, '#b8c0c6')}
+                           for domain, count in counts.most_common()] for name, counts in domains.items()},
         'confusion': {source: matrix(source) for source in confusion},
         'rca_results': rca_results_summary(task_repository),
     }
@@ -4676,7 +4694,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
 
     class ProgressPayload(BaseModel):
         filters: dict[str, Any] = Field(default_factory=dict)
-        granularity: str = 'month'
+        granularity: str = 'week'
         include_suggestions: bool = True
 
     class ExportPayload(BaseModel):
@@ -4756,7 +4774,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         ('root_category', 'Root Category'), ('root_cause', 'Root Cause'), ('version', 'CDR Version'),
     )
     report_settings = (
-        {'key': 'granularity', 'label': 'Progress periods', 'default': 'month',
+        {'key': 'granularity', 'label': 'Progress periods', 'default': 'week',
          'choices': [['week', 'Week'], ['month', 'Month'], ['quarter', 'Quarter'], ['year', 'Year']]},
         {'key': 'open_only', 'label': 'Calls', 'default': '',
          'choices': [['', 'Every call'], ['1', 'Open calls only']]},
@@ -4819,7 +4837,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
                    if isinstance(values, list) and values}
         if str(settings.get('open_only') or '') == '1':
             filters['open_only'] = True
-        granularity = str(settings.get('granularity') or 'month')
+        granularity = str(settings.get('granularity') or 'week')
         include_suggestions = str(settings.get('include_suggestions', '1') or '') == '1'
         executive, progress, options, lines = summary_parts(repository, filters, user.username, granularity,
                                                             include_suggestions)

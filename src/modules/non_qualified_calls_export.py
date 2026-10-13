@@ -151,7 +151,7 @@ def report_tables(summary: dict[str, Any], breakdowns: list[dict[str, Any]], pro
     tables = [('Executive Summary', *summary_table(summary))]
     tables += [(breakdown['label'], *breakdown_table(breakdown, summary['total'])) for breakdown in breakdowns]
     tables.append(('Progress Status', *progress_summary_table(progress['summary'])))
-    tables.append((f"Progress per {GRANULARITY_LABELS.get(progress['granularity'], 'Month')}", *timeline_table(progress)))
+    tables.append((f"Progress per {GRANULARITY_LABELS.get(progress['granularity'], 'Week')}", *timeline_table(progress)))
     tables.append(('Age of Open Calls', ['Age since the call', 'Open calls'], [[item['value'], str(item['count'])] for item in progress['aging']]))
     tables.append(('Team Workload', *workload_table('Team', progress['teams'])))
     tables.append(('Assignee Workload', *workload_table('Assignee', progress['assignees'])))
@@ -211,7 +211,7 @@ def _timeline_chart_slide(presentation: Presentation, progress: dict[str, Any]) 
     periods = progress['periods'][-24:]
     if not periods:
         return
-    slide = _slide(presentation, f"Attended and Closed per {GRANULARITY_LABELS.get(progress['granularity'], 'Month')}",
+    slide = _slide(presentation, f"Attended and Closed per {GRANULARITY_LABELS.get(progress['granularity'], 'Week')}",
                    'The latest 24 periods')
     left, top, width, height = _content_frame(slide)
     data = CategoryChartData()
@@ -249,12 +249,17 @@ def report_panels(summary: dict[str, Any], breakdowns: list[dict[str, Any]], pro
                   options: dict[str, Any]) -> list[tuple[str, Any]]:
     """The Executive Summary, NQ rates, Root Cause Sources and Analysis, Lifecycle and Progress View drawn like the page, as panels."""
     from src.modules.non_qualified_calls_visuals import (
-        executive_summary_panels, lifecycle_panels, progress_view_panels, rate_panels, rca_insight_panels, root_cause_panels,
-        table_panels,
+        executive_summary_panels, lifecycle_panels, progress_title, progress_view_panels, rate_panels, rca_insight_panels,
+        root_cause_panels, table_panels,
     )
 
-    label = GRANULARITY_LABELS.get(progress['granularity'], 'Month')
-    tables = [panel for title, columns, rows in detail_tables(progress) for panel in table_panels(title, columns, rows)]
+    label = GRANULARITY_LABELS.get(progress['granularity'], 'Week')
+    # The detail tables of the Progress View, each page with its number in the subtitle.
+    tables = []
+    for subtitle, columns, rows in detail_tables(progress):
+        pages = table_panels(subtitle, columns, rows)
+        tables.extend((progress_title(label, subtitle + (f' · {number}/{len(pages)}' if len(pages) > 1 else '')), image)
+                      for number, (_title, image) in enumerate(pages, start=1))
     # The Root Cause Sources that compare the sources, then the Root Cause Analysis of each one with its tables.
     analysis = [panel for stats in options.get('root_causes') or []
                 for panel in (*root_cause_panels(stats), *root_cause_table_panels(stats))]
@@ -283,9 +288,8 @@ def root_cause_table_panels(stats: dict[str, Any]) -> list[tuple[str, Any]]:
 
 def detail_tables(progress: dict[str, Any]) -> list[tuple[str, list[str], list[list[str]]]]:
     """The figures the panels summarise: every period of the timeline and the activity of each user."""
-    label = GRANULARITY_LABELS.get(progress['granularity'], 'Month')
-    return [(f'Progress View · Progress per {label} · Details', *timeline_table(progress)),
-            ('Progress View · User Activity', *activity_table(progress['activity']))]
+    label = GRANULARITY_LABELS.get(progress['granularity'], 'Week')
+    return [(f'Details per {label}', *timeline_table(progress)), ('User Activity', *activity_table(progress['activity']))]
 
 
 def export_powerpoint(destination: Path, lines: list[str], summary: dict[str, Any], breakdowns: list[dict[str, Any]],

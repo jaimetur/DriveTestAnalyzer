@@ -584,7 +584,10 @@ def test_root_cause_taxonomy_imports_with_the_tracking_and_shows_in_exports(clie
     subtitles = {(paragraphs[0].text, paragraphs[1].text) for paragraphs in headers if len(paragraphs) > 1}
     assert {('Root Cause Analysis · NetCheck RCA', 'Root Domains by Call Type and NSA vs SA'),
             ('Root Cause Analysis · Ericsson RCA', 'Root Domains by Technology'),
-            ('Root Cause Analysis · Analysts', 'eNB / gNB with Most Non-Qualified Calls')} <= subtitles
+            ('Root Cause Analysis · Analysts', 'eNB / gNB with Most Non-Qualified Calls'),
+            ('Root Cause Sources', 'Root Domains and Categories in the Root Cause Catalog'),
+            ('Root Cause Sources', 'Categories and Causes of Each RCA'),
+            ('Progress View · Monthly', 'Follow-up Overview'), ('Progress View · Monthly', 'User Activity')} <= subtitles
     source = next(paragraphs[0].runs[-1] for paragraphs in headers if paragraphs[0].text == 'Root Cause Analysis · Ericsson RCA')
     assert source.text == 'Ericsson RCA' and source.font.bold
     assert [title for title in titles if title.startswith('NQ Rate')] == ['NQ Rate by Campaign and Operator']

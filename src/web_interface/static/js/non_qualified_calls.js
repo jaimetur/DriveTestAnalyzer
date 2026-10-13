@@ -1885,7 +1885,7 @@
       drillCard(kpiCard('Activity', number(summary.comments + summary.changes), `${number(summary.comments)} comments · ${number(summary.changes)} changes · ${number(summary.contributors)} users`), {pairs: [['state', 'attended']]}),
     );
     $('nq-pies').replaceChildren(...progress.distributions.map(donut));
-    const label = GRANULARITY_LABELS[progress.granularity] || 'Month';
+    const label = GRANULARITY_LABELS[progress.granularity] || 'Week';
     $('nq-timeline-title').textContent = `Progress per ${label}`;
     timelineChart(progress.periods);
     const periods = [...progress.periods].reverse();
@@ -2339,7 +2339,7 @@
       const color = drillable ? optionColor('root_category', category) : '';
       const pairs = drillable ? [['root_category', category || state.unassigned]] : null;
       card.append(hierarchyRow(group.category === '—' ? (drillable ? NOT_CLASSIFIED : 'No category') : group.category,
-        group.count, max, color, pairs, 'is-category'));
+        group.count, max, color, pairs, 'is-category', group.domains || []));
       group.causes.forEach((item) => {
         const cause = item.cause === '—' ? '' : item.cause;
         const causePairs = drillable ? [...pairs, ['root_cause', cause || state.unassigned]] : null;
@@ -2348,7 +2348,7 @@
     });
     return card;
   };
-  const hierarchyRow = (label, count, max, color, pairs, kind) => {
+  const hierarchyRow = (label, count, max, color, pairs, kind, domains = []) => {
     const row = node(pairs ? 'button' : 'div', undefined, `nq-bar nq-hierarchy-row ${kind}${pairs ? '' : ' nq-static-bar'}`);
     if (pairs) {
       row.type = 'button';
@@ -2363,7 +2363,18 @@
     fill.style.width = `${Math.max(2, (count / max) * 100)}%`;
     if (color) fill.style.background = color;
     track.append(fill);
-    row.append(node('span', label, 'nq-bar-label'), track, node('span', number(count), 'nq-bar-count'));
+    const name = node('span', undefined, 'nq-bar-label nq-hierarchy-label');
+    name.append(node('span', label, 'nq-hierarchy-name'));
+    // The root domain the calls of a category fall in, in its colour; when they fall in several, the main one and how
+    // many more, all of them on hover.
+    if (domains.length) {
+      const tag = node('span', domains.length > 1 ? `${domains[0].domain} +${domains.length - 1}` : domains[0].domain, 'nq-category-domain');
+      tag.style.background = domains[0].color || '#b8c0c6';
+      tag.style.color = readableText(domains[0].color || '#b8c0c6');
+      tag.title = `Root domain: ${domains.map((item) => `${item.domain} ${number(item.count)}`).join(' · ')}`;
+      name.append(tag);
+    }
+    row.append(name, track, node('span', number(count), 'nq-bar-count'));
     return row;
   };
   // How the categories one RCA source maps to relate to the Root Categories the analysts selected.
@@ -2428,10 +2439,44 @@
       hierarchyCard('Ericsson RCA', 'Suggested Category → Cause of the Ericsson RCA', insights.hierarchies.script, false),
       hierarchyCard('Selected by the Analysts', 'Root Category → Root Cause; click to drill down', insights.hierarchies.selected, true),
     );
-    $('nq-sources-domains').replaceChildren(staticBars('Selected Root Domains', insights.domains.map((item) => ({
-      label: item.domain, count: item.count, color: item.color,
-      pairs: [['root_domain', item.domain === NOT_CLASSIFIED ? state.unassigned : item.domain]],
-    }))));
+    // What each source proposes translated onto the Root Cause Catalog; a category shows the calls the source puts in it.
+    const catalogCard = (title, note, source, filter) => {
+      const items = insights.mapped[source] || [];
+      const card = node('section', undefined, 'nq-breakdown nq-hierarchy');
+      card.append(node('h3', title), node('p', note, 'nq-muted nq-hierarchy-note'));
+      if (!items.length) card.append(node('p', 'No calls.', 'form-note'));
+      const max = Math.max(1, ...items.map((item) => item.count));
+      items.forEach((item) => {
+        const known = item.category !== '—';
+        const domain = item.domains?.[0]?.domain;
+        const pairs = !known ? null : source === 'selected' ? [[filter, item.category]]
+          : (domain && domain !== NOT_CLASSIFIED ? [[filter, `${domain}||${item.category}`]] : null);
+        card.append(hierarchyRow(known ? item.category : (source === 'selected' ? 'No category' : 'No catalog category'),
+          item.count, max, '', pairs, 'is-category', item.domains || []));
+      });
+      return card;
+    };
+    $('nq-sources-catalog').replaceChildren(
+      catalogCard('NetCheck RCA → Root Category', 'Its categories translated onto the Root Cause Catalog', 'netcheck', 'netcheck_category'),
+      catalogCard('Ericsson RCA → Root Category', 'Its categories translated onto the Root Cause Catalog', 'script', 'script_category'),
+      catalogCard('Selected Root Category', 'The Root Category the analysts chose', 'selected', 'root_category'),
+    );
+    // The root domains of each source above its hierarchy: a domain shows the calls the source puts in it. The values of
+    // the NetCheck RCA or the Ericsson RCA that map onto no domain are Not classified, which their filters cannot tell
+    // from the calls without values.
+    const domainCard = (title, note, source, filter) => {
+      const card = staticBars(title, (insights.domains[source] || []).map((item) => ({
+        label: item.domain, count: item.count, color: item.color,
+        pairs: item.domain !== NOT_CLASSIFIED ? [[filter, item.domain]] : source === 'selected' ? [[filter, state.unassigned]] : null,
+      })));
+      card.querySelector('h3').after(node('p', note, 'nq-muted nq-hierarchy-note'));
+      return card;
+    };
+    $('nq-sources-domains').replaceChildren(
+      domainCard('NetCheck RCA → Root Domain', 'Its categories translated onto the root domains of the catalog', 'netcheck', 'netcheck_domain'),
+      domainCard('Ericsson RCA → Root Domain', 'Its categories translated onto the root domains of the catalog', 'script', 'script_domain'),
+      domainCard('Selected Root Domain', 'The root domain of the category the analysts chose', 'selected', 'root_domain'),
+    );
     renderMatrix(insights);
   };
   let sourcesToken = 0;
@@ -2556,7 +2601,18 @@
     const highest = Math.max(0, ...matrix.campaigns.flatMap((campaign) => Object.values(matrix.cells[campaign] || {}).map((cell) => Number(cell.rate || 0))));
     const head = node('thead');
     const headRow = node('tr');
-    headRow.append(node('th', 'Campaign'), ...matrix.operators.map((operator) => node('th', operator)), node('th', 'Total'));
+    // Each operator with the bar of its Operator Maps colour below its name, as in the documents.
+    const operatorHead = (operator) => {
+      const cell = node('th', operator);
+      const color = matrix.operator_colors?.[operator];
+      if (color) {
+        const bar = node('span', '', 'nq-rate-operator-bar');
+        bar.style.background = color;
+        cell.append(bar);
+      }
+      return cell;
+    };
+    headRow.append(node('th', 'Campaign', 'nq-rate-strong-head'), ...matrix.operators.map(operatorHead), node('th', 'Total', 'nq-rate-strong-head'));
     head.append(headRow);
     const body = node('tbody');
     const cellOf = (cell, pairs, title, isTotal = false) => {

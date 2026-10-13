@@ -63,15 +63,17 @@ The **NQ Rate by Campaign and Operator** panel, below the Summary, is the manage
 - A heat map: each cell shows the rate and *Non-Qualified / all calls*, coloured in pastel tones from soft mint (none) through apricot to dusty rose (the highest rate of the table); the Total column and row sum each campaign and operator.
 - A click on a cell or card shows only those calls in the other panels; a second click removes the filter.
 
-Only the **CDRs**, **Service**, **Campaign**, **Operator** and **NR Mode** filters apply: the other filters describe Non-Qualified Calls only, so changing them does not recalculate the panel, and its counts are reused until the CDRs are indexed again. The PowerPoint and Word exports and the Reporting artifact show it after the Executive Summary as one heat map with a column per service (and their total) under each operator, on one slide, or on two when the operators or campaigns are many (each slide with half of the operators or of the campaigns).
+Only the **CDRs**, **Service**, **Campaign**, **Operator** and **NR Mode** filters apply: the other filters describe Non-Qualified Calls only, so changing them does not recalculate the panel, and its counts are reused until the CDRs are indexed again. The PowerPoint and Word exports and the Reporting artifact show it after the Executive Summary as one heat map with a column per service (and **All services**, their total) under each operator and the overall NQ rate of the selection at its top right (*Overall 0.9% · 992 NQ calls of 104,304 calls*), on one slide, or on two when the operators or campaigns are many (each slide with half of the operators or of the campaigns).
 
 ## Root Cause Sources
 
 The **Root Cause Sources** panel of the Analysis Center compares the three root cause sources of the filtered calls:
 
 - Indicators: how many calls have a **NetCheck RCA** classification, **Ericsson RCA** results and a **Selected** Root Category or Cause, and how often the sources agree: **NetCheck ↔ Selected** and **Ericsson RCA ↔ Selected** (the category, or the cause when the source maps to no category, the analysts selected is the one the source proposes, mapped onto the catalog by its keywords) and **NetCheck ↔ Ericsson RCA**.
-- Three hierarchies side by side: the **NetCheck RCA** Failure Category → Subcategory of the CDR, the **Ericsson RCA** Suggested Category → Cause and the Root Category → Root Cause **Selected by the Analysts**; a category or cause of the analysts drills down into its calls.
-- **Selected Root Domains**, in the colour of each domain, drilling down by domain.
+- **NetCheck RCA → Root Domain**, **Ericsson RCA → Root Domain** and **Selected Root Domain**, each in the column of its source: the calls the source covers in each root domain, in its colour (**Not classified**: values of the NetCheck RCA or the Ericsson RCA that map onto no domain of the catalog); a domain shows only the calls the source puts in it.
+- **NetCheck RCA → Root Category**, **Ericsson RCA → Root Category** and **Selected Root Category**, below the root domains: the categories of each source translated onto the [Root Cause Catalog](#root-cause-catalog), each with its root domain in a tag (**No catalog category**: values the catalog knows no category for, only a domain or nothing); a category shows only the calls the source puts in it.
+- Below them, the categories and causes of each source in its own words, three hierarchies side by side: the **NetCheck RCA** Failure Category → Subcategory of the CDR, the **Ericsson RCA** Suggested Category → Cause and the Root Category → Root Cause **Selected by the Analysts**; a category or cause of the analysts drills down into its calls. Each category shows the root domain its calls fall in, in a small tag in its colour: the main one and how many more when they fall in several, all of them on hover.
+- The PowerPoint and Word show the same on two slides, each under the indicators: the root domains and catalog categories of each source in two cards, one below the other (the first categories that fit), and then its own hierarchy (the first rows that fit).
 - **RCA → Selected Root Category**: for the NetCheck RCA tab (the first) or the Ericsson RCA tab, how the categories the source maps to relate to the categories the analysts chose; the cells where both agree are outlined.
 
 The panel shows how many Ericsson RCA results are imported and how many match calls; they are imported with **Import RCA & Analyses** (see [Import RCA & Analyses](#import-rca-analyses)).
@@ -113,10 +115,12 @@ The **Progress View**, the last panel, shows how the follow-up advances for the 
 
 - Indicators: calls, open and closed calls, calls attended (with a follow-up change or a comment), commented, with a team and assigned, and the average days to close.
 - Donut charts **By Status**, **By Team**, **By Assignee**, **By Service** and **By Result**; each legend shows the full name with its count and share; hovering a slice shows its value, count and share, and a click on a slice or a legend entry filters the calls by that value.
-- A timeline per **week**, **month**, **quarter** or **year** of the calls detected, attended, commented, closed and reopened (hover a period to read all its values), with a table that adds the status changes, the open backlog at the end of each period and the average days to close.
+- A timeline per **week** (the default), **month**, **quarter** or **year** of the calls detected, attended, commented, closed and reopened (hover a period to read all its values), with a table that adds the status changes, the open backlog at the end of each period and the average days to close.
 - The age of the open calls, the workload of each team and assignee (open, closed and total calls) and the recent activity.
 
 As in the Summary, a click drills down into the calls: a slice or legend entry of a donut, a period of the timeline (in the chart or its table: the calls detected in that period), an age bar (the open calls of that age) or a team or assignee row shows only those calls; click it again to remove that filter. The User Activity table is informative only.
+
+In the PowerPoint and Word, the Progress View slides show the period of the timeline in bold in their title (*Progress View · **Monthly***) and what each one shows in its subtitle: Follow-up Overview, Progress per Month, Age and Workload, Details per Month and User Activity.
 
 ## Non-Qualified Calls panel
 

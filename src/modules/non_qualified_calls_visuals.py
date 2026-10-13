@@ -240,7 +240,13 @@ def _days(value: Any) -> str:
     return '—' if value is None else f'{float(value):.1f} d'
 
 
-def progress_view_panels(progress: dict[str, Any], options: dict[str, Any], granularity_label: str) -> list[tuple[str, BytesIO]]:
+def progress_title(granularity_label: str, subtitle: str) -> SlideTitle:
+    """The title of a Progress View slide: the period of its timeline in bold, and what the slide shows in its subtitle."""
+    period = {'Week': 'Weekly', 'Month': 'Monthly', 'Quarter': 'Quarterly', 'Year': 'Yearly'}.get(granularity_label, granularity_label)
+    return SlideTitle('Progress View', period, subtitle)
+
+
+def progress_view_panels(progress: dict[str, Any], options: dict[str, Any], granularity_label: str) -> list[tuple[SlideTitle, BytesIO]]:
     """The Progress View: indicator cards and donuts, the timeline, then age and workload."""
     summary = progress.get('summary') or {}
     total = int(summary.get('total') or 0)
@@ -262,17 +268,17 @@ def progress_view_panels(progress: dict[str, Any], options: dict[str, Any], gran
     width = (first.width - gap * (len(distributions) - 1)) / max(1, len(distributions))
     for index, distribution in enumerate(distributions):
         _donut_card(first, index * (width + gap), 1.45, width, first.height - 1.45, distribution['label'], _items(distribution, colours))
-    panels.append(('Progress View', first.png()))
+    panels.append((progress_title(granularity_label, 'Follow-up Overview'), first.png()))
     timeline = _timeline_panel(progress.get('periods') or [], granularity_label)
     if timeline is not None:
-        panels.append((f'Progress View · Progress per {granularity_label}', timeline))
+        panels.append((progress_title(granularity_label, f'Progress per {granularity_label}'), timeline))
     work = Panel()
     third = (work.width - gap * 2) / 3
     _bar_card(work, 0, 0, third, work.height, 'Age of Open Calls',
               [(str(item['value']), int(item['count']), RASPBERRY) for item in progress.get('aging') or []])
     _workload_card(work, third + gap, 0, third, work.height, 'Team Workload', progress.get('teams') or [])
     _workload_card(work, 2 * (third + gap), 0, third, work.height, 'Assignee Workload', progress.get('assignees') or [])
-    panels.append(('Progress View · Age and Workload', work.png()))
+    panels.append((progress_title(granularity_label, 'Age and Workload'), work.png()))
     return panels
 
 
@@ -649,6 +655,8 @@ RATE_ROW = 0.5
 RATE_CELL = 0.8
 RATE_LABEL = 1.35
 RATE_GROUP_GAP = 0.06
+# The line above the table with the overall NQ rate of the selection.
+RATE_OVERALL = 0.3
 # Below this share of the full row height or cell width, the table takes a second slide.
 RATE_DENSE = 0.5
 
@@ -662,9 +670,25 @@ def _fit_size(draw: ImageDraw.ImageDraw, text: str, points: float, bold: bool, w
 def _rate_shape(campaigns: list[str], groups: int, services: int, width: float, height: float) -> tuple[float, float, float]:
     """The row height and cell width of the NQ rate table, and how close they are to their full size (1 when they are)."""
     header = 1.8 if services > 1 else 1
-    row = min(RATE_ROW, (height - 0.4) / (len(campaigns) + 1 + header))
+    row = min(RATE_ROW, (height - 0.4 - RATE_OVERALL) / (len(campaigns) + 1 + header))
     cell = (width - 0.4 - RATE_LABEL - RATE_GROUP_GAP * (groups - 1)) / (groups * services)
     return row, cell, min(row / RATE_ROW, cell / RATE_CELL)
+
+
+def _gradient_box(panel: Panel, box: tuple[float, float, float, float], start: str, end: str, radius: float) -> None:
+    """A rounded box filled with a diagonal gradient from ``start`` (top left) to ``end`` (bottom right)."""
+    left, top, right, bottom = (_px(value) for value in box)
+    width, height = max(1, right - left), max(1, bottom - top)
+    first, last = ImageColor.getrgb(start)[:3], ImageColor.getrgb(end)[:3]
+    # Each pixel takes the colour of its share of the diagonal, x + y.
+    span = max(1, width + height - 2)
+    shade = Image.new('L', (width, height))
+    shade.putdata([round(255 * (column + row) / span) for row in range(height) for column in range(width)])
+    fill = Image.merge('RGB', [band.point(lambda value, a=a, b=b: round(a + (b - a) * value / 255))
+                               for band, a, b in zip((shade, shade, shade), first, last)])
+    mask = Image.new('L', (width, height), 0)
+    ImageDraw.Draw(mask).rounded_rectangle([0, 0, width - 1, height - 1], radius=_px(radius), fill=255)
+    panel.image.paste(fill, (left, top), mask)
 
 
 def _rate_table(matrices: list[dict[str, Any]], campaigns: list[str], operators: list[str], with_total: bool) -> BytesIO:
@@ -675,9 +699,15 @@ def _rate_table(matrices: list[dict[str, Any]], campaigns: list[str], operators:
     double = services > 1
     head_rows = 1.8 if double else 1
     # As tall as its rows, so a short table does not leave an empty slide-sized card.
-    panel = Panel(height=min(PANEL_HEIGHT, 0.4 + row * (len(campaigns) + 1 + head_rows)))
+    panel = Panel(height=min(PANEL_HEIGHT, 0.4 + RATE_OVERALL + row * (len(campaigns) + 1 + head_rows)))
     panel.card(0, 0, panel.width, panel.height)
-    left, top = 0.2, 0.2
+    # The overall NQ rate of the selection: every service, operator and campaign.
+    overall = next((matrix for matrix in matrices if matrix['service'] == 'all'), matrices[0])['total']
+    share = f"{overall['rate']:.1f}%" if overall['rate'] is not None else '—'
+    panel.text(panel.width - 0.2, 0.2 + RATE_OVERALL / 2,
+               f"Overall {share} · {_number(overall['nq'])} NQ calls of {_number(overall['total'])} calls", 10, bold=True,
+               color=RASPBERRY, anchor='rm')
+    left, top = 0.2, 0.2 + RATE_OVERALL
     head_size = min(9, row * 72 * 0.45)
     rate_size = min(10.5, row * 72 * 0.4)
     calls_size = min(7.5, row * 72 * 0.28)
@@ -692,17 +722,24 @@ def _rate_table(matrices: list[dict[str, Any]], campaigns: list[str], operators:
     colours = next((matrix.get('operator_colors') or {} for matrix in matrices if matrix['service'] == 'all'), {})
     for index, group in enumerate(groups):
         x = group_left(index)
-        panel.draw.rounded_rectangle([_px(x + 0.02), _px(top), _px(x + group_width - 0.02), _px(top + row)], radius=_px(0.06),
-                                     fill='#fcedf2')
+        box = (x + 0.02, top, x + group_width - 0.02, top + row)
+        if group == 'Total':
+            # The Total of every operator in the fuchsia of the Overall card of the page.
+            _gradient_box(panel, box, DARK, '#e0507a', 0.06)
+        else:
+            panel.draw.rounded_rectangle([_px(value) for value in box], radius=_px(0.06), fill='#fcedf2')
         if colours.get(group):
             panel.draw.rounded_rectangle([_px(x + 0.08), _px(top + row - 0.07), _px(x + group_width - 0.08), _px(top + row - 0.035)],
                                          radius=_px(0.02), fill=colours[group])
-        panel.text(x + group_width / 2, top + row / 2, group, head_size, bold=True, color=DARK, width=group_width - 0.1, anchor='mm')
+        panel.text(x + group_width / 2, top + row / 2, group, head_size, bold=True, color='white' if group == 'Total' else DARK,
+                   width=group_width - 0.1, anchor='mm')
         if double:
             for position, matrix in enumerate(matrices):
-                label = 'Total' if matrix['service'] == 'all' else matrix['label']
-                panel.text(x + cell_width * (position + 0.5), top + row * 1.4, label, head_size * 0.9, bold=True,
-                           color=DARK if matrix['service'] == 'all' else MUTED, width=cell_width - 0.06, anchor='mm')
+                # The services as named in the tabs of the page (All services adds them up), smaller when they do not fit.
+                label = matrix['label']
+                panel.text(x + cell_width * (position + 0.5), top + row * 1.4, label,
+                           _fit_size(panel.draw, label, head_size * 0.9, True, cell_width - 0.08), bold=True,
+                           color=DARK if matrix['service'] == 'all' else MUTED, anchor='mm')
 
     def draw_cell(x: float, y: float, service: str, cell: dict[str, Any] | None, bold: bool) -> None:
         rate = cell['rate'] if cell else None
@@ -801,8 +838,87 @@ def lifecycle_panels(lifecycle: dict[str, Any]) -> list[tuple[str, BytesIO]]:
     return [('Analysis Center · Lifecycle', panel.png())]
 
 
-def rca_insight_panels(insights: dict[str, Any]) -> list[tuple[str, BytesIO]]:
-    """The three root cause sources compared: coverage, agreement and the categories each one proposes."""
+def _domain_tag(panel: Panel, left: float, y: float, domains: list[dict[str, Any]], size: float = 7) -> None:
+    """The root domain of a category in a small tag of its colour: the main one and how many more."""
+    text = domains[0]['domain'] + (f' +{len(domains) - 1}' if len(domains) > 1 else '')
+    colour = domains[0].get('color') or '#b8c0c6'
+    width = _tag_width(panel, domains, size)
+    half = size / 72 * 0.75
+    panel.draw.rounded_rectangle([_px(left), _px(y - half), _px(left + width), _px(y + half)], radius=_px(0.03), fill=colour)
+    panel.text(left + width / 2, y, text, size, bold=True, color=_readable(colour), anchor='mm')
+
+
+def _tag_width(panel: Panel, domains: list[dict[str, Any]], size: float = 7) -> float:
+    if not domains:
+        return 0.0
+    text = domains[0]['domain'] + (f' +{len(domains) - 1}' if len(domains) > 1 else '')
+    return panel.draw.textlength(text, font=_font(size, True)) / DPI + 0.1
+
+
+Line = tuple[bool, str, int, list[dict[str, Any]], str]
+# The heading and row height of a compact bar section.
+COMPACT_HEAD = 0.52
+COMPACT_ROW = 0.15
+
+
+def _bar_section(panel: Panel, left: float, top: float, width: float, bottom: float, title: str, note: str,
+                 lines: list[Line], *, compact: bool = False) -> float:
+    """A titled list of bars in a card, as in the page: each main row (a domain or category, with the root domain of a
+    category in a tag) and the rows below it indented; the first ones that fit above ``bottom``. Where the list ends.
+
+    ``compact`` sections (two in a card) use a smaller heading and closer rows."""
+    pad = 0.16
+    title_size, note_size, note_y, first, row, main_size, sub_size = ((9.5, 7, 0.36, COMPACT_HEAD, COMPACT_ROW, 8, 7) if compact
+                                                                       else (11, 7.5, 0.47, 0.68, 0.2, 8.5, 7.5))
+    panel.text(left + pad, top + 0.12, title, title_size, bold=True, color=DARK, width=width - 2 * pad)
+    panel.text(left + pad, top + note_y, note, note_size, color=MUTED, width=width - 2 * pad, anchor='lm')
+    first += top
+    if not lines:
+        panel.text(left + pad, first + 0.1, 'No calls.', main_size, color=MUTED, anchor='lm')
+        return first + 0.25
+    shown = lines[:max(1, int((bottom - first) / row))]
+    if len(shown) < len(lines):
+        panel.text(left + width - pad, top + 0.14, f'First {len(shown)} of {len(lines)} rows', 7, bold=True, color=MUTED, anchor='ra')
+    highest = max(1, *(count for main, _label, count, _domains, _colour in lines if main))
+    label_width = width * 0.56
+    track_left = left + pad + label_width + 0.08
+    track_width = width - 2 * pad - label_width - 0.08 - 0.45
+    for index, (main, label, count, domains, colour) in enumerate(shown):
+        y = first + row * (index + 0.5)
+        indent = 0.0 if main else 0.16
+        size = main_size if main else sub_size
+        font = _font(size, main)
+        # The name as long as the tag of its domain leaves room for.
+        tag_size = 6.5 if compact else 7
+        tag = _tag_width(panel, domains, tag_size)
+        name = _fit(panel.draw, label, font, _px(label_width - indent - (tag + 0.06 if tag else 0)))
+        panel.text(left + pad + indent, y, name, size, bold=main, color=TEXT if main else MUTED, anchor='lm')
+        if tag:
+            _domain_tag(panel, left + pad + indent + panel.draw.textlength(name, font=font) / DPI + 0.06, y, domains, tag_size)
+        thickness = (0.04 if compact else 0.05) if main else 0.032
+        panel.draw.rounded_rectangle([_px(track_left), _px(y - thickness), _px(track_left + track_width), _px(y + thickness)],
+                                     radius=_px(thickness), fill=TRACK)
+        fill = max(0.05, track_width * count / highest)
+        panel.draw.rounded_rectangle([_px(track_left), _px(y - thickness), _px(track_left + fill), _px(y + thickness)],
+                                     radius=_px(thickness), fill=colour or (RASPBERRY if main else '#d97a96'))
+        panel.text(left + width - pad, y, _number(count), size, bold=True, color=DARK, anchor='rm')
+    return first + row * len(shown)
+
+
+def _category_lines(groups: list[dict[str, Any]], unnamed: str) -> list[Line]:
+    """Each category with the root domains of its calls, and its causes below it; ``unnamed`` names the calls without one."""
+    lines: list[Line] = []
+    for group in groups:
+        name = unnamed if group['category'] == '—' else group['category']
+        lines.append((True, name, int(group['count']), group.get('domains') or [], ''))
+        lines.extend((False, 'No cause' if cause['cause'] == '—' else cause['cause'], int(cause['count']), [], '')
+                     for cause in group.get('causes') or [])
+    return lines
+
+
+def rca_insight_panels(insights: dict[str, Any]) -> list[tuple[str | SlideTitle, BytesIO]]:
+    """The three root cause sources compared as in the page, each slide under the coverage and agreement indicators: the
+    root domains and catalog categories of each source, then its own categories and causes."""
     coverage = insights.get('coverage') or {}
     total = int(coverage.get('total') or 0)
     if not total:
@@ -814,24 +930,54 @@ def rca_insight_panels(insights: dict[str, Any]) -> list[tuple[str, BytesIO]]:
         value = item.get('rate')
         return (f'{value:.0f}%' if value is not None else '—'), f"{_number(item.get('agree'))} of {_number(item.get('compared'))} calls"
 
-    panel = Panel()
-    _kpi_row(panel, [
-        ('NetCheck RCA', _number(coverage.get('netcheck')), f"{_share(int(coverage.get('netcheck') or 0), total)} of the calls", 'attended'),
-        ('Ericsson RCA', _number(coverage.get('script')), f"{_share(int(coverage.get('script') or 0), total)} of the calls", 'team'),
-        ('Selected', _number(coverage.get('selected')), f"{_share(int(coverage.get('selected') or 0), total)} of the calls", 'closed'),
-        ('Selected = NetCheck', *rate('selected_netcheck'), 'open'),
-        ('Selected = Ericsson RCA', *rate('selected_script'), 'commented'),
-        ('NetCheck = Ericsson RCA', *rate('netcheck_script'), 'total'),
-    ], 0, 1.05, compact=True)
+    def indicators() -> Panel:
+        panel = Panel()
+        _kpi_row(panel, [
+            ('NetCheck RCA', _number(coverage.get('netcheck')), f"{_share(int(coverage.get('netcheck') or 0), total)} of the calls",
+             'attended'),
+            ('Ericsson RCA', _number(coverage.get('script')), f"{_share(int(coverage.get('script') or 0), total)} of the calls", 'team'),
+            ('Selected', _number(coverage.get('selected')), f"{_share(int(coverage.get('selected') or 0), total)} of the calls", 'closed'),
+            ('Selected = NetCheck', *rate('selected_netcheck'), 'open'),
+            ('Selected = Ericsson RCA', *rate('selected_script'), 'commented'),
+            ('NetCheck = Ericsson RCA', *rate('netcheck_script'), 'total'),
+        ], 0, 0.75, compact=True)
+        return panel
+
+    domains = insights.get('domains') or {}
     mapped = insights.get('mapped') or {}
-    cards = [
-        ('NetCheck RCA → Root Category', [(item['category'], item['count'], '#0f6f7d') for item in mapped.get('netcheck') or []]),
-        ('Ericsson RCA → Root Category', [(item['category'], item['count'], '#e0a400') for item in mapped.get('script') or []]),
-        ('Selected Root Category', [(item['category'], item['count'], RASPBERRY) for item in mapped.get('selected') or []]),
-        ('Selected by Domain', [(item['domain'], item['count'], item.get('color') or RASPBERRY) for item in insights.get('domains') or []]),
-    ]
-    gap = 0.15
-    width = (panel.width - gap * (len(cards) - 1)) / len(cards)
-    for index, (title, items) in enumerate(cards):
-        _bar_card(panel, index * (width + gap), 1.2, width, panel.height - 1.2, title, items, label_above=True, compact=True)
-    return [('Root Cause Sources', panel.png())]
+    hierarchies = insights.get('hierarchies') or {}
+    gap, top = 0.15, 0.87
+    # As in the page: under the indicators, the root domains of each source and its categories in the catalog, the first
+    # categories that fit; then, under the indicators again, its own categories and causes.
+    catalog = indicators()
+    width = (catalog.width - 2 * gap) / 3
+    # The root domains and the catalog categories of a source in two cards, one below the other as in the page: the
+    # domain cards as tall as the longest of them, so the category cards start at the same height.
+    longest = max([len(domains.get(source) or []) for source in ('netcheck', 'script', 'selected')] + [1])
+    middle = top + COMPACT_HEAD + COMPACT_ROW * longest + 0.05
+    for index, (name, source, unnamed, notes) in enumerate((
+            ('NetCheck RCA', 'netcheck', 'No catalog category',
+             ('Its categories translated onto the root domains of the catalog', 'Its categories translated onto the Root Cause Catalog')),
+            ('Ericsson RCA', 'script', 'No catalog category',
+             ('Its categories translated onto the root domains of the catalog', 'Its categories translated onto the Root Cause Catalog')),
+            ('Selected', 'selected', 'No category',
+             ('The root domain of the category the analysts chose', 'The Root Category the analysts chose')))):
+        left = index * (width + gap)
+        arrow = ' → ' if source != 'selected' else ' '
+        catalog.card(left, top, width, middle - top)
+        _bar_section(catalog, left, top, width, middle, f'{name}{arrow}Root Domain', notes[0],
+                     [(True, item['domain'], int(item['count']), [], item.get('color') or RASPBERRY) for item in domains.get(source) or []],
+                     compact=True)
+        catalog.card(left, middle + 0.08, width, catalog.height - middle - 0.08)
+        _bar_section(catalog, left, middle + 0.08, width, catalog.height - 0.04, f'{name}{arrow}Root Category', notes[1],
+                     _category_lines(mapped.get(source) or [], unnamed), compact=True)
+    sources = indicators()
+    for index, (title, note, source) in enumerate((('NetCheck RCA', 'Failure Category → Subcategory of the CDR', 'netcheck'),
+                                                   ('Ericsson RCA', 'Suggested Category → Cause of the Ericsson RCA', 'script'),
+                                                   ('Selected by the Analysts', 'Root Category → Root Cause', 'selected'))):
+        left = index * (width + gap)
+        sources.card(left, top, width, sources.height - top)
+        _bar_section(sources, left, top, width, sources.height - 0.08, title, note,
+                     _category_lines(hierarchies.get(source) or [], 'No category'))
+    return [(SlideTitle('Root Cause Sources', subtitle='Root Domains and Categories in the Root Cause Catalog'), catalog.png()),
+            (SlideTitle('Root Cause Sources', subtitle='Categories and Causes of Each RCA'), sources.png())]
