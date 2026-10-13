@@ -163,8 +163,14 @@ def test_powerpoint_adds_the_insight_slides_to_all_environments():
 def test_profile_bars_line_up_with_their_rows():
     job, result = synthetic_result(levels=('Operator',))
     presentation = Presentation(BytesIO(export_scoring_powerpoint(job, result, TEMPLATE)))
-    slide = next(slide for slide in presentation.slides
-                 if slide.shapes.title is not None and slide.shapes.title.text_frame.text.startswith('KPI GAP Profile'))
+    profiles = [slide for slide in presentation.slides
+                if slide.shapes.title is not None and slide.shapes.title.text_frame.text.startswith('KPI GAP Profile')]
+    # The reference operator has its Gap to Maximum only; each compared operator has its GAP to the reference too.
+    reference = next(slide for slide in profiles if slide.shapes.title.text_frame.text.split('\n')[0].endswith(' (reference)'))
+    assert [shape.name for shape in reference.shapes if shape.name.startswith('Scoring KPI GAP')] == [
+        'Scoring KPI GAP Maximum Table', 'Scoring KPI GAP Profile Note']
+    slide = next(slide for slide in profiles if ' vs ' in slide.shapes.title.text_frame.text)
+    assert any(shape.name == 'Scoring KPI GAP Reference Table' for shape in slide.shapes)
     table_shape = next(shape for shape in slide.shapes if shape.name == 'Scoring KPI GAP Maximum Table')
     table = table_shape.table
     first_row_top = table_shape.top + table.rows[0].height + table.rows[1].height
@@ -186,7 +192,7 @@ def test_kpi_gap_profile_slides_cover_every_selected_city():
     profiles = [{'operator': operator, 'reference': 'EE', 'context': {'city': city}}
                 for city in cities for operator in ('VF', 'EE', '3')]
     kept = _block_profiles(profiles)
-    # One profile per city and compared operator; the reference has none.
+    # One profile per city and compared operator, the reference included (with its Gap to Maximum only).
     assert [(item['context']['city'], item['operator']) for item in kept] == [
-        (city, operator) for city in cities for operator in ('VF', '3')]
+        (city, operator) for city in cities for operator in ('VF', 'EE', '3')]
     assert MAX_PROFILE_SCOPES == 12

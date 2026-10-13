@@ -3734,11 +3734,13 @@ def install_dashboard_routes(core):
         """Return the next runnable warm-up, waiting while none is runnable."""
         with dashboard_warmup_condition:
             while not core.APP_SHUTTING_DOWN.is_set():
-                # Chart models wait for an idle application; universes do not.
+                # Chart models wait for an idle application and for their workspace to be open (they are
+                # interrupted in any other); universes do not.
+                open_workspace = str(Path(core.repository.db_path).resolve()) if core.active_workspace else ''
                 runnable = [
                     (warmup_priority(key, entry), key) for key, entry in dashboard_warmup_queue.items()
                     if not dashboard_foreground_work.get(key[0])
-                    and (entry.get('universes', True) or not application_in_use())
+                    and (entry.get('universes', True) or (key[0] == open_workspace and not application_in_use()))
                 ]
                 if runnable:
                     _priority, key = min(runnable)

@@ -223,7 +223,7 @@ One background worker handles one Dashboard at a time, in creation order (oldest
 
 When nobody has used the application for five minutes, the same worker also builds the charts of each Dashboard's default universe (its saved universe, or the newest CDRs) as **Operator Comparison** and as **Multivendor Comparison** with both **Vendor Only** and **Operator - Vendor**, and stores them as ready Canvas models. Modes that are not available, for example without mapped Vendors, are skipped. It then caches the CDR columns these charts read for every ready CDR of the Dashboard's NR Mode, newest first.
 
-Opening a Dashboard or switching its comparison mode then shows the stored charts immediately. Changing CDRs, dates or filters recalculates the charts from the cached columns without reading the CDRs again. This work stops between charts and between CDRs as soon as anyone uses the application, and continues after the next quiet period.
+Opening a Dashboard or switching its comparison mode then shows the stored charts immediately. Changing CDRs, dates or filters recalculates the charts from the cached columns without reading the CDRs again. This work stops between charts and between CDRs as soon as anyone uses the application, and continues after the next quiet period. The charts of a workspace that is closed wait until it is opened again, so they never delay those of the open workspace.
 
 ### What Clear cache removes
 

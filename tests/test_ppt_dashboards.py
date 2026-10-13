@@ -3590,6 +3590,40 @@ def test_background_work_builds_one_dashboard_at_a_time_in_creation_order(client
     assert {thread for _dashboard_id, thread in finished} == {'dashboard-cache-warmup'}
 
 
+def test_chart_models_of_a_closed_workspace_never_hold_back_the_open_one(client, monkeypatch):
+    import src.modules.ppt_dashboards as dashboards_module
+
+    payload = _compact_read_dashboard(client)
+    without_starter_dashboards()
+    monkeypatch.setattr(core, 'IDLE_DASHBOARD_WARMUP_SECONDS', 3600)
+    for name in ('first', 'second', 'third'):
+        assert client.put(f'/api/ppt-dashboards/{name}', json={**payload, 'name': name.title()}).status_code == 200
+    # Their chart models wait for an idle application, and another workspace is opened before it comes.
+    core.IDLE_DASHBOARD_WARMUP_CALLBACK()
+    created = client.post('/workspace/create', data={'name': 'Second workspace'}, follow_redirects=False)
+    assert created.status_code == 303 and core.active_workspace.name == 'Second workspace'
+    payload = _compact_read_dashboard(client)
+    without_starter_dashboards()
+    for name in ('alpha', 'beta', 'gamma'):
+        assert client.put(f'/api/ppt-dashboards/{name}', json={**payload, 'name': name.title()}).status_code == 200
+    finished = []
+    original_add_log = dashboards_module.Repository.add_log
+
+    def tracked_log(self, user, action, *args, **kwargs):
+        if action == 'precompute_dashboard_charts':
+            finished.append(json.loads(args[0])['dashboard_id'])
+        return original_add_log(self, user, action, *args, **kwargs)
+
+    monkeypatch.setattr(dashboards_module.Repository, 'add_log', tracked_log)
+    core.IDLE_DASHBOARD_WARMUP_CALLBACK()
+    with core.APPLICATION_ACTIVITY_LOCK:
+        monkeypatch.setattr(core, 'LAST_IDLE_DASHBOARD_WARMUP_ACTIVITY', core.LAST_INTERACTIVE_APPLICATION_ACTIVITY)
+    monkeypatch.setattr(core, 'IDLE_DASHBOARD_WARMUP_SECONDS', 0)
+    # The chart models of the closed workspace wait until it is opened again: they never come first.
+    assert _wait_for(lambda: len(finished) == 3), finished
+    assert finished == ['alpha', 'beta', 'gamma']
+
+
 def test_preloaded_charts_wait_for_the_visible_slide(client, monkeypatch):
     import src.modules.ppt_dashboards as dashboards_module
 
