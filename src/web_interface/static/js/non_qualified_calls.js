@@ -2181,8 +2181,19 @@
     container.replaceChildren(...(cards.length ? cards : [node('p', 'No data for this selection.', 'form-note')]));
   };
   const renderRootCauses = (stats) => {
+    state.rootStats = stats;
     const summary = stats.summary;
     const source = ROOT_SOURCE_NAMES[stats.source] || ROOT_SOURCE_NAMES.analysts;
+    // Without Not classified, the charts share the calls the source gives a root cause among their root domains.
+    const showUnclassified = $('nq-root-show-unclassified').checked;
+    const classified = (item) => showUnclassified || (item.value !== NOT_CLASSIFIED && item.domain !== NOT_CLASSIFIED);
+    const columns = showUnclassified ? stats.columns : stats.columns.filter((column) => column !== NOT_CLASSIFIED);
+    const groups = (rows, sorted = false) => {
+      if (showUnclassified) return rows;
+      const kept = rows.map((row) => ({...row, total: columns.reduce((sum, column) => sum + (row.counts[column] || 0), 0)}))
+        .filter((row) => row.total);
+      return sorted ? kept.sort((a, b) => b.total - a.total) : kept;
+    };
     $('nq-root-kpis').replaceChildren(
       drillCard(kpiCard('Calls', number(summary.total), 'Non-Qualified Calls of the selection', 'total'), {clear: ROOT_FILTERS}),
       stats.source === 'analysts'
@@ -2191,19 +2202,19 @@
       drillCard(kpiCard(NOT_CLASSIFIED, number(summary.unclassified), `${percent(summary.unclassified, summary.total)} without a root cause from ${source}`, 'open'), {pairs: [domainPair(NOT_CLASSIFIED)]}),
     );
     $('nq-root-breakdowns').replaceChildren(
-      staticBars('By Root Domain', stats.domains.map((item) => ({label: item.value, count: item.count, color: item.color,
+      staticBars('By Root Domain', stats.domains.filter(classified).map((item) => ({label: item.value, count: item.count, color: item.color,
         pairs: [domainPair(item.value)]}))),
-      staticBars('By Root Category', (stats.categories || []).map((item) => ({label: `${item.domain} · ${item.category}`, count: item.count,
-        color: item.color, pairs: categoryPairs(item.domain, item.value ?? '')}))),
-      staticBars('By Root Cause', stats.causes.map((item) => ({label: `${item.domain} · ${item.cause}`, count: item.count, color: item.color,
-        pairs: [causePair(item.domain, item.value ?? '')]}))),
+      staticBars('By Root Category', (stats.categories || []).filter(classified).map((item) => ({label: `${item.domain} · ${item.category}`,
+        count: item.count, color: item.color, pairs: categoryPairs(item.domain, item.value ?? '')}))),
+      staticBars('By Root Cause', stats.causes.filter(classified).map((item) => ({label: `${item.domain} · ${item.cause}`, count: item.count,
+        color: item.color, pairs: [causePair(item.domain, item.value ?? '')]}))),
     );
     const colors = Object.fromEntries(stats.domains.map((item) => [item.value, item.color]));
-    domainLegend($('nq-root-donut-legend'), stats.columns, colors);
-    domainDonuts($('nq-root-call-types'), stats.call_types, stats.columns, colors, (name) => ['call_type', name]);
-    domainDonuts($('nq-root-nr-modes'), stats.nr_modes, stats.columns, colors, (name) => ['nr_mode', name === 'Unknown' ? state.unassigned : name]);
+    domainLegend($('nq-root-donut-legend'), columns, colors);
+    domainDonuts($('nq-root-call-types'), groups(stats.call_types), columns, colors, (name) => ['call_type', name]);
+    domainDonuts($('nq-root-nr-modes'), groups(stats.nr_modes), columns, colors, (name) => ['nr_mode', name === 'Unknown' ? state.unassigned : name]);
     // Technologies are a filter of the Filters panel; calls without a technology cannot be selected there.
-    domainBars($('nq-root-technologies'), stats.technologies, stats.columns, colors,
+    domainBars($('nq-root-technologies'), groups(stats.technologies, true), columns, colors,
       (name) => (name === 'Unknown' ? null : ['technology', name]));
     statsTable($('nq-root-nodes'), ['eNB / gNB', 'Operator', 'Site', 'Host', 'Vendor', 'Calls', 'Main Domain'],
       stats.nodes.map((row) => [row.node, row.operator, row.site || '—', row.host || '—', row.vendor || '—', number(row.calls), row.top_domain || '—']),
@@ -2213,6 +2224,7 @@
       if (cell.cellIndex !== 5) cell.classList.remove('nq-number');
     });
   };
+  $('nq-root-show-unclassified').addEventListener('change', () => { if (state.rootStats) renderRootCauses(state.rootStats); });
   let rootToken = 0;
   async function loadRootCauses() {
     const token = ++rootToken;

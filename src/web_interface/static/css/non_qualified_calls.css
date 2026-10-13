@@ -733,6 +733,7 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 .nq-phase-card header { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
 .nq-phase-base { flex-basis: 100%; font-size: .74rem; font-weight: 700; }
 .nq-phase-empty-toggle { margin-top: 14px; }
+.nq-root-unclassified-toggle { margin: 14px 0 .8rem; }
 .nq-phase-card h3 { margin: 0; color: var(--nq-dark); font-size: .95rem; }
 .nq-phase-card .nq-stacked-bar { margin-top: .6rem; }
 .nq-phase-values { display: grid; gap: .1rem; }

@@ -187,6 +187,8 @@
         <button type="button" class="nq-secondary-action" data-nq-rule-open title="See how root causes are suggested; admins and super-admins change it">Suggestion Rule</button></span>
       </div>
       <div class="nq-kpis" id="nq-root-kpis"></div>
+      {# The calls without a root cause of the source (Not classified) are left out of the charts unless shown. #}
+      <label class="nq-toggle nq-root-unclassified-toggle"><input type="checkbox" id="nq-root-show-unclassified"> Show Not classified</label>
       <div class="nq-breakdowns nq-root-breakdowns" id="nq-root-breakdowns"></div>
       <section class="nq-progress-section nq-root-donuts">
         <div class="nq-stack-legend" id="nq-root-donut-legend"></div>

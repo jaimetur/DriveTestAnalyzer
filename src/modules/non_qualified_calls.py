@@ -178,6 +178,9 @@ V20_FORMER_RULES = (
     ('Under Analysis', (('analysis_status', 'in', ('Ongoing',)),)),
     ('Under Analysis', (('@attended', 'in', ('Yes',)),)),
 )
+# RF, the most frequent root domain, is blue instead of red, once (unless its colour was changed): (domain, former colour).
+ANALYSIS_CENTER_V21_STATE_KEY = 'nq_analysis_center_v21'
+V21_FORMER_RF_COLOR = ('RF', '#c8102e')
 # The fields of the NetCheck RCA and of the Ericsson RCA named after their source, once: (key, former label).
 ANALYSIS_CENTER_V15_STATE_KEY = 'nq_analysis_center_v15'
 V15_FORMER_LABELS = (
@@ -196,7 +199,7 @@ V15_FORMER_LABELS = (
 )
 # Set once the tables and columns of this version exist, so the requests check the schema without writing.
 SCHEMA_STATE_KEY = 'nq_calls_schema'
-SCHEMA_VERSION = '2026-10-13.11'
+SCHEMA_VERSION = '2026-10-13.12'
 # Indexed call fields that the suggestion rule can read, with their labels.
 RULE_FIELDS = {
     'failure_classification': 'Failure Classification', 'failure_category': 'Failure Category',
@@ -533,7 +536,7 @@ def _schema_ready(task_repository: Any) -> bool:
                 ANALYSIS_CENTER_V10_STATE_KEY, ANALYSIS_CENTER_V11_STATE_KEY, ANALYSIS_CENTER_V12_STATE_KEY,
                 ANALYSIS_CENTER_V13_STATE_KEY, ANALYSIS_CENTER_V14_STATE_KEY, ANALYSIS_CENTER_V15_STATE_KEY,
                 ANALYSIS_CENTER_V16_STATE_KEY, ANALYSIS_CENTER_V17_STATE_KEY, ANALYSIS_CENTER_V18_STATE_KEY,
-                ANALYSIS_CENTER_V19_STATE_KEY, ANALYSIS_CENTER_V20_STATE_KEY)
+                ANALYSIS_CENTER_V19_STATE_KEY, ANALYSIS_CENTER_V20_STATE_KEY, ANALYSIS_CENTER_V21_STATE_KEY)
         states = {str(row[0]): str(row[1]) for row in connection.execute(
             f"SELECT key, value FROM workspace_state WHERE key IN ({', '.join('?' for _ in keys)})", keys)}
     return states.get(SCHEMA_STATE_KEY) == SCHEMA_VERSION and all(states.get(key) for key in keys[1:])
@@ -635,6 +638,13 @@ def ensure_nq_tables(task_repository: Any) -> None:
         _upgrade_analysis_center_v19(task_repository)
     if not task_repository.get_workspace_state(ANALYSIS_CENTER_V20_STATE_KEY):
         _upgrade_analysis_center_v20(task_repository)
+    if not task_repository.get_workspace_state(ANALYSIS_CENTER_V21_STATE_KEY):
+        name, former = V21_FORMER_RF_COLOR
+        color = next(item[1] for item in nq_catalog.DEFAULT_DOMAINS if item[0] == name)
+        with task_repository.connection() as connection:
+            connection.execute(f"UPDATE {NQ_ROOT_CATALOG_TABLE} SET color = ? WHERE kind = 'domain' AND name = ? COLLATE NOCASE "
+                               'AND lower(color) = ?', (color, name, former))
+        task_repository.set_workspace_state(ANALYSIS_CENTER_V21_STATE_KEY, '1')
     task_repository.set_workspace_state(SCHEMA_STATE_KEY, SCHEMA_VERSION)
 
 

@@ -747,6 +747,9 @@ def test_admins_import_the_analyses_of_the_previous_tool_by_join_id(client, tmp_
     # The rules of the pipeline cards start on one line, Open frames the phase statuses and the phase cards share a row.
     assert "const top = node('div', undefined, 'nq-pipeline-head');" in script and "'nq-pipeline-group-head'" in script
     assert "style.setProperty('--nq-phase-count'" in script
+    # The Root Cause Analysis leaves out the Not classified calls of every source unless shown.
+    assert '<input type="checkbox" id="nq-root-show-unclassified"> Show Not classified</label>' in page
+    assert "const showUnclassified = $('nq-root-show-unclassified').checked;" in script
     # The Progress View shows the calls per month by default.
     assert '<option value="month" selected>Month</option>' in page
     token = 'analyses-editor'
@@ -1382,6 +1385,24 @@ def test_workspaces_before_invalidate_the_invalid_analyses_and_renumber_their_de
     repository.set_workspace_state(nq.ANALYSIS_CENTER_V20_STATE_KEY, '')
     nq.ensure_nq_tables(repository)
     assert nq.status_rules(repository) == custom
+
+
+def test_rf_is_blue_also_in_workspaces_before(client, tmp_path):
+    setup_calls(client, tmp_path)
+    repository = core.repository
+    domains = lambda: {item['name']: item['color'] for item in nq.list_root_causes(repository)['domains']}
+    assert domains()['RF'] == '#3a7fc1'
+    with repository.connection() as connection:
+        connection.execute(f"UPDATE {nq.NQ_ROOT_CATALOG_TABLE} SET color = '#C8102E' WHERE kind = 'domain' AND name = 'RF'")
+    repository.set_workspace_state(nq.ANALYSIS_CENTER_V21_STATE_KEY, '')
+    nq.ensure_nq_tables(repository)
+    assert domains()['RF'] == '#3a7fc1'
+    # A colour chosen in the workspace stays.
+    with repository.connection() as connection:
+        connection.execute(f"UPDATE {nq.NQ_ROOT_CATALOG_TABLE} SET color = '#123456' WHERE kind = 'domain' AND name = 'RF'")
+    repository.set_workspace_state(nq.ANALYSIS_CENTER_V21_STATE_KEY, '')
+    nq.ensure_nq_tables(repository)
+    assert domains()['RF'] == '#123456'
 
 
 @pytest.mark.parametrize('no_team_exists', [False, True])

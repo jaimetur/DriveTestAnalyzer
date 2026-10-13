@@ -258,7 +258,7 @@ DEFAULT_STATUS_RULES = (
 # -- root cause catalog -----------------------------------------------------------------------
 # Domains: (name, colour, keywords looked for in the CDR failure classification).
 DEFAULT_DOMAINS = (
-    ('RF', '#c8102e', ('rf',)),
+    ('RF', '#3a7fc1', ('rf',)),
     ('RAN', '#e08a1e', ('ran', 'paging')),
     ('Core', '#6941a4', ('core', 'gsm')),
     ('Core EPSFB', '#245a96', ('epsfb', 'eps fallback')),
