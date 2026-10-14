@@ -68,7 +68,7 @@ Above the table, the search and the filters show only the users with a name or u
 
 A module that is in no profile is seen only by the super-admins without a profile, as PPT Reporting (old) on a new deployment or a module added by a later version until it is added to the profiles that should have it. A module that is not shown to a user disappears from the main tabs and the Modules menu, and its pages and API answer 403. Workspace switching, dataset uploads and processing remain available everywhere. Reporting Jobs can only include artifacts of the modules their author sees; see [Reporting](reporting.md).
 
-A new deployment starts with three profiles: **Non-Qualified Calls** (**Workspace**, Non-Qualified Calls, **Reporting** and **Builders**), **Benchmarking** (every main module except Non-Qualified Calls and PPT Reporting (old)) and **All Modules** (every main module except PPT Reporting (old)), the default one, in pink, blue and teal. Profiles are stored in the application database (`Modules Profiles` table, and each user's profile in `Users`).
+A new deployment starts with three profiles: **Non-Qualified Calls** (**Workspace**, Non-Qualified Calls, **Reporting**, **Builders** and Bugs Report), **Benchmarking** (every main module except Non-Qualified Calls and PPT Reporting (old)) and **All Modules** (every main module except PPT Reporting (old)), the default one, in pink, blue and teal. Profiles are stored in the application database (`Modules Profiles` table, and each user's profile in `Users`).
 
 ## Workspace Groups
 
@@ -99,8 +99,9 @@ Nothing is chosen beforehand: **Submit Request** is enabled once every field is 
 
 ### Export targets
 
-- Application Config (the whole application database, its users, Modules Profiles and Workspace Groups included)
+- Application Config (the whole application database, its users, Modules Profiles, Workspace Groups and bug reports included)
 - Users & Access (only the users, Modules Profiles and Workspace Groups)
+- Bugs Report (only the bug reports, with their timeline and screenshots; importing it merges them, see [Bugs Report](bugs-report.md#portability))
 - Dashboards from the active workspace
 - PPT Templates from the active workspace
 - Main Cities from the active workspace
@@ -192,8 +193,9 @@ Database Management has two clearly separated subsections: **Backup Protection**
 
 In **Back up now**, select in **Backup content** one or more content types and the workspaces they apply to:
 
-- **Configuration Content: Application database** stores the shared application configuration, including the Scoring aggregation hierarchy, the users, Modules Profiles and Workspace Groups.
+- **Configuration Content: Application database** stores the shared application configuration, including the Scoring aggregation hierarchy, the users, Modules Profiles, Workspace Groups and bug reports.
 - **Configuration Content: Users & Access** stores one JSON file with the users, Modules Profiles and Workspace Groups; restore merges it like an import of [Users & Access](#export-targets), so the other users and settings are kept.
+- **Configuration Content: Bugs Report** stores one JSON file with every bug report and its timeline, and each screenshot as a file; restore merges them into the server like an import of Bugs Report, without deleting any.
 - **Workspace Content: Workspace Database** stores the selected workspace SQLite databases.
 - **Workspace Content: Dashboards** stores one JSON file with every Dashboard definition and its comments for each selected workspace.
 - **Workspace Content: PPT Templates** stores one CSV file for each PPT Template.

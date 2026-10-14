@@ -33,6 +33,7 @@ Help Navigation groups chapters under General, Main Modules, Administrative Modu
 | Generating persistent Reports or Chart Sets | [PPT Reporting (old)](ppt-reporting-old.md) |
 | Calculating NetCheck scores or comparing operator gaps | [Scoring & GAP Analysis](scoring-gap-analysis.md) |
 | Building ad-hoc SQL queries with guided controls | [Query Builder](query-builder.md) |
+| Reporting a bug of the tool and following it | [Bugs Report](bugs-report.md) |
 | Authoring templates | [Workspace Config](workspace-config.md), including the [Report Template reference](workspace-config.md#report-template-reference) |
 | Managing users and transfers | [Administrator Config](administrator-config.md) |
 | Changing application-wide runtime settings | [Application Config](app-config.md) |
@@ -54,6 +55,7 @@ Help Navigation groups chapters under General, Main Modules, Administrative Modu
 - [Reporting](reporting.md) — scheduled Reporting Jobs that email CDR Analysis, Network Insights, Dashboard and Scoring artifacts.
 - [Chart Builder](chart-builder.md) — temporary ad-hoc chart construction.
 - [Query Builder](query-builder.md) — guided query design, SQL editing, execution and saved queries.
+- [Bugs Report](bugs-report.md) — bug reports with screenshots, the version and date they were opened with, priorities, statuses and a timeline of comments and changes.
 - [App Logs](app-logs.md) — workspace events and live server output.
 - [Application Config](app-config.md) — application-wide runtime settings and their effect.
 - [Workspace Config](workspace-config.md) — workspace-owned templates, Main Cities, chart mappings and scoring methodologies.

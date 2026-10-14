@@ -39,6 +39,7 @@ Primary tabs, in their default order (super-admins change their order, titles, i
 - Non-Qualified Calls (in development, hidden until activated)
 - **Reporting**
 - **Builders** (dropdown with Chart Builder and Query Builder)
+- Bugs Report (opens without a workspace)
 
 Each main tab is a module. An account sees the modules of its Modules Profile (**Admin → Modules Profiles**), and a super-admin every module until it is given one; a module an account does not see disappears from its tabs and Modules menu, and its pages and API answer 403. When the tabs do not fit on one line they wrap onto further lines, and main module tabs never share a line with the administrative tabs.
 

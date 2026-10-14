@@ -129,7 +129,7 @@
             </div>
             {% endfor %}
           </nav>{% else %}<span class="module-tab module-tab-disabled" aria-disabled="true" title="Open a workspace to use {{ tab.title }}">{{ module_tab_content(tab) }}{{ new_badge(tab.key) }}</span>{% endif %}
-          {% elif tab.key == 'workspace' or active_workspace %}<a class="module-tab {{ tab.css }}{% if tab.colour_style %} module-tab-custom-colour{% endif %}{% if request.url.path == tab.href %} active{% endif %}"{% if tab.colour_style %} style="{{ tab.colour_style }}"{% endif %} href="{{ tab.href }}" title="Open {{ tab.nav_title }}"{% if tab.sections %} data-module-sections="{{ tab.key }}"{% endif %}>{{ module_tab_content(tab) }}{{ new_badge(tab.key) }}</a>
+          {% elif not tab.needs_workspace or active_workspace %}<a class="module-tab {{ tab.css }}{% if tab.colour_style %} module-tab-custom-colour{% endif %}{% if request.url.path == tab.href or request.url.path.startswith(tab.href ~ '/') %} active{% endif %}"{% if tab.colour_style %} style="{{ tab.colour_style }}"{% endif %} href="{{ tab.href }}" title="Open {{ tab.nav_title }}"{% if tab.sections %} data-module-sections="{{ tab.key }}"{% endif %}>{{ module_tab_content(tab) }}{{ new_badge(tab.key) }}</a>
           {# Without an open workspace, Workspace only has its Workspaces Management panel. #}
           {{ sections_menu(tab.key, tab.title, tab.sections if active_workspace or tab.key != 'workspace' else tab.sections[:1], tab.tab_color) }}
           {% else %}<span class="module-tab module-tab-disabled" aria-disabled="true" title="Open a workspace to use {{ tab.title }}">{{ module_tab_content(tab) }}{{ new_badge(tab.key) }}</span>
@@ -158,7 +158,7 @@
             <h4 id="module-navigator-main-title">Main Modules</h4>
             <nav aria-label="Main modules">
               {% for tab in module_tabs %}{% if features[tab.key] %}
-              {% if tab.key == 'workspace' or active_workspace %}{% if tab.key == 'builders' %}<a href="/chart-builder"{% if request.url.path == '/chart-builder' %} class="is-active" aria-current="page"{% endif %}>{{ module_nav_icon(tab) }}Chart Builder</a>
+              {% if not tab.needs_workspace or active_workspace %}{% if tab.key == 'builders' %}<a href="/chart-builder"{% if request.url.path == '/chart-builder' %} class="is-active" aria-current="page"{% endif %}>{{ module_nav_icon(tab) }}Chart Builder</a>
               <a href="/query-builder"{% if request.url.path == '/query-builder' %} class="is-active" aria-current="page"{% endif %}>{{ module_nav_icon(tab) }}Query Builder</a>{% else %}<a href="{{ tab.href }}"{% if request.url.path == tab.href %} class="is-active" aria-current="page"{% endif %}>{{ module_nav_icon(tab) }}{{ tab.nav_title }}</a>{% endif %}
               {% else %}<span class="is-disabled" aria-disabled="true">{{ module_nav_icon(tab) }}{{ 'Chart Builder' if tab.key == 'builders' else tab.nav_title }}</span>
               {% endif %}{% endif %}{% endfor %}

@@ -6789,6 +6789,12 @@ function importWarningDetails(payload) {
       message: 'Users, Modules Profiles and Workspace Groups with the same names will be updated and the missing ones added; the others are kept. Workspaces are matched by name. Your own account keeps its role, status and password.',
     };
   }
+  if (kind === 'bugs-report') {
+    return {
+      title: 'Import Bugs Report?',
+      message: 'The bug reports, comments and screenshots this server does not have are added, and a bug report changed later in the package takes its newer content. Nothing is deleted.',
+    };
+  }
   if (kind === 'ppt-templates') {
     return {
       title: 'Overwrite PPT Templates?',

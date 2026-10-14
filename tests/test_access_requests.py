@@ -14,7 +14,7 @@ def profiles():
 def test_a_new_deployment_has_the_modules_profiles_of_each_team(client):
     available = profiles()
     assert set(available) == {'Non-Qualified Calls', 'Benchmarking', 'All Modules'}
-    assert available['Non-Qualified Calls']['modules'] == ['workspace', 'non-qualified-calls', 'reporting', 'builders']
+    assert available['Non-Qualified Calls']['modules'] == ['workspace', 'non-qualified-calls', 'reporting', 'builders', 'bugs-report']
     assert set(available['Benchmarking']['modules']) == set(core.FEATURE_KEYS) - {'non-qualified-calls', 'ppt-reporting-old'}
     assert set(available['All Modules']['modules']) == set(core.FEATURE_KEYS) - {'ppt-reporting-old'}
     assert [name for name, profile in available.items() if profile['is_default']] == ['All Modules']

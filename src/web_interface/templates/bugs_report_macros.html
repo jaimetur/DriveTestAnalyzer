@@ -1,0 +1,38 @@
+{# Pieces shared by the Bugs Report pages (bugs_report.html and bug_report.html). #}
+{% macro priority_pill(priority, label='') -%}
+<span class="bug-priority" data-priority="{{ priority }}" title="{{ priority }}{% if label %} · {{ label }}{% endif %}">{{ priority }}{% if label %}<small>{{ label }}</small>{% endif %}</span>
+{%- endmacro %}
+
+{% macro status_pill(status, label) -%}
+<span class="bug-status" data-status="{{ status }}">{{ label }}</span>
+{%- endmacro %}
+
+{% macro module_chip(title, color) -%}
+<span class="bug-module" style="--module-color: {{ color }}">{{ title }}</span>
+{%- endmacro %}
+
+{# Screenshots chosen, dropped or pasted (Ctrl+V / Cmd+V anywhere in the form), shown before they are sent (bugs_report.js). #}
+{% macro screenshots_zone(max_files, max_mb, label='Screenshots') -%}
+<div class="bug-dropzone" data-bug-dropzone data-max-files="{{ max_files }}" data-max-mb="{{ max_mb }}">
+  <label class="bug-dropzone-target">
+    <input type="file" name="screenshots" accept="image/png,image/jpeg,image/gif,image/webp" multiple aria-label="{{ label }}" data-bug-dropzone-input>
+    <span class="bug-dropzone-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.6"/><path d="m21 15-5-5-9 9"/></svg></span>
+    <span class="bug-dropzone-text"><strong>{{ label }}</strong><small>Paste with Ctrl+V / ⌘V, drop or click to choose · up to {{ max_files }} images of {{ max_mb }} MB</small></span>
+  </label>
+  <div class="bug-dropzone-previews" data-bug-dropzone-previews></div>
+</div>
+{%- endmacro %}
+
+{% macro screenshot_gallery(attachments, user, removable=false) -%}
+{% if attachments %}
+<div class="bug-gallery">
+  {% for attachment in attachments %}
+  <figure class="bug-shot">
+    <button type="button" class="bug-shot-open" data-bug-shot="/bugs-report/attachments/{{ attachment.id }}" data-bug-shot-name="{{ attachment.file_name }}" title="{{ attachment.file_name }}"><img src="/bugs-report/attachments/{{ attachment.id }}" alt="{{ attachment.file_name }}" loading="lazy"></button>
+    <figcaption>{{ attachment.file_name }}</figcaption>
+    {% if removable and (user.role == 'super-admin' or attachment.uploaded_by | lower == user.username | lower) %}<button type="button" class="bug-shot-remove" data-bug-shot-delete="{{ attachment.id }}" title="Delete this screenshot" aria-label="Delete {{ attachment.file_name }}">×</button>{% endif %}
+  </figure>
+  {% endfor %}
+</div>
+{% endif %}
+{%- endmacro %}

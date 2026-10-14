@@ -25,6 +25,7 @@ DriveTest Analyzer turns processed CDR datasets into interactive KPI analysis, r
 | PPT Reporting (old) | [Open section](#ppt-reporting-old) |
 | Chart Builder | [Open section](#chart-builder) |
 | Query Builder | [Open section](#query-builder) |
+| Bugs Report | [Open section](#bugs-report) |
 | App Logs | [Open section](#app-logs) |
 | Administrator Config | [Open section](#administrator-config) |
 | Roles at a glance | [Open section](#roles-at-a-glance) |
@@ -276,6 +277,10 @@ Query Builder runs read-only SQL against selected, processed Data, Voice and Spe
 - Save and reopen reusable queries. **Clear Query** resets the current editor and results without deleting saved queries.
 
 For the full workflow and SQL rules, see [Query Builder](query-builder.md).
+
+## Bugs Report
+
+Bugs Report collects the bugs users find in the tool. Each bug report has a title, the module it happens in, a priority from P1 (Critical) to P5 (Trivial), a description and screenshots pasted, dropped or chosen, and keeps the version of the tool and the date it was opened with. Its page shows a timeline of comments and changes; its reporter edits it and changes its priority, and only super-admins attend it: its status (New, In Progress, Waiting for Info, Resolved, Closed or Rejected), who handles it and the version that fixes it. It opens without a workspace and is in every Modules Profile. See [Bugs Report](bugs-report.md).
 
 ## App Logs
 

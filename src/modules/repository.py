@@ -404,6 +404,54 @@ CREATE TABLE IF NOT EXISTS workspace_group_members (
     user_id INTEGER NOT NULL,
     PRIMARY KEY (group_id, user_id)
 );
+
+-- Bugs Report: the tickets of the bugs found in the tool, with their history and screenshots (src/modules/bugs_report.py).
+CREATE TABLE IF NOT EXISTS bug_reports (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    uid TEXT NOT NULL UNIQUE,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    module TEXT NOT NULL DEFAULT '',
+    priority TEXT NOT NULL DEFAULT 'P3',
+    status TEXT NOT NULL DEFAULT 'new',
+    app_version TEXT NOT NULL DEFAULT '',
+    fixed_version TEXT NOT NULL DEFAULT '',
+    browser TEXT NOT NULL DEFAULT '',
+    created_by TEXT NOT NULL,
+    assigned_to TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    resolved_at TEXT NOT NULL DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS bug_report_comments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    uid TEXT NOT NULL UNIQUE,
+    bug_id INTEGER NOT NULL REFERENCES bug_reports(id) ON DELETE CASCADE,
+    username TEXT NOT NULL,
+    kind TEXT NOT NULL DEFAULT 'comment',
+    body TEXT NOT NULL DEFAULT '',
+    changes_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL,
+    edited_at TEXT NOT NULL DEFAULT ''
+);
+
+CREATE INDEX IF NOT EXISTS idx_bug_report_comments_bug ON bug_report_comments(bug_id, id);
+
+CREATE TABLE IF NOT EXISTS bug_report_attachments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    uid TEXT NOT NULL UNIQUE,
+    bug_id INTEGER NOT NULL REFERENCES bug_reports(id) ON DELETE CASCADE,
+    comment_id INTEGER REFERENCES bug_report_comments(id) ON DELETE CASCADE,
+    file_name TEXT NOT NULL,
+    content_type TEXT NOT NULL,
+    size INTEGER NOT NULL,
+    content BLOB NOT NULL,
+    uploaded_by TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_bug_report_attachments_bug ON bug_report_attachments(bug_id, id);
 """
 
 USER_ROLES = ('user-viewer', 'user-editor', 'admin', 'super-admin')
@@ -412,13 +460,19 @@ PROFILE_COLOR_ALL_MODULES, PROFILE_COLOR_BENCHMARKING, PROFILE_COLOR_NON_QUALIFI
 # The Modules Profiles of a new deployment: (name, description, modules, colour, default).
 # PPT Reporting (old) is in none of them, so only super-admins without a profile see it.
 DEFAULT_MODULES_PROFILES: tuple[tuple[str, str, tuple[str, ...], str, bool], ...] = (
-    ('Non-Qualified Calls', 'Workspace, Non-Qualified Calls, Scheduled Reporting & Builders.',
-     ('workspace', 'non-qualified-calls', 'reporting', 'builders'), PROFILE_COLOR_NON_QUALIFIED_CALLS, False),
+    ('Non-Qualified Calls', 'Workspace, Non-Qualified Calls, Scheduled Reporting, Builders & Bugs Report.',
+     ('workspace', 'non-qualified-calls', 'reporting', 'builders', 'bugs-report'), PROFILE_COLOR_NON_QUALIFIED_CALLS, False),
     ('Benchmarking', 'Every main module except Non-Qualified Calls.',
      tuple(key for key, _name in MAIN_MODULES if key not in {'non-qualified-calls', 'ppt-reporting-old'}), PROFILE_COLOR_BENCHMARKING, False),
     ('All Modules', 'Every main module.', tuple(key for key, _name in MAIN_MODULES if key != 'ppt-reporting-old'),
      PROFILE_COLOR_ALL_MODULES, True),
 )
+
+
+# Main modules that joined every Modules Profile of a deployment when they were added to the tool; each one is added
+# once, so a profile it is later taken out of keeps without it.
+MODULES_ADDED_TO_EVERY_PROFILE: tuple[str, ...] = ('bugs-report',)
+MODULES_ADDED_TO_PROFILES_STATE_KEY = 'modules_profiles_added_modules'
 
 
 def suggested_profile_color(modules: Iterable[str]) -> str:
@@ -1067,6 +1121,20 @@ class Repository:
         if 'color' not in {str(row['name']) for row in conn.execute('PRAGMA table_info(modules_profiles)').fetchall()}:
             conn.execute("ALTER TABLE modules_profiles ADD COLUMN color TEXT NOT NULL DEFAULT ''")
         rows = conn.execute('SELECT id, name, is_default, modules_json, color FROM modules_profiles ORDER BY id').fetchall()
+        recorded = conn.execute('SELECT value FROM application_state WHERE key = ?', (MODULES_ADDED_TO_PROFILES_STATE_KEY,)).fetchone()
+        try:
+            added = set(json.loads(recorded['value'])) if recorded else set()
+        except (TypeError, ValueError):
+            added = set()
+        if set(MODULES_ADDED_TO_EVERY_PROFILE) - added:
+            for row in rows:
+                modules = json.loads(row['modules_json'] or '[]')
+                modules = modules if isinstance(modules, list) else []
+                missing = [module for module in MODULES_ADDED_TO_EVERY_PROFILE if module not in added and module not in modules]
+                if missing:
+                    conn.execute('UPDATE modules_profiles SET modules_json = ? WHERE id = ?', (json.dumps([*modules, *missing]), int(row['id'])))
+            conn.execute('INSERT OR REPLACE INTO application_state (key, value) VALUES (?, ?)',
+                         (MODULES_ADDED_TO_PROFILES_STATE_KEY, json.dumps(sorted(added | set(MODULES_ADDED_TO_EVERY_PROFILE)))))
         if not rows:
             for name, description, modules, color, default in DEFAULT_MODULES_PROFILES:
                 conn.execute(
@@ -2315,10 +2383,7 @@ class Repository:
                     f"SELECT * FROM {quoted_table}{where_clause} ORDER BY {order_clause} LIMIT ? OFFSET ?"
                 )
             rows = [
-                {
-                    key: (value.decode('utf-8', errors='replace') if isinstance(value, (bytes, memoryview)) else value)
-                    for key, value in dict(row).items()
-                }
+                {key: self._database_viewer_value(value) for key, value in dict(row).items()}
                 for row in conn.execute(
                     select_query,
                     (*parameters, page_size, page_offset),
@@ -2375,6 +2440,17 @@ class Repository:
         values = [DATABASE_BLANK_FILTER if row['value'] is None or str(row['value']).strip() == '' else str(row['value']) for row in rows[:result_limit]]
         return {'values': values, 'has_more': has_more}
 
+    @staticmethod
+    def _database_viewer_value(value: Any) -> Any:
+        """A cell as the Database Viewer shows it: text as it is, and binary data (such as screenshots) as its size."""
+        if not isinstance(value, (bytes, memoryview)):
+            return value
+        data = bytes(value)
+        try:
+            return data.decode('utf-8')
+        except UnicodeDecodeError:
+            return f'[binary data, {len(data):,} bytes]'
+
     def update_database_table_row(self, table_name: str, rowid: int, updates: dict[str, Any]) -> None:
         """Persist safe, non-key cell edits made by an administrator."""
         if table_name not in self.list_database_tables():
@@ -2395,6 +2471,12 @@ class Repository:
             protected_columns = {str(row['name']) for row in metadata if row['pk']}
             if protected_columns.intersection(updates):
                 raise ValueError('Primary-key values cannot be edited in Database Management.')
+            stored = conn.execute(
+                f"SELECT {', '.join(f'typeof({self._quote_identifier(column)}) AS {self._quote_identifier(column)}' for column in updates)} "
+                f"FROM {quoted_table} WHERE rowid = ?", (int(rowid),),
+            ).fetchone()
+            if stored and any(str(stored[column]) == 'blob' for column in updates):
+                raise ValueError('Binary values, such as screenshots, cannot be edited in Database Management.')
             assignments = ', '.join(f"{self._quote_identifier(column)} = ?" for column in updates)
             values = [updates[column] for column in updates]
             result = conn.execute(

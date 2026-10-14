@@ -128,6 +128,10 @@ Chart Builder reuses the shared Interactive Preview for ad-hoc analysis.
 
 Build read-only SQL in Assistance Mode or SQL Mode, inspect paginated results and save reusable workspace queries. Copy exports the visible page; CSV exports every row matching the result filters. See [Query Builder Help](help/query-builder.md).
 
+### Bugs Report
+
+Report the bugs of the tool with their screenshots (pasted, dropped or chosen), the version and the date, a priority from P1 to P5 and the module they happen in, and follow them with comments; super-admins attend them until they are resolved. See [Bugs Report Help](help/bugs-report.md).
+
 ### App Logs
 
 - Filter by User, Executed by, date, type and action.
@@ -414,6 +418,7 @@ DriveTestAnalyzer/
 - [PPT Reporting (old)](help/ppt-reporting-old.md)
 - [Chart Builder](help/chart-builder.md)
 - [Query Builder](help/query-builder.md)
+- [Bugs Report](help/bugs-report.md)
 - [App Logs](help/app-logs.md)
 - [Application Config](help/app-config.md)
 - [Workspace Config](help/workspace-config.md)

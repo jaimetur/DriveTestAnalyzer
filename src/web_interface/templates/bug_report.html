@@ -1,0 +1,116 @@
+{% extends 'base.html' %}
+{% from 'bugs_report_macros.html' import priority_pill, status_pill, module_chip, screenshots_zone, screenshot_gallery %}
+{% block content %}
+<link rel="stylesheet" href="{{ static_path('css/bugs_report.css') }}?v={{ asset_version('css/bugs_report.css') }}">
+<section class="dashboard-stack spacious-stack bugs-report bug-report-page" data-bug-report="{{ bug.id }}">
+  <nav class="bug-breadcrumb"><a href="/bugs-report#section-bug-reports">← Bug Reports</a><span>#{{ bug.id }}</span></nav>
+
+  <article class="panel bug-header" data-status="{{ bug.status }}">
+    <div class="bug-header-pills">{{ status_pill(bug.status, bug.status_label) }}{{ priority_pill(bug.priority, bug.priority_label) }}{{ module_chip(bug.module_title, bug.module_color) }}</div>
+    <h2 class="bug-title"><span class="bug-number">#{{ bug.id }}</span> {{ bug.title }}</h2>
+    <p class="bug-opened">Opened by <strong>{{ bug.created_by_name }}</strong> on {{ bug.created_date }} with version <strong>v{{ bug.app_version }}</strong>{% if bug.fixed_version %} · fixed in <strong>v{{ bug.fixed_version }}</strong>{% endif %}</p>
+    {% if bug_can_edit %}<button type="button" class="bug-edit-toggle" data-bug-edit-toggle aria-expanded="false">Edit</button>{% endif %}
+  </article>
+
+  <div class="bug-layout">
+    <div class="bug-main">
+      {% if bug_can_edit %}
+      <form class="panel bug-card bug-edit-form" data-bug-edit-form hidden novalidate>
+        <h3>Edit bug report</h3>
+        <label class="bugs-field">Title<input type="text" name="title" maxlength="160" required value="{{ bug.title }}"></label>
+        <label class="bugs-field">Module
+          <select name="module">{% for module in bug_modules %}<option value="{{ module.key }}"{% if module.key == bug.module %} selected{% endif %}>{{ module.title }}</option>{% endfor %}</select>
+        </label>
+        <label class="bugs-field">Description<textarea name="description" rows="8" maxlength="20000">{{ bug.description }}</textarea></label>
+        <div class="bugs-form-actions"><button type="button" class="bug-ghost-button" data-bug-edit-cancel>Cancel</button><button type="submit" class="bugs-primary-button">Save changes</button></div>
+      </form>
+      {% endif %}
+
+      <article class="panel bug-card bug-description">
+        <h3>Description</h3>
+        {% if bug.description %}<div class="bug-text">{{ bug.description }}</div>{% else %}<p class="bug-muted">No description.</p>{% endif %}
+        {{ screenshot_gallery(bug.attachments, user, removable=bug_can_edit) }}
+        {% if bug_can_edit %}
+        <form class="bug-add-shots" data-bug-shots-form novalidate>
+          {{ screenshots_zone(bug_max_screenshots, bug_max_screenshot_mb, 'Add screenshots') }}
+          <div class="bugs-form-actions" data-bug-shots-actions hidden><button type="submit" class="bugs-primary-button">Add screenshots</button></div>
+        </form>
+        {% endif %}
+      </article>
+
+      <article class="panel bug-card bug-timeline-card">
+        <h3>Timeline</h3>
+        <ol class="bug-timeline">
+          <li class="bug-event bug-event-change"><span class="bug-event-dot" aria-hidden="true"></span><p><strong>{{ bug.created_by_name }}</strong> opened the bug report with version v{{ bug.app_version }} <time>{{ bug.created_date }}</time></p></li>
+          {% for entry in bug.comments %}
+          {% if entry.kind == 'change' %}
+          <li class="bug-event bug-event-change"><span class="bug-event-dot" aria-hidden="true"></span>
+            <p><strong>{{ entry.username_name }}</strong> {% for line in entry.change_lines %}{% if line.long %}edited the {{ line.field | lower }}{% else %}changed {{ line.field }} from <em>{{ line.old or '—' }}</em> to <em>{{ line.new or '—' }}</em>{% endif %}{% if not loop.last %}, {% endif %}{% endfor %} <time>{{ entry.date }}</time></p>
+          </li>
+          {% else %}
+          <li class="bug-event bug-comment" data-bug-comment="{{ entry.id }}">
+            <span class="bug-avatar" aria-hidden="true">{{ entry.username_name[:1] | upper }}</span>
+            <div class="bug-comment-body">
+              <header><strong>{{ entry.username_name }}</strong><time>{{ entry.date }}{% if entry.edited_at %} · edited{% endif %}</time>
+                {% if entry.username | lower == user.username | lower or bug_can_manage %}<span class="bug-comment-actions">{% if entry.username | lower == user.username | lower %}<button type="button" data-bug-comment-edit>Edit</button>{% endif %}<button type="button" data-bug-comment-delete>Delete</button></span>{% endif %}
+              </header>
+              {% if entry.body %}<div class="bug-text" data-bug-comment-text>{{ entry.body }}</div>{% endif %}
+              {{ screenshot_gallery(entry.attachments, user, removable=true) }}
+            </div>
+          </li>
+          {% endif %}
+          {% endfor %}
+        </ol>
+        <form class="bug-comment-form" data-bug-comment-form novalidate>
+          <label class="bugs-field">Add a comment<textarea name="body" rows="4" maxlength="20000" placeholder="More details, what you tried, whether it still happens…"></textarea></label>
+          {{ screenshots_zone(bug_max_screenshots, bug_max_screenshot_mb) }}
+          <div class="bugs-form-actions"><button type="submit" class="bugs-primary-button">Comment</button></div>
+        </form>
+      </article>
+    </div>
+
+    <aside class="bug-side">
+      <article class="panel bug-card bug-details">
+        <h3>Details</h3>
+        <dl>
+          <div><dt>Status</dt><dd>{{ status_pill(bug.status, bug.status_label) }}</dd></div>
+          <div><dt>Priority</dt><dd>{% if bug_can_edit %}<select class="bug-priority-select" data-bug-priority aria-label="Priority">{% for key, label in bug_priorities.items() %}<option value="{{ key }}"{% if key == bug.priority %} selected{% endif %}>{{ key }} · {{ label }}</option>{% endfor %}</select>{% else %}{{ priority_pill(bug.priority, bug.priority_label) }}{% endif %}</dd></div>
+          <div><dt>Module</dt><dd>{{ module_chip(bug.module_title, bug.module_color) }}</dd></div>
+          <div><dt>Reported by</dt><dd>{{ bug.created_by_name }}</dd></div>
+          <div><dt>Assigned to</dt><dd>{{ bug.assigned_to_name or 'Nobody yet' }}</dd></div>
+          <div><dt>Opened with</dt><dd>v{{ bug.app_version }}</dd></div>
+          <div><dt>Fixed in</dt><dd>{{ ('v' ~ bug.fixed_version) if bug.fixed_version else '—' }}</dd></div>
+          <div><dt>Opened</dt><dd>{{ bug.created_date }}</dd></div>
+          <div><dt>Updated</dt><dd>{{ bug.updated_date }}</dd></div>
+          {% if bug.resolved_date %}<div><dt>{{ bug.status_label }}</dt><dd>{{ bug.resolved_date }}</dd></div>{% endif %}
+        </dl>
+        {% if bug.browser %}<p class="bug-browser" title="{{ bug.browser }}">{{ bug.browser }}</p>{% endif %}
+      </article>
+
+      {% if bug_can_manage %}
+      <form class="panel bug-card bug-manage" data-bug-manage-form novalidate>
+        <h3>Attend</h3>
+        {% if bug.status == 'new' %}<button type="button" class="bugs-primary-button bug-attend" data-bug-attend data-username="{{ user.username }}">Attend this bug</button>{% endif %}
+        <label class="bugs-field">Status
+          <select name="status">{% for key, label in bug_statuses.items() %}<option value="{{ key }}"{% if key == bug.status %} selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+        </label>
+        <label class="bugs-field">Assigned to
+          <select name="assigned_to"><option value="">Nobody</option>{% for person in bug_super_admins %}<option value="{{ person.username }}"{% if person.username == bug.assigned_to %} selected{% endif %}>{{ person.name }}</option>{% endfor %}</select>
+        </label>
+        <label class="bugs-field">Fixed in version<input type="text" name="fixed_version" maxlength="40" value="{{ bug.fixed_version }}" placeholder="{{ app_version }}"></label>
+        <div class="bugs-form-actions"><button type="submit" class="bugs-primary-button">Save</button></div>
+        <button type="button" class="bug-delete" data-bug-delete>Delete bug report</button>
+      </form>
+      {% endif %}
+    </aside>
+  </div>
+
+  <dialog class="bug-lightbox" data-bug-lightbox>
+    <div class="bug-lightbox-head"><strong data-bug-lightbox-name></strong><a data-bug-lightbox-link target="_blank" rel="noopener">Open original</a><button type="button" data-bug-lightbox-close aria-label="Close">×</button></div>
+    <img alt="" data-bug-lightbox-image>
+  </dialog>
+</section>
+{% endblock %}
+{% block extra_scripts %}
+<script src="{{ static_path('js/bugs_report.js') }}?v={{ asset_version('js/bugs_report.js') }}"></script>
+{% endblock %}

@@ -449,6 +449,7 @@ HELP_NAVIGATION_DOCUMENTS = (
     'reporting.md',
     'chart-builder.md',
     'query-builder.md',
+    'bugs-report.md',
     'app-logs.md',
     'app-config.md',
     'workspace-config.md',
@@ -468,6 +469,7 @@ HELP_DOCUMENT_LABELS = {
     'non-qualified-calls.md': 'Non-Qualified Calls',
     'chart-builder.md': 'Chart Builder',
     'query-builder.md': 'Query Builder',
+    'bugs-report.md': 'Bugs Report',
     'workspace-management.md': 'Workspace Management',
     'configuration.md': 'Deployment Configuration',
     'web-interface.md': 'Web Interfaces',
@@ -499,6 +501,7 @@ FEATURES: tuple[dict[str, Any], ...] = (
     {'key': 'non-qualified-calls', 'label': 'Non-Qualified Calls', 'paths': ('/non-qualified-calls', '/api/non-qualified-calls')},
     {'key': 'reporting', 'label': 'Reporting', 'paths': ('/reporting', '/api/reporting')},
     {'key': 'builders', 'label': 'Builders', 'paths': ('/chart-builder', '/query-builder', '/api/chart-builder', '/api/query-builder')},
+    {'key': 'bugs-report', 'label': 'Bugs Report', 'paths': ('/bugs-report', '/api/bugs-report')},
 )
 FEATURE_KEYS = tuple(feature['key'] for feature in FEATURES)
 MODULE_ACCESS_CACHE_SECONDS = 5.0
@@ -6165,10 +6168,14 @@ def build_default_access_accounts() -> list[dict[str, str]]:
 ARCHIVE_FORMAT = 'drivetest-analyzer-export'
 ARCHIVE_VERSION = 1
 ARCHIVE_COMPONENTS = frozenset({
-    'app_database', 'users_access', 'workspace_components',
+    'app_database', 'users_access', 'bugs_report', 'workspace_components',
 })
 # Users & Access: every account with its Modules Profile and workspaces, plus the Modules Profiles and Workspace Groups.
 USERS_ACCESS_ARCHIVE_PATH = 'users-access/users-access.json'
+# Bugs Report: every ticket with its timeline in one JSON document, and each screenshot in bugs-report/attachments.
+BUGS_REPORT_ARCHIVE_PATH = 'bugs-report/bugs-report.json'
+# The application content of a backup, besides the workspaces.
+APPLICATION_BACKUP_COMPONENTS = ('app_database', 'users_access', 'bugs_report')
 WORKSPACE_ARCHIVE_COMPONENTS = frozenset({
     'workspace_database', 'input', 'output', 'dashboards', 'report_templates', 'mappings_reference_data',
     'auto_calculated_fields', 'query_builder_queries', 'reporting_jobs', 'nq_call_tracking', 'nq_calls_configuration', 'main_cities',
@@ -6177,6 +6184,7 @@ WORKSPACE_ARCHIVE_COMPONENTS = frozenset({
 ARCHIVE_KIND_COMPONENTS = {
     'config': ('app_database',),
     'users-access': ('users_access',),
+    'bugs-report': ('bugs_report',),
     'workspace': ('workspace_components',),
     'full-environment': ('app_database', 'workspace_components'),
     'ppt-templates': ('workspace_components',),
@@ -6191,7 +6199,7 @@ WORKSPACE_ELEMENT_EXPORT_TARGETS = frozenset({
     'ppt-templates', 'auto-calculated-fields', 'dashboards', 'mappings-reference-data', 'query-builder-queries',
     'reporting-jobs', 'nq-call-tracking', 'nq-calls-configuration', 'main-cities', 'scoring-configuration',
 })
-STATIC_EXPORT_TARGETS = frozenset({'config', 'config-with-templates', 'users-access', 'full-environment'})
+STATIC_EXPORT_TARGETS = frozenset({'config', 'config-with-templates', 'users-access', 'bugs-report', 'full-environment'})
 UNCOMPRESSED_ARCHIVE_SUFFIXES = frozenset({
     '.7z', '.avi', '.docx', '.gif', '.gz', '.jpeg', '.jpg', '.mp3', '.mp4', '.pdf', '.png', '.pptx', '.rar',
     '.tar', '.tgz', '.webp', '.xlsx', '.xlsm', '.zip',
@@ -6254,7 +6262,7 @@ def archive_restore_components(manifest: dict[str, Any]) -> list[str]:
     """Return the manifest components that can be selected during Restore."""
     selected = [
         component for component in archive_manifest_components(manifest)
-        if component in {'app_database', 'users_access'}
+        if component in APPLICATION_BACKUP_COMPONENTS
     ]
     return [*selected, *archive_workspace_components(manifest)]
 
@@ -6427,7 +6435,7 @@ def _archive_tree(
 
 def backup_components(components: Iterable[str]) -> list[str]:
     """The known backup parts of a selection, without the Input and Output folders when their workspace database is not included."""
-    selected = list(dict.fromkeys(str(item) for item in components if item in {'app_database', 'users_access', *WORKSPACE_ARCHIVE_COMPONENTS}))
+    selected = list(dict.fromkeys(str(item) for item in components if item in {*APPLICATION_BACKUP_COMPONENTS, *WORKSPACE_ARCHIVE_COMPONENTS}))
     if 'workspace_database' not in selected:
         selected = [item for item in selected if item not in {'input', 'output'}]
     return selected
@@ -6608,6 +6616,8 @@ def create_recurring_database_backup(
     total_bytes = (repository.global_db_path.stat().st_size if 'app_database' in components and repository.global_db_path.exists() else 0)
     users_access = _users_access_archive_payload() if 'users_access' in components else b''
     total_bytes += len(users_access)
+    bugs_report_files = _bugs_report_archive_files() if 'bugs_report' in components else {}
+    total_bytes += sum(len(content) for content in bugs_report_files.values())
     for workspace in workspaces:
         if 'workspace_database' in components:
             total_bytes += workspace.database_path.stat().st_size
@@ -6644,7 +6654,7 @@ def create_recurring_database_backup(
         nonlocal completed_bytes
         completed_bytes += size
         report_progress('Writing ZIP contents', min(96.0, completed_bytes * 96.0 / max(total_bytes, 1)))
-    manifest_components = [component for component in ('app_database', 'users_access') if component in components]
+    manifest_components = [component for component in APPLICATION_BACKUP_COMPONENTS if component in components]
     if workspace_manifest_components:
         manifest_components.append('workspace_components')
     try:
@@ -6662,6 +6672,11 @@ def create_recurring_database_backup(
                 report_progress('Exporting Users & Access', 5.0)
                 archive.writestr(USERS_ACCESS_ARCHIVE_PATH, users_access)
                 archived_bytes(len(users_access))
+            if 'bugs_report' in components:
+                report_progress('Exporting Bugs Report', 5.0)
+                for path, content in bugs_report_files.items():
+                    archive.writestr(path, content)
+                    archived_bytes(len(content))
             for workspace in workspaces:
                 ensure_not_cancelled()
                 item = {'id': workspace.id, 'name': workspace.name}
@@ -7003,6 +7018,8 @@ def _backup_archive_components(archive_path: Path) -> list[str]:
         components.append('app_database')
     if USERS_ACCESS_ARCHIVE_PATH in names:
         components.append('users_access')
+    if BUGS_REPORT_ARCHIVE_PATH in names:
+        components.append('bugs_report')
     if any(name.startswith('workspaces/') and name.endswith('/database.sqlite') for name in names):
         components.append('workspace_database')
     if any(name.startswith('workspaces/') and '/dashboards/dashboards.json' in name for name in names):
@@ -7086,7 +7103,7 @@ def restore_database_backup(
             workspace.name: workspace for workspace in workspace_registry.list()
             if chosen_workspaces is None or workspace.name in chosen_workspaces
         }
-        total_steps = int('app_database' in selected) + int('users_access' in selected)
+        total_steps = int('app_database' in selected) + int('users_access' in selected) + int('bugs_report' in selected)
         for workspace_name in workspaces_by_name:
             prefix = f'workspaces/{workspace_name}/'
             for component, member in (
@@ -7138,6 +7155,11 @@ def restore_database_backup(
                 progress_callback('Restoring Users & Access', completed_steps, total_steps)
             import_users_access(archive.read(USERS_ACCESS_ARCHIVE_PATH), manifest, importing_user)
             advance('Users & Access restored')
+        if 'bugs_report' in selected:
+            if progress_callback:
+                progress_callback('Restoring Bugs Report', completed_steps, total_steps)
+            import_bugs_report(archive)
+            advance('Bugs Report restored')
         for workspace_name, workspace in workspaces_by_name.items():
             prefix = f'workspaces/{workspace_name}/'
             if 'workspace_database' in selected:
@@ -7980,6 +8002,8 @@ def export_archive_filename(target: str | Iterable[str]) -> str:
         return f'drivetest-analyzer-config_{generated_at}.zip'
     if target == 'users-access':
         return f'drivetest-analyzer-users-access_{generated_at}.zip'
+    if target == 'bugs-report':
+        return f'drivetest-analyzer-bugs-report_{generated_at}.zip'
     if target == 'ppt-templates':
         workspace_name = active_workspace.name if active_workspace else 'workspace'
         return f'{workspace_name}_ppt-templates_{generated_at}.zip'
@@ -8091,6 +8115,13 @@ def _build_single_export_archive_file(
             archive.writestr(USERS_ACCESS_ARCHIVE_PATH, payload)
             if progress_callback:
                 progress_callback(len(payload))
+        elif target == 'bugs-report':
+            manifest = archive_manifest('bugs-report', archive_path=BUGS_REPORT_ARCHIVE_PATH)
+            archive.writestr('manifest.json', json.dumps(manifest, indent=2, sort_keys=True))
+            for path, content in _bugs_report_archive_files().items():
+                archive.writestr(path, content)
+                if progress_callback:
+                    progress_callback(len(content))
         elif target == 'ppt-templates':
             source_id = next(iter(workspace_ids or ()), active_workspace.id if active_workspace else '')
             source_workspace = workspace_registry.get(source_id) if source_id else None
@@ -8387,6 +8418,8 @@ def estimate_export_bytes(
             total += _tree_size(settings.slides_templates_dir)
     elif target == 'users-access':
         total = len(_users_access_archive_payload())
+    elif target == 'bugs-report':
+        total = sum(len(content) for content in _bugs_report_archive_files().values())
     elif target == 'ppt-templates':
         source_id = next(iter(workspace_ids or ()), active_workspace.id if active_workspace else '')
         source_workspace = workspace_registry.get(source_id) if source_id else None
@@ -8523,6 +8556,8 @@ def _recovered_transfer_details(manifest: dict[str, Any]) -> tuple[str, list[str
         return ('Config + PPT Templates' if manifest.get('includes_slides_templates') else 'Config', [])
     if kind == 'users-access':
         return ('Users & Access', [])
+    if kind == 'bugs-report':
+        return ('Bugs Report', [])
     if kind == 'ppt-templates':
         source = manifest.get('source_workspace') or {}
         return ('PPT Templates', [str(source['name'])] if isinstance(source, dict) and source.get('name') else [])
@@ -8594,7 +8629,7 @@ def _recover_unimported_transfer_packages() -> None:
             manifest = read_import_manifest(package_path)
             kind = str(manifest.get('kind') or '')
             if kind not in {
-                'config', 'users-access', 'workspace', 'full-environment', 'ppt-templates',
+                'config', 'users-access', 'bugs-report', 'workspace', 'full-environment', 'ppt-templates',
                 'auto-calculated-fields', 'dashboards', 'mappings-reference-data', 'main-cities',
                 'scoring-configuration', 'query-builder-queries', 'reporting-jobs', 'nq-call-tracking', 'nq-calls-configuration',
                 'database-backup', 'bundle',
@@ -9229,6 +9264,28 @@ def import_users_access(content: bytes, manifest: dict[str, Any], importing_user
     return message
 
 
+def _bugs_report_archive_files() -> dict[str, bytes]:
+    """The Bugs Report files of a package (archive path → content): the tickets in one JSON document and each screenshot."""
+    from src.modules.bugs_report import bugs_report_payload
+
+    payload, files = bugs_report_payload(repository)
+    return {BUGS_REPORT_ARCHIVE_PATH: json.dumps(payload, ensure_ascii=False, indent=2).encode('utf-8'), **files}
+
+
+def import_bugs_report(archive: zipfile.ZipFile) -> str:
+    """Merge the Bugs Report of a package into this server; returns its completion message."""
+    from src.modules.bugs_report import ATTACHMENTS_ARCHIVE_DIR, merge_bugs_report
+
+    try:
+        payload = json.loads(archive.read(BUGS_REPORT_ARCHIVE_PATH).decode('utf-8'))
+    except (KeyError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError('The Bugs Report file is not valid.') from exc
+    files = {name: archive.read(name) for name in archive.namelist() if name.startswith(f'{ATTACHMENTS_ARCHIVE_DIR}/') and not name.endswith('/')}
+    summary = merge_bugs_report(repository, payload, files)
+    return (f"Bugs Report imported: {summary['created']} new and {summary['updated']} updated bug reports, "
+            f"{summary['comments']} comments and {summary['screenshots']} screenshots.")
+
+
 def replace_application_database_from_server(snapshot: Path, source_workspaces: object) -> None:
     """Replace application.db with one written by this or another server.
 
@@ -9487,6 +9544,15 @@ def _apply_import_archive(
             if progress_callback:
                 progress_callback('importing Users & Access', 90.0)
             notice = import_users_access(archive.read(USERS_ACCESS_ARCHIVE_PATH), manifest, importing_user)
+            if progress_callback:
+                progress_callback('finalising', 100.0)
+            return notice
+        if kind == 'bugs-report':
+            if BUGS_REPORT_ARCHIVE_PATH not in archive.namelist():
+                raise ValueError('The package does not contain Bugs Report.')
+            if progress_callback:
+                progress_callback('importing Bugs Report', 90.0)
+            notice = import_bugs_report(archive)
             if progress_callback:
                 progress_callback('finalising', 100.0)
             return notice
@@ -9917,6 +9983,7 @@ def _transfer_content_label(target: str | Iterable[str]) -> str:
     labels = {
         'config': 'Config',
         'users-access': 'Users & Access',
+        'bugs-report': 'Bugs Report',
         'ppt-templates': 'PPT Templates',
         'config-with-templates': 'Config + PPT Templates',
         'full-environment': 'Full Environment',
@@ -10657,6 +10724,9 @@ def render_admin_template(
         'workspace_groups': 'Workspace Groups',
         'workspace_group_members': 'Workspace Group Members',
         'application_sessions': 'Application Sessions',
+        'bug_reports': 'Bug Reports',
+        'bug_report_comments': 'Bug Report Comments',
+        'bug_report_attachments': 'Bug Report Attachments',
         'report_tasks': 'Report Tasks',
         'map_area_layers': 'Map Area Layers',
         'map_area_fills': 'Map Area Fills',
@@ -10697,6 +10767,7 @@ def render_admin_template(
     export_options = [
         {'value': 'config', 'label': 'Application Config'},
         {'value': 'users-access', 'label': 'Users & Access'},
+        {'value': 'bugs-report', 'label': 'Bugs Report'},
         {'value': 'dashboards', 'label': 'Dashboards (from active workspace)', 'disabled': not active_workspace},
         {'value': 'ppt-templates', 'label': 'PPT Templates (from active workspace)', 'disabled': not active_workspace},
         {'value': 'main-cities', 'label': 'Main Cities (from active workspace)', 'disabled': not active_workspace},
@@ -10724,7 +10795,7 @@ def render_admin_template(
             } or option['value'].startswith('workspace:')
         ]
     export_option_groups = [
-        ('Configuration Content', [option for option in export_options if option['value'] in {'config', 'users-access'}]),
+        ('Configuration Content', [option for option in export_options if option['value'] in {'config', 'users-access', 'bugs-report'}]),
         ('Current Workspace Content', [
             option for option in export_options
             if option['value'] in {'dashboards', 'ppt-templates', 'main-cities', 'mappings-reference-data', 'scoring-configuration', 'auto-calculated-fields', 'query-builder-queries', 'reporting-jobs', 'nq-call-tracking', 'nq-calls-configuration'}
@@ -12756,7 +12827,7 @@ def workspace_access_map(user: SessionUser, workspaces: list[Workspace]) -> dict
 DATABASE_TABLE_TYPES: tuple[tuple[str, str], ...] = (
     ('Users & Access', '#6B46C1'), ('Application', '#48606F'), ('Datasets', '#1F6FBF'), ('Dashboards & Templates', '#7751B9'),
     ('Scoring & GAP Analysis', '#176E77'), ('Non-Qualified Calls', '#B0234F'), ('Reporting', '#2E8C58'),
-    ('Mappings & Maps', '#B85B20'), ('Query Builder', '#8A6D0B'), ('Workspace', '#5A6773'),
+    ('Mappings & Maps', '#B85B20'), ('Query Builder', '#8A6D0B'), ('Bugs Report', '#DC2626'), ('Workspace', '#5A6773'),
     ('Voice CDRs', '#1F6FBF'), ('Data CDRs', '#2E8C58'), ('Speech CDRs', '#7751B9'), ('Other datasets', '#5A6773'),
 )
 
@@ -12773,6 +12844,8 @@ def database_table_type(table_name: str, dataset_kind: str = '') -> tuple[str, s
         kind_type = 'Users & Access'
     elif name in {'application_state', 'transfer_offers', WORKSPACE_REGISTRY_TABLE.casefold()}:
         kind_type = 'Application'
+    elif name.startswith('bug_report'):
+        kind_type = 'Bugs Report'
     elif name.startswith('nq_'):
         kind_type = 'Non-Qualified Calls'
     elif name.startswith(('scoring_', 'saved_filters')):
@@ -15350,6 +15423,340 @@ def reporting(request: Request, user: SessionUser = Depends(current_user)) -> HT
         'report_charts': default_report_charts,
         'calculated_dimensions': calculated_dimensions_json(load_workspace_calculated_dimensions()),
     })
+
+
+# ---------------------------------------------------------------------------
+# Bugs Report: the tickets of the bugs found in the tool (src/modules/bugs_report.py). Every user with the module
+# opens tickets and comments on them; the reporter edits the ticket and its priority, and only super-admins attend
+# it (status, assignment, fixed version) or delete it.
+# ---------------------------------------------------------------------------
+def bug_report_people() -> dict[str, dict[str, str]]:
+    """Each account by its username: the name shown (first and last name, or the username) and its role."""
+    people = {}
+    for row in repository.list_users():
+        name = ' '.join(part for part in (str(row['first_name'] or '').strip(), str(row['last_name'] or '').strip()) if part)
+        people[str(row['username'])] = {'name': name or str(row['username']), 'role': str(row['role'])}
+    return people
+
+
+def bug_report_modules() -> list[dict[str, str]]:
+    """The modules a bug can be found in: General and every main module, with its title and colour."""
+    labels = load_module_labels(repository)
+    return [{'key': '', 'title': 'General', 'color': '#5A6773'}] + [
+        {'key': module, 'title': label['title'], 'color': label['tab_color']} for module, label in labels.items()
+    ]
+
+
+def serialize_bug_report(row: dict[str, Any], modules: dict[str, dict[str, str]], people: dict[str, dict[str, str]]) -> dict[str, Any]:
+    from src.modules.bugs_report import OPEN_STATUSES, PRIORITIES, STATUSES
+
+    module = modules.get(str(row.get('module') or ''), {'title': str(row.get('module') or '') or 'General', 'color': '#5A6773'})
+    return {
+        **row,
+        'priority_label': PRIORITIES.get(str(row['priority']), ''),
+        'status_label': STATUSES.get(str(row['status']), str(row['status'])),
+        'is_open': str(row['status']) in OPEN_STATUSES,
+        'module_title': module['title'], 'module_color': module['color'],
+        'created_by_name': people.get(str(row['created_by']), {}).get('name', str(row['created_by'])),
+        'assigned_to_name': people.get(str(row['assigned_to']), {}).get('name', str(row['assigned_to'])) if row.get('assigned_to') else '',
+        'created_date': str(row['created_at'])[:16].replace('T', ' '),
+        'updated_date': str(row['updated_at'])[:16].replace('T', ' '),
+        'resolved_date': str(row.get('resolved_at') or '')[:16].replace('T', ' '),
+    }
+
+
+def can_edit_bug_report(user: SessionUser, bug: dict[str, Any]) -> bool:
+    """The reporter of a ticket and the super-admins edit it and change its priority."""
+    return user.role == 'super-admin' or str(bug['created_by']).casefold() == user.username.casefold()
+
+
+def require_bug_report(bug_id: int) -> dict[str, Any]:
+    from src.modules.bugs_report import get_bug
+
+    bug = get_bug(repository, bug_id)
+    if bug is None:
+        raise HTTPException(status_code=404, detail='The bug report does not exist.')
+    return bug
+
+
+async def read_bug_report_screenshots(files: list[UploadFile]) -> list[dict[str, Any]]:
+    """The screenshots of a form, read at most 10 MB each and checked to be images."""
+    from src.modules.bugs_report import MAX_ATTACHMENT_BYTES, screenshot_files
+
+    uploads = []
+    for upload in files or []:
+        if not upload.filename and not upload.size:
+            continue
+        content = await upload.read(MAX_ATTACHMENT_BYTES + 1)
+        await upload.close()
+        uploads.append((upload.filename or 'screenshot', content))
+    try:
+        return screenshot_files(uploads)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get('/bugs-report', response_class=HTMLResponse)
+def bugs_report_page(request: Request, user: SessionUser = Depends(current_user)) -> HTMLResponse:
+    from src.modules.bugs_report import (
+        DEFAULT_PRIORITY, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_PER_UPLOAD, PRIORITIES, STATUSES, list_bugs,
+    )
+
+    modules = bug_report_modules()
+    people = bug_report_people()
+    by_key = {module['key']: module for module in modules}
+    bugs = [serialize_bug_report(row, by_key, people) for row in list_bugs(repository)]
+    return render_template(request, 'bugs_report.html', {
+        'user': user, 'bugs': bugs, 'bug_modules': modules, 'bug_priorities': PRIORITIES, 'bug_statuses': STATUSES,
+        'bug_default_priority': DEFAULT_PRIORITY,
+        'bug_status_counts': {status: sum(1 for bug in bugs if bug['status'] == status) for status in STATUSES},
+        'bug_mine_open': sum(1 for bug in bugs if bug['is_open'] and str(bug['created_by']).casefold() == user.username.casefold()),
+        'bug_max_screenshots': MAX_ATTACHMENTS_PER_UPLOAD, 'bug_max_screenshot_mb': MAX_ATTACHMENT_BYTES // (1024 * 1024),
+    })
+
+
+@app.get('/bugs-report/{bug_id:int}', response_class=HTMLResponse)
+def bug_report_page(request: Request, bug_id: int, user: SessionUser = Depends(current_user)) -> HTMLResponse:
+    from src.modules.bugs_report import FIELD_LABELS, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_PER_UPLOAD, PRIORITIES, STATUSES
+
+    modules = bug_report_modules()
+    people = bug_report_people()
+    by_key = {module['key']: module for module in modules}
+    bug = serialize_bug_report(require_bug_report(bug_id), by_key, people)
+
+    def change_value(field: str, value: str) -> str:
+        if field == 'status':
+            return STATUSES.get(value, value)
+        if field == 'priority':
+            return f'{value} · {PRIORITIES.get(value, "")}' if value else ''
+        if field == 'module':
+            return by_key.get(value, {'title': value or 'General'})['title']
+        if field == 'assigned_to':
+            return people.get(value, {}).get('name', value) if value else 'Nobody'
+        return value
+    for comment in bug['comments']:
+        comment['username_name'] = people.get(str(comment['username']), {}).get('name', str(comment['username']))
+        comment['date'] = str(comment['created_at'])[:16].replace('T', ' ')
+        comment['change_lines'] = [
+            {'field': FIELD_LABELS.get(field, field), 'long': field == 'description',
+             'old': change_value(field, str(values[0])), 'new': change_value(field, str(values[1]))}
+            for field, values in comment['changes'].items() if isinstance(values, list) and len(values) == 2
+        ]
+    return render_template(request, 'bug_report.html', {
+        'user': user, 'bug': bug, 'bug_modules': modules, 'bug_priorities': PRIORITIES, 'bug_statuses': STATUSES,
+        'bug_can_edit': can_edit_bug_report(user, bug), 'bug_can_manage': user.role == 'super-admin',
+        'bug_super_admins': [{'username': username, 'name': person['name']} for username, person in people.items() if person['role'] == 'super-admin'],
+        'bug_max_screenshots': MAX_ATTACHMENTS_PER_UPLOAD, 'bug_max_screenshot_mb': MAX_ATTACHMENT_BYTES // (1024 * 1024),
+    })
+
+
+@app.get('/bugs-report/attachments/{attachment_id:int}')
+def bug_report_attachment(attachment_id: int, user: SessionUser = Depends(current_user)) -> Response:
+    from src.modules.bugs_report import get_attachment
+
+    attachment = get_attachment(repository, attachment_id)
+    if attachment is None:
+        raise HTTPException(status_code=404, detail='The screenshot does not exist.')
+    return Response(bytes(attachment['content']), media_type=str(attachment['content_type']), headers={
+        'Content-Disposition': f"inline; filename*=UTF-8''{quote(str(attachment['file_name']))}",
+        'Cache-Control': 'private, max-age=86400', 'X-Content-Type-Options': 'nosniff',
+    })
+
+
+@app.post('/api/bugs-report')
+async def create_bug_report(
+    request: Request,
+    title: str = Form(...),
+    description: str = Form(''),
+    module: str = Form(''),
+    priority: str = Form('P3'),
+    screenshots: list[UploadFile] = File(default=[]),
+    user: SessionUser = Depends(current_user),
+) -> JSONResponse:
+    from src.modules.bugs_report import create_bug
+
+    if module and module not in {item['key'] for item in bug_report_modules()}:
+        raise HTTPException(status_code=400, detail='Choose a module of the tool.')
+    files = await read_bug_report_screenshots(screenshots)
+    try:
+        bug_id = create_bug(repository, title=title, description=description, module=module, priority=priority,
+                            username=user.username, app_version=__version__, browser=request.headers.get('user-agent', ''),
+                            screenshots=files)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    repository.try_add_log(user.username, 'bug_report_created', json.dumps({
+        'bug_id': bug_id, 'title': title.strip()[:160], 'module': module, 'priority': priority, 'app_version': __version__,
+        'screenshots': [file['file_name'] for file in files],
+    }, ensure_ascii=False))
+    return JSONResponse({'id': bug_id, 'url': f'/bugs-report/{bug_id}', 'message': f'Bug report #{bug_id} opened.'})
+
+
+@app.post('/api/bugs-report/{bug_id:int}/update')
+def update_bug_report(
+    bug_id: int,
+    title: str | None = Form(None),
+    description: str | None = Form(None),
+    module: str | None = Form(None),
+    priority: str | None = Form(None),
+    user: SessionUser = Depends(current_user),
+) -> JSONResponse:
+    """The reporter (or a super-admin) edits the ticket and changes its priority."""
+    from src.modules.bugs_report import update_bug
+
+    bug = require_bug_report(bug_id)
+    if not can_edit_bug_report(user, bug):
+        raise HTTPException(status_code=403, detail='Only the reporter of this bug and the super-admins can edit it.')
+    if module is not None and module and module not in {item['key'] for item in bug_report_modules()}:
+        raise HTTPException(status_code=400, detail='Choose a module of the tool.')
+    values = {field: value for field, value in (('title', title), ('description', description), ('module', module), ('priority', priority)) if value is not None}
+    try:
+        changes = update_bug(repository, bug_id, user.username, values)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if changes:
+        repository.try_add_log(user.username, 'bug_report_updated', json.dumps({
+            # The description is long: the App Events only note that it changed.
+            'bug_id': bug_id, 'changes': {field: pair if field != 'description' else ['…', '…'] for field, pair in changes.items()},
+        }, ensure_ascii=False))
+    return JSONResponse({'changes': changes})
+
+
+@app.post('/api/bugs-report/{bug_id:int}/manage')
+def manage_bug_report(
+    bug_id: int,
+    status_value: str | None = Form(None, alias='status'),
+    assigned_to: str | None = Form(None),
+    fixed_version: str | None = Form(None),
+    user: SessionUser = Depends(super_admin_user),
+) -> JSONResponse:
+    """Super-admins attend a ticket: its status, who handles it and the version that fixes it."""
+    from src.modules.bugs_report import OPEN_STATUSES, update_bug
+
+    bug = require_bug_report(bug_id)
+    values: dict[str, Any] = {}
+    if status_value is not None:
+        values['status'] = status_value
+        # A ticket resolved without a fixed version is fixed in the running version.
+        if status_value == 'resolved' and not (fixed_version or bug['fixed_version']):
+            values['fixed_version'] = __version__
+        if status_value in OPEN_STATUSES - {'new'} and not (assigned_to or bug['assigned_to']):
+            values['assigned_to'] = user.username
+    if assigned_to is not None:
+        if assigned_to and assigned_to not in {username for username, person in bug_report_people().items() if person['role'] == 'super-admin'}:
+            raise HTTPException(status_code=400, detail='Assign the bug to a super-admin.')
+        values['assigned_to'] = assigned_to
+    if fixed_version is not None:
+        values['fixed_version'] = fixed_version
+    try:
+        changes = update_bug(repository, bug_id, user.username, values)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if changes:
+        repository.try_add_log(user.username, 'bug_report_managed', json.dumps({'bug_id': bug_id, 'changes': changes}, ensure_ascii=False))
+    return JSONResponse({'changes': changes})
+
+
+@app.post('/api/bugs-report/{bug_id:int}/comments')
+async def comment_bug_report(
+    bug_id: int,
+    body: str = Form(''),
+    screenshots: list[UploadFile] = File(default=[]),
+    user: SessionUser = Depends(current_user),
+) -> JSONResponse:
+    from src.modules.bugs_report import add_comment
+
+    require_bug_report(bug_id)
+    files = await read_bug_report_screenshots(screenshots)
+    try:
+        comment_id = add_comment(repository, bug_id, user.username, body, files)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    repository.try_add_log(user.username, 'bug_report_commented', json.dumps({
+        'bug_id': bug_id, 'comment_id': comment_id, 'length': len(body.strip()), 'screenshots': [file['file_name'] for file in files],
+    }, ensure_ascii=False))
+    return JSONResponse({'id': comment_id})
+
+
+@app.post('/api/bugs-report/{bug_id:int}/screenshots')
+async def add_bug_report_screenshots(
+    bug_id: int,
+    screenshots: list[UploadFile] = File(default=[]),
+    user: SessionUser = Depends(current_user),
+) -> JSONResponse:
+    from src.modules.bugs_report import add_attachments
+
+    bug = require_bug_report(bug_id)
+    if not can_edit_bug_report(user, bug):
+        raise HTTPException(status_code=403, detail='Only the reporter of this bug and the super-admins can add screenshots to it.')
+    files = await read_bug_report_screenshots(screenshots)
+    if not files:
+        raise HTTPException(status_code=400, detail='Choose or paste a screenshot.')
+    added = add_attachments(repository, bug_id, user.username, files)
+    repository.try_add_log(user.username, 'bug_report_screenshots_added', json.dumps({
+        'bug_id': bug_id, 'screenshots': [file['file_name'] for file in files],
+    }, ensure_ascii=False))
+    return JSONResponse({'added': added})
+
+
+@app.post('/api/bugs-report/comments/{comment_id:int}/update')
+def edit_bug_report_comment(comment_id: int, body: str = Form(''), user: SessionUser = Depends(current_user)) -> JSONResponse:
+    from src.modules.bugs_report import edit_comment, get_comment
+
+    comment = get_comment(repository, comment_id)
+    if comment is None or comment['kind'] != 'comment':
+        raise HTTPException(status_code=404, detail='The comment does not exist.')
+    if str(comment['username']).casefold() != user.username.casefold():
+        raise HTTPException(status_code=403, detail='Only its author can edit a comment.')
+    try:
+        edit_comment(repository, comment_id, body)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    repository.try_add_log(user.username, 'bug_report_comment_edited', json.dumps({'bug_id': comment['bug_id'], 'comment_id': comment_id}))
+    return JSONResponse({'edited': True})
+
+
+@app.post('/api/bugs-report/comments/{comment_id:int}/delete')
+def delete_bug_report_comment(comment_id: int, user: SessionUser = Depends(current_user)) -> JSONResponse:
+    from src.modules.bugs_report import delete_comment, get_comment
+
+    comment = get_comment(repository, comment_id)
+    if comment is None or comment['kind'] != 'comment':
+        raise HTTPException(status_code=404, detail='The comment does not exist.')
+    if user.role != 'super-admin' and str(comment['username']).casefold() != user.username.casefold():
+        raise HTTPException(status_code=403, detail='Only its author and the super-admins can delete a comment.')
+    delete_comment(repository, comment_id)
+    repository.try_add_log(user.username, 'bug_report_comment_deleted', json.dumps({
+        'bug_id': comment['bug_id'], 'comment_id': comment_id, 'author': comment['username'],
+    }))
+    return JSONResponse({'deleted': True})
+
+
+@app.post('/api/bugs-report/screenshots/{attachment_id:int}/delete')
+def delete_bug_report_screenshot(attachment_id: int, user: SessionUser = Depends(current_user)) -> JSONResponse:
+    from src.modules.bugs_report import delete_attachment, get_attachment
+
+    attachment = get_attachment(repository, attachment_id, with_content=False)
+    if attachment is None:
+        raise HTTPException(status_code=404, detail='The screenshot does not exist.')
+    if user.role != 'super-admin' and str(attachment['uploaded_by']).casefold() != user.username.casefold():
+        raise HTTPException(status_code=403, detail='Only who added a screenshot and the super-admins can delete it.')
+    delete_attachment(repository, attachment_id)
+    repository.try_add_log(user.username, 'bug_report_screenshot_deleted', json.dumps({
+        'bug_id': attachment['bug_id'], 'screenshot': attachment['file_name'],
+    }, ensure_ascii=False))
+    return JSONResponse({'deleted': True})
+
+
+@app.post('/api/bugs-report/{bug_id:int}/delete')
+def delete_bug_report(bug_id: int, user: SessionUser = Depends(super_admin_user)) -> JSONResponse:
+    from src.modules.bugs_report import delete_bug
+
+    bug = require_bug_report(bug_id)
+    delete_bug(repository, bug_id)
+    repository.try_add_log(user.username, 'bug_report_deleted', json.dumps({
+        'bug_id': bug_id, 'title': bug['title'], 'created_by': bug['created_by'], 'status': bug['status'],
+    }, ensure_ascii=False))
+    return JSONResponse({'deleted': True, 'url': '/bugs-report'})
 
 
 def _chart_builder_context(payload: dict[str, Any]) -> tuple[pd.DataFrame, CatalogEntry]:
@@ -20041,7 +20448,7 @@ def run_manual_database_restore(
     user: SessionUser = Depends(admin_user),
 ) -> Response:
     archive_path = _backup_archive_file(backup_path, backup_file)
-    selected = [item for item in components if item in {'app_database', 'users_access', *WORKSPACE_ARCHIVE_COMPONENTS}]
+    selected = [item for item in components if item in {*APPLICATION_BACKUP_COMPONENTS, *WORKSPACE_ARCHIVE_COMPONENTS}]
     present = _backup_archive_components(archive_path)
     if not selected or not set(selected) <= set(present):
         raise HTTPException(status_code=400, detail='Select only components contained in the backup.')
@@ -20141,7 +20548,7 @@ async def receive_transfer_offer(request: Request) -> JSONResponse:
         raise HTTPException(status_code=400, detail='The transfer offer is invalid.')
     kind = str(payload.get('kind') or '')
     if kind not in {
-            'config', 'users-access', 'workspace', 'full-environment', 'ppt-templates',
+            'config', 'users-access', 'bugs-report', 'workspace', 'full-environment', 'ppt-templates',
             'auto-calculated-fields', 'dashboards', 'mappings-reference-data', 'main-cities',
             'scoring-configuration', 'query-builder-queries', 'reporting-jobs', 'nq-call-tracking', 'nq-calls-configuration',
             'database-backup', 'bundle',
@@ -20832,7 +21239,7 @@ def _retain_import_upload(upload_id: str, package_path: Path, user: SessionUser,
     manifest = read_import_manifest(package_path)
     kind = str(manifest.get('kind') or '')
     if kind not in {
-        'config', 'users-access', 'workspace', 'full-environment', 'ppt-templates',
+        'config', 'users-access', 'bugs-report', 'workspace', 'full-environment', 'ppt-templates',
         'auto-calculated-fields', 'dashboards', 'mappings-reference-data', 'main-cities',
         'scoring-configuration', 'query-builder-queries', 'reporting-jobs', 'nq-call-tracking', 'nq-calls-configuration',
         'database-backup', 'bundle',
