@@ -9793,6 +9793,23 @@ if (appLogsPanel) {
     control.replaceChildren(new Option(allLabel, 'all'), ...values.map((value) => new Option(optionLabel(value), value)));
     control.value = Array.from(control.options).some((option) => option.value === selected) ? selected : 'all';
   };
+  // The users of the User and Executed by filters by name, the default users first and tagged, with a line before
+  // the others; names of no account (system) show as they are.
+  let userChoices = [];
+  try { userChoices = JSON.parse(appLogsPanel.querySelector('[data-app-log-user-choices]')?.textContent || '[]'); } catch (_) { userChoices = []; }
+  const userChoice = new Map(userChoices.map((entry, index) => [String(entry.username).toLocaleLowerCase(), {...entry, order: index}]));
+  const replaceUserOptions = (control, values, allLabel) => {
+    if (!control) return;
+    const selected = control.value || 'all';
+    const rank = (entry) => (entry.is_default ? entry.order : userChoices.length);
+    const entries = values.map((value) => ({name: value, is_default: false, ...userChoice.get(value), value}))
+      .sort((left, right) => rank(left) - rank(right) || String(left.name).localeCompare(String(right.name)));
+    control.replaceChildren(new Option(allLabel, 'all'), ...entries.flatMap((entry, index) => {
+      const option = new Option(entry.is_default ? `${entry.name} · default user` : entry.name, entry.value);
+      return index && entries[index - 1].is_default && !entry.is_default ? [document.createElement('hr'), option] : [option];
+    }));
+    control.value = Array.from(control.options).some((option) => option.value === selected) ? selected : 'all';
+  };
   const refreshFilterOptionsFromTableRows = () => {
     // Compact-phone pagination keeps non-current cards in the DOM. They are
     // still rows of this table. Each selector is a facet: its values come
@@ -9810,8 +9827,8 @@ if (appLogsPanel) {
       tableRows.filter((row) => rowMatchesOtherFilters(row, excludedFilter))
         .map((row) => normalise(String(row.dataset[name] || ''))).filter(Boolean),
     )].sort();
-    replaceSelectOptions(userFilter, valuesFor('appLogUser', 'user', (value) => value.toLocaleLowerCase()), 'All users');
-    replaceSelectOptions(executorFilter, valuesFor('appLogExecutor', 'executor', (value) => value.toLocaleLowerCase()), 'All executors');
+    replaceUserOptions(userFilter, valuesFor('appLogUser', 'user', (value) => value.toLocaleLowerCase()), 'All users');
+    replaceUserOptions(executorFilter, valuesFor('appLogExecutor', 'executor', (value) => value.toLocaleLowerCase()), 'All executors');
     replaceSelectOptions(dateFilter, valuesFor('appLogDate', 'date').reverse(), 'All dates');
     replaceSelectOptions(typeFilter, valuesFor('appLogType', 'type'), 'All events', (value) => `${value} only`);
     replaceSelectOptions(actionFilter, valuesFor('appLogAction', 'action'), 'All actions');

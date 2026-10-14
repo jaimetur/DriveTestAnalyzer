@@ -312,3 +312,25 @@ def test_users_access_backs_up_and_restores_on_its_own(client, tmp_path: Path):
     core.restore_database_backup(archive_path, ['users_access'], importing_user='super')
     assert core.repository.get_user_by_id(user_id('ana'))['first_name'] == 'Ana'
     assert core.repository.get_user('later') is not None
+
+
+def test_lists_of_users_show_names_with_the_default_users_first(client):
+    login(client)
+    core.repository.create_user('EZZZZZZ', 'secret123', 'user-editor', first_name='Ana', last_name='García')
+    core.repository.create_user('EAAAAAA', 'secret123', 'user-editor', first_name='Zoe', last_name='Alba')
+    entries = core.user_choices(['EAAAAAA', 'admin', 'system', 'EZZZZZZ', 'super'])
+    assert [(entry['username'], entry['label'], entry['divider']) for entry in entries] == [
+        ('super', 'super · default user', False), ('admin', 'admin · default user', False),
+        ('EZZZZZZ', 'Ana García', True), ('system', 'system', False), ('EAAAAAA', 'Zoe Alba', False)]
+
+    core.repository.add_log('EZZZZZZ', 'change_password', 'Password changed from the account badge.')
+    events = client.get('/app-logs').text
+    user_filter = events.split('data-app-log-user-filter>', 1)[1].split('</select>', 1)[0]
+    assert '<hr><option value="ezzzzzz">Ana García</option>' in user_filter and '>super · default user</option>' in user_filter
+    assert user_filter.index('super · default user') < user_filter.index('Ana García')
+    # The pickers of Admin and Workspace: names, the default users tagged, a line before the others, the username searchable.
+    admin = client.get('/admin').text
+    assert '<label class="user-choice-divider">' in admin
+    assert '<span>Ana García</span><span class="sr-only">EZZZZZZ</span>' in admin and '<span class="user-choice-tag">default user</span>' in admin
+    workspace = client.get('/workspace').text
+    assert '<span>Ana García</span><span class="sr-only">EZZZZZZ</span>' in workspace

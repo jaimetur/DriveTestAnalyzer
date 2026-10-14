@@ -8,7 +8,8 @@
     {% for heading, items in sections %}
     <section data-principal-picker-section="{{ heading }}">
       <p class="principal-picker-heading">{{ heading }}</p>
-      {% for item in items %}<label><input type="checkbox" name="{{ name }}" value="{{ item[0] }}" form="{{ form_id }}" {% if item[0] in selected %}checked{% endif %} {% if item[2] | default(false) %}disabled{% endif %}><span>{{ item[1] }}</span></label>{% else %}<p class="table-help">None available.</p>{% endfor %}
+      {# A user item (value, name, disabled, default user, username) shows its name, the default users tagged and a line before the others. #}
+      {% for item in items %}<label{% if item | length > 3 and not item[3] and loop.previtem and loop.previtem[3] %} class="user-choice-divider"{% endif %}><input type="checkbox" name="{{ name }}" value="{{ item[0] }}" form="{{ form_id }}" {% if item[0] in selected %}checked{% endif %} {% if item[2] | default(false) %}disabled{% endif %}><span>{{ item[1] }}</span>{% if item | length > 3 and item[3] %}<span class="user-choice-tag">default user</span>{% endif %}{% if item | length > 4 and item[4] != item[1] %}<span class="sr-only">{{ item[4] }}</span>{% endif %}</label>{% else %}<p class="table-help">None available.</p>{% endfor %}
     </section>
     {% endfor %}
   </div>
@@ -66,9 +67,14 @@
 
   {% set workspace_names = {} %}{% for workspace in workspaces %}{% set _ = workspace_names.update({workspace.id: workspace.name}) %}{% endfor %}
   {% set default_profile = (modules_profiles | selectattr('is_default') | list | first) %}
-  {% set member_items = [] %}{% for row in users %}{% if row['role'] != 'super-admin' or user.role == 'super-admin' %}{% set _ = member_items.append((row['id'], row['username'])) %}{% endif %}{% endfor %}
+  {# The users by name, the default users first (user_choices). #}
+  {% set user_rows = {} %}{% for row in users %}{% set _ = user_rows.update({row['username']: row}) %}{% endfor %}
+  {% set member_items = [] %}{% set group_member_items = [] %}
+  {% for entry in user_choices() %}{% set row = user_rows[entry.username] %}
+  {% if row['role'] != 'super-admin' or user.role == 'super-admin' %}{% set _ = member_items.append((row['id'], entry.name, false, entry.is_default, entry.username)) %}{% endif %}
   {# Super-admins open every workspace, so Workspace Groups never list them. #}
-  {% set group_member_items = [] %}{% for row in users if row['role'] != 'super-admin' %}{% set _ = group_member_items.append((row['id'], row['username'])) %}{% endfor %}
+  {% if row['role'] != 'super-admin' %}{% set _ = group_member_items.append((row['id'], entry.name, false, entry.is_default, entry.username)) %}{% endif %}
+  {% endfor %}
   {% set role_options = ['user-viewer', 'user-editor', 'admin'] + (['super-admin'] if user.role == 'super-admin' else []) %}
   {% macro workspace_access_picker(form_id, group_ids, workspace_ids, label) -%}
   <input type="hidden" name="workspaces_submitted" value="1" form="{{ form_id }}">
@@ -215,7 +221,7 @@
     </div>
   </details>
 
-  {% set usernames = {} %}{% for row in users %}{% set _ = usernames.update({row['id']: row['username']}) %}{% endfor %}
+  {% set usernames = {} %}{% for entry in user_choices() %}{% set _ = usernames.update({user_rows[entry.username]['id']: entry.name}) %}{% endfor %}
   {% macro member_pills(member_ids) -%}
   <div class="access-card-members" data-access-card-members>{% for member in member_ids[:8] %}<span class="access-member-pill">{{ usernames.get(member, member) }}</span>{% endfor %}{% if member_ids | length > 8 %}<span class="access-member-pill access-member-more">+{{ member_ids | length - 8 }}</span>{% endif %}</div>
   {%- endmacro %}
@@ -2313,7 +2319,8 @@
   // Modules Profile and Workspace Group cards save each change at once; the other cards and the Users table follow.
   const cards = [...document.querySelectorAll('[data-access-card]')];
   if (!cards.length) return;
-  const usernames = Object.fromEntries([...document.querySelectorAll('tr[data-user-row]')].map((row) => [row.dataset.userId, row.dataset.username]));
+  // The member pills show each user by name (the username when it has none).
+  const usernames = Object.fromEntries([...document.querySelectorAll('tr[data-user-row]')].map((row) => [row.dataset.userId, row.dataset.name.trim() || row.dataset.username]));
   const formOf = (card) => card.querySelector('[data-access-card-form]');
   const controlsOf = (card, name) => [...document.querySelectorAll(`[form="${formOf(card).id}"][name="${name}"]`)];
   const cardFor = (kind, id) => document.querySelector(`[data-access-card="${kind}"][data-card-id="${id}"]`);

@@ -15442,6 +15442,38 @@ def reporting(request: Request, user: SessionUser = Depends(current_user)) -> HT
 # comments on them; the reporter edits the ticket and its priority, and only super-admins attend it (status,
 # assignment, fixed version) or delete it.
 # ---------------------------------------------------------------------------
+DEFAULT_USER_TAG = 'default user'
+
+
+def user_choices(usernames: Iterable[str] | None = None) -> list[dict[str, Any]]:
+    """The accounts as every list of users shows them, like Non-Qualified Calls: by their first and last name (their
+    username when they have none), the default accounts (super, admin, demo) first and tagged, then the others by name,
+    with ``divider`` on the first one after the default accounts. ``usernames`` limits the list to those users (in any
+    case); names of no account, such as system, show as they are."""
+    from src.modules.repository import DEFAULT_ACCOUNT_USERNAMES
+
+    accounts = {}
+    for row in repository.list_users():
+        name = ' '.join(part for part in (str(row['first_name'] or '').strip(), str(row['last_name'] or '').strip()) if part)
+        accounts[str(row['username']).casefold()] = name or str(row['username'])
+    chosen = list(dict.fromkeys(str(item) for item in usernames if str(item).strip())) if usernames is not None else [
+        str(row['username']) for row in repository.list_users()]
+    defaults = [username.casefold() for username in DEFAULT_ACCOUNT_USERNAMES]
+    entries = [{
+        'username': username, 'name': accounts.get(username.casefold(), username),
+        'is_default': username.casefold() in defaults,
+    } for username in chosen]
+    entries.sort(key=lambda entry: (defaults.index(entry['username'].casefold()) if entry['is_default'] else len(defaults),
+                                    entry['name'].casefold()))
+    for index, entry in enumerate(entries):
+        entry['label'] = f"{entry['name']} · {DEFAULT_USER_TAG}" if entry['is_default'] else entry['name']
+        entry['divider'] = bool(index and entries[index - 1]['is_default'] and not entry['is_default'])
+    return entries
+
+
+templates.env.globals['user_choices'] = user_choices
+
+
 def bug_report_people() -> dict[str, dict[str, str]]:
     """Each account by its username: the name shown (first and last name, or the username) and its role."""
     people = {}
@@ -15564,11 +15596,10 @@ def bug_report_page(request: Request, bug_id: int, user: SessionUser | None = De
     return render_template(request, 'bug_report.html', {
         'user': user, 'bug': bug, 'bug_modules': modules, 'bug_priorities': PRIORITIES, 'bug_statuses': STATUSES,
         'bug_can_edit': can_edit_bug_report(user, bug), 'bug_can_manage': bool(user and user.role == 'super-admin'), 'bug_text_guide': TEXT_GUIDE,
-        'bug_super_admins': [{'username': username, 'name': person['name']} for username, person in people.items() if person['role'] == 'super-admin'],
-        # Who can be the reporter of the bug: every account, and its current reporter even without an account here.
-        'bug_reporters': sorted([{'username': username, 'name': person['name']} for username, person in people.items()]
-                                + ([] if bug['created_by'] in people else [{'username': bug['created_by'], 'name': bug['created_by']}]),
-                                key=lambda person: person['name'].casefold()),
+        # The users by name, the default ones first (user_choices): who can attend it (the super-admins) and who can be
+        # its reporter (every account, and its current reporter even without an account here).
+        'bug_super_admins': user_choices(username for username, person in people.items() if person['role'] == 'super-admin'),
+        'bug_reporters': user_choices([*people, *([] if bug['created_by'] in people else [bug['created_by']])]),
         'bug_max_screenshots': MAX_ATTACHMENTS_PER_UPLOAD, 'bug_max_screenshot_mb': MAX_ATTACHMENT_BYTES // (1024 * 1024),
     })
 

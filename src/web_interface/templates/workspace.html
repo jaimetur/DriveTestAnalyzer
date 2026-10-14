@@ -64,7 +64,7 @@
                 {% for group in workspace_groups | default([], true) %}<label><input type="checkbox" name="workspace_group_ids" value="{{ group.id }}"><span>{{ group.name }}</span></label>{% else %}<p class="table-help">No Workspace Groups.</p>{% endfor %}
                 <p class="workspace-user-picker-heading">Users</p>
                 <button class="workspace-user-picker-toggle" type="button">Select All / None</button>
-                {% for account in workspace_users %}<label><input type="checkbox" name="usernames" value="{{ account.username }}"><span>{{ account.username }}</span></label>{% endfor %}
+                {% for entry in user_choices(workspace_users | map(attribute='username')) %}<label{% if entry.divider %} class="user-choice-divider"{% endif %}><input type="checkbox" name="usernames" value="{{ entry.username }}"><span>{{ entry.name }}</span>{% if entry.is_default %}<span class="user-choice-tag">default user</span>{% endif %}{% if entry.name != entry.username %}<span class="sr-only">{{ entry.username }}</span>{% endif %}</label>{% endfor %}
               </div>
             </details></div>{% endif %}
             <button type="submit">Create and open</button>
@@ -104,7 +104,8 @@
                         {% for group in workspace_groups | default([], true) %}<label><input form="workspace-save-{{ item.id }}" type="checkbox" name="workspace_group_ids" value="{{ group.id }}" {% if item.id in group.workspace_ids %}checked{% endif %}><span>{{ group.name }}</span></label>{% else %}<p class="table-help">No Workspace Groups.</p>{% endfor %}
                         <p class="workspace-user-picker-heading">Users</p>
                         <button class="workspace-user-picker-toggle" type="button">Select All / None</button>
-                        {% for account in workspace_users %}<label><input form="workspace-save-{{ item.id }}" type="checkbox" name="usernames" value="{{ account.username }}" {% if item.id in account.workspace_ids %}checked{% endif %}><span>{{ account.username }}</span></label>{% endfor %}
+                        {% set accounts = {} %}{% for account in workspace_users %}{% set _ = accounts.update({account.username: account}) %}{% endfor %}
+                        {% for entry in user_choices(workspace_users | map(attribute='username')) %}<label{% if entry.divider %} class="user-choice-divider"{% endif %}><input form="workspace-save-{{ item.id }}" type="checkbox" name="usernames" value="{{ entry.username }}" {% if item.id in accounts[entry.username].workspace_ids %}checked{% endif %}><span>{{ entry.name }}</span>{% if entry.is_default %}<span class="user-choice-tag">default user</span>{% endif %}{% if entry.name != entry.username %}<span class="sr-only">{{ entry.username }}</span>{% endif %}</label>{% endfor %}
                       </div>
                     </details>
                   </div>

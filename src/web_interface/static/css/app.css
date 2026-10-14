@@ -5024,3 +5024,7 @@ body:has(> .unassigned-values-card:not([hidden], .is-collapsed)) { padding-botto
   /* On phones each dataset is already a card of its own. */
   .admin-stack .admin-datasets-wrap { border: 0; background: transparent; box-shadow: none; }
 }
+/* Lists of users (user_choices): the default users tagged, with a line before the other users. */
+.user-choice-tag { flex: 0 0 auto; margin-left: .4rem; padding: .05rem .4rem; border: 1px solid #d8e0e7; border-radius: 999px; background: #f7f9fb; color: #607585; font-size: .64rem; font-weight: 800; letter-spacing: .03em; text-transform: uppercase; white-space: nowrap; }
+.user-choice-divider { position: relative; margin-top: .45rem; }
+.user-choice-divider::before { content: ''; position: absolute; top: -.3rem; right: .2rem; left: .2rem; border-top: 1px solid #d8e0e7; pointer-events: none; }

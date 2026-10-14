@@ -455,6 +455,8 @@ CREATE INDEX IF NOT EXISTS idx_bug_report_attachments_bug ON bug_report_attachme
 """
 
 USER_ROLES = ('user-viewer', 'user-editor', 'admin', 'super-admin')
+# The accounts every deployment starts with; the lists of users show them first.
+DEFAULT_ACCOUNT_USERNAMES = ('super', 'admin', 'demo')
 # The colours of the Modules Profiles of a new deployment.
 PROFILE_COLOR_ALL_MODULES, PROFILE_COLOR_BENCHMARKING, PROFILE_COLOR_NON_QUALIFIED_CALLS = '#096767', '#1E61A3', '#D74B75'
 # The Modules Profiles of a new deployment: (name, description, modules, colour, default).
