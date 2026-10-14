@@ -5032,3 +5032,11 @@ body:has(> .unassigned-values-card:not([hidden], .is-collapsed)) { padding-botto
 .admin-stack .workspace-user-picker-menu, .workspace-switcher-panel .workspace-user-picker-menu { max-width: calc(100vw - 2rem); }
 .user-choice-divider { position: relative; margin-top: .45rem; }
 .user-choice-divider::before { content: ''; position: absolute; top: -.3rem; right: .2rem; left: .2rem; border-top: 1px solid #d8e0e7; pointer-events: none; }
+/* The menu of the native lists of users (select[data-user-select]): names, the default users tagged, a line before the others. */
+.user-select-menu { position: fixed; z-index: 4500; display: grid; align-content: start; gap: .1rem; width: max-content; overflow: auto; padding: .35rem; border: 1px solid rgba(16, 49, 74, .14); border-radius: 12px; background: #fff; box-shadow: 0 16px 36px rgba(18, 32, 43, .2); }
+.user-select-menu[hidden] { display: none; }
+.user-select-menu .user-select-option { display: flex; align-items: center; justify-content: flex-start; gap: .2rem; width: 100%; min-height: 0; padding: .42rem .6rem; border: 0; border-radius: 8px; background: transparent; box-shadow: none; color: #10314a; font-size: .88rem; font-weight: 500; text-align: left; white-space: nowrap; cursor: pointer; }
+.user-select-menu .user-select-option:hover, .user-select-menu .user-select-option:focus-visible { outline: none; background: #eef4f9; color: #10314a; }
+.user-select-menu .user-select-option[aria-selected="true"] { background: #e3f0fa; font-weight: 700; }
+.user-select-menu .user-select-option[aria-selected="true"]::after { content: '✓'; margin-left: auto; padding-left: .8rem; color: #1e61a3; }
+.user-select-divider { margin: .25rem .3rem; border-top: 1px solid #d8e0e7; }

@@ -33,15 +33,15 @@
         </select>
       </label>
       <label>User
-        <select data-app-log-user-filter>
+        <select data-app-log-user-filter data-user-select>
           <option value="all">All users</option>
-          {% for entry in user_choices(log_users) %}{% if entry.divider %}<hr>{% endif %}<option value="{{ entry.username | lower }}">{{ entry.label }}</option>{% endfor %}
+          {% for entry in user_choices(log_users) %}{% if entry.divider %}<hr>{% endif %}<option value="{{ entry.username | lower }}" data-name="{{ entry.name }}"{% if entry.is_default %} data-default-user="true"{% endif %}>{{ entry.label }}</option>{% endfor %}
         </select>
       </label>
       <label>Executed by
-        <select data-app-log-executor-filter>
+        <select data-app-log-executor-filter data-user-select>
           <option value="all">All executors</option>
-          {% for entry in user_choices(log_executors) %}{% if entry.divider %}<hr>{% endif %}<option value="{{ entry.username | lower }}">{{ entry.label }}</option>{% endfor %}
+          {% for entry in user_choices(log_executors) %}{% if entry.divider %}<hr>{% endif %}<option value="{{ entry.username | lower }}" data-name="{{ entry.name }}"{% if entry.is_default %} data-default-user="true"{% endif %}>{{ entry.label }}</option>{% endfor %}
         </select>
       </label>
       <label>Type

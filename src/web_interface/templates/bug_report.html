@@ -100,10 +100,10 @@
           <select name="status">{% for key, label in bug_statuses.items() %}<option value="{{ key }}"{% if key == bug.status %} selected{% endif %}>{{ label }}</option>{% endfor %}</select>
         </label>
         <label class="bugs-field">Assigned to
-          <select name="assigned_to"><option value="">Nobody</option>{% for person in bug_super_admins %}{% if person.divider %}<hr>{% endif %}<option value="{{ person.username }}"{% if person.username == bug.assigned_to %} selected{% endif %}>{{ person.label }}</option>{% endfor %}{% if bug.assigned_to and bug.assigned_to not in bug_super_admins | map(attribute='username') | list %}<option value="{{ bug.assigned_to }}" selected>{{ bug.assigned_to_name }}</option>{% endif %}</select>
+          <select name="assigned_to" data-user-select><option value="">Nobody</option>{% for person in bug_super_admins %}{% if person.divider %}<hr>{% endif %}<option value="{{ person.username }}" data-name="{{ person.name }}"{% if person.is_default %} data-default-user="true"{% endif %}{% if person.username == bug.assigned_to %} selected{% endif %}>{{ person.label }}</option>{% endfor %}{% if bug.assigned_to and bug.assigned_to not in bug_super_admins | map(attribute='username') | list %}<option value="{{ bug.assigned_to }}" selected>{{ bug.assigned_to_name }}</option>{% endif %}</select>
         </label>
         <label class="bugs-field">Reported by
-          <select name="created_by">{% for person in bug_reporters %}{% if person.divider %}<hr>{% endif %}<option value="{{ person.username }}"{% if person.username == bug.created_by %} selected{% endif %}>{{ person.label }}</option>{% endfor %}</select>
+          <select name="created_by" data-user-select>{% for person in bug_reporters %}{% if person.divider %}<hr>{% endif %}<option value="{{ person.username }}" data-name="{{ person.name }}"{% if person.is_default %} data-default-user="true"{% endif %}{% if person.username == bug.created_by %} selected{% endif %}>{{ person.label }}</option>{% endfor %}</select>
         </label>
         <label class="bugs-field">Module
           <select name="module">{% for module in bug_modules %}<option value="{{ module.key }}"{% if module.key == bug.module %} selected{% endif %}>{{ module.title }}</option>{% endfor %}</select>

@@ -39,6 +39,7 @@
 - **NQ Analysis Configuration menu under the Filters:** the menu opens above the Filters panel instead of under it when a filter list is open, and opening it closes that list.
 - **Backup file of Restore:** the backup file chosen in Restore stays chosen when the list of backups refreshes, every few seconds.
 - **Files refused by Import:** Import says why it refuses a file (a ZIP package cut short or damaged, a JSON document other than a Scoring & GAP Analysis Configuration of at most 4 MiB, or another kind of file) instead of always naming the size limit of that JSON, and the App Events record each uploaded package and each refused file with the reason.
+- **Failed sign-ins in App Events:** a failed sign-in is recorded with the `system` user and the login typed in its details (the ones recorded before show so too), instead of under the login typed, which listed it as a user in the filters.
 
 #### 📚 Documentation:
 - **Non-Qualified Calls help:** the chapter follows the scheme of the other main modules: a note to start, **Choose your task**, numbered steps for the imports and the follow-up of the calls, coloured notes, tips and warnings at the key points, tables for the filters, tabs, sources and defaults, and new **NQ Analysis Configuration**, **Exports** and **Troubleshooting** sections.

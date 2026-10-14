@@ -85,9 +85,9 @@
         <option value="*">Every module</option>
         {% for module in bug_modules %}<option value="{{ module.key }}">{{ module.title }}</option>{% endfor %}
       </select>
-      <select aria-label="Reporter" data-bugs-filter="reporter">
+      <select aria-label="Reporter" data-bugs-filter="reporter" data-user-select>
         <option value="*">Every reporter</option>
-        {% for person in bug_reporters %}{% if person.divider %}<hr>{% endif %}<option value="{{ person.username | lower }}">{{ person.label }}</option>{% endfor %}
+        {% for person in bug_reporters %}{% if person.divider %}<hr>{% endif %}<option value="{{ person.username | lower }}" data-name="{{ person.name }}"{% if person.is_default %} data-default-user="true"{% endif %}>{{ person.label }}</option>{% endfor %}
       </select>
       <select aria-label="Sort" data-bugs-sort>
         <option value="updated">Latest activity</option>

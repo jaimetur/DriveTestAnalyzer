@@ -9817,6 +9817,8 @@ if (appLogsPanel) {
       .sort((left, right) => rank(left) - rank(right) || String(left.name).localeCompare(String(right.name)));
     control.replaceChildren(new Option(allLabel, 'all'), ...entries.flatMap((entry, index) => {
       const option = new Option(entry.is_default ? `${entry.name} · default user` : entry.name, entry.value);
+      option.dataset.name = entry.name;
+      if (entry.is_default) option.dataset.defaultUser = 'true';
       return index && entries[index - 1].is_default && !entry.is_default ? [document.createElement('hr'), option] : [option];
     }));
     control.value = Array.from(control.options).some((option) => option.value === selected) ? selected : 'all';
@@ -11416,3 +11418,108 @@ document.addEventListener('change', async (event) => {
     select.disabled = false;
   }
 });
+
+// Lists of users (select[data-user-select]): the native list keeps its value and its change events, but opens a menu
+// of the users by name with the default users tagged like the pickers of Admin, and a line before the others.
+(() => {
+  let current = null;
+  const menu = document.createElement('div');
+  menu.className = 'user-select-menu';
+  menu.setAttribute('role', 'listbox');
+  menu.hidden = true;
+  const close = () => {
+    if (!current) return;
+    menu.hidden = true;
+    current.select.setAttribute('aria-expanded', 'false');
+    window.removeEventListener('scroll', place, true);
+    window.removeEventListener('resize', place);
+    current = null;
+  };
+  // Below the list, or above it when there is more room there; as wide as its longest name.
+  function place() {
+    if (!current) return;
+    const rect = current.select.getBoundingClientRect();
+    const below = window.innerHeight - rect.bottom - 16;
+    const above = rect.top - 16;
+    const upwards = below < 240 && above > below;
+    Object.assign(menu.style, {minWidth: `${rect.width}px`, maxWidth: `${window.innerWidth - 16}px`, maxHeight: `${Math.max(160, Math.min(420, upwards ? above : below))}px`});
+    menu.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - menu.offsetWidth - 8))}px`;
+    menu.style.top = `${upwards ? rect.top - 4 - menu.offsetHeight : rect.bottom + 4}px`;
+  }
+  const build = (select) => {
+    menu.replaceChildren(...[...select.children].flatMap((child) => {
+      if (child.tagName === 'HR') return [Object.assign(document.createElement('div'), {className: 'user-select-divider', role: 'separator'})];
+      if (child.tagName !== 'OPTION' || child.hidden) return [];
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'user-select-option';
+      item.setAttribute('role', 'option');
+      item.setAttribute('aria-selected', String(child.value === select.value));
+      item.dataset.value = child.value;
+      item.append(Object.assign(document.createElement('span'), {className: 'user-select-name', textContent: child.dataset.name || child.textContent}));
+      if (child.dataset.defaultUser === 'true') item.append(Object.assign(document.createElement('span'), {className: 'user-choice-tag', textContent: 'default user'}));
+      item.disabled = child.disabled;
+      return [item];
+    }));
+  };
+  const open = (select) => {
+    if (select.disabled) return;
+    close();
+    current = {select};
+    build(select);
+    if (!menu.isConnected) document.body.append(menu);
+    menu.hidden = false;
+    select.setAttribute('aria-expanded', 'true');
+    place();
+    window.addEventListener('scroll', place, true);
+    window.addEventListener('resize', place);
+    (menu.querySelector('[aria-selected="true"]') || menu.querySelector('.user-select-option'))?.focus({preventScroll: true});
+    menu.querySelector('[aria-selected="true"]')?.scrollIntoView({block: 'nearest'});
+  };
+  menu.addEventListener('click', (event) => {
+    const item = event.target.closest('.user-select-option');
+    if (!item || !current) return;
+    const {select} = current;
+    close();
+    if (select.value !== item.dataset.value) {
+      select.value = item.dataset.value;
+      select.dispatchEvent(new Event('input', {bubbles: true}));
+      select.dispatchEvent(new Event('change', {bubbles: true}));
+    }
+    select.focus();
+  });
+  menu.addEventListener('keydown', (event) => {
+    const items = [...menu.querySelectorAll('.user-select-option:not(:disabled)')];
+    const index = items.indexOf(document.activeElement);
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      items[Math.max(0, Math.min(items.length - 1, index + (event.key === 'ArrowDown' ? 1 : -1)))]?.focus();
+    } else if (event.key === 'Escape' || event.key === 'Tab') {
+      const select = current?.select;
+      close();
+      if (event.key === 'Escape') { event.preventDefault(); select?.focus(); }
+    }
+  });
+  document.addEventListener('pointerdown', (event) => {
+    if (current && !menu.contains(event.target) && event.target !== current.select) close();
+  });
+  const enhance = (select) => {
+    if (select.dataset.userSelectReady) return;
+    select.dataset.userSelectReady = '1';
+    select.setAttribute('aria-haspopup', 'listbox');
+    select.setAttribute('aria-expanded', 'false');
+    select.addEventListener('mousedown', (event) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      select.focus();
+      if (current?.select === select) close(); else open(select);
+    });
+    select.addEventListener('keydown', (event) => {
+      if (['Enter', ' ', 'ArrowDown', 'ArrowUp'].includes(event.key) && !(event.altKey || event.metaKey)) {
+        event.preventDefault();
+        open(select);
+      }
+    });
+  };
+  document.querySelectorAll('select[data-user-select]').forEach(enhance);
+})();

@@ -11068,6 +11068,12 @@ def build_app_logs() -> list[dict[str, Any]]:
         display_username = legacy_requested_by if stored_username == 'system' and legacy_requested_by and not executed_by else stored_username
         if stored_username == 'system' and legacy_requested_by and not executed_by:
             executed_by = 'system'
+        # Failed sign-ins were recorded under the login typed: they show as system, with that login in their details.
+        if (action == 'login' and isinstance(details, dict) and details.get('reason') == 'invalid_credentials'
+                and stored_username != 'system'):
+            details = {**details, 'username': details.get('username') or stored_username}
+            details_text = json.dumps(details, ensure_ascii=False)
+            display_username = 'system'
         created_at = format_local_timestamp(row['created_at'])
         log = {
             'id': row['id'],
@@ -11407,9 +11413,10 @@ def login(
     next_url = safe_next_url(next_url)
     record = repository.get_user(username)
     if not record or not record.active or not verify_password(password, record.password_hash):
-        repository.try_add_log(submitted_username or '(blank)', 'login', json.dumps({
+        # A failed sign-in belongs to no account: system records it, with the login typed in its details.
+        repository.try_add_log('system', 'login', json.dumps({
             'success': False, 'result': 'failed', 'reason': 'invalid_credentials',
-            'workspace_id': workspace_id or '',
+            'username': submitted_username or '(blank)', 'workspace_id': workspace_id or '',
         }))
         workspaces = workspace_registry.list()
         return render_template(
