@@ -11081,6 +11081,7 @@ def test_a_section_chosen_in_a_menu_opens_at_the_top_of_its_page():
 def test_documents_read_without_an_account_show_a_prominent_sign_in(client):
     page = client.get('/documents/view/help')
     assert page.status_code == 200
-    assert 'class="topnav-link topnav-link-signin" href="/login"' in page.text
+    # Signing in returns to the page it was asked from.
+    assert 'class="topnav-link topnav-link-signin" href="/login?next=/documents/view/help"' in page.text
     assert '<span>Sign in</span>' in page.text
 
