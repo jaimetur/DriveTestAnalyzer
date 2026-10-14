@@ -330,10 +330,14 @@
       <span class="collapse-chip">Collapse</span>
     </summary>
     <form class="interface-settings-form" action="/admin/interface-settings" method="post" autocomplete="off">
-      <label class="confirm-option"><input type="checkbox" name="show_module_stage_labels" value="true" data-no-persist {% if show_module_stage_labels %}checked{% endif %}><span>Show a label on the tab of each main module (for example <strong>ALPHA</strong>, <strong>BETA</strong>, <strong>NEW</strong> or <strong>STABLE</strong>)</span></label>
+      <label class="interface-setting-toggle">
+        <span class="interface-setting-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8Z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg></span>
+        <span class="interface-setting-text"><strong>Module labels</strong><small>Show a label on the tab of each main module (for example <b>ALPHA</b>, <b>BETA</b>, <b>NEW</b> or <b>STABLE</b>)</small></span>
+        <span class="toggle-switch"><input type="checkbox" name="show_module_stage_labels" value="true" data-no-persist {% if show_module_stage_labels %}checked{% endif %}><span class="toggle-slider"></span></span>
+      </label>
       {% if module_label_settings %}
-      <p class="table-help">Each row is a main tab, in the order of the main tabs; the Modules menu, the Help navigation and the modules of Modules Profiles follow the same order. Drag a row by its handle or use the arrows to move it. Choose the title of the tab, its short title for narrow windows, its icon and its colour (the accent of the module palette), and the label shown in its corner with its colour and an optional icon. Leave the label empty to show none; the label text turns white or dark to stay readable on its colour.</p>
-      <div class="table-wrap">
+      <p class="table-help interface-settings-help">Each row is a main tab, in the order of the main tabs; the Modules menu, the Help navigation and the modules of Modules Profiles follow the same order. Drag a row by its handle or use the arrows to move it. Choose the title of the tab, its short title for narrow windows, its icon and its colour (the accent of the module palette), and the label shown in its corner with its colour and an optional icon. Leave the label empty to show none; the label text turns white or dark to stay readable on its colour.</p>
+      <div class="table-wrap module-labels-wrap">
         <table class="module-labels-table" data-module-labels data-phone-cards>
           <thead>
             <tr><th></th><th colspan="4" class="module-labels-group module-labels-group-tab">Tab</th><th colspan="4" class="module-labels-group module-labels-group-label">Label</th><th></th></tr>
@@ -477,7 +481,7 @@
   })();
       </script>
       {% endif %}
-      <div class="form-actions"><button type="submit">Save Interface Settings</button>{% if module_label_settings %}<button type="submit" class="ghost-link" name="reset_module_labels" value="1">Reset tabs and labels to defaults</button>{% endif %}</div>
+      <div class="form-actions interface-settings-actions">{% if module_label_settings %}<button type="submit" class="ghost-link" name="reset_module_labels" value="1">Reset tabs and labels to defaults</button>{% endif %}<button type="submit" class="interface-settings-save">Save Interface Settings</button></div>
     </form>
   </details>
   {% endif %}
@@ -663,17 +667,25 @@
     {% if import_export_notice %}<div class="alert import-export-notice">{{ import_export_notice }}</div>{% endif %}
     {% if import_export_error %}<div class="alert import-export-error">{{ import_export_error }}</div>{% endif %}
     <div class="import-export-grid">
-      <form class="form-stack" action="/admin/import-export/import" method="post" enctype="multipart/form-data" data-import-package-form>
-        <h3>Import</h3>
-        <label>Import package
-          <input type="file" name="package" accept=".zip,.json,application/zip,application/json" required>
+      <form class="form-stack transfer-card transfer-card-import" action="/admin/import-export/import" method="post" enctype="multipart/form-data" data-import-package-form>
+        <header class="transfer-card-head">
+          <span class="transfer-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 15V4m0 0L7.5 8.5M12 4l4.5 4.5"/><path d="M4 14v4.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V14"/></svg></span>
+          <div><h3>Import</h3><p>Bring in a package exported here or on another server.</p></div>
+        </header>
+        <label class="import-dropzone" data-import-dropzone>
+          <input type="file" name="package" accept=".zip,.json,application/zip,application/json" required aria-label="Import package" data-import-dropzone-input>
+          <span class="import-dropzone-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M10 12h4M10 16h4"/></svg></span>
+          <span class="import-dropzone-text"><strong data-import-dropzone-name>Drop a ZIP or JSON package here</strong><small data-import-dropzone-hint>or click to choose it</small></span>
         </label>
         <input type="hidden" name="confirmed_import" value="0" data-import-package-confirmed>
-        <p class="form-note">Choose a ZIP package or a Scoring &amp; GAP Analysis Configuration JSON document. Its content is identified automatically. Workspace configuration packages ask which destination workspaces should receive their definitions before the background import starts.</p>
-        <button type="submit" class="import-export-action">Import ZIP / JSON</button>
+        <p class="form-note">A ZIP package or a Scoring &amp; GAP Analysis Configuration JSON document. Its content is identified automatically. Workspace configuration packages ask which destination workspaces should receive their definitions before the background import starts.</p>
+        <div class="import-export-actions"><button type="submit" class="import-export-action">Import ZIP / JSON</button></div>
       </form>
-      <form class="form-stack" action="/admin/import-export/export/jobs" method="post" data-export-package-form data-loading-label="Preparing export package" data-loading-copy="Please wait while DriveTest Analyzer creates the selected export package. You can keep this page open while it runs.">
-        <h3>Export / Transfer</h3>
+      <form class="form-stack transfer-card transfer-card-export" action="/admin/import-export/export/jobs" method="post" data-export-package-form data-loading-label="Preparing export package" data-loading-copy="Please wait while DriveTest Analyzer creates the selected export package. You can keep this page open while it runs.">
+        <header class="transfer-card-head">
+          <span class="transfer-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5"/><path d="M4 14v4.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V14"/></svg></span>
+          <div><h3>Export / Transfer</h3><p>Download the content as a ZIP or send it straight to another server.</p></div>
+        </header>
         <label class="admin-export-components">Content to export/transfer
           <select name="export_target" multiple size="1" data-export-target-select data-multiselect-groups="true" data-active-workspace-id="{{ active_workspace.id if active_workspace else '' }}" data-multiselect-auto-close="1000" aria-label="Content to export or transfer">
             {% set export_selection = namespace(selected=false) %}{% for group_label, options in export_option_groups %}<optgroup label="{{ group_label }}"{% if group_label == 'Full Workspace' %} data-group-note="Includes the Input and Output folders, optional on export"{% endif %}>{% for option in options %}<option value="{{ option.value }}" {% if option.disabled | default(false) %}disabled{% elif not export_selection.selected %}selected{% set export_selection.selected = true %}{% endif %}>{{ option.label }}</option>{% endfor %}</optgroup>{% endfor %}
@@ -936,6 +948,7 @@
     {% set stoppable_admin_datasets = (datasets | selectattr('status', 'equalto', 'queued') | list) + (datasets | selectattr('status', 'equalto', 'processing') | list) %}
     <div class="admin-dataset-draft-toolbar" data-admin-dataset-draft-toolbar>
       <div class="admin-dataset-draft-summary">
+        <span class="admin-dataset-draft-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h10M4 17h7"/><path d="m15 17 2 2 4-4"/></svg></span>
         <strong>Dataset changes</strong>
         <span data-admin-dataset-draft-status>No changes pending</span>
       </div>
@@ -954,7 +967,7 @@
         </form>
       </div>
     </div>
-    <div class="table-wrap">
+    <div class="table-wrap admin-datasets-wrap">
       <table class="admin-datasets-table" data-admin-dataset-reordering-blocked="{{ '1' if dataset_reordering_blocked else '0' }}">
         <colgroup>
           <col data-admin-dataset-order-column><col><col data-admin-dataset-name-column><col data-admin-dataset-path-column><col><col><col><col>
@@ -972,6 +985,7 @@
             <td data-label="ID">{{ row.id }}</td>
             <td data-label="Name">
               <input class="table-input" type="text" name="file_name" value="{{ row.file_name }}" size="{{ row.file_name | length }}" required data-admin-dataset-name-input data-admin-dataset-original-name="{{ row.file_name }}" {% if row.status in ['queued', 'processing'] %}disabled title="A dataset cannot be renamed while it is queued or processing."{% endif %}>
+              <span class="admin-dataset-meta">{% if row.dataset_kind %}<span class="admin-dataset-kind" data-kind="{{ row.dataset_kind }}">{{ {'data': 'Data CDR', 'voice': 'Voice CDR', 'speech': 'Speech CDR'}.get(row.dataset_kind, row.dataset_kind | replace('_', ' ') | title) }}</span>{% endif %}<span class="admin-dataset-status" data-status="{{ row.status }}">{{ (row.status or 'unknown') | title }}</span></span>
             </td>
             <td data-label="Path">{{ row.stored_path }}</td>
             <td data-label="User">{{ row.uploaded_by }}</td>
@@ -2552,6 +2566,28 @@
   document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && !menu.hidden) { close(); trigger.focus(); } });
   select.addEventListener('change', showSelected);
   showSelected();
+})();
+</script>
+<script>
+(() => {
+  // Import: the package dropped on the zone or chosen in it, with its size.
+  document.querySelectorAll('[data-import-dropzone]').forEach((zone) => {
+    const input = zone.querySelector('[data-import-dropzone-input]');
+    const name = zone.querySelector('[data-import-dropzone-name]');
+    const hint = zone.querySelector('[data-import-dropzone-hint]');
+    const empty = [name.textContent, hint.textContent];
+    const size = (bytes) => (bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);
+    const show = () => {
+      const file = input.files?.[0];
+      zone.classList.toggle('has-file', Boolean(file));
+      [name.textContent, hint.textContent] = file ? [file.name, `${size(file.size)} · click to choose another`] : empty;
+    };
+    input.addEventListener('change', show);
+    ['dragenter', 'dragover'].forEach((type) => input.addEventListener(type, () => zone.classList.add('is-dragging')));
+    ['dragleave', 'drop'].forEach((type) => input.addEventListener(type, () => zone.classList.remove('is-dragging')));
+    input.form?.addEventListener('reset', () => setTimeout(show));
+    show();
+  });
 })();
 </script>
 {% endblock %}

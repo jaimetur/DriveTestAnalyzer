@@ -4925,3 +4925,100 @@ body:has(> .unassigned-values-card:not([hidden], .is-collapsed)) { padding-botto
 .database-table-picker-menu .database-table-picker-item[aria-selected="true"], .database-table-picker-menu .database-table-picker-item[aria-selected="true"]:hover:not(:disabled) { border-color: var(--table-color, #5A6773); background: var(--table-color, #5A6773); color: #fff; }
 .database-table-picker-item[hidden] { display: none; }
 .database-backup-restore-selection .restore-component-group h4 small { font-size: .74rem; font-weight: 600; letter-spacing: 0; text-transform: none; opacity: .75; }
+/* Import / Export / Transfer: cards with an icon and an accent line, like those of Backup Protection. */
+.admin-stack .import-export-grid .transfer-card { --transfer-accent: #1e61a3; display: flex; flex-direction: column; gap: .85rem; padding: 1rem 1.05rem; border: 1px solid rgba(16, 49, 74, .12); border-radius: 16px; background: #fff; box-shadow: inset 0 4px 0 var(--transfer-accent), 0 10px 26px rgba(16, 33, 49, .06); }
+.admin-stack .import-export-grid .transfer-card-export { --transfer-accent: #6b46c1; }
+.transfer-card-head { display: flex; align-items: flex-start; gap: .75rem; }
+.transfer-card-icon { display: inline-grid; flex: 0 0 2.4rem; place-items: center; width: 2.4rem; height: 2.4rem; border-radius: 12px; background: color-mix(in srgb, var(--transfer-accent) 12%, #fff); color: var(--transfer-accent); }
+.transfer-card-icon svg, .import-dropzone-icon svg, .interface-setting-icon svg, .admin-dataset-draft-icon svg { width: 1.25rem; height: 1.25rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.admin-stack .import-export-grid .transfer-card-head h3 { margin: 0; color: #10314a; font-size: 1.02rem; }
+.transfer-card-head p { margin: .15rem 0 0; color: #607585; font-size: .82rem; }
+.admin-stack .import-export-grid .transfer-card .form-note { padding: 0; color: #607585; font-size: .8rem; line-height: 1.45; }
+.admin-stack .transfer-card label.admin-export-components { color: #48606f; font-size: .78rem; }
+.admin-stack .transfer-card .admin-export-components .multiselect-trigger { border: 1px solid rgba(16, 49, 74, .18); border-radius: 12px; background: #fff; color: #10314a; }
+.admin-stack .transfer-card .admin-export-components .multiselect-trigger-label { color: #10314a; }
+.admin-stack .transfer-card .admin-export-components .multiselect-trigger:hover:not(:disabled), .admin-stack .transfer-card .admin-export-components .multiselect-trigger:focus-visible { border-color: var(--transfer-accent); background: #fff; }
+.admin-stack .transfer-card .import-export-actions { justify-content: flex-end; margin-top: auto; }
+.admin-stack .transfer-card .import-export-actions button { min-height: 0; padding: .6rem 1.3rem; border: 1px solid transparent; border-radius: 999px; background: var(--transfer-accent); box-shadow: 0 8px 18px color-mix(in srgb, var(--transfer-accent) 28%, transparent); color: #fff; font-size: .86rem; font-weight: 700; }
+.admin-stack .transfer-card .import-export-actions button:hover:not(:disabled) { background: var(--transfer-accent); filter: brightness(.92); }
+.admin-stack .transfer-card .import-export-actions .server-transfer-action { border-color: color-mix(in srgb, var(--transfer-accent) 45%, #fff); background: #fff; box-shadow: none; color: var(--transfer-accent); }
+.admin-stack .transfer-card .import-export-actions .server-transfer-action:hover:not(:disabled) { background: color-mix(in srgb, var(--transfer-accent) 8%, #fff); filter: none; }
+.admin-stack .import-dropzone { position: relative; display: flex; align-items: center; gap: .8rem; min-width: 0; padding: 1rem 1.1rem; border: 2px dashed color-mix(in srgb, var(--transfer-accent) 35%, #fff); border-radius: 14px; background: color-mix(in srgb, var(--transfer-accent) 4%, #fff); cursor: pointer; transition: border-color .15s ease, background .15s ease; }
+.admin-stack .import-dropzone:hover, .admin-stack .import-dropzone.is-dragging { border-color: var(--transfer-accent); background: color-mix(in srgb, var(--transfer-accent) 9%, #fff); }
+.admin-stack .import-dropzone:focus-within { outline: 3px solid color-mix(in srgb, var(--transfer-accent) 22%, transparent); outline-offset: 2px; }
+.admin-stack .import-dropzone.has-file { border-style: solid; }
+.admin-stack .import-dropzone input[type="file"] { position: absolute; inset: 0; width: 100%; height: 100%; min-height: 0; padding: 0; border: 0; opacity: 0; cursor: pointer; }
+.import-dropzone-icon { display: inline-grid; flex: 0 0 2.6rem; place-items: center; height: 2.6rem; border-radius: 50%; background: #fff; box-shadow: 0 4px 12px rgba(16, 33, 49, .08); color: var(--transfer-accent); }
+.import-dropzone-text { display: grid; gap: .1rem; min-width: 0; }
+.import-dropzone-text strong { overflow: hidden; color: #10314a; font-size: .9rem; text-overflow: ellipsis; white-space: nowrap; }
+.import-dropzone-text small { color: #607585; font-size: .78rem; font-weight: 600; }
+/* Datasets Management: a light toolbar and the datasets as a card, each with its kind and status. */
+.admin-stack .admin-dataset-draft-toolbar { gap: .8rem; padding: .7rem .9rem; border: 1px solid rgba(16, 49, 74, .1); border-radius: 14px; background: #fff; box-shadow: 0 8px 22px rgba(16, 33, 49, .05); }
+.admin-stack .admin-dataset-draft-summary { align-items: center; gap: .55rem; color: #10314a; }
+.admin-dataset-draft-icon { display: inline-grid; flex: 0 0 2.2rem; place-items: center; width: 2.2rem; height: 2.2rem; border-radius: 11px; background: #eaf2fb; color: #1e61a3; }
+.admin-stack .admin-dataset-draft-summary [data-admin-dataset-draft-status] { padding: .15rem .6rem; border-radius: 999px; background: #f0f3f6; color: #48606f; font-size: .76rem; font-weight: 700; }
+.admin-stack .admin-dataset-apply-changes { min-height: 0; padding: .5rem 1.15rem; border: 0; border-radius: 999px; background: #1e61a3; box-shadow: 0 8px 18px rgba(30, 97, 163, .24); font-size: .84rem; font-weight: 700; }
+.admin-stack .admin-dataset-apply-changes:hover:not(:disabled) { background: #174f86; }
+.admin-stack .admin-dataset-apply-changes:disabled { background: #c9d6e3; filter: none; opacity: 1; }
+.admin-stack .admin-dataset-bulk-actions button:is(.queue-map-all, .queue-clear-all, .queue-reprocess-all, .queue-stop-all, .queue-remove-all) { height: 2rem; padding: .3rem .8rem; border: 0; background: var(--bulk-color); box-shadow: 0 6px 14px color-mix(in srgb, var(--bulk-color) 24%, transparent); color: #fff; font-size: .76rem; font-weight: 700; }
+.admin-stack .admin-dataset-bulk-actions button:is(.queue-map-all, .queue-clear-all, .queue-reprocess-all, .queue-stop-all, .queue-remove-all):hover:not(:disabled) { background: var(--bulk-color); filter: brightness(.9); }
+.admin-stack .admin-dataset-bulk-actions button:is(.queue-map-all, .queue-clear-all, .queue-reprocess-all, .queue-stop-all, .queue-remove-all):disabled { box-shadow: none; filter: saturate(.5); opacity: .42; }
+.admin-dataset-bulk-actions .queue-map-all { --bulk-color: #b7791f; }
+.admin-dataset-bulk-actions .queue-clear-all { --bulk-color: #c98f2a; }
+.admin-dataset-bulk-actions .queue-reprocess-all { --bulk-color: #1e61a3; }
+.admin-dataset-bulk-actions .queue-stop-all { --bulk-color: #b83280; }
+.admin-dataset-bulk-actions .queue-remove-all { --bulk-color: #c0392b; }
+.admin-stack .admin-datasets-wrap { border: 1px solid rgba(16, 49, 74, .12); border-radius: 14px; background: #fff; box-shadow: 0 8px 22px rgba(16, 33, 49, .05); }
+.admin-stack .admin-datasets-table th { padding: .6rem .5rem; border-bottom: 1px solid rgba(16, 49, 74, .12); background: #f7f9fb; color: #48606f; font-size: .72rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.admin-stack .admin-datasets-table td { border-bottom: 1px solid rgba(16, 49, 74, .06); background: #fff; color: #34495a; font-size: .82rem; }
+.admin-stack .admin-datasets-table tbody tr:hover td { background: #f8fafb; }
+.admin-stack .admin-datasets-table tbody tr:last-child td { border-bottom: 0; }
+.admin-stack .admin-datasets-table td[data-label="ID"] { color: #7b8994; font-weight: 700; }
+.admin-stack .admin-datasets-table td[data-label="Path"] { color: #607585; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .72rem; }
+.admin-stack .admin-datasets-table .admin-dataset-timestamp { color: #607585; font-size: .76rem; }
+.admin-stack .admin-datasets-table input.table-input { width: 100%; border: 1px solid transparent; background: transparent; box-shadow: none; color: #10314a; font-weight: 700; }
+.admin-stack .admin-datasets-table input.table-input:hover:not(:disabled) { border-color: rgba(16, 49, 74, .14); background: #f6f8fa; }
+.admin-stack .admin-datasets-table input.table-input:focus { outline: none; border-color: #1e61a3; background: #fff; box-shadow: 0 0 0 3px rgba(30, 97, 163, .14); }
+.admin-stack .admin-datasets-table .admin-dataset-order-actions button.admin-dataset-move { border: 0; background: #1e61a3; box-shadow: 0 6px 14px rgba(30, 97, 163, .22); }
+.admin-stack .admin-datasets-table .admin-dataset-order-actions button.admin-dataset-move:hover:not(:disabled) { background: #174f86; }
+.admin-stack .admin-datasets-table .admin-dataset-order-actions button.admin-dataset-move:disabled { background: #c9d6e3; box-shadow: none; }
+.admin-dataset-meta { display: flex; flex-wrap: wrap; gap: .3rem; margin-top: .25rem; padding-left: .6rem; }
+.admin-dataset-kind, .admin-dataset-status { --pill-color: #5a6773; padding: .08rem .5rem; border-radius: 999px; background: color-mix(in srgb, var(--pill-color) 12%, #fff); color: var(--pill-color); font-size: .68rem; font-weight: 800; white-space: nowrap; }
+.admin-dataset-kind[data-kind="voice"] { --pill-color: #1f6fbf; }
+.admin-dataset-kind[data-kind="data"] { --pill-color: #2e8c58; }
+.admin-dataset-kind[data-kind="speech"] { --pill-color: #7751b9; }
+.admin-dataset-status::before { content: ''; display: inline-block; width: .42rem; height: .42rem; margin-right: .3rem; border-radius: 50%; background: currentColor; vertical-align: .05rem; }
+.admin-dataset-status[data-status="ready"] { --pill-color: #1f8a5b; }
+.admin-dataset-status[data-status="processing"] { --pill-color: #1e61a3; }
+.admin-dataset-status[data-status="queued"] { --pill-color: #8a6d0b; }
+.admin-dataset-status[data-status="failed"] { --pill-color: #b42318; }
+.admin-dataset-status[data-status="stopped"] { --pill-color: #b85b20; }
+/* Interface Settings: the labels option as a switch, the help as a note and the tabs in a card. */
+.admin-stack label.interface-setting-toggle { display: flex; align-items: center; gap: .85rem; padding: .85rem 1rem; border: 1px solid rgba(16, 49, 74, .12); border-radius: 14px; background: #fff; box-shadow: 0 8px 22px rgba(16, 33, 49, .05); color: #10314a; font-weight: 600; cursor: pointer; }
+.interface-setting-icon { display: inline-grid; flex: 0 0 2.4rem; place-items: center; width: 2.4rem; height: 2.4rem; border-radius: 12px; background: #fdf3e2; color: #b45309; }
+.interface-setting-text { display: grid; flex: 1 1 auto; gap: .12rem; min-width: 0; }
+.interface-setting-text strong { color: #10314a; font-size: .95rem; }
+.interface-setting-text small { color: #607585; font-size: .8rem; font-weight: 500; }
+.admin-stack .interface-setting-toggle .toggle-slider { background: #cfd8de; box-shadow: none; }
+.admin-stack .interface-setting-toggle .toggle-switch input:checked + .toggle-slider { background: #1f9d6b; }
+.admin-stack .interface-settings-help { position: relative; margin: 0; padding: .7rem .9rem .7rem 2.5rem; border: 1px solid #c9dcef; border-radius: 12px; background: #f2f7fc; color: #34495a; font-size: .8rem; line-height: 1.5; }
+.interface-settings-help::before { content: 'i'; position: absolute; top: .72rem; left: .85rem; display: inline-grid; place-items: center; width: 1.1rem; height: 1.1rem; border-radius: 50%; background: #1e61a3; color: #fff; font-size: .7rem; font-style: italic; font-weight: 800; }
+.admin-stack .module-labels-wrap { border: 1px solid rgba(16, 49, 74, .12); border-radius: 14px; background: #fff; box-shadow: 0 8px 22px rgba(16, 33, 49, .05); }
+.admin-stack .module-labels-table th { background: #f7f9fb; color: #48606f; font-size: .72rem; font-weight: 800; letter-spacing: .03em; }
+.admin-stack .module-labels-table th.module-labels-group-tab { background: #e8f4f3; }
+.admin-stack .module-labels-table th.module-labels-group-label { background: #fdf3e2; }
+.admin-stack .module-labels-table td { border-bottom: 1px solid rgba(16, 49, 74, .06); background: #fff; }
+.admin-stack .module-labels-table tbody tr:hover td { background: #f8fafb; }
+.admin-stack .module-labels-table :is(.table-input, select.table-select, .color-hex-input) { border: 1px solid rgba(16, 49, 74, .16); border-radius: 10px; background: #fff; box-shadow: none; color: #10314a; }
+.admin-stack .module-labels-table :is(.table-input, select.table-select, .color-hex-input):focus { outline: none; border-color: #1e61a3; box-shadow: 0 0 0 3px rgba(30, 97, 163, .14); }
+.admin-stack .module-labels-table input.mapping-color { border: 1px solid rgba(16, 49, 74, .16); border-radius: 10px; background: #fff; box-shadow: none; }
+.admin-stack .module-labels-table .module-labels-move:disabled { background: #f0f3f6; color: #9aa7b1; }
+.admin-stack .interface-settings-actions { justify-content: flex-end; align-items: center; }
+.admin-stack .interface-settings-actions .interface-settings-save { min-height: 0; padding: .6rem 1.3rem; border: 0; border-radius: 999px; background: #0b7a75; box-shadow: 0 8px 18px rgba(11, 122, 117, .26); color: #fff; font-size: .86rem; font-weight: 700; }
+.admin-stack .interface-settings-actions .interface-settings-save:hover:not(:disabled) { background: #08645f; }
+@media (max-width: 640px) {
+  .admin-stack .import-export-grid .transfer-card { gap: .6rem; padding: .75rem; }
+  .admin-stack label.interface-setting-toggle { padding: .7rem; }
+  /* On phones each dataset is already a card of its own. */
+  .admin-stack .admin-datasets-wrap { border: 0; background: transparent; box-shadow: none; }
+}

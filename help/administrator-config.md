@@ -141,7 +141,7 @@ Exports run as disk-backed jobs and show estimated progress. The ZIP download st
 > [!WARNING]
 > **Review replacement scope.** Import and Restore can replace existing data. Review the detected components and affected workspaces in the overwrite confirmation.
 
-1. Select a DriveTest Analyzer ZIP or Scoring & GAP Analysis Configuration JSON and wait for its upload.
+1. Drop a DriveTest Analyzer ZIP or Scoring & GAP Analysis Configuration JSON on the **Import** card, or click it to choose one (the card names the file and its size), press **Import ZIP / JSON** and wait for its upload.
 2. Review the manifest-detected content, affected workspaces and overwrite warnings.
 3. For Dashboard, PPT Template, Main Cities, Mappings & Reference Data, Scoring & GAP Analysis Configuration or Auto-calculated Field packages, choose one or more accessible destination workspaces; a matching source name is preselected when available.
 4. Confirm import.
@@ -177,7 +177,7 @@ For super-admins, complete unimported packages appear in **Recovered transfer pa
 - **Icon**, shown before the title, and **Colour**, the accent of the tab: its top line and icon when not selected and its gradient when selected. The default colour keeps the palette of the module.
 - The **Label** in the corner of the tab (for example ALPHA, BETA or NEW, or empty for none), its colour, and an optional icon with its own colour. By default the modules in development are labelled (ALPHA, BETA or NEW) and the stable ones (Workspace, CDR Analysis and PPT Dashboards) have an empty label. Phones and other small screens never show the labels on the tabs.
 
-The Preview column draws each tab as it looks when it is not selected. Colours show their hexadecimal value below them to copy or paste it. **Show a label on the tab of each main module**, off on a new deployment, shows or hides every label at once, and **Reset tabs and labels to defaults** restores the default order, titles, icons, colours and labels. Interface Settings belong to the application configuration, so they travel with **App Config** in Import / Export, transfers to another server, Full Environment packages and backups.
+The Preview column draws each tab as it looks when it is not selected. Colours show their hexadecimal value below them to copy or paste it. The **Module labels** switch (**Show a label on the tab of each main module**), off on a new deployment, shows or hides every label at once, and **Reset tabs and labels to defaults** restores the default order, titles, icons, colours and labels. Interface Settings belong to the application configuration, so they travel with **App Config** in Import / Export, transfers to another server, Full Environment packages and backups.
 
 ## Database Management
 
@@ -271,7 +271,7 @@ Saving or deleting a row clears analysis caches so later Dashboard and Reporting
 
 ## Datasets Management
 
-- Review dataset ID, editable name, stored path, uploader, upload time and last update.
+- Review dataset ID, editable name, stored path, uploader, upload time and last update; below its name each dataset shows its kind (Voice, Data or Speech CDR) and its processing status (Ready, Queued, Processing, Failed or Stopped).
 - Rename a dataset inline; queued and processing rows remain locked until their current work finishes.
 - Preview any Ready dataset in a separate tab.
 - Open Ready Data, Voice or Speech CDRs in CDR Analysis.
