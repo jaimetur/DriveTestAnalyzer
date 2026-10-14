@@ -57,7 +57,7 @@
           <button type="button" class="document-export-action document-export-word" data-nq-document-export="word" title="Executive Summary and Progress Status of the filtered calls"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M8.5 12l1.2 5 1.8-4 1.8 4 1.2-5"/></svg>Export Word</button>
         </div>
       </div>
-      <p class="nq-filter-group-title">Default Filters:</p>
+      <p class="nq-filter-group-title">General Filters:</p>
       <div class="nq-filter-grid" id="nq-filter-grid">
         <label>CDRs<select data-nq-filter="datasets" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="CDRs"></select></label>
         <label>Campaign<select data-nq-filter="campaign" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Campaign"></select></label>
@@ -72,6 +72,12 @@
         <label>Technology<select data-nq-filter="technology" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Technology"></select></label>
         <label>Test Name<select data-nq-filter="test_name" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Test Name"></select></label>
         <label>Result<select data-nq-filter="result" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Result"></select></label>
+        <label title="How the CDRs see each call: the latest version, changed between CDRs, a newer version in a CDR that is not chosen, not in the Final CDR of its campaign, or Completed in a newer CDR (listed only when chosen here)">CDR Version<select data-nq-filter="version" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="CDR Version"></select></label>
+      </div>
+      {# The fields of Fields & Sections: those of the CDR and the follow-up here, and the fields of the analysts the
+         script adds, all in the order of the catalog. #}
+      <p class="nq-filter-group-title" id="nq-field-filters-title">NQ Analysis Fields Filters:</p>
+      <div class="nq-filter-grid nq-field-filter-grid" id="nq-field-filters">
         <label>Failure Classification<select data-nq-filter="failure_classification" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Failure Classification"></select></label>
         <label>Failure Category<select data-nq-filter="failure_category" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Failure Category"></select></label>
         <label>Global Status<select data-nq-filter="status" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Global Status"></select></label>
@@ -81,10 +87,7 @@
         <label>Root Domain<select data-nq-filter="root_domain" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Root Domain"></select></label>
         <label>Root Category<select data-nq-filter="root_category" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Root Category"></select></label>
         <label>Root Cause<select data-nq-filter="root_cause" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Root Cause"></select></label>
-        <label title="How the CDRs see each call: the latest version, changed between CDRs, a newer version in a CDR that is not chosen, not in the Final CDR of its campaign, or Completed in a newer CDR (listed only when chosen here)">CDR Version<select data-nq-filter="version" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="CDR Version"></select></label>
       </div>
-      <p class="nq-filter-group-title" id="nq-field-filters-title" hidden>Analysis Center Filters:</p>
-      <div class="nq-filter-grid nq-field-filter-grid" id="nq-field-filters" hidden></div>
       <p class="nq-filter-group-title" id="nq-column-filters-title" hidden>Additional Columns Filters:</p>
       <div class="nq-filter-grid nq-field-filter-grid" id="nq-column-filters" hidden></div>
       <div id="nq-cdr-column-filters" hidden></div>

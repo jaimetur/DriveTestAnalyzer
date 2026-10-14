@@ -1690,7 +1690,8 @@ def _rebuild_versions(connection: Any, affected: set[str]) -> None:
         SELECT k.call_key, l.dataset_id, l.is_nq,
                EXISTS (SELECT 1 FROM {NQ_CALL_POPULATION_TABLE} f JOIN {NQ_CALL_SOURCES_TABLE} s ON s.dataset_id = f.dataset_id
                        WHERE f.call_key = k.call_key AND s.stage_rank = 1),
-               (SELECT COUNT(DISTINCT c.result || '|' || c.failure_classification || '|' || c.failure_category)
+               (SELECT COUNT(DISTINCT lower(c.result || '|' || replace(replace(c.failure_classification, '_', ''), ' ', '')
+                                            || '|' || replace(replace(c.failure_category, '_', ''), ' ', '')))
                 FROM {NQ_CALLS_TABLE} c WHERE c.call_key = k.call_key) > 1,
                (SELECT COUNT(*) FROM {NQ_CALL_POPULATION_TABLE} n WHERE n.call_key = k.call_key)
         FROM (SELECT DISTINCT call_key FROM {NQ_CALLS_TABLE} WHERE call_key IN (SELECT call_key FROM nq_affected_keys)) k
@@ -2559,6 +2560,8 @@ def save_root_causes(task_repository: Any, catalog: Any, require_to_close: bool,
 
 # Who analysed each call, as the analysis workbooks name them (also before they had an account).
 ANALYST_FIELD = 'analyst'
+# The accounts every new deployment starts with (repository.py): first in the lists of assignees, apart and tagged.
+DEFAULT_USERS = ('super', 'admin', 'demo')
 
 
 def _analyst_rows(connection: Any) -> list[Any]:
@@ -2570,13 +2573,15 @@ def _analyst_rows(connection: Any) -> list[Any]:
 
 
 def _analyst_user(spellings: list[str], users: Any) -> str:
-    """The only user named as the analyst: the whole name (Raj Kumar is rajkumar), then the first part of the user
-    (Anudeep is anudeep.kumar), then the first part of both (Raj Kumar is raj.k)."""
+    """The only user named as the analyst, by its username or its first and last name (``users``: username → name):
+    the whole name (Raj Kumar is rajkumar), then the first part of the user (Anudeep is anudeep.kumar or Anudeep
+    Reddy), then the first part of both (Raj Kumar is raj.k)."""
+    users = users if isinstance(users, dict) else {user: '' for user in users}
     whole = lambda value: nq_analyses.identity(value)
     first = lambda value: nq_analyses.identity(re.split(r'[\s._@-]+', str(value).strip())[0])
     for analyst_part, user_part in ((whole, whole), (whole, first), (first, first)):
         names = {analyst_part(spelling) for spelling in spellings} - {''}
-        found = [user for user in users if user_part(user) in names]
+        found = [user for user, name in users.items() if {user_part(user), user_part(name) if name else ''} & names]
         if len(found) == 1:
             return found[0]
     return ''
@@ -2827,6 +2832,30 @@ def recompute_statuses(task_repository: Any, username: str, keys: list[str] | No
 # Operators and Vendors are indexed as the CDRs spell them and shown with their Operator
 # and Vendor Maps labels, so filters, breakdowns, the table and exports use the mapped values.
 MAPPED_FIELDS = ('operator', 'operator_vendor', 'vendor')
+# The NetCheck RCA of the CDRs is written differently from one campaign to another (RF_Problems, RF Problems,
+# RF problems, E2E traces required): the spellings of one value are indexed as they are and shown as one.
+SPELLING_FIELDS = ('failure_classification', 'failure_category', 'failure_subcategory')
+# The columns of the calls read through a map of ``_value_maps``.
+MAPPED_COLUMNS = (*MAPPED_FIELDS, *SPELLING_FIELDS)
+
+
+def _spelling_key(value: str) -> str:
+    """What the spellings of one value share: its letters and digits, each word in singular (traces is trace; an
+    acronym keeps its capital S: HTTPS is not HTTP)."""
+    singular = lambda word: word[:-1] if len(word) > 3 and word.endswith('s') and not word.lower().endswith('ss') else word
+    return ''.join(nq_analyses.identity(singular(word)) for word in re.split(r'[\W_]+', value)) or value
+
+
+def unified_spellings(counts: dict[str, int]) -> dict[str, str]:
+    """The spelling each value is shown with (``counts``: calls by value as written): the values with the same
+    letters and digits, a word in singular or plural, are one, written with spaces for underscores and single
+    spaces, as most of their calls."""
+    clean = lambda value: re.sub(r'\s+', ' ', value.replace('_', ' ')).strip()
+    groups: dict[str, Counter] = {}
+    for value, count in counts.items():
+        groups.setdefault(_spelling_key(value), Counter())[clean(value)] += count
+    chosen = {key: min(forms.items(), key=lambda item: (-item[1], item[0]))[0] for key, forms in groups.items()}
+    return {value: chosen[_spelling_key(value)] for value in counts}
 
 
 _value_maps_cache: dict[tuple[str, str], dict[str, str]] = {}
@@ -2836,8 +2865,9 @@ _value_maps_guard = Lock()
 def _value_maps(task_repository: Any) -> dict[str, str]:
     """For each mapped field, a JSON object from the indexed source values to their mapped labels.
 
-    ``vendor_operator`` maps each source Operator_Vendor to its mapped Vendor_Operator. The maps are kept until
-    the indexed calls or the Operator and Vendor Maps change.
+    ``vendor_operator`` maps each source Operator_Vendor to its mapped Vendor_Operator, and the NetCheck RCA fields
+    map each spelling to the one their value is shown with. The maps are kept until the indexed calls or the Operator
+    and Vendor Maps change.
     """
     settings = task_repository.chart_mapping_settings()
     with task_repository.connection() as connection:
@@ -2857,6 +2887,10 @@ def _value_maps(task_repository: Any) -> dict[str, str]:
             if field == 'operator_vendor':
                 maps['vendor_operator'] = json.dumps({source: mapper.vendor_operators([label])[0]
                                                       for source, label in mapped.items()})
+        for field in SPELLING_FIELDS:
+            counts = {str(row[0]): int(row[1]) for row in connection.execute(
+                f"SELECT {field}, COUNT(*) FROM {NQ_CALLS_TABLE} WHERE {field} <> '' GROUP BY {field} ORDER BY {field}")}
+            maps[field] = json.dumps({source: spelling for source, spelling in unified_spellings(counts).items() if source != spelling})
     with _value_maps_guard:
         if len(_value_maps_cache) > 16:
             _value_maps_cache.clear()
@@ -2898,11 +2932,11 @@ def _latest_sql(maps: dict[str, str], dataset_ids: list[int] | None = None) -> t
     """
     columns = ', '.join(
         f'COALESCE((SELECT m.value FROM json_each(?) m WHERE m.key = c.{column}), c.{column}) AS {column}'
-        if column in MAPPED_FIELDS else f'c.{column}'
+        if column in MAPPED_COLUMNS else f'c.{column}'
         for column in ('dataset_id', 'source_row_id', 'call_key', 'service', 'nr_mode', *CALL_FIELDS)
     )
     params: list[Any] = [maps[column] for column in ('dataset_id', 'source_row_id', 'call_key', 'service', 'nr_mode', *CALL_FIELDS)
-                         if column in MAPPED_FIELDS]
+                         if column in MAPPED_COLUMNS]
     # Vendor_Operator: the mapped Operator_Vendor the other way round.
     params.append(maps['vendor_operator'])
     scope = list(dict.fromkeys(int(value) for value in dataset_ids or []))
@@ -3015,10 +3049,10 @@ def _sample_sql(default: str, task_repository: Any) -> tuple[str, list[Any]]:
     maps = _value_maps(task_repository)
     columns = ', '.join(
         f'COALESCE((SELECT m.value FROM json_each(?) m WHERE m.key = c.{column}), c.{column}) AS {column}'
-        if column in MAPPED_FIELDS else f'c.{column}'
+        if column in MAPPED_COLUMNS else f'c.{column}'
         for column in ('dataset_id', 'source_row_id', 'service', 'nr_mode', *CALL_FIELDS)
     )
-    params = [maps[column] for column in ('dataset_id', 'source_row_id', 'service', 'nr_mode', *CALL_FIELDS) if column in MAPPED_FIELDS]
+    params = [maps[column] for column in ('dataset_id', 'source_row_id', 'service', 'nr_mode', *CALL_FIELDS) if column in MAPPED_COLUMNS]
     sql = f"""
         SELECT {columns}, c.sample_key AS call_key, c.call_key AS parent_key, c.sample_id, c.join_id, c.extra_json,
                1 AS nq_samples, '' AS vendor_operator, {last_cell_sql('c.cell_id')} AS last_cell_id,
@@ -3138,12 +3172,17 @@ def _resolve_key_filters(task_repository: Any, filters: dict[str, Any]) -> dict[
     """Turn the filters computed per call (root cause counting suggestions, eNB/gNB) into call keys.
 
     Operator and Vendor selections are compared with the mapped values, so a source
-    spelling saved before (for example Vodafone UK) selects its mapped label (VF).
+    spelling saved before (for example Vodafone UK) selects its mapped label (VF); so are the NetCheck RCA ones
+    (RF_Problems selects RF Problems).
     """
     if any(_strings(filters.get(field)) for field in (*MAPPED_FIELDS, 'vendor_operator')):
         mapper = ValueMapper.from_repository(task_repository)
         filters = {**filters, **{field: [str(mapper.map(field_kind(field), value)) for value in _strings(filters.get(field))]
                                  for field in (*MAPPED_FIELDS, 'vendor_operator') if _strings(filters.get(field))}}
+    if any(_strings(filters.get(field)) for field in SPELLING_FIELDS):
+        maps = _value_maps(task_repository)
+        filters = {**filters, **{field: list(dict.fromkeys(json.loads(maps[field]).get(value, value) for value in _strings(filters.get(field))))
+                                 for field in SPELLING_FIELDS if _strings(filters.get(field))}}
     wanted = {field: set(_strings(filters.get(field))) for field in KEY_FILTERS}
     if not any(wanted.values()):
         return filters
@@ -3457,9 +3496,11 @@ VALUE_FILTER_FIELDS = ('analyst', 'reviewer')
 
 
 def filter_options(task_repository: Any) -> dict[str, list[str]]:
-    """Distinct values of every indexed filter; Operators and Vendors with their mapped labels."""
+    """Distinct values of every indexed filter; Operators and Vendors with their mapped labels and the NetCheck RCA
+    with the spelling of its values."""
     values: dict[str, list[str]] = {}
     mapper = ValueMapper.from_repository(task_repository)
+    maps = _value_maps(task_repository)
     with task_repository.connection() as connection:
         for field in FIELD_FILTERS:
             if field == 'vendor_operator':
@@ -3472,6 +3513,9 @@ def filter_options(task_repository: Any) -> dict[str, list[str]]:
             values[field] = [str(row['value']) for row in rows]
             if field in MAPPED_FIELDS:
                 values[field] = [str(value) for value in mapper.values(field_kind(field), values[field])]
+            elif field in SPELLING_FIELDS:
+                spellings = json.loads(maps[field])
+                values[field] = sorted({spellings.get(value, value) for value in values[field]}, key=str.casefold)
             elif field == 'campaign':
                 values[field] = sorted(values[field], key=campaign_sort_key)
         assignees = connection.execute(
@@ -3493,6 +3537,74 @@ def filter_options(task_repository: Any) -> dict[str, list[str]]:
                 f"AND call_key IN (SELECT call_key FROM {NQ_CALLS_TABLE}) ORDER BY value COLLATE NOCASE "
                 f"LIMIT {MAX_COLUMN_FILTER_VALUES}", (key,))]
     values['assignee'] = [str(row['assignee']) for row in assignees]
+    return values
+
+
+def _filter_expressions(task_repository: Any, definitions: list[dict[str, Any]]) -> dict[str, str]:
+    """The SQL value, in the calls query, of every filter of the Filters panel listed with its values (CDRs and CDR
+    Version aside): the indexed and follow-up fields, the fields of the analysis and the columns of the table."""
+    expressions = {field: field for field in (*FIELD_FILTERS, *TRACKING_FILTERS)}
+    for definition in definitions:
+        if definition['source'] in {'user', 'derived'} and (definition['type'] in {'list', 'yes_no'} or definition['key'] in VALUE_FILTER_FIELDS):
+            expressions[f"field:{definition['key']}"] = field_sql(definition)
+    chosen = table_columns(task_repository)
+    for key in [*(column for column in chosen['builtin'] if column in COLUMN_FILTER_SQL), *(f'cdr:{name}' for name in chosen['cdr'])]:
+        expressions[f'column:{key}'] = column_filter_sql(key)
+    return expressions
+
+
+def _filter_chosen(filters: dict[str, Any], key: str) -> list[str]:
+    """The values chosen in one filter (``field:<key>`` and ``column:<key>`` for the analysis fields and columns)."""
+    for prefix, group in (('field:', 'fields'), ('column:', 'columns')):
+        if key.startswith(prefix):
+            chosen = filters.get(group) if isinstance(filters.get(group), dict) else {}
+            return _strings(chosen.get(key[len(prefix):]))
+    return _strings(filters.get(key))
+
+
+def _without_filter(filters: dict[str, Any], key: str) -> dict[str, Any]:
+    """The filters but one."""
+    rest = dict(filters)
+    for prefix, group in (('field:', 'fields'), ('column:', 'columns')):
+        if key.startswith(prefix):
+            chosen = filters.get(group) if isinstance(filters.get(group), dict) else {}
+            rest[group] = {name: values for name, values in chosen.items() if name != key[len(prefix):]}
+            return rest
+    rest.pop(key, None)
+    return rest
+
+
+def available_filter_values(task_repository: Any, filters: Any, username: str) -> dict[str, list[str]]:
+    """What the list of every filter offers: the values of the calls that match the other filters ('' for the calls
+    without one), so a filter shows only the values left by the others and keeps its own. The CDRs are those with
+    some of these calls; CDR Version keeps its states."""
+    options = list_options(task_repository)
+    definitions = list_fields(task_repository)
+    filters = _resolve_key_filters(task_repository, filters if isinstance(filters, dict) else {})
+    closed = [item['name'] for item in options['statuses'] if item['closed']]
+    default = untracked_status(task_repository, options)
+    expressions = _filter_expressions(task_repository, definitions)
+    # The filters not chosen share the same other filters (all of them): one pass for all; one more for each chosen one.
+    idle = [key for key in expressions if not _filter_chosen(filters, key)]
+    passes = [(filters, idle), *((_without_filter(filters, key), [key]) for key in expressions if key not in idle)]
+    values: dict[str, list[str]] = {}
+    with task_repository.connection() as connection:
+        base, base_params = _materialized(connection, *_base_sql(default, task_repository, _scope(filters)), bool(_scope(filters)))
+        for chosen, keys in passes:
+            if not keys:
+                continue
+            where, params = _filter_sql(chosen, username, closed, definitions)
+            row = connection.execute(
+                f"WITH calls AS ({base}) SELECT {', '.join(f'json_group_array(DISTINCT {expressions[key]})' for key in keys)} "
+                f"FROM calls{where}", [*base_params, *params]).fetchone()
+            for key, found in zip(keys, row):
+                values[key] = sorted({'' if value is None else str(value) for value in json.loads(found or '[]')})
+        # The CDRs with some of the calls of the other filters, whatever CDRs they choose.
+        latest, latest_params = _base_sql(default, task_repository)
+        where, params = _filter_sql(_without_filter(filters, 'datasets'), username, closed, definitions)
+        values['datasets'] = [str(row[0]) for row in connection.execute(
+            f"WITH calls AS ({latest}) SELECT DISTINCT dataset_id FROM {NQ_CALLS_TABLE} "
+            f"WHERE call_key IN (SELECT call_key FROM calls{where}) ORDER BY dataset_id", [*latest_params, *params])]
     return values
 
 
@@ -4036,8 +4148,10 @@ def _call_row(connection: Any, call_key: str, default: str, task_repository: Any
         [*sample_params, call_key]).fetchone()
 
 
-def _call_versions(connection: Any, call_key: str) -> list[dict[str, Any]]:
-    """Every CDR that contains the call: Final, Weekly or Daily, its newest data, and the call's result in it."""
+def _call_versions(connection: Any, call_key: str, spellings: dict[str, str] | None = None) -> list[dict[str, Any]]:
+    """Every CDR that contains the call: Final, Weekly or Daily, its newest data, and the call's result in it (its
+    Failure Classification with the spelling of ``spellings``)."""
+    spellings = spellings or {}
     rows = connection.execute(f"""
         SELECT p.dataset_id, p.is_nq, p.is_latest, s.stage_rank, s.data_date, d.file_name, dp.dataset_kind, dp.cdr_stage,
                (SELECT c.result FROM {NQ_CALLS_TABLE} c WHERE c.call_key = p.call_key AND c.dataset_id = p.dataset_id
@@ -4058,7 +4172,7 @@ def _call_versions(connection: Any, call_key: str) -> list[dict[str, Any]]:
         'data_date': str(row['data_date'] or ''),
         'non_qualified': bool(row['is_nq']), 'latest': bool(row['is_latest']),
         'result': str(row['result'] or ('Completed' if not row['is_nq'] else '')),
-        'failure_classification': str(row['failure_classification'] or ''),
+        'failure_classification': spellings.get(str(row['failure_classification'] or ''), str(row['failure_classification'] or '')),
     } for row in rows]
 
 
@@ -4092,7 +4206,8 @@ def call_detail(task_repository: Any, call_key: str) -> dict[str, Any] | None:
         if row is None:
             return None
         call = _call_payload(row)
-        versions = _call_versions(connection, str(call.get('parent_key') or call_key))
+        versions = _call_versions(connection, str(call.get('parent_key') or call_key),
+                                  json.loads(_value_maps(task_repository)['failure_classification']))
         samples = _call_samples(connection, call, default, task_repository)
         learned = learned_decisions(connection)
         parent = None
@@ -6499,6 +6614,15 @@ def install_non_qualified_calls_routes(core: Any) -> None:
                 names.append(username)
         return sorted(names, key=str.casefold)
 
+    def user_names() -> dict[str, str]:
+        """The first and last name of every account that has them, by username: how the page shows the users."""
+        names = {}
+        for row in core.repository.list_users():
+            name = ' '.join(str(row[key] or '').strip() for key in ('first_name', 'last_name') if key in row.keys()).strip()
+            if name:
+                names[str(row['username'])] = name
+        return names
+
     def translate(action):
         try:
             return action()
@@ -6632,7 +6756,8 @@ def install_non_qualified_calls_routes(core: Any) -> None:
             sync = nq_index_status(repository)
         return JSONResponse({
             'sync': sync, 'options': list_options(repository), 'filter_options': filter_options(repository),
-            'datasets': indexed_datasets(repository), 'users': workspace_users(),
+            'datasets': indexed_datasets(repository), 'users': workspace_users(), 'user_names': user_names(),
+            'default_users': list(DEFAULT_USERS),
             'user': {'username': user.username, 'can_edit': can_edit(user), 'can_moderate': can_moderate(user),
                      'can_configure_rule': can_configure_rule(user)},
             'unassigned': UNASSIGNED, 'page_sizes': list(PAGE_SIZES),
@@ -6878,6 +7003,11 @@ def install_non_qualified_calls_routes(core: Any) -> None:
     def nq_save_filters(payload: QueryPayload, user=Depends(core.current_user)) -> JSONResponse:
         return JSONResponse({'filters': save_filters(workspace_repository(user), payload.filters)})
 
+    @core.app.post('/api/non-qualified-calls/filters/values')
+    def nq_filter_values(payload: QueryPayload, user=Depends(core.current_user)) -> JSONResponse:
+        """The values each filter offers among the calls of the other filters."""
+        return JSONResponse({'values': available_filter_values(workspace_repository(user), payload.filters, user.username)})
+
     @core.app.post('/api/non-qualified-calls/calls')
     def nq_calls(payload: QueryPayload, user=Depends(core.current_user)) -> JSONResponse:
         repository = workspace_repository(user)
@@ -6970,8 +7100,9 @@ def install_non_qualified_calls_routes(core: Any) -> None:
     def nq_analysts(user=Depends(editor_user)) -> JSONResponse:
         """The analysts of the calls with their calls and assignees, and the users of the workspace."""
         repository = workspace_repository(user)
-        users = workspace_users()
-        return JSONResponse({**analyst_assignments(repository, users), 'users': users})
+        users, names = workspace_users(), user_names()
+        return JSONResponse({**analyst_assignments(repository, {user: names.get(user, '') for user in users}),
+                             'users': users, 'user_names': names})
 
     @core.app.post('/api/non-qualified-calls/analysts/assign')
     def nq_assign_analysts(payload: AnalystAssignmentsPayload, user=Depends(editor_user)) -> JSONResponse:

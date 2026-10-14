@@ -64,13 +64,16 @@
   const REFRESH_INTERVAL_MS = 60000;
 
   const state = {
-    options: {statuses: [], teams: []}, rootCauses: {domains: [], categories: [], causes: [], require_to_close: false}, users: [],
+    options: {statuses: [], teams: []}, rootCauses: {domains: [], categories: [], causes: [], require_to_close: false}, users: [], userNames: {},
+    defaultUsers: [],
     user: {username: '', can_edit: false, can_moderate: false},
     unassigned: '__unassigned__', datasets: [], mainCities: [], sort: 'start_time', direction: 'desc', page: 1, pageSize: 50,
     result: null, selected: new Set(), detail: null, requestToken: 0, busy: false, extraFilters: {}, stale: new Set(), view: 'calls',
     fields: [], fieldTypes: {}, tableColumns: {builtin: [], cdr: []}, optionalColumns: {}, cdrColumns: [], versionLabels: {},
     rateService: '', sections: [], statusRules: [], conditionFields: {}, ruleOperators: {}, fieldSources: {}, trackingRefs: {},
     rcaRefs: {}, callFields: [], rcaResults: {}, rcaSources: {}, matrixSource: 'netcheck',
+    // The values each filter offers among the calls of the other filters (null until known: every value).
+    available: null, availableSignature: '',
   };
 
   // -- helpers --------------------------------------------------------------
@@ -170,8 +173,37 @@
     else element.style.removeProperty('--nq-outline');
     element.classList.toggle('is-outlined', Boolean(color));
   };
+  // The users are shown by their first and last name (their username when they have none), the default users of the
+  // application (super, admin and demo) first, tagged, with a line before the others.
+  const userName = (username) => state.userNames[username] || username;
+  const userOrder = (username) => {
+    const index = state.defaultUsers.findIndex((name) => name.toLowerCase() === String(username).toLowerCase());
+    return index < 0 ? state.defaultUsers.length : index;
+  };
+  const isDefaultUser = (username) => userOrder(username) < state.defaultUsers.length;
+  const byUserName = (left, right) => userOrder(left) - userOrder(right) || userName(left).localeCompare(userName(right));
+  const DEFAULT_USER_TAG = 'default user';
+  // The labels of a list of users ([element, username]): the tag of the default users and the line after them.
+  const tagUsers = (entries) => {
+    let afterDefault = false;
+    entries.forEach(([label, username]) => {
+      const tagged = isDefaultUser(username);
+      if (tagged && !label.querySelector('.nq-user-tag')) label.append(node('span', DEFAULT_USER_TAG, 'nq-user-tag'));
+      label.classList.toggle('nq-user-divider', afterDefault && !tagged && username !== state.unassigned);
+      if (username !== state.unassigned) afterDefault = tagged;
+    });
+  };
+  // The users of a native list: the default users marked, and a line before the others.
+  const userOptions = (users) => {
+    const sorted = [...users].sort(byUserName);
+    return sorted.flatMap((username, index) => {
+      const option = node('option', isDefaultUser(username) ? `${userName(username)} · ${DEFAULT_USER_TAG}` : userName(username));
+      option.value = username;
+      return index && isDefaultUser(sorted[index - 1]) && !isDefaultUser(username) ? [node('hr'), option] : [option];
+    });
+  };
   const pill = (kind, name, emptyLabel = 'Unassigned') => {
-    const element = node('span', name || emptyLabel, `nq-pill nq-pill-${kind}`);
+    const element = node('span', (kind === 'assignee' && name ? userName(name) : name) || emptyLabel, `nq-pill nq-pill-${kind}`);
     if (kind === 'root_cause') outlinePill(element, optionColor(kind, name));
     else paintPill(element, kind === 'assignee' ? '' : optionColor(kind, name));
     if (!name) element.classList.add('is-empty');
@@ -206,6 +238,12 @@
   const filterableFields = () => state.fields.filter((field) => (['list', 'yes_no'].includes(field.type)
     || (state.valueFilterFields || []).includes(field.key)) && ['user', 'derived'].includes(field.source));
   const filterSelects = () => [...root.querySelectorAll('[data-nq-filter]')];
+  // The filters of the CDR and the follow-up that are fields of the catalog (source:reference), among its fields.
+  const CATALOG_FILTERS = {
+    failure_classification: 'cdr:failure_classification', failure_category: 'cdr:failure_category',
+    root_domain: 'tracking:root_category', root_category: 'tracking:root_category', root_cause: 'tracking:root_cause',
+    status: 'tracking:status', status_mode: 'tracking:status', team: 'tracking:team', assignee: 'tracking:assignee',
+  };
   const fillSelect = (select, entries) => {
     const previous = new Set([...select.selectedOptions].map((option) => option.value));
     select.dataset.multiselectNoValuesLabel = 'No values available';
@@ -225,18 +263,19 @@
       service: ['voice', 'speech', 'data'].filter((value) => (values.service || []).includes(value)).map((value) => [value, SERVICE_LABELS[value]]),
       status: state.options.statuses.map((item) => [item.name, item.name]),
       team: [unassigned, ...state.options.teams.map((item) => [item.name, item.name])],
-      assignee: [unassigned, ...[...new Set([...(values.assignee || []), ...state.users])].sort((a, b) => a.localeCompare(b)).map((name) => [name, name])],
+      assignee: [unassigned, ...[...new Set([...(values.assignee || []), ...state.users])].sort(byUserName).map((name) => [name, userName(name)])],
       root_domain: [[state.unassigned, NOT_CLASSIFIED], ...state.rootCauses.domains.map((item) => [item.name, item.name])],
       root_category: [[state.unassigned, NOT_CLASSIFIED], ...state.rootCauses.categories.map((item) => [item.name, item.name])],
       root_cause: [[state.unassigned, NO_CAUSE], ...state.rootCauses.causes.map((item) => [item.name, item.name])],
       status_mode: Object.entries(STATUS_MODE_LABELS),
       version: Object.entries(state.versionLabels),
     };
-    // A filter for every list and Yes / No field of the Analysis Center (and Analyst and Reviewer), after the others.
+    // A filter for every list and Yes / No field of the catalog (and Analyst and Reviewer), beside those of the CDR and
+    // the follow-up that are fields of the catalog too.
     const fieldHost = $('nq-field-filters');
     const filterable = filterableFields();
     const present = new Set(filterable.map((field) => `field:${field.key}`));
-    fieldHost.querySelectorAll('[data-nq-filter]').forEach((select) => {
+    fieldHost.querySelectorAll('[data-nq-filter^="field:"]').forEach((select) => {
       if (!present.has(select.dataset.nqFilter)) select.closest('label').remove();
     });
     filterable.forEach((field) => {
@@ -255,7 +294,17 @@
       label.append(select);
       fieldHost.append(label);
     });
-    fieldHost.hidden = !filterable.length;
+    // In the order of Fields & Sections (the filters of the CDR and the follow-up at the place of their field).
+    const position = new Map();
+    state.fields.forEach((field, index) => {
+      position.set(`field:${field.key}`, index);
+      position.set(`${field.source}:${field.source_ref}`, index);
+    });
+    [...fieldHost.children].map((label, order) => {
+      const name = label.querySelector('[data-nq-filter]')?.dataset.nqFilter || '';
+      return [position.get(CATALOG_FILTERS[name] || name) ?? -1, order, label];
+    }).sort((a, b) => a[0] - b[0] || a[1] - b[1]).forEach(([, , label]) => fieldHost.append(label));
+    fieldHost.hidden = !fieldHost.querySelector('[data-nq-filter]');
     $('nq-field-filters-title').hidden = fieldHost.hidden;
     // A filter for every optional and CDR column of the table (Region, Cluster and CDR have theirs).
     const columnHost = $('nq-column-filters');
@@ -340,6 +389,44 @@
     state.savedFilters = serialized;
     api('/api/non-qualified-calls/filters', {method: 'PUT', body: JSON.stringify({filters})}).catch(() => { state.savedFilters = null; });
   }, 800);
+  // Each filter lists only the values of the calls the other filters leave, and those chosen in it. The lists keep
+  // every value, so choosing all of them (Select All / None) or none still means no restriction: the others are
+  // only hidden when the list opens.
+  const offered = (field, value) => {
+    const values = state.available?.[field];
+    return !values || values.has(value === state.unassigned ? '' : value);
+  };
+  const markAvailable = (select) => {
+    const shell = select.nextElementSibling;
+    if (!shell?.classList.contains('multiselect-shell')) return;
+    const options = new Map([...select.options].map((option) => [option.value, option]));
+    const labels = [...shell.querySelectorAll('.multiselect-option')].map((label) => {
+      const option = options.get(label.querySelector('[data-option-value]')?.getAttribute('data-option-value'));
+      label.classList.toggle('nq-unavailable', Boolean(option) && !option.selected && !offered(select.dataset.nqFilter, option.value));
+      return [label, option?.value];
+    });
+    if (select.dataset.nqFilter === 'assignee') tagUsers(labels.filter(([label]) => !label.classList.contains('nq-unavailable')));
+  };
+  const loadAvailable = async (filters, quiet) => {
+    const signature = JSON.stringify(filters);
+    // The same filters offer the same values, but a refresh may bring new ones.
+    if (!quiet && signature === state.availableSignature) return;
+    state.availableSignature = signature;
+    try {
+      const {values} = await api('/api/non-qualified-calls/filters/values', {method: 'POST', body: JSON.stringify({filters}),
+        ...(quiet ? {headers: {'X-Background-Refresh': '1'}} : {})});
+      if (signature !== state.availableSignature) return;
+      state.available = Object.fromEntries(Object.entries(values).map(([field, list]) => [field, new Set(list)]));
+      // A list already open follows at once.
+      filterSelects().forEach((select) => { if (select.nextElementSibling?.querySelector('.multiselect-menu:not([hidden])')) markAvailable(select); });
+    } catch (_error) {
+      state.availableSignature = '';
+    }
+  };
+  root.addEventListener('click', (event) => {
+    const select = event.target.closest?.('.multiselect-trigger')?.parentElement?.previousElementSibling;
+    if (select?.matches('[data-nq-filter]')) markAvailable(select);
+  }, true);
   const selectOnly = (field, value) => {
     if (field === 'dataset_id') field = 'datasets';
     const select = root.querySelector(`[data-nq-filter="${field}"]`);
@@ -558,7 +645,8 @@
     closeColumnFilter();
     const select = root.querySelector(`[data-nq-filter="${field}"]`);
     if (!select) return;
-    const options = [...select.options];
+    // The values of the calls the other filters leave, and those chosen.
+    const options = [...select.options].filter((option) => option.selected || offered(field, option.value));
     const popover = node('div', undefined, 'nq-column-filter');
     popover.setAttribute('role', 'dialog');
     popover.setAttribute('aria-label', `Filter by ${field.startsWith('field:') ? historyLabel(field) : (FIELD_LABELS[field] || field)}`);
@@ -602,6 +690,7 @@
     } else {
       boxes = options.map(checkbox);
     }
+    if (field === 'assignee') tagUsers(boxes.map(([label, , option]) => [label, option.value]));
     if (!boxes.length) list.append(node('p', 'No values.', 'nq-muted'));
     const syncAll = () => {
       const shown = boxes.filter(([label]) => !label.hidden);
@@ -609,11 +698,14 @@
       all.checked = shown.length > 0 && checked === shown.length;
       all.indeterminate = checked > 0 && checked < shown.length;
     };
+    // Select All without a search chooses every value, also those hidden: no restriction, as in the Filters panel.
+    let everyValue = false;
     all.addEventListener('change', () => {
       boxes.forEach(([label, box]) => { if (!label.hidden) box.checked = all.checked; });
+      everyValue = all.checked && !search.value.trim();
       syncAll();
     });
-    list.addEventListener('change', syncAll);
+    list.addEventListener('change', () => { everyValue = false; syncAll(); });
     search.addEventListener('input', () => {
       const text = search.value.trim().toLowerCase();
       boxes.forEach(([label, , option]) => { label.hidden = Boolean(text) && !option.textContent.toLowerCase().includes(text); });
@@ -625,7 +717,8 @@
     const apply = node('button', 'Apply', 'nq-primary-action');
     apply.type = 'button';
     apply.addEventListener('click', () => {
-      boxes.forEach(([, box, option]) => { option.selected = box.checked; });
+      if (everyValue) [...select.options].forEach((option) => { option.selected = true; });
+      else boxes.forEach(([, box, option]) => { option.selected = box.checked; });
       select.dispatchEvent(new Event('multiselect:options-updated'));
       select.dispatchEvent(new Event('change', {bubbles: true}));
       closeColumnFilter();
@@ -688,9 +781,11 @@
   const trackingSelect = (kind, call) => {
     const items = kind === 'status' ? state.options.statuses.map((item) => ({value: item.name, label: item.name, color: item.color}))
       : kind === 'team' ? [{value: '', label: 'Unassigned'}, ...state.options.teams.map((item) => ({value: item.name, label: item.name, color: item.color}))]
-        : [{value: '', label: 'Unassigned'}, ...assignableUsers(call.team).map((name) => ({value: name, label: name}))];
+        : [{value: '', label: 'Unassigned'}, ...[...assignableUsers(call.team)].sort(byUserName).map((name, index, users) => ({
+          value: name, label: userName(name), tag: isDefaultUser(name) ? DEFAULT_USER_TAG : '',
+          divider: index > 0 && isDefaultUser(users[index - 1]) && !isDefaultUser(name)}))];
     const current = call[kind] || '';
-    if (current && !items.some((item) => item.value === current)) items.push({value: current, label: current});
+    if (current && !items.some((item) => item.value === current)) items.push({value: current, label: kind === 'assignee' ? userName(current) : current});
     // A status set by hand can go back to the Status Rules.
     if (kind === 'status' && call.status_mode === 'manual') items.push({value: AUTO_STATUS, label: '↺ Back to automatic', action: true});
     const control = choiceControl({
@@ -851,6 +946,8 @@
       if (item.color) paintPill(chip, item.color);
       else if (!item.value || item.action) chip.classList.add('is-empty');
       option.append(chip);
+      if (item.tag) option.append(node('span', item.tag, 'nq-user-tag'));
+      option.classList.toggle('nq-user-divider', Boolean(item.divider));
       option.addEventListener('click', () => {
         closeRootPicker();
         if (!selected) choose(item);
@@ -1531,7 +1628,8 @@
     fill('nq-bulk-status', 'Set status…', [...state.options.statuses.map((item) => [item.name, item.name]),
       [AUTO_STATUS, '↺ Back to automatic']]);
     fill('nq-bulk-team', 'Set team…', [[state.unassigned, 'Unassigned'], ...state.options.teams.map((item) => [item.name, item.name])]);
-    fill('nq-bulk-assignee', 'Assign to…', [[state.unassigned, 'Unassigned'], ...state.users.map((name) => [name, name])]);
+    fill('nq-bulk-assignee', 'Assign to…', [[state.unassigned, 'Unassigned']]);
+    $('nq-bulk-assignee')?.append(...userOptions(state.users));
     // Root categories and causes under their domain.
     [['nq-bulk-category', 'Set root category…', NOT_CLASSIFIED, state.rootCauses.categories],
       ['nq-bulk-root', 'Set root cause…', NO_CAUSE, state.rootCauses.causes]].forEach(([id, placeholder, empty, items]) => {
@@ -1713,6 +1811,7 @@
     const filters = currentFilters();
     const signature = JSON.stringify([filters, state.sort, state.direction, shownPageSize()]);
     if (state.filtersRestored) saveFilters(filters);
+    loadAvailable(filters, quiet);
     if (!quiet) {
       $('nq-count').textContent = 'Loading calls…';
       root.classList.add('is-loading');
@@ -2006,7 +2105,8 @@
     const person = (name) => (name === 'Unassigned' ? state.unassigned : name);
     statsTable($('nq-team-workload'), ['Team', 'Open', 'Closed', 'Total'], workload(progress.teams),
       {drillRow: (index) => [['team', person(progress.teams[index].name)]]});
-    statsTable($('nq-assignee-workload'), ['Assignee', 'Open', 'Closed', 'Total'], workload(progress.assignees),
+    statsTable($('nq-assignee-workload'), ['Assignee', 'Open', 'Closed', 'Total'],
+      workload(progress.assignees.map((row) => ({...row, name: row.name === 'Unassigned' ? row.name : userName(row.name)}))),
       {drillRow: (index) => [['assignee', person(progress.assignees[index].name)]]});
     statsTable($('nq-activity'), ['User', 'Changes', 'Comments', 'Calls Closed'],
       progress.activity.map((row) => [row.name, number(row.changes), number(row.comments), number(row.closed)]));
@@ -2628,6 +2728,8 @@
       state.ruleFields = payload.root_cause_rule_fields || {};
       state.defaultRule = payload.default_root_cause_rule || null;
       state.users = payload.users || [];
+      state.userNames = payload.user_names || {};
+      state.defaultUsers = payload.default_users || [];
       state.user = payload.user;
       state.unassigned = payload.unassigned || state.unassigned;
       state.datasets = payload.datasets || [];
@@ -5585,7 +5687,7 @@
     })});
     const assignSummary = (result) => {
       const chosen = assignSelects().some((select) => select.value);
-      const joins = result.joins.map((item) => `${item.user} joins ${item.team}`);
+      const joins = result.joins.map((item) => `${userName(item.user)} joins ${item.team}`);
       return [
         !chosen ? 'Choose the user account of an analyst.' : result.calls
           ? `${number(result.calls)} ${result.calls === 1 ? 'call gets' : 'calls get'} a new Asignee.` : 'No call changes with these choices.',
@@ -5620,7 +5722,7 @@
         const select = node('select');
         select.dataset.analyst = analyst.key;
         select.setAttribute('aria-label', `User account of ${analyst.name}`);
-        select.append(node('option', 'Leave unchanged'), ...payload.users.map((user) => node('option', user)));
+        select.append(node('option', 'Leave unchanged'), ...userOptions(payload.users));
         select.options[0].value = '';
         select.value = payload.users.includes(analyst.suggested) ? analyst.suggested : '';
         select.addEventListener('change', previewAssign);
@@ -5647,7 +5749,9 @@
       $('nq-assign-analysts-apply').disabled = true;
       assignDialog.showModal();
       try {
-        renderAssign(await api('/api/non-qualified-calls/analysts'));
+        const payload = await api('/api/non-qualified-calls/analysts');
+        state.userNames = {...state.userNames, ...(payload.user_names || {})};
+        renderAssign(payload);
         previewAssign();
       } catch (error) {
         $('nq-assign-analysts-summary').textContent = '';

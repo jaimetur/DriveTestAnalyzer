@@ -508,8 +508,11 @@ def test_an_assignee_brings_the_call_to_their_team(client, tmp_path):
 
 def test_analysts_become_the_asignees_of_their_calls(client, tmp_path):
     calls = setup_calls(client, tmp_path)
-    for username in ('rajkumar.s', 'anudeep.kumar', 'ashish.a', 'ashish.b'):
-        core.repository.create_user(username, 'analyst123', 'user-editor')
+    # A signum is found by the first name of its account.
+    names = {'EANUDRE': ('Anudeep', 'Reddy')}
+    for username in ('rajkumar.s', 'EANUDRE', 'ashish.a', 'ashish.b'):
+        first, last = names.get(username, ('', ''))
+        core.repository.create_user(username, 'analyst123', 'user-editor', first_name=first, last_name=last)
         user_id = next(int(row['id']) for row in core.repository.list_users() if row['username'] == username)
         core.repository.set_user_workspace_access(user_id, [core.active_workspace.id])
     state = client.get('/api/non-qualified-calls/state').json()
@@ -522,7 +525,8 @@ def test_analysts_become_the_asignees_of_their_calls(client, tmp_path):
     patch(client, calls['0xC3'], {'fields': {'analyst': 'Anudeep', 'reviewer': 'Jorge'}})
     # Analyst and Reviewer filter the calls by the names they hold.
     state = client.get('/api/non-qualified-calls/state').json()
-    assert state['value_filter_fields'] == ['analyst', 'reviewer']
+    assert state['value_filter_fields'] == ['analyst', 'reviewer'] and state['user_names']['EANUDRE'] == 'Anudeep Reddy'
+    assert state['default_users'] == ['super', 'admin', 'demo']
     assert state['filter_options']['field:analyst'] == ['Anudeep', 'Raj Kumar', 'rajkumar']
     assert state['filter_options']['field:reviewer'] == ['Jorge']
     assert [call['join_id'] for call in query(client, filters={'fields': {'analyst': ['Raj Kumar', 'rajkumar']}})['calls']] == ['0xB2', '0xA1']
@@ -530,11 +534,12 @@ def test_analysts_become_the_asignees_of_their_calls(client, tmp_path):
     # One row per analyst (the same letters are one name), with the user named as them.
     listed = client.get('/api/non-qualified-calls/analysts').json()
     assert [(item['key'], item['calls'], item['unassigned'], item['suggested']) for item in listed['analysts']] == [
-        ('rajkumar', 2, 1, 'rajkumar.s'), ('anudeep', 1, 1, 'anudeep.kumar')]
+        ('rajkumar', 2, 1, 'rajkumar.s'), ('anudeep', 1, 1, 'EANUDRE')]
     assert sorted(listed['analysts'][0]['spellings']) == ['Raj Kumar', 'rajkumar'] and 'ashish.a' in listed['users']
+    assert listed['user_names'] == {'EANUDRE': 'Anudeep Reddy'}
     assert nq._analyst_user(['Ashish'], listed['users']) == ''
     # The preview counts the calls without an assignee and the teams the user joins, and changes nothing.
-    assignments = {'rajkumar': 'rajkumar.s', 'anudeep': 'anudeep.kumar'}
+    assignments = {'rajkumar': 'rajkumar.s', 'anudeep': 'EANUDRE'}
     preview = client.post('/api/non-qualified-calls/analysts/assign', json={'assignments': assignments, 'preview': True}).json()
     assert preview == {'calls': 2, 'analysts': {'rajkumar': 1, 'anudeep': 1}, 'joins': [{'team': 'Netcheck', 'user': 'rajkumar.s'}]}
     assert client.get(f"/api/non-qualified-calls/calls/{calls['0xA1']['call_key']}").json()['call']['assignee'] == ''
@@ -544,7 +549,7 @@ def test_analysts_become_the_asignees_of_their_calls(client, tmp_path):
     assert (detail['call']['assignee'], detail['call']['team']) == ('rajkumar.s', 'Netcheck')
     assert any(entry['field'] == 'assignee' and entry['new_value'] == 'rajkumar.s' for entry in detail['history'])
     third = client.get(f"/api/non-qualified-calls/calls/{calls['0xC3']['call_key']}").json()['call']
-    assert (third['assignee'], third['team']) == ('anudeep.kumar', '')
+    assert (third['assignee'], third['team']) == ('EANUDRE', '')
     netcheck = next(team for team in nq.list_options(core.repository)['teams'] if team['name'] == 'Netcheck')
     assert sorted(netcheck['members']) == ['rajkumar.s', 'super']
     # The Asignee a call already has stays unless replaced.
@@ -555,6 +560,48 @@ def test_analysts_become_the_asignees_of_their_calls(client, tmp_path):
     assert client.get('/api/non-qualified-calls/analysts').json()['analysts'][0]['unassigned'] == 0
     unknown = client.post('/api/non-qualified-calls/analysts/assign', json={'assignments': {'anudeep': 'nobody'}})
     assert unknown.status_code == 400 and 'nobody' in unknown.json()['detail']
+
+
+def test_each_filter_lists_the_values_the_other_filters_leave(client, tmp_path):
+    calls = setup_calls(client, tmp_path)
+    patch(client, calls['0xA1'], {'fields': {'analyst': 'Raj Kumar'}, 'team': 'Netcheck'})
+    values = lambda filters: client.post('/api/non-qualified-calls/filters/values', json={'filters': filters}).json()['values']
+    every = values({})
+    operators = sorted({call['operator'] for call in calls.values()})
+    dataset = str(calls['0xA1']['dataset_id'])
+    assert every['operator'] == operators and every['technology'] == ['LTE', 'NR'] and every['datasets'] == [dataset]
+    assert every['field:analyst'] == ['', 'Raj Kumar'] and every['team'] == ['', 'Netcheck']
+    # A filter leaves in the others only the values of its calls, and keeps all of its own.
+    ee = calls['0xC3']['operator']
+    chosen = values({'operator': [ee]})
+    assert chosen['operator'] == operators and chosen['technology'] == ['NR'] and chosen['datasets'] == [dataset]
+    assert chosen['field:analyst'] == [''] and chosen['team'] == ['']
+    # The fields of the analysis too, also against the other filters.
+    raj = values({'fields': {'analyst': ['Raj Kumar']}})
+    assert raj['field:analyst'] == ['', 'Raj Kumar'] and raj['technology'] == ['LTE'] and raj['operator'] == [calls['0xA1']['operator']]
+    assert values({'operator': [ee], 'fields': {'analyst': ['Raj Kumar']}})['datasets'] == []
+
+
+def test_the_spellings_of_a_netcheck_rca_value_are_one_value(client, tmp_path):
+    # The CDR writes RF_Problems and RF Problems: one value, with spaces and the capitals most calls use.
+    calls = setup_calls(client, tmp_path)
+    assert {calls['0xA1']['failure_classification'], calls['0xB2']['failure_classification']} == {'RF Problems'}
+    state = client.get('/api/non-qualified-calls/state').json()
+    assert state['filter_options']['failure_classification'] == ['RF Problems', 'VoLTE Problems']
+    values = client.post('/api/non-qualified-calls/filters/values', json={'filters': {}}).json()['values']
+    assert values['failure_classification'] == ['RF Problems', 'VoLTE Problems']
+    # A filter saved with another spelling selects the value.
+    assert [call['join_id'] for call in query(client, filters={'failure_classification': ['RF_Problems']})['calls']] == ['0xB2', '0xA1']
+    detail = client.get(f"/api/non-qualified-calls/calls/{calls['0xA1']['call_key']}").json()
+    assert {version['failure_classification'] for version in detail['versions']} == {'RF Problems'}
+    # A word in singular or plural is the same value too; Access keeps its double s and an acronym its capital S.
+    assert nq.unified_spellings({'RF_Problems': 8, 'RF Problems': 3, 'RF problems': 1, 'Interference  problem': 2,
+                                 'Interference problem': 5, 'Interference Problems': 1, 'E2E traces required': 1,
+                                 'E2E Trace Required': 4, 'RAB Access': 2, 'RAB Acces': 1, 'HTTPS': 1, 'HTTP': 1}) == {
+        'RF_Problems': 'RF Problems', 'RF Problems': 'RF Problems', 'RF problems': 'RF Problems',
+        'Interference  problem': 'Interference problem', 'Interference problem': 'Interference problem',
+        'Interference Problems': 'Interference problem', 'E2E traces required': 'E2E Trace Required',
+        'E2E Trace Required': 'E2E Trace Required', 'RAB Access': 'RAB Access', 'RAB Acces': 'RAB Acces', 'HTTPS': 'HTTPS', 'HTTP': 'HTTP'}
 
 
 def test_first_layout_workspaces_take_the_second_one(client, tmp_path):
@@ -794,6 +841,13 @@ def test_admins_import_the_analyses_of_the_previous_tool_by_join_id(client, tmp_
     assert head.index('data-sort="root_category"') < head.index('data-sort="status"') < head.index('data-sort="team"') \
         < head.index('data-sort="comments"') and '>Global Status</span>' in head
     assert page.index('nq-filters-panel') < page.index('nq-calls-panel') < page.index('nq-summary-panel')
+    # The General Filters (the CDRs and the call), then the NQ Analysis Fields Filters with those of the catalog fields of
+    # the CDR and the follow-up (the script adds the others and puts all in the order of the catalog).
+    general = page.split('>General Filters:</p>', 1)[1].split('id="nq-field-filters-title"', 1)[0]
+    fields = page.split('id="nq-field-filters-title">NQ Analysis Fields Filters:</p>', 1)[1].split('id="nq-column-filters-title"', 1)[0]
+    assert 'data-nq-filter="campaign"' in general and 'data-nq-filter="version"' in general and 'data-nq-filter="status"' not in general
+    for name in ('failure_classification', 'failure_category', 'status', 'status_mode', 'team', 'assignee', 'root_domain', 'root_category', 'root_cause'):
+        assert f'data-nq-filter="{name}"' in fields, name
     # The phase cards leave out the calls without a value unless Show Empty Status (unchecked) is checked.
     assert '<input type="checkbox" id="nq-life-show-empty"> Show Empty Status</label>' in page
     assert "const base = phase.drill || showEmpty ? total : items.reduce((sum, item) => sum + item.count, 0);" in script

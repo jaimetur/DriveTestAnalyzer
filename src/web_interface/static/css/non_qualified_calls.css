@@ -26,7 +26,7 @@
 
 /* Filters */
 .nq-filter-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px 14px; }
-/* The Default Filters and the filters of the Additional Columns, each under its title. */
+/* The General Filters, the NQ Analysis Fields Filters and the filters of the Additional Columns, each under its title. */
 .nq-filter-group-title { margin: 4px 0 8px; color: var(--nq-dark, #7d1238); font-size: 0.76rem; font-weight: 850; letter-spacing: 0.04em; text-transform: uppercase; }
 .nq-filter-group-title[hidden] { display: none; }
 #nq-field-filters-title, #nq-column-filters-title { margin-top: 16px; }
@@ -312,6 +312,8 @@
 .non-qualified-calls .nq-join-search input[data-nq-typed-filter]:focus { border-color: var(--nq-color); box-shadow: 0 0 0 3px rgba(176, 35, 79, .14); outline: none; }
 .non-qualified-calls .nq-filter-grid .multiselect-trigger:hover, .non-qualified-calls .nq-filter-grid .multiselect-trigger[aria-expanded="true"] { border-color: var(--nq-color); box-shadow: 0 0 0 3px rgba(176, 35, 79, .14); }
 .non-qualified-calls .nq-filter-grid .multiselect-menu { z-index: 60; width: max-content; min-width: 100%; max-width: min(26rem, 90vw); max-height: min(22rem, 60vh); overflow-y: auto; padding: .5rem; border: 1px solid var(--nq-border); border-radius: 12px; background: #fff; box-shadow: 0 16px 34px rgba(125, 18, 56, .2); backdrop-filter: none; }
+/* The values the calls of the other filters do not have (non_qualified_calls.js, markAvailable). */
+.non-qualified-calls .multiselect-menu .multiselect-option.nq-unavailable { display: none; }
 .non-qualified-calls .nq-filter-grid .multiselect-search { box-sizing: border-box; width: 100%; padding: .45rem .6rem; border: 1px solid var(--nq-border); border-radius: 8px; font-size: .82rem; }
 .non-qualified-calls .nq-filter-grid .multiselect-search:focus { outline: 2px solid rgba(176, 35, 79, .3); border-color: var(--nq-color); }
 .non-qualified-calls .nq-filter-grid .multiselect-action { width: 100%; margin: .3rem 0; padding: .45rem .6rem; border: 0; border-radius: 7px; background: var(--nq-soft); color: var(--nq-dark); font-size: .8rem; font-weight: 800; text-align: left; box-shadow: none; }
@@ -969,6 +971,10 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 .nq-choice-picker .nq-choice-option.is-selected { border-color: var(--nq-color, #b0234f); background: var(--nq-soft, #fcedf2); }
 .nq-choice-picker .nq-choice-option.is-selected::after { content: '✓'; margin-left: auto; color: var(--nq-color, #b0234f); font-weight: 900; }
 .nq-choice-picker .nq-choice-option .nq-pill { max-width: 18rem; font-size: .82rem; }
+/* The default users of the application: first in the lists of assignees, tagged, with a line before the others. */
+.nq-user-tag { flex: 0 0 auto; padding: .05rem .4rem; border: 1px solid var(--nq-border, #f0c4d3); border-radius: 999px; background: var(--nq-softer, #fff7fa); color: var(--nq-muted, #7a5a66); font-size: .64rem; font-weight: 800; letter-spacing: .03em; text-transform: uppercase; white-space: nowrap; }
+.nq-user-divider { position: relative; margin-top: .45rem; }
+.nq-user-divider::before { content: ''; position: absolute; top: -.3rem; right: .2rem; left: .2rem; border-top: 1px solid var(--nq-border, #f0c4d3); pointer-events: none; }
 .nq-choice-picker .nq-choice-option.is-action { margin-top: .25rem; border-top: 1px dashed var(--nq-border, #f0c4d3); border-radius: 0 0 10px 10px; }
 .nq-choice-picker .nq-choice-option[hidden] { display: none; }
 /* A value typed that the list lacks, offered first to add it. */
