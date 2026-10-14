@@ -68,7 +68,7 @@ Above the table, the search and the filters show only the users with a name or u
 
 A module that is in no profile is seen only by the super-admins without a profile, as PPT Reporting (old) on a new deployment or a module added by a later version until it is added to the profiles that should have it. A module that is not shown to a user disappears from the main tabs and the Modules menu, and its pages and API answer 403. Workspace switching, dataset uploads and processing remain available everywhere. Reporting Jobs can only include artifacts of the modules their author sees; see [Reporting](reporting.md).
 
-A new deployment starts with three profiles: **NQ Calls** (**Workspace**, Non-Qualified Calls, **Reporting** and **Builders**), **Benchmarking** (every main module except Non-Qualified Calls and PPT Reporting (old)) and **All Modules** (every main module except PPT Reporting (old)), the default one, in fuchsia, blue and teal. Profiles are stored in the application database (`Modules Profiles` table, and each user's profile in `Users`).
+A new deployment starts with three profiles: **Non-Qualified Calls** (**Workspace**, Non-Qualified Calls, **Reporting** and **Builders**), **Benchmarking** (every main module except Non-Qualified Calls and PPT Reporting (old)) and **All Modules** (every main module except PPT Reporting (old)), the default one, in pink, blue and teal. Profiles are stored in the application database (`Modules Profiles` table, and each user's profile in `Users`).
 
 ## Workspace Groups
 

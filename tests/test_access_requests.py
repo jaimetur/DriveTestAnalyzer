@@ -13,12 +13,12 @@ def profiles():
 
 def test_a_new_deployment_has_the_modules_profiles_of_each_team(client):
     available = profiles()
-    assert set(available) == {'NQ Calls', 'Benchmarking', 'All Modules'}
-    assert available['NQ Calls']['modules'] == ['workspace', 'non-qualified-calls', 'reporting', 'builders']
+    assert set(available) == {'Non-Qualified Calls', 'Benchmarking', 'All Modules'}
+    assert available['Non-Qualified Calls']['modules'] == ['workspace', 'non-qualified-calls', 'reporting', 'builders']
     assert set(available['Benchmarking']['modules']) == set(core.FEATURE_KEYS) - {'non-qualified-calls', 'ppt-reporting-old'}
     assert set(available['All Modules']['modules']) == set(core.FEATURE_KEYS) - {'ppt-reporting-old'}
     assert [name for name, profile in available.items() if profile['is_default']] == ['All Modules']
-    assert {name: profile['color'] for name, profile in available.items()} == {'NQ Calls': '#C026D3', 'Benchmarking': '#1F6FBF', 'All Modules': '#0B7A75'}
+    assert {name: profile['color'] for name, profile in available.items()} == {'Non-Qualified Calls': '#D74B75', 'Benchmarking': '#1E61A3', 'All Modules': '#096767'}
     # Created once per deployment: the later changes of an administrator are kept.
     core.repository.delete_modules_profile(available['Benchmarking']['id'])
     core.repository.initialize()
@@ -36,7 +36,7 @@ def test_access_request_creates_an_inactive_editor_with_the_chosen_access(client
     assert [group['name'] for group in options['workspace_groups']] == ['UK']
     assert options['workspace_groups'][0]['workspaces'] == [core.active_workspace.name]
     assert options['workspace_groups'][0]['description'] == ''
-    assert [profile['name'] for profile in options['modules_profiles']] == ['All Modules', 'Benchmarking', 'NQ Calls']
+    assert [profile['name'] for profile in options['modules_profiles']] == ['All Modules', 'Benchmarking', 'Non-Qualified Calls']
     nq_calls = options['modules_profiles'][2]
     assert nq_calls['modules'] == ['Workspace', 'Non-Qualified Calls', 'Reporting', 'Builders']
     assert nq_calls['module_tabs'][0]['title'] == 'Workspace' and nq_calls['module_tabs'][0]['color'] and nq_calls['module_tabs'][0]['icon']
@@ -54,7 +54,7 @@ def test_access_request_creates_an_inactive_editor_with_the_chosen_access(client
     assert response.status_code == 201, response.text
     result = response.json()
     assert (result['username'], result['name']) == ('EABCDEF', 'Ana García')
-    assert result['modules_profile'] == 'NQ Calls (Workspace, Non-Qualified Calls, Reporting, Builders)'
+    assert result['modules_profile'] == 'Non-Qualified Calls (Workspace, Non-Qualified Calls, Reporting, Builders)'
     assert result['email']['to'] == 'jaime.tur@ericsson.com' and result['email']['subject'].endswith('access request: EABCDEF')
     body = result['email']['body']
     assert 'User: EABCDEF' in body and 'Name: Ana García' in body and f'Workspaces: UK ({core.active_workspace.name})' in body
@@ -63,7 +63,7 @@ def test_access_request_creates_an_inactive_editor_with_the_chosen_access(client
     user_id = next(int(row['id']) for row in core.repository.list_users() if row['username'] == 'EABCDEF')
     assert (core.repository.get_user_by_id(user_id)['first_name'], core.repository.get_user_by_id(user_id)['last_name']) == ('Ana', 'García')
     assert [group['name'] for group in core.repository.list_workspace_groups() if user_id in group['member_ids']] == ['UK']
-    assert user_id in profiles()['NQ Calls']['member_ids']
+    assert user_id in profiles()['Non-Qualified Calls']['member_ids']
     # The user signs in only once an administrator activates it.
     sign_in = {'password': 'secret1', 'workspace_id': core.active_workspace.id}
     assert client.post('/login', data={**sign_in, 'username': 'eabcdef'}, follow_redirects=False).status_code == 401
@@ -81,7 +81,7 @@ def test_access_request_of_an_existing_user_changes_its_access_until_it_is_activ
     other = core.repository.save_workspace_group(None, 'Analysts', '', [])
     user_id = core.repository.create_user('EFGHIJK', 'secret1', 'user-viewer', first_name='Old', last_name='Name')
     core.repository.set_user_workspace_groups(user_id, [uk, other])
-    core.repository.set_users_modules_profile([user_id], profiles()['NQ Calls']['id'])
+    core.repository.set_users_modules_profile([user_id], profiles()['Non-Qualified Calls']['id'])
     core.repository.create_user('EADMINS', 'secret1', 'admin')
     # The dialog warns when the signum already has a user.
     assert client.get('/api/access-requests/users/efghijk').json() == {'exists': True, 'username': 'EFGHIJK', 'administrator': False}
@@ -100,7 +100,7 @@ def test_access_request_of_an_existing_user_changes_its_access_until_it_is_activ
     result = response.json()
     assert result['existing'] and (result['username'], result['role']) == ('EFGHIJK', 'user-viewer')
     assert result['email']['subject'].endswith('access change request: EFGHIJK')
-    assert 'Previous workspaces: UK' in result['email']['body'] and 'Previous modules profile: NQ Calls' in result['email']['body']
+    assert 'Previous workspaces: UK' in result['email']['body'] and 'Previous modules profile: Non-Qualified Calls' in result['email']['body']
     # Its Workspace Groups and profile are replaced, its group without workspaces kept, its name updated,
     # and it waits for the administrator.
     assert {group['name'] for group in core.repository.list_workspace_groups() if user_id in group['member_ids']} == {'DE', 'Analysts'}

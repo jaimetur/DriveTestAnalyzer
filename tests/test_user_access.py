@@ -62,7 +62,7 @@ def test_former_user_groups_become_modules_profiles_and_workspace_groups(client)
     assert profiles['NQ Calls']['modules'] == ['workspace', 'non-qualified-calls']
     assert profiles['Benchmarking']['modules'] == benchmarking
     assert profiles['All Modules']['is_default'] and 'ppt-reporting-old' not in profiles['All Modules']['modules']
-    assert [profiles[name]['color'] for name in ('NQ Calls', 'Benchmarking', 'All Modules')] == ['#C026D3', '#1F6FBF', '#0B7A75']
+    assert [profiles[name]['color'] for name in ('NQ Calls', 'Benchmarking', 'All Modules')] == ['#D74B75', '#1E61A3', '#096767']
     # One module group gives its profile; several give every module of them, and none the modules the user saw.
     assert (profile_of('viewer'), profile_of('editor'), profile_of('plain'), profile_of('boss')) == ('NQ Calls', 'All Modules', 'All Modules', None)
     groups = {group['name']: group for group in core.repository.list_workspace_groups()}
@@ -85,7 +85,7 @@ def test_profile_and_group_cards_save_each_change(client):
     for username in ('ana', 'ben', 'cris'):
         core.repository.create_user(username, 'secret123', 'user-editor')
     profiles = {profile['name']: profile['id'] for profile in core.repository.list_modules_profiles()}
-    nq = profiles['NQ Calls']
+    nq = profiles['Non-Qualified Calls']
     core.repository.set_users_modules_profile([user_id('cris')], profiles['Benchmarking'])
     # Users added on a card leave their previous profile; one only removed gets the default profile, and a user
     # changed elsewhere since the page loaded keeps its change.
@@ -143,11 +143,11 @@ def test_the_selection_bar_changes_several_users_at_once(client):
     for username, role in (('ana', 'user-editor'), ('ben', 'user-viewer'), ('boss', 'super-admin')):
         core.repository.create_user(username, 'secret123', role)
     ids = [user_id('ana'), user_id('ben'), user_id('boss')]
-    nq = next(profile['id'] for profile in core.repository.list_modules_profiles() if profile['name'] == 'NQ Calls')
+    nq = next(profile['id'] for profile in core.repository.list_modules_profiles() if profile['name'] == 'Non-Qualified Calls')
     group = core.repository.save_workspace_group(None, 'UK', '', [core.active_workspace.id])
     response = client.post('/admin/users/bulk', data={'user_ids': ids, 'action': 'modules_profile', 'value': str(nq)})
     assert response.json() == {'updated': ['ana', 'ben', 'boss'], 'skipped': []}
-    assert (profile_of('ana'), profile_of('ben'), profile_of('boss')) == ('NQ Calls', 'NQ Calls', 'NQ Calls')
+    assert (profile_of('ana'), profile_of('ben'), profile_of('boss')) == ('Non-Qualified Calls', 'Non-Qualified Calls', 'Non-Qualified Calls')
     response = client.post('/admin/users/bulk', data={'user_ids': ids, 'action': 'add_workspace_group', 'value': str(group)})
     assert response.json() == {'updated': ['ana', 'ben'], 'skipped': ['boss: super-admins open every workspace']}
     assert (groups_of('ana'), groups_of('ben'), groups_of('boss')) == (['UK'], ['UK'], [])
@@ -200,14 +200,14 @@ def test_a_super_admin_sees_every_module_until_it_is_given_a_profile(client):
 def test_the_create_row_gives_names_profile_and_workspaces(client):
     login(client)
     group = core.repository.save_workspace_group(None, 'UK', '', [core.active_workspace.id])
-    nq = next(profile['id'] for profile in core.repository.list_modules_profiles() if profile['name'] == 'NQ Calls')
+    nq = next(profile['id'] for profile in core.repository.list_modules_profiles() if profile['name'] == 'Non-Qualified Calls')
     response = client.post('/admin/users', data={
         'username': 'ana', 'password': 'secret123', 'role': 'user-editor', 'first_name': 'Ana', 'last_name': 'García',
         'modules_profile_id': str(nq), 'workspace_group_ids': [group],
     }, follow_redirects=False)
     assert response.status_code == 303
     row = core.repository.get_user_by_id(user_id('ana'))
-    assert (row['first_name'], row['last_name'], profile_of('ana'), groups_of('ana')) == ('Ana', 'García', 'NQ Calls', ['UK'])
+    assert (row['first_name'], row['last_name'], profile_of('ana'), groups_of('ana')) == ('Ana', 'García', 'Non-Qualified Calls', ['UK'])
     assert core.repository.user_has_workspace_access('ana', core.active_workspace.id)
 
 
@@ -247,7 +247,7 @@ def wait_for_imports():
 def test_users_access_exports_and_imports_users_profiles_and_groups(client):
     login(client)
     core.repository.create_user('ana', 'secret123', 'user-editor', first_name='Ana', last_name='García')
-    nq = next(profile['id'] for profile in core.repository.list_modules_profiles() if profile['name'] == 'NQ Calls')
+    nq = next(profile['id'] for profile in core.repository.list_modules_profiles() if profile['name'] == 'Non-Qualified Calls')
     core.repository.set_users_modules_profile([user_id('ana')], nq)
     group = core.repository.save_workspace_group(None, 'UK', 'Users of UK', [core.active_workspace.id])
     core.repository.set_user_workspace_groups(user_id('ana'), [group])
@@ -255,7 +255,7 @@ def test_users_access_exports_and_imports_users_profiles_and_groups(client):
     assert manifest['kind'] == 'users-access' and manifest['components'] == ['users_access']
     assert {'id': core.active_workspace.id, 'name': core.active_workspace.name} in manifest['source_workspaces']
     ana = next(item for item in payload['users'] if item['username'] == 'ana')
-    assert (ana['first_name'], ana['modules_profile'], ana['workspace_groups']) == ('Ana', 'NQ Calls', ['UK'])
+    assert (ana['first_name'], ana['modules_profile'], ana['workspace_groups']) == ('Ana', 'Non-Qualified Calls', ['UK'])
     assert next(item for item in payload['workspace_groups'] if item['name'] == 'UK')['workspaces'] == [core.active_workspace.name]
     assert 'Users & Access' in client.get('/admin').text
 
@@ -263,7 +263,7 @@ def test_users_access_exports_and_imports_users_profiles_and_groups(client):
     # server has exists.
     local_only = core.workspace_registry.create('Local only')
     core.repository.delete_user(user_id('ana'))
-    core.repository.save_modules_profile(nq, 'NQ Calls', '', ['workspace'])
+    core.repository.save_modules_profile(nq, 'Non-Qualified Calls', '', ['workspace'])
     core.repository.save_workspace_group(group, 'UK', 'Users of UK', [core.active_workspace.id, local_only.id])
     core.repository.create_user('local', 'secret123', 'user-viewer')
     # The package also demotes the importing super-admin and names a workspace this server does not have.
@@ -273,7 +273,7 @@ def test_users_access_exports_and_imports_users_profiles_and_groups(client):
     import_package(client, repackage(manifest, payload))
     wait_for_imports()
 
-    assert profile_of('ana') == 'NQ Calls' and groups_of('ana') == ['UK']
+    assert profile_of('ana') == 'Non-Qualified Calls' and groups_of('ana') == ['UK']
     assert core.repository.get_user_by_id(user_id('ana'))['last_name'] == 'García'
     assert core.verify_password('secret123', core.repository.get_user('ana').password_hash)
     assert next(profile for profile in core.repository.list_modules_profiles() if profile['id'] == nq)['modules'] == \

@@ -407,23 +407,27 @@ CREATE TABLE IF NOT EXISTS workspace_group_members (
 """
 
 USER_ROLES = ('user-viewer', 'user-editor', 'admin', 'super-admin')
-# The Modules Profiles of a new deployment: (name, description, modules, default).
-# PPT Reporting (old) is in none of them, so only super-admins see it.
-DEFAULT_MODULES_PROFILES: tuple[tuple[str, str, tuple[str, ...], bool], ...] = (
-    ('NQ Calls', 'Workspace, Non-Qualified Calls, Reporting and Builders.', ('workspace', 'non-qualified-calls', 'reporting', 'builders'), False),
+# The colours of the Modules Profiles of a new deployment.
+PROFILE_COLOR_ALL_MODULES, PROFILE_COLOR_BENCHMARKING, PROFILE_COLOR_NON_QUALIFIED_CALLS = '#096767', '#1E61A3', '#D74B75'
+# The Modules Profiles of a new deployment: (name, description, modules, colour, default).
+# PPT Reporting (old) is in none of them, so only super-admins without a profile see it.
+DEFAULT_MODULES_PROFILES: tuple[tuple[str, str, tuple[str, ...], str, bool], ...] = (
+    ('Non-Qualified Calls', 'Workspace, Non-Qualified Calls, Scheduled Reporting & Builders.',
+     ('workspace', 'non-qualified-calls', 'reporting', 'builders'), PROFILE_COLOR_NON_QUALIFIED_CALLS, False),
     ('Benchmarking', 'Every main module except Non-Qualified Calls.',
-     tuple(key for key, _name in MAIN_MODULES if key not in {'non-qualified-calls', 'ppt-reporting-old'}), False),
-    ('All Modules', 'Every main module.', tuple(key for key, _name in MAIN_MODULES if key != 'ppt-reporting-old'), True),
+     tuple(key for key, _name in MAIN_MODULES if key not in {'non-qualified-calls', 'ppt-reporting-old'}), PROFILE_COLOR_BENCHMARKING, False),
+    ('All Modules', 'Every main module.', tuple(key for key, _name in MAIN_MODULES if key != 'ppt-reporting-old'),
+     PROFILE_COLOR_ALL_MODULES, True),
 )
 
 
 def suggested_profile_color(modules: Iterable[str]) -> str:
-    """The colour a Modules Profile starts with: fuchsia for a Non-Qualified Calls team, blue for a profile without
-    Non-Qualified Calls, and teal for one with every kind of module."""
+    """The colour a Modules Profile starts with: that of the Non-Qualified Calls profile for a Non-Qualified Calls team,
+    that of Benchmarking for a profile without Non-Qualified Calls, and that of All Modules for one with every kind of module."""
     chosen = set(modules)
     if 'non-qualified-calls' in chosen and 'scoring' not in chosen:
-        return '#C026D3'
-    return '#1F6FBF' if 'non-qualified-calls' not in chosen else '#0B7A75'
+        return PROFILE_COLOR_NON_QUALIFIED_CALLS
+    return PROFILE_COLOR_BENCHMARKING if 'non-qualified-calls' not in chosen else PROFILE_COLOR_ALL_MODULES
 
 
 def profile_color(value: object, modules: Iterable[str]) -> str:
@@ -1064,10 +1068,10 @@ class Repository:
             conn.execute("ALTER TABLE modules_profiles ADD COLUMN color TEXT NOT NULL DEFAULT ''")
         rows = conn.execute('SELECT id, name, is_default, modules_json, color FROM modules_profiles ORDER BY id').fetchall()
         if not rows:
-            for name, description, modules, default in DEFAULT_MODULES_PROFILES:
+            for name, description, modules, color, default in DEFAULT_MODULES_PROFILES:
                 conn.execute(
                     'INSERT INTO modules_profiles (name, description, modules_json, color, is_default, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-                    (name, description, json.dumps(list(modules)), suggested_profile_color(modules), int(default), local_now_iso()),
+                    (name, description, json.dumps(list(modules)), color, int(default), local_now_iso()),
                 )
             return
         for row in rows:

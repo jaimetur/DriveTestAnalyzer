@@ -2,7 +2,7 @@
 
 Non-Qualified Calls brings the CDR Drive Test follow-up into DriveTest Analyzer as an **NQ Analysis Center**: an executive summary of every call and test that did not complete, a drill-down table of those calls, and a shared follow-up of each one that every user of the workspace sees. Each call is followed through six sections — **General**, **RCA**, **Failure Details**, **Analysis**, **Implementation** and **Planning** — with a Root Category and Root Cause decided from three sources (the NetCheck RCA of the CDR, the Ericsson RCA and the analysts), an NQ Call Status that follows the phases by rules or is set by hand, a responsible team, an assignee and a comment thread. Its panels show the lifecycle of the calls, their phases, where they fail and how the root cause sources agree.
 
-The module is in development, so its main tab can show a red **ALPHA** label (see Interface Settings). On a new deployment it is in the NQ Calls and All Modules profiles; admins and super-admins choose who sees it in [Admin → Modules Profiles](administrator-config.md#modules-profiles).
+The module is in development, so its main tab can show a red **ALPHA** label (see Interface Settings). On a new deployment it is in the Non-Qualified Calls and All Modules profiles; admins and super-admins choose who sees it in [Admin → Modules Profiles](administrator-config.md#modules-profiles).
 
 ## Which calls are Non-Qualified
 

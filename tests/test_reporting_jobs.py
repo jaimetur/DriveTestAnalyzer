@@ -451,7 +451,7 @@ def test_users_table_sets_profile_workspace_groups_and_names(client):
     core.repository.create_user('analyst', 'analyst123', 'user-viewer')
     analyst_id = next(int(row['id']) for row in core.repository.list_users() if row['username'] == 'analyst')
     group_id = core.repository.save_workspace_group(None, 'Analysts', '', [workspace.id])
-    profile_id = next(profile['id'] for profile in core.repository.list_modules_profiles() if profile['name'] == 'NQ Calls')
+    profile_id = next(profile['id'] for profile in core.repository.list_modules_profiles() if profile['name'] == 'Non-Qualified Calls')
     response = client.post(f'/admin/users/{analyst_id}/update', data={
         'username': 'analyst', 'first_name': ' Ana ', 'last_name': 'García', 'role': 'user-viewer', 'active': '1',
         'modules_profile_id': str(profile_id), 'workspace_group_ids': [group_id], 'workspaces_submitted': '1',
