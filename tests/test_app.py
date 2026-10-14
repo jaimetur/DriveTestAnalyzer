@@ -9782,6 +9782,7 @@ def test_docs_routes_expose_readme_changelog_and_help(client) -> None:
         'reporting.md',
         'chart-builder.md',
         'query-builder.md',
+        'bugs-report.md',
         'app-logs.md',
         'app-config.md',
         'workspace-config.md',
@@ -10909,7 +10910,7 @@ def test_module_tabs_take_order_title_icon_and_colour_from_interface_settings(cl
     admin_page = client.get('/admin').text
     assert 'name="title__scoring" value="Scoring &amp; GAP Analysis"' in admin_page and 'data-module-tab-icons' in admin_page
     order = ['workspace', 'network-insights', 'datasets-analysis', 'ppt-dashboards', 'ppt-reporting-old', 'scoring',
-             'non-qualified-calls', 'reporting', 'builders']
+             'non-qualified-calls', 'reporting', 'builders', 'bugs-report']
     form = {'show_module_stage_labels': 'true', **{f'position__{module}': str(index) for index, module in enumerate(order)}}
     form.update({'title__network-insights': 'Radio Insights', 'short_title__network-insights': 'Radio',
                  'tab_icon__network-insights': 'signal', 'tab_color__network-insights': '#aa3300',
@@ -11031,7 +11032,7 @@ def test_every_tab_lists_its_sections_with_icons_in_the_colour_of_its_module(cli
              'ppt-reporting-old': 'reporting.html', 'scoring': 'scoring.html', 'network-insights': 'network_insights.html',
              'non-qualified-calls': 'non_qualified_calls.html', 'reporting': 'report_jobs.html',
              'chart-builder': 'chart_builder.html', 'query-builder': 'query_builder.html', 'app-logs': 'app_logs.html',
-             'admin': 'admin.html'}
+             'admin': 'admin.html', 'bugs-report': 'bugs_report.html'}
     for module, sections in MODULE_SECTIONS.items():
         headings = {section_anchor(re.sub(r'<[^>]+>', '', heading).replace('&amp;', '&'))
                     for heading in re.findall(r'<h[123][^>]*>(.*?)</h[123]>', (templates / pages[module]).read_text(encoding='utf-8'), re.S)}

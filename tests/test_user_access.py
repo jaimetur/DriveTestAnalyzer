@@ -59,8 +59,9 @@ def test_former_user_groups_become_modules_profiles_and_workspace_groups(client)
     core.invalidate_module_access_cache()
 
     profiles = {profile['name']: profile for profile in core.repository.list_modules_profiles()}
-    assert profiles['NQ Calls']['modules'] == ['workspace', 'non-qualified-calls']
-    assert profiles['Benchmarking']['modules'] == benchmarking
+    # Bugs Report, added to the tool after those groups, joins every profile.
+    assert profiles['NQ Calls']['modules'] == ['workspace', 'non-qualified-calls', 'bugs-report']
+    assert profiles['Benchmarking']['modules'] == [*benchmarking, 'bugs-report']
     assert profiles['All Modules']['is_default'] and 'ppt-reporting-old' not in profiles['All Modules']['modules']
     assert [profiles[name]['color'] for name in ('NQ Calls', 'Benchmarking', 'All Modules')] == ['#D74B75', '#1E61A3', '#096767']
     # One module group gives its profile; several give every module of them, and none the modules the user saw.
@@ -277,7 +278,7 @@ def test_users_access_exports_and_imports_users_profiles_and_groups(client):
     assert core.repository.get_user_by_id(user_id('ana'))['last_name'] == 'García'
     assert core.verify_password('secret123', core.repository.get_user('ana').password_hash)
     assert next(profile for profile in core.repository.list_modules_profiles() if profile['id'] == nq)['modules'] == \
-        ['workspace', 'non-qualified-calls', 'reporting', 'builders']
+        ['workspace', 'non-qualified-calls', 'reporting', 'builders', 'bugs-report']
     groups = {item['name']: item['workspace_ids'] for item in core.repository.list_workspace_groups()}
     assert groups == {'UK': sorted([core.active_workspace.id, local_only.id]), 'DE': []}
     assert core.repository.get_user('local') is not None
