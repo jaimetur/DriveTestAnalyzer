@@ -43,6 +43,10 @@
 
 - When any new table is created, it has to be visible in the Database Management selector and the tittle should have the same format than the others (Uppercase the First Letter of each Word).
 
+## App Events
+
+- Make sure that all the actions carried-out by any user are registered in the App Events Log with enough details to do a troubleshooting in case of any error..
+
 ## Tests and Pending Requests
 
 - Do not run tests while there are pending requests from me; finish processing every queued request first and run the tests only when nothing else is left to do.
