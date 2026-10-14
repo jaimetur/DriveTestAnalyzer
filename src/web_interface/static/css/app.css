@@ -4726,8 +4726,12 @@ body:has(> .unassigned-values-card:not([hidden], .is-collapsed)) { padding-botto
 .user-access-all { border-style: dashed; background: transparent; color: #607585; }
 .admin-stack .users-table select.user-role-select:has(option[value="super-admin"]:checked), .admin-stack .users-table .user-role-locked { border-color: #cdbcef; background: #f2ecfc; color: #5b3aa8; }
 .admin-stack .users-table select.user-role-select:has(option[value="admin"]:checked) { border-color: #f0c0c0; background: #fdeeee; color: #9b1c1c; }
-.admin-stack .users-table select.user-role-select:has(option[value="user-editor"]:checked) { border-color: #bcd5ef; background: #eaf2fb; color: #1f5f99; }
+.admin-stack .users-table select.user-role-select:has(option[value="user-editor"]:checked) { border-color: #ecd98f; background: #fdf6d8; color: #85680a; }
 .admin-stack .users-table select.user-profile-select { border-color: #a9d9d2; background: #e9f6f4; color: #0a5c58; }
+/* Full Access, every module of a super-admin without a profile, stands apart from the profiles. */
+.admin-stack .users-table select.user-profile-select:has(option[value="all"]:checked), .user-profile-full-access { font-weight: 800; }
+.admin-stack .users-table select.user-profile-select:has(option[value="all"]:checked) { border-color: #cdbcef; background: #f2ecfc; color: #5b3aa8; }
+.admin-stack .users-table select.user-profile-select option:not(.user-profile-full-access) { font-weight: 500; }
 .admin-stack .users-table .toggle-switch { width: 40px; height: 22px; }
 .admin-stack .users-table .toggle-slider { width: 40px; height: 22px; background: #cfd8de; box-shadow: none; }
 .admin-stack .users-table .toggle-slider::after { top: 3px; left: 3px; width: 16px; height: 16px; box-shadow: 0 1px 3px rgba(16, 49, 74, .25); }

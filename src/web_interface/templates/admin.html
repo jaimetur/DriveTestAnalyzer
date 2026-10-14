@@ -157,8 +157,8 @@
               {% endif %}
             </td>
             <td>
-              {% if locked %}<span class="user-access-all" title="Only super-admins change super-admin accounts">{% for profile in modules_profiles if profile.id == row['modules_profile_id'] %}{{ profile.name }}{% else %}All modules{% endfor %}</span>
-              {% else %}<select class="table-select user-profile-select" name="modules_profile_id" form="user-update-{{ row['id'] }}" aria-label="Modules Profile of {{ row['username'] }}">{% if row['role'] == 'super-admin' %}<option value="all" {% if not row['modules_profile_id'] %}selected{% endif %}>All modules</option>{% endif %}{% for profile in modules_profiles %}<option value="{{ profile.id }}" {% if profile.id == row['modules_profile_id'] %}selected{% endif %}>{{ profile.name }}</option>{% endfor %}</select>{% endif %}
+              {% if locked %}<span class="user-access-all" title="Only super-admins change super-admin accounts">{% for profile in modules_profiles if profile.id == row['modules_profile_id'] %}{{ profile.name }}{% else %}<strong>Full Access</strong>{% endfor %}</span>
+              {% else %}<select class="table-select user-profile-select" name="modules_profile_id" form="user-update-{{ row['id'] }}" aria-label="Modules Profile of {{ row['username'] }}">{% if row['role'] == 'super-admin' %}<option value="all" class="user-profile-full-access" {% if not row['modules_profile_id'] %}selected{% endif %}>Full Access</option><hr>{% endif %}{% for profile in modules_profiles %}<option value="{{ profile.id }}" {% if profile.id == row['modules_profile_id'] %}selected{% endif %}>{{ profile.name }}</option>{% endfor %}</select>{% endif %}
             </td>
             <td>
               <label class="toggle-switch" aria-label="Toggle active state for {{ row['username'] }}">

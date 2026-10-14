@@ -45,7 +45,7 @@ What each account can do, see and open comes from three independent settings, an
 | **Modules Profile** | which main modules it sees | [Modules Profiles](#modules-profiles) |
 | **Workspaces** | which workspaces it opens: those of its Workspace Groups plus those granted to it individually | [Workspace Groups](#workspace-groups) |
 
-Super-admins open every workspace, so their rows show **All workspaces**, and see every module unless they are given a Modules Profile: their **Modules Profile** offers **All modules** besides the profiles.
+Super-admins open every workspace, so their rows show **All workspaces**, and see every module unless they are given a Modules Profile: their **Modules Profile** offers **Full Access** (every module) above the profiles.
 
 The **Users** table edits every account in place and saves each change at once:
 
@@ -57,7 +57,7 @@ Above the table, the search and the filters show only the users with a name or u
 
 ## Modules Profiles
 
-**Modules Profiles** shows one card per profile. A profile is a set of main modules; every user has exactly one profile and sees its modules, and a super-admin sees every module until it is given one (**All modules** returns it to every module). Every change on a card is saved at once and applies to all its users.
+**Modules Profiles** shows one card per profile. A profile is a set of main modules; every user has exactly one profile and sees its modules, and a super-admin sees every module until it is given one (**Full Access** returns it to every module). Every change on a card is saved at once and applies to all its users.
 
 - The name and the description are edited in place.
 - **Modules** shows every main module as a chip with the icon, colour and title of its tab, in the order of the main tabs (renaming or moving a tab in [Interface Settings](#interface-settings) changes the chips too, and profiles keep their modules). Click a chip to add the module to the profile or remove it; the counter shows how many modules it has.

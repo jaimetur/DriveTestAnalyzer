@@ -171,8 +171,8 @@ def test_a_super_admin_sees_every_module_until_it_is_given_a_profile(client):
     assert response.json()['user']['modules_profile_id'] == all_modules
     core.invalidate_module_access_cache()
     assert not core.user_has_feature(boss, 'ppt-reporting-old') and core.user_has_feature(boss, 'scoring')
-    assert 'value="all" >All modules</option>' in client.get('/admin').text
-    # All modules returns it to every module.
+    assert 'value="all" class="user-profile-full-access" >Full Access</option><hr>' in client.get('/admin').text
+    # Full Access returns it to every module.
     response = client.post(f"/admin/users/{user_id('boss')}/update", data={**update, 'modules_profile_id': 'all'},
                            headers={'X-Requested-With': 'XMLHttpRequest'})
     assert response.json()['user']['modules_profile_id'] is None
