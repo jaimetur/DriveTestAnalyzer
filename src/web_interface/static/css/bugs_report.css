@@ -1,5 +1,5 @@
 /* Bugs Report: the list of bug reports, the New Bug Report form and the page of each report. */
-.bugs-report { --bug-accent: #dc2626; }
+.bugs-report { --bug-accent: #dc2626; --bug-gradient: linear-gradient(135deg, #991b1b, #ef4444); --bug-gradient-dark: linear-gradient(135deg, #7f1d1d, #dc2626); }
 .bugs-report .panel { border-radius: 18px; }
 /* Hidden parts stay hidden although their class gives them a display. */
 .bugs-report [hidden] { display: none !important; }
@@ -13,8 +13,8 @@
 .bugs-hero-copy .eyebrow { color: var(--bug-accent); }
 .bugs-hero-copy h2 { margin: .1rem 0 .3rem; color: #10314a; }
 .bugs-hero-copy .lede { margin: 0; color: #48606f; font-size: .92rem; }
-.bugs-new-link { flex: 0 0 auto; align-self: center; padding: .65rem 1.3rem; border-radius: 999px; background: var(--bug-accent); box-shadow: 0 8px 18px rgba(220, 38, 38, .26); color: #fff; font-size: .9rem; font-weight: 700; text-decoration: none; }
-.bugs-new-link:hover { background: #b91c1c; color: #fff; }
+.bugs-new-link { flex: 0 0 auto; align-self: center; padding: .65rem 1.3rem; border-radius: 999px; background: var(--bug-gradient); box-shadow: 0 8px 18px rgba(220, 38, 38, .26); color: #fff; font-size: .9rem; font-weight: 700; text-decoration: none; }
+.bugs-new-link:hover { background: var(--bug-gradient-dark); color: #fff; }
 .bugs-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: .7rem; margin: 0; }
 .bugs-report .bugs-stat { --stat-color: #5a6773; display: grid; gap: .15rem; min-height: 0; padding: .7rem .9rem; border: 1px solid rgba(16, 49, 74, .1); border-radius: 14px; background: #fff; box-shadow: inset 3px 0 0 var(--stat-color); color: #10314a; text-align: left; cursor: pointer; transition: background .15s ease, border-color .15s ease, transform .15s ease; }
 .bugs-report .bugs-stat:hover { border-color: color-mix(in srgb, var(--stat-color) 45%, #fff); background: color-mix(in srgb, var(--stat-color) 6%, #fff); transform: translateY(-1px); }
@@ -75,8 +75,9 @@
 .bug-priority-option input:focus-visible + span { outline: 3px solid color-mix(in srgb, var(--priority-color) 30%, transparent); outline-offset: 2px; }
 .bugs-form-actions { display: flex; align-items: center; justify-content: flex-end; gap: .7rem; flex-wrap: wrap; }
 .bugs-form-actions .form-note { margin: 0 auto 0 0; color: #607585; font-size: .78rem; }
-.bugs-report .bugs-primary-button { min-height: 0; padding: .6rem 1.3rem; border: 0; border-radius: 999px; background: var(--bug-accent); box-shadow: 0 8px 18px rgba(220, 38, 38, .24); color: #fff; font-size: .86rem; font-weight: 700; }
-.bugs-report .bugs-primary-button:hover:not(:disabled) { background: #b91c1c; }
+/* The red buttons of the module have the gradient of its selected tab. */
+.bugs-report .bugs-primary-button { min-height: 0; padding: .6rem 1.3rem; border: 0; border-radius: 999px; background: var(--bug-gradient); box-shadow: 0 8px 18px rgba(220, 38, 38, .24); color: #fff; font-size: .86rem; font-weight: 700; }
+.bugs-report .bugs-primary-button:hover:not(:disabled) { background: var(--bug-gradient-dark); }
 .bugs-report .bugs-primary-button:disabled { background: #e5a3a3; box-shadow: none; }
 .bugs-report .bug-ghost-button { min-height: 0; padding: .55rem 1.1rem; border: 1px solid rgba(16, 49, 74, .18); border-radius: 999px; background: #fff; box-shadow: none; color: #34495a; font-size: .84rem; font-weight: 700; }
 .bugs-report .bug-ghost-button:hover { background: #f3f6f8; }
@@ -127,9 +128,8 @@
 /* The page of a bug report. */
 /* The way back to the list: a button clear of the module tabs above it. */
 .bug-breadcrumb { display: flex; flex-wrap: wrap; align-items: center; gap: .8rem; margin-top: 1rem; }
-.bug-back-link { display: inline-flex; align-items: center; gap: .5rem; padding: .6rem 1.25rem .6rem .95rem; border: 0; border-radius: 999px; background: linear-gradient(135deg, #991b1b, #ef4444); box-shadow: 0 8px 18px rgba(220, 38, 38, .3); color: #fff; font-size: .95rem; font-weight: 800; text-decoration: none; transition: background .15s ease, transform .15s ease; }
-/* The gradient of the selected Bugs Report tab, darker on hover. */
-.bug-back-link:hover, .bug-back-link:focus-visible { background: linear-gradient(135deg, #7f1d1d, #dc2626); color: #fff; transform: translateX(-2px); }
+.bug-back-link { display: inline-flex; align-items: center; gap: .5rem; padding: .6rem 1.25rem .6rem .95rem; border: 0; border-radius: 999px; background: var(--bug-gradient); box-shadow: 0 8px 18px rgba(220, 38, 38, .3); color: #fff; font-size: .95rem; font-weight: 800; text-decoration: none; transition: background .15s ease, transform .15s ease; }
+.bug-back-link:hover, .bug-back-link:focus-visible { background: var(--bug-gradient-dark); color: #fff; transform: translateX(-2px); }
 .bug-back-link:focus-visible { outline: 3px solid rgba(220, 38, 38, .35); outline-offset: 2px; }
 .bug-back-link svg { width: 1.15rem; height: 1.15rem; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
 .bug-breadcrumb-id { color: #7b8994; font-size: .95rem; font-weight: 800; }
