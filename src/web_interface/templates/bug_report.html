@@ -52,20 +52,24 @@
             <span class="bug-avatar" aria-hidden="true">{{ entry.username_name[:1] | upper }}</span>
             <div class="bug-comment-body">
               <header><strong>{{ entry.username_name }}</strong><time>{{ entry.date }}{% if entry.edited_at %} · edited{% endif %}</time>
-                {% if entry.username | lower == user.username | lower or bug_can_manage %}<span class="bug-comment-actions">{% if entry.username | lower == user.username | lower %}<button type="button" data-bug-comment-edit>Edit</button>{% endif %}<button type="button" data-bug-comment-delete>Delete</button></span>{% endif %}
+                {% if user and (entry.username | lower == user.username | lower or bug_can_manage) %}<span class="bug-comment-actions">{% if entry.username | lower == user.username | lower %}<button type="button" data-bug-comment-edit>Edit</button>{% endif %}<button type="button" data-bug-comment-delete>Delete</button></span>{% endif %}
               </header>
               {% if entry.body %}<div class="bug-text" data-bug-comment-text data-raw="{{ entry.body }}">{{ entry.body_html }}</div>{% endif %}
-              {{ screenshot_gallery(entry.attachments, user, removable=true) }}
+              {{ screenshot_gallery(entry.attachments, user, removable=user is not none) }}
             </div>
           </li>
           {% endif %}
           {% endfor %}
         </ol>
+        {% if user %}
         <form class="bug-comment-form" data-bug-comment-form novalidate>
           <label class="bugs-field">Add a comment<textarea name="body" rows="5" maxlength="20000" placeholder="{{ bug_text_guide }}"></textarea></label>
           {{ screenshots_zone(bug_max_screenshots, bug_max_screenshot_mb) }}
           <div class="bugs-form-actions"><button type="submit" class="bugs-primary-button">Comment</button></div>
         </form>
+        {% else %}
+        <p class="bug-signin-note"><a href="/login?next=/bugs-report/{{ bug.id }}">Sign in</a> to comment on this bug report.</p>
+        {% endif %}
       </article>
     </div>
 
@@ -84,7 +88,7 @@
           <div><dt>Updated</dt><dd>{{ bug.updated_date }}</dd></div>
           {% if bug.resolved_date %}<div><dt>{{ bug.status_label }}</dt><dd>{{ bug.resolved_date }}</dd></div>{% endif %}
         </dl>
-        {% if bug.browser %}<p class="bug-browser" title="{{ bug.browser }}">{{ bug.browser }}</p>{% endif %}
+        {% if bug.browser and user %}<p class="bug-browser" title="{{ bug.browser }}">{{ bug.browser }}</p>{% endif %}
       </article>
 
       {% if bug_can_manage %}

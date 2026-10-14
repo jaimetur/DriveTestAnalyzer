@@ -11275,6 +11275,14 @@ def index(request: Request) -> HTMLResponse:
     return RedirectResponse('/login', status_code=status.HTTP_303_SEE_OTHER)
 
 
+def safe_next_url(value: object) -> str:
+    """A page of this application to return to after signing in: a path of this server, never another site."""
+    url = str(value or '').strip()
+    if not url.startswith('/') or url.startswith(('//', '/\\')) or '://' in url or url.startswith('/login'):
+        return ''
+    return url
+
+
 @app.get('/login', response_class=HTMLResponse)
 def login_page(request: Request) -> HTMLResponse:
     workspaces = workspace_registry.list()
@@ -11290,6 +11298,7 @@ def login_page(request: Request) -> HTMLResponse:
             'workspaces': workspaces,
             'active_workspace': active_workspace,
             'selected_workspace_id': selected_workspace_id,
+            'next_url': safe_next_url(request.query_params.get('next')),
         },
     )
 
@@ -11300,8 +11309,10 @@ def login(
     username: str = Form(...),
     password: str = Form(...),
     workspace_id: str | None = Form(default=None),
+    next_url: str = Form('', alias='next'),
 ) -> Response:
     submitted_username = username.strip().casefold()
+    next_url = safe_next_url(next_url)
     record = repository.get_user(username)
     if not record or not record.active or not verify_password(password, record.password_hash):
         repository.try_add_log(submitted_username or '(blank)', 'login', json.dumps({
@@ -11314,7 +11325,7 @@ def login(
             'login.html',
             {
                 'error': 'Invalid credentials', 'default_access_accounts': build_default_access_accounts(),
-                'workspaces': workspaces, 'active_workspace': active_workspace,
+                'workspaces': workspaces, 'active_workspace': active_workspace, 'next_url': next_url,
                 'selected_workspace_id': active_workspace.id if active_workspace else workspace_registry.most_recent().id,
             },
             status_code=401,
@@ -11331,7 +11342,7 @@ def login(
                 'error_tone': 'warning',
                 'default_access_accounts': build_default_access_accounts(),
                 'workspaces': workspace_registry.list(), 'active_workspace': active_workspace,
-                'selected_workspace_id': workspace_id,
+                'selected_workspace_id': workspace_id, 'next_url': next_url,
             }, status_code=403)
         try:
             activate_workspace(workspace_id)
@@ -11347,11 +11358,11 @@ def login(
                     if database_busy else str(exc)
                 ), 'default_access_accounts': build_default_access_accounts(),
                 'workspaces': workspace_registry.list(), 'active_workspace': active_workspace,
-                'selected_workspace_id': workspace_id,
+                'selected_workspace_id': workspace_id, 'next_url': next_url,
             }, status_code=503 if database_busy else 400)
 
     user = SessionUser(username=record.username, role=record.role)
-    response = RedirectResponse('/documents/view/help', status_code=status.HTTP_303_SEE_OTHER)
+    response = RedirectResponse(next_url or '/documents/view/help', status_code=status.HTTP_303_SEE_OTHER)
     create_session(response, user)
     repository.try_add_log(record.username, 'login', json.dumps({
         'success': True, 'result': 'successful', 'role': record.role,
@@ -15426,9 +15437,10 @@ def reporting(request: Request, user: SessionUser = Depends(current_user)) -> HT
 
 
 # ---------------------------------------------------------------------------
-# Bugs Report: the tickets of the bugs found in the tool (src/modules/bugs_report.py). Every user with the module
-# opens tickets and comments on them; the reporter edits the ticket and its priority, and only super-admins attend
-# it (status, assignment, fixed version) or delete it.
+# Bugs Report: the tickets of the bugs found in the tool (src/modules/bugs_report.py). Anyone with a link reads the
+# list, a ticket and its screenshots without signing in; every signed-in user with the module opens tickets and
+# comments on them; the reporter edits the ticket and its priority, and only super-admins attend it (status,
+# assignment, fixed version) or delete it.
 # ---------------------------------------------------------------------------
 def bug_report_people() -> dict[str, dict[str, str]]:
     """Each account by its username: the name shown (first and last name, or the username) and its role."""
@@ -15465,9 +15477,9 @@ def serialize_bug_report(row: dict[str, Any], modules: dict[str, dict[str, str]]
     }
 
 
-def can_edit_bug_report(user: SessionUser, bug: dict[str, Any]) -> bool:
+def can_edit_bug_report(user: SessionUser | None, bug: dict[str, Any]) -> bool:
     """The reporter of a ticket and the super-admins edit it and change its priority."""
-    return user.role == 'super-admin' or str(bug['created_by']).casefold() == user.username.casefold()
+    return user is not None and (user.role == 'super-admin' or str(bug['created_by']).casefold() == user.username.casefold())
 
 
 def require_bug_report(bug_id: int) -> dict[str, Any]:
@@ -15497,7 +15509,7 @@ async def read_bug_report_screenshots(files: list[UploadFile]) -> list[dict[str,
 
 
 @app.get('/bugs-report', response_class=HTMLResponse)
-def bugs_report_page(request: Request, user: SessionUser = Depends(current_user)) -> HTMLResponse:
+def bugs_report_page(request: Request, user: SessionUser | None = Depends(optional_user)) -> HTMLResponse:
     from src.modules.bugs_report import (
         DEFAULT_PRIORITY, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_PER_UPLOAD, PRIORITIES, STATUSES, TEXT_GUIDE, list_bugs,
     )
@@ -15510,13 +15522,13 @@ def bugs_report_page(request: Request, user: SessionUser = Depends(current_user)
         'user': user, 'bugs': bugs, 'bug_modules': modules, 'bug_priorities': PRIORITIES, 'bug_statuses': STATUSES,
         'bug_default_priority': DEFAULT_PRIORITY, 'bug_text_guide': TEXT_GUIDE,
         'bug_status_counts': {status: sum(1 for bug in bugs if bug['status'] == status) for status in STATUSES},
-        'bug_mine_open': sum(1 for bug in bugs if bug['is_open'] and str(bug['created_by']).casefold() == user.username.casefold()),
+        'bug_mine_open': sum(1 for bug in bugs if user and bug['is_open'] and str(bug['created_by']).casefold() == user.username.casefold()),
         'bug_max_screenshots': MAX_ATTACHMENTS_PER_UPLOAD, 'bug_max_screenshot_mb': MAX_ATTACHMENT_BYTES // (1024 * 1024),
     })
 
 
 @app.get('/bugs-report/{bug_id:int}', response_class=HTMLResponse)
-def bug_report_page(request: Request, bug_id: int, user: SessionUser = Depends(current_user)) -> HTMLResponse:
+def bug_report_page(request: Request, bug_id: int, user: SessionUser | None = Depends(optional_user)) -> HTMLResponse:
     from src.modules.bugs_report import (
         FIELD_LABELS, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_PER_UPLOAD, PRIORITIES, STATUSES, TEXT_GUIDE, rich_text_html,
     )
@@ -15549,14 +15561,14 @@ def bug_report_page(request: Request, bug_id: int, user: SessionUser = Depends(c
         ]
     return render_template(request, 'bug_report.html', {
         'user': user, 'bug': bug, 'bug_modules': modules, 'bug_priorities': PRIORITIES, 'bug_statuses': STATUSES,
-        'bug_can_edit': can_edit_bug_report(user, bug), 'bug_can_manage': user.role == 'super-admin', 'bug_text_guide': TEXT_GUIDE,
+        'bug_can_edit': can_edit_bug_report(user, bug), 'bug_can_manage': bool(user and user.role == 'super-admin'), 'bug_text_guide': TEXT_GUIDE,
         'bug_super_admins': [{'username': username, 'name': person['name']} for username, person in people.items() if person['role'] == 'super-admin'],
         'bug_max_screenshots': MAX_ATTACHMENTS_PER_UPLOAD, 'bug_max_screenshot_mb': MAX_ATTACHMENT_BYTES // (1024 * 1024),
     })
 
 
 @app.get('/bugs-report/attachments/{attachment_id:int}')
-def bug_report_attachment(attachment_id: int, user: SessionUser = Depends(current_user)) -> Response:
+def bug_report_attachment(attachment_id: int, user: SessionUser | None = Depends(optional_user)) -> Response:
     from src.modules.bugs_report import get_attachment
 
     attachment = get_attachment(repository, attachment_id)

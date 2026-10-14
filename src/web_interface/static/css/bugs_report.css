@@ -176,6 +176,8 @@
 .bugs-report .bug-comment-actions button { min-height: 0; padding: .15rem .55rem; border: 1px solid transparent; border-radius: 999px; background: transparent; box-shadow: none; color: #607585; font-size: .74rem; font-weight: 700; }
 .bugs-report .bug-comment-actions button:hover { border-color: rgba(16, 49, 74, .14); background: #fff; color: #10314a; }
 .bug-comment-editor { display: grid; gap: .5rem; }
+.bug-signin-note { margin: 0; padding-top: .8rem; border-top: 1px solid rgba(16, 49, 74, .08); color: #607585; font-size: .86rem; }
+.bug-signin-note a { color: var(--bug-accent); font-weight: 700; }
 .bug-comment-form { display: grid; gap: .7rem; padding-top: .8rem; border-top: 1px solid rgba(16, 49, 74, .08); }
 .bug-details dl { display: grid; gap: .55rem; margin: 0; }
 .bug-details dl div { display: flex; align-items: center; justify-content: space-between; gap: .6rem; }

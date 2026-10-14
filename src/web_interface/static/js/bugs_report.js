@@ -105,7 +105,7 @@
           && (statusValue === '' || (statusValue === 'open' ? row.dataset.open === 'true' : row.dataset.status === statusValue))
           && (!filters.priority.value || row.dataset.priority === filters.priority.value)
           && (filters.module.value === '*' || row.dataset.module === filters.module.value)
-          && (!filters.mine.checked || row.dataset.mine === 'true');
+          && (!filters.mine?.checked || row.dataset.mine === 'true');
         row.hidden = !visible;
         shown += visible ? 1 : 0;
       });
@@ -120,7 +120,7 @@
       if (empty && rows.length) empty.hidden = shown > 0;
       try {
         window.localStorage.setItem(storageKey, JSON.stringify({
-          status: statusValue, priority: filters.priority.value, module: filters.module.value, mine: filters.mine.checked, sort: sort.value,
+          status: statusValue, priority: filters.priority.value, module: filters.module.value, mine: Boolean(filters.mine?.checked), sort: sort.value,
         }));
       } catch (_) { /* Not remembered. */ }
     };
@@ -131,7 +131,7 @@
     const stats = [...document.querySelectorAll('[data-bugs-stat]')];
     const pressedStat = () => {
       if (filters.search.value || filters.priority.value || filters.module.value !== '*') return '';
-      if (filters.mine.checked) return filters.status.value === 'open' ? 'mine' : '';
+      if (filters.mine?.checked) return filters.status.value === 'open' ? 'mine' : '';
       return filters.status.value;
     };
     const syncStats = () => stats.forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.bugsStat === pressedStat())));
@@ -140,7 +140,7 @@
       filters.search.value = '';
       filters.priority.value = '';
       filters.module.value = '*';
-      filters.mine.checked = chosen === 'mine';
+      if (filters.mine) filters.mine.checked = chosen === 'mine';
       filters.status.value = !chosen || chosen === 'mine' ? 'open' : chosen;
       apply();
       const panel = document.getElementById('section-bug-reports');

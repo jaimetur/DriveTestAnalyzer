@@ -5,6 +5,9 @@ Use **Bugs Report** to report the bugs you find in the tool, with their screensh
 > [!NOTE]
 > **Module access.** **Bugs Report** is in every Modules Profile, and it is the only main module that opens without a workspace: bug reports belong to the tool, not to a workspace. Admins and super-admins choose who sees it in **Admin → Modules Profiles**. Every role, `user-viewer` included, can report bugs and comment on them.
 
+> [!TIP]
+> **Share a bug report by its link.** The list (`/bugs-report`) and each bug report (`/bugs-report/<number>`), with its screenshots, open without signing in, read-only, so a link can be sent to anyone who reaches the server. Reporting, commenting and editing ask to sign in, and signing in from there returns to the bug report.
+
 ## In this guide
 
 | Task or topic | Go to |
@@ -86,7 +89,8 @@ New, In Progress and Waiting for Info are the open statuses. The date a report i
 
 | Action | Who |
 | --- | --- |
-| See every bug report, report bugs and comment on them | Every user with the module |
+| Read the bug reports, their timeline and screenshots | Anyone with the link, without signing in |
+| Report bugs and comment on them | Every signed-in user with the module |
 | Edit a report (title, module, description), change its priority and add screenshots to it | Its reporter and the super-admins |
 | Edit or delete a comment | Its author (super-admins also delete any comment) |
 | Attend a report: **Attend this bug**, its status, who attends it (a super-admin) and the version that fixes it | Super-admins |

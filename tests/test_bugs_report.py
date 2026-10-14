@@ -192,3 +192,35 @@ def test_descriptions_and_comments_read_with_nested_bullets_and_titles(client):
     assert '<p class="bug-text-heading">Cause:</p><ul><li>One<ul><li>Two</li></ul></li></ul>' in page
     assert 'data-raw="Cause:\n- One\n  - Two"' in page
     assert 'placeholder="Problem:\n- What you did and what happened' in page
+
+
+def test_anyone_reads_bug_reports_without_signing_in_but_only_signed_in_users_change_them(client):
+    login(client)
+    bug_id = open_bug(client)
+    client.post(f'/api/bugs-report/{bug_id}/comments', data={'body': 'Seen in DE too'})
+    from src.modules.bugs_report import get_bug
+    screenshot = get_bug(core.repository, bug_id)['attachments'][0]['id']
+
+    client.cookies.clear()
+    listing = client.get('/bugs-report', follow_redirects=False)
+    assert listing.status_code == 200 and 'Export fails' in listing.text
+    assert 'href="/login?next=/bugs-report">Sign in to report a bug</a>' in listing.text
+    assert 'data-bugs-create-form' not in listing.text and 'data-bugs-stat="mine"' not in listing.text
+    page = client.get(f'/bugs-report/{bug_id}', follow_redirects=False)
+    assert page.status_code == 200 and 'Export fails' in page.text and 'Seen in DE too' in page.text
+    assert f'href="/login?next=/bugs-report/{bug_id}">Sign in</a> to comment' in page.text
+    assert f'class="topnav-link topnav-link-signin" href="/login?next=/bugs-report/{bug_id}"' in page.text
+    assert not any(marker in page.text for marker in ('data-bug-comment-form', 'data-bug-edit-toggle', 'data-bug-manage-form', 'data-bug-shot-delete'))
+    assert client.get(f'/bugs-report/attachments/{screenshot}').content == PNG
+    # Opening, commenting and editing need a session.
+    assert client.post('/api/bugs-report', data={'title': 'Anonymous'}).status_code == 401
+    assert client.post(f'/api/bugs-report/{bug_id}/comments', data={'body': 'Anonymous'}).status_code == 401
+    assert client.post(f'/api/bugs-report/{bug_id}/update', data={'priority': 'P1'}).status_code == 401
+
+    # Signing in from a bug report returns to it; a link to another site is ignored.
+    assert f'name="next" value="/bugs-report/{bug_id}"' in client.get(f'/login?next=/bugs-report/{bug_id}').text
+    signed_in = client.post('/login', data={'username': 'super', 'password': 'super123', 'next': f'/bugs-report/{bug_id}'}, follow_redirects=False)
+    assert signed_in.headers['location'] == f'/bugs-report/{bug_id}'
+    client.cookies.clear()
+    elsewhere = client.post('/login', data={'username': 'super', 'password': 'super123', 'next': '//evil.example/x'}, follow_redirects=False)
+    assert elsewhere.headers['location'] == '/documents/view/help'

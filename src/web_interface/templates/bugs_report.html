@@ -11,17 +11,18 @@
         <h2>Report the bugs you find and follow them until they are fixed</h2>
         <p class="lede">Open a bug report with what happened and its screenshots: it keeps the version of the tool and the date. Follow it with comments; its reporter edits it and sets its priority, and the super-admins attend it until it is resolved.</p>
       </div>
-      <a class="bugs-new-link" href="#section-new-bug-report" data-bugs-new>New Bug Report</a>
+      {% if user %}<a class="bugs-new-link" href="#section-new-bug-report" data-bugs-new>New Bug Report</a>{% else %}<a class="bugs-new-link" href="/login?next=/bugs-report">Sign in to report a bug</a>{% endif %}
     </div>
     {# Each count lists its bug reports below; pressed again, the list shows the open ones (bugs_report.js). #}
     <div class="bugs-stats" role="group" aria-label="List the bug reports of a status">
       {% for status in ['new', 'in_progress', 'waiting_info', 'resolved'] %}
       <button type="button" class="bugs-stat" data-status="{{ status }}" data-bugs-stat="{{ status }}" aria-pressed="false" title="List the {{ bug_statuses[status] }} bug reports"><span class="bugs-stat-label">{{ bug_statuses[status] }}</span><strong>{{ bug_status_counts[status] }}</strong></button>
       {% endfor %}
-      <button type="button" class="bugs-stat" data-status="mine" data-bugs-stat="mine" aria-pressed="false" title="List my open bug reports"><span class="bugs-stat-label">My open reports</span><strong>{{ bug_mine_open }}</strong></button>
+      {% if user %}<button type="button" class="bugs-stat" data-status="mine" data-bugs-stat="mine" aria-pressed="false" title="List my open bug reports"><span class="bugs-stat-label">My open reports</span><strong>{{ bug_mine_open }}</strong></button>{% endif %}
     </div>
   </article>
 
+  {% if user %}
   <details class="panel collapsible-panel bugs-new-panel" id="section-new-bug-report" data-panel-state-key="bugs-report:new"{% if not bugs %} open{% endif %}>
     <summary class="collapsible-summary">
       <div>
@@ -58,6 +59,7 @@
       </div>
     </form>
   </details>
+  {% endif %}
 
   <details class="panel collapsible-panel bugs-list-panel" id="section-bug-reports" open data-panel-state-key="bugs-report:list">
     <summary class="collapsible-summary">
@@ -89,7 +91,7 @@
         <option value="created">Newest</option>
         <option value="oldest">Oldest</option>
       </select>
-      <label class="bugs-mine-toggle"><input type="checkbox" data-bugs-filter="mine"><span>Only mine</span></label>
+      {% if user %}<label class="bugs-mine-toggle"><input type="checkbox" data-bugs-filter="mine"><span>Only mine</span></label>{% endif %}
       <span class="bugs-count" data-bugs-count role="status"></span>
     </div>
     <div class="bugs-table-wrap">
@@ -97,7 +99,7 @@
         <thead><tr><th>#</th><th>Bug</th><th>Priority</th><th>Status</th><th>Assigned to</th><th>Updated</th><th>Activity</th></tr></thead>
         <tbody>
           {% for bug in bugs %}
-          <tr data-bug-row data-href="/bugs-report/{{ bug.id }}" data-id="{{ bug.id }}" data-status="{{ bug.status }}" data-open="{{ 'true' if bug.is_open else 'false' }}" data-priority="{{ bug.priority }}" data-module="{{ bug.module }}" data-mine="{{ 'true' if bug.created_by | lower == user.username | lower else 'false' }}" data-created="{{ bug.created_at }}" data-updated="{{ bug.updated_at }}" data-search="#{{ bug.id }} {{ bug.title | lower }} {{ bug.created_by | lower }} {{ bug.created_by_name | lower }}">
+          <tr data-bug-row data-href="/bugs-report/{{ bug.id }}" data-id="{{ bug.id }}" data-status="{{ bug.status }}" data-open="{{ 'true' if bug.is_open else 'false' }}" data-priority="{{ bug.priority }}" data-module="{{ bug.module }}" data-mine="{{ 'true' if user and bug.created_by | lower == user.username | lower else 'false' }}" data-created="{{ bug.created_at }}" data-updated="{{ bug.updated_at }}" data-search="#{{ bug.id }} {{ bug.title | lower }} {{ bug.created_by | lower }} {{ bug.created_by_name | lower }}">
             <td class="bugs-id">#{{ bug.id }}</td>
             <td class="bugs-title-cell">
               <a href="/bugs-report/{{ bug.id }}" class="bugs-title">{{ bug.title }}</a>

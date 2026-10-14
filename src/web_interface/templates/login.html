@@ -36,6 +36,7 @@
       <p class="form-note">Select Username, Password and Workspace to open.</p>
     </div>
     <form class="form-stack login-form" method="post" action="/login">
+      {% if next_url %}<input type="hidden" name="next" value="{{ next_url }}">{% endif %}
       {% if error %}<div class="alert{% if error_tone == 'warning' %} alert-warning{% endif %}" role="alert">{{ error }}</div>{% endif %}
       <label>Username<input type="text" name="username" autocomplete="username" required></label>
       <label>Password
