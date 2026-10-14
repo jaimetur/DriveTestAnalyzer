@@ -37,8 +37,9 @@ def test_scoring_selection_loads_from_server_before_enabling_controls():
     assert "root.dataset.selectionUrl || '/api/scoring/selection'" in script
     assert 'data-selection-url="/api/scoring/selection"' in template
     assert "const body = await requestJson(selectionUrl);" in script
-    assert 'applySavedCalculationSelection(body.selection);' in script
-    assert 'selectionPersisted = body.persisted !== false;' in script
+    # A new scoring starts without the National & area summary, also when the saved selection had it.
+    assert 'applySavedCalculationSelection({...body.selection, area_summary: {...savedSummary, enabled: false}});' in script
+    assert 'selectionPersisted = body.persisted !== false && !savedSummary.enabled;' in script
     assert 'if (!selectionPersisted) {' in script
     assert 'await persistCalculationSelection({force: true});' in script
     assert "calculationPanel.inert = true;" in script
@@ -430,3 +431,14 @@ process.stdout.write(JSON.stringify(log));
         # A partial choice keeps the values the other CDRs do not have, for when they come back.
         'VF EE* VF-VoNR', 'VF EE* VF-SA*',
     ]
+
+
+def test_included_area_summary_says_why_the_area_filters_are_locked():
+    script = SCORING_SCRIPT.read_text(encoding='utf-8')
+    template = SCORING_TEMPLATE.read_text(encoding='utf-8')
+
+    assert 'data-scoring-area-filter-lock hidden' in template
+    assert 'needs the scoring of the whole country' in template
+    assert 'data-scoring-area-filter-unlock' in template
+    assert "select.closest('label')?.classList.toggle('is-area-locked', included);" in script
+    assert 'areaFilterLock.hidden = !included || !locked.length;' in script

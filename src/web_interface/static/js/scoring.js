@@ -270,6 +270,7 @@
   const areaSummaryBreakdown = root.querySelector('[data-scoring-area-breakdown]');
   const areaSummaryCities = root.querySelector('[data-scoring-area-cities]');
   const geographicFilterKeys = ['Region', 'Cluster', 'City'];
+  const areaFilterLock = root.querySelector('[data-scoring-area-filter-lock]');
   const message = root.querySelector('[data-scoring-message]');
   const savedFilterLists = [...root.querySelectorAll('[data-saved-filter-list]')];
   const savedFilterList = savedFilterLists[0];
@@ -560,11 +561,18 @@
         for (const option of select.options) option.selected = false;
         select.removeAttribute('data-scoring-remembered-values');
       }
+      select.closest('label')?.classList.toggle('is-area-locked', included);
       if (select.disabled !== included) {
         select.disabled = included;
-        select.title = included ? 'Disabled by the National & area summary, which needs the whole country' : '';
+        select.title = included ? 'Disabled while Include National & area summary is checked: the summary needs the scoring of the whole country' : '';
         select.dispatchEvent(new Event('multiselect:options-updated'));
       }
+    }
+    if (areaFilterLock) {
+      const locked = geographicFilterKeys.filter(key => contextFilterSelects.has(key));
+      areaFilterLock.hidden = !included || !locked.length;
+      const names = areaFilterLock.querySelector('[data-scoring-area-filter-lock-names]');
+      if (names) names.textContent = locked.length > 1 ? `${locked.slice(0, -1).join(', ')} and ${locked.at(-1)} filters are` : `${locked[0] || ''} filter is`;
     }
     if (areaSummaryCities && areaSummaryCities.disabled !== !included) {
       areaSummaryCities.disabled = !included;
@@ -656,6 +664,11 @@
     } finally {
       save.disabled = false;
     }
+  });
+  areaFilterLock?.querySelector('[data-scoring-area-filter-unlock]')?.addEventListener('click', () => {
+    if (!areaSummaryEnabled) return;
+    areaSummaryEnabled.checked = false;
+    areaSummaryEnabled.dispatchEvent(new Event('change', {bubbles: true}));
   });
   root.querySelector('[data-scoring-hierarchy-open]')?.addEventListener('click', (event) => {
     event.preventDefault();
@@ -863,9 +876,11 @@
     try {
       const body = await requestJson(selectionUrl);
       if (!body.selection || typeof body.selection !== 'object') throw new Error('The saved scoring selection is unavailable.');
-      applySavedCalculationSelection(body.selection);
+      // A new scoring starts without the National & area summary: only a Saved Filter that has it includes it.
+      const savedSummary = body.selection.area_summary && typeof body.selection.area_summary === 'object' ? body.selection.area_summary : {};
+      applySavedCalculationSelection({...body.selection, area_summary: {...savedSummary, enabled: false}});
       const appliedKey = calculationSelectionKey(calculationSelectionFromControls());
-      selectionPersisted = body.persisted !== false;
+      selectionPersisted = body.persisted !== false && !savedSummary.enabled;
       lastSavedSelectionKey = selectionPersisted ? appliedKey : '';
       lastQueuedSelectionKey = selectionPersisted ? appliedKey : '';
       selectionLoaded = true;

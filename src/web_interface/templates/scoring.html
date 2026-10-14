@@ -68,6 +68,17 @@
   .scoring-area-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(13rem, 16rem)); gap: .6rem 1rem; }
   .scoring-area-grid label { display: grid; gap: .3rem; font-size: .82rem; font-weight: 700; color: #31545a; }
   .scoring-area-summary:not(.is-included) .scoring-area-grid { opacity: .55; }
+  /* Included, the summary locks the area filters of the Context filters, and says why. */
+  .scoring-area-filter-lock { display: flex; align-items: center; gap: .7rem; margin: 0 0 .7rem; padding: .65rem .8rem; border: 1px solid rgba(197,138,0,.45); border-left: 4px solid #c58a00; border-radius: 11px; background: #fff7e3; color: #6b4a00; line-height: 1.4; }
+  .scoring-area-filter-lock[hidden] { display: none; }
+  .scoring-area-filter-lock > svg { flex: 0 0 auto; width: 1.4rem; height: 1.4rem; color: #c58a00; }
+  .scoring-area-filter-lock p { flex: 1 1 auto; min-width: 0; margin: 0; font-size: .78rem; }
+  .scoring-area-filter-lock strong { color: #5a3e00; }
+  .scoring-area-filter-lock button { flex: 0 0 auto; padding: .38rem .7rem; border: 1px solid rgba(197,138,0,.55); border-radius: 9px; background: #fff; color: #6b4a00; font-size: .74rem; font-weight: 750; white-space: nowrap; cursor: pointer; }
+  .scoring-area-filter-lock button:hover { background: #fff1cc; }
+  @media(max-width:900px) { .scoring-area-filter-lock { flex-wrap: wrap; } .scoring-area-filter-lock p { flex-basis: calc(100% - 2.1rem); } .scoring-area-filter-lock button { margin-left: 2.1rem; } }
+  .scoring-context-filter-grid > label.is-area-locked { position: relative; color: #8a5a00; }
+  .scoring-context-filter-grid > label.is-area-locked::after { content: 'Locked'; position: absolute; top: -.05rem; right: 0; padding: 0 .4rem 0 1.05rem; border-radius: 999px; background: #fff1cc url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%238a5a00' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='4' y='9' width='12' height='9' rx='2'/%3E%3Cpath d='M7 9V6a3 3 0 0 1 6 0v3'/%3E%3C/svg%3E") no-repeat .3rem 50% / .62rem; color: #8a5a00; font-size: .6rem; font-weight: 800; letter-spacing: .03em; line-height: 1.35; text-transform: uppercase; }
   /* Weekly and Daily CDRs stand out from the Final CDRs, as when they are uploaded. */
   .scoring-dataset-option[data-cdr-stage="daily"] { border: 1px dashed rgba(240, 122, 26, .75); background: #fff8ef; }
   .scoring-dataset-option[data-cdr-stage="weekly"] { border: 1px dashed rgba(123, 92, 196, .75); background: #f7f3ff; }
@@ -601,6 +612,11 @@
     {% endif %}
     <div class="scoring-picker" aria-labelledby="scoring-context-filters-title">
       <div class="scoring-picker-head"><strong id="scoring-context-filters-title">Context filters</strong><span>From selected CDRs</span></div>
+      <div class="scoring-area-filter-lock" role="status" data-scoring-area-filter-lock hidden>
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="4" y="9" width="12" height="9" rx="2"/><path d="M7 9V6a3 3 0 0 1 6 0v3"/></svg>
+        <p><strong>The <span data-scoring-area-filter-lock-names>Region, Cluster and City filters are</span> disabled because Include National &amp; area summary is checked.</strong> The National &amp; area summary needs the scoring of the whole country to calculate the National scoring and each area, so the selection cannot be filtered by area.</p>
+        <button type="button" data-scoring-area-filter-unlock>Uncheck the summary to filter by area</button>
+      </div>
       <div class="scoring-context-filter-grid" data-scoring-context-filters>
         {% for level in aggregation_levels %}{% for field in (['Operator_Vendor', 'Vendor_Operator', 'Vendor'] if level == 'Vendor' else [level]) %}
         <label>{{ field }}
