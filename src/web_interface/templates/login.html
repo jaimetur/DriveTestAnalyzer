@@ -175,12 +175,18 @@
   };
   // Nothing is chosen beforehand: at least one workspace and the modules must be chosen. Each choice is a tile with
   // its workspaces or modules.
-  const option = (type, name, value, title, note, chips) => {
+  const option = (type, name, value, title, note, chips, color = '') => {
     const label = element('label', undefined, 'access-request-tile');
     const input = element('input');
     Object.assign(input, {type, name, value: String(value)});
     const head = element('span', undefined, 'access-request-tile-head');
-    head.append(element('strong', title), element('span', undefined, `access-request-check access-request-check-${type}`));
+    const heading = element('strong', title);
+    if (color) {
+      const dot = element('span', undefined, 'access-request-dot');
+      dot.style.background = color;
+      heading.prepend(dot);
+    }
+    head.append(heading, element('span', undefined, `access-request-check access-request-check-${type}`));
     const list = element('span', undefined, 'access-request-chips');
     list.append(...chips);
     label.append(input, head);
@@ -202,7 +208,7 @@
         : [element('p', 'No workspace can be requested yet: ask the administrator.', 'form-note')]));
       modules.replaceChildren(...(data.modules_profiles.length
         ? data.modules_profiles.map((profile) => option('radio', 'modules_profile_id', profile.id, profile.name, profile.description,
-          profile.module_tabs.map((module) => chip(module.title, module.color, module.icon))))
+          profile.module_tabs.map((module) => chip(module.title, module.color, module.icon)), profile.color))
         : [element('p', 'No modules profile can be requested yet: ask the administrator.', 'form-note')]));
     } catch (exc) {
       showError(exc.message);

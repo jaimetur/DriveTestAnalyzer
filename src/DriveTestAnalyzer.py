@@ -11277,7 +11277,7 @@ def access_request_options() -> dict[str, Any]:
             workspace_groups.append({'id': int(group['id']), 'name': group['name'], 'description': group['description'], 'workspaces': workspaces})
     return {
         'workspace_groups': workspace_groups,
-        'modules_profiles': [{'id': int(profile['id']), 'name': profile['name'], 'description': profile['description'],
+        'modules_profiles': [{'id': int(profile['id']), 'name': profile['name'], 'description': profile['description'], 'color': profile['color'],
                              'modules': [labels[key]['title'] for key in labels if key in profile['modules']],
                              'module_tabs': [{'title': labels[key]['title'], 'color': labels[key]['tab_color'],
                                               'icon': TAB_ICONS[labels[key]['tab_icon']]['d'] if labels[key]['tab_icon'] else ''}
@@ -22461,11 +22461,12 @@ def create_modules_profile(
     name: str = Form(''),
     description: str = Form(''),
     modules: list[str] = Form(default=[]),
+    color: str = Form(''),
     member_ids: list[int] = Form(default=[]),
     user: SessionUser = Depends(admin_user),
 ) -> Response:
     try:
-        profile_id = repository.save_modules_profile(None, name, description, modules)
+        profile_id = repository.save_modules_profile(None, name, description, modules, color or None)
         repository.set_users_modules_profile([member for member in member_ids if member in profile_member_choices(user)], profile_id)
     except ValueError as exc:
         return render_admin_template(request, user, error=str(exc), status_code=400)
@@ -22482,17 +22483,18 @@ def update_modules_profile(
     name: str = Form(''),
     description: str = Form(''),
     modules: list[str] = Form(default=[]),
+    color: str = Form(''),
     member_ids: list[int] = Form(default=[]),
     initial_member_ids: list[int] = Form(default=[]),
     user: SessionUser = Depends(admin_user),
 ) -> JSONResponse:
-    """Save one Modules Profile: its name, description, modules and users. A user added to it leaves its previous
+    """Save one Modules Profile: its name, description, colour, modules and users. A user added to it leaves its previous
     profile, and a user only removed from it gets the default profile (a super-admin, every module); users changed
     elsewhere since the page loaded are left as they are."""
     selectable = profile_member_choices(user)
     chosen, initial = set(member_ids) & selectable, set(initial_member_ids) & selectable
     try:
-        repository.save_modules_profile(profile_id, name, description, modules)
+        repository.save_modules_profile(profile_id, name, description, modules, color or None)
         repository.set_users_modules_profile(sorted(chosen - initial), profile_id)
         repository.set_users_modules_profile(sorted(initial - chosen), None)
     except ValueError as exc:

@@ -157,8 +157,9 @@
               {% endif %}
             </td>
             <td>
-              {% if locked %}<span class="user-access-all" title="Only super-admins change super-admin accounts">{% for profile in modules_profiles if profile.id == row['modules_profile_id'] %}{{ profile.name }}{% else %}<strong>Full Access</strong>{% endfor %}</span>
-              {% else %}<select class="table-select user-profile-select" name="modules_profile_id" form="user-update-{{ row['id'] }}" aria-label="Modules Profile of {{ row['username'] }}">{% if row['role'] == 'super-admin' %}<option value="all" class="user-profile-full-access" {% if not row['modules_profile_id'] %}selected{% endif %}>Full Access</option><hr>{% endif %}{% for profile in modules_profiles %}<option value="{{ profile.id }}" {% if profile.id == row['modules_profile_id'] %}selected{% endif %}>{{ profile.name }}</option>{% endfor %}</select>{% endif %}
+              {% set row_profile = (modules_profiles | selectattr('id', 'equalto', row['modules_profile_id']) | list | first) %}
+              {% if locked %}<span class="user-access-all" {% if row_profile %}style="--profile-color: {{ row_profile.color }}"{% endif %} title="Only super-admins change super-admin accounts">{% if row_profile %}{{ row_profile.name }}{% else %}<strong>Full Access</strong>{% endif %}</span>
+              {% else %}<select class="table-select user-profile-select" name="modules_profile_id" form="user-update-{{ row['id'] }}" aria-label="Modules Profile of {{ row['username'] }}" {% if row_profile %}style="--profile-color: {{ row_profile.color }}"{% endif %} data-profile-select>{% if row['role'] == 'super-admin' %}<option value="all" class="user-profile-full-access" {% if not row['modules_profile_id'] %}selected{% endif %}>Full Access</option><hr>{% endif %}{% for profile in modules_profiles %}<option value="{{ profile.id }}" data-color="{{ profile.color }}" {% if profile.id == row['modules_profile_id'] %}selected{% endif %}>{{ profile.name }}</option>{% endfor %}</select>{% endif %}
             </td>
             <td>
               <label class="toggle-switch" aria-label="Toggle active state for {{ row['username'] }}">
@@ -202,7 +203,7 @@
               </div>
             </td>
             <td><select class="table-select user-role-select" name="role" form="user-create" aria-label="Role of the new user">{% for role in role_options %}<option value="{{ role }}">{{ role }}</option>{% endfor %}</select></td>
-            <td><select class="table-select user-profile-select" name="modules_profile_id" form="user-create" aria-label="Modules Profile of the new user">{% for profile in modules_profiles %}<option value="{{ profile.id }}" {% if profile.is_default %}selected{% endif %}>{{ profile.name }}</option>{% endfor %}</select></td>
+            <td><select class="table-select user-profile-select" name="modules_profile_id" form="user-create" aria-label="Modules Profile of the new user" {% if default_profile %}style="--profile-color: {{ default_profile.color }}"{% endif %} data-profile-select>{% for profile in modules_profiles %}<option value="{{ profile.id }}" data-color="{{ profile.color }}" {% if profile.is_default %}selected{% endif %}>{{ profile.name }}</option>{% endfor %}</select></td>
             <td></td>
             <td>{{ workspace_access_picker('user-create', [], [], 'the new user') }}</td>
             <td><div class="table-actions user-row-actions"><button type="submit" form="user-create" class="users-create-button">Create</button></div></td>
@@ -229,7 +230,7 @@
     </summary>
     <div class="access-cards" data-access-cards="profiles">
       {% for profile in modules_profiles %}
-      <article class="access-card{% if profile.is_default %} is-default{% endif %}" data-access-card="profile" data-card-id="{{ profile.id }}" data-update-url="/admin/modules-profiles/{{ profile.id }}/update">
+      <article class="access-card{% if profile.is_default %} is-default{% endif %}" style="--profile-color: {{ profile.color }}" data-access-card="profile" data-card-id="{{ profile.id }}" data-update-url="/admin/modules-profiles/{{ profile.id }}/update">
         <form id="modules-profile-{{ profile.id }}" autocomplete="off" data-access-card-form></form>
         <form id="modules-profile-delete-{{ profile.id }}" action="/admin/modules-profiles/{{ profile.id }}/delete" method="post" data-confirm="Delete the profile {{ profile.name }}? Its users get the default profile."></form>
         <header class="access-card-head">
@@ -238,6 +239,7 @@
             <input class="access-card-description" type="text" name="description" value="{{ profile.description }}" placeholder="Add a description" form="modules-profile-{{ profile.id }}" aria-label="Description of {{ profile.name }}">
           </div>
           <div class="access-card-tools">
+            <label class="access-card-color" title="Colour of the profile, used for it in the Users table"><input type="color" name="color" value="{{ profile.color }}" form="modules-profile-{{ profile.id }}" aria-label="Colour of the profile {{ profile.name }}"></label>
             <button type="button" class="access-default-toggle" data-profile-default data-default-url="/admin/modules-profiles/{{ profile.id }}/default" aria-pressed="{{ 'true' if profile.is_default else 'false' }}" title="The default profile is the one of users without a profile">{% if profile.is_default %}Default{% else %}Make default{% endif %}</button>
             <button type="submit" form="modules-profile-delete-{{ profile.id }}" class="access-card-delete" aria-label="Delete the profile {{ profile.name }}" {% if profile.is_default %}disabled title="The default profile cannot be deleted: make another profile the default first"{% else %}title="Delete profile"{% endif %}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/></svg></button>
           </div>
@@ -1795,6 +1797,15 @@
     if (individual) parts.push(`${individual} individual workspace${individual === 1 ? '' : 's'}`);
     picker.querySelector('[data-user-workspaces-summary]').textContent = parts.join(' · ') || 'No workspaces';
   };
+  // A Modules Profile select takes the colour of the chosen profile (Full Access keeps its own).
+  window.colorProfileSelect = (select) => {
+    const color = select.selectedOptions[0]?.dataset.color;
+    if (color) select.style.setProperty('--profile-color', color);
+    else select.style.removeProperty('--profile-color');
+  };
+  document.querySelectorAll('[data-profile-select]').forEach((select) => {
+    select.addEventListener('change', () => window.colorProfileSelect(select));
+  });
   document.querySelectorAll('[data-user-workspaces]').forEach((picker) => {
     summariseWorkspaces(picker);
     picker.querySelector('.workspace-user-picker-menu')?.addEventListener('change', () => summariseWorkspaces(picker));
@@ -1892,6 +1903,7 @@
     if (profile instanceof HTMLSelectElement) {
       const value = user.modules_profile_id ? String(user.modules_profile_id) : 'all';
       if ([...profile.options].some((option) => option.value === value)) profile.value = value;
+      window.colorProfileSelect(profile);
     }
     document.querySelectorAll(`[form="${form.id}"][name="workspace_ids"]`).forEach((box) => {
       if (box instanceof HTMLInputElement) box.checked = (user.workspace_ids || []).includes(box.value);
@@ -2269,6 +2281,8 @@
       if (!card) return;
       setMembers(card, profile.member_ids);
       card.classList.toggle('is-default', profile.is_default);
+      card.style.setProperty('--profile-color', profile.color);
+      document.querySelectorAll(`[data-profile-select] option[value="${profile.id}"]`).forEach((option) => { option.dataset.color = profile.color; });
       const toggle = card.querySelector('[data-profile-default]');
       toggle.textContent = profile.is_default ? 'Default' : 'Make default';
       toggle.setAttribute('aria-pressed', String(profile.is_default));
@@ -2287,6 +2301,7 @@
         [...select.options].forEach((option) => { option.defaultSelected = option.value === value; });
         row.dataset.profile = profileOf[id] || '';
       }
+      if (select) window.colorProfileSelect(select);
       const member = groups.filter((group) => group.member_ids.map(String).includes(id)).map((group) => String(group.id));
       const boxes = document.querySelectorAll(`[form="user-update-${id}"][name="workspace_group_ids"]`);
       boxes.forEach((box) => { box.checked = box.defaultChecked = member.includes(box.value); });
@@ -2341,6 +2356,10 @@
     });
     controlsOf(card, card.dataset.accessCard === 'profile' ? 'modules' : 'workspace_ids').forEach((box) => {
       box.addEventListener('change', () => { refreshCount(card); save(card); });
+    });
+    controlsOf(card, 'color').forEach((input) => {
+      input.addEventListener('input', () => card.style.setProperty('--profile-color', input.value));
+      input.addEventListener('change', () => save(card));
     });
     // Several users are usually ticked in a row: save once they stop.
     controlsOf(card, 'member_ids').forEach((box) => box.addEventListener('change', () => {

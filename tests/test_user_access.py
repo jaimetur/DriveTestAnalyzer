@@ -62,6 +62,7 @@ def test_former_user_groups_become_modules_profiles_and_workspace_groups(client)
     assert profiles['NQ Calls']['modules'] == ['workspace', 'non-qualified-calls']
     assert profiles['Benchmarking']['modules'] == benchmarking
     assert profiles['All Modules']['is_default'] and 'ppt-reporting-old' not in profiles['All Modules']['modules']
+    assert [profiles[name]['color'] for name in ('NQ Calls', 'Benchmarking', 'All Modules')] == ['#C026D3', '#1F6FBF', '#0B7A75']
     # One module group gives its profile; several give every module of them, and none the modules the user saw.
     assert (profile_of('viewer'), profile_of('editor'), profile_of('plain'), profile_of('boss')) == ('NQ Calls', 'All Modules', 'All Modules', None)
     groups = {group['name']: group for group in core.repository.list_workspace_groups()}
@@ -88,12 +89,13 @@ def test_profile_and_group_cards_save_each_change(client):
     # Users added on a card leave their previous profile; one only removed gets the default profile, and a user
     # changed elsewhere since the page loaded keeps its change.
     response = client.post(f'/admin/modules-profiles/{nq}/update', data={
-        'name': 'NQ Team', 'description': 'Analysts', 'modules': ['non-qualified-calls', 'workspace', 'unknown'],
+        'name': 'NQ Team', 'description': 'Analysts', 'modules': ['non-qualified-calls', 'workspace', 'unknown'], 'color': '#12ab9f',
         'member_ids': [user_id('ana'), user_id('ben')], 'initial_member_ids': [],
     })
     assert response.status_code == 200, response.text
     saved = next(profile for profile in response.json()['profiles'] if profile['id'] == nq)
     assert (saved['name'], saved['modules'], saved['member_ids']) == ('NQ Team', ['workspace', 'non-qualified-calls'], [user_id('ana'), user_id('ben')])
+    assert saved['color'] == '#12AB9F' and 'style="--profile-color: #12AB9F"' in client.get('/admin').text
     client.post(f'/admin/modules-profiles/{nq}/update', data={
         'name': 'NQ Team', 'modules': ['workspace'], 'member_ids': [user_id('ben')], 'initial_member_ids': [user_id('ana'), user_id('ben'), user_id('cris')],
     })

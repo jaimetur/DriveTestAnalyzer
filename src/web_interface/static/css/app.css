@@ -1706,6 +1706,7 @@ body[data-embedded-template-editor] .slides-templates-editor-table-wrap .form-ac
 .access-request-tile:has(input:focus-visible) { box-shadow: 0 0 0 3px rgba(11, 122, 117, .32); }
 .access-request-tile-head { display: flex; align-items: center; justify-content: space-between; gap: .6rem; }
 .access-request-tile strong { color: #10314a; font-size: .95rem; }
+.access-request-dot { display: inline-block; width: .65rem; height: .65rem; margin-right: .45rem; border-radius: 50%; vertical-align: .05rem; }
 .access-request-check { position: relative; flex: 0 0 auto; width: 1.15rem; height: 1.15rem; border: 1.5px solid #b9c5cd; border-radius: 6px; background: #fff; }
 .access-request-check-radio { border-radius: 50%; }
 .access-request-tile:has(input:checked) .access-request-check { border-color: #0b7a75; background: #0b7a75; }
@@ -4727,7 +4728,8 @@ body:has(> .unassigned-values-card:not([hidden], .is-collapsed)) { padding-botto
 .admin-stack .users-table select.user-role-select:has(option[value="super-admin"]:checked), .admin-stack .users-table .user-role-locked { border-color: #cdbcef; background: #f2ecfc; color: #5b3aa8; }
 .admin-stack .users-table select.user-role-select:has(option[value="admin"]:checked) { border-color: #f0c0c0; background: #fdeeee; color: #9b1c1c; }
 .admin-stack .users-table select.user-role-select:has(option[value="user-editor"]:checked) { border-color: #ecd98f; background: #fdf6d8; color: #85680a; }
-.admin-stack .users-table select.user-profile-select { border-color: #a9d9d2; background: #e9f6f4; color: #0a5c58; }
+/* Each Modules Profile has its own colour. */
+.admin-stack .users-table select.user-profile-select, .admin-stack .users-table .user-access-all[style*="--profile-color"] { border-style: solid; border-color: color-mix(in srgb, var(--profile-color, #0B7A75) 42%, #fff); background: color-mix(in srgb, var(--profile-color, #0B7A75) 11%, #fff); color: color-mix(in srgb, var(--profile-color, #0B7A75) 82%, #000); }
 /* Full Access, every module of a super-admin without a profile, stands apart from the profiles. */
 .admin-stack .users-table select.user-profile-select:has(option[value="all"]:checked), .user-profile-full-access { font-weight: 800; }
 .admin-stack .users-table select.user-profile-select:has(option[value="all"]:checked) { border-color: #cdbcef; background: #f2ecfc; color: #5b3aa8; }
@@ -4756,7 +4758,13 @@ body:has(> .unassigned-values-card:not([hidden], .is-collapsed)) { padding-botto
 .access-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 25rem), 1fr)); gap: 1rem; padding: .35rem 0 .25rem; }
 .access-card { position: relative; display: flex; flex-direction: column; gap: .8rem; min-width: 0; padding: 1rem 1.05rem .9rem; border: 1px solid rgba(16, 49, 74, .12); border-radius: 16px; background: #fff; box-shadow: 0 1px 2px rgba(16, 33, 49, .05), 0 10px 26px rgba(16, 33, 49, .06); transition: border-color .15s ease, box-shadow .15s ease; }
 .access-card:hover, .access-card:focus-within { border-color: rgba(16, 49, 74, .24); box-shadow: 0 2px 4px rgba(16, 33, 49, .06), 0 16px 34px rgba(16, 33, 49, .1); }
-.access-card.is-default { border-color: rgba(11, 122, 117, .45); box-shadow: inset 0 4px 0 #0b7a75, 0 10px 26px rgba(11, 122, 117, .1); }
+.access-card[data-access-card="profile"] { box-shadow: inset 0 4px 0 var(--profile-color, #0b7a75), 0 10px 26px rgba(16, 33, 49, .06); }
+.access-card.is-default { border-color: color-mix(in srgb, var(--profile-color, #0b7a75) 45%, #fff); }
+.admin-stack .access-card .access-card-color { display: inline-grid; margin: 0; cursor: pointer; }
+.admin-stack .access-card .access-card-color input { box-sizing: border-box; width: 1.55rem; height: 1.55rem; min-height: 0; padding: 0; border: 2px solid #fff; border-radius: 50%; background: none; box-shadow: 0 0 0 1px rgba(16, 49, 74, .22); cursor: pointer; }
+.access-card-color input::-webkit-color-swatch-wrapper { padding: 0; }
+.access-card-color input::-webkit-color-swatch { border: 0; border-radius: 50%; }
+.access-card-color input::-moz-color-swatch { border: 0; border-radius: 50%; }
 .access-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: .75rem; }
 .access-card-titles { display: grid; flex: 1 1 auto; gap: .05rem; min-width: 0; }
 .admin-stack .access-card .access-card-name, .admin-stack .access-card .access-card-description { box-sizing: border-box; width: calc(100% + .45rem); min-width: 0; margin: 0 0 0 -.45rem; padding: .22rem .45rem; border: 1px solid transparent; border-radius: 8px; background: transparent; box-shadow: none; color: #10314a; font: inherit; }
@@ -4767,7 +4775,7 @@ body:has(> .unassigned-values-card:not([hidden], .is-collapsed)) { padding-botto
 .access-card-tools { display: flex; flex: 0 0 auto; align-items: center; gap: .4rem; }
 .admin-stack .access-card .access-default-toggle { min-height: 0; padding: .3rem .7rem; border: 1px dashed rgba(16, 49, 74, .3); border-radius: 999px; background: transparent; box-shadow: none; color: #48606f; font-size: .74rem; font-weight: 700; cursor: pointer; }
 .admin-stack .access-card .access-default-toggle:hover { border-style: solid; border-color: #0b7a75; color: #0b7a75; }
-.admin-stack .access-card.is-default .access-default-toggle { border: 1px solid #0b7a75; background: #0b7a75; color: #fff; cursor: default; }
+.admin-stack .access-card.is-default .access-default-toggle { border: 1px solid var(--profile-color, #0b7a75); background: var(--profile-color, #0b7a75); color: #fff; cursor: default; }
 .admin-stack .access-card .access-card-delete { display: grid; place-items: center; width: 2rem; height: 2rem; min-height: 0; padding: 0; border: 0; border-radius: 9px; background: transparent; box-shadow: none; color: #8a97a3; cursor: pointer; }
 .access-card .access-card-delete svg { width: 1.1rem; height: 1.1rem; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .admin-stack .access-card .access-card-delete:hover:not(:disabled) { background: #fdecec; color: #b42318; }

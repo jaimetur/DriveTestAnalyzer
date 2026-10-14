@@ -62,12 +62,13 @@ Above the table, the search and the filters show only the users with a name or u
 - The name and the description are edited in place.
 - **Modules** shows every main module as a chip with the icon, colour and title of its tab, in the order of the main tabs (renaming or moving a tab in [Interface Settings](#interface-settings) changes the chips too, and profiles keep their modules). Click a chip to add the module to the profile or remove it; the counter shows how many modules it has.
 - **Users** gives the profile to several users at once, and the names of its users are listed beside it. A user added to a profile leaves its previous one, and a user only removed from its profile gets the default profile (a super-admin, every module). Only super-admins give profiles to super-admins. The **Modules Profile** of each user in [Users](#users) follows at once, and the other way round.
+- The coloured circle chooses the colour of the profile, which marks it on its card, in the **Modules Profile** of each user in [Users](#users) and in Request Access.
 - **Default** marks the profile of users without one: users created without choosing one, and the users of a deleted profile. **Make default** moves it to another profile; the default profile cannot be deleted.
 - The **New profile** card creates a profile without modules or users; the bin deletes a profile.
 
 A module that is in no profile is seen only by the super-admins without a profile, as PPT Reporting (old) on a new deployment or a module added by a later version until it is added to the profiles that should have it. A module that is not shown to a user disappears from the main tabs and the Modules menu, and its pages and API answer 403. Workspace switching, dataset uploads and processing remain available everywhere. Reporting Jobs can only include artifacts of the modules their author sees; see [Reporting](reporting.md).
 
-A new deployment starts with three profiles: **NQ Calls** (**Workspace**, Non-Qualified Calls, **Reporting** and **Builders**), **Benchmarking** (every main module except Non-Qualified Calls and PPT Reporting (old)) and **All Modules** (every main module except PPT Reporting (old)), the default one. Profiles are stored in the application database (`Modules Profiles` table, and each user's profile in `Users`).
+A new deployment starts with three profiles: **NQ Calls** (**Workspace**, Non-Qualified Calls, **Reporting** and **Builders**), **Benchmarking** (every main module except Non-Qualified Calls and PPT Reporting (old)) and **All Modules** (every main module except PPT Reporting (old)), the default one, in fuchsia, blue and teal. Profiles are stored in the application database (`Modules Profiles` table, and each user's profile in `Users`).
 
 ## Workspace Groups
 

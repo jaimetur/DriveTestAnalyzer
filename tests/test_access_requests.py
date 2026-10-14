@@ -18,6 +18,7 @@ def test_a_new_deployment_has_the_modules_profiles_of_each_team(client):
     assert set(available['Benchmarking']['modules']) == set(core.FEATURE_KEYS) - {'non-qualified-calls', 'ppt-reporting-old'}
     assert set(available['All Modules']['modules']) == set(core.FEATURE_KEYS) - {'ppt-reporting-old'}
     assert [name for name, profile in available.items() if profile['is_default']] == ['All Modules']
+    assert {name: profile['color'] for name, profile in available.items()} == {'NQ Calls': '#C026D3', 'Benchmarking': '#1F6FBF', 'All Modules': '#0B7A75'}
     # Created once per deployment: the later changes of an administrator are kept.
     core.repository.delete_modules_profile(available['Benchmarking']['id'])
     core.repository.initialize()

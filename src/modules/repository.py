@@ -380,6 +380,7 @@ CREATE TABLE IF NOT EXISTS modules_profiles (
     name TEXT NOT NULL,
     description TEXT NOT NULL DEFAULT '',
     modules_json TEXT NOT NULL DEFAULT '[]',
+    color TEXT NOT NULL DEFAULT '',
     is_default INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -414,6 +415,23 @@ DEFAULT_MODULES_PROFILES: tuple[tuple[str, str, tuple[str, ...], bool], ...] = (
      tuple(key for key, _name in MAIN_MODULES if key not in {'non-qualified-calls', 'ppt-reporting-old'}), False),
     ('All Modules', 'Every main module.', tuple(key for key, _name in MAIN_MODULES if key != 'ppt-reporting-old'), True),
 )
+
+
+def suggested_profile_color(modules: Iterable[str]) -> str:
+    """The colour a Modules Profile starts with: fuchsia for a Non-Qualified Calls team, blue for a profile without
+    Non-Qualified Calls, and teal for one with every kind of module."""
+    chosen = set(modules)
+    if 'non-qualified-calls' in chosen and 'scoring' not in chosen:
+        return '#C026D3'
+    return '#1F6FBF' if 'non-qualified-calls' not in chosen else '#0B7A75'
+
+
+def profile_color(value: object, modules: Iterable[str]) -> str:
+    """A #RRGGBB colour, or the suggested one of the modules."""
+    text = str(value or '').strip()
+    return text.upper() if re.fullmatch(r'#[0-9A-Fa-f]{6}', text) else suggested_profile_color(modules)
+
+
 # The application state of the former user groups, read once by their migration.
 LEGACY_FEATURE_ACTIVATION_KEY = 'feature_activation_v1'
 LEGACY_WORKSPACE_ACCESS_RULES_KEY = 'workspace_access_rules_v1'
@@ -982,8 +1000,8 @@ class Repository:
             while conn.execute('SELECT 1 FROM modules_profiles WHERE name = ? COLLATE NOCASE', (unique_name,)).fetchone():
                 unique_name, suffix = f'{name.strip() or "Profile"} ({suffix})', suffix + 1
             profile_id = int(conn.execute(
-                'INSERT INTO modules_profiles (name, description, modules_json, is_default, created_at) VALUES (?, ?, ?, 0, ?)',
-                (unique_name, description, json.dumps(modules), local_now_iso()),
+                'INSERT INTO modules_profiles (name, description, modules_json, color, is_default, created_at) VALUES (?, ?, ?, ?, 0, ?)',
+                (unique_name, description, json.dumps(modules), suggested_profile_color(modules), local_now_iso()),
             ).lastrowid)
             profile_modules[profile_id] = modules
             return profile_id
@@ -1040,15 +1058,23 @@ class Repository:
 
     @staticmethod
     def _ensure_modules_profiles(conn: sqlite3.Connection) -> None:
-        """Create the Modules Profiles of a new deployment, and keep exactly one default profile."""
-        rows = conn.execute('SELECT id, name, is_default FROM modules_profiles ORDER BY id').fetchall()
+        """Create the Modules Profiles of a new deployment, keep exactly one default profile and give a colour to the
+        profiles without one."""
+        if 'color' not in {str(row['name']) for row in conn.execute('PRAGMA table_info(modules_profiles)').fetchall()}:
+            conn.execute("ALTER TABLE modules_profiles ADD COLUMN color TEXT NOT NULL DEFAULT ''")
+        rows = conn.execute('SELECT id, name, is_default, modules_json, color FROM modules_profiles ORDER BY id').fetchall()
         if not rows:
             for name, description, modules, default in DEFAULT_MODULES_PROFILES:
                 conn.execute(
-                    'INSERT INTO modules_profiles (name, description, modules_json, is_default, created_at) VALUES (?, ?, ?, ?, ?)',
-                    (name, description, json.dumps(list(modules)), int(default), local_now_iso()),
+                    'INSERT INTO modules_profiles (name, description, modules_json, color, is_default, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+                    (name, description, json.dumps(list(modules)), suggested_profile_color(modules), int(default), local_now_iso()),
                 )
             return
+        for row in rows:
+            if not row['color']:
+                modules = json.loads(row['modules_json'] or '[]')
+                conn.execute('UPDATE modules_profiles SET color = ? WHERE id = ?',
+                             (suggested_profile_color(modules if isinstance(modules, list) else []), int(row['id'])))
         defaults = [row for row in rows if row['is_default']]
         if len(defaults) != 1:
             kept = defaults[0] if defaults else next((row for row in rows if str(row['name']).casefold() == 'all modules'), rows[0])
@@ -1079,7 +1105,7 @@ class Repository:
         with self.global_connection() as conn:
             self._ensure_user_access_schema(conn)
             rows = conn.execute(
-                'SELECT id, name, description, modules_json, is_default, created_at FROM modules_profiles '
+                'SELECT id, name, description, modules_json, color, is_default, created_at FROM modules_profiles '
                 'ORDER BY name COLLATE NOCASE, id'
             ).fetchall()
             users = conn.execute('SELECT id, role, modules_profile_id FROM users ORDER BY id').fetchall()
@@ -1094,13 +1120,16 @@ class Repository:
             member_ids.setdefault(default_id if profile_id is None else profile_id, []).append(int(user['id']))
         return [
             {'id': int(row['id']), 'name': str(row['name']), 'description': str(row['description'] or ''),
-             'modules': self._profile_modules(row['modules_json']), 'is_default': bool(row['is_default']),
+             'modules': self._profile_modules(row['modules_json']),
+             'color': profile_color(row['color'], self._profile_modules(row['modules_json'])), 'is_default': bool(row['is_default']),
              'created_at': str(row['created_at'] or ''), 'member_ids': member_ids.get(int(row['id']), [])}
             for row in rows
         ]
 
-    def save_modules_profile(self, profile_id: int | None, name: str, description: str, modules: Iterable[str]) -> int:
-        """Create (profile_id None) or update a Modules Profile; returns its ID."""
+    def save_modules_profile(self, profile_id: int | None, name: str, description: str, modules: Iterable[str],
+                             color: str | None = None) -> int:
+        """Create (profile_id None) or update a Modules Profile; returns its ID. A colour of None keeps the colour of
+        the profile (a new one gets the suggested colour of its modules)."""
         normalized_name = name.strip()
         if not normalized_name:
             raise ValueError('Profile name cannot be empty.')
@@ -1113,14 +1142,16 @@ class Repository:
                 raise ValueError(f'A profile named {normalized_name} already exists.')
             if profile_id is None:
                 return int(conn.execute(
-                    'INSERT INTO modules_profiles (name, description, modules_json, is_default, created_at) VALUES (?, ?, ?, 0, ?)',
-                    (normalized_name, description.strip(), json.dumps(selected), local_now_iso()),
+                    'INSERT INTO modules_profiles (name, description, modules_json, color, is_default, created_at) VALUES (?, ?, ?, ?, 0, ?)',
+                    (normalized_name, description.strip(), json.dumps(selected), profile_color(color, selected), local_now_iso()),
                 ).lastrowid)
             if conn.execute(
                 'UPDATE modules_profiles SET name = ?, description = ?, modules_json = ? WHERE id = ?',
                 (normalized_name, description.strip(), json.dumps(selected), int(profile_id)),
             ).rowcount == 0:
                 raise ValueError('Profile not found.')
+            if color is not None:
+                conn.execute('UPDATE modules_profiles SET color = ? WHERE id = ?', (profile_color(color, selected), int(profile_id)))
         return int(profile_id)
 
     def set_default_modules_profile(self, profile_id: int) -> None:
@@ -2620,7 +2651,7 @@ class Repository:
             ).fetchall()
         return {
             'modules_profiles': [{'name': profile['name'], 'description': profile['description'], 'modules': profile['modules'],
-                                 'default': profile['is_default']} for profile in profiles],
+                                  'color': profile['color'], 'default': profile['is_default']} for profile in profiles],
             'workspace_groups': [{'name': group['name'], 'description': group['description'],
                                   'workspaces': names(group['workspace_ids'])} for group in groups],
             'users': [{'username': str(row['username']), 'first_name': str(row['first_name'] or ''), 'last_name': str(row['last_name'] or ''),
@@ -2670,16 +2701,17 @@ class Repository:
                 if not name:
                     continue
                 chosen = {str(module) for module in profile.get('modules') or []} if isinstance(profile.get('modules'), list) else set()
-                modules = json.dumps([key for key, _name in MAIN_MODULES if key in chosen])
+                selected = [key for key, _name in MAIN_MODULES if key in chosen]
+                modules, color = json.dumps(selected), profile_color(profile.get('color'), selected)
                 row = conn.execute('SELECT id FROM modules_profiles WHERE name = ? COLLATE NOCASE', (name,)).fetchone()
                 if row:
-                    conn.execute('UPDATE modules_profiles SET name = ?, description = ?, modules_json = ? WHERE id = ?',
-                                 (name, str(profile.get('description') or ''), modules, int(row['id'])))
+                    conn.execute('UPDATE modules_profiles SET name = ?, description = ?, modules_json = ?, color = ? WHERE id = ?',
+                                 (name, str(profile.get('description') or ''), modules, color, int(row['id'])))
                     profile_ids[name.casefold()] = int(row['id'])
                 else:
                     profile_ids[name.casefold()] = int(conn.execute(
-                        'INSERT INTO modules_profiles (name, description, modules_json, is_default, created_at) VALUES (?, ?, ?, 0, ?)',
-                        (name, str(profile.get('description') or ''), modules, local_now_iso()),
+                        'INSERT INTO modules_profiles (name, description, modules_json, color, is_default, created_at) VALUES (?, ?, ?, ?, 0, ?)',
+                        (name, str(profile.get('description') or ''), modules, color, local_now_iso()),
                     ).lastrowid)
                 default_name = name.casefold() if profile.get('default') else default_name
                 summary['modules_profiles'] += 1
