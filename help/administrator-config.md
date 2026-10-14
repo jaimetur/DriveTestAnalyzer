@@ -76,7 +76,7 @@ A new deployment starts with three profiles: **NQ Calls** (**Workspace**, Non-Qu
 
 - The name and the description are edited in place.
 - **Workspaces** shows every workspace as a chip: click one to add it to the group or remove it. Admins change only the workspaces they can open; the others are kept.
-- **Users** adds users to the group or removes them, several at once, and lists them. The **Workspaces** of each user in [Users](#users) follow at once, and the other way round; users can also join or leave a group with the selection bar of [Users](#users).
+- **Users** adds users to the group or removes them, several at once, and lists them; super-admins are not listed, since they open every workspace. The **Workspaces** of each user in [Users](#users) follow at once, and the other way round; users can also join or leave a group with the selection bar of [Users](#users).
 - The **New Workspace Group** card creates a group without workspaces or users; the bin deletes a group, keeping its users and their other workspaces.
 
 **Workspace → Access** chooses, for each workspace, its Workspace Groups and the users it is granted to individually. Groups are stored in the application database (`Workspace Groups` and `Workspace Group Members` tables).

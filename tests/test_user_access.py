@@ -68,7 +68,8 @@ def test_former_user_groups_become_modules_profiles_and_workspace_groups(client)
     groups = {group['name']: group for group in core.repository.list_workspace_groups()}
     assert set(groups) == {'UK', 'DE'}
     assert (groups['UK']['workspace_ids'], groups['DE']['workspace_ids']) == ([uk.id], [de.id])
-    assert (groups_of('viewer'), groups_of('boss')) == (['UK'], ['DE'])
+    # Super-admins open every workspace, so groups never list them.
+    assert (groups_of('viewer'), groups_of('boss')) == (['UK'], [])
     # The workspaces granted to a role become grants of its accounts.
     assert uk.id in core.repository.list_user_workspace_ids(ids['admin'])
     assert core.repository.user_has_workspace_access('viewer', uk.id) and not core.repository.user_has_workspace_access('viewer', de.id)
@@ -147,8 +148,9 @@ def test_the_selection_bar_changes_several_users_at_once(client):
     response = client.post('/admin/users/bulk', data={'user_ids': ids, 'action': 'modules_profile', 'value': str(nq)})
     assert response.json() == {'updated': ['ana', 'ben', 'boss'], 'skipped': []}
     assert (profile_of('ana'), profile_of('ben'), profile_of('boss')) == ('NQ Calls', 'NQ Calls', 'NQ Calls')
-    client.post('/admin/users/bulk', data={'user_ids': ids[:2], 'action': 'add_workspace_group', 'value': str(group)})
-    assert (groups_of('ana'), groups_of('ben')) == (['UK'], ['UK'])
+    response = client.post('/admin/users/bulk', data={'user_ids': ids, 'action': 'add_workspace_group', 'value': str(group)})
+    assert response.json() == {'updated': ['ana', 'ben'], 'skipped': ['boss: super-admins open every workspace']}
+    assert (groups_of('ana'), groups_of('ben'), groups_of('boss')) == (['UK'], ['UK'], [])
     client.post('/admin/users/bulk', data={'user_ids': ids[:1], 'action': 'remove_workspace_group', 'value': str(group)})
     assert (groups_of('ana'), groups_of('ben')) == ([], ['UK'])
     client.post('/admin/users/bulk', data={'user_ids': ids[:2], 'action': 'role', 'value': 'admin'})

@@ -1205,13 +1205,17 @@ class Repository:
         }
 
     def list_workspace_groups(self) -> list[dict[str, Any]]:
-        """Workspace Groups ordered by name, with their workspaces and members."""
+        """Workspace Groups ordered by name, with their workspaces and members. Super-admins open every workspace, so
+        they are never members."""
         with self.global_connection() as conn:
             self._ensure_user_access_schema(conn)
             rows = conn.execute(
                 'SELECT id, name, description, workspace_ids_json, created_at FROM workspace_groups ORDER BY name COLLATE NOCASE, id'
             ).fetchall()
-            members = conn.execute('SELECT group_id, user_id FROM workspace_group_members ORDER BY user_id').fetchall()
+            members = conn.execute(
+                "SELECT m.group_id, m.user_id FROM workspace_group_members m JOIN users u ON u.id = m.user_id "
+                "WHERE u.role != 'super-admin' ORDER BY m.user_id"
+            ).fetchall()
         member_ids: dict[int, list[int]] = {}
         for row in members:
             member_ids.setdefault(int(row['group_id']), []).append(int(row['user_id']))

@@ -22378,6 +22378,9 @@ def bulk_update_users(
             continue
         if action == 'modules_profile':
             repository.set_users_modules_profile([target_id], int(value))
+        elif action in {'add_workspace_group', 'remove_workspace_group'} and target['role'] == 'super-admin':
+            skipped.append(f'{name}: super-admins open every workspace')
+            continue
         elif action == 'add_workspace_group':
             repository.change_workspace_group_members(int(value), add=[target_id])
         elif action == 'remove_workspace_group':

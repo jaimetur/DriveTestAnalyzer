@@ -67,6 +67,8 @@
   {% set workspace_names = {} %}{% for workspace in workspaces %}{% set _ = workspace_names.update({workspace.id: workspace.name}) %}{% endfor %}
   {% set default_profile = (modules_profiles | selectattr('is_default') | list | first) %}
   {% set member_items = [] %}{% for row in users %}{% if row['role'] != 'super-admin' or user.role == 'super-admin' %}{% set _ = member_items.append((row['id'], row['username'])) %}{% endif %}{% endfor %}
+  {# Super-admins open every workspace, so Workspace Groups never list them. #}
+  {% set group_member_items = [] %}{% for row in users if row['role'] != 'super-admin' %}{% set _ = group_member_items.append((row['id'], row['username'])) %}{% endfor %}
   {% set role_options = ['user-viewer', 'user-editor', 'admin'] + (['super-admin'] if user.role == 'super-admin' else []) %}
   {% macro workspace_access_picker(form_id, group_ids, workspace_ids, label) -%}
   <input type="hidden" name="workspaces_submitted" value="1" form="{{ form_id }}">
@@ -298,7 +300,7 @@
         <footer class="access-card-foot">
           <div class="access-card-users">
             {% for member in group.member_ids %}<input type="hidden" name="initial_member_ids" value="{{ member }}" form="workspace-group-{{ group.id }}" data-initial-member>{% endfor %}
-            {{ principal_picker('workspace-group-' ~ group.id, 'member_ids', [('Users', member_items)], group.member_ids, 'No users', 'Users of ' ~ group.name) }}
+            {{ principal_picker('workspace-group-' ~ group.id, 'member_ids', [('Users', group_member_items)], group.member_ids, 'No users', 'Users of ' ~ group.name) }}
             {{ member_pills(group.member_ids) }}
           </div>
           <span class="access-card-status" data-access-card-status role="status"></span>
