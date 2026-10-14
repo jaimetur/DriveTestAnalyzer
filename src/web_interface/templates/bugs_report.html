@@ -113,7 +113,7 @@
             <td>{{ status_pill(bug.status, bug.status_label) }}{% if bug.fixed_version %}<small class="bugs-fixed">Fixed in v{{ bug.fixed_version }}</small>{% endif %}</td>
             <td>{{ bug.assigned_to_name or '—' }}</td>
             <td class="bugs-date">{{ bug.updated_date }}</td>
-            <td class="bugs-activity"><span title="Comments">💬 {{ bug.comment_count }}</span><span title="Screenshots">🖼 {{ bug.attachment_count }}</span></td>
+            <td class="bugs-activity"><span class="bugs-activity-items"><span title="Comments">💬 {{ bug.comment_count }}</span><span title="Screenshots">🖼 {{ bug.attachment_count }}</span></span></td>
           </tr>
           {% endfor %}
         </tbody>

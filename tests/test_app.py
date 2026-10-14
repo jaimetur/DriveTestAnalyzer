@@ -10642,7 +10642,8 @@ def test_app_logs_normalises_user_case_and_records_login_outcomes(client) -> Non
 
     response = client.get('/app-logs')
 
-    assert response.text.count('<option value="admin">admin</option>') == 1
+    # One option per user, by name with the default users tagged.
+    assert response.text.count('<option value="admin">admin · default user</option>') == 1
     assert 'data-app-log-user="admin"' in response.text
     assert '<option value="system">system</option>' in response.text
     assert 'data-app-log-executor="system"' in response.text
