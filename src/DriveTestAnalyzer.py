@@ -6193,6 +6193,7 @@ ARCHIVE_KIND_COMPONENTS = {
     'mappings-reference-data': ('workspace_components',),
     'main-cities': ('workspace_components',),
     'scoring-configuration': ('workspace_components',),
+    'app-events': ('workspace_components',),
     'bundle': (),
 }
 WORKSPACE_ELEMENT_EXPORT_TARGETS = frozenset({
