@@ -26,6 +26,7 @@
 - **Backup Protection:** a new design with the stored backups, their size and the last and next backup above the Back up now, Restore and Scheduled backups cards; the content, workspaces and folder chosen are saved as they change for the next backups, scheduled ones included, and Restore chooses the workspaces of the backup to restore besides its parts.
 - **Database Viewer:** a new design whose Table picker lists the tables of each group by kind (Users & Access, Application, Datasets, Dashboards & Templates, Scoring & GAP Analysis, Non-Qualified Calls, Reporting, Mappings & Maps, Query Builder, Workspace and the CDRs of each type), each in its colour, with a search.
 - **Import / Export / Transfer, Datasets Management and Interface Settings:** a new design; Import takes the package dropped on its card or chosen in it, each dataset shows its kind and processing status below its name, and the module labels of Interface Settings turn on and off with a switch.
+- **NQ long texts as bullets:** the Description, Findings, Proposed Measure and the other long texts of a Non-Qualified call read as bullets, nested as deep as each line is indented, with the lines ending with a colon as headings and the lines of dashes as dividers, until a click opens the text to edit it in the font of the page, and an empty one shows a guide in grey with how to write them until you type; the text is saved as written.
 
 #### 🐛 Bug fixes:
 - **PPT Dashboards background charts after changing workspace:** the charts of the Dashboards of a closed workspace wait until it is opened again, instead of being retried continuously while the application is idle and holding back the charts of the Dashboards of the open workspace.
@@ -34,6 +35,7 @@
 - **Files refused by Import:** Import says why it refuses a file (a ZIP package cut short or damaged, a JSON document other than a Scoring & GAP Analysis Configuration of at most 4 MiB, or another kind of file) instead of always naming the size limit of that JSON, and the App Events record each uploaded package and each refused file with the reason.
 
 #### 📚 Documentation:
+- **Non-Qualified Calls help:** the chapter follows the scheme of the other main modules: a note to start, **Choose your task**, numbered steps for the imports and the follow-up of the calls, coloured notes, tips and warnings at the key points, tables for the filters, tabs, sources and defaults, and new **NQ Analysis Configuration**, **Exports** and **Troubleshooting** sections.
 
 ---
 

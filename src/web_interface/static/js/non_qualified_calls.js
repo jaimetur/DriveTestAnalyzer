@@ -3219,6 +3219,99 @@
       $('nq-fields').append(row);
     }
   };
+  // A long text read as bullets: each line a bullet (without the -, • or * typed before it), nested under the line
+  // above it as deep as it is indented (with spaces or tabs); a short line ending with a colon, not indented and without
+  // a bullet, the heading of the lines below it; a line of dashes (------Jorge------) a divider with its text; and a
+  // text of one line a paragraph.
+  const bulletList = (text) => {
+    const host = node('div', undefined, 'nq-bullets');
+    const lines = String(text || '').split(/\r?\n/).filter((line) => line.trim());
+    if (lines.length === 1 && !/:$/.test(lines[0].trim())) {
+      host.append(node('p', lines[0].trim()));
+      return host;
+    }
+    // The open lists, the deepest last, each with the indent of its items.
+    let levels = [];
+    lines.forEach((raw) => {
+      const indent = raw.match(/^\s*/)[0].replace(/\t/g, '    ').length;
+      const line = raw.trim();
+      const marked = /^[-•*·]\s+/.test(line);
+      const divider = line.match(/^[-=_*]{3,}\s*(.*?)\s*[-=_*]{3,}$/) || line.match(/^[-=_*]{3,}$/);
+      if (divider) {
+        host.append(node('p', divider[1] || '', 'nq-bullet-divider'));
+        levels = [];
+        return;
+      }
+      if (!indent && !marked && /:$/.test(line) && line.length <= 80) {
+        host.append(node('p', line, 'nq-bullet-heading'));
+        levels = [];
+        return;
+      }
+      while (levels.length && indent < levels[levels.length - 1].indent) levels.pop();
+      const current = levels[levels.length - 1];
+      if (!current || indent > current.indent) {
+        const list = node('ul');
+        // A deeper list belongs to the item above it.
+        (current?.list.lastElementChild || current?.list || host).append(list);
+        levels.push({indent, list});
+      }
+      levels[levels.length - 1].list.append(node('li', line.replace(/^[-•*·]\s+/, '')));
+    });
+    return host;
+  };
+  // How to write a long text so it reads as bullets: shown in grey while it is empty, never part of it.
+  const LONG_TEXT_GUIDE = [
+    'Heading ending with a colon:',
+    '- Each line is a bullet',
+    '  - Two spaces before it nest it in the line above',
+    '    - Four spaces make a third level',
+    '------ A name between dashes divides the text ------',
+  ].join('\n');
+  // A long text of the analysts reads as bullets until it is edited: a click, Enter or Space opens the text, and
+  // leaving it shows the bullets again (an empty text is open to write in, with the guide).
+  const longTextInput = (field, value) => {
+    const wrapper = node('div', undefined, 'nq-long-text');
+    const editor = node('textarea');
+    editor.rows = 8;
+    editor.maxLength = 20000;
+    editor.value = value;
+    editor.dataset.fieldKey = field.key;
+    editor.dataset.original = value;
+    editor.disabled = !state.user.can_edit;
+    editor.setAttribute('aria-label', field.label);
+    if (state.user.can_edit) editor.placeholder = LONG_TEXT_GUIDE;
+    const view = node('div', undefined, 'nq-long-text-view');
+    view.dataset.longText = field.key;
+    if (state.user.can_edit) {
+      view.tabIndex = 0;
+      view.setAttribute('role', 'button');
+      view.title = `Edit ${field.label}`;
+    }
+    const read = () => {
+      const empty = !editor.value.trim();
+      view.replaceChildren(empty ? node('span', '—', 'nq-muted') : bulletList(editor.value));
+      view.hidden = empty && state.user.can_edit;
+      editor.hidden = !view.hidden;
+    };
+    const open = (event) => {
+      if (!state.user.can_edit) return;
+      event.preventDefault();
+      view.hidden = true;
+      editor.hidden = false;
+      editor.focus();
+    };
+    view.addEventListener('click', open);
+    view.addEventListener('keydown', (event) => { if (event.key === 'Enter' || event.key === ' ') open(event); });
+    editor.addEventListener('blur', read);
+    read();
+    wrapper.append(view, editor);
+    wrapper.setValue = (text) => {
+      editor.value = text;
+      editor.dispatchEvent(new Event('change', {bubbles: true}));
+      read();
+    };
+    return wrapper;
+  };
   // A field entered by the analysts, edited in its section and saved with the version of the call.
   const fieldInput = (field, value) => {
     let control;
@@ -3240,10 +3333,7 @@
       wrapper.setValue = (chosen) => { picker.setValue(chosen); changed(chosen); };
       return wrapper;
     } else if (field.type === 'long_text') {
-      control = node('textarea');
-      control.rows = 8;
-      control.maxLength = 20000;
-      control.value = value;
+      return longTextInput(field, value);
     } else {
       control = node('input');
       control.type = field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text';
@@ -3265,6 +3355,8 @@
       const element = node('span', text, 'nq-pill');
       paintPill(element, field.type === 'yes_no' ? YES_NO_COLORS[text] || '' : optionColorOf(field, text));
       box.append(element);
+    } else if (field.type === 'long_text' && text) {
+      box.append(bulletList(text));
     } else {
       box.append(node('span', text || '—', text ? '' : 'nq-muted'));
     }

@@ -961,6 +961,29 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 .nq-drawer .nq-analysis-field textarea:is([data-field-key="description"], [data-field-key="findings"]) { min-height: 17rem; }
 .nq-drawer .nq-analysis-field textarea[data-field-key="proposed_measure"] { height: 4.1rem; min-height: 4.1rem; }
 .nq-drawer .nq-analysis-field textarea:focus { border-color: var(--nq-color); outline: 3px solid rgba(176, 35, 79, .15); }
+/* The long texts read as bullets until they are edited (non_qualified_calls.js, longTextInput), in the font of the page. */
+.nq-drawer .nq-long-text textarea { font-family: inherit; font-size: .88rem; font-weight: 500; }
+/* The guide of an empty long text, in grey and tall enough to read it whole (also in the short Proposed Measure). */
+.nq-drawer .nq-long-text textarea::placeholder { color: var(--nq-muted); opacity: .7; }
+.nq-drawer .nq-analysis-field .nq-long-text textarea:placeholder-shown { min-height: 8.8rem; }
+.nq-long-text [hidden] { display: none !important; }
+.nq-long-text-view { box-sizing: border-box; min-height: 4.1rem; max-height: 28rem; overflow-y: auto; padding: .6rem .8rem; border: 1px solid var(--nq-border); border-radius: 12px; background: #fff; cursor: text; }
+.nq-long-text-view:not([tabindex]) { cursor: default; }
+.nq-long-text-view[tabindex]:is(:hover, :focus-visible) { border-color: var(--nq-color); outline: none; }
+.nq-bullets { color: var(--nq-text); font-size: .88rem; font-weight: 500; line-height: 1.45; overflow-wrap: anywhere; }
+.nq-bullets p { margin: 0 0 .35rem; }
+.nq-bullets ul { margin: 0 0 .45rem; padding-left: 1.15rem; }
+.nq-bullets li { margin: .15rem 0; }
+.nq-bullets li::marker { color: var(--nq-color); }
+/* Nested bullets: a circle at the second level, a square below it. */
+.nq-bullets li > ul { margin: .1rem 0 .15rem; padding-left: 1.1rem; list-style-type: circle; }
+.nq-bullets li > ul li > ul { list-style-type: square; }
+.nq-bullets .nq-bullet-heading { margin: .45rem 0 .15rem; color: var(--nq-dark); font-weight: 800; }
+.nq-bullets .nq-bullet-divider { display: flex; align-items: center; gap: .6rem; margin: .5rem 0; color: var(--nq-muted); font-size: .76rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.nq-bullets .nq-bullet-divider::before, .nq-bullets .nq-bullet-divider::after { content: ''; flex: 1; border-top: 1px solid var(--nq-border); }
+.nq-bullets .nq-bullet-divider:empty::after { display: none; }
+.nq-bullets > :first-child { margin-top: 0; }
+.nq-bullets > :last-child { margin-bottom: 0; }
 /* The coloured pickers of lists, statuses, teams and assignees: every choice as a pill in its colour. */
 :is(.non-qualified-calls, .nq-drawer) .nq-choice { width: 100%; text-align: left; }
 .nq-choice-field { display: grid; }
