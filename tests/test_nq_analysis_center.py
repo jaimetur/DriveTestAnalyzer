@@ -299,10 +299,21 @@ def test_excel_export_groups_the_catalog_by_section_with_its_colours(client, tmp
     assert headers[selected - 4:selected] == ['Root Domain', 'Recommended Root Category', 'Recommended Root Cause',
                                               'Recommendation Sources'] and headers[selected + 1] == 'Selected Root Cause'
     assert headers[headers.index('NQ Call Status') + 1] == 'Status Set'
-    # The status of each block stands out, darker than its section.
+    # The status of each block and the fields read most stand out, darker than their section, whose other fields share one
+    # shade (also those from the CDR or derived); the long texts of the analysis in wider columns.
     fill = lambda label: sheet.cell(2, headers.index(label) + 1).fill.fgColor.rgb[-6:]
     assert fill('NQ Call Status') == nq._tint('#0070C0', nq.KEY_FIELD_TINT) != fill('Status Set')
-    assert fill('Analysis Status') == nq._tint('#7030A0', nq.KEY_FIELD_TINT) != fill('Findings')
+    assert fill('Status Set') == fill('Priority') == fill('Team Responsible') == nq._tint('#0070C0', nq.FIELD_TINT)
+    assert fill('Session Type') == fill('Last Cell ID') == fill('Band when Failure')
+    assert fill('Analysis Status') == nq._tint('#7030A0', nq.KEY_FIELD_TINT)
+    assert fill('Findings') == fill('Description') == fill('Proposed Measure') == fill('Analysis Status') != fill('Tunnel Failure')
+    assert fill('Selected Root Category') == fill('Selected Root Cause') == nq._tint('#FFC000', nq.KEY_FIELD_TINT) \
+        != fill('Initial Root Category')
+    assert fill('Comments') == fill('NQ Call Status') != fill('Priority')
+    assert fill('Failure Comment') == nq._tint('#FF0000', nq.KEY_FIELD_TINT) != fill('Band when Failure')
+    assert fill('JOIN_ID') == fill('Call Key') == nq._tint('#5E6B75', nq.KEY_FIELD_TINT) != fill('CDR')
+    width = lambda label: sheet.column_dimensions[sheet.cell(2, headers.index(label) + 1).column_letter].width
+    assert width('Findings') == width('Description') == width('Proposed Measure') == 50 and width('Tunnel Failure') < 30
     assert fill('Implementation Status') == nq._tint('#00B050', nq.KEY_FIELD_TINT)
     assert fill('Planned Status') == nq._tint('#00843D', nq.KEY_FIELD_TINT)
     rca_fill = sheet.cell(1, headers.index('NetCheck RCA Failure Classification') + 1).fill.fgColor.rgb

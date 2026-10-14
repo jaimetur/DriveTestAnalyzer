@@ -5926,11 +5926,16 @@ EXPORT_COMPANIONS = {'status': [('Status Set', 'status_set')]}
 # Columns that come before the selected root category (or cause): the root cause decision ends the RCA block.
 EXPORT_ROOT_COMPANIONS = [('Root Domain', 'root_domain'), ('Recommended Root Category', 'recommended_category'),
                           ('Recommended Root Cause', 'recommended_cause'), ('Recommendation Sources', 'recommendation_sources')]
-# Header shades: the status of each block darker than its section, the fields of the analysts and the follow-up light,
-# the values from the CDR, the Ericsson RCA or derived lighter.
+# Header shades: every field of a section in one light shade of it, and the status of each block and the fields read
+# most darker than the section: the selected root category and cause, the Failure Comment, the Comments and the long
+# texts of the analysis (in wider columns), and the JOIN_ID and Call Key of the call.
 KEY_FIELD_TINT = -0.2
-EDITABLE_FIELD_TINT = 0.35
-COMPUTED_FIELD_TINT = 0.65
+FIELD_TINT = 0.35
+CALL_FIELD_TINT = 0.75
+EMPHASIS_FIELDS = {'selected_root_category', 'selected_root_cause', 'failure_comment', 'comments', 'description', 'findings',
+                   'proposed_measure'}
+EMPHASIS_CALL_COLUMNS = {'join_id', 'call_key'}
+WIDE_FIELDS = {'description': 50, 'findings': 50, 'proposed_measure': 50}
 
 
 def _tint(color: str, amount: float) -> str:
@@ -6028,18 +6033,20 @@ def export_workbook(task_repository: Any, filters: dict[str, Any], username: str
 
     # (section, label, getter, tint): the call columns, the catalog in its order, the CDR columns and the keys.
     columns: list[tuple[dict[str, str], str, Callable[[dict[str, Any]], Any], float]] = [
-        (CALL_SECTION, label, (lambda call, key=key: call.get(key)), 0.75) for label, key in EXPORT_COLUMNS]
+        (CALL_SECTION, label, (lambda call, key=key: call.get(key)), KEY_FIELD_TINT if key in EMPHASIS_CALL_COLUMNS else CALL_FIELD_TINT)
+        for label, key in EXPORT_COLUMNS]
     exported = [field for field in definitions if field.get('in_export', True)]
     highlighted = key_fields(definitions)
     # The recommendation goes right before the selected root category (or cause, without the category).
     selected = next((field['key'] for field in exported if field['source'] == 'tracking'
                      and field['source_ref'] in {'root_category', 'root_cause'}), None)
+    # The column (1-based) and width of the wide fields.
+    wide_columns: dict[int, int] = {}
     for field in exported:
         section = sections.get(field['section'], CALL_SECTION)
-        tint = KEY_FIELD_TINT if field['key'] in highlighted else \
-            EDITABLE_FIELD_TINT if field['source'] in {'user', 'tracking'} else COMPUTED_FIELD_TINT
+        tint = KEY_FIELD_TINT if field['key'] in highlighted or field['key'] in EMPHASIS_FIELDS else FIELD_TINT
         if field['key'] == selected:
-            columns += [(section, label, lambda call, key=key: call.get(key, ''), COMPUTED_FIELD_TINT)
+            columns += [(section, label, lambda call, key=key: call.get(key, ''), FIELD_TINT)
                         for label, key in EXPORT_ROOT_COMPANIONS]
         if field['source'] == 'tracking' and field['source_ref'] == 'comments':
             columns.append((section, field['label'], lambda call: call.get('comment_log', ''), tint))
@@ -6047,15 +6054,17 @@ def export_workbook(task_repository: Any, filters: dict[str, Any], username: str
             columns.append((section, field['label'], lambda call: str(call.get('updated_at') or '').replace('T', ' ')[:19], tint))
         else:
             columns.append((section, field['label'], lambda call, key=field['key']: call['values'].get(key, ''), tint))
+        if field['key'] in WIDE_FIELDS:
+            wide_columns[len(columns)] = WIDE_FIELDS[field['key']]
         if field['source'] == 'tracking':
             for label, key in EXPORT_COMPANIONS.get(field['source_ref'], []):
-                columns.append((section, label, lambda call, key=key: call.get(key, ''), COMPUTED_FIELD_TINT))
+                columns.append((section, label, lambda call, key=key: call.get(key, ''), FIELD_TINT))
     extra_section = {'key': 'cdr', 'label': 'CDR Columns', 'color': '#5E6B75'}
     columns += [(extra_section, name, (lambda call, name=name: (call.get('extra') or {}).get(name, '')), 0.8)
                 for name in indexed_cdr_columns(task_repository)
                 if not any(field['source'] == 'cdr' and field['source_ref'] == f'column:{name}' for field in definitions)]
-    columns += [(CALL_SECTION, 'Updated By', lambda call: call.get('updated_by', ''), 0.75),
-                (CALL_SECTION, 'Updated At', lambda call: str(call.get('updated_at') or '').replace('T', ' ')[:19], 0.75)]
+    columns += [(CALL_SECTION, 'Updated By', lambda call: call.get('updated_by', ''), CALL_FIELD_TINT),
+                (CALL_SECTION, 'Updated At', lambda call: str(call.get('updated_at') or '').replace('T', ' ')[:19], CALL_FIELD_TINT)]
 
     workbook = Workbook()
     thin = Side(style='thin', color='FFFFFF')
@@ -6082,7 +6091,7 @@ def export_workbook(task_repository: Any, filters: dict[str, Any], username: str
         cell.font = Font(bold=True, color=nq_catalog.contrast_color(f'#{shade}'))
         cell.alignment = Alignment(wrap_text=True, vertical='center')
         cell.border = Border(left=thin, right=thin)
-        sheet.column_dimensions[get_column_letter(index)].width = max(12, min(48, len(label) + 6))
+        sheet.column_dimensions[get_column_letter(index)].width = wide_columns.get(index) or max(12, min(48, len(label) + 6))
     for call in calls:
         sheet.append([_excel_value(getter(call)) for _section, _label, getter, _tint_value in columns])
     sheet.freeze_panes = 'A3'
