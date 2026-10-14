@@ -114,7 +114,7 @@ from src.modules.scoring_selection import (
     normalize_scoring_selection,
     save_scoring_selection,
 )
-from src.modules.repository import Repository, SCORING_CONFIGURATION_STATE_KEY, WORKSPACE_REGISTRY_TABLE, workspace_write_lock
+from src.modules.repository import Repository, SCORING_CONFIGURATION_STATE_KEY, USER_ROLES, WORKSPACE_REGISTRY_TABLE, workspace_write_lock
 from src.modules.runtime_config import IGNORE_EVENT_TIME_FILTERING_ENV, env_flag, ignore_event_time_filtering
 from src.modules.query_builder import MAX_PREVIEW_ROWS, execute_query, iter_query_csv, query_column_values, validate_query
 from src.runtime_logs import execution_log_entries
@@ -482,10 +482,10 @@ def help_document_label(relative_path: str) -> str:
     return stem.replace('-', ' ').replace('_', ' ').title()
 
 
-# Main modules that can be activated per user, role or custom user group,
-# listed in the order of the main navigation tabs. ``pages`` match exactly and
-# ``paths`` also match their sub-paths; shared actions (workspace switching,
-# dataset uploads and processing) stay available to every module.
+# Main modules, each shown to the accounts whose Modules Profile has it (super-admins see
+# every one), listed in the order of the main navigation tabs. ``pages`` match exactly and
+# ``paths`` also match their sub-paths; shared actions (workspace switching, dataset uploads
+# and processing) stay available to every module.
 FEATURES: tuple[dict[str, Any], ...] = (
     {'key': 'workspace', 'label': 'Workspace', 'pages': ('/workspace',), 'paths': ()},
     {'key': 'datasets-analysis', 'label': 'CDR Analysis', 'pages': ('/datasets-analysis',), 'paths': (
@@ -501,32 +501,10 @@ FEATURES: tuple[dict[str, Any], ...] = (
     {'key': 'builders', 'label': 'Builders', 'paths': ('/chart-builder', '/query-builder', '/api/chart-builder', '/api/query-builder')},
 )
 FEATURE_KEYS = tuple(feature['key'] for feature in FEATURES)
-FEATURE_ROLES = ('user-viewer', 'user-editor', 'admin', 'super-admin')
-FEATURE_ACTIVATION_STATE_KEY = 'feature_activation_v1'
-REPORTING_FOR_ALL_USERS_STATE_KEY = 'feature_reporting_all_users_v1'
-LEGACY_REPORTING_RULE = {'default': 'none', 'allow': {'roles': ['super-admin']}}
-FEATURE_ACTIVATION_CACHE_SECONDS = 5.0
-# A rule grants a feature to everyone ('all') or to nobody ('none') by default;
-# its Allowed roles, groups and users gain it and its Forbidden ones lose it.
-# Forbidden always wins over Allowed. A new deployment starts with every module
-# active for every user except PPT Reporting (old), off for every role and user.
-FEATURE_DEFAULTS: dict[str, dict[str, Any]] = {
-    'ppt-reporting-old': {'default': 'none'},
-}
-# The user groups that give the main modules, so access is managed by group: created once per deployment, each one
-# Allowed in Features Activation the modules it gives and Forbidden the others (PPT Reporting (old) stays apart).
-MODULE_ACCESS_GROUPS: tuple[dict[str, Any], ...] = (
-    {'name': 'NQ Calls', 'description': 'Workspace and Non-Qualified Calls.',
-     'features': ('workspace', 'non-qualified-calls')},
-    {'name': 'Benchmarking', 'description': 'Every main module except Non-Qualified Calls.',
-     'features': tuple(key for key in FEATURE_KEYS if key not in {'non-qualified-calls', 'ppt-reporting-old'})},
-    {'name': 'All Modules', 'description': 'Every main module.',
-     'features': tuple(key for key in FEATURE_KEYS if key != 'ppt-reporting-old')},
-)
-MODULE_ACCESS_GROUPS_STATE_KEY = 'module_access_groups_v1'
+MODULE_ACCESS_CACHE_SECONDS = 5.0
 # An Ericsson signum: an E and six more letters, stored in capitals (sign-in ignores the case).
 SIGNUM_PATTERN = re.compile(r'[Ee][A-Za-z]{6}')
-_feature_activation_cache: tuple[float, str, dict[str, Any]] | None = None
+_module_access_cache: tuple[float, str, dict[str, Any]] | None = None
 
 
 def feature_for_path(path: str) -> str | None:
@@ -537,175 +515,33 @@ def feature_for_path(path: str) -> str | None:
     return None
 
 
-def _feature_principals(value: object) -> dict[str, list]:
-    value = value if isinstance(value, dict) else {}
-    return {
-        'roles': [role for role in dict.fromkeys(value.get('roles') or []) if role in FEATURE_ROLES],
-        'groups': list(dict.fromkeys(int(item) for item in value.get('groups') or [] if str(item).isdigit())),
-        'users': list(dict.fromkeys(int(item) for item in value.get('users') or [] if str(item).isdigit())),
-    }
-
-
-def normalized_feature_rule(value: object, default: dict[str, Any] | None = None) -> dict[str, Any]:
-    """A feature rule: default access plus Allowed and Forbidden roles, groups and users."""
-    source = value if isinstance(value, dict) else (default or {})
-    if 'mode' in source and 'default' not in source:
-        # Rules saved before Allowed/Forbidden lists: 'selected' allowed only its selection.
-        source = {'default': 'all' if source.get('mode') == 'all' else 'none',
-                  'allow': {key: source.get(key) or [] for key in ('roles', 'groups', 'users')}}
-    rule = {
-        'default': 'none' if source.get('default') == 'none' else 'all',
-        'allow': _feature_principals(source.get('allow')),
-        'deny': _feature_principals(source.get('deny')),
-    }
-    if not isinstance(value, dict) and default and default.get('allow_usernames'):
-        # Built-in defaults may name users that only exist on some installations.
-        rule['allow_usernames'] = list(default['allow_usernames'])
-    return rule
-
-
-def feature_activation_settings() -> dict[str, dict[str, Any]]:
-    """Every feature's activation rule: saved values first, then the defaults."""
-    try:
-        stored = json.loads(repository.get_application_state(FEATURE_ACTIVATION_STATE_KEY) or '{}')
-    except (json.JSONDecodeError, TypeError, sqlite3.Error):
-        stored = {}
-    stored = stored if isinstance(stored, dict) else {}
-    if 'reporting' in stored and repository.get_application_state(REPORTING_FOR_ALL_USERS_STATE_KEY) != '1':
-        # Reporting left development: rules saved with its former default open it to every user, once.
-        if normalized_feature_rule(stored['reporting']) == normalized_feature_rule(LEGACY_REPORTING_RULE):
-            del stored['reporting']
-            repository.set_application_state(FEATURE_ACTIVATION_STATE_KEY, json.dumps(stored, sort_keys=True))
-        repository.set_application_state(REPORTING_FOR_ALL_USERS_STATE_KEY, '1')
-    return {
-        key: normalized_feature_rule(stored[key], FEATURE_DEFAULTS.get(key)) if key in stored
-        else normalized_feature_rule(None, FEATURE_DEFAULTS.get(key))
-        for key in FEATURE_KEYS
-    }
-
-
-def save_feature_activation_settings(settings_by_feature: dict[str, Any]) -> None:
-    global _feature_activation_cache
-    values = {key: normalized_feature_rule(settings_by_feature.get(key)) for key in FEATURE_KEYS}
-    repository.set_application_state(FEATURE_ACTIVATION_STATE_KEY, json.dumps(values, sort_keys=True))
-    _feature_activation_cache = None
-
-
-def _feature_activation_snapshot() -> dict[str, Any]:
-    """Activation rules plus user and group lookups, cached for a few seconds."""
-    global _feature_activation_cache
+def _module_access_snapshot() -> dict[str, Any]:
+    """The modules of every account, cached for a few seconds."""
+    global _module_access_cache
     now, database = monotonic(), str(repository.global_db_path)
-    cached = _feature_activation_cache
-    if cached is None or cached[1] != database or now - cached[0] > FEATURE_ACTIVATION_CACHE_SECONDS:
-        users = {str(row['username']).casefold(): int(row['id']) for row in repository.list_users()}
-        groups_by_user: dict[int, set[int]] = {}
-        for group in repository.list_user_groups():
-            for user_id in group['member_ids']:
-                groups_by_user.setdefault(int(user_id), set()).add(int(group['id']))
-        cached = _feature_activation_cache = (now, database, {
-            'rules': feature_activation_settings(), 'users': users, 'groups_by_user': groups_by_user,
-        })
+    cached = _module_access_cache
+    if cached is None or cached[1] != database or now - cached[0] > MODULE_ACCESS_CACHE_SECONDS:
+        cached = _module_access_cache = (now, database, repository.user_modules())
     return cached[2]
 
 
-def invalidate_feature_activation_cache() -> None:
-    global _feature_activation_cache
-    _feature_activation_cache = None
-
-
-def ensure_module_access_groups() -> None:
-    """Create the module access groups and their Features Activation rules, once per deployment."""
-    if repository.get_application_state(MODULE_ACCESS_GROUPS_STATE_KEY) == '1':
-        return
-    existing = {str(group['name']).casefold(): int(group['id']) for group in repository.list_user_groups()}
-    rules = feature_activation_settings()
-    for group in MODULE_ACCESS_GROUPS:
-        group_id = existing.get(group['name'].casefold()) or repository.save_user_group(None, group['name'], group['description'], [])
-        for key in FEATURE_KEYS:
-            if key == 'ppt-reporting-old':
-                continue
-            granted, refused = (rules[key]['allow'], rules[key]['deny']) if key in group['features'] else (rules[key]['deny'], rules[key]['allow'])
-            if group_id not in granted['groups']:
-                granted['groups'].append(group_id)
-            if group_id in refused['groups']:
-                refused['groups'].remove(group_id)
-    save_feature_activation_settings(rules)
-    repository.set_application_state(MODULE_ACCESS_GROUPS_STATE_KEY, '1')
-
-
-def feature_rule_allows(rule: dict[str, Any], role: str, user_id: int | None, groups: set[int], username: str) -> bool:
-    """Forbidden wins, then Allowed, then the default."""
-    def matches(principals: dict[str, list], usernames: tuple[str, ...] = ()) -> bool:
-        return (role in principals['roles'] or bool(groups & set(principals['groups']))
-                or (user_id is not None and user_id in principals['users'])
-                or username.casefold() in {name.casefold() for name in usernames})
-
-    if matches(rule['deny']):
-        return False
-    if matches(rule['allow'], tuple(rule.get('allow_usernames', ()))):
-        return True
-    return rule['default'] == 'all'
+def invalidate_module_access_cache() -> None:
+    global _module_access_cache
+    _module_access_cache = None
 
 
 def user_has_feature(user: SessionUser | None, feature: str) -> bool:
-    """Whether a feature is active for a user: Forbidden wins, then Allowed, then the default."""
+    """Whether an account sees a main module: super-admins see every one, the other accounts those of their Modules Profile."""
     if user is None or feature not in FEATURE_KEYS:
         return feature not in FEATURE_KEYS
-    snapshot = _feature_activation_snapshot()
-    user_id = snapshot['users'].get(user.username.casefold())
-    groups = snapshot['groups_by_user'].get(user_id, set()) if user_id is not None else set()
-    return feature_rule_allows(snapshot['rules'][feature], user.role, user_id, groups, user.username)
-
-
-FEATURE_ROLE_RANK = {role: index for index, role in enumerate(FEATURE_ROLES)}
-
-
-def feature_access_removed_from_higher_roles(actor: SessionUser, before: dict[str, Any], after: dict[str, Any]) -> list[str]:
-    """Features a save would remove from roles above the actor's, or from their users.
-
-    A lower role may grant a feature to a higher role but never remove it.
-    """
-    rank = FEATURE_ROLE_RANK.get(actor.role, -1)
-    higher_roles = [role for role in FEATURE_ROLES if FEATURE_ROLE_RANK[role] > rank]
-    if not higher_roles:
-        return []
-    groups_by_user: dict[int, set[int]] = {}
-    for group in repository.list_user_groups():
-        for member in group['member_ids']:
-            groups_by_user.setdefault(int(member), set()).add(int(group['id']))
-    # Every account of a higher role, plus the role itself for its future accounts.
-    principals = [(role, None, set(), '', f'the {role} role') for role in higher_roles]
-    principals += [(str(row['role']), int(row['id']), groups_by_user.get(int(row['id']), set()), str(row['username']), str(row['username']))
-                   for row in repository.list_users() if str(row['role']) in higher_roles]
-    removed = []
-    for feature in FEATURES:
-        key = feature['key']
-        lost = [label for role, user_id, groups, username, label in principals
-                if feature_rule_allows(before[key], role, user_id, groups, username)
-                and not feature_rule_allows(after[key], role, user_id, groups, username)]
-        if lost:
-            removed.append(f"{feature['label']} ({', '.join(lost)})")
-    return removed
+    if user.role == 'super-admin':
+        return True
+    snapshot = _module_access_snapshot()
+    return feature in snapshot['users'].get(user.username.casefold(), snapshot['default'])
 
 
 def user_features(user: SessionUser | None) -> dict[str, bool]:
     return {key: user_has_feature(user, key) for key in FEATURE_KEYS}
-
-
-def feature_activation_context() -> list[dict[str, Any]]:
-    """Features in tab order with their rules; default usernames resolve to user IDs."""
-    rules = feature_activation_settings()
-    user_ids = {str(row['username']).casefold(): int(row['id']) for row in repository.list_users()}
-    order = {module: position for position, module in enumerate(load_module_labels(repository))}
-    rows = []
-    for feature in sorted(FEATURES, key=lambda item: order.get(item['key'], len(order))):
-        rule = rules[feature['key']]
-        allow = dict(rule['allow'])
-        allow['users'] = list(dict.fromkeys([*allow['users'], *[user_ids[name.casefold()] for name in rule.get('allow_usernames', []) if name.casefold() in user_ids]]))
-        rows.append({**feature, 'default': rule['default'], 'allow': allow, 'deny': rule['deny'],
-                     'allow_values': [f'role:{role}' for role in allow['roles']] + [f'group:{group}' for group in allow['groups']] + [f'user:{user}' for user in allow['users']],
-                     'deny_values': [f'role:{role}' for role in rule['deny']['roles']] + [f'group:{group}' for group in rule['deny']['groups']] + [f'user:{user}' for user in rule['deny']['users']]})
-    return rows
 
 
 def can_access_ppt_reporting_old(user: SessionUser) -> bool:
@@ -3100,7 +2936,6 @@ async def lifespan(_: FastAPI):
     stored_runtime_configuration = runtime_configuration()
     if stored_runtime_configuration['configured']:
         apply_runtime_configuration(stored_runtime_configuration)
-    ensure_module_access_groups()
     migrate_workspace_template_registries()
     migrate_ppt_module_names()
     submit_background_task(empty_workspace_trash)
@@ -6319,8 +6154,10 @@ def build_default_access_accounts() -> list[dict[str, str]]:
 ARCHIVE_FORMAT = 'drivetest-analyzer-export'
 ARCHIVE_VERSION = 1
 ARCHIVE_COMPONENTS = frozenset({
-    'app_database', 'workspace_components',
+    'app_database', 'users_access', 'workspace_components',
 })
+# Users & Access: every account with its Modules Profile and workspaces, plus the Modules Profiles and Workspace Groups.
+USERS_ACCESS_ARCHIVE_PATH = 'users-access/users-access.json'
 WORKSPACE_ARCHIVE_COMPONENTS = frozenset({
     'workspace_database', 'input', 'output', 'dashboards', 'report_templates', 'mappings_reference_data',
     'auto_calculated_fields', 'query_builder_queries', 'reporting_jobs', 'nq_call_tracking', 'nq_calls_configuration', 'main_cities',
@@ -6328,6 +6165,7 @@ WORKSPACE_ARCHIVE_COMPONENTS = frozenset({
 })
 ARCHIVE_KIND_COMPONENTS = {
     'config': ('app_database',),
+    'users-access': ('users_access',),
     'workspace': ('workspace_components',),
     'full-environment': ('app_database', 'workspace_components'),
     'ppt-templates': ('workspace_components',),
@@ -6342,7 +6180,7 @@ WORKSPACE_ELEMENT_EXPORT_TARGETS = frozenset({
     'ppt-templates', 'auto-calculated-fields', 'dashboards', 'mappings-reference-data', 'query-builder-queries',
     'reporting-jobs', 'nq-call-tracking', 'nq-calls-configuration', 'main-cities', 'scoring-configuration',
 })
-STATIC_EXPORT_TARGETS = frozenset({'config', 'config-with-templates', 'full-environment'})
+STATIC_EXPORT_TARGETS = frozenset({'config', 'config-with-templates', 'users-access', 'full-environment'})
 UNCOMPRESSED_ARCHIVE_SUFFIXES = frozenset({
     '.7z', '.avi', '.docx', '.gif', '.gz', '.jpeg', '.jpg', '.mp3', '.mp4', '.pdf', '.png', '.pptx', '.rar',
     '.tar', '.tgz', '.webp', '.xlsx', '.xlsm', '.zip',
@@ -6405,7 +6243,7 @@ def archive_restore_components(manifest: dict[str, Any]) -> list[str]:
     """Return the manifest components that can be selected during Restore."""
     selected = [
         component for component in archive_manifest_components(manifest)
-        if component == 'app_database'
+        if component in {'app_database', 'users_access'}
     ]
     return [*selected, *archive_workspace_components(manifest)]
 
@@ -6578,7 +6416,7 @@ def _archive_tree(
 
 def backup_components(components: Iterable[str]) -> list[str]:
     """The known backup parts of a selection, without the Input and Output folders when their workspace database is not included."""
-    selected = list(dict.fromkeys(str(item) for item in components if item in {'app_database', *WORKSPACE_ARCHIVE_COMPONENTS}))
+    selected = list(dict.fromkeys(str(item) for item in components if item in {'app_database', 'users_access', *WORKSPACE_ARCHIVE_COMPONENTS}))
     if 'workspace_database' not in selected:
         selected = [item for item in selected if item not in {'input', 'output'}]
     return selected
@@ -6757,6 +6595,8 @@ def create_recurring_database_backup(
                 total += path.stat().st_size
         return total
     total_bytes = (repository.global_db_path.stat().st_size if 'app_database' in components and repository.global_db_path.exists() else 0)
+    users_access = _users_access_archive_payload() if 'users_access' in components else b''
+    total_bytes += len(users_access)
     for workspace in workspaces:
         if 'workspace_database' in components:
             total_bytes += workspace.database_path.stat().st_size
@@ -6793,7 +6633,7 @@ def create_recurring_database_backup(
         nonlocal completed_bytes
         completed_bytes += size
         report_progress('Writing ZIP contents', min(96.0, completed_bytes * 96.0 / max(total_bytes, 1)))
-    manifest_components = ['app_database'] if 'app_database' in components else []
+    manifest_components = [component for component in ('app_database', 'users_access') if component in components]
     if workspace_manifest_components:
         manifest_components.append('workspace_components')
     try:
@@ -6807,6 +6647,10 @@ def create_recurring_database_backup(
             if 'app_database' in components:
                 report_progress('Creating application database snapshot', 5.0)
                 _archive_database(archive, repository.global_db_path, 'application/application.db', backup_root, archived_bytes, cancel_callback=ensure_not_cancelled)
+            if 'users_access' in components:
+                report_progress('Exporting Users & Access', 5.0)
+                archive.writestr(USERS_ACCESS_ARCHIVE_PATH, users_access)
+                archived_bytes(len(users_access))
             for workspace in workspaces:
                 ensure_not_cancelled()
                 item = {'id': workspace.id, 'name': workspace.name}
@@ -7146,6 +6990,8 @@ def _backup_archive_components(archive_path: Path) -> list[str]:
     components: list[str] = []
     if 'application/application.db' in names:
         components.append('app_database')
+    if USERS_ACCESS_ARCHIVE_PATH in names:
+        components.append('users_access')
     if any(name.startswith('workspaces/') and name.endswith('/database.sqlite') for name in names):
         components.append('workspace_database')
     if any(name.startswith('workspaces/') and '/dashboards/dashboards.json' in name for name in names):
@@ -7221,7 +7067,7 @@ def restore_database_backup(
         names = [member.filename for member in archive.infolist() if not member.is_dir()]
         name_set = set(names)
         workspaces_by_name = {workspace.name: workspace for workspace in workspace_registry.list()}
-        total_steps = int('app_database' in selected)
+        total_steps = int('app_database' in selected) + int('users_access' in selected)
         for workspace_name in workspaces_by_name:
             prefix = f'workspaces/{workspace_name}/'
             for component, member in (
@@ -7268,6 +7114,11 @@ def restore_database_backup(
             replace_application_database_from_server(payload, manifest.get('source_workspaces'))
             repository.initialize()
             advance('Application database restored')
+        if 'users_access' in selected:
+            if progress_callback:
+                progress_callback('Restoring Users & Access', completed_steps, total_steps)
+            import_users_access(archive.read(USERS_ACCESS_ARCHIVE_PATH), manifest, importing_user)
+            advance('Users & Access restored')
         for workspace_name, workspace in workspaces_by_name.items():
             prefix = f'workspaces/{workspace_name}/'
             if 'workspace_database' in selected:
@@ -8106,6 +7957,8 @@ def export_archive_filename(target: str | Iterable[str]) -> str:
     generated_at = datetime.now().strftime('%Y%m%d-%H%M%S')
     if target == 'config':
         return f'drivetest-analyzer-config_{generated_at}.zip'
+    if target == 'users-access':
+        return f'drivetest-analyzer-users-access_{generated_at}.zip'
     if target == 'ppt-templates':
         workspace_name = active_workspace.name if active_workspace else 'workspace'
         return f'{workspace_name}_ppt-templates_{generated_at}.zip'
@@ -8210,6 +8063,13 @@ def _build_single_export_archive_file(
             )
             archive.writestr('manifest.json', json.dumps(manifest, indent=2, sort_keys=True))
             archive_configuration(archive, include_templates=include_templates)
+        elif target == 'users-access':
+            manifest = archive_manifest('users-access', source_workspaces=source_workspaces_manifest(), archive_path=USERS_ACCESS_ARCHIVE_PATH)
+            archive.writestr('manifest.json', json.dumps(manifest, indent=2, sort_keys=True))
+            payload = _users_access_archive_payload()
+            archive.writestr(USERS_ACCESS_ARCHIVE_PATH, payload)
+            if progress_callback:
+                progress_callback(len(payload))
         elif target == 'ppt-templates':
             source_id = next(iter(workspace_ids or ()), active_workspace.id if active_workspace else '')
             source_workspace = workspace_registry.get(source_id) if source_id else None
@@ -8504,6 +8364,8 @@ def estimate_export_bytes(
                 total += _file_size(path)
         if target == 'config-with-templates':
             total += _tree_size(settings.slides_templates_dir)
+    elif target == 'users-access':
+        total = len(_users_access_archive_payload())
     elif target == 'ppt-templates':
         source_id = next(iter(workspace_ids or ()), active_workspace.id if active_workspace else '')
         source_workspace = workspace_registry.get(source_id) if source_id else None
@@ -8638,6 +8500,8 @@ def _recovered_transfer_details(manifest: dict[str, Any]) -> tuple[str, list[str
         return (' + '.join(labels) or 'Export selection', list(dict.fromkeys(workspaces)))
     if kind == 'config':
         return ('Config + PPT Templates' if manifest.get('includes_slides_templates') else 'Config', [])
+    if kind == 'users-access':
+        return ('Users & Access', [])
     if kind == 'ppt-templates':
         source = manifest.get('source_workspace') or {}
         return ('PPT Templates', [str(source['name'])] if isinstance(source, dict) and source.get('name') else [])
@@ -8709,7 +8573,7 @@ def _recover_unimported_transfer_packages() -> None:
             manifest = read_import_manifest(package_path)
             kind = str(manifest.get('kind') or '')
             if kind not in {
-                'config', 'workspace', 'full-environment', 'ppt-templates',
+                'config', 'users-access', 'workspace', 'full-environment', 'ppt-templates',
                 'auto-calculated-fields', 'dashboards', 'mappings-reference-data', 'main-cities',
                 'scoring-configuration', 'query-builder-queries', 'reporting-jobs', 'nq-call-tracking', 'nq-calls-configuration',
                 'database-backup', 'bundle',
@@ -9190,8 +9054,7 @@ def migrate_ppt_module_names() -> None:
     from src.modules.module_labels import MODULE_LABELS_STATE_KEY
     from src.modules.ppt_naming import migrate_application_state, migrate_workspace_database
 
-    migrate_application_state(repository, (FEATURE_ACTIVATION_STATE_KEY, MODULE_LABELS_STATE_KEY))
-    invalidate_feature_activation_cache()
+    migrate_application_state(repository, (MODULE_LABELS_STATE_KEY,))
     for workspace in workspace_registry.list():
         migrate_workspace_database(workspace.database_path)
 
@@ -9317,6 +9180,32 @@ SERVER_APPLICATION_STATE_KEYS = (RECURRING_BACKUP_STATE_KEY, RUNTIME_CONFIGURATI
 def source_workspaces_manifest() -> list[dict[str, str]]:
     """The id and name of every workspace, so another server can translate the ids of an application database."""
     return [{'id': workspace.id, 'name': workspace.name} for workspace in workspace_registry.list()]
+
+
+def _users_access_archive_payload() -> bytes:
+    """The Users & Access file: accounts, Modules Profiles and Workspace Groups, naming workspaces by name."""
+    names = {workspace.id: workspace.name for workspace in workspace_registry.list()}
+    return json.dumps(repository.users_access_payload(names), ensure_ascii=False, indent=2).encode('utf-8')
+
+
+def import_users_access(content: bytes, manifest: dict[str, Any], importing_user: str) -> str:
+    """Merge a Users & Access file into this server; returns its completion message."""
+    try:
+        payload = json.loads(content.decode('utf-8'))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError('The Users & Access file is not valid.') from exc
+    source = manifest.get('source_workspaces')
+    source_names = [str(entry.get('name') or '') for entry in source if isinstance(entry, dict)] if isinstance(source, list) else None
+    summary = repository.merge_users_access(
+        payload, {workspace.name: workspace.id for workspace in workspace_registry.list()},
+        source_workspace_names=source_names, protected_username=importing_user,
+    )
+    invalidate_module_access_cache()
+    message = (f"Users & Access imported: {summary['users_created']} new and {summary['users_updated']} updated users, "
+               f"{summary['modules_profiles']} Modules Profiles and {summary['workspace_groups']} Workspace Groups.")
+    if summary['missing_workspaces']:
+        message += f" Workspaces this server does not have were left out: {', '.join(summary['missing_workspaces'])}."
+    return message
 
 
 def replace_application_database_from_server(snapshot: Path, source_workspaces: object) -> None:
@@ -9571,6 +9460,15 @@ def _apply_import_archive(
             if progress_callback:
                 progress_callback('finalising', 100.0)
             return ' '.join([f'Workspace "{workspace.name}" imported successfully.', *unsent_folder_warnings(missing_folders)])
+        if kind == 'users-access':
+            if USERS_ACCESS_ARCHIVE_PATH not in archive.namelist():
+                raise ValueError('The package does not contain Users & Access.')
+            if progress_callback:
+                progress_callback('importing Users & Access', 90.0)
+            notice = import_users_access(archive.read(USERS_ACCESS_ARCHIVE_PATH), manifest, importing_user)
+            if progress_callback:
+                progress_callback('finalising', 100.0)
+            return notice
         if kind == 'config':
             _safe_extract_archive_prefix(archive, staging_root, 'config', extracted)
             if progress_callback:
@@ -9997,6 +9895,7 @@ def _transfer_content_label(target: str | Iterable[str]) -> str:
     target = targets[0]
     labels = {
         'config': 'Config',
+        'users-access': 'Users & Access',
         'ppt-templates': 'PPT Templates',
         'config-with-templates': 'Config + PPT Templates',
         'full-environment': 'Full Environment',
@@ -10733,8 +10632,9 @@ def render_admin_template(
         'workspace_state': 'Workspace State',
         'transfer_offers': 'Server transfer offers',
         'users': 'Users',
-        'user_groups': 'User Groups',
-        'user_group_members': 'User Group Members',
+        'modules_profiles': 'Modules Profiles',
+        'workspace_groups': 'Workspace Groups',
+        'workspace_group_members': 'Workspace Group Members',
         'report_tasks': 'Report Tasks',
         'map_area_layers': 'Map Area Layers',
         'map_area_fills': 'Map Area Fills',
@@ -10771,6 +10671,7 @@ def render_admin_template(
     )
     export_options = [
         {'value': 'config', 'label': 'Application Config'},
+        {'value': 'users-access', 'label': 'Users & Access'},
         {'value': 'dashboards', 'label': 'Dashboards (from active workspace)', 'disabled': not active_workspace},
         {'value': 'ppt-templates', 'label': 'PPT Templates (from active workspace)', 'disabled': not active_workspace},
         {'value': 'main-cities', 'label': 'Main Cities (from active workspace)', 'disabled': not active_workspace},
@@ -10798,7 +10699,7 @@ def render_admin_template(
             } or option['value'].startswith('workspace:')
         ]
     export_option_groups = [
-        ('Configuration Content', [option for option in export_options if option['value'] == 'config']),
+        ('Configuration Content', [option for option in export_options if option['value'] in {'config', 'users-access'}]),
         ('Current Workspace Content', [
             option for option in export_options
             if option['value'] in {'dashboards', 'ppt-templates', 'main-cities', 'mappings-reference-data', 'scoring-configuration', 'auto-calculated-fields', 'query-builder-queries', 'reporting-jobs', 'nq-call-tracking', 'nq-calls-configuration'}
@@ -10821,10 +10722,12 @@ def render_admin_template(
             'workspace_config_page': workspace_config_page,
             'embedded_template_editor': embedded_template_editor,
             'users': admin_users,
-            'user_groups': repository.list_user_groups(),
-            'feature_activation': feature_activation_context() if user.role in {'admin', 'super-admin'} else [],
-            'feature_roles': FEATURE_ROLES,
-            'workspace_access_rows': workspace_access_rows(user, admin_users) if user.role in {'admin', 'super-admin'} else [],
+            'modules_profiles': repository.list_modules_profiles(),
+            'workspace_groups': repository.list_workspace_groups(),
+            'profile_modules': [{'key': key, 'title': label['title'], 'color': label['tab_color'],
+                                 'icon': TAB_ICONS[label['tab_icon']]['d'] if label['tab_icon'] else ''}
+                                for key, label in load_module_labels(repository).items()],
+            'managed_workspace_ids': [workspace.id for workspace in accessible_workspaces(user)],
             'workspaces': workspace_registry.list(),
             'backup_workspaces': accessible_workspaces(user),
             'datasets': admin_datasets,
@@ -11362,40 +11265,34 @@ def login(
 
 # -- access requests from the login page ---------------------------------------------------------
 def access_request_options() -> dict[str, Any]:
-    """What the access request of the login page offers: the user groups that open workspaces, with their workspaces,
-    and the module access groups, with the main modules an editor in them gets."""
-    groups = repository.list_user_groups()
+    """What the access request of the login page offers: the Workspace Groups that open workspaces, with their
+    workspaces, and the Modules Profiles, with their modules."""
     names = {workspace.id: workspace.name for workspace in workspace_registry.list()}
-    workspaces_by_group: dict[int, list[str]] = {}
-    for workspace_id, rule in repository.workspace_access_rules().items():
-        if workspace_id in names:
-            for group_id in rule['groups']:
-                workspaces_by_group.setdefault(int(group_id), []).append(names[workspace_id])
-    module_group_names = [group['name'].casefold() for group in MODULE_ACCESS_GROUPS]
     labels = load_module_labels(repository)
-    rules = feature_activation_settings()
-
-    def modules(group_id: int) -> list[str]:
-        return [labels[key]['title'] for key in labels
-                if key in rules and feature_rule_allows(rules[key], 'user-editor', None, {group_id}, '')]
-
-    by_name = {str(group['name']).casefold(): group for group in groups}
+    workspace_groups = []
+    for group in repository.list_workspace_groups():
+        workspaces = sorted((names[workspace_id] for workspace_id in group['workspace_ids'] if workspace_id in names), key=str.casefold)
+        if workspaces:
+            workspace_groups.append({'id': int(group['id']), 'name': group['name'], 'description': group['description'], 'workspaces': workspaces})
     return {
-        'workspace_groups': [{'id': int(group['id']), 'name': group['name'],
-                              'workspaces': sorted(workspaces_by_group[int(group['id'])], key=str.casefold)}
-                             for group in groups if int(group['id']) in workspaces_by_group
-                             and str(group['name']).casefold() not in module_group_names],
-        'module_groups': [{'id': int(by_name[name]['id']), 'name': by_name[name]['name'], 'modules': modules(int(by_name[name]['id']))}
-                          for name in module_group_names if name in by_name],
+        'workspace_groups': workspace_groups,
+        'modules_profiles': [{'id': int(profile['id']), 'name': profile['name'], 'description': profile['description'],
+                             'modules': [labels[key]['title'] for key in labels if key in profile['modules']],
+                             'module_tabs': [{'title': labels[key]['title'], 'color': labels[key]['tab_color'],
+                                              'icon': TAB_ICONS[labels[key]['tab_icon']]['d'] if labels[key]['tab_icon'] else ''}
+                                             for key in labels if key in profile['modules']]}
+                            for profile in repository.list_modules_profiles()],
     }
 
 
 class AccessRequestPayload(BaseModel):
     username: str = ''
+    first_name: str = ''
+    last_name: str = ''
     password: str = ''
     password_confirmation: str = ''
     workspace_group_ids: list[int] = Field(default_factory=list)
-    module_group_id: int | None = None
+    modules_profile_id: int | None = None
 
 
 @app.get('/api/access-requests/options')
@@ -11419,15 +11316,18 @@ def access_request_user(username: str) -> JSONResponse:
 
 @app.post('/api/access-requests', status_code=status.HTTP_201_CREATED)
 def create_access_request(request: Request, payload: AccessRequestPayload) -> JSONResponse:
-    """Create the requested user, inactive until an administrator activates it: an editor in the user groups of the
-    chosen workspaces and in the chosen module access group. For a user that already exists (with its current password)
-    its workspace and module groups are replaced and it is deactivated until an administrator activates it again.
+    """Create the requested user, inactive until an administrator activates it: an editor in the chosen Workspace Groups
+    with the chosen Modules Profile. For a user that already exists (with its current password) its Workspace Groups and
+    Modules Profile are replaced and it is deactivated until an administrator activates it again.
     Returns the email that asks for the activation."""
     from src.modules.repository import local_now_iso
 
     signum = payload.username.strip()
     if not SIGNUM_PATTERN.fullmatch(signum):
         raise HTTPException(status_code=400, detail='The username must be your Ericsson signum: 7 letters starting with E.')
+    first_name, last_name = payload.first_name.strip(), payload.last_name.strip()
+    if not first_name or not last_name:
+        raise HTTPException(status_code=400, detail='Enter your first name and last name.')
     if not payload.password:
         raise HTTPException(status_code=400, detail='Choose a password.')
     options = access_request_options()
@@ -11435,14 +11335,14 @@ def create_access_request(request: Request, payload: AccessRequestPayload) -> JS
     workspace_groups = [group for group in options['workspace_groups'] if group['id'] in chosen]
     if not chosen or len(workspace_groups) != len(chosen):
         raise HTTPException(status_code=400, detail='Choose at least one workspace of the list.')
-    module_group = next((group for group in options['module_groups'] if group['id'] == payload.module_group_id), None)
-    if module_group is None:
-        raise HTTPException(status_code=400, detail='Choose the modules to access.')
+    profile = next((item for item in options['modules_profiles'] if item['id'] == payload.modules_profile_id), None)
+    if profile is None:
+        raise HTTPException(status_code=400, detail='Choose a modules profile.')
 
     def describe(groups: list[dict[str, Any]], key: str) -> str:
         return '; '.join(f"{group['name']} ({', '.join(group[key])})" for group in groups) or 'None'
 
-    requested_groups = [group['id'] for group in workspace_groups] + [module_group['id']]
+    requested_groups = [group['id'] for group in workspace_groups]
     record = repository.get_user(signum)
     previous: list[str] = []
     if record:
@@ -11452,14 +11352,16 @@ def create_access_request(request: Request, payload: AccessRequestPayload) -> JS
             raise HTTPException(status_code=403, detail=f'The password is not the current password of {record.username}.')
         username, role = record.username, record.role
         user_id = next(int(row['id']) for row in repository.list_users() if str(row['username']).casefold() == username.casefold())
-        member_of = {int(group['id']) for group in repository.list_user_groups() if user_id in group['member_ids']}
-        offered = [*options['workspace_groups'], *options['module_groups']]
+        member_of = {int(group['id']) for group in repository.list_workspace_groups() if user_id in group['member_ids']}
+        current_profiles = {int(item['id']) for item in repository.list_modules_profiles() if user_id in item['member_ids']}
+        previous_profile = [item for item in options['modules_profiles'] if item['id'] in current_profiles]
         previous = [f"Previous workspaces: {describe([group for group in options['workspace_groups'] if group['id'] in member_of], 'workspaces')}",
-                    f"Previous modules: {describe([group for group in options['module_groups'] if group['id'] in member_of], 'modules')}"]
-        # Other groups are kept; the workspace and module groups become the requested ones.
-        kept = [group_id for group_id in member_of if group_id not in {group['id'] for group in offered}]
-        repository.set_user_groups(user_id, kept + requested_groups)
-        repository.update_user(user_id, username, role, False)
+                    f"Previous modules profile: {describe(previous_profile, 'modules')}"]
+        # Groups that open no workspace are kept; the others become the requested ones.
+        kept = [group_id for group_id in member_of if group_id not in {group['id'] for group in options['workspace_groups']}]
+        repository.set_user_workspace_groups(user_id, kept + requested_groups)
+        repository.set_users_modules_profile([user_id], profile['id'])
+        repository.update_user(user_id, username, role, False, first_name=first_name, last_name=last_name)
         for token, session in list(SESSIONS.items()):
             if session.username.casefold() == username.casefold():
                 SESSIONS.pop(token, None)
@@ -11468,16 +11370,18 @@ def create_access_request(request: Request, payload: AccessRequestPayload) -> JS
             raise HTTPException(status_code=400, detail='The passwords do not match.')
         username, role = signum.upper(), 'user-editor'
         try:
-            user_id = repository.create_user(username, payload.password, role, active=False)
+            user_id = repository.create_user(username, payload.password, role, active=False, first_name=first_name, last_name=last_name)
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=f'The user {username} already exists.') from exc
-        repository.set_user_groups(user_id, requested_groups)
-    invalidate_feature_activation_cache()
+        repository.set_user_workspace_groups(user_id, requested_groups)
+        repository.set_users_modules_profile([user_id], profile['id'])
+    invalidate_module_access_cache()
     workspaces = describe(workspace_groups, 'workspaces')
-    modules = describe([module_group], 'modules')
+    profile_text = describe([profile], 'modules')
     requested = local_now_iso()[:16].replace('T', ' ')
     repository.add_log(username, 'access_change_request' if record else 'access_request', json.dumps({
-        'role': role, 'groups': [group['name'] for group in workspace_groups] + [module_group['name']],
+        'name': f'{first_name} {last_name}', 'role': role, 'workspace_groups': [group['name'] for group in workspace_groups],
+        'modules_profile': profile['name'],
     }))
     opening = (f'I have requested a change of the access of my user to {__app_name__}. The new access has been applied and my '
                'user is inactive until you review it: please activate it again in Admin › Users.' if record else
@@ -11489,9 +11393,10 @@ def create_access_request(request: Request, payload: AccessRequestPayload) -> JS
         opening,
         '',
         f'User: {username}',
+        f'Name: {first_name} {last_name}',
         f'Role: {role}',
         f'Workspaces: {workspaces}',
-        f'Modules: {modules}',
+        f'Modules Profile: {profile_text}',
         *previous,
         f'Requested on: {requested}',
         f"Server: {str(request.base_url).rstrip('/')}/admin",
@@ -11501,7 +11406,8 @@ def create_access_request(request: Request, payload: AccessRequestPayload) -> JS
     ])
     subject = f"{__app_name__} access {'change ' if record else ''}request: {username}"
     return JSONResponse({
-        'username': username, 'role': role, 'existing': record is not None, 'workspaces': workspaces, 'modules': modules,
+        'username': username, 'name': f'{first_name} {last_name}', 'role': role, 'existing': record is not None,
+        'workspaces': workspaces, 'modules_profile': profile_text,
         'email': {'to': __author_email__, 'subject': subject, 'body': body},
     }, status_code=status.HTTP_201_CREATED)
 
@@ -11703,7 +11609,7 @@ def workspace(
                 'has_processing': False, 'vodafone_mapping_datasets': [], 'three_mapping_datasets': [], 'region_mapping_datasets': [], 'cluster_mapping_datasets': [], 'vendor_polygon_datasets': [], 'network_inventory_datasets': [], 'operator_options': [],
                 'mappable_cdr_datasets': [], 'clearable_cdr_datasets': [], 'mappable_region_cdr_datasets': [], 'clearable_region_cdr_datasets': [],
                 'calculated_dimensions': [], 'combined_tables': [],
-                'workspaces': workspaces, 'workspace_access': workspace_access, 'workspace_sizes': workspace_sizes, 'workspace_cache_sizes': workspace_cache_sizes, 'workspace_statuses': workspace_statuses, 'workspace_users': workspace_users, 'workspace_cdr_types': workspace_cdr_types(workspaces), 'workspace_countries': workspace_countries(workspaces), 'workspace_access_rules': repository.workspace_access_rules(), 'access_roles': FEATURE_ROLES, 'access_groups': repository.list_user_groups(), 'workspace_notice': request.query_params.get('workspace_notice'),
+                'workspaces': workspaces, 'workspace_access': workspace_access, 'workspace_sizes': workspace_sizes, 'workspace_cache_sizes': workspace_cache_sizes, 'workspace_statuses': workspace_statuses, 'workspace_users': workspace_users, 'workspace_cdr_types': workspace_cdr_types(workspaces), 'workspace_countries': workspace_countries(workspaces), 'workspace_groups': repository.list_workspace_groups(), 'workspace_notice': request.query_params.get('workspace_notice'),
                 'workspace_warning': request.query_params.get('workspace_warning'),
                 'workspace_error': request.query_params.get('workspace_error'),
             },
@@ -11768,8 +11674,7 @@ def workspace(
             'workspace_users': workspace_users,
             'workspace_cdr_types': workspace_cdr_types(workspace_registry.list()),
             'workspace_countries': workspace_countries(workspace_registry.list()),
-            'workspace_access_rules': repository.workspace_access_rules(), 'access_roles': FEATURE_ROLES,
-            'access_groups': repository.list_user_groups(),
+            'workspace_groups': repository.list_workspace_groups(),
             'active_workspace': active_workspace,
             'workspace_notice': request.query_params.get('workspace_notice'),
             'workspace_warning': request.query_params.get('workspace_warning'),
@@ -12821,27 +12726,15 @@ def workspace_access_map(user: SessionUser, workspaces: list[Workspace]) -> dict
 
 
 def admin_user_rows() -> list[dict[str, Any]]:
-    """Accounts with their direct workspaces, user groups and the workspaces their role or groups open."""
-    groups = repository.list_user_groups()
-    rules = repository.workspace_access_rules()
-    names = {workspace.id: workspace.name for workspace in workspace_registry.list()}
-    rows = []
-    for row in repository.list_users():
-        user_id = int(row['id'])
-        group_ids = [group['id'] for group in groups if user_id in group['member_ids']]
-        group_names = {group['id']: group['name'] for group in groups}
-        by_group = [
-            {'workspace': names[workspace_id], 'groups': [group_names[group_id] for group_id in rule['groups'] if group_id in group_ids]}
-            for workspace_id, rule in rules.items() if workspace_id in names and set(rule['groups']) & set(group_ids)
-        ]
-        by_role = [names[workspace_id] for workspace_id, rule in rules.items() if workspace_id in names and row['role'] in rule['roles']]
-        rows.append({
-            **dict(row), 'created_at': format_local_timestamp(row['created_at']),
-            'workspace_ids': repository.list_user_workspace_ids(user_id), 'group_ids': group_ids,
-            'group_workspaces': sorted(by_group, key=lambda item: item['workspace'].casefold()),
-            'role_workspaces': sorted(by_role, key=str.casefold),
-        })
-    return rows
+    """Accounts with their Modules Profile, their Workspace Groups and the workspaces granted to them one by one."""
+    profile_of = {user_id: profile['id'] for profile in repository.list_modules_profiles() for user_id in profile['member_ids']}
+    groups = repository.list_workspace_groups()
+    return [{
+        **dict(row), 'created_at': format_local_timestamp(row['created_at']),
+        'workspace_ids': repository.list_user_workspace_ids(int(row['id'])),
+        'modules_profile_id': profile_of.get(int(row['id'])),
+        'workspace_group_ids': [group['id'] for group in groups if int(row['id']) in group['member_ids']],
+    } for row in repository.list_users()]
 
 
 def workspace_cdr_types(workspaces: list[Workspace]) -> dict[str, str]:
@@ -12876,43 +12769,6 @@ def workspace_countries(workspaces: list[Workspace]) -> dict[str, str]:
             pass
         codes[workspace.id] = value if value in countries() else ''
     return codes
-
-
-def workspace_access_rows(user: SessionUser, accounts: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """The workspaces an administrator manages, with the roles, groups and users that open each one."""
-    rules = repository.workspace_access_rules()
-    rows = []
-    for workspace in accessible_workspaces(user):
-        rule = rules.get(workspace.id, {})
-        rows.append({
-            'id': workspace.id, 'name': workspace.name,
-            'values': [*(f'role:{role}' for role in rule.get('roles', [])), *(f'group:{group}' for group in rule.get('groups', [])),
-                       *(f"user:{account['id']}" for account in accounts if workspace.id in (account.get('workspace_ids') or []))],
-        })
-    return rows
-
-
-@app.post('/admin/workspace-access')
-async def save_workspace_access(request: Request, user: SessionUser = Depends(admin_user)) -> Response:
-    """Grant each managed workspace to roles, user groups and users."""
-    form = await request.form()
-    accounts = {int(row['id']): row for row in repository.list_users()}
-    groups = {int(group['id']) for group in repository.list_user_groups()}
-    changes = {}
-    for workspace in accessible_workspaces(user):
-        values = [str(value) for value in form.getlist(f'access__{workspace.id}')]
-        roles = [value[5:] for value in values if value.startswith('role:') and value[5:] in FEATURE_ROLES]
-        group_ids = [int(value[6:]) for value in values if value.startswith('group:') and value[6:].isdigit() and int(value[6:]) in groups]
-        user_ids = {int(value[5:]) for value in values if value.startswith('user:') and value[5:].isdigit()}
-        if user.role != 'super-admin':
-            # An administrator keeps the access to the workspaces they manage.
-            user_ids |= {account_id for account_id, row in accounts.items() if str(row['username']).casefold() == user.username.casefold()}
-        repository.set_workspace_access_rule(workspace.id, roles, group_ids)
-        repository.set_workspace_user_access(
-            workspace.id, [str(accounts[user_id]['username']) for user_id in user_ids if user_id in accounts])
-        changes[workspace.name] = {'roles': roles, 'groups': group_ids, 'users': len(user_ids)}
-    repository.add_log(user.username, 'update_workspace_access', json.dumps(changes))
-    return RedirectResponse('/admin#workspace-access', status_code=status.HTTP_303_SEE_OTHER)
 
 
 def require_workspace_access(user: SessionUser, workspace_id: str) -> None:
@@ -12977,8 +12833,7 @@ def close_workspace(workspace_id: str = Form(...), user: SessionUser = Depends(c
 @app.post('/workspace/create')
 def create_workspace(
     name: str = Form(...), usernames: list[str] = Form(default=[]), cdr_type: str = Form(DEFAULT_CDR_TYPE),
-    country: str = Form(''),
-    access_roles: list[str] = Form(default=[]), access_groups: list[int] = Form(default=[]),
+    country: str = Form(''), workspace_group_ids: list[int] = Form(default=[]),
     user: SessionUser = Depends(current_user),
 ) -> Response:
     from src.modules.workspace_countries import normalize_country, set_workspace_country
@@ -12998,8 +12853,7 @@ def create_workspace(
                     [*repository.list_user_workspace_ids(int(account['id'])), workspace.id],
                 )
         if user.role == 'super-admin':
-            repository.set_workspace_access_rule(
-                workspace.id, [role for role in access_roles if role in FEATURE_ROLES], access_groups)
+            repository.set_workspace_groups_of_workspace(workspace.id, workspace_group_ids)
         activate_workspace(workspace.id)
         set_workspace_cdr_type(repository, cdr_type)
         # The Operator Maps of its country; without a country the workspace has none.
@@ -13035,8 +12889,7 @@ def save_workspace(
     workspace_id: str = Form(...),
     name: str = Form(...),
     usernames: list[str] = Form(default=[]),
-    access_roles: list[str] = Form(default=[]),
-    access_groups: list[int] = Form(default=[]),
+    workspace_group_ids: list[int] = Form(default=[]),
     cdr_type: str = Form(''),
     country: str | None = Form(None),
     user: SessionUser = Depends(current_user),
@@ -13055,8 +12908,7 @@ def save_workspace(
         workspace = current_workspace if name == current_workspace.name else workspace_registry.rename(workspace_id, name)
         if user.role == 'super-admin':
             repository.set_workspace_user_access(workspace.id, usernames)
-            repository.set_workspace_access_rule(
-                workspace.id, [role for role in access_roles if role in FEATURE_ROLES], access_groups)
+            repository.set_workspace_groups_of_workspace(workspace.id, workspace_group_ids)
         if cdr_type and cdr_type != workspace_cdr_types([workspace])[workspace.id]:
             set_workspace_cdr_type(Repository(
                 workspace.database_path, global_db_path=repository.global_db_path,
@@ -20111,7 +19963,7 @@ def run_manual_database_restore(
     user: SessionUser = Depends(admin_user),
 ) -> Response:
     archive_path = _backup_archive_file(backup_path, backup_file)
-    selected = [item for item in components if item in {'app_database', *WORKSPACE_ARCHIVE_COMPONENTS}]
+    selected = [item for item in components if item in {'app_database', 'users_access', *WORKSPACE_ARCHIVE_COMPONENTS}]
     present = _backup_archive_components(archive_path)
     if not selected or not set(selected) <= set(present):
         raise HTTPException(status_code=400, detail='Select only components contained in the backup.')
@@ -20203,7 +20055,7 @@ async def receive_transfer_offer(request: Request) -> JSONResponse:
         raise HTTPException(status_code=400, detail='The transfer offer is invalid.')
     kind = str(payload.get('kind') or '')
     if kind not in {
-            'config', 'workspace', 'full-environment', 'ppt-templates',
+            'config', 'users-access', 'workspace', 'full-environment', 'ppt-templates',
             'auto-calculated-fields', 'dashboards', 'mappings-reference-data', 'main-cities',
             'scoring-configuration', 'query-builder-queries', 'reporting-jobs', 'nq-call-tracking', 'nq-calls-configuration',
             'database-backup', 'bundle',
@@ -20873,7 +20725,7 @@ def _retain_import_upload(upload_id: str, package_path: Path, user: SessionUser)
     manifest = read_import_manifest(package_path)
     kind = str(manifest.get('kind') or '')
     if kind not in {
-        'config', 'workspace', 'full-environment', 'ppt-templates',
+        'config', 'users-access', 'workspace', 'full-environment', 'ppt-templates',
         'auto-calculated-fields', 'dashboards', 'mappings-reference-data', 'main-cities',
         'scoring-configuration', 'query-builder-queries', 'reporting-jobs', 'nq-call-tracking', 'nq-calls-configuration',
         'database-backup', 'bundle',
@@ -22330,12 +22182,31 @@ def export_named_report_catalogue(technology: str, catalogue_id: str, user: Sess
     )
 
 
+def granted_workspace_ids(user: SessionUser, current: Iterable[str], submitted: Iterable[str]) -> list[str]:
+    """The workspaces granted one by one after an administrator's change: a super-admin changes every one, an admin
+    only those they can open, and the others keep their grants."""
+    if user.role == 'super-admin':
+        return list(submitted)
+    managed = {workspace.id for workspace in accessible_workspaces(user)}
+    return [*(item for item in current if item not in managed), *(item for item in submitted if item in managed)]
+
+
+def granted_workspace_group_workspaces(user: SessionUser, current: Iterable[str], submitted: Iterable[str]) -> list[str]:
+    """The workspaces of a Workspace Group after an administrator's change, as for the workspaces granted one by one."""
+    known = {workspace.id for workspace in workspace_registry.list()}
+    return granted_workspace_ids(user, current, [item for item in submitted if item in known])
+
+
 @app.post('/admin/users', response_class=HTMLResponse)
 def create_user(
     request: Request,
     username: str = Form(...),
     password: str = Form(...),
     role: str = Form(...),
+    first_name: str = Form(''),
+    last_name: str = Form(''),
+    modules_profile_id: str = Form(''),
+    workspace_group_ids: list[int] = Form(default=[]),
     workspace_ids: list[str] = Form(default=[]),
     user: SessionUser = Depends(admin_user),
 ) -> HTMLResponse:
@@ -22343,15 +22214,16 @@ def create_user(
         normalized_role = role.strip().lower()
         if normalized_role == 'user':
             normalized_role = 'user-viewer'
-        if normalized_role not in {'user-viewer', 'user-editor', 'admin', 'super-admin'}:
+        if normalized_role not in USER_ROLES:
             raise ValueError('Unsupported role')
         if user.role != 'super-admin' and normalized_role == 'super-admin':
             raise ValueError('Only super-admins can create super-admin users.')
-        repository.create_user(username, password, normalized_role)
-        created = repository.get_user_by_id(max(int(row['id']) for row in repository.list_users() if row['username'] == username.strip()))
-        if created:
-            if user.role == 'super-admin':
-                repository.set_user_workspace_access(int(created['id']), workspace_ids)
+        user_id = repository.create_user(username, password, normalized_role, first_name=first_name, last_name=last_name)
+        if modules_profile_id.strip().isdigit():
+            repository.set_users_modules_profile([user_id], int(modules_profile_id))
+        repository.set_user_workspace_groups(user_id, workspace_group_ids)
+        repository.set_user_workspace_access(user_id, granted_workspace_ids(user, [], workspace_ids))
+        invalidate_module_access_cache()
         repository.add_log(user.username, 'create_user', username)
         return RedirectResponse('/admin', status_code=status.HTTP_303_SEE_OTHER)
     except Exception as exc:
@@ -22366,9 +22238,12 @@ def update_user_account(
     password: str = Form(''),
     role: str = Form(...),
     active: str | None = Form(default=None),
+    first_name: str | None = Form(default=None),
+    last_name: str | None = Form(default=None),
+    modules_profile_id: str = Form(''),
     workspace_ids: list[str] = Form(default=[]),
-    group_ids: list[int] = Form(default=[]),
-    groups_submitted: str = Form(default=''),
+    workspace_group_ids: list[int] = Form(default=[]),
+    workspaces_submitted: str = Form(default=''),
     edited_field: str = Form(default=''),
     user: SessionUser = Depends(admin_user),
 ) -> Response:
@@ -22381,10 +22256,13 @@ def update_user_account(
         return {
             'id': int(row['id']),
             'username': row['username'],
+            'first_name': row['first_name'],
+            'last_name': row['last_name'],
             'role': row['role'],
             'active': bool(row['active']),
             'workspace_ids': repository.list_user_workspace_ids(int(row['id'])),
-            'group_ids': [group['id'] for group in repository.list_user_groups() if int(row['id']) in group['member_ids']],
+            'modules_profile_id': next((profile['id'] for profile in repository.list_modules_profiles() if int(row['id']) in profile['member_ids']), None),
+            'workspace_group_ids': [group['id'] for group in repository.list_workspace_groups() if int(row['id']) in group['member_ids']],
         }
 
     def failure(message: str, status_code: int, row=None) -> Response:
@@ -22401,7 +22279,7 @@ def update_user_account(
     normalized_username = username.strip() if not edited_field or edited_field == 'username' else str(target_user['username'])
     if not normalized_username:
         return failure('Username cannot be empty', 400, target_user)
-    if normalized_role not in {'user-viewer', 'user-editor', 'admin', 'super-admin'}:
+    if normalized_role not in USER_ROLES:
         return failure('Unsupported role', 400, target_user)
     if user.role != 'super-admin' and (
         target_user['role'] == 'super-admin' or normalized_role == 'super-admin'
@@ -22423,12 +22301,16 @@ def update_user_account(
             normalized_role,
             will_be_active,
             password.strip() or None,
+            first_name=first_name,
+            last_name=last_name,
         )
-        if user.role == 'super-admin':
-            repository.set_user_workspace_access(target_user_id, workspace_ids)
-        if groups_submitted == '1':
-            repository.set_user_groups(target_user_id, group_ids)
-        invalidate_feature_activation_cache()
+        if modules_profile_id.strip().isdigit():
+            repository.set_users_modules_profile([target_user_id], int(modules_profile_id))
+        if workspaces_submitted == '1':
+            repository.set_user_workspace_groups(target_user_id, workspace_group_ids)
+            repository.set_user_workspace_access(target_user_id, granted_workspace_ids(
+                user, repository.list_user_workspace_ids(target_user_id), workspace_ids))
+        invalidate_module_access_cache()
         repository.add_log(
             user.username,
             'update_user',
@@ -22440,6 +22322,69 @@ def update_user_account(
         return RedirectResponse('/admin', status_code=status.HTTP_303_SEE_OTHER)
     except Exception as exc:
         return failure(str(exc), 400, repository.get_user_by_id(target_user_id))
+
+
+BULK_USER_ACTIONS = ('modules_profile', 'add_workspace_group', 'remove_workspace_group', 'role', 'activate', 'deactivate')
+
+
+@app.post('/admin/users/bulk')
+def bulk_update_users(
+    user_ids: list[int] = Form(default=[]),
+    action: str = Form(''),
+    value: str = Form(''),
+    user: SessionUser = Depends(admin_user),
+) -> JSONResponse:
+    """Apply one change to several accounts: a Modules Profile, joining or leaving a Workspace Group, a role, or the
+    active status. Accounts the administrator cannot change, and changes that would leave no active admin or
+    super-admin, are skipped and reported."""
+    targets = [row for row in (repository.get_user_by_id(user_id) for user_id in dict.fromkeys(user_ids)) if row]
+    if not targets:
+        raise HTTPException(status_code=400, detail='Select at least one user.')
+    if action not in BULK_USER_ACTIONS:
+        raise HTTPException(status_code=400, detail='Choose a valid change.')
+    profiles = {profile['id']: profile['name'] for profile in repository.list_modules_profiles()}
+    groups = {group['id']: group['name'] for group in repository.list_workspace_groups()}
+    if action == 'modules_profile' and not (value.isdigit() and int(value) in profiles):
+        raise HTTPException(status_code=400, detail='Choose a Modules Profile.')
+    if action in {'add_workspace_group', 'remove_workspace_group'} and not (value.isdigit() and int(value) in groups):
+        raise HTTPException(status_code=400, detail='Choose a Workspace Group.')
+    if action == 'role' and value not in USER_ROLES:
+        raise HTTPException(status_code=400, detail='Choose a valid role.')
+    if action == 'role' and value == 'super-admin' and user.role != 'super-admin':
+        raise HTTPException(status_code=403, detail='Only super-admins can assign the super-admin role.')
+    updated: list[str] = []
+    skipped: list[str] = []
+    for target in targets:
+        target_id, name = int(target['id']), str(target['username'])
+        if user.role != 'super-admin' and target['role'] == 'super-admin':
+            skipped.append(f'{name}: only super-admins can change super-admin accounts')
+            continue
+        if action == 'modules_profile':
+            if target['role'] == 'super-admin':
+                skipped.append(f'{name}: super-admins see every module')
+                continue
+            repository.set_users_modules_profile([target_id], int(value))
+        elif action == 'add_workspace_group':
+            repository.change_workspace_group_members(int(value), add=[target_id])
+        elif action == 'remove_workspace_group':
+            repository.change_workspace_group_members(int(value), remove=[target_id])
+        else:
+            new_role = value if action == 'role' else str(target['role'])
+            will_be_active = {'activate': True, 'deactivate': False}.get(action, bool(target['active']))
+            if action == 'deactivate' and name.casefold() == user.username.casefold():
+                skipped.append(f'{name}: you cannot deactivate your own account')
+                continue
+            if would_remove_required_super_admin(target, new_role, will_be_active) or would_remove_last_active_admin(target, new_role, will_be_active):
+                skipped.append(f'{name}: at least one active admin and one active super-admin must remain')
+                continue
+            repository.update_user(target_id, name, new_role, will_be_active)
+        updated.append(name)
+    invalidate_module_access_cache()
+    label = profiles.get(int(value)) if action == 'modules_profile' else groups.get(int(value)) if 'workspace_group' in action else value
+    repository.add_log(user.username, 'bulk_update_users', json.dumps({
+        'action': action, 'value': label, 'users': updated, 'skipped': skipped,
+    }))
+    return JSONResponse({'updated': updated, 'skipped': skipped})
 
 
 @app.post('/admin/users/{target_user_id}/delete', response_class=HTMLResponse)
@@ -22483,7 +22428,7 @@ def delete_user_account(
         )
     try:
         repository.delete_user(target_user_id)
-        invalidate_feature_activation_cache()
+        invalidate_module_access_cache()
         repository.add_log(
             user.username,
             'delete_user',
@@ -22494,60 +22439,145 @@ def delete_user_account(
         return render_admin_template(request, user, error=str(exc), status_code=400)
 
 
-@app.post('/admin/user-groups', response_class=HTMLResponse)
-def create_user_group(
+def profile_member_choices() -> set[int]:
+    """The accounts that have a Modules Profile: every one but the super-admins, who see every module."""
+    return {int(row['id']) for row in repository.list_users() if str(row['role']) != 'super-admin'}
+
+
+def access_cards_payload() -> dict[str, Any]:
+    """Every Modules Profile and Workspace Group with its members, to refresh the Admin cards and the Users table."""
+    return {'profiles': repository.list_modules_profiles(), 'groups': repository.list_workspace_groups()}
+
+
+@app.post('/admin/modules-profiles', response_class=HTMLResponse)
+def create_modules_profile(
     request: Request,
     name: str = Form(''),
     description: str = Form(''),
+    modules: list[str] = Form(default=[]),
     member_ids: list[int] = Form(default=[]),
     user: SessionUser = Depends(admin_user),
 ) -> Response:
     try:
-        group_id = repository.save_user_group(None, name, description, member_ids)
+        profile_id = repository.save_modules_profile(None, name, description, modules)
+        repository.set_users_modules_profile([member for member in member_ids if member in profile_member_choices()], profile_id)
     except ValueError as exc:
         return render_admin_template(request, user, error=str(exc), status_code=400)
-    invalidate_feature_activation_cache()
-    repository.add_log(user.username, 'create_user_group', json.dumps({'group_id': group_id, 'name': name.strip(), 'member_ids': member_ids}))
-    return RedirectResponse('/admin#user-groups', status_code=status.HTTP_303_SEE_OTHER)
+    invalidate_module_access_cache()
+    repository.add_log(user.username, 'create_modules_profile', json.dumps({
+        'profile_id': profile_id, 'name': name.strip(), 'modules': modules, 'member_ids': member_ids,
+    }))
+    return RedirectResponse('/admin#modules-profiles', status_code=status.HTTP_303_SEE_OTHER)
 
 
-@app.post('/admin/user-groups/{group_id}/update', response_class=HTMLResponse)
-def update_user_group(
+@app.post('/admin/modules-profiles/{profile_id}/update')
+def update_modules_profile(
+    profile_id: int,
+    name: str = Form(''),
+    description: str = Form(''),
+    modules: list[str] = Form(default=[]),
+    member_ids: list[int] = Form(default=[]),
+    initial_member_ids: list[int] = Form(default=[]),
+    user: SessionUser = Depends(admin_user),
+) -> JSONResponse:
+    """Save one Modules Profile: its name, description, modules and users. A user added to it leaves its previous
+    profile, and a user only removed from it gets the default profile; users changed elsewhere since the page
+    loaded are left as they are."""
+    selectable = profile_member_choices()
+    chosen, initial = set(member_ids) & selectable, set(initial_member_ids) & selectable
+    try:
+        repository.save_modules_profile(profile_id, name, description, modules)
+        repository.set_users_modules_profile(sorted(chosen - initial), profile_id)
+        repository.set_users_modules_profile(sorted(initial - chosen), None)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    invalidate_module_access_cache()
+    repository.add_log(user.username, 'update_modules_profile', json.dumps({
+        'profile_id': profile_id, 'name': name.strip(), 'modules': modules,
+        'added_user_ids': sorted(chosen - initial), 'removed_user_ids': sorted(initial - chosen),
+    }))
+    return JSONResponse(access_cards_payload())
+
+
+@app.post('/admin/modules-profiles/{profile_id}/default')
+def make_default_modules_profile(profile_id: int, user: SessionUser = Depends(admin_user)) -> JSONResponse:
+    """Make a profile the one of users without a profile."""
+    try:
+        repository.set_default_modules_profile(profile_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    invalidate_module_access_cache()
+    repository.add_log(user.username, 'set_default_modules_profile', json.dumps({'profile_id': profile_id}))
+    return JSONResponse(access_cards_payload())
+
+
+@app.post('/admin/modules-profiles/{profile_id}/delete', response_class=HTMLResponse)
+def delete_modules_profile(request: Request, profile_id: int, user: SessionUser = Depends(admin_user)) -> Response:
+    try:
+        repository.delete_modules_profile(profile_id)
+    except ValueError as exc:
+        return render_admin_template(request, user, error=str(exc), status_code=400)
+    invalidate_module_access_cache()
+    repository.add_log(user.username, 'delete_modules_profile', json.dumps({'profile_id': profile_id}))
+    return RedirectResponse('/admin#modules-profiles', status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.post('/admin/workspace-groups', response_class=HTMLResponse)
+def create_workspace_group(
     request: Request,
+    name: str = Form(''),
+    description: str = Form(''),
+    workspace_ids: list[str] = Form(default=[]),
+    member_ids: list[int] = Form(default=[]),
+    user: SessionUser = Depends(admin_user),
+) -> Response:
+    try:
+        group_id = repository.save_workspace_group(None, name, description, granted_workspace_group_workspaces(user, [], workspace_ids))
+        repository.change_workspace_group_members(group_id, add=member_ids)
+    except ValueError as exc:
+        return render_admin_template(request, user, error=str(exc), status_code=400)
+    repository.add_log(user.username, 'create_workspace_group', json.dumps({
+        'group_id': group_id, 'name': name.strip(), 'workspace_ids': workspace_ids, 'member_ids': member_ids,
+    }))
+    return RedirectResponse('/admin#workspace-groups', status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.post('/admin/workspace-groups/{group_id}/update')
+def update_workspace_group(
     group_id: int,
     name: str = Form(''),
     description: str = Form(''),
+    workspace_ids: list[str] = Form(default=[]),
     member_ids: list[int] = Form(default=[]),
+    initial_member_ids: list[int] = Form(default=[]),
     user: SessionUser = Depends(admin_user),
-) -> Response:
+) -> JSONResponse:
+    """Save one Workspace Group: its name, description, workspaces and members. Members added or removed
+    elsewhere since the page loaded are left as they are."""
+    current = next((group for group in repository.list_workspace_groups() if group['id'] == group_id), None)
+    if current is None:
+        raise HTTPException(status_code=404, detail='Group not found.')
+    chosen, initial = set(member_ids), set(initial_member_ids)
     try:
-        repository.save_user_group(group_id, name, description, member_ids)
+        repository.save_workspace_group(group_id, name, description, granted_workspace_group_workspaces(user, current['workspace_ids'], workspace_ids))
+        repository.change_workspace_group_members(group_id, add=sorted(chosen - initial), remove=sorted(initial - chosen))
     except ValueError as exc:
-        return render_admin_template(request, user, error=str(exc), status_code=400)
-    invalidate_feature_activation_cache()
-    repository.add_log(user.username, 'update_user_group', json.dumps({'group_id': group_id, 'name': name.strip(), 'member_ids': member_ids}))
-    return RedirectResponse('/admin#user-groups', status_code=status.HTTP_303_SEE_OTHER)
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    repository.add_log(user.username, 'update_workspace_group', json.dumps({
+        'group_id': group_id, 'name': name.strip(), 'workspace_ids': workspace_ids,
+        'added_user_ids': sorted(chosen - initial), 'removed_user_ids': sorted(initial - chosen),
+    }))
+    return JSONResponse(access_cards_payload())
 
 
-@app.post('/admin/user-groups/{group_id}/delete', response_class=HTMLResponse)
-def delete_user_group(request: Request, group_id: int, user: SessionUser = Depends(admin_user)) -> Response:
+@app.post('/admin/workspace-groups/{group_id}/delete', response_class=HTMLResponse)
+def delete_workspace_group(request: Request, group_id: int, user: SessionUser = Depends(admin_user)) -> Response:
     try:
-        repository.delete_user_group(group_id)
+        repository.delete_workspace_group(group_id)
     except ValueError as exc:
         return render_admin_template(request, user, error=str(exc), status_code=404)
-    invalidate_feature_activation_cache()
-    repository.add_log(user.username, 'delete_user_group', json.dumps({'group_id': group_id}))
-    return RedirectResponse('/admin#user-groups', status_code=status.HTTP_303_SEE_OTHER)
-
-
-def parse_feature_principals(values: list[str]) -> dict[str, list[str]]:
-    principals: dict[str, list[str]] = {'roles': [], 'groups': [], 'users': []}
-    for value in values:
-        kind, _separator, identifier = str(value).partition(':')
-        key = {'role': 'roles', 'group': 'groups', 'user': 'users'}.get(kind)
-        if key and identifier:
-            principals[key].append(identifier)
-    return principals
+    repository.add_log(user.username, 'delete_workspace_group', json.dumps({'group_id': group_id}))
+    return RedirectResponse('/admin#workspace-groups', status_code=status.HTTP_303_SEE_OTHER)
 
 
 def module_stage_labels_visible() -> bool:
@@ -22580,38 +22610,6 @@ async def save_interface_settings(request: Request, user: SessionUser = Depends(
         'show_module_stage_labels': show_labels, 'module_labels': labels,
     }))
     return RedirectResponse('/admin#interface-settings', status_code=status.HTTP_303_SEE_OTHER)
-
-
-@app.post('/admin/features', response_class=HTMLResponse)
-async def save_feature_activation(request: Request, user: SessionUser = Depends(admin_user)) -> Response:
-    form = await request.form()
-    values = {
-        key: {
-            'default': form.get(f'default__{key}') or 'all',
-            'allow': parse_feature_principals(form.getlist(f'allow__{key}')),
-            'deny': parse_feature_principals(form.getlist(f'deny__{key}')),
-        }
-        for key in FEATURE_KEYS
-    }
-    current = feature_activation_settings()
-    if user.role != 'super-admin':
-        # Forbidden entries for higher roles are not offered to lower roles; keep them.
-        higher = {role for role in FEATURE_ROLES if FEATURE_ROLE_RANK[role] > FEATURE_ROLE_RANK.get(user.role, -1)}
-        higher_users = {int(row['id']) for row in repository.list_users() if str(row['role']) in higher}
-        for key, value in values.items():
-            kept = current[key]['deny']
-            value['deny']['roles'] = list(dict.fromkeys([*value['deny']['roles'], *[role for role in kept['roles'] if role in higher]]))
-            value['deny']['users'] = list(dict.fromkeys([*value['deny']['users'], *[item for item in kept['users'] if item in higher_users]]))
-    removed = feature_access_removed_from_higher_roles(
-        user, current, {key: normalized_feature_rule(value) for key, value in values.items()})
-    if removed:
-        return render_admin_template(
-            request, user, status_code=403,
-            error=f"A {user.role} can grant features to higher roles but cannot remove them. Nothing was saved; this change would remove: {'; '.join(removed)}.",
-        )
-    save_feature_activation_settings(values)
-    repository.add_log(user.username, 'save_feature_activation', json.dumps(feature_activation_settings(), sort_keys=True))
-    return RedirectResponse('/admin#features-activation', status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.post('/admin/users/{target_user_id}/reset-password', response_class=HTMLResponse)

@@ -27,6 +27,7 @@ from src.modules.column_names import (
 )
 from src.modules.nr_mode import NR_MODE_DATASET_KINDS, infer_nr_mode, normalize_nr_mode
 from src.modules.cdr_stage import CDR_STAGE_KINDS, infer_cdr_stage, normalize_cdr_stage, normalize_in_combined
+from src.modules.module_labels import MAIN_MODULES
 from src.modules.report_layouts import normalize_catalog_layouts, rename_template_vendor_fields
 from src.modules.runtime_config import ignore_event_time_filtering
 
@@ -354,7 +355,10 @@ CREATE TABLE IF NOT EXISTS users (
     role TEXT NOT NULL,
     active INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    workspace_ids_json TEXT NOT NULL DEFAULT '[]'
+    workspace_ids_json TEXT NOT NULL DEFAULT '[]',
+    modules_profile_id INTEGER,
+    first_name TEXT NOT NULL DEFAULT '',
+    last_name TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS application_state (
@@ -371,22 +375,51 @@ CREATE TABLE IF NOT EXISTS transfer_offers (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username_nocase
 ON users(username COLLATE NOCASE);
 
-CREATE TABLE IF NOT EXISTS user_groups (
+CREATE TABLE IF NOT EXISTS modules_profiles (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     description TEXT NOT NULL DEFAULT '',
+    modules_json TEXT NOT NULL DEFAULT '[]',
+    is_default INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_user_groups_name_nocase
-ON user_groups(name COLLATE NOCASE);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_modules_profiles_name_nocase
+ON modules_profiles(name COLLATE NOCASE);
 
-CREATE TABLE IF NOT EXISTS user_group_members (
+CREATE TABLE IF NOT EXISTS workspace_groups (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    workspace_ids_json TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_workspace_groups_name_nocase
+ON workspace_groups(name COLLATE NOCASE);
+
+CREATE TABLE IF NOT EXISTS workspace_group_members (
     group_id INTEGER NOT NULL,
     user_id INTEGER NOT NULL,
     PRIMARY KEY (group_id, user_id)
 );
 """
+
+USER_ROLES = ('user-viewer', 'user-editor', 'admin', 'super-admin')
+# The Modules Profiles of a new deployment: (name, description, modules, default).
+# PPT Reporting (old) is in none of them, so only super-admins see it.
+DEFAULT_MODULES_PROFILES: tuple[tuple[str, str, tuple[str, ...], bool], ...] = (
+    ('NQ Calls', 'Workspace, Non-Qualified Calls, Reporting and Builders.', ('workspace', 'non-qualified-calls', 'reporting', 'builders'), False),
+    ('Benchmarking', 'Every main module except Non-Qualified Calls.',
+     tuple(key for key, _name in MAIN_MODULES if key not in {'non-qualified-calls', 'ppt-reporting-old'}), False),
+    ('All Modules', 'Every main module.', tuple(key for key, _name in MAIN_MODULES if key != 'ppt-reporting-old'), True),
+)
+# The application state of the former user groups, read once by their migration.
+LEGACY_FEATURE_ACTIVATION_KEY = 'feature_activation_v1'
+LEGACY_WORKSPACE_ACCESS_RULES_KEY = 'workspace_access_rules_v1'
+LEGACY_ACCESS_STATE_KEYS = (
+    LEGACY_FEATURE_ACTIVATION_KEY, LEGACY_WORKSPACE_ACCESS_RULES_KEY, 'module_access_groups_v1', 'feature_reporting_all_users_v1',
+)
 
 
 @dataclass(slots=True)
@@ -677,8 +710,8 @@ class Repository:
         with self.global_connection() as conn:
             self._configure_database_journal(conn)
             conn.executescript(GLOBAL_SCHEMA)
-            self._ensure_user_workspace_columns(conn)
             self._migrate_user_roles(conn)
+            self._ensure_user_access_schema(conn)
             # Seed the three local accounts exactly once, for a brand-new
             # empty application database.  Later starts must never recreate
             # deleted or renamed accounts, nor reset roles or passwords.
@@ -819,92 +852,420 @@ class Repository:
     def _workspace_ids_json(cls, workspace_ids: list[str]) -> str:
         return json.dumps(sorted({str(item).strip() for item in workspace_ids if str(item).strip()}))
 
-    def _ensure_user_workspace_columns(self, conn: sqlite3.Connection) -> None:
+    def _ensure_user_access_schema(self, conn: sqlite3.Connection) -> None:
+        """Create the user access tables and columns, and move the access saved by earlier versions to them."""
+        # Modules Profiles were first stored as module_profiles, with users.module_profile_id.
+        if conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'module_profiles'").fetchone():
+            renamed = conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'modules_profiles'").fetchone()
+            if renamed and not conn.execute('SELECT 1 FROM modules_profiles LIMIT 1').fetchone():
+                conn.execute('DROP TABLE modules_profiles')
+                renamed = None
+            if not renamed:
+                conn.execute('DROP INDEX IF EXISTS idx_module_profiles_name_nocase')
+                conn.execute('ALTER TABLE module_profiles RENAME TO modules_profiles')
+        former_columns = {str(row['name']) for row in conn.execute('PRAGMA table_info(users)').fetchall()}
+        if 'module_profile_id' in former_columns and 'modules_profile_id' not in former_columns:
+            conn.execute('ALTER TABLE users RENAME COLUMN module_profile_id TO modules_profile_id')
+        conn.executescript(GLOBAL_SCHEMA)
         user_columns = {str(row['name']) for row in conn.execute('PRAGMA table_info(users)').fetchall()}
         if 'workspace_ids_json' not in user_columns:
             conn.execute("ALTER TABLE users ADD COLUMN workspace_ids_json TEXT NOT NULL DEFAULT '[]'")
+        if 'modules_profile_id' not in user_columns:
+            conn.execute('ALTER TABLE users ADD COLUMN modules_profile_id INTEGER')
+        for column in ('first_name', 'last_name'):
+            if column not in user_columns:
+                conn.execute(f"ALTER TABLE users ADD COLUMN {column} TEXT NOT NULL DEFAULT ''")
         old_table = conn.execute(
             "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'user_workspace_access'"
         ).fetchone()
-        if not old_table:
+        if old_table:
+            for row in conn.execute(
+                'SELECT user_id, workspace_id FROM user_workspace_access ORDER BY user_id, workspace_id'
+            ).fetchall():
+                current = conn.execute(
+                    'SELECT workspace_ids_json FROM users WHERE id = ?', (int(row['user_id']),)
+                ).fetchone()
+                if not current:
+                    continue
+                workspace_ids = self._workspace_ids_from_json(current['workspace_ids_json'])
+                workspace_ids.append(str(row['workspace_id']))
+                conn.execute(
+                    'UPDATE users SET workspace_ids_json = ? WHERE id = ?',
+                    (self._workspace_ids_json(workspace_ids), int(row['user_id'])),
+                )
+            conn.execute('DROP TABLE user_workspace_access')
+        self._migrate_user_groups(conn)
+        self._ensure_modules_profiles(conn)
+
+    def _registered_workspace_ids(self) -> set[str] | None:
+        """The workspace ids of the registry, or None when it cannot be read."""
+        if self.workspace_registry_db_path is None or not Path(self.workspace_registry_db_path).is_file():
+            return None
+        try:
+            with closing(sqlite3.connect(f'file:{self.workspace_registry_db_path}?mode=ro', uri=True, timeout=5)) as registry:
+                return {str(row[0]) for row in registry.execute('SELECT id FROM workspaces')}
+        except sqlite3.Error:
+            return None
+
+    def _migrate_user_groups(self, conn: sqlite3.Connection) -> None:
+        """Split the former user groups, used both for workspaces and for modules, into Modules Profiles and Workspace Groups.
+
+        A group named in a Features Activation rule becomes a Modules Profile with the modules it gave; the other groups,
+        and module groups that also opened workspaces, become Workspace Groups with the workspaces Workspace Access
+        granted to them, with the same members. Every account but the super-admins gets the profile of its module group,
+        a profile with every module of its module groups when it had several, or else a profile with the modules it saw.
+        The workspaces granted to a role become grants of its accounts.
+        """
+        from src.modules.ppt_naming import MODULE_KEYS as FORMER_MODULE_KEYS
+
+        if not conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'user_groups'").fetchone():
             return
-        for row in conn.execute(
-            'SELECT user_id, workspace_id FROM user_workspace_access ORDER BY user_id, workspace_id'
-        ).fetchall():
-            current = conn.execute(
-                'SELECT workspace_ids_json FROM users WHERE id = ?', (int(row['user_id']),)
-            ).fetchone()
-            if not current:
+        state = {str(row['key']): str(row['value']) for row in conn.execute(
+            f"SELECT key, value FROM application_state WHERE key IN ({', '.join('?' for _ in LEGACY_ACCESS_STATE_KEYS)})",
+            LEGACY_ACCESS_STATE_KEYS,
+        )}
+
+        def stored(key: str) -> dict[str, Any]:
+            try:
+                value = json.loads(state.get(key) or '{}')
+            except (TypeError, ValueError):
+                value = {}
+            return value if isinstance(value, dict) else {}
+
+        def numbers(values: object) -> set[int]:
+            return {int(value) for value in values if str(value).isdigit()} if isinstance(values, list) else set()
+
+        module_keys = [key for key, _name in MAIN_MODULES]
+        rules: dict[str, dict[str, Any]] = {}
+        for raw_key, raw in stored(LEGACY_FEATURE_ACTIVATION_KEY).items():
+            key = FORMER_MODULE_KEYS.get(str(raw_key), str(raw_key))
+            if key not in module_keys or not isinstance(raw, dict):
                 continue
-            workspace_ids = self._workspace_ids_from_json(current['workspace_ids_json'])
-            workspace_ids.append(str(row['workspace_id']))
-            conn.execute(
-                'UPDATE users SET workspace_ids_json = ? WHERE id = ?',
-                (self._workspace_ids_json(workspace_ids), int(row['user_id'])),
-            )
-        conn.execute('DROP TABLE user_workspace_access')
+            if 'mode' in raw and 'default' not in raw:
+                raw = {'default': 'all' if raw.get('mode') == 'all' else 'none',
+                       'allow': {kind: raw.get(kind) or [] for kind in ('roles', 'groups', 'users')}}
+            principals = {}
+            for kind in ('allow', 'deny'):
+                value = raw.get(kind) if isinstance(raw.get(kind), dict) else {}
+                roles = value.get('roles') if isinstance(value.get('roles'), list) else []
+                principals[kind] = ({str(role) for role in roles}, numbers(value.get('groups')), numbers(value.get('users')))
+            rules[key] = {'default': 'none' if raw.get('default') == 'none' else 'all', **principals}
+
+        def modules_of(role: str, user_id: int | None, group_ids: set[int]) -> list[str]:
+            """The modules the former rules gave: Forbidden first, then Allowed, then the default."""
+            given = []
+            for key in module_keys:
+                rule = rules.get(key)
+                if rule is None:
+                    allowed = key != 'ppt-reporting-old'
+                else:
+                    allowed = rule['default'] == 'all'
+                    for kind, result in (('deny', False), ('allow', True)):
+                        roles, groups, users = rule[kind]
+                        if role in roles or groups & group_ids or user_id in users:
+                            allowed = result
+                            break
+                if allowed:
+                    given.append(key)
+            return given
+
+        groups = conn.execute('SELECT id, name, description FROM user_groups ORDER BY id').fetchall()
+        members: dict[int, set[int]] = {}
+        for row in conn.execute('SELECT group_id, user_id FROM user_group_members').fetchall():
+            members.setdefault(int(row['group_id']), set()).add(int(row['user_id']))
+        module_group_ids = {group_id for rule in rules.values() for kind in ('allow', 'deny') for group_id in rule[kind][1]}
+        registered = self._registered_workspace_ids()
+        profile_modules: dict[int, list[str]] = {}
+
+        def add_profile(name: str, description: str, modules: list[str]) -> int:
+            unique_name, suffix = name.strip() or 'Profile', 2
+            while conn.execute('SELECT 1 FROM modules_profiles WHERE name = ? COLLATE NOCASE', (unique_name,)).fetchone():
+                unique_name, suffix = f'{name.strip() or "Profile"} ({suffix})', suffix + 1
+            profile_id = int(conn.execute(
+                'INSERT INTO modules_profiles (name, description, modules_json, is_default, created_at) VALUES (?, ?, ?, 0, ?)',
+                (unique_name, description, json.dumps(modules), local_now_iso()),
+            ).lastrowid)
+            profile_modules[profile_id] = modules
+            return profile_id
+
+        def profile_for(modules: list[str], name: str) -> int:
+            return next((profile_id for profile_id, given in profile_modules.items() if given == modules), None) or add_profile(name, '', modules)
+
+        group_profiles = {
+            int(group['id']): add_profile(str(group['name']), str(group['description'] or ''), modules_of('', None, {int(group['id'])}))
+            for group in groups if int(group['id']) in module_group_ids
+        }
+        names = {int(group['id']): str(group['name']) for group in groups}
+        users = conn.execute('SELECT id, username, role, workspace_ids_json FROM users ORDER BY id').fetchall()
+        for user in users:
+            if str(user['role']) == 'super-admin':
+                continue
+            user_id = int(user['id'])
+            user_groups = {group_id for group_id, member_ids in members.items() if user_id in member_ids}
+            chosen = sorted(group_id for group_id in user_groups if group_id in group_profiles)
+            if len(chosen) == 1:
+                profile_id = group_profiles[chosen[0]]
+            elif chosen:
+                given = {key for group_id in chosen for key in profile_modules[group_profiles[group_id]]}
+                profile_id = profile_for([key for key in module_keys if key in given], ' + '.join(names[group_id] for group_id in chosen))
+            else:
+                profile_id = profile_for(modules_of(str(user['role']), user_id, user_groups), f"Modules of {user['username']}")
+            conn.execute('UPDATE users SET modules_profile_id = ? WHERE id = ?', (profile_id, user_id))
+        default_id = profile_for(modules_of('', None, set()), 'Default')
+        conn.execute('UPDATE modules_profiles SET is_default = CASE WHEN id = ? THEN 1 ELSE 0 END', (default_id,))
+
+        workspace_rules = {str(workspace_id): rule for workspace_id, rule in stored(LEGACY_WORKSPACE_ACCESS_RULES_KEY).items()
+                           if isinstance(rule, dict) and (registered is None or str(workspace_id) in registered)}
+        for group in groups:
+            group_id = int(group['id'])
+            workspace_ids = sorted(workspace_id for workspace_id, rule in workspace_rules.items() if group_id in numbers(rule.get('groups')))
+            if group_id in module_group_ids and not workspace_ids:
+                continue
+            new_id = int(conn.execute(
+                'INSERT INTO workspace_groups (name, description, workspace_ids_json, created_at) VALUES (?, ?, ?, ?)',
+                (str(group['name']), str(group['description'] or ''), json.dumps(workspace_ids), local_now_iso()),
+            ).lastrowid)
+            conn.executemany('INSERT OR IGNORE INTO workspace_group_members (group_id, user_id) VALUES (?, ?)',
+                             [(new_id, user_id) for user_id in sorted(members.get(group_id, set()))])
+        for user in users:
+            granted = [workspace_id for workspace_id, rule in workspace_rules.items()
+                       if str(user['role']) != 'super-admin' and isinstance(rule.get('roles'), list) and str(user['role']) in rule['roles']]
+            if granted:
+                conn.execute('UPDATE users SET workspace_ids_json = ? WHERE id = ?', (
+                    self._workspace_ids_json(self._workspace_ids_from_json(user['workspace_ids_json']) + granted), int(user['id'])))
+        conn.execute('DROP TABLE user_group_members')
+        conn.execute('DROP TABLE user_groups')
+        conn.execute(f"DELETE FROM application_state WHERE key IN ({', '.join('?' for _ in LEGACY_ACCESS_STATE_KEYS)})",
+                     LEGACY_ACCESS_STATE_KEYS)
+
+    @staticmethod
+    def _ensure_modules_profiles(conn: sqlite3.Connection) -> None:
+        """Create the Modules Profiles of a new deployment, and keep exactly one default profile."""
+        rows = conn.execute('SELECT id, name, is_default FROM modules_profiles ORDER BY id').fetchall()
+        if not rows:
+            for name, description, modules, default in DEFAULT_MODULES_PROFILES:
+                conn.execute(
+                    'INSERT INTO modules_profiles (name, description, modules_json, is_default, created_at) VALUES (?, ?, ?, ?, ?)',
+                    (name, description, json.dumps(list(modules)), int(default), local_now_iso()),
+                )
+            return
+        defaults = [row for row in rows if row['is_default']]
+        if len(defaults) != 1:
+            kept = defaults[0] if defaults else next((row for row in rows if str(row['name']).casefold() == 'all modules'), rows[0])
+            conn.execute('UPDATE modules_profiles SET is_default = CASE WHEN id = ? THEN 1 ELSE 0 END', (int(kept['id']),))
 
     def list_user_workspace_ids(self, user_id: int) -> list[str]:
         with self.global_connection() as conn:
-            conn.executescript(GLOBAL_SCHEMA)
-            self._ensure_user_workspace_columns(conn)
+            self._ensure_user_access_schema(conn)
             row = conn.execute('SELECT workspace_ids_json FROM users WHERE id = ?', (user_id,)).fetchone()
             return self._workspace_ids_from_json(row['workspace_ids_json']) if row else []
 
-    WORKSPACE_ACCESS_RULES_KEY = 'workspace_access_rules_v1'
-
-    def workspace_access_rules(self) -> dict[str, dict[str, list]]:
-        """The roles and user groups that open each workspace, besides the users granted one by one."""
+    @staticmethod
+    def _profile_modules(value: object) -> list[str]:
+        """The modules of a stored profile, in the order of the main tabs."""
         try:
-            stored = json.loads(self.get_application_state(self.WORKSPACE_ACCESS_RULES_KEY) or '{}')
+            stored = json.loads(str(value or '[]'))
         except (TypeError, ValueError):
-            stored = {}
-        rules: dict[str, dict[str, list]] = {}
-        for workspace_id, rule in (stored.items() if isinstance(stored, dict) else []):
-            rule = rule if isinstance(rule, dict) else {}
-            roles = [str(role) for role in rule.get('roles') or [] if str(role).strip()]
-            groups = [int(group) for group in rule.get('groups') or [] if str(group).isdigit()]
-            if roles or groups:
-                rules[str(workspace_id)] = {'roles': list(dict.fromkeys(roles)), 'groups': list(dict.fromkeys(groups))}
-        return rules
+            stored = []
+        chosen = {str(item) for item in stored} if isinstance(stored, list) else set()
+        return [key for key, _name in MAIN_MODULES if key in chosen]
 
-    def set_workspace_access_rule(self, workspace_id: str, roles: Iterable[str], groups: Iterable[int]) -> None:
-        rules = self.workspace_access_rules()
-        rule = {'roles': list(dict.fromkeys(str(role) for role in roles if str(role).strip())),
-                'groups': list(dict.fromkeys(int(group) for group in groups))}
-        if rule['roles'] or rule['groups']:
-            rules[str(workspace_id)] = rule
-        else:
-            rules.pop(str(workspace_id), None)
-        self.set_application_state(self.WORKSPACE_ACCESS_RULES_KEY, json.dumps(rules, sort_keys=True))
+    def list_modules_profiles(self) -> list[dict[str, Any]]:
+        """Modules Profiles ordered by name, with their modules in tab order and their accounts.
+
+        An account without a profile, or with a deleted one, has the default profile. Super-admins see every
+        module, so they belong to none.
+        """
+        with self.global_connection() as conn:
+            self._ensure_user_access_schema(conn)
+            rows = conn.execute(
+                'SELECT id, name, description, modules_json, is_default, created_at FROM modules_profiles '
+                'ORDER BY name COLLATE NOCASE, id'
+            ).fetchall()
+            users = conn.execute("SELECT id, modules_profile_id FROM users WHERE role != 'super-admin' ORDER BY id").fetchall()
+        profile_ids = {int(row['id']) for row in rows}
+        default_id = next((int(row['id']) for row in rows if row['is_default']), None)
+        member_ids: dict[int | None, list[int]] = {}
+        for user in users:
+            profile_id = user['modules_profile_id']
+            member_ids.setdefault(int(profile_id) if profile_id is not None and int(profile_id) in profile_ids else default_id, []).append(int(user['id']))
+        return [
+            {'id': int(row['id']), 'name': str(row['name']), 'description': str(row['description'] or ''),
+             'modules': self._profile_modules(row['modules_json']), 'is_default': bool(row['is_default']),
+             'created_at': str(row['created_at'] or ''), 'member_ids': member_ids.get(int(row['id']), [])}
+            for row in rows
+        ]
+
+    def save_modules_profile(self, profile_id: int | None, name: str, description: str, modules: Iterable[str]) -> int:
+        """Create (profile_id None) or update a Modules Profile; returns its ID."""
+        normalized_name = name.strip()
+        if not normalized_name:
+            raise ValueError('Profile name cannot be empty.')
+        chosen = {str(module) for module in modules}
+        selected = [key for key, _name in MAIN_MODULES if key in chosen]
+        with self.global_connection() as conn:
+            self._ensure_user_access_schema(conn)
+            duplicate = conn.execute('SELECT id FROM modules_profiles WHERE name = ? COLLATE NOCASE', (normalized_name,)).fetchone()
+            if duplicate and (profile_id is None or int(duplicate['id']) != int(profile_id)):
+                raise ValueError(f'A profile named {normalized_name} already exists.')
+            if profile_id is None:
+                return int(conn.execute(
+                    'INSERT INTO modules_profiles (name, description, modules_json, is_default, created_at) VALUES (?, ?, ?, 0, ?)',
+                    (normalized_name, description.strip(), json.dumps(selected), local_now_iso()),
+                ).lastrowid)
+            if conn.execute(
+                'UPDATE modules_profiles SET name = ?, description = ?, modules_json = ? WHERE id = ?',
+                (normalized_name, description.strip(), json.dumps(selected), int(profile_id)),
+            ).rowcount == 0:
+                raise ValueError('Profile not found.')
+        return int(profile_id)
+
+    def set_default_modules_profile(self, profile_id: int) -> None:
+        """The profile of the accounts without one."""
+        with self.global_connection() as conn:
+            self._ensure_user_access_schema(conn)
+            if not conn.execute('SELECT 1 FROM modules_profiles WHERE id = ?', (int(profile_id),)).fetchone():
+                raise ValueError('Profile not found.')
+            conn.execute('UPDATE modules_profiles SET is_default = CASE WHEN id = ? THEN 1 ELSE 0 END', (int(profile_id),))
+
+    def delete_modules_profile(self, profile_id: int) -> None:
+        """Delete a profile; its accounts get the default profile."""
+        with self.global_connection() as conn:
+            self._ensure_user_access_schema(conn)
+            row = conn.execute('SELECT is_default FROM modules_profiles WHERE id = ?', (int(profile_id),)).fetchone()
+            if not row:
+                raise ValueError('Profile not found.')
+            if row['is_default']:
+                raise ValueError('The default profile cannot be deleted: make another profile the default first.')
+            conn.execute('DELETE FROM modules_profiles WHERE id = ?', (int(profile_id),))
+            conn.execute('UPDATE users SET modules_profile_id = NULL WHERE modules_profile_id = ?', (int(profile_id),))
+
+    def set_users_modules_profile(self, user_ids: Iterable[int], profile_id: int | None) -> None:
+        """Give some accounts a profile; None gives them the default profile."""
+        with self.global_connection() as conn:
+            self._ensure_user_access_schema(conn)
+            if profile_id is not None and not conn.execute('SELECT 1 FROM modules_profiles WHERE id = ?', (int(profile_id),)).fetchone():
+                raise ValueError('Profile not found.')
+            conn.executemany('UPDATE users SET modules_profile_id = ? WHERE id = ?',
+                             [(profile_id, int(user_id)) for user_id in dict.fromkeys(user_ids)])
+
+    def user_modules(self) -> dict[str, Any]:
+        """The modules of every account but the super-admins, by username, and those of the default profile."""
+        profiles = self.list_modules_profiles()
+        default = next((set(profile['modules']) for profile in profiles if profile['is_default']), set())
+        modules_by_user = {user_id: set(profile['modules']) for profile in profiles for user_id in profile['member_ids']}
+        return {
+            'default': default,
+            'users': {str(row['username']).casefold(): modules_by_user.get(int(row['id']), default)
+                      for row in self.list_users() if str(row['role']) != 'super-admin'},
+        }
+
+    def list_workspace_groups(self) -> list[dict[str, Any]]:
+        """Workspace Groups ordered by name, with their workspaces and members."""
+        with self.global_connection() as conn:
+            self._ensure_user_access_schema(conn)
+            rows = conn.execute(
+                'SELECT id, name, description, workspace_ids_json, created_at FROM workspace_groups ORDER BY name COLLATE NOCASE, id'
+            ).fetchall()
+            members = conn.execute('SELECT group_id, user_id FROM workspace_group_members ORDER BY user_id').fetchall()
+        member_ids: dict[int, list[int]] = {}
+        for row in members:
+            member_ids.setdefault(int(row['group_id']), []).append(int(row['user_id']))
+        return [
+            {'id': int(row['id']), 'name': str(row['name']), 'description': str(row['description'] or ''),
+             'workspace_ids': self._workspace_ids_from_json(row['workspace_ids_json']),
+             'created_at': str(row['created_at'] or ''), 'member_ids': member_ids.get(int(row['id']), [])}
+            for row in rows
+        ]
+
+    def save_workspace_group(self, group_id: int | None, name: str, description: str, workspace_ids: Iterable[str]) -> int:
+        """Create (group_id None) or update a Workspace Group with the workspaces it opens; returns its ID."""
+        normalized_name = name.strip()
+        if not normalized_name:
+            raise ValueError('Group name cannot be empty.')
+        workspaces_json = self._workspace_ids_json(list(workspace_ids))
+        with self.global_connection() as conn:
+            self._ensure_user_access_schema(conn)
+            duplicate = conn.execute('SELECT id FROM workspace_groups WHERE name = ? COLLATE NOCASE', (normalized_name,)).fetchone()
+            if duplicate and (group_id is None or int(duplicate['id']) != int(group_id)):
+                raise ValueError(f'A group named {normalized_name} already exists.')
+            if group_id is None:
+                return int(conn.execute(
+                    'INSERT INTO workspace_groups (name, description, workspace_ids_json, created_at) VALUES (?, ?, ?, ?)',
+                    (normalized_name, description.strip(), workspaces_json, local_now_iso()),
+                ).lastrowid)
+            if conn.execute(
+                'UPDATE workspace_groups SET name = ?, description = ?, workspace_ids_json = ? WHERE id = ?',
+                (normalized_name, description.strip(), workspaces_json, int(group_id)),
+            ).rowcount == 0:
+                raise ValueError('Group not found.')
+        return int(group_id)
+
+    def delete_workspace_group(self, group_id: int) -> None:
+        with self.global_connection() as conn:
+            self._ensure_user_access_schema(conn)
+            if conn.execute('DELETE FROM workspace_groups WHERE id = ?', (int(group_id),)).rowcount == 0:
+                raise ValueError('Group not found.')
+            conn.execute('DELETE FROM workspace_group_members WHERE group_id = ?', (int(group_id),))
+
+    def set_user_workspace_groups(self, user_id: int, group_ids: Iterable[int]) -> None:
+        """Replace the Workspace Groups an account belongs to."""
+        with self.global_connection() as conn:
+            self._ensure_user_access_schema(conn)
+            known = {int(row['id']) for row in conn.execute('SELECT id FROM workspace_groups').fetchall()}
+            conn.execute('DELETE FROM workspace_group_members WHERE user_id = ?', (int(user_id),))
+            conn.executemany(
+                'INSERT OR IGNORE INTO workspace_group_members (group_id, user_id) VALUES (?, ?)',
+                [(int(group_id), int(user_id)) for group_id in dict.fromkeys(group_ids) if int(group_id) in known],
+            )
+
+    def change_workspace_group_members(self, group_id: int, *, add: Iterable[int] = (), remove: Iterable[int] = ()) -> None:
+        """Add accounts to a Workspace Group and remove others from it."""
+        with self.global_connection() as conn:
+            self._ensure_user_access_schema(conn)
+            if not conn.execute('SELECT 1 FROM workspace_groups WHERE id = ?', (int(group_id),)).fetchone():
+                raise ValueError('Group not found.')
+            known = {int(row['id']) for row in conn.execute('SELECT id FROM users').fetchall()}
+            conn.executemany('DELETE FROM workspace_group_members WHERE group_id = ? AND user_id = ?',
+                             [(int(group_id), int(user_id)) for user_id in dict.fromkeys(remove)])
+            conn.executemany('INSERT OR IGNORE INTO workspace_group_members (group_id, user_id) VALUES (?, ?)',
+                             [(int(group_id), int(user_id)) for user_id in dict.fromkeys(add) if int(user_id) in known])
+
+    def set_workspace_groups_of_workspace(self, workspace_id: str, group_ids: Iterable[int]) -> None:
+        """Make a workspace part of exactly the given Workspace Groups."""
+        selected = {int(group_id) for group_id in group_ids}
+        with self.global_connection() as conn:
+            self._ensure_user_access_schema(conn)
+            for row in conn.execute('SELECT id, workspace_ids_json FROM workspace_groups').fetchall():
+                workspace_ids = [item for item in self._workspace_ids_from_json(row['workspace_ids_json']) if item != str(workspace_id)]
+                if int(row['id']) in selected:
+                    workspace_ids.append(str(workspace_id))
+                conn.execute('UPDATE workspace_groups SET workspace_ids_json = ? WHERE id = ?',
+                             (self._workspace_ids_json(workspace_ids), int(row['id'])))
 
     def user_has_workspace_access(self, username: str, workspace_id: str) -> bool:
-        """A user opens a workspace granted to them, to their role or to one of their user groups."""
-        rule = self.workspace_access_rules().get(str(workspace_id))
+        """A user opens a workspace granted to them or to one of their Workspace Groups."""
         with self.global_connection() as conn:
-            conn.executescript(GLOBAL_SCHEMA)
-            self._ensure_user_workspace_columns(conn)
+            self._ensure_user_access_schema(conn)
             row = conn.execute(
-                'SELECT id, role, workspace_ids_json FROM users WHERE username COLLATE NOCASE = ?',
+                'SELECT id, workspace_ids_json FROM users WHERE username COLLATE NOCASE = ?',
                 (username.strip(),),
             ).fetchone()
             if not row:
                 return False
             if str(workspace_id) in self._workspace_ids_from_json(row['workspace_ids_json']):
                 return True
-            if not rule:
-                return False
-            if str(row['role']) in rule['roles']:
-                return True
-            groups = {int(item['group_id']) for item in conn.execute(
-                'SELECT group_id FROM user_group_members WHERE user_id = ?', (int(row['id']),))}
-        return bool(groups & set(rule['groups']))
+            groups = conn.execute(
+                'SELECT g.workspace_ids_json FROM workspace_groups g JOIN workspace_group_members m ON m.group_id = g.id '
+                'WHERE m.user_id = ?', (int(row['id']),),
+            ).fetchall()
+        return any(str(workspace_id) in self._workspace_ids_from_json(group['workspace_ids_json']) for group in groups)
 
     def set_user_workspace_access(self, user_id: int, workspace_ids: list[str]) -> None:
         unique_ids = sorted({str(item).strip() for item in workspace_ids if str(item).strip()})
         with self.global_connection() as conn:
             conn.executescript(GLOBAL_SCHEMA)
-            self._ensure_user_workspace_columns(conn)
+            self._ensure_user_access_schema(conn)
             user = conn.execute('SELECT username FROM users WHERE id = ?', (user_id,)).fetchone()
             if user and str(user['username']).casefold() in {'super', 'admin', 'demo'} and 'default' not in unique_ids:
                 unique_ids.append('default')
@@ -919,7 +1280,7 @@ class Repository:
             selected_usernames.update({'super', 'admin', 'demo'})
         with self.global_connection() as conn:
             conn.executescript(GLOBAL_SCHEMA)
-            self._ensure_user_workspace_columns(conn)
+            self._ensure_user_access_schema(conn)
             for row in conn.execute('SELECT id, username, workspace_ids_json FROM users').fetchall():
                 workspace_ids = self._workspace_ids_from_json(row['workspace_ids_json'])
                 workspace_ids = [item for item in workspace_ids if item != normalized_workspace_id]
@@ -933,7 +1294,7 @@ class Repository:
     def grant_all_workspace_access(self, workspace_id: str) -> None:
         with self.global_connection() as conn:
             conn.executescript(GLOBAL_SCHEMA)
-            self._ensure_user_workspace_columns(conn)
+            self._ensure_user_access_schema(conn)
             for row in conn.execute('SELECT id, workspace_ids_json FROM users').fetchall():
                 workspace_ids = self._workspace_ids_from_json(row['workspace_ids_json'])
                 workspace_ids.append(str(workspace_id))
@@ -942,7 +1303,7 @@ class Repository:
     def has_workspace_access_entries(self) -> bool:
         with self.global_connection() as conn:
             conn.executescript(GLOBAL_SCHEMA)
-            self._ensure_user_workspace_columns(conn)
+            self._ensure_user_access_schema(conn)
             return any(self._workspace_ids_from_json(row['workspace_ids_json']) for row in conn.execute('SELECT workspace_ids_json FROM users'))
 
     def _ensure_cdr_catalogue_columns(self, conn: sqlite3.Connection) -> None:
@@ -2080,15 +2441,18 @@ class Repository:
 
     def get_user_by_id(self, user_id: int) -> sqlite3.Row | None:
         with self.global_connection() as conn:
+            self._ensure_user_access_schema(conn)
             return conn.execute(
-                "SELECT id, username, role, active, created_at FROM users WHERE id = ?",
+                "SELECT id, username, role, active, created_at, first_name, last_name FROM users WHERE id = ?",
                 (user_id,),
             ).fetchone()
 
-    def create_user(self, username: str, password: str, role: str, *, active: bool = True) -> int:
+    def create_user(self, username: str, password: str, role: str, *, active: bool = True,
+                    first_name: str = '', last_name: str = '') -> int:
         """Create a user (inactive until an administrator activates it with ``active=False``); returns its ID."""
         normalized_username = username.strip()
         with self.global_connection() as conn:
+            self._ensure_user_access_schema(conn)
             duplicate = conn.execute(
                 "SELECT id FROM users WHERE username COLLATE NOCASE = ?",
                 (normalized_username,),
@@ -2096,13 +2460,16 @@ class Repository:
             if duplicate:
                 raise ValueError('A user with that username already exists.')
             return int(conn.execute(
-                "INSERT INTO users (username, password_hash, role, active, created_at) VALUES (?, ?, ?, ?, ?)",
-                (normalized_username, hash_password(password), role, int(active), local_now_iso()),
+                "INSERT INTO users (username, password_hash, role, active, created_at, first_name, last_name) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (normalized_username, hash_password(password), role, int(active), local_now_iso(), first_name.strip(), last_name.strip()),
             ).lastrowid)
 
-    def update_user(self, user_id: int, username: str, role: str, active: bool, password: str | None = None) -> None:
+    def update_user(self, user_id: int, username: str, role: str, active: bool, password: str | None = None, *,
+                    first_name: str | None = None, last_name: str | None = None) -> None:
+        """Update an account; a first or last name of None is kept."""
         normalized_username = username.strip()
         with self.global_connection() as conn:
+            self._ensure_user_access_schema(conn)
             existing = conn.execute("SELECT id FROM users WHERE id = ?", (user_id,)).fetchone()
             if not existing:
                 raise ValueError("User not found")
@@ -2122,6 +2489,9 @@ class Repository:
                     "UPDATE users SET username = ?, role = ?, active = ? WHERE id = ?",
                     (normalized_username, role, int(active), user_id),
                 )
+            for column, value in (('first_name', first_name), ('last_name', last_name)):
+                if value is not None:
+                    conn.execute(f'UPDATE users SET {column} = ? WHERE id = ?', (value.strip(), user_id))
 
     def update_password(self, username: str, password: str) -> None:
         with self.global_connection() as conn:
@@ -2138,76 +2508,14 @@ class Repository:
             cursor = conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
             if cursor.rowcount == 0:
                 raise ValueError("User not found")
-            conn.execute("DELETE FROM user_group_members WHERE user_id = ?", (user_id,))
-
-    def list_user_groups(self) -> list[dict[str, Any]]:
-        """Custom user groups, ordered by name, with their member user IDs."""
-        with self.global_connection() as conn:
-            conn.executescript(GLOBAL_SCHEMA)
-            groups = conn.execute(
-                "SELECT id, name, description, created_at FROM user_groups ORDER BY name COLLATE NOCASE, id",
-            ).fetchall()
-            members = conn.execute("SELECT group_id, user_id FROM user_group_members ORDER BY user_id").fetchall()
-        member_ids: dict[int, list[int]] = {}
-        for row in members:
-            member_ids.setdefault(int(row['group_id']), []).append(int(row['user_id']))
-        return [
-            {'id': int(row['id']), 'name': str(row['name']), 'description': str(row['description'] or ''),
-             'created_at': str(row['created_at'] or ''), 'member_ids': member_ids.get(int(row['id']), [])}
-            for row in groups
-        ]
-
-    def save_user_group(self, group_id: int | None, name: str, description: str, member_ids: list[int]) -> int:
-        """Create (group_id None) or update a custom user group and replace its members."""
-        normalized_name = name.strip()
-        if not normalized_name:
-            raise ValueError('Group name cannot be empty.')
-        with self.global_connection() as conn:
-            conn.executescript(GLOBAL_SCHEMA)
-            duplicate = conn.execute(
-                "SELECT id FROM user_groups WHERE name COLLATE NOCASE = ?", (normalized_name,),
-            ).fetchone()
-            if duplicate and (group_id is None or int(duplicate['id']) != int(group_id)):
-                raise ValueError('A group with that name already exists.')
-            if group_id is None:
-                group_id = int(conn.execute(
-                    "INSERT INTO user_groups (name, description, created_at) VALUES (?, ?, ?)",
-                    (normalized_name, description.strip(), local_now_iso()),
-                ).lastrowid)
-            elif conn.execute(
-                "UPDATE user_groups SET name = ?, description = ? WHERE id = ?",
-                (normalized_name, description.strip(), group_id),
-            ).rowcount == 0:
-                raise ValueError('Group not found.')
-            known = {int(row['id']) for row in conn.execute("SELECT id FROM users").fetchall()}
-            conn.execute("DELETE FROM user_group_members WHERE group_id = ?", (group_id,))
-            conn.executemany(
-                "INSERT OR IGNORE INTO user_group_members (group_id, user_id) VALUES (?, ?)",
-                [(group_id, int(user_id)) for user_id in member_ids if int(user_id) in known],
-            )
-        return int(group_id)
-
-    def set_user_groups(self, user_id: int, group_ids: Iterable[int]) -> None:
-        """Replace the user groups a user belongs to."""
-        with self.global_connection() as conn:
-            conn.executescript(GLOBAL_SCHEMA)
-            known = {int(row['id']) for row in conn.execute("SELECT id FROM user_groups").fetchall()}
-            conn.execute("DELETE FROM user_group_members WHERE user_id = ?", (int(user_id),))
-            conn.executemany(
-                "INSERT OR IGNORE INTO user_group_members (group_id, user_id) VALUES (?, ?)",
-                [(int(group_id), int(user_id)) for group_id in dict.fromkeys(group_ids) if int(group_id) in known],
-            )
-
-    def delete_user_group(self, group_id: int) -> None:
-        with self.global_connection() as conn:
-            conn.executescript(GLOBAL_SCHEMA)
-            if conn.execute("DELETE FROM user_groups WHERE id = ?", (group_id,)).rowcount == 0:
-                raise ValueError('Group not found.')
-            conn.execute("DELETE FROM user_group_members WHERE group_id = ?", (group_id,))
+            conn.execute("DELETE FROM workspace_group_members WHERE user_id = ?", (user_id,))
 
     def list_users(self) -> list[sqlite3.Row]:
         with self.global_connection() as conn:
-            return list(conn.execute("SELECT id, username, role, active, created_at FROM users ORDER BY id ASC").fetchall())
+            self._ensure_user_access_schema(conn)
+            return list(conn.execute(
+                "SELECT id, username, role, active, created_at, first_name, last_name FROM users ORDER BY id ASC"
+            ).fetchall())
 
     def count_active_admin_users(self) -> int:
         with self.global_connection() as conn:
@@ -2225,23 +2533,14 @@ class Repository:
         return int(row['total']) if row else 0
 
     def remove_workspace_access(self, workspace_id: str) -> None:
-        with self.global_connection() as conn:
-            self._ensure_user_workspace_columns(conn)
-            for row in conn.execute('SELECT id, workspace_ids_json FROM users').fetchall():
-                workspace_ids = [
-                    item for item in self._workspace_ids_from_json(row['workspace_ids_json'])
-                    if item != str(workspace_id)
-                ]
-                conn.execute(
-                    'UPDATE users SET workspace_ids_json = ? WHERE id = ?',
-                    (self._workspace_ids_json(workspace_ids), int(row['id'])),
-                )
+        """Remove a workspace from the accounts and Workspace Groups that open it."""
+        self.remap_workspace_access({}, drop=[workspace_id])
 
     def remap_workspace_access(self, workspace_id_map: dict[str, str], *, drop: Iterable[str] = ()) -> None:
-        """Translate imported workspace grants and access rules from source ids to local ids.
+        """Translate imported workspace grants and Workspace Groups from source ids to local ids.
 
         Every id is translated at once, so a source id that is also a different local id
-        is never translated twice. Grants and rules of the ``drop`` ids are removed.
+        is never translated twice. Grants of the ``drop`` ids are removed.
         """
         normalized = {
             str(source).strip(): str(destination).strip()
@@ -2252,59 +2551,195 @@ class Repository:
         if not normalized and not dropped:
             return
         with self.global_connection() as conn:
-            self._ensure_user_workspace_columns(conn)
-            for row in conn.execute('SELECT id, workspace_ids_json FROM users').fetchall():
-                workspace_ids = [
-                    normalized.get(workspace_id, workspace_id)
-                    for workspace_id in self._workspace_ids_from_json(row['workspace_ids_json'])
-                    if workspace_id not in dropped
-                ]
-                conn.execute(
-                    'UPDATE users SET workspace_ids_json = ? WHERE id = ?',
-                    (self._workspace_ids_json(workspace_ids), int(row['id'])),
-                )
-        rules: dict[str, dict[str, list]] = {}
-        for workspace_id, rule in self.workspace_access_rules().items():
-            if workspace_id in dropped:
-                continue
-            merged = rules.setdefault(normalized.get(workspace_id, workspace_id), {'roles': [], 'groups': []})
-            merged['roles'] = list(dict.fromkeys(merged['roles'] + rule['roles']))
-            merged['groups'] = list(dict.fromkeys(merged['groups'] + rule['groups']))
-        self.set_application_state(self.WORKSPACE_ACCESS_RULES_KEY, json.dumps(rules, sort_keys=True))
+            self._ensure_user_access_schema(conn)
+            for table in ('users', 'workspace_groups'):
+                for row in conn.execute(f'SELECT id, workspace_ids_json FROM {table}').fetchall():
+                    workspace_ids = [
+                        normalized.get(workspace_id, workspace_id)
+                        for workspace_id in self._workspace_ids_from_json(row['workspace_ids_json'])
+                        if workspace_id not in dropped
+                    ]
+                    conn.execute(
+                        f'UPDATE {table} SET workspace_ids_json = ? WHERE id = ?',
+                        (self._workspace_ids_json(workspace_ids), int(row['id'])),
+                    )
 
     def workspace_access_snapshot(self, workspace_ids: Iterable[str]) -> dict[str, Any]:
-        """The users granted and the access rules of some workspaces, to re-apply after replacing this database."""
+        """The accounts and Workspace Groups that open some workspaces, to re-apply after replacing this database."""
         selected = {str(workspace_id).strip() for workspace_id in workspace_ids if str(workspace_id).strip()}
-        users: dict[str, list[str]] = {}
+        snapshot: dict[str, dict[str, list[str]]] = {'users': {}, 'groups': {}}
         with self.global_connection() as conn:
-            conn.executescript(GLOBAL_SCHEMA)
-            self._ensure_user_workspace_columns(conn)
-            for row in conn.execute('SELECT username, workspace_ids_json FROM users').fetchall():
-                granted = [workspace_id for workspace_id in self._workspace_ids_from_json(row['workspace_ids_json']) if workspace_id in selected]
-                if granted:
-                    users[str(row['username']).casefold()] = granted
-        rules = {workspace_id: rule for workspace_id, rule in self.workspace_access_rules().items() if workspace_id in selected}
-        return {'users': users, 'rules': rules}
+            self._ensure_user_access_schema(conn)
+            for table, kind, key in (('users', 'users', 'username'), ('workspace_groups', 'groups', 'name')):
+                for row in conn.execute(f'SELECT {key}, workspace_ids_json FROM {table}').fetchall():
+                    granted = [workspace_id for workspace_id in self._workspace_ids_from_json(row['workspace_ids_json']) if workspace_id in selected]
+                    if granted:
+                        snapshot[kind][str(row[key]).casefold()] = granted
+        return snapshot
 
     def restore_workspace_access(self, snapshot: dict[str, Any]) -> None:
-        """Re-apply a ``workspace_access_snapshot`` to the users that still exist."""
-        users = snapshot.get('users') or {}
-        if users:
-            with self.global_connection() as conn:
-                self._ensure_user_workspace_columns(conn)
-                for row in conn.execute('SELECT id, username, workspace_ids_json FROM users').fetchall():
-                    granted = users.get(str(row['username']).casefold())
+        """Re-apply a ``workspace_access_snapshot`` to the accounts and Workspace Groups that still exist."""
+        with self.global_connection() as conn:
+            self._ensure_user_access_schema(conn)
+            for table, kind, key in (('users', 'users', 'username'), ('workspace_groups', 'groups', 'name')):
+                granted_by_name = snapshot.get(kind) or {}
+                if not granted_by_name:
+                    continue
+                for row in conn.execute(f'SELECT id, {key}, workspace_ids_json FROM {table}').fetchall():
+                    granted = granted_by_name.get(str(row[key]).casefold())
                     if granted:
-                        workspace_ids = self._workspace_ids_from_json(row['workspace_ids_json']) + list(granted)
                         conn.execute(
-                            'UPDATE users SET workspace_ids_json = ? WHERE id = ?',
-                            (self._workspace_ids_json(workspace_ids), int(row['id'])),
+                            f'UPDATE {table} SET workspace_ids_json = ? WHERE id = ?',
+                            (self._workspace_ids_json(self._workspace_ids_from_json(row['workspace_ids_json']) + list(granted)), int(row['id'])),
                         )
-        rules = snapshot.get('rules') or {}
-        if rules:
-            self.set_application_state(
-                self.WORKSPACE_ACCESS_RULES_KEY, json.dumps({**self.workspace_access_rules(), **rules}, sort_keys=True),
-            )
+
+    def users_access_payload(self, workspace_names: dict[str, str]) -> dict[str, Any]:
+        """Every account with its password, role, Modules Profile and workspaces, plus the Modules Profiles and
+        Workspace Groups. Workspaces are named, not identified, so another server can apply them."""
+        def names(workspace_ids: Iterable[str]) -> list[str]:
+            return sorted({workspace_names[item] for item in workspace_ids if item in workspace_names}, key=str.casefold)
+
+        profiles = self.list_modules_profiles()
+        groups = self.list_workspace_groups()
+        profile_by_user = {user_id: profile['name'] for profile in profiles for user_id in profile['member_ids']}
+        groups_by_user: dict[int, list[str]] = {}
+        for group in groups:
+            for user_id in group['member_ids']:
+                groups_by_user.setdefault(user_id, []).append(group['name'])
+        with self.global_connection() as conn:
+            self._ensure_user_access_schema(conn)
+            users = conn.execute(
+                'SELECT id, username, password_hash, role, active, created_at, workspace_ids_json, first_name, last_name FROM users ORDER BY id'
+            ).fetchall()
+        return {
+            'modules_profiles': [{'name': profile['name'], 'description': profile['description'], 'modules': profile['modules'],
+                                 'default': profile['is_default']} for profile in profiles],
+            'workspace_groups': [{'name': group['name'], 'description': group['description'],
+                                  'workspaces': names(group['workspace_ids'])} for group in groups],
+            'users': [{'username': str(row['username']), 'first_name': str(row['first_name'] or ''), 'last_name': str(row['last_name'] or ''),
+                       'password_hash': str(row['password_hash']), 'role': str(row['role']),
+                       'active': bool(row['active']), 'created_at': str(row['created_at'] or ''),
+                       'modules_profile': profile_by_user.get(int(row['id'])),
+                       'workspace_groups': sorted(groups_by_user.get(int(row['id']), []), key=str.casefold),
+                       'workspaces': names(self._workspace_ids_from_json(row['workspace_ids_json']))} for row in users],
+        }
+
+    def merge_users_access(
+        self, payload: object, workspace_ids_by_name: dict[str, str], *,
+        source_workspace_names: Iterable[str] | None = None, protected_username: str = '',
+    ) -> dict[str, Any]:
+        """Add or update the accounts, Modules Profiles and Workspace Groups of a ``users_access_payload``.
+
+        Accounts are matched by username and profiles and groups by name, without case differences; those the
+        payload does not have are kept, and so are the memberships of groups it does not have. Workspaces are matched
+        by name: those missing here are left out and reported, and a group or account keeps the workspaces only this
+        server has when the payload names the workspaces of its server. The importing account keeps its role, active
+        status and password, and at least one active super-admin must remain.
+        """
+        if not isinstance(payload, dict) or not all(isinstance(payload.get(key), list) for key in ('modules_profiles', 'workspace_groups', 'users')):
+            raise ValueError('The Users & Access file is not valid.')
+        local_ids = {str(name).casefold(): str(workspace_id) for name, workspace_id in workspace_ids_by_name.items()}
+        local_names = {workspace_id: name for name, workspace_id in local_ids.items()}
+        source = {str(name).casefold() for name in source_workspace_names} if source_workspace_names is not None else None
+        missing: set[str] = set()
+
+        def resolve(names: object, current: Iterable[str] = ()) -> list[str]:
+            resolved = []
+            for name in names if isinstance(names, list) else []:
+                if str(name).casefold() in local_ids:
+                    resolved.append(local_ids[str(name).casefold()])
+                else:
+                    missing.add(str(name))
+            local_only = [item for item in current if source is not None and local_names.get(item, '') not in source]
+            return [*resolved, *local_only]
+
+        summary = {'users_created': 0, 'users_updated': 0, 'modules_profiles': 0, 'workspace_groups': 0}
+        with self.global_connection() as conn:
+            self._ensure_user_access_schema(conn)
+            profile_ids: dict[str, int] = {}
+            default_name = ''
+            for profile in payload['modules_profiles']:
+                name = str(profile.get('name') or '').strip() if isinstance(profile, dict) else ''
+                if not name:
+                    continue
+                chosen = {str(module) for module in profile.get('modules') or []} if isinstance(profile.get('modules'), list) else set()
+                modules = json.dumps([key for key, _name in MAIN_MODULES if key in chosen])
+                row = conn.execute('SELECT id FROM modules_profiles WHERE name = ? COLLATE NOCASE', (name,)).fetchone()
+                if row:
+                    conn.execute('UPDATE modules_profiles SET name = ?, description = ?, modules_json = ? WHERE id = ?',
+                                 (name, str(profile.get('description') or ''), modules, int(row['id'])))
+                    profile_ids[name.casefold()] = int(row['id'])
+                else:
+                    profile_ids[name.casefold()] = int(conn.execute(
+                        'INSERT INTO modules_profiles (name, description, modules_json, is_default, created_at) VALUES (?, ?, ?, 0, ?)',
+                        (name, str(profile.get('description') or ''), modules, local_now_iso()),
+                    ).lastrowid)
+                default_name = name.casefold() if profile.get('default') else default_name
+                summary['modules_profiles'] += 1
+            if default_name:
+                conn.execute('UPDATE modules_profiles SET is_default = CASE WHEN id = ? THEN 1 ELSE 0 END', (profile_ids[default_name],))
+            group_ids: dict[str, int] = {}
+            for group in payload['workspace_groups']:
+                name = str(group.get('name') or '').strip() if isinstance(group, dict) else ''
+                if not name:
+                    continue
+                row = conn.execute('SELECT id, workspace_ids_json FROM workspace_groups WHERE name = ? COLLATE NOCASE', (name,)).fetchone()
+                workspaces = self._workspace_ids_json(resolve(group.get('workspaces'), self._workspace_ids_from_json(row['workspace_ids_json']) if row else []))
+                if row:
+                    conn.execute('UPDATE workspace_groups SET name = ?, description = ?, workspace_ids_json = ? WHERE id = ?',
+                                 (name, str(group.get('description') or ''), workspaces, int(row['id'])))
+                    group_ids[name.casefold()] = int(row['id'])
+                else:
+                    group_ids[name.casefold()] = int(conn.execute(
+                        'INSERT INTO workspace_groups (name, description, workspace_ids_json, created_at) VALUES (?, ?, ?, ?)',
+                        (name, str(group.get('description') or ''), workspaces, local_now_iso()),
+                    ).lastrowid)
+                summary['workspace_groups'] += 1
+            for account in payload['users']:
+                if not isinstance(account, dict):
+                    continue
+                username, role = str(account.get('username') or '').strip(), str(account.get('role') or '')
+                password_hash = str(account.get('password_hash') or '')
+                if not username or not password_hash or role not in USER_ROLES:
+                    continue
+                profile_name = str(account.get('modules_profile') or '').casefold()
+                profile_id = profile_ids.get(profile_name)
+                if profile_id is None and profile_name:
+                    local_profile = conn.execute('SELECT id FROM modules_profiles WHERE name = ? COLLATE NOCASE', (profile_name,)).fetchone()
+                    profile_id = int(local_profile['id']) if local_profile else None
+                row = conn.execute(
+                    'SELECT id, role, active, password_hash, workspace_ids_json FROM users WHERE username = ? COLLATE NOCASE', (username,),
+                ).fetchone()
+                active = bool(account.get('active', True))
+                first_name, last_name = str(account.get('first_name') or '').strip(), str(account.get('last_name') or '').strip()
+                if row:
+                    user_id = int(row['id'])
+                    if username.casefold() == protected_username.strip().casefold():
+                        role, active, password_hash = str(row['role']), bool(row['active']), str(row['password_hash'])
+                    conn.execute(
+                        'UPDATE users SET role = ?, active = ?, password_hash = ?, workspace_ids_json = ?, modules_profile_id = ?, '
+                        'first_name = ?, last_name = ? WHERE id = ?',
+                        (role, int(active), password_hash,
+                         self._workspace_ids_json(resolve(account.get('workspaces'), self._workspace_ids_from_json(row['workspace_ids_json']))),
+                         profile_id, first_name, last_name, user_id),
+                    )
+                    summary['users_updated'] += 1
+                else:
+                    user_id = int(conn.execute(
+                        'INSERT INTO users (username, password_hash, role, active, created_at, workspace_ids_json, modules_profile_id, '
+                        'first_name, last_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                        (username, password_hash, role, int(active), str(account.get('created_at') or '') or local_now_iso(),
+                         self._workspace_ids_json(resolve(account.get('workspaces'))), profile_id, first_name, last_name),
+                    ).lastrowid)
+                    summary['users_created'] += 1
+                conn.executemany('DELETE FROM workspace_group_members WHERE group_id = ? AND user_id = ?',
+                                 [(group_id, user_id) for group_id in group_ids.values()])
+                chosen_groups = account.get('workspace_groups') if isinstance(account.get('workspace_groups'), list) else []
+                conn.executemany('INSERT OR IGNORE INTO workspace_group_members (group_id, user_id) VALUES (?, ?)',
+                                 [(group_ids[str(name).casefold()], user_id) for name in chosen_groups if str(name).casefold() in group_ids])
+            if not conn.execute("SELECT 1 FROM users WHERE role = 'super-admin' AND active = 1").fetchone():
+                raise ValueError('The Users & Access file would leave no active super-admin, so nothing was imported.')
+        return {**summary, 'missing_workspaces': sorted(missing, key=str.casefold)}
 
     def list_active_users_by_usernames(self, usernames: list[str]) -> list[str]:
         normalized = [username.strip() for username in usernames if username and username.strip()]

@@ -8,7 +8,7 @@
     {% for heading, items in sections %}
     <section data-principal-picker-section="{{ heading }}">
       <p class="principal-picker-heading">{{ heading }}</p>
-      {% for value, text in items %}<label><input type="checkbox" name="{{ name }}" value="{{ value }}" form="{{ form_id }}" {% if value in selected %}checked{% endif %}><span>{{ text }}</span></label>{% else %}<p class="table-help">None available.</p>{% endfor %}
+      {% for item in items %}<label><input type="checkbox" name="{{ name }}" value="{{ item[0] }}" form="{{ form_id }}" {% if item[0] in selected %}checked{% endif %} {% if item[2] | default(false) %}disabled{% endif %}><span>{{ item[1] }}</span></label>{% else %}<p class="table-help">None available.</p>{% endfor %}
     </section>
     {% endfor %}
   </div>
@@ -45,7 +45,7 @@
         <p class="app-reset-lede">DriveTest Analyzer starts again from zero, as a <strong>new deployment</strong>. Nothing can be recovered afterwards.</p>
         <ul class="app-reset-list">
           <li><strong>Every workspace</strong> ({{ workspaces|length }}) with its CDRs, datasets, Dashboards, Reporting Jobs, Scoring jobs, Non-Qualified Calls follow-up and generated reports.</li>
-          <li><strong>Every database</strong>: the application database with its users, groups, Features Activation and settings, and each workspace database.</li>
+          <li><strong>Every database</strong>: the application database with its users, Modules Profiles, Workspace Groups and settings, and each workspace database.</li>
           <li><strong>The whole config and data folders</strong>, scheduled backups and transfer packages included:
             <span class="app-reset-paths">{% for root in app_reset_roots %}<code>{{ root }}</code>{% endfor %}</span>
           </li>
@@ -64,262 +64,256 @@
   </dialog>
   {% endif %}
 
-  <details class="panel collapsible-panel admin-create-user-panel" open data-panel-state-key="admin:create-user">
-    <summary class="collapsible-summary">
-      <div>
-        <p class="eyebrow">Identity</p>
-        <h2>Create user</h2>
-        <p class="summary-description">Add an account with its username, password, role and the workspaces it can open. Groups and feature access are set in the panels below.</p>
-      </div>
-      <span class="collapse-chip">Collapse</span>
-    </summary>
-    <div class="collapsible-panel-body">
-    <form class="form-stack narrow-form" action="/admin/users" method="post" autocomplete="off">
-      <label>Username<input type="text" name="username" required></label>
-      <label>Password
-        <div class="user-password-editor">
-          <input class="password-masked" type="text" name="password" autocomplete="off" spellcheck="false" required data-create-user-password data-lpignore="true" data-1p-ignore data-bwignore="true" data-protonpass-ignore="true">
-          <button type="button" class="user-password-toggle" data-create-user-password-toggle aria-label="Show newly entered password" title="Show newly entered password" hidden>
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.2 12s3.5-6 9.8-6 9.8 6 9.8 6-3.5 6-9.8 6-9.8-6-9.8-6Z"></path><circle cx="12" cy="12" r="2.8"></circle></svg>
-          </button>
-        </div>
-      </label>
-      {% if user.role == 'super-admin' %}<label>Role
-        <select name="role">
-          <option value="user-viewer">user-viewer</option>
-          <option value="user-editor">user-editor</option>
-          <option value="admin">admin</option>
-          <option value="super-admin">super-admin</option>
-        </select>
-      </label>{% else %}<label>Role
-        <select name="role">
-          <option value="user-viewer">user-viewer</option>
-          <option value="user-editor">user-editor</option>
-          <option value="admin">admin</option>
-        </select>
-      </label>{% endif %}
-      {% if user.role == 'super-admin' %}<div class="workspace-access-field">
-        <span>Workspace Access</span>
-        <details class="workspace-user-picker" data-workspace-user-picker>
-        <summary><span>Workspace access</span><span class="workspace-user-picker-chevron" aria-hidden="true"></span></summary>
-        <div class="workspace-user-picker-menu">
-          <input class="workspace-user-picker-search" type="search" placeholder="Filter workspaces…" aria-label="Filter available workspaces">
-          <button class="workspace-user-picker-toggle" type="button">Select All / None</button>
-          {% for workspace in workspaces %}<label><input type="checkbox" name="workspace_ids" value="{{ workspace.id }}"><span>{{ workspace.name }}</span></label>{% endfor %}
-        </div>
-        </details>
-      </div>{% endif %}
-      <button type="submit">Create account</button>
-    </form>
+  {% set workspace_names = {} %}{% for workspace in workspaces %}{% set _ = workspace_names.update({workspace.id: workspace.name}) %}{% endfor %}
+  {% set default_profile = (modules_profiles | selectattr('is_default') | list | first) %}
+  {% set member_items = [] %}{% for row in users %}{% if row['role'] != 'super-admin' %}{% set _ = member_items.append((row['id'], row['username'])) %}{% endif %}{% endfor %}
+  {% set role_options = ['user-viewer', 'user-editor', 'admin'] + (['super-admin'] if user.role == 'super-admin' else []) %}
+  {% macro workspace_access_picker(form_id, group_ids, workspace_ids, label) -%}
+  <input type="hidden" name="workspaces_submitted" value="1" form="{{ form_id }}">
+  <details class="workspace-user-picker user-workspaces-picker" data-workspace-user-picker data-user-workspaces>
+    <summary><span data-user-workspaces-summary>Workspaces</span><span class="workspace-user-picker-chevron" aria-hidden="true"></span></summary>
+    <div class="workspace-user-picker-menu user-workspaces-menu">
+      <input class="workspace-user-picker-search" type="search" placeholder="Filter…" aria-label="Filter the workspaces of {{ label }}">
+      <p class="workspace-user-picker-heading">Workspace Groups</p>
+      {% for group in workspace_groups %}<label><input type="checkbox" name="workspace_group_ids" value="{{ group.id }}" form="{{ form_id }}" data-group-name="{{ group.name }}" {% if group.id in group_ids %}checked{% endif %}><span>{{ group.name }} <small>· {% for workspace_id in group.workspace_ids if workspace_id in workspace_names %}{{ workspace_names[workspace_id] }}{% if not loop.last %}, {% endif %}{% else %}no workspaces{% endfor %}</small></span></label>{% else %}<p class="table-help">No Workspace Groups yet.</p>{% endfor %}
+      <p class="workspace-user-picker-heading">Individual workspaces</p>
+      {% for workspace in workspaces %}<label><input type="checkbox" name="workspace_ids" value="{{ workspace.id }}" form="{{ form_id }}" data-individual-workspace {% if workspace.id in workspace_ids %}checked{% endif %} {% if workspace.id not in managed_workspace_ids %}disabled title="Only super-admins and admins with access to {{ workspace.name }} grant it"{% endif %}><span>{{ workspace.name }}</span></label>{% endfor %}
     </div>
   </details>
+  {%- endmacro %}
 
-  <details class="panel collapsible-panel" open data-panel-state-key="admin:identity">
+  <details class="panel collapsible-panel" id="users" open data-panel-state-key="admin:identity">
     <summary class="collapsible-summary">
       <div>
         <p class="eyebrow">Identity</p>
         <h2>Users</h2>
-        <p class="summary-description">Every account with its role, groups, active status and workspaces. Change any of them in place, including the password.</p>
+        <p class="summary-description">Every account with its role, <strong>Modules Profile</strong> (the modules it sees), active status and <strong>workspaces</strong> (its Workspace Groups plus individual workspaces). Change any of them in place, or select several users to change them at once. The last row creates a user.</p>
       </div>
       <span class="collapse-chip">Collapse</span>
     </summary>
-    <div class="table-wrap">
+    <div class="users-toolbar" role="search">
+      <label class="users-search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg><input type="search" placeholder="Search users by name or username" aria-label="Filter users by name or username" data-users-filter-text></label>
+      <select aria-label="Filter users by role" data-users-filter="role"><option value="">All roles</option>{% for role in ['user-viewer', 'user-editor', 'admin', 'super-admin'] %}<option value="{{ role }}">{{ role }}</option>{% endfor %}</select>
+      <select aria-label="Filter users by Modules Profile" data-users-filter="profile"><option value="">All Modules Profiles</option>{% for profile in modules_profiles %}<option value="{{ profile.id }}">{{ profile.name }}</option>{% endfor %}</select>
+      <select aria-label="Filter users by Workspace Group" data-users-filter="group"><option value="">All Workspace Groups</option>{% for group in workspace_groups %}<option value="{{ group.id }}">{{ group.name }}</option>{% endfor %}<option value="none">No Workspace Group</option></select>
+      <select aria-label="Filter users by status" data-users-filter="active"><option value="">Active and inactive</option><option value="1">Active</option><option value="0">Inactive</option></select>
+      <span class="users-count" data-users-count role="status"></span>
+    </div>
+    <div class="users-bulk-bar" data-users-bulk hidden>
+      <strong data-users-bulk-count>0 selected</strong>
+      <select aria-label="Give the selected users a Modules Profile" data-users-bulk-action="modules_profile"><option value="">Modules Profile…</option>{% for profile in modules_profiles %}<option value="{{ profile.id }}">{{ profile.name }}</option>{% endfor %}</select>
+      <select aria-label="Add the selected users to a Workspace Group" data-users-bulk-action="add_workspace_group"><option value="">Add to group…</option>{% for group in workspace_groups %}<option value="{{ group.id }}">{{ group.name }}</option>{% endfor %}</select>
+      <select aria-label="Remove the selected users from a Workspace Group" data-users-bulk-action="remove_workspace_group"><option value="">Remove from group…</option>{% for group in workspace_groups %}<option value="{{ group.id }}">{{ group.name }}</option>{% endfor %}</select>
+      <select aria-label="Give the selected users a role" data-users-bulk-action="role"><option value="">Role…</option>{% for role in role_options %}<option value="{{ role }}">{{ role }}</option>{% endfor %}</select>
+      <button type="button" data-users-bulk-button="activate">Activate</button>
+      <button type="button" data-users-bulk-button="deactivate">Deactivate</button>
+      <button type="button" class="users-bulk-clear" data-users-bulk-clear aria-label="Clear selection" title="Clear selection">×</button>
+    </div>
+    <div class="table-wrap users-table-wrap">
       <table class="users-table">
-        <thead><tr><th>ID</th><th>Username</th><th>Password</th><th>Role</th><th>Groups</th><th>Active</th><th>Workspaces</th><th>Created</th><th>Actions</th></tr></thead>
+        <thead><tr><th class="user-select-column"><input type="checkbox" aria-label="Select every listed user" data-users-select-all></th><th>User</th><th>Password</th><th>Role</th><th>Modules Profile</th><th>Active</th><th>Workspaces</th><th><span class="sr-only">Actions</span></th></tr></thead>
         <tbody>
           {% for row in users %}
-          <tr data-user-row>
-            <td>
-              {{ row['id'] }}
+          {% set locked = user.role != 'super-admin' and row['role'] == 'super-admin' %}
+          <tr data-user-row data-user-id="{{ row['id'] }}" data-username="{{ row['username'] }}" data-name="{{ row['first_name'] }} {{ row['last_name'] }}" data-role="{{ row['role'] }}" data-active="{{ '1' if row['active'] else '0' }}" data-profile="{{ row['modules_profile_id'] or '' }}" data-groups="{{ row['workspace_group_ids'] | join(',') }}">
+            <td class="user-select-column"><input type="checkbox" value="{{ row['id'] }}" aria-label="Select {{ row['username'] }}" data-user-select {% if locked %}disabled title="Only super-admins can change super-admin accounts"{% endif %}></td>
+            <td class="user-identity-cell">
               <form id="user-update-{{ row['id'] }}" action="/admin/users/{{ row['id'] }}/update" method="post" autocomplete="off" data-user-auto-save></form>
               <form id="user-delete-{{ row['id'] }}" action="/admin/users/{{ row['id'] }}/delete" method="post" data-confirm="Delete user {{ row['username'] }}? This action cannot be undone."></form>
               <form id="user-password-reset-{{ row['id'] }}" action="/admin/users/{{ row['id'] }}/reset-password" method="post" data-user-password-reset data-reset-username="{{ row['username'] }}"></form>
+              {% set full_name = (row['first_name'] ~ ' ' ~ row['last_name']) | trim %}
+              <div class="user-identity" data-user-identity data-created="#{{ row['id'] }} · {{ row['created_at'][:10] }}">
+                <span class="user-avatar" style="--avatar-hue: {{ (row['id'] * 67) % 360 }}" aria-hidden="true" data-user-initials>{{ ((row['first_name'][:1] ~ row['last_name'][:1]) if row['first_name'] and row['last_name'] else row['username'][:2]) | upper }}</span>
+                <div class="user-identity-text">
+                  <div class="user-identity-view">
+                    <strong class="user-display-name" data-user-display-name>{{ full_name or row['username'] }}</strong>
+                    <span class="user-meta" title="Created {{ row['created_at'] }}" data-user-display-meta>{% if full_name %}{{ row['username'] }} · {% endif %}#{{ row['id'] }} · {{ row['created_at'][:10] }}</span>
+                  </div>
+                  <div class="user-identity-edit">
+                    <input class="table-input user-name-input" type="text" name="first_name" value="{{ row['first_name'] }}" placeholder="First name" form="user-update-{{ row['id'] }}" autocomplete="off" aria-label="First name of {{ row['username'] }}" {% if locked %}disabled{% endif %}>
+                    <input class="table-input user-name-input" type="text" name="last_name" value="{{ row['last_name'] }}" placeholder="Last name" form="user-update-{{ row['id'] }}" autocomplete="off" aria-label="Last name of {{ row['username'] }}" {% if locked %}disabled{% endif %}>
+                    <input class="table-input user-login-input" type="text" name="username" value="{{ row['username'] }}" form="user-update-{{ row['id'] }}" autocomplete="off" readonly data-user-autofill-guard required aria-label="Username of {{ row['username'] }}" {% if locked %}disabled{% endif %}>
+                  </div>
+                </div>
+                {% if not locked %}<button type="button" class="user-identity-toggle" data-user-identity-toggle aria-label="Edit the name and username of {{ row['username'] }}" title="Edit name and username"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/></svg></button>{% endif %}
+              </div>
             </td>
-            <td><input class="table-input" type="text" name="username" value="{{ row['username'] }}" form="user-update-{{ row['id'] }}" autocomplete="off" readonly data-user-autofill-guard required {% if user.role != 'super-admin' and row['role'] == 'super-admin' %}disabled{% endif %}></td>
             <td>
               <div class="user-password-editor">
-                <input class="table-input password-masked" type="text" name="password" value="" placeholder="••••••••" autocomplete="off" spellcheck="false" readonly form="user-update-{{ row['id'] }}" data-user-password data-user-autofill-guard data-lpignore="true" data-1p-ignore data-bwignore="true" data-protonpass-ignore="true" {% if user.role != 'super-admin' and row['role'] == 'super-admin' %}disabled{% endif %}>
+                <input class="table-input password-masked" type="text" name="password" value="" placeholder="••••••••" autocomplete="off" spellcheck="false" readonly form="user-update-{{ row['id'] }}" aria-label="New password of {{ row['username'] }}" data-user-password data-user-autofill-guard data-lpignore="true" data-1p-ignore data-bwignore="true" data-protonpass-ignore="true" {% if locked %}disabled{% endif %}>
                 <button type="button" class="user-password-toggle" data-user-password-toggle aria-label="Show newly entered password" title="Show newly entered password" hidden>
                   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.2 12s3.5-6 9.8-6 9.8 6 9.8 6-3.5 6-9.8 6-9.8-6-9.8-6Z"></path><circle cx="12" cy="12" r="2.8"></circle></svg>
                 </button>
               </div>
             </td>
             <td>
-              {% if user.role != 'super-admin' and row['role'] == 'super-admin' %}
+              {% if locked %}
               <input type="hidden" name="role" value="super-admin" form="user-update-{{ row['id'] }}">
-              <span class="table-input user-role-locked" aria-label="Role for {{ row['username'] }}: super-admin" title="Only super-admins can modify a super-admin role"><span class="user-role-full-label">super-admin</span><span class="user-role-compact-label" aria-hidden="true">super</span></span>
+              <span class="user-role-locked" aria-label="Role for {{ row['username'] }}: super-admin" title="Only super-admins can modify a super-admin role">super-admin</span>
               {% else %}
-              <select class="table-select" name="role" form="user-update-{{ row['id'] }}">
-                <option value="user-viewer" {% if row['role'] == 'user-viewer' %}selected{% endif %}>user-viewer</option>
-                <option value="user-editor" {% if row['role'] == 'user-editor' %}selected{% endif %}>user-editor</option>
-                <option value="admin" {% if row['role'] == 'admin' %}selected{% endif %}>admin</option>
-                {% if user.role == 'super-admin' or row['role'] == 'super-admin' %}<option value="super-admin" {% if row['role'] == 'super-admin' %}selected{% endif %}>super-admin</option>{% endif %}
+              <select class="table-select user-role-select" name="role" form="user-update-{{ row['id'] }}" aria-label="Role of {{ row['username'] }}">
+                {% for role in ['user-viewer', 'user-editor', 'admin', 'super-admin'] if role in role_options or row['role'] == role %}<option value="{{ role }}" {% if row['role'] == role %}selected{% endif %}>{{ role }}</option>{% endfor %}
               </select>
               {% endif %}
             </td>
             <td>
-              {% set groups_locked = user.role != 'super-admin' and row['role'] == 'super-admin' %}
-              <input type="hidden" name="groups_submitted" value="1" form="user-update-{{ row['id'] }}">
-              <details class="workspace-user-picker" data-workspace-user-picker>
-                <summary><span>{% if row['group_ids'] %}{{ row['group_ids'] | length }} group{{ '' if row['group_ids'] | length == 1 else 's' }}{% else %}No groups{% endif %}</span><span class="workspace-user-picker-chevron" aria-hidden="true"></span></summary>
-                <div class="workspace-user-picker-menu">
-                  <input class="workspace-user-picker-search" type="search" placeholder="Filter groups…" aria-label="Filter groups for {{ row['username'] }}">
-                  {% for group in user_groups %}<label><input type="checkbox" name="group_ids" value="{{ group.id }}" form="user-update-{{ row['id'] }}" {% if group.id in row['group_ids'] %}checked{% endif %} {% if groups_locked %}disabled{% endif %}><span>{{ group.name }}</span></label>{% else %}<p class="table-help">No user groups yet.</p>{% endfor %}
-                </div>
-              </details>
+              {% if row['role'] == 'super-admin' %}<span class="user-access-all" title="Super-admins see every module">All modules</span>
+              {% else %}<select class="table-select user-profile-select" name="modules_profile_id" form="user-update-{{ row['id'] }}" aria-label="Modules Profile of {{ row['username'] }}">{% for profile in modules_profiles %}<option value="{{ profile.id }}" {% if profile.id == row['modules_profile_id'] %}selected{% endif %}>{{ profile.name }}</option>{% endfor %}</select>{% endif %}
             </td>
             <td>
               <label class="toggle-switch" aria-label="Toggle active state for {{ row['username'] }}">
-                <input type="checkbox" name="active" value="1" form="user-update-{{ row['id'] }}" {% if row['active'] %}checked{% endif %} {% if user.role != 'super-admin' and row['role'] == 'super-admin' %}disabled{% endif %}>
+                <input type="checkbox" name="active" value="1" form="user-update-{{ row['id'] }}" {% if row['active'] %}checked{% endif %} {% if locked %}disabled{% endif %}>
                 <span class="toggle-slider"></span>
               </label>
             </td>
             <td>
-              <details class="workspace-user-picker" data-workspace-user-picker>
-                <summary><span>Workspace access</span><span class="workspace-user-picker-chevron" aria-hidden="true"></span></summary>
-                <div class="workspace-user-picker-menu">
-                  <input class="workspace-user-picker-search" type="search" placeholder="Filter workspaces…" aria-label="Filter workspaces for {{ row['username'] }}">
-                  <p class="workspace-user-picker-heading">User</p>
-                  {% if user.role == 'super-admin' %}<button class="workspace-user-picker-toggle" type="button">Select All / None</button>{% endif %}
-                  {% for workspace in workspaces %}<label><input type="checkbox" {% if user.role == 'super-admin' %}name="workspace_ids" value="{{ workspace.id }}" form="user-update-{{ row['id'] }}"{% else %}disabled{% endif %} {% if workspace.id in row['workspace_ids'] %}checked{% endif %}><span>{{ workspace.name }}</span></label>{% endfor %}
-                  {% if row['group_workspaces'] %}<p class="workspace-user-picker-heading">Groups</p>
-                  {% for item in row['group_workspaces'] %}<label class="workspace-inherited-access"><input type="checkbox" checked disabled><span>{{ item.workspace }} <small>· {{ item.groups | join(', ') }}</small></span></label>{% endfor %}{% endif %}
-                  {% if row['role_workspaces'] %}<p class="workspace-user-picker-heading">Role</p>
-                  {% for name in row['role_workspaces'] %}<label class="workspace-inherited-access"><input type="checkbox" checked disabled><span>{{ name }} <small>· {{ row['role'] }}</small></span></label>{% endfor %}{% endif %}
-                </div>
-              </details>
+              {% if row['role'] == 'super-admin' %}<span class="user-access-all" title="Super-admins open every workspace">All workspaces</span>
+              {% else %}{{ workspace_access_picker('user-update-' ~ row['id'], row['workspace_group_ids'], row['workspace_ids'], row['username']) }}{% endif %}
             </td>
-            <td>{{ row['created_at'] }}</td>
             <td>
-              <div class="table-actions">
-                <button type="submit" form="user-password-reset-{{ row['id'] }}" class="user-password-reset icon-action" aria-label="Reset password" title="Reset password" {% if user.role != 'super-admin' and row['role'] == 'super-admin' %}disabled title="Only super-admins can modify super-admin accounts"{% endif %}>↺</button>
-                <button type="submit" form="user-delete-{{ row['id'] }}" class="danger-button user-delete-button icon-action" aria-label="Delete user" title="Delete user" {% if row['username'] == user.username %}disabled title="You cannot delete the current signed-in admin user"{% elif user.role != 'super-admin' and row['role'] == 'super-admin' %}disabled title="Only super-admins can modify super-admin accounts"{% endif %}>×</button>
+              <div class="table-actions user-row-actions">
+                <button type="submit" form="user-password-reset-{{ row['id'] }}" class="user-password-reset user-row-action" aria-label="Reset password of {{ row['username'] }}" {% if locked %}disabled title="Only super-admins can modify super-admin accounts"{% else %}title="Reset password"{% endif %}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="15" r="4"/><path d="m11 12 8.5-8.5M16 7l2.5 2.5M18.5 4.5 21 7"/></svg></button>
+                <button type="submit" form="user-delete-{{ row['id'] }}" class="user-delete-button user-row-action" aria-label="Delete {{ row['username'] }}" {% if row['username'] == user.username %}disabled title="You cannot delete the current signed-in admin user"{% elif locked %}disabled title="Only super-admins can modify super-admin accounts"{% else %}title="Delete user"{% endif %}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/></svg></button>
               </div>
             </td>
           </tr>
           {% endfor %}
+          <tr class="users-create-row" data-users-create-row>
+            <td class="user-select-column"></td>
+            <td class="user-identity-cell">
+              <form id="user-create" action="/admin/users" method="post" autocomplete="off"></form>
+              <div class="user-identity">
+                <span class="user-avatar user-avatar-new" aria-hidden="true">+</span>
+                <div class="user-identity-text">
+                  <div class="user-identity-edit">
+                    <input class="table-input user-name-input" type="text" name="first_name" placeholder="First name" form="user-create" autocomplete="off" aria-label="First name of the new user">
+                    <input class="table-input user-name-input" type="text" name="last_name" placeholder="Last name" form="user-create" autocomplete="off" aria-label="Last name of the new user">
+                    <input class="table-input user-login-input" type="text" name="username" placeholder="Username" form="user-create" autocomplete="off" required aria-label="Username of the new user">
+                  </div>
+                </div>
+              </div>
+            </td>
+            <td>
+              <div class="user-password-editor">
+                <input class="table-input password-masked" type="text" name="password" placeholder="Password" form="user-create" autocomplete="off" spellcheck="false" required aria-label="Password of the new user" data-create-user-password data-lpignore="true" data-1p-ignore data-bwignore="true" data-protonpass-ignore="true">
+                <button type="button" class="user-password-toggle" data-create-user-password-toggle aria-label="Show newly entered password" title="Show newly entered password" hidden>
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.2 12s3.5-6 9.8-6 9.8 6 9.8 6-3.5 6-9.8 6-9.8-6-9.8-6Z"></path><circle cx="12" cy="12" r="2.8"></circle></svg>
+                </button>
+              </div>
+            </td>
+            <td><select class="table-select user-role-select" name="role" form="user-create" aria-label="Role of the new user">{% for role in role_options %}<option value="{{ role }}">{{ role }}</option>{% endfor %}</select></td>
+            <td><select class="table-select user-profile-select" name="modules_profile_id" form="user-create" aria-label="Modules Profile of the new user">{% for profile in modules_profiles %}<option value="{{ profile.id }}" {% if profile.is_default %}selected{% endif %}>{{ profile.name }}</option>{% endfor %}</select></td>
+            <td></td>
+            <td>{{ workspace_access_picker('user-create', [], [], 'the new user') }}</td>
+            <td><div class="table-actions user-row-actions"><button type="submit" form="user-create" class="users-create-button">Create</button></div></td>
+          </tr>
         </tbody>
       </table>
     </div>
   </details>
 
+  {% set usernames = {} %}{% for row in users %}{% set _ = usernames.update({row['id']: row['username']}) %}{% endfor %}
+  {% macro member_pills(member_ids) -%}
+  <div class="access-card-members" data-access-card-members>{% for member in member_ids[:8] %}<span class="access-member-pill">{{ usernames.get(member, member) }}</span>{% endfor %}{% if member_ids | length > 8 %}<span class="access-member-pill access-member-more">+{{ member_ids | length - 8 }}</span>{% endif %}</div>
+  {%- endmacro %}
+  {% set folder_icon = '<path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H9l2 2h7.5A2.5 2.5 0 0 1 21 9.5v7a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 16.5z"/>' %}
 
-  <details class="panel collapsible-panel" id="user-groups" open data-panel-state-key="admin:user-groups">
+  <details class="panel collapsible-panel access-panel" id="modules-profiles" open data-panel-state-key="admin:modules-profiles">
     <summary class="collapsible-summary">
       <div>
-        <p class="eyebrow">Identity</p>
-        <h2>User Groups</h2>
-        <p class="summary-description">Custom groups of users. Features Activation can activate a feature for a whole group.</p>
+        <p class="eyebrow">Access</p>
+        <h2>Modules Profiles</h2>
+        <p class="summary-description">Each profile is a set of main modules; every user has one profile and sees its modules, and super-admins see every module. Click a module to add it to a profile or remove it, and choose its users in <strong>Users</strong>: changes are saved at once and apply to all its users. The <strong>Default</strong> profile is the one of users without a profile.</p>
       </div>
       <span class="collapse-chip">Collapse</span>
     </summary>
-    {% set member_items = [] %}{% for row in users %}{% set _ = member_items.append((row['id'], row['username'])) %}{% endfor %}
-    <div class="table-wrap">
-      <table class="principal-table user-groups-table" data-phone-cards>
-        <thead><tr><th>Group</th><th>Description</th><th>Members</th><th>Actions</th></tr></thead>
-        <tbody>
-          {% for group in user_groups %}
-          <tr>
-            <td>
-              <form id="user-group-update-{{ group.id }}" action="/admin/user-groups/{{ group.id }}/update" method="post"></form>
-              <form id="user-group-delete-{{ group.id }}" action="/admin/user-groups/{{ group.id }}/delete" method="post" data-confirm="Delete group {{ group.name }}? Its members keep their accounts."></form>
-              <input class="table-input" type="text" name="name" value="{{ group.name }}" form="user-group-update-{{ group.id }}" required aria-label="Group name">
-            </td>
-            <td><input class="table-input" type="text" name="description" value="{{ group.description }}" form="user-group-update-{{ group.id }}" aria-label="Description of {{ group.name }}"></td>
-            <td>{{ principal_picker('user-group-update-' ~ group.id, 'member_ids', [('Users', member_items)], group.member_ids, 'No members', 'Members of ' ~ group.name) }}</td>
-            <td>
-              <div class="table-actions">
-                <button type="submit" form="user-group-update-{{ group.id }}" class="icon-action" aria-label="Save group" title="Save group">✓</button>
-                <button type="submit" form="user-group-delete-{{ group.id }}" class="danger-button icon-action" aria-label="Delete group" title="Delete group">×</button>
-              </div>
-            </td>
-          </tr>
-          {% endfor %}
-          <tr class="user-groups-create-row">
-            <td>
-              <form id="user-group-create" action="/admin/user-groups" method="post"></form>
-              <input class="table-input" type="text" name="name" placeholder="New group name" form="user-group-create" required aria-label="New group name">
-            </td>
-            <td><input class="table-input" type="text" name="description" placeholder="Description" form="user-group-create" aria-label="New group description"></td>
-            <td>{{ principal_picker('user-group-create', 'member_ids', [('Users', member_items)], [], 'No members', 'Members of the new group') }}</td>
-            <td><div class="table-actions"><button type="submit" form="user-group-create">Create group</button></div></td>
-          </tr>
-        </tbody>
-      </table>
+    <div class="access-cards" data-access-cards="profiles">
+      {% for profile in modules_profiles %}
+      <article class="access-card{% if profile.is_default %} is-default{% endif %}" data-access-card="profile" data-card-id="{{ profile.id }}" data-update-url="/admin/modules-profiles/{{ profile.id }}/update">
+        <form id="modules-profile-{{ profile.id }}" autocomplete="off" data-access-card-form></form>
+        <form id="modules-profile-delete-{{ profile.id }}" action="/admin/modules-profiles/{{ profile.id }}/delete" method="post" data-confirm="Delete the profile {{ profile.name }}? Its users get the default profile."></form>
+        <header class="access-card-head">
+          <div class="access-card-titles">
+            <input class="access-card-name" type="text" name="name" value="{{ profile.name }}" form="modules-profile-{{ profile.id }}" required aria-label="Name of the profile {{ profile.name }}">
+            <input class="access-card-description" type="text" name="description" value="{{ profile.description }}" placeholder="Add a description" form="modules-profile-{{ profile.id }}" aria-label="Description of {{ profile.name }}">
+          </div>
+          <div class="access-card-tools">
+            <button type="button" class="access-default-toggle" data-profile-default data-default-url="/admin/modules-profiles/{{ profile.id }}/default" aria-pressed="{{ 'true' if profile.is_default else 'false' }}" title="The default profile is the one of users without a profile">{% if profile.is_default %}Default{% else %}Make default{% endif %}</button>
+            <button type="submit" form="modules-profile-delete-{{ profile.id }}" class="access-card-delete" aria-label="Delete the profile {{ profile.name }}" {% if profile.is_default %}disabled title="The default profile cannot be deleted: make another profile the default first"{% else %}title="Delete profile"{% endif %}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/></svg></button>
+          </div>
+        </header>
+        <p class="access-card-label"><span>Modules</span><span class="access-card-count" data-access-card-count></span></p>
+        <div class="access-chips" role="group" aria-label="Modules of {{ profile.name }}">
+          {% for module in profile_modules %}<label class="access-chip" style="--chip-color: {{ module.color }}" title="{{ module.title }}"><input type="checkbox" name="modules" value="{{ module.key }}" form="modules-profile-{{ profile.id }}" {% if module.key in profile.modules %}checked{% endif %}>{% if module.icon %}<svg viewBox="0 0 24 24" aria-hidden="true">{{ module.icon | safe }}</svg>{% endif %}<span>{{ module.title }}</span></label>{% endfor %}
+        </div>
+        <footer class="access-card-foot">
+          <div class="access-card-users">
+            {% for member in profile.member_ids %}<input type="hidden" name="initial_member_ids" value="{{ member }}" form="modules-profile-{{ profile.id }}" data-initial-member>{% endfor %}
+            {{ principal_picker('modules-profile-' ~ profile.id, 'member_ids', [('Users', member_items)], profile.member_ids, 'No users', 'Users of ' ~ profile.name) }}
+            {{ member_pills(profile.member_ids) }}
+          </div>
+          <span class="access-card-status" data-access-card-status role="status"></span>
+        </footer>
+      </article>
+      {% endfor %}
+      <form class="access-card access-card-new" action="/admin/modules-profiles" method="post" autocomplete="off">
+        <p class="access-card-new-title">New profile</p>
+        <input class="table-input" type="text" name="name" placeholder="Profile name" required aria-label="New profile name">
+        <input class="table-input" type="text" name="description" placeholder="Description (optional)" aria-label="New profile description">
+        <p class="form-note">It starts without modules or users: add them on its card.</p>
+        <button type="submit">Create profile</button>
+      </form>
+    </div>
+  </details>
+
+  <details class="panel collapsible-panel access-panel" id="workspace-groups" open data-panel-state-key="admin:workspace-groups">
+    <summary class="collapsible-summary">
+      <div>
+        <p class="eyebrow">Access</p>
+        <h2>Workspace Groups</h2>
+        <p class="summary-description">Each group opens its workspaces to its users; a user opens the workspaces of all their groups plus those granted to them individually, and super-admins open every workspace. Click a workspace to add it to a group or remove it, and choose its users in <strong>Users</strong>: changes are saved at once.{% if user.role != 'super-admin' %} You change only the workspaces you can open.{% endif %}</p>
+      </div>
+      <span class="collapse-chip">Collapse</span>
+    </summary>
+    <div class="access-cards" data-access-cards="groups">
+      {% for group in workspace_groups %}
+      <article class="access-card" data-access-card="group" data-card-id="{{ group.id }}" data-update-url="/admin/workspace-groups/{{ group.id }}/update">
+        <form id="workspace-group-{{ group.id }}" autocomplete="off" data-access-card-form></form>
+        <form id="workspace-group-delete-{{ group.id }}" action="/admin/workspace-groups/{{ group.id }}/delete" method="post" data-confirm="Delete the group {{ group.name }}? Its users keep their accounts and their other workspaces."></form>
+        <header class="access-card-head">
+          <div class="access-card-titles">
+            <input class="access-card-name" type="text" name="name" value="{{ group.name }}" form="workspace-group-{{ group.id }}" required aria-label="Name of the group {{ group.name }}">
+            <input class="access-card-description" type="text" name="description" value="{{ group.description }}" placeholder="Add a description" form="workspace-group-{{ group.id }}" aria-label="Description of {{ group.name }}">
+          </div>
+          <div class="access-card-tools">
+            <button type="submit" form="workspace-group-delete-{{ group.id }}" class="access-card-delete" aria-label="Delete the group {{ group.name }}" title="Delete group"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/></svg></button>
+          </div>
+        </header>
+        <p class="access-card-label"><span>Workspaces</span><span class="access-card-count" data-access-card-count></span></p>
+        <div class="access-chips" role="group" aria-label="Workspaces of {{ group.name }}">
+          {% for workspace in workspaces %}<label class="access-chip" style="--chip-color: #08736D" title="{{ workspace.name }}{% if workspace.id not in managed_workspace_ids %}: only super-admins and admins with access change it{% endif %}"><input type="checkbox" name="workspace_ids" value="{{ workspace.id }}" form="workspace-group-{{ group.id }}" {% if workspace.id in group.workspace_ids %}checked{% endif %} {% if workspace.id not in managed_workspace_ids %}disabled{% endif %}><svg viewBox="0 0 24 24" aria-hidden="true">{{ folder_icon | safe }}</svg><span>{{ workspace.name }}</span></label>{% else %}<p class="table-help">No workspaces yet.</p>{% endfor %}
+        </div>
+        <footer class="access-card-foot">
+          <div class="access-card-users">
+            {% for member in group.member_ids %}<input type="hidden" name="initial_member_ids" value="{{ member }}" form="workspace-group-{{ group.id }}" data-initial-member>{% endfor %}
+            {{ principal_picker('workspace-group-' ~ group.id, 'member_ids', [('Users', member_items)], group.member_ids, 'No users', 'Users of ' ~ group.name) }}
+            {{ member_pills(group.member_ids) }}
+          </div>
+          <span class="access-card-status" data-access-card-status role="status"></span>
+        </footer>
+      </article>
+      {% endfor %}
+      <form class="access-card access-card-new" action="/admin/workspace-groups" method="post" autocomplete="off">
+        <p class="access-card-new-title">New Workspace Group</p>
+        <input class="table-input" type="text" name="name" placeholder="Group name" required aria-label="New group name">
+        <input class="table-input" type="text" name="description" placeholder="Description (optional)" aria-label="New group description">
+        <p class="form-note">It starts without workspaces or users: add them on its card.</p>
+        <button type="submit">Create group</button>
+      </form>
     </div>
   </details>
 
   {% if user.role in ['admin', 'super-admin'] %}
-    {% set principal_sections = [] %}
-    {% set role_items = [] %}{% for role in feature_roles %}{% set _ = role_items.append(('role:' ~ role, role)) %}{% endfor %}
-    {% set group_items = [] %}{% for group in user_groups %}{% set _ = group_items.append(('group:' ~ group.id, group.name)) %}{% endfor %}
-    {% set user_items = [] %}{% for row in users %}{% set _ = user_items.append(('user:' ~ row['id'], row['username'] ~ ' (' ~ row['role'] ~ ')')) %}{% endfor %}
-    {% set principal_sections = [('Roles', role_items), ('Groups', group_items), ('Users', user_items)] %}
-    {# A lower role may grant features to higher roles but never forbid them. #}
-    {% set deny_role_items = [] %}{% for role in feature_roles %}{% if user.role == 'super-admin' or role != 'super-admin' %}{% set _ = deny_role_items.append(('role:' ~ role, role)) %}{% endif %}{% endfor %}
-    {% set deny_user_items = [] %}{% for row in users %}{% if user.role == 'super-admin' or row['role'] != 'super-admin' %}{% set _ = deny_user_items.append(('user:' ~ row['id'], row['username'] ~ ' (' ~ row['role'] ~ ')')) %}{% endif %}{% endfor %}
-    {% set deny_sections = [('Roles', deny_role_items), ('Groups', group_items), ('Users', deny_user_items)] %}
-  <details id="workspace-access" class="panel collapsible-panel workspace-access-panel" open data-panel-state-key="admin:workspace-access">
-    <summary class="collapsible-summary">
-      <div>
-        <p class="eyebrow">Workspaces</p>
-        <h2>Workspace Access</h2>
-        <p class="summary-description">A workspace opens for the <strong>roles</strong>, <strong>user groups</strong> and <strong>users</strong> it is granted to; super-admins open every workspace. Users granted here are the same ones listed in <strong>Workspace → Access</strong> and in each user's workspaces.</p>
-      </div>
-      <span class="collapse-chip">Collapse</span>
-    </summary>
-    <form id="workspace-access-form" action="/admin/workspace-access" method="post" autocomplete="off"></form>
-    <div class="table-wrap">
-      <table class="principal-table workspace-access-table" data-phone-cards>
-        <thead><tr><th>Workspace</th><th>Access</th></tr></thead>
-        <tbody>
-          {% for workspace in workspace_access_rows %}
-          <tr>
-            <td><strong>{{ workspace.name }}</strong></td>
-            <td>{{ principal_picker('workspace-access-form', 'access__' ~ workspace.id, principal_sections, workspace['values'], 'Super-admins only', 'Access to ' ~ workspace.name) }}</td>
-          </tr>
-          {% else %}
-          <tr><td colspan="2" class="table-help">No workspaces.</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    <div class="form-actions"><button type="submit" form="workspace-access-form">Save Workspace Access</button></div>
-  </details>
-
-  <details class="panel collapsible-panel" id="features-activation" open data-panel-state-key="admin:features-activation">
-    <summary class="collapsible-summary">
-      <div>
-        <p class="eyebrow">Modules</p>
-        <h2>Features Activation</h2>
-        <p class="summary-description">Each main module is active for <strong>All users</strong> or <strong>Nobody</strong> by default. <strong>Allowed</strong> roles, groups and users gain it and <strong>Forbidden</strong> ones lose it; when an account matches both lists, Forbidden wins. A feature that is not active for an account disappears from its navigation and its pages and API answer 403. Non-Qualified Calls starts hidden from everyone; PPT Reporting (old) starts allowed for super-admins and EJAITUR.</p>
-      </div>
-      <span class="collapse-chip">Collapse</span>
-    </summary>
-    <form id="features-activation-form" action="/admin/features" method="post" autocomplete="off"></form>
-    {% if user.role != 'super-admin' %}<p class="table-help">As an admin you can grant any feature to super-admins, but you cannot remove a feature from the super-admin role or from super-admin accounts (directly, through a group or with "Nobody" by default).</p>{% endif %}
-    <div class="table-wrap">
-      <table class="principal-table features-activation-table" data-phone-cards>
-        <thead><tr><th>Feature</th><th>By default</th><th>Allowed</th><th>Forbidden</th></tr></thead>
-        <tbody>
-          {% for feature in feature_activation %}
-          <tr>
-            <td><strong>{{ feature.label }}</strong></td>
-            <td>
-              <select class="table-select" name="default__{{ feature.key }}" form="features-activation-form" aria-label="Default access to {{ feature.label }}">
-                <option value="all" {% if feature.default == 'all' %}selected{% endif %}>All users</option>
-                <option value="none" {% if feature.default == 'none' %}selected{% endif %}>Nobody</option>
-              </select>
-            </td>
-            <td>{{ principal_picker('features-activation-form', 'allow__' ~ feature.key, principal_sections, feature.allow_values, 'Nobody else', 'Allowed for ' ~ feature.label) }}</td>
-            <td>{{ principal_picker('features-activation-form', 'deny__' ~ feature.key, deny_sections, feature.deny_values, 'Nobody', 'Forbidden for ' ~ feature.label) }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    <div class="form-actions"><button type="submit" form="features-activation-form">Save Features Activation</button></div>
-  </details>
 
   {% if user.role == 'super-admin' %}
   <details id="interface-settings" class="panel collapsible-panel" open data-panel-state-key="admin:interface-settings">
@@ -334,7 +328,7 @@
     <form class="interface-settings-form" action="/admin/interface-settings" method="post" autocomplete="off">
       <label class="confirm-option"><input type="checkbox" name="show_module_stage_labels" value="true" data-no-persist {% if show_module_stage_labels %}checked{% endif %}><span>Show a label on the tab of each main module (for example <strong>ALPHA</strong>, <strong>BETA</strong>, <strong>NEW</strong> or <strong>STABLE</strong>)</span></label>
       {% if module_label_settings %}
-      <p class="table-help">Each row is a main tab, in the order of the main tabs; the Modules menu, the Help navigation and Features Activation follow the same order. Drag a row by its handle or use the arrows to move it. Choose the title of the tab, its short title for narrow windows, its icon and its colour (the accent of the module palette), and the label shown in its corner with its colour and an optional icon. Leave the label empty to show none; the label text turns white or dark to stay readable on its colour.</p>
+      <p class="table-help">Each row is a main tab, in the order of the main tabs; the Modules menu, the Help navigation and the modules of Modules Profiles follow the same order. Drag a row by its handle or use the arrows to move it. Choose the title of the tab, its short title for narrow windows, its icon and its colour (the accent of the module palette), and the label shown in its corner with its colour and an optional icon. Leave the label empty to show none; the label text turns white or dark to stay readable on its colour.</p>
       <div class="table-wrap">
         <table class="module-labels-table" data-module-labels data-phone-cards>
           <thead>
@@ -799,7 +793,7 @@
             <div class="database-backup-immediate-grid">
               <section class="database-backup-operation-panel"><h5>Backup</h5>
                 <label class="database-backup-components">Backup content
-                  <select name="components" multiple data-backup-components data-multiselect-groups="true" data-multiselect-auto-close="1000"><optgroup label="Configuration Content"><option value="app_database" {% if 'app_database' in recurring_backup.components %}selected{% endif %}>Application database</option></optgroup>{% if backup_workspaces %}<optgroup label="Workspaces">{% for workspace in backup_workspaces %}<option value="workspace:{{ workspace.id }}" {% if not recurring_backup.workspace_ids or workspace.id in recurring_backup.workspace_ids %}selected{% endif %}>{{ workspace.name }}</option>{% endfor %}</optgroup>{% endif %}<optgroup label="Workspace Content" data-group-note="of the selected workspaces">{% for value, label in [('workspace_database', 'Workspace Database'), ('dashboards', 'Dashboards (one JSON file with all Dashboard definitions)'), ('report_templates', 'PPT Templates (one CSV file per Report Template)'), ('main_cities', 'Main Cities (workspace city selection)'), ('mappings_reference_data', 'Mappings & Reference Data (Operator and Vendor aliases, order and theme colors, Campaign Maps, Map Areas and Spectrum Holdings)'), ('scoring_configuration', 'Scoring & GAP Analysis Configuration (KPI methodology profiles and GAP KPI priorities)'), ('auto_calculated_fields', 'Auto-calculated Fields (one JSON file with all definitions)'), ('query_builder_queries', 'Query Builder Queries (one JSON file with all saved queries)'), ('reporting_jobs', 'Reporting Jobs (one JSON file with all Reporting Job definitions)'), ('nq_call_tracking', 'NQ Call Tracking (one JSON file with the Non-Qualified Calls statuses, teams, follow-up, comments and history)'), ('nq_calls_configuration', 'NQ Calls Configuration (one JSON file with the Non-Qualified Calls Analysis Center configuration, without the follow-up)'), ('output', 'Output (includes all generated reports, chart sets and Dashboard PPT jobs)'), ('input', 'Input (includes all raw datasets files)')] %}<option value="{{ value }}" {% if value in recurring_backup.components %}selected{% endif %}>{{ label }}</option>{% endfor %}</optgroup></select>
+                  <select name="components" multiple data-backup-components data-multiselect-groups="true" data-multiselect-auto-close="1000"><optgroup label="Configuration Content"><option value="app_database" {% if 'app_database' in recurring_backup.components %}selected{% endif %}>Application database</option><option value="users_access" {% if 'users_access' in recurring_backup.components %}selected{% endif %}>Users &amp; Access</option></optgroup>{% if backup_workspaces %}<optgroup label="Workspaces">{% for workspace in backup_workspaces %}<option value="workspace:{{ workspace.id }}" {% if not recurring_backup.workspace_ids or workspace.id in recurring_backup.workspace_ids %}selected{% endif %}>{{ workspace.name }}</option>{% endfor %}</optgroup>{% endif %}<optgroup label="Workspace Content" data-group-note="of the selected workspaces">{% for value, label in [('workspace_database', 'Workspace Database'), ('dashboards', 'Dashboards (one JSON file with all Dashboard definitions)'), ('report_templates', 'PPT Templates (one CSV file per Report Template)'), ('main_cities', 'Main Cities (workspace city selection)'), ('mappings_reference_data', 'Mappings & Reference Data (Operator and Vendor aliases, order and theme colors, Campaign Maps, Map Areas and Spectrum Holdings)'), ('scoring_configuration', 'Scoring & GAP Analysis Configuration (KPI methodology profiles and GAP KPI priorities)'), ('auto_calculated_fields', 'Auto-calculated Fields (one JSON file with all definitions)'), ('query_builder_queries', 'Query Builder Queries (one JSON file with all saved queries)'), ('reporting_jobs', 'Reporting Jobs (one JSON file with all Reporting Job definitions)'), ('nq_call_tracking', 'NQ Call Tracking (one JSON file with the Non-Qualified Calls statuses, teams, follow-up, comments and history)'), ('nq_calls_configuration', 'NQ Calls Configuration (one JSON file with the Non-Qualified Calls Analysis Center configuration, without the follow-up)'), ('output', 'Output (includes all generated reports, chart sets and Dashboard PPT jobs)'), ('input', 'Input (includes all raw datasets files)')] %}<option value="{{ value }}" {% if value in recurring_backup.components %}selected{% endif %}>{{ label }}</option>{% endfor %}</optgroup></select>
                 </label>
                 <label class="database-backup-path">Backup folder<div class="database-backup-path-picker"><input type="text" name="backup_path" value="{{ recurring_backup.backup_path }}" readonly required data-backup-path-input><button type="button" data-backup-path-browse>Browse</button></div></label>
                 <button type="submit" class="database-backup-now" formaction="/admin/database/backups/run">Backup Now</button>
@@ -1139,6 +1133,7 @@
         : `${parts.length} of ${WORKSPACE_PARTS.length} parts`;
     const kept = [];
     if (selected.has('app_database')) kept.push('Application database');
+    if (selected.has('users_access')) kept.push('Users & Access');
     if (parts.length) workspaces.forEach((name) => kept.push(`${name}: ${content}`));
     backupSummary.textContent = kept.length ? `This backup keeps: ${kept.join(' · ')}` : '';
     // Selections that would leave something out are explained apart from what is kept.
@@ -1234,9 +1229,9 @@
       const response = await fetch('/api/admin/backup-files/inspect', {method: 'POST', credentials: 'same-origin', body: new URLSearchParams({backup_path: restorePath.value, backup_file: restoreFile.value})});
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.detail || 'Unable to inspect the backup.');
-      const labels = {app_database: 'Application database', workspace_database: 'Workspace Database', dashboards: 'Dashboards', report_templates: 'PPT Templates', main_cities: 'Main Cities', mappings_reference_data: 'Mappings & Reference Data', scoring_configuration: 'Scoring & GAP Analysis Configuration', auto_calculated_fields: 'Auto-calculated Fields', query_builder_queries: 'Query Builder Queries', reporting_jobs: 'Reporting Jobs', nq_call_tracking: 'NQ Call Tracking', nq_calls_configuration: 'NQ Calls Configuration', input: 'Input', output: 'Output'};
+      const labels = {app_database: 'Application database', users_access: 'Users & Access', workspace_database: 'Workspace Database', dashboards: 'Dashboards', report_templates: 'PPT Templates', main_cities: 'Main Cities', mappings_reference_data: 'Mappings & Reference Data', scoring_configuration: 'Scoring & GAP Analysis Configuration', auto_calculated_fields: 'Auto-calculated Fields', query_builder_queries: 'Query Builder Queries', reporting_jobs: 'Reporting Jobs', nq_call_tracking: 'NQ Call Tracking', nq_calls_configuration: 'NQ Calls Configuration', input: 'Input', output: 'Output'};
       const componentGroups = [
-        ['Configuration Content', ['app_database']],
+        ['Configuration Content', ['app_database', 'users_access']],
         ['Workspace Content', ['workspace_database', 'dashboards', 'report_templates', 'main_cities', 'mappings_reference_data', 'scoring_configuration', 'auto_calculated_fields', 'query_builder_queries', 'reporting_jobs', 'nq_call_tracking', 'nq_calls_configuration', 'output', 'input']],
       ];
       restoreComponents.innerHTML = componentGroups.map(([title, values]) => {
@@ -1776,16 +1771,34 @@
       const role = document.querySelector(`[form="${form.id}"][name="role"]`);
       const active = document.querySelector(`[form="${form.id}"][name="active"]`);
       if (username instanceof HTMLInputElement) username.value = username.defaultValue;
+      document.querySelectorAll(`input[form="${form.id}"]:is([name="first_name"], [name="last_name"])`).forEach((input) => { input.value = input.defaultValue; });
       if (password instanceof HTMLInputElement) password.value = '';
-      if (role instanceof HTMLSelectElement) {
-        Array.from(role.options).forEach((option) => { option.selected = option.defaultSelected; });
-      }
+      document.querySelectorAll(`select[form="${form.id}"]`).forEach((select) => {
+        Array.from(select.options).forEach((option) => { option.selected = option.defaultSelected; });
+      });
       if (active instanceof HTMLInputElement) active.checked = active.defaultChecked;
-      document.querySelectorAll(`[form="${form.id}"]:is([name="workspace_ids"], [name="group_ids"])`).forEach((box) => {
+      document.querySelectorAll(`[form="${form.id}"]:is([name="workspace_ids"], [name="workspace_group_ids"])`).forEach((box) => {
         if (box instanceof HTMLInputElement) box.checked = box.defaultChecked;
       });
     });
+    document.querySelectorAll('[data-user-workspaces]').forEach(summariseWorkspaces);
   };
+
+  // The workspaces of a user in one line: its Workspace Groups, then how many individual workspaces.
+  const summariseWorkspaces = (picker) => {
+    const menu = picker.querySelector('.workspace-user-picker-menu') || picker.workspacesMenu;
+    if (!menu) return;
+    picker.workspacesMenu = menu;
+    const groups = [...menu.querySelectorAll('input[name="workspace_group_ids"]:checked')].map((box) => box.dataset.groupName);
+    const individual = menu.querySelectorAll('input[data-individual-workspace]:checked').length;
+    const parts = [...groups];
+    if (individual) parts.push(`${individual} individual workspace${individual === 1 ? '' : 's'}`);
+    picker.querySelector('[data-user-workspaces-summary]').textContent = parts.join(' · ') || 'No workspaces';
+  };
+  document.querySelectorAll('[data-user-workspaces]').forEach((picker) => {
+    summariseWorkspaces(picker);
+    picker.querySelector('.workspace-user-picker-menu')?.addEventListener('change', () => summariseWorkspaces(picker));
+  });
 
   restoreUsersFromServerMarkup();
   window.addEventListener('pageshow', () => {
@@ -1822,22 +1835,77 @@
     });
   }
 
+  // The name of a user, or its username without one, above its username, ID and creation date; the pencil edits them.
+  const renderIdentity = (row) => {
+    const identity = row.querySelector('[data-user-identity]');
+    if (!identity) return;
+    const value = (name) => (row.querySelector(`input[name="${name}"]`)?.value || '').trim();
+    const [first, last, username] = [value('first_name'), value('last_name'), value('username')];
+    const name = `${first} ${last}`.trim();
+    identity.querySelector('[data-user-display-name]').textContent = name || username;
+    identity.querySelector('[data-user-display-meta]').textContent = name ? `${username} · ${identity.dataset.created}` : identity.dataset.created;
+    identity.querySelector('[data-user-initials]').textContent = (first && last ? first[0] + last[0] : username.slice(0, 2)).toUpperCase();
+  };
+  document.querySelectorAll('[data-user-identity]').forEach((identity) => {
+    const toggle = identity.querySelector('[data-user-identity-toggle]');
+    if (!toggle) return;
+    const close = () => {
+      identity.classList.remove('is-editing');
+      toggle.setAttribute('aria-expanded', 'false');
+      renderIdentity(identity.closest('tr'));
+    };
+    toggle.addEventListener('click', () => {
+      if (identity.classList.contains('is-editing')) { close(); return; }
+      identity.classList.add('is-editing');
+      toggle.setAttribute('aria-expanded', 'true');
+      identity.querySelector('input[name="first_name"]')?.focus();
+    });
+    identity.addEventListener('focusout', (event) => {
+      if (!identity.contains(event.relatedTarget)) window.setTimeout(() => { if (!identity.contains(document.activeElement)) close(); }, 0);
+    });
+    identity.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === 'Escape') { event.preventDefault(); event.target.blur?.(); close(); }
+    });
+  });
+
   const applyUser = (form, user) => {
     if (!user) return;
     const username = document.querySelector(`[form="${form.id}"][name="username"]`);
     const role = document.querySelector(`[form="${form.id}"][name="role"]`);
     const active = document.querySelector(`[form="${form.id}"][name="active"]`);
     const password = document.querySelector(`[form="${form.id}"][name="password"]`);
+    const row = form.closest('[data-user-row]');
+    // Super-admins see every module and open every workspace, so their row changes when the role does.
+    if (row && (row.dataset.role === 'super-admin') !== (user.role === 'super-admin')) {
+      window.location.reload();
+      return;
+    }
     if (username instanceof HTMLInputElement) username.value = user.username;
+    ['first_name', 'last_name'].forEach((name) => {
+      const input = document.querySelector(`[form="${form.id}"][name="${name}"]`);
+      if (input instanceof HTMLInputElement) input.value = user[name] || '';
+    });
     if (role instanceof HTMLSelectElement) role.value = user.role;
     if (active instanceof HTMLInputElement) active.checked = Boolean(user.active);
     if (password instanceof HTMLInputElement) password.value = '';
+    const profile = document.querySelector(`[form="${form.id}"][name="modules_profile_id"]`);
+    if (profile instanceof HTMLSelectElement && user.modules_profile_id) profile.value = String(user.modules_profile_id);
     document.querySelectorAll(`[form="${form.id}"][name="workspace_ids"]`).forEach((box) => {
       if (box instanceof HTMLInputElement) box.checked = (user.workspace_ids || []).includes(box.value);
     });
-    document.querySelectorAll(`[form="${form.id}"][name="group_ids"]`).forEach((box) => {
-      if (box instanceof HTMLInputElement) box.checked = (user.group_ids || []).map(String).includes(box.value);
+    document.querySelectorAll(`[form="${form.id}"][name="workspace_group_ids"]`).forEach((box) => {
+      if (box instanceof HTMLInputElement) box.checked = (user.workspace_group_ids || []).map(String).includes(box.value);
     });
+    window.syncAccessCardsForUser?.(user);
+    if (row) {
+      renderIdentity(row);
+      Object.assign(row.dataset, {
+        username: user.username, name: `${user.first_name || ''} ${user.last_name || ''}`, role: user.role, active: user.active ? '1' : '0',
+        profile: String(user.modules_profile_id || ''), groups: (user.workspace_group_ids || []).join(','),
+      });
+      const picker = row.querySelector('[data-user-workspaces]');
+      if (picker) summariseWorkspaces(picker);
+    }
   };
 
   forms.forEach((form) => {
@@ -1929,6 +1997,102 @@
       });
     }
   });
+
+  // Filters of the Users table, and the selection that changes several users at once.
+  const userRows = [...document.querySelectorAll('tr[data-user-row]')];
+  const filterText = document.querySelector('[data-users-filter-text]');
+  const filters = [...document.querySelectorAll('[data-users-filter]')];
+  const selectAll = document.querySelector('[data-users-select-all]');
+  const bulk = document.querySelector('[data-users-bulk]');
+  const selectionBoxes = () => userRows.map((row) => row.querySelector('[data-user-select]')).filter((box) => box && !box.disabled);
+  const selectedIds = () => selectionBoxes().filter((box) => box.checked && !box.closest('tr').hidden).map((box) => box.value);
+  const refreshSelection = () => {
+    const visible = selectionBoxes().filter((box) => !box.closest('tr').hidden);
+    const count = selectedIds().length;
+    if (bulk) bulk.hidden = count === 0;
+    const label = document.querySelector('[data-users-bulk-count]');
+    if (label) label.textContent = `${count} selected`;
+    if (selectAll) {
+      selectAll.checked = visible.length > 0 && visible.every((box) => box.checked);
+      selectAll.indeterminate = count > 0 && !selectAll.checked;
+    }
+  };
+  const applyFilters = () => {
+    const query = (filterText?.value || '').trim().toLocaleLowerCase();
+    const chosen = Object.fromEntries(filters.map((select) => [select.dataset.usersFilter, select.value]));
+    userRows.forEach((row) => {
+      const groups = (row.dataset.groups || '').split(',').filter(Boolean);
+      row.hidden = Boolean(
+        (query && !`${row.dataset.username || ''} ${row.dataset.name || ''}`.toLocaleLowerCase().includes(query))
+        || (chosen.role && row.dataset.role !== chosen.role)
+        || (chosen.profile && row.dataset.profile !== chosen.profile)
+        || (chosen.group === 'none' && groups.length) || (chosen.group && chosen.group !== 'none' && !groups.includes(chosen.group))
+        || (chosen.active && row.dataset.active !== chosen.active),
+      );
+    });
+    filters.forEach((select) => select.classList.toggle('is-filtering', Boolean(select.value)));
+    const listed = userRows.filter((row) => !row.hidden).length;
+    const count = document.querySelector('[data-users-count]');
+    if (count) count.textContent = listed === userRows.length ? `${listed} users` : `${listed} of ${userRows.length} users`;
+    refreshSelection();
+  };
+  filterText?.addEventListener('input', applyFilters);
+  filters.forEach((select) => select.addEventListener('change', applyFilters));
+  selectAll?.addEventListener('change', () => {
+    selectionBoxes().filter((box) => !box.closest('tr').hidden).forEach((box) => { box.checked = selectAll.checked; });
+    refreshSelection();
+  });
+  selectionBoxes().forEach((box) => box.addEventListener('change', refreshSelection));
+  document.querySelector('[data-users-bulk-clear]')?.addEventListener('click', () => {
+    selectionBoxes().forEach((box) => { box.checked = false; });
+    refreshSelection();
+  });
+  const runBulk = async (action, value, label) => {
+    const ids = selectedIds();
+    if (!ids.length) return;
+    const users = `the ${ids.length} selected user${ids.length === 1 ? '' : 's'}`;
+    const questions = {
+      modules_profile: `Give the Modules Profile ${label} to ${users}?`,
+      add_workspace_group: `Add ${users} to the Workspace Group ${label}?`,
+      remove_workspace_group: `Remove ${users} from the Workspace Group ${label}?`,
+      role: `Give the role ${label} to ${users}?`,
+      activate: `Activate ${users}?`,
+      deactivate: `Deactivate ${users}?`,
+    };
+    const accepted = await showConfirmDialog(questions[action], {title: 'Change selected users', confirmLabel: 'Apply'});
+    if (!accepted) return;
+    const body = new URLSearchParams({action, value});
+    ids.forEach((id) => body.append('user_ids', id));
+    try {
+      const response = await fetch('/admin/users/bulk', {
+        method: 'POST', body, credentials: 'same-origin',
+        headers: {'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json'},
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.detail || 'The users could not be changed.');
+      if ((payload.skipped || []).length) {
+        showInfoDialog(`Changed ${payload.updated.length} users. Not changed: ${payload.skipped.join('; ')}.`, {
+          title: 'Change selected users', tone: 'warning', onClose: () => window.location.reload(),
+        });
+        return;
+      }
+      window.location.reload();
+    } catch (error) {
+      showInfoDialog(error instanceof Error ? error.message : 'The users could not be changed.', {title: 'Change selected users', tone: 'error'});
+    }
+  };
+  document.querySelectorAll('[data-users-bulk-action]').forEach((select) => {
+    select.addEventListener('change', () => {
+      const label = select.selectedOptions[0]?.textContent.trim() || '';
+      const value = select.value;
+      select.value = '';
+      if (value) runBulk(select.dataset.usersBulkAction, value, label);
+    });
+  });
+  document.querySelectorAll('[data-users-bulk-button]').forEach((button) => {
+    button.addEventListener('click', () => runBulk(button.dataset.usersBulkButton, '', ''));
+  });
+  applyFilters();
 
   document.querySelectorAll('form[data-user-password-reset]').forEach((form) => {
     form.addEventListener('submit', async (event) => {
@@ -2053,6 +2217,142 @@
   const reposition = () => pickers.forEach((picker) => { if (picker.open) place(picker); });
   window.addEventListener('resize', reposition);
   window.addEventListener('scroll', reposition, true);
+})();
+</script>
+<script>
+(() => {
+  // Modules Profile and Workspace Group cards save each change at once; the other cards and the Users table follow.
+  const cards = [...document.querySelectorAll('[data-access-card]')];
+  if (!cards.length) return;
+  const usernames = Object.fromEntries([...document.querySelectorAll('tr[data-user-row]')].map((row) => [row.dataset.userId, row.dataset.username]));
+  const formOf = (card) => card.querySelector('[data-access-card-form]');
+  const controlsOf = (card, name) => [...document.querySelectorAll(`[form="${formOf(card).id}"][name="${name}"]`)];
+  const cardFor = (kind, id) => document.querySelector(`[data-access-card="${kind}"][data-card-id="${id}"]`);
+  const setStatus = (card, text, tone = '') => {
+    const status = card.querySelector('[data-access-card-status]');
+    status.textContent = text;
+    status.dataset.tone = tone;
+    window.clearTimeout(card.statusTimer);
+    if (tone === 'saved') card.statusTimer = window.setTimeout(() => { status.textContent = ''; }, 2000);
+  };
+  const refreshCount = (card) => {
+    const boxes = controlsOf(card, card.dataset.accessCard === 'profile' ? 'modules' : 'workspace_ids');
+    card.querySelector('[data-access-card-count]').textContent = `${boxes.filter((box) => box.checked).length} of ${boxes.length}`;
+  };
+  const setMembers = (card, ids) => {
+    const members = ids.map(String);
+    const form = formOf(card).id;
+    card.querySelectorAll('[data-initial-member]').forEach((input) => input.remove());
+    const holder = card.querySelector('.access-card-users');
+    members.forEach((id) => {
+      const input = Object.assign(document.createElement('input'), {type: 'hidden', name: 'initial_member_ids', value: id});
+      input.setAttribute('form', form);
+      input.dataset.initialMember = '';
+      holder.prepend(input);
+    });
+    const boxes = controlsOf(card, 'member_ids');
+    boxes.forEach((box) => { box.checked = box.defaultChecked = members.includes(box.value); });
+    boxes[0]?.closest('.principal-picker-menu')?.dispatchEvent(new Event('change'));
+    const pills = card.querySelector('[data-access-card-members]');
+    pills.replaceChildren(...members.slice(0, 8).map((id) => Object.assign(document.createElement('span'), {className: 'access-member-pill', textContent: usernames[id] || id})));
+    if (members.length > 8) pills.append(Object.assign(document.createElement('span'), {className: 'access-member-pill access-member-more', textContent: `+${members.length - 8}`}));
+  };
+  // The server's profiles and groups: the cards, and the Profile and Workspaces of each user, show them.
+  const apply = ({profiles = [], groups = []}) => {
+    const profileOf = {};
+    profiles.forEach((profile) => {
+      profile.member_ids.forEach((id) => { profileOf[id] = String(profile.id); });
+      const card = cardFor('profile', profile.id);
+      if (!card) return;
+      setMembers(card, profile.member_ids);
+      card.classList.toggle('is-default', profile.is_default);
+      const toggle = card.querySelector('[data-profile-default]');
+      toggle.textContent = profile.is_default ? 'Default' : 'Make default';
+      toggle.setAttribute('aria-pressed', String(profile.is_default));
+      const remove = card.querySelector('.access-card-delete');
+      remove.disabled = profile.is_default;
+      remove.title = profile.is_default ? 'The default profile cannot be deleted: make another profile the default first' : 'Delete profile';
+    });
+    groups.forEach((group) => { const card = cardFor('group', group.id); if (card) setMembers(card, group.member_ids); });
+    document.querySelectorAll('tr[data-user-row]').forEach((row) => {
+      const id = row.dataset.userId;
+      const select = document.querySelector(`select[form="user-update-${id}"][name="modules_profile_id"]`);
+      if (select && profileOf[id]) {
+        select.value = profileOf[id];
+        [...select.options].forEach((option) => { option.defaultSelected = option.value === profileOf[id]; });
+        row.dataset.profile = profileOf[id];
+      }
+      const member = groups.filter((group) => group.member_ids.map(String).includes(id)).map((group) => String(group.id));
+      const boxes = document.querySelectorAll(`[form="user-update-${id}"][name="workspace_group_ids"]`);
+      boxes.forEach((box) => { box.checked = box.defaultChecked = member.includes(box.value); });
+      if (boxes.length) {
+        row.dataset.groups = member.join(',');
+        boxes[0].closest('.workspace-user-picker-menu')?.dispatchEvent(new Event('change'));
+      }
+    });
+  };
+  // A user changed in the Users table joins or leaves the cards of its profile and groups.
+  window.syncAccessCardsForUser = (user) => {
+    if (!user) return;
+    const id = String(user.id);
+    const update = (card, member) => {
+      const members = controlsOf(card, 'member_ids').filter((box) => box.defaultChecked).map((box) => box.value).filter((value) => value !== id);
+      setMembers(card, member ? [...members, id] : members);
+    };
+    if (user.modules_profile_id) cards.filter((card) => card.dataset.accessCard === 'profile').forEach((card) => update(card, card.dataset.cardId === String(user.modules_profile_id)));
+    const groups = (user.workspace_group_ids || []).map(String);
+    cards.filter((card) => card.dataset.accessCard === 'group').forEach((card) => update(card, groups.includes(card.dataset.cardId)));
+  };
+  const post = async (url, body) => {
+    const response = await fetch(url, {
+      method: 'POST', body, credentials: 'same-origin',
+      headers: {'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json'},
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.detail || 'The change could not be saved.');
+    return payload;
+  };
+  const save = async (card) => {
+    if (card.saving) { card.resave = true; return; }
+    card.saving = true;
+    setStatus(card, 'Saving…');
+    try {
+      apply(await post(card.dataset.updateUrl, new FormData(formOf(card))));
+      setStatus(card, 'Saved', 'saved');
+    } catch (error) {
+      setStatus(card, 'Not saved', 'error');
+      showInfoDialog(error instanceof Error ? error.message : 'The change could not be saved.', {title: 'Save failed', tone: 'error'});
+    } finally {
+      card.saving = false;
+      if (card.resave) { card.resave = false; save(card); }
+    }
+  };
+  cards.forEach((card) => {
+    refreshCount(card);
+    formOf(card).addEventListener('submit', (event) => { event.preventDefault(); save(card); });
+    card.querySelectorAll('.access-card-name, .access-card-description').forEach((input) => {
+      input.addEventListener('change', () => save(card));
+      input.addEventListener('keydown', (event) => { if (event.key === 'Enter') { event.preventDefault(); input.blur(); } });
+    });
+    controlsOf(card, card.dataset.accessCard === 'profile' ? 'modules' : 'workspace_ids').forEach((box) => {
+      box.addEventListener('change', () => { refreshCount(card); save(card); });
+    });
+    // Several users are usually ticked in a row: save once they stop.
+    controlsOf(card, 'member_ids').forEach((box) => box.addEventListener('change', () => {
+      window.clearTimeout(card.membersTimer);
+      setStatus(card, 'Saving…');
+      card.membersTimer = window.setTimeout(() => save(card), 700);
+    }));
+    card.querySelector('[data-profile-default]')?.addEventListener('click', async (event) => {
+      if (card.classList.contains('is-default')) return;
+      try {
+        apply(await post(event.currentTarget.dataset.defaultUrl, new URLSearchParams()));
+        setStatus(card, 'Default profile', 'saved');
+      } catch (error) {
+        showInfoDialog(error instanceof Error ? error.message : 'The change could not be saved.', {title: 'Save failed', tone: 'error'});
+      }
+    });
+  });
 })();
 </script>
 {% endblock %}

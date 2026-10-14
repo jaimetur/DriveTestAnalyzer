@@ -2,7 +2,7 @@
 
 Super-admins choose in Admin → Interface Settings, for every main module, its
 position among the main tabs (also followed by the Modules menu, the Help
-navigation and Features Activation), its title and short title for narrow
+navigation and the modules of Modules Profiles), its title and short title for narrow
 windows, its icon and colour, and the label shown in its corner: the label text
 (empty for none), its colour and an optional predefined icon with its own
 colour. The label text is drawn in white or dark ink, whichever reads better on
@@ -309,9 +309,8 @@ MODULE_SECTIONS: dict[str, list[tuple[Any, ...] | None]] = {
     'query-builder': [('Selected CDR tables', 'Query editor', 'code'), ('Saved queries', 'Saved queries', 'bookmark'),
                       ('Query output', 'Results', 'table')],
     'app-logs': [('App Events', 'App Events', 'activity'), ('Execution Log', 'Execution Log', 'log')],
-    'admin': [('Create user', 'Create user', 'user-plus'), ('Users', 'Users', 'users'), ('User Groups', 'User Groups', 'users'),
-              ('Workspace Access', 'Workspace Access', 'lock'), ('Features Activation', 'Features Activation', 'toggle'),
-              ('Interface Settings', 'Interface Settings', 'sliders'),
+    'admin': [('Users', 'Users', 'users'), ('Modules Profiles', 'Modules Profiles', 'toggle'),
+              ('Workspace Groups', 'Workspace Groups', 'folder'), ('Interface Settings', 'Interface Settings', 'sliders'),
               ('Import / Export / Transfer', 'Import / Export / Transfer', 'transfer'),
               ('Database Management', 'Database Management', 'database'), ('Datasets Management', 'Datasets Management', 'table')],
 }

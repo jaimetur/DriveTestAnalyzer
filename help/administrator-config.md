@@ -11,11 +11,10 @@ Administrator Config centralises user, portability, database and dataset adminis
 | Task or topic | Go to |
 | --- | --- |
 | Roles | [Open section](#roles) |
-| Create user and Users | [Open section](#create-user-and-users) |
+| Users | [Open section](#users) |
+| Modules Profiles | [Open section](#modules-profiles) |
+| Workspace Groups | [Open section](#workspace-groups) |
 | Access Requests | [Open section](#access-requests) |
-| User Groups | [Open section](#user-groups) |
-| Features Activation | [Open section](#features-activation) |
-| Workspace Access | [Open section](#workspace-access) |
 | Import / Export / Transfer | [Open section](#import-export-transfer) |
 | Interface Settings | [Open section](#interface-settings) |
 | Database Management | [Open section](#database-management) |
@@ -36,69 +35,71 @@ An admin cannot modify a super-admin account or assign the super-admin role. The
 
 **Application Config** is the application-wide runtime settings page and is available to `user-editor`, `admin` and `super-admin`. **Workspace Config** is a separate workspace-scoped page with PPT Templates Management, Main Cities, Mappings & Reference Data and Scoring & GAP Analysis Setup. Both require an active session; Workspace Config operations also require an open workspace. See [Application Config](app-config.md) and [Workspace Config](workspace-config.md) for the respective workflows.
 
-## Create user and Users
+## Users
 
-Administrators can:
+What each account can do, see and open comes from three independent settings, and access only ever adds up:
 
-- create accounts;
-- rename users;
-- change or reset passwords;
-- enable or disable accounts;
-- assign permitted roles;
-- manage workspace access where authorised;
-- delete eligible accounts.
+| Setting | Decides | Where it is defined |
+| --- | --- | --- |
+| **Role** | what the account can do (see [Roles](#roles)) | each user |
+| **Modules Profile** | which main modules it sees | [Modules Profiles](#modules-profiles) |
+| **Workspaces** | which workspaces it opens: those of its Workspace Groups plus those granted to it individually | [Workspace Groups](#workspace-groups) |
 
-The **Groups** column, after the role, chooses the user groups each account belongs to (the same membership edited in [User Groups](#user-groups)), such as its workspace groups and its module access group. The **Workspaces** column lists the workspaces granted to the account under **User**, followed, read-only, by the workspaces it opens through its user groups (**Groups**, with the group names) and through its role (**Role**). Only a super-admin can change the workspaces of an account here; admins grant the workspaces they manage in [Workspace Access](#workspace-access). Leave a password field empty when an edit should preserve the current password. **Reset password** restores `super123`, `admin123` or `demo123` for the three bootstrap names and uses `Ericsson123` for another account; the dialog displays the resulting password so it can be changed or communicated securely.
+Super-admins see every module and open every workspace, so their rows show **All modules** and **All workspaces**.
+
+The **Users** table edits every account in place and saves each change at once:
+
+- **User**: the name of the account (its username when it has none) above its username, ID and creation date; the pencil edits its first name, last name and username. **Password**, **Role**, **Modules Profile** and **Active**. Leave a password field empty to keep the current password. **Reset password** restores `super123`, `admin123` or `demo123` for the three bootstrap names and uses `Ericsson123` for another account; the dialog displays the resulting password so it can be changed or communicated securely.
+- **Workspaces**: its **Workspace Groups**, each listed with its workspaces, and its **Individual workspaces**. The summary names the groups and counts the individual workspaces. Super-admins grant any workspace individually; admins grant and remove only the workspaces they can open, and the others are kept.
+- **Reset password** and **Delete**.
+
+Above the table, the search and the filters show only the users with a name or username, role, Modules Profile, Workspace Group (or none) or status. Tick users, or every listed user with the header box, and the bar that appears changes them all at once: **Modules Profile…**, **Add to group…**, **Remove from group…**, **Role…**, **Activate** or **Deactivate**. Users that cannot change are left as they are and listed (an admin does not change super-admins, a super-admin has no profile, nobody deactivates their own account, and at least one active admin and one active super-admin remain). The last row of the table creates a user with its first and last name, username, password, role, Modules Profile (the default one at first) and workspaces; new users are active.
+
+## Modules Profiles
+
+**Modules Profiles** shows one card per profile. A profile is a set of main modules; every user except the super-admins has exactly one profile and sees its modules. Every change on a card is saved at once and applies to all its users.
+
+- The name and the description are edited in place.
+- **Modules** shows every main module as a chip with the icon, colour and title of its tab, in the order of the main tabs (renaming or moving a tab in [Interface Settings](#interface-settings) changes the chips too, and profiles keep their modules). Click a chip to add the module to the profile or remove it; the counter shows how many modules it has.
+- **Users** gives the profile to several users at once, and the names of its users are listed beside it. A user added to a profile leaves its previous one, and a user only removed from its profile gets the default profile. The **Modules Profile** of each user in [Users](#users) follows at once, and the other way round.
+- **Default** marks the profile of users without one: users created without choosing one, and the users of a deleted profile. **Make default** moves it to another profile; the default profile cannot be deleted.
+- The **New profile** card creates a profile without modules or users; the bin deletes a profile.
+
+A module that is in no profile is seen only by super-admins, as PPT Reporting (old) on a new deployment or a module added by a later version until it is added to the profiles that should have it. A module that is not shown to a user disappears from the main tabs and the Modules menu, and its pages and API answer 403. Workspace switching, dataset uploads and processing remain available everywhere. Reporting Jobs can only include artifacts of the modules their author sees; see [Reporting](reporting.md).
+
+A new deployment starts with three profiles: **NQ Calls** (**Workspace**, Non-Qualified Calls, **Reporting** and **Builders**), **Benchmarking** (every main module except Non-Qualified Calls and PPT Reporting (old)) and **All Modules** (every main module except PPT Reporting (old)), the default one. Profiles are stored in the application database (`Modules Profiles` table, and each user's profile in `Users`).
+
+## Workspace Groups
+
+**Workspace Groups** shows one card per group. A user opens the workspaces of all their groups plus those granted to them individually; super-admins open every workspace. Every change on a card is saved at once.
+
+- The name and the description are edited in place.
+- **Workspaces** shows every workspace as a chip: click one to add it to the group or remove it. Admins change only the workspaces they can open; the others are kept.
+- **Users** adds users to the group or removes them, several at once, and lists them. The **Workspaces** of each user in [Users](#users) follow at once, and the other way round; users can also join or leave a group with the selection bar of [Users](#users).
+- The **New Workspace Group** card creates a group without workspaces or users; the bin deletes a group, keeping its users and their other workspaces.
+
+**Workspace → Access** chooses, for each workspace, its Workspace Groups and the users it is granted to individually. Groups are stored in the application database (`Workspace Groups` and `Workspace Group Members` tables).
 
 ## Access Requests
 
 **Request Access**, below the sign-in of the login page, lets a new user ask for access without an account. Its dialog asks for:
 
+- the **First name** and **Last name**, shown in [Users](#users);
 - the **Username**: the Ericsson signum, 7 letters starting with E (stored in capitals; sign-in ignores the case);
 - a **Password**, typed twice;
-- the **Workspaces**, at least one: the user groups that open workspaces in [Workspace Access](#workspace-access) (for example DE or UK), each with the workspaces it opens;
-- the **Modules**, required: one of the module access groups — **NQ Calls**, **Benchmarking** or **All Modules** — each with the main modules it gives (see [User Groups](#user-groups)).
+- the **Workspaces**, at least one: the [Workspace Groups](#workspace-groups) that open workspaces (for example DE or UK), each a tile with its description and its workspaces;
+- the **Modules Profile**, required: one of the [Modules Profiles](#modules-profiles), each a tile with its description and its modules.
 
-Nothing is chosen beforehand: **Submit Request** is enabled once every field is filled in, and the request is not sent without a valid signum, matching passwords, a workspace and the modules.
+Nothing is chosen beforehand: **Submit Request** is enabled once every field is filled in, and the request is not sent without the names, a valid signum, matching passwords, a workspace and the modules profile.
 
-**Submit Request** creates the user, inactive, with the `user-editor` role, in the chosen workspace groups and module group. A dialog then says that the user has been created but must be activated by the administrator, and **Request Activation** opens an email in the default mail application, addressed to the administrator (the author of the application), with the user, its role, workspaces and modules, the time of the request and the address of the Admin page. The administrator reviews it and activates the user with its **Active** switch in [Users](#create-user-and-users), where its groups can also be changed. When the signum already has a user, the dialog warns of it as soon as it is typed and asks for its **Current Password** instead of a new one: the request then replaces the workspace and module groups of that user with the chosen ones (its other groups and its role stay), deactivates it and ends its open sessions until the administrator activates it again, and the email (**Access Changed**) also lists its previous workspaces and modules. Administrator accounts change their access in Admin, not with a request. Every request is written to App Logs (`access_request`, or `access_change_request` for an existing user).
-
-## User Groups
-
-**User Groups** creates custom groups of users for Features Activation and Workspace Access. Admins and super-admins create a group with a name, an optional description and its members, then edit or delete it from the same table. Deleting a group or a user keeps every other account and group unchanged. Groups and their members are stored in the application database (`User Groups` and `User Group Members` tables), so configuration exports, transfers and backups include them.
-
-Module access is managed by group: every deployment gets once the **NQ Calls** (Workspace and Non-Qualified Calls), **Benchmarking** (every main module except Non-Qualified Calls) and **All Modules** (every main module) groups, each Allowed in [Features Activation](#features-activation) the modules it gives and Forbidden the others (PPT Reporting (old) keeps its own setting). Moving a user to another of these groups changes its modules at once, and changing their rules changes the modules of all their members. A user should belong to one of them only, since Forbidden wins. [Access requests](#access-requests) offer these three groups by name while they exist.
-
-## Features Activation
-
-**Features Activation**, visible to admins and super-admins, lists the main modules in the order of the main tabs (by default **Workspace**, CDR Analysis, PPT Dashboards, PPT Reporting (old), Scoring & GAP Analysis, Network Insights, Non-Qualified Calls, **Reporting** and **Builders**).
-
-Each feature has three settings:
-
-| Setting | Meaning |
-| --- | --- |
-| By default | **All users** or **Nobody** |
-| Allowed | Roles, user groups and users that gain the feature even when the default is Nobody |
-| Forbidden | Roles, user groups and users that lose the feature even when the default is All users |
-
-An account matching both lists loses the feature: Forbidden always wins. For example, set **By default: Nobody** and allow the `admin` role, or keep **All users** and forbid one user group. Each list combines Roles, Groups and Users in one selector with a filter; the selector summarises the selection, such as `1 role · 2 users`.
-
-A feature that is not active for a user disappears from the main tabs and the Modules menu, and its pages and API answer 403. Workspace switching, dataset uploads and processing remain available everywhere. A new deployment starts with every module active for all users except PPT Reporting (old), which is off (**Nobody**) for every role, group and user until an admin activates it, and with the rules of the module access groups ([User Groups](#user-groups)). [Reporting](reporting.md) is active for all users; settings saved while it was restricted to super-admins by default are opened to everyone once. Saved settings keep their values. The settings are stored in the application database.
-
-Reporting Jobs can only include artifacts of the modules active for their author; see [Reporting](reporting.md).
-
-> [!IMPORTANT]
-> **Lower roles never remove features from higher roles.** An admin can grant any feature to super-admins, but cannot remove one from the super-admin role or from a super-admin account — directly, through a group or by setting the default to Nobody. Such a save is rejected and names the features it would remove. The Forbidden lists of admins do not offer super-admin roles or accounts, and Forbidden entries for super-admins set by a super-admin are kept when an admin saves.
-
-## Workspace Access
-
-**Workspace Access**, visible to admins and super-admins, lists the workspaces the current account manages with one **Access** selector each that combines **Roles**, **Groups** and **Users**. An account opens a workspace granted to it, to its role or to one of its user groups; super-admins open every workspace. Users granted here are the same direct grants shown in each account's workspaces and in **Workspace → Access**, where super-admins also choose roles, groups and users when creating or saving a workspace. Saving never removes an admin's own access to the workspaces they manage. Role and group grants are stored in the application database (`application_state`), so configuration exports, transfers and backups include them.
+**Submit Request** creates the user, inactive, with the `user-editor` role, in the chosen Workspace Groups and with the chosen Modules Profile. A dialog then says that the user has been created but must be activated by the administrator, and **Request Activation** opens an email in the default mail application, addressed to the administrator (the author of the application), with the user, its name, role, workspaces and modules profile, the time of the request and the address of the Admin page. The administrator reviews it and activates the user with its **Active** switch in [Users](#users), where its profile and workspaces can also be changed. When the signum already has a user, the dialog warns of it as soon as it is typed and asks for its **Current Password** instead of a new one: the request then updates its name and replaces the Workspace Groups and the Modules Profile of that user with the chosen ones (its groups that open no workspace, its individual workspaces and its role stay), deactivates it and ends its open sessions until the administrator activates it again, and the email (**Access Changed**) also lists its previous workspaces and modules profile. Administrator accounts change their access in Admin, not with a request. Every request is written to App Logs (`access_request`, or `access_change_request` for an existing user).
 
 ## Import / Export / Transfer
 
 ### Export targets
 
-- Application Config
+- Application Config (the whole application database, its users, Modules Profiles and Workspace Groups included)
+- Users & Access (only the users, Modules Profiles and Workspace Groups)
 - Dashboards from the active workspace
 - PPT Templates from the active workspace
 - Main Cities from the active workspace
@@ -112,7 +113,9 @@ Reporting Jobs can only include artifacts of the modules active for their author
 - An accessible workspace
 - Full Environment with selected workspaces
 
-Admins can export/transfer the active workspace's Dashboards, PPT Templates, Main Cities, Mappings & Reference Data, Scoring & GAP Analysis Configuration, Auto-calculated Fields, Query Builder Queries, Reporting Jobs, NQ Call Tracking and NQ Calls Configuration, plus complete workspaces they can access. Super-admins can also export Application Config and a Full Environment.
+Admins can export/transfer the active workspace's Dashboards, PPT Templates, Main Cities, Mappings & Reference Data, Scoring & GAP Analysis Configuration, Auto-calculated Fields, Query Builder Queries, Reporting Jobs, NQ Call Tracking and NQ Calls Configuration, plus complete workspaces they can access. Super-admins can also export Application Config, Users & Access and a Full Environment.
+
+**Users & Access** moves the users between servers without the rest of the configuration: every account with its name, password, role, active status, Modules Profile, Workspace Groups and individual workspaces, plus every Modules Profile and Workspace Group. Its import, transfer or restore adds the users, profiles and groups that are missing and updates those with the same name (without case differences), keeping the others; a user keeps its membership of groups the package does not have. Workspaces are matched by name: those the destination does not have are left out and listed in the completion message, and the destination keeps the workspaces of groups and users that only it has. The account that imports keeps its role, status and password, and nothing is imported when no active super-admin would remain.
 
 Dashboard, template, mapping and field packages preselect a destination workspace with the same name as their source, where available, and allow one or more accessible destinations to be selected.
 
@@ -167,7 +170,7 @@ For super-admins, complete unimported packages appear in **Recovered transfer pa
 
 ## Interface Settings
 
-**Interface Settings**, visible only to super-admins below Features Activation, applies to every user. Its table has one row per main module, in the order of the main tabs; drag a row by its handle (⠿) or use the arrows to move it. The Modules menu, the Help navigation and Features Activation follow the same order. For each tab choose:
+**Interface Settings**, visible only to super-admins below Workspace Groups, applies to every user. Its table has one row per main module, in the order of the main tabs; drag a row by its handle (⠿) or use the arrows to move it. The Modules menu, the Help navigation and the module chips of Modules Profiles follow the same order. For each tab choose:
 
 - **Module Title** and **Short title**, the name shown on the tab and the one used on narrow windows (empty uses the title). The Modules menu and the Help use the Module Title too: the chapter of a renamed module takes its new title in the Help navigation and as its heading, and the Help text names the module with it (section headings keep their name so their links keep working; Workspace, Reporting and Builders, also ordinary words of the Help, change where the Help names the module as a link to its chapter or in bold).
 - **Icon**, shown before the title, and **Colour**, the accent of the tab: its top line and icon when not selected and its gradient when selected. The default colour keeps the palette of the module.
@@ -188,7 +191,8 @@ Database Management has two clearly separated subsections: **Backup Protection**
 
 In **Backup**, select one or more content types:
 
-- **Configuration Content: Application database** stores the shared application configuration, including the Scoring aggregation hierarchy.
+- **Configuration Content: Application database** stores the shared application configuration, including the Scoring aggregation hierarchy, the users, Modules Profiles and Workspace Groups.
+- **Configuration Content: Users & Access** stores one JSON file with the users, Modules Profiles and Workspace Groups; restore merges it like an import of [Users & Access](#export-targets), so the other users and settings are kept.
 - **Workspace Content: Workspace Database** stores the selected workspace SQLite databases.
 - **Workspace Content: Dashboards** stores one JSON file with every Dashboard definition and its comments for each selected workspace.
 - **Workspace Content: PPT Templates** stores one CSV file for each PPT Template.
@@ -279,7 +283,7 @@ Saving or deleting a row clears analysis caches so later Dashboard and Reporting
 Super-admins see a **Reset Application** button in the Administrator Config header. It opens a confirmation listing what is deleted and the config and data folders of the deployment; the reset runs only after typing `RESET APPLICATION`. The application then:
 
 - stops background work (dataset processing, queued jobs and Query Builder runs);
-- deletes every workspace, the application database (users, groups, Features Activation and settings) and the whole config and data folders, scheduled backups and transfer packages included; the code and the shipped assets are kept;
+- deletes every workspace, the application database (users, Modules Profiles, Workspace Groups and settings) and the whole config and data folders, scheduled backups and transfer packages included; the code and the shipped assets are kept;
 - starts as a new deployment, with an empty **Default** workspace and the default accounts;
 - ends every session and opens the login page, which says the application was reset.
 

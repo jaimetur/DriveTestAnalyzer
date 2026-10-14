@@ -1,8 +1,8 @@
 """Stored names of the modules renamed to PPT Dashboards and PPT Reporting (old).
 
 E2E Dashboards became PPT Dashboards and Reporting (old) became PPT Reporting (old). The
-Dashboards of each workspace, the Features Activation rules and the Interface Settings of
-the main modules are stored under the module names, so they are renamed once in the
+Dashboards of each workspace and the Interface Settings of the main modules are stored
+under the module names, so they are renamed once in the
 application database and in every workspace database (also one restored or transferred
 from a server that still used the former names).
 """
@@ -39,7 +39,7 @@ def _renamed_modules(document: Any) -> tuple[Any, bool]:
 
 
 def migrate_application_state(repository: Any, state_keys: tuple[str, ...]) -> None:
-    """Rename the modules in the Features Activation rules and the Interface Settings."""
+    """Rename the modules in the stored Interface Settings."""
     for state_key in state_keys:
         raw = repository.get_application_state(state_key)
         try:

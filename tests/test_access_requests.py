@@ -1,79 +1,86 @@
-"""Access requests from the login page: an inactive editor in the user groups of the chosen workspace and modules."""
+"""Access requests from the login page: an inactive editor in the chosen Workspace Groups with the chosen Modules Profile."""
 import src.DriveTestAnalyzer as core
 
 
 def workspace_group(name):
-    """A user group that opens the active workspace, as DE or UK do in a deployment."""
-    group_id = core.repository.save_user_group(None, name, '', [])
-    rule = core.repository.workspace_access_rules().get(core.active_workspace.id, {'roles': [], 'groups': []})
-    core.repository.set_workspace_access_rule(core.active_workspace.id, rule['roles'], [*rule['groups'], group_id])
-    return group_id
+    """A Workspace Group that opens the active workspace, as DE or UK do in a deployment."""
+    return core.repository.save_workspace_group(None, name, '', [core.active_workspace.id])
 
 
-def test_module_access_groups_give_their_modules(client):
-    groups = {group['name']: group['id'] for group in core.repository.list_user_groups()}
-    assert {'NQ Calls', 'Benchmarking', 'All Modules'} <= set(groups)
-    rules = core.feature_activation_settings()
+def profiles():
+    return {profile['name']: profile for profile in core.repository.list_modules_profiles()}
 
-    def allowed(name):
-        return {key for key in core.FEATURE_KEYS if core.feature_rule_allows(rules[key], 'user-editor', None, {groups[name]}, '')}
 
-    assert allowed('NQ Calls') == {'workspace', 'non-qualified-calls'}
-    assert allowed('Benchmarking') == set(core.FEATURE_KEYS) - {'non-qualified-calls', 'ppt-reporting-old'}
-    assert allowed('All Modules') == set(core.FEATURE_KEYS) - {'ppt-reporting-old'}
+def test_a_new_deployment_has_the_modules_profiles_of_each_team(client):
+    available = profiles()
+    assert set(available) == {'NQ Calls', 'Benchmarking', 'All Modules'}
+    assert available['NQ Calls']['modules'] == ['workspace', 'non-qualified-calls', 'reporting', 'builders']
+    assert set(available['Benchmarking']['modules']) == set(core.FEATURE_KEYS) - {'non-qualified-calls', 'ppt-reporting-old'}
+    assert set(available['All Modules']['modules']) == set(core.FEATURE_KEYS) - {'ppt-reporting-old'}
+    assert [name for name, profile in available.items() if profile['is_default']] == ['All Modules']
     # Created once per deployment: the later changes of an administrator are kept.
-    core.repository.delete_user_group(groups['Benchmarking'])
-    core.ensure_module_access_groups()
-    assert 'Benchmarking' not in {group['name'] for group in core.repository.list_user_groups()}
+    core.repository.delete_modules_profile(available['Benchmarking']['id'])
+    core.repository.initialize()
+    assert 'Benchmarking' not in profiles()
 
 
-def test_access_request_creates_an_inactive_editor_in_the_chosen_groups(client):
+def test_access_request_creates_an_inactive_editor_with_the_chosen_access(client):
     uk = workspace_group('UK')
+    core.repository.save_workspace_group(None, 'Empty', '', [])
     page = client.get('/login').text
     assert 'data-access-request-open' in page and '>Request Access</button>' in page
+    assert 'name="first_name"' in page and 'name="last_name"' in page
     options = client.get('/api/access-requests/options').json()
+    # Only the groups that open a workspace are offered.
     assert [group['name'] for group in options['workspace_groups']] == ['UK']
     assert options['workspace_groups'][0]['workspaces'] == [core.active_workspace.name]
-    assert [group['name'] for group in options['module_groups']] == ['NQ Calls', 'Benchmarking', 'All Modules']
-    nq_calls = options['module_groups'][0]
-    assert nq_calls['modules'] == ['Workspace', 'Non-Qualified Calls']
-    request = {'username': 'eabcdef', 'password': 'secret1', 'password_confirmation': 'secret1',
-               'workspace_group_ids': [uk], 'module_group_id': nq_calls['id']}
-    # Only an Ericsson signum, matching passwords, and workspaces and modules of the lists.
-    for change, message in (({'username': 'xabcdef'}, 'signum'), ({'username': 'eabc12f'}, 'signum'),
+    assert options['workspace_groups'][0]['description'] == ''
+    assert [profile['name'] for profile in options['modules_profiles']] == ['All Modules', 'Benchmarking', 'NQ Calls']
+    nq_calls = options['modules_profiles'][2]
+    assert nq_calls['modules'] == ['Workspace', 'Non-Qualified Calls', 'Reporting', 'Builders']
+    assert nq_calls['module_tabs'][0]['title'] == 'Workspace' and nq_calls['module_tabs'][0]['color'] and nq_calls['module_tabs'][0]['icon']
+    request = {'username': 'eabcdef', 'first_name': ' Ana ', 'last_name': 'García', 'password': 'secret1', 'password_confirmation': 'secret1',
+               'workspace_group_ids': [uk], 'modules_profile_id': nq_calls['id']}
+    # Only with the names, an Ericsson signum, matching passwords, and workspaces and modules of the lists.
+    for change, message in (({'first_name': ''}, 'first name'), ({'last_name': ' '}, 'last name'),
+                            ({'username': 'xabcdef'}, 'signum'), ({'username': 'eabc12f'}, 'signum'),
                             ({'username': 'eabcdefg'}, 'signum'), ({'password_confirmation': 'other'}, 'do not match'),
-                            ({'workspace_group_ids': []}, 'workspace'), ({'workspace_group_ids': [nq_calls['id']]}, 'workspace'),
-                            ({'module_group_id': uk}, 'modules')):
+                            ({'workspace_group_ids': []}, 'workspace'), ({'workspace_group_ids': [uk + 99]}, 'workspace'),
+                            ({'modules_profile_id': 999}, 'modules profile')):
         response = client.post('/api/access-requests', json={**request, **change})
         assert response.status_code == 400 and message in response.json()['detail']
     response = client.post('/api/access-requests', json=request)
     assert response.status_code == 201, response.text
     result = response.json()
-    assert result['username'] == 'EABCDEF' and result['modules'] == 'NQ Calls (Workspace, Non-Qualified Calls)'
+    assert (result['username'], result['name']) == ('EABCDEF', 'Ana García')
+    assert result['modules_profile'] == 'NQ Calls (Workspace, Non-Qualified Calls, Reporting, Builders)'
     assert result['email']['to'] == 'jaime.tur@ericsson.com' and result['email']['subject'].endswith('access request: EABCDEF')
-    assert 'User: EABCDEF' in result['email']['body'] and f'Workspaces: UK ({core.active_workspace.name})' in result['email']['body']
+    body = result['email']['body']
+    assert 'User: EABCDEF' in body and 'Name: Ana García' in body and f'Workspaces: UK ({core.active_workspace.name})' in body
     record = core.repository.get_user('eabcdef')
     assert (record.username, record.role, record.active) == ('EABCDEF', 'user-editor', False)
     user_id = next(int(row['id']) for row in core.repository.list_users() if row['username'] == 'EABCDEF')
-    assert {group['name'] for group in core.repository.list_user_groups() if user_id in group['member_ids']} == {'UK', 'NQ Calls'}
+    assert (core.repository.get_user_by_id(user_id)['first_name'], core.repository.get_user_by_id(user_id)['last_name']) == ('Ana', 'García')
+    assert [group['name'] for group in core.repository.list_workspace_groups() if user_id in group['member_ids']] == ['UK']
+    assert user_id in profiles()['NQ Calls']['member_ids']
     # The user signs in only once an administrator activates it.
     sign_in = {'password': 'secret1', 'workspace_id': core.active_workspace.id}
     assert client.post('/login', data={**sign_in, 'username': 'eabcdef'}, follow_redirects=False).status_code == 401
     core.repository.update_user(user_id, 'EABCDEF', 'user-editor', True)
-    core.invalidate_feature_activation_cache()
     assert client.post('/login', data={**sign_in, 'username': 'eAbCdEf'}, follow_redirects=False).status_code == 303
     user = core.SessionUser(username='EABCDEF', role='user-editor')
+    core.invalidate_module_access_cache()
     assert core.user_has_feature(user, 'workspace') and core.user_has_feature(user, 'non-qualified-calls')
-    assert not core.user_has_feature(user, 'scoring') and not core.user_has_feature(user, 'reporting')
+    assert core.user_has_feature(user, 'reporting') and not core.user_has_feature(user, 'scoring')
 
 
 def test_access_request_of_an_existing_user_changes_its_access_until_it_is_activated_again(client):
     uk = workspace_group('UK')
     de = workspace_group('DE')
-    other = core.repository.save_user_group(None, 'Analysts', '', [])
-    groups = {group['name']: group['id'] for group in core.repository.list_user_groups()}
-    user_id = core.repository.create_user('EFGHIJK', 'secret1', 'user-viewer')
-    core.repository.set_user_groups(user_id, [uk, groups['NQ Calls'], other])
+    other = core.repository.save_workspace_group(None, 'Analysts', '', [])
+    user_id = core.repository.create_user('EFGHIJK', 'secret1', 'user-viewer', first_name='Old', last_name='Name')
+    core.repository.set_user_workspace_groups(user_id, [uk, other])
+    core.repository.set_users_modules_profile([user_id], profiles()['NQ Calls']['id'])
     core.repository.create_user('EADMINS', 'secret1', 'admin')
     # The dialog warns when the signum already has a user.
     assert client.get('/api/access-requests/users/efghijk').json() == {'exists': True, 'username': 'EFGHIJK', 'administrator': False}
@@ -81,7 +88,8 @@ def test_access_request_of_an_existing_user_changes_its_access_until_it_is_activ
     assert client.get('/api/access-requests/users/enobody').json()['exists'] is False
     token = 'existing-user-session'
     core.SESSIONS[token] = core.SessionUser(username='EFGHIJK', role='user-viewer')
-    request = {'username': 'efghijk', 'password': 'wrong', 'workspace_group_ids': [de], 'module_group_id': groups['All Modules']}
+    request = {'username': 'efghijk', 'first_name': 'Eva', 'last_name': 'Fernández', 'password': 'wrong',
+               'workspace_group_ids': [de], 'modules_profile_id': profiles()['All Modules']['id']}
     # Only with its current password, and never for an administrator.
     response = client.post('/api/access-requests', json=request)
     assert response.status_code == 403 and 'current password' in response.json()['detail']
@@ -91,9 +99,11 @@ def test_access_request_of_an_existing_user_changes_its_access_until_it_is_activ
     result = response.json()
     assert result['existing'] and (result['username'], result['role']) == ('EFGHIJK', 'user-viewer')
     assert result['email']['subject'].endswith('access change request: EFGHIJK')
-    assert 'Previous workspaces: UK' in result['email']['body'] and 'Previous modules: NQ Calls' in result['email']['body']
-    # Its workspace and module groups are replaced, its other groups kept, and it waits for the administrator.
-    members = {group['name'] for group in core.repository.list_user_groups() if user_id in group['member_ids']}
-    assert members == {'DE', 'All Modules', 'Analysts'}
+    assert 'Previous workspaces: UK' in result['email']['body'] and 'Previous modules profile: NQ Calls' in result['email']['body']
+    # Its Workspace Groups and profile are replaced, its group without workspaces kept, its name updated,
+    # and it waits for the administrator.
+    assert {group['name'] for group in core.repository.list_workspace_groups() if user_id in group['member_ids']} == {'DE', 'Analysts'}
+    assert user_id in profiles()['All Modules']['member_ids']
+    assert core.repository.get_user_by_id(user_id)['first_name'] == 'Eva'
     record = core.repository.get_user('EFGHIJK')
     assert (record.role, record.active) == ('user-viewer', False) and token not in core.SESSIONS

@@ -31,9 +31,10 @@ def login(client, username='super', password='super123'):
 
 
 def enable_module():
-    settings = core.feature_activation_settings()
-    settings['non-qualified-calls'] = {'default': 'all'}
-    core.save_feature_activation_settings(settings)
+    """The default Modules Profile, the one of the users without a profile, includes Non-Qualified Calls."""
+    default = next(profile for profile in core.repository.list_modules_profiles() if profile['is_default'])
+    core.repository.save_modules_profile(default['id'], default['name'], default['description'], [*default['modules'], 'non-qualified-calls'])
+    core.invalidate_module_access_cache()
 
 
 def workspace_user(username, role):
@@ -95,15 +96,18 @@ def query(client, **payload):
 
 
 def test_module_is_active_by_default_and_marks_tabs_in_development(client):
-    login(client)
-    # Every module but PPT Reporting (old) is active for every user of a new deployment.
+    # The default profile of a new deployment has every module but PPT Reporting (old).
+    workspace_user('analyst', 'user-editor')
+    login(client, 'analyst', 'analyst123')
     assert client.get('/api/non-qualified-calls/state').status_code == 200
     assert 'href="/non-qualified-calls"' in client.get('/workspace').text
-    settings = core.feature_activation_settings()
-    settings['non-qualified-calls'] = {'default': 'none'}
-    core.save_feature_activation_settings(settings)
+    analyst_id = next(int(row['id']) for row in core.repository.list_users() if row['username'] == 'analyst')
+    benchmarking = next(profile['id'] for profile in core.repository.list_modules_profiles() if profile['name'] == 'Benchmarking')
+    core.repository.set_users_modules_profile([analyst_id], benchmarking)
+    core.invalidate_module_access_cache()
     assert client.get('/api/non-qualified-calls/state').status_code == 403
     assert 'href="/non-qualified-calls"' not in client.get('/workspace').text
+    login(client)
     # Once turned on, the module tabs show their stage: ALPHA, BETA or NEW; stable modules have no label.
     core.repository.set_application_state(core.MODULE_STAGE_LABELS_STATE_KEY, '1')
     page = client.get('/workspace').text

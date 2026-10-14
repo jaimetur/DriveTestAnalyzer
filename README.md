@@ -90,7 +90,7 @@ Reporting schedules **Reporting Jobs** that collect a Summary CDR Analysis, a Su
 
 ### PPT Reporting (old)
 
-PPT Reporting (old) combines ready CDRs with a Report Template from the active workspace. It is available only to the users, roles and groups it is activated for in Admin → Features Activation (by default super-admins and EJAITUR).
+PPT Reporting (old) combines ready CDRs with a Report Template from the active workspace. It is available only to super-admins and to the users whose Modules Profile includes it (by default, only super-admins).
 
 - **Reporting module**: choose NetCheck CDR Reports or the future Smart Orchestrator Logs workflow.
 - **NetCheck CDR Reports**: select Data, Voice and Speech campaigns, NSA/SA, template and Operator/Vendor Comparison.
@@ -145,7 +145,7 @@ Build read-only SQL in Assistance Mode or SQL Mode, inspect paginated results an
 
 ### Administrator Config (Admin tab)
 
-- **Create user / Users**: account, role, password, status and workspace access management.
+- **Users**, **Modules Profiles** and **Workspace Groups**: accounts (name, role, password and status), the main modules each one sees and the workspaces it opens, also for several users at once.
 - **Import / Export / Transfer**: portable ZIP jobs, Full Environment workspace selection, server-to-server transfer and recovered packages.
 - **Database Management**: **Backup Protection** for granular on-demand/scheduled backups and overwrite-confirmed restore, plus **Database Viewer** for grouped application, workspace and combined-CDR tables, including the Operator Mappings, Vendor Mappings and Chart mapping groups tables, with server-side filters, editing and cleanup.
 - **Datasets Management**: inspect and rename workspace datasets.

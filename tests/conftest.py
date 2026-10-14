@@ -98,8 +98,8 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
 
 @pytest.fixture()
 def ppt_reporting_old(client: TestClient) -> TestClient:
-    """PPT Reporting (old) is off for every user by default; the tests of the old module turn it on."""
-    rules = app_module.feature_activation_settings()
-    rules['ppt-reporting-old'] = {'default': 'all'}
-    app_module.save_feature_activation_settings(rules)
+    """PPT Reporting (old) is in no Modules Profile by default; the tests of the old module add it to the default profile."""
+    default = next(profile for profile in app_module.repository.list_modules_profiles() if profile['is_default'])
+    app_module.repository.save_modules_profile(default['id'], default['name'], default['description'], [*default['modules'], 'ppt-reporting-old'])
+    app_module.invalidate_module_access_cache()
     return client

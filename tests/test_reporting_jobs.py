@@ -86,54 +86,44 @@ def test_definitions_keep_every_module_option_and_need_an_artifact():
     assert safe_file_name('Scoring: A/B ' + 'x' * 300 + '.pptx').endswith('.pptx')
 
 
-def test_features_activation_controls_modules_by_role_group_and_user(client):
+def test_modules_profiles_control_the_modules_of_each_user(client):
     analyst_id = workspace_user('analyst', 'user-viewer')
     login(client)
-    # Defaults: every module for everyone except PPT Reporting (old), off for every role and user.
+    # Super-admins see every module, PPT Reporting (old) included, although it is in no profile.
     page = client.get('/workspace').text
-    assert 'href="/reporting"' in page and 'href="/non-qualified-calls"' in page
-    assert 'href="/ppt-reporting-old"' not in page
+    assert 'href="/reporting"' in page and 'href="/non-qualified-calls"' in page and 'href="/ppt-reporting-old"' in page
     order = [page.index(f'href="{path}"') for path in ('/datasets-analysis', '/ppt-dashboards', '/scoring', '/network-insights', '/non-qualified-calls', '/reporting')]
     assert order == sorted(order)
+    # A user without a profile has the default one: every module but PPT Reporting (old).
     session(client, 'analyst', 'user-viewer')
-    assert 'href="/reporting"' in client.get('/workspace').text
+    page = client.get('/workspace').text
+    assert 'href="/reporting"' in page and 'href="/ppt-reporting-old"' not in page
     assert client.get('/reporting').status_code == 200
     assert client.get('/scoring').status_code == 200
-    # Rules saved with the former Reporting default (super-admins only) open Reporting to everyone once.
-    core.repository.set_application_state(core.FEATURE_ACTIVATION_STATE_KEY, json.dumps({'reporting': core.LEGACY_REPORTING_RULE}))
-    core.repository.set_application_state(core.REPORTING_FOR_ALL_USERS_STATE_KEY, '')
-    core._feature_activation_cache = None
-    assert core.feature_activation_settings()['reporting']['default'] == 'all'
-    # A user group activates Reporting for its members.
+    assert client.get('/ppt-reporting-old').status_code == 403
+    # A profile gives its modules to its users.
     login(client)
-    assert client.post('/admin/user-groups', data={'name': 'Analysts', 'description': 'Team', 'member_ids': [analyst_id]},
-                       follow_redirects=False).status_code == 303
-    group_id = next(group['id'] for group in core.repository.list_user_groups() if group['name'] == 'Analysts')
-    form = {f'default__{key}': 'all' for key in core.FEATURE_KEYS}
-    form.update({'default__reporting': 'none', 'allow__reporting': [f'group:{group_id}'],
-                 'default__scoring': 'none', 'allow__scoring': ['role:super-admin']})
-    assert client.post('/admin/features', data=form, follow_redirects=False).status_code == 303
+    assert client.post('/admin/modules-profiles', data={'name': 'Reporting only', 'description': 'Team', 'modules': ['workspace', 'reporting'],
+                                                       'member_ids': [analyst_id]}, follow_redirects=False).status_code == 303
+    profile_id = next(profile['id'] for profile in core.repository.list_modules_profiles() if profile['name'] == 'Reporting only')
     session(client, 'analyst', 'user-viewer')
     assert client.get('/reporting').status_code == 200
     assert client.get('/scoring').status_code == 403
-    # Forbidden wins over Allowed for an account in both lists.
+    # Changing the modules of a profile changes them for all its users at once.
     login(client)
-    form['deny__reporting'] = [f'user:{analyst_id}']
-    assert client.post('/admin/features', data=form, follow_redirects=False).status_code == 303
-    session(client, 'analyst', 'user-viewer')
-    assert client.get('/reporting').status_code == 403
-    # Forbidden also restricts features active for all users.
-    login(client)
-    form.update({'deny__reporting': [], 'deny__workspace': ['role:user-viewer']})
-    client.post('/admin/features', data=form)
+    response = client.post(f'/admin/modules-profiles/{profile_id}/update', data={
+        'name': 'Reporting only', 'modules': ['reporting'], 'member_ids': [analyst_id], 'initial_member_ids': [analyst_id],
+    })
+    assert response.status_code == 200, response.text
+    assert next(profile for profile in response.json()['profiles'] if profile['id'] == profile_id)['modules'] == ['reporting']
     session(client, 'analyst', 'user-viewer')
     assert client.get('/workspace').status_code == 403
     assert client.get('/reporting').status_code == 200
-    # Admins see Features Activation; viewers and editors do not.
+    # Admins see Modules Profiles; viewers and editors do not change them.
     session(client, 'someone', 'admin')
-    assert 'id="features-activation"' in client.get('/admin').text
+    assert 'id="modules-profiles"' in client.get('/admin').text
     session(client, 'writer', 'user-editor')
-    assert client.post('/admin/features', data=form).status_code == 403
+    assert client.post(f'/admin/modules-profiles/{profile_id}/update', data={'name': 'x'}).status_code == 403
 
 
 def test_help_readme_and_changelog_are_public_except_ppt_reporting_old(client):
@@ -146,10 +136,16 @@ def test_help_readme_and_changelog_are_public_except_ppt_reporting_old(client):
     assert client.get('/api/documents/help/ppt-reporting-old.md').status_code == 403
     assert 'ppt-reporting-old.md' not in client.get('/api/documents/help').json()['content']
     assert 'Email Delivery' in client.get('/api/documents/help/app-config.md').json()['content']
+    # Super-admins see the chapter of every module; other users only those of their Modules Profile.
     login(client)
+    assert 'ppt-reporting-old.md' in [item['relative_path'] for item in client.get('/api/documents/help-index').json()['documents']]
+    workspace_user('writer', 'user-editor')
+    login(client, 'writer', 'writer123')
     index = [item['relative_path'] for item in client.get('/api/documents/help-index').json()['documents']]
     assert 'ppt-reporting-old.md' not in index
-    core.save_feature_activation_settings({**core.feature_activation_settings(), 'ppt-reporting-old': {'default': 'all'}})
+    default = next(profile for profile in core.repository.list_modules_profiles() if profile['is_default'])
+    core.repository.save_modules_profile(default['id'], default['name'], default['description'], [*default['modules'], 'ppt-reporting-old'])
+    core.invalidate_module_access_cache()
     index = [item['relative_path'] for item in client.get('/api/documents/help-index').json()['documents']]
     assert index.index('ppt-dashboards.md') < index.index('ppt-reporting-old.md') < index.index('scoring-gap-analysis.md') < index.index('reporting.md')
     assert client.get('/api/documents/help/ppt-reporting-old.md').status_code == 200
@@ -358,33 +354,16 @@ def test_imported_reporting_jobs_keep_an_owner_that_exists_here(client):
 
 
 def test_reporting_jobs_only_include_modules_of_their_author(client):
-    workspace_user('editor', 'user-editor')
+    editor_id = workspace_user('editor', 'user-editor')
     login(client, 'editor', 'editor123')
-    core.save_feature_activation_settings({
-        **{key: {'default': 'all'} for key in core.FEATURE_KEYS},
-        'scoring': {'default': 'none', 'allow': {'roles': ['super-admin']}},
-    })
-    try:
-        payload = {'name': 'Scoring only', 'definition': {'scoring': [SCORING_ENTRY]}, 'schedule': {'mode': 'manual'}}
-        response = client.post('/api/reporting/tasks', json=payload)
-        assert response.status_code == 403
-        assert 'Scoring' in response.json()['detail']
-        assert client.get('/api/reporting/options').json()['allowed_modules']['scoring'] is False
-    finally:
-        core.save_feature_activation_settings({key: {'default': 'all'} for key in core.FEATURE_KEYS})
-
-
-def test_feature_rules_saved_before_forbidden_lists_keep_their_meaning():
-    rule = core.normalized_feature_rule({'mode': 'selected', 'roles': ['admin'], 'users': ['7']})
-    assert rule == {'default': 'none', 'allow': {'roles': ['admin'], 'groups': [], 'users': [7]},
-                    'deny': {'roles': [], 'groups': [], 'users': []}}
-    assert core.normalized_feature_rule({'mode': 'all'})['default'] == 'all'
-    # PPT Reporting (old) is off for every role and user of a new deployment; the other modules are on.
-    defaults = core.normalized_feature_rule(None, core.FEATURE_DEFAULTS['ppt-reporting-old'])
-    assert defaults == {'default': 'none', 'allow': {'roles': [], 'groups': [], 'users': []},
-                        'deny': {'roles': [], 'groups': [], 'users': []}}
-    assert all(core.normalized_feature_rule(None, core.FEATURE_DEFAULTS.get(key))['default'] == 'all'
-               for key in core.FEATURE_KEYS if key != 'ppt-reporting-old')
+    profile_id = core.repository.save_modules_profile(None, 'No Scoring', '', [key for key in core.FEATURE_KEYS if key != 'scoring'])
+    core.repository.set_users_modules_profile([editor_id], profile_id)
+    core.invalidate_module_access_cache()
+    payload = {'name': 'Scoring only', 'definition': {'scoring': [SCORING_ENTRY]}, 'schedule': {'mode': 'manual'}}
+    response = client.post('/api/reporting/tasks', json=payload)
+    assert response.status_code == 403
+    assert 'Scoring' in response.json()['detail']
+    assert client.get('/api/reporting/options').json()['allowed_modules']['scoring'] is False
 
 
 def test_network_insights_entries_keep_their_own_selection_and_read_single_selections():
@@ -434,57 +413,62 @@ def test_reporting_runs_appear_in_background_tasks(client):
     assert any(label == 'Reporting Job: Background check' for label in labels) or 'Reporting Job: Background check' in json.dumps(groups)
 
 
-def test_workspace_access_by_role_group_and_user(client):
+def test_workspace_access_by_workspace_group_and_user(client):
     login(client)
     workspace_id = core.active_workspace.id
     core.repository.create_user('field', 'field123', 'user-viewer')
     field_id = next(int(row['id']) for row in core.repository.list_users() if row['username'] == 'field')
     assert not core.repository.user_has_workspace_access('field', workspace_id)
-    # A role opens the workspace to every account with that role.
-    assert client.post('/admin/workspace-access', data={f'access__{workspace_id}': ['role:user-viewer']},
-                       follow_redirects=False).status_code == 303
+    # A Workspace Group opens its workspaces to its members.
+    assert client.post('/admin/workspace-groups', data={'name': 'Field', 'description': '', 'workspace_ids': [workspace_id],
+                                                        'member_ids': [field_id]}, follow_redirects=False).status_code == 303
+    group_id = next(group['id'] for group in core.repository.list_workspace_groups() if group['name'] == 'Field')
     assert core.repository.user_has_workspace_access('field', workspace_id)
-    assert 'id="workspace-access"' in client.get('/admin').text
-    # A user group opens it to its members only.
-    assert client.post('/admin/user-groups', data={'name': 'Field', 'description': '', 'member_ids': [field_id]},
-                       follow_redirects=False).status_code == 303
-    group_id = next(group['id'] for group in core.repository.list_user_groups() if group['name'] == 'Field')
-    client.post('/admin/workspace-access', data={f'access__{workspace_id}': [f'group:{group_id}']}, follow_redirects=False)
-    assert core.repository.workspace_access_rules()[workspace_id] == {'roles': [], 'groups': [group_id]}
-    assert core.repository.user_has_workspace_access('field', workspace_id)
-    # Users are the same direct grants as the Workspace Access picker of Workspace Management.
-    client.post('/admin/workspace-access', data={f'access__{workspace_id}': [f'user:{field_id}']}, follow_redirects=False)
-    assert workspace_id not in core.repository.workspace_access_rules()
-    assert workspace_id in core.repository.list_user_workspace_ids(field_id)
-    client.post('/admin/workspace-access', data={}, follow_redirects=False)
+    assert 'id="workspace-groups"' in client.get('/admin').text
+    # Its card removes the user; a user granted the workspace individually still opens it.
+    response = client.post(f'/admin/workspace-groups/{group_id}/update', data={
+        'name': 'Field', 'workspace_ids': [workspace_id], 'member_ids': [], 'initial_member_ids': [field_id],
+    })
+    assert response.status_code == 200, response.text
+    assert next(group for group in response.json()['groups'] if group['id'] == group_id)['member_ids'] == []
     assert not core.repository.user_has_workspace_access('field', workspace_id)
-    # Workspace Management saves roles and groups with the workspace.
+    core.repository.set_user_workspace_access(field_id, [workspace_id])
+    assert core.repository.user_has_workspace_access('field', workspace_id)
+    core.repository.set_user_workspace_access(field_id, [])
+    # Workspace Management saves the Workspace Groups and the users of the workspace.
     name = core.active_workspace.name
-    assert client.post('/workspace/save', data={'workspace_id': workspace_id, 'name': name, 'access_roles': ['user-viewer'],
-                                                'access_groups': [group_id]}, follow_redirects=False).status_code == 303
-    assert core.repository.workspace_access_rules()[workspace_id] == {'roles': ['user-viewer'], 'groups': [group_id]}
+    assert client.post('/workspace/save', data={'workspace_id': workspace_id, 'name': name, 'workspace_group_ids': [],
+                                                'usernames': ['field']}, follow_redirects=False).status_code == 303
+    assert next(group for group in core.repository.list_workspace_groups() if group['id'] == group_id)['workspace_ids'] == []
+    assert workspace_id in core.repository.list_user_workspace_ids(field_id)
+    client.post('/workspace/save', data={'workspace_id': workspace_id, 'name': name, 'workspace_group_ids': [group_id]}, follow_redirects=False)
+    assert next(group for group in core.repository.list_workspace_groups() if group['id'] == group_id)['workspace_ids'] == [workspace_id]
 
 
-def test_users_table_assigns_groups_and_lists_workspaces_granted_by_groups(client):
+def test_users_table_sets_profile_workspace_groups_and_names(client):
     login(client)
     workspace = core.active_workspace
     core.repository.create_user('analyst', 'analyst123', 'user-viewer')
     analyst_id = next(int(row['id']) for row in core.repository.list_users() if row['username'] == 'analyst')
-    group_id = core.repository.save_user_group(None, 'Analysts', '', [])
-    core.repository.set_workspace_access_rule(workspace.id, [], [group_id])
+    group_id = core.repository.save_workspace_group(None, 'Analysts', '', [workspace.id])
+    profile_id = next(profile['id'] for profile in core.repository.list_modules_profiles() if profile['name'] == 'NQ Calls')
     response = client.post(f'/admin/users/{analyst_id}/update', data={
-        'username': 'analyst', 'role': 'user-viewer', 'active': '1', 'group_ids': [group_id], 'groups_submitted': '1',
+        'username': 'analyst', 'first_name': ' Ana ', 'last_name': 'García', 'role': 'user-viewer', 'active': '1',
+        'modules_profile_id': str(profile_id), 'workspace_group_ids': [group_id], 'workspaces_submitted': '1',
     }, headers={'X-Requested-With': 'XMLHttpRequest'})
     assert response.status_code == 200, response.text
-    assert response.json()['user']['group_ids'] == [group_id]
+    user = response.json()['user']
+    assert (user['first_name'], user['last_name'], user['modules_profile_id'], user['workspace_group_ids']) == ('Ana', 'García', profile_id, [group_id])
     assert core.repository.user_has_workspace_access('analyst', workspace.id)
     page = client.get('/admin').text
-    assert '<th>Role</th><th>Groups</th><th>Active</th><th>Workspaces</th>' in page
-    assert f'<span>{workspace.name} <small>· Analysts</small></span>' in page
-    # A form without the group selector keeps the memberships.
+    assert '<th>User</th><th>Password</th><th>Role</th><th>Modules Profile</th><th>Active</th><th>Workspaces</th>' in page
+    assert 'name="first_name" value="Ana"' in page and '>AG</span>' in page
+    # A form without the workspace selector keeps the memberships, the names and the profile.
     client.post(f'/admin/users/{analyst_id}/update', data={'username': 'analyst', 'role': 'user-viewer', 'active': '1'},
                 headers={'X-Requested-With': 'XMLHttpRequest'})
-    assert next(group for group in core.repository.list_user_groups() if group['name'] == 'Analysts')['member_ids'] == [analyst_id]
+    assert next(group for group in core.repository.list_workspace_groups() if group['id'] == group_id)['member_ids'] == [analyst_id]
+    assert core.repository.get_user_by_id(analyst_id)['first_name'] == 'Ana'
+    assert next(profile for profile in core.repository.list_modules_profiles() if analyst_id in profile['member_ids'])['id'] == profile_id
 
 
 def test_cdr_analysis_artifact_keeps_metrics_filters_and_single_choices():

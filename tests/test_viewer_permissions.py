@@ -75,34 +75,25 @@ def test_user_viewer_still_explores_and_generates_jobs(client, tmp_path):
     assert client.post('/workspace/stop-datasets', follow_redirects=False).status_code != 403
 
 
-def _features_form(rules):
-    form = {}
-    for key, rule in rules.items():
-        form[f'default__{key}'] = rule.get('default', 'all')
-        form[f'allow__{key}'] = rule.get('allow', [])
-        form[f'deny__{key}'] = rule.get('deny', [])
-    return form
-
-
-def test_admins_grant_but_never_remove_features_of_super_admins(client):
+def test_super_admins_see_every_module_and_admins_do_not_change_them(client):
     _viewer(client, 'boss', 'super-admin')
     boss_id = next(int(row['id']) for row in core.repository.list_users() if row['username'] == 'boss')
     _viewer(client, 'plainadmin', 'admin')
-    assert 'Features Activation' in client.get('/admin').text
-    base = {key: {'default': 'all'} for key in core.FEATURE_KEYS}
-    base['reporting'] = {'default': 'none', 'allow': ['role:super-admin']}
-    try:
-        # Granting is allowed.
-        response = client.post('/admin/features', data=_features_form({**base, 'reporting': {'default': 'none', 'allow': ['role:super-admin', 'role:admin']}}), follow_redirects=False)
-        assert response.status_code == 303
-        # Removing it from the super-admin role, a super-admin account or through "Nobody" is not.
-        for change in ({'default': 'none'}, {'default': 'all', 'deny': ['role:super-admin']},
-                       {'default': 'all', 'deny': [f'user:{boss_id}']}):
-            response = client.post('/admin/features', data=_features_form({**base, 'reporting': change}), follow_redirects=False)
-            assert response.status_code == 403 and 'cannot remove' in response.text
-        assert core.user_has_feature(core.SessionUser(username='boss', role='super-admin'), 'reporting')
-        # Admins still restrict their own and lower roles.
-        response = client.post('/admin/features', data=_features_form({**base, 'builders': {'default': 'all', 'deny': ['role:user-viewer']}}), follow_redirects=False)
-        assert response.status_code == 303
-    finally:
-        core.save_feature_activation_settings({key: {'default': 'all'} for key in core.FEATURE_KEYS})
+    admin_id = next(int(row['id']) for row in core.repository.list_users() if row['username'] == 'plainadmin')
+    assert 'id="modules-profiles"' in client.get('/admin').text
+    # A profile without Reporting removes it from its users, admins included, but never from super-admins.
+    profile_id = core.repository.save_modules_profile(None, 'Workspace only', '', ['workspace'])
+    response = client.post(f'/admin/modules-profiles/{profile_id}/update', data={
+        'name': 'Workspace only', 'modules': ['workspace'], 'member_ids': [admin_id, boss_id], 'initial_member_ids': [],
+    })
+    assert response.status_code == 200
+    profiles = response.json()['profiles']
+    assert next(profile for profile in profiles if profile['id'] == profile_id)['member_ids'] == [admin_id]
+    assert all(boss_id not in profile['member_ids'] for profile in profiles)
+    assert not core.user_has_feature(core.SessionUser(username='plainadmin', role='admin'), 'reporting')
+    assert core.user_has_feature(core.SessionUser(username='boss', role='super-admin'), 'reporting')
+    # The selection bar of an admin leaves super-admin accounts as they are.
+    response = client.post('/admin/users/bulk', data={'user_ids': [boss_id], 'action': 'deactivate'})
+    assert response.status_code == 200
+    assert response.json() == {'updated': [], 'skipped': ['boss: only super-admins can change super-admin accounts']}
+    assert client.post('/admin/users/bulk', data={'user_ids': [admin_id], 'action': 'role', 'value': 'super-admin'}).status_code == 403

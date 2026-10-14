@@ -66,10 +66,7 @@ def test_hierarchy_is_an_application_setting_outside_the_methodologies(scoring_a
 
 def test_reporting_follows_scoring_in_module_and_help_navigation(scoring_api):
     client = scoring_api['client']
-    # PPT Reporting (old) is off by default; turn it on to check its place in the navigation.
-    rules = app_module.feature_activation_settings()
-    rules['ppt-reporting-old'] = {'default': 'all'}
-    app_module.save_feature_activation_settings(rules)
+    # PPT Reporting (old) is in no profile of a new deployment, but super-admins see every module.
     token = 'scoring-navigation-super-admin'
     app_module.SESSIONS[token] = app_module.SessionUser(username='super', role='super-admin')
     client.cookies.set(app_module.SESSION_COOKIE, token)

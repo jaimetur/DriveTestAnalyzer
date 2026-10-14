@@ -3010,9 +3010,9 @@ def test_config_import_from_another_server_translates_workspace_ids_and_keeps_se
     with sqlite3.connect(database) as conn:
         conn.execute("UPDATE users SET workspace_ids_json = ? WHERE username = 'analyst'",
                      (json.dumps(['workspace-remote', 'workspace-gone']),))
+        conn.execute("INSERT INTO workspace_groups (name, description, workspace_ids_json, created_at) VALUES ('Field', '', ?, '')",
+                     (json.dumps(['workspace-gone', 'workspace-remote']),))
         for key, value in (
-            ('workspace_access_rules_v1', {'workspace-remote': {'roles': ['user-viewer'], 'groups': []},
-                                           'workspace-gone': {'roles': ['admin'], 'groups': []}}),
             (app_module.RECURRING_BACKUP_STATE_KEY, {'max_backups': 3, 'workspace_ids': ['workspace-remote']}),
             (app_module.RUNTIME_CONFIGURATION_STATE_KEY, {'max_background_tasks': 4}),
         ):
@@ -3032,7 +3032,7 @@ def test_config_import_from_another_server_translates_workspace_ids_and_keeps_se
     local_runtime = json.dumps({'max_background_tasks': 1})
     repository.set_application_state(app_module.RECURRING_BACKUP_STATE_KEY, local_backup)
     repository.set_application_state(app_module.RUNTIME_CONFIGURATION_STATE_KEY, local_runtime)
-    repository.set_workspace_access_rule(local_only.id, ['user-editor'], [])
+    repository.save_workspace_group(None, 'Field', '', [local_only.id])
     repository.set_workspace_user_access(local_only.id, ['analyst'])
 
     imported = client.post(
@@ -3045,9 +3045,8 @@ def test_config_import_from_another_server_translates_workspace_ids_and_keeps_se
     assert imported.status_code == 303
     assert repository.get_application_state(app_module.RECURRING_BACKUP_STATE_KEY) == local_backup
     assert repository.get_application_state(app_module.RUNTIME_CONFIGURATION_STATE_KEY) == local_runtime
-    assert repository.workspace_access_rules() == {
-        shared.id: {'roles': ['user-viewer'], 'groups': []},
-        local_only.id: {'roles': ['user-editor'], 'groups': []},
+    assert {group['name']: group['workspace_ids'] for group in repository.list_workspace_groups()} == {
+        'Field': sorted([shared.id, local_only.id]),
     }
     with repository.global_connection() as conn:
         granted = json.loads(conn.execute("SELECT workspace_ids_json FROM users WHERE username = 'analyst'").fetchone()[0])
@@ -6699,9 +6698,7 @@ def test_admin_panel_is_available_for_admin(client) -> None:
     response = client.get("/admin")
     assert response.status_code == 200
     assert "Administrator Config" in response.text
-    assert '<span class="table-input user-role-locked" aria-label="Role for super: super-admin"' in response.text
-    assert '<span class="user-role-full-label">super-admin</span>' in response.text
-    assert '<span class="user-role-compact-label" aria-hidden="true">super</span>' in response.text
+    assert '<span class="user-role-locked" aria-label="Role for super: super-admin" title="Only super-admins can modify a super-admin role">super-admin</span>' in response.text
     assert 'type="text" value="super-admin" aria-label="Role for super"' not in response.text
     assert 'name="username" value="super" form="user-update-1" autocomplete="off" readonly data-user-autofill-guard required disabled' in response.text
     assert 'name="password" value="" placeholder="••••••••" autocomplete="off" spellcheck="false" readonly form="user-update-1" data-user-password data-user-autofill-guard' in response.text
@@ -8854,7 +8851,9 @@ def test_admin_can_update_user_identity_fields(client) -> None:
     )
     assert update_response.status_code == 200
     assert update_response.json()['user'] == {
-        'id': analyst['id'], 'username': 'analyst-updated', 'role': 'admin', 'active': False, 'workspace_ids': [], 'group_ids': [],
+        'id': analyst['id'], 'username': 'analyst-updated', 'first_name': '', 'last_name': '', 'role': 'admin', 'active': False,
+        'workspace_ids': [], 'modules_profile_id': next(profile['id'] for profile in app_module.repository.list_modules_profiles() if profile['is_default']),
+        'workspace_group_ids': [],
     }
 
     updated = app_module.repository.get_user("analyst-updated")
@@ -9782,14 +9781,16 @@ def test_docs_routes_expose_readme_changelog_and_help(client) -> None:
 def test_ppt_reporting_old_help_follows_its_feature(client) -> None:
     import src.DriveTestAnalyzer as app_module
 
-    # PPT Reporting (old) is off for every role by default, super-admins included.
+    # PPT Reporting (old) is in no profile of a new deployment: only super-admins see it.
+    app_module.repository.create_user('EJAITUR', 'secret123', 'user-viewer')
     token = 'help-reporting-off'
-    app_module.SESSIONS[token] = app_module.SessionUser(username='someone', role='super-admin')
+    app_module.SESSIONS[token] = app_module.SessionUser(username='EJAITUR', role='user-viewer')
     client.cookies.set(app_module.SESSION_COOKIE, token)
     assert client.get('/documents/view/help/ppt-reporting-old.md').status_code == 403
-    rules = app_module.feature_activation_settings()
-    rules['ppt-reporting-old'] = {'default': 'none', 'allow': {'roles': ['super-admin', 'user-viewer']}}
-    app_module.save_feature_activation_settings(rules)
+    profile_id = app_module.repository.save_modules_profile(None, 'Legacy', '', ['workspace', 'ppt-reporting-old'])
+    app_module.repository.set_users_modules_profile(
+        [next(int(row['id']) for row in app_module.repository.list_users() if row['username'] == 'EJAITUR')], profile_id)
+    app_module.invalidate_module_access_cache()
     for username, role in [('someone', 'super-admin'), ('EJAITUR', 'user-viewer')]:
         token = f'help-reporting-{role}'
         app_module.SESSIONS[token] = app_module.SessionUser(username=username, role=role)
@@ -10901,8 +10902,10 @@ def test_module_tabs_take_order_title_icon_and_colour_from_interface_settings(cl
     index = client.get('/api/documents/help-index').json()
     assert {'readme', 'changelog'} <= set(index['icons'])
     assert all(item.get('icon') for item in index['documents'] if item['relative_path'] in {'reporting.md', 'app-logs.md', 'chart-builder.md', 'overview.md', 'docker-deployment.md', 'roadmap.md'})
-    features = [row['key'] for row in app_module.feature_activation_context()]
-    assert features == order
+    # The module chips of every Modules Profile follow the order of the tabs.
+    admin_page = client.get('/admin').text
+    first_profile = re.search(r'form="(modules-profile-\d+)"', admin_page).group(1)
+    assert re.findall(rf'name="modules" value="([a-z-]+)" form="{first_profile}"', admin_page) == order
 
     client.post('/admin/interface-settings', data={'show_module_stage_labels': 'true', 'reset_module_labels': '1'}, follow_redirects=False)
     settings = app_module.load_module_labels(app_module.repository)

@@ -69,35 +69,49 @@
 {# A new user asks for access: the user is created inactive and the administrator is asked by email to activate it. #}
 <dialog class="access-request-dialog" data-access-request-dialog aria-labelledby="access-request-title">
   <form class="access-request-form" data-access-request-form novalidate>
-    <header>
-      <h3 id="access-request-title">Request Access</h3>
-      <p class="form-note" data-access-request-intro>Your user is created when you submit the request and stays inactive until the administrator activates it.</p>
+    <header class="access-request-head">
+      <span class="access-request-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M3 20a6 6 0 0 1 12 0M18 8v6M15 11h6"/></svg></span>
+      <div>
+        <h3 id="access-request-title">Request Access</h3>
+        <p class="form-note" data-access-request-intro>Your user is created when you submit the request and stays inactive until the administrator activates it.</p>
+      </div>
+      <button type="button" class="access-request-close" data-access-request-cancel aria-label="Close" title="Close">×</button>
     </header>
     <div class="alert" role="alert" data-access-request-error hidden></div>
     <div class="alert alert-warning" role="status" data-access-request-existing hidden></div>
-    <label>Username (Ericsson signum)
-      <input class="access-request-signum" type="text" name="username" autocomplete="username" maxlength="7" required
-             pattern="[Ee][A-Za-z]{6}" placeholder="EABCDEF" title="Your Ericsson signum: 7 letters starting with E">
-    </label>
-    <label data-access-request-password><span>Password</span><input type="password" name="password" autocomplete="new-password" required></label>
-    <label data-access-request-confirmation>Confirm Password<input type="password" name="password_confirmation" autocomplete="new-password" required></label>
-    <fieldset>
-      <legend>Workspaces <small>(choose at least one)</small></legend>
-      <div class="access-request-options" data-access-request-workspaces><p class="form-note">Loading…</p></div>
-    </fieldset>
-    <fieldset>
-      <legend>Modules <small>(choose one)</small></legend>
-      <div class="access-request-options" data-access-request-modules></div>
-    </fieldset>
+    <section class="access-request-section" aria-labelledby="access-request-account">
+      <p class="access-request-section-title" id="access-request-account"><span aria-hidden="true">1</span>Your account</p>
+      <div class="access-request-grid">
+        <label>First name<input type="text" name="first_name" autocomplete="given-name" maxlength="60" required></label>
+        <label>Last name<input type="text" name="last_name" autocomplete="family-name" maxlength="60" required></label>
+        <label class="access-request-wide">Username (Ericsson signum)
+          <input class="access-request-signum" type="text" name="username" autocomplete="username" maxlength="7" required
+                 pattern="[Ee][A-Za-z]{6}" placeholder="EABCDEF" title="Your Ericsson signum: 7 letters starting with E">
+        </label>
+        <label data-access-request-password><span>Password</span><input type="password" name="password" autocomplete="new-password" required></label>
+        <label data-access-request-confirmation>Confirm Password<input type="password" name="password_confirmation" autocomplete="new-password" required></label>
+      </div>
+    </section>
+    <section class="access-request-section" aria-labelledby="access-request-workspaces">
+      <p class="access-request-section-title" id="access-request-workspaces"><span aria-hidden="true">2</span>Workspaces <small>choose at least one</small></p>
+      <div class="access-request-tiles" data-access-request-workspaces><p class="form-note">Loading…</p></div>
+    </section>
+    <section class="access-request-section" aria-labelledby="access-request-profile">
+      <p class="access-request-section-title" id="access-request-profile"><span aria-hidden="true">3</span>Modules Profile <small>choose one: the modules you need</small></p>
+      <div class="access-request-tiles" data-access-request-modules></div>
+    </section>
     <div class="access-request-actions">
       <button type="button" class="access-request-secondary" data-access-request-cancel>Cancel</button>
       <button type="submit" data-access-request-submit>Submit Request</button>
     </div>
   </form>
   <section class="access-request-done" data-access-request-done hidden>
-    <header>
-      <h3 data-access-request-done-title>User Created</h3>
-      <p class="form-note"><span data-access-request-done-note>Your user has been created but it is not active yet: ask the administrator to activate it.</span> <strong>Request Activation</strong> opens an email to the administrator with your request.</p>
+    <header class="access-request-head">
+      <span class="access-request-icon access-request-icon-done" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></span>
+      <div>
+        <h3 data-access-request-done-title>User Created</h3>
+        <p class="form-note"><span data-access-request-done-note>Your user has been created but it is not active yet: ask the administrator to activate it.</span> <strong>Request Activation</strong> opens an email to the administrator with your request.</p>
+      </div>
     </header>
     <dl class="access-request-summary" data-access-request-summary></dl>
     <div class="access-request-actions">
@@ -120,7 +134,7 @@
     toggle.setAttribute('aria-label', toggle.title);
   });
 })();
-// Access requests: the workspaces (user groups that open them) and modules (module access groups) to choose, the new
+// Access requests: the workspaces (Workspace Groups) and modules (Modules Profiles) to choose, the new
 // inactive user, and the email that asks the administrator to activate it.
 (() => {
   const dialog = document.querySelector('[data-access-request-dialog]');
@@ -144,12 +158,34 @@
     if (className) node.className = className;
     return node;
   };
-  // Nothing is chosen beforehand: at least one workspace and the modules must be chosen.
-  const option = (type, name, value, title, note) => {
-    const label = element('label', undefined, 'access-request-option');
+  const svg = (paths) => {
+    const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    icon.setAttribute('viewBox', '0 0 24 24');
+    icon.setAttribute('aria-hidden', 'true');
+    icon.innerHTML = paths;
+    return icon;
+  };
+  const FOLDER = '<path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H9l2 2h7.5A2.5 2.5 0 0 1 21 9.5v7a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 16.5z"/>';
+  const chip = (title, color, icon) => {
+    const node = element('span', undefined, 'access-request-chip');
+    if (color) node.style.setProperty('--chip-color', color);
+    if (icon) node.append(svg(icon));
+    node.append(element('span', title));
+    return node;
+  };
+  // Nothing is chosen beforehand: at least one workspace and the modules must be chosen. Each choice is a tile with
+  // its workspaces or modules.
+  const option = (type, name, value, title, note, chips) => {
+    const label = element('label', undefined, 'access-request-tile');
     const input = element('input');
     Object.assign(input, {type, name, value: String(value)});
-    label.append(input, element('strong', title), element('small', note));
+    const head = element('span', undefined, 'access-request-tile-head');
+    head.append(element('strong', title), element('span', undefined, `access-request-check access-request-check-${type}`));
+    const list = element('span', undefined, 'access-request-chips');
+    list.append(...chips);
+    label.append(input, head);
+    if (note) label.append(element('span', note, 'access-request-tile-note'));
+    label.append(list);
     return label;
   };
   const showError = (message) => {
@@ -162,21 +198,23 @@
       const data = await response.json();
       if (!response.ok) throw new Error(data.detail || 'The options could not be loaded.');
       workspaces.replaceChildren(...(data.workspace_groups.length
-        ? data.workspace_groups.map((group) => option('checkbox', 'workspace_group_ids', group.id, group.name, group.workspaces.join(', ')))
+        ? data.workspace_groups.map((group) => option('checkbox', 'workspace_group_ids', group.id, group.name, group.description, group.workspaces.map((name) => chip(name, '', FOLDER))))
         : [element('p', 'No workspace can be requested yet: ask the administrator.', 'form-note')]));
-      modules.replaceChildren(...(data.module_groups.length
-        ? data.module_groups.map((group) => option('radio', 'module_group_id', group.id, group.name, group.modules.join(', ')))
-        : [element('p', 'No modules can be requested yet: ask the administrator.', 'form-note')]));
+      modules.replaceChildren(...(data.modules_profiles.length
+        ? data.modules_profiles.map((profile) => option('radio', 'modules_profile_id', profile.id, profile.name, profile.description,
+          profile.module_tabs.map((module) => chip(module.title, module.color, module.icon))))
+        : [element('p', 'No modules profile can be requested yet: ask the administrator.', 'form-note')]));
     } catch (exc) {
       showError(exc.message);
     }
   };
-  // Submit Request is enabled once every required field is filled in: the signum, both passwords, a workspace and
-  // the modules.
+  // Submit Request is enabled once every required field is filled in: the names, the signum, both passwords, a
+  // workspace and the modules.
   const updateSubmit = () => {
     const data = new FormData(form);
-    const filled = String(data.get('username') || '').trim() && data.get('password') && (existing || data.get('password_confirmation'))
-      && data.getAll('workspace_group_ids').length && data.get('module_group_id') && !existing?.administrator;
+    const filled = String(data.get('first_name') || '').trim() && String(data.get('last_name') || '').trim()
+      && String(data.get('username') || '').trim() && data.get('password') && (existing || data.get('password_confirmation'))
+      && data.getAll('workspace_group_ids').length && data.get('modules_profile_id') && !existing?.administrator;
     submit.disabled = !filled;
     submit.title = filled ? '' : 'Fill in every field to submit the request';
   };
@@ -187,7 +225,7 @@
     warning.hidden = !user;
     warning.textContent = !user ? '' : user.administrator
       ? `${user.username} is an administrator account: change its access in Admin.`
-      : `The user ${user.username} already exists. Submitting this request replaces its workspaces and modules with the ones chosen here and deactivates it until the administrator activates it again. Enter its current password.`;
+      : `The user ${user.username} already exists. Submitting this request replaces its workspaces and modules profile with the ones chosen here and deactivates it until the administrator activates it again. Enter its current password.`;
     passwordLabel.textContent = user ? 'Current Password' : 'Password';
     dialog.querySelector('[data-access-request-intro]').textContent = user
       ? 'Your request changes the access of your user, which stays inactive until the administrator activates it again.'
@@ -230,26 +268,30 @@
     event.preventDefault();
     const data = new FormData(form);
     const username = String(data.get('username') || '').trim();
+    const firstName = String(data.get('first_name') || '').trim();
+    const lastName = String(data.get('last_name') || '').trim();
+    if (!firstName || !lastName) { showError('Enter your first name and last name.'); return; }
     if (!/^[Ee][A-Za-z]{6}$/.test(username)) { showError('The username must be your Ericsson signum: 7 letters starting with E.'); return; }
     if (!data.get('password')) { showError('Choose a password.'); return; }
     if (!existing && data.get('password') !== data.get('password_confirmation')) { showError('The passwords do not match.'); return; }
     if (!data.getAll('workspace_group_ids').length) { showError('Choose at least one workspace.'); return; }
-    if (!data.get('module_group_id')) { showError('Choose the modules to access.'); return; }
+    if (!data.get('modules_profile_id')) { showError('Choose a modules profile.'); return; }
     showError('');
     submit.disabled = true;
     try {
       const response = await fetch('/api/access-requests', {
         method: 'POST', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
-          username, password: data.get('password'), password_confirmation: data.get('password_confirmation'),
-          workspace_group_ids: data.getAll('workspace_group_ids').map(Number), module_group_id: Number(data.get('module_group_id')),
+          username, first_name: firstName, last_name: lastName,
+          password: data.get('password'), password_confirmation: data.get('password_confirmation'),
+          workspace_group_ids: data.getAll('workspace_group_ids').map(Number), modules_profile_id: Number(data.get('modules_profile_id')),
         }),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.detail || 'The request could not be submitted.');
       email = result.email;
       const summary = dialog.querySelector('[data-access-request-summary]');
-      summary.replaceChildren(...[['User', result.username], ['Role', result.role], ['Workspaces', result.workspaces], ['Modules', result.modules]]
+      summary.replaceChildren(...[['User', result.username], ['Name', result.name], ['Role', result.role], ['Workspaces', result.workspaces], ['Modules Profile', result.modules_profile]]
         .flatMap(([term, value]) => [element('dt', term), element('dd', value)]));
       dialog.querySelector('[data-access-request-done-title]').textContent = result.existing ? 'Access Changed' : 'User Created';
       dialog.querySelector('[data-access-request-done-note]').textContent = result.existing

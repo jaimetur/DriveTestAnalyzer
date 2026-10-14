@@ -201,7 +201,7 @@ The operational guide is [PPT Dashboards](ppt-dashboards.md). Template creation,
 
 ## Non-Qualified Calls
 
-Non-Qualified Calls follows Scoring & GAP Analysis in the main tabs. It lists every Voice and Speech call and every Data test whose result is not Completed (Failed, Dropped, Cutoff…) in the ready CDRs of the workspace, summarises them by service, result, status, team, failure classification and Operator with drill-down into the calls, shows the NQ rate of each campaign and operator, and is an NQ Analysis Center: the teams follow each call up through its General (activity), RCA, Failure Details, Analysis, Implementation and Planning sections, with a Root Category and Root Cause recommended from the NetCheck RCA, the Ericsson RCA results and previous decisions, a status that follows the phases by customizable rules or is set by hand, a responsible team, an assignee, the workspace's own customizable fields and lists and a shared, traceable comment thread, while dashboards follow the lifecycle, the phases and the agreement of the root cause sources. Each call is identified by its `JOIN_ID`, so its analysis is shared by the Daily and Final CDRs that contain it. The follow-up exports to Excel and travels with workspace packages, transfers and backups. It is active for every user of a new deployment and can be restricted in Admin → Features Activation. See [Non-Qualified Calls](non-qualified-calls.md).
+Non-Qualified Calls follows Scoring & GAP Analysis in the main tabs. It lists every Voice and Speech call and every Data test whose result is not Completed (Failed, Dropped, Cutoff…) in the ready CDRs of the workspace, summarises them by service, result, status, team, failure classification and Operator with drill-down into the calls, shows the NQ rate of each campaign and operator, and is an NQ Analysis Center: the teams follow each call up through its General (activity), RCA, Failure Details, Analysis, Implementation and Planning sections, with a Root Category and Root Cause recommended from the NetCheck RCA, the Ericsson RCA results and previous decisions, a status that follows the phases by customizable rules or is set by hand, a responsible team, an assignee, the workspace's own customizable fields and lists and a shared, traceable comment thread, while dashboards follow the lifecycle, the phases and the agreement of the root cause sources. Each call is identified by its `JOIN_ID`, so its analysis is shared by the Daily and Final CDRs that contain it. The follow-up exports to Excel and travels with workspace packages, transfers and backups. On a new deployment it is in the NQ Calls and All Modules profiles, and Admin → Modules Profiles chooses who sees it. See [Non-Qualified Calls](non-qualified-calls.md).
 
 ## Reporting
 
@@ -209,7 +209,7 @@ Non-Qualified Calls follows Scoring & GAP Analysis in the main tabs. It lists ev
 
 ## PPT Reporting (old)
 
-PPT Reporting (old) combines processed CDRs and a Report Template from the active workspace. It is available only to the users, roles and groups it is activated for in Admin → Features Activation (off for everyone on a new deployment).
+PPT Reporting (old) combines processed CDRs and a Report Template from the active workspace. Only super-admins and the users whose Modules Profile includes it see it (it is in no profile of a new deployment).
 
 ### Reporting module selector
 
@@ -290,7 +290,7 @@ The **Admin** tab opens Administrator Config for `admin` and `super-admin` roles
 - Create, rename, enable, disable and delete users.
 - Reset passwords.
 - Assign roles and workspace access where permitted.
-- Group users in **User Groups** and activate each main module for all users or for selected roles, groups and users in **Features Activation**.
+- Choose the main modules each user sees with **Modules Profiles** and the workspaces they open with **Workspace Groups**, for several users at once.
 
 ### Workspace Config
 

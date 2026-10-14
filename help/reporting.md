@@ -3,7 +3,7 @@
 Use **Reporting** to collect artifacts from several modules in one **Reporting Job**, run it on demand or on a schedule, and email the artifacts with a clear description of each one and its filters.
 
 > [!NOTE]
-> **Feature activation.** **Reporting** is available to every user by default. Admins and super-admins allow or forbid it for roles, user groups or users in **Admin → Features Activation**. Creating, editing and running jobs requires `user-editor`, `admin` or `super-admin`.
+> **Module access.** **Reporting** is in every Modules Profile of a new deployment. Admins and super-admins choose who sees it in **Admin → Modules Profiles**. Creating, editing and running jobs requires `user-editor`, `admin` or `super-admin`.
 
 ## In this guide
 

@@ -5050,12 +5050,12 @@ function formatAggregationOverrides(overrides) {
     .join(';');
 }
 
-// Panels that show saved settings or records (users, user groups, workspace
-// access, features activation) always show what the server saved: a value kept
-// in the browser would hide it and be saved back over it.
+// Panels that show saved settings or records (users, Modules Profiles, Workspace
+// Groups) always show what the server saved: a value kept in the browser would
+// hide it and be saved back over it.
 // Controls whose values are saved elsewhere. The CDR Analysis filters are saved on the server for each
 // dataset: restoring them by name would carry one dataset's values into another.
-const SAVED_SETTINGS_SCOPES = '.users-table, .principal-table, .principal-picker, .interface-settings-form, #datasets-analysis-filters-form';
+const SAVED_SETTINGS_SCOPES = '.users-table, .access-cards, .principal-picker, .principal-picker-menu, .user-workspaces-menu, .interface-settings-form, #datasets-analysis-filters-form';
 
 function canPersistControl(control) {
   if (!control || !persistencePathnames.has(window.location.pathname)) return false;
@@ -5394,7 +5394,7 @@ function setupWorkspaceUserPickers() {
     search?.addEventListener('keyup', filter);
     search?.addEventListener('search', filter);
     toggle?.addEventListener('click', () => {
-      // Select All / None acts on the users; roles and groups are chosen one by one.
+      // Select All / None acts on the users; Workspace Groups are chosen one by one.
       const users = checkboxes.filter((checkbox) => checkbox.name === 'usernames');
       const shouldSelectAll = users.some((checkbox) => !checkbox.checked);
       users.forEach((checkbox) => { checkbox.checked = shouldSelectAll; });
@@ -6782,6 +6782,12 @@ function importWarningDetails(payload) {
         title: 'Overwrite configuration?',
         message: 'This will overwrite the configuration files included in the package. The local workspace registry and existing workspaces will be preserved.',
       };
+  }
+  if (kind === 'users-access') {
+    return {
+      title: 'Import Users & Access?',
+      message: 'Users, Modules Profiles and Workspace Groups with the same names will be updated and the missing ones added; the others are kept. Workspaces are matched by name. Your own account keeps its role, status and password.',
+    };
   }
   if (kind === 'ppt-templates') {
     return {

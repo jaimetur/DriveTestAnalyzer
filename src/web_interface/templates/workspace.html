@@ -57,13 +57,11 @@
               </select>
             </label>
             {% if user.role == 'super-admin' %}<div class="workspace-create-access"><span>Access</span><details class="workspace-user-picker" data-workspace-user-picker>
-              <summary><span>Roles, groups and users</span><span class="workspace-user-picker-chevron" aria-hidden="true"></span></summary>
+              <summary><span>Workspace Groups and users</span><span class="workspace-user-picker-chevron" aria-hidden="true"></span></summary>
               <div class="workspace-user-picker-menu">
-                <input class="workspace-user-picker-search" type="search" placeholder="Filter…" aria-label="Filter roles, groups and users">
-                <p class="workspace-user-picker-heading">Roles</p>
-                {% for role in access_roles | default([], true) %}<label><input type="checkbox" name="access_roles" value="{{ role }}"><span>{{ role }}</span></label>{% endfor %}
-                <p class="workspace-user-picker-heading">Groups</p>
-                {% for group in access_groups | default([], true) %}<label><input type="checkbox" name="access_groups" value="{{ group.id }}"><span>{{ group.name }}</span></label>{% else %}<p class="table-help">No user groups.</p>{% endfor %}
+                <input class="workspace-user-picker-search" type="search" placeholder="Filter…" aria-label="Filter Workspace Groups and users">
+                <p class="workspace-user-picker-heading">Workspace Groups</p>
+                {% for group in workspace_groups | default([], true) %}<label><input type="checkbox" name="workspace_group_ids" value="{{ group.id }}"><span>{{ group.name }}</span></label>{% else %}<p class="table-help">No Workspace Groups.</p>{% endfor %}
                 <p class="workspace-user-picker-heading">Users</p>
                 <button class="workspace-user-picker-toggle" type="button">Select All / None</button>
                 {% for account in workspace_users %}<label><input type="checkbox" name="usernames" value="{{ account.username }}"><span>{{ account.username }}</span></label>{% endfor %}
@@ -96,16 +94,14 @@
                   </form>
                   <input form="workspace-save-{{ item.id }}" aria-label="Workspace name: {{ item.name }}" name="name" required maxlength="100" value="{{ item.name }}" data-workspace-name-input {% if not workspace_access.get(item.id, false) %}disabled{% endif %}>
                 </td>
-                {% if user.role == 'super-admin' %}{% set access_rule = (workspace_access_rules | default({}, true)).get(item.id, {}) %}<td class="workspace-access-column" data-label="Access">
+                {% if user.role == 'super-admin' %}<td class="workspace-access-column" data-label="Access">
                   <div class="workspace-access-editor">
                     <details class="workspace-user-picker" data-workspace-user-picker>
-                      <summary><span>Roles, groups and users</span><span class="workspace-user-picker-chevron" aria-hidden="true"></span></summary>
+                      <summary><span>Workspace Groups and users</span><span class="workspace-user-picker-chevron" aria-hidden="true"></span></summary>
                       <div class="workspace-user-picker-menu">
-                        <input class="workspace-user-picker-search" type="search" placeholder="Filter…" aria-label="Filter roles, groups and users">
-                        <p class="workspace-user-picker-heading">Roles</p>
-                        {% for role in access_roles | default([], true) %}<label><input form="workspace-save-{{ item.id }}" type="checkbox" name="access_roles" value="{{ role }}" {% if role in access_rule.get('roles', []) %}checked{% endif %}><span>{{ role }}</span></label>{% endfor %}
-                        <p class="workspace-user-picker-heading">Groups</p>
-                        {% for group in access_groups | default([], true) %}<label><input form="workspace-save-{{ item.id }}" type="checkbox" name="access_groups" value="{{ group.id }}" {% if group.id in access_rule.get('groups', []) %}checked{% endif %}><span>{{ group.name }}</span></label>{% else %}<p class="table-help">No user groups.</p>{% endfor %}
+                        <input class="workspace-user-picker-search" type="search" placeholder="Filter…" aria-label="Filter Workspace Groups and users">
+                        <p class="workspace-user-picker-heading">Workspace Groups</p>
+                        {% for group in workspace_groups | default([], true) %}<label><input form="workspace-save-{{ item.id }}" type="checkbox" name="workspace_group_ids" value="{{ group.id }}" {% if item.id in group.workspace_ids %}checked{% endif %}><span>{{ group.name }}</span></label>{% else %}<p class="table-help">No Workspace Groups.</p>{% endfor %}
                         <p class="workspace-user-picker-heading">Users</p>
                         <button class="workspace-user-picker-toggle" type="button">Select All / None</button>
                         {% for account in workspace_users %}<label><input form="workspace-save-{{ item.id }}" type="checkbox" name="usernames" value="{{ account.username }}" {% if item.id in account.workspace_ids %}checked{% endif %}><span>{{ account.username }}</span></label>{% endfor %}
