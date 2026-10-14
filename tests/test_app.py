@@ -4750,7 +4750,7 @@ def test_workspace_management_save_updates_name_and_user_access(client) -> None:
     assert 'title="Save workspace changes"' in workspace_page.text
     assert 'data-workspace-row-open' in workspace_page.text
     users_page = client.get('/admin')
-    demo_row = users_page.text.split(f'aria-label="Filter workspaces for {demo["username"]}"', 1)[1].split('</details>', 1)[0]
+    demo_row = users_page.text.split(f'aria-label="Filter the workspaces of {demo["username"]}"', 1)[1].split('</details>', 1)[0]
     assert f'value="{germany.id}"' in demo_row
     assert 'checked' in demo_row
 
@@ -6700,8 +6700,8 @@ def test_admin_panel_is_available_for_admin(client) -> None:
     assert "Administrator Config" in response.text
     assert '<span class="user-role-locked" aria-label="Role for super: super-admin" title="Only super-admins can modify a super-admin role">super-admin</span>' in response.text
     assert 'type="text" value="super-admin" aria-label="Role for super"' not in response.text
-    assert 'name="username" value="super" form="user-update-1" autocomplete="off" readonly data-user-autofill-guard required disabled' in response.text
-    assert 'name="password" value="" placeholder="••••••••" autocomplete="off" spellcheck="false" readonly form="user-update-1" data-user-password data-user-autofill-guard' in response.text
+    assert 'name="username" value="super" form="user-update-1" autocomplete="off" readonly data-user-autofill-guard required aria-label="Username of super" disabled' in response.text
+    assert 'name="password" value="" placeholder="••••••••" autocomplete="off" spellcheck="false" readonly form="user-update-1" aria-label="New password of super" data-user-password data-user-autofill-guard' in response.text
     assert 'data-user-password-toggle' in response.text
     assert 'data-create-user-password-toggle' in response.text
     assert 'protectAdminFields' in response.text
