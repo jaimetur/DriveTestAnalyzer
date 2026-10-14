@@ -531,12 +531,13 @@ def invalidate_module_access_cache() -> None:
 
 
 def user_has_feature(user: SessionUser | None, feature: str) -> bool:
-    """Whether an account sees a main module: super-admins see every one, the other accounts those of their Modules Profile."""
+    """Whether an account sees a main module: those of its Modules Profile, and every one for a super-admin without one."""
     if user is None or feature not in FEATURE_KEYS:
         return feature not in FEATURE_KEYS
-    if user.role == 'super-admin':
-        return True
     snapshot = _module_access_snapshot()
+    if user.role == 'super-admin':
+        modules = snapshot['super_admins'].get(user.username.casefold())
+        return modules is None or feature in modules
     return feature in snapshot['users'].get(user.username.casefold(), snapshot['default'])
 
 
@@ -22219,7 +22220,8 @@ def create_user(
         if user.role != 'super-admin' and normalized_role == 'super-admin':
             raise ValueError('Only super-admins can create super-admin users.')
         user_id = repository.create_user(username, password, normalized_role, first_name=first_name, last_name=last_name)
-        if modules_profile_id.strip().isdigit():
+        # A new super-admin sees every module until it is given a profile.
+        if modules_profile_id.strip().isdigit() and normalized_role != 'super-admin':
             repository.set_users_modules_profile([user_id], int(modules_profile_id))
         repository.set_user_workspace_groups(user_id, workspace_group_ids)
         repository.set_user_workspace_access(user_id, granted_workspace_ids(user, [], workspace_ids))
@@ -22304,8 +22306,13 @@ def update_user_account(
             first_name=first_name,
             last_name=last_name,
         )
-        if modules_profile_id.strip().isdigit():
+        if normalized_role == 'super-admin' and target_user['role'] != 'super-admin':
+            # A new super-admin sees every module until it is given a profile.
+            repository.set_users_modules_profile([target_user_id], None)
+        elif modules_profile_id.strip().isdigit():
             repository.set_users_modules_profile([target_user_id], int(modules_profile_id))
+        elif modules_profile_id.strip() == 'all' and normalized_role == 'super-admin':
+            repository.set_users_modules_profile([target_user_id], None)
         if workspaces_submitted == '1':
             repository.set_user_workspace_groups(target_user_id, workspace_group_ids)
             repository.set_user_workspace_access(target_user_id, granted_workspace_ids(
@@ -22360,9 +22367,6 @@ def bulk_update_users(
             skipped.append(f'{name}: only super-admins can change super-admin accounts')
             continue
         if action == 'modules_profile':
-            if target['role'] == 'super-admin':
-                skipped.append(f'{name}: super-admins see every module')
-                continue
             repository.set_users_modules_profile([target_id], int(value))
         elif action == 'add_workspace_group':
             repository.change_workspace_group_members(int(value), add=[target_id])
@@ -22378,6 +22382,8 @@ def bulk_update_users(
                 skipped.append(f'{name}: at least one active admin and one active super-admin must remain')
                 continue
             repository.update_user(target_id, name, new_role, will_be_active)
+            if new_role == 'super-admin' and target['role'] != 'super-admin':
+                repository.set_users_modules_profile([target_id], None)
         updated.append(name)
     invalidate_module_access_cache()
     label = profiles.get(int(value)) if action == 'modules_profile' else groups.get(int(value)) if 'workspace_group' in action else value
@@ -22439,9 +22445,9 @@ def delete_user_account(
         return render_admin_template(request, user, error=str(exc), status_code=400)
 
 
-def profile_member_choices() -> set[int]:
-    """The accounts that have a Modules Profile: every one but the super-admins, who see every module."""
-    return {int(row['id']) for row in repository.list_users() if str(row['role']) != 'super-admin'}
+def profile_member_choices(user: SessionUser) -> set[int]:
+    """The accounts whose Modules Profile an administrator changes: every one, but super-admins only for a super-admin."""
+    return {int(row['id']) for row in repository.list_users() if user.role == 'super-admin' or str(row['role']) != 'super-admin'}
 
 
 def access_cards_payload() -> dict[str, Any]:
@@ -22460,7 +22466,7 @@ def create_modules_profile(
 ) -> Response:
     try:
         profile_id = repository.save_modules_profile(None, name, description, modules)
-        repository.set_users_modules_profile([member for member in member_ids if member in profile_member_choices()], profile_id)
+        repository.set_users_modules_profile([member for member in member_ids if member in profile_member_choices(user)], profile_id)
     except ValueError as exc:
         return render_admin_template(request, user, error=str(exc), status_code=400)
     invalidate_module_access_cache()
@@ -22481,9 +22487,9 @@ def update_modules_profile(
     user: SessionUser = Depends(admin_user),
 ) -> JSONResponse:
     """Save one Modules Profile: its name, description, modules and users. A user added to it leaves its previous
-    profile, and a user only removed from it gets the default profile; users changed elsewhere since the page
-    loaded are left as they are."""
-    selectable = profile_member_choices()
+    profile, and a user only removed from it gets the default profile (a super-admin, every module); users changed
+    elsewhere since the page loaded are left as they are."""
+    selectable = profile_member_choices(user)
     chosen, initial = set(member_ids) & selectable, set(initial_member_ids) & selectable
     try:
         repository.save_modules_profile(profile_id, name, description, modules)

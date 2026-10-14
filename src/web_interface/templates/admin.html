@@ -66,7 +66,7 @@
 
   {% set workspace_names = {} %}{% for workspace in workspaces %}{% set _ = workspace_names.update({workspace.id: workspace.name}) %}{% endfor %}
   {% set default_profile = (modules_profiles | selectattr('is_default') | list | first) %}
-  {% set member_items = [] %}{% for row in users %}{% if row['role'] != 'super-admin' %}{% set _ = member_items.append((row['id'], row['username'])) %}{% endif %}{% endfor %}
+  {% set member_items = [] %}{% for row in users %}{% if row['role'] != 'super-admin' or user.role == 'super-admin' %}{% set _ = member_items.append((row['id'], row['username'])) %}{% endif %}{% endfor %}
   {% set role_options = ['user-viewer', 'user-editor', 'admin'] + (['super-admin'] if user.role == 'super-admin' else []) %}
   {% macro workspace_access_picker(form_id, group_ids, workspace_ids, label) -%}
   <input type="hidden" name="workspaces_submitted" value="1" form="{{ form_id }}">
@@ -157,8 +157,8 @@
               {% endif %}
             </td>
             <td>
-              {% if row['role'] == 'super-admin' %}<span class="user-access-all" title="Super-admins see every module">All modules</span>
-              {% else %}<select class="table-select user-profile-select" name="modules_profile_id" form="user-update-{{ row['id'] }}" aria-label="Modules Profile of {{ row['username'] }}">{% for profile in modules_profiles %}<option value="{{ profile.id }}" {% if profile.id == row['modules_profile_id'] %}selected{% endif %}>{{ profile.name }}</option>{% endfor %}</select>{% endif %}
+              {% if locked %}<span class="user-access-all" title="Only super-admins change super-admin accounts">{% for profile in modules_profiles if profile.id == row['modules_profile_id'] %}{{ profile.name }}{% else %}All modules{% endfor %}</span>
+              {% else %}<select class="table-select user-profile-select" name="modules_profile_id" form="user-update-{{ row['id'] }}" aria-label="Modules Profile of {{ row['username'] }}">{% if row['role'] == 'super-admin' %}<option value="all" {% if not row['modules_profile_id'] %}selected{% endif %}>All modules</option>{% endif %}{% for profile in modules_profiles %}<option value="{{ profile.id }}" {% if profile.id == row['modules_profile_id'] %}selected{% endif %}>{{ profile.name }}</option>{% endfor %}</select>{% endif %}
             </td>
             <td>
               <label class="toggle-switch" aria-label="Toggle active state for {{ row['username'] }}">
@@ -223,7 +223,7 @@
       <div>
         <p class="eyebrow">Access</p>
         <h2>Modules Profiles</h2>
-        <p class="summary-description">Each profile is a set of main modules; every user has one profile and sees its modules, and super-admins see every module. Click a module to add it to a profile or remove it, and choose its users in <strong>Users</strong>: changes are saved at once and apply to all its users. The <strong>Default</strong> profile is the one of users without a profile.</p>
+        <p class="summary-description">Each profile is a set of main modules; every user has one profile and sees its modules, and super-admins see every module unless they are given a profile. Click a module to add it to a profile or remove it, and choose its users in <strong>Users</strong>: changes are saved at once and apply to all its users. The <strong>Default</strong> profile is the one of users without a profile.</p>
       </div>
       <span class="collapse-chip">Collapse</span>
     </summary>
@@ -1875,7 +1875,7 @@
     const active = document.querySelector(`[form="${form.id}"][name="active"]`);
     const password = document.querySelector(`[form="${form.id}"][name="password"]`);
     const row = form.closest('[data-user-row]');
-    // Super-admins see every module and open every workspace, so their row changes when the role does.
+    // Super-admins open every workspace and may see every module, so their row changes when the role does.
     if (row && (row.dataset.role === 'super-admin') !== (user.role === 'super-admin')) {
       window.location.reload();
       return;
@@ -1889,7 +1889,10 @@
     if (active instanceof HTMLInputElement) active.checked = Boolean(user.active);
     if (password instanceof HTMLInputElement) password.value = '';
     const profile = document.querySelector(`[form="${form.id}"][name="modules_profile_id"]`);
-    if (profile instanceof HTMLSelectElement && user.modules_profile_id) profile.value = String(user.modules_profile_id);
+    if (profile instanceof HTMLSelectElement) {
+      const value = user.modules_profile_id ? String(user.modules_profile_id) : 'all';
+      if ([...profile.options].some((option) => option.value === value)) profile.value = value;
+    }
     document.querySelectorAll(`[form="${form.id}"][name="workspace_ids"]`).forEach((box) => {
       if (box instanceof HTMLInputElement) box.checked = (user.workspace_ids || []).includes(box.value);
     });
@@ -2277,10 +2280,12 @@
     document.querySelectorAll('tr[data-user-row]').forEach((row) => {
       const id = row.dataset.userId;
       const select = document.querySelector(`select[form="user-update-${id}"][name="modules_profile_id"]`);
-      if (select && profileOf[id]) {
-        select.value = profileOf[id];
-        [...select.options].forEach((option) => { option.defaultSelected = option.value === profileOf[id]; });
-        row.dataset.profile = profileOf[id];
+      // A super-admin without a profile sees every module.
+      const value = profileOf[id] || (row.dataset.role === 'super-admin' ? 'all' : '');
+      if (select && value && [...select.options].some((option) => option.value === value)) {
+        select.value = value;
+        [...select.options].forEach((option) => { option.defaultSelected = option.value === value; });
+        row.dataset.profile = profileOf[id] || '';
       }
       const member = groups.filter((group) => group.member_ids.map(String).includes(id)).map((group) => String(group.id));
       const boxes = document.querySelectorAll(`[form="user-update-${id}"][name="workspace_group_ids"]`);
@@ -2299,7 +2304,7 @@
       const members = controlsOf(card, 'member_ids').filter((box) => box.defaultChecked).map((box) => box.value).filter((value) => value !== id);
       setMembers(card, member ? [...members, id] : members);
     };
-    if (user.modules_profile_id) cards.filter((card) => card.dataset.accessCard === 'profile').forEach((card) => update(card, card.dataset.cardId === String(user.modules_profile_id)));
+    cards.filter((card) => card.dataset.accessCard === 'profile').forEach((card) => update(card, card.dataset.cardId === String(user.modules_profile_id || '')));
     const groups = (user.workspace_group_ids || []).map(String);
     cards.filter((card) => card.dataset.accessCard === 'group').forEach((card) => update(card, groups.includes(card.dataset.cardId)));
   };

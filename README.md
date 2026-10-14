@@ -90,7 +90,7 @@ Reporting schedules **Reporting Jobs** that collect a Summary CDR Analysis, a Su
 
 ### PPT Reporting (old)
 
-PPT Reporting (old) combines ready CDRs with a Report Template from the active workspace. It is available only to super-admins and to the users whose Modules Profile includes it (by default, only super-admins).
+PPT Reporting (old) combines ready CDRs with a Report Template from the active workspace. It is available only to the super-admins without a Modules Profile and to the users whose Modules Profile includes it (by default, only super-admins).
 
 - **Reporting module**: choose NetCheck CDR Reports or the future Smart Orchestrator Logs workflow.
 - **NetCheck CDR Reports**: select Data, Voice and Speech campaigns, NSA/SA, template and Operator/Vendor Comparison.

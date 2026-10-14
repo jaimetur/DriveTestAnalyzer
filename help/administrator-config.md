@@ -45,7 +45,7 @@ What each account can do, see and open comes from three independent settings, an
 | **Modules Profile** | which main modules it sees | [Modules Profiles](#modules-profiles) |
 | **Workspaces** | which workspaces it opens: those of its Workspace Groups plus those granted to it individually | [Workspace Groups](#workspace-groups) |
 
-Super-admins see every module and open every workspace, so their rows show **All modules** and **All workspaces**.
+Super-admins open every workspace, so their rows show **All workspaces**, and see every module unless they are given a Modules Profile: their **Modules Profile** offers **All modules** besides the profiles.
 
 The **Users** table edits every account in place and saves each change at once:
 
@@ -53,19 +53,19 @@ The **Users** table edits every account in place and saves each change at once:
 - **Workspaces**: its **Workspace Groups**, each listed with its workspaces, and its **Individual workspaces**. The summary names the groups and counts the individual workspaces. Super-admins grant any workspace individually; admins grant and remove only the workspaces they can open, and the others are kept.
 - **Reset password** and **Delete**.
 
-Above the table, the search and the filters show only the users with a name or username, role, Modules Profile, Workspace Group (or none) or status. Tick users, or every listed user with the header box, and the bar that appears changes them all at once: **Modules Profile…**, **Add to group…**, **Remove from group…**, **Role…**, **Activate** or **Deactivate**. Users that cannot change are left as they are and listed (an admin does not change super-admins, a super-admin has no profile, nobody deactivates their own account, and at least one active admin and one active super-admin remain). The last row of the table creates a user with its first and last name, username, password, role, Modules Profile (the default one at first) and workspaces; new users are active.
+Above the table, the search and the filters show only the users with a name or username, role, Modules Profile, Workspace Group (or none) or status. Tick users, or every listed user with the header box, and the bar that appears changes them all at once: **Modules Profile…**, **Add to group…**, **Remove from group…**, **Role…**, **Activate** or **Deactivate**. Users that cannot change are left as they are and listed (an admin does not change super-admins, nobody deactivates their own account, and at least one active admin and one active super-admin remain). The last row of the table creates a user with its first and last name, username, password, role, Modules Profile (the default one at first) and workspaces; new users are active, and a new super-admin, or a user who becomes one, sees every module until it is given a profile.
 
 ## Modules Profiles
 
-**Modules Profiles** shows one card per profile. A profile is a set of main modules; every user except the super-admins has exactly one profile and sees its modules. Every change on a card is saved at once and applies to all its users.
+**Modules Profiles** shows one card per profile. A profile is a set of main modules; every user has exactly one profile and sees its modules, and a super-admin sees every module until it is given one (**All modules** returns it to every module). Every change on a card is saved at once and applies to all its users.
 
 - The name and the description are edited in place.
 - **Modules** shows every main module as a chip with the icon, colour and title of its tab, in the order of the main tabs (renaming or moving a tab in [Interface Settings](#interface-settings) changes the chips too, and profiles keep their modules). Click a chip to add the module to the profile or remove it; the counter shows how many modules it has.
-- **Users** gives the profile to several users at once, and the names of its users are listed beside it. A user added to a profile leaves its previous one, and a user only removed from its profile gets the default profile. The **Modules Profile** of each user in [Users](#users) follows at once, and the other way round.
+- **Users** gives the profile to several users at once, and the names of its users are listed beside it. A user added to a profile leaves its previous one, and a user only removed from its profile gets the default profile (a super-admin, every module). Only super-admins give profiles to super-admins. The **Modules Profile** of each user in [Users](#users) follows at once, and the other way round.
 - **Default** marks the profile of users without one: users created without choosing one, and the users of a deleted profile. **Make default** moves it to another profile; the default profile cannot be deleted.
 - The **New profile** card creates a profile without modules or users; the bin deletes a profile.
 
-A module that is in no profile is seen only by super-admins, as PPT Reporting (old) on a new deployment or a module added by a later version until it is added to the profiles that should have it. A module that is not shown to a user disappears from the main tabs and the Modules menu, and its pages and API answer 403. Workspace switching, dataset uploads and processing remain available everywhere. Reporting Jobs can only include artifacts of the modules their author sees; see [Reporting](reporting.md).
+A module that is in no profile is seen only by the super-admins without a profile, as PPT Reporting (old) on a new deployment or a module added by a later version until it is added to the profiles that should have it. A module that is not shown to a user disappears from the main tabs and the Modules menu, and its pages and API answer 403. Workspace switching, dataset uploads and processing remain available everywhere. Reporting Jobs can only include artifacts of the modules their author sees; see [Reporting](reporting.md).
 
 A new deployment starts with three profiles: **NQ Calls** (**Workspace**, Non-Qualified Calls, **Reporting** and **Builders**), **Benchmarking** (every main module except Non-Qualified Calls and PPT Reporting (old)) and **All Modules** (every main module except PPT Reporting (old)), the default one. Profiles are stored in the application database (`Modules Profiles` table, and each user's profile in `Users`).
 

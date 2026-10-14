@@ -2123,7 +2123,7 @@ def test_dashboards_lifecycle_and_layout(client, ppt_reporting_old):
     assert client.get('/api/ppt-dashboards').json() == {}
 
 
-def test_ppt_reporting_old_is_off_for_every_role_and_user_by_default(client):
+def test_ppt_reporting_old_is_in_no_modules_profile_by_default(client):
     client.post('/login', data={'username': 'admin', 'password': 'admin123'})
     workspace_page = client.get('/workspace')
     assert workspace_page.status_code == 200
@@ -2132,17 +2132,21 @@ def test_ppt_reporting_old_is_off_for_every_role_and_user_by_default(client):
     assert client.get('/ppt-reporting-old').status_code == 403
     assert client.get('/api/ppt-reporting-old/jobs').status_code == 403
 
-    for token, username, role in (('e2e-reporting-super-admin', 'someone', 'super-admin'),
-                                  ('e2e-reporting-former-user', 'EJAITUR', 'user')):
-        core.SESSIONS[token] = core.SessionUser(username=username, role=role)
-        client.cookies.set(core.SESSION_COOKIE, token)
-        assert client.get('/ppt-reporting-old').status_code == 403
-        assert 'href="/ppt-reporting-old"' not in client.get('/workspace').text
-        assert client.get('/api/ppt-reporting-old/jobs').status_code == 403
+    token = 'e2e-reporting-former-user'
+    core.SESSIONS[token] = core.SessionUser(username='EJAITUR', role='user')
+    client.cookies.set(core.SESSION_COOKIE, token)
+    assert client.get('/ppt-reporting-old').status_code == 403
+    assert 'href="/ppt-reporting-old"' not in client.get('/workspace').text
+    assert client.get('/api/ppt-reporting-old/jobs').status_code == 403
+    # Super-admins see every module, also those in no profile.
+    token = 'e2e-reporting-super-admin'
+    core.SESSIONS[token] = core.SessionUser(username='someone', role='super-admin')
+    client.cookies.set(core.SESSION_COOKIE, token)
+    assert client.get('/ppt-reporting-old').status_code == 200
+    assert 'href="/ppt-reporting-old"' in client.get('/workspace').text
 
 
-
-def test_ppt_reporting_old_access_follows_features_activation(client):
+def test_ppt_reporting_old_access_follows_the_modules_profile(client):
     core.repository.create_user('analyst', 'analyst123', 'user-viewer')
     analyst_id = next(int(row['id']) for row in core.repository.list_users() if row['username'] == 'analyst')
     core.repository.set_user_workspace_access(analyst_id, [core.active_workspace.id])
@@ -2151,15 +2155,14 @@ def test_ppt_reporting_old_access_follows_features_activation(client):
     assert 'href="/ppt-reporting-old"' not in client.get('/workspace').text
     client.cookies.clear()
     client.post('/login', data={'username': 'super', 'password': 'super123'})
-    form = {f'default__{key}': 'all' for key in core.FEATURE_KEYS}
-    form.update({'default__ppt-reporting-old': 'none', 'allow__ppt-reporting-old': [f'user:{analyst_id}']})
-    assert client.post('/admin/features', data=form, follow_redirects=False).status_code == 303
-    # Super-admins are only included when selected.
-    assert client.get('/ppt-reporting-old').status_code == 403
+    assert client.post('/admin/modules-profiles', data={
+        'name': 'Legacy reporting', 'modules': ['workspace', 'ppt-reporting-old'], 'member_ids': [analyst_id],
+    }, follow_redirects=False).status_code == 303
     client.cookies.clear()
     client.post('/login', data={'username': 'analyst', 'password': 'analyst123'})
     assert client.get('/ppt-reporting-old').status_code == 200
     assert 'href="/ppt-reporting-old"' in client.get('/workspace').text
+
 
 def test_ready_dashboard_exports_ppt_and_persistent_chart_files(client, monkeypatch):
     payload = setup_dashboard(client)

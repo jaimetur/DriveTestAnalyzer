@@ -143,8 +143,8 @@ def test_the_selection_bar_changes_several_users_at_once(client):
     nq = next(profile['id'] for profile in core.repository.list_modules_profiles() if profile['name'] == 'NQ Calls')
     group = core.repository.save_workspace_group(None, 'UK', '', [core.active_workspace.id])
     response = client.post('/admin/users/bulk', data={'user_ids': ids, 'action': 'modules_profile', 'value': str(nq)})
-    assert response.json() == {'updated': ['ana', 'ben'], 'skipped': ['boss: super-admins see every module']}
-    assert (profile_of('ana'), profile_of('ben')) == ('NQ Calls', 'NQ Calls')
+    assert response.json() == {'updated': ['ana', 'ben', 'boss'], 'skipped': []}
+    assert (profile_of('ana'), profile_of('ben'), profile_of('boss')) == ('NQ Calls', 'NQ Calls', 'NQ Calls')
     client.post('/admin/users/bulk', data={'user_ids': ids[:2], 'action': 'add_workspace_group', 'value': str(group)})
     assert (groups_of('ana'), groups_of('ben')) == (['UK'], ['UK'])
     client.post('/admin/users/bulk', data={'user_ids': ids[:1], 'action': 'remove_workspace_group', 'value': str(group)})
@@ -157,6 +157,40 @@ def test_the_selection_bar_changes_several_users_at_once(client):
     assert client.post('/admin/users/bulk', data={'action': 'activate'}).status_code == 400
     page = client.get('/admin').text
     assert 'data-users-bulk' in page and 'data-users-filter="profile"' in page and 'id="user-create"' in page
+
+
+def test_a_super_admin_sees_every_module_until_it_is_given_a_profile(client):
+    login(client)
+    core.repository.create_user('boss', 'secret123', 'super-admin')
+    boss = core.SessionUser(username='boss', role='super-admin')
+    assert core.user_has_feature(boss, 'ppt-reporting-old')
+    all_modules = next(profile['id'] for profile in core.repository.list_modules_profiles() if profile['name'] == 'All Modules')
+    update = {'username': 'boss', 'role': 'super-admin', 'active': '1'}
+    response = client.post(f"/admin/users/{user_id('boss')}/update", data={**update, 'modules_profile_id': str(all_modules)},
+                           headers={'X-Requested-With': 'XMLHttpRequest'})
+    assert response.json()['user']['modules_profile_id'] == all_modules
+    core.invalidate_module_access_cache()
+    assert not core.user_has_feature(boss, 'ppt-reporting-old') and core.user_has_feature(boss, 'scoring')
+    assert 'value="all" >All modules</option>' in client.get('/admin').text
+    # All modules returns it to every module.
+    response = client.post(f"/admin/users/{user_id('boss')}/update", data={**update, 'modules_profile_id': 'all'},
+                           headers={'X-Requested-With': 'XMLHttpRequest'})
+    assert response.json()['user']['modules_profile_id'] is None
+    core.invalidate_module_access_cache()
+    assert core.user_has_feature(boss, 'ppt-reporting-old')
+    # A user who becomes super-admin sees every module until it is given a profile.
+    core.repository.create_user('ana', 'secret123', 'admin')
+    client.post(f"/admin/users/{user_id('ana')}/update", data={'username': 'ana', 'role': 'super-admin', 'active': '1',
+                                                             'modules_profile_id': str(all_modules)},
+                headers={'X-Requested-With': 'XMLHttpRequest'})
+    assert profile_of('ana') is None
+    # Admins do not change the profile of super-admins, on the cards either.
+    core.repository.create_user('plain', 'plain123', 'admin')
+    login(client, 'plain', 'plain123')
+    response = client.post(f'/admin/modules-profiles/{all_modules}/update', data={
+        'name': 'All Modules', 'modules': ['workspace'], 'member_ids': [user_id('boss')], 'initial_member_ids': [],
+    })
+    assert user_id('boss') not in next(profile for profile in response.json()['profiles'] if profile['id'] == all_modules)['member_ids']
 
 
 def test_the_create_row_gives_names_profile_and_workspaces(client):

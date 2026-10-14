@@ -209,7 +209,7 @@ Non-Qualified Calls follows Scoring & GAP Analysis in the main tabs. It lists ev
 
 ## PPT Reporting (old)
 
-PPT Reporting (old) combines processed CDRs and a Report Template from the active workspace. Only super-admins and the users whose Modules Profile includes it see it (it is in no profile of a new deployment).
+PPT Reporting (old) combines processed CDRs and a Report Template from the active workspace. Only the super-admins without a Modules Profile and the users whose Modules Profile includes it see it (it is in no profile of a new deployment).
 
 ### Reporting module selector
 

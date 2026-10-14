@@ -1073,8 +1073,8 @@ class Repository:
     def list_modules_profiles(self) -> list[dict[str, Any]]:
         """Modules Profiles ordered by name, with their modules in tab order and their accounts.
 
-        An account without a profile, or with a deleted one, has the default profile. Super-admins see every
-        module, so they belong to none.
+        An account without a profile, or with a deleted one, has the default profile. A super-admin sees every
+        module unless it is given a profile, so only the super-admins with one belong to a profile.
         """
         with self.global_connection() as conn:
             self._ensure_user_access_schema(conn)
@@ -1082,13 +1082,16 @@ class Repository:
                 'SELECT id, name, description, modules_json, is_default, created_at FROM modules_profiles '
                 'ORDER BY name COLLATE NOCASE, id'
             ).fetchall()
-            users = conn.execute("SELECT id, modules_profile_id FROM users WHERE role != 'super-admin' ORDER BY id").fetchall()
+            users = conn.execute('SELECT id, role, modules_profile_id FROM users ORDER BY id').fetchall()
         profile_ids = {int(row['id']) for row in rows}
         default_id = next((int(row['id']) for row in rows if row['is_default']), None)
         member_ids: dict[int | None, list[int]] = {}
         for user in users:
             profile_id = user['modules_profile_id']
-            member_ids.setdefault(int(profile_id) if profile_id is not None and int(profile_id) in profile_ids else default_id, []).append(int(user['id']))
+            profile_id = int(profile_id) if profile_id is not None and int(profile_id) in profile_ids else None
+            if profile_id is None and str(user['role']) == 'super-admin':
+                continue
+            member_ids.setdefault(default_id if profile_id is None else profile_id, []).append(int(user['id']))
         return [
             {'id': int(row['id']), 'name': str(row['name']), 'description': str(row['description'] or ''),
              'modules': self._profile_modules(row['modules_json']), 'is_default': bool(row['is_default']),
@@ -1141,7 +1144,7 @@ class Repository:
             conn.execute('UPDATE users SET modules_profile_id = NULL WHERE modules_profile_id = ?', (int(profile_id),))
 
     def set_users_modules_profile(self, user_ids: Iterable[int], profile_id: int | None) -> None:
-        """Give some accounts a profile; None gives them the default profile."""
+        """Give some accounts a profile; None gives them the default profile, and every module to super-admins."""
         with self.global_connection() as conn:
             self._ensure_user_access_schema(conn)
             if profile_id is not None and not conn.execute('SELECT 1 FROM modules_profiles WHERE id = ?', (int(profile_id),)).fetchone():
@@ -1150,14 +1153,18 @@ class Repository:
                              [(profile_id, int(user_id)) for user_id in dict.fromkeys(user_ids)])
 
     def user_modules(self) -> dict[str, Any]:
-        """The modules of every account but the super-admins, by username, and those of the default profile."""
+        """The modules of every account by username: those of the other accounts, those of the super-admins with a
+        profile (the others see every module), and those of the default profile."""
         profiles = self.list_modules_profiles()
         default = next((set(profile['modules']) for profile in profiles if profile['is_default']), set())
         modules_by_user = {user_id: set(profile['modules']) for profile in profiles for user_id in profile['member_ids']}
+        users = self.list_users()
         return {
             'default': default,
             'users': {str(row['username']).casefold(): modules_by_user.get(int(row['id']), default)
-                      for row in self.list_users() if str(row['role']) != 'super-admin'},
+                      for row in users if str(row['role']) != 'super-admin'},
+            'super_admins': {str(row['username']).casefold(): modules_by_user[int(row['id'])]
+                             for row in users if str(row['role']) == 'super-admin' and int(row['id']) in modules_by_user},
         }
 
     def list_workspace_groups(self) -> list[dict[str, Any]]:
