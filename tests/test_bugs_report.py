@@ -170,3 +170,23 @@ def test_the_database_viewer_shows_screenshots_as_their_size_and_does_not_edit_t
         core.repository.update_database_table_row('bug_report_attachments', int(row['__database_rowid__']), {'content': 'x'})
     admin = client.get('/admin').text
     assert 'data-type="Bugs Report"' in admin and '>Bug Report Attachments<' in admin
+
+
+def test_descriptions_and_comments_read_with_nested_bullets_and_titles(client):
+    from src.modules.bugs_report import rich_text_html
+
+    text = 'Problem:\n- item1\n  - Item2\n    * item3\n- item4:\n  · under\n  goes on\n\nA plain line - not a bullet\nResolution: done.\n<b>x</b>'
+    assert str(rich_text_html(text)) == (
+        '<p class="bug-text-heading">Problem:</p>'
+        '<ul><li>item1<ul><li>Item2<ul><li>item3</li></ul></li></ul></li>'
+        '<li><span class="bug-text-heading">item4:</span><ul><li>under<br>goes on</li></ul></li></ul>'
+        '<p>A plain line - not a bullet<br>Resolution: done.<br>&lt;b&gt;x&lt;/b&gt;</p>'
+    )
+    login(client)
+    bug_id = open_bug(client, screenshots=())
+    client.post(f'/api/bugs-report/{bug_id}/comments', data={'body': 'Cause:\n- One\n  - Two'})
+    page = client.get(f'/bugs-report/{bug_id}').text
+    # The comment reads with its bullets and keeps how it was written, to edit it.
+    assert '<p class="bug-text-heading">Cause:</p><ul><li>One<ul><li>Two</li></ul></li></ul>' in page
+    assert 'data-raw="Cause:\n- One\n  - Two"' in page
+    assert 'placeholder="Problem:\n- What you did and what happened' in page

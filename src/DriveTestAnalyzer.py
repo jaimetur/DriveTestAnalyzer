@@ -15499,7 +15499,7 @@ async def read_bug_report_screenshots(files: list[UploadFile]) -> list[dict[str,
 @app.get('/bugs-report', response_class=HTMLResponse)
 def bugs_report_page(request: Request, user: SessionUser = Depends(current_user)) -> HTMLResponse:
     from src.modules.bugs_report import (
-        DEFAULT_PRIORITY, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_PER_UPLOAD, PRIORITIES, STATUSES, list_bugs,
+        DEFAULT_PRIORITY, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_PER_UPLOAD, PRIORITIES, STATUSES, TEXT_GUIDE, list_bugs,
     )
 
     modules = bug_report_modules()
@@ -15508,7 +15508,7 @@ def bugs_report_page(request: Request, user: SessionUser = Depends(current_user)
     bugs = [serialize_bug_report(row, by_key, people) for row in list_bugs(repository)]
     return render_template(request, 'bugs_report.html', {
         'user': user, 'bugs': bugs, 'bug_modules': modules, 'bug_priorities': PRIORITIES, 'bug_statuses': STATUSES,
-        'bug_default_priority': DEFAULT_PRIORITY,
+        'bug_default_priority': DEFAULT_PRIORITY, 'bug_text_guide': TEXT_GUIDE,
         'bug_status_counts': {status: sum(1 for bug in bugs if bug['status'] == status) for status in STATUSES},
         'bug_mine_open': sum(1 for bug in bugs if bug['is_open'] and str(bug['created_by']).casefold() == user.username.casefold()),
         'bug_max_screenshots': MAX_ATTACHMENTS_PER_UPLOAD, 'bug_max_screenshot_mb': MAX_ATTACHMENT_BYTES // (1024 * 1024),
@@ -15517,12 +15517,16 @@ def bugs_report_page(request: Request, user: SessionUser = Depends(current_user)
 
 @app.get('/bugs-report/{bug_id:int}', response_class=HTMLResponse)
 def bug_report_page(request: Request, bug_id: int, user: SessionUser = Depends(current_user)) -> HTMLResponse:
-    from src.modules.bugs_report import FIELD_LABELS, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_PER_UPLOAD, PRIORITIES, STATUSES
+    from src.modules.bugs_report import (
+        FIELD_LABELS, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_PER_UPLOAD, PRIORITIES, STATUSES, TEXT_GUIDE, rich_text_html,
+    )
 
     modules = bug_report_modules()
     people = bug_report_people()
     by_key = {module['key']: module for module in modules}
     bug = serialize_bug_report(require_bug_report(bug_id), by_key, people)
+    # The description and the comments read with their bullets, nested, and their headings.
+    bug['description_html'] = rich_text_html(bug['description'])
 
     def change_value(field: str, value: str) -> str:
         if field == 'status':
@@ -15536,6 +15540,7 @@ def bug_report_page(request: Request, bug_id: int, user: SessionUser = Depends(c
         return value
     for comment in bug['comments']:
         comment['username_name'] = people.get(str(comment['username']), {}).get('name', str(comment['username']))
+        comment['body_html'] = rich_text_html(comment['body'])
         comment['date'] = str(comment['created_at'])[:16].replace('T', ' ')
         comment['change_lines'] = [
             {'field': FIELD_LABELS.get(field, field), 'long': field == 'description',
@@ -15544,7 +15549,7 @@ def bug_report_page(request: Request, bug_id: int, user: SessionUser = Depends(c
         ]
     return render_template(request, 'bug_report.html', {
         'user': user, 'bug': bug, 'bug_modules': modules, 'bug_priorities': PRIORITIES, 'bug_statuses': STATUSES,
-        'bug_can_edit': can_edit_bug_report(user, bug), 'bug_can_manage': user.role == 'super-admin',
+        'bug_can_edit': can_edit_bug_report(user, bug), 'bug_can_manage': user.role == 'super-admin', 'bug_text_guide': TEXT_GUIDE,
         'bug_super_admins': [{'username': username, 'name': person['name']} for username, person in people.items() if person['role'] == 'super-admin'],
         'bug_max_screenshots': MAX_ATTACHMENTS_PER_UPLOAD, 'bug_max_screenshot_mb': MAX_ATTACHMENT_BYTES // (1024 * 1024),
     })

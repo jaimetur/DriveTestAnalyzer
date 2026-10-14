@@ -23,10 +23,27 @@ Use **Bugs Report** to report the bugs you find in the tool, with their screensh
 - **Title**: what is wrong, in a few words (required).
 - **Module**: where the bug happens, one of the main modules or **General**.
 - **Priority**: from **P1 · Critical** to **P5 · Trivial** (**P3 · Medium** by default).
-- **Description**: what you did, what happened and what you expected; the steps to reproduce it help a lot.
+- **Description**: what you did, what happened and what you expected; the steps to reproduce it help a lot. It reads as written below.
 - **Screenshots**: paste them with Ctrl+V (⌘V on a Mac) anywhere in the form, drop them on the zone or click it to choose them. Up to 10 PNG, JPEG, GIF or WebP images of 10 MB each; each one shows a preview that can be removed before sending.
 
 **Open Bug Report** saves it with the version of the tool and the date, and opens its page. The browser it was reported from is kept too, to help reproduce it.
+
+### Writing descriptions and comments
+
+Descriptions and comments are saved as written and read with their structure (the empty field shows a grey guide):
+
+- A line starting with `-`, `*` or `·` is a bullet; indent it (with spaces or a tab) to nest it under the bullet above it, as many levels as needed. An indented line without a marker goes on in the bullet above it.
+- A line ending with a colon, such as `Problem:`, is a title in blue; a bullet ending with one is shown in blue too.
+- A line of dashes (`----- Notes -----`) is a divider with its text.
+- Every other line is a paragraph, and an empty line separates paragraphs and lists.
+
+```text
+Problem:
+- The export never ends
+  - Only with 3 campaigns
+Expected:
+- The PowerPoint downloads
+```
 
 ## Bug Reports
 

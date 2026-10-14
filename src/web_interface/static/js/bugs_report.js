@@ -241,7 +241,8 @@
       const editor = document.createElement('form');
       editor.className = 'bug-comment-editor';
       editor.innerHTML = '<textarea name="body" rows="4" maxlength="20000"></textarea><div class="bugs-form-actions"><button type="button" class="bug-ghost-button">Cancel</button><button type="submit" class="bugs-primary-button">Save</button></div>';
-      editor.body.value = text ? text.textContent : '';
+      // The comment as written, not as it reads with its bullets.
+      editor.body.value = text ? (text.dataset.raw ?? text.textContent) : '';
       editor.querySelector('.bug-ghost-button').addEventListener('click', () => { editor.remove(); if (text) text.hidden = false; });
       editor.addEventListener('submit', async (event) => {
         event.preventDefault();

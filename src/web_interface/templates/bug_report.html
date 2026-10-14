@@ -21,14 +21,14 @@
         <label class="bugs-field">Module
           <select name="module">{% for module in bug_modules %}<option value="{{ module.key }}"{% if module.key == bug.module %} selected{% endif %}>{{ module.title }}</option>{% endfor %}</select>
         </label>
-        <label class="bugs-field">Description<textarea name="description" rows="8" maxlength="20000">{{ bug.description }}</textarea></label>
+        <label class="bugs-field">Description<textarea name="description" rows="8" maxlength="20000" placeholder="{{ bug_text_guide }}">{{ bug.description }}</textarea></label>
         <div class="bugs-form-actions"><button type="button" class="bug-ghost-button" data-bug-edit-cancel>Cancel</button><button type="submit" class="bugs-primary-button">Save changes</button></div>
       </form>
       {% endif %}
 
       <article class="panel bug-card bug-description">
         <h3>Description</h3>
-        {% if bug.description %}<div class="bug-text">{{ bug.description }}</div>{% else %}<p class="bug-muted">No description.</p>{% endif %}
+        {% if bug.description %}<div class="bug-text">{{ bug.description_html }}</div>{% else %}<p class="bug-muted">No description.</p>{% endif %}
         {{ screenshot_gallery(bug.attachments, user, removable=bug_can_edit) }}
         {% if bug_can_edit %}
         <form class="bug-add-shots" data-bug-shots-form novalidate>
@@ -54,7 +54,7 @@
               <header><strong>{{ entry.username_name }}</strong><time>{{ entry.date }}{% if entry.edited_at %} · edited{% endif %}</time>
                 {% if entry.username | lower == user.username | lower or bug_can_manage %}<span class="bug-comment-actions">{% if entry.username | lower == user.username | lower %}<button type="button" data-bug-comment-edit>Edit</button>{% endif %}<button type="button" data-bug-comment-delete>Delete</button></span>{% endif %}
               </header>
-              {% if entry.body %}<div class="bug-text" data-bug-comment-text>{{ entry.body }}</div>{% endif %}
+              {% if entry.body %}<div class="bug-text" data-bug-comment-text data-raw="{{ entry.body }}">{{ entry.body_html }}</div>{% endif %}
               {{ screenshot_gallery(entry.attachments, user, removable=true) }}
             </div>
           </li>
@@ -62,7 +62,7 @@
           {% endfor %}
         </ol>
         <form class="bug-comment-form" data-bug-comment-form novalidate>
-          <label class="bugs-field">Add a comment<textarea name="body" rows="4" maxlength="20000" placeholder="More details, what you tried, whether it still happens…"></textarea></label>
+          <label class="bugs-field">Add a comment<textarea name="body" rows="5" maxlength="20000" placeholder="{{ bug_text_guide }}"></textarea></label>
           {{ screenshots_zone(bug_max_screenshots, bug_max_screenshot_mb) }}
           <div class="bugs-form-actions"><button type="submit" class="bugs-primary-button">Comment</button></div>
         </form>

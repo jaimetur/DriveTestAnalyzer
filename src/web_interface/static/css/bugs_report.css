@@ -137,7 +137,20 @@
 .bug-side { position: sticky; top: 1rem; }
 .bug-card { display: grid; gap: .8rem; padding: 1rem 1.15rem; border: 1px solid rgba(16, 49, 74, .1); background: #fff; box-shadow: 0 8px 22px rgba(16, 33, 49, .05); }
 .bug-card h3 { margin: 0; color: #10314a; font-size: 1rem; }
-.bug-text { color: #23394a; font-size: .9rem; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+.bug-text { color: #23394a; font-size: .9rem; line-height: 1.55; overflow-wrap: anywhere; }
+.bug-text p { margin: 0 0 .55rem; }
+.bug-text ul { margin: 0 0 .55rem; padding-left: 1.25rem; list-style-type: disc; }
+.bug-text li { margin: .12rem 0; }
+.bug-text li::marker { color: var(--bug-accent); }
+.bug-text li > ul { margin: .1rem 0 .15rem; padding-left: 1.15rem; list-style-type: circle; }
+.bug-text li > ul li > ul { list-style-type: square; }
+.bug-text .bug-text-heading { color: #1e61a3; font-weight: 800; }
+.bug-text p.bug-text-heading { margin: .65rem 0 .2rem; }
+.bug-text .bug-text-divider { display: flex; align-items: center; gap: .6rem; margin: .7rem 0; color: #7b8994; font-size: .76rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.bug-text .bug-text-divider::before, .bug-text .bug-text-divider::after { content: ''; flex: 1; border-top: 1px solid rgba(16, 49, 74, .14); }
+.bug-text .bug-text-divider:empty::after { display: none; }
+.bug-text > :first-child { margin-top: 0; }
+.bug-text > :last-child { margin-bottom: 0; }
 .bug-muted { margin: 0; color: #7b8994; font-size: .86rem; }
 .bug-gallery { display: flex; flex-wrap: wrap; gap: .7rem; }
 .bug-shot { position: relative; display: grid; gap: .25rem; width: 10rem; margin: 0; }

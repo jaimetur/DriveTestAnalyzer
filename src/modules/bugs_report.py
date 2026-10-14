@@ -9,9 +9,12 @@ package merges into another server without duplicating anything.
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from pathlib import PurePosixPath
 from typing import Any, Iterable
+
+from markupsafe import Markup, escape
 
 from src.modules.repository import Repository, local_now_iso
 
@@ -40,6 +43,76 @@ MANAGER_FIELDS = frozenset({'status', 'assigned_to', 'fixed_version'})
 EXPORT_FORMAT = 'drivetest-analyzer-bugs-report'
 EXPORT_VERSION = 1
 ATTACHMENTS_ARCHIVE_DIR = 'bugs-report/attachments'
+
+
+_BULLET = re.compile(r'^[-*·•]\s+')
+_DIVIDER = re.compile(r'^[-=_*]{3,}\s*(.*?)\s*[-=_*]{3,}$|^[-=_*]{3,}$')
+MAX_HEADING_LENGTH = 80
+# How to write a description or a comment, shown in grey while it is empty.
+TEXT_GUIDE = ('Problem:\n- What you did and what happened\n  - A detail, indented under it\nExpected:\n- What should have happened\n\n'
+              'Lines starting with -, * or · are bullets; a line ending with : is a title; other lines are paragraphs.')
+
+
+def rich_text_html(text: object) -> Markup:
+    """A description or comment as its page shows it.
+
+    A line starting with -, *, · or • is a bullet, nested under the bullet above it as deep as it is indented (with
+    spaces or tabs); an indented line without a marker goes on in the bullet above it. A short line ending with a colon
+    is a heading (and a bullet ending with one, a heading of the bullets below it); a line of dashes (----- Text -----)
+    is a divider with its text. Every other line is part of a paragraph, and an empty line ends it.
+    """
+    parts: list[str] = []
+    indents: list[int] = []
+    paragraph: list[str] = []
+
+    def end_paragraph() -> None:
+        if paragraph:
+            parts.append(f"<p>{'<br>'.join(paragraph)}</p>")
+            paragraph.clear()
+
+    def end_lists() -> None:
+        while indents:
+            parts.append('</li></ul>')
+            indents.pop()
+
+    for raw in str(text or '').replace('\r\n', '\n').split('\n'):
+        indent = len(re.match(r'\s*', raw.expandtabs(4)).group(0))
+        line = raw.strip()
+        if not line:
+            end_paragraph()
+            end_lists()
+            continue
+        bullet = _BULLET.match(line)
+        if bullet:
+            end_paragraph()
+            while indents and indent < indents[-1]:
+                parts.append('</li></ul>')
+                indents.pop()
+            if indents and indent == indents[-1]:
+                parts.append('</li>')
+            else:
+                parts.append('<ul>')
+                indents.append(indent)
+            item = line[bullet.end():]
+            content = escape(item)
+            parts.append(f'<li><span class="bug-text-heading">{content}</span>' if item.endswith(':') else f'<li>{content}')
+            continue
+        if indents and indent > 0:
+            parts.append(f'<br>{escape(line)}')
+            continue
+        end_lists()
+        divider = _DIVIDER.match(line)
+        if divider:
+            end_paragraph()
+            parts.append(f'<p class="bug-text-divider">{escape(divider.group(1) or "")}</p>')
+        elif line.endswith(':') and len(line) <= MAX_HEADING_LENGTH:
+            end_paragraph()
+            parts.append(f'<p class="bug-text-heading">{escape(line)}</p>')
+        else:
+            paragraph.append(str(escape(line)))
+    end_paragraph()
+    end_lists()
+    return Markup(''.join(parts))
 
 
 def image_content_type(content: bytes) -> str | None:
