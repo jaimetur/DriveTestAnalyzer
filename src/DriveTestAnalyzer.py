@@ -19946,6 +19946,9 @@ def save_recurring_backup_selection(
         'backup_path': str(storage_path),
     }
     repository.set_application_state(RECURRING_BACKUP_STATE_KEY, json.dumps(config))
+    repository.try_add_log(user.username, 'save_backup_selection', json.dumps({
+        'components': selected_components, 'workspace_ids': selected_workspace_ids, 'backup_path': str(storage_path),
+    }))
     return JSONResponse({'message': 'Backup selection saved.'})
 
 
