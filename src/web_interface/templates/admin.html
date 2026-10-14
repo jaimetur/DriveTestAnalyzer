@@ -239,7 +239,7 @@
             <input class="access-card-description" type="text" name="description" value="{{ profile.description }}" placeholder="Add a description" form="modules-profile-{{ profile.id }}" aria-label="Description of {{ profile.name }}">
           </div>
           <div class="access-card-tools">
-            <label class="access-card-color" title="Colour of the profile, used for it in the Users table"><input type="color" name="color" value="{{ profile.color }}" form="modules-profile-{{ profile.id }}" aria-label="Colour of the profile {{ profile.name }}"></label>
+            <label class="access-card-color" title="Colour of the profile, used for it in the Users table"><input type="color" name="color" value="{{ profile.color }}" form="modules-profile-{{ profile.id }}" aria-label="Colour of the profile {{ profile.name }}" data-no-hex-field></label>
             <button type="button" class="access-default-toggle" data-profile-default data-default-url="/admin/modules-profiles/{{ profile.id }}/default" aria-pressed="{{ 'true' if profile.is_default else 'false' }}" title="The default profile is the one of users without a profile">{% if profile.is_default %}Default{% else %}Make default{% endif %}</button>
             <button type="submit" form="modules-profile-delete-{{ profile.id }}" class="access-card-delete" aria-label="Delete the profile {{ profile.name }}" {% if profile.is_default %}disabled title="The default profile cannot be deleted: make another profile the default first"{% else %}title="Delete profile"{% endif %}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/></svg></button>
           </div>

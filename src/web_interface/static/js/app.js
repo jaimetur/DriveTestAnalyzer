@@ -8401,9 +8401,9 @@ function bindChartMappingForms(root = document) {
 bindChartMappingForms();
 
 // Every colour picker shows its value in hexadecimal beside it: copy it from there,
-// or paste or type a #RRGGBB value to change the colour.
+// or paste or type a #RRGGBB value to change the colour. Compact pickers (data-no-hex-field) leave it out.
 function addColourHexFields(root = document) {
-  root.querySelectorAll('input[type="color"]:not([data-hex-field-ready])').forEach((picker) => {
+  root.querySelectorAll('input[type="color"]:not([data-hex-field-ready]):not([data-no-hex-field])').forEach((picker) => {
     picker.dataset.hexFieldReady = '1';
     const wrapper = document.createElement('span');
     wrapper.className = 'color-hex-field';
