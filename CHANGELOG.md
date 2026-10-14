@@ -29,6 +29,7 @@
 - **Import / Export / Transfer, Datasets Management and Interface Settings:** a new design; Import takes the package dropped on its card or chosen in it, each dataset shows its kind and processing status below its name, and the module labels of Interface Settings turn on and off with a switch.
 - **NQ long texts as bullets:** the Description, Findings, Proposed Measure and the other long texts of a Non-Qualified call read as bullets, nested as deep as each line is indented, with the lines ending with a colon as headings and the lines of dashes as dividers, until a click opens the text to edit it in the font of the page, and an empty one shows a guide in grey with how to write them until you type; the text is saved as written.
 - **NQ Excel header shades:** in the Excel export of Non-Qualified Calls every field of a section has the same shade, also those from the CDR, the Ericsson RCA or derived (such as Status Set, Session Type or Last Cell ID); and the status of each block and the fields read most stand out darker than their section: the Selected Root Category and Root Cause, the Failure Comment, the Comments, the Description, Findings and Proposed Measure (these three in wider columns), and the JOIN_ID and Call Key.
+- **Scoring tables with KPI values:** with **Show KPI values**, the **KPI Value** and **Score** column groups of the Scoring tables have their own header colours (slate blue and teal), the KPI values a light blue background, and thick lines delimit both blocks.
 
 #### 🐛 Bug fixes:
 - **PPT Dashboards background charts after changing workspace:** the charts of the Dashboards of a closed workspace wait until it is opened again, instead of being retried continuously while the application is idle and holding back the charts of the Dashboards of the open workspace.
@@ -112,7 +113,6 @@
 - **Progress periods:** the Progress View of Non-Qualified Calls shows the calls per month by default, and the Progress Status of a new Non-Qualified Calls artifact of the Reporting Jobs per week.
 - **Merge teams:** in **Statuses & Teams** of Non-Qualified Calls, a team can be merged into another one (⤳ Merge into…): on Save its calls and members move to that team and it is removed.
 - **Core and RF domains:** the root cause domain Core 2G/4G/5G of Non-Qualified Calls is now **Core**, also in existing workspaces with their calls and filters, and RF, the most frequent root domain, is blue instead of red (unless a workspace chose another colour).
-- **Scoring tables with KPI values:** with **Show KPI values**, the **KPI Value** and **Score** column groups of the Scoring tables have their own header colours (slate blue and teal), the KPI values a light blue background, and thick lines delimit both blocks.
 
 #### 🐛 Bug fixes:
 - **Job Editor drafts:** reloading the Reporting page no longer reopens the unsaved values of a job that changed on the server since then (imported, transferred, saved from another browser or renamed in the Maps), which could show old filters such as an Operator with its former name; its saved version opens instead.
