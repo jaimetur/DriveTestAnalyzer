@@ -393,6 +393,29 @@ def test_tracking_document_carries_the_analysis_center(client, tmp_path):
     assert nq.list_sections(core.repository)[0]['label'] == 'Overview'
 
 
+def test_tracking_documents_find_their_calls_by_join_id(client, tmp_path):
+    calls = setup_calls(client, tmp_path)
+    key = calls['0xA1']['call_key']
+    patch(client, calls['0xA1'], {'team': 'Netcheck', 'fields': {'analyst': 'Anudeep'}})
+    assert client.post(f'/api/non-qualified-calls/calls/{key}/comments', json={'body': 'Checked'}).status_code == 200
+    document = nq.export_tracking_document(core.repository).decode('utf-8')
+    # Each call travels with its JOIN_ID and service.
+    assert {'call_key': key, 'service': 'voice', 'join_id': '0xA1'} in json.loads(document)['calls']
+    # A document whose keys were computed otherwise (a former version) still finds the call by its JOIN_ID.
+    former = document.replace(key, 'feedfacefeedfacefeedface')
+    with core.repository.connection() as connection:
+        for table in (nq.NQ_CALL_TRACKING_TABLE, nq.NQ_CALL_COMMENTS_TABLE, nq.NQ_CALL_HISTORY_TABLE, nq.NQ_FIELD_VALUES_TABLE):
+            connection.execute(f'DELETE FROM {table}')
+    assert nq.import_tracking_document(core.repository, former) == 1
+    detail = client.get(f'/api/non-qualified-calls/calls/{key}').json()
+    assert detail['call']['team'] == 'Netcheck' and detail['call']['fields']['analyst'] == 'Anudeep'
+    assert [comment['body'] for comment in detail['comments']] == ['Checked'] and detail['history']
+    # A call without a JOIN_ID keeps its key, and so does a Speech sample with the key of its JOIN_ID and sample.
+    assert nq._document_call_keys([{'call_key': 'abc', 'service': 'voice', 'join_id': ''}]) == {}
+    sample = nq.sample_key_for(nq.call_key_for('speech', {}, join_id='0xS1'), '7')
+    assert nq._document_call_keys([{'call_key': 'abc', 'service': 'speech', 'join_id': '0xS1', 'sample_id': '7'}]) == {'abc': sample}
+
+
 def test_first_version_workspaces_move_to_the_analysis_center(client, tmp_path):
     enable_module()
     add_cdr(tmp_path, 'UK_Voice_Q3.xlsx', 'voice', calls_frame())

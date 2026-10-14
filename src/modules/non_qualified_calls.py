@@ -6192,8 +6192,39 @@ def history_label(field: str, definitions: list[dict[str, Any]]) -> str:
 # ---------------------------------------------------------------------------
 # Portability: export, import, transfers and backups
 # ---------------------------------------------------------------------------
+def _call_identities(connection: Any, keys: set[str]) -> list[dict[str, str]]:
+    """The JOIN_ID and service of each call (and the sample of each Speech sample) among ``keys``: what its key is
+    computed from, so a document finds its calls whatever way the keys are computed."""
+    identities: dict[str, dict[str, str]] = {}
+    for row in connection.execute(
+            f"SELECT call_key, sample_key, sample_id, service, join_id FROM {NQ_CALLS_TABLE} WHERE join_id <> '' ORDER BY rowid"):
+        if str(row['call_key']) in keys:
+            identities.setdefault(str(row['call_key']), {'call_key': str(row['call_key']), 'service': str(row['service']),
+                                                         'join_id': str(row['join_id'])})
+        if row['sample_key'] and str(row['sample_key']) in keys:
+            identities.setdefault(str(row['sample_key']), {'call_key': str(row['sample_key']), 'service': str(row['service']),
+                                                           'join_id': str(row['join_id']), 'sample_id': str(row['sample_id'])})
+    return sorted(identities.values(), key=lambda item: item['call_key'])
+
+
+def _document_call_keys(calls: list[dict[str, Any]]) -> dict[str, str]:
+    """The key of each call of a document as this version computes it from its JOIN_ID, when it differs."""
+    keys = {}
+    for item in calls:
+        key, service, join_id = _text(item.get('call_key')), _text(item.get('service')), _text(item.get('join_id'))
+        if not key or not join_id or service not in SERVICE_LABELS:
+            continue
+        current = call_key_for(service, {}, join_id=join_id)
+        if _text(item.get('sample_id')):
+            current = sample_key_for(current, _text(item.get('sample_id')))
+        if current != key:
+            keys[key] = current
+    return keys
+
+
 def export_tracking_document(task_repository: Any) -> bytes:
-    """The statuses, teams, follow-up, comments and history of a workspace."""
+    """The statuses, teams, follow-up, comments and history of a workspace, with the JOIN_ID and service of each
+    call (``calls``) to find it again whatever way its key is computed."""
     ensure_nq_tables(task_repository)
     with task_repository.connection() as connection:
         tracking = [dict(row) for row in connection.execute(
@@ -6210,8 +6241,9 @@ def export_tracking_document(task_repository: Any) -> bytes:
         values = [dict(row) for row in connection.execute(
             f"SELECT call_key, field_key, value, updated_by, updated_at FROM {NQ_FIELD_VALUES_TABLE} "
             "ORDER BY call_key, field_key")]
+        calls = _call_identities(connection, {str(item['call_key']) for item in (*tracking, *comments, *history, *values)})
     document = {
-        'format': TRACKING_FORMAT, 'version': TRACKING_FORMAT_VERSION, **_configuration(task_repository),
+        'format': TRACKING_FORMAT, 'version': TRACKING_FORMAT_VERSION, **_configuration(task_repository), 'calls': calls,
         'tracking': tracking, 'comments': comments, 'history': history, 'field_values': values, 'rca_results': rca_results,
     }
     return json.dumps(document, ensure_ascii=False, indent=2).encode('utf-8')
@@ -6350,7 +6382,8 @@ def import_tracking_document(task_repository: Any, payload: bytes | str) -> int:
     Missing statuses, teams, fields, list values and root cause catalog entries are added, the
     sections and status rules of the document are taken, newer follow-up replaces older follow-up,
     and comments, history entries and RCA results are added once, so importing the same document
-    again changes nothing.
+    again changes nothing. The calls with a JOIN_ID take the key this version computes from it (``calls``),
+    so a document whose keys were computed otherwise still finds them; the others keep their key.
     """
     document = json.loads(payload.decode('utf-8') if isinstance(payload, bytes) else payload)
     if not isinstance(document, dict) or document.get('format') != TRACKING_FORMAT:
@@ -6367,11 +6400,13 @@ def import_tracking_document(task_repository: Any, payload: bytes | str) -> int:
 
     tracking, comments, history = records('tracking'), records('comments'), records('history')
     value_records, rca_records = records('field_values'), records('rca_results')
+    rekeyed = _document_call_keys(records('calls'))
+    key_of = lambda item: (lambda key: rekeyed.get(key, key))(_text(item.get('call_key')))
     touched: set[str] = set()
     _merge_configuration(task_repository, document)
     with task_repository.connection() as connection:
         for item in tracking:
-            call_key = _text(item.get('call_key'))
+            call_key = key_of(item)
             if not call_key:
                 continue
             existing = connection.execute(
@@ -6390,7 +6425,7 @@ def import_tracking_document(task_repository: Any, payload: bytes | str) -> int:
             )
             touched.add(call_key)
         for item in comments:
-            uid, call_key, body = _text(item.get('uid')), _text(item.get('call_key')), str(item.get('body') or '')
+            uid, call_key, body = _text(item.get('uid')), key_of(item), str(item.get('body') or '')
             if not uid or not call_key or not body:
                 continue
             existing = connection.execute(
@@ -6411,7 +6446,7 @@ def import_tracking_document(task_repository: Any, payload: bytes | str) -> int:
                 )
                 touched.add(call_key)
         for item in history:
-            uid, call_key = _text(item.get('uid')), _text(item.get('call_key'))
+            uid, call_key = _text(item.get('uid')), key_of(item)
             if not uid or not call_key:
                 continue
             connection.execute(
@@ -6421,7 +6456,7 @@ def import_tracking_document(task_repository: Any, payload: bytes | str) -> int:
                  _text(item.get('changed_by')) or 'import', _text(item.get('changed_at'))),
             )
         for item in value_records:
-            call_key, field_key = _text(item.get('call_key')), _text(item.get('field_key'))
+            call_key, field_key = key_of(item), _text(item.get('field_key'))
             if not call_key or not field_key:
                 continue
             existing = connection.execute(
