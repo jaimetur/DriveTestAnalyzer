@@ -7059,8 +7059,12 @@ def restore_database_backup(
     archive_path: Path, components: Iterable[str],
     progress_callback: Callable[[str, int, int], None] | None = None,
     importing_user: str = 'import',
+    workspace_names: Iterable[str] | None = None,
 ) -> None:
-    """Restore selected backup parts after the UI has confirmed overwriting data."""
+    """Restore selected backup parts after the UI has confirmed overwriting data.
+
+    The workspace content is restored in the workspaces of ``workspace_names`` (every one of the backup when omitted).
+    """
     manifest = read_import_manifest(archive_path)
     is_database_backup = manifest.get('kind') == 'database-backup' or manifest.get('format') == 'database-backup'
     if not is_database_backup:
@@ -7077,7 +7081,11 @@ def restore_database_backup(
         staging = Path(temporary_dir)
         names = [member.filename for member in archive.infolist() if not member.is_dir()]
         name_set = set(names)
-        workspaces_by_name = {workspace.name: workspace for workspace in workspace_registry.list()}
+        chosen_workspaces = None if workspace_names is None else set(workspace_names)
+        workspaces_by_name = {
+            workspace.name: workspace for workspace in workspace_registry.list()
+            if chosen_workspaces is None or workspace.name in chosen_workspaces
+        }
         total_steps = int('app_database' in selected) + int('users_access' in selected)
         for workspace_name in workspaces_by_name:
             prefix = f'workspaces/{workspace_name}/'
@@ -7265,7 +7273,9 @@ def restore_database_backup(
         _clear_chart_preview_caches()
 
 
-def start_manual_database_restore(archive_path: Path, components: Iterable[str], username: str) -> dict[str, Any]:
+def start_manual_database_restore(
+    archive_path: Path, components: Iterable[str], username: str, workspace_names: Iterable[str] | None = None,
+) -> dict[str, Any]:
     """Start a tracked restore so Admin remains responsive while files are replaced."""
     job_id = uuid4().hex
     job = {'id': job_id, 'owner': username, 'status': 'queued', 'message': 'Waiting to restore backup', 'progress': 0,
@@ -7291,7 +7301,7 @@ def start_manual_database_restore(archive_path: Path, components: Iterable[str],
                 with MANUAL_RESTORE_JOBS_LOCK:
                     job.update(message=message, progress=min(99, round(completed * 100 / total, 1)) if total else 0)
 
-            restore_database_backup(archive_path, components, report_progress, importing_user=username)
+            restore_database_backup(archive_path, components, report_progress, importing_user=username, workspace_names=workspace_names)
             with MANUAL_RESTORE_JOBS_LOCK:
                 job.update(status='ready', message='Backup restored', progress=100, finished_at=datetime.now(timezone.utc).timestamp())
             repository.try_add_log(username, 'manual_database_restore_completed', json.dumps({'job_id': job_id}))
@@ -10646,6 +10656,7 @@ def render_admin_template(
         'modules_profiles': 'Modules Profiles',
         'workspace_groups': 'Workspace Groups',
         'workspace_group_members': 'Workspace Group Members',
+        'application_sessions': 'Application Sessions',
         'report_tasks': 'Report Tasks',
         'map_area_layers': 'Map Area Layers',
         'map_area_fills': 'Map Area Fills',
@@ -10676,10 +10687,13 @@ def render_admin_template(
                 'name': table_name,
                 'label': friendly_tables.get(table_name, table_name),
             })
-    database_table_groups['Individual Datasets'].sort(
-        key=lambda table: table['dataset_id'],
-        reverse=True,
-    )
+    dataset_kinds = {int(dataset['id']): str(dataset.get('dataset_kind') or '') for dataset in admin_datasets}
+    for group_name, tables in database_table_groups.items():
+        for table in tables:
+            kind = dataset_kinds.get(int(table['dataset_id']), '') if 'dataset_id' in table else ''
+            table['type'], table['color'] = database_table_type(table['name'], kind)
+        order = [name for name, _color in DATABASE_TABLE_TYPES]
+        tables.sort(key=lambda table: (order.index(table['type']), -int(table.get('dataset_id', 0)), str(table['label']).casefold()))
     export_options = [
         {'value': 'config', 'label': 'Application Config'},
         {'value': 'users-access', 'label': 'Users & Access'},
@@ -10768,6 +10782,8 @@ def render_admin_template(
             'vendor_mapping_error': request.query_params.get('vendor_mapping_error') or None,
             **spectrum_holdings_context(request),
             'recurring_backup': recurring_backup_settings(),
+            # Until a selection is saved, every workspace is offered selected.
+            'recurring_backup_saved': repository.get_application_state(RECURRING_BACKUP_STATE_KEY) is not None,
             'recurring_backup_status': recurring_backup_status(recurring_backup_settings()),
             'database_notice': database_notice,
             'backup_notice': backup_notice,
@@ -12734,6 +12750,46 @@ def workspace_access_map(user: SessionUser, workspaces: list[Workspace]) -> dict
     if user.role == 'super-admin':
         return {workspace.id: True for workspace in workspaces}
     return {workspace.id: repository.user_has_workspace_access(user.username, workspace.id) for workspace in workspaces}
+
+
+# The kinds of tables of the Database Viewer, in the order it lists them within each group, with their colour.
+DATABASE_TABLE_TYPES: tuple[tuple[str, str], ...] = (
+    ('Users & Access', '#6B46C1'), ('Application', '#48606F'), ('Datasets', '#1F6FBF'), ('Dashboards & Templates', '#7751B9'),
+    ('Scoring & GAP Analysis', '#176E77'), ('Non-Qualified Calls', '#B0234F'), ('Reporting', '#2E8C58'),
+    ('Mappings & Maps', '#B85B20'), ('Query Builder', '#8A6D0B'), ('Workspace', '#5A6773'),
+    ('Voice CDRs', '#1F6FBF'), ('Data CDRs', '#2E8C58'), ('Speech CDRs', '#7751B9'), ('Other datasets', '#5A6773'),
+)
+
+
+def database_table_type(table_name: str, dataset_kind: str = '') -> tuple[str, str]:
+    """The kind of a table of the Database Viewer and its colour; ``dataset_kind`` is that of an individual dataset."""
+    colors = dict(DATABASE_TABLE_TYPES)
+    name = table_name.casefold()
+    kind = (dataset_kind or (re.fullmatch(r'reporting_rows_(data|voice|speech)', name) or [None, ''])[1]).casefold()
+    if name.startswith(('dataset_rows_', 'reporting_rows_')):
+        kind_type = {'voice': 'Voice CDRs', 'data': 'Data CDRs', 'speech': 'Speech CDRs'}.get(kind, 'Other datasets')
+        return kind_type, colors[kind_type]
+    if name in {'users', 'modules_profiles', 'workspace_groups', 'workspace_group_members', 'application_sessions'}:
+        kind_type = 'Users & Access'
+    elif name in {'application_state', 'transfer_offers', WORKSPACE_REGISTRY_TABLE.casefold()}:
+        kind_type = 'Application'
+    elif name.startswith('nq_'):
+        kind_type = 'Non-Qualified Calls'
+    elif name.startswith(('scoring_', 'saved_filters')):
+        kind_type = 'Scoring & GAP Analysis'
+    elif name.startswith('report_task'):
+        kind_type = 'Reporting'
+    elif name.startswith(('dashboard_', 'report_templates', 'generated_jobs')):
+        kind_type = 'Dashboards & Templates'
+    elif name.startswith(('dataset', 'cdr_', 'autocalculated')):
+        kind_type = 'Datasets'
+    elif name in {'chart_mapping_groups', 'operator_mappings', 'vendor_mappings'} or name.startswith('map_area'):
+        kind_type = 'Mappings & Maps'
+    elif name == 'saved_query_builder_queries':
+        kind_type = 'Query Builder'
+    else:
+        kind_type = 'Workspace'
+    return kind_type, colors[kind_type]
 
 
 def admin_user_rows() -> list[dict[str, Any]]:
@@ -19868,12 +19924,13 @@ def save_recurring_backup_selection(
     backup_path: str = Form(''),
     user: SessionUser = Depends(admin_user),
 ) -> JSONResponse:
-    """Persist immediate Backup panel choices without modifying scheduler timing."""
+    """Persist immediate Backup panel choices without modifying scheduler timing.
+
+    The selection is kept as chosen: Workspace Content without a workspace is left out of the backups, as the panel explains.
+    """
     selected_components = backup_components(components)
     allowed_workspace_ids = {workspace.id for workspace in accessible_workspaces(user)}
     selected_workspace_ids = list(dict.fromkeys(item for item in backup_workspace_ids(components, workspace_ids) if item in allowed_workspace_ids))
-    if any(item in selected_components for item in WORKSPACE_ARCHIVE_COMPONENTS) and not selected_workspace_ids:
-        raise HTTPException(status_code=400, detail='Select at least one accessible workspace for the selected backup content.')
     if enabled and not selected_components:
         raise HTTPException(status_code=400, detail='Select at least one backup component.')
     storage_path = recurring_backup_path({'backup_path': backup_path.strip() or str(application_data_dir / 'scheduled-backups')})
@@ -19962,7 +20019,13 @@ def backup_status(user: SessionUser = Depends(admin_user)) -> JSONResponse:
 @app.post('/api/admin/backup-files/inspect')
 def inspect_backup_file(backup_path: str = Form(''), backup_file: str = Form(''), user: SessionUser = Depends(admin_user)) -> JSONResponse:
     archive_path = _backup_archive_file(backup_path, backup_file)
-    return JSONResponse({'components': _backup_archive_components(archive_path), 'workspaces': _backup_archive_workspaces(archive_path)})
+    workspaces = _backup_archive_workspaces(archive_path)
+    server_workspaces = {workspace.name for workspace in workspace_registry.list()}
+    return JSONResponse({
+        'components': _backup_archive_components(archive_path), 'workspaces': workspaces,
+        # Workspace content is restored only in workspaces of the same name on this server.
+        'missing_workspaces': [name for name in workspaces if name not in server_workspaces],
+    })
 
 
 @app.post('/admin/database/backups/restore')
@@ -19971,6 +20034,7 @@ def run_manual_database_restore(
     backup_path: str = Form(''),
     backup_file: str = Form(''),
     components: list[str] = Form(default=[]),
+    workspaces: list[str] | None = Form(default=None),
     user: SessionUser = Depends(admin_user),
 ) -> Response:
     archive_path = _backup_archive_file(backup_path, backup_file)
@@ -19978,8 +20042,16 @@ def run_manual_database_restore(
     present = _backup_archive_components(archive_path)
     if not selected or not set(selected) <= set(present):
         raise HTTPException(status_code=400, detail='Select only components contained in the backup.')
-    job = start_manual_database_restore(archive_path, selected, user.username)
-    repository.add_log(user.username, 'start_manual_database_restore', json.dumps({'job_id': job['id'], 'backup_file': archive_path.name, 'components': selected}))
+    # The workspaces of the backup to restore; every one of them when none is sent.
+    workspace_names = None
+    if workspaces is not None:
+        workspace_names = [name for name in dict.fromkeys(workspaces) if name in _backup_archive_workspaces(archive_path)]
+        if any(item in WORKSPACE_ARCHIVE_COMPONENTS for item in selected) and not workspace_names:
+            raise HTTPException(status_code=400, detail='Select at least one workspace of the backup for the selected Workspace Content.')
+    job = start_manual_database_restore(archive_path, selected, user.username, workspace_names)
+    repository.add_log(user.username, 'start_manual_database_restore', json.dumps({
+        'job_id': job['id'], 'backup_file': archive_path.name, 'components': selected, 'workspaces': workspace_names,
+    }))
     return JSONResponse({'job_id': job['id'], 'message': 'The restore is running in the background and appears in the floating background-task card.'})
 
 

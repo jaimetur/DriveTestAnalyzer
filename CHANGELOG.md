@@ -23,10 +23,13 @@
 - **Request Access:** a new design in three steps (the account, its Workspaces and its Modules Profile) with the Workspace Groups and Modules Profiles as tiles with their descriptions, workspaces and modules; it also asks for the first and last name of the user, sent in the activation email.
 - **NQ assignees by name:** Non-Qualified Calls shows each assignee by the first and last name of the account (its username when it has none) in the table, the call, the bulk bar, the Assignee filter, the Progress View and Analysts → Asignees, whose lists start with the default users (super, admin and demo), tagged default user and apart from the others.
 - **NQ Call Tracking by JOIN_ID:** the NQ Call Tracking packages of Import / Export / Transfer and the backups carry the `JOIN_ID` and service of each call, and their import finds the calls that have one by it, so a package still finds its calls when the identity of the calls is computed otherwise.
+- **Backup Protection:** a new design with the stored backups, their size and the last and next backup above the Back up now, Restore and Scheduled backups cards; the content, workspaces and folder chosen are saved as they change for the next backups, scheduled ones included, and Restore chooses the workspaces of the backup to restore besides its parts.
+- **Database Viewer:** a new design whose Table picker lists the tables of each group by kind (Users & Access, Application, Datasets, Dashboards & Templates, Scoring & GAP Analysis, Non-Qualified Calls, Reporting, Mappings & Maps, Query Builder, Workspace and the CDRs of each type), each in its colour, with a search.
 
 #### 🐛 Bug fixes:
 - **PPT Dashboards background charts after changing workspace:** the charts of the Dashboards of a closed workspace wait until it is opened again, instead of being retried continuously while the application is idle and holding back the charts of the Dashboards of the open workspace.
 - **NQ Analysis Configuration menu under the Filters:** the menu opens above the Filters panel instead of under it when a filter list is open, and opening it closes that list.
+- **Backup file of Restore:** the backup file chosen in Restore stays chosen when the list of backups refreshes, every few seconds.
 
 #### 📚 Documentation:
 

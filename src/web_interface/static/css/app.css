@@ -4843,7 +4843,11 @@ body:has(> .unassigned-values-card:not([hidden], .is-collapsed)) { padding-botto
 .admin-stack .backup-protection .database-backup-components .multiselect-trigger:hover:not(:disabled), .admin-stack .backup-protection .database-backup-components .multiselect-trigger:focus-visible { border-color: var(--backup-accent); background: #fff; }
 .admin-stack .backup-protection .database-backup-path-picker button { padding: .5rem .9rem; border: 1px solid rgba(16, 49, 74, .18); border-radius: 12px; background: #f3f6f8; color: #34495a; }
 .admin-stack .backup-protection .database-backup-path-picker button:hover:not(:disabled), .admin-stack .backup-protection .database-backup-path-picker button:focus-visible { border-color: var(--backup-accent); background: color-mix(in srgb, var(--backup-accent) 10%, #fff); color: var(--backup-accent); }
-.backup-card-actions { display: flex; justify-content: flex-end; margin-top: auto; padding-top: .2rem; }
+.backup-card-actions { display: flex; align-items: center; justify-content: flex-end; gap: .8rem; margin-top: auto; padding-top: .2rem; }
+.backup-selection-saved { margin-right: auto; color: #226849; font-size: .78rem; font-weight: 700; }
+.backup-selection-saved[data-state="saved"]::before { content: '✓ '; }
+.backup-selection-saved[data-state="pending"] { color: #7b8994; }
+.backup-selection-saved[data-state="error"] { color: #a12b2f; }
 .admin-stack .backup-protection .backup-card-actions button, .admin-stack .backup-protection .backup-schedule-save { min-height: 0; padding: .6rem 1.3rem; border: 0; border-radius: 999px; background: var(--backup-accent); box-shadow: 0 8px 18px color-mix(in srgb, var(--backup-accent) 28%, transparent); color: #fff; font-size: .86rem; font-weight: 700; }
 .admin-stack .backup-protection .backup-card-actions button:hover, .admin-stack .backup-protection .backup-schedule-save:hover { filter: brightness(.92); }
 .admin-stack .backup-protection .backup-selection-summary, .admin-stack .backup-protection .backup-selection-warning { margin: 0; font-size: .8rem; }
@@ -4861,8 +4865,8 @@ body:has(> .unassigned-values-card:not([hidden], .is-collapsed)) { padding-botto
 }
 
 /* Database Viewer: the same look as Backup Protection, with a quiet data table. */
-.admin-stack .database-view-subpanel.database-viewer { gap: .9rem; padding: 1.15rem; border: 1px solid rgba(16, 49, 74, .1); border-radius: 18px; background: #fbfcfd; }
-.database-viewer-icon { background: #eaf2fb; color: #1e61a3; }
+.admin-stack .database-view-subpanel.database-viewer { gap: .9rem; padding: 1.15rem; border: 1px solid rgba(16, 49, 74, .1); border-radius: 18px; background: #fbfcfd; box-shadow: inset 0 4px 0 #c2621c; }
+.database-viewer-icon { background: #fbede3; color: #c2621c; }
 .admin-stack .database-viewer .database-view-toolbar { align-items: end; gap: .7rem; padding: .8rem .9rem; border: 1px solid rgba(16, 49, 74, .1); border-radius: 14px; background: #fff; }
 .admin-stack .database-viewer .database-view-toolbar label { flex: 1 1 22rem; color: #48606f; font-size: .78rem; }
 .admin-stack .database-viewer .database-view-toolbar select { width: 100%; min-height: 2.45rem; padding: .5rem .75rem; border: 1px solid rgba(16, 49, 74, .18); border-radius: 12px; background: #fff; color: #10314a; font-size: .88rem; font-weight: 600; }
@@ -4892,3 +4896,32 @@ body:has(> .unassigned-values-card:not([hidden], .is-collapsed)) { padding-botto
 .admin-stack .database-viewer .database-clear-filters-button:disabled { color: #a7b3bc; }
 .admin-stack .database-viewer .database-cleanup-button { border: 1px solid #e3c27a; background: #fdf6e3; color: #85600f; }
 .admin-stack .database-viewer .database-cleanup-button:hover:not(:disabled) { background: #f9e9bf; color: #6d4e0b; }
+/* The table picker of the Database Viewer: groups of tables, each kind of table in its colour. */
+.database-table-field { display: grid; flex: 1 1 22rem; gap: .32rem; min-width: 0; }
+.database-table-field-label { color: #48606f; font-size: .78rem; font-weight: 700; }
+.database-table-picker { position: relative; min-width: 0; }
+.admin-stack .database-table-picker-trigger { display: flex; align-items: center; gap: .6rem; width: 100%; min-height: 2.45rem; padding: .45rem .8rem; border: 1px solid rgba(16, 49, 74, .18); border-radius: 12px; background: #fff; box-shadow: none; color: #7b8994; font-size: .88rem; font-weight: 600; text-align: left; cursor: pointer; }
+.admin-stack .database-table-picker-trigger:hover:not(:disabled), .admin-stack .database-table-picker-trigger[aria-expanded="true"] { border-color: #1e61a3; background: #f5f9fd; }
+.admin-stack .database-table-picker-trigger.has-value { color: #10314a; }
+.database-table-picker-dot { flex: 0 0 auto; width: .65rem; height: .65rem; border-radius: 50%; background: var(--table-color, transparent); }
+.database-table-picker-trigger:not(.has-value) .database-table-picker-dot { display: none; }
+.database-table-picker-value { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.database-table-picker-type { flex: 0 0 auto; padding: .1rem .55rem; border-radius: 999px; background: color-mix(in srgb, var(--table-color, #5A6773) 12%, #fff); color: var(--table-color, #5A6773); font-size: .72rem; font-weight: 700; }
+.database-table-picker-type:empty { display: none; }
+.database-table-picker-trigger .workspace-user-picker-chevron { border-color: #607585; }
+/* Open, the menu is moved to the page body (the panel blurs its backdrop and hides its overflow) and placed at the trigger. */
+.database-table-picker-menu { position: fixed; z-index: 60; box-sizing: border-box; display: grid; align-content: start; gap: .5rem; max-height: min(32rem, 70vh); overflow: auto; padding: .7rem; border: 1px solid rgba(16, 49, 74, .14); border-radius: 16px; background: #fff; box-shadow: 0 24px 50px rgba(16, 33, 49, .2); }
+.database-table-picker-menu[hidden] { display: none; }
+.database-table-picker-menu .database-table-picker-search { box-sizing: border-box; width: 100%; min-height: 2.3rem; padding: .45rem .75rem; border: 1px solid rgba(16, 49, 74, .18); border-radius: 10px; background: #f7f9fb; color: #10314a; font-size: .86rem; }
+.database-table-picker-groups { display: grid; gap: .7rem; }
+.database-table-picker-group { display: grid; gap: .45rem; }
+.database-table-picker-group[hidden], .database-table-picker-kind[hidden] { display: none; }
+.database-table-picker-group-title { margin: 0; padding-bottom: .3rem; border-bottom: 1px solid rgba(16, 49, 74, .1); color: #10314a; font-size: .74rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.database-table-picker-kind { display: grid; gap: .3rem; padding-left: .6rem; border-left: 3px solid var(--table-color, #5A6773); }
+.database-table-picker-kind-title { margin: 0; color: var(--table-color, #5A6773); font-size: .72rem; font-weight: 800; }
+.database-table-picker-items { display: flex; flex-wrap: wrap; gap: .3rem; }
+.database-table-picker-menu .database-table-picker-item { min-height: 0; padding: .28rem .65rem; border: 1px solid color-mix(in srgb, var(--table-color, #5A6773) 30%, #fff); border-radius: 999px; background: color-mix(in srgb, var(--table-color, #5A6773) 7%, #fff); box-shadow: none; color: #10314a; font-size: .78rem; font-weight: 600; text-align: left; cursor: pointer; }
+.database-table-picker-menu .database-table-picker-item:hover:not(:disabled), .database-table-picker-menu .database-table-picker-item:focus-visible { border-color: var(--table-color, #5A6773); background: color-mix(in srgb, var(--table-color, #5A6773) 16%, #fff); }
+.database-table-picker-menu .database-table-picker-item[aria-selected="true"], .database-table-picker-menu .database-table-picker-item[aria-selected="true"]:hover:not(:disabled) { border-color: var(--table-color, #5A6773); background: var(--table-color, #5A6773); color: #fff; }
+.database-table-picker-item[hidden] { display: none; }
+.database-backup-restore-selection .restore-component-group h4 small { font-size: .74rem; font-weight: 600; letter-spacing: 0; text-transform: none; opacity: .75; }

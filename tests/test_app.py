@@ -7174,6 +7174,32 @@ def test_main_cities_backup_supports_selective_restore(client, tmp_path: Path) -
     assert 'Main Cities restored' in progress_steps[-1][0]
 
 
+def test_backup_restore_keeps_the_workspaces_left_out(client) -> None:
+    import src.DriveTestAnalyzer as app_module
+
+    login(client)
+    app_module.repository.set_main_cities(['London'])
+    archive_path = app_module.create_recurring_database_backup({
+        'components': ['main_cities'],
+        'backup_path': str(app_module.application_data_dir / 'scheduled-backups'),
+        'max_backups': 30,
+        'workspace_ids': ['default'],
+    })
+    app_module.repository.set_main_cities(['Cardiff'])
+
+    app_module.restore_database_backup(archive_path, ['main_cities'], workspace_names=[])
+    assert app_module.repository.list_main_cities() == ['Cardiff']
+    response = client.post('/admin/database/backups/restore', data={
+        'backup_path': str(archive_path.parent), 'backup_file': archive_path.name,
+        'components': ['main_cities'], 'workspaces': ['Missing'],
+    })
+    assert response.status_code == 400
+    assert 'Select at least one workspace' in response.json()['detail']
+
+    app_module.restore_database_backup(archive_path, ['main_cities'], workspace_names=['Default'])
+    assert app_module.repository.list_main_cities() == ['London']
+
+
 def test_login_and_admin_remain_available_after_closing_the_active_workspace(client) -> None:
     import src.DriveTestAnalyzer as app_module
 

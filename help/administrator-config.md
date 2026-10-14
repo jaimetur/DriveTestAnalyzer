@@ -188,9 +188,9 @@ Database Management has two clearly separated subsections: **Backup Protection**
 > [!IMPORTANT]
 > **Server-visible backup folders.** The folder picker shows storage visible to the server or container, not folders on the browser computer.
 
-**Admin → Database Management → Backup Protection** separates **On demand backup** from **Scheduled backups**. On demand backup contains side-by-side **Backup** and **Restore** panels.
+**Admin → Database Management → Backup Protection** shows the stored backups, their total size, the last successful backup and the next scheduled one above three cards: **Back up now**, **Restore** and **Scheduled backups**.
 
-In **Backup**, select one or more content types:
+In **Back up now**, select in **Backup content** one or more content types and the workspaces they apply to:
 
 - **Configuration Content: Application database** stores the shared application configuration, including the Scoring aggregation hierarchy, the users, Modules Profiles and Workspace Groups.
 - **Configuration Content: Users & Access** stores one JSON file with the users, Modules Profiles and Workspace Groups; restore merges it like an import of [Users & Access](#export-targets), so the other users and settings are kept.
@@ -208,21 +208,21 @@ In **Backup**, select one or more content types:
 
 Application database, Workspace Database, Dashboards, PPT Templates, Main Cities, Mappings & Reference Data, Scoring & GAP Analysis Configuration and Auto-calculated Fields are selected by default. Main Cities precedes Mappings & Reference Data in Export and Backup/Restore component lists.
 
-The Backup content menu expands beyond the selector on desktop to show descriptions and wraps long text within the available width, including on mobile. Input and Output are opt-in. Selecting any workspace content reveals **Workspaces to include**, containing only workspaces you can access.
+The Backup content menu expands beyond the selector on desktop to show descriptions and wraps long text within the available width, including on mobile. Input and Output are opt-in. Its **Workspaces** group lists only the workspaces you can access: the Workspace Content options apply to the selected ones and are left out of the backup when none is selected.
 
 Dashboard, template and mapping JSON/CSV files use dedicated paths below `workspaces/<workspace name>/` in Backup and Export ZIPs; these portable paths are independent from the application's internal workspace folder name. Use **Backup folder** and **Browse** to choose the server-visible destination, then use **Backup Now** to create a ZIP in the background from the current content and workspace selection.
 
-Content, workspace and folder selections are saved for the scheduler without enabling it; the job appears in the floating background-task card and keeps the Admin panel in place.
+The content, workspaces and folder chosen are saved as soon as they change, and the card confirms **Saved for the next backups**: the next backups, scheduled ones included, use them without enabling the schedule or pressing **Save scheduler settings**, which saves the timing of the schedule. The backup job appears in the floating background-task card and keeps the Admin panel in place.
 
-In **Restore**, choose a server-visible **Backup folder** and one of its ZIP files. The application reads the selected backup's manifest to detect its granular content and affected workspace names, with a structural fallback for older ZIPs, then shows a structured overwrite confirmation grouped into **Configuration Content** and **Workspace Content**.
+In **Restore**, choose a server-visible **Backup folder** and one of its ZIP files. The application reads the selected backup's manifest to detect its granular content and affected workspace names, with a structural fallback for older ZIPs, then shows a structured overwrite confirmation grouped into **Configuration Content**, **Workspaces** and **Workspace Content**.
 
-Choose the individual parts to restore only after reviewing that existing data will be replaced. Restore work also runs in the floating background-task card. The ZIP selector refreshes after an immediate backup and periodically while Admin remains open, so completed scheduled backups appear without a page reload.
+Choose the parts and the workspaces of the backup to restore only after reviewing that existing data will be replaced. The Workspace Content is restored only in the selected workspaces, which must exist on this server with the same name (the others are listed as *not on this server*); the workspaces left out keep their data. Restore work also runs in the floating background-task card. The ZIP selector refreshes after an immediate backup and periodically while Admin remains open, so completed scheduled backups appear without a page reload.
 
 Enable the schedule to select hourly, daily, weekly or monthly execution. Weekly schedules expose a weekday selector and monthly schedules expose a day-of-month selector.
 
 Set **Retention backups** to keep a maximum number of ZIPs; the scheduler removes the oldest successful backups after creating a newer one. The default storage directory is `APP_DATA_DIR/scheduled-backups`. **Browse** opens a server-side directory picker limited to `APP_DATA_DIR`, so it reflects directories visible to the host or Docker container rather than the browser's computer. It can create a folder before selecting it.
 
-The status line reports the stored backup count and size, the most recent successful backup and the next scheduled run. Scheduled backups use the same chosen content and workspace selection as the Backup panel. Select Input and/or Output when raw datasets, Reports, Chart Sets or Dashboard PPT jobs must be included. Scheduled backups complement infrastructure backups and portable Export packages.
+The tiles at the top report the stored backup count and size, the most recent successful backup and the next scheduled run. Scheduled backups use the same chosen content and workspace selection as the Backup panel. Select Input and/or Output when raw datasets, Reports, Chart Sets or Dashboard PPT jobs must be included. Scheduled backups complement infrastructure backups and portable Export packages.
 
 ### Database Viewer
 
@@ -234,6 +234,8 @@ Tables are grouped by ownership:
 - **Workspace Tables**: templates, datasets, profiles, logs, workspace state, Dashboard selections, Dashboard selected rows, Dashboard PPT jobs and unified classic generated jobs.
 - **Individual dataset rows**: one materialised table per dataset.
 - **Combined CDR rows**: reporting acceleration tables by CDR type.
+
+The **Table** picker lists the tables of each group by kind (Users & Access, Application, Datasets, Dashboards & Templates, Scoring & GAP Analysis, Non-Qualified Calls, Reporting, Mappings & Maps, Query Builder, Workspace, and the Voice, Data or Speech CDRs of each individual dataset), each kind in its colour, and its search box finds a table by its title or its database name.
 
 The **Generated jobs** table contains Report and Chart Set rows, distinguished by `job_type`. Dashboard PowerPoint history is stored separately in **Dashboard PPT jobs** because each row retains its Dashboard definition and applied filter snapshot.
 
