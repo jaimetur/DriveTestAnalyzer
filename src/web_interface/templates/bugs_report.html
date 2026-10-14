@@ -13,12 +13,13 @@
       </div>
       <a class="bugs-new-link" href="#section-new-bug-report" data-bugs-new>New Bug Report</a>
     </div>
-    <dl class="bugs-stats">
+    {# Each count lists its bug reports below; pressed again, the list shows the open ones (bugs_report.js). #}
+    <div class="bugs-stats" role="group" aria-label="List the bug reports of a status">
       {% for status in ['new', 'in_progress', 'waiting_info', 'resolved'] %}
-      <div class="bugs-stat" data-status="{{ status }}"><dt>{{ bug_statuses[status] }}</dt><dd>{{ bug_status_counts[status] }}</dd></div>
+      <button type="button" class="bugs-stat" data-status="{{ status }}" data-bugs-stat="{{ status }}" aria-pressed="false" title="List the {{ bug_statuses[status] }} bug reports"><span class="bugs-stat-label">{{ bug_statuses[status] }}</span><strong>{{ bug_status_counts[status] }}</strong></button>
       {% endfor %}
-      <div class="bugs-stat" data-status="mine"><dt>My open reports</dt><dd>{{ bug_mine_open }}</dd></div>
-    </dl>
+      <button type="button" class="bugs-stat" data-status="mine" data-bugs-stat="mine" aria-pressed="false" title="List my open bug reports"><span class="bugs-stat-label">My open reports</span><strong>{{ bug_mine_open }}</strong></button>
+    </div>
   </article>
 
   <details class="panel collapsible-panel bugs-new-panel" id="section-new-bug-report" data-panel-state-key="bugs-report:new"{% if not bugs %} open{% endif %}>

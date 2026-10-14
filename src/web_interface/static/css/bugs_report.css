@@ -16,9 +16,12 @@
 .bugs-new-link { flex: 0 0 auto; align-self: center; padding: .65rem 1.3rem; border-radius: 999px; background: var(--bug-accent); box-shadow: 0 8px 18px rgba(220, 38, 38, .26); color: #fff; font-size: .9rem; font-weight: 700; text-decoration: none; }
 .bugs-new-link:hover { background: #b91c1c; color: #fff; }
 .bugs-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: .7rem; margin: 0; }
-.bugs-stat { --stat-color: #5a6773; padding: .7rem .9rem; border: 1px solid rgba(16, 49, 74, .1); border-radius: 14px; background: #fff; box-shadow: inset 3px 0 0 var(--stat-color); }
-.bugs-stat dt { color: #607585; font-size: .7rem; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
-.bugs-stat dd { margin: .15rem 0 0; color: #10314a; font-size: 1.35rem; font-weight: 800; }
+.bugs-report .bugs-stat { --stat-color: #5a6773; display: grid; gap: .15rem; min-height: 0; padding: .7rem .9rem; border: 1px solid rgba(16, 49, 74, .1); border-radius: 14px; background: #fff; box-shadow: inset 3px 0 0 var(--stat-color); color: #10314a; text-align: left; cursor: pointer; transition: background .15s ease, border-color .15s ease, transform .15s ease; }
+.bugs-report .bugs-stat:hover { border-color: color-mix(in srgb, var(--stat-color) 45%, #fff); background: color-mix(in srgb, var(--stat-color) 6%, #fff); transform: translateY(-1px); }
+.bugs-report .bugs-stat:focus-visible { outline: 3px solid color-mix(in srgb, var(--stat-color) 30%, transparent); outline-offset: 2px; }
+.bugs-report .bugs-stat[aria-pressed="true"] { border-color: var(--stat-color); background: color-mix(in srgb, var(--stat-color) 11%, #fff); box-shadow: inset 4px 0 0 var(--stat-color), 0 6px 16px color-mix(in srgb, var(--stat-color) 18%, transparent); }
+.bugs-stat-label { color: #607585; font-size: .7rem; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
+.bugs-stat strong { color: #10314a; font-size: 1.35rem; font-weight: 800; }
 .bugs-stat[data-status="new"] { --stat-color: #1e61a3; }
 .bugs-stat[data-status="in_progress"] { --stat-color: #7c3aed; }
 .bugs-stat[data-status="waiting_info"] { --stat-color: #b7791f; }

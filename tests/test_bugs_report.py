@@ -55,6 +55,8 @@ def test_bugs_report_is_in_every_profile_once_and_opens_without_a_workspace(clie
     page = client.get('/bugs-report')
     assert page.status_code == 200
     assert 'id="section-new-bug-report"' in page.text and 'id="section-bug-reports"' in page.text
+    # Each count of the header lists its bug reports.
+    assert all(f'data-bugs-stat="{key}"' in page.text for key in ('new', 'in_progress', 'waiting_info', 'resolved', 'mine'))
     assert f'Version {__version__}' in page.text
     # Its tab is a link even without a workspace, unlike the modules that use one.
     assert 'module-tab module-tab-bugs-report' in page.text and 'href="/bugs-report" title="Open Bugs Report"' in page.text

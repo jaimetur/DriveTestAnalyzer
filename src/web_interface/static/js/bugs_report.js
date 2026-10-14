@@ -126,6 +126,31 @@
     };
     Object.values(filters).forEach((control) => control.addEventListener(control.type === 'search' ? 'input' : 'change', apply));
     sort.addEventListener('change', apply);
+    // The counts of the header list their bug reports (every other filter cleared); the count pressed again lists the
+    // open ones. The count of the shown status stays pressed.
+    const stats = [...document.querySelectorAll('[data-bugs-stat]')];
+    const pressedStat = () => {
+      if (filters.search.value || filters.priority.value || filters.module.value !== '*') return '';
+      if (filters.mine.checked) return filters.status.value === 'open' ? 'mine' : '';
+      return filters.status.value;
+    };
+    const syncStats = () => stats.forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.bugsStat === pressedStat())));
+    stats.forEach((button) => button.addEventListener('click', () => {
+      const chosen = button.dataset.bugsStat === pressedStat() ? '' : button.dataset.bugsStat;
+      filters.search.value = '';
+      filters.priority.value = '';
+      filters.module.value = '*';
+      filters.mine.checked = chosen === 'mine';
+      filters.status.value = !chosen || chosen === 'mine' ? 'open' : chosen;
+      apply();
+      const panel = document.getElementById('section-bug-reports');
+      if (panel) {
+        panel.open = true;
+        panel.scrollIntoView({behavior: 'smooth', block: 'start'});
+      }
+    }));
+    [...Object.values(filters), sort].forEach((control) => control.addEventListener(control.type === 'search' ? 'input' : 'change', syncStats));
+    stats.forEach((button) => button.addEventListener('click', syncStats));
     // A click anywhere on a row opens its bug report.
     table.addEventListener('click', (event) => {
       const row = event.target.closest('[data-bug-row]');
@@ -133,6 +158,7 @@
       window.location.href = row.dataset.href;
     });
     apply();
+    syncStats();
   }
 
   // The New Bug Report link opens and shows its panel.
