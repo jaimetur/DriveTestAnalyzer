@@ -31,6 +31,7 @@
 - **PPT Dashboards background charts after changing workspace:** the charts of the Dashboards of a closed workspace wait until it is opened again, instead of being retried continuously while the application is idle and holding back the charts of the Dashboards of the open workspace.
 - **NQ Analysis Configuration menu under the Filters:** the menu opens above the Filters panel instead of under it when a filter list is open, and opening it closes that list.
 - **Backup file of Restore:** the backup file chosen in Restore stays chosen when the list of backups refreshes, every few seconds.
+- **Files refused by Import:** Import says why it refuses a file (a ZIP package cut short or damaged, a JSON document other than a Scoring & GAP Analysis Configuration of at most 4 MiB, or another kind of file) instead of always naming the size limit of that JSON, and the App Events record each uploaded package and each refused file with the reason.
 
 #### 📚 Documentation:
 

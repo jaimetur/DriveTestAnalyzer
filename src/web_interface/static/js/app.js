@@ -6936,6 +6936,8 @@ function uploadImportPackage(file) {
     request.withCredentials = true;
     request.setRequestHeader('Accept', 'application/json');
     request.setRequestHeader('Content-Type', file.type || 'application/zip');
+    // The file name only names the package in the App Events.
+    request.setRequestHeader('X-Import-File-Name', encodeURIComponent(file.name || ''));
     request.upload.addEventListener('progress', (event) => {
       if (!event.lengthComputable) return;
       const progress = event.total ? (event.loaded / event.total) * 100 : 0;

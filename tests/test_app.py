@@ -3218,6 +3218,30 @@ def test_admin_import_stream_upload_avoids_multipart_staging(client) -> None:
     assert inspected.json()['kind'] == 'config'
 
 
+def test_admin_import_upload_explains_each_refused_file_in_the_app_events(client) -> None:
+    import src.DriveTestAnalyzer as app_module
+
+    login_super(client)
+    exported = client.get('/admin/import-export/export?export_target=config').content
+    uploads = {
+        'cut-short.zip': (exported[:len(exported) // 2], 'The ZIP package is incomplete or damaged'),
+        'large.json': (b'{"rows": "' + b'x' * (4 * 1024 * 1024) + b'"}', 'Only a Scoring & GAP Analysis Configuration'),
+        'cells.csv': (b'market,period\nES,2026-Q1\n', 'Choose a supported ZIP package'),
+    }
+    for name, (content, message) in uploads.items():
+        response = client.post('/admin/import-export/inspect/upload', content=content, headers={'X-Import-File-Name': name})
+        assert response.status_code == 400
+        assert message in response.json()['detail']
+
+    rejected = {json.loads(row['details'])['file']: json.loads(row['details']) for row in app_module.repository.list_logs() if row['action'] == 'import_package_rejected'}
+    assert set(rejected) == set(uploads)
+    assert rejected['cells.csv']['size'] == len(uploads['cells.csv'][0])
+    accepted = client.post('/admin/import-export/inspect/upload', content=exported, headers={'X-Import-File-Name': 'config%20export.zip'})
+    assert accepted.status_code == 200
+    uploaded = [json.loads(row['details']) for row in app_module.repository.list_logs() if row['action'] == 'import_package_uploaded']
+    assert uploaded[0]['file'] == 'config export.zip' and uploaded[0]['kind'] == 'config'
+
+
 def test_recover_complete_transfer_packages_and_remove_incomplete_ones(client, monkeypatch, tmp_path) -> None:
     import src.DriveTestAnalyzer as app_module
 

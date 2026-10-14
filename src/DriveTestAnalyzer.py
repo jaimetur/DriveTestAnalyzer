@@ -41,7 +41,7 @@ from time import monotonic, sleep
 from typing import Annotated
 from typing import Any, Iterable
 from typing import Callable
-from urllib.parse import quote, urlencode, urlsplit, urlunsplit
+from urllib.parse import quote, unquote, urlencode, urlsplit, urlunsplit
 from uuid import uuid4
 from zoneinfo import ZoneInfo, available_timezones
 
@@ -20771,10 +20771,12 @@ async def inspect_admin_import_package(
     package_dir = export_package_dir()
     package_dir.mkdir(parents=True, exist_ok=True)
     package_path = package_dir / f'import-{upload_id}.upload'
+    file_name = Path(package.filename or '').name
     try:
         await save_upload_file(package, package_path)
-        return _retain_import_upload(upload_id, package_path, user)
+        return _retain_import_upload(upload_id, package_path, user, file_name)
     except ValueError as exc:
+        _log_rejected_import_upload(user, file_name, package_path, exc)
         package_path.unlink(missing_ok=True)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except HTTPException:
@@ -20787,14 +20789,33 @@ async def inspect_admin_import_package(
         await package.close()
 
 
-def _retain_import_upload(upload_id: str, package_path: Path, user: SessionUser) -> JSONResponse:
+def _log_rejected_import_upload(user: SessionUser, file_name: str, package_path: Path, error: Exception) -> None:
+    """Record in the App Events an import package refused on upload, with its file and the reason."""
+    try:
+        size = package_path.stat().st_size
+    except OSError:
+        size = None
+    repository.try_add_log(user.username, 'import_package_rejected', json.dumps({'file': file_name, 'size': size, 'error': str(error)}))
+
+
+def _retain_import_upload(upload_id: str, package_path: Path, user: SessionUser, file_name: str = '') -> JSONResponse:
     """Validate and retain an already disk-backed import upload."""
     if not zipfile.is_zipfile(package_path):
         from src.modules.scoring_config import unwrap_scoring_profiles_payload
+        with package_path.open('rb') as handle:
+            head = handle.read(64)
+        # A ZIP signature without a readable ZIP is a package cut short or damaged.
+        if head.startswith(b'PK'):
+            raise ValueError('The ZIP package is incomplete or damaged: export or download it again and import the new copy.')
+        if not head.lstrip(b'\xef\xbb\xbf \t\r\n').startswith((b'{', b'[')):
+            raise ValueError('Choose a supported ZIP package or Scoring & GAP Analysis Configuration JSON document.')
         if package_path.stat().st_size > 4 * 1024 * 1024:
-            raise ValueError('Scoring & GAP Analysis Configuration JSON must not exceed 4 MiB.')
+            raise ValueError(
+                'Only a Scoring & GAP Analysis Configuration, of at most 4 MiB, is imported as a JSON document; '
+                'import any other content in the ZIP package it was exported in.'
+            )
         try:
-            document = json.loads(package_path.read_text(encoding='utf-8'))
+            document = json.loads(package_path.read_text(encoding='utf-8-sig'))
             profiles = unwrap_scoring_profiles_payload(document)
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ValueError('Choose a supported ZIP package or Scoring & GAP Analysis Configuration JSON document.') from exc
@@ -20818,6 +20839,9 @@ def _retain_import_upload(upload_id: str, package_path: Path, user: SessionUser)
     }:
         raise ValueError('The export package type is not supported.')
     require_import_manifest_permission(user, manifest)
+    repository.try_add_log(user.username, 'import_package_uploaded', json.dumps({
+        'upload_id': upload_id, 'file': file_name, 'size': package_path.stat().st_size, 'kind': kind,
+    }))
     with IMPORT_JOBS_LOCK:
         IMPORT_UPLOADS[upload_id] = {
             'path': str(package_path),
@@ -20856,14 +20880,16 @@ async def inspect_admin_import_package_stream(
     package_dir = export_package_dir()
     package_dir.mkdir(parents=True, exist_ok=True)
     package_path = package_dir / f'import-{upload_id}.upload'
+    file_name = Path(unquote(request.headers.get('X-Import-File-Name', ''))).name[:255]
     try:
         with package_path.open('wb') as output:
             async for chunk in request.stream():
                 output.write(chunk)
         if not package_path.stat().st_size:
             raise ValueError('Select an export package to import.')
-        return _retain_import_upload(upload_id, package_path, user)
+        return _retain_import_upload(upload_id, package_path, user, file_name)
     except ValueError as exc:
+        _log_rejected_import_upload(user, file_name, package_path, exc)
         package_path.unlink(missing_ok=True)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except HTTPException:
