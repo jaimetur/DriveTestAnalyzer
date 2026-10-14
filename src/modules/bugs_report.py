@@ -36,10 +36,11 @@ IMAGE_EXTENSIONS = {'image/png': '.png', 'image/jpeg': '.jpg', 'image/gif': '.gi
 # What the timeline names each field of a ticket after.
 FIELD_LABELS = {
     'title': 'Title', 'description': 'Description', 'module': 'Module', 'priority': 'Priority', 'status': 'Status',
-    'assigned_to': 'Assigned to', 'fixed_version': 'Fixed in version',
+    'assigned_to': 'Assigned to', 'created_by': 'Reported by', 'app_version': 'Opened with', 'fixed_version': 'Fixed in version',
 }
 REPORTER_FIELDS = frozenset({'title', 'description', 'module', 'priority'})
-MANAGER_FIELDS = frozenset({'status', 'assigned_to', 'fixed_version'})
+# Super-admins also change who reported a ticket, its module and the version it was opened with.
+MANAGER_FIELDS = frozenset({'status', 'assigned_to', 'created_by', 'module', 'app_version', 'fixed_version'})
 EXPORT_FORMAT = 'drivetest-analyzer-bugs-report'
 EXPORT_VERSION = 1
 ATTACHMENTS_ARCHIVE_DIR = 'bugs-report/attachments'
@@ -240,10 +241,15 @@ def update_bug(repository: Repository, bug_id: int, username: str, values: dict[
         for field, value in values.items():
             if field not in FIELD_LABELS:
                 continue
-            maximum = MAX_TITLE_LENGTH if field == 'title' else MAX_TEXT_LENGTH if field == 'description' else 120
+            maximum = {'title': MAX_TITLE_LENGTH, 'description': MAX_TEXT_LENGTH, 'app_version': MAX_VERSION_LENGTH,
+                       'fixed_version': MAX_VERSION_LENGTH}.get(field, 120)
             value = _text(value, maximum)
             if field == 'title' and not value:
                 raise ValueError('Give the bug a title.')
+            if field == 'created_by' and not value:
+                raise ValueError('Choose who reported the bug.')
+            if field == 'app_version' and not value:
+                raise ValueError('Give the version the bug was opened with.')
             if field == 'priority' and value not in PRIORITIES:
                 raise ValueError('Choose a priority from P1 to P5.')
             if field == 'status' and value not in STATUSES:

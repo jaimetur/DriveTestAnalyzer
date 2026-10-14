@@ -18,9 +18,10 @@
       <form class="panel bug-card bug-edit-form" data-bug-edit-form hidden novalidate>
         <h3>Edit bug report</h3>
         <label class="bugs-field">Title<input type="text" name="title" maxlength="160" required value="{{ bug.title }}"></label>
-        <label class="bugs-field">Module
+        {# Super-admins change the module in Manage, with the other details of the bug. #}
+        {% if not bug_can_manage %}<label class="bugs-field">Module
           <select name="module">{% for module in bug_modules %}<option value="{{ module.key }}"{% if module.key == bug.module %} selected{% endif %}>{{ module.title }}</option>{% endfor %}</select>
-        </label>
+        </label>{% endif %}
         <label class="bugs-field">Description<textarea name="description" rows="8" maxlength="20000" placeholder="{{ bug_text_guide }}">{{ bug.description }}</textarea></label>
         <div class="bugs-form-actions"><button type="button" class="bug-ghost-button" data-bug-edit-cancel>Cancel</button><button type="submit" class="bugs-primary-button">Save changes</button></div>
       </form>
@@ -93,14 +94,21 @@
 
       {% if bug_can_manage %}
       <form class="panel bug-card bug-manage" data-bug-manage-form novalidate>
-        <h3>Attend</h3>
+        <h3>Manage</h3>
         {% if bug.status == 'new' %}<button type="button" class="bugs-primary-button bug-attend" data-bug-attend data-username="{{ user.username }}">Attend this bug</button>{% endif %}
         <label class="bugs-field">Status
           <select name="status">{% for key, label in bug_statuses.items() %}<option value="{{ key }}"{% if key == bug.status %} selected{% endif %}>{{ label }}</option>{% endfor %}</select>
         </label>
         <label class="bugs-field">Assigned to
-          <select name="assigned_to"><option value="">Nobody</option>{% for person in bug_super_admins %}<option value="{{ person.username }}"{% if person.username == bug.assigned_to %} selected{% endif %}>{{ person.name }}</option>{% endfor %}</select>
+          <select name="assigned_to"><option value="">Nobody</option>{% for person in bug_super_admins %}<option value="{{ person.username }}"{% if person.username == bug.assigned_to %} selected{% endif %}>{{ person.name }}</option>{% endfor %}{% if bug.assigned_to and bug.assigned_to not in bug_super_admins | map(attribute='username') | list %}<option value="{{ bug.assigned_to }}" selected>{{ bug.assigned_to_name }}</option>{% endif %}</select>
         </label>
+        <label class="bugs-field">Reported by
+          <select name="created_by">{% for person in bug_reporters %}<option value="{{ person.username }}"{% if person.username == bug.created_by %} selected{% endif %}>{{ person.name }}{% if person.name != person.username %} ({{ person.username }}){% endif %}</option>{% endfor %}</select>
+        </label>
+        <label class="bugs-field">Module
+          <select name="module">{% for module in bug_modules %}<option value="{{ module.key }}"{% if module.key == bug.module %} selected{% endif %}>{{ module.title }}</option>{% endfor %}</select>
+        </label>
+        <label class="bugs-field">Opened with version<input type="text" name="app_version" maxlength="40" required value="{{ bug.app_version }}"></label>
         <label class="bugs-field">Fixed in version<input type="text" name="fixed_version" maxlength="40" value="{{ bug.fixed_version }}" placeholder="{{ app_version }}"></label>
         <div class="bugs-form-actions"><button type="submit" class="bugs-primary-button">Save</button></div>
         <button type="button" class="bug-delete" data-bug-delete>Delete bug report</button>

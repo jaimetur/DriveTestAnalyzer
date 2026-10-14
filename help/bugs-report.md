@@ -62,7 +62,8 @@ The page shows the title with its status, priority and module, who opened it, wh
 - **Timeline** lists, oldest first, the comments and every change: who changed the status, priority, module, assignment, fixed version, title or description, from what to what and when.
 - **Add a comment** writes a comment with optional screenshots, pasted, dropped or chosen as in the new report form. The author of a comment edits it (it shows *edited*) and deletes it; super-admins delete any comment.
 - **Details** sums up the status, priority, module, reporter, who attends it, the versions it was opened and fixed with, and its dates.
-- **Edit** (reporter and super-admins) changes the title, module and description, and the **Priority** of **Details** changes as soon as another one is chosen.
+- **Edit** (reporter and super-admins) changes the title and the description (and the module, for the reporter), and the **Priority** of **Details** changes as soon as another one is chosen.
+- **Manage** (super-admins) changes the status, who attends the report, who reported it, its module, the version it was opened with and the version that fixed it, whoever opened it; **Save** records each change in the timeline.
 
 ## Priorities and statuses
 
@@ -93,7 +94,7 @@ New, In Progress and Waiting for Info are the open statuses. The date a report i
 | Report bugs and comment on them | Every signed-in user with the module |
 | Edit a report (title, module, description), change its priority and add screenshots to it | Its reporter and the super-admins |
 | Edit or delete a comment | Its author (super-admins also delete any comment) |
-| Attend a report: **Attend this bug**, its status, who attends it (a super-admin) and the version that fixes it | Super-admins |
+| Manage a report: **Attend this bug**, its status, who attends it (a super-admin), who reported it, its module, the version it was opened with and the version that fixes it, whoever opened it | Super-admins |
 | Delete a report with its timeline and screenshots | Super-admins |
 
 **Attend this bug** sets a new report **In Progress** and assigns it to the super-admin who presses it. Moving a report to In Progress or Waiting for Info assigns it to that super-admin when nobody attends it, and resolving it without a fixed version records the version running then.

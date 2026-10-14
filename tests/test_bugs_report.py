@@ -224,3 +224,29 @@ def test_anyone_reads_bug_reports_without_signing_in_but_only_signed_in_users_ch
     client.cookies.clear()
     elsewhere = client.post('/login', data={'username': 'super', 'password': 'super123', 'next': '//evil.example/x'}, follow_redirects=False)
     assert elsewhere.headers['location'] == '/documents/view/help'
+
+
+def test_super_admins_change_the_reporter_module_and_version_of_any_bug_report(client):
+    add_user('ana')
+    add_user('bob')
+    login(client, 'ana', 'secret123')
+    bug_id = open_bug(client, screenshots=())
+    assert client.post(f'/api/bugs-report/{bug_id}/manage', data={'created_by': 'bob'}).status_code == 403
+
+    login(client)
+    changes = client.post(f'/api/bugs-report/{bug_id}/manage', data={
+        'created_by': 'bob', 'module': 'reporting', 'app_version': '0.6.1', 'assigned_to': 'super',
+    }).json()['changes']
+    assert changes == {'created_by': ['ana', 'bob'], 'module': ['scoring', 'reporting'], 'app_version': [__version__, '0.6.1'],
+                       'assigned_to': ['', 'super']}
+    assert client.post(f'/api/bugs-report/{bug_id}/manage', data={'created_by': 'nobody'}).status_code == 400
+    assert client.post(f'/api/bugs-report/{bug_id}/manage', data={'module': 'not-a-module'}).status_code == 400
+    assert client.post(f'/api/bugs-report/{bug_id}/manage', data={'app_version': ' '}).status_code == 400
+    page = client.get(f'/bugs-report/{bug_id}').text
+    assert 'changed Reported by from <em>ana</em> to <em>bob</em>' in page and 'changed Opened with from <em>v' in page
+    assert '<h3>Manage</h3>' in page and 'name="created_by"' in page and 'name="app_version"' in page
+    # The new reporter edits the bug report; the former one no longer does.
+    login(client, 'bob', 'secret123')
+    assert client.post(f'/api/bugs-report/{bug_id}/update', data={'priority': 'P1'}).status_code == 200
+    login(client, 'ana', 'secret123')
+    assert client.post(f'/api/bugs-report/{bug_id}/update', data={'priority': 'P5'}).status_code == 403

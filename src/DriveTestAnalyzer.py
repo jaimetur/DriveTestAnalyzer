@@ -15547,8 +15547,10 @@ def bug_report_page(request: Request, bug_id: int, user: SessionUser | None = De
             return f'{value} · {PRIORITIES.get(value, "")}' if value else ''
         if field == 'module':
             return by_key.get(value, {'title': value or 'General'})['title']
-        if field == 'assigned_to':
+        if field in {'assigned_to', 'created_by'}:
             return people.get(value, {}).get('name', value) if value else 'Nobody'
+        if field in {'app_version', 'fixed_version'}:
+            return f'v{value}' if value else ''
         return value
     for comment in bug['comments']:
         comment['username_name'] = people.get(str(comment['username']), {}).get('name', str(comment['username']))
@@ -15563,6 +15565,10 @@ def bug_report_page(request: Request, bug_id: int, user: SessionUser | None = De
         'user': user, 'bug': bug, 'bug_modules': modules, 'bug_priorities': PRIORITIES, 'bug_statuses': STATUSES,
         'bug_can_edit': can_edit_bug_report(user, bug), 'bug_can_manage': bool(user and user.role == 'super-admin'), 'bug_text_guide': TEXT_GUIDE,
         'bug_super_admins': [{'username': username, 'name': person['name']} for username, person in people.items() if person['role'] == 'super-admin'],
+        # Who can be the reporter of the bug: every account, and its current reporter even without an account here.
+        'bug_reporters': sorted([{'username': username, 'name': person['name']} for username, person in people.items()]
+                                + ([] if bug['created_by'] in people else [{'username': bug['created_by'], 'name': bug['created_by']}]),
+                                key=lambda person: person['name'].casefold()),
         'bug_max_screenshots': MAX_ATTACHMENTS_PER_UPLOAD, 'bug_max_screenshot_mb': MAX_ATTACHMENT_BYTES // (1024 * 1024),
     })
 
@@ -15644,13 +15650,27 @@ def manage_bug_report(
     status_value: str | None = Form(None, alias='status'),
     assigned_to: str | None = Form(None),
     fixed_version: str | None = Form(None),
+    created_by: str | None = Form(None),
+    module: str | None = Form(None),
+    app_version: str | None = Form(None),
     user: SessionUser = Depends(super_admin_user),
 ) -> JSONResponse:
-    """Super-admins attend a ticket: its status, who handles it and the version that fixes it."""
+    """Super-admins manage a ticket: its status, who handles it and the version that fixes it, and also who reported
+    it, its module and the version it was opened with, whoever opened it."""
     from src.modules.bugs_report import OPEN_STATUSES, update_bug
 
     bug = require_bug_report(bug_id)
     values: dict[str, Any] = {}
+    if created_by is not None:
+        if created_by != bug['created_by'] and created_by not in bug_report_people():
+            raise HTTPException(status_code=400, detail='Choose a user of the tool as the reporter of the bug.')
+        values['created_by'] = created_by
+    if module is not None:
+        if module and module not in {item['key'] for item in bug_report_modules()}:
+            raise HTTPException(status_code=400, detail='Choose a module of the tool.')
+        values['module'] = module
+    if app_version is not None:
+        values['app_version'] = app_version
     if status_value is not None:
         values['status'] = status_value
         # A ticket resolved without a fixed version is fixed in the running version.
