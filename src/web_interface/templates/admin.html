@@ -2257,15 +2257,18 @@
   const place = (picker) => {
     const menu = menuOf.get(picker);
     const bounds = picker.querySelector('summary').getBoundingClientRect();
-    const width = Math.max(bounds.width, 240);
     const below = window.innerHeight - bounds.bottom - 12;
     const above = bounds.top - 12;
     const openBelow = below >= 200 || below >= above;
     const height = Math.max(160, Math.min(340, openBelow ? below : above));
+    // As wide as its longest entry (a user's name with its tag on one line), at least as the picker and at most 440px.
+    Object.assign(menu.style, {
+      width: 'max-content', minWidth: `${Math.min(Math.max(bounds.width, 240), window.innerWidth - 16)}px`,
+      maxWidth: `${Math.min(440, window.innerWidth - 16)}px`, maxHeight: `${height}px`,
+    });
+    const width = menu.offsetWidth;
     Object.assign(menu.style, {
       left: `${Math.max(8, Math.min(bounds.left, window.innerWidth - width - 8))}px`,
-      width: `${width}px`,
-      maxHeight: `${height}px`,
       top: openBelow ? `${bounds.bottom + 4}px` : `${Math.max(8, bounds.top - 4 - Math.min(menu.scrollHeight, height))}px`,
     });
   };
