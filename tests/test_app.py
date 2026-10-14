@@ -6959,7 +6959,7 @@ def test_admin_recurring_backup_settings_are_persisted(client) -> None:
     assert 'Backup Protection' in page.text
     assert 'database-view-subpanel' in page.text
     assert 'Retention backups' in page.text
-    assert 'Stored backups:' in page.text
+    assert '<dt>Stored backups</dt>' in page.text
     assert 'Retention backups' in page.text
     directories = client.get('/api/admin/backup-directories')
     assert directories.status_code == 200

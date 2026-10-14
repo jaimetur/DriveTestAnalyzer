@@ -4807,3 +4807,88 @@ body:has(> .unassigned-values-card:not([hidden], .is-collapsed)) { padding-botto
 .access-card-new-title { margin: 0; color: #10314a; font-size: 1rem; font-weight: 800; }
 .access-card-new .form-note { margin: 0; font-size: .76rem; }
 .access-card-new button { justify-self: start; align-self: flex-start; }
+
+/* Backup Protection: its status as stat tiles, then one card to back up now, one to restore and one for the schedule. */
+.admin-stack .database-backups-subpanel.backup-protection { gap: 1rem; padding: 1.15rem; border: 1px solid rgba(16, 49, 74, .1); border-radius: 18px; background: #fbfcfd; }
+.backup-protection-head { display: flex; align-items: flex-start; gap: .85rem; }
+.backup-protection-head .eyebrow, .backup-protection-head h3, .backup-protection-head .form-note { margin: 0; }
+.admin-stack .backup-protection-head h3 { color: #10314a; font-size: 1.2rem; }
+.backup-protection-head .form-note { margin-top: .2rem; color: #607585; }
+.backup-protection-icon, .backup-card-icon { display: grid; flex: 0 0 auto; place-items: center; border-radius: 14px; }
+.backup-protection-icon { width: 2.75rem; height: 2.75rem; background: #e7f5f3; color: #0b7a75; }
+.backup-protection-icon svg, .backup-card-icon svg { fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.backup-protection-icon svg { width: 1.45rem; height: 1.45rem; }
+.backup-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr)); gap: .7rem; margin: 0; }
+.backup-stat { display: grid; gap: .2rem; padding: .75rem .9rem; border: 1px solid rgba(16, 49, 74, .1); border-radius: 14px; background: #fff; }
+.backup-stat dt { color: #7b8994; font-size: .68rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.backup-stat dd { margin: 0; color: #10314a; font-size: 1.05rem; font-weight: 800; overflow-wrap: anywhere; }
+.admin-stack .backup-protection .database-backup-form { gap: 1rem; }
+.backup-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.admin-stack .backup-protection .backup-card { --backup-accent: #0b7a75; display: flex; flex-direction: column; gap: .85rem; min-width: 0; padding: 1rem 1.05rem; border: 1px solid rgba(16, 49, 74, .12); border-radius: 16px; background: #fff; box-shadow: inset 0 4px 0 var(--backup-accent), 0 10px 26px rgba(16, 33, 49, .06); }
+.admin-stack .backup-protection .backup-card-restore { --backup-accent: #1e61a3; }
+.admin-stack .backup-protection .backup-card-schedule { --backup-accent: #6b46c1; }
+.backup-card-head { display: flex; align-items: flex-start; gap: .75rem; }
+.backup-card-head > div { flex: 1 1 auto; min-width: 0; }
+.admin-stack .backup-card-head h4 { margin: 0; color: #10314a; font-size: 1rem; }
+.backup-card-head p { margin: .15rem 0 0; color: #607585; font-size: .8rem; }
+.backup-card-icon { width: 2.3rem; height: 2.3rem; background: color-mix(in srgb, var(--backup-accent) 12%, #fff); color: var(--backup-accent); border-radius: 12px; }
+.backup-card-icon svg { width: 1.2rem; height: 1.2rem; }
+.admin-stack .backup-protection .backup-card label { color: #48606f; font-size: .78rem; font-weight: 700; }
+.admin-stack .backup-protection .backup-card :is(.database-backup-components, .database-backup-path, .database-backup-file) { display: grid; gap: .32rem; width: 100%; }
+.admin-stack .backup-protection .backup-card :is(input:not([type="checkbox"]), select) { box-sizing: border-box; width: 100%; min-height: 2.45rem; padding: .5rem .75rem; border: 1px solid rgba(16, 49, 74, .18); border-radius: 12px; background: #fff; color: #10314a; font-size: .86rem; font-weight: 600; }
+.admin-stack .backup-protection .backup-card :is(input:not([type="checkbox"]), select):focus { outline: none; border-color: var(--backup-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--backup-accent) 18%, transparent); }
+.admin-stack .backup-protection .database-backup-components .multiselect-shell { width: 100%; }
+.admin-stack .backup-protection .database-backup-components .multiselect-trigger { border: 1px solid rgba(16, 49, 74, .18); border-radius: 12px; background: #fff; color: #10314a; }
+.admin-stack .backup-protection .database-backup-components .multiselect-trigger-label { color: #10314a; }
+.admin-stack .backup-protection .database-backup-components .multiselect-trigger:hover:not(:disabled), .admin-stack .backup-protection .database-backup-components .multiselect-trigger:focus-visible { border-color: var(--backup-accent); background: #fff; }
+.admin-stack .backup-protection .database-backup-path-picker button { padding: .5rem .9rem; border: 1px solid rgba(16, 49, 74, .18); border-radius: 12px; background: #f3f6f8; color: #34495a; }
+.admin-stack .backup-protection .database-backup-path-picker button:hover:not(:disabled), .admin-stack .backup-protection .database-backup-path-picker button:focus-visible { border-color: var(--backup-accent); background: color-mix(in srgb, var(--backup-accent) 10%, #fff); color: var(--backup-accent); }
+.backup-card-actions { display: flex; justify-content: flex-end; margin-top: auto; padding-top: .2rem; }
+.admin-stack .backup-protection .backup-card-actions button, .admin-stack .backup-protection .backup-schedule-save { min-height: 0; padding: .6rem 1.3rem; border: 0; border-radius: 999px; background: var(--backup-accent); box-shadow: 0 8px 18px color-mix(in srgb, var(--backup-accent) 28%, transparent); color: #fff; font-size: .86rem; font-weight: 700; }
+.admin-stack .backup-protection .backup-card-actions button:hover, .admin-stack .backup-protection .backup-schedule-save:hover { filter: brightness(.92); }
+.admin-stack .backup-protection .backup-selection-summary, .admin-stack .backup-protection .backup-selection-warning { margin: 0; font-size: .8rem; }
+.backup-schedule-switch { display: inline-flex; flex: 0 0 auto; align-items: center; gap: .6rem; margin: 0; cursor: pointer; }
+.admin-stack .backup-protection .backup-schedule-switch > span:first-child { color: #34495a; font-size: .82rem; font-weight: 700; }
+.admin-stack .backup-protection .backup-schedule-switch .toggle-slider { background: #cfd8de; box-shadow: none; }
+.admin-stack .backup-protection .backup-schedule-switch .toggle-switch input:checked + .toggle-slider { background: #1f9d6b; }
+.admin-stack .backup-protection .database-backup-schedule { display: grid; grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr)); align-items: end; gap: .75rem; }
+.admin-stack .backup-protection .database-backup-schedule label { display: grid; gap: .32rem; }
+.admin-stack .backup-protection .database-backup-schedule .backup-schedule-save { justify-self: end; white-space: nowrap; }
+@media (max-width: 760px) {
+  .backup-cards { grid-template-columns: minmax(0, 1fr); }
+  .backup-card-head { flex-wrap: wrap; }
+  .backup-schedule-switch { width: 100%; justify-content: space-between; }
+}
+
+/* Database Viewer: the same look as Backup Protection, with a quiet data table. */
+.admin-stack .database-view-subpanel.database-viewer { gap: .9rem; padding: 1.15rem; border: 1px solid rgba(16, 49, 74, .1); border-radius: 18px; background: #fbfcfd; }
+.database-viewer-icon { background: #eaf2fb; color: #1e61a3; }
+.admin-stack .database-viewer .database-view-toolbar { align-items: end; gap: .7rem; padding: .8rem .9rem; border: 1px solid rgba(16, 49, 74, .1); border-radius: 14px; background: #fff; }
+.admin-stack .database-viewer .database-view-toolbar label { flex: 1 1 22rem; color: #48606f; font-size: .78rem; }
+.admin-stack .database-viewer .database-view-toolbar select { width: 100%; min-height: 2.45rem; padding: .5rem .75rem; border: 1px solid rgba(16, 49, 74, .18); border-radius: 12px; background: #fff; color: #10314a; font-size: .88rem; font-weight: 600; }
+.admin-stack .database-viewer .database-view-toolbar select:focus { outline: none; border-color: #1e61a3; box-shadow: 0 0 0 3px rgba(30, 97, 163, .16); }
+.admin-stack .database-viewer .database-refresh-button { display: inline-flex; align-items: center; gap: .45rem; min-height: 2.45rem; padding: .5rem 1.05rem; border: 0; border-radius: 999px; background: #1e61a3; box-shadow: 0 8px 18px rgba(30, 97, 163, .24); color: #fff; font-size: .84rem; font-weight: 700; }
+.admin-stack .database-viewer .database-refresh-button svg { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.admin-stack .database-viewer .database-refresh-button:hover:not(:disabled) { background: #174f86; }
+.admin-stack .database-viewer .database-refresh-button:disabled { background: #c9d6e3; box-shadow: none; color: #fff; }
+.admin-stack .database-viewer .database-row-count { min-height: 2.45rem; display: inline-flex; align-items: center; padding: 0 .95rem; border: 1px solid rgba(16, 49, 74, .14); border-radius: 999px; background: #f3f6f8; color: #34495a; font-weight: 700; }
+.admin-stack .database-viewer .database-filter-chip { border-color: #b7d0ea; background: #eaf2fb; color: #1e61a3; }
+.admin-stack .database-viewer .database-editor-wrap { border: 1px solid rgba(16, 49, 74, .12); border-radius: 14px; background: #fff; }
+.admin-stack .database-viewer .database-editor-table th { padding: .6rem .65rem; border-bottom: 1px solid rgba(16, 49, 74, .12); background: #f7f9fb; color: #48606f; font-size: .72rem; font-weight: 800; letter-spacing: .03em; }
+.admin-stack .database-viewer .database-editor-table td { padding: .4rem .55rem; border-bottom: 1px solid rgba(16, 49, 74, .06); background: #fff; }
+.admin-stack .database-viewer .database-editor-table tbody tr:hover td { background: #f8fafb; }
+.admin-stack .database-viewer .database-editor-table input { border: 1px solid transparent; background: transparent; color: #10314a; box-shadow: none; }
+.admin-stack .database-viewer .database-editor-table input:hover:not(:disabled) { border-color: rgba(16, 49, 74, .14); background: #f6f8fa; }
+.admin-stack .database-viewer .database-editor-table input:focus { outline: none; border-color: #1e61a3; background: #fff; box-shadow: 0 0 0 3px rgba(30, 97, 163, .14); }
+.admin-stack .database-viewer .database-editor-table input:disabled { background: transparent; color: #7b8994; }
+.admin-stack .database-viewer .database-editor-actions { background: #fff !important; box-shadow: 8px 0 12px rgba(16, 33, 49, .05); }
+.admin-stack .database-viewer .database-editor-actions-heading { background: #f7f9fb !important; }
+.admin-stack .database-viewer .database-editor-actions button { border-radius: 999px; }
+.admin-stack .database-viewer .database-column-filter:hover:not(:disabled), .admin-stack .database-viewer .database-column-filter.is-filtered { border-color: #1e61a3; background: #eaf2fb !important; color: #1e61a3 !important; }
+.database-view-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .7rem 1rem; }
+.database-view-footer .form-note { flex: 1 1 22rem; margin: 0; color: #7b8994; font-size: .78rem; }
+.admin-stack .database-viewer .database-view-actions button { min-height: 0; padding: .55rem 1.1rem; border-radius: 999px; font-size: .82rem; font-weight: 700; box-shadow: none; }
+.admin-stack .database-viewer .database-clear-filters-button { border: 1px solid rgba(16, 49, 74, .18); background: #fff; color: #34495a; }
+.admin-stack .database-viewer .database-clear-filters-button:disabled { color: #a7b3bc; }
+.admin-stack .database-viewer .database-cleanup-button { border: 1px solid #e3c27a; background: #fdf6e3; color: #85600f; }
+.admin-stack .database-viewer .database-cleanup-button:hover:not(:disabled) { background: #f9e9bf; color: #6d4e0b; }

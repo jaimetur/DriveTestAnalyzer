@@ -784,36 +784,53 @@
       </div>
     </summary>
     <div class="database-management-content">
-      <section class="database-backups-subpanel">
-        <div>
-          <p class="eyebrow">Application and workspace backups</p>
-          <h3>Backup Protection</h3>
-          <p class="form-note">Create an immediate ZIP backup or configure recurring backups of the selected application data.</p>
-        </div>
+      <section class="database-backups-subpanel backup-protection">
+        <header class="backup-protection-head">
+          <span class="backup-protection-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 4.5 3 8 7 10 4-2 7-5.5 7-10V6z"/><path d="m9 12 2 2 4-4"/></svg></span>
+          <div>
+            <p class="eyebrow">Application and workspace backups</p>
+            <h3>Backup Protection</h3>
+            <p class="form-note">Create an immediate ZIP backup, restore one, or schedule recurring backups of the selected application data.</p>
+          </div>
+        </header>
+        <dl class="backup-stats" data-backup-status>
+          <div class="backup-stat"><dt>Stored backups</dt><dd data-backup-status-count>{{ recurring_backup_status.count }}</dd></div>
+          <div class="backup-stat"><dt>Total size</dt><dd data-backup-status-size>{{ recurring_backup_status.size }}</dd></div>
+          <div class="backup-stat"><dt>Last successful backup</dt><dd data-backup-status-last>{{ recurring_backup_status.last_success }}</dd></div>
+          <div class="backup-stat"><dt>Next backup</dt><dd data-backup-status-next>{{ recurring_backup_status.next_run }}</dd></div>
+        </dl>
         {% if backup_notice %}<div class="alert backup-notice">{{ backup_notice }}</div>{% endif %}
         <form class="database-backup-form" action="/admin/database/backups" method="post">
-          <section class="database-backup-mode-panel database-backup-on-demand">
-            <div><p class="eyebrow">Immediate protection</p><h4>On demand backup</h4></div>
-            <div class="database-backup-immediate-grid">
-              <section class="database-backup-operation-panel"><h5>Backup</h5>
-                <label class="database-backup-components">Backup content
-                  <select name="components" multiple data-backup-components data-multiselect-groups="true" data-multiselect-auto-close="1000"><optgroup label="Configuration Content"><option value="app_database" {% if 'app_database' in recurring_backup.components %}selected{% endif %}>Application database</option><option value="users_access" {% if 'users_access' in recurring_backup.components %}selected{% endif %}>Users &amp; Access</option></optgroup>{% if backup_workspaces %}<optgroup label="Workspaces">{% for workspace in backup_workspaces %}<option value="workspace:{{ workspace.id }}" {% if not recurring_backup.workspace_ids or workspace.id in recurring_backup.workspace_ids %}selected{% endif %}>{{ workspace.name }}</option>{% endfor %}</optgroup>{% endif %}<optgroup label="Workspace Content" data-group-note="of the selected workspaces">{% for value, label in [('workspace_database', 'Workspace Database'), ('dashboards', 'Dashboards (one JSON file with all Dashboard definitions)'), ('report_templates', 'PPT Templates (one CSV file per Report Template)'), ('main_cities', 'Main Cities (workspace city selection)'), ('mappings_reference_data', 'Mappings & Reference Data (Operator and Vendor aliases, order and theme colors, Campaign Maps, Map Areas and Spectrum Holdings)'), ('scoring_configuration', 'Scoring & GAP Analysis Configuration (KPI methodology profiles and GAP KPI priorities)'), ('auto_calculated_fields', 'Auto-calculated Fields (one JSON file with all definitions)'), ('query_builder_queries', 'Query Builder Queries (one JSON file with all saved queries)'), ('reporting_jobs', 'Reporting Jobs (one JSON file with all Reporting Job definitions)'), ('nq_call_tracking', 'NQ Call Tracking (one JSON file with the Non-Qualified Calls statuses, teams, follow-up, comments and history)'), ('nq_calls_configuration', 'NQ Calls Configuration (one JSON file with the Non-Qualified Calls Analysis Center configuration, without the follow-up)'), ('output', 'Output (includes all generated reports, chart sets and Dashboard PPT jobs)'), ('input', 'Input (includes all raw datasets files)')] %}<option value="{{ value }}" {% if value in recurring_backup.components %}selected{% endif %}>{{ label }}</option>{% endfor %}</optgroup></select>
-                </label>
-                <label class="database-backup-path">Backup folder<div class="database-backup-path-picker"><input type="text" name="backup_path" value="{{ recurring_backup.backup_path }}" readonly required data-backup-path-input><button type="button" data-backup-path-browse>Browse</button></div></label>
-                <button type="submit" class="database-backup-now" formaction="/admin/database/backups/run">Backup Now</button>
-                <p class="backup-selection-summary" data-backup-selection-summary role="status"></p>
-                <p class="backup-selection-warning" data-backup-selection-warning role="status"></p>
-              </section>
-              <section class="database-backup-operation-panel" data-backup-restore-panel><h5>Restore</h5>
-                <label class="database-backup-path">Backup folder<div class="database-backup-path-picker"><input type="text" readonly value="{{ recurring_backup.backup_path }}" required data-backup-restore-path><button type="button" data-backup-restore-browse>Browse</button></div></label>
-                <label>Backup file<select data-backup-restore-file><option value="">Select a backup file</option></select></label>
-                <button type="button" class="database-backup-restore" data-backup-restore>Restore backup</button>
-              </section>
-            </div>
-          </section>
-          <section class="database-backup-mode-panel database-backup-scheduled">
-            <div><p class="eyebrow">Automatic protection</p><h4>Scheduled backups</h4></div>
-            <label class="confirm-option"><input type="checkbox" name="enabled" value="true" {% if recurring_backup.enabled %}checked{% endif %}><span>Enable recurring backups</span></label>
+          <div class="backup-cards">
+            <section class="backup-card backup-card-now database-backup-operation-panel">
+              <header class="backup-card-head">
+                <span class="backup-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="5" rx="1.5"/><path d="M5 9v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9M10 13h4"/></svg></span>
+                <div><h4>Back up now</h4><p>One ZIP with the selected content, in the chosen folder.</p></div>
+              </header>
+              <label class="database-backup-components">Backup content
+                <select name="components" multiple data-backup-components data-multiselect-groups="true" data-multiselect-auto-close="1000"><optgroup label="Configuration Content"><option value="app_database" {% if 'app_database' in recurring_backup.components %}selected{% endif %}>Application database</option><option value="users_access" {% if 'users_access' in recurring_backup.components %}selected{% endif %}>Users &amp; Access</option></optgroup>{% if backup_workspaces %}<optgroup label="Workspaces">{% for workspace in backup_workspaces %}<option value="workspace:{{ workspace.id }}" {% if not recurring_backup.workspace_ids or workspace.id in recurring_backup.workspace_ids %}selected{% endif %}>{{ workspace.name }}</option>{% endfor %}</optgroup>{% endif %}<optgroup label="Workspace Content" data-group-note="of the selected workspaces">{% for value, label in [('workspace_database', 'Workspace Database'), ('dashboards', 'Dashboards (one JSON file with all Dashboard definitions)'), ('report_templates', 'PPT Templates (one CSV file per Report Template)'), ('main_cities', 'Main Cities (workspace city selection)'), ('mappings_reference_data', 'Mappings & Reference Data (Operator and Vendor aliases, order and theme colors, Campaign Maps, Map Areas and Spectrum Holdings)'), ('scoring_configuration', 'Scoring & GAP Analysis Configuration (KPI methodology profiles and GAP KPI priorities)'), ('auto_calculated_fields', 'Auto-calculated Fields (one JSON file with all definitions)'), ('query_builder_queries', 'Query Builder Queries (one JSON file with all saved queries)'), ('reporting_jobs', 'Reporting Jobs (one JSON file with all Reporting Job definitions)'), ('nq_call_tracking', 'NQ Call Tracking (one JSON file with the Non-Qualified Calls statuses, teams, follow-up, comments and history)'), ('nq_calls_configuration', 'NQ Calls Configuration (one JSON file with the Non-Qualified Calls Analysis Center configuration, without the follow-up)'), ('output', 'Output (includes all generated reports, chart sets and Dashboard PPT jobs)'), ('input', 'Input (includes all raw datasets files)')] %}<option value="{{ value }}" {% if value in recurring_backup.components %}selected{% endif %}>{{ label }}</option>{% endfor %}</optgroup></select>
+              </label>
+              <label class="database-backup-path">Backup folder<div class="database-backup-path-picker"><input type="text" name="backup_path" value="{{ recurring_backup.backup_path }}" readonly required data-backup-path-input><button type="button" data-backup-path-browse>Browse</button></div></label>
+              <p class="backup-selection-summary" data-backup-selection-summary role="status"></p>
+              <p class="backup-selection-warning" data-backup-selection-warning role="status"></p>
+              <div class="backup-card-actions"><button type="submit" class="database-backup-now" formaction="/admin/database/backups/run">Backup Now</button></div>
+            </section>
+            <section class="backup-card backup-card-restore database-backup-operation-panel" data-backup-restore-panel>
+              <header class="backup-card-head">
+                <span class="backup-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/></svg></span>
+                <div><h4>Restore</h4><p>Choose a backup of a folder; the parts to restore are chosen next.</p></div>
+              </header>
+              <label class="database-backup-path">Backup folder<div class="database-backup-path-picker"><input type="text" readonly value="{{ recurring_backup.backup_path }}" required data-backup-restore-path><button type="button" data-backup-restore-browse>Browse</button></div></label>
+              <label class="database-backup-file">Backup file<select data-backup-restore-file><option value="">Select a backup file</option></select></label>
+              <div class="backup-card-actions"><button type="button" class="database-backup-restore" data-backup-restore>Restore backup</button></div>
+            </section>
+          </div>
+          <section class="backup-card backup-card-schedule database-backup-scheduled">
+            <header class="backup-card-head">
+              <span class="backup-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg></span>
+              <div><h4>Scheduled backups</h4><p>Recurring backups of the content selected in Back up now, keeping the latest ones.</p></div>
+              <label class="backup-schedule-switch"><span>Enable recurring backups</span><span class="toggle-switch"><input type="checkbox" name="enabled" value="true" {% if recurring_backup.enabled %}checked{% endif %}><span class="toggle-slider"></span></span></label>
+            </header>
             <div class="database-backup-settings" {% if not recurring_backup.enabled %}hidden{% endif %} data-backup-settings>
             <div class="database-backup-schedule">
               <label>Recurrence<select name="recurrence" data-backup-recurrence><option value="hourly" {% if recurring_backup.recurrence == 'hourly' %}selected{% endif %}>Hourly</option><option value="daily" {% if recurring_backup.recurrence == 'daily' %}selected{% endif %}>Daily</option><option value="weekly" {% if recurring_backup.recurrence == 'weekly' %}selected{% endif %}>Weekly</option><option value="monthly" {% if recurring_backup.recurrence == 'monthly' %}selected{% endif %}>Monthly</option></select></label>
@@ -821,19 +838,24 @@
               <label data-backup-monthday {% if recurring_backup.recurrence != 'monthly' %}hidden{% endif %}>Day of month<input type="number" name="monthly_day" min="1" max="31" value="{{ recurring_backup.monthly_day }}" required></label>
               <label>Execution time<input type="time" name="execution_time" value="{{ recurring_backup.execution_time }}" required></label>
               <label>Retention backups<input type="number" name="max_backups" min="1" max="1000" value="{{ recurring_backup.max_backups }}" required></label>
-              <button type="submit">Save scheduler settings</button>
+              <button type="submit" class="backup-schedule-save">Save scheduler settings</button>
             </div>
-            <p class="database-backup-status" data-backup-status>Stored backups: <strong data-backup-status-count>{{ recurring_backup_status.count }}</strong> · Total size: <strong data-backup-status-size>{{ recurring_backup_status.size }}</strong> · Last successful backup: <strong data-backup-status-last>{{ recurring_backup_status.last_success }}</strong> · Next backup: <strong data-backup-status-next>{{ recurring_backup_status.next_run }}</strong></p>
-          </div>
+            </div>
           </section>
         </form>
         <dialog class="database-backup-path-dialog" data-backup-path-dialog><div><p class="eyebrow">Application data directory</p><h3>Select backup directory</h3><div class="database-backup-path-navigation"><button type="button" data-backup-path-home title="Go to data" aria-label="Go to data"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1Z"/></svg><span>Home</span></button><button type="button" data-backup-path-parent title="Go up one folder" aria-label="Go up one folder"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h5l2 2h7a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1Z"/><path d="m12 16 0-6m0 0-3 3m3-3 3 3"/></svg><span>Up</span></button></div><p data-backup-path-current></p><div class="database-backup-new-directory"><input type="text" placeholder="New folder name" data-backup-path-new-name><button type="button" data-backup-path-new>Create folder</button></div><div class="database-backup-directory-list" data-backup-path-list></div><div class="confirm-actions"><button type="button" class="ghost-link" data-backup-path-cancel>Cancel</button><button type="button" data-backup-path-select>Select this directory</button></div></div></dialog>
         <dialog class="confirm-dialog database-backup-restore-dialog" data-backup-restore-dialog><div><div class="database-backup-restore-dialog-head"><p class="eyebrow">Overwrite confirmation</p><h3>Restore backup</h3><p>The selected data will overwrite existing data. Select the parts to restore.</p></div><section class="database-backup-restore-workspaces"><strong>Affected workspaces</strong><div data-backup-restore-workspaces></div></section><section class="database-backup-restore-selection"><strong>Backup content</strong><div class="restore-component-options" data-backup-restore-components></div></section><div class="confirm-actions"><button type="button" class="ghost-link" data-backup-restore-cancel>Cancel</button><button type="button" class="danger-button" data-backup-restore-confirm>Restore selected data</button></div></div></dialog>
       </section>
-      <section class="database-view-subpanel" data-database-view>
-      <div><p class="eyebrow">Application and Workspace Databases</p><h3>Database Viewer</h3></div>
+      <section class="database-view-subpanel database-viewer" data-database-view>
+      <header class="backup-protection-head database-viewer-head">
+        <span class="backup-protection-icon database-viewer-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="5.5" rx="7" ry="2.5"/><path d="M5 5.5v13c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5v-13M5 12c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5"/></svg></span>
+        <div>
+          <p class="eyebrow">Application and Workspace Databases</p>
+          <h3>Database Viewer</h3>
+          {% if active_workspace %}<p class="form-note">Browse, edit or remove individual records in any table of the Application database or the active workspace <strong>{{ active_workspace.name }}</strong>.</p>{% endif %}
+        </div>
+      </header>
       {% if active_workspace %}
-      <p class="lede">Browse, edit or remove individual records in any table of the Application database or Active Workspace: <strong>"{{ active_workspace.name }}"</strong>.</p>
       {% if database_notice %}<div class="alert database-cleanup-notice">{{ database_notice }}</div>{% endif %}
       <div class="database-view-toolbar">
         <label>Table
@@ -844,8 +866,8 @@
             {% endfor %}
           </select>
         </label>
-        <button type="button" class="database-refresh-button" data-database-refresh disabled>Refresh table</button>
-        <span class="pill" data-database-row-count>0 rows</span>
+        <button type="button" class="database-refresh-button" data-database-refresh disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 5v6h-6"/></svg>Refresh table</button>
+        <span class="pill database-row-count" data-database-row-count>0 rows</span>
       </div>
       <div class="database-active-filters" data-database-active-filters hidden></div>
       <section class="database-filter-popover" data-database-filter-popover hidden>
@@ -874,10 +896,12 @@
         <button type="button" data-database-next aria-label="Next page" title="Next page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
         <button type="button" data-database-last aria-label="Last page" title="Last page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 5v14M6 6l6 6-6 6M12 6l6 6-6 6"/></svg></button>
       </div>
+      <div class="database-view-footer">
       <p class="form-note">Tables are shown 100 rows at a time. Saving or deleting a row clears cached analysis so subsequent Dashboard and Reporting requests use the changed values.</p>
       <div class="database-view-actions">
         <button type="button" class="database-clear-filters-button" data-database-clear-filters disabled>Clear filters</button>
         <form action="/admin/database/cleanup" method="post" data-loading-label="Cleaning database" data-loading-copy="Please wait while orphaned dataset and combined CDR rows are removed."><button type="submit" class="database-cleanup-button">Clean orphaned rows</button></form>
+      </div>
       </div>
       {% else %}
       <p class="lede">Open a workspace from Workspace Management before viewing or editing its database.</p>
