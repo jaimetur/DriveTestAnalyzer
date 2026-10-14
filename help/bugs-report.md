@@ -52,7 +52,7 @@ Expected:
 
 The header counts the reports **New**, **In Progress**, **Waiting for Info** and **Resolved**, and **My open reports**; click a count to list those reports (the other filters are cleared), and click it again to list the open ones. The **Bug Reports** table lists every report, the latest activity first: its number, title, module, reporter, date and version, priority, status (with the version that fixed it), who attends it, its last update and how many comments and screenshots it has. Click a row to open its page.
 
-Search by title, reporter or number (`#12`), and filter by status (the open ones by default: New, In Progress and Waiting for Info), priority, module or **Only mine**; order by latest activity, priority, newest or oldest. Each browser remembers the filters and the order.
+Search by title, reporter or number (`#12`), and filter by status (the open ones by default: New, In Progress and Waiting for Info), priority, module, reporter (by name, the default users first) or **Only mine**; order by latest activity, priority, newest or oldest. Each browser remembers the filters and the order.
 
 ## The page of a bug report
 

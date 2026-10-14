@@ -105,6 +105,7 @@
           && (statusValue === '' || (statusValue === 'open' ? row.dataset.open === 'true' : row.dataset.status === statusValue))
           && (!filters.priority.value || row.dataset.priority === filters.priority.value)
           && (filters.module.value === '*' || row.dataset.module === filters.module.value)
+          && (filters.reporter.value === '*' || row.dataset.reporter === filters.reporter.value)
           && (!filters.mine?.checked || row.dataset.mine === 'true');
         row.hidden = !visible;
         shown += visible ? 1 : 0;
@@ -120,7 +121,8 @@
       if (empty && rows.length) empty.hidden = shown > 0;
       try {
         window.localStorage.setItem(storageKey, JSON.stringify({
-          status: statusValue, priority: filters.priority.value, module: filters.module.value, mine: Boolean(filters.mine?.checked), sort: sort.value,
+          status: statusValue, priority: filters.priority.value, module: filters.module.value, reporter: filters.reporter.value,
+          mine: Boolean(filters.mine?.checked), sort: sort.value,
         }));
       } catch (_) { /* Not remembered. */ }
     };
@@ -130,7 +132,7 @@
     // open ones. The count of the shown status stays pressed.
     const stats = [...document.querySelectorAll('[data-bugs-stat]')];
     const pressedStat = () => {
-      if (filters.search.value || filters.priority.value || filters.module.value !== '*') return '';
+      if (filters.search.value || filters.priority.value || filters.module.value !== '*' || filters.reporter.value !== '*') return '';
       if (filters.mine?.checked) return filters.status.value === 'open' ? 'mine' : '';
       return filters.status.value;
     };
@@ -140,6 +142,7 @@
       filters.search.value = '';
       filters.priority.value = '';
       filters.module.value = '*';
+      filters.reporter.value = '*';
       if (filters.mine) filters.mine.checked = chosen === 'mine';
       filters.status.value = !chosen || chosen === 'mine' ? 'open' : chosen;
       apply();

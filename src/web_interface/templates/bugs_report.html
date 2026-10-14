@@ -85,6 +85,10 @@
         <option value="*">Every module</option>
         {% for module in bug_modules %}<option value="{{ module.key }}">{{ module.title }}</option>{% endfor %}
       </select>
+      <select aria-label="Reporter" data-bugs-filter="reporter">
+        <option value="*">Every reporter</option>
+        {% for person in bug_reporters %}{% if person.divider %}<hr>{% endif %}<option value="{{ person.username | lower }}">{{ person.label }}</option>{% endfor %}
+      </select>
       <select aria-label="Sort" data-bugs-sort>
         <option value="updated">Latest activity</option>
         <option value="priority">Priority</option>
@@ -99,7 +103,7 @@
         <thead><tr><th>#</th><th>Bug</th><th>Priority</th><th>Status</th><th>Assigned to</th><th>Updated</th><th>Activity</th></tr></thead>
         <tbody>
           {% for bug in bugs %}
-          <tr data-bug-row data-href="/bugs-report/{{ bug.id }}" data-id="{{ bug.id }}" data-status="{{ bug.status }}" data-open="{{ 'true' if bug.is_open else 'false' }}" data-priority="{{ bug.priority }}" data-module="{{ bug.module }}" data-mine="{{ 'true' if user and bug.created_by | lower == user.username | lower else 'false' }}" data-created="{{ bug.created_at }}" data-updated="{{ bug.updated_at }}" data-search="#{{ bug.id }} {{ bug.title | lower }} {{ bug.created_by | lower }} {{ bug.created_by_name | lower }}">
+          <tr data-bug-row data-href="/bugs-report/{{ bug.id }}" data-id="{{ bug.id }}" data-status="{{ bug.status }}" data-open="{{ 'true' if bug.is_open else 'false' }}" data-priority="{{ bug.priority }}" data-module="{{ bug.module }}" data-reporter="{{ bug.created_by | lower }}" data-mine="{{ 'true' if user and bug.created_by | lower == user.username | lower else 'false' }}" data-created="{{ bug.created_at }}" data-updated="{{ bug.updated_at }}" data-search="#{{ bug.id }} {{ bug.title | lower }} {{ bug.created_by | lower }} {{ bug.created_by_name | lower }}">
             <td class="bugs-id">#{{ bug.id }}</td>
             <td class="bugs-title-cell">
               <a href="/bugs-report/{{ bug.id }}" class="bugs-title">{{ bug.title }}</a>

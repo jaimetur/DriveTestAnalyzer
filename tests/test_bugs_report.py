@@ -55,7 +55,8 @@ def test_bugs_report_is_in_every_profile_once_and_opens_without_a_workspace(clie
     page = client.get('/bugs-report')
     assert page.status_code == 200
     assert 'id="section-new-bug-report"' in page.text and 'id="section-bug-reports"' in page.text
-    # Each count of the header lists its bug reports.
+    # Each count of the header lists its bug reports, and the list filters them by reporter too.
+    assert 'data-bugs-filter="reporter"' in page.text
     assert all(f'data-bugs-stat="{key}"' in page.text for key in ('new', 'in_progress', 'waiting_info', 'resolved', 'mine'))
     assert f'Version {__version__}' in page.text
     # Its tab is a link even without a workspace, unlike the modules that use one.
@@ -88,6 +89,8 @@ def test_the_reporter_edits_and_only_super_admins_attend(client):
     add_user('bob')
     login(client, 'ana', 'secret123')
     bug_id = open_bug(client)
+    listing = client.get('/bugs-report').text
+    assert '<option value="ana">ana</option>' in listing and 'data-reporter="ana"' in listing
     assert client.post(f'/api/bugs-report/{bug_id}/update', data={'priority': 'P1', 'title': 'Export always fails'}).json()['changes'] == {
         'priority': ['P2', 'P1'], 'title': ['Export fails', 'Export always fails']}
     assert client.post(f'/api/bugs-report/{bug_id}/manage', data={'status': 'resolved'}).status_code == 403

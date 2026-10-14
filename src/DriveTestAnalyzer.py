@@ -15553,6 +15553,8 @@ def bugs_report_page(request: Request, user: SessionUser | None = Depends(option
     return render_template(request, 'bugs_report.html', {
         'user': user, 'bugs': bugs, 'bug_modules': modules, 'bug_priorities': PRIORITIES, 'bug_statuses': STATUSES,
         'bug_default_priority': DEFAULT_PRIORITY, 'bug_text_guide': TEXT_GUIDE,
+        # Who reported the bugs, by name and the default users first, for the Reporter filter.
+        'bug_reporters': user_choices(bug['created_by'] for bug in bugs),
         'bug_status_counts': {status: sum(1 for bug in bugs if bug['status'] == status) for status in STATUSES},
         'bug_mine_open': sum(1 for bug in bugs if user and bug['is_open'] and str(bug['created_by']).casefold() == user.username.casefold()),
         'bug_max_screenshots': MAX_ATTACHMENTS_PER_UPLOAD, 'bug_max_screenshot_mb': MAX_ATTACHMENT_BYTES // (1024 * 1024),
