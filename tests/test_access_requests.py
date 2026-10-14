@@ -54,7 +54,7 @@ def test_access_request_creates_an_inactive_editor_with_the_chosen_access(client
     assert response.status_code == 201, response.text
     result = response.json()
     assert (result['username'], result['name']) == ('EABCDEF', 'Ana García')
-    assert result['modules_profile'] == 'Non-Qualified Calls (Workspace, Non-Qualified Calls, Reporting, Builders)'
+    assert result['modules_profile'] == 'Non-Qualified Calls (Workspace, Non-Qualified Calls, Reporting, Builders, Bugs Report)'
     assert result['email']['to'] == 'jaime.tur@ericsson.com' and result['email']['subject'].endswith('access request: EABCDEF')
     body = result['email']['body']
     assert 'User: EABCDEF' in body and 'Name: Ana García' in body and f'Workspaces: UK ({core.active_workspace.name})' in body
