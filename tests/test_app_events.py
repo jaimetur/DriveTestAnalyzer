@@ -113,3 +113,46 @@ def test_nq_analysis_center_actions_are_recorded(client, tmp_path, indexing_runs
     assert events('nq_comment_delete') == [{'comment_id': comment['id']}]
     assert len(events('nq_calls_export')) == 1
     assert len(events('nq_catalog_export')) == 1
+
+
+def test_app_events_export_import_and_back_up_on_their_own(client) -> None:
+    import io
+    import zipfile
+
+    login_super(client)
+    with core.repository.connection() as conn:
+        conn.execute('DELETE FROM audit_logs')
+        conn.executemany('INSERT INTO audit_logs (username, action, details, created_at) VALUES (?, ?, ?, ?)', [
+            ('ana', 'first_event', '{}', '2026-10-01T10:00:00.000000+02:00'),
+            ('bob', 'second_event', '{"n": 2}', '2026-10-02T10:00:00.000000+02:00'),
+        ])
+    package, filename = core.build_export_archive('app-events')
+    assert filename.endswith('.zip') and '_app-events_' in filename
+    with zipfile.ZipFile(io.BytesIO(package)) as archive:
+        manifest = json.loads(archive.read('manifest.json'))
+        document = json.loads(archive.read(manifest['archive_path']))
+    assert manifest['kind'] == 'app-events' and manifest['workspace_components'] == ['app_events']
+    assert [event['action'] for event in document['events'][:2]] == ['first_event', 'second_event']
+
+    # Imported into the workspace, only the events it does not have are added, among the others by their time.
+    with core.repository.connection() as conn:
+        conn.execute("DELETE FROM audit_logs WHERE action = 'first_event'")
+    workspace = core.workspace_registry.get(core.active_workspace.id)
+    payload = json.dumps(document).encode('utf-8')
+    assert core._restore_workspace_app_events(workspace, payload) == 1
+    assert core._restore_workspace_app_events(workspace, payload) == 0
+    by_time = [row['action'] for row in core.repository.list_logs(limit=None, by_time=True)]
+    assert by_time.index('second_event') < by_time.index('first_event')
+    inspected = client.post('/admin/import-export/inspect/upload', content=package, headers={'X-Import-File-Name': 'events.zip'})
+    assert inspected.status_code == 200 and inspected.json()['kind'] == 'app-events' and inspected.json()['requires_destination_workspaces']
+
+    # Backed up and restored on their own.
+    archive_path = core.create_recurring_database_backup({
+        'components': ['app_events'], 'backup_path': str(core.application_data_dir / 'scheduled-backups'),
+        'max_backups': 30, 'workspace_ids': [core.active_workspace.id],
+    })
+    assert core._backup_archive_components(archive_path) == ['app_events']
+    with core.repository.connection() as conn:
+        conn.execute("DELETE FROM audit_logs WHERE action IN ('first_event', 'second_event')")
+    core.restore_database_backup(archive_path, ['app_events'])
+    assert {'first_event', 'second_event'} <= {row['action'] for row in core.repository.list_logs(limit=None)}

@@ -5143,14 +5143,34 @@ class Repository:
             """
         )
 
-    def list_logs(self, limit: int | None = 1000) -> list[sqlite3.Row]:
+    def list_logs(self, limit: int | None = 1000, *, by_time: bool = False) -> list[sqlite3.Row]:
+        """The App Events of the workspace, the newest first: by their id, or by their time (``by_time``), which also
+        places the events imported from another workspace among the others."""
+        order = 'julianday(created_at) DESC, id DESC' if by_time else 'id DESC'
         with self.connection() as conn:
             if limit is None:
-                return list(conn.execute("SELECT id, username, action, details, created_at FROM audit_logs ORDER BY id DESC").fetchall())
+                return list(conn.execute(f"SELECT id, username, action, details, created_at FROM audit_logs ORDER BY {order}").fetchall())
             return list(conn.execute(
-                "SELECT id, username, action, details, created_at FROM audit_logs ORDER BY id DESC LIMIT ?",
+                f"SELECT id, username, action, details, created_at FROM audit_logs ORDER BY {order} LIMIT ?",
                 (limit,),
             ).fetchall())
+
+    def merge_logs(self, events: Iterable[dict[str, Any]]) -> int:
+        """Add the App Events of a package that the workspace does not have (the same user, action, details and time);
+        returns how many were added. Nothing is replaced or deleted."""
+        added = 0
+        with self.connection() as conn:
+            existing = {tuple(row) for row in conn.execute('SELECT username, action, details, created_at FROM audit_logs').fetchall()}
+            for event in events:
+                if not isinstance(event, dict):
+                    continue
+                key = tuple(str(event.get(field) or '') for field in ('username', 'action', 'details', 'created_at'))
+                if not key[0] or not key[1] or not key[3] or key in existing:
+                    continue
+                conn.execute('INSERT INTO audit_logs (username, action, details, created_at) VALUES (?, ?, ?, ?)', key)
+                existing.add(key)
+                added += 1
+        return added
 
     def list_workspace_logs(self, dataset_id: int | None = None, limit: int = 120) -> list[dict[str, Any]]:
         workspace_actions = {

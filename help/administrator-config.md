@@ -112,6 +112,7 @@ Nothing is chosen beforehand: **Submit Request** is enabled once every field is 
 - Reporting Jobs from the active workspace
 - NQ Call Tracking from the active workspace (the Non-Qualified Calls Analysis Center: sections, field catalog, statuses, teams, Status Rules, root cause catalog, Ericsson RCA results, follow-up, comments and history)
 - NQ Calls Configuration from the active workspace (only the configuration of the Non-Qualified Calls Analysis Center: sections, field catalog with its lists, statuses, teams with their members, Status Rules, root cause catalog with its suggestion rule and table columns, without Ericsson RCA results, follow-up, comments or history)
+- App Events from the active workspace (every event with its user, action, details and time; importing them adds the events a workspace does not have, among its own by date, without replacing or deleting any)
 - An accessible workspace
 - Full Environment with selected workspaces
 
@@ -205,6 +206,7 @@ In **Back up now**, select in **Backup content** one or more content types and t
 - **Workspace Content: Auto-calculated Fields** stores one JSON file containing every selected workspace definition.
 - **Workspace Content: NQ Call Tracking** stores one JSON file with the Non-Qualified Calls Analysis Center (sections, field catalog, statuses, teams, Status Rules, root cause catalog and Ericsson RCA results), follow-up, comments and history, with the `JOIN_ID` of each call; restore merges it into the workspace without duplicating comments, history or RCA results.
 - **Workspace Content: NQ Calls Configuration** stores one JSON file with only the configuration of the Non-Qualified Calls Analysis Center (sections, field catalog, statuses, teams, Status Rules, root cause catalog and table columns); restore merges it into the workspace like the configuration part of NQ Call Tracking.
+- **Workspace Content: App Events** stores one JSON file with every App Event of the workspace; restore adds the events the workspace does not have (the same user, action, details and time), among its own by date.
 - **Workspace Content: Input** stores raw dataset files when explicitly selected.
 - **Workspace Content: Output** stores generated Reports, Chart Sets and Dashboard PowerPoint jobs when explicitly selected.
 

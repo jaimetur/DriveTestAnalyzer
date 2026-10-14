@@ -5438,7 +5438,7 @@ function setupWorkspaceUserPickers() {
 // Workspace content exported from the active workspace; its Full Workspace package already contains all of it.
 const workspaceElementExportTargets = new Set([
   'dashboards', 'ppt-templates', 'main-cities', 'mappings-reference-data', 'scoring-configuration',
-  'auto-calculated-fields', 'query-builder-queries', 'reporting-jobs', 'nq-call-tracking', 'nq-calls-configuration',
+  'auto-calculated-fields', 'query-builder-queries', 'reporting-jobs', 'nq-call-tracking', 'nq-calls-configuration', 'app-events',
 ]);
 
 // The Input and Output folders of a backup only make sense with the workspace database they belong to.
@@ -6828,6 +6828,12 @@ function importWarningDetails(payload) {
       message: 'Choose the destination workspaces next. The package data will replace their Scoring & GAP Analysis Configuration, including its available KPI methodology profiles and GAP KPI priorities.',
     };
   }
+  if (kind === 'app-events') {
+    return {
+      title: 'Import App Events?',
+      message: 'Choose the destination workspaces next. The events they do not have (the same user, action, details and time) are added among theirs by date; none is replaced or deleted.',
+    };
+  }
   if (kind === 'auto-calculated-fields') {
     return {
       title: 'Import Auto-calculated Fields?',
@@ -6863,7 +6869,7 @@ function importPackageContents(payload) {
     'scoring-configuration': 'Scoring & GAP Analysis Configuration',
     'auto-calculated-fields': 'Auto-calculated Fields',
     'query-builder-queries': 'Query Builder Queries', 'reporting-jobs': 'Reporting Jobs',
-    'nq-call-tracking': 'NQ Call Tracking', 'nq-calls-configuration': 'NQ Calls Configuration',
+    'nq-call-tracking': 'NQ Call Tracking', 'nq-calls-configuration': 'NQ Calls Configuration', 'app-events': 'App Events',
   };
   const targets = Array.isArray(payload.targets) && payload.targets.length ? payload.targets : [payload.kind];
   const workspaceTargets = new Set([
@@ -7737,6 +7743,8 @@ document.querySelectorAll('[data-export-package-form]').forEach((form) => {
         nq_call_tracking: 'NQ Call Tracking',
         'nq-calls-configuration': 'NQ Calls Configuration',
         nq_calls_configuration: 'NQ Calls Configuration',
+        'app-events': 'App Events',
+        app_events: 'App Events',
       };
       const escapeHtml = (value) => String(value ?? '').replace(/[&<>'"]/g, (character) => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[character]));
       const describeTransferItem = (item) => transferContentLabels[String(item)] || String(item).replaceAll('-', ' ').replaceAll('_', ' ');
