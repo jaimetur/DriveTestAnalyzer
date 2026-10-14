@@ -9087,7 +9087,7 @@ def test_top_navigation_shows_document_links(client) -> None:
     assert 'title="Open Changelog"' in response.text
     assert '<span class="module-tab-label-mobile">Analysis</span>' in response.text
     assert 'href="/logout"' in response.text
-    assert '<span class="topnav-link topnav-user-badge topnav-user-badge-admin">User: admin (admin)</span>' in response.text
+    assert '<span class="topnav-link topnav-user-badge topnav-user-badge-admin" >User: admin (admin · All Modules)</span>' in response.text
 
     for route in ('/chart-builder', '/query-builder'):
         builder_page = client.get(route)

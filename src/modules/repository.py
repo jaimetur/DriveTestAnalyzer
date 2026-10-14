@@ -1189,9 +1189,15 @@ class Repository:
         profiles = self.list_modules_profiles()
         default = next((set(profile['modules']) for profile in profiles if profile['is_default']), set())
         modules_by_user = {user_id: set(profile['modules']) for profile in profiles for user_id in profile['member_ids']}
+        profile_by_user = {user_id: profile for profile in profiles for user_id in profile['member_ids']}
         users = self.list_users()
+        default_profile = next((profile for profile in profiles if profile['is_default']), None)
         return {
             'default': default,
+            'default_profile': {'name': default_profile['name'], 'color': default_profile['color']} if default_profile else None,
+            # The name and colour of the profile of every account but the super-admins without one.
+            'profiles': {str(row['username']).casefold(): {'name': profile_by_user[int(row['id'])]['name'], 'color': profile_by_user[int(row['id'])]['color']}
+                         for row in users if int(row['id']) in profile_by_user},
             'users': {str(row['username']).casefold(): modules_by_user.get(int(row['id']), default)
                       for row in users if str(row['role']) != 'super-admin'},
             'super_admins': {str(row['username']).casefold(): modules_by_user[int(row['id'])]

@@ -103,7 +103,9 @@ label { display: grid; gap: 0.45rem; color: var(--muted); }
 .topnav-workspace-menu button .workspace-switcher-option-label { font-size: 0.82rem; font-weight: 700; opacity: 1; white-space: nowrap; }
 .topnav-workspace-menu button [data-header-workspace-size] { font: inherit; opacity: 1; }
 .topnav .topnav-user-badge-admin { background: linear-gradient(135deg, #c84a4a, #e06a5a); border-color: rgba(200, 74, 74, 0.28); color: rgba(255, 255, 255, 0.96); box-shadow: 0 12px 28px rgba(200, 74, 74, 0.24); }
-.topnav .topnav-user-badge-super-admin { background: linear-gradient(135deg, #9f3038, #d45555); border-color: rgba(159, 48, 56, 0.34); color: rgba(255, 255, 255, 0.98); box-shadow: 0 12px 28px rgba(159, 48, 56, 0.26); }
+.topnav .topnav-user-badge-super-admin { background: linear-gradient(135deg, #5b3aa8, #8b67d6); border-color: rgba(91, 58, 168, 0.34); color: rgba(255, 255, 255, 0.98); box-shadow: 0 12px 28px rgba(91, 58, 168, 0.26); }
+/* The other accounts take the colour of their Modules Profile. */
+.topnav .topnav-user-badge[style*="--user-badge-color"] { background: linear-gradient(135deg, color-mix(in srgb, var(--user-badge-color) 78%, #000), var(--user-badge-color)); border-color: color-mix(in srgb, var(--user-badge-color) 40%, transparent); color: #fff; box-shadow: 0 12px 28px color-mix(in srgb, var(--user-badge-color) 26%, transparent); }
 .topnav .topnav-user-badge-user { background: linear-gradient(135deg, #0b7a75, #1aa29b); border-color: rgba(11, 122, 117, 0.28); color: rgba(255, 255, 255, 0.96); box-shadow: 0 12px 28px rgba(11, 122, 117, 0.22); }
 a.topnav-link-doc { background: linear-gradient(135deg, #f3f5f7, #e8edf2); border-color: rgba(126, 139, 152, 0.24); color: #44515d; }
 a.topnav-link-workspace { background: linear-gradient(135deg, #d7f2ec, #bde8df); border-color: rgba(32, 144, 124, 0.34); color: #176b61; }

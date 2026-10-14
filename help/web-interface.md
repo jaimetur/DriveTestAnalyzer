@@ -73,7 +73,7 @@ The Changelog adds a **Releases** list that jumps to each release; it highlights
 
 - Click the active-workspace badge to switch workspace.
 - The workspace-size badge is recalculated after dataset, report and Chart Set operations.
-- Click the username badge to change the current password.
+- The username badge shows the role and the Modules Profile of the account (Full Access for a super-admin without one), in the colour of the role for admins and super-admins and in that of the profile for the other users; click it to change the current password.
 - Use Logout to end the session.
 
 ## Panels

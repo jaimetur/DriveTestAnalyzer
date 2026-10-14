@@ -545,6 +545,15 @@ def user_features(user: SessionUser | None) -> dict[str, bool]:
     return {key: user_has_feature(user, key) for key in FEATURE_KEYS}
 
 
+def user_modules_profile(user: SessionUser) -> dict[str, str]:
+    """The Modules Profile of an account, for the header: its name and colour, or Full Access for a super-admin without one."""
+    snapshot = _module_access_snapshot()
+    profile = snapshot['profiles'].get(user.username.casefold())
+    if profile is None and user.role != 'super-admin':
+        profile = snapshot['default_profile']
+    return profile or {'name': 'Full Access', 'color': ''}
+
+
 def can_access_ppt_reporting_old(user: SessionUser) -> bool:
     """Access to the PPT Reporting (old) module and its Help chapter."""
     return user_has_feature(user, 'ppt-reporting-old')
@@ -5431,6 +5440,7 @@ def render_template(request: Request, template_name: str, context: dict[str, Any
         'header_workspace_sizes': {item.id: format_workspace_size(workspace_disk_usage(item)) for item in header_workspaces},
         'ignore_event_time_filtering': ignore_event_time_filtering(),
         'features': user_features(template_user) if isinstance(template_user, SessionUser) else {},
+        'user_modules_profile': user_modules_profile(template_user) if isinstance(template_user, SessionUser) else {},
         'show_module_stage_labels': module_stage_labels_visible(),
         'module_tab_badges': module_label_badges(module_settings) if module_stage_labels_visible() else {},
         'module_tabs': module_tabs(module_settings),

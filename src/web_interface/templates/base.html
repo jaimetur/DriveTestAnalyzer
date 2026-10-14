@@ -57,7 +57,7 @@
             {% endif %}
           </div>
         </details>
-        <button type="button" class="topnav-user-control" popovertarget="topnav-user-options" aria-haspopup="true" aria-expanded="false" title="User options" aria-label="User options for {{ user.username }}" data-user-menu-trigger><span class="topnav-link topnav-user-badge topnav-user-badge-{{ user.role }}">User: {{ user.username }} ({{ user.role }})</span></button>
+        <button type="button" class="topnav-user-control" popovertarget="topnav-user-options" aria-haspopup="true" aria-expanded="false" title="User options" aria-label="User options for {{ user.username }}" data-user-menu-trigger><span class="topnav-link topnav-user-badge topnav-user-badge-{{ user.role }}" {% if user.role not in ['admin', 'super-admin'] and user_modules_profile.color %}style="--user-badge-color: {{ user_modules_profile.color }}"{% endif %}>User: {{ user.username }} ({{ user.role }} · {{ user_modules_profile.name }})</span></button>
         <nav id="topnav-user-options" class="module-config-options topnav-user-options" aria-label="User options" popover data-user-menu-options>
           <button type="button" data-change-password-open>{{ menu_icon(section_icons['key']) }}<span>Change password</span></button>
         </nav>
