@@ -5370,12 +5370,12 @@ function setupWorkspaceUserPickers() {
       if (!portalize || !menu || !picker.open) return;
       const bounds = picker.getBoundingClientRect();
       const availableHeight = Math.max(8 * 16, window.innerHeight - bounds.bottom - 16);
-      // As wide as its longest entry (a user's name with its tag on one line), at least as the picker and at most 384px.
+      // As wide as its longest entry (a user's name with its tag on one line) and at least as the picker, within the window.
       Object.assign(menu.style, {
         top: `${bounds.bottom - 1}px`,
         width: 'max-content',
         minWidth: `${Math.min(Math.max(bounds.width, 184), window.innerWidth - 16)}px`,
-        maxWidth: `${Math.min(384, window.innerWidth - 16)}px`,
+        maxWidth: `${window.innerWidth - 16}px`,
         maxHeight: `${Math.min(224, availableHeight)}px`,
       });
       menu.style.left = `${Math.max(8, Math.min(bounds.left, window.innerWidth - menu.offsetWidth - 8))}px`;
