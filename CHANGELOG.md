@@ -112,6 +112,7 @@
 - **Progress periods:** the Progress View of Non-Qualified Calls shows the calls per month by default, and the Progress Status of a new Non-Qualified Calls artifact of the Reporting Jobs per week.
 - **Merge teams:** in **Statuses & Teams** of Non-Qualified Calls, a team can be merged into another one (⤳ Merge into…): on Save its calls and members move to that team and it is removed.
 - **Core and RF domains:** the root cause domain Core 2G/4G/5G of Non-Qualified Calls is now **Core**, also in existing workspaces with their calls and filters, and RF, the most frequent root domain, is blue instead of red (unless a workspace chose another colour).
+- **Scoring tables with KPI values:** with **Show KPI values**, the **KPI Value** and **Score** column groups of the Scoring tables have their own header colours (slate blue and teal), the KPI values a light blue background, and thick lines delimit both blocks.
 
 #### 🐛 Bug fixes:
 - **Job Editor drafts:** reloading the Reporting page no longer reopens the unsaved values of a job that changed on the server since then (imported, transferred, saved from another browser or renamed in the Maps), which could show old filters such as an Operator with its former name; its saved version opens instead.

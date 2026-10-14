@@ -401,6 +401,15 @@
   .scoring-comparison-table td[data-column="maximum"] { background: #e8f4f4; }
   .scoring-comparison-table th.scoring-kpi-value-header { background: #e6eaeb; color: #334854; }
   .scoring-comparison-table td.scoring-kpi-value-cell { background: #f3f5f6; font-variant-numeric: tabular-nums; }
+  /* With Show KPI values, the measured values and the scores are two clearly separate blocks. */
+  .scoring-comparison-table th.scoring-column-group.scoring-kpi-value-group { background: #4a5d7e !important; color: #fff !important; }
+  .scoring-comparison-table th.scoring-column-group.scoring-score-group { background: #0f6f6a !important; color: #fff !important; }
+  .scoring-comparison-table :is(tbody, tfoot) tr > td.scoring-kpi-value-cell { background-color: #f1f4fa !important; color: #2f3e5c; }
+  .scoring-comparison-table tbody tr:nth-child(even) > td.scoring-kpi-value-cell { background-color: #e9eef7 !important; }
+  .scoring-comparison-table :is(th, td)[data-column="maximum"] + :is(th, td)[data-column="kpi-value"],
+  .scoring-comparison-table th.scoring-maximum-header + th.scoring-kpi-value-group,
+  .scoring-comparison-table :is(th, td)[data-column="kpi-value"] + :is(th, td):not([data-column="kpi-value"]),
+  .scoring-comparison-table th.scoring-kpi-value-group + th { border-left: 3px solid #4a5d7e !important; }
   .scoring-comparison-table th.scoring-operator-header { background: color-mix(in srgb, var(--operator-accent, #607d8b) 20%, #fff) !important; color: #263f4b !important; box-shadow: inset 0 3px var(--operator-accent, #607d8b); }
   .scoring-comparison-table .scoring-gap-header { background: #f4ecd5 !important; }
   .scoring-comparison-table th.scoring-gap-header { background: #f4ecd5 !important; color: #655331 !important; }
