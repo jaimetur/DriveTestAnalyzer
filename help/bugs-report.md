@@ -56,7 +56,7 @@ Search by title, reporter or number (`#12`), and filter by status (the open ones
 
 ## The page of a bug report
 
-The page shows the title with its status, priority and module, who opened it, when and with which version, and the version that fixed it.
+The page shows the title with its status, priority and module, who opened it, when and with which version, and the version that fixed it; **Back to Bug Reports**, above it, returns to the list.
 
 - **Description** shows the text and the screenshots of the report; click a screenshot to see it full size (**Open original** opens the image itself). The reporter and the super-admins add more screenshots below it.
 - **Timeline** lists, oldest first, the comments and every change: who changed the status, priority, module, assignment, fixed version, title or description, from what to what and when.

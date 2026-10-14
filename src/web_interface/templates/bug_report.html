@@ -3,7 +3,7 @@
 {% block content %}
 <link rel="stylesheet" href="{{ static_path('css/bugs_report.css') }}?v={{ asset_version('css/bugs_report.css') }}">
 <section class="dashboard-stack spacious-stack bugs-report bug-report-page" data-bug-report="{{ bug.id }}">
-  <nav class="bug-breadcrumb"><a href="/bugs-report#section-bug-reports">← Bug Reports</a><span>#{{ bug.id }}</span></nav>
+  <nav class="bug-breadcrumb" aria-label="Back to the list"><a class="bug-back-link" href="/bugs-report#section-bug-reports"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M11 18l-6-6 6-6"/></svg>Back to Bug Reports</a><span class="bug-breadcrumb-id">Bug report #{{ bug.id }}</span></nav>
 
   <article class="panel bug-header" data-status="{{ bug.status }}">
     <div class="bug-header-pills">{{ status_pill(bug.status, bug.status_label) }}{{ priority_pill(bug.priority, bug.priority_label) }}{{ module_chip(bug.module_title, bug.module_color) }}</div>
