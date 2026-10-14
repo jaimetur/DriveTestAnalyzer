@@ -90,7 +90,7 @@ def test_the_reporter_edits_and_only_super_admins_attend(client):
     login(client, 'ana', 'secret123')
     bug_id = open_bug(client)
     listing = client.get('/bugs-report').text
-    assert '<option value="ana">ana</option>' in listing and 'data-reporter="ana"' in listing
+    assert '<option value="ana" data-name="ana">ana</option>' in listing and 'data-reporter="ana"' in listing
     assert client.post(f'/api/bugs-report/{bug_id}/update', data={'priority': 'P1', 'title': 'Export always fails'}).json()['changes'] == {
         'priority': ['P2', 'P1'], 'title': ['Export fails', 'Export always fails']}
     assert client.post(f'/api/bugs-report/{bug_id}/manage', data={'status': 'resolved'}).status_code == 403
