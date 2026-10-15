@@ -480,19 +480,15 @@ Comma, semicolon and tab separators are accepted, so rows can be pasted from a s
 
 ### Serving Networks
 
-Serving Networks tell the [Vendor mapping](workspace-management.md#vendor-mapping) which networks' cells can serve the samples of each Operator, in order of preference. An Operator's samples are often served by cells it does not own: Vodafone and Three share their RAN through eMOCN, and an MVNO such as Lebara uses its host network. Enter one Operator per row with its serving networks separated by semicolons, its own network first:
+Serving Networks tell the [Vendor mapping](workspace-management.md#vendor-mapping) which networks' cells can serve the samples of each Operator, in order of preference. An Operator's samples are often served by cells it does not own: Vodafone and Three share their RAN through eMOCN, and an MVNO such as Lebara uses its host network.
 
-```text
-Operator,Serving Networks
-3,3; Vodafone
-O2,O2; Vodafone
-```
+Nothing has to be typed or filled in: the table lists every Operator of the Operator Maps with the networks that serve it, and every Operator starts with the defaults — Vodafone and 3 serve each other, Lebara is served by Vodafone and 3, and every other Operator by its own network. The inventories say which network owns each cell and which one hosts its site, but not which Operators' subscribers the cell serves (eMOCN and MVNO agreements), so these relations are not read from them. Change them only when they differ:
 
-- **Operator** accepts any spelling of it: Vodafone SA, Vodafone SM and VF are Vodafone, H3G and Three are 3, Telefonica and VMO2 are O2.
-- Operators without a row use the defaults: Vodafone and 3 serve each other, Lebara is served by Vodafone and 3, and every other Operator by its own network. The table above the editor shows what applies to every Operator of the Operator Maps, configured or by default.
+- **Served by the cells of** shows the chosen networks in order of preference (numbered, joined by arrows). Click **+ network** to add a network after the others, or a chosen network to remove it; an Operator keeps at least one. The networks offered are Vodafone, 3, O2, EE and those of the Network Inventories of the workspace.
+- **Source** is *Default* while an Operator follows the defaults and *Configured* when it differs; **Use default** returns it to them. Changed rows are highlighted until they are saved.
 - **Maximum serving distance (km)**, 30 by default: a cell farther than this from a sample's position is not taken as its serving cell, because global cell identities only repeat across Operators.
 
-**Save Serving Networks** replaces the rows of the workspace (an empty text area returns to the defaults) and records the change in App Events. The mapped CDRs are then marked **Vendor mapping outdated** in the Map dialog until they are mapped again. The Serving Networks travel with Mappings & Reference Data in import, export, transfer, backup and restore.
+**Save Serving Networks** stores the Operators that differ from the defaults (the others keep following them) and records the change in App Events. The mapped CDRs are then marked **Vendor mapping outdated** in the Map dialog until they are mapped again. The Serving Networks travel with Mappings & Reference Data in import, export, transfer, backup and restore.
 
 ## CDR type
 

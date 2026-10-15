@@ -294,9 +294,11 @@ MODULE_SECTIONS: dict[str, list[tuple[Any, ...] | None]] = {
                     ('scoring-results-charts', 'Scoring Charts', 'chart'), ('scoring-results-tables', 'Scoring Tables', 'table'),
                     ('scoring-results-gap', 'GAP Analysis', 'trend')]),
                 ('Saved Filters', 'Saved Filters', 'filter')],
+    # In the order of the page (templates/network_insights.html).
     'network-insights': [('Analysis Selection', 'Analysis Selection', 'select'), ('Overview', 'Overview', 'summary'),
-                         ('RF Quality', 'RF Quality', 'activity'), ('Coverage & Interference Maps', 'Coverage & Interference Maps', 'map'),
-                         ('Network Deployment', 'Network Deployment', 'antenna'),
+                         ('Coverage & Interference Maps', 'Coverage & Interference Maps', 'map'), ('RF Quality', 'RF Quality', 'activity'),
+                         ('Serving Cells', 'Serving Cells', 'link'), ('5G Availability', '5G Availability', 'gauge'),
+                         ('Network Snapshot', 'Network Snapshot', 'database'), ('Network Deployment', 'Network Deployment', 'antenna'),
                          ('Cluster Sites Density', 'Cluster Sites Density', 'pin'), ('Spectrum', 'Spectrum', 'spectrum')],
     'non-qualified-calls': [('Filters', 'Filters', 'filter'), ('Non-Qualified Calls', 'Non-Qualified Calls', 'phone'),
                             ('Summary', 'Summary', 'summary'),

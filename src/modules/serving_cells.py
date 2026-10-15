@@ -145,6 +145,35 @@ def effective_serving_rows(config: dict[str, Any], operators: Iterable[str]) -> 
     return rows
 
 
+def serving_networks_editor(config: dict[str, Any], operators: Iterable[str],
+                            inventory_networks: dict[str, str] | None = None) -> dict[str, Any]:
+    """The Serving Networks editor: every Operator with its serving and default networks, and the networks to choose from.
+
+    The networks are the known UK networks, those of the inventory snapshots and any one already serving an Operator.
+    """
+    labels = dict(NETWORK_FAMILY_LABELS)
+    for family, label in (inventory_networks or {}).items():
+        labels.setdefault(family, label)
+    rows = []
+    for row in effective_serving_rows(config, operators):
+        family = network_family(row['operator'])
+        networks = []
+        for network in row['networks']:
+            key = network_family(network)
+            if key:
+                labels.setdefault(key, str(network))
+                networks.append(key)
+        defaults = list(default_serving_families(family))
+        for key in defaults:
+            labels.setdefault(key, str(row['operator']))
+        rows.append({'operator': str(row['operator']), 'networks': list(dict.fromkeys(networks)), 'defaults': defaults,
+                     'configured': not row.get('default')})
+    known = list(NETWORK_FAMILY_LABELS)
+    order = sorted(labels, key=lambda key: (key not in known, known.index(key) if key in known else 0, labels[key].casefold()))
+    return {'networks': [{'family': key, 'label': labels[key]} for key in order],
+            'rows': sorted(rows, key=lambda row: row['operator'].casefold())}
+
+
 # ---------------------------------------------------------------------------
 # Mapping
 # ---------------------------------------------------------------------------

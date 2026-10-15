@@ -380,24 +380,23 @@
       <p class="lede">The networks whose cells can serve the samples of each Operator, in order of preference. The Vendor mapping looks up each sample's serving cells only among them: an Operator's own network, the networks that share their RAN with it (eMOCN) and, for an MVNO, its host network.</p>
       {% if serving_networks_notice %}<div class="alert alert-success">{{ serving_networks_notice }}</div>{% endif %}
       {% if serving_networks_error %}<div class="alert alert-error">{{ serving_networks_error }}</div>{% endif %}
-      {% if serving_networks_rows %}
-      <div class="table-wrap operator-mappings-table-wrap">
-        <table class="operator-mappings-table serving-networks-summary">
-          <thead><tr><th>Operator</th><th>Served by the cells of</th><th>Source</th></tr></thead>
-          <tbody>
-            {% for row in serving_networks_rows %}
-            <tr><td data-label="Operator">{{ row.operator }}</td><td data-label="Served by the cells of">{{ row.networks | join(' → ') }}</td><td data-label="Source">{{ 'Default' if row.default else 'Configured' }}</td></tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-      {% endif %}
-      <form class="spectrum-holdings-form serving-networks-form" action="/workspace-config/serving-networks/save" method="post">
-        <label>Serving Networks (one Operator per row)<textarea name="serving_networks_csv" rows="6" spellcheck="false" placeholder="Operator,Serving Networks&#10;3,3; Vodafone&#10;Vodafone,Vodafone; 3&#10;Lebara,Vodafone; 3&#10;O2,O2">{{ serving_networks_csv }}</textarea></label>
-        <label>Maximum serving distance (km)<input type="number" name="max_distance_km" min="1" max="500" step="0.5" value="{{ '%g' | format(serving_networks_distance) }}"></label>
-        <button type="submit">Save Serving Networks</button>
+      <form class="serving-networks-form" action="/workspace-config/serving-networks/save" method="post" data-serving-networks-form>
+        <script type="application/json" data-serving-networks-data>{{ serving_networks_editor | tojson }}</script>
+        <div class="table-wrap operator-mappings-table-wrap">
+          <table class="operator-mappings-table serving-networks-editor">
+            <thead><tr><th>Operator</th><th>Served by the cells of <span class="mapping-column-note">Click a network to add it after the others, or a chosen one to remove it</span></th><th>Source</th></tr></thead>
+            <tbody data-serving-networks-rows></tbody>
+          </table>
+        </div>
+        <input type="hidden" name="serving_networks_csv" value="{{ serving_networks_csv }}" data-serving-networks-csv>
+        <div class="serving-networks-actions">
+          <label>Maximum serving distance (km)<input type="number" name="max_distance_km" min="1" max="500" step="0.5" value="{{ '%g' | format(serving_networks_distance) }}"></label>
+          <button type="submit">Save Serving Networks</button>
+          <p class="form-note" data-serving-networks-status role="status" aria-live="polite"></p>
+        </div>
       </form>
-      <p class="form-note">Columns: the Operator (any spelling: Vodafone SA and Vodafone SM are Vodafone) and its serving networks separated by semicolons, its own network first (H3G and Three are 3, Telefonica and VMO2 are O2). Operators without a row use the defaults: Vodafone and 3 serve each other (eMOCN), Lebara is served by Vodafone and 3, and every other Operator by its own network. A cell farther from a sample than the maximum distance is not taken as its serving cell. Saving marks the mapped CDRs as <em>Vendor mapping outdated</em> until they are mapped again.</p>
+      <p class="form-note">Each Operator starts with the defaults: Vodafone and 3 serve each other (eMOCN), Lebara is served by both and any other Operator by its own network. These relations come from RAN sharing and MVNO agreements, not from the Network Inventories, so change an Operator only when its networks differ, and <strong>Use default</strong> to undo it. Only the changed Operators are saved, and saving marks the mapped CDRs as <em>Vendor mapping outdated</em> until they are mapped again. A cell farther from a sample than the maximum serving distance is never its serving cell.</p>
+      <script defer src="{{ static_path('js/serving_networks.js') }}?v={{ asset_version('js/serving_networks.js') }}"></script>
       {% else %}<p class="form-note">Open a workspace before managing the Serving Networks.</p>{% endif %}
     </div>
   </details>

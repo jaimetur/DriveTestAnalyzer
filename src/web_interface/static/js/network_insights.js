@@ -392,8 +392,10 @@
     host.innerHTML = sections().map(section => `<section class="ni-technology-section">
       ${multipleSections() ? sectionTitle(section) : ''}
       <div class="ni-chart-grid">
-        <div class="ni-chart-card"><canvas id="ni-${section.technology}-rsrp-cdf" role="img" aria-label="${escapeHtml(section.technology_label)} RSRP cumulative distribution"></canvas></div>
-        <div class="ni-chart-card"><canvas id="ni-${section.technology}-sinr-cdf" role="img" aria-label="${escapeHtml(section.technology_label)} SINR cumulative distribution"></canvas></div>
+        <div class="ni-cdf-block"><div class="ni-chart-card"><canvas id="ni-${section.technology}-rsrp-cdf" role="img" aria-label="${escapeHtml(section.technology_label)} RSRP cumulative distribution"></canvas></div>
+          ${percentileTable(`${section.technology_label} RSRP percentiles`, section.rf_rows.map(row => ({row, values: [row.rsrp_p10, row.rsrp_median, row.rsrp_p90]})), 'dBm', 1)}</div>
+        <div class="ni-cdf-block"><div class="ni-chart-card"><canvas id="ni-${section.technology}-sinr-cdf" role="img" aria-label="${escapeHtml(section.technology_label)} SINR cumulative distribution"></canvas></div>
+          ${percentileTable(`${section.technology_label} SINR percentiles`, section.rf_rows.map(row => ({row, values: [row.sinr_p10, row.sinr_median, row.sinr_p90]})), 'dB', 1)}</div>
       </div>
       <div class="table-wrap ni-table-wrap"><table class="ni-table">${rfTable(section)}</table></div>
     </section>`).join('');
@@ -402,15 +404,22 @@
       renderChart($(`ni-${section.technology}-sinr-cdf`), section.charts.sinr_cdf);
     }
   };
+  // P10, P50 and P90 of every group under its CDF: the values below which 10%, 50% and 90% of the samples fall.
+  const percentileTable = (title, entries, unit, digits, {heading = analysis.group_label || 'All samples', colours = analysis.colours} = {}) => {
+    const cell = item => item === null || item === undefined ? '—' : `${number(item, digits)} ${unit}`;
+    return `<div class="table-wrap ni-table-wrap ni-percentiles" aria-label="${escapeHtml(title)}"><table class="ni-table"><thead><tr><th>${escapeHtml(heading)}</th><th>P10</th><th>P50</th><th>P90</th></tr></thead>
+      <tbody>${entries.map(({row, values}) => `<tr><td><span class="ni-swatch" style="background:${colours?.[row.operator] || '#6D46A8'}"></span>${escapeHtml(row.operator)}${row.group ? ` · ${escapeHtml(row.group)}` : ''}</td>${values.map(item => `<td class="num">${cell(item)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+  };
   const rfTable = section => {
     const grouped = Boolean(section.rf_rows.some(row => row.group));
+    const measure = (value, unit) => (number(value) === '—' ? '—' : `${number(value)} ${unit}`);
     return `<thead><tr><th>${escapeHtml(analysis.group_label || 'All samples')}</th>${grouped ? `<th>${escapeHtml(analysis.group_label)}</th>` : ''}<th>Samples</th><th>${escapeHtml(section.technology_label)} RSRP samples</th><th>Median RSRP</th><th>P10 RSRP</th><th>Low coverage</th><th>RSRP classes</th><th>Median SINR</th><th>P10 SINR</th><th>High interference</th><th>SINR classes</th></tr></thead>
     <tbody>${section.rf_rows.map(row => `<tr>
       <td><span class="ni-swatch" style="background:${analysis.colours[row.operator] || '#6D46A8'}"></span>${escapeHtml(row.operator)}</td>
       ${grouped ? `<td>${escapeHtml(row.group)}</td>` : ''}
-      <td class="num">${integer(row.samples)}</td><td class="num">${integer(row.rsrp_samples)}</td><td class="num">${number(row.rsrp_median)}</td><td class="num">${number(row.rsrp_p10)}</td>
+      <td class="num">${integer(row.samples)}</td><td class="num">${integer(row.rsrp_samples)}</td><td class="num">${measure(row.rsrp_median, 'dBm')}</td><td class="num">${measure(row.rsrp_p10, 'dBm')}</td>
       <td class="num">${number(row.low_coverage_share)}%</td><td>${classBar(row.rsrp_classes)}</td>
-      <td class="num">${number(row.sinr_median)}</td><td class="num">${number(row.sinr_p10)}</td>
+      <td class="num">${measure(row.sinr_median, 'dB')}</td><td class="num">${measure(row.sinr_p10, 'dB')}</td>
       <td class="num">${number(row.high_interference_share)}%</td><td>${classBar(row.sinr_classes)}</td></tr>`).join('')}</tbody>`;
   };
 
@@ -577,7 +586,7 @@
     const grouped = Boolean(analysis.rf_rows.some(row => row.group));
     const technology = multipleSections();
     table.innerHTML = `<thead><tr><th>${escapeHtml(analysis.group_label || 'All samples')}</th>${grouped ? `<th>${escapeHtml(analysis.group_label)}</th>` : ''}${technology ? '<th>Technology</th>' : ''}<th>Observed eNodeBs</th><th>Observed cells</th><th>Samples</th><th>Samples per eNodeB</th></tr></thead><tbody>${analysis.rf_rows.map(row => `<tr>
-      <td><span class="ni-swatch" style="background:${analysis.colours[row.operator] || '#6D46A8'}"></span>${escapeHtml(row.operator)}</td>${grouped ? `<td>${escapeHtml(row.group)}</td>` : ''}${technology ? `<td>${escapeHtml(row.technology || '')}</td>` : ''}
+      <td><span class="ni-swatch" style="background:${analysis.colours[row.operator] || '#6D46A8'}"></span>${escapeHtml(row.operator)}</td>${grouped ? `<td>${escapeHtml(row.group)}</td>` : ''}${technology ? `<td>${technologyChip(row.technology)}</td>` : ''}
       <td class="num">${integer(row.observed_enodebs)}</td><td class="num">${integer(row.observed_cells)}</td><td class="num">${integer(row.samples)}</td>
       <td class="num">${row.observed_enodebs ? number(row.samples / row.observed_enodebs) : '—'}</td></tr>`).join('')}</tbody>`;
   };
@@ -599,7 +608,7 @@
     const rows = analysis.spectrum.observed;
     if (!rows.length) { table.innerHTML = '<tbody><tr><td class="form-note">The selected CDRs report no serving bands.</td></tr></tbody>'; return; }
     table.innerHTML = `<thead><tr><th>${escapeHtml(analysis.group_label || 'All samples')}</th><th>Technology</th><th>Band</th><th>Frequency</th><th>Duplex</th><th>Class</th><th>Samples</th><th>Share</th><th>Typical DL bandwidth</th></tr></thead><tbody>${rows.map(row => `<tr>
-      <td><span class="ni-swatch" style="background:${analysis.colours[row.operator] || '#6D46A8'}"></span>${escapeHtml(row.operator)}</td><td>${escapeHtml(row.technology)}</td><td>${escapeHtml(row.band)}</td>
+      <td><span class="ni-swatch" style="background:${analysis.colours[row.operator] || '#6D46A8'}"></span>${escapeHtml(row.operator)}</td><td>${technologyChip(row.technology)}</td><td>${escapeHtml(row.band)}</td>
       <td class="num">${row.frequency_mhz ? `${integer(row.frequency_mhz)} MHz` : '—'}</td><td>${escapeHtml(row.duplex || '—')}</td><td>${escapeHtml(row.band_class || '—')}</td>
       <td class="num">${integer(row.samples)}</td><td><span class="ni-share"><span style="width:${row.share}%"></span></span> ${number(row.share)}%</td>
       <td class="num">${row.typical_bandwidth_mhz ? `${number(row.typical_bandwidth_mhz, 0)} MHz` : '—'}</td></tr>`).join('')}</tbody>`;
@@ -979,6 +988,11 @@
 
   // Serving cells of the samples in the inventory snapshot: distances, overshooting and hosting.
   const swatch = label => `<span class="ni-swatch" style="background:${analysis?.colours?.[label] || '#6D46A8'}"></span>`;
+  // A network of the inventory snapshot with its Operator Maps colour.
+  const networkColour = name => snapshotPayload?.colours?.[name] || '#6D46A8';
+  const networkName = name => `<span class="ni-swatch" style="background:${networkColour(name)}"></span>${escapeHtml(name)}`;
+  // Each technology in its own colour (LTE, NR), wherever a table names it.
+  const technologyChip = value => `<span class="ni-tech ni-tech-${String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '-')}">${escapeHtml(value || '—')}</span>`;
   const shareBar = (value, tone = '') => value === null || value === undefined ? '—'
     : `<span class="ni-share ${tone}"><span style="width:${Math.max(0, Math.min(100, value))}%"></span></span> ${number(value)}%`;
   const pendingSnapshot = '<p class="ni-pending-box"><strong>Pending input.</strong> Upload a Multivendor Mapping or a Network Inventory (Cell Configuration KMZ packages included) in Workspace: its cells describe the serving cells of the samples.</p>';
@@ -1006,7 +1020,7 @@
     const group = escapeHtml(analysis.group_label || 'All samples');
     return `<h4>MIMO: inventory TX antennas and reported rank <span class="form-note">(CDR Data: Rank Index and NR maximum MIMO layers)</span></h4>
       <div class="table-wrap ni-table-wrap"><table class="ni-table"><thead><tr><th>${group}</th><th>Technology</th><th>TX antennas</th><th>Inventory field</th><th>Samples</th><th>Mean rank</th><th>Time per rank</th><th>Rank 2+</th><th>Mean max layers</th><th>Rank use</th></tr></thead>
-      <tbody>${rows.map(row => `<tr><td>${swatch(row.operator)}${escapeHtml(row.operator)}</td><td>${escapeHtml(row.technology)}</td><td>${escapeHtml(row.mimo)}</td>
+      <tbody>${rows.map(row => `<tr><td>${swatch(row.operator)}${escapeHtml(row.operator)}</td><td>${technologyChip(row.technology)}</td><td>${escapeHtml(row.mimo)}</td>
         <td>${escapeHtml((row.modes || []).join(', ') || '—')}</td><td class="num">${integer(row.samples)}</td>
         <td class="num">${number(row.mean_rank, 2)}</td><td>${row.rank_classes?.length ? classBar(row.rank_classes) : '—'}</td>
         <td class="num">${row.rank2_share === null ? '—' : `${number(row.rank2_share)}%`}</td><td class="num">${number(row.mean_layers, 2)}</td>
@@ -1019,7 +1033,7 @@
     if (!analysis) { host.innerHTML = '<p class="form-note">No analysis yet.</p>'; return; }
     if (!serving) { host.innerHTML = pendingSnapshot; return; }
     host.innerHTML = `<div class="ni-kpi-grid">${serving.summary.map(row => `<article class="ni-operator-card" style="--ni-operator:${analysis.colours[row.operator] || '#6D46A8'}">
-        <h3>${escapeHtml(row.operator)}</h3>
+        <h3>${escapeHtml(row.operator)}${row.matched ? '' : ' <span class="ni-card-flag">No inventory</span>'}</h3>
         <dl>
           <div><dt>Serving cell found</dt><dd>${number(row.matched_share)}% <small>${integer(row.matched)} of ${integer(row.with_cell)}</small></dd></div>
           <div><dt>Median distance</dt><dd>${number(row.median_km, 2)} km</dd></div>
@@ -1027,11 +1041,15 @@
           <div><dt>Overshooting (&gt; ${number(serving.overshoot_km)} km)</dt><dd>${number(row.overshoot_share)}%</dd></div>
           <div><dt>Hosted by another network</dt><dd>${number(row.hosted_elsewhere_share)}%</dd></div>
           <div><dt>Samples</dt><dd>${integer(row.samples)}</dd></div>
-        </dl></article>`).join('')}</div>
-      <div class="ni-chart-grid ni-chart-grid-single"><div class="ni-chart-card"><canvas id="ni-serving-cdf" role="img" aria-label="Cumulative distribution of the distance to the serving site"></canvas></div></div>
+        </dl>${row.matched ? '' : '<p class="ni-card-foot">The snapshot has no cells of the networks that serve this group: upload their Network Inventory in Workspace.</p>'}</article>`).join('')}</div>
+      <div class="ni-chart-grid"><div class="ni-cdf-block"><div class="ni-chart-card"><canvas id="ni-serving-cdf" role="img" aria-label="Cumulative distribution of the distance to the serving site"></canvas></div>
+        ${percentileTable('Distance to the serving site percentiles', serving.summary.map(row => ({row, values: [row.p10_km, row.median_km, row.p90_km]})), 'km', 2)}</div>
+        ${serving.vendor_distance_cdf ? `<div class="ni-cdf-block"><div class="ni-chart-card"><canvas id="ni-serving-vendor-cdf" role="img" aria-label="Cumulative distribution of the distance to the serving site by RAN vendor"></canvas></div>
+        ${percentileTable('Distance to the serving site by RAN vendor percentiles', (serving.vendor_distances || []).map(row => ({row, values: [row.p10_km, row.median_km, row.p90_km]})), 'km', 2, {heading: 'RAN vendor (all groups)', colours: serving.vendor_colours})}</div>` : ''}</div>
       <div class="ni-breakdown-grid">
         ${breakdownTable('By serving band', serving.by_band, 'Band')}
         ${breakdownTable('By RAN vendor', serving.by_vendor, 'Vendor')}
+        ${breakdownTable('By serving network', serving.by_network || [], 'Serving Network')}
         ${breakdownTable('By host network', serving.by_host, 'Host Network')}
       </div>
       <h4>Overshooting cells <span class="form-note">(the cells that served the most samples beyond ${number(serving.overshoot_km)} km)</span></h4>
@@ -1041,6 +1059,7 @@
       ${nrLegBlock(serving)}
       ${mimoBlock(serving)}`;
     renderChart($('ni-serving-cdf'), serving.distance_cdf);
+    if (serving.vendor_distance_cdf) renderChart($('ni-serving-vendor-cdf'), serving.vendor_distance_cdf);
   };
   const renderNrAvailability = () => {
     const host = $('ni-nr');
@@ -1104,23 +1123,38 @@
       return;
     }
     const matrix = snapshotPayload.host_matrix;
-    panel.innerHTML = `<div class="ni-snapshot-cards">${snapshotPayload.selection.map(item => `<article class="ni-snapshot-card">
+    // The snapshot in use: the choice of the Analysis Selection and the file each network takes.
+    const used = new Map();
+    for (const item of snapshotPayload.selection) {
+      const entry = used.get(item.dataset_id) || {date: item.snapshot_date, file: item.file_name, networks: []};
+      entry.networks.push(item.operator);
+      used.set(item.dataset_id, entry);
+    }
+    // The snapshots in use are not offered to compare with; a comparison with one of them is dropped.
+    if (compareSnapshot && used.has(Number(compareSnapshot))) { compareSnapshot = ''; void loadSnapshot(); return; }
+    const choice = $('ni-snapshot');
+    const usedText = [...used.values()].map(entry => `${entry.date} · ${entry.file} (${entry.networks.join(', ')})`).join('; ');
+    const inUse = `<div class="ni-snapshot-in-use"><span class="ni-snapshot-in-use-label">Snapshot in use</span>
+      <strong>${escapeHtml(choice.options[choice.selectedIndex]?.textContent || 'Newest of each network')}</strong>
+      <span>${[...used.values()].map(entry => `<span class="ni-snapshot-file-chip">${escapeHtml(entry.date)} · ${escapeHtml(entry.file)} <small>${escapeHtml(entry.networks.join(', '))}</small></span>`).join('')}</span>
+      <span class="form-note">Change it in Analysis Selection → Inventory snapshot.</span></div>`;
+    panel.innerHTML = `${inUse}<div class="ni-snapshot-cards">${snapshotPayload.selection.map(item => `<article class="ni-snapshot-card" style="--ni-operator:${snapshotPayload.colours?.[item.operator] || 'var(--ni-color)'}">
         <p class="eyebrow">${escapeHtml(item.snapshot_date)}</p><h3>${escapeHtml(item.operator)}</h3>
         <p class="ni-snapshot-file" title="${escapeHtml(item.file_name)}">${escapeHtml(item.file_name)}</p>
         <div class="ni-snapshot-counts"><div><strong>${integer(item.sites)}</strong><small>sites</small></div><div><strong>${integer(item.cells)}</strong><small>cells</small></div>
-        ${Object.entries(item.technologies || {}).map(([technology, cells]) => `<div><strong>${integer(cells)}</strong><small>${escapeHtml(technology)} cells</small></div>`).join('')}</div>
+        ${Object.entries(item.technologies || {}).map(([technology, cells]) => `<div class="ni-tech-count ni-tech-count-${String(technology).toLowerCase().replace(/[^a-z0-9]+/g, '-')}"><strong>${integer(cells)}</strong><small>${escapeHtml(technology)} cells</small></div>`).join('')}</div>
         <p class="form-note">Networks: ${escapeHtml((item.networks || []).join(', ') || '—')}</p></article>`).join('')}</div>
       <h4>Owner network × host network <span class="form-note">(in-service cells and sites: the owner's cells carried by the host's equipment)</span></h4>
-      <div class="table-wrap ni-table-wrap"><table class="ni-table ni-matrix"><thead><tr><th>Owner \\ Host</th>${matrix.hosts.map(hostName => `<th>${escapeHtml(hostName)}</th>`).join('')}</tr></thead>
-      <tbody>${matrix.owners.map(owner => `<tr><th>${escapeHtml(owner)}</th>${matrix.hosts.map(hostName => {
+      <div class="table-wrap ni-table-wrap"><table class="ni-table ni-matrix"><thead><tr><th>Owner \\ Host</th>${matrix.hosts.map(hostName => `<th class="ni-network-head" style="--ni-network:${networkColour(hostName)}">${networkName(hostName)}</th>`).join('')}</tr></thead>
+      <tbody>${matrix.owners.map(owner => `<tr><th>${networkName(owner)}</th>${matrix.hosts.map(hostName => {
         const cells = matrix.cells[`${owner}|${hostName}`];
         return `<td class="num${owner === hostName ? ' is-own' : ''}">${cells ? `${integer(cells)} <small>${integer(matrix.sites[`${owner}|${hostName}`])} sites</small>` : '—'}</td>`;
       }).join('')}</tr>`).join('')}</tbody></table></div>
       <h4>Inventory quality</h4>
       <div class="table-wrap ni-table-wrap"><table class="ni-table"><thead><tr><th>Network</th><th>Cells</th><th>Not in service</th><th>Locked / disabled</th><th>Without position</th><th>Without azimuth</th><th>Without band</th><th>Without vendor</th><th>Duplicate identities</th><th>Statuses</th></tr></thead>
-      <tbody>${snapshotPayload.quality.map(row => `<tr><td>${escapeHtml(row.operator)}</td><td class="num">${integer(row.cells)}</td><td class="num">${integer(row.not_in_service)}</td><td class="num">${integer(row.locked_or_disabled)}</td><td class="num">${integer(row.without_position)}</td><td class="num">${integer(row.without_azimuth)}</td><td class="num">${integer(row.without_band)}</td><td class="num">${integer(row.without_vendor)}</td><td class="num">${integer(row.duplicate_identities)}</td><td><div class="ni-status-list">${Object.entries(row.statuses || {}).map(([status, count]) => `<span>${escapeHtml(status)} <b>${integer(count)}</b></span>`).join('')}</div></td></tr>`).join('')}</tbody></table></div>
+      <tbody>${snapshotPayload.quality.map(row => `<tr><td>${networkName(row.operator)}</td><td class="num">${integer(row.cells)}</td><td class="num">${integer(row.not_in_service)}</td><td class="num">${integer(row.locked_or_disabled)}</td><td class="num">${integer(row.without_position)}</td><td class="num">${integer(row.without_azimuth)}</td><td class="num">${integer(row.without_band)}</td><td class="num">${integer(row.without_vendor)}</td><td class="num">${integer(row.duplicate_identities)}</td><td><div class="ni-status-list">${Object.entries(row.statuses || {}).map(([status, count]) => `<span>${escapeHtml(status)} <b>${integer(count)}</b></span>`).join('')}</div></td></tr>`).join('')}</tbody></table></div>
       <h4>Changes from another snapshot</h4>
-      <div class="ni-map-toolbar"><label>Compare with<select id="ni-snapshot-compare"><option value="">Choose a snapshot</option>${snapshotPayload.snapshots.map(item => `<option value="${item.dataset_id}"${String(item.dataset_id) === compareSnapshot ? ' selected' : ''}>${escapeHtml(item.snapshot_date)} · ${escapeHtml(item.file_name)}</option>`).join('')}</select></label></div>
+      <div class="ni-map-toolbar"><div class="ni-compare-current"><span>Current snapshot</span><strong title="${escapeHtml(usedText)}">${escapeHtml(usedText)}</strong></div><label>Compare with<select id="ni-snapshot-compare"><option value="">Choose a snapshot</option>${snapshotPayload.snapshots.filter(item => !used.has(item.dataset_id)).map(item => `<option value="${item.dataset_id}"${String(item.dataset_id) === compareSnapshot ? ' selected' : ''}>${escapeHtml(item.snapshot_date)} · ${escapeHtml(item.file_name)}</option>`).join('')}</select></label></div>
       ${renderComparison(snapshotPayload.comparison)}
       <p class="form-note ni-note">${integer(snapshotPayload.snapshots.length)} snapshot${snapshotPayload.snapshots.length === 1 ? '' : 's'} in the workspace: ${snapshotPayload.snapshots.map(item => `${escapeHtml(item.snapshot_date)} · ${escapeHtml(item.file_name)} (${escapeHtml(item.networks.join(', ') || '—')})`).join('; ')}. Change the Inventory snapshot of the Analysis Selection to compare them.</p>`;
     renderDensity();
@@ -1131,7 +1165,7 @@
     if (!comparison.networks.length) return `<p class="form-note">${escapeHtml(comparison.file_name)} describes none of the networks of the current snapshot.</p>`;
     return `<p class="form-note">Current snapshot compared with ${escapeHtml(comparison.snapshot_date)} · ${escapeHtml(comparison.file_name)} (cells matched by technology and identity).</p>
       <div class="table-wrap ni-table-wrap"><table class="ni-table"><thead><tr><th>Network</th><th>Cells now</th><th>Cells then</th><th>In both</th><th>Added</th><th>Removed</th><th>Vendor changed</th><th>Sites with a vendor change</th><th>Vendor swaps</th><th>Regions with most changes</th></tr></thead>
-      <tbody>${comparison.networks.map(row => `<tr><td>${escapeHtml(row.operator)}</td><td class="num">${integer(row.cells)}</td><td class="num">${integer(row.cells_before)}</td><td class="num">${integer(row.common)}</td>
+      <tbody>${comparison.networks.map(row => `<tr><td>${networkName(row.operator)}</td><td class="num">${integer(row.cells)}</td><td class="num">${integer(row.cells_before)}</td><td class="num">${integer(row.common)}</td>
         <td class="num">${integer(row.added)}</td><td class="num">${integer(row.removed)}</td><td class="num"><strong>${integer(row.vendor_changed)}</strong></td><td class="num">${integer(row.sites_with_vendor_change)}</td>
         <td><div class="ni-status-list">${row.swaps.map(swap => `<span>${escapeHtml(swap.from)} → ${escapeHtml(swap.to)} <b>${integer(swap.cells)}</b></span>`).join('') || '—'}</div></td>
         <td><div class="ni-status-list">${row.regions.map(region => `<span>${escapeHtml(region.region)} <b>${integer(region.cells)}</b></span>`).join('') || '—'}</div></td></tr>`).join('')}</tbody></table></div>`;
@@ -1154,7 +1188,9 @@
     const preferred = available.find(key => polygons.includes(key === 'cluster' ? 'clusters' : 'regions')) || available[0];
     const dimension = available.includes(densityDimension) ? densityDimension : preferred;
     const rows = density[dimension];
-    const networks = [...new Set(rows.map(row => row.operator))].sort((left, right) => left.localeCompare(right));
+    // Networks in the order of the Operator Maps.
+    const networkRank = name => { const index = (snapshotPayload?.network_order || []).indexOf(name); return index < 0 ? Infinity : index; };
+    const networks = [...new Set(rows.map(row => row.operator))].sort((left, right) => networkRank(left) - networkRank(right) || left.localeCompare(right));
     const areas = new Map();
     for (const row of rows) {
       const area = areas.get(row.area) || {area: row.area, area_km2: row.area_km2, total: 0, networks: {}};
@@ -1168,12 +1204,12 @@
     host.innerHTML = `<div class="ni-map-toolbar">${available.length > 1 ? `<label>Split sites by<select id="ni-density-dimension">${available.map(key => `<option value="${key}"${key === dimension ? ' selected' : ''}>${key === 'cluster' ? 'Cluster' : 'Region'}</option>`).join('')}</select></label>` : ''}
       <p class="form-note">${integer(ordered.length)} ${label.toLowerCase()}${ordered.length === 1 ? '' : 's'}${polygons.includes(dimension === 'cluster' ? 'clusters' : 'regions') ? ' from the imported polygons, with their areas' : ' from the inventory field, without areas'}; the ${shown.length < ordered.length ? `${shown.length} with the most sites are shown` : 'complete list is shown'}.</p>
       ${ordered.length > 25 ? `<button type="button" class="ni-secondary-action" id="ni-density-all">${densityAll ? 'Show the first 25' : `Show all ${integer(ordered.length)}`}</button>` : ''}</div>
-      <div class="table-wrap ni-table-wrap"><table class="ni-table ni-density-table"><thead><tr><th rowspan="2">${label}</th><th rowspan="2">Area km²</th>${networks.map(network => `<th colspan="4" class="ni-density-network">${escapeHtml(network)}</th>`).join('')}</tr>
-      <tr>${networks.map(() => '<th>Sites</th><th>With NR</th><th>Sites/km²</th><th>Median ISD</th>').join('')}</tr></thead>
+      <div class="table-wrap ni-table-wrap"><table class="ni-table ni-density-table"><thead><tr><th rowspan="2">${label}</th><th rowspan="2">Area km²</th>${networks.map(network => `<th colspan="4" class="ni-density-network ni-density-start" style="--ni-network:${snapshotPayload?.colours?.[network] || 'var(--ni-color)'}">${escapeHtml(network)}</th>`).join('')}</tr>
+      <tr>${networks.map(() => '<th class="ni-density-start">Sites</th><th>With NR</th><th>Sites/km²</th><th>Median ISD</th>').join('')}</tr></thead>
       <tbody>${shown.map(area => `<tr><td>${escapeHtml(area.area)}</td><td class="num">${area.area_km2 === null ? '—' : integer(Math.round(area.area_km2))}</td>${networks.map(network => {
         const row = area.networks[network];
-        return row ? `<td class="num">${integer(row.sites)}</td><td class="num">${integer(row.nr_sites)}</td><td class="num">${row.sites_per_km2 === null ? '—' : number(row.sites_per_km2, 3)}</td><td class="num">${number(row.median_isd_km, 2)} km</td>`
-          : '<td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">—</td>';
+        return row ? `<td class="num ni-density-start">${integer(row.sites)}</td><td class="num">${integer(row.nr_sites)}</td><td class="num">${row.sites_per_km2 === null ? '—' : number(row.sites_per_km2, 3)}</td><td class="num">${number(row.median_isd_km, 2)} km</td>`
+          : '<td class="num ni-density-start">—</td><td class="num">—</td><td class="num">—</td><td class="num">—</td>';
       }).join('')}</tr>`).join('')}</tbody></table></div>
       <p class="form-note ni-note">Median ISD: the median distance from each in-service site to the nearest site of the same network (the inter-site distance).</p>`;
   };
@@ -1192,7 +1228,7 @@
     const rows = snapshotPayload?.spectrum || [];
     if (!rows.length) { table.innerHTML = '<tbody><tr><td class="form-note">The inventory snapshot has no in-service cells with a band.</td></tr></tbody>'; return; }
     table.innerHTML = `<thead><tr><th>Network</th><th>Technology</th><th>Band</th><th>Class</th><th>Sites</th><th>Cells</th><th>Carriers</th><th>Typical bandwidth</th><th>Deployed MHz</th><th>Channels</th></tr></thead><tbody>${rows.map(row => `<tr>
-      <td>${escapeHtml(row.operator)}</td><td>${escapeHtml(row.technology)}</td><td>${escapeHtml(row.band)}</td><td>${escapeHtml(row.band_class || '—')}</td>
+      <td>${networkName(row.operator)}</td><td>${technologyChip(row.technology)}</td><td>${escapeHtml(row.band)}</td><td>${escapeHtml(row.band_class || '—')}</td>
       <td class="num">${integer(row.sites)}</td><td class="num">${integer(row.cells)}</td><td class="num">${integer(row.carriers)}</td>
       <td class="num">${row.typical_bandwidth_mhz ? `${number(row.typical_bandwidth_mhz, 0)} MHz` : '—'}</td><td class="num">${row.deployed_mhz ? number(row.deployed_mhz, 0) : '—'}</td>
       <td>${escapeHtml((row.channels || []).join(', '))}</td></tr>`).join('')}</tbody>`;
@@ -1217,7 +1253,7 @@
     if (!tables.length) { host.innerHTML = snapshotPayload ? '<p class="form-note">No cell of the snapshot matches the Technology and status choices.</p>' : pendingSnapshot; return; }
     host.innerHTML = tables.map((table, index) => {
       const maximum = table.rows.reduce((value, row) => Math.max(value, row.sites), 1);
-      return `<section class="ni-inventory"><header class="ni-section-head"><h3>${escapeHtml(table.operator)} <span>${integer(table.totals.sites)} sites · ${integer(table.totals.cells)} cells (${integer(table.totals.lte_cells)} LTE, ${integer(table.totals.nr_cells)} NR)</span></h3>
+      return `<section class="ni-inventory ni-network-table" style="--ni-operator:${snapshotPayload.colours?.[table.operator] || 'var(--ni-color)'}"><header class="ni-section-head"><h3><span class="ni-network-name"><span class="ni-swatch"></span>${escapeHtml(table.operator)}</span> <span>${integer(table.totals.sites)} sites · ${integer(table.totals.cells)} cells (${integer(table.totals.lte_cells)} LTE, ${integer(table.totals.nr_cells)} NR)</span></h3>
         <button type="button" class="ni-secondary-action ni-export-action" data-ni-deployment-csv="${index}">Export CSV</button></header>
         <div class="table-wrap ni-table-wrap"><table class="ni-table"><thead><tr><th>${escapeHtml(table.group_label)}</th><th>Sites</th><th>Cells</th><th>LTE cells</th><th>NR cells</th><th></th></tr></thead><tbody>${table.rows.map(row => `<tr>
           <td>${escapeHtml(row.group)}</td><td class="num">${integer(row.sites)}</td><td class="num">${integer(row.cells)}</td><td class="num">${integer(row.lte_cells)}</td><td class="num">${integer(row.nr_cells)}</td>

@@ -5436,11 +5436,17 @@ def spectrum_holdings_context(request: Request) -> dict[str, Any]:
 
 def serving_networks_context(request: Request) -> dict[str, Any]:
     """The Serving Networks of the active workspace: which networks' cells serve each Operator's samples."""
-    from src.modules.serving_cells import effective_serving_rows, load_serving_networks, serving_networks_csv
+    from src.modules.network_inventory import list_inventory_snapshots
+    from src.modules.serving_cells import load_serving_networks, serving_networks_csv, serving_networks_editor
 
     config = load_serving_networks(repository) if active_workspace else {'rows': [], 'max_distance_km': 30.0}
+    # The networks of the inventory snapshots, offered beside the known ones.
+    inventory_networks: dict[str, str] = {}
+    for snapshot in list_inventory_snapshots(repository) if active_workspace else []:
+        for family, summary in (snapshot.get('families') or {}).items():
+            inventory_networks.setdefault(str(family), str(((summary or {}).get('networks') or [family])[0]))
     return {
-        'serving_networks_rows': effective_serving_rows(config, operator_options()) if active_workspace else [],
+        'serving_networks_editor': serving_networks_editor(config, operator_options(), inventory_networks) if active_workspace else {},
         'serving_networks_csv': serving_networks_csv(config['rows']) if config['rows'] else '',
         'serving_networks_distance': config['max_distance_km'],
         'serving_networks_notice': request.query_params.get('serving_networks_notice') or None,

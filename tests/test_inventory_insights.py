@@ -97,9 +97,13 @@ def test_analysis_describes_the_serving_cells_distances_and_nr_availability(clie
     row = serving['summary'][0]
     assert row['samples'] == 12 and row['matched'] == 12 and row['matched_share'] == 100.0
     assert row['overshoot_share'] == round(4 / 12 * 100, 1)
+    # The percentiles of the distance CDF, shown in the table under it.
+    assert row['p10_km'] <= row['median_km'] <= row['p90_km']
     assert {item['value'] for item in serving['by_vendor']} == {'Ericsson', 'Huawei'}
     # Operator Maps name the Vodafone network VF in this workspace.
     assert {item['value']: item['samples'] for item in serving['by_host']} == {'VF': 9, 'O2': 3}
+    # Every sample is served by a Vodafone cell, also those on the site Telefonica hosts.
+    assert {item['value']: item['samples'] for item in serving['by_network']} == {'VF': 12}
     assert serving['overshooting_cells'] and serving['overshooting_cells'][0]['max_km'] > 8
     nr = serving['nr_availability']['rows'][0]
     # Samples anchored on VF0 and VF1, the sites with NR cells: half of them measured no NR.
@@ -323,3 +327,38 @@ def test_sites_take_the_vendor_colours_of_the_vendor_maps_by_name_or_alias():
     assert ii.vendor_colour('HW', configured) == '#FBBD00'
     # Vendors without a valid Vendor Maps colour keep the fallback palette.
     assert ii.vendor_colour('NSN', configured) == ii.VENDOR_COLOURS['nsn'] and ii.vendor_colour('Other', configured) == '#868E96'
+
+
+def test_inventory_cells_and_snapshot_panels_are_kept_on_disk_with_the_network_colours(client, tmp_path):
+    from pathlib import Path
+
+    login(client)
+    _dataset(tmp_path, '260917_Cell_Config.zip', 'network_inventory', _inventory_rows())
+    payload = client.post('/api/network-insights/snapshot', json={'group': 'vendor'}).json()
+    folder = Path(core.repository.db_path).resolve().parent / '.network-insights-cache'
+    # The derived cells of the snapshot and the snapshot panels are stored for the next runs, also after a restart.
+    assert list(folder.glob('cells-*.pkl')) and list(folder.glob('snapshot-base-*.json')) and len(list(folder.glob('snapshot-*.json'))) >= 2
+    from src.modules.network_inventory import ensure_inventory_cells
+    selection = ii.snapshot_choice(ensure_inventory_cells(core.repository))
+    first = ii.load_cells(core.repository, selection)
+    ii._cell_cache.clear()
+    pd.testing.assert_frame_equal(ii.load_cells(core.repository, selection), first)
+    # Every network named by the panels has its Operator Maps colour (or one of the fallback palette).
+    assert {'VF', '3'} <= set(payload['colours']) and all(colour.startswith('#') for colour in payload['colours'].values())
+
+
+def test_snapshot_panels_list_the_networks_in_operator_maps_order(client, tmp_path):
+    login(client)
+    rows = _inventory_rows() + [{**row, 'Network': 'H3G', 'Host Network': 'H3G', 'Site_ID': 'T2', 'eNodeB ID': 2001, 'Evenflow Status': 'In Service'}
+                                for row in _inventory_rows() if row.get('Site_ID') == 'T1']
+    _dataset(tmp_path, '260917_Cell_Config.zip', 'network_inventory', rows)
+    groups = core.repository.list_operator_mapping_groups()
+    by_name = {group['canonical']: group for group in groups}
+    # VF before 3, unlike the alphabetical order.
+    core.repository.replace_operator_mapping_groups([by_name['VF'], by_name['3'], *(group for group in groups if group['canonical'] not in {'VF', '3'})])
+    payload = client.post('/api/network-insights/snapshot', json={'group': 'host_network'}).json()
+    assert payload['network_order'][:2] == ['VF', '3']
+    assert [item['operator'] for item in payload['selection']][:2] == ['VF', '3']
+    assert [table['operator'] for table in payload['deployment']][:2] == ['VF', '3']
+    assert [row['operator'] for row in payload['quality']][:2] == ['VF', '3']
+    assert payload['host_matrix']['owners'][:2] == ['VF', '3']

@@ -29,7 +29,7 @@ from src.modules.cell_identity import nr_cell_bits, nr_gnodeb
 from src.modules.column_names import campaign_sort_key, column_identity, compact_campaign_value, operator_vendor_filter_values, vendor_filter_values
 from src.modules.mapping_order import swap_operator_vendor, swap_vendor_operator
 from src.modules.value_maps import ValueMapper, field_kind
-from src.modules.mapping_order import dimension_order_key
+from src.modules.mapping_order import dimension_order_key, operator_order_key, vendor_order_key
 from src.modules.output_layout import NETWORK_INSIGHTS_FOLDER, module_output_dir
 from src.modules import inventory_insights as ii
 from src.modules.network_inventory import dataset_revision, effective_snapshot_date, ensure_inventory_cells, network_family
@@ -40,7 +40,7 @@ from src.modules.serving_cells import load_serving_networks, serving_families
 NETWORK_INSIGHTS_KINDS = ('data', 'voice', 'speech')
 # Bump when the normalised samples or the analysis payload change shape.
 SAMPLES_CACHE_VERSION = 6
-ANALYSIS_CACHE_VERSION = 15
+ANALYSIS_CACHE_VERSION = 20
 INVENTORY_CACHE_VERSION = 4
 OBSERVED_CACHE_VERSION = 9
 # Columns of the Observed Sites/Cells (from CDRs) tables.
@@ -421,12 +421,12 @@ def rf_summary(
             'samples': int(len(part)),
             'rsrp_samples': int(len(rsrp_values)),
             'rsrp_mean': round(float(rsrp_values.mean()), 2) if len(rsrp_values) else None,
-            'rsrp_median': _quantile(rsrp_values, .5), 'rsrp_p10': _quantile(rsrp_values, .1),
+            'rsrp_median': _quantile(rsrp_values, .5), 'rsrp_p10': _quantile(rsrp_values, .1), 'rsrp_p90': _quantile(rsrp_values, .9),
             'low_coverage_share': _share(rsrp_values < coverage_threshold),
             'rsrp_classes': class_distribution(rsrp_values, RSRP_CLASSES),
             'sinr_samples': int(len(sinr_values)),
             'sinr_mean': round(float(sinr_values.mean()), 2) if len(sinr_values) else None,
-            'sinr_median': _quantile(sinr_values, .5), 'sinr_p10': _quantile(sinr_values, .1),
+            'sinr_median': _quantile(sinr_values, .5), 'sinr_p10': _quantile(sinr_values, .1), 'sinr_p90': _quantile(sinr_values, .9),
             'high_interference_share': _share(sinr_values < interference_threshold),
             'sinr_classes': class_distribution(sinr_values, SINR_CLASSES),
             'observed_enodebs': len(enodebs), 'observed_cells': len(cells),
@@ -483,10 +483,12 @@ def cdf_payload(
     grouped = [(key if isinstance(key, tuple) else (key,), part) for key, part in samples.groupby(keys, sort=False, dropna=False)]
     if order_key:
         grouped.sort(key=lambda item: order_key(str(item[0][0])))
+    ordered_values = []
     for key, part in grouped:
         values = part[value_column].dropna().sort_values()
         if values.empty:
             continue
+        ordered_values.append(values.to_numpy(dtype=float))
         quantiles = [index / (points - 1) for index in range(points)]
         x = [round(float(value), 2) for value in np.quantile(values.to_numpy(dtype=float), quantiles)]
         lows.append(x[0]); highs.append(x[-1])
@@ -502,6 +504,18 @@ def cdf_payload(
         series.append({'name': name, 'colour': colour, 'width': width, 'dash': dash, 'x': x, 'y': quantiles})
         legend.append({'label': name, 'colour': colour, 'width': width, 'dash': dash})
     domain_x = [min(lows), max(highs)] if lows else [0, 1]
+    if lows:
+        # As in CDR Analysis: the axis ends where most curves have passed 99% and converged, instead of stretching to
+        # the last outlier; every curve stops there at its cumulative share.
+        from src.modules.cdr_reporting import _cdf_terminal_x_maximum
+
+        high = _cdf_terminal_x_maximum([values.tolist() for values in ordered_values], domain_x[0], domain_x[1])
+        if domain_x[0] < high < domain_x[1]:
+            for item, values in zip(series, ordered_values, strict=True):
+                kept = [(x_value, y_value) for x_value, y_value in zip(item['x'], item['y'], strict=True) if x_value < high]
+                kept.append((round(high, 2), float(np.searchsorted(values, high, side='right')) / len(values)))
+                item['x'], item['y'] = [point[0] for point in kept], [point[1] for point in kept]
+            domain_x = [domain_x[0], high]
     if domain_x[0] == domain_x[1]:
         domain_x = [domain_x[0] - 1, domain_x[1] + 1]
     return {
@@ -1149,8 +1163,9 @@ def install_network_insights_routes(core: Any) -> None:
     import hashlib
     import json
     from collections import OrderedDict
+    import logging
     from pathlib import Path
-    from threading import Lock
+    from threading import Lock, Thread
 
     from urllib.parse import urlencode
 
@@ -1375,6 +1390,7 @@ def install_network_insights_routes(core: Any) -> None:
     def network_insights_page(request: Request, user=Depends(insights_user)):
         task_repository = bound_repository()
         holdings = load_spectrum_holdings(task_repository)
+        warm_snapshots(task_repository)
         return core.render_template(request, 'network_insights.html', {
             'user': user,
             'network_insights_config': {
@@ -1531,7 +1547,7 @@ def install_network_insights_routes(core: Any) -> None:
                                 for dataset in inventory_datasets(task_repository)}
         missing_inventory_operators = sorted(
             {str(operator) for operator in original_operators if str(operator).strip()} - inventoried_operators,
-            key=str.casefold,
+            key=lambda operator: operator_order_key(operator, task_repository.list_operator_mapping_groups()),
         )
         # The inventory cell that served each sample, in the selected snapshot of the networks allowed to serve it.
         serving_state = serving_analysis_state(task_repository, filtered, original_operators, request.snapshot)
@@ -1689,12 +1705,13 @@ def install_network_insights_routes(core: Any) -> None:
             'charts': first['charts'],
             'maps': first['maps'],
             'spectrum': {
-                'observed': observed_spectrum(filtered),
-                'licensed': licensed_spectrum_summary(holdings),
+                'observed': sorted(observed_spectrum(filtered), key=lambda row: group_order(row['operator'])),
+                'licensed': sorted(licensed_spectrum_summary(holdings), key=lambda row: operator_order_key(row['operator'], mapping_groups)),
             },
             'colours': colours,
             'warnings': warnings,
-            'serving': serving_payload(serving_state, filtered, labels, colours, group_order, request.overshoot_km),
+            'serving': serving_payload(serving_state, filtered, labels, colours, group_order, request.overshoot_km,
+                                       vendor_groups=vendor_mapping_groups, operator_groups=mapping_groups),
         }
 
     def family_operator_labels(task_repository) -> dict[str, str]:
@@ -1731,7 +1748,8 @@ def install_network_insights_routes(core: Any) -> None:
                 'labels': family_operator_labels(task_repository), 'max_distance_km': config['max_distance_km'],
                 'snapshot_dates': {family: dates.get(int(dataset_id), '') for family, dataset_id in selection.items()}}
 
-    def serving_payload(state, samples: pd.DataFrame, labels: pd.Series, colours: dict[str, str], order_key, overshoot_km: float) -> dict[str, Any] | None:
+    def serving_payload(state, samples: pd.DataFrame, labels: pd.Series, colours: dict[str, str], order_key, overshoot_km: float,
+                        vendor_groups: list[dict[str, Any]] | None = None, operator_groups: list[dict[str, Any]] | None = None) -> dict[str, Any] | None:
         if state is None:
             return None
         serving = state['serving']
@@ -1740,7 +1758,8 @@ def install_network_insights_routes(core: Any) -> None:
         summary.sort(key=lambda row: order_key(row['operator']))
         distances = pd.DataFrame({'operator': labels.to_numpy(), 'distance': serving['distance_km'].to_numpy(dtype=float)})
         family_labels = state['labels']
-        named = serving.assign(host_family=serving['host_family'].map(lambda value: ii.family_label(str(value), family_labels) if isinstance(value, str) else value))
+        name = lambda value: ii.family_label(str(value), family_labels) if isinstance(value, str) else value
+        named = serving.assign(network_family=serving['network_family'].map(name), host_family=serving['host_family'].map(name))
         sites = ii.site_positions(state['cells'])
         nr_leg = state['nr_leg']
         by_label = lambda rows: sorted(rows, key=lambda row: order_key(row['operator']))
@@ -1753,6 +1772,7 @@ def install_network_insights_routes(core: Any) -> None:
             'by_band': ii.serving_breakdown(serving, labels, 'band_3gpp', overshoot_km),
             'by_vendor': ii.serving_breakdown(serving, labels, 'vendor', overshoot_km),
             'by_host': ii.serving_breakdown(named, labels, 'host_family', overshoot_km),
+            'by_network': ii.serving_breakdown(named, labels, 'network_family', overshoot_km),
             'overshooting_cells': ii.overshooting_cells(samples.assign(operator=labels.to_numpy()), serving, overshoot_km, family_labels=family_labels),
             'nr_availability': (lambda nr: {**nr, 'rows': by_label(nr['rows'])})(
                 ii.nr_availability(samples.assign(operator=labels.to_numpy()), serving, labels, sites, nr_leg=nr_leg)),
@@ -1762,7 +1782,28 @@ def install_network_insights_routes(core: Any) -> None:
                            key=lambda row: (order_key(row['operator']), row['technology'], row['tx_antennas'] is None, row['tx_antennas'] or 0)),
             'distance_cdf': cdf_payload(distances.dropna(), 'distance', None, 'Distance to the serving site', 'Distance (km)',
                                         colours, order_key=order_key),
+            **vendor_distance_payload(serving, vendor_groups, operator_groups),
             'order': order,
+        }
+
+    def vendor_distance_payload(serving: pd.DataFrame, vendor_groups, operator_groups) -> dict[str, Any]:
+        """The distance to the serving site per RAN vendor of the serving cell, every group together: its CDF in the
+        Vendor Maps colours and order, with the P10, P50 and P90 of each vendor."""
+        matched = serving.loc[serving['matched'].astype(bool) & serving['vendor'].fillna('').astype(str).ne('')]
+        frame = pd.DataFrame({'operator': matched['vendor'].astype(str).to_numpy(), 'distance': matched['distance_km'].to_numpy(dtype=float)}).dropna()
+        configured = ii.configured_vendor_colours(vendor_groups)
+        vendors = sorted(pd.unique(frame['operator']), key=lambda vendor: vendor_order_key(vendor, vendor_groups, operator_groups))
+        rank = {vendor: index for index, vendor in enumerate(vendors)}
+        colours = {vendor: ii.vendor_colour(vendor, configured) for vendor in vendors}
+        rows = []
+        for vendor in vendors:
+            values = frame.loc[frame['operator'] == vendor, 'distance']
+            rows.append({'operator': vendor, 'samples': int(len(values)), 'p10_km': round(float(values.quantile(.1)), 3),
+                         'median_km': round(float(values.median()), 3), 'p90_km': round(float(values.quantile(.9)), 3)})
+        return {
+            'vendor_distance_cdf': cdf_payload(frame, 'distance', None, 'Distance to the serving site by RAN vendor', 'Distance (km)',
+                                               colours, order_key=lambda vendor: rank.get(vendor, len(rank))),
+            'vendor_distances': rows, 'vendor_colours': colours,
         }
 
     class SnapshotRequest(BaseModel):
@@ -1775,6 +1816,45 @@ def install_network_insights_routes(core: Any) -> None:
 
     snapshot_cache: OrderedDict[str, dict[str, Any]] = OrderedDict()
     snapshot_cache_lock = Lock()
+    snapshot_warming = Lock()
+
+    def snapshot_file(task_repository, name: str) -> Path:
+        return cache_directory(task_repository) / f'snapshot-{name}.json'
+
+    def read_snapshot_file(task_repository, name: str) -> dict[str, Any] | None:
+        """A snapshot payload stored by an earlier run, also after a restart (see snapshot_payload)."""
+        stored = snapshot_file(task_repository, name)
+        if not stored.is_file():
+            return None
+        try:
+            payload = json.loads(stored.read_bytes())
+        except (OSError, ValueError):
+            stored.unlink(missing_ok=True)
+            return None
+        stored.touch()
+        return payload
+
+    def write_snapshot_file(task_repository, name: str, payload: dict[str, Any]) -> None:
+        data = json.dumps(payload, ensure_ascii=False, separators=(',', ':'),
+                          default=lambda value: value.item() if hasattr(value, 'item') else str(value)).encode('utf-8')
+        write_cache_file(cache_directory(task_repository), snapshot_file(task_repository, name).name, data, keep=120, pattern='snapshot-*.json')
+
+    def warm_snapshots(task_repository) -> None:
+        """Prepare, in the background, the payload of the newest snapshots and of every single snapshot, so switching
+        the Inventory snapshot shows at once; what is already stored is only read."""
+        if not snapshot_warming.acquire(blocking=False):
+            return
+
+        def run() -> None:
+            try:
+                for choice in ['', *(str(int(row['id'])) for row in snapshot_datasets(task_repository))]:
+                    snapshot_payload(task_repository, choice)
+            except Exception as exc:  # Warming is a convenience: a failure only leaves the work for the request.
+                logging.getLogger(__name__).warning('Network Insights snapshot warm-up stopped: %s', exc)
+            finally:
+                snapshot_warming.release()
+
+        Thread(target=run, name='network-insights-snapshots', daemon=True).start()
 
     def polygon_names(task_repository, longitude: pd.Series, latitude: pd.Series, dimension: str) -> pd.Series | None:
         """The imported Region or Cluster polygon of each position (newest upload first), or None without polygons."""
@@ -1831,8 +1911,15 @@ def install_network_insights_routes(core: Any) -> None:
         with snapshot_cache_lock:
             cached = snapshot_cache.get(key)
             base = snapshot_cache.get(base_key)
+        # Payloads computed before, also before a restart, are read from the workspace cache folder.
+        if cached is None and (cached := read_snapshot_file(task_repository, hashlib.sha256(key.encode()).hexdigest())) is not None:
+            with snapshot_cache_lock:
+                snapshot_cache[key] = cached
         if cached is not None:
-            return cached
+            return with_network_colours(task_repository, cached)
+        if base is None and (base := read_snapshot_file(task_repository, f'base-{base_key}')) is not None:
+            with snapshot_cache_lock:
+                snapshot_cache[base_key] = base
         cells = ii.load_cells(task_repository, selection)
         if base is None:
             sites = ii.site_positions(cells, in_service_only=False)
@@ -1859,6 +1946,7 @@ def install_network_insights_routes(core: Any) -> None:
             }
             with snapshot_cache_lock:
                 snapshot_cache[base_key] = base
+            write_snapshot_file(task_repository, f'base-{base_key}', base)
 
         def value_names(field: str, frame: pd.DataFrame) -> pd.Series:
             if field in {'region', 'cluster'} and field in base['site_names']:
@@ -1880,7 +1968,25 @@ def install_network_insights_routes(core: Any) -> None:
             snapshot_cache[key] = payload
             while len(snapshot_cache) > 40:
                 snapshot_cache.popitem(last=False)
-        return payload
+        write_snapshot_file(task_repository, hashlib.sha256(key.encode()).hexdigest(), payload)
+        return with_network_colours(task_repository, payload)
+
+    def with_network_colours(task_repository, payload: dict[str, Any]) -> dict[str, Any]:
+        """The snapshot payload with its networks in the order and colours of the Operator Maps (read each time, so a
+        new order or colour shows without rebuilding the snapshot)."""
+        groups = task_repository.list_operator_mapping_groups()
+        rank = lambda name: operator_order_key(name, groups)
+        by_network = lambda rows: sorted(rows, key=lambda row: rank(row['operator']))
+        names = {row['operator'] for rows in payload.get('density', {}).values() for row in rows}
+        names |= {row['operator'] for key in ('quality', 'spectrum', 'selection', 'deployment') for row in payload.get(key, [])}
+        matrix = payload.get('host_matrix') or {}
+        names |= set(matrix.get('owners', [])) | set(matrix.get('hosts', []))
+        order = sorted(names, key=rank)
+        ordered = {**payload, **{key: by_network(payload[key]) for key in ('quality', 'spectrum', 'selection', 'deployment') if key in payload}}
+        if matrix:
+            ordered['host_matrix'] = {**matrix, 'owners': sorted(matrix.get('owners', []), key=rank), 'hosts': sorted(matrix.get('hosts', []), key=rank)}
+        ordered['density'] = {dimension: by_network(rows) for dimension, rows in payload.get('density', {}).items()}
+        return {**ordered, 'network_order': order, 'colours': operator_colours(order, groups)}
 
     class MapSitesRequest(BaseModel):
         snapshot: str = ''
@@ -1927,8 +2033,9 @@ def install_network_insights_routes(core: Any) -> None:
             selection = {item['family']: item['dataset_id'] for item in payload['selection']}
             current = ii.load_cells(task_repository, selection)
             before = ii.load_cells(task_repository, {family: compare_id for family in other['families'] if family})
+            groups = task_repository.list_operator_mapping_groups()
             comparison = {'dataset_id': compare_id, 'file_name': other['file_name'], 'snapshot_date': other['snapshot_date'],
-                          'networks': ii.compare_snapshots(current, before, labels)}
+                          'networks': sorted(ii.compare_snapshots(current, before, labels), key=lambda row: operator_order_key(row['operator'], groups))}
         task_repository.try_add_log(user.username, 'network_insights_snapshot', json.dumps({
             'snapshot': request.snapshot, 'group': payload['group'], 'in_service_only': request.in_service_only,
             'technology': payload['technology'], 'compare': request.compare}))
@@ -2160,7 +2267,9 @@ def install_network_insights_routes(core: Any) -> None:
             labels = {value: value for value in pd.unique(frame['Operator']) if str(value).strip()}
         mappings = {str(key).casefold(): str(value) for key, value in task_repository.list_operator_mappings().items()}
         wanted = {mappings.get(value.casefold(), value) for value in request.operators if str(value).strip()}
-        return {operator: label for operator, label in labels.items() if not wanted or operator in wanted}
+        groups = task_repository.list_operator_mapping_groups()
+        return {operator: label for operator, label in sorted(labels.items(), key=lambda item: operator_order_key(item[1], groups))
+                if not wanted or operator in wanted}
 
     def text_values(series: pd.Series) -> pd.Series:
         """Values as filters compare them: text, with blanks as ''."""
@@ -2508,7 +2617,8 @@ def install_network_insights_routes(core: Any) -> None:
         for dataset in inventory_datasets(task_repository):
             frames.setdefault(dataset['operator'], []).append(cached_inventory_projection(task_repository, dataset)['frame'])
         rows = []
-        for operator, sources in sorted(frames.items()):
+        groups = task_repository.list_operator_mapping_groups()
+        for operator, sources in sorted(frames.items(), key=lambda item: operator_order_key(item[0], groups)):
             frame = pd.concat(sources, ignore_index=True)
             totals = inventory_summary(task_repository, {}, None, frame=frame)['totals']
             if totals:

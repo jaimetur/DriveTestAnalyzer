@@ -285,6 +285,47 @@
 .network-insights .ni-hotspot-wrap{max-height:320px}
 .network-insights .ni-matrix tbody th{background:#f4f5ff;text-align:left}
 .ni-density-table th.ni-density-network{background:#dfe2fd}
+/* Each network's columns: its name underlined in its Operator Maps colour, and a line before its first column. */
+.network-insights .ni-density-table th.ni-density-network{box-shadow:inset 0 -4px 0 var(--ni-network,var(--ni-color))}
+.network-insights .ni-density-table .ni-density-start{border-left:2px solid #c7cbf7}
+/* The snapshot in use, above the Network Snapshot cards and beside Compare with. */
+.ni-snapshot-in-use{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem .8rem;margin:0 0 14px;padding:.65rem .9rem;border:1px solid var(--ni-border);border-left:4px solid var(--ni-color);border-radius:12px;background:#fafaff}
+.ni-snapshot-in-use-label,.ni-compare-current span{color:var(--ni-color);font-size:.72rem;font-weight:850;letter-spacing:.08em;text-transform:uppercase}
+.ni-snapshot-in-use strong{color:var(--ni-dark)}
+.ni-snapshot-in-use > span:not(.ni-snapshot-in-use-label):not(.form-note){display:flex;flex-wrap:wrap;gap:.35rem}
+.ni-snapshot-file-chip{padding:.15rem .6rem;border-radius:999px;background:#eef0ff;color:var(--ni-dark);font-size:.8rem;font-weight:700}
+.ni-snapshot-file-chip small{color:#5f6280;font-weight:600}
+.ni-snapshot-in-use .form-note{margin:0 0 0 auto;font-size:.78rem}
+.ni-compare-current{display:grid;gap:.38rem;min-width:0;max-width:34rem;align-self:stretch;align-content:start}
+.ni-compare-current strong{padding:.62rem .8rem;border:1px solid var(--ni-border);border-radius:12px;background:#fff;color:var(--ni-dark);font-size:.84rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* Network Snapshot cards: the network in its Operator Maps colour, and LTE and NR counts in their technology colours. */
+.network-insights .ni-snapshot-card{border-top-color:var(--ni-operator,var(--ni-color))}
+.network-insights .ni-snapshot-card h3{display:flex;align-items:center;gap:.45rem;color:var(--ni-operator,var(--ni-dark))}
+.network-insights .ni-snapshot-card h3::before{content:'';width:.8rem;height:.8rem;border-radius:3px;background:var(--ni-operator,var(--ni-color))}
+.network-insights .ni-tech-count-lte strong,.network-insights .ni-tech-count-lte small{color:#c92a2a}
+.network-insights .ni-tech-count-nr strong,.network-insights .ni-tech-count-nr small{color:#2b8a3e}
+/* Network Deployment: each network's table in its Operator Maps colour (name, swatch, frame and bars). */
+.network-insights .ni-network-table .ni-network-name{display:inline-flex;align-items:center;color:var(--ni-operator);font-size:1.05rem}
+.network-insights .ni-network-table .ni-network-name .ni-swatch{background:var(--ni-operator)}
+.network-insights .ni-network-table .ni-table-wrap{border-top:4px solid var(--ni-operator)}
+.network-insights .ni-network-table .ni-share>span{background:var(--ni-operator)}
+/* Owner × host matrix: each host column underlined in its network's colour. */
+.network-insights .ni-matrix th.ni-network-head{box-shadow:inset 0 -4px 0 var(--ni-network)}
+/* A network or operator name with its colour never wraps. */
+.network-insights .ni-table :is(td,th):has(> .ni-swatch:first-child){white-space:nowrap}
+/* The distance CDFs keep some air below the Serving Cells cards. */
+#ni-serving > .ni-chart-grid{margin-top:22px}
+/* A Serving Cells card without any serving cell found explains why. */
+.network-insights .ni-card-flag{display:inline-block;margin-left:.4rem;padding:.12rem .5rem;border-radius:999px;background:#f1f3f5;color:#5f6280;font-size:.7rem;font-weight:750;vertical-align:middle}
+.network-insights .ni-card-foot{margin:.8rem 0 0;padding:.5rem .7rem;border:1px solid #e1bd4f;border-radius:10px;background:#fff6d5;color:#634a07;font-size:.76rem;line-height:1.4}
+/* The P10, P50 and P90 table under each CDF. */
+.ni-cdf-block{display:grid;gap:10px;align-content:start;min-width:0}
+.network-insights .ni-percentiles{margin-top:0}
+.network-insights .ni-percentiles .ni-table{font-size:.8rem}
+/* Technologies in their own colours. */
+.ni-tech{display:inline-block;padding:.08rem .5rem;border-radius:999px;background:#eef0f3;color:#3b4a54;font-size:.74rem;font-weight:800;letter-spacing:.02em}
+.ni-tech.ni-tech-lte{background:#e03131;color:#fff}
+.ni-tech.ni-tech-nr{background:#2f9e44;color:#fff}
 /* Charts and maps share the card frame. */
 .network-insights .ni-chart-card{border-radius:14px;box-shadow:0 4px 14px rgba(49,46,129,.06)}
 .network-insights .ni-chart-grid-single{max-width:1000px}

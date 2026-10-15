@@ -138,7 +138,13 @@ def test_map_dialog_marks_outdated_vendor_mappings_and_serving_networks_are_save
     assert sc.load_serving_networks(core.repository) == {'max_distance_km': 20.0, 'rows': [{'operator': 'O2', 'networks': ['O2', 'Vodafone']}]}
     assert 'class="vendor-mapping-outdated"' in client.get('/workspace').text
     config_page = client.get('/workspace-config').text
-    assert 'id="serving-networks"' in config_page and 'O2 → Vodafone' in config_page
+    assert 'id="serving-networks"' in config_page
+    # The editor lists every Operator with its networks in order of preference and its defaults.
+    editor = json.loads(config_page.split('data-serving-networks-data>', 1)[1].split('</script>', 1)[0])
+    rows = {row['operator']: row for row in editor['rows']}
+    assert rows['O2'] == {'operator': 'O2', 'networks': ['o2', 'vodafone'], 'defaults': ['o2'], 'configured': True}
+    assert rows['3']['networks'] == ['three', 'vodafone'] and rows['3']['configured'] is False
+    assert [item['label'] for item in editor['networks']][:4] == ['Vodafone', '3', 'O2', 'EE']
     assert client.post('/workspace-config/serving-networks/save', data={'serving_networks_csv': 'O2', 'max_distance_km': '20'},
                        follow_redirects=False).headers['location'].count('serving_networks_error') == 1
     assert any(row['action'] == 'network_serving_networks_saved' for row in core.repository.list_logs(limit=20))

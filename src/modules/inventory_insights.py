@@ -7,17 +7,21 @@ dependencies so they can be tested directly.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import math
 import re
 from collections import OrderedDict
+from pathlib import Path
 from threading import Lock
 from typing import Any, Callable, Iterable
+from uuid import uuid4
 
 import numpy as np
 import pandas as pd
 
 from src.modules.network_inventory import (
-    INVENTORY_CELLS_TABLE, NETWORK_FAMILY_LABELS, dataset_revision, inventory_datasets, list_inventory_snapshots,
+    INVENTORY_CELLS_TABLE, INVENTORY_CELLS_VERSION, NETWORK_FAMILY_LABELS, dataset_revision, inventory_datasets, list_inventory_snapshots,
 )
 from src.modules.serving_cells import serving_families
 
@@ -54,6 +58,8 @@ NR_LEG_METHODS = {'anchor_site': 'On the anchor site', 'only_candidate': 'Only c
 RANK_COLOURS = ('#F08A24', '#F2C230', '#8BC34A', '#2E8B57')
 _cell_cache: OrderedDict[tuple, pd.DataFrame] = OrderedDict()
 _cell_cache_lock = Lock()
+# The derived cells kept on disk per snapshot: bump when the derived columns change.
+CELLS_CACHE_VERSION = 1
 
 
 def family_label(family: str, operator_labels: dict[str, str] | None = None) -> str:
@@ -176,25 +182,8 @@ def mimo_tx(txrx_mode: pd.Series, tx_antennas: pd.Series) -> pd.Series:
     return tx.where(tx > 0)
 
 
-def load_cells(repository: Any, selection: dict[str, int]) -> pd.DataFrame:
-    """The cells of each selected (family, snapshot), cached in memory per snapshot revision."""
-    if not selection:
-        return pd.DataFrame(columns=[*CELL_FIELDS, *DERIVED_CELL_FIELDS]).astype(
-            {'in_service': bool, 'is_lte': bool, 'is_nr': bool, 'state_known': bool, 'mimo_tx': float})
-    revisions = {int(row['id']): dataset_revision(row) for row in inventory_datasets(repository)}
-    key = (str(repository.db_path), tuple(sorted((family, dataset_id, revisions.get(dataset_id, '')) for family, dataset_id in selection.items())))
-    with _cell_cache_lock:
-        cached = _cell_cache.get(key)
-        if cached is not None:
-            _cell_cache.move_to_end(key)
-            return cached
-    clauses, parameters = [], []
-    for family, dataset_id in sorted(selection.items()):
-        clauses.append('(dataset_id = ? AND network_family = ?)')
-        parameters.extend([dataset_id, family])
-    with repository.connection() as connection:
-        cells = pd.read_sql_query(
-            f"SELECT {', '.join(CELL_FIELDS)} FROM {INVENTORY_CELLS_TABLE} WHERE {' OR '.join(clauses)}", connection, params=parameters)
+def _derive_cells(cells: pd.DataFrame) -> pd.DataFrame:
+    """The columns every view derives from the stored cells (bands, service, sites, states, MIMO)."""
     for field in ('technology', 'network', 'network_family', 'host_network', 'host_family', 'vendor', 'site_id', 'band', 'site_type',
                   'emocn', 'region', 'subregion', 'cluster', 'city', 'urban_rural', 'performance_polygon', 'status', 'txrx_mode'):
         cells[field] = cells[field].fillna('').astype(str)
@@ -210,9 +199,70 @@ def load_cells(repository: Any, selection: dict[str, int]) -> pd.DataFrame:
     cells['state_known'] = (cells['admin_state'].fillna('').astype(str).str.strip().ne('')
                             | cells['oper_state'].fillna('').astype(str).str.strip().ne(''))
     cells['mimo_tx'] = mimo_tx(cells['txrx_mode'], cells['tx_antennas'])
+    return cells
+
+
+def _cells_cache_folder(repository: Any) -> Path:
+    folder = Path(repository.db_path).resolve().parent / '.network-insights-cache'
+    folder.mkdir(parents=True, exist_ok=True)
+    return folder
+
+
+def _dataset_cells(repository: Any, dataset_id: int, revision: Any) -> pd.DataFrame:
+    """Every cell of one inventory snapshot with its derived columns, kept on disk beside the workspace database until
+    the dataset changes: reading it back takes a fraction of a second, against several seconds from the database."""
+    key = hashlib.sha256(json.dumps([CELLS_CACHE_VERSION, INVENTORY_CELLS_VERSION, dataset_id, revision], default=str).encode()).hexdigest()[:20]
+    folder = _cells_cache_folder(repository)
+    stored = folder / f'cells-{int(dataset_id)}-{key}.pkl'
+    if stored.is_file():
+        try:
+            return pd.read_pickle(stored)
+        except Exception:  # A damaged file is built again.
+            stored.unlink(missing_ok=True)
+    with repository.connection() as connection:
+        cells = pd.read_sql_query(f"SELECT {', '.join(CELL_FIELDS)} FROM {INVENTORY_CELLS_TABLE} WHERE dataset_id = ?",
+                                  connection, params=[int(dataset_id)])
+    cells = _derive_cells(cells)
+    temporary = folder / f'.{stored.name}.{uuid4().hex}.tmp'
+    try:
+        cells.to_pickle(temporary)
+        temporary.replace(stored)
+        # Older revisions of the same snapshot are of no further use.
+        for stale in folder.glob(f'cells-{int(dataset_id)}-*.pkl'):
+            if stale != stored:
+                stale.unlink(missing_ok=True)
+    except OSError:
+        temporary.unlink(missing_ok=True)
+    return cells
+
+
+def load_cells(repository: Any, selection: dict[str, int]) -> pd.DataFrame:
+    """The cells of each selected (family, snapshot), cached in memory per selection and on disk per snapshot revision."""
+    if not selection:
+        return _derive_cells(pd.DataFrame(columns=CELL_FIELDS)).astype(
+            {'in_service': bool, 'is_lte': bool, 'is_nr': bool, 'state_known': bool, 'mimo_tx': float})
+    revisions = {int(row['id']): dataset_revision(row) for row in inventory_datasets(repository)}
+    key = (str(repository.db_path), tuple(sorted((family, dataset_id, revisions.get(dataset_id, '')) for family, dataset_id in selection.items())))
+    with _cell_cache_lock:
+        cached = _cell_cache.get(key)
+        if cached is not None:
+            _cell_cache.move_to_end(key)
+            return cached
+    # The cells of deleted inventories are of no further use (each large inventory takes up to a few hundred MB).
+    for stale in _cells_cache_folder(repository).glob('cells-*.pkl'):
+        dataset_id = stale.name.split('-')[1]
+        if dataset_id.isdigit() and int(dataset_id) not in revisions:
+            stale.unlink(missing_ok=True)
+    parts = []
+    for dataset_id in sorted(set(selection.values())):
+        families = {family for family, chosen in selection.items() if chosen == dataset_id}
+        dataset = _dataset_cells(repository, dataset_id, revisions.get(dataset_id, ''))
+        parts.append(dataset.loc[dataset['network_family'].isin(families)])
+    cells = pd.concat(parts, ignore_index=True) if len(parts) > 1 else parts[0].reset_index(drop=True)
     with _cell_cache_lock:
         _cell_cache[key] = cells
-        while len(_cell_cache) > 4:
+        # The snapshots are read back from disk in a fraction of a second: a couple in memory are enough.
+        while len(_cell_cache) > 2:
             _cell_cache.popitem(last=False)
     return cells
 
@@ -331,8 +381,28 @@ def _band_order(band: str) -> tuple[int, int]:
     return (0 if band.startswith('B') else 1, int(match.group(1)) if match else 0)
 
 
+_site_cache: OrderedDict[tuple, tuple[pd.DataFrame, pd.DataFrame]] = OrderedDict()
+_site_cache_lock = Lock()
+
+
 def site_positions(cells: pd.DataFrame, in_service_only: bool = True) -> pd.DataFrame:
-    """One row per site of each owner network: its median position, technologies, bands, vendor and host."""
+    """One row per site of each owner network: its median position, technologies, bands, vendor and host; kept for
+    the last snapshots, since the analysis and the snapshot panels ask for them several times."""
+    key = (id(cells), bool(in_service_only))
+    with _site_cache_lock:
+        cached = _site_cache.get(key)
+        if cached is not None and cached[0] is cells:
+            _site_cache.move_to_end(key)
+            return cached[1].copy()
+    sites = _site_positions(cells, in_service_only)
+    with _site_cache_lock:
+        _site_cache[key] = (cells, sites)
+        while len(_site_cache) > 6:
+            _site_cache.popitem(last=False)
+    return sites.copy()
+
+
+def _site_positions(cells: pd.DataFrame, in_service_only: bool) -> pd.DataFrame:
     frame = _filtered(cells, in_service_only)
     frame = frame.loc[frame['latitude'].notna() & frame['longitude'].notna()]
     if frame.empty:
@@ -477,6 +547,7 @@ def serving_summary(samples: pd.DataFrame, serving: pd.DataFrame, labels: pd.Ser
             'operator': str(label), 'samples': int(len(part)), 'with_cell': int(with_cell.sum()),
             'matched': int(part['matched'].astype(bool).sum()),
             'matched_share': round(float(part['matched'].astype(bool).sum()) / max(int(with_cell.sum()), 1) * 100, 1),
+            'p10_km': round(float(distances.quantile(.1)), 3) if len(distances) else None,
             'median_km': round(float(distances.median()), 3) if len(distances) else None,
             'p90_km': round(float(distances.quantile(.9)), 3) if len(distances) else None,
             'overshoot_share': round(float((distances > overshoot_km).mean()) * 100, 1) if len(distances) else None,
@@ -488,7 +559,7 @@ def serving_summary(samples: pd.DataFrame, serving: pd.DataFrame, labels: pd.Ser
 
 
 def serving_breakdown(serving: pd.DataFrame, labels: pd.Series, field: str, overshoot_km: float) -> list[dict[str, Any]]:
-    """Matched samples and distances per analysis group and serving-cell attribute (band, vendor, host network)."""
+    """Matched samples and distances per analysis group and serving-cell attribute (band, vendor, serving or host network)."""
     frame = serving.assign(_label=labels.to_numpy()).loc[serving['matched'].astype(bool)]
     rows = []
     for (label, value), part in frame.groupby(['_label', field], sort=True):
@@ -838,6 +909,33 @@ def _state_summary(flagged: pd.DataFrame) -> str:
     return ' · '.join(parts)
 
 
+_overlay_cache: OrderedDict[tuple, tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]] = OrderedDict()
+_overlay_cache_lock = Lock()
+
+
+def _overlay_sites(cells: pd.DataFrame, families: Iterable[str]) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """The located cells of the given networks drawn on the maps (in service, or not on air yet) and their sites with
+    their median position, indexed by a site key; kept for the last snapshots, since every map group asks for them."""
+    wanted = frozenset(families)
+    key = (id(cells), wanted)
+    with _overlay_cache_lock:
+        cached = _overlay_cache.get(key)
+        if cached is not None and cached[0] is cells:
+            _overlay_cache.move_to_end(key)
+            return cached[1], cached[2]
+    states = cells['state'] if 'state' in cells else pd.Series('', index=cells.index)
+    frame = cells.loc[cells['network_family'].isin(wanted) & (cells['in_service'] | states.isin(('In progress', 'Planned')))
+                      & cells['latitude'].notna() & cells['longitude'].notna()]
+    frame = frame.assign(overlay_key=frame['network_family'] + '\x1f' + frame['site_id'].astype(str),
+                         state=frame['state'] if 'state' in frame else '')
+    sites = frame.groupby('overlay_key', sort=False).agg(latitude=('latitude', 'median'), longitude=('longitude', 'median'))
+    with _overlay_cache_lock:
+        _overlay_cache[key] = (cells, frame, sites)
+        while len(_overlay_cache) > 6:
+            _overlay_cache.popitem(last=False)
+    return frame, sites
+
+
 def sector_overlay(cells: pd.DataFrame, families: Iterable[str], centres: list[tuple[float, float]],
                    radius_km: float = 3.0, limit_sites: int = 600,
                    bbox: tuple[float, float, float, float] | None = None,
@@ -849,55 +947,61 @@ def sector_overlay(cells: pd.DataFrame, families: Iterable[str], centres: list[t
     Sites with cells that the snapshot flags Locked, Halted or Disabled carry a ring, and sites not on air yet or
     with cells In progress or Planned a dashed ring; their tooltip lists those cells per state.
     """
-    wanted = set(families)
-    states = cells['state'] if 'state' in cells else pd.Series('', index=cells.index)
-    frame = cells.loc[cells['network_family'].isin(wanted) & (cells['in_service'] | states.isin(('In progress', 'Planned')))
-                      & cells['latitude'].notna() & cells['longitude'].notna()]
+    frame, sites = _overlay_sites(cells, families)
     if frame.empty or (not centres and bbox is None):
         return {'sectors': [], 'legend': []}
-    sites = frame.groupby(['network_family', 'site_id'], sort=False).agg(latitude=('latitude', 'median'), longitude=('longitude', 'median'))
+    longitudes, latitudes = sites['longitude'].to_numpy(), sites['latitude'].to_numpy()
     if bbox is not None:
         west, south, east, north = bbox
-        longitudes, latitudes = sites['longitude'].to_numpy(), sites['latitude'].to_numpy()
         near = (longitudes >= west) & (longitudes <= east) & (latitudes >= south) & (latitudes <= north)
         distance_to_centre = _haversine_km(longitudes, latitudes, np.full(len(sites), (west + east) / 2), np.full(len(sites), (south + north) / 2))
     else:
         near = np.zeros(len(sites), dtype=bool)
         distance_to_centre = np.full(len(sites), np.inf)
         for longitude, latitude in centres:
-            distances = _haversine_km(sites['longitude'].to_numpy(), sites['latitude'].to_numpy(), np.full(len(sites), longitude), np.full(len(sites), latitude))
+            distances = _haversine_km(longitudes, latitudes, np.full(len(sites), longitude), np.full(len(sites), latitude))
             near |= distances <= radius_km
             distance_to_centre = np.minimum(distance_to_centre, distances)
     chosen = sites.loc[near].assign(_distance=distance_to_centre[near]).sort_values('_distance').head(limit_sites)
     if chosen.empty:
         return {'sectors': [], 'legend': []}
-    keys = set(chosen.index)
-    selected = frame.loc[[key in keys for key in zip(frame['network_family'], frame['site_id'], strict=True)]]
-    if 'state' not in selected:
-        selected = selected.assign(state='')
+    selected = frame.loc[frame['overlay_key'].isin(chosen.index)]
+    # One pass over the cells of the chosen sites (a few thousand rows), in the order they appear.
+    per_site: dict[str, dict[str, Any]] = {}
+    for row in selected.itertuples(index=False):
+        site = per_site.setdefault(row.overlay_key, {'family': row.network_family, 'site': row.site_id, 'on_air': [], 'all': [], 'flagged': []})
+        site['all'].append(row)
+        if row.in_service:
+            site['on_air'].append(row)
+        if row.state:
+            site['flagged'].append(row)
     overlay, vendors, rings = [], set(), set()
-    for (family, site), part in selected.groupby(['network_family', 'site_id'], sort=False):
-        position = chosen.loc[(family, site)]
-        on_air = part.loc[part['in_service'].astype(bool)]
-        wedges = []
-        for row in on_air.drop_duplicates(['azimuth', 'band_3gpp', 'vendor']).itertuples():
-            vendors.add(row.vendor or 'Unknown')
+    for key, site in per_site.items():
+        position = chosen.loc[key]
+        wedges, seen = [], set()
+        for row in site['on_air']:
             azimuth = None if pd.isna(row.azimuth) else round(float(row.azimuth), 1)
+            identity = (azimuth, row.band_3gpp, row.vendor)
+            if identity in seen:
+                continue
+            seen.add(identity)
+            vendors.add(row.vendor or 'Unknown')
             beamwidth = None if pd.isna(row.beamwidth) else round(float(row.beamwidth), 1)
             wedges.append([azimuth, beamwidth, vendor_colour(row.vendor, vendor_colours)])
-        described = on_air if len(on_air) else part
-        bands = ' '.join(sorted(set(described['band_3gpp']) - {''}, key=_band_order))
-        flagged = part.loc[part['state'] != '']
+        described = site['on_air'] or site['all']
+        bands = ' '.join(sorted({row.band_3gpp for row in described} - {''}, key=_band_order))
         entry = {
             'lon': round(float(position['longitude']), 6), 'lat': round(float(position['latitude']), 6),
-            'label': f"Site {site} · {family_label(family)}", 'detail': f"{', '.join(sorted(set(described['vendor']) - {''}))} · {bands}",
+            'label': f"Site {site['site']} · {family_label(site['family'])}",
+            'detail': f"{', '.join(sorted({row.vendor for row in described} - {''}))} · {bands}",
             'cells': wedges[:24],
         }
-        if len(flagged):
+        if site['flagged']:
+            flagged = pd.DataFrame(site['flagged'])
             ring = 'outage' if flagged['state'].isin(OUTAGE_STATES).any() else 'pipeline'
             rings.add(ring)
             entry.update({'ring': ring, 'detail': f"{entry['detail']} · {_state_summary(flagged)}",
-                          'series': 'Inventory site not on air yet' if on_air.empty else 'Inventory site with flagged cells'})
+                          'series': 'Inventory site not on air yet' if not site['on_air'] else 'Inventory site with flagged cells'})
         overlay.append(entry)
     legend = [{'label': f'{vendor} sites', 'colour': vendor_colour(vendor, vendor_colours), 'marker': 'triangle'}
               for vendor in sorted(vendors, key=str.casefold)]

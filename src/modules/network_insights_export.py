@@ -143,7 +143,8 @@ def serving_tables(analysis: dict[str, Any]) -> list[tuple[str, list[str], list[
                [[row['operator'], _number(row['samples'], 0), _number(row['matched_share'], 1, '%'), _number(row['median_km'], 2),
                  _number(row['p90_km'], 2), _number(row['overshoot_share'], 1, '%'), _number(row['hosted_elsewhere_share'], 1, '%')]
                 for row in serving.get('summary') or []])]
-    for key, title, label in (('by_band', 'By serving band', 'Band'), ('by_vendor', 'By RAN vendor', 'Vendor'), ('by_host', 'By host network', 'Host Network')):
+    for key, title, label in (('by_band', 'By serving band', 'Band'), ('by_vendor', 'By RAN vendor', 'Vendor'),
+                              ('by_network', 'By serving network', 'Serving Network'), ('by_host', 'By host network', 'Host Network')):
         rows = [[row['operator'], row['value'], _number(row['samples'], 0), _number(row['median_km'], 2), _number(row['overshoot_share'], 1, '%')]
                 for row in serving.get(key) or []]
         if rows:
@@ -364,8 +365,10 @@ def rf_quality_table(section: dict[str, Any], colours: dict[str, str] | None = N
     rows, bars = [], []
     for row in section.get('rf_rows') or section.get('overview') or []:
         rows.append([str(row.get('operator') or ''), _number(row.get('samples'), 0), _number(row.get('rsrp_samples', row.get('samples')), 0),
-                     _number(row.get('rsrp_median')), _number(row.get('rsrp_p10')), _number(row.get('low_coverage_share'), suffix='%'), '',
-                     _number(row.get('sinr_median')), _number(row.get('sinr_p10')), _number(row.get('high_interference_share'), suffix='%'), ''])
+                     _number(row.get('rsrp_median'), suffix=' dBm'), _number(row.get('rsrp_p10'), suffix=' dBm'),
+                     _number(row.get('low_coverage_share'), suffix='%'), '',
+                     _number(row.get('sinr_median'), suffix=' dB'), _number(row.get('sinr_p10'), suffix=' dB'),
+                     _number(row.get('high_interference_share'), suffix='%'), ''])
         # The third item is the group's colour, drawn as a swatch before its name as on the page.
         bars.append((row.get('rsrp_classes') or [], row.get('sinr_classes') or [], (colours or {}).get(row.get('operator'))))
     return columns, rows, bars
@@ -719,17 +722,18 @@ def export_network_insights_powerpoint(destination: Path, analysis: dict[str, An
         paragraph.font.size = Pt(15)
     sections = technology_sections(analysis)
     visuals = [(suffix, section, *_section_visuals(section, render)) for suffix, section in sections]
-    # Sections follow the order of the page: Overview, RF Quality, maps, Network Deployment, Cluster Sites Density, Spectrum.
+    # Sections follow the order of the page: Overview, maps, RF Quality, Serving Cells, Network Deployment, Cluster Sites
+    # Density, Spectrum.
     for suffix, section in sections:
         _overview_slides(presentation, f'Overview{suffix}', overview_cards(analysis, section))
-    for suffix, section, cdfs, _groups in visuals:
-        if cdfs:
-            _visual_slides(presentation, f'RF Quality{suffix}', cdfs, rf_quality_table(section, analysis.get('colours')))
     for suffix, _section, _cdfs, groups in visuals:
         for group, panels in groups:
             _visual_slides(presentation, f'Coverage & Interference Maps{suffix}' + (f' · {group}' if group else ''), panels)
     for title, columns, rows in cell_status_tables(analysis):
         _table_slides(presentation, title, columns, rows)
+    for suffix, section, cdfs, _groups in visuals:
+        if cdfs:
+            _visual_slides(presentation, f'RF Quality{suffix}', cdfs, rf_quality_table(section, analysis.get('colours')))
     serving = serving_tables(analysis)
     distance = serving_visuals(analysis, render)
     if distance and serving:
@@ -953,16 +957,11 @@ def export_network_insights_word(destination: Path, analysis: dict[str, Any], de
 
     sections = technology_sections(analysis)
     visuals = [(suffix, section, *_section_visuals(section, render)) for suffix, section in sections]
-    # Sections follow the order of the page: Overview, RF Quality, maps, Network Deployment, Cluster Sites Density, Spectrum.
+    # Sections follow the order of the page: Overview, maps, RF Quality, Serving Cells, Network Deployment, Cluster Sites
+    # Density, Spectrum.
     for suffix, section in sections:
         _docx_section_heading(document, f'Overview{suffix}')
         _docx_overview_cards(document, overview_cards(analysis, section))
-    for suffix, section, cdfs, _groups in visuals:
-        if cdfs:
-            _docx_side_by_side(document, f'RF Quality{suffix}', [(caption, (image, note, None)) for caption, image, note, _table in cdfs], add_image, new_page=True)
-            columns, rows, bars = rf_quality_table(section, analysis.get('colours'))
-            if rows:
-                _docx_bar_table(document, columns, rows, bars)
     for suffix, _section, _cdfs, groups in visuals:
         for group, panels in groups:
             _docx_side_by_side(document, f'Coverage & Interference Maps{suffix}' + (f' · {group}' if group else ''),
@@ -970,6 +969,12 @@ def export_network_insights_word(destination: Path, analysis: dict[str, Any], de
     for title, columns, rows in cell_status_tables(analysis):
         _docx_section_heading(document, title)
         _docx_table(document, columns, rows)
+    for suffix, section, cdfs, _groups in visuals:
+        if cdfs:
+            _docx_side_by_side(document, f'RF Quality{suffix}', [(caption, (image, note, None)) for caption, image, note, _table in cdfs], add_image, new_page=True)
+            columns, rows, bars = rf_quality_table(section, analysis.get('colours'))
+            if rows:
+                _docx_bar_table(document, columns, rows, bars)
     distance = serving_visuals(analysis, render)
     if distance:
         _docx_side_by_side(document, 'Serving Cells', [(caption, (image, note, None)) for caption, image, note, _table in distance], add_image, new_page=True)
