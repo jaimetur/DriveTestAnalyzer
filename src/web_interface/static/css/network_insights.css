@@ -319,3 +319,18 @@ body:has(dialog.ni-expand-dialog[open]){overflow:hidden}
 .ni-state-chip[data-state="In progress"]{border-color:#a5d8ff;background:#e7f5ff;color:#1864ab}
 .ni-state-chip[data-state="Planned"]{border-color:#d0bfff;background:#f3f0ff;color:#5f3dc4}
 .network-insights .ni-table td:has(> .ni-share){white-space:nowrap}
+/* The enlarged map's zoom stays visible; dragging moves the maps (Ctrl/Cmd+drag draws a zoom rectangle). */
+.network-insights .ni-geo-zoom{opacity:1;visibility:visible}
+.network-insights canvas.ni-geo-canvas{cursor:grab}
+.ni-rectangle-zoom .network-insights canvas.ni-geo-canvas{cursor:crosshair}
+/* The distance tool (Alt/Opt+drag): a ruler pointer, and a dashed line with its length and bearing over the map. */
+.ni-measure .network-insights canvas.ni-geo-canvas:not(.is-measuring){cursor:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cg fill='none' stroke='%23fff' stroke-width='4' stroke-linecap='round'%3E%3Cpath d='M4 20 20 4M7 17l2 2M10 14l2 2M13 11l2 2M16 8l2 2'/%3E%3C/g%3E%3Cg fill='none' stroke='%23312e81' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M4 20 20 4M7 17l2 2M10 14l2 2M13 11l2 2M16 8l2 2'/%3E%3C/g%3E%3C/svg%3E") 3 21,crosshair}
+/* While measuring, a thin crosshair: the ruler would cover the line's end and its length. */
+.network-insights canvas.ni-geo-canvas.is-measuring{cursor:crosshair}
+.ni-measure-overlay{position:absolute;inset:0;z-index:4;width:100%;height:100%;overflow:visible;pointer-events:none}
+.ni-measure-halo{stroke:#fff;stroke-width:6;stroke-linecap:round}
+.ni-measure-line{stroke:#312e81;stroke-width:2.6;stroke-dasharray:8 5;stroke-linecap:round}
+.ni-measure-end{fill:#fff;stroke:#312e81;stroke-width:2.4}
+.ni-measure-label{fill:#1e1b4b;font:800 14px/1 "IBM Plex Sans",system-ui,sans-serif;paint-order:stroke;stroke:#fff;stroke-width:4px;stroke-linejoin:round}
+.network-insights .ni-chart-card canvas.is-panning{cursor:grabbing}
+.network-insights .ni-chart-card canvas.is-selecting{cursor:crosshair}

@@ -269,7 +269,9 @@ def test_cell_states_near_the_weak_areas_in_the_table_and_on_the_maps(client, tm
     assert sectors['Site VF5 · Vodafone']['ring'] == 'pipeline' and sectors['Site VF5 · Vodafone']['cells'] == []
     assert 'ring' not in sectors['Site VF0 · Vodafone']
     legend = [item['label'] for item in maps['coverage']['legend']['items']]
-    assert 'Locked, halted or disabled' in legend and 'Planned or in progress' in legend
+    assert 'Locked, halted, disabled' in legend and 'Planned or in progress' in legend
+    marks = {item['label']: item.get('marker') for item in maps['coverage']['legend']['items']}
+    assert marks['Locked, halted, disabled'] == 'ring' and marks['Planned or in progress'] == 'ring-dashed'
 
 
 def test_cell_states_and_mimo_of_the_inventory_cells():
@@ -284,3 +286,40 @@ def test_cell_states_and_mimo_of_the_inventory_cells():
     assert ii.cell_states(cells).tolist() == ['Locked', 'Halted', 'Disabled', 'In progress', 'Planned', '', '']
     assert ii.mimo_tx(cells['txrx_mode'], cells['tx_antennas']).tolist()[:4] == [4.0, 2.0, 32.0, 64.0]
     assert ii.mimo_tx(cells['txrx_mode'], cells['tx_antennas']).tolist()[6] == 2.0
+
+
+def test_map_sites_loads_the_sites_inside_the_view_of_the_enlarged_map(client, tmp_path):
+    login(client)
+    _dataset(tmp_path, '260917_Cell_Config.zip', 'network_inventory', _inventory_rows())
+    # A view around VF0 (-1.55) and VF1 (-1.53): VF2 (-1.51), VF3 (-1.49) and the 3 site (planned) lie outside.
+    view = [LEEDS[0] - .005, LEEDS[1] - .005, LEEDS[0] + .025, LEEDS[1] + .005]
+    payload = client.post('/api/network-insights/map-sites', json={'families': ['vodafone', 'three'], 'bbox': view}).json()
+    assert {site['label'] for site in payload['sectors']} == {'Site VF0 · Vodafone', 'Site VF1 · Vodafone'}
+    # The sites take the colours of the Vendor Maps.
+    configured = ii.configured_vendor_colours(core.repository.list_vendor_mapping_groups())
+    assert payload['legend'] == [{'label': 'Ericsson sites', 'colour': ii.vendor_colour('Ericsson', configured), 'marker': 'triangle'}]
+    # Wide views load no sites; networks without a snapshot give none; a view needs its four limits.
+    wide = client.post('/api/network-insights/map-sites', json={'families': ['vodafone'], 'bbox': [-4, 52, -1, 55]}).json()
+    assert wide == {'sectors': [], 'legend': [], 'too_wide': True}
+    assert client.post('/api/network-insights/map-sites', json={'families': ['ee'], 'bbox': view}).json() == {'sectors': [], 'legend': []}
+    assert client.post('/api/network-insights/map-sites', json={'families': ['vodafone'], 'bbox': [0, 1]}).status_code == 422
+
+
+def test_analysis_maps_name_the_networks_and_snapshot_of_their_sites(client, tmp_path):
+    login(client)
+    _dataset(tmp_path, '260917_Cell_Config.zip', 'network_inventory', _inventory_rows())
+    cdr = _dataset(tmp_path, 'Data CDR NSA.xlsx', 'data', _cdr_rows(), nr_mode='NSA')
+    analysis = client.post('/api/network-insights/analysis', json={'datasets': {'data': [cdr]}, 'technology': 'lte', 'group': ['operator'],
+                                                                   'min_samples': 1}).json()
+    maps = analysis['sections'][0]['maps']
+    # Vodafone UK is served by the Vodafone and 3 networks (Serving Networks): the enlarged map loads their sites.
+    assert maps['coverage']['sector_source'] == maps['interference']['sector_source'] == {'families': ['three', 'vodafone'], 'snapshot': ''}
+
+
+def test_sites_take_the_vendor_colours_of_the_vendor_maps_by_name_or_alias():
+    groups = [{'canonical': 'Huawei', 'aliases': ['HW'], 'color': '#fbbd00'}, {'canonical': 'Nokia', 'aliases': ['NSN'], 'color': 'not a colour'}]
+    configured = ii.configured_vendor_colours(groups)
+    assert configured == {'huawei': '#FBBD00', 'hw': '#FBBD00'}
+    assert ii.vendor_colour('HW', configured) == '#FBBD00'
+    # Vendors without a valid Vendor Maps colour keep the fallback palette.
+    assert ii.vendor_colour('NSN', configured) == ii.VENDOR_COLOURS['nsn'] and ii.vendor_colour('Other', configured) == '#868E96'

@@ -107,7 +107,7 @@ _DASHBOARD_CANVAS_RENDERER_LOCK = threading.RLock()
 # The browser worker keeps a copy of dashboard_charts.js in memory. Bump this
 # whenever rendering semantics change so a live server does not keep painting
 # previews with an older script after a hot reload.
-DASHBOARD_CANVAS_RENDERER_VERSION = 10
+DASHBOARD_CANVAS_RENDERER_VERSION = 11
 
 
 def _node_executable() -> str:

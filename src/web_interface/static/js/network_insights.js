@@ -8,7 +8,11 @@
   const storageKey = config.selection_storage_key;
   let savedSelection = {};
   try {
-    const stored = storageKey ? JSON.parse(localStorage.getItem(storageKey) || '{}') : {};
+    // The page opens with the selection of the last analysis, so that analysis comes back with it; without one,
+    // with the last selection.
+    const analysed = storageKey ? JSON.parse(localStorage.getItem(`${storageKey}:last-analysis:selection`) || 'null') : null;
+    const stored = analysed && typeof analysed === 'object' && !Array.isArray(analysed) ? analysed
+      : storageKey ? JSON.parse(localStorage.getItem(storageKey) || '{}') : {};
     if (stored && typeof stored === 'object' && !Array.isArray(stored)) savedSelection = stored;
   } catch {}
   const selectionControls = ['ni-nr-mode', 'ni-technology', 'ni-group', 'ni-coverage-threshold',
@@ -275,14 +279,22 @@
         method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body),
       });
       if (cachedOnly && response.status === 204) {
-        if (request === analysing) status('');
+        // The stored result is no longer valid (the CDRs, their inputs or the app changed): the last analysis
+        // runs again by itself.
+        if (request === analysing) void analyse(mapOperator);
         return;
       }
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.detail || 'Unable to analyse the selected CDRs.');
       if (request !== analysing) return;
       analysis = payload;
-      try { if (lastAnalysisKey) localStorage.setItem(lastAnalysisKey, JSON.stringify(body)); } catch {}
+      rememberSelection();
+      try {
+        if (lastAnalysisKey) {
+          localStorage.setItem(lastAnalysisKey, JSON.stringify(body));
+          localStorage.setItem(`${lastAnalysisKey}:selection`, JSON.stringify(savedSelection));
+        }
+      } catch {}
       fillFilterOptions(payload.options);
       render();
       const comparison = payload.comparison ? ` Changes compare ${payload.comparison.latest} with ${payload.comparison.previous}.` : '';
@@ -458,27 +470,11 @@
     const bounded = Math.max(Math.min(latitude, 85.05112878), -85.05112878) * Math.PI / 180;
     return [(longitude + 180) / 360 * scale, (1 - Math.asinh(Math.tan(bounded)) / Math.PI) / 2 * scale];
   };
-  const basemapFor = (lonLow, lonHigh, latLow, latHigh, base) => {
-    for (let zoom = 18; zoom > 1; zoom -= 1) {
-      const topLeft = osmWorld(latHigh, lonLow, zoom), bottomRight = osmWorld(latLow, lonHigh, zoom);
-      const range = [Math.floor(topLeft[0] / 256), Math.floor(topLeft[1] / 256), Math.floor(bottomRight[0] / 256), Math.floor(bottomRight[1] / 256)];
-      if ((range[2] - range[0] + 1) * (range[3] - range[1] + 1) <= 48) {
-        return {...base, zoom, tile_range: range, world_bounds: [...topLeft, ...bottomRight]};
-      }
-    }
-    return base;
-  };
   const zoomMap = (kind, latitude, longitude) => {
-    const payload = mapPayloads[kind];
-    if (!payload || payload.type !== 'map') return;
-    const span = Math.max(0.01, Number($('ni-grid').value) / 111_320 * 12);
-    const domain = {x: [longitude - span * 1.6, longitude + span * 1.6], y: [latitude - span, latitude + span]};
-    const pad = value => Math.max((value[1] - value[0]) * .06, .004);
-    // About 24 grid squares span the zoomed height, so dots can approach their real size.
-    const zoomed = {...payload, domain, point_radius: 12, basemap: basemapFor(domain.x[0] - pad(domain.x), domain.x[1] + pad(domain.x), domain.y[0] - pad(domain.y), domain.y[1] + pad(domain.y), payload.basemap)};
-    globalThis.setDashboardChartZoom?.($(`ni-${kind}-map`), 1);
-    chartPayloads.set($(`ni-${kind}-map`), mapView(zoomed));
-    globalThis.renderDashboardChart($(`ni-${kind}-map`), mapView(zoomed));
+    const controller = geoMaps.get($(`ni-${kind}-map`));
+    if (!controller) return;
+    // About 24 grid squares span the zoomed height.
+    controller.showArea(longitude, latitude, Math.max(0.01, Number($('ni-grid').value) / 111_320 * 12));
     $('ni-map-note').textContent = `Zoomed to ${number(latitude, 4)}, ${number(longitude, 4)}.`;
   };
   const hotspotTable = (kind, rows, unit) => {
@@ -489,10 +485,16 @@
       <td class="num">${number(row.mean)} ${unit}</td><td class="num">${number(row.bad_share)}%</td></tr>`).join('')}</tbody>`;
   };
   // The inventory sites of the maps (legend entries marked with a triangle) follow the Inventory sites check.
-  const mapView = payload => !payload || $('ni-map-sites')?.checked !== false ? payload
-    : {...payload, sectors: [], legend: {...payload.legend, items: (payload.legend?.items || []).filter(item => item.marker !== 'triangle')}};
+  // Site entries of the legend show the site triangle, also in maps of analyses stored before it ('… sectors').
+  const mapView = payload => {
+    if (!payload || payload.type !== 'map') return payload;
+    const items = (payload.legend?.items || []).map(item => !item.marker && / (sites|sectors)$/.test(String(item.label)) ? {...item, marker: 'triangle'} : item);
+    const marked = {...payload, legend: {...payload.legend, items}};
+    return $('ni-map-sites')?.checked !== false ? marked
+      : {...marked, sectors: [], legend: {...marked.legend, items: items.filter(item => !['triangle', 'ring', 'ring-dashed'].includes(item.marker))}};
+  };
   $('ni-map-sites')?.addEventListener('change', () => {
-    for (const [key, payload] of Object.entries(mapPayloads)) renderChart($(`ni-${key}-map`), mapView(payload));
+    for (const canvas of document.querySelectorAll('#network-insights canvas')) geoMaps.get(canvas)?.redraw();
   });
   // Locked, halted, disabled, planned and in-progress cells of the inventory snapshot around the weak areas.
   const stateChips = row => {
@@ -545,7 +547,7 @@
       for (const kind of ['coverage', 'interference']) {
         const key = `${section.technology}-${kind}`;
         mapPayloads[key] = section.maps[kind];
-        renderChart($(`ni-${key}-map`), mapView(section.maps[kind]));
+        showMap($(`ni-${key}-map`), section.maps[kind]);
       }
     }
     $('ni-map-note').textContent = `${maps.operator} · grid ${number(maps.coverage_grid_metres, 0)} m${maps.coverage_grid_metres !== Number($('ni-grid').value) ? ' (coarsened to keep the map readable)' : ''}.`;
@@ -669,22 +671,287 @@
     expandDialog.showModal();
     build(content);
   };
+  // Every map navigates like a web map: dragging moves it, the wheel zooms towards the pointer and Ctrl/Cmd+drag
+  // draws a rectangle to zoom into, down to the most detailed OpenStreetMap level. From zoom level 12 the inventory
+  // sites of the view are loaded (map-sites) and, from level 13, drawn as sectors.
+  const REFERENCE_ZOOM = 21, MIN_TILE_ZOOM = 4, MAX_TILE_ZOOM = 19, SITES_FROM_ZOOM = 12, WEDGES_FROM_ZOOM = 13;
+  const MIN_RESOLUTION = 2 ** (REFERENCE_ZOOM - MAX_TILE_ZOOM) / 4, MAX_RESOLUTION = 2 ** (REFERENCE_ZOOM - MIN_TILE_ZOOM);
+  const worldToLonLat = (x, y, zoom) => {
+    const scale = 256 * 2 ** zoom;
+    return [x / scale * 360 - 180, Math.atan(Math.sinh(Math.PI * (1 - 2 * y / scale))) * 180 / Math.PI];
+  };
+  const siteKey = site => `${site.lon},${site.lat},${site.label}`;
+  const geoMaps = new WeakMap();
+  // Holding Ctrl/Cmd turns the hand over the maps into the crosshair of the zoom rectangle, and Alt/Opt into the
+  // ruler of the distance tool.
+  const rectangleKey = event => {
+    const root = document.documentElement;
+    root.classList.toggle('ni-measure', Boolean(event.altKey));
+    root.classList.toggle('ni-rectangle-zoom', !event.altKey && Boolean(event.ctrlKey || event.metaKey));
+  };
+  window.addEventListener('keydown', rectangleKey);
+  window.addEventListener('keyup', rectangleKey);
+  window.addEventListener('blur', () => document.documentElement.classList.remove('ni-rectangle-zoom', 'ni-measure'));
+  // Great-circle distance (metres) and initial bearing (degrees from north) between two places.
+  const geodesic = ([lon1, lat1], [lon2, lat2]) => {
+    const radians = Math.PI / 180, phi1 = lat1 * radians, phi2 = lat2 * radians, dPhi = phi2 - phi1, dLambda = (lon2 - lon1) * radians;
+    const a = Math.sin(dPhi / 2) ** 2 + Math.cos(phi1) * Math.cos(phi2) * Math.sin(dLambda / 2) ** 2;
+    const bearing = Math.atan2(Math.sin(dLambda) * Math.cos(phi2), Math.cos(phi1) * Math.sin(phi2) - Math.sin(phi1) * Math.cos(phi2) * Math.cos(dLambda));
+    return {metres: 6371008.8 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)), bearing: (bearing / radians + 360) % 360};
+  };
+  const distanceLabel = metres => metres < 1000 ? `${integer(Math.round(metres))} m` : `${number(metres / 1000, metres < 10000 ? 2 : 1)} km`;
+  const geoMap = (canvas, base, start, {expanded = false} = {}) => {
+    globalThis.renderDashboardChart(canvas, {...mapView(start), geo_navigation: true, point_shape: 'square'});
+    const first = globalThis.getDashboardMapView?.(canvas);
+    if (!first?.worldBounds) return null;
+    canvas.classList.add('ni-geo-canvas');
+    canvas.addEventListener('pointermove', rectangleKey);
+    const clampResolution = value => Math.max(MIN_RESOLUTION, Math.min(MAX_RESOLUTION, value));
+    // A view: its centre in world pixels at REFERENCE_ZOOM and the world pixels per plot pixel.
+    const viewOf = (bounds, zoom) => {
+      const factor = 2 ** (REFERENCE_ZOOM - zoom);
+      return {x: (bounds[0] + bounds[2]) / 2 * factor, y: (bounds[1] + bounds[3]) / 2 * factor,
+        resolution: clampResolution(Math.max((bounds[2] - bounds[0]) * factor / first.width, (bounds[3] - bounds[1]) * factor / first.height))};
+    };
+    const whole = Array.isArray(base.basemap?.world_bounds) ? viewOf(base.basemap.world_bounds.map(Number), Number(base.basemap.zoom)) : viewOf(first.worldBounds, first.zoom);
+    let view = viewOf(first.worldBounds, first.zoom), frame = 0, fetchTimer = 0, fetchController = null, current = null;
+    const loaded = new Map(), fetched = new Set();
+    const legend = new Map((base.legend?.items || []).map(item => [item.label, item]));
+    const source = base.sector_source;
+    const level = document.createElement('output');
+    level.className = 'ni-chart-zoom-level';
+    const payload = () => {
+      const geometry = globalThis.getDashboardMapView(canvas);
+      const zoom = Math.max(MIN_TILE_ZOOM, Math.min(MAX_TILE_ZOOM, Math.round(REFERENCE_ZOOM - Math.log2(view.resolution))));
+      const factor = 2 ** (REFERENCE_ZOOM - zoom);
+      const halfWidth = view.resolution * geometry.width / 2, halfHeight = view.resolution * geometry.height / 2;
+      const bounds = [(view.x - halfWidth) / factor, (view.y - halfHeight) / factor, (view.x + halfWidth) / factor, (view.y + halfHeight) / factor];
+      const [west, north] = worldToLonLat(bounds[0], bounds[1], zoom);
+      const [east, south] = worldToLonLat(bounds[2], bounds[3], zoom);
+      const metresPerPixel = 40075016.686 * Math.cos((north + south) / 2 * Math.PI / 180) / (256 * 2 ** REFERENCE_ZOOM) * view.resolution;
+      const sites = new Map((base.sectors || []).map(site => [siteKey(site), site]));
+      for (const [key, site] of loaded) sites.set(key, site);
+      const shown = mapView({...base, sectors: [...sites.values()], legend: {...base.legend, items: [...legend.values()]}});
+      return {...shown, geo_navigation: true, point_shape: 'square', domain: {x: [west, east], y: [south, north]},
+        basemap: {...base.basemap, zoom, tile_range: bounds.map(value => Math.floor(value / 256)), world_bounds: bounds},
+        point_radius: zoom >= WEDGES_FROM_ZOOM ? 9 : zoom >= 10 ? 7 : 5, sector_wedges: zoom >= WEDGES_FROM_ZOOM,
+        // Sectors about 140 m long on the ground, so neighbouring sites rarely overlap.
+        sector_radius: Math.max(12, Math.min(48, 140 / metresPerPixel)), view: {zoom, west, south, east, north}};
+    };
+    // The sites of the view (with a margin, so short moves need no new request), once close enough.
+    const loadSites = area => {
+      clearTimeout(fetchTimer);
+      if (!source?.families?.length || area.zoom < SITES_FROM_ZOOM || $('ni-map-sites')?.checked === false) return;
+      fetchTimer = setTimeout(async () => {
+        const marginX = (area.east - area.west) * .25, marginY = (area.north - area.south) * .25;
+        const bbox = [area.west - marginX, area.south - marginY, area.east + marginX, area.north + marginY].map(value => Number(value.toFixed(4)));
+        const key = bbox.join(',');
+        if (fetched.has(key)) return;
+        fetchController?.abort();
+        fetchController = new AbortController();
+        try {
+          const response = await fetch('/api/network-insights/map-sites', {
+            method: 'POST', headers: {'Content-Type': 'application/json'}, signal: fetchController.signal,
+            body: JSON.stringify({snapshot: source.snapshot || '', families: source.families, bbox}),
+          });
+          if (!response.ok) return;
+          const result = await response.json();
+          fetched.add(key);
+          for (const site of result.sectors || []) loaded.set(siteKey(site), site);
+          for (const item of result.legend || []) if (!legend.has(item.label)) legend.set(item.label, item);
+          if (canvas.isConnected) redraw();
+        } catch (error) {
+          if (error.name !== 'AbortError') console.warn('Network Insights map sites', error);
+        }
+      }, 250);
+    };
+    const draw = () => {
+      frame = 0;
+      if (!canvas.isConnected) return;
+      current = payload();
+      globalThis.renderDashboardChart(canvas, current);
+      chartPayloads.set(canvas, current);
+      level.textContent = `Zoom ${current.view.zoom}`;
+      loadSites(current.view);
+      drawMeasure();
+    };
+    const redraw = () => { if (!frame) frame = requestAnimationFrame(draw); };
+    // The place under the pointer stays under it while zooming.
+    const zoomBy = (factor, dx = 0, dy = 0) => {
+      const resolution = clampResolution(view.resolution * factor);
+      view = {x: view.x + dx * (view.resolution - resolution), y: view.y + dy * (view.resolution - resolution), resolution};
+      redraw();
+    };
+    const pointerOffset = event => {
+      const geometry = globalThis.getDashboardMapView(canvas), bounds = canvas.getBoundingClientRect();
+      const x = ((event.clientX - bounds.left) / geometry.scaleX - geometry.originX) / geometry.cameraZoom;
+      const y = ((event.clientY - bounds.top) / geometry.scaleY - geometry.originY) / geometry.cameraZoom;
+      return [x - (geometry.left + geometry.width / 2), y - (geometry.top + geometry.height / 2)];
+    };
+    // The distance tool (Alt/Opt+drag): a line between two places with its length and bearing, kept on the map
+    // (and moving with it) until the next click or Escape.
+    const placeAt = event => {
+      const [dx, dy] = pointerOffset(event);
+      return worldToLonLat(view.x + dx * view.resolution, view.y + dy * view.resolution, REFERENCE_ZOOM);
+    };
+    const screenOf = ([longitude, latitude]) => {
+      const geometry = globalThis.getDashboardMapView(canvas), bounds = canvas.getBoundingClientRect(), card = canvas.parentElement.getBoundingClientRect();
+      const world = osmWorld(latitude, longitude, REFERENCE_ZOOM);
+      const logicalX = geometry.left + geometry.width / 2 + (world[0] - view.x) / view.resolution;
+      const logicalY = geometry.top + geometry.height / 2 + (world[1] - view.y) / view.resolution;
+      return [bounds.left - card.left + (logicalX * geometry.cameraZoom + geometry.originX) * geometry.scaleX,
+        bounds.top - card.top + (logicalY * geometry.cameraZoom + geometry.originY) * geometry.scaleY];
+    };
+    const ruler = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    ruler.setAttribute('class', 'ni-measure-overlay');
+    ruler.setAttribute('aria-hidden', 'true');
+    canvas.parentElement.append(ruler);
+    let measure = null;
+    const drawMeasure = () => {
+      if (!measure) { ruler.replaceChildren(); return; }
+      const [x1, y1] = screenOf(measure.from), [x2, y2] = screenOf(measure.to);
+      const {metres, bearing} = geodesic(measure.from, measure.to);
+      const text = `${distanceLabel(metres)} · ${integer(Math.round(bearing))}°`;
+      const svg = tag => document.createElementNS('http://www.w3.org/2000/svg', tag);
+      const halo = svg('line'), line = svg('line'), start = svg('circle'), end = svg('circle'), label = svg('text');
+      for (const element of [halo, line]) { element.setAttribute('x1', x1); element.setAttribute('y1', y1); element.setAttribute('x2', x2); element.setAttribute('y2', y2); }
+      halo.setAttribute('class', 'ni-measure-halo'); line.setAttribute('class', 'ni-measure-line');
+      for (const [circle, x, y] of [[start, x1, y1], [end, x2, y2]]) { circle.setAttribute('cx', x); circle.setAttribute('cy', y); circle.setAttribute('r', 4.5); circle.setAttribute('class', 'ni-measure-end'); }
+      // The label sits beyond the end, along the line, so the pointer dragging the end never covers it.
+      const length = Math.hypot(x2 - x1, y2 - y1) || 1, ux = (x2 - x1) / length, uy = (y2 - y1) / length;
+      label.setAttribute('x', x2 + ux * 26); label.setAttribute('y', y2 + uy * 26);
+      label.setAttribute('text-anchor', ux < -.3 ? 'end' : ux > .3 ? 'start' : 'middle');
+      label.setAttribute('dominant-baseline', uy < -.3 ? 'auto' : uy > .3 ? 'hanging' : 'middle');
+      label.setAttribute('class', 'ni-measure-label');
+      label.textContent = text;
+      ruler.replaceChildren(halo, line, start, end, label);
+      measure.text = text;
+      canvas.setAttribute('title', `Distance ${text}`);
+    };
+    const clearMeasure = () => { if (!measure) return; measure = null; canvas.removeAttribute('title'); drawMeasure(); };
+    document.addEventListener('keydown', event => { if (event.key === 'Escape') clearMeasure(); });
+    canvas.addEventListener('wheel', event => {
+      event.preventDefault();
+      zoomBy(Math.exp(event.deltaY * (event.deltaMode === 1 ? .05 : .0018)), ...pointerOffset(event));
+    }, {passive: false});
+    // On the page a double-click opens the larger map; in the larger map it zooms in.
+    if (expanded) canvas.addEventListener('dblclick', event => { event.stopPropagation(); zoomBy(.5, ...pointerOffset(event)); });
+    const selection = document.createElement('div');
+    selection.className = 'ds-chart-zoom-selection';
+    selection.hidden = true;
+    canvas.parentElement.append(selection);
+    let drag = null;
+    canvas.addEventListener('pointerdown', event => {
+      if (event.button !== 0 && event.button !== 1) return;
+      const measuring = event.button === 0 && event.altKey;
+      const pan = !measuring && (event.button === 1 || !(event.ctrlKey || event.metaKey));
+      drag = {id: event.pointerId, pan, measuring, startX: event.clientX, startY: event.clientY, x: event.clientX, y: event.clientY};
+      canvas.setPointerCapture?.(event.pointerId);
+      canvas.classList.add(measuring ? 'is-measuring' : pan ? 'is-panning' : 'is-selecting');
+      if (measuring) { measure = {from: placeAt(event), to: placeAt(event)}; drawMeasure(); }
+      event.preventDefault();
+    });
+    canvas.addEventListener('pointermove', event => {
+      if (!drag || event.pointerId !== drag.id) return;
+      if (drag.measuring) { measure.to = placeAt(event); drawMeasure(); return; }
+      if (drag.pan) {
+        const geometry = globalThis.getDashboardMapView(canvas);
+        view = {...view, x: view.x - (event.clientX - drag.x) / geometry.scaleX / geometry.cameraZoom * view.resolution,
+          y: view.y - (event.clientY - drag.y) / geometry.scaleY / geometry.cameraZoom * view.resolution};
+        drag.x = event.clientX; drag.y = event.clientY;
+        redraw();
+        return;
+      }
+      drag.x = event.clientX; drag.y = event.clientY;
+      const card = canvas.parentElement.getBoundingClientRect();
+      selection.style.left = `${Math.min(drag.startX, drag.x) - card.left}px`;
+      selection.style.top = `${Math.min(drag.startY, drag.y) - card.top}px`;
+      selection.style.width = `${Math.abs(drag.x - drag.startX)}px`;
+      selection.style.height = `${Math.abs(drag.y - drag.startY)}px`;
+      selection.hidden = false;
+    });
+    const stopDrag = event => {
+      if (!drag || event.pointerId !== drag.id) return;
+      const finished = drag;
+      drag = null;
+      selection.hidden = true;
+      canvas.releasePointerCapture?.(event.pointerId);
+      canvas.classList.remove('is-panning', 'is-selecting', 'is-measuring');
+      const moved = Math.hypot(event.clientX - finished.startX, event.clientY - finished.startY) >= 4;
+      if (finished.measuring) {
+        if (moved) status(`Distance on the map: ${measure.text}.`, 'done');
+        else clearMeasure();
+        return;
+      }
+      // A click without moving clears the measured distance.
+      if (finished.pan && !moved) clearMeasure();
+      if (finished.pan || event.type !== 'pointerup' || Math.abs(event.clientX - finished.startX) < 8 || Math.abs(event.clientY - finished.startY) < 8) return;
+      // The dragged rectangle fills the map.
+      const [startX, startY] = pointerOffset({clientX: finished.startX, clientY: finished.startY});
+      const [endX, endY] = pointerOffset(event);
+      const geometry = globalThis.getDashboardMapView(canvas);
+      const factor = Math.max(Math.abs(endX - startX) / geometry.width, Math.abs(endY - startY) / geometry.height);
+      view = {x: view.x + (startX + endX) / 2 * view.resolution, y: view.y + (startY + endY) / 2 * view.resolution,
+        resolution: clampResolution(view.resolution * factor)};
+      redraw();
+    };
+    canvas.addEventListener('pointerup', stopDrag);
+    canvas.addEventListener('pointercancel', stopDrag);
+    const button = (text, title, action, className = '') => {
+      const element = document.createElement('button');
+      element.type = 'button'; element.className = `ni-chart-zoom-button ${className}`.trim();
+      element.textContent = text; element.title = title; element.setAttribute('aria-label', title);
+      element.addEventListener('click', event => { event.stopPropagation(); action(); });
+      return element;
+    };
+    const controls = document.createElement('div');
+    controls.className = `ni-chart-zoom${expanded ? ' ni-geo-zoom' : ''}`;
+    controls.setAttribute('role', 'group'); controls.setAttribute('aria-label', 'Map zoom');
+    controls.append(button('−', 'Zoom out', () => zoomBy(2)), level, button('+', 'Zoom in', () => zoomBy(.5)),
+      button('Fit', 'Show the whole map', () => { view = {...whole}; redraw(); }, 'ni-chart-zoom-reset'));
+    canvas.parentElement.append(controls);
+    const controller = {
+      redraw,
+      current: () => current,
+      fit: () => { view = {...whole}; redraw(); },
+      // Centre the map on a place, showing `span` degrees of latitude above and below it.
+      showArea: (longitude, latitude, span) => {
+        const top = osmWorld(latitude + span, longitude, REFERENCE_ZOOM), bottom = osmWorld(latitude - span, longitude, REFERENCE_ZOOM);
+        const geometry = globalThis.getDashboardMapView(canvas);
+        view = {x: top[0], y: (top[1] + bottom[1]) / 2, resolution: clampResolution((bottom[1] - top[1]) / geometry.height)};
+        redraw();
+      },
+    };
+    geoMaps.set(canvas, controller);
+    draw();
+    return controller;
+  };
+  // A map with a basemap navigates; an empty map is drawn as it is.
+  const showMap = (canvas, payload) => {
+    if (!canvas) return;
+    if (payload?.type === 'map' && payload.basemap && geoMap(canvas, payload, payload)) return;
+    renderChart(canvas, payload);
+  };
   document.getElementById('network-insights')?.addEventListener('dblclick', event => {
     if (event.target.closest('.ni-expand-dialog, button, a, input, select, label, .ni-chart-zoom')) return;
     const canvas = event.target.closest('.ni-chart-card')?.querySelector('canvas');
     if (canvas && chartPayloads.has(canvas)) {
       const payload = chartPayloads.get(canvas);
       const heading = canvas.closest('.ni-map-card')?.querySelector('h3')?.textContent?.trim();
-      openExpanded(payload.type === 'map' ? 'Map' : 'Chart', heading || payload.title || panelTitle(canvas), panelTitle(canvas), content => {
-        const card = document.createElement('div');
-        card.className = 'ni-chart-card ni-expand-chart';
-        const large = document.createElement('canvas');
-        large.setAttribute('role', 'img');
-        large.setAttribute('aria-label', canvas.getAttribute('aria-label') || 'Chart');
-        card.append(large);
-        content.append(card);
-        renderChart(large, payload);
-      });
+      const isMap = payload.type === 'map' && Boolean(payload.basemap);
+      // A map keeps every site and legend entry of its analysis; the Inventory sites check still applies.
+      const full = isMap ? (mapPayloads[canvas.id.replace(/^ni-/, '').replace(/-map$/, '')] || payload) : payload;
+      openExpanded(isMap ? 'Map' : 'Chart', heading || payload.title || panelTitle(canvas),
+        isMap ? `${panelTitle(canvas)} · drag to move, wheel or Ctrl/Cmd+drag a rectangle to zoom, Alt/Opt+drag to measure, double-click to zoom in` : panelTitle(canvas), content => {
+          const card = document.createElement('div');
+          card.className = 'ni-chart-card ni-expand-chart';
+          const large = document.createElement('canvas');
+          large.setAttribute('role', 'img');
+          large.setAttribute('aria-label', canvas.getAttribute('aria-label') || 'Chart');
+          card.append(large);
+          content.append(card);
+          if (!isMap || !geoMap(large, full, payload, {expanded: true})) renderChart(large, payload);
+        });
       return;
     }
     const table = event.target.closest('table.ni-table');
@@ -1268,11 +1535,7 @@
   $('ni-analyse').onclick = () => { void analyse($('ni-map-operator').value || savedSelection.map_group || ''); };
   $('ni-map-operator').onchange = () => { void analyse($('ni-map-operator').value || savedSelection.map_group || ''); };
   $('ni-map-reset').onclick = () => {
-    for (const [kind, payload] of Object.entries(mapPayloads)) {
-      if (!payload || !$(`ni-${kind}-map`)) continue;
-      globalThis.setDashboardChartZoom?.($(`ni-${kind}-map`), 1);
-      globalThis.renderDashboardChart($(`ni-${kind}-map`), payload);
-    }
+    for (const kind of Object.keys(mapPayloads)) geoMaps.get($(`ni-${kind}-map`))?.fit();
     if (analysis) $('ni-map-note').textContent = `${analysis.maps.operator} · whole area.`;
   };
   document.addEventListener('click', event => {
@@ -1286,6 +1549,24 @@
     void loadDeployment();
     if (analysis) status('The inventory snapshot changed: press Analyse Network to apply it to the serving cells of the samples.');
   });
+  // Reloading the page keeps its scroll position. The panels arrive after the page loads (the stored analysis, the
+  // snapshot and the deployment), so the position is applied again as the page grows, until the user moves it.
+  const scrollKey = 'drivetest-analyzer:/network-insights:scroll';
+  let savedScroll = 0;
+  try { history.scrollRestoration = 'manual'; savedScroll = Number(sessionStorage.getItem(scrollKey)) || 0; } catch {}
+  let followingScroll = savedScroll > 0;
+  const rememberScroll = () => { try { sessionStorage.setItem(scrollKey, String(followingScroll ? savedScroll : window.scrollY)); } catch {} };
+  let scrollTimer = 0;
+  window.addEventListener('scroll', () => { if (!followingScroll) { clearTimeout(scrollTimer); scrollTimer = setTimeout(rememberScroll, 200); } }, {passive: true});
+  window.addEventListener('pagehide', rememberScroll);
+  if (followingScroll) {
+    const growth = 'ResizeObserver' in window ? new ResizeObserver(() => { if (followingScroll) window.scrollTo(0, savedScroll); }) : null;
+    const stopFollowing = () => { followingScroll = false; growth?.disconnect(); };
+    for (const type of ['wheel', 'touchmove', 'keydown', 'pointerdown']) window.addEventListener(type, stopFollowing, {once: true, passive: true});
+    growth?.observe(document.body);
+    window.scrollTo(0, savedScroll);
+    setTimeout(stopFollowing, 15000);
+  }
   renderDatasets();
   void loadFilterOptions().then(showLastAnalysis);
   void loadDeployment();

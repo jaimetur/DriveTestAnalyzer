@@ -596,6 +596,11 @@
       if (item.hidden) context.globalAlpha = alpha * .35;
       if (lineMarkers && !textOnly) line(context, x, y + 11, x + 34, y + 11, item.colour, legendLineWidth(item.width), item.dash);
       else if (!textOnly && item.marker === 'triangle') drawSiteMark(context, x + markerSize / 2, y + markerSize / 2 + 1, markerSize * .62, item.colour);
+      else if (!textOnly && (item.marker === 'ring' || item.marker === 'ring-dashed')) {
+        // The ring of sites with flagged cells: solid, or dashed for sites not on air yet.
+        context.save(); context.beginPath(); context.arc(x + markerSize / 2, y + markerSize / 2, markerSize / 2 - 1, 0, Math.PI * 2);
+        context.setLineDash(item.marker === 'ring-dashed' ? [4, 3] : []); context.strokeStyle = item.colour; context.lineWidth = 2.4; context.stroke(); context.restore();
+      }
       else if (!textOnly) { context.fillStyle = item.colour; context.fillRect(x, y, markerSize, markerSize); }
       context.fillStyle = format.configured && format.color ? format.color : '#263B4A'; context.textAlign = 'left'; context.textBaseline = 'top'; if (format.configured) labelFont(context, size, format, false, false); else font(context, size, true);
       context.fillText(text, textX, y - 1);
@@ -649,8 +654,25 @@
     if (!payload || !hidden.size) return payload;
     const result = {...payload};
     if (Array.isArray(payload.panels)) result.panels = payload.panels.map(panel => legendHiddenPayload(panel, state));
-    const items = (payload.legend?.items || []).filter(item => item.colour);
+    // Map site entries (triangles and state rings) hide the sites, not the series of the same colour.
+    const siteMarks = new Set(['triangle', 'ring', 'ring-dashed']);
+    const items = (payload.legend?.items || []).filter(item => item.colour && !siteMarks.has(item.marker));
     const hiddenItems = items.filter(item => labelHidden(item.label));
+    if (Array.isArray(payload.sectors)) {
+      // A hidden vendor drops its cells (and the sites left without cells); a hidden state drops its ring, and the
+      // sites only drawn for that state (not on air yet).
+      const siteItems = (payload.legend?.items || []).filter(item => siteMarks.has(item.marker) && labelHidden(item.label));
+      const hiddenColours = new Set(siteItems.filter(item => item.marker === 'triangle').map(item => String(item.colour).toUpperCase()));
+      const hiddenRings = new Set(siteItems.filter(item => item.marker !== 'triangle').map(item => (item.marker === 'ring' ? 'outage' : 'pipeline')));
+      if (hiddenColours.size || hiddenRings.size) {
+        result.sectors = payload.sectors.flatMap(site => {
+          const cells = (site.cells || []).filter(cell => !hiddenColours.has(String(cell[2] || '').toUpperCase()));
+          const ring = site.ring && !hiddenRings.has(site.ring) ? site.ring : undefined;
+          if ((site.cells || []).length ? !cells.length : !ring) return [];
+          return [{...site, cells, ring}];
+        });
+      }
+    }
     if (payload.legend?.items) {
       result.legend = {...payload.legend, items: payload.legend.items.map(item => (
         item.colour && labelHidden(item.label) ? {...item, hidden: true} : item
@@ -1185,6 +1207,8 @@
     context.fillStyle = '#EDF4F0'; context.fillRect(left, top, width, height);
     for (const fraction of [.2, .4, .6, .8]) { line(context, left + width * fraction, top, left + width * fraction, top + height, '#D8E5DF'); line(context, left, top + height * fraction, left + width, top + height * fraction, '#D8E5DF'); }
     const basemap = payload.basemap, worldBounds = basemap?.world_bounds;
+    // The plot and its tiles, to turn a position on the canvas into a place (see getDashboardMapView).
+    state.mapGeometry = {left, top, width, height, worldBounds: Array.isArray(worldBounds) ? worldBounds.map(Number) : null, zoom: Number(basemap?.zoom)};
     const tileRecords = mapTileRecords(state.canvas, payload);
     if (Array.isArray(worldBounds) && worldBounds.length === 4) {
       const [worldLeft, worldTop, worldRight, worldBottom] = worldBounds.map(Number);
@@ -1202,6 +1226,39 @@
     }
     context.strokeStyle = '#B9CDC4'; context.lineWidth = 2; context.strokeRect(left, top, width, height);
     const pointRadius = Math.max(1, Number(payload.point_radius) || 4);
+    const project = (longitude, latitude) => {
+      if (Array.isArray(worldBounds) && worldBounds.length === 4) {
+        const [worldLeft, worldTop, worldRight, worldBottom] = worldBounds.map(Number);
+        const projected = osmWorldCoordinates(latitude, longitude, basemap.zoom);
+        return [left + (projected[0] - worldLeft) / (worldRight - worldLeft) * width, top + (projected[1] - worldTop) / (worldBottom - worldTop) * height];
+      }
+      return [left + (longitude - xDomain[0]) / (xDomain[1] - xDomain[0]) * width, top + height - (latitude - yDomain[0]) / (yDomain[1] - yDomain[0]) * height];
+    };
+    // Optional sites drawn with the grid: one wedge per cell (azimuth from north, beamwidth, vendor colour) under the
+    // samples, and the mark of each site over them.
+    const sites = (Array.isArray(payload.sectors) ? payload.sectors : []).filter(site => {
+      const longitude = Number(site.lon), latitude = Number(site.lat);
+      return longitude >= xDomain[0] && longitude <= xDomain[1] && latitude >= yDomain[0] && latitude <= yDomain[1];
+    }).map(site => ({site, position: project(Number(site.lon), Number(site.lat))}));
+    const radius = Number(payload.sector_radius) > 0 ? Number(payload.sector_radius) : Math.max(10, pointRadius * 2.6);
+    // Wedges only once the map is zoomed in (larger points, or as the map says); the whole area shows one triangle
+    // per site in the colour of its first cell's vendor, so the sites never hide the grid squares nor read as measurements.
+    const wedges = typeof payload.sector_wedges === 'boolean' ? payload.sector_wedges : pointRadius >= 10;
+    if (wedges && sites.length) {
+      context.save(); context.beginPath(); context.rect(left, top, width, height); context.clip();
+      sites.forEach(({site, position: [x, y]}) => (site.cells || []).forEach(cell => {
+        const azimuth = Number(cell[0]), beam = Math.max(24, Math.min(140, Number(cell[1]) || 65));
+        context.beginPath();
+        if (cell[0] === null || !Number.isFinite(azimuth)) context.arc(x, y, radius * .45, 0, Math.PI * 2);
+        else { context.moveTo(x, y); context.arc(x, y, radius, (azimuth - beam / 2 - 90) * Math.PI / 180, (azimuth + beam / 2 - 90) * Math.PI / 180); context.closePath(); }
+        context.globalAlpha = .16; context.fillStyle = cell[2] || '#868E96'; context.fill();
+        context.globalAlpha = .6; context.setLineDash([]); context.strokeStyle = cell[2] || '#868E96'; context.lineWidth = 1.4; context.stroke();
+        context.globalAlpha = 1;
+      }));
+      context.restore();
+    }
+    // Samples are squares when the map asks for them (grid squares), circles otherwise.
+    const squares = payload.point_shape === 'square';
     (payload.series || []).forEach(series => (series.points || []).forEach(point => {
       if (Number(point[0]) < rawX[0] || Number(point[0]) > rawX[1] || Number(point[1]) < rawY[0] || Number(point[1]) > rawY[1]) return;
       let x, y;
@@ -1214,30 +1271,16 @@
         x = left + (Number(point[0]) - xDomain[0]) / (xDomain[1] - xDomain[0]) * width;
         y = top + height - (Number(point[1]) - yDomain[0]) / (yDomain[1] - yDomain[0]) * height;
       }
-      context.fillStyle = series.colour; context.strokeStyle = '#FFFFFF'; context.lineWidth = 1; context.beginPath(); context.arc(x, y, pointRadius, 0, Math.PI * 2); context.fill(); context.stroke();
+      context.fillStyle = series.colour; context.strokeStyle = '#FFFFFF'; context.lineWidth = 1; context.beginPath();
+      if (squares) context.rect(x - pointRadius, y - pointRadius, pointRadius * 2, pointRadius * 2);
+      else context.arc(x, y, pointRadius, 0, Math.PI * 2);
+      context.fill(); context.stroke();
       drawConfiguredPointLabel(context, series.name, x, y, series.colour, payload.label_position, 13, payload.label_format);
       pushPointHit(state, transform, x, y, {label: series.name, series: `${payload.y_label} / ${payload.x_label}`, value: `${numericLabel(point[1])} / ${numericLabel(point[0])}`});
     }));
-    // Optional sites drawn over the grid: one wedge per cell (azimuth from north, beamwidth, vendor colour).
-    const sectors = Array.isArray(payload.sectors) ? payload.sectors : [];
-    if (sectors.length) {
-      const project = (longitude, latitude) => {
-        if (Array.isArray(worldBounds) && worldBounds.length === 4) {
-          const [worldLeft, worldTop, worldRight, worldBottom] = worldBounds.map(Number);
-          const projected = osmWorldCoordinates(latitude, longitude, basemap.zoom);
-          return [left + (projected[0] - worldLeft) / (worldRight - worldLeft) * width, top + (projected[1] - worldTop) / (worldBottom - worldTop) * height];
-        }
-        return [left + (longitude - xDomain[0]) / (xDomain[1] - xDomain[0]) * width, top + height - (latitude - yDomain[0]) / (yDomain[1] - yDomain[0]) * height];
-      };
-      const radius = Math.max(10, pointRadius * 2.6);
-      // Wedges only once the map is zoomed in (larger points); the whole area shows one triangle per site in the
-      // colour of its first cell's vendor, so the sites never hide the grid squares nor read as measurements.
-      const wedges = pointRadius >= 10;
+    if (sites.length) {
       context.save(); context.beginPath(); context.rect(left, top, width, height); context.clip();
-      sectors.forEach(site => {
-        const longitude = Number(site.lon), latitude = Number(site.lat);
-        if (longitude < xDomain[0] || longitude > xDomain[1] || latitude < yDomain[0] || latitude > yDomain[1]) return;
-        const [x, y] = project(longitude, latitude);
+      sites.forEach(({site, position: [x, y]}) => {
         // Sites with cells the inventory flags carry a ring: solid for locked, halted or disabled cells, dashed
         // for sites not on air yet or with planned or in-progress cells.
         const drawRing = size => {
@@ -1248,24 +1291,9 @@
           context.strokeStyle = site.ring === 'pipeline' ? '#495057' : '#212529'; context.lineWidth = 2.2; context.stroke();
           context.restore();
         };
-        const hit = {label: String(site.label || 'Site'), series: String(site.series || 'Inventory site'), value: String(site.detail || '')};
-        if (!wedges) {
-          drawSiteMark(context, x, y, 7, site.cells?.[0]?.[2] || '#868E96');
-          drawRing(11);
-          pushPointHit(state, transform, x, y, hit);
-          return;
-        }
-        (site.cells || []).forEach(cell => {
-          const azimuth = Number(cell[0]), beam = Math.max(24, Math.min(140, Number(cell[1]) || 65));
-          context.beginPath();
-          if (cell[0] === null || !Number.isFinite(azimuth)) context.arc(x, y, radius * .45, 0, Math.PI * 2);
-          else { context.moveTo(x, y); context.arc(x, y, radius, (azimuth - beam / 2 - 90) * Math.PI / 180, (azimuth + beam / 2 - 90) * Math.PI / 180); context.closePath(); }
-          context.globalAlpha = .38; context.fillStyle = cell[2] || '#868E96'; context.fill();
-          context.globalAlpha = 1; context.setLineDash([]); context.strokeStyle = cell[2] || '#868E96'; context.lineWidth = 2; context.stroke();
-        });
-        drawSiteMark(context, x, y, 6, site.cells?.[0]?.[2] || '#868E96');
-        drawRing(site.cells?.length ? radius + 3 : 11);
-        pushPointHit(state, transform, x, y, hit);
+        drawSiteMark(context, x, y, wedges ? 6 : 7, site.cells?.[0]?.[2] || '#868E96');
+        drawRing(wedges && site.cells?.length ? radius + 3 : 11);
+        pushPointHit(state, transform, x, y, {label: String(site.label || 'Site'), series: String(site.series || 'Inventory site'), value: String(site.detail || '')});
       });
       context.restore();
     }
@@ -1817,7 +1845,8 @@
       canvas.dispatchEvent(new CustomEvent('dashboardchartpan', {detail: chartPanState(canvas)}));
     };
     canvas.addEventListener('pointerdown', event => {
-      if (event.button !== 0) return;
+      // A map that navigates itself (geo_navigation) moves with its own drag instead.
+      if (event.button !== 0 || models.get(canvas)?.geo_navigation) return;
       const selecting = cameraFor(canvas).zoom <= 1 && event.pointerType === 'mouse' && selectionStartAllowed(canvas, event);
       if (!selecting && cameraFor(canvas).zoom <= 1) return;
       drag = {pointerId: event.pointerId, x: event.clientX, y: event.clientY, selecting, startX: event.clientX, startY: event.clientY};
@@ -1893,4 +1922,9 @@
   globalThis.getDashboardChartZoom = canvas => cameraFor(canvas).zoom;
   globalThis.panDashboardChart = panChart;
   globalThis.getDashboardChartPanState = chartPanState;
+  // The plot of the last drawn map and the canvas scale, to turn a pointer position into a place.
+  globalThis.getDashboardMapView = canvas => {
+    const geometry = renderStates.get(canvas)?.mapGeometry, view = views.get(canvas);
+    return geometry && view ? {...geometry, scaleX: view.scaleX, scaleY: view.scaleY, originX: view.originX, originY: view.originY, cameraZoom: view.zoom} : null;
+  };
 })();

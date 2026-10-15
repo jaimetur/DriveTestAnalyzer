@@ -801,13 +801,29 @@ VENDOR_COLOURS = {'ericsson': '#1971C2', 'huawei': '#9C36B5', 'nsn': '#0C8599', 
                   'mavenir': '#8B5E34', 'zte': '#D6336C'}
 
 
-def vendor_colour(vendor: str) -> str:
-    return VENDOR_COLOURS.get(str(vendor or '').strip().casefold(), '#868E96')
+def configured_vendor_colours(groups: Iterable[dict[str, Any]]) -> dict[str, str]:
+    """The colour of every vendor name and alias of the Vendor Maps (Workspace Config), by its folded spelling."""
+    colours: dict[str, str] = {}
+    for group in groups or []:
+        colour = str(group.get('color') or '').strip()
+        if not re.fullmatch(r'#[0-9a-fA-F]{6}', colour):
+            continue
+        for name in (group.get('canonical'), *(group.get('aliases') or [])):
+            if str(name or '').strip():
+                colours[str(name).strip().casefold()] = colour.upper()
+    return colours
+
+
+def vendor_colour(vendor: str, configured: dict[str, str] | None = None) -> str:
+    """The colour of a vendor in the Vendor Maps (``configured``), else of the fallback palette."""
+    key = str(vendor or '').strip().casefold()
+    return (configured or {}).get(key) or VENDOR_COLOURS.get(key, '#868E96')
 
 
 # Rings drawn around the inventory sites of the maps whose cells the snapshot flags (see cell_states): solid for
 # outages, dashed for plans. Legend labels stay within the 28 characters the map legend shows.
-STATE_RINGS = {'outage': ('Locked, halted or disabled', '#212529'), 'pipeline': ('Planned or in progress', '#ADB5BD')}
+# The ring of a site with flagged cells: its legend label (24 characters at most), colour and legend mark.
+STATE_RINGS = {'outage': ('Locked, halted, disabled', '#212529', 'ring'), 'pipeline': ('Planned or in progress', '#495057', 'ring-dashed')}
 
 
 def _state_summary(flagged: pd.DataFrame) -> str:
@@ -823,9 +839,12 @@ def _state_summary(flagged: pd.DataFrame) -> str:
 
 
 def sector_overlay(cells: pd.DataFrame, families: Iterable[str], centres: list[tuple[float, float]],
-                   radius_km: float = 3.0, limit_sites: int = 600) -> dict[str, Any]:
-    """The sites of the given networks near the given map positions, with one wedge per cell in service (azimuth,
-    beamwidth and the colour of its vendor), to draw on the coverage and interference maps.
+                   radius_km: float = 3.0, limit_sites: int = 600,
+                   bbox: tuple[float, float, float, float] | None = None,
+                   vendor_colours: dict[str, str] | None = None) -> dict[str, Any]:
+    """The sites of the given networks near the given map positions, or inside ``bbox`` (west, south, east, north:
+    the view of a zoomed map), with one wedge per cell in service (azimuth, beamwidth and the colour of its vendor),
+    to draw on the coverage and interference maps; the nearest to the positions or to the view's centre first.
 
     Sites with cells that the snapshot flags Locked, Halted or Disabled carry a ring, and sites not on air yet or
     with cells In progress or Planned a dashed ring; their tooltip lists those cells per state.
@@ -834,15 +853,21 @@ def sector_overlay(cells: pd.DataFrame, families: Iterable[str], centres: list[t
     states = cells['state'] if 'state' in cells else pd.Series('', index=cells.index)
     frame = cells.loc[cells['network_family'].isin(wanted) & (cells['in_service'] | states.isin(('In progress', 'Planned')))
                       & cells['latitude'].notna() & cells['longitude'].notna()]
-    if frame.empty or not centres:
+    if frame.empty or (not centres and bbox is None):
         return {'sectors': [], 'legend': []}
     sites = frame.groupby(['network_family', 'site_id'], sort=False).agg(latitude=('latitude', 'median'), longitude=('longitude', 'median'))
-    near = np.zeros(len(sites), dtype=bool)
-    distance_to_centre = np.full(len(sites), np.inf)
-    for longitude, latitude in centres:
-        distances = _haversine_km(sites['longitude'].to_numpy(), sites['latitude'].to_numpy(), np.full(len(sites), longitude), np.full(len(sites), latitude))
-        near |= distances <= radius_km
-        distance_to_centre = np.minimum(distance_to_centre, distances)
+    if bbox is not None:
+        west, south, east, north = bbox
+        longitudes, latitudes = sites['longitude'].to_numpy(), sites['latitude'].to_numpy()
+        near = (longitudes >= west) & (longitudes <= east) & (latitudes >= south) & (latitudes <= north)
+        distance_to_centre = _haversine_km(longitudes, latitudes, np.full(len(sites), (west + east) / 2), np.full(len(sites), (south + north) / 2))
+    else:
+        near = np.zeros(len(sites), dtype=bool)
+        distance_to_centre = np.full(len(sites), np.inf)
+        for longitude, latitude in centres:
+            distances = _haversine_km(sites['longitude'].to_numpy(), sites['latitude'].to_numpy(), np.full(len(sites), longitude), np.full(len(sites), latitude))
+            near |= distances <= radius_km
+            distance_to_centre = np.minimum(distance_to_centre, distances)
     chosen = sites.loc[near].assign(_distance=distance_to_centre[near]).sort_values('_distance').head(limit_sites)
     if chosen.empty:
         return {'sectors': [], 'legend': []}
@@ -859,7 +884,7 @@ def sector_overlay(cells: pd.DataFrame, families: Iterable[str], centres: list[t
             vendors.add(row.vendor or 'Unknown')
             azimuth = None if pd.isna(row.azimuth) else round(float(row.azimuth), 1)
             beamwidth = None if pd.isna(row.beamwidth) else round(float(row.beamwidth), 1)
-            wedges.append([azimuth, beamwidth, vendor_colour(row.vendor)])
+            wedges.append([azimuth, beamwidth, vendor_colour(row.vendor, vendor_colours)])
         described = on_air if len(on_air) else part
         bands = ' '.join(sorted(set(described['band_3gpp']) - {''}, key=_band_order))
         flagged = part.loc[part['state'] != '']
@@ -874,8 +899,9 @@ def sector_overlay(cells: pd.DataFrame, families: Iterable[str], centres: list[t
             entry.update({'ring': ring, 'detail': f"{entry['detail']} · {_state_summary(flagged)}",
                           'series': 'Inventory site not on air yet' if on_air.empty else 'Inventory site with flagged cells'})
         overlay.append(entry)
-    legend = [{'label': f'{vendor} sites', 'colour': vendor_colour(vendor), 'marker': 'triangle'} for vendor in sorted(vendors, key=str.casefold)]
-    legend += [{'label': STATE_RINGS[ring][0], 'colour': STATE_RINGS[ring][1], 'marker': 'triangle'} for ring in STATE_RINGS if ring in rings]
+    legend = [{'label': f'{vendor} sites', 'colour': vendor_colour(vendor, vendor_colours), 'marker': 'triangle'}
+              for vendor in sorted(vendors, key=str.casefold)]
+    legend += [{'label': STATE_RINGS[ring][0], 'colour': STATE_RINGS[ring][1], 'marker': STATE_RINGS[ring][2]} for ring in STATE_RINGS if ring in rings]
     return {'sectors': overlay, 'legend': legend}
 
 

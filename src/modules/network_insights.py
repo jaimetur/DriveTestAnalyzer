@@ -40,7 +40,7 @@ from src.modules.serving_cells import load_serving_networks, serving_families
 NETWORK_INSIGHTS_KINDS = ('data', 'voice', 'speech')
 # Bump when the normalised samples or the analysis payload change shape.
 SAMPLES_CACHE_VERSION = 6
-ANALYSIS_CACHE_VERSION = 12
+ANALYSIS_CACHE_VERSION = 15
 INVENTORY_CACHE_VERSION = 4
 OBSERVED_CACHE_VERSION = 9
 # Columns of the Observed Sites/Cells (from CDRs) tables.
@@ -631,7 +631,7 @@ def map_payload(
         ]},
         'label_position': 'None', 'label_format': {}, 'legend_format': {},
         'axis_ranges': {'x': [None, None], 'y': [None, None]},
-        'x_label': 'Longitude', 'y_label': 'Latitude', 'axis_labels': False, 'point_radius': 6,
+        'x_label': 'Longitude', 'y_label': 'Latitude', 'axis_labels': False, 'point_radius': 6, 'point_shape': 'square',
         'domain': {'x': [lon_low, lon_high], 'y': [lat_low, lat_high]},
         'basemap': {
             'provider': 'OpenStreetMap', 'url_template': 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
@@ -1450,6 +1450,8 @@ def install_network_insights_routes(core: Any) -> None:
         inputs = {
             'version': ANALYSIS_CACHE_VERSION, 'samples': samples, 'request': request.model_dump(),
             'mapping_groups': task_repository.list_operator_mapping_groups(),
+            # The site and sector colours of the maps come from the Vendor Maps.
+            'vendor_mapping_groups': task_repository.list_vendor_mapping_groups(),
             'holdings': load_spectrum_holdings(task_repository),
             'inventories': [(row['id'], row['updated_at']) for row in inventory_datasets(task_repository)],
             'snapshots': [(row['id'], dataset_revision(row), effective_snapshot_date(row)) for row in snapshot_datasets(task_repository)],
@@ -1634,9 +1636,14 @@ def install_network_insights_routes(core: Any) -> None:
                     families = {family for source in pd.unique(original_operators.loc[operator_samples.index])
                                 for family in serving_families(source, serving_state['config'])}
                     centres = [(row['longitude'], row['latitude']) for row in maps['coverage_hotspots'][:25] + maps['interference_hotspots'][:25]]
-                    overlay = ii.sector_overlay(serving_state['cells'], families, centres)
+                    overlay = ii.sector_overlay(serving_state['cells'], families, centres,
+                                                vendor_colours=ii.configured_vendor_colours(vendor_mapping_groups))
                     for kind in ('coverage', 'interference'):
-                        if overlay['sectors'] and maps[kind].get('type') == 'map':
+                        if maps[kind].get('type') != 'map':
+                            continue
+                        # A zoomed map loads the sites of these networks wherever it shows (see map-sites).
+                        maps[kind]['sector_source'] = {'families': sorted(families), 'snapshot': str(request.snapshot or '')}
+                        if overlay['sectors']:
                             maps[kind]['sectors'] = overlay['sectors']
                             maps[kind]['legend']['items'] = [*maps[kind]['legend']['items'], *overlay['legend']]
                     # Locked, halted, disabled, planned and in-progress cells of the snapshot around the same areas.
@@ -1874,6 +1881,33 @@ def install_network_insights_routes(core: Any) -> None:
             while len(snapshot_cache) > 40:
                 snapshot_cache.popitem(last=False)
         return payload
+
+    class MapSitesRequest(BaseModel):
+        snapshot: str = ''
+        families: list[str] = []
+        # The map view: west, south, east and north (degrees).
+        bbox: list[float] = []
+
+    @app.post('/api/network-insights/map-sites')
+    def network_insights_map_sites(request: MapSitesRequest, user=Depends(insights_user)):
+        """The inventory sites of the networks serving a map group inside the view of a zoomed map, with their
+        sectors. Only close views (up to 2° across) load sites; moving around a map changes nothing, so it is not
+        an App Event."""
+        if len(request.bbox) != 4 or not all(math.isfinite(value) for value in request.bbox):
+            raise HTTPException(422, 'The map view needs its west, south, east and north limits.')
+        west, south, east, north = request.bbox
+        if east <= west or north <= south:
+            raise HTTPException(422, 'The map view needs its west, south, east and north limits.')
+        if east - west > 2 or north - south > 2:
+            return {'sectors': [], 'legend': [], 'too_wide': True}
+        task_repository = bound_repository()
+        selection = ii.snapshot_choice(ensure_inventory_cells(task_repository), request.snapshot)
+        families = [family for family in request.families if family in selection]
+        if not families:
+            return {'sectors': [], 'legend': []}
+        cells = ii.load_cells(task_repository, selection)
+        return ii.sector_overlay(cells, families, [], limit_sites=800, bbox=(west, south, east, north),
+                                 vendor_colours=ii.configured_vendor_colours(task_repository.list_vendor_mapping_groups()))
 
     @app.post('/api/network-insights/snapshot')
     def network_insights_snapshot(request: SnapshotRequest, user=Depends(insights_user)):
