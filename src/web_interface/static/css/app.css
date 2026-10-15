@@ -4593,13 +4593,14 @@ body:has(dialog.vendor-mapping-dialog[open]) { overflow: hidden; }
 .dataset-card-head h3 { display: flex; align-items: center; gap: 0.55rem; margin: 0; font-size: 1.12rem; }
 /* Each Datasets card has an icon in its colour. */
 .dataset-card-icon { position: absolute; top: 1rem; right: 1.1rem; display: grid; place-items: center; width: 3.1rem; height: 3.1rem; border-radius: 14px; color: var(--dataset-card-colour, #3d5867); background: color-mix(in srgb, var(--dataset-card-colour, #3d5867) 13%, #fff); }
-/* The number of campaigns of a CDR card, beside its icon and in its colours. */
-.dataset-card-cdr .dataset-card-head { padding-right: 12rem; }
-.dataset-card-campaigns { position: absolute; top: 1.9rem; right: 4.7rem; padding: 0.2rem 0.65rem; border-radius: 999px; background: color-mix(in srgb, var(--dataset-card-colour, #3d5867) 13%, #fff); color: var(--dataset-card-colour, #3d5867); font-size: 0.78rem; font-weight: 800; white-space: nowrap; }
+/* The number of campaigns and CDRs of a CDR card, beside its icon and in its colours. */
+.dataset-card-cdr .dataset-card-head { padding-right: 17rem; }
+.dataset-card-badges { position: absolute; top: 1.9rem; right: 4.7rem; display: flex; gap: 0.4rem; }
+.dataset-card-campaigns { padding: 0.2rem 0.65rem; border-radius: 999px; background: color-mix(in srgb, var(--dataset-card-colour, #3d5867) 13%, #fff); color: var(--dataset-card-colour, #3d5867); font-size: 0.78rem; font-weight: 800; white-space: nowrap; }
 .dataset-card-final .dataset-card-campaigns { --dataset-card-colour: #1d4f8f; }
 .dataset-card-weekly .dataset-card-campaigns { --dataset-card-colour: #7b5cc4; }
 .dataset-card-daily .dataset-card-campaigns { --dataset-card-colour: #d08a1c; }
-@media (max-width: 640px) { .dataset-card-cdr .dataset-card-head { padding-right: 4.2rem; } .dataset-card-campaigns { position: static; } }
+@media (max-width: 640px) { .dataset-card-cdr .dataset-card-head { padding-right: 4.2rem; } .dataset-card-cdr .dataset-card-head h3 { flex-wrap: wrap; } .dataset-card-badges { position: static; order: 3; flex-basis: 100%; } }
 .dataset-card-icon svg { width: 1.9rem; height: 1.9rem; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .combined-dataset-section-copy { padding-right: 4.2rem; }
 .dataset-card-icon-final { --dataset-card-colour: #1d4f8f; }
@@ -4710,6 +4711,7 @@ body:has(dialog.vendor-mapping-dialog[open]) { overflow: hidden; }
 @media (max-width: 640px) {
   .queue-table tbody tr.queue-campaign-group-row, .queue-table tbody tr.queue-campaign-group-row > td { display: block; }
   .queue-table tbody tr[data-dataset-row] > td[data-label="Campaign"] { grid-column: 1 / -1; }
+  .queue-campaign-input { width: 8rem; }
 }
 .queue-cdr-type-badge[data-kind="data"], .queue-cdr-type-select:has(option[value="data"]:checked) { --pill-color: #e8590c; }
 .queue-cdr-type-badge[data-kind="voice"], .queue-cdr-type-select:has(option[value="voice"]:checked) { --pill-color: #b0306a; }

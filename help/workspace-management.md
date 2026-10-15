@@ -106,7 +106,7 @@ Every CDR shows its **Campaign** right after its name in the Final, Weekly and D
 
 A name without a quarter or a year leaves the Campaign blank. Write any campaign in the field, also one that no CDR has yet (any spelling with a year and a quarter, such as `2026 q3`, is saved as `2026-Q3`), or clear it; the field suggests the campaigns of the other CDRs, the change is saved without reprocessing the CDR, is recorded in App Events and travels with the datasets in packages, transfers and backups. Each campaign is shown in its own colour (the campaigns in order take the colours in turn, so consecutive campaigns never share one).
 
-The Final, Weekly and Daily CDR cards show beside their icon how many campaigns their CDRs have, and their tables are grouped by campaign, the newest first and the CDRs without a campaign last under **No campaign**, each group with its number of CDRs and the MB of their source files (as the Size column); a CDR whose campaign changes moves to its group at once. They open sorted by Campaign, then NR Mode and then CDR Type; any column header sorts the CDRs within each group instead.
+The Final, Weekly and Daily CDR cards show beside their icon how many campaigns their CDRs have and how many CDRs they hold, and their tables are grouped by campaign, the newest first and the CDRs without a campaign last under **No campaign**, each group with its number of CDRs and the MB of their source files (as the Size column); a CDR whose campaign changes moves to its group at once. They open sorted by Campaign, then NR Mode and then CDR Type; any column header sorts the CDRs within each group instead.
 
 ### CDR Stage: Final, Weekly and Daily
 
@@ -176,7 +176,7 @@ The global floating task cards remain visible while workspace work continues. Th
 
 ### Datasets cards
 
-The **Datasets** panel groups the datasets in cards, each with its icon, its own count and a sortable table; the times of the dates are shown in blue:
+The **Datasets** panel shows in its header, before Collapse, how many campaigns (of the Final, Weekly and Daily CDRs together), CDRs, Network Inventories and Geographic Datasets the workspace has and the size of the source files of every dataset (in MB, or in GB from 1 GB), and groups the datasets in cards, each with its icon, its own count and a sortable table; the times of the dates are shown in blue:
 
 - **Final CDRs**, **Weekly CDRs** and **Daily CDRs** (the last two fold and are shown only when there are CDRs of their type), at full width, grouped by campaign, with the Campaign, NR Mode, CDR Type, CDR Stage and In Combined? columns; Rows sit above Columns and Uploaded above Updated in one column each, and each of them keeps its own sort button in the header.
 - **Network Inventory & Vendor Mappings** (the network inventory of each operator: every cell with its vendor, site and configuration, with the **Operator** of Network Inventories and the **Snapshot** date of every inventory) and **Geographic Datasets** (Region, Cluster and Vendor polygons, with their **Type**), side by side with compact tables: dataset and type, rows, status with progress, last update and actions. Reference datasets have no analysis or mappings to apply, so their actions are **Preview**, **Reprocess** and **Delete**.

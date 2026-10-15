@@ -10546,12 +10546,26 @@ if (queueNode) {
     const match = (row.querySelector('[data-dataset-campaign-input]')?.value || '').trim().toUpperCase().match(/^(\d{4})-Q([1-4])/);
     return match ? `${match[1]}-Q${match[2]}` : '';
   };
-  // The badge beside the icon of a CDR card counts the campaigns of its CDRs.
+  // The badges beside the icon of a CDR card count the campaigns of its CDRs and its CDRs.
   const syncCampaignCount = (body) => {
-    const badge = body.closest('[data-dataset-card]')?.querySelector('[data-campaign-count]');
-    if (!badge) return;
-    const count = new Set([...body.querySelectorAll('tr[data-dataset-id]')].map(campaignQuarter).filter(Boolean)).size;
-    badge.textContent = `${count} campaign${count === 1 ? '' : 's'}`;
+    const card = body.closest('[data-dataset-card]');
+    const rows = [...body.querySelectorAll('tr[data-dataset-id]')];
+    const campaigns = card?.querySelector('[data-campaign-count]');
+    if (campaigns) {
+      const count = new Set(rows.map(campaignQuarter).filter(Boolean)).size;
+      campaigns.textContent = `${count} campaign${count === 1 ? '' : 's'}`;
+    }
+    const cdrs = card?.querySelector('[data-cdr-count]');
+    if (cdrs) cdrs.textContent = `${rows.length} CDR${rows.length === 1 ? '' : 's'}`;
+    // The badges of the Datasets panel count the campaigns and CDRs of the three CDR cards together.
+    const allRows = [...queueNode.querySelectorAll('.dataset-card-cdr tr[data-dataset-id]')];
+    const panelCampaigns = queueNode.querySelector('[data-datasets-campaign-count]');
+    if (panelCampaigns) {
+      const count = new Set(allRows.map(campaignQuarter).filter(Boolean)).size;
+      panelCampaigns.textContent = `${count} campaign${count === 1 ? '' : 's'}`;
+    }
+    const panelCdrs = queueNode.querySelector('[data-datasets-cdr-count]');
+    if (panelCdrs) panelCdrs.textContent = `${allRows.length} CDR${allRows.length === 1 ? '' : 's'}`;
   };
   const syncCampaignGroupVisibility = (body) => {
     syncCampaignCount(body);
