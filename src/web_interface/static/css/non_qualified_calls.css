@@ -26,10 +26,18 @@
 
 /* Filters */
 .nq-filter-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px 14px; }
-/* The General Filters, the NQ Analysis Fields Filters and the filters of the Additional Columns, each under its title. */
-.nq-filter-group-title { margin: 4px 0 8px; color: var(--nq-dark, #7d1238); font-size: 0.76rem; font-weight: 850; letter-spacing: 0.04em; text-transform: uppercase; }
+/* The General Filters, the NQ Analysis Fields Filters and the filters of the Additional Columns, each in a card under
+   its title. */
+.nq-filter-card { margin-top: 14px; padding: 12px 14px 14px; border: 1px solid var(--nq-border); border-radius: 12px; background: var(--nq-softer); }
+.nq-filter-card[hidden] { display: none; }
+.nq-filter-group-title { margin: 0 0 10px; color: var(--nq-dark, #7d1238); font-size: 0.76rem; font-weight: 850; letter-spacing: 0.04em; text-transform: uppercase; }
 .nq-filter-group-title[hidden] { display: none; }
-#nq-field-filters-title, #nq-column-filters-title { margin-top: 16px; }
+/* A filter with a value applied stands out: its name and its list in the colour of the module. */
+.non-qualified-calls .nq-filter-grid label.is-filtered, .non-qualified-calls .nq-search.is-filtered { color: var(--nq-color); }
+.non-qualified-calls .nq-filter-grid label.is-filtered .multiselect-trigger,
+.non-qualified-calls .nq-filter-grid label.is-filtered > input, .non-qualified-calls .nq-search.is-filtered > input {
+  border-color: var(--nq-color); background: #f9dde7; color: var(--nq-dark); box-shadow: inset 0 0 0 1px var(--nq-color);
+}
 /* Additional Columns: every CDR column in the table and/or in the Excel export. */
 .nq-cdr-column-head, .nq-cdr-column-row { display: grid; grid-template-columns: minmax(0, 1fr) 56px 56px; align-items: center; gap: 6px; }
 .nq-cdr-column-head { margin-top: 8px; padding: 0 4px 4px; border-bottom: 1px solid rgba(16, 49, 74, 0.12); color: #6a5a62; font-size: 0.74rem; font-weight: 800; }
@@ -1040,6 +1048,7 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
   /* The two exports side by side. */
   .nq-sync-bar .nq-hero-action { padding: .5rem .65rem; font-size: .8rem; }
   .nq-filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 10px; }
+  .nq-filter-card { margin-top: 10px; padding: 10px; }
   .nq-filter-grid label { gap: .2rem; font-size: .76rem; }
   .non-qualified-calls .nq-filter-grid .multiselect-trigger { min-height: 2.4rem; padding: .45rem .55rem; font-size: .8rem; }
   .nq-filter-row { gap: 8px; }
@@ -1214,10 +1223,12 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 /* The calls that match the filters, in every panel: a badge below its Collapse button. */
 .nq-panel-corner { display: flex; flex: 0 0 auto; flex-direction: column; align-items: flex-end; gap: .35rem; margin-left: auto; }
 .nq-panel-corner .collapse-chip { margin-left: 0; }
-.nq-panel-count { padding: .2rem .6rem; border: 1px solid var(--nq-border); border-radius: 999px; background: var(--nq-soft); color: var(--nq-dark); font-size: .74rem; font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.nq-panel-count { display: inline-flex; align-items: baseline; gap: .3rem; padding: .35rem .95rem; border-radius: 999px; background: linear-gradient(135deg, var(--nq-color), var(--nq-dark)); color: #fff; font-size: .86rem; font-weight: 750; font-variant-numeric: tabular-nums; white-space: nowrap; box-shadow: 0 4px 12px rgba(125, 18, 56, .25); }
+.nq-panel-count strong { font-size: 1.15rem; font-weight: 900; line-height: 1; }
 @media (max-width: 640px) {
   .non-qualified-calls .collapsible-summary:has(> .nq-panel-corner) { min-height: 3.9rem; }
   .non-qualified-calls .collapsible-summary > .nq-panel-corner { position: absolute; top: .7rem; right: .75rem; z-index: 1; gap: .3rem; }
   .non-qualified-calls .nq-panel-corner .collapse-chip { position: static; }
-  .nq-panel-count { padding: .15rem .45rem; font-size: .66rem; }
+  .nq-panel-count { padding: .22rem .6rem; font-size: .72rem; }
+  .nq-panel-count strong { font-size: .92rem; }
 }

@@ -36,11 +36,13 @@
   };
   const STATE_LABELS = {closed: 'Closed', attended: 'Attended', not_attended: 'Not attended', with_team: 'With team',
     assigned: 'Assigned', commented: 'Commented', labelled: 'With a root cause', suggested: 'Suggested root cause',
-    identified: 'RCA identified', not_identified: 'RCA not identified'};
+    identified: 'RCA identified', not_identified: 'RCA not identified', open: 'Open', stalled: 'Stalled'};
   // Filters set by clicking the Progress View and the Root Cause Analysis; they have no select of their own.
   const EXTRA_FILTERS = ['nr_mode', 'call_type', 'period', 'age', 'root_pair', 'effective_domain', 'effective_cause', 'node',
-    'netcheck_domain', 'netcheck_category', 'netcheck_cause', 'script_domain', 'script_category', 'script_cause',
-    'state', 'rca_state'];
+    'netcheck_domain', 'netcheck_category', 'netcheck_cause', 'script_domain', 'script_category', 'script_cause', 'rca_state'];
+  // The values of the Follow-up filter (also set by the indicator cards), in their order.
+  const FOLLOW_UP_STATES = ['attended', 'not_attended', 'open', 'stalled', 'closed', 'with_team', 'assigned', 'commented', 'labelled',
+    'identified', 'not_identified'];
   const HISTORY_LABELS = {status: 'Status', status_auto: 'Status (automatic)', status_mode: 'Status Set', team: 'Team',
     assignee: 'Assignee', root_domain: 'Root Domain', root_category: 'Root Category', root_cause: 'Root Cause'};
   // The label of a changed field: a follow-up field or a catalog field ("field:key").
@@ -242,7 +244,8 @@
   const CATALOG_FILTERS = {
     failure_classification: 'cdr:failure_classification', failure_category: 'cdr:failure_category',
     root_domain: 'tracking:root_category', root_category: 'tracking:root_category', root_cause: 'tracking:root_cause',
-    status: 'tracking:status', status_mode: 'tracking:status', team: 'tracking:team', assignee: 'tracking:assignee',
+    status: 'tracking:status', status_mode: 'tracking:status', state: 'tracking:status', team: 'tracking:team',
+    assignee: 'tracking:assignee',
   };
   const fillSelect = (select, entries) => {
     const previous = new Set([...select.selectedOptions].map((option) => option.value));
@@ -268,6 +271,7 @@
       root_category: [[state.unassigned, NOT_CLASSIFIED], ...state.rootCauses.categories.map((item) => [item.name, item.name])],
       root_cause: [[state.unassigned, NO_CAUSE], ...state.rootCauses.causes.map((item) => [item.name, item.name])],
       status_mode: Object.entries(STATUS_MODE_LABELS),
+      state: FOLLOW_UP_STATES.map((value) => [value, STATE_LABELS[value]]),
       version: Object.entries(state.versionLabels),
     };
     // A filter for every list and Yes / No field of the catalog (and Analyst and Reviewer), beside those of the CDR and
@@ -306,6 +310,7 @@
     }).sort((a, b) => a[0] - b[0] || a[1] - b[1]).forEach(([, , label]) => fieldHost.append(label));
     fieldHost.hidden = !fieldHost.querySelector('[data-nq-filter]');
     $('nq-field-filters-title').hidden = fieldHost.hidden;
+    fieldHost.closest('.nq-filter-card').hidden = fieldHost.hidden;
     // A filter for every optional and CDR column of the table (Region, Cluster and CDR have theirs).
     const columnHost = $('nq-column-filters');
     const cdrColumnHost = $('nq-cdr-column-filters');
@@ -332,6 +337,7 @@
     });
     columnHost.hidden = !columnHost.querySelector('[data-nq-filter]');
     $('nq-column-filters-title').hidden = columnHost.hidden;
+    columnHost.closest('.nq-filter-card').hidden = columnHost.hidden;
     // New selects get the checkbox menu of every multi-select of the page.
     if (typeof globalThis.setupCustomMultiSelects === 'function') globalThis.setupCustomMultiSelects();
     filterSelects().forEach((select) => {
@@ -437,7 +443,7 @@
     [...select.options].forEach((option) => { option.selected = !toggleOff && option.value === target; });
     select.dispatchEvent(new Event('change', {bubbles: true}));
   };
-  // Several values of a filter at once (the statuses of Open); choosing the same ones again removes them.
+  // The values of a filter at once (the status of Not Attended); choosing the same ones again removes them.
   const manySelected = (field, values) => {
     const chosen = filterValues(currentFilters(), field) || [];
     return chosen.length === values.length && values.every((value) => chosen.includes(value));
@@ -526,6 +532,14 @@
     [...select.options].forEach((option) => { option.selected = false; });
     select.dispatchEvent(new Event('change', {bubbles: true}));
   };
+  // The filters with a value applied stand out in the Filters panel, as their chips list them.
+  const markActiveFilters = (active) => {
+    const mark = (element, field) => element?.closest('label')?.classList.toggle('is-filtered', active.has(field));
+    root.querySelectorAll('[data-nq-filter]').forEach((select) => mark(select, select.dataset.nqFilter));
+    root.querySelectorAll('[data-nq-typed-filter]').forEach((input) => mark(input, input.dataset.nqTypedFilter));
+    root.querySelectorAll('[data-nq-flag]').forEach((box) => mark(box, box.dataset.nqFlag));
+    mark($('nq-search'), 'search');
+  };
   // The filters applied, as chips that remove them, at the top of every panel; the NQ Rate panel dims those it ignores.
   const renderActiveFilters = (filters) => {
     const chips = [];
@@ -533,6 +547,7 @@
     const entries = Object.entries(filters).filter(([field]) => !['fields', 'columns'].includes(field));
     Object.entries(filters.fields || {}).forEach(([key, values]) => entries.push([`field:${key}`, values]));
     Object.entries(filters.columns || {}).forEach(([key, values]) => entries.push([`column:${key}`, values]));
+    markActiveFilters(new Set(entries.map(([field]) => field)));
     entries.forEach(([field, value]) => {
       let text;
       if (field === 'search') text = `Search: “${value}”`;
@@ -1736,7 +1751,7 @@
     return badge;
   }).filter(Boolean);
   const renderPanelCounts = (total) => panelCounts.forEach((badge) => {
-    badge.textContent = `${number(total)} ${total === 1 ? 'call' : 'calls'}`;
+    badge.replaceChildren(node('strong', number(total)), total === 1 ? 'Filtered Call' : 'Filtered Calls');
   });
   root.querySelectorAll('[data-nq-loader]').forEach((panel) => panel.addEventListener('toggle', () => { if (panel.open) refreshStale(); }));
 
@@ -2339,7 +2354,10 @@
   const applyRuleFilters = (rule, index) => {
     rule.conditions.forEach((condition) => {
       if (condition.field === '@attended') {
-        state.extraFilters.state = [condition.values.includes('Yes') === (condition.op === 'in') ? 'attended' : 'not_attended'];
+        const value = condition.values.includes('Yes') === (condition.op === 'in') ? 'attended' : 'not_attended';
+        const select = root.querySelector('[data-nq-filter="state"]');
+        [...select.options].forEach((option) => { option.selected = option.value === value; });
+        select.dispatchEvent(new Event('multiselect:options-updated'));
         return;
       }
       const select = root.querySelector(`[data-nq-filter="${CSS.escape(CONDITION_FILTERS[condition.field] || `field:${condition.field}`)}"]`);
@@ -2426,9 +2444,10 @@
         {pairs: [['status_mode', 'manual']]}),
       ...(life.not_attended ? [notAttendedCard(life.not_attended, total)] : []),
       drillCard(kpiCard('Open', number(life.open), `${percent(life.open, total)} attended and not closed`, 'open'),
-        {many: ['status', life.open_statuses || []]}),
+        {pairs: [['state', 'open']]}),
       drillCard(kpiCard('Closed', number(closed), `${percent(closed, total)} closed`, 'closed'), {pairs: [['state', 'closed']]}),
-      kpiCard('Stalled', number(life.stalled_total), `Open, no change for ${life.stalled_days}+ days`, 'attended'),
+      drillCard(kpiCard('Stalled', number(life.stalled_total), `Open, no change for ${life.stalled_days}+ days`, 'attended'),
+        {pairs: [['state', 'stalled']]}),
     );
     // The pipeline: the calls not attended, Open (the phase statuses an attended call goes through, its total being
     // theirs), then the closed statuses.
@@ -2443,7 +2462,7 @@
       if (inOpen && !group) {
         flow.append(node('span', '→', 'nq-pipeline-arrow'));
         group = node('div', undefined, 'nq-pipeline-group');
-        const head = drillCard(node('div', undefined, 'nq-pipeline-group-head'), {many: ['status', openNames]});
+        const head = drillCard(node('div', undefined, 'nq-pipeline-group-head'), {pairs: [['state', 'open']]});
         head.append(node('span', 'Open', 'nq-pipeline-name'), node('strong', number(life.open)),
           node('span', `${percent(life.open, total)} · attended and not closed: ${openNames.join(' + ')}`, 'nq-kpi-note'));
         group.append(head, node('div', undefined, 'nq-pipeline-group-steps'));

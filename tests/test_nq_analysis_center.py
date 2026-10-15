@@ -276,6 +276,22 @@ def test_lifecycle_and_rca_insights_compare_the_three_sources(client, tmp_path):
     # The stalled calls are open ones: the call not attended, months old, is not stalled.
     assert lifecycle['stalled_total'] <= lifecycle['open']
     assert all(item['status'] in lifecycle['open_statuses'] for item in lifecycle['stalled'])
+    # The Stalled card filters the calls it counts: an open call last changed months ago.
+    with core.repository.connection() as connection:
+        connection.execute(f"UPDATE {nq.NQ_CALL_TRACKING_TABLE} SET updated_at = '2026-01-05T10:00:00+01:00' "
+                           "WHERE status = 'Under Analysis' AND call_key = (SELECT MIN(call_key) FROM "
+                           f"{nq.NQ_CALL_TRACKING_TABLE} WHERE status = 'Under Analysis')")
+    life = client.post('/api/non-qualified-calls/lifecycle', json={'filters': {}}).json()
+    stalled = client.post('/api/non-qualified-calls/lifecycle', json={'filters': {'state': ['stalled']}}).json()
+    assert life['stalled_total'] == 1 and stalled['total'] == stalled['stalled_total'] == 1
+    assert [call['call_key'] for call in query(client, filters={'state': ['stalled']})['calls']] == [life['stalled'][0]['call_key']]
+    # The Follow-up filter takes the calls in any of the states chosen.
+    closed_or_stalled = query(client, filters={'state': ['stalled', 'closed']})['total']
+    assert closed_or_stalled == 1 + query(client, filters={'state': ['closed']})['total']
+    assert query(client, filters={'state': ['attended', 'not_attended']})['total'] == life['total']
+    # Open: the calls the Open card counts, in one filter.
+    assert query(client, filters={'state': ['open']})['total'] == life['open']
+    assert query(client, filters={'state': ['open']})['total'] == query(client, filters={'status': life['open_statuses']})['total']
     phases = {phase['key']: phase for phase in lifecycle['phases']}
     assert next(item['count'] for item in phases['analysis_status']['items'] if item['value'] == 'Ongoing') == 1
     assert lifecycle['modes'] == {'auto': 3, 'manual': 0}
@@ -905,8 +921,11 @@ def test_admins_import_the_analyses_of_the_previous_tool_by_join_id(client, tmp_
     general = page.split('>General Filters:</p>', 1)[1].split('id="nq-field-filters-title"', 1)[0]
     fields = page.split('id="nq-field-filters-title">NQ Analysis Fields Filters:</p>', 1)[1].split('id="nq-column-filters-title"', 1)[0]
     assert 'data-nq-filter="campaign"' in general and 'data-nq-filter="version"' in general and 'data-nq-filter="status"' not in general
-    for name in ('failure_classification', 'failure_category', 'status', 'status_mode', 'team', 'assignee', 'root_domain', 'root_category', 'root_cause'):
+    for name in ('failure_classification', 'failure_category', 'status', 'status_mode', 'state', 'team', 'assignee', 'root_domain',
+                 'root_category', 'root_cause'):
         assert f'data-nq-filter="{name}"' in fields, name
+    # Each group in a card of its own.
+    assert page.count('<section class="nq-filter-card"') == 3
     # The phase cards leave out the calls without a value unless Show Empty Status (unchecked) is checked.
     assert '<input type="checkbox" id="nq-life-show-empty"> Show Empty Status</label>' in page
     assert "const base = phase.drill || showEmpty ? total : items.reduce((sum, item) => sum + item.count, 0);" in script

@@ -3200,9 +3200,35 @@ def _mapped_filters(task_repository: Any, filters: dict[str, Any]) -> dict[str, 
 
 
 def _resolve_key_filters(task_repository: Any, filters: dict[str, Any]) -> dict[str, Any]:
-    """Turn the filters computed per call (root cause counting suggestions, eNB/gNB) into call keys, with the Operator,
-    Vendor and NetCheck RCA values as they are shown."""
-    filters = _mapped_filters(task_repository, filters)
+    """Turn the filters computed per call (root cause counting suggestions, eNB/gNB, the stalled calls) into call keys,
+    with the Operator, Vendor and NetCheck RCA values as they are shown."""
+    filters = _call_key_filters(task_repository, _mapped_filters(task_repository, filters))
+    states = _strings(filters.get('state'))
+    if 'open' in states:
+        # Open: the attended calls not closed, in neither the first status nor a closed one.
+        statuses = list_options(task_repository)['statuses']
+        filters = {**filters, '_first_status': statuses[0]['name'] if statuses else ''}
+    return _stalled_filter(task_repository, filters) if 'stalled' in states else filters
+
+
+def _stalled_filter(task_repository: Any, filters: dict[str, Any]) -> dict[str, Any]:
+    """The Stalled state: the keys of the open calls without any change for STALLED_DAYS days or more, as the
+    Lifecycle & Phases count them."""
+    options = list_options(task_repository)
+    statuses = options['statuses']
+    closed = {item['name'].casefold() for item in statuses if item['closed']}
+    first = statuses[0]['name'] if statuses else ''
+    base, base_params = _base_sql(untracked_status(task_repository, options), task_repository, _scope(filters))
+    now = datetime.now()
+    with task_repository.connection() as connection:
+        keys = [str(row['call_key']) for row in connection.execute(
+            f'WITH calls AS ({base}) SELECT call_key, status, updated_at, start_time FROM calls', base_params)
+            if stalled_days(str(row['status'] or ''), row['updated_at'], row['start_time'], closed, first, now) is not None]
+    return {**filters, '_stalled_keys': keys}
+
+
+def _call_key_filters(task_repository: Any, filters: dict[str, Any]) -> dict[str, Any]:
+    """The root cause counting suggestions, the RCA sources and the eNB/gNB filters as call keys."""
     wanted = {field: set(_strings(filters.get(field))) for field in KEY_FILTERS}
     if not any(wanted.values()):
         return filters
@@ -3330,14 +3356,22 @@ def _filter_sql(filters: dict[str, Any], username: str, closed_statuses: list[st
         if expression and values:
             clauses.append(f"{expression} IN ({', '.join('?' for _ in values)})")
             params.extend(values)
-    states = _strings(filters.get('state'))
+    # The Follow-up: the calls in any of the states chosen.
+    states, parts = _strings(filters.get('state')), []
     for state in states:
         if state == 'closed':
-            marks = ', '.join('?' for _ in closed_statuses) or "''"
-            clauses.append(f'status IN ({marks})')
+            parts.append(f"status IN ({', '.join('?' for _ in closed_statuses) or "''"})")
             params.extend(closed_statuses)
+        elif state == 'open':
+            parts.append(f"(status NOT IN ({', '.join('?' for _ in closed_statuses) or "''"}) AND status <> ?)")
+            params.extend([*closed_statuses, str(filters.get('_first_status') or '')])
+        elif state == 'stalled':
+            parts.append('call_key IN (SELECT value FROM json_each(?))')
+            params.append(json.dumps(list(filters.get('_stalled_keys') or [])))
         elif state in STATE_SQL:
-            clauses.append(STATE_SQL[state])
+            parts.append(STATE_SQL[state])
+    if parts:
+        clauses.append('(' + ' OR '.join(parts) + ')')
     if filters.get('open_only') and closed_statuses:
         clauses.append(f"status NOT IN ({', '.join('?' for _ in closed_statuses)})")
         params.extend(closed_statuses)
@@ -3630,6 +3664,17 @@ def available_filter_values(task_repository: Any, filters: Any, username: str) -
 
 PROGRESS_GRANULARITIES = ('week', 'month', 'quarter', 'year')
 AGE_BUCKETS = ((7, 'Under 7 days'), (30, '7–30 days'), (90, '30–90 days'), (None, 'Over 90 days'))
+
+
+def stalled_days(status: str, updated_at: Any, start_time: Any, closed: set[str], first: str, now: datetime) -> int | None:
+    """The days an open call (attended and not closed: neither in the first status nor in a closed one) has gone
+    without any change, from its last change or else its start, when they are STALLED_DAYS or more."""
+    if status.casefold() in closed or status == first:
+        return None
+    last = _parse_time(updated_at) or _parse_time(start_time)
+    if last is None or (now - last).days < STALLED_DAYS:
+        return None
+    return int((now - last).total_seconds() // 86400)
 
 
 def _parse_time(value: Any) -> datetime | None:
@@ -5755,12 +5800,11 @@ def lifecycle_stats(task_repository: Any, filters: dict[str, Any], username: str
         if started is not None:
             ages.setdefault(status, []).append((now - started).total_seconds() / 86400)
         # Stalled: open calls (attended and not closed) without any change for a while.
-        if status.casefold() not in closed and status != first:
-            last = _parse_time(row['updated_at']) or started
-            if last is not None and (now - last).days >= STALLED_DAYS:
-                stalled.append({'call_key': str(row['call_key']), 'status': status, 'operator': str(row['operator'] or ''),
-                                'campaign': str(row['campaign'] or ''), 'city': str(row['city'] or ''),
-                                'days': int((now - last).total_seconds() // 86400), 'followed_up': bool(row['updated_at'])})
+        days = stalled_days(status, row['updated_at'], row['start_time'], closed, first, now)
+        if days is not None:
+            stalled.append({'call_key': str(row['call_key']), 'status': status, 'operator': str(row['operator'] or ''),
+                            'campaign': str(row['campaign'] or ''), 'city': str(row['city'] or ''),
+                            'days': days, 'followed_up': bool(row['updated_at'])})
     pipeline = [{'status': item['name'], 'color': item['color'], 'closed': item['closed'], 'count': counts.get(item['name'], 0),
                  'avg_age_days': round(sum(ages.get(item['name'], [])) / len(ages[item['name']]), 1) if ages.get(item['name']) else None}
                 for item in statuses]

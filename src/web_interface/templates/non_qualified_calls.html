@@ -57,6 +57,8 @@
           <button type="button" class="document-export-action document-export-word" data-nq-document-export="word" title="Executive Summary and Progress Status of the filtered calls"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M8.5 12l1.2 5 1.8-4 1.8 4 1.2-5"/></svg>Export Word</button>
         </div>
       </div>
+      {# Each group of filters in a card of its own. #}
+      <section class="nq-filter-card">
       <p class="nq-filter-group-title">General Filters:</p>
       <div class="nq-filter-grid" id="nq-filter-grid">
         <label>CDRs<select data-nq-filter="datasets" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="CDRs"></select></label>
@@ -74,22 +76,28 @@
         <label>Result<select data-nq-filter="result" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Result"></select></label>
         <label title="How the CDRs see each call: the latest version, changed between CDRs, a newer version in a CDR that is not chosen, not in the Final CDR of its campaign, or Completed in a newer CDR (listed only when chosen here)">CDR Version<select data-nq-filter="version" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="CDR Version"></select></label>
       </div>
+      </section>
       {# The fields of Fields & Sections: those of the CDR and the follow-up here, and the fields of the analysts the
          script adds, all in the order of the catalog. #}
+      <section class="nq-filter-card">
       <p class="nq-filter-group-title" id="nq-field-filters-title">NQ Analysis Fields Filters:</p>
       <div class="nq-filter-grid nq-field-filter-grid" id="nq-field-filters">
         <label>Failure Classification<select data-nq-filter="failure_classification" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Failure Classification"></select></label>
         <label>Failure Category<select data-nq-filter="failure_category" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Failure Category"></select></label>
         <label>Global Status<select data-nq-filter="status" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Global Status"></select></label>
         <label title="Whether the status follows the Status Rules or was set by hand">Status Set<select data-nq-filter="status_mode" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Status Set"></select></label>
+        <label title="How far each call has been followed up: attended or not, stalled, closed, with a team, an assignee, comments or a root cause">Follow-up<select data-nq-filter="state" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Follow-up"></select></label>
         <label>Team<select data-nq-filter="team" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Team"></select></label>
         <label>Assignee<select data-nq-filter="assignee" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Assignee"></select></label>
         <label>Root Domain<select data-nq-filter="root_domain" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Root Domain"></select></label>
         <label>Root Category<select data-nq-filter="root_category" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Root Category"></select></label>
         <label>Root Cause<select data-nq-filter="root_cause" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Root Cause"></select></label>
       </div>
+      </section>
+      <section class="nq-filter-card" hidden>
       <p class="nq-filter-group-title" id="nq-column-filters-title" hidden>Additional Columns Filters:</p>
       <div class="nq-filter-grid nq-field-filter-grid" id="nq-column-filters" hidden></div>
+      </section>
       <div id="nq-cdr-column-filters" hidden></div>
       <div class="nq-filter-row">
         <label class="nq-search">Search<input type="search" id="nq-search" placeholder="Operator, city, cell, failure or comment text…" autocomplete="off"></label>
