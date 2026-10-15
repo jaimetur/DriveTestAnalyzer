@@ -145,3 +145,124 @@ def test_snapshot_comparison_counts_added_removed_cells_and_vendor_swaps(client,
     assert vodafone['added'] == 3 and vodafone['removed'] == 0 and vodafone['vendor_changed'] == 4
     assert vodafone['swaps'] == [{'from': 'Huawei', 'to': 'Ericsson', 'cells': 4, 'sites': 1}]
     assert payload['comparison']['snapshot_date'] == '2026-08-20'
+
+
+def _phase3_inventory_rows():
+    """``_inventory_rows`` with NR PCIs, the MIMO of the cells and their states, an NR-only site and a planned site."""
+    rows = []
+    for row in _inventory_rows():
+        row = dict(row)
+        site = row.get('Site_ID')
+        if row['Technology'] == 'NR':
+            # VF0 broadcasts NR PCI 100 with 32 TX antennas; VF1 PCI 101 in 64T64R.
+            row.update({'PCI': 100, 'noOfUsedTxAntennas': 32} if site == 'VF0' else {'PCI': 101, 'TXRXMODE': '64T64R'})
+        elif site == 'VF0':
+            row['TXRXMODE'] = '4T4R'
+        elif site == 'VF1':
+            row['noOfUsedTxAntennas'] = 2
+        if site == 'VF2' and row.get('Cell ID') == 1:
+            row.update({'administrativeState': 'LOCKED', 'operationalState': 'ENABLED'})
+        rows.append(row)
+    nr = {'Technology': 'NR', 'Network': 'Vodafone', 'Host Network': 'Vodafone', 'Vendor': 'Ericsson', 'Cell ID': 1, 'Band': 'NR3400',
+          'ARFCN': 642000, 'Bandwidth': 100, 'Azimuth': 0, 'Latitude': LEEDS[1]}
+    rows.append({**nr, 'Site_ID': 'VF4', 'gNodeB ID': 5004, 'PCI': 100, 'Longitude': LEEDS[0] + 0.1, 'Evenflow Status': 'In Service'})
+    rows.append({**nr, 'Site_ID': 'VF5', 'gNodeB ID': 5005, 'Longitude': LEEDS[0] + 0.04, 'Latitude': LEEDS[1] + 0.005,
+                 'Evenflow Status': 'Planned'})
+    return rows
+
+
+def _phase3_cdr_rows():
+    """``_cdr_rows`` with the NR PCI, SSB NR-ARFCN, rank and MIMO layers CDR Data reports for NSA samples."""
+    rows = _cdr_rows()
+    for index, row in enumerate(rows):
+        row.update({
+            # Anchored on VF0 and VF2: PCI 100; on VF1 and VF3: PCI 101 (the first of the sequence).
+            'NR_DL_PCell_PCI_Info_List': '[100]' if index % 4 in (0, 3) else '[101]->[100]',
+            'NR_DL_PCell_ARFCN': '[641376]', 'NR_DL_PCell_Band': '[NR BAND 78]',
+            'LTE_DL_Rank_Index': '([Rank1: 50.00],[Rank2: 50.00],[Rank3: 0.00],[Rank4: 0.00])',
+            'NR_DL_Rank_Index': '([Rank1: 0.00],[Rank2: 100.00],[Rank3: 0.00],[Rank4: 0.00])' if index % 2 else None,
+            'NR_DL_Max_MIMO_Layers': 4 if index % 2 else None,
+        })
+    return rows
+
+
+def _phase3_analysis(client, tmp_path, **request):
+    login(client)
+    _dataset(tmp_path, '260917_Cell_Config.zip', 'network_inventory', _phase3_inventory_rows())
+    cdr = _dataset(tmp_path, 'Data CDR NSA.xlsx', 'data', _phase3_cdr_rows(), nr_mode='NSA')
+    response = client.post('/api/network-insights/analysis', json={'datasets': {'data': [cdr]}, 'technology': 'lte', 'group': ['operator'], **request})
+    assert response.status_code == 200
+    return response.json()
+
+
+def test_nsa_samples_find_their_nr_cell_on_the_anchor_site_or_nearby(client, tmp_path):
+    serving = _phase3_analysis(client, tmp_path)['serving']
+    leg = serving['nr_leg']['rows'][0]
+    # VF0 and VF1 anchors have their NR cell on site; VF3 anchors find PCI 101 only on VF1; VF2 anchors find PCI 100
+    # on VF0 (2 km) and VF4 (4.6 km) and take the nearest.
+    assert leg['with_nr_pci'] == 12 and leg['found'] == 12 and leg['found_share'] == 100.0
+    assert (leg['anchor_site_share'], leg['only_candidate_share'], leg['nearest_share']) == (50.0, 25.0, 25.0)
+    assert leg['vendors'] == [{'vendor': 'Ericsson', 'share': 100.0}]
+    assert serving['nr_leg']['by_vendor'][0]['value'] == 'Ericsson' and serving['nr_leg']['by_vendor'][0]['samples'] == 12
+    nr = serving['nr_availability']['rows'][0]
+    # The six samples that measured NR: those anchored on VF1 found it there, those anchored on VF2 on VF0.
+    assert nr['with_nr'] == 6 and nr['nr_found_share'] == 100.0 and nr['nr_on_anchor_share'] == 50.0
+    sites = {row['site']: row for row in serving['nr_availability']['nr_sites']}
+    assert set(sites) == {'VF0', 'VF1'} and sites['VF0']['samples'] == 6 and sites['VF0']['from_anchor_share'] == 50.0
+    assert sites['VF0']['vendor'] == 'Ericsson' and 1.5 < sites['VF0']['median_km'] < 2.5
+
+
+def test_nr_carrier_must_contain_the_ssb_frequency_and_band():
+    frame = pd.DataFrame({'_band': ['n78', 'n78', '', 'n1'], '_ssb_mhz': [3620.64, 3700.0, 3620.64, float('nan')],
+                          'band_3gpp': ['n78', 'n78', 'n78', 'n78'], 'low_mhz': [3580.0, 3580.0, 3580.0, 3580.0],
+                          'high_mhz': [3680.0, 3680.0, 3680.0, 3680.0]})
+    assert ii._carrier_fits(frame).tolist() == [True, False, True, False]
+
+
+def test_mimo_breakdown_crosses_inventory_antennas_with_reported_rank(client, tmp_path):
+    rows = {(row['technology'], row['mimo']): row for row in _phase3_analysis(client, tmp_path)['serving']['mimo']}
+    assert set(rows) == {('LTE', '2T'), ('LTE', '4T'), ('LTE', 'Not set'), ('NR', '32T'), ('NR', '64T')}
+    four = rows[('LTE', '4T')]
+    assert four['samples'] == 3 and four['modes'] == ['4T4R'] and four['mean_rank'] == 1.5 and four['rank_use'] == 37.5
+    assert [item['share'] for item in four['rank_classes']] == [50.0, 50.0, 0.0, 0.0] and four['rank2_share'] == 50.0
+    assert rows[('LTE', '2T')]['rank_use'] == 75.0 and rows[('LTE', '2T')]['modes'] == ['TX antennas']
+    assert rows[('LTE', 'Not set')]['samples'] == 6 and rows[('LTE', 'Not set')]['rank_use'] is None
+    # NR rank comes from the NR cell found for each NSA sample: VF1 (64T64R) and VF0 (32 TX antennas).
+    massive = rows[('NR', '32T')]
+    assert massive['samples'] == 3 and massive['mean_rank'] == 2.0 and massive['mean_layers'] == 4.0 and massive['rank_use'] == 50.0
+    assert rows[('NR', '64T')]['modes'] == ['64T64R']
+
+
+def test_cell_states_near_the_weak_areas_in_the_table_and_on_the_maps(client, tmp_path):
+    analysis = _phase3_analysis(client, tmp_path, coverage_threshold=-80, min_samples=1)
+    maps = analysis['sections'][0]['maps']
+    status = maps['cell_status']
+    rows = {row['site']: row for row in status['rows']}
+    # VF2's locked cell, the planned VF5 site and the planned 3 site lie near the weak areas.
+    assert set(rows) == {'VF2', 'VF5', 'T1'}
+    assert rows['VF2']['states'] == [{'state': 'Locked', 'cells': 1}] and rows['VF2']['summary'] == 'Locked: 1 cell (B20)'
+    assert rows['VF2']['on_air'] and not rows['VF5']['on_air'] and rows['VF5']['summary'] == 'Planned: 1 cell (n78)'
+    assert rows['VF2']['area_kind'] == 'coverage' and rows['VF2']['distance_km'] < 1
+    assert status['sites'] == {'Locked': 1, 'Planned': 2} and status['snapshot_dates'] == ['2026-09-17']
+    # Only VF2's cell has an administrative or operational state: 1 of the 17 Vodafone and 3 cells.
+    assert status['known_share'] == round(1 / 17 * 100, 1)
+    sectors = {site['label']: site for site in maps['coverage']['sectors']}
+    assert sectors['Site VF2 · Vodafone']['ring'] == 'outage' and 'Locked: 1 cell (B20)' in sectors['Site VF2 · Vodafone']['detail']
+    assert sectors['Site VF5 · Vodafone']['ring'] == 'pipeline' and sectors['Site VF5 · Vodafone']['cells'] == []
+    assert 'ring' not in sectors['Site VF0 · Vodafone']
+    legend = [item['label'] for item in maps['coverage']['legend']['items']]
+    assert 'Locked, halted or disabled' in legend and 'Planned or in progress' in legend
+
+
+def test_cell_states_and_mimo_of_the_inventory_cells():
+    cells = pd.DataFrame({
+        'status': ['In Service', 'In Service', 'In Service', 'In Progress', 'Planned', 'Ex Service', 'In Service'],
+        'admin_state': ['LOCKED', '', 'UNLOCKED', 'LOCKED', None, 'LOCKED', ''],
+        'oss_status': ['ACTIVE', 'HALTED', 'ACTIVE', 'LOCKED', 'Unknown', 'LOCKED', 'Unknown'],
+        'oper_state': ['ENABLED', '', 'DISABLED', '', None, '', ''],
+        'txrx_mode': ['4T4R', '', '', '64T64R', '', '', '2t4r'], 'tx_antennas': [None, 2, 32, None, None, None, None],
+    })
+    # A planned or in-progress cell keeps that status even when it is locked; a cell out of service is not flagged.
+    assert ii.cell_states(cells).tolist() == ['Locked', 'Halted', 'Disabled', 'In progress', 'Planned', '', '']
+    assert ii.mimo_tx(cells['txrx_mode'], cells['tx_antennas']).tolist()[:4] == [4.0, 2.0, 32.0, 64.0]
+    assert ii.mimo_tx(cells['txrx_mode'], cells['tx_antennas']).tolist()[6] == 2.0

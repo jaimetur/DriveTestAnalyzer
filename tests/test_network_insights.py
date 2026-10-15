@@ -1237,3 +1237,26 @@ def test_sa_cdr_rows_get_their_serving_cells_when_network_insights_reads_them(cl
     stored = repository.load_reporting_rows('data', [cdr], ['Cell_ID', 'LAC_CID_xARFCN'])
     assert stored['Cell_ID'].tolist() == ['[206009734]->[206009735]'] * len(rows)
     assert stored['LAC_CID_xARFCN'].str.contains('5G NR').all()
+
+
+def test_nr_pci_ssb_arfcn_rank_and_mimo_layers_are_parsed_from_cdr_data() -> None:
+    assert ni.rank_shares('([Rank1: 69.57],[Rank2: 30.43],[Rank3: 0.00],[Rank4: 0.00])') == (69.57, 30.43, 0.0, 0.0)
+    assert ni.rank_shares('([Rank1: 0.00],[Rank2: 0.00])') is None and ni.rank_shares(None) is None
+    assert ni.mean_rank((0.0, 50.0, 50.0, 0.0)) == pytest.approx(2.5) and math.isnan(ni.mean_rank(None))
+    assert ni.first_integer('[163]->[338]') == 163 and ni.first_integer('[635424]') == 635424 and math.isnan(ni.first_integer(''))
+    frame = _data_rows('2026-Q3')
+    frame['NR_DL_PCell_PCI_Info_List'] = ['[163]->[338]'] * 6 + ['[2000]'] * 3 + [None] * 3
+    frame['NR_DL_PCell_ARFCN'] = ['[628032]'] * 12
+    frame['LTE_DL_Rank_Index'] = ['([Rank1: 25.00],[Rank2: 75.00],[Rank3: 0.00],[Rank4: 0.00])'] * 12
+    frame['NR_DL_Rank_Index'] = [None] * 6 + ['([Rank1: 0.00],[Rank2: 50.00],[Rank3: 0.00],[Rank4: 50.00])'] * 6
+    frame['NR_DL_Max_MIMO_Layers'] = [None] * 6 + [4.0] * 5 + [99.0]
+    samples = ni.normalise_samples(frame, 'data', ni.resolve_source_columns(frame.columns, 'data'))
+    # A PCI outside 0–1007 and a layer count outside 1–8 are placeholders.
+    assert samples['nr_pci'].tolist()[:6] == [163.0] * 6 and samples['nr_pci'].iloc[6:].isna().all()
+    assert samples['nr_arfcn'].eq(628032).all()
+    assert samples['lte_rank'].eq(1.75).all() and samples.loc[0, 'lte_rank_shares'] == (25.0, 75.0, 0.0, 0.0)
+    assert samples['nr_rank'].iloc[:6].isna().all() and samples['nr_rank'].iloc[6:].eq(3.0).all()
+    assert samples['nr_layers'].iloc[6:11].eq(4).all() and math.isnan(samples.loc[11, 'nr_layers'])
+    # Voice and Speech report neither: their fields stay empty.
+    voice = ni.normalise_samples(frame, 'voice', ni.resolve_source_columns(frame.columns, 'voice'))
+    assert voice[['nr_pci', 'nr_arfcn', 'lte_rank', 'nr_rank', 'nr_layers']].isna().all().all()

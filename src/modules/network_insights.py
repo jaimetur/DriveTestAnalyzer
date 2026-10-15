@@ -39,8 +39,8 @@ from src.modules.serving_cells import load_serving_networks, serving_families
 
 NETWORK_INSIGHTS_KINDS = ('data', 'voice', 'speech')
 # Bump when the normalised samples or the analysis payload change shape.
-SAMPLES_CACHE_VERSION = 5
-ANALYSIS_CACHE_VERSION = 9
+SAMPLES_CACHE_VERSION = 6
+ANALYSIS_CACHE_VERSION = 11
 INVENTORY_CACHE_VERSION = 4
 OBSERVED_CACHE_VERSION = 9
 # Columns of the Observed Sites/Cells (from CDRs) tables.
@@ -91,6 +91,22 @@ RF_FIELD_ALIASES: dict[str, dict[str, tuple[str, ...]]] = {
     },
     'nr_bandwidth': {
         'data': ('NR_DL_PCell_Bandwidth',), 'voice': (), 'speech': (),
+    },
+    # The NR leg of NSA samples (its PCI and SSB NR-ARFCN) and the MIMO rank and layers the device reported.
+    'nr_pci': {
+        'data': ('NR_DL_PCell_PCI_Info_List',), 'voice': (), 'speech': (),
+    },
+    'nr_arfcn': {
+        'data': ('NR_DL_PCell_ARFCN',), 'voice': (), 'speech': (),
+    },
+    'lte_rank': {
+        'data': ('LTE_DL_Rank_Index',), 'voice': (), 'speech': (),
+    },
+    'nr_rank': {
+        'data': ('NR_DL_Rank_Index',), 'voice': (), 'speech': (),
+    },
+    'nr_layers': {
+        'data': ('NR_DL_Max_MIMO_Layers',), 'voice': (), 'speech': (),
     },
 }
 DIMENSION_ALIASES = {
@@ -231,6 +247,34 @@ def enodeb_label(value: object) -> str:
     return ''
 
 
+_RANK_SHARE = re.compile(r'Rank\s*([1-4])\s*:\s*(\d+(?:\.\d+)?)', re.I)
+
+
+def rank_shares(value: object) -> tuple[float, float, float, float] | None:
+    """The time share (%) at rank 1 to 4 of a ``([Rank1: 69.57],[Rank2: 30.43],…)`` Rank Index, or ``None``."""
+    shares = [0.0, 0.0, 0.0, 0.0]
+    for rank, share in _RANK_SHARE.findall(str(value or '')):
+        shares[int(rank) - 1] += float(share)
+    total = sum(shares)
+    if total <= 0:
+        return None
+    return tuple(round(share / total * 100, 2) for share in shares)
+
+
+def mean_rank(shares: tuple[float, ...] | None) -> float:
+    """The mean rank of a time share per rank."""
+    return sum((index + 1) * share for index, share in enumerate(shares)) / 100 if shares else math.nan
+
+
+def first_integer(value: object) -> float:
+    """The first whole number of a ``[163]->[338]`` sequence (the first NR PCI or ARFCN), else NaN."""
+    for item in sequence_values(value):
+        number = re.fullmatch(r'\d+(?:\.0+)?', item.strip())
+        if number:
+            return float(int(float(item)))
+    return math.nan
+
+
 def classify(value: float, classes: tuple[tuple[str, float, str], ...]) -> tuple[str, str]:
     """Return the (label, colour) of the first class whose lower bound is reached."""
     for label, lower, colour in classes:
@@ -335,6 +379,18 @@ def normalise_samples(frame: pd.DataFrame, kind: str, columns: dict[str, str]) -
     result['lte_band'] = bands_column
     nr_source = columns.get('nr_band')
     result['nr_band'] = frame[nr_source].map(nr_band_label) if nr_source in frame.columns else ''
+    # The first NR PCI and SSB NR-ARFCN identify the NR cell of NSA samples (see inventory_insights.nsa_nr_cells).
+    for field in ('nr_pci', 'nr_arfcn'):
+        result[field] = parsed_column(field, first_integer).astype(float)
+    result.loc[~result['nr_pci'].between(0, 1007), 'nr_pci'] = math.nan
+    for technology in ('lte', 'nr'):
+        shares = parsed_column(f'{technology}_rank', rank_shares)
+        result[f'{technology}_rank_shares'] = shares
+        result[f'{technology}_rank'] = shares.map(mean_rank).astype(float)
+    layers = columns.get('nr_layers')
+    result['nr_layers'] = math.nan
+    if layers in frame.columns:
+        result['nr_layers'] = pd.to_numeric(frame[layers], errors='coerce').where(lambda values: values.between(1, 8))
     return result.reset_index(drop=True)
 
 
@@ -1583,6 +1639,13 @@ def install_network_insights_routes(core: Any) -> None:
                         if overlay['sectors'] and maps[kind].get('type') == 'map':
                             maps[kind]['sectors'] = overlay['sectors']
                             maps[kind]['legend']['items'] = [*maps[kind]['legend']['items'], *overlay['legend']]
+                    # Locked, halted, disabled, planned and in-progress cells of the snapshot around the same areas.
+                    areas = [{**row, 'kind': kind} for kind in ('coverage', 'interference') for row in maps[f'{kind}_hotspots'][:25]]
+                    maps['cell_status'] = {
+                        **ii.cell_status_near_areas(serving_state['cells'], families, areas, family_labels=serving_state['labels']),
+                        'snapshot_dates': sorted({serving_state['snapshot_dates'][family] for family in families
+                                                  if serving_state['snapshot_dates'].get(family)}),
+                    }
                 return maps
 
             selected_maps = group_maps(map_operator)
@@ -1654,8 +1717,12 @@ def install_network_insights_routes(core: Any) -> None:
         cells = ii.load_cells(task_repository, selection)
         config = load_serving_networks(task_repository)
         serving = ii.serving_cells(samples, operators, cells, config, float(config['max_distance_km']))
-        return {'cells': cells, 'serving': serving, 'families': set(selection), 'selection': selection, 'config': config,
-                'labels': family_operator_labels(task_repository), 'max_distance_km': config['max_distance_km']}
+        # The NR cell of the NSA samples, from their NR PCI and band/SSB frequency around the LTE anchor.
+        nr_leg = ii.nsa_nr_cells(samples, operators, serving, cells, config, float(config['max_distance_km']))
+        dates = {int(item['dataset_id']): str(item['snapshot_date']) for item in snapshots}
+        return {'cells': cells, 'serving': serving, 'nr_leg': nr_leg, 'families': set(selection), 'selection': selection, 'config': config,
+                'labels': family_operator_labels(task_repository), 'max_distance_km': config['max_distance_km'],
+                'snapshot_dates': {family: dates.get(int(dataset_id), '') for family, dataset_id in selection.items()}}
 
     def serving_payload(state, samples: pd.DataFrame, labels: pd.Series, colours: dict[str, str], order_key, overshoot_km: float) -> dict[str, Any] | None:
         if state is None:
@@ -1668,6 +1735,11 @@ def install_network_insights_routes(core: Any) -> None:
         family_labels = state['labels']
         named = serving.assign(host_family=serving['host_family'].map(lambda value: ii.family_label(str(value), family_labels) if isinstance(value, str) else value))
         sites = ii.site_positions(state['cells'])
+        nr_leg = state['nr_leg']
+        by_label = lambda rows: sorted(rows, key=lambda row: order_key(row['operator']))
+        # The NR leg shaped as serving cells, to break it down by NR vendor like the serving cells.
+        nr_serving = pd.DataFrame({'matched': nr_leg['nr_matched'].astype(bool), 'distance_km': nr_leg['nr_distance_km'],
+                                   'nr_vendor': nr_leg['nr_vendor'].fillna('')}, index=nr_leg.index)
         return {
             'max_distance_km': state['max_distance_km'], 'overshoot_km': overshoot_km,
             'summary': summary,
@@ -1675,8 +1747,12 @@ def install_network_insights_routes(core: Any) -> None:
             'by_vendor': ii.serving_breakdown(serving, labels, 'vendor', overshoot_km),
             'by_host': ii.serving_breakdown(named, labels, 'host_family', overshoot_km),
             'overshooting_cells': ii.overshooting_cells(samples.assign(operator=labels.to_numpy()), serving, overshoot_km, family_labels=family_labels),
-            'nr_availability': (lambda nr: {**nr, 'rows': sorted(nr['rows'], key=lambda row: order_key(row['operator']))})(
-                ii.nr_availability(samples.assign(operator=labels.to_numpy()), serving, labels, sites)),
+            'nr_availability': (lambda nr: {**nr, 'rows': by_label(nr['rows'])})(
+                ii.nr_availability(samples.assign(operator=labels.to_numpy()), serving, labels, sites, nr_leg=nr_leg)),
+            'nr_leg': {'rows': by_label(ii.nr_leg_summary(nr_leg, labels)),
+                       'by_vendor': ii.serving_breakdown(nr_serving, labels, 'nr_vendor', overshoot_km)},
+            'mimo': sorted(ii.mimo_breakdown(samples, serving, nr_leg, labels),
+                           key=lambda row: (order_key(row['operator']), row['technology'], row['tx_antennas'] is None, row['tx_antennas'] or 0)),
             'distance_cdf': cdf_payload(distances.dropna(), 'distance', None, 'Distance to the serving site', 'Distance (km)',
                                         colours, order_key=order_key),
             'order': order,

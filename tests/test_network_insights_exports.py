@@ -186,3 +186,36 @@ def test_serving_cells_5g_availability_and_snapshot_tables_are_exported(tmp_path
     word_headers = {table.cell(0, 1).text for table in Document(word).tables}
     for headers in (ppt_headers, word_headers):
         assert {'Samples', 'Cell', 'Samples on LTE cells', 'Snapshot date', 'Technology', 'Network'} <= headers
+
+
+def test_nr_cell_of_nsa_samples_mimo_and_cell_status_tables_are_exported(tmp_path):
+    analysis = _analysis()
+    analysis['maps'] = {'operator': 'VF', 'cell_status': {'radius_km': 3, 'known_share': 34.2, 'rows': [
+        {'site': 'VF2', 'network': 'VF', 'host': 'VF', 'vendor': 'Ericsson', 'summary': 'Locked: 1 cell (B20)', 'on_air': True,
+         'area_kind': 'coverage', 'area': 'Leeds', 'distance_km': 0.66, 'states': [{'state': 'Locked', 'cells': 1}]}]}}
+    analysis['serving'] = {
+        'overshoot_km': 5, 'max_distance_km': 30, 'summary': [], 'by_band': [], 'by_vendor': [], 'by_host': [], 'overshooting_cells': [],
+        'nr_leg': {'rows': [{'operator': 'VF', 'with_nr_pci': 12, 'found': 12, 'found_share': 100.0, 'anchor_site_share': 50.0,
+                             'only_candidate_share': 25.0, 'nearest_share': 25.0, 'median_km': 0.4, 'p90_km': 2.1,
+                             'vendors': [{'vendor': 'Ericsson', 'share': 100.0}]}],
+                   'by_vendor': [{'operator': 'VF', 'value': 'Ericsson', 'samples': 12, 'median_km': 0.4, 'overshoot_share': 0.0}]},
+        'mimo': [{'operator': 'VF', 'technology': 'LTE', 'mimo': '4T', 'tx_antennas': 4, 'modes': ['4T4R'], 'samples': 3, 'mean_rank': 1.5,
+                  'rank2_share': 50.0, 'mean_layers': None, 'rank_use': 37.5, 'rank_classes': []}],
+        'nr_availability': {'rows': [{'operator': 'VF', 'anchored': 9, 'on_nr_sites': 6, 'without_nr_on_nr_sites': 2, 'gap_share': 33.3,
+                                      'without_nr_elsewhere_share': 80.0, 'nr_found_share': 100.0, 'nr_on_anchor_share': 50.0,
+                                      'nr_median_km': 1.2}], 'sites': [],
+                            'nr_sites': [{'operator': 'VF', 'site': 'VF0', 'vendor': 'Ericsson', 'samples': 6, 'from_anchor_share': 50.0,
+                                          'median_km': 1.9}]},
+        'distance_cdf': {'type': 'empty', 'message': 'No chart'},
+    }
+    ppt, word = tmp_path / 'phase3.pptx', tmp_path / 'phase3.docx'
+    export_network_insights_powerpoint(ppt, analysis, {}, {}, lambda *_args: b'', template=TEMPLATE)
+    export_network_insights_word(word, analysis, {}, {}, lambda *_args: b'')
+    ppt_tables = [shape.table for slide in Presentation(ppt).slides for shape in slide.shapes if shape.has_table]
+    for tables in (ppt_tables, Document(word).tables):
+        headers = {table.cell(0, 1).text for table in tables}
+        assert {'Samples with NR PCI', 'NR vendor', 'Technology', 'Network → Host', 'NR site'} <= headers
+        five_g = next(table for table in tables if table.cell(0, 1).text == 'Samples on LTE cells')
+        assert [cell.text for cell in five_g.rows[0].cells][-3:] == ['NR cell found', 'NR on the anchor site', 'Median km to the NR site']
+        status = next(table for table in tables if table.cell(0, 1).text == 'Network → Host')
+        assert [cell.text for cell in status.rows[1].cells][3:6] == ['Locked: 1 cell (B20)', 'Yes', 'Coverage · Leeds']

@@ -65,7 +65,7 @@
 
   <details class="panel collapsible-panel ni-panel" open data-panel-state-key="network-insights:maps">
     <summary class="collapsible-summary"><div><p class="eyebrow">Weak coverage &amp; interference</p><h2>Coverage &amp; Interference Maps</h2></div><span class="collapse-chip">Collapse</span></summary>
-    <div class="collapsible-panel-body"><p class="ni-intro">Where coverage is weak or interference high: grid squares coloured by their mean value, with the inventory sites around the weakest areas.</p>
+    <div class="collapsible-panel-body"><p class="ni-intro">Where coverage is weak or interference high: grid squares coloured by their mean value, with the inventory sites around the weakest areas and the cells the snapshot shows locked, halted, disabled, planned or in progress there.</p>
       <div class="ni-map-toolbar">
         <label>Group<select id="ni-map-operator"></select></label>
         <button type="button" id="ni-map-reset" class="ni-secondary-action">Show Whole Area</button>
@@ -79,7 +79,7 @@
 
   <details class="panel collapsible-panel ni-panel" open data-panel-state-key="network-insights:serving">
     <summary class="collapsible-summary"><div><p class="eyebrow">Serving cells, distance &amp; overshooting</p><h2>Serving Cells</h2></div><span class="collapse-chip">Collapse</span></summary>
-    <div class="collapsible-panel-body"><p class="ni-intro">Which cell served each sample, how far away it was and whose equipment carried it.</p>
+    <div class="collapsible-panel-body"><p class="ni-intro">Which cell served each sample, how far away it was and whose equipment carried it, the NR cell of the NSA samples and how the MIMO of the cells is used.</p>
       <div id="ni-serving" class="ni-serving"><p class="form-note">No analysis yet.</p></div>
       <p class="form-note ni-note">Each sample's first serving cell is looked up in the inventory snapshot, among the networks that serve its Operator (Workspace Config → Serving Networks), its own network first; the distance is measured from the sample's start position to the cell's site. Overshooting samples are served from farther than the selected distance.</p>
     </div>
@@ -87,9 +87,9 @@
 
   <details class="panel collapsible-panel ni-panel" open data-panel-state-key="network-insights:nr-availability">
     <summary class="collapsible-summary"><div><p class="eyebrow">EN-DC on 5G sites</p><h2>5G Availability</h2></div><span class="collapse-chip">Collapse</span></summary>
-    <div class="collapsible-panel-body"><p class="ni-intro">Whether the samples anchored on sites that have NR cells actually reached NR (EN-DC).</p>
+    <div class="collapsible-panel-body"><p class="ni-intro">Whether the samples anchored on sites that have NR cells actually reached NR (EN-DC), and which NR cell served them.</p>
       <div id="ni-nr" class="ni-serving"><p class="form-note">No analysis yet.</p></div>
-      <p class="form-note ni-note">Samples anchored on an LTE cell whose site also has NR cells in the inventory snapshot should normally reach NR (EN-DC). The gap is the share of those samples with no NR measurement; it is compared with the samples anchored on sites without NR.</p>
+      <p class="form-note ni-note">Samples anchored on an LTE cell whose site also has NR cells in the inventory snapshot should normally reach NR (EN-DC). The gap is the share of those samples with no NR measurement; it is compared with the samples anchored on sites without NR. For the samples that reached NR, the NR cell is found from their NR PCI and band/SSB frequency (see Serving Cells): the share found, the share on the anchor's own site and the median distance to the NR site.</p>
     </div>
   </details>
 

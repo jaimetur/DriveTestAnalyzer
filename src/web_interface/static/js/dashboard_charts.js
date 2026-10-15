@@ -1238,9 +1238,21 @@
         const longitude = Number(site.lon), latitude = Number(site.lat);
         if (longitude < xDomain[0] || longitude > xDomain[1] || latitude < yDomain[0] || latitude > yDomain[1]) return;
         const [x, y] = project(longitude, latitude);
+        // Sites with cells the inventory flags carry a ring: solid for locked, halted or disabled cells, dashed
+        // for sites not on air yet or with planned or in-progress cells.
+        const drawRing = size => {
+          if (site.ring !== 'outage' && site.ring !== 'pipeline') return;
+          context.save(); context.beginPath(); context.arc(x, y, size, 0, Math.PI * 2);
+          context.setLineDash(site.ring === 'pipeline' ? [4, 3] : []);
+          context.strokeStyle = '#FFFFFF'; context.lineWidth = 4.4; context.stroke();
+          context.strokeStyle = site.ring === 'pipeline' ? '#495057' : '#212529'; context.lineWidth = 2.2; context.stroke();
+          context.restore();
+        };
+        const hit = {label: String(site.label || 'Site'), series: String(site.series || 'Inventory site'), value: String(site.detail || '')};
         if (!wedges) {
           drawSiteMark(context, x, y, 7, site.cells?.[0]?.[2] || '#868E96');
-          pushPointHit(state, transform, x, y, {label: String(site.label || 'Site'), series: 'Inventory site', value: String(site.detail || '')});
+          drawRing(11);
+          pushPointHit(state, transform, x, y, hit);
           return;
         }
         (site.cells || []).forEach(cell => {
@@ -1252,7 +1264,8 @@
           context.globalAlpha = 1; context.setLineDash([]); context.strokeStyle = cell[2] || '#868E96'; context.lineWidth = 2; context.stroke();
         });
         drawSiteMark(context, x, y, 6, site.cells?.[0]?.[2] || '#868E96');
-        pushPointHit(state, transform, x, y, {label: String(site.label || 'Site'), series: 'Inventory site', value: String(site.detail || '')});
+        drawRing(site.cells?.length ? radius + 3 : 11);
+        pushPointHit(state, transform, x, y, hit);
       });
       context.restore();
     }

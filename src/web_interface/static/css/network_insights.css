@@ -310,3 +310,12 @@
 .network-insights .ni-expand-content .ni-table{font-size:.9rem}
 .ni-expand-label{font-weight:700;color:var(--ni-dark)}
 body:has(dialog.ni-expand-dialog[open]){overflow:hidden}
+/* Cell states of the inventory snapshot near the weak areas: one chip per state, from outages (red) to plans (blue). */
+.ni-state-list{display:flex;flex-wrap:wrap;gap:.25rem}
+.ni-state-chip{padding:.08rem .5rem;border:1px solid transparent;border-radius:999px;font-size:.74rem;font-weight:700;white-space:nowrap}
+.ni-state-chip[data-state="Locked"]{border-color:#ffc9c9;background:#fff5f5;color:#c92a2a}
+.ni-state-chip[data-state="Halted"]{border-color:#ffd8a8;background:#fff4e6;color:#d9480f}
+.ni-state-chip[data-state="Disabled"]{border-color:#ffec99;background:#fff9db;color:#946200}
+.ni-state-chip[data-state="In progress"]{border-color:#a5d8ff;background:#e7f5ff;color:#1864ab}
+.ni-state-chip[data-state="Planned"]{border-color:#d0bfff;background:#f3f0ff;color:#5f3dc4}
+.network-insights .ni-table td:has(> .ni-share){white-space:nowrap}

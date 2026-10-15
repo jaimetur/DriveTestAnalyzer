@@ -494,6 +494,24 @@
   $('ni-map-sites')?.addEventListener('change', () => {
     for (const [key, payload] of Object.entries(mapPayloads)) renderChart($(`ni-${key}-map`), mapView(payload));
   });
+  // Locked, halted, disabled, planned and in-progress cells of the inventory snapshot around the weak areas.
+  const stateChips = row => {
+    const details = String(row.summary || '').split(' · ');
+    return `<span class="ni-state-list">${(row.states || []).map((item, index) =>
+      `<span class="ni-state-chip" data-state="${escapeHtml(item.state)}">${escapeHtml(details[index] || `${item.state}: ${item.cells}`)}</span>`).join('')}</span>`;
+  };
+  const cellStatusBlock = (radio, status) => {
+    if (!status) return '';
+    const dates = (status.snapshot_dates || []).join(', ') || 'its date';
+    return `<section class="ni-cell-status"><h4 class="ni-subtitle">Cell status near the weak areas <span class="form-note">(sites within ${number(status.radius_km, 0)} km of the areas above)</span></h4>
+      <div class="table-wrap ni-table-wrap"><table class="ni-table"><thead><tr><th>Site</th><th>Network → Host</th><th>Vendor</th><th>Flagged cells</th><th>On air</th><th>Nearest weak area</th><th>Distance km</th></tr></thead>
+      <tbody>${(status.rows || []).map(row => `<tr>
+        <td><button type="button" class="ni-zoom" data-kind="${radio}-${escapeHtml(row.area_kind)}" data-latitude="${row.latitude}" data-longitude="${row.longitude}" title="Zoom the ${escapeHtml(row.area_kind)} map to the site">${escapeHtml(row.site)}</button></td>
+        <td>${escapeHtml(row.network)} → ${escapeHtml(row.host)}</td><td>${escapeHtml(row.vendor || '—')}</td><td>${stateChips(row)}</td>
+        <td>${row.on_air ? 'Yes' : 'Not yet'}</td><td>${escapeHtml(row.area_kind === 'interference' ? 'Interference' : 'Coverage')} · ${escapeHtml(row.area)}</td>
+        <td class="num">${number(row.distance_km, 2)}</td></tr>`).join('') || `<tr><td colspan="7" class="form-note">No site with locked, halted, disabled, planned or in-progress cells lies within ${number(status.radius_km, 0)} km of these areas.</td></tr>`}</tbody></table></div>
+      <p class="form-note ni-note"><span>The states are those of the inventory snapshot (${escapeHtml(dates)}), not of the day of the measurements. Locked and Halted come from the administrative or OSS state and Disabled from the operational state of cells in service, which the snapshot gives for ${number(status.known_share)}% of the cells of these networks (mostly Ericsson cells); the other cells are only flagged when their status is In progress or Planned. On the maps these sites carry a ring, dashed when they are not on air yet or have planned cells.</span></p></section>`;
+  };
   // Coverage and interference maps per technology, for one shared Group.
   const renderMaps = () => {
     const maps = analysis.maps;
@@ -520,6 +538,7 @@
           <section class="ni-map-card"><h3>${label} Interference (mean SINR per grid square)</h3><div class="ni-chart-card ni-map-canvas"><canvas id="ni-${radio}-interference-map" role="img" aria-label="${label} interference map"></canvas></div>
             <h4>Highest interference areas</h4><div class="table-wrap ni-table-wrap ni-hotspot-wrap"><table class="ni-table ni-hotspots">${hotspotTable(`${radio}-interference`, section.maps.interference_hotspots, 'dB')}</table></div></section>
         </div>
+        ${cellStatusBlock(radio, section.maps.cell_status)}
       </section>`;
     }).join('');
     for (const section of sections()) {
@@ -699,6 +718,34 @@
   const breakdownTable = (title, rows, label) => `<section class="ni-mini-table"><h4>${escapeHtml(title)}</h4>
     <div class="table-wrap ni-table-wrap"><table class="ni-table"><thead><tr><th>${escapeHtml(analysis.group_label || 'All samples')}</th><th>${escapeHtml(label)}</th><th>Samples</th><th>Median km</th><th>Overshooting</th></tr></thead>
     <tbody>${rows.map(row => `<tr><td>${swatch(row.operator)}${escapeHtml(row.operator)}</td><td>${escapeHtml(row.value)}</td><td class="num">${integer(row.samples)}</td><td class="num">${number(row.median_km, 2)}</td><td class="num">${row.overshoot_share === null || row.overshoot_share === undefined ? '—' : `${number(row.overshoot_share)}%`}</td></tr>`).join('') || '<tr><td colspan="5" class="form-note">No sample was matched with an inventory cell.</td></tr>'}</tbody></table></div></section>`;
+  // The NR cell of the NSA samples, found from their NR PCI and band/SSB frequency around the LTE anchor.
+  const nrLegBlock = serving => {
+    const leg = serving.nr_leg;
+    if (!leg) return '';
+    const group = escapeHtml(analysis.group_label || 'All samples');
+    return `<h4>NR cell of the NSA samples <span class="form-note">(CDR Data: NR PCI and SSB NR-ARFCN of the samples anchored on LTE)</span></h4>
+      <div class="table-wrap ni-table-wrap"><table class="ni-table"><thead><tr><th>${group}</th><th>Samples with NR PCI</th><th>NR cell found</th><th>On the anchor site</th><th>Only candidate nearby</th><th>Nearest of several</th><th>Median km</th><th>P90 km</th><th>NR vendors</th></tr></thead>
+      <tbody>${leg.rows.map(row => `<tr><td>${swatch(row.operator)}${escapeHtml(row.operator)}</td><td class="num">${integer(row.with_nr_pci)}</td><td>${shareBar(row.found_share)}</td>
+        <td class="num">${number(row.anchor_site_share)}%</td><td class="num">${number(row.only_candidate_share)}%</td><td class="num">${number(row.nearest_share)}%</td>
+        <td class="num">${number(row.median_km, 2)}</td><td class="num">${number(row.p90_km, 2)}</td>
+        <td>${(row.vendors || []).map(item => `${escapeHtml(item.vendor)} ${number(item.share, 0)}%`).join(' · ') || '—'}</td></tr>`).join('') || '<tr><td colspan="9" class="form-note">The selected CDRs report no NR PCI on LTE-anchored samples (only CDR Data reports it).</td></tr>'}</tbody></table></div>
+      <div class="ni-breakdown-grid">${breakdownTable('By NR vendor', leg.by_vendor, 'NR vendor')}</div>
+      <p class="form-note ni-note"><span>NSA CDRs only identify the LTE anchor cell. The NR cell is the one with the sample's NR PCI whose band and carrier contain its SSB frequency: on the anchor's site first (<strong>On the anchor site</strong>); otherwise the nearest one of the networks that serve the Operator, the anchor's network first, within ${number(serving.max_distance_km)} km — <strong>Only candidate nearby</strong> when no other cell of that network qualifies, <strong>Nearest of several</strong> (ambiguous) otherwise. Distances are measured from the sample to the NR cell's site.</span></p>`;
+  };
+  // MIMO: TX antennas of the serving cells in the snapshot against the rank and layers the samples reported.
+  const mimoBlock = serving => {
+    const rows = serving.mimo;
+    if (!rows) return '';
+    const group = escapeHtml(analysis.group_label || 'All samples');
+    return `<h4>MIMO: inventory TX antennas and reported rank <span class="form-note">(CDR Data: Rank Index and NR maximum MIMO layers)</span></h4>
+      <div class="table-wrap ni-table-wrap"><table class="ni-table"><thead><tr><th>${group}</th><th>Technology</th><th>TX antennas</th><th>Inventory field</th><th>Samples</th><th>Mean rank</th><th>Time per rank</th><th>Rank 2+</th><th>Mean max layers</th><th>Rank use</th></tr></thead>
+      <tbody>${rows.map(row => `<tr><td>${swatch(row.operator)}${escapeHtml(row.operator)}</td><td>${escapeHtml(row.technology)}</td><td>${escapeHtml(row.mimo)}</td>
+        <td>${escapeHtml((row.modes || []).join(', ') || '—')}</td><td class="num">${integer(row.samples)}</td>
+        <td class="num">${number(row.mean_rank, 2)}</td><td>${row.rank_classes?.length ? classBar(row.rank_classes) : '—'}</td>
+        <td class="num">${row.rank2_share === null ? '—' : `${number(row.rank2_share)}%`}</td><td class="num">${number(row.mean_layers, 2)}</td>
+        <td class="num">${row.rank_use === null ? '—' : `${number(row.rank_use)}%`}</td></tr>`).join('') || '<tr><td colspan="10" class="form-note">The selected CDRs report no rank for samples served by cells of the snapshot (only CDR Data reports it).</td></tr>'}</tbody></table></div>
+      <p class="form-note ni-note"><span>TX antennas come from the TXRX mode (for example 4T4R, mostly Huawei cells) or the number of used TX antennas (mostly Ericsson cells) of the cell that served the sample: the LTE cell for LTE, and for NR the NR cell of SA samples or the one found for NSA samples. <strong>Not set</strong> groups the cells whose inventory gives neither. Time per rank shows the share of time at rank 1 to 4; <strong>Rank use</strong> is the mean rank divided by the TX antennas, at most 4 (the layers of the measuring device).</span></p>`;
+  };
   const renderServing = () => {
     const host = $('ni-serving');
     const serving = analysis?.serving;
@@ -723,7 +770,9 @@
       <h4>Overshooting cells <span class="form-note">(the cells that served the most samples beyond ${number(serving.overshoot_km)} km)</span></h4>
       <div class="table-wrap ni-table-wrap"><table class="ni-table"><thead><tr><th>${escapeHtml(analysis.group_label || 'All samples')}</th><th>Cell</th><th>Site</th><th>Band</th><th>Vendor</th><th>Network → Host</th><th>Samples beyond</th><th>Samples served</th><th>Median km</th><th>Max km</th></tr></thead>
       <tbody>${serving.overshooting_cells.map(row => `<tr><td>${swatch(row.operator)}${escapeHtml(row.operator)}</td><td>${escapeHtml(row.cell)}</td><td>${escapeHtml(row.site)}</td><td>${escapeHtml(row.band)}</td><td>${escapeHtml(row.vendor)}</td><td>${escapeHtml(row.network)} → ${escapeHtml(row.host)}</td><td class="num">${integer(row.samples_beyond)}</td><td class="num">${integer(row.samples)}</td><td class="num">${number(row.median_km, 2)}</td><td class="num">${number(row.max_km, 2)}</td></tr>`).join('') || `<tr><td colspan="10" class="form-note">No sample was served from farther than ${number(serving.overshoot_km)} km.</td></tr>`}</tbody></table></div>
-      <p class="form-note ni-note">Cells farther than ${number(serving.max_distance_km)} km from a sample are never taken as its serving cell (Workspace Config → Serving Networks).</p>`;
+      <p class="form-note ni-note">Cells farther than ${number(serving.max_distance_km)} km from a sample are never taken as its serving cell (Workspace Config → Serving Networks).</p>
+      ${nrLegBlock(serving)}
+      ${mimoBlock(serving)}`;
     renderChart($('ni-serving-cdf'), serving.distance_cdf);
   };
   const renderNrAvailability = () => {
@@ -731,11 +780,15 @@
     const nr = analysis?.serving?.nr_availability;
     if (!analysis) { host.innerHTML = '<p class="form-note">No analysis yet.</p>'; return; }
     if (!nr) { host.innerHTML = pendingSnapshot; return; }
-    host.innerHTML = `<div class="table-wrap ni-table-wrap"><table class="ni-table"><thead><tr><th>${escapeHtml(analysis.group_label || 'All samples')}</th><th>Samples on LTE cells</th><th>On sites with NR</th><th>Without NR there</th><th>NR gap on 5G sites</th><th>Without NR on other sites</th></tr></thead>
-      <tbody>${nr.rows.map(row => `<tr><td>${swatch(row.operator)}${escapeHtml(row.operator)}</td><td class="num">${integer(row.anchored)}</td><td class="num">${integer(row.on_nr_sites)}</td><td class="num">${integer(row.without_nr_on_nr_sites)}</td><td>${shareBar(row.gap_share, 'is-warning')}</td><td>${shareBar(row.without_nr_elsewhere_share)}</td></tr>`).join('') || '<tr><td colspan="6" class="form-note">No sample was served by an LTE cell of the snapshot.</td></tr>'}</tbody></table></div>
+    const leg = nr.rows.some(row => 'nr_found_share' in row);
+    host.innerHTML = `<div class="table-wrap ni-table-wrap"><table class="ni-table"><thead><tr><th>${escapeHtml(analysis.group_label || 'All samples')}</th><th>Samples on LTE cells</th><th>On sites with NR</th><th>Without NR there</th><th>NR gap on 5G sites</th><th>Without NR on other sites</th>${leg ? '<th>NR cell found</th><th>NR on the anchor site</th><th>Median km to the NR site</th>' : ''}</tr></thead>
+      <tbody>${nr.rows.map(row => `<tr><td>${swatch(row.operator)}${escapeHtml(row.operator)}</td><td class="num">${integer(row.anchored)}</td><td class="num">${integer(row.on_nr_sites)}</td><td class="num">${integer(row.without_nr_on_nr_sites)}</td><td>${shareBar(row.gap_share, 'is-warning')}</td><td>${shareBar(row.without_nr_elsewhere_share)}</td>${leg ? `<td>${shareBar(row.nr_found_share)}</td><td>${shareBar(row.nr_on_anchor_share)}</td><td class="num">${number(row.nr_median_km, 2)}</td>` : ''}</tr>`).join('') || `<tr><td colspan="${leg ? 9 : 6}" class="form-note">No sample was served by an LTE cell of the snapshot.</td></tr>`}</tbody></table></div>
       <h4>5G sites with the most samples without NR</h4>
       <div class="table-wrap ni-table-wrap"><table class="ni-table"><thead><tr><th>${escapeHtml(analysis.group_label || 'All samples')}</th><th>Site</th><th>Vendor</th><th>Samples without NR</th><th>Samples anchored there</th><th>Position</th></tr></thead>
-      <tbody>${nr.sites.map(row => `<tr><td>${swatch(row.operator)}${escapeHtml(row.operator)}</td><td>${escapeHtml(row.site)}</td><td>${escapeHtml(row.vendor)}</td><td class="num">${integer(row.samples_without_nr)}</td><td class="num">${integer(row.samples)}</td><td>${row.latitude === null ? '—' : `${number(row.latitude, 4)}, ${number(row.longitude, 4)}`}</td></tr>`).join('') || '<tr><td colspan="6" class="form-note">Every sample anchored on a 5G site measured NR.</td></tr>'}</tbody></table></div>`;
+      <tbody>${nr.sites.map(row => `<tr><td>${swatch(row.operator)}${escapeHtml(row.operator)}</td><td>${escapeHtml(row.site)}</td><td>${escapeHtml(row.vendor)}</td><td class="num">${integer(row.samples_without_nr)}</td><td class="num">${integer(row.samples)}</td><td>${row.latitude === null ? '—' : `${number(row.latitude, 4)}, ${number(row.longitude, 4)}`}</td></tr>`).join('') || '<tr><td colspan="6" class="form-note">Every sample anchored on a 5G site measured NR.</td></tr>'}</tbody></table></div>
+      ${nr.nr_sites ? `<h4>NR sites serving the most NSA samples <span class="form-note">(the NR cell found for each sample, see Serving Cells)</span></h4>
+      <div class="table-wrap ni-table-wrap"><table class="ni-table"><thead><tr><th>${escapeHtml(analysis.group_label || 'All samples')}</th><th>NR site</th><th>Vendor</th><th>Samples</th><th>From the anchor site</th><th>Median km</th><th>Position</th></tr></thead>
+      <tbody>${nr.nr_sites.map(row => `<tr><td>${swatch(row.operator)}${escapeHtml(row.operator)}</td><td>${escapeHtml(row.site)}</td><td>${escapeHtml(row.vendor)}</td><td class="num">${integer(row.samples)}</td><td>${shareBar(row.from_anchor_share)}</td><td class="num">${number(row.median_km, 2)}</td><td>${row.latitude === null ? '—' : `${number(row.latitude, 4)}, ${number(row.longitude, 4)}`}</td></tr>`).join('') || '<tr><td colspan="7" class="form-note">No NR cell was found for the NSA samples.</td></tr>'}</tbody></table></div>` : ''}`;
   };
 
   // The inventory snapshot: networks, host networks, data quality, density and deployed spectrum.

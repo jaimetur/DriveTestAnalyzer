@@ -154,16 +154,61 @@ def serving_tables(analysis: dict[str, Any]) -> list[tuple[str, list[str], list[
     if cells:
         tables.append(('Serving Cells · Overshooting cells', [group, 'Cell', 'Site', 'Band', 'Vendor', 'Network → Host', 'Samples beyond',
                                                                'Samples served', 'Median km', 'Max km'], cells))
+    leg = serving.get('nr_leg') or {}
+    rows = [[row['operator'], _number(row['with_nr_pci'], 0), _number(row['found_share'], 1, '%'), _number(row['anchor_site_share'], 1, '%'),
+             _number(row['only_candidate_share'], 1, '%'), _number(row['nearest_share'], 1, '%'), _number(row['median_km'], 2),
+             _number(row['p90_km'], 2), ', '.join(f"{item['vendor']} {_number(item['share'], 0, '%')}" for item in row.get('vendors') or []) or '—']
+            for row in leg.get('rows') or []]
+    if rows:
+        tables.append(('Serving Cells · NR cell of the NSA samples', [group, 'Samples with NR PCI', 'NR cell found', 'On the anchor site',
+                                                                      'Only candidate nearby', 'Nearest of several', 'Median km', 'P90 km',
+                                                                      'NR vendors'], rows))
+    rows = [[row['operator'], row['value'], _number(row['samples'], 0), _number(row['median_km'], 2), _number(row['overshoot_share'], 1, '%')]
+            for row in leg.get('by_vendor') or []]
+    if rows:
+        tables.append(('Serving Cells · By NR vendor (NSA)', [group, 'NR vendor', 'Samples', 'Median km', 'Overshooting'], rows))
+    rows = [[row['operator'], row['technology'], row['mimo'], ', '.join(row.get('modes') or []) or '—',
+             _number(row['samples'], 0), _number(row['mean_rank'], 2), _number(row['rank2_share'], 1, '%'),
+             _number(row['mean_layers'], 2), _number(row['rank_use'], 1, '%')] for row in serving.get('mimo') or []]
+    if rows:
+        tables.append(('Serving Cells · MIMO: inventory TX antennas and reported rank', [group, 'Technology', 'TX antennas', 'Inventory field',
+                                                                                         'Samples', 'Mean rank', 'Rank 2+', 'Mean max layers',
+                                                                                         'Rank use'], rows))
     nr = serving.get('nr_availability') or {}
+    leg_columns = any('nr_found_share' in row for row in nr.get('rows') or [])
     rows = [[row['operator'], _number(row['anchored'], 0), _number(row['on_nr_sites'], 0), _number(row['without_nr_on_nr_sites'], 0),
-             _number(row['gap_share'], 1, '%'), _number(row['without_nr_elsewhere_share'], 1, '%')] for row in nr.get('rows') or []]
+             _number(row['gap_share'], 1, '%'), _number(row['without_nr_elsewhere_share'], 1, '%'),
+             *([_number(row.get('nr_found_share'), 1, '%'), _number(row.get('nr_on_anchor_share'), 1, '%'), _number(row.get('nr_median_km'), 2)]
+               if leg_columns else [])] for row in nr.get('rows') or []]
     if rows:
         tables.append(('5G Availability', [group, 'Samples on LTE cells', 'On sites with NR', 'Without NR there', 'NR gap on 5G sites',
-                                           'Without NR on other sites'], rows))
+                                           'Without NR on other sites', *(['NR cell found', 'NR on the anchor site', 'Median km to the NR site']
+                                                                          if leg_columns else [])], rows))
     sites = [[row['operator'], row['site'], row['vendor'], _number(row['samples_without_nr'], 0), _number(row['samples'], 0)]
              for row in nr.get('sites') or []]
     if sites:
         tables.append(('5G Availability · Sites with the most samples without NR', [group, 'Site', 'Vendor', 'Samples without NR', 'Samples anchored'], sites))
+    sites = [[row['operator'], row['site'], row['vendor'], _number(row['samples'], 0), _number(row['from_anchor_share'], 1, '%'),
+              _number(row['median_km'], 2)] for row in nr.get('nr_sites') or []]
+    if sites:
+        tables.append(('5G Availability · NR sites serving the most NSA samples', [group, 'NR site', 'Vendor', 'Samples', 'From the anchor site',
+                                                                                   'Median km'], sites))
+    return tables
+
+
+def cell_status_tables(analysis: dict[str, Any]) -> list[tuple[str, list[str], list[list[str]]]]:
+    """The flagged cells of the inventory snapshot around the weak areas of every technology section and group."""
+    tables = []
+    for suffix, section in technology_sections(analysis):
+        maps = section.get('maps') or {}
+        for group in maps.get('groups') or [maps]:
+            status = group.get('cell_status') or {}
+            rows = [[row['site'], f"{row['network']} → {row['host']}", row['vendor'], row['summary'], 'Yes' if row['on_air'] else 'No',
+                     f"{str(row['area_kind']).title()} · {row['area']}", _number(row['distance_km'], 2)] for row in status.get('rows') or []]
+            if rows:
+                name = str(group.get('operator') or '')
+                tables.append((f'Cell status near the weak areas{suffix}' + (f' · {name}' if name else ''),
+                               ['Site', 'Network → Host', 'Vendor', 'Flagged cells', 'On air', 'Nearest weak area', 'Distance km'], rows))
     return tables
 
 
@@ -683,6 +728,8 @@ def export_network_insights_powerpoint(destination: Path, analysis: dict[str, An
     for suffix, _section, _cdfs, groups in visuals:
         for group, panels in groups:
             _visual_slides(presentation, f'Coverage & Interference Maps{suffix}' + (f' · {group}' if group else ''), panels)
+    for title, columns, rows in cell_status_tables(analysis):
+        _table_slides(presentation, title, columns, rows)
     serving = serving_tables(analysis)
     distance = serving_visuals(analysis, render)
     if distance and serving:
@@ -920,6 +967,9 @@ def export_network_insights_word(destination: Path, analysis: dict[str, Any], de
         for group, panels in groups:
             _docx_side_by_side(document, f'Coverage & Interference Maps{suffix}' + (f' · {group}' if group else ''),
                                [(caption, (image, note, table)) for caption, image, note, table in panels], add_image, new_page=True)
+    for title, columns, rows in cell_status_tables(analysis):
+        _docx_section_heading(document, title)
+        _docx_table(document, columns, rows)
     distance = serving_visuals(analysis, render)
     if distance:
         _docx_side_by_side(document, 'Serving Cells', [(caption, (image, note, None)) for caption, image, note, _table in distance], add_image, new_page=True)
