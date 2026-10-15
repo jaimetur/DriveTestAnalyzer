@@ -84,7 +84,7 @@ The starred Saved Filters come first, then the latest used; the panel shows ten 
 - the ordered **Split by** levels, the **GAP Reference**, the **National & area summary** (its time split, breakdown and separate cities) when it has one, the **Scoring Methodology**, the **Calculation time** (or the time **Elapsed** while it runs), and on one line how many times it was **Used** (each Calculate Scoring or Recalculate of its selection, each report scenario that uses it, and each opening from its card) and **Calculated** (each calculation that finished);
 - **Newer CDRs available** when a Final CDR of the same campaign (or a newer cumulative Weekly or Daily CDR) replaces one of its CDRs: **Use newer CDRs** selects the same filters with the newer CDRs and calculates them;
 - **Waiting for its CDRs** for a Saved Filter imported from another workspace whose CDRs are not processed here yet (it finds them by file, whatever their name);
-- the **CDRs** button (hover or click it to inspect the source files), **☆** to keep it (starred, at the top of the list) and **×** to delete it.
+- the **CDRs** button (hover or click it to inspect the source files) and, in the bottom right corner, its **Filter ID** (the identifier App Events give it, also on the selected card of the Scoring Results dropdown) before **✎**, **☆** to keep it (starred, at the top of the list) and **×** to delete it.
 
 The generated PowerPoint is named `yyyymmdd_hhmmss - Scoring & GAP Analysis - <NR Mode> - <Regions> - <Clusters> - <Cities> - <Operators> - <Vendors> - <Campaigns>.pptx`. A complete vendor selection appears as **All Vendors**.
 

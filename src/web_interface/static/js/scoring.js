@@ -1509,6 +1509,11 @@
         : 'Star this Saved Filter to keep it (only starred ones are kept), at the top of the list';
       pin.setAttribute('aria-label', `${savedFilter.pinned ? 'Unpin' : 'Pin'} Saved Filter ${id}`);
       pin.setAttribute('aria-pressed', String(Boolean(savedFilter.pinned)));
+      // The identifier of the Saved Filter (as App Events name it), before its buttons.
+      const idBadge = document.createElement('span');
+      idBadge.className = 'saved-filter-id';
+      idBadge.textContent = `Filter ID: ${id}`;
+      idBadge.title = `Saved Filter ID ${id}`;
       const rename = document.createElement('button');
       rename.type = 'button';
       rename.className = 'saved-filter-rename';
@@ -1524,7 +1529,7 @@
       remove.title = 'Delete this Saved Filter and its result';
       remove.setAttribute('aria-label', `Delete Saved Filter ${id}`);
       remove.disabled = deletingSavedFilterIds.has(id);
-      actions.append(cdrButton, rename, pin, remove);
+      actions.append(cdrButton, idBadge, rename, pin, remove);
       row.append(button, actions);
       savedFilterList.append(row);
       if (id === selectedSavedFilterId) {
