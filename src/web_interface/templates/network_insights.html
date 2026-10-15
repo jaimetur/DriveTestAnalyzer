@@ -15,7 +15,7 @@
         <fieldset class="ni-control-group"><legend>Scope</legend><div class="ni-selection-grid">
         <label>NR Mode<select id="ni-nr-mode"><option value="NSA">NSA</option><option value="SA">SA</option></select></label>
         <label>Technology<select id="ni-technology">{% for key, label in network_insights_config.technologies.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select></label>
-        <label>Group by<select id="ni-group" data-multiselect-count-locked="true" multiple size="1" data-multiselect-empty-label="All samples" aria-label="Group by">{% for key, label in network_insights_config.groupings.items() %}<option value="{{ key }}"{% if key in ("operator", "campaign") %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+        <label>Split by<select id="ni-group" data-multiselect-count-locked="true" multiple size="1" data-multiselect-empty-label="All samples" aria-label="Split by">{% for key, label in network_insights_config.groupings.items() %}<option value="{{ key }}"{% if key in ("operator", "campaign") %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
         </div></fieldset>
         <fieldset class="ni-control-group"><legend>Thresholds</legend><div class="ni-selection-grid">
         <label data-ni-radio="lte" title="Samples below this LTE RSRP count as low coverage">LTE coverage below (dBm)<input type="number" id="ni-coverage-threshold" step="1" value="{{ '%g' % network_insights_config.coverage_threshold }}"></label>
@@ -104,7 +104,7 @@
     <summary class="collapsible-summary"><div><p class="eyebrow">Sites and cells of the inventory snapshot</p><h2>Network Deployment</h2></div><span class="collapse-chip">Collapse</span></summary>
     <div class="collapsible-panel-body"><p class="ni-intro">How each network is deployed: its sites and cells grouped by host network, vendor, technology, band, region and more.</p>
       <div class="ni-map-toolbar">
-        <label>View / Group by<select id="ni-deployment-group">{% for key, label in network_insights_config.inventory_dimensions.items() %}<option value="{{ key }}"{% if key == 'host_network' %} selected{% endif %}>{{ label }}</option>{% endfor %}<option value="observed">Observed Sites/Cells (from CDRs)</option><option value="inventory">Full Sites/Cells Inventory</option></select></label>
+        <label>View / Split by<select id="ni-deployment-group">{% for key, label in network_insights_config.inventory_dimensions.items() %}<option value="{{ key }}"{% if key == 'host_network' %} selected{% endif %}>{{ label }}</option>{% endfor %}<option value="observed">Observed Sites/Cells (from CDRs)</option><option value="inventory">Full Sites/Cells Inventory</option></select></label>
         <label data-ni-deployment-filter>Technology<select id="ni-deployment-technology"><option value="">LTE + NR</option><option value="LTE">LTE</option><option value="NR">NR</option></select></label>
         <label class="ni-check" data-ni-deployment-filter><input type="checkbox" id="ni-deployment-in-service" checked> In service only</label>
         <button type="button" id="ni-deployment-export-all" class="ni-secondary-action ni-export-action" disabled>Export All to CSV</button>

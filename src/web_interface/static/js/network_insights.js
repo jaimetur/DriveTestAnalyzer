@@ -1165,7 +1165,7 @@
     const ordered = [...areas.values()].sort((left, right) => right.total - left.total);
     const shown = densityAll ? ordered : ordered.slice(0, 25);
     const label = dimension === 'cluster' ? 'Cluster' : 'Region';
-    host.innerHTML = `<div class="ni-map-toolbar">${available.length > 1 ? `<label>Group sites by<select id="ni-density-dimension">${available.map(key => `<option value="${key}"${key === dimension ? ' selected' : ''}>${key === 'cluster' ? 'Cluster' : 'Region'}</option>`).join('')}</select></label>` : ''}
+    host.innerHTML = `<div class="ni-map-toolbar">${available.length > 1 ? `<label>Split sites by<select id="ni-density-dimension">${available.map(key => `<option value="${key}"${key === dimension ? ' selected' : ''}>${key === 'cluster' ? 'Cluster' : 'Region'}</option>`).join('')}</select></label>` : ''}
       <p class="form-note">${integer(ordered.length)} ${label.toLowerCase()}${ordered.length === 1 ? '' : 's'}${polygons.includes(dimension === 'cluster' ? 'clusters' : 'regions') ? ' from the imported polygons, with their areas' : ' from the inventory field, without areas'}; the ${shown.length < ordered.length ? `${shown.length} with the most sites are shown` : 'complete list is shown'}.</p>
       ${ordered.length > 25 ? `<button type="button" class="ni-secondary-action" id="ni-density-all">${densityAll ? 'Show the first 25' : `Show all ${integer(ordered.length)}`}</button>` : ''}</div>
       <div class="table-wrap ni-table-wrap"><table class="ni-table ni-density-table"><thead><tr><th rowspan="2">${label}</th><th rowspan="2">Area km²</th>${networks.map(network => `<th colspan="4" class="ni-density-network">${escapeHtml(network)}</th>`).join('')}</tr>
