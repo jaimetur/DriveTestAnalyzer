@@ -227,7 +227,7 @@
   [data-result-pane="scoring"] { --pane-accent: #0f766e; }
   [data-result-pane="gap"] { --pane-accent: #c2410c; }
   [data-result-pane] > * > :is(.scoring-table-section-title, h4):first-child { margin-top: 0; }
-  .scoring-insight-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(30rem, 1fr)); gap: 1rem; }
+  .scoring-insight-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 30rem), 1fr)); gap: 1rem; }
   .scoring-insight-table-wrap { overflow-x: auto; }
   /* National & Areas: the table next to a trend chart per area. */
   .scoring-area-summary-view { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: .8rem 1rem; align-items: start; }
@@ -535,6 +535,14 @@
   .scoring-warning-maximum { font-size: 1.15em; font-weight: 800; }
   @media(max-width:1300px) { .scoring-notes-stack { grid-row: 5; } .scoring-results-head { grid-template-columns: minmax(0,1fr); } .scoring-results-controls { grid-column: 1; } .saved-filter-selector { grid-column: 1; grid-row: 4; } .scoring-results-tools { grid-column: 1; grid-row: 3; justify-content: flex-start; width: 100%; overflow-x: auto; padding: .2rem 0; } .scoring-results-config-shortcuts, .scoring-results-tools > .scoring-export-actions { justify-content: flex-end; } }
   @media(max-width:900px) { .scoring-filter-grid,.saved-filters-layout { grid-template-columns: 1fr; } .saved-filter-list { max-height: 22rem; } }
+  /* On phones the Scoring Methodology pill and the comparison context and table lists take the width of the panel and
+     shorten their longest option, instead of widening their row beyond the screen. */
+  @media(max-width:600px) {
+    .scoring-methodology-actions { min-width: 0; max-width: 100%; }
+    .scoring-profile-choice { display: flex; box-sizing: border-box; width: 100%; min-width: 0; }
+    :is(.scoring-comparison-controls label, .scoring-insight-select) { display: flex; flex: 1 1 100%; box-sizing: border-box; max-width: 100%; min-width: 0; }
+    :is(.scoring-profile-choice, .scoring-comparison-controls label, .scoring-insight-select) select { flex: 1 1 auto; min-width: 0; max-width: none; text-overflow: ellipsis; }
+  }
   @media(max-width:600px) { .scoring-context-filter-grid { grid-template-columns: repeat(2,minmax(0,1fr)); } .scoring-dataset-list { grid-template-columns: 1fr; } .scoring-controls-foot { align-items: stretch; } .scoring-actions { width: 100%; } .scoring-actions button { flex: 1 1 100%; } .scoring-chart-expanded-dialog { padding: .65rem; gap: .5rem; border-radius: 14px; } .scoring-chart-expanded-header h3 { font-size: 1rem; } .scoring-chart-expanded-header p:not(.eyebrow) { display: none; } }
   .scoring-calculation-actions { display: flex; align-items: stretch; justify-content: space-between; flex-wrap: wrap; gap: 1rem; }
   .scoring-calculation-actions > .scoring-calculation-shortcuts { align-items: stretch; grid-column: auto; grid-row: auto; justify-content: flex-end; width: auto; max-width: 100%; margin-left: auto; padding: 0; overflow: visible; }

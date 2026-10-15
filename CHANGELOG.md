@@ -8,12 +8,13 @@
 #### ⚠️ Breaking Changes:
 
 #### 🌟 New Features:
-- **CDR Campaign:** the Final, Weekly and Daily CDR tables of Workspace show the **Campaign** of each CDR after its name, as `2026-Q2` (NSA or SA is its NR Mode), proposed from the quarter and the year (or the dates) of its file name (blank when the name has neither), each campaign in its own colour, editable in place (any campaign, with those of the other CDRs as suggestions), recorded in App Events and carried with the datasets in packages, transfers and backups. The header of the Datasets panel counts the campaigns, CDRs, Network Inventories and Geographic Datasets of the workspace and shows the size of all its datasets (MB, or GB from 1 GB); each CDR card shows its number of campaigns and of CDRs beside its icon and its table is grouped by campaign (newest first, the CDRs without one last, each group with its number of CDRs and their MB) and open sorted by Campaign, NR Mode and CDR Type.
+- **CDR Campaign:** the Final, Weekly and Daily CDR tables of Workspace show the **Campaign** of each CDR after its name, as `2026-Q2` (NSA or SA is its NR Mode), proposed from the quarter and the year (or the dates) of its file name (blank when the name has neither), each campaign in its own colour, editable in place (any campaign, with those of the other CDRs as suggestions), recorded in App Events and carried with the datasets in packages, transfers and backups. The header of the Datasets panel counts the campaigns, CDRs, Network Inventories and Geographic Datasets of the workspace and shows the size of all its datasets (MB, or GB from 1 GB); each CDR card shows its number of campaigns and of CDRs and their size beside its icon and its table is grouped by campaign (newest first, the CDRs without one last, each group with its number of CDRs and their MB) and open sorted by Campaign, NR Mode and CDR Type.
 
 #### 🚀 Enhancements:
 - **CDR Type and CDR Stage columns:** in the CDR tables of Workspace the Input Type column is called **CDR Type**, follows the NR Mode and shows Data, Voice and Speech in a selector of a different colour each that changes a CDR to another type (after a confirmation, reprocessing it from its source file and moving it to the combined table of that type) (Data in orange and Voice in raspberry, apart from the colours of In Combined? and SA), and the Final, Weekly and Daily column (and its upload choice) is called **CDR Stage**, follows the CDR Type and shows Final in teal so it is not confused with SA.
 
 #### 🐛 Bug fixes:
+- **Scoring & GAP Analysis on phones:** the Scoring Methodology pill, the comparison context and Scoring Tables lists and the GAP Analysis tables fit the screen (long options are shortened and wide tables scroll inside their box) instead of running past it.
 
 #### 📚 Documentation:
 

@@ -10546,7 +10546,14 @@ if (queueNode) {
     const match = (row.querySelector('[data-dataset-campaign-input]')?.value || '').trim().toUpperCase().match(/^(\d{4})-Q([1-4])/);
     return match ? `${match[1]}-Q${match[2]}` : '';
   };
-  // The badges beside the icon of a CDR card count the campaigns of its CDRs and its CDRs.
+  // The size of the source files of some dataset rows: MB without decimals, or GB from 1 GB.
+  const formatDatasetsSize = (rows) => {
+    const megabytes = rows.reduce((total, row) => total + (Number(row.querySelector('[data-queue-sort-cell="size"]')?.dataset.queueSortValue) || 0), 0) / (1024 * 1024);
+    return megabytes >= 1024
+      ? `${(megabytes / 1024).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})} GB`
+      : `${Math.round(megabytes).toLocaleString('en-US')} MB`;
+  };
+  // The badges beside the icon of a CDR card count the campaigns of its CDRs and its CDRs, and add up their size.
   const syncCampaignCount = (body) => {
     const card = body.closest('[data-dataset-card]');
     const rows = [...body.querySelectorAll('tr[data-dataset-id]')];
@@ -10557,6 +10564,8 @@ if (queueNode) {
     }
     const cdrs = card?.querySelector('[data-cdr-count]');
     if (cdrs) cdrs.textContent = `${rows.length} CDR${rows.length === 1 ? '' : 's'}`;
+    const size = card?.querySelector('[data-cdr-size]');
+    if (size) size.textContent = formatDatasetsSize(rows);
     // The badges of the Datasets panel count the campaigns and CDRs of the three CDR cards together.
     const allRows = [...queueNode.querySelectorAll('.dataset-card-cdr tr[data-dataset-id]')];
     const panelCampaigns = queueNode.querySelector('[data-datasets-campaign-count]');

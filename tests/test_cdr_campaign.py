@@ -72,6 +72,7 @@ def test_workspace_shows_and_changes_the_campaign_of_each_cdr(client, tmp_path):
     assert '<option value="2026-Q2"></option>' in page
     assert 'data-campaign-count title="Campaigns of these CDRs">1 campaign</span>' in final_card
     assert 'data-cdr-count title="CDRs of this card">2 CDRs</span>' in final_card
+    assert 'data-cdr-size title="Size of the source files of these CDRs">0 MB</span>' in final_card
     assert 'data-datasets-campaign-count title="Campaigns of the Final, Weekly and Daily CDRs">1 campaign</span>' in page
     assert '>2 CDRs</span>' in page and '>0 Network Inventories</span>' in page and '>0 Geographic Datasets</span>' in page
     assert 'data-datasets-size title="Size of the source files of every dataset">0 MB</span>' in page
