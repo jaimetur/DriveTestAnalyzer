@@ -1479,7 +1479,8 @@ def indexed_cdr_columns(repository: Any) -> list[str]:
     return list(dict.fromkeys([*columns['cdr'], *columns['export_cdr'], *catalog]))
 
 
-def save_table_columns(repository: Any, builtin: Any, cdr: Any, username: str, export_cdr: Any = ()) -> dict[str, list[str]]:
+def save_table_columns(repository: Any, builtin: Any, cdr: Any, username: str, export_cdr: Any = (), *,
+                       imported: bool = False) -> dict[str, list[str]]:
     unknown = [column for column in _strings(builtin) if column not in OPTIONAL_COLUMNS]
     if unknown:
         raise ValueError(f'Unknown columns: {", ".join(unknown)}.')
@@ -1494,7 +1495,8 @@ def save_table_columns(repository: Any, builtin: Any, cdr: Any, username: str, e
     repository.set_workspace_state(TABLE_COLUMNS_STATE_KEY, json.dumps(
         {'builtin': _strings(builtin), 'cdr': cdr_columns, 'export_cdr': export_columns}))
     if hasattr(repository, 'try_add_log'):
-        repository.try_add_log(username, 'nq_table_columns', 'Non-Qualified Calls table columns updated.')
+        repository.try_add_log(username, 'nq_table_columns', 'Non-Qualified Calls table columns taken from an imported '
+                               'configuration.' if imported else 'Non-Qualified Calls table columns updated.')
     return table_columns(repository)
 
 
@@ -6365,7 +6367,8 @@ def _merge_configuration(task_repository: Any, document: dict[str, Any]) -> None
     columns = document.get('table_columns')
     if isinstance(columns, dict) and not task_repository.get_workspace_state(TABLE_COLUMNS_STATE_KEY):
         try:
-            save_table_columns(task_repository, columns.get('builtin') or [], columns.get('cdr') or [], 'import')
+            # The application takes them (system), not a user: the event says they come from the imported configuration.
+            save_table_columns(task_repository, columns.get('builtin') or [], columns.get('cdr') or [], 'system', imported=True)
         except ValueError:
             pass
     with task_repository.connection() as connection:

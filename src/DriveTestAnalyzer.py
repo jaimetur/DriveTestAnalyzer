@@ -71,6 +71,7 @@ DEFAULT_TRANSFER_PORT = 7278
 
 from src.config import PROJECT_ROOT, settings
 from src.modules.analytics import build_analysis, shared_frame_attrs
+from src.modules.app_event_details import app_event_origin, app_event_origin_parts, changed_values, describe_app_event
 from src.modules.background_scheduler import BackgroundTaskScheduler
 from src.modules.auth import SessionUser, verify_password
 from src.modules.workspace_countries import country_options
@@ -116,7 +117,7 @@ from src.modules.scoring_selection import (
     normalize_scoring_selection,
     save_scoring_selection,
 )
-from src.modules.repository import Repository, SCORING_CONFIGURATION_STATE_KEY, USER_ROLES, WORKSPACE_REGISTRY_TABLE, workspace_write_lock
+from src.modules.repository import APP_EVENT_ORIGIN, APP_EVENTS_LIMIT, Repository, SCORING_CONFIGURATION_STATE_KEY, USER_ROLES, WORKSPACE_REGISTRY_TABLE, workspace_write_lock
 from src.modules.runtime_config import IGNORE_EVENT_TIME_FILTERING_ENV, env_flag, ignore_event_time_filtering
 from src.modules.query_builder import MAX_PREVIEW_ROWS, execute_query, iter_query_csv, query_column_values, validate_query
 from src.runtime_logs import execution_log_entries
@@ -518,6 +519,46 @@ def feature_for_path(path: str) -> str | None:
         if path in feature.get('pages', ()) or any(path == prefix or path.startswith(prefix + '/') for prefix in feature['paths']):
             return feature['key']
     return None
+
+
+# The pages of the administrative modules and of Workspace outside its main page, by module (App Events tells where an
+# event ran by the page that sent it).
+ADMINISTRATIVE_MODULES = (('admin', 'Admin'), ('config', 'Config'), ('app-logs', 'App Logs'), ('help', 'Help'))
+MODULE_PATH_PREFIXES = (
+    ('admin', ('/admin', '/api/admin', '/api/import-export')),
+    ('config', ('/workspace-config', '/api/workspace-config', '/application-config', '/api/mapping-assignments')),
+    ('app-logs', ('/app-logs', '/api/app-logs')),
+    ('help', ('/documents', '/api/documents')),
+    ('workspace', ('/workspace', '/api/workspace', '/api/workspaces', '/api/uploads', '/api/datasets', '/dashboard')),
+)
+
+
+def module_for_path(path: str) -> str | None:
+    """The module that owns a page or API path: a main module, or an administrative one."""
+    feature = feature_for_path(path)
+    if feature:
+        return feature
+    return next((module for module, prefixes in MODULE_PATH_PREFIXES
+                 if any(path == prefix or path.startswith(prefix + '/') for prefix in prefixes)), None)
+
+
+def app_event_origin_for_request(request: Request) -> str:
+    """Where the App Events of a request run: a public page without signing in, otherwise the module of its path or,
+    for the actions shared by every page (stopping a task, the account badge…), of the page that sent it."""
+    path = request.url.path
+    if path in {'/login', '/logout'}:
+        return 'public:sign-in'
+    if not session_user(request.cookies.get(SESSION_COOKIE)):
+        return 'public:' + ('access-request' if path.startswith('/api/access-requests') else
+                            'bug-report' if 'bugs-report' in path else 'page')
+    module = module_for_path(path) or module_for_path(urlsplit(request.headers.get('referer') or '').path)
+    return f'module:{module}' if module else ''
+
+
+def app_event_module_titles() -> dict[str, str]:
+    """The modules as App Events names them, in their order: the main ones by their titles in Interface Settings."""
+    labels = load_module_labels(repository)
+    return {**{key: str(labels.get(key, {}).get('title') or name) for key, name in MAIN_MODULES}, **dict(ADMINISTRATIVE_MODULES)}
 
 
 def _module_access_snapshot() -> dict[str, Any]:
@@ -3017,6 +3058,16 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title=__app_name__, version=__version__, lifespan=lifespan)
+
+
+@app.middleware('http')
+async def record_app_event_origin(request: Request, call_next):
+    """The App Events a request writes record the page it came from (told only when an event is written)."""
+    token = APP_EVENT_ORIGIN.set(lambda: app_event_origin_for_request(request))
+    try:
+        return await call_next(request)
+    finally:
+        APP_EVENT_ORIGIN.reset(token)
 
 
 @app.middleware('http')
@@ -7903,9 +7954,9 @@ APP_EVENTS_FORMAT = 'drivetest-analyzer-app-events'
 
 
 def _app_events_payload(workspace: Workspace) -> bytes:
-    """Portable App Events of a workspace: the user, action, details and time of each one."""
+    """Portable App Events of a workspace: the user, action, details, time and origin (where it ran) of each one."""
     task_repository = Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path)
-    events = [{key: row[key] for key in ('username', 'action', 'details', 'created_at')}
+    events = [{key: row[key] for key in ('username', 'action', 'details', 'created_at', 'origin')}
               for row in reversed(task_repository.list_logs(limit=None, by_time=True))]
     return json.dumps({'format': APP_EVENTS_FORMAT, 'version': 1, 'workspace': workspace.name, 'events': events},
                       ensure_ascii=False, indent=2).encode('utf-8')
@@ -11071,7 +11122,10 @@ def describe_workspace_log_entry(log: dict[str, Any]) -> str:
             chart_jobs = details.get('chart_jobs') or []
             if reports or chart_jobs:
                 return f"Application restart interrupted report jobs {reports} and Chart Set jobs {chart_jobs}."
-    return str(log.get('details_text') or log.get('details') or '')
+        if log['action'] == 'migrate_app_event_users':
+            return (f"Application events recorded under {', '.join(details.get('users') or []) or 'a process'} "
+                    f"now belong to System: {details.get('events', 0)}.")
+    return describe_app_event(log['action'], details if details not in (None, '') else log.get('details_text'))
 
 
 def classify_workspace_log_entry(log: dict[str, Any]) -> str:
@@ -11089,10 +11143,17 @@ def classify_workspace_log_entry(log: dict[str, Any]) -> str:
 
 
 def build_app_logs() -> list[dict[str, Any]]:
-    """Format the complete audit trail for the App Logs view."""
+    """Format the audit trail for the App Logs view: the newest APP_EVENTS_LIMIT events (every one is kept)."""
     if not active_workspace:
         return []
     logs: list[dict[str, Any]] = []
+    # The people by their first and last name, looked up once (an account without a name, or deleted since, has none).
+    person_names = {
+        str(account['username']).casefold(): ' '.join(part for part in (
+            str(account['first_name'] or '').strip(), str(account['last_name'] or '').strip()) if part)
+        for account in repository.list_users()
+    }
+    module_titles = app_event_module_titles()
     for row in repository.list_logs(by_time=True):
         details_text = str(row['details'] or '')
         action = str(row['action'] or '').replace('_report_catalogue', '_report_template')
@@ -11123,21 +11184,92 @@ def build_app_logs() -> list[dict[str, Any]]:
             details = {**details, 'username': details.get('username') or stored_username}
             details_text = json.dumps(details, ensure_ascii=False)
             display_username = 'system'
+        # Where it ran (Executed by): a module, the server, another server or a public page, never empty.
+        origin = app_event_origin(action, details, str(row['origin'] or ''), display_username)
+        if executed_by == 'system' and origin.startswith('module:'):
+            origin = 'server:background'
+        place = app_event_origin_parts(origin, module_titles)
         created_at = format_local_timestamp(row['created_at'])
         log = {
             'id': row['id'],
             'username': display_username,
-            'executed_by': executed_by or '—',
+            'user_name': person_names.get(display_username, ''),
+            'executed_by': origin,
+            'executor_name': place['name'],
+            'executor_tag': place['tag'],
+            'executor_group': place['group'],
+            'executor_order': place['order'],
             'action': action,
             'details': details,
             'details_text': details_text,
             'created_at': created_at,
             'date': created_at[:10],
         }
-        log['summary'] = f'[{created_at}] {describe_workspace_log_entry(log)}' if created_at else describe_workspace_log_entry(log)
+        # One readable sentence (description); the raw details stay available for troubleshooting.
+        log['description'] = describe_workspace_log_entry(log)
+        log['summary'] = f"[{created_at}] {log['description']}" if created_at else log['description']
         log['log_type'] = classify_workspace_log_entry(log)
         logs.append(log)
     return logs
+
+
+# App Events shows its events a page at a time, filtered on the server; the events are built once per change of the
+# workspace's App Events (its signature) and reused by every page, filter and refresh.
+APP_EVENTS_PAGE_SIZE = 100
+APP_EVENT_FILTER_FIELDS = {
+    'user': lambda log: str(log['username'] or '').casefold(),
+    'executor': lambda log: str(log['executed_by'] or ''),
+    'date': lambda log: str(log['date'] or ''),
+    'type': lambda log: str(log['log_type'] or ''),
+    'action': lambda log: str(log['action'] or ''),
+}
+_APP_EVENTS_CACHE: dict[str, tuple[str, list[dict[str, Any]]]] = {}
+
+
+def cached_app_logs() -> tuple[str, list[dict[str, Any]]]:
+    """The App Events of the active workspace with their signature, built again only when they change."""
+    if not active_workspace:
+        return '', []
+    signature = repository.logs_signature()
+    key = str(repository.db_path)
+    cached = _APP_EVENTS_CACHE.get(key)
+    if cached and cached[0] == signature:
+        return cached
+    _APP_EVENTS_CACHE[key] = (signature, build_app_logs())
+    return _APP_EVENTS_CACHE[key]
+
+
+def app_events_view(filters: dict[str, Iterable[str]] | None = None, page: int = 1) -> dict[str, Any]:
+    """One page of the App Events that match the filters (each a list of values; none chosen matches every event),
+    with the values each filter offers among the events the other filters leave (its facet)."""
+    signature, logs = cached_app_logs()
+    chosen = {name: {str(value).casefold() if name == 'user' else str(value)
+                     for value in (filters or {}).get(name) or [] if str(value).strip() and value != 'all'}
+              for name in APP_EVENT_FILTER_FIELDS}
+
+    def matches(log: dict[str, Any], skipped: str = '') -> bool:
+        return all(not values or APP_EVENT_FILTER_FIELDS[name](log) in values for name, values in chosen.items() if name != skipped)
+
+    matching = [log for log in logs if matches(log)]
+    facets = {name: sorted({field(log) for log in logs if matches(log, name)} - {''}, key=str.casefold,
+                           reverse=name == 'date') for name, field in APP_EVENT_FILTER_FIELDS.items()}
+    pages = max(1, math.ceil(len(matching) / APP_EVENTS_PAGE_SIZE))
+    page = min(max(1, int(page or 1)), pages)
+    # The places of the Executed by filter: the server first, then other servers, public pages and the modules in
+    # their order, with a line between the groups.
+    places = {log['executed_by']: log for log in logs}
+    executors = sorted((places[key] for key in facets['executor'] if key in places),
+                       key=lambda log: (log['executor_group'], log['executor_order'], log['executor_tag'].casefold()))
+    executor_choices = [{'value': log['executed_by'], 'name': log['executor_name'], 'tag': log['executor_tag'],
+                         'group': log['executor_group'],
+                         'divider': bool(index and executors[index - 1]['executor_group'] != log['executor_group'])}
+                        for index, log in enumerate(executors)]
+    return {
+        'signature': signature, 'total': len(logs), 'matching': len(matching), 'filtered': any(chosen.values()),
+        'page': page, 'pages': pages, 'page_size': APP_EVENTS_PAGE_SIZE, 'limit': APP_EVENTS_LIMIT, 'facets': facets,
+        'executor_choices': executor_choices,
+        'logs': matching[(page - 1) * APP_EVENTS_PAGE_SIZE:page * APP_EVENTS_PAGE_SIZE],
+    }
 
 
 DATASETS_ANALYSIS_SELECTION_KEY = 'datasets_analysis_selection_v1'
@@ -14328,27 +14460,36 @@ async def combined_dataset_preview_data(
 
 @app.get('/app-logs', response_class=HTMLResponse)
 def app_logs(request: Request, user: SessionUser = Depends(current_user)) -> HTMLResponse:
-    logs = build_app_logs()
+    # The first page of every event; the page asks for the filters saved in the browser.
+    view = app_events_view()
     return render_template(
         request,
         'app_logs.html',
         {
             'user': user,
-            'logs': logs,
-            'log_users': sorted({log['username'] for log in logs if log['username']}, key=str.casefold),
-            'log_executors': sorted({log['executed_by'] for log in logs if log['executed_by']}, key=str.casefold),
-            'log_dates': sorted({log['date'] for log in logs if log['date']}, reverse=True),
-            'log_types': sorted({log['log_type'] for log in logs if log['log_type']}, key=str.casefold),
-            'log_actions': sorted({log['action'] for log in logs if log['action']}, key=str.casefold),
+            'view': view,
+            'logs': view['logs'],
+            'log_users': view['facets']['user'],
+            'log_executors': view['facets']['executor'],
+            'log_dates': view['facets']['date'],
+            'log_types': view['facets']['type'],
+            'log_actions': view['facets']['action'],
             'execution_logs': execution_log_entries(),
         },
     )
 
 
 @app.get('/api/app-logs')
-def app_logs_data(user: SessionUser = Depends(current_user)) -> JSONResponse:
-    """Return current workspace events for incremental App Logs refreshes."""
-    return JSONResponse({'logs': build_app_logs(), 'execution_logs': execution_log_entries()})
+def app_logs_data(
+    request: Request, page: int = 1, known: str = '', user: SessionUser = Depends(current_user),
+) -> JSONResponse:
+    """One page of the App Events matching the filters of the query (user, executor, date, type and action, each
+    repeated for several values). A refresh that sends the signature it knows gets ``unchanged`` while no event changed."""
+    execution_logs = execution_log_entries()
+    if known and active_workspace and known == repository.logs_signature():
+        return JSONResponse({'unchanged': True, 'signature': known, 'execution_logs': execution_logs})
+    filters = {name: request.query_params.getlist(name) for name in APP_EVENT_FILTER_FIELDS}
+    return JSONResponse({**app_events_view(filters, page), 'execution_logs': execution_logs})
 
 
 @app.get('/api/app-logs/execution-stream')
@@ -15604,13 +15745,17 @@ def reporting(request: Request, user: SessionUser = Depends(current_user)) -> HT
 # assignment, fixed version) or delete it.
 # ---------------------------------------------------------------------------
 DEFAULT_USER_TAG = 'default user'
+# The user of the work that no signed-in user does (App Events record it as `system`), shown as System and tagged.
+SYSTEM_USER_NAME = 'System'
+SYSTEM_USER_TAG = 'application'
 
 
 def user_choices(usernames: Iterable[str] | None = None) -> list[dict[str, Any]]:
     """The accounts as every list of users shows them, like Non-Qualified Calls: by their first and last name (their
     username when they have none), the default accounts (super, admin, demo) first and tagged, then the others by name,
-    with ``divider`` on the first one after the default accounts. ``usernames`` limits the list to those users (in any
-    case); names of no account, such as system, show as they are."""
+    with ``divider`` on the first one of each group. ``usernames`` limits the list to those users (in any case);
+    ``system``, the application's user, goes before them all as System tagged application, and other names of no
+    account show as they are."""
     from src.modules.repository import DEFAULT_ACCOUNT_USERNAMES
 
     accounts = {}
@@ -15623,12 +15768,20 @@ def user_choices(usernames: Iterable[str] | None = None) -> list[dict[str, Any]]
     entries = [{
         'username': username, 'name': accounts.get(username.casefold(), username),
         'is_default': username.casefold() in defaults,
+        'is_system': username.casefold() == 'system' and 'system' not in accounts,
     } for username in chosen]
-    entries.sort(key=lambda entry: (defaults.index(entry['username'].casefold()) if entry['is_default'] else len(defaults),
+    for entry in entries:
+        if entry['is_system']:
+            entry['name'] = SYSTEM_USER_NAME
+    def group(entry: dict[str, Any]) -> int:
+        return 0 if entry['is_system'] else 1 if entry['is_default'] else 2
+
+    entries.sort(key=lambda entry: (group(entry), defaults.index(entry['username'].casefold()) if entry['is_default'] else 0,
                                     entry['name'].casefold()))
     for index, entry in enumerate(entries):
-        entry['label'] = f"{entry['name']} · {DEFAULT_USER_TAG}" if entry['is_default'] else entry['name']
-        entry['divider'] = bool(index and entries[index - 1]['is_default'] and not entry['is_default'])
+        tag = DEFAULT_USER_TAG if entry['is_default'] else SYSTEM_USER_TAG if entry['is_system'] else ''
+        entry['label'] = f"{entry['name']} · {tag}" if tag else entry['name']
+        entry['divider'] = bool(index and group(entries[index - 1]) != group(entry))
     return entries
 
 
@@ -20168,6 +20321,8 @@ def save_email_delivery_configuration(
     max_attachments_mb: int = Form(DEFAULT_MAX_ATTACHMENTS_MB),
     user: SessionUser = Depends(config_editor_user),
 ) -> RedirectResponse:
+    logged = ('host', 'port', 'security', 'username', 'from_address', 'from_name', 'max_attachments_mb', 'password_configured')
+    before = {key: email_delivery_settings(repository).get(key) for key in logged}
     try:
         saved = save_email_delivery_settings(repository, {
             'host': host, 'port': port, 'security': security, 'username': username, 'password': password,
@@ -20175,8 +20330,10 @@ def save_email_delivery_configuration(
         }, keep_password=not password and not clear_password)
     except ValueError as exc:
         return RedirectResponse('/application-config?' + urlencode({'error': str(exc)}) + '#email-delivery', status_code=status.HTTP_303_SEE_OTHER)
+    after = {key: saved.get(key) for key in logged}
     repository.try_add_log(user.username, 'save_email_delivery', json.dumps({
-        key: saved[key] for key in ('host', 'port', 'security', 'username', 'from_address', 'max_attachments_mb', 'password_configured')
+        **{key: saved[key] for key in ('host', 'port', 'security', 'username', 'from_address', 'max_attachments_mb', 'password_configured')},
+        'changes': changed_values(before, after), 'password_changed': bool(password),
     }))
     return RedirectResponse('/application-config?notice=Email+delivery+saved.#email-delivery', status_code=status.HTTP_303_SEE_OTHER)
 
@@ -20233,6 +20390,7 @@ def save_configuration(
         'ignore_event_time_filtering': bool(ignore_event_time_filtering_value),
         'max_background_tasks': max_background_tasks,
     }
+    before = {key: runtime_configuration().get(key) for key in values}
     repository.set_application_state(RUNTIME_CONFIGURATION_STATE_KEY, json.dumps(values, sort_keys=True))
     apply_runtime_configuration(values)
     reset_dashboard_canvas_renderer()
@@ -20242,6 +20400,7 @@ def save_configuration(
         'chromium_configured': bool(chromium_path),
         'ignore_event_time_filtering': bool(ignore_event_time_filtering_value),
         'max_background_tasks': max_background_tasks,
+        'changes': changed_values(before, values),
     }))
     return RedirectResponse('/application-config?notice=Configuration+saved.', status_code=status.HTTP_303_SEE_OTHER)
 
@@ -20614,7 +20773,8 @@ def save_recurring_backup_settings(
         storage_path.mkdir(parents=True, exist_ok=True)
     except (OSError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=f'Unable to use the backup path: {exc}') from exc
-    config = recurring_backup_settings() | {
+    previous = recurring_backup_settings()
+    config = previous | {
         'enabled': enabled, 'components': selected_components, 'recurrence': recurrence,
         'execution_time': execution_time, 'weekly_day': weekly_day, 'monthly_day': monthly_day,
         'max_backups': max_backups,
@@ -20622,11 +20782,14 @@ def save_recurring_backup_settings(
         'backup_path': str(storage_path), 'last_run_period': '',
     }
     repository.set_application_state(RECURRING_BACKUP_STATE_KEY, json.dumps(config))
+    logged = ('enabled', 'components', 'workspace_ids', 'recurrence', 'execution_time', 'weekly_day', 'monthly_day',
+              'max_backups', 'backup_path')
     repository.try_add_log(user.username, 'save_scheduled_backup_settings', json.dumps({
         'enabled': enabled, 'components': selected_components,
         'workspace_ids': selected_workspace_ids, 'recurrence': recurrence,
         'execution_time': execution_time, 'weekly_day': weekly_day,
         'monthly_day': monthly_day, 'max_backups': max_backups,
+        'changes': changed_values({key: previous.get(key) for key in logged}, {key: config.get(key) for key in logged}),
     }))
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
         return JSONResponse({'message': 'Scheduler settings saved.'})
@@ -20656,15 +20819,18 @@ def save_recurring_backup_selection(
         storage_path.mkdir(parents=True, exist_ok=True)
     except (OSError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=f'Unable to use the backup path: {exc}') from exc
-    config = recurring_backup_settings() | {
+    previous = recurring_backup_settings()
+    config = previous | {
         'enabled': enabled,
         'components': selected_components,
         'workspace_ids': selected_workspace_ids,
         'backup_path': str(storage_path),
     }
     repository.set_application_state(RECURRING_BACKUP_STATE_KEY, json.dumps(config))
+    logged = ('enabled', 'components', 'workspace_ids', 'backup_path')
     repository.try_add_log(user.username, 'save_backup_selection', json.dumps({
         'components': selected_components, 'workspace_ids': selected_workspace_ids, 'backup_path': str(storage_path),
+        'changes': changed_values({key: previous.get(key) for key in logged}, {key: config.get(key) for key in logged}),
     }))
     return JSONResponse({'message': 'Backup selection saved.'})
 
@@ -22030,6 +22196,7 @@ def assign_admin_mapping_values(
         return RedirectResponse(f'/workspace-config?{urlencode({error_parameter: "Open a workspace before editing its maps."})}',
                                 status_code=status.HTTP_303_SEE_OTHER)
     assignments = [(value.strip(), name.strip()) for value, name in zip(source, label) if value.strip() and name.strip()]
+    previous = {key.casefold(): value for key, value in repository.chart_mapping_settings()[f'{mapping_type}_mappings'].items()}
     try:
         changed = repository.assign_chart_mapping_sources(mapping_type, assignments)
     except (ValueError, sqlite3.IntegrityError) as exc:
@@ -22040,8 +22207,12 @@ def assign_admin_mapping_values(
         PREPARED_ANALYSIS_FRAME_CACHE.clear()
         DATAFRAME_CACHE.clear()
         _clear_chart_preview_caches()
-        repository.add_log(user.username, f'{mapping_type}_mapping_assign', json.dumps(
-            [{'value': value, 'label': name} for value, name in assignments], ensure_ascii=False))
+        # The label each value had and the one it has now.
+        repository.add_log(user.username, f'{mapping_type}_mapping_assign', json.dumps({
+            'assignments': [{'value': value, 'label': name} for value, name in assignments],
+            'changes': {value: [previous.get(value.casefold()), name] for value, name in assignments
+                        if str(previous.get(value.casefold()) or '').casefold() != name.casefold()},
+        }, ensure_ascii=False))
     notice = f'{changed} {"name" if changed == 1 else "names"} assigned.' if changed else 'No assignment changed.'
     return RedirectResponse(f'/workspace-config?{urlencode({notice_parameter: notice})}',
                             status_code=status.HTTP_303_SEE_OTHER)
@@ -23105,10 +23276,27 @@ def create_user(
         repository.set_user_workspace_groups(user_id, workspace_group_ids)
         repository.set_user_workspace_access(user_id, granted_workspace_ids(user, [], workspace_ids))
         invalidate_module_access_cache()
-        repository.add_log(user.username, 'create_user', username)
+        # The account as it was created (never its password).
+        repository.add_log(user.username, 'create_user', json.dumps({
+            'user_id': user_id, **user_account_state(repository.get_user_by_id(user_id)),
+        }))
         return RedirectResponse('/admin', status_code=status.HTTP_303_SEE_OTHER)
     except Exception as exc:
         return render_admin_template(request, user, error=str(exc), status_code=400)
+
+
+def user_account_state(row: Any) -> dict[str, Any]:
+    """An account as App Events records its changes: its names, role and state, its Modules Profile, Workspace Groups
+    and workspaces by name."""
+    user_id = int(row['id'])
+    workspace_names = {workspace.id: workspace.name for workspace in workspace_registry.list()}
+    return {
+        'username': row['username'], 'first_name': row['first_name'] or '', 'last_name': row['last_name'] or '',
+        'role': row['role'], 'active': bool(row['active']),
+        'modules_profile': next((profile['name'] for profile in repository.list_modules_profiles() if user_id in profile['member_ids']), None),
+        'workspace_groups': [group['name'] for group in repository.list_workspace_groups() if user_id in group['member_ids']],
+        'workspaces': [workspace_names.get(item, item) for item in repository.list_user_workspace_ids(user_id)],
+    }
 
 
 @app.post('/admin/users/{target_user_id}/update', response_class=HTMLResponse)
@@ -23175,6 +23363,7 @@ def update_user_account(
         )
     if would_remove_last_active_admin(target_user, normalized_role, will_be_active):
         return failure('At least one active admin user must remain. You cannot demote or deactivate the last active admin.', 400, target_user)
+    before = user_account_state(target_user)
     try:
         repository.update_user(
             target_user_id,
@@ -23197,12 +23386,15 @@ def update_user_account(
             repository.set_user_workspace_access(target_user_id, granted_workspace_ids(
                 user, repository.list_user_workspace_ids(target_user_id), workspace_ids))
         invalidate_module_access_cache()
+        updated_user = repository.get_user_by_id(target_user_id)
+        # What changed, before and after, besides the account as it is saved.
         repository.add_log(
             user.username,
             'update_user',
-            json.dumps({'user_id': target_user_id, 'username': normalized_username, 'role': normalized_role, 'active': will_be_active}),
+            json.dumps({'user_id': target_user_id, 'username': normalized_username, 'role': normalized_role, 'active': will_be_active,
+                        'changes': changed_values(before, user_account_state(updated_user)),
+                        'password_changed': bool(password.strip())}),
         )
-        updated_user = repository.get_user_by_id(target_user_id)
         if wants_json():
             return JSONResponse({'ok': True, 'user': payload_for(updated_user)})
         return RedirectResponse('/admin', status_code=status.HTTP_303_SEE_OTHER)
@@ -23240,6 +23432,9 @@ def bulk_update_users(
         raise HTTPException(status_code=403, detail='Only super-admins can assign the super-admin role.')
     updated: list[str] = []
     skipped: list[str] = []
+    # The role or Modules Profile each user had, for App Events.
+    profile_of = {member: profile['name'] for profile in repository.list_modules_profiles() for member in profile['member_ids']}
+    changes: dict[str, list[Any]] = {}
     for target in targets:
         target_id, name = int(target['id']), str(target['username'])
         if user.role != 'super-admin' and target['role'] == 'super-admin':
@@ -23247,6 +23442,8 @@ def bulk_update_users(
             continue
         if action == 'modules_profile':
             repository.set_users_modules_profile([target_id], int(value))
+            if profile_of.get(target_id) != profiles[int(value)]:
+                changes[name] = [profile_of.get(target_id), profiles[int(value)]]
         elif action in {'add_workspace_group', 'remove_workspace_group'} and target['role'] == 'super-admin':
             skipped.append(f'{name}: super-admins open every workspace')
             continue
@@ -23266,11 +23463,13 @@ def bulk_update_users(
             repository.update_user(target_id, name, new_role, will_be_active)
             if new_role == 'super-admin' and target['role'] != 'super-admin':
                 repository.set_users_modules_profile([target_id], None)
+            if action == 'role' and new_role != target['role']:
+                changes[name] = [target['role'], new_role]
         updated.append(name)
     invalidate_module_access_cache()
     label = profiles.get(int(value)) if action == 'modules_profile' else groups.get(int(value)) if 'workspace_group' in action else value
     repository.add_log(user.username, 'bulk_update_users', json.dumps({
-        'action': action, 'value': label, 'users': updated, 'skipped': skipped,
+        'action': action, 'value': label, 'users': updated, 'skipped': skipped, 'changes': changes,
     }))
     return JSONResponse({'updated': updated, 'skipped': skipped})
 
@@ -23314,13 +23513,15 @@ def delete_user_account(
             error='At least one active admin user must remain. You cannot delete the last active admin.',
             status_code=400,
         )
+    deleted = user_account_state(target_user)
     try:
         repository.delete_user(target_user_id)
         invalidate_module_access_cache()
+        # The account as it was before it was deleted.
         repository.add_log(
             user.username,
             'delete_user',
-            json.dumps({'user_id': target_user_id, 'username': target_user['username']}),
+            json.dumps({'user_id': target_user_id, **deleted}),
         )
         return RedirectResponse('/admin', status_code=status.HTTP_303_SEE_OTHER)
     except Exception as exc:
@@ -23330,6 +23531,28 @@ def delete_user_account(
 def profile_member_choices(user: SessionUser) -> set[int]:
     """The accounts whose Modules Profile an administrator changes: every one, but super-admins only for a super-admin."""
     return {int(row['id']) for row in repository.list_users() if user.role == 'super-admin' or str(row['role']) != 'super-admin'}
+
+
+def usernames_of(user_ids: Iterable[int]) -> list[str]:
+    """The usernames of some accounts, for App Events (the ID of one that no longer exists)."""
+    names = {int(row['id']): str(row['username']) for row in repository.list_users()}
+    return [names.get(int(user_id), str(user_id)) for user_id in sorted(user_ids)]
+
+
+def modules_profile_state(profile_id: int) -> dict[str, Any]:
+    """A Modules Profile as App Events records its changes (empty when it does not exist)."""
+    profile = next((item for item in repository.list_modules_profiles() if item['id'] == profile_id), None)
+    return {key: profile[key] for key in ('name', 'description', 'color', 'modules')} if profile else {}
+
+
+def workspace_group_state(group_id: int) -> dict[str, Any]:
+    """A Workspace Group as App Events records its changes, its workspaces by name (empty when it does not exist)."""
+    group = next((item for item in repository.list_workspace_groups() if item['id'] == group_id), None)
+    if not group:
+        return {}
+    names = {workspace.id: workspace.name for workspace in workspace_registry.list()}
+    return {'name': group['name'], 'description': group['description'],
+            'workspaces': [names.get(item, item) for item in group['workspace_ids']]}
 
 
 def access_cards_payload() -> dict[str, Any]:
@@ -23355,6 +23578,7 @@ def create_modules_profile(
     invalidate_module_access_cache()
     repository.add_log(user.username, 'create_modules_profile', json.dumps({
         'profile_id': profile_id, 'name': name.strip(), 'modules': modules, 'member_ids': member_ids,
+        'members': usernames_of(member_ids),
     }))
     return RedirectResponse('/admin#modules-profiles', status_code=status.HTTP_303_SEE_OTHER)
 
@@ -23375,6 +23599,7 @@ def update_modules_profile(
     elsewhere since the page loaded are left as they are."""
     selectable = profile_member_choices(user)
     chosen, initial = set(member_ids) & selectable, set(initial_member_ids) & selectable
+    before = modules_profile_state(profile_id)
     try:
         repository.save_modules_profile(profile_id, name, description, modules, color or None)
         repository.set_users_modules_profile(sorted(chosen - initial), profile_id)
@@ -23385,6 +23610,8 @@ def update_modules_profile(
     repository.add_log(user.username, 'update_modules_profile', json.dumps({
         'profile_id': profile_id, 'name': name.strip(), 'modules': modules,
         'added_user_ids': sorted(chosen - initial), 'removed_user_ids': sorted(initial - chosen),
+        'changes': changed_values(before, modules_profile_state(profile_id)),
+        'added_users': usernames_of(chosen - initial), 'removed_users': usernames_of(initial - chosen),
     }))
     return JSONResponse(access_cards_payload())
 
@@ -23397,18 +23624,21 @@ def make_default_modules_profile(profile_id: int, user: SessionUser = Depends(ad
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     invalidate_module_access_cache()
-    repository.add_log(user.username, 'set_default_modules_profile', json.dumps({'profile_id': profile_id}))
+    repository.add_log(user.username, 'set_default_modules_profile', json.dumps({
+        'profile_id': profile_id, 'name': modules_profile_state(profile_id).get('name'),
+    }))
     return JSONResponse(access_cards_payload())
 
 
 @app.post('/admin/modules-profiles/{profile_id}/delete', response_class=HTMLResponse)
 def delete_modules_profile(request: Request, profile_id: int, user: SessionUser = Depends(admin_user)) -> Response:
+    deleted = modules_profile_state(profile_id)
     try:
         repository.delete_modules_profile(profile_id)
     except ValueError as exc:
         return render_admin_template(request, user, error=str(exc), status_code=400)
     invalidate_module_access_cache()
-    repository.add_log(user.username, 'delete_modules_profile', json.dumps({'profile_id': profile_id}))
+    repository.add_log(user.username, 'delete_modules_profile', json.dumps({'profile_id': profile_id, 'name': deleted.get('name')}))
     return RedirectResponse('/admin#modules-profiles', status_code=status.HTTP_303_SEE_OTHER)
 
 
@@ -23428,6 +23658,7 @@ def create_workspace_group(
         return render_admin_template(request, user, error=str(exc), status_code=400)
     repository.add_log(user.username, 'create_workspace_group', json.dumps({
         'group_id': group_id, 'name': name.strip(), 'workspace_ids': workspace_ids, 'member_ids': member_ids,
+        'workspaces': workspace_group_state(group_id).get('workspaces'), 'members': usernames_of(member_ids),
     }))
     return RedirectResponse('/admin#workspace-groups', status_code=status.HTTP_303_SEE_OTHER)
 
@@ -23448,6 +23679,7 @@ def update_workspace_group(
     if current is None:
         raise HTTPException(status_code=404, detail='Group not found.')
     chosen, initial = set(member_ids), set(initial_member_ids)
+    before = workspace_group_state(group_id)
     try:
         repository.save_workspace_group(group_id, name, description, granted_workspace_group_workspaces(user, current['workspace_ids'], workspace_ids))
         repository.change_workspace_group_members(group_id, add=sorted(chosen - initial), remove=sorted(initial - chosen))
@@ -23456,17 +23688,20 @@ def update_workspace_group(
     repository.add_log(user.username, 'update_workspace_group', json.dumps({
         'group_id': group_id, 'name': name.strip(), 'workspace_ids': workspace_ids,
         'added_user_ids': sorted(chosen - initial), 'removed_user_ids': sorted(initial - chosen),
+        'changes': changed_values(before, workspace_group_state(group_id)),
+        'added_users': usernames_of(chosen - initial), 'removed_users': usernames_of(initial - chosen),
     }))
     return JSONResponse(access_cards_payload())
 
 
 @app.post('/admin/workspace-groups/{group_id}/delete', response_class=HTMLResponse)
 def delete_workspace_group(request: Request, group_id: int, user: SessionUser = Depends(admin_user)) -> Response:
+    deleted = workspace_group_state(group_id)
     try:
         repository.delete_workspace_group(group_id)
     except ValueError as exc:
         return render_admin_template(request, user, error=str(exc), status_code=404)
-    repository.add_log(user.username, 'delete_workspace_group', json.dumps({'group_id': group_id}))
+    repository.add_log(user.username, 'delete_workspace_group', json.dumps({'group_id': group_id, 'name': deleted.get('name')}))
     return RedirectResponse('/admin#workspace-groups', status_code=status.HTTP_303_SEE_OTHER)
 
 
@@ -23481,6 +23716,7 @@ def module_stage_labels_visible() -> bool:
 @app.post('/admin/interface-settings')
 async def save_interface_settings(request: Request, user: SessionUser = Depends(super_admin_user)) -> Response:
     form = await request.form()
+    before = {'show_module_stage_labels': module_stage_labels_visible(), 'module_labels': load_module_labels(repository)}
     show_labels = str(form.get('show_module_stage_labels') or '').casefold() in {'true', '1', 'on'}
     repository.set_application_state(MODULE_STAGE_LABELS_STATE_KEY, '1' if show_labels else '0')
     if form.get('reset_module_labels'):
@@ -23498,6 +23734,7 @@ async def save_interface_settings(request: Request, user: SessionUser = Depends(
     repository.set_application_state(MODULE_LABELS_STATE_KEY, json.dumps(labels, sort_keys=True))
     repository.try_add_log(user.username, 'save_interface_settings', json.dumps({
         'show_module_stage_labels': show_labels, 'module_labels': labels,
+        'changes': changed_values(before, {'show_module_stage_labels': show_labels, 'module_labels': labels}),
     }))
     return RedirectResponse('/admin#interface-settings', status_code=status.HTTP_303_SEE_OTHER)
 

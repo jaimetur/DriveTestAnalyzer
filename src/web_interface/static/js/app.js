@@ -5727,8 +5727,16 @@ function setupCustomMultiSelects() {
         menu.appendChild(heading);
         previousGroup = group;
       }
+      // Options may ask for a line before them, a tag beside their name (data-name) and a class of their own.
+      if (option.dataset.dividerBefore === 'true') {
+        const divider = document.createElement('div');
+        divider.className = 'multiselect-divider';
+        divider.setAttribute('role', 'separator');
+        menu.appendChild(divider);
+      }
       const optionLabel = document.createElement('label');
       optionLabel.className = 'multiselect-option';
+      if (option.dataset.optionClass) optionLabel.classList.add(...option.dataset.optionClass.split(/\s+/).filter(Boolean));
       if (group) optionLabel.dataset.multiselectGroup = group;
 
       const checkbox = document.createElement('input');
@@ -5739,7 +5747,7 @@ function setupCustomMultiSelects() {
       checkbox.disabled = option.disabled;
 
       const text = document.createElement('span');
-      text.textContent = option.textContent || option.value;
+      text.textContent = option.dataset.tag ? (option.dataset.name || option.textContent || option.value) : (option.textContent || option.value);
 
       checkbox.addEventListener('change', () => {
         if (option.disabled) return;
@@ -5761,6 +5769,11 @@ function setupCustomMultiSelects() {
 
       optionLabel.appendChild(checkbox);
       optionLabel.appendChild(text);
+      if (option.dataset.tag) {
+        optionLabel.appendChild(Object.assign(document.createElement('span'), {
+          className: `user-choice-tag ${option.dataset.tagClass || ''}`.trim(), textContent: option.dataset.tag,
+        }));
+      }
       menu.appendChild(optionLabel);
     });
 
@@ -5782,6 +5795,7 @@ function setupCustomMultiSelects() {
         const text = optionLabel.textContent?.toLocaleLowerCase() || '';
         optionLabel.hidden = Boolean(query) && !text.includes(query);
       });
+      menu.querySelectorAll('.multiselect-divider').forEach((divider) => { divider.hidden = Boolean(query); });
       if (groupedOptions) {
         Array.from(menu.querySelectorAll('.multiselect-group-label')).forEach((heading) => {
           const group = heading.dataset.multiselectGroup;
@@ -10034,9 +10048,14 @@ if (appLogsPanel) {
   const refreshButton = appLogsPanel.querySelector('[data-app-log-refresh]');
   const executionLogOutput = document.querySelector('[data-execution-log-output]');
   const executionLogCount = document.querySelector('[data-execution-log-count]');
-  let rows = Array.from(appLogsPanel.querySelectorAll('[data-app-log-row]'));
+  const pager = appLogsPanel.querySelector('[data-app-log-pager]');
+  // The server filters the events and sends a page of them with the values of each filter; a refresh that sends the
+  // signature of the events shown gets them again only when an event changed.
+  let appLogsSignature = appLogsPanel.dataset.appLogSignature || '';
+  let appLogsPage = 1;
+  let appLogsPages = Number(appLogsPanel.dataset.appLogPages || 1);
+  let appLogsRequest = 0;
   let refreshInProgress = false;
-  let appLogsSnapshot = '';
   let executionStreamConnected = false;
   const restorePagePosition = (position) => {
     window.requestAnimationFrame(() => window.scrollTo(window.scrollX, position));
@@ -10056,122 +10075,138 @@ if (appLogsPanel) {
     if (executionLogCount) executionLogCount.textContent = `${executionLogs.length} entries`;
     restorePagePosition(pagePosition);
   };
-  const restoreSelectValue = (control, value) => {
-    if (!control || !value) return;
-    if (Array.from(control.options).some((option) => option.value === value)) control.value = value;
+  // Every filter chooses several values (a multi-select list); none chosen shows every event.
+  const appLogFilters = {user: userFilter, executor: executorFilter, date: dateFilter, type: typeFilter, action: actionFilter};
+  const chosenValues = (control) => (control ? Array.from(control.selectedOptions).map((option) => option.value) : []);
+  const restoreSelectValues = (control, saved) => {
+    if (!control || saved === undefined || saved === null) return;
+    // Filters saved before held one value ('all' for every value): it applies as a one-value selection.
+    const values = new Set((Array.isArray(saved) ? saved : [saved]).map(String).filter((value) => value && value !== 'all'));
+    Array.from(control.options).forEach((option) => { option.selected = values.has(option.value); });
   };
   try {
     const savedFilters = JSON.parse(window.localStorage.getItem(appLogFiltersStorageKey) || '{}');
-    restoreSelectValue(userFilter, savedFilters.user);
-    restoreSelectValue(executorFilter, savedFilters.executor);
-    restoreSelectValue(dateFilter, savedFilters.date);
-    restoreSelectValue(typeFilter, savedFilters.type);
-    restoreSelectValue(actionFilter, savedFilters.action);
+    Object.entries(appLogFilters).forEach(([name, control]) => restoreSelectValues(control, savedFilters[name]));
   } catch (_error) {
     // The log view remains fully usable when browser storage is unavailable.
   }
+  // The checkbox menus show the restored values (a change event that does not bubble).
+  Object.values(appLogFilters).filter(Boolean).forEach((control) => control.dispatchEvent(new Event('change')));
   const persistAppLogFilters = () => {
     try {
-      window.localStorage.setItem(appLogFiltersStorageKey, JSON.stringify({
-        user: userFilter?.value || 'all', date: dateFilter?.value || 'all',
-        executor: executorFilter?.value || 'all',
-        type: typeFilter?.value || 'all', action: actionFilter?.value || 'all',
-      }));
+      window.localStorage.setItem(appLogFiltersStorageKey, JSON.stringify(Object.fromEntries(
+        Object.entries(appLogFilters).map(([name, control]) => [name, chosenValues(control)]))));
     } catch (_error) {
       // Persistence is a convenience and must not block filtering.
     }
   };
-  const syncAppLogRows = ({resetMobilePage = false} = {}) => {
-    let visibleCount = 0;
-    rows.forEach((row) => {
-      const matches = (
-        (!userFilter || userFilter.value === 'all' || String(row.dataset.appLogUser || '').toLocaleLowerCase() === String(userFilter.value || '').toLocaleLowerCase())
-        && (!executorFilter || executorFilter.value === 'all' || String(row.dataset.appLogExecutor || '').toLocaleLowerCase() === String(executorFilter.value || '').toLocaleLowerCase())
-        && (!dateFilter || dateFilter.value === 'all' || row.dataset.appLogDate === dateFilter.value)
-        && (!typeFilter || typeFilter.value === 'all' || row.dataset.appLogType === typeFilter.value)
-        && (!actionFilter || actionFilter.value === 'all' || row.dataset.appLogAction === actionFilter.value)
-      );
-      row.hidden = !matches;
-      // Card-table rules use grid display on compact phones. Keep an explicit
-      // inline display state too, so a filtered-out App Log can never remain
-      // visible because of a card presentation rule.
-      row.style.display = matches ? '' : 'none';
-      if (matches) visibleCount += 1;
-    });
-    if (noResults) noResults.hidden = visibleCount > 0 || rows.length === 0;
-    // New filters should start at their first matching entry.  A manual or
-    // background refresh retains the current card, unless that page no
-    // longer exists after the refreshed rows are applied.
-    body?.dispatchEvent(new CustomEvent('mobile-card-pagination:refresh', {
-      bubbles: true, detail: {reset: resetMobilePage},
-    }));
-    refreshFilterOptionsFromTableRows();
+  // A list keeps its chosen values that remain, and its menu is rebuilt only when its values change. A list open
+  // while the table refreshes keeps its menu as it is (open, scrolled and checked): its new values wait until it closes.
+  const pendingFilterOptions = new Map();
+  const filterListOpen = (control) => {
+    const shell = control.nextElementSibling;
+    const menu = shell?.classList.contains('multiselect-shell') ? shell.querySelector('.multiselect-menu') : null;
+    return Boolean(menu && !menu.hidden);
   };
-  const replaceSelectOptions = (control, values, allLabel, optionLabel = (value) => value) => {
+  const setFilterOptions = (control, options) => {
     if (!control) return;
-    const selected = control.value || 'all';
-    control.replaceChildren(new Option(allLabel, 'all'), ...values.map((value) => new Option(optionLabel(value), value)));
-    control.value = Array.from(control.options).some((option) => option.value === selected) ? selected : 'all';
+    if (filterListOpen(control)) {
+      pendingFilterOptions.set(control, options);
+      return;
+    }
+    pendingFilterOptions.delete(control);
+    const signature = (items) => JSON.stringify(items.map((option) => [option.value, option.textContent, {...option.dataset}]));
+    if (signature(Array.from(control.options)) === signature(options)) return;
+    const chosen = new Set(chosenValues(control));
+    options.forEach((option) => { option.selected = chosen.has(option.value); });
+    control.replaceChildren(...options);
+    control.dispatchEvent(new Event('multiselect:options-updated'));
   };
-  // The users of the User and Executed by filters by name, the default users first and tagged, with a line before
-  // the others; names of no account (system) show as they are.
+  const replaceSelectOptions = (control, values) => setFilterOptions(control, values.map((value) => new Option(value, value)));
+  // A list closes with a click (outside it or on its button): once every handler has run, it takes its waiting values.
+  document.addEventListener('click', () => window.setTimeout(() => {
+    pendingFilterOptions.forEach((options, control) => { if (!filterListOpen(control)) setFilterOptions(control, options); });
+  }, 0));
+  // The users of the User and Executed by filters by name: System (the application's user) first, tagged application,
+  // then the default users tagged, then the others, with a line between the groups; names of no account as they are.
   let userChoices = [];
   try { userChoices = JSON.parse(appLogsPanel.querySelector('[data-app-log-user-choices]')?.textContent || '[]'); } catch (_) { userChoices = []; }
   const userChoice = new Map(userChoices.map((entry, index) => [String(entry.username).toLocaleLowerCase(), {...entry, order: index}]));
-  const replaceUserOptions = (control, values, allLabel) => {
+  const replaceUserOptions = (control, values) => {
     if (!control) return;
-    const selected = control.value || 'all';
-    const rank = (entry) => (entry.is_default ? entry.order : userChoices.length);
-    const entries = values.map((value) => ({name: value, is_default: false, ...userChoice.get(value), value}))
+    const group = (entry) => (entry.is_system ? 0 : (entry.is_default ? 1 : 2));
+    const rank = (entry) => group(entry) * (userChoices.length + 1) + (entry.is_default ? entry.order : 0);
+    const entries = values.map((value) => ({
+      name: value, is_default: false, ...(value === 'system' ? {name: 'System', is_system: true} : {}), ...userChoice.get(value), value,
+    }))
       .sort((left, right) => rank(left) - rank(right) || String(left.name).localeCompare(String(right.name)));
-    control.replaceChildren(new Option(allLabel, 'all'), ...entries.flatMap((entry, index) => {
-      const option = new Option(entry.is_default ? `${entry.name} · default user` : entry.name, entry.value);
+    setFilterOptions(control, entries.map((entry, index) => {
+      const tag = entry.is_default ? 'default user' : (entry.is_system ? 'application' : '');
+      const option = new Option(tag ? `${entry.name} · ${tag}` : entry.name, entry.value);
+      // The same attributes as the server renders, in the same order.
       option.dataset.name = entry.name;
-      if (entry.is_default) option.dataset.defaultUser = 'true';
-      return index && entries[index - 1].is_default && !entry.is_default ? [document.createElement('hr'), option] : [option];
+      if (index && group(entries[index - 1]) !== group(entry)) option.dataset.dividerBefore = 'true';
+      if (entry.is_default) Object.assign(option.dataset, {defaultUser: 'true', tag});
+      if (entry.is_system) Object.assign(option.dataset, {systemUser: 'true', tag, tagClass: 'user-choice-tag-system', optionClass: 'is-system-user'});
+      return option;
     }));
-    control.value = Array.from(control.options).some((option) => option.value === selected) ? selected : 'all';
   };
-  const refreshFilterOptionsFromTableRows = () => {
-    // Compact-phone pagination keeps non-current cards in the DOM. They are
-    // still rows of this table. Each selector is a facet: its values come
-    // from every loaded row that matches the other active filters, never just
-    // the current card page.
-    const tableRows = rows;
-    const rowMatchesOtherFilters = (row, excludedFilter) => (
-      (excludedFilter === 'user' || !userFilter || userFilter.value === 'all' || String(row.dataset.appLogUser || '').toLocaleLowerCase() === String(userFilter.value || '').toLocaleLowerCase())
-      && (excludedFilter === 'executor' || !executorFilter || executorFilter.value === 'all' || String(row.dataset.appLogExecutor || '').toLocaleLowerCase() === String(executorFilter.value || '').toLocaleLowerCase())
-      && (excludedFilter === 'date' || !dateFilter || dateFilter.value === 'all' || row.dataset.appLogDate === dateFilter.value)
-      && (excludedFilter === 'type' || !typeFilter || typeFilter.value === 'all' || row.dataset.appLogType === typeFilter.value)
-      && (excludedFilter === 'action' || !actionFilter || actionFilter.value === 'all' || row.dataset.appLogAction === actionFilter.value)
-    );
-    const valuesFor = (name, excludedFilter, normalise = (value) => value) => [...new Set(
-      tableRows.filter((row) => rowMatchesOtherFilters(row, excludedFilter))
-        .map((row) => normalise(String(row.dataset[name] || ''))).filter(Boolean),
-    )].sort();
-    replaceUserOptions(userFilter, valuesFor('appLogUser', 'user', (value) => value.toLocaleLowerCase()), 'All users');
-    replaceUserOptions(executorFilter, valuesFor('appLogExecutor', 'executor', (value) => value.toLocaleLowerCase()), 'All executors');
-    replaceSelectOptions(dateFilter, valuesFor('appLogDate', 'date').reverse(), 'All dates');
-    replaceSelectOptions(typeFilter, valuesFor('appLogType', 'type'), 'All events', (value) => `${value} only`);
-    replaceSelectOptions(actionFilter, valuesFor('appLogAction', 'action'), 'All actions');
+  // Each filter offers the values of the events that the other filters leave (its facet, from the server).
+  // The places of Executed by (as the server lists them): the server, other servers, public pages and the modules.
+  const placeGroups = ['server', 'remote', 'public', 'module'];
+  const replacePlaceOptions = (control, choices) => setFilterOptions(control, choices.map((entry) => {
+    const option = new Option(`${entry.name} · ${entry.tag}`, entry.value);
+    // The same attributes as the server renders, in the same order.
+    option.dataset.name = entry.name;
+    if (entry.divider) option.dataset.dividerBefore = 'true';
+    Object.assign(option.dataset, {tag: entry.tag, tagClass: `user-choice-tag-origin user-choice-tag-origin-${placeGroups[entry.group] || 'module'}`});
+    return option;
+  }));
+  const applyFacets = (facets, executorChoices = []) => {
+    replaceUserOptions(userFilter, facets.user || []);
+    replacePlaceOptions(executorFilter, executorChoices);
+    replaceSelectOptions(dateFilter, facets.date || []);
+    replaceSelectOptions(typeFilter, facets.type || []);
+    replaceSelectOptions(actionFilter, facets.action || []);
+  };
+  const syncPager = () => {
+    if (!pager) return;
+    pager.hidden = appLogsPages <= 1;
+    pager.querySelector('[data-app-log-page-label]').textContent = `Page ${appLogsPage} of ${appLogsPages}`;
+    pager.querySelectorAll('[data-app-log-page="first"], [data-app-log-page="previous"]').forEach((button) => { button.disabled = appLogsPage <= 1; });
+    pager.querySelectorAll('[data-app-log-page="next"], [data-app-log-page="last"]').forEach((button) => { button.disabled = appLogsPage >= appLogsPages; });
   };
   const createAppLogRow = (log) => {
     const row = document.createElement('tr');
     row.dataset.appLogRow = '';
     row.dataset.appLogUser = String(log.username || '').toLocaleLowerCase();
-    row.dataset.appLogExecutor = String(log.executed_by || '—').toLocaleLowerCase();
+    row.dataset.appLogExecutor = String(log.executed_by || '');
     row.dataset.appLogDate = String(log.date || '');
     row.dataset.appLogType = String(log.log_type || 'Info');
     row.dataset.appLogAction = String(log.action || '');
-    const values = [log.id, log.username, log.executed_by || '—'];
-    const idCell = document.createElement('td'); idCell.textContent = String(values[0] ?? ''); row.append(idCell);
+    const idCell = document.createElement('td'); idCell.textContent = String(log.id ?? ''); row.append(idCell);
     const dateCell = document.createElement('td');
     dateCell.className = 'app-log-date';
     const [datePart, timePart] = String(log.created_at || '').split(' ');
     dateCell.append(datePart || '—');
     if (timePart) dateCell.append(document.createElement('br'), timePart);
     row.append(dateCell);
-    values.slice(1).forEach((value) => { const cell = document.createElement('td'); cell.textContent = String(value ?? ''); row.append(cell); });
+    // Triggered by: System in red, tagged application; a person by first and last name (the username when it has none),
+    // the username as a badge below. Executed by: where it ran, with what it was below.
+    const labelled = (className, name, tag, tagClass) => {
+      const element = Object.assign(document.createElement('span'), {className, textContent: `${name} `});
+      element.append(Object.assign(document.createElement('span'), {className: `user-choice-tag ${tagClass}`, textContent: tag}));
+      return element;
+    };
+    const userCell = document.createElement('td');
+    if (log.username === 'system') userCell.append(labelled('app-log-system-user', 'System', 'application', 'user-choice-tag-system'));
+    else if (log.username) userCell.append(labelled('app-log-person', log.user_name || log.username, log.username, 'user-choice-tag-username'));
+    row.append(userCell);
+    const placeCell = document.createElement('td');
+    const placeGroup = placeGroups[log.executor_group] || 'module';
+    placeCell.append(labelled(`app-log-place app-log-place-${placeGroup}`, log.executor_name || '', log.executor_tag || '',
+      `user-choice-tag-origin user-choice-tag-origin-${placeGroup}`));
+    row.append(placeCell);
     const typeCell = document.createElement('td');
     const badge = document.createElement('span');
     badge.className = `log-type-badge log-type-${String(log.log_type || 'Info').toLocaleLowerCase()}`;
@@ -10180,54 +10215,77 @@ if (appLogsPanel) {
     row.append(typeCell);
     const actionCell = document.createElement('td'); actionCell.textContent = String(log.action || ''); row.append(actionCell);
     const detailsCell = document.createElement('td');
-    const summary = document.createElement('p'); summary.className = 'app-log-summary'; summary.textContent = String(log.summary || ''); detailsCell.append(summary);
-    const details = document.createElement('code'); details.textContent = String(log.details_text || ''); detailsCell.append(details); row.append(detailsCell);
+    // One readable sentence, with the raw details folded away for troubleshooting.
+    const description = String(log.description ?? log.summary ?? '');
+    const summary = document.createElement('p'); summary.className = 'app-log-summary'; summary.textContent = description; detailsCell.append(summary);
+    const raw = String(log.details_text || '');
+    if (raw && raw !== description) {
+      const details = document.createElement('details'); details.className = 'app-log-raw';
+      details.append(Object.assign(document.createElement('summary'), {textContent: 'Raw details'}), Object.assign(document.createElement('code'), {textContent: raw}));
+      detailsCell.append(details);
+    }
+    row.append(detailsCell);
     return row;
   };
-  const refreshAppLogs = async ({manual = false} = {}) => {
-    if (refreshInProgress || !body || (!manual && document.hidden)) return;
-    refreshInProgress = true;
-    // Background polling must be visually silent.  Toggling disabled here
-    // made the Refresh button flash every five seconds even though the user
-    // had not pressed it.
+  const renderAppLogs = (payload, {resetMobilePage = false} = {}) => {
+    const logs = Array.isArray(payload.logs) ? payload.logs : [];
+    const pagePosition = window.scrollY;
+    appLogsSignature = String(payload.signature || '');
+    appLogsPage = Number(payload.page || 1);
+    appLogsPages = Number(payload.pages || 1);
+    body.replaceChildren(...logs.map(createAppLogRow), ...(noResults ? [noResults] : []));
+    if (noResults) noResults.hidden = logs.length > 0 || !payload.total;
+    if (count) count.textContent = payload.filtered ? `${payload.matching} of ${payload.total} entries` : `${payload.total} entries`;
+    applyFacets(payload.facets || {}, payload.executor_choices || []);
+    syncPager();
+    // New filters or another page start at their first card on a compact phone; a refresh keeps the card shown.
+    body.dispatchEvent(new CustomEvent('mobile-card-pagination:refresh', {bubbles: true, detail: {reset: resetMobilePage}}));
+    restorePagePosition(pagePosition);
+  };
+  // Asks for a page of the events matching the filters; a refresh (refresh: true) sends the signature it knows and
+  // only gets the events again when they changed. A newer request makes the answers of earlier ones obsolete.
+  const loadAppLogs = async ({page = appLogsPage, refresh = false, manual = false, resetMobilePage = false} = {}) => {
+    if (!body || (refresh && (refreshInProgress || (!manual && document.hidden)))) return;
+    const request = ++appLogsRequest;
+    const query = new URLSearchParams({page: String(page)});
+    Object.entries(appLogFilters).forEach(([name, control]) => chosenValues(control).forEach((value) => query.append(name, value)));
+    if (refresh && !manual && appLogsSignature) query.set('known', appLogsSignature);
+    if (refresh) refreshInProgress = true;
+    // Background polling must be visually silent: only a manual refresh disables its button.
     if (manual && refreshButton) refreshButton.disabled = true;
     try {
-      const response = await fetch('/api/app-logs', {headers: {'Accept': 'application/json'}, cache: 'no-store'});
+      const response = await fetch(`/api/app-logs?${query}`, {headers: {'Accept': 'application/json'}, cache: 'no-store'});
       if (!response.ok) throw new Error('Unable to refresh App Logs.');
       const payload = await response.json();
-      const logs = Array.isArray(payload.logs) ? payload.logs : [];
-      const nextSnapshot = JSON.stringify(logs);
-      if (nextSnapshot !== appLogsSnapshot) {
-        const pagePosition = window.scrollY;
-        appLogsSnapshot = nextSnapshot;
-        rows = logs.map(createAppLogRow);
-        body.replaceChildren(...rows, ...(noResults ? [noResults] : []));
-        if (count) count.textContent = `${logs.length} entries`;
-        syncAppLogRows();
-        restorePagePosition(pagePosition);
-      }
       if (!executionStreamConnected) renderExecutionLogs(payload.execution_logs);
+      if (request !== appLogsRequest || payload.unchanged) return;
+      renderAppLogs(payload, {resetMobilePage});
     } catch (_error) {
-      // Keep the last successfully rendered snapshot if a polling request fails.
+      // Keep the last events shown if a request fails.
     } finally {
-      refreshInProgress = false;
+      if (refresh) refreshInProgress = false;
       if (manual && refreshButton) refreshButton.disabled = false;
     }
   };
   [userFilter, executorFilter, dateFilter, typeFilter, actionFilter].filter(Boolean).forEach((filter) => filter.addEventListener('change', () => {
     persistAppLogFilters();
-    syncAppLogRows({resetMobilePage: true});
+    loadAppLogs({page: 1, resetMobilePage: true});
   }));
   clearFilters?.addEventListener('click', () => {
-    if (userFilter) userFilter.value = 'all';
-    if (executorFilter) executorFilter.value = 'all';
-    if (dateFilter) dateFilter.value = 'all';
-    if (typeFilter) typeFilter.value = 'all';
-    if (actionFilter) actionFilter.value = 'all';
+    Object.values(appLogFilters).filter(Boolean).forEach((control) => {
+      Array.from(control.options).forEach((option) => { option.selected = false; });
+      control.dispatchEvent(new Event('multiselect:options-updated'));
+    });
     try { window.localStorage.removeItem(appLogFiltersStorageKey); } catch (_error) { /* Ignore unavailable browser storage. */ }
-    syncAppLogRows({resetMobilePage: true});
+    loadAppLogs({page: 1, resetMobilePage: true});
   });
-  refreshButton?.addEventListener('click', () => refreshAppLogs({manual: true}));
+  pager?.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-app-log-page]');
+    if (!button || button.disabled) return;
+    const target = {first: 1, previous: appLogsPage - 1, next: appLogsPage + 1, last: appLogsPages}[button.dataset.appLogPage];
+    loadAppLogs({page: target, resetMobilePage: true});
+  });
+  refreshButton?.addEventListener('click', () => loadAppLogs({refresh: true, manual: true}));
   if (executionLogOutput && 'EventSource' in window) {
     const executionLogStream = new EventSource('/api/app-logs/execution-stream');
     executionLogStream.addEventListener('open', () => { executionStreamConnected = true; });
@@ -10241,8 +10299,13 @@ if (appLogsPanel) {
     executionLogStream.addEventListener('error', () => { executionStreamConnected = false; });
     window.addEventListener('pagehide', () => executionLogStream.close(), {once: true});
   }
-  window.setInterval(refreshAppLogs, 5000);
-  syncAppLogRows({resetMobilePage: true});
+  window.setInterval(() => loadAppLogs({refresh: true}), 5000);
+  // The page shows the first page of every event: the filters saved in the browser ask for theirs.
+  if (Object.values(appLogFilters).some((control) => chosenValues(control).length)) loadAppLogs({page: 1, resetMobilePage: true});
+  else {
+    syncPager();
+    body?.dispatchEvent(new CustomEvent('mobile-card-pagination:refresh', {bubbles: true, detail: {reset: true}}));
+  }
 }
 
 function bindChartAggregationSelect(select) {
@@ -11753,7 +11816,8 @@ document.addEventListener('change', async (event) => {
 });
 
 // Lists of users (select[data-user-select]): the native list keeps its value and its change events, but opens a menu
-// of the users by name with the default users tagged like the pickers of Admin, and a line before the others.
+// of the users by name with the default users tagged like the pickers of Admin, and a line before the others; the
+// application's user (System) shows in red, tagged application.
 (() => {
   let current = null;
   const menu = document.createElement('div');
@@ -11789,8 +11853,10 @@ document.addEventListener('change', async (event) => {
       item.setAttribute('role', 'option');
       item.setAttribute('aria-selected', String(child.value === select.value));
       item.dataset.value = child.value;
+      if (child.dataset.systemUser === 'true') item.classList.add('is-system-user');
       item.append(Object.assign(document.createElement('span'), {className: 'user-select-name', textContent: child.dataset.name || child.textContent}));
       if (child.dataset.defaultUser === 'true') item.append(Object.assign(document.createElement('span'), {className: 'user-choice-tag', textContent: 'default user'}));
+      if (child.dataset.systemUser === 'true') item.append(Object.assign(document.createElement('span'), {className: 'user-choice-tag user-choice-tag-system', textContent: 'application'}));
       item.disabled = child.disabled;
       return [item];
     }));

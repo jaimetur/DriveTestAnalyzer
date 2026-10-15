@@ -319,16 +319,22 @@ def test_lists_of_users_show_names_with_the_default_users_first(client):
     core.repository.create_user('EZZZZZZ', 'secret123', 'user-editor', first_name='Ana', last_name='García')
     core.repository.create_user('EAAAAAA', 'secret123', 'user-editor', first_name='Zoe', last_name='Alba')
     entries = core.user_choices(['EAAAAAA', 'admin', 'system', 'EZZZZZZ', 'super'])
+    # System (the application's user) first, then the default users and the others, with a line between the groups.
     assert [(entry['username'], entry['label'], entry['divider']) for entry in entries] == [
-        ('super', 'super · default user', False), ('admin', 'admin · default user', False),
-        ('EZZZZZZ', 'Ana García', True), ('system', 'system', False), ('EAAAAAA', 'Zoe Alba', False)]
+        ('system', 'System · application', False), ('super', 'super · default user', True), ('admin', 'admin · default user', False),
+        ('EZZZZZZ', 'Ana García', True), ('EAAAAAA', 'Zoe Alba', False)]
 
     core.repository.add_log('EZZZZZZ', 'change_password', 'Password changed from the account badge.')
     events = client.get('/app-logs').text
-    user_filter = events.split('data-app-log-user-filter data-user-select>', 1)[1].split('</select>', 1)[0]
-    assert '<hr><option value="ezzzzzz" data-name="Ana García">Ana García</option>' in user_filter
-    assert '<option value="super" data-name="super" data-default-user="true">super · default user</option>' in user_filter
+    user_filter = events.split('data-app-log-user-filter multiple', 1)[1].split('</select>', 1)[0]
+    assert '<option value="ezzzzzz" data-name="Ana García" data-divider-before="true">Ana García</option>' in user_filter
+    assert 'data-default-user="true" data-tag="default user">super · default user</option>' in user_filter
     assert user_filter.index('super · default user') < user_filter.index('Ana García')
+    # The table shows each person by name, with the username as a badge below (the names looked up once per page).
+    assert ('<td><span class="app-log-person">Ana García <span class="user-choice-tag user-choice-tag-username">ezzzzzz</span>'
+            '</span></td>') in events
+    logs = client.get('/api/app-logs').json()['logs']
+    assert next(log for log in logs if log['action'] == 'change_password')['user_name'] == 'Ana García'
     # The pickers of Admin and Workspace: names, the default users tagged, a line before the others, the username searchable.
     admin = client.get('/admin').text
     assert '<label class="user-choice-divider">' in admin

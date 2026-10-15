@@ -10556,8 +10556,8 @@ def test_app_logs_combines_operational_and_audit_activity(client) -> None:
     assert response.text.index('data-app-log-date-filter') < response.text.index('data-app-log-user-filter')
     assert response.text.index('data-app-log-user-filter') < response.text.index('data-app-log-executor-filter')
     assert "All events" in response.text
-    assert "Info only" in response.text
-    assert "Error only" in response.text
+    assert '<option value="Info">Info</option>' in response.text
+    assert '<option value="Error">Error</option>' in response.text
     assert "All users" in response.text
     assert "All executors" in response.text
     assert "All actions" in response.text
@@ -10642,11 +10642,12 @@ def test_app_logs_normalises_user_case_and_records_login_outcomes(client) -> Non
 
     response = client.get('/app-logs')
 
-    # One option per user, by name with the default users tagged.
-    assert response.text.count('<option value="admin" data-name="admin" data-default-user="true">admin · default user</option>') == 1
+    # One option per user, by name with the default users tagged; system first, as System, and the background work
+    # that said system executed it shows the Server in Executed by.
+    assert response.text.count('data-default-user="true" data-tag="default user">admin · default user</option>') == 1
     assert 'data-app-log-user="admin"' in response.text
-    assert '<option value="system" data-name="system">system</option>' in response.text
-    assert 'data-app-log-executor="system"' in response.text
+    assert '<option value="system" data-name="System" data-system-user="true"' in response.text
+    assert 'data-app-log-executor="server:background"' in response.text
     login_details = [json.loads(row['details']) for row in app_module.repository.list_logs() if row['action'] == 'login']
     assert any(details['success'] is False and details['reason'] == 'invalid_credentials' for details in login_details)
     assert any(details['success'] is True and details['result'] == 'successful' for details in login_details)

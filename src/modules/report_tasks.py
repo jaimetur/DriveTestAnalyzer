@@ -1190,8 +1190,10 @@ def install_report_task_routes(core: Any) -> None:
                        'partial': f'{len(failed)} of {len(artifacts)} artifacts failed', 'failed': 'The run failed'}[status]
             update_run(task_repository, run_id, status=status, message=message, progress=100, email_status=email_status,
                        error=error, finished_at=now_local().isoformat(), artifacts=artifacts)
+            # The trigger tells App Events whether the scheduler or a user started the run.
             task_repository.try_add_log(task['created_by'], 'reporting_job_run', json.dumps({
                 'task_id': task['id'], 'run_id': run_id, 'status': status, 'artifacts': len(ready), 'email': email_status,
+                'trigger': run['trigger'],
             }))
         except Exception as exc:
             update_run(task_repository, run_id, status='failed', message='The run failed', progress=100,

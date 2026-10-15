@@ -9,6 +9,7 @@ import csv
 import io
 from datetime import datetime
 from contextlib import closing, contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 import hashlib
 import json
@@ -16,7 +17,7 @@ import logging
 from pathlib import Path
 from threading import Lock, RLock
 from time import monotonic
-from typing import Any, Iterable, Iterator, Literal
+from typing import Any, Callable, Iterable, Iterator, Literal
 
 import pandas as pd
 
@@ -36,6 +37,23 @@ DATABASE_BLANK_FILTER = '__database_blank__'
 WORKSPACE_REGISTRY_TABLE = '__workspace_registry__'
 MAIN_CITIES_STATE_KEY = 'dashboard_main_cities'
 SCORING_CONFIGURATION_STATE_KEY = 'scoring_configuration'
+# How many of the newest App Events the App Events table shows (every event is kept, exported and backed up).
+APP_EVENTS_LIMIT = 10_000
+# Where the App Events written now run (their origin): a request sets how to tell its page (see app_event_details).
+APP_EVENT_ORIGIN: ContextVar[Callable[[], str] | None] = ContextVar('app_event_origin', default=None)
+
+
+def current_app_event_origin() -> str:
+    resolver = APP_EVENT_ORIGIN.get()
+    try:
+        return str(resolver() or '') if resolver else ''
+    except Exception:  # noqa: BLE001 - an event is recorded even when its page cannot be told.
+        return ''
+# App Events the application once recorded under the name of a process instead of `system`, by user and action, with
+# the details that keep which process it was (those it records now).
+PROCESS_EVENT_DETAILS = {
+    ('import', 'nq_table_columns'): 'Non-Qualified Calls table columns taken from an imported configuration.',
+}
 
 _WORKSPACE_WRITE_LOCKS: dict[str, RLock] = {}
 _WORKSPACE_WRITE_LOCKS_GUARD = Lock()
@@ -225,7 +243,8 @@ CREATE TABLE IF NOT EXISTS audit_logs (
     username TEXT NOT NULL,
     action TEXT NOT NULL,
     details TEXT NOT NULL,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    origin TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS workspace_state (
@@ -792,6 +811,10 @@ class Repository:
             self._migrate_vendor_field_names(conn)
             self._refresh_vendor_filter_options(conn)
             self._rename_mixed_vendor_labels(conn)
+            if 'origin' not in {str(row[1]) for row in conn.execute('PRAGMA table_info(audit_logs)')}:
+                # Where each event ran (Executed by); the events of earlier versions take it from their action.
+                conn.execute("ALTER TABLE audit_logs ADD COLUMN origin TEXT NOT NULL DEFAULT ''")
+            self._migrate_process_event_users(conn)
             conn.execute(
                 """
                 INSERT OR IGNORE INTO dataset_profiles (dataset_id, status, progress, updated_at)
@@ -1844,6 +1867,25 @@ class Repository:
     MIXED_VENDOR_LABELS_MIGRATION_KEY = 'vendor_mixed_labels_v3'
     # Former labels of the mixed Vendor groups; the one containing the other goes first.
     MIXED_VENDOR_LABEL_RENAMES = (('Non-Ericsson_Mixed', 'Mixed (non-Ericsson)'), ('Ericsson_Mixed', 'Ericsson (Mixed)'))
+
+    @staticmethod
+    def _migrate_process_event_users(conn: sqlite3.Connection) -> None:
+        """The App Events the application recorded under the name of a process (such as ``import``) belong to
+        ``system``, with which process it was in their details; the migration is recorded in App Events."""
+        moved: dict[str, int] = {}
+        for (username, action), details in PROCESS_EVENT_DETAILS.items():
+            count = conn.execute(
+                "UPDATE audit_logs SET username = 'system', details = ? WHERE username = ? AND action = ?",
+                (details, username, action),
+            ).rowcount
+            if count:
+                moved[username] = moved.get(username, 0) + count
+        if moved:
+            conn.execute(
+                "INSERT INTO audit_logs (username, action, details, created_at) VALUES ('system', ?, ?, ?)",
+                ('migrate_app_event_users', json.dumps({'events': sum(moved.values()), 'users': sorted(moved)}),
+                 local_now_iso()),
+            )
 
     def _rename_mixed_vendor_labels(self, conn: sqlite3.Connection) -> None:
         """Store the mixed Vendor groups with the labels shown in the interface, once per workspace.
@@ -4782,8 +4824,8 @@ class Repository:
     def add_log(self, username: str, action: str, details: str) -> None:
         with self.connection() as conn:
             conn.execute(
-                "INSERT INTO audit_logs (username, action, details, created_at) VALUES (?, ?, ?, ?)",
-                (username, action, details, local_now_iso()),
+                "INSERT INTO audit_logs (username, action, details, created_at, origin) VALUES (?, ?, ?, ?, ?)",
+                (username, action, details, local_now_iso(), current_app_event_origin()),
             )
 
     def try_add_log(self, username: str, action: str, details: str, *, timeout_seconds: float = 0.25) -> bool:
@@ -4792,8 +4834,8 @@ class Repository:
             with closing(sqlite3.connect(self.db_path, timeout=timeout_seconds)) as conn, conn:
                 conn.execute(f"PRAGMA busy_timeout = {max(1, int(timeout_seconds * 1000))}")
                 conn.execute(
-                    "INSERT INTO audit_logs (username, action, details, created_at) VALUES (?, ?, ?, ?)",
-                    (username, action, details, local_now_iso()),
+                    "INSERT INTO audit_logs (username, action, details, created_at, origin) VALUES (?, ?, ?, ?, ?)",
+                    (username, action, details, local_now_iso(), current_app_event_origin()),
                 )
             return True
         except sqlite3.OperationalError:
@@ -5184,21 +5226,29 @@ class Repository:
             """
         )
 
-    def list_logs(self, limit: int | None = 1000, *, by_time: bool = False) -> list[sqlite3.Row]:
+    def list_logs(self, limit: int | None = APP_EVENTS_LIMIT, *, by_time: bool = False) -> list[sqlite3.Row]:
         """The App Events of the workspace, the newest first: by their id, or by their time (``by_time``), which also
         places the events imported from another workspace among the others."""
         order = 'julianday(created_at) DESC, id DESC' if by_time else 'id DESC'
         with self.connection() as conn:
             if limit is None:
-                return list(conn.execute(f"SELECT id, username, action, details, created_at FROM audit_logs ORDER BY {order}").fetchall())
+                return list(conn.execute(f"SELECT id, username, action, details, created_at, origin FROM audit_logs ORDER BY {order}").fetchall())
             return list(conn.execute(
-                f"SELECT id, username, action, details, created_at FROM audit_logs ORDER BY {order} LIMIT ?",
+                f"SELECT id, username, action, details, created_at, origin FROM audit_logs ORDER BY {order} LIMIT ?",
                 (limit,),
             ).fetchall())
 
+    def logs_signature(self) -> str:
+        """A token that changes whenever an App Event is added, imported, edited or deleted (cheap to read)."""
+        with self.connection() as conn:
+            count, last_id, ids, sizes = conn.execute(
+                'SELECT COUNT(*), MAX(id), TOTAL(id), TOTAL(LENGTH(details)) FROM audit_logs').fetchone()
+        return f'{count}:{last_id or 0}:{int(ids)}:{int(sizes)}'
+
     def merge_logs(self, events: Iterable[dict[str, Any]]) -> int:
         """Add the App Events of a package that the workspace does not have (the same user, action, details and time);
-        returns how many were added. Nothing is replaced or deleted."""
+        returns how many were added. Nothing is replaced or deleted. Events of a process (such as ``import``) come in
+        as ``system``'s, as the workspace keeps them."""
         added = 0
         with self.connection() as conn:
             existing = {tuple(row) for row in conn.execute('SELECT username, action, details, created_at FROM audit_logs').fetchall()}
@@ -5206,9 +5256,13 @@ class Repository:
                 if not isinstance(event, dict):
                     continue
                 key = tuple(str(event.get(field) or '') for field in ('username', 'action', 'details', 'created_at'))
+                if key[:2] in PROCESS_EVENT_DETAILS:
+                    key = ('system', key[1], PROCESS_EVENT_DETAILS[key[:2]], key[3])
                 if not key[0] or not key[1] or not key[3] or key in existing:
                     continue
-                conn.execute('INSERT INTO audit_logs (username, action, details, created_at) VALUES (?, ?, ?, ?)', key)
+                # Where it ran, when the package records it (packages of earlier versions do not).
+                conn.execute('INSERT INTO audit_logs (username, action, details, created_at, origin) VALUES (?, ?, ?, ?, ?)',
+                             (*key, str(event.get('origin') or '')))
                 existing.add(key)
                 added += 1
         return added

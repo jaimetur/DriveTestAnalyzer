@@ -2251,15 +2251,27 @@ th { color: var(--muted); font-weight: 600; position: sticky; top: 0; background
 .table-help { margin-top: 0.35rem; color: var(--muted); font-size: 0.78rem; }
 .logs-filter-control { min-width: 190px; }
 .app-logs-filters { display: grid; grid-template-columns: repeat(5, minmax(135px, 1fr)) auto; gap: 0.8rem; align-items: end; margin: 0.9rem 0 1.1rem; }
-.app-logs-filters label { display: grid; gap: 0.35rem; color: var(--muted); font-size: 0.78rem; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; }
-.app-logs-filters input, .app-logs-filters select { min-width: 0; width: 100%; }
+.app-logs-filters > label { display: grid; gap: 0.35rem; color: var(--muted); font-size: 0.78rem; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; }
+.app-logs-filters > label > input, .app-logs-filters > label > select { min-width: 0; width: 100%; }
+/* The multi-select lists of the filters read as values, not as the uppercase captions of their labels. */
+.app-logs-filters .multiselect-shell { color: var(--text); font-size: .88rem; font-weight: 500; letter-spacing: normal; text-transform: none; }
+.app-logs-filters .multiselect-menu { min-width: max(100%, 15rem); right: auto; }
 .app-logs-clear-button { min-height: 2.7rem; padding: 0.55rem 0.85rem; background: linear-gradient(145deg, #fff0aa, #f3cc4e); border-color: rgba(174, 124, 14, 0.52); color: #684707; box-shadow: 0 8px 18px rgba(190, 140, 17, 0.16); white-space: nowrap; }
 .app-logs-clear-button:hover:not(:disabled) { background: linear-gradient(145deg, #f8df7a, #e2ad24); border-color: rgba(139, 93, 0, 0.64); color: #493000; }
 .app-logs-heading-actions { display: flex; align-items: center; gap: 0.65rem; }
 .app-logs-refresh-button { min-height: 2.35rem; padding: 0.45rem 0.9rem; background: linear-gradient(145deg, #238d88, #0b7a75); border-color: rgba(5, 91, 87, 0.48); color: #fff; }
 .app-logs-refresh-button:hover:not(:disabled) { background: linear-gradient(145deg, #177d78, #075f5b); }
-.app-logs-table code { white-space: pre-wrap; overflow-wrap: anywhere; }
+.app-logs-table code, .app-logs-table .app-log-summary { white-space: pre-wrap; overflow-wrap: anywhere; }
+/* The raw details of an event, folded under its readable sentence. */
+.app-log-raw > summary { width: max-content; color: #5b7184; font-size: .72rem; font-weight: 700; cursor: pointer; }
+.app-log-raw > summary:hover { color: #1e61a3; }
+.app-log-raw > code { display: block; margin-top: .25rem; }
 .app-logs-table th:nth-child(2), .app-logs-table .app-log-date { width: 10rem; min-width: 10rem; white-space: nowrap; }
+/* Triggered by and Executed by fit a name, or a module or Server, with its tag below; Details takes the rest. */
+.app-logs-table th:nth-child(3), .app-logs-table th:nth-child(4) { width: 12.5rem; min-width: 12.5rem; }
+/* Long action names wrap at their underscores rather than narrowing Details, which keeps a readable width. */
+.app-logs-table td:nth-child(6) { overflow-wrap: anywhere; }
+.app-logs-table th:nth-child(7) { min-width: 18rem; }
 .app-logs-panel .table-wrap { height: 45rem; overflow-y: scroll; overscroll-behavior: contain; }
 .execution-log-panel { margin-top: 1.25rem; }
 .execution-log-output { height: 60rem; margin: 1rem 0 0; padding: 1rem; overflow-x: auto; overflow-y: scroll; border: 1px solid rgba(16, 49, 74, 0.22); border-radius: 0.8rem; background: #102033; color: #e5f3fb; font: 0.78rem/1.55 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; scrollbar-gutter: stable; }
@@ -3200,7 +3212,7 @@ body:has(.release-navigator) .help-navigator{top:37%}
   .recovered-transfer-table td:nth-child(5)::before { content: 'Action'; }
   .app-logs-table td:nth-child(1)::before { content: 'ID'; }
   .app-logs-table td:nth-child(2)::before { content: 'Date'; }
-  .app-logs-table td:nth-child(3)::before { content: 'User'; }
+  .app-logs-table td:nth-child(3)::before { content: 'Triggered by'; }
   .app-logs-table td:nth-child(4)::before { content: 'Executed by'; }
   .app-logs-table td:nth-child(5)::before { content: 'Type'; }
   .app-logs-table td:nth-child(6)::before { content: 'Action'; }
@@ -5159,6 +5171,23 @@ body:has(> .unassigned-values-card:not([hidden], .is-collapsed)) { padding-botto
 .user-choice-tag { flex: 0 0 auto; margin-left: .4rem; padding: .05rem .45rem; border: 1px solid #a8dccf; border-radius: 999px; background: #e3f4f0; color: #0b6b66; font-size: .64rem; font-weight: 800; letter-spacing: .03em; text-transform: uppercase; white-space: nowrap; }
 /* The tag keeps its colour in the pickers that colour every text of their entries. */
 :is(.principal-picker-menu, .workspace-user-picker-menu) label span.user-choice-tag { color: #0b6b66 !important; -webkit-text-fill-color: #0b6b66; }
+/* System, the application's user, in red and tagged application, apart from the people. */
+.user-choice-tag.user-choice-tag-system { border-color: #f3b4ae; background: #fdecea; color: #b42318; }
+.app-log-system-user { color: #b42318; font-weight: 700; }
+/* In App Events a user shows its name with its tag (application, or the username in a neutral colour) below. */
+.app-log-system-user, .app-log-person, .app-log-place { display: inline-flex; flex-direction: column; align-items: flex-start; gap: .2rem; }
+.app-log-system-user > .user-choice-tag, .app-log-person > .user-choice-tag, .app-log-place > .user-choice-tag { margin-left: 0; }
+/* Where an event ran: the server, another server, a public page or a module, each with its own tag colour. */
+.user-choice-tag.user-choice-tag-origin { border-color: #d3dbe5; background: #f2f5f9; color: #4a5a70; }
+.user-choice-tag.user-choice-tag-origin-server { border-color: #c7d3f2; background: #edf2fd; color: #2f4f9e; }
+.user-choice-tag.user-choice-tag-origin-remote { border-color: #dacdf3; background: #f4effc; color: #5d3aa6; }
+.user-choice-tag.user-choice-tag-origin-public { border-color: #f1d6a6; background: #fff6e6; color: #8a5300; }
+.multiselect-option span.user-choice-tag.user-choice-tag-origin-server { color: #2f4f9e; }
+.multiselect-option span.user-choice-tag.user-choice-tag-origin-remote { color: #5d3aa6; }
+.multiselect-option span.user-choice-tag.user-choice-tag-origin-public { color: #8a5300; }
+.multiselect-option span.user-choice-tag.user-choice-tag-origin-module { color: #4a5a70; }
+.user-choice-tag.user-choice-tag-username { border-color: #d3dbe5; background: #f2f5f9; color: #4a5a70; letter-spacing: .02em; }
+.user-select-menu .user-select-option.is-system-user, .user-select-menu .user-select-option.is-system-user:hover { color: #b42318; font-weight: 700; }
 /* Users' pickers grow to fit their longest name on one line, within the window (the menus also grow in their scripts). */
 .admin-stack .workspace-user-picker-menu, .workspace-switcher-panel .workspace-user-picker-menu { max-width: calc(100vw - 2rem); }
 .user-choice-divider { position: relative; margin-top: .45rem; }
@@ -5171,4 +5200,10 @@ body:has(> .unassigned-values-card:not([hidden], .is-collapsed)) { padding-botto
 .user-select-menu .user-select-option[aria-selected="true"] { background: #e3f0fa; font-weight: 700; }
 .user-select-menu .user-select-option[aria-selected="true"]::after { content: '✓'; margin-left: auto; padding-left: .8rem; color: #1e61a3; }
 .user-select-divider { margin: .25rem .3rem; border-top: 1px solid #d8e0e7; }
+/* Multi-select lists: a line between groups of values and System in red (data-divider-before, data-option-class). */
+.multiselect-divider { margin: .15rem .3rem; border-top: 1px solid #d8e0e7; }
+.multiselect-option.is-system-user, .multiselect-option.is-system-user > span:not(.user-choice-tag) { color: #b42318; font-weight: 700; }
+/* The tags keep their colours among the option texts. */
+.multiselect-option span.user-choice-tag { color: #0b6b66; }
+.multiselect-option span.user-choice-tag.user-choice-tag-system { color: #b42318; }
 .vendor-mapping-outdated { display: inline-block; margin-left: 0.35rem; padding: 0.05rem 0.45rem; border-radius: 999px; background: #fff4e5; color: #9a5300; font-size: 0.72rem; font-style: normal; font-weight: 800; }

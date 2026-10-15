@@ -4081,7 +4081,8 @@ def test_report_chart_generation_failures_return_json_and_are_logged(client, ppt
     app_log = next(row for row in app_module.build_app_logs() if row['action'] == 'chart_set_generation_failed')
     assert app_log['log_type'] == 'Error'
     assert app_log['username'] == 'super'
-    assert app_log['executed_by'] == 'system'
+    # The requester triggered it; the server ran it as a background job.
+    assert (app_log['executed_by'], app_log['executor_name'], app_log['executor_tag']) == ('server:background', 'Server', 'Background job')
     assert re.match(r'^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] Chart Set job 1 failed: Slide ', app_log['summary'])
     assert app_log['summary'].endswith(': Synthetic renderer failure')
     assert 'Synthetic renderer failure' in client.get('/ppt-reporting-old').text
