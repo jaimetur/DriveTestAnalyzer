@@ -1266,6 +1266,36 @@
     }
   }
 
+  // The Saved Filters panel shows ten Saved Filters before it scrolls, and is only as tall as fewer ones.
+  function fitSavedFilterPanels() {
+    const inView = 10;
+    for (const list of savedFilterLists.slice(1)) {
+      const items = list.querySelectorAll(':scope > .saved-filter-item');
+      if (items.length <= inView) {
+        list.style.maxHeight = 'none';
+        continue;
+      }
+      const tenth = items[inView - 1].getBoundingClientRect();
+      if (!tenth.height) continue;
+      const bottom = tenth.bottom - list.getBoundingClientRect().top + list.scrollTop + (parseFloat(getComputedStyle(list).paddingBottom) || 0);
+      list.style.maxHeight = `${Math.ceil(bottom) + 2}px`;
+    }
+  }
+  // The ten are measured whenever the Saved Filters are drawn again and, narrower or wider, change height.
+  if (typeof MutationObserver === 'function') {
+    for (const list of savedFilterLists.slice(1)) new MutationObserver(fitSavedFilterPanels).observe(list, {childList: true});
+  }
+  let savedFilterPanelWidth = 0;
+  if (typeof ResizeObserver === 'function') {
+    new ResizeObserver(entries => {
+      const width = Math.round(entries[0]?.contentRect.width || 0);
+      if (width && width !== savedFilterPanelWidth) {
+        savedFilterPanelWidth = width;
+        fitSavedFilterPanels();
+      }
+    }).observe(savedFilterLists[1] || savedFilterList);
+  }
+
   function renderSavedFilters() {
     const ordered = sortedSavedFilters(savedFilters);
     for (const countBadge of root.querySelectorAll('[data-saved-filter-count]')) {

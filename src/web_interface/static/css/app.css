@@ -1644,6 +1644,11 @@ body[data-embedded-template-editor] .slides-templates-editor-table-wrap .form-ac
 .upload-type-fields > .upload-nr-mode-field:not(.upload-file-type-field) { flex: 0 1 9rem; }
 /* Wide enough for every Operator and for Multi-operator (Network column). */
 .upload-type-fields > .upload-nr-mode-field.upload-dataset-operator-field { flex: 0 1 18rem; }
+.upload-type-fields > .upload-nr-mode-field.upload-snapshot-date-field { flex: 0 1 11rem; }
+.upload-nr-mode-field input[type="date"] { min-width: 0; padding: 0.45rem 0.65rem; border: 1px solid rgba(16, 49, 74, 0.12); border-radius: 12px; background: #fff; color: #10314a; font: inherit; font-size: 0.8rem; font-weight: 700; letter-spacing: 0; text-transform: none; }
+.upload-nr-mode-field input[type="date"]:hover { border-color: var(--kind); }
+.upload-nr-mode-field input[type="date"]:focus-visible { outline: none; border-color: var(--kind); box-shadow: 0 0 0 3px var(--kind-soft); }
+.upload-field-note { color: #6b7f8c; font-size: 0.68rem; font-weight: 600; letter-spacing: 0; text-transform: none; }
 .upload-nr-mode-field { display: grid; gap: 0.25rem; color: #5b6f7c; font-size: 0.68rem; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
 .upload-nr-mode-field[hidden] { display: none; }
 .upload-nr-mode-field select, .upload-vendor-mapping-selectors select { min-width: 0; padding: 0.52rem 0.75rem; border: 1px solid rgba(16, 49, 74, 0.12); border-radius: 12px; background: #fff; color: #10314a; font-size: 0.8rem; font-weight: 700; letter-spacing: normal; text-transform: none; transition: border-color .15s ease, box-shadow .15s ease; }

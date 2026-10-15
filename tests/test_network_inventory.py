@@ -47,6 +47,27 @@ def test_network_inventories_map_the_vendor_of_their_operator():
     assert mapped['Vendor'].tolist() == ['Ericsson', 'Ericsson (Mixed)', 'Mixed (non-Ericsson)', 'EE - All', 'Vodafone UK - All']
 
 
+def test_inventory_upload_keeps_the_snapshot_date_chosen_or_found_in_its_name(client):
+    login(client)
+    inventory = 'Site,ECI,Vendor\nS1,1001,Ericsson\n'
+    files = [('dataset_files', (name, io.BytesIO(inventory.encode()), 'text/csv')) for name in ('260917_O2_Inventory.csv', '250101_O2_Old_Inventory.csv')]
+    response = client.post('/datasets-analysis/upload', data={
+        'dataset_kinds': ['network_inventory', 'network_inventory'], 'dataset_operators': ['', ''], 'snapshot_dates': ['2026-08-01', ''],
+    }, files=files, follow_redirects=False)
+    assert response.status_code == 303
+    wait_for_background_dataset_work()
+    rows = {row['file_name']: row for row in core.repository.list_datasets()}
+    # The date chosen in the upload replaces the one in the file name; without one, the file name gives it.
+    assert rows['260917_O2_Inventory.csv']['snapshot_date'] == '2026-08-01'
+    assert not rows['250101_O2_Old_Inventory.csv']['snapshot_date']
+    assert core.effective_snapshot_date(rows['250101_O2_Old_Inventory.csv']) == '2025-01-01'
+    logged = {json.loads(row['details'])['file']: json.loads(row['details']) for row in core.repository.list_logs(limit=20) if row['action'] == 'upload_dataset'}
+    assert logged['260917_O2_Inventory.csv']['snapshot_date'] == '2026-08-01' and logged['250101_O2_Old_Inventory.csv']['snapshot_date'] == '2025-01-01'
+    refused = client.post('/datasets-analysis/upload', data={'dataset_kinds': 'network_inventory', 'dataset_operators': '', 'snapshot_dates': '17/09/2026'},
+                          files={'dataset_files': ('O2_Inventory.csv', io.BytesIO(inventory.encode()), 'text/csv')}, follow_redirects=False)
+    assert refused.status_code == 422
+
+
 def test_network_inventory_upload_with_its_operator_and_map_cdrs(client, tmp_path):
     login(client)
     inventory = 'Site,ECI,Vendor\nS1,1001,Ericsson\nS2,1002,Nokia\n'

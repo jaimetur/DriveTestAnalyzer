@@ -112,8 +112,17 @@ class HistoryUnavailable(Exception):
     """The history cannot answer a calculation: it reads the CDR rows instead."""
 
 
+# The tables and indexes of the Scoring History, checked before creating them.
+_SCHEMA_OBJECTS = {(kind.lower(), name) for kind, name in re.findall(r'CREATE (TABLE|INDEX) IF NOT EXISTS (\w+)', SCHEMA)}
+
+
 def ensure_history_tables(repository: Any) -> None:
+    # Creating them takes the write lock of the workspace: when they exist, a calculation does not wait for it.
     with repository.connection() as connection:
+        present = {(str(row[0]), str(row[1])) for row in connection.execute(
+            "SELECT type, name FROM sqlite_master WHERE type IN ('table', 'index')").fetchall()}
+        if _SCHEMA_OBJECTS <= present:
+            return
         connection.executescript(SCHEMA)
 
 
@@ -568,10 +577,13 @@ def history_gap(repository: Any, dataset_ids: Iterable[int], levels: Iterable[st
     ensure_history_tables(repository)
     config = validate_scoring_configuration(configuration)
     ids = [int(value) for value in dataset_ids]
+    # The CDRs of the workspace are read once for every selected CDR.
+    ready = _ready_cdrs(repository)
+    all_datasets = {int(row['id']): row for row in repository.list_datasets()}
     missing = 0
     for dataset_id in ids:
         try:
-            _sources(repository, [dataset_id], config)
+            _sources(repository, [dataset_id], config, ready=ready, all_datasets=all_datasets)
         except HistoryUnavailable:
             missing += 1
     if missing:
@@ -595,10 +607,12 @@ def _dimensions(levels: Iterable[str]) -> list[str]:
     return dimensions
 
 
-def _sources(repository: Any, dataset_ids: list[int], config: dict[str, Any]) -> dict[int, Any]:
-    """The history source of each selected CDR, at its current file and processing, with every KPI of the methodology."""
-    datasets = _ready_cdrs(repository)
-    all_datasets = {int(row['id']): row for row in repository.list_datasets()}
+def _sources(repository: Any, dataset_ids: list[int], config: dict[str, Any], *, ready: dict[int, Any] | None = None,
+             all_datasets: dict[int, Any] | None = None) -> dict[int, Any]:
+    """The history source of each selected CDR, at its current file and processing, with every KPI of the methodology
+    (``ready`` and ``all_datasets``: the CDRs of the workspace when they are already read)."""
+    datasets = ready if ready is not None else _ready_cdrs(repository)
+    all_datasets = all_datasets if all_datasets is not None else {int(row['id']): row for row in repository.list_datasets()}
     keys = {}
     for dataset_id in dataset_ids:
         row = datasets.get(int(dataset_id))

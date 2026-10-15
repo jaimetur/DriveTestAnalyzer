@@ -1628,6 +1628,7 @@ def _history_result(repository: Repository, saved_filter: dict[str, Any], config
 
     if engine is not scoring_engine:
         return None
+    update_progress(4, f'Checking the Scoring History of the {len(dataset_ids)} CDRs')
     # Why the rows of the CDRs are read instead, told while they are read.
     saved_filter['history_gap'] = history_gap(repository, dataset_ids, saved_filter['levels'], configuration,
                                               context_filters)

@@ -1165,6 +1165,24 @@
     return 'final';
   }
 
+  // Mirrors infer_snapshot_date in src/modules/network_inventory.py: 2026-09-17 (or 20260917) or 260917 in the name.
+  function inferSnapshotDate(fileName) {
+    const stem = String(fileName || '').replace(/\.[^.]+$/, '');
+    const patterns = [
+      /(?<!\d)(20\d{2})[-_.]?(0[1-9]|1[0-2])[-_.]?(0[1-9]|[12]\d|3[01])(?!\d)/,
+      /(?<!\d)(\d{2})(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])(?!\d)/,
+    ];
+    for (const [index, pattern] of patterns.entries()) {
+      const match = stem.match(pattern);
+      if (!match) continue;
+      const [year, month, day] = [Number(match[1]) + (index ? 2000 : 0), Number(match[2]), Number(match[3])];
+      const value = new Date(Date.UTC(year, month - 1, day));
+      if (value.getUTCMonth() !== month - 1 || value.getUTCDate() !== day) continue;
+      return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    }
+    return '';
+  }
+
   picker.addEventListener('change', () => {
     items.replaceChildren();
     const files = Array.from(picker.files || []);
@@ -1213,6 +1231,7 @@
         entry.nrModeField.hidden = !isCdr;
         entry.stageField.hidden = !isCdr;
         entry.operatorField.hidden = !['vendors', 'network_inventory'].includes(entry.select.value);
+        entry.snapshotField.hidden = !['mapping_vodafone', 'mapping_three', 'network_inventory'].includes(entry.select.value);
         const multiOperator = entry.operatorSelect.options[0];
         multiOperator.textContent = entry.select.value === 'network_inventory' ? 'Multi-operator (Network column)' : 'Multi-operator';
         // A CDR takes its Vendor from the Network Inventory (Multivendor Mappings and Network Inventories)
@@ -1308,6 +1327,26 @@
       operatorNames.forEach((name) => operatorSelect.add(new Option(name, name)));
       operatorSelect.value = inferOperator(file.name);
       operatorField.append(operatorSelect);
+      // The date of the network an inventory describes: the one in its file name, which can be changed.
+      const snapshotField = document.createElement('label');
+      snapshotField.className = 'upload-nr-mode-field upload-snapshot-date-field';
+      snapshotField.textContent = 'Snapshot date';
+      snapshotField.title = 'The date of the network this inventory describes (empty: the date it is uploaded); Network Insights and the Vendor mapping use the snapshot closest to each CDR';
+      const snapshotInput = document.createElement('input');
+      snapshotInput.type = 'date';
+      snapshotInput.name = 'snapshot_dates';
+      snapshotInput.setAttribute('aria-label', `Snapshot date for ${file.name}`);
+      const inferredDate = inferSnapshotDate(file.name);
+      snapshotInput.value = inferredDate;
+      const snapshotNote = document.createElement('small');
+      snapshotNote.className = 'upload-field-note';
+      const describeSnapshot = () => {
+        snapshotNote.textContent = !snapshotInput.value ? 'Empty: the upload date'
+          : snapshotInput.value === inferredDate ? 'From the file name' : 'Chosen';
+      };
+      snapshotInput.addEventListener('input', describeSnapshot);
+      describeSnapshot();
+      snapshotField.append(snapshotInput, snapshotNote);
       const vendorSourceField = document.createElement('label');
       vendorSourceField.textContent = 'Vendor source';
       const vendorSourceSelect = document.createElement('select');
@@ -1317,7 +1356,7 @@
       vendorSourceSelect.add(new Option('Vendor polygons', 'all'));
       vendorSourceSelect.value = vodafoneMappings.length || threeMappings.length ? '' : 'all';
       vendorSourceField.append(vendorSourceSelect);
-      const entry = {index, file, item, badge, select, nrModeField, stageField, stageSelect, operatorField, operatorSelect, vendorSourceField, vendorSourceSelect, mappings, mappingSelectors: []};
+      const entry = {index, file, item, badge, select, nrModeField, stageField, stageSelect, operatorField, operatorSelect, snapshotField, vendorSourceField, vendorSourceSelect, mappings, mappingSelectors: []};
       const addMappingSelector = (kind, labelText, fieldName) => {
         const field = document.createElement('label');
         field.textContent = labelText;
@@ -1343,7 +1382,7 @@
       typeField.append(select);
       const fields = document.createElement('div');
       fields.className = 'upload-type-fields';
-      fields.append(typeField, nrModeField, stageField, operatorField);
+      fields.append(typeField, nrModeField, stageField, operatorField, snapshotField);
       const dailyFlag = document.createElement('span');
       dailyFlag.className = 'upload-daily-flag';
       dailyFlag.title = 'Received while the campaign runs; the Final CDR of its campaign replaces it in the combined tables';

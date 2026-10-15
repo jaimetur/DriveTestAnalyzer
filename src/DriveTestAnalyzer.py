@@ -18396,6 +18396,16 @@ def validated_upload_selections(
         raise HTTPException(status_code=422, detail='Invalid Vendor polygons selection.')
     # The Operator of each Vendor polygons file without an Operator attribute (blank: from the file name).
     selected_dataset_operators = [str(value or '').strip() or None for value in parse_mapping_selection(form.get('dataset_operators'), 'Operator')]
+    # The snapshot date of each inventory (blank: the date in its file name, else its upload date).
+    snapshot_dates = form.get('snapshot_dates')
+    if snapshot_dates and len(snapshot_dates) != len(file_names):
+        raise HTTPException(status_code=422, detail='Choose one snapshot date value for every uploaded file.')
+    selected_snapshot_dates: list[str | None] = []
+    for value in snapshot_dates or [None] * len(file_names):
+        try:
+            selected_snapshot_dates.append(normalise_snapshot_date(value))
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
     if form.get('cluster_mapping_dataset_ids') is None and selected_kinds:
         latest_clusters = next((row for row in task_repository.list_datasets() if row['status'] == 'ready' and row['dataset_kind'] == 'clusters'), None)
         if latest_clusters:
@@ -18431,6 +18441,7 @@ def validated_upload_selections(
         'vodafone_mappings': selected_vodafone_mappings, 'three_mappings': selected_three_mappings,
         'region_mappings': selected_region_mappings, 'cluster_mappings': selected_cluster_mappings,
         'vendor_polygons': selected_vendor_polygons, 'operators': selected_dataset_operators,
+        'snapshot_dates': selected_snapshot_dates,
     }
 
 
@@ -18469,6 +18480,11 @@ def register_uploaded_datasets(
                     if selected_kind in {'vendors', 'network_inventory'} else None
                 ),
             )
+            # The snapshot date chosen for an inventory; without one it keeps the date in its file name.
+            chosen_dates = selections.get('snapshot_dates') or []
+            chosen_date = chosen_dates[index] if selected_kind in INVENTORY_DATASET_KINDS and index < len(chosen_dates) else None
+            if chosen_date:
+                task_repository.update_dataset_profile(dataset_id, snapshot_date=chosen_date)
         uploaded_datasets.append({
             'index': index,
             'dataset_id': dataset_id,
@@ -18559,6 +18575,8 @@ def register_uploaded_datasets(
             'cluster_mapping_dataset_id': cluster_mapping_dataset_id,
             'vendor_polygon_dataset_ids': vendor_polygon_dataset_ids,
             'network_inventory_dataset_ids': network_inventory_ids,
+            **({'snapshot_date': effective_snapshot_date(task_repository.get_dataset(uploaded['dataset_id']))}
+               if dataset_kind in INVENTORY_DATASET_KINDS else {}),
         }))
         dependencies = list(batch_mapping_futures) if dataset_kind in CDR_DATASET_KINDS else []
         future = enqueue_dataset_processing(
@@ -18598,6 +18616,7 @@ async def upload_dataset(
     cdr_stages: Annotated[list[str] | None, Form()] = None,
     vendor_polygon_selections: Annotated[list[str] | None, Form()] = None,
     dataset_operators: Annotated[list[str] | None, Form()] = None,
+    snapshot_dates: Annotated[list[str] | None, Form()] = None,
     user: SessionUser = Depends(workspace_editor_user),
 ) -> Response:
     if not dataset_files:
@@ -18646,6 +18665,7 @@ async def upload_dataset(
         'three_mapping_dataset_ids': three_mapping_dataset_ids, 'region_mapping_dataset_ids': region_mapping_dataset_ids,
         'cluster_mapping_dataset_ids': cluster_mapping_dataset_ids, 'nr_modes': nr_modes, 'cdr_stages': cdr_stages,
         'vendor_polygon_selections': vendor_polygon_selections, 'dataset_operators': dataset_operators,
+        'snapshot_dates': snapshot_dates,
     })
     saved_files: list[tuple[str, Path]] = []
     for dataset_file in dataset_files:

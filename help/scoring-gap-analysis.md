@@ -67,7 +67,7 @@ Every selection you calculate becomes a **Saved Filter**: its CDRs, NR Mode, fil
 | --- | --- |
 | The selection was never calculated | **Calculate Scoring** calculates it and saves it in **Saved Filters** |
 | The selection was used before | **Calculate Scoring** opens its Saved Filter, calculated again first when its CDRs, methodology or Operator Maps changed since its result was saved; **Recalculate** calculates it again anyway |
-| Its calculation is queued or running | Both actions are disabled until it finishes, and the yellow notice says *Calculating* (or *Recalculating*) *the scoring of the selected CDRs and filters…* until then; while it runs, the results show an animated **Calculating Scoring…** bar, in the colour of the result tab, with its progress and step, and the floating background tasks card shows the calculation with its elapsed time |
+| Its calculation is queued or running | Both actions are disabled until it finishes, and the yellow notice says *Calculating* (or *Recalculating*) *the scoring of the selected CDRs and filters…* until then; while it runs, the results show an animated **Calculating Scoring…** bar, in the colour of the result tab, with its progress and step (for each methodology of a calculation by campaign: checking the Scoring History of its CDRs, then calculating from it or from the rows of the CDRs), and the floating background tasks card shows the calculation with its elapsed time |
 
 A selection is the same when it has the same CDRs, NR Mode, filters, Split by levels, GAP reference, methodology and National & area summary, whatever its CDRs or methodology hold today. Its result, instead, is identified by what it was calculated with: reprocessing a CDR, editing the methodology or changing the Operator Maps makes it out of date.
 
@@ -78,7 +78,7 @@ A selection is the same when it has the same CDRs, NR Mode, filters, Split by le
 
 Choose a Saved Filter in the **Scoring Results** dropdown or in the **Saved Filters** panel. The module restores its selection in the Calculation panel and loads its saved result, with an animated **Loading Scoring Results…** bar meanwhile (the results are kept ready on the server, so opening them again is quick). A saved result that is out of date (its CDRs were reprocessed, or the methodology or the Operator Maps changed) is calculated again on its own, usually in a moment from the [Scoring History](#scoring-history). When its CDRs or its methodology no longer exist, the saved result is shown as it was and the yellow notice says why.
 
-The starred Saved Filters come first, then the latest used. Each card shows:
+The starred Saved Filters come first, then the latest used; the panel shows ten of them before it scrolls, and is only as tall as fewer ones. Each card shows:
 
 - its **name**, when it has one (**✎** names or renames it), and its filters: the date it was last used, NR Mode, Regions, **Clusters** (in their own colour), Cities, Operators, Vendors and Campaigns;
 - the ordered **Split by** levels, the **GAP Reference**, the **National & area summary** (its time split, breakdown and separate cities) when it has one, the **Scoring Methodology**, the **Calculation time** (or the time **Elapsed** while it runs), and on one line how many times it was **Used** (each Calculate Scoring or Recalculate of its selection, each report scenario that uses it, and each opening from its card) and **Calculated** (each calculation that finished);
