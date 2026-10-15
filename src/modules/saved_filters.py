@@ -666,6 +666,8 @@ def _row_to_saved_filter(
         'selection_key': str(row['selection_key'] or ''),
         'name': str(row['name'] or ''),
         'pinned': bool(row['pinned']),
+        # The place of a starred Saved Filter in its list (moved by dragging it), None for the others.
+        'position': row['position'] if 'position' in row.keys() else None,
         'use_count': max(1, int(row['use_count'] or 1)),
         'calculation_count': max(0, int(row['calculation_count'] or 0)),
         'last_used_at': str(row['last_used_at'] or ''),
@@ -983,7 +985,7 @@ def refresh_saved_filter(repository: Repository, filter_id: int, username: str =
 
 
 def list_saved_filters(repository: Repository) -> list[dict[str, Any]]:
-    """Every Saved Filter, pinned first and then the latest used, without their results.
+    """Every Saved Filter, the starred ones first in their place and then the latest used, without their results.
 
     Each one lists its CDRs that have been replaced by newer ones (``newer_cdrs``): a Final CDR of the same
     campaign, or a newer cumulative Weekly or Daily CDR.
@@ -991,12 +993,12 @@ def list_saved_filters(repository: Repository) -> list[dict[str, Any]]:
     _resolve_imported_filters(repository)
     with repository.connection() as connection:
         rows = connection.execute(
-            'SELECT id, selection_key, name, pinned, use_count, calculation_count, last_used_at, cdr_refs_json, result_key, '
+            'SELECT id, selection_key, name, pinned, position, use_count, calculation_count, last_used_at, cdr_refs_json, result_key, '
             'method_version, '
             'source_fingerprint, dataset_ids_json, source_metadata_json, nr_mode, levels_json, baseline_operator, '
             'status, progress, message, NULL AS result_json, last_error, created_by, created_at, started_at, '
             f'updated_at, finished_at FROM {SAVED_FILTERS_TABLE} '
-            'ORDER BY pinned DESC, julianday(last_used_at) DESC, id DESC'
+            'ORDER BY pinned DESC, position IS NULL, position, julianday(last_used_at) DESC, id DESC'
         ).fetchall()
     saved_filters = [_row_to_saved_filter(row, include_snapshot=False) for row in rows]
     replacements = _replaced_cdrs(repository) if saved_filters else {}
@@ -1036,7 +1038,8 @@ def mark_saved_filter_used(repository: Repository, filter_id: int) -> dict[str, 
 
 def update_saved_filter(repository: Repository, filter_id: int, *, name: str | None = None,
                            pinned: bool | None = None) -> dict[str, Any] | None:
-    """Rename a Saved Filter (an empty name shows its filters) or pin it at the top of the list."""
+    """Rename a Saved Filter (an empty name shows its filters) or star it, which keeps it at the top of the list of starred
+    ones (unstarring it takes it out of the list)."""
     updates: dict[str, Any] = {}
     if name is not None:
         text = ' '.join(str(name).split())
@@ -1046,11 +1049,36 @@ def update_saved_filter(repository: Repository, filter_id: int, *, name: str | N
     if pinned is not None:
         updates['pinned'] = 1 if pinned else 0
     if updates:
-        assignments = ', '.join(f'{column} = ?' for column in updates)
         with repository.connection() as connection:
+            if pinned is not None:
+                row = connection.execute(f'SELECT pinned, position FROM {SAVED_FILTERS_TABLE} WHERE id = ?',
+                                         (int(filter_id),)).fetchone()
+                if pinned and row is not None and not (row['pinned'] and row['position'] is not None):
+                    # A newly starred Saved Filter goes first; the others keep their order.
+                    first = connection.execute(
+                        f'SELECT MIN(position) FROM {SAVED_FILTERS_TABLE} WHERE pinned = 1 AND position IS NOT NULL').fetchone()[0]
+                    updates['position'] = (int(first) - 1) if first is not None else 1
+                elif not pinned:
+                    updates['position'] = None
+            assignments = ', '.join(f'{column} = ?' for column in updates)
             connection.execute(f'UPDATE {SAVED_FILTERS_TABLE} SET {assignments} WHERE id = ?',
                                (*updates.values(), int(filter_id)))
     return get_saved_filter(repository, filter_id)
+
+
+def reorder_saved_filters(repository: Repository, filter_ids: list[int]) -> list[int]:
+    """Put the starred Saved Filters in the order given (dragged in their list); starred ones left out follow it in their
+    order. Returns the new order."""
+    with repository.connection() as connection:
+        connection.execute('BEGIN IMMEDIATE')
+        starred = [int(row['id']) for row in connection.execute(
+            f'SELECT id FROM {SAVED_FILTERS_TABLE} WHERE pinned = 1 '
+            'ORDER BY position IS NULL, position, julianday(last_used_at) DESC, id DESC').fetchall()]
+        chosen = [int(filter_id) for filter_id in dict.fromkeys(filter_ids) if int(filter_id) in starred]
+        order = [*chosen, *(filter_id for filter_id in starred if filter_id not in chosen)]
+        connection.executemany(f'UPDATE {SAVED_FILTERS_TABLE} SET position = ? WHERE id = ?',
+                               [(index, filter_id) for index, filter_id in enumerate(order, start=1)])
+    return order
 
 
 def recover_interrupted_saved_filters(repository: Repository) -> list[int]:
@@ -1210,7 +1238,7 @@ def saved_filters_document(repository: Repository) -> dict[str, Any]:
         if not refs:
             continue
         entries.append({
-            'name': saved_filter['name'], 'pinned': saved_filter['pinned'],
+            'name': saved_filter['name'], 'pinned': saved_filter['pinned'], 'position': saved_filter['position'],
             'use_count': saved_filter['use_count'], 'last_used_at': saved_filter['last_used_at'],
             'cdrs': refs, 'nr_mode': saved_filter['nr_mode'], 'levels': saved_filter['levels'],
             'baseline_operator': saved_filter['baseline_operator'],
@@ -1230,7 +1258,16 @@ def import_saved_filters(repository: Repository, document: Any) -> int:
         raise ValueError('The Saved Filters are invalid.')
     added = 0
     now = local_now_iso()
-    for entry in document['saved_filters']:
+    # The starred ones follow those of the workspace, in the order of the document.
+    with repository.connection() as connection:
+        last = connection.execute(f'SELECT MAX(position) FROM {SAVED_FILTERS_TABLE} WHERE pinned = 1').fetchone()[0]
+    next_position = int(last or 0) + 1
+    entries = sorted(enumerate(document['saved_filters']), key=lambda item: (
+        not (isinstance(item[1], dict) and item[1].get('pinned')),
+        item[1].get('position') is None if isinstance(item[1], dict) else True,
+        (item[1].get('position') or 0) if isinstance(item[1], dict) and isinstance(item[1].get('position'), int) else 0,
+        item[0]))
+    for _index, entry in entries:
         if not isinstance(entry, dict):
             raise ValueError('The Saved Filters are invalid.')
         refs = [
@@ -1259,15 +1296,18 @@ def import_saved_filters(repository: Repository, document: Any) -> int:
                 continue
             connection.execute(
                 f"""INSERT INTO {SAVED_FILTERS_TABLE} (
-                    selection_key, name, pinned, use_count, last_used_at, cdr_refs_json, dataset_ids_json,
+                    selection_key, name, pinned, position, use_count, last_used_at, cdr_refs_json, dataset_ids_json,
                     source_metadata_json, nr_mode, levels_json, baseline_operator, status, message, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, '[]', ?, ?, ?, ?, 'saved', 'Imported; calculated when it is opened', ?, ?)""",
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, '[]', ?, ?, ?, ?, 'saved', 'Imported; calculated when it is opened', ?, ?)""",
                 (pending_key, ' '.join(str(entry.get('name') or '').split())[:120], 1 if entry.get('pinned') else 0,
+                 next_position if entry.get('pinned') else None,
                  max(1, int(entry.get('use_count') or 1)), str(entry.get('last_used_at') or now),
                  json.dumps(refs, ensure_ascii=False), json.dumps(snapshot, ensure_ascii=False, separators=(',', ':')),
                  nr_mode, json.dumps(levels, ensure_ascii=False), selection['baseline_operator'], now, now),
             )
         added += 1
+        if entry.get('pinned'):
+            next_position += 1
     _resolve_imported_filters(repository)
     return added
 
@@ -1310,8 +1350,11 @@ def _resolve_imported_filters(repository: Repository) -> None:
             if existing is not None:
                 connection.execute(
                     f"UPDATE {SAVED_FILTERS_TABLE} SET name = CASE WHEN name = '' THEN ? ELSE name END, "
-                    'pinned = MAX(pinned, ?), use_count = MAX(use_count, ?) WHERE id = ?',
-                    (row['name'], row['pinned'], row['use_count'], existing['id']),
+                    'pinned = MAX(pinned, ?), use_count = MAX(use_count, ?), '
+                    # A Saved Filter of the workspace starred by the import takes the place the import gave it.
+                    'position = CASE WHEN pinned = 1 AND position IS NOT NULL THEN position ELSE ? END WHERE id = ?',
+                    (row['name'], row['pinned'], row['use_count'], row['position'] if row['pinned'] else None,
+                     existing['id']),
                 )
                 connection.execute(f'DELETE FROM {SAVED_FILTERS_TABLE} WHERE id = ?', (row['id'],))
                 continue
@@ -1679,7 +1722,13 @@ def complete_saved_filter_points_loss(repository: Repository, filter_id: int) ->
     key = _points_loss_key(repository.db_path, filter_id)
     with _points_loss_guard:
         if key in _points_loss_jobs:
-            _points_loss_jobs[key].update(status='processing', started_at=time.time())
+            _points_loss_jobs[key].update(status='processing', started_at=time.time(), progress=0,
+                                          detail='Reading the rows of the tests')
+
+    def report(progress: float, detail: str) -> None:
+        with _points_loss_guard:
+            if key in _points_loss_jobs:
+                _points_loss_jobs[key].update(progress=max(0.0, min(99.0, float(progress))), detail=detail)
     try:
         saved_filter = get_saved_filter(repository, filter_id, include_internal_snapshot=True)
         if saved_filter is None or not saved_filter.get('configuration'):
@@ -1693,7 +1742,7 @@ def complete_saved_filter_points_loss(repository: Repository, filter_id: int) ->
         except ValueError:
             sources = []
         _complete_points_loss(repository, saved_filter, filter_id, sources, dataset_ids, configuration, context_filters,
-                              _scoring_engine(), saved_filter.get('methodology_groups') or [])
+                              _scoring_engine(), saved_filter.get('methodology_groups') or [], report)
     finally:
         with _points_loss_guard:
             _points_loss_jobs.pop(key, None)
@@ -1706,10 +1755,23 @@ def points_loss_tasks(database_path: Any) -> list[dict[str, Any]]:
         jobs = [(filter_id, dict(job)) for (path, filter_id), job in _points_loss_jobs.items() if path == workspace]
     return [{
         'id': f'saved-filter-map:{filter_id}', 'label': f'Points Lost Map #{filter_id}',
-        'detail': 'Reading the rows of the tests' if job['status'] == 'processing' else 'Waiting for the calculations before it',
-        'status': job['status'], 'progress': None,
+        'detail': (_points_loss_detail(job) if job['status'] == 'processing'
+                   else 'Waiting for the calculations before it'),
+        'status': job['status'], 'progress': job.get('progress') if job['status'] == 'processing' else None,
         'queued_at': job['queued_at'], 'started_at': job['started_at'], 'completed_at': None,
     } for filter_id, job in sorted(jobs)]
+
+
+def _points_loss_detail(job: dict[str, Any]) -> str:
+    """The step of a Points Lost Map being drawn and, once it has advanced enough to tell, about how long it has left."""
+    detail = str(job.get('detail') or 'Reading the rows of the tests')
+    progress = float(job.get('progress') or 0)
+    started = job.get('started_at')
+    if progress < 5 or not started:
+        return detail
+    remaining = (time.time() - float(started)) * (100 - progress) / progress
+    left = 'less than a minute left' if remaining < 60 else f'about {round(remaining / 60)} min left'
+    return f'{detail} · {left}'
 
 
 def is_saved_filter_work(task_callback: Any, task_args: tuple[Any, ...], filter_id: int) -> bool:
@@ -1721,40 +1783,67 @@ def is_saved_filter_work(task_callback: Any, task_args: tuple[Any, ...], filter_
 
 
 def _points_loss_of(repository: Repository, saved_filter: dict[str, Any], sources: list[dict[str, Any]],
-                    configuration: dict[str, Any], context_filters: dict[str, list[str]], engine: Any) -> Any:
-    """The Points Lost Map of a Saved Filter with one methodology, from the rows of its tests."""
+                    configuration: dict[str, Any], context_filters: dict[str, list[str]], engine: Any,
+                    progress: Callable[[float, str], None] = lambda *_args: None) -> Any:
+    """The Points Lost Map of a Saved Filter with one methodology, from the rows of its tests.
+
+    ``progress`` (0-100 and the step) follows the CDRs read (the first 45%) and the groups of tests mapped.
+    """
     for source in sources:
         source['levels'] = list(saved_filter['levels'])
     required_columns = getattr(engine, 'load_input_columns', None) or getattr(engine, 'required_input_columns')
-    frames = _load_source_frames(repository, sources, lambda *_args: None, required_columns, context_filters)
+    total = max(1, len(sources))
+    read = 0
+
+    def cdr_read(*_args: Any) -> None:
+        nonlocal read
+        read += 1
+        progress(read * 45 / total, f'Reading the rows of the tests: CDR {min(read + 1, total)} of {total}'
+                 if read < total else 'Mapping the tests')
+
+    progress(0, f'Reading the rows of the tests: CDR 1 of {total}')
+    frames = _load_source_frames(repository, sources, cdr_read, required_columns, context_filters)
     calculate = engine.calculate_scoring
     options = _engine_kwargs(repository, saved_filter, configuration, calculate)
     if hasattr(engine, 'calculate_points_loss'):
         # Only the map: the scores are already saved.
+        extra = ({'progress_callback': lambda share, step: progress(45 + share * 55, step)}
+                 if 'progress_callback' in inspect.signature(engine.calculate_points_loss).parameters else {})
         return engine.calculate_points_loss(
             frames, saved_filter['levels'], configuration=configuration,
-            operator_mappings=options.get('operator_mappings'), map_areas=options.get('map_areas'))
+            operator_mappings=options.get('operator_mappings'), map_areas=options.get('map_areas'), **extra)
     return calculate(frames, saved_filter['levels'], **options)['points_loss']
 
 
 def _complete_points_loss(repository: Repository, saved_filter: dict[str, Any], filter_id: int, sources: list[dict[str, Any]],
                           dataset_ids: list[int], configuration: dict[str, Any],
                           context_filters: dict[str, list[str]], engine: Any,
-                          groups: list[dict[str, Any]] | None = None) -> None:
+                          groups: list[dict[str, Any]] | None = None,
+                          progress: Callable[[float, str], None] = lambda *_args: None) -> None:
     """Read the rows of the tests and add the Points Lost Map to a result calculated from the Scoring History (By
-    campaign, the map of the campaigns of each methodology with it)."""
+    campaign, the map of the campaigns of each methodology with it, each in its share of ``progress``)."""
     try:
         if groups and len(groups) > 1:
             from src.modules.scoring_methodologies import _merge_points_loss
-            points_loss = _merge_points_loss([
-                _points_loss_of(repository, saved_filter, [dict(source) for source in sources],
-                                validate_scoring_configuration(group['configuration']),
-                                {**context_filters, 'Campaign': list(group['campaigns'])}, engine)
-                for group in groups])
+            maps = []
+            for index, group in enumerate(groups):
+                name = group.get('profile_name') or 'Methodology'
+
+                def group_progress(value: float, step: str, index: int = index, name: str = name) -> None:
+                    progress((index + value / 100) * 97 / len(groups),
+                             f'Methodology {index + 1} of {len(groups)} ({name}): {step}')
+                maps.append(_points_loss_of(repository, saved_filter, [dict(source) for source in sources],
+                                            validate_scoring_configuration(group['configuration']),
+                                            {**context_filters, 'Campaign': list(group['campaigns'])}, engine,
+                                            group_progress))
+            points_loss = _merge_points_loss(maps)
         else:
-            points_loss = _points_loss_of(repository, saved_filter, sources, configuration, context_filters, engine)
+            points_loss = _points_loss_of(repository, saved_filter, sources, configuration, context_filters, engine,
+                                          lambda value, step: progress(value * 0.97, step))
+        progress(97, 'Adding the area boundaries')
         document = {'points_loss': points_loss}
         _attach_mapping_boundaries(repository, dataset_ids, document)
+        progress(99, 'Saving the map')
     except Exception as exc:  # The scores stay; only the map is missing.
         document = {'points_loss': {'version': 2, 'error': str(exc)}}
     with repository.connection() as connection:

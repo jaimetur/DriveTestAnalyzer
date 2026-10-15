@@ -106,6 +106,7 @@ from src.modules.saved_filters import (
     prune_unpinned_saved_filters,
     recover_interrupted_saved_filters,
     refresh_saved_filter,
+    reorder_saved_filters,
     save_saved_filter,
     select_all_complete_cdrs,
     select_latest_companion_cdrs,
@@ -17732,6 +17733,23 @@ def scoring_saved_filters_use(filter_id: int, user: SessionUser = Depends(curren
         raise HTTPException(status_code=404, detail='Saved Filter not found.')
     prune_unpinned_saved_filters(task_repository, filter_id, user.username)
     return {'saved_filter': saved_filter}
+
+
+class SavedFilterOrder(BaseModel):
+    filter_ids: list[int]
+
+
+@app.post('/api/scoring/saved-filters/order')
+def saved_filters_order(payload: SavedFilterOrder, user: SessionUser = Depends(workspace_editor_user)) -> dict[str, Any]:
+    """Keep the starred Saved Filters in the order they were dragged to in their list."""
+    task_repository = scoring_repository(user)
+    previous = [int(item['id']) for item in list_saved_filters(task_repository) if item['pinned']]
+    order = reorder_saved_filters(task_repository, payload.filter_ids)
+    if order != previous:
+        task_repository.try_add_log(user.username, 'reorder_saved_filters', json.dumps({
+            'previous_order': previous, 'order': order,
+        }))
+    return {'order': order}
 
 
 class SavedFilterUpdate(BaseModel):

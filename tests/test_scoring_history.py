@@ -250,3 +250,39 @@ def test_a_city_without_measurements_in_the_filtered_campaigns_is_left_out_of_th
     with pytest.raises(ValueError, match='no matching processed rows'):
         scoring_history.calculate_scoring_from_history(repository, ids, ['Operator'], configuration=configuration,
                                                        context_filters={'Campaign': ['2025-Q1']})
+
+
+def test_the_points_lost_map_job_reports_its_step_and_progress(history_repository, monkeypatch):
+    repository, ids, _configuration = history_repository
+    scoring_history.sync_history(repository)
+    saved, _cached = saved_filters.save_saved_filter(repository, ids, ['Operator', 'Campaign'], 'NSA')
+    submitted = []
+    saved_filters.calculate_saved_filter(repository, saved['id'], submitted.append)
+    reports = []
+    complete = saved_filters._complete_points_loss
+
+    def recorded(*args, **kwargs):
+        report = args[-1]
+        return complete(*args[:-1], lambda value, step: (reports.append((value, step)), report(value, step)))
+    monkeypatch.setattr(saved_filters, '_complete_points_loss', recorded)
+    [job] = submitted
+    job()
+    values = [value for value, _step in reports]
+    steps = [step for _value, step in reports]
+    # The CDRs read, then the groups of tests mapped CDR type by CDR type, then the boundaries and the save.
+    assert steps[0] == f'Reading the rows of the tests: CDR 1 of {len(ids)}'
+    assert any(step.startswith('Mapping the Data tests: group 1 of ') for step in steps)
+    assert steps[-2:] == ['Adding the area boundaries', 'Saving the map']
+    assert values == sorted(values) and values[-1] == 99
+
+
+def test_the_points_lost_map_task_shows_its_progress_and_the_time_left(monkeypatch):
+    key = saved_filters._points_loss_key('/tmp/progress-workspace.db', 7)
+    started = saved_filters.time.time() - 120
+    monkeypatch.setitem(saved_filters._points_loss_jobs, key, {
+        'status': 'processing', 'queued_at': started, 'started_at': started, 'progress': 40.0,
+        'detail': 'Mapping the Voice tests: group 30 of 90'})
+    [task] = saved_filters.points_loss_tasks('/tmp/progress-workspace.db')
+    # 40% in two minutes: about three more.
+    assert task['progress'] == 40.0
+    assert task['detail'] == 'Mapping the Voice tests: group 30 of 90 · about 3 min left'

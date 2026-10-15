@@ -513,11 +513,13 @@ def calculate_scoring(
 def calculate_points_loss(
     frames: dict[str, pd.DataFrame], levels: Iterable[str] = ('Operator',), configuration: dict | None = None,
     operator_mappings: dict[str, str] | None = None, map_areas=None, time_split: str | None = None,
+    progress_callback=None,
 ) -> dict:
     """The Points Lost Map of a scoring, as ``calculate_scoring`` places it, without calculating the scores.
 
     It reads the same rows but skips what only the scores need (the All Environments KPIs and the scoring of each
     KPI), so a result calculated from the Scoring History gets its map in a fraction of the time.
+    ``progress_callback(share, step)`` follows the groups of tests mapped (share from 0 to 1), CDR type by CDR type.
     """
     config = _required_configuration(configuration)
     dimensions = []
@@ -542,10 +544,17 @@ def calculate_points_loss(
     time_split = normalize_time_split(time_split) if campaign_selected else None
     geometry = points_loss.AreaGeometry()
     loss_shares: list[dict] = []
-    for kind, frame, valid in _prepared_frames(frames, dimensions, config, mappings, map_areas, time_split,
-                                               campaign_selected, []):
+    kinds = max(1, len(frames))
+    for kind_index, (kind, frame, valid) in enumerate(_prepared_frames(frames, dimensions, config, mappings, map_areas,
+                                                                        time_split, campaign_selected, [])):
         metrics = _prefiltered_metrics(frame, [m for m in config['metrics'] if m['source_kind'] == kind])
-        for values, group in frame[valid].groupby(group_fields, dropna=False, sort=False):
+        grouped = frame[valid].groupby(group_fields, dropna=False, sort=False)
+        total = max(1, grouped.ngroups)
+        every = max(1, total // 50)
+        for group_index, (values, group) in enumerate(grouped, start=1):
+            if progress_callback and (group_index == 1 or group_index % every == 0):
+                progress_callback((kind_index + group_index / total) / kinds,
+                                  f'Mapping the {str(kind).title()} tests: group {group_index} of {total}')
             metadata = {key: (None if pd.isna(value) else value) for key, value in zip(keys, values)}
             for metric in metrics:
                 try:

@@ -12,10 +12,12 @@
 
 #### 🚀 Enhancements:
 - **CDR Type and CDR Stage columns:** in the CDR tables of Workspace the Input Type column is called **CDR Type**, follows the NR Mode and shows Data, Voice and Speech in a selector of a different colour each that changes a CDR to another type (after a confirmation, reprocessing it from its source file and moving it to the combined table of that type) (Data in orange and Voice in raspberry, apart from the colours of In Combined? and SA), and the Final, Weekly and Daily column (and its upload choice) is called **CDR Stage**, follows the CDR Type and shows Final in teal so it is not confused with SA.
+- **Points Lost Map progress:** the background task card of a Points Lost Map shows a real progress bar, the step it is on (the CDR being read, the CDR type and group of tests being mapped and, by campaign, the methodology) and about how long it has left.
+- **Saved Filters order:** the Saved Filters lists show only the starred Saved Filters, in a fixed order that opening one no longer changes: a newly starred one goes first and dragging a card by the tab on its left in the Saved Filters panel moves it (recorded in App Events and kept in exports and transfers); the opened unstarred one shows in the selected card of the Scoring Results dropdown.
 
 #### 🐛 Bug fixes:
 - **Scoring & GAP Analysis on phones:** the Scoring Methodology pill, the comparison context and Scoring Tables lists and the GAP Analysis tables fit the screen (long options are shortened and wide tables scroll inside their box) instead of running past it.
-- **Saved Filters calculating again:** opening a Saved Filter whose CDRs changed follows its new calculation to the end and shows its result when it completes, instead of staying at 2% (or showing its old result) until another Saved Filter was opened.
+- **Saved Filters calculating again:** opening a Saved Filter whose CDRs were reprocessed follows its new calculation to the end and shows its result when it completes, instead of staying at 2% (or showing its old result) until another Saved Filter was opened, whether the list of Saved Filters arrives before or after its answer. A Saved Filter opened from the Saved Filters panel takes the page to its Scoring Results.
 
 #### 📚 Documentation:
 

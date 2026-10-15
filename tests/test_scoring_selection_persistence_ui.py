@@ -452,3 +452,12 @@ def test_an_opened_saved_filter_queued_again_keeps_its_progress_over_an_earlier_
     assert 'if (isActive(record)) calculatingSavedFilters.set(id, {record, request: ++savedFilterRequests});' in script
     assert 'const request = ++savedFilterRequests;' in script
     assert 'if (calculating.request > request) return {...savedFilter, ...calculating.record};' in script
+    assert 'const anyActive = savedFilters.some(isActive) || Boolean(selectedSavedFilter && isActive(selectedSavedFilter));' in script
+
+
+def test_a_saved_filter_opened_from_the_saved_filters_panel_shows_its_results():
+    script = SCORING_SCRIPT.read_text(encoding='utf-8')
+    assert "const resultsPanel = root.querySelector('.scoring-results-panel');" in script
+    assert "if (resultsPanel && typeof showSectionAtTop === 'function') showSectionAtTop(resultsPanel);" in script
+    assert '    else showResults();' in script
+    assert 'if (!fromDropdown && selectedSavedFilterId === savedFilterIdOf(savedFilter)) showResults();' in script

@@ -118,6 +118,13 @@
   .scoring-results-panel { position: relative; z-index: 2; overflow: visible; }
   .saved-filter-list { display: grid; gap: .55rem; max-height: 32rem; overflow: auto; }
   .saved-filter-row { position: relative; box-sizing: border-box; min-width: 0; }
+  /* The starred Saved Filters of the Saved Filters panel are moved by dragging the tab on the left of their card, with
+     the hand cursor; the card itself keeps the pointer and opens the Saved Filter. */
+  .saved-filters-panel .saved-filter-row.is-reorderable { padding-left: 1.35rem; }
+  .saved-filter-drag-handle { position: absolute; top: .55rem; bottom: .55rem; left: 0; width: 1.35rem; border: 1px solid #a9bccb; border-right: 0; border-radius: 10px 0 0 10px; background: #d7e3ec url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 6 14'%3E%3Cg fill='%233f5466'%3E%3Ccircle cx='1.5' cy='2' r='1'/%3E%3Ccircle cx='4.5' cy='2' r='1'/%3E%3Ccircle cx='1.5' cy='7' r='1'/%3E%3Ccircle cx='4.5' cy='7' r='1'/%3E%3Ccircle cx='1.5' cy='12' r='1'/%3E%3Ccircle cx='4.5' cy='12' r='1'/%3E%3C/g%3E%3C/svg%3E") center / .45rem auto no-repeat; box-sizing: border-box; cursor: grab; touch-action: none; }
+  .saved-filter-drag-handle:hover { background-color: #c4d5e2; border-color: #7f98ab; }
+  .saved-filter-drag-handle:active, .saved-filters-panel .saved-filter-row.is-dragging .saved-filter-drag-handle { cursor: grabbing; }
+  .saved-filters-panel .saved-filter-row.is-dragging { opacity: .45; }
   /* Each Saved Filter: its card, with its actions (CDRs, name, pin and delete) under its text. */
   .saved-filter-row .saved-filter-item { box-sizing: border-box; display: grid; grid-template-columns: minmax(0,1fr); min-width: 0; width: 100%; padding-bottom: 2.7rem; }
   .saved-filter-actions { position: absolute; right: .65rem; bottom: .65rem; left: .8rem; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: .3rem; pointer-events: none; }

@@ -339,6 +339,7 @@ CREATE TABLE IF NOT EXISTS saved_filters (
     selection_key TEXT NOT NULL UNIQUE,
     name TEXT NOT NULL DEFAULT '',
     pinned INTEGER NOT NULL DEFAULT 0,
+    position INTEGER,
     use_count INTEGER NOT NULL DEFAULT 1,
     calculation_count INTEGER NOT NULL DEFAULT 0,
     last_used_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -2091,11 +2092,20 @@ class Repository:
 
     @staticmethod
     def _ensure_saved_filter_columns(conn: sqlite3.Connection) -> None:
-        """Add how many times each Saved Filter has been calculated (once for those with a result)."""
+        """Add how many times each Saved Filter has been calculated (once for those with a result) and the place of the
+        starred ones in their list."""
         columns = {str(row['name']) for row in conn.execute('PRAGMA table_info(saved_filters)').fetchall()}
         if 'calculation_count' not in columns:
             conn.execute('ALTER TABLE saved_filters ADD COLUMN calculation_count INTEGER NOT NULL DEFAULT 0')
             conn.execute("UPDATE saved_filters SET calculation_count = 1 WHERE status = 'completed'")
+        if 'position' not in columns:
+            # The starred Saved Filters keep their place in the list (moved by dragging them): they start in the order
+            # they were shown, the latest used first.
+            conn.execute('ALTER TABLE saved_filters ADD COLUMN position INTEGER')
+            starred = conn.execute(
+                'SELECT id FROM saved_filters WHERE pinned = 1 ORDER BY julianday(last_used_at) DESC, id DESC').fetchall()
+            conn.executemany('UPDATE saved_filters SET position = ? WHERE id = ?',
+                             [(index, int(row['id'])) for index, row in enumerate(starred, start=1)])
 
     @staticmethod
     def _convert_scoring_jobs(conn: sqlite3.Connection) -> None:

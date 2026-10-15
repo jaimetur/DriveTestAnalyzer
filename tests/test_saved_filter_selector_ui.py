@@ -49,9 +49,11 @@ const root = {querySelectorAll: () => [countBadge, historyCountBadge]};
 const savedFilterList = new Element('div'), historyList = new Element('div'), selectedSavedFilterCard = new Element('span');
 const savedFilterLists = [savedFilterList, historyList];
 const savedFilters = [
-  {id: '20', status: 'completed', label: 'Latest savedFilter', baseline_operator: 'EE', scoring_profile_name: 'Profile A'},
-  {id: '15', status: 'processing', label: 'Earlier savedFilter', baseline_operator: 'O2', scoring_profile_name: 'Profile B'},
+  {id: '20', status: 'completed', label: 'Latest savedFilter', baseline_operator: 'EE', scoring_profile_name: 'Profile A', pinned: true, position: 1},
+  {id: '15', status: 'processing', label: 'Earlier savedFilter', baseline_operator: 'O2', scoring_profile_name: 'Profile B', pinned: true, position: 2},
 ];
+let draggedSavedFilterRow = null, savedFiltersRenderPending = false;
+const savedFilterPanelList = null, canReorderSavedFilters = false;
 let selectedSavedFilterId = '20';
 const sortedSavedFilters = savedFilters => savedFilters;
 const savedFilterIdOf = savedFilter => savedFilter.id;
@@ -82,9 +84,14 @@ const historyCounts = [countBadge.textContent, historyCountBadge.textContent];
 selectedSavedFilterId = '15';
 renderSavedFilters();
 const earlier = selectedSavedFilterCard.textContent;
+// Unstarred, the opened Saved Filter leaves the lists but stays in the selected card.
+savedFilters[1].pinned = false;
+renderSavedFilters();
+const unstarred = {listed: savedFilterList.children.map(row => row.children[0].dataset.savedFilterId),
+  card: selectedSavedFilterCard.textContent, counts: [countBadge.textContent, historyCountBadge.textContent]};
 savedFilters.length = 0;
 renderSavedFilters();
-process.stdout.write(JSON.stringify({latest, earlier, cards, separateCopy, historyMatches, historyCounts, emptyHistory: historyList.textContent, empty: selectedSavedFilterCard.textContent}));
+process.stdout.write(JSON.stringify({latest, earlier, cards, separateCopy, historyMatches, historyCounts, unstarred, emptyHistory: historyList.textContent, empty: selectedSavedFilterCard.textContent}));
 '''
     result = _run_node_json(program, {})
     assert 'Latest savedFilter' in result['latest'] and 'Profile A' in result['latest']
@@ -98,7 +105,9 @@ process.stdout.write(JSON.stringify({latest, earlier, cards, separateCopy, histo
     ]
     assert result['separateCopy'] and result['historyMatches']
     assert result['historyCounts'] == ['2 filters', '2 filters']
-    assert 'No scoring has been calculated in this workspace yet' in result['emptyHistory']
+    assert result['unstarred']['listed'] == ['20'] and 'Earlier savedFilter' in result['unstarred']['card']
+    assert result['unstarred']['counts'] == ['1 filter', '1 filter']
+    assert 'No starred Saved Filters yet' in result['emptyHistory']
     assert result['empty'] == 'No Saved Filters yet'
 
 

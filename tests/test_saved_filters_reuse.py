@@ -124,3 +124,62 @@ def test_saved_filters_travel_with_the_scoring_configuration_backup(client, tmp_
     # Packages created before Saved Filters existed leave the current ones.
     app_module._restore_workspace_saved_filters(workspace, None)
     assert len(saved_filters.list_saved_filters(repository)) == 1
+
+
+def _starred_order(repository: Repository) -> list[int]:
+    return [int(item['id']) for item in saved_filters.list_saved_filters(repository) if item['pinned']]
+
+
+def test_starred_saved_filters_keep_their_place_and_are_moved_by_dragging(tmp_path):
+    repository = _workspace(tmp_path, 'source')
+    ids = _three_cdrs(repository, tmp_path / 'source')
+    created = [saved_filters.save_saved_filter(repository, ids, levels, 'NSA')[0]['id']
+               for levels in (['Operator'], ['Operator', 'Region'], ['Operator', 'Campaign'])]
+    first, second, third = created
+    # A newly starred Saved Filter goes first; opening one does not move it.
+    for filter_id in created:
+        saved_filters.update_saved_filter(repository, filter_id, pinned=True)
+    assert _starred_order(repository) == [third, second, first]
+    saved_filters.mark_saved_filter_used(repository, first)
+    assert _starred_order(repository) == [third, second, first]
+    # Dragged: the order given, the starred ones left out after it.
+    assert saved_filters.reorder_saved_filters(repository, [first, third]) == [first, third, second]
+    assert _starred_order(repository) == [first, third, second]
+    # Unstarred, it leaves the order of the starred ones.
+    saved_filters.update_saved_filter(repository, third, pinned=False)
+    assert _starred_order(repository) == [first, second]
+    assert saved_filters.get_saved_filter(repository, third)['position'] is None
+
+    # The order travels with the Saved Filters.
+    document = saved_filters.saved_filters_document(repository)
+    target = _workspace(tmp_path, 'target')
+    assert saved_filters.import_saved_filters(target, document) == 3
+    imported = [item for item in saved_filters.list_saved_filters(target) if item['pinned']]
+    assert [item['levels'] for item in imported] == [['Operator'], ['Operator', 'Region']]
+
+
+def test_the_starred_saved_filters_keep_the_order_they_had_before_their_place_was_stored(tmp_path):
+    repository = _workspace(tmp_path, 'source')
+    ids = _three_cdrs(repository, tmp_path / 'source')
+    older = saved_filters.save_saved_filter(repository, ids, ['Operator'], 'NSA')[0]['id']
+    newer = saved_filters.save_saved_filter(repository, ids, ['Operator', 'Region'], 'NSA')[0]['id']
+    with repository.connection() as connection:
+        connection.execute("UPDATE saved_filters SET pinned = 1, last_used_at = '2026-01-01T00:00:00+00:00' WHERE id = ?", (older,))
+        connection.execute("UPDATE saved_filters SET pinned = 1, last_used_at = '2026-02-01T00:00:00+00:00' WHERE id = ?", (newer,))
+        connection.execute('ALTER TABLE saved_filters DROP COLUMN position')
+    repository.initialize()
+    assert _starred_order(repository) == [newer, older]
+    assert [saved_filters.get_saved_filter(repository, filter_id)['position'] for filter_id in (newer, older)] == [1, 2]
+
+
+def test_dragging_saved_filters_is_recorded_in_app_events(client, monkeypatch):
+    client.post('/login', data={'username': 'super', 'password': 'super123'}, follow_redirects=False)
+    repository = app_module.repository
+    monkeypatch.setattr(saved_filters, 'reorder_saved_filters', lambda _repository, ids: [int(value) for value in ids])
+    monkeypatch.setattr(app_module, 'list_saved_filters',
+                        lambda _repository: [{'id': 4, 'pinned': True}, {'id': 9, 'pinned': True}])
+    monkeypatch.setattr(app_module, 'reorder_saved_filters', lambda _repository, ids: [int(value) for value in ids])
+    response = client.post('/api/scoring/saved-filters/order', json={'filter_ids': [9, 4]})
+    assert response.status_code == 200 and response.json() == {'order': [9, 4]}
+    [event] = [row for row in repository.list_logs(limit=20) if row['action'] == 'reorder_saved_filters']
+    assert '"previous_order": [4, 9]' in event['details'] and '"order": [9, 4]' in event['details']

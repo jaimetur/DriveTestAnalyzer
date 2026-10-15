@@ -273,6 +273,10 @@
   const areaFilterLock = root.querySelector('[data-scoring-area-filter-lock]');
   const message = root.querySelector('[data-scoring-message]');
   const savedFilterLists = [...root.querySelectorAll('[data-saved-filter-list]')];
+  const savedFilterPanelList = savedFilterLists.find(list => list.closest('.saved-filters-panel')) || null;
+  const canReorderSavedFilters = document.body.dataset.authenticatedRole !== 'user-viewer';
+  let draggedSavedFilterRow = null;
+  let savedFiltersRenderPending = false;
   const savedFilterList = savedFilterLists[0];
   const savedFilterSelector = root.querySelector('[data-saved-filter-selector]');
   const selectedSavedFilterCard = root.querySelector('[data-selected-saved-filter-card]');
@@ -1256,12 +1260,17 @@
   }
 
   // The pinned Saved Filters first, then the latest used.
+  // The starred Saved Filters in their place (opening one does not move it; they are moved by dragging them), then the
+  // others, the latest used first.
   function sortedSavedFilters(records) {
+    const place = record => (record.pinned && Number.isFinite(Number(record.position)) && record.position !== null
+      ? Number(record.position) : Infinity);
     return [...records].sort((left, right) => {
       const leftDate = new Date(valueOf(left, ['last_used_at', 'created_at'], 0)).getTime() || 0;
       const rightDate = new Date(valueOf(right, ['last_used_at', 'created_at'], 0)).getTime() || 0;
-      return Number(Boolean(right.pinned)) - Number(Boolean(left.pinned)) || rightDate - leftDate
-        || Number(right.id || 0) - Number(left.id || 0);
+      return Number(Boolean(right.pinned)) - Number(Boolean(left.pinned))
+        || (place(left) === place(right) ? 0 : place(left) < place(right) ? -1 : 1)
+        || rightDate - leftDate || Number(right.id || 0) - Number(left.id || 0);
     });
   }
 
@@ -1269,6 +1278,78 @@
     for (const list of savedFilterLists.slice(1)) {
       list.replaceChildren(...Array.from(savedFilterList.children, row => row.cloneNode(true)));
     }
+    // In the Saved Filters panel the starred Saved Filters are moved by dragging the tab on the side of their card.
+    if (savedFilterPanelList && canReorderSavedFilters) {
+      for (const row of savedFilterPanelList.querySelectorAll('.saved-filter-row')) {
+        const handle = document.createElement('span');
+        handle.className = 'saved-filter-drag-handle';
+        handle.dataset.savedFilterDragHandle = '';
+        handle.title = 'Drag to move this Saved Filter in the list';
+        handle.setAttribute('aria-hidden', 'true');
+        row.classList.add('is-reorderable');
+        row.prepend(handle);
+      }
+    }
+  }
+
+  // Dragging a starred Saved Filter in the Saved Filters panel moves it in the list; its place is saved for every user of
+  // the workspace.
+  async function saveSavedFilterOrder() {
+    const order = [...savedFilterPanelList.querySelectorAll('.saved-filter-row')].map(row => row.dataset.savedFilterRow);
+    const previous = sortedSavedFilters(savedFilters).filter(savedFilter => savedFilter.pinned).map(savedFilterIdOf);
+    if (order.join() === previous.join()) return;
+    order.forEach((id, index) => {
+      const record = savedFilters.find(savedFilter => savedFilterIdOf(savedFilter) === id);
+      if (record) record.position = index + 1;
+    });
+    renderSavedFilters();
+    try {
+      await requestJson(`${savedFiltersUrl}/order`, {method: 'POST', body: JSON.stringify({filter_ids: order.map(Number)})});
+    } catch (error) {
+      setMessage(error.message || 'The order of the Saved Filters could not be saved.', 'error');
+      refreshSavedFilters();
+    }
+  }
+  if (savedFilterPanelList && canReorderSavedFilters) {
+    // Only the tab makes its card draggable, so the rest of the card is clicked to open the Saved Filter.
+    savedFilterPanelList.addEventListener('pointerdown', event => {
+      const handle = event.target instanceof Element ? event.target.closest('[data-saved-filter-drag-handle]') : null;
+      if (handle) handle.closest('.saved-filter-row').draggable = true;
+    });
+    savedFilterPanelList.addEventListener('pointerup', () => {
+      if (draggedSavedFilterRow) return;
+      for (const row of savedFilterPanelList.querySelectorAll('.saved-filter-row[draggable="true"]')) row.draggable = false;
+    });
+    savedFilterPanelList.addEventListener('dragstart', event => {
+      const row = event.target instanceof Element ? event.target.closest('.saved-filter-row[draggable="true"]') : null;
+      if (!row) return;
+      draggedSavedFilterRow = row;
+      row.classList.add('is-dragging');
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', row.dataset.savedFilterRow || '');
+    });
+    savedFilterPanelList.addEventListener('dragover', event => {
+      if (!draggedSavedFilterRow) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'move';
+      const row = event.target instanceof Element ? event.target.closest('.saved-filter-row') : null;
+      if (!row || row === draggedSavedFilterRow) return;
+      const box = row.getBoundingClientRect();
+      row.parentElement.insertBefore(draggedSavedFilterRow, event.clientY > box.top + box.height / 2 ? row.nextSibling : row);
+    });
+    savedFilterPanelList.addEventListener('drop', event => {
+      if (draggedSavedFilterRow) event.preventDefault();
+    });
+    savedFilterPanelList.addEventListener('dragend', () => {
+      if (!draggedSavedFilterRow) return;
+      draggedSavedFilterRow.classList.remove('is-dragging');
+      draggedSavedFilterRow.draggable = false;
+      draggedSavedFilterRow = null;
+      const pending = savedFiltersRenderPending;
+      savedFiltersRenderPending = false;
+      saveSavedFilterOrder();
+      if (pending) renderSavedFilters();
+    });
   }
 
   // The Saved Filters panel shows ten Saved Filters before it scrolls, and is only as tall as fewer ones.
@@ -1302,19 +1383,25 @@
   }
 
   function renderSavedFilters() {
+    // A list being dragged is drawn again once it is dropped.
+    if (draggedSavedFilterRow) {
+      savedFiltersRenderPending = true;
+      return;
+    }
     const ordered = sortedSavedFilters(savedFilters);
+    // The lists hold the starred Saved Filters only; the one opened without a star shows in the selected card, where it
+    // can be starred.
+    const starred = ordered.filter(savedFilter => savedFilter.pinned);
     for (const countBadge of root.querySelectorAll('[data-saved-filter-count]')) {
-      countBadge.textContent = `${ordered.length} filter${ordered.length === 1 ? '' : 's'}`;
+      countBadge.textContent = `${starred.length} filter${starred.length === 1 ? '' : 's'}`;
     }
     savedFilterList.replaceChildren();
     selectedSavedFilterCard.textContent = ordered.length ? 'Select a Saved Filter' : 'No Saved Filters yet';
-    if (!ordered.length) {
+    if (!starred.length) {
       const empty = document.createElement('div');
       empty.className = 'scoring-empty';
-      empty.textContent = 'No scoring has been calculated in this workspace yet: the filters of each calculation are kept here.';
+      empty.textContent = 'No starred Saved Filters yet: star (☆) a scoring to keep its filters here.';
       savedFilterList.append(empty);
-      syncSavedFilterLists();
-      return;
     }
     for (const savedFilter of ordered) {
       const id = savedFilterIdOf(savedFilter);
@@ -1510,8 +1597,8 @@
       pin.className = 'saved-filter-pin';
       pin.dataset.savedFilterPin = id;
       pin.textContent = savedFilter.pinned ? '★' : '☆';
-      pin.title = savedFilter.pinned ? 'Unstar this Saved Filter: it goes when another one is calculated or opened'
-        : 'Star this Saved Filter to keep it (only starred ones are kept), at the top of the list';
+      pin.title = savedFilter.pinned ? 'Unstar this Saved Filter: it leaves the list and goes when another one is calculated or opened'
+        : 'Star this Saved Filter to keep it in the list of Saved Filters (first; drag it to move it)';
       pin.setAttribute('aria-label', `${savedFilter.pinned ? 'Unpin' : 'Pin'} Saved Filter ${id}`);
       pin.setAttribute('aria-pressed', String(Boolean(savedFilter.pinned)));
       // The identifier of the Saved Filter (as App Events name it), before its buttons.
@@ -1536,7 +1623,8 @@
       remove.disabled = deletingSavedFilterIds.has(id);
       actions.append(cdrButton, idBadge, rename, pin, remove);
       row.append(button, actions);
-      savedFilterList.append(row);
+      row.dataset.savedFilterRow = id;
+      if (savedFilter.pinned) savedFilterList.append(row);
       if (id === selectedSavedFilterId) {
         // The selected card of the Scoring Results dropdown, with its CDRs, name and pin buttons (deleting is done in
         // the lists).
@@ -6854,7 +6942,9 @@
       }
       calculationMatchRefresh = true;
       updateSelection();
-      const anyActive = savedFilters.some(isActive);
+      // The opened Saved Filter counts with its latest answer too: a list read before it was queued again must not stop
+      // following its calculation.
+      const anyActive = savedFilters.some(isActive) || Boolean(selectedSavedFilter && isActive(selectedSavedFilter));
       if (anyActive && !timer) timer = window.setInterval(refreshSavedFilters, 3500);
       if (!anyActive && timer) { window.clearInterval(timer); timer = null; }
     } catch (error) {
@@ -7171,12 +7261,18 @@
       .catch(() => { /* The count is not essential to open it. */ });
     const fromDropdown = savedFilterSelector.contains(button);
     savedFilterSelector.open = false;
+    // A Saved Filter opened from the Saved Filters panel takes the page to its results at once, and again once they are
+    // drawn (they change the height of the page).
+    const showResults = () => {
+      const resultsPanel = root.querySelector('.scoring-results-panel');
+      if (resultsPanel && typeof showSectionAtTop === 'function') showSectionAtTop(resultsPanel);
+      else resultsPanel?.scrollIntoView({block: 'start'});
+    };
     if (fromDropdown) savedFilterSelector.querySelector('summary').focus();
+    else showResults();
     persistScoringViewState();
     await loadSavedFilter(savedFilter, true);
-    if (!fromDropdown && selectedSavedFilterId === savedFilterIdOf(savedFilter)) {
-      root.querySelector('.scoring-results-panel')?.scrollIntoView({behavior: 'smooth', block: 'start'});
-    }
+    if (!fromDropdown && selectedSavedFilterId === savedFilterIdOf(savedFilter)) showResults();
   });
   root.addEventListener('click', event => {
     // In the selected card of the dropdown, the buttons do not open it.
