@@ -10546,7 +10546,15 @@ if (queueNode) {
     const match = (row.querySelector('[data-dataset-campaign-input]')?.value || '').trim().toUpperCase().match(/^(\d{4})-Q([1-4])/);
     return match ? `${match[1]}-Q${match[2]}` : '';
   };
+  // The badge beside the icon of a CDR card counts the campaigns of its CDRs.
+  const syncCampaignCount = (body) => {
+    const badge = body.closest('[data-dataset-card]')?.querySelector('[data-campaign-count]');
+    if (!badge) return;
+    const count = new Set([...body.querySelectorAll('tr[data-dataset-id]')].map(campaignQuarter).filter(Boolean)).size;
+    badge.textContent = `${count} campaign${count === 1 ? '' : 's'}`;
+  };
   const syncCampaignGroupVisibility = (body) => {
+    syncCampaignCount(body);
     body.querySelectorAll('[data-campaign-group-row]').forEach((header) => {
       let visible = 0;
       let sizeBytes = 0;

@@ -106,7 +106,7 @@ Every CDR shows its **Campaign** right after its name in the Final, Weekly and D
 
 A name without a quarter or a year leaves the Campaign blank. Write any campaign in the field, also one that no CDR has yet (any spelling with a year and a quarter, such as `2026 q3`, is saved as `2026-Q3`), or clear it; the field suggests the campaigns of the other CDRs, the change is saved without reprocessing the CDR, is recorded in App Events and travels with the datasets in packages, transfers and backups. Each campaign is shown in its own colour (the campaigns in order take the colours in turn, so consecutive campaigns never share one).
 
-The Final, Weekly and Daily CDR tables are grouped by campaign, the newest first and the CDRs without a campaign last under **No campaign**, each group with its number of CDRs and the MB of their source files (as the Size column); a CDR whose campaign changes moves to its group at once. They open sorted by Campaign, then NR Mode and then CDR Type; any column header sorts the CDRs within each group instead.
+The Final, Weekly and Daily CDR cards show beside their icon how many campaigns their CDRs have, and their tables are grouped by campaign, the newest first and the CDRs without a campaign last under **No campaign**, each group with its number of CDRs and the MB of their source files (as the Size column); a CDR whose campaign changes moves to its group at once. They open sorted by Campaign, then NR Mode and then CDR Type; any column header sorts the CDRs within each group instead.
 
 ### CDR Stage: Final, Weekly and Daily
 

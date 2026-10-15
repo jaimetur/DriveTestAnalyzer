@@ -70,6 +70,7 @@ def test_workspace_shows_and_changes_the_campaign_of_each_cdr(client, tmp_path):
     assert 'value="2026-Q2"' in final_card and 'data-dataset-campaign-input' in final_card
     assert '<option value="voice" selected>CDR-Voice</option>' in final_card and '<option value="data" selected>CDR-Data</option>' in final_card
     assert '<option value="2026-Q2"></option>' in page
+    assert 'data-campaign-count title="Campaigns of these CDRs">1 campaign</span>' in final_card
     # The rows are grouped by campaign and sorted by Campaign, NR Mode and CDR Type in the page.
     script = (Path(__file__).parents[1] / 'src/web_interface/static/js/app.js').read_text(encoding='utf-8')
     assert "header.dataset.campaignGroupRow = key;" in script and "size.dataset.campaignGroupSize = '';" in script and "label.textContent = key || 'No campaign';" in script

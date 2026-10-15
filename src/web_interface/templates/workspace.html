@@ -461,7 +461,7 @@
       <datalist id="cdr-campaign-options">{% for campaign in datasets | selectattr('dataset_kind', 'in', cdr_kinds) | map(attribute='campaign') | select | unique | sort %}<option value="{{ campaign }}"></option>{% endfor %}</datalist>
       <section class="dataset-card dataset-card-cdr dataset-card-final" data-dataset-card="cdr-final">
         <header class="dataset-card-head">
-          <div><p class="eyebrow">CDRs</p><h3><span class="dataset-card-icon dataset-card-icon-final" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="m9 14 2 2 4-4"/></svg></span>Final CDRs <span class="dataset-card-count">{{ final_cdrs | length }}</span></h3></div>
+          <div><p class="eyebrow">CDRs</p><h3><span class="dataset-card-icon dataset-card-icon-final" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="m9 14 2 2 4-4"/></svg></span>{% set campaign_count = final_cdrs | map(attribute='campaign') | select | unique | list | length %}<span class="dataset-card-campaigns" data-campaign-count title="Campaigns of these CDRs">{{ campaign_count }} campaign{{ '' if campaign_count == 1 else 's' }}</span>Final CDRs <span class="dataset-card-count">{{ final_cdrs | length }}</span></h3></div>
           <p class="form-note">The CDRs delivered after each campaign. They replace the Weekly and Daily CDRs of their campaigns in the combined tables.</p>
         </header>
         <div class="table-wrap queue-table-wrap">
@@ -493,7 +493,7 @@
       </section>
       <details class="dataset-card dataset-card-cdr dataset-card-weekly" data-dataset-card="cdr-weekly" data-dataset-card-optional{% if weekly_cdrs %} open{% else %} hidden{% endif %}>
         <summary class="dataset-card-head">
-          <div><p class="eyebrow">CDRs</p><h3><span class="dataset-card-icon dataset-card-icon-weekly" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M8 3v4M16 3v4M3.5 10h17"/><path d="M7 15h10"/></svg></span>Weekly CDRs <span class="dataset-card-count">{{ weekly_cdrs | length }}</span></h3></div>
+          <div><p class="eyebrow">CDRs</p><h3><span class="dataset-card-icon dataset-card-icon-weekly" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M8 3v4M16 3v4M3.5 10h17"/><path d="M7 15h10"/></svg></span>{% set campaign_count = weekly_cdrs | map(attribute='campaign') | select | unique | list | length %}<span class="dataset-card-campaigns" data-campaign-count title="Campaigns of these CDRs">{{ campaign_count }} campaign{{ '' if campaign_count == 1 else 's' }}</span>Weekly CDRs <span class="dataset-card-count">{{ weekly_cdrs | length }}</span></h3></div>
           <p class="form-note">The incremental or cumulative CDRs received every week while a campaign runs. The combined tables include them until the Final CDR of their campaign arrives; a cumulative Weekly CDR replaces the previous Weekly and Daily CDRs it contains in the combined tables.</p>
         </summary>
         <div class="table-wrap queue-table-wrap">
@@ -525,7 +525,7 @@
       </details>
       <details class="dataset-card dataset-card-cdr dataset-card-daily" data-dataset-card="cdr-daily" data-dataset-card-optional{% if daily_cdrs %} open{% else %} hidden{% endif %}>
         <summary class="dataset-card-head">
-          <div><p class="eyebrow">CDRs</p><h3><span class="dataset-card-icon dataset-card-icon-daily" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M8 3v4M16 3v4M3.5 10h17"/><path d="M8 14h2M14 14h2M8 17.5h2"/></svg></span>Daily CDRs <span class="dataset-card-count">{{ daily_cdrs | length }}</span></h3></div>
+          <div><p class="eyebrow">CDRs</p><h3><span class="dataset-card-icon dataset-card-icon-daily" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M8 3v4M16 3v4M3.5 10h17"/><path d="M8 14h2M14 14h2M8 17.5h2"/></svg></span>{% set campaign_count = daily_cdrs | map(attribute='campaign') | select | unique | list | length %}<span class="dataset-card-campaigns" data-campaign-count title="Campaigns of these CDRs">{{ campaign_count }} campaign{{ '' if campaign_count == 1 else 's' }}</span>Daily CDRs <span class="dataset-card-count">{{ daily_cdrs | length }}</span></h3></div>
           <p class="form-note">The incremental or cumulative CDRs received while a campaign runs. The combined tables include them until the Final CDR of their campaign arrives; a cumulative Daily CDR replaces the previous ones in the combined tables.</p>
         </summary>
         <div class="table-wrap queue-table-wrap">
