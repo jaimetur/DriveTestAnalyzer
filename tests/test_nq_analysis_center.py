@@ -13,6 +13,7 @@ from openpyxl import Workbook, load_workbook
 
 import src.DriveTestAnalyzer as core
 from src.modules import non_qualified_calls as nq
+from src.modules import non_qualified_calls_visuals as visuals
 from src.modules import nq_analyses_rules, nq_catalog, nq_rca
 from tests.test_non_qualified_calls import add_cdr, enable_module, login, query
 
@@ -274,6 +275,19 @@ def test_lifecycle_and_rca_insights_compare_the_three_sources(client, tmp_path):
     assert next(item['count'] for item in phases['analysis_status']['items'] if item['value'] == 'Ongoing') == 1
     assert lifecycle['modes'] == {'auto': 3, 'manual': 0}
     assert any(move['to'] == 'Under Analysis' for move in lifecycle['moves'])
+    # A field whose values have no colour takes the palette, one colour per value.
+    proposals = [item['color'] for item in phases['implementation_proposal']['items']]
+    assert all(proposals) and len(set(proposals)) == len(proposals)
+    assert [item['color'] for item in phases['analysis_status']['items']] == [
+        option['color'] for field in nq.list_fields(core.repository) if field['key'] == 'analysis_status' for option in field['options']]
+    assert len(set(visuals.series_colours(45))) == 45
+    # In the documents a field with many values has a slide of its own after the others.
+    proposal = phases['implementation_proposal']
+    many = [{'value': f'Proposal {index}', 'count': index, 'color': colour}
+            for index, colour in enumerate(visuals.series_colours(visuals.WIDE_PHASE_VALUES + 1))]
+    wide = {**lifecycle, 'phases': [*lifecycle['phases'], {**proposal, 'label': 'Implementation Proposals', 'items': many}]}
+    assert [subtitle for subtitle, _image in visuals._phases_panels(lifecycle, {})] == ['Phases']
+    assert [subtitle for subtitle, _image in visuals._phases_panels(wide, {})] == ['Phases', 'Implementation Proposals']
     # Both panels are slides of the PowerPoint export.
     document = client.post('/api/non-qualified-calls/export/powerpoint', json={'filters': {}})
     assert document.status_code == 200
@@ -1372,6 +1386,21 @@ def test_workspaces_before_name_the_rca_fields_after_their_source(client, tmp_pa
     assert labels['auto_rca_subcategory_b'] == 'Ericsson RCA Subcategory B'
     assert labels['rca_initial_category'] == 'Ericsson RCA Initial Category'
     assert labels['rca_evidence'] == 'My evidence'
+
+
+def test_workspaces_before_name_the_implementation_proposals_in_plural(client, tmp_path):
+    setup_calls(client, tmp_path)
+    repository = core.repository
+    label = lambda: next(field['label'] for field in nq.list_fields(repository) if field['key'] == 'implementation_proposal')
+    assert label() == 'Implementation Proposals'
+    for former, expected in (('Implementation Proposal', 'Implementation Proposals'), ('Action Proposal', 'Action Proposal')):
+        fields = nq.list_fields(repository)
+        next(field for field in fields if field['key'] == 'implementation_proposal')['label'] = former
+        nq._store_fields(repository, fields)
+        repository.set_workspace_state(nq.ANALYSIS_CENTER_V22_STATE_KEY, '')
+        nq.ensure_nq_tables(repository)
+        # A name chosen in the workspace stays.
+        assert label() == expected
 
 
 def test_workspaces_before_put_the_findings_after_the_description(client, tmp_path):

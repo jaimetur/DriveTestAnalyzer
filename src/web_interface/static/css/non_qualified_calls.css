@@ -744,6 +744,10 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 .non-qualified-calls .nq-phase-value.is-active { border-color: var(--nq-section); background: var(--nq-softer); }
 .nq-phase-value strong { color: var(--nq-dark); font-variant-numeric: tabular-nums; }
 .nq-phase-value .nq-muted { text-align: right; font-variant-numeric: tabular-nums; }
+/* A phase field with many values takes the row below the others, its values in columns. */
+.nq-phase-cards .nq-phase-card.is-wide { grid-column: 1 / -1; }
+.nq-phase-card.is-wide .nq-phase-values { display: block; columns: 15rem; column-gap: 1.2rem; column-rule: 1px solid var(--nq-border); }
+.nq-phase-card.is-wide .nq-phase-value { width: 100%; break-inside: avoid; }
 
 /* Root Cause Sources panel. */
 .nq-hierarchies { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-top: 14px; }

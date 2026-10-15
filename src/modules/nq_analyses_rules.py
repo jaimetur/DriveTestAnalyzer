@@ -127,7 +127,7 @@ ANALYSES_RULES: tuple[tuple[str, str, str, str], ...] = (
     ('field:implementation_team', 'Invalidated', '', ''),
     ('field:implementation_team', 'RF Shaping (ACP)', 'RF Coverage Planning', ''),
     ('field:implementation_team', 'Under Evaluation', '', ''),
-    # Implementation Proposal
+    # Implementation Proposals
     ('field:implementation_proposal', 'ACP', 'RF Coverage Planning', ''),
     ('field:implementation_proposal', 'MO UE redirected to VoiceMial', 'MO UE redirected to VoiceMail', ''),
     # Notice to VF3

@@ -2429,6 +2429,8 @@
     if (!total) bar.classList.add('is-empty');
     return bar;
   };
+  // A phase field with more values goes in a row of its own (as WIDE_PHASE_VALUES in the reports).
+  const WIDE_PHASE_VALUES = 12;
   const renderLifecycle = (life) => {
     state.life = life;
     const total = life.total;
@@ -2489,18 +2491,23 @@
       items: [{value: 'Identified', count: life.rca.identified, color: '#2e8b57', filter: 'identified'},
         {value: 'Not identified', count: life.rca.not_identified, color: '#e7dde1', filter: 'not_identified'}],
     }] : [];
-    // Every phase card in one row.
-    $('nq-life-phases').style.setProperty('--nq-phase-count', String(rcaPhase.length + life.phases.length || 1));
-    $('nq-life-phases').replaceChildren(...[...rcaPhase, ...life.phases].map((phase) => {
+    // Every phase card in one row; a field with many values goes below, across the panel, its values in columns from
+    // the most frequent.
+    const phases = [...rcaPhase, ...life.phases];
+    const isWide = (phase) => phase.items.length > WIDE_PHASE_VALUES;
+    $('nq-life-phases').style.setProperty('--nq-phase-count', String(phases.filter((phase) => !isWide(phase)).length || 1));
+    $('nq-life-phases').replaceChildren(...[...phases.filter((phase) => !isWide(phase)), ...phases.filter(isWide)].map((phase) => {
       const section = sectionOf(phase.section);
-      const card = node('section', undefined, 'nq-phase-card');
+      const card = node('section', undefined, `nq-phase-card${isWide(phase) ? ' is-wide' : ''}`);
       card.style.setProperty('--nq-section', section.color);
       const head = node('header');
       head.append(sectionTag(phase.section), node('h3', phase.label));
       // Without Empty, the values share the calls that have one.
       const showEmpty = $('nq-life-show-empty').checked;
-      const items = phase.drill ? phase.items.map((item) => ({label: item.value, value: item.filter, count: item.count, color: item.color}))
-        : [...phase.items.map((item) => ({label: item.value, value: item.value, count: item.count, color: item.color})),
+      // The values of a wide card from the most frequent, each in the colour of its value.
+      const values = isWide(phase) ? [...phase.items].sort((one, other) => other.count - one.count) : phase.items;
+      const items = phase.drill ? values.map((item) => ({label: item.value, value: item.filter, count: item.count, color: item.color}))
+        : [...values.map((item) => ({label: item.value, value: item.value, count: item.count, color: item.color})),
           ...(showEmpty ? [{label: 'Empty', value: '', count: phase.empty, color: '#e7dde1'}] : [])];
       const base = phase.drill || showEmpty ? total : items.reduce((sum, item) => sum + item.count, 0);
       if (base !== total) head.append(node('span', `${number(base)} of ${number(total)} calls with a value`, 'nq-muted nq-phase-base'));

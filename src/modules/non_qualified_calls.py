@@ -59,6 +59,7 @@ from src.modules.nq_catalog import (
     normalized_text as _normalized_text,
 )
 from src.modules import nq_analyses, nq_analyses_rules, nq_rca
+from src.modules.non_qualified_calls_visuals import series_colours
 
 NQ_CALLS_TABLE = 'nq_calls'
 NQ_CALL_SOURCES_TABLE = 'nq_call_sources'
@@ -198,6 +199,9 @@ V15_FORMER_LABELS = (
     ('rca_suggested_cause', 'RCA Suggested Cause'),
     ('rca_evidence', 'RCA Evidence'),
 )
+# The Implementation Proposals (in plural, as a call can take one of many), once: (key, former label).
+ANALYSIS_CENTER_V22_STATE_KEY = 'nq_analysis_center_v22'
+V22_FORMER_LABELS = (('implementation_proposal', 'Implementation Proposal'),)
 # Set once the tables and columns of this version exist, so the requests check the schema without writing.
 SCHEMA_STATE_KEY = 'nq_calls_schema'
 SCHEMA_VERSION = '2026-10-13.12'
@@ -537,7 +541,8 @@ def _schema_ready(task_repository: Any) -> bool:
                 ANALYSIS_CENTER_V10_STATE_KEY, ANALYSIS_CENTER_V11_STATE_KEY, ANALYSIS_CENTER_V12_STATE_KEY,
                 ANALYSIS_CENTER_V13_STATE_KEY, ANALYSIS_CENTER_V14_STATE_KEY, ANALYSIS_CENTER_V15_STATE_KEY,
                 ANALYSIS_CENTER_V16_STATE_KEY, ANALYSIS_CENTER_V17_STATE_KEY, ANALYSIS_CENTER_V18_STATE_KEY,
-                ANALYSIS_CENTER_V19_STATE_KEY, ANALYSIS_CENTER_V20_STATE_KEY, ANALYSIS_CENTER_V21_STATE_KEY)
+                ANALYSIS_CENTER_V19_STATE_KEY, ANALYSIS_CENTER_V20_STATE_KEY, ANALYSIS_CENTER_V21_STATE_KEY,
+                ANALYSIS_CENTER_V22_STATE_KEY)
         states = {str(row[0]): str(row[1]) for row in connection.execute(
             f"SELECT key, value FROM workspace_state WHERE key IN ({', '.join('?' for _ in keys)})", keys)}
     return states.get(SCHEMA_STATE_KEY) == SCHEMA_VERSION and all(states.get(key) for key in keys[1:])
@@ -646,6 +651,9 @@ def ensure_nq_tables(task_repository: Any) -> None:
             connection.execute(f"UPDATE {NQ_ROOT_CATALOG_TABLE} SET color = ? WHERE kind = 'domain' AND name = ? COLLATE NOCASE "
                                'AND lower(color) = ?', (color, name, former))
         task_repository.set_workspace_state(ANALYSIS_CENTER_V21_STATE_KEY, '1')
+    if not task_repository.get_workspace_state(ANALYSIS_CENTER_V22_STATE_KEY):
+        _rename_default_labels(task_repository, V22_FORMER_LABELS)
+        task_repository.set_workspace_state(ANALYSIS_CENTER_V22_STATE_KEY, '1')
     task_repository.set_workspace_state(SCHEMA_STATE_KEY, SCHEMA_VERSION)
 
 
@@ -1100,10 +1108,16 @@ def _upgrade_analysis_center_v14(task_repository: Any) -> None:
 def _upgrade_analysis_center_v15(task_repository: Any) -> None:
     """Once: the fields of the NetCheck RCA start with NetCheck RCA and those of the Ericsson RCA with Ericsson RCA
     (those renamed by hand keep their name)."""
+    _rename_default_labels(task_repository, V15_FORMER_LABELS)
+    task_repository.set_workspace_state(ANALYSIS_CENTER_V15_STATE_KEY, '1')
+
+
+def _rename_default_labels(task_repository: Any, former_labels: tuple[tuple[str, str], ...]) -> None:
+    """The default fields still named as before take their current name (those renamed by hand keep theirs)."""
     fields = list_fields(task_repository)
     before = {item['key']: dict(item, options=[dict(option) for option in item['options']]) for item in fields}
     defaults = {item['key']: item['label'] for item in nq_catalog.DEFAULT_FIELDS}
-    former = dict(V15_FORMER_LABELS)
+    former = dict(former_labels)
     taken = {field['label'].casefold() for field in fields}
     changed = False
     for field in fields:
@@ -1113,7 +1127,6 @@ def _upgrade_analysis_center_v15(task_repository: Any) -> None:
             changed = True
     if changed:
         _store_fields(task_repository, nq_catalog.normalize_fields(fields, before, CATALOG_CALL_FIELDS))
-    task_repository.set_workspace_state(ANALYSIS_CENTER_V15_STATE_KEY, '1')
 
 
 def _upgrade_analysis_center_v16(task_repository: Any) -> None:
@@ -5755,9 +5768,12 @@ def lifecycle_stats(task_repository: Any, filters: dict[str, Any], username: str
             except (TypeError, ValueError):
                 stored = {}
             values[stored.get(field['key'], '') if field['source'] == 'user' else derived_value(field, row)] += 1
+        # A field whose values have no colour takes the palette, so that its values can be told apart.
+        colours = ([option['color'] for option in field['options']] if any(option['color'] for option in field['options'])
+                   else series_colours(len(field['options'])))
         phases.append({'key': field['key'], 'label': field['label'], 'section': field['section'], 'empty': values.pop('', 0),
-                       'items': [{'value': option['name'], 'count': values.get(option['name'], 0), 'color': option['color']}
-                                 for option in field['options']]})
+                       'items': [{'value': option['name'], 'count': values.get(option['name'], 0), 'color': colour}
+                                 for option, colour in zip(field['options'], colours)]})
     durations: dict[str, list[float]] = {}
     moves: Counter = Counter()
     with task_repository.connection() as connection:

@@ -6,6 +6,7 @@ show the Executive Summary and the Progress View with the look of the web page.
 
 from __future__ import annotations
 
+import colorsys
 import math
 import re
 from dataclasses import dataclass
@@ -29,6 +30,17 @@ PALETTE = ['#b0234f', '#0f6f7d', '#e08a1e', '#6a63c9', '#2e8b57', '#245a96', '#b
 KPI_COLORS = {'total': '#b0234f', 'open': '#d14a68', 'closed': '#2e8b57', 'attended': '#e08a1e', 'team': '#0f6f7d',
               'commented': '#6a63c9'}
 SERVICE_LABELS = {'voice': 'Voice', 'speech': 'Speech', 'data': 'Data'}
+# A phase field with more values goes on a panel of its own, its values in columns.
+WIDE_PHASE_VALUES = 12
+
+
+def series_colours(count: int) -> list[str]:
+    """The palette in order, then hues spread by the golden angle, so that no two values of a long list share a colour."""
+    colours = PALETTE[:count]
+    for index in range(len(PALETTE), count):
+        red, green, blue = colorsys.hls_to_rgb((index * 0.381966) % 1, 0.36 if index % 2 else 0.47, 0.5)
+        colours.append(f'#{round(red * 255):02x}{round(green * 255):02x}{round(blue * 255):02x}')
+    return colours
 
 
 def _px(inches: float) -> int:
@@ -995,59 +1007,93 @@ def _pipeline_panel(lifecycle: dict[str, Any]) -> BytesIO:
     return panel.png()
 
 
-def _phases_panel(lifecycle: dict[str, Any], sections: dict[str, dict[str, Any]]) -> BytesIO | None:
-    """The phase cards of the page in one row: RCA Identification and each list field of the Analysis, Implementation
-    and Planning sections, with the share of each value (of the calls with a value, unless Empty is shown)."""
+def _phase_head(panel: Panel, left: float, width: float, section: dict[str, Any], key: str, title: str, base: int,
+                total: int) -> float:
+    """The card of a phase field with its section tag, its title and how many calls have a value; returns where its bar goes."""
+    colour = section.get('color') or RASPBERRY
+    panel.card(left, 0, width, panel.height, colour)
+    inner = width - 0.24
+    panel.draw.ellipse([_px(left + 0.12), _px(0.2), _px(left + 0.2), _px(0.28)], fill=colour)
+    panel.text(left + 0.25, 0.24, str(section.get('label') or key.title()), 7, bold=True, color=MUTED, width=inner - 0.13,
+               anchor='lm')
+    panel.text(left + 0.12, 0.36, title, 9, bold=True, color=DARK, width=inner)
+    if base == total:
+        return 0.62
+    panel.text(left + 0.12, 0.62, f'{_number(base)} of {_number(total)} with a value', 6.5, bold=True, color=MUTED, width=inner)
+    return 0.8
+
+
+def _phase_bar(panel: Panel, left: float, y: float, width: float, items: list[tuple[str, int, str]], base: int) -> None:
+    x = left
+    for _label, count, colour in items:
+        part = width * count / max(1, base)
+        if part > 0:
+            panel.draw.rectangle([_px(x), _px(y), _px(x + part), _px(y + 0.07)], fill=colour)
+        x += part
+
+
+def _phase_value(panel: Panel, left: float, y: float, width: float, label: str, count: int, colour: str, base: int) -> None:
+    """A value of a phase field: its colour, its name, its calls and its share."""
+    panel.draw.rounded_rectangle([_px(left), _px(y - 0.045), _px(left + 0.09), _px(y + 0.045)], radius=_px(0.02), fill=colour)
+    share = _share(count, base)
+    share_width = panel.draw.textlength(share, font=_font(6.5)) / DPI
+    count_width = panel.draw.textlength(_number(count), font=_font(6.5, True)) / DPI
+    panel.text(left + 0.14, y, label, 6.5, bold=True, color=TEXT, width=width - 0.3 - share_width - count_width - 0.08, anchor='lm')
+    panel.text(left + width - share_width - 0.06, y, _number(count), 6.5, bold=True, color=DARK, anchor='rm')
+    panel.text(left + width, y, share, 6.5, color=MUTED, anchor='rm')
+
+
+def _phases_panels(lifecycle: dict[str, Any], sections: dict[str, dict[str, Any]]) -> list[tuple[str, BytesIO]]:
+    """The phase cards of the page: RCA Identification and each list field of the Analysis, Implementation and Planning
+    sections in one row, with the share of each value (of the calls with a value, unless Empty is shown); a field with more
+    than WIDE_PHASE_VALUES values on a panel of its own, its values in columns from the most frequent."""
     total = int(lifecycle.get('total') or 0)
     cards = []
     if lifecycle.get('rca'):
         cards.append(('rca', 'RCA Identification', [('Identified', lifecycle['rca'].get('identified', 0), '#2e8b57'),
-                                                    ('Not identified', lifecycle['rca'].get('not_identified', 0), '#e7dde1')], total))
+                                                    ('Not identified', lifecycle['rca'].get('not_identified', 0), '#e7dde1')], total,
+                      False))
     for phase in lifecycle.get('phases') or []:
         items = [(item['value'], int(item['count']), item.get('color') or '#d9cfd3') for item in phase.get('items') or []]
+        wide = len(items) > WIDE_PHASE_VALUES
+        if wide:
+            items.sort(key=lambda item: -item[1])
         if phase.get('empty'):
             items.append(('Empty', int(phase['empty']), '#e7dde1'))
         base = total if phase.get('empty') else sum(count for _label, count, _colour in items)
-        cards.append((phase.get('section') or '', phase['label'], items, base))
-    if not cards:
-        return None
-    panel = Panel()
-    gap = 0.1
-    width = (panel.width - gap * (len(cards) - 1)) / len(cards)
-    for index, (section, title, items, base) in enumerate(cards):
-        left = index * (width + gap)
-        colour = (sections.get(section) or {}).get('color') or RASPBERRY
-        panel.card(left, 0, width, panel.height, colour)
-        inner = width - 0.24
-        tag = str((sections.get(section) or {}).get('label') or section.title())
-        panel.draw.ellipse([_px(left + 0.12), _px(0.2), _px(left + 0.2), _px(0.28)], fill=colour)
-        panel.text(left + 0.25, 0.24, tag, 7, bold=True, color=MUTED, width=inner - 0.13, anchor='lm')
-        panel.text(left + 0.12, 0.36, title, 9, bold=True, color=DARK, width=inner)
-        y = 0.62
-        if base != total:
-            panel.text(left + 0.12, y, f'{_number(base)} of {_number(total)} with a value', 6.5, bold=True, color=MUTED, width=inner)
-            y += 0.18
-        x = left + 0.12
-        bar_width = inner
-        for _label, count, item_colour in items:
-            part = bar_width * count / max(1, base)
-            if part > 0:
-                panel.draw.rectangle([_px(x), _px(y), _px(x + part), _px(y + 0.07)], fill=item_colour)
-            x += part
+        cards.append((phase.get('section') or '', phase['label'], items, base, wide))
+    panels = []
+    row = 0.21
+    narrow = [card for card in cards if not card[4]]
+    if narrow:
+        panel = Panel()
+        gap = 0.1
+        width = (panel.width - gap * (len(narrow) - 1)) / len(narrow)
+        for index, (key, title, items, base, _wide) in enumerate(narrow):
+            left = index * (width + gap)
+            y = _phase_head(panel, left, width, sections.get(key) or {}, key, title, base, total)
+            _phase_bar(panel, left + 0.12, y, width - 0.24, items, base)
+            y += 0.24
+            for label, count, colour in items[:max(0, int((panel.height - 0.1 - y) / row))]:
+                _phase_value(panel, left + 0.12, y, width - 0.24, label, count, colour, base)
+                y += row
+        panels.append(('Phases', panel.png()))
+    for key, title, items, base, _wide in (card for card in cards if card[4]):
+        # As many columns of values as fit 2 inches each, more when the panel is not tall enough for them.
+        top = 1.04 if base != total else 0.86
+        fit = int((PANEL_HEIGHT - 0.1 - top) / row)
+        inner = PANEL_WIDTH - 0.24
+        columns = max(int(inner / 2.0), math.ceil(len(items) / fit))
+        rows = math.ceil(len(items) / columns)
+        panel = Panel(height=min(PANEL_HEIGHT, top + rows * row + 0.1))
+        y = _phase_head(panel, 0, panel.width, sections.get(key) or {}, key, title, base, total)
+        _phase_bar(panel, 0.12, y, inner, items, base)
         y += 0.24
-        row = 0.21
-        for label, count, item_colour in items[:max(0, int((panel.height - 0.1 - y) / row))]:
-            panel.draw.rounded_rectangle([_px(left + 0.12), _px(y - 0.045), _px(left + 0.21), _px(y + 0.045)], radius=_px(0.02),
-                                         fill=item_colour)
-            share = _share(count, base)
-            share_width = panel.draw.textlength(share, font=_font(6.5)) / DPI
-            count_width = panel.draw.textlength(_number(count), font=_font(6.5, True)) / DPI
-            panel.text(left + 0.26, y, label, 6.5, bold=True, color=TEXT, width=inner - 0.3 - share_width - count_width - 0.08,
-                       anchor='lm')
-            panel.text(left + width - 0.12 - share_width - 0.06, y, _number(count), 6.5, bold=True, color=DARK, anchor='rm')
-            panel.text(left + width - 0.12, y, share, 6.5, color=MUTED, anchor='rm')
-            y += row
-    return panel.png()
+        column = (inner - 0.3 * (columns - 1)) / columns
+        for index, (label, count, colour) in enumerate(items):
+            _phase_value(panel, 0.12 + (index // rows) * (column + 0.3), y + (index % rows) * row, column, label, count, colour, base)
+        panels.append((title, panel.png()))
+    return panels
 
 
 def lifecycle_title(subtitle: str) -> SlideTitle:
@@ -1061,9 +1107,8 @@ def lifecycle_panels(lifecycle: dict[str, Any], sections: list[dict[str, Any]] |
     if not int(lifecycle.get('total') or 0):
         return []
     panels = [(lifecycle_title('NQ Call Status Pipeline'), _pipeline_panel(lifecycle))]
-    phases = _phases_panel(lifecycle, {str(item.get('key')): item for item in sections or []})
-    if phases is not None:
-        panels.append((lifecycle_title('Phases'), phases))
+    panels += [(lifecycle_title(subtitle), image) for subtitle, image in
+               _phases_panels(lifecycle, {str(item.get('key')): item for item in sections or []})]
     times = [[item['status'], f"{item['avg_days']:.1f}", _number(item['moves'])] for item in lifecycle.get('time_in_status') or []]
     moves = [[item['from'], item['to'], _number(item['count'])] for item in lifecycle.get('moves') or []]
     rows = max(len(times), len(moves), 1)

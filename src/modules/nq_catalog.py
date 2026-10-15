@@ -214,7 +214,7 @@ DEFAULT_FIELDS = (
     _field('implementation_team', 'Implementation Team', 'implementation', 'list',
            options=tuple(_option(name, color) for name, color in DEFAULT_TEAMS),
            description='The team responsible for the implementation (it can differ from the team that analysed the call).'),
-    _field('implementation_proposal', 'Implementation Proposal', 'implementation', 'list', options=tuple(_option(name) for name in (
+    _field('implementation_proposal', 'Implementation Proposals', 'implementation', 'list', options=tuple(_option(name) for name in (
         'New Site', 'NNS', 'Tilt', 'E2E Analysis', 'NR SA Layer Addition', 'NR Digital Tilt', 'RS Power', 'NR Power Boost'))),
     _field('implementation_site', 'Implementation Site', 'implementation', 'text'),
     _field('notice_to_vf3', 'Notice to VF3', 'implementation', 'yes_no'),
