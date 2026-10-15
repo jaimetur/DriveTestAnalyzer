@@ -2574,18 +2574,21 @@ def save_root_causes(task_repository: Any, catalog: Any, require_to_close: bool,
     return list_root_causes(task_repository)
 
 
-# Who analysed each call, as the analysis workbooks name them (also before they had an account).
+# Who analysed and who reviewed each call, as the analysis workbooks name them (also before they had an account).
 ANALYST_FIELD = 'analyst'
+REVIEWER_FIELD = 'reviewer'
 # The accounts every new deployment starts with (repository.py): first in the lists of assignees, apart and tagged.
 DEFAULT_USERS = ('super', 'admin', 'demo')
 
 
-def _analyst_rows(connection: Any) -> list[Any]:
-    """The Analyst of every call of the workspace (its CDR loaded), with its assignee and team."""
+def _analyst_rows(connection: Any, field: str = ANALYST_FIELD) -> list[Any]:
+    """The Analyst (or the Reviewer) of every call of the workspace with its assignee and team, also of the calls whose
+    CDR is not loaded yet (``loaded`` 0: their imported analysis waits for it)."""
     return connection.execute(
-        f"SELECT f.call_key, f.value, COALESCE(t.assignee, '') AS assignee, COALESCE(t.team, '') AS team "
-        f"FROM {NQ_FIELD_VALUES_TABLE} f LEFT JOIN {NQ_CALL_TRACKING_TABLE} t ON t.call_key = f.call_key "
-        f"WHERE f.field_key = ? AND f.value <> '' AND f.call_key IN (SELECT call_key FROM {NQ_CALLS_TABLE})", (ANALYST_FIELD,)).fetchall()
+        f"SELECT f.call_key, f.value, COALESCE(t.assignee, '') AS assignee, COALESCE(t.team, '') AS team, "
+        f"(f.call_key IN (SELECT call_key FROM {NQ_CALLS_TABLE}) OR f.call_key IN (SELECT sample_key FROM {NQ_CALLS_TABLE} "
+        f"WHERE sample_key <> '')) AS loaded FROM {NQ_FIELD_VALUES_TABLE} f "
+        f"LEFT JOIN {NQ_CALL_TRACKING_TABLE} t ON t.call_key = f.call_key WHERE f.field_key = ? AND f.value <> ''", (field,)).fetchall()
 
 
 def _analyst_user(spellings: list[str], users: Any) -> str:
@@ -2604,39 +2607,45 @@ def _analyst_user(spellings: list[str], users: Any) -> str:
 
 
 def analyst_assignments(task_repository: Any, users: Any = ()) -> dict[str, Any]:
-    """The analysts of the calls: each name with the spellings it is written with (the same letters: Raj Kumar is
-    Rajkumar), its calls, those without an assignee and the suggested user (the only user named as the analyst, or
-    the assignee most of its calls have); and the calls whose CDR is not loaded yet, which wait for it."""
-    groups: dict[str, dict[str, Any]] = {}
+    """Who analysed or reviewed the calls (also those whose CDR is not loaded yet): each person with the spellings they
+    are written with (the same letters: Raj Kumar is Rajkumar), their calls as Analyst and as Reviewer, their analysed
+    calls without an assignee and the suggested user (the only user named as them, or the assignee most of their
+    analysed calls have)."""
     with task_repository.connection() as connection:
-        rows = _analyst_rows(connection)
-        waiting = int(connection.execute(
-            f"SELECT COUNT(*) FROM {NQ_FIELD_VALUES_TABLE} WHERE field_key = ? AND value <> '' "
-            f"AND call_key NOT IN (SELECT call_key FROM {NQ_CALLS_TABLE})", (ANALYST_FIELD,)).fetchone()[0])
-    for row in rows:
+        rows = [(role, row) for role, field in (('analyst', ANALYST_FIELD), ('reviewer', REVIEWER_FIELD))
+                for row in _analyst_rows(connection, field)]
+    groups: dict[str, dict[str, Any]] = {}
+    for role, row in rows:
         key = nq_analyses.identity(row['value'])
-        group = groups.setdefault(key, {'spellings': Counter(), 'calls': 0, 'unassigned': 0, 'assignees': Counter()})
+        group = groups.setdefault(key, {'spellings': Counter(), 'analyst': 0, 'reviewer': 0, 'unassigned': 0, 'assignees': Counter()})
         group['spellings'][str(row['value'])] += 1
-        group['calls'] += 1
-        if row['assignee']:
-            group['assignees'][str(row['assignee'])] += 1
-        else:
-            group['unassigned'] += 1
-    analysts = []
+        group[role] += 1
+        if role == 'analyst':
+            if row['assignee']:
+                group['assignees'][str(row['assignee'])] += 1
+            else:
+                group['unassigned'] += 1
+    people = []
     for key, group in groups.items():
         spellings = [spelling for spelling, _count in group['spellings'].most_common()]
-        analysts.append({'key': key, 'name': spellings[0], 'spellings': spellings, 'calls': group['calls'],
-                         'unassigned': group['unassigned'], 'suggested': _analyst_user(spellings, users)
-                         or (group['assignees'].most_common(1)[0][0] if group['assignees'] else '')})
-    return {'analysts': sorted(analysts, key=lambda item: (-item['calls'], item['name'].casefold())), 'waiting': waiting}
+        people.append({'key': key, 'name': spellings[0], 'spellings': spellings, 'analyst_calls': group['analyst'],
+                       'reviewer_calls': group['reviewer'], 'unassigned': group['unassigned'],
+                       'suggested': _analyst_user(spellings, users)
+                       or (group['assignees'].most_common(1)[0][0] if group['assignees'] else '')})
+    people.sort(key=lambda item: (-item['analyst_calls'] - item['reviewer_calls'], item['name'].casefold()))
+    return {'people': people}
 
 
-def assign_analysts(task_repository: Any, assignments: Any, username: str, users: set[str], *, overwrite: bool = False,
-                    preview: bool = False) -> dict[str, Any]:
-    """Give the calls of each analyst the user chosen for them (``assignments``: analyst key → user name) as assignee:
-    only the calls without an assignee unless ``overwrite``. Every call keeps its team: the user joins the teams with
-    members they are not one of. ``preview`` counts the calls and teams without changing anything."""
+def assign_analysts(task_repository: Any, assignments: Any, username: str, users: set[str], *,
+                    names: dict[str, str] | None = None, overwrite: bool = False, preview: bool = False) -> dict[str, Any]:
+    """Link each analyst or reviewer to the user chosen for them (``assignments``: name key → user name). The calls
+    they analysed get the user as assignee (only those without one unless ``overwrite``; every call keeps its team and
+    the user joins the teams with members they are not one of), and their Analyst and Reviewer take the first and last
+    name of the user (``names``: username → name) when it has them. The calls whose CDR is not loaded yet change as
+    their imported analysis does (``waiting`` counts them). ``preview`` counts the calls and teams without changing
+    anything."""
     lookup = {name.casefold(): name for name in users}
+    names = names or {}
     chosen = {str(key): str(name).strip() for key, name in (assignments.items() if isinstance(assignments, dict) else []) if str(name).strip()}
     unknown = [name for name in chosen.values() if name.casefold() not in lookup]
     if unknown:
@@ -2644,36 +2653,97 @@ def assign_analysts(task_repository: Any, assignments: Any, username: str, users
     options = list_options(task_repository)
     members = team_members(options)
     team_names = {team['name'].casefold(): team['name'] for team in options['teams']}
-    batches: dict[tuple[str, str], list[str]] = {}
+    defined = {field['key'] for field in list_fields(task_repository)}
+    changes: dict[str, dict[str, Any]] = {}
     joins: set[tuple[str, str]] = set()
-    per_analyst: Counter = Counter()
+    per_person: dict[str, set[str]] = {}
+    waiting: set[str] = set()
+    counts: Counter = Counter()
     with task_repository.connection() as connection:
-        rows = _analyst_rows(connection)
-    for row in rows:
+        rows = [(field, row) for field in (ANALYST_FIELD, REVIEWER_FIELD) for row in _analyst_rows(connection, field)]
+    for field, row in rows:
         key = nq_analyses.identity(row['value'])
-        if key not in chosen:
+        if key not in chosen or field not in defined:
             continue
         user = lookup[chosen[key].casefold()]
-        assignee, team = str(row['assignee']), team_names.get(str(row['team']).casefold(), str(row['team']))
-        if assignee.casefold() == user.casefold() or (assignee and not overwrite):
-            continue
-        if team and members.get(team.casefold()) and user.casefold() not in members[team.casefold()]:
-            joins.add((team, user))
-        batches.setdefault((user, team), []).append(str(row['call_key']))
-        per_analyst[key] += 1
-    summary = {'calls': sum(per_analyst.values()), 'analysts': dict(per_analyst),
+        call_key = str(row['call_key'])
+        change: dict[str, Any] = {}
+        if field == ANALYST_FIELD:
+            assignee, team = str(row['assignee']), team_names.get(str(row['team']).casefold(), str(row['team']))
+            if assignee.casefold() != user.casefold() and (not assignee or overwrite):
+                if team and members.get(team.casefold()) and user.casefold() not in members[team.casefold()]:
+                    joins.add((team, user))
+                change.update({'assignee': user, 'team': team})
+                counts['assignees'] += 1
+        # The Analyst or Reviewer takes the name of the account.
+        if names.get(user) and str(row['value']) != names[user]:
+            change['fields'] = {field: names[user]}
+            counts[f'{field}_names'] += 1
+        if change:
+            merged = changes.setdefault(call_key, {})
+            merged.update({name: value for name, value in change.items() if name != 'fields'})
+            if 'fields' in change:
+                merged['fields'] = {**merged.get('fields', {}), **change['fields']}
+            per_person.setdefault(key, set()).add(call_key)
+            if not row['loaded']:
+                waiting.add(call_key)
+    summary = {'calls': len(changes), 'assignees': counts['assignees'], 'analyst_names': counts[f'{ANALYST_FIELD}_names'],
+               'reviewer_names': counts[f'{REVIEWER_FIELD}_names'], 'waiting': len(waiting),
+               'people': {key: len(keys) for key, keys in per_person.items()},
                'joins': [{'team': team, 'user': user} for team, user in sorted(joins)]}
     if preview or not summary['calls']:
         return summary
     if joins:
         with task_repository.connection() as connection:
             connection.executemany(f'INSERT OR IGNORE INTO {NQ_TEAM_MEMBERS_TABLE} (team, username) VALUES (?, ?)', sorted(joins))
-    for (user, team), keys in batches.items():
-        update_tracking(task_repository, keys, {'assignee': user, 'team': team}, username, users)
+    # The loaded calls with the same changes, at once; the others as their imported analysis.
+    batches: dict[str, list[str]] = {}
+    for call_key, change in changes.items():
+        if call_key not in waiting:
+            batches.setdefault(json.dumps(change, sort_keys=True), []).append(call_key)
+    for change, keys in batches.items():
+        update_tracking(task_repository, keys, json.loads(change), username, users)
+    if waiting:
+        _update_waiting_calls(task_repository, {key: changes[key] for key in waiting}, username)
     if hasattr(task_repository, 'try_add_log'):
         task_repository.try_add_log(username, 'nq_analyst_assignees', json.dumps(
-            {'calls': summary['calls'], 'overwrite': overwrite, 'assignments': chosen}, ensure_ascii=False))
+            {'calls': summary['calls'], 'assignees': summary['assignees'], 'analyst_names': summary['analyst_names'],
+             'reviewer_names': summary['reviewer_names'], 'waiting': summary['waiting'], 'overwrite': overwrite,
+             'assignments': chosen}, ensure_ascii=False))
     return summary
+
+
+def _update_waiting_calls(task_repository: Any, changes: dict[str, dict[str, Any]], username: str) -> None:
+    """Change the imported analysis of calls whose CDR is not loaded yet as the import writes it (``changes``: call key
+    → assignee, team and fields): their follow-up and fields with their history; their status follows the Status Rules."""
+    keys = list(changes)
+    default = untracked_status(task_repository)
+    when = now_iso()
+    with task_repository.connection() as connection:
+        tracking = {str(row['call_key']): dict(row) for row in _rows_of_calls(connection, f'SELECT * FROM {NQ_CALL_TRACKING_TABLE}', keys)}
+        stored = field_values(connection, keys)
+        for call_key, change in changes.items():
+            current = tracking.get(call_key) or {'status': default, 'status_mode': 'auto', 'team': '', 'assignee': '',
+                                                 'root_domain': '', 'root_category': '', 'root_cause': ''}
+            follow_up = {ref: change[ref] for ref in ('assignee', 'team') if ref in change and str(current.get(ref) or '') != change[ref]}
+            if follow_up:
+                row = {**current, **follow_up}
+                connection.execute(
+                    f'INSERT INTO {NQ_CALL_TRACKING_TABLE} (call_key, status, team, assignee, root_domain, root_category, root_cause, '
+                    'status_mode, version, updated_by, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?) ON CONFLICT(call_key) DO UPDATE SET '
+                    'team = excluded.team, assignee = excluded.assignee, version = version + 1, updated_by = excluded.updated_by, '
+                    'updated_at = excluded.updated_at',
+                    (call_key, row['status'], row['team'], row['assignee'], row['root_domain'], row['root_category'], row['root_cause'],
+                     row['status_mode'], username, when))
+                for ref, value in follow_up.items():
+                    _record_history(connection, call_key, ref, str(current.get(ref) or ''), value, username, when)
+            for ref, value in (change.get('fields') or {}).items():
+                connection.execute(
+                    f'INSERT INTO {NQ_FIELD_VALUES_TABLE} (call_key, field_key, value, updated_by, updated_at) VALUES (?, ?, ?, ?, ?) '
+                    'ON CONFLICT(call_key, field_key) DO UPDATE SET value = excluded.value, updated_by = excluded.updated_by, '
+                    'updated_at = excluded.updated_at', (call_key, ref, value, username, when))
+                _record_history(connection, call_key, f'field:{ref}', stored.get(call_key, {}).get(ref, ''), value, username, when)
+    recompute_statuses(task_repository, username, keys)
 
 
 def apply_cause_categories(task_repository: Any, username: str, dry_run: bool = False) -> int:
@@ -7217,7 +7287,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
 
     @core.app.get('/api/non-qualified-calls/analysts')
     def nq_analysts(user=Depends(editor_user)) -> JSONResponse:
-        """The analysts of the calls with their calls and assignees, and the users of the workspace."""
+        """The analysts and reviewers of the calls with their calls and assignees, and the users of the workspace."""
         repository = workspace_repository(user)
         users, names = workspace_users(), user_names()
         return JSONResponse({**analyst_assignments(repository, {user: names.get(user, '') for user in users}),
@@ -7225,10 +7295,12 @@ def install_non_qualified_calls_routes(core: Any) -> None:
 
     @core.app.post('/api/non-qualified-calls/analysts/assign')
     def nq_assign_analysts(payload: AnalystAssignmentsPayload, user=Depends(editor_user)) -> JSONResponse:
-        """The calls of each analyst assigned to the user chosen for them (``preview`` counts them)."""
+        """The calls of each analyst assigned to the user chosen for them, and the Analyst and Reviewer of the calls
+        named as their users (``preview`` counts them)."""
         repository = workspace_repository(user)
-        return JSONResponse(translate(lambda: assign_analysts(repository, payload.assignments, user.username, set(workspace_users()),
-                                                              overwrite=payload.overwrite, preview=payload.preview)))
+        return JSONResponse(translate(lambda: assign_analysts(
+            repository, payload.assignments, user.username, set(workspace_users()), names=user_names(),
+            overwrite=payload.overwrite, preview=payload.preview)))
 
     @core.app.post('/api/non-qualified-calls/root-causes/apply-categories')
     def nq_apply_cause_categories(payload: ApplyCategoriesPayload, user=Depends(editor_user)) -> JSONResponse:

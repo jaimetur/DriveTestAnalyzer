@@ -314,7 +314,7 @@ MODULE_SECTIONS: dict[str, list[tuple[Any, ...] | None]] = {
                                 ('root-cause-catalog', 'Root Cause Catalog', 'book'), None,
                                 ('import-ericsson-rca-results', 'Import Ericsson RCA Results', 'upload'),
                                 ('import-previous-nq-analyses', 'Import Previous NQ Analyses', 'upload'),
-                                ('analysts-to-asignees', 'Analysts → Asignees', 'user-plus')])],
+                                ('analysts-reviewers-to-asignees', 'Analysts / Reviewers → Asignees', 'user-plus')])],
     'reporting': [('Reporting Jobs', 'Reporting Jobs', 'jobs'), ('Run History', 'Run History', 'log')],
     'bugs-report': [('New Bug Report', 'New Bug Report', 'bug'), ('Bug Reports', 'Bug Reports', 'table')],
     'chart-builder': [('Interactive Preview', 'Interactive Preview', 'eye')],

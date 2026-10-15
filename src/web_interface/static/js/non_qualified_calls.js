@@ -5804,25 +5804,29 @@
       }
     });
   }
-  // -- Analysts → Asignees dialog ----------------------------------------------------------------
-  // The user account chosen for each Analyst becomes the Asignee of their calls; the counts follow every choice.
+  // -- Analysts / Reviewers → Asignees dialog ----------------------------------------------------------------
+  // The user account chosen for each Analyst or Reviewer becomes the Asignee of the calls they analysed, and their Analyst
+  // and Reviewer take the name of the account (New Analyst / Reviewer); the counts follow every choice.
   const assignDialog = $('nq-assign-analysts-dialog');
   if (assignDialog) {
     let assignToken = 0;
-    let assignWaiting = 0;
-    const assignSelects = () => [...$('nq-assign-analysts-rows').querySelectorAll('select[data-analyst]')];
+    const assignSelects = () => [...$('nq-assign-analysts-rows').querySelectorAll('select[data-person]')];
     const assignRequest = (preview) => api('/api/non-qualified-calls/analysts/assign', {method: 'POST', body: JSON.stringify({
-      assignments: Object.fromEntries(assignSelects().filter((select) => select.value).map((select) => [select.dataset.analyst, select.value])),
+      assignments: Object.fromEntries(assignSelects().filter((select) => select.value).map((select) => [select.dataset.person, select.value])),
       overwrite: $('nq-assign-analysts-overwrite').checked, preview,
     })});
+    const plural = (count, one, many) => `${number(count)} ${count === 1 ? one : many}`;
     const assignSummary = (result) => {
       const chosen = assignSelects().some((select) => select.value);
       const joins = result.joins.map((item) => `${userName(item.user)} joins ${item.team}`);
+      const named = [result.analyst_names ? plural(result.analyst_names, 'Analyst', 'Analysts') : '',
+        result.reviewer_names ? plural(result.reviewer_names, 'Reviewer', 'Reviewers') : ''].filter(Boolean);
       return [
-        !chosen ? 'Choose the user account of an analyst.' : result.calls
-          ? `${number(result.calls)} ${result.calls === 1 ? 'call gets' : 'calls get'} a new Asignee.` : 'No call changes with these choices.',
+        !chosen ? 'Choose the user account of an Analyst or a Reviewer.' : !result.calls ? 'No call changes with these choices.' : '',
+        result.assignees ? `${plural(result.assignees, 'call gets', 'calls get')} a new Asignee.` : '',
+        named.length ? `${named.join(' and ')} of the calls take the name of their account.` : '',
         joins.length ? `Team members added: ${joins.join(', ')}.` : '',
-        assignWaiting ? `${number(assignWaiting)} ${assignWaiting === 1 ? 'call' : 'calls'} with an Analyst but without its CDR loaded ${assignWaiting === 1 ? 'is' : 'are'} not changed.` : '',
+        result.waiting ? `${result.waiting === result.calls ? 'They wait' : `${number(result.waiting)} of them ${result.waiting === 1 ? 'waits' : 'wait'}`} for their CDR to be loaded: their imported analysis changes.` : '',
       ].filter(Boolean).join(' ');
     };
     const previewAssign = debounce(async () => {
@@ -5833,7 +5837,7 @@
         const result = await assignRequest(true);
         if (token !== assignToken) return;
         assignSelects().forEach((select) => {
-          select.closest('tr').querySelector('[data-analyst-change]').textContent = select.value ? number(result.analysts[select.dataset.analyst] || 0) : '—';
+          select.closest('tr').querySelector('[data-analyst-change]').textContent = select.value ? number(result.people[select.dataset.person] || 0) : '—';
         });
         $('nq-assign-analysts-summary').textContent = assignSummary(result);
         $('nq-assign-analysts-error').textContent = '';
@@ -5842,39 +5846,51 @@
         if (token === assignToken) $('nq-assign-analysts-error').textContent = error.message;
       }
     }, 250);
+    // The name an Analyst or Reviewer takes with the account chosen: its first and last name (without them, the name stays).
+    const showNewName = (select, cell, current) => {
+      const name = select.value ? state.userNames?.[select.value] || '' : '';
+      cell.textContent = !select.value ? '—' : name || current;
+      cell.classList.toggle('is-new-name', Boolean(name) && name !== current);
+      cell.title = select.value && !name ? 'The account has no first and last name: the name stays as it is' : '';
+    };
+    // A row per analyst or reviewer: their name and spellings, the name they take, their calls as Analyst and as Reviewer,
+    // the analysed calls without an Asignee, the user account and the calls that change.
+    const personRow = (person, users) => {
+      const row = node('tr');
+      const name = node('td');
+      name.append(node('strong', person.name));
+      if (person.spellings.length > 1) name.append(node('small', `Also written ${person.spellings.slice(1).join(', ')}`, 'nq-muted'));
+      const select = node('select');
+      select.dataset.person = person.key;
+      select.setAttribute('aria-label', `User account of ${person.name}`);
+      select.append(node('option', 'Leave unchanged'), ...userOptions(users));
+      select.options[0].value = '';
+      select.value = users.includes(person.suggested) ? person.suggested : '';
+      const account = node('td');
+      account.append(select);
+      const newName = node('td');
+      showNewName(select, newName, person.name);
+      select.addEventListener('change', () => { showNewName(select, newName, person.name); previewAssign(); });
+      const change = node('td', '—', 'nq-number');
+      change.dataset.analystChange = '';
+      row.append(name, newName, node('td', number(person.analyst_calls), 'nq-number'), node('td', number(person.reviewer_calls), 'nq-number'),
+        node('td', number(person.unassigned), 'nq-number'), account, change);
+      return row;
+    };
     const renderAssign = (payload) => {
-      assignWaiting = payload.waiting || 0;
-      $('nq-assign-analysts-rows').replaceChildren(...payload.analysts.map((analyst) => {
+      $('nq-assign-analysts-rows').replaceChildren(...payload.people.map((person) => personRow(person, payload.users)));
+      if (!payload.people.length) {
+        const cell = node('td', 'No call of this workspace has an Analyst or a Reviewer.', 'nq-muted');
+        cell.colSpan = 7;
         const row = node('tr');
-        const name = node('td');
-        name.append(node('strong', analyst.name));
-        if (analyst.spellings.length > 1) name.append(node('small', `Also written ${analyst.spellings.slice(1).join(', ')}`, 'nq-muted'));
-        const select = node('select');
-        select.dataset.analyst = analyst.key;
-        select.setAttribute('aria-label', `User account of ${analyst.name}`);
-        select.append(node('option', 'Leave unchanged'), ...userOptions(payload.users));
-        select.options[0].value = '';
-        select.value = payload.users.includes(analyst.suggested) ? analyst.suggested : '';
-        select.addEventListener('change', previewAssign);
-        const account = node('td');
-        account.append(select);
-        const change = node('td', '—', 'nq-number');
-        change.dataset.analystChange = '';
-        row.append(name, node('td', number(analyst.calls), 'nq-number'), node('td', number(analyst.unassigned), 'nq-number'), account, change);
-        return row;
-      }));
-      if (!payload.analysts.length) {
-        const empty = node('td', 'No call of this workspace has an Analyst.', 'nq-muted');
-        empty.colSpan = 5;
-        const row = node('tr');
-        row.append(empty);
+        row.append(cell);
         $('nq-assign-analysts-rows').append(row);
       }
     };
     $('nq-assign-analysts-open').addEventListener('click', async () => {
       $('nq-assign-analysts-overwrite').checked = false;
       $('nq-assign-analysts-error').textContent = '';
-      $('nq-assign-analysts-summary').textContent = 'Reading the analysts of the calls…';
+      $('nq-assign-analysts-summary').textContent = 'Reading the analysts and reviewers of the calls…';
       $('nq-assign-analysts-rows').replaceChildren();
       $('nq-assign-analysts-apply').disabled = true;
       assignDialog.showModal();
@@ -5899,7 +5915,7 @@
       button.disabled = true;
       try {
         const result = await assignRequest(false);
-        toast(`${number(result.calls)} ${result.calls === 1 ? 'call' : 'calls'} assigned to the account of their Analyst.`);
+        toast(`${plural(result.calls, 'call', 'calls')} linked to the accounts of their Analyst and Reviewer.`);
         assignDialog.close();
         // The new team members reach the pickers with the state of the page.
         await loadState();
@@ -5917,7 +5933,7 @@
     'section-nq-analysis-configuration': 'nq-config-toggle', 'fields-and-sections': 'nq-fields-open', 'statuses-and-teams': 'nq-options-open',
     'status-rules': 'nq-status-rules-open', 'root-cause-catalog': 'nq-root-open',
     'import-ericsson-rca-results': 'nq-rca-open', 'import-previous-nq-analyses': 'nq-analyses-open',
-    'analysts-to-asignees': 'nq-assign-analysts-open',
+    'analysts-reviewers-to-asignees': 'nq-assign-analysts-open',
   };
   const openCenterFromHash = () => {
     const opener = CENTER_HASHES[decodeURIComponent(window.location.hash.slice(1))];

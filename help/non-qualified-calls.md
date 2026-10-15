@@ -26,7 +26,7 @@ The module is in development, so its main tab can show a red **ALPHA** label (se
 | Configure fields, statuses, teams, rules and the root cause catalog | [NQ Analysis Configuration](#nq-analysis-configuration) |
 | Import the Ericsson RCA results | [Ericsson RCA results](#ericsson-rca-results) |
 | Import the analyses of the previous tool | [Previous NQ Analyses](#previous-nq-analyses) |
-| Give the calls of each analyst to their user account | [Analysts → Asignees](#analysts-asignees) |
+| Give the calls of each analyst to their user account and link the analysts and reviewers to it | [Analysts / Reviewers → Asignees](#analysts-reviewers-asignees) |
 | Export the calls to Excel, PowerPoint or Word | [Exports](#exports) |
 | Send the reports on a schedule | [Reporting Jobs](#reporting-jobs) |
 | Copy the follow-up to another workspace or server | [Storage and portability](#storage-and-portability) |
@@ -282,9 +282,9 @@ Admins and super-admins can delete the history: the **×** of a change deletes t
 | [Root Cause Catalog](#root-cause-catalog) | Domains, Root Categories and Root Causes, with their keywords, and the suggestion rule. |
 | **Import Ericsson RCA Results** | The results of the Ericsson RCA, by `JOIN_ID` (see [Ericsson RCA results](#ericsson-rca-results)). |
 | **Import Previous NQ Analyses** | The analyses made with the previous tool, by `JOIN_ID`, for admins and super-admins only; the other accounts see it dimmed, with the reason as its tooltip (see [Previous NQ Analyses](#previous-nq-analyses)). |
-| **Analysts → Asignees** | The user account of each Analyst as the Asignee of their calls (see [Analysts → Asignees](#analysts-asignees)). |
+| **Analysts / Reviewers → Asignees** | Links each Analyst and Reviewer to their user account: its name in the Analyst and Reviewer of the calls and the Asignee of those they analysed (see [Analysts / Reviewers → Asignees](#analysts-reviewers-asignees)). |
 
-The imports and Analysts → Asignees come after a line. The sections menu of the Non-Qualified Calls tab lists the **NQ Analysis Configuration** too, after a line, with every option: choosing one opens it on the page.
+The imports and Analysts / Reviewers → Asignees come after a line. The sections menu of the Non-Qualified Calls tab lists the **NQ Analysis Configuration** too, after a line, with every option: choosing one opens it on the page.
 
 ## Fields and sections
 
@@ -484,7 +484,7 @@ Values are checked as if they were chosen in the call, after the reviewed equiva
 - A value missing from a list is added to it (but to the Failed Party, which keeps its four values), and a missing team is created. A cell with several values of a list (two bands, one per line) gives the field the first one.
 - A Planned Date that is a fiscal year, a year or a quarter (FY28, 2027, Q3 2027) fills the **Planned FY** as a fiscal year (FY28, FY27; the first one when the cell lists several), and so does the Planned FY column.
 - A Root Category or Root Cause is taken when the catalog has it, or through an equivalence, which can add a new one. The **Domain** of the equivalence (an existing domain or a new name, which becomes a domain) becomes its domain in the catalog, also for a value the catalog has; without one, a new value takes its domain automatically. A call whose Root Category is *Invalidated* gets the Analysis Status *Invalidated* too, and a call with a Root Cause and no Root Category takes the category the cause is mapped to.
-- The analysts and reviewers, who may not be users of the tool, are kept in **Analyst** and **Reviewer**, each name with the spelling most rows use (Raj Kumar and Rajkumar are one analyst); the **Asignee** stays for the users of the tool, and [Analysts → Asignees](#analysts-asignees) gives it, once the analysts have an account.
+- The analysts and reviewers, who may not be users of the tool, are kept in **Analyst** and **Reviewer**, each name with the spelling most rows use (Raj Kumar and Rajkumar are one analyst); the **Asignee** stays for the users of the tool, and [Analysts / Reviewers → Asignees](#analysts-reviewers-asignees) gives it, once the analysts have an account.
 
 ### Equivalences
 
@@ -492,23 +492,25 @@ The equivalences of the analysis workbooks of the previous tool, as the analysts
 
 The workbook tells how each value was decided (a rule of the tool, reviewed in this workspace, the same value, a value of the catalog, by the direction of the call, a new value, a suggestion of the keywords of the catalog to check, or a new Root Category or Root Cause whose **Domain** to choose), and its Maps to and Domain cells list the values each one takes (those of the catalog and those the equivalences add; a new name can be typed). Change Maps to (empty leaves the value out of its field, in the note) and the Domain, then **Upload Equivalences**: the rows that differ from the rules of the tool are kept in the workspace, before the rules, for its next imports, and travel with its configuration.
 
-## Analysts → Asignees
+## Analysts / Reviewers → Asignees
 
-**Analysts → Asignees** (for `user-editor` accounts and above, in the **NQ Analysis Configuration** menu) makes the user account of each analyst the **Asignee** of the calls they analysed, all at once.
+**Analysts / Reviewers → Asignees** (for `user-editor` accounts and above, in the **NQ Analysis Configuration** menu) makes the user account of each analyst the **Asignee** of the calls they analysed, and links the **Analyst** and the **Reviewer** of the calls to their accounts, all at once.
 
 > [!TIP]
-> **Create the accounts of the analysts first**, with their first and last name: the dialog finds each analyst by the username or by the name of their account.
+> **Create the accounts of the analysts and reviewers first**, with their first and last name: the dialog finds each one by the username or by the name of their account.
 
-1. Open **NQ Analysis Configuration → Analysts → Asignees**. It lists every **Analyst** of the calls of the workspace (the names written with the same letters, such as Raj Kumar and Rajkumar, are one analyst, shown with the spelling most calls use and the others below it) with their calls and how many have no Asignee.
-2. Check the **User account** of each analyst, a list of the users of the workspace by their first and last name. It proposes the only user named as the analyst by username or by first and last name (the whole name, or its first part, as in anudeep.kumar or Anudeep Reddy for Anudeep), or else the Asignee most of their calls have; **Leave unchanged** leaves their calls out.
-3. Read **Calls that change** and the line below the list: they count, as you choose, the calls that will get a new Asignee and the teams the users will join.
+1. Open **NQ Analysis Configuration → Analysts / Reviewers → Asignees**. It lists every **Analyst / Reviewer** of the calls of the workspace, one row per person also when they analysed some calls and reviewed others (the names written with the same letters, such as Raj Kumar and Rajkumar, are one person, shown with the spelling most calls use and the others below it), with **New Analyst / Reviewer** (the name they will take), their calls **As Analyst** and **As Reviewer** and how many of the calls they analysed have no Asignee.
+2. Check the **User account** of each person, a list of the users of the workspace by their first and last name. It proposes the only user named as them by username or by first and last name (the whole name, or its first part, as in anudeep.kumar or Anudeep Reddy for Anudeep), or else the Asignee most of the calls they analysed have; **Leave unchanged** leaves their calls out. **New Analyst / Reviewer** shows at once the first and last name of the account.
+3. Read **Calls that change** and the line below the list: they count, as you choose, the calls that will change, those that will get a new Asignee, the Analysts and Reviewers that will take the name of their account and the teams the users will join.
 4. Press **Apply**. Each call records the change in its history, the Status Rules follow, and the change is written to App Events (`nq_analyst_assignees`).
 
 - By default only the calls without an Asignee get one; **Replace the Asignee the calls already have** changes the others too (it asks for confirmation).
 - Every call keeps its team: when the team has members and the user is not one of them, the user joins it.
+- The **Analyst** and the **Reviewer** of the calls take the first and last name of the account (EANUDRE or Anudeep become Anudeep Reddy), so every spelling of a person becomes one value in the filters, the table and the exports; an account without a name leaves them as they are. The former name stays in the history of each call.
+- Only the calls a person analysed get the Asignee: those they only reviewed keep theirs.
 
 > [!NOTE]
-> The calls whose CDR is not loaded yet keep their Analyst and are counted apart: open the dialog again once they are indexed.
+> The calls whose CDR is not loaded yet (their analysis imported and waiting for it) change too: their imported analysis takes the Asignee and the names, with their history, and the line below the list says how many of the calls that change wait for their CDR.
 
 ## Exports
 

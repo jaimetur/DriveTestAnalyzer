@@ -38,7 +38,7 @@
       <div class="nq-menu-separator" role="separator"></div>
       <button type="button" role="menuitem" id="nq-rca-open" data-nq-rca-open><svg class="nq-menu-icon" viewBox="0 0 24 24" aria-hidden="true">{{ section_icons['upload'] | safe }}</svg><strong>Import Ericsson RCA Results</strong><span>The results of the Ericsson RCA, by JOIN_ID</span></button>
       <button type="button" role="menuitem" id="nq-analyses-open"{% if not nq_can_import_analyses %} aria-disabled="true" title="Only admins and super-admins can import the analyses of the previous tool"{% endif %}><svg class="nq-menu-icon" viewBox="0 0 24 24" aria-hidden="true">{{ section_icons['upload'] | safe }}</svg><strong>Import Previous NQ Analyses</strong><span>The analyses made with the previous tool, by JOIN_ID (admins and super-admins)</span></button>
-      <button type="button" role="menuitem" id="nq-assign-analysts-open"><svg class="nq-menu-icon" viewBox="0 0 24 24" aria-hidden="true">{{ section_icons['user-plus'] | safe }}</svg><strong>Analysts → Asignees</strong><span>The user account of each Analyst as the Asignee of their calls</span></button>
+      <button type="button" role="menuitem" id="nq-assign-analysts-open"><svg class="nq-menu-icon" viewBox="0 0 24 24" aria-hidden="true">{{ section_icons['user-plus'] | safe }}</svg><strong>Analysts / Reviewers → Asignees</strong><span>Link each Analyst and Reviewer to their user account: its name in the calls and the Asignee of those they analysed</span></button>
     </div>
   </div>{% endif %}
   </div>
@@ -428,10 +428,10 @@
 {# The Analyst of every call (as the analysis workbooks name them) given as Asignee (non_qualified_calls.js). #}
 <dialog class="nq-options-dialog nq-assign-analysts-dialog" id="nq-assign-analysts-dialog" aria-labelledby="nq-assign-analysts-title">
   <form method="dialog" class="nq-options-form" id="nq-assign-analysts-form">
-    <header><h2 id="nq-assign-analysts-title">Analysts → Asignees</h2><p class="form-note">Choose the user account of each Analyst to make it the Asignee of their calls; names written the same way (Raj Kumar and Rajkumar) are one analyst. Every call keeps its team, and the user joins the teams with members they are not one of. Each change stays in the history of its call.</p>
+    <header><h2 id="nq-assign-analysts-title">Analysts / Reviewers → Asignees</h2><p class="form-note">Choose the user account of each Analyst or Reviewer: it becomes the Asignee of the calls they analysed, and their Analyst and Reviewer take the first and last name of the account (New Analyst / Reviewer). Names written the same way (Raj Kumar and Rajkumar) are one person. Every call keeps its team, and the user joins the teams with members they are not one of. Each change stays in the history of its call.</p>
       <label class="nq-toggle" title="Otherwise only the calls without an Asignee get one"><input type="checkbox" id="nq-assign-analysts-overwrite"> Replace the Asignee the calls already have</label></header>
     <div class="nq-table-wrap"><table class="nq-table nq-stats-table nq-assign-analysts-table">
-      <thead><tr><th>Analyst</th><th>Calls</th><th>Without Asignee</th><th>User account</th><th>Calls that change</th></tr></thead>
+      <thead><tr><th>Analyst / Reviewer</th><th title="The name they take: the first and last name of the account chosen">New Analyst / Reviewer</th><th title="Calls they analysed">As Analyst</th><th title="Calls they reviewed">As Reviewer</th><th title="Calls they analysed without an Asignee">Without Asignee</th><th>User account</th><th>Calls that change</th></tr></thead>
       <tbody id="nq-assign-analysts-rows"></tbody></table></div>
     <p class="form-note" id="nq-assign-analysts-summary" aria-live="polite"></p>
     <p class="nq-options-error" id="nq-assign-analysts-error" role="alert"></p>

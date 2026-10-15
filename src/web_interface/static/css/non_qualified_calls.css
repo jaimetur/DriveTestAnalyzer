@@ -861,8 +861,9 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 .nq-status-rule > .nq-link-action { justify-self: start; margin-left: 2.2rem; }
 /* Ericsson RCA Results. */
 .nq-rca-dialog { width: min(900px, calc(100vw - 32px)); }
-.nq-assign-analysts-dialog { width: min(900px, calc(100vw - 32px)); }
+.nq-assign-analysts-dialog { width: min(1100px, calc(100vw - 32px)); }
 .nq-assign-analysts-dialog .nq-table-wrap { max-height: min(52vh, 520px); overflow-y: auto; }
+.nq-assign-analysts-table td.is-new-name { color: var(--nq-dark); font-weight: 750; }
 .nq-assign-analysts-table td { vertical-align: middle; }
 .nq-assign-analysts-table td small { display: block; font-size: .74rem; }
 .nq-assign-analysts-table select { width: 100%; min-width: 11rem; }
