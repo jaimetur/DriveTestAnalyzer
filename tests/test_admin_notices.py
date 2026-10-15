@@ -1,5 +1,5 @@
-"""Admin notices: after signing in, each super-admin is told once of the access requests waiting for activation and of
-the new bug reports of other users."""
+"""Admin notices: after signing in and while signed in, each super-admin is told once of the access requests waiting for
+activation and of the new bug reports of other users."""
 import json
 from pathlib import Path
 
@@ -40,13 +40,20 @@ def request_access(client, username='eabcdef', password='secret1', first_name='A
 
 
 def notices(client):
-    response = client.get('/admin/notices')
+    response = client.get('/api/admin-notices')
     assert response.status_code == 200, response.text
     return response.json()
 
 
-def acknowledge(client, payload, choice='close'):
-    response = client.post('/admin/notices/seen', json={
+def polled(client):
+    """The ids every page of a super-admin receives with its poll of incoming transfer offers."""
+    response = client.get('/admin/import-export/transfers/offers')
+    assert response.status_code == 200, response.text
+    return response.json()['admin_notices']
+
+
+def acknowledge(client, payload, choice='close', page='/documents/view/help'):
+    response = client.post('/api/admin-notices/seen', headers={'Referer': f'http://testserver{page}'}, json={
         'choice': choice, 'access_requests': [item['key'] for item in payload['access_requests']],
         'bug_reports': [item['key'] for item in payload['bug_reports']],
     })
@@ -62,8 +69,8 @@ def test_each_super_admin_is_told_once_of_each_access_request(client):
 
     # Only super-admins are told.
     login(client, 'helper', 'secret123')
-    assert client.get('/admin/notices').status_code == 403
-    assert client.post('/admin/notices/seen', json={}).status_code == 403
+    assert client.get('/api/admin-notices').status_code == 403
+    assert client.post('/api/admin-notices/seen', json={}).status_code == 403
 
     login(client)
     payload = notices(client)
@@ -152,14 +159,44 @@ def test_each_super_admin_is_told_once_of_new_bug_reports_of_other_users(client)
 def test_the_dialog_and_its_links_are_in_the_pages(client):
     root = Path(core.__file__).parent / 'web_interface' / 'static' / 'js'
     script = (root / 'app.js').read_text(encoding='utf-8')
-    assert "fetch('/admin/notices'" in script and "'/admin/notices/seen'" in script
-    assert "'drivetest-analyzer:admin-notices-session'" in script and 'Administrator notice' in script
+    assert "fetch('/api/admin-notices'" in script and "'/api/admin-notices/seen'" in script
+    # The poll of incoming transfer offers hands the ids to the dialog.
+    assert "new CustomEvent('drivetest-analyzer:admin-notices'" in script and 'Administrator notice' in script
     assert "get('status')" in (root / 'bugs_report.js').read_text(encoding='utf-8')
     login(client)
     assert "get('users') === 'access-requests'" in client.get('/admin').text
     # The table is listed in Database Management.
     assert core.database_table_type('admin_notices_seen')[0] == 'Application'
     assert 'Admin Notices Seen' in client.get('/admin').text
+
+
+def test_the_poll_of_the_pages_tells_super_admins_while_signed_in(client):
+    from src.modules.bugs_report import create_bug
+
+    login(client)
+    assert polled(client) == {'access_requests': [], 'bug_reports': []}
+    # A request and a bug report arrive while the super-admin is signed in.
+    waiting = core.repository.create_user('EQRSTUV', 'secret1', 'user-editor', active=False, first_name='Eva', last_name='Ruiz')
+    core.repository.set_access_requested(waiting, '2026-10-15T10:00:00+02:00')
+    bug = create_bug(core.repository, title='Chart is blank', description='', module='', priority='P2', username='ana', app_version='0.7.1')
+    create_bug(core.repository, title='Mine', description='', module='', priority='P2', username='super', app_version='0.7.1')
+    assert polled(client) == {'access_requests': [waiting], 'bug_reports': [bug]}
+    payload = notices(client)
+    assert [item['username'] for item in payload['access_requests']] == ['EQRSTUV'] and [item['id'] for item in payload['bug_reports']] == [bug]
+    # Told once: the App Event runs in the module of the page the dialog was shown on.
+    acknowledge(client, payload, 'bugs-report', page='/bugs-report')
+    assert polled(client) == {'access_requests': [], 'bug_reports': []}
+    with core.repository.connection() as conn:
+        origin = conn.execute("SELECT origin FROM audit_logs WHERE action = 'admin_notices_seen' ORDER BY id DESC").fetchone()[0]
+    assert origin == 'module:bugs-report'
+    assert logged('admin_notices_seen')[0]['choice'] == 'Open Bugs Report'
+    # The poll and the notices it reports are not activity, so the idle tasks still run.
+    assert not core.is_interactive_request('GET', '/admin/import-export/transfers/offers', 'application/json')
+    assert not core.is_interactive_request('GET', '/api/admin-notices', 'application/json')
+    # Only super-admins poll for them.
+    core.repository.create_user('helper', 'secret123', 'admin')
+    login(client, 'helper', 'secret123')
+    assert client.get('/admin/import-export/transfers/offers').status_code == 403
 
 
 def test_inactive_users_of_earlier_versions_and_users_access_keep_their_access_requests(client):

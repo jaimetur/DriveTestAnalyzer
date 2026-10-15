@@ -1,13 +1,15 @@
-"""Admin notices: what a super-admin is told about after signing in.
+"""Admin notices: what a super-admin is told about after signing in and while signed in.
 
 A dialog lists the access requests waiting for activation and the new bug reports (status New, reported by someone
-else) the super-admin has not been told about yet. Each super-admin is told about each one once: the items closed in
-the dialog, and the bug reports the super-admin opens, are kept in ``admin_notices_seen`` of the application database.
-An access request is identified by its user and the time of the request, so a later request of the same user is told
-again; a bug report by its ``uid``.
+else) the super-admin has not been told about yet; the pages ask for them with the poll of incoming transfer offers
+(:func:`unseen_notice_ids`). Each super-admin is told about each one once: the items closed in the dialog, and the bug
+reports the super-admin opens, are kept in ``admin_notices_seen`` of the application database. An access request is
+identified by its user and the time of the request, so a later request of the same user is told again; a bug report by
+its ``uid``.
 """
 from __future__ import annotations
 
+import sqlite3
 from typing import Any, Iterable
 
 from src.modules.repository import Repository, local_now_iso
@@ -58,6 +60,31 @@ def unseen_notices(repository: Repository, username: str, *, include_bug_reports
         'access_requests': [item for item in requests if item['key'] not in seen[ACCESS_REQUEST]],
         'bug_reports': [item for item in bugs if item['key'] not in seen[BUG_REPORT]],
     }
+
+
+def unseen_notice_ids(repository: Repository, username: str, *, include_bug_reports: bool = True) -> dict[str, list[int]]:
+    """The ids of the users with a pending access request and of the new bug reports ``username`` has not been told
+    about yet: one light query, for the pages that poll for them."""
+    query = """
+        SELECT 'access_requests' AS kind, u.id FROM users u
+        WHERE u.active = 0 AND u.access_requested_at != '' AND NOT EXISTS (
+            SELECT 1 FROM admin_notices_seen s WHERE s.user_id = :user_id AND s.kind = 'access_request'
+            AND s.item_key = u.id || ':' || u.access_requested_at)
+        UNION ALL
+        SELECT 'bug_reports', b.id FROM bug_reports b
+        WHERE :bugs AND b.status = 'new' AND lower(b.created_by) != lower(:username) AND NOT EXISTS (
+            SELECT 1 FROM admin_notices_seen s WHERE s.user_id = :user_id AND s.kind = 'bug_report' AND s.item_key = b.uid)
+        ORDER BY 1, 2"""
+    ids: dict[str, list[int]] = {'access_requests': [], 'bug_reports': []}
+    try:
+        with repository.global_connection() as conn:
+            user_id = _user_id(conn, username)
+            for row in conn.execute(query, {'user_id': user_id or 0, 'username': username.strip(), 'bugs': int(include_bug_reports)}):
+                ids[str(row[0])].append(int(row[1]))
+    except sqlite3.Error:
+        # An application database being replaced (an import) has nothing to tell yet.
+        return {'access_requests': [], 'bug_reports': []}
+    return ids
 
 
 def mark_seen(repository: Repository, username: str, *, access_requests: Iterable[str] = (),

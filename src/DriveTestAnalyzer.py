@@ -2832,7 +2832,7 @@ IDLE_DASHBOARD_WARMUP_CALLBACK: Callable[[], None] | None = None
 # Requests pages repeat on their own, which do not mean someone is using the
 # application: Dashboard charts are prepared after five minutes without others.
 PASSIVE_APPLICATION_REQUEST_PATHS = {
-    '/api/background-tasks', '/api/workspaces/sizes', '/admin/import-export/transfers/offers', '/admin/notices',
+    '/api/background-tasks', '/api/workspaces/sizes', '/admin/import-export/transfers/offers', '/api/admin-notices',
     '/api/admin/backup-status', '/api/admin/backup-files',
     '/api/ppt-dashboards/statuses', '/api/ppt-dashboards/ppt-jobs',
     '/api/ppt-reporting-old/jobs', '/api/ppt-reporting-old/chart-jobs',
@@ -21343,11 +21343,12 @@ async def receive_transfer_package(offer_id: str, request: Request) -> JSONRespo
         raise HTTPException(status_code=503, detail='The package transfer was interrupted; the source may retry.') from exc
 
 
-# -- admin notices after signing in ---------------------------------------------------------------
-@app.get('/admin/notices')
+# -- admin notices: after signing in and while signed in -------------------------------------------
+# Under /api, outside Admin: the App Events of the dialog run in the module of the page it is shown on.
+@app.get('/api/admin-notices')
 def list_admin_notices(user: SessionUser = Depends(super_admin_user)) -> JSONResponse:
     """The access requests waiting for activation and the new bug reports the super-admin has not been told about yet,
-    for the dialog shown after signing in (src/modules/admin_notices.py)."""
+    for the dialog the pages show when the poll of transfer offers reports them (src/modules/admin_notices.py)."""
     from src.modules.admin_notices import unseen_notices
     from src.modules.bugs_report import PRIORITIES
 
@@ -21380,7 +21381,7 @@ class AdminNoticesSeenPayload(BaseModel):
 ADMIN_NOTICE_CHOICES = {'access-requests': 'Open Access Requests', 'bugs-report': 'Open Bugs Report', 'close': 'Close'}
 
 
-@app.post('/admin/notices/seen')
+@app.post('/api/admin-notices/seen')
 def mark_admin_notices_seen(payload: AdminNoticesSeenPayload, user: SessionUser = Depends(super_admin_user)) -> JSONResponse:
     """Record that the super-admin has been told of the notices of the dialog, so that they are not shown again."""
     from src.modules.admin_notices import mark_seen
@@ -21411,9 +21412,13 @@ def list_pending_transfer_offers(user: SessionUser = Depends(super_admin_user)) 
             for offer_id, offer in TRANSFER_OFFERS.items()
             if offer.get('status') in {'received', 'importing'} and offer_id in ACTIVE_TRANSFER_IMPORTS
         ]
+    from src.modules.admin_notices import unseen_notice_ids
+
     return JSONResponse({
         'offers': sorted(offers, key=lambda offer: float(offer.get('created_at') or 0)),
         'active_imports': active_imports,
+        # The access requests and bug reports the super-admin has not been told about ride on this poll.
+        'admin_notices': unseen_notice_ids(repository, user.username, include_bug_reports=user_has_feature(user, 'bugs-report')),
         'destination_workspaces': [
             {'id': workspace.id, 'name': workspace.name} for workspace in workspace_registry.list()
         ],

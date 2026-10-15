@@ -7719,6 +7719,8 @@ document.querySelectorAll('[data-export-package-form]').forEach((form) => {
       }
       if (!response.ok) return;
       const payload = await response.json().catch(() => ({}));
+      // The access requests and bug reports the super-admin has not been told about ride on this poll.
+      window.dispatchEvent(new CustomEvent('drivetest-analyzer:admin-notices', {detail: payload.admin_notices || null}));
       // A running import keeps every open page out of use, not only the page that accepted it.
       const activeImport = (Array.isArray(payload.active_imports) ? payload.active_imports : [])
         .find((item) => item?.id && item.kind !== 'auto-calculated-fields');
@@ -7901,84 +7903,117 @@ document.querySelectorAll('[data-export-package-form]').forEach((form) => {
   scheduleIncomingOfferPoll(0);
 })();
 
-// Once per sign-in, super-admins are told of the access requests waiting for activation and of the new bug reports
-// they have not been told about, in the dialog of an incoming server transfer. Each item is told once: closing the
-// dialog, or opening Access Requests or Bugs Report from it, records them as seen on the server.
+// Super-admins are told of the access requests waiting for activation and of the new bug reports they have not been
+// told about, after signing in and while signed in: the poll of incoming transfer offers reports their ids, and the
+// page shows them in a dialog like that of an incoming transfer. Each item is told once: closing the dialog, or opening
+// Access Requests or Bugs Report from it, records them as seen on the server. The dialog is updated in place, and waits
+// while another dialog or a running operation is shown.
 (() => {
-  const {authenticatedRole, authenticatedSession: session = ''} = document.body.dataset;
-  if (authenticatedRole !== 'super-admin' || !session) return;
+  if (document.body.dataset.authenticatedRole !== 'super-admin') return;
   if ('embeddedTemplateEditor' in document.body.dataset || 'embeddedDatasetPreview' in document.body.dataset) return;
-  const NOTICES_SESSION_KEY = 'drivetest-analyzer:admin-notices-session';
-  try {
-    if (window.localStorage.getItem(NOTICES_SESSION_KEY) === session) return;
-  } catch (_error) { /* Asked on every page without storage. */ }
-  const rememberSession = () => {
-    try { window.localStorage.setItem(NOTICES_SESSION_KEY, session); } catch (_error) { /* Asked again on the next page. */ }
-  };
   const escapeHtml = (value) => String(value ?? '').replace(/[&<>'"]/g, (character) => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[character]));
   const counted = (count, noun) => `${count} ${noun}${count === 1 ? '' : 's'}`;
-  const showNotices = async (notices) => {
-    // An incoming transfer, a running operation or another dialog goes first.
-    if (document.querySelector('.confirm-overlay:not([hidden])') || (loadingOverlay && !loadingOverlay.hidden)) {
-      window.setTimeout(() => { void showNotices(notices); }, 2000);
-      return;
+  let dialog = null;
+  let notices = null;
+  let shownIds = '';
+  // A poll answered before the choice was recorded does not open the dialog again.
+  let acknowledgedIds = '';
+  let loading = false;
+  const otherDialogOpen = () => [...document.querySelectorAll('.confirm-overlay:not([hidden])')].some((overlay) => overlay !== dialog?.overlay)
+    || [...document.querySelectorAll('dialog[open]')].some((element) => element.matches(':modal'))
+    || Boolean(loadingOverlay && !loadingOverlay.hidden);
+  const close = () => {
+    if (dialog) window.removeEventListener('keydown', dialog.onKeydown);
+    dialog?.overlay.remove();
+    dialog = null;
+    notices = null;
+    shownIds = '';
+    if (!document.querySelector('.confirm-overlay:not([hidden])')) document.body.classList.remove('loading-active');
+  };
+  const choose = async (choice) => {
+    const told = notices;
+    acknowledgedIds = shownIds;
+    close();
+    try {
+      await fetch('/api/admin-notices/seen', {
+        method: 'POST', credentials: 'same-origin',
+        headers: {Accept: 'application/json', 'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          choice,
+          access_requests: (told?.access_requests || []).map((item) => item.key),
+          bug_reports: (told?.bug_reports || []).map((bug) => bug.key),
+        }),
+      });
+    } catch (_error) { /* Told again by the next poll. */ }
+    if (choice === 'access-requests') window.location.href = told?.access_requests_url || '/admin#users';
+    else if (choice === 'bugs-report') window.location.href = told?.bugs_report_url || '/bugs-report';
+  };
+  const render = () => {
+    const requests = notices.access_requests || [];
+    const bugs = notices.bug_reports || [];
+    if (!dialog) {
+      const overlay = document.createElement('div');
+      overlay.className = 'confirm-overlay incoming-transfer-confirm incoming-transfer-offer admin-notices-overlay';
+      overlay.innerHTML = '<section class="confirm-panel" role="dialog" aria-modal="true" aria-labelledby="admin-notices-title">'
+        + '<div class="confirm-icon" aria-hidden="true">!</div><p class="eyebrow">Administrator notice</p>'
+        + '<h3 id="admin-notices-title"></h3><div class="admin-notices-copy"></div><div class="confirm-actions">'
+        + '<button type="button" class="ghost-link confirm-cancel" data-admin-notices-choice="close">Close</button>'
+        + '<button type="button" class="warning-button" data-admin-notices-choice="bugs-report">Open Bugs Report</button>'
+        + '<button type="button" class="danger-button" data-admin-notices-choice="access-requests">Open Access Requests</button>'
+        + '</div></section>';
+      overlay.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-admin-notices-choice]');
+        if (button) void choose(button.dataset.adminNoticesChoice);
+        else if (event.target === overlay) void choose('close');
+      });
+      // Escape closes it, unless another dialog is open over it.
+      const onKeydown = (event) => { if (event.key === 'Escape' && !otherDialogOpen()) void choose('close'); };
+      window.addEventListener('keydown', onKeydown);
+      document.body.append(overlay);
+      document.body.classList.add('loading-active');
+      dialog = {overlay, onKeydown, title: overlay.querySelector('h3'), copy: overlay.querySelector('.admin-notices-copy')};
     }
-    const requests = Array.isArray(notices.access_requests) ? notices.access_requests : [];
-    const bugs = Array.isArray(notices.bug_reports) ? notices.bug_reports : [];
-    const listHtml = (items) => `<ul class="incoming-transfer-contents admin-notices-list">${items.join('')}</ul>`;
-    const requestsTitle = `${counted(requests.length, 'access request')} pending activation`;
-    const bugsTitle = counted(bugs.length, 'new bug report');
-    const copyHtml = [
-      requests.length ? `<p><strong>${escapeHtml(requestsTitle)}</strong></p>${listHtml(requests.map((item) => (
+    const listHtml = (items) => `<ul class="incoming-transfer-contents">${items.join('')}</ul>`;
+    dialog.title.textContent = requests.length && bugs.length ? 'New access requests and bug reports'
+      : requests.length ? 'New access requests' : 'New bug reports';
+    dialog.copy.innerHTML = [
+      requests.length ? `<p><strong>${escapeHtml(counted(requests.length, 'access request'))} pending activation</strong></p>${listHtml(requests.map((item) => (
         `<li><strong>${escapeHtml(item.name)}</strong> · ${escapeHtml(item.username)} · ${escapeHtml(item.requested_at)}</li>`)))}` : '',
-      bugs.length ? `<p><strong>${escapeHtml(bugsTitle)}</strong></p>${listHtml(bugs.map((bug) => (
+      bugs.length ? `<p><strong>${escapeHtml(counted(bugs.length, 'new bug report'))}</strong></p>${listHtml(bugs.map((bug) => (
         `<li><strong>#${escapeHtml(bug.id)} ${escapeHtml(bug.title)}</strong> · ${escapeHtml(bug.priority)} · ${escapeHtml(bug.reported_by)}</li>`)))}` : '',
       `<p class="incoming-transfer-effect">${requests.length ? 'Activate the users in Admin → Users. ' : ''}You will not be told about these again.</p>`,
     ].join('');
-    const eyebrow = confirmOverlay?.querySelector('.eyebrow');
-    const eyebrowText = eyebrow?.textContent;
-    if (eyebrow) eyebrow.textContent = 'Administrator notice';
-    confirmOverlay?.classList.add('incoming-transfer-confirm', 'incoming-transfer-offer');
-    let result;
-    try {
-      result = await showConfirmDialog([requests.length ? requestsTitle : '', bugs.length ? bugsTitle : ''].filter(Boolean).join(' and '), {
-        title: requests.length && bugs.length ? 'New access requests and bug reports' : requests.length ? 'New access requests' : 'New bug reports',
-        confirmLabel: requests.length ? 'Open Access Requests' : 'Open Bugs Report',
-        secondaryLabel: requests.length && bugs.length ? 'Open Bugs Report' : '',
-        cancelLabel: 'Close',
-        copyHtml,
-      });
-    } finally {
-      confirmOverlay?.classList.remove('incoming-transfer-confirm', 'incoming-transfer-offer');
-      if (eyebrow) eyebrow.textContent = eyebrowText;
-    }
-    const opened = result === true || result === 'confirm' ? (requests.length ? 'access-requests' : 'bugs-report') : result === 'secondary' ? 'bugs-report' : 'close';
-    try {
-      await fetch('/admin/notices/seen', {
-        method: 'POST', credentials: 'same-origin',
-        headers: {Accept: 'application/json', 'Content-Type': 'application/json'},
-        body: JSON.stringify({choice: opened, access_requests: requests.map((item) => item.key), bug_reports: bugs.map((bug) => bug.key)}),
-      });
-    } catch (_error) { /* Told again after the next sign-in. */ }
-    rememberSession();
-    if (opened === 'access-requests') window.location.href = notices.access_requests_url || '/admin#users';
-    else if (opened === 'bugs-report') window.location.href = notices.bugs_report_url || '/bugs-report';
+    // The first button opens what is listed first; Open Bugs Report is the second one when both are listed.
+    const access = dialog.overlay.querySelector('[data-admin-notices-choice="access-requests"]');
+    const bugsButton = dialog.overlay.querySelector('[data-admin-notices-choice="bugs-report"]');
+    access.hidden = !requests.length;
+    bugsButton.hidden = !bugs.length;
+    bugsButton.className = requests.length ? 'warning-button' : 'danger-button';
+    (requests.length ? access : bugsButton).focus();
   };
-  window.setTimeout(async () => {
-    let notices;
+  const refresh = async (ids) => {
+    const key = JSON.stringify([ids?.access_requests || [], ids?.bug_reports || []]);
+    const empty = !(ids?.access_requests?.length || ids?.bug_reports?.length);
+    // Told in another tab, or no longer pending: the open dialog closes without recording anything.
+    if (empty) { if (dialog) close(); return; }
+    if (loading || key === shownIds || key === acknowledgedIds || (!dialog && otherDialogOpen())) return;
+    loading = true;
     try {
-      const response = await fetch('/admin/notices', {credentials: 'same-origin', headers: {Accept: 'application/json'}, cache: 'no-store'});
+      const response = await fetch('/api/admin-notices', {credentials: 'same-origin', headers: {Accept: 'application/json'}, cache: 'no-store'});
       if (!response.ok) return;
-      notices = await response.json();
+      const latest = await response.json();
+      if (!latest?.access_requests?.length && !latest?.bug_reports?.length) { if (dialog) close(); return; }
+      if (!dialog && otherDialogOpen()) return;
+      notices = latest;
+      shownIds = key;
+      render();
     } catch (_error) {
-      return;
+      // Asked again by the next poll.
+    } finally {
+      loading = false;
     }
-    if (!notices?.access_requests?.length && !notices?.bug_reports?.length) {
-      rememberSession();
-      return;
-    }
-    void showNotices(notices);
-  }, 800);
+  };
+  window.addEventListener('drivetest-analyzer:admin-notices', (event) => { void refresh(event.detail); });
 })();
 
 // The transfer itself is server-side, so a page reload resumes following it:

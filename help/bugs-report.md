@@ -99,7 +99,7 @@ New, In Progress and Waiting for Info are the open statuses. The date a report i
 
 **Attend this bug** sets a new report **In Progress** and assigns it to the super-admin who presses it. Moving a report to In Progress or Waiting for Info assigns it to that super-admin when nobody attends it, and resolving it without a fixed version records the version running then.
 
-After signing in, each super-admin is told of the bug reports still **New** that other users reported and it has not opened, in the dialog that also lists the [access requests](administrator-config.md#access-requests) waiting for activation; **Open Bugs Report** lists the New reports. Each report is told once to each super-admin.
+After signing in, and as soon as they arrive while signed in, each super-admin is told of the bug reports still **New** that other users reported and it has not opened, in the dialog that also lists the [access requests](administrator-config.md#access-requests) waiting for activation; **Open Bugs Report** lists the New reports. Each report is told once to each super-admin.
 
 Every action (opening, editing, comments, screenshots, attention and deletion) is recorded in the [App Events](app-logs.md#app-events).
 
