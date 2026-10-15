@@ -1671,8 +1671,45 @@
 
   // -- views and panels on screen ---------------------------------------------------------
   // The panels calculated on their own after each change of the calls (the Summary comes with the calls).
-  const PANEL_LOADERS = {rates: loadRates, progress: loadProgress, lifecycle: loadLifecycle, root: loadRootCauses, sources: loadSources};
   const panelOf = (name) => root.querySelector(`[data-nq-loader="${name}"]`);
+  // While a panel waits for its data it shows an animated bar below its filters, as Scoring & GAP Analysis while it
+  // calculates, and its previous content is dimmed.
+  const loadingBars = new Map();
+  const showPanelLoading = (panel) => {
+    const body = panel?.querySelector(':scope > .collapsible-panel-body');
+    if (!body || loadingBars.has(panel)) return;
+    const bar = node('div', undefined, 'nq-panel-loading');
+    bar.setAttribute('role', 'status');
+    bar.append(node('p', `Loading ${panel.querySelector('h2')?.textContent.trim() || 'the panel'}…`, 'nq-panel-loading-title'));
+    const track = node('div', undefined, 'nq-panel-loading-bar');
+    track.append(node('span', undefined, 'nq-panel-loading-fill'));
+    bar.append(track);
+    const chips = body.querySelector(':scope > [data-nq-active-filters]');
+    if (chips) chips.after(bar);
+    else body.prepend(bar);
+    panel.classList.add('is-awaiting-data');
+    loadingBars.set(panel, bar);
+  };
+  const hidePanelLoading = (panel) => {
+    loadingBars.get(panel)?.remove();
+    loadingBars.delete(panel);
+    panel?.classList.remove('is-awaiting-data');
+  };
+  // The panels whose own data is being read.
+  const panelsLoading = new Set();
+  const withLoadingBar = (name, load) => async (...args) => {
+    const panel = panelOf(name);
+    showPanelLoading(panel);
+    panelsLoading.add(panel);
+    try {
+      return await load(...args);
+    } finally {
+      panelsLoading.delete(panel);
+      hidePanelLoading(panel);
+    }
+  };
+  const PANEL_LOADERS = Object.fromEntries(Object.entries({rates: loadRates, progress: loadProgress, lifecycle: loadLifecycle, root: loadRootCauses, sources: loadSources})
+    .map(([name, load]) => [name, withLoadingBar(name, load)]));
   const panelShown = (name) => {
     const panel = panelOf(name);
     return Boolean(panel && !panel.hidden && panel.open);
@@ -1701,6 +1738,7 @@
   const renderPanelCounts = (total) => panelCounts.forEach((badge) => {
     badge.textContent = `${number(total)} ${total === 1 ? 'call' : 'calls'}`;
   });
+  root.querySelectorAll('[data-nq-loader]').forEach((panel) => panel.addEventListener('toggle', () => { if (panel.open) refreshStale(); }));
 
   // -- loading ----------------------------------------------------------------
   // The indexing runs in the background (when the server is idle, the first time, or on Reindex): the badge says
@@ -1741,6 +1779,11 @@
     const signature = JSON.stringify([filters, state.sort, state.direction, state.pageSize]);
     if (state.filtersRestored) saveFilters(filters);
     loadAvailable(filters, quiet);
+    // The filters are shown on every panel at once, before their data arrives.
+    renderActiveFilters(filters);
+    // The panels on screen wait for the calls and then for their own data.
+    const waiting = quiet ? [] : ['calls', 'summary', ...Object.keys(PANEL_LOADERS)].map(panelOf).filter((panel) => panel && !panel.hidden && panel.open);
+    waiting.forEach(showPanelLoading);
     if (!quiet) {
       $('nq-count').textContent = 'Loading calls…';
       root.classList.add('is-loading');
@@ -1795,7 +1838,12 @@
       $('nq-count').textContent = error.message;
       if (!quiet) toast(error.message, 'error');
     } finally {
-      if (token === state.requestToken) root.classList.remove('is-loading');
+      // A newer request keeps the bars; otherwise the calls and the Summary have arrived (or failed), and the other
+      // panels keep their bar only while their own data is read.
+      if (token === state.requestToken) {
+        waiting.forEach((panel) => { if (!panelsLoading.has(panel)) hidePanelLoading(panel); });
+        root.classList.remove('is-loading');
+      }
     }
   }
   const scheduleLoad = debounce(() => { state.page = 1; loadCalls(); }, 300);

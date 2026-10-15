@@ -107,6 +107,14 @@
 .nq-page-size select { width: auto; min-height: 2.2rem; }
 .nq-table-wrap { overflow-x: auto; border: 1px solid var(--nq-border); border-radius: 12px; }
 .non-qualified-calls.is-loading .nq-table-wrap { opacity: .55; transition: opacity .2s; }
+/* While a panel waits for its data: an animated bar below its filters, as in Scoring & GAP Analysis, over its dimmed content. */
+.nq-panel-loading { display: grid; justify-items: center; gap: .6rem; padding: 1.4rem 1rem; }
+.nq-panel-loading-title { margin: 0; color: var(--nq-dark); font-size: 1rem; font-weight: 800; letter-spacing: .01em; }
+.nq-panel-loading-bar { width: min(36rem, 100%); height: 1.1rem; overflow: hidden; border: 1px solid color-mix(in srgb, var(--nq-color) 35%, #fff); border-radius: 999px; background: var(--nq-softer); box-shadow: inset 0 1px 3px color-mix(in srgb, var(--nq-color) 18%, transparent); }
+.nq-panel-loading-fill { display: block; width: 100%; height: 100%; border-radius: inherit; background: repeating-linear-gradient(-45deg, var(--nq-color) 0 .7rem, var(--nq-light) .7rem 1.05rem, #fff 1.05rem 1.4rem, var(--nq-light) 1.4rem 1.75rem); background-size: 2.475rem 2.475rem; box-shadow: 0 0 12px color-mix(in srgb, var(--nq-color) 45%, transparent); animation: nq-panel-loading-stripes .9s linear infinite; }
+@keyframes nq-panel-loading-stripes { from { background-position: 0 0; } to { background-position: 2.475rem 0; } }
+@media (prefers-reduced-motion: reduce) { .nq-panel-loading-fill { animation: none; } }
+.non-qualified-calls .is-awaiting-data > .collapsible-panel-body > :not(.nq-panel-loading):not([data-nq-active-filters]) { opacity: .45; transition: opacity .2s; }
 .nq-table { width: 100%; min-width: 960px; border-collapse: separate; border-spacing: 0; font-size: .82rem; }
 .nq-table th { position: sticky; top: 0; z-index: 1; padding: 9px 6px; background: #f6dbe4; color: #5e0f2c; font-size: .7rem; font-weight: 850; letter-spacing: 0; line-height: 1.25; text-align: left; text-transform: uppercase; vertical-align: bottom; }
 .nq-table [data-sort] { cursor: pointer; user-select: none; }
