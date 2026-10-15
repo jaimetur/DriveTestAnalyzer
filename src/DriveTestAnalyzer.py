@@ -2782,7 +2782,7 @@ def format_workspace_size(size_bytes: int) -> str:
     return f'{formatted} {unit}'
 
 
-IDLE_DASHBOARD_WARMUP_SECONDS = 5 * 60
+IDLE_DASHBOARD_WARMUP_SECONDS = 2 * 60
 IDLE_DASHBOARD_WARMUP_POLL_SECONDS = 30
 APPLICATION_ACTIVITY_LOCK = Lock()
 LAST_INTERACTIVE_APPLICATION_ACTIVITY = monotonic()
@@ -2841,7 +2841,7 @@ def register_idle_dashboard_warmup(callback: Callable[[], None]) -> None:
 
 
 def idle_dashboard_warmup_loop(stop_event: Event) -> None:
-    """Warm Dashboard caches after five quiet minutes with no queued work."""
+    """Warm Dashboard caches after two quiet minutes with no queued work."""
     global LAST_IDLE_DASHBOARD_WARMUP_ACTIVITY
     while not stop_event.wait(IDLE_DASHBOARD_WARMUP_POLL_SECONDS):
         with APPLICATION_ACTIVITY_LOCK:
