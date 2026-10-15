@@ -25,7 +25,7 @@ Workspace Management is the first operational module. It controls isolated works
 
 ## Data Ingestion
 
-Workspace accepts `CSV`, `XLS`, `XLSX` and `XLSM` for tabular datasets, and `GeoJSON`, `JSON` or zipped shapefiles for Regions, Clusters and Vendors. Only successfully processed datasets can be used by Dashboard, Chart Builder or Reporting.
+Workspace accepts `CSV`, `XLS`, `XLSX` and `XLSM` for tabular datasets, `KMZ` and `KML` files (alone or in a `ZIP` package) for Cell Configuration inventories, and `GeoJSON`, `JSON` or zipped shapefiles for Regions, Clusters and Vendors. Only successfully processed datasets can be used by Dashboard, Chart Builder or Reporting.
 
 ### Supported Input Types
 
@@ -34,7 +34,7 @@ Workspace accepts `CSV`, `XLS`, `XLSX` and `XLSM` for tabular datasets, and `Geo
 - CDR-Speech
 - Multivendor Mapping — VFUK
 - Multivendor Mapping — 3UK
-- Network Inventory — the cell inventory of any Operator, in any tabular layout
+- Network Inventory — the cell inventory of any Operator, in any tabular layout or as a Cell Configuration KMZ/KML package
 - Regions — Geospatial
 - Clusters — Geospatial
 - Vendors — Geospatial
@@ -67,7 +67,11 @@ Cluster polygons are the required input shown in **Network Insights → Cluster 
 
 ### Network Inventories
 
-Choose **Network Inventory** for the cell inventory of any Operator, whatever its layout: it is stored like any other dataset and listed in the **Network Inventory & Vendor Mappings** card with its **Operator**, proposed from the file name (for example `O2_Network_Inventory.csv` → O2) and changeable in the card. The upload proposes Network Inventory for tabular filenames containing `inventory`.
+Choose **Network Inventory** for the cell inventory of any Operator, whatever its layout: it is stored like any other dataset and listed in the **Network Inventory & Vendor Mappings** card with its **Operator**, proposed from the file name (for example `O2_Network_Inventory.csv` → O2) and changeable in the card. **Multi-operator (Network column)**, the choice without an Operator, takes the owner of each cell from its `Network` column, so one inventory can describe several networks (Vodafone, H3G and Telefonica cells, for example). The upload proposes Network Inventory for tabular filenames containing `inventory` and for every KMZ or KML file and ZIP package of them.
+
+**Cell Configuration KMZ/KML packages** are inventories too: one `.kmz` or `.kml` file, or a `.zip` with several of them (also in folders or nested `.zip` files), whose Placemarks describe one cell each with `Key: Value` lines (Network, Host Network, Vendor or OP/ Vendor, Site ID, eNodeB/gNodeB ID, Cell ID, ECI/NCI, Band, PCI, EARFCN/ARFCN, coordinates, azimuth, tilts, status…). Every cell becomes a row with its `Technology` (LTE or NR), its `Source_File` and its `Folder`; keys spelt differently in LTE and NR files (`Cell_name` and `Cell Name`, `Site_ID` and `Site ID`) share one column. Placemarks without a cell identity, such as the site-vendor points of the same packages, are skipped, and the sector shapes are not stored: Network Insights draws the sectors from each cell's position and azimuth.
+
+Each inventory — Multivendor Mappings included — is a **snapshot** of the network on its **Snapshot** date, shown and changed in its row of the card: the date in its file name (`260917_…` → 2026-09-17, or `YYYYMMDD`, `YYYY-MM-DD`) or its upload date until one is chosen; clearing it returns to that date, and every change is recorded in App Events. When an inventory is processed its cells are normalised once into the **Inventory Cells** table (with the **Inventory Snapshots** summary, both in Database Management): their technology, the owner `Network` and the `Host Network` whose equipment carries them (hence their vendor), site, cell identity, band, channel, PCI, position (the British National Grid position when the coordinates are rounded to 3 decimals), azimuth, configuration and status. Network Insights and the Vendor mapping read this table, so changing snapshot is immediate. The owner network and the host network are kept apart because an Operator's samples can be served by the cells of another network (shared Beacon sites or eMOCN).
 
 When it has a Vendor column (`Vendor`, `OP/ Vendor`, `OP_Vendor`, `OEM`, `Manufacturer` or `Supplier`) and a cell identifier — a global one (`GCID`, `Global Cell ID`, `ECI`, `NCI`, `ECGI`, `NCGI`, `CGI`, `Cell Identity` or `Cell ID`) or an `eNodeB ID`/`gNodeB ID` with its `Cell ID` (`eNodeB × 256 + Cell ID`, `gNodeB × 16384 + Cell ID` for 22-bit gNodeB IDs or the length of a `gNodeB ID Length` column; the `Local Cell ID` only for rows without a `Cell ID`). Each row takes the identity of its eNodeB, else of its gNodeB, else its global identifier, so one inventory can hold LTE and NR cells — it also maps the Vendor of its Operator's CDR samples (see [Vendor Mapping](#vendor-mapping)).
 
@@ -164,7 +168,7 @@ The global floating task cards remain visible while workspace work continues. Th
 The **Datasets** panel groups the datasets in cards, each with its icon, its own count and a sortable table; the times of the dates are shown in blue:
 
 - **Final CDRs**, **Weekly CDRs** and **Daily CDRs** (the last two fold and are shown only when there are CDRs of their type), at full width, with the CDR Type and In Combined? columns; Rows sit above Columns and Uploaded above Updated in one column each, and each of them keeps its own sort button in the header.
-- **Network Inventory & Vendor Mappings** (the network inventory of each operator: every cell with its vendor, site and configuration) and **Geographic Datasets** (Region, Cluster and Vendor polygons, with their **Type**), side by side with compact tables: dataset and type, rows, status with progress, last update and actions. Reference datasets have no analysis or mappings to apply, so their actions are **Preview**, **Reprocess** and **Delete**.
+- **Network Inventory & Vendor Mappings** (the network inventory of each operator: every cell with its vendor, site and configuration, with the **Operator** of Network Inventories and the **Snapshot** date of every inventory) and **Geographic Datasets** (Region, Cluster and Vendor polygons, with their **Type**), side by side with compact tables: dataset and type, rows, status with progress, last update and actions. Reference datasets have no analysis or mappings to apply, so their actions are **Preview**, **Reprocess** and **Delete**.
 - **Other Datasets** (Smart Orchestrator logs and other supported datasets), when there are any.
 - **Combined CDR tables**, the generated read-only query sources, with their Rows over Columns, status (**Ready**, **Updating**, **Recalculating**, **Queued**, **Missing Rows** or **Recalc Needed**), progress and last update; they mix NR Modes and come from no file, so they have no NR Mode, Size or Uploaded columns.
 
@@ -271,11 +275,11 @@ Recreate runs in the background and reports progress through [CDR Tables Updates
 ### Vendor Mapping
 
 > [!WARNING]
-> **Remapping.** Map a CDR again to apply a newer mapping file; it replaces the previous result without a prior Clear. Vendor Comparison requires persisted mapping on every selected CDR.
+> **Remapping.** Map a CDR again to apply a newer inventory, other Serving Networks or a newer mapping rule; it replaces the previous result without a prior Clear. The Map dialog marks the CDRs whose Vendor was mapped under other conditions as **Vendor mapping outdated** and selects them when it opens. Vendor Comparison requires persisted mapping on every selected CDR.
 
 Vendor mapping is required only for Vendor Comparison. The Vendor comes from one of two sources:
 
-- **Network Inventory**: the VFUK and 3UK Multivendor Mappings and the [Network Inventories](#network-inventories) of any other Operator, by the cells of each sample of their Operator.
+- **Network Inventory**: the VFUK and 3UK Multivendor Mappings and the [Network Inventories](#network-inventories) (Cell Configuration KMZ packages included), by the cells that served each sample.
 - **Vendor Polygons (Geographic Datasets)**: the [Vendor polygons](#vendor-polygons) of each sample's Operator, by its position; every Operator that has polygons.
 
 The Map dialog asks for the source when the workspace has both, and uses the only one otherwise; its Vendor mapping rule follows the chosen source.
@@ -289,12 +293,16 @@ The Map dialog asks for the source when the workspace has both, and uses the onl
 #### Assignment Rule
 
 - The CDR must provide `Operator` and a supported serving-cell field such as `Cell_ID_A`, `Cell_IDs_A`, `Cell_ID`, `Global CI`, `GCID`, `GCI`, `CGI` or `ECI`.
-- The VFUK file applies to every spelling of Vodafone (Vodafone UK, VF, VFUK, and the names of tests configured in another mode such as Vodafone SA, Vodafone VoNR or VF_SA) and the 3UK file to every spelling of Three: they share the same cells. The mapper resolves the first and last cells recorded in the CDR value. Vodafone UK (`Vodafone_` prefix), 3UK (`3_` prefix) and the other spellings (their own name as prefix, for example `Vodafone VoNR_`) follow the same rule:
+- Every selected VFUK or 3UK Multivendor Mapping and Network Inventory is a [snapshot](#network-inventories) of the network. Its cells belong to the network that owns them (their `Network` column, or the Operator of the inventory: Vodafone for the VFUK rows without one, 3 for the 3UK ones) and have the vendor of the equipment of their `Host Network`.
+- The mapper resolves the first and last cells recorded in the CDR value and looks them up among the cells of the networks that can serve the sample's Operator, its own network first: the [Serving Networks](workspace-config.md#serving-networks) of Workspace Config, by default Vodafone and Three for each other (they share their RAN through eMOCN), Vodafone and Three for Lebara, and its own network for every other Operator. The spellings of an Operator (Vodafone UK, VF, Vodafone SA, Vodafone SM, VF_SA…) share its network.
+- A cell in several snapshots takes the snapshot whose Snapshot date is closest to the date the CDR was measured (the median start time of its samples, else the date in its file name), the newest on a tie: a CDR measured before a vendor swap keeps the vendor it measured.
+- A cell farther from the sample's position than the maximum serving distance of the Serving Networks (30 km by default) is ignored: cell identities only repeat across Operators, so a distant cell with the same number did not serve the sample.
+- Vodafone UK (`Vodafone_` prefix), 3UK (`3_` prefix) and every other Operator (its own name as prefix, for example `Vodafone VoNR_` or `O2 (UK)_`) follow the same rule:
   - the same non-empty Vendor at both endpoints returns `<Operator>_<Vendor>`;
   - Ericsson at either endpoint with a different or missing Vendor at the other returns `<Operator>_Ericsson (Mixed)`;
   - every other different or missing combination returns `<Operator>_Mixed (non-Ericsson)`.
-- A [Network Inventory](#network-inventories) applies the same rule to the cells of its own Operator (every spelling of it in Operator Maps); the VFUK and 3UK mappings take precedence for Vodafone and Three.
-- Operators without an inventory (for example O2 and EE without a Network Inventory, or Vodafone and Three without a selected mapping) store `<Operator> - All`. CDRs mapped before this rule keep `Vodafone_Mixed Vendor`, `Vodafone_Other Vendor` or `3_Mixed Vendor` until they are mapped again.
+- Operators that no selected snapshot serves (for example EE without a Network Inventory) store `<Operator> - All`. CDRs mapped before this rule keep `Vodafone_Mixed Vendor`, `Vodafone_Other Vendor` or `3_Mixed Vendor` until they are mapped again.
+- The cell that served the start of each sample (its end when the start has no cell) is described in `Serving_Network` (its owner network), `Serving_Host_Network`, `Serving_Site_ID`, `Serving_eMOCN_Scenario`, `Serving_Distance_km` (from the sample's position) and `Serving_Inventory_Snapshot` (the Snapshot date it came from); they are empty when no cell matched.
 - With **Vendor polygons**, the same rule compares the polygon of the sample's own Operator at its start and at its end position: `Call_Start_Latitude_A`/`Call_Start_Longitude_A` and `Call_End_Latitude_A`/`Call_End_Longitude_A` in Voice CDRs. Data CDRs (`Test_Start_*`) and Speech CDRs (`Recording_*`) only record the start, which is then also the end. A sample outside every polygon of its Operator, or without coordinates, stores `<Operator>_Unknown` in `Operator_Vendor` and `Unknown` in `Vendor`; Operators without polygons store `<Operator> - All`. Vodafone and Three spellings share the polygons of their network, like their cells.
 - `Vendor` removes the recognised operator prefix from the mapped `Operator_Vendor`, allowing analytics to count the physical vendors independently of the operator. `Vendor_Operator` is `Operator_Vendor` the other way round (`<Vendor>_<Operator>`, and `<Operator> - All` for operators without a vendor); it is derived when the CDRs are read, so every CDR has it without being mapped again. Every filter that offers both keeps them in sync: selecting values in one selects the same identities in the other. CDRs processed before these names are migrated once when the workspace opens: the former `Vendor` becomes `Operator_Vendor` and the former `Vendor_Only` becomes `Vendor`.
 
@@ -303,14 +311,14 @@ The Map dialog asks for the source when the workspace has both, and uses the onl
 - Ready VFUK and 3UK mappings appear beside each CDR row.
 - The newest ready mapping of each type is proposed.
 - Either, both or neither may be selected.
-- Every ready Network Inventory that can map Vendors is applied as well, for the CDR samples of its Operator.
-- **Vendor source** is offered only when the CDRs have both sources, in the workspace or in the same upload: the **Network Inventory** (the VFUK Multivendor Mapping covers Vodafone, the 3UK one covers 3 and each Network Inventory its Operator) and the **Vendor polygons**, which applies every Vendor polygons dataset. The Vendor polygons are proposed when they cover every Operator of the Network Inventory source (polygons of that Operator, or multi-operator polygons whose Operator attribute includes it), and the Network Inventory otherwise. With a single source, that source is used.
+- Every ready Network Inventory that can map Vendors is applied as well: all the selected inventories are snapshots of the same networks.
+- **Vendor source** is offered only when the CDRs have both sources, in the workspace or in the same upload: the **Network Inventory** (the networks of the VFUK and 3UK Multivendor Mappings and of the Network Inventories) and the **Vendor polygons**, which applies every Vendor polygons dataset. The Vendor polygons are proposed when they cover every Operator of the Network Inventory source (polygons of that Operator, or multi-operator polygons whose Operator attribute includes it), and the Network Inventory otherwise. With a single source, that source is used.
 
 #### After Upload
 
 1. Click **Map** on a CDR (or **Map Vendor, Region & Cluster** for several).
 2. Select one or more ready CDRs, including CDRs that are already mapped. They are listed in CDR Data, Voice and Speech cards side by side, each with **Select All/None**.
-3. Choose the Vendor source when the workspace has both (the Vendor polygons are proposed when they cover every Operator of the Network Inventory source); confirm the VFUK and/or 3UK mapping, or the Vendor polygons to apply (all of them are selected), and optionally the Regions and Clusters mappings.
+3. Choose the Vendor source when the workspace has both (the Vendor polygons are proposed when they cover every Operator of the Network Inventory source); confirm the VFUK and/or 3UK mapping and the Network Inventories (each with its snapshot date), or the Vendor polygons to apply (all of them are selected), and optionally the Regions and Clusters mappings. The CDRs marked **Vendor mapping outdated** are selected when the dialog opens.
 4. Wait for processing to finish.
 
 Mapping a CDR again replaces its previous mapping; **Clear** is only needed to remove the mappings. **Clear Mappings** and **Reprocess Datasets** use the same wide dialog, with the CDRs in CDR Data, Voice and Speech panels (and Other Datasets for Reprocess) and **Select All/None** in each panel. A mapping left as "No … mapping" keeps its previous result. Re-mapping only Vendor recalculates it on the stored rows, which is much faster than rebuilding the CDR; Region and Cluster mappings rebuild the CDR from its source file. Mapping stores the `<Operator>_<Vendor>` identity in `Operator_Vendor` and the vendor name in `Vendor`; operators without an assigned vendor use `Operator - All`. The mapped value is retained in individual and combined CDRs and their dataset exports. Existing processed CDRs receive the new stored identity when mapped again.

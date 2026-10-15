@@ -1884,6 +1884,8 @@ body[data-embedded-template-editor] .slides-templates-editor-table-wrap .form-ac
 .queue-geo-type-vendors { background: #efe6fb; color: #5a3591; }
 .queue-operator-pill { display: block; width: 100%; max-width: 100%; min-width: 0; min-height: 0; height: 1.65rem; margin-top: 0.35rem; padding: 0 1rem 0 0.45rem; border: 1px solid #c9b4ea; border-radius: 999px; background: #f8f3ff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%235a3591' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 0.45rem center / 0.55rem; color: #5a3591; font-size: 0.72rem; font-weight: 800; appearance: none; -webkit-appearance: none; }
 .queue-operator-pill-inline { width: auto; max-width: 100%; }
+.queue-snapshot-date { display: inline-flex; align-items: center; gap: 0.35rem; margin: 0.35rem 0 0 0.35rem; padding: 0 0.15rem 0 0.55rem; border: 1px solid #b7d4e8; border-radius: 999px; background: #f1f8fd; color: #1d5b85; font-size: 0.72rem; font-weight: 800; vertical-align: middle; }
+.queue-snapshot-date input { height: 1.5rem; min-height: 0; padding: 0 0.35rem; border: 0; border-radius: 999px; background: #ffffff; color: #1d5b85; font-size: 0.72rem; font-weight: 700; }
 .vendor-mapping-cdr-list { display: grid; gap: 0.48rem; margin: 0; padding: 0.8rem 0.9rem; border: 1px solid rgba(16, 49, 74, 0.16); border-radius: 14px; background: rgba(16, 49, 74, 0.035); }
 .vendor-mapping-cdr-list legend { padding: 0 0.3rem; color: var(--brand); font-size: 0.86rem; font-weight: 800; }
 .vendor-mapping-cdr-choice { display: flex; align-items: center; gap: 0.55rem; cursor: pointer; color: var(--text); font-weight: 650; }
@@ -5040,3 +5042,4 @@ body:has(> .unassigned-values-card:not([hidden], .is-collapsed)) { padding-botto
 .user-select-menu .user-select-option[aria-selected="true"] { background: #e3f0fa; font-weight: 700; }
 .user-select-menu .user-select-option[aria-selected="true"]::after { content: '✓'; margin-left: auto; padding-left: .8rem; color: #1e61a3; }
 .user-select-divider { margin: .25rem .3rem; border-top: 1px solid #d8e0e7; }
+.vendor-mapping-outdated { display: inline-block; margin-left: 0.35rem; padding: 0.05rem 0.45rem; border-radius: 999px; background: #fff4e5; color: #9a5300; font-size: 0.72rem; font-style: normal; font-weight: 800; }

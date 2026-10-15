@@ -183,11 +183,11 @@
       <form class="upload-dropzone" action="/datasets-analysis/upload" method="post" enctype="multipart/form-data" data-background-upload data-workspace-id="{{ active_workspace.id }}" data-workspace-name="{{ active_workspace.name }}" data-upload-type-form data-vodafone-mapping-options='{{ vodafone_mapping_datasets | default([]) | tojson }}' data-three-mapping-options='{{ three_mapping_datasets | default([]) | tojson }}' data-region-mapping-options='{{ region_mapping_datasets | default([]) | tojson }}' data-cluster-mapping-options='{{ cluster_mapping_datasets | default([]) | tojson }}' data-vendor-polygon-options='{{ vendor_polygon_datasets | default([]) | tojson }}' data-network-inventory-count="{{ network_inventory_datasets | default([]) | length }}" data-vendor-source-operators='{{ vendor_source_operators | default({}) | tojson }}' data-operator-options='{{ operator_options | default([]) | tojson }}'{% if datasets | rejectattr('dataset_kind', 'in', ['data', 'voice', 'speech', 'mapping_vodafone', 'mapping_three', 'network_inventory', 'regions', 'clusters', 'vendors', 'smart_orchestrator_logs']) | list %} data-other-datasets{% endif %}>
       <label class="dropzone-field" data-upload-dropzone>
         <span class="dropzone-title">Drop workbooks or browse</span>
-        <span class="dropzone-copy">Accepted: CSV, XLS, XLSX, XLSM, GeoJSON, JSON, ZIP (shapefile)</span>
+        <span class="dropzone-copy">Accepted: CSV, XLS, XLSX, XLSM, GeoJSON, JSON, ZIP (shapefile or KMZ package), KMZ, KML</span>
         <span class="file-picker-shell">
           <span class="file-picker-button">Select files</span>
           <span class="file-picker-text" data-file-picker-text>No files selected</span>
-          <input type="file" name="dataset_files" accept=".csv,.xlsx,.xls,.xlsm,.geojson,.json,.zip" multiple required data-file-picker-input>
+          <input type="file" name="dataset_files" accept=".csv,.xlsx,.xls,.xlsm,.geojson,.json,.zip,.kmz,.kml" multiple required data-file-picker-input>
         </span>
       </label>
       <section class="upload-type-list" data-upload-type-list hidden aria-live="polite">
@@ -372,10 +372,16 @@
               <div class="queue-dataset-name" data-queue-file-name>{{ dataset.file_name }}</div>
               {% if not geospatial %}<div class="queue-dataset-kind" data-queue-kind data-queue-sort-value="{{ dataset.input_kind_label }}">{{ dataset.input_kind_label }}</div>{% endif %}
               {% if dataset.dataset_kind == 'network_inventory' %}
-              <select class="queue-operator-pill queue-operator-pill-inline" data-dataset-operator-select data-update-url="/workspace/datasets/{{ dataset.id }}/dataset-operator" aria-label="Operator of {{ dataset.file_name }}" title="The Operator of this Network Inventory; map the CDRs again to apply a change">
-                <option value=""{% if not dataset.dataset_operator %} selected{% endif %}>Choose the Operator</option>
+              <select class="queue-operator-pill queue-operator-pill-inline" data-dataset-dataset-operator-select data-update-url="/workspace/datasets/{{ dataset.id }}/dataset-operator" aria-label="Operator of {{ dataset.file_name }}" title="The Operator of this Network Inventory, or Multi-operator to take each cell's owner from its Network column; map the CDRs again to apply a change">
+                <option value=""{% if not dataset.dataset_operator %} selected{% endif %}>Multi-operator (Network column)</option>
                 {% for operator in operator_options %}<option value="{{ operator }}"{% if dataset.dataset_operator == operator %} selected{% endif %}>{{ operator }}</option>{% endfor %}
               </select>
+              {% endif %}
+              {% if dataset.dataset_kind in ['mapping_vodafone', 'mapping_three', 'network_inventory'] %}
+              <label class="queue-snapshot-date" title="The date of the network this inventory describes (empty: the date in its file name or its upload date). Network Insights and the Vendor mapping compare inventories by this date.">
+                <span>Snapshot</span>
+                <input type="date" value="{{ dataset.snapshot_date_effective or '' }}" data-dataset-snapshot-date data-update-url="/workspace/datasets/{{ dataset.id }}/snapshot-date" aria-label="Snapshot date of {{ dataset.file_name }}">
+              </label>
               {% endif %}
             </td>
             {% if geospatial %}
@@ -781,8 +787,8 @@
           <div class="vendor-mapping-cdr-group-head"><strong>{{ kind_label }}</strong>{% if kind_datasets %}<button type="button" class="vendor-mapping-select-all" data-mapping-select-all>Select All</button>{% endif %}</div>
           {% for dataset in kind_datasets %}
           <label class="vendor-mapping-cdr-choice">
-            <input type="checkbox" name="cdr_dataset_ids" value="{{ dataset.id }}" data-vendor-mapping-cdr-choice>
-            <span>{{ dataset.file_name }} <small>· {{ dataset.nr_mode or '—' }} · {{ dataset.row_count }} rows</small></span>
+            <input type="checkbox" name="cdr_dataset_ids" value="{{ dataset.id }}" data-vendor-mapping-cdr-choice{% if dataset.vendor_mapping_outdated %} checked{% endif %}>
+            <span>{{ dataset.file_name }} <small>· {{ dataset.nr_mode or '—' }} · {{ dataset.row_count }} rows</small>{% if dataset.vendor_mapping_outdated %} <em class="vendor-mapping-outdated" title="Its Vendor was mapped under an earlier rule, other Serving Networks or other inventory snapshots: map it again to apply the current ones.">Vendor mapping outdated</em>{% endif %}</span>
           </label>
           {% else %}
           <p class="form-note">No mappable CDRs.</p>
@@ -800,29 +806,21 @@
       <details class="vendor-mapping-rule" open data-vendor-source-rule="inventory"{% if default_vendor_source != 'inventory' %} hidden{% endif %}>
         <summary>Vendor mapping rule · Network Inventory</summary>
         <ol>
-          <li>For each CDR sample, split <code>Cell_ID_A</code> (or an equivalent Global Cell ID field) in chronological order and retain only the first and last Global Cell ID.</li>
-          <li>Look up both endpoints in the selected mapping:
-            <ul>
-              <li><strong>VFUK</strong> for every Vodafone Operator (any name starting with Vodafone or VF);</li>
-              <li><strong>3UK</strong> for every Three Operator (any name starting with Three or 3).</li>
-            </ul>
-          </li>
+          <li>Every selected <strong>VFUK</strong> or <strong>3UK Multivendor Mapping</strong> and <strong>Network Inventory</strong> (Cell Configuration KMZ packages included) is a snapshot of the network on its Snapshot date. Each of its cells belongs to the network that owns it (its <code>Network</code>, or the Operator of the inventory) and is carried by the equipment of its <code>Host Network</code>, whose vendor it has.</li>
+          <li>For each CDR sample, split <code>Cell_ID_A</code> (or an equivalent Global Cell ID field) in chronological order and retain only the first and last Global Cell ID: the ECI (<code>eNodeB ID × 256 + Cell ID</code>) or the NCI (<code>gNodeB ID × 16384 + Cell ID</code>) of the cell.</li>
+          <li>Look up both endpoints among the cells of the networks that can serve the sample's Operator (<a href="/workspace-config#serving-networks">Workspace Config → Serving Networks</a>): its own network first, then, by default, Vodafone and Three for each other (eMOCN) and both for Lebara.</li>
+          <li>When a cell is in several snapshots, the snapshot whose date is closest to the CDR's measurements is used (the newest on a tie), so a CDR measured before a vendor swap keeps the vendor it measured.</li>
+          <li>A cell farther from the sample than the maximum serving distance (30 km by default) is ignored: cell identities only repeat across Operators, and a distant cell is not the one that served the sample.</li>
         </ol>
-        <p><strong>Vodafone UK and Three UK</strong>: every Vodafone and Three Operator is mapped, and <code>&lt;Operator&gt;</code> is:</p>
-        <ul>
-          <li><strong><code>Vodafone</code></strong> for Vodafone, Vodafone UK, VF or VFUK (for example <code>Vodafone_Ericsson</code>);</li>
-          <li><strong><code>3</code></strong> for 3, 3UK, Three or Three UK (for example <code>3_Ericsson</code>);</li>
-          <li>the <strong>Operator's own name</strong> for any other Vodafone or Three Operator, such as tests in another mode (for example <code>Vodafone SA_Ericsson</code>, <code>Vodafone VoNR_Ericsson</code> or <code>VF_SA_Ericsson</code>).</li>
-        </ul>
+        <p><code>&lt;Operator&gt;</code> is <strong><code>Vodafone</code></strong> for Vodafone, Vodafone UK, VF or VFUK, <strong><code>3</code></strong> for 3, 3UK, Three or Three UK, and the Operator's own name otherwise (for example <code>Vodafone SA_Ericsson</code>, <code>O2 (UK)_Huawei</code> or <code>Lebara_Ericsson</code>).</p>
         <p>Result:</p>
         <ul>
           <li>The same non-empty Vendor at both endpoints returns <code>&lt;Operator&gt;_&lt;Vendor&gt;</code>.</li>
           <li>If Ericsson is present at either endpoint and the other Vendor is different or missing, the result is <code>&lt;Operator&gt;_Ericsson (Mixed)</code>.</li>
           <li>Every other different or missing endpoint combination returns <code>&lt;Operator&gt;_Mixed (non-Ericsson)</code>.</li>
         </ul>
-        <p><strong>Network Inventories</strong> of any other Operator follow the same rule with the cells of their Operator (a global cell ID, or eNodeB/gNodeB ID with its Cell ID, and a Vendor column).</p>
-        <p><strong>Operators without an inventory</strong> (for example O2 and EE, or Vodafone and Three without a selected mapping): no Vendor is assigned; the result is <code>&lt;Operator&gt; - All</code>.</p>
-        <p>The mapping populates the columns <code>Vendor</code>, <code>Operator_Vendor</code> and <code>Vendor_Operator</code> according to this rule.</p>
+        <p><strong>Operators that no selected snapshot serves</strong> (for example EE): no Vendor is assigned; the result is <code>&lt;Operator&gt; - All</code>.</p>
+        <p>The mapping populates <code>Vendor</code>, <code>Operator_Vendor</code> and <code>Vendor_Operator</code>, and describes the cell that served the start of each sample in <code>Serving_Network</code>, <code>Serving_Host_Network</code>, <code>Serving_Site_ID</code>, <code>Serving_eMOCN_Scenario</code>, <code>Serving_Distance_km</code> and <code>Serving_Inventory_Snapshot</code>. CDRs marked <em>Vendor mapping outdated</em> were mapped under an earlier rule, other Serving Networks or other snapshots; they are selected when the dialog opens.</p>
       </details>
       <details class="vendor-mapping-rule" open data-vendor-source-rule="polygons"{% if default_vendor_source != 'polygons' %} hidden{% endif %}>
         <summary>Vendor mapping rule · Vendor polygons</summary>
@@ -859,7 +857,7 @@
         {% if has_inventory and vendor_polygon_datasets %}
         <fieldset class="vendor-mapping-source" data-vendor-source-choice>
           <legend>Vendor source</legend>
-          <label><input type="radio" name="vendor_source" value="inventory"{% if default_vendor_source == 'inventory' %} checked{% endif %}> Network Inventory (VFUK and 3UK cells)</label>
+          <label><input type="radio" name="vendor_source" value="inventory"{% if default_vendor_source == 'inventory' %} checked{% endif %}> Network Inventory (Multivendor Mappings and Network Inventories)</label>
           <label><input type="radio" name="vendor_source" value="polygons"{% if default_vendor_source == 'polygons' %} checked{% endif %}> Vendor Polygons (Geographic Datasets)</label>
         </fieldset>
         {% else %}
@@ -879,7 +877,7 @@
           <select name="vodafone_mapping_dataset_id">
             <option value="">No VFUK mapping</option>
             {% for mapping in vodafone_mapping_datasets %}
-            <option value="{{ mapping.id }}"{% if loop.first %} selected{% endif %}>{{ mapping.file_name }}</option>
+            <option value="{{ mapping.id }}"{% if loop.first %} selected{% endif %}>{{ mapping.file_name }}{% if mapping.snapshot_date_effective %} · snapshot {{ mapping.snapshot_date_effective }}{% endif %}</option>
             {% endfor %}
           </select>
         </label>
@@ -891,7 +889,7 @@
           <select name="three_mapping_dataset_id">
             <option value="">No 3UK mapping</option>
             {% for mapping in three_mapping_datasets %}
-            <option value="{{ mapping.id }}"{% if loop.first %} selected{% endif %}>{{ mapping.file_name }}</option>
+            <option value="{{ mapping.id }}"{% if loop.first %} selected{% endif %}>{{ mapping.file_name }}{% if mapping.snapshot_date_effective %} · snapshot {{ mapping.snapshot_date_effective }}{% endif %}</option>
             {% endfor %}
           </select>
         </label>
@@ -902,7 +900,7 @@
         <fieldset class="vendor-mapping-polygons">
           <legend>Network Inventories</legend>
           {% for inventory in network_inventory_datasets %}
-          <label{% if not inventory.can_map_vendors_from or not inventory.dataset_operator %} title="{{ 'Choose its Operator in the Network Inventory card' if inventory.can_map_vendors_from else 'It has no Vendor column and cell identifier to map Vendors' }}"{% endif %}><input type="checkbox" name="network_inventory_dataset_ids" value="{{ inventory.id }}"{% if inventory.can_map_vendors_from and inventory.dataset_operator %} checked{% else %} disabled{% endif %}> {{ inventory.file_name }} <small>· {{ inventory.dataset_operator or 'No Operator' }}</small></label>
+          {% set inventory_usable = inventory.can_map_vendors_from and (inventory.dataset_operator or inventory.multi_network) %}<label{% if not inventory_usable %} title="{{ 'Choose its Operator in the Network Inventory card' if inventory.can_map_vendors_from else 'It has no Vendor column and cell identifier to map Vendors' }}"{% endif %}><input type="checkbox" name="network_inventory_dataset_ids" value="{{ inventory.id }}"{% if inventory_usable %} checked{% else %} disabled{% endif %}> {{ inventory.file_name }} <small>· {{ inventory.dataset_operator or ('Multi-operator' if inventory.multi_network else 'No Operator') }}{% if inventory.snapshot_date_effective %} · snapshot {{ inventory.snapshot_date_effective }}{% endif %}</small></label>
           {% endfor %}
         </fieldset>
         {% endif %}
@@ -1106,6 +1104,8 @@
 
   function inferType(fileName) {
     const normalized = String(fileName || '').toLowerCase().replace(/[_-]+/g, ' ');
+    // Cell Configuration KMZ/KML files, alone or in a ZIP package, are Network Inventories.
+    if (/\.(kmz|kml)$/.test(normalized) || (/\.zip$/.test(normalized) && /(kmz|kml|cell config)/.test(normalized))) return 'network_inventory';
     if (normalized.includes('cluster') && /\.(geojson|json|zip)$/.test(normalized)) return 'clusters';
     if (normalized.includes('vendor') && /\.(geojson|json|zip)$/.test(normalized)) return 'vendors';
     if (normalized.includes('vfuk') || normalized.includes('vodafone uk') || normalized.includes('vodafone')) return 'mapping_vodafone';
@@ -1193,7 +1193,7 @@
         entry.stageField.hidden = !isCdr;
         entry.operatorField.hidden = !['vendors', 'network_inventory'].includes(entry.select.value);
         const multiOperator = entry.operatorSelect.options[0];
-        multiOperator.textContent = entry.select.value === 'network_inventory' ? 'Choose the Operator' : 'Multi-operator';
+        multiOperator.textContent = entry.select.value === 'network_inventory' ? 'Multi-operator (Network column)' : 'Multi-operator';
         // A CDR takes its Vendor from the Network Inventory (Multivendor Mappings and Network Inventories)
         // or from every Vendor polygons dataset: the choice is offered only when both exist, otherwise the
         // source there is is used.

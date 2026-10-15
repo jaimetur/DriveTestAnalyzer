@@ -734,6 +734,16 @@ def load_dataset(
         if progress_callback:
             progress_callback(55)
         return df
+    from src.modules.cell_configuration import is_cell_configuration_package, read_cell_configuration
+
+    if is_cell_configuration_package(file_path):
+        # Cell Configuration KMZ/KML files, alone or in a ZIP package: one row per cell Placemark.
+        source = read_cell_configuration(file_path, progress_callback=progress_callback)
+        _capture_source_columns(source_columns, source.columns)
+        df = _normalise_dataset(source, file_path)
+        if progress_callback:
+            progress_callback(55)
+        return df
     raise ValueError(f'Unsupported file type: {suffix}')
 
 

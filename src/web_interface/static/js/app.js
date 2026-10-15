@@ -11392,6 +11392,30 @@ document.addEventListener('change', async (event) => {
   }
 });
 
+// The snapshot date of an inventory: the date of the network it describes (blank: its file name or upload date).
+document.addEventListener('change', async (event) => {
+  const input = event.target instanceof HTMLInputElement ? event.target.closest('[data-dataset-snapshot-date]') : null;
+  if (!(input instanceof HTMLInputElement) || !input.dataset.updateUrl) return;
+  const previous = input.dataset.savedValue ?? input.defaultValue;
+  input.disabled = true;
+  try {
+    const response = await fetch(input.dataset.updateUrl, {
+      method: 'POST', credentials: 'same-origin',
+      headers: {'Content-Type': 'application/json', Accept: 'application/json'},
+      body: JSON.stringify({snapshot_date: input.value}),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.detail || 'The snapshot date could not be updated.');
+    input.value = payload.snapshot_date_effective || input.value;
+    input.dataset.savedValue = input.value;
+  } catch (error) {
+    input.value = previous;
+    showInfoDialog(error instanceof Error ? error.message : 'The snapshot date could not be updated.', {title: 'Snapshot date update failed', tone: 'error'});
+  } finally {
+    input.disabled = false;
+  }
+});
+
 document.addEventListener('change', async (event) => {
   const select = event.target instanceof HTMLSelectElement ? event.target.closest('[data-dataset-nr-mode-select]') : null;
   if (!(select instanceof HTMLSelectElement) || !select.dataset.updateUrl) return;

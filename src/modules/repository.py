@@ -175,6 +175,7 @@ CREATE TABLE IF NOT EXISTS dataset_profiles (
     cdr_stage TEXT,
     in_combined TEXT NOT NULL DEFAULT 'auto',
     dataset_operator TEXT,
+    snapshot_date TEXT,
     row_count INTEGER,
     column_count INTEGER,
     default_metric TEXT,
@@ -771,6 +772,9 @@ class Repository:
             self._ensure_report_template_columns(conn)
             self._ensure_dataset_profile_columns(conn)
             self._ensure_cdr_catalogue_columns(conn)
+            # Normalised inventory snapshots (built from the inventory datasets; see network_inventory).
+            from src.modules.network_inventory import ensure_inventory_schema
+            ensure_inventory_schema(conn)
             self._ensure_generated_job_columns(conn)
             self._migrate_generated_jobs(conn)
             self._cleanup_duplicate_datasets(conn)
@@ -1484,6 +1488,9 @@ class Repository:
         elif 'dataset_operator' not in existing_columns:
             # The Operator of a reference dataset: Vendor polygons and Network Inventories.
             conn.execute("ALTER TABLE dataset_profiles ADD COLUMN dataset_operator TEXT")
+        if 'snapshot_date' not in existing_columns:
+            # The date of the network an inventory describes (empty: the date in its name or its upload date).
+            conn.execute("ALTER TABLE dataset_profiles ADD COLUMN snapshot_date TEXT")
         # Region polygons were first the "mapping_region" kind; they are now Regions, like Clusters.
         conn.execute("UPDATE dataset_profiles SET dataset_kind = 'regions' WHERE dataset_kind = 'mapping_region'")
         self._backfill_dataset_nr_modes(conn)
@@ -2279,6 +2286,10 @@ class Repository:
             ]
             for table_name in orphaned:
                 conn.execute(f'DROP TABLE {self._quote_identifier(table_name)}')
+            # The normalised inventory cells of deleted inventories (see network_inventory).
+            for table_name in ('inventory_cells', 'inventory_snapshots'):
+                if conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (table_name,)).fetchone():
+                    conn.execute(f'DELETE FROM {table_name} WHERE dataset_id NOT IN (SELECT id FROM datasets)')
         return orphaned
 
     def remove_orphaned_reporting_rows(self) -> int:
@@ -4489,7 +4500,7 @@ class Repository:
             return conn.execute(
                 """
                 SELECT d.id, d.file_name, d.stored_path, d.uploaded_by, d.uploaded_at,
-                       p.status, p.progress, p.processing_step, p.normalization_version, p.vendor_mapping_applied, p.vendor_values_complete, p.region_mapping_applied, p.region_mapping_dataset_id, p.cluster_mapping_applied, p.cluster_mapping_dataset_id, p.dataset_kind, p.nr_mode, p.cdr_stage, p.in_combined, p.dataset_operator, p.row_count, p.column_count,
+                       p.status, p.progress, p.processing_step, p.normalization_version, p.vendor_mapping_applied, p.vendor_values_complete, p.region_mapping_applied, p.region_mapping_dataset_id, p.cluster_mapping_applied, p.cluster_mapping_dataset_id, p.dataset_kind, p.nr_mode, p.cdr_stage, p.in_combined, p.dataset_operator, p.snapshot_date, p.row_count, p.column_count,
                        p.default_metric, p.default_aggregation, p.available_metrics_json,
                        p.available_aggregations_json, p.filter_options_json, p.summary_json,
                        p.kpis_json, p.last_error, p.processing_started_at, p.processed_at,
@@ -4507,7 +4518,7 @@ class Repository:
                 conn.execute(
                     """
                     SELECT d.id, d.file_name, d.stored_path, d.uploaded_by, d.uploaded_at,
-                           p.status, p.progress, p.processing_step, p.normalization_version, p.vendor_mapping_applied, p.vendor_values_complete, p.region_mapping_applied, p.region_mapping_dataset_id, p.cluster_mapping_applied, p.cluster_mapping_dataset_id, p.dataset_kind, p.nr_mode, p.cdr_stage, p.in_combined, p.dataset_operator, p.row_count, p.column_count,
+                           p.status, p.progress, p.processing_step, p.normalization_version, p.vendor_mapping_applied, p.vendor_values_complete, p.region_mapping_applied, p.region_mapping_dataset_id, p.cluster_mapping_applied, p.cluster_mapping_dataset_id, p.dataset_kind, p.nr_mode, p.cdr_stage, p.in_combined, p.dataset_operator, p.snapshot_date, p.row_count, p.column_count,
                            p.default_metric, p.default_aggregation, p.available_metrics_json,
                            p.available_aggregations_json, p.filter_options_json, p.summary_json,
                            p.kpis_json, p.last_error, p.processing_started_at, p.processed_at,

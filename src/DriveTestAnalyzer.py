@@ -84,6 +84,8 @@ from src.modules.report_layouts import canonical_layout_name, selectable_layout_
 from src.modules.cdr_reporting import entry_dynamic_fields, DYNAMIC_LAYOUTS, CATALOG_HEADERS, CHART_TYPES, HOVER_TARGETS_VERSION, STRUCTURAL_SLIDE_TYPES, TEMPLATE_NAMES, CatalogEntry, _legend_dimensions, assign_cdr_vendors, calculated_dimensions_json, catalog_chart_hover_targets, catalog_chart_payload, catalog_kpi_fields, catalogue_csv, classify_sessions, convert_catalog_csv, ensure_vendor_group, is_empty_catalog_chart, materialize_calculated_dimensions, normalise_operator_aliases, parse_axis_range, parse_calculated_dimensions, parse_catalog_csv, parse_catalog_filters, parse_catalog_grouping, parse_label_format, parse_label_position, parse_legend_position, parse_template_boolean, prepare_catalog_chart_preview_frame, prepare_multivendor_catalog_entry, preview_catalog_chart_data, render_catalog_chart_preview, render_catalog_chart_preview_with_hover, render_cdr_report, render_unavailable_source_chart, report_chart_renderer_name, reset_dashboard_canvas_renderer, split_calculated_dimension_aliases
 from src.modules.exports import POWERPOINT_EXPORT_VERSION, export_dataset_summary_powerpoint, export_powerpoint_report
 from src.modules.email_delivery import DEFAULT_MAX_ATTACHMENTS_MB, EMAIL_SECURITY_MODES, email_delivery_settings, invalid_recipients, parse_recipients, save_email_delivery_settings, send_email
+from src.modules.network_inventory import INVENTORY_DATASET_KINDS, build_inventory_cells, effective_snapshot_date, normalise_snapshot_date
+from src.modules.serving_cells import vendor_mapping_signature
 from src.modules.ingestion import CDR_IGNORED_SHEET_KEYS, add_three_gcid_column, add_vfuk_gcid_column, apply_operator_mappings, ensure_fixed_cdr_fields, get_dataset_source_columns, get_excel_sheet_columns, infer_dataset_kind, load_dataset, summarise_dataset
 from src.modules.geospatial import assign_clusters, assign_regions, polygon_vendor_endpoints, validate_cluster_mapping, validate_region_mapping, validate_vendor_polygons, vendor_polygon_operators
 from src.modules.nr_mode import NR_MODES, dataset_nr_mode, infer_nr_mode, normalize_nr_mode
@@ -3380,6 +3382,10 @@ def serialize_dataset_row(row) -> dict[str, Any]:
     item['cdr_stage'] = dataset_cdr_stage(item.get('dataset_kind'), item.get('cdr_stage'), item.get('file_name'))
     item['cdr_stage_label'] = CDR_STAGE_LABELS.get(item['cdr_stage'] or '', '—')
     item['in_combined'] = normalize_in_combined(item.get('in_combined')) or 'auto'
+    if item.get('dataset_kind') in INVENTORY_DATASET_KINDS:
+        # The date of the network the inventory describes: chosen, else in its file name, else its upload date.
+        item['snapshot_date'] = str(item.get('snapshot_date') or '')[:10]
+        item['snapshot_date_effective'] = effective_snapshot_date(item)
     item['progress'] = int(item.get('progress') or 0)
     started_at = parse_dataset_timestamp(item.get('processing_started_at'))
     finished_at = parse_dataset_timestamp(item.get('processed_at'))
@@ -4376,25 +4382,6 @@ def infer_dataset_operator(file_name: str, task_repository: Repository | None = 
     return None
 
 
-def network_inventory_lookups(
-    inventory_dataset_ids: Iterable[Any], task_repository: Repository | None = None,
-) -> dict[str, dict[str, str]]:
-    """Global cell ID → Vendor of each selected Network Inventory, by the identity of its Operator."""
-    from src.modules.cdr_reporting import build_inventory_vendor_lookup, operator_key
-
-    task_repository = task_repository or repository
-    aliases = operator_aliases(task_repository)
-    lookups: dict[str, dict[str, str]] = {}
-    for inventory_id in dict.fromkeys(int(item) for item in inventory_dataset_ids):
-        inventory = _reporting_dataset(inventory_id, 'network_inventory', task_repository)
-        operator = str(inventory.get('dataset_operator') or '').strip()
-        if not operator:
-            raise ValueError(f"Choose the Operator of the Network Inventory {inventory['file_name']}.")
-        lookups.setdefault(operator_key(operator, aliases), {}).update(
-            build_inventory_vendor_lookup(_reporting_frame(inventory_id, task_repository)))
-    return lookups
-
-
 def inventory_can_map_vendors(dataset_id: int, task_repository: Repository | None = None) -> bool:
     """Whether a Network Inventory has a Vendor column and a cell identifier to map Vendors."""
     from src.modules.cdr_reporting import inventory_vendor_columns
@@ -4406,19 +4393,19 @@ def inventory_can_map_vendors(dataset_id: int, task_repository: Repository | Non
 
 
 def assign_inventory_vendors(
-    df: pd.DataFrame, vodafone_frame: pd.DataFrame | None, three_frame: pd.DataFrame | None,
-    inventory_dataset_ids: Iterable[Any], task_repository: Repository | None = None,
+    df: pd.DataFrame, dataset_kind: str, vodafone_mapping_dataset_id: int | None, three_mapping_dataset_id: int | None,
+    inventory_dataset_ids: Iterable[Any], task_repository: Repository | None = None, file_name: str = '',
 ) -> pd.DataFrame:
-    """Assign Vendor from the VFUK and 3UK Multivendor Mappings and the Network Inventories of any Operator."""
-    from src.modules.cdr_reporting import operator_key
+    """Assign Vendor from the cells that served each sample, in the selected Multivendor Mappings and Network Inventories.
+
+    Every selected inventory is a snapshot of the network; each sample's cells are looked up among the networks
+    allowed to serve its Operator (Workspace Config → Serving Networks), see ``serving_cells``.
+    """
+    from src.modules.serving_cells import assign_serving_vendors
 
     task_repository = task_repository or repository
-    aliases = operator_aliases(task_repository)
-    return assign_cdr_vendors(
-        df, vodafone_frame, three_frame,
-        inventory_lookups=network_inventory_lookups(inventory_dataset_ids, task_repository),
-        operator_identity=lambda value: operator_key(value, aliases),
-    )
+    snapshot_ids = [int(value) for value in (vodafone_mapping_dataset_id, three_mapping_dataset_id, *inventory_dataset_ids) if value]
+    return assign_serving_vendors(df, dataset_kind, task_repository, snapshot_ids, file_name=file_name)
 
 
 def assign_polygon_vendors(
@@ -4449,6 +4436,21 @@ def _dataset_option(task_repository: Repository, dataset_id: int, key: str) -> A
     except (TypeError, json.JSONDecodeError, IndexError, KeyError):
         options = {}
     return options.get(key) if isinstance(options, dict) else None
+
+
+def _record_vendor_mapping_signature(task_repository: Repository, dataset_id: int, signature: str | None) -> None:
+    """Keep in the CDR's processing options what its inventory Vendor mapping was calculated from."""
+    row = task_repository.get_dataset(dataset_id)
+    try:
+        options = json.loads(str(row['processing_options_json'] or '{}')) if row else {}
+    except (TypeError, json.JSONDecodeError, IndexError, KeyError):
+        options = {}
+    options = options if isinstance(options, dict) else {}
+    if signature:
+        options['vendor_mapping_signature'] = signature
+    else:
+        options.pop('vendor_mapping_signature', None)
+    task_repository.update_dataset_profile(dataset_id, processing_options_json=json.dumps(options))
 
 
 def rebuild_dataset_artifacts(
@@ -4512,6 +4514,7 @@ def rebuild_dataset_artifacts(
     dataset_kind = df['dataset_kind'].iloc[0] if 'dataset_kind' in df.columns and not df.empty else (forced_dataset_kind or infer_dataset_kind(df, dataset_path.name))
     auto_vendor_mapping_applied = False
     auto_vendor_mapping_error: str | None = None
+    inventory_vendor_signature: str | None = None
     auto_region_mapping_applied = False
     auto_region_mapping_error: str | None = None
     # Vendor polygons are chosen instead of the Network Inventory and kept in the processing options.
@@ -4541,12 +4544,13 @@ def rebuild_dataset_artifacts(
         )
         try:
             df = assign_inventory_vendors(
-                df,
-                _reporting_frame(vodafone_mapping['id'], task_repository) if vodafone_mapping else None,
-                _reporting_frame(three_mapping['id'], task_repository) if three_mapping else None,
-                inventory_ids, task_repository,
+                df, dataset_kind,
+                int(vodafone_mapping['id']) if vodafone_mapping else None,
+                int(three_mapping['id']) if three_mapping else None,
+                inventory_ids, task_repository, file_name=dataset_path.name,
             )
             auto_vendor_mapping_applied = True
+            inventory_vendor_signature = vendor_mapping_signature(task_repository)
         except Exception as exc:
             # Mapping is optional during import. A mapping issue must not make
             # an otherwise valid CDR unusable in Workspace or CDR Analysis.
@@ -4630,6 +4634,16 @@ def rebuild_dataset_artifacts(
     task_repository.update_dataset_profile(dataset_id, processing_step='Finalizing dataset profile')
     # Mapped Vendors are always complete; otherwise whether the source CDR has a Vendor on every row.
     vendor_values_complete = bool(auto_vendor_mapping_applied or df.attrs.get('vendor_values_complete'))
+    processed_at = now_iso()
+    if dataset_kind in INVENTORY_DATASET_KINDS:
+        # One normalised snapshot of the network per inventory, so Network Insights and the Vendor
+        # mapping never read its source rows again.
+        task_repository.update_dataset_profile(dataset_id, progress=96, processing_step='Indexing inventory cells')
+        snapshot_row = task_repository.get_dataset(dataset_id)
+        build_inventory_cells(task_repository, {
+            **(dict(snapshot_row) if snapshot_row else {'id': dataset_id}), 'dataset_kind': dataset_kind,
+            'processed_at': processed_at, 'row_count': summary.rows,
+        })
     task_repository.update_dataset_profile(
         dataset_id,
         status='ready',
@@ -4652,9 +4666,11 @@ def rebuild_dataset_artifacts(
         filter_options_json=json.dumps(filter_options),
         summary_json=json.dumps(asdict(summary)),
         kpis_json=json.dumps(analysis.kpis),
-        processed_at=now_iso(),
+        processed_at=processed_at,
         last_error=None,
     )
+    if dataset_kind in CDR_DATASET_KINDS:
+        _record_vendor_mapping_signature(task_repository, dataset_id, inventory_vendor_signature)
     if dataset_kind in CDR_DATASET_KINDS and update_combined_reporting:
         # A Daily CDR replaced by a Final CDR, or a Final CDR that replaces Daily CDRs, changes the combined tables.
         try_sync_combined_cdr_inclusion(task_repository)
@@ -4999,14 +5015,16 @@ def process_vendor_mapping(
                     _reporting_frame(dataset_id, task_repository), str(dataset.get('dataset_kind') or ''),
                     vendor_polygon_ids, task_repository,
                 ) if vendor_polygon_ids else assign_inventory_vendors(
-                    _reporting_frame(dataset_id, task_repository),
-                    _reporting_frame(vodafone_mapping['id'], task_repository) if vodafone_mapping else None,
-                    _reporting_frame(three_mapping['id'], task_repository) if three_mapping else None,
-                    inventory_ids, task_repository,
+                    _reporting_frame(dataset_id, task_repository), str(dataset.get('dataset_kind') or ''),
+                    int(vodafone_mapping['id']) if vodafone_mapping else None,
+                    int(three_mapping['id']) if three_mapping else None,
+                    inventory_ids, task_repository, file_name=str(dataset.get('file_name') or ''),
                 )
                 task_repository.update_dataset_profile(dataset_id, progress=75, processing_step='Writing mapped CDR rows')
                 ensure_not_stopped(dataset_id, task_repository)
                 persist_mapped_cdr_frame(dataset, mapped_frame, task_repository)
+                _record_vendor_mapping_signature(
+                    task_repository, dataset_id, None if vendor_polygon_ids else vendor_mapping_signature(task_repository))
                 clear_dataset_analysis_cache(dataset_path)
                 task_repository.update_dataset_profile(
                     dataset_id, status='ready', progress=100, processing_step='Completed', last_error=None, processed_at=now_iso(),
@@ -5413,6 +5431,20 @@ def spectrum_holdings_context(request: Request) -> dict[str, Any]:
         'spectrum_band_classes': BAND_CLASSES,
         'spectrum_holdings_notice': request.query_params.get('spectrum_holdings_notice') or None,
         'spectrum_holdings_error': request.query_params.get('spectrum_holdings_error') or None,
+    }
+
+
+def serving_networks_context(request: Request) -> dict[str, Any]:
+    """The Serving Networks of the active workspace: which networks' cells serve each Operator's samples."""
+    from src.modules.serving_cells import effective_serving_rows, load_serving_networks, serving_networks_csv
+
+    config = load_serving_networks(repository) if active_workspace else {'rows': [], 'max_distance_km': 30.0}
+    return {
+        'serving_networks_rows': effective_serving_rows(config, operator_options()) if active_workspace else [],
+        'serving_networks_csv': serving_networks_csv(config['rows']) if config['rows'] else '',
+        'serving_networks_distance': config['max_distance_km'],
+        'serving_networks_notice': request.query_params.get('serving_networks_notice') or None,
+        'serving_networks_error': request.query_params.get('serving_networks_error') or None,
     }
 
 
@@ -7450,10 +7482,11 @@ DASHBOARD_STATE_KEY = 'ppt_dashboards_v2'
 
 
 def _mappings_reference_data_archive_payload(workspace: Workspace) -> bytes:
-    """Serialize complete Operator and Vendor chart mappings, Spectrum Holdings, the Campaign Map and the Map Areas."""
+    """Serialize complete Operator and Vendor chart mappings, Spectrum Holdings, Serving Networks, the Campaign Map and the Map Areas."""
     from src.modules.campaign_maps import load_campaign_map
     from src.modules.map_areas import layers_document
     from src.modules.network_insights import load_spectrum_holdings
+    from src.modules.serving_cells import load_serving_networks
 
     task_repository = Repository(
         workspace.database_path, repository.global_db_path, workspace_registry.registry_path,
@@ -7465,6 +7498,7 @@ def _mappings_reference_data_archive_payload(workspace: Workspace) -> bytes:
         'operator_mappings': task_repository.list_operator_mapping_groups(),
         'vendor_mappings': task_repository.list_vendor_mapping_groups(),
         'spectrum_holdings': load_spectrum_holdings(task_repository),
+        'serving_networks': load_serving_networks(task_repository),
         'campaign_map': load_campaign_map(task_repository),
         'map_areas': map_areas,
     }
@@ -7487,7 +7521,7 @@ def _archive_workspace_mappings_reference_data(
 
 
 def _restore_workspace_mappings_reference_data(workspace: Workspace, payload: bytes) -> None:
-    """Replace the Operator and Vendor Maps, Spectrum Holdings, the Campaign Map and the Map Areas of the workspace."""
+    """Replace the Operator and Vendor Maps, Spectrum Holdings, Serving Networks, the Campaign Map and the Map Areas of the workspace."""
     try:
         document = json.loads(payload.decode('utf-8'))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -7519,6 +7553,10 @@ def _restore_workspace_mappings_reference_data(workspace: Workspace, payload: by
     task_repository.replace_operator_mapping_groups(document['operator_mappings'])
     task_repository.replace_vendor_mapping_groups(document['vendor_mappings'])
     save_spectrum_holdings(task_repository, spectrum_holdings)
+    if isinstance(document.get('serving_networks'), dict):
+        # Packages exported before the Serving Networks keep the workspace's own.
+        from src.modules.serving_cells import save_serving_networks
+        save_serving_networks(task_repository, document['serving_networks'])
     save_campaign_map(task_repository, campaign_map)
     if isinstance(document.get('map_areas'), dict):
         from src.modules.map_areas import import_layers_document
@@ -10807,6 +10845,8 @@ def render_admin_template(
         'chart_mapping_groups': 'Chart mapping groups',
         'operator_mappings': 'Operator Mappings',
         'vendor_mappings': 'Vendor Mappings',
+        'inventory_cells': 'Inventory Cells',
+        'inventory_snapshots': 'Inventory Snapshots',
         'report_templates': 'PPT Templates',
         'saved_query_builder_queries': 'Query Builder Queries',
         'workspace_state': 'Workspace State',
@@ -10945,6 +10985,7 @@ def render_admin_template(
             'default_campaign_map': DEFAULT_CAMPAIGN_MAP,
             'vendor_mapping_error': request.query_params.get('vendor_mapping_error') or None,
             **spectrum_holdings_context(request),
+            **serving_networks_context(request),
             'recurring_backup': recurring_backup_settings(),
             # Until a selection is saved, every workspace is offered selected.
             'recurring_backup_saved': repository.get_application_state(RECURRING_BACKUP_STATE_KEY) is not None,
@@ -11835,12 +11876,22 @@ def workspace(
     cluster_mapping_datasets = [dataset for dataset in ready_datasets if dataset.get('dataset_kind') == 'clusters']
     vendor_polygon_datasets = [dataset for dataset in ready_datasets if dataset.get('dataset_kind') == 'vendors']
     network_inventory_datasets = [
-        {**dataset, 'can_map_vendors_from': inventory_can_map_vendors(int(dataset['id']))}
+        {**dataset, 'can_map_vendors_from': inventory_can_map_vendors(int(dataset['id'])),
+         'multi_network': repository.resolve_dataset_row_column_name(int(dataset['id']), 'Network') is not None}
         for dataset in ready_datasets if dataset.get('dataset_kind') == 'network_inventory'
     ]
     add_workspace_mapping_capabilities(datasets)
     add_combined_inclusion(datasets)
     mappable_cdr_datasets = [dataset for dataset in datasets if dataset.get('can_map_mappings')]
+    current_vendor_signature = vendor_mapping_signature(repository) if mappable_cdr_datasets else ''
+    for dataset in mappable_cdr_datasets:
+        # Mapped from the inventories under another rule, Serving Networks or set of snapshots: map it again.
+        options = parse_json_field(dataset.get('processing_options_json'), {})
+        options = options if isinstance(options, dict) else {}
+        dataset['vendor_mapping_outdated'] = bool(
+            dataset.get('vendor_mapping_applied') and not options.get('vendor_polygon_dataset_ids')
+            and options.get('vendor_mapping_signature') != current_vendor_signature
+        )
     clearable_cdr_datasets = [dataset for dataset in datasets if dataset.get('can_clear_mappings')]
     mappable_region_cdr_datasets = []
     clearable_region_cdr_datasets = []
@@ -12965,7 +13016,7 @@ def database_table_type(table_name: str, dataset_kind: str = '') -> tuple[str, s
         kind_type = 'Reporting'
     elif name.startswith(('dashboard_', 'report_templates', 'generated_jobs')):
         kind_type = 'Dashboards & Templates'
-    elif name.startswith(('dataset', 'cdr_', 'autocalculated')):
+    elif name.startswith(('dataset', 'cdr_', 'autocalculated', 'inventory_')):
         kind_type = 'Datasets'
     elif name in {'chart_mapping_groups', 'operator_mappings', 'vendor_mappings'} or name.startswith('map_area'):
         kind_type = 'Mappings & Maps'
@@ -19131,6 +19182,60 @@ def update_dataset_operator(
             'dataset_id': dataset_id, 'file': dataset['file_name'], 'previous_dataset_operator': previous, 'dataset_operator': operator,
         }))
     return JSONResponse({'dataset_id': dataset_id, 'dataset_operator': operator})
+
+
+@app.post('/workspace-config/serving-networks/save')
+def workspace_serving_networks_save(
+    serving_networks_csv: str = Form(''), max_distance_km: str = Form(''), user: SessionUser = Depends(config_editor_user),
+) -> RedirectResponse:
+    """Save which networks serve each Operator's samples and the maximum serving distance of the Vendor mapping."""
+    from src.modules.serving_cells import parse_serving_networks_csv, save_serving_networks
+
+    def redirect(key: str, message: str) -> RedirectResponse:
+        return RedirectResponse(f'/workspace-config?{urlencode({key: message})}#serving-networks', status_code=status.HTTP_303_SEE_OTHER)
+
+    if not active_workspace:
+        return redirect('serving_networks_error', 'Open a workspace before editing the Serving Networks.')
+    try:
+        rows = parse_serving_networks_csv(serving_networks_csv)
+        distance = float(max_distance_km) if str(max_distance_km).strip() else None
+    except ValueError as exc:
+        return redirect('serving_networks_error', str(exc) if 'Line' in str(exc) else 'Enter the maximum serving distance in km.')
+    saved = save_serving_networks(repository, {'rows': rows, 'max_distance_km': distance})
+    repository.try_add_log(user.username, 'network_serving_networks_saved', json.dumps(saved, ensure_ascii=False))
+    return redirect('serving_networks_notice', f"Serving Networks saved ({len(saved['rows'])} rows, {saved['max_distance_km']:g} km). Map the CDRs again to apply them.")
+
+
+class DatasetSnapshotDateUpdate(BaseModel):
+    snapshot_date: str = ''
+
+
+@app.post('/workspace/datasets/{dataset_id}/snapshot-date')
+def update_dataset_snapshot_date(
+    dataset_id: int, payload: DatasetSnapshotDateUpdate, user: SessionUser = Depends(workspace_editor_user),
+) -> JSONResponse:
+    """Change the date of the network an inventory describes; blank returns to the date of its name or upload."""
+    if active_workspace:
+        require_workspace_access(user, active_workspace.id)
+    dataset = repository.get_dataset(dataset_id)
+    if not dataset:
+        raise HTTPException(status_code=404, detail='Dataset not found')
+    if str(dataset['dataset_kind'] or '') not in INVENTORY_DATASET_KINDS:
+        raise HTTPException(status_code=400, detail='Only Multivendor Mappings and Network Inventories have a snapshot date.')
+    try:
+        chosen = normalise_snapshot_date(payload.snapshot_date)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    previous = str(dataset['snapshot_date'] or '')[:10]
+    if previous != (chosen or ''):
+        repository.update_dataset_profile(dataset_id, snapshot_date=chosen)
+        repository.add_log(user.username, 'update_dataset_snapshot_date', json.dumps({
+            'dataset_id': dataset_id, 'file': dataset['file_name'], 'previous_snapshot_date': previous,
+            'snapshot_date': chosen or '', 'effective_snapshot_date': effective_snapshot_date(repository.get_dataset(dataset_id)),
+        }))
+    updated = repository.get_dataset(dataset_id)
+    return JSONResponse({'dataset_id': dataset_id, 'snapshot_date': chosen or '',
+                         'snapshot_date_effective': effective_snapshot_date(updated)})
 
 
 class DatasetInCombinedUpdate(BaseModel):

@@ -64,7 +64,7 @@ def test_network_inventory_upload_with_its_operator_and_map_cdrs(client, tmp_pat
     assert client.post(f"/workspace/datasets/{uploaded['id']}/dataset-operator", json={'dataset_operator': 'O2'}).status_code == 200
     workspace = client.get('/workspace').text
     card = workspace.split('data-dataset-card="network-inventory"', 1)[1].split('</section>', 1)[0]
-    assert 'O2_Network_Inventory.csv' in card and 'data-dataset-operator-select' in card
+    assert 'O2_Network_Inventory.csv' in card and 'data-dataset-dataset-operator-select' in card
     assert f'name="network_inventory_dataset_ids" value="{uploaded["id"]}" checked' in workspace
 
     source = tmp_path / 'UK_Voice.csv'

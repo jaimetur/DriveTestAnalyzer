@@ -1,6 +1,6 @@
 # Workspace Config
 
-Workspace Config is a dedicated page for settings owned by the active workspace: PPT Templates Management, Main Cities, Mappings & Reference Data (Operator, Vendor and Campaign Maps, Map Areas and Spectrum Holdings) and Scoring & GAP Analysis Setup. These settings remain workspace-scoped and are included in the applicable import, export, transfer, backup and restore workflows.
+Workspace Config is a dedicated page for settings owned by the active workspace: PPT Templates Management, Main Cities, Mappings & Reference Data (Operator, Vendor and Campaign Maps, Map Areas, Spectrum Holdings and Serving Networks) and Scoring & GAP Analysis Setup. These settings remain workspace-scoped and are included in the applicable import, export, transfer, backup and restore workflows.
 
 > [!IMPORTANT]
 > **Workspace settings.** Every edit on this page belongs to the active workspace. Application Config controls shared runtime settings.
@@ -23,6 +23,7 @@ Open **Config → Workspace Config** from the main navigation at `/workspace-con
 | Unassigned values warning | [Open section](#unassigned-values-warning) |
 | Map Areas | [Open section](#map-areas) |
 | Spectrum Holdings | [Open section](#spectrum-holdings) |
+| Serving Networks | [Open section](#serving-networks) |
 | CDR type | [Open section](#cdr-type) |
 | Main Cities | [Open section](#main-cities) |
 | Portable operations | [Open section](#portable-operations) |
@@ -402,7 +403,7 @@ Operator and Vendor aliases resolve to the canonical values configured in Worksp
 
 ## Mappings & Reference Data
 
-The Mappings & Reference Data panel contains Operator Maps, Vendor Maps, Campaign Maps, Map Areas and Spectrum Holdings as independently collapsible subpanels. Their light blue headers distinguish them from the dark parent header. Existing mapping controls and saved expansion states remain available inside each subpanel.
+The Mappings & Reference Data panel contains Operator Maps, Vendor Maps, Campaign Maps, Map Areas, Spectrum Holdings and Serving Networks as independently collapsible subpanels. Their light blue headers distinguish them from the dark parent header. Existing mapping controls and saved expansion states remain available inside each subpanel.
 
 ### Operator Maps
 
@@ -476,6 +477,22 @@ Vodafone,n78,TDD,High (TDD),90,
 - **Bandwidth MHz** is the total bandwidth held, for example `20` for 2×10 MHz FDD.
 
 Comma, semicolon and tab separators are accepted, so rows can be pasted from a spreadsheet. **Save Spectrum Holdings** validates every row and replaces all holdings of the workspace; an empty text area removes them. The table above the editor shows the MHz per Operator and band class.
+
+### Serving Networks
+
+Serving Networks tell the [Vendor mapping](workspace-management.md#vendor-mapping) which networks' cells can serve the samples of each Operator, in order of preference. An Operator's samples are often served by cells it does not own: Vodafone and Three share their RAN through eMOCN, and an MVNO such as Lebara uses its host network. Enter one Operator per row with its serving networks separated by semicolons, its own network first:
+
+```text
+Operator,Serving Networks
+3,3; Vodafone
+O2,O2; Vodafone
+```
+
+- **Operator** accepts any spelling of it: Vodafone SA, Vodafone SM and VF are Vodafone, H3G and Three are 3, Telefonica and VMO2 are O2.
+- Operators without a row use the defaults: Vodafone and 3 serve each other, Lebara is served by Vodafone and 3, and every other Operator by its own network. The table above the editor shows what applies to every Operator of the Operator Maps, configured or by default.
+- **Maximum serving distance (km)**, 30 by default: a cell farther than this from a sample's position is not taken as its serving cell, because global cell identities only repeat across Operators.
+
+**Save Serving Networks** replaces the rows of the workspace (an empty text area returns to the defaults) and records the change in App Events. The mapped CDRs are then marked **Vendor mapping outdated** in the Map dialog until they are mapped again. The Serving Networks travel with Mappings & Reference Data in import, export, transfer, backup and restore.
 
 ## CDR type
 

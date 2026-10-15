@@ -144,7 +144,7 @@ Report the bugs of the tool with their screenshots (pasted, dropped or chosen), 
 
 - **Application Config** stores runtime settings that apply across all workspaces. `user-editor`, `admin` and `super-admin` can use Config → Application Config; `user-viewer` cannot.
 - **`user-viewer`** is read-only for the workspace: it explores datasets and generates jobs (Dashboard PPTs, Scoring, Network Insights, queries and reports) but cannot upload, delete, reprocess, map or clear datasets, or save, rename or delete Dashboards, saved queries and Scoring jobs.
-- **Workspace Config** is selected from the Config dropdown and groups PPT Templates Management, Operator Mappings, Vendor Mappings and Spectrum Holdings for the active workspace. Its Help chapter contains the PPT Templates Editor guide and complete Report Template reference. It uses Application Config's teal/navy palette and a Page Sections navigator. `user-editor`, `admin` and `super-admin` can manage these panels when a workspace is open; `user-viewer` cannot.
+- **Workspace Config** is selected from the Config dropdown and groups PPT Templates Management, Operator Mappings, Vendor Mappings, Spectrum Holdings and Serving Networks for the active workspace. Its Help chapter contains the PPT Templates Editor guide and complete Report Template reference. It uses Application Config's teal/navy palette and a Page Sections navigator. `user-editor`, `admin` and `super-admin` can manage these panels when a workspace is open; `user-viewer` cannot.
 - These scopes remain separate: Application Config values are global, while templates and chart mappings stay with their workspace and use the existing portable package formats.
 
 ### Administrator Config (Admin tab)

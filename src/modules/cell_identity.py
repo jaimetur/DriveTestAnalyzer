@@ -79,7 +79,7 @@ def nr_gnodeb(nci: Any, gnodeb_id_length: Any = None) -> int | None:
 def _numeric(series: pd.Series | None, index: pd.Index) -> pd.Series:
     if series is None:
         return pd.Series(math.nan, index=index, dtype='float64')
-    return pd.to_numeric(series, errors='coerce')
+    return pd.to_numeric(series, errors='coerce').astype('float64')
 
 
 def _whole(values: pd.Series) -> pd.Series:

@@ -201,7 +201,7 @@ In **Back up now**, select in **Backup content** one or more content types and t
 - **Workspace Content: Dashboards** stores one JSON file with every Dashboard definition and its comments for each selected workspace.
 - **Workspace Content: PPT Templates** stores one CSV file for each PPT Template.
 - **Workspace Content: Main Cities** stores the workspace city selection.
-- **Workspace Content: Mappings & Reference Data** stores one JSON file containing every canonical Operator and Vendor, alias, row position and thematic colour, plus the Spectrum Holdings and Campaign Maps.
+- **Workspace Content: Mappings & Reference Data** stores one JSON file containing every canonical Operator and Vendor, alias, row position and thematic colour, plus the Spectrum Holdings, Serving Networks and Campaign Maps.
 - **Workspace Content: Scoring & GAP Analysis Configuration** stores all saved methodologies, their default selection, KPI definitions and GAP KPI priorities, and the Saved Filters without their results; import and restore recover every Scoring Setup subpanel together and add the Saved Filters the workspace does not have yet, each finding its CDRs by the SHA-256 of their files (it waits for those not processed there yet).
 - **Workspace Content: Auto-calculated Fields** stores one JSON file containing every selected workspace definition.
 - **Workspace Content: NQ Call Tracking** stores one JSON file with the Non-Qualified Calls Analysis Center (sections, field catalog, statuses, teams, Status Rules, root cause catalog and Ericsson RCA results), follow-up, comments and history, with the `JOIN_ID` of each call; restore merges it into the workspace without duplicating comments, history or RCA results.

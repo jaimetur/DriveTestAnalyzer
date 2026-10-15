@@ -370,6 +370,38 @@
     </div>
   </details>
 
+  <details id="serving-networks" class="panel collapsible-panel operator-mappings-panel serving-networks-panel" open data-panel-state-key="workspace-config:serving-networks">
+    <summary class="collapsible-summary">
+      <div><p class="eyebrow">Vendor mapping</p><h2>Serving Networks</h2></div>
+      <span class="collapse-chip">Collapse</span>
+    </summary>
+    <div class="collapsible-panel-body">
+      {% if active_workspace %}
+      <p class="lede">The networks whose cells can serve the samples of each Operator, in order of preference. The Vendor mapping looks up each sample's serving cells only among them: an Operator's own network, the networks that share their RAN with it (eMOCN) and, for an MVNO, its host network.</p>
+      {% if serving_networks_notice %}<div class="alert alert-success">{{ serving_networks_notice }}</div>{% endif %}
+      {% if serving_networks_error %}<div class="alert alert-error">{{ serving_networks_error }}</div>{% endif %}
+      {% if serving_networks_rows %}
+      <div class="table-wrap operator-mappings-table-wrap">
+        <table class="operator-mappings-table serving-networks-summary">
+          <thead><tr><th>Operator</th><th>Served by the cells of</th><th>Source</th></tr></thead>
+          <tbody>
+            {% for row in serving_networks_rows %}
+            <tr><td data-label="Operator">{{ row.operator }}</td><td data-label="Served by the cells of">{{ row.networks | join(' → ') }}</td><td data-label="Source">{{ 'Default' if row.default else 'Configured' }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
+      <form class="spectrum-holdings-form serving-networks-form" action="/workspace-config/serving-networks/save" method="post">
+        <label>Serving Networks (one Operator per row)<textarea name="serving_networks_csv" rows="6" spellcheck="false" placeholder="Operator,Serving Networks&#10;3,3; Vodafone&#10;Vodafone,Vodafone; 3&#10;Lebara,Vodafone; 3&#10;O2,O2">{{ serving_networks_csv }}</textarea></label>
+        <label>Maximum serving distance (km)<input type="number" name="max_distance_km" min="1" max="500" step="0.5" value="{{ '%g' | format(serving_networks_distance) }}"></label>
+        <button type="submit">Save Serving Networks</button>
+      </form>
+      <p class="form-note">Columns: the Operator (any spelling: Vodafone SA and Vodafone SM are Vodafone) and its serving networks separated by semicolons, its own network first (H3G and Three are 3, Telefonica and VMO2 are O2). Operators without a row use the defaults: Vodafone and 3 serve each other (eMOCN), Lebara is served by Vodafone and 3, and every other Operator by its own network. A cell farther from a sample than the maximum distance is not taken as its serving cell. Saving marks the mapped CDRs as <em>Vendor mapping outdated</em> until they are mapped again.</p>
+      {% else %}<p class="form-note">Open a workspace before managing the Serving Networks.</p>{% endif %}
+    </div>
+  </details>
+
       </div>
     </div>
   </details>
