@@ -4,6 +4,7 @@ import pandas as pd
 
 import src.DriveTestAnalyzer as core
 from src.modules import inventory_insights as ii
+from src.modules import serving_cells as sc
 from src.modules.repository import local_now_iso
 
 LEEDS = (-1.55, 53.80)
@@ -104,6 +105,23 @@ def test_analysis_describes_the_serving_cells_distances_and_nr_availability(clie
     # Samples anchored on VF0 and VF1, the sites with NR cells: half of them measured no NR.
     assert nr['on_nr_sites'] == 6 and nr['without_nr_on_nr_sites'] == 3
     assert serving['distance_cdf']['type'] == 'cdf'
+
+
+def test_serving_cells_follow_the_configured_serving_networks(client, tmp_path):
+    login(client)
+    _dataset(tmp_path, '260917_Cell_Config.zip', 'network_inventory', _inventory_rows())
+    rows = _cdr_rows()
+    # Three of the Vodafone samples were served by the 3 cell T1 (eNodeB 2000, cell 1).
+    for row in rows[::4]:
+        row.update({'LAC_CID_xARFCN': f'[LTE E-UTRA 3, 100, {2000 * 256 + 1}, 1300]', 'Cell_ID': f'[{2000 * 256 + 1}]', 'LTE_PCC_EARFCN': 1300})
+    cdr = _dataset(tmp_path, 'Data CDR NSA.xlsx', 'data', rows, nr_mode='NSA')
+    request = {'datasets': {'data': [cdr]}, 'technology': 'lte', 'group': ['operator']}
+    shared = client.post('/api/network-insights/analysis', json=request).json()['serving']
+    # By default 3 serves Vodafone (eMOCN), so the samples on T1 find their cell.
+    assert shared['summary'][0]['matched'] == 12 and {item['value'] for item in shared['by_vendor']} == {'Ericsson', 'Huawei', 'Samsung'}
+    sc.save_serving_networks(core.repository, {'rows': [{'operator': 'Vodafone', 'networks': ['Vodafone']}]})
+    own = client.post('/api/network-insights/analysis', json=request).json()['serving']
+    assert own['summary'][0]['matched'] == 9 and {item['value'] for item in own['by_vendor']} == {'Ericsson', 'Huawei'}
 
 
 def test_inventory_bands_and_snapshot_choice():

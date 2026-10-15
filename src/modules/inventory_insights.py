@@ -437,7 +437,7 @@ def serving_cells(samples: pd.DataFrame, operators: pd.Series, cells: pd.DataFra
         return result
     allowed = []
     for operator in pd.unique(operators):
-        for rank, family in enumerate(serving_families(operator)):
+        for rank, family in enumerate(serving_families(operator, config)):
             allowed.append({'_operator': operator, 'network_family': family, '_rank': rank})
     allowed = pd.DataFrame(allowed, columns=['_operator', 'network_family', '_rank'])
     frame = pd.DataFrame({'_row': np.arange(len(samples)), 'serving_cell': result['serving_cell'].to_numpy(),
