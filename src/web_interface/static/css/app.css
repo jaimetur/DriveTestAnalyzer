@@ -306,6 +306,15 @@ a.topnav-link-logout { background: linear-gradient(135deg, #ffd8d8, #ffc6c6); bo
 .query-builder-stack .query-builder-delete-action:hover { background: #f9ded7; color: #9e2f1f; }
 .query-builder-stack .query-builder-delete-action svg { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .query-builder-running-overlay { z-index: 260; }
+/* A text asked in the confirmation dialog (showTextInputDialog): its question above a full-width field. */
+.confirm-text-field { display: grid; gap: 0.45rem; text-align: left; }
+.confirm-text-label { font-weight: 700; }
+.confirm-text-input { width: 100%; box-sizing: border-box; }
+.confirm-text-note { color: var(--muted); font-size: 0.78rem; }
+.confirm-variant-text-input .confirm-panel { width: min(40rem, calc(100vw - 2rem)); }
+.confirm-text-reference { max-height: 45vh; overflow: auto; margin-bottom: 0.8rem; padding: 0.7rem 0.85rem; border: 1px solid var(--line); border-radius: 12px; background: #fff; text-align: left; pointer-events: none; }
+.confirm-variant-text-input .confirm-icon { background: color-mix(in srgb, var(--brand) 14%, #fff); color: var(--brand); }
+.confirm-variant-text-input #confirm-accept { border-color: var(--brand); background: var(--brand); color: #fff; }
 .confirm-panel.query-builder-running-dialog { width: min(25rem, calc(100vw - 2rem)); text-align: center; }
 .confirm-panel.query-builder-edit-dialog { width: min(38rem, calc(100vw - 2rem)); }
 .query-builder-edit-dialog > label { display: grid; gap: .35rem; margin-top: .75rem; color: #6d310c; font-weight: 750; }

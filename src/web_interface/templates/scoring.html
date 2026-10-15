@@ -125,6 +125,9 @@
   .saved-filter-drag-handle:hover { background-color: #c4d5e2; border-color: #7f98ab; }
   .saved-filter-drag-handle:active, .saved-filters-panel .saved-filter-row.is-dragging .saved-filter-drag-handle { cursor: grabbing; }
   .saved-filters-panel .saved-filter-row.is-dragging { opacity: .45; }
+  .saved-filters-panel .saved-filter-row.is-reorderable .saved-filter-actions { left: calc(1.35rem + .8rem); }
+  /* The filters of a Saved Filter being named, in the name dialog. */
+  .saved-filter-item.saved-filter-reference { display: grid; gap: .3rem; padding: 0; border: 0; background: none; box-shadow: none; text-align: left; }
   /* Each Saved Filter: its card, with its actions (CDRs, name, pin and delete) under its text. */
   .saved-filter-row .saved-filter-item { box-sizing: border-box; display: grid; grid-template-columns: minmax(0,1fr); min-width: 0; width: 100%; padding-bottom: 2.7rem; }
   .saved-filter-actions { position: absolute; right: .65rem; bottom: .65rem; left: .8rem; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: .3rem; pointer-events: none; }
@@ -143,7 +146,8 @@
   .saved-filter-use-newer { min-height: 1.55rem; padding: .18rem .55rem; border: 1px solid #e0a23a; border-radius: 999px; background: #fff3d6; color: #8a5300; font-size: .72rem; font-weight: 800; box-shadow: none; }
   .saved-filter-use-newer:hover { background: #ffe7b0; box-shadow: none; transform: none; }
   /* The name given to a Saved Filter, above its filters. */
-  .saved-filter-name { color: var(--brand); font-size: .9rem; font-weight: 850; overflow-wrap: anywhere; }
+  /* The name of a Saved Filter: a badge on top of its card. */
+  .saved-filter-name { justify-self: start; max-width: 100%; box-sizing: border-box; margin-bottom: .35rem; padding: .22rem .75rem; border-radius: 999px; background: var(--brand); color: #fff; font-size: .82rem; font-weight: 850; line-height: 1.3; overflow-wrap: anywhere; box-shadow: 0 2px 6px rgba(16, 49, 74, .18); }
   .saved-filter-meta.saved-filter-newer { color: #8a5300; font-weight: 700; }
   .saved-filter-meta.saved-filter-waiting { color: #8b5c08; font-weight: 700; }
   .saved-filter-item { display: grid; gap: .4rem; width: 100%; padding: .75rem .8rem; border: 1px solid var(--line); border-radius: 13px; background: rgba(255,255,255,.68); color: var(--text); text-align: left; box-shadow: none; }

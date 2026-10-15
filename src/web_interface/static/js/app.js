@@ -8167,6 +8167,59 @@ function showConfirmDialog(message, options = {}) {
   });
 }
 
+// A text asked in the application's dialog instead of the browser's prompt: the text, or null when it is cancelled.
+// Enter accepts it and Escape cancels it.
+async function showTextInputDialog(message, options = {}) {
+  if (!confirmOverlay || !confirmCopy) {
+    const text = window.prompt(message, options.value || '');
+    return text === null ? null : text;
+  }
+  // An edit, not a warning: a pencil and the eyebrow of the request instead of the confirmation ones, given back after.
+  const panel = confirmOverlay.querySelector('.confirm-panel');
+  const icon = panel?.querySelector('.confirm-icon');
+  const eyebrow = panel?.querySelector('.eyebrow');
+  const shown = {icon: icon?.textContent, eyebrow: eyebrow?.textContent};
+  if (icon) icon.textContent = '✎';
+  if (eyebrow) eyebrow.textContent = options.eyebrow || 'Edit';
+  const pending = showConfirmDialog(message, {
+    ...options,
+    variant: 'text-input',
+    copyHtml: '<label class="confirm-text-field"><span class="confirm-text-label"></span>'
+      + '<input type="text" class="confirm-text-input" autocomplete="off" spellcheck="false"></label>',
+  });
+  const label = confirmCopy.querySelector('.confirm-text-label');
+  const input = confirmCopy.querySelector('.confirm-text-input');
+  label.textContent = message;
+  input.value = options.value || '';
+  if (options.placeholder) input.placeholder = options.placeholder;
+  if (options.maxLength) input.maxLength = options.maxLength;
+  if (options.reference instanceof Node) {
+    // What the text is about (for example the filters of a Saved Filter being named), shown above the field.
+    const reference = document.createElement('div');
+    reference.className = 'confirm-text-reference';
+    reference.append(options.reference);
+    label.parentElement.before(reference);
+  }
+  if (options.note) {
+    const note = document.createElement('small');
+    note.className = 'confirm-text-note';
+    note.textContent = options.note;
+    input.after(note);
+  }
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      confirmAccept.click();
+    }
+  });
+  input.focus();
+  input.select();
+  const accepted = await pending;
+  if (icon) icon.textContent = shown.icon;
+  if (eyebrow) eyebrow.textContent = shown.eyebrow;
+  return accepted ? input.value : null;
+}
+
 document.querySelectorAll('form[action="/workspace/calculated-dimensions/import"]').forEach((form) => {
   form.addEventListener('submit', async (event) => {
     if (form.dataset.confirmed === '1') {

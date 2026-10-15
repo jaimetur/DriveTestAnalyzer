@@ -7224,8 +7224,23 @@
         await createSavedFilter(false);
         return true;
       }
-      const changes = pin ? {pinned: !savedFilter.pinned} : (() => {
-        const name = window.prompt('Name of this Saved Filter (leave it empty to show its filters only):', savedFilter.name || '');
+      const changes = pin ? {pinned: !savedFilter.pinned} : await (async () => {
+        // The filters of the Saved Filter stay in sight while it is named: a copy of its card, without its name badge.
+        const card = event.target.closest('.saved-filter-row')?.querySelector('.saved-filter-item')
+          || root.querySelector(`.saved-filter-item[data-saved-filter-id="${CSS.escape(id)}"]`);
+        let reference = null;
+        if (card) {
+          reference = document.createElement('div');
+          reference.className = 'saved-filter-item saved-filter-reference';
+          reference.append(...Array.from(card.children, child => child.cloneNode(true))
+            .filter(child => !child.classList?.contains('saved-filter-name')));
+        }
+        const name = await showTextInputDialog('Name', {
+          reference,
+          eyebrow: 'Saved Filter', title: savedFilter.name ? 'Rename Saved Filter' : 'Name Saved Filter', value: savedFilter.name || '',
+          placeholder: 'For example 2026-Q3 London', maxLength: 120, confirmLabel: 'Save Name',
+          note: 'Shown as a badge on top of its card. Leave it empty to show its filters only.',
+        });
         return name === null ? null : {name};
       })();
       if (!changes) return true;
