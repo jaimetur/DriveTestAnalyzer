@@ -359,7 +359,8 @@ CREATE TABLE IF NOT EXISTS users (
     workspace_ids_json TEXT NOT NULL DEFAULT '[]',
     modules_profile_id INTEGER,
     first_name TEXT NOT NULL DEFAULT '',
-    last_name TEXT NOT NULL DEFAULT ''
+    last_name TEXT NOT NULL DEFAULT '',
+    access_requested_at TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS application_state (
@@ -453,6 +454,15 @@ CREATE TABLE IF NOT EXISTS bug_report_attachments (
 );
 
 CREATE INDEX IF NOT EXISTS idx_bug_report_attachments_bug ON bug_report_attachments(bug_id, id);
+
+-- Admin notices: the access requests and bug reports each super-admin has been told about (src/modules/admin_notices.py).
+CREATE TABLE IF NOT EXISTS admin_notices_seen (
+    user_id INTEGER NOT NULL,
+    kind TEXT NOT NULL,
+    item_key TEXT NOT NULL,
+    seen_at TEXT NOT NULL,
+    PRIMARY KEY (user_id, kind, item_key)
+);
 """
 
 USER_ROLES = ('user-viewer', 'user-editor', 'admin', 'super-admin')
@@ -957,6 +967,10 @@ class Repository:
         for column in ('first_name', 'last_name'):
             if column not in user_columns:
                 conn.execute(f"ALTER TABLE users ADD COLUMN {column} TEXT NOT NULL DEFAULT ''")
+        if 'access_requested_at' not in user_columns:
+            # Inactive editors and viewers of earlier versions are taken as access requests waiting since they were created.
+            conn.execute("ALTER TABLE users ADD COLUMN access_requested_at TEXT NOT NULL DEFAULT ''")
+            conn.execute("UPDATE users SET access_requested_at = created_at WHERE active = 0 AND role IN ('user-viewer', 'user-editor')")
         old_table = conn.execute(
             "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'user_workspace_access'"
         ).fetchone()
@@ -2613,7 +2627,7 @@ class Repository:
 
     def update_user(self, user_id: int, username: str, role: str, active: bool, password: str | None = None, *,
                     first_name: str | None = None, last_name: str | None = None) -> None:
-        """Update an account; a first or last name of None is kept."""
+        """Update an account; a first or last name of None is kept. Activating it ends its pending access request."""
         normalized_username = username.strip()
         with self.global_connection() as conn:
             self._ensure_user_access_schema(conn)
@@ -2639,6 +2653,14 @@ class Repository:
             for column, value in (('first_name', first_name), ('last_name', last_name)):
                 if value is not None:
                     conn.execute(f'UPDATE users SET {column} = ? WHERE id = ?', (value.strip(), user_id))
+            if active:
+                conn.execute("UPDATE users SET access_requested_at = '' WHERE id = ?", (user_id,))
+
+    def set_access_requested(self, user_id: int, requested_at: str) -> None:
+        """Record that an inactive account waits for activation after an access request made at ``requested_at``."""
+        with self.global_connection() as conn:
+            self._ensure_user_access_schema(conn)
+            conn.execute('UPDATE users SET access_requested_at = ? WHERE id = ? AND active = 0', (requested_at, user_id))
 
     def update_password(self, username: str, password: str) -> None:
         with self.global_connection() as conn:
@@ -2656,12 +2678,13 @@ class Repository:
             if cursor.rowcount == 0:
                 raise ValueError("User not found")
             conn.execute("DELETE FROM workspace_group_members WHERE user_id = ?", (user_id,))
+            conn.execute("DELETE FROM admin_notices_seen WHERE user_id = ?", (user_id,))
 
     def list_users(self) -> list[sqlite3.Row]:
         with self.global_connection() as conn:
             self._ensure_user_access_schema(conn)
             return list(conn.execute(
-                "SELECT id, username, role, active, created_at, first_name, last_name FROM users ORDER BY id ASC"
+                "SELECT id, username, role, active, created_at, first_name, last_name, access_requested_at FROM users ORDER BY id ASC"
             ).fetchall())
 
     def count_active_admin_users(self) -> int:
@@ -2756,7 +2779,8 @@ class Repository:
         with self.global_connection() as conn:
             self._ensure_user_access_schema(conn)
             users = conn.execute(
-                'SELECT id, username, password_hash, role, active, created_at, workspace_ids_json, first_name, last_name FROM users ORDER BY id'
+                'SELECT id, username, password_hash, role, active, created_at, workspace_ids_json, first_name, last_name, access_requested_at '
+                'FROM users ORDER BY id'
             ).fetchall()
         return {
             'modules_profiles': [{'name': profile['name'], 'description': profile['description'], 'modules': profile['modules'],
@@ -2766,6 +2790,7 @@ class Repository:
             'users': [{'username': str(row['username']), 'first_name': str(row['first_name'] or ''), 'last_name': str(row['last_name'] or ''),
                        'password_hash': str(row['password_hash']), 'role': str(row['role']),
                        'active': bool(row['active']), 'created_at': str(row['created_at'] or ''),
+                       'access_requested_at': str(row['access_requested_at'] or '') if not row['active'] else '',
                        'modules_profile': profile_by_user.get(int(row['id'])),
                        'workspace_groups': sorted(groups_by_user.get(int(row['id']), []), key=str.casefold),
                        'workspaces': names(self._workspace_ids_from_json(row['workspace_ids_json']))} for row in users],
@@ -2856,28 +2881,33 @@ class Repository:
                     local_profile = conn.execute('SELECT id FROM modules_profiles WHERE name = ? COLLATE NOCASE', (profile_name,)).fetchone()
                     profile_id = int(local_profile['id']) if local_profile else None
                 row = conn.execute(
-                    'SELECT id, role, active, password_hash, workspace_ids_json FROM users WHERE username = ? COLLATE NOCASE', (username,),
+                    'SELECT id, role, active, password_hash, workspace_ids_json, access_requested_at FROM users WHERE username = ? COLLATE NOCASE',
+                    (username,),
                 ).fetchone()
                 active = bool(account.get('active', True))
                 first_name, last_name = str(account.get('first_name') or '').strip(), str(account.get('last_name') or '').strip()
+                # The pending access request of an inactive account (packages of earlier versions keep the local one).
+                requested_at = str(account.get('access_requested_at') or '') if 'access_requested_at' in account else (
+                    str(row['access_requested_at'] or '') if row else '')
                 if row:
                     user_id = int(row['id'])
                     if username.casefold() == protected_username.strip().casefold():
                         role, active, password_hash = str(row['role']), bool(row['active']), str(row['password_hash'])
                     conn.execute(
                         'UPDATE users SET role = ?, active = ?, password_hash = ?, workspace_ids_json = ?, modules_profile_id = ?, '
-                        'first_name = ?, last_name = ? WHERE id = ?',
+                        'first_name = ?, last_name = ?, access_requested_at = ? WHERE id = ?',
                         (role, int(active), password_hash,
                          self._workspace_ids_json(resolve(account.get('workspaces'), self._workspace_ids_from_json(row['workspace_ids_json']))),
-                         profile_id, first_name, last_name, user_id),
+                         profile_id, first_name, last_name, '' if active else requested_at, user_id),
                     )
                     summary['users_updated'] += 1
                 else:
                     user_id = int(conn.execute(
                         'INSERT INTO users (username, password_hash, role, active, created_at, workspace_ids_json, modules_profile_id, '
-                        'first_name, last_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                        'first_name, last_name, access_requested_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                         (username, password_hash, role, int(active), str(account.get('created_at') or '') or local_now_iso(),
-                         self._workspace_ids_json(resolve(account.get('workspaces'))), profile_id, first_name, last_name),
+                         self._workspace_ids_json(resolve(account.get('workspaces'))), profile_id, first_name, last_name,
+                         '' if active else requested_at),
                     ).lastrowid)
                     summary['users_created'] += 1
                 conn.executemany('DELETE FROM workspace_group_members WHERE group_id = ? AND user_id = ?',

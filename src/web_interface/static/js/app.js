@@ -7887,6 +7887,86 @@ document.querySelectorAll('[data-export-package-form]').forEach((form) => {
   scheduleIncomingOfferPoll(0);
 })();
 
+// Once per sign-in, super-admins are told of the access requests waiting for activation and of the new bug reports
+// they have not been told about, in the dialog of an incoming server transfer. Each item is told once: closing the
+// dialog, or opening Access Requests or Bugs Report from it, records them as seen on the server.
+(() => {
+  const {authenticatedRole, authenticatedSession: session = ''} = document.body.dataset;
+  if (authenticatedRole !== 'super-admin' || !session) return;
+  if ('embeddedTemplateEditor' in document.body.dataset || 'embeddedDatasetPreview' in document.body.dataset) return;
+  const NOTICES_SESSION_KEY = 'drivetest-analyzer:admin-notices-session';
+  try {
+    if (window.localStorage.getItem(NOTICES_SESSION_KEY) === session) return;
+  } catch (_error) { /* Asked on every page without storage. */ }
+  const rememberSession = () => {
+    try { window.localStorage.setItem(NOTICES_SESSION_KEY, session); } catch (_error) { /* Asked again on the next page. */ }
+  };
+  const escapeHtml = (value) => String(value ?? '').replace(/[&<>'"]/g, (character) => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[character]));
+  const counted = (count, noun) => `${count} ${noun}${count === 1 ? '' : 's'}`;
+  const showNotices = async (notices) => {
+    // An incoming transfer, a running operation or another dialog goes first.
+    if (document.querySelector('.confirm-overlay:not([hidden])') || (loadingOverlay && !loadingOverlay.hidden)) {
+      window.setTimeout(() => { void showNotices(notices); }, 2000);
+      return;
+    }
+    const requests = Array.isArray(notices.access_requests) ? notices.access_requests : [];
+    const bugs = Array.isArray(notices.bug_reports) ? notices.bug_reports : [];
+    const listHtml = (items) => `<ul class="incoming-transfer-contents admin-notices-list">${items.join('')}</ul>`;
+    const requestsTitle = `${counted(requests.length, 'access request')} pending activation`;
+    const bugsTitle = counted(bugs.length, 'new bug report');
+    const copyHtml = [
+      requests.length ? `<p><strong>${escapeHtml(requestsTitle)}</strong></p>${listHtml(requests.map((item) => (
+        `<li><strong>${escapeHtml(item.name)}</strong> · ${escapeHtml(item.username)} · ${escapeHtml(item.requested_at)}</li>`)))}` : '',
+      bugs.length ? `<p><strong>${escapeHtml(bugsTitle)}</strong></p>${listHtml(bugs.map((bug) => (
+        `<li><strong>#${escapeHtml(bug.id)} ${escapeHtml(bug.title)}</strong> · ${escapeHtml(bug.priority)} · ${escapeHtml(bug.reported_by)}</li>`)))}` : '',
+      `<p class="incoming-transfer-effect">${requests.length ? 'Activate the users in Admin → Users. ' : ''}You will not be told about these again.</p>`,
+    ].join('');
+    const eyebrow = confirmOverlay?.querySelector('.eyebrow');
+    const eyebrowText = eyebrow?.textContent;
+    if (eyebrow) eyebrow.textContent = 'Administrator notice';
+    confirmOverlay?.classList.add('incoming-transfer-confirm', 'incoming-transfer-offer');
+    let result;
+    try {
+      result = await showConfirmDialog([requests.length ? requestsTitle : '', bugs.length ? bugsTitle : ''].filter(Boolean).join(' and '), {
+        title: requests.length && bugs.length ? 'New access requests and bug reports' : requests.length ? 'New access requests' : 'New bug reports',
+        confirmLabel: requests.length ? 'Open Access Requests' : 'Open Bugs Report',
+        secondaryLabel: requests.length && bugs.length ? 'Open Bugs Report' : '',
+        cancelLabel: 'Close',
+        copyHtml,
+      });
+    } finally {
+      confirmOverlay?.classList.remove('incoming-transfer-confirm', 'incoming-transfer-offer');
+      if (eyebrow) eyebrow.textContent = eyebrowText;
+    }
+    const opened = result === true || result === 'confirm' ? (requests.length ? 'access-requests' : 'bugs-report') : result === 'secondary' ? 'bugs-report' : 'close';
+    try {
+      await fetch('/admin/notices/seen', {
+        method: 'POST', credentials: 'same-origin',
+        headers: {Accept: 'application/json', 'Content-Type': 'application/json'},
+        body: JSON.stringify({choice: opened, access_requests: requests.map((item) => item.key), bug_reports: bugs.map((bug) => bug.key)}),
+      });
+    } catch (_error) { /* Told again after the next sign-in. */ }
+    rememberSession();
+    if (opened === 'access-requests') window.location.href = notices.access_requests_url || '/admin#users';
+    else if (opened === 'bugs-report') window.location.href = notices.bugs_report_url || '/bugs-report';
+  };
+  window.setTimeout(async () => {
+    let notices;
+    try {
+      const response = await fetch('/admin/notices', {credentials: 'same-origin', headers: {Accept: 'application/json'}, cache: 'no-store'});
+      if (!response.ok) return;
+      notices = await response.json();
+    } catch (_error) {
+      return;
+    }
+    if (!notices?.access_requests?.length && !notices?.bug_reports?.length) {
+      rememberSession();
+      return;
+    }
+    void showNotices(notices);
+  }, 800);
+})();
+
 // The transfer itself is server-side, so a page reload resumes following it:
 // its dialog comes back unless it was hidden, and its result is always shown.
 (() => {

@@ -104,7 +104,7 @@
       <select aria-label="Filter users by role" data-users-filter="role"><option value="">All roles</option>{% for role in ['user-viewer', 'user-editor', 'admin', 'super-admin'] %}<option value="{{ role }}">{{ role }}</option>{% endfor %}</select>
       <select aria-label="Filter users by Modules Profile" data-users-filter="profile"><option value="">All Modules Profiles</option>{% for profile in modules_profiles %}<option value="{{ profile.id }}">{{ profile.name }}</option>{% endfor %}</select>
       <select aria-label="Filter users by Workspace Group" data-users-filter="group"><option value="">All Workspace Groups</option>{% for group in workspace_groups %}<option value="{{ group.id }}">{{ group.name }}</option>{% endfor %}<option value="none">No Workspace Group</option></select>
-      <select aria-label="Filter users by status" data-users-filter="active"><option value="">Active and inactive</option><option value="1">Active</option><option value="0">Inactive</option></select>
+      <select aria-label="Filter users by status" data-users-filter="active"><option value="">Active and inactive</option><option value="1">Active</option><option value="0">Inactive</option><option value="access-request">Pending access requests</option></select>
       <span class="users-count" data-users-count role="status"></span>
     </div>
     <div class="users-bulk-bar" data-users-bulk hidden>
@@ -123,7 +123,7 @@
         <tbody>
           {% for row in users %}
           {% set locked = user.role != 'super-admin' and row['role'] == 'super-admin' %}
-          <tr data-user-row data-user-id="{{ row['id'] }}" data-username="{{ row['username'] }}" data-name="{{ row['first_name'] }} {{ row['last_name'] }}" data-role="{{ row['role'] }}" data-active="{{ '1' if row['active'] else '0' }}" data-profile="{{ row['modules_profile_id'] or '' }}" data-groups="{{ row['workspace_group_ids'] | join(',') }}">
+          <tr data-user-row data-user-id="{{ row['id'] }}" data-username="{{ row['username'] }}" data-name="{{ row['first_name'] }} {{ row['last_name'] }}" data-role="{{ row['role'] }}" data-active="{{ '1' if row['active'] else '0' }}" data-access-request="{{ '1' if row['access_requested_at'] and not row['active'] else '0' }}" data-profile="{{ row['modules_profile_id'] or '' }}" data-groups="{{ row['workspace_group_ids'] | join(',') }}">
             <td class="user-select-column"><input type="checkbox" value="{{ row['id'] }}" aria-label="Select {{ row['username'] }}" data-user-select {% if locked %}disabled title="Only super-admins can change super-admin accounts"{% endif %}></td>
             <td class="user-identity-cell">
               <form id="user-update-{{ row['id'] }}" action="/admin/users/{{ row['id'] }}/update" method="post" autocomplete="off" data-user-auto-save></form>
@@ -2122,7 +2122,7 @@
         || (chosen.role && row.dataset.role !== chosen.role)
         || (chosen.profile && row.dataset.profile !== chosen.profile)
         || (chosen.group === 'none' && groups.length) || (chosen.group && chosen.group !== 'none' && !groups.includes(chosen.group))
-        || (chosen.active && row.dataset.active !== chosen.active),
+        || (chosen.active === 'access-request' ? row.dataset.accessRequest !== '1' : chosen.active && row.dataset.active !== chosen.active),
       );
     });
     filters.forEach((select) => select.classList.toggle('is-filtering', Boolean(select.value)));
@@ -2187,6 +2187,9 @@
   document.querySelectorAll('[data-users-bulk-button]').forEach((button) => {
     button.addEventListener('click', () => runBulk(button.dataset.usersBulkButton, '', ''));
   });
+  // The admin notices of the super-admins open the Users with only the pending access requests (?users=access-requests).
+  const statusFilter = filters.find((select) => select.dataset.usersFilter === 'active');
+  if (statusFilter && new URLSearchParams(window.location.search).get('users') === 'access-requests') statusFilter.value = 'access-request';
   applyFilters();
 
   document.querySelectorAll('form[data-user-password-reset]').forEach((form) => {

@@ -95,6 +95,19 @@
         else if ([...(control.options || [{value}])].some((option) => option.value === value)) control.value = value;
       });
     } catch (_) { /* Filters start at their defaults. */ }
+    // A link to the reports of one status (?status=new, from the admin notices of the super-admins) lists only them.
+    const linkedStatus = new URLSearchParams(window.location.search).get('status');
+    if (linkedStatus && [...filters.status.options].some((option) => option.value === linkedStatus)) {
+      filters.search.value = '';
+      filters.priority.value = '';
+      filters.module.value = '*';
+      filters.reporter.value = '*';
+      if (filters.mine) filters.mine.checked = false;
+      filters.status.value = linkedStatus;
+      const url = new URL(window.location.href);
+      url.searchParams.delete('status');
+      window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+    }
     const priorityRank = {P1: 1, P2: 2, P3: 3, P4: 4, P5: 5};
     const apply = () => {
       const query = filters.search.value.trim().toLowerCase();

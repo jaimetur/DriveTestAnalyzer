@@ -124,6 +124,8 @@ Long operations use progress dialogs for stages such as:
 
 Server-transfer dialogs can be hidden with **Hide** while the transfer continues as a background task, and are restored after a browser reload while the transfer remains active. On the destination, once the package has arrived, a dialog without **Hide** keeps every open page out of use until the import ends; on the source, the dialog comes back once when that import starts and can be hidden again.
 
+After signing in, a super-admin is told in the same style as an incoming server transfer of the [access requests](administrator-config.md#access-requests) waiting for activation and of the new [bug reports](bugs-report.md#who-can-do-what) it has not been told of, once each; the dialog waits for any other dialog or running operation of the page to close first.
+
 ## Floating background-task cards
 
 Every authenticated page polls active background work (every 2 seconds while work runs, every 8 seconds otherwise and every 30 seconds in a hidden tab) and shows compact floating cards until it finishes. Work for the open workspace appears at the lower right. Work for one or more other accessible workspaces appears in differently coloured lower-left cards, grouped by workspace name; changing the active workspace moves each running task to the appropriate side.

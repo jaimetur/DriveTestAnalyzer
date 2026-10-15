@@ -2791,7 +2791,7 @@ IDLE_DASHBOARD_WARMUP_CALLBACK: Callable[[], None] | None = None
 # Requests pages repeat on their own, which do not mean someone is using the
 # application: Dashboard charts are prepared after five minutes without others.
 PASSIVE_APPLICATION_REQUEST_PATHS = {
-    '/api/background-tasks', '/api/workspaces/sizes', '/admin/import-export/transfers/offers',
+    '/api/background-tasks', '/api/workspaces/sizes', '/admin/import-export/transfers/offers', '/admin/notices',
     '/api/admin/backup-status', '/api/admin/backup-files',
     '/api/ppt-dashboards/statuses', '/api/ppt-dashboards/ppt-jobs',
     '/api/ppt-reporting-old/jobs', '/api/ppt-reporting-old/chart-jobs',
@@ -10865,6 +10865,7 @@ def render_admin_template(
         'bug_reports': 'Bug Reports',
         'bug_report_comments': 'Bug Report Comments',
         'bug_report_attachments': 'Bug Report Attachments',
+        'admin_notices_seen': 'Admin Notices Seen',
         'report_tasks': 'Report Tasks',
         'map_area_layers': 'Map Area Layers',
         'map_area_fills': 'Map Area Fills',
@@ -11631,10 +11632,13 @@ def create_access_request(request: Request, payload: AccessRequestPayload) -> JS
             raise HTTPException(status_code=409, detail=f'The user {username} already exists.') from exc
         repository.set_user_workspace_groups(user_id, requested_groups)
         repository.set_users_modules_profile([user_id], profile['id'])
+    requested_at = local_now_iso()
+    # The super-admins are told of the request after signing in (src/modules/admin_notices.py).
+    repository.set_access_requested(user_id, requested_at)
     invalidate_module_access_cache()
     workspaces = describe(workspace_groups, 'workspaces')
     profile_text = describe([profile], 'modules')
-    requested = local_now_iso()[:16].replace('T', ' ')
+    requested = requested_at[:16].replace('T', ' ')
     repository.add_log(username, 'access_change_request' if record else 'access_request', json.dumps({
         'name': f'{first_name} {last_name}', 'role': role, 'workspace_groups': [group['name'] for group in workspace_groups],
         'modules_profile': profile['name'],
@@ -13010,7 +13014,7 @@ def database_table_type(table_name: str, dataset_kind: str = '') -> tuple[str, s
         return kind_type, colors[kind_type]
     if name in {'users', 'modules_profiles', 'workspace_groups', 'workspace_group_members', 'application_sessions'}:
         kind_type = 'Users & Access'
-    elif name in {'application_state', 'transfer_offers', WORKSPACE_REGISTRY_TABLE.casefold()}:
+    elif name in {'application_state', 'transfer_offers', 'admin_notices_seen', WORKSPACE_REGISTRY_TABLE.casefold()}:
         kind_type = 'Application'
     elif name.startswith('bug_report'):
         kind_type = 'Bugs Report'
@@ -15728,6 +15732,11 @@ def bug_report_page(request: Request, bug_id: int, user: SessionUser | None = De
     people = bug_report_people()
     by_key = {module['key']: module for module in modules}
     bug = serialize_bug_report(require_bug_report(bug_id), by_key, people)
+    if user and user.role == 'super-admin':
+        from src.modules.admin_notices import mark_seen
+
+        # A super-admin who has opened the report is not told of it after signing in.
+        mark_seen(repository, user.username, bug_reports=[bug['uid']])
     # The description and the comments read with their bullets, nested, and their headings.
     bug['description_html'] = rich_text_html(bug['description'])
 
@@ -21166,6 +21175,57 @@ async def receive_transfer_package(offer_id: str, request: Request) -> JSONRespo
                 _save_transfer_offer(offer)
                 finish_attempt()
         raise HTTPException(status_code=503, detail='The package transfer was interrupted; the source may retry.') from exc
+
+
+# -- admin notices after signing in ---------------------------------------------------------------
+@app.get('/admin/notices')
+def list_admin_notices(user: SessionUser = Depends(super_admin_user)) -> JSONResponse:
+    """The access requests waiting for activation and the new bug reports the super-admin has not been told about yet,
+    for the dialog shown after signing in (src/modules/admin_notices.py)."""
+    from src.modules.admin_notices import unseen_notices
+    from src.modules.bugs_report import PRIORITIES
+
+    notices = unseen_notices(repository, user.username, include_bug_reports=user_has_feature(user, 'bugs-report'))
+    people = bug_report_people()
+    modules = {module['key']: module['title'] for module in bug_report_modules()}
+    return JSONResponse({
+        'access_requests': [{
+            'key': item['key'], 'username': item['username'], 'name': item['name'] or item['username'], 'role': item['role'],
+            'requested_at': format_local_timestamp(item['requested_at'])[:16],
+        } for item in notices['access_requests']],
+        'bug_reports': [{
+            'key': item['key'], 'id': int(item['id']), 'title': item['title'], 'priority': item['priority'],
+            'priority_label': PRIORITIES.get(item['priority'], ''), 'module': modules.get(item['module'], item['module'] or 'General'),
+            'reported_by': people.get(item['created_by'], {}).get('name', item['created_by']),
+            'reported_at': format_local_timestamp(item['created_at'])[:16],
+        } for item in notices['bug_reports']],
+        'access_requests_url': '/admin?users=access-requests#users',
+        'bugs_report_url': '/bugs-report?status=new#section-bug-reports',
+    }, headers={'Cache-Control': 'no-store'})
+
+
+class AdminNoticesSeenPayload(BaseModel):
+    access_requests: list[str] = Field(default_factory=list)
+    bug_reports: list[str] = Field(default_factory=list)
+    choice: str = 'close'
+
+
+# The buttons of the admin notices dialog, as App Events name them.
+ADMIN_NOTICE_CHOICES = {'access-requests': 'Open Access Requests', 'bugs-report': 'Open Bugs Report', 'close': 'Close'}
+
+
+@app.post('/admin/notices/seen')
+def mark_admin_notices_seen(payload: AdminNoticesSeenPayload, user: SessionUser = Depends(super_admin_user)) -> JSONResponse:
+    """Record that the super-admin has been told of the notices of the dialog, so that they are not shown again."""
+    from src.modules.admin_notices import mark_seen
+
+    recorded = mark_seen(repository, user.username, access_requests=payload.access_requests, bug_reports=payload.bug_reports)
+    repository.try_add_log(user.username, 'admin_notices_seen', json.dumps({
+        'choice': ADMIN_NOTICE_CHOICES.get(payload.choice, ADMIN_NOTICE_CHOICES['close']),
+        'access_requests': [item['username'] for item in recorded['access_requests']],
+        'bug_reports': [f"#{bug['id']} {bug['title']}" for bug in recorded['bug_reports']],
+    }, ensure_ascii=False))
+    return JSONResponse({'access_requests': len(recorded['access_requests']), 'bug_reports': len(recorded['bug_reports'])})
 
 
 @app.get('/admin/import-export/transfers/offers')
