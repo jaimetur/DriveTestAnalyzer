@@ -259,7 +259,11 @@
               <div class="queue-dataset-name" data-queue-file-name>{{ dataset.file_name }}</div>
               <div class="queue-dataset-path" data-queue-file-path title="{{ dataset.stored_path }}">{{ dataset.stored_path }}</div>
             </td>
-            <td data-label="Input Type" data-queue-kind data-queue-sort-value="{{ dataset.input_kind_label }}" data-queue-sort-cell="kind">{{ dataset.input_kind_label }}</td>
+            {% if layout == 'cdr' %}
+            <td data-label="Campaign" data-queue-campaign data-queue-sort-value="{{ dataset.campaign or '' }}" data-queue-sort-cell="campaign">
+              <input type="text" class="queue-campaign-input" value="{{ dataset.campaign or '' }}" placeholder="YYYY-Qn" maxlength="40" spellcheck="false" autocomplete="off" list="cdr-campaign-options" data-dataset-campaign-input data-update-url="/workspace/datasets/{{ dataset.id }}/campaign" aria-label="Campaign of {{ dataset.file_name }}" title="The campaign of this CDR, such as 2026-Q2 (suggested from its file name; blank: no campaign)"{% if user.role not in ['user-editor', 'admin', 'super-admin'] %} readonly{% endif %}>
+            </td>
+            {% endif %}
             <td data-label="NR Mode" data-queue-nr-mode data-queue-sort-value="{{ dataset.nr_mode or '' }}" data-queue-sort-cell="nr-mode">
               {% if dataset.nr_mode %}
               <select class="queue-nr-mode-select" data-dataset-nr-mode-select data-dataset-id="{{ dataset.id }}" data-update-url="/workspace/datasets/{{ dataset.id }}/nr-mode" aria-label="NR Mode for {{ dataset.file_name }}">
@@ -268,9 +272,14 @@
               {% else %}—{% endif %}
             </td>
             {% if layout == 'cdr' %}
-            <td data-label="CDR Type" data-queue-cdr-stage data-queue-sort-value="{{ dataset.cdr_stage_label }}" data-queue-sort-cell="cdr-stage">
+            <td data-label="CDR Type" data-queue-kind data-queue-sort-value="{{ dataset.input_kind_label }}" data-queue-sort-cell="kind">
+              <select class="queue-cdr-type-select" data-dataset-cdr-type-select data-update-url="/workspace/datasets/{{ dataset.id }}/cdr-type" aria-label="CDR Type for {{ dataset.file_name }}" title="Data, Voice or Speech; a change reprocesses the CDR from its source file">
+                {% for value, label in [('data', 'CDR-Data'), ('voice', 'CDR-Voice'), ('speech', 'CDR-Speech')] %}<option value="{{ value }}"{% if dataset.dataset_kind == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+              </select>
+            </td>
+            <td data-label="CDR Stage" data-queue-cdr-stage data-queue-sort-value="{{ dataset.cdr_stage_label }}" data-queue-sort-cell="cdr-stage">
               {% if dataset.cdr_stage %}
-              <select class="queue-nr-mode-select queue-cdr-stage-select" data-dataset-cdr-stage-select data-dataset-id="{{ dataset.id }}" data-update-url="/workspace/datasets/{{ dataset.id }}/cdr-stage" aria-label="CDR Type for {{ dataset.file_name }}" title="A Final CDR replaces the Daily CDRs of its campaigns in the combined tables">
+              <select class="queue-nr-mode-select queue-cdr-stage-select" data-dataset-cdr-stage-select data-dataset-id="{{ dataset.id }}" data-update-url="/workspace/datasets/{{ dataset.id }}/cdr-stage" aria-label="CDR Stage for {{ dataset.file_name }}" title="A Final CDR replaces the Daily CDRs of its campaigns in the combined tables">
                 {% for value, label in cdr_stage_options %}<option value="{{ value }}"{% if dataset.cdr_stage == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
               </select>
               {% else %}—{% endif %}
@@ -448,6 +457,8 @@
     {% set geo_datasets = datasets | selectattr('dataset_kind', 'in', ['regions', 'clusters', 'vendors']) | list %}
     {% set other_datasets = datasets | rejectattr('dataset_kind', 'in', ['data', 'voice', 'speech', 'mapping_vodafone', 'mapping_three', 'network_inventory', 'regions', 'clusters', 'vendors']) | list %}
     <div class="dataset-cards">
+      {# The campaigns of the CDRs, offered while a Campaign is written. #}
+      <datalist id="cdr-campaign-options">{% for campaign in datasets | selectattr('dataset_kind', 'in', cdr_kinds) | map(attribute='campaign') | select | unique | sort %}<option value="{{ campaign }}"></option>{% endfor %}</datalist>
       <section class="dataset-card dataset-card-cdr dataset-card-final" data-dataset-card="cdr-final">
         <header class="dataset-card-head">
           <div><p class="eyebrow">CDRs</p><h3><span class="dataset-card-icon dataset-card-icon-final" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="m9 14 2 2 4-4"/></svg></span>Final CDRs <span class="dataset-card-count">{{ final_cdrs | length }}</span></h3></div>
@@ -459,9 +470,10 @@
               <tr>
             <th aria-sort="descending"><button type="button" class="queue-sort-button" data-queue-sort-key="id" data-queue-sort-type="number">ID<span aria-hidden="true" data-queue-sort-indicator>↓</span></button></th>
             <th><button type="button" class="queue-sort-button" data-queue-sort-key="dataset" data-queue-sort-type="text">Dataset<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
-            <th><button type="button" class="queue-sort-button" data-queue-sort-key="kind" data-queue-sort-type="text">Input Type<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
+            <th><button type="button" class="queue-sort-button" data-queue-sort-key="campaign" data-queue-sort-type="text">Campaign<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
             <th><button type="button" class="queue-sort-button" data-queue-sort-key="nr-mode" data-queue-sort-type="text">NR Mode<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
-            <th><button type="button" class="queue-sort-button" data-queue-sort-key="cdr-stage" data-queue-sort-type="text">CDR Type<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
+            <th><button type="button" class="queue-sort-button" data-queue-sort-key="kind" data-queue-sort-type="text">CDR<br>Type<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
+            <th><button type="button" class="queue-sort-button" data-queue-sort-key="cdr-stage" data-queue-sort-type="text">CDR Stage<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
             <th><button type="button" class="queue-sort-button" data-queue-sort-key="combined" data-queue-sort-type="text">In Combined?<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
             <th class="queue-sort-pair"><button type="button" class="queue-sort-button" data-queue-sort-key="rows" data-queue-sort-type="number">Rows<span aria-hidden="true" data-queue-sort-indicator>↕</span></button><button type="button" class="queue-sort-button" data-queue-sort-key="columns" data-queue-sort-type="number">Columns<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
             <th><button type="button" class="queue-sort-button" data-queue-sort-key="size" data-queue-sort-type="number">Size<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
@@ -473,7 +485,7 @@
             </thead>
             <tbody data-dataset-card-body="cdr-final">
               {% for dataset in final_cdrs %}{{ dataset_row(dataset, 'cdr') }}{% else %}
-              <tr data-dataset-card-empty><td colspan="12"><article class="empty-state-inline">No Final CDRs. Upload a CDR and choose Final as its CDR Type.</article></td></tr>
+              <tr data-dataset-card-empty><td colspan="13"><article class="empty-state-inline">No Final CDRs. Upload a CDR and choose Final as its CDR Stage.</article></td></tr>
               {% endfor %}
             </tbody>
           </table>
@@ -490,9 +502,10 @@
               <tr>
             <th aria-sort="descending"><button type="button" class="queue-sort-button" data-queue-sort-key="id" data-queue-sort-type="number">ID<span aria-hidden="true" data-queue-sort-indicator>↓</span></button></th>
             <th><button type="button" class="queue-sort-button" data-queue-sort-key="dataset" data-queue-sort-type="text">Dataset<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
-            <th><button type="button" class="queue-sort-button" data-queue-sort-key="kind" data-queue-sort-type="text">Input Type<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
+            <th><button type="button" class="queue-sort-button" data-queue-sort-key="campaign" data-queue-sort-type="text">Campaign<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
             <th><button type="button" class="queue-sort-button" data-queue-sort-key="nr-mode" data-queue-sort-type="text">NR Mode<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
-            <th><button type="button" class="queue-sort-button" data-queue-sort-key="cdr-stage" data-queue-sort-type="text">CDR Type<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
+            <th><button type="button" class="queue-sort-button" data-queue-sort-key="kind" data-queue-sort-type="text">CDR<br>Type<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
+            <th><button type="button" class="queue-sort-button" data-queue-sort-key="cdr-stage" data-queue-sort-type="text">CDR Stage<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
             <th><button type="button" class="queue-sort-button" data-queue-sort-key="combined" data-queue-sort-type="text">In Combined?<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
             <th class="queue-sort-pair"><button type="button" class="queue-sort-button" data-queue-sort-key="rows" data-queue-sort-type="number">Rows<span aria-hidden="true" data-queue-sort-indicator>↕</span></button><button type="button" class="queue-sort-button" data-queue-sort-key="columns" data-queue-sort-type="number">Columns<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
             <th><button type="button" class="queue-sort-button" data-queue-sort-key="size" data-queue-sort-type="number">Size<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
@@ -504,7 +517,7 @@
             </thead>
             <tbody data-dataset-card-body="cdr-weekly">
               {% for dataset in weekly_cdrs %}{{ dataset_row(dataset, 'cdr') }}{% else %}
-              <tr data-dataset-card-empty><td colspan="12"><article class="empty-state-inline">No Weekly CDRs. Upload a CDR and choose Weekly as its CDR Type.</article></td></tr>
+              <tr data-dataset-card-empty><td colspan="13"><article class="empty-state-inline">No Weekly CDRs. Upload a CDR and choose Weekly as its CDR Stage.</article></td></tr>
               {% endfor %}
             </tbody>
           </table>
@@ -521,9 +534,10 @@
               <tr>
             <th aria-sort="descending"><button type="button" class="queue-sort-button" data-queue-sort-key="id" data-queue-sort-type="number">ID<span aria-hidden="true" data-queue-sort-indicator>↓</span></button></th>
             <th><button type="button" class="queue-sort-button" data-queue-sort-key="dataset" data-queue-sort-type="text">Dataset<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
-            <th><button type="button" class="queue-sort-button" data-queue-sort-key="kind" data-queue-sort-type="text">Input Type<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
+            <th><button type="button" class="queue-sort-button" data-queue-sort-key="campaign" data-queue-sort-type="text">Campaign<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
             <th><button type="button" class="queue-sort-button" data-queue-sort-key="nr-mode" data-queue-sort-type="text">NR Mode<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
-            <th><button type="button" class="queue-sort-button" data-queue-sort-key="cdr-stage" data-queue-sort-type="text">CDR Type<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
+            <th><button type="button" class="queue-sort-button" data-queue-sort-key="kind" data-queue-sort-type="text">CDR<br>Type<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
+            <th><button type="button" class="queue-sort-button" data-queue-sort-key="cdr-stage" data-queue-sort-type="text">CDR Stage<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
             <th><button type="button" class="queue-sort-button" data-queue-sort-key="combined" data-queue-sort-type="text">In Combined?<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
             <th class="queue-sort-pair"><button type="button" class="queue-sort-button" data-queue-sort-key="rows" data-queue-sort-type="number">Rows<span aria-hidden="true" data-queue-sort-indicator>↕</span></button><button type="button" class="queue-sort-button" data-queue-sort-key="columns" data-queue-sort-type="number">Columns<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
             <th><button type="button" class="queue-sort-button" data-queue-sort-key="size" data-queue-sort-type="number">Size<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
@@ -535,7 +549,7 @@
             </thead>
             <tbody data-dataset-card-body="cdr-daily">
               {% for dataset in daily_cdrs %}{{ dataset_row(dataset, 'cdr') }}{% else %}
-              <tr data-dataset-card-empty><td colspan="12"><article class="empty-state-inline">No Daily CDRs. Upload a CDR and choose Daily as its CDR Type.</article></td></tr>
+              <tr data-dataset-card-empty><td colspan="13"><article class="empty-state-inline">No Daily CDRs. Upload a CDR and choose Daily as its CDR Stage.</article></td></tr>
               {% endfor %}
             </tbody>
           </table>
@@ -597,7 +611,7 @@
           <tr class="combined-dataset-columns-header" data-combined-dataset-structure-row data-mobile-card-pagination-ignore>
             <th scope="col">ID</th>
             <th scope="col">Dataset</th>
-            <th scope="col">Input Type</th>
+            <th scope="col">CDR Type</th>
             <th scope="col" class="combined-dataset-pair-head">Rows<span>Columns</span></th>
             <th scope="col">Status</th>
             <th scope="col">Progress</th>
@@ -613,7 +627,7 @@
               <div class="queue-dataset-name">{{ combined.name }}</div>
               <div class="queue-dataset-path">SQLite table: {{ combined.table_name }}</div>
             </td>
-            <td data-label="Input Type">CDR-{{ combined.kind|title }} (combined)</td>
+            <td data-label="CDR Type"><span class="queue-cdr-type-badge" data-kind="{{ combined.kind }}">CDR-{{ combined.kind|title }} (combined)</span></td>
             <td data-label="Rows / Columns" class="queue-stacked-cell">
               <span class="queue-stacked-main" data-combined-dataset-rows title="Rows">{{ '{:,}'.format(combined.row_count) }}</span>
               <span class="queue-stacked-sub" data-combined-dataset-columns title="Columns">{{ '{:,}'.format(combined.column_count) }}</span>
@@ -1303,11 +1317,11 @@
       // Final CDRs replace the Weekly and Daily CDRs of their campaigns in the combined tables.
       const stageField = document.createElement('label');
       stageField.className = 'upload-nr-mode-field upload-cdr-stage-field';
-      stageField.textContent = 'CDR Type';
+      stageField.textContent = 'CDR Stage';
       stageField.title = 'A Final CDR is delivered after the campaign; Weekly and Daily CDRs arrive while it runs and are replaced by the Final CDR of their campaign in the combined tables';
       const stageSelect = document.createElement('select');
       stageSelect.name = 'cdr_stages';
-      stageSelect.setAttribute('aria-label', `CDR Type for ${file.name}`);
+      stageSelect.setAttribute('aria-label', `CDR Stage for ${file.name}`);
       [['final', 'Final'], ['weekly', 'Weekly'], ['daily', 'Daily']].forEach(([value, label]) => stageSelect.add(new Option(label, value)));
       stageSelect.value = inferCdrStage(file.name);
       stageField.append(stageSelect);

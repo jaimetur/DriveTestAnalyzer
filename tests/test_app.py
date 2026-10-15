@@ -10529,11 +10529,11 @@ def test_workspace_dataset_table_defaults_to_descending_ids_and_has_sortable_col
 
     assert table.index('data-dataset-id="2"') < table.index('data-dataset-id="1"')
     assert '<th aria-sort="descending"><button type="button" class="queue-sort-button" data-queue-sort-key="id" data-queue-sort-type="number">' in table
-    for key in ('dataset', 'kind', 'rows', 'columns', 'size', 'status', 'progress', 'uploaded', 'updated'):
+    for key in ('dataset', 'campaign', 'kind', 'rows', 'columns', 'size', 'status', 'progress', 'uploaded', 'updated'):
         assert f'data-queue-sort-key="{key}"' in table
     script = client.get('/static/js/app.js').text
-    # Each dataset card sorts on its own, newest IDs first.
-    assert "new Map(sortableQueueTables.map((table) => [table, {key: 'id', direction: 'desc'}]))" in script
+    # Each dataset card sorts on its own: the CDR cards by Campaign (then NR Mode and CDR Type), the others newest IDs first.
+    assert "? {key: 'campaign', direction: 'desc'} : {key: 'id', direction: 'desc'}" in script
     assert 'combinedBoundary' in script
 
 

@@ -4221,7 +4221,7 @@ body:has(.release-navigator) .help-navigator{top:37%}
 /* user-viewer explores the workspace and generates jobs, but cannot change
    datasets, mappings, saved Dashboards, saved queries or other stored data. */
 body[data-authenticated-role="user-viewer"] :is(.upload-dropzone, .queue-bulk-actions, .action-link-map-vendors, .action-link-clear-vendors, .action-link-stop, .action-link-reprocess, form[action^="/datasets-analysis/delete"], .combined-dataset-recreate-button, .auto-calculated-field-rematerialize-button, [data-ds-manage-only], .saved-filter-delete, .saved-filter-pin, .saved-filter-rename, .query-builder-save-subpanel, [data-sql-edit], [data-sql-delete]) { display: none !important; }
-body[data-authenticated-role="user-viewer"] .queue-nr-mode-select { pointer-events: none; appearance: none; background-image: none; }
+body[data-authenticated-role="user-viewer"] :is(.queue-nr-mode-select, .queue-cdr-type-select) { pointer-events: none; appearance: none; background-image: none; }
 
 /* Map CDR fields: CDRs, rules and mapping selectors side by side so the dialog fits without scrolling. */
 .vendor-mapping-cdr-groups { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .7rem; align-items: start; }
@@ -4626,26 +4626,28 @@ body:has(dialog.vendor-mapping-dialog[open]) { overflow: hidden; }
 .dataset-card-geospatial .dataset-card-count { background: #2e8b57; }
 .dataset-card-other .dataset-card-count { background: #7b8790; }
 .dataset-card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 34rem), 1fr)); gap: 1.1rem; }
-/* CDR cards add the CDR Type and In Combined? columns after NR Mode and stack Rows over Columns and Uploaded over Updated.
-   Every value uses one font size and only the second value of a stacked cell is smaller; NR Mode, CDR Type and the
-   Combined choice are small pills with their own arrow, and the actions sit on two rows, so the table fits a laptop window. */
-.dataset-card-cdr .queue-table { min-width: 1230px; width: 100%; table-layout: fixed; }
+/* CDR cards add the Campaign after the Dataset and the CDR Type, CDR Stage and In Combined? columns after NR Mode, and stack Rows
+   over Columns and Uploaded over Updated. Every value uses one font size and only the second value of a stacked cell is
+   smaller; the CDR Type is a badge, Campaign a small field, NR Mode, CDR Stage and the Combined choice are small pills
+   with their own arrow, and the actions sit on two rows, so the table fits a laptop window. */
+.dataset-card-cdr .queue-table { min-width: 1352px; width: 100%; table-layout: fixed; }
 .dataset-card-cdr .queue-table :is(th, td) { padding-left: 0.55rem; padding-right: 0.55rem; }
 .dataset-card-cdr .queue-table td { font-size: 0.82rem; overflow-wrap: anywhere; }
 .dataset-card-cdr .queue-table td .queue-dataset-name { font-size: inherit; }
 .dataset-card-cdr .queue-dataset-path { font-size: 0.74rem; overflow-wrap: anywhere; }
 .dataset-card-cdr .queue-table th:nth-child(1), .dataset-card-cdr .queue-table td:nth-child(1) { width: 42px; }
 .dataset-card-cdr .queue-table th:nth-child(2), .dataset-card-cdr .queue-table td:nth-child(2) { width: auto; min-width: 0; max-width: none; }
-.dataset-card-cdr .queue-table th:nth-child(3), .dataset-card-cdr .queue-table td:nth-child(3) { width: 90px; }
+.dataset-card-cdr .queue-table th:nth-child(3), .dataset-card-cdr .queue-table td:nth-child(3) { width: 94px; }
 .dataset-card-cdr .queue-table th:nth-child(4), .dataset-card-cdr .queue-table td:nth-child(4) { width: 76px; }
-.dataset-card-cdr .queue-table th:nth-child(5), .dataset-card-cdr .queue-table td:nth-child(5) { width: 78px; }
-.dataset-card-cdr .queue-table th:nth-child(6), .dataset-card-cdr .queue-table td:nth-child(6) { width: 104px; }
-.dataset-card-cdr .queue-table th:nth-child(7), .dataset-card-cdr .queue-table td:nth-child(7) { width: 80px; }
-.dataset-card-cdr .queue-table th:nth-child(8), .dataset-card-cdr .queue-table td:nth-child(8) { width: 82px; }
-.dataset-card-cdr .queue-table th:nth-child(9), .dataset-card-cdr .queue-table td:nth-child(9) { width: 96px; }
-.dataset-card-cdr .queue-table th:nth-child(10), .dataset-card-cdr .queue-table td:nth-child(10) { width: 104px; }
-.dataset-card-cdr .queue-table th:nth-child(11), .dataset-card-cdr .queue-table td:nth-child(11) { width: 152px; }
-.dataset-card-cdr .queue-table th:nth-child(12), .dataset-card-cdr .queue-table td:nth-child(12) { width: 124px; }
+.dataset-card-cdr .queue-table th:nth-child(5), .dataset-card-cdr .queue-table td:nth-child(5) { width: 118px; }
+.dataset-card-cdr .queue-table th:nth-child(6), .dataset-card-cdr .queue-table td:nth-child(6) { width: 78px; }
+.dataset-card-cdr .queue-table th:nth-child(7), .dataset-card-cdr .queue-table td:nth-child(7) { width: 104px; }
+.dataset-card-cdr .queue-table th:nth-child(8), .dataset-card-cdr .queue-table td:nth-child(8) { width: 80px; }
+.dataset-card-cdr .queue-table th:nth-child(9), .dataset-card-cdr .queue-table td:nth-child(9) { width: 82px; }
+.dataset-card-cdr .queue-table th:nth-child(10), .dataset-card-cdr .queue-table td:nth-child(10) { width: 96px; }
+.dataset-card-cdr .queue-table th:nth-child(11), .dataset-card-cdr .queue-table td:nth-child(11) { width: 104px; }
+.dataset-card-cdr .queue-table th:nth-child(12), .dataset-card-cdr .queue-table td:nth-child(12) { width: 152px; }
+.dataset-card-cdr .queue-table th:nth-child(13), .dataset-card-cdr .queue-table td:nth-child(13) { width: 124px; }
 .dataset-card-cdr .queue-table .queue-actions { display: grid; grid-template-columns: repeat(3, 2rem); gap: 0.3rem; min-width: 0; }
 /* On phones the CDRs are cards (see the compact-screen contract), not a table of fixed columns. */
 @media (max-width: 640px) { .dataset-card-cdr .queue-table { min-width: 0; table-layout: auto; } }
@@ -4654,7 +4656,7 @@ body:has(dialog.vendor-mapping-dialog[open]) { overflow: hidden; }
 .dataset-card-cdr .queue-status-pill { padding: 0.28rem 0.55rem; font-size: 0.74rem; white-space: nowrap; }
 .dataset-card-cdr .queue-stacked-cell > span { overflow-wrap: normal; }
 .dataset-card-cdr .queue-stacked-cell .queue-stacked-sub { font-size: 0.74rem; }
-/* Small pills: NR Mode, CDR Type and the Combined choice, with a drawn arrow so their value is never hidden. */
+/* Small pills: NR Mode, CDR Stage and the Combined choice, with a drawn arrow so their value is never hidden. */
 .dataset-card-cdr :is(.queue-nr-mode-select, .queue-cdr-stage-select, .queue-combined-select) {
   appearance: none; -webkit-appearance: none; width: 100%; min-width: 0; max-width: 100%; min-height: 0; height: 1.65rem;
   padding: 0 1.15rem 0 0.55rem; border-radius: 999px; font-size: 0.74rem; font-weight: 800; line-height: 1;
@@ -4662,6 +4664,49 @@ body:has(dialog.vendor-mapping-dialog[open]) { overflow: hidden; }
   background-repeat: no-repeat; background-position: right 0.45rem center; background-size: 0.55rem;
 }
 .dataset-card-cdr .queue-combined-state { font-size: 0.7rem; padding: 0.1rem 0.5rem; }
+/* The Campaign of a CDR (2026-Q2): a small field as tall as the pills and as wide as its campaign, in the colour of its campaign (see
+   paintCampaignInputs in app.js), read-only for user-viewer. */
+.queue-campaign-input { width: 75px; min-width: 0; max-width: 100%; min-height: 0; height: 1.65rem; box-sizing: border-box; padding: 0 0.85rem 0 0.35rem; border: 1px solid #c9d6e0; border-radius: 999px; background-color: #fff; color: #10314a; font-size: 0.74rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+/* The arrow of the campaign suggestions is drawn in the space kept at the right, as in the other pills; the browser's
+   own arrow, shown only on hover, stays invisible (app.js opens the suggestions from the drawn one). */
+.queue-campaign-input:not([readonly]) {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%2360707b' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 0.3rem center; background-size: 0.5rem;
+}
+.queue-campaign-input::-webkit-calendar-picker-indicator { display: none !important; }
+.queue-campaign-input::-webkit-list-button { display: none !important; }
+.queue-campaign-input::placeholder { color: #9aa8b2; font-weight: 600; }
+.queue-campaign-input[data-campaign-colored] { border-color: color-mix(in srgb, var(--campaign-color) 45%, #fff); background-color: color-mix(in srgb, var(--campaign-color) 12%, #fff); color: var(--campaign-color); }
+.queue-campaign-input:focus { outline: none; border-color: #1e61a3; box-shadow: 0 0 0 3px rgba(30, 97, 163, 0.14); }
+.queue-campaign-input[readonly] { padding-right: 0.55rem; }
+.queue-campaign-input[readonly]:not([data-campaign-colored]) { border-color: transparent; background: transparent; padding-left: 0; }
+/* The CDR Type of a CDR: a badge or selector in the colour of its type (Data in orange, Voice in raspberry), apart from the NR Mode and CDR Stage colours. */
+.queue-cdr-type-badge { --pill-color: #5a6773; display: inline-block; max-width: 100%; padding: 0.22rem 0.45rem; border: 1px solid color-mix(in srgb, var(--pill-color) 30%, #fff); border-radius: 999px; background: color-mix(in srgb, var(--pill-color) 12%, #fff); color: var(--pill-color); font-size: 0.72rem; font-weight: 800; line-height: 1.15; }
+.dataset-card-cdr .queue-cdr-type-badge { white-space: nowrap; }
+/* The CDR Type selector of the CDR cards: a pill in the colour of its type, with its arrow. */
+.dataset-card-cdr .queue-cdr-type-select {
+  --pill-color: #5a6773; appearance: none; -webkit-appearance: none; width: 100%; min-width: 0; max-width: 100%; min-height: 0; height: 1.65rem;
+  padding: 0 1.15rem 0 0.5rem; border: 1px solid color-mix(in srgb, var(--pill-color) 30%, #fff); border-radius: 999px;
+  background-color: color-mix(in srgb, var(--pill-color) 12%, #fff); color: var(--pill-color); font-size: 0.72rem; font-weight: 800; line-height: 1;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%2360707b' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 0.45rem center; background-size: 0.55rem;
+}
+.queue-cdr-type-select option { background-color: #fff; color: #10314a; }
+/* The CDR tables grouped by campaign: a band with the campaign, its number of CDRs and their size before its rows. */
+.queue-table tbody tr.queue-campaign-group-row > td { padding: 0.45rem 0.6rem; border-top: 2px solid #c9d6e0; border-bottom: 1px solid #dde6ec; background: #eef3f6; }
+.queue-campaign-group-label { display: inline-block; padding: 0.15rem 0.6rem; border-radius: 999px; background: #10314a; color: #fff; font-size: 0.78rem; font-weight: 850; letter-spacing: 0.02em; }
+.queue-campaign-group-label.is-empty { background: #7b8790; }
+.queue-campaign-group-count { margin-left: 0.55rem; color: #51616c; font-size: 0.74rem; font-weight: 700; }
+.queue-campaign-group-size { margin-left: 0.55rem; padding-left: 0.55rem; border-left: 1px solid #c9d6e0; color: #51616c; font-size: 0.74rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.dataset-card-cdr .queue-table tbody tr.queue-campaign-group-row > td { width: auto !important; }
+/* On phones the band spans the card list and the Campaign field its card. */
+@media (max-width: 640px) {
+  .queue-table tbody tr.queue-campaign-group-row, .queue-table tbody tr.queue-campaign-group-row > td { display: block; }
+  .queue-table tbody tr[data-dataset-row] > td[data-label="Campaign"] { grid-column: 1 / -1; }
+}
+.queue-cdr-type-badge[data-kind="data"], .queue-cdr-type-select:has(option[value="data"]:checked) { --pill-color: #e8590c; }
+.queue-cdr-type-badge[data-kind="voice"], .queue-cdr-type-select:has(option[value="voice"]:checked) { --pill-color: #b0306a; }
+.queue-cdr-type-badge[data-kind="speech"], .queue-cdr-type-select:has(option[value="speech"]:checked) { --pill-color: #7751b9; }
 .dataset-card-cdr .queue-combined-reason { font-size: 0.7rem; }
 /* The CDRs in the combined tables have a very light green background and the others a very light grey one. */
 .dataset-card-cdr .queue-table tbody tr.queue-row-in-combined[data-dataset-row] { background: #f1faf3; }
@@ -4672,7 +4717,8 @@ body:has(dialog.vendor-mapping-dialog[open]) { overflow: hidden; }
 .queue-stacked-cell > span { display: block; white-space: nowrap; }
 .queue-stacked-cell .queue-stacked-sub { margin-top: 0.2rem; color: var(--muted); font-size: 0.85em; }
 .queue-table .queue-stacked-cell [data-queue-uploaded], .queue-table .queue-stacked-cell [data-queue-updated] { white-space: nowrap; }
-.queue-cdr-stage-select:has(option[value="final"]:checked) { border-color: #8db4e2; background-color: #dcebff; color: #1f4f7f; }
+/* Final in teal, apart from the blue of SA. */
+.queue-cdr-stage-select:has(option[value="final"]:checked) { border-color: #7cc7bf; background-color: #ddf3f0; color: #10615a; }
 .queue-cdr-stage-select:has(option[value="daily"]:checked) { border-color: #e8c27a; background-color: #fff1d6; color: #8a5300; }
 .queue-cdr-stage-select:has(option[value="weekly"]:checked) { border-color: #c4b2ef; background-color: #efe9fc; color: #4f3594; }
 .queue-combined-cell { display: grid; gap: 0.3rem; justify-items: start; }

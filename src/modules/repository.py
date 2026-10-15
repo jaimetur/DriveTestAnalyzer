@@ -194,6 +194,7 @@ CREATE TABLE IF NOT EXISTS dataset_profiles (
     in_combined TEXT NOT NULL DEFAULT 'auto',
     dataset_operator TEXT,
     snapshot_date TEXT,
+    campaign TEXT,
     row_count INTEGER,
     column_count INTEGER,
     default_metric TEXT,
@@ -1528,6 +1529,9 @@ class Repository:
         if 'snapshot_date' not in existing_columns:
             # The date of the network an inventory describes (empty: the date in its name or its upload date).
             conn.execute("ALTER TABLE dataset_profiles ADD COLUMN snapshot_date TEXT")
+        if 'campaign' not in existing_columns:
+            # The Campaign of a CDR chosen by the user (NULL: suggested from its file name and NR Mode).
+            conn.execute("ALTER TABLE dataset_profiles ADD COLUMN campaign TEXT")
         # Region polygons were first the "mapping_region" kind; they are now Regions, like Clusters.
         conn.execute("UPDATE dataset_profiles SET dataset_kind = 'regions' WHERE dataset_kind = 'mapping_region'")
         self._backfill_dataset_nr_modes(conn)
@@ -4572,7 +4576,7 @@ class Repository:
             return conn.execute(
                 """
                 SELECT d.id, d.file_name, d.stored_path, d.uploaded_by, d.uploaded_at,
-                       p.status, p.progress, p.processing_step, p.normalization_version, p.vendor_mapping_applied, p.vendor_values_complete, p.region_mapping_applied, p.region_mapping_dataset_id, p.cluster_mapping_applied, p.cluster_mapping_dataset_id, p.dataset_kind, p.nr_mode, p.cdr_stage, p.in_combined, p.dataset_operator, p.snapshot_date, p.row_count, p.column_count,
+                       p.status, p.progress, p.processing_step, p.normalization_version, p.vendor_mapping_applied, p.vendor_values_complete, p.region_mapping_applied, p.region_mapping_dataset_id, p.cluster_mapping_applied, p.cluster_mapping_dataset_id, p.dataset_kind, p.nr_mode, p.cdr_stage, p.in_combined, p.dataset_operator, p.snapshot_date, p.campaign, p.row_count, p.column_count,
                        p.default_metric, p.default_aggregation, p.available_metrics_json,
                        p.available_aggregations_json, p.filter_options_json, p.summary_json,
                        p.kpis_json, p.last_error, p.processing_started_at, p.processed_at,
@@ -4590,7 +4594,7 @@ class Repository:
                 conn.execute(
                     """
                     SELECT d.id, d.file_name, d.stored_path, d.uploaded_by, d.uploaded_at,
-                           p.status, p.progress, p.processing_step, p.normalization_version, p.vendor_mapping_applied, p.vendor_values_complete, p.region_mapping_applied, p.region_mapping_dataset_id, p.cluster_mapping_applied, p.cluster_mapping_dataset_id, p.dataset_kind, p.nr_mode, p.cdr_stage, p.in_combined, p.dataset_operator, p.snapshot_date, p.row_count, p.column_count,
+                           p.status, p.progress, p.processing_step, p.normalization_version, p.vendor_mapping_applied, p.vendor_values_complete, p.region_mapping_applied, p.region_mapping_dataset_id, p.cluster_mapping_applied, p.cluster_mapping_dataset_id, p.dataset_kind, p.nr_mode, p.cdr_stage, p.in_combined, p.dataset_operator, p.snapshot_date, p.campaign, p.row_count, p.column_count,
                            p.default_metric, p.default_aggregation, p.available_metrics_json,
                            p.available_aggregations_json, p.filter_options_json, p.summary_json,
                            p.kpis_json, p.last_error, p.processing_started_at, p.processed_at,

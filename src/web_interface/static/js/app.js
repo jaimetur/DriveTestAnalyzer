@@ -10535,8 +10535,65 @@ if (queueNode) {
   const queueTypeFilter = document.querySelector('[data-queue-type-filter]');
   // Each dataset card (Final CDRs, Daily CDRs, mappings…) is sorted on its own.
   const sortableQueueTables = Array.from(queueNode.querySelectorAll('[data-queue-sortable-table]'));
-  const queueSortStates = new Map(sortableQueueTables.map((table) => [table, {key: 'id', direction: 'desc'}]));
+  // The CDR tables open sorted by Campaign, then NR Mode and CDR Type; the other cards by ID.
+  const queueSortStates = new Map(sortableQueueTables.map((table) => [table, table.closest('.dataset-card-cdr')
+    ? {key: 'campaign', direction: 'desc'} : {key: 'id', direction: 'desc'}]));
+  const queueSortValue = (row, key) => row.querySelector(`[data-queue-sort-cell="${key}"]`)?.dataset.queueSortValue || '';
   const formatQueueCount = (value) => Math.max(0, Number(value) || 0).toLocaleString('en-US', {maximumFractionDigits: 0});
+  // The CDR tables are grouped by their Campaign (2026-Q2, its NSA and SA CDRs together), the newest
+  // quarter first and the CDRs without a campaign last; each group keeps the order of the sorted column.
+  const campaignQuarter = (row) => {
+    const match = (row.querySelector('[data-dataset-campaign-input]')?.value || '').trim().toUpperCase().match(/^(\d{4})-Q([1-4])/);
+    return match ? `${match[1]}-Q${match[2]}` : '';
+  };
+  const syncCampaignGroupVisibility = (body) => {
+    body.querySelectorAll('[data-campaign-group-row]').forEach((header) => {
+      let visible = 0;
+      let sizeBytes = 0;
+      for (let row = header.nextElementSibling; row && !row.hasAttribute('data-campaign-group-row'); row = row.nextElementSibling) {
+        if (!row.hasAttribute('data-dataset-id') || row.hidden) continue;
+        visible += 1;
+        sizeBytes += Number(row.querySelector('[data-queue-sort-cell="size"]')?.dataset.queueSortValue) || 0;
+      }
+      header.hidden = visible === 0;
+      const count = header.querySelector('[data-campaign-group-count]');
+      if (count) count.textContent = `${visible} CDR${visible === 1 ? '' : 's'}`;
+      // The size of the source files of the campaign's CDRs, as the Size column.
+      const size = header.querySelector('[data-campaign-group-size]');
+      if (size) size.textContent = `${(sizeBytes / (1024 * 1024)).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})} MB`;
+    });
+  };
+  const groupQueueRowsByCampaign = (body, rows) => {
+    body.querySelectorAll('[data-campaign-group-row]').forEach((header) => header.remove());
+    const groups = new Map();
+    rows.forEach((row) => {
+      const key = campaignQuarter(row);
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(row);
+    });
+    const columns = body.closest('table')?.tHead?.rows[0]?.cells.length || 1;
+    [...groups.keys()].sort((left, right) => (!left ? 1 : !right ? -1 : right.localeCompare(left))).forEach((key) => {
+      const header = document.createElement('tr');
+      header.className = 'queue-campaign-group-row';
+      header.dataset.campaignGroupRow = key;
+      header.setAttribute('data-mobile-card-section-header', '');
+      const cell = document.createElement('td');
+      cell.colSpan = columns;
+      const label = document.createElement('span');
+      label.className = `queue-campaign-group-label${key ? '' : ' is-empty'}`;
+      label.textContent = key || 'No campaign';
+      const count = document.createElement('span');
+      count.className = 'queue-campaign-group-count';
+      count.dataset.campaignGroupCount = '';
+      const size = document.createElement('span');
+      size.className = 'queue-campaign-group-size';
+      size.dataset.campaignGroupSize = '';
+      cell.append(label, count, size);
+      header.append(cell);
+      body.append(header, ...groups.get(key));
+    });
+    syncCampaignGroupVisibility(body);
+  };
   const applyQueueSort = (sortableQueueTable = sortableQueueTables[0]) => {
     const body = sortableQueueTable?.tBodies?.[0];
     if (!body) return;
@@ -10555,11 +10612,18 @@ if (queueNode) {
       } else {
         compared = leftValue.localeCompare(rightValue, undefined, {numeric: true, sensitivity: 'base'});
       }
+      // CDRs of one campaign follow their NR Mode and then their CDR Type, whatever the direction.
+      if (compared === 0 && queueSortState.key === 'campaign') {
+        const tie = ['nr-mode', 'kind'].reduce((result, key) => result
+          || queueSortValue(left, key).localeCompare(queueSortValue(right, key), undefined, {sensitivity: 'base'}), 0);
+        if (tie) return tie;
+      }
       if (compared === 0) compared = Number(left.dataset.datasetId || 0) - Number(right.dataset.datasetId || 0);
       return compared * direction;
     });
     const combinedBoundary = body.querySelector('[data-combined-dataset-structure-row], [data-combined-dataset-row]');
     rows.forEach((row) => body.insertBefore(row, combinedBoundary));
+    if (sortableQueueTable.closest('.dataset-card-cdr')) groupQueueRowsByCampaign(body, rows);
     queueSortButtons.forEach((candidate) => {
       const active = candidate.dataset.queueSortKey === queueSortState.key;
       const heading = candidate.closest('th');
@@ -10601,10 +10665,16 @@ if (queueNode) {
         || (card.hasAttribute('data-dataset-card-optional') && !card.querySelector('[data-dataset-row]'));
       card.querySelectorAll('[data-dataset-card-empty]').forEach((row) => { row.hidden = Boolean(card.querySelector('[data-dataset-row]')); });
     });
+    queueNode.querySelectorAll('.dataset-card-cdr .queue-table > tbody').forEach(syncCampaignGroupVisibility);
     queueNode.querySelectorAll('.queue-table').forEach((table) => table.dispatchEvent(new CustomEvent('mobile-card-pagination:refresh', {bubbles: true, detail: {reset: true}})));
   };
   queueTypeFilter?.addEventListener('change', applyQueueTypeFilter);
   applyQueueTypeFilter();
+  // A CDR that changes Campaign or moves to another stage takes its place in the campaign groups.
+  document.addEventListener('workspace-cdr-rows-changed', () => {
+    sortableQueueTables.forEach((table) => applyQueueSort(table));
+    applyQueueTypeFilter();
+  });
   // A date and its time, the time in its own colour (see the queue_timestamp macro of workspace.html).
   const renderQueueTimestamp = (element, value) => {
     const [date, time] = String(value || '').replace('T', ' ').split(' ', 2);
@@ -10663,6 +10733,7 @@ if (queueNode) {
     moveQueueRowToStage(row, dataset.cdr_stage);
   };
   const syncQueueCombinedCell = (row, dataset) => syncCombinedInclusion(row, dataset.combined_included, dataset.combined_reason, dataset.in_combined);
+  const syncQueueCampaignCell = (row, dataset) => syncCampaignInput(row.querySelector('[data-dataset-campaign-input]'), dataset.campaign);
 
   const updateQueueRow = (dataset) => {
     const row = document.querySelector(`[data-dataset-row][data-dataset-id="${dataset.id}"]`);
@@ -10685,8 +10756,13 @@ if (queueNode) {
     const previousStatus = row.dataset.queueStatus
       || (statusPill?.classList.contains('queue-status-ready') ? 'ready' : '');
 
-    if (kind) kind.textContent = dataset.input_kind_label || 'Other';
+    // The CDR Type of the CDR cards is a selector in the colour of its type.
+    const kindSelect = kind?.querySelector('[data-dataset-cdr-type-select]');
+    if (kindSelect instanceof HTMLSelectElement) {
+      if (document.activeElement !== kindSelect && !kindSelect.disabled && dataset.dataset_kind) kindSelect.value = dataset.dataset_kind;
+    } else if (kind) kind.textContent = dataset.input_kind_label || 'Other';
     if (kind) kind.dataset.queueSortValue = dataset.input_kind_label || 'Other';
+    syncQueueCampaignCell(row, dataset);
     syncQueueNrModeCell(row.querySelector('[data-queue-nr-mode]'), dataset);
     syncQueueCdrStageCell(row, dataset);
     syncQueueCombinedCell(row, dataset);
@@ -11740,7 +11816,7 @@ function syncCombinedInclusion(row, included, reason, choice) {
   if (select instanceof HTMLSelectElement && choice && document.activeElement !== select && !select.disabled) select.value = choice;
 }
 
-// The label of a CDR Type: Final, Weekly or Daily.
+// The label of a CDR Stage: Final, Weekly or Daily.
 function cdrStageLabel(stage) {
   return {final: 'Final', weekly: 'Weekly', daily: 'Daily'}[stage] || '';
 }
@@ -11757,6 +11833,38 @@ function moveQueueRowToStage(row, stage) {
     if (card.hasAttribute('data-dataset-card-optional')) card.hidden = !card.querySelector('[data-dataset-row]');
   });
   if (stage !== 'final') target.closest('details')?.setAttribute('open', '');
+  document.dispatchEvent(new CustomEvent('workspace-cdr-rows-changed'));
+}
+
+// Every campaign of the CDR tables in its own colour: the campaigns in order take the colours in turn, so
+// consecutive campaigns (2026-Q2 and 2026-Q3) never share one; no blue (SA) or teal (Final).
+const CAMPAIGN_COLORS = ['#c2410c', '#be185d', '#4d7c0f', '#7c3aed', '#b45309', '#b91c1c', '#a16207', '#9d4edd', '#65730f', '#c026d3'];
+function paintCampaignInputs() {
+  const inputs = [...document.querySelectorAll('[data-dataset-campaign-input]')];
+  const campaigns = [...new Set(inputs.map((input) => input.value.trim().toUpperCase()).filter(Boolean))].sort();
+  inputs.forEach((input) => {
+    const index = campaigns.indexOf(input.value.trim().toUpperCase());
+    if (index < 0) {
+      input.style.removeProperty('--campaign-color');
+      delete input.dataset.campaignColored;
+      return;
+    }
+    input.style.setProperty('--campaign-color', CAMPAIGN_COLORS[index % CAMPAIGN_COLORS.length]);
+    input.dataset.campaignColored = '';
+  });
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', paintCampaignInputs);
+else paintCampaignInputs();
+
+// The Campaign of a CDR (2026-Q2), never overwritten while the user is editing or saving it.
+function syncCampaignInput(input, campaign) {
+  if (!(input instanceof HTMLInputElement) || campaign === undefined || campaign === null) return;
+  const cell = input.closest('[data-queue-campaign]');
+  if (cell instanceof HTMLElement) cell.dataset.queueSortValue = String(campaign);
+  if (document.activeElement === input || input.disabled) return;
+  input.value = String(campaign);
+  input.dataset.savedValue = input.value;
+  paintCampaignInputs();
 }
 
 function applyCombinedInclusion(combined) {
@@ -11768,7 +11876,7 @@ function applyCombinedInclusion(combined) {
   window.dispatchEvent(new CustomEvent('auto-calculated-field-job-status'));
 }
 
-// The CDR Type (Final, Weekly or Daily) and the combined-table choice of a CDR, saved at once.
+// The CDR Stage (Final, Weekly or Daily) and the combined-table choice of a CDR, saved at once.
 document.addEventListener('change', async (event) => {
   const select = event.target instanceof HTMLSelectElement
     ? event.target.closest('[data-dataset-cdr-stage-select], [data-dataset-combined-select]') : null;
@@ -11795,7 +11903,7 @@ document.addEventListener('change', async (event) => {
   } catch (error) {
     if (previous) select.value = previous;
     showInfoDialog(error instanceof Error ? error.message : 'The CDR could not be updated.', {
-      title: isStage ? 'CDR Type update failed' : 'Combined tables update failed', tone: 'error',
+      title: isStage ? 'CDR Stage update failed' : 'Combined tables update failed', tone: 'error',
     });
   } finally {
     select.disabled = false;
@@ -11822,6 +11930,83 @@ document.addEventListener('change', async (event) => {
     showInfoDialog(error instanceof Error ? error.message : 'The Operator could not be updated.', {title: 'Operator update failed', tone: 'error'});
   } finally {
     select.disabled = false;
+  }
+});
+
+// The arrow drawn at the right of a Campaign opens its suggestions, the campaigns of the other CDRs.
+document.addEventListener('mousedown', (event) => {
+  const input = event.target instanceof HTMLInputElement ? event.target.closest('[data-dataset-campaign-input]') : null;
+  if (!(input instanceof HTMLInputElement) || input.readOnly || input.disabled) return;
+  if (event.clientX < input.getBoundingClientRect().right - 22) return;
+  event.preventDefault();
+  input.focus();
+  try { input.showPicker?.(); } catch (_error) { /* Browsers without showPicker show the suggestions while typing. */ }
+});
+
+// The CDR Type of a CDR (Data, Voice or Speech): a change reprocesses the CDR from its source file as that type.
+document.addEventListener('change', async (event) => {
+  const select = event.target instanceof HTMLSelectElement ? event.target.closest('[data-dataset-cdr-type-select]') : null;
+  if (!(select instanceof HTMLSelectElement) || !select.dataset.updateUrl) return;
+  const previous = select.dataset.savedValue || [...select.options].find((option) => option.defaultSelected)?.value || '';
+  const label = select.selectedOptions[0]?.textContent || select.value;
+  const accepted = await showConfirmDialog(
+    `Change this CDR to ${label}? It is reprocessed from its source file and moves to the combined ${label} table.`,
+    {title: 'Change CDR Type', confirmLabel: 'Change and reprocess', tone: 'warning'},
+  );
+  if (!accepted) {
+    select.value = previous;
+    return;
+  }
+  select.disabled = true;
+  try {
+    const response = await fetch(select.dataset.updateUrl, {
+      method: 'POST', credentials: 'same-origin',
+      headers: {'Content-Type': 'application/json', Accept: 'application/json'},
+      body: JSON.stringify({cdr_type: select.value}),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.detail || 'The CDR Type could not be updated.');
+    select.dataset.savedValue = select.value;
+    // The page follows the reprocessing, as after Reprocess Dataset.
+    window.location.reload();
+  } catch (error) {
+    select.value = previous;
+    showInfoDialog(error instanceof Error ? error.message : 'The CDR Type could not be updated.', {title: 'CDR Type update failed', tone: 'error'});
+  } finally {
+    select.disabled = false;
+  }
+});
+
+// The Campaign of a CDR, such as 2026-Q2 (blank: no campaign).
+document.addEventListener('change', async (event) => {
+  const input = event.target instanceof HTMLInputElement ? event.target.closest('[data-dataset-campaign-input]') : null;
+  if (!(input instanceof HTMLInputElement) || !input.dataset.updateUrl || input.readOnly) return;
+  const previous = input.dataset.savedValue ?? input.defaultValue;
+  input.disabled = true;
+  try {
+    const response = await fetch(input.dataset.updateUrl, {
+      method: 'POST', credentials: 'same-origin',
+      headers: {'Content-Type': 'application/json', Accept: 'application/json'},
+      body: JSON.stringify({campaign: input.value}),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.detail || 'The Campaign could not be updated.');
+    input.value = String(payload.campaign ?? '');
+    input.dataset.savedValue = input.value;
+    const cell = input.closest('[data-queue-campaign]');
+    if (cell instanceof HTMLElement) cell.dataset.queueSortValue = input.value;
+    paintCampaignInputs();
+    document.dispatchEvent(new CustomEvent('workspace-cdr-rows-changed'));
+    const options = document.getElementById('cdr-campaign-options');
+    if (options && input.value && ![...options.querySelectorAll('option')].some((option) => option.value === input.value)) {
+      options.append(new Option(input.value, input.value));
+    }
+  } catch (error) {
+    input.value = previous;
+    paintCampaignInputs();
+    showInfoDialog(error instanceof Error ? error.message : 'The Campaign could not be updated.', {title: 'Campaign update failed', tone: 'error'});
+  } finally {
+    input.disabled = false;
   }
 });
 

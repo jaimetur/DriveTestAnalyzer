@@ -90,6 +90,7 @@ from src.modules.serving_cells import vendor_mapping_signature
 from src.modules.ingestion import CDR_IGNORED_SHEET_KEYS, add_three_gcid_column, add_vfuk_gcid_column, apply_operator_mappings, ensure_fixed_cdr_fields, get_dataset_source_columns, get_excel_sheet_columns, infer_dataset_kind, load_dataset, summarise_dataset
 from src.modules.geospatial import assign_clusters, assign_regions, polygon_vendor_endpoints, validate_cluster_mapping, validate_region_mapping, validate_vendor_polygons, vendor_polygon_operators
 from src.modules.nr_mode import NR_MODES, dataset_nr_mode, infer_nr_mode, normalize_nr_mode
+from src.modules.cdr_campaign import dataset_campaign, normalize_campaign
 from src.modules.cdr_stage import (
     CDR_STAGE_LABELS, CDR_STAGES, IN_COMBINED_LABELS, IN_COMBINED_VALUES, combined_dataset_ids, combined_inclusion,
     dataset_cdr_stage, infer_cdr_stage, normalize_cdr_stage, normalize_in_combined,
@@ -3432,6 +3433,8 @@ def serialize_dataset_row(row) -> dict[str, Any]:
     item['nr_mode_label'] = item['nr_mode'] or '—'
     item['cdr_stage'] = dataset_cdr_stage(item.get('dataset_kind'), item.get('cdr_stage'), item.get('file_name'))
     item['cdr_stage_label'] = CDR_STAGE_LABELS.get(item['cdr_stage'] or '', '—')
+    # The Campaign of a CDR (2026-Q2): chosen by the user, else suggested from its file name.
+    item['campaign'] = dataset_campaign(item.get('dataset_kind'), item.get('campaign'), item.get('file_name'))
     item['in_combined'] = normalize_in_combined(item.get('in_combined')) or 'auto'
     if item.get('dataset_kind') in INVENTORY_DATASET_KINDS:
         # The date of the network the inventory describes: chosen, else in its file name, else its upload date.
@@ -5911,7 +5914,7 @@ def _run_combined_inclusion_job(job_id: str, workspace: Workspace) -> None:
 
 
 def queue_combined_cdr_inclusion_sync(username: str, task_repository: Repository | None = None) -> dict[str, Any] | None:
-    """Bring the combined CDR tables in line with a CDR Type, NR Mode, In Combined? or deletion change.
+    """Bring the combined CDR tables in line with a CDR Stage, NR Mode, In Combined? or deletion change.
 
     The change runs in the background and is listed in the CDR Tables Updates card; a job that is
     still queued already reads the latest choices, so further changes join it.
@@ -5972,7 +5975,7 @@ def workspace_combined_tables(
                 and float(job.get('created_at') or 0) > float(previous.get('created_at') or 0)
             ):
                 active_recreations[kind] = dict(job)
-        # While the combined tables follow a CDR Type, NR Mode, In Combined? or deletion change,
+        # While the combined tables follow a CDR Stage, NR Mode, In Combined? or deletion change,
         # their rows still differ from the included CDRs: they are Updating, not Missing Rows.
         inclusion_job = max((
             dict(job) for job in AUTO_CALCULATED_FIELD_JOBS.values()
@@ -16234,7 +16237,7 @@ def query_builder(request: Request, user: SessionUser = Depends(current_user)) -
         return RedirectResponse('/workspace?workspace_warning=Open+a+workspace+before+using+Query+Builder.', status_code=status.HTTP_303_SEE_OTHER)
     ready = [dict(row) for row in repository.list_datasets()
              if row['status'] == 'ready' and row['dataset_kind'] in {'data', 'voice', 'speech'}]
-    # The CDR panels show the campaigns, NR Mode and CDR Type of each CDR, as the other modules do.
+    # The CDR panels show the campaigns, NR Mode and CDR Stage of each CDR, as the other modules do.
     catalogues = repository.cdr_catalogues_by_dataset([int(row['id']) for row in ready])
     datasets = [
         {
@@ -18524,14 +18527,14 @@ def validated_upload_selections(
         if str(value or '').strip() and normalize_nr_mode(value) is None:
             raise HTTPException(status_code=422, detail='Unsupported NR Mode selection.')
         selected_nr_modes.append(normalize_nr_mode(value))
-    # One CDR Type (Final, Weekly or Daily) per uploaded file, suggested from the file name when blank.
+    # One CDR Stage (Final, Weekly or Daily) per uploaded file, suggested from the file name when blank.
     cdr_stages = form.get('cdr_stages')
     if cdr_stages and len(cdr_stages) != len(file_names):
-        raise HTTPException(status_code=422, detail='Choose one CDR Type for every uploaded file.')
+        raise HTTPException(status_code=422, detail='Choose one CDR Stage for every uploaded file.')
     selected_cdr_stages: list[str | None] = []
     for value in cdr_stages or [None] * len(file_names):
         if str(value or '').strip() and normalize_cdr_stage(value) is None:
-            raise HTTPException(status_code=422, detail='Unsupported CDR Type selection.')
+            raise HTTPException(status_code=422, detail='Unsupported CDR Stage selection.')
         selected_cdr_stages.append(normalize_cdr_stage(value))
 
     def parse_mapping_selection(values: list[str] | None, label: str) -> list[str | None]:
@@ -19317,6 +19320,97 @@ def combined_inclusion_payload(task_repository: Repository | None = None) -> dic
     }
 
 
+class DatasetCampaignUpdate(BaseModel):
+    campaign: str = ''
+
+
+@app.post('/workspace/datasets/{dataset_id}/campaign')
+def update_dataset_campaign(
+    dataset_id: int, payload: DatasetCampaignUpdate, user: SessionUser = Depends(workspace_editor_user),
+) -> JSONResponse:
+    """Change the Campaign of one CDR (2026-Q2); blank leaves the CDR without a campaign."""
+    if active_workspace:
+        require_workspace_access(user, active_workspace.id)
+    dataset = repository.get_dataset(dataset_id)
+    if not dataset:
+        raise HTTPException(status_code=404, detail='Dataset not found')
+    if str(dataset['dataset_kind'] or '').casefold() not in CDR_DATASET_KINDS:
+        raise HTTPException(status_code=400, detail='The Campaign is only available for CDR datasets.')
+    try:
+        campaign = normalize_campaign(payload.campaign)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    previous = dataset_campaign(dataset['dataset_kind'], dataset['campaign'], dataset['file_name'])
+    if dataset['campaign'] != campaign:
+        repository.update_dataset_profile(dataset_id, campaign=campaign)
+    if previous != campaign:
+        repository.add_log(user.username, 'update_dataset_campaign', json.dumps({
+            'dataset_id': dataset_id, 'file': dataset['file_name'], 'previous_campaign': previous, 'campaign': campaign,
+        }))
+    return JSONResponse({'dataset_id': dataset_id, 'campaign': campaign})
+
+
+class DatasetCdrTypeUpdate(BaseModel):
+    cdr_type: str
+
+
+@app.post('/workspace/datasets/{dataset_id}/cdr-type')
+def update_dataset_cdr_type(
+    dataset_id: int, payload: DatasetCdrTypeUpdate, background_tasks: BackgroundTasks,
+    user: SessionUser = Depends(workspace_editor_user),
+) -> JSONResponse:
+    """Change a CDR between Data, Voice and Speech and reprocess it from its source file as that type."""
+    if active_workspace:
+        require_workspace_access(user, active_workspace.id)
+    dataset = repository.get_dataset(dataset_id)
+    if not dataset:
+        raise HTTPException(status_code=404, detail='Dataset not found')
+    previous = str(dataset['dataset_kind'] or '').casefold()
+    if previous not in CDR_DATASET_KINDS:
+        raise HTTPException(status_code=400, detail='The CDR Type is only available for CDR datasets.')
+    cdr_type = str(payload.cdr_type or '').strip().casefold()
+    if cdr_type not in CDR_DATASET_KINDS:
+        raise HTTPException(status_code=422, detail='Choose Data, Voice or Speech.')
+    if cdr_type == previous:
+        return JSONResponse({'dataset_id': dataset_id, 'cdr_type': cdr_type, 'reprocessing': False})
+    if str(dataset['status'] or '') not in {'ready', 'failed', 'stopped'}:
+        raise HTTPException(status_code=409, detail='Wait until the CDR is processed to change its CDR Type.')
+    dataset_path = Path(str(dataset['stored_path'] or ''))
+    if not dataset_path.is_file():
+        raise HTTPException(status_code=400, detail='The original source file is missing, so the CDR cannot be reprocessed as another CDR Type.')
+    repository.update_dataset_profile(dataset_id, dataset_kind=cdr_type)
+    # Its rows leave the combined table of its former type now; the reprocessing adds them to the new one.
+    table_name = repository.reporting_rows_table_name(previous)
+    with workspace_write_lock(repository.db_path), repository.connection() as connection:
+        if connection.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (table_name,)).fetchone():
+            removed = connection.execute(
+                f'DELETE FROM {repository._quote_identifier(table_name)} WHERE dataset_id = ?', (dataset_id,),
+            ).rowcount
+        else:
+            removed = 0
+    if removed:
+        mark_combined_reporting_updated(repository, previous, rows_changed=True)
+    try:
+        processing_options = json.loads(str(dataset['processing_options_json'] or '{}'))
+    except (TypeError, json.JSONDecodeError):
+        processing_options = {}
+    future = enqueue_dataset_processing(
+        background_tasks, dataset_id, dataset_path, user.username,
+        processing_options.get('vodafone_mapping_dataset_id'), processing_options.get('three_mapping_dataset_id'),
+        processing_options.get('region_mapping_dataset_id'),
+        cluster_mapping_dataset_id=processing_options.get('cluster_mapping_dataset_id'),
+        vendor_polygon_dataset_ids=processing_options.get('vendor_polygon_dataset_ids'),
+        network_inventory_dataset_ids=processing_options.get('network_inventory_dataset_ids'),
+    )
+    if active_workspace:
+        resume_interrupted_dataset_processing(active_workspace)
+    repository.add_log(user.username, 'update_dataset_cdr_type', json.dumps({
+        'dataset_id': dataset_id, 'file': dataset['file_name'], 'previous_cdr_type': previous, 'cdr_type': cdr_type,
+        'combined_rows_removed': int(removed or 0), 'reprocessing': future is not None,
+    }))
+    return JSONResponse({'dataset_id': dataset_id, 'cdr_type': cdr_type, 'reprocessing': future is not None})
+
+
 class DatasetCdrStageUpdate(BaseModel):
     cdr_stage: str
 
@@ -19332,7 +19426,7 @@ def update_dataset_cdr_stage(
     if not dataset:
         raise HTTPException(status_code=404, detail='Dataset not found')
     if str(dataset['dataset_kind'] or '').casefold() not in CDR_DATASET_KINDS:
-        raise HTTPException(status_code=400, detail='The CDR Type is only available for CDR datasets.')
+        raise HTTPException(status_code=400, detail='The CDR Stage is only available for CDR datasets.')
     stage = normalize_cdr_stage(payload.cdr_stage)
     if stage is None:
         raise HTTPException(status_code=422, detail='Choose Final, Weekly or Daily.')

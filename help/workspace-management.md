@@ -46,7 +46,7 @@ Workspace accepts `CSV`, `XLS`, `XLSX` and `XLSM` for tabular datasets, `KMZ` an
 1. Open the target workspace.
 2. Select one or more files in **Data Ingestion**.
 3. Review the proposed type for every file.
-4. For CDRs, review the proposed **NR Mode** (NSA or SA) and **CDR Type** (Final or Daily) and optionally choose the Vendor source and the ready VFUK/3UK, Regions and Clusters mappings. For Vendor polygons and Network Inventories, review their **Operator** (proposed from the file name).
+4. For CDRs, review the proposed **NR Mode** (NSA or SA) and **CDR Stage** (Final, Weekly or Daily) and optionally choose the Vendor source and the ready VFUK/3UK, Regions and Clusters mappings. For Vendor polygons and Network Inventories, review their **Operator** (proposed from the file name).
 5. Confirm the batch with **Upload and process**. The files upload in the background, in chunks, to the workspace where the upload started: you can keep working, change page or module or open another workspace, and the upload continues from where it was (the floating background task card shows its progress) and its datasets are processed in that workspace. The mappings, polygons and inventories upload first, and each file starts processing as soon as it is uploaded, while the next ones upload; up to **Maximum simultaneous tasks** ([Application Config](app-config.md)) files are processed in parallel, and the CDRs wait for the mappings of their batch. The upload starts at once while the browser keeps a copy of the chosen files until the upload ends, so an upload interrupted by closing the browser continues the next time the application is opened; when the browser cannot keep them (for example a very large batch over its storage quota), the card asks you to keep the page open and leaving the page asks first; **Stop** on its card cancels it.
 6. Follow every item in **Queue and Status**.
 7. Continue only when the status is **Processed**.
@@ -95,11 +95,22 @@ Every CDR (Data, Voice or Speech) belongs to one NR Mode, **NSA** or **SA**; oth
 - `SA`, `5G SA`, `5GSA` or `Standalone` in the name (for example `UK_Q2_2026_SA_Data.xlsx`) → SA
 - `NSA`, `Non-Standalone` or no NR indication (for example `NetCheck_CDR_Data_2026_Q2.xlsx`) → NSA
 
-The **NR Mode** column follows Input Type in the Datasets table. Its selector corrects the NR Mode of an existing CDR without reprocessing it, and the change is recorded in App Logs. CDRs created before this column existed receive the filename proposal automatically. PPT Dashboards only use CDRs of their own NR Mode.
+The **NR Mode** column follows the Campaign in the CDR tables of Datasets, before the **CDR Type** (Data in orange, Voice in raspberry or Speech in violet) and the **CDR Stage**. The CDR Type selector changes a processed CDR between Data, Voice and Speech after a confirmation: its rows leave the combined table of its former type at once and the CDR is reprocessed from its source file as the new type (it needs that file), which is recorded in App Events. Its selector corrects the NR Mode of an existing CDR without reprocessing it, and the change is recorded in App Logs. CDRs created before this column existed receive the filename proposal automatically. PPT Dashboards only use CDRs of their own NR Mode.
 
-### CDR Type: Final, Weekly and Daily
+### Campaign
 
-Every CDR is a **Final** CDR, delivered after its measurement campaign, or a **Weekly** or **Daily** CDR, received every week or day while the campaign runs, either incremental (the calls of one week or day) or cumulative (every call so far). During upload the CDR Type is proposed from the filename and can be changed per file before processing starts:
+Every CDR shows its **Campaign** right after its name in the Final, Weekly and Daily CDR tables, as `YYYY-Qn` (for example `2026-Q2`); whether it is NSA or SA is its NR Mode. Until it is changed, it is proposed from the filename:
+
+- the quarter is the `Q1`–`Q4` of the name;
+- the year is a year of the name (`NetCheck_UK_CDR_Data_2026_Q2_SA.xlsx` → `2026-Q2`) or, without one, that of its dates: the first date in the quarter, else the first measurement date (`20260623 Final Data CDR UK Q2 20260512 - 20260613.xlsx` → `2026-Q2`).
+
+A name without a quarter or a year leaves the Campaign blank. Write any campaign in the field, also one that no CDR has yet (any spelling with a year and a quarter, such as `2026 q3`, is saved as `2026-Q3`), or clear it; the field suggests the campaigns of the other CDRs, the change is saved without reprocessing the CDR, is recorded in App Events and travels with the datasets in packages, transfers and backups. Each campaign is shown in its own colour (the campaigns in order take the colours in turn, so consecutive campaigns never share one).
+
+The Final, Weekly and Daily CDR tables are grouped by campaign, the newest first and the CDRs without a campaign last under **No campaign**, each group with its number of CDRs and the MB of their source files (as the Size column); a CDR whose campaign changes moves to its group at once. They open sorted by Campaign, then NR Mode and then CDR Type; any column header sorts the CDRs within each group instead.
+
+### CDR Stage: Final, Weekly and Daily
+
+Every CDR is a **Final** CDR, delivered after its measurement campaign, or a **Weekly** or **Daily** CDR, received every week or day while the campaign runs, either incremental (the calls of one week or day) or cumulative (every call so far). During upload the CDR Stage is proposed from the filename and can be changed per file before processing starts:
 
 - `Final` in the name → Final, even when it also has a date.
 - `Weekly`, `Week`, `Semanal`, `Semana` or `Wk` in the name → Weekly.
@@ -108,7 +119,7 @@ Every CDR is a **Final** CDR, delivered after its measurement campaign, or a **W
 - A single date that is not the export date at the start of the name (`UK_Voice_CDR_20260921.xlsx`) → Daily; `20260921_UK_Voice.xlsx` → Final.
 - Anything else → Final. The CDRs uploaded before Daily CDRs existed are Final CDRs.
 
-The **CDR Type** selector of the Final, Weekly and Daily CDR tables changes it without reprocessing the CDR, moves the CDR to the table of its type and is recorded in App Logs. The CDR selectors of Scoring & GAP Analysis, Network Insights and PPT Dashboards highlight the Weekly (violet) and Daily (orange) CDRs with a dashed outline and a badge, as the upload does.
+The **CDR Stage** selector of the Final, Weekly and Daily CDR tables (Final in teal, Weekly in violet, Daily in orange) changes it without reprocessing the CDR, moves the CDR to the table of its stage and is recorded in App Logs. The CDR selectors of Scoring & GAP Analysis, Network Insights and PPT Dashboards highlight the Weekly (violet) and Daily (orange) CDRs with a dashed outline and a badge, as the upload does.
 
 The **In Combined?** column holds the choice (**Auto**, the default, **Yes** or **No**) and, below it, whether the combined CDR tables include the CDR (**Yes** or **No**) and why. Each CDR shows one reason, the first of these that applies:
 
@@ -124,21 +135,21 @@ A CDR left out stays in the Workspace and in CDR Analysis; only the combined tab
 
 For example, for the Voice SA CDRs of the campaign UK Q3, with cumulative Daily CDRs:
 
-| CDR | CDR Type | In Combined? | Included | Reason |
+| CDR | CDR Stage | In Combined? | Included | Reason |
 |---|---|---|---|---|
 | `UK_Voice_20260921.xlsx` | Daily | Auto | No | *Every call is in the newer Daily CDR UK_Voice_20260922.xlsx* |
 | `UK_Voice_20260922.xlsx` | Daily | Auto | Yes | *No Final CDR of its campaign yet* |
 
 When the Final CDR of the campaign arrives:
 
-| CDR | CDR Type | In Combined? | Included | Reason |
+| CDR | CDR Stage | In Combined? | Included | Reason |
 |---|---|---|---|---|
 | `UK_Voice_Q3_Final.xlsx` | Final | Auto | Yes | *Final CDRs are always included* |
 | `UK_Voice_20260921.xlsx` | Daily | Auto | No | *Replaced by the Final CDR UK_Voice_Q3_Final.xlsx* |
 | `UK_Voice_20260922.xlsx` | Daily | Auto | No | *Replaced by the Final CDR UK_Voice_Q3_Final.xlsx* |
 | `UK_Voice_20260923.xlsx` | Daily | Yes | Yes | *Included manually* |
 
-**Yes** and **No** include or exclude the CDR by hand. The rows of the CDRs that the combined tables include have a light green background and the others a light grey one. The **Yes**/**No** answer and the colour change at once and the combined tables follow every change in a background job listed in [CDR Tables Updates](#cdr-tables-updates) — a new CDR, a CDR Type, NR Mode or In Combined? choice, or a deleted CDR (deleting a Final CDR brings back the Daily CDRs it replaced) — so PPT Dashboards, Network Insights, Scoring & GAP Analysis and Reporting can use the Daily CDRs while the campaign runs and the Final CDRs when they arrive. Scoring & GAP Analysis, PPT Dashboards and the CDRs chosen automatically by Reporting Jobs offer the CDRs that the combined tables include. CDR Analysis opens any CDR, and [Non-Qualified Calls](non-qualified-calls.md#daily-and-final-cdrs) reads every CDR and lists each call once.
+**Yes** and **No** include or exclude the CDR by hand. The rows of the CDRs that the combined tables include have a light green background and the others a light grey one. The **Yes**/**No** answer and the colour change at once and the combined tables follow every change in a background job listed in [CDR Tables Updates](#cdr-tables-updates) — a new CDR, a CDR Stage, NR Mode or In Combined? choice, or a deleted CDR (deleting a Final CDR brings back the Daily CDRs it replaced) — so PPT Dashboards, Network Insights, Scoring & GAP Analysis and Reporting can use the Daily CDRs while the campaign runs and the Final CDRs when they arrive. Scoring & GAP Analysis, PPT Dashboards and the CDRs chosen automatically by Reporting Jobs offer the CDRs that the combined tables include. CDR Analysis opens any CDR, and [Non-Qualified Calls](non-qualified-calls.md#daily-and-final-cdrs) reads every CDR and lists each call once.
 
 ### Background Processing
 
@@ -167,7 +178,7 @@ The global floating task cards remain visible while workspace work continues. Th
 
 The **Datasets** panel groups the datasets in cards, each with its icon, its own count and a sortable table; the times of the dates are shown in blue:
 
-- **Final CDRs**, **Weekly CDRs** and **Daily CDRs** (the last two fold and are shown only when there are CDRs of their type), at full width, with the CDR Type and In Combined? columns; Rows sit above Columns and Uploaded above Updated in one column each, and each of them keeps its own sort button in the header.
+- **Final CDRs**, **Weekly CDRs** and **Daily CDRs** (the last two fold and are shown only when there are CDRs of their type), at full width, grouped by campaign, with the Campaign, NR Mode, CDR Type, CDR Stage and In Combined? columns; Rows sit above Columns and Uploaded above Updated in one column each, and each of them keeps its own sort button in the header.
 - **Network Inventory & Vendor Mappings** (the network inventory of each operator: every cell with its vendor, site and configuration, with the **Operator** of Network Inventories and the **Snapshot** date of every inventory) and **Geographic Datasets** (Region, Cluster and Vendor polygons, with their **Type**), side by side with compact tables: dataset and type, rows, status with progress, last update and actions. Reference datasets have no analysis or mappings to apply, so their actions are **Preview**, **Reprocess** and **Delete**.
 - **Other Datasets** (Smart Orchestrator logs and other supported datasets), when there are any.
 - **Combined CDR tables**, the generated read-only query sources, with their Rows over Columns, status (**Ready**, **Updating**, **Recalculating**, **Queued**, **Missing Rows** or **Recalc Needed**), progress and last update; they mix NR Modes and come from no file, so they have no NR Mode, Size or Uploaded columns.
@@ -176,7 +187,7 @@ The **Dataset Type** filter and the bulk actions above the cards apply to every 
 
 ### Combined Table Recreation
 
-The Datasets tables show comma-grouped Rows and Columns for each individual and combined dataset. Combined tables cannot be imported separately: CDR processing creates them from the ready individual CDRs of the same type that they include (see [CDR Type](#cdr-type-final-weekly-and-daily)).
+The Datasets tables show comma-grouped Rows and Columns for each individual and combined dataset. Combined tables cannot be imported separately: CDR processing creates them from the ready individual CDRs of the same type that they include (see [CDR Stage](#cdr-stage-final-weekly-and-daily)).
 
 The circular **Recreate combined table** action checks every ready individual CDR of that type that the table includes in the background before rebuilding the combined table. If an individual table uses an older normalization version, the job migrates it from its original source file first; one recreation each for Data, Voice and Speech therefore upgrades both their individual and combined tables.
 
@@ -188,7 +199,7 @@ The **CDR Tables Updates** card, below the Datasets cards, lists the background 
 
 - **Auto-calculated Fields**: saving, importing or rematerializing auto-calculated fields (**Re-materialize All Fields** in the Auto-calculated Fields panel).
 - **Combined CDR-DATA**, **-VOICE** or **-SPEECH**: recreating a combined table, after a CDR is processed or mapped, or with **Recreate combined table**.
-- **Combined CDR tables**: bringing the combined tables in line with a CDR Type, NR Mode or In Combined? change or a deleted CDR.
+- **Combined CDR tables**: bringing the combined tables in line with a CDR Stage, NR Mode or In Combined? change or a deleted CDR.
 - **CDR tables reconciliation**: the automatic check when a workspace opens with pending work or a report template needs new columns.
 
 Its pills sum up the state (**Up to date**, **N in progress**, **N queued**). With nothing to do it reads *All CDR tables are up to date*. While auto-calculated fields are materialized, the Auto-calculated Fields panel shows their progress with a link to this card. Whenever a job starts, changes state or ends, the Datasets cards, the combined CDR tables included, refresh their counts, status, progress and Updated values in place without reloading the Workspace page.
@@ -270,7 +281,7 @@ The Datasets panel also lists `CDR-Data (combined)`, `CDR-Voice (combined)` and 
 Recreate runs in the background and reports progress through [CDR Tables Updates](#cdr-tables-updates). It rebuilds from every ready source dataset, recovers an empty or inconsistent individual row store from its uploaded source file when available, and verifies that each dataset's contribution and final row count match.
 
 > [!NOTE]
-> **Read-only role.** `user-viewer` accounts see the workspace datasets but cannot upload, delete, reprocess, stop, map or clear them, change their NR Mode, CDR Type or Combined choice or recreate combined tables; these controls are hidden and the server rejects them.
+> **Read-only role.** `user-viewer` accounts see the workspace datasets but cannot upload, delete, reprocess, stop, map or clear them, change their Campaign, NR Mode, CDR Type, CDR Stage or Combined choice or recreate combined tables; these controls are hidden and the server rejects them.
 
 ### Vendor Mapping
 

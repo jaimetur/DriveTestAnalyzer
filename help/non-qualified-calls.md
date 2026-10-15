@@ -55,7 +55,7 @@ The NetCheck RCA of the CDRs (Failure Classification, Failure Category and Failu
 
 ## Daily and Final CDRs
 
-A call can be in a Daily CDR, in several cumulative Daily CDRs and in the Final CDR of its campaign (see [CDR Type](workspace-management.md#cdr-type-final-weekly-and-daily)). It is listed once, with the data of its most recent CDR: the Final CDR before the Daily ones, then the CDR with the newest calls. With CDRs chosen in the **CDRs** filter, each call shows the data of the most recent of them.
+A call can be in a Daily CDR, in several cumulative Daily CDRs and in the Final CDR of its campaign (see [CDR Stage](workspace-management.md#cdr-stage-final-weekly-and-daily)). It is listed once, with the data of its most recent CDR: the Final CDR before the Daily ones, then the CDR with the newest calls. With CDRs chosen in the **CDRs** filter, each call shows the data of the most recent of them.
 
 > [!NOTE]
 > **The analysis of a call is shared by every CDR that contains it.** Choosing a Daily CDR, a cumulative Daily CDR or the Final CDR in the **CDRs** filter shows the same follow-up.
