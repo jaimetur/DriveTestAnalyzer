@@ -204,7 +204,7 @@
 .ni-breakdown-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(560px,1fr));gap:16px;margin-top:6px}
 .ni-mini-table .ni-table-wrap{overflow-x:auto}
 .ni-mini-table h4,.ni-serving h4,.ni-snapshot-panel h4{margin:1.2rem 0 .1rem;font-size:.95rem;color:var(--ni-dark)}
-.ni-mini-table .ni-table{font-size:.78rem}
+.ni-mini-table .ni-table{min-width:0;font-size:.78rem}
 .ni-share.is-warning>span{background:linear-gradient(90deg,#d9480f,#f59f00)}
 .ni-snapshot-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px}
 .ni-snapshot-card{padding:14px 16px;border:1px solid var(--ni-border);border-top:5px solid var(--ni-color);border-radius:12px;background:linear-gradient(180deg,#fff,var(--ni-soft));box-shadow:0 6px 16px rgba(49,46,129,.08)}
@@ -230,3 +230,65 @@
 .ni-density-table th{text-align:center}
 .ni-density-table th.ni-density-network{background:#cfd3fb;color:var(--ni-dark)}
 .ni-density-table tbody td:first-child{font-weight:700;white-space:nowrap}
+
+/* Design system shared by every panel: intro line, information notes, section headings, toolbars, KPI cards and tables. */
+.ni-intro{margin:0 0 1rem;max-width:80ch;color:#4b4f72;font-size:.95rem;line-height:1.5}
+.network-insights .ni-note{display:flex;gap:.6rem;align-items:flex-start;margin:1rem 0 0;padding:.65rem .9rem;border:1px solid #dcdffb;border-radius:10px;background:#f6f7ff;color:#4b4f72;font-size:.84rem;line-height:1.45}
+.network-insights .ni-note::before{content:'i';flex:0 0 1.15rem;display:grid;place-items:center;width:1.15rem;height:1.15rem;margin-top:.05rem;border-radius:50%;background:var(--ni-color);color:#fff;font:italic 800 .72rem/1 Georgia,serif}
+.network-insights .ni-note[hidden]{display:none}
+/* Analysis Selection: Scope, Thresholds and Maps & inventory side by side. */
+.ni-selection-groups{display:grid;grid-template-columns:minmax(0,3.4fr) minmax(0,4.6fr) minmax(0,3fr);gap:12px;align-items:stretch}
+.ni-control-group{min-width:0;margin:0;padding:.55rem .9rem .85rem;border:1px solid var(--ni-border);border-radius:14px;background:#fbfbff}
+.ni-control-group legend{padding:0 .35rem;color:var(--ni-color);font-size:.72rem;font-weight:850;letter-spacing:.08em;text-transform:uppercase}
+.ni-control-group .ni-selection-grid{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);grid-template-columns:none;align-items:end;gap:10px}
+@media(max-width:1300px){.ni-selection-groups{grid-template-columns:minmax(0,1fr)}}
+.network-insights .ni-control-group label{font-size:.82rem}
+.ni-filter-title{margin:1.3rem 0 .6rem;font-size:1rem;letter-spacing:.01em}
+/* Section headings inside the panels. */
+.network-insights :is(.ni-subtitle,.ni-serving h4,.ni-snapshot-panel h4,.ni-mini-table h4,.ni-map-card h3,.ni-map-card h4,.ni-inventory h3){margin:1.5rem 0 .55rem;color:var(--ni-dark);font-size:1rem;font-weight:800;line-height:1.3}
+.network-insights :is(.ni-serving h4,.ni-snapshot-panel h4) .form-note{font-weight:500;color:#5f6280}
+.network-insights .ni-map-card :is(h3,h4):first-child,.network-insights .ni-inventory h3{margin-top:0}
+.ni-section-head{display:flex;align-items:flex-start;justify-content:space-between;gap:.75rem;margin:0 0 .6rem}
+.ni-section-head h3{margin:0}
+/* Toolbars: the controls of a panel grouped in one soft frame. */
+.network-insights .ni-map-toolbar{align-items:flex-end;gap:12px;margin:0 0 14px;padding:.7rem .9rem;border:1px solid #e2e4fb;border-radius:12px;background:#fafaff}
+.network-insights .ni-map-toolbar label{min-width:12rem;font-size:.82rem}
+.network-insights .ni-map-toolbar .form-note{flex:1 1 16rem;margin:0 0 .5rem;font-size:.82rem}
+.network-insights .ni-map-toolbar label.ni-check{min-width:0}
+/* Export actions: light outlined buttons with a download mark. */
+.network-insights .ni-export-action{gap:.4rem;padding:.38rem .85rem;border:1px solid var(--ni-color);background:#fff;color:var(--ni-dark);font-size:.8rem;font-weight:750;box-shadow:none}
+.network-insights .ni-export-action::before{content:'';width:.85rem;height:.85rem;background:center/contain no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%234338ca' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 4v11M7 10l5 5 5-5M5 20h14'/%3E%3C/svg%3E")}
+.network-insights .ni-export-action:hover{background:var(--ni-soft);color:var(--ni-dark)}
+.network-insights .ni-map-toolbar .ni-export-action{align-self:center}
+.network-insights .ni-inventory > .ni-export-action{margin:0 0 .7rem}
+/* KPI cards of Overview, Serving Cells and Network Snapshot. */
+.ni-operator-card,.ni-snapshot-card{padding:14px 16px 16px;border:1px solid var(--ni-border);border-top:4px solid var(--ni-operator,var(--ni-color));border-radius:14px;background:#fff;box-shadow:0 4px 14px rgba(49,46,129,.07)}
+.ni-operator-card h3,.ni-snapshot-card h3{margin:0 0 .7rem;font-size:1.05rem}
+.ni-operator-card dl{grid-template-columns:repeat(2,minmax(0,1fr));gap:.7rem 1rem}
+.ni-operator-card dt{font-size:.74rem;font-weight:650;color:#6a6d8c;text-transform:none;letter-spacing:0}
+.ni-operator-card dd{margin-top:.1rem;font-size:1.15rem;font-weight:800;color:#1f2350;font-variant-numeric:tabular-nums}
+.ni-snapshot-card .eyebrow{font-size:.72rem;letter-spacing:.08em}
+.ni-snapshot-counts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.55rem 1rem}
+.ni-snapshot-counts small{text-transform:none;letter-spacing:0;font-weight:650;color:#6a6d8c}
+/* Tables: one frame around the table, numeric headers aligned right, long tables scrolling under a fixed header. */
+.network-insights .ni-table{min-width:0;font-size:.82rem}
+.network-insights .ni-table th{background:#eef0ff;color:#2e2a6b;font-weight:750;white-space:nowrap}
+.network-insights .ni-table th.num{text-align:right}
+.network-insights .ni-table tbody tr:nth-child(odd){background:#fafaff}
+.network-insights .ni-table tbody tr:nth-child(even){background:#fff}
+.network-insights .ni-table tbody tr:hover{background:#f0f1ff}
+.network-insights .ni-table td{border-top:1px solid #eceefb}
+.network-insights .ni-table-wrap{border:1px solid var(--ni-border);border-radius:12px;background:#fff;overflow:auto;scrollbar-gutter:auto}
+.network-insights .ni-table-wrap > .ni-table{border:0;border-radius:0;overflow:visible}
+.network-insights .ni-table-wrap.is-long{max-height:30rem;overscroll-behavior:contain}
+.network-insights .ni-table-wrap.is-long thead{position:sticky;top:0;z-index:2}
+.network-insights .ni-hotspot-wrap{max-height:320px}
+.network-insights .ni-matrix tbody th{background:#f4f5ff;text-align:left}
+.ni-density-table th.ni-density-network{background:#dfe2fd}
+/* Charts and maps share the card frame. */
+.network-insights .ni-chart-card{border-radius:14px;box-shadow:0 4px 14px rgba(49,46,129,.06)}
+.network-insights .ni-chart-grid-single{max-width:1000px}
+.network-insights .ni-pending-box{border-radius:10px}
+@media(max-width:900px){.ni-control-group .ni-selection-grid{grid-auto-flow:row;grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:560px){.ni-control-group .ni-selection-grid{grid-template-columns:minmax(0,1fr)}.ni-section-head{flex-wrap:wrap}}
+.ni-section-head + .ni-table-wrap{margin-top:0}

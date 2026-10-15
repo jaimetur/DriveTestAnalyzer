@@ -56,7 +56,7 @@ def test_workspace_accepts_cluster_polygons_and_preserves_them_in_archives(clien
     assert client.get(f"/workspace/preview/{dataset['id']}").status_code == 200
     assert f"dataset_rows_{dataset['id']}" in app_module.repository.list_database_tables()
     insights = client.get('/network-insights').text
-    assert 'Cluster Sites Density' in insights and 'Cluster polygons required.' in insights
+    assert 'Cluster Sites Density' in insights and '<strong>Cluster polygons.</strong>' in insights
     assert insights.index('network-insights:deployment') < insights.index('network-insights:sites')
 
     workspace = app_module.active_workspace

@@ -279,7 +279,7 @@ Recreate runs in the background and reports progress through [CDR Tables Updates
 
 Vendor mapping is required only for Vendor Comparison. The Vendor comes from one of two sources:
 
-- **Network Inventory**: the VFUK and 3UK Multivendor Mappings and the [Network Inventories](#network-inventories) (Cell Configuration KMZ packages included), by the cells that served each sample.
+- **Cell inventories**: the VFUK and 3UK Multivendor Mappings and the [Network Inventories](#network-inventories) (Cell Configuration KMZ packages included), by the cells that served each sample.
 - **Vendor Polygons (Geographic Datasets)**: the [Vendor polygons](#vendor-polygons) of each sample's Operator, by its position; every Operator that has polygons.
 
 The Map dialog asks for the source when the workspace has both, and uses the only one otherwise; its Vendor mapping rule follows the chosen source.
@@ -313,14 +313,18 @@ The Map dialog asks for the source when the workspace has both, and uses the onl
 - The newest ready mapping of each type is proposed.
 - Either, both or neither may be selected.
 - Every ready Network Inventory that can map Vendors is applied as well: all the selected inventories are snapshots of the same networks.
-- **Vendor source** is offered only when the CDRs have both sources, in the workspace or in the same upload: the **Network Inventory** (the networks of the VFUK and 3UK Multivendor Mappings and of the Network Inventories) and the **Vendor polygons**, which applies every Vendor polygons dataset. The Vendor polygons are proposed when they cover every Operator of the Network Inventory source (polygons of that Operator, or multi-operator polygons whose Operator attribute includes it), and the Network Inventory otherwise. With a single source, that source is used.
+- **Vendor source** is offered only when the CDRs have both sources, in the workspace or in the same upload: the **Cell inventories** (the networks of the VFUK and 3UK Multivendor Mappings and of the Network Inventories) and the **Vendor polygons**, which applies every Vendor polygons dataset. The Vendor polygons are proposed when they cover every Operator of the cell inventories (polygons of that Operator, or multi-operator polygons whose Operator attribute includes it), and the Cell inventories otherwise. With a single source, that source is used.
 
 #### After Upload
 
 1. Click **Map** on a CDR (or **Map Vendor, Region & Cluster** for several).
-2. Select one or more ready CDRs, including CDRs that are already mapped. They are listed in CDR Data, Voice and Speech cards side by side, each with **Select All/None**.
-3. Choose the Vendor source when the workspace has both (the Vendor polygons are proposed when they cover every Operator of the Network Inventory source); confirm the VFUK and/or 3UK mapping and the Network Inventories (each with its snapshot date), or the Vendor polygons to apply (all of them are selected), and optionally the Regions and Clusters mappings. The CDRs marked **Vendor mapping outdated** are selected when the dialog opens.
-4. Wait for processing to finish.
+2. Select one or more ready CDRs, including CDRs that are already mapped. They are listed in CDR Data, Voice and Speech cards side by side, each with **Select All/None**; when the dialog would not fit the window, each list scrolls on its own.
+3. In **Mappings to apply**, one card per mapping:
+   - **Vendor**: choose the source with **Cell inventories** / **Vendor polygons** when the workspace has both (the Vendor polygons are proposed when they cover every Operator of the cell inventories). For the cell inventories, confirm the **Vodafone UK** (VFUK) and **Three UK** (3UK) Multivendor Mappings and tick the **Cell Configuration and other Network Inventories** to use, each shown with its networks (its Operator, or Multi-operator for the Network column) and its snapshot date; for the polygons, tick the Vendor polygons to apply (all of them are selected).
+   - **Region** and **Cluster**: optionally choose their polygons.
+
+   The CDRs marked **Vendor mapping outdated** are selected when the dialog opens. **How each mapping works** explains every rule, each below its card.
+4. Click **Map**: the bar at the bottom of the dialog, always visible while it scrolls, counts the selected CDRs. Wait for processing to finish.
 
 Mapping a CDR again replaces its previous mapping; **Clear** is only needed to remove the mappings. **Clear Mappings** and **Reprocess Datasets** use the same wide dialog, with the CDRs in CDR Data, Voice and Speech panels (and Other Datasets for Reprocess) and **Select All/None** in each panel. A mapping left as "No … mapping" keeps its previous result. Re-mapping only Vendor recalculates it on the stored rows, which is much faster than rebuilding the CDR; Region and Cluster mappings rebuild the CDR from its source file. Mapping stores the `<Operator>_<Vendor>` identity in `Operator_Vendor` and the vendor name in `Vendor`; operators without an assigned vendor use `Operator - All`. The mapped value is retained in individual and combined CDRs and their dataset exports. Existing processed CDRs receive the new stored identity when mapped again.
 

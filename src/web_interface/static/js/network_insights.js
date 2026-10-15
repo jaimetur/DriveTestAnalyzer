@@ -506,9 +506,9 @@
         ${multipleSections() ? sectionTitle(section) : ''}
         <div class="ni-map-grid">
           <section class="ni-map-card"><h3>${label} Coverage (mean RSRP per grid square)</h3><div class="ni-chart-card ni-map-canvas"><canvas id="ni-${radio}-coverage-map" role="img" aria-label="${label} coverage map"></canvas></div>
-            <h4>Weakest coverage areas</h4><div class="table-wrap ni-hotspot-wrap"><table class="ni-table ni-hotspots">${hotspotTable(`${radio}-coverage`, section.maps.coverage_hotspots, 'dBm')}</table></div></section>
+            <h4>Weakest coverage areas</h4><div class="table-wrap ni-table-wrap ni-hotspot-wrap"><table class="ni-table ni-hotspots">${hotspotTable(`${radio}-coverage`, section.maps.coverage_hotspots, 'dBm')}</table></div></section>
           <section class="ni-map-card"><h3>${label} Interference (mean SINR per grid square)</h3><div class="ni-chart-card ni-map-canvas"><canvas id="ni-${radio}-interference-map" role="img" aria-label="${label} interference map"></canvas></div>
-            <h4>Highest interference areas</h4><div class="table-wrap ni-hotspot-wrap"><table class="ni-table ni-hotspots">${hotspotTable(`${radio}-interference`, section.maps.interference_hotspots, 'dB')}</table></div></section>
+            <h4>Highest interference areas</h4><div class="table-wrap ni-table-wrap ni-hotspot-wrap"><table class="ni-table ni-hotspots">${hotspotTable(`${radio}-interference`, section.maps.interference_hotspots, 'dB')}</table></div></section>
         </div>
       </section>`;
     }).join('');
@@ -558,9 +558,9 @@
       return;
     }
     const maximum = Math.max(...summary.map(row => row.total), 1);
-    host.innerHTML = `<table class="ni-table"><thead><tr><th>Operator</th>${classes.map(name => `<th>${escapeHtml(name)} (MHz)</th>`).join('')}<th>Total (MHz)</th><th></th></tr></thead><tbody>${summary.map(row => `<tr>
+    host.innerHTML = `<div class="table-wrap ni-table-wrap"><table class="ni-table"><thead><tr><th>Operator</th>${classes.map(name => `<th>${escapeHtml(name)} (MHz)</th>`).join('')}<th>Total (MHz)</th><th></th></tr></thead><tbody>${summary.map(row => `<tr>
       <td>${escapeHtml(row.operator)}</td>${classes.map(name => `<td class="num">${number(row[name])}</td>`).join('')}<td class="num"><strong>${number(row.total)}</strong></td>
-      <td class="ni-spectrum-bar-cell"><span class="ni-class-bar ni-spectrum-bar" style="width:${row.total / maximum * 100}%">${classes.map((name, index) => `<span style="width:${row.total ? row[name] / row.total * 100 : 0}%;background:${['#5C940D', '#1C7ED6', '#C2255C'][index]}" title="${escapeHtml(name)}: ${number(row[name])} MHz"></span>`).join('')}</span></td></tr>`).join('')}</tbody></table>`;
+      <td class="ni-spectrum-bar-cell"><span class="ni-class-bar ni-spectrum-bar" style="width:${row.total / maximum * 100}%">${classes.map((name, index) => `<span style="width:${row.total ? row[name] / row.total * 100 : 0}%;background:${['#5C940D', '#1C7ED6', '#C2255C'][index]}" title="${escapeHtml(name)}: ${number(row[name])} MHz"></span>`).join('')}</span></td></tr>`).join('')}</tbody></table></div>`;
   };
   const renderSpectrum = () => {
     renderLicensed(analysis.spectrum.licensed);
@@ -584,6 +584,42 @@
     renderSpectrum();
   };
 
+  // Every table of the page: headers of numeric columns align with their figures, and tables with many
+  // rows scroll inside their frame under a fixed header.
+  const polishTables = () => {
+    for (const table of document.querySelectorAll('#network-insights table.ni-table')) {
+      const body = table.tBodies[0];
+      const rows = body ? body.rows.length : 0;
+      const wrap = table.parentElement;
+      if (wrap?.classList.contains('ni-table-wrap')) wrap.classList.toggle('is-long', rows > 15);
+      if (!table.tHead || !rows) continue;
+      // The column of every header cell, following its colspan and rowspan.
+      const columns = [];
+      [...table.tHead.rows].forEach((row, rowIndex) => {
+        let column = 0;
+        for (const cell of row.cells) {
+          while (columns[rowIndex]?.[column]) column += 1;
+          for (let down = 0; down < cell.rowSpan; down += 1) {
+            for (let across = 0; across < cell.colSpan; across += 1) (columns[rowIndex + down] ||= [])[column + across] = cell;
+          }
+          column += cell.colSpan;
+        }
+      });
+      const sample = [...body.rows].find(row => row.cells.length > 1);
+      if (!sample) continue;
+      [...sample.cells].forEach((cell, index) => {
+        if (!cell.classList.contains('num')) return;
+        for (const row of columns) if (row[index]?.colSpan === 1) row[index].classList.add('num');
+      });
+    }
+  };
+  let polishPending = false;
+  new MutationObserver(() => {
+    if (polishPending) return;
+    polishPending = true;
+    requestAnimationFrame(() => { polishPending = false; polishTables(); });
+  }).observe(document.getElementById('network-insights'), {childList: true, subtree: true});
+
   // Serving cells of the samples in the inventory snapshot: distances, overshooting and hosting.
   const swatch = label => `<span class="ni-swatch" style="background:${analysis?.colours?.[label] || '#6D46A8'}"></span>`;
   const shareBar = (value, tone = '') => value === null || value === undefined ? '—'
@@ -591,7 +627,7 @@
   const pendingSnapshot = '<p class="ni-pending-box"><strong>Pending input.</strong> Upload a Multivendor Mapping or a Network Inventory (Cell Configuration KMZ packages included) in Workspace: its cells describe the serving cells of the samples.</p>';
   const breakdownTable = (title, rows, label) => `<section class="ni-mini-table"><h4>${escapeHtml(title)}</h4>
     <div class="table-wrap ni-table-wrap"><table class="ni-table"><thead><tr><th>${escapeHtml(analysis.group_label || 'All samples')}</th><th>${escapeHtml(label)}</th><th>Samples</th><th>Median km</th><th>Overshooting</th></tr></thead>
-    <tbody>${rows.map(row => `<tr><td>${swatch(row.operator)}${escapeHtml(row.operator)}</td><td>${escapeHtml(row.value)}</td><td class="num">${integer(row.samples)}</td><td class="num">${number(row.median_km, 2)}</td><td>${shareBar(row.overshoot_share, 'is-warning')}</td></tr>`).join('') || '<tr><td colspan="5" class="form-note">No sample was matched with an inventory cell.</td></tr>'}</tbody></table></div></section>`;
+    <tbody>${rows.map(row => `<tr><td>${swatch(row.operator)}${escapeHtml(row.operator)}</td><td>${escapeHtml(row.value)}</td><td class="num">${integer(row.samples)}</td><td class="num">${number(row.median_km, 2)}</td><td class="num">${row.overshoot_share === null || row.overshoot_share === undefined ? '—' : `${number(row.overshoot_share)}%`}</td></tr>`).join('') || '<tr><td colspan="5" class="form-note">No sample was matched with an inventory cell.</td></tr>'}</tbody></table></div></section>`;
   const renderServing = () => {
     const host = $('ni-serving');
     const serving = analysis?.serving;
@@ -616,7 +652,7 @@
       <h4>Overshooting cells <span class="form-note">(the cells that served the most samples beyond ${number(serving.overshoot_km)} km)</span></h4>
       <div class="table-wrap ni-table-wrap"><table class="ni-table"><thead><tr><th>${escapeHtml(analysis.group_label || 'All samples')}</th><th>Cell</th><th>Site</th><th>Band</th><th>Vendor</th><th>Network → Host</th><th>Samples beyond</th><th>Samples served</th><th>Median km</th><th>Max km</th></tr></thead>
       <tbody>${serving.overshooting_cells.map(row => `<tr><td>${swatch(row.operator)}${escapeHtml(row.operator)}</td><td>${escapeHtml(row.cell)}</td><td>${escapeHtml(row.site)}</td><td>${escapeHtml(row.band)}</td><td>${escapeHtml(row.vendor)}</td><td>${escapeHtml(row.network)} → ${escapeHtml(row.host)}</td><td class="num">${integer(row.samples_beyond)}</td><td class="num">${integer(row.samples)}</td><td class="num">${number(row.median_km, 2)}</td><td class="num">${number(row.max_km, 2)}</td></tr>`).join('') || `<tr><td colspan="10" class="form-note">No sample was served from farther than ${number(serving.overshoot_km)} km.</td></tr>`}</tbody></table></div>
-      <p class="form-note">Cells farther than ${number(serving.max_distance_km)} km from a sample are never taken as its serving cell (Workspace Config → Serving Networks).</p>`;
+      <p class="form-note ni-note">Cells farther than ${number(serving.max_distance_km)} km from a sample are never taken as its serving cell (Workspace Config → Serving Networks).</p>`;
     renderChart($('ni-serving-cdf'), serving.distance_cdf);
   };
   const renderNrAvailability = () => {
@@ -695,7 +731,7 @@
       <h4>Changes from another snapshot</h4>
       <div class="ni-map-toolbar"><label>Compare with<select id="ni-snapshot-compare"><option value="">Choose a snapshot</option>${snapshotPayload.snapshots.map(item => `<option value="${item.dataset_id}"${String(item.dataset_id) === compareSnapshot ? ' selected' : ''}>${escapeHtml(item.snapshot_date)} · ${escapeHtml(item.file_name)}</option>`).join('')}</select></label></div>
       ${renderComparison(snapshotPayload.comparison)}
-      <p class="form-note">${integer(snapshotPayload.snapshots.length)} snapshot${snapshotPayload.snapshots.length === 1 ? '' : 's'} in the workspace: ${snapshotPayload.snapshots.map(item => `${escapeHtml(item.snapshot_date)} · ${escapeHtml(item.file_name)} (${escapeHtml(item.networks.join(', ') || '—')})`).join('; ')}. Change the Inventory snapshot of the Analysis Selection to compare them.</p>`;
+      <p class="form-note ni-note">${integer(snapshotPayload.snapshots.length)} snapshot${snapshotPayload.snapshots.length === 1 ? '' : 's'} in the workspace: ${snapshotPayload.snapshots.map(item => `${escapeHtml(item.snapshot_date)} · ${escapeHtml(item.file_name)} (${escapeHtml(item.networks.join(', ') || '—')})`).join('; ')}. Change the Inventory snapshot of the Analysis Selection to compare them.</p>`;
     renderDensity();
     renderDeployedSpectrum();
   };
@@ -743,12 +779,12 @@
       ${ordered.length > 25 ? `<button type="button" class="ni-secondary-action" id="ni-density-all">${densityAll ? 'Show the first 25' : `Show all ${integer(ordered.length)}`}</button>` : ''}</div>
       <div class="table-wrap ni-table-wrap"><table class="ni-table ni-density-table"><thead><tr><th rowspan="2">${label}</th><th rowspan="2">Area km²</th>${networks.map(network => `<th colspan="4" class="ni-density-network">${escapeHtml(network)}</th>`).join('')}</tr>
       <tr>${networks.map(() => '<th>Sites</th><th>With NR</th><th>Sites/km²</th><th>Median ISD</th>').join('')}</tr></thead>
-      <tbody>${shown.map(area => `<tr><td>${escapeHtml(area.area)}</td><td class="num">${area.area_km2 === null ? '—' : number(area.area_km2, 0)}</td>${networks.map(network => {
+      <tbody>${shown.map(area => `<tr><td>${escapeHtml(area.area)}</td><td class="num">${area.area_km2 === null ? '—' : integer(Math.round(area.area_km2))}</td>${networks.map(network => {
         const row = area.networks[network];
         return row ? `<td class="num">${integer(row.sites)}</td><td class="num">${integer(row.nr_sites)}</td><td class="num">${row.sites_per_km2 === null ? '—' : number(row.sites_per_km2, 3)}</td><td class="num">${number(row.median_isd_km, 2)} km</td>`
           : '<td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">—</td>';
       }).join('')}</tr>`).join('')}</tbody></table></div>
-      <p class="form-note">Median ISD: the median distance from each in-service site to the nearest site of the same network (the inter-site distance).</p>`;
+      <p class="form-note ni-note">Median ISD: the median distance from each in-service site to the nearest site of the same network (the inter-site distance).</p>`;
   };
   document.addEventListener('change', event => {
     if (event.target.id !== 'ni-density-dimension') return;
@@ -790,11 +826,11 @@
     if (!tables.length) { host.innerHTML = snapshotPayload ? '<p class="form-note">No cell of the snapshot matches the Technology and status choices.</p>' : pendingSnapshot; return; }
     host.innerHTML = tables.map((table, index) => {
       const maximum = table.rows.reduce((value, row) => Math.max(value, row.sites), 1);
-      return `<section class="ni-inventory"><h3>${escapeHtml(table.operator)} <span>${integer(table.totals.sites)} sites · ${integer(table.totals.cells)} cells (${integer(table.totals.lte_cells)} LTE, ${integer(table.totals.nr_cells)} NR)</span></h3>
-        <button type="button" class="ni-secondary-action ni-export-action" data-ni-deployment-csv="${index}">Export CSV</button>
-        <table class="ni-table"><thead><tr><th>${escapeHtml(table.group_label)}</th><th>Sites</th><th>Cells</th><th>LTE cells</th><th>NR cells</th><th></th></tr></thead><tbody>${table.rows.map(row => `<tr>
+      return `<section class="ni-inventory"><header class="ni-section-head"><h3>${escapeHtml(table.operator)} <span>${integer(table.totals.sites)} sites · ${integer(table.totals.cells)} cells (${integer(table.totals.lte_cells)} LTE, ${integer(table.totals.nr_cells)} NR)</span></h3>
+        <button type="button" class="ni-secondary-action ni-export-action" data-ni-deployment-csv="${index}">Export CSV</button></header>
+        <div class="table-wrap ni-table-wrap"><table class="ni-table"><thead><tr><th>${escapeHtml(table.group_label)}</th><th>Sites</th><th>Cells</th><th>LTE cells</th><th>NR cells</th><th></th></tr></thead><tbody>${table.rows.map(row => `<tr>
           <td>${escapeHtml(row.group)}</td><td class="num">${integer(row.sites)}</td><td class="num">${integer(row.cells)}</td><td class="num">${integer(row.lte_cells)}</td><td class="num">${integer(row.nr_cells)}</td>
-          <td><span class="ni-share"><span style="width:${row.sites / maximum * 100}%"></span></span></td></tr>`).join('')}</tbody></table></section>`;
+          <td><span class="ni-share"><span style="width:${row.sites / maximum * 100}%"></span></span></td></tr>`).join('')}</tbody></table></div></section>`;
     }).join('');
   };
   document.addEventListener('click', event => {

@@ -40,7 +40,7 @@ from src.modules.serving_cells import load_serving_networks, serving_families
 NETWORK_INSIGHTS_KINDS = ('data', 'voice', 'speech')
 # Bump when the normalised samples or the analysis payload change shape.
 SAMPLES_CACHE_VERSION = 5
-ANALYSIS_CACHE_VERSION = 7
+ANALYSIS_CACHE_VERSION = 8
 INVENTORY_CACHE_VERSION = 4
 OBSERVED_CACHE_VERSION = 9
 # Columns of the Observed Sites/Cells (from CDRs) tables.
@@ -575,7 +575,7 @@ def map_payload(
         ]},
         'label_position': 'None', 'label_format': {}, 'legend_format': {},
         'axis_ranges': {'x': [None, None], 'y': [None, None]},
-        'x_label': 'Longitude', 'y_label': 'Latitude', 'point_radius': 6,
+        'x_label': 'Longitude', 'y_label': 'Latitude', 'axis_labels': False, 'point_radius': 6,
         'domain': {'x': [lon_low, lon_high], 'y': [lat_low, lat_high]},
         'basemap': {
             'provider': 'OpenStreetMap', 'url_template': 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',

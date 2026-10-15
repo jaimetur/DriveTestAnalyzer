@@ -1221,11 +1221,21 @@
         return [left + (longitude - xDomain[0]) / (xDomain[1] - xDomain[0]) * width, top + height - (latitude - yDomain[0]) / (yDomain[1] - yDomain[0]) * height];
       };
       const radius = Math.max(10, pointRadius * 2.6);
+      // Wedges only once the map is zoomed in (larger points); the whole area shows one dot per site in the
+      // colour of its first cell's vendor, so the sites never hide the grid squares.
+      const wedges = pointRadius >= 10;
       context.save(); context.beginPath(); context.rect(left, top, width, height); context.clip();
       sectors.forEach(site => {
         const longitude = Number(site.lon), latitude = Number(site.lat);
         if (longitude < xDomain[0] || longitude > xDomain[1] || latitude < yDomain[0] || latitude > yDomain[1]) return;
         const [x, y] = project(longitude, latitude);
+        if (!wedges) {
+          context.beginPath(); context.arc(x, y, 4.5, 0, Math.PI * 2);
+          context.fillStyle = site.cells?.[0]?.[2] || '#868E96'; context.fill();
+          context.strokeStyle = 'rgba(30,27,75,.9)'; context.lineWidth = 1.2; context.stroke();
+          pushPointHit(state, transform, x, y, {label: String(site.label || 'Site'), series: 'Inventory site', value: String(site.detail || '')});
+          return;
+        }
         (site.cells || []).forEach(cell => {
           const azimuth = Number(cell[0]), beam = Math.max(24, Math.min(140, Number(cell[1]) || 65));
           context.beginPath();
@@ -1240,7 +1250,9 @@
       context.restore();
     }
     drawLegend(context, payload.legend, {fontSize: 13, sideX: layout.position === 'right' ? left + width + 25 : undefined});
-    context.fillStyle = '#405765'; context.textAlign = 'left'; font(context, 17, true); context.fillText(payload.x_label || '', left, top + height + 16); context.fillText(payload.y_label || '', layout.position === 'left' ? left - 28 : 26, top - 25);
+    // A map can leave out its axis titles (the basemap already shows where it is): the Latitude title sits on the chart title's line.
+    if (payload.axis_labels !== false) { context.fillStyle = '#405765'; context.textAlign = 'left'; font(context, 17, true); context.fillText(payload.x_label || '', left, top + height + 16); context.fillText(payload.y_label || '', layout.position === 'left' ? left - 28 : 26, top - 25); }
+    context.textAlign = 'left';
     if (basemap?.attribution) {
       context.fillStyle = '#FFFFFF'; context.fillRect(left + width - 210, top + height - 25, 206, 21);
       context.fillStyle = '#405765'; font(context, 11); context.fillText(String(basemap.attribution), left + width - 204, top + height - 22);

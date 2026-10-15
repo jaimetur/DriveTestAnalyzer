@@ -785,6 +785,7 @@
         {% set kind_datasets = mappable_cdr_datasets | selectattr('dataset_kind', 'equalto', kind) | list %}
         <section class="vendor-mapping-cdr-group" data-mapping-cdr-group>
           <div class="vendor-mapping-cdr-group-head"><strong>{{ kind_label }}</strong>{% if kind_datasets %}<button type="button" class="vendor-mapping-select-all" data-mapping-select-all>Select All</button>{% endif %}</div>
+          <div class="vendor-mapping-cdr-items">
           {% for dataset in kind_datasets %}
           <label class="vendor-mapping-cdr-choice">
             <input type="checkbox" name="cdr_dataset_ids" value="{{ dataset.id }}" data-vendor-mapping-cdr-choice{% if dataset.vendor_mapping_outdated %} checked{% endif %}>
@@ -793,6 +794,7 @@
           {% else %}
           <p class="form-note">No mappable CDRs.</p>
           {% endfor %}
+          </div>
         </section>
         {% endfor %}
       </fieldset>
@@ -802,44 +804,128 @@
       {% set source_operators = vendor_source_operators | default({}, true) %}
       {% set polygons_cover_inventory = source_operators.get('inventory') and not (source_operators.get('inventory', []) | reject('in', source_operators.get('polygons', [])) | list) %}
       {% set default_vendor_source = 'polygons' if vendor_polygon_datasets and (not has_inventory or polygons_cover_inventory) else 'inventory' %}
+      <section class="mapping-targets" aria-labelledby="mapping-targets-title">
+        <h4 id="mapping-targets-title">Mappings to apply</h4>
+        <div class="mapping-target-grid">
+          <article class="mapping-target mapping-target-vendor">
+            <header>
+              <strong>Vendor</strong>
+              <span>Each sample takes the Vendor of the cell that served it in the selected cell inventories, or of the Vendor polygon that contains it.</span>
+            </header>
+            {% if has_inventory and vendor_polygon_datasets %}
+            <fieldset class="mapping-segmented" data-vendor-source-choice>
+              <legend class="sr-only">Vendor source</legend>
+              <label><input type="radio" name="vendor_source" value="inventory"{% if default_vendor_source == 'inventory' %} checked{% endif %}><span>Cell inventories</span></label>
+              <label><input type="radio" name="vendor_source" value="polygons"{% if default_vendor_source == 'polygons' %} checked{% endif %}><span>Vendor polygons</span></label>
+            </fieldset>
+            {% else %}
+            <input type="hidden" name="vendor_source" value="{{ default_vendor_source }}">
+            {% endif %}
+            {% if vendor_polygon_datasets %}
+            <fieldset class="mapping-choice-list" data-vendor-source-fields="polygons"{% if default_vendor_source != 'polygons' %} hidden{% endif %}>
+              <legend>Vendor polygons <small>Geographic Datasets of type Vendors</small></legend>
+              {% for polygons in vendor_polygon_datasets %}
+              <label class="mapping-choice"><input type="checkbox" name="vendor_polygon_dataset_ids" value="{{ polygons.id }}" checked><span class="mapping-choice-name" title="{{ polygons.file_name }}">{{ polygons.file_name }}</span><span class="mapping-chips"><span class="mapping-chip">{{ polygons.dataset_operator or 'Multi-operator' }}</span></span></label>
+              {% endfor %}
+            </fieldset>
+            {% endif %}
+            <div class="mapping-inventory" data-vendor-source-fields="inventory"{% if default_vendor_source != 'inventory' %} hidden{% endif %}>
+              {% if not has_inventory %}
+              <p class="form-note">Upload a VFUK or 3UK Multivendor Mapping, or a Network Inventory such as a Cell Configuration KMZ package, to the workspace to map Vendors from the serving cells.</p>
+              {% endif %}
+              {% if vodafone_mapping_datasets %}
+              <label class="mapping-row">
+                <span class="mapping-row-label">Vodafone UK<small>VFUK Multivendor Mapping</small></span>
+                <select name="vodafone_mapping_dataset_id">
+                  <option value="">No VFUK mapping</option>
+                  {% for mapping in vodafone_mapping_datasets %}
+                  <option value="{{ mapping.id }}"{% if loop.first %} selected{% endif %}>{{ mapping.file_name }}{% if mapping.snapshot_date_effective %} · snapshot {{ mapping.snapshot_date_effective }}{% endif %}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              {% endif %}
+              {% if three_mapping_datasets %}
+              <label class="mapping-row">
+                <span class="mapping-row-label">Three UK<small>3UK Multivendor Mapping</small></span>
+                <select name="three_mapping_dataset_id">
+                  <option value="">No 3UK mapping</option>
+                  {% for mapping in three_mapping_datasets %}
+                  <option value="{{ mapping.id }}"{% if loop.first %} selected{% endif %}>{{ mapping.file_name }}{% if mapping.snapshot_date_effective %} · snapshot {{ mapping.snapshot_date_effective }}{% endif %}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              {% endif %}
+              {% if network_inventory_datasets %}
+              <fieldset class="mapping-choice-list">
+                <legend>Cell Configuration and other Network Inventories <small>Cell inventories uploaded to the Network Inventory card, such as Cell Configuration KMZ packages: each one is a snapshot of the networks it lists.</small></legend>
+                {% for inventory in network_inventory_datasets %}
+                {% set inventory_usable = inventory.can_map_vendors_from and (inventory.dataset_operator or inventory.multi_network) %}<label class="mapping-choice{% if not inventory_usable %} is-disabled{% endif %}"{% if not inventory_usable %} title="{{ 'Choose its Operator in the Network Inventory card' if inventory.can_map_vendors_from else 'It has no Vendor column and cell identifier to map Vendors' }}"{% endif %}><input type="checkbox" name="network_inventory_dataset_ids" value="{{ inventory.id }}"{% if inventory_usable %} checked{% else %} disabled{% endif %}><span class="mapping-choice-name" title="{{ inventory.file_name }}">{{ inventory.file_name }}</span><span class="mapping-chips"><span class="mapping-chip">{{ inventory.dataset_operator or ('Multi-operator (Network column)' if inventory.multi_network else 'No Operator') }}</span>{% if inventory.snapshot_date_effective %}<span class="mapping-chip mapping-chip-date">Snapshot {{ inventory.snapshot_date_effective }}</span>{% endif %}</span></label>
+                {% endfor %}
+              </fieldset>
+              {% endif %}
+            </div>
+          </article>
+          <article class="mapping-target mapping-target-geo">
+            <header>
+              <strong>Region</strong>
+              <span>The Region polygon that contains each sample labels its <code>Region</code>.</span>
+            </header>
+            <label class="mapping-row mapping-row-stacked">
+              <span class="mapping-row-label">Regions polygons</span>
+              <select name="region_mapping_dataset_id"{% if not region_mapping_datasets %} disabled{% endif %}>
+                <option value="">No Regions mapping</option>
+                {% for mapping in region_mapping_datasets %}<option value="{{ mapping.id }}"{% if loop.first %} selected{% endif %}>{{ mapping.file_name }}</option>{% endfor %}
+              </select>
+            </label>
+            {% if not region_mapping_datasets %}<p class="form-note">Upload at least one Regions — Geospatial shape (GeoJSON, JSON or zipped shapefile) to the workspace to map Regions.</p>{% endif %}
+          </article>
+          <article class="mapping-target mapping-target-geo">
+            <header>
+              <strong>Cluster</strong>
+              <span>The Cluster polygon that contains each sample labels its <code>Cluster</code>.</span>
+            </header>
+            <label class="mapping-row mapping-row-stacked">
+              <span class="mapping-row-label">Clusters polygons</span>
+              <select name="cluster_mapping_dataset_id"{% if not cluster_mapping_datasets %} disabled{% endif %}>
+                <option value="">No Cluster mapping</option>
+                {% for mapping in cluster_mapping_datasets %}<option value="{{ mapping.id }}"{% if loop.first %} selected{% endif %}>{{ mapping.file_name }}</option>{% endfor %}
+              </select>
+            </label>
+            {% if not cluster_mapping_datasets %}<p class="form-note">Upload at least one Clusters — Geospatial shape with the cluster polygons (GeoJSON, JSON or zipped shapefile) to the workspace to map Clusters.</p>{% endif %}
+          </article>
+        </div>
+      </section>
+      <section class="mapping-rules-section" aria-labelledby="mapping-rules-title">
+      <h4 id="mapping-rules-title">How each mapping works</h4>
       <div class="vendor-mapping-rules">
       <details class="vendor-mapping-rule" open data-vendor-source-rule="inventory"{% if default_vendor_source != 'inventory' %} hidden{% endif %}>
-        <summary>Vendor mapping rule · Network Inventory</summary>
+        <summary>Vendor mapping rule</summary>
         <ol>
-          <li>Every selected <strong>VFUK</strong> or <strong>3UK Multivendor Mapping</strong> and <strong>Network Inventory</strong> (Cell Configuration KMZ packages included) is a snapshot of the network on its Snapshot date. Each of its cells belongs to the network that owns it (its <code>Network</code>, or the Operator of the inventory) and is carried by the equipment of its <code>Host Network</code>, whose vendor it has.</li>
-          <li>For each CDR sample, split <code>Cell_ID_A</code> (or an equivalent Global Cell ID field) in chronological order and retain only the first and last Global Cell ID: the ECI (<code>eNodeB ID × 256 + Cell ID</code>) or the NCI (<code>gNodeB ID × 16384 + Cell ID</code>) of the cell.</li>
-          <li>Look up both endpoints among the cells of the networks that can serve the sample's Operator (<a href="/workspace-config#serving-networks">Workspace Config → Serving Networks</a>): its own network first, then, by default, Vodafone and Three for each other (eMOCN) and both for Lebara.</li>
-          <li>When a cell is in several snapshots, the snapshot whose date is closest to the CDR's measurements is used (the newest on a tie), so a CDR measured before a vendor swap keeps the vendor it measured.</li>
-          <li>A cell farther from the sample than the maximum serving distance (30 km by default) is ignored: cell identities only repeat across Operators, and a distant cell is not the one that served the sample.</li>
+          <li>The <strong>Cell inventories</strong> (the selected VFUK and 3UK Multivendor Mappings and Network Inventories, Cell Configuration KMZ packages included) are snapshots of the networks on their Snapshot date. Each cell has the vendor of its <code>Host Network</code>.</li>
+          <li>Each sample takes the first and last cells of <code>Cell_ID_A</code> (ECI <code>eNodeB ID × 256 + Cell ID</code> or NCI <code>gNodeB ID × 16384 + Cell ID</code>) and finds them among the networks that serve its Operator (<a href="/workspace-config#serving-networks">Serving Networks</a>), in the snapshot closest to the CDR date and within 30 km of the sample.</li>
         </ol>
-        <p><code>&lt;Operator&gt;</code> is <strong><code>Vodafone</code></strong> for Vodafone, Vodafone UK, VF or VFUK, <strong><code>3</code></strong> for 3, 3UK, Three or Three UK, and the Operator's own name otherwise (for example <code>Vodafone SA_Ericsson</code>, <code>O2 (UK)_Huawei</code> or <code>Lebara_Ericsson</code>).</p>
-        <p>Result:</p>
+        <p>Result, with <code>&lt;Operator&gt;</code> as <code>Vodafone</code>, <code>3</code> or the Operator's own name:</p>
         <ul>
-          <li>The same non-empty Vendor at both endpoints returns <code>&lt;Operator&gt;_&lt;Vendor&gt;</code>.</li>
-          <li>If Ericsson is present at either endpoint and the other Vendor is different or missing, the result is <code>&lt;Operator&gt;_Ericsson (Mixed)</code>.</li>
-          <li>Every other different or missing endpoint combination returns <code>&lt;Operator&gt;_Mixed (non-Ericsson)</code>.</li>
-          <li>A sample none of whose endpoints is in the snapshots (for example an O2 sample on a cell the inventories do not list) returns <code>&lt;Operator&gt;_Unknown</code> (Vendor <code>Unknown</code>).</li>
+          <li>The same Vendor at both cells: <code>&lt;Operator&gt;_&lt;Vendor&gt;</code>.</li>
+          <li>Ericsson at one of them: <code>&lt;Operator&gt;_Ericsson (Mixed)</code>; any other mix: <code>&lt;Operator&gt;_Mixed (non-Ericsson)</code>.</li>
+          <li>No cell found: <code>&lt;Operator&gt;_Unknown</code>; an Operator no snapshot serves (for example EE): <code>&lt;Operator&gt; - All</code>.</li>
         </ul>
-        <p><strong>Operators that no selected snapshot serves</strong> (for example EE): no Vendor is assigned; the result is <code>&lt;Operator&gt; - All</code>.</p>
-        <p>The mapping populates <code>Vendor</code>, <code>Operator_Vendor</code> and <code>Vendor_Operator</code>, and describes the cell that served the start of each sample in <code>Serving_Network</code>, <code>Serving_Host_Network</code>, <code>Serving_Site_ID</code>, <code>Serving_eMOCN_Scenario</code>, <code>Serving_Distance_km</code> and <code>Serving_Inventory_Snapshot</code>. CDRs marked <em>Vendor mapping outdated</em> were mapped under an earlier rule, other Serving Networks or other snapshots; they are selected when the dialog opens.</p>
+        <p>It fills <code>Vendor</code>, <code>Operator_Vendor</code>, <code>Vendor_Operator</code> and the <code>Serving_*</code> columns of the serving cell. CDRs marked <em>Vendor mapping outdated</em> were mapped with other inventories, Serving Networks or rules, and are selected when the dialog opens.</p>
       </details>
       <details class="vendor-mapping-rule" open data-vendor-source-rule="polygons"{% if default_vendor_source != 'polygons' %} hidden{% endif %}>
-        <summary>Vendor mapping rule · Vendor polygons</summary>
+        <summary>Vendor mapping rule</summary>
         <ol>
-          <li>Each selected <strong>Vendors — Geospatial</strong> dataset belongs to the Operator chosen for it or, when Multi-operator, gives each polygon the Operator of its <code>Operator</code> attribute.</li>
-          <li>For each CDR sample, find the polygon of its own Operator that contains its start position and the one that contains its end position (<code>Call_End_Latitude_A</code>/<code>Call_End_Longitude_A</code> in Voice CDRs; Data and Speech CDRs only record the start, which is then also the end).</li>
+          <li>The <strong>Vendor polygons</strong> (the selected Vendors — Geospatial datasets) give the Vendor of each area for their Operator, or for the <code>Operator</code> attribute of each polygon when Multi-operator.</li>
+          <li>Each sample takes the polygons of its Operator that contain its start and end positions (<code>Call_End_Latitude_A</code>/<code>Call_End_Longitude_A</code> in Voice CDRs; Data and Speech CDRs only record the start).</li>
         </ol>
-        <p>Result, for every Operator with Vendor polygons:</p>
+        <p>Result, with <code>&lt;Operator&gt;</code> as <code>Vodafone</code>, <code>3</code> or the Operator's own name:</p>
         <ul>
-          <li>The same Vendor at both positions returns <code>&lt;Operator&gt;_&lt;Vendor&gt;</code>.</li>
-          <li>If Ericsson is at either position and the other Vendor is different or missing, the result is <code>&lt;Operator&gt;_Ericsson (Mixed)</code>.</li>
-          <li>Every other different or missing combination returns <code>&lt;Operator&gt;_Mixed (non-Ericsson)</code>.</li>
-          <li>A sample outside every polygon of its Operator, or without coordinates, returns <code>&lt;Operator&gt;_Unknown</code> (Vendor <code>Unknown</code>).</li>
+          <li>The same Vendor at both positions: <code>&lt;Operator&gt;_&lt;Vendor&gt;</code>.</li>
+          <li>Ericsson at one of them: <code>&lt;Operator&gt;_Ericsson (Mixed)</code>; any other mix: <code>&lt;Operator&gt;_Mixed (non-Ericsson)</code>.</li>
+          <li>Outside every polygon of its Operator or without coordinates: <code>&lt;Operator&gt;_Unknown</code>; an Operator without Vendor polygons: <code>&lt;Operator&gt; - All</code>.</li>
         </ul>
-        <p><strong>Operators without Vendor polygons</strong>: no Vendor is assigned; the result is <code>&lt;Operator&gt; - All</code>.</p>
-        <p>The mapping populates the columns <code>Vendor</code>, <code>Operator_Vendor</code> and <code>Vendor_Operator</code> according to this rule.</p>
+        <p>It fills <code>Vendor</code>, <code>Operator_Vendor</code> and <code>Vendor_Operator</code>.</p>
       </details>
-      <div class="vendor-mapping-rules-side">
       <details class="vendor-mapping-rule region-mapping-rule" open>
         <summary>Region mapping rule</summary>
         <ol>
@@ -853,75 +939,9 @@
         <p>The selected <strong>Clusters — Geospatial</strong> polygons assign their Cluster label to the <code>Cluster</code> column of every CDR sample whose coordinates fall inside a polygon, in the same way as Regions. Existing non-empty <code>Cluster</code> values from the source CDR are retained.</p>
       </details>
       </div>
-      </div>
-      <div class="vendor-mapping-fields">
-        {% if has_inventory and vendor_polygon_datasets %}
-        <fieldset class="vendor-mapping-source" data-vendor-source-choice>
-          <legend>Vendor source</legend>
-          <label><input type="radio" name="vendor_source" value="inventory"{% if default_vendor_source == 'inventory' %} checked{% endif %}> Network Inventory (Multivendor Mappings and Network Inventories)</label>
-          <label><input type="radio" name="vendor_source" value="polygons"{% if default_vendor_source == 'polygons' %} checked{% endif %}> Vendor Polygons (Geographic Datasets)</label>
-        </fieldset>
-        {% else %}
-        <input type="hidden" name="vendor_source" value="{{ default_vendor_source }}">
-        {% endif %}
-        {% if vendor_polygon_datasets %}
-        <fieldset class="vendor-mapping-polygons" data-vendor-source-fields="polygons"{% if default_vendor_source != 'polygons' %} hidden{% endif %}>
-          <legend>Vendor polygons</legend>
-          {% for polygons in vendor_polygon_datasets %}
-          <label><input type="checkbox" name="vendor_polygon_dataset_ids" value="{{ polygons.id }}" checked> {{ polygons.file_name }} <small>· {{ polygons.dataset_operator or 'Multi-operator' }}</small></label>
-          {% endfor %}
-        </fieldset>
-        {% endif %}
-        <div class="vendor-mapping-inventory" data-vendor-source-fields="inventory"{% if default_vendor_source != 'inventory' %} hidden{% endif %}>
-        {% if vodafone_mapping_datasets %}
-        <label>VFUK Multivendor Mapping
-          <select name="vodafone_mapping_dataset_id">
-            <option value="">No VFUK mapping</option>
-            {% for mapping in vodafone_mapping_datasets %}
-            <option value="{{ mapping.id }}"{% if loop.first %} selected{% endif %}>{{ mapping.file_name }}{% if mapping.snapshot_date_effective %} · snapshot {{ mapping.snapshot_date_effective }}{% endif %}</option>
-            {% endfor %}
-          </select>
-        </label>
-        {% else %}
-        <p class="form-note">No processed VFUK Multivendor Mapping is currently available.</p>
-        {% endif %}
-        {% if three_mapping_datasets %}
-        <label>3UK Multivendor Mapping
-          <select name="three_mapping_dataset_id">
-            <option value="">No 3UK mapping</option>
-            {% for mapping in three_mapping_datasets %}
-            <option value="{{ mapping.id }}"{% if loop.first %} selected{% endif %}>{{ mapping.file_name }}{% if mapping.snapshot_date_effective %} · snapshot {{ mapping.snapshot_date_effective }}{% endif %}</option>
-            {% endfor %}
-          </select>
-        </label>
-        {% else %}
-        <p class="form-note">No processed 3UK Multivendor Mapping is currently available.</p>
-        {% endif %}
-        {% if network_inventory_datasets %}
-        <fieldset class="vendor-mapping-polygons">
-          <legend>Network Inventories</legend>
-          {% for inventory in network_inventory_datasets %}
-          {% set inventory_usable = inventory.can_map_vendors_from and (inventory.dataset_operator or inventory.multi_network) %}<label{% if not inventory_usable %} title="{{ 'Choose its Operator in the Network Inventory card' if inventory.can_map_vendors_from else 'It has no Vendor column and cell identifier to map Vendors' }}"{% endif %}><input type="checkbox" name="network_inventory_dataset_ids" value="{{ inventory.id }}"{% if inventory_usable %} checked{% else %} disabled{% endif %}> {{ inventory.file_name }} <small>· {{ inventory.dataset_operator or ('Multi-operator' if inventory.multi_network else 'No Operator') }}{% if inventory.snapshot_date_effective %} · snapshot {{ inventory.snapshot_date_effective }}{% endif %}</small></label>
-          {% endfor %}
-        </fieldset>
-        {% endif %}
-        </div>
-        <label>Regions
-          <select name="region_mapping_dataset_id"{% if not region_mapping_datasets %} disabled{% endif %}>
-            <option value="">No Regions mapping</option>
-            {% for mapping in region_mapping_datasets %}<option value="{{ mapping.id }}"{% if loop.first %} selected{% endif %}>{{ mapping.file_name }}</option>{% endfor %}
-          </select>
-          {% if not region_mapping_datasets %}<small class="form-note">Upload at least one Regions — Geospatial shape (GeoJSON, JSON or zipped shapefile) to the workspace to map Regions.</small>{% endif %}
-        </label>
-        <label>Clusters
-          <select name="cluster_mapping_dataset_id"{% if not cluster_mapping_datasets %} disabled{% endif %}>
-            <option value="">No Cluster mapping</option>
-            {% for mapping in cluster_mapping_datasets %}<option value="{{ mapping.id }}"{% if loop.first %} selected{% endif %}>{{ mapping.file_name }}</option>{% endfor %}
-          </select>
-          {% if not cluster_mapping_datasets %}<small class="form-note">Upload at least one Clusters — Geospatial shape with the cluster polygons (GeoJSON, JSON or zipped shapefile) to the workspace to map Clusters.</small>{% endif %}
-        </label>
-      </div>
+      </section>
       <div class="vendor-mapping-actions">
+        <span class="vendor-mapping-selection" data-vendor-mapping-selection aria-live="polite"></span>
         <button type="button" class="ghost-link" data-vendor-map-cancel>Cancel</button>
         <button type="submit" class="action-link-map-vendors">Map</button>
       </div>
@@ -1293,7 +1313,7 @@
       const vendorSourceSelect = document.createElement('select');
       vendorSourceSelect.name = 'vendor_polygon_selections';
       vendorSourceSelect.setAttribute('aria-label', `Vendor source for ${file.name}`);
-      vendorSourceSelect.add(new Option('Network Inventory', ''));
+      vendorSourceSelect.add(new Option('Cell inventories', ''));
       vendorSourceSelect.add(new Option('Vendor polygons', 'all'));
       vendorSourceSelect.value = vodafoneMappings.length || threeMappings.length ? '' : 'all';
       vendorSourceField.append(vendorSourceSelect);
@@ -1458,13 +1478,22 @@
     const selectedId = button.dataset.datasetId || '';
     cdrChoices.forEach((choice) => { choice.checked = button.hasAttribute('data-mapping-map-all-open') || choice.value === selectedId; });
     dialog.showModal();
+    fitCdrLists();
   });
-  // Each CDR type selects all its CDRs, or clears them when all are selected.
-  const syncSelectAll = () => dialog.querySelectorAll('[data-mapping-cdr-group]').forEach((group) => {
-    const boxes = [...group.querySelectorAll('[data-vendor-mapping-cdr-choice]')];
-    const button = group.querySelector('[data-mapping-select-all]');
-    if (button) button.textContent = boxes.length && boxes.every((box) => box.checked) ? 'Select None' : 'Select All';
-  });
+  // Each CDR type selects all its CDRs, or clears them when all are selected. The actions bar counts the
+  // selected CDRs and Map needs at least one.
+  const selection = dialog.querySelector('[data-vendor-mapping-selection]');
+  const mapButton = mappingForm?.querySelector('button[type="submit"]');
+  const syncSelectAll = () => {
+    dialog.querySelectorAll('[data-mapping-cdr-group]').forEach((group) => {
+      const boxes = [...group.querySelectorAll('[data-vendor-mapping-cdr-choice]')];
+      const button = group.querySelector('[data-mapping-select-all]');
+      if (button) button.textContent = boxes.length && boxes.every((box) => box.checked) ? 'Select None' : 'Select All';
+    });
+    const selected = Array.from(cdrChoices).filter((choice) => choice.checked).length;
+    if (selection) selection.textContent = `${selected} of ${cdrChoices.length} CDR${cdrChoices.length === 1 ? '' : 's'} selected`;
+    if (mapButton) mapButton.disabled = selected === 0;
+  };
   dialog.addEventListener('click', (event) => {
     const button = event.target.closest('[data-mapping-select-all]');
     if (!button) return;
@@ -1475,7 +1504,21 @@
   });
   dialog.addEventListener('change', syncSelectAll);
   dialog.addEventListener('toggle', syncSelectAll);
-  // The Vendor source (Network Inventory or Vendor polygons) shows its own fields and mapping rule.
+  // The dialog fits the window: when it would scroll, the CDR lists get just the height that is left and
+  // scroll on their own (side-by-side layout only; the stacked phone layout scrolls as a whole).
+  const cdrLists = [...dialog.querySelectorAll('.vendor-mapping-cdr-items')];
+  const fitCdrLists = () => {
+    cdrLists.forEach((list) => { list.style.maxHeight = ''; });
+    if (!dialog.open || window.matchMedia('(max-width: 1000px)').matches) return;
+    const overflow = dialog.scrollHeight - dialog.clientHeight;
+    if (overflow <= 0) return;
+    const tallest = Math.max(...cdrLists.map((list) => list.scrollHeight));
+    // Two extra pixels absorb the rounding of fractional heights.
+    cdrLists.forEach((list) => { list.style.maxHeight = `${Math.max(96, tallest - overflow - 2)}px`; });
+  };
+  window.addEventListener('resize', fitCdrLists);
+  dialog.addEventListener('toggle', (event) => { if (event.target.matches?.('details')) fitCdrLists(); }, true);
+  // The Vendor source (Cell inventories or Vendor polygons) shows its own fields and mapping rule.
   const syncVendorSource = () => {
     const source = dialog.querySelector('input[name="vendor_source"]:checked, input[type="hidden"][name="vendor_source"]')?.value || 'inventory';
     dialog.querySelectorAll('[data-vendor-source-fields], [data-vendor-source-rule]').forEach((node) => {

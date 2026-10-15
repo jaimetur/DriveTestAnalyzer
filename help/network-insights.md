@@ -2,6 +2,8 @@
 
 Analyse the network behind the measured performance: radio quality (RSRP and SINR), weak-coverage and high-interference areas on a map, the cells that served the samples (their distance, overshooting and hosting network), 5G availability on the sites with NR, the inventory snapshot of every network (owner and host networks, data quality), site density, licensed, deployed and observed spectrum, and network deployment (NNS, eMOCN scenarios, host networks and RAN vendors). Results are grouped by the dimensions checked in **Group by**; Operator and Campaign are checked by default.
 
+Every panel opens with the question it answers, and its notes explain how to read it. Tables with many rows scroll inside their frame under a fixed header.
+
 > [!NOTE]
 > **Radio views need no extra input.** RSRP, SINR, maps, observed eNodeBs and observed bands come from the processed CDRs. The inventories (Multivendor Mappings and Network Inventories, Cell Configuration KMZ packages included) and the licensed spectrum are optional inputs that complete the Serving Cells, 5G Availability, Network Snapshot, Network Deployment, Cluster Sites Density and Spectrum panels.
 
@@ -28,16 +30,16 @@ Analyse the network behind the measured performance: radio quality (RSRP and SIN
 
 1. Open the workspace and the **Network Insights** tab, which follows **Scoring & GAP Analysis**.
 2. Choose **NR Mode**. All ready Data, Voice and Speech CDRs of that mode are selected; clear the ones you do not need. **Select All** in each CDR type card selects all its CDRs, and becomes **Select None** to clear them when all are selected.
-3. Restrict **Operators**, **Vendors**, **Regions**, **Cities** or **Campaigns** in **Filters:** if needed. Their values load automatically from the selected CDRs; **Main Cities** appears first in Cities when configured. Leaving every value selected applies no restriction.
-4. Choose **Technology** (LTE, NR or LTE+NR) and **Group by** (Operator, Vendor, Region, City, CDR type and Campaign).
-5. Adjust the thresholds of the selected technology and the **Map grid** size (default 250 m). LTE and NR have their own thresholds because LTE RSRP/SINR and NR SS-RSRP/SS-SINR use different reference signals; LTE+NR shows both pairs.
+3. Restrict **Operators**, **Vendors**, **Regions**, **Cities** or **Campaigns** in **Filters** if needed. Their values load automatically from the selected CDRs; **Main Cities** appears first in Cities when configured. Leaving every value selected applies no restriction.
+4. The controls above the Filters come in three groups: **Scope**, **Thresholds** and **Maps & inventory**. In Scope, choose **Technology** (LTE, NR or LTE+NR) and **Group by** (Operator, Vendor, Region, City, CDR type and Campaign).
+5. In Thresholds, adjust the thresholds of the selected technology; in Maps & inventory, the **Map grid** size (default 250 m). LTE and NR have their own thresholds because LTE RSRP/SINR and NR SS-RSRP/SS-SINR use different reference signals; LTE+NR shows both pairs.
 
 | Threshold | LTE default | NR default |
 | --- | --- | --- |
 | Coverage below (low coverage) | -110 dBm | -115 dBm |
 | Interference below (high interference) | 0 dB | -3 dB |
 
-   Choose the **Inventory snapshot**: the newest snapshot of each network (the default) or one snapshot, used for the networks it covers (the newest one for the others); see [Network Snapshot](#network-snapshot). **Overshooting beyond (km)**, 5 km by default, sets the distance from which a sample counts as overshooting in [Serving Cells](#serving-cells).
+   Choose the **Inventory snapshot** in Maps & inventory: **Newest of each network** (the default) or one snapshot, used for the networks it covers (the newest one for the others); see [Network Snapshot](#network-snapshot). **Overshooting beyond (km)**, 5 km by default, sets the distance from which a sample counts as overshooting in [Serving Cells](#serving-cells).
 6. Press **Analyse Network**. A dialog shows that the analysis is in progress, with the elapsed time, and closes when the results are ready; **Hide** closes it while the analysis continues.
 
 ### Grouping
@@ -88,7 +90,7 @@ Both formats include the grouped Network Deployment views of the inventory snaps
 
 The maps show one group at a time (selected in **Group**) over OpenStreetMap; with LTE+NR, the LTE and NR maps of that group appear in separate sections, each classified with its own thresholds. Samples are grouped into square grid cells of the selected size, and each cell is coloured by its mean RSRP or SINR class. Cells need at least three located samples. Very dense selections use a coarser grid automatically to keep the map readable; the note above the maps shows the grid actually used.
 
-With an inventory snapshot, the maps also draw the sites of the networks that serve the group within 3 km of its weakest coverage and highest interference areas: one wedge per cell, pointing to its azimuth with its beamwidth, in the colour of its vendor (listed in the legend as *Vendor sectors*); cells without an azimuth are drawn as a circle. Hover over a site to see its identifier, network, vendors and bands. Zooming to an area enlarges the sectors.
+With an inventory snapshot, the maps also draw the sites of the networks that serve the group within 3 km of its weakest coverage and highest interference areas: on the whole area each site is a dot in the colour of its vendor; zooming to an area draws one wedge per cell, pointing to its azimuth with its beamwidth, in the colour of its vendor (listed in the legend as *Vendor sectors*), and cells without an azimuth as a circle. Hover over a site to see its identifier, network, vendors and bands.
 
 Below each map, the **Weakest coverage areas** and **Highest interference areas** tables rank the cells where at least half of the samples are below the threshold, by the number of affected samples. Select an area (its City) to zoom the map to it, and **Show Whole Area** to return. Hover over a CDF or map to show its zoom controls (−, +, the zoom level and 1:1 to reset), as in PPT Dashboards; drag a rectangle to magnify an area, then drag or use the arrows to pan.
 

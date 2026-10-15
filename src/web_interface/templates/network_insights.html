@@ -11,19 +11,25 @@
   <details class="panel collapsible-panel ni-selection-panel" open data-panel-state-key="network-insights:selection">
     <summary class="collapsible-summary"><div><p class="eyebrow">Common selection</p><h2>Analysis Selection</h2></div><span class="collapse-chip">Collapse</span></summary>
     <div class="collapsible-panel-body">
-      <div class="ni-selection-grid">
+      <div class="ni-selection-groups">
+        <fieldset class="ni-control-group"><legend>Scope</legend><div class="ni-selection-grid">
         <label>NR Mode<select id="ni-nr-mode"><option value="NSA">NSA</option><option value="SA">SA</option></select></label>
         <label>Technology<select id="ni-technology">{% for key, label in network_insights_config.technologies.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select></label>
         <label>Group by<select id="ni-group" data-multiselect-count-locked="true" multiple size="1" data-multiselect-empty-label="All samples" aria-label="Group by">{% for key, label in network_insights_config.groupings.items() %}<option value="{{ key }}"{% if key in ("operator", "campaign") %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+        </div></fieldset>
+        <fieldset class="ni-control-group"><legend>Thresholds</legend><div class="ni-selection-grid">
         <label data-ni-radio="lte" title="Samples below this LTE RSRP count as low coverage">LTE coverage below (dBm)<input type="number" id="ni-coverage-threshold" step="1" value="{{ '%g' % network_insights_config.coverage_threshold }}"></label>
         <label data-ni-radio="lte" title="Samples below this LTE SINR count as high interference">LTE interference below (dB)<input type="number" id="ni-interference-threshold" step="0.5" value="{{ '%g' % network_insights_config.interference_threshold }}"></label>
         <label data-ni-radio="nr" title="Samples below this NR SS-RSRP count as low coverage">NR coverage below (dBm)<input type="number" id="ni-nr-coverage-threshold" step="1" value="{{ '%g' % network_insights_config.nr_coverage_threshold }}"></label>
         <label data-ni-radio="nr" title="Samples below this NR SS-SINR count as high interference">NR interference below (dB)<input type="number" id="ni-nr-interference-threshold" step="0.5" value="{{ '%g' % network_insights_config.nr_interference_threshold }}"></label>
-        <label>Map grid (m)<select id="ni-grid"><option value="100">100 m</option><option value="250" selected>250 m</option><option value="500">500 m</option><option value="1000">1 km</option></select></label>
-        <label title="The inventory snapshot whose cells serve the samples and describe the deployment: the newest one of every network, or one snapshot for the networks it covers (the newest one for the others)">Inventory snapshot<select id="ni-snapshot"><option value="">Newest snapshot of each network</option>{% for snapshot in network_insights_config.snapshots %}<option value="{{ snapshot.dataset_id }}">{{ snapshot.snapshot_date }} · {{ snapshot.file_name }}</option>{% endfor %}</select></label>
         <label title="Samples served from farther than this distance count as overshooting">Overshooting beyond (km)<input type="number" id="ni-overshoot" min="0.5" max="100" step="0.5" value="5"></label>
+        </div></fieldset>
+        <fieldset class="ni-control-group"><legend>Maps &amp; inventory</legend><div class="ni-selection-grid">
+        <label>Map grid (m)<select id="ni-grid"><option value="100">100 m</option><option value="250" selected>250 m</option><option value="500">500 m</option><option value="1000">1 km</option></select></label>
+        <label title="The inventory snapshot whose cells serve the samples and describe the deployment: the newest one of every network, or one snapshot for the networks it covers (the newest one for the others)">Inventory snapshot<select id="ni-snapshot"><option value="">Newest of each network</option>{% for snapshot in network_insights_config.snapshots %}<option value="{{ snapshot.dataset_id }}">{{ snapshot.snapshot_date }} · {{ snapshot.file_name }}</option>{% endfor %}</select></label>
+        </div></fieldset>
       </div>
-      <h3 class="ni-filter-title">Filters:</h3>
+      <h3 class="ni-filter-title">Filters</h3>
       <div class="ni-filter-grid">
         <label>Operators<select id="ni-operators" data-multiselect-no-values-label="Loading values…" data-multiselect-dynamic-all="true" multiple size="1" aria-label="Operators"></select></label>
         <label>Operator_Vendor<select id="ni-operator_vendors" data-operator-vendor-pair="operator_vendor" data-multiselect-no-values-label="Loading values…" data-multiselect-dynamic-all="true" multiple size="1" aria-label="Operator_Vendor"></select></label>
@@ -46,56 +52,56 @@
 
   <details class="panel collapsible-panel ni-panel" open data-panel-state-key="network-insights:overview">
     <summary class="collapsible-summary"><div><p class="eyebrow">Main indicators</p><h2>Overview</h2></div><span class="collapse-chip">Collapse</span></summary>
-    <div class="collapsible-panel-body"><div id="ni-overview" class="ni-overview"><p class="form-note">No analysis yet.</p></div></div>
+    <div class="collapsible-panel-body"><p class="ni-intro">The headline radio quality of every group: median RSRP and SINR, the share of samples below the thresholds and the change from the previous campaign.</p><div id="ni-overview" class="ni-overview"><p class="form-note">No analysis yet.</p></div></div>
   </details>
 
   <details class="panel collapsible-panel ni-panel" open data-panel-state-key="network-insights:rf-quality">
     <summary class="collapsible-summary"><div><p class="eyebrow">RSRP &amp; SINR</p><h2>RF Quality</h2></div><span class="collapse-chip">Collapse</span></summary>
-    <div class="collapsible-panel-body">
+    <div class="collapsible-panel-body"><p class="ni-intro">How RSRP and SINR are distributed in every group: cumulative curves, percentiles and quality classes.</p>
       <div id="ni-rf-sections" class="ni-technology-sections"><p class="form-note">No analysis yet.</p></div>
-      <p class="form-note">With LTE+NR, LTE and NR are analysed separately, each with its own thresholds. Curves keep the Operator/Vendor colour; the latest campaign is drawn thickest and older campaigns progressively thinner. Quality classes — RSRP: Excellent ≥ -80, Good ≥ -90, Fair ≥ -100, Poor ≥ -110 dBm, Very poor below. SINR: Excellent ≥ 20, Good ≥ 13, Fair ≥ 5, Poor ≥ 0 dB, Bad below. Voice uses the measuring (A) side.</p>
+      <p class="form-note ni-note">With LTE+NR, LTE and NR are analysed separately, each with its own thresholds. Curves keep the Operator/Vendor colour; the latest campaign is drawn thickest and older campaigns progressively thinner. Quality classes — RSRP: Excellent ≥ -80, Good ≥ -90, Fair ≥ -100, Poor ≥ -110 dBm, Very poor below. SINR: Excellent ≥ 20, Good ≥ 13, Fair ≥ 5, Poor ≥ 0 dB, Bad below. Voice uses the measuring (A) side.</p>
     </div>
   </details>
 
   <details class="panel collapsible-panel ni-panel" open data-panel-state-key="network-insights:maps">
     <summary class="collapsible-summary"><div><p class="eyebrow">Weak coverage &amp; interference</p><h2>Coverage &amp; Interference Maps</h2></div><span class="collapse-chip">Collapse</span></summary>
-    <div class="collapsible-panel-body">
+    <div class="collapsible-panel-body"><p class="ni-intro">Where coverage is weak or interference high: grid squares coloured by their mean value, with the inventory sites around the weakest areas.</p>
       <div class="ni-map-toolbar">
         <label>Group<select id="ni-map-operator"></select></label>
         <button type="button" id="ni-map-reset" class="ni-secondary-action">Show Whole Area</button>
         <p class="form-note" id="ni-map-note"></p>
       </div>
       <div id="ni-map-sections" class="ni-technology-sections"><p class="form-note">No analysis yet.</p></div>
-      <p class="form-note">Areas are grid squares where at least half of the samples fall below the threshold, ranked by the number of affected samples. Select an area to zoom the map to it.</p>
+      <p class="form-note ni-note">Areas are grid squares where at least half of the samples fall below the threshold, ranked by the number of affected samples. Select an area to zoom the map to it.</p>
     </div>
   </details>
 
   <details class="panel collapsible-panel ni-panel" open data-panel-state-key="network-insights:serving">
     <summary class="collapsible-summary"><div><p class="eyebrow">Serving cells, distance &amp; overshooting</p><h2>Serving Cells</h2></div><span class="collapse-chip">Collapse</span></summary>
-    <div class="collapsible-panel-body">
+    <div class="collapsible-panel-body"><p class="ni-intro">Which cell served each sample, how far away it was and whose equipment carried it.</p>
       <div id="ni-serving" class="ni-serving"><p class="form-note">No analysis yet.</p></div>
-      <p class="form-note">Each sample's first serving cell is looked up in the inventory snapshot, among the networks that serve its Operator (Workspace Config → Serving Networks), its own network first; the distance is measured from the sample's start position to the cell's site. Overshooting samples are served from farther than the selected distance.</p>
+      <p class="form-note ni-note">Each sample's first serving cell is looked up in the inventory snapshot, among the networks that serve its Operator (Workspace Config → Serving Networks), its own network first; the distance is measured from the sample's start position to the cell's site. Overshooting samples are served from farther than the selected distance.</p>
     </div>
   </details>
 
   <details class="panel collapsible-panel ni-panel" open data-panel-state-key="network-insights:nr-availability">
     <summary class="collapsible-summary"><div><p class="eyebrow">EN-DC on 5G sites</p><h2>5G Availability</h2></div><span class="collapse-chip">Collapse</span></summary>
-    <div class="collapsible-panel-body">
+    <div class="collapsible-panel-body"><p class="ni-intro">Whether the samples anchored on sites that have NR cells actually reached NR (EN-DC).</p>
       <div id="ni-nr" class="ni-serving"><p class="form-note">No analysis yet.</p></div>
-      <p class="form-note">Samples anchored on an LTE cell whose site also has NR cells in the inventory snapshot should normally reach NR (EN-DC). The gap is the share of those samples with no NR measurement; it is compared with the samples anchored on sites without NR.</p>
+      <p class="form-note ni-note">Samples anchored on an LTE cell whose site also has NR cells in the inventory snapshot should normally reach NR (EN-DC). The gap is the share of those samples with no NR measurement; it is compared with the samples anchored on sites without NR.</p>
     </div>
   </details>
 
   <details class="panel collapsible-panel ni-panel" open data-panel-state-key="network-insights:snapshot">
     <summary class="collapsible-summary"><div><p class="eyebrow">Inventory snapshot, host networks &amp; data quality</p><h2>Network Snapshot</h2></div><span class="collapse-chip">Collapse</span></summary>
-    <div class="collapsible-panel-body">
+    <div class="collapsible-panel-body"><p class="ni-intro">What the inventory snapshot contains: sites and cells per network, who hosts whom, data quality and the changes from another snapshot.</p>
       <div id="ni-snapshot-panel" class="ni-snapshot-panel"><p class="form-note">Loading the inventory snapshots…</p></div>
     </div>
   </details>
 
   <details class="panel collapsible-panel ni-panel" open data-panel-state-key="network-insights:deployment">
     <summary class="collapsible-summary"><div><p class="eyebrow">Sites and cells of the inventory snapshot</p><h2>Network Deployment</h2></div><span class="collapse-chip">Collapse</span></summary>
-    <div class="collapsible-panel-body">
+    <div class="collapsible-panel-body"><p class="ni-intro">How each network is deployed: its sites and cells grouped by host network, vendor, technology, band, region and more.</p>
       <div class="ni-map-toolbar">
         <label>View / Group by<select id="ni-deployment-group">{% for key, label in network_insights_config.inventory_dimensions.items() %}<option value="{{ key }}"{% if key == 'host_network' %} selected{% endif %}>{{ label }}</option>{% endfor %}<option value="observed">Observed Sites/Cells (from CDRs)</option><option value="inventory">Full Sites/Cells Inventory</option></select></label>
         <label data-ni-deployment-filter>Technology<select id="ni-deployment-technology"><option value="">LTE + NR</option><option value="LTE">LTE</option><option value="NR">NR</option></select></label>
@@ -109,29 +115,29 @@
 
   <details class="panel collapsible-panel ni-panel" open data-panel-state-key="network-insights:sites">
     <summary class="collapsible-summary"><div><p class="eyebrow">Observed and inventoried sites</p><h2>Cluster Sites Density</h2></div><span class="collapse-chip">Collapse</span></summary>
-    <div class="collapsible-panel-body">
+    <div class="collapsible-panel-body"><p class="ni-intro">How dense each network is: the eNodeBs observed along the route and the inventory sites per km² with their inter-site distance.</p>
       <p class="ni-pending-box" id="ni-sites-pending" hidden></p>
       <p class="ni-pending-box" id="ni-cluster-pending"><strong>Cluster polygons.</strong> Site density per km² needs the cluster or region shapes: import them in Workspace as <strong>Clusters — Geospatial</strong> or <strong>Regions — Geospatial</strong> (GeoJSON, JSON or a ZIP containing a shapefile). Without them the density table groups the sites by the Cluster or Region of the inventory, without areas.</p>
       <div class="ni-map-toolbar"><label>Data source<select id="ni-sites-source"><option value="observed">Observed Sites/Cells</option><option value="inventory">Inventory Sites/Cells</option></select></label></div>
       <div class="table-wrap ni-table-wrap"><table class="ni-table" id="ni-sites-table"><tbody><tr><td class="form-note">No analysis yet.</td></tr></tbody></table></div>
-      <p class="form-note" id="ni-sites-inventory-note" hidden>Complete uploaded inventories, independent of CDR selection and filters. Overlapping uploads are deduplicated per operator.</p>
+      <p class="form-note ni-note" id="ni-sites-inventory-note" hidden>Complete uploaded inventories, independent of CDR selection and filters. Overlapping uploads are deduplicated per operator.</p>
       <div id="ni-inventory-totals" class="ni-inventory-totals" hidden></div>
       <h3 class="ni-subtitle">Site density of the inventory snapshot</h3>
       <div id="ni-density" class="ni-density"><p class="form-note">Loading the inventory snapshots…</p></div>
-      <p class="form-note ni-pending" id="ni-sites-note">Observed eNodeBs are the distinct LTE eNodeBs (Cell Identity ÷ 256) that served the measuring devices along the route, not the deployed sites. Inventoried sites come from the Vodafone and Three cell inventories uploaded as Vendor mapping datasets.</p>
+      <p class="form-note ni-note" id="ni-sites-note">Observed eNodeBs are the distinct LTE eNodeBs (Cell Identity ÷ 256) that served the measuring devices along the route, not the deployed sites. The Inventory Sites/Cells source counts the Vodafone and Three Multivendor Mappings; the density table below uses the inventory snapshot of every network.</p>
     </div>
   </details>
 
   <details class="panel collapsible-panel ni-panel" open data-panel-state-key="network-insights:spectrum">
     <summary class="collapsible-summary"><div><p class="eyebrow">Low, mid and high TDD bands</p><h2>Spectrum</h2></div><span class="collapse-chip">Collapse</span></summary>
-    <div class="collapsible-panel-body">
+    <div class="collapsible-panel-body"><p class="ni-intro">Spectrum licensed to each Operator, deployed in the inventory snapshot and used by the samples.</p>
       <h3 class="ni-subtitle">Licensed spectrum</h3>
       <div id="ni-licensed" class="ni-licensed"></div>
       <h3 class="ni-subtitle">Spectrum deployed in the inventory snapshot</h3>
       <div class="table-wrap ni-table-wrap"><table class="ni-table" id="ni-deployed-spectrum"><tbody><tr><td class="form-note">Loading the inventory snapshots…</td></tr></tbody></table></div>
       <h3 class="ni-subtitle">Spectrum observed in the measurements</h3>
       <div class="table-wrap ni-table-wrap"><table class="ni-table" id="ni-observed-spectrum"><tbody><tr><td class="form-note">No analysis yet.</td></tr></tbody></table></div>
-      <p class="form-note">Bands come from the serving EARFCN and NR band of each sample; typical bandwidths come from CDR Data, the only CDR type that reports them.</p>
+      <p class="form-note ni-note">Bands come from the serving EARFCN and NR band of each sample; typical bandwidths come from CDR Data, the only CDR type that reports them.</p>
     </div>
   </details>
 
