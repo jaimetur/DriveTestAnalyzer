@@ -325,8 +325,9 @@ def test_lists_of_users_show_names_with_the_default_users_first(client):
 
     core.repository.add_log('EZZZZZZ', 'change_password', 'Password changed from the account badge.')
     events = client.get('/app-logs').text
-    user_filter = events.split('data-app-log-user-filter>', 1)[1].split('</select>', 1)[0]
-    assert '<hr><option value="ezzzzzz">Ana García</option>' in user_filter and '>super · default user</option>' in user_filter
+    user_filter = events.split('data-app-log-user-filter data-user-select>', 1)[1].split('</select>', 1)[0]
+    assert '<hr><option value="ezzzzzz" data-name="Ana García">Ana García</option>' in user_filter
+    assert '<option value="super" data-name="super" data-default-user="true">super · default user</option>' in user_filter
     assert user_filter.index('super · default user') < user_filter.index('Ana García')
     # The pickers of Admin and Workspace: names, the default users tagged, a line before the others, the username searchable.
     admin = client.get('/admin').text
