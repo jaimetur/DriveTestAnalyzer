@@ -17680,7 +17680,7 @@ def saved_filters_save(payload: SavedFilterRequest, user: SessionUser = Depends(
     if not cached:
         _queue_saved_filter_calculation(task_repository, saved_filter['id'])
     task_repository.try_add_log(user.username, 'scoring_calculation_requested', json.dumps({
-        'saved_filter_id': saved_filter['id'], 'name': saved_filter.get('name') or '',
+        'saved_filter_id': saved_filter['id'], 'starred': bool(saved_filter.get('pinned')), 'name': saved_filter.get('name') or '',
         'datasets': len(selected_ids), 'nr_mode': payload.nr_mode, 'force': payload.force, 'cached': cached,
     }))
     _prioritize_saved_filter(task_repository, saved_filter['id'])
@@ -17936,7 +17936,8 @@ def scoring_saved_filter_export(
 
     def logged_export(response: Response) -> Response:
         task_repository.try_add_log(user.username, f'export_scoring_{export_kind}', json.dumps({
-            'saved_filter_id': filter_id, 'name': saved_filter.get('name') or '', 'environment': environment,
+            'saved_filter_id': filter_id, 'starred': bool(saved_filter.get('pinned')), 'name': saved_filter.get('name') or '',
+            'environment': environment,
         }))
         return response
     from src.modules.scoring_views import normalize_result_gaps
