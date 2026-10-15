@@ -526,6 +526,10 @@ def test_calls_are_read_from_their_latest_versions_kept_up_to_date(client, tmp_p
     repository.replace_operator_mapping_group('VF', 'VF Lab', ['Vodafone UK'])
     operators = {item['operator'] for item in query(client)['calls']}
     assert 'VF Lab' in operators and 'Vodafone UK' not in operators
+    # A filter saved with an Operator the maps now show with another name keeps selecting its calls, also in the page.
+    client.put('/api/non-qualified-calls/filters', json={'filters': {'operator': ['Vodafone UK', 'EE']}})
+    assert client.get('/api/non-qualified-calls/state').json()['saved_filters']['operator'] == ['VF Lab', 'EE']
+    assert query(client, filters={'operator': ['Vodafone UK']})['total'] == query(client, filters={'operator': ['VF Lab']})['total'] > 0
     # The follow-up is read as it is now.
     updated = patch(client, calls['0xC3'], {'root_category': 'E2E'})
     assert {item['join_id']: item for item in query(client)['calls']}['0xC3']['root_category'] == updated['root_category'] == 'E2E'
@@ -640,6 +644,8 @@ def test_the_spellings_of_a_netcheck_rca_value_are_one_value(client, tmp_path):
     assert values['failure_classification'] == ['RF Problems', 'VoLTE Problems']
     # A filter saved with another spelling selects the value.
     assert [call['join_id'] for call in query(client, filters={'failure_classification': ['RF_Problems']})['calls']] == ['0xB2', '0xA1']
+    client.put('/api/non-qualified-calls/filters', json={'filters': {'failure_classification': ['RF_Problems', 'RF Problems']}})
+    assert client.get('/api/non-qualified-calls/state').json()['saved_filters']['failure_classification'] == ['RF Problems']
     detail = client.get(f"/api/non-qualified-calls/calls/{calls['0xA1']['call_key']}").json()
     assert {version['failure_classification'] for version in detail['versions']} == {'RF Problems'}
     # A word in singular or plural is the same value too; Access keeps its double s and an acronym its capital S.

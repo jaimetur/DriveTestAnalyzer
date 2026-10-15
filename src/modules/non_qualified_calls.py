@@ -3182,21 +3182,25 @@ _key_filters_cache: dict[tuple[str, str], tuple[str, ...]] = {}
 _key_filters_guard = Lock()
 
 
-def _resolve_key_filters(task_repository: Any, filters: dict[str, Any]) -> dict[str, Any]:
-    """Turn the filters computed per call (root cause counting suggestions, eNB/gNB) into call keys.
-
-    Operator and Vendor selections are compared with the mapped values, so a source
-    spelling saved before (for example Vodafone UK) selects its mapped label (VF); so are the NetCheck RCA ones
-    (RF_Problems selects RF Problems).
-    """
+def _mapped_filters(task_repository: Any, filters: dict[str, Any]) -> dict[str, Any]:
+    """The Operator and Vendor values of a selection as the Operator and Vendor Maps show them, so a source spelling
+    saved before (for example Vodafone SM) selects its mapped label (VF SM), and the NetCheck RCA ones as they are
+    shown (RF_Problems selects RF Problems)."""
     if any(_strings(filters.get(field)) for field in (*MAPPED_FIELDS, 'vendor_operator')):
         mapper = ValueMapper.from_repository(task_repository)
-        filters = {**filters, **{field: [str(mapper.map(field_kind(field), value)) for value in _strings(filters.get(field))]
+        filters = {**filters, **{field: list(dict.fromkeys(str(mapper.map(field_kind(field), value)) for value in _strings(filters.get(field))))
                                  for field in (*MAPPED_FIELDS, 'vendor_operator') if _strings(filters.get(field))}}
     if any(_strings(filters.get(field)) for field in SPELLING_FIELDS):
         maps = _value_maps(task_repository)
         filters = {**filters, **{field: list(dict.fromkeys(json.loads(maps[field]).get(value, value) for value in _strings(filters.get(field))))
                                  for field in SPELLING_FIELDS if _strings(filters.get(field))}}
+    return filters
+
+
+def _resolve_key_filters(task_repository: Any, filters: dict[str, Any]) -> dict[str, Any]:
+    """Turn the filters computed per call (root cause counting suggestions, eNB/gNB) into call keys, with the Operator,
+    Vendor and NetCheck RCA values as they are shown."""
+    filters = _mapped_filters(task_repository, filters)
     wanted = {field: set(_strings(filters.get(field))) for field in KEY_FILTERS}
     if not any(wanted.values()):
         return filters
@@ -6824,7 +6828,8 @@ def install_non_qualified_calls_routes(core: Any) -> None:
                      'can_configure_rule': can_configure_rule(user)},
             'unassigned': UNASSIGNED, 'page_sizes': list(PAGE_SIZES),
             'main_cities': list(repository.list_main_cities()),
-            'saved_filters': saved_filters(repository),
+            # The page chooses the saved values in its lists, which hold them as they are shown.
+            'saved_filters': _mapped_filters(repository, saved_filters(repository)),
             'root_causes': list_root_causes(repository), 'root_cause_defaults': nq_catalog.default_root_catalog(),
             'root_cause_rule_fields': RULE_FIELDS, 'default_root_cause_rule': DEFAULT_ROOT_CAUSE_RULE,
             'fields': list_fields(repository), 'field_types': FIELD_TYPES, 'field_sources': nq_catalog.FIELD_SOURCES,
