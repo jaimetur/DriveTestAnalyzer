@@ -132,6 +132,86 @@ def cluster_sites_tables(analysis: dict[str, Any], deployment: dict[str, Any]) -
     return tables
 
 
+def serving_tables(analysis: dict[str, Any]) -> list[tuple[str, list[str], list[list[str]]]]:
+    """Serving Cells and 5G Availability, as on the page."""
+    serving = analysis.get('serving') or {}
+    if not serving:
+        return []
+    group = analysis.get('group_label') or 'Group'
+    overshoot = _number(serving.get('overshoot_km'))
+    tables = [('Serving Cells · Distance and overshooting', [group, 'Samples', 'Serving cell found', 'Median km', 'P90 km', f'Overshooting > {overshoot} km', 'Hosted by another network'],
+               [[row['operator'], _number(row['samples'], 0), _number(row['matched_share'], 1, '%'), _number(row['median_km'], 2),
+                 _number(row['p90_km'], 2), _number(row['overshoot_share'], 1, '%'), _number(row['hosted_elsewhere_share'], 1, '%')]
+                for row in serving.get('summary') or []])]
+    for key, title, label in (('by_band', 'By serving band', 'Band'), ('by_vendor', 'By RAN vendor', 'Vendor'), ('by_host', 'By host network', 'Host Network')):
+        rows = [[row['operator'], row['value'], _number(row['samples'], 0), _number(row['median_km'], 2), _number(row['overshoot_share'], 1, '%')]
+                for row in serving.get(key) or []]
+        if rows:
+            tables.append((f'Serving Cells · {title}', [group, label, 'Samples', 'Median km', 'Overshooting'], rows))
+    cells = [[row['operator'], row['cell'], row['site'], row['band'], row['vendor'], f"{row['network']} → {row['host']}",
+              _number(row['samples_beyond'], 0), _number(row['samples'], 0), _number(row['median_km'], 2), _number(row['max_km'], 2)]
+             for row in serving.get('overshooting_cells') or []]
+    if cells:
+        tables.append(('Serving Cells · Overshooting cells', [group, 'Cell', 'Site', 'Band', 'Vendor', 'Network → Host', 'Samples beyond',
+                                                               'Samples served', 'Median km', 'Max km'], cells))
+    nr = serving.get('nr_availability') or {}
+    rows = [[row['operator'], _number(row['anchored'], 0), _number(row['on_nr_sites'], 0), _number(row['without_nr_on_nr_sites'], 0),
+             _number(row['gap_share'], 1, '%'), _number(row['without_nr_elsewhere_share'], 1, '%')] for row in nr.get('rows') or []]
+    if rows:
+        tables.append(('5G Availability', [group, 'Samples on LTE cells', 'On sites with NR', 'Without NR there', 'NR gap on 5G sites',
+                                           'Without NR on other sites'], rows))
+    sites = [[row['operator'], row['site'], row['vendor'], _number(row['samples_without_nr'], 0), _number(row['samples'], 0)]
+             for row in nr.get('sites') or []]
+    if sites:
+        tables.append(('5G Availability · Sites with the most samples without NR', [group, 'Site', 'Vendor', 'Samples without NR', 'Samples anchored'], sites))
+    return tables
+
+
+def serving_visuals(analysis: dict[str, Any], render: ChartRenderer) -> list[tuple[str, BytesIO | None, str, Any]]:
+    serving = analysis.get('serving') or {}
+    if not serving or not serving.get('distance_cdf'):
+        return []
+    image, note = _render_image(render, serving['distance_cdf'])
+    return [('Distance to the serving site', image, note, None)]
+
+
+def snapshot_tables(deployment: dict[str, Any]) -> list[tuple[str, list[str], list[list[str]]]]:
+    """Network Snapshot, deployed spectrum and density of the inventory snapshot."""
+    snapshot = deployment.get('snapshot') or {}
+    if not snapshot.get('selection'):
+        return []
+    tables = [('Network Snapshot', ['Network', 'Snapshot date', 'Inventory', 'Sites', 'Cells', 'LTE cells', 'NR cells'],
+               [[item['operator'], item['snapshot_date'], item['file_name'], _number(item['sites'], 0), _number(item['cells'], 0),
+                 _number((item.get('technologies') or {}).get('LTE'), 0), _number((item.get('technologies') or {}).get('NR'), 0)]
+                for item in snapshot['selection']])]
+    matrix = snapshot.get('host_matrix') or {}
+    if matrix.get('owners'):
+        tables.append(('Network Snapshot · Owner network × host network (in-service cells)', ['Owner \\ Host', *matrix['hosts']],
+                       [[owner, *[_number(matrix['cells'].get(f'{owner}|{host}'), 0) if matrix['cells'].get(f'{owner}|{host}') else '—'
+                                  for host in matrix['hosts']]] for owner in matrix['owners']]))
+    quality = [[row['operator'], _number(row['cells'], 0), _number(row['not_in_service'], 0), _number(row['locked_or_disabled'], 0),
+                _number(row['without_position'], 0), _number(row['without_azimuth'], 0), _number(row['without_band'], 0),
+                _number(row['without_vendor'], 0), _number(row['duplicate_identities'], 0)] for row in snapshot.get('quality') or []]
+    if quality:
+        tables.append(('Network Snapshot · Inventory quality', ['Network', 'Cells', 'Not in service', 'Locked / disabled', 'Without position',
+                                                                 'Without azimuth', 'Without band', 'Without vendor', 'Duplicate identities'], quality))
+    spectrum = [[row['operator'], row['technology'], row['band'], row.get('band_class') or '—', _number(row['sites'], 0), _number(row['cells'], 0),
+                 _number(row['carriers'], 0), _number(row['typical_bandwidth_mhz'], 0, ' MHz') if row.get('typical_bandwidth_mhz') else '—',
+                 _number(row['deployed_mhz'], 0) if row.get('deployed_mhz') else '—'] for row in snapshot.get('spectrum') or []]
+    if spectrum:
+        tables.append(('Spectrum · Deployed in the inventory snapshot', ['Network', 'Technology', 'Band', 'Class', 'Sites', 'Cells', 'Carriers',
+                                                                          'Typical bandwidth', 'Deployed MHz'], spectrum))
+    density = snapshot.get('density') or {}
+    dimension = 'cluster' if density.get('cluster') else 'region' if density.get('region') else ''
+    if dimension:
+        tables.append((f'Cluster Sites Density · Inventory snapshot per {dimension.title()}', [dimension.title(), 'Network', 'Sites', 'Sites with NR', 'Area km²',
+                                                                                                'Sites per km²', 'Median inter-site km', 'P90 inter-site km'],
+                       [[row['area'], row['operator'], _number(row['sites'], 0), _number(row['nr_sites'], 0),
+                         _number(row['area_km2'], 0) if row.get('area_km2') else '—', _number(row['sites_per_km2'], 3) if row.get('sites_per_km2') else '—',
+                         _number(row['median_isd_km'], 2), _number(row['p90_isd_km'], 2)] for row in density[dimension]]))
+    return tables
+
+
 def _labelled_rows(analysis: dict[str, Any], section: dict[str, Any]) -> list[dict[str, Any]]:
     rows = section.get('rf_rows') or []
     if len(analysis.get('sections') or []) < 2:
@@ -603,9 +683,20 @@ def export_network_insights_powerpoint(destination: Path, analysis: dict[str, An
     for suffix, _section, _cdfs, groups in visuals:
         for group, panels in groups:
             _visual_slides(presentation, f'Coverage & Interference Maps{suffix}' + (f' · {group}' if group else ''), panels)
+    serving = serving_tables(analysis)
+    distance = serving_visuals(analysis, render)
+    if distance and serving:
+        # The distance CDF with the summary of each group under it.
+        _visual_slides(presentation, 'Serving Cells', [(caption, image, note, (serving[0][1], serving[0][2])) for caption, image, note, _table in distance])
+    for title, columns, rows in serving[1:] if distance else serving:
+        _table_slides(presentation, title, columns, rows)
+    for title, columns, rows in [table for table in snapshot_tables(deployment) if not table[0].startswith(('Spectrum', 'Cluster'))]:
+        _table_slides(presentation, title, columns, rows)
     for title, panels in deployment_table_groups(deployment):
         _paired_table_slides(presentation, title, panels)
-    for title, columns, rows in [*cluster_sites_tables(analysis, deployment), *spectrum_tables(analysis)]:
+    for title, columns, rows in [*cluster_sites_tables(analysis, deployment),
+                                 *[table for table in snapshot_tables(deployment) if table[0].startswith('Cluster')],
+                                 *spectrum_tables(analysis), *[table for table in snapshot_tables(deployment) if table[0].startswith('Spectrum')]]:
         _table_slides(presentation, title, columns, rows)
     warnings = analysis.get('warnings') or []
     if warnings:
@@ -829,9 +920,17 @@ def export_network_insights_word(destination: Path, analysis: dict[str, Any], de
         for group, panels in groups:
             _docx_side_by_side(document, f'Coverage & Interference Maps{suffix}' + (f' · {group}' if group else ''),
                                [(caption, (image, note, table)) for caption, image, note, table in panels], add_image, new_page=True)
+    distance = serving_visuals(analysis, render)
+    if distance:
+        _docx_side_by_side(document, 'Serving Cells', [(caption, (image, note, None)) for caption, image, note, _table in distance], add_image, new_page=True)
+    snapshot = snapshot_tables(deployment)
+    for title, columns, rows in [*serving_tables(analysis), *[table for table in snapshot if not table[0].startswith(('Spectrum', 'Cluster'))]]:
+        _docx_section_heading(document, title)
+        _docx_table(document, columns, rows)
     for title, panels in deployment_table_groups(deployment):
         _docx_side_by_side(document, title, [(caption, (columns, rows)) for caption, columns, rows in panels], add_table)
-    for title, columns, rows in [*cluster_sites_tables(analysis, deployment), *spectrum_tables(analysis)]:
+    for title, columns, rows in [*cluster_sites_tables(analysis, deployment), *[table for table in snapshot if table[0].startswith('Cluster')],
+                                 *spectrum_tables(analysis), *[table for table in snapshot if table[0].startswith('Spectrum')]]:
         _docx_section_heading(document, title)
         _docx_table(document, columns, rows)
     document.save(destination)

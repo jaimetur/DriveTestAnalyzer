@@ -25,20 +25,24 @@ from uuid import uuid4
 import numpy as np
 import pandas as pd
 
-from src.modules.cell_identity import nr_cell_bits
+from src.modules.cell_identity import nr_cell_bits, nr_gnodeb
 from src.modules.column_names import campaign_sort_key, column_identity, compact_campaign_value, operator_vendor_filter_values, vendor_filter_values
 from src.modules.mapping_order import swap_operator_vendor, swap_vendor_operator
 from src.modules.value_maps import ValueMapper, field_kind
 from src.modules.mapping_order import dimension_order_key
 from src.modules.output_layout import NETWORK_INSIGHTS_FOLDER, module_output_dir
+from src.modules import inventory_insights as ii
+from src.modules.network_inventory import dataset_revision, effective_snapshot_date, ensure_inventory_cells, network_family
+from src.modules.network_inventory import inventory_datasets as snapshot_datasets
+from src.modules.serving_cells import load_serving_networks, serving_families
 
 
 NETWORK_INSIGHTS_KINDS = ('data', 'voice', 'speech')
 # Bump when the normalised samples or the analysis payload change shape.
-SAMPLES_CACHE_VERSION = 4
-ANALYSIS_CACHE_VERSION = 6
+SAMPLES_CACHE_VERSION = 5
+ANALYSIS_CACHE_VERSION = 7
 INVENTORY_CACHE_VERSION = 4
-OBSERVED_CACHE_VERSION = 8
+OBSERVED_CACHE_VERSION = 9
 # Columns of the Observed Sites/Cells (from CDRs) tables.
 OBSERVED_COLUMNS = (
     'Operator', 'Vendor', 'Region', 'Cluster', 'City', 'Technology', 'Site_ID', 'Cell_ID', 'Band',
@@ -145,7 +149,8 @@ BAND_CATALOGUE: dict[str, tuple[int, str]] = {
 BAND_CLASSES = ('Low', 'Mid', 'High (TDD)')
 SPECTRUM_DUPLEX_VALUES = ('FDD', 'TDD', 'SDL')
 
-_TRACE_TOKEN = re.compile(r'\[\s*(LTE E-UTRA|NR|UMTS|GSM)[^,\]]*?\s(\d+)?\s*,\s*([^,\]]*)\s*,\s*([^,\]]*)\s*,\s*([^,\]]*)\]', re.I)
+# SA CDRs write NR serving cells as [5G NR n78, TAC, NCI, ARFCN].
+_TRACE_TOKEN = re.compile(r'\[\s*(?:5G\s+)?(LTE E-UTRA|NR|UMTS|GSM)[^,\]]*?\s(?:n?(\d+))?\s*,\s*([^,\]]*)\s*,\s*([^,\]]*)\s*,\s*([^,\]]*)\]', re.I)
 _NUMBER = re.compile(r'-?\d+(?:\.\d+)?')
 
 
@@ -280,9 +285,13 @@ def normalise_samples(frame: pd.DataFrame, kind: str, columns: dict[str, str]) -
         cache = {value: parser(value) for value in pd.unique(values)}
         return values.map(cache)
 
-    def trace_cells(value: object) -> tuple[tuple[str, ...], tuple[str, ...], str]:
+    def trace_cells(value: object) -> tuple[tuple[str, ...], tuple[str, ...], str, str]:
         cells, enodebs, band = [], [], ''
+        nr_cells = []
         for cell in parse_cell_trace(value):
+            if cell['technology'] == 'NR':
+                nr_cells.append(cell['cell'])
+                continue
             if cell['technology'] != 'LTE':
                 continue
             band = band or cell['band']
@@ -290,7 +299,12 @@ def normalise_samples(frame: pd.DataFrame, kind: str, columns: dict[str, str]) -
             enodeb = lte_enodeb_from_eci(cell['cell'])
             if enodeb is not None:
                 enodebs.append(str(enodeb))
-        return tuple(dict.fromkeys(cells)), tuple(dict.fromkeys(enodebs)), band
+        if not cells and nr_cells:
+            # SA samples are served by NR cells only: their nodes are gNodeBs (NCI / 16384).
+            cells = nr_cells
+            enodebs = [f'gNB {node}' for node in map(nr_gnodeb, nr_cells) if node is not None]
+            return tuple(dict.fromkeys(cells)), tuple(dict.fromkeys(enodebs)), band, 'NR'
+        return tuple(dict.fromkeys(cells)), tuple(dict.fromkeys(enodebs)), band, 'LTE' if cells else ''
 
     def id_cells(value: object) -> tuple[tuple[str, ...], tuple[str, ...]]:
         cells = tuple(dict.fromkeys(sequence_values(value)))
@@ -301,19 +315,23 @@ def normalise_samples(frame: pd.DataFrame, kind: str, columns: dict[str, str]) -
     ids = parsed_column('cell_ids', id_cells)
     speech_enodebs = parsed_column('enodeb_id', enodeb_label)
     earfcn_bands = parsed_column('earfcn', lambda value: lte_band_for_earfcn((sequence_values(value) or [''])[0]))
-    cells_column, enodebs_column, bands_column = [], [], []
+    cells_column, enodebs_column, bands_column, technologies_column = [], [], [], []
     for trace, identified, speech_enodeb, earfcn_band in zip(traces, ids, speech_enodebs, earfcn_bands, strict=True):
-        cells, enodebs, band = trace if trace else ((), (), '')
+        cells, enodebs, band, cell_technology = trace if trace else ((), (), '', '')
         if not cells and identified:
             cells, enodebs = identified
+            cell_technology = ''
         if speech_enodeb:
             enodebs = (speech_enodeb,)
         # Tuples are shared with the parse cache, keeping memory flat.
         cells_column.append(cells)
         enodebs_column.append(enodebs)
         bands_column.append(band or earfcn_band or '')
+        technologies_column.append(cell_technology)
     result['cells'] = cells_column
     result['enodebs'] = enodebs_column
+    # LTE or NR when the serving-cell trace says so; empty for bare Cell IDs.
+    result['cells_technology'] = technologies_column
     result['lte_band'] = bands_column
     nr_source = columns.get('nr_band')
     result['nr_band'] = frame[nr_source].map(nr_band_label) if nr_source in frame.columns else ''
@@ -697,6 +715,8 @@ INVENTORY_FIELDS = {
     'site_type': ('Site_Type', 'Site Type'),
     'band': ('Band', 'Frequency Band'),
 }
+# The grouped Network Deployment views of the PowerPoint and Word summaries (from the inventory snapshot).
+SUMMARY_DEPLOYMENT_GROUPS = ('host_network', 'vendor', 'technology', 'band', 'emocn', 'site_type', 'region', 'subregion', 'cluster', 'status')
 DEPLOYMENT_GROUPINGS = {
     'scenario': 'eMOCN Scenario', 'host_network': 'Host Network', 'network': 'Network', 'vendor': 'RAN Vendor',
     'region': 'Region', 'subregion': 'Subregion', 'cluster': 'Cluster', 'site_type': 'Site Type', 'band': 'Band',
@@ -1115,6 +1135,9 @@ def install_network_insights_routes(core: Any) -> None:
         map_operator: str = ''
         # Summaries draw the maps of every group, not only the one shown on the page.
         map_all_groups: bool = False
+        # The inventory snapshot ('' uses the newest one of every network) and the serving-cell thresholds.
+        snapshot: str = ''
+        overshoot_km: float = 5.0
 
     class SpectrumRequest(BaseModel):
         holdings: list[dict[str, Any]] = Field(default_factory=list)
@@ -1302,6 +1325,11 @@ def install_network_insights_routes(core: Any) -> None:
                 'selection_storage_key': f'network-insights:selection:{core.active_workspace.id}:{user.username}',
                 'datasets': ready_cdrs(task_repository),
                 'inventories': inventory_datasets(task_repository),
+                # Every inventory is a snapshot of the network on its date (see network_inventory).
+                'snapshots': [{'dataset_id': int(row['id']), 'file_name': str(row['file_name']), 'kind': str(row['dataset_kind']),
+                               'snapshot_date': effective_snapshot_date(row)} for row in sorted(
+                    snapshot_datasets(task_repository), key=lambda row: (effective_snapshot_date(row), int(row['id'])), reverse=True)],
+                'inventory_dimensions': ii.DEPLOYMENT_DIMENSIONS,
                 'deployment_groups': DEPLOYMENT_GROUPINGS,
                 'clusters_available': cluster_grouping_available(task_repository),
                 'groupings': GROUPINGS,
@@ -1368,6 +1396,8 @@ def install_network_insights_routes(core: Any) -> None:
             'mapping_groups': task_repository.list_operator_mapping_groups(),
             'holdings': load_spectrum_holdings(task_repository),
             'inventories': [(row['id'], row['updated_at']) for row in inventory_datasets(task_repository)],
+            'snapshots': [(row['id'], dataset_revision(row), effective_snapshot_date(row)) for row in snapshot_datasets(task_repository)],
+            'serving_networks': load_serving_networks(task_repository),
         }
         return hashlib.sha256(json.dumps(inputs, sort_keys=True, default=str).encode()).hexdigest()
 
@@ -1445,6 +1475,11 @@ def install_network_insights_routes(core: Any) -> None:
             {str(operator) for operator in original_operators if str(operator).strip()} - inventoried_operators,
             key=str.casefold,
         )
+        # The inventory cell that served each sample, in the selected snapshot of the networks allowed to serve it.
+        serving_state = serving_analysis_state(task_repository, filtered, original_operators, request.snapshot)
+        if serving_state is not None:
+            missing_inventory_operators = [operator for operator in missing_inventory_operators
+                                           if network_family(operator) not in serving_state['families']]
         # Site/cell identifiers remain scoped by their source operator when
         # operators are pooled; each group already has one operator otherwise.
         if 'operator' not in groups:
@@ -1530,13 +1565,25 @@ def install_network_insights_routes(core: Any) -> None:
                 operator_samples = frame.loc[frame['operator'] == operator]
                 coverage_cells, coverage_grid = grid_cells(operator_samples, rsrp, coverage_threshold, request.grid_metres, request.min_samples)
                 interference_cells, interference_grid = grid_cells(operator_samples, sinr, interference_threshold, request.grid_metres, request.min_samples)
-                return {
+                maps = {
                     'operator': operator,
                     'coverage': map_payload(coverage_cells, RSRP_CLASSES, f'{operator} · Mean {label} RSRP per {coverage_grid:g} m grid', 'dBm', _osm_map_tile_geometry),
                     'coverage_hotspots': hotspots(coverage_cells), 'coverage_grid_metres': coverage_grid,
                     'interference': map_payload(interference_cells, SINR_CLASSES, f'{operator} · Mean {label} SINR per {interference_grid:g} m grid', 'dB', _osm_map_tile_geometry),
                     'interference_hotspots': hotspots(interference_cells), 'interference_grid_metres': interference_grid,
                 }
+                if serving_state is not None:
+                    # The sites of the networks serving this group around its weakest and most interfered areas,
+                    # drawn as one wedge per cell in the colour of its vendor.
+                    families = {family for source in pd.unique(original_operators.loc[operator_samples.index])
+                                for family in serving_families(source, serving_state['config'])}
+                    centres = [(row['longitude'], row['latitude']) for row in maps['coverage_hotspots'][:25] + maps['interference_hotspots'][:25]]
+                    overlay = ii.sector_overlay(serving_state['cells'], families, centres)
+                    for kind in ('coverage', 'interference'):
+                        if overlay['sectors'] and maps[kind].get('type') == 'map':
+                            maps[kind]['sectors'] = overlay['sectors']
+                            maps[kind]['legend']['items'] = [*maps[kind]['legend']['items'], *overlay['legend']]
+                return maps
 
             selected_maps = group_maps(map_operator)
             return {
@@ -1577,7 +1624,205 @@ def install_network_insights_routes(core: Any) -> None:
             },
             'colours': colours,
             'warnings': warnings,
+            'serving': serving_payload(serving_state, filtered, labels, colours, group_order, request.overshoot_km),
         }
+
+    def family_operator_labels(task_repository) -> dict[str, str]:
+        """Network family → the Operator Maps name it is shown as.
+
+        The group that holds the plain name of the network (Vodafone UK, Three, O2) wins over the groups of tests
+        in another mode (Vodafone SM, VF SA), then the shortest name.
+        """
+        base_names = {'vodafone': {'vodafone', 'vodafoneuk', 'vf', 'vfuk'}, 'three': {'3', 'three', 'threeuk', '3uk', 'h3g'},
+                      'o2': {'o2', 'o2uk', 'telefonica'}, 'ee': {'ee', 'eeuk'}}
+        best: dict[str, tuple[int, int, str]] = {}
+        for group in task_repository.list_operator_mapping_groups():
+            canonical = str(group.get('canonical') or '').strip()
+            values = [canonical, *(group.get('aliases') or [])]
+            identities = {re.sub(r'[^a-z0-9]+', '', str(value).casefold()) for value in values}
+            for family in {network_family(value) for value in values} - {''}:
+                rank = (0 if identities & base_names.get(family, set()) else 1, len(canonical), canonical)
+                if canonical and (family not in best or rank < best[family]):
+                    best[family] = rank
+        return {family: rank[2] for family, rank in best.items()}
+
+    def serving_analysis_state(task_repository, samples: pd.DataFrame, operators: pd.Series, choice: str) -> dict[str, Any] | None:
+        snapshots = ensure_inventory_cells(task_repository)
+        selection = ii.snapshot_choice(snapshots, choice)
+        if not selection or samples.empty:
+            return None
+        cells = ii.load_cells(task_repository, selection)
+        config = load_serving_networks(task_repository)
+        serving = ii.serving_cells(samples, operators, cells, config, float(config['max_distance_km']))
+        return {'cells': cells, 'serving': serving, 'families': set(selection), 'selection': selection, 'config': config,
+                'labels': family_operator_labels(task_repository), 'max_distance_km': config['max_distance_km']}
+
+    def serving_payload(state, samples: pd.DataFrame, labels: pd.Series, colours: dict[str, str], order_key, overshoot_km: float) -> dict[str, Any] | None:
+        if state is None:
+            return None
+        serving = state['serving']
+        order = sorted(dict.fromkeys(labels), key=order_key)
+        summary = ii.serving_summary(samples, serving, labels, overshoot_km)
+        summary.sort(key=lambda row: order_key(row['operator']))
+        distances = pd.DataFrame({'operator': labels.to_numpy(), 'distance': serving['distance_km'].to_numpy(dtype=float)})
+        family_labels = state['labels']
+        named = serving.assign(host_family=serving['host_family'].map(lambda value: ii.family_label(str(value), family_labels) if isinstance(value, str) else value))
+        sites = ii.site_positions(state['cells'])
+        return {
+            'max_distance_km': state['max_distance_km'], 'overshoot_km': overshoot_km,
+            'summary': summary,
+            'by_band': ii.serving_breakdown(serving, labels, 'band_3gpp', overshoot_km),
+            'by_vendor': ii.serving_breakdown(serving, labels, 'vendor', overshoot_km),
+            'by_host': ii.serving_breakdown(named, labels, 'host_family', overshoot_km),
+            'overshooting_cells': ii.overshooting_cells(samples.assign(operator=labels.to_numpy()), serving, overshoot_km, family_labels=family_labels),
+            'nr_availability': (lambda nr: {**nr, 'rows': sorted(nr['rows'], key=lambda row: order_key(row['operator']))})(
+                ii.nr_availability(samples.assign(operator=labels.to_numpy()), serving, labels, sites)),
+            'distance_cdf': cdf_payload(distances.dropna(), 'distance', None, 'Distance to the serving site', 'Distance (km)',
+                                        colours, order_key=order_key),
+            'order': order,
+        }
+
+    class SnapshotRequest(BaseModel):
+        snapshot: str = ''
+        group: str = 'host_network'
+        in_service_only: bool = True
+        technology: str = ''
+        # Another snapshot to compare with (its dataset ID), for the networks both describe.
+        compare: str = ''
+
+    snapshot_cache: OrderedDict[str, dict[str, Any]] = OrderedDict()
+    snapshot_cache_lock = Lock()
+
+    def polygon_names(task_repository, longitude: pd.Series, latitude: pd.Series, dimension: str) -> pd.Series | None:
+        """The imported Region or Cluster polygon of each position (newest upload first), or None without polygons."""
+        sources = inventory_polygon_sources(task_repository)
+        lookups = inventory_polygon_lookup(sources) if sources else {}
+        if dimension not in lookups:
+            return None
+        from shapely import points
+        tree, names = lookups[dimension]
+        located = longitude.notna() & latitude.notna()
+        result = pd.Series('', index=longitude.index, dtype=object)
+        if located.any():
+            geometries = points(np.c_[longitude[located].to_numpy(dtype=float), latitude[located].to_numpy(dtype=float)])
+            source, target = tree.query(geometries, predicate='intersects')
+            best = pd.Series(target, index=source).groupby(level=0).min()
+            located_index = longitude.index[located]
+            result.loc[located_index[best.index]] = [names[position] for position in best.to_numpy()]
+        return result
+
+    @lru_cache(maxsize=4)
+    def polygon_areas(sources: tuple, dimension: str) -> dict[str, float]:
+        """km² of each imported Region or Cluster name (equal-area projection)."""
+        from src.modules.geospatial import _column, _read_region_mapping, _region_field
+        kind = 'regions' if dimension == 'Region' else 'clusters'
+        areas: dict[str, float] = {}
+        for source_kind, _identifier, _revision, path, _mtime in sources:
+            if source_kind != kind:
+                continue
+            boundaries = _read_region_mapping(Path(path), dimension)
+            field = _region_field(boundaries.columns) if dimension == 'Region' else next(
+                found for candidate in ('Cluster', 'Cluster_ID', 'Cluster_Name', 'ClusterName', 'Name')
+                if (found := _column(boundaries.columns, candidate)))
+            projected = boundaries.to_crs('EPSG:6933')
+            for name, area in zip(projected[field].astype(str).str.strip(), projected.geometry.area / 1e6):
+                areas.setdefault(name, float(area))
+        return areas
+
+    def snapshot_payload(task_repository, choice: str = '', group: str = 'host_network', in_service_only: bool = True,
+                         technology: str = '') -> dict[str, Any]:
+        """Deployment, host networks, deployed spectrum, density and quality of the selected inventory snapshot.
+
+        What does not depend on the grouping is cached apart, so switching the grouping only counts the cells again.
+        """
+        snapshots = ensure_inventory_cells(task_repository)
+        labels = family_operator_labels(task_repository)
+        overview = ii.snapshot_overview(task_repository, choice, labels)
+        selection = {item['family']: item['dataset_id'] for item in overview['selection']}
+        group = group if group in ii.DEPLOYMENT_DIMENSIONS else 'host_network'
+        technology = technology if technology in {'LTE', 'NR'} else ''
+        sources = inventory_polygon_sources(task_repository)
+        base_key = hashlib.sha256(json.dumps([str(task_repository.db_path), snapshots, overview['selection'], in_service_only,
+                                              sources, labels], sort_keys=True, default=str).encode()).hexdigest()
+        key = f'{base_key}:{group}:{technology}'
+        with snapshot_cache_lock:
+            cached = snapshot_cache.get(key)
+            base = snapshot_cache.get(base_key)
+        if cached is not None:
+            return cached
+        cells = ii.load_cells(task_repository, selection)
+        if base is None:
+            sites = ii.site_positions(cells, in_service_only=False)
+            # The imported polygon of every site, once: every cell takes the name of its site.
+            site_names = {}
+            for dimension in ('Region', 'Cluster'):
+                names = polygon_names(task_repository, sites['longitude'], sites['latitude'], dimension) if len(sites) else None
+                if names is not None:
+                    site_names[dimension.lower()] = dict(zip(sites['site_key'], names, strict=True))
+            in_service_sites = ii.site_positions(cells) if in_service_only else sites
+            density = {}
+            for dimension in ('cluster', 'region'):
+                if dimension in site_names:
+                    names = in_service_sites['site_key'].map(site_names[dimension]).fillna('')
+                    density[dimension] = ii.density_rows(in_service_sites, dimension.title(), names, polygon_areas(sources, dimension.title()), labels)
+                elif len(in_service_sites) and dimension in in_service_sites:
+                    density[dimension] = ii.density_rows(in_service_sites, dimension.title(), in_service_sites[dimension].fillna(''), {}, labels)
+            base = {
+                'site_names': site_names,
+                'host_matrix': ii.host_matrix(cells, in_service_only, labels),
+                'spectrum': [{**row, 'band_class': band_class(row['band'])} for row in ii.deployed_spectrum(cells, labels)],
+                'quality': ii.inventory_quality(cells, labels),
+                'density': density,
+            }
+            with snapshot_cache_lock:
+                snapshot_cache[base_key] = base
+
+        def value_names(field: str, frame: pd.DataFrame) -> pd.Series:
+            if field in {'region', 'cluster'} and field in base['site_names']:
+                return frame['site_key'].map(base['site_names'][field]).fillna('')
+            if field in {'host_network', 'network'}:
+                column = 'host_family' if field == 'host_network' else 'network_family'
+                names = {value: ii.family_label(value, labels) for value in pd.unique(frame[column])}
+                return frame[column].map(names)
+            return frame['band_3gpp'] if field == 'band' else frame[field].astype(str)
+
+        payload = {
+            **overview, 'group': group, 'group_label': ii.DEPLOYMENT_DIMENSIONS[group], 'dimensions': ii.DEPLOYMENT_DIMENSIONS,
+            'in_service_only': in_service_only, 'technology': technology,
+            'deployment': ii.deployment_tables(cells, group, in_service_only, technology, labels, value_names),
+            **{name: base[name] for name in ('host_matrix', 'spectrum', 'quality', 'density')},
+            'polygons': sorted({source[0] for source in sources}),
+        }
+        with snapshot_cache_lock:
+            snapshot_cache[key] = payload
+            while len(snapshot_cache) > 40:
+                snapshot_cache.popitem(last=False)
+        return payload
+
+    @app.post('/api/network-insights/snapshot')
+    def network_insights_snapshot(request: SnapshotRequest, user=Depends(insights_user)):
+        """Deployment, host networks, deployed spectrum, density and quality of the selected inventory snapshot."""
+        task_repository = bound_repository()
+        payload = snapshot_payload(task_repository, request.snapshot, request.group, request.in_service_only, request.technology)
+        comparison = None
+        if str(request.compare or '').strip():
+            try:
+                compare_id = int(request.compare)
+            except ValueError as exc:
+                raise HTTPException(422, 'Choose a snapshot to compare with.') from exc
+            other = next((item for item in ensure_inventory_cells(task_repository) if item['dataset_id'] == compare_id), None)
+            if other is None:
+                raise HTTPException(404, 'The snapshot to compare with is not available.')
+            labels = family_operator_labels(task_repository)
+            selection = {item['family']: item['dataset_id'] for item in payload['selection']}
+            current = ii.load_cells(task_repository, selection)
+            before = ii.load_cells(task_repository, {family: compare_id for family in other['families'] if family})
+            comparison = {'dataset_id': compare_id, 'file_name': other['file_name'], 'snapshot_date': other['snapshot_date'],
+                          'networks': ii.compare_snapshots(current, before, labels)}
+        task_repository.try_add_log(user.username, 'network_insights_snapshot', json.dumps({
+            'snapshot': request.snapshot, 'group': payload['group'], 'in_service_only': request.in_service_only,
+            'technology': payload['technology'], 'compare': request.compare}))
+        return {**payload, 'comparison': comparison}
 
     # ------------------------------------------------------------------
     # Sites/Cells tables: complete inventories or cells observed in CDRs
@@ -1702,16 +1947,26 @@ def install_network_insights_routes(core: Any) -> None:
             samples = load_samples(task_repository, request.datasets)
             filtered = filter_samples(samples, request)
             columns = list(OBSERVED_COLUMNS)
-            if request.technology == 'nr' or filtered.empty:
-                # Cell traces identify LTE cells only.
+            if 'cells_technology' in filtered:
+                # SA samples are served by NR cells (their traces say so); the others by LTE cells.
+                is_nr = filtered['cells_technology'].eq('NR')
+                filtered = filtered.loc[is_nr] if request.technology == 'nr' else filtered if request.technology == 'lte_nr' else filtered.loc[~is_nr]
+            elif request.technology == 'nr':
+                filtered = filtered.iloc[0:0]
+            if filtered.empty:
                 return {'frame': pd.DataFrame(columns=columns), 'columns': columns}
-            fields = ['operator', 'vendor', 'region', 'city', 'campaign', 'kind', 'lte_band', 'latitude', 'longitude', 'lte_rsrp', 'lte_sinr']
+            fields = ['operator', 'vendor', 'region', 'city', 'campaign', 'kind', 'lte_band', 'latitude', 'longitude', 'lte_rsrp', 'lte_sinr',
+                      *(['cells_technology'] if 'cells_technology' in filtered else [])]
             with_cells = filtered.loc[filtered['cells'].map(len) > 0, [*fields, 'cells']].explode('cells').rename(columns={'cells': 'cell'})
             sites_only = filtered.loc[(filtered['cells'].map(len) == 0) & (filtered['enodebs'].map(len) > 0), [*fields, 'enodebs']]
             sites_only = sites_only.explode('enodebs').rename(columns={'enodebs': 'site'})
             sites_only['cell'] = ''
             sites = {value: (str(enodeb) if (enodeb := lte_enodeb_from_eci(value)) is not None else '') for value in pd.unique(with_cells['cell'])}
             with_cells['site'] = with_cells['cell'].map(sites)
+            if 'cells_technology' in with_cells:
+                nr_rows = with_cells['cells_technology'].eq('NR')
+                nodes = {value: (f'gNB {node}' if (node := nr_gnodeb(value)) is not None else '') for value in pd.unique(with_cells.loc[nr_rows, 'cell'])}
+                with_cells.loc[nr_rows, 'site'] = with_cells.loc[nr_rows, 'cell'].map(nodes)
             rows = pd.concat([with_cells, sites_only], ignore_index=True)
             rows = rows.loc[(rows['cell'] != '') | (rows['site'] != '')]
             if rows.empty:
@@ -1721,7 +1976,11 @@ def install_network_insights_routes(core: Any) -> None:
             # takes the first non-empty value of each cell.
             for field in ('vendor', 'region', 'city', 'lte_band'):
                 rows[field] = rows[field].replace('', pd.NA)
+            if 'cells_technology' not in rows:
+                rows['cells_technology'] = 'LTE'
+            rows['cells_technology'] = rows['cells_technology'].replace('', 'LTE')
             grouped = rows.groupby(keys, sort=True, dropna=False).agg(
+                Technology=('cells_technology', 'first'),
                 Vendor=('vendor', 'first'), Region=('region', 'first'), City=('city', 'first'), Band=('lte_band', 'first'),
                 Samples=('kind', 'size'), Latitude=('latitude', 'mean'), Longitude=('longitude', 'mean'),
                 RSRP_Mean=('lte_rsrp', 'mean'), SINR_Mean=('lte_sinr', 'mean'),
@@ -1737,7 +1996,6 @@ def install_network_insights_routes(core: Any) -> None:
             grouped = grouped.reset_index().rename(columns={'operator': 'Operator', 'site': 'Site_ID', 'cell': 'Cell_ID'})
             for field in ('Vendor', 'Region', 'City', 'Band'):
                 grouped[field] = grouped[field].astype(object).where(grouped[field].notna(), '')
-            grouped['Technology'] = 'LTE'
             for column in ('Latitude', 'Longitude'):
                 grouped[column] = grouped[column].round(6)
             for column in ('RSRP_Mean', 'SINR_Mean'):
@@ -2176,9 +2434,16 @@ def install_network_insights_routes(core: Any) -> None:
             'nr_mode': str((selection or {}).get('nr_mode') or '').upper(),
             'dataset_names': [names[dataset_id] for kind in NETWORK_INSIGHTS_KINDS for dataset_id in request.datasets.get(kind, []) if dataset_id in names],
         }
-        deployment = {'groupings': [deployment_summary(group) for group in DEPLOYMENT_GROUPINGS
-                                    if group != 'cluster' or cluster_grouping_available(task_repository)],
-                      'cluster_inventories': cluster_inventory_summary()}
+        # As on the page, the grouped Network Deployment views come from the inventory snapshot.
+        snapshot = snapshot_payload(task_repository, request.snapshot)
+        groupings = []
+        for group in SUMMARY_DEPLOYMENT_GROUPS:
+            grouped = snapshot_payload(task_repository, request.snapshot, group)
+            sources = {item['family']: f"{item['snapshot_date']} · {item['file_name']}" for item in grouped['selection']}
+            groupings.append({'group': group, 'group_label': grouped['group_label'], 'inventories': [
+                {'operator': table['operator'], 'file_name': sources.get(table['family'], ''), 'rows': table['rows'], 'totals': table['totals']}
+                for table in grouped['deployment']]})
+        deployment = {'groupings': groupings, 'cluster_inventories': cluster_inventory_summary(), 'snapshot': snapshot}
         render = lambda payload, width, height: _render_dashboard_payload(payload, width=width, height=height)[0]
         writer = export_network_insights_word if export_kind == 'word' else export_network_insights_powerpoint
         writer(destination, analysis, deployment, description, render)

@@ -13,7 +13,7 @@
   } catch {}
   const selectionControls = ['ni-nr-mode', 'ni-technology', 'ni-group', 'ni-coverage-threshold',
     'ni-interference-threshold', 'ni-nr-coverage-threshold', 'ni-nr-interference-threshold', 'ni-grid',
-    'ni-deployment-group', 'ni-sites-source'];
+    'ni-deployment-group', 'ni-sites-source', 'ni-snapshot', 'ni-overshoot', 'ni-deployment-technology'];
   for (const id of selectionControls) {
     const control = $(id);
     const value = savedSelection.controls?.[id];
@@ -228,6 +228,8 @@
     grid_metres: Number($('ni-grid').value),
     min_samples: 3,
     map_operator: mapOperator,
+    snapshot: $('ni-snapshot').value,
+    overshoot_km: Number($('ni-overshoot').value) || 5,
   });
 
   // Modal shown while an analysis runs; Hide leaves it running in the background.
@@ -576,9 +578,231 @@
     renderOverview();
     renderRfSections();
     renderMaps();
+    renderServing();
+    renderNrAvailability();
     renderSites();
     renderSpectrum();
   };
+
+  // Serving cells of the samples in the inventory snapshot: distances, overshooting and hosting.
+  const swatch = label => `<span class="ni-swatch" style="background:${analysis?.colours?.[label] || '#6D46A8'}"></span>`;
+  const shareBar = (value, tone = '') => value === null || value === undefined ? '—'
+    : `<span class="ni-share ${tone}"><span style="width:${Math.max(0, Math.min(100, value))}%"></span></span> ${number(value)}%`;
+  const pendingSnapshot = '<p class="ni-pending-box"><strong>Pending input.</strong> Upload a Multivendor Mapping or a Network Inventory (Cell Configuration KMZ packages included) in Workspace: its cells describe the serving cells of the samples.</p>';
+  const breakdownTable = (title, rows, label) => `<section class="ni-mini-table"><h4>${escapeHtml(title)}</h4>
+    <div class="table-wrap ni-table-wrap"><table class="ni-table"><thead><tr><th>${escapeHtml(analysis.group_label || 'All samples')}</th><th>${escapeHtml(label)}</th><th>Samples</th><th>Median km</th><th>Overshooting</th></tr></thead>
+    <tbody>${rows.map(row => `<tr><td>${swatch(row.operator)}${escapeHtml(row.operator)}</td><td>${escapeHtml(row.value)}</td><td class="num">${integer(row.samples)}</td><td class="num">${number(row.median_km, 2)}</td><td>${shareBar(row.overshoot_share, 'is-warning')}</td></tr>`).join('') || '<tr><td colspan="5" class="form-note">No sample was matched with an inventory cell.</td></tr>'}</tbody></table></div></section>`;
+  const renderServing = () => {
+    const host = $('ni-serving');
+    const serving = analysis?.serving;
+    if (!analysis) { host.innerHTML = '<p class="form-note">No analysis yet.</p>'; return; }
+    if (!serving) { host.innerHTML = pendingSnapshot; return; }
+    host.innerHTML = `<div class="ni-kpi-grid">${serving.summary.map(row => `<article class="ni-operator-card" style="--ni-operator:${analysis.colours[row.operator] || '#6D46A8'}">
+        <h3>${escapeHtml(row.operator)}</h3>
+        <dl>
+          <div><dt>Serving cell found</dt><dd>${number(row.matched_share)}% <small>${integer(row.matched)} of ${integer(row.with_cell)}</small></dd></div>
+          <div><dt>Median distance</dt><dd>${number(row.median_km, 2)} km</dd></div>
+          <div><dt>P90 distance</dt><dd>${number(row.p90_km, 2)} km</dd></div>
+          <div><dt>Overshooting (&gt; ${number(serving.overshoot_km)} km)</dt><dd>${number(row.overshoot_share)}%</dd></div>
+          <div><dt>Hosted by another network</dt><dd>${number(row.hosted_elsewhere_share)}%</dd></div>
+          <div><dt>Samples</dt><dd>${integer(row.samples)}</dd></div>
+        </dl></article>`).join('')}</div>
+      <div class="ni-chart-grid ni-chart-grid-single"><div class="ni-chart-card"><canvas id="ni-serving-cdf" role="img" aria-label="Cumulative distribution of the distance to the serving site"></canvas></div></div>
+      <div class="ni-breakdown-grid">
+        ${breakdownTable('By serving band', serving.by_band, 'Band')}
+        ${breakdownTable('By RAN vendor', serving.by_vendor, 'Vendor')}
+        ${breakdownTable('By host network', serving.by_host, 'Host Network')}
+      </div>
+      <h4>Overshooting cells <span class="form-note">(the cells that served the most samples beyond ${number(serving.overshoot_km)} km)</span></h4>
+      <div class="table-wrap ni-table-wrap"><table class="ni-table"><thead><tr><th>${escapeHtml(analysis.group_label || 'All samples')}</th><th>Cell</th><th>Site</th><th>Band</th><th>Vendor</th><th>Network → Host</th><th>Samples beyond</th><th>Samples served</th><th>Median km</th><th>Max km</th></tr></thead>
+      <tbody>${serving.overshooting_cells.map(row => `<tr><td>${swatch(row.operator)}${escapeHtml(row.operator)}</td><td>${escapeHtml(row.cell)}</td><td>${escapeHtml(row.site)}</td><td>${escapeHtml(row.band)}</td><td>${escapeHtml(row.vendor)}</td><td>${escapeHtml(row.network)} → ${escapeHtml(row.host)}</td><td class="num">${integer(row.samples_beyond)}</td><td class="num">${integer(row.samples)}</td><td class="num">${number(row.median_km, 2)}</td><td class="num">${number(row.max_km, 2)}</td></tr>`).join('') || `<tr><td colspan="10" class="form-note">No sample was served from farther than ${number(serving.overshoot_km)} km.</td></tr>`}</tbody></table></div>
+      <p class="form-note">Cells farther than ${number(serving.max_distance_km)} km from a sample are never taken as its serving cell (Workspace Config → Serving Networks).</p>`;
+    renderChart($('ni-serving-cdf'), serving.distance_cdf);
+  };
+  const renderNrAvailability = () => {
+    const host = $('ni-nr');
+    const nr = analysis?.serving?.nr_availability;
+    if (!analysis) { host.innerHTML = '<p class="form-note">No analysis yet.</p>'; return; }
+    if (!nr) { host.innerHTML = pendingSnapshot; return; }
+    host.innerHTML = `<div class="table-wrap ni-table-wrap"><table class="ni-table"><thead><tr><th>${escapeHtml(analysis.group_label || 'All samples')}</th><th>Samples on LTE cells</th><th>On sites with NR</th><th>Without NR there</th><th>NR gap on 5G sites</th><th>Without NR on other sites</th></tr></thead>
+      <tbody>${nr.rows.map(row => `<tr><td>${swatch(row.operator)}${escapeHtml(row.operator)}</td><td class="num">${integer(row.anchored)}</td><td class="num">${integer(row.on_nr_sites)}</td><td class="num">${integer(row.without_nr_on_nr_sites)}</td><td>${shareBar(row.gap_share, 'is-warning')}</td><td>${shareBar(row.without_nr_elsewhere_share)}</td></tr>`).join('') || '<tr><td colspan="6" class="form-note">No sample was served by an LTE cell of the snapshot.</td></tr>'}</tbody></table></div>
+      <h4>5G sites with the most samples without NR</h4>
+      <div class="table-wrap ni-table-wrap"><table class="ni-table"><thead><tr><th>${escapeHtml(analysis.group_label || 'All samples')}</th><th>Site</th><th>Vendor</th><th>Samples without NR</th><th>Samples anchored there</th><th>Position</th></tr></thead>
+      <tbody>${nr.sites.map(row => `<tr><td>${swatch(row.operator)}${escapeHtml(row.operator)}</td><td>${escapeHtml(row.site)}</td><td>${escapeHtml(row.vendor)}</td><td class="num">${integer(row.samples_without_nr)}</td><td class="num">${integer(row.samples)}</td><td>${row.latitude === null ? '—' : `${number(row.latitude, 4)}, ${number(row.longitude, 4)}`}</td></tr>`).join('') || '<tr><td colspan="6" class="form-note">Every sample anchored on a 5G site measured NR.</td></tr>'}</tbody></table></div>`;
+  };
+
+  // The inventory snapshot: networks, host networks, data quality, density and deployed spectrum.
+  let snapshotPayload = null;
+  let snapshotController = null;
+  const snapshotRequest = () => ({
+    snapshot: $('ni-snapshot').value,
+    group: isSiteTable($('ni-deployment-group').value) ? 'host_network' : $('ni-deployment-group').value,
+    in_service_only: $('ni-deployment-in-service').checked,
+    technology: $('ni-deployment-technology').value,
+    compare: compareSnapshot,
+  });
+  let compareSnapshot = '';
+  const loadSnapshot = async () => {
+    snapshotController?.abort();
+    const controller = new AbortController();
+    snapshotController = controller;
+    if (!(config.snapshots || []).length) {
+      snapshotPayload = null;
+      renderSnapshot();
+      return null;
+    }
+    try {
+      const response = await fetch('/api/network-insights/snapshot', {
+        method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(snapshotRequest()), signal: controller.signal,
+      });
+      const payload = await response.json();
+      if (snapshotController !== controller) return null;
+      if (!response.ok) throw new Error(payload.detail || 'Unable to load the inventory snapshot.');
+      snapshotPayload = payload;
+      renderSnapshot();
+      return payload;
+    } catch (error) {
+      if (error.name !== 'AbortError' && snapshotController === controller) {
+        $('ni-snapshot-panel').innerHTML = `<p class="form-note">${escapeHtml(error.message)}</p>`;
+      }
+      return null;
+    }
+  };
+  const renderSnapshot = () => {
+    const panel = $('ni-snapshot-panel');
+    if (!snapshotPayload) {
+      panel.innerHTML = pendingSnapshot;
+      $('ni-density').innerHTML = pendingSnapshot;
+      $('ni-deployed-spectrum').innerHTML = '<tbody><tr><td class="form-note">No inventory snapshot is available.</td></tr></tbody>';
+      return;
+    }
+    const matrix = snapshotPayload.host_matrix;
+    panel.innerHTML = `<div class="ni-snapshot-cards">${snapshotPayload.selection.map(item => `<article class="ni-snapshot-card">
+        <p class="eyebrow">${escapeHtml(item.snapshot_date)}</p><h3>${escapeHtml(item.operator)}</h3>
+        <p class="ni-snapshot-file" title="${escapeHtml(item.file_name)}">${escapeHtml(item.file_name)}</p>
+        <div class="ni-snapshot-counts"><div><strong>${integer(item.sites)}</strong><small>sites</small></div><div><strong>${integer(item.cells)}</strong><small>cells</small></div>
+        ${Object.entries(item.technologies || {}).map(([technology, cells]) => `<div><strong>${integer(cells)}</strong><small>${escapeHtml(technology)} cells</small></div>`).join('')}</div>
+        <p class="form-note">Networks: ${escapeHtml((item.networks || []).join(', ') || '—')}</p></article>`).join('')}</div>
+      <h4>Owner network × host network <span class="form-note">(in-service cells and sites: the owner's cells carried by the host's equipment)</span></h4>
+      <div class="table-wrap ni-table-wrap"><table class="ni-table ni-matrix"><thead><tr><th>Owner \\ Host</th>${matrix.hosts.map(hostName => `<th>${escapeHtml(hostName)}</th>`).join('')}</tr></thead>
+      <tbody>${matrix.owners.map(owner => `<tr><th>${escapeHtml(owner)}</th>${matrix.hosts.map(hostName => {
+        const cells = matrix.cells[`${owner}|${hostName}`];
+        return `<td class="num${owner === hostName ? ' is-own' : ''}">${cells ? `${integer(cells)} <small>${integer(matrix.sites[`${owner}|${hostName}`])} sites</small>` : '—'}</td>`;
+      }).join('')}</tr>`).join('')}</tbody></table></div>
+      <h4>Inventory quality</h4>
+      <div class="table-wrap ni-table-wrap"><table class="ni-table"><thead><tr><th>Network</th><th>Cells</th><th>Not in service</th><th>Locked / disabled</th><th>Without position</th><th>Without azimuth</th><th>Without band</th><th>Without vendor</th><th>Duplicate identities</th><th>Statuses</th></tr></thead>
+      <tbody>${snapshotPayload.quality.map(row => `<tr><td>${escapeHtml(row.operator)}</td><td class="num">${integer(row.cells)}</td><td class="num">${integer(row.not_in_service)}</td><td class="num">${integer(row.locked_or_disabled)}</td><td class="num">${integer(row.without_position)}</td><td class="num">${integer(row.without_azimuth)}</td><td class="num">${integer(row.without_band)}</td><td class="num">${integer(row.without_vendor)}</td><td class="num">${integer(row.duplicate_identities)}</td><td><div class="ni-status-list">${Object.entries(row.statuses || {}).map(([status, count]) => `<span>${escapeHtml(status)} <b>${integer(count)}</b></span>`).join('')}</div></td></tr>`).join('')}</tbody></table></div>
+      <h4>Changes from another snapshot</h4>
+      <div class="ni-map-toolbar"><label>Compare with<select id="ni-snapshot-compare"><option value="">Choose a snapshot</option>${snapshotPayload.snapshots.map(item => `<option value="${item.dataset_id}"${String(item.dataset_id) === compareSnapshot ? ' selected' : ''}>${escapeHtml(item.snapshot_date)} · ${escapeHtml(item.file_name)}</option>`).join('')}</select></label></div>
+      ${renderComparison(snapshotPayload.comparison)}
+      <p class="form-note">${integer(snapshotPayload.snapshots.length)} snapshot${snapshotPayload.snapshots.length === 1 ? '' : 's'} in the workspace: ${snapshotPayload.snapshots.map(item => `${escapeHtml(item.snapshot_date)} · ${escapeHtml(item.file_name)} (${escapeHtml(item.networks.join(', ') || '—')})`).join('; ')}. Change the Inventory snapshot of the Analysis Selection to compare them.</p>`;
+    renderDensity();
+    renderDeployedSpectrum();
+  };
+  const renderComparison = comparison => {
+    if (!comparison) return '<p class="form-note">Choose another snapshot to see the cells added and removed and the vendor swaps of every network both snapshots describe.</p>';
+    if (!comparison.networks.length) return `<p class="form-note">${escapeHtml(comparison.file_name)} describes none of the networks of the current snapshot.</p>`;
+    return `<p class="form-note">Current snapshot compared with ${escapeHtml(comparison.snapshot_date)} · ${escapeHtml(comparison.file_name)} (cells matched by technology and identity).</p>
+      <div class="table-wrap ni-table-wrap"><table class="ni-table"><thead><tr><th>Network</th><th>Cells now</th><th>Cells then</th><th>In both</th><th>Added</th><th>Removed</th><th>Vendor changed</th><th>Sites with a vendor change</th><th>Vendor swaps</th><th>Regions with most changes</th></tr></thead>
+      <tbody>${comparison.networks.map(row => `<tr><td>${escapeHtml(row.operator)}</td><td class="num">${integer(row.cells)}</td><td class="num">${integer(row.cells_before)}</td><td class="num">${integer(row.common)}</td>
+        <td class="num">${integer(row.added)}</td><td class="num">${integer(row.removed)}</td><td class="num"><strong>${integer(row.vendor_changed)}</strong></td><td class="num">${integer(row.sites_with_vendor_change)}</td>
+        <td><div class="ni-status-list">${row.swaps.map(swap => `<span>${escapeHtml(swap.from)} → ${escapeHtml(swap.to)} <b>${integer(swap.cells)}</b></span>`).join('') || '—'}</div></td>
+        <td><div class="ni-status-list">${row.regions.map(region => `<span>${escapeHtml(region.region)} <b>${integer(region.cells)}</b></span>`).join('') || '—'}</div></td></tr>`).join('')}</tbody></table></div>`;
+  };
+  document.addEventListener('change', event => {
+    if (event.target.id !== 'ni-snapshot-compare') return;
+    compareSnapshot = event.target.value;
+    void loadSnapshot();
+  });
+  let densityDimension = '';
+  let densityAll = false;
+  const renderDensity = () => {
+    const host = $('ni-density');
+    const density = snapshotPayload?.density || {};
+    const polygons = snapshotPayload?.polygons || [];
+    $('ni-cluster-pending').hidden = polygons.length > 0;
+    const available = ['cluster', 'region'].filter(key => density[key]?.length);
+    if (!available.length) { host.innerHTML = '<p class="form-note">The inventory snapshot has no located sites.</p>'; return; }
+    // The dimension with imported polygons (and so areas) first.
+    const preferred = available.find(key => polygons.includes(key === 'cluster' ? 'clusters' : 'regions')) || available[0];
+    const dimension = available.includes(densityDimension) ? densityDimension : preferred;
+    const rows = density[dimension];
+    const networks = [...new Set(rows.map(row => row.operator))].sort((left, right) => left.localeCompare(right));
+    const areas = new Map();
+    for (const row of rows) {
+      const area = areas.get(row.area) || {area: row.area, area_km2: row.area_km2, total: 0, networks: {}};
+      area.networks[row.operator] = row;
+      area.total += row.sites;
+      areas.set(row.area, area);
+    }
+    const ordered = [...areas.values()].sort((left, right) => right.total - left.total);
+    const shown = densityAll ? ordered : ordered.slice(0, 25);
+    const label = dimension === 'cluster' ? 'Cluster' : 'Region';
+    host.innerHTML = `<div class="ni-map-toolbar">${available.length > 1 ? `<label>Group sites by<select id="ni-density-dimension">${available.map(key => `<option value="${key}"${key === dimension ? ' selected' : ''}>${key === 'cluster' ? 'Cluster' : 'Region'}</option>`).join('')}</select></label>` : ''}
+      <p class="form-note">${integer(ordered.length)} ${label.toLowerCase()}${ordered.length === 1 ? '' : 's'}${polygons.includes(dimension === 'cluster' ? 'clusters' : 'regions') ? ' from the imported polygons, with their areas' : ' from the inventory field, without areas'}; the ${shown.length < ordered.length ? `${shown.length} with the most sites are shown` : 'complete list is shown'}.</p>
+      ${ordered.length > 25 ? `<button type="button" class="ni-secondary-action" id="ni-density-all">${densityAll ? 'Show the first 25' : `Show all ${integer(ordered.length)}`}</button>` : ''}</div>
+      <div class="table-wrap ni-table-wrap"><table class="ni-table ni-density-table"><thead><tr><th rowspan="2">${label}</th><th rowspan="2">Area km²</th>${networks.map(network => `<th colspan="4" class="ni-density-network">${escapeHtml(network)}</th>`).join('')}</tr>
+      <tr>${networks.map(() => '<th>Sites</th><th>With NR</th><th>Sites/km²</th><th>Median ISD</th>').join('')}</tr></thead>
+      <tbody>${shown.map(area => `<tr><td>${escapeHtml(area.area)}</td><td class="num">${area.area_km2 === null ? '—' : number(area.area_km2, 0)}</td>${networks.map(network => {
+        const row = area.networks[network];
+        return row ? `<td class="num">${integer(row.sites)}</td><td class="num">${integer(row.nr_sites)}</td><td class="num">${row.sites_per_km2 === null ? '—' : number(row.sites_per_km2, 3)}</td><td class="num">${number(row.median_isd_km, 2)} km</td>`
+          : '<td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">—</td>';
+      }).join('')}</tr>`).join('')}</tbody></table></div>
+      <p class="form-note">Median ISD: the median distance from each in-service site to the nearest site of the same network (the inter-site distance).</p>`;
+  };
+  document.addEventListener('change', event => {
+    if (event.target.id !== 'ni-density-dimension') return;
+    densityDimension = event.target.value;
+    renderDensity();
+  });
+  document.addEventListener('click', event => {
+    if (event.target.id !== 'ni-density-all') return;
+    densityAll = !densityAll;
+    renderDensity();
+  });
+  const renderDeployedSpectrum = () => {
+    const table = $('ni-deployed-spectrum');
+    const rows = snapshotPayload?.spectrum || [];
+    if (!rows.length) { table.innerHTML = '<tbody><tr><td class="form-note">The inventory snapshot has no in-service cells with a band.</td></tr></tbody>'; return; }
+    table.innerHTML = `<thead><tr><th>Network</th><th>Technology</th><th>Band</th><th>Class</th><th>Sites</th><th>Cells</th><th>Carriers</th><th>Typical bandwidth</th><th>Deployed MHz</th><th>Channels</th></tr></thead><tbody>${rows.map(row => `<tr>
+      <td>${escapeHtml(row.operator)}</td><td>${escapeHtml(row.technology)}</td><td>${escapeHtml(row.band)}</td><td>${escapeHtml(row.band_class || '—')}</td>
+      <td class="num">${integer(row.sites)}</td><td class="num">${integer(row.cells)}</td><td class="num">${integer(row.carriers)}</td>
+      <td class="num">${row.typical_bandwidth_mhz ? `${number(row.typical_bandwidth_mhz, 0)} MHz` : '—'}</td><td class="num">${row.deployed_mhz ? number(row.deployed_mhz, 0) : '—'}</td>
+      <td>${escapeHtml((row.channels || []).join(', '))}</td></tr>`).join('')}</tbody>`;
+  };
+  const csvValue = value => {
+    const text = String(value ?? '');
+    return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+  };
+  const downloadCsv = (name, rows) => {
+    const url = URL.createObjectURL(new Blob([rows.map(row => row.map(csvValue).join(',')).join('\n') + '\n'], {type: 'text/csv'}));
+    const link = document.createElement('a');
+    link.href = url; link.download = name;
+    document.body.append(link); link.click(); link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+  const deploymentCsvRows = tables => [['Operator', snapshotPayload.group_label, 'Sites', 'Cells', 'LTE Cells', 'NR Cells'],
+    ...tables.flatMap(table => table.rows.map(row => [table.operator, row.group, row.sites, row.cells, row.lte_cells, row.nr_cells]))];
+  const renderDeploymentTables = () => {
+    const host = $('ni-deployment');
+    const tables = snapshotPayload?.deployment || [];
+    $('ni-deployment-export-all').disabled = !tables.length;
+    if (!tables.length) { host.innerHTML = snapshotPayload ? '<p class="form-note">No cell of the snapshot matches the Technology and status choices.</p>' : pendingSnapshot; return; }
+    host.innerHTML = tables.map((table, index) => {
+      const maximum = table.rows.reduce((value, row) => Math.max(value, row.sites), 1);
+      return `<section class="ni-inventory"><h3>${escapeHtml(table.operator)} <span>${integer(table.totals.sites)} sites · ${integer(table.totals.cells)} cells (${integer(table.totals.lte_cells)} LTE, ${integer(table.totals.nr_cells)} NR)</span></h3>
+        <button type="button" class="ni-secondary-action ni-export-action" data-ni-deployment-csv="${index}">Export CSV</button>
+        <table class="ni-table"><thead><tr><th>${escapeHtml(table.group_label)}</th><th>Sites</th><th>Cells</th><th>LTE cells</th><th>NR cells</th><th></th></tr></thead><tbody>${table.rows.map(row => `<tr>
+          <td>${escapeHtml(row.group)}</td><td class="num">${integer(row.sites)}</td><td class="num">${integer(row.cells)}</td><td class="num">${integer(row.lte_cells)}</td><td class="num">${integer(row.nr_cells)}</td>
+          <td><span class="ni-share"><span style="width:${row.sites / maximum * 100}%"></span></span></td></tr>`).join('')}</tbody></table></section>`;
+    }).join('');
+  };
+  document.addEventListener('click', event => {
+    const button = event.target.closest('[data-ni-deployment-csv]');
+    if (!button || !snapshotPayload) return;
+    const table = snapshotPayload.deployment[Number(button.dataset.niDeploymentCsv)];
+    if (table) downloadCsv(`network-deployment-${snapshotPayload.group}_${table.operator}.csv`, deploymentCsvRows([table]));
+  });
 
   // Sites/Cells tables: complete inventories or cells observed in the CDRs.
   const siteTableTitle = source => source === 'observed' ? 'Observed Sites/Cells (from CDRs)' : 'Full Sites/Cells Inventory';
@@ -615,11 +839,13 @@
     const group = displayedDeploymentGroup;
     button.disabled = true;
     try {
-      const response = isSiteTable(group)
-        ? await fetch('/api/network-insights/sites/export', {
-          method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({...selection, operator, filters}),
-        })
-        : await fetch(`/api/network-insights/deployment/export-all?group=${encodeURIComponent(group)}`);
+      if (!isSiteTable(group)) {
+        downloadCsv(`network-deployment-${group}_all.csv`, deploymentCsvRows(snapshotPayload?.deployment || []));
+        return;
+      }
+      const response = await fetch('/api/network-insights/sites/export', {
+        method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({...selection, operator, filters}),
+      });
       if (!response.ok) {
         const payload = await response.json();
         throw new Error(payload.detail || 'Unable to export the deployment tables.');
@@ -770,8 +996,20 @@
     const note = $('ni-deployment-status');
     $('ni-deployment-export-all').disabled = true;
     inventorySelection = null;
-    if (!(config.inventories || []).length) {
-      host.innerHTML = '<p class="ni-pending-box"><strong>Pending input.</strong> Upload the Vodafone or Three cell inventories as Vendor mapping datasets in Workspace to analyse NNS, eMOCN scenarios, host networks and RAN vendors.</p>';
+    document.querySelectorAll('[data-ni-deployment-filter]').forEach(element => { element.hidden = isSiteTable(group); });
+    if (!isSiteTable(group)) {
+      displayedDeploymentGroup = group;
+      note.textContent = 'Loading the inventory snapshot…';
+      const payload = await loadSnapshot();
+      if (deploymentController !== controller) return;
+      renderDeploymentTables();
+      note.textContent = payload
+        ? `Distinct sites and cells of each owner network in the inventory snapshot${payload.in_service_only ? ' (in service only)' : ''}. Host Network shows whose equipment carries the cells; Region and Cluster use the imported polygons when there are any.`
+        : '';
+      return;
+    }
+    if (!(config.inventories || []).length && group === 'inventory') {
+      host.innerHTML = '<p class="ni-pending-box"><strong>Pending input.</strong> Upload the Vodafone or Three cell inventories as Vendor mapping datasets in Workspace to list their complete rows.</p>';
       return;
     }
     note.textContent = 'Loading the cell inventories…';
@@ -882,7 +1120,15 @@
     if (button) zoomMap(button.dataset.kind, Number(button.dataset.latitude), Number(button.dataset.longitude));
   });
   $('ni-deployment-group').onchange = () => { void loadDeployment(); };
+  $('ni-deployment-technology').onchange = () => { void loadDeployment(); };
+  $('ni-deployment-in-service').onchange = () => { void loadDeployment(); };
+  $('ni-snapshot').addEventListener('change', () => {
+    void loadDeployment();
+    if (analysis) status('The inventory snapshot changed: press Analyse Network to apply it to the serving cells of the samples.');
+  });
   renderDatasets();
   void loadFilterOptions().then(showLastAnalysis);
   void loadDeployment();
+  // The site tables do not read the snapshot: the Snapshot, density and spectrum panels still need it.
+  if (isSiteTable($('ni-deployment-group').value)) void loadSnapshot();
 })();

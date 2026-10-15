@@ -818,6 +818,7 @@
           <li>The same non-empty Vendor at both endpoints returns <code>&lt;Operator&gt;_&lt;Vendor&gt;</code>.</li>
           <li>If Ericsson is present at either endpoint and the other Vendor is different or missing, the result is <code>&lt;Operator&gt;_Ericsson (Mixed)</code>.</li>
           <li>Every other different or missing endpoint combination returns <code>&lt;Operator&gt;_Mixed (non-Ericsson)</code>.</li>
+          <li>A sample none of whose endpoints is in the snapshots (for example an O2 sample on a cell the inventories do not list) returns <code>&lt;Operator&gt;_Unknown</code> (Vendor <code>Unknown</code>).</li>
         </ul>
         <p><strong>Operators that no selected snapshot serves</strong> (for example EE): no Vendor is assigned; the result is <code>&lt;Operator&gt; - All</code>.</p>
         <p>The mapping populates <code>Vendor</code>, <code>Operator_Vendor</code> and <code>Vendor_Operator</code>, and describes the cell that served the start of each sample in <code>Serving_Network</code>, <code>Serving_Host_Network</code>, <code>Serving_Site_ID</code>, <code>Serving_eMOCN_Scenario</code>, <code>Serving_Distance_km</code> and <code>Serving_Inventory_Snapshot</code>. CDRs marked <em>Vendor mapping outdated</em> were mapped under an earlier rule, other Serving Networks or other snapshots; they are selected when the dialog opens.</p>

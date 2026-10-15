@@ -1022,7 +1022,7 @@ def test_cluster_inventory_counts_deduplicate_uploads_and_do_not_require_cdrs(cl
                                        {'operator': 'Vodafone', 'sites': 2, 'cells': 3}]
     html = client.get('/network-insights').text
     assert 'id="ni-sites-source"' in html
-    assert html.index('id="ni-sites-pending"') < html.index('Cluster polygons required.')
+    assert html.index('id="ni-sites-pending"') < html.index('<strong>Cluster polygons.</strong>')
 
 
 def test_combined_inventory_export_prepares_all_rows_before_delivery(client, tmp_path):
@@ -1082,7 +1082,8 @@ def test_cluster_and_region_prefer_polygons_and_fallback_to_inventory(client, tm
 def test_cluster_grouping_disabled_without_polygons_or_inventory_cluster_fields(client, tmp_path):
     _login(client)
     _add_ready_dataset(tmp_path, 'no-cluster.csv', 'mapping_three', pd.DataFrame({'Site_ID': ['S1']}), None)
-    assert 'value="cluster" disabled' in client.get('/network-insights').text
+    # The snapshot deployment always offers Cluster: imported polygons, else the inventory's Cluster fields ("Not set").
+    assert '<option value="cluster">Cluster</option>' in client.get('/network-insights').text
     for path in ['/api/network-insights/deployment?group=cluster',
                  '/api/network-insights/deployment/export-all?group=cluster']:
         assert client.get(path).status_code == 400

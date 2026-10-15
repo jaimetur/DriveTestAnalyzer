@@ -181,6 +181,7 @@ Vodafone UK (`Vodafone_`), Three UK (`3_`) and every other Operator (its own nam
 - Same first/last vendor → `<Operator>_<Vendor>`.
 - Ericsson at either end and a different or missing vendor at the other → `<Operator>_Ericsson (Mixed)`.
 - Any other different or missing combination → `<Operator>_Mixed (non-Ericsson)`.
+- No endpoint found in the snapshots → `<Operator>_Unknown`.
 
 Operators that no selected snapshot serves (EE without its own inventory) store `<Operator> - All`. `Vendor` keeps the vendor alone (`Ericsson`, `Ericsson (Mixed)`, `Mixed (non-Ericsson)`) and `Vendor_Operator`, derived when the CDRs are read, the same identity as `<Vendor>_<Operator>`. The cell that served the start of each sample fills `Serving_Network`, `Serving_Host_Network`, `Serving_Site_ID`, `Serving_eMOCN_Scenario`, `Serving_Distance_km` and `Serving_Inventory_Snapshot`.
 

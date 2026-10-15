@@ -125,10 +125,12 @@ def test_network_summaries_include_all_grouped_deployment_views_and_exclude_full
     for kind in ['word', 'powerpoint']:
         app_module.write_network_insights_summary({'datasets': {'data': [data_id]}}, kind, tmp_path / f'{kind}.output')
     for deployment in captured:
-        assert [group['group'] for group in deployment['groupings']] == list(ni.DEPLOYMENT_GROUPINGS)
+        # The grouped views come from the inventory snapshot, as on the page.
+        assert [group['group'] for group in deployment['groupings']] == list(ni.SUMMARY_DEPLOYMENT_GROUPS)
         tables = export.deployment_tables(deployment)
-        assert len(tables) == len(ni.DEPLOYMENT_GROUPINGS)
-        assert {columns[0] for _title, columns, _rows in tables} == set(ni.DEPLOYMENT_GROUPINGS.values())
+        assert len(tables) == len(ni.SUMMARY_DEPLOYMENT_GROUPS)
+        assert {columns[0] for _title, columns, _rows in tables} == {ni.ii.DEPLOYMENT_DIMENSIONS[group] for group in ni.SUMMARY_DEPLOYMENT_GROUPS}
+        assert deployment['snapshot']['selection'][0]['cells'] == 1
         assert all('Full Site' not in title for title, _columns, _rows in tables)
         assert deployment['cluster_inventories']['rows'] == [{'operator': 'Vodafone', 'sites': 1, 'cells': 1}]
 
@@ -150,3 +152,37 @@ def test_cluster_sites_sources_are_both_present_in_ppt_and_word(tmp_path):
         assert len(inventory) == 1
         assert [[cell.text for cell in row.cells] for row in list(inventory[0].rows)[1:]] == [
             ['Vodafone', '37,201', '516,898'], ['Three', '16,107', '140,127']]
+
+
+def test_serving_cells_5g_availability_and_snapshot_tables_are_exported(tmp_path):
+    analysis = _analysis()
+    analysis['serving'] = {
+        'overshoot_km': 5, 'max_distance_km': 30,
+        'summary': [{'operator': 'VF', 'samples': 10, 'with_cell': 10, 'matched': 9, 'matched_share': 90.0, 'median_km': 0.8,
+                     'p90_km': 2.1, 'overshoot_share': 10.0, 'hosted_elsewhere_share': 20.0}],
+        'by_band': [{'operator': 'VF', 'value': 'B20', 'samples': 9, 'median_km': 0.8, 'overshoot_share': 10.0}],
+        'by_vendor': [], 'by_host': [],
+        'overshooting_cells': [{'operator': 'VF', 'cell': '6692112', 'site': '57744', 'band': 'B3', 'vendor': 'Ericsson', 'network': 'VF',
+                                'host': 'O2', 'samples_beyond': 3, 'samples': 4, 'median_km': 7.5, 'max_km': 9.1}],
+        'nr_availability': {'rows': [{'operator': 'VF', 'anchored': 9, 'on_nr_sites': 6, 'without_nr_on_nr_sites': 2, 'gap_share': 33.3,
+                                      'without_nr_elsewhere_share': 80.0}], 'sites': []},
+        'distance_cdf': {'type': 'empty', 'message': 'No chart'},
+    }
+    deployment = {'snapshot': {
+        'selection': [{'operator': 'VF', 'snapshot_date': '2026-09-17', 'file_name': 'cells.zip', 'sites': 2, 'cells': 6,
+                       'technologies': {'LTE': 5, 'NR': 1}}],
+        'host_matrix': {'owners': ['VF'], 'hosts': ['O2', 'VF'], 'cells': {'VF|VF': 5, 'VF|O2': 1}, 'sites': {}},
+        'quality': [{'operator': 'VF', 'cells': 6, 'not_in_service': 0, 'locked_or_disabled': 0, 'without_position': 0, 'without_azimuth': 1,
+                     'without_band': 0, 'without_vendor': 0, 'duplicate_identities': 0}],
+        'spectrum': [{'operator': 'VF', 'technology': 'LTE', 'band': 'B20', 'band_class': 'Low', 'sites': 2, 'cells': 5, 'carriers': 1,
+                      'typical_bandwidth_mhz': 10, 'deployed_mhz': 10}],
+        'density': {'region': [{'area': 'North', 'operator': 'VF', 'sites': 2, 'nr_sites': 1, 'area_km2': None, 'sites_per_km2': None,
+                                'median_isd_km': 1.3, 'p90_isd_km': 1.3}]},
+    }}
+    ppt, word = tmp_path / 'serving.pptx', tmp_path / 'serving.docx'
+    export_network_insights_powerpoint(ppt, analysis, deployment, {}, lambda *_args: b'', template=TEMPLATE)
+    export_network_insights_word(word, analysis, deployment, {}, lambda *_args: b'')
+    ppt_headers = {shape.table.cell(0, 1).text for slide in Presentation(ppt).slides for shape in slide.shapes if shape.has_table}
+    word_headers = {table.cell(0, 1).text for table in Document(word).tables}
+    for headers in (ppt_headers, word_headers):
+        assert {'Samples', 'Cell', 'Samples on LTE cells', 'Snapshot date', 'Technology', 'Network'} <= headers

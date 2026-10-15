@@ -25,7 +25,7 @@ import numpy as np
 import pandas as pd
 
 from src.modules.cdr_reporting import (
-    _first_existing, _normalise_operator, _split_global_cells, _vendor_from_ends, _vendor_prefix, _with_vendor_columns,
+    VENDOR_UNKNOWN, _first_existing, _normalise_operator, _split_global_cells, _vendor_from_ends, _vendor_prefix, _with_vendor_columns,
 )
 from src.modules.network_inventory import (
     INVENTORY_CELLS_TABLE, NETWORK_FAMILY_LABELS, dataset_revision, effective_snapshot_date, ensure_inventory_cells,
@@ -34,7 +34,7 @@ from src.modules.network_inventory import (
 
 SERVING_NETWORKS_STATE_KEY = 'network_serving_networks'
 # Raise when the mapping rule changes, so the CDRs mapped before show that they need mapping again.
-SERVING_ENGINE_VERSION = 1
+SERVING_ENGINE_VERSION = 2
 DEFAULT_MAX_DISTANCE_KM = 30.0
 # The networks whose cells serve the subscribers of each network family, in order of preference: Vodafone and
 # Three share their RAN through eMOCN, and Lebara subscribers use the Vodafone network.
@@ -290,8 +290,11 @@ def assign_serving_vendors(
     first_vendor = first['vendor'].reindex(range(len(result)))
     last_vendor = last['vendor'].reindex(range(len(result)))
     mapped_operators = {operator for operator, values in families.items() if set(values) & available}
+    # Like the Vendor polygons, a sample none of whose cells is in the snapshots is Unknown: an Operator whose
+    # inventory covers only part of its network (O2's cells hosted by Vodafone) would otherwise look Mixed.
     assigned = [
-        _vendor_from_ends(_vendor_prefix(operator), _text(start), _text(end)) if operator in mapped_operators
+        (f'{_vendor_prefix(operator)}_{VENDOR_UNKNOWN}' if _text(start) is None and _text(end) is None
+         else _vendor_from_ends(_vendor_prefix(operator), _text(start), _text(end))) if operator in mapped_operators
         else _normalise_operator(operator)
         for operator, start, end in zip(operators, first_vendor, last_vendor, strict=True)
     ]

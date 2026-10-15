@@ -87,8 +87,8 @@ def test_samples_take_the_vendor_of_their_serving_cell_from_the_closest_snapshot
         'Vodafone SA_Samsung',
         # No snapshot holds EE cells: the colliding identity is not EE's.
         'EE - All',
-        # The cell is 280 km away from the sample: not its serving cell.
-        'Vodafone_Mixed (non-Ericsson)',
+        # The cell is 280 km away from the sample: not its serving cell, and no other cell served it.
+        'Vodafone_Unknown',
         # O2 is served only by O2 cells by default.
         'O2 (UK) - All',
     ]

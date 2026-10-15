@@ -1209,6 +1209,36 @@
       drawConfiguredPointLabel(context, series.name, x, y, series.colour, payload.label_position, 13, payload.label_format);
       pushPointHit(state, transform, x, y, {label: series.name, series: `${payload.y_label} / ${payload.x_label}`, value: `${numericLabel(point[1])} / ${numericLabel(point[0])}`});
     }));
+    // Optional sites drawn over the grid: one wedge per cell (azimuth from north, beamwidth, vendor colour).
+    const sectors = Array.isArray(payload.sectors) ? payload.sectors : [];
+    if (sectors.length) {
+      const project = (longitude, latitude) => {
+        if (Array.isArray(worldBounds) && worldBounds.length === 4) {
+          const [worldLeft, worldTop, worldRight, worldBottom] = worldBounds.map(Number);
+          const projected = osmWorldCoordinates(latitude, longitude, basemap.zoom);
+          return [left + (projected[0] - worldLeft) / (worldRight - worldLeft) * width, top + (projected[1] - worldTop) / (worldBottom - worldTop) * height];
+        }
+        return [left + (longitude - xDomain[0]) / (xDomain[1] - xDomain[0]) * width, top + height - (latitude - yDomain[0]) / (yDomain[1] - yDomain[0]) * height];
+      };
+      const radius = Math.max(10, pointRadius * 2.6);
+      context.save(); context.beginPath(); context.rect(left, top, width, height); context.clip();
+      sectors.forEach(site => {
+        const longitude = Number(site.lon), latitude = Number(site.lat);
+        if (longitude < xDomain[0] || longitude > xDomain[1] || latitude < yDomain[0] || latitude > yDomain[1]) return;
+        const [x, y] = project(longitude, latitude);
+        (site.cells || []).forEach(cell => {
+          const azimuth = Number(cell[0]), beam = Math.max(24, Math.min(140, Number(cell[1]) || 65));
+          context.beginPath();
+          if (cell[0] === null || !Number.isFinite(azimuth)) context.arc(x, y, radius * .45, 0, Math.PI * 2);
+          else { context.moveTo(x, y); context.arc(x, y, radius, (azimuth - beam / 2 - 90) * Math.PI / 180, (azimuth + beam / 2 - 90) * Math.PI / 180); context.closePath(); }
+          context.globalAlpha = .58; context.fillStyle = cell[2] || '#868E96'; context.fill();
+          context.globalAlpha = 1; context.strokeStyle = 'rgba(30,27,75,.85)'; context.lineWidth = .9; context.stroke();
+        });
+        context.fillStyle = '#1e1b4b'; context.beginPath(); context.arc(x, y, 2.4, 0, Math.PI * 2); context.fill();
+        pushPointHit(state, transform, x, y, {label: String(site.label || 'Site'), series: 'Inventory site', value: String(site.detail || '')});
+      });
+      context.restore();
+    }
     drawLegend(context, payload.legend, {fontSize: 13, sideX: layout.position === 'right' ? left + width + 25 : undefined});
     context.fillStyle = '#405765'; context.textAlign = 'left'; font(context, 17, true); context.fillText(payload.x_label || '', left, top + height + 16); context.fillText(payload.y_label || '', layout.position === 'left' ? left - 28 : 26, top - 25);
     if (basemap?.attribution) {

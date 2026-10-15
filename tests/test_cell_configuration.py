@@ -165,3 +165,15 @@ def test_kmz_package_uploads_as_a_multi_operator_inventory_snapshot(client):
     assert all(item['dataset_id'] != uploaded['id'] for item in ni.list_inventory_snapshots(core.repository))
     with core.repository.connection() as connection:
         assert connection.execute('SELECT COUNT(*) FROM inventory_cells WHERE dataset_id = ?', (uploaded['id'],)).fetchone()[0] == 0
+
+
+def test_workbook_sheets_repeating_a_field_take_its_first_non_empty_column():
+    # The VFUK workbook writes Site_ID and CELL_ID in its 2G sheet and Site ID and Cell ID in its 4G and 5G sheets.
+    vfuk = pd.DataFrame({
+        'source_sheet': ['2G', '4G', '5G'], 'Site_ID': ['A1', None, None], 'CELL_ID': ['7', None, None],
+        'Site ID': [None, '57744', '43345'], 'Cell ID': [None, '110', '515'], 'Local Cell ID': [None, '7', '10'],
+        'eNodeB ID': [None, '1491', None], 'gNodeB ID': [None, None, '16628'], 'OP/ Vendor': ['Nokia', 'Huawei', 'Ericsson'],
+    })
+    cells = ni.normalise_inventory(vfuk, 'mapping_vodafone')
+    assert cells['site_id'].tolist() == ['57744', '43345']
+    assert cells['cell_identity'].tolist() == [str(1491 * 256 + 110), str(16628 * 16384 + 515)]

@@ -27,7 +27,7 @@ INVENTORY_DATASET_KINDS = ('mapping_vodafone', 'mapping_three', 'network_invento
 INVENTORY_CELLS_TABLE = 'inventory_cells'
 INVENTORY_SNAPSHOTS_TABLE = 'inventory_snapshots'
 # Raise when the normalisation changes, so every snapshot is built again from its rows.
-INVENTORY_CELLS_VERSION = 1
+INVENTORY_CELLS_VERSION = 3
 # The owner network of the cells of an inventory without a Network column.
 DEFAULT_NETWORK_BY_KIND = {'mapping_vodafone': 'Vodafone', 'mapping_three': '3'}
 NETWORK_FAMILY_LABELS = {'vodafone': 'Vodafone', 'three': '3', 'o2': 'O2', 'ee': 'EE'}
@@ -162,19 +162,20 @@ def effective_snapshot_date(dataset: dict[str, Any] | Any) -> str:
     return infer_snapshot_date(str(field('file_name') or '')) or str(field('uploaded_at') or '')[:10]
 
 
-def _column_lookup(columns: Iterable[object]) -> dict[str, str]:
-    lookup: dict[str, str] = {}
+def _column_lookup(columns: Iterable[object]) -> dict[str, list[str]]:
+    """Every column of each identity: workbooks repeat a field in their sheets (Site_ID in 2G, Site ID in 4G)."""
+    lookup: dict[str, list[str]] = {}
     for column in columns:
-        lookup.setdefault(column_identity(column), str(column))
+        lookup.setdefault(column_identity(column), []).append(str(column))
     return lookup
 
 
 def resolve_fields(columns: Iterable[object]) -> dict[str, list[str]]:
-    """The source columns of each normalised field, in order of preference."""
+    """The source columns of each normalised field, in order of preference (each row takes the first non-empty)."""
     lookup = _column_lookup(columns)
     resolved: dict[str, list[str]] = {}
     for field, aliases in FIELD_ALIASES.items():
-        found = list(dict.fromkeys(lookup[identity] for alias in aliases if (identity := column_identity(alias)) in lookup))
+        found = list(dict.fromkeys(column for alias in aliases for column in lookup.get(column_identity(alias), [])))
         if found:
             resolved[field] = found
     return resolved
@@ -232,6 +233,8 @@ def _technology(frame: pd.DataFrame, fields: dict[str, list[str]]) -> pd.Series:
     enodeb = _first_number(frame, fields.get('enodeb_id')).notna()
     result = result.mask(result.eq('') & gnodeb, 'NR').mask(result.eq('') & enodeb, 'LTE')
     global_columns = [column_identity(column) for column in fields.get('global_id', [])]
+    if not global_columns and fields.get('cell_id') and not (fields.get('enodeb_id') or fields.get('gnodeb_id')):
+        global_columns = ['cellid']
     fallback = 'NR' if global_columns and global_columns[0] in {'nci', 'ncgi'} else 'LTE' if global_columns else ''
     return result.where(result != '', fallback)
 
@@ -254,18 +257,22 @@ def normalise_inventory(frame: pd.DataFrame, kind: str, dataset_operator: str | 
     result['network_family'] = result['network'].map(families)
     result['host_family'] = result['host_network'].map(families)
 
-    cell_id = frame[fields['cell_id'][0]] if fields.get('cell_id') else None
-    local = frame[fields['local_cell_id'][0]] if fields.get('local_cell_id') else None
-    enodeb = frame[fields['enodeb_id'][0]] if fields.get('enodeb_id') else pd.Series(math.nan, index=frame.index)
-    gnodeb = frame[fields['gnodeb_id'][0]] if fields.get('gnodeb_id') else pd.Series(math.nan, index=frame.index)
-    length = frame[fields['gnodeb_length'][0]] if fields.get('gnodeb_length') else None
+    # Each part of the identity takes the first non-empty column of its field (a workbook's sheets repeat them).
+    cell_id = _first_number(frame, fields.get('cell_id')) if fields.get('cell_id') else None
+    local = _first_number(frame, fields.get('local_cell_id')) if fields.get('local_cell_id') else None
+    enodeb = _first_number(frame, fields.get('enodeb_id'))
+    gnodeb = _first_number(frame, fields.get('gnodeb_id'))
+    length = _first_number(frame, fields.get('gnodeb_length')) if fields.get('gnodeb_length') else None
     lte = lte_eci_series(enodeb, cell_id, local)
     nr = nr_nci_series(gnodeb, cell_id, local, length)
     # The VFUK workbook's own CId___ECI keys Huawei and Nokia cells by their internal Local Cell ID, and its
     # GCID was calculated the same way before: its cells take only the identity of their node and Cell ID.
-    node_based = kind == 'mapping_vodafone' and bool(fields.get('enodeb_id') or fields.get('gnodeb_id'))
+    has_nodes = bool(fields.get('enodeb_id') or fields.get('gnodeb_id'))
+    node_based = kind == 'mapping_vodafone' and has_nodes
+    # Without node columns, a Cell ID column is the global identity of the cell (as in the Vendor mapping).
+    global_fields = [*fields.get('global_id', []), *([] if has_nodes else fields.get('cell_id', []))]
     global_id = pd.Series('', index=frame.index, dtype=object) if node_based else _first_text(
-        frame, fields.get('global_id')).map(lambda value: value if re.fullmatch(r'\d+', value) else '')
+        frame, global_fields).map(lambda value: value if re.fullmatch(r'\d+', value) else '')
     identity = pd.Series('', index=frame.index, dtype=object)
     is_lte, is_nr = result['technology'].eq('LTE'), result['technology'].eq('NR')
     identity = identity.mask(is_lte & lte.notna(), lte.astype(str))
