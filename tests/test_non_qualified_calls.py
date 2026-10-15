@@ -147,6 +147,11 @@ def test_nq_calls_are_indexed_tracked_and_commented(client, tmp_path):
     # Empty values fall back to the next CDR column with a value.
     assert dropped['start_time'] == '2026-02-24 12:00:00' and dropped['status'] == 'Not Attended'
     assert dropped['latitude'] == 53.7 and dropped['failure_classification'] == 'VoLTE Problems'
+    # Pages of 10 rows by default, or of the size chosen in Rows (any other size takes the default).
+    assert result['page_size'] == 10 and nq.PAGE_SIZES == (10, 25, 50, 100)
+    assert query(client, page_size=1, page=2)['page_size'] == 10 and query(client, page_size=25)['page_size'] == 25
+    page = client.get('/non-qualified-calls').text
+    assert '<option value="10" selected>10</option>' in page and '<option value="200"' not in page
     assert query(client, filters={'service': ['voice']})['total'] == 2
     assert query(client, filters={'search': 'pci 80'})['total'] == 1
 

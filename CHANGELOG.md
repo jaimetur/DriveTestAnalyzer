@@ -21,6 +21,7 @@
 #### 🐛 Bug fixes:
 - **Vendor mapping cell identities:** the VFUK Multivendor Mapping and the Network Inventories identify each LTE cell by its ECI, `eNodeB ID × 256 + Cell ID`, and each NR cell by its NCI, `gNodeB ID × 16384 + Cell ID` (22-bit gNodeB IDs), the identities the CDRs report. The internal Local Cell ID of Huawei and Nokia cells (about 54,000 Vodafone and O2 cells) and the former `× 4096` NR rule found no cell, or a wrong one, for their samples, and the 5G sheet of the VFUK mapping now also maps the NR cells of SA CDRs; one Network Inventory can hold LTE and NR cells. Map the CDRs again to apply it. Non-Qualified Calls takes the gNB of NR cells with the same rule.
 - **Operator of a Network Inventory:** changing it in the Network Inventory & Vendor Mappings card is saved again.
+- **NQ calls per page:** **Rows** offers 10 (the default), 25, 50 and 100 calls a page, and the table shows that many in every view; with All panels it showed ten calls whatever Rows said.
 
 #### 📚 Documentation:
 

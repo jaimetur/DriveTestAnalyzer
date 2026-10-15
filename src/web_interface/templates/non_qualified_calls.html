@@ -108,7 +108,7 @@
       <div class="nq-toolbar">
         <p class="nq-count" id="nq-count" role="status">Loading calls…</p>
         <div class="nq-toolbar-actions">
-          <label class="nq-page-size">Rows<select id="nq-page-size">{% for size in nq_page_sizes %}<option value="{{ size }}"{% if size == 50 %} selected{% endif %}>{{ size }}</option>{% endfor %}</select></label>
+          <label class="nq-page-size">Rows<select id="nq-page-size">{% for size in nq_page_sizes %}<option value="{{ size }}"{% if size == nq_default_page_size %} selected{% endif %}>{{ size }}</option>{% endfor %}</select></label>
           {% if nq_can_edit %}<button type="button" class="nq-secondary-action" id="nq-columns-open" title="The columns of the table and of the Excel export, including CDR columns, for every user of the workspace">Columns</button>{% endif %}
           <button type="button" class="nq-secondary-action" id="nq-column-order-reset" title="Put the columns of the table back in their default order" hidden>Default column order</button>
           <button type="button" class="nq-primary-action" id="nq-export" title="Every call that matches the filters, with its comments and history">Export Excel</button>

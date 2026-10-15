@@ -106,9 +106,9 @@ CONFIGURATION_FORMAT = 'nq-calls-configuration'
 CONFIGURATION_FORMAT_VERSION = 1
 UNASSIGNED = '__unassigned__'
 MAX_COMMENT_LENGTH = 5000
-PAGE_SIZES = (25, 50, 100, 200)
-# The calls All panels shows a page, below the Filters.
-ALL_PANELS_PAGE_SIZE = 10
+# The rows of a page of the calls table, the first one by default (also with All panels).
+PAGE_SIZES = (10, 25, 50, 100)
+DEFAULT_PAGE_SIZE = PAGE_SIZES[0]
 OPTION_KINDS = ('status', 'team')
 COLOR_PATTERN = re.compile(r'#[0-9a-fA-F]{6}')
 DEFAULT_STATUSES = nq_catalog.DEFAULT_STATUSES
@@ -3424,8 +3424,8 @@ def query_calls(task_repository: Any, request: dict[str, Any], username: str) ->
     sort_key = str(request.get('sort') or '')
     sort = _order_sql(sort_key, task_repository)
     direction = 'ASC' if str(request.get('direction') or '').lower() == 'asc' else 'DESC'
-    page_size = int(request.get('page_size') or 50)
-    page_size = page_size if page_size in (*PAGE_SIZES, ALL_PANELS_PAGE_SIZE) else 50
+    page_size = int(request.get('page_size') or DEFAULT_PAGE_SIZE)
+    page_size = page_size if page_size in PAGE_SIZES else DEFAULT_PAGE_SIZE
     # The breakdowns of the Summary are left out while it is not shown.
     with_breakdowns = request.get('breakdowns', True) is not False
     with task_repository.connection() as connection:
@@ -6560,7 +6560,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         sort: str = 'start_time'
         direction: str = 'desc'
         page: int = 1
-        page_size: int = 50
+        page_size: int = DEFAULT_PAGE_SIZE
         breakdowns: bool = True
 
     class TrackingPayload(BaseModel):
@@ -6805,7 +6805,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
     @core.app.get('/non-qualified-calls', response_class=HTMLResponse)
     def non_qualified_calls_page(request: Request, user=Depends(core.current_user)):
         return core.render_template(request, 'non_qualified_calls.html', {
-            'user': user, 'nq_can_edit': can_edit(user), 'nq_can_import_analyses': can_moderate(user), 'nq_page_sizes': PAGE_SIZES,
+            'user': user, 'nq_can_edit': can_edit(user), 'nq_can_import_analyses': can_moderate(user), 'nq_page_sizes': PAGE_SIZES, 'nq_default_page_size': DEFAULT_PAGE_SIZE,
         })
 
     @core.app.get('/api/non-qualified-calls/state')

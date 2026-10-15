@@ -67,7 +67,7 @@
     options: {statuses: [], teams: []}, rootCauses: {domains: [], categories: [], causes: [], require_to_close: false}, users: [], userNames: {},
     defaultUsers: [],
     user: {username: '', can_edit: false, can_moderate: false},
-    unassigned: '__unassigned__', datasets: [], mainCities: [], sort: 'start_time', direction: 'desc', page: 1, pageSize: 50,
+    unassigned: '__unassigned__', datasets: [], mainCities: [], sort: 'start_time', direction: 'desc', page: 1, pageSize: 10,
     result: null, selected: new Set(), detail: null, requestToken: 0, busy: false, extraFilters: {}, stale: new Set(), view: 'calls',
     fields: [], fieldTypes: {}, tableColumns: {builtin: [], cdr: []}, optionalColumns: {}, cdrColumns: [], versionLabels: {},
     rateService: '', sections: [], statusRules: [], conditionFields: {}, ruleOperators: {}, fieldSources: {}, trackingRefs: {},
@@ -1704,17 +1704,8 @@
   const VIEW_STORAGE = `nq-view:${$('nq-table').dataset.workspace || ''}`;
   // The bar shows the calls, one panel at a time, or every panel.
   const VIEWS = ['calls', 'summary', 'rates', 'sources', 'root', 'lifecycle', 'progress', 'all'];
-  // All panels shows the first calls, ten a page (the size chosen in Rows is that of NQ Calls).
-  const ALL_PANELS_PAGE_SIZE = 10;
-  const shownPageSize = () => (state.view === 'all' ? ALL_PANELS_PAGE_SIZE : state.pageSize);
   const applyView = (view) => {
-    const size = shownPageSize();
     state.view = VIEWS.includes(view) ? view : 'calls';
-    $('nq-page-size').closest('label').hidden = state.view === 'all';
-    if (state.result && shownPageSize() !== size) {
-      state.page = 1;
-      loadCalls({quiet: true});
-    }
     root.querySelectorAll('[data-nq-view-panel]').forEach((panel) => {
       panel.hidden = state.view !== 'all' && panel.dataset.nqViewPanel !== state.view;
     });
@@ -1809,7 +1800,7 @@
   async function loadCalls({quiet = false} = {}) {
     const token = ++state.requestToken;
     const filters = currentFilters();
-    const signature = JSON.stringify([filters, state.sort, state.direction, shownPageSize()]);
+    const signature = JSON.stringify([filters, state.sort, state.direction, state.pageSize]);
     if (state.filtersRestored) saveFilters(filters);
     loadAvailable(filters, quiet);
     if (!quiet) {
@@ -1821,7 +1812,7 @@
       const breakdowns = panelShown('summary');
       const result = await api('/api/non-qualified-calls/calls', {
         method: 'POST',
-        body: JSON.stringify({filters, sort: state.sort, direction: state.direction, page: state.page, page_size: shownPageSize(), breakdowns}),
+        body: JSON.stringify({filters, sort: state.sort, direction: state.direction, page: state.page, page_size: state.pageSize, breakdowns}),
         // A quiet reload is the page keeping itself current, not someone using the application.
         ...(quiet ? {headers: {'X-Background-Refresh': '1'}} : {}),
       });
@@ -3907,7 +3898,9 @@
       $('nq-refresh').disabled = false;
     }
   });
-  $('nq-page-size').addEventListener('change', (event) => { state.pageSize = Number(event.target.value) || 50; state.page = 1; loadCalls(); });
+  // Every page shows the rows of Rows, also the value a browser restores on reload.
+  state.pageSize = Number($('nq-page-size').value) || state.pageSize;
+  $('nq-page-size').addEventListener('change', (event) => { state.pageSize = Number(event.target.value) || 10; state.page = 1; loadCalls(); });
   // -- scroll position: a reload returns to where the page was, while its panels load ------------
   const SCROLL_STORAGE = `nq-scroll:${window.location.pathname}`;
   const rememberScroll = () => {
