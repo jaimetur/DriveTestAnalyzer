@@ -271,6 +271,11 @@ def test_lifecycle_and_rca_insights_compare_the_three_sources(client, tmp_path):
     # Open is the sum of the statuses of the attended calls not closed yet.
     assert lifecycle['open_statuses'] == ['Under Analysis', 'Under Implementation', 'Under Planning']
     assert lifecycle['open'] == sum(pipeline[name] for name in lifecycle['open_statuses'])
+    # Not Attended: the calls in the first status, with its colour.
+    assert lifecycle['not_attended'] == {'status': 'Not Attended', 'count': pipeline['Not Attended'], 'color': '#9aa5ad'}
+    # The stalled calls are open ones: the call not attended, months old, is not stalled.
+    assert lifecycle['stalled_total'] <= lifecycle['open']
+    assert all(item['status'] in lifecycle['open_statuses'] for item in lifecycle['stalled'])
     phases = {phase['key']: phase for phase in lifecycle['phases']}
     assert next(item['count'] for item in phases['analysis_status']['items'] if item['value'] == 'Ongoing') == 1
     assert lifecycle['modes'] == {'auto': 3, 'manual': 0}

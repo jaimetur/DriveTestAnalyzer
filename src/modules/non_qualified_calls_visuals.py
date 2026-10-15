@@ -101,7 +101,8 @@ def _kpi_row(panel: Panel, cards: list[tuple[str, str, str, str]], top: float, h
     width = (panel.width - gap * (len(cards) - 1)) / len(cards)
     for index, (label, value, note, kind) in enumerate(cards):
         left = index * (width + gap)
-        panel.card(left, top, width, height, KPI_COLORS.get(kind, RASPBERRY))
+        # A card names its colour or is coloured as its kind.
+        panel.card(left, top, width, height, kind if kind.startswith('#') else KPI_COLORS.get(kind, RASPBERRY))
         if compact:
             panel.text(left + 0.14, top + 0.15, label.upper(), 7.5, bold=True, color=MUTED, width=width - 0.26)
             panel.text(left + 0.14, top + 0.3, value, 16, bold=True, color=DARK, width=width - 0.26)
@@ -618,7 +619,7 @@ def root_cause_panels(stats: dict[str, Any]) -> list[tuple[SlideTitle, BytesIO]]
     source = ROOT_SOURCE_TITLES.get(str(stats.get('source') or ''), '')
     if source and stats.get('source') != 'analysts':
         cards = [
-            ('Calls', _number(total), 'Non-Qualified Calls of the selection', 'total'),
+            ('Calls', _number(total), 'Selected Non-Qualified Calls', 'total'),
             ('With a Root Cause', _number(summary.get('labelled')),
              f"{_share(summary.get('labelled') or 0, total)} mapped onto the catalog by the {source}", 'closed'),
             ('Not Classified', _number(summary.get('unclassified')),
@@ -626,7 +627,7 @@ def root_cause_panels(stats: dict[str, Any]) -> list[tuple[SlideTitle, BytesIO]]
         ]
     else:
         cards = [
-            ('Calls', _number(total), 'Non-Qualified Calls of the selection', 'total'),
+            ('Calls', _number(total), 'Selected Non-Qualified Calls', 'total'),
             ('Labelled', _number(summary.get('labelled')), f"{_share(summary.get('labelled') or 0, total)} have a root cause", 'closed'),
             ('Suggested', _number(summary.get('suggested')),
              'Counted with their suggested root cause' if stats.get('include_suggestions') else 'Not counted', 'team'),
@@ -937,11 +938,14 @@ def _pipeline_panel(lifecycle: dict[str, Any]) -> BytesIO:
     open_names = list(lifecycle.get('open_statuses') or [])
     open_total = int(lifecycle.get('open', total - closed) or 0)
     modes = lifecycle.get('modes') or {}
+    waiting = lifecycle.get('not_attended')
     panel = Panel()
     _kpi_row(panel, [
-        ('Calls', _number(total), 'In the selection', 'total'),
+        ('Calls', _number(total), 'Selected Non-Qualified Calls', 'total'),
         ('Automatic Status', _number(modes.get('auto', 0)), f"{_share(modes.get('auto', 0), total)} follow the Status Rules", 'team'),
         ('Status by Hand', _number(modes.get('manual', 0)), f"{_share(modes.get('manual', 0), total)} chosen by an analyst", 'commented'),
+        *([(waiting['status'], _number(waiting['count']), f"{_share(waiting['count'], total)} not followed up yet",
+            waiting.get('color') or '#9aa5ad')] if waiting else []),
         ('Open', _number(open_total), f'{_share(open_total, total)} attended and not closed', 'open'),
         ('Closed', _number(closed), f'{_share(closed, total)} closed', 'closed'),
         ('Stalled', _number(lifecycle.get('stalled_total', 0)), f"Open, no change for {lifecycle.get('stalled_days', 14)}+ days", 'attended'),

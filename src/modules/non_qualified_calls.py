@@ -5745,6 +5745,8 @@ def lifecycle_stats(task_repository: Any, filters: dict[str, Any], username: str
     modes: Counter = Counter()
     stalled = []
     keys = [str(row['call_key']) for row in rows]
+    # The first status is that of the calls not attended; the open calls are those between it and the closed ones.
+    first = statuses[0]['name'] if statuses else ''
     for row in rows:
         status = str(row['status'] or '')
         counts[status] += 1
@@ -5752,7 +5754,8 @@ def lifecycle_stats(task_repository: Any, filters: dict[str, Any], username: str
         started = _parse_time(row['start_time'])
         if started is not None:
             ages.setdefault(status, []).append((now - started).total_seconds() / 86400)
-        if status.casefold() not in closed:
+        # Stalled: open calls (attended and not closed) without any change for a while.
+        if status.casefold() not in closed and status != first:
             last = _parse_time(row['updated_at']) or started
             if last is not None and (now - last).days >= STALLED_DAYS:
                 stalled.append({'call_key': str(row['call_key']), 'status': status, 'operator': str(row['operator'] or ''),
@@ -5803,11 +5806,13 @@ def lifecycle_stats(task_repository: Any, filters: dict[str, Any], username: str
     stalled.sort(key=lambda item: -item['days'])
     identified = sum(1 for row in rows if row['root_category'] or row['root_cause'])
     # Open: the attended calls not closed yet, every status between the first one (not attended) and the closed ones.
-    first = statuses[0]['name'] if statuses else ''
     open_statuses = [item['status'] for item in pipeline if not item['closed'] and item['status'] != first]
+    waiting = next((item for item in pipeline if item['status'] == first and not item['closed']), None)
     return {
         'total': len(rows), 'pipeline': pipeline, 'modes': {'auto': modes.get('auto', 0), 'manual': modes.get('manual', 0)},
         'open': sum(item['count'] for item in pipeline if item['status'] in open_statuses), 'open_statuses': open_statuses,
+        # Not Attended: the calls in the first status, nobody has followed them up yet.
+        'not_attended': {'status': waiting['status'], 'count': waiting['count'], 'color': waiting['color']} if waiting else None,
         'rca': {'identified': identified, 'not_identified': len(rows) - identified},
         'phases': phases, 'time_in_status': time_in_status,
         'moves': [{'from': old, 'to': new, 'count': count} for (old, new), count in moves.most_common(12)],

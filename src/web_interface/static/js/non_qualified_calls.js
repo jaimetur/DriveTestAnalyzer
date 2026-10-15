@@ -2273,7 +2273,7 @@
       return sorted ? kept.sort((a, b) => b.total - a.total) : kept;
     };
     $('nq-root-kpis').replaceChildren(
-      drillCard(kpiCard('Calls', number(summary.total), 'Non-Qualified Calls of the selection', 'total'), {clear: ROOT_FILTERS}),
+      drillCard(kpiCard('Calls', number(summary.total), 'Selected Non-Qualified Calls', 'total'), {clear: ROOT_FILTERS}),
       stats.source === 'analysts'
         ? drillCard(kpiCard('Labelled', number(summary.labelled), `${percent(summary.labelled, summary.total)} have a root cause chosen by the analysts`, 'closed'), {pairs: [['state', 'labelled']]})
         : kpiCard('With a Root Cause', number(summary.labelled), `${percent(summary.labelled, summary.total)} mapped onto the catalog by ${source}`, 'closed'),
@@ -2408,16 +2408,23 @@
   };
   // A phase field with more values goes in a row of its own (as WIDE_PHASE_VALUES in the reports).
   const WIDE_PHASE_VALUES = 12;
+  // The calls in the first status, in its colour: a click shows only them.
+  const notAttendedCard = (waiting, total) => {
+    const card = kpiCard(waiting.status, number(waiting.count), `${percent(waiting.count, total)} not followed up yet`);
+    if (waiting.color) card.style.borderTopColor = waiting.color;
+    return drillCard(card, {many: ['status', [waiting.status]]});
+  };
   const renderLifecycle = (life) => {
     state.life = life;
     const total = life.total;
     const closed = life.pipeline.filter((item) => item.closed).reduce((sum, item) => sum + item.count, 0);
     $('nq-life-kpis').replaceChildren(
-      drillCard(kpiCard('Calls', number(total), 'Non-Qualified Calls of the selection', 'total'), {clear: ['status_mode']}),
+      drillCard(kpiCard('Calls', number(total), 'Selected Non-Qualified Calls', 'total'), {clear: ['status_mode']}),
       drillCard(kpiCard('Automatic Status', number(life.modes.auto), `${percent(life.modes.auto, total)} follow the Status Rules`, 'team'),
         {pairs: [['status_mode', 'auto']]}),
       drillCard(kpiCard('Status by Hand', number(life.modes.manual), `${percent(life.modes.manual, total)} chosen by an analyst`, 'commented'),
         {pairs: [['status_mode', 'manual']]}),
+      ...(life.not_attended ? [notAttendedCard(life.not_attended, total)] : []),
       drillCard(kpiCard('Open', number(life.open), `${percent(life.open, total)} attended and not closed`, 'open'),
         {many: ['status', life.open_statuses || []]}),
       drillCard(kpiCard('Closed', number(closed), `${percent(closed, total)} closed`, 'closed'), {pairs: [['state', 'closed']]}),
@@ -2639,7 +2646,7 @@
       ? `${number(results.total)} Ericsson RCA results · ${number(results.matched)} match calls` : 'No Ericsson RCA results imported yet';
     const rate = (item) => (item.rate === null ? '—' : `${item.rate.toFixed(1)}%`);
     $('nq-sources-kpis').replaceChildren(
-      kpiCard('Calls', number(coverage.total), 'Non-Qualified Calls of the selection', 'total'),
+      kpiCard('Calls', number(coverage.total), 'Selected Non-Qualified Calls', 'total'),
       kpiCard('NetCheck RCA', number(coverage.netcheck), `${percent(coverage.netcheck, coverage.total)} classified by NetCheck`, 'team'),
       kpiCard('Ericsson RCA', number(coverage.script), `${percent(coverage.script, coverage.total)} have Ericsson RCA results`, 'attended'),
       kpiCard('Selected', number(coverage.selected), `${percent(coverage.selected, coverage.total)} have a root category or cause`, 'closed'),
