@@ -49,6 +49,7 @@ from threading import Lock
 from typing import Any, Callable
 
 from src.modules.cdr_stage import CDR_STAGE_LABELS, dataset_cdr_stage
+from src.modules.cell_identity import nr_cell_bits
 from src.modules.column_names import campaign_sort_key, column_identity
 from src.modules.value_maps import ValueMapper, field_kind
 from src.modules.mapping_order import dimension_order_key, mapping_group
@@ -3857,7 +3858,8 @@ def serving_node(cell_id: Any) -> tuple[str, int] | None:
         return None
     value = int(numbers[-1])
     if value > MAX_ECI:
-        return 'gNB', value >> 12
+        # NR Cell Identities of the UK operators' 22-bit gNodeB IDs: gNB × 16384 + cell.
+        return 'gNB', value >> nr_cell_bits()
     if value > 65535:
         return 'eNB', value >> 8
     return 'Cell', value

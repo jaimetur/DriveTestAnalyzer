@@ -166,8 +166,25 @@ def test_vfuk_processing_materialises_gcid_for_4g_and_5g_rows() -> None:
     processed = add_vfuk_gcid_column(mapping)
 
     assert processed['GCID'].iloc[0] == 3330049
-    assert processed['GCID'].iloc[1] == 221126958
+    # NCI of a 22-bit gNodeB ID: gNodeB ID × 16384 + cell.
+    assert processed['GCID'].iloc[1] == 53986 * 16384 + 302
     assert pd.isna(processed['GCID'].iloc[2])
+
+
+def test_vfuk_gcid_uses_the_cell_id_the_cell_broadcasts() -> None:
+    # Huawei and Nokia cells carry an internal Local Cell ID different from their Cell ID.
+    mapping = pd.DataFrame({
+        'source_sheet': ['4G', '4G', '5G', '5G'],
+        'eNodeB ID': [1491, 13008, pd.NA, pd.NA],
+        'gNodeB ID': [pd.NA, pd.NA, 16628, 15660],
+        'Cell ID': [110, pd.NA, '515.000', 11],
+        'Local Cell ID': [7, 1, 10, 11],
+        'gNodeB ID Length': [pd.NA, pd.NA, 22, pd.NA],
+    })
+
+    processed = add_vfuk_gcid_column(mapping)
+
+    assert processed['GCID'].tolist() == [1491 * 256 + 110, 13008 * 256 + 1, 16628 * 16384 + 515, 15660 * 16384 + 11]
 
 
 def test_three_processing_materialises_gcid_from_eci() -> None:

@@ -69,7 +69,7 @@ Cluster polygons are the required input shown in **Network Insights → Cluster 
 
 Choose **Network Inventory** for the cell inventory of any Operator, whatever its layout: it is stored like any other dataset and listed in the **Network Inventory & Vendor Mappings** card with its **Operator**, proposed from the file name (for example `O2_Network_Inventory.csv` → O2) and changeable in the card. The upload proposes Network Inventory for tabular filenames containing `inventory`.
 
-When it has a Vendor column (`Vendor`, `OP/ Vendor`, `OP_Vendor`, `OEM`, `Manufacturer` or `Supplier`) and a cell identifier — a global one (`GCID`, `Global Cell ID`, `ECI`, `NCI`, `ECGI`, `NCGI`, `CGI`, `Cell Identity` or `Cell ID`) or an `eNodeB ID`/`gNodeB ID` with its `Local Cell ID` (`eNodeB × 256 + cell`, `gNodeB × 4096 + cell`) — it also maps the Vendor of its Operator's CDR samples (see [Vendor Mapping](#vendor-mapping)).
+When it has a Vendor column (`Vendor`, `OP/ Vendor`, `OP_Vendor`, `OEM`, `Manufacturer` or `Supplier`) and a cell identifier — a global one (`GCID`, `Global Cell ID`, `ECI`, `NCI`, `ECGI`, `NCGI`, `CGI`, `Cell Identity` or `Cell ID`) or an `eNodeB ID`/`gNodeB ID` with its `Cell ID` (`eNodeB × 256 + Cell ID`, `gNodeB × 16384 + Cell ID` for 22-bit gNodeB IDs or the length of a `gNodeB ID Length` column; the `Local Cell ID` only for rows without a `Cell ID`). Each row takes the identity of its eNodeB, else of its gNodeB, else its global identifier, so one inventory can hold LTE and NR cells — it also maps the Vendor of its Operator's CDR samples (see [Vendor Mapping](#vendor-mapping)).
 
 ### Vendor polygons
 
@@ -282,7 +282,7 @@ The Map dialog asks for the source when the workspace has both, and uses the onl
 
 #### Supported Mapping Files
 
-- **VFUK** workbooks use a `4G` worksheet with `eNodeB ID`, `Local Cell ID` and `OP/ Vendor`. The importer calculates `GCID` as `eNodeB ID × 256 + Local Cell ID`, equivalent to the supplied Excel hexadecimal formula. A `5G` worksheet may contain `gNodeB ID`, `Local Cell ID` and the vendor field; its stored `GCID` is `gNodeB ID × 4096 + Local Cell ID`.
+- **VFUK** workbooks use a `4G` worksheet with `eNodeB ID`, `Cell ID` and `OP/ Vendor`, and a `5G` worksheet with `gNodeB ID`, `Cell ID` and the vendor field. Both map Vendors: the 4G cells by their ECI, `eNodeB ID × 256 + Cell ID`, and the 5G cells by their NCI, `gNodeB ID × 16384 + Cell ID`, the identities the CDRs report. The `Local Cell ID` is used only for rows without a `Cell ID`: Huawei and Nokia cells carry an internal Local Cell ID that is not part of the identity they broadcast.
 - **3UK** files contain `Cid__ECI` (the spelling `CId___ECI` is also accepted) and `Vendor`. The ECI value becomes the mapping `GCID` directly.
 - Source headers are resolved without regard to case or spaces, underscores and hyphens. Rows without a valid cell identifier or vendor do not create a mapping entry.
 

@@ -1853,15 +1853,6 @@ def classify_sessions(df: pd.DataFrame, technology: str) -> pd.DataFrame:
     return df[mask].copy()
 
 
-def _integer_cell_component(value: object) -> int | None:
-    try:
-        if value is None or pd.isna(value):
-            return None
-        return int(float(value))
-    except (TypeError, ValueError):
-        return None
-
-
 def build_three_vendor_lookup(mapping: pd.DataFrame) -> dict[str, str]:
     cell_column = _first_existing(mapping, ["Cid__ECI", "CId___ECI"])
     vendor_column = _first_existing(mapping, ["Vendor", "OP/ Vendor", "OP_Vendor"])
@@ -1876,26 +1867,38 @@ def build_three_vendor_lookup(mapping: pd.DataFrame) -> dict[str, str]:
 
 
 def build_vodafone_vendor_lookup(mapping: pd.DataFrame) -> dict[str, str]:
+    """Global cell ID → Vendor of the VFUK mapping: the ECI of its 4G cells and the NCI of its 5G cells.
+
+    The identities are those the cells broadcast (``eNodeB ID × 256 + Cell ID`` and
+    ``gNodeB ID × 16384 + Cell ID``, see :func:`ingestion.add_vfuk_gcid_column`).
+    """
+    from src.modules.ingestion import add_vfuk_gcid_column
+
     source_sheet = _first_existing(mapping, ["source_sheet"])
-    four_g_mapping = mapping
-    if source_sheet:
-        four_g_mapping = mapping[mapping[source_sheet].astype(str).str.strip().str.casefold() == "4g"].copy()
-    enodeb_column = _first_existing(four_g_mapping, ["eNodeB ID", "eNodeB_ID"])
-    local_cell_column = _first_existing(four_g_mapping, ["Local Cell ID", "Local_Cell_ID"])
-    vendor_column = _first_existing(four_g_mapping, ["OP/ Vendor", "OP_Vendor", "Vendor"])
-    if four_g_mapping.empty or not enodeb_column or not local_cell_column or not vendor_column:
-        raise ValueError("The selected VFUK mapping must contain the 4G sheet with eNodeB ID, Local Cell ID and OP/ Vendor columns.")
+    vendor_column = _first_existing(mapping, ["OP/ Vendor", "OP_Vendor", "Vendor"])
+    enodeb_column = _first_existing(mapping, ["eNodeB ID", "eNodeB_ID"])
+    gnodeb_column = _first_existing(mapping, ["gNodeB ID", "gNodeB_ID"])
+    cell_column = _first_existing(mapping, ["Cell ID", "Cell_ID", "Local Cell ID", "Local_Cell_ID"])
+    if mapping.empty or not vendor_column or not cell_column or not (enodeb_column or gnodeb_column):
+        raise ValueError("The selected VFUK mapping must contain the 4G or 5G sheet with eNodeB or gNodeB ID, Cell ID and OP/ Vendor columns.")
+    keyed = mapping
+    if not source_sheet:
+        # A mapping saved as one sheet: its eNodeB rows are 4G cells and its gNodeB rows 5G cells.
+        keyed = mapping.copy()
+        has_enodeb = (
+            pd.to_numeric(keyed[enodeb_column], errors="coerce").notna() if enodeb_column
+            else pd.Series(False, index=keyed.index)
+        )
+        keyed["source_sheet"] = has_enodeb.map({True: "4G", False: "5G"})
+    keyed = add_vfuk_gcid_column(keyed)
     lookup: dict[str, str] = {}
-    for enodeb, local_cell, vendor in four_g_mapping[[enodeb_column, local_cell_column, vendor_column]].itertuples(index=False):
-        enodeb_id = _integer_cell_component(enodeb)
-        local_cell_id = _integer_cell_component(local_cell)
-        vendor_text = str(vendor).strip()
-        if enodeb_id is None or local_cell_id is None or not vendor_text or vendor_text.lower() == "nan":
+    for gcid, vendor in zip(keyed["GCID"], keyed[vendor_column], strict=True):
+        vendor_text = str(vendor if vendor is not None else "").strip()
+        if pd.isna(gcid) or not vendor_text or vendor_text.lower() == "nan":
             continue
-        # Equivalent to Excel: HEX2DEC(DEC2HEX(eNodeB ID, 5) & DEC2HEX(Local Cell ID, 2)).
-        if not 0 <= enodeb_id <= 0xFFFFF or not 0 <= local_cell_id <= 0xFF:
-            continue
-        lookup[str((enodeb_id << 8) | local_cell_id)] = vendor_text
+        lookup[str(int(gcid))] = vendor_text
+    if not lookup:
+        raise ValueError("The selected VFUK mapping must contain the 4G or 5G sheet with eNodeB or gNodeB ID, Cell ID and OP/ Vendor columns.")
     return lookup
 
 
@@ -1905,52 +1908,80 @@ INVENTORY_CELL_COLUMNS = (
     "Cid__ECI", "CId___ECI", "Cell Identity", "Cell_Identity", "Cell ID", "Cell_ID", "CellID", "CI",
 )
 INVENTORY_NODE_COLUMNS = (("eNodeB ID", "eNodeB_ID", "eNB ID", "eNB_ID", "ENBID"), ("gNodeB ID", "gNodeB_ID", "gNB ID", "gNB_ID", "GNBID"))
+# The Cell ID a cell broadcasts, and the internal Local Cell ID used only without it.
+INVENTORY_NODE_CELL_COLUMNS = ("Cell ID", "Cell_ID", "CellID", "cellId")
 INVENTORY_LOCAL_CELL_COLUMNS = ("Local Cell ID", "Local_Cell_ID", "LCID", "Local Cell", "Sector ID")
+INVENTORY_GNODEB_LENGTH_COLUMNS = ("gNodeB ID Length", "gNodeB_ID_Length")
 
 
 def inventory_vendor_columns(columns: Iterable[object]) -> dict[str, str] | None:
     """The columns a Network Inventory needs to map Vendors, or ``None`` when it has not got them.
 
-    A Vendor column and either a global cell identifier (GCID, ECI, NCI, CGI, Cell ID…) or an
-    eNodeB/gNodeB ID with its local cell ID.
+    A Vendor column and an eNodeB and/or gNodeB ID with its Cell ID (or Local Cell ID), or a global
+    cell identifier (GCID, ECI, NCI, CGI, Cell ID…). Every key found is returned: each row takes the
+    identity of its eNodeB, else of its gNodeB, else its global identifier.
     """
     columns = [str(column) for column in columns]
-    vendor = next((found for name in INVENTORY_VENDOR_COLUMNS if (found := resolve_column_name(columns, name))), None)
+
+    def first(names: Iterable[str]) -> str | None:
+        return next((found for name in names if (found := resolve_column_name(columns, name))), None)
+
+    vendor = first(INVENTORY_VENDOR_COLUMNS)
     if not vendor:
         return None
-    local_cell = next((found for name in INVENTORY_LOCAL_CELL_COLUMNS if (found := resolve_column_name(columns, name))), None)
+    found: dict[str, str] = {"vendor": vendor}
+    cell_id, local_cell = first(INVENTORY_NODE_CELL_COLUMNS), first(INVENTORY_LOCAL_CELL_COLUMNS)
     for kind, names in zip(("enodeb", "gnodeb"), INVENTORY_NODE_COLUMNS):
-        node = next((found for name in names if (found := resolve_column_name(columns, name))), None)
-        if node and local_cell:
-            return {"vendor": vendor, kind: node, "local_cell": local_cell}
-    cell = next((found for name in INVENTORY_CELL_COLUMNS if (found := resolve_column_name(columns, name))), None)
-    return {"vendor": vendor, "cell": cell} if cell else None
+        node = first(names)
+        if node and (cell_id or local_cell):
+            found[kind] = node
+    if "enodeb" in found or "gnodeb" in found:
+        found.update({key: value for key, value in (("cell_id", cell_id), ("local_cell", local_cell)) if value})
+        length = first(INVENTORY_GNODEB_LENGTH_COLUMNS)
+        if length and "gnodeb" in found:
+            found["gnodeb_length"] = length
+    cell = first(name for name in INVENTORY_CELL_COLUMNS if name not in INVENTORY_NODE_CELL_COLUMNS or len(found) == 1)
+    if cell and cell != found.get("cell_id"):
+        found["cell"] = cell
+    return found if len(found) > 1 else None
+
+
+def inventory_cell_identities(inventory: pd.DataFrame, columns: dict[str, str] | None = None) -> pd.Series:
+    """The global identity of every Network Inventory row (as text), empty when it has none.
+
+    ``eNodeB ID × 256 + Cell ID`` for LTE cells, ``gNodeB ID × 2^(36 − length) + Cell ID`` for NR cells
+    (22-bit gNodeB IDs by default) and the global identifier column otherwise.
+    """
+    from src.modules.cell_identity import lte_eci_series, nr_nci_series
+
+    columns = columns if columns is not None else inventory_vendor_columns(inventory.columns)
+    result = pd.Series("", index=inventory.index, dtype=object)
+    if columns is None:
+        return result
+
+    def column(key: str) -> pd.Series | None:
+        return inventory[columns[key]] if key in columns else None
+
+    if "cell" in columns:
+        result = inventory[columns["cell"]].map(
+            lambda value: "" if value is None or pd.isna(value) else _canonical_cell_id(value))
+    if "gnodeb" in columns:
+        nr = nr_nci_series(inventory[columns["gnodeb"]], column("cell_id"), column("local_cell"), column("gnodeb_length"))
+        result = result.mask(nr.notna(), nr.astype(str))
+    if "enodeb" in columns:
+        lte = lte_eci_series(inventory[columns["enodeb"]], column("cell_id"), column("local_cell"))
+        result = result.mask(lte.notna(), lte.astype(str))
+    return result.fillna("")
 
 
 def build_inventory_vendor_lookup(inventory: pd.DataFrame) -> dict[str, str]:
-    """Global cell ID → Vendor of a Network Inventory of any Operator.
-
-    A global identifier is used as it is; an eNodeB ID and local cell ID give ``eNodeB × 256 + cell``
-    (the LTE ECI) and a gNodeB ID ``gNodeB × 4096 + cell``, like the VFUK mapping.
-    """
+    """Global cell ID → Vendor of a Network Inventory of any Operator (see :func:`inventory_cell_identities`)."""
     columns = inventory_vendor_columns(inventory.columns)
     if columns is None:
-        raise ValueError("The Network Inventory needs a Vendor column and a cell identifier (GCID, ECI, NCI, CGI or Cell ID, or eNodeB/gNodeB ID with Local Cell ID).")
+        raise ValueError("The Network Inventory needs a Vendor column and a cell identifier (GCID, ECI, NCI, CGI or Cell ID, or eNodeB/gNodeB ID with Cell ID).")
     lookup: dict[str, str] = {}
-    vendors = inventory[columns["vendor"]]
-    if "cell" in columns:
-        pairs = zip(inventory[columns["cell"]], vendors)
-        cells = ((_canonical_cell_id(cell), vendor) for cell, vendor in pairs if cell is not None and not pd.isna(cell))
-    else:
-        node_column = columns.get("enodeb") or columns.get("gnodeb")
-        shift = 8 if "enodeb" in columns else 12
-        cells = []
-        for node, local, vendor in zip(inventory[node_column], inventory[columns["local_cell"]], vendors):
-            node_id, local_id = _integer_cell_component(node), _integer_cell_component(local)
-            if node_id is not None and local_id is not None and node_id >= 0 and 0 <= local_id < (1 << shift):
-                cells.append((str((node_id << shift) | local_id), vendor))
-    for cell, vendor in cells:
-        vendor_text = str(vendor or "").strip()
+    for cell, vendor in zip(inventory_cell_identities(inventory, columns), inventory[columns["vendor"]], strict=True):
+        vendor_text = str(vendor if vendor is not None and not pd.isna(vendor) else "").strip()
         if cell and vendor_text and vendor_text.casefold() not in {"nan", "none"}:
             lookup[cell] = vendor_text
     return lookup

@@ -766,6 +766,23 @@ def test_vodafone_mapping_derives_gcid_from_4g_enodeb_and_local_cell() -> None:
     assert enrich_multivendor(cdr, vodafone_mapping, three_mapping)['Operator_Vendor'].tolist() == ['Vodafone_Samsung']
 
 
+def test_vodafone_mapping_keys_huawei_cells_by_their_cell_id_and_nr_cells_by_nci() -> None:
+    # The CDRs report eNodeB × 256 + Cell ID; Huawei's Local Cell ID (7) is internal.
+    cdr = pd.DataFrame({'Operator': ['Vodafone UK', 'Vodafone SA'],
+                        'Cell_IDs_A': [str(1491 * 256 + 110), str(16628 * 16384 + 515)]})
+    vodafone_mapping = pd.DataFrame({
+        'source_sheet': ['4G', '5G'],
+        'eNodeB ID': [1491, None],
+        'gNodeB ID': [None, 16628],
+        'Cell ID': [110, 515],
+        'Local Cell ID': [7, 10],
+        'OP/ Vendor': ['Huawei', 'Ericsson'],
+    })
+    three_mapping = pd.DataFrame({'Cid__ECI': [1], 'Vendor': ['Nokia']})
+
+    assert enrich_multivendor(cdr, vodafone_mapping, three_mapping)['Operator_Vendor'].tolist() == ['Vodafone_Huawei', 'Vodafone SA_Ericsson']
+
+
 def test_catalogue_csv_requires_the_report_chart_contract_columns() -> None:
     catalogue = (
         ','.join(TRAILING_DYNAMIC_CATALOG_HEADERS)

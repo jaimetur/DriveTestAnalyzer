@@ -24,6 +24,18 @@ def test_network_inventory_columns_and_cells():
     assert build_inventory_vendor_lookup(pd.DataFrame({'eNodeB ID': [10], 'Local Cell ID': [3], 'Vendor': ['Samsung']})) == {str(10 * 256 + 3): 'Samsung'}
 
 
+def test_network_inventory_cells_take_the_identity_they_broadcast():
+    # LTE and NR rows of one inventory: the Cell ID, not the internal Local Cell ID, completes the
+    # identity, and NR cells of 22-bit gNodeB IDs are gNodeB ID × 16384 + Cell ID.
+    inventory = pd.DataFrame({
+        'eNodeB ID': [1491, 13008, None], 'gNodeB ID': [None, None, 16628], 'gNodeB ID Length': [None, None, 22.0],
+        'Cell ID': [110, None, '515.000'], 'Local Cell ID': [7, 1, 10], 'OP/ Vendor': ['Huawei', 'Ericsson', 'Nokia'],
+    })
+    assert build_inventory_vendor_lookup(inventory) == {
+        str(1491 * 256 + 110): 'Huawei', str(13008 * 256 + 1): 'Ericsson', str(16628 * 16384 + 515): 'Nokia',
+    }
+
+
 def test_network_inventories_map_the_vendor_of_their_operator():
     frame = pd.DataFrame({
         'Operator': ['O2', 'O2', 'O2', 'EE', 'Vodafone'],

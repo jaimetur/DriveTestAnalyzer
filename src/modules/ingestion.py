@@ -67,49 +67,28 @@ def _numeric_column(df: pd.DataFrame, candidates: Iterable[str]) -> pd.Series:
 def add_vfuk_gcid_column(df: pd.DataFrame) -> pd.DataFrame:
     """Materialise the VFUK mapping GCID for the 4G and 5G source worksheets.
 
-    The 4G value follows the supplied Excel calculation exactly:
-    ``HEX2DEC(DEC2HEX(eNodeB ID, 5) & DEC2HEX(Local Cell ID, 2))``.
-    The existing 5G mapping convention remains ``gNodeB ID * 4096 + Local Cell ID``.
+    4G cells take their ECI, ``eNodeB ID × 256 + Cell ID``, and 5G cells their NCI,
+    ``gNodeB ID × 2^(36 − gNodeB ID length) + Cell ID`` (22-bit gNodeB IDs). The Local Cell ID
+    is used only without a Cell ID: Huawei and Nokia cells carry a different Local Cell ID, which
+    is not part of the identity the cell broadcasts and the CDRs report.
     """
+    from src.modules.cell_identity import lte_eci_series, nr_nci_series
+
     dataset = df.copy()
     source_sheet = _first_available_series(dataset, ['source_sheet']).astype(str).str.strip().str.casefold()
-    local_cell_id = _numeric_column(dataset, ['Local Cell ID', 'Local_Cell_ID', 'Cell ID'])
+    cell_id = _first_available_series(dataset, ['Cell ID', 'Cell_ID', 'cellId'])
+    local_cell_id = _first_available_series(dataset, ['Local Cell ID', 'Local_Cell_ID'])
     gcid = pd.Series(pd.NA, index=dataset.index, dtype='Int64')
 
-    enodeb_id = _numeric_column(dataset, ['eNodeB ID', 'eNodeB_ID', 'eNB ID'])
-    valid_4g = (
-        source_sheet.eq('4g')
-        & enodeb_id.notna()
-        & local_cell_id.notna()
-        & enodeb_id.ge(0)
-        & enodeb_id.le(0xFFFFF)
-        & local_cell_id.ge(0)
-        & local_cell_id.le(0xFF)
-        & enodeb_id.eq(enodeb_id.round())
-        & local_cell_id.eq(local_cell_id.round())
+    lte = lte_eci_series(_first_available_series(dataset, ['eNodeB ID', 'eNodeB_ID', 'eNB ID']), cell_id, local_cell_id)
+    gcid = gcid.mask(source_sheet.eq('4g'), lte)
+    nr = nr_nci_series(
+        _first_available_series(dataset, ['gNodeB ID', 'gNodeB_ID', 'gNB ID']), cell_id, local_cell_id,
+        _first_available_series(dataset, ['gNodeB ID Length', 'gNodeB_ID_Length']),
     )
-    gcid.loc[valid_4g] = (
-        enodeb_id.loc[valid_4g].astype('int64') * 256
-        + local_cell_id.loc[valid_4g].astype('int64')
-    )
+    gcid = gcid.mask(source_sheet.eq('5g'), nr)
 
-    gnodeb_id = _numeric_column(dataset, ['gNodeB ID', 'gNodeB_ID', 'gNB ID'])
-    valid_5g = (
-        source_sheet.eq('5g')
-        & gnodeb_id.notna()
-        & local_cell_id.notna()
-        & gnodeb_id.ge(0)
-        & local_cell_id.ge(0)
-        & local_cell_id.le(0xFFF)
-        & gnodeb_id.eq(gnodeb_id.round())
-        & local_cell_id.eq(local_cell_id.round())
-    )
-    gcid.loc[valid_5g] = (
-        gnodeb_id.loc[valid_5g].astype('int64') * 4096
-        + local_cell_id.loc[valid_5g].astype('int64')
-    )
-
-    dataset['GCID'] = gcid
+    dataset['GCID'] = gcid.astype('Int64')
     return dataset
 
 

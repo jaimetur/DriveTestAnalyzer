@@ -159,8 +159,10 @@ Case and separator variations are accepted.
 
 VFUK mappings materialise `GCID` as:
 
-- 4G: `eNodeB ID × 256 + Local Cell ID`
-- 5G: `gNodeB ID × 4096 + Local Cell ID`
+- 4G: the ECI, `eNodeB ID × 256 + Cell ID`
+- 5G: the NCI, `gNodeB ID × 16384 + Cell ID` (22-bit gNodeB IDs; a `gNodeB ID Length` column changes the multiplier to 2^(36 − length))
+
+The `Cell ID` is the identity the cell broadcasts and the CDRs report. Huawei and Nokia cells also carry a different internal `Local Cell ID`, used only when a row has no `Cell ID`.
 
 ### Three mapping
 

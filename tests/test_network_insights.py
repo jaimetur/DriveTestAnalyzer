@@ -1215,3 +1215,24 @@ print(os.waitstatus_to_exitcode(os.waitpid(pid, 0)[1]))
                                cwd=Path(__file__).resolve().parents[1], timeout=120)
     assert completed.returncode == 0, completed.stderr[-2000:]
     assert completed.stdout.strip().splitlines()[-1] == '0'
+
+
+def test_sa_cdr_rows_get_their_serving_cells_when_network_insights_reads_them(client, tmp_path):
+    # Reporting rows only store the core fields at ingestion; the serving-cell fields an SA CDR
+    # never analysed before lacks are copied from its own rows when Network Insights requests them.
+    _login(client)
+    rows = _data_rows('2026-Q3')
+    rows['LAC_CID_xARFCN'] = '[5G NR n78, 149776, 206009734, 651360]'
+    rows['Cell_ID'] = '[206009734]->[206009735]'
+    cdr = _add_ready_dataset(tmp_path, 'Daily Data CDR SA.xlsx', 'data', rows, nr_mode='SA')
+    repository = app_module.repository
+    repository.replace_reporting_rows(cdr, 'data', rows.drop(columns=['Cell_ID', 'LAC_CID_xARFCN']))
+    stored = repository.load_reporting_rows('data', [cdr], ['Cell_ID'])
+    assert stored.empty or stored['Cell_ID'].isna().all()
+
+    response = client.post('/api/network-insights/analysis', json={'datasets': {'data': [cdr]}, 'technology': 'lte_nr'})
+
+    assert response.status_code == 200
+    stored = repository.load_reporting_rows('data', [cdr], ['Cell_ID', 'LAC_CID_xARFCN'])
+    assert stored['Cell_ID'].tolist() == ['[206009734]->[206009735]'] * len(rows)
+    assert stored['LAC_CID_xARFCN'].str.contains('5G NR').all()

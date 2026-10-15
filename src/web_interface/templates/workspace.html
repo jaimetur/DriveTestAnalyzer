@@ -820,7 +820,7 @@
           <li>If Ericsson is present at either endpoint and the other Vendor is different or missing, the result is <code>&lt;Operator&gt;_Ericsson (Mixed)</code>.</li>
           <li>Every other different or missing endpoint combination returns <code>&lt;Operator&gt;_Mixed (non-Ericsson)</code>.</li>
         </ul>
-        <p><strong>Network Inventories</strong> of any other Operator follow the same rule with the cells of their Operator (a global cell ID, or eNodeB/gNodeB ID with local cell ID, and a Vendor column).</p>
+        <p><strong>Network Inventories</strong> of any other Operator follow the same rule with the cells of their Operator (a global cell ID, or eNodeB/gNodeB ID with its Cell ID, and a Vendor column).</p>
         <p><strong>Operators without an inventory</strong> (for example O2 and EE, or Vodafone and Three without a selected mapping): no Vendor is assigned; the result is <code>&lt;Operator&gt; - All</code>.</p>
         <p>The mapping populates the columns <code>Vendor</code>, <code>Operator_Vendor</code> and <code>Vendor_Operator</code> according to this rule.</p>
       </details>

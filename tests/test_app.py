@@ -8536,7 +8536,7 @@ def test_vfuk_preview_limits_mapping_sheets_and_displays_materialised_gcid(clien
     five_g_preview = client.get('/workspace/preview/1?source_sheet=5G')
     assert five_g_preview.status_code == 200
     assert '<option value="5G" selected>5G</option>' in five_g_preview.text
-    assert '221126958' in five_g_preview.text
+    assert '884506926' in five_g_preview.text
 
 
 def test_three_mapping_preview_excludes_empty_normalized_columns(client) -> None:
@@ -8599,8 +8599,8 @@ def test_mapping_preview_formats_integral_gcid_without_decimal_suffix(client) ->
 
     preview = client.get('/workspace/preview/1?source_sheet=5G')
     assert preview.status_code == 200
-    assert '>221126958<' in preview.text
-    assert '>221126958.0<' not in preview.text
+    assert '>884506926<' in preview.text
+    assert '>884506926.0<' not in preview.text
 
 
 def test_mapping_preview_hides_unnamed_columns_but_keeps_cell_name(client) -> None:

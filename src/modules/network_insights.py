@@ -25,6 +25,7 @@ from uuid import uuid4
 import numpy as np
 import pandas as pd
 
+from src.modules.cell_identity import nr_cell_bits
 from src.modules.column_names import campaign_sort_key, column_identity, compact_campaign_value, operator_vendor_filter_values, vendor_filter_values
 from src.modules.mapping_order import swap_operator_vendor, swap_vendor_operator
 from src.modules.value_maps import ValueMapper, field_kind
@@ -977,10 +978,11 @@ def prepare_inventory_query(repository, connection, datasets: list[dict[str, Any
             normalized['Technology'] = f"COALESCE(NULLIF({normalized['Technology']}, ''), 'LTE')"
         cell = expression(('GCID', 'CId___ECI', 'Cid__ECI', 'ECI', 'Cell_ID', 'Global CI'))
         if cell == "''":
-            local = expression(('Local Cell ID',))
+            # The Cell ID the cell broadcasts, or the Local Cell ID without it (see cell_identity).
+            local = expression(('Cell ID', 'cellId', 'Local Cell ID'))
             enodeb = expression(('eNodeB ID', 'eNBId'))
             gnodeb = expression(('gNodeB ID',))
-            cell = f"CASE WHEN {local} = '' THEN NULL WHEN {normalized['Technology']} = 'NR' AND {gnodeb} != '' THEN CAST({gnodeb} AS INTEGER) * 4096 + CAST({local} AS INTEGER) WHEN {normalized['Technology']} = 'LTE' AND {enodeb} != '' THEN CAST({enodeb} AS INTEGER) * 256 + CAST({local} AS INTEGER) END"
+            cell = f"CASE WHEN {local} = '' THEN NULL WHEN {normalized['Technology']} = 'NR' AND {gnodeb} != '' THEN CAST({gnodeb} AS INTEGER) * {1 << nr_cell_bits()} + CAST({local} AS INTEGER) WHEN {normalized['Technology']} = 'LTE' AND {enodeb} != '' THEN CAST({enodeb} AS INTEGER) * 256 + CAST({local} AS INTEGER) END"
         values = [f'{value} AS {quote(field)}' for field, value in normalized.items()]
         values.extend([f'inventory_cell({cell}) AS __Inventory_Cell_ID', 'rowid AS __Inventory_Source_Row'])
         filename = str(dataset['file_name']).replace("'", "''")
