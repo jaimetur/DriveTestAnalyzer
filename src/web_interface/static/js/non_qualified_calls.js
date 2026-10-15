@@ -68,7 +68,7 @@
     defaultUsers: [],
     user: {username: '', can_edit: false, can_moderate: false},
     unassigned: '__unassigned__', datasets: [], mainCities: [], sort: 'start_time', direction: 'desc', page: 1, pageSize: 10,
-    result: null, selected: new Set(), detail: null, requestToken: 0, busy: false, extraFilters: {}, stale: new Set(), view: 'calls',
+    result: null, selected: new Set(), detail: null, requestToken: 0, busy: false, extraFilters: {}, stale: new Set(),
     fields: [], fieldTypes: {}, tableColumns: {builtin: [], cdr: []}, optionalColumns: {}, cdrColumns: [], versionLabels: {},
     rateService: '', sections: [], statusRules: [], conditionFields: {}, ruleOperators: {}, fieldSources: {}, trackingRefs: {},
     rcaRefs: {}, callFields: [], rcaResults: {}, rcaSources: {}, matrixSource: 'netcheck',
@@ -1701,68 +1701,6 @@
   const renderPanelCounts = (total) => panelCounts.forEach((badge) => {
     badge.textContent = `${number(total)} ${total === 1 ? 'call' : 'calls'}`;
   });
-  const VIEW_STORAGE = `nq-view:${$('nq-table').dataset.workspace || ''}`;
-  // The bar shows the calls, one panel at a time, or every panel.
-  const VIEWS = ['calls', 'summary', 'rates', 'sources', 'root', 'lifecycle', 'progress', 'all'];
-  const applyView = (view) => {
-    state.view = VIEWS.includes(view) ? view : 'calls';
-    root.querySelectorAll('[data-nq-view-panel]').forEach((panel) => {
-      panel.hidden = state.view !== 'all' && panel.dataset.nqViewPanel !== state.view;
-    });
-    $('nq-view-switch').querySelectorAll('[data-nq-view]').forEach((button) => {
-      const active = button.dataset.nqView === state.view;
-      button.classList.toggle('is-active', active);
-      button.setAttribute('aria-selected', String(active));
-      // On a narrow window the bar scrolls sideways: the chosen view stays in sight (the page does not move).
-      const bar = $('nq-view-switch');
-      if (active && bar.scrollWidth > bar.clientWidth) bar.scrollLeft = button.offsetLeft - (bar.clientWidth - button.offsetWidth) / 2;
-    });
-    try {
-      localStorage.setItem(VIEW_STORAGE, state.view);
-    } catch (_error) {
-      // Without browser storage the view lasts until the page is reloaded.
-    }
-    renderBulk();
-  };
-  $('nq-view-switch').querySelectorAll('[data-nq-view]').forEach((button) => button.addEventListener('click', () => {
-    applyView(button.dataset.nqView);
-    refreshStale();
-    // The chosen panel (the first one for every panel) opens at the top of the page, below the bar, and stays there
-    // while its data arrives.
-    const panel = root.querySelector('[data-nq-view-panel]:not([hidden])');
-    if (panel && typeof showSectionAtTop === 'function') {
-      showSectionAtTop(panel);
-      if (typeof keepSectionInView === 'function') keepSectionInView(panel);
-    }
-  }));
-  root.querySelectorAll('[data-nq-loader]').forEach((panel) => panel.addEventListener('toggle', () => { if (panel.open) refreshStale(); }));
-  applyView((() => {
-    try {
-      return localStorage.getItem(VIEW_STORAGE) || 'calls';
-    } catch (_error) {
-      return 'calls';
-    }
-  })());
-  // A panel chosen in the sections menu of the module (#section-…) is shown with its view: when the bar hides it, the
-  // page changes to its view before going there (on opening the page, or with a click while it is open).
-  const panelOfHash = (hash) => {
-    const wanted = decodeURIComponent(String(hash || '').replace(/^#/, '')).replace(/^section-/, '');
-    const slug = (text) => String(text || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-    return wanted ? [...root.querySelectorAll('[data-nq-view-panel]')].find((panel) => slug(panel.querySelector('h2')?.textContent) === wanted) : null;
-  };
-  const revealPanel = (hash) => {
-    const panel = panelOfHash(hash);
-    if (!panel?.hidden) return;
-    applyView(panel.dataset.nqViewPanel);
-    refreshStale();
-  };
-  revealPanel(window.location.hash);
-  document.addEventListener('click', (event) => {
-    const link = event.target instanceof Element ? event.target.closest('a[href*="#"]') : null;
-    if (!link) return;
-    const url = new URL(link.href, window.location.href);
-    if (url.pathname === window.location.pathname) revealPanel(url.hash);
-  }, true);
 
   // -- loading ----------------------------------------------------------------
   // The indexing runs in the background (when the server is idle, the first time, or on Reindex): the badge says
@@ -2366,7 +2304,7 @@
       });
       select.dispatchEvent(new Event('multiselect:options-updated'));
     });
-    toast(`Showing the calls that meet rule ${index + 1}${['calls', 'all'].includes(state.view) ? '' : ': open NQ Calls to see them'}.`);
+    toast(`Showing the calls that meet rule ${index + 1}.`);
     scheduleLoad();
   };
   // What moves a call to a status: each rule as chips, the field name and its values in their colours.
@@ -5112,9 +5050,12 @@
   // -- NQ Analysis Configuration menu -------------------------------------------------------------------------------
   // A menu opens where it fits: below its button, or above it near the bottom of the window, scrolling inside if needed,
   // and moved right when the button is too close to the left edge for it. Every entry opens its dialog and closes it.
-  const dropdownMenu = (toggle, menu) => {
+  const dropdownMenu = (toggle, menu, {hover = false} = {}) => {
     if (!toggle || !menu) return;
+    // Opened by the mouse passing over it: a click on the toggle then keeps it open instead of closing it.
+    let hovered = false;
     const close = () => {
+      hovered = false;
       if (menu.hidden) return;
       menu.hidden = true;
       toggle.setAttribute('aria-expanded', 'false');
@@ -5134,6 +5075,10 @@
       menu.style.maxHeight = `${Math.max(160, up ? above : below)}px`;
     };
     toggle.addEventListener('click', () => {
+      if (hovered) {
+        hovered = false;
+        return;
+      }
       menu.hidden = !menu.hidden;
       toggle.setAttribute('aria-expanded', String(!menu.hidden));
       if (!menu.hidden) {
@@ -5141,6 +5086,25 @@
         menu.querySelector('button')?.focus({preventScroll: true});
       }
     });
+    // A menu that opens on hover, as the sections menus of the tabs, closes shortly after the mouse leaves it.
+    if (hover) {
+      let timer = 0;
+      const area = toggle.parentElement;
+      area.addEventListener('pointerenter', (event) => {
+        if (event.pointerType !== 'mouse') return;
+        window.clearTimeout(timer);
+        if (!menu.hidden) return;
+        menu.hidden = false;
+        hovered = true;
+        toggle.setAttribute('aria-expanded', 'true');
+        place();
+      });
+      area.addEventListener('pointerleave', (event) => {
+        if (event.pointerType !== 'mouse') return;
+        window.clearTimeout(timer);
+        timer = window.setTimeout(close, 220);
+      });
+    }
     window.addEventListener('resize', () => { if (!menu.hidden) place(); });
     menu.addEventListener('click', () => window.setTimeout(close));
     // Any other click closes it, and a click on the toggle reaches the other dropdowns of the page, which close.
@@ -5149,7 +5113,7 @@
       if (event.key === 'Escape' && !menu.hidden) { close(); toggle.focus(); }
     });
   };
-  dropdownMenu($('nq-config-toggle'), $('nq-config-menu'));
+  dropdownMenu($('nq-config-toggle'), $('nq-config-menu'), {hover: true});
 
   // -- status rules dialog --------------------------------------------------------------------
   const statusRulesDialog = $('nq-status-rules-dialog');

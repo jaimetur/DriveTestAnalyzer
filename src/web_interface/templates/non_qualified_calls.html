@@ -13,32 +13,32 @@
   {% if not active_workspace %}
   <article class="panel"><p class="form-note">Open a workspace to review its Non-Qualified Calls.</p></article>
   {% else %}
-  {# Above the filters: the calls table, one panel or every panel below them (each browser remembers the choice), and
-     the NQ Analysis Configuration of the workspace beside them, both always at hand while scrolling. #}
+  {# Above the filters: the sections of the page, to go to each one while scrolling (the one being read is marked), and
+     the NQ Analysis Configuration of the workspace beside them, both always at hand. #}
   <div class="nq-view-dock">
-  <nav class="nq-view-switch" id="nq-view-switch" role="tablist" aria-label="View">
-    <button type="button" role="tab" data-nq-view="calls" aria-selected="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>NQ Calls <span class="nq-view-count" id="nq-view-count"></span></button>
-    <button type="button" role="tab" data-nq-view="summary" aria-selected="false" title="The Executive Summary of the filtered calls"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>Summary</button>
-    <button type="button" role="tab" data-nq-view="rates" aria-selected="false" title="NQ Rate by Campaign and Operator"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 5 5 19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>NQ Rate</button>
-    <button type="button" role="tab" data-nq-view="sources" aria-selected="false" title="Root Cause Sources"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 3 8l9 5 9-5-9-5z"/><path d="m3 13 9 5 9-5"/></svg>RCA Sources</button>
-    <button type="button" role="tab" data-nq-view="root" aria-selected="false" title="Root Cause Analysis"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1"/></svg>Root Causes</button>
-    <button type="button" role="tab" data-nq-view="lifecycle" aria-selected="false" title="Lifecycle &amp; Phases"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.9-4M4 13a8 8 0 0 0 14.9 4"/><path d="M5 3v4h4M19 21v-4h-4"/></svg>Lifecycle</button>
-    <button type="button" role="tab" data-nq-view="progress" aria-selected="false" title="Progress View"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 17 6-6 4 4 8-8"/><path d="M14 7h7v7"/></svg>Progress</button>
-    <button type="button" role="tab" data-nq-view="all" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>All panels</button>
+  <nav class="nq-view-switch" id="nq-view-switch" aria-label="Non-Qualified Calls sections" data-section-bar>
+    <a href="#section-filters" title="The filters of the calls"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16l-6 7.5V19l-4 1.5v-8z"/></svg>Filters</a>
+    <a href="#section-non-qualified-calls" title="The calls that match the filters"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>NQ Calls <span class="nq-view-count" id="nq-view-count"></span></a>
+    <a href="#section-summary" title="The Executive Summary of the filtered calls"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>Summary</a>
+    <a href="#section-nq-rate-by-campaign-and-operator" title="NQ Rate by Campaign and Operator"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 5 5 19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>NQ Rate</a>
+    <a href="#section-root-cause-sources" title="Root Cause Sources"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 3 8l9 5 9-5-9-5z"/><path d="m3 13 9 5 9-5"/></svg>RCA Sources</a>
+    <a href="#section-root-cause-analysis" title="Root Cause Analysis"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1"/></svg>Root Causes</a>
+    <a href="#section-lifecycle-phases" title="Lifecycle &amp; Phases"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.9-4M4 13a8 8 0 0 0 14.9 4"/><path d="M5 3v4h4M19 21v-4h-4"/></svg>Lifecycle</a>
+    <a href="#section-progress-view" title="Progress View"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 17 6-6 4 4 8-8"/><path d="M14 7h7v7"/></svg>Progress</a>
   </nav>
   {% if nq_can_edit %}<div class="nq-menu-wrap nq-center-wrap">
     <button type="button" class="nq-center-toggle nq-menu-toggle" id="nq-config-toggle" aria-haspopup="menu" aria-expanded="false" aria-controls="nq-config-menu" aria-label="NQ Analysis Configuration" title="Configure the analysis of the Non-Qualified Calls of this workspace"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg><span>NQ Analysis Configuration</span></button>
     <div class="nq-menu" id="nq-config-menu" role="menu" hidden>
-      <button type="button" role="menuitem" id="nq-fields-open"><strong>Fields &amp; Sections</strong><span>The fields of every section, their lists, columns and Excel order</span></button>
-      <button type="button" role="menuitem" id="nq-options-open"><strong>Statuses &amp; Teams</strong><span>The NQ Call Statuses and the responsible teams with their members</span></button>
-      <button type="button" role="menuitem" id="nq-status-rules-open" data-nq-status-rules-open><strong>Status Rules</strong><span>How the status follows the Analysis, Implementation and Planning fields</span></button>
-      <button type="button" role="menuitem" id="nq-root-open"><strong>Root Cause Catalog</strong><span>Domains, Root Categories and Root Causes, with their keywords</span></button>
+      <button type="button" role="menuitem" id="nq-fields-open"><svg class="nq-menu-icon" viewBox="0 0 24 24" aria-hidden="true">{{ section_icons['tag'] | safe }}</svg><strong>Fields &amp; Sections</strong><span>The fields of every section, their lists, columns and Excel order</span></button>
+      <button type="button" role="menuitem" id="nq-options-open"><svg class="nq-menu-icon" viewBox="0 0 24 24" aria-hidden="true">{{ section_icons['users'] | safe }}</svg><strong>Statuses &amp; Teams</strong><span>The NQ Call Statuses and the responsible teams with their members</span></button>
+      <button type="button" role="menuitem" id="nq-status-rules-open" data-nq-status-rules-open><svg class="nq-menu-icon" viewBox="0 0 24 24" aria-hidden="true">{{ section_icons['function'] | safe }}</svg><strong>Status Rules</strong><span>How the status follows the Analysis, Implementation and Planning fields</span></button>
+      <button type="button" role="menuitem" id="nq-root-open"><svg class="nq-menu-icon" viewBox="0 0 24 24" aria-hidden="true">{{ section_icons['book'] | safe }}</svg><strong>Root Cause Catalog</strong><span>Domains, Root Categories and Root Causes, with their keywords</span></button>
       {# The imports of root causes: the Ericsson RCA results, and the analyses of the previous tool (shown to every
          editor; only admins and super-admins can use it). #}
       <div class="nq-menu-separator" role="separator"></div>
-      <button type="button" role="menuitem" id="nq-rca-open" data-nq-rca-open><strong>Import Ericsson RCA Results</strong><span>The results of the Ericsson RCA, by JOIN_ID</span></button>
-      <button type="button" role="menuitem" id="nq-analyses-open"{% if not nq_can_import_analyses %} aria-disabled="true" title="Only admins and super-admins can import the analyses of the previous tool"{% endif %}><strong>Import Previous NQ Analyses</strong><span>The analyses made with the previous tool, by JOIN_ID (admins and super-admins)</span></button>
-      <button type="button" role="menuitem" id="nq-assign-analysts-open"><strong>Analysts → Asignees</strong><span>The user account of each Analyst as the Asignee of their calls</span></button>
+      <button type="button" role="menuitem" id="nq-rca-open" data-nq-rca-open><svg class="nq-menu-icon" viewBox="0 0 24 24" aria-hidden="true">{{ section_icons['upload'] | safe }}</svg><strong>Import Ericsson RCA Results</strong><span>The results of the Ericsson RCA, by JOIN_ID</span></button>
+      <button type="button" role="menuitem" id="nq-analyses-open"{% if not nq_can_import_analyses %} aria-disabled="true" title="Only admins and super-admins can import the analyses of the previous tool"{% endif %}><svg class="nq-menu-icon" viewBox="0 0 24 24" aria-hidden="true">{{ section_icons['upload'] | safe }}</svg><strong>Import Previous NQ Analyses</strong><span>The analyses made with the previous tool, by JOIN_ID (admins and super-admins)</span></button>
+      <button type="button" role="menuitem" id="nq-assign-analysts-open"><svg class="nq-menu-icon" viewBox="0 0 24 24" aria-hidden="true">{{ section_icons['user-plus'] | safe }}</svg><strong>Analysts → Asignees</strong><span>The user account of each Analyst as the Asignee of their calls</span></button>
     </div>
   </div>{% endif %}
   </div>

@@ -606,6 +606,9 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 .non-qualified-calls .nq-menu button { display: grid; gap: .1rem; min-height: 0; padding: .5rem .7rem; border: 0; border-radius: 10px; background: transparent; color: var(--nq-text); text-align: left; box-shadow: none; }
 .non-qualified-calls .nq-menu button:hover, .non-qualified-calls .nq-menu button:focus-visible { background: var(--nq-soft); outline: none; }
 .nq-menu strong { color: var(--nq-dark); font-size: .86rem; }
+/* An option with the icon of the sections menu beside its name and description. */
+.non-qualified-calls .nq-menu button:has(> .nq-menu-icon) { grid-template-columns: auto minmax(0, 1fr); column-gap: .65rem; align-items: center; }
+.nq-menu-icon { grid-row: span 2; width: 1.15rem; height: 1.15rem; fill: none; stroke: var(--nq-dark); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .nq-menu span { color: var(--nq-muted); font-size: .76rem; font-weight: 600; }
 
 /* Status set by the rules (Auto) or by hand. */
@@ -904,16 +907,14 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 .nq-view-dock:has(.nq-menu:not([hidden])) { z-index: 55; }
 .non-qualified-calls .nq-center-toggle { display: inline-flex; align-items: center; gap: .45rem; min-height: 0; padding: .8rem 1.1rem; border: 1px solid rgba(255, 255, 255, .18); border-radius: 999px; background: linear-gradient(135deg, #5a0c27, var(--nq-dark) 55%, #9c1d47); color: rgba(255, 255, 255, .9); font-size: .9rem; font-weight: 850; white-space: nowrap; box-shadow: 0 12px 28px rgba(60, 10, 30, .32); }
 .non-qualified-calls .nq-center-toggle:hover, .non-qualified-calls .nq-center-toggle[aria-expanded="true"] { color: #fff; filter: brightness(1.15); }
-.non-qualified-calls .nq-view-switch button { display: inline-flex; flex: 0 0 auto; align-items: center; gap: .45rem; min-height: 0; padding: .5rem 1rem; white-space: nowrap; border: 0; border-radius: 999px; background: transparent; color: rgba(255, 255, 255, .9); font-size: .9rem; font-weight: 850; box-shadow: none; }
-.non-qualified-calls .nq-view-switch button:hover { background: rgba(255, 255, 255, .14); color: #fff; }
-.non-qualified-calls .nq-view-switch button.is-active { background: #fff; color: var(--nq-dark); box-shadow: 0 4px 12px rgba(30, 4, 14, .3); }
+.non-qualified-calls .nq-view-switch a[hidden] { display: none; }
+.non-qualified-calls .nq-view-switch a { text-decoration: none; display: inline-flex; flex: 0 0 auto; align-items: center; gap: .45rem; min-height: 0; padding: .5rem 1rem; white-space: nowrap; border: 0; border-radius: 999px; background: transparent; color: rgba(255, 255, 255, .9); font-size: .9rem; font-weight: 850; box-shadow: none; }
+.non-qualified-calls .nq-view-switch a:hover { background: rgba(255, 255, 255, .14); color: #fff; }
+.non-qualified-calls .nq-view-switch a.is-active { background: #fff; color: var(--nq-dark); box-shadow: 0 4px 12px rgba(30, 4, 14, .3); }
 .nq-view-switch svg { width: 1.05rem; height: 1.05rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .nq-view-count { padding: .05rem .5rem; border-radius: 999px; background: rgba(255, 255, 255, .2); font-size: .78rem; }
 .nq-view-switch .is-active .nq-view-count { background: rgba(125, 18, 56, .12); }
 .nq-view-count:empty { display: none; }
-.non-qualified-calls [data-nq-view-panel][hidden] { display: none !important; }
-/* A panel opened from the bar or the sections menu stops below the bar, which stays at the top of the window. */
-.non-qualified-calls [data-nq-view-panel] { --section-top-offset: 66px; }
 /* The default columns fit the panel: field values wrap on two lines and the selects are narrower. */
 .nq-table th.nq-dynamic-col span[data-sort] { white-space: normal; }
 .nq-table td.nq-field-cell { max-width: 8.5rem; }
@@ -1041,7 +1042,7 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
   /* Only its icon on a phone, so the bar keeps its room. */
   .non-qualified-calls .nq-center-toggle { padding: .7rem; }
   .nq-center-toggle span { display: none; }
-  .non-qualified-calls .nq-view-switch button { flex: 0 0 auto; justify-content: center; gap: .3rem; padding: .45rem .7rem; font-size: .8rem; white-space: nowrap; }
+  .non-qualified-calls .nq-view-switch a { flex: 0 0 auto; justify-content: center; gap: .3rem; padding: .45rem .7rem; font-size: .8rem; white-space: nowrap; }
   .nq-view-switch svg { width: .95rem; height: .95rem; }
   .nq-view-count { padding: 0 .35rem; font-size: .68rem; }
   .nq-kpis, .nq-summary-panel .nq-kpis, .nq-rate-overview { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }

@@ -14,7 +14,7 @@ The module is in development, so its main tab can show a red **ALPHA** label (se
 | Know which calls are listed and how they are indexed | [Which calls are Non-Qualified](#which-calls-are-non-qualified) |
 | Understand Daily, cumulative and Final CDRs of the same call | [Daily and Final CDRs](#daily-and-final-cdrs) |
 | Choose the calls I work with | [Filters](#filters) |
-| Show one panel or every panel | [NQ Calls, one panel or every panel](#nq-calls-one-panel-or-every-panel) |
+| Go to each panel | [Sections bar](#sections-bar) |
 | See how many calls fail and where they concentrate | [Summary](#summary) |
 | Compare the NQ rate of campaigns and operators | [NQ Rate by Campaign and Operator](#nq-rate-by-campaign-and-operator) |
 | Compare the NetCheck RCA, the Ericsson RCA and the analysts | [Root Cause Sources](#root-cause-sources) |
@@ -96,18 +96,12 @@ Selecting every value of a filter, or none, applies no restriction (**Select All
 > [!IMPORTANT]
 > **The selection is shared.** It is saved in the workspace, so every user finds the last filters applied, in any session and on any device. **Assigned to me** always refers to the user viewing the page. An Operator or Vendor saved with a name the [Operator Maps](workspace-config.md#operator-maps) now show differently keeps selecting its calls with the new name (Vodafone SM selects VF SM once it is mapped to it), as do the NetCheck RCA values saved with another spelling.
 
-## NQ Calls, one panel or every panel
+## Sections bar
 
-A bar above the Filters, which stays at the top of the window while you scroll, chooses what the page shows below them:
-
-- **NQ Calls**: the [Non-Qualified Calls](#non-qualified-calls-panel) table, with the number of calls that match the filters.
-- One panel at a time: **Summary**, **NQ Rate** (NQ Rate by Campaign and Operator), **RCA Sources** (Root Cause Sources), **Root Causes** (Root Cause Analysis), **Lifecycle** (Lifecycle & Phases) and **Progress** (Progress View).
-- **All panels**: the Filters, the Non-Qualified Calls table, and then every other panel.
-
-The chosen panel (the first one with All panels) opens at the top of the page, right below the bar, and stays there while its data arrives, and each browser remembers the choice for each workspace. Every panel shows, in a badge below its **Collapse** button, how many calls match the filters. A panel chosen in the sections menu of the module opens with its own view. A click on a chart filters the calls as usual, and the bar tells how many calls are left. On a narrow window the bar scrolls sideways, keeping the chosen view in sight. Beside it, **NQ Analysis Configuration** opens the configuration of the workspace (see [NQ Analysis Configuration](#nq-analysis-configuration)).
+A bar above the Filters, which stays at the top of the window while you scroll, goes back to the top of the page with its first entry, an arrow, and to each panel of the page: **Filters**, **NQ Calls** (the [Non-Qualified Calls](#non-qualified-calls-panel) table, with the number of calls that match the filters), **Summary**, **NQ Rate** (NQ Rate by Campaign and Operator), **RCA Sources** (Root Cause Sources), **Root Causes** (Root Cause Analysis), **Lifecycle** (Lifecycle & Phases) and **Progress** (Progress View). Every panel stays on the page; the chosen one opens at the top, right below the bar (unfolded if it was folded), and stays there while its data arrives, and the bar marks the panel being read as you scroll. Every panel shows, in a badge below its **Collapse** button, how many calls match the filters. A click on a chart filters the calls as usual, and the bar tells how many calls are left. On a narrow window the bar scrolls sideways, keeping the marked panel in sight. Beside it, **NQ Analysis Configuration** opens the configuration of the workspace (see [NQ Analysis Configuration](#nq-analysis-configuration)).
 
 > [!TIP]
-> **Only the panels on screen are calculated.** A panel of the other view, or a folded one, is calculated when it is shown, so a change of the filters only waits for what you are looking at.
+> **Folded panels are not calculated.** A folded panel is calculated when it is unfolded, so a change of the filters only waits for the panels that are open.
 
 ## Summary
 
@@ -278,7 +272,7 @@ Admins and super-admins can delete the history: the **×** of a change deletes t
 
 ## NQ Analysis Configuration
 
-**NQ Analysis Configuration**, beside the floating bar of the views (for `user-editor` accounts and above; only its icon on a phone), opens the configuration of the workspace, shared by every user:
+**NQ Analysis Configuration**, beside the [Sections bar](#sections-bar) (for `user-editor` accounts and above; only its icon on a phone), opens on hover, or with a click, the configuration of the workspace, shared by every user, each option with the icon it has in the sections menu of the tab:
 
 | Option | What it configures |
 | --- | --- |
@@ -589,7 +583,7 @@ Workspaces of earlier layouts are completed once:
 
 On a phone the page fits the width of the screen:
 
-- The bar of [NQ Calls, one panel or every panel](#nq-calls-one-panel-or-every-panel) stays on one row (scrolling sideways), the filters and the indicators go two per row, the tabs of the NQ Rate, the Root Cause Sources and the call scroll sideways, and the tables of the Dashboards keep their first column in view while they scroll.
+- The [Sections bar](#sections-bar) stays on one row (scrolling sideways), the filters and the indicators go two per row, the tabs of the NQ Rate, the Root Cause Sources and the call scroll sideways, and the tables of the Dashboards keep their first column in view while they scroll.
 - Each call of the table is a card with the name of every value above it, its start time and service at the top and its select box in the corner; the header of the table stays above the cards as a row of chips that sort and filter, and the cards are shown one at a time with the pager of every card list of the application (first, previous, next and last, and *Call N of total*), which moves to the next or previous page of calls by itself and keeps its card when the calls are refreshed after a change.
 - The call details fill the screen and scroll as a whole with their tabs at the top (the chosen tab comes into view), the phases two per row and the names and values of the call in two equal columns, and the dialogs of the NQ Analysis Configuration fill the screen with their rows wrapped.
 

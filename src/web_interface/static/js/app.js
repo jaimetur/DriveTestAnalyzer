@@ -9117,7 +9117,7 @@ if (window.location.hash) {
 // browser announces no new section.
 document.addEventListener('click', (event) => {
   const link = event.target instanceof Element
-    ? event.target.closest('.module-sections-menu a[href*="#"], .module-config-options a[href*="#"], .module-builders-options a[href*="#"]')
+    ? event.target.closest('.module-sections-menu a[href*="#"], .module-config-options a[href*="#"], .module-builders-options a[href*="#"], [data-section-bar] a[href*="#"], .section-bar-menu a[href*="#"]')
     : null;
   if (!link || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
   const url = new URL(link.href, window.location.href);
@@ -9125,6 +9125,235 @@ document.addEventListener('click', (event) => {
       || url.hash !== window.location.hash) return;
   window.setTimeout(() => window.dispatchEvent(new HashChangeEvent('hashchange')));
 });
+
+// The floating bar of the sections of the page, as in Non-Qualified Calls: it stays at the top of the window, goes to
+// a section when one is chosen, marks the one being read and, first, goes back to the top of the page. A page with its
+// own bar ([data-section-bar]) keeps it; the others get one with every entry of the sections menu of their tab (or of
+// their Config or Builders page), when it has two or more: an entry with parts opens them in a list below it.
+(() => {
+  const main = document.querySelector('main');
+  if (!main || document.body.matches('[data-embedded-template-editor], [data-embedded-dataset-preview]')) return;
+  const here = window.location.pathname;
+  const hashOf = (link) => {
+    const url = new URL(link.href, window.location.href);
+    return url.pathname === here && url.hash.length > 1 && url.hash !== '#top' ? url.hash : '';
+  };
+  const targetOf = (hash) => {
+    const id = decodeURIComponent(hash.slice(1));
+    return document.getElementById(id) || (id.startsWith('section-') ? sectionPanel(id) : null);
+  };
+  const isSeparator = (element) => element.matches('[role="separator"]');
+  // The entries of the menu of the page, each with its parts (null for a line between them).
+  const menuEntries = () => {
+    const tab = document.querySelector('.module-tab.active[data-module-sections]');
+    const menu = tab ? document.querySelector(`[data-module-sections-for="${CSS.escape(tab.dataset.moduleSections)}"]`) : null;
+    if (menu) {
+      const entries = [];
+      [...menu.children].forEach((child) => {
+        if (child.matches('a')) entries.push({link: child, parts: []});
+        else if (child.matches('.module-config-group')) {
+          const parts = [...child.querySelectorAll(':scope > .module-config-sections > *')].map((part) => (isSeparator(part) ? null : part));
+          entries.push({link: child.querySelector(':scope > a'), parts});
+        }
+      });
+      return {entries, menu, name: tab.querySelector('span')?.textContent.trim() || ''};
+    }
+    // The Config and Builders pages: the sections of the page being shown, the nested ones as parts of the one above.
+    const page = [...document.querySelectorAll('.module-config-options .module-config-group, .module-builders-options .module-config-group')]
+      .find((group) => { const link = group.querySelector(':scope > a'); return link && new URL(link.href, window.location.href).pathname === here; });
+    const entries = [];
+    page?.querySelectorAll('.module-config-sections > a').forEach((link) => {
+      if (link.classList.contains('is-nested') && entries.length) entries.at(-1).parts.push(link);
+      else entries.push({link, parts: []});
+    });
+    return {entries, menu: page?.closest('[data-module-config-options], [data-module-builders-options]') || null,
+            name: page?.querySelector(':scope > a span')?.textContent.trim() || ''};
+  };
+  const linkTo = (source, hash) => {
+    const link = document.createElement('a');
+    link.href = hash;
+    const icon = source.querySelector(':scope > svg');
+    if (icon) link.append(icon.cloneNode(true));
+    const label = document.createElement('span');
+    label.textContent = source.querySelector(':scope > span')?.textContent.trim() || source.textContent.trim();
+    link.append(label);
+    return link;
+  };
+  // Each entry of the bar: its link, its section and, for an entry with parts, the list that opens below it.
+  const items = [];
+  const groups = [];
+  let bar = document.querySelector('[data-section-bar]');
+  if (!bar) {
+    const {entries, menu, name} = menuEntries();
+    const first = [...main.querySelectorAll('.panel')].find((panel) => !panel.parentElement?.closest('.panel'));
+    const usable = entries.filter(({link}) => link && hashOf(link));
+    if (usable.length < 2 || !first) return;
+    bar = document.createElement('nav');
+    bar.className = 'section-bar';
+    bar.dataset.sectionBar = '';
+    bar.setAttribute('aria-label', `${name || 'Page'} sections`);
+    const accent = menu ? getComputedStyle(menu).getPropertyValue('--menu-accent').trim() : '';
+    if (accent) bar.style.setProperty('--section-bar-accent', accent);
+    usable.forEach(({link: source, parts}) => {
+      const link = linkTo(source, hashOf(source));
+      const item = {link, hash: hashOf(source), parent: null};
+      items.push(item);
+      const partLinks = parts.filter((part) => !part || hashOf(part));
+      if (!partLinks.some(Boolean)) {
+        bar.append(link);
+        return;
+      }
+      const label = link.textContent.trim();
+      const wrap = document.createElement('span');
+      wrap.className = 'section-bar-group';
+      const toggle = document.createElement('button');
+      toggle.type = 'button';
+      toggle.className = 'section-bar-more';
+      toggle.setAttribute('aria-haspopup', 'true');
+      toggle.setAttribute('aria-expanded', 'false');
+      toggle.setAttribute('aria-label', `${label}: its parts`);
+      toggle.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>';
+      wrap.append(link, toggle);
+      bar.append(wrap);
+      const list = document.createElement('nav');
+      list.className = 'section-bar-menu';
+      list.setAttribute('popover', 'manual');
+      list.setAttribute('aria-label', `${label} parts`);
+      if (accent) list.style.setProperty('--section-bar-accent', accent);
+      partLinks.forEach((part) => {
+        if (!part) {
+          const line = document.createElement('div');
+          line.setAttribute('role', 'separator');
+          list.append(line);
+          return;
+        }
+        const partLink = linkTo(part, hashOf(part));
+        list.append(partLink);
+        items.push({link: partLink, hash: hashOf(part), parent: item});
+      });
+      document.body.append(list);
+      groups.push({wrap, toggle, list, item});
+    });
+    // Below the introduction of the page (its hero panel), or above its first panel.
+    if (/hero/.test(first.className)) first.after(bar);
+    else first.before(bar);
+  } else {
+    bar.querySelectorAll('a[href*="#"]').forEach((link) => items.push({link, hash: new URL(link.href, window.location.href).hash, parent: null}));
+  }
+  document.body.classList.add('has-section-bar');
+  // The first entry of every bar goes back to the top of the page, marked while no section has reached the bar.
+  const toTop = document.createElement('a');
+  toTop.href = '#top';
+  toTop.className = 'section-bar-top';
+  toTop.title = 'Top of the page';
+  toTop.setAttribute('aria-label', 'Top of the page');
+  toTop.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14M12 20V9m-5 5 5-5 5 5"/></svg>';
+  toTop.addEventListener('click', (event) => {
+    event.preventDefault();
+    stopWaitingForSection?.();
+    stopKeepingSection?.();
+    if (window.location.hash) window.history.replaceState(window.history.state, '', `${window.location.pathname}${window.location.search}`);
+    window.scrollTo({top: 0, behavior: 'smooth'});
+  });
+  bar.prepend(toTop);
+
+  // The list of parts opens below its entry on hover, focus or a click on its arrow, and closes on leaving it.
+  let closeTimer = 0;
+  const place = (group) => {
+    const box = group.wrap.getBoundingClientRect();
+    group.list.style.top = `${Math.round(box.bottom + 6)}px`;
+    group.list.style.left = `${Math.round(Math.max(8, Math.min(box.left, window.innerWidth - group.list.offsetWidth - 8)))}px`;
+  };
+  const close = (group) => {
+    if (group.list.matches(':popover-open')) group.list.hidePopover();
+    group.toggle.setAttribute('aria-expanded', 'false');
+  };
+  const open = (group) => {
+    window.clearTimeout(closeTimer);
+    groups.forEach((other) => { if (other !== group) close(other); });
+    if (!group.list.matches(':popover-open')) group.list.showPopover();
+    group.toggle.setAttribute('aria-expanded', 'true');
+    place(group);
+  };
+  const closeSoon = (group) => {
+    window.clearTimeout(closeTimer);
+    closeTimer = window.setTimeout(() => close(group), 220);
+  };
+  groups.forEach((group) => {
+    group.wrap.addEventListener('pointerenter', (event) => { if (event.pointerType === 'mouse') open(group); });
+    group.wrap.addEventListener('pointerleave', (event) => { if (event.pointerType === 'mouse') closeSoon(group); });
+    group.list.addEventListener('pointerenter', () => window.clearTimeout(closeTimer));
+    group.list.addEventListener('pointerleave', (event) => { if (event.pointerType === 'mouse') closeSoon(group); });
+    group.wrap.addEventListener('focusin', () => open(group));
+    group.toggle.addEventListener('click', () => (group.list.matches(':popover-open') ? close(group) : open(group)));
+    group.list.addEventListener('click', (event) => { if (event.target.closest('a')) close(group); });
+    group.list.addEventListener('keydown', (event) => { if (event.key === 'Escape') { close(group); group.toggle.focus(); } });
+  });
+  document.addEventListener('pointerdown', (event) => {
+    groups.forEach((group) => { if (!group.wrap.contains(event.target) && !group.list.contains(event.target)) close(group); });
+  });
+  document.addEventListener('keydown', (event) => { if (event.key === 'Escape') groups.forEach(close); });
+
+  // The sections, found again when the page changes (panels drawn once their data arrives…).
+  const targets = new Map();
+  const target = (hash) => {
+    let element = targets.get(hash);
+    if (element === undefined || (element && !element.isConnected)) {
+      element = targetOf(hash);
+      targets.set(hash, element);
+    }
+    return element;
+  };
+  // A bar wider than the window gets smaller labels, then loses its icons, before scrolling sideways.
+  let fitted = 0;
+  const fit = () => {
+    if (fitted === window.innerWidth) return;
+    fitted = window.innerWidth;
+    bar.classList.remove('is-compact', 'is-dense');
+    ['is-compact', 'is-dense'].forEach((size) => { if (bar.scrollWidth > bar.clientWidth + 1) bar.classList.add(size); });
+  };
+  let frame = 0;
+  const update = () => {
+    frame = 0;
+    fit();
+    const offset = (parseFloat(getComputedStyle(document.body).getPropertyValue('--section-top-offset')) || 0) + 24;
+    const atEnd = window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 2;
+    // The section being read: the last one whose top has reached the bar (the last one in sight at the end of the page).
+    let active = null;
+    items.forEach((item) => {
+      const element = target(item.hash);
+      if (!element || element.hidden || !element.getClientRects().length) return;
+      const top = element.getBoundingClientRect().top;
+      if (top <= offset || (atEnd && top < window.innerHeight)) active = item;
+    });
+    toTop.classList.toggle('is-active', !active);
+    if (active) toTop.removeAttribute('aria-current');
+    else toTop.setAttribute('aria-current', 'location');
+    items.forEach((item) => {
+      const current = item === active || item === active?.parent;
+      item.link.classList.toggle('is-active', current);
+      if (current) item.link.setAttribute('aria-current', 'location');
+      else item.link.removeAttribute('aria-current');
+    });
+    // On a narrow window the bar scrolls sideways: the marked section stays in sight.
+    const marked = active ? (active.parent || active).link.closest('.section-bar-group') || (active.parent || active).link : toTop;
+    if (marked && bar.contains(marked) && bar.scrollWidth > bar.clientWidth) {
+      const left = marked.offsetLeft - (bar.clientWidth - marked.offsetWidth) / 2;
+      if (Math.abs(bar.scrollLeft - left) > 4) bar.scrollLeft = left;
+    }
+    groups.forEach((group) => { if (group.list.matches(':popover-open')) place(group); });
+  };
+  const schedule = () => { if (!frame) frame = window.requestAnimationFrame(update); };
+  window.addEventListener('scroll', schedule, {passive: true});
+  window.addEventListener('resize', schedule);
+  main.addEventListener('toggle', schedule, true);
+  let settle = 0;
+  new MutationObserver(() => {
+    window.clearTimeout(settle);
+    settle = window.setTimeout(() => { targets.clear(); schedule(); }, 250);
+  }).observe(main, {childList: true, subtree: true, attributes: true, attributeFilter: ['hidden']});
+  update();
+})();
 
 // The sections of each main module open below its tab on hover or focus; the tab itself still opens the module,
 // at its top when it is the page being shown.

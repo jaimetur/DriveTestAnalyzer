@@ -471,6 +471,43 @@ a.topnav-link-logout { background: linear-gradient(135deg, #ffd8d8, #ffc6c6); bo
 .user-password-reset:hover:not(:disabled) { background: linear-gradient(135deg, #176b47, #338f5f); }
 /* One column as wide as the page: a wide panel scrolls or wraps inside it instead of widening the page. */
 .dashboard-stack { display: grid; grid-template-columns: minmax(0, 1fr); }
+/* The floating bar of the sections of a page (app.js), in the colour of its module, as in Non-Qualified Calls. */
+body.has-section-bar { --section-top-offset: 68px; }
+.section-bar { --section-bar-accent: #0b6664; position: sticky; top: 8px; z-index: 26; display: flex; flex-wrap: nowrap; gap: .35rem; justify-self: center; box-sizing: border-box; width: max-content; max-width: 100%; margin: 0 auto; padding: .3rem; overflow-x: auto; scrollbar-width: none; border: 1px solid rgba(255, 255, 255, .18); border-radius: 999px; background: linear-gradient(135deg, color-mix(in srgb, var(--section-bar-accent) 62%, #000), var(--section-bar-accent) 55%, color-mix(in srgb, var(--section-bar-accent) 82%, #fff)); box-shadow: 0 12px 28px color-mix(in srgb, var(--section-bar-accent) 38%, transparent); }
+.section-bar::-webkit-scrollbar { display: none; }
+.section-bar a { display: inline-flex; flex: 0 0 auto; align-items: center; gap: .45rem; padding: .5rem 1rem; border-radius: 999px; color: rgba(255, 255, 255, .92); font-size: .9rem; font-weight: 850; text-decoration: none; white-space: nowrap; }
+.section-bar a[hidden] { display: none; }
+.section-bar a:hover { background: rgba(255, 255, 255, .14); color: #fff; }
+.section-bar a.is-active { background: #fff; color: color-mix(in srgb, var(--section-bar-accent) 80%, #000); box-shadow: 0 4px 12px rgba(0, 0, 0, .22); }
+.section-bar svg { display: block; flex: 0 0 auto; width: 1.05rem; height: 1.05rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.section-bar-group { display: inline-flex; flex: 0 0 auto; align-items: center; border-radius: 999px; }
+.section-bar-group > a { padding-right: .3rem; }
+.section-bar-group:hover { background: rgba(255, 255, 255, .14); }
+.section-bar-group > a:hover { background: transparent; }
+.section-bar-group:has(> a.is-active) { background: #fff; box-shadow: 0 4px 12px rgba(0, 0, 0, .22); }
+.section-bar-group > a.is-active { box-shadow: none; }
+.section-bar button.section-bar-more { display: inline-grid; place-items: center; min-height: 0; padding: .45rem .7rem .45rem .2rem; border: 0; border-radius: 999px; background: transparent; box-shadow: none; color: rgba(255, 255, 255, .92); }
+.section-bar-group:has(> a.is-active) button.section-bar-more { color: color-mix(in srgb, var(--section-bar-accent) 80%, #000); }
+.section-bar button.section-bar-more svg { width: .95rem; height: .95rem; transition: transform .15s ease; }
+.section-bar button.section-bar-more[aria-expanded="true"] svg { transform: rotate(180deg); }
+.section-bar.is-compact a { gap: .35rem; padding: .45rem .7rem; font-size: .82rem; }
+.section-bar.is-compact .section-bar-group > a { padding-right: .25rem; }
+.section-bar.is-dense a:not(.section-bar-top) > svg { display: none; }
+body [data-section-bar] > a.section-bar-top { padding: .5rem .62rem; }
+body [data-section-bar].is-compact > a.section-bar-top { padding: .45rem .55rem; }
+/* The parts of an entry of the bar, below it, as in the sections menu. */
+.section-bar-menu { --section-bar-accent: #0b6664; position: fixed; inset: auto; box-sizing: border-box; width: max-content; min-width: 13rem; max-width: calc(100vw - 1rem); margin: 0; padding: .4rem; border: 1px solid rgba(15, 23, 42, .1); border-radius: 12px; background: #fff; box-shadow: 0 16px 34px rgba(15, 23, 42, .2); }
+.section-bar-menu:popover-open { display: grid; gap: .15rem; }
+.section-bar-menu a { display: flex; align-items: center; gap: .6rem; padding: .5rem .75rem; border-radius: 8px; color: #1f2937; font-size: .9rem; font-weight: 650; text-decoration: none; white-space: nowrap; }
+.section-bar-menu a:hover, .section-bar-menu a:focus-visible { background: color-mix(in srgb, var(--section-bar-accent) 10%, #fff); }
+.section-bar-menu a.is-active { background: color-mix(in srgb, var(--section-bar-accent) 15%, #fff); color: color-mix(in srgb, var(--section-bar-accent) 80%, #000); }
+.section-bar-menu svg { display: block; flex: 0 0 auto; width: 1.1rem; height: 1.1rem; fill: none; stroke: var(--section-bar-accent); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.section-bar-menu [role="separator"] { height: 1px; margin: .25rem .5rem; background: rgba(15, 23, 42, .1); }
+@media (max-width: 760px) {
+  .section-bar { top: 4px; width: 100%; }
+  .section-bar a { gap: .3rem; padding: .45rem .7rem; font-size: .8rem; }
+  .section-bar svg { width: .95rem; height: .95rem; }
+}
 .spacious-stack { gap: 2.2rem; }
 .roomy-grid { gap: 1.8rem; }
 .hero-grid { display: grid; grid-template-columns: 1.15fr 0.85fr; }
