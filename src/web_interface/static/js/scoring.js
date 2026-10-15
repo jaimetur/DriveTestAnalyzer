@@ -345,6 +345,11 @@
   let userSelectedSavedFilter = Boolean(selectedSavedFilterId);
   let refreshInFlight = false;
   let timer = null;
+  // Opening a Saved Filter whose CDRs or methodology changed queues it again. A list of Saved Filters requested before
+  // that answer still reads it completed: the calculating state it answered is kept over such a list, so its old result
+  // is not shown and its progress keeps being followed.
+  let savedFilterRequests = 0;
+  const calculatingSavedFilters = new Map();
   let selectionLoaded = false;
   let selectionPersisted = false;
   let selectionDirty = false;
@@ -6744,6 +6749,8 @@
       const record = payload.saved_filter || payload;
       selectedSavedFilter = record;
       const status = normalizeStatus(record);
+      if (isActive(record)) calculatingSavedFilters.set(id, {record, request: ++savedFilterRequests});
+      else calculatingSavedFilters.delete(id);
       // A saved result whose CDRs or methodology are gone is shown as it was, saying why.
       if (record.unavailable) setMessage(`${record.unavailable} The saved result is shown.`, 'error');
       if (isComplete(record) || payload.scoring || payload.gap) {
@@ -6805,9 +6812,18 @@
     if (refreshInFlight) return;
     refreshInFlight = true;
     try {
+      const request = ++savedFilterRequests;
       const payload = await requestJson(savedFiltersUrl);
       savedFilters = (Array.isArray(payload) ? payload : (Array.isArray(payload.saved_filters) ? payload.saved_filters : []))
-        .filter(savedFilter => !deletedSavedFilterIds.has(savedFilterIdOf(savedFilter)));
+        .filter(savedFilter => !deletedSavedFilterIds.has(savedFilterIdOf(savedFilter)))
+        .map(savedFilter => {
+          const calculating = calculatingSavedFilters.get(savedFilterIdOf(savedFilter));
+          if (!calculating || isActive(savedFilter)) return savedFilter;
+          // Requested before the Saved Filter was queued again: it keeps calculating until a later list says it ended.
+          if (calculating.request > request) return {...savedFilter, ...calculating.record};
+          calculatingSavedFilters.delete(savedFilterIdOf(savedFilter));
+          return savedFilter;
+        });
       for (const savedFilter of savedFilters) {
         const id = savedFilterIdOf(savedFilter);
         const cached = resultCache.get(id);

@@ -15,6 +15,7 @@
 
 #### 🐛 Bug fixes:
 - **Scoring & GAP Analysis on phones:** the Scoring Methodology pill, the comparison context and Scoring Tables lists and the GAP Analysis tables fit the screen (long options are shortened and wide tables scroll inside their box) instead of running past it.
+- **Saved Filters calculating again:** opening a Saved Filter whose CDRs changed follows its new calculation to the end and shows its result when it completes, instead of staying at 2% (or showing its old result) until another Saved Filter was opened.
 
 #### 📚 Documentation:
 

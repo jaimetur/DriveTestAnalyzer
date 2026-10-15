@@ -442,3 +442,13 @@ def test_included_area_summary_says_why_the_area_filters_are_locked():
     assert 'data-scoring-area-filter-unlock' in template
     assert "select.closest('label')?.classList.toggle('is-area-locked', included);" in script
     assert 'areaFilterLock.hidden = !included || !locked.length;' in script
+
+
+def test_an_opened_saved_filter_queued_again_keeps_its_progress_over_an_earlier_list():
+    """Opening a Saved Filter whose CDRs changed queues it again; a list requested before that answer still reads it
+    completed and must not show its old result or stop following its calculation."""
+    script = SCORING_SCRIPT.read_text(encoding='utf-8')
+    assert 'const calculatingSavedFilters = new Map();' in script
+    assert 'if (isActive(record)) calculatingSavedFilters.set(id, {record, request: ++savedFilterRequests});' in script
+    assert 'const request = ++savedFilterRequests;' in script
+    assert 'if (calculating.request > request) return {...savedFilter, ...calculating.record};' in script
