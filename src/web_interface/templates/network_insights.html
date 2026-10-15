@@ -5,7 +5,7 @@
   <article class="panel hero-panel ni-hero">
     <p class="eyebrow">Network Insights</p>
     <h2>Understand the network behind the performance</h2>
-    <p class="lede">Compare radio quality, observed sites, spectrum and network deployment per Operator, locate weak-coverage and high-interference areas on the map, and group every view by Campaign, Region or City.</p>
+    <p class="lede">Compare radio quality, observed sites, spectrum and network deployment per Operator, locate weak-coverage and high-interference areas on the map, and group every view by Campaign, Region or City. Double-click any chart, map or table to open it larger.</p>
   </article>
 
   <details class="panel collapsible-panel ni-selection-panel" open data-panel-state-key="network-insights:selection">
@@ -69,6 +69,7 @@
       <div class="ni-map-toolbar">
         <label>Group<select id="ni-map-operator"></select></label>
         <button type="button" id="ni-map-reset" class="ni-secondary-action">Show Whole Area</button>
+        <label class="ni-check" title="The inventory sites around the weakest areas: a triangle per site on the whole area, its sectors once an area is zoomed"><input type="checkbox" id="ni-map-sites" checked> Inventory sites</label>
         <p class="form-note" id="ni-map-note"></p>
       </div>
       <div id="ni-map-sections" class="ni-technology-sections"><p class="form-note">No analysis yet.</p></div>
@@ -140,6 +141,14 @@
       <p class="form-note ni-note">Bands come from the serving EARFCN and NR band of each sample; typical bandwidths come from CDR Data, the only CDR type that reports them.</p>
     </div>
   </details>
+
+  <dialog class="ni-expand-dialog" id="ni-expand-dialog" aria-labelledby="ni-expand-title">
+    <header class="ni-expand-header">
+      <div><p class="eyebrow" id="ni-expand-kind">Chart</p><h3 id="ni-expand-title"></h3><p class="form-note" id="ni-expand-meta"></p></div>
+      <button type="button" class="ni-expand-close" id="ni-expand-close" aria-label="Close the enlarged view" title="Close">×</button>
+    </header>
+    <div class="ni-expand-content" id="ni-expand-content"></div>
+  </dialog>
 
   <dialog class="ni-progress-dialog" id="ni-progress-dialog" aria-labelledby="ni-progress-title" aria-describedby="ni-progress-message">
     <div class="ni-progress-spinner" aria-hidden="true"></div>

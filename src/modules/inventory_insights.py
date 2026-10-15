@@ -506,8 +506,10 @@ def nr_availability(samples: pd.DataFrame, serving: pd.DataFrame, labels: pd.Ser
     } for _index, row in top.iterrows()]}
 
 
-VENDOR_COLOURS = {'ericsson': '#1C7ED6', 'huawei': '#E03131', 'nsn': '#7048E8', 'nokia': '#7048E8', 'samsung': '#0CA678',
-                  'mavenir': '#F08C00', 'zte': '#C2255C'}
+# Vendor colours of the inventory sites drawn on the maps: none of them is a colour of the RSRP/SINR quality scale
+# (green, yellow, orange, red), so a site never reads as a measurement.
+VENDOR_COLOURS = {'ericsson': '#1971C2', 'huawei': '#9C36B5', 'nsn': '#0C8599', 'nokia': '#0C8599', 'samsung': '#343A40',
+                  'mavenir': '#8B5E34', 'zte': '#D6336C'}
 
 
 def vendor_colour(vendor: str) -> str:
@@ -549,7 +551,7 @@ def sector_overlay(cells: pd.DataFrame, families: Iterable[str], centres: list[t
             'label': f"Site {site} · {family_label(family)}", 'detail': f"{', '.join(sorted(set(part['vendor']) - {''}))} · {bands}",
             'cells': wedges[:24],
         })
-    legend = [{'label': f'{vendor} sectors', 'colour': vendor_colour(vendor)} for vendor in sorted(vendors, key=str.casefold)]
+    legend = [{'label': f'{vendor} sites', 'colour': vendor_colour(vendor), 'marker': 'triangle'} for vendor in sorted(vendors, key=str.casefold)]
     return {'sectors': overlay, 'legend': legend}
 
 

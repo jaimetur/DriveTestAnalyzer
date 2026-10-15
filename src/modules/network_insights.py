@@ -40,7 +40,7 @@ from src.modules.serving_cells import load_serving_networks, serving_families
 NETWORK_INSIGHTS_KINDS = ('data', 'voice', 'speech')
 # Bump when the normalised samples or the analysis payload change shape.
 SAMPLES_CACHE_VERSION = 5
-ANALYSIS_CACHE_VERSION = 8
+ANALYSIS_CACHE_VERSION = 9
 INVENTORY_CACHE_VERSION = 4
 OBSERVED_CACHE_VERSION = 9
 # Columns of the Observed Sites/Cells (from CDRs) tables.

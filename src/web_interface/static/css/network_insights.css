@@ -292,3 +292,21 @@
 @media(max-width:900px){.ni-control-group .ni-selection-grid{grid-auto-flow:row;grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:560px){.ni-control-group .ni-selection-grid{grid-template-columns:minmax(0,1fr)}.ni-section-head{flex-wrap:wrap}}
 .ni-section-head + .ni-table-wrap{margin-top:0}
+/* Enlarged chart, map or table (double-click), taking the screen but 5% on each side, as in Scoring. */
+.ni-expand-dialog{box-sizing:border-box;width:90vw;max-width:90vw;height:90vh;max-height:90vh;padding:0;border:1px solid var(--ni-border);border-radius:16px;background:#fff;color:var(--ni-dark);box-shadow:0 24px 72px rgba(20,18,60,.35);overflow:hidden}
+.ni-expand-dialog[open]{display:flex;flex-direction:column}
+.ni-expand-dialog::backdrop{background:rgba(15,13,40,.55);backdrop-filter:blur(3px)}
+.ni-expand-header{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;padding:1rem 1.3rem .8rem;border-bottom:1px solid #e6e8fb}
+.ni-expand-header .eyebrow{margin:0;color:var(--ni-color);font-size:.72rem;letter-spacing:.08em}
+.ni-expand-header h3{margin:.15rem 0 0;color:var(--ni-dark);font-size:1.25rem}
+.ni-expand-header .form-note{margin:.2rem 0 0}
+.network-insights .ni-expand-close{display:grid;place-items:center;width:2.3rem;min-width:2.3rem;height:2.3rem;min-height:2.3rem;padding:0;border:1px solid var(--ni-border);border-radius:999px;background:#fff;color:var(--ni-dark);font-size:1.4rem;line-height:1;box-shadow:none}
+.network-insights .ni-expand-close:hover{background:var(--ni-soft)}
+.ni-expand-content{flex:1 1 auto;display:grid;place-items:center;min-height:0;overflow:auto;padding:1rem 1.3rem 1.3rem}
+.ni-expand-content.is-table{place-items:start stretch}
+.network-insights .ni-expand-chart{width:min(100%,calc((90vh - 8rem) * 16 / 9));box-shadow:none}
+.network-insights .ni-expand-content .ni-table-wrap{width:100%;max-height:calc(90vh - 8.5rem);margin:0}
+.network-insights .ni-expand-content .ni-table-wrap thead{position:sticky;top:0;z-index:2}
+.network-insights .ni-expand-content .ni-table{font-size:.9rem}
+.ni-expand-label{font-weight:700;color:var(--ni-dark)}
+body:has(dialog.ni-expand-dialog[open]){overflow:hidden}

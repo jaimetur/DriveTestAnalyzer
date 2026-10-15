@@ -405,8 +405,11 @@
   // In-chart zoom controls, as in PPT Dashboards: zoom out/in, level, reset
   // and pan arrows while zoomed. Dragging a rectangle also zooms.
   const panPaths = {left: 'M15 5 8 12l7 7', right: 'm9 5 7 7-7 7', up: 'M5 15 12 8l7 7', down: 'm5 9 7 7 7-7'};
+  // The payload drawn on every canvas, to draw it again larger when it is double-clicked.
+  const chartPayloads = new WeakMap();
   const renderChart = (canvas, payload) => {
     if (!canvas) return;
+    chartPayloads.set(canvas, payload);
     globalThis.renderDashboardChart(canvas, payload);
     const card = canvas.parentElement;
     if (!card || card.querySelector(':scope > .ni-chart-zoom')) return;
@@ -474,7 +477,8 @@
     // About 24 grid squares span the zoomed height, so dots can approach their real size.
     const zoomed = {...payload, domain, point_radius: 12, basemap: basemapFor(domain.x[0] - pad(domain.x), domain.x[1] + pad(domain.x), domain.y[0] - pad(domain.y), domain.y[1] + pad(domain.y), payload.basemap)};
     globalThis.setDashboardChartZoom?.($(`ni-${kind}-map`), 1);
-    globalThis.renderDashboardChart($(`ni-${kind}-map`), zoomed);
+    chartPayloads.set($(`ni-${kind}-map`), mapView(zoomed));
+    globalThis.renderDashboardChart($(`ni-${kind}-map`), mapView(zoomed));
     $('ni-map-note').textContent = `Zoomed to ${number(latitude, 4)}, ${number(longitude, 4)}.`;
   };
   const hotspotTable = (kind, rows, unit) => {
@@ -484,6 +488,12 @@
       <td>${escapeHtml(row.region || '—')}</td><td class="num">${integer(row.samples)}</td>
       <td class="num">${number(row.mean)} ${unit}</td><td class="num">${number(row.bad_share)}%</td></tr>`).join('')}</tbody>`;
   };
+  // The inventory sites of the maps (legend entries marked with a triangle) follow the Inventory sites check.
+  const mapView = payload => !payload || $('ni-map-sites')?.checked !== false ? payload
+    : {...payload, sectors: [], legend: {...payload.legend, items: (payload.legend?.items || []).filter(item => item.marker !== 'triangle')}};
+  $('ni-map-sites')?.addEventListener('change', () => {
+    for (const [key, payload] of Object.entries(mapPayloads)) renderChart($(`ni-${key}-map`), mapView(payload));
+  });
   // Coverage and interference maps per technology, for one shared Group.
   const renderMaps = () => {
     const maps = analysis.maps;
@@ -516,7 +526,7 @@
       for (const kind of ['coverage', 'interference']) {
         const key = `${section.technology}-${kind}`;
         mapPayloads[key] = section.maps[kind];
-        renderChart($(`ni-${key}-map`), section.maps[kind]);
+        renderChart($(`ni-${key}-map`), mapView(section.maps[kind]));
       }
     }
     $('ni-map-note').textContent = `${maps.operator} · grid ${number(maps.coverage_grid_metres, 0)} m${maps.coverage_grid_metres !== Number($('ni-grid').value) ? ' (coarsened to keep the map readable)' : ''}.`;
@@ -619,6 +629,67 @@
     polishPending = true;
     requestAnimationFrame(() => { polishPending = false; polishTables(); });
   }).observe(document.getElementById('network-insights'), {childList: true, subtree: true});
+
+  // Double-clicking a chart, map or table opens it larger, as in Scoring: charts and maps are drawn again at the
+  // size of the dialog (with their zoom controls) and tables are copied whole.
+  const expandDialog = $('ni-expand-dialog');
+  const panelTitle = element => element.closest('details')?.querySelector('summary h2')?.textContent?.trim() || 'Network Insights';
+  const headingBefore = element => {
+    const body = element.closest('.collapsible-panel-body') || element.closest('details');
+    const headings = [...(body?.querySelectorAll('h3, h4') || [])].filter(heading => heading.compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING);
+    return headings.at(-1)?.textContent?.replace(/\s+/g, ' ').trim() || '';
+  };
+  const openExpanded = (kind, title, meta, build) => {
+    if (!expandDialog) return;
+    $('ni-expand-kind').textContent = kind;
+    $('ni-expand-title').textContent = title;
+    $('ni-expand-meta').textContent = meta === title ? '' : meta;
+    const content = $('ni-expand-content');
+    content.replaceChildren();
+    content.classList.toggle('is-table', kind === 'Table');
+    expandDialog.showModal();
+    build(content);
+  };
+  document.getElementById('network-insights')?.addEventListener('dblclick', event => {
+    if (event.target.closest('.ni-expand-dialog, button, a, input, select, label, .ni-chart-zoom')) return;
+    const canvas = event.target.closest('.ni-chart-card')?.querySelector('canvas');
+    if (canvas && chartPayloads.has(canvas)) {
+      const payload = chartPayloads.get(canvas);
+      const heading = canvas.closest('.ni-map-card')?.querySelector('h3')?.textContent?.trim();
+      openExpanded(payload.type === 'map' ? 'Map' : 'Chart', heading || payload.title || panelTitle(canvas), panelTitle(canvas), content => {
+        const card = document.createElement('div');
+        card.className = 'ni-chart-card ni-expand-chart';
+        const large = document.createElement('canvas');
+        large.setAttribute('role', 'img');
+        large.setAttribute('aria-label', canvas.getAttribute('aria-label') || 'Chart');
+        card.append(large);
+        content.append(card);
+        renderChart(large, payload);
+      });
+      return;
+    }
+    const table = event.target.closest('table.ni-table');
+    if (!table) return;
+    openExpanded('Table', headingBefore(table) || panelTitle(table), panelTitle(table), content => {
+      const copy = table.cloneNode(true);
+      copy.querySelectorAll('.ni-column-filter').forEach(button => button.remove());
+      // The actions of the table (zoom to an area) belong to the page: in the copy they are plain text.
+      copy.querySelectorAll('button').forEach(button => {
+        const text = document.createElement('span');
+        text.className = 'ni-expand-label';
+        text.textContent = button.textContent;
+        button.replaceWith(text);
+      });
+      const wrap = document.createElement('div');
+      wrap.className = 'table-wrap ni-table-wrap';
+      wrap.append(copy);
+      content.append(wrap);
+    });
+  });
+  $('ni-expand-close')?.addEventListener('click', () => expandDialog.close());
+  expandDialog?.addEventListener('click', event => { if (event.target === expandDialog) expandDialog.close(); });
+  // The close event arrives after the dialog closed: a view opened meanwhile keeps its content.
+  expandDialog?.addEventListener('close', () => { if (!expandDialog.open) $('ni-expand-content').replaceChildren(); });
 
   // Serving cells of the samples in the inventory snapshot: distances, overshooting and hosting.
   const swatch = label => `<span class="ni-swatch" style="background:${analysis?.colours?.[label] || '#6D46A8'}"></span>`;

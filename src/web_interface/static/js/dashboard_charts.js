@@ -575,6 +575,14 @@
     };
   }
 
+  // An upright triangle, the mark of an inventory site: no measurement point is drawn with it.
+  function drawSiteMark(context, x, y, size, colour) {
+    context.beginPath(); context.moveTo(x, y - size); context.lineTo(x + size * .9, y + size * .62); context.lineTo(x - size * .9, y + size * .62); context.closePath();
+    context.fillStyle = colour; context.fill();
+    context.strokeStyle = '#FFFFFF'; context.lineWidth = 2.4; context.stroke();
+    context.strokeStyle = '#1E1B4B'; context.lineWidth = 1.1; context.stroke();
+  }
+
   function drawLegend(context, legend, options = {}) {
     const items = legend?.items || [], layout = legendLayout(legend, options.fontSize);
     const {position, size, columns, rowHeight} = layout;
@@ -587,6 +595,7 @@
       const alpha = context.globalAlpha;
       if (item.hidden) context.globalAlpha = alpha * .35;
       if (lineMarkers && !textOnly) line(context, x, y + 11, x + 34, y + 11, item.colour, legendLineWidth(item.width), item.dash);
+      else if (!textOnly && item.marker === 'triangle') drawSiteMark(context, x + markerSize / 2, y + markerSize / 2 + 1, markerSize * .62, item.colour);
       else if (!textOnly) { context.fillStyle = item.colour; context.fillRect(x, y, markerSize, markerSize); }
       context.fillStyle = format.configured && format.color ? format.color : '#263B4A'; context.textAlign = 'left'; context.textBaseline = 'top'; if (format.configured) labelFont(context, size, format, false, false); else font(context, size, true);
       context.fillText(text, textX, y - 1);
@@ -1221,8 +1230,8 @@
         return [left + (longitude - xDomain[0]) / (xDomain[1] - xDomain[0]) * width, top + height - (latitude - yDomain[0]) / (yDomain[1] - yDomain[0]) * height];
       };
       const radius = Math.max(10, pointRadius * 2.6);
-      // Wedges only once the map is zoomed in (larger points); the whole area shows one dot per site in the
-      // colour of its first cell's vendor, so the sites never hide the grid squares.
+      // Wedges only once the map is zoomed in (larger points); the whole area shows one triangle per site in the
+      // colour of its first cell's vendor, so the sites never hide the grid squares nor read as measurements.
       const wedges = pointRadius >= 10;
       context.save(); context.beginPath(); context.rect(left, top, width, height); context.clip();
       sectors.forEach(site => {
@@ -1230,9 +1239,7 @@
         if (longitude < xDomain[0] || longitude > xDomain[1] || latitude < yDomain[0] || latitude > yDomain[1]) return;
         const [x, y] = project(longitude, latitude);
         if (!wedges) {
-          context.beginPath(); context.arc(x, y, 4.5, 0, Math.PI * 2);
-          context.fillStyle = site.cells?.[0]?.[2] || '#868E96'; context.fill();
-          context.strokeStyle = 'rgba(30,27,75,.9)'; context.lineWidth = 1.2; context.stroke();
+          drawSiteMark(context, x, y, 7, site.cells?.[0]?.[2] || '#868E96');
           pushPointHit(state, transform, x, y, {label: String(site.label || 'Site'), series: 'Inventory site', value: String(site.detail || '')});
           return;
         }
@@ -1241,10 +1248,10 @@
           context.beginPath();
           if (cell[0] === null || !Number.isFinite(azimuth)) context.arc(x, y, radius * .45, 0, Math.PI * 2);
           else { context.moveTo(x, y); context.arc(x, y, radius, (azimuth - beam / 2 - 90) * Math.PI / 180, (azimuth + beam / 2 - 90) * Math.PI / 180); context.closePath(); }
-          context.globalAlpha = .58; context.fillStyle = cell[2] || '#868E96'; context.fill();
-          context.globalAlpha = 1; context.strokeStyle = 'rgba(30,27,75,.85)'; context.lineWidth = .9; context.stroke();
+          context.globalAlpha = .38; context.fillStyle = cell[2] || '#868E96'; context.fill();
+          context.globalAlpha = 1; context.setLineDash([]); context.strokeStyle = cell[2] || '#868E96'; context.lineWidth = 2; context.stroke();
         });
-        context.fillStyle = '#1e1b4b'; context.beginPath(); context.arc(x, y, 2.4, 0, Math.PI * 2); context.fill();
+        drawSiteMark(context, x, y, 6, site.cells?.[0]?.[2] || '#868E96');
         pushPointHit(state, transform, x, y, {label: String(site.label || 'Site'), series: 'Inventory site', value: String(site.detail || '')});
       });
       context.restore();

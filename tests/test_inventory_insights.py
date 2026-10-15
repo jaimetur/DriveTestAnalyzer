@@ -128,7 +128,7 @@ def test_sector_overlay_draws_the_sites_near_the_weak_areas_in_their_vendor_colo
     assert [site['label'] for site in overlay['sectors']] == ['Site VF0 · Vodafone', 'Site VF1 · Vodafone']
     assert [cell[:2] for cell in overlay['sectors'][0]['cells']][:3] == [[0.0, None], [120.0, None], [240.0, None]]
     assert overlay['sectors'][0]['cells'][0][2] == ii.vendor_colour('Ericsson')
-    assert overlay['legend'] == [{'label': 'Ericsson sectors', 'colour': ii.vendor_colour('Ericsson')}]
+    assert overlay['legend'] == [{'label': 'Ericsson sites', 'colour': ii.vendor_colour('Ericsson'), 'marker': 'triangle'}]
     assert inventory
 
 
