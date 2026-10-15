@@ -10123,6 +10123,24 @@ if (appLogsPanel) {
     control.dispatchEvent(new Event('multiselect:options-updated'));
   };
   const replaceSelectOptions = (control, values) => setFilterOptions(control, values.map((value) => new Option(value, value)));
+  // An open list is as tall as most of the window (its search and Select All / None stay at its top): below its
+  // button, or above it when the window has more room there, and always inside the window.
+  appLogsPanel.querySelector('.app-logs-filters')?.addEventListener('click', (event) => {
+    const trigger = event.target.closest('.multiselect-trigger');
+    const menu = trigger?.parentElement?.querySelector('.multiselect-menu');
+    if (!menu || menu.hidden) return;
+    const rect = trigger.getBoundingClientRect();
+    const below = window.innerHeight - rect.bottom - 16;
+    const above = rect.top - 16;
+    const upwards = below < 360 && above > below;
+    menu.classList.toggle('opens-upwards', upwards);
+    menu.style.maxHeight = `${Math.max(160, Math.min(window.innerHeight * 0.7, upwards ? above : below))}px`;
+    const search = menu.querySelector(':scope > .multiselect-search');
+    if (search) menu.style.setProperty('--app-log-list-search-height', `${search.offsetHeight + 4}px`);
+    // As wide as its values need (each name and its tag on one line), inside the window.
+    menu.classList.remove('aligns-right');
+    if (menu.getBoundingClientRect().right > window.innerWidth - 8) menu.classList.add('aligns-right');
+  });
   // A list closes with a click (outside it or on its button): once every handler has run, it takes its waiting values.
   document.addEventListener('click', () => window.setTimeout(() => {
     pendingFilterOptions.forEach((options, control) => { if (!filterListOpen(control)) setFilterOptions(control, options); });
@@ -10187,9 +10205,11 @@ if (appLogsPanel) {
     const idCell = document.createElement('td'); idCell.textContent = String(log.id ?? ''); row.append(idCell);
     const dateCell = document.createElement('td');
     dateCell.className = 'app-log-date';
+    // The date, with its time as a badge below, like the names of Triggered by and Executed by.
     const [datePart, timePart] = String(log.created_at || '').split(' ');
-    dateCell.append(datePart || '—');
-    if (timePart) dateCell.append(document.createElement('br'), timePart);
+    const when = Object.assign(document.createElement('span'), {className: 'app-log-when', textContent: datePart || '—'});
+    if (timePart) when.append(' ', Object.assign(document.createElement('span'), {className: 'user-choice-tag user-choice-tag-time', textContent: timePart}));
+    dateCell.append(when);
     row.append(dateCell);
     // Triggered by: System in red, tagged application; a person by first and last name (the username when it has none),
     // the username as a badge below. Executed by: where it ran, with what it was below.
@@ -10213,7 +10233,13 @@ if (appLogsPanel) {
     badge.textContent = String(log.log_type || 'Info');
     typeCell.append(badge);
     row.append(typeCell);
-    const actionCell = document.createElement('td'); actionCell.textContent = String(log.action || ''); row.append(actionCell);
+    // The action wraps only at its underscores.
+    const actionCell = document.createElement('td');
+    String(log.action || '').split('_').forEach((part, index, parts) => {
+      actionCell.append(index < parts.length - 1 ? `${part}_` : part);
+      if (index < parts.length - 1) actionCell.append(document.createElement('wbr'));
+    });
+    row.append(actionCell);
     const detailsCell = document.createElement('td');
     // One readable sentence, with the raw details folded away for troubleshooting.
     const description = String(log.description ?? log.summary ?? '');

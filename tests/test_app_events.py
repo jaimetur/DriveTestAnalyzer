@@ -259,6 +259,9 @@ def test_app_events_filters_choose_several_values(client) -> None:
     assert '<option value="change_password">change_password</option>' in page
     # The person who triggered each event: the column and its filter.
     assert '<th>Triggered by</th><th>Executed by</th>' in page and '<label>Triggered by\n' in page
+    # An action wraps only at its underscores; the date shows its time as a badge below.
+    assert '<td>change_<wbr>password</td>' in page
+    assert '<td class="app-log-date"><span class="app-log-when">20' in page and '<span class="user-choice-tag user-choice-tag-time">' in page
 
 
 def test_an_open_app_events_filter_list_keeps_its_menu_while_the_table_refreshes() -> None:
@@ -393,3 +396,20 @@ def test_public_pages_and_sign_in_are_where_their_events_ran(client) -> None:
     login(client)
     log = next(log for log in client.get('/api/app-logs').json()['logs'] if log['action'] == 'login')
     assert (log['executor_name'], log['executor_tag']) == ('Public', 'Sign-in')
+
+
+def test_app_events_filter_lists_are_tall_and_compact() -> None:
+    from pathlib import Path
+
+    static = Path(core.__file__).parent / 'web_interface' / 'static'
+    css = (static / 'css' / 'app.css').read_text(encoding='utf-8')
+    script = (static / 'js' / 'app.js').read_text(encoding='utf-8')
+    # Only the App Events lists: most of the window tall, values close together, the search and Select All / None fixed.
+    assert ('.app-logs-filters .multiselect-menu { width: max-content; min-width: max(100%, 15rem); '
+            'max-width: min(32rem, calc(100vw - 2rem));') in css
+    assert 'right: auto; gap: .1rem; max-height: min(70vh, 720px); }' in css
+    assert '.app-logs-filters .multiselect-option { padding: 0.36rem 0.65rem; line-height: 1.25; }' in css
+    assert '.app-logs-filters .multiselect-menu > .multiselect-search { top: 0;' in css
+    # Below the button, or above it when the window has more room there, and inside the window.
+    assert "menu.classList.toggle('opens-upwards', upwards);" in script
+    assert 'Math.min(window.innerHeight * 0.7, upwards ? above : below)' in script

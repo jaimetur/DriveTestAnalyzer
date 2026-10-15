@@ -2255,7 +2255,20 @@ th { color: var(--muted); font-weight: 600; position: sticky; top: 0; background
 .app-logs-filters > label > input, .app-logs-filters > label > select { min-width: 0; width: 100%; }
 /* The multi-select lists of the filters read as values, not as the uppercase captions of their labels. */
 .app-logs-filters .multiselect-shell { color: var(--text); font-size: .88rem; font-weight: 500; letter-spacing: normal; text-transform: none; }
-.app-logs-filters .multiselect-menu { min-width: max(100%, 15rem); right: auto; }
+.app-logs-filters .multiselect-menu { width: max-content; min-width: max(100%, 15rem); max-width: min(32rem, calc(100vw - 2rem));
+  right: auto; gap: .1rem; max-height: min(70vh, 720px); }
+/* A list wider than the room to the right of its button lines up with the button's right edge (see app.js). */
+.app-logs-filters .multiselect-menu.aligns-right { left: auto; right: 0; }
+/* App Events lists are tall, with their values close together; the search and Select All / None stay at the top
+   while the values scroll, and a list opens upwards when the window has more room there (see app.js). */
+.app-logs-filters .multiselect-menu.opens-upwards { top: auto; bottom: calc(100% + 0.45rem); }
+.app-logs-filters .multiselect-menu > .multiselect-search, .app-logs-filters .multiselect-menu > .multiselect-action {
+  position: sticky; z-index: 2; }
+/* Opaque, with a margin of the menu's colour around them, so the values scroll out of sight beneath. */
+.app-logs-filters .multiselect-menu > .multiselect-search { top: 0; background-color: #fff; box-shadow: 0 0 0 0.65rem #fffdfa; }
+.app-logs-filters .multiselect-menu > .multiselect-action { top: var(--app-log-list-search-height, 2.4rem); margin-bottom: .2rem;
+  background: linear-gradient(rgba(11, 122, 117, 0.08), rgba(11, 122, 117, 0.08)), #fffdfa; box-shadow: 0 0 0 0.3rem #fffdfa; }
+.app-logs-filters .multiselect-option { padding: 0.36rem 0.65rem; line-height: 1.25; }
 .app-logs-clear-button { min-height: 2.7rem; padding: 0.55rem 0.85rem; background: linear-gradient(145deg, #fff0aa, #f3cc4e); border-color: rgba(174, 124, 14, 0.52); color: #684707; box-shadow: 0 8px 18px rgba(190, 140, 17, 0.16); white-space: nowrap; }
 .app-logs-clear-button:hover:not(:disabled) { background: linear-gradient(145deg, #f8df7a, #e2ad24); border-color: rgba(139, 93, 0, 0.64); color: #493000; }
 .app-logs-heading-actions { display: flex; align-items: center; gap: 0.65rem; }
@@ -2266,11 +2279,16 @@ th { color: var(--muted); font-weight: 600; position: sticky; top: 0; background
 .app-log-raw > summary { width: max-content; color: #5b7184; font-size: .72rem; font-weight: 700; cursor: pointer; }
 .app-log-raw > summary:hover { color: #1e61a3; }
 .app-log-raw > code { display: block; margin-top: .25rem; }
-.app-logs-table th:nth-child(2), .app-logs-table .app-log-date { width: 10rem; min-width: 10rem; white-space: nowrap; }
+.app-logs-table th:nth-child(2), .app-logs-table .app-log-date { width: 7.5rem; min-width: 7.5rem; white-space: nowrap; }
 /* Triggered by and Executed by fit a name, or a module or Server, with its tag below; Details takes the rest. */
 .app-logs-table th:nth-child(3), .app-logs-table th:nth-child(4) { width: 12.5rem; min-width: 12.5rem; }
-/* Long action names wrap at their underscores rather than narrowing Details, which keeps a readable width. */
-.app-logs-table td:nth-child(6) { overflow-wrap: anywhere; }
+/* Long action names wrap only at their underscores (a <wbr> after each), never inside a word, and Details keeps a
+   readable width; the columns before Details read a little smaller on a wide screen, their tags in proportion. */
+.app-logs-table td:nth-child(6) { overflow-wrap: normal; word-break: normal; }
+@media (min-width: 641px) {
+  .app-logs-table td:nth-child(-n+6) { font-size: 0.86rem; }
+  .app-logs-table td:nth-child(-n+6) .user-choice-tag { font-size: 0.6rem; }
+}
 .app-logs-table th:nth-child(7) { min-width: 18rem; }
 .app-logs-panel .table-wrap { height: 45rem; overflow-y: scroll; overscroll-behavior: contain; }
 .execution-log-panel { margin-top: 1.25rem; }
@@ -5175,8 +5193,10 @@ body:has(> .unassigned-values-card:not([hidden], .is-collapsed)) { padding-botto
 .user-choice-tag.user-choice-tag-system { border-color: #f3b4ae; background: #fdecea; color: #b42318; }
 .app-log-system-user { color: #b42318; font-weight: 700; }
 /* In App Events a user shows its name with its tag (application, or the username in a neutral colour) below. */
-.app-log-system-user, .app-log-person, .app-log-place { display: inline-flex; flex-direction: column; align-items: flex-start; gap: .2rem; }
-.app-log-system-user > .user-choice-tag, .app-log-person > .user-choice-tag, .app-log-place > .user-choice-tag { margin-left: 0; }
+.app-log-system-user, .app-log-person, .app-log-place, .app-log-when { display: inline-flex; flex-direction: column; align-items: flex-start; gap: .2rem; }
+.app-log-system-user > .user-choice-tag, .app-log-person > .user-choice-tag, .app-log-place > .user-choice-tag,
+.app-log-when > .user-choice-tag { margin-left: 0; }
+.user-choice-tag.user-choice-tag-time { border-color: #d3dbe5; background: #f2f5f9; color: #4a5a70; letter-spacing: .02em; font-variant-numeric: tabular-nums; }
 /* Where an event ran: the server, another server, a public page or a module, each with its own tag colour. */
 .user-choice-tag.user-choice-tag-origin { border-color: #d3dbe5; background: #f2f5f9; color: #4a5a70; }
 .user-choice-tag.user-choice-tag-origin-server { border-color: #c7d3f2; background: #edf2fd; color: #2f4f9e; }

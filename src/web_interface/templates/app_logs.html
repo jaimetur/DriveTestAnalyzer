@@ -64,13 +64,15 @@
           {% for row in logs %}
           <tr data-app-log-row data-app-log-user="{{ row.username }}" data-app-log-executor="{{ row.executed_by }}" data-app-log-date="{{ row.date }}" data-app-log-type="{{ row.log_type }}" data-app-log-action="{{ row.action }}">
             <td>{{ row.id }}</td>
-            <td class="app-log-date"><span>{{ row.created_at[:10] }}</span>{% if row.created_at | length > 10 %}<br><span>{{ row.created_at[11:] }}</span>{% endif %}</td>
+            {# The date, with its time as a badge below, like the names of Triggered by and Executed by. #}
+            <td class="app-log-date"><span class="app-log-when">{{ row.created_at[:10] or '—' }}{% if row.created_at | length > 10 %} <span class="user-choice-tag user-choice-tag-time">{{ row.created_at[11:] }}</span>{% endif %}</span></td>
             {# System in red, tagged application; a person by first and last name (the username when it has none), the username as a badge below. #}
             <td>{% if row.username == 'system' %}<span class="app-log-system-user">System <span class="user-choice-tag user-choice-tag-system">application</span></span>{% elif row.username %}<span class="app-log-person">{{ row.user_name or row.username }} <span class="user-choice-tag user-choice-tag-username">{{ row.username }}</span></span>{% endif %}</td>
             {# Where it ran: a module, the server, another server or a public page, with what it was below. #}
             {% set place_group = ('server', 'remote', 'public', 'module')[row.executor_group] %}<td><span class="app-log-place app-log-place-{{ place_group }}">{{ row.executor_name }} <span class="user-choice-tag user-choice-tag-origin user-choice-tag-origin-{{ place_group }}">{{ row.executor_tag }}</span></span></td>
             <td><span class="log-type-badge log-type-{{ row.log_type | lower }}">{{ row.log_type }}</span></td>
-            <td>{{ row.action }}</td>
+            {# The action wraps only at its underscores. #}
+            <td>{{ row.action | e | replace('_', '_<wbr>' | safe) }}</td>
             <td><p class="app-log-summary">{{ row.description }}</p>{% if row.details_text and row.details_text != row.description %}<details class="app-log-raw"><summary>Raw details</summary><code>{{ row.details_text }}</code></details>{% endif %}</td>
           </tr>
           {% else %}
