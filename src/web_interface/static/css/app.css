@@ -2287,7 +2287,6 @@ th { color: var(--muted); font-weight: 600; position: sticky; top: 0; background
 .app-logs-table td:nth-child(6) { overflow-wrap: normal; word-break: normal; }
 @media (min-width: 641px) {
   .app-logs-table td:nth-child(-n+6) { font-size: 0.86rem; }
-  .app-logs-table td:nth-child(-n+6) .user-choice-tag { font-size: 0.6rem; }
 }
 .app-logs-table th:nth-child(7) { min-width: 18rem; }
 .app-logs-panel .table-wrap { height: 45rem; overflow-y: scroll; overscroll-behavior: contain; }
@@ -5196,7 +5195,13 @@ body:has(> .unassigned-values-card:not([hidden], .is-collapsed)) { padding-botto
 .app-log-system-user, .app-log-person, .app-log-place, .app-log-when { display: inline-flex; flex-direction: column; align-items: flex-start; gap: .2rem; }
 .app-log-system-user > .user-choice-tag, .app-log-person > .user-choice-tag, .app-log-place > .user-choice-tag,
 .app-log-when > .user-choice-tag { margin-left: 0; }
-.user-choice-tag.user-choice-tag-time { border-color: #d3dbe5; background: #f2f5f9; color: #4a5a70; letter-spacing: .02em; font-variant-numeric: tabular-nums; }
+/* The time of an event in green, like the default user tag. */
+.user-choice-tag.user-choice-tag-time { border-color: #a8dccf; background: #e3f4f0; color: #0b6b66; letter-spacing: .02em; font-variant-numeric: tabular-nums; }
+/* Every badge of the App Events table (the time, the username or application, where it ran) has one size. */
+.app-logs-table { --app-log-badge-size: 0.64rem; }
+.app-logs-table .user-choice-tag.app-log-badge { font-size: var(--app-log-badge-size); padding: 0.06rem 0.45rem; line-height: 1.3; }
+/* Digits read smaller than capitals: the time is a little larger, in a box as high as the other badges. */
+.app-logs-table .user-choice-tag.app-log-badge.user-choice-tag-time { font-size: calc(var(--app-log-badge-size) * 1.16); line-height: 1.12; }
 /* Where an event ran: the server, another server, a public page or a module, each with its own tag colour. */
 .user-choice-tag.user-choice-tag-origin { border-color: #d3dbe5; background: #f2f5f9; color: #4a5a70; }
 .user-choice-tag.user-choice-tag-origin-server { border-color: #c7d3f2; background: #edf2fd; color: #2f4f9e; }

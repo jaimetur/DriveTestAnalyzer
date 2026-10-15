@@ -331,7 +331,7 @@ def test_lists_of_users_show_names_with_the_default_users_first(client):
     assert 'data-default-user="true" data-tag="default user">super · default user</option>' in user_filter
     assert user_filter.index('super · default user') < user_filter.index('Ana García')
     # The table shows each person by name, with the username as a badge below (the names looked up once per page).
-    assert ('<td><span class="app-log-person">Ana García <span class="user-choice-tag user-choice-tag-username">ezzzzzz</span>'
+    assert ('<td><span class="app-log-person">Ana García <span class="user-choice-tag app-log-badge user-choice-tag-username">ezzzzzz</span>'
             '</span></td>') in events
     logs = client.get('/api/app-logs').json()['logs']
     assert next(log for log in logs if log['action'] == 'change_password')['user_name'] == 'Ana García'

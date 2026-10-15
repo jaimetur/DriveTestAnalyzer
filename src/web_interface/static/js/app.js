@@ -10208,14 +10208,14 @@ if (appLogsPanel) {
     // The date, with its time as a badge below, like the names of Triggered by and Executed by.
     const [datePart, timePart] = String(log.created_at || '').split(' ');
     const when = Object.assign(document.createElement('span'), {className: 'app-log-when', textContent: datePart || '—'});
-    if (timePart) when.append(' ', Object.assign(document.createElement('span'), {className: 'user-choice-tag user-choice-tag-time', textContent: timePart}));
+    if (timePart) when.append(' ', Object.assign(document.createElement('span'), {className: 'user-choice-tag app-log-badge user-choice-tag-time', textContent: timePart}));
     dateCell.append(when);
     row.append(dateCell);
     // Triggered by: System in red, tagged application; a person by first and last name (the username when it has none),
     // the username as a badge below. Executed by: where it ran, with what it was below.
     const labelled = (className, name, tag, tagClass) => {
       const element = Object.assign(document.createElement('span'), {className, textContent: `${name} `});
-      element.append(Object.assign(document.createElement('span'), {className: `user-choice-tag ${tagClass}`, textContent: tag}));
+      element.append(Object.assign(document.createElement('span'), {className: `user-choice-tag app-log-badge ${tagClass}`, textContent: tag}));
       return element;
     };
     const userCell = document.createElement('td');

@@ -203,7 +203,7 @@ def test_events_of_the_application_belong_to_system(client) -> None:
                      'data-tag-class="user-choice-tag-system" data-option-class="is-system-user">System · application')
     assert 'data-divider-before="true"' in second
     assert 'value="import"' not in user_filter
-    assert ('<td><span class="app-log-system-user">System <span class="user-choice-tag user-choice-tag-system">'
+    assert ('<td><span class="app-log-system-user">System <span class="user-choice-tag app-log-badge user-choice-tag-system">'
             'application</span></span></td>') in page
     assert 'Application events recorded under import now belong to System: 1.' in page
 
@@ -247,6 +247,8 @@ def test_app_event_details_say_what_changed_once(client) -> None:
 
 
 def test_app_events_filters_choose_several_values(client) -> None:
+    from pathlib import Path
+
     login(client)
     core.repository.add_log('admin', 'change_password', 'Password changed from the account badge.')
     page = client.get('/app-logs').text
@@ -261,7 +263,13 @@ def test_app_events_filters_choose_several_values(client) -> None:
     assert '<th>Triggered by</th><th>Executed by</th>' in page and '<label>Triggered by\n' in page
     # An action wraps only at its underscores; the date shows its time as a badge below.
     assert '<td>change_<wbr>password</td>' in page
-    assert '<td class="app-log-date"><span class="app-log-when">20' in page and '<span class="user-choice-tag user-choice-tag-time">' in page
+    # Every badge of the table (the time, the username or application, where it ran) has one size.
+    css = (Path(core.__file__).parent / 'web_interface' / 'static' / 'css' / 'app.css').read_text(encoding='utf-8')
+    assert '.app-logs-table .user-choice-tag.app-log-badge { font-size: var(--app-log-badge-size);' in css
+    # The time in green, like the default user tag, its digits a little larger in a box as high as the other badges.
+    assert '.app-logs-table .user-choice-tag.app-log-badge.user-choice-tag-time { font-size: calc(var(--app-log-badge-size) * 1.16);' in css
+    assert '.user-choice-tag.user-choice-tag-time { border-color: #a8dccf; background: #e3f4f0; color: #0b6b66;' in css
+    assert '<td class="app-log-date"><span class="app-log-when">20' in page and '<span class="user-choice-tag app-log-badge user-choice-tag-time">' in page
 
 
 def test_an_open_app_events_filter_list_keeps_its_menu_while_the_table_refreshes() -> None:
@@ -375,7 +383,7 @@ def test_executed_by_tells_where_each_event_ran(client) -> None:
     chosen = client.get('/api/app-logs?executor=server:background&executor=module:admin').json()
     assert {log['action'] for log in chosen['logs']} == {'update_user', 'process_dataset'}
     page = client.get('/app-logs').text
-    assert ('<td><span class="app-log-place app-log-place-server">Server <span class="user-choice-tag user-choice-tag-origin '
+    assert ('<td><span class="app-log-place app-log-place-server">Server <span class="user-choice-tag app-log-badge user-choice-tag-origin '
             'user-choice-tag-origin-server">Background job</span></span></td>') in page
     # Exported and imported with the events.
     package, _filename = core.build_export_archive('app-events')
