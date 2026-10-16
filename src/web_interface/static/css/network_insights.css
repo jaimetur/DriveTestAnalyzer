@@ -382,3 +382,23 @@ body:has(dialog.ni-expand-dialog[open]){overflow:hidden}
 .ni-auto-cdrs-title{margin:0;font-size:.85rem;color:var(--ni-dark)}
 .ni-auto-cdrs-title span{color:#5a5a9e;font-size:.76rem;font-weight:600}
 .ni-auto-cdrs .auto-cdr{border-color:var(--ni-border)}
+/* Spectrum: bandwidth per band (shaded by share), NR sites by duplex mode and the total bandwidth ladders. */
+.network-insights .ni-heat{background:rgba(67,56,202,calc(var(--ni-heat,0) * .32));white-space:nowrap}
+.network-insights .ni-heat small{margin-left:.25rem;color:#5a5a9e;font-weight:700}
+.network-insights .ni-heat-empty{color:#a0a4c8}
+.network-insights .ni-table th.ni-group-head{text-align:center;background:#dfe2fd}
+.network-insights .ni-table tr.ni-total-row td{font-weight:800;background:#f3f4ff}
+.network-insights .ni-bandwidth-toolbar{margin-top:1.4rem}
+.ni-ladder-host{display:grid;gap:.5rem}
+.ni-ladder{overflow-x:auto;padding:.6rem .4rem;border:1px solid var(--ni-border);border-radius:12px;background:#fff}
+.ni-ladder svg{display:block;width:100%;height:auto}
+.ni-ladder text{font-family:inherit}
+.ni-ladder-column{font-size:18px;font-weight:800}
+.ni-ladder-row{font-size:17px;font-weight:800;fill:#1f2433}
+.ni-ladder-figure{font-size:17px;font-weight:800;fill:#1f2433}
+.ni-ladder-empty{font-size:13px;fill:#8a8fb5}
+.ni-ladder-base{stroke:#c7cbf7;stroke-width:1}
+.ni-ladder-divider{stroke:#eef0ff;stroke-width:2}
+.ni-ladder-legend-title{font-size:15px;font-weight:800;fill:#1f2433}
+.ni-ladder-legend{font-size:15px;fill:#3b4060}
+.network-insights .ni-expand-ladder{width:100%;border:0}

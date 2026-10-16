@@ -7,9 +7,9 @@ Vendor only the Vendors of Vodafone, and choosing a Campaign leaves its Operator
 Cities. Operators and Vendors are listed with the labels of the Operator and Vendor Maps.
 
 Each CDR keeps the distinct combinations of its Campaign, Operator, Operator_Vendor, Vendor,
-Region, Cluster and City in the **CDR Filter Facets** table, read once from its rows after it is
-processed (or, for the CDRs processed before, in the background the first time they are needed)
-and again only when it changes. Filling a list never reads the CDR rows: a CDR whose
+Region, Cluster, City and test environment in the **CDR Filter Facets** table, read once from its
+rows after it is processed (or, for the CDRs processed before, in the background the first time
+they are needed) and again only when it changes. Filling a list never reads the CDR rows: a CDR whose
 combinations are not ready yet offers the values of its CDR catalogue meanwhile.
 """
 
@@ -22,6 +22,7 @@ from time import monotonic
 from typing import Any, Iterable
 
 from src.modules.cdr_auto_selection import campaign_identity, sort_campaigns
+from src.modules.cdr_environments import environment_class
 from src.modules.column_names import column_identity
 from src.modules.mapping_order import dimension_order_key
 from src.modules.value_maps import ValueMapper
@@ -29,7 +30,7 @@ from src.modules.value_maps import ValueMapper
 FACETS_TABLE = 'cdr_filter_facets'
 FACETS_VERSION = 2
 # The fields kept per CDR, and the columns each one is read from (as the CDR catalogues).
-FACET_FIELDS = ('Campaign', 'Operator', 'Operator_Vendor', 'Vendor', 'Region', 'Cluster', 'City')
+FACET_FIELDS = ('Campaign', 'Operator', 'Operator_Vendor', 'Vendor', 'Region', 'Cluster', 'City', 'Environment')
 FACET_COLUMN_ALIASES = {
     'Campaign': ('campaign',),
     'Operator': ('operator', 'operator_a', 'home_operator', 'home_operator_a'),
@@ -38,9 +39,13 @@ FACET_COLUMN_ALIASES = {
     'Region': ('region', 'g_level_2', 'g level 2'),
     'Cluster': ('Cluster',),
     'City': ('city', 'g_level_4', 'g level 4'),
+    # The most detailed level first (Big Cities, Roads...): its value is listed as Cities, Towns or Roads and railways.
+    'Environment': ('g_level_3', 'g level 3', 'g_level_2', 'g level 2'),
 }
 # The filters built from them: Vendor_Operator is Operator_Vendor the other way round.
 FILTER_FIELDS = ('Campaign', 'Operator', 'Operator_Vendor', 'Vendor_Operator', 'Vendor', 'Region', 'Cluster', 'City')
+# Filters only the modules that offer them ask for (Network Insights): other modules neither list nor apply them.
+OPTIONAL_FILTER_FIELDS = ('Environment',)
 MAPPED_KINDS = {'Operator': 'operator', 'Operator_Vendor': 'operator_vendor', 'Vendor_Operator': 'vendor_operator', 'Vendor': 'vendor'}
 # The CDR catalogue lists of each filter, offered while the combinations of a CDR are not ready.
 CATALOGUE_KEYS = {'Campaign': 'campaigns', 'Operator': 'operators', 'Operator_Vendor': 'vendors',
@@ -244,6 +249,8 @@ class _Mapping:
                 value = self.mapper.map('vendor_operator', self.mapper.vendor_operators([self('Operator_Vendor', raw)])[0])
             elif field in MAPPED_KINDS:
                 value = str(self.mapper.map(MAPPED_KINDS[field], raw))
+            elif field == 'Environment':
+                value = environment_class(raw)
             else:
                 value = raw
             self.cache[key] = value
@@ -269,8 +276,15 @@ def cascading_options(repository: Any, dataset_ids: Iterable[int], selections: d
     ids = list(dict.fromkeys(int(value) for value in dataset_ids))
     mapper = mapper or ValueMapper.from_repository(repository)
     mapping = _Mapping(mapper)
-    wanted = [field for field in fields if field in FILTER_FIELDS]
+    wanted = [field for field in fields if field in FILTER_FIELDS or field in OPTIONAL_FILTER_FIELDS]
     chosen = normalize_selections(selections)
+    for field in OPTIONAL_FILTER_FIELDS:
+        values = (selections or {}).get(field)
+        keys = {str(value).strip().casefold() for value in ([values] if isinstance(values, str) else values or [])
+                if str(value).strip()}
+        if field in wanted and keys:
+            chosen[field] = keys
+    mapped_fields = (*FILTER_FIELDS, *(field for field in OPTIONAL_FILTER_FIELDS if field in wanted))
     values: dict[str, dict[str, str]] = {field: {} for field in wanted}
 
     def offer(field: str, value: str) -> None:
@@ -282,7 +296,7 @@ def cascading_options(repository: Any, dataset_ids: Iterable[int], selections: d
     for combination in combinations:
         raw = dict(zip(FACET_FIELDS, combination))
         raw['Vendor_Operator'] = raw['Operator_Vendor']
-        mapped = {field: mapping(field, raw[field]) for field in FILTER_FIELDS}
+        mapped = {field: mapping(field, raw[field]) for field in mapped_fields}
         failing = [field for field, keys in chosen.items()
                    if not (_keys(field, mapped[field], raw[field] if field != 'Vendor_Operator' else '') & keys)]
         if len(failing) > 1:
@@ -299,8 +313,9 @@ def cascading_options(repository: Any, dataset_ids: Iterable[int], selections: d
             lists = {field: [str(value) for value in catalogue.get(key) or []] for field, key in CATALOGUE_KEYS.items()}
             lists['Vendor_Operator'] = lists['Operator_Vendor']
             mapped_lists = {field: [mapping(field, value) for value in items] for field, items in lists.items()}
-            failing = [field for field, keys in chosen.items()
-                       if not any(_keys(field, mapped, raw) & keys for mapped, raw in zip(mapped_lists[field], lists[field]))]
+            # A catalogue does not list environments: it may hold any of them.
+            failing = [field for field, keys in chosen.items() if field in mapped_lists
+                       and not any(_keys(field, mapped, raw) & keys for mapped, raw in zip(mapped_lists[field], lists[field]))]
             if len(failing) > 1:
                 continue
             for field in wanted:

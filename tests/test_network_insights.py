@@ -109,6 +109,64 @@ def test_samples_are_normalised_and_summarised_per_operator() -> None:
     assert next(row for row in observed if row['band'] == 'B3')['typical_bandwidth_mhz'] == 20
 
 
+def _bandwidth_rows(campaign: str = '2026-Q3') -> pd.DataFrame:
+    """CDR Data tests in every environment with their LTE and NR bandwidths."""
+    return pd.DataFrame({
+        'Operator': ['EE'] * 6 + ['Vodafone UK'] * 6,
+        'Campaign': [campaign] * 12,
+        'Region': ['North'] * 12,
+        'City': ['Leeds', 'Leeds', 'Selby', 'Selby', 'A1', 'A1'] * 2,
+        'G_Level_1': ['Drive'] * 12,
+        'G_Level_2': ['City', 'City', 'City', 'City', 'Connecting Roads', 'Connecting Roads'] * 2,
+        'G_Level_3': ['Big Cities', 'Big Cities', 'Small Cities', 'Medium Cities', 'Highway', 'Roads'] * 2,
+        'Test_Name': ['FDTT http DL MT', 'Ping 40', 'FDFS HTTPS DL ST', 'FDTT UDP UL ST', 'FDTT http DL MT', 'FDTT http DL MT'] * 2,
+        'Test_Start_Latitude': [53.80 + index * 0.0001 for index in range(12)],
+        'Test_Start_Longitude': [-1.55] * 12,
+        'LTE_PCell_RSRP_Avg': [-90.0] * 12,
+        'LTE_PCell_SINR_Avg': [10.0] * 12,
+        'LTE_PCC_EARFCN': [1300] * 12,
+        'LTE_DL_PCell_Bandwidth': [20, 20, 10, 10, 10, None, 20, 20, 15, 15, 5, None],
+        # The mean LTE bandwidth over the aggregated carriers (21.05 MHz rounds up to 25 MHz).
+        'LTE_DL_Test_Bandwidth_Avg': [21.05, 20, 10, 10, 10, None, 40, 40, 15, 15, 5, None],
+        'NR_DL_PCell_Band': ['NR BAND 78', 'NR BAND 78', 'NR BAND 78', '', '', 'NR BAND 1'] * 2,
+        'NR_DL_PCell_Bandwidth': [100, 100, 40, None, None, 20, 80, 80, 80, None, None, None],
+    })
+
+
+def test_environments_bandwidth_classes_and_band_bandwidths() -> None:
+    from src.modules.cdr_environments import environment_class
+
+    assert [environment_class(value) for value in ('Big Cities', 'Medium Cities', 'Small Cities', 'Highway', 'Roads', 'Train',
+                                                  'Connecting Roads', 'Train Route', 'City', '')] == [
+        'Cities', 'Towns', 'Towns', 'Roads and railways', 'Roads and railways', 'Roads and railways',
+        'Roads and railways', 'Roads and railways', '', '']
+    frame = _bandwidth_rows()
+    samples = ni.normalise_samples(frame, 'data', ni.resolve_source_columns(frame.columns, 'data'))
+    assert samples['environment'].tolist()[:6] == ['Cities', 'Cities', 'Towns', 'Towns', 'Roads and railways', 'Roads and railways']
+    assert samples['download'].tolist()[:6] == [True, False, True, False, True, True]
+    # LTE (rounded up to 5 MHz) plus the NR PCell; a test reporting neither has no total.
+    totals = ni.total_bandwidth(samples)
+    assert totals.tolist()[:6] == [125.0, 120.0, 50.0, 10.0, 10.0, 20.0]
+    assert math.isnan(totals[11])
+
+    ladders = ni.bandwidth_ladders(samples, samples['operator'], ['EE', 'Vodafone UK'])
+    assert ladders['environments'] == ['Cities', 'Towns', 'Roads and railways']
+    cell = next(item for item in ladders['cells'] if item['column'] == 'EE' and item['environment'] == 'Roads and railways')
+    assert cell['known'] == 2 and cell['narrow_share'] == 100.0
+    assert cell['counts'][-1] == 2 and sum(cell['shares']) == pytest.approx(100)
+    vodafone_roads = next(item for item in ladders['cells'] if item['column'] == 'Vodafone UK' and item['environment'] == 'Roads and railways')
+    assert vodafone_roads['tests'] == 2 and vodafone_roads['known'] == 1
+    assert ladders['unknown'] == 1
+    # Without environments, every test is one row.
+    plain = ni.bandwidth_ladders(samples.assign(environment=''), samples['operator'], ['EE'])
+    assert plain['environments'] == [ni.ALL_ENVIRONMENTS] and plain['cells'][0]['tests'] == 6
+
+    bands = {(row['operator'], row['band']): row for row in ni.band_bandwidths(samples)}
+    assert bands[('EE', 'n78')]['bandwidths'] == {'40': 1, '100': 2} and bands[('EE', 'n78')]['duplex'] == 'TDD'
+    assert bands[('EE', 'B3')]['bandwidths'] == {'10': 3, '20': 2} and bands[('EE', 'B3')]['unknown'] == 1
+    assert bands[('Vodafone UK', 'n1')]['unknown'] == 1
+
+
 def test_grid_cells_rank_weak_areas_and_build_map_payload() -> None:
     samples = pd.DataFrame({
         'latitude': [51.5] * 4 + [51.6] * 4,
@@ -299,6 +357,43 @@ def test_network_insights_page_and_analysis(client, tmp_path) -> None:
     # Without CDRs of its own, an analysis uses the CDRs of its NR Mode and Campaigns; Campaigns no CDR holds choose none.
     assert client.post('/api/network-insights/analysis', json={'datasets': {}}).status_code == 200
     assert client.post('/api/network-insights/analysis', json={'datasets': {}, 'campaigns': ['2030-Q1']}).status_code == 400
+
+
+def test_analysis_reports_bandwidths_per_environment_and_filters_environments(client, tmp_path, monkeypatch) -> None:
+    from src.modules import cdr_facets
+
+    _login(client)
+    monkeypatch.setattr(cdr_facets, 'request_missing_facets',
+                        lambda task_repository, ids: cdr_facets.fill_missing_facets(task_repository, ids))
+    dataset_id = _add_ready_dataset(tmp_path, 'CDR_Data_NSA_2026-Q3.xlsx', 'data', _bandwidth_rows())
+    cdr_facets.fill_missing_facets(app_module.repository, [dataset_id])
+    options = client.post('/api/network-insights/filter-options', json={'nr_mode': 'NSA'}).json()['options']
+    assert options['environments'] == ['Cities', 'Towns', 'Roads and railways']
+    towns = client.post('/api/network-insights/filter-options', json={'nr_mode': 'NSA', 'environments': ['Towns']}).json()['options']
+    assert towns['cities'] == ['Selby']
+
+    payload = client.post('/api/network-insights/analysis', json={'datasets': {'data': [dataset_id]}, 'technology': 'lte'}).json()
+    bandwidth = payload['spectrum']['bandwidth']
+    assert [item['label'] for item in bandwidth['classes']][0] == '200+ MHz'
+    download, every = bandwidth['scopes']['download'], bandwidth['scopes']['all']
+    assert (download['tests'], every['tests']) == (8, 12)
+    assert set(download['ladders']['columns']) == {'EE · 2026-Q3', 'VF · 2026-Q3'}
+    assert download['ladders']['environments'] == ['Cities', 'Towns', 'Roads and railways']
+    assert bandwidth['column_label'] == 'Operator → Campaign'
+    assert {row['band'] for row in every['bands']} == {'B3', 'n78', 'n1'}
+
+    # Environment splits the tables; the ladders keep it as their rows and the other fields as their columns.
+    split = client.post('/api/network-insights/analysis', json={
+        'datasets': {'data': [dataset_id]}, 'technology': 'lte', 'group': ['operator', 'environment'],
+    }).json()
+    assert [row['operator'] for row in split['overview'] if row['operator'].startswith('EE')] == [
+        'EE · Cities', 'EE · Towns', 'EE · Roads and railways']
+    assert set(split['spectrum']['bandwidth']['scopes']['download']['ladders']['columns']) == {'EE', 'VF'}
+    filtered = client.post('/api/network-insights/analysis', json={
+        'datasets': {'data': [dataset_id]}, 'technology': 'lte', 'group': 'operator', 'environments': ['Roads and railways'],
+    }).json()
+    assert sum(row['samples'] for row in filtered['overview']) == 4
+    assert filtered['spectrum']['bandwidth']['scopes']['all']['ladders']['environments'] == ['Roads and railways']
 
 
 def test_network_deployment_counts_inventory_sites(client, tmp_path) -> None:

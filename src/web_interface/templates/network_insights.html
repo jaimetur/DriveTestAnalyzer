@@ -39,6 +39,7 @@
         <label>Regions<select id="ni-regions" data-multiselect-no-values-label="Loading values…" data-multiselect-dynamic-all="true" multiple size="1" aria-label="Regions"></select></label>
         <label>Clusters<select id="ni-clusters" data-multiselect-no-values-label="Loading values…" data-multiselect-dynamic-all="true" multiple size="1" aria-label="Clusters"></select></label>
         <label>Cities<select id="ni-cities" data-multiselect-preset-label="Main Cities" data-multiselect-preset-first="true" data-multiselect-no-values-label="Loading values…" data-multiselect-dynamic-all="true" multiple size="1" aria-label="Cities"></select></label>
+        <label title="Where the tests ran: big cities are Cities, medium and small cities are Towns, and connecting roads, highways and train routes are Roads and railways">Environments<select id="ni-environments" data-multiselect-no-values-label="Loading values…" data-multiselect-dynamic-all="true" multiple size="1" aria-label="Environments"></select></label>
       </div>
       <div class="ni-auto-cdrs" id="ni-auto-cdrs" aria-live="polite"></div>
       <div class="ni-actions">
@@ -131,14 +132,24 @@
 
   <details class="panel collapsible-panel ni-panel" open data-panel-state-key="network-insights:spectrum">
     <summary class="collapsible-summary"><div><p class="eyebrow">Low, mid and high TDD bands</p><h2>Spectrum</h2></div><span class="collapse-chip">Collapse</span></summary>
-    <div class="collapsible-panel-body"><p class="ni-intro">Spectrum licensed to each Operator, deployed in the inventory snapshot and used by the samples.</p>
+    <div class="collapsible-panel-body"><p class="ni-intro">Spectrum licensed to each Operator, deployed in the inventory snapshot and used by the samples: the sites with NR TDD and NR FDD, the bandwidth of every band and the total bandwidth of the tests.</p>
       <h3 class="ni-subtitle">Licensed spectrum</h3>
       <div id="ni-licensed" class="ni-licensed"></div>
       <h3 class="ni-subtitle">Spectrum deployed in the inventory snapshot</h3>
       <div class="table-wrap ni-table-wrap"><table class="ni-table" id="ni-deployed-spectrum"><tbody><tr><td class="form-note">Loading the inventory snapshots…</td></tr></tbody></table></div>
+      <h3 class="ni-subtitle">NR sites by duplex mode</h3>
+      <div class="ni-map-toolbar"><label>Split by<select id="ni-nr-duplex-split">{% for key, label in network_insights_config.nr_duplex_splits.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select></label><p class="form-note" id="ni-nr-duplex-status"></p></div>
+      <div class="table-wrap ni-table-wrap"><table class="ni-table" id="ni-nr-duplex-sites"><tbody><tr><td class="form-note">Loading the inventory snapshots…</td></tr></tbody></table></div>
+      <p class="form-note ni-note" id="ni-nr-duplex-note">In-service sites with NR cells of the inventory snapshot, after the Operators, Operator_Vendor, Vendors, Regions, Clusters and Cities filters (Campaigns, NR Mode and Environments describe the measurements and do not restrict the inventory). NR TDD bands are n77, n78, n38, n40, n41 and n258; NR FDD bands are n1, n3, n7, n8, n20 and n28. A logical site is a site ID of one network; sites of any network within 50 m of each other stand on one physical site, so the All networks row counts a shared site once.</p>
       <h3 class="ni-subtitle">Spectrum observed in the measurements</h3>
       <div class="table-wrap ni-table-wrap"><table class="ni-table" id="ni-observed-spectrum"><tbody><tr><td class="form-note">No analysis yet.</td></tr></tbody></table></div>
       <p class="form-note ni-note">Bands come from the serving EARFCN and NR band of each sample; typical bandwidths come from CDR Data, the only CDR type that reports them.</p>
+      <div class="ni-map-toolbar ni-bandwidth-toolbar"><label title="The CDR Data tests whose bandwidths are counted below">Tests<select id="ni-bandwidth-tests">{% for key, label in network_insights_config.bandwidth_scopes.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select></label><p class="form-note" id="ni-bandwidth-status"></p></div>
+      <h3 class="ni-subtitle">Bandwidth per band</h3>
+      <div class="table-wrap ni-table-wrap"><table class="ni-table" id="ni-band-bandwidth"><tbody><tr><td class="form-note">No analysis yet.</td></tr></tbody></table></div>
+      <h3 class="ni-subtitle">Total bandwidth: LTE and NR together</h3>
+      <div id="ni-total-bandwidth" class="ni-ladder-host"><p class="form-note">No analysis yet.</p></div>
+      <p class="form-note ni-note">Bandwidth per band: the samples of each serving band per DL bandwidth of its primary carrier (LTE PCell or NR PCell). Total bandwidth: each test's LTE bandwidth (its mean over the aggregated LTE carriers, else its LTE PCell bandwidth, rounded up to 5 MHz) plus its NR PCell bandwidth; the CDRs do not report the bandwidth of NR secondary carriers, so NR carrier aggregation is not added. Each block is as wide as the midpoint of its class and as tall as its share of the tests with a known bandwidth; the figure is the share below 25 MHz. Big cities (driven and walked) are Cities, medium and small cities are Towns, and connecting roads, highways and train routes are Roads and railways.</p>
     </div>
   </details>
 

@@ -1499,7 +1499,7 @@ def install_report_task_routes(core: Any) -> None:
             'cdr_kinds': CDR_ANALYSIS_KINDS,
             'cdr_aggregations': CDR_ANALYSIS_AGGREGATIONS, 'cdr_cdf_groupings': CDR_ANALYSIS_CDF_GROUPINGS,
             'network_groupings': {'operator': 'Operator', 'vendor': 'Vendor', 'region': 'Region', 'cluster': 'Cluster', 'city': 'City',
-                                  'kind': 'CDR type', 'campaign': 'Campaign'},
+                                  'environment': 'Environment', 'kind': 'CDR type', 'campaign': 'Campaign'},
             'technologies': {'lte': 'LTE', 'nr': 'NR', 'lte_nr': 'LTE+NR'},
             'email_configured': bool(core.email_delivery_settings(core.repository).get('configured')),
             'timezone': now_local().strftime('%Z (UTC%z)'),

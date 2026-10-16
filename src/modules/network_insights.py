@@ -32,7 +32,8 @@ from src.modules.value_maps import ValueMapper, field_kind
 from src.modules.cdr_auto_selection import (
     CAMPAIGN_PRESET_LABELS, campaign_presets, candidate_cdrs, describe_cdrs, resolve_campaign_filter, resolve_cdrs,
 )
-from src.modules.cdr_facets import cascading_options
+from src.modules.cdr_environments import ENVIRONMENTS, environment_class, environment_order
+from src.modules.cdr_facets import cascading_options, stored_facets
 from src.modules.mapping_order import dimension_order_key, operator_order_key, vendor_order_key
 from src.modules.output_layout import NETWORK_INSIGHTS_FOLDER, module_output_dir
 from src.modules import inventory_insights as ii
@@ -43,8 +44,8 @@ from src.modules.serving_cells import load_serving_networks, serving_families
 
 NETWORK_INSIGHTS_KINDS = ('data', 'voice', 'speech')
 # Bump when the normalised samples or the analysis payload change shape.
-SAMPLES_CACHE_VERSION = 6
-ANALYSIS_CACHE_VERSION = 20
+SAMPLES_CACHE_VERSION = 7
+ANALYSIS_CACHE_VERSION = 21
 INVENTORY_CACHE_VERSION = 4
 OBSERVED_CACHE_VERSION = 9
 # Columns of the Observed Sites/Cells (from CDRs) tables.
@@ -96,6 +97,13 @@ RF_FIELD_ALIASES: dict[str, dict[str, tuple[str, ...]]] = {
     'nr_bandwidth': {
         'data': ('NR_DL_PCell_Bandwidth',), 'voice': (), 'speech': (),
     },
+    # The mean LTE bandwidth of a test over every aggregated carrier, and the test (download tests carry "DL").
+    'lte_aggregated_bandwidth': {
+        'data': ('LTE_DL_Test_Bandwidth_Avg',), 'voice': (), 'speech': (),
+    },
+    'test_name': {
+        'data': ('Test_Name',), 'voice': (), 'speech': (),
+    },
     # The NR leg of NSA samples (its PCI and SSB NR-ARFCN) and the MIMO rank and layers the device reported.
     'nr_pci': {
         'data': ('NR_DL_PCell_PCI_Info_List',), 'voice': (), 'speech': (),
@@ -121,9 +129,13 @@ DIMENSION_ALIASES = {
     'region': ('Region', 'G_Level_2'),
     'cluster': ('Cluster',),
     'city': ('City', 'G_Level_4'),
+    # The test environment (see cdr_environments): the most detailed level, else the route level.
+    'environment': ('G_Level_3',),
+    'environment_route': ('G_Level_2',),
     'source_sheet': ('source_sheet',),
 }
-GROUPINGS = {'operator': 'Operator', 'vendor': 'Vendor', 'region': 'Region', 'cluster': 'Cluster', 'city': 'City', 'kind': 'CDR type', 'technology': 'Technology', 'campaign': 'Campaign'}
+GROUPINGS = {'operator': 'Operator', 'vendor': 'Vendor', 'region': 'Region', 'cluster': 'Cluster', 'city': 'City',
+             'environment': 'Environment', 'kind': 'CDR type', 'technology': 'Technology', 'campaign': 'Campaign'}
 TECHNOLOGIES = {'lte': 'LTE', 'nr': 'NR', 'lte_nr': 'LTE+NR'}
 
 # Default classification bands. Thresholds are user-adjustable in the module;
@@ -315,9 +327,25 @@ def normalise_samples(frame: pd.DataFrame, kind: str, columns: dict[str, str]) -
     groups = [{'canonical': name} for name in pd.unique(result['operator']) if name]
     swapped = {value: swap_operator_vendor(value, groups) for value in pd.unique(result['operator_vendor'])}
     result['vendor_operator'] = result['operator_vendor'].map(swapped)
-    for field in ('latitude', 'longitude', 'lte_rsrp', 'nr_rsrp', 'lte_sinr', 'nr_sinr', 'lte_bandwidth', 'nr_bandwidth'):
+    for field in ('latitude', 'longitude', 'lte_rsrp', 'nr_rsrp', 'lte_sinr', 'nr_sinr', 'lte_bandwidth', 'nr_bandwidth',
+                  'lte_aggregated_bandwidth'):
         source = columns.get(field)
         result[field] = pd.to_numeric(frame[source], errors='coerce') if source in frame.columns else math.nan
+    # Cities, Towns or Roads and railways, from the most detailed environment level of each test.
+    environments = pd.Series('', index=frame.index, dtype=object)
+    for field in ('environment', 'environment_route'):
+        source = columns.get(field)
+        if source in frame.columns:
+            values = frame[source].astype(object).where(frame[source].notna(), '')
+            classes = values.map({value: environment_class(value) for value in pd.unique(values)})
+            environments = environments.where(environments != '', classes)
+    result['environment'] = environments
+    test_source = columns.get('test_name')
+    if test_source in frame.columns:
+        names = frame[test_source].astype(object).where(frame[test_source].notna(), '')
+        result['download'] = names.map({name: bool(DOWNLOAD_TEST.search(str(name))) for name in pd.unique(names)}).astype(bool)
+    else:
+        result['download'] = False
     # Values outside physical ranges are measurement placeholders.
     for field, low, high in (('lte_rsrp', -160, -20), ('nr_rsrp', -160, -20), ('lte_sinr', -30, 50), ('nr_sinr', -30, 50)):
         result.loc[(result[field] < low) | (result[field] > high), field] = math.nan
@@ -683,6 +711,104 @@ def observed_spectrum(samples: pd.DataFrame) -> list[dict[str, Any]]:
     return sorted(rows, key=lambda row: (row['operator'], row['technology'], order.get(row['band'], 999)))
 
 
+# Download tests carry DL in their name (FDTT HTTP DL MT, FDFS HTTPS DL ST); uploads, pings and browsing do not.
+DOWNLOAD_TEST = re.compile(r'(?<![A-Za-z0-9])DL(?![A-Za-z0-9])', re.I)
+# The total downlink bandwidth of a test, LTE and NR together, in the classes of benchmark reports, widest first:
+# (label, lower MHz, upper MHz, colour, block width). A block is as wide as its class midpoint.
+BANDWIDTH_CLASSES = (
+    ('200+ MHz', 200.0, None, '#1E6B3A', 225.0),
+    ('140–199 MHz', 140.0, 200.0, '#3E9455', 169.5),
+    ('100–139 MHz', 100.0, 140.0, '#8CC68A', 119.5),
+    ('60–99 MHz', 60.0, 100.0, '#F2C66D', 79.5),
+    ('40–59 MHz', 40.0, 60.0, '#EE9E4E', 49.5),
+    ('25–39 MHz', 25.0, 40.0, '#E2685A', 32.0),
+    ('Under 25 MHz', 0.0, 25.0, '#B5132B', 12.5),
+)
+NARROW_BANDWIDTH_MHZ = 25.0
+BANDWIDTH_SCOPES = {'download': 'Download tests', 'all': 'All Data tests'}
+ALL_ENVIRONMENTS = 'All environments'
+
+
+def total_bandwidth(samples: pd.DataFrame) -> pd.Series:
+    """The DL bandwidth of each test, LTE and NR together (MHz); NaN when the test reports neither.
+
+    LTE is the mean bandwidth of the test over its aggregated carriers (else its PCell bandwidth) rounded up to 5 MHz,
+    as the Reporting field LTE DL Aggregated BW (MHz); NR is the bandwidth of its NR PCell, since the CDRs do not
+    report the bandwidth of the NR secondary carriers.
+    """
+    def positive(field: str) -> pd.Series:
+        values = samples[field] if field in samples else pd.Series(math.nan, index=samples.index)
+        return pd.to_numeric(values, errors='coerce').where(lambda series: series > 0)
+
+    lte = positive('lte_aggregated_bandwidth')
+    lte = np.ceil(lte.where(lte.notna(), positive('lte_bandwidth')) / 5) * 5
+    nr = positive('nr_bandwidth')
+    return (lte.fillna(0) + nr.fillna(0)).where(lte.notna() | nr.notna())
+
+
+def bandwidth_classes(totals: pd.Series) -> pd.Series:
+    """The position in :data:`BANDWIDTH_CLASSES` of each known total bandwidth."""
+    values = totals.dropna().to_numpy(dtype=float)
+    positions = np.full(len(values), len(BANDWIDTH_CLASSES) - 1)
+    for index in range(len(BANDWIDTH_CLASSES) - 2, -1, -1):
+        positions[values >= BANDWIDTH_CLASSES[index][1]] = index
+    return pd.Series(positions, index=totals.dropna().index)
+
+
+def bandwidth_ladders(samples: pd.DataFrame, columns: pd.Series, column_order: list[str]) -> dict[str, Any]:
+    """The share of tests in each total-bandwidth class per group (column) and environment (row).
+
+    Tests without an environment are left out when some tests have one; without any, every test is one row.
+    """
+    totals = total_bandwidth(samples)
+    environments = samples['environment'].fillna('').astype(str) if 'environment' in samples else pd.Series('', index=samples.index)
+    rows = sorted({value for value in environments if value}, key=environment_order)
+    without_environment = int((environments == '').sum()) if rows else 0
+    if not rows:
+        rows, environments = [ALL_ENVIRONMENTS], pd.Series(ALL_ENVIRONMENTS, index=samples.index)
+    positions = bandwidth_classes(totals)
+    cells = []
+    for column in column_order:
+        in_column = columns == column
+        for row in rows:
+            part = totals.loc[in_column & (environments == row)]
+            if not len(part):
+                continue
+            known = part.dropna()
+            counts = np.bincount(positions.loc[known.index].to_numpy(dtype=int), minlength=len(BANDWIDTH_CLASSES))
+            cells.append({
+                'column': column, 'environment': row, 'tests': int(len(part)), 'known': int(len(known)),
+                'counts': [int(count) for count in counts],
+                'shares': [round(int(count) / len(known) * 100, 1) if len(known) else 0.0 for count in counts],
+                'narrow_share': round(float((known < NARROW_BANDWIDTH_MHZ).mean()) * 100, 1) if len(known) else None,
+                'median_mhz': round(float(known.median()), 1) if len(known) else None,
+            })
+    return {
+        'columns': [column for column in column_order if any(cell['column'] == column for cell in cells)],
+        'environments': rows, 'cells': cells, 'tests': int(len(samples)), 'unknown': int(totals.loc[environments.isin(rows)].isna().sum()),
+        'without_environment': without_environment,
+    }
+
+
+def band_bandwidths(samples: pd.DataFrame) -> list[dict[str, Any]]:
+    """The samples of each serving band per DL bandwidth of its primary carrier (LTE PCell or NR PCell)."""
+    rows = []
+    for technology, band_column, bandwidth_column in (('LTE', 'lte_band', 'lte_bandwidth'), ('NR', 'nr_band', 'nr_bandwidth')):
+        located = samples.loc[samples[band_column].astype(str) != '']
+        for (operator, band), part in located.groupby(['operator', band_column], sort=False):
+            widths = pd.to_numeric(part[bandwidth_column], errors='coerce')
+            widths = widths.where(widths > 0).dropna().round(1)
+            counts = widths.value_counts().sort_index()
+            rows.append({
+                'operator': operator, 'technology': technology, 'band': band,
+                'duplex': BAND_CATALOGUE.get(band, (None, ''))[1], 'frequency_mhz': BAND_CATALOGUE.get(band, (None, ''))[0],
+                'samples': int(len(part)), 'unknown': int(len(part) - len(widths)),
+                'bandwidths': {f'{width:g}': int(count) for width, count in counts.items()},
+                'typical_bandwidth_mhz': float(widths.mode().iloc[0]) if len(widths) else None,
+            })
+    return rows
+
+
 def normalise_spectrum_holdings(rows: Iterable[Any]) -> list[dict[str, Any]]:
     """Validate licensed spectrum rows (Operator, band, duplex, class, MHz)."""
     result = []
@@ -795,6 +921,9 @@ DEPLOYMENT_GROUPINGS = {
     'scenario': 'eMOCN Scenario', 'host_network': 'Host Network', 'network': 'Network', 'vendor': 'RAN Vendor',
     'region': 'Region', 'subregion': 'Subregion', 'cluster': 'Cluster', 'site_type': 'Site Type', 'band': 'Band',
 }
+# How the NR sites by duplex mode of the inventory snapshot can be split ('' counts them per owner network only).
+NR_DUPLEX_SPLITS = {'': 'Owner network', 'region': 'Region', 'cluster': 'Cluster', 'city': 'City', 'vendor': 'RAN Vendor',
+                    'host_network': 'Host Network'}
 
 
 # ---------------------------------------------------------------------------
@@ -921,7 +1050,7 @@ def operator_family(name: object) -> str:
 SAMPLE_FILTERS = (
     ('operator', 'operators'), ('operator_vendor', 'operator_vendors'), ('vendor_operator', 'vendor_operators'),
     ('vendor', 'vendors'), ('region', 'regions'),
-    ('cluster', 'clusters'), ('city', 'cities'), ('campaign', 'campaigns'),
+    ('cluster', 'clusters'), ('city', 'cities'), ('environment', 'environments'), ('campaign', 'campaigns'),
 )
 
 
@@ -1200,6 +1329,8 @@ def install_network_insights_routes(core: Any) -> None:
         regions: list[str] = Field(default_factory=list)
         clusters: list[str] = Field(default_factory=list)
         cities: list[str] = Field(default_factory=list)
+        # Cities, Towns or Roads and railways (see cdr_environments).
+        environments: list[str] = Field(default_factory=list)
         # LTE thresholds; NR SS-RSRP/SS-SINR have their own.
         coverage_threshold: float = DEFAULT_COVERAGE_THRESHOLD
         interference_threshold: float = DEFAULT_INTERFERENCE_THRESHOLD
@@ -1445,6 +1576,8 @@ def install_network_insights_routes(core: Any) -> None:
                 'spectrum_holdings': holdings,
                 'spectrum_summary': licensed_spectrum_summary(holdings),
                 'band_classes': BAND_CLASSES,
+                'bandwidth_scopes': BANDWIDTH_SCOPES,
+                'nr_duplex_splits': NR_DUPLEX_SPLITS,
                 'can_edit': user.role in {'user-editor', 'admin', 'super-admin'},
             },
         })
@@ -1461,17 +1594,23 @@ def install_network_insights_routes(core: Any) -> None:
         dataset_ids = [row['id'] for row in candidate_cdrs(task_repository, request.nr_mode, NETWORK_INSIGHTS_KINDS)]
         selections = {'Operator': request.operators, 'Operator_Vendor': request.operator_vendors,
                       'Vendor_Operator': request.vendor_operators, 'Vendor': request.vendors, 'Region': request.regions,
-                      'Cluster': request.clusters, 'City': request.cities, 'Campaign': request.campaigns}
+                      'Cluster': request.clusters, 'City': request.cities, 'Environment': request.environments,
+                      'Campaign': request.campaigns}
         names = {'Operator': 'operators', 'Operator_Vendor': 'operator_vendors', 'Vendor_Operator': 'vendor_operators',
-                 'Vendor': 'vendors', 'Region': 'regions', 'Cluster': 'clusters', 'City': 'cities', 'Campaign': 'campaigns'}
+                 'Vendor': 'vendors', 'Region': 'regions', 'Cluster': 'clusters', 'City': 'cities',
+                 'Environment': 'environments', 'Campaign': 'campaigns'}
         fields = ['Operator_Vendor', 'Vendor_Operator', 'Vendor'] if vendor_only else list(names)
+        # CDRs whose combinations are still being read offer their catalogue meanwhile: the page asks again.
+        _found, pending = stored_facets(task_repository, dataset_ids)
         options = cascading_options(task_repository, dataset_ids, selections, fields)
+        if 'Environment' in options:
+            options['Environment'] = sorted(options['Environment'], key=environment_order)
         if 'Campaign' in options:
             # The samples carry each campaign as the Campaign Maps show it (2026-Q2).
             options['Campaign'] = sorted({compact_campaign_value(value) or value for value in options['Campaign']}, key=campaign_sort_key)
         chosen = resolve_cdrs(task_repository, request.nr_mode, request.campaigns, NETWORK_INSIGHTS_KINDS)
         return {'options': {names[field]: values for field, values in options.items()},
-                'cdrs': describe_cdrs(task_repository, chosen)}
+                'cdrs': describe_cdrs(task_repository, chosen), 'pending': bool(pending)}
 
     def analysis_key(task_repository, request: AnalysisRequest) -> str:
         """Identity of an analysis: its request and every input it reads."""
@@ -1548,6 +1687,7 @@ def install_network_insights_routes(core: Any) -> None:
             'regions': sorted({value for value in samples['region'] if value}, key=str.casefold),
             'clusters': sorted({value for value in samples['cluster'] if value}, key=str.casefold),
             'cities': sorted({value for value in samples['city'] if value}, key=str.casefold),
+            'environments': sorted({value for value in samples['environment'] if value}, key=environment_order),
             'campaigns': sorted({value for value in samples['campaign'] if value}, key=campaign_sort_key),
         }
         filtered = filter_samples(samples, request)
@@ -1601,13 +1741,18 @@ def install_network_insights_routes(core: Any) -> None:
         mapping_groups = task_repository.list_operator_mapping_groups()
         vendor_mapping_groups = task_repository.list_vendor_mapping_groups()
 
-        def group_order(label: str) -> tuple[Any, ...]:
-            """Groups in Operator Map and Vendor Map order, one grouping field after another."""
-            parts = str(label).split(' · ')
-            return tuple(
-                dimension_order_key(field, part, mapping_groups, vendor_mapping_groups) or (0, 0, part.casefold())
-                for field, part in zip(groups, parts)
-            ) if groups and len(parts) == len(groups) else ((1, 0, str(label).casefold()),)
+        def ordered_by(fields: list[str]) -> Callable[[str], tuple[Any, ...]]:
+            def order(label: str) -> tuple[Any, ...]:
+                """Groups in Operator Map and Vendor Map order, environments as listed, one grouping field after another."""
+                parts = str(label).split(' · ')
+                return tuple(
+                    ((0, environment_order(part), part.casefold()) if field == 'environment' else None)
+                    or dimension_order_key(field, part, mapping_groups, vendor_mapping_groups) or (0, 0, part.casefold())
+                    for field, part in zip(fields, parts)
+                ) if fields and len(parts) == len(fields) else ((1, 0, str(label).casefold()),)
+            return order
+
+        group_order = ordered_by(groups)
 
         if 'operator' in groups:
             source_colours = operator_colours(original_operators, mapping_groups)
@@ -1701,6 +1846,37 @@ def install_network_insights_routes(core: Any) -> None:
                 },
             }
 
+        def bandwidth_payload() -> dict[str, Any]:
+            """Samples per band and bandwidth, and the total bandwidth (LTE + NR) of the CDR Data tests per group
+            and environment, for the download tests and for every test."""
+            # The environment makes the rows of the total bandwidth, so the columns are the other grouping fields.
+            column_groups = [field for field in groups if field != 'environment']
+            if column_groups:
+                parts = grouping_values[column_groups]
+                columns = parts[column_groups[0]].replace('', '(Empty)')
+                for field in column_groups[1:]:
+                    columns = columns.str.cat(parts[field].replace('', '(Empty)'), sep=' · ')
+            else:
+                columns = pd.Series('All samples', index=filtered.index)
+            column_order = sorted(pd.unique(columns), key=ordered_by(column_groups))
+            band_order = {name: index for index, name in enumerate(BAND_CATALOGUE)}
+            data = filtered['kind'].eq('Data')
+            scopes = {}
+            for scope in BANDWIDTH_SCOPES:
+                tests = filtered.loc[data & (filtered['download'].astype(bool) if scope == 'download' else True)]
+                bands = sorted(band_bandwidths(tests), key=lambda row: (group_order(row['operator']), row['technology'],
+                                                                        band_order.get(row['band'], 999), row['band']))
+                scopes[scope] = {'tests': int(len(tests)), 'bands': bands,
+                                 'ladders': bandwidth_ladders(tests, columns.loc[tests.index], column_order)}
+            return {
+                'classes': [{'label': label, 'lower': lower, 'upper': upper, 'colour': colour, 'width': width}
+                            for label, lower, upper, colour, width in BANDWIDTH_CLASSES],
+                'narrow_below_mhz': NARROW_BANDWIDTH_MHZ, 'scopes': scopes, 'scope_labels': BANDWIDTH_SCOPES,
+                'column_label': ' → '.join(GROUPINGS[field] for field in column_groups) or 'All samples',
+                'column_colours': {column: colours.get(label, '') for column, label in
+                                   pd.DataFrame({'column': columns, 'label': labels}).drop_duplicates('column').itertuples(index=False)},
+            }
+
         sections = [technology_section(radio) for radio in radios]
         if filtered[['latitude', 'longitude']].dropna().empty:
             warnings.append('The selected CDRs carry no sample coordinates, so maps are unavailable.')
@@ -1721,6 +1897,7 @@ def install_network_insights_routes(core: Any) -> None:
             'spectrum': {
                 'observed': sorted(observed_spectrum(filtered), key=lambda row: group_order(row['operator'])),
                 'licensed': sorted(licensed_spectrum_summary(holdings), key=lambda row: operator_order_key(row['operator'], mapping_groups)),
+                'bandwidth': bandwidth_payload(),
             },
             'colours': colours,
             'warnings': warnings,
@@ -2054,6 +2231,111 @@ def install_network_insights_routes(core: Any) -> None:
             'snapshot': request.snapshot, 'group': payload['group'], 'in_service_only': request.in_service_only,
             'technology': payload['technology'], 'compare': request.compare}))
         return {**payload, 'comparison': comparison}
+
+    class NrDuplexRequest(AnalysisRequest):
+        split: str = ''
+
+    nr_duplex_cache: OrderedDict[str, dict[str, Any]] = OrderedDict()
+    site_names_cache: OrderedDict[str, dict[str, str]] = OrderedDict()
+    nr_duplex_lock = Lock()
+
+    def remembered(cache: OrderedDict, key: str, build, keep: int):
+        with nr_duplex_lock:
+            if key in cache:
+                cache.move_to_end(key)
+                return cache[key]
+        value = build()
+        with nr_duplex_lock:
+            cache[key] = value
+            while len(cache) > keep:
+                cache.popitem(last=False)
+        return value
+
+    def inventory_site_names(task_repository, cells: pd.DataFrame, selection_key: str, dimension: str) -> dict[str, str]:
+        """Site key → its imported Region or Cluster polygon, else the Region or Cluster field of its inventory."""
+        def build() -> dict[str, str]:
+            sites = ii.site_positions(cells, in_service_only=False)
+            names = polygon_names(task_repository, sites['longitude'], sites['latitude'], dimension.title()) if len(sites) else None
+            if names is None:
+                fields = cells.loc[cells[dimension] != '', ['site_key', dimension]].drop_duplicates('site_key')
+                return dict(zip(fields['site_key'], fields[dimension], strict=True))
+            return {key: name for key, name in zip(sites['site_key'], names, strict=True) if name}
+        return remembered(site_names_cache, f'{selection_key}:{dimension}', build, keep=8)
+
+    def nr_duplex_payload(task_repository, request: NrDuplexRequest) -> dict[str, Any]:
+        """The NR sites by duplex mode of the inventory snapshot, after the Operators, Operator_Vendor, Vendors,
+        Regions, Clusters and Cities filters (Campaigns, NR Mode and Environments describe the measurements)."""
+        snapshots = ensure_inventory_cells(task_repository)
+        labels = family_operator_labels(task_repository)
+        overview = ii.snapshot_overview(task_repository, request.snapshot, labels)
+        selection = {item['family']: item['dataset_id'] for item in overview['selection']}
+        split = request.split if request.split in NR_DUPLEX_SPLITS else ''
+        filters = {key: sorted({str(value).strip() for value in getattr(request, key) if str(value).strip()})
+                   for key in ('operators', 'operator_vendors', 'vendors', 'regions', 'clusters', 'cities')}
+        sources = inventory_polygon_sources(task_repository)
+        selection_key = hashlib.sha256(json.dumps([str(task_repository.db_path), snapshots, selection, sources],
+                                                  sort_keys=True, default=str).encode()).hexdigest()
+        key = hashlib.sha256(json.dumps([selection_key, labels, split, filters, task_repository.chart_mapping_settings()],
+                                        sort_keys=True, default=str).encode()).hexdigest()
+
+        def build() -> dict[str, Any]:
+            cells = ii.load_cells(task_repository, selection)
+            keep = pd.Series(True, index=cells.index)
+            missing = []
+            if filters['operators']:
+                families = {network_family(operator) for operator in filters['operators']}
+                missing = [operator for operator in filters['operators'] if network_family(operator) not in selection]
+                keep &= cells['network_family'].isin(families)
+            normalise = inventory_filter_normalizer(task_repository)
+            if filters['vendors']:
+                wanted = {normalise(value, 'Vendor') for value in filters['vendors']}
+                vendors = {value: normalise(value, 'Vendor') for value in pd.unique(cells['vendor'])}
+                keep &= cells['vendor'].map(vendors).isin(wanted)
+            if filters['operator_vendors']:
+                # Operator_Vendor pairs: the operator family and the mapped vendor; "- All" pairs keep every vendor.
+                pairs = [normalise(value, 'Operator_Vendor').partition('|') for value in filters['operator_vendors']]
+                identities = {pair: normalise(f'{ii.family_label(pair[0], labels)}_{pair[1]}', 'Operator_Vendor').partition('|')
+                              for pair in set(zip(cells['network_family'], cells['vendor']))}
+                accepted = {pair for pair, (family, _sep, vendor) in identities.items()
+                            if any(family == chosen and (not chosen_vendor or vendor == chosen_vendor) for chosen, _s, chosen_vendor in pairs)}
+                keep &= pd.Series(list(zip(cells['network_family'], cells['vendor'])), index=cells.index).isin(accepted)
+            if filters['cities']:
+                keep &= cells['city'].str.casefold().isin({value.casefold() for value in filters['cities']})
+            for dimension, values in (('region', filters['regions']), ('cluster', filters['clusters'])):
+                if values:
+                    names = inventory_site_names(task_repository, cells, selection_key, dimension)
+                    keep &= cells['site_key'].map(names).fillna('').str.casefold().isin({value.casefold() for value in values})
+            chosen = cells.loc[keep]
+            areas = None
+            if split in {'region', 'cluster'}:
+                areas = inventory_site_names(task_repository, cells, selection_key, split)
+            elif split:
+                nr = chosen.loc[chosen['is_nr'] & chosen['in_service']]
+                field = 'host_family' if split == 'host_network' else split
+                first = nr.loc[nr[field] != ''].drop_duplicates('site_key')
+                areas = dict(zip(first['site_key'], first[field].map(lambda value: ii.family_label(value, labels))
+                                 if split == 'host_network' else first[field], strict=True))
+            duplex = {band: details[1] for band, details in BAND_CATALOGUE.items() if band.startswith('n')}
+            groups = task_repository.list_operator_mapping_groups()
+            rows = ii.nr_duplex_sites(chosen, duplex, labels, areas)
+            area_rank = {area: index for index, area in enumerate(dict.fromkeys(row['area'] for row in rows))}
+            rows.sort(key=lambda row: (area_rank[row['area']], row['all_networks'], operator_order_key(row['operator'], groups)))
+            return {
+                'split': split, 'split_label': NR_DUPLEX_SPLITS[split], 'rows': rows, 'radius_m': ii.PHYSICAL_SITE_RADIUS_M,
+                'selection': overview['selection'], 'filters': {name: len(values) for name, values in filters.items() if values},
+                'missing_operators': missing, 'colours': operator_colours([row['operator'] for row in rows if not row['all_networks']], groups),
+            }
+
+        return remembered(nr_duplex_cache, key, build, keep=16)
+
+    @app.post('/api/network-insights/nr-duplex-sites')
+    def network_insights_nr_duplex_sites(request: NrDuplexRequest, user=Depends(insights_user)):
+        """In-service sites with NR TDD and NR FDD of the inventory snapshot, logical and physical."""
+        task_repository = bound_repository()
+        payload = nr_duplex_payload(task_repository, request)
+        task_repository.try_add_log(user.username, 'network_insights_nr_duplex_sites', json.dumps({
+            'snapshot': request.snapshot, 'split': payload['split'], 'filters': payload['filters'], 'rows': len(payload['rows'])}))
+        return payload
 
     # ------------------------------------------------------------------
     # Sites/Cells tables: complete inventories or cells observed in CDRs
@@ -2673,7 +2955,8 @@ def install_network_insights_routes(core: Any) -> None:
             groupings.append({'group': group, 'group_label': grouped['group_label'], 'inventories': [
                 {'operator': table['operator'], 'file_name': sources.get(table['family'], ''), 'rows': table['rows'], 'totals': table['totals']}
                 for table in grouped['deployment']]})
-        deployment = {'groupings': groupings, 'cluster_inventories': cluster_inventory_summary(), 'snapshot': snapshot}
+        deployment = {'groupings': groupings, 'cluster_inventories': cluster_inventory_summary(), 'snapshot': snapshot,
+                      'nr_duplex': nr_duplex_payload(task_repository, NrDuplexRequest.model_validate(request.model_dump()))}
         render = lambda payload, width, height: _render_dashboard_payload(payload, width=width, height=height)[0]
         writer = export_network_insights_word if export_kind == 'word' else export_network_insights_powerpoint
         writer(destination, analysis, deployment, description, render)

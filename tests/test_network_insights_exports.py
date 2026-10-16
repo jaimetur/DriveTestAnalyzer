@@ -219,3 +219,57 @@ def test_nr_cell_of_nsa_samples_mimo_and_cell_status_tables_are_exported(tmp_pat
         assert [cell.text for cell in five_g.rows[0].cells][-3:] == ['NR cell found', 'NR on the anchor site', 'Median km to the NR site']
         status = next(table for table in tables if table.cell(0, 1).text == 'Network → Host')
         assert [cell.text for cell in status.rows[1].cells][3:6] == ['Locked: 1 cell (B20)', 'Yes', 'Coverage · Leeds']
+
+
+def _bandwidth_spectrum():
+    classes = [{'label': label, 'lower': lower, 'upper': upper, 'colour': colour, 'width': width} for label, lower, upper, colour, width in (
+        ('200+ MHz', 200, None, '#1E6B3A', 225), ('140–199 MHz', 140, 200, '#3E9455', 169.5), ('100–139 MHz', 100, 140, '#8CC68A', 119.5),
+        ('60–99 MHz', 60, 100, '#F2C66D', 79.5), ('40–59 MHz', 40, 60, '#EE9E4E', 49.5), ('25–39 MHz', 25, 40, '#E2685A', 32),
+        ('Under 25 MHz', 0, 25, '#B5132B', 12.5))]
+    cell = lambda column, environment, shares, narrow: {  # noqa: E731
+        'column': column, 'environment': environment, 'tests': 20, 'known': 20, 'counts': [int(share / 5) for share in shares],
+        'shares': shares, 'narrow_share': narrow, 'median_mhz': 120.0}
+    scope = {'tests': 80, 'bands': [
+        {'operator': '3 · 2026-Q3', 'technology': 'NR', 'band': 'n78', 'duplex': 'TDD', 'frequency_mhz': 3500, 'samples': 40,
+         'unknown': 2, 'bandwidths': {'40': 8, '100': 30}, 'typical_bandwidth_mhz': 100.0}],
+        'ladders': {'columns': ['3', 'EE'], 'environments': ['Cities', 'Towns'], 'unknown': 3, 'without_environment': 0, 'tests': 80, 'cells': [
+            cell('3', 'Cities', [10, 40, 30, 10, 0, 0, 10], 10.0), cell('3', 'Towns', [0, 20, 30, 20, 0, 0, 30], 30.0),
+            cell('EE', 'Cities', [0, 0, 50, 20, 20, 0, 10], 10.0), cell('EE', 'Towns', [0, 0, 20, 30, 20, 10, 20], 20.0)]}}
+    return {'bandwidth': {'classes': classes, 'narrow_below_mhz': 25, 'scope_labels': {'download': 'Download tests', 'all': 'All Data tests'},
+                          'scopes': {'download': scope, 'all': scope}, 'column_label': 'Operator',
+                          'column_colours': {'3': '#000000', 'EE': '#00B2A9'}}}
+
+
+def test_bandwidth_views_and_nr_sites_by_duplex_mode_are_exported(tmp_path):
+    from src.modules.network_insights_export import bandwidth_ladder_image, bandwidth_tables, nr_duplex_table
+
+    analysis = {**_analysis(), 'group_label': 'Operator → Campaign', 'spectrum': _bandwidth_spectrum()}
+    tables = {title: (columns, rows) for title, columns, rows in bandwidth_tables(analysis)}
+    columns, rows = tables['Spectrum · Bandwidth per band (Download tests)']
+    assert columns == ['Operator → Campaign', 'Technology', 'Band', 'Duplex', 'Samples', '40 MHz', '100 MHz', 'Unknown', 'Typical']
+    assert rows[0][5:] == ['8 (20%)', '30 (75%)', '2', '100 MHz']
+    columns, rows = tables['Spectrum · Total bandwidth, LTE and NR (Download tests)']
+    assert columns[:3] == ['Operator', 'Environment', 'Tests'] and columns[-2:] == ['Below 25 MHz', 'Median']
+    assert rows[1][:2] == ['3', 'Towns'] and rows[1][-2] == '30.0%'
+    image = bandwidth_ladder_image(analysis)
+    with Image.open(image) as raster:
+        assert raster.width > raster.height > 400
+    deployment = {'nr_duplex': {'radius_m': 50, 'rows': [
+        {'operator': name, 'sites': 10, 'tdd_sites': 8, 'fdd_sites': 6, 'both_sites': 4, 'tdd_only_sites': 4, 'fdd_only_sites': 2,
+         'physical_sites': 9, 'physical_tdd_sites': 7, 'physical_fdd_sites': 6} for name in ('VF', 'All networks')]}}
+    assert nr_duplex_table(deployment)[0][1][-3:] == ['Physical sites (within 50 m)', 'Physical NR TDD', 'Physical NR FDD']
+
+    output = tmp_path / 'network.pptx'
+    export_network_insights_powerpoint(output, analysis, deployment, {}, _png, template=TEMPLATE)
+    titles = [shape.text_frame.text for slide in Presentation(output).slides for shape in slide.shapes
+              if shape.has_text_frame and shape.text_frame.text.startswith('Spectrum ·')]
+    assert {'Spectrum · NR sites by duplex mode', 'Spectrum · Bandwidth per band (Download tests)',
+            'Spectrum · Total bandwidth, LTE and NR (Download tests)'} <= set(titles)
+    pictures = [shape for slide in Presentation(output).slides for shape in slide.shapes if shape.shape_type == 13]
+    assert pictures
+    output = tmp_path / 'network.docx'
+    export_network_insights_word(output, analysis, deployment, {}, _png)
+    document = Document(output)
+    headings = [paragraph.text for paragraph in document.paragraphs if paragraph.style.name.startswith('Heading')]
+    assert 'Spectrum · Total bandwidth, LTE and NR (Download tests)' in headings and 'Spectrum · NR sites by duplex mode' in headings
+    assert document.inline_shapes

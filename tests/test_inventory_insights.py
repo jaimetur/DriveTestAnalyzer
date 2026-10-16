@@ -362,3 +362,57 @@ def test_snapshot_panels_list_the_networks_in_operator_maps_order(client, tmp_pa
     assert [table['operator'] for table in payload['deployment']][:2] == ['VF', '3']
     assert [row['operator'] for row in payload['quality']][:2] == ['VF', '3']
     assert payload['host_matrix']['owners'][:2] == ['VF', '3']
+
+
+def _duplex_inventory_rows():
+    def cell(network, host, vendor, site, technology, band, channel, lon, lat, status='In Service', region='North'):
+        node = 'gNodeB ID' if technology == 'NR' else 'eNodeB ID'
+        return {'Technology': technology, 'Network': network, 'Host Network': host, 'Vendor': vendor, 'Site_ID': site,
+                node: abs(hash(site)) % 100000, 'Cell ID': 1 if band.endswith(('3400', '3600', '800')) else 2, 'Band': band,
+                'ARFCN' if technology == 'NR' else 'Earfcn': channel, 'Bandwidth': 20, 'Azimuth': 0, 'Longitude': lon,
+                'Latitude': lat, 'Evenflow Status': status, 'Region': region}
+
+    lon, lat = LEEDS
+    return [
+        # VF0: NR TDD and FDD; VF1: NR FDD only; VF2: LTE only.
+        cell('Vodafone', 'Vodafone', 'Ericsson', 'VF0', 'LTE', 'LTE800', 6300, lon, lat),
+        cell('Vodafone', 'Vodafone', 'Ericsson', 'VF0', 'NR', 'NR3400', 642000, lon, lat),
+        cell('Vodafone', 'Vodafone', 'Ericsson', 'VF0', 'NR', 'NR2100', 428000, lon, lat),
+        cell('Vodafone', 'Telefonica', 'Huawei', 'VF1', 'NR', 'NR2100', 428000, lon + 0.02, lat, region='South'),
+        cell('Vodafone', 'Vodafone', 'Ericsson', 'VF2', 'LTE', 'LTE800', 6300, lon + 0.04, lat),
+        # T1 stands about 20 m from VF0: the same physical site. T2 is only planned.
+        cell('H3G', 'H3G', 'Samsung', 'T1', 'NR', 'NR3600', 650000, lon, lat + 0.0002),
+        cell('H3G', 'H3G', 'Samsung', 'T2', 'NR', 'NR700', 152000, lon + 0.06, lat, status='Planned'),
+    ]
+
+
+def test_nr_sites_by_duplex_mode_count_logical_and_physical_sites(client, tmp_path):
+    login(client)
+    _dataset(tmp_path, '260917_Cell_Config.zip', 'network_inventory', _duplex_inventory_rows())
+    payload = client.post('/api/network-insights/nr-duplex-sites', json={}).json()
+    rows = {row['operator']: row for row in payload['rows']}
+    keys = ('sites', 'tdd_sites', 'fdd_sites', 'both_sites', 'tdd_only_sites', 'fdd_only_sites', 'physical_sites',
+            'physical_tdd_sites', 'physical_fdd_sites')
+    assert [rows['VF'][key] for key in keys] == [2, 1, 2, 1, 0, 1, 2, 1, 2]
+    assert [rows['3'][key] for key in keys] == [1, 1, 0, 0, 1, 0, 1, 1, 0]
+    # The site shared by VF0 and T1 counts once among the physical sites of every network.
+    assert [rows['All networks'][key] for key in keys] == [3, 2, 2, 1, 1, 1, 2, 1, 2]
+    assert payload['rows'][-1]['all_networks'] and payload['radius_m'] == 50
+
+    three = client.post('/api/network-insights/nr-duplex-sites', json={'operators': ['3']}).json()
+    assert [row['operator'] for row in three['rows']] == ['3', 'All networks']
+    assert three['filters'] == {'operators': 1}
+    huawei = client.post('/api/network-insights/nr-duplex-sites', json={'vendors': ['Huawei']}).json()
+    assert {row['operator']: row['fdd_only_sites'] for row in huawei['rows']} == {'VF': 1, 'All networks': 1}
+    paired = client.post('/api/network-insights/nr-duplex-sites', json={'operator_vendors': ['VF_Huawei']}).json()
+    assert {row['operator']: row['sites'] for row in paired['rows']} == {'VF': 1, 'All networks': 1}
+    south = client.post('/api/network-insights/nr-duplex-sites', json={'regions': ['South']}).json()
+    assert {row['operator']: row['sites'] for row in south['rows']} == {'VF': 1, 'All networks': 1}
+
+    by_host = client.post('/api/network-insights/nr-duplex-sites', json={'split': 'host_network'}).json()
+    assert by_host['split_label'] == 'Host Network'
+    assert {(row['area'], row['operator']): row['sites'] for row in by_host['rows']} == {
+        ('3', '3'): 1, ('3', 'All networks'): 1, ('O2', 'VF'): 1, ('O2', 'All networks'): 1,
+        ('VF', 'VF'): 1, ('VF', 'All networks'): 1}
+    events = [row for row in core.repository.list_logs(limit=20) if row['action'] == 'network_insights_nr_duplex_sites']
+    assert events

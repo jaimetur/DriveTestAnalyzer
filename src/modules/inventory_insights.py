@@ -463,6 +463,82 @@ def density_rows(sites: pd.DataFrame, dimension: str, names: pd.Series, areas: d
     return sorted(rows, key=lambda row: (row['area'] == 'Not set', row['area'].casefold(), row['operator'].casefold()))
 
 
+# Sites of any network this close to each other stand on one physical site (shared masts, MBNL and Beacon).
+PHYSICAL_SITE_RADIUS_M = 50.0
+
+
+def physical_sites(sites: pd.DataFrame, radius_m: float = PHYSICAL_SITE_RADIUS_M) -> pd.Series:
+    """The physical site of each logical site: located sites within ``radius_m`` of each other, of any network, chained
+    together, share one; a site without a position is a physical site of its own."""
+    from shapely import STRtree, points
+
+    result = pd.Series(np.arange(len(sites)), index=sites.index)
+    located = sites['latitude'].notna() & sites['longitude'].notna()
+    if located.sum() < 2:
+        return result
+    frame = sites.loc[located]
+    coordinates = _metres(frame['longitude'].to_numpy(), frame['latitude'].to_numpy(), float(frame['latitude'].median()))
+    geometries = points(coordinates)
+    source, target = STRtree(geometries).query(geometries, predicate='dwithin', distance=radius_m)
+    parent = np.arange(len(frame))
+
+    def root(node: int) -> int:
+        while parent[node] != node:
+            parent[node] = parent[parent[node]]
+            node = parent[node]
+        return node
+
+    for left, right in zip(source, target):
+        if left != right:
+            first, second = root(int(left)), root(int(right))
+            if first != second:
+                parent[max(first, second)] = min(first, second)
+    roots = np.array([root(node) for node in range(len(frame))])
+    # Located sites take the position of their root; unlocated ones keep positions after them.
+    result.loc[frame.index] = roots
+    result.loc[~located] = np.arange(len(frame), len(frame) + int((~located).sum()))
+    return result
+
+
+def nr_duplex_sites(cells: pd.DataFrame, duplex: dict[str, str], operator_labels: dict[str, str] | None = None,
+                    areas: dict[str, str] | None = None, radius_m: float = PHYSICAL_SITE_RADIUS_M) -> list[dict[str, Any]]:
+    """In-service sites with NR of each owner network, with NR TDD, NR FDD or both, as logical sites (site IDs) and as
+    physical sites (co-located sites counted once), per area when ``areas`` names the area of each site key.
+
+    ``duplex`` gives the duplex mode (TDD or FDD) of each 3GPP NR band; cells on other bands count only as NR. Every
+    area ends with an All networks row whose physical sites count a site shared by several networks once.
+    """
+    frame = _filtered(cells, True, 'NR')
+    if frame.empty:
+        return []
+    modes = frame['band_3gpp'].map(duplex).fillna('')
+    frame = frame[['site_key', 'network_family']].assign(tdd=modes.eq('TDD').to_numpy(), fdd=modes.eq('FDD').to_numpy())
+    sites = frame.groupby('site_key', sort=False).agg(family=('network_family', 'first'), tdd=('tdd', 'max'), fdd=('fdd', 'max'))
+    # The position of each site from all its cells in service, NR or not.
+    positions = site_positions(cells).set_index('site_key')
+    sites = sites.join(positions[['latitude', 'longitude']], how='left')
+    sites['physical'] = physical_sites(sites, radius_m)
+    sites['area'] = [str((areas or {}).get(key) or '') or ('Not set' if areas is not None else '') for key in sites.index]
+    rows = []
+
+    def counts(part: pd.DataFrame) -> dict[str, int]:
+        physical = part.groupby('physical').agg(tdd=('tdd', 'max'), fdd=('fdd', 'max'))
+        return {
+            'sites': int(len(part)), 'tdd_sites': int(part['tdd'].sum()), 'fdd_sites': int(part['fdd'].sum()),
+            'both_sites': int((part['tdd'] & part['fdd']).sum()), 'tdd_only_sites': int((part['tdd'] & ~part['fdd']).sum()),
+            'fdd_only_sites': int((part['fdd'] & ~part['tdd']).sum()),
+            'physical_sites': int(len(physical)), 'physical_tdd_sites': int(physical['tdd'].sum()),
+            'physical_fdd_sites': int(physical['fdd'].sum()),
+        }
+
+    for area, area_sites in sorted(sites.groupby('area', sort=False), key=lambda item: (item[0] == 'Not set', item[0].casefold())):
+        for family, part in area_sites.groupby('family', sort=False):
+            rows.append({'area': area, 'family': family, 'operator': family_label(family, operator_labels), 'all_networks': False,
+                         **counts(part)})
+        rows.append({'area': area, 'family': '', 'operator': 'All networks', 'all_networks': True, **counts(area_sites)})
+    return rows
+
+
 def inventory_quality(cells: pd.DataFrame, operator_labels: dict[str, str] | None = None) -> list[dict[str, Any]]:
     """What each network's cells lack: position, azimuth, band, vendor, site, or service."""
     rows = []

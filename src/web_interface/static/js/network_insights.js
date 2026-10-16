@@ -17,7 +17,8 @@
   } catch {}
   const selectionControls = ['ni-nr-mode', 'ni-technology', 'ni-group', 'ni-coverage-threshold',
     'ni-interference-threshold', 'ni-nr-coverage-threshold', 'ni-nr-interference-threshold', 'ni-grid',
-    'ni-deployment-group', 'ni-sites-source', 'ni-snapshot', 'ni-overshoot', 'ni-deployment-technology'];
+    'ni-deployment-group', 'ni-sites-source', 'ni-snapshot', 'ni-overshoot', 'ni-deployment-technology',
+    'ni-bandwidth-tests', 'ni-nr-duplex-split'];
   for (const id of selectionControls) {
     const control = $(id);
     const value = savedSelection.controls?.[id];
@@ -157,7 +158,7 @@
     campaignChoice = next;
   });
 
-  const filterNames = ['operators', 'operator_vendors', 'vendor_operators', 'vendors', 'regions', 'clusters', 'cities', 'campaigns'];
+  const filterNames = ['operators', 'operator_vendors', 'vendor_operators', 'vendors', 'regions', 'clusters', 'cities', 'environments', 'campaigns'];
   const fillFilterOptions = options => {
     if (options.operators) $('ni-vendors').dataset.multiselectOperatorValues = JSON.stringify(options.operators);
     for (const field of filterNames) {
@@ -166,6 +167,8 @@
   };
   let optionsRequest = null;
   let optionsTimer = null;
+  // While the combinations of some CDRs are still being read, the lists are asked for again a few times.
+  let pendingTimer = null, pendingRetries = 0;
   const optionsCache = new Map();
   const cdrsCache = new Map();
   // Every filter lists the values of every CDR of the NR Mode that the other filters leave.
@@ -204,14 +207,21 @@
         if (controller.signal.aborted) return;
         if (payload.cdrs) { cdrsCache.set(key, payload.cdrs); renderAutoCdrs(payload.cdrs); }
         const merged = {...(optionsCache.get(key) || {}), ...payload.options};
-        optionsCache.set(key, merged);
+        if (payload.pending) pending = true;
+        else optionsCache.set(key, merged);
         fillFilterOptions(payload.options);
         refreshInventory();
       };
+      let pending = false;
       // Cached dimensions render independently of the first Vendor lookup.
       const results = await Promise.allSettled([loadPart(false), loadPart(true)]);
       const failure = results.find(result => result.status === 'rejected');
       if (failure) throw failure.reason;
+      clearTimeout(pendingTimer);
+      if (pending && pendingRetries < 20) {
+        pendingRetries += 1;
+        pendingTimer = setTimeout(() => { void loadFilterOptions(); }, 4000);
+      } else if (!pending) pendingRetries = 0;
     } catch (error) {
       if (error.name !== 'AbortError') {
         for (const field of filterNames) {
@@ -243,6 +253,7 @@
     regions: filterValues('ni-regions'),
     clusters: filterValues('ni-clusters'),
     cities: filterValues('ni-cities'),
+    environments: filterValues('ni-environments'),
     coverage_threshold: Number($('ni-coverage-threshold').value),
     interference_threshold: Number($('ni-interference-threshold').value),
     nr_coverage_threshold: Number($('ni-nr-coverage-threshold').value),
@@ -631,7 +642,157 @@
       <td class="num">${row.frequency_mhz ? `${integer(row.frequency_mhz)} MHz` : '—'}</td><td>${escapeHtml(row.duplex || '—')}</td><td>${escapeHtml(row.band_class || '—')}</td>
       <td class="num">${integer(row.samples)}</td><td><span class="ni-share"><span style="width:${row.share}%"></span></span> ${number(row.share)}%</td>
       <td class="num">${row.typical_bandwidth_mhz ? `${number(row.typical_bandwidth_mhz, 0)} MHz` : '—'}</td></tr>`).join('')}</tbody>`;
+    renderBandwidth();
   };
+  // Bandwidth per band and total bandwidth (LTE + NR) of the CDR Data tests: the download tests or every test.
+  const bandwidthWidth = value => `${Number(value).toLocaleString('en-US', {maximumFractionDigits: 1})} MHz`;
+  const renderBandwidth = () => {
+    const bandwidth = analysis?.spectrum?.bandwidth;
+    const table = $('ni-band-bandwidth');
+    const host = $('ni-total-bandwidth');
+    if (!bandwidth) {
+      table.innerHTML = '<tbody><tr><td class="form-note">No analysis yet.</td></tr></tbody>';
+      host.innerHTML = '<p class="form-note">No analysis yet.</p>';
+      $('ni-bandwidth-status').textContent = '';
+      return;
+    }
+    const scope = bandwidth.scopes[$('ni-bandwidth-tests').value] ? $('ni-bandwidth-tests').value : 'download';
+    const view = bandwidth.scopes[scope];
+    $('ni-bandwidth-status').textContent = view.tests
+      ? (scope === 'download' ? `${integer(view.tests)} download tests of the CDR Data.` : `${integer(view.tests)} CDR Data tests of every type.`)
+      : 'No CDR Data tests in this selection: only CDR Data reports bandwidths.';
+    // Bandwidth per band: one column per bandwidth seen, the samples of each band and their share of the band.
+    const widths = [...new Set(view.bands.flatMap(row => Object.keys(row.bandwidths)))].sort((left, right) => Number(left) - Number(right));
+    table.innerHTML = view.bands.length ? `<thead><tr><th>${escapeHtml(analysis.group_label || 'All samples')}</th><th>Technology</th><th>Band</th><th>Duplex</th><th>Samples</th>${widths.map(width => `<th>${bandwidthWidth(width)}</th>`).join('')}<th>Unknown</th><th>Typical</th></tr></thead>
+      <tbody>${view.bands.map(row => `<tr><td><span class="ni-swatch" style="background:${analysis.colours[row.operator] || '#6D46A8'}"></span>${escapeHtml(row.operator)}</td><td>${technologyChip(row.technology)}</td><td>${escapeHtml(row.band)}</td><td>${escapeHtml(row.duplex || '—')}</td><td class="num">${integer(row.samples)}</td>
+        ${widths.map(width => {
+          const count = row.bandwidths[width] || 0;
+          const share = row.samples ? count / row.samples * 100 : 0;
+          return count ? `<td class="num ni-heat" style="--ni-heat:${Math.min(share, 100) / 100}" title="${escapeHtml(row.band)} at ${bandwidthWidth(width)}: ${number(share)}% of its samples">${integer(count)} <small>${number(share, 0)}%</small></td>` : '<td class="num ni-heat-empty">—</td>';
+        }).join('')}
+        <td class="num">${row.unknown ? integer(row.unknown) : '—'}</td><td class="num">${row.typical_bandwidth_mhz ? bandwidthWidth(row.typical_bandwidth_mhz) : '—'}</td></tr>`).join('')}</tbody>`
+      : '<tbody><tr><td class="form-note">The selected tests report no serving bands.</td></tr></tbody>';
+    renderLadders(host, bandwidth, view.ladders);
+  };
+  // Total bandwidth: per group (column) and environment (row), one block per bandwidth class, widest at the bottom,
+  // as wide as the class midpoint and as tall as its share of the tests; the figure is the share below 25 MHz.
+  const renderLadders = (host, bandwidth, ladders) => {
+    if (!ladders.cells.some(cell => cell.known)) {
+      host.innerHTML = '<p class="form-note">The selected tests report no LTE or NR bandwidth.</p>';
+      return;
+    }
+    const classes = bandwidth.classes;
+    const columns = ladders.columns;
+    const rows = ladders.environments;
+    const labelWidth = 170, columnWidth = 210, header = 40, rowHeight = 165, legendHeight = 56;
+    const width = labelWidth + columns.length * columnWidth;
+    const height = header + rows.length * rowHeight + legendHeight;
+    const widest = Math.max(...classes.map(item => item.width));
+    const cells = new Map(ladders.cells.map(cell => [`${cell.column}\u0000${cell.environment}`, cell]));
+    const parts = [];
+    columns.forEach((column, index) => {
+      const x = labelWidth + index * columnWidth + columnWidth / 2;
+      parts.push(`<text class="ni-ladder-column" x="${x}" y="${header - 14}" text-anchor="middle" fill="${escapeHtml(bandwidth.column_colours[column] || '#312e81')}">${escapeHtml(column)}</text>`);
+    });
+    rows.forEach((row, rowIndex) => {
+      const top = header + rowIndex * rowHeight;
+      const base = top + rowHeight - 18;
+      const plot = rowHeight - 40;
+      parts.push(`<text class="ni-ladder-row" x="12" y="${top + rowHeight / 2}" dominant-baseline="middle">${escapeHtml(row)}</text>`);
+      if (rowIndex) parts.push(`<line class="ni-ladder-divider" x1="0" x2="${width}" y1="${top}" y2="${top}"></line>`);
+      columns.forEach((column, index) => {
+        const centre = labelWidth + index * columnWidth + columnWidth / 2;
+        const span = columnWidth - 28;
+        parts.push(`<line class="ni-ladder-base" x1="${centre - span / 2}" x2="${centre + span / 2}" y1="${base}" y2="${base}"></line>`);
+        const cell = cells.get(`${column}\u0000${row}`);
+        if (!cell || !cell.known) {
+          parts.push(`<text class="ni-ladder-empty" x="${centre}" y="${base - 12}" text-anchor="middle">${cell ? 'No bandwidth' : 'No tests'}</text>`);
+          return;
+        }
+        let cursor = base;
+        // The figure stands right of the narrow blocks (up to 40–59 MHz), level with the top of the ladder.
+        let narrowTop = base;
+        const narrowRight = centre + (classes.at(-3)?.width || widest) / widest * span / 2;
+        classes.forEach((item, classIndex) => {
+          const share = cell.shares[classIndex];
+          const blockWidth = item.width / widest * span;
+          const blockHeight = share / 100 * plot;
+          cursor -= blockHeight;
+          if (classIndex === classes.length - 1) narrowTop = cursor;
+          if (blockHeight <= 0) return;
+          parts.push(`<rect x="${centre - blockWidth / 2}" y="${cursor}" width="${blockWidth}" height="${blockHeight}" fill="${item.colour}"><title>${escapeHtml(`${column} · ${row} · ${item.label}: ${number(share)}% (${integer(cell.counts[classIndex])} of ${integer(cell.known)} tests)`)}</title></rect>`);
+        });
+        parts.push(`<text class="ni-ladder-figure" x="${narrowRight + 6}" y="${narrowTop + 4}" dominant-baseline="hanging"><title>${escapeHtml(`${column} · ${row}: ${number(cell.narrow_share)}% of ${integer(cell.known)} tests below ${bandwidth.narrow_below_mhz} MHz; median ${number(cell.median_mhz, 0)} MHz`)}</title>${number(cell.narrow_share, 0)}%</text>`);
+      });
+    });
+    // The legend, widest class first, under the ladders.
+    const legendTop = header + rows.length * rowHeight + 22;
+    let legendX = labelWidth;
+    parts.push(`<text class="ni-ladder-legend-title" x="12" y="${legendTop + 6}" dominant-baseline="middle">Width (LTE + NR)</text>`);
+    classes.forEach(item => {
+      parts.push(`<rect x="${legendX}" y="${legendTop - 2}" width="16" height="16" rx="2" fill="${item.colour}"></rect><text class="ni-ladder-legend" x="${legendX + 22}" y="${legendTop + 6}" dominant-baseline="middle">${escapeHtml(item.label)}</text>`);
+      legendX += 34 + item.label.length * 8.2;
+    });
+    const svgWidth = Math.max(width, legendX + 12);
+    const known = ladders.cells.reduce((total, cell) => total + cell.known, 0);
+    host.innerHTML = `<div class="ni-ladder" role="img" aria-label="Total bandwidth, LTE and NR together, per ${escapeHtml(bandwidth.column_label)} and environment">
+        <svg viewBox="0 0 ${svgWidth} ${height}" style="min-width:${Math.min(svgWidth, 160 + columns.length * 150)}px" xmlns="http://www.w3.org/2000/svg">${parts.join('')}</svg></div>
+      <p class="form-note">${integer(known)} tests with a known bandwidth${ladders.unknown ? `; ${integer(ladders.unknown)} without one are left out` : ''}${ladders.without_environment ? `; ${integer(ladders.without_environment)} tests without an environment are not shown` : ''}. Columns: ${escapeHtml(bandwidth.column_label)}.</p>`;
+  };
+  // NR sites by duplex mode of the inventory snapshot, after the Analysis Selection filters that describe it.
+  let nrDuplexPayload = null, nrDuplexController = null, nrDuplexTimer = null, nrDuplexKey = '';
+  const nrDuplexRequest = () => ({...requestBody(), split: $('ni-nr-duplex-split').value});
+  const loadNrDuplex = async ({force = false} = {}) => {
+    const table = $('ni-nr-duplex-sites');
+    if (!(config.snapshots || []).length) {
+      table.innerHTML = '<tbody><tr><td class="form-note">No inventory snapshot is available.</td></tr></tbody>';
+      return;
+    }
+    const body = nrDuplexRequest();
+    // Only the filters that restrict the inventory, the snapshot and the split change the counts.
+    const key = JSON.stringify(['snapshot', 'split', 'operators', 'operator_vendors', 'vendors', 'regions', 'clusters', 'cities'].map(name => body[name]));
+    if (!force && key === nrDuplexKey && nrDuplexPayload) return;
+    nrDuplexKey = key;
+    nrDuplexController?.abort();
+    const controller = new AbortController();
+    nrDuplexController = controller;
+    $('ni-nr-duplex-status').textContent = 'Counting the NR sites…';
+    try {
+      const response = await fetch('/api/network-insights/nr-duplex-sites', {
+        method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body), signal: controller.signal,
+      });
+      const payload = await response.json();
+      if (nrDuplexController !== controller) return;
+      if (!response.ok) throw new Error(payload.detail || 'Unable to count the NR sites.');
+      nrDuplexPayload = payload;
+      renderNrDuplex();
+    } catch (error) {
+      if (error.name === 'AbortError' || nrDuplexController !== controller) return;
+      nrDuplexKey = '';
+      $('ni-nr-duplex-status').textContent = '';
+      table.innerHTML = `<tbody><tr><td class="form-note">${escapeHtml(error.message)}</td></tr></tbody>`;
+    }
+  };
+  const scheduleNrDuplex = () => { clearTimeout(nrDuplexTimer); nrDuplexTimer = setTimeout(() => { void loadNrDuplex(); }, 300); };
+  const renderNrDuplex = () => {
+    const payload = nrDuplexPayload;
+    const table = $('ni-nr-duplex-sites');
+    const rows = payload?.rows || [];
+    const filters = Object.keys(payload?.filters || {}).length;
+    const missing = payload?.missing_operators || [];
+    $('ni-nr-duplex-status').textContent = `${filters ? 'Filtered inventory' : 'Whole inventory'} · ${(payload?.selection || []).map(item => `${item.operator} ${item.snapshot_date}`).join(', ')}${missing.length ? ` · no inventory for ${missing.join(', ')}` : ''}`;
+    if (!rows.length) { table.innerHTML = '<tbody><tr><td class="form-note">No in-service NR site matches the filters.</td></tr></tbody>'; return; }
+    const split = Boolean(payload.split);
+    const swatch = row => row.all_networks ? '' : `<span class="ni-swatch" style="background:${payload.colours?.[row.operator] || '#6D46A8'}"></span>`;
+    table.innerHTML = `<thead><tr>${split ? `<th rowspan="2">${escapeHtml(payload.split_label)}</th>` : ''}<th rowspan="2">Network</th><th colspan="6" class="ni-group-head">Logical sites (site IDs)</th><th colspan="3" class="ni-group-head">Physical sites (within ${integer(payload.radius_m)} m)</th></tr>
+      <tr><th>With NR</th><th>NR TDD</th><th>NR FDD</th><th>TDD and FDD</th><th>TDD only</th><th>FDD only</th><th>With NR</th><th>NR TDD</th><th>NR FDD</th></tr></thead>
+      <tbody>${rows.map(row => `<tr class="${row.all_networks ? 'ni-total-row' : ''}">${split ? `<td>${escapeHtml(row.area)}</td>` : ''}<td>${swatch(row)}${escapeHtml(row.operator)}</td>
+        <td class="num">${integer(row.sites)}</td><td class="num"><strong>${integer(row.tdd_sites)}</strong></td><td class="num"><strong>${integer(row.fdd_sites)}</strong></td>
+        <td class="num">${integer(row.both_sites)}</td><td class="num">${integer(row.tdd_only_sites)}</td><td class="num">${integer(row.fdd_only_sites)}</td>
+        <td class="num">${integer(row.physical_sites)}</td><td class="num"><strong>${integer(row.physical_tdd_sites)}</strong></td><td class="num"><strong>${integer(row.physical_fdd_sites)}</strong></td></tr>`).join('')}</tbody>`;
+  };
+  $('ni-nr-duplex-split').addEventListener('change', () => { void loadNrDuplex(); });
+  $('ni-bandwidth-tests').addEventListener('change', renderBandwidth);
   const render = () => {
     if (!analysis) return;
     renderOverview();
@@ -980,6 +1141,16 @@
           content.append(card);
           if (!isMap || !geoMap(large, full, payload, {expanded: true})) renderChart(large, payload);
         });
+      return;
+    }
+    const ladder = event.target.closest('.ni-ladder');
+    if (ladder) {
+      openExpanded('Chart', headingBefore(ladder) || panelTitle(ladder), panelTitle(ladder), content => {
+        const copy = ladder.cloneNode(true);
+        copy.classList.add('ni-expand-ladder');
+        copy.querySelector('svg')?.style.removeProperty('min-width');
+        content.append(copy);
+      });
       return;
     }
     const table = event.target.closest('table.ni-table');
@@ -1580,7 +1751,7 @@
     inventoryRefreshTimer = setTimeout(() => { void loadDeployment(); }, 150);
   };
   $('network-insights').addEventListener('change', event => {
-    if (event.target.closest('.ni-selection-panel')) refreshInventory();
+    if (event.target.closest('.ni-selection-panel')) { refreshInventory(); scheduleNrDuplex(); }
   });
 
   $('ni-technology').onchange = syncTechnologyGrouping;
@@ -1624,7 +1795,7 @@
     setTimeout(stopFollowing, 15000);
   }
   renderAutoCdrs(null);
-  void loadFilterOptions().then(showLastAnalysis);
+  void loadFilterOptions().then(() => { showLastAnalysis(); void loadNrDuplex(); });
   void loadDeployment();
   // The site tables do not read the snapshot: the Snapshot, density and spectrum panels still need it.
   if (isSiteTable($('ni-deployment-group').value)) void loadSnapshot();

@@ -55,7 +55,8 @@ def summary_selection_lines(selection: dict[str, Any]) -> list[str]:
             lines.append(f"{label} thresholds: low coverage below {selection.get(coverage)} dBm RSRP, "
                          f"high interference below {selection.get(interference)} dB SINR")
     for label, key in (('Operators', 'operators'), ('Operator_Vendor', 'operator_vendors'), ('Vendors', 'vendors'),
-                       ('Campaigns', 'campaigns'), ('Regions', 'regions'), ('Clusters', 'clusters'), ('Cities', 'cities')):
+                       ('Campaigns', 'campaigns'), ('Regions', 'regions'), ('Clusters', 'clusters'), ('Cities', 'cities'),
+                       ('Environments', 'environments')):
         values = selection.get(key) or []
         lines.append(f"{label}: {', '.join(values) if values else 'All'}")
     datasets = selection.get('dataset_names') or []
@@ -97,6 +98,125 @@ def spectrum_tables(analysis: dict[str, Any]) -> list[tuple[str, list[str], list
     if licensed:
         tables.append(('Licensed Spectrum (MHz)', ['Operator', 'Low', 'Mid', 'High (TDD)', 'Total'], licensed))
     return tables
+
+
+def _bandwidth_view(analysis: dict[str, Any], scope: str) -> tuple[dict[str, Any], dict[str, Any], str]:
+    bandwidth = (analysis.get('spectrum') or {}).get('bandwidth') or {}
+    view = (bandwidth.get('scopes') or {}).get(scope) or {}
+    return bandwidth, view, str((bandwidth.get('scope_labels') or {}).get(scope) or scope)
+
+
+def _megahertz(value: Any) -> str:
+    return f'{float(value):g} MHz'
+
+
+def bandwidth_tables(analysis: dict[str, Any], scope: str = 'download') -> list[tuple[str, list[str], list[list[str]]]]:
+    """Bandwidth per band and total bandwidth (LTE + NR) per group and environment, as on the page."""
+    bandwidth, view, label = _bandwidth_view(analysis, scope)
+    group = analysis.get('group_label') or 'Group'
+    tables = []
+    bands = view.get('bands') or []
+    widths = sorted({width for row in bands for width in row.get('bandwidths') or {}}, key=float)
+    rows = [[row['operator'], row['technology'], row['band'], row.get('duplex') or '—', _number(row['samples'], 0),
+             *[(f"{row['bandwidths'][width]:,} ({row['bandwidths'][width] / row['samples'] * 100:.0f}%)"
+                if row['bandwidths'].get(width) else '—') for width in widths],
+             _number(row['unknown'], 0) if row.get('unknown') else '—',
+             _megahertz(row['typical_bandwidth_mhz']) if row.get('typical_bandwidth_mhz') else '—'] for row in bands]
+    if rows:
+        tables.append((f'Spectrum · Bandwidth per band ({label})',
+                       [group, 'Technology', 'Band', 'Duplex', 'Samples', *[_megahertz(width) for width in widths], 'Unknown', 'Typical'], rows))
+    classes = bandwidth.get('classes') or []
+    ladders = view.get('ladders') or {}
+    rows = [[cell['column'], cell['environment'], _number(cell['known'], 0), *[_number(share, 1, '%') for share in cell['shares']],
+             _number(cell['narrow_share'], 1, '%'), _megahertz(cell['median_mhz']) if cell.get('median_mhz') is not None else '—']
+            for cell in ladders.get('cells') or [] if cell.get('known')]
+    if rows:
+        tables.append((f'Spectrum · Total bandwidth, LTE and NR ({label})',
+                       [bandwidth.get('column_label') or 'Group', 'Environment', 'Tests', *[item['label'] for item in classes],
+                        f"Below {bandwidth.get('narrow_below_mhz', 25):g} MHz", 'Median'], rows))
+    return tables
+
+
+def bandwidth_ladder_image(analysis: dict[str, Any], scope: str = 'download') -> BytesIO | None:
+    """The total bandwidth ladders of the page as a PNG: per group (column) and environment (row), one block per
+    bandwidth class, widest at the bottom, as wide as the class midpoint and as tall as its share of the tests."""
+    from PIL import ImageDraw
+
+    bandwidth, view, _label = _bandwidth_view(analysis, scope)
+    ladders = view.get('ladders') or {}
+    cells = {(cell['column'], cell['environment']): cell for cell in ladders.get('cells') or []}
+    if not any(cell.get('known') for cell in cells.values()):
+        return None
+    classes = bandwidth.get('classes') or []
+    columns, rows = ladders.get('columns') or [], ladders.get('environments') or []
+    label_width, column_width, header, row_height, legend_height = 340, 420, 80, 330, 112
+    title_font, text_font, small_font = load_image_font(30, bold=True), load_image_font(28, bold=True), load_image_font(26)
+    widest = max(item['width'] for item in classes)
+    # The legend flows over as many lines as the chart width needs (at least 1,400 px wide).
+    width = int(max(label_width + len(columns) * column_width, 1400))
+    legend, cursor, line = [], label_width, 0
+    for item in classes:
+        size = small_font.getlength(item['label']) if hasattr(small_font, 'getlength') else 12 * len(item['label'])
+        if cursor + size + 44 > width - 24 and cursor > label_width:
+            cursor, line = label_width, line + 1
+        legend.append((item, cursor, line))
+        cursor += size + 76
+    height = header + len(rows) * row_height + legend_height + line * 48
+    image = Image.new('RGB', (width, height), 'white')
+    draw = ImageDraw.Draw(image)
+    for index, column in enumerate(columns):
+        centre = label_width + index * column_width + column_width / 2
+        draw.text((centre, header - 28), str(column), fill=bandwidth.get('column_colours', {}).get(column) or '#312E81',
+                  font=title_font, anchor='ms')
+    for row_index, row in enumerate(rows):
+        top = header + row_index * row_height
+        base, plot = top + row_height - 36, row_height - 80
+        draw.text((24, top + row_height / 2), str(row), fill='#1F2433', font=text_font, anchor='lm')
+        if row_index:
+            draw.line([(0, top), (width, top)], fill='#EEF0FF', width=4)
+        for index, column in enumerate(columns):
+            centre = label_width + index * column_width + column_width / 2
+            span = column_width - 56
+            draw.line([(centre - span / 2, base), (centre + span / 2, base)], fill='#C7CBF7', width=2)
+            cell = cells.get((column, row))
+            if not cell or not cell.get('known'):
+                draw.text((centre, base - 24), 'No bandwidth' if cell else 'No tests', fill='#8A8FB5', font=small_font, anchor='ms')
+                continue
+            # The figure stands right of the narrow blocks (up to 40–59 MHz), level with the top of the ladder.
+            cursor, narrow_top = float(base), float(base)
+            narrow_right = centre + classes[-3]['width'] / widest * span / 2 if len(classes) >= 3 else centre
+            for class_index, item in enumerate(classes):
+                block_width = item['width'] / widest * span
+                block_height = cell['shares'][class_index] / 100 * plot
+                cursor -= block_height
+                if class_index == len(classes) - 1:
+                    narrow_top = cursor
+                if block_height > 0:
+                    draw.rectangle([(centre - block_width / 2, cursor), (centre + block_width / 2, cursor + block_height)], fill=item['colour'])
+            draw.text((narrow_right + 12, narrow_top), f"{cell['narrow_share']:.0f}%", fill='#1F2433', font=text_font, anchor='lt')
+    legend_top = header + len(rows) * row_height + 44
+    draw.text((24, legend_top), 'Width (LTE + NR)', fill='#1F2433', font=text_font, anchor='lm')
+    for item, left, line in legend:
+        top = legend_top + line * 48
+        draw.rectangle([(left, top - 16), (left + 32, top + 16)], fill=item['colour'])
+        draw.text((left + 44, top), item['label'], fill='#3B4060', font=small_font, anchor='lm')
+    buffer = BytesIO()
+    image.save(buffer, format='PNG')
+    buffer.seek(0)
+    return buffer
+
+
+def nr_duplex_table(deployment: dict[str, Any]) -> list[tuple[str, list[str], list[list[str]]]]:
+    """The NR sites by duplex mode of the inventory snapshot, logical and physical."""
+    payload = deployment.get('nr_duplex') or {}
+    rows = [[row['operator'], *[_number(row[key], 0) for key in ('sites', 'tdd_sites', 'fdd_sites', 'both_sites', 'tdd_only_sites',
+                                                                  'fdd_only_sites', 'physical_sites', 'physical_tdd_sites', 'physical_fdd_sites')]]
+            for row in payload.get('rows') or []]
+    if not rows:
+        return []
+    radius = _number(payload.get('radius_m'), 0)
+    return [('Spectrum · NR sites by duplex mode', ['Network', 'Sites with NR', 'NR TDD', 'NR FDD', 'TDD and FDD', 'TDD only', 'FDD only',
+                                                   f'Physical sites (within {radius} m)', 'Physical NR TDD', 'Physical NR FDD'], rows)]
 
 
 def deployment_tables(deployment: dict[str, Any]) -> list[tuple[str, list[str], list[list[str]]]]:
@@ -747,7 +867,14 @@ def export_network_insights_powerpoint(destination: Path, analysis: dict[str, An
         _paired_table_slides(presentation, title, panels)
     for title, columns, rows in [*cluster_sites_tables(analysis, deployment),
                                  *[table for table in snapshot_tables(deployment) if table[0].startswith('Cluster')],
-                                 *spectrum_tables(analysis), *[table for table in snapshot_tables(deployment) if table[0].startswith('Spectrum')]]:
+                                 *spectrum_tables(analysis), *[table for table in snapshot_tables(deployment) if table[0].startswith('Spectrum')],
+                                 *nr_duplex_table(deployment)]:
+        _table_slides(presentation, title, columns, rows)
+    ladder = bandwidth_ladder_image(analysis)
+    for title, columns, rows in bandwidth_tables(analysis):
+        # The total bandwidth ladders, then their figures.
+        if title.startswith('Spectrum · Total bandwidth') and ladder is not None:
+            _visual_slides(presentation, title, [('', ladder, '', None)])
         _table_slides(presentation, title, columns, rows)
     warnings = analysis.get('warnings') or []
     if warnings:
@@ -928,7 +1055,8 @@ def export_network_insights_word(destination: Path, analysis: dict[str, Any], de
     tables = [*(rf_quality_table(section)[:2] for _suffix, section in technology_sections(analysis)),
               *(hotspot_table((section.get('maps') or {}).get(key) or [], unit) for _suffix, section in technology_sections(analysis)
                 for key, unit in [('coverage_hotspots', 'dBm'), ('interference_hotspots', 'dB')]),
-              *((columns, rows) for _title, columns, rows in [*spectrum_tables(analysis), *deployment_tables(deployment), *cluster_sites_tables(analysis, deployment)])]
+              *((columns, rows) for _title, columns, rows in [*spectrum_tables(analysis), *deployment_tables(deployment), *cluster_sites_tables(analysis, deployment),
+                                                              *bandwidth_tables(analysis), *nr_duplex_table(deployment)])]
     needed = max((sum(length * 9 + 0.14 * 72 for length in _column_text_widths(columns, rows)) / 72
                   for columns, rows in tables), default=0)
     if needed > 10.49:
@@ -984,9 +1112,14 @@ def export_network_insights_word(destination: Path, analysis: dict[str, Any], de
         _docx_table(document, columns, rows)
     for title, panels in deployment_table_groups(deployment):
         _docx_side_by_side(document, title, [(caption, (columns, rows)) for caption, columns, rows in panels], add_table)
+    ladder = bandwidth_ladder_image(analysis)
     for title, columns, rows in [*cluster_sites_tables(analysis, deployment), *[table for table in snapshot if table[0].startswith('Cluster')],
-                                 *spectrum_tables(analysis), *[table for table in snapshot if table[0].startswith('Spectrum')]]:
+                                 *spectrum_tables(analysis), *[table for table in snapshot if table[0].startswith('Spectrum')],
+                                 *nr_duplex_table(deployment), *bandwidth_tables(analysis)]:
         _docx_section_heading(document, title)
+        if title.startswith('Spectrum · Total bandwidth') and ladder is not None:
+            page = document.sections[-1]
+            document.add_picture(ladder, width=DocxInches(min(10.0, (page.page_width - page.left_margin - page.right_margin) / 914400)))
         _docx_table(document, columns, rows)
     document.save(destination)
     return destination

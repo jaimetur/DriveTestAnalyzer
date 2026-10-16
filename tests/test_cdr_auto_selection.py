@@ -148,6 +148,28 @@ def test_filters_cascade_over_every_cdr_of_the_nr_mode_without_reading_rows(work
     assert cascading_options(repository, ids, {'Campaign': ['2026-Q2']})['Operator'] == [mapper.map('operator', 'Three')]
 
 
+def test_environment_filter_is_listed_and_applied_only_when_a_module_asks_for_it(workspace):
+    repository = workspace['repository']
+    rows = [
+        {'Operator': 'EE', 'Campaign': 'UK_Q3_2026', 'city': 'London', 'G_Level_2': 'City', 'G_Level_3': 'Big Cities', 'JOIN_ID': '1'},
+        {'Operator': 'EE', 'Campaign': 'UK_Q3_2026', 'city': 'York', 'G_Level_2': 'City', 'G_Level_3': 'Small Cities', 'JOIN_ID': '2'},
+        {'Operator': 'Three', 'Campaign': 'UK_Q3_2026', 'city': 'M1', 'G_Level_2': 'Connecting Roads', 'G_Level_3': 'Highway', 'JOIN_ID': '3'},
+        # Without a detailed level, the route level names the environment.
+        {'Operator': 'Three', 'Campaign': 'UK_Q3_2026', 'city': 'Rail', 'G_Level_2': 'Train Route', 'G_Level_3': '', 'JOIN_ID': '4'},
+    ]
+    ids = [workspace['add'](name='UK_Q3_2026_Data.csv', kind='data', campaign='UK_Q3_2026', rows=rows)]
+    fill_missing_facets(repository, ids)
+    fields = ['City', 'Environment']
+    every = cascading_options(repository, ids, {}, fields)
+    assert every['Environment'] == ['Cities', 'Roads and railways', 'Towns']
+    towns = cascading_options(repository, ids, {'Environment': ['Towns']}, fields)
+    assert towns['City'] == ['York']
+    assert set(towns['Environment']) == set(every['Environment'])
+    # Other modules neither list the environments nor apply them.
+    assert 'Environment' not in cascading_options(repository, ids, {})
+    assert cascading_options(repository, ids, {'Environment': ['Towns']}, ['City'])['City'] == ['London', 'M1', 'Rail', 'York']
+
+
 def test_cdrs_without_combinations_offer_their_catalogue_without_waiting(workspace, monkeypatch):
     repository = workspace['repository']
     dataset_id = workspace['add'](name='UK_Q1_2026_Data.csv', kind='data', campaign='UK_Q1_2026')

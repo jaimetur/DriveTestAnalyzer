@@ -1,5 +1,5 @@
 __app_name__ = "DriveTest Analyzer"
-__version__ = "0.7.2"
-__release_date__ = "2026-10-16"
+__version__ = "0.7.3"
+__release_date__ = "2026-10-19"
 __author__ = "Jaime Tur"
 __author_email__ = "jaime.tur@ericsson.com"
