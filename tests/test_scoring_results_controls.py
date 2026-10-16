@@ -1310,6 +1310,7 @@ const context = {savedFilter: payload.savedFilter,
   catalogueKeyByLevel: new Map([['Vendor', 'vendors']]),
   datasetCatalogues: new Map([['1', {vendors: ['Nokia']}], ['2', {vendors: ['Ericsson']}]]),
   contextFilterDefinitions: [{key: 'Vendor'}],
+  isCampaignPreset: () => false, chosenCampaignPreset: () => '',
   contextFilterSelects: new Map([['Vendor', {options: [{value: 'Nokia'}, {value: 'Ericsson'}], selectedOptions: [{value: 'Nokia'}, {value: 'Ericsson'}]}]])};
 vm.createContext(context);
 vm.runInContext(payload.snippets.join('\n') + `
@@ -1509,7 +1510,7 @@ const messages = [];
 const requests = [];
 const context = {
   calculationMatchKey: '', calculationMatchRevision: 0, calculationMatchTimer: null, calculationMatchRefresh: false,
-  submittingCalculation: false, savedFiltersUrl: '/api/scoring/saved-filters',
+  submittingCalculation: false, savedFiltersUrl: '/api/scoring/saved-filters', editingSavedFilter: null,
   calculateButton: {disabled: false}, recalculateButton: {disabled: false},
   selectedLevels: () => ['City'], selectedDatasetIds: () => [12, 14],
   scoringProfileSelect: {value: 'profile-a'}, nrFilter: {value: 'NSA'},
@@ -1753,7 +1754,8 @@ def test_scoring_jobs_show_their_national_and_area_summary():
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
     assert "areaMeta.textContent = 'National & area summary: ';" in _function_source(script, 'renderSavedFilters')
     # Each value in its own colour, after its label.
-    assert "areaValue.className = 'saved-filter-area-summary';" in _function_source(script, 'renderSavedFilters')
+    assert ("areaValue.className = `saved-filter-area-summary saved-filter-area-summary-${['time', 'breakdown', 'cities'][index]}`;"
+            in _function_source(script, 'renderSavedFilters'))
     program = _function_source(script, 'savedFilterAreaSummaryParts') + r'''
 process.stdout.write(JSON.stringify([
   savedFilterAreaSummaryParts({area_summary: {time_split: 'Campaign', breakdown: 'Region', cities: ['London']}}),
@@ -1793,3 +1795,49 @@ def test_the_area_charts_take_the_height_of_the_table_and_tilt_crowded_labels():
     assert 'tableWrap.expandPart = () => openExpandedView(' in _function_source(script, 'makeAreaSummaryView')
     assert "openExpandedView(large, `${scoringLabel()} — ${area.label}`, 'National & Areas trend', figure, 'Area trend');" in chart
 
+
+
+def test_an_opened_saved_filter_lists_only_its_cdrs_with_its_campaigns():
+    script = SCORING_SCRIPT.read_text(encoding='utf-8')
+    program = f"""
+const payload = JSON.parse(require('fs').readFileSync(0, 'utf8'));
+const uniqueCatalogueValues = values => [...new Set((values || []).map(String))];
+const campaignLabelOf = value => ({{UK_Q2_2026: '26-Q2', UK_Q3_NSA_2026: '26-Q3'}})[value] || value;
+const datasetCatalogues = new Map(Object.entries(payload.catalogues));
+let pinnedCdrs = payload.pinned;
+const selectedDatasetIds = () => payload.ids;
+const selectedContextFilters = () => ({{Campaign: payload.campaigns}});
+{_function_source(script, 'usedDatasetIds')}
+process.stdout.write(JSON.stringify(usedDatasetIds()));
+"""
+    catalogues = {'1': {'campaigns': ['UK_Q2_2026']}, '2': {'campaigns': ['UK_Q3_NSA_2026']},
+                  '3': {'campaigns': ['UK_Q3_NSA_2026']}, '4': {}}
+    opened = {'ids': ['1', '2', '3', '4'], 'catalogues': catalogues, 'campaigns': ['UK_Q3_NSA_2026'], 'pinned': True}
+    # The CDRs of other campaigns are not shown as used (a CDR without known campaigns stays).
+    assert _run_node_json(program, opened) == ['2', '3', '4']
+    # Its Campaign by its label too; without a Campaign filter, or with automatic CDRs, every CDR is used.
+    assert _run_node_json(program, {**opened, 'campaigns': ['26-Q2']}) == ['1', '4']
+    assert _run_node_json(program, {**opened, 'campaigns': []}) == ['1', '2', '3', '4']
+    assert _run_node_json(program, {**opened, 'pinned': False}) == ['1', '2', '3', '4']
+
+
+def test_saved_filters_are_edited_in_a_dialog_with_the_calculation_panel():
+    template = SCORING_TEMPLATE.read_text(encoding='utf-8')
+    script = SCORING_SCRIPT.read_text(encoding='utf-8')
+
+    # The pencil keeps Save Name and adds Edit Filters, which opens the Calculation panel in a dialog.
+    assert "confirmLabel: 'Save Name'," in script and "secondaryLabel: 'Edit Filters'," in script
+    assert '<dialog class="scoring-edit-dialog" data-saved-filter-edit-dialog' in template
+    start = _function_source(script, 'startSavedFilterEdit')
+    assert "restoreCalculationSelectionFromSavedFilter(savedFilter, {automaticCdrs: true});" in start
+    assert 'editDialog.append(calculationPanel);' in start and 'editDialog.showModal();' in start
+    stop = _function_source(script, 'stopSavedFilterEdit')
+    assert 'editPanelPlaceholder.replaceWith(calculationPanel);' in stop
+    assert 'applySavedCalculationSelection(before.selection);' in stop
+    # Cancel Editing comes before Save Changes, both in place of Calculate Scoring and Recalculate.
+    actions = template[template.index('data-recalculate-scoring'):]
+    assert actions.index('data-saved-filter-edit-cancel') < actions.index('data-saved-filter-edit-save')
+    assert '<span>Cancel Editing</span>' in actions and '<span>Save Changes</span>' in actions
+    sync = _function_source(script, 'syncSavedFilterEditing')
+    assert 'calculateButton.hidden = editing;' in sync and 'if (editCancelButton) editCancelButton.hidden = !editing;' in sync
+    assert "createSavedFilter(false, {url: `${savedFiltersUrl}/${encodeURIComponent(savedFilterIdOf(savedFilter))}/edit`})" in script

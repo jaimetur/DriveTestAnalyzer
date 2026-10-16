@@ -61,6 +61,16 @@
   .scoring-auto-cdrs-source { padding: .1rem .5rem; border-radius: 999px; background: #d9efe3; color: #245b43; font-size: .68rem; font-weight: 800; }
   .scoring-auto-cdrs-source[data-source="saved"] { background: #eaf0fa; color: #274a77; }
   .scoring-auto-cdrs-reset { min-height: 1.6rem; margin-left: auto; padding: .15rem .6rem; border: 1px solid #8ab7b0; border-radius: 999px; background: #fff; color: #174f49; font-size: .7rem; font-weight: 800; }
+  .scoring-edit-banner { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .6rem .9rem; padding: .7rem .9rem; border: 1px solid #9fb9dd; border-radius: 14px; background: #eef4fc; }
+  .scoring-edit-banner[hidden] { display: none; }
+  .scoring-edit-banner > div { display: grid; gap: .2rem; min-width: 0; flex: 1 1 22rem; }
+  .scoring-edit-banner strong { color: #274a77; font-size: .86rem; }
+  .scoring-edit-banner span { color: var(--muted); font-size: .76rem; }
+  .scoring-controls.is-editing-saved-filter { border-color: #9fb9dd; box-shadow: 0 0 0 2px rgba(61,114,179,.16); }
+  .scoring-controls.is-editing-saved-filter .scoring-calculation-shortcuts { display: none; }
+  .scoring-edit-dialog { width: min(72rem, calc(100vw - 2rem)); max-height: calc(100vh - 2rem); max-height: calc(100dvh - 2rem); padding: 0; overflow: auto; border: 0; border-radius: 18px; background: transparent; box-shadow: 0 18px 48px rgba(16,32,48,.32); }
+  .scoring-edit-dialog::backdrop { background: rgba(14,26,38,.45); }
+  .scoring-edit-dialog > .scoring-controls { margin: 0; }
   .scoring-auto-cdrs .auto-cdr { border-color: #cfe3d8; }
   .scoring-auto-cdrs-warning { margin: .45rem 0 0; color: #795b20; font-size: .72rem; font-weight: 700; }
   .scoring-dataset-groups[hidden] { display: none; }
@@ -118,6 +128,11 @@
   .scoring-actions .scoring-force-button { border: 1px solid #7145a0; background: linear-gradient(135deg,#8954bd,#69339d); color: #fff; box-shadow: 0 3px 8px rgba(105,51,157,.22); }
   .scoring-actions .scoring-force-button:hover:not(:disabled) { background: linear-gradient(135deg,#7844ad,#59258b); }
   .scoring-actions .scoring-force-button:disabled { box-shadow: none; }
+  .scoring-actions .scoring-edit-save { border: 1px solid #2f5f99; background: linear-gradient(135deg,#3d72b3,#2a5a94); color: #fff; box-shadow: 0 3px 8px rgba(42,90,148,.22); }
+  .scoring-actions .scoring-edit-save:disabled { box-shadow: none; }
+  .scoring-actions .scoring-edit-cancel { border: 1px solid #9fb9dd; background: #fff; color: #274a77; box-shadow: none; }
+  .scoring-actions .scoring-edit-cancel:hover { background: #eef4fc; }
+  .scoring-methodology-actions .scoring-actions button[hidden] { display: none; }
   .scoring-note { min-height: 1.2rem; margin: 0; color: var(--muted); font-size: .82rem; }
   .scoring-note[data-kind="error"] { color: var(--danger); font-weight: 650; }
   .scoring-note[data-kind="success"] { color: var(--success); font-weight: 650; }
@@ -189,6 +204,8 @@
   /* Every filter of a Saved Filter is shown, on as many lines as it needs. */
   .saved-filter-item-top { align-items: flex-start; }
   .saved-filter-item-top strong { flex: 1 1 auto; min-width: 0; font-size: .83rem; white-space: normal; overflow-wrap: anywhere; }
+  /* The date and filters of a Saved Filter, with its status, in a blue box. */
+  .saved-filter-item .saved-filter-item-top { padding: .35rem .55rem; border: 1px solid #cbdce9; border-radius: .5rem; background: #edf4fa; }
   .saved-filter-title-separator, .saved-filter-title-neutral { color: var(--text); }
   .saved-filter-title-nr-mode { color: #a14c16; }
   .saved-filter-title-operator { color: #2458a6; }
@@ -198,13 +215,18 @@
   .saved-filter-title-city { color: #966300; }
   .saved-filter-title-campaign { color: #b4234d; }
   .saved-filter-item-top .scoring-status { flex: 0 0 auto; }
-  .saved-filter-aggregation { display: flex; flex-wrap: wrap; align-items: baseline; gap: .3rem .5rem; align-self: flex-start; max-width: 100%; padding: .3rem .55rem; border: 1px solid #cbdce9; border-radius: .5rem; background: #edf4fa; color: #34566f; font-size: .75rem; line-height: 1.45; overflow-wrap: anywhere; }
-  .saved-filter-aggregation strong { font-weight: 800; }
-  .saved-filter-meta { min-width: 0; color: var(--muted); font-size: .72rem; line-height: 1.45; white-space: normal; overflow-wrap: anywhere; }
-  .saved-filter-meta .saved-filter-reference { color: #245bb0; font-weight: 700; }
-  .saved-filter-meta .saved-filter-profile { color: #6940ad; font-weight: 700; }
+  .saved-filter-aggregation { display: flex; flex-wrap: wrap; align-items: baseline; gap: .3rem; min-width: 0; color: var(--muted); font-size: .75rem; line-height: 1.5; overflow-wrap: anywhere; }
+  .saved-filter-aggregation strong { display: inline-block; padding: 0 .45rem; border: 1px solid #94cde3; border-radius: .65rem; background: #e2f3fa; color: #0a6688; font-weight: 800; line-height: 1.45; }
+  .saved-filter-meta { min-width: 0; color: var(--muted); font-size: .75rem; line-height: 1.5; white-space: normal; overflow-wrap: anywhere; }
+  /* The GAP reference, methodology and National & area summary values as pills (and the Split by value), each in its own colour. */
+  .saved-filter-meta .saved-filter-reference, .saved-filter-meta .saved-filter-profile, .saved-filter-meta .saved-filter-area-summary { display: inline-block; padding: 0 .45rem; border: 1px solid; border-radius: .65rem; font-weight: 800; line-height: 1.45; }
+  .saved-filter-meta .saved-filter-reference { border-color: #eaa6d4; background: #fce7f4; color: #a0136f; }
+  .saved-filter-meta .saved-filter-profile { border-color: #cbb8ea; background: #f3eefc; color: #5b3699; }
+  .saved-filter-meta .saved-filter-profile-detail { color: #5b3699; font-weight: 700; }
   .saved-filter-meta .saved-filter-profile-campaigns { color: #b4234d; }
-  .saved-filter-meta .saved-filter-area-summary { color: #087e75; font-weight: 700; }
+  .saved-filter-meta .saved-filter-area-summary { border-color: #93cdc4; background: #e6f5f2; color: #05625b; }
+  .saved-filter-meta .saved-filter-area-summary-time { border-color: #eab3c3; background: #fdeef2; color: #a3173f; }
+  .saved-filter-meta .saved-filter-area-summary-cities { border-color: #e5c98c; background: #fdf4df; color: #7d5100; }
   .scoring-status { display: inline-flex; align-items: center; gap: .3rem; padding: .2rem .48rem; border-radius: 999px; background: #e9eff1; color: #47606b; font-size: .68rem; font-weight: 800; text-transform: capitalize; white-space: nowrap; }
   .scoring-status[data-status="completed"] { background: #e2f4e9; color: #247048; }
   .scoring-status[data-status="failed"] { background: #fde9e5; color: #a43d2f; }
@@ -617,6 +639,10 @@
       <div><p class="eyebrow">Scoring Calculation</p><h3 id="scoring-run-title">Select NR Mode, Campaign, filters, Split by &amp; GAP reference</h3></div>
       <div class="scoring-controls-meta"><span class="scoring-hero-badge"><span aria-hidden="true">◉</span> CDR benchmark workspace</span><span class="pill" data-selected-count>0 CDRs used</span></div>
     </div>
+    {# A Saved Filter edited from its pencil: Save Changes gives it the selection of the panel. #}
+    <div class="scoring-edit-banner" data-saved-filter-editing role="status" hidden>
+      <div><strong data-saved-filter-editing-title>Editing a Saved Filter</strong><span>Change its NR Mode, Campaign, filters, Split by, GAP reference, National &amp; area summary or methodology: its CDRs follow the NR Mode and Campaign. Save Changes calculates it again, with the same name and star; Cancel Editing (or Escape) leaves it as it was.</span></div>
+    </div>
     <div class="scoring-picker scoring-scope-picker">
       <div class="scoring-picker-head"><strong>NR Mode &amp; Campaign</strong><span>The CDRs are chosen from them</span></div>
       <div class="scoring-scope-row">
@@ -751,6 +777,8 @@
       <div class="scoring-actions">
         <button type="button" data-calculate-scoring disabled><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="4" y="1" width="12" height="18" rx="2"/><path d="M7 4h6v3H7zM7 11h1m4 0h1m-6 4h1m4 0h1"/></svg><span>Calculate Scoring</span></button>
         <button type="button" class="scoring-force-button" data-recalculate-scoring disabled><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M16 7a7 7 0 0 0-12-2L2 7m0-5v5h5M4 13a7 7 0 0 0 12 2l2-2m0 5v-5h-5"/></svg><span>Recalculate</span></button>
+        <button type="button" class="scoring-edit-cancel" data-saved-filter-edit-cancel hidden><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5.5 5.5l9 9M14.5 5.5l-9 9"/></svg><span>Cancel Editing</span></button>
+        <button type="button" class="scoring-edit-save" data-saved-filter-edit-save hidden><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 10.5l4 4 8-9"/></svg><span>Save Changes</span></button>
       </div>
       </div>
 
@@ -850,6 +878,8 @@
     </section>
   </div>
   {% set can_edit_hierarchy = user and user.role in ['user-editor', 'admin', 'super-admin'] %}
+  {# The Calculation panel moves into this dialog while a Saved Filter is edited, and back when it closes. #}
+  <dialog class="scoring-edit-dialog" data-saved-filter-edit-dialog aria-labelledby="scoring-run-title"></dialog>
   <dialog class="scoring-hierarchy-dialog" data-scoring-hierarchy-dialog data-can-edit="{{ 'true' if can_edit_hierarchy else 'false' }}" aria-labelledby="scoring-hierarchy-title">
     <form method="dialog" class="scoring-hierarchy-form" data-scoring-hierarchy-form>
       <h3 id="scoring-hierarchy-title">Aggregation hierarchy</h3>

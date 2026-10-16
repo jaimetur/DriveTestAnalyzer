@@ -132,6 +132,75 @@ def test_use_newer_cdrs_updates_the_same_saved_filter_and_merges_one_with_that_s
         raise AssertionError('A queued Saved Filter must not change its CDRs.')
 
 
+def test_edit_saved_filter_changes_its_selection_in_place_and_merges_one_with_that_selection(tmp_path):
+    repository = _workspace(tmp_path, 'workspace')
+    ids = _three_cdrs(repository, tmp_path / 'workspace')
+    saved_filter, _ = saved_filters.save_saved_filter(repository, ids, ['Operator'], 'NSA')
+    saved_filters.calculate_saved_filter(repository, saved_filter['id'])
+    saved_filters.update_saved_filter(repository, saved_filter['id'], name='2026-Q3', pinned=True)
+    # A Saved Filter that already has the new selection is merged into the one edited.
+    other, _ = saved_filters.save_saved_filter(repository, ids, ['Operator', 'Region'], 'NSA',
+                                               context_filters={'Region': ['North']})
+    saved_filters.calculate_saved_filter(repository, other['id'])
+
+    edited = saved_filters.edit_saved_filter(repository, saved_filter['id'], ids, ['Operator', 'Region'], 'NSA',
+                                             username='super', context_filters={'Region': ['North']})
+
+    assert edited['changed'] and edited['merged_filter_id'] == other['id']
+    assert edited['previous']['levels'] == ['Operator'] and edited['previous']['context_filters']['Region'] == []
+    [listed] = saved_filters.list_saved_filters(repository)
+    assert listed['id'] == saved_filter['id'] and listed['pinned'] and listed['name'] == '2026-Q3'
+    assert listed['levels'] == ['Operator', 'Region'] and listed['context_filters']['Region'] == ['North']
+    assert listed['status'] == 'queued'
+    found = saved_filters.find_saved_filter(repository, ids, ['Operator', 'Region'], 'NSA', context_filters={'Region': ['North']})
+    assert found['id'] == saved_filter['id']
+    try:
+        saved_filters.edit_saved_filter(repository, saved_filter['id'], ids, ['Operator'], 'NSA')
+    except ValueError as exc:
+        assert 'Wait until' in str(exc)
+    else:
+        raise AssertionError('A queued Saved Filter must not be edited.')
+    # Calculated, the same selection changes nothing and keeps its result.
+    saved_filters.calculate_saved_filter(repository, saved_filter['id'])
+    unchanged = saved_filters.edit_saved_filter(repository, saved_filter['id'], ids, ['Operator', 'Region'], 'NSA',
+                                                context_filters={'Region': ['North']})
+    assert not unchanged['changed'] and unchanged['merged_filter_id'] is None
+    assert saved_filters.get_saved_filter(repository, saved_filter['id'])['status'] == 'completed'
+
+
+def test_edit_saved_filter_endpoint_is_recorded_and_calculates_only_a_changed_selection(client, monkeypatch):
+    client.post('/login', data={'username': 'super', 'password': 'super123'}, follow_redirects=False)
+    repository = app_module.repository
+    calls = []
+
+    def edit(_repository, filter_id, dataset_ids, levels, nr_mode, **options):
+        calls.append({'filter_id': filter_id, 'dataset_ids': dataset_ids, 'levels': levels, 'nr_mode': nr_mode, **options})
+        return {'saved_filter': {'id': filter_id, 'name': 'Q3'}, 'changed': len(calls) == 1,
+                'previous': {'nr_mode': 'NSA', 'levels': ['Operator']}, 'merged_filter_id': None}
+
+    monkeypatch.setattr(app_module, 'edit_saved_filter', edit)
+    monkeypatch.setattr(app_module, 'validate_complete_scoring_cdr_selection', lambda _repository, ids, *_args, **_kwargs: ids)
+    queued = []
+    monkeypatch.setattr(app_module, '_queue_saved_filter_calculation', lambda _repository, filter_id: queued.append(filter_id))
+    monkeypatch.setattr(app_module, 'prune_unpinned_saved_filters', lambda *_args: None)
+    payload = {'dataset_ids': [4, 5, 6], 'aggregation_levels': ['Operator', 'Region'], 'nr_mode': 'NSA',
+               'baseline_operator': 'EE', 'context_filters': {'Region': ['North']}}
+
+    response = client.post('/api/scoring/saved-filters/7/edit', json=payload)
+
+    assert response.status_code == 200
+    assert response.json() == {'saved_filter': {'id': 7, 'name': 'Q3'}, 'cached': False, 'changed': True}
+    assert calls[0]['dataset_ids'] == [4, 5, 6] and calls[0]['levels'] == ['Operator', 'Region']
+    assert calls[0]['username'] == 'super' and calls[0]['context_filters']['Region'] == ['North']
+    assert queued == [7]
+    [event] = [row for row in repository.list_logs(limit=20) if row['action'] == 'edit_saved_filter']
+    assert '"previous": {"nr_mode": "NSA", "levels": ["Operator"]}' in event['details']
+    assert '"levels": ["Operator", "Region"]' in event['details'] and '"changed": true' in event['details']
+    # The same selection again: nothing is calculated.
+    assert client.post('/api/scoring/saved-filters/7/edit', json=payload).json()['cached'] is True
+    assert queued == [7]
+
+
 def test_saved_filters_travel_with_the_scoring_configuration_backup(client, tmp_path: Path) -> None:
     response = client.post('/login', data={'username': 'admin', 'password': 'admin123'}, follow_redirects=False)
     assert response.status_code == 303

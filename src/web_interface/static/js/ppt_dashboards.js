@@ -2099,6 +2099,7 @@
   // The Scope controls and the Date from / Date to filters; the CDRs used below the Scope.
   function sources() {
     const host = $('ds-sources'); host.replaceChildren();
+    if (!definition) { renderAutoCdrs(); return; }
     const scopeControl = $('ds-scope');
     scopeControl.value = definition.scope || 'single';
     updateFilterControlState(scopeControl.closest('.ds-scope-control'), scopeState());
@@ -2118,6 +2119,8 @@
   }
   function facets() {
     const defaultHost = $('ds-default-facets'), additionalHost = $('ds-additional-facets'); defaultHost.replaceChildren(); additionalHost.replaceChildren();
+    // No Dashboard is open (it was closed while a request was answered): there are no filters to draw.
+    if (!definition) return;
     definition.hidden_filters ||= [];
     const hidden = new Set(definition.hidden_filters.map(identity));
     const fields = new Set([...facetFields.filter(field => !hidden.has(identity(field))), ...Object.keys(definition.filters), ...definition.custom_fields]);
@@ -2381,10 +2384,13 @@
   };
   async function restorePrepared(id) {
     if (await restoreRememberedPrepared(id)) return true;
+    const fingerprint = preparedStateFingerprint(definition);
     try {
       // Send the active universe as well as the filters because both form
       // part of the shared persistent preview-cache identity.
-      applyPreparedPayload(await api(`/prefetched/${encodeURIComponent(id)}`, 'POST', definition));
+      const payload = await api(`/prefetched/${encodeURIComponent(id)}`, 'POST', definition);
+      if (activeId !== id || preparedStateFingerprint(definition) !== fingerprint) return false;
+      applyPreparedPayload(payload);
       return true;
     } catch (error) {
       // A queued warm-up must never delay opening the visible Dashboard.
@@ -2412,6 +2418,7 @@
     clearTimeout(timer); timer = setTimeout(safe(prepare), delay);
   }
   async function prepare() {
+    if (!definition) return null;
     const requestedFilterState = preparationStateFingerprint(definition);
     // Universe changes need fresh filtered rows; Scope also changes how the
     // resulting charts group those rows by Operator or Vendor.
@@ -2435,10 +2442,16 @@
     const cacheLookupToken = backgroundPreparationToken = `cache-lookup-${++cacheLookupSequence}`;
     setPreparationProgress(null, 'Checking persistent Dashboard cache');
     emitPreparationStatus('processing', 'Checking persistent Dashboard cache', cacheLookupToken);
+    const lookupDashboardId = activeId;
     if (await restorePrepared(activeId)) {
       if (backgroundPreparationToken === cacheLookupToken) dismissPreparationStatus();
       status('Restored the previously prepared filters.');
       return prepared;
+    }
+    // The Dashboard was closed, or another one opened, during the cache lookup: it is not prepared.
+    if (!definition || activeId !== lookupDashboardId) {
+      if (backgroundPreparationToken === cacheLookupToken) dismissPreparationStatus();
+      throw new DOMException('The Dashboard is no longer open.', 'AbortError');
     }
     if (backgroundPreparationToken === cacheLookupToken) dismissPreparationStatus();
     let preparationToken = '';

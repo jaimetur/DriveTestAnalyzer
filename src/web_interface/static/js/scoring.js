@@ -275,6 +275,17 @@
   const calculateButton = root.querySelector('[data-calculate-scoring]');
   const recalculateButton = root.querySelector('[data-recalculate-scoring]');
   const calculationPanel = root.querySelector('.scoring-controls');
+  // A Saved Filter edited from its pencil: the panel, moved into a dialog, shows its selection with automatic CDRs, and
+  // Save Changes gives it the selection of the panel.
+  const editDialog = root.querySelector('[data-saved-filter-edit-dialog]');
+  const editBanner = root.querySelector('[data-saved-filter-editing]');
+  const editTitle = root.querySelector('[data-saved-filter-editing-title]');
+  const editSaveButton = root.querySelector('[data-saved-filter-edit-save]');
+  const editCancelButton = root.querySelector('[data-saved-filter-edit-cancel]');
+  let editingSavedFilter = null;
+  // The selection of the panel before the editing (given back when it is cancelled) and the place of the panel.
+  let selectionBeforeEdit = null;
+  let editPanelPlaceholder = null;
   // The National & area summary of the calculation: included or not, its time split, breakdown and separate cities.
   const areaSummaryPanel = root.querySelector('[data-scoring-area-summary]');
   const areaSummaryEnabled = root.querySelector('[data-scoring-area-enabled]');
@@ -921,9 +932,10 @@
     }
   }
 
-  function restoreCalculationSelectionFromSavedFilter(savedFilter) {
-    // The panel shows the CDRs of the Saved Filter; the lists of its filters follow for its NR Mode and filters.
-    pinnedCdrs = true;
+  // The panel shows the CDRs of the Saved Filter (or, with automaticCdrs, those of its NR Mode and Campaign); the lists
+  // of its filters follow for its NR Mode and filters.
+  function restoreCalculationSelectionFromSavedFilter(savedFilter, {automaticCdrs = false} = {}) {
+    pinnedCdrs = !automaticCdrs;
     applySavedCalculationSelection({
       dataset_ids: savedFilter.dataset_ids || [],
       aggregation_levels: savedFilter.aggregation_levels || savedFilter.levels || [],
@@ -1020,10 +1032,24 @@
     return hierarchyDisplayValue({level: 'Campaign', value});
   }
 
+  // The CDRs of the selection that carry its campaigns: an opened Saved Filter can keep CDRs of other campaigns, whose
+  // rows its Campaign filter leaves out, and they are not shown as used.
+  function usedDatasetIds() {
+    const ids = selectedDatasetIds();
+    const campaigns = pinnedCdrs ? selectedContextFilters().Campaign || [] : [];
+    if (!campaigns.length) return ids;
+    const keys = value => [String(value).trim().toLocaleLowerCase(), String(campaignLabelOf(value)).trim().toLocaleLowerCase()];
+    const wanted = new Set(campaigns.flatMap(keys));
+    return ids.filter(id => {
+      const values = uniqueCatalogueValues(datasetCatalogues.get(String(id))?.campaigns);
+      return !values.length || values.some(value => keys(value).some(key => wanted.has(key)));
+    });
+  }
+
   // The CDRs the calculation uses, read-only by type, with their stage and campaigns.
   function renderAutoCdrs() {
     if (!autoCdrSection) return;
-    const checked = new Set(selectedDatasetIds().map(String));
+    const checked = new Set(usedDatasetIds().map(String));
     const cdrs = Object.fromEntries(datasetKindOrder.map(kind => [kind, datasetOptions
       .filter(option => String(option.dataset.datasetKind || '').toLowerCase() === kind
         && checked.has(String(option.querySelector('[data-dataset-id]')?.value || '')))
@@ -1193,6 +1219,14 @@
         } else if (existing) {
           text = 'This selection is a Saved Filter: Calculate updates its result with the current CDRs and methodology.';
         }
+        if (editingSavedFilter) {
+          // Save Changes gives the selection to the Saved Filter being edited.
+          const editedId = String(savedFilterIdOf(editingSavedFilter));
+          text = !existing ? 'Save Changes gives this selection to the Saved Filter and calculates it again.'
+            : String(savedFilterIdOf(existing)) === editedId ? 'This is the selection of the Saved Filter being edited.'
+            : `Saved Filter ${savedFilterIdOf(existing)} has this selection: Save Changes merges it into the one being edited.`;
+          kind = '';
+        }
         selectionStatus = {key, text, kind};
         setMessage(text, kind);
       } catch (error) {
@@ -1206,7 +1240,7 @@
   function updateSelection() {
     refreshContextFilterOptions();
     renderAutoCdrs();
-    const selectedCount = selectedDatasetIds().length;
+    const selectedCount = usedDatasetIds().length;
     const visibleCount = datasetOptions.filter(option => !option.hidden).length;
     const missingKinds = [];
     const unavailableKinds = [];
@@ -1229,6 +1263,7 @@
     if (visibleBadge) visibleBadge.textContent = `${visibleCount} available`;
     const configurationError = root.dataset.configurationError || '';
     const ready = missingKinds.length === 0 && !configurationError;
+    if (editSaveButton) editSaveButton.disabled = !ready || submittingCalculation;
     updateCalculationMatch(ready);
     if (configurationError) {
       setMessage(`${configurationError} Open Workspace Config → Scoring KPI Configuration.`, 'error');
@@ -1776,7 +1811,7 @@
         areaMeta.textContent = 'National & area summary: ';
         areaSummary.forEach(([label, value], index) => {
           const areaValue = document.createElement('strong');
-          areaValue.className = 'saved-filter-area-summary';
+          areaValue.className = `saved-filter-area-summary saved-filter-area-summary-${['time', 'breakdown', 'cities'][index]}`;
           areaValue.textContent = value;
           areaMeta.append(`${index ? ' · ' : ''}${label}: `, areaValue);
         });
@@ -1798,15 +1833,20 @@
         profileMeta.textContent = 'Scoring Methodology: ';
         const profileValue = document.createElement('strong');
         profileValue.className = 'saved-filter-profile';
-        // By campaign (NetCheck 2026: 2026-Q1, 2026-Q2 · …): the campaigns of each methodology in their own colour.
+        // By campaign (NetCheck 2026: 2026-Q1, 2026-Q2 · …): By campaign is the pill, followed by the methodologies,
+        // with the campaigns of each one in their own colour.
         const byCampaign = /^By campaign \((.*)\)$/.exec(profileName);
+        profileValue.textContent = byCampaign ? 'By campaign' : profileName;
+        profileMeta.append(profileValue);
         if (byCampaign) {
-          profileValue.append('By campaign (');
+          const detail = document.createElement('span');
+          detail.className = 'saved-filter-profile-detail';
+          detail.append(' (');
           byCampaign[1].split(' · ').forEach((part, index) => {
-            if (index) profileValue.append(' · ');
+            if (index) detail.append(' · ');
             const split = part.lastIndexOf(': ');
             if (split < 0) {
-              profileValue.append(part);
+              detail.append(part);
               return;
             }
             const campaigns = document.createElement('span');
@@ -1814,13 +1854,11 @@
             // Each campaign as the workspace Campaign Maps name it.
             campaigns.textContent = part.slice(split + 2).split(', ')
               .map(value => hierarchyDisplayValue({level: 'Campaign', value})).join(', ');
-            profileValue.append(part.slice(0, split + 2), campaigns);
+            detail.append(part.slice(0, split + 2), campaigns);
           });
-          profileValue.append(')');
-        } else {
-          profileValue.textContent = profileName;
+          detail.append(')');
+          profileMeta.append(detail);
         }
-        profileMeta.append(profileValue);
         button.append(profileMeta);
       }
       const duration = savedFilterDurationText(savedFilter);
@@ -1916,8 +1954,8 @@
       rename.className = 'saved-filter-rename';
       rename.dataset.savedFilterRename = id;
       rename.textContent = '✎';
-      rename.title = savedFilter.name ? 'Rename this Saved Filter' : 'Name this Saved Filter';
-      rename.setAttribute('aria-label', `Name Saved Filter ${id}`);
+      rename.title = 'Edit this Saved Filter: its name or its filters';
+      rename.setAttribute('aria-label', `Edit Saved Filter ${id}`);
       const remove = document.createElement('button');
       remove.type = 'button';
       remove.className = 'saved-filter-delete';
@@ -7283,6 +7321,7 @@
       resultCache.delete(id);
       savedFilters = savedFilters.filter(record => savedFilterIdOf(record) !== id);
       calculationMatchKey = '';
+      if (editingSavedFilter && savedFilterIdOf(editingSavedFilter) === id) stopSavedFilterEdit();
       updateSelection();
       if (selectedSavedFilterId === id) {
         selectedSavedFilterId = null;
@@ -7303,12 +7342,13 @@
     }
   }
 
-  // ``url`` updates an existing Saved Filter instead (its Use newer CDRs button).
+  // ``url`` updates an existing Saved Filter instead (its Use newer CDRs button, or Save Changes when it is edited).
+  // Returns whether the Saved Filter was saved.
   async function createSavedFilter(force, {url = savedFiltersUrl} = {}) {
     const datasetIds = selectedDatasetIds();
     if (!datasetIds.length) {
       setMessage('Select one or more CDR datasets first.', 'error');
-      return;
+      return false;
     }
     const missingKinds = datasetKindOrder.filter(kind => !datasetInputs.some(input => input.checked
       && !input.closest('[data-dataset-option]')?.hidden
@@ -7316,13 +7356,13 @@
     if (missingKinds.length) {
       const labels = missingKinds.map(kind => datasetKindLabels[kind]);
       setMessage(`Select at least one dataset from each CDR type: ${labels.join(', ')}.`, 'error');
-      return;
+      return false;
     }
     const baseline = baselineInput.value.trim();
     if (!baseline) {
       setMessage('Enter a baseline operator for the GAP analysis.', 'error');
       baselineInput.focus();
-      return;
+      return false;
     }
     const payload = {...calculationPayload(), force};
     // A new scoring always opens on Scoring Charts.
@@ -7334,6 +7374,7 @@
     window.clearTimeout(calculationMatchTimer);
     calculateButton.disabled = true;
     recalculateButton.disabled = true;
+    if (editSaveButton) editSaveButton.disabled = true;
     setMessage(force ? 'Submitting a fresh scoring calculation…' : 'Submitting scoring calculation…');
     try {
       await persistCalculationSelection();
@@ -7355,7 +7396,8 @@
         const result = {saved_filter: savedFilter, scoring: body.scoring || [], gap: body.gap || [], warnings: body.warnings || []};
         resultCache.set(id, result);
       }
-      if (cached) setMessage('Loaded the previously calculated result.', 'success');
+      if (body.changed === false) setMessage('The Saved Filter already had this selection: nothing changed.', 'success');
+      else if (cached) setMessage('Loaded the previously calculated result.', 'success');
       else if (isActive(savedFilter)) setMessage(selectionStatus.text, 'busy');
       else setMessage('Scoring calculation added to the background queue.', 'success');
       await refreshSavedFilters();
@@ -7363,8 +7405,10 @@
         renderSavedFilters();
         if (!timer) timer = window.setInterval(refreshSavedFilters, 3500);
       }
+      return true;
     } catch (error) {
       setMessage(error.message || 'The scoring calculation could not be started.', 'error');
+      return false;
     } finally {
       submittingCalculation = false;
       calculationMatchKey = '';
@@ -7519,6 +7563,87 @@
     savedFilterSelector.open = false;
     savedFilterSelector.querySelector('summary').focus();
   });
+  // Editing a Saved Filter: the Calculation panel, in a dialog, shows its selection with the CDRs of its NR Mode and
+  // Campaign until Save Changes gives it the selection of the panel (calculated again) or Cancel Editing (or Escape)
+  // gives the panel back its selection before the editing.
+  function syncSavedFilterEditing() {
+    const editing = Boolean(editingSavedFilter);
+    if (editBanner) editBanner.hidden = !editing;
+    if (editTitle && editing) {
+      const id = savedFilterIdOf(editingSavedFilter);
+      editTitle.textContent = `Editing Saved Filter ${editingSavedFilter.name ? `“${editingSavedFilter.name}” · ` : ''}Filter ID ${id}`;
+    }
+    calculationPanel?.classList.toggle('is-editing-saved-filter', editing);
+    calculateButton.hidden = editing;
+    recalculateButton.hidden = editing;
+    if (editSaveButton) editSaveButton.hidden = !editing;
+    if (editCancelButton) editCancelButton.hidden = !editing;
+  }
+
+  function startSavedFilterEdit(savedFilter) {
+    if (!editingSavedFilter) selectionBeforeEdit = {selection: calculationSelectionFromControls(), pinned: pinnedCdrs};
+    editingSavedFilter = savedFilter;
+    savedFilterSelector.open = false;
+    calculationMatchKey = '';
+    restoreCalculationSelectionFromSavedFilter(savedFilter, {automaticCdrs: true});
+    syncSavedFilterEditing();
+    if (editDialog && calculationPanel && !editDialog.open) {
+      // The page keeps the height of the panel while it is in the dialog.
+      editPanelPlaceholder = document.createElement('div');
+      editPanelPlaceholder.style.height = `${calculationPanel.offsetHeight}px`;
+      calculationPanel.before(editPanelPlaceholder);
+      editDialog.append(calculationPanel);
+      editDialog.showModal();
+      editDialog.scrollTop = 0;
+    }
+  }
+
+  function stopSavedFilterEdit({restore = false} = {}) {
+    const before = selectionBeforeEdit;
+    editingSavedFilter = null;
+    selectionBeforeEdit = null;
+    calculationMatchKey = '';
+    if (editPanelPlaceholder && calculationPanel) {
+      editPanelPlaceholder.replaceWith(calculationPanel);
+      editPanelPlaceholder = null;
+    }
+    if (editDialog?.open) editDialog.close();
+    syncSavedFilterEditing();
+    if (restore && before) {
+      pinnedCdrs = before.pinned;
+      applySavedCalculationSelection(before.selection);
+      scheduleSelectionSave();
+      scheduleAutoCdrRefresh({delay: 0});
+    } else {
+      updateSelection();
+    }
+  }
+
+  editSaveButton?.addEventListener('click', async () => {
+    const savedFilter = editingSavedFilter;
+    if (!savedFilter) return;
+    const saved = await createSavedFilter(false, {url: `${savedFiltersUrl}/${encodeURIComponent(savedFilterIdOf(savedFilter))}/edit`});
+    if (saved && editingSavedFilter === savedFilter) stopSavedFilterEdit();
+  });
+  editCancelButton?.addEventListener('click', () => stopSavedFilterEdit({restore: true}));
+  // Escape closes an open menu of the dialog first, and then cancels the editing.
+  let escapeClosedMenu = false;
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && editDialog?.open) {
+      escapeClosedMenu = Boolean(editDialog.querySelector('.multiselect-menu:not([hidden])'));
+    }
+  }, true);
+  editDialog?.addEventListener('cancel', event => {
+    event.preventDefault();
+    if (escapeClosedMenu) {
+      // The menus close as with a click outside them.
+      escapeClosedMenu = false;
+      editDialog.dispatchEvent(new MouseEvent('click', {bubbles: true}));
+      return;
+    }
+    stopSavedFilterEdit({restore: true});
+  });
+
   // The name, pin and Use newer CDRs buttons of a Saved Filter, in the lists and in the selected card of the
   // Scoring Results dropdown. Returns whether the click was one of them.
   async function savedFilterAction(event) {
@@ -7541,8 +7666,10 @@
         await createSavedFilter(false, {url: `${savedFiltersUrl}/${encodeURIComponent(id)}/use-newer-cdrs`});
         return true;
       }
+      // Edit Filters opens its selection in a dialog to change it (a changed name is saved first).
+      let edit = false;
       const changes = pin ? {pinned: !savedFilter.pinned} : await (async () => {
-        // The filters of the Saved Filter stay in sight while it is named: a copy of its card, without its name badge.
+        // The filters of the Saved Filter stay in sight while it is edited: a copy of its card, without its name badge.
         const card = event.target.closest('.saved-filter-row')?.querySelector('.saved-filter-item')
           || root.querySelector(`.saved-filter-item[data-saved-filter-id="${CSS.escape(id)}"]`);
         let reference = null;
@@ -7552,21 +7679,29 @@
           reference.append(...Array.from(card.children, child => child.cloneNode(true))
             .filter(child => !child.classList?.contains('saved-filter-name')));
         }
-        const name = await showTextInputDialog('Name', {
+        const answer = await showTextInputDialog('Name', {
           reference,
-          eyebrow: 'Saved Filter', title: savedFilter.name ? 'Rename Saved Filter' : 'Name Saved Filter', value: savedFilter.name || '',
+          eyebrow: 'Saved Filter', title: 'Edit Saved Filter', value: savedFilter.name || '',
           placeholder: 'For example 2026-Q3 London', maxLength: 120, confirmLabel: 'Save Name',
-          note: 'Shown as a badge on top of its card. Leave it empty to show its filters only.',
+          secondaryLabel: 'Edit Filters',
+          note: 'The name is shown as a badge on top of its card (empty: its filters only). Edit Filters changes its NR '
+            + 'Mode, Campaign, filters, Split by, GAP reference and methodology in a dialog; its CDRs follow the NR Mode and Campaign.',
         });
-        return name === null ? null : {name};
+        if (!answer) return null;
+        edit = answer.choice === 'secondary';
+        const unchanged = answer.value.trim().replace(/\s+/g, ' ') === (savedFilter.name || '');
+        return edit && unchanged ? null : {name: answer.value};
       })();
-      if (!changes) return true;
-      try {
-        await requestJson(`${savedFiltersUrl}/${encodeURIComponent(id)}`, {method: 'PATCH', body: JSON.stringify(changes)});
-        await refreshSavedFilters();
-      } catch (error) {
-        setMessage(error.message || 'The Saved Filter could not be updated.', 'error');
+      if (changes) {
+        try {
+          await requestJson(`${savedFiltersUrl}/${encodeURIComponent(id)}`, {method: 'PATCH', body: JSON.stringify(changes)});
+          await refreshSavedFilters();
+        } catch (error) {
+          setMessage(error.message || 'The Saved Filter could not be updated.', 'error');
+          return true;
+        }
       }
+      if (edit) startSavedFilterEdit(savedFilters.find(record => savedFilterIdOf(record) === id) || savedFilter);
       return true;
     }
     return false;
@@ -7583,6 +7718,7 @@
     if (!button) return;
     const savedFilter = savedFilters.find(record => savedFilterIdOf(record) === button.dataset.savedFilterId);
     if (!savedFilter) return;
+    if (editingSavedFilter) stopSavedFilterEdit();
     userSelectedSavedFilter = true;
     selectedSavedFilterId = savedFilterIdOf(savedFilter);
     selectedSavedFilter = savedFilter;

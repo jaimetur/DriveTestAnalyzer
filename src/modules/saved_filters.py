@@ -1049,13 +1049,67 @@ def use_newer_cdrs(repository: Repository, filter_id: int, username: str = 'syst
         replacements[dataset_id]['replaced_by'] if dataset_id in replacements else dataset_id
         for dataset_id in saved_filter['dataset_ids']))
     prepared = _prepare_saved_selection(repository, {**saved_filter, 'dataset_ids': dataset_ids})
+    updated, merged_filter_id = _replace_selection(repository, filter_id, prepared, username)
+    if updated is None:
+        return None
+    return {'saved_filter': updated, 'replaced': replaced, 'merged_filter_id': merged_filter_id}
+
+
+def edit_saved_filter(
+    repository: Repository,
+    filter_id: int,
+    dataset_ids: list[int],
+    levels: list[str],
+    nr_mode: str | None,
+    *,
+    baseline_operator: str = DEFAULT_BASELINE_OPERATOR,
+    username: str = 'system',
+    context_filters: dict[str, list[str]] | None = None,
+    scoring_profile_id: str | None = None,
+    area_summary: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    """Give a Saved Filter another selection (its NR Mode, CDRs, filters, Split by, GAP reference, methodology or
+    National & area summary) and calculate it again, keeping its name, star and place. A Saved Filter that already had
+    that selection is merged into it, as with its newer CDRs.
+
+    Returns ``None`` when the Saved Filter does not exist; otherwise the Saved Filter, whether its selection changed
+    (``changed``; an unchanged one keeps its result), its selection before (``previous``) and the merged Saved Filter
+    (``merged_filter_id``).
+    """
+    saved_filter = get_saved_filter(repository, filter_id)
+    if saved_filter is None:
+        return None
+    if saved_filter['status'] in ('queued', 'processing'):
+        raise ValueError('Wait until this Saved Filter is calculated to edit it.')
+    prepared = _prepare_saved_filter(
+        repository, dataset_ids, levels, nr_mode, baseline_operator=baseline_operator,
+        context_filters=context_filters, scoring_profile_id=scoring_profile_id, area_summary=area_summary,
+    )
+    previous = {key: saved_filter[key] for key in (
+        'nr_mode', 'dataset_ids', 'levels', 'baseline_operator', 'context_filters', 'scoring_profile_id', 'area_summary')}
+    if prepared['selection_key'] == saved_filter['selection_key']:
+        return {'saved_filter': saved_filter, 'changed': False,
+                'previous': previous, 'merged_filter_id': None}
+    updated, merged_filter_id = _replace_selection(repository, filter_id, prepared, username)
+    if updated is None:
+        return None
+    return {'saved_filter': updated, 'changed': True, 'previous': previous, 'merged_filter_id': merged_filter_id}
+
+
+def _replace_selection(repository: Repository, filter_id: int, prepared: dict[str, Any],
+                       username: str) -> tuple[dict[str, Any] | None, int | None]:
+    """Give a Saved Filter the prepared selection and queue its calculation, keeping its name, star and place.
+
+    A Saved Filter that already had that selection is merged into it (its name and star are kept when this one has
+    none). Returns the Saved Filter (``None`` when it does not exist) and the id of the merged one.
+    """
     now = local_now_iso()
     merged_filter_id = None
     with repository.connection() as connection:
         connection.execute('BEGIN IMMEDIATE')
         row = connection.execute(f'SELECT * FROM {SAVED_FILTERS_TABLE} WHERE id = ?', (int(filter_id),)).fetchone()
         if row is None:
-            return None
+            return None, None
         duplicate = connection.execute(
             f'SELECT id, name, pinned, position FROM {SAVED_FILTERS_TABLE} WHERE selection_key = ? AND id != ?',
             (prepared['selection_key'], int(filter_id))).fetchone()
@@ -1072,7 +1126,7 @@ def use_newer_cdrs(repository: Repository, filter_id: int, username: str = 'syst
             (prepared['selection_key'], name, pinned, position, now, int(filter_id)))
         _queue_calculation(connection, int(filter_id), prepared, username, now)
         row = connection.execute(f'SELECT * FROM {SAVED_FILTERS_TABLE} WHERE id = ?', (int(filter_id),)).fetchone()
-    return {'saved_filter': _row_to_saved_filter(row), 'replaced': replaced, 'merged_filter_id': merged_filter_id}
+    return _row_to_saved_filter(row), merged_filter_id
 
 
 def mark_saved_filter_used(repository: Repository, filter_id: int) -> dict[str, Any] | None:

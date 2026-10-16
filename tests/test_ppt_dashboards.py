@@ -3831,3 +3831,20 @@ def test_hidden_dynamic_values_close_their_grid_cards_in_the_ppt(client):
     # A slide whose cards are all hidden is left out.
     _output, manifest = exported({'dashboard': {'A': True, 'B': True, 'C': True}})
     assert manifest['charts'] == [] and manifest['slides'] == []
+
+
+def test_dashboard_closed_during_its_cache_lookup_is_not_prepared():
+    script = (Path(__file__).parents[1] / 'src/web_interface/static/js/ppt_dashboards.js').read_text(encoding='utf-8')
+
+    # A Dashboard closed (or another one opened) while its preparation checks the persistent cache is not prepared,
+    # and the Scope and filter panels draw nothing once no Dashboard is open.
+    prepare = script[script.index('  async function prepare() {'):script.index('    const pending = (async () => {')]
+    assert prepare.startswith('  async function prepare() {\n    if (!definition) return null;')
+    assert "if (!definition || activeId !== lookupDashboardId) {" in prepare
+    assert "throw new DOMException('The Dashboard is no longer open.', 'AbortError');" in prepare
+    restore = script[script.index('  async function restorePrepared(id) {'):script.index('  function filterChanged() {')]
+    assert 'if (activeId !== id || preparedStateFingerprint(definition) !== fingerprint) return false;\n      applyPreparedPayload(payload);' in restore
+    assert "const host = $('ds-sources'); host.replaceChildren();\n    if (!definition) { renderAutoCdrs(); return; }" in script
+    assert 'defaultHost.replaceChildren(); additionalHost.replaceChildren();\n' in script
+    facets = script[script.index('  function facets() {'):script.index('    definition.hidden_filters ||= [];')]
+    assert 'if (!definition) return;' in facets

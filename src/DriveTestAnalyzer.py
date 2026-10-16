@@ -99,6 +99,7 @@ from src.modules.scoring_vendors import normalize_scoring_vendor_result, scoring
 from src.modules.saved_filters import (
     calculate_saved_filter,
     delete_saved_filter,
+    edit_saved_filter,
     find_saved_filter,
     get_saved_filter,
     list_saved_filters,
@@ -17805,6 +17806,46 @@ def scoring_saved_filters_use_newer_cdrs(filter_id: int, payload: UseNewerCdrsRe
         _prioritize_saved_filter(task_repository, saved_filter['id'])
         prune_unpinned_saved_filters(task_repository, saved_filter['id'], user.username)
     return {'saved_filter': saved_filter, 'cached': False, 'replaced': updated['replaced']}
+
+
+@app.post('/api/scoring/saved-filters/{filter_id}/edit')
+def scoring_saved_filters_edit(filter_id: int, payload: SavedFilterRequest,
+                               user: SessionUser = Depends(workspace_editor_user)) -> dict[str, Any]:
+    """Give a Saved Filter another selection and calculate it again in the background, keeping its name, star and
+    place."""
+    task_repository = scoring_repository(user)
+    # A Latest campaign choice is calculated with the campaigns it stands for now.
+    payload.context_filters = expand_scoring_context_filters(task_repository, payload.nr_mode, payload.context_filters)
+    try:
+        selected_ids = validate_complete_scoring_cdr_selection(
+            task_repository, payload.dataset_ids, payload.nr_mode, context_filters=payload.context_filters,
+        )
+        edited = edit_saved_filter(
+            task_repository, filter_id, selected_ids, payload.aggregation_levels, payload.nr_mode,
+            baseline_operator=payload.baseline_operator, username=user.username,
+            context_filters=payload.context_filters, scoring_profile_id=payload.scoring_profile_id,
+            area_summary=payload.area_summary,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if edited is None:
+        raise HTTPException(status_code=404, detail='Saved Filter not found.')
+    saved_filter = edited['saved_filter']
+    if edited['changed']:
+        _queue_saved_filter_calculation(task_repository, saved_filter['id'])
+    task_repository.try_add_log(user.username, 'edit_saved_filter', json.dumps({
+        'saved_filter_id': saved_filter['id'], 'name': saved_filter.get('name') or '', 'changed': edited['changed'],
+        'previous': edited['previous'],
+        'selection': {
+            'nr_mode': payload.nr_mode, 'dataset_ids': selected_ids, 'levels': payload.aggregation_levels,
+            'baseline_operator': payload.baseline_operator, 'context_filters': payload.context_filters,
+            'scoring_profile_id': payload.scoring_profile_id, 'area_summary': payload.area_summary,
+        },
+        'merged_saved_filter_id': edited['merged_filter_id'],
+    }, ensure_ascii=False))
+    _prioritize_saved_filter(task_repository, saved_filter['id'])
+    prune_unpinned_saved_filters(task_repository, saved_filter['id'], user.username)
+    return {'saved_filter': saved_filter, 'cached': not edited['changed'], 'changed': edited['changed']}
 
 
 class SavedFilterOrder(BaseModel):

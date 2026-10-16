@@ -8282,6 +8282,7 @@ function showConfirmDialog(message, options = {}) {
 async function showTextInputDialog(message, options = {}) {
   if (!confirmOverlay || !confirmCopy) {
     const text = window.prompt(message, options.value || '');
+    if (options.secondaryLabel) return text === null ? null : {choice: 'confirm', value: text};
     return text === null ? null : text;
   }
   // An edit, not a warning: a pencil and the eyebrow of the request instead of the confirmation ones, given back after.
@@ -8327,6 +8328,8 @@ async function showTextInputDialog(message, options = {}) {
   const accepted = await pending;
   if (icon) icon.textContent = shown.icon;
   if (eyebrow) eyebrow.textContent = shown.eyebrow;
+  // With another button (secondaryLabel): the button chosen ('confirm' or 'secondary') and the text.
+  if (options.secondaryLabel) return accepted ? {choice: accepted, value: input.value} : null;
   return accepted ? input.value : null;
 }
 
