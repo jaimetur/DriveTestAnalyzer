@@ -915,6 +915,7 @@ const results = [];
       fetch: async () => ({ok: false}),
       calculationPayload: () => ({dataset_ids: datasetIds, nr_mode: 'SA', baseline_operator: 'EE', scoring_profile_id: 'netcheck',
                                   aggregation_levels: ['Operator', 'City'], context_filters: {City: ['Leeds']}}),
+      selectedContextFilters: () => ({City: ['Leeds']}),
       contextFilterDefinitions: [], contextFilterSelects: new Map(), mainCities: [], operatorGroups: [],
       showInfoDialog: message => { warning = message; },
       downloadScoringDocument: async (url, label, init) => { request = {url, label, body: JSON.parse(init.body)}; },

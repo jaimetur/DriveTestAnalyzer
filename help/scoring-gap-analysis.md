@@ -85,6 +85,8 @@ The lists show the starred Saved Filters in a fixed order: a newly starred one g
 
 The generated PowerPoint is named `yyyymmdd_hhmmss - Scoring & GAP Analysis - <NR Mode> - <Regions> - <Clusters> - <Cities> - <Operators> - <Vendors> - <Campaigns>.pptx`. A complete vendor selection appears as **All Vendors**.
 
+A Saved Filter calculated with **Latest campaign**, **Previous campaign**, **Latest 2 campaigns** or **All available campaigns** keeps that choice instead of the campaigns of that moment: its card shows the choice with the campaigns it stood for last time, and whenever it is opened it takes the campaigns and CDRs the choice stands for then, and is calculated again when they changed.
+
 **Edit Filters** opens the Calculation panel in a dialog with the selection of the Saved Filter, under an **Editing Saved Filter** notice, and the CDRs of its NR Mode and Campaign chosen automatically. Change its NR Mode, Campaign, filters, Split by, GAP reference, National & area summary or methodology; the CDRs follow the NR Mode and Campaign. **Save Changes** (in place of Calculate Scoring and Recalculate) gives the Saved Filter that selection and calculates it again, keeping its name, star and place; a Saved Filter that already had that selection is merged into it. **Cancel Editing**, next to Save Changes, or **Escape** closes the dialog without changing it, and the Calculation panel keeps the selection it had before. A Saved Filter cannot be edited while it is being calculated.
 
 Deleting a Saved Filter removes it and its saved result after confirmation; its CDRs and the Scoring History stay. A running calculation stops at a processing checkpoint or discards its pending result. Viewers can open Saved Filters but not name, edit, pin or delete them.

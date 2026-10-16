@@ -96,6 +96,7 @@ from src.modules.cdr_stage import (
     dataset_cdr_stage, infer_cdr_stage, normalize_cdr_stage, normalize_in_combined,
 )
 from src.modules.scoring_vendors import normalize_scoring_vendor_result, scoring_vendor_name, scoring_vendor_names, scoring_vendor_operators
+from src.modules.cdr_auto_selection import campaign_presets
 from src.modules.saved_filters import (
     calculate_saved_filter,
     delete_saved_filter,
@@ -17500,6 +17501,12 @@ def _scoring_export_job_with_catalogue_defaults(
     context_filters = job.get('context_filters')
     if not isinstance(context_filters, dict):
         return export_job
+    if any(campaign_presets(values) for key, values in context_filters.items()
+           if str(key).casefold() == 'campaign' and isinstance(values, (list, tuple, set))):
+        # An automatic Campaign choice is labelled with the campaigns it stood for when the result was calculated.
+        context_filters = {**{key: values for key, values in context_filters.items() if str(key).casefold() != 'campaign'},
+                           'Campaign': list(job.get('resolved_campaigns') or [])}
+        export_job['context_filters'] = context_filters
 
     fields = ('Region', 'City', 'Operator', 'Vendor', 'Campaign')
     fields_by_identity = {field.casefold(): field for field in fields}
@@ -17688,11 +17695,11 @@ def scoring_cdr_selection(payload: ScoringCdrSelectionRequest, user: SessionUser
 def saved_filters_match(payload: SavedFilterRequest, user: SessionUser = Depends(current_user)) -> dict[str, Any]:
     """The Saved Filter of the selection being made, if it was used before, and whether its result is up to date."""
     task_repository = scoring_repository(user)
-    # A Latest campaign choice is calculated with the campaigns it stands for now.
-    payload.context_filters = expand_scoring_context_filters(task_repository, payload.nr_mode, payload.context_filters)
+    # An automatic Campaign choice (Latest campaign…) is kept as such; it is checked with the campaigns it stands for now.
     try:
         selected_ids = validate_complete_scoring_cdr_selection(
-            task_repository, payload.dataset_ids, payload.nr_mode, context_filters=payload.context_filters,
+            task_repository, payload.dataset_ids, payload.nr_mode,
+            context_filters=expand_scoring_context_filters(task_repository, payload.nr_mode, payload.context_filters),
         )
         saved_filter = find_saved_filter(
             task_repository, selected_ids, payload.aggregation_levels, payload.nr_mode,
@@ -17708,11 +17715,11 @@ def saved_filters_match(payload: SavedFilterRequest, user: SessionUser = Depends
 def saved_filters_save(payload: SavedFilterRequest, user: SessionUser = Depends(current_user)) -> dict[str, Any]:
     """Use a selection: its Saved Filter with its saved result, calculated in the background when needed."""
     task_repository = scoring_repository(user)
-    # A Latest campaign choice is calculated with the campaigns it stands for now.
-    payload.context_filters = expand_scoring_context_filters(task_repository, payload.nr_mode, payload.context_filters)
+    # An automatic Campaign choice (Latest campaign…) is kept as such; it is checked with the campaigns it stands for now.
     try:
         selected_ids = validate_complete_scoring_cdr_selection(
-            task_repository, payload.dataset_ids, payload.nr_mode, context_filters=payload.context_filters,
+            task_repository, payload.dataset_ids, payload.nr_mode,
+            context_filters=expand_scoring_context_filters(task_repository, payload.nr_mode, payload.context_filters),
         )
         saved_filter, cached = save_saved_filter(
             task_repository, selected_ids, payload.aggregation_levels, payload.nr_mode,
@@ -17814,11 +17821,11 @@ def scoring_saved_filters_edit(filter_id: int, payload: SavedFilterRequest,
     """Give a Saved Filter another selection and calculate it again in the background, keeping its name, star and
     place."""
     task_repository = scoring_repository(user)
-    # A Latest campaign choice is calculated with the campaigns it stands for now.
-    payload.context_filters = expand_scoring_context_filters(task_repository, payload.nr_mode, payload.context_filters)
+    # An automatic Campaign choice (Latest campaign…) is kept as such; it is checked with the campaigns it stands for now.
     try:
         selected_ids = validate_complete_scoring_cdr_selection(
-            task_repository, payload.dataset_ids, payload.nr_mode, context_filters=payload.context_filters,
+            task_repository, payload.dataset_ids, payload.nr_mode,
+            context_filters=expand_scoring_context_filters(task_repository, payload.nr_mode, payload.context_filters),
         )
         edited = edit_saved_filter(
             task_repository, filter_id, selected_ids, payload.aggregation_levels, payload.nr_mode,

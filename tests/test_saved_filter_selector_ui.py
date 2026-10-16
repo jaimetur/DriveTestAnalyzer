@@ -128,6 +128,8 @@ const root = {querySelector: () => ({scrollIntoView: () => {focused = true;}})};
 const savedFilterSelector = {open: true, contains: () => LIST_INDEX === 0, querySelector: () => ({focus: () => {focused = true;}})};
 const persistScoringViewState = () => {persisted = true;};
 const restoreCalculationSelectionFromSavedFilter = savedFilter => {restored = savedFilter.id;};
+let editingSavedFilter = null;
+const stopSavedFilterEdit = () => { editingSavedFilter = null; };
 const loadSavedFilter = async (savedFilter, force) => {loaded = {id: savedFilter.id, force};};
 const deleteSavedFilter = id => {deleted = id;};
 const savedFiltersUrl = '/api/scoring/saved-filters';

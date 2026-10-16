@@ -648,19 +648,24 @@
     }));
     const pickerByKey = new Map();
     // Values are [value, label] pairs or plain values.
+    // Campaign offers first Latest campaign, Previous campaign, Latest 2 campaigns and All available campaigns, each
+    // alone, resolved at each run among the campaigns of the NR Modes chosen.
+    const campaignPresets = Object.entries(options.campaign_presets || {});
     const makePicker = ({key, label}, chosen) => {
       let values = (provider.values?.[key] || []).map((item) => (Array.isArray(item) ? item : [item, item]));
       const dependency = dependencies[key];
+      const presets = key === 'campaign' ? campaignPresets : [];
       if (dependency) {
         const parentChoice = pickerByKey.get(dependency.parent)?.getValue() || [];
         const allowed = new Set((parentChoice.length ? parentChoice : Object.keys(dependency.map))
           .flatMap((value) => dependency.map[value] || []).map(String));
         values = values.filter(([value]) => allowed.has(String(value)));
-        chosen = chosen.filter((value) => allowed.has(String(value)));
+        chosen = chosen.filter((value) => allowed.has(String(value)) || presets.some(([preset]) => preset === value));
       }
       const dependents = Object.keys(dependencies).filter((name) => dependencies[name].parent === key);
       const picker = multiPicker(label, values.map(([value]) => value), chosen, {
         ...(key === 'city' ? {preset: mainCitiesPreset()} : {}),
+        ...(presets.length ? {exclusive: presets} : {}),
         ...(dependents.length ? {onChange: () => dependents.forEach(rebuildPicker)} : {}),
       });
       // Show the labels (for example CDR names) while keeping their values.

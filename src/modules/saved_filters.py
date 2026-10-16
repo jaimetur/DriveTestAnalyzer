@@ -23,6 +23,7 @@ from src.modules.scoring_area_summary import (
     area_summary_levels, calculate_area_summary, calculate_area_summary_from_history, normalize_area_summary_request,
 )
 from src.modules.scoring_vendors import scoring_vendor_name, scoring_vendor_operators
+from src.modules.cdr_auto_selection import CAMPAIGN_PRESET_LABELS, campaign_presets
 from src.modules.cdr_stage import combined_dataset_ids
 from src.modules.nr_mode import NR_MODES, normalize_nr_mode
 from src.modules.repository import Repository, local_now_iso
@@ -709,6 +710,9 @@ def _row_to_saved_filter(
         'updated_at': str(row['updated_at'] or ''),
         'finished_at': str(row['finished_at'] or ''),
         'result': result,
+        # The campaigns its Campaign filter stood for when it was last prepared (an automatic choice such as Latest
+        # campaign is resolved each time).
+        'resolved_campaigns': [str(value) for value in resolved_context_filters.get('Campaign') or [] if str(value).strip()],
     }
     if include_snapshot:
         saved_filter['configuration'] = configuration
@@ -740,16 +744,32 @@ def _prepare_saved_filter(
     scoring_profile_id: str | None = None,
     area_summary: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """The identity of a selection and of its result today, with the snapshot its calculation uses."""
-    normalized_ids = list(dict.fromkeys(int(dataset_id) for dataset_id in dataset_ids))
+    """The identity of a selection and of its result today, with the snapshot its calculation uses.
+
+    A Campaign filter with an automatic choice (Latest campaign, Previous campaign, Latest 2 campaigns or All available
+    campaigns) is kept as such: the selection is that choice, and its campaigns and CDRs are those it stands for now,
+    so the Saved Filter follows the campaigns and CDRs that arrive later.
+    """
     normalized_context_filters = _normalize_context_filters(context_filters)
+    campaign_choice = (campaign_presets(normalized_context_filters['Campaign']) or [''])[0]
+    calculation_filters = dict(normalized_context_filters)
+    if campaign_choice:
+        from src.modules.scoring_selection import auto_scoring_cdr_ids, expand_scoring_campaigns
+        mode = normalize_nr_mode(nr_mode) or 'NSA'
+        normalized_context_filters['Campaign'] = [campaign_choice]
+        calculation_filters['Campaign'] = expand_scoring_campaigns(repository, mode, [campaign_choice])
+        dataset_ids = auto_scoring_cdr_ids(repository, mode, [campaign_choice])
+        if not dataset_ids:
+            raise ValueError(f'{CAMPAIGN_PRESET_LABELS[campaign_choice]} stands for no campaign with Data, Voice and Speech '
+                             f'CDRs of {mode} now.')
+    normalized_ids = list(dict.fromkeys(int(dataset_id) for dataset_id in dataset_ids))
     normalized_area_summary = normalize_area_summary_request(area_summary, normalized_context_filters)
     vendor_catalogues = repository.cdr_catalogues_by_dataset(normalized_ids)
     vendor_operators = scoring_vendor_operators(vendor_catalogues, repository.list_operator_mapping_groups())
-    normalized_context_filters['Vendor'] = sorted({
+    normalized_context_filters['Vendor'] = calculation_filters['Vendor'] = sorted({
         scoring_vendor_name(value, vendor_operators) for value in normalized_context_filters['Vendor']
     }, key=str.casefold)
-    resolved_context_filters = _expand_operator_context_filter(repository, normalized_context_filters)
+    resolved_context_filters = _expand_operator_context_filter(repository, calculation_filters)
     resolved_context_filters = _expand_vendor_context_filters(repository, resolved_context_filters, vendor_catalogues)
     from src.modules.scoring_methodologies import (
         BY_CAMPAIGN, display_configuration, methodology_groups, methodology_label,
@@ -763,7 +783,7 @@ def _prepare_saved_filter(
     profile_getter = getattr(repository, 'get_scoring_profile', None)
     if scoring_profile_id == BY_CAMPAIGN:
         # Each campaign with the methodology that applies to it (the default one when none does).
-        wanted = {value.casefold() for value in normalized_context_filters.get('Campaign') or []}
+        wanted = {value.casefold() for value in calculation_filters.get('Campaign') or []}
         campaigns = [campaign for source in sources for campaign in source['metadata'].get('campaigns') or []
                      if not wanted or campaign.casefold() in wanted]
         groups = methodology_groups(repository.get_scoring_profiles(), campaigns or [''])
@@ -832,7 +852,8 @@ def _prepare_saved_filter(
     if len(groups) > 1:
         snapshot['methodology_groups'] = groups
     return {
-        'selection_key': saved_filter_key(normalized_ids, normalized_levels, selected_mode, baseline,
+        # With an automatic Campaign choice the selection is that choice, whatever CDRs it stands for today.
+        'selection_key': saved_filter_key([] if campaign_choice else normalized_ids, normalized_levels, selected_mode, baseline,
                                           normalized_context_filters, profile_id, normalized_area_summary),
         'result_key': result_key, 'method_version': version, 'source_fingerprint': source_fingerprint,
         'dataset_ids': normalized_ids, 'snapshot': snapshot, 'nr_mode': selected_mode, 'levels': normalized_levels,
@@ -1003,8 +1024,10 @@ def list_saved_filters(repository: Repository) -> list[dict[str, Any]]:
     saved_filters = [_row_to_saved_filter(row, include_snapshot=False) for row in rows]
     replacements = _replaced_cdrs(repository) if saved_filters else {}
     for saved_filter in saved_filters:
-        saved_filter['newer_cdrs'] = [replacements[dataset_id] for dataset_id in saved_filter['dataset_ids']
-                                         if dataset_id in replacements]
+        # One with an automatic Campaign choice takes the newer CDRs on its own the next time it is opened.
+        follows = bool(campaign_presets(saved_filter['context_filters'].get('Campaign') or []))
+        saved_filter['newer_cdrs'] = [] if follows else [replacements[dataset_id] for dataset_id in saved_filter['dataset_ids']
+                                                         if dataset_id in replacements]
     return saved_filters
 
 

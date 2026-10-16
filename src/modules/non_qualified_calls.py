@@ -6937,6 +6937,22 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         else:
             export_word(destination, lines, executive['summary'], executive['breakdowns'], progress, options)
 
+    def resolve_report_campaigns(repository, filters: dict[str, list[str]]) -> dict[str, list[str]]:
+        """The filters of a Reporting Job with an automatic Campaign choice (Latest campaign, Previous campaign, Latest 2
+        campaigns or All available campaigns) as the campaigns of its NR Modes it stands for at this run."""
+        from src.modules.cdr_auto_selection import NO_PREVIOUS_CAMPAIGN, campaign_groups, campaign_presets, preset_campaign_groups
+
+        presets = campaign_presets(filters.get('campaign'))
+        if not presets:
+            return filters
+        modes = {str(value).casefold() for value in filters.get('nr_mode') or []}
+        with repository.connection() as connection:
+            pairs = connection.execute(f"SELECT DISTINCT nr_mode, campaign FROM {NQ_CALLS_TABLE} WHERE campaign <> ''").fetchall()
+        campaigns = [str(campaign) for nr_mode, campaign in pairs if not modes or str(nr_mode or '').casefold() in modes]
+        chosen = [value for group in preset_campaign_groups(campaign_groups(campaigns), presets[:1]) for value in group]
+        # A choice that stands for no campaign (Previous campaign with only one) chooses no call, not every one.
+        return {**filters, 'campaign': chosen or [NO_PREVIOUS_CAMPAIGN]}
+
     def generate_report(config, folder, stamp, user) -> list[dict[str, Any]]:
         from src.modules.report_tasks import artifact_path
 
@@ -6945,6 +6961,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         settings = config.get('options') if isinstance(config.get('options'), dict) else {}
         filters = {key: [str(value) for value in values] for key, values in (settings.get('filters') or {}).items()
                    if isinstance(values, list) and values}
+        filters = resolve_report_campaigns(repository, filters)
         if str(settings.get('open_only') or '') == '1':
             filters['open_only'] = True
         granularity = str(settings.get('granularity') or 'week')

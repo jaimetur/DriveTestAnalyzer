@@ -936,7 +936,10 @@
   // The panel shows the CDRs of the Saved Filter (or, with automaticCdrs, those of its NR Mode and Campaign); the lists
   // of its filters follow for its NR Mode and filters.
   function restoreCalculationSelectionFromSavedFilter(savedFilter, {automaticCdrs = false} = {}) {
-    pinnedCdrs = !automaticCdrs;
+    // A Saved Filter with an automatic Campaign choice follows the campaigns and CDRs it stands for now.
+    const campaignChoice = Object.entries(savedFilter.context_filters || {})
+      .some(([key, values]) => key.toLowerCase() === 'campaign' && (Array.isArray(values) ? values : [values]).some(isCampaignPreset));
+    pinnedCdrs = !automaticCdrs && !campaignChoice;
     applySavedCalculationSelection({
       dataset_ids: savedFilter.dataset_ids || [],
       aggregation_levels: savedFilter.aggregation_levels || savedFilter.levels || [],
@@ -1174,7 +1177,9 @@
       scoring_profile_id: scoringProfileSelect?.value || undefined,
       nr_mode: nrFilter.value || 'NSA',
       baseline_operator: baselineInput.value.trim(),
-      context_filters: selectedContextFilters(),
+      // An automatic Campaign choice (Latest campaign…) is sent as such: the Saved Filter keeps it and resolves it when
+      // it is calculated.
+      context_filters: selectedContextFilters({keepPresets: true}),
       area_summary: areaSummaryPayload(),
     };
   }
@@ -1411,7 +1416,15 @@
       ? [...new Set(campaignFilter.map(value => hierarchyDisplayValue({level: 'Campaign', value})))]
         .sort((left, right) => insightCampaignKey(left) - insightCampaignKey(right) || left.localeCompare(right))
       : savedFilterCampaigns(savedFilter).filter(value => value !== 'Unspecified');
-    const campaignValue = campaigns.length ? campaigns.join(', ') : 'All Campaigns';
+    let campaignValue = campaigns.length ? campaigns.join(', ') : 'All Campaigns';
+    // An automatic choice (All available campaigns…) is shown as such, with the campaigns it stood for last time.
+    const choice = campaignFilter.find(isCampaignPreset);
+    if (choice) {
+      const resolved = [...new Set((Array.isArray(savedFilter?.resolved_campaigns) ? savedFilter.resolved_campaigns : [])
+        .map(value => hierarchyDisplayValue({level: 'Campaign', value})))]
+        .sort((left, right) => insightCampaignKey(left) - insightCampaignKey(right) || left.localeCompare(right));
+      campaignValue = resolved.length ? `${campaignPresetLabels[choice]} (${resolved.join(', ')})` : campaignPresetLabels[choice];
+    }
     return [
       {dimension: 'neutral', value: formatDate(valueOf(savedFilter, ['last_used_at', 'created_at'], ''))},
       {dimension: 'nr-mode', value: valueOf(savedFilter, ['nr_mode'], 'All NR Modes')},
@@ -2122,7 +2135,8 @@
     const filterOptions = Object.fromEntries(contextFilterDefinitions.map(({key}) => [key,
       [...(contextFilterSelects.get(key)?.options || [])].filter(option => option.value && !option.disabled).map(option => option.value)]));
     const defaults = {
-      filters: selection.context_filters || {}, levels: selection.aggregation_levels || ['Operator'],
+      // The report scenarios filter the CDRs of the panel: its campaigns as they are now.
+      filters: selectedContextFilters(), levels: selection.aggregation_levels || ['Operator'],
       mainCities: false, operators: filterOptions.Operator || [],
     };
     let state = null;

@@ -580,3 +580,18 @@ def test_cdr_analysis_word_keeps_the_powerpoint_of_the_same_run(tmp_path, monkey
     core.write_dataset_summary([1], 'word', word, 'super')
     assert powerpoint.read_bytes() == b'pptx' and word.read_bytes() == b'docx'
     assert sorted(path.name for path in tmp_path.iterdir()) == sorted([powerpoint.name, word.name])
+
+
+def test_the_non_qualified_calls_artifact_keeps_campaign_choices_until_each_run():
+    root = Path(__file__).parents[1]
+    script = (root / 'src/web_interface/static/js/report_jobs.js').read_text(encoding='utf-8')
+    module = (root / 'src/modules/non_qualified_calls.py').read_text(encoding='utf-8')
+
+    # Its Campaign filter offers the automatic choices first, each alone, and keeps a saved one when NR Mode changes.
+    assert "const presets = key === 'campaign' ? campaignPresets : [];" in script
+    assert "...(presets.length ? {exclusive: presets} : {})," in script
+    assert "chosen = chosen.filter((value) => allowed.has(String(value)) || presets.some(([preset]) => preset === value));" in script
+    # Each run resolves the choice among the campaigns of the calls of its NR Modes (none when it stands for none).
+    assert 'filters = resolve_report_campaigns(repository, filters)' in module
+    assert "chosen = [value for group in preset_campaign_groups(campaign_groups(campaigns), presets[:1]) for value in group]" in module
+    assert "return {**filters, 'campaign': chosen or [NO_PREVIOUS_CAMPAIGN]}" in module

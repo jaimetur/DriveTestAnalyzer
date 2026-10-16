@@ -365,3 +365,38 @@ def test_reporting_jobs_saved_with_cdrs_choose_them_by_their_campaigns(workspace
     # The editor previews the CDRs an entry uses now.
     preview = client.post('/api/reporting/auto-cdrs', json={'nr_mode': 'NSA', 'campaigns': ['UK_Q2_2026']}).json()
     assert preview['cdrs'] == {'data': ['UK_Q2_2026_Data.csv'], 'voice': [], 'speech': []}
+
+
+def test_a_saved_filter_keeps_its_campaign_choice_and_follows_it(workspace):
+    from src.modules import saved_filters
+    add = workspace['add']
+    client = workspace['client']
+    repository = workspace['repository']
+    q1 = [add(name=f'UK_Q1_2026_{kind}.csv', kind=kind, campaign='UK_Q1_2026') for kind in ('data', 'voice', 'speech')]
+    q2 = [add(name=f'UK_Q2_2026_{kind}.csv', kind=kind, campaign='UK_Q2_2026') for kind in ('data', 'voice', 'speech')]
+    selection = {'dataset_ids': q1 + q2, 'aggregation_levels': ['Operator'], 'nr_mode': 'NSA', 'baseline_operator': 'EE',
+                 'context_filters': {'Campaign': [ALL_CAMPAIGNS]}}
+
+    saved = client.post('/api/scoring/saved-filters', json=selection).json()['saved_filter']
+
+    # The choice is kept as such (not the campaigns of this moment); its campaigns and CDRs are resolved now.
+    stored = saved_filters.get_saved_filter(repository, saved['id'], include_internal_snapshot=True)
+    assert stored['context_filters']['Campaign'] == [ALL_CAMPAIGNS]
+    assert stored['resolved_campaigns'] == ['UK_Q1_2026', 'UK_Q2_2026']
+    assert sorted(stored['dataset_ids']) == sorted(q1 + q2)
+    match = client.post('/api/scoring/saved-filters/match', json=selection).json()['saved_filter']
+    assert match['id'] == saved['id']
+    saved_filters.calculate_saved_filter(repository, saved['id'])
+
+    # A campaign that arrives later is taken when the Saved Filter is opened again: the same Saved Filter.
+    q3 = [add(name=f'UK_Q3_2026_{kind}.csv', kind=kind, campaign='UK_Q3_2026') for kind in ('data', 'voice', 'speech')]
+    assert saved_filters.refresh_saved_filter(repository, saved['id']) == (True, '')
+    followed = saved_filters.get_saved_filter(repository, saved['id'])
+    assert followed['selection_key'] == stored['selection_key']
+    assert sorted(followed['dataset_ids']) == sorted(q1 + q2 + q3)
+    assert followed['resolved_campaigns'] == ['UK_Q1_2026', 'UK_Q2_2026', 'UK_Q3_2026']
+    assert [item['id'] for item in saved_filters.list_saved_filters(repository)] == [saved['id']]
+    # Previous campaign with a single campaign stands for none: it is not saved as every campaign.
+    response = client.post('/api/scoring/saved-filters', json={**selection, 'nr_mode': 'SA', 'dataset_ids': [],
+                                                                'context_filters': {'Campaign': [PREVIOUS_CAMPAIGN]}})
+    assert response.status_code == 400

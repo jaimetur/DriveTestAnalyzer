@@ -214,7 +214,8 @@ def test_scoring_selection_defaults_use_catalogue_metadata_without_reading_cdr_r
             'baseline_operator': 'EE',
             'scoring_profile_id': 'by-campaign',
             'context_filters': {
-                'Region': [], 'City': [], 'Operator': [], 'Vendor': [], 'Campaign': ['2026-Q2'],
+                # Latest campaign: the newest campaign with Data, Voice and Speech CDRs (2026-Q2).
+                'Region': [], 'City': [], 'Operator': [], 'Vendor': [], 'Campaign': ['@latest-campaign'],
             },
             # The National & area summary is not included by default.
             'area_summary': {'enabled': False, 'time_split': 'Campaign', 'breakdown': 'Region', 'cities': ['London']},
