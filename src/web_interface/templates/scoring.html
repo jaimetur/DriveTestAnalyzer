@@ -125,6 +125,12 @@
   .saved-filter-drag-handle:hover { background-color: #c4d5e2; border-color: #7f98ab; }
   .saved-filter-drag-handle:active, .saved-filters-panel .saved-filter-row.is-dragging .saved-filter-drag-handle { cursor: grabbing; }
   .saved-filters-panel .saved-filter-row.is-dragging { opacity: .45; }
+  /* Where a dragged card will go: a line between the cards. */
+  .saved-filters-panel .saved-filter-list { position: relative; }
+  .saved-filter-drop-line { position: absolute; left: 0; right: 0; height: 3px; margin-top: -1.5px; border-radius: 999px; background: var(--brand); box-shadow: 0 0 0 2px rgba(11,122,117,.18); pointer-events: none; }
+  .saved-filter-drop-line::before, .saved-filter-drop-line::after { content: ''; position: absolute; top: 50%; width: 9px; height: 9px; margin-top: -4.5px; border-radius: 50%; background: var(--brand); }
+  .saved-filter-drop-line::before { left: -2px; }
+  .saved-filter-drop-line::after { right: -2px; }
   .saved-filters-panel .saved-filter-row.is-reorderable .saved-filter-actions { left: calc(1.35rem + .8rem); }
   /* The filters of a Saved Filter being named, in the name dialog. */
   .saved-filter-item.saved-filter-reference { display: grid; gap: .3rem; padding: 0; border: 0; background: none; box-shadow: none; text-align: left; }
@@ -149,8 +155,15 @@
   /* The selection of Saved Filters in the Saved Filters panel, to update them together. */
   .saved-filters-bulk { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; margin: -.35rem 0 .6rem; }
   .saved-filters-select-all { display: inline-flex; align-items: center; gap: .35rem; color: #46606d; font-size: .78rem; font-weight: 800; cursor: pointer; }
-  .saved-filter-check { display: inline-flex; align-items: center; margin-right: .1rem; cursor: pointer; }
-  .saved-filter-check input, .saved-filters-select-all input { width: 1rem; height: 1rem; margin: 0; accent-color: var(--brand); cursor: pointer; }
+  /* The checkbox of a card sits on top of the tab on its left, over the drag tab when the card can be moved. */
+  .saved-filters-panel .saved-filter-row.is-checkable { padding-left: 1.35rem; }
+  .saved-filters-panel .saved-filter-row.is-checkable .saved-filter-actions { left: calc(1.35rem + .8rem); }
+  .saved-filter-check { position: absolute; z-index: 1; top: .55rem; left: 0; display: flex; align-items: center; justify-content: center; box-sizing: border-box; width: 1.35rem; height: 1.9rem; border: 1px solid #a9bccb; border-right: 0; border-bottom-color: #c4d5e2; border-radius: 10px 0 0 0; background: #fff; cursor: pointer; }
+  .saved-filter-row:not(.is-reorderable) .saved-filter-check { bottom: .55rem; height: auto; align-items: flex-start; padding-top: .45rem; border-bottom-color: #a9bccb; border-radius: 10px 0 0 10px; }
+  .saved-filter-check:hover { background: #e6f3f1; }
+  .saved-filter-check:has(input:checked) { background: #dff1ee; border-color: var(--brand); }
+  .saved-filter-check input { width: 1.1rem; height: 1.1rem; margin: 0; accent-color: var(--brand); cursor: pointer; }
+  .saved-filters-select-all input { width: 1rem; height: 1rem; margin: 0; accent-color: var(--brand); cursor: pointer; }
   /* The name given to a Saved Filter, above its filters. */
   /* The name of a Saved Filter: a badge on top of its card. */
   .saved-filter-name { justify-self: start; max-width: 100%; box-sizing: border-box; margin-bottom: .35rem; padding: .22rem .75rem; border-radius: 999px; background: var(--brand); color: #fff; font-size: .82rem; font-weight: 850; line-height: 1.3; overflow-wrap: anywhere; box-shadow: 0 2px 6px rgba(16, 49, 74, .18); }
@@ -737,7 +750,7 @@
     <article class="panel scoring-results-panel" aria-labelledby="scoring-results-title">
       <div class="scoring-results-head">
         <div class="scoring-results-primary">
-          <div><p class="eyebrow">Saved scoring results</p><h3 id="scoring-results-title">Scoring results</h3></div>
+          <div><p class="eyebrow">Calculated Scoring &amp; GAP Results</p><h3 id="scoring-results-title">Scoring &amp; GAP Results</h3></div>
           <div class="scoring-results-controls">
             <div class="scoring-results-selector-row" data-scoring-results-selector-row>
               <label class="scoring-environment-filter" data-result-scoring-control hidden>Scoring
@@ -799,7 +812,7 @@
 
     </article>
     <article class="panel saved-filters-panel">
-      <div class="section-head tight-head"><div><p class="eyebrow">Reusable selections</p><h3>Saved Filters</h3></div><span class="pill" data-saved-filter-count>0 filters</span></div>
+      <div class="section-head tight-head"><div><p class="eyebrow">Reusable selections</p><h3>Starred Filters</h3></div><span class="pill" data-saved-filter-count>0 filters</span></div>
       <div class="saved-filters-bulk" data-saved-filters-bulk hidden>
         <label class="saved-filters-select-all"><input type="checkbox" data-saved-filters-select-all> Select all</label>
         <button type="button" class="saved-filter-use-newer" data-saved-filters-use-newer disabled title="Update the selected Saved Filters that have newer CDRs and calculate them again">Use newer CDRs</button>

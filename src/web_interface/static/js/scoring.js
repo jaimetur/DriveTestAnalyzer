@@ -1308,7 +1308,9 @@
         input.checked = checkedSavedFilterIds.has(id);
         input.setAttribute('aria-label', `Select Saved Filter ${id}`);
         check.append(input);
-        row.querySelector('.saved-filter-actions')?.prepend(check);
+        // On top of the tab on the left of the card (the drag tab, when the card can be moved).
+        row.classList.add('is-checkable');
+        row.prepend(check);
       }
     }
     syncSavedFiltersBulk();
@@ -1414,19 +1416,52 @@
       event.dataTransfer.effectAllowed = 'move';
       event.dataTransfer.setData('text/plain', row.dataset.savedFilterRow || '');
     });
+    // While a card is dragged, a horizontal line shows where it will go; it moves there when it is dropped.
+    const dropLine = document.createElement('div');
+    dropLine.className = 'saved-filter-drop-line';
+    dropLine.setAttribute('aria-hidden', 'true');
+    let dropBefore;
+    const hideDropLine = () => {
+      dropLine.remove();
+      dropBefore = undefined;
+    };
     savedFilterPanelList.addEventListener('dragover', event => {
       if (!draggedSavedFilterRow) return;
       event.preventDefault();
       event.dataTransfer.dropEffect = 'move';
       const row = event.target instanceof Element ? event.target.closest('.saved-filter-row') : null;
-      if (!row || row === draggedSavedFilterRow) return;
+      if (!row) return;
       const box = row.getBoundingClientRect();
-      row.parentElement.insertBefore(draggedSavedFilterRow, event.clientY > box.top + box.height / 2 ? row.nextSibling : row);
+      // The card it would go before (none: the end of the list); the line itself is the last child of the list.
+      const nextRow = element => (element.nextElementSibling === dropLine ? null : element.nextElementSibling);
+      const target = event.clientY > box.top + box.height / 2 ? nextRow(row) : row;
+      // Dropped next to itself, the card stays where it is: no line.
+      if (row === draggedSavedFilterRow || target === draggedSavedFilterRow || target === nextRow(draggedSavedFilterRow)) {
+        hideDropLine();
+        return;
+      }
+      if (target === dropBefore && dropLine.isConnected) return;
+      dropBefore = target;
+      const rows = [...savedFilterPanelList.querySelectorAll('.saved-filter-row')];
+      const gap = parseFloat(getComputedStyle(savedFilterPanelList).rowGap) || 0;
+      const listBox = savedFilterPanelList.getBoundingClientRect();
+      const edge = target
+        ? target.getBoundingClientRect().top - gap / 2
+        : rows[rows.length - 1].getBoundingClientRect().bottom + gap / 2;
+      dropLine.style.top = `${edge - listBox.top + savedFilterPanelList.scrollTop}px`;
+      if (!dropLine.isConnected) savedFilterPanelList.append(dropLine);
+    });
+    savedFilterPanelList.addEventListener('dragleave', event => {
+      if (draggedSavedFilterRow && !savedFilterPanelList.contains(event.relatedTarget)) hideDropLine();
     });
     savedFilterPanelList.addEventListener('drop', event => {
-      if (draggedSavedFilterRow) event.preventDefault();
+      if (!draggedSavedFilterRow) return;
+      event.preventDefault();
+      if (dropLine.isConnected) savedFilterPanelList.insertBefore(draggedSavedFilterRow, dropBefore || dropLine);
+      hideDropLine();
     });
     savedFilterPanelList.addEventListener('dragend', () => {
+      hideDropLine();
       if (!draggedSavedFilterRow) return;
       draggedSavedFilterRow.classList.remove('is-dragging');
       draggedSavedFilterRow.draggable = false;
