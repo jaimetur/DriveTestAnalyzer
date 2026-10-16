@@ -225,6 +225,7 @@ def test_job_selection_restoration_maps_job_fields_and_schedules_persistence():
     program = r'''
 let applied, persisted = false, timeoutDelay, timeoutCallback, autoRefresh = null;
 let restoringSelection = false, selectionLoaded = true, selectionDirty = false, pinnedCdrs = false;
+const isCampaignPreset = value => String(value).startsWith('@');
 let selectionSaveTimer = null;
 const applySavedCalculationSelection = selection => {applied = selection;};
 const scheduleAutoCdrRefresh = options => {autoRefresh = options;};

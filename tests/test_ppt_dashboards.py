@@ -1322,11 +1322,12 @@ def test_dashboards_lifecycle_and_layout(client, ppt_reporting_old):
     assert 'id="ds-ppt-dataset-choices"' not in page.text
     assert 'id="ds-ppt-dataset-scope"' in page.text
     assert '>Select Dashboard Scope and Filters<' in page.text
-    # The PPT dialog groups the Scope and dates above the Dashboard Filters, the Campaign (which chooses the CDRs) first.
+    # The PPT dialog groups the Scope above the Dashboard Filters: the Campaign (which chooses the CDRs) first, then the
+    # dates, which are filters, then the other filters.
     universe_group = page.text.index('class="ds-ppt-group ds-ppt-universe-group"')
     filters_group = page.text.index('class="ds-ppt-group ds-ppt-filters-group"')
-    assert universe_group < page.text.index('id="ds-ppt-dates-section"') < filters_group
-    assert filters_group < page.text.index('id="ds-ppt-campaign-section"') < page.text.index('id="ds-ppt-operator-section"') < page.text.index('id="ds-ppt-city-section"')
+    assert universe_group < filters_group < page.text.index('id="ds-ppt-campaign-section"') < page.text.index('id="ds-ppt-dates-section"')
+    assert page.text.index('id="ds-ppt-dates-section"') < page.text.index('id="ds-ppt-operator-section"') < page.text.index('id="ds-ppt-city-section"')
     # Main Dashboard Filters can reveal every other filter, including Additional Filters.
     assert '>Main Dashboard Filters</h3><button type="button" id="ds-ppt-show-all-filters"' in page.text
     # The heading names the Dashboard's NR Mode and the Dashboard.
@@ -1728,7 +1729,7 @@ def test_dashboards_lifecycle_and_layout(client, ppt_reporting_old):
     assert 'function datePicker(key, label)' in dashboard_script
     assert "previous.addEventListener('click', () => { month.setMonth(month.getMonth() - 1); render(); });" in dashboard_script
     assert "button.addEventListener('click', () => { input.value = iso; definition[key] = iso; automatic.setAttribute('aria-pressed', 'false'); updateFilterControlState(wrapper, dateState(key), true); menu.hidden = true; filterChanged(); });" in dashboard_script
-    assert 'const current = (hasStoredSelection ? selected : available).filter(Boolean);' in dashboard_script
+    assert 'const current = (hasStoredSelection ? selected : available).filter(value => value && value !== MAIN_CITIES);' in dashboard_script
     assert "const filterControlState = (current, applied, saved, equal = sameFilterValues) =>" in dashboard_script
     assert "if (!equal(current, applied)) return 'unapplied';" in dashboard_script
     assert "return equal(applied, saved) ? '' : 'applied-unsaved';" in dashboard_script

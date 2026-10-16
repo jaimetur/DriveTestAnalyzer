@@ -64,10 +64,11 @@ def test_scoring_configuration_export_import_round_trip(client, tmp_path: Path, 
     # Only the methodology prepared here, without the others every workspace is given.
     profiles['profiles'] = [profile for profile in profiles['profiles'] if profile['id'] == profiles['active_profile_id']]
     second_profile = copy.deepcopy(profiles['profiles'][0])
-    second_profile['id'] = 'netcheck-2025'
-    second_profile['name'] = 'NetCheck 2025'
+    second_profile.pop('campaigns', None)
+    second_profile['id'] = 'custom-2024'
+    second_profile['name'] = 'Custom 2024'
     second_profile['configuration'] = copy.deepcopy(expected)
-    second_profile['configuration']['version'] = 'NetCheck 2025'
+    second_profile['configuration']['version'] = 'Custom 2024'
     second_profile['configuration']['metrics'][0]['contexts']['Walk']['max_points'] = 10
     second_profile['configuration']['metrics'][1]['contexts']['Walk']['max_points'] = 30
     second_configuration = second_profile['configuration']
@@ -128,8 +129,9 @@ def test_partial_backup_restores_only_scoring_configuration(client, tmp_path: Pa
     repository.replace_scoring_configuration(expected)
     profiles = repository.get_scoring_profiles()
     second_profile = copy.deepcopy(profiles['profiles'][0])
-    second_profile.update({'id': 'netcheck-2025', 'name': 'NetCheck 2025'})
-    second_profile['configuration']['version'] = 'NetCheck 2025'
+    second_profile.pop('campaigns', None)
+    second_profile.update({'id': 'custom-2024', 'name': 'Custom 2024'})
+    second_profile['configuration']['version'] = 'Custom 2024'
     second_configuration = second_profile['configuration']
     priorities = second_configuration['gap_priority']
     second_configuration['gap_priority'] = priorities[1:] + priorities[:1]
@@ -152,10 +154,12 @@ def test_partial_backup_restores_only_scoring_configuration(client, tmp_path: Pa
     app_module.restore_database_backup(backup_path, ['scoring_configuration'])
 
     assert repository.get_scoring_profiles() == expected_profiles
+    # The two methodologies customised above keep their GAP priorities (the other shipped ones keep theirs).
+    customised = {expected_profiles['profiles'][0]['id'], 'custom-2024'}
     assert all(
         'aggregation_hierarchy' not in profile['configuration']
         and profile['configuration']['gap_priority'] != scoring_configuration()['gap_priority']
-        for profile in repository.get_scoring_profiles()['profiles']
+        for profile in repository.get_scoring_profiles()['profiles'] if profile['id'] in customised
     )
 
 
@@ -289,18 +293,19 @@ def test_selected_profile_export_contains_only_that_profile(client):
     _, repository = _workspace_repository()
     profiles = repository.get_scoring_profiles()
     second_profile = copy.deepcopy(profiles['profiles'][0])
-    second_profile.update({'id': 'netcheck-2025', 'name': 'NetCheck 2025'})
-    second_profile['configuration']['version'] = 'NetCheck 2025'
+    second_profile.pop('campaigns', None)
+    second_profile.update({'id': 'custom-2024', 'name': 'Custom 2024'})
+    second_profile['configuration']['version'] = 'Custom 2024'
     profiles['profiles'].append(second_profile)
     saved_profiles = repository.replace_scoring_profiles(profiles)
-    second_profile = next(profile for profile in saved_profiles['profiles'] if profile['id'] == 'netcheck-2025')
+    second_profile = next(profile for profile in saved_profiles['profiles'] if profile['id'] == 'custom-2024')
 
-    response = client.get('/api/workspace-config/scoring-configuration/export?profile_id=netcheck-2025')
+    response = client.get('/api/workspace-config/scoring-configuration/export?profile_id=custom-2024')
 
     assert response.status_code == 200
     assert response.headers['content-disposition'] == 'attachment; filename="scoring-methodology.json"'
     assert response.json() == scoring_profiles_document({
-        'active_profile_id': 'netcheck-2025', 'profiles': [second_profile],
+        'active_profile_id': 'custom-2024', 'profiles': [second_profile],
     })
 
 
@@ -361,9 +366,11 @@ def test_json_profile_merge_replaces_matching_ids_and_preserves_default_and_othe
     default = copy.deepcopy(original['profiles'][0])
     untouched = copy.deepcopy(default)
     untouched.update({'id': 'untouched', 'name': 'Untouched'})
+    untouched.pop('campaigns', None)
     untouched['configuration']['version'] = 'Untouched'
     replaced = copy.deepcopy(default)
     replaced.update({'id': 'replace-me', 'name': 'Old Name'})
+    replaced.pop('campaigns', None)
     replaced['configuration']['version'] = 'Old Version'
     repository.replace_scoring_profiles({
         'active_profile_id': default_id,

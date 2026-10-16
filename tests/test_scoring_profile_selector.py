@@ -58,6 +58,7 @@ def test_scoring_calculation_selector_lists_profiles_and_defaults_to_by_campaign
     profiles['profiles'] = [profile for profile in profiles['profiles'] if profile['id'] == active_id]
     alternate = deepcopy(profiles['profiles'][0])
     alternate.update({'id': 'netcheck-alt', 'name': 'Alternative methodology'})
+    alternate.pop('campaigns', None)
     profiles['profiles'].append(alternate)
     repository.replace_scoring_profiles(profiles)
 
