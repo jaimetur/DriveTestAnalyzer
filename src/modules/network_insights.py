@@ -45,7 +45,7 @@ from src.modules.serving_cells import load_serving_networks, serving_families
 NETWORK_INSIGHTS_KINDS = ('data', 'voice', 'speech')
 # Bump when the normalised samples or the analysis payload change shape.
 SAMPLES_CACHE_VERSION = 7
-ANALYSIS_CACHE_VERSION = 21
+ANALYSIS_CACHE_VERSION = 24
 INVENTORY_CACHE_VERSION = 4
 OBSERVED_CACHE_VERSION = 9
 # Columns of the Observed Sites/Cells (from CDRs) tables.
@@ -725,6 +725,10 @@ BANDWIDTH_CLASSES = (
     ('Under 25 MHz', 0.0, 25.0, '#B5132B', 12.5),
 )
 NARROW_BANDWIDTH_MHZ = 25.0
+# The share of tests with this total bandwidth or more is labelled under each ladder.
+WIDE_BANDWIDTH_MHZ = 100.0
+# The title the total bandwidth chart carries on the page and in the summaries, as in benchmark slides.
+BANDWIDTH_LADDER_TITLE = 'Total bandwidth: LTE and 5G together'
 BANDWIDTH_SCOPES = {'download': 'Download tests', 'all': 'All Data tests'}
 ALL_ENVIRONMENTS = 'All environments'
 
@@ -781,12 +785,20 @@ def bandwidth_ladders(samples: pd.DataFrame, columns: pd.Series, column_order: l
                 'counts': [int(count) for count in counts],
                 'shares': [round(int(count) / len(known) * 100, 1) if len(known) else 0.0 for count in counts],
                 'narrow_share': round(float((known < NARROW_BANDWIDTH_MHZ).mean()) * 100, 1) if len(known) else None,
+                'wide_share': round(float((known >= WIDE_BANDWIDTH_MHZ).mean()) * 100, 1) if len(known) else None,
                 'median_mhz': round(float(known.median()), 1) if len(known) else None,
             })
+    # The group with the largest share under 25 MHz in each environment, when there are groups to compare.
+    highlights = []
+    for row in rows:
+        known = [cell for cell in cells if cell['environment'] == row and cell['known']]
+        if len(known) > 1:
+            worst = max(known, key=lambda cell: cell['narrow_share'])
+            highlights.append({'environment': row, 'column': worst['column'], 'narrow_share': worst['narrow_share']})
     return {
         'columns': [column for column in column_order if any(cell['column'] == column for cell in cells)],
         'environments': rows, 'cells': cells, 'tests': int(len(samples)), 'unknown': int(totals.loc[environments.isin(rows)].isna().sum()),
-        'without_environment': without_environment,
+        'without_environment': without_environment, 'highlights': highlights,
     }
 
 
@@ -1577,6 +1589,7 @@ def install_network_insights_routes(core: Any) -> None:
                 'spectrum_summary': licensed_spectrum_summary(holdings),
                 'band_classes': BAND_CLASSES,
                 'bandwidth_scopes': BANDWIDTH_SCOPES,
+                'bandwidth_title': BANDWIDTH_LADDER_TITLE,
                 'nr_duplex_splits': NR_DUPLEX_SPLITS,
                 'can_edit': user.role in {'user-editor', 'admin', 'super-admin'},
             },
@@ -1871,7 +1884,9 @@ def install_network_insights_routes(core: Any) -> None:
             return {
                 'classes': [{'label': label, 'lower': lower, 'upper': upper, 'colour': colour, 'width': width}
                             for label, lower, upper, colour, width in BANDWIDTH_CLASSES],
-                'narrow_below_mhz': NARROW_BANDWIDTH_MHZ, 'scopes': scopes, 'scope_labels': BANDWIDTH_SCOPES,
+                'title': BANDWIDTH_LADDER_TITLE, 'narrow_below_mhz': NARROW_BANDWIDTH_MHZ, 'wide_from_mhz': WIDE_BANDWIDTH_MHZ,
+                'scopes': scopes,
+                'scope_labels': BANDWIDTH_SCOPES,
                 'column_label': ' → '.join(GROUPINGS[field] for field in column_groups) or 'All samples',
                 'column_colours': {column: colours.get(label, '') for column, label in
                                    pd.DataFrame({'column': columns, 'label': labels}).drop_duplicates('column').itertuples(index=False)},

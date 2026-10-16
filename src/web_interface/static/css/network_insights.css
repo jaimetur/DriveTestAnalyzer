@@ -390,15 +390,32 @@ body:has(dialog.ni-expand-dialog[open]){overflow:hidden}
 .network-insights .ni-table tr.ni-total-row td{font-weight:800;background:#f3f4ff}
 .network-insights .ni-bandwidth-toolbar{margin-top:1.4rem}
 .ni-ladder-host{display:grid;gap:.5rem}
-.ni-ladder{overflow-x:auto;padding:.6rem .4rem;border:1px solid var(--ni-border);border-radius:12px;background:#fff}
+.ni-ladder{min-width:0;margin-top:1.2rem;padding:.9rem .4rem .6rem;border:1px solid var(--ni-border);border-radius:12px;background:#fff}
+.ni-ladder-head{padding:0 .8rem .5rem}
+.network-insights .ni-ladder-title{margin:0;color:#1f2433;font-size:1.45rem;font-weight:850;line-height:1.2}
+.network-insights .ni-ladder-caption{margin:.35rem 0 0;color:#a8404d;font-size:1.05rem;font-weight:400;line-height:1.4}
+.ni-ladder>.form-note{padding:0 .8rem}
+.ni-ladder-scroll{overflow-x:auto}
 .ni-ladder svg{display:block;width:100%;height:auto}
 .ni-ladder text{font-family:inherit}
 .ni-ladder-column{font-size:18px;font-weight:800}
 .ni-ladder-row{font-size:17px;font-weight:800;fill:#1f2433}
-.ni-ladder-figure{font-size:17px;font-weight:800;fill:#1f2433}
+.ni-ladder-figure{font-size:13px;font-weight:700;fill:#1f2433}
 .ni-ladder-empty{font-size:13px;fill:#8a8fb5}
+.ni-ladder-wide{font-size:13px;font-weight:500;fill:#3b4060}
+.ni-ladder-wide.is-most{font-weight:800;fill:#1f2433}
 .ni-ladder-base{stroke:#c7cbf7;stroke-width:1}
 .ni-ladder-divider{stroke:#eef0ff;stroke-width:2}
 .ni-ladder-legend-title{font-size:15px;font-weight:800;fill:#1f2433}
 .ni-ladder-legend{font-size:15px;fill:#3b4060}
 .network-insights .ni-expand-ladder{width:100%;border:0}
+/* Scope pills: the area, operators, vendors and environments of every chart and table, in the colours of Scoring. */
+.ni-scope-pills{display:inline-flex;flex-wrap:wrap;gap:.3rem;margin-left:.55rem;vertical-align:.08em}
+.ni-scope-pill{display:inline-flex;align-items:center;padding:.1rem .55rem;border:1px solid rgba(36,94,90,.32);border-radius:999px;background:#d9eeea;color:#164c47;font-size:.74rem;font-weight:800;line-height:1.35;white-space:nowrap}
+.ni-scope-pill.is-operator{border-color:rgba(36,88,166,.3);background:#e3ecfa;color:#1d4a8f}
+.ni-scope-pill.is-vendor{border-color:rgba(105,65,165,.3);background:#eee7f8;color:#5a3591}
+.ni-scope-pill.is-environment{border-color:rgba(166,104,20,.32);background:#fbf0dc;color:#7a4a08}
+.ni-scope-row{margin:.2rem 0 .45rem}
+.ni-scope-row .ni-scope-pills{margin-left:0}
+.ni-ladder-title .ni-scope-pills{vertical-align:.25em}
+.ni-expand-header .ni-scope-pills{margin-left:.6rem}

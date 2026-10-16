@@ -68,6 +68,8 @@
   const number = (value, digits = 1) => (value === null || value === undefined || !Number.isFinite(Number(value)) ? '—' : Number(value).toFixed(digits));
   const integer = value => (Number.isFinite(Number(value)) ? Number(value).toLocaleString('en-US') : '—');
   let analysis = null;
+  // The request of the shown analysis, whose filters the scope pills of the measurement panels name.
+  let analysedFilters = null;
   let analysing = 0;
   // Map payloads by `<technology>-<coverage|interference>`.
   const mapPayloads = {};
@@ -317,6 +319,7 @@
       if (!response.ok) throw new Error(payload.detail || 'Unable to analyse the selected CDRs.');
       if (request !== analysing) return;
       analysis = payload;
+      analysedFilters = body;
       rememberSelection();
       try {
         if (lastAnalysisKey) {
@@ -644,15 +647,18 @@
       <td class="num">${row.typical_bandwidth_mhz ? `${number(row.typical_bandwidth_mhz, 0)} MHz` : '—'}</td></tr>`).join('')}</tbody>`;
     renderBandwidth();
   };
-  // Bandwidth per band and total bandwidth (LTE + NR) of the CDR Data tests: the download tests or every test.
+  // Bandwidth per band and total bandwidth (LTE + 5G) of the CDR Data tests: the download tests or every test.
   const bandwidthWidth = value => `${Number(value).toLocaleString('en-US', {maximumFractionDigits: 1})} MHz`;
+  // The total bandwidth chart carries its own title and, under it, the line that explains its figures, as a slide does.
+  const ladderTitle = config.bandwidth_title || 'Total bandwidth: LTE and 5G together';
+  const ladderFrame = (body, caption = '', attributes = '') => `<div class="ni-ladder"${attributes}><div class="ni-ladder-head"><h3 class="ni-ladder-title">${escapeHtml(ladderTitle)}</h3>${caption ? `<p class="ni-ladder-caption">${escapeHtml(caption)}</p>` : ''}</div>${body}</div>`;
   const renderBandwidth = () => {
     const bandwidth = analysis?.spectrum?.bandwidth;
     const table = $('ni-band-bandwidth');
     const host = $('ni-total-bandwidth');
     if (!bandwidth) {
       table.innerHTML = '<tbody><tr><td class="form-note">No analysis yet.</td></tr></tbody>';
-      host.innerHTML = '<p class="form-note">No analysis yet.</p>';
+      host.innerHTML = ladderFrame('<p class="form-note">No analysis yet.</p>');
       $('ni-bandwidth-status').textContent = '';
       return;
     }
@@ -672,19 +678,28 @@
         }).join('')}
         <td class="num">${row.unknown ? integer(row.unknown) : '—'}</td><td class="num">${row.typical_bandwidth_mhz ? bandwidthWidth(row.typical_bandwidth_mhz) : '—'}</td></tr>`).join('')}</tbody>`
       : '<tbody><tr><td class="form-note">The selected tests report no serving bands.</td></tr></tbody>';
-    renderLadders(host, bandwidth, view.ladders);
+    renderLadders(host, bandwidth, view.ladders, scope);
+  };
+  // The line under the title of the ladders: what the ladders and their number show and the group with the most tests
+  // under 25 MHz in each environment (shared with the PowerPoint and Word summaries).
+  const ladderCaption = (bandwidth, ladders, scope) => {
+    const narrow = bandwidth.narrow_below_mhz;
+    const highlights = ladders.highlights || [];
+    return `Each ladder splits the ${scope === 'download' ? 'download tests' : 'CDR Data tests'} with a known bandwidth by their total width (LTE + 5G), widest at the bottom; the number beside it is the share under ${narrow} MHz (dark red) and the one below it the share at ${bandwidth.wide_from_mhz ?? 100} MHz or more.${highlights.length
+      ? ` Most under ${narrow} MHz: ${highlights.map(item => `${item.environment}, ${item.column} (${number(item.narrow_share, 0)}%)`).join('; ')}.` : ''}`;
   };
   // Total bandwidth: per group (column) and environment (row), one block per bandwidth class, widest at the bottom,
   // as wide as the class midpoint and as tall as its share of the tests; the figure is the share below 25 MHz.
-  const renderLadders = (host, bandwidth, ladders) => {
+  const renderLadders = (host, bandwidth, ladders, scope) => {
     if (!ladders.cells.some(cell => cell.known)) {
-      host.innerHTML = '<p class="form-note">The selected tests report no LTE or NR bandwidth.</p>';
+      host.innerHTML = ladderFrame('<p class="form-note">The selected tests report no LTE or NR bandwidth.</p>');
       return;
     }
     const classes = bandwidth.classes;
     const columns = ladders.columns;
     const rows = ladders.environments;
-    const labelWidth = 170, columnWidth = 210, header = 40, rowHeight = 165, legendHeight = 56;
+    const labelWidth = 170, columnWidth = 210, header = 40, rowHeight = 180, legendHeight = 56;
+    const wide = bandwidth.wide_from_mhz ?? 100;
     const width = labelWidth + columns.length * columnWidth;
     const height = header + rows.length * rowHeight + legendHeight;
     const widest = Math.max(...classes.map(item => item.width));
@@ -696,8 +711,11 @@
     });
     rows.forEach((row, rowIndex) => {
       const top = header + rowIndex * rowHeight;
-      const base = top + rowHeight - 18;
-      const plot = rowHeight - 40;
+      const base = top + rowHeight - 32;
+      const plot = rowHeight - 56;
+      // The widest share at 100 MHz or more of the row is in bold, as in benchmark slides.
+      const rowCells = columns.map(column => cells.get(`${column}\u0000${row}`)).filter(cell => cell?.known);
+      const mostWide = rowCells.length > 1 ? Math.max(...rowCells.map(cell => cell.wide_share ?? 0)) : null;
       parts.push(`<text class="ni-ladder-row" x="12" y="${top + rowHeight / 2}" dominant-baseline="middle">${escapeHtml(row)}</text>`);
       if (rowIndex) parts.push(`<line class="ni-ladder-divider" x1="0" x2="${width}" y1="${top}" y2="${top}"></line>`);
       columns.forEach((column, index) => {
@@ -722,25 +740,26 @@
           if (blockHeight <= 0) return;
           parts.push(`<rect x="${centre - blockWidth / 2}" y="${cursor}" width="${blockWidth}" height="${blockHeight}" fill="${item.colour}"><title>${escapeHtml(`${column} · ${row} · ${item.label}: ${number(share)}% (${integer(cell.counts[classIndex])} of ${integer(cell.known)} tests)`)}</title></rect>`);
         });
+        parts.push(`<text class="ni-ladder-wide${mostWide !== null && cell.wide_share === mostWide ? ' is-most' : ''}" x="${centre}" y="${base + 19}" text-anchor="middle"><title>${escapeHtml(`${column} · ${row}: ${number(cell.wide_share)}% of ${integer(cell.known)} tests at ${wide} MHz or more`)}</title>${number(cell.wide_share, 0)}% at ${wide} MHz+</text>`);
         parts.push(`<text class="ni-ladder-figure" x="${narrowRight + 6}" y="${narrowTop + 4}" dominant-baseline="hanging"><title>${escapeHtml(`${column} · ${row}: ${number(cell.narrow_share)}% of ${integer(cell.known)} tests below ${bandwidth.narrow_below_mhz} MHz; median ${number(cell.median_mhz, 0)} MHz`)}</title>${number(cell.narrow_share, 0)}%</text>`);
       });
     });
     // The legend, widest class first, under the ladders.
     const legendTop = header + rows.length * rowHeight + 22;
     let legendX = labelWidth;
-    parts.push(`<text class="ni-ladder-legend-title" x="12" y="${legendTop + 6}" dominant-baseline="middle">Width (LTE + NR)</text>`);
+    parts.push(`<text class="ni-ladder-legend-title" x="12" y="${legendTop + 6}" dominant-baseline="middle">Width, MHz (LTE + 5G)</text>`);
     classes.forEach(item => {
       parts.push(`<rect x="${legendX}" y="${legendTop - 2}" width="16" height="16" rx="2" fill="${item.colour}"></rect><text class="ni-ladder-legend" x="${legendX + 22}" y="${legendTop + 6}" dominant-baseline="middle">${escapeHtml(item.label)}</text>`);
       legendX += 34 + item.label.length * 8.2;
     });
     const svgWidth = Math.max(width, legendX + 12);
     const known = ladders.cells.reduce((total, cell) => total + cell.known, 0);
-    host.innerHTML = `<div class="ni-ladder" role="img" aria-label="Total bandwidth, LTE and NR together, per ${escapeHtml(bandwidth.column_label)} and environment">
-        <svg viewBox="0 0 ${svgWidth} ${height}" style="min-width:${Math.min(svgWidth, 160 + columns.length * 150)}px" xmlns="http://www.w3.org/2000/svg">${parts.join('')}</svg></div>
+    host.innerHTML = `${ladderFrame(`<div class="ni-ladder-scroll"><svg viewBox="0 0 ${svgWidth} ${height}" style="min-width:${Math.min(svgWidth, 160 + columns.length * 150)}px" xmlns="http://www.w3.org/2000/svg">${parts.join('')}</svg></div>`,
+      ladderCaption(bandwidth, ladders, scope), ` role="img" aria-label="${escapeHtml(`${ladderTitle}, per ${bandwidth.column_label} and environment`)}"`)}
       <p class="form-note">${integer(known)} tests with a known bandwidth${ladders.unknown ? `; ${integer(ladders.unknown)} without one are left out` : ''}${ladders.without_environment ? `; ${integer(ladders.without_environment)} tests without an environment are not shown` : ''}. Columns: ${escapeHtml(bandwidth.column_label)}.</p>`;
   };
   // NR sites by duplex mode of the inventory snapshot, after the Analysis Selection filters that describe it.
-  let nrDuplexPayload = null, nrDuplexController = null, nrDuplexTimer = null, nrDuplexKey = '';
+  let nrDuplexPayload = null, nrDuplexController = null, nrDuplexTimer = null, nrDuplexKey = '', nrDuplexFilters = null;
   const nrDuplexRequest = () => ({...requestBody(), split: $('ni-nr-duplex-split').value});
   const loadNrDuplex = async ({force = false} = {}) => {
     const table = $('ni-nr-duplex-sites');
@@ -749,6 +768,7 @@
       return;
     }
     const body = nrDuplexRequest();
+    nrDuplexFilters = body;
     // Only the filters that restrict the inventory, the snapshot and the split change the counts.
     const key = JSON.stringify(['snapshot', 'split', 'operators', 'operator_vendors', 'vendors', 'regions', 'clusters', 'cities'].map(name => body[name]));
     if (!force && key === nrDuplexKey && nrDuplexPayload) return;
@@ -833,8 +853,88 @@
       });
     }
   };
+  // Scope pills, as in Scoring: every chart and table names its area (the City, Cluster or Region filters, the most
+  // specific first, else National), its operators and its vendors (All Operators and All Vendors without a filter) and,
+  // when chosen, its environments. A long list keeps its first two names and counts the others; the tooltip lists them
+  // all. The measurement panels name the filters of the shown analysis, the NR sites by duplex mode and the site
+  // tables those of their own request, and the panels of the whole inventory name no filter.
+  const scopeItems = (filters = {}, {environments = true} = {}) => {
+    const values = key => [...new Set((filters?.[key] || []).map(value => String(value ?? '').trim())
+      .filter(value => value && !isCampaignPreset(value)))];
+    const pill = (list, level, plural) => {
+      const name = list.length > 1 ? plural : level;
+      const shown = list.length > 3 ? [...list.slice(0, 2), `${list.length - 2} more`] : list;
+      return {label: `${name}: ${shown.length > 1 ? `${shown.slice(0, -1).join(', ')} & ${shown.at(-1)}` : shown[0]}`,
+        title: `${name}: ${list.join(', ')}`};
+    };
+    const area = [['cities', 'City', 'Cities'], ['clusters', 'Cluster', 'Clusters'], ['regions', 'Region', 'Regions']]
+      .map(([key, level, plural]) => (values(key).length ? pill(values(key), level, plural) : null)).find(Boolean);
+    const operators = values('operators');
+    const vendors = values('vendors');
+    const items = [
+      {kind: 'area', ...(area || {label: 'National', title: 'National: no City, Cluster or Region filter'})},
+      {kind: 'operator', ...(operators.length ? pill(operators, 'Operator', 'Operators')
+        : {label: 'All Operators', title: 'All Operators: no Operator filter'})},
+      {kind: 'vendor', ...(vendors.length ? pill(vendors, 'Vendor', 'Vendors') : {label: 'All Vendors', title: 'All Vendors: no Vendor filter'})},
+    ];
+    const chosen = environments ? values('environments') : [];
+    if (chosen.length) items.push({kind: 'environment', ...pill(chosen, 'Environment', 'Environments')});
+    return items;
+  };
+  const scopePills = (items, key) => `<span class="ni-scope-pills" data-scope="${escapeHtml(key)}">${items.map(item =>
+    `<span class="ni-scope-pill is-${item.kind}" title="${escapeHtml(item.title)}">${escapeHtml(item.label)}</span>`).join('')}</span>`;
+  // A title ends with the pills (its text alone is kept for the larger views); a chart or table without a title of its
+  // own has them in a line above it.
+  const applyScope = (element, items, mode) => {
+    const key = JSON.stringify(items);
+    if (mode === 'title') {
+      const current = element.querySelector(':scope > .ni-scope-pills');
+      if (current?.dataset.scope === key) return;
+      current?.remove();
+      if (element.dataset.title === undefined) element.dataset.title = element.textContent.replace(/\s+/g, ' ').trim();
+      element.insertAdjacentHTML('beforeend', scopePills(items, key));
+      return;
+    }
+    const previous = element.previousElementSibling;
+    const row = previous?.classList.contains('ni-scope-row') ? previous : null;
+    if (row?.firstElementChild?.dataset.scope === key) return;
+    row?.remove();
+    element.insertAdjacentHTML('beforebegin', `<div class="ni-scope-row">${scopePills(items, key)}</div>`);
+  };
+  const applyScopes = () => {
+    const all = selector => [...document.querySelectorAll(selector)];
+    // The tables of a panel that have no title of their own (the CDF percentiles belong to their chart).
+    const untitled = host => [...(host?.querySelectorAll(':scope > .ni-table-wrap:not(.ni-percentiles)') || [])].filter(wrap => {
+      let previous = wrap.previousElementSibling;
+      while (previous?.classList.contains('ni-scope-row')) previous = previous.previousElementSibling;
+      return !previous?.matches('h3, h4');
+    });
+    const targets = [];
+    const add = (elements, items, mode) => { if (items) for (const element of elements) if (element) targets.push([element, items, mode]); };
+    const measured = analysis && analysedFilters ? scopeItems(analysedFilters) : null;
+    const wholeInventory = scopeItems({}, {environments: false});
+    add([$('ni-overview').querySelector(':scope > :not(.ni-scope-row)')], measured, 'row');
+    add(all('#ni-map-sections .ni-map-card h3, #ni-map-sections h4.ni-subtitle'), measured, 'title');
+    add(all('#ni-rf-sections .ni-cdf-block > .ni-chart-card, #ni-serving .ni-cdf-block > .ni-chart-card, #ni-serving > .ni-kpi-grid'), measured, 'row');
+    add([...all('#ni-rf-sections .ni-technology-section'), $('ni-nr')].flatMap(untitled), measured, 'row');
+    add(all('#ni-serving h4, #ni-nr h4'), measured, 'title');
+    add([$('ni-observed-title'), $('ni-band-bandwidth-title'), $('ni-total-bandwidth').querySelector('.ni-ladder-title')], measured, 'title');
+    add([$('ni-sites-table').parentElement], $('ni-sites-source').value === 'observed' ? measured : wholeInventory, 'row');
+    if (snapshotPayload) {
+      add([...all('#ni-snapshot-panel h4'), $('ni-deployed-title'), $('ni-density-title')], wholeInventory, 'title');
+      add(all('#ni-deployment .ni-network-table h3'), wholeInventory, 'title');
+    }
+    add([$('ni-licensed-title')], wholeInventory, 'title');
+    if (nrDuplexPayload) add([$('ni-nr-duplex-title')], scopeItems(nrDuplexFilters || {}, {environments: false}), 'title');
+    for (const section of all('#ni-deployment section.ni-inventory[data-ni-source]')) {
+      add([section.querySelector(':scope > h3')], scopeItems(requestBody(), {environments: section.dataset.niSource === 'observed'}), 'title');
+    }
+    for (const [element, items, mode] of targets) applyScope(element, items, mode);
+  };
   let polishPending = false;
   new MutationObserver(() => {
+    // The pills follow every render at once (applying them again changes nothing).
+    applyScopes();
     if (polishPending) return;
     polishPending = true;
     requestAnimationFrame(() => { polishPending = false; polishTables(); });
@@ -847,12 +947,22 @@
   const headingBefore = element => {
     const body = element.closest('.collapsible-panel-body') || element.closest('details');
     const headings = [...(body?.querySelectorAll('h3, h4') || [])].filter(heading => heading.compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING);
-    return headings.at(-1)?.textContent?.replace(/\s+/g, ' ').trim() || '';
+    const heading = headings.at(-1);
+    return heading?.dataset.title || heading?.textContent?.replace(/\s+/g, ' ').trim() || '';
   };
-  const openExpanded = (kind, title, meta, build) => {
+  // The scope pills of a chart, map or table: those of its title or of the line above it.
+  const scopeOf = element => {
+    const body = element.closest('.collapsible-panel-body') || element.closest('details');
+    const marks = [...(body?.querySelectorAll('h3, h4, .ni-scope-row') || [])].filter(mark =>
+      mark.contains(element) || element.contains(mark) || mark.compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING);
+    return marks.filter(mark => mark.querySelector(':scope > .ni-scope-pills') || mark.matches('.ni-scope-row')).at(-1)
+      ?.querySelector('.ni-scope-pills') || null;
+  };
+  const openExpanded = (kind, title, meta, build, scope = null) => {
     if (!expandDialog) return;
     $('ni-expand-kind').textContent = kind;
     $('ni-expand-title').textContent = title;
+    if (scope) $('ni-expand-title').append(scope.cloneNode(true));
     $('ni-expand-meta').textContent = meta === title ? '' : meta;
     const content = $('ni-expand-content');
     content.replaceChildren();
@@ -1126,7 +1236,8 @@
     const canvas = event.target.closest('.ni-chart-card')?.querySelector('canvas');
     if (canvas && chartPayloads.has(canvas)) {
       const payload = chartPayloads.get(canvas);
-      const heading = canvas.closest('.ni-map-card')?.querySelector('h3')?.textContent?.trim();
+      const mapHeading = canvas.closest('.ni-map-card')?.querySelector('h3');
+      const heading = mapHeading?.dataset.title || mapHeading?.textContent?.trim();
       const isMap = payload.type === 'map' && Boolean(payload.basemap);
       // A map keeps every site and legend entry of its analysis; the Inventory sites check still applies.
       const full = isMap ? (mapPayloads[canvas.id.replace(/^ni-/, '').replace(/-map$/, '')] || payload) : payload;
@@ -1140,17 +1251,21 @@
           card.append(large);
           content.append(card);
           if (!isMap || !geoMap(large, full, payload, {expanded: true})) renderChart(large, payload);
-        });
+        }, scopeOf(canvas));
       return;
     }
     const ladder = event.target.closest('.ni-ladder');
-    if (ladder) {
-      openExpanded('Chart', headingBefore(ladder) || panelTitle(ladder), panelTitle(ladder), content => {
-        const copy = ladder.cloneNode(true);
-        copy.classList.add('ni-expand-ladder');
-        copy.querySelector('svg')?.style.removeProperty('min-width');
-        content.append(copy);
-      });
+    if (ladder?.querySelector('svg')) {
+      // The dialog header shows the title of the chart and the line under it.
+      const ladderHeading = ladder.querySelector('.ni-ladder-title');
+      openExpanded('Chart', ladderHeading?.dataset.title || ladderHeading?.textContent || panelTitle(ladder),
+        ladder.querySelector('.ni-ladder-caption')?.textContent || panelTitle(ladder), content => {
+          const copy = ladder.cloneNode(true);
+          copy.classList.add('ni-expand-ladder');
+          copy.querySelector('.ni-ladder-head')?.remove();
+          copy.querySelector('svg')?.style.removeProperty('min-width');
+          content.append(copy);
+        }, scopeOf(ladder));
       return;
     }
     const table = event.target.closest('table.ni-table');
@@ -1169,7 +1284,7 @@
       wrap.className = 'table-wrap ni-table-wrap';
       wrap.append(copy);
       content.append(wrap);
-    });
+    }, scopeOf(table));
   });
   $('ni-expand-close')?.addEventListener('click', () => expandDialog.close());
   expandDialog?.addEventListener('click', event => { if (event.target === expandDialog) expandDialog.close(); });

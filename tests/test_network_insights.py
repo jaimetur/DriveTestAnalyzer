@@ -152,14 +152,19 @@ def test_environments_bandwidth_classes_and_band_bandwidths() -> None:
     ladders = ni.bandwidth_ladders(samples, samples['operator'], ['EE', 'Vodafone UK'])
     assert ladders['environments'] == ['Cities', 'Towns', 'Roads and railways']
     cell = next(item for item in ladders['cells'] if item['column'] == 'EE' and item['environment'] == 'Roads and railways')
-    assert cell['known'] == 2 and cell['narrow_share'] == 100.0
+    assert cell['known'] == 2 and cell['narrow_share'] == 100.0 and cell['wide_share'] == 0.0
+    ee_cities = next(item for item in ladders['cells'] if item['column'] == 'EE' and item['environment'] == 'Cities')
+    assert ee_cities['wide_share'] == 100.0  # 125 and 120 MHz
     assert cell['counts'][-1] == 2 and sum(cell['shares']) == pytest.approx(100)
     vodafone_roads = next(item for item in ladders['cells'] if item['column'] == 'Vodafone UK' and item['environment'] == 'Roads and railways')
     assert vodafone_roads['tests'] == 2 and vodafone_roads['known'] == 1
     assert ladders['unknown'] == 1
-    # Without environments, every test is one row.
+    # The group with the largest share under 25 MHz in each environment (the first one on a tie).
+    assert ladders['highlights'][-1] == {'environment': 'Roads and railways', 'column': 'EE', 'narrow_share': 100.0}
+    # Without environments, every test is one row; a single group has nothing to compare with.
     plain = ni.bandwidth_ladders(samples.assign(environment=''), samples['operator'], ['EE'])
     assert plain['environments'] == [ni.ALL_ENVIRONMENTS] and plain['cells'][0]['tests'] == 6
+    assert plain['highlights'] == []
 
     bands = {(row['operator'], row['band']): row for row in ni.band_bandwidths(samples)}
     assert bands[('EE', 'n78')]['bandwidths'] == {'40': 1, '100': 2} and bands[('EE', 'n78')]['duplex'] == 'TDD'

@@ -64,6 +64,47 @@ def summary_selection_lines(selection: dict[str, Any]) -> list[str]:
     return lines
 
 
+def scope_labels(selection: dict[str, Any] | None, environments: bool = True) -> list[str]:
+    """The area, operators, vendors and (when chosen) environments a chart or table shows, as the pills of the page: the
+    City, Cluster or Region filters, the most specific first, else National; All Operators and All Vendors without a
+    filter. A long list keeps its first two names and counts the others."""
+    selection = selection or {}
+
+    def values(key: str) -> list[str]:
+        return list(dict.fromkeys(str(value).strip() for value in selection.get(key) or [] if str(value or '').strip()))
+
+    def label(items: list[str], level: str, plural: str) -> str:
+        shown = [*items[:2], f'{len(items) - 2} more'] if len(items) > 3 else items
+        names = f"{', '.join(shown[:-1])} & {shown[-1]}" if len(shown) > 1 else shown[0]
+        return f'{plural if len(items) > 1 else level}: {names}'
+
+    area = next((label(values(key), level, plural) for key, level, plural in
+                 (('cities', 'City', 'Cities'), ('clusters', 'Cluster', 'Clusters'), ('regions', 'Region', 'Regions')) if values(key)), 'National')
+    labels = [area, label(values('operators'), 'Operator', 'Operators') if values('operators') else 'All Operators',
+              label(values('vendors'), 'Vendor', 'Vendors') if values('vendors') else 'All Vendors']
+    if environments and values('environments'):
+        labels.append(label(values('environments'), 'Environment', 'Environments'))
+    return labels
+
+
+def scope_text(selection: dict[str, Any] | None, environments: bool = True) -> str:
+    return ' · '.join(scope_labels(selection, environments))
+
+
+# The tables of the whole inventory (no filter) and of the inventory after the selection's filters (no environment).
+WHOLE_INVENTORY_TITLES = ('Network Snapshot', 'Network Deployment', 'Cluster Sites Density · Inventory', 'Licensed Spectrum',
+                          'Spectrum · Deployed')
+FILTERED_INVENTORY_TITLES = ('Spectrum · NR sites by duplex mode',)
+
+
+def scope_for(title: str, selection: dict[str, Any] | None) -> str:
+    """The scope named under a slide or section title: the filters of the analysis for the measurements, those that
+    describe the inventory for the NR sites by duplex mode, and none for the panels of the whole inventory."""
+    if title.startswith(WHOLE_INVENTORY_TITLES):
+        return scope_text({}, environments=False)
+    return scope_text(selection, environments=not title.startswith(FILTERED_INVENTORY_TITLES))
+
+
 def technology_sections(analysis: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
     """(title suffix, section) per technology; LTE+NR exports LTE and NR separately."""
     sections = analysis.get('sections') or [analysis]
@@ -111,7 +152,7 @@ def _megahertz(value: Any) -> str:
 
 
 def bandwidth_tables(analysis: dict[str, Any], scope: str = 'download') -> list[tuple[str, list[str], list[list[str]]]]:
-    """Bandwidth per band and total bandwidth (LTE + NR) per group and environment, as on the page."""
+    """Bandwidth per band and total bandwidth (LTE + 5G) per group and environment, as on the page."""
     bandwidth, view, label = _bandwidth_view(analysis, scope)
     group = analysis.get('group_label') or 'Group'
     tables = []
@@ -128,13 +169,35 @@ def bandwidth_tables(analysis: dict[str, Any], scope: str = 'download') -> list[
     classes = bandwidth.get('classes') or []
     ladders = view.get('ladders') or {}
     rows = [[cell['column'], cell['environment'], _number(cell['known'], 0), *[_number(share, 1, '%') for share in cell['shares']],
-             _number(cell['narrow_share'], 1, '%'), _megahertz(cell['median_mhz']) if cell.get('median_mhz') is not None else '—']
+             _number(cell.get('wide_share'), 1, '%'), _number(cell['narrow_share'], 1, '%'),
+             _megahertz(cell['median_mhz']) if cell.get('median_mhz') is not None else '—']
             for cell in ladders.get('cells') or [] if cell.get('known')]
     if rows:
-        tables.append((f'Spectrum · Total bandwidth, LTE and NR ({label})',
+        tables.append((f'Spectrum · Total bandwidth, LTE and 5G ({label})',
                        [bandwidth.get('column_label') or 'Group', 'Environment', 'Tests', *[item['label'] for item in classes],
-                        f"Below {bandwidth.get('narrow_below_mhz', 25):g} MHz", 'Median'], rows))
+                        f"At {bandwidth.get('wide_from_mhz', 100):g} MHz+", f"Below {bandwidth.get('narrow_below_mhz', 25):g} MHz", 'Median'], rows))
     return tables
+
+
+def bandwidth_title(analysis: dict[str, Any]) -> str:
+    """The title of the total bandwidth chart, as on the page."""
+    return str((_bandwidth_view(analysis, 'download')[0]).get('title') or 'Total bandwidth: LTE and 5G together')
+
+
+def bandwidth_caption(analysis: dict[str, Any], scope: str = 'download') -> str:
+    """The line under the title of the total bandwidth ladders, as on the page: what the ladders and their number show and
+    the group with the most tests under 25 MHz in each environment."""
+    bandwidth, view, _label = _bandwidth_view(analysis, scope)
+    narrow = f"{bandwidth.get('narrow_below_mhz', 25):g}"
+    tests = 'download tests' if scope == 'download' else 'CDR Data tests'
+    highlights = (view.get('ladders') or {}).get('highlights') or []
+    wide = f"{bandwidth.get('wide_from_mhz', 100):g}"
+    text = (f'Each ladder splits the {tests} with a known bandwidth by their total width (LTE + 5G), widest at the bottom; '
+            f'the number beside it is the share under {narrow} MHz (dark red) and the one below it the share at {wide} MHz or more.')
+    if highlights:
+        text += f" Most under {narrow} MHz: " + '; '.join(
+            f"{item['environment']}, {item['column']} ({item['narrow_share']:.0f}%)" for item in highlights) + '.'
+    return text
 
 
 def bandwidth_ladder_image(analysis: dict[str, Any], scope: str = 'download') -> BytesIO | None:
@@ -149,8 +212,10 @@ def bandwidth_ladder_image(analysis: dict[str, Any], scope: str = 'download') ->
         return None
     classes = bandwidth.get('classes') or []
     columns, rows = ladders.get('columns') or [], ladders.get('environments') or []
-    label_width, column_width, header, row_height, legend_height = 340, 420, 80, 330, 112
+    label_width, column_width, header, row_height, legend_height = 340, 420, 80, 360, 112
     title_font, text_font, small_font = load_image_font(30, bold=True), load_image_font(28, bold=True), load_image_font(26)
+    figure_font, wide_font = load_image_font(21, bold=True), load_image_font(21)
+    wide = f"{bandwidth.get('wide_from_mhz', 100):g}"
     widest = max(item['width'] for item in classes)
     # The legend flows over as many lines as the chart width needs (at least 1,400 px wide).
     width = int(max(label_width + len(columns) * column_width, 1400))
@@ -170,7 +235,10 @@ def bandwidth_ladder_image(analysis: dict[str, Any], scope: str = 'download') ->
                   font=title_font, anchor='ms')
     for row_index, row in enumerate(rows):
         top = header + row_index * row_height
-        base, plot = top + row_height - 36, row_height - 80
+        base, plot = top + row_height - 64, row_height - 110
+        # The largest share at 100 MHz or more of the row is in bold, as in benchmark slides.
+        known = [cells[(column, row)] for column in columns if cells.get((column, row), {}).get('known')]
+        most_wide = max((cell.get('wide_share') or 0 for cell in known), default=None) if len(known) > 1 else None
         draw.text((24, top + row_height / 2), str(row), fill='#1F2433', font=text_font, anchor='lm')
         if row_index:
             draw.line([(0, top), (width, top)], fill='#EEF0FF', width=4)
@@ -193,9 +261,12 @@ def bandwidth_ladder_image(analysis: dict[str, Any], scope: str = 'download') ->
                     narrow_top = cursor
                 if block_height > 0:
                     draw.rectangle([(centre - block_width / 2, cursor), (centre + block_width / 2, cursor + block_height)], fill=item['colour'])
-            draw.text((narrow_right + 12, narrow_top), f"{cell['narrow_share']:.0f}%", fill='#1F2433', font=text_font, anchor='lt')
+            draw.text((narrow_right + 10, narrow_top), f"{cell['narrow_share']:.0f}%", fill='#1F2433', font=figure_font, anchor='lt')
+            is_most = most_wide is not None and (cell.get('wide_share') or 0) == most_wide
+            draw.text((centre, base + 34), f"{cell.get('wide_share') or 0:.0f}% at {wide} MHz+", fill='#1F2433' if is_most else '#3B4060',
+                      font=figure_font if is_most else wide_font, anchor='mm')
     legend_top = header + len(rows) * row_height + 44
-    draw.text((24, legend_top), 'Width (LTE + NR)', fill='#1F2433', font=text_font, anchor='lm')
+    draw.text((24, legend_top), 'Width, MHz (LTE + 5G)', fill='#1F2433', font=text_font, anchor='lm')
     for item, left, line in legend:
         top = legend_top + line * 48
         draw.rectangle([(left, top - 16), (left + 32, top + 16)], fill=item['colour'])
@@ -696,12 +767,13 @@ def _paired_table_slides(presentation: Presentation, title: str, panels: list[tu
                 _add_textbox(slide, panel_left, top + 0.4, panel_width, 0.3, 'No data for this selection.', size=11, color=MUTED)
 
 
-def _overview_slides(presentation: Presentation, title: str, cards: list[dict[str, Any]], per_row: int = 4, rows_per_slide: int = 2) -> None:
+def _overview_slides(presentation: Presentation, title: str, cards: list[dict[str, Any]], per_row: int = 4, rows_per_slide: int = 2,
+                     subtitle: str = '') -> None:
     """The Overview cards of the page: one card per group with its colour and six indicators."""
     per_slide = per_row * rows_per_slide
     pages = [cards[index:index + per_slide] for index in range(0, len(cards), per_slide)] or [[]]
     for page_number, page in enumerate(pages, start=1):
-        slide = _slide(presentation, title + (f' · {page_number}/{len(pages)}' if len(pages) > 1 else ''))
+        slide = _slide(presentation, title + (f' · {page_number}/{len(pages)}' if len(pages) > 1 else ''), subtitle)
         left, top, width, height = _content_frame(slide)
         card_width = (width - PANEL_GAP * (per_row - 1)) / per_row
         card_height = (height - PANEL_GAP * (rows_per_slide - 1)) / rows_per_slide
@@ -778,11 +850,11 @@ def _add_bar_table(slide, columns: list[str], rows: list[list[str]], bars: list[
                 first._r.addprevious(swatch._r)
 
 def _visual_slides(presentation: Presentation, title: str, panels: list[tuple[str, BytesIO | None, str, Any]],
-                   below: tuple[list[str], list[list[str]], list[Any]] | None = None) -> None:
+                   below: tuple[list[str], list[list[str]], list[Any]] | None = None, subtitle: str = '') -> None:
     """Charts side by side as on the page, each with an optional table under it (the map areas), or one table
     under all of them (RF Quality with its class bars). Rows that do not fit continue on further slides."""
     row_height = 0.24
-    slide = _slide(presentation, title)
+    slide = _slide(presentation, title, subtitle)
     left, top, width, height = _content_frame(slide)
     has_tables = below is not None or any(table for *_rest, table in panels)
     image_height = height * (0.52 if has_tables else 1) - 0.35
@@ -815,7 +887,7 @@ def _visual_slides(presentation: Presentation, title: str, panels: list[tuple[st
     per_slide = max(1, int(height / row_height) - 1)
     pages = [(rest[0][index:index + per_slide], rest[1][index:index + per_slide]) for index in range(0, len(rest[0]), per_slide)]
     for page_number, (page_rows, page_bars) in enumerate(pages, start=2):
-        continuation = _slide(presentation, f'{title} · {page_number}/{len(pages) + 1}')
+        continuation = _slide(presentation, f'{title} · {page_number}/{len(pages) + 1}', subtitle)
         left, top, width, _height = _content_frame(continuation)
         _add_bar_table(continuation, columns, page_rows, page_bars, left, top, width, row_height)
 
@@ -842,40 +914,45 @@ def export_network_insights_powerpoint(destination: Path, analysis: dict[str, An
         paragraph.font.size = Pt(15)
     sections = technology_sections(analysis)
     visuals = [(suffix, section, *_section_visuals(section, render)) for suffix, section in sections]
+    # Every slide names under its title the area, operators, vendors and environments it shows (see scope_for).
+    measured = scope_text(selection)
     # Sections follow the order of the page: Overview, maps, RF Quality, Serving Cells, Network Deployment, Cluster Sites
     # Density, Spectrum.
     for suffix, section in sections:
-        _overview_slides(presentation, f'Overview{suffix}', overview_cards(analysis, section))
+        _overview_slides(presentation, f'Overview{suffix}', overview_cards(analysis, section), subtitle=measured)
     for suffix, _section, _cdfs, groups in visuals:
         for group, panels in groups:
-            _visual_slides(presentation, f'Coverage & Interference Maps{suffix}' + (f' · {group}' if group else ''), panels)
+            _visual_slides(presentation, f'Coverage & Interference Maps{suffix}' + (f' · {group}' if group else ''), panels, subtitle=measured)
     for title, columns, rows in cell_status_tables(analysis):
-        _table_slides(presentation, title, columns, rows)
+        _table_slides(presentation, title, columns, rows, measured)
     for suffix, section, cdfs, _groups in visuals:
         if cdfs:
-            _visual_slides(presentation, f'RF Quality{suffix}', cdfs, rf_quality_table(section, analysis.get('colours')))
+            _visual_slides(presentation, f'RF Quality{suffix}', cdfs, rf_quality_table(section, analysis.get('colours')), subtitle=measured)
     serving = serving_tables(analysis)
     distance = serving_visuals(analysis, render)
     if distance and serving:
         # The distance CDF with the summary of each group under it.
-        _visual_slides(presentation, 'Serving Cells', [(caption, image, note, (serving[0][1], serving[0][2])) for caption, image, note, _table in distance])
+        _visual_slides(presentation, 'Serving Cells', [(caption, image, note, (serving[0][1], serving[0][2])) for caption, image, note, _table in distance],
+                       subtitle=measured)
     for title, columns, rows in serving[1:] if distance else serving:
-        _table_slides(presentation, title, columns, rows)
+        _table_slides(presentation, title, columns, rows, measured)
     for title, columns, rows in [table for table in snapshot_tables(deployment) if not table[0].startswith(('Spectrum', 'Cluster'))]:
-        _table_slides(presentation, title, columns, rows)
+        _table_slides(presentation, title, columns, rows, scope_for(title, selection))
     for title, panels in deployment_table_groups(deployment):
-        _paired_table_slides(presentation, title, panels)
+        _paired_table_slides(presentation, title, panels, scope_for(title, selection))
     for title, columns, rows in [*cluster_sites_tables(analysis, deployment),
                                  *[table for table in snapshot_tables(deployment) if table[0].startswith('Cluster')],
                                  *spectrum_tables(analysis), *[table for table in snapshot_tables(deployment) if table[0].startswith('Spectrum')],
                                  *nr_duplex_table(deployment)]:
-        _table_slides(presentation, title, columns, rows)
+        _table_slides(presentation, title, columns, rows, scope_for(title, selection))
     ladder = bandwidth_ladder_image(analysis)
     for title, columns, rows in bandwidth_tables(analysis):
         # The total bandwidth ladders, then their figures.
         if title.startswith('Spectrum · Total bandwidth') and ladder is not None:
-            _visual_slides(presentation, title, [('', ladder, '', None)])
-        _table_slides(presentation, title, columns, rows)
+            # As a benchmark slide: the chart title, with its scope and the line that explains it under it.
+            _visual_slides(presentation, bandwidth_title(analysis), [('', ladder, '', None)],
+                           subtitle=f'{measured}\n{bandwidth_caption(analysis)}')
+        _table_slides(presentation, title, columns, rows, measured)
     warnings = analysis.get('warnings') or []
     if warnings:
         slide = _slide(presentation, 'Analysis Notes')
@@ -969,16 +1046,22 @@ def _docx_columns(document: Document, count: int) -> float:
     return (usable - DOCX_COLUMN_GAP * (count - 1)) / count
 
 
-def _docx_section_heading(document: Document, title: str) -> None:
-    """Every section of the summary starts on a new page, as each one has its own slide in PowerPoint."""
+def _docx_section_heading(document: Document, title: str, scope: str = '') -> None:
+    """Every section of the summary starts on a new page, as each one has its own slide in PowerPoint, with the area,
+    operators, vendors and environments it shows under its title."""
     heading = document.add_heading(title, level=1)
     heading.paragraph_format.page_break_before = True
+    if scope:
+        run = document.add_paragraph().add_run(scope)
+        run.bold = True
+        run.font.size = DocxPt(9)
+        run.font.color.rgb = DocxRGBColor(0x24, 0x5A, 0x96)
 
 
 def _docx_side_by_side(document: Document, title: str, panels: list[tuple[str, Any]], add_panel: Callable[[Any, float], None],
-                       *, new_page: bool = True) -> None:
+                       *, new_page: bool = True, scope: str = '') -> None:
     """A heading on a new page, then the panels side by side in two columns (Coverage | Interference, Vodafone | Three)."""
-    _docx_section_heading(document, title)
+    _docx_section_heading(document, title, scope)
     width = _docx_columns(document, len(panels)) if len(panels) > 1 else None
     for index, (caption, content) in enumerate(panels):
         paragraph = document.add_paragraph() if caption or index else None
@@ -1088,38 +1171,46 @@ def export_network_insights_word(destination: Path, analysis: dict[str, Any], de
     # Sections follow the order of the page: Overview, maps, RF Quality, Serving Cells, Network Deployment, Cluster Sites
     # Density, Spectrum.
     for suffix, section in sections:
-        _docx_section_heading(document, f'Overview{suffix}')
+        _docx_section_heading(document, f'Overview{suffix}', scope_text(selection))
         _docx_overview_cards(document, overview_cards(analysis, section))
     for suffix, _section, _cdfs, groups in visuals:
         for group, panels in groups:
             _docx_side_by_side(document, f'Coverage & Interference Maps{suffix}' + (f' · {group}' if group else ''),
-                               [(caption, (image, note, table)) for caption, image, note, table in panels], add_image, new_page=True)
+                               [(caption, (image, note, table)) for caption, image, note, table in panels], add_image, new_page=True,
+                               scope=scope_text(selection))
     for title, columns, rows in cell_status_tables(analysis):
-        _docx_section_heading(document, title)
+        _docx_section_heading(document, title, scope_for(title, selection))
         _docx_table(document, columns, rows)
     for suffix, section, cdfs, _groups in visuals:
         if cdfs:
-            _docx_side_by_side(document, f'RF Quality{suffix}', [(caption, (image, note, None)) for caption, image, note, _table in cdfs], add_image, new_page=True)
+            _docx_side_by_side(document, f'RF Quality{suffix}', [(caption, (image, note, None)) for caption, image, note, _table in cdfs], add_image, new_page=True,
+                               scope=scope_text(selection))
             columns, rows, bars = rf_quality_table(section, analysis.get('colours'))
             if rows:
                 _docx_bar_table(document, columns, rows, bars)
     distance = serving_visuals(analysis, render)
     if distance:
-        _docx_side_by_side(document, 'Serving Cells', [(caption, (image, note, None)) for caption, image, note, _table in distance], add_image, new_page=True)
+        _docx_side_by_side(document, 'Serving Cells', [(caption, (image, note, None)) for caption, image, note, _table in distance], add_image, new_page=True,
+                           scope=scope_text(selection))
     snapshot = snapshot_tables(deployment)
     for title, columns, rows in [*serving_tables(analysis), *[table for table in snapshot if not table[0].startswith(('Spectrum', 'Cluster'))]]:
-        _docx_section_heading(document, title)
+        _docx_section_heading(document, title, scope_for(title, selection))
         _docx_table(document, columns, rows)
     for title, panels in deployment_table_groups(deployment):
-        _docx_side_by_side(document, title, [(caption, (columns, rows)) for caption, columns, rows in panels], add_table)
+        _docx_side_by_side(document, title, [(caption, (columns, rows)) for caption, columns, rows in panels], add_table,
+                           scope=scope_for(title, selection))
     ladder = bandwidth_ladder_image(analysis)
     for title, columns, rows in [*cluster_sites_tables(analysis, deployment), *[table for table in snapshot if table[0].startswith('Cluster')],
                                  *spectrum_tables(analysis), *[table for table in snapshot if table[0].startswith('Spectrum')],
                                  *nr_duplex_table(deployment), *bandwidth_tables(analysis)]:
-        _docx_section_heading(document, title)
         if title.startswith('Spectrum · Total bandwidth') and ladder is not None:
+            # The chart on a page of its own under its title and the line that explains its figures, then its figures.
+            _docx_section_heading(document, bandwidth_title(analysis), scope_text(selection))
             page = document.sections[-1]
+            caption = document.add_paragraph().add_run(bandwidth_caption(analysis))
+            caption.font.color.rgb = DocxRGBColor(0xA8, 0x40, 0x4D)
             document.add_picture(ladder, width=DocxInches(min(10.0, (page.page_width - page.left_margin - page.right_margin) / 914400)))
+        _docx_section_heading(document, title, scope_for(title, selection))
         _docx_table(document, columns, rows)
     document.save(destination)
     return destination
