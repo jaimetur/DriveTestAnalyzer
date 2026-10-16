@@ -741,12 +741,14 @@
           parts.push(`<rect x="${centre - blockWidth / 2}" y="${cursor}" width="${blockWidth}" height="${blockHeight}" fill="${item.colour}"><title>${escapeHtml(`${column} · ${row} · ${item.label}: ${number(share)}% (${integer(cell.counts[classIndex])} of ${integer(cell.known)} tests)`)}</title></rect>`);
         });
         parts.push(`<text class="ni-ladder-wide${mostWide !== null && cell.wide_share === mostWide ? ' is-most' : ''}" x="${centre}" y="${base + 19}" text-anchor="middle"><title>${escapeHtml(`${column} · ${row}: ${number(cell.wide_share)}% of ${integer(cell.known)} tests at ${wide} MHz or more`)}</title>${number(cell.wide_share, 0)}% at ${wide} MHz+</text>`);
-        parts.push(`<text class="ni-ladder-figure" x="${narrowRight + 6}" y="${narrowTop + 4}" dominant-baseline="hanging"><title>${escapeHtml(`${column} · ${row}: ${number(cell.narrow_share)}% of ${integer(cell.known)} tests below ${bandwidth.narrow_below_mhz} MHz; median ${number(cell.median_mhz, 0)} MHz`)}</title>${number(cell.narrow_share, 0)}%</text>`);
+        // The share under 25 MHz takes the colour of its block.
+        parts.push(`<text class="ni-ladder-figure" x="${narrowRight + 6}" y="${narrowTop + 4}" dominant-baseline="hanging" style="fill:${classes.at(-1).colour}"><title>${escapeHtml(`${column} · ${row}: ${number(cell.narrow_share)}% of ${integer(cell.known)} tests below ${bandwidth.narrow_below_mhz} MHz; median ${number(cell.median_mhz, 0)} MHz`)}</title>${number(cell.narrow_share, 0)}%</text>`);
       });
     });
     // The legend, widest class first, under the ladders.
     const legendTop = header + rows.length * rowHeight + 22;
-    let legendX = labelWidth;
+    // The classes follow the legend title, which is wider than the row labels.
+    let legendX = Math.max(labelWidth, 12 + 'Width, MHz (LTE + 5G)'.length * 8.6 + 18);
     parts.push(`<text class="ni-ladder-legend-title" x="12" y="${legendTop + 6}" dominant-baseline="middle">Width, MHz (LTE + 5G)</text>`);
     classes.forEach(item => {
       parts.push(`<rect x="${legendX}" y="${legendTop - 2}" width="16" height="16" rx="2" fill="${item.colour}"></rect><text class="ni-ladder-legend" x="${legendX + 22}" y="${legendTop + 6}" dominant-baseline="middle">${escapeHtml(item.label)}</text>`);

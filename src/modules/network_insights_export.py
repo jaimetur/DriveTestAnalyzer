@@ -261,7 +261,8 @@ def bandwidth_ladder_image(analysis: dict[str, Any], scope: str = 'download') ->
                     narrow_top = cursor
                 if block_height > 0:
                     draw.rectangle([(centre - block_width / 2, cursor), (centre + block_width / 2, cursor + block_height)], fill=item['colour'])
-            draw.text((narrow_right + 10, narrow_top), f"{cell['narrow_share']:.0f}%", fill='#1F2433', font=figure_font, anchor='lt')
+            # The share under 25 MHz takes the colour of its block.
+            draw.text((narrow_right + 10, narrow_top), f"{cell['narrow_share']:.0f}%", fill=classes[-1]['colour'], font=figure_font, anchor='lt')
             is_most = most_wide is not None and (cell.get('wide_share') or 0) == most_wide
             draw.text((centre, base + 34), f"{cell.get('wide_share') or 0:.0f}% at {wide} MHz+", fill='#1F2433' if is_most else '#3B4060',
                       font=figure_font if is_most else wide_font, anchor='mm')
