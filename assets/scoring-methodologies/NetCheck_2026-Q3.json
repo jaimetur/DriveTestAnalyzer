@@ -6,6 +6,10 @@
     {
       "id": "netcheck-2026-q3",
       "name": "NetCheck 2026-Q3",
+      "campaigns": {
+        "from": "2026-Q3",
+        "to": ""
+      },
       "configuration": {
         "version": "2026Q3",
         "title": "NetCheck Best Network scoring for Drive City and Connectionroad",

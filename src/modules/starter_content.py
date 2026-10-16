@@ -3,8 +3,10 @@
 New deployments and new workspaces, and existing workspaces once, receive the content shipped in
 ``assets`` that they do not have yet (matched by name, so nothing of theirs is replaced):
 
-- ``assets/scoring-methodologies/*.json``: Scoring & GAP Analysis methodologies (portable format); a
-  methodology added to the folder later reaches every existing workspace once too;
+- ``assets/scoring-methodologies/*.json``: Scoring & GAP Analysis methodologies (portable format), each with the
+  campaigns it applies to (NetCheck 2025 up to 2026-Q1, NetCheck 2026 for 2026-Q2, NetCheck 2026-Q3 from 2026-Q3;
+  NetCheck 2026 is the active one of a new workspace); a methodology added to the folder later reaches every existing
+  workspace once too (without its campaigns when they overlap those of one of its methodologies);
 - ``assets/ppt-templates/<nsa|sa>/*.csv``: Report Templates, named after their file;
 - ``assets/ppt-dashboards/*.json``: PPT Dashboards, which use those templates;
 - ``assets/autocalculated-fields/default-autocalculated-fields.json``: the Auto-calculated Fields every new
@@ -42,6 +44,8 @@ SCORING_STATE_KEY = 'scoring_configuration'
 # methodology it deleted is not given again. Workspaces set up before this record received these.
 METHODOLOGIES_STATE_KEY = 'starter_methodologies_offered'
 METHODOLOGIES_SHIPPED_BEFORE = ('netcheck-2026',)
+# The methodology a new workspace starts with as its active one (the others apply to the campaigns they name).
+BASE_METHODOLOGY = 'netcheck-2026'
 
 
 def _json_files(folder: Path) -> list[Path]:
@@ -51,6 +55,7 @@ def _json_files(folder: Path) -> list[Path]:
 def _seed_methodologies(repository: Any) -> int:
     """Add the shipped methodologies not given to the workspace yet (matched by id or name); keep its active one."""
     from src.modules.scoring_config import unwrap_scoring_profiles_payload, validate_scoring_profiles
+    from src.modules.scoring_methodologies import check_campaign_overlaps
 
     stored = repository.get_workspace_state(METHODOLOGIES_STATE_KEY)
     if stored is not None:
@@ -62,7 +67,8 @@ def _seed_methodologies(repository: Any) -> int:
         payload = unwrap_scoring_profiles_payload(json.loads(path.read_text(encoding='utf-8')))
         shipped.extend(payload['profiles'] if payload else [])
     # The base methodology first: it is the active one of a new workspace.
-    shipped = [profile for profile in sorted(shipped, key=lambda item: str(item['name']).casefold()) if profile['id'] not in offered]
+    shipped = [profile for profile in sorted(shipped, key=lambda item: (item['id'] != BASE_METHODOLOGY, str(item['name']).casefold()))
+               if profile['id'] not in offered]
     added = 0
     for profile in shipped:
         raw = repository.get_workspace_state(SCORING_STATE_KEY)
@@ -73,8 +79,16 @@ def _seed_methodologies(repository: Any) -> int:
             current = repository.get_scoring_profiles()
             known = {item['id'] for item in current['profiles']} | {item['name'].casefold() for item in current['profiles']}
             if profile['id'] not in known and profile['name'].casefold() not in known:
-                repository.replace_scoring_profiles(validate_scoring_profiles({
-                    'active_profile_id': current['active_profile_id'], 'profiles': [*current['profiles'], profile]}))
+                try:
+                    profiles = validate_scoring_profiles({
+                        'active_profile_id': current['active_profile_id'], 'profiles': [*current['profiles'], profile]})
+                    check_campaign_overlaps(profiles['profiles'])
+                except ValueError:
+                    # Its campaigns overlap those of a methodology of the workspace: it is added without them.
+                    profiles = validate_scoring_profiles({
+                        'active_profile_id': current['active_profile_id'],
+                        'profiles': [*current['profiles'], {key: value for key, value in profile.items() if key != 'campaigns'}]})
+                repository.replace_scoring_profiles(profiles)
                 added += 1
         offered.add(profile['id'])
     if shipped or stored is None:

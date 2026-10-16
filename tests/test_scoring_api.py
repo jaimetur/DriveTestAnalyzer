@@ -398,10 +398,10 @@ def test_scoring_profiles_api_edits_inactive_profile_and_switches_active(scoring
     active_configuration = repository.get_scoring_configuration()
     profiles = client.get('/api/workspace-config/scoring-profiles').json()
     second_configuration = deepcopy(active_configuration)
-    second_configuration['version'] = 'NetCheck 2025'
+    second_configuration['version'] = 'Custom 2024'
     profiles['profiles'].append({
-        'id': 'netcheck-2025',
-        'name': 'NetCheck 2025',
+        'id': 'custom-2024',
+        'name': 'Custom 2024',
         'configuration': second_configuration,
     })
 
@@ -410,14 +410,14 @@ def test_scoring_profiles_api_edits_inactive_profile_and_switches_active(scoring
     assert client.get('/api/workspace-config/scoring-configuration').json() == active_configuration
 
     inactive_edit = deepcopy(saved.json())
-    added = lambda payload: next(profile for profile in payload['profiles'] if profile['id'] == 'netcheck-2025')
+    added = lambda payload: next(profile for profile in payload['profiles'] if profile['id'] == 'custom-2024')
     added(inactive_edit)['configuration']['metrics'][0]['contexts']['DriveCity']['max_points'] = 81
     edited = client.put('/api/workspace-config/scoring-profiles', json=inactive_edit)
     assert edited.status_code == 200, edited.text
     assert client.get('/api/workspace-config/scoring-configuration').json() == active_configuration
 
     selected = edited.json()
-    selected['active_profile_id'] = 'netcheck-2025'
+    selected['active_profile_id'] = 'custom-2024'
     switched = client.put('/api/workspace-config/scoring-profiles', json=selected)
     assert switched.status_code == 200
     assert client.get('/api/workspace-config/scoring-configuration').json() == added(selected)['configuration']
@@ -430,8 +430,10 @@ def test_scoring_job_can_select_inactive_profile_without_changing_workspace_defa
     active_configuration = deepcopy(repository.get_scoring_configuration())
     profiles = repository.get_scoring_profiles()
     inactive = deepcopy(profiles['profiles'][0])
-    inactive.update({'id': 'netcheck-2025', 'name': 'NetCheck 2025'})
-    inactive['configuration']['version'] = 'NetCheck 2025'
+    inactive.update({'id': 'custom-2024', 'name': 'Custom 2024'})
+    # Chosen by hand only: it applies to no campaigns of its own.
+    inactive.pop('campaigns', None)
+    inactive['configuration']['version'] = 'Custom 2024'
     assert client.put('/api/scoring/aggregation-hierarchy', json={'levels': ['Region', 'Operator', 'Vendor', 'City', 'Campaign']}).status_code == 200
     inactive['configuration']['metrics'][0]['contexts']['DriveCity']['max_points'] = 88
     profiles['profiles'].append(inactive)
@@ -441,13 +443,13 @@ def test_scoring_job_can_select_inactive_profile_without_changing_workspace_defa
         'dataset_ids': scoring_api['complete_dataset_ids'],
         'nr_mode': 'NSA',
         'aggregation_levels': ['Region', 'City'],
-        'scoring_profile_id': 'netcheck-2025',
+        'scoring_profile_id': 'custom-2024',
     })
 
     assert response.status_code == 200, response.text
     job = response.json()['saved_filter']
-    assert job['scoring_profile_id'] == 'netcheck-2025'
-    assert job['scoring_profile_name'] == 'NetCheck 2025'
+    assert job['scoring_profile_id'] == 'custom-2024'
+    assert job['scoring_profile_name'] == 'Custom 2024'
     assert job['configuration']['metrics'][0]['contexts']['DriveCity']['max_points'] == 88
     assert job['aggregation_hierarchy'] == ['Region', 'Cluster', 'Operator', 'Vendor', 'City', 'Campaign']
     assert job['aggregation_levels'] == ['Region', 'Operator', 'City']

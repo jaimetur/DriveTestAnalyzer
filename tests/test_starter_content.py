@@ -162,3 +162,59 @@ def test_a_methodology_shipped_later_reaches_existing_workspaces_once(client):
     profiles = repository.get_scoring_profiles()
     repository.replace_scoring_profiles({**profiles, 'profiles': [p for p in profiles['profiles'] if p['name'] != 'NetCheck 2026-Q3']})
     assert starter_content.seed_starter_content(repository) is None and 'NetCheck 2026-Q3' not in names()
+
+
+def test_netcheck_2025_follows_the_2025_26_methodology_up_to_2026_q1():
+    from src.modules.scoring_config import validate_scoring_profiles
+    from src.modules.scoring_methodologies import methodology_for
+
+    def load(name):
+        return json.loads((ASSETS / 'scoring-methodologies' / name).read_text(encoding='utf-8'))['profiles'][0]
+
+    old, base, q3 = load('NetCheck_2025.json'), load('NetCheck_2026.json'), load('NetCheck_2026-Q3.json')
+    assert (old['id'], old['name']) == ('netcheck-2025', 'NetCheck 2025')
+    metrics = {m['code']: m for m in old['configuration']['metrics']}
+    base_metrics = {m['code']: m for m in base['configuration']['metrics']}
+    # Call Setup Time > 15 s instead of > 10 s, with the same thresholds.
+    assert metrics['K3']['kpi'] == 'CALL SETUP TIME > 15 s [%]'
+    assert metrics['K3']['calculation']['formula'] == '100 * SUM(Call_Setup_Time > 15) / COUNT(Call_Status)'
+    assert metrics['K3']['contexts']['Drive - City']['thresholds'] == base_metrics['K3']['contexts']['Drive - City']['thresholds']
+    # The 2025/26 drive test points (City 65 %, Roads 35 %): classic calls 252, WhatsApp calls 84, Multi RAB 14.
+    city = lambda code: round(metrics[code]['contexts']['Drive - City']['max_points'], 4)
+    road = lambda code: round(metrics[code]['contexts']['Drive - Connecting Roads']['max_points'], 4)
+    assert [city(f'K{n}') for n in range(1, 12)] == [92.82, 10.92, 5.46, 27.3, 9.1, 18.2, 36.4, 9.1, 3.0333, 6.0667, 9.1]
+    assert [road(f'K{n}') for n in range(1, 12)] == [49.98, 5.88, 2.94, 14.7, 4.9, 9.8, 19.6, 4.9, 1.6333, 3.2667, 4.9]
+    for environment, total in (('Drive - City', 650), ('Drive - Connecting Roads', 350)):
+        assert round(sum(m['contexts'][environment]['max_points'] for m in metrics.values()), 6) == total
+    # Data, thresholds and Most Reliable points are those of NetCheck 2026 (weight_share is derived from the points).
+    plain = lambda metric: {**metric, 'contexts': {name: {key: value for key, value in context.items() if key != 'weight_share'}
+                                                   for name, context in metric['contexts'].items()}}
+    for code in metrics:
+        if int(code[1:]) > 11:
+            assert plain(metrics[code]) == plain(base_metrics[code])
+        for environment in ('Drive - City', 'Drive - Connecting Roads'):
+            assert metrics[code]['contexts'][environment].get('most_reliable_points') == base_metrics[code]['contexts'][environment].get('most_reliable_points')
+    # Each shipped methodology applies to its campaigns, without overlaps.
+    assert [old['campaigns'], base['campaigns'], q3['campaigns']] == [
+        {'from': '', 'to': '2026-Q1'}, {'from': '2026-Q2', 'to': '2026-Q2'}, {'from': '2026-Q3', 'to': ''}]
+    profiles = validate_scoring_profiles({'active_profile_id': base['id'], 'profiles': [base, old, q3]})
+    assert [methodology_for(profiles, campaign)['id'] for campaign in ('UK_BM_Q2_2025', 'UK_Q1_2026', 'UK_Q2_2026', 'UK_Q3_NSA_2026')] == [
+        'netcheck-2025', 'netcheck-2025', 'netcheck-2026', 'netcheck-2026-q3']
+
+
+def test_netcheck_2025_reaches_a_workspace_with_overlapping_campaigns_without_them(client):
+    import src.DriveTestAnalyzer as app_module
+
+    repository = app_module.repository
+    profiles = repository.get_scoring_profiles()
+    # A new workspace keeps NetCheck 2026 as its active methodology.
+    assert profiles['active_profile_id'] == 'netcheck-2026'
+    assert 'netcheck-2025' in [profile['id'] for profile in profiles['profiles']]
+    # A workspace whose NetCheck 2026 applies up to 2026-Q2, set up before NetCheck 2025 was shipped.
+    kept = [{**profile, 'campaigns': {'from': '', 'to': '2026-Q2'}} if profile['id'] == 'netcheck-2026' else profile
+            for profile in profiles['profiles'] if profile['id'] != 'netcheck-2025']
+    repository.replace_scoring_profiles({**profiles, 'profiles': kept})
+    repository.set_workspace_state(starter_content.METHODOLOGIES_STATE_KEY, json.dumps(['netcheck-2026', 'netcheck-2026-q3']))
+    assert starter_content.seed_starter_content(repository) == {'methodologies': 1}
+    added = next(profile for profile in repository.get_scoring_profiles()['profiles'] if profile['id'] == 'netcheck-2025')
+    assert not added.get('campaigns')

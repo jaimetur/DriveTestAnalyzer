@@ -825,6 +825,25 @@ The NetCheck 2026 Most Reliable scoring rates 10 KPIs with **650** points in Dri
 
 Regression tests reproduce the workbook's City and Road totals for each operator from its KPI values, within the 0.05 points of its rounding.
 
+### NetCheck 2025
+
+The campaigns up to Q1 2026 follow the NET CHECK 2025/26 Benchmarking Methodology. The **NetCheck 2025** methodology, shipped with the application beside NetCheck 2026, has the KPIs, thresholds and Data points of NetCheck 2026 with two differences, from its drive test ranking (Drive - City 65 %, Drive - Connecting Roads 35 %): K3 is **CALL SETUP TIME > 15 s [%]** (calls whose setup takes more than 15 s, with the same thresholds 3 % / 0.6 % / 0 %) instead of > 10 s, and the voice points give the classic calls 252 points and WhatsApp calls 84 (NetCheck 2026: 203 and 133). Its Most Reliable points are those of NetCheck 2026.
+
+| Code | KPI | City points | Road points |
+|---|---|---:|---:|
+| K1 | CALL SUCCESS RATIO [%] | 92.8200 | 49.9800 |
+| K2 | CALL SETUP TIME [s] | 10.9200 | 5.8800 |
+| K3 | CALL SETUP TIME > 15 s [%] | 5.4600 | 2.9400 |
+| K4 | POLQA < 1.6 [%] | 27.3000 | 14.7000 |
+| K5 | POLQA [MOS] | 9.1000 | 4.9000 |
+| K6 | DISTURBED & IMPAIRED CALL [%] | 18.2000 | 9.8000 |
+| K7 | WHATSAPP CALL SUCCESS RATIO [%] | 36.4000 | 19.6000 |
+| K8 | WHATSAPP POLQA < 1.6 [%] | 9.1000 | 4.9000 |
+| K9 | WHATSAPP POLQA [MOS] | 3.0333 | 1.6333 |
+| K10 | WHATSAPP DISTURBED & IMPAIRED CALL [%] | 6.0667 | 3.2667 |
+
+The shipped methodologies say the campaigns they apply to, so **By campaign** scores each campaign with its own: NetCheck 2025 up to 2026-Q1, NetCheck 2026 for 2026-Q2 and NetCheck 2026-Q3 from 2026-Q3. A new workspace starts with NetCheck 2026 as its active methodology; an existing workspace receives NetCheck 2025 once, with its campaigns unless they overlap those of one of its methodologies (then without them: set them in **Applies to campaigns**).
+
 ### NetCheck 2026-Q3
 
 From Q3 2026 NetCheck adds TikTok to Video Streaming. The **NetCheck 2026-Q3** methodology, shipped with the application beside NetCheck 2026, keeps the 20 % of Video Streaming but divides it between YouTube (13 %) and TikTok (7 %), following the NetCheck Q3 ranking templates (Best Network and Most Reliable, National and City). K28, K29 and K30 become the YouTube KPIs (`Test_Name` = `YouTube`, as every Video Streaming test of the earlier campaigns) and K33, K34 and K35 the same KPIs for TikTok (`Test_Name` = `TikTok`), with the same thresholds; every other KPI and the 650 City and 350 Road points of both scorings are those of NetCheck 2026. Choose it in the Calculation panel for the Q3 campaigns.
