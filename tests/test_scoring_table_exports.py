@@ -274,9 +274,12 @@ def test_all_environment_ppt_finishes_each_full_block_aggregate_first(levels):
             assert all('Environment:' not in paragraph.text
                        for paragraph in slide.shapes.title.text_frame.paragraphs)
         if slide.shapes.title and slide.shapes.title.text.startswith('Scoring Tables'):
-            # Environment blocks name their environment; the All Environments block names only the scoring.
-            subtitle = slide.shapes.title.text.split('\n')[1]
+            # Environment blocks name their environment; the All Environments block names only the scoring. Then
+            # the area, operators and vendors of the table.
+            subtitle, area, operators, vendors = slide.shapes.title.text.split('\n')[1].split(' · ')
             assert subtitle in {'Best Network', 'Best Network — Drive - City', 'Best Network — Drive - Connecting Roads'}
+            assert area in {'Region: North', 'National'}
+            assert (operators, vendors) == ('All Operators', 'All Vendors')
     selected = Presentation(BytesIO(export_scoring_powerpoint(job, result, TEMPLATE, environment='DriveCity')))
     assert [slide.shapes.title.text.split('\n')[0] for slide in selected.slides].count('Scoring Tables — Summary') == 1
     assert [slide.shapes.title.text.split('\n')[0] for slide in selected.slides].count('Scoring Tables — Breakdown') == 1

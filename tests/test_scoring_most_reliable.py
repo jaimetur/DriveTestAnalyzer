@@ -249,7 +249,7 @@ def test_powerpoint_carries_both_scorings_in_one_document():
     best = titles.index(next(title for title in titles if title.startswith('Best Network Scoring')))
     reliable = titles.index(next(title for title in titles if title.startswith('Most Reliable Network Scoring')))
     assert 0 < best < reliable
-    assert 'Best Network Scoring per Service | Best Network' in titles[best:reliable]
+    assert 'Best Network Scoring per Service | Best Network · National · All Operators · All Vendors' in titles[best:reliable]
     assert any(title.startswith('Best Network Scoring per Service | Best Network — ') for title in titles[best:reliable])
     assert any(title.startswith('Most Reliable Network Scoring per Service | Most Reliable Network — ')
                for title in titles[reliable:])

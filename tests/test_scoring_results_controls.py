@@ -259,13 +259,16 @@ def test_results_controls_are_grouped_with_icons_and_unique_environment_heading(
             'appendContextHeader': _function_source(script, 'appendContextHeader'),
             'environmentLabel': _function_source(script, 'environmentLabel'),
             'humanizeKey': _function_source(script, 'humanizeKey'),
+            'resultScope': _function_source(script, 'resultScope'),
+            'appendResultScope': _function_source(script, 'appendResultScope'),
+            'resultScopeFilters': 'const resultScopeFilters = {};',
         },
     }
     program = r"""
 const vm = require('node:vm');
 const payload = JSON.parse(require('node:fs').readFileSync(0, 'utf8'));
 class Element {
-  constructor(tagName) { this.tagName = tagName; this.children = []; this.className = ''; this.ownText = ''; }
+  constructor(tagName) { this.tagName = tagName; this.children = []; this.className = ''; this.ownText = ''; this.dataset = {}; }
   set textContent(value) { this.ownText = String(value); this.children = []; }
   get textContent() { return this.ownText + this.children.map(child => child.textContent).join(''); }
   append(...nodes) { this.children.push(...nodes); }
@@ -284,6 +287,7 @@ for (const [kind, title] of [['score', 'Scoring Tables'], ['gap', 'GAP Analysis'
     environmentChips: heading.children.filter(child => child.className.includes('scoring-environment-chip')).map(child => child.textContent),
     otherContextChips: pane.children.filter(child => child.className === 'scoring-context-chips')
       .flatMap(group => group.children.map(child => child.textContent)),
+    pills: heading.children.filter(child => child.className.startsWith('scoring-scope-pill')).map(child => child.textContent),
   });
 }
 globalThis.result = results;`, context);
@@ -293,6 +297,9 @@ process.stdout.write(JSON.stringify(context.result));
     assert [item['title'] for item in result] == ['Scoring Tables', 'GAP Analysis', 'Scoring Charts']
     assert all(item['environmentChips'] == ['Environment: Drive City'] for item in result)
     assert all('Environment:' not in ' '.join(item['otherContextChips']) for item in result)
+    # The heading of the GAP tables is their title: it names their area, operators and vendors; Scoring Tables and
+    # Charts name them in the title of each table and chart.
+    assert [item['pills'] for item in result] == [[], ['City: London', 'All Operators', 'All Vendors'], []]
 
 
 def test_category_allocation_donut_uses_configured_maxima_order_and_tooltips():
@@ -506,8 +513,10 @@ def test_scoring_chart_pairs_render_five_operator_two_category_views():
         'renderCharts', 'renderHierarchyCharts', 'svgElement', 'hierarchyChartColor',
         'hierarchyDisplayValue', 'hierarchyPathEntry', 'hierarchyPrefixKey', 'appendHierarchyAxisBands',
         'hierarchyPathValueLabel', 'hierarchyPathFullLabel', 'chartFitWidth', 'styleIncompleteValue',
+        'resultScope', 'appendResultScope',
     )
     payload = {'snippets': {name: _function_source(script, name) for name in names}}
+    payload['snippets']['resultScopeFilters'] = 'const resultScopeFilters = {};'
     # Zoom is attached in the browser; this test renders the charts only.
     payload['snippets']['zoomStubs'] = 'function enableMapZoom() {}\nfunction enableContentZoom() {}'
     program = r"""
@@ -1112,9 +1121,10 @@ def test_raw_kpi_columns_are_hidden_in_summary_and_shown_in_expanded():
         'appendScoreGapCells', 'showGapValues', 'selectedGapLayout', 'tableForMode',
         'appendMatrixTable', 'renderScoringViews', 'summaryOperatorColors', 'appendOperatorRankingLegend',
         'styleIncompleteValue',
-        'applyGapCategoryRunColors',
+        'applyGapCategoryRunColors', 'resultScope', 'appendResultScope',
     )
     payload = {'snippets': {name: _function_source(script, name) for name in names}}
+    payload['snippets']['resultScopeFilters'] = 'const resultScopeFilters = {};'
     program = r"""
 const vm = require('node:vm');
 const payload = JSON.parse(require('node:fs').readFileSync(0, 'utf8'));
@@ -1665,7 +1675,9 @@ def test_charts_maps_and_tables_open_larger_and_charts_zoom():
     # Maps and the tables of Scoring Tables and GAP Analysis open larger with a double click; charts and maps zoom there.
     assert "root.addEventListener('dblclick', event => {" in script
     assert "openExpandedView(map.querySelector('svg'), ['Points Lost Map', operator]" in script
-    assert "openExpandedView(table, heading?.textContent?.trim() || 'Scoring table', meta, table, 'Table');" in script
+    assert "openExpandedView(table, titleWithoutScope(heading) || 'Scoring table', meta, table, 'Table');" in script
+    # The larger view keeps the pills of the title of its chart, map or table.
+    assert script.count('appendExpandedScope(') == 4
     assert "if (copy.matches?.('svg')) enableMapZoom(holder, copy);" in script
     # Content that is not one SVG (such as the location cards) zooms by scaling it inside its box.
     assert "else enableContentZoom(card, scroll);" in script and "else if (!isTable) enableContentZoom(holder, holder);" in script
@@ -1842,3 +1854,69 @@ def test_saved_filters_are_edited_in_a_dialog_with_the_calculation_panel():
     sync = _function_source(script, 'syncSavedFilterEditing')
     assert 'calculateButton.hidden = editing;' in sync and 'if (editCancelButton) editCancelButton.hidden = !editing;' in sync
     assert "createSavedFilter(false, {url: `${savedFiltersUrl}/${encodeURIComponent(savedFilterIdOf(savedFilter))}/edit`})" in script
+
+
+def test_chart_and_table_titles_name_their_area_operators_and_vendors():
+    script = SCORING_SCRIPT.read_text(encoding='utf-8')
+    template = SCORING_TEMPLATE.read_text(encoding='utf-8')
+    payload = {'snippets': {'resultScope': _function_source(script, 'resultScope')}}
+    program = r"""
+const vm = require('node:vm');
+const payload = JSON.parse(require('node:fs').readFileSync(0, 'utf8'));
+const context = {};
+vm.createContext(context);
+vm.runInContext('let resultScopeFilters = {};\nconst scoringVendorName = value => value.replace(/^(EE|O2 UK)_/, "");\n'
+  + payload.snippets.resultScope + `
+function scopeOf(filters, tableContext = null) {
+  resultScopeFilters = filters;
+  return resultScope(tableContext).map(item => item.label);
+}
+globalThis.scopes = [
+  scopeOf({Region: [], City: [], Operator: [], Vendor: []}),
+  scopeOf({City: ['London']}),
+  scopeOf({City: ['Leeds', 'London']}),
+  scopeOf({City: ['Bristol', 'Cardiff', 'Leeds']}),
+  scopeOf({City: ['Bristol', 'Cardiff', 'Leeds', 'London', 'York']}),
+  scopeOf({Region: ['Wales'], City: []}),
+  scopeOf({Region: ['Wales'], Cluster: ['Cardiff Bay']}),
+  scopeOf({City: ['Leeds', 'London']}, {city: 'Leeds', campaign: 'UK_Q2_2026'}),
+  scopeOf({City: ['London']}, {region: 'London'}),
+  scopeOf({}, {region: 'Wales', environment: 'Combined'}),
+  scopeOf({Operator: ['EE'], Vendor: ['EE_Nokia', 'O2 UK_Nokia', 'O2 UK_Ericsson']}),
+  scopeOf({Operator: ['EE', 'O2 UK', 'Three UK', 'Vodafone UK'], Vendor: ['EE_Nokia']}, {vendor: 'Samsung'}),
+];
+resultScopeFilters = {City: ['Bristol', 'Cardiff', 'Leeds', 'London', 'York']};
+globalThis.tooltip = resultScope()[0].title;`, context);
+process.stdout.write(JSON.stringify({scopes: context.scopes, tooltip: context.tooltip}));
+"""
+    result = _run_node_json(program, payload)
+    everything = ['All Operators', 'All Vendors']
+    assert result['scopes'] == [
+        ['National', *everything], ['City: London', *everything], ['Cities: Leeds & London', *everything],
+        ['Cities: Bristol, Cardiff & Leeds', *everything], ['Cities: Bristol, Cardiff & 3 more', *everything],
+        ['Region: Wales', *everything], ['Cluster: Cardiff Bay', *everything], ['City: Leeds', *everything],
+        ['City: London', *everything], ['Region: Wales', *everything],
+        # Vendors are named without their operator, as on the Saved Filter cards.
+        ['National', 'Operator: EE', 'Vendors: Nokia & Ericsson'],
+        ['National', 'Operators: EE, O2 UK & 2 more', 'Vendor: Samsung'],
+    ]
+    # The tooltip of a shortened list names every value.
+    assert result['tooltip'] == 'Cities: Bristol, Cardiff, Leeds, London, York'
+    # The results take the filters of the Saved Filter they show.
+    assert "resultScopeFilters = resultFilters && typeof resultFilters === 'object' ? resultFilters : {};" in script
+    # Every chart and table title ends with its pills; the National & Areas card shows every area and has none.
+    card = _function_source(script, 'makeExpandableChartCard')
+    assert "const scope = context === false ? null : appendResultScope(heading, context);" in card
+    assert "makeAreaSummaryView(summary), false));" in script
+    assert "if (kind === 'gap' || kind === 'gap-summary') appendResultScope(heading, context);" in script
+    for line in (
+        'appendResultScope(summaryHeading, tableData.context);', 'appendResultScope(expandedHeading, tableData.context);',
+        'appendResultScope(summaryHeading, selected?.context);', 'appendResultScope(expandedHeading, selected?.context);',
+        'appendResultScope(heading, chosen.context);',
+    ):
+        assert script.count(line) == 1, line
+    assert script.count('appendResultScope(heading, inScope[0]?.context);') == 2
+    assert "pill.className = `scoring-scope-pill is-${item.kind}`;" in script
+    for rule in ('.scoring-scope-pill { display: inline-flex;', '.scoring-scope-pill.is-operator {',
+                 '.scoring-scope-pill.is-vendor {'):
+        assert rule in template

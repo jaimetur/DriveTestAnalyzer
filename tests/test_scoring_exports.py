@@ -693,7 +693,9 @@ def test_powerpoint_exports_one_reference_style_scoring_matrix_with_signed_gaps_
     assert 'Page 1 of' not in _slide_text(category_chart_slides[0])
     assert titles[5:7] == ['Scoring Tables — Summary', 'Scoring Tables — Breakdown']
     gap_start = titles.index('GAP Analysis — All vs EE')
-    assert presentation.slides[gap_start].shapes.title.text.split('\n')[1] == 'Best Network — Drive - City'
+    # The subtitle names the area of the table (the Region of its context), its operators and its vendors.
+    assert presentation.slides[gap_start].shapes.title.text.split('\n')[1] == \
+        'Best Network — Drive - City · Region: North · All Operators · All Vendors'
     # The GAP tables end the block, followed by the KPI GAP Profiles.
     assert all(title.startswith(('GAP Analysis', 'KPI GAP Profile')) for title in titles[gap_start:])
     for slide in presentation.slides:
@@ -1119,7 +1121,7 @@ def test_multilevel_hierarchy_export_uses_editable_nested_tables_and_one_chart_p
     best_network_slide = next(slide for slide, title in zip(presentation.slides, titles)
                               if title == 'Best Network Scoring per Service')
     assert best_network_slide.shapes.title.text == \
-        'Best Network Scoring per Service\nBest Network — Drive - City'
+        'Best Network Scoring per Service\nBest Network — Drive - City · National · All Operators · All Vendors'
     assert str(best_network_slide.shapes.title.text_frame.paragraphs[0].font.color.rgb) == '1450A8'
     assert best_network_slide.shapes.title.text_frame.paragraphs[1].font.size.pt == 14
     best_network_chart, environment_donut, donut = _charts_on_slide(best_network_slide)
@@ -1232,7 +1234,8 @@ def test_multilevel_hierarchy_export_uses_editable_nested_tables_and_one_chart_p
     assert len(observed_leaf_paths) == len(all_leaf_paths)
 
     chart_slide = chart_slides[0]
-    assert chart_slide.shapes.title.text == 'Best Network Scoring per Category\nBest Network — Drive - City'
+    assert chart_slide.shapes.title.text == \
+        'Best Network Scoring per Category\nBest Network — Drive - City · National · All Operators · All Vendors'
     chart_group = next(shape for shape in chart_slide.shapes
                        if shape.name == 'Scoring Chart With Category Key')
     chart_shape = next(shape for shape in chart_group.shapes if shape.has_chart)
@@ -1578,3 +1581,47 @@ def test_powerpoint_shows_environment_scaling_in_orange_and_in_the_allocation_do
               for paragraph in shape.text_frame.paragraphs for run in paragraph.runs
               if run._r.rPr is not None and run._r.rPr.get('strike') == 'sngStrike']
     assert {run.text.strip() for run in struck} >= {'650 pts', '350 pts'}
+
+
+def test_slides_name_the_area_operators_and_vendors_of_their_tables_as_the_web_titles(monkeypatch):
+    from docx import Document
+
+    import src.modules.pptx_to_docx as pptx_to_docx_module
+    from src.modules.scoring_insight_slides import scoring_scope_labels
+
+    filters = {'Region': [], 'City': ['Bristol', 'Cardiff', 'Leeds', 'London'], 'Operator': ['EE', 'O2 UK'],
+               'Vendor': ['EE_Nokia', 'O2 UK_Ericsson']}
+    presentation = _export(_result(), operator_mapping_groups=_mapping_groups(), job_fields={'context_filters': filters})
+    subtitles = {}
+    for slide in presentation.slides:
+        paragraphs = slide.shapes.title.text_frame.paragraphs if slide.shapes.title else []
+        if len(paragraphs) > 1:
+            subtitles.setdefault(paragraphs[0].text, paragraphs[1])
+    scope = 'Cities: Bristol, Cardiff & 2 more · Operators: EE & O2 UK · Vendors: Nokia & Ericsson'
+    for title in ('Best Network Scoring per Service', 'Scoring Tables — Summary', 'GAP Analysis — All vs EE'):
+        assert subtitles[title].text == f'Best Network — Drive - City · {scope}', title
+    # The KPI GAP Profile names its location after them; a longer subtitle is smaller so it keeps one line.
+    profile = subtitles[next(title for title in subtitles if title.startswith('KPI GAP Profile'))]
+    assert profile.text == f'Best Network — Drive - City · {scope} · Region: North · Campaign: 2026-Q2'
+    assert 8 <= profile.runs[0].font.size.pt < 14
+    assert subtitles['Best Network Scoring per Service'].runs[0].font.size.pt < 14
+
+    # The same rule as the web: the context first, then the filters, the most specific area first; the values the
+    # slide names from its context are not repeated.
+    assert scoring_scope_labels(None, {}) == ['National', 'All Operators', 'All Vendors']
+    assert scoring_scope_labels({'region': 'North'}, {'City': ['London']}, omit_context=True) == [
+        'City: London', 'All Operators', 'All Vendors']
+    assert scoring_scope_labels({'city': 'London', 'campaign': 'UK_Q2_2026'}, {'City': ['Leeds', 'London']},
+                                omit_context=True) == ['All Operators', 'All Vendors']
+    assert scoring_scope_labels({'vendor': 'Nokia'}, {'Vendor': ['EE_Nokia', 'EE_Ericsson']}, ['EE'],
+                                omit_context=True) == ['National', 'All Operators']
+    assert scoring_scope_labels(None, [{'column': 'Region', 'value': ['Wales', 'North West']}]) == [
+        'Regions: Wales & North West', 'All Operators', 'All Vendors']
+
+    # The Word version keeps them: the slide images with LibreOffice, the slide headings without it.
+    monkeypatch.setattr(pptx_to_docx_module, 'slide_images', lambda *_args, **_kwargs: None)
+    output = BytesIO()
+    presentation.save(output)
+    document = Document(BytesIO(pptx_to_docx_module.pptx_to_docx(output.getvalue(), 'Scoring & GAP Analysis')))
+    assert any(paragraph.text == f'Best Network Scoring per Service Best Network — Drive - City · {scope}'
+               for paragraph in document.paragraphs)

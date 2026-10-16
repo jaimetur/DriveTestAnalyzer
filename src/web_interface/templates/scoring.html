@@ -546,6 +546,14 @@
   .scoring-best-network-layout .scoring-chart-card { min-width: 0; }
   .scoring-chart-card { min-width: 0; padding: 1rem; border: 1px solid var(--line); border-radius: 13px; background: rgba(255,255,255,.82); cursor: default; }
   .scoring-chart-card h4 { margin: 0 0 .6rem; color: #245e5a; font-size: 1.3rem; font-weight: 800; }
+  /* The area, operators and vendors of a chart or table, in the colours of their filters on the Saved Filter cards. */
+  .scoring-scope-pill { display: inline-flex; align-items: center; margin-left: .55rem; padding: .14rem .62rem; border: 1px solid rgba(36,94,90,.32); border-radius: 999px; background: #d9eeea; color: #164c47; font-size: .8rem; font-weight: 800; line-height: 1.35; vertical-align: .08em; }
+  .scoring-scope-pill + .scoring-scope-pill { margin-left: .35rem; }
+  .scoring-scope-pill.is-operator { border-color: rgba(36,88,166,.3); background: #e3ecfa; color: #1d4a8f; }
+  .scoring-scope-pill.is-vendor { border-color: rgba(105,65,165,.3); background: #eee7f8; color: #5a3591; }
+  :is(.scoring-chart-card h4, [data-scoring-chart-title]) .scoring-scope-pill { margin-left: .6rem; padding: .18rem .72rem; font-size: 1rem; vertical-align: .2em; }
+  :is(.scoring-chart-card h4, [data-scoring-chart-title]) .scoring-scope-pill + .scoring-scope-pill { margin-left: .4rem; }
+  .scoring-context-heading .scoring-scope-pill { margin-left: 0; }
   .scoring-chart-svg { display: block; width: 100%; height: auto; min-height: 26rem; overflow: visible; }
   .scoring-chart-svg.scoring-best-network-bars { min-width: 0; max-width: none; min-height: 0; }
   .scoring-chart-svg.scoring-allocation-donut { min-height: 0; max-width: 100%; margin: 0 auto; }

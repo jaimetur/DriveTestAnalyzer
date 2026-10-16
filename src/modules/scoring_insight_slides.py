@@ -15,6 +15,8 @@ from pptx.enum.shapes import MSO_SHAPE
 from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
 from pptx.util import Inches, Pt
 
+from src.modules.scoring_vendors import scoring_vendor_name
+
 VOICE_COLOR = '#F2A900'
 DATA_COLOR = '#0E6B66'
 PANEL_COLOR = '#0B2A5B'
@@ -125,6 +127,84 @@ def _block_profiles(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return items
 
 
+# The levels that name the area of a chart or table, the most specific first.
+AREA_LEVELS = (('City', 'Cities'), ('Cluster', 'Clusters'), ('Region', 'Regions'))
+# What a chart or table without area, operator or vendor filters shows.
+SCOPE_FALLBACKS = ('National', 'All Operators', 'All Vendors')
+# The area, operators and vendors to name on a slide, for the context of the slide (see scoring_scope_labels).
+ScopeLabels = Callable[[dict[str, Any] | None], list[str]]
+
+
+def _level_values(source: Any, level: str) -> list[str]:
+    """The values of a level (City, Region, Operator…) in a context or in filters (a mapping, or column filters)."""
+    if isinstance(source, dict):
+        value = next((item for key, item in source.items() if str(key).casefold() == level.casefold()), None)
+        if isinstance(value, set):
+            values = sorted(value, key=str)
+        else:
+            values = list(value) if isinstance(value, (list, tuple)) else [value]
+    elif isinstance(source, list):
+        values = []
+        for item in source:
+            if isinstance(item, dict) and str(item.get('column') or item.get('field') or '').casefold() == level.casefold():
+                value = item.get('value', item.get('values'))
+                values.extend(value if isinstance(value, (list, tuple)) else [value])
+    else:
+        values = []
+    return list(dict.fromkeys(str(value).strip() for value in values if value is not None and str(value).strip()))
+
+
+def _scope_values(context: dict[str, Any] | None, filters: Any, level: str, operators: Any = ()) -> list[str]:
+    """The values of a level in the context of a chart or table, else in the filters (vendors without operator)."""
+    for source in (context, filters):
+        values = _level_values(source, level)
+        if values and level == 'Vendor':
+            return list(dict.fromkeys(scoring_vendor_name(value, operators) for value in values))
+        if values:
+            return values
+    return []
+
+
+def _scope_label(values: list[str], level: str, plural: str) -> str:
+    shown = [*values[:2], f'{len(values) - 2} more'] if len(values) > 3 else values
+    names = f"{', '.join(shown[:-1])} & {shown[-1]}" if len(shown) > 1 else shown[0]
+    return f'{plural if len(values) > 1 else level}: {names}'
+
+
+def scoring_area_label(context: dict[str, Any] | None, filters: Any) -> str:
+    """The area a chart or table shows, as the web titles name it (for example City: London): the City, Cluster or
+    Region of its context, else the City, Cluster or Region filters of the scoring, else National. A long list keeps
+    its first two names and counts the others."""
+    for level, plural in AREA_LEVELS:
+        values = _scope_values(context, filters, level)
+        if values:
+            return _scope_label(values, level, plural)
+    return 'National'
+
+
+def scoring_scope_labels(context: dict[str, Any] | None, filters: Any, operators: Any = (), *,
+                         omit_context: bool = False) -> list[str]:
+    """The area, operators and vendors a chart or table shows, as the pills of the web titles: each from its context,
+    else from the filters, else National, All Operators or All Vendors. ``operators`` take the operator out of
+    Operator_Vendor values. With ``omit_context`` the values the slide already names from its context are left out."""
+    operator_values = _scope_values(context, filters, 'Operator')
+    vendor_values = _scope_values(context, filters, 'Vendor', operators)
+    labels = [
+        scoring_area_label(context, filters),
+        _scope_label(operator_values, 'Operator', 'Operators') if operator_values else 'All Operators',
+        _scope_label(vendor_values, 'Vendor', 'Vendors') if vendor_values else 'All Vendors',
+    ]
+    if omit_context and context:
+        told = set(scoring_scope_labels(context, None, operators))
+        labels = [label for label in labels if label in SCOPE_FALLBACKS or label not in told]
+    return labels
+
+
+def _with_scope(subtitle: str, scope: ScopeLabels | None, context: dict[str, Any] | None = None) -> str:
+    """A slide subtitle followed by the area, operators and vendors that ``scope`` gives for the slide's context."""
+    return ' · '.join(part for part in (subtitle, *(scope(context) if scope else ())) if part)
+
+
 def _context_text(context: dict[str, Any]) -> str:
     from src.modules.scoring_insights import _display
     names = {'vendor': 'Vendor', 'region': 'Region', 'cluster': 'Cluster', 'city': 'City', 'campaign': 'Campaign'}
@@ -141,7 +221,7 @@ def _latest_campaign_groups(groups: list[dict[str, Any]]) -> list[dict[str, Any]
 
 
 def add_location_card_slides(presentation, groups: list[dict[str, Any]], *, scoring_label: str, subtitle: str,
-                             new_slide: Callable) -> None:
+                             new_slide: Callable, scope: ScopeLabels | None = None) -> None:
     """One slide per group: a card per City, Cluster or Region with Voice and Data points per operator.
 
     With several campaigns only the latest one gets cards; the scoring trend shows the others.
@@ -151,7 +231,7 @@ def add_location_card_slides(presentation, groups: list[dict[str, Any]], *, scor
         level = group['level']
         plural = {'City': 'cities', 'Cluster': 'clusters', 'Region': 'regions'}[level]
         slide = new_slide(presentation, f'{scoring_label} Scoring per {level}',
-                          ' · '.join(part for part in (subtitle, group['title']) if part))
+                          ' · '.join(part for part in (_with_scope(subtitle, scope), group['title']) if part))
         cards = group['cards']
         maximum = group['maximum']
         voice_max, data_max = group.get('max_voice') or 0, group.get('max_data') or 0
@@ -334,7 +414,7 @@ def _profile_table(slide, profile: dict[str, Any], *, kind: str, left: float, wi
 
 def add_kpi_gap_profile_slides(presentation, profiles: list[dict[str, Any]], *, scoring_label: str, subtitle: str,
                                environment_labels: dict[str, str], new_slide: Callable,
-                               operator_colors: dict[str, str]) -> None:
+                               operator_colors: dict[str, str], scope: ScopeLabels | None = None) -> None:
     """Per compared operator: the KPIs sorted by the points lost against the maximum and the GAP to the reference.
 
     The reference operator, when it is one of the compared operators, has its Gap to Maximum only.
@@ -344,7 +424,8 @@ def add_kpi_gap_profile_slides(presentation, profiles: list[dict[str, Any]], *, 
         is_reference = profile['operator'] == profile['reference']
         title = (f"KPI GAP Profile — {profile['label']} (reference)" if is_reference
                  else f"KPI GAP Profile — {profile['label']} vs {profile['reference_label']}")
-        slide = new_slide(presentation, title, ' · '.join(part for part in (subtitle, context) if part))
+        slide = new_slide(presentation, title, ' · '.join(
+            part for part in (_with_scope(subtitle, scope, profile['context']), context) if part))
         header = profile.get('color') or operator_colors.get(profile['operator']) or '#C8102E'
         _profile_table(slide, profile, kind='maximum', left=.35, width=6.2,
                        environment_labels=environment_labels, header_color=header)
@@ -372,12 +453,12 @@ def add_kpi_gap_profile_slides(presentation, profiles: list[dict[str, Any]], *, 
 
 
 def add_trend_slides(presentation, trends: list[dict[str, Any]], *, scoring_label: str, subtitle: str,
-                     new_slide: Callable) -> None:
+                     new_slide: Callable, scope: ScopeLabels | None = None) -> None:
     """A line chart of each operator's scoring across the campaigns of every group."""
     from src.modules.scoring_exports import _fill_series  # noqa: F401  (keeps helpers in one module)
     for trend in trends[:MAX_GROUP_SLIDES]:
         slide = new_slide(presentation, f'{scoring_label} Scoring Trend',
-                          ' · '.join(part for part in (subtitle, trend['title']) if part))
+                          ' · '.join(part for part in (_with_scope(subtitle, scope), trend['title']) if part))
         data = CategoryChartData()
         data.categories = trend['campaigns']
         for series in trend['series']:
@@ -461,14 +542,14 @@ def _comparison_table(slide, comparison: dict[str, Any], *, left: float, width: 
 
 
 def add_campaign_comparison_slides(presentation, comparisons: list[dict[str, Any]], *, scoring_label: str,
-                                   subtitle: str, new_slide: Callable) -> None:
+                                   subtitle: str, new_slide: Callable, scope: ScopeLabels | None = None) -> None:
     """Each operator's KPI points in the two latest campaigns, two comparisons per slide."""
     selected = comparisons[:MAX_COMPARISONS]
     for start in range(0, len(selected), 2):
         pair = selected[start:start + 2]
         first = pair[0]
         slide = new_slide(presentation, f'{scoring_label} Campaign Comparison',
-                          f"{subtitle} · {first['previous_campaign']} → {first['latest_campaign']}")
+                          f"{_with_scope(subtitle, scope)} · {first['previous_campaign']} → {first['latest_campaign']}")
         intro = slide.shapes.add_textbox(Inches(.45), Inches(1.52), Inches(12.4), Inches(.3))
         _write(intro.text_frame, [(
             'KPI values and scoring points of the two latest campaigns; Δ Points is the latest minus the previous '
@@ -868,7 +949,7 @@ def add_points_loss_slides(presentation, maps: list[dict[str, Any]], background:
                            scoring_label: str, subtitle: str, new_slide: Callable,
                            boundaries: Callable[[str], dict] | None = None,
                            environment_labels: dict[str, str] | None = None,
-                           outlines: Callable[[str], list] | None = None) -> None:
+                           outlines: Callable[[str], list] | None = None, scope: ScopeLabels | None = None) -> None:
     """Points lost per area, like the NetCheck points-loss slides: a map and the areas that lose most.
 
     The main slide colours the map areas (the ITL3 areas in the UK, the workspace's Map Areas
@@ -898,7 +979,7 @@ def add_points_loss_slides(presentation, maps: list[dict[str, Any]], background:
         context = _context_text(ranking['context'])
         level = LOSS_FIELD_TITLES.get(field, field)
         slide = new_slide(presentation, f"Points Lost per {level} — {ranking['label']}",
-                          ' · '.join(part for part in (subtitle, context) if part))
+                          ' · '.join(part for part in (_with_scope(subtitle, scope, ranking['context']), context) if part))
         bars = [area for area in ranking['areas'] if area['name'] != 'Not specified'][:MAX_LOSS_BARS]
         # All environments: each city or route names the environments where it loses points (not per Region or Cluster).
         labels = environment_labels or {}

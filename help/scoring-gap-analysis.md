@@ -160,6 +160,18 @@ For the initial NetCheck 2026 allocation:
 
 Custom methodologies can change these allocations. When the combined result has incomplete coverage, opening a result prefers an available environment with complete coverage. You can still select All Environments.
 
+### Area, operators and vendors of each chart and table
+
+The title of every chart and table of Scoring Charts, Scoring Tables (Campaign Comparison included) and GAP Analysis (the GAP tables, KPI GAP Profile and Points Lost Map) ends with three pills: the **area** it shows, its **operators** and its **vendors**, so a copied chart or table still tells them, also in its larger view. The PowerPoint and Word reports name them at the end of the subtitle of each chart and table slide (smaller when the subtitle would not fit on one line).
+
+| Pill | From… | For example |
+| --- | --- | --- |
+| **Area** | The City, Cluster or Region of the comparison context, or of the location of the KPI GAP Profile and Points Lost Map; else the City filter of the Saved Filter (or else its Cluster or Region filter, the most specific one); else `National` | `City: London`, `Cities: Leeds & London`, `Cities: Bristol, Cardiff & 2 more`, `Region: Wales`, `National` |
+| **Operators** | The Operator filter, else `All Operators` | `Operator: EE`, `Operators: EE, O2 UK & 2 more` |
+| **Vendors** | The Vendor of the comparison context, else the Vendor filter (vendors without their operator, as on the Saved Filter cards), else `All Vendors` | `Vendor: Nokia`, `Vendors: Nokia & Ericsson` |
+
+A list of more than three values keeps the first two and counts the others; hover a pill for all of them. In the PowerPoint, a KPI GAP Profile or Points Lost Map slide that already names its location (for example `City: London · Campaign: 2026-Q2`) does not repeat it. The National & Areas card shows every area and has no pills.
+
 ### Scoring Tables
 
 | View | What it shows |
@@ -661,7 +673,7 @@ CSV preserves stored names, numeric values and its schema, with a `cluster` colu
 
 ### What is in the PowerPoint?
 
-When the result has a Most Reliable scoring, each scenario contains both scorings: a **Best Network Scoring** section and then a **Most Reliable Network Scoring** section. Slide subtitles name the scoring (and the environment of an environment block, for example *Most Reliable Network — Drive - City*) and slide notes carry the notes of that scoring. Reporting Jobs generate the same document for their Scoring artifact. Without Most Reliable points the document has only the Best Network sections. Cover and transition titles that are wider than the slide are reduced to fit on one line.
+When the result has a Most Reliable scoring, each scenario contains both scorings: a **Best Network Scoring** section and then a **Most Reliable Network Scoring** section. Slide subtitles name the scoring (and the environment of an environment block, for example *Most Reliable Network — Drive - City*), then the area, operators and vendors of the slide (see [Area, operators and vendors of each chart and table](#area-operators-and-vendors-of-each-chart-and-table)), and slide notes carry the notes of that scoring. Reporting Jobs generate the same document for their Scoring artifact. Without Most Reliable points the document has only the Best Network sections. Cover and transition titles that are wider than the slide are reduced to fit on one line.
 
 Each block contains, as chosen in the scenario:
 
@@ -679,7 +691,7 @@ The All Environments block also contains, when they apply and are chosen:
 - **Points Lost per City** after the profiles: one slide per compared operator (the reference operator included when it is one of the **Operators to compare**), headed by the operator in large type, with the map areas coloured as the web does by default (the points of the city or route that loses most among those measured in each area, the cities and routes that lose most labelled once, over the grey outline of their countries) and its yellow–red scale, and the cities and routes that lose most as bars (up to 30, each with the environments where it loses points), with the share of the points lost they account for. A single exported environment gets its own maps. Workspaces with Clusters or Region Mapping polygons add a **Points Lost per Cluster** or **per Region** slide. Without map areas (a country without Map Areas) the cities are bubbles over the test locations.
 - **Campaign Comparison** at the end: the comparison tables of up to eight operator and level combinations, two per slide.
 
-Slide titles are blue, with the part that tells consecutive slides apart in bold: the focus (for example *Best Network Scoring **per City***) or what follows the dash (for example *GAP Analysis — **3 vs EE*** or *Scoring Tables — **Summary***). Subtitles name the scoring and the environment in bold.
+Slide titles are blue, with the part that tells consecutive slides apart in bold: the focus (for example *Best Network Scoring **per City***) or what follows the dash (for example *GAP Analysis — **3 vs EE*** or *Scoring Tables — **Summary***). Subtitles name the scoring, the environment, the area, the operators and the vendors in bold, smaller when they would not fit on one line.
 
 Covers and transitions show white titles and field labels, with **bold yellow filter, Split by and campaign values**. The **Campaigns:** label is bold white. Long lists can be shortened visually without changing the calculation.
 

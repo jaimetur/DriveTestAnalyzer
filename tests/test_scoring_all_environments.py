@@ -22,10 +22,10 @@ def _presentation(result):
 
 
 def _in_environment(slide, environment):
-    # All Environments slides name only the scoring in their subtitle.
+    # All Environments slides name only the scoring (and the area) in their subtitle.
     if environment == 'All Environments':
         lines = slide.shapes.title.text.split('\n') if slide.shapes.title else []
-        return len(lines) > 1 and lines[1] == 'Best Network'
+        return len(lines) > 1 and lines[1].split(' · ')[0] == 'Best Network'
     return environment in _slide_text(slide)
 
 

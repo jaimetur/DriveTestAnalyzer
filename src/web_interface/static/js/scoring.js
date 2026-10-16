@@ -354,6 +354,9 @@
   let environmentDefaultSavedFilterId = null;
   let currentResults = null;
   let currentResultsSavedFilterId = null;
+  // The filters of the Saved Filter whose results are shown, for the area, operators and vendors in the chart and
+  // table titles.
+  let resultScopeFilters = {};
   // Reloading the page keeps the selected results tab; opening the page again
   // from another page always starts on Scoring Charts.
   const pageReloaded = (() => {
@@ -2339,6 +2342,7 @@
       environmentChip.textContent = `Environment: ${environmentLabel(String(environment))}`;
       heading.append(separator, environmentChip);
     }
+    if (kind === 'gap' || kind === 'gap-summary') appendResultScope(heading, context);
     pane.append(heading);
 
     const preferred = ['campaign', 'region', 'cluster', 'city', 'vendor', 'dataset_type', 'environment'];
@@ -3480,6 +3484,7 @@
     const summaryHeading = document.createElement('h4');
     summaryHeading.className = 'scoring-table-section-title';
     summaryHeading.textContent = 'Scoring Tables — Summary';
+    appendResultScope(summaryHeading, tableData.context);
     summarySection.append(summaryHeading);
     appendOperatorRankingLegend(summarySection);
     appendHierarchyMatrixTable(summarySection, tableForMode(tableData, 'summary'));
@@ -3489,6 +3494,7 @@
     const expandedHeading = document.createElement('h4');
     expandedHeading.className = 'scoring-table-section-title';
     expandedHeading.textContent = 'Scoring Tables — Breakdown';
+    appendResultScope(expandedHeading, tableData.context);
     expandedSection.append(expandedHeading);
     appendThresholdLegend(expandedSection, thresholdLegend.length ? thresholdLegend : tableData?.threshold_legend);
     appendHierarchyMatrixTable(expandedSection, tableForMode(tableData, 'expanded'));
@@ -3646,6 +3652,7 @@
     const summaryHeading = document.createElement('h4');
     summaryHeading.className = 'scoring-table-section-title';
     summaryHeading.textContent = 'Scoring Tables — Summary';
+    appendResultScope(summaryHeading, selected?.context);
     summarySection.append(summaryHeading);
     appendOperatorRankingLegend(summarySection);
     appendMatrixTable(summarySection, tableForMode(selected, 'summary'));
@@ -3655,6 +3662,7 @@
     const expandedHeading = document.createElement('h4');
     expandedHeading.className = 'scoring-table-section-title';
     expandedHeading.textContent = 'Scoring Tables — Breakdown';
+    appendResultScope(expandedHeading, selected?.context);
     expandedSection.append(expandedHeading);
     appendThresholdLegend(expandedSection, thresholdLegend.length ? thresholdLegend : selected?.threshold_legend);
     appendMatrixTable(expandedSection, tableForMode(selected, 'expanded'));
@@ -4584,15 +4592,82 @@
     return Number.isFinite(width) && width > 0 ? Math.max(720, width - 56) : null;
   }
 
-  function makeExpandableChartCard(title, meta, chart) {
+  // What a chart or a table shows, so that a copied one still tells it: its area (for example City: London), then
+  // its operators and vendors. Each is the value of its context (the City, Cluster or Region, the most specific
+  // first), else the filters of the Saved Filter, else National, All Operators or All Vendors. A long list keeps its
+  // first two names and counts the others; the tooltip lists them all.
+  function resultScope(context = null) {
+    const find = key => {
+      for (const source of [context, resultScopeFilters]) {
+        const value = source?.[key] ?? source?.[key.toLowerCase()];
+        const values = (Array.isArray(value) ? value : [value]).map(item => String(item ?? '').trim()).filter(Boolean);
+        if (values.length) return [...new Set(key === 'Vendor' ? values.map(scoringVendorName) : values)];
+      }
+      return [];
+    };
+    const pill = (values, level, plural) => {
+      const name = values.length > 1 ? plural : level;
+      const shown = values.length > 3 ? [...values.slice(0, 2), `${values.length - 2} more`] : values;
+      const list = shown.length > 1 ? `${shown.slice(0, -1).join(', ')} & ${shown.at(-1)}` : shown[0];
+      return {label: `${name}: ${list}`, title: `${name}: ${values.join(', ')}`};
+    };
+    let area = null;
+    for (const [level, plural] of [['City', 'Cities'], ['Cluster', 'Clusters'], ['Region', 'Regions']]) {
+      const values = find(level);
+      if (values.length) {
+        area = pill(values, level, plural);
+        break;
+      }
+    }
+    const operators = find('Operator');
+    const vendors = find('Vendor');
+    return [
+      {kind: 'area', ...(area || {label: 'National', title: 'National: no City, Cluster or Region filter'})},
+      {kind: 'operator', ...(operators.length ? pill(operators, 'Operator', 'Operators')
+        : {label: 'All Operators', title: 'All Operators: no Operator filter'})},
+      {kind: 'vendor', ...(vendors.length ? pill(vendors, 'Vendor', 'Vendors')
+        : {label: 'All Vendors', title: 'All Vendors: no Vendor filter'})},
+    ];
+  }
+
+  // Ends a chart or table title with the pills of its area, operators and vendors; the title alone is kept for its
+  // larger view.
+  function appendResultScope(heading, context = null) {
+    const scope = resultScope(context);
+    heading.dataset.title = heading.textContent.trim();
+    for (const item of scope) {
+      const pill = document.createElement('span');
+      pill.className = `scoring-scope-pill is-${item.kind}`;
+      pill.textContent = item.label;
+      pill.title = item.title;
+      heading.append(pill);
+    }
+    return scope;
+  }
+
+  // The larger view of a chart, map or table shows the pills of its title too.
+  function appendExpandedScope(heading) {
+    if (!heading || !expandedChartTitle || !chartOverlay || chartOverlay.hidden) return;
+    for (const pill of heading.querySelectorAll(':scope > .scoring-scope-pill')) expandedChartTitle.append(pill.cloneNode(true));
+  }
+
+  function titleWithoutScope(heading) {
+    return heading?.dataset.title || heading?.textContent?.trim() || '';
+  }
+
+  // ``context`` is the context of the chart's table, for its area, operators and vendors; false leaves them out (the
+  // National & Areas card shows every area).
+  function makeExpandableChartCard(title, meta, chart, context = null) {
     const card = document.createElement('article');
     card.className = 'scoring-chart-card';
     card.tabIndex = 0;
     card.setAttribute('role', 'button');
     const heading = document.createElement('h4');
     heading.textContent = title;
-    heading.title = title;
-    card.setAttribute('aria-label', `${title}. Double-click or press Enter to enlarge.`);
+    const scope = context === false ? null : appendResultScope(heading, context);
+    heading.title = scope ? [title, ...scope.map(item => item.title)].join(' — ') : title;
+    const label = scope ? `${title} — ${scope.map(item => item.label).join(' · ')}` : title;
+    card.setAttribute('aria-label', `${label}. Double-click or press Enter to enlarge.`);
     card.dataset.chartMeta = meta || '';
     const scroll = document.createElement('div');
     scroll.className = 'scoring-chart-scroll';
@@ -4678,7 +4753,7 @@
       ),
     });
     stackedChart.style.minWidth = '0';
-    pane.append(makeExpandableChartCard(`${scoringLabel()} Scoring per Category`, contextLabel(selected.context, {environmentPrefix: false}), stackedChart));
+    pane.append(makeExpandableChartCard(`${scoringLabel()} Scoring per Category`, contextLabel(selected.context, {environmentPrefix: false}), stackedChart, selected.context));
     const clusteredChart = makeSvgChart(`${scoringLabel()} Scoring per Category (Breakdown)`, selected.rows, selected.operatorTable, {
       legendEntries: operatorLegend,
       fitWidth: chartFitWidth(pane),
@@ -4687,6 +4762,7 @@
     clusteredChart.style.width = '100%';
     pane.append(makeExpandableChartCard(
       `${scoringLabel()} Scoring per Category (Breakdown)`, contextLabel(selected.context, {environmentPrefix: false}), clusteredChart,
+      selected.context,
     ));
     pane.classList.add('scoring-chart-grid');
   }
@@ -4772,7 +4848,7 @@
     });
     chart.style.minWidth = '0';
     pane.append(makeExpandableChartCard(
-      `${scoringLabel()} Scoring per Category`, contextLabel(tableData.context, {environmentPrefix: false}), chart,
+      `${scoringLabel()} Scoring per Category`, contextLabel(tableData.context, {environmentPrefix: false}), chart, tableData.context,
     ));
     const clusteredRows = sourceRows.map(row => ({
       category: String(row.category),
@@ -4811,6 +4887,7 @@
     clusteredChart.style.maxWidth = 'none';
     pane.append(makeExpandableChartCard(
       `${scoringLabel()} Scoring per Category (Breakdown)`, contextLabel(tableData.context, {environmentPrefix: false}), clusteredChart,
+      tableData.context,
     ));
     pane.classList.add('scoring-chart-grid');
   }
@@ -5351,7 +5428,8 @@
     layout.className = 'scoring-best-network-layout';
     pane.insertBefore(layout, card);
     layout.append(card, makeExpandableChartCard('Maximum score per environment & category',
-      contextLabel(selected.context, {environmentPrefix: false}), makeMaximumAllocationDonut(allocations, categories)));
+      contextLabel(selected.context, {environmentPrefix: false}), makeMaximumAllocationDonut(allocations, categories),
+      selected.context));
   }
 
   function renderBestNetworkChart(pane, scoreTables, hierarchyTable = null, allTables = scoreTables) {
@@ -5377,11 +5455,11 @@
     layout.className = 'scoring-best-network-layout';
     const meta = contextLabel(selected.context, {environmentPrefix: false});
     const bars = makeBestNetworkBars(selected, data);
-    layout.append(makeExpandableChartCard(`${scoringLabel()} Scoring per Service`, meta, bars));
+    layout.append(makeExpandableChartCard(`${scoringLabel()} Scoring per Service`, meta, bars, selected.context));
     const configuration = activeScoringConfiguration();
     const allocations = maximumAllocationEnvironments(selected, allTables, configuration);
     const donut = makeMaximumAllocationDonut(allocations);
-    layout.append(makeExpandableChartCard('Maximum score per environment & service', meta, donut));
+    layout.append(makeExpandableChartCard('Maximum score per environment & service', meta, donut, selected.context));
     pane.insertBefore(layout, pane.querySelector(':scope > .scoring-best-network-layout, :scope > .scoring-chart-card'));
   }
 
@@ -5390,8 +5468,10 @@
     // The chart itself, or the whole content of cards made of several parts (such as the location cards).
     const source = card.querySelector('.scoring-chart-svg')
       || card.querySelector('.scoring-chart-scroll')?.firstElementChild;
-    openExpandedView(source, card.querySelector('h4')?.textContent || 'Scoring chart',
+    const heading = card.querySelector('h4');
+    openExpandedView(source, titleWithoutScope(heading) || 'Scoring chart',
       card.dataset.chartMeta || (selectedEnvironment ? environmentLabel(selectedEnvironment) : ''), card);
+    appendExpandedScope(heading);
   }
 
   // A larger view of one chart, map or table, taking the whole screen but 5% on each side.
@@ -5793,7 +5873,7 @@
       const split = summary.time_split === 'All' ? 'All selected CDRs' : summary.time_split === 'Campaign' ? 'Per campaign'
         : `${summary.time_split} periods`;
       pane.append(makeExpandableChartCard(`${scoringLabel()} — National & Areas`,
-        [environmentLabel(environment), `Time split: ${split}`].filter(Boolean).join(' · '), makeAreaSummaryView(summary)));
+        [environmentLabel(environment), `Time split: ${split}`].filter(Boolean).join(' · '), makeAreaSummaryView(summary), false));
     }
     let groups = insightItems(payload, 'location_cards', environment);
     const campaigns = [...new Set(groups.map(group => group.campaign).filter(Boolean))];
@@ -5947,6 +6027,7 @@
     heading.className = 'scoring-table-section-title';
     heading.textContent = 'KPI GAP Profile';
     const {controls, inScope, chosen} = gapInsightControls(pane, profiles);
+    appendResultScope(heading, inScope[0]?.context);
     section.append(heading, controls);
     for (const profile of inScope.filter(item => chosen.includes(item.operator))) {
       const isReference = profile.operator === profile.reference;
@@ -6095,6 +6176,7 @@
       const heading = document.createElement('h4');
       heading.className = 'scoring-table-section-title';
       heading.textContent = 'Points Lost Map';
+      appendResultScope(heading);
       const waiting = document.createElement('div');
       waiting.className = 'scoring-calculating is-loading';
       waiting.setAttribute('role', 'status');
@@ -6123,6 +6205,7 @@
     heading.textContent = 'Points Lost Map';
     // Location and operators are shared with the KPI GAP Profile; then the analysis per City, Region or Cluster.
     const {controls, inScope, chosen} = gapInsightControls(pane, entries.map(entry => ({...entry.ranking, entry})));
+    appendResultScope(heading, inScope[0]?.context);
     const allViews = ['City', 'Region', 'Cluster'];
     const views = allViews.filter(view => inScope.some(item => item.entry.title === view));
     const {wrapper: viewControl, value: storedView} = insightSelect('points-loss-view', allViews.map(item => [item, item]), 'Maps per');
@@ -6678,6 +6761,7 @@
       String(index), [item.label, item.title].filter(Boolean).join(' · '),
     ]), 'Operator');
     const chosen = comparisons[Number(value)] || comparisons[0];
+    appendResultScope(heading, chosen.context);
     const campaigns = Array.isArray(chosen.campaigns) && chosen.campaigns.length >= 2 ? chosen.campaigns
       : [chosen.previous_campaign, chosen.latest_campaign];
     const campaignOptions = campaigns.map((campaign, index) => [String(index), campaign]);
@@ -7001,6 +7085,8 @@
   function renderResultContent(savedPayload, savedFilter, panesToRender) {
     currentResults = savedPayload;
     currentResultsSavedFilterId = savedFilterIdOf(savedFilter || savedPayload.saved_filter || {}) || null;
+    const resultFilters = (savedFilter || savedPayload.saved_filter || {}).context_filters;
+    resultScopeFilters = resultFilters && typeof resultFilters === 'object' ? resultFilters : {};
     syncResultScoring(savedPayload);
     const payload = activeScoringPayload(savedPayload);
     const shouldRenderPane = name => panesToRender.includes(name);
@@ -7047,6 +7133,7 @@
         const summaryHeading = document.createElement('h4');
         summaryHeading.className = 'scoring-table-section-title';
         summaryHeading.textContent = 'Scoring Tables — Summary';
+        appendResultScope(summaryHeading);
         const summaryTable = document.createElement('div');
         summaryTable.className = 'scoring-table-section';
         renderTable(summaryTable, totalsRows, 'No scoring summary rows are available.', {hideGapColumns: true});
@@ -7054,6 +7141,7 @@
         const detailHeading = document.createElement('h4');
         detailHeading.className = 'scoring-table-section-title';
         detailHeading.textContent = 'Scoring Tables — Breakdown';
+        appendResultScope(detailHeading);
         const detailTable = document.createElement('div');
         detailTable.className = 'scoring-table-section';
         renderTable(detailTable, detailRows, 'No KPI detail rows are available.', {hideGapColumns: true});
@@ -7087,6 +7175,7 @@
           const heading = document.createElement('h4');
           heading.className = 'scoring-table-section-title';
           heading.textContent = title;
+          appendResultScope(heading);
           const section = document.createElement('div');
           section.className = 'scoring-table-section';
           renderTable(section, rows, 'No comparable GAP rows are available.');
@@ -7866,6 +7955,7 @@
     if (map?.querySelector('svg')) {
       const operator = map.closest('.scoring-loss-map-card')?.querySelector('.scoring-insight-note strong')?.textContent;
       openExpandedView(map.querySelector('svg'), ['Points Lost Map', operator].filter(Boolean).join(' — '), meta, map, 'Map');
+      appendExpandedScope(map.closest('.scoring-insight-section')?.querySelector('h4'));
       return;
     }
     const table = event.target.closest('table');
@@ -7873,7 +7963,8 @@
     // The title of the section the table belongs to: the nearest heading above it in its tab.
     const heading = table.closest('.scoring-insight-section')?.querySelector('h4')
       || [...pane.querySelectorAll('h3, h4')].filter(item => item.compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING).at(-1);
-    openExpandedView(table, heading?.textContent?.trim() || 'Scoring table', meta, table, 'Table');
+    openExpandedView(table, titleWithoutScope(heading) || 'Scoring table', meta, table, 'Table');
+    appendExpandedScope(heading);
   });
   chartOverlay?.addEventListener('click', event => {
     if (event.target === chartOverlay) closeExpandedChart();

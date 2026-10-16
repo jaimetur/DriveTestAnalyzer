@@ -28,7 +28,7 @@ from src.modules.scoring import most_reliable_result
 from src.modules.scoring_points_loss import map_background, map_boundaries
 from src.modules.scoring_insight_slides import (
     TITLE_BLUE, add_area_summary_slides, add_campaign_comparison_slides, add_kpi_gap_profile_slides,
-    add_location_card_slides, add_points_loss_slides, add_trend_slides,
+    add_location_card_slides, add_points_loss_slides, add_trend_slides, scoring_scope_labels,
 )
 from src.modules.scoring_area_summary import build_area_summary
 from src.modules.scoring_config import BEST_NETWORK_SCORING, MOST_RELIABLE_SCORING, SCORING_LABELS
@@ -201,6 +201,11 @@ def _scoring_chart_title(matrix: dict[str, Any], suffix: str) -> str:
 TITLE_FONT_PT = 40
 TITLE_CHARACTER_EM = .42
 TITLE_MIN_FONT_PT = 20
+# The subtitle (the scoring, environment, area, operators and vendors) is 14pt bold, about 0.6em a character: a longer
+# one is made smaller so it does not wrap over the content of the slide.
+SUBTITLE_FONT_PT = 14
+SUBTITLE_CHARACTER_EM = .6
+SUBTITLE_MIN_FONT_PT = 8
 
 
 def _fit_slide_title_on_one_line(title_shape, paragraph) -> None:
@@ -218,6 +223,18 @@ def _fit_slide_title_on_one_line(title_shape, paragraph) -> None:
     text_frame.word_wrap = False
     for run in paragraph.runs:
         run.font.size = Pt(size)
+
+
+def _subtitle_font_size(title_shape, paragraph) -> float:
+    """The size of a slide subtitle that fits its placeholder on one line, at most 14pt."""
+    text = paragraph.text.strip()
+    if not text or title_shape.width is None:
+        return SUBTITLE_FONT_PT
+    text_frame = title_shape.text_frame
+    insets = (text_frame.margin_left if text_frame.margin_left is not None else Emu(72000)) + (text_frame.margin_right or 0)
+    width_pt = (int(title_shape.width) - int(insets)) / 12700
+    size = width_pt / (len(text) * SUBTITLE_CHARACTER_EM)
+    return SUBTITLE_FONT_PT if size >= SUBTITLE_FONT_PT else max(SUBTITLE_MIN_FONT_PT, floor(size * 2) / 2)
 
 
 def _slide(presentation, title: str, subtitle: str):
@@ -239,11 +256,12 @@ def _slide(presentation, title: str, subtitle: str):
             _emphasize_title(title_paragraph)
             _fit_slide_title_on_one_line(title_shape, title_paragraph)
         for subtitle_paragraph in paragraphs[1:]:
-            subtitle_paragraph.font.size = Pt(14)
+            size = _subtitle_font_size(title_shape, subtitle_paragraph)
+            subtitle_paragraph.font.size = Pt(size)
             subtitle_paragraph.font.bold = True
             subtitle_paragraph.font.color.rgb = RGBColor.from_string('245A96')
             for run in subtitle_paragraph.runs:
-                run.font.size = Pt(14)
+                run.font.size = Pt(size)
                 run.font.bold = True
                 run.font.color.rgb = RGBColor.from_string('245A96')
     return slide
@@ -2363,6 +2381,7 @@ def _add_insight_slides(presentation, views: dict, environment: str, scoring: st
         return
     label = SCORING_LABELS[scoring or BEST_NETWORK_SCORING]
     subtitle = _scoring_block_subtitle(scoring, key, configuration)
+    scope = views.get('_scope')
     items = {name: [item for item in values if isinstance(item, dict) and item.get('environment') == key]
              for name, values in insights.items()}
     done = views.setdefault('_insight_slides', set())
@@ -2372,10 +2391,10 @@ def _add_insight_slides(presentation, views: dict, environment: str, scoring: st
     if stage == 'charts':
         if _option(options, 'charts', 'location_cards'):
             add_location_card_slides(presentation, items.get('location_cards', []), scoring_label=label,
-                                     subtitle=subtitle, new_slide=_slide)
+                                     subtitle=subtitle, new_slide=_slide, scope=scope)
         if _option(options, 'charts', 'trend'):
             add_trend_slides(presentation, items.get('campaign_trends', []), scoring_label=label,
-                             subtitle=subtitle, new_slide=_slide)
+                             subtitle=subtitle, new_slide=_slide, scope=scope)
         return
     styles = operator_styles(views.get('score_tables', []))
     if _option(options, 'gap', 'profile'):
@@ -2386,6 +2405,7 @@ def _add_insight_slides(presentation, views: dict, environment: str, scoring: st
             environment_labels={name: _scoring_environment_title(name, configuration)
                                 for name in configuration.get('scope', {}).get('environments', {})},
             new_slide=_slide, operator_colors={name: style.get('color') for name, style in styles.items()},
+            scope=scope,
         )
     if _option(options, 'gap', 'points_loss_map'):
         # The reference operator has its map too when it is one of the operators to compare.
@@ -2396,12 +2416,13 @@ def _add_insight_slides(presentation, views: dict, environment: str, scoring: st
                                boundaries=views.get('_points_loss_boundaries'),
                                outlines=views.get('_points_loss_outlines'),
                                environment_labels={name: _scoring_environment_title(name, configuration)
-                                                   for name in configuration.get('scope', {}).get('environments', {})})
+                                                   for name in configuration.get('scope', {}).get('environments', {})},
+                               scope=scope)
     if _option(options, 'tables', 'campaign_comparison'):
         comparisons = [item for item in items.get('campaign_comparisons', [])
                        if options is None or _compared_operator(options, item['operator'], item.get('label'))]
         add_campaign_comparison_slides(presentation, comparisons, scoring_label=label,
-                                       subtitle=subtitle, new_slide=_slide)
+                                       subtitle=subtitle, new_slide=_slide, scope=scope)
 
 
 def _add_scoring_block(presentation, job: dict[str, Any], result: dict[str, Any],
@@ -2432,12 +2453,19 @@ def _add_scoring_block(presentation, job: dict[str, Any], result: dict[str, Any]
     views['_points_loss_boundaries'] = points_loss_boundaries
     views['_points_loss_outlines'] = lambda field: map_background(result, field)
     configuration = job.get('configuration') or result.get('configuration') or {}
+    # The slides name the area, operators and vendors of their table, chart or location, as the web titles do.
+    scope_filters = job.get('context_filters') or {}
+    scope_operators = list(dict.fromkeys(str(operator) for matrix in views.get('score_tables', [])
+                                         for operator in matrix.get('operators') or []))
+    views['_scope'] = lambda context=None: scoring_scope_labels(context, scope_filters, scope_operators,
+                                                                omit_context=True)
     for matrix_key in ('score_tables', 'gap_summary_tables', 'gap_tables',
                        'hierarchy_score_tables', 'hierarchy_gap_tables'):
         for matrix in views.get(matrix_key, []):
-            matrix['environment_subtitle'] = _scoring_block_subtitle(
-                scoring, matrix['context']['environment'], configuration,
-            )
+            matrix['environment_subtitle'] = ' · '.join((
+                _scoring_block_subtitle(scoring, matrix['context']['environment'], configuration),
+                *scoring_scope_labels(matrix['context'], scope_filters, scope_operators),
+            ))
             matrix['scoring_label'] = SCORING_LABELS[scoring or BEST_NETWORK_SCORING]
     environment_allocations = maximum_allocations_from_configuration(configuration)
     combined_allocations = scaled_environment_allocations(environment_allocations, result.get('environment_scaling'))
