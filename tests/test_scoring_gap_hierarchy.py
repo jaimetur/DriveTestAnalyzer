@@ -194,7 +194,8 @@ def test_missing_road_keeps_city_gap_and_combined_marks_common_environment_gap_p
     combined_gap_tables = [
         shape.table
         for slide in presentation.slides
-        if slide.shapes.title.text == 'GAP Analysis — All vs EE\nBest Network'
+        # The All Environments subtitle names the scoring, then the area, operators and vendors.
+        if slide.shapes.title.text.startswith('GAP Analysis — All vs EE\nBest Network · ')
         for shape in slide.shapes if shape.has_table
     ]
     assert combined_gap_tables
