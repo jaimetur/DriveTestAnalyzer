@@ -18,6 +18,7 @@
 #### 🐛 Bug fixes:
 - **Scoring & GAP Analysis on phones:** the Scoring Methodology pill, the comparison context and Scoring Tables lists and the GAP Analysis tables fit the screen (long options are shortened and wide tables scroll inside their box) instead of running past it.
 - **Saved Filters calculating again:** opening a Saved Filter whose CDRs were reprocessed follows its new calculation to the end and shows its result when it completes, instead of staying at 2% (or showing its old result) until another Saved Filter was opened, whether the list of Saved Filters arrives before or after its answer. A Saved Filter opened from the Saved Filters panel takes the page to its Scoring Results.
+- **Use newer CDRs:** the button of a Saved Filter replaces its CDRs with the newer ones in the same Saved Filter (keeping its name, star and place) and calculates it again, instead of creating another Saved Filter; a Saved Filter that already had that selection is merged into it, and App Events record the CDRs replaced. In the Saved Filters panel each card has a checkbox, and **Select all** and **Use newer CDRs** on top of the panel update every checked Saved Filter with newer CDRs at once, calculating them in the background while the open one stays.
 
 #### 📚 Documentation:
 

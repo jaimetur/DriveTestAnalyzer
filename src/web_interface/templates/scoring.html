@@ -145,6 +145,12 @@
   .saved-filter-pin:hover, .saved-filter-rename:hover { border-color: #8fa9b8; background: #e8f0f4; color: #23404f; box-shadow: none; transform: none; }
   .saved-filter-use-newer { min-height: 1.55rem; padding: .18rem .55rem; border: 1px solid #e0a23a; border-radius: 999px; background: #fff3d6; color: #8a5300; font-size: .72rem; font-weight: 800; box-shadow: none; }
   .saved-filter-use-newer:hover { background: #ffe7b0; box-shadow: none; transform: none; }
+  .saved-filter-use-newer:disabled { border-color: #d8dee3; background: #f1f4f6; color: #8796a1; cursor: not-allowed; }
+  /* The selection of Saved Filters in the Saved Filters panel, to update them together. */
+  .saved-filters-bulk { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; margin: -.35rem 0 .6rem; }
+  .saved-filters-select-all { display: inline-flex; align-items: center; gap: .35rem; color: #46606d; font-size: .78rem; font-weight: 800; cursor: pointer; }
+  .saved-filter-check { display: inline-flex; align-items: center; margin-right: .1rem; cursor: pointer; }
+  .saved-filter-check input, .saved-filters-select-all input { width: 1rem; height: 1rem; margin: 0; accent-color: var(--brand); cursor: pointer; }
   /* The name given to a Saved Filter, above its filters. */
   /* The name of a Saved Filter: a badge on top of its card. */
   .saved-filter-name { justify-self: start; max-width: 100%; box-sizing: border-box; margin-bottom: .35rem; padding: .22rem .75rem; border-radius: 999px; background: var(--brand); color: #fff; font-size: .82rem; font-weight: 850; line-height: 1.3; overflow-wrap: anywhere; box-shadow: 0 2px 6px rgba(16, 49, 74, .18); }
@@ -794,6 +800,10 @@
     </article>
     <article class="panel saved-filters-panel">
       <div class="section-head tight-head"><div><p class="eyebrow">Reusable selections</p><h3>Saved Filters</h3></div><span class="pill" data-saved-filter-count>0 filters</span></div>
+      <div class="saved-filters-bulk" data-saved-filters-bulk hidden>
+        <label class="saved-filters-select-all"><input type="checkbox" data-saved-filters-select-all> Select all</label>
+        <button type="button" class="saved-filter-use-newer" data-saved-filters-use-newer disabled title="Update the selected Saved Filters that have newer CDRs and calculate them again">Use newer CDRs</button>
+      </div>
       <div class="saved-filter-list" data-saved-filter-list aria-label="Saved Filters" aria-live="polite"><div class="scoring-empty">Loading Saved Filters…</div></div>
     </article>
   </section>

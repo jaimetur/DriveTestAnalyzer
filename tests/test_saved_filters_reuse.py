@@ -100,6 +100,38 @@ def test_a_final_cdr_replacing_a_daily_one_is_offered_and_deleted_cdrs_keep_the_
     assert kept['status'] == 'completed' and kept['result']['scoring']
 
 
+def test_use_newer_cdrs_updates_the_same_saved_filter_and_merges_one_with_that_selection(tmp_path):
+    repository = _workspace(tmp_path, 'workspace')
+    folder = tmp_path / 'workspace'
+    data_id = _add_cdr(repository, folder, 'data', 'UK_Data_CDR_20260715.xlsx', 'daily data', stage='daily')
+    voice_id = _add_cdr(repository, folder, 'voice', 'UK_Voice_Final.xlsx', 'voice file')
+    speech_id = _add_cdr(repository, folder, 'speech', 'UK_Speech_Final.xlsx', 'speech file')
+    saved_filter, _ = saved_filters.save_saved_filter(repository, [data_id, voice_id, speech_id], ['Operator'], 'NSA')
+    saved_filters.calculate_saved_filter(repository, saved_filter['id'])
+    saved_filters.update_saved_filter(repository, saved_filter['id'], pinned=True)
+    final_id = _add_cdr(repository, folder, 'data', 'UK_Data_CDR_Final.xlsx', 'final data')
+    # A Saved Filter that already has the newer selection is merged, giving its name.
+    other, _ = saved_filters.save_saved_filter(repository, [final_id, voice_id, speech_id], ['Operator'], 'NSA')
+    saved_filters.update_saved_filter(repository, other['id'], name='2026-Q3')
+
+    updated = saved_filters.use_newer_cdrs(repository, saved_filter['id'], 'super')
+
+    assert updated['merged_filter_id'] == other['id']
+    assert [item['replaced_by'] for item in updated['replaced']] == [final_id]
+    [listed] = saved_filters.list_saved_filters(repository)
+    assert listed['id'] == saved_filter['id'] and listed['pinned'] and listed['name'] == '2026-Q3'
+    assert listed['dataset_ids'] == [final_id, voice_id, speech_id]
+    assert listed['status'] == 'queued' and listed['newer_cdrs'] == []
+    found = saved_filters.find_saved_filter(repository, [final_id, voice_id, speech_id], ['Operator'], 'NSA')
+    assert found['id'] == saved_filter['id']
+    try:
+        saved_filters.use_newer_cdrs(repository, saved_filter['id'])
+    except ValueError as exc:
+        assert 'Wait until' in str(exc)
+    else:
+        raise AssertionError('A queued Saved Filter must not change its CDRs.')
+
+
 def test_saved_filters_travel_with_the_scoring_configuration_backup(client, tmp_path: Path) -> None:
     response = client.post('/login', data={'username': 'admin', 'password': 'admin123'}, follow_redirects=False)
     assert response.status_code == 303
@@ -183,3 +215,23 @@ def test_dragging_saved_filters_is_recorded_in_app_events(client, monkeypatch):
     assert response.status_code == 200 and response.json() == {'order': [9, 4]}
     [event] = [row for row in repository.list_logs(limit=20) if row['action'] == 'reorder_saved_filters']
     assert '"previous_order": [4, 9]' in event['details'] and '"order": [9, 4]' in event['details']
+
+
+def test_use_newer_cdrs_endpoint_is_recorded_and_leaves_the_open_saved_filter_when_not_selecting(client, monkeypatch):
+    client.post('/login', data={'username': 'super', 'password': 'super123'}, follow_redirects=False)
+    repository = app_module.repository
+    replaced = [{'id': 3, 'name': 'Daily.xlsx', 'replaced_by': 8, 'replaced_by_name': 'Final.xlsx'}]
+    monkeypatch.setattr(app_module, 'use_newer_cdrs', lambda _repository, filter_id, _username: {
+        'saved_filter': {'id': filter_id, 'name': 'Q3', 'dataset_ids': [8, 5, 6]}, 'replaced': replaced, 'merged_filter_id': None})
+    queued, pruned = [], []
+    monkeypatch.setattr(app_module, '_queue_saved_filter_calculation', lambda _repository, filter_id: queued.append(filter_id))
+    monkeypatch.setattr(app_module, 'prune_unpinned_saved_filters', lambda _repository, keep_id, _username: pruned.append(keep_id))
+
+    response = client.post('/api/scoring/saved-filters/7/use-newer-cdrs', json={'select': False})
+
+    assert response.status_code == 200 and response.json()['saved_filter']['id'] == 7
+    assert queued == [7] and pruned == []
+    [event] = [row for row in repository.list_logs(limit=20) if row['action'] == 'saved_filter_use_newer_cdrs']
+    assert '"replaced_by_file": "Final.xlsx"' in event['details'] and '"opened": false' in event['details']
+    client.post('/api/scoring/saved-filters/7/use-newer-cdrs')
+    assert pruned == [7]

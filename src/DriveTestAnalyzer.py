@@ -111,6 +111,7 @@ from src.modules.saved_filters import (
     select_all_complete_cdrs,
     select_latest_companion_cdrs,
     update_saved_filter,
+    use_newer_cdrs,
     validate_complete_scoring_cdr_selection,
 )
 from src.modules.scoring_selection import (
@@ -17733,6 +17734,38 @@ def scoring_saved_filters_use(filter_id: int, user: SessionUser = Depends(curren
         raise HTTPException(status_code=404, detail='Saved Filter not found.')
     prune_unpinned_saved_filters(task_repository, filter_id, user.username)
     return {'saved_filter': saved_filter}
+
+
+class UseNewerCdrsRequest(BaseModel):
+    # False for the Saved Filters updated together from the Saved Filters panel: the one being looked at stays.
+    select: bool = True
+
+
+@app.post('/api/scoring/saved-filters/{filter_id}/use-newer-cdrs')
+def scoring_saved_filters_use_newer_cdrs(filter_id: int, payload: UseNewerCdrsRequest | None = None,
+                                         user: SessionUser = Depends(current_user)) -> dict[str, Any]:
+    """Update a Saved Filter with the CDRs that replace its older ones and calculate it again in the background."""
+    select = payload.select if payload is not None else True
+    task_repository = scoring_repository(user)
+    try:
+        updated = use_newer_cdrs(task_repository, filter_id, user.username)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if updated is None:
+        raise HTTPException(status_code=404, detail='Saved Filter not found.')
+    saved_filter = updated['saved_filter']
+    _queue_saved_filter_calculation(task_repository, saved_filter['id'])
+    task_repository.try_add_log(user.username, 'saved_filter_use_newer_cdrs', json.dumps({
+        'saved_filter_id': saved_filter['id'], 'name': saved_filter.get('name') or '',
+        'replaced': [{'dataset_id': item['id'], 'file': item['name'], 'replaced_by_dataset_id': item['replaced_by'],
+                      'replaced_by_file': item['replaced_by_name']} for item in updated['replaced']],
+        'merged_saved_filter_id': updated['merged_filter_id'], 'datasets': len(saved_filter['dataset_ids']),
+        'opened': select,
+    }, ensure_ascii=False))
+    if select:
+        _prioritize_saved_filter(task_repository, saved_filter['id'])
+        prune_unpinned_saved_filters(task_repository, saved_filter['id'], user.username)
+    return {'saved_filter': saved_filter, 'cached': False, 'replaced': updated['replaced']}
 
 
 class SavedFilterOrder(BaseModel):

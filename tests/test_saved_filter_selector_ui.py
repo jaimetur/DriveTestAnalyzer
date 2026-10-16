@@ -67,6 +67,7 @@ const savedFilterCdrSummary = () => 'Example CDR.xlsx';
 const isActive = savedFilter => savedFilter.status === 'processing';
 const progressValue = () => 40;
 const deletingSavedFilterIds = new Set();
+const syncSavedFiltersBulk = () => {};
 ''' + _function_source(script, 'savedFilterAreaSummaryParts') + _function_source(script, 'savedFilterDurationText') + _function_source(script, 'syncSavedFilterLists') + _function_source(script, 'renderSavedFilters') + r'''
 renderSavedFilters();
 const latest = selectedSavedFilterCard.textContent;

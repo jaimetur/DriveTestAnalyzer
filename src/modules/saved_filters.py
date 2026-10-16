@@ -1028,6 +1028,53 @@ def _replaced_cdrs(repository: Repository) -> dict[int, dict[str, Any]]:
     return replacements
 
 
+def use_newer_cdrs(repository: Repository, filter_id: int, username: str = 'system') -> dict[str, Any] | None:
+    """Replace the CDRs of a Saved Filter that newer ones replace and calculate it again, keeping its name, star and
+    place. A Saved Filter that already had that selection is merged into it (its name and star are kept when this one
+    has none).
+
+    Returns ``None`` when the Saved Filter does not exist; otherwise the Saved Filter, the CDRs replaced
+    (``replaced``) and the merged Saved Filter (``merged_filter_id``).
+    """
+    saved_filter = get_saved_filter(repository, filter_id)
+    if saved_filter is None:
+        return None
+    if saved_filter['status'] in ('queued', 'processing'):
+        raise ValueError('Wait until this Saved Filter is calculated to use its newer CDRs.')
+    replacements = _replaced_cdrs(repository)
+    replaced = [replacements[dataset_id] for dataset_id in saved_filter['dataset_ids'] if dataset_id in replacements]
+    if not replaced:
+        raise ValueError('This Saved Filter already uses the newest CDRs.')
+    dataset_ids = list(dict.fromkeys(
+        replacements[dataset_id]['replaced_by'] if dataset_id in replacements else dataset_id
+        for dataset_id in saved_filter['dataset_ids']))
+    prepared = _prepare_saved_selection(repository, {**saved_filter, 'dataset_ids': dataset_ids})
+    now = local_now_iso()
+    merged_filter_id = None
+    with repository.connection() as connection:
+        connection.execute('BEGIN IMMEDIATE')
+        row = connection.execute(f'SELECT * FROM {SAVED_FILTERS_TABLE} WHERE id = ?', (int(filter_id),)).fetchone()
+        if row is None:
+            return None
+        duplicate = connection.execute(
+            f'SELECT id, name, pinned, position FROM {SAVED_FILTERS_TABLE} WHERE selection_key = ? AND id != ?',
+            (prepared['selection_key'], int(filter_id))).fetchone()
+        name, pinned, position = row['name'], row['pinned'], row['position']
+        if duplicate is not None:
+            merged_filter_id = int(duplicate['id'])
+            name = name or duplicate['name']
+            if not pinned and duplicate['pinned']:
+                pinned, position = duplicate['pinned'], duplicate['position']
+            connection.execute(f'DELETE FROM {SAVED_FILTERS_TABLE} WHERE id = ?', (merged_filter_id,))
+        connection.execute(
+            f'UPDATE {SAVED_FILTERS_TABLE} SET selection_key = ?, name = ?, pinned = ?, position = ?, '
+            'use_count = use_count + 1, last_used_at = ? WHERE id = ?',
+            (prepared['selection_key'], name, pinned, position, now, int(filter_id)))
+        _queue_calculation(connection, int(filter_id), prepared, username, now)
+        row = connection.execute(f'SELECT * FROM {SAVED_FILTERS_TABLE} WHERE id = ?', (int(filter_id),)).fetchone()
+    return {'saved_filter': _row_to_saved_filter(row), 'replaced': replaced, 'merged_filter_id': merged_filter_id}
+
+
 def mark_saved_filter_used(repository: Repository, filter_id: int) -> dict[str, Any] | None:
     """Count the opening of a Saved Filter from its card as a use, which also moves it up the list."""
     with repository.connection() as connection:

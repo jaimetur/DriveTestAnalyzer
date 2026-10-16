@@ -276,6 +276,12 @@
   const savedFilterPanelList = savedFilterLists.find(list => list.closest('.saved-filters-panel')) || null;
   const canReorderSavedFilters = document.body.dataset.authenticatedRole !== 'user-viewer';
   let draggedSavedFilterRow = null;
+  // The Saved Filters checked in the Saved Filters panel, to update them together with Use newer CDRs.
+  const checkedSavedFilterIds = new Set();
+  const savedFiltersBulk = root.querySelector('[data-saved-filters-bulk]');
+  const savedFiltersSelectAll = root.querySelector('[data-saved-filters-select-all]');
+  const savedFiltersUseNewer = root.querySelector('[data-saved-filters-use-newer]');
+  let updatingSavedFiltersCdrs = false;
   let savedFiltersRenderPending = false;
   const savedFilterList = savedFilterLists[0];
   const savedFilterSelector = root.querySelector('[data-saved-filter-selector]');
@@ -1290,6 +1296,86 @@
         row.prepend(handle);
       }
     }
+    if (savedFilterPanelList) {
+      for (const row of savedFilterPanelList.querySelectorAll('.saved-filter-row')) {
+        const id = row.dataset.savedFilterRow;
+        const check = document.createElement('label');
+        check.className = 'saved-filter-check';
+        check.title = 'Select this Saved Filter';
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+        input.dataset.savedFilterCheck = id;
+        input.checked = checkedSavedFilterIds.has(id);
+        input.setAttribute('aria-label', `Select Saved Filter ${id}`);
+        check.append(input);
+        row.querySelector('.saved-filter-actions')?.prepend(check);
+      }
+    }
+    syncSavedFiltersBulk();
+  }
+
+  // The Select all box and the Use newer CDRs button on top of the Saved Filters panel, for the checked Saved Filters.
+  function syncSavedFiltersBulk() {
+    if (!savedFiltersBulk) return;
+    const listed = savedFilters.filter(savedFilter => savedFilter.pinned).map(savedFilterIdOf);
+    for (const id of [...checkedSavedFilterIds]) if (!listed.includes(id)) checkedSavedFilterIds.delete(id);
+    savedFiltersBulk.hidden = !listed.length;
+    savedFiltersSelectAll.checked = listed.length > 0 && checkedSavedFilterIds.size === listed.length;
+    savedFiltersSelectAll.indeterminate = checkedSavedFilterIds.size > 0 && checkedSavedFilterIds.size < listed.length;
+    const withNewer = savedFiltersWithNewerCdrs();
+    savedFiltersUseNewer.textContent = withNewer.length ? `Use newer CDRs (${withNewer.length})` : 'Use newer CDRs';
+    savedFiltersUseNewer.disabled = updatingSavedFiltersCdrs || !withNewer.length;
+  }
+
+  function savedFiltersWithNewerCdrs() {
+    return savedFilters.filter(savedFilter => checkedSavedFilterIds.has(savedFilterIdOf(savedFilter))
+      && (savedFilter.newer_cdrs || []).length && !isActive(savedFilter));
+  }
+
+  if (savedFilterPanelList && savedFiltersBulk) {
+    savedFilterPanelList.addEventListener('change', event => {
+      const input = event.target instanceof Element ? event.target.closest('[data-saved-filter-check]') : null;
+      if (!input) return;
+      if (input.checked) checkedSavedFilterIds.add(input.dataset.savedFilterCheck);
+      else checkedSavedFilterIds.delete(input.dataset.savedFilterCheck);
+      syncSavedFiltersBulk();
+    });
+    savedFiltersSelectAll.addEventListener('change', () => {
+      checkedSavedFilterIds.clear();
+      if (savedFiltersSelectAll.checked) {
+        savedFilters.filter(savedFilter => savedFilter.pinned).forEach(savedFilter => checkedSavedFilterIds.add(savedFilterIdOf(savedFilter)));
+      }
+      for (const input of savedFilterPanelList.querySelectorAll('[data-saved-filter-check]')) {
+        input.checked = checkedSavedFilterIds.has(input.dataset.savedFilterCheck);
+      }
+      syncSavedFiltersBulk();
+    });
+    // Each checked Saved Filter with newer CDRs is updated with them and calculated again in the background; the one
+    // being looked at stays open.
+    savedFiltersUseNewer.addEventListener('click', async () => {
+      const targets = savedFiltersWithNewerCdrs();
+      if (!targets.length) return;
+      updatingSavedFiltersCdrs = true;
+      syncSavedFiltersBulk();
+      setMessage(`Updating ${targets.length} Saved Filter${targets.length === 1 ? '' : 's'} with the newer CDRs…`, 'busy');
+      const failures = [];
+      for (const savedFilter of targets) {
+        const id = savedFilterIdOf(savedFilter);
+        try {
+          await requestJson(`${savedFiltersUrl}/${encodeURIComponent(id)}/use-newer-cdrs`, {
+            method: 'POST', body: JSON.stringify({select: false}),
+          });
+          resultCache.delete(id);
+        } catch (error) {
+          failures.push(`${savedFilter.name || `Filter ID ${id}`}: ${error.message}`);
+        }
+      }
+      updatingSavedFiltersCdrs = false;
+      const updated = targets.length - failures.length;
+      if (failures.length) setMessage(`Updated ${updated} of ${targets.length} Saved Filters. ${failures.join(' ')}`, 'error');
+      else setMessage(`${updated} Saved Filter${updated === 1 ? '' : 's'} updated with the newer CDRs and queued to calculate again.`, 'success');
+      await refreshSavedFilters();
+    });
   }
 
   // Dragging a starred Saved Filter in the Saved Filters panel moves it in the list; its place is saved for every user of
@@ -1589,7 +1675,7 @@
         useNewer.className = 'saved-filter-use-newer';
         useNewer.dataset.savedFilterNewer = id;
         useNewer.textContent = 'Use newer CDRs';
-        useNewer.title = 'Select this scoring with the newer CDRs and calculate it';
+        useNewer.title = 'Update this Saved Filter with the newer CDRs and calculate it again';
         actions.append(useNewer);
       }
       const pin = document.createElement('button');
@@ -6998,7 +7084,8 @@
     }
   }
 
-  async function createSavedFilter(force) {
+  // ``url`` updates an existing Saved Filter instead (its Use newer CDRs button).
+  async function createSavedFilter(force, {url = savedFiltersUrl} = {}) {
     const datasetIds = selectedDatasetIds();
     if (!datasetIds.length) {
       setMessage('Select one or more CDR datasets first.', 'error');
@@ -7031,7 +7118,7 @@
     setMessage(force ? 'Submitting a fresh scoring calculation…' : 'Submitting scoring calculation…');
     try {
       await persistCalculationSelection();
-      const body = await requestJson(savedFiltersUrl, {method: 'POST', body: JSON.stringify(payload)});
+      const body = await requestJson(url, {method: 'POST', body: JSON.stringify(payload)});
       const savedFilter = body.saved_filter || body;
       const id = savedFilterIdOf(savedFilter);
       if (!id) throw new Error('The scoring service did not return the Saved Filter.');
@@ -7214,14 +7301,14 @@
       const savedFilter = savedFilters.find(record => savedFilterIdOf(record) === id);
       if (!savedFilter) return true;
       if (useNewer) {
-        // The same filters with the CDRs that replace the older ones, calculated as a new selection.
+        // The same Saved Filter, updated with the CDRs that replace the older ones and calculated again.
         const replacements = new Map((savedFilter.newer_cdrs || []).map(item => [String(item.id), String(item.replaced_by)]));
         restoreCalculationSelectionFromSavedFilter({
           ...savedFilter,
           dataset_ids: [...new Set((savedFilter.dataset_ids || []).map(value => replacements.get(String(value)) || String(value)))],
         });
         savedFilterSelector.open = false;
-        await createSavedFilter(false);
+        await createSavedFilter(false, {url: `${savedFiltersUrl}/${encodeURIComponent(id)}/use-newer-cdrs`});
         return true;
       }
       const changes = pin ? {pinned: !savedFilter.pinned} : await (async () => {
