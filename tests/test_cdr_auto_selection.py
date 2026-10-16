@@ -8,8 +8,8 @@ import pytest
 import src.DriveTestAnalyzer as app_module
 from src.modules import cdr_facets
 from src.modules.cdr_auto_selection import (
-    ALL_CAMPAIGNS, LATEST_CAMPAIGN, LATEST_TWO_CAMPAIGNS, campaign_values, complete_campaign_cdrs, resolve_campaign_filter,
-    resolve_cdrs,
+    ALL_CAMPAIGNS, LATEST_CAMPAIGN, LATEST_TWO_CAMPAIGNS, NO_PREVIOUS_CAMPAIGN, PREVIOUS_CAMPAIGN, campaign_values,
+    complete_campaign_cdrs, expand_campaign_filter, resolve_campaign_filter, resolve_cdrs,
 )
 from src.modules.cdr_facets import cascading_options, fill_missing_facets, stored_facets
 from src.modules.repository import Repository, local_now_iso
@@ -78,6 +78,12 @@ def test_cdrs_follow_nr_mode_campaign_and_combined_tables(workspace):
     assert campaign_values(repository, 'NSA') == ['UK_Q1_2026', 'UK_Q2_2026']
     assert resolve_campaign_filter(repository, 'NSA', [LATEST_CAMPAIGN]) == ['UK_Q2_2026']
     assert resolve_campaign_filter(repository, 'NSA', [LATEST_TWO_CAMPAIGNS]) == ['UK_Q1_2026', 'UK_Q2_2026']
+    # Previous campaign is the one before the newest; with a single campaign it chooses none (no CDR, not every one).
+    assert resolve_campaign_filter(repository, 'NSA', [PREVIOUS_CAMPAIGN]) == ['UK_Q1_2026']
+    assert sorted(value for values in resolve_cdrs(repository, 'NSA', [PREVIOUS_CAMPAIGN]).values() for value in values) == sorted(q1)
+    assert expand_campaign_filter([PREVIOUS_CAMPAIGN], ['UK_Q2_2026']) == [NO_PREVIOUS_CAMPAIGN]
+    assert expand_campaign_filter([PREVIOUS_CAMPAIGN], []) == []
+    assert not any(resolve_cdrs(repository, 'SA', [PREVIOUS_CAMPAIGN]).values())
     # All available campaigns is every campaign of the NR Mode when it is used, also one that arrives later.
     assert resolve_campaign_filter(repository, 'NSA', [ALL_CAMPAIGNS]) == ['UK_Q1_2026', 'UK_Q2_2026']
     q3 = add(name='UK_Q3_2026_Data.csv', kind='data', campaign='UK_Q3_2026')
@@ -97,6 +103,23 @@ def test_scoring_leaves_out_campaigns_without_every_type(workspace):
     ids, incomplete = complete_campaign_cdrs(workspace['repository'], 'NSA')
     assert sorted(ids) == sorted(complete)
     assert incomplete == ['2026-Q2']
+
+
+def test_scoring_previous_campaign_is_the_complete_campaign_before_the_newest(workspace):
+    from src.modules.scoring_selection import expand_scoring_campaigns, scoring_auto_cdrs
+    add = workspace['add']
+    repository = workspace['repository']
+    q1 = [add(name=f'UK_Q1_2026_{kind}.csv', kind=kind, campaign='UK_Q1_2026') for kind in ('data', 'voice', 'speech')]
+    # Previous campaign with a single complete campaign chooses none (not every one).
+    assert expand_scoring_campaigns(repository, 'NSA', [PREVIOUS_CAMPAIGN]) == [NO_PREVIOUS_CAMPAIGN]
+    [add(name=f'UK_Q2_2026_{kind}.csv', kind=kind, campaign='UK_Q2_2026') for kind in ('data', 'voice', 'speech')]
+    # A newer campaign without every type is left out: the one before the newest complete one is Q1.
+    add(name='UK_Q3_2026_Data.csv', kind='data', campaign='UK_Q3_2026')
+    assert expand_scoring_campaigns(repository, 'NSA', [PREVIOUS_CAMPAIGN]) == ['UK_Q1_2026']
+    chosen = scoring_auto_cdrs(repository, 'NSA', {'Campaign': [PREVIOUS_CAMPAIGN]})
+    assert sorted(chosen['dataset_ids']) == sorted(q1)
+    assert list(chosen['campaign_presets']) == [LATEST_CAMPAIGN, PREVIOUS_CAMPAIGN, LATEST_TWO_CAMPAIGNS, ALL_CAMPAIGNS]
+    assert chosen['campaign_presets'][PREVIOUS_CAMPAIGN] == ['UK_Q1_2026']
 
 
 def test_filters_cascade_over_every_cdr_of_the_nr_mode_without_reading_rows(workspace, monkeypatch):
@@ -149,7 +172,8 @@ def test_scoring_cdr_selection_endpoint_chooses_cdrs_and_cascades(workspace):
     assert body['options']['Campaign'] == ['UK_Q1_2026', 'UK_Q2_2026']
 
     response = client.post('/api/scoring/cdr-selection', json={'nr_mode': 'NSA', 'default_campaign': True})
-    assert response.json()['campaign_selection'] == ['UK_Q2_2026']
+    # Another NR Mode starts on Latest campaign: the newest campaign with Data, Voice and Speech CDRs.
+    assert response.json()['campaign_selection'] == [LATEST_CAMPAIGN]
     assert sorted(response.json()['dataset_ids']) == sorted(q2)
 
     vendors = client.post('/api/scoring/cdr-selection', json={'nr_mode': 'NSA', 'context_filters': {'Operator': ['EE']}}).json()
@@ -163,8 +187,9 @@ def test_scoring_selection_chooses_the_newest_complete_campaign_and_migrates_sav
     q1 = [add(name=f'UK_Q1_2026_{kind}.csv', kind=kind, campaign='UK_Q1_2026') for kind in ('data', 'voice', 'speech')]
     q2 = [add(name=f'UK_Q2_2026_{kind}.csv', kind=kind, campaign='UK_Q2_2026') for kind in ('data', 'voice', 'speech')]
 
+    # A new selection is on Latest campaign: the CDRs of the newest complete campaign.
     selection = client.get('/api/scoring/selection').json()['selection']
-    assert selection['context_filters']['Campaign'] == ['UK_Q2_2026']
+    assert selection['context_filters']['Campaign'] == [LATEST_CAMPAIGN]
     assert sorted(selection['dataset_ids']) == sorted(q2)
     assert selection['auto_cdrs'] is True
 

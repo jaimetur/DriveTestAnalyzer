@@ -146,9 +146,11 @@
   // The Campaign filter chooses the CDRs of a Dashboard (see cdr_auto_selection): Latest campaign and Latest 2
   // campaigns follow the newest campaigns of its NR Mode. A new Dashboard compares its newest two campaigns, or
   // shows the newest one in Multivendor Operator_Vendor, as its newest CDRs did.
-  const LATEST_CAMPAIGN = '@latest-campaign', LATEST_TWO_CAMPAIGNS = '@latest-2-campaigns', ALL_CAMPAIGNS = '@all-campaigns';
-  // All available campaigns takes every campaign of the NR Mode each time, also those that arrive later.
-  const campaignPresetLabels = {[LATEST_CAMPAIGN]: 'Latest campaign', [LATEST_TWO_CAMPAIGNS]: 'Latest 2 campaigns', [ALL_CAMPAIGNS]: 'All available campaigns'};
+  const LATEST_CAMPAIGN = '@latest-campaign', PREVIOUS_CAMPAIGN = '@previous-campaign', LATEST_TWO_CAMPAIGNS = '@latest-2-campaigns', ALL_CAMPAIGNS = '@all-campaigns';
+  // Previous campaign is the one before the newest; All available campaigns takes every campaign of the NR Mode each
+  // time, also those that arrive later.
+  const campaignPresetLabels = {[LATEST_CAMPAIGN]: 'Latest campaign', [PREVIOUS_CAMPAIGN]: 'Previous campaign',
+    [LATEST_TWO_CAMPAIGNS]: 'Latest 2 campaigns', [ALL_CAMPAIGNS]: 'All available campaigns'};
   const isCampaignPreset = value => Object.prototype.hasOwnProperty.call(campaignPresetLabels, String(value));
   const isCampaignField = field => identity(field) === identity('Campaign');
   const defaultCampaignFilter = (scope = 'single', vendorComparison = 'operator_vendor') => [
@@ -1022,7 +1024,7 @@
       );
       campaignControl.disabled = false;
       campaignControl.dataset.multiselectDynamicAll = 'true';
-      campaignCopy.textContent = `The CDRs of ${dashboardNrMode(dashboard)} of the chosen campaigns are used: Latest campaign and Latest 2 campaigns follow the newest ones.`;
+      campaignCopy.textContent = `The CDRs of ${dashboardNrMode(dashboard)} of the chosen campaigns are used: Latest campaign, Previous campaign and Latest 2 campaigns follow the newest ones.`;
       campaignControl.dispatchEvent(new Event('multiselect:options-updated'));
     };
     campaignControl.onchange = () => {
@@ -2176,7 +2178,7 @@
         values.append(entry);
       }
       if (campaign) {
-        // Latest campaign and Latest 2 campaigns follow the newest campaigns of the NR Mode; then every campaign.
+        // Latest campaign, Previous campaign and Latest 2 campaigns follow the newest campaigns of the NR Mode; then every campaign.
         available.sort((left, right) => (globalThis.campaignCompare?.(left, right) ?? left.localeCompare(right)));
         const presets = Object.keys(campaignPresetLabels).map(value => {
           const item = option(value, campaignPresetLabels[value]); item.selected = hasStoredSelection && selected.includes(value);

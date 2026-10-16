@@ -6838,10 +6838,219 @@ if (window.location.pathname === '/workspace') {
   }
 }
 
+// Every single <select> of the application opens the application's own list below the field instead of the browser's
+// (which macOS opens over the field). The select stays the field, with its look, value, events and disabled state, so
+// the modules need nothing: its list is built from its options each time it opens. Phones keep their own pickers, and
+// a select (or an element around it) with data-native-select keeps the browser's list.
+function setupNativeSelectMenus() {
+  if (document.documentElement.dataset.nativeSelectMenus === '1') return;
+  document.documentElement.dataset.nativeSelectMenus = '1';
+  if (!window.matchMedia?.('(pointer: fine)').matches) return;
+  const SEARCH_FROM = 12;
+  let current = null;
+  const handled = (select) => select instanceof HTMLSelectElement && !select.multiple && select.size <= 1 && !select.disabled
+    && !select.closest('[data-native-select]');
+  const optionText = (option) => (option.label || option.textContent || option.value || '').trim();
+
+  const close = ({focus = true} = {}) => {
+    if (!current) return;
+    const {select, menu} = current;
+    current = null;
+    menu.remove();
+    select.removeAttribute('aria-expanded');
+    if (focus && select.isConnected) select.focus({preventScroll: true});
+  };
+
+  const choose = (option) => {
+    if (!current || !option || option.disabled) return;
+    const {select} = current;
+    close();
+    if (option.selected) return;
+    option.selected = true;
+    select.dispatchEvent(new Event('input', {bubbles: true}));
+    select.dispatchEvent(new Event('change', {bubbles: true}));
+  };
+
+  const visibleItems = () => (current ? current.items.filter((item) => !item.hidden && item.getAttribute('aria-disabled') !== 'true') : []);
+  const activate = (item, {scroll = true} = {}) => {
+    if (!current || !item) return;
+    current.items.forEach((entry) => entry.classList.toggle('is-active', entry === item));
+    current.active = item;
+    current.menu.setAttribute('aria-activedescendant', item.id);
+    if (scroll) item.scrollIntoView({block: 'nearest'});
+  };
+  const move = (step) => {
+    const items = visibleItems();
+    if (!items.length) return;
+    const index = items.indexOf(current.active);
+    activate(items[Math.max(0, Math.min(items.length - 1, index < 0 ? 0 : index + step))]);
+  };
+
+  const place = () => {
+    if (!current) return;
+    const {select, menu} = current;
+    const rect = select.getBoundingClientRect();
+    if (!select.isConnected || rect.bottom < 0 || rect.top > window.innerHeight) { close({focus: false}); return; }
+    const gap = 6, margin = 8;
+    const below = window.innerHeight - rect.bottom - gap - margin;
+    const above = rect.top - gap - margin;
+    const upwards = below < 180 && above > below;
+    menu.style.minWidth = `${Math.round(rect.width)}px`;
+    menu.style.maxHeight = `${Math.max(120, Math.min(480, upwards ? above : below))}px`;
+    menu.style.top = upwards ? '' : `${Math.round(rect.bottom + gap)}px`;
+    menu.style.bottom = upwards ? `${Math.round(window.innerHeight - rect.top + gap)}px` : '';
+    const width = menu.getBoundingClientRect().width;
+    menu.style.left = `${Math.round(Math.max(margin, Math.min(rect.left, window.innerWidth - width - margin)))}px`;
+  };
+
+  const open = (select) => {
+    close({focus: false});
+    const menu = document.createElement('div');
+    menu.className = 'native-select-menu';
+    menu.setAttribute('role', 'listbox');
+    menu.tabIndex = -1;
+    const label = select.getAttribute('aria-label') || select.labels?.[0]?.textContent?.trim() || '';
+    if (label) menu.setAttribute('aria-label', label);
+    const items = [];
+    const groups = [];
+    const addOption = (option, group = null) => {
+      if (option.hidden) return;
+      const item = document.createElement('div');
+      item.className = 'native-select-option';
+      item.id = `native-select-option-${items.length}-${Math.random().toString(36).slice(2, 8)}`;
+      item.setAttribute('role', 'option');
+      item.setAttribute('aria-selected', String(option.selected));
+      if (option.disabled || group?.disabled) item.setAttribute('aria-disabled', 'true');
+      item.textContent = optionText(option) || ' ';
+      item.title = optionText(option);
+      item.nativeOption = option;
+      item.groupLabel = group ? groups.at(-1) : null;
+      items.push(item);
+      menu.appendChild(item);
+    };
+    const options = [...select.options].filter((option) => !option.hidden);
+    let search = null;
+    if (options.length >= SEARCH_FROM) {
+      search = document.createElement('input');
+      search.type = 'search';
+      search.className = 'native-select-search';
+      search.placeholder = 'Filter values…';
+      search.setAttribute('aria-label', 'Filter values');
+      menu.appendChild(search);
+    }
+    for (const child of select.children) {
+      if (child instanceof HTMLOptGroupElement) {
+        const heading = document.createElement('div');
+        heading.className = 'native-select-group';
+        heading.textContent = child.label;
+        groups.push(heading);
+        menu.appendChild(heading);
+        [...child.children].forEach((option) => option instanceof HTMLOptionElement && addOption(option, child));
+      } else if (child instanceof HTMLOptionElement) {
+        addOption(child);
+      }
+    }
+    // Inside an open modal dialog the list opens in it (the rest of the page is inert under it).
+    const host = [...document.querySelectorAll('dialog[open]')].reverse().find((dialog) => dialog.contains(select)) || document.body;
+    host.appendChild(menu);
+    current = {select, menu, items, active: null, search, typed: '', typedAt: 0};
+    select.setAttribute('aria-expanded', 'true');
+    place();
+    activate(items.find((item) => item.nativeOption.selected) || visibleItems()[0], {scroll: false});
+    current.active?.scrollIntoView({block: 'nearest'});
+    if (search) {
+      search.addEventListener('input', () => {
+        const query = search.value.trim().toLocaleLowerCase();
+        items.forEach((item) => { item.hidden = Boolean(query) && !item.textContent.toLocaleLowerCase().includes(query); });
+        groups.forEach((heading) => { heading.hidden = !items.some((item) => item.groupLabel === heading && !item.hidden); });
+        if (current?.active?.hidden || !current?.active) activate(visibleItems()[0]);
+      });
+      search.focus({preventScroll: true});
+    } else {
+      menu.focus({preventScroll: true});
+    }
+    menu.addEventListener('mousedown', (event) => { if (event.target !== search) event.preventDefault(); });
+    menu.addEventListener('mousemove', (event) => {
+      const item = event.target.closest?.('.native-select-option');
+      if (item && item !== current?.active && item.getAttribute('aria-disabled') !== 'true') activate(item, {scroll: false});
+    });
+    menu.addEventListener('click', (event) => {
+      const item = event.target.closest?.('.native-select-option');
+      if (item) choose(item.nativeOption);
+    });
+    menu.addEventListener('keydown', (event) => {
+      if (!current) return;
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); move(event.key === 'ArrowDown' ? 1 : -1); return; }
+      if (event.key === 'Home' || event.key === 'End') {
+        if (event.target === search) return;
+        event.preventDefault();
+        const visible = visibleItems();
+        activate(event.key === 'Home' ? visible[0] : visible.at(-1));
+        return;
+      }
+      if (event.key === 'Enter') { event.preventDefault(); choose(current.active?.nativeOption); return; }
+      if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(); return; }
+      if (event.key === 'Tab') { event.preventDefault(); close(); return; }
+      if (!search && event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
+        // Typing jumps to the first value that starts with what was typed.
+        const now = Date.now();
+        current.typed = (now - current.typedAt < 800 ? current.typed : '') + event.key.toLocaleLowerCase();
+        current.typedAt = now;
+        const match = visibleItems().find((item) => item.textContent.trim().toLocaleLowerCase().startsWith(current.typed));
+        if (match) activate(match);
+      }
+    });
+  };
+
+  document.addEventListener('mousedown', (event) => {
+    const select = event.target instanceof Element ? event.target.closest('select') : null;
+    if (current && !current.menu.contains(event.target) && select !== current.select) close({focus: false});
+    if (event.button !== 0 || !handled(select)) return;
+    event.preventDefault();
+    if (current?.select === select) { close(); return; }
+    select.focus({preventScroll: true});
+    open(select);
+  }, true);
+  document.addEventListener('keydown', (event) => {
+    const select = event.target;
+    if (!handled(select) || current?.select === select) return;
+    const opens = [' ', 'Enter', 'ArrowDown', 'ArrowUp', 'F4'].includes(event.key) && !event.ctrlKey && !event.metaKey;
+    if (!opens) return;
+    event.preventDefault();
+    open(select);
+  }, true);
+  window.addEventListener('scroll', (event) => {
+    if (current && !current.menu.contains(event.target)) place();
+  }, true);
+  window.addEventListener('resize', () => close({focus: false}));
+  window.addEventListener('blur', () => close({focus: false}));
+}
+
+// The lists of the application's own dropdowns are as wide as their values (each on one line): one that would leave
+// the screen on the right opens towards the left, whichever component shows it.
+function setupDropdownAlignment() {
+  const lists = '.multiselect-menu, .searchable-select-menu, .workspace-user-picker-menu';
+  const align = (menu) => {
+    menu.classList.remove('aligns-right');
+    if (menu.hidden || !menu.isConnected) return;
+    const bounds = menu.getBoundingClientRect();
+    if (bounds.width && bounds.right > window.innerWidth - 8) menu.classList.add('aligns-right');
+  };
+  new MutationObserver((records) => {
+    for (const {target} of records) {
+      if (!(target instanceof Element)) continue;
+      if (target.matches(lists)) align(target);
+      else if (target.matches('details[open]')) target.querySelectorAll(':scope > .workspace-user-picker-menu').forEach(align);
+    }
+  }).observe(document.documentElement, {attributes: true, attributeFilter: ['hidden', 'open'], subtree: true});
+}
+
+setupDropdownAlignment();
 setupPersistentControls();
 setupPersistentPanelState();
 setupWorkspaceUserPickers();
 setupCustomMultiSelects();
+setupNativeSelectMenus();
 setupMainCitiesTransfer();
 setupPagePanelNavigator();
 setupModuleNavigator();

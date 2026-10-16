@@ -1,5 +1,5 @@
 {
-  "name": "Weekly NetCheck Report (@latest campaings)",
+  "name": "Weekly NetCheck Report (@latest campaign)",
   "enabled": false,
   "send_email": false,
   "recipients": [],

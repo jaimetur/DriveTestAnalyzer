@@ -14,7 +14,7 @@ from src.modules.report_tasks import (
 from src.modules.scoring_reports import default_report_configuration
 
 # The Reporting Jobs every workspace starts with (assets/reporting-jobs).
-STARTER_JOBS = {'Weekly NetCheck Report (@latest campaings)', 'All Modules Report (@latest 2 campaings)', 'Scoring Report (@All Campaigns)'}
+STARTER_JOBS = {'Weekly NetCheck Report (@latest campaign)', 'All Modules Report (@latest 2 campaigns)', 'Scoring Report (@All Campaigns)'}
 
 TZ = timezone(timedelta(hours=2))
 # Every Scoring artifact is configured with the report editor.

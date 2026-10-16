@@ -89,7 +89,7 @@
   .scoring-area-toggle { display: inline-flex; align-items: center; gap: .5rem; cursor: pointer; }
   .scoring-area-toggle input { width: 1rem; height: 1rem; margin: 0; accent-color: var(--brand); }
   .scoring-area-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(13rem, 16rem)); gap: .6rem 1rem; }
-  .scoring-area-grid label { display: grid; gap: .3rem; font-size: .82rem; font-weight: 700; color: #31545a; }
+  .scoring-area-grid > label { display: grid; gap: .3rem; font-size: .82rem; font-weight: 700; color: #31545a; }
   .scoring-area-summary:not(.is-included) .scoring-area-grid { opacity: .55; }
   /* Included, the summary locks the area filters of the Context filters, and says why. */
   .scoring-area-filter-lock { display: flex; align-items: center; gap: .7rem; margin: 0 0 .7rem; padding: .65rem .8rem; border: 1px solid rgba(197,138,0,.45); border-left: 4px solid #c58a00; border-radius: 11px; background: #fff7e3; color: #6b4a00; line-height: 1.4; }

@@ -8,8 +8,8 @@ from typing import Any
 from src.branding import canonical_format
 from src.modules.column_names import column_identity
 from src.modules.cdr_auto_selection import (
-    CAMPAIGN_PRESETS, CDR_KIND_LABELS, campaign_groups, campaign_identity, campaign_presets, candidate_cdrs, cdr_campaigns,
-    campaign_values, complete_campaign_cdrs,
+    CAMPAIGN_PRESETS, CDR_KIND_LABELS, LATEST_CAMPAIGN, NO_PREVIOUS_CAMPAIGN, campaign_groups, campaign_identity, campaign_presets,
+    candidate_cdrs, cdr_campaigns, campaign_values, complete_campaign_cdrs, preset_campaign_groups,
 )
 from src.modules.cdr_facets import cascading_options
 from src.modules.cdr_stage import combined_dataset_ids
@@ -94,18 +94,10 @@ def _default_selection(repository: Repository) -> dict[str, Any]:
     rows = _available_cdr_rows(repository)
     nr_mode = _default_nr_mode(rows)
     defaults = _fallback_selection(repository, rows=rows, nr_mode=nr_mode)
-    defaults['context_filters']['Campaign'] = default_scoring_campaigns(repository, nr_mode)
+    # Latest campaign: the newest campaign with Data, Voice and Speech CDRs, also when newer ones arrive.
+    defaults['context_filters']['Campaign'] = [LATEST_CAMPAIGN]
     defaults['dataset_ids'] = auto_scoring_cdr_ids(repository, nr_mode, defaults['context_filters']['Campaign'])
     return defaults
-
-
-def default_scoring_campaigns(repository: Repository, nr_mode: str) -> list[str]:
-    """The newest campaign of the NR Mode with Data, Voice and Speech CDRs (each spelling of it)."""
-    for values in campaign_groups(campaign_values(repository, nr_mode)):
-        dataset_ids, _incomplete = complete_campaign_cdrs(repository, nr_mode, values)
-        if dataset_ids:
-            return sorted(values, key=lambda value: (value.casefold(), value))
-    return []
 
 
 def _complete_campaign_groups(repository: Repository, nr_mode: str) -> list[list[str]]:
@@ -119,18 +111,18 @@ def _flatten_groups(groups: list[list[str]]) -> list[str]:
     return sorted((value for values in groups for value in values), key=lambda value: (value.casefold(), value))
 
 
-def latest_scoring_campaigns(repository: Repository, nr_mode: str, count: int | None) -> list[str]:
-    """The newest ``count`` campaigns of the NR Mode with Data, Voice and Speech CDRs (every one with None)."""
-    groups = _complete_campaign_groups(repository, nr_mode)
-    return _flatten_groups(groups if count is None else groups[:max(count, 0)])
+def _preset_scoring_campaigns(groups: list[list[str]], presets: list[str]) -> list[str]:
+    """The complete campaigns (groups newest first) that automatic choices stand for, or what stands for none."""
+    return _flatten_groups(preset_campaign_groups(groups, presets)) or ([NO_PREVIOUS_CAMPAIGN] if groups else [])
 
 
 def expand_scoring_campaigns(repository: Repository, nr_mode: str, values: object) -> list[str]:
-    """A Campaign filter with Latest campaign or Latest 2 campaigns as the newest complete campaigns now."""
+    """A Campaign filter with its automatic choice (Latest campaign, Previous campaign…) as the complete campaigns it
+    stands for now."""
     campaigns = [str(value).strip() for value in (values if isinstance(values, (list, tuple, set)) else [values] if values else [])
                  if str(value or '').strip()]
     presets = campaign_presets(campaigns)
-    return latest_scoring_campaigns(repository, nr_mode, CAMPAIGN_PRESETS[presets[0]]) if presets else campaigns
+    return _preset_scoring_campaigns(_complete_campaign_groups(repository, nr_mode), presets[:1]) if presets else campaigns
 
 
 def expand_scoring_context_filters(repository: Repository, nr_mode: str, filters: object) -> dict[str, Any]:
@@ -160,12 +152,13 @@ def scoring_auto_cdrs(repository: Repository, nr_mode: object, context_filters: 
     mode = normalize_nr_mode(nr_mode) or _default_nr_mode(rows)
     filters = dict(context_filters) if isinstance(context_filters, dict) else {}
     if default_campaign:
-        filters['Campaign'] = default_scoring_campaigns(repository, mode)
-    # Latest campaign and Latest 2 campaigns stand for the newest complete campaigns now.
+        # Another NR Mode starts on Latest campaign.
+        filters['Campaign'] = [LATEST_CAMPAIGN]
+    # The automatic choices (Latest campaign, Previous campaign…) stand for the complete campaigns now.
     complete_groups = _complete_campaign_groups(repository, mode)
     chosen = [str(value).strip() for value in (filters.get('Campaign') or []) if str(value or '').strip()]
     presets = campaign_presets(chosen)
-    filters['Campaign'] = _flatten_groups(complete_groups[:CAMPAIGN_PRESETS[presets[0]]]) if presets else chosen
+    filters['Campaign'] = _preset_scoring_campaigns(complete_groups, presets[:1]) if presets else chosen
     campaigns = filters['Campaign']
     dataset_ids, incomplete = complete_campaign_cdrs(repository, mode, campaigns)
     dataset_ids = [dataset_id for dataset_id in dataset_ids if repository.dataset_rows_table_exists(dataset_id)]
@@ -183,9 +176,10 @@ def scoring_auto_cdrs(repository: Repository, nr_mode: object, context_filters: 
             'stage': by_id[dataset_id]['stage'], 'campaigns': campaigns_by_id.get(dataset_id, []),
         } for dataset_id in dataset_ids if dataset_id in by_id],
         'incomplete_campaigns': incomplete,
-        'campaign_selection': campaigns,
+        # The Campaign choice as made (Latest campaign…), for the Campaign filter.
+        'campaign_selection': presets[:1] if presets else campaigns,
         # The campaigns each Latest choice stands for now (a calculation uses them).
-        'campaign_presets': {preset: _flatten_groups(complete_groups[:count]) for preset, count in CAMPAIGN_PRESETS.items()},
+        'campaign_presets': {preset: _preset_scoring_campaigns(complete_groups, [preset]) for preset in CAMPAIGN_PRESETS},
         'options': cascading_options(repository, [row['id'] for row in candidates], filters, fields),
     }
 

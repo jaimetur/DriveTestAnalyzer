@@ -11097,3 +11097,31 @@ def test_documents_read_without_an_account_show_a_prominent_sign_in(client):
     assert 'class="topnav-link topnav-link-signin" href="/login?next=/documents/view/help"' in page.text
     assert '<span>Sign in</span>' in page.text
 
+
+
+def test_every_single_select_opens_the_application_list_below_its_field():
+    root = Path(__file__).parents[1]
+    script = (root / 'src/web_interface/static/js/app.js').read_text(encoding='utf-8')
+    stylesheet = (root / 'src/web_interface/static/css/app.css').read_text(encoding='utf-8')
+
+    # One delegated handler replaces the browser's list (which macOS opens over the field) of every single select;
+    # the select stays the field, and data-native-select keeps the browser's list.
+    component = script[script.index('function setupNativeSelectMenus() {'):script.index('\nsetupPersistentControls();')]
+    assert "select instanceof HTMLSelectElement && !select.multiple && select.size <= 1 && !select.disabled" in component
+    assert "!select.closest('[data-native-select]')" in component
+    assert "document.addEventListener('mousedown', (event) => {" in component and 'event.preventDefault();' in component
+    assert "[' ', 'Enter', 'ArrowDown', 'ArrowUp', 'F4'].includes(event.key)" in component
+    assert "select.dispatchEvent(new Event('change', {bubbles: true}));" in component
+    # Below the field (above it without room), inside an open modal dialog, with a search box for long lists.
+    assert "const upwards = below < 180 && above > below;" in component
+    assert "dialog[open]" in component and 'const SEARCH_FROM = 12;' in component
+    assert 'setupCustomMultiSelects();\nsetupNativeSelectMenus();' in script
+    assert '.native-select-menu { position: fixed; z-index: 2147483000;' in stylesheet
+    assert 'text-overflow: ellipsis; white-space: nowrap; }' in stylesheet
+    # The lists of the multiple choices are as wide as their values and open towards the left near the screen edge.
+    assert 'left: 0; right: auto; box-sizing: border-box; width: max-content; min-width: 100%; max-width: min(36rem, calc(100vw - 1rem));' in stylesheet
+    assert ':is(.multiselect-menu, .searchable-select-menu, .workspace-user-picker-menu).aligns-right { left: auto; right: 0; }' in stylesheet
+    alignment = script[script.index('function setupDropdownAlignment() {'):script.index('\nsetupDropdownAlignment();')]
+    assert "const lists = '.multiselect-menu, .searchable-select-menu, .workspace-user-picker-menu';" in alignment
+    assert "if (bounds.width && bounds.right > window.innerWidth - 8) menu.classList.add('aligns-right');" in alignment
+    assert "attributeFilter: ['hidden', 'open'], subtree: true" in alignment

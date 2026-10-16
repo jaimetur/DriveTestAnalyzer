@@ -676,12 +676,12 @@
   }
   .ppt-dashboards .multiselect-menu {
     box-sizing:border-box;
-    width:100%;
-    min-width:0;
+    width:max-content;
+    min-width:min(100%,calc(100vw - .8rem));
     max-width:calc(100vw - .8rem);
     max-width:calc(100dvw - .8rem);
-    max-height:min(18rem,calc(100vh - 1rem));
-    max-height:min(18rem,calc(100dvh - 1rem));
+    max-height:min(24rem,calc(100vh - 6rem));
+    max-height:min(24rem,calc(100dvh - 6rem));
   }
 
   .ppt-dashboards .ds-actions {display:flex;align-items:stretch;flex-wrap:wrap;gap:.4rem}
@@ -1832,7 +1832,7 @@
 .ds-slide-picker .ds-slide-picker-subtitle { color:#087b7f; }
 .ds-slide-picker .ds-slide-picker-separator { color:#394b59; font-weight:900; }
 .ds-slide-picker .searchable-select-menu { width:max-content; min-width:100%; max-width:min(70rem,calc(100vw - 4rem)); max-height:min(32rem,60vh); z-index:100; background:#fff; }
-.ppt-dashboards .ds-slide-picker .searchable-select-option { display:block; padding:.65rem .8rem!important; border-radius:8px!important; background:transparent; text-align:left; box-shadow:none; font-weight:600; white-space:normal; }
+.ppt-dashboards .ds-slide-picker .searchable-select-option { display:block; padding:.45rem .8rem!important; border-radius:8px!important; background:transparent; text-align:left; box-shadow:none; font-weight:600; white-space:normal; }
 .ppt-dashboards .ds-slide-picker .searchable-select-option:hover { background:#f0ebf7; }
 .ppt-dashboards .ds-slide-picker .searchable-select-option[aria-selected="true"] { background:#e2f2f3; outline:1px solid #9ccacc; }
 .ds-slide-picker .searchable-select-input { position:sticky; top:0; background:#fff; }

@@ -8,8 +8,9 @@ Combined? choice of the Workspace) of their NR Mode and whose campaigns are amon
 ones; every campaign when the Campaign filter is not restricted.
 
 The Campaign filter of a saved definition (a Dashboard, a Reporting Job entry) also accepts
-two choices made again each time they are used, so they follow the campaigns that arrive
-later: **Latest campaign** and **Latest 2 campaigns**.
+choices made again each time they are used, so they follow the campaigns that arrive later:
+**Latest campaign**, **Previous campaign** (the one before it), **Latest 2 campaigns** and
+**All available campaigns**.
 """
 
 from __future__ import annotations
@@ -24,13 +25,18 @@ from src.modules.nr_mode import dataset_nr_mode, normalize_nr_mode
 CDR_KINDS = ('data', 'voice', 'speech')
 CDR_KIND_LABELS = {'data': 'Data', 'voice': 'Voice', 'speech': 'Speech'}
 LATEST_CAMPAIGN = '@latest-campaign'
+PREVIOUS_CAMPAIGN = '@previous-campaign'
 LATEST_TWO_CAMPAIGNS = '@latest-2-campaigns'
 ALL_CAMPAIGNS = '@all-campaigns'
-# How many of the newest campaigns each choice stands for (None: every campaign of the NR Mode at that moment, so
-# the campaigns that arrive later are included too, unlike a list of every campaign checked now).
-CAMPAIGN_PRESETS = {LATEST_CAMPAIGN: 1, LATEST_TWO_CAMPAIGNS: 2, ALL_CAMPAIGNS: None}
-CAMPAIGN_PRESET_LABELS = {LATEST_CAMPAIGN: 'Latest campaign', LATEST_TWO_CAMPAIGNS: 'Latest 2 campaigns',
-                          ALL_CAMPAIGNS: 'All available campaigns'}
+# The campaigns each choice stands for, as a slice of the campaigns newest first (to None: every campaign of the NR
+# Mode at that moment, so the campaigns that arrive later are included too, unlike a list of every campaign checked
+# now).
+CAMPAIGN_PRESETS = {LATEST_CAMPAIGN: (0, 1), PREVIOUS_CAMPAIGN: (1, 2), LATEST_TWO_CAMPAIGNS: (0, 2), ALL_CAMPAIGNS: (0, None)}
+CAMPAIGN_PRESET_LABELS = {LATEST_CAMPAIGN: 'Latest campaign', PREVIOUS_CAMPAIGN: 'Previous campaign',
+                          LATEST_TWO_CAMPAIGNS: 'Latest 2 campaigns', ALL_CAMPAIGNS: 'All available campaigns'}
+# What a choice stands for when it chooses no campaign although there are some (Previous campaign with only one
+# campaign): no campaign matches it, so no CDR is used (an empty Campaign filter would be every campaign).
+NO_PREVIOUS_CAMPAIGN = '@no-previous-campaign'
 
 
 def _row(dataset: Any, key: str, default: Any = None) -> Any:
@@ -138,6 +144,15 @@ def campaign_groups(campaigns: Iterable[object]) -> list[list[str]]:
     return list(groups.values())
 
 
+def preset_campaign_groups(groups: list[Any], presets: Iterable[str]) -> list[Any]:
+    """The campaign groups (newest first) that some automatic choices stand for."""
+    chosen: set[int] = set()
+    for preset in presets:
+        start, stop = CAMPAIGN_PRESETS[preset]
+        chosen.update(range(len(groups))[start:stop])
+    return [group for index, group in enumerate(groups) if index in chosen]
+
+
 def latest_campaigns(campaigns: Iterable[object], count: int | None) -> list[str]:
     """The values of the newest ``count`` campaigns, or of every campaign with None (each with every spelling of it)."""
     groups = campaign_groups(campaigns)
@@ -151,17 +166,19 @@ def expand_campaign_filter(values: Iterable[object] | None, campaigns: Iterable[
     presets = campaign_presets(selected)
     if not presets:
         return selected
-    counts = [CAMPAIGN_PRESETS[preset] for preset in presets]
-    count = None if None in counts else max(counts)
+    campaigns = list(campaigns)
+    chosen = {value for group in preset_campaign_groups(campaign_groups(campaigns), presets) for value in group}
     explicit = [value for value in selected if not is_campaign_preset(value)]
-    return list(dict.fromkeys([*explicit, *latest_campaigns(campaigns, count)]))
+    expanded = list(dict.fromkeys([*explicit, *(value for value in sort_campaigns(campaigns) if value in chosen)]))
+    return expanded or ([NO_PREVIOUS_CAMPAIGN] if campaigns else [])
 
 
 def resolve_campaign_filter(repository: Any, nr_mode: object, values: Iterable[object] | None,
                             kinds: Iterable[str] = CDR_KINDS) -> list[str]:
     """The campaigns a Campaign filter chooses now in the NR Mode ([] for every campaign).
 
-    Latest campaign and Latest 2 campaigns choose every campaign when the CDRs have none.
+    The automatic choices choose every campaign when the CDRs have none, and no campaign when they choose none of
+    them (Previous campaign with only one campaign).
     """
     selected = [str(value).strip() for value in values or [] if str(value or '').strip()]
     if not campaign_presets(selected):
