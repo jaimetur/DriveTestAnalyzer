@@ -11125,3 +11125,18 @@ def test_every_single_select_opens_the_application_list_below_its_field():
     assert "const lists = '.multiselect-menu, .searchable-select-menu, .workspace-user-picker-menu';" in alignment
     assert "if (bounds.width && bounds.right > window.innerWidth - 8) menu.classList.add('aligns-right');" in alignment
     assert "attributeFilter: ['hidden', 'open'], subtree: true" in alignment
+
+
+def test_the_module_tabs_stay_at_the_top_with_the_sticky_bars_below_them():
+    root = Path(__file__).parents[1]
+    script = (root / 'src/web_interface/static/js/app.js').read_text(encoding='utf-8')
+    stylesheet = (root / 'src/web_interface/static/css/app.css').read_text(encoding='utf-8')
+
+    assert '.module-tabs { position: sticky; top: 0; }' in stylesheet
+    assert '.module-tabs.is-tall { position: relative; }' in stylesheet
+    sticky = script[script.index('function setupStickyModuleTabs() {'):script.index('\nsetupStickyModuleTabs();')]
+    # Tabs that would take more than a third of the screen do not stay; their height offsets the other sticky bars.
+    assert 'const tall = height > window.innerHeight / 3;' in sticky
+    assert "root.style.setProperty('--module-tabs-offset', `${tall ? 0 : height}px`);" in sticky
+    assert '.section-bar { --section-bar-accent: #0b6664; position: sticky; top: calc(var(--module-tabs-offset, 0px) + 8px);' in stylesheet
+    assert "+ moduleTabsOffset();" in script and "+ moduleTabsOffset() + 24;" in script

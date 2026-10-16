@@ -144,7 +144,7 @@
 .bugs-report .bug-edit-toggle:hover, .bugs-report .bug-edit-toggle[aria-expanded="true"] { border-color: var(--bug-accent); color: var(--bug-accent); background: #fff6f6; }
 .bug-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(16rem, 21rem); gap: 1rem; align-items: start; }
 .bug-main, .bug-side { display: grid; gap: 1rem; min-width: 0; }
-.bug-side { position: sticky; top: 1rem; }
+.bug-side { position: sticky; top: calc(var(--module-tabs-offset, 0px) + 1rem); }
 .bug-card { display: grid; gap: .8rem; padding: 1rem 1.15rem; border: 1px solid rgba(16, 49, 74, .1); background: #fff; box-shadow: 0 8px 22px rgba(16, 33, 49, .05); }
 .bug-card h3 { margin: 0; color: #10314a; font-size: 1rem; }
 .bug-text { color: #23394a; font-size: .9rem; line-height: 1.55; overflow-wrap: anywhere; }

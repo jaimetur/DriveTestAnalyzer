@@ -913,10 +913,10 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 .nq-drawer .nq-analysis-field .nq-pill-select { min-height: 2.75rem; padding-top: .45rem; padding-bottom: .45rem; font-size: .86rem; }
 /* Calls, Dashboards or every panel right below the Filters, always at hand while scrolling. */
 /* A dark band in the colour of the module, so it stands out from the panels it floats over. */
-.nq-view-switch { position: sticky; top: 8px; z-index: 26; display: flex; flex-wrap: nowrap; gap: .35rem; justify-self: center; box-sizing: border-box; width: max-content; max-width: 100%; margin: 0 auto; padding: .3rem; overflow-x: auto; scrollbar-width: none; border: 1px solid rgba(255, 255, 255, .18); border-radius: 999px; background: linear-gradient(135deg, #5a0c27, var(--nq-dark) 55%, #9c1d47); box-shadow: 0 12px 28px rgba(60, 10, 30, .32); }
+.nq-view-switch { position: sticky; top: calc(var(--module-tabs-offset, 0px) + 8px); z-index: 26; display: flex; flex-wrap: nowrap; gap: .35rem; justify-self: center; box-sizing: border-box; width: max-content; max-width: 100%; margin: 0 auto; padding: .3rem; overflow-x: auto; scrollbar-width: none; border: 1px solid rgba(255, 255, 255, .18); border-radius: 999px; background: linear-gradient(135deg, #5a0c27, var(--nq-dark) 55%, #9c1d47); box-shadow: 0 12px 28px rgba(60, 10, 30, .32); }
 .nq-view-switch::-webkit-scrollbar { display: none; }
 /* The bar and the Analysis Center beside it float together; only they take clicks, not the space around them. */
-.nq-view-dock { position: sticky; top: 8px; z-index: 26; display: flex; align-items: center; justify-content: center; gap: .5rem; box-sizing: border-box; width: 100%; pointer-events: none; }
+.nq-view-dock { position: sticky; top: calc(var(--module-tabs-offset, 0px) + 8px); z-index: 26; display: flex; align-items: center; justify-content: center; gap: .5rem; box-sizing: border-box; width: 100%; pointer-events: none; }
 .nq-view-dock > * { pointer-events: auto; }
 .nq-view-dock .nq-view-switch { position: static; flex: 0 1 auto; min-width: 0; margin: 0; }
 .nq-center-wrap { flex: 0 0 auto; }

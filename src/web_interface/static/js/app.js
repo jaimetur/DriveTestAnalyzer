@@ -7045,6 +7045,35 @@ function setupDropdownAlignment() {
   }).observe(document.documentElement, {attributes: true, attributeFilter: ['hidden', 'open'], subtree: true});
 }
 
+// The tabs of the modules stay at the top of the screen while a page scrolls (sticky, app.css): --module-tabs-offset,
+// their height, keeps the bars and panels that stick to the top of the page below them. Tabs that would take more than
+// a third of a small screen do not stay.
+function moduleTabsOffset() {
+  return parseFloat(document.documentElement.style.getPropertyValue('--module-tabs-offset')) || 0;
+}
+function setupStickyModuleTabs() {
+  const tabs = document.querySelector('main > .module-tabs');
+  if (!tabs) return;
+  const root = document.documentElement;
+  let frame = 0;
+  const measure = () => {
+    const height = Math.ceil(tabs.getBoundingClientRect().height);
+    const tall = height > window.innerHeight / 3;
+    tabs.classList.toggle('is-tall', tall);
+    root.style.setProperty('--module-tabs-offset', `${tall ? 0 : height}px`);
+  };
+  const sync = () => {
+    frame = 0;
+    tabs.classList.toggle('is-stuck', !tabs.classList.contains('is-tall') && window.scrollY > 0 && tabs.getBoundingClientRect().top <= 0.5);
+  };
+  window.addEventListener('scroll', () => { if (!frame) frame = window.requestAnimationFrame(sync); }, {passive: true});
+  window.addEventListener('resize', () => { measure(); sync(); });
+  if (typeof ResizeObserver === 'function') new ResizeObserver(measure).observe(tabs);
+  measure();
+  sync();
+}
+
+setupStickyModuleTabs();
 setupDropdownAlignment();
 setupPersistentControls();
 setupPersistentPanelState();
@@ -9564,8 +9593,9 @@ function showSectionAtTop(target) {
     document.body.append(room);
   }
   const current = room.offsetHeight;
-  // A page with a sticky bar above its sections keeps them clear of it (the --section-top-offset of the section).
-  const offset = parseFloat(getComputedStyle(target).getPropertyValue('--section-top-offset')) || 0;
+  // A page with a sticky bar above its sections keeps them clear of it (the --section-top-offset of the section), and of
+  // the tabs of the modules.
+  const offset = (parseFloat(getComputedStyle(target).getPropertyValue('--section-top-offset')) || 0) + moduleTabsOffset();
   const top = target.getBoundingClientRect().top + window.scrollY - offset;
   const needed = Math.max(0, Math.ceil(top + window.innerHeight - (document.documentElement.scrollHeight - current)));
   if (Math.abs(needed - current) > 1) room.style.height = `${needed}px`;
@@ -9820,7 +9850,7 @@ document.addEventListener('click', (event) => {
   const update = () => {
     frame = 0;
     fit();
-    const offset = (parseFloat(getComputedStyle(document.body).getPropertyValue('--section-top-offset')) || 0) + 24;
+    const offset = (parseFloat(getComputedStyle(document.body).getPropertyValue('--section-top-offset')) || 0) + moduleTabsOffset() + 24;
     const atEnd = window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 2;
     // The section being read: the last one whose top has reached the bar (the last one in sight at the end of the page).
     let active = null;
