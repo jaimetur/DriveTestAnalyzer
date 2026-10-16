@@ -290,10 +290,10 @@ MODULE_SECTIONS: dict[str, list[tuple[Any, ...] | None]] = {
     'ppt-reporting-old': [('NetCheck CDR Reports', 'NetCheck CDR Reports', 'presentation'), ('Charts Panel', 'Charts Panel', 'chart'),
                           ('Log Report', 'Log Report', 'log'), ('Reports and Charts Jobs', 'Reports and Charts Jobs', 'jobs')],
     'scoring': [('Select CDRs, filters, Split by & GAP reference', 'Scoring Calculation', 'sliders'),
-                ('Scoring results', 'Scoring Results', 'chart', [
+                ('Scoring & GAP Results', 'Scoring & GAP Results', 'chart', [
                     ('scoring-results-charts', 'Scoring Charts', 'chart'), ('scoring-results-tables', 'Scoring Tables', 'table'),
                     ('scoring-results-gap', 'GAP Analysis', 'trend')]),
-                ('Saved Filters', 'Saved Filters', 'filter')],
+                ('Starred Filters', 'Starred Filters', 'filter')],
     # In the order of the page (templates/network_insights.html).
     'network-insights': [('Analysis Selection', 'Analysis Selection', 'select'), ('Overview', 'Overview', 'summary'),
                          ('Coverage & Interference Maps', 'Coverage & Interference Maps', 'map'), ('RF Quality', 'RF Quality', 'activity'),
