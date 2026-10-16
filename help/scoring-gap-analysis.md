@@ -29,29 +29,26 @@ Each calculation gives the NetCheck **Best Network** scoring, which rates every 
 
 1. Open the correct workspace and finish processing the required CDRs.
 2. If no methodology is configured, import one under **Workspace Config → Scoring & GAP Analysis Setup**.
-3. Open **Scoring & GAP Analysis** and expand **Select CDRs, filters, Split by & GAP reference**.
-4. Choose **NSA** or **SA** above **CDR datasets**. A calculation cannot mix both modes.
+3. Open **Scoring & GAP Analysis** and expand **Select NR Mode, Campaign, filters, Split by & GAP reference**.
+4. Choose **NSA** or **SA** in **NR Mode**. A calculation cannot mix both modes.
 
 > [!IMPORTANT]
-> Include at least one ready **Data**, **Voice** and **Speech** CDR for every campaign included in the calculation. Complete CDR selection does not guarantee complete KPI measurements: inspect Calculation notes after processing.
+> Every campaign of the calculation needs at least one ready **Data**, **Voice** and **Speech** CDR. Complete CDRs do not guarantee complete KPI measurements: inspect Calculation notes after processing.
 
-### 2. Select CDRs
+### 2. Choose the NR Mode and Campaign
 
-Use the Data, Voice and Speech selectors, or replace the selection with a shortcut:
+There is no CDR selector: the **NR Mode** and the **Campaign** filter beside it choose the CDRs of the calculation. They are the CDRs of that NR Mode that the combined CDR tables include, for the chosen campaigns:
 
-| Button | Selection |
-| --- | --- |
-| **Select all CDRs** | All ready CDRs in the selected NR Mode |
-| **Select latest of each type** | The latest ready Data, Voice and Speech CDR |
-| **Select latest two of each type** | Up to two latest ready CDRs per type |
+- the **Final** CDR of a campaign before its **Weekly** and **Daily** CDRs, and a Weekly CDR before the Daily ones it contains;
+- or, when it was changed, the **In Combined?** choice of the CDR in Workspace (see [CDR Stage](workspace-management.md#cdr-stage-final-weekly-and-daily)).
 
-“Latest” first uses a recognized date in the CDR name: year-quarter, YYYY-MM-DD, DD-MM-YYYY or a compact date. When no name date is recognized, upload time is used. Ties use upload time, then dataset ID.
+The Campaign filter offers first **Latest campaign**, **Latest 2 campaigns** and **All available campaigns**: the newest one or two campaigns of the NR Mode with Data, Voice and Speech CDRs, or every one of them, whenever it is used (also those that arrive later). Each one stands alone (checking it clears the other one and the campaigns, checking a campaign clears it; **Select All / None** checks or clears the campaigns only). The panel keeps the choice, so it follows the newest campaigns the next time it opens, and a calculation or Saved Filter uses the campaigns it stands for then. Without a Campaign (**All complete campaigns**), every campaign with Data, Voice and Speech CDRs is scored; the campaigns that lack a type are named in a note below the CDRs and left out. **CDRs used** lists the CDRs of the calculation by type, with their stage and campaigns (Weekly and Daily CDRs outlined), follows every change of the NR Mode or a filter at once, and the badge above the panel counts them.
 
-On first use, the module selects the latest ready CDR of each type for the chosen NR Mode.
+On first use, and when another NR Mode is chosen, the Campaign is the newest campaign of the NR Mode with Data, Voice and Speech CDRs. A selection saved before (when CDRs were chosen by hand) opens with the campaigns of its CDRs. Opening a Saved Filter shows its own CDRs (**CDRs of the opened Saved Filter**, with **Use automatic CDRs** to choose them again) until the NR Mode or a filter changes.
 
 ### 3. Set filters, Split by and reference
 
-1. Restrict **Operators**, **Vendors**, **Regions**, **Cities** or **Campaigns** if needed. The values offered are those of the selected CDRs; when the NR Mode or the CDRs change, a filter with every value checked keeps every new value checked, and a partial choice keeps its values for when CDRs that have them are selected again.
+1. Restrict **Operators**, **Vendors**, **Regions**, **Clusters** or **Cities** if needed. Every filter lists the values of every CDR of the NR Mode, with the labels of the Operator and Vendor Maps, and only those the other filters leave: choosing Vodafone as Operator leaves in Vendor only the Vendors of Vodafone, and the Campaign the values of its CDRs. A filter's own choice does not narrow its list, a filter with every value checked keeps every new value checked, and a value no CDR has any longer with the other filters is named in a warning. The lists come from the combinations of values each CDR keeps (the **CDR Filter Facets** table, read once per CDR), so they never read the rows of the CDRs.
 2. Choose the **Split by** levels (Operator, Vendor, Region, **Cluster**, City and Campaign, in the order of the aggregation hierarchy). **Operator** is always included and **Campaign** is checked initially; additional levels split the results into separate combinations. Cluster needs CDRs with a `Cluster` column, filled by the source CDR or by a Cluster mapping.
 3. Optionally check **Include National & area summary**, below Split by, to calculate the National scoring next to the **Separate cities** (London by default; **Main Cities** checks the workspace main cities) and each area of the **Breakdown** (Region by default, Cluster, City or None), each scored with its own measurements, with its own **Time split** (All selected CDRs, Campaign, Daily, Weekly, Monthly, Quarterly or Yearly by the start time of each test). It is unchecked when the page opens, and only opening a Saved Filter that includes it checks it. It needs the scoring of the whole country: including it clears and disables the Region, Cluster and City filters, which show a **Locked** badge, and a notice above the Context filters says why, with a button that unchecks the summary to filter by area again. The results show it in the **National & Areas** chart, and the document exports of the job show its slide.
 4. In **GAP reference operator**, select the operator to compare against. The initial reference is **EE**.
@@ -627,11 +624,11 @@ The **Scoring History** keeps, in the workspace database, the components of ever
 | --- | --- |
 | **Export to CSV** above the Scoring table | The scoring table shown: expanded results, category subtotals and totals of the selected scoring and environment |
 | **Export to CSV** above the GAP table | The GAP table shown: expanded GAP results and their existing numeric fields of the selected scoring and environment |
-| **Generate Scoring Report (PPT/Word)** (Calculation panel) | A report of one or more scenarios chosen in the report editor, from the CDRs, NR Mode, methodology and GAP reference selected in the Calculation panel |
+| **Generate Scoring Report (PPT/Word)** (Calculation panel) | A report of one or more scenarios chosen in the report editor, from the CDRs used, NR Mode, methodology and GAP reference of the Calculation panel |
 | **Export Selected Scoring Report (PPT/Word)** (Results panel) | The selected Saved Filter as it was calculated (its CDRs, Split by levels and filters), with editable tables and charts, covers and environment transitions, for both scorings; it only asks for PowerPoint or Word |
 | **Word** | The same report as the PowerPoint, one landscape page per slide exactly as in PowerPoint (rendered with LibreOffice, included in the Docker image; without it the slide tables and charts are rebuilt) |
 
-**Generate Scoring Report (PPT/Word)** opens the **report editor** (see [Report scenarios](#report-scenarios)) and calculates its scenarios from the CDRs, NR Mode, methodology and GAP reference selected in the Calculation panel. **Export Selected Scoring Report (PPT/Word)** exports the selected Saved Filter without the editor. A progress dialog stays open while either document is generated.
+**Generate Scoring Report (PPT/Word)** opens the **report editor** (see [Report scenarios](#report-scenarios)) and calculates its scenarios from the CDRs used, NR Mode, methodology and GAP reference of the Calculation panel. **Export Selected Scoring Report (PPT/Word)** exports the selected Saved Filter without the editor. A progress dialog stays open while either document is generated.
 
 ### Report scenarios
 
@@ -713,9 +710,9 @@ After a restart, interrupted calculations are kept as failed and can be recalcul
 
 | Symptom | Check or action |
 | --- | --- |
-| No selectable CDRs | Verify workspace, NR Mode and ready processing status |
+| No CDRs used | Verify workspace, NR Mode, the Campaign (each campaign needs Data, Voice and Speech CDRs), ready processing status and the In Combined? choice in Workspace |
 | Calculate is disabled | Read the yellow notice; complete each campaign's three source types, or wait for the running calculation of the same selection |
-| Expected vendor/city choices are missing | Check mappings and the selected CDRs; reprocess older incomplete catalogues |
+| Expected vendor/city choices are missing | Check mappings, the Campaign and the other filters (each filter lists the values they leave); reprocess older incomplete catalogues |
 | GAP is N/A* | Verify the reference and matching context, including common valid environment coverage |
 | Maximum achievable points differ between columns | Read the excluded KPI list for each combination; unavailable contributions can differ |
 | Results differ from another report | Compare methodology revision, filters, Split by levels, thresholds and coverage |

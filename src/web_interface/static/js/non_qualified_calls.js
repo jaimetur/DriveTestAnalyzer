@@ -38,7 +38,8 @@
     assigned: 'Assigned', commented: 'Commented', labelled: 'With a root cause', suggested: 'Suggested root cause',
     identified: 'RCA identified', not_identified: 'RCA not identified', open: 'Open', stalled: 'Stalled'};
   // Filters set by clicking the Progress View and the Root Cause Analysis; they have no select of their own.
-  const EXTRA_FILTERS = ['nr_mode', 'call_type', 'period', 'age', 'root_pair', 'effective_domain', 'effective_cause', 'node',
+  // NR Mode has its own filter, the first of the General Filters.
+  const EXTRA_FILTERS = ['call_type', 'period', 'age', 'root_pair', 'effective_domain', 'effective_cause', 'node',
     'netcheck_domain', 'netcheck_category', 'netcheck_cause', 'script_domain', 'script_category', 'script_cause', 'rca_state'];
   // The values of the Follow-up filter (also set by the indicator cards), in their order.
   const FOLLOW_UP_STATES = ['attended', 'not_attended', 'open', 'stalled', 'closed', 'with_team', 'assigned', 'commented', 'labelled',
@@ -263,6 +264,7 @@
     const unassigned = [state.unassigned, 'Unassigned'];
     const entries = {
       datasets: state.datasets.map((dataset) => [String(dataset.id), `${dataset.name} (${number(dataset.calls)})`]),
+      nr_mode: (values.nr_mode || []).map((value) => [value, value]),
       service: ['voice', 'speech', 'data'].filter((value) => (values.service || []).includes(value)).map((value) => [value, SERVICE_LABELS[value]]),
       status: state.options.statuses.map((item) => [item.name, item.name]),
       team: [unassigned, ...state.options.teams.map((item) => [item.name, item.name])],
@@ -320,7 +322,7 @@
       if (!wanted.has(select.dataset.nqFilter)) select.closest('label').remove();
     }));
     columns.forEach((column) => {
-      entries[column.filter] = [[state.unassigned, 'Empty'], ...(values[column.filter] || []).map((value) => [value, value])];
+      if (column.filter !== 'datasets') entries[column.filter] = [[state.unassigned, 'Empty'], ...(values[column.filter] || []).map((value) => [value, value])];
       // CDR columns add no filter to the panel: they filter from their header only.
       const host = column.filter.startsWith('column:cdr:') ? cdrColumnHost : columnHost;
       if (host.querySelector(`[data-nq-filter="${CSS.escape(column.filter)}"]`)) return;
@@ -1150,11 +1152,11 @@
   ];
   // The catalog fields shown as columns; the follow-up ones (status, team, root cause…) have fixed columns.
   const fieldColumns = () => state.fields.filter((field) => field.in_table && field.source !== 'tracking');
-  // The filter of each optional column: CDR uses the CDRs filter, the others filter by their own values.
+  // The filter of each optional column: CDR filters by the CDRs (the CDR filter of the Additional Columns Filters,
+  // shown with the column), the others by their own values. The CDRs of the calls follow NR Mode and Campaign.
   const OWN_COLUMN_FILTERS = {cdr: 'datasets'};
   const columnFilterKey = (column) => OWN_COLUMN_FILTERS[column.key] || `column:${column.key}`;
-  const columnFilters = () => optionalColumns().filter((column) => !OWN_COLUMN_FILTERS[column.key])
-    .map((column) => ({label: column.label, filter: columnFilterKey(column)}));
+  const columnFilters = () => optionalColumns().map((column) => ({label: column.label, filter: columnFilterKey(column)}));
   const optionColorOf = (field, value) => field.options?.find((option) => option.name === value)?.color || '';
   const bindSort = (header) => {
     if (header.dataset.sortBound) return;
@@ -2773,6 +2775,9 @@
       if (!state.filtersRestored) {
         state.filtersRestored = true;
         applySavedFilters(payload.saved_filters || {});
+        // Filters saved before NR Mode cleared the campaigns of the other mode lose them now.
+        const nrModeSelect = root.querySelector('[data-nq-filter="nr_mode"]');
+        if (nrModeSelect) window.setTimeout(() => { void keepCampaignsOfNrMode(nrModeSelect); }, 0);
       }
       fillBulkSelects();
       if ($('nq-bulk-history')) $('nq-bulk-history').hidden = !state.user.can_moderate;
@@ -3877,7 +3882,23 @@
   });
 
   // -- events -------------------------------------------------------------------
+  // Each NR Mode has its own campaigns: choosing an NR Mode takes the campaigns of the other one out of Campaign.
+  const keepCampaignsOfNrMode = async (nrModeSelect) => {
+    const campaignSelect = root.querySelector('[data-nq-filter="campaign"]');
+    const modes = [...nrModeSelect.selectedOptions].map((option) => option.value).filter(Boolean);
+    if (!campaignSelect?.selectedOptions.length || !modes.length || modes.length === [...nrModeSelect.options].filter((option) => option.value).length) return;
+    try {
+      const {values} = await api('/api/non-qualified-calls/filters/values', {method: 'POST', body: JSON.stringify({filters: {nr_mode: modes}})});
+      const campaigns = new Set(values?.campaign || []);
+      const outside = [...campaignSelect.selectedOptions].filter((option) => !campaigns.has(option.value));
+      if (!outside.length) return;
+      outside.forEach((option) => { option.selected = false; });
+      campaignSelect.dispatchEvent(new Event('multiselect:options-updated'));
+      campaignSelect.dispatchEvent(new Event('change', {bubbles: true}));
+    } catch (_error) { /* The Campaign filter keeps its values. */ }
+  };
   root.addEventListener('change', (event) => {
+    if (event.target.matches('[data-nq-filter="nr_mode"]')) void keepCampaignsOfNrMode(event.target);
     if (event.target.matches('[data-nq-filter], [data-nq-flag]')) scheduleLoad();
   });
   $('nq-search').addEventListener('input', debounce(() => { state.page = 1; loadCalls(); }, 400));

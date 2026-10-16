@@ -289,7 +289,7 @@ MODULE_SECTIONS: dict[str, list[tuple[Any, ...] | None]] = {
                        ('PPT Generation Jobs', 'PPT Generation Jobs', 'jobs')],
     'ppt-reporting-old': [('NetCheck CDR Reports', 'NetCheck CDR Reports', 'presentation'), ('Charts Panel', 'Charts Panel', 'chart'),
                           ('Log Report', 'Log Report', 'log'), ('Reports and Charts Jobs', 'Reports and Charts Jobs', 'jobs')],
-    'scoring': [('Select CDRs, filters, Split by & GAP reference', 'Scoring Calculation', 'sliders'),
+    'scoring': [('Select NR Mode, Campaign, filters, Split by & GAP reference', 'Scoring Calculation', 'sliders'),
                 ('Scoring & GAP Results', 'Scoring & GAP Results', 'chart', [
                     ('scoring-results-charts', 'Scoring Charts', 'chart'), ('scoring-results-tables', 'Scoring Tables', 'table'),
                     ('scoring-results-gap', 'GAP Analysis', 'trend')]),

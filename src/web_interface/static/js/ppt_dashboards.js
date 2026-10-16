@@ -5,12 +5,18 @@
   const config = JSON.parse($('ds-config').textContent);
   const mainCities = [...new Set((Array.isArray(config.main_cities) ? config.main_cities : [])
     .map(value => String(value).trim()).filter(Boolean))];
-  const pptCityControl = $('ds-ppt-dataset-city');
-  if (pptCityControl) {
-    pptCityControl.dataset.multiselectPresetLabel = 'Main Cities';
-    pptCityControl.dataset.multiselectPresetValues = mainCities.join('|');
-    if (mainCities.length) pptCityControl.dispatchEvent(new Event('multiselect:options-updated'));
-  }
+  // City offers Main Cities first: saved as such, it is the Main Cities of the workspace whenever the Dashboard is used.
+  const MAIN_CITIES = '@main-cities';
+  const mainCitiesOption = (selected) => {
+    const entry = document.createElement('option'); entry.value = MAIN_CITIES; entry.textContent = 'Main Cities';
+    entry.selected = selected; entry.dataset.standaloneChoice = 'true'; entry.dataset.optionClass = 'campaign-preset';
+    return entry;
+  };
+  // A Main Cities choice stands alone: checking it clears the cities, checking a city clears it.
+  const exclusiveMainCities = (chosen, current) => {
+    const token = chosen.includes(MAIN_CITIES), cities = chosen.filter(value => value !== MAIN_CITIES);
+    return token && !current.includes(MAIN_CITIES) ? [MAIN_CITIES] : token && cities.length ? cities : chosen;
+  };
   const eventTimeFilteringDisabled = Boolean(config.ignore_event_time_filtering);
   const eventTimeFilteringDisabledReason = 'Date filters are disabled because Ignore event time filtering is enabled in Config.';
   const filterAliases = config.filter_aliases || {};
@@ -23,6 +29,7 @@
   const randomPresentationEffects = ['fade', 'slide', 'slide-left', 'zoom', 'rise', 'blur', 'rotate', 'flip', 'bounce', 'wipe', 'mosaic', 'curtain', 'blinds'];
   let lastRandomPresentationEffect = '';
   let facetOptions = {}, availableFields = [], facetFields = config.filter_fields || [], facetsLoading = false, facetsRefreshTimer = 0;
+  let liveSelection = null, liveSelectionPending = '', liveSelectionRequest = 0, liveSelectionTimer = 0, liveSelectionController = null;
   const facetOptionRequests = new Map();
   let facetOptionRequestSequence = 0;
   const completedFieldJobs = new Set();
@@ -134,20 +141,33 @@
   };
   const option = (value, label) => { const el = node('option', label); el.value = value; return el; };
   const identity = value => String(value).toLocaleLowerCase().replace(/[^a-z0-9]/g, '');
-  const datasetRecency = row => {
-    const uploadedAt = Date.parse(row.uploaded_at || row.updated_at || row.processed_at || row.created_at || '');
-    return Number.isFinite(uploadedAt) ? uploadedAt : Number(row.id) || 0;
-  };
   // A Dashboard only uses CDRs of its own NR Mode (NSA or SA).
   const dashboardNrMode = value => String(value?.technology || value?.template_technology || 'nsa').toUpperCase() === 'SA' ? 'SA' : 'NSA';
-  const datasetsForNrMode = (kind, nrMode) => (config.datasets?.[kind] || [])
-    .filter(row => !row.nr_mode || String(row.nr_mode).toUpperCase() === nrMode);
-  const latestDatasetsForScope = (scope, nrMode = 'NSA', vendorComparison = 'operator_vendor') => Object.fromEntries(['data', 'voice', 'speech'].map(kind => [kind,
-    [...datasetsForNrMode(kind, nrMode)]
-      .sort((left, right) => datasetRecency(right) - datasetRecency(left) || Number(right.id) - Number(left.id))
-      .slice(0, scope === 'multivendor' && vendorComparison === 'operator_vendor' ? 1 : 2)
-      .map(row => Number(row.id)),
-  ]));
+  // The Campaign filter chooses the CDRs of a Dashboard (see cdr_auto_selection): Latest campaign and Latest 2
+  // campaigns follow the newest campaigns of its NR Mode. A new Dashboard compares its newest two campaigns, or
+  // shows the newest one in Multivendor Operator_Vendor, as its newest CDRs did.
+  const LATEST_CAMPAIGN = '@latest-campaign', LATEST_TWO_CAMPAIGNS = '@latest-2-campaigns', ALL_CAMPAIGNS = '@all-campaigns';
+  // All available campaigns takes every campaign of the NR Mode each time, also those that arrive later.
+  const campaignPresetLabels = {[LATEST_CAMPAIGN]: 'Latest campaign', [LATEST_TWO_CAMPAIGNS]: 'Latest 2 campaigns', [ALL_CAMPAIGNS]: 'All available campaigns'};
+  const isCampaignPreset = value => Object.prototype.hasOwnProperty.call(campaignPresetLabels, String(value));
+  const isCampaignField = field => identity(field) === identity('Campaign');
+  const defaultCampaignFilter = (scope = 'single', vendorComparison = 'operator_vendor') => [
+    scope === 'multivendor' && vendorComparison === 'operator_vendor' ? LATEST_CAMPAIGN : LATEST_TWO_CAMPAIGNS,
+  ];
+  const campaignFilterKey = filters => Object.keys(filters || {}).find(isCampaignField);
+  const campaignFilterValues = value => {
+    const key = campaignFilterKey(value?.filters);
+    return key ? (value.filters[key] || []).map(String) : null;
+  };
+  // Changing the Scope or the vendor comparison updates a Campaign that still is the default of the former one.
+  const followDefaultCampaign = (previousScope, previousComparison) => {
+    const current = campaignFilterValues(definition);
+    const previousDefault = defaultCampaignFilter(previousScope, previousComparison);
+    if (current && current.length === 1 && current[0] === previousDefault[0]) {
+      definition.filters[campaignFilterKey(definition.filters)] = defaultCampaignFilter(definition.scope, definition.vendor_comparison);
+    }
+  };
+  const campaignDisplay = value => campaignPresetLabels[value] || globalThis.campaignLabel?.(value) || value;
   const multivendorAvailable = Boolean(config.multivendor_available);
   const syncMultivendorAvailability = () => {
     for (const id of ['ds-scope', 'ds-ppt-dataset-scope', 'ds-viewer-scope']) {
@@ -160,7 +180,9 @@
   const canonicalDashboardDefinition = value => {
     const definitionValue = structuredClone(value || {});
     definitionValue.vendor_comparison ||= 'operator_vendor';
-    definitionValue.datasets ||= {};
+    definitionValue.auto_cdrs = true;
+    // The CDRs follow the NR Mode and Campaign: they are never part of what is saved or applied.
+    definitionValue.datasets = {};
     for (const kind of ['data', 'voice', 'speech']) definitionValue.datasets[kind] ||= [];
     definitionValue.filters ||= {};
     // Vendor, Vendor V3 and the former Vendor_Only select the vendor alone;
@@ -183,56 +205,13 @@
     if (!definitionValue.date_to) definitionValue.date_to = 'Newest';
     return definitionValue;
   };
-  const rememberedUniverse = id => {
-    if (!id) return null;
-    try {
-      const stored = JSON.parse(sessionStorage.getItem(universeStorageKey) || '{}');
-      const saved = stored?.[id];
-      if (!saved || !['single', 'multivendor'].includes(saved.scope) || !saved.datasets) return null;
-      const datasets = Object.fromEntries(['data', 'voice', 'speech'].map(kind => {
-        const available = new Set(datasetsForNrMode(kind, dashboardNrMode(dashboards?.[id])).map(row => Number(row.id)));
-        return [kind, (saved.datasets[kind] || []).map(Number).filter(datasetId => available.has(datasetId))];
-      }));
-      return {
-        scope: saved.scope, vendor_comparison: saved.vendor_comparison || 'operator_vendor',
-        datasets,
-        date_from: /^\d{4}-\d{2}-\d{2}$/.test(String(saved.date_from || '')) || saved.date_from === 'Oldest' ? saved.date_from : 'Oldest',
-        date_to: /^\d{4}-\d{2}-\d{2}$/.test(String(saved.date_to || '')) || saved.date_to === 'Newest' ? saved.date_to : 'Newest',
-      };
-    } catch (_) { return null; }
-  };
-  const hasStoredUniverse = value => Boolean(
-    value && Object.prototype.hasOwnProperty.call(value, 'scope')
-    && Object.prototype.hasOwnProperty.call(value, 'datasets')
-    && Object.prototype.hasOwnProperty.call(value, 'date_from')
-    && Object.prototype.hasOwnProperty.call(value, 'date_to')
-  );
   const savedRuntimeDashboardDefinition = value => {
     const canonical = canonicalDashboardDefinition(value);
-    if (hasStoredUniverse(value)) return canonical;
-    return {
-      ...canonical, scope: 'single', datasets: latestDatasetsForScope('single', dashboardNrMode(canonical)), date_from: 'Oldest', date_to: 'Newest',
-    };
+    canonical.scope ||= 'single';
+    return canonical;
   };
-  const runtimeDashboardDefinition = (value, id = '') => {
-    const saved = savedRuntimeDashboardDefinition(value);
-    // A Dashboard's saved universe is authoritative when it is opened.  The
-    // session copy exists only to retain the automatic universe of legacy
-    // Dashboards that have never saved one; otherwise a stale browser tab can
-    // make the opening controls briefly show a different selection.
-    return hasStoredUniverse(value) ? saved : {...saved, ...(rememberedUniverse(id) || {})};
-  };
-  const rememberUniverse = () => {
-    if (!activeId || !definition) return;
-    try {
-      const stored = JSON.parse(sessionStorage.getItem(universeStorageKey) || '{}');
-      stored[activeId] = {
-        scope: definition.scope || 'single', vendor_comparison: definition.vendor_comparison || 'operator_vendor', datasets: structuredClone(definition.datasets || {}),
-        date_from: definition.date_from || 'Oldest', date_to: definition.date_to || 'Newest',
-      };
-      sessionStorage.setItem(universeStorageKey, JSON.stringify(stored));
-    } catch (_) { /* Session storage is optional. */ }
-  };
+  const runtimeDashboardDefinition = value => savedRuntimeDashboardDefinition(value);
+  const rememberUniverse = () => {};
   const persistedDashboardDefinition = value => canonicalDashboardDefinition(value);
   const canonicalize = value => {
     if (Array.isArray(value)) return value.map(canonicalize);
@@ -282,9 +261,6 @@
     return equal(applied, saved) ? '' : 'applied-unsaved';
   };
   const filterState = field => filterControlState(definition?.filters?.[field], appliedDefinition().filters?.[field], savedDashboardDefinition().filters?.[field]);
-  const sourceState = kind => filterControlState(
-    definition?.datasets?.[kind], appliedDefinition().datasets?.[kind], savedDashboardDefinition().datasets?.[kind],
-  );
   const scopeState = () => filterControlState(
     definition?.scope || 'single', appliedDefinition().scope || 'single', savedDashboardDefinition().scope || 'single',
     (left, right) => left === right,
@@ -300,12 +276,7 @@
     const selection = canonicalSelectionDefinition(value);
     return JSON.stringify(canonicalize({
       filters: selection.filters, custom_fields: selection.custom_fields, hidden_filters: selection.hidden_filters,
-    }));
-  };
-  const universeStateFingerprint = value => {
-    const selection = canonicalSelectionDefinition(value);
-    return JSON.stringify(canonicalize({
-      datasets: selection.datasets, scope: selection.scope || 'single',
+      scope: selection.scope || 'single', vendor_comparison: selection.vendor_comparison || 'operator_vendor',
       date_from: selection.date_from || 'Oldest', date_to: selection.date_to || 'Newest',
     }));
   };
@@ -327,10 +298,9 @@
   const hasUnsavedFilterChanges = () => Boolean(definition) && filterStateFingerprint(definition) !== filterStateFingerprint(savedDashboardDefinition());
   const hasUnappliedFilterChanges = () => Boolean(definition)
     && filterStateFingerprint(definition) !== filterStateFingerprint(appliedDefinition());
-  const hasUnsavedUniverseChanges = () => Boolean(definition)
-    && universeStateFingerprint(definition) !== universeStateFingerprint(savedDashboardDefinition());
-  const hasUnappliedUniverseChanges = () => Boolean(definition)
-    && universeStateFingerprint(definition) !== universeStateFingerprint(appliedDefinition());
+  // The Scope and dates belong to the filters: there is no separate Dataset Universe any longer.
+  const hasUnsavedUniverseChanges = () => false;
+  const hasUnappliedUniverseChanges = () => false;
   const hasAppliedUnsavedFilterChanges = () => Boolean(
     prepared?.token && appliedDashboardDefinition
     && filterStateFingerprint(appliedDashboardDefinition) !== filterStateFingerprint(savedDashboardDefinition())
@@ -338,10 +308,7 @@
   const dashboardNeedsRefresh = () => Boolean(
     definition && prepared && preparationStateFingerprint(definition) !== appliedFilterState,
   );
-  const universeNeedsRefresh = () => {
-    if (!definition || !prepared) return false;
-    return universeStateFingerprint(definition) !== universeStateFingerprint(appliedDashboardDefinition || definition);
-  };
+  const universeNeedsRefresh = () => false;
   const syncPreparationRefresh = () => {
     const refresh = $('ds-preparing-refresh');
     const ready = $('ds-preparing').dataset.state === 'ready';
@@ -355,9 +322,6 @@
     syncViewerScope();
     $('ds-save').disabled = !hasUnsavedFilterChanges() || filterActionBusy;
     $('ds-apply-filters').disabled = !hasUnappliedFilterChanges() || filterActionBusy;
-    $('ds-save-universe').disabled = !hasUnsavedUniverseChanges() || filterActionBusy;
-    $('ds-apply-universe').disabled = !hasUnappliedUniverseChanges() || filterActionBusy;
-    $('ds-reload-universe').disabled = !hasUnsavedUniverseChanges() || filterActionBusy;
     syncPreparationRefresh();
   };
   const api = async (path = '', method = 'GET', body, signal) => {
@@ -430,8 +394,6 @@
   };
   const setViewEnabled = enabled => { $('ds-view').disabled = !definition; syncDashboardViewActions(); syncDashboardPptActions(); };
   const updateUnsavedFiltersBadge = () => {
-    $('ds-unapplied-universe-badge').hidden = !hasUnappliedUniverseChanges();
-    $('ds-unsaved-universe-badge').hidden = !hasUnsavedUniverseChanges();
     $('ds-unapplied-filters-badge').hidden = !hasUnappliedFilterChanges();
     $('ds-unsaved-filters-badge').hidden = !hasUnsavedFilterChanges();
   };
@@ -665,9 +627,11 @@
     scopeControl.value = remembered?.scope === 'multivendor' && !$('ds-ppt-dataset-scope').querySelector('option[value="multivendor"]').disabled ? 'multivendor' : 'single';
     const vendorComparison = $('ds-ppt-vendor-comparison');
     vendorComparison.value = remembered?.vendor_comparison || 'vendor_only';
-    let previousVendorComparison = vendorComparison.value;
-    const choices = $('ds-ppt-dataset-choices'); choices.replaceChildren();
     const confirm = $('ds-ppt-dataset-confirm');
+    // The Campaign chooses the CDRs of the export: the Dashboard's own Campaign unless changed here (null: every campaign).
+    const campaignControl = $('ds-ppt-dataset-campaign');
+    const campaignCopy = $('ds-ppt-campaign-copy');
+    const cdrsNote = $('ds-ppt-cdrs');
     const operatorSection = $('ds-ppt-operator-section');
     const operatorControl = $('ds-ppt-dataset-operator');
     const operatorCopy = $('ds-ppt-operator-copy');
@@ -691,9 +655,13 @@
     dateTo.value = /^\d{4}-\d{2}-\d{2}$/.test(savedDateTo) ? savedDateTo : '';
     let geographyLoading = false;
     let geographyRequest = 0;
-    const selectedDatasets = () => Object.fromEntries(['data', 'voice', 'speech'].map(kind => [kind,
-      [...choices.querySelectorAll(`input[data-kind="${kind}"]:checked`)].map(input => Number(input.value)),
-    ]));
+    // The campaigns and the CDRs they choose come at once (from the CDR Filter Facets), before the other values.
+    let exportCdrsRequest = 0;
+    let renderedCampaigns = '';
+    campaignControl.disabled = true;
+    campaignControl.replaceChildren(option('', 'Loading campaigns…'));
+    campaignControl.dispatchEvent(new Event('multiselect:options-updated'));
+    cdrsNote.replaceChildren();
     const selectedOperators = () => [...selectionState.operators.values];
     const selectedVendors = () => [...selectionState.vendors.values];
     const selectedRegions = () => [...selectionState.regions.values];
@@ -715,6 +683,8 @@
       const saved = savedDashboardSelection(selectionFields[key]);
       return [key, saved?.length ? {values: saved, all: false} : {values: [], all: true}];
     }));
+    let campaignSelection = Array.isArray(remembered?.campaigns) ? remembered.campaigns.map(String)
+      : remembered && remembered.campaigns === null ? null : savedDashboardSelection('Campaign');
     // "Show All Filters" adds the Dashboard's other main filters and its
     // Additional Filters, each starting from its saved Dashboard values.
     const dialogPanel = $('ds-ppt-dataset-overlay').querySelector('[role=dialog]');
@@ -722,7 +692,7 @@
     const extraMainHost = $('ds-ppt-extra-main-filters');
     const additionalGroup = $('ds-ppt-additional-group');
     const additionalHost = $('ds-ppt-additional-filters');
-    const mainFieldIds = new Set(Object.values(selectionFields).map(identity));
+    const mainFieldIds = new Set([...Object.values(selectionFields), 'Campaign'].map(identity));
     const hiddenFieldIds = new Set((dashboard?.hidden_filters || []).map(identity));
     const additionalFields = [...new Set((dashboard?.custom_fields || []).map(String))];
     const additionalFieldIds = new Set(additionalFields.map(identity));
@@ -804,26 +774,25 @@
       // Every value selected keeps the Dashboard's open selection.
       return [field, values.length === available.length ? [] : values];
     }));
-    // Save Universe / Save Filters are enabled only when the dialog differs
-    // from what the Dashboard has saved.
-    const saveUniverseButton = $('ds-ppt-save-universe');
+    // Save Filters is enabled only when the dialog differs from what the Dashboard has saved.
     const saveFiltersButton = $('ds-ppt-save-filters');
     let savingDashboardPart = false;
     const sameValues = (left, right) => left.length === right.length && left.every(value => right.includes(value));
     const dialogUniverse = () => ({
       scope: scopeControl.value, vendor_comparison: vendorComparison.value,
-      datasets: Object.fromEntries(Object.entries(selectedDatasets()).map(([kind, ids]) => [kind, [...ids].sort((a, b) => a - b)])),
       date_from: automaticFrom.checked ? 'Oldest' : dateFrom.value,
       date_to: automaticTo.checked ? 'Newest' : dateTo.value,
     });
     const universeChanged = () => {
       const current = dialogUniverse();
       const saved = savedDashboard || {};
-      const savedIds = kind => (saved.datasets?.[kind] || []).map(Number).sort((a, b) => a - b);
-      return current.vendor_comparison !== (saved.vendor_comparison || 'operator_vendor')
+      const savedCampaigns = savedDashboardSelection('Campaign');
+      // The vendor comparison only counts in Multivendor Comparison.
+      return (current.scope === 'multivendor' && current.vendor_comparison !== (saved.vendor_comparison || 'operator_vendor'))
         || current.scope !== (saved.scope === 'multivendor' ? 'multivendor' : 'single')
         || current.date_from !== String(saved.date_from || 'Oldest') || current.date_to !== String(saved.date_to || 'Newest')
-        || ['data', 'voice', 'speech'].some(kind => !sameValues(current.datasets[kind] || [], savedIds(kind)));
+        || (campaignSelection === null) !== (savedCampaigns === null)
+        || (campaignSelection !== null && !sameValues(campaignSelection, savedCampaigns || []));
     };
     // A field reads as changed when its selection differs from the saved one,
     // comparing only values the selected CDRs contain; every value selected
@@ -850,40 +819,39 @@
     };
     const updateSaveState = () => {
       const busy = savingDashboardPart || geographyLoading;
-      saveUniverseButton.disabled = busy || !choices.querySelector('input:checked') || !universeChanged();
-      saveFiltersButton.disabled = busy || !Object.keys(changedFilterFields()).length;
+      saveFiltersButton.disabled = busy || (!universeChanged() && !Object.keys(changedFilterFields()).length);
     };
     const saveDashboardPart = async part => {
       savingDashboardPart = true; updateSaveState();
       try {
         const item = structuredClone(dashboards[dashboardId] || savedDashboard);
-        if (part === 'universe') Object.assign(item, dialogUniverse());
-        else {
-          item.filters ||= {};
-          for (const [field, values] of Object.entries(changedFilterFields())) {
-            for (const key of Object.keys(item.filters)) if (identity(key) === identity(field)) delete item.filters[key];
-            if (values.length) item.filters[field] = values;
-          }
+        const savedComparison = item.vendor_comparison || 'operator_vendor';
+        Object.assign(item, dialogUniverse());
+        if (item.scope !== 'multivendor') item.vendor_comparison = savedComparison;
+        item.filters ||= {};
+        for (const [field, values] of Object.entries(changedFilterFields())) {
+          for (const key of Object.keys(item.filters)) if (identity(key) === identity(field)) delete item.filters[key];
+          if (values.length) item.filters[field] = values;
         }
+        for (const key of Object.keys(item.filters)) if (isCampaignField(key)) delete item.filters[key];
+        if (campaignSelection !== null) item.filters.Campaign = campaignSelection;
         const result = await api(`/${encodeURIComponent(dashboardId)}`, 'PUT', item);
         dashboards[dashboardId] = structuredClone(result.definition);
         savedDashboard = dashboards[dashboardId];
         if (dashboardId === activeId && definition) {
-          const fields = part === 'universe' ? universeDefinitionFields : filterDefinitionFields;
-          definition = copyDefinitionFields(definition, result.definition, fields);
+          definition = copyDefinitionFields(definition, canonicalDashboardDefinition(result.definition), filterDefinitionFields);
           savedDefinition = definitionFingerprint(result.definition);
           updateDirtyState(); sources(); facets();
         }
         library();
-        status(`Saved ${part === 'universe' ? 'Dataset Universe' : 'filters'} for “${result.definition.name}”.`);
+        status(`Saved the Scope, dates and filters of “${result.definition.name}”.`);
       } catch (error) {
         window.showInfoDialog?.(error.message, {title: 'PPT Dashboards', tone: 'error'});
       } finally {
         savingDashboardPart = false; updateSaveState();
       }
     };
-    saveUniverseButton.onclick = () => { void saveDashboardPart('universe'); };
-    saveFiltersButton.onclick = () => { void saveDashboardPart('filters'); };
+    saveFiltersButton.onclick = () => { void saveDashboardPart(); };
     showAllButton.onclick = () => {
       showAllFilters = !showAllFilters;
       dialogPanel.classList.toggle('ds-ppt-all-filters', showAllFilters);
@@ -894,7 +862,7 @@
     };
     const rememberDialog = () => {
       const choice = {
-        scope: scopeControl.value, vendor_comparison: vendorComparison.value, datasets: selectedDatasets(),
+        scope: scopeControl.value, vendor_comparison: vendorComparison.value, campaigns: campaignSelection,
         date_from: automaticFrom.checked ? 'Oldest' : dateFrom.value,
         date_to: automaticTo.checked ? 'Newest' : dateTo.value,
       };
@@ -907,19 +875,18 @@
     };
     const rememberSelection = key => {
       const control = selectionControls[key];
-      const available = [...control.options].filter(item => !item.disabled && item.value);
+      const available = [...control.options].filter(item => !item.disabled && item.value && item.value !== MAIN_CITIES);
       const values = [...control.selectedOptions].map(item => item.value).filter(Boolean);
-      selectionState[key] = {values, all: available.length === values.length};
+      selectionState[key] = values.includes(MAIN_CITIES) ? {values: [MAIN_CITIES], all: false} : {values, all: available.length === values.length};
       rememberDialog();
       updateConfirmState();
     };
     const exportUniverse = () => ({
-      ...structuredClone(dashboard), scope: scopeControl.value, vendor_comparison: vendorComparison.value, datasets: selectedDatasets(),
+      ...structuredClone(dashboard), scope: scopeControl.value, vendor_comparison: vendorComparison.value,
       date_from: automaticFrom.checked ? 'Oldest' : dateFrom.value,
       date_to: automaticTo.checked ? 'Newest' : dateTo.value,
-      // Region availability belongs to the Dataset Universe, independently
-      // from any saved adaptive Dashboard filters.
-      filters: {},
+      // The values offered are those of the CDRs of the chosen campaigns, whatever the saved Dashboard filters.
+      filters: campaignSelection === null ? {} : {Campaign: campaignSelection},
     });
     const updateConfirmState = () => {
       let dateError = '';
@@ -927,17 +894,32 @@
       else if (!automaticTo.checked && !dateTo.value) dateError = 'Choose an end date or use the newest available date.';
       else if (!automaticFrom.checked && !automaticTo.checked && dateFrom.value > dateTo.value) dateError = 'Date from must not be later than Date to.';
       dateStatus.textContent = dateError;
-      confirm.disabled = !choices.querySelector('input:checked') || Boolean(dateError)
-        || geographyLoading;
+      const noCampaign = Array.isArray(campaignSelection) && !campaignSelection.length;
+      confirm.disabled = Boolean(dateError) || geographyLoading || noCampaign;
       // Say why the action is waiting instead of looking unresponsive.
       confirm.textContent = geographyLoading ? 'Loading values…' : 'Generate PPT';
       confirm.title = geographyLoading
-        ? 'Loading the Operators, Vendors, Regions and Cities of the selected CDRs…'
-        : !choices.querySelector('input:checked') ? 'Select at least one CDR dataset.' : dateError;
+        ? 'Loading the Campaigns, Operators, Vendors, Regions and Cities of the CDRs…'
+        : noCampaign ? 'Choose at least one campaign.' : dateError;
       confirm.classList.toggle('is-busy', geographyLoading);
       updateSaveState();
     };
+    const refreshExportCdrs = async () => {
+      const request = ++exportCdrsRequest;
+      globalThis.renderAutoCdrList?.(cdrsNote, null, {loading: true});
+      try {
+        const result = await api('/auto-cdrs', 'POST', exportUniverse());
+        if (request !== exportCdrsRequest) return;
+        const campaigns = (result.options?.Campaign || []).map(String).filter(Boolean);
+        const signature = JSON.stringify(campaigns);
+        if (signature !== renderedCampaigns || campaignControl.disabled) { renderedCampaigns = signature; renderCampaigns(campaigns); }
+        globalThis.renderAutoCdrList?.(cdrsNote, result.cdrs || {});
+      } catch (error) {
+        if (request === exportCdrsRequest) { cdrsNote.replaceChildren(node('p', error.message, 'form-note')); }
+      }
+    };
     const refreshGeography = async () => {
+      void refreshExportCdrs();
       const request = ++geographyRequest;
       geographyLoading = true;
       for (const {section, control, copy, label} of [
@@ -985,15 +967,21 @@
             selectionState[key] = {values, all: true};
             continue;
           }
+          // Cities offers Main Cities first: exported as such, it is the Main Cities of the workspace.
+          const mainCitiesChosen = field === 'City' && previous.values.includes(MAIN_CITIES);
           const retained = values.filter(value => previous.values.includes(value));
-          const selected = new Set(previous.all || !retained.length ? values : retained);
+          const selected = new Set(mainCitiesChosen ? [] : previous.all || !retained.length ? values : retained);
           control.disabled = false;
           control.replaceChildren();
-          control.append(...values.map(value => {
-            const entry = option(value, value); entry.selected = selected.has(value); return entry;
+          const withMainCities = field === 'City' && (mainCities.length > 0 || mainCitiesChosen);
+          if (withMainCities) control.append(mainCitiesOption(mainCitiesChosen));
+          control.append(...values.map((value, index) => {
+            const entry = option(value, value); entry.selected = selected.has(value);
+            if (withMainCities && index === 0) entry.dataset.dividerBefore = 'true';
+            return entry;
           }));
           control.dispatchEvent(new Event('multiselect:options-updated'));
-          selectionState[key] = {values: [...selected], all: selected.size === values.length};
+          selectionState[key] = mainCitiesChosen ? {values: [MAIN_CITIES], all: false} : {values: [...selected], all: selected.size === values.length};
           copy.textContent = `Select one or more ${field === 'Operator' ? 'Operators' : field === 'Vendor' ? 'Vendors' : field === 'Region' ? 'Regions' : 'Cities'} to include in this PowerPoint export.`;
         }
         rememberDialog();
@@ -1016,42 +1004,50 @@
       updateConfirmState();
       void refreshGeography();
     };
-    const renderChoices = (restoreDatasets = false) => {
+    const renderCampaigns = campaigns => {
+      const values = [...campaigns].sort((left, right) => (globalThis.campaignCompare?.(left, right) ?? left.localeCompare(right)));
+      const chosen = new Set(campaignSelection || []);
+      campaignControl.replaceChildren(
+        ...Object.keys(campaignPresetLabels).map(value => {
+          const entry = option(value, campaignPresetLabels[value]); entry.selected = chosen.has(value);
+          entry.dataset.campaignPreset = 'true'; entry.dataset.optionClass = 'ds-campaign-preset';
+          return entry;
+        }),
+        ...values.map((value, index) => {
+          const entry = option(value, campaignDisplay(value));
+          entry.selected = campaignSelection === null || chosen.has(value);
+          if (index === 0) entry.dataset.dividerBefore = 'true';
+          return entry;
+        }),
+      );
+      campaignControl.disabled = false;
+      campaignControl.dataset.multiselectDynamicAll = 'true';
+      campaignCopy.textContent = `The CDRs of ${dashboardNrMode(dashboard)} of the chosen campaigns are used: Latest campaign and Latest 2 campaigns follow the newest ones.`;
+      campaignControl.dispatchEvent(new Event('multiselect:options-updated'));
+    };
+    campaignControl.onchange = () => {
+      const chosen = [...campaignControl.selectedOptions].map(item => item.value).filter(Boolean);
+      const presets = chosen.filter(isCampaignPreset), campaigns = chosen.filter(value => !isCampaignPreset(value));
+      const previous = campaignSelection || [];
+      const addedPreset = presets.find(value => !previous.includes(value));
+      const explicit = [...campaignControl.options].filter(item => item.value && !isCampaignPreset(item.value));
+      if (campaignControl.dataset.multiselectDynamicAllSelected === 'true') {
+        delete campaignControl.dataset.multiselectDynamicAllSelected;
+        campaignSelection = null;
+      } else if (addedPreset) campaignSelection = [addedPreset];
+      else if (campaigns.length && campaigns.length === explicit.length) campaignSelection = null;
+      else campaignSelection = campaigns.length ? campaigns : presets;
+      // The open menu shows the choice at once: a Latest choice stands alone.
+      const shown = new Set(campaignSelection === null ? explicit.map(item => item.value) : campaignSelection);
+      if ([...campaignControl.options].some(item => item.selected !== shown.has(item.value))) {
+        for (const item of campaignControl.options) item.selected = shown.has(item.value);
+        campaignControl.dispatchEvent(new Event('multiselect:options-updated'));
+      }
+      rememberDialog(); updateConfirmState(); void refreshGeography();
+    };
+    const renderChoices = () => {
       const scope = scopeControl.value;
       $('ds-ppt-vendor-comparison-section').hidden = scope !== 'multivendor';
-      const defaultDatasets = latestDatasetsForScope(scope, dashboardNrMode(dashboard), vendorComparison.value);
-      // Only CDRs of the Dashboard's NR Mode are listed; say so in the title.
-      $('ds-ppt-cdr-title').textContent = `CDR datasets (${dashboardNrMode(dashboard)})`;
-      $('ds-ppt-dataset-copy').textContent = scope === 'multivendor' && vendorComparison.value === 'operator_vendor'
-        ? 'The newest CDR of each type is selected by default. Choose the CDRs to include in this vendor comparison.'
-        : 'The two newest CDRs of each type are selected by default. Choose the CDRs to include in this operator comparison.';
-      choices.replaceChildren();
-      for (const kind of ['data', 'voice', 'speech']) {
-        const group = node('section', undefined, 'ds-multivendor-group');
-        group.append(node('h3', `CDR ${kind[0].toUpperCase()}${kind.slice(1)}`));
-        const options = node('div', undefined, 'ds-multivendor-options');
-        const rememberedIds = restoreDatasets && Array.isArray(remembered?.datasets?.[kind])
-          ? remembered.datasets[kind].map(Number) : defaultDatasets[kind].map(Number);
-        const rows = [...datasetsForNrMode(kind, dashboardNrMode(dashboard))]
-          .sort((left, right) => datasetRecency(right) - datasetRecency(left) || Number(right.id) - Number(left.id));
-        const selected = new Set(rememberedIds.some(id => rows.some(row => Number(row.id) === id))
-          ? rememberedIds : defaultDatasets[kind].map(Number));
-        if (!rows.length) options.append(node('p', `No ready ${dashboardNrMode(dashboard)} CDRs are available.`, 'form-note'));
-        for (const row of rows) {
-          const label = node('label', undefined, 'ds-multivendor-option');
-          const input = document.createElement('input'); input.type = 'checkbox'; input.value = String(row.id); input.dataset.kind = kind; input.checked = selected.has(Number(row.id));
-          // Weekly and Daily CDRs are highlighted.
-          label.dataset.cdrStage = row.cdr_stage || 'final';
-          const text = node('span', `${row.file_name} · ${row.row_count} rows`);
-          if (['weekly', 'daily'].includes(row.cdr_stage)) {
-            const badge = node('span', row.cdr_stage === 'weekly' ? 'Weekly' : 'Daily', 'cdr-stage-badge');
-            badge.dataset.cdrStage = row.cdr_stage;
-            text.prepend(badge, ' ');
-          }
-          label.append(input, text); options.append(label);
-        }
-        group.append(options); choices.append(group);
-      }
       updateConfirmState();
     };
     let finished = false;
@@ -1060,32 +1056,26 @@
       finished = true; overlay('ds-ppt-dataset-overlay', false); resolve(value);
     };
     $('ds-ppt-dataset-cancel').onclick = () => finish(null);
-    choices.onchange = () => { rememberDialog(); updateConfirmState(); void refreshGeography(); };
     scopeControl.onchange = () => { renderChoices(); rememberDialog(); void refreshGeography(); };
-    vendorComparison.onchange = () => {
-      const defaults = latestDatasetsForScope(scopeControl.value, dashboardNrMode(dashboard), previousVendorComparison);
-      const current = selectedDatasets();
-      const automatic = ['data', 'voice', 'speech'].every(kind =>
-        JSON.stringify([...(current[kind] || [])].sort((a, b) => a - b))
-        === JSON.stringify([...defaults[kind]].sort((a, b) => a - b)));
-      if (!automatic) remembered = {...(remembered || {}), datasets: current};
-      rememberDialog();
-      renderChoices(!automatic);
-      previousVendorComparison = vendorComparison.value;
-      rememberDialog();
-      void refreshGeography();
-    };
+    vendorComparison.onchange = () => { renderChoices(); rememberDialog(); void refreshGeography(); };
     operatorControl.onchange = () => rememberSelection('operators');
     vendorControl.onchange = () => rememberSelection('vendors');
     regionControl.onchange = () => rememberSelection('regions');
-    cityControl.onchange = () => rememberSelection('cities');
+    cityControl.onchange = () => {
+      const chosen = exclusiveMainCities([...cityControl.selectedOptions].map(item => item.value).filter(Boolean), selectionState.cities.values);
+      if ([...cityControl.options].some(item => item.selected !== chosen.includes(item.value))) {
+        for (const item of cityControl.options) item.selected = chosen.includes(item.value);
+        cityControl.dispatchEvent(new Event('multiselect:options-updated'));
+      }
+      rememberSelection('cities');
+    };
     automaticFrom.onchange = () => { syncDateControls(); rememberDialog(); };
     automaticTo.onchange = () => { syncDateControls(); rememberDialog(); };
     dateFrom.oninput = () => { syncDateControls(); rememberDialog(); };
     dateTo.oninput = () => { syncDateControls(); rememberDialog(); };
     confirm.onclick = () => { for (const key of Object.keys(selectionControls)) rememberSelection(key); finish({
       scope: scopeControl.value, vendor_comparison: vendorComparison.value,
-      datasets: selectedDatasets(),
+      campaigns: campaignSelection,
       date_from: automaticFrom.checked ? 'Oldest' : dateFrom.value,
       date_to: automaticTo.checked ? 'Newest' : dateTo.value,
       operators: selectedOperators(),
@@ -1094,7 +1084,7 @@
       cities: selectedCities(),
       extra_filters: extraFilterSelections(),
     }); };
-    renderChoices(true);
+    renderChoices();
     syncDateControls();
     $('ds-ppt-dataset-overlay').querySelector('[role=dialog]').onkeydown = event => { if (event.key === 'Escape') finish(null); };
     overlay('ds-ppt-dataset-overlay', true);
@@ -1113,10 +1103,10 @@
       exportDefinition = JSON.parse(JSON.stringify(item));
       exportDefinition.scope = universeChoice.scope;
       exportDefinition.vendor_comparison = universeChoice.vendor_comparison;
-      // The queued server worker prepares this explicit temporary universe;
-      // never make the library button wait for a cache lookup or every chart
-      // model before the job exists.
-      exportDefinition.datasets = universeChoice.datasets;
+      // The queued server worker chooses the CDRs of these campaigns; never make the library button wait for
+      // a cache lookup or every chart model before the job exists.
+      delete exportDefinition.datasets;
+      withPptSelection(exportDefinition, 'Campaign', universeChoice.campaigns || []);
       exportDefinition.date_from = universeChoice.date_from;
       exportDefinition.date_to = universeChoice.date_to;
       selectedOperators = universeChoice.operators;
@@ -1211,7 +1201,7 @@
       return;
     }
     const accepted = await window.showConfirmDialog(
-      `Changing the NR Mode or Template for “${item.name}” will invalidate every report and chart created inside this Dashboard. Its saved Dataset Universe and filters will be preserved. Continue?`,
+      `Changing the NR Mode or Template for “${item.name}” will invalidate every report and chart created inside this Dashboard. Its Scope, dates and filters are kept (a new NR Mode uses its newest campaigns). Continue?`,
       {title: 'Update Dashboard definition?', confirmLabel: 'Update Dashboard', cancelLabel: 'Cancel', tone: 'warning'},
     );
     if (!accepted) {
@@ -1227,7 +1217,7 @@
     dashboardStatuses.delete(id);
     if (id === activeId) await openDashboard(id, {showFilters: dashboardFiltersOpen});
     else library();
-    status(`Updated NR Mode and Template for “${item.name}”. Dataset Universe and filters were preserved.`);
+    status(`Updated NR Mode and Template for “${item.name}”. Its Scope, dates and filters were kept.`);
     void refreshDashboardStatuses();
   };
   // "Dashboard Datasets & Filters" is a sub-panel of PPT Manage Dashboards: it is
@@ -2056,18 +2046,59 @@
     const control = node('div', undefined, 'ds-date-picker-control'); control.append(input, automatic);
     wrapper.append(captionLabel, control, menu); return wrapper;
   }
-  function resetAutomaticDatesForDatasetChange() {
+  // The CDRs of the current selection and the Campaign, Operator, Vendor, Region, Cluster and City lists, asked to the
+  // server at every change of the NR Mode or filters (from the CDR Filter Facets, without preparing the Dashboard),
+  // so they follow the selection before it is applied.
+  const liveSelectionKey = value => (value ? JSON.stringify(canonicalize({id: activeId, nr: dashboardNrMode(value), filters: value.filters || {}})) : '');
+  const currentLiveSelection = () => (liveSelection && definition && liveSelection.key === liveSelectionKey(definition) ? liveSelection : null);
+  // The live list of a filter (Vendor V3 and Vendor_Only are the Vendor list), or null.
+  const liveOptionsFor = field => {
+    const options = currentLiveSelection()?.options;
+    if (!options) return null;
+    const wanted = ({vendoronly: 'vendor', vendorv3: 'vendor', opvendor: 'operatorvendor'})[identity(field)] || identity(field);
+    const key = Object.keys(options).find(name => identity(name) === wanted);
+    return key ? options[key] : null;
+  };
+  async function refreshLiveSelection() {
+    clearTimeout(liveSelectionTimer);
     if (!definition) return;
-    if (!definition.date_from) definition.date_from = 'Oldest';
-    if (!definition.date_to) definition.date_to = 'Newest';
+    const key = liveSelectionKey(definition);
+    if (liveSelection?.key === key || liveSelectionPending === key) return;
+    const request = ++liveSelectionRequest;
+    liveSelectionController?.abort();
+    const requestController = liveSelectionController = new AbortController();
+    liveSelectionPending = key;
+    renderAutoCdrs({loading: true});
+    try {
+      const payload = await api('/auto-cdrs', 'POST', canonicalDashboardDefinition(definition), requestController.signal);
+      if (request !== liveSelectionRequest) return;
+      liveSelection = {key, options: payload.options || {}, cdrs: payload.cdrs || {}};
+      renderAutoCdrs();
+      refreshFacetsAfterMenusClose();
+    } catch (error) {
+      if (request === liveSelectionRequest && error.name !== 'AbortError') renderAutoCdrs();
+    } finally {
+      if (request === liveSelectionRequest) liveSelectionPending = '';
+    }
   }
+  const scheduleLiveSelection = (delay = 150) => {
+    clearTimeout(liveSelectionTimer);
+    if (definition && liveSelectionKey(definition) !== liveSelection?.key) liveSelectionTimer = setTimeout(() => { void refreshLiveSelection(); }, delay);
+  };
+  // The CDRs the current selection uses, chosen by the server from its NR Mode and Campaign.
+  function renderAutoCdrs({loading = false} = {}) {
+    const host = $('ds-auto-cdrs');
+    if (!host) return;
+    if (!definition) { host.replaceChildren(); return; }
+    const cdrs = currentLiveSelection()?.cdrs || (hasUnappliedFilterChanges() ? null : prepared?.cdrs) || null;
+    globalThis.renderAutoCdrList?.(host, cdrs, {loading: loading || !cdrs});
+    let note = host.querySelector(':scope > .ds-auto-cdrs-pending');
+    if (!note) { note = node('p', 'Apply the filters to use these CDRs.', 'form-note ds-auto-cdrs-pending'); host.append(note); }
+    note.hidden = !hasUnappliedFilterChanges();
+  }
+  // The Scope controls and the Date from / Date to filters; the CDRs used below the Scope.
   function sources() {
     const host = $('ds-sources'); host.replaceChildren();
-    const nrMode = dashboardNrMode(definition);
-    for (const kind of ['data','voice','speech']) host.append(selectControl(`CDR ${kind[0].toUpperCase()+kind.slice(1)} (${nrMode})`, datasetsForNrMode(kind, nrMode).map(row => [String(row.id), `${row.file_name} · ${row.row_count} rows`]), definition.datasets[kind] || [], values => {
-      resetAutomaticDatesForDatasetChange();
-      definition.datasets[kind] = values.map(Number);
-    }, true, () => sourceState(kind)));
     const scopeControl = $('ds-scope');
     scopeControl.value = definition.scope || 'single';
     updateFilterControlState(scopeControl.closest('.ds-scope-control'), scopeState());
@@ -2081,6 +2112,8 @@
       (left, right) => left === right,
     ));
     for (const [key, label] of [['date_from', 'Date from'], ['date_to', 'Date to']]) host.append(datePicker(key, label));
+    renderAutoCdrs();
+    scheduleLiveSelection(0);
     globalThis.setupCustomMultiSelects?.();
   }
   function facets() {
@@ -2088,7 +2121,8 @@
     definition.hidden_filters ||= [];
     const hidden = new Set(definition.hidden_filters.map(identity));
     const fields = new Set([...facetFields.filter(field => !hidden.has(identity(field))), ...Object.keys(definition.filters), ...definition.custom_fields]);
-    for (const field of fields) {
+    // The Campaign chooses the CDRs: it comes first.
+    for (const field of [...fields].sort((left, right) => Number(isCampaignField(right)) - Number(isCampaignField(left)))) {
       const facet = node('div', undefined, 'ds-facet');
       updateFilterControlState(facet, filterState(field));
       const hasStoredSelection = Object.prototype.hasOwnProperty.call(definition.filters, field);
@@ -2128,20 +2162,90 @@
           Object.entries(facetOptions).filter(([name]) => identity(name) === identity('Operator')).flatMap(([, items]) => items),
         );
       }
-      if (!custom && identity(field) === identity('City')) {
-        values.dataset.multiselectPresetLabel = 'Main Cities';
-        values.dataset.multiselectPresetFirst = 'true';
-        values.dataset.multiselectPresetValues = mainCities.join('|');
+      const city = !custom && identity(field) === identity('City');
+      const campaign = !custom && isCampaignField(field);
+      const available = [...new Set([...(liveOptionsFor(field) || facetOptions[field] || []), ...selected].map(value => String(value)))]
+        .filter(value => !(campaign && isCampaignPreset(value)) && !(city && value === MAIN_CITIES));
+      const cityChoice = city && (mainCities.length > 0 || selected.includes(MAIN_CITIES));
+      if (cityChoice) {
+        const entry = mainCitiesOption(hasStoredSelection && selected.includes(MAIN_CITIES));
+        entry.title = mainCities.join(', ');
+        values.append(entry);
       }
-      const available = [...new Set([...(facetOptions[field] || []), ...selected].map(value => String(value)))];
-      for (const value of available) {
-        const item = option(value, value || '(Empty)'); item.selected = !hasStoredSelection || selected.includes(value); values.append(item);
+      if (campaign) {
+        // Latest campaign and Latest 2 campaigns follow the newest campaigns of the NR Mode; then every campaign.
+        available.sort((left, right) => (globalThis.campaignCompare?.(left, right) ?? left.localeCompare(right)));
+        const presets = Object.keys(campaignPresetLabels).map(value => {
+          const item = option(value, campaignPresetLabels[value]); item.selected = hasStoredSelection && selected.includes(value);
+          item.dataset.optionClass = 'ds-campaign-preset';
+          item.dataset.campaignPreset = 'true';
+          return item;
+        });
+        values.append(...presets);
+        values.dataset.campaignPresets = 'true';
       }
-      if (!available.length) { values.disabled = true; values.append(option('', facetsLoading || facetOptionRequests.has(field) ? 'Loading values…' : 'No matching values')); }
+      for (const [index, value] of available.entries()) {
+        const item = option(value, campaign ? campaignDisplay(value) : (value || '(Empty)'));
+        item.selected = !hasStoredSelection || selected.includes(value);
+        if ((campaign || cityChoice) && index === 0) item.dataset.dividerBefore = 'true';
+        values.append(item);
+      }
+      if (!available.length && !campaign) { values.disabled = true; values.append(option('', facetsLoading || facetOptionRequests.has(field) ? 'Loading values…' : 'No matching values')); }
       values.onchange = () => {
-        const next = [...values.selectedOptions].map(item => item.value).filter(Boolean);
-        const current = (hasStoredSelection ? selected : available).filter(Boolean);
-        const selectable = [...values.options].filter(item => !item.disabled && item.value);
+        if (campaign) {
+          // The current choice (the list may have changed since it was drawn, with its menu still open).
+          const stored = Object.prototype.hasOwnProperty.call(definition.filters, field);
+          const current = stored && Array.isArray(definition.filters[field]) ? definition.filters[field].map(String) : [];
+          if (values.dataset.multiselectDynamicAllSelected === 'true') {
+            // Select All: every campaign, without restriction.
+            delete values.dataset.multiselectDynamicAllSelected;
+            if (stored) { delete definition.filters[field]; updateFilterControlState(facet, filterState(field)); filterChanged(); }
+            refreshFacetsAfterMenusClose();
+            return;
+          }
+          // An automatic choice stands alone: choosing one clears the other one and the campaigns, choosing a
+          // campaign clears it.
+          const chosen = [...values.selectedOptions].map(item => item.value).filter(Boolean);
+          const presets = chosen.filter(isCampaignPreset), campaigns = chosen.filter(value => !isCampaignPreset(value));
+          const addedPreset = presets.find(value => !current.includes(value));
+          let next = addedPreset ? [addedPreset] : campaigns.length && presets.length ? campaigns : chosen;
+          if (!addedPreset && campaigns.length && campaigns.length === available.length) next = null;
+          // The open menu shows the choice at once.
+          const shown = new Set(next === null ? available : next);
+          if ([...values.options].some(item => item.selected !== shown.has(item.value))) {
+            for (const item of values.options) item.selected = shown.has(item.value);
+            values.dispatchEvent(new Event('multiselect:options-updated'));
+          }
+          if (next === null) { if (!stored) return; delete definition.filters[field]; }
+          else definition.filters[field] = next;
+          updateFilterControlState(facet, filterState(field));
+          filterChanged();
+          refreshFacetsAfterMenusClose();
+          return;
+        }
+        if (cityChoice && values.dataset.multiselectDynamicAllSelected !== 'true') {
+          // Main Cities stands alone; saved as such it follows the Main Cities of the workspace.
+          const stored = Object.prototype.hasOwnProperty.call(definition.filters, field) ? definition.filters[field].map(String) : [];
+          const chosen = exclusiveMainCities([...values.selectedOptions].map(item => item.value).filter(Boolean), stored);
+          if ([...values.options].some(item => item.selected !== chosen.includes(item.value))) {
+            for (const item of values.options) item.selected = chosen.includes(item.value);
+            values.dispatchEvent(new Event('multiselect:options-updated'));
+          }
+          if (chosen.includes(MAIN_CITIES) || stored.includes(MAIN_CITIES)) {
+            // Main Cities, or the cities checked instead of it (none: every city).
+            const cities = chosen.filter(value => value !== MAIN_CITIES);
+            if (chosen.includes(MAIN_CITIES)) definition.filters[field] = [MAIN_CITIES];
+            else if (cities.length) definition.filters[field] = cities;
+            else delete definition.filters[field];
+            updateFilterControlState(facet, filterState(field));
+            filterChanged();
+            refreshFacetsAfterMenusClose();
+            return;
+          }
+        }
+        const next = [...values.selectedOptions].map(item => item.value).filter(value => value && value !== MAIN_CITIES);
+        const current = (hasStoredSelection ? selected : available).filter(value => value && value !== MAIN_CITIES);
+        const selectable = [...values.options].filter(item => !item.disabled && item.value && item.value !== MAIN_CITIES);
         if (values.dataset.multiselectDynamicAllSelected === 'true' || (selectable.length > 0 && next.length === selectable.length)) {
           delete values.dataset.multiselectDynamicAllSelected;
           if (!hasStoredSelection) return;
@@ -2243,16 +2347,12 @@
   const setPreparationRows = payload => {
     const rows = $('ds-preparing-rows');
     const formatCounts = counts => Object.entries(counts || {}).map(([kind, count]) => `${kind.toUpperCase()}: ${Number(count).toLocaleString()} rows`).join(' · ');
-    const selectedUniverse = Object.fromEntries(['data', 'voice', 'speech'].map(kind => [kind,
-      (config.datasets?.[kind] || []).filter(dataset => (definition?.datasets?.[kind] || []).includes(dataset.id))
-        .reduce((total, dataset) => total + Number(dataset.row_count || 0), 0),
-    ]));
-    const universe = formatCounts(payload?.universe_rows || selectedUniverse);
+    const universe = formatCounts(payload?.universe_rows);
     const filtered = formatCounts(payload?.rows);
     rows.replaceChildren();
     for (const [label, counts, className] of [
-      ['Dataset Universe', universe, 'ds-preparing-universe-label'],
-      ['Filtered Universe', filtered, 'ds-preparing-filtered-label'],
+      ['CDRs used', universe, 'ds-preparing-universe-label'],
+      ['Filtered rows', filtered, 'ds-preparing-filtered-label'],
     ]) {
       if (!counts) continue;
       const line = node('span', undefined, 'ds-preparing-row');
@@ -2294,16 +2394,12 @@
     }
   }
   function filterChanged() {
-    rememberUniverse();
     updateDirtyState();
-    const pendingFilters = hasUnappliedFilterChanges(), pendingUniverse = hasUnappliedUniverseChanges();
-    status(pendingFilters && pendingUniverse
-      ? 'Dataset Universe and filter changes are ready to apply.'
-      : pendingUniverse
-        ? 'Dataset Universe changes are ready to apply.'
-        : pendingFilters
-          ? 'Filter changes are ready to apply.'
-          : 'All Dashboard filters and Dataset Universe controls are applied.');
+    renderAutoCdrs();
+    scheduleLiveSelection();
+    status(hasUnappliedFilterChanges()
+      ? 'Scope, date and filter changes are ready to apply.'
+      : 'The Dashboard Scope, dates and filters are applied.');
   }
   function changed() {
     dismissPreparationStatus(); forgetPrepared();
@@ -2413,50 +2509,44 @@
     // the controls so their state agrees with the Apply and Save buttons.
     sources(); facets();
   }
-  const filterDefinitionFields = ['filters', 'custom_fields', 'hidden_filters'];
-  const universeDefinitionFields = ['scope', 'vendor_comparison', 'datasets', 'date_from', 'date_to'];
+  // Scope, vendor comparison, dates and filters are applied and saved together; the CDRs follow the NR Mode and Campaign.
+  const filterDefinitionFields = ['filters', 'custom_fields', 'hidden_filters', 'scope', 'vendor_comparison', 'date_from', 'date_to'];
   const copyDefinitionFields = (target, source, fields) => {
     for (const field of fields) target[field] = structuredClone(source[field]);
     return target;
   };
-  const discardPart = (part) => {
+  const discardPart = () => {
     if (!definition) return;
-    const fields = part === 'filters' ? filterDefinitionFields : universeDefinitionFields;
-    copyDefinitionFields(definition, savedDashboardDefinition(), fields);
-    if (part === 'universe') rememberUniverse();
+    copyDefinitionFields(definition, savedDashboardDefinition(), filterDefinitionFields);
     updateDirtyState(); sources(); facets();
   };
-  async function preparePart(part) {
-    const draft = definition;
-    const request = canonicalDashboardDefinition(structuredClone(draft));
-    const fieldsToKeepApplied = part === 'filters' ? universeDefinitionFields : filterDefinitionFields;
-    copyDefinitionFields(request, canonicalDashboardDefinition(appliedDefinition()), fieldsToKeepApplied);
-    definition = request;
+  async function preparePart() {
     try { return await prepare(); }
     finally {
-      definition = draft;
-      rememberUniverse();
       updateDirtyState();
       sources(); facets();
     }
   }
-  async function savePart(part) {
-    const isFilters = part === 'filters';
-    if (!activeId || !definition || !(isFilters ? hasUnsavedFilterChanges() : hasUnsavedUniverseChanges())) return;
+  // Save Filters saves the Scope, dates and filters and applies them: afterwards nothing is left unsaved or unapplied.
+  async function savePart() {
+    if (!activeId || !definition || !hasUnsavedFilterChanges()) return;
     if (!$('ds-filter-overlay').hidden) await closeFilters();
     filterActionBusy = true; updateFilterActionState();
     try {
       const dashboardId = activeId, draft = definition;
-      const fields = isFilters ? filterDefinitionFields : universeDefinitionFields;
-      const item = copyDefinitionFields(canonicalDashboardDefinition(savedDashboardDefinition()), draft, fields);
+      const item = copyDefinitionFields(canonicalDashboardDefinition(savedDashboardDefinition()), draft, filterDefinitionFields);
       item.name = $('ds-name').value.trim(); const result = await api(`/${dashboardId}`,'PUT',item);
-      if (dashboardId !== activeId || draft !== definition) return;
       dashboards[dashboardId] = structuredClone(result.definition);
-      const otherFields = isFilters ? universeDefinitionFields : filterDefinitionFields;
-      definition = copyDefinitionFields(canonicalDashboardDefinition(result.definition), draft, otherFields);
-      savedDefinition = definitionFingerprint(result.definition); rememberUniverse(); updateDirtyState(); sources(); facets(); library();
-      if (isFilters ? hasUnappliedFilterChanges() : hasUnappliedUniverseChanges()) await preparePart(part);
-      status(`Saved ${isFilters ? 'filters' : 'Dataset Universe'} for “${definition.name}”.`);
+      library();
+      if (dashboardId !== activeId) return;
+      savedDefinition = definitionFingerprint(result.definition);
+      // The saved values, as the server normalised them, unless they were changed again while saving.
+      if (filterStateFingerprint(definition) === filterStateFingerprint(item)) {
+        copyDefinitionFields(definition, canonicalDashboardDefinition(result.definition), filterDefinitionFields);
+      }
+      updateDirtyState(); sources(); facets();
+      if (hasUnappliedFilterChanges()) await preparePart();
+      status(`Saved and applied the filters of “${definition.name}”.`);
     } finally {
       filterActionBusy = false; updateFilterActionState();
     }
@@ -2470,25 +2560,19 @@
     if (!selected) throw new Error('Choose a template for the selected NR Mode.');
     const name = $('ds-name').value.trim() || selected.name;
     $('ds-name').value = name;
-    const item = {name,template_technology:technology,template:selected.name,technology,scope:'single',datasets:latestDatasetsForScope('single', dashboardNrMode({technology})),filters:{},custom_fields:[],date_from:'Oldest',date_to:'Newest'};
+    const item = {name,template_technology:technology,template:selected.name,technology,scope:'single',auto_cdrs:true,filters:{Campaign: defaultCampaignFilter('single')},custom_fields:[],date_from:'Oldest',date_to:'Newest'};
     status(`Creating “${item.name}”…`); $('ds-create').disabled = true;
     try { const id = dashboardId(), result = await api(`/${id}`,'PUT',item); dashboards[id] = result.definition; await openDashboard(id); }
     finally { $('ds-create').disabled = !$('ds-template').options.length; }
   });
   bind('ds-save', save);
-  bind('ds-save-universe', () => savePart('universe'));
-  bind('ds-reload-universe', () => {
-    if (!definition || !hasUnsavedUniverseChanges()) return;
-    copyDefinitionFields(definition, savedDashboardDefinition(), universeDefinitionFields);
-    sources(); facets(); filterChanged();
-  });
   bind('ds-apply-filters', async () => {
     if (!hasUnappliedFilterChanges()) return;
     if (!$('ds-filter-overlay').hidden) await closeFilters();
-    await preparePart('filters');
+    await preparePart();
   });
   // The viewer's Scope selector applies a new comparison immediately, after
-  // warning that every chart is rendered again for the new Dataset Universe.
+  // warning that every chart is rendered again.
   function syncViewerScope() {
     const control = $('ds-viewer-scope');
     if (!control) return;
@@ -2507,36 +2591,25 @@
     if (!definition || next === current) return;
     const label = next === 'multivendor' ? 'Multivendor Comparison' : 'Operator Comparison';
     const accepted = await window.showConfirmDialog(
-      `Change the Scope to ${label}? Every Dashboard chart will be rendered again, and the Dataset Universe switches to the newest two CDRs of each type for this scope.`,
+      `Change the Scope to ${label}? Every Dashboard chart will be rendered again with the Dashboard filters.`,
       {title: 'Change Dashboard Scope', confirmLabel: 'Change Scope', tone: 'warning'},
     );
     if (!accepted) { control.value = current; return; }
     $('ds-scope').value = next;
     await $('ds-scope').onchange();
-    await preparePart('universe');
+    await preparePart();
     syncViewerScope();
   });
   $('ds-viewer-vendor-comparison').onchange = safe(async () => {
     const control = $('ds-viewer-vendor-comparison');
     const current = appliedDashboardDefinition || definition;
     if (!definition || current?.scope !== 'multivendor' || control.value === current.vendor_comparison) return;
-    const defaults = latestDatasetsForScope('multivendor', dashboardNrMode(current), current.vendor_comparison);
-    const automatic = ['data', 'voice', 'speech'].every(kind =>
-      JSON.stringify([...(current.datasets?.[kind] || [])].sort((a, b) => a - b))
-      === JSON.stringify([...defaults[kind]].sort((a, b) => a - b)));
+    const previousComparison = definition.vendor_comparison;
     definition.vendor_comparison = control.value;
-    if (automatic) {
-      definition.datasets = latestDatasetsForScope('multivendor', dashboardNrMode(definition), control.value);
-      sources();
-    }
+    followDefaultCampaign(definition.scope, previousComparison);
     control.disabled = true;
-    try { await preparePart('universe'); }
+    try { await preparePart(); }
     finally { syncViewerScope(); }
-  });
-  bind('ds-apply-universe', async () => {
-    if (!hasUnappliedUniverseChanges()) return;
-    if (!$('ds-filter-overlay').hidden) await closeFilters();
-    await preparePart('universe');
   });
   async function duplicateDashboard(sourceId) {
     const id = dashboardId(), item = runtimeDashboardDefinition(dashboards[sourceId]); item.name = nextName(`${item.name.slice(0,110)} (copy)`, dashboardNrMode(item));
@@ -2558,7 +2631,7 @@
     await api(`/${id}`,'DELETE'); delete dashboards[id]; dashboardStatuses.delete(id); if (id === activeId) closeDashboard(); else { library(); status(`Deleted “${item.name}”.`); }
   }
   bind('ds-import',() => $('ds-import-file').click());
-  $('ds-import-file').onchange = safe(async () => { const file = $('ds-import-file').files[0]; if (!file) return; const payload = JSON.parse(await file.text()); const format = String(payload.format || '').replace(/^dashboard-analytic-/, 'drivetest-analyzer-'); const legacy = format === 'drivetest-analyzer-dashboard-set' && payload.version === 1; if (!legacy && (format !== 'drivetest-analyzer-dashboard' || payload.version !== 2)) throw new Error('Unsupported Dashboard file.'); if (!await confirmDiscard()) return; payload.definition.name = nextName(payload.definition.name, dashboardNrMode(payload.definition)); const id = dashboardId(), result = await api(`/${id}`,'PUT',payload.definition); dashboards[id] = result.definition; await openDashboard(id); $('ds-import-file').value = ''; });
+  $('ds-import-file').onchange = safe(async () => { const file = $('ds-import-file').files[0]; if (!file) return; const payload = JSON.parse(await file.text()); const format = String(payload.format || '').replace(/^dashboard-analytic-/, 'drivetest-analyzer-'); const legacy = format === 'drivetest-analyzer-dashboard-set' && payload.version === 1; if (!legacy && (format !== 'drivetest-analyzer-dashboard' || payload.version !== 2)) throw new Error('Unsupported Dashboard file.'); if (!await confirmDiscard()) return; payload.definition.name = nextName(payload.definition.name, dashboardNrMode(payload.definition)); if (!payload.definition.auto_cdrs) delete payload.definition.datasets; /* CDRs of another workspace: its newest campaigns are used. */ const id = dashboardId(), result = await api(`/${id}`,'PUT',payload.definition); dashboards[id] = result.definition; await openDashboard(id); $('ds-import-file').value = ''; });
   function closeDashboard() { delete $('ds-viewer-export-ppt').dataset.dashboardPptId; $('ds-viewer-export-ppt').disabled = true; clearTimeout(facetsRefreshTimer); dismissPreparationStatus(); stopPresentation(); rememberOpen(''); rememberFiltersOpen(false); ++sequence; clearTimeout(timer); controller?.abort(); preparing = null; activeId = ''; dashboardFiltersOpen = false; definition = null; savedDefinition = ''; appliedFilterState = ''; appliedSelectionState = ''; appliedDashboardDefinition = null; prepared = null; dirty = false; updateUnsavedFiltersBadge(); setViewEnabled(false); setPreparationState('hidden'); $('ds-filter-panel').hidden = true; document.dispatchEvent(new CustomEvent('page-panel-navigation:update')); setActiveDashboardHeading(''); $('ds-name').value = ''; setNrMode('nsa'); syncNewDashboardNameFromTemplate(); library(); status('Dashboard closed.'); }
   $('ds-name').oninput = () => { if (definition) { definition.name = $('ds-name').value; updateDirtyState(); } };
   $('ds-nr-mode').onchange = () => {
@@ -2566,10 +2639,12 @@
     if (definition && selected) {
       const previousNrMode = dashboardNrMode(definition);
       definition.template_technology = definition.technology = $('ds-nr-mode').value; definition.template = selected.name;
-      // CDRs of the previous NR Mode no longer belong to this Dashboard.
+      // The campaigns of the previous NR Mode do not apply: its newest campaigns do.
       if (dashboardNrMode(definition) !== previousNrMode) {
-        definition.datasets = latestDatasetsForScope(definition.scope || 'single', dashboardNrMode(definition), definition.vendor_comparison);
-        sources();
+        const key = campaignFilterKey(definition.filters);
+        if (key) delete definition.filters[key];
+        definition.filters.Campaign = defaultCampaignFilter(definition.scope, definition.vendor_comparison);
+        sources(); facets();
       }
       changed();
     }
@@ -2583,24 +2658,23 @@
     if (!definition || definition.scope !== 'multivendor') return;
     const comparison = $('ds-universe-vendor-comparison').value;
     if (comparison === definition.vendor_comparison) return;
+    const previousComparison = definition.vendor_comparison;
     definition.vendor_comparison = comparison;
-    definition.datasets = latestDatasetsForScope('multivendor', dashboardNrMode(definition), comparison);
-    definition.date_from = 'Oldest';
-    definition.date_to = 'Newest';
-    sources();
+    followDefaultCampaign(definition.scope, previousComparison);
+    sources(); facets();
     filterChanged();
   };
   $('ds-scope').onchange = safe(async () => {
     if (!definition) return;
     const selectedScope = $('ds-scope').value;
     if (selectedScope !== definition.scope) {
+      const previousScope = definition.scope, previousComparison = definition.vendor_comparison;
       if (selectedScope === 'multivendor') definition.vendor_comparison = 'vendor_only';
-      definition.datasets = latestDatasetsForScope(selectedScope, dashboardNrMode(definition), definition.vendor_comparison);
-      definition.date_from = 'Oldest';
-      definition.date_to = 'Newest';
+      definition.scope = selectedScope;
+      followDefaultCampaign(previousScope, previousComparison);
     }
     definition.scope = selectedScope;
-    sources();
+    sources(); facets();
     updateFilterControlState($('ds-scope').closest('.ds-scope-control'), scopeState());
     filterChanged();
   });
@@ -2626,16 +2700,15 @@
       }
     }
   });
-  bind('ds-clear-filters', () => { definition.filters = {}; facets(); filterChanged(); });
+  // Clearing keeps the newest campaigns (the Campaign chooses the CDRs) and removes every other restriction.
+  bind('ds-clear-filters', () => { definition.filters = {Campaign: defaultCampaignFilter(definition.scope, definition.vendor_comparison)}; facets(); filterChanged(); });
+  // Reload Saved Filters restores the saved Scope, dates and filters.
   bind('ds-last-saved-filters', () => {
-    const saved = savedDashboardDefinition();
     const current = filterStateFingerprint(definition);
-    definition.filters = structuredClone(saved.filters || {});
-    definition.custom_fields = structuredClone(saved.custom_fields || []);
-    definition.hidden_filters = structuredClone(saved.hidden_filters || []);
+    copyDefinitionFields(definition, savedDashboardDefinition(), filterDefinitionFields);
     const restored = filterStateFingerprint(definition);
     if (restored === current) return;
-    facets(); filterChanged();
+    sources(); facets(); filterChanged();
   });
   bind('ds-viewer-refresh', async () => {
     if (!prepared?.token) return;
@@ -4247,7 +4320,7 @@
         let resolvedDashboardChanges = false;
         if (hasUnsavedFilterChanges()) {
           const choice = await window.showConfirmDialog(
-            'This Dashboard has filter changes that have not been saved. Save them before leaving?',
+            'This Dashboard has Scope, date or filter changes that have not been saved. Save them before leaving?',
             {
               title: 'Unsaved Dashboard filters',
               confirmLabel: 'Save Filters',
@@ -4257,21 +4330,6 @@
           );
           if (choice === 'confirm') await save();
           else if (choice === 'secondary') discardPart('filters');
-          else return;
-          resolvedDashboardChanges = true;
-        }
-        if (hasUnsavedUniverseChanges()) {
-          const choice = await window.showConfirmDialog(
-            'This Dashboard has Dataset Universe changes that have not been saved. Save them before leaving?',
-            {
-              title: 'Unsaved Dataset Universe',
-              confirmLabel: 'Save Universe',
-              secondaryLabel: 'Discard',
-              cancelLabel: 'Cancel',
-            },
-          );
-          if (choice === 'confirm') await savePart('universe');
-          else if (choice === 'secondary') discardPart('universe');
           else return;
           resolvedDashboardChanges = true;
         }

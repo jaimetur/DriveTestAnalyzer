@@ -5596,14 +5596,17 @@ def test_dashboard_library_open_close_and_view_actions_include_labels() -> None:
     assert 'border-radius:.85rem!important' in styles
 
 
-def test_dashboard_library_ppt_export_selects_scope_cdrs_explicitly() -> None:
+def test_dashboard_library_ppt_export_selects_scope_and_campaigns_explicitly() -> None:
     root = Path(__file__).parents[1] / 'src' / 'web_interface'
     template = (root / 'templates' / 'ppt_dashboards.html').read_text(encoding='utf-8')
     script = (root / 'static' / 'js' / 'ppt_dashboards.js').read_text(encoding='utf-8')
     styles = (root / 'static' / 'css' / 'ppt_dashboards.css').read_text(encoding='utf-8')
 
     assert 'id="ds-ppt-dataset-overlay"' in template
-    assert 'id="ds-ppt-dataset-choices"' in template
+    # The Campaigns choose the CDRs of the export: the dialog lists them instead of offering CDR checkboxes.
+    assert 'id="ds-ppt-dataset-choices"' not in template
+    assert 'id="ds-ppt-dataset-campaign"' in template
+    assert 'id="ds-ppt-cdrs"' in template
     assert 'id="ds-ppt-dataset-scope"' in template
     assert 'id="ds-ppt-region-section"' in template
     assert 'id="ds-ppt-dataset-region"' in template
@@ -5613,17 +5616,17 @@ def test_dashboard_library_ppt_export_selects_scope_cdrs_explicitly() -> None:
     assert 'aria-label="PowerPoint operators"' in template
     assert 'id="ds-ppt-city-section"' in template
     assert 'id="ds-ppt-dataset-city"' in template
-    assert 'data-multiselect-preset-label="Main Cities"' in template
-    assert 'data-multiselect-preset-values' not in template
+    assert 'data-multiselect-preset-label="Main Cities"' not in template and 'data-multiselect-preset-values' not in template
     assert "'main_cities': dashboard_main_cities | default([])" in template
-    assert '>Select Dashboard Universe and Filters<' in template
+    assert '>Select Dashboard Scope and Filters<' in template
     assert 'id="ds-ppt-date-from"' in template
     assert 'id="ds-ppt-date-to"' in template
-    assert template.index('id="ds-ppt-scope-title"') < template.index('id="ds-ppt-cdr-title"') < template.index('id="ds-ppt-dates-title"')
-    assert "$('ds-ppt-cdr-title').textContent = `CDR datasets (${dashboardNrMode(dashboard)})`;" in script
+    # The dates are filters: below Campaigns in Main Dashboard Filters, after the Scope.
+    assert template.index('id="ds-ppt-scope-title"') < template.index('id="ds-ppt-campaign-section"') < template.index('id="ds-ppt-dates-title"')
+    assert template.index('id="ds-ppt-dates-title"') < template.index('id="ds-ppt-operator-section"')
+    assert 'ds-ppt-cdr-title' not in template + script
     assert template.index('id="ds-ppt-dates-title"') < template.index('id="ds-ppt-dataset-cancel"') < template.index('id="ds-ppt-dataset-confirm"')
     assert "const chooseDashboardPptUniverse = (dashboard, dashboardId)" in script
-    assert ".slice(0, scope === 'multivendor' && vendorComparison === 'operator_vendor' ? 1 : 2)" in script
     assert "const savedDateFrom = String(remembered?.date_from || dashboard?.date_from || 'Oldest');" in script
     assert "const savedDateTo = String(remembered?.date_to || dashboard?.date_to || 'Newest');" in script
     assert 'const universeChoice = await chooseDashboardPptUniverse(item, id);' in script
@@ -5632,16 +5635,20 @@ def test_dashboard_library_ppt_export_selects_scope_cdrs_explicitly() -> None:
     assert "withPptSelection(exportDefinition, 'Operator', selectedOperators);" in script
     assert 'const withPptSelection = (dashboard, selectionField, values)' in script
     assert "withPptSelection(exportDefinition, 'City', selectedCities);" in script
-    assert "values.dataset.multiselectPresetLabel = 'Main Cities';" in script
-    assert "values.dataset.multiselectPresetValues = mainCities.join('|');" in script
-    assert "pptCityControl.dataset.multiselectPresetValues = mainCities.join('|');" in script
+    # City offers Main Cities as a choice of its own: saved and exported as such, it is the Main Cities of the
+    # workspace whenever the Dashboard is used.
+    assert "const MAIN_CITIES = '@main-cities';" in script
+    assert 'if (withMainCities) control.append(mainCitiesOption(mainCitiesChosen));' in script
+    assert 'definition.filters[field] = [MAIN_CITIES];' in script
+    assert 'multiselectPresetValues = mainCities' not in script
     assert 'selected_regions: selectedRegions' in script
     assert 'exportDefinition.scope = universeChoice.scope;' in script
-    assert 'exportDefinition.datasets = universeChoice.datasets;' in script
+    assert 'exportDefinition.datasets = universeChoice.datasets;' not in script
+    assert "withPptSelection(exportDefinition, 'Campaign', universeChoice.campaigns || []);" in script
     assert 'exportDefinition.date_from = universeChoice.date_from;' in script
     assert 'exportDefinition.date_to = universeChoice.date_to;' in script
     assert "title: 'Choose PowerPoint Scope'" not in script
-    assert 'delete exportDefinition.datasets;' not in script
+    assert 'delete exportDefinition.datasets;' in script
     assert 'grid-template-rows:auto minmax(0,1fr) auto' in styles
     assert '.ds-ppt-universe-body{min-height:0;overflow-y:auto' in styles
     assert 'max-height:calc(100dvh - .75rem)' in styles
@@ -5670,7 +5677,8 @@ def test_dashboard_filters_panel_defaults_hidden_and_expanded_and_persists_for_t
 def test_dashboard_open_hydrates_saved_state_before_preparation_catalogues() -> None:
     script = (Path(__file__).parents[1] / 'src' / 'web_interface' / 'static' / 'js' / 'ppt_dashboards.js').read_text(encoding='utf-8')
 
-    assert 'return hasStoredUniverse(value) ? saved : {...saved, ...(rememberedUniverse(id) || {})};' in script
+    # No universe is remembered apart from the Dashboard: its saved Scope, dates and filters are what opens.
+    assert 'rememberedUniverse' not in script
     assert 'const hasStoredSelection = Object.prototype.hasOwnProperty.call(definition.filters, field);' in script
     assert '...selected].map(value => String(value))' in script
 
@@ -5689,11 +5697,11 @@ def test_dashboard_standard_universe_warmup_and_open_state_restoration_are_confi
     dashboard_source = (root / 'modules' / 'ppt_dashboards.py').read_text(encoding='utf-8')
     script = (root / 'web_interface' / 'static' / 'js' / 'ppt_dashboards.js').read_text(encoding='utf-8')
 
-    # Every CDR plus the latest 1..4 CDRs of each type, of the Dashboard's NR Mode.
-    assert "universes = [{kind: [int(row['id']) for row in rows] for kind, rows in ordered.items()}]" in dashboard_source
-    assert "for count in range(1, DASHBOARD_WARMUP_LATEST_COUNTS + 1)" in dashboard_source
+    # Every campaign plus the latest 1..4 campaigns of the Dashboard's NR Mode, their CDRs chosen as always.
+    assert "variants = [None, *(latest_campaigns(campaigns, count) for count in range(1, DASHBOARD_WARMUP_LATEST_COUNTS + 1))]" in dashboard_source
     assert 'DASHBOARD_WARMUP_LATEST_COUNTS = 4' in dashboard_source
-    assert 'ordered = ordered_ready_datasets(task_repository, base.technology)' in dashboard_source
+    assert 'campaigns = campaign_values(task_repository, nr_mode)' in dashboard_source
+    assert 'datasets = resolve_cdrs(task_repository, nr_mode, chosen or [], KINDS)' in dashboard_source
     assert "definition.date_from = 'Oldest'" in dashboard_source
     assert "definition.date_to = 'Newest'" in dashboard_source
     assert 'schedule_dashboard_warmup(workspace, dashboard_id, saved_definition, user.username, force=True)' in dashboard_source
@@ -10734,7 +10742,9 @@ def test_dashboard_filter_multiselect_action_toggles_select_all_and_none() -> No
 
     assert "actionButton.textContent = 'Select All / None';" in script
     assert "dynamicAll ? 'All values' : 'Select All / None'" not in script
-    assert 'const shouldSelectAll = options.some((option) => !option.selected);' in script
+    assert 'const shouldSelectAll = options.some((option) => !option.selected)' in script
+    # Latest campaign and Latest 2 campaigns stand alone: Select All checks the campaigns only and clears them.
+    assert "Array.from(select.options).filter(standalone).forEach((option) => { option.selected = false; });" in script
     assert "if (dynamicAll && shouldSelectAll) select.dataset.multiselectDynamicAllSelected = 'true';" in script
 
 

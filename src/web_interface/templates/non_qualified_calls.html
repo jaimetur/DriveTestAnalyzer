@@ -61,7 +61,7 @@
       <section class="nq-filter-card">
       <p class="nq-filter-group-title">General Filters:</p>
       <div class="nq-filter-grid" id="nq-filter-grid">
-        <label>CDRs<select data-nq-filter="datasets" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="CDRs"></select></label>
+        <label title="NSA or SA: with Campaign it says which CDRs the calls come from (each call once, from the CDR the combined CDR tables include)">NR Mode<select data-nq-filter="nr_mode" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="NR Mode"></select></label>
         <label>Campaign<select data-nq-filter="campaign" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Campaign"></select></label>
         <label>Operator<select data-nq-filter="operator" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Operator"></select></label>
         <label>Operator_Vendor<select data-nq-filter="operator_vendor" data-operator-vendor-pair="operator_vendor" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Operator_Vendor"></select></label>
@@ -162,7 +162,7 @@
     <div class="collapsible-panel-body">
       <div class="nq-active-filters" data-nq-active-filters="rates" hidden></div>
       <div class="nq-progress-head">
-        <p class="nq-hint">How many calls of each campaign and operator are Non-Qualified, out of every call of the CDRs. Each call counts once, in the most recent CDR that has it (a Final CDR before the Daily ones). Only the CDRs, Service, Campaign, Operator and NR Mode filters apply. Click a cell to drill down into its calls.</p>
+        <p class="nq-hint">How many calls of each campaign and operator are Non-Qualified, out of every call of the CDRs. Each call counts once, in the CDR the combined CDR tables include (a Final CDR before the Weekly and Daily ones). Only the NR Mode, Campaign, Service, Operator and CDR filters apply. Click a cell to drill down into its calls.</p>
         <div class="nq-rate-tabs" id="nq-rate-tabs" role="tablist" aria-label="Service"></div>
       </div>
       <div class="nq-rate-overview" id="nq-rate-overview"></div>

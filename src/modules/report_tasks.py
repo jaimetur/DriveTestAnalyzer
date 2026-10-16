@@ -29,6 +29,11 @@ from typing import Any, Callable
 
 from src.branding import canonical_format
 from src.modules.value_maps import ValueMapper
+from src.modules.cdr_auto_selection import (
+    CAMPAIGN_PRESET_LABELS, LATEST_CAMPAIGN, campaign_presets, campaign_values, cdr_campaigns, complete_campaign_cdrs, describe_cdrs,
+    resolve_campaign_filter, resolve_cdrs, sort_campaigns,
+)
+from src.modules.column_names import compact_campaign_value
 from src.modules.output_layout import REPORTING_JOBS_FOLDER, module_output_dir
 
 REPORT_TASKS_TABLE = 'report_tasks'
@@ -168,14 +173,17 @@ def _network_entries(value: Any) -> list[dict[str, Any]]:
 
 def _network_entry(entry: dict[str, Any]) -> dict[str, Any]:
     selection = entry.get('selection') if isinstance(entry.get('selection'), dict) else {}
+    auto_cdrs = bool(entry.get('auto_cdrs'))
     return {
         'label': str(entry.get('label') or '').strip()[:120],
         'formats': _formats(entry.get('formats')),
-        # Without CDRs chosen by hand, the CDRs of the automatic choice at each run.
-        'cdr_selection': _cdr_selection(entry, 'all_complete'),
+        # The CDRs of the NR Mode and Campaigns at each run (auto_cdrs); entries saved before chose them by hand
+        # or with an automatic choice, and take the campaigns of that choice (see migrate_auto_cdrs).
+        'auto_cdrs': auto_cdrs,
+        'cdr_selection': '' if auto_cdrs else _cdr_selection(entry, 'all_complete'),
         'selection': {
             'nr_mode': 'SA' if str(selection.get('nr_mode') or '').upper() == 'SA' else 'NSA',
-            'datasets': _datasets_by_kind(selection.get('datasets')),
+            'datasets': {} if auto_cdrs else _datasets_by_kind(selection.get('datasets')),
             'technology': selection.get('technology') if selection.get('technology') in {'lte', 'nr', 'lte_nr'} else 'lte',
             'group': _network_groups(selection.get('group')),
             **{field: _strings(selection.get(field)) for field in NETWORK_FILTER_FIELDS},
@@ -267,13 +275,18 @@ def normalize_definition(raw: Any) -> dict[str, Any]:
     """Validate a Reporting Job artifact selection; raises ValueError when nothing is selected."""
     raw = raw if isinstance(raw, dict) else {}
     dataset_analysis = raw.get('dataset_analysis') if isinstance(raw.get('dataset_analysis'), dict) else {}
+    analysis_auto_cdrs = bool(dataset_analysis.get('auto_cdrs'))
     definition: dict[str, Any] = {
         'dataset_analysis': {
             'enabled': bool(dataset_analysis.get('enabled')),
             'formats': _formats(dataset_analysis.get('formats')),
-            # An empty list uses, at run time, the CDRs of the automatic choice in each NR Mode.
-            'dataset_ids': _ids(dataset_analysis.get('dataset_ids')),
-            'cdr_selection': _cdr_selection(dataset_analysis, 'all_complete'),
+            # The CDRs of the NR Mode and Campaigns at each run (auto_cdrs), as the other artifacts; jobs saved
+            # before chose CDRs by hand or with an automatic choice in each NR Mode (see migrate_auto_cdrs).
+            'auto_cdrs': analysis_auto_cdrs,
+            'nr_mode': 'SA' if str(dataset_analysis.get('nr_mode') or '').upper() == 'SA' else 'NSA',
+            'campaigns': _strings(dataset_analysis.get('campaigns')),
+            'dataset_ids': [] if analysis_auto_cdrs else _ids(dataset_analysis.get('dataset_ids')),
+            'cdr_selection': '' if analysis_auto_cdrs else _cdr_selection(dataset_analysis, 'all_complete'),
             # The same filters as Network Insights; empty filters include every value.
             'filters': {field: values for field in NETWORK_FILTER_FIELDS
                         if (values := _strings((dataset_analysis.get('filters') or {}).get(field)))},
@@ -303,15 +316,17 @@ def normalize_definition(raw: Any) -> dict[str, Any]:
     for entry in raw.get('dashboards') or []:
         if not isinstance(entry, dict) or not str(entry.get('dashboard_id') or '').strip():
             continue
+        auto_cdrs = bool(entry.get('auto_cdrs'))
         definition['dashboards'].append({
             'dashboard_id': str(entry['dashboard_id']).strip(), 'label': str(entry.get('label') or '').strip()[:120],
             'scope': entry.get('scope') if entry.get('scope') in {'single', 'multivendor'} else 'single',
             'vendor_comparison': entry.get('vendor_comparison') if entry.get('vendor_comparison') in {'operator_vendor', 'vendor_only'} else 'operator_vendor',
-            'datasets': _datasets_by_kind(entry.get('datasets')),
-            # The CDRs of the automatic choice in the Dashboard's NR Mode at each run, or '' for the
-            # CDRs chosen by hand (or the Dashboard's own); jobs saved with every ready CDR use every complete set.
-            'cdr_selection': (entry['cdr_selection'] if entry.get('cdr_selection') in CDR_SELECTIONS
-                              else 'all_complete' if entry.get('all_datasets') else ''),
+            # The CDRs of the Dashboard's NR Mode and of the Campaign filter at each run (auto_cdrs); entries saved
+            # before chose them by hand or with an automatic choice (see migrate_auto_cdrs).
+            'auto_cdrs': auto_cdrs,
+            'datasets': {} if auto_cdrs else _datasets_by_kind(entry.get('datasets')),
+            'cdr_selection': '' if auto_cdrs else (entry['cdr_selection'] if entry.get('cdr_selection') in CDR_SELECTIONS
+                                                   else 'all_complete' if entry.get('all_datasets') else ''),
             'date_from': _date_text(entry.get('date_from')), 'date_to': _date_text(entry.get('date_to')),
             'filters': {str(field): _strings(values) for field, values in (entry.get('filters') or {}).items()
                         if str(field).strip() and _strings(values)} if isinstance(entry.get('filters'), dict) else {},
@@ -320,13 +335,17 @@ def normalize_definition(raw: Any) -> dict[str, Any]:
         if not isinstance(entry, dict):
             continue
         nr_mode = str(entry.get('nr_mode') or 'NSA').upper()
+        auto_cdrs = bool(entry.get('auto_cdrs'))
         definition['scoring'].append({
             'label': str(entry.get('label') or '').strip()[:120],
             'nr_mode': nr_mode if nr_mode in {'NSA', 'SA'} else 'NSA',
-            # An empty list uses, at run time, the newest complete set of CDRs or, with
-            # cdr_selection 'all_complete', every CDR of a complete Data, Voice and Speech set.
-            'dataset_ids': _ids(entry.get('dataset_ids')),
-            'cdr_selection': _cdr_selection(entry, 'newest'),
+            # The campaigns of the calculation (Latest campaign, Latest 2 campaigns or chosen ones; none is every
+            # campaign with Data, Voice and Speech CDRs), whose CDRs are chosen at each run (auto_cdrs). Entries
+            # saved before chose CDRs by hand or with an automatic choice (see migrate_auto_cdrs).
+            'auto_cdrs': auto_cdrs,
+            'campaigns': _strings(entry.get('campaigns')),
+            'dataset_ids': [] if auto_cdrs else _ids(entry.get('dataset_ids')),
+            'cdr_selection': '' if auto_cdrs else _cdr_selection(entry, 'newest'),
             'scoring_profile_id': str(entry.get('scoring_profile_id') or '').strip(),
             'baseline_operator': str(entry.get('baseline_operator') or 'EE').strip() or 'EE',
             # PowerPoint and/or Word; jobs saved before Word was offered keep PowerPoint.
@@ -906,7 +925,15 @@ def install_report_task_routes(core: Any) -> None:
     def generate_dataset_analysis(section, folder, stamp, username, names, task_repository) -> list[dict[str, Any]]:
         artifacts = []
         try:
-            dataset_ids = section['dataset_ids'] or automatic_cdrs_every_mode(task_repository, section.get('cdr_selection') or 'all_complete')
+            if section.get('auto_cdrs'):
+                # The CDRs of the NR Mode and Campaigns now (Latest campaign and Latest 2 campaigns, the newest ones).
+                nr_mode = section.get('nr_mode') or 'NSA'
+                dataset_ids = [dataset_id for ids in resolve_cdrs(task_repository, nr_mode, section.get('campaigns') or []).values()
+                               for dataset_id in ids]
+                if not dataset_ids:
+                    raise RuntimeError(f'There is no ready {nr_mode} CDR of the chosen campaigns in the combined CDR tables.')
+            else:
+                dataset_ids = section['dataset_ids'] or automatic_cdrs_every_mode(task_repository, section.get('cdr_selection') or 'all_complete')
         except (RuntimeError, ValueError) as exc:
             return [failed_artifact('dataset_analysis', 'CDR Analysis', exc)]
         for export_kind in section['formats']:
@@ -941,7 +968,14 @@ def install_report_task_routes(core: Any) -> None:
         artifacts = []
         name = network_entry_name(section)
         selection = section['selection']
-        if not any(selection.get('datasets', {}).values()) and task_repository is not None:
+        if section.get('auto_cdrs') and task_repository is not None:
+            # Latest campaign and Latest 2 campaigns are the newest campaigns now; the CDRs follow them.
+            campaigns = selection.get('campaigns') or []
+            if campaign_presets(campaigns):
+                resolved = resolve_campaign_filter(task_repository, selection['nr_mode'], campaigns)
+                campaigns = sort_campaigns({compact_campaign_value(value) or value for value in resolved})
+            selection = {**selection, 'campaigns': campaigns, 'datasets': {}}
+        elif not any(selection.get('datasets', {}).values()) and task_repository is not None:
             try:
                 selection = {**selection, 'datasets': cdrs_by_kind(task_repository, automatic_cdrs(
                     task_repository, selection['nr_mode'], section.get('cdr_selection') or 'all_complete'))}
@@ -986,6 +1020,15 @@ def install_report_task_routes(core: Any) -> None:
     def dashboard_definition(stored: dict[str, Any], entry: dict[str, Any], task_repository=None) -> dict[str, Any]:
         """The saved Dashboard with the artifact's Scope, CDRs, dates and filters."""
         definition = dict(stored)
+        if entry.get('auto_cdrs'):
+            # The CDRs of the Dashboard's NR Mode and of the entry's Campaign filter, chosen when it is generated.
+            definition.pop('datasets', None)
+            definition.update({
+                'scope': entry['scope'], 'vendor_comparison': entry['vendor_comparison'], 'auto_cdrs': True,
+                'date_from': entry.get('date_from') or 'Oldest', 'date_to': entry.get('date_to') or 'Newest',
+                'filters': dict(entry.get('filters') or {}),
+            })
+            return definition
         if entry.get('cdr_selection') in CDR_SELECTIONS and task_repository is not None:
             nr_mode = 'SA' if str(stored.get('technology') or 'nsa').upper() == 'SA' else 'NSA'
             entry = {**entry, 'datasets': cdrs_by_kind(task_repository, automatic_cdrs(task_repository, nr_mode, entry['cdr_selection']))}
@@ -1022,6 +1065,88 @@ def install_report_task_routes(core: Any) -> None:
                 f"CDRs: {', '.join(names.get(int(value), str(value)) for value in job.get('dataset_ids') or []) or '—'}",
                 f"GAP reference: {job.get('baseline_operator') or entry.get('baseline_operator') or 'EE'}",
                 f"Report scenarios: {', '.join(scenarios) or '—'}"]
+
+    def campaigns_of_cdrs(task_repository, dataset_ids, compact: bool = False) -> list[str]:
+        values = sort_campaigns(value for values in cdr_campaigns(task_repository, dataset_ids).values() for value in values)
+        return sort_campaigns({compact_campaign_value(value) or value for value in values}) if compact else values
+
+    def migrate_auto_cdrs(definition: dict[str, Any], task_repository) -> dict[str, Any]:
+        """A job saved when its CDRs were chosen by hand or by an automatic choice chooses them by Campaign.
+
+        The newest complete set becomes Latest campaign, every complete set every campaign, and CDRs chosen by
+        hand the campaigns they hold; a Dashboard that used its own CDRs keeps its Campaign filter. Non-Qualified
+        Calls take the NR Mode and the campaigns of the CDRs of their CDRs filter.
+        """
+        migrated = json.loads(json.dumps(definition))
+        analysis = migrated.get('dataset_analysis')
+        if isinstance(analysis, dict) and not analysis.get('auto_cdrs'):
+            # CDR Analysis: the NR Mode of its CDRs (NSA when they mix both) and their campaigns, or the campaigns of
+            # its Campaign filter, which now chooses the CDRs.
+            ids = analysis.get('dataset_ids') or []
+            filters = dict(analysis.get('filters') or {})
+            modes = [row['nr_mode'] for row in resolve_cdr_rows(task_repository, ids)] if ids else []
+            analysis['nr_mode'] = 'SA' if modes and modes.count('SA') > modes.count('NSA') else 'NSA'
+            analysis['campaigns'] = (filters.pop('campaigns', None) or (campaigns_of_cdrs(task_repository, ids, compact=True) if ids
+                                     else [] if analysis.get('cdr_selection', 'all_complete') == 'all_complete' else [LATEST_CAMPAIGN]))
+            analysis.update(filters=filters, dataset_ids=[], cdr_selection='', auto_cdrs=True)
+        tools = getattr(core, 'dashboard_reporting', None)
+        stored_dashboards = tools.list_dashboards(task_repository) if tools is not None and migrated.get('dashboards') else {}
+        for entry in migrated.get('dashboards') or []:
+            if entry.get('auto_cdrs'):
+                continue
+            filters = dict(entry.get('filters') or {})
+            if not any(str(field).casefold() == 'campaign' for field in filters):
+                ids = [value for values in (entry.get('datasets') or {}).values() for value in values]
+                stored = stored_dashboards.get(entry.get('dashboard_id')) or {}
+                campaigns = ([LATEST_CAMPAIGN] if entry.get('cdr_selection') == 'newest'
+                             else [] if entry.get('cdr_selection') == 'all_complete'
+                             else campaigns_of_cdrs(task_repository, ids) if ids
+                             else next((values for field, values in (stored.get('filters') or {}).items() if str(field).casefold() == 'campaign'), []))
+                if campaigns:
+                    filters['Campaign'] = list(campaigns)
+            entry.update(filters=filters, datasets={}, cdr_selection='', auto_cdrs=True)
+        for entry in migrated.get('scoring') or []:
+            if entry.get('auto_cdrs'):
+                continue
+            ids = entry.get('dataset_ids') or []
+            entry['campaigns'] = (campaigns_of_cdrs(task_repository, ids) if ids
+                                  else [] if entry.get('cdr_selection') == 'all_complete' else [LATEST_CAMPAIGN])
+            entry.update(dataset_ids=[], cdr_selection='', auto_cdrs=True)
+        for entry in migrated.get('network_insights') or []:
+            if entry.get('auto_cdrs'):
+                continue
+            selection = entry.setdefault('selection', {})
+            ids = [value for values in (selection.get('datasets') or {}).values() for value in values]
+            if not selection.get('campaigns'):
+                selection['campaigns'] = (campaigns_of_cdrs(task_repository, ids, compact=True) if ids
+                                          else [] if entry.get('cdr_selection', 'all_complete') == 'all_complete' else [LATEST_CAMPAIGN])
+            selection['datasets'] = {}
+            entry.update(cdr_selection='', auto_cdrs=True)
+        nq = ((migrated.get('modules') or {}).get('non_qualified_calls') or {}).get('options') or {}
+        nq_filters = nq.get('filters') if isinstance(nq.get('filters'), dict) else {}
+        if nq_filters.get('datasets'):
+            ids = [int(value) for value in nq_filters.pop('datasets') if str(value).isdigit()]
+            modes = {row['nr_mode'] for row in (resolve_cdr_rows(task_repository, ids))}
+            nq_filters.setdefault('nr_mode', sorted(mode for mode in modes if mode))
+            nq_filters.setdefault('campaign', campaigns_of_cdrs(task_repository, ids))
+            nq_filters = {key: values for key, values in nq_filters.items() if values}
+            nq['filters'] = nq_filters
+        return migrated
+
+    def resolve_cdr_rows(task_repository, ids) -> list[dict[str, Any]]:
+        wanted = {int(value) for value in ids}
+        return [{'id': int(row['id']), 'nr_mode': core.dataset_nr_mode(row['dataset_kind'], row['nr_mode'], row['file_name'])}
+                for row in task_repository.list_datasets() if int(row['id']) in wanted]
+
+    def scoring_cdrs(task_repository, entry: dict[str, Any]) -> list[int]:
+        """The CDRs of a Scoring artifact now: those of its campaigns, each campaign with Data, Voice and Speech CDRs."""
+        nr_mode = entry.get('nr_mode') or 'NSA'
+        campaigns = resolve_campaign_filter(task_repository, nr_mode, entry.get('campaigns') or [])
+        dataset_ids, incomplete = complete_campaign_cdrs(task_repository, nr_mode, campaigns)
+        if not dataset_ids:
+            missing = f" ({', '.join(incomplete)} lack a CDR type)" if incomplete else ''
+            raise RuntimeError(f'There is no campaign with Data, Voice and Speech {nr_mode} CDRs to score{missing}.')
+        return dataset_ids
 
     def automatic_cdrs(task_repository, nr_mode: str, selection: str) -> list[int]:
         """The CDRs an automatic choice selects now: the newest complete set or every complete set of the NR Mode."""
@@ -1073,7 +1198,7 @@ def install_report_task_routes(core: Any) -> None:
     def generate_scoring(entry, task_repository, folder, stamp, username, names, run_id) -> dict[str, Any]:
         title = f"Scoring · {scoring_entry_name(entry)}"
         try:
-            dataset_ids = entry.get('dataset_ids') or automatic_cdrs(
+            dataset_ids = scoring_cdrs(task_repository, entry) if entry.get('auto_cdrs') else entry.get('dataset_ids') or automatic_cdrs(
                 task_repository, entry['nr_mode'], entry.get('cdr_selection') or 'newest')
             report = entry['report']
             update_run(task_repository, run_id, message=f'Calculating {title}')
@@ -1126,7 +1251,7 @@ def install_report_task_routes(core: Any) -> None:
                        message='Generating artifacts', progress=1)
             if not core.active_workspace or Path(core.active_workspace.database_path).resolve() != Path(database_path).resolve():
                 raise RuntimeError('The Reporting Job workspace is no longer the active workspace.')
-            definition, user = task['definition'], run_user(task['created_by'])
+            definition, user = migrate_auto_cdrs(task['definition'], task_repository), run_user(task['created_by'])
             names = dataset_names(task_repository)
             steps: list[tuple[str, Any]] = []
             # Artifacts of modules the job owner can no longer use are reported, not generated.
@@ -1353,8 +1478,11 @@ def install_report_task_routes(core: Any) -> None:
             'operator_groups': [{'canonical': group['canonical'], 'aliases': group['aliases']}
                                 for group in task_repository.list_operator_mapping_groups()],
             'methodologies': methodologies, 'active_methodology': active_methodology,
-            # The CDRs the automatic choices select now, per NR Mode (they choose again at each run).
+            # The CDRs the automatic choices of CDR Analysis select now, per NR Mode (they choose again at each run).
             'automatic_cdrs': automatic_cdr_preview(task_repository),
+            # The campaigns of the CDRs of each NR Mode, and the choices that follow the newest ones.
+            'campaigns': {nr_mode: campaign_values(task_repository, nr_mode) for nr_mode in ('NSA', 'SA')},
+            'campaign_presets': CAMPAIGN_PRESET_LABELS,
             'values': mapped(catalogue),
             # The filter values of each CDR, so every entry lists only the values of the CDRs it uses.
             'values_by_dataset': {
@@ -1417,8 +1545,10 @@ def install_report_task_routes(core: Any) -> None:
             for item in run['artifacts']:
                 if item.get('status') == 'ready':
                     item['available'] = bool(folder and item.get('file_name') and (folder / item['file_name']).is_file())
+        # Jobs saved when CDRs were chosen by hand open with the campaigns of those CDRs.
+        tasks = [{**task, 'definition': migrate_auto_cdrs(task['definition'], task_repository)} for task in list_tasks(task_repository)]
         return {
-            'tasks': [serialize_task(task, runs_by_id, dashboard_names) for task in list_tasks(task_repository)],
+            'tasks': [serialize_task(task, runs_by_id, dashboard_names) for task in tasks],
             'runs': runs, 'can_edit': user.role in {'user-editor', 'admin', 'super-admin'},
             'workspace_id': core.active_workspace.id if core.active_workspace else '',
         }
@@ -1426,6 +1556,24 @@ def install_report_task_routes(core: Any) -> None:
     @app.get('/api/reporting/options')
     def reporting_jobs_options(user=Depends(reporting_user)):
         return reporting_options(reporting_repository(user), user)
+
+    @app.post('/api/reporting/auto-cdrs')
+    def reporting_auto_cdrs(payload: dict[str, Any], user=Depends(reporting_user)):
+        """The CDRs an entry uses now for its NR Mode and campaigns (``complete``: each campaign with every CDR type)."""
+        task_repository = reporting_repository(user)
+        nr_mode = 'SA' if str(payload.get('nr_mode') or '').upper() == 'SA' else 'NSA'
+        campaigns = resolve_campaign_filter(task_repository, nr_mode, _strings(payload.get('campaigns')))
+        if payload.get('complete'):
+            ids, incomplete = complete_campaign_cdrs(task_repository, nr_mode, campaigns)
+            kinds = {int(row['id']): str(row['dataset_kind']) for row in task_repository.list_datasets()}
+            chosen = {kind: [dataset_id for dataset_id in ids if kinds.get(dataset_id) == kind] for kind in ('data', 'voice', 'speech')}
+        else:
+            chosen, incomplete = resolve_cdrs(task_repository, nr_mode, campaigns), []
+        names = dataset_names(task_repository)
+        return {'campaigns': campaigns, 'incomplete_campaigns': incomplete,
+                'cdrs': {kind: [names.get(dataset_id, str(dataset_id)) for dataset_id in ids] for kind, ids in chosen.items()},
+                # Each CDR with its stage and campaigns, as the modules list them.
+                'cdr_rows': describe_cdrs(task_repository, chosen)}
 
     def save_route(task_id, payload, user):
         task_repository = reporting_repository(user)

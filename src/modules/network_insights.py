@@ -29,6 +29,10 @@ from src.modules.cell_identity import nr_cell_bits, nr_gnodeb
 from src.modules.column_names import campaign_sort_key, column_identity, compact_campaign_value, operator_vendor_filter_values, vendor_filter_values
 from src.modules.mapping_order import swap_operator_vendor, swap_vendor_operator
 from src.modules.value_maps import ValueMapper, field_kind
+from src.modules.cdr_auto_selection import (
+    CAMPAIGN_PRESET_LABELS, campaign_presets, candidate_cdrs, describe_cdrs, resolve_campaign_filter, resolve_cdrs,
+)
+from src.modules.cdr_facets import cascading_options
 from src.modules.mapping_order import dimension_order_key, operator_order_key, vendor_order_key
 from src.modules.output_layout import NETWORK_INSIGHTS_FOLDER, module_output_dir
 from src.modules import inventory_insights as ii
@@ -1280,6 +1284,28 @@ def install_network_insights_routes(core: Any) -> None:
         for stale in sorted(folder.glob(pattern), key=lambda path: path.stat().st_mtime, reverse=True)[keep:]:
             stale.unlink(missing_ok=True)
 
+    def with_auto_cdrs(task_repository, request):
+        """The selection with its CDRs: those of its NR Mode and Campaigns (see ``cdr_auto_selection``).
+
+        The CDRs the combined CDR tables include (the Final CDR of each campaign, else its newest Weekly or
+        Daily CDRs, or the In Combined? choice of Workspace) of the NR Mode and of the chosen campaigns (every
+        campaign without one). A selection that names its own CDRs keeps them.
+        """
+        request = with_latest_campaigns(task_repository, request)
+        if any(request.datasets.get(kind) for kind in NETWORK_INSIGHTS_KINDS):
+            return request
+        chosen = resolve_cdrs(task_repository, request.nr_mode, request.campaigns, NETWORK_INSIGHTS_KINDS)
+        return request.model_copy(update={'datasets': chosen})
+
+    def with_latest_campaigns(task_repository, request):
+        """The selection with Latest campaign and Latest 2 campaigns replaced by the newest campaigns of its NR Mode now,
+        as the samples show them (2026-Q2); every campaign when the NR Mode has none."""
+        if not campaign_presets(request.campaigns):
+            return request
+        campaigns = resolve_campaign_filter(task_repository, request.nr_mode, request.campaigns, NETWORK_INSIGHTS_KINDS)
+        labels = list(dict.fromkeys(compact_campaign_value(value) or value for value in campaigns))
+        return request.model_copy(update={'campaigns': labels})
+
     def samples_key(task_repository, datasets: dict[str, list[int]]) -> tuple[str, dict[str, list[int]]]:
         """Identity of the normalised samples: CDR revisions and Operator mappings."""
         available = {row['id']: row for row in ready_cdrs(task_repository)}
@@ -1395,6 +1421,9 @@ def install_network_insights_routes(core: Any) -> None:
             'user': user,
             'network_insights_config': {
                 'selection_storage_key': f'network-insights:selection:{core.active_workspace.id}:{user.username}',
+                # Latest campaign and Latest 2 campaigns, first in Campaigns: the newest campaigns of the NR Mode each time.
+                # [value, label] pairs in their order (the page JSON sorts object keys).
+                'campaign_presets': [[value, label] for value, label in CAMPAIGN_PRESET_LABELS.items()],
                 'datasets': ready_cdrs(task_repository),
                 'inventories': inventory_datasets(task_repository),
                 # Every inventory is a snapshot of the network on its date (see network_inventory).
@@ -1422,43 +1451,27 @@ def install_network_insights_routes(core: Any) -> None:
 
     @app.post('/api/network-insights/filter-options')
     def network_insights_filter_options(request: AnalysisRequest, vendor_only: bool = False, user=Depends(insights_user)):
-        """Filter values of the selected CDRs from their catalogues; vendor_only returns the vendor fields."""
+        """The values of every filter among every CDR of the NR Mode, each filter those the other filters leave.
+
+        Read from the CDR Filter Facets (never the CDR rows), Operators and Vendors with their Maps labels and the
+        Campaigns as the Campaign Maps show them. ``vendor_only`` returns only the vendor fields.
+        """
         task_repository = bound_repository()
-        available = {row['id']: row for row in ready_cdrs(task_repository)}
-        fields = ('operator_vendor', 'vendor_operator', 'vendor') if vendor_only else ('operator', 'region', 'cluster', 'city', 'campaign')
-        values = {field: set() for field in fields}
-        mappings = task_repository.chart_mapping_settings()
-        selected = {dataset_id: kind for kind in NETWORK_INSIGHTS_KINDS
-                    for dataset_id in request.datasets.get(kind, [])
-                    if dataset_id in available and available[dataset_id]['kind'] == kind}
-        if vendor_only:
-            # One-time backfill for existing CDRs; future ingestion stores both formats.
-            for dataset_id in task_repository.missing_cdr_vendor_only_ids(selected):
-                columns = resolve_source_columns(task_repository.list_dataset_row_columns(dataset_id), selected[dataset_id])
-                column = columns.get('vendor')
-                vendor_values = task_repository.list_distinct_dataset_row_values(dataset_id, column, limit=None) if column else []
-                task_repository.set_cdr_catalogue_vendor_only(dataset_id, vendor_values)
-        else:
-            for dataset_id in task_repository.missing_cdr_cluster_ids(selected):
-                columns = resolve_source_columns(task_repository.list_dataset_row_columns(dataset_id), selected[dataset_id])
-                column = columns.get('cluster')
-                cluster_values = task_repository.list_distinct_dataset_row_values(dataset_id, column, limit=None) if column else []
-                task_repository.set_cdr_catalogue_clusters(dataset_id, cluster_values)
-        catalogue_keys = {'operator_vendor': 'vendors', 'vendor_operator': 'vendor_operators', 'vendor': 'vendors_only', 'city': 'cities'}
-        catalogues = task_repository.cdr_catalogues_by_dataset(selected)
-        for catalogue in catalogues.values():
-            for field in values:
-                values[field].update(catalogue.get(catalogue_keys.get(field, field + 's'), []))
-        # Operators and Vendors with their Operator and Vendor Maps labels, as in the samples.
-        mapper = ValueMapper.from_settings(mappings)
-        for field in ('operator', 'operator_vendor', 'vendor_operator', 'vendor'):
-            if values.get(field):
-                values[field] = mapper.values(field_kind(field), values[field])
-        if 'campaign' in values:
-            values['campaign'] = {compact_campaign_value(value) or value for value in values['campaign']}
-        return {'options': {field + 's' if field != 'city' else 'cities': (
-            list if field in {'operator', 'operator_vendor', 'vendor_operator', 'vendor'} else lambda items: sorted(items, key=str.casefold)
-        )([value for value in items if str(value).strip()]) for field, items in values.items()}}
+        request = with_latest_campaigns(task_repository, request)
+        dataset_ids = [row['id'] for row in candidate_cdrs(task_repository, request.nr_mode, NETWORK_INSIGHTS_KINDS)]
+        selections = {'Operator': request.operators, 'Operator_Vendor': request.operator_vendors,
+                      'Vendor_Operator': request.vendor_operators, 'Vendor': request.vendors, 'Region': request.regions,
+                      'Cluster': request.clusters, 'City': request.cities, 'Campaign': request.campaigns}
+        names = {'Operator': 'operators', 'Operator_Vendor': 'operator_vendors', 'Vendor_Operator': 'vendor_operators',
+                 'Vendor': 'vendors', 'Region': 'regions', 'Cluster': 'clusters', 'City': 'cities', 'Campaign': 'campaigns'}
+        fields = ['Operator_Vendor', 'Vendor_Operator', 'Vendor'] if vendor_only else list(names)
+        options = cascading_options(task_repository, dataset_ids, selections, fields)
+        if 'Campaign' in options:
+            # The samples carry each campaign as the Campaign Maps show it (2026-Q2).
+            options['Campaign'] = sorted({compact_campaign_value(value) or value for value in options['Campaign']}, key=campaign_sort_key)
+        chosen = resolve_cdrs(task_repository, request.nr_mode, request.campaigns, NETWORK_INSIGHTS_KINDS)
+        return {'options': {names[field]: values for field, values in options.items()},
+                'cdrs': describe_cdrs(task_repository, chosen)}
 
     def analysis_key(task_repository, request: AnalysisRequest) -> str:
         """Identity of an analysis: its request and every input it reads."""
@@ -1481,6 +1494,7 @@ def install_network_insights_routes(core: Any) -> None:
         # stored result instead of recalculating it, also after a restart.
         # ``cached_only`` answers 204 instead of calculating a missing result.
         task_repository = bound_repository()
+        request = with_auto_cdrs(task_repository, request)
         key = analysis_key(task_repository, request)
         with analysis_cache_lock:
             cached = analysis_cache.get(key)
@@ -2154,6 +2168,7 @@ def install_network_insights_routes(core: Any) -> None:
 
     def observed_cells(task_repository, request: SitesRequest) -> dict[str, Any]:
         """One row per LTE cell (or site without cell identity) observed in the selected CDRs."""
+        request = with_auto_cdrs(task_repository, request)
         samples_identity, _selected = samples_key(task_repository, request.datasets)
         selection = {key: value for key, value in request.model_dump().items()
                      if key in {'operators', 'operator_vendors', 'vendor_operators', 'vendors', 'campaigns', 'regions', 'clusters', 'cities', 'technology'}}
@@ -2632,7 +2647,7 @@ def install_network_insights_routes(core: Any) -> None:
     def write_summary(selection: dict[str, Any], export_kind: str, destination: Path) -> dict[str, Any]:
         """Write the Summary Network Insights (PowerPoint or Word) for a saved or current selection.
 
-        An empty dataset selection analyses every ready Data, Voice and Speech CDR.
+        Without CDRs of its own, a selection analyses those of its NR Mode and Campaigns.
         Returns the selection description used in the document.
         """
         from src.modules.cdr_reporting import _render_dashboard_payload
@@ -2640,12 +2655,7 @@ def install_network_insights_routes(core: Any) -> None:
 
         task_repository = bound_repository()
         available = ready_cdrs(task_repository)
-        request = AnalysisRequest.model_validate(selection or {})
-        if not any(request.datasets.get(kind) for kind in NETWORK_INSIGHTS_KINDS):
-            # Like the page, an analysis covers the CDRs of one NR Mode.
-            nr_mode = str((selection or {}).get('nr_mode') or 'NSA').upper()
-            request.datasets = {kind: [row['id'] for row in available if row['kind'] == kind and str(row['nr_mode']).upper() == nr_mode]
-                                for kind in NETWORK_INSIGHTS_KINDS}
+        request = with_auto_cdrs(task_repository, AnalysisRequest.model_validate(selection or {}))
         request.map_all_groups = True
         analysis = run_analysis(request)
         names = {row['id']: row['file_name'] for row in available}

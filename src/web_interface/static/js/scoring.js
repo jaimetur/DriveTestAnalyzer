@@ -204,6 +204,18 @@
   const datasetInputs = [...root.querySelectorAll('[data-dataset-id]')];
   const datasetKindOrder = ['data', 'voice', 'speech'];
   const datasetKindLabels = {data: 'Data', voice: 'Voice', speech: 'Speech'};
+  // NR Mode and Campaign choose the CDRs of the calculation: the server answers with them (those the combined CDR
+  // tables include for the campaigns) and with the values each context filter offers among every CDR of the NR
+  // Mode, each filter those the other filters leave. A Saved Filter opened in the panel keeps its own CDRs until
+  // the NR Mode or a filter changes.
+  const autoCdrsUrl = root.dataset.cdrSelectionUrl || '/api/scoring/cdr-selection';
+  const autoCdrSection = root.querySelector('[data-scoring-auto-cdrs]');
+  const autoCdrSource = root.querySelector('[data-auto-cdrs-source]');
+  const autoCdrReset = root.querySelector('[data-auto-cdrs-reset]');
+  let autoCdrs = {options: null, incomplete: []};
+  let pinnedCdrs = false;
+  let autoCdrRevision = 0;
+  let autoCdrTimer = null;
   const scoringConfigElement = root.querySelector('[data-scoring-config]');
   const scoringProfileSelect = root.querySelector('[data-scoring-profile]');
   let scoringConfig = {};
@@ -467,31 +479,43 @@
     }
   }
 
+  // Latest campaign and Latest 2 campaigns, first in Campaign: each stands alone and stands for the newest
+  // campaigns with Data, Voice and Speech CDRs; the panel keeps the choice and a calculation uses its campaigns.
+  const campaignPresetLabels = {'@latest-campaign': 'Latest campaign', '@latest-2-campaigns': 'Latest 2 campaigns',
+    '@all-campaigns': 'All available campaigns'};
+  const isCampaignPreset = value => Object.prototype.hasOwnProperty.call(campaignPresetLabels, value);
+  const chosenCampaignPreset = select => [...(select?.selectedOptions || [])].map(option => option.value).find(isCampaignPreset) || '';
+
   function refreshContextFilterOptions() {
     const selectedIds = new Set(selectedDatasetIds());
     for (const {key, catalogueKey} of contextFilterDefinitions) {
       const select = contextFilterSelects.get(key);
       if (!select) continue;
       const identity = value => key === 'Vendor' ? scoringVendorName(value) : value;
-      const selectedValues = new Set([...select.selectedOptions].map(option => identity(option.value)).filter(Boolean));
+      const preset = key === 'Campaign' ? chosenCampaignPreset(select) : '';
+      const selectedValues = new Set([...select.selectedOptions].map(option => identity(option.value)).filter(value => value && !isCampaignPreset(value)));
       // Values chosen while they were in the CDRs (another NR Mode or CDR choice) come back with them.
       let remembered = [];
       try { remembered = JSON.parse(select.dataset.scoringRememberedValues || '[]'); } catch (_error) { remembered = []; }
       remembered.forEach(value => selectedValues.add(value));
       // Every value checked (All values) keeps every value checked, also the values the new CDRs add.
-      const enabledBefore = [...select.options].filter(option => !option.disabled && option.value);
-      const allSelected = enabledBefore.length > 0 && enabledBefore.every(option => option.selected);
+      const enabledBefore = [...select.options].filter(option => !option.disabled && option.value && !isCampaignPreset(option.value));
+      const allSelected = !preset && enabledBefore.length > 0 && enabledBefore.every(option => option.selected);
       const rawValues = [];
-      for (const datasetId of selectedIds) {
-        const values = datasetCatalogues.get(String(datasetId))?.[catalogueKey];
-        rawValues.push(...uniqueCatalogueValues(values));
+      if (autoCdrs.options && Array.isArray(autoCdrs.options[key])) {
+        rawValues.push(...uniqueCatalogueValues(autoCdrs.options[key]));
+      } else {
+        for (const datasetId of selectedIds) {
+          const values = datasetCatalogues.get(String(datasetId))?.[catalogueKey];
+          rawValues.push(...uniqueCatalogueValues(values));
+        }
       }
       const nextOptions = contextFilterOptions(key, [...new Set(rawValues)]);
       const presetCities = key === 'City'
         ? nextOptions.filter(option => mainCityIdentities.has(option.value.trim().toLocaleLowerCase())).map(option => option.value) : [];
       const signature = JSON.stringify({
         options: nextOptions.map(option => [option.value, option.label, option.color]),
-        presetCities,
+        presetCities, preset,
       });
       if (select.dataset.scoringCatalogueSignature === signature) continue;
       select.dataset.scoringCatalogueSignature = signature;
@@ -507,11 +531,23 @@
         empty.textContent = 'No values';
         select.append(empty);
       } else {
-        for (const entry of nextOptions) {
+        if (key === 'Campaign') {
+          for (const [value, label] of Object.entries(campaignPresetLabels)) {
+            const option = document.createElement('option');
+            option.value = value;
+            option.textContent = label;
+            option.selected = value === preset;
+            option.dataset.campaignPreset = 'true';
+            option.dataset.optionClass = 'campaign-preset';
+            select.append(option);
+          }
+        }
+        for (const [index, entry] of nextOptions.entries()) {
           const option = document.createElement('option');
           option.value = entry.value;
           option.textContent = entry.label;
-          option.selected = allSelected || selectedValues.has(identity(entry.value));
+          option.selected = !preset && (allSelected || selectedValues.has(identity(entry.value)));
+          if (key === 'Campaign' && index === 0) option.dataset.dividerBefore = 'true';
           if (entry.color) {
             option.dataset.operatorColor = entry.color;
             option.style.color = entry.color;
@@ -602,6 +638,7 @@
     currentHierarchy = ordered;
     contextFilterDefinitions = contextFilterKeys(ordered).map(key => ({key, catalogueKey: filterCatalogueKeys.get(key)}));
     for (const {key} of contextFilterDefinitions) {
+      if (key === 'Campaign') continue;
       const filterLabel = contextFilterSelects.get(key)?.closest('label');
       if (filterLabel && contextFilterGrid) contextFilterGrid.append(filterLabel);
     }
@@ -690,13 +727,17 @@
     openHierarchyDialog();
   });
 
-  function selectedContextFilters() {
+  // The context filters: a Latest campaign choice as it is (keepPresets, the saved panel) or as its campaigns now
+  // (a calculation).
+  function selectedContextFilters({keepPresets = false} = {}) {
     return Object.fromEntries(contextFilterDefinitions.map(({key}) => {
       const select = contextFilterSelects.get(key);
+      const preset = key === 'Campaign' ? chosenCampaignPreset(select) : '';
+      if (preset) return [key, keepPresets ? [preset] : [...(autoCdrs.presets?.[preset] || [])]];
       const values = select ? [...select.selectedOptions]
-        .filter(option => !option.disabled && option.value)
+        .filter(option => !option.disabled && option.value && !isCampaignPreset(option.value))
         .map(option => String(option.value)) : [];
-      const available = select ? [...select.options].filter(option => !option.disabled && option.value) : [];
+      const available = select ? [...select.options].filter(option => !option.disabled && option.value && !isCampaignPreset(option.value)) : [];
       return [key, key !== 'Vendor' && available.length && values.length === available.length ? [] : values];
     }));
   }
@@ -704,9 +745,10 @@
   function calculationSelectionFromControls() {
     const levels = [...new Set(selectedLevels())];
     if (!levels.includes('Operator')) levels.unshift('Operator');
-    const filters = selectedContextFilters();
+    const filters = selectedContextFilters({keepPresets: true});
     return {
       dataset_ids: selectedDatasetIds().map(value => Number(value)).filter(Number.isFinite),
+      auto_cdrs: !pinnedCdrs,
       aggregation_levels: levels,
       nr_mode: String(nrFilter?.value || 'NSA'),
       baseline_operator: String(baselineInput?.value || ''),
@@ -829,7 +871,18 @@
         const requestedValues = uniqueCatalogueValues(Array.isArray(requested) ? requested : [requested]);
         const available = new Set([...select.options].filter(option => !option.disabled).map(option => option.value.toLocaleLowerCase()));
         const unavailable = requestedValues.filter(value => !available.has(value.toLocaleLowerCase()));
-        if (unavailable.length) unavailableFilters.push(`${key}: ${unavailable.join(', ')}`);
+        if (unavailable.length) {
+          // The lists of the filters follow the restored NR Mode and filters: the saved values are kept until they
+          // arrive, and those the CDRs no longer have are told then.
+          for (const value of unavailable) {
+            const option = document.createElement('option');
+            option.value = value;
+            option.textContent = key === 'Campaign' ? hierarchyDisplayValue({level: 'Campaign', value}) : value;
+            select.append(option);
+          }
+          [...select.options].filter(option => option.disabled && !option.value).forEach(option => option.remove());
+          delete select.dataset.scoringCatalogueSignature;
+        }
         const selected = new Set(requestedValues.map(value => value.toLocaleLowerCase()));
         for (const option of select.options) option.selected = !option.disabled && selected.has(option.value.toLocaleLowerCase());
         select.removeAttribute?.('data-scoring-remembered-values');
@@ -869,6 +922,8 @@
   }
 
   function restoreCalculationSelectionFromSavedFilter(savedFilter) {
+    // The panel shows the CDRs of the Saved Filter; the lists of its filters follow for its NR Mode and filters.
+    pinnedCdrs = true;
     applySavedCalculationSelection({
       dataset_ids: savedFilter.dataset_ids || [],
       aggregation_levels: savedFilter.aggregation_levels || savedFilter.levels || [],
@@ -881,7 +936,128 @@
         : {enabled: false},
     });
     scheduleSelectionSave();
+    scheduleAutoCdrRefresh({delay: 0});
   }
+
+  function autoCdrFilters() {
+    const filters = {};
+    for (const [key, select] of contextFilterSelects) {
+      if (!select) continue;
+      const preset = key === 'Campaign' ? chosenCampaignPreset(select) : '';
+      if (preset) { filters[key] = [preset]; continue; }
+      const enabled = [...select.options].filter(option => !option.disabled && option.value && !isCampaignPreset(option.value));
+      const values = enabled.filter(option => option.selected).map(option => String(option.value));
+      // Every value checked is no restriction.
+      filters[key] = values.length && values.length === enabled.length ? [] : values;
+    }
+    return filters;
+  }
+
+  function requestAutoCdrs(nrMode, filters, {defaultCampaign = false} = {}) {
+    return requestJson(autoCdrsUrl, {
+      method: 'POST',
+      body: JSON.stringify({nr_mode: nrMode, context_filters: filters || {}, default_campaign: defaultCampaign}),
+    });
+  }
+
+  // The lists of the filters, and (unless a Saved Filter keeps its own) the CDRs the server chose.
+  function applyAutoCdrResponse(body) {
+    autoCdrs = {
+      options: body?.options && typeof body.options === 'object' ? body.options : {},
+      incomplete: Array.isArray(body?.incomplete_campaigns) ? body.incomplete_campaigns.map(String) : [],
+      presets: body?.campaign_presets && typeof body.campaign_presets === 'object' ? body.campaign_presets : {},
+    };
+    if (pinnedCdrs) return;
+    const ids = new Set((Array.isArray(body?.dataset_ids) ? body.dataset_ids : []).map(String));
+    for (const input of datasetInputs) input.checked = ids.has(String(input.value)) && !input.closest('[data-dataset-option]')?.hidden;
+  }
+
+  function setFilterValues(key, values) {
+    const select = contextFilterSelects.get(key);
+    if (!select) return;
+    const wanted = new Set((values || []).map(value => String(value).toLocaleLowerCase()));
+    for (const option of select.options) option.selected = !option.disabled && wanted.has(option.value.toLocaleLowerCase());
+    select.removeAttribute('data-scoring-remembered-values');
+    select.dispatchEvent(new Event('multiselect:options-updated'));
+  }
+
+  // Asks the server again for the CDRs and the filter lists after a change of the NR Mode or of a filter.
+  // With defaultCampaign the newest campaign with Data, Voice and Speech CDRs of the NR Mode is chosen.
+  function scheduleAutoCdrRefresh({defaultCampaign = false, delay = 150} = {}) {
+    window.clearTimeout(autoCdrTimer);
+    const revision = ++autoCdrRevision;
+    autoCdrSection?.setAttribute('aria-busy', 'true');
+    // The CDRs shown stay, dimmed, until the server chooses them again.
+    globalThis.renderAutoCdrList?.(root.querySelector('[data-auto-cdr-groups]'), null, {loading: true});
+    autoCdrTimer = window.setTimeout(async () => {
+      try {
+        const filters = autoCdrFilters();
+        const body = await requestAutoCdrs(String(nrFilter?.value || 'NSA'), filters, {defaultCampaign});
+        if (revision !== autoCdrRevision) return;
+        applyAutoCdrResponse(body);
+        if (defaultCampaign) {
+          refreshContextFilterOptions();
+          setFilterValues('Campaign', body.campaign_selection || []);
+        }
+        // Chosen values that no CDR of the NR Mode has any longer (with the other filters) leave the selection.
+        const lost = Object.entries(defaultCampaign ? {} : filters).flatMap(([key, values]) => {
+          const offered = new Set((autoCdrs.options?.[key] || []).map(value => String(value).toLocaleLowerCase()));
+          const missing = values.filter(value => !isCampaignPreset(value) && !offered.has(String(value).toLocaleLowerCase()));
+          return missing.length && Array.isArray(autoCdrs.options?.[key]) ? [`${key}: ${missing.join(', ')}`] : [];
+        });
+        updateSelection();
+        scheduleSelectionSave();
+        if (lost.length) setMessage(`Some chosen filter values are not in the CDRs of this NR Mode with the other filters: ${lost.join(' · ')}. Review the selection before calculating.`, 'warning');
+      } catch (error) {
+        if (revision === autoCdrRevision) setMessage(`The CDRs of this NR Mode and Campaign could not be chosen: ${error.message}`, 'error');
+      } finally {
+        if (revision === autoCdrRevision) autoCdrSection?.removeAttribute('aria-busy');
+      }
+    }, delay);
+  }
+
+  function campaignLabelOf(value) {
+    return hierarchyDisplayValue({level: 'Campaign', value});
+  }
+
+  // The CDRs the calculation uses, read-only by type, with their stage and campaigns.
+  function renderAutoCdrs() {
+    if (!autoCdrSection) return;
+    const checked = new Set(selectedDatasetIds().map(String));
+    const cdrs = Object.fromEntries(datasetKindOrder.map(kind => [kind, datasetOptions
+      .filter(option => String(option.dataset.datasetKind || '').toLowerCase() === kind
+        && checked.has(String(option.querySelector('[data-dataset-id]')?.value || '')))
+      .map(option => {
+        const id = String(option.querySelector('[data-dataset-id]')?.value || '');
+        return {id, name: option.dataset.datasetName || `CDR ${id}`, stage: String(option.dataset.cdrStage || 'final'),
+          campaigns: [...new Set(uniqueCatalogueValues(datasetCatalogues.get(id)?.campaigns).map(campaignLabelOf))]};
+      })]));
+    // The CDRs by type, as every module lists them (dimmed while the server chooses them again).
+    globalThis.renderAutoCdrList?.(root.querySelector('[data-auto-cdr-groups]'), autoCdrs.options ? cdrs : null, {loading: !autoCdrs.options});
+    if (autoCdrSource) {
+      autoCdrSource.textContent = pinnedCdrs ? 'CDRs of the opened Saved Filter' : 'Chosen automatically';
+      autoCdrSource.dataset.source = pinnedCdrs ? 'saved' : 'auto';
+    }
+    if (autoCdrReset) autoCdrReset.hidden = !pinnedCdrs;
+    let warning = autoCdrSection.querySelector('[data-auto-cdrs-warning]');
+    const incomplete = pinnedCdrs ? [] : autoCdrs.incomplete;
+    if (incomplete.length && !warning) {
+      warning = document.createElement('p');
+      warning.className = 'scoring-auto-cdrs-warning';
+      warning.dataset.autoCdrsWarning = '';
+      autoCdrSection.append(warning);
+    }
+    if (warning) {
+      warning.hidden = !incomplete.length;
+      warning.textContent = incomplete.length
+        ? `Left out, without Data, Voice and Speech CDRs: ${incomplete.map(campaignLabelOf).join(', ')}.` : '';
+    }
+  }
+
+  autoCdrReset?.addEventListener('click', () => {
+    pinnedCdrs = false;
+    scheduleAutoCdrRefresh({delay: 0});
+  });
 
   async function loadCalculationSelection() {
     if (calculationPanel) {
@@ -891,6 +1067,12 @@
     try {
       const body = await requestJson(selectionUrl);
       if (!body.selection || typeof body.selection !== 'object') throw new Error('The saved scoring selection is unavailable.');
+      pinnedCdrs = body.selection.auto_cdrs === false;
+      try {
+        applyAutoCdrResponse(await requestAutoCdrs(String(body.selection.nr_mode || 'NSA'), body.selection.context_filters || {}));
+      } catch (_error) {
+        autoCdrs = {options: null, incomplete: []};
+      }
       // A new scoring starts without the National & area summary: only a Saved Filter that has it includes it.
       const savedSummary = body.selection.area_summary && typeof body.selection.area_summary === 'object' ? body.selection.area_summary : {};
       applySavedCalculationSelection({...body.selection, area_summary: {...savedSummary, enabled: false}});
@@ -1023,6 +1205,7 @@
 
   function updateSelection() {
     refreshContextFilterOptions();
+    renderAutoCdrs();
     const selectedCount = selectedDatasetIds().length;
     const visibleCount = datasetOptions.filter(option => !option.hidden).length;
     const missingKinds = [];
@@ -1042,7 +1225,7 @@
     }
     const selectedBadge = root.querySelector('[data-selected-count]');
     const visibleBadge = root.querySelector('[data-visible-count]');
-    if (selectedBadge) selectedBadge.textContent = `${selectedCount} CDR${selectedCount === 1 ? '' : 's'} selected`;
+    if (selectedBadge) selectedBadge.textContent = `${selectedCount} CDR${selectedCount === 1 ? '' : 's'} used`;
     if (visibleBadge) visibleBadge.textContent = `${visibleCount} available`;
     const configurationError = root.dataset.configurationError || '';
     const ready = missingKinds.length === 0 && !configurationError;
@@ -1055,11 +1238,12 @@
       const status = unavailableLabels.length
         ? `No ready ${unavailableLabels.join(', ')} CDR datasets are available for this NR Mode. `
         : '';
-      setMessage(`${status}Select at least one dataset from each CDR type: ${missingLabels.join(', ')}.`);
+      setMessage(autoCdrs.options === null && !pinnedCdrs ? 'Choosing the CDRs of the NR Mode and Campaign…'
+        : `${status}The chosen campaigns have no ${missingLabels.join(', ')} CDR: choose a campaign with Data, Voice and Speech CDRs.`);
     } else if (selectionStatus.key && selectionStatus.key === JSON.stringify(calculationPayload())) {
       setMessage(selectionStatus.text, selectionStatus.kind);
     } else if (message.dataset.kind !== 'error' && message.dataset.kind !== 'success') {
-      setMessage(`${selectedCount} CDR${selectedCount === 1 ? '' : 's'} selected across Data, Voice and Speech. Results are always split by Operator.`);
+      setMessage(`${selectedCount} CDR${selectedCount === 1 ? '' : 's'} used across Data, Voice and Speech. Results are always split by Operator.`);
     }
   }
 
@@ -7188,29 +7372,35 @@
     }
   }
 
-  root.querySelectorAll('[data-scoring-select-datasets]').forEach(button => {
-    button.addEventListener('click', () => {
-      const choice = button.dataset.scoringSelectDatasets;
-      if (choice === 'all') {
-        for (const option of datasetOptions) {
-          const input = option.querySelector('[data-dataset-id]');
-          if (input) input.checked = !option.hidden;
-        }
-      } else {
-        selectLatestDatasetForEachKind(choice === 'latest-two' ? 2 : 1);
-      }
-      updateSelection();
-      scheduleSelectionSave();
-    });
-  });
-
   datasetInputs.forEach(input => input.addEventListener('change', () => {
     updateSelection();
     scheduleSelectionSave();
   }));
   nrFilter.addEventListener('change', () => {
-    applyNrFilter(true);
-    scheduleSelectionSave();
+    // Another NR Mode: its newest campaign with Data, Voice and Speech CDRs, and their CDRs.
+    pinnedCdrs = false;
+    autoCdrs = {options: autoCdrs.options, incomplete: []};
+    applyNrFilter(false);
+    setFilterValues('Campaign', []);
+    scheduleAutoCdrRefresh({defaultCampaign: true, delay: 0});
+  });
+  // A Latest campaign choice stands alone: checking one clears the other one and the campaigns, checking a campaign
+  // clears it (before the change reaches the panel below).
+  const campaignFilterSelect = contextFilterSelects.get('Campaign');
+  let campaignChoice = [...(campaignFilterSelect?.selectedOptions || [])].map(option => option.value);
+  campaignFilterSelect?.addEventListener('change', () => {
+    const chosen = [...campaignFilterSelect.selectedOptions].map(option => option.value).filter(Boolean);
+    const presets = chosen.filter(isCampaignPreset), campaigns = chosen.filter(value => !isCampaignPreset(value));
+    const addedPreset = presets.find(value => !campaignChoice.includes(value));
+    const next = addedPreset ? [addedPreset] : presets.length && campaigns.length ? campaigns : chosen;
+    if ([...campaignFilterSelect.options].some(option => option.selected !== next.includes(option.value))) {
+      for (const option of campaignFilterSelect.options) option.selected = next.includes(option.value);
+      campaignFilterSelect.dispatchEvent(new Event('multiselect:options-updated'));
+    }
+    campaignChoice = next;
+  });
+  campaignFilterSelect?.addEventListener('multiselect:options-updated', () => {
+    campaignChoice = [...campaignFilterSelect.selectedOptions].map(option => option.value);
   });
   root.addEventListener('change', event => {
     if ([environmentSelect, scoringKindSelect, showKpiValuesToggle, showGapValuesToggle, gapLayoutSelect].includes(event.target)) {
@@ -7228,12 +7418,17 @@
       return;
     }
     if (event.target === baselineInput || event.target.matches('[data-aggregation-level], [data-scoring-context-filter]')) {
+      if (event.target.matches('[data-scoring-context-filter]') && !restoringSelection) {
+        pinnedCdrs = false;
+        scheduleAutoCdrRefresh();
+      }
       updateSelection();
       scheduleSelectionSave();
       return;
     }
     if (event.target.matches?.('[data-scoring-area-enabled], [data-scoring-area-summary] select')) {
       syncAreaSummary({clearFilters: event.target === areaSummaryEnabled});
+      if (event.target === areaSummaryEnabled && !restoringSelection) scheduleAutoCdrRefresh();
       updateSelection();
       scheduleSelectionSave();
       return;

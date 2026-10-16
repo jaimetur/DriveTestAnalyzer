@@ -57,34 +57,35 @@
       <p class="form-note">Choose an artifact in its tab and check it to include it; unchecked artifacts keep their configuration but are not generated.</p>
       <div class="rj-artifact-tabs" id="rj-artifact-tabs" role="tablist" aria-label="Artifacts"></div>
       <section class="rj-card" data-rj-section="dataset_analysis" data-rj-module="dataset_analysis">
-        <label class="rj-card-toggle"><input type="checkbox" id="rj-da-enabled"><strong>CDR Analysis</strong><small>The selected metrics of each selected dataset with their filters, global comparison and global CDF comparison, in PowerPoint and/or Word.</small></label>
+        <label class="rj-card-toggle"><input type="checkbox" id="rj-da-enabled"><strong>CDR Analysis</strong><small>The selected metrics of each CDR of its NR Mode and Campaigns (chosen again at each run) with their filters, global comparison and global CDF comparison, in PowerPoint and/or Word.</small></label>
         <div class="rj-card-body" data-rj-body>
           <div class="rj-formats" data-rj-formats="rj-da"></div>
+          <div class="rj-grid rj-one-row rj-da-scope" id="rj-da-scope"></div>
+          <div id="rj-da-cdrs"></div>
           <div class="rj-inline" id="rj-da-aggregation"></div>
           <div class="rj-inline" id="rj-da-cdf"></div>
           <strong>Metrics</strong>
           <div class="rj-filters" id="rj-da-metrics"></div>
           <strong>Filters</strong>
           <div class="rj-filters rj-filters-one-row" id="rj-da-filters"></div>
-          <div class="rj-picker" id="rj-da-datasets"></div>
         </div>
       </section>
       <section class="rj-card" data-rj-section="network_insights" data-rj-module="network_insights">
-        <label class="rj-card-toggle"><input type="checkbox" id="rj-ni-enabled" data-rj-entries="rj-network"><strong>Network Insights</strong><small>Each entry generates a Network Insights report (RF quality, CDFs, maps, weak areas, spectrum and deployment) in PowerPoint and/or Word with its own NR Mode, technology, thresholds, grouping, filters and CDRs. Add several entries for several configurations, for example NSA and SA, LTE and NR, or different filters.</small></label>
+        <label class="rj-card-toggle"><input type="checkbox" id="rj-ni-enabled" data-rj-entries="rj-network"><strong>Network Insights</strong><small>Each entry generates a Network Insights report (RF quality, CDFs, maps, weak areas, spectrum and deployment) in PowerPoint and/or Word with its own NR Mode, technology, thresholds, grouping, Campaigns (which choose the CDRs) and filters. Add several entries for several configurations, for example NSA and SA, LTE and NR, or different filters.</small></label>
         <div class="rj-card-body" data-rj-body>
           <div id="rj-network" class="rj-entries"></div>
           <button type="button" id="rj-add-network" class="rj-secondary">Add Network Insights</button>
         </div>
       </section>
       <section class="rj-card" data-rj-section="dashboards" data-rj-module="dashboards">
-        <label class="rj-card-toggle"><input type="checkbox" id="rj-dashboards-enabled" data-rj-entries="rj-dashboards"><strong>PPT Dashboards</strong><small>Each entry generates a new Dashboard PPT with its own NR Mode, Scope, CDRs, dates and Adaptative Filters, prefilled with the saved Dashboard. Add the same Dashboard several times to include several configurations.</small></label>
+        <label class="rj-card-toggle"><input type="checkbox" id="rj-dashboards-enabled" data-rj-entries="rj-dashboards"><strong>PPT Dashboards</strong><small>Each entry generates a new Dashboard PPT with its own NR Mode, Scope, dates and Adaptative Filters (the Campaign chooses the CDRs), prefilled with the saved Dashboard. Add the same Dashboard several times to include several configurations.</small></label>
         <div class="rj-card-body" data-rj-body>
           <div id="rj-dashboards" class="rj-entries"></div>
           <button type="button" id="rj-add-dashboard" class="rj-secondary">Add Dashboard</button>
         </div>
       </section>
       <section class="rj-card" data-rj-section="scoring" data-rj-module="scoring">
-        <label class="rj-card-toggle"><input type="checkbox" id="rj-scoring-enabled" data-rj-entries="rj-scoring"><strong>Scoring &amp; GAP Analysis</strong><small>Each entry calculates (or reuses an identical) Scoring job with its own NR Mode, CDRs, filters, Split by levels, methodology and GAP reference, and attaches it in PowerPoint and/or Word.</small></label>
+        <label class="rj-card-toggle"><input type="checkbox" id="rj-scoring-enabled" data-rj-entries="rj-scoring"><strong>Scoring &amp; GAP Analysis</strong><small>Each entry calculates (or reuses an identical) Scoring job with its own NR Mode, Campaigns (which choose the CDRs), filters, Split by levels, methodology and GAP reference, and attaches it in PowerPoint and/or Word.</small></label>
         <div class="rj-card-body" data-rj-body>
           <div id="rj-scoring" class="rj-entries"></div>
           <button type="button" id="rj-add-scoring" class="rj-secondary">Add Scoring</button>

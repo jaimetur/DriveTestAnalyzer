@@ -1,0 +1,25 @@
+{
+  "name": "NetCheck CDR Report (Main Cities)",
+  "template": "SA - NetCheck CDR Report (Main Cities)",
+  "template_technology": "sa",
+  "technology": "sa",
+  "scope": "single",
+  "vendor_comparison": "operator_vendor",
+  "custom_fields": [
+    "Call_Family",
+    "Test_Family",
+    "Test_Result_Group",
+    "RAT_Group"
+  ],
+  "hidden_filters": [],
+  "auto_cdrs": true,
+  "filters": {
+    "City": [
+      "@main-cities"
+    ],
+    "Campaign": [
+      "@latest-2-campaigns"
+    ]
+  },
+  "slide_comments": {}
+}

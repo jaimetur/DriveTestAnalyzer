@@ -226,9 +226,14 @@ def test_cdr_selectors_highlight_weekly_and_daily_cdrs(client, tmp_path):
         return next(part for part in page.split('<label class="scoring-dataset-option"')[1:]
                     if f'value="{dataset_id}"' in part.split('</label>', 1)[0]).split('</label>', 1)[0]
 
-    assert 'data-cdr-stage="final"' in option(final) and 'cdr-stage-badge' not in option(final)
-    assert 'data-cdr-stage="weekly"' in option(weekly) and '<span class="cdr-stage-badge" data-cdr-stage="weekly">Weekly</span>' in option(weekly)
-    assert 'data-cdr-stage="daily"' in option(daily) and '<span class="cdr-stage-badge" data-cdr-stage="daily">Daily</span>' in option(daily)
+    # Scoring lists the CDRs it uses read-only, the Weekly and Daily ones outlined as when they are uploaded.
+    assert 'data-cdr-stage="final"' in option(final)
+    assert 'data-cdr-stage="weekly"' in option(weekly)
+    assert 'data-cdr-stage="daily"' in option(daily)
+    # Every module lists its CDRs with the shared CDR list of app.js and app.css.
+    styles = (Path(core.__file__).parent / 'web_interface/static/css/app.css').read_text(encoding='utf-8')
+    assert '.auto-cdr[data-cdr-stage="daily"] { border: 1px dashed' in styles
+    assert '.auto-cdr[data-cdr-stage="weekly"] { border: 1px dashed' in styles
 
 
 def test_query_builder_chooses_its_cdrs_in_a_panel_per_type(client, tmp_path):

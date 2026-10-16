@@ -236,6 +236,15 @@ CREATE TABLE IF NOT EXISTS cdr_catalogues (
     FOREIGN KEY(dataset_id) REFERENCES datasets(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS cdr_filter_facets (
+    dataset_id INTEGER PRIMARY KEY,
+    revision TEXT NOT NULL DEFAULT '',
+    fields_json TEXT NOT NULL DEFAULT '[]',
+    rows_json TEXT NOT NULL DEFAULT '[]',
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(dataset_id) REFERENCES datasets(id) ON DELETE CASCADE
+);
+
 CREATE INDEX IF NOT EXISTS idx_dataset_source_columns_identity
 ON dataset_source_columns(dataset_id, column_identity);
 

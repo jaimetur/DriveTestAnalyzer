@@ -7,6 +7,11 @@ from typing import Any
 
 from src.branding import canonical_format
 from src.modules.column_names import column_identity
+from src.modules.cdr_auto_selection import (
+    CAMPAIGN_PRESETS, CDR_KIND_LABELS, campaign_groups, campaign_identity, campaign_presets, candidate_cdrs, cdr_campaigns,
+    campaign_values, complete_campaign_cdrs,
+)
+from src.modules.cdr_facets import cascading_options
 from src.modules.cdr_stage import combined_dataset_ids
 from src.modules.nr_mode import normalize_nr_mode
 from src.modules.repository import Repository
@@ -89,15 +94,100 @@ def _default_selection(repository: Repository) -> dict[str, Any]:
     rows = _available_cdr_rows(repository)
     nr_mode = _default_nr_mode(rows)
     defaults = _fallback_selection(repository, rows=rows, nr_mode=nr_mode)
-    # Repository catalogue order is newest first, matching the scoring page's default.
-    for kind in ('data', 'voice', 'speech'):
-        latest = next((row for row in rows
-                       if row['nr_mode'] == nr_mode
-                       and row['dataset_kind'] == kind
-                       and repository.dataset_rows_table_exists(int(row['id']))), None)
-        if latest is not None:
-            defaults['dataset_ids'].append(int(latest['id']))
+    defaults['context_filters']['Campaign'] = default_scoring_campaigns(repository, nr_mode)
+    defaults['dataset_ids'] = auto_scoring_cdr_ids(repository, nr_mode, defaults['context_filters']['Campaign'])
     return defaults
+
+
+def default_scoring_campaigns(repository: Repository, nr_mode: str) -> list[str]:
+    """The newest campaign of the NR Mode with Data, Voice and Speech CDRs (each spelling of it)."""
+    for values in campaign_groups(campaign_values(repository, nr_mode)):
+        dataset_ids, _incomplete = complete_campaign_cdrs(repository, nr_mode, values)
+        if dataset_ids:
+            return sorted(values, key=lambda value: (value.casefold(), value))
+    return []
+
+
+def _complete_campaign_groups(repository: Repository, nr_mode: str) -> list[list[str]]:
+    """The campaigns of the NR Mode with Data, Voice and Speech CDRs, newest first (each with its spellings)."""
+    _ids, incomplete = complete_campaign_cdrs(repository, nr_mode, [])
+    left_out = {campaign_identity(value) for value in incomplete}
+    return [values for values in campaign_groups(campaign_values(repository, nr_mode)) if campaign_identity(values[0]) not in left_out]
+
+
+def _flatten_groups(groups: list[list[str]]) -> list[str]:
+    return sorted((value for values in groups for value in values), key=lambda value: (value.casefold(), value))
+
+
+def latest_scoring_campaigns(repository: Repository, nr_mode: str, count: int | None) -> list[str]:
+    """The newest ``count`` campaigns of the NR Mode with Data, Voice and Speech CDRs (every one with None)."""
+    groups = _complete_campaign_groups(repository, nr_mode)
+    return _flatten_groups(groups if count is None else groups[:max(count, 0)])
+
+
+def expand_scoring_campaigns(repository: Repository, nr_mode: str, values: object) -> list[str]:
+    """A Campaign filter with Latest campaign or Latest 2 campaigns as the newest complete campaigns now."""
+    campaigns = [str(value).strip() for value in (values if isinstance(values, (list, tuple, set)) else [values] if values else [])
+                 if str(value or '').strip()]
+    presets = campaign_presets(campaigns)
+    return latest_scoring_campaigns(repository, nr_mode, CAMPAIGN_PRESETS[presets[0]]) if presets else campaigns
+
+
+def expand_scoring_context_filters(repository: Repository, nr_mode: str, filters: object) -> dict[str, Any]:
+    """Context filters whose Campaign holds a Latest choice, with the campaigns it stands for now."""
+    expanded = dict(filters) if isinstance(filters, dict) else {}
+    for key in list(expanded):
+        if column_identity(key) == column_identity('Campaign') and campaign_presets(
+                expanded[key] if isinstance(expanded[key], (list, tuple, set)) else [expanded[key]]):
+            expanded[key] = expand_scoring_campaigns(repository, nr_mode, expanded[key])
+    return expanded
+
+
+def auto_scoring_cdr_ids(repository: Repository, nr_mode: str, campaigns: list[str]) -> list[int]:
+    """The CDRs a calculation uses: those of the combined tables of its NR Mode and campaigns, each campaign complete."""
+    dataset_ids, _incomplete = complete_campaign_cdrs(repository, nr_mode, expand_scoring_campaigns(repository, nr_mode, campaigns))
+    return [dataset_id for dataset_id in dataset_ids if repository.dataset_rows_table_exists(dataset_id)]
+
+
+def scoring_auto_cdrs(repository: Repository, nr_mode: object, context_filters: dict[str, Any] | None,
+                      fields: list[str] | None = None, *, default_campaign: bool = False) -> dict[str, Any]:
+    """The CDRs chosen for an NR Mode and Campaign filter, and the cascading values of every context filter.
+
+    The filters list the values of every CDR of the NR Mode that the combined tables include, each one
+    only those the other filters leave.
+    """
+    rows = _available_cdr_rows(repository)
+    mode = normalize_nr_mode(nr_mode) or _default_nr_mode(rows)
+    filters = dict(context_filters) if isinstance(context_filters, dict) else {}
+    if default_campaign:
+        filters['Campaign'] = default_scoring_campaigns(repository, mode)
+    # Latest campaign and Latest 2 campaigns stand for the newest complete campaigns now.
+    complete_groups = _complete_campaign_groups(repository, mode)
+    chosen = [str(value).strip() for value in (filters.get('Campaign') or []) if str(value or '').strip()]
+    presets = campaign_presets(chosen)
+    filters['Campaign'] = _flatten_groups(complete_groups[:CAMPAIGN_PRESETS[presets[0]]]) if presets else chosen
+    campaigns = filters['Campaign']
+    dataset_ids, incomplete = complete_campaign_cdrs(repository, mode, campaigns)
+    dataset_ids = [dataset_id for dataset_id in dataset_ids if repository.dataset_rows_table_exists(dataset_id)]
+    candidates = candidate_cdrs(repository, mode)
+    by_id = {row['id']: row for row in candidates}
+    campaigns_by_id = cdr_campaigns(repository, dataset_ids)
+    fields = fields or ['Campaign', 'Operator', 'Operator_Vendor', 'Vendor_Operator', 'Vendor', 'Region', 'Cluster', 'City']
+    return {
+        'nr_mode': mode,
+        'nr_modes': sorted({str(row['nr_mode']) for row in rows}),
+        'dataset_ids': dataset_ids,
+        'cdrs': [{
+            'id': dataset_id, 'name': by_id[dataset_id]['file_name'], 'kind': by_id[dataset_id]['kind'],
+            'kind_label': CDR_KIND_LABELS.get(by_id[dataset_id]['kind'], by_id[dataset_id]['kind']),
+            'stage': by_id[dataset_id]['stage'], 'campaigns': campaigns_by_id.get(dataset_id, []),
+        } for dataset_id in dataset_ids if dataset_id in by_id],
+        'incomplete_campaigns': incomplete,
+        'campaign_selection': campaigns,
+        # The campaigns each Latest choice stands for now (a calculation uses them).
+        'campaign_presets': {preset: _flatten_groups(complete_groups[:count]) for preset, count in CAMPAIGN_PRESETS.items()},
+        'options': cascading_options(repository, [row['id'] for row in candidates], filters, fields),
+    }
 
 
 def _fallback_selection(
@@ -113,6 +203,7 @@ def _fallback_selection(
     baseline = next((value for value in operator_options if value.casefold() == 'ee'), operator_options[0])
     return {
         'dataset_ids': [],
+        'auto_cdrs': True,
         # Split by Operator and Campaign, in the order of the aggregation hierarchy.
         'aggregation_levels': [level for level in load_aggregation_hierarchy(repository)
                                if column_identity(level) in {column_identity('Operator'), column_identity('Campaign')}]
@@ -232,15 +323,31 @@ def _normalize_selection(
         if dataset_id not in parsed_ids:
             parsed_ids.append(dataset_id)
     rows_by_id = {int(row['id']): row for row in rows}
-    table_ids = _available_cdr_ids(repository, rows, parsed_ids) if parsed_ids else set()
-    dataset_ids = [
-        dataset_id for dataset_id in parsed_ids
-        if dataset_id in rows_by_id
-        and rows_by_id[dataset_id]['nr_mode'] == raw_mode
-        and dataset_id in table_ids
-    ]
-    if invalid_ids or len(dataset_ids) != len(parsed_ids):
-        warnings.append('One or more saved CDR datasets are no longer available and were removed.')
+    context_filters = _normalize_context_filters(raw_selection.get('context_filters'), hierarchy, warnings)
+    # The CDRs follow the NR Mode and the Campaign filter (auto_cdrs); a Saved Filter opened in the
+    # panel keeps its own CDRs until the NR Mode or a filter changes.
+    auto_cdrs = raw_selection.get('auto_cdrs')
+    if auto_cdrs is None:
+        auto_cdrs = True
+        if parsed_ids and not context_filters.get('Campaign'):
+            # A selection saved when CDRs were chosen by hand: its campaigns choose the same CDRs.
+            kept = [dataset_id for dataset_id in parsed_ids if dataset_id in rows_by_id and rows_by_id[dataset_id]['nr_mode'] == raw_mode]
+            campaigns = sorted({value for values in cdr_campaigns(repository, kept).values() for value in values},
+                               key=lambda value: (value.casefold(), value))
+            if campaigns:
+                context_filters['Campaign'] = campaigns
+    if auto_cdrs:
+        dataset_ids = auto_scoring_cdr_ids(repository, raw_mode, context_filters.get('Campaign') or [])
+    else:
+        table_ids = _available_cdr_ids(repository, rows, parsed_ids) if parsed_ids else set()
+        dataset_ids = [
+            dataset_id for dataset_id in parsed_ids
+            if dataset_id in rows_by_id
+            and rows_by_id[dataset_id]['nr_mode'] == raw_mode
+            and dataset_id in table_ids
+        ]
+        if invalid_ids or len(dataset_ids) != len(parsed_ids):
+            warnings.append('One or more saved CDR datasets are no longer available and were removed.')
 
     raw_levels = raw_selection.get('aggregation_levels', defaults['aggregation_levels'])
     if not isinstance(raw_levels, (list, tuple, set)):
@@ -264,7 +371,6 @@ def _normalize_selection(
         if raw_baseline and raw_baseline.casefold() != baseline.casefold():
             warnings.append('The saved GAP reference operator is no longer available; a default operator was selected.')
 
-    context_filters = _normalize_context_filters(raw_selection.get('context_filters'), hierarchy, warnings)
     vendor_operators = scoring_vendor_operators(
         repository.cdr_catalogues_by_dataset(dataset_ids), repository.list_operator_mapping_groups(),
     )
@@ -273,6 +379,7 @@ def _normalize_selection(
     }, key=str.casefold)
     return {
         'dataset_ids': dataset_ids,
+        'auto_cdrs': bool(auto_cdrs),
         'aggregation_levels': aggregation_levels,
         'nr_mode': raw_mode,
         'baseline_operator': baseline,

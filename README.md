@@ -74,9 +74,9 @@ CDR Analysis analyses one ready Data, Voice or Speech CDR.
 
 ### PPT Dashboards
 
-Create, save, duplicate, import and export workspace Dashboards from an NSA/SA Report Template. The editor separates **Select Dataset Universe** from **Select Dataset Filters**: Scope, CDRs and dates can be applied temporarily or saved as the Dashboard universe, while default, aliased and custom Auto-calculated Field filters can be applied, saved, reloaded or discarded independently.
+Create, save, duplicate, import and export workspace Dashboards from an NSA/SA Report Template. The editor groups the Scope, dates, default, aliased and custom Auto-calculated Field filters, which are applied, saved (Save Filters also applies them), reloaded or discarded together; the Campaign filter chooses the CDRs.
 
-Each Dashboard only uses CDRs of its NR Mode (NSA or SA, set per CDR at upload and editable in the Workspace Datasets table). Switching scope automatically selects the newest CDR per type for Multivendor or the two newest per type for Operator Comparison.
+Each Dashboard uses the CDRs of its NR Mode (NSA or SA, set per CDR at upload and editable in the Workspace Datasets table) and of its Campaign filter that the combined CDR tables include (the Final CDR of a campaign before its Weekly and Daily CDRs, or the In Combined? choice); a new Dashboard follows its newest two campaigns (the newest one for Multivendor Operator_Vendor).
 
 View Dashboard opens immediately and shows centred preparation progress until its navigable 16:9 slides and live Canvas charts are ready. Generate PPT uses the same prepared definition and waits for pending filter decisions.
 

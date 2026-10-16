@@ -206,13 +206,15 @@ def test_scoring_selection_defaults_use_catalogue_metadata_without_reading_cdr_r
     assert response.status_code == 200
     assert response.json() == {
         'selection': {
+            # The newest campaign with Data, Voice and Speech CDRs chooses the CDRs.
             'dataset_ids': scoring_api['complete_dataset_ids'],
+            'auto_cdrs': True,
             'aggregation_levels': ['Operator', 'Campaign'],
             'nr_mode': 'NSA',
             'baseline_operator': 'EE',
             'scoring_profile_id': 'by-campaign',
             'context_filters': {
-                'Region': [], 'City': [], 'Operator': [], 'Vendor': [], 'Campaign': [],
+                'Region': [], 'City': [], 'Operator': [], 'Vendor': [], 'Campaign': ['2026-Q2'],
             },
             # The National & area summary is not included by default.
             'area_summary': {'enabled': False, 'time_split': 'Campaign', 'breakdown': 'Region', 'cities': ['London']},
@@ -226,6 +228,7 @@ def test_scoring_selection_persists_for_workspace_and_rejects_delayed_tab_update
     client = scoring_api['client']
     common_selection = {
         'dataset_ids': scoring_api['complete_dataset_ids'],
+        'auto_cdrs': True,
         'aggregation_levels': ['Operator', 'Region'],
         'nr_mode': 'NSA',
         'baseline_operator': 'O2',
@@ -261,7 +264,11 @@ def test_scoring_selection_persists_for_workspace_and_rejects_delayed_tab_update
     assert other_tab.status_code == 200 and other_tab.json()['accepted'] is True
     assert client.get('/api/scoring/selection').json()['selection'] == common_selection
 
-    empty_selection = {**common_selection, 'dataset_ids': []}
+    # The CDRs follow the NR Mode and Campaign: without CDRs of their own, they are chosen again.
+    chosen_again = client.put('/api/scoring/selection', json={'selection': {**common_selection, 'dataset_ids': []}})
+    assert chosen_again.json()['selection']['dataset_ids'] == scoring_api['complete_dataset_ids']
+    # An opened Saved Filter keeps its own CDRs (here none).
+    empty_selection = {**common_selection, 'dataset_ids': [], 'auto_cdrs': False}
     cleared = client.put('/api/scoring/selection', json={'selection': empty_selection})
     assert cleared.status_code == 200 and cleared.json()['accepted'] is True
     assert client.get('/api/scoring/selection').json()['selection']['dataset_ids'] == []
@@ -270,8 +277,10 @@ def test_scoring_selection_persists_for_workspace_and_rejects_delayed_tab_update
 def test_scoring_selection_recovers_from_deleted_cdr_and_methodology(scoring_api):
     client = scoring_api['client']
     repository = scoring_api['repository']
+    # The CDRs of an opened Saved Filter, one of them deleted later.
     selection = {
         'dataset_ids': scoring_api['complete_dataset_ids'],
+        'auto_cdrs': False,
         'aggregation_levels': ['Operator', 'Region'],
         'nr_mode': 'NSA',
         'baseline_operator': 'EE',

@@ -172,13 +172,13 @@ The definition can be opened repeatedly, duplicated, exported or moved with its 
 - Open the definition editor or enter the prepared viewer directly from the Dashboard library.
 - Preserve the last open Dashboard and page position within the browser session.
 
-### Dashboard Datasets & Filters
+### Dashboard Scope & Filters
 
-- Build one **Dataset Universe** from any compatible Data, Voice and Speech CDRs, then compare operators or persisted vendor mappings.
-- Use automatic date bounds and synchronized default filters for Market, Operator, Vendor, Region, City, Campaign, RAT, Session Type and Call Status.
+- Choose the **Campaign** (any campaigns, **Latest campaign**, **Latest 2 campaigns** or **All available campaigns**): it chooses the Data, Voice and Speech CDRs of the Dashboard's NR Mode that the combined CDR tables include, listed under **CDRs Used**; then compare operators or persisted vendor mappings.
+- Use automatic date bounds and synchronized default filters for Campaign, Operator, Vendor, Market, Region, City, RAT, Session Type and Call Status, each listing the values of every CDR of the NR Mode that the other filters leave.
 - Resolve Region, City, RAT and other known fields through ordered source-column aliases, with the supported priority visible in a tooltip.
 - Add any selected-CDR column or applicable Auto-calculated Field as an extra filter.
-- Apply or save Scope, CDR and date changes with the Dataset Universe actions. Apply, save, reload or clear filter changes independently with the controls below the filter panels.
+- Apply, save, reload or clear the Scope, dates and filters together with the controls below the filter panels; Save Filters also applies them.
 
 ### Preparation and reuse
 

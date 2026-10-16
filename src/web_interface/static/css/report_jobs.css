@@ -279,3 +279,23 @@
 .report-jobs .rj-duration { color: #5b6377; font-weight: 600; white-space: nowrap; }
 /* Phones: the artifacts of a job use the whole width of its card. */
 @media (max-width: 640px) { #rj-tasks tbody td:nth-child(2) { grid-column: 1 / -1; } }
+/* The campaigns of an entry choose its CDRs; the CDRs used now are listed below them. */
+.rj-campaign-picker{display:grid;gap:.35rem;min-width:0}
+.rj-campaign-values{max-width:min(26rem,100%)}
+/* Campaigns beside NR Mode looks like the other fields of its row: the same label and the same box as a select. */
+.report-jobs .rj-one-row .rj-campaign-field{min-width:0;max-width:none}
+.report-jobs .rj-one-row .rj-campaign-field .rj-multi-field{gap:.45rem}
+.report-jobs .rj-one-row .rj-campaign-field .rj-multi-label{color:var(--muted);font-size:.86rem;font-weight:400}
+.report-jobs .rj-one-row .rj-campaign-field .rj-multi{min-width:0}
+.report-jobs .rj-one-row .rj-campaign-field .rj-multi > summary{min-height:2.95rem;padding:.85rem 1rem;border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,.9);color:var(--text);font-size:.86rem;font-weight:400}
+.report-jobs .rj-one-row .rj-campaign-field .rj-multi-caption{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.report-jobs .rj-one-row .rj-campaign-slot{min-width:0}
+/* CDR Analysis: NR Mode and Campaigns alone in their row. */
+.report-jobs .rj-da-scope{max-width:36rem}
+.report-jobs .rj-multi .workspace-user-picker-menu label.rj-multi-exclusive span{font-style:italic;font-weight:800}
+.report-jobs .rj-multi .workspace-user-picker-menu label.rj-multi-exclusive-last{margin-bottom:.3rem;border-bottom:1px solid var(--line);border-radius:7px 7px 0 0;padding-bottom:.5rem}
+.rj-auto-cdrs{display:grid;gap:.45rem;margin:.2rem 0 0;padding:.65rem .75rem;border:1px solid var(--line);border-radius:12px;background:rgba(255,255,255,.55)}
+.rj-auto-cdrs-caption,.rj-auto-cdrs-left{margin:0;font-size:.74rem}
+.rj-auto-cdrs-left{color:#795b20;font-weight:700}
+.rj-filters > .rj-campaign-picker{grid-column:1/-1}
+.rj-campaign-picker .rj-campaign-values .rj-multi{min-width:14rem}

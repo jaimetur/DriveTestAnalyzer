@@ -1864,3 +1864,20 @@
 /* View as Dashboard sits beside View Filters with the same height and shape. */
 .ppt-dashboards .ds-ppt-charts-view-dashboard { display: inline-flex; align-items: center; justify-content: center; align-self: end; width: auto; height: 2.55rem; min-height: 2.55rem; padding: .3rem 1rem; border-radius: 999px; font-size: .96rem; line-height: 1; }
 .ds-multivendor-option[data-cdr-stage="daily"]{border:1px dashed rgba(240,122,26,.75);background:#fff8ef}.ds-multivendor-option[data-cdr-stage="weekly"]{border:1px dashed rgba(123,92,196,.75);background:#f7f3ff}
+/* The Campaign filter chooses the CDRs: the Date filters open the Default Filters and the CDRs used are listed below the Scope. */
+.ds-date-filters{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.ds-date-filters:empty{display:none}
+.ds-default-filter-panel .ds-date-picker-label{color:#275f86}
+.ds-auto-cdrs{display:grid;gap:9px}
+.ds-auto-cdrs .auto-cdr{border-color:#ded3ed}
+/* The filters of a panel stretched to the height of the CDRs column stay together at its top. */
+.ds-additional-filter-panel,.ds-default-filter-panel{align-content:start}
+.ds-auto-cdrs-pending{margin:0;color:#8a5a00;font-size:.72rem;font-weight:700}
+.ds-auto-cdrs-note{margin:0;font-size:.72rem}
+.multiselect-option.ds-campaign-preset span{font-weight:800;font-style:italic}
+.ds-ppt-cdrs{margin:.6rem 0 0}
+@media(max-width:640px){.ds-date-filters{grid-template-columns:1fr}}
+/* Export PPT: Campaigns and the CDRs they choose take the whole width; Operators and Vendors share the row below. */
+.ppt-dashboards .ds-multivendor-dialog .ds-ppt-filters-group > #ds-ppt-campaign-section { grid-column: 1 / -1; }
+/* The dates are filters: below Campaigns, the whole width of Main Dashboard Filters. */
+.ppt-dashboards .ds-multivendor-dialog .ds-ppt-filters-group > #ds-ppt-dates-section { grid-column: 1 / -1; }

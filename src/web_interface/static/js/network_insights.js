@@ -31,7 +31,6 @@
   }
   const pendingFilterRestore = new Map(Object.entries(savedSelection.filters || {})
     .filter(([, values]) => Array.isArray(values)));
-  let restoreDatasets = true;
   const syncTechnologyGrouping = () => {
     const control = $('ni-group');
     // LTE+NR analyses LTE and NR in separate sections, each with its own
@@ -80,75 +79,83 @@
     element.dataset.tone = tone;
   };
 
-  // Select every available CDR for the NR Mode unless a saved selection overrides it.
-  const renderDatasets = () => {
-    const nrMode = $('ni-nr-mode').value;
-    const host = $('ni-datasets');
-    host.replaceChildren();
-    for (const [kind, label] of kinds) {
-      const rows = (config.datasets || []).filter(row => row.kind === kind && String(row.nr_mode || '').toUpperCase() === nrMode);
-      const group = document.createElement('section');
-      group.className = 'ni-dataset-group';
-      group.innerHTML = `<div class="ni-dataset-head"><h3>${escapeHtml(label)} <span>(${escapeHtml(nrMode)})</span></h3>${rows.length ? `<button type="button" class="ni-dataset-toggle" data-ni-select-kind="${kind}">Select All</button>` : ''}</div>`;
-      if (!rows.length) group.insertAdjacentHTML('beforeend', '<p class="form-note">No ready CDRs.</p>');
-      const restored = restoreDatasets && Array.isArray(savedSelection.datasets?.[kind]) ? new Set(savedSelection.datasets[kind].map(Number)) : null;
-      rows.forEach((row, index) => {
-        const option = document.createElement('label');
-        option.className = 'ni-dataset-option';
-        // Weekly and Daily CDRs are highlighted.
-        option.dataset.cdrStage = row.cdr_stage || 'final';
-        const stage = ['weekly', 'daily'].includes(row.cdr_stage)
-          ? `<span class="cdr-stage-badge" data-cdr-stage="${row.cdr_stage}">${row.cdr_stage === 'weekly' ? 'Weekly' : 'Daily'}</span> ` : '';
-        option.innerHTML = `<input type="checkbox" value="${row.id}" data-kind="${kind}"${(restored ? restored.has(Number(row.id)) : true) ? ' checked' : ''}><span>${stage}${escapeHtml(row.file_name)} · ${integer(row.row_count)} rows</span>`;
-        group.append(option);
-      });
-      host.append(group);
+  // The CDRs follow the NR Mode and the Campaigns filter (chosen by the server): the CDRs used are listed read-only,
+  // by type, and follow every change of the filters (dimmed while the new ones load).
+  let shownCdrs = null;
+  const renderAutoCdrs = (cdrs, {loading = false} = {}) => {
+    const host = $('ni-auto-cdrs');
+    let title = host.querySelector(':scope > .ni-auto-cdrs-title');
+    if (!title) {
+      title = document.createElement('p');
+      title.className = 'ni-auto-cdrs-title';
+      host.prepend(title);
     }
-    restoreDatasets = false;
-    syncDatasetToggles();
+    title.innerHTML = `<strong>CDRs used</strong> <span>${escapeHtml($('ni-nr-mode').value)} · chosen from the NR Mode and Campaigns</span>`;
+    if (cdrs) shownCdrs = cdrs;
+    globalThis.renderAutoCdrList?.(host, cdrs || shownCdrs, {loading: loading || !cdrs});
   };
-  // Each CDR type selects all its CDRs, or clears them when all are selected.
-  const syncDatasetToggles = () => {
-    document.querySelectorAll('[data-ni-select-kind]').forEach(button => {
-      const boxes = [...document.querySelectorAll(`#ni-datasets input[data-kind="${button.dataset.niSelectKind}"]`)];
-      button.textContent = boxes.length && boxes.every(box => box.checked) ? 'Select None' : 'Select All';
-    });
-  };
-  $('ni-datasets').addEventListener('click', event => {
-    const button = event.target.closest('[data-ni-select-kind]');
-    if (!button) return;
-    const boxes = [...document.querySelectorAll(`#ni-datasets input[data-kind="${button.dataset.niSelectKind}"]`)];
-    const select = !boxes.every(box => box.checked);
-    boxes.forEach(box => { box.checked = select; });
-    boxes[0]?.dispatchEvent(new Event('change', {bubbles: true}));
-  });
-  $('ni-datasets').addEventListener('change', syncDatasetToggles);
-  const selectedDatasets = () => Object.fromEntries(kinds.map(([kind]) => [kind,
-    [...document.querySelectorAll(`#ni-datasets input[data-kind="${kind}"]:checked`)].map(input => Number(input.value))]));
+  // The server chooses the CDRs from the NR Mode and Campaigns.
+  const selectedDatasets = () => ({});
   const selectedValues = id => [...$(id).selectedOptions].map(option => option.value);
+  // Latest campaign and Latest 2 campaigns come first in Campaigns: each stands alone and follows the newest campaigns.
+  const campaignPresetOrder = (config.campaign_presets || []).map(([value]) => value);
+  const campaignPresets = Object.fromEntries(config.campaign_presets || []);
+  const isCampaignPreset = value => Object.prototype.hasOwnProperty.call(campaignPresets, value);
   const allSelected = id => {
-    const options = [...$(id).options].filter(option => option.value);
+    const options = [...$(id).options].filter(option => option.value && !isCampaignPreset(option.value));
     return options.length > 0 && options.every(option => option.selected);
   };
-  // An unfiltered selector (every value or none) sends no restriction.
-  const filterValues = id => (allSelected(id) ? [] : selectedValues(id));
+  // An unfiltered selector (every value or none) sends no restriction; a Latest choice is sent as it is.
+  const filterValues = id => {
+    const preset = selectedValues(id).find(isCampaignPreset);
+    return preset ? [preset] : allSelected(id) ? [] : selectedValues(id);
+  };
   // Campaigns as the workspace Campaign Maps show them (campaign_labels.js); the filter keeps the full value.
   const campaignLabel = (value) => (globalThis.campaignLabel ? globalThis.campaignLabel(value) : String(value ?? ''));
   const fillSelector = (id, values) => {
     const control = $(id);
     const restored = pendingFilterRestore.get(id);
     const previous = new Set(restored || selectedValues(id));
-    const keepAll = restored ? !restored.length : !control.options.length || allSelected(id) || !previous.size;
+    const presets = id === 'ni-campaigns' ? campaignPresetOrder : [];
+    const chosenPreset = presets.find(value => previous.has(value));
+    // A first list (or a saved filter without values) starts with every value; afterwards the choice stays as the
+    // user left it, also with no value checked (Select None), which does not restrict either.
+    const keepAll = !chosenPreset && (restored ? !restored.length : !control.options.length || allSelected(id));
     pendingFilterRestore.delete(id);
+    const wasLoading = control.dataset.multiselectNoValuesLabel !== 'No values available';
     control.dataset.multiselectNoValuesLabel = 'No values available';
-    control.replaceChildren(...values.map(value => {
+    const listed = [...presets, ...values];
+    const isSelected = value => (isCampaignPreset(value) ? value === chosenPreset : !chosenPreset && (keepAll || previous.has(value)));
+    // The same values and choices keep the selector as it is (its menu stays as the user left it).
+    const current = [...control.options];
+    if (!wasLoading && current.length === listed.length
+      && current.every((option, index) => option.value === listed[index] && option.selected === isSelected(listed[index]))) return;
+    control.replaceChildren(...listed.map((value, index) => {
       const option = document.createElement('option');
-      option.value = value; option.textContent = id === 'ni-campaigns' ? campaignLabel(value) : value;
-      option.selected = keepAll || previous.has(value);
+      option.value = value;
+      option.textContent = isCampaignPreset(value) ? campaignPresets[value] : id === 'ni-campaigns' ? campaignLabel(value) : value;
+      if (isCampaignPreset(value)) { option.dataset.campaignPreset = 'true'; option.dataset.optionClass = 'campaign-preset'; }
+      else if (presets.length && index === presets.length) option.dataset.dividerBefore = 'true';
+      option.selected = isSelected(value);
       return option;
     }));
+    if (id === 'ni-campaigns') campaignChoice = selectedValues(id);
     control.dispatchEvent(new Event('multiselect:options-updated'));
   };
+  // A Latest choice stands alone: checking one clears the other one and the campaigns, checking a campaign clears it.
+  let campaignChoice = [];
+  $('ni-campaigns').addEventListener('change', () => {
+    const control = $('ni-campaigns');
+    const chosen = selectedValues('ni-campaigns');
+    const presets = chosen.filter(isCampaignPreset), campaigns = chosen.filter(value => !isCampaignPreset(value));
+    const addedPreset = presets.find(value => !campaignChoice.includes(value));
+    const next = addedPreset ? [addedPreset] : presets.length && campaigns.length ? campaigns : chosen;
+    if ([...control.options].some(option => option.selected !== next.includes(option.value))) {
+      for (const option of control.options) option.selected = next.includes(option.value);
+      control.dispatchEvent(new Event('multiselect:options-updated'));
+    }
+    campaignChoice = next;
+  });
 
   const filterNames = ['operators', 'operator_vendors', 'vendor_operators', 'vendors', 'regions', 'clusters', 'cities', 'campaigns'];
   const fillFilterOptions = options => {
@@ -160,18 +167,28 @@
   let optionsRequest = null;
   let optionsTimer = null;
   const optionsCache = new Map();
+  const cdrsCache = new Map();
+  // Every filter lists the values of every CDR of the NR Mode that the other filters leave.
+  const filterSelection = () => ({
+    nr_mode: $('ni-nr-mode').value,
+    ...Object.fromEntries(filterNames.map(field => [field, $(`ni-${field}`).options.length ? filterValues(`ni-${field}`) : pendingFilterRestore.get(`ni-${field}`) || []])),
+  });
   const loadFilterOptions = async () => {
     optionsRequest?.abort();
-    const datasets = selectedDatasets();
-    const key = JSON.stringify(datasets);
+    const selection = filterSelection();
+    const key = JSON.stringify(selection);
     const cached = optionsCache.get(key);
     if (cached) fillFilterOptions(cached);
-    if (cached && filterNames.every(field => Object.prototype.hasOwnProperty.call(cached, field))) return;
+    if (cdrsCache.has(key)) renderAutoCdrs(cdrsCache.get(key));
+    if (cached && cdrsCache.has(key) && filterNames.every(field => Object.prototype.hasOwnProperty.call(cached, field))) return;
+    if (!cdrsCache.has(key)) renderAutoCdrs(null, {loading: true});
     const controller = new AbortController();
     optionsRequest = controller;
     for (const field of filterNames) {
       if (cached && Object.prototype.hasOwnProperty.call(cached, field)) continue;
       const control = $(`ni-${field}`);
+      // Only an empty selector says it is loading: a filled one keeps its values until the new ones arrive.
+      if (control.options.length) continue;
       control.dataset.multiselectNoValuesLabel = 'Loading values…';
       const trigger = control.nextElementSibling?.querySelector('.multiselect-trigger-label');
       if (trigger) trigger.textContent = 'Loading values…';
@@ -180,11 +197,12 @@
       const loadPart = async vendorOnly => {
         const response = await fetch(`/api/network-insights/filter-options${vendorOnly ? '?vendor_only=true' : ''}`, {
           method: 'POST', headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({datasets}), signal: controller.signal,
+          body: JSON.stringify(selection), signal: controller.signal,
         });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.detail || 'Unable to load filter values.');
         if (controller.signal.aborted) return;
+        if (payload.cdrs) { cdrsCache.set(key, payload.cdrs); renderAutoCdrs(payload.cdrs); }
         const merged = {...(optionsCache.get(key) || {}), ...payload.options};
         optionsCache.set(key, merged);
         fillFilterOptions(payload.options);
@@ -295,7 +313,8 @@
           localStorage.setItem(`${lastAnalysisKey}:selection`, JSON.stringify(savedSelection));
         }
       } catch {}
-      fillFilterOptions(payload.options);
+      // The filters keep the values of every CDR of the NR Mode (filter-options): the analysed CDRs follow the
+      // chosen Campaigns, so their own values would leave only those campaigns to choose from.
       render();
       const comparison = payload.comparison ? ` Changes compare ${payload.comparison.latest} with ${payload.comparison.previous}.` : '';
       const counts = (payload.sections || [payload]).map(section =>
@@ -1545,7 +1564,7 @@
     savedSelection = {
       controls: Object.fromEntries(selectionControls.map(id => [id,
         $(id).multiple ? selectedValues(id) : $(id).value])),
-      datasets: selectedDatasets(), filters,
+      filters,
       map_group: $('ni-map-operator').value || savedSelection.map_group || '',
     };
     try { if (storageKey) localStorage.setItem(storageKey, JSON.stringify(savedSelection)); } catch {}
@@ -1565,8 +1584,9 @@
   });
 
   $('ni-technology').onchange = syncTechnologyGrouping;
-  $('ni-nr-mode').onchange = () => { renderDatasets(); scheduleFilterOptions(); };
-  $('ni-datasets').addEventListener('change', scheduleFilterOptions);
+  $('ni-nr-mode').onchange = () => { renderAutoCdrs(null); scheduleFilterOptions(); };
+  // Each filter narrows the lists of the others (and the Campaigns choose the CDRs).
+  for (const field of filterNames) $(`ni-${field}`).addEventListener('change', scheduleFilterOptions);
   // Keep the map Operator across analyses when it is still part of the selection.
   $('ni-analyse').onclick = () => { void analyse($('ni-map-operator').value || savedSelection.map_group || ''); };
   $('ni-map-operator').onchange = () => { void analyse($('ni-map-operator').value || savedSelection.map_group || ''); };
@@ -1603,7 +1623,7 @@
     window.scrollTo(0, savedScroll);
     setTimeout(stopFollowing, 15000);
   }
-  renderDatasets();
+  renderAutoCdrs(null);
   void loadFilterOptions().then(showLastAnalysis);
   void loadDeployment();
   // The site tables do not read the snapshot: the Snapshot, density and spectrum panels still need it.

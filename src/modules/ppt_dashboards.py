@@ -27,6 +27,11 @@ from uuid import uuid4
 import pandas as pd
 from src.modules.column_names import campaign_sort_key, column_identity, compact_campaign_value, sort_vendor_values, vendor_filter_column, vendor_filter_value, vendor_filter_values, vendor_match_values
 from src.modules.value_maps import ValueMapper, field_kind
+from src.modules.cdr_auto_selection import (
+    LATEST_CAMPAIGN, LATEST_TWO_CAMPAIGNS, campaign_identity, campaign_presets, campaign_values, cdr_campaigns, candidate_cdrs, describe_cdrs,
+    latest_campaigns, resolve_campaign_filter, resolve_cdrs, sort_campaigns,
+)
+from src.modules.cdr_facets import FILTER_FIELDS as CASCADING_FILTER_FIELDS, cascading_options
 from src.modules.nr_mode import DEFAULT_NR_MODE, dataset_nr_mode, normalize_nr_mode
 from src.modules.output_layout import DASHBOARDS_FOLDER, module_output_dir
 from fastapi import BackgroundTasks, Depends, HTTPException, Request
@@ -91,6 +96,12 @@ def _dataset_id(value: Any) -> int | None:
 STATE_KEY = 'ppt_dashboards_v2'
 LEGACY_STATE_KEY = 'ppt_dashboard_sets_v1'
 DEFAULT_FILTERS_MIGRATION_KEY = 'ppt_dashboard_default_filters_v6'
+# The Main Cities choice of a City filter: the Main Cities of the workspace whenever the Dashboard is used, so a change
+# of the Main Cities in Workspace Config reaches the Dashboards saved with it.
+MAIN_CITIES = '@main-cities'
+# Dashboards saved before kept the Main Cities of that moment: once per workspace, a City filter of exactly the current
+# Main Cities becomes the Main Cities choice.
+MAIN_CITIES_MIGRATION_KEY = 'ppt_dashboard_main_cities_reference_v1'
 DASHBOARD_PPT_JOBS_TABLE = 'dashboard_ppt_jobs'
 
 
@@ -108,6 +119,9 @@ class DashboardDefinition(BaseModel):
     slide_comments: dict[str, list[str]] = Field(default_factory=dict)
     date_from: date | Literal['Oldest'] | None = 'Oldest'
     date_to: date | Literal['Newest'] | None = 'Newest'
+    # The CDRs follow the NR Mode and the Campaign filter (see ``cdr_auto_selection``); Dashboards saved
+    # before (without it) chose their CDRs by hand and are migrated once (``migrate_auto_cdrs``).
+    auto_cdrs: bool = False
 
 
 class DashboardPptExportRequest(BaseModel):
@@ -1322,6 +1336,35 @@ def install_dashboard_routes(core):
                     'dashboard_id': dashboard_id, 'job_id': job_id, 'error': str(exc),
                 }, ensure_ascii=False))
 
+    def city_filter_key(filters) -> str | None:
+        return next((field for field in filters if identity(field) == identity('City')), None)
+
+    def with_main_cities(filters, task_repository):
+        """Filters whose City holds the Main Cities choice, with the Main Cities of the workspace now (every city when
+        the workspace has none)."""
+        key = city_filter_key(filters)
+        values = list(filters.get(key) or []) if key else []
+        if MAIN_CITIES not in values:
+            return filters
+        cities = list(dict.fromkeys([*(value for value in values if value != MAIN_CITIES), *task_repository.list_main_cities()]))
+        if cities:
+            filters[key] = cities
+        else:
+            filters.pop(key)
+        return filters
+
+    def main_cities_reference(definition, main_cities):
+        """A Dashboard whose City filter is exactly the Main Cities (saved before as their names) with the Main Cities choice."""
+        if not isinstance(definition, dict) or not main_cities:
+            return definition
+        filters = dict(definition.get('filters') or {})
+        key = city_filter_key(filters)
+        values = [str(value) for value in filters.get(key) or []] if key else []
+        if not values or {value.casefold() for value in values} != {city.casefold() for city in main_cities}:
+            return definition
+        filters[key] = [MAIN_CITIES]
+        return {**definition, 'filters': filters}
+
     def read_dashboards(task_repository):
         stored = task_repository.get_workspace_state(STATE_KEY)
         if stored is None:
@@ -1337,16 +1380,22 @@ def install_dashboard_routes(core):
         except (AttributeError, sqlite3.Error):
             dataset_kinds = None
         migrated = {
-            dashboard_id: normalize_dashboard_filters(
+            dashboard_id: migrate_auto_cdrs(normalize_dashboard_filters(
                 definition if dataset_kinds is None else existing_dataset_selection(definition, dataset_kinds),
                 reset_defaults=reset_defaults,
-            )
+            ), task_repository)
             for dashboard_id, definition in dashboards.items()
         }
+        reference_main_cities = task_repository.get_workspace_state(MAIN_CITIES_MIGRATION_KEY) != '1'
+        if reference_main_cities:
+            main_cities = task_repository.list_main_cities()
+            migrated = {dashboard_id: main_cities_reference(definition, main_cities) for dashboard_id, definition in migrated.items()}
         if migrated != dashboards or reset_defaults or task_repository.get_workspace_state(STATE_KEY) is None:
             task_repository.set_workspace_state(STATE_KEY, json.dumps(migrated))
         if reset_defaults:
             task_repository.set_workspace_state(DEFAULT_FILTERS_MIGRATION_KEY, '1')
+        if reference_main_cities:
+            task_repository.set_workspace_state(MAIN_CITIES_MIGRATION_KEY, '1')
         return migrated
 
     def dashboard_slide_comment_key(entries) -> str:
@@ -1482,34 +1531,99 @@ def install_dashboard_routes(core):
             ) for kind in KINDS
         }
 
+    def default_campaign_filter(definition) -> list[str]:
+        """The Campaign of a new Dashboard: its newest two campaigns, or the newest one for Operator_Vendor."""
+        multivendor = definition.get('scope') == 'multivendor' and definition.get('vendor_comparison', 'operator_vendor') == 'operator_vendor'
+        return [LATEST_CAMPAIGN if multivendor else LATEST_TWO_CAMPAIGNS]
+
+    def campaign_filter_key(filters) -> str | None:
+        return next((field for field in filters if identity(field) == identity('Campaign')), None)
+
+    def migrate_auto_cdrs(definition, task_repository):
+        """A Dashboard saved when its CDRs were chosen by hand chooses them by Campaign.
+
+        Its saved CDRs become the campaigns they hold, unless it already restricted the Campaign; a
+        Dashboard without saved CDRs (which used the newest ones) takes Latest 2 campaigns, or Latest
+        campaign for Multivendor Operator_Vendor, as its saved CDRs did.
+        """
+        if not isinstance(definition, dict) or definition.get('auto_cdrs'):
+            return definition
+        migrated = dict(definition)
+        filters = dict(migrated.get('filters') or {})
+        if campaign_filter_key(filters) is None:
+            datasets = migrated.get('datasets') if isinstance(migrated.get('datasets'), dict) else {}
+            ids = [int(value) for values in datasets.values() for value in (values or []) if str(value).lstrip('-').isdigit()]
+            campaigns = sort_campaigns(value for values in cdr_campaigns(task_repository, ids).values() for value in values) if ids else []
+            filters['Campaign'] = campaigns or default_campaign_filter(migrated)
+        migrated['filters'] = filters
+        migrated.pop('datasets', None)
+        migrated['auto_cdrs'] = True
+        return migrated
+
     def runtime_dashboard_definition(definition, task_repository):
-        """Add a fresh default universe to a persisted Dashboard definition."""
-        effective = normalize_dashboard_filters(definition)
+        """A Dashboard definition with its CDRs: those of its NR Mode and Campaign filter.
+
+        The CDRs are those the combined CDR tables include (the Final CDR of each campaign, else its
+        newest Weekly or Daily CDRs, or the In Combined? choice of Workspace), of the Dashboard's NR
+        Mode and of the campaigns of its Campaign filter (every campaign without one). Latest campaign
+        and Latest 2 campaigns are replaced by the newest campaigns now.
+        """
+        effective = migrate_auto_cdrs(normalize_dashboard_filters(definition), task_repository)
         effective.setdefault('scope', 'single')
-        if 'datasets' not in effective:
-            # The default universe uses the latest CDRs of the Dashboard's own
-            # NR Mode; CDRs of the other NR Mode are never selected.
-            ordered = ordered_ready_datasets(task_repository, dashboard_nr_mode(effective))
-            count = 1 if effective['scope'] == 'multivendor' and effective.get('vendor_comparison', 'operator_vendor') == 'operator_vendor' else 2
-            effective['datasets'] = {
-                kind: [int(row['id']) for row in ordered[kind][:count]] for kind in KINDS
-            }
-        else:
-            effective['datasets'] = {
-                kind: list((effective.get('datasets') or {}).get(kind, [])) for kind in KINDS
-            }
+        nr_mode = dashboard_nr_mode(effective)
+        filters = with_main_cities(dict(effective.get('filters') or {}), task_repository)
+        key = campaign_filter_key(filters)
+        campaigns = list(filters.get(key) or []) if key else []
+        if key and campaign_presets(campaigns):
+            campaigns = resolve_campaign_filter(task_repository, nr_mode, campaigns)
+            if campaigns:
+                filters[key] = campaigns
+            else:
+                # CDRs without campaigns: every CDR of the NR Mode.
+                filters.pop(key)
+        effective['datasets'] = resolve_cdrs(task_repository, nr_mode, campaigns, KINDS)
+        if key and campaigns:
+            # CDRs that hold only chosen campaigns need no Campaign predicate on their rows: the selection
+            # stays a complete, unfiltered universe whose counts and options are known.
+            ids = [dataset_id for values in effective['datasets'].values() for dataset_id in values]
+            held = {campaign_identity(value) for values in cdr_campaigns(task_repository, ids).values() for value in values}
+            if held and held <= {campaign_identity(value) for value in campaigns}:
+                filters.pop(key)
+        effective['filters'] = filters
         effective.setdefault('date_from', 'Oldest')
         effective.setdefault('date_to', 'Newest')
         return effective
 
+    def auto_cdr_definition(definition: DashboardDefinition, task_repository) -> DashboardDefinition:
+        """A Dashboard sent by the browser with the CDRs of its NR Mode and Campaign filter."""
+        return DashboardDefinition.model_validate(runtime_dashboard_definition(definition.model_dump(mode='json'), task_repository))
+
     def automatic_scope_universe(definition: DashboardDefinition, task_repository) -> DashboardDefinition:
-        """Build the temporary latest-CDR universe used by library PPT exports."""
+        """The Dashboard of a library PPT export, with automatic dates."""
         raw_definition = definition.model_dump(mode='json')
-        # Pydantic supplies empty defaults for these fields.  Remove them so
-        # runtime_dashboard_definition selects the latest CDRs for the Scope.
-        for field in ('datasets', 'date_from', 'date_to'):
+        for field in ('date_from', 'date_to'):
             raw_definition.pop(field, None)
         return DashboardDefinition.model_validate(runtime_dashboard_definition(raw_definition, task_repository))
+
+    def cascading_dashboard_options(options, definition, task_repository):
+        """The Operator, Vendor, Region, Cluster, City and Campaign lists of every CDR of the NR Mode.
+
+        Each lists only the values the other filters leave, read from the CDR Filter Facets (never the
+        CDR rows); the other filters keep the values of the Dashboard's CDRs.
+        """
+        raw = definition.model_dump(mode='json') if hasattr(definition, 'model_dump') else dict(definition)
+        nr_mode = dashboard_nr_mode(raw)
+        candidates = [row['id'] for row in candidate_cdrs(task_repository, nr_mode)]
+        # The Campaign lists every campaign of the NR Mode; the other filters, the values of the CDRs it chooses.
+        resolved = [int(value) for values in (raw.get('datasets') or {}).values() for value in values]
+        filters = raw.get('filters') or {}
+        fields = [field for field in options if field in CASCADING_FILTER_FIELDS] or list(CASCADING_FILTER_FIELDS)
+        cascading = {}
+        if 'Campaign' in fields:
+            cascading.update(cascading_options(task_repository, candidates, filters, ['Campaign']))
+        if others := [field for field in fields if field != 'Campaign']:
+            cascading.update(cascading_options(task_repository, resolved or candidates, filters, others))
+        return {**options, **cascading}
 
     def catalogue(definition, task_repository=None):
         task_repository = task_repository or core.repository
@@ -1853,10 +1967,8 @@ def install_dashboard_routes(core):
             )
             if previous_output:
                 remove_dashboard_ppt_job_folder(task_repository, previous_output)
-            raw_definition = dict(raw_definition)
-            if not any((raw_definition.get('datasets') or {}).values()):
-                raw_definition.pop('datasets', None)
-                raw_definition = runtime_dashboard_definition(raw_definition, task_repository)
+            # The CDRs of its NR Mode and Campaign filter, chosen now.
+            raw_definition = runtime_dashboard_definition(dict(raw_definition), task_repository)
             if explicit_selections:
                 raw_filters = dict(raw_definition.get('filters') or {})
                 for field, selected in explicit_selections.items():
@@ -2416,7 +2528,9 @@ def install_dashboard_routes(core):
             dashboards = read_dashboards(task_repository)
             ensure_unique_dashboard_name(dashboards, dashboard_id, definition.name, definition.technology)
             definition.name = definition.name.strip()
-            saved_definition = normalize_dashboard_filters(definition.model_dump(mode='json'))
+            saved_definition = migrate_auto_cdrs(normalize_dashboard_filters(definition.model_dump(mode='json')), task_repository)
+            # The CDRs are chosen from the NR Mode and Campaign each time: they are not saved.
+            saved_definition.pop('datasets', None)
             dashboards[dashboard_id] = saved_definition
             task_repository.set_workspace_state(STATE_KEY, json.dumps(dashboards))
             task_repository.add_log(user.username, 'save_dashboard', json.dumps({'id': dashboard_id, 'name': definition.name}))
@@ -2466,11 +2580,18 @@ def install_dashboard_routes(core):
             updated['template_technology'] = payload.technology
             updated['template'] = payload.template
             if nr_mode_changed:
+                # The campaigns of the other NR Mode do not apply: the newest ones of the new NR Mode do.
                 updated.pop('datasets', None)
-                updated['datasets'] = runtime_dashboard_definition(updated, task_repository)['datasets']
+                filters = dict(updated.get('filters') or {})
+                key = campaign_filter_key(filters)
+                if key:
+                    filters.pop(key)
+                updated['filters'] = {**filters, 'Campaign': default_campaign_filter(updated)}
+                updated['auto_cdrs'] = True
             definition = DashboardDefinition.model_validate(updated)
             validate(definition, task_repository)
-            saved_definition = normalize_dashboard_filters(definition.model_dump(mode='json'))
+            saved_definition = migrate_auto_cdrs(normalize_dashboard_filters(definition.model_dump(mode='json')), task_repository)
+            saved_definition.pop('datasets', None)
             dashboards[dashboard_id] = saved_definition
             task_repository.set_workspace_state(STATE_KEY, json.dumps(dashboards))
             task_repository.add_log(user.username, 'change_dashboard_template', json.dumps({
@@ -2531,7 +2652,7 @@ def install_dashboard_routes(core):
             if selected:
                 selected_by_kind[kind] = selected
         if not selected_by_kind:
-            raise HTTPException(400, f'Select at least one {definition.technology.upper()} CDR dataset.')
+            raise HTTPException(400, f'No ready {definition.technology.upper()} CDR is in the combined CDR tables for the chosen Campaign.')
         if definition.scope == 'multivendor':
             selected_ids = [int(row['id']) for rows in selected_by_kind.values() for row in rows]
             if len(task_repository.cdr_catalogue_values(selected_ids)['vendors']) < 2:
@@ -3439,7 +3560,10 @@ def install_dashboard_routes(core):
                     chart['position'] = position
         token = uuid4().hex
         payload = {
-            'slides': list(slides.values()), 'options': mapped_filter_options(options, task_repository),
+            'slides': list(slides.values()),
+            'options': cascading_dashboard_options(mapped_filter_options(options, task_repository), definition, task_repository),
+            # The CDRs the Dashboard uses, chosen from its NR Mode and Campaign.
+            'cdrs': describe_cdrs(task_repository, {kind: [int(row['id']) for row in rows] for kind, rows in selected_by_kind.items()}),
             'filter_fields': list(ADAPTATIVE_FILTER_FIELDS),
             'available_fields': sorted(available_fields, key=str.casefold),
             'rows': row_counts,
@@ -3612,30 +3736,27 @@ def install_dashboard_routes(core):
     def dashboard_warmup_definitions(raw_definition: dict, task_repository: Repository) -> list[DashboardDefinition]:
         """Return the automatic, date-unrestricted universes pre-cached for a Dashboard.
 
-        The universes are every CDR plus the latest one, two, three and four
-        CDRs of each type. Only CDRs of the Dashboard's NR Mode are considered,
-        and universes that would repeat an earlier selection are skipped.
+        The universes are every campaign plus the newest one, two, three and four campaigns of the
+        Dashboard's NR Mode (their CDRs chosen as always), skipping those that repeat an earlier one.
         """
-        base = DashboardDefinition.model_validate(
-            runtime_dashboard_definition(raw_definition, task_repository),
-        )
-        ordered = ordered_ready_datasets(task_repository, base.technology)
-        if not any(ordered.values()):
-            return []
-        universes = [{kind: [int(row['id']) for row in rows] for kind, rows in ordered.items()}]
-        universes.extend(
-            {kind: [int(row['id']) for row in rows[:count]] for kind, rows in ordered.items()}
-            for count in range(1, DASHBOARD_WARMUP_LATEST_COUNTS + 1)
-        )
+        base = runtime_dashboard_definition(raw_definition, task_repository)
+        nr_mode = dashboard_nr_mode(base)
+        campaigns = campaign_values(task_repository, nr_mode)
+        filters = {field: values for field, values in (base.get('filters') or {}).items() if identity(field) != identity('Campaign')}
+        variants = [None, *(latest_campaigns(campaigns, count) for count in range(1, DASHBOARD_WARMUP_LATEST_COUNTS + 1))]
         definitions = []
         seen = set()
-        for datasets in universes:
+        for chosen in variants:
+            datasets = resolve_cdrs(task_repository, nr_mode, chosen or [], KINDS)
+            if not any(datasets.values()):
+                continue
             signature = json.dumps({kind: sorted(ids) for kind, ids in datasets.items()}, sort_keys=True)
             if signature in seen:
                 continue
             seen.add(signature)
-            definition = base.model_copy(deep=True)
-            definition.datasets = datasets
+            definition = DashboardDefinition.model_validate({
+                **base, 'filters': {**filters, **({'Campaign': chosen} if chosen else {})}, 'datasets': datasets,
+            })
             # Oldest/Newest deliberately keeps this cache valid for the full
             # automatic date range instead of pinning it to today's bounds.
             definition.date_from = 'Oldest'
@@ -4077,8 +4198,7 @@ def install_dashboard_routes(core):
         browser polls ``/preparation-progress/{id}``. Long preparations on slow
         servers therefore never exceed reverse-proxy response timeouts.
         """
-        if use_scope_universe:
-            definition = automatic_scope_universe(definition, bound_repository())
+        definition = (automatic_scope_universe if use_scope_universe else auto_cdr_definition)(definition, bound_repository())
         preparation_id = preparation_id or f'dashboard-preparation:{uuid4().hex}'
         workspace = workspace_key()
         cancellation = {'requested': False}
@@ -4136,7 +4256,10 @@ def install_dashboard_routes(core):
     def filter_options(request: DashboardFilterOptionsRequest, user=Depends(dashboard_user)):
         try:
             task_repository = bound_repository()
-            values = load_filter_options(request.definition, request.field, task_repository)
+            definition = auto_cdr_definition(request.definition, task_repository)
+            values = load_filter_options(definition, request.field, task_repository)
+            if request.field.strip() in CASCADING_FILTER_FIELDS:
+                values = cascading_dashboard_options({request.field.strip(): values}, definition, task_repository)[request.field.strip()]
             return {'field': request.field.strip(), 'values': values}
         except (ValueError, KeyError) as exc:
             raise HTTPException(400, str(exc)) from exc
@@ -4146,14 +4269,33 @@ def install_dashboard_routes(core):
         """Return the values the selected CDRs offer for several filters in one request."""
         try:
             task_repository = bound_repository()
-            return {'options': load_filter_options_batch(request.definition, request.fields, task_repository)}
+            definition = auto_cdr_definition(request.definition, task_repository)
+            options = load_filter_options_batch(definition, request.fields, task_repository)
+            return {'options': cascading_dashboard_options(options, definition, task_repository)}
+        except (ValueError, KeyError) as exc:
+            raise HTTPException(400, str(exc)) from exc
+
+    @app.post('/api/ppt-dashboards/auto-cdrs')
+    def dashboard_auto_cdrs(definition: DashboardDefinition, user=Depends(dashboard_user)):
+        """The CDRs a Dashboard selection uses now and the lists of its Campaign, Operator, Vendor, Region, Cluster and City.
+
+        Chosen from its NR Mode and Campaign and read from the CDR Filter Facets, without preparing the Dashboard
+        or reading CDR rows, so the CDRs and these filters follow every change before it is applied.
+        """
+        try:
+            task_repository = bound_repository()
+            resolved = auto_cdr_definition(definition, task_repository)
+            options = cascading_dashboard_options({field: [] for field in CASCADING_FILTER_FIELDS}, resolved, task_repository)
+            return {'options': options, 'cdrs': describe_cdrs(task_repository, resolved.datasets)}
         except (ValueError, KeyError) as exc:
             raise HTTPException(400, str(exc)) from exc
 
     @app.post('/api/ppt-dashboards/geography-options')
     def geography_options(definition: DashboardDefinition, user=Depends(dashboard_user)):
         try:
-            return load_dashboard_geography_options(definition, bound_repository())
+            task_repository = bound_repository()
+            # The values of the CDRs of the chosen campaigns (the campaigns and those CDRs come from /auto-cdrs).
+            return load_dashboard_geography_options(auto_cdr_definition(definition, task_repository), task_repository)
         except (ValueError, KeyError) as exc:
             raise HTTPException(400, str(exc)) from exc
 
@@ -4214,8 +4356,7 @@ def install_dashboard_routes(core):
         with lock:
             if dashboard_id not in read_dashboards(task_repository):
                 raise HTTPException(404, 'Dashboard not found.')
-        if use_scope_universe:
-            definition = automatic_scope_universe(definition, task_repository)
+        definition = (automatic_scope_universe if use_scope_universe else auto_cdr_definition)(definition, task_repository)
         return prefetched_dashboard_response(dashboard_id, definition, user)
 
     def reporting_source(snapshot, kind, task_repository):

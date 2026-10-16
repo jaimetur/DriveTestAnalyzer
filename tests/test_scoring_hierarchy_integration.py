@@ -26,8 +26,10 @@ def test_scoring_hierarchy_controls_and_saved_job_order(scoring_api):
     assert page.status_code == 200
     assert 'value="Dataset Type" data-aggregation-level' not in page.text
     for selector in ('data-aggregation-level', 'data-scoring-context-filter'):
+        # The Campaign filter sits with NR Mode (they choose the CDRs), before the filters of the hierarchy.
+        levels = ['Campaign', *(level for level in DEFAULT_HIERARCHY if level != 'Campaign')] if selector.endswith('filter') else DEFAULT_HIERARCHY
         positions = [page.text.index(f'{selector}="{level}"') if selector.endswith('filter')
-                     else page.text.index(f'value="{level}" data-aggregation-level') for level in DEFAULT_HIERARCHY]
+                     else page.text.index(f'value="{level}" data-aggregation-level') for level in levels]
         assert positions == sorted(positions)
     saved = client.put('/api/scoring/aggregation-hierarchy', json={'levels': CUSTOM_HIERARCHY})
     assert saved.status_code == 200, saved.text

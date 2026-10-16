@@ -55,19 +55,19 @@ The NetCheck RCA of the CDRs (Failure Classification, Failure Category and Failu
 
 ## Daily and Final CDRs
 
-A call can be in a Daily CDR, in several cumulative Daily CDRs and in the Final CDR of its campaign (see [CDR Stage](workspace-management.md#cdr-stage-final-weekly-and-daily)). It is listed once, with the data of its most recent CDR: the Final CDR before the Daily ones, then the CDR with the newest calls. With CDRs chosen in the **CDRs** filter, each call shows the data of the most recent of them.
+A call can be in a Daily CDR, in several cumulative Daily CDRs and in the Final CDR of its campaign (see [CDR Stage](workspace-management.md#cdr-stage-final-weekly-and-daily)). It is listed once, with the data of the CDR the combined CDR tables include: the Final CDR of its campaign before its Weekly and Daily CDRs, a Weekly CDR before the Daily ones, then the CDR with the newest calls, unless the **In Combined?** choice of Workspace says otherwise (a CDR set to Yes comes first, one set to No after the others). A change of that choice, or a Final CDR that replaces Daily CDRs, gives the calls their new version in the background without reading the CDRs again. The **NR Mode** and **Campaign** filters say which CDRs the calls come from; with the **CDR** column of the table shown (see [Columns](#non-qualified-calls-panel)), its filter, among the Additional Columns Filters, chooses CDRs too, and each call then shows the data of the most recent of them.
 
 > [!NOTE]
-> **The analysis of a call is shared by every CDR that contains it.** Choosing a Daily CDR, a cumulative Daily CDR or the Final CDR in the **CDRs** filter shows the same follow-up.
+> **The analysis of a call is shared by every CDR that contains it.** Choosing a Daily CDR, a cumulative Daily CDR or the Final CDR in the **CDR** filter shows the same follow-up.
 
 A badge below the result tells how the other CDRs see the call (hover it for the CDR shown and the latest one):
 
 | Badge | Meaning |
 | --- | --- |
 | **Changed between CDRs** | Its result or failure is different in another CDR. |
-| **Newer version in another CDR** | A more recent CDR that is not chosen in the CDRs filter has the call. |
+| **Newer version in another CDR** | A more recent CDR that is not chosen in the CDR filter has the call. |
 | **Not in the Final CDR** | The call is only in Weekly or Daily CDRs while a Final CDR covers its campaign. |
-| **Completed in a newer CDR** | The most recent CDR has the call Completed. These calls are listed only while that CDR is not chosen in the CDRs filter, or when **CDR Version** selects them. |
+| **Completed in a newer CDR** | The most recent CDR has the call Completed. These calls are listed only while that CDR is not chosen in the CDR filter, or when **CDR Version** selects them. |
 
 The **CDR Version** filter selects the calls of each case (**Latest version** are the others). **Call Details** lists every CDR that contains the call, Final, Weekly or Daily, with the date of its newest calls and the call's result in it.
 
@@ -80,7 +80,7 @@ The **Filters** panel restricts the summary, the panels, the table and the expor
 
 | Group | Filters |
 | --- | --- |
-| **General Filters** | **CDRs**, **Campaign**, **Operator**, **Operator_Vendor**, **Vendor_Operator**, **Vendor**, **Region**, **Cluster**, **City**, **Service**, **Technology**, **Test Name** and **Result**, from the indexed calls, and **CDR Version** (see [Daily and Final CDRs](#daily-and-final-cdrs)). |
+| **General Filters** | **NR Mode** (NSA or SA, first: with Campaign it says which CDRs the calls come from), **Campaign**, **Operator**, **Operator_Vendor**, **Vendor_Operator**, **Vendor**, **Region**, **Cluster**, **City**, **Service**, **Technology**, **Test Name** and **Result**, from the indexed calls, and **CDR Version** (see [Daily and Final CDRs](#daily-and-final-cdrs)). |
 | **NQ Analysis Fields Filters** | The fields of [Fields & Sections](#fields-and-sections) in their order: **Failure Classification** and **Failure Category** (the NetCheck RCA of the CDR), **Root Domain**, **Root Category** and **Root Cause**, **Global Status**, **Status Set** (**Automatic** when the status follows the [Status Rules](#status-rules), **By hand** when an analyst chose it) and **Follow-up** (Attended, Not attended, Open, Stalled, Closed, With team, Assigned, Commented, With a root cause, RCA identified and RCA not identified: the calls in any of the chosen, also set by the indicator cards of the panels), **Team** and **Assignee** from the follow-up, every list and Yes / No field entered by the analysts or derived from the call (for example Session Type, Analysis Status or Planned Status), and **Analyst** and **Reviewer** with every name the calls hold. |
 | **Additional Columns Filters** | The optional columns of the table (see [Columns](#columns)). |
 | **Search** | Text in the call fields (Operator, Vendor, Campaign, Region, City, Technology, test, result, failure fields, cell, `JOIN_ID` and the CDR columns of the table), in the fields entered by the analysts and in the comments. |
@@ -89,7 +89,7 @@ The **Filters** panel restricts the summary, the panels, the table and the expor
 **Operator_Vendor** is the `<Operator>_<Vendor>` identity, **Vendor_Operator** the same identity as `<Vendor>_<Operator>` (both stay in sync) and **Vendor** the vendor alone; **City** offers the workspace **Main Cities** first. **Unassigned** selects calls without a team or assignee, **Not classified** calls without a root domain or category, **No cause** calls without a root cause and **Empty** the calls without a value.
 
 > [!TIP]
-> **Each filter lists only the values of the calls the other filters leave** (its own choice does not count), and the values chosen in it even when no call has them any more: choosing a Campaign leaves in the Operator list only its operators, and the Campaign list still offers every campaign of those operators. The CDRs list offers the CDRs with some of those calls, and CDR Version all its states. The funnels of the column headers list the same values.
+> **Each filter lists only the values of the calls the other filters leave** (its own choice does not count), and the values chosen in it even when no call has them any more: choosing a Campaign leaves in the Operator list only its operators, and the Campaign list still offers every campaign of those operators. Choosing SA in NR Mode leaves in Campaign only the SA campaigns, and takes the campaigns of the other NR Mode out of the Campaign filter (also in filters saved before). The CDR filter offers the CDRs with some of those calls, and CDR Version all its states. The funnels of the column headers list the same values.
 
 Selecting every value of a filter, or none, applies no restriction (**Select All / None** also chooses the values hidden). The filters with a value applied stand out in the colour of the module, their name and their list. Active filters appear as chips at the top of every panel (Filters, Summary, NQ Rate by Campaign and Operator, Root Cause Sources, Root Cause Analysis, Lifecycle & Phases, Progress View and the table), including those set from the Progress View and the Root Cause Analysis (NR Mode, Call Type, Period, Age of Open Calls, root domain and cause with suggestions, eNB/gNB); click a chip to remove it. The NQ Rate panel dims the chips of the filters it does not use. **Reset Filters** clears them all.
 
@@ -119,7 +119,7 @@ The **NQ Rate by Campaign and Operator** panel, below the Summary, is the manage
 - A click on a cell or card shows only those calls in the other panels; a second click removes the filter.
 
 > [!NOTE]
-> Only the **CDRs**, **Service**, **Campaign**, **Operator** and **NR Mode** filters apply: the other filters describe Non-Qualified Calls only, so changing them does not recalculate the panel, and its counts are reused until the CDRs are indexed again.
+> Only the **NR Mode**, **Campaign**, **Service**, **Operator** and **CDR** filters apply: the other filters describe Non-Qualified Calls only, so changing them does not recalculate the panel, and its counts are reused until the CDRs are indexed again.
 
 The PowerPoint and Word exports and the Reporting artifact show it after the Executive Summary as one heat map with a column per service (and **All services**, their total) under each operator and the overall NQ rate of the selection at its top right (*Overall 0.9% · 992 NQ calls of 104,304 calls*), on one slide, or on two when the operators or campaigns are many (each slide with half of the operators or of the campaigns).
 
@@ -230,7 +230,7 @@ Every name of a column header (for example *Service*, *Result*, *Team* or *Assig
 - The fields of the Analysis Center, grouped by section (the same choice as **Table column** in Fields & Sections).
 - The columns of the CDRs (for example `Cellname_A`, `Region_A` or `Auto_RCA_Category_A`), which show the value of the CDR version shown for each call. Each CDR column can go to the **Table** (up to 12), and then also to the Excel export, or to **Excel** only (up to 100 more). Choosing CDR columns indexes the calls again.
 
-Every optional column sorts the table and has its filter: Region, Cluster and CDR use their filters of the Filters panel, `JOIN_ID`, NR Mode, Cell ID, Direction, Session Type and End Time add theirs under **Additional Columns Filters**, and the CDR columns filter from their header only; every one offers **Empty** for the calls without a value. The Filters panel shows the **General Filters**, then the **NQ Analysis Fields Filters** and the **Additional Columns Filters**.
+Every optional column sorts the table and has its filter: Region and Cluster use their filters of the Filters panel, `JOIN_ID`, NR Mode, Cell ID, Direction, Session Type, End Time and CDR (which chooses CDRs) add theirs under **Additional Columns Filters**, and the CDR columns filter from their header only; every one offers **Empty** for the calls without a value. The Filters panel shows the **General Filters**, then the **NQ Analysis Fields Filters** and the **Additional Columns Filters**.
 
 ### Bulk changes
 

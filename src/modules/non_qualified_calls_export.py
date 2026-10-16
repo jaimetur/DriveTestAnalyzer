@@ -17,13 +17,13 @@ from pptx.util import Inches, Pt
 from src.modules.network_insights_export import _content_frame, _docx_table, _slide, _table_slides
 
 FILTER_LABELS = (
-    ('datasets', 'CDRs'), ('service', 'Service'), ('campaign', 'Campaign'), ('operator', 'Operator'),
+    ('nr_mode', 'NR Mode'), ('datasets', 'CDRs'), ('service', 'Service'), ('campaign', 'Campaign'), ('operator', 'Operator'),
     ('operator_vendor', 'Operator_Vendor'), ('vendor_operator', 'Vendor_Operator'), ('vendor', 'Vendor'),
     ('region', 'Region'), ('cluster', 'Cluster'),
     ('city', 'City'), ('technology', 'Technology'), ('test_name', 'Test Name'), ('result', 'Result'),
     ('failure_classification', 'Failure Classification'), ('failure_category', 'Failure Category'),
     ('status', 'Status'), ('status_mode', 'Status Set'), ('team', 'Team'), ('assignee', 'Assignee'), ('root_domain', 'Root Domain'),
-    ('root_category', 'Root Category'), ('root_cause', 'Root Cause'), ('nr_mode', 'NR Mode'), ('call_type', 'Call Type'), ('period', 'Period'),
+    ('root_category', 'Root Category'), ('root_cause', 'Root Cause'), ('call_type', 'Call Type'), ('period', 'Period'),
     ('age', 'Age of Open Calls'), ('root_pair', 'Root Domain · Cause'),
     ('effective_domain', 'Root Domain (with suggestions)'), ('effective_cause', 'Root Domain · Cause (with suggestions)'),
     ('node', 'eNB / gNB'), ('state', 'Follow-up'), ('rca_state', 'Root Cause'), ('version', 'CDR Version'),

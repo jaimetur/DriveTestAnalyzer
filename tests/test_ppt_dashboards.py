@@ -98,7 +98,7 @@ def test_dashboard_library_can_change_nr_mode_and_template_with_confirmation_con
     assert "technologySelect.className = 'ds-dashboard-definition-select ds-dashboard-nr-mode-select'" in script
     assert "templateSelect.className = 'ds-dashboard-definition-select ds-dashboard-template-select'" in script
     assert 'will invalidate every report and chart created inside this Dashboard' in script
-    assert 'Its saved Dataset Universe and filters will be preserved.' in script
+    assert 'Its Scope, dates and filters are kept (a new NR Mode uses its newest campaigns).' in script
     assert "api(`/${encodeURIComponent(id)}/template`, 'PATCH'" in script
     assert '.ds-dashboard-definition-select{' in stylesheet
 
@@ -188,14 +188,15 @@ def test_dashboard_job_panels_use_the_stack_spacing_without_an_empty_filter_row(
     assert 'margin-top:0;' in stylesheet
 
 
-def test_dashboard_discard_restores_saved_filters_and_universe_before_navigation():
+def test_dashboard_discard_restores_saved_scope_dates_and_filters_before_navigation():
     script = (Path(__file__).parents[1] / 'src/web_interface/static/js/ppt_dashboards.js').read_text(encoding='utf-8')
 
-    assert "const discardPart = (part) => {" in script
-    assert "copyDefinitionFields(definition, savedDashboardDefinition(), fields);" in script
-    assert "if (part === 'universe') rememberUniverse();" in script
+    assert "const discardPart = () => {" in script
+    assert "copyDefinitionFields(definition, savedDashboardDefinition(), filterDefinitionFields);" in script
     assert "else if (choice === 'secondary') discardPart('filters');" in script
-    assert "else if (choice === 'secondary') discardPart('universe');" in script
+    # There is no separate Dataset Universe: Scope, vendor comparison and dates are saved with the filters.
+    assert "const filterDefinitionFields = ['filters', 'custom_fields', 'hidden_filters', 'scope', 'vendor_comparison', 'date_from', 'date_to'];" in script
+    assert "discardPart('universe')" not in script
 
 
 def test_dashboard_prepare_retries_one_transient_proxy_501_response():
@@ -383,7 +384,8 @@ def test_dashboard_page_exposes_disabled_event_time_filtering(client, monkeypatc
 def test_dashboard_export_uses_the_admin_import_archive_format(client):
     payload = setup_dashboard(client)
     dashboard_id = 'portable-dashboard'
-    assert client.put(f'/api/ppt-dashboards/{dashboard_id}', json=payload).status_code == 200
+    saved = client.put(f'/api/ppt-dashboards/{dashboard_id}', json=payload)
+    assert saved.status_code == 200
 
     exported = client.get(f'/api/ppt-dashboards/{dashboard_id}/export')
 
@@ -395,27 +397,32 @@ def test_dashboard_export_uses_the_admin_import_archive_format(client):
         assert manifest['workspace_components'] == ['dashboards']
         document = json.loads(archive.read(manifest['archive_path']))
     assert document['format'] == 'drivetest-analyzer-dashboards'
-    assert document['dashboards'] == {dashboard_id: payload}
+    # The Dashboard travels as saved: its CDRs follow its NR Mode and Campaign, they are not part of it.
+    assert document['dashboards'] == {dashboard_id: saved.json()['definition']}
+    assert 'datasets' not in document['dashboards'][dashboard_id]
+    assert document['dashboards'][dashboard_id]['auto_cdrs'] is True
 
 
-def test_dashboard_persists_dataset_universe_separately_from_filters(client):
+def test_dashboard_saves_scope_and_dates_and_chooses_its_cdrs(client):
     payload = setup_dashboard(client)
     payload['date_from'], payload['date_to'] = 'Oldest', 'Newest'
 
     saved = client.put('/api/ppt-dashboards/symbolic-dates', json=payload)
 
     assert saved.status_code == 200, saved.text
-    assert {key: saved.json()['definition'][key] for key in ('scope', 'datasets', 'date_from', 'date_to')} == {
-        key: payload[key] for key in ('scope', 'datasets', 'date_from', 'date_to')
+    assert {key: saved.json()['definition'][key] for key in ('scope', 'date_from', 'date_to')} == {
+        key: payload[key] for key in ('scope', 'date_from', 'date_to')
     }
     stored = client.get('/api/ppt-dashboards').json()['symbolic-dates']
-    assert {key: stored[key] for key in ('scope', 'datasets', 'date_from', 'date_to')} == {
-        key: payload[key] for key in ('scope', 'datasets', 'date_from', 'date_to')
-    }
-    prepared = client.post('/api/ppt-dashboards/prepare', json=payload)
+    # The CDRs are never saved: they follow the NR Mode and the Campaign filter (a former Dashboard without
+    # campaigns in its CDRs follows the newest two campaigns).
+    assert 'datasets' not in stored and stored['auto_cdrs'] is True
+    assert stored['filters']['Campaign'] == ['@latest-2-campaigns']
+    prepared = client.post('/api/ppt-dashboards/prepare', json=stored)
     assert prepared.status_code == 200, prepared.text
     assert prepared.json()['date_bounds'] == {'min': '2026-09-01', 'max': '2026-09-03'}
     assert prepared.json()['rows']['data'] == 3
+    assert [row['id'] for row in prepared.json()['cdrs']['data']] == [1]
 
 
 def test_dashboard_all_values_expands_when_saved_universe_gains_a_new_value(client):
@@ -448,12 +455,10 @@ def test_dashboard_all_values_expands_when_saved_universe_gains_a_new_value(clie
         time.sleep(0.05)
     assert core.repository.get_dataset(2)['status'] == 'ready'
 
+    # The new CDR of the NR Mode is chosen without editing the Dashboard.
     expanded = client.get('/api/ppt-dashboards').json()[dashboard_id]
-    expanded['datasets']['data'] = [1, 2]
-    updated = client.put(f'/api/ppt-dashboards/{dashboard_id}', json=expanded)
-    assert updated.status_code == 200, updated.text
-    assert 'Test_Name' not in updated.json()['definition']['filters']
-    prepared = client.post('/api/ppt-dashboards/prepare', json=updated.json()['definition'])
+    assert 'Test_Name' not in expanded['filters']
+    prepared = client.post('/api/ppt-dashboards/prepare', json=expanded)
     assert prepared.status_code == 200, prepared.text
     assert prepared.json()['options']['Test_Name'] == ['HTTP DL', 'HTTP UL']
     assert prepared.json()['rows']['data'] == 4
@@ -461,11 +466,12 @@ def test_dashboard_all_values_expands_when_saved_universe_gains_a_new_value(clie
 
 def test_dashboard_background_warmup_prepares_the_five_automatic_date_universes(client):
     payload = setup_dashboard(client)
+    # Each new CDR is a campaign of its own: the universes are every campaign and the newest one to four.
     for index in (2, 3, 4, 5):
         response = client.post('/datasets-analysis/upload', data={'dataset_kinds': 'data'}, files={
             'dataset_files': (
                 f'sample-{index}.csv',
-                BytesIO(f'Operator,City,Mean_Data_Rate,Test_Name,Test_Start_Time\nA,London,{index},HTTP DL,2026-09-0{index}\n'.encode()),
+                BytesIO(f'Campaign,Operator,City,Mean_Data_Rate,Test_Name,Test_Start_Time\nUK_Q{index - 1}_2026,A,London,{index},HTTP DL,2026-09-0{index}\n'.encode()),
                 'text/csv',
             ),
         })
@@ -515,15 +521,15 @@ def test_dashboard_background_warmup_prepares_the_five_automatic_date_universes(
     }
 
 
-def test_dashboard_template_change_preserves_saved_universe_and_filters(client):
+def test_dashboard_template_change_preserves_saved_scope_dates_and_filters(client):
     payload = setup_dashboard(client)
     core.repository.add_report_template('sa', 'Dashboard SA test', core.repository.report_template_content(
         'nsa', 'Dashboard test',
     ), is_default=False)
     payload.update({
         'scope': 'multivendor',
-        'datasets': {'data': [1], 'voice': [], 'speech': []},
-        'filters': {'City': ['London']},
+        'auto_cdrs': True,
+        'filters': {'City': ['London'], 'Campaign': ['UK_Q2_2026']},
         'custom_fields': ['Mean_Data_Rate'],
         'hidden_filters': ['Vendor'],
         'date_from': '2026-09-01',
@@ -542,25 +548,21 @@ def test_dashboard_template_change_preserves_saved_universe_and_filters(client):
     assert changed.json()['invalidated'] is True
     assert definition_payload['technology'] == definition_payload['template_technology'] == 'sa'
     assert definition_payload['template'] == 'Dashboard SA test'
-    for field in ('scope', 'filters', 'custom_fields', 'hidden_filters', 'date_from', 'date_to', 'slide_comments'):
+    for field in ('scope', 'custom_fields', 'hidden_filters', 'date_from', 'date_to', 'slide_comments'):
         assert definition_payload[field] == saved_before_change[field]
-    # The NSA CDR does not belong to an SA Dashboard, and no SA CDR exists yet.
-    assert definition_payload['datasets'] == {'data': [], 'voice': [], 'speech': []}
+    # The campaigns of NSA do not apply to SA: the newest one of SA does (Multivendor Operator_Vendor).
+    assert definition_payload['filters'] == {'City': ['London'], 'Campaign': ['@latest-campaign']}
+    assert 'datasets' not in definition_payload
 
     core.repository.add_report_template('sa', 'Dashboard SA copy', core.repository.report_template_content(
         'nsa', 'Dashboard test',
     ), is_default=False)
-    core.repository.update_dataset_profile(1, nr_mode='SA')
-    reselected = client.patch('/api/ppt-dashboards/change-template/template', json={
-        'technology': 'sa', 'template': 'Dashboard SA test',
-    }).json()['definition']
-    assert reselected['datasets'] == {'data': [], 'voice': [], 'speech': []}
-    client.put('/api/ppt-dashboards/change-template', json={**reselected, 'datasets': {'data': [1], 'voice': [], 'speech': []}})
+    client.put('/api/ppt-dashboards/change-template', json={**definition_payload, 'filters': {'Campaign': ['UK_Q3_SA_2026']}})
     same_mode = client.patch('/api/ppt-dashboards/change-template/template', json={
         'technology': 'sa', 'template': 'Dashboard SA copy',
     }).json()['definition']
-    # Changing only the template keeps the saved universe.
-    assert same_mode['datasets'] == {'data': [1], 'voice': [], 'speech': []}
+    # Changing only the template keeps the Campaign.
+    assert same_mode['filters'] == {'Campaign': ['UK_Q3_SA_2026']}
 
 
 def test_dashboard_vendor_comparison_defaults_and_persists_vendor_only(client):
@@ -659,6 +661,13 @@ def test_dashboard_library_geography_options_are_loaded_in_one_request(client):
         'campaigns': [], 'campaigns_pending': False,
         'operators': ['A', 'B'], 'vendors': ['A - All', 'B - All'], 'regions': [], 'cities': ['Leeds', 'London'],
     }
+    # The export dialog and the Dashboard filters list every campaign of the NR Mode and the CDRs they choose,
+    # with their stage and campaigns, without preparing the Dashboard.
+    automatic = client.post('/api/ppt-dashboards/auto-cdrs', json=payload)
+    assert automatic.status_code == 200, automatic.text
+    assert [(row['name'], row['stage']) for row in automatic.json()['cdrs']['data']] == [('sample.csv', 'final')]
+    assert automatic.json()['cdrs']['voice'] == [] and automatic.json()['options']['Campaign'] == []
+    assert automatic.json()['options']['Operator'] == ['A', 'B']
 
 
 def test_dashboard_filter_options_batch_returns_every_requested_field(client):
@@ -666,7 +675,8 @@ def test_dashboard_filter_options_batch_returns_every_requested_field(client):
     deadline = time.monotonic() + 10
     while time.monotonic() < deadline and core.repository.get_dataset(1)['status'] != 'ready':
         time.sleep(0.05)
-    # Saved filters never restrict the values offered for the selected CDRs.
+    # Each filter lists the values the other filters leave (Leeds leaves Operator B); its own choice does not
+    # narrow its list.
     payload['filters'] = {'City': ['Leeds']}
 
     response = client.post('/api/ppt-dashboards/filter-options/batch', json={
@@ -674,7 +684,7 @@ def test_dashboard_filter_options_batch_returns_every_requested_field(client):
     })
 
     assert response.status_code == 200, response.text
-    assert response.json()['options'] == {'Operator': ['A', 'B'], 'City': ['Leeds', 'London']}
+    assert response.json()['options'] == {'Operator': ['B'], 'City': ['Leeds', 'London']}
 
 
 def test_dashboard_campaigns_keep_their_nr_mode_suffix(client):
@@ -779,7 +789,8 @@ def test_dashboard_filter_catalogue_includes_values_beyond_legacy_profile_limit(
     prepared = client.post('/api/ppt-dashboards/prepare', json=payload)
 
     assert prepared.status_code == 200, prepared.text
-    assert prepared.json()['options']['City'] == cities
+    # Every CDR of the NR Mode offers its Cities, beyond the former profile limit.
+    assert set(cities) <= set(prepared.json()['options']['City'])
 
 
 def test_dashboard_ppt_filename_summarizes_complete_geography_selections(client, monkeypatch):
@@ -949,15 +960,16 @@ def test_dashboard_ppt_dialog_selections_override_saved_dashboard_filters(client
     assert submitted[0][6] == {
         'Operator': ['B'], 'Vendor': ['Vendor B'], 'Region': ['South'], 'City': ['Leeds'],
     }
-    assert client.get('/api/ppt-dashboards').json()[dashboard_id]['filters'] == payload['filters']
+    saved_filters = client.get('/api/ppt-dashboards').json()[dashboard_id]['filters']
+    assert {field: values for field, values in saved_filters.items() if field != 'Campaign'} == payload['filters']
 
 
 def test_dashboard_ppt_all_labels_only_consider_the_selected_cdrs(client):
     payload = setup_dashboard(client)
-    # A second CDR carries an extra Operator and City that the Dashboard's
-    # own CDR does not contain; its saved filters still list them.
+    # A CDR of the other NR Mode carries an extra Operator and City that the
+    # Dashboard's CDRs do not contain; its saved filters still list them.
     other = client.post('/datasets-analysis/upload', data={'dataset_kinds': 'data'}, files={
-        'dataset_files': ('other.csv', BytesIO(
+        'dataset_files': ('other_SA.csv', BytesIO(
             b'Operator,City,Mean_Data_Rate,Test_Name,Test_Start_Time\nC,York,5,HTTP DL,2026-09-01\n'
         ), 'text/csv'),
     })
@@ -1292,55 +1304,56 @@ def test_dashboards_lifecycle_and_layout(client, ppt_reporting_old):
     assert '"filter_aliases"' in page.text
     assert '"Region": ["Region", "G_Level_2", "G Level 2"]' in page.text
     assert '>Apply Filters<' in page.text
-    assert '>Apply Universe</span>' in page.text
-    assert '>Save Universe</span>' in page.text
-    assert page.text.index('id="ds-apply-universe"') < page.text.index('id="ds-apply-filters"')
+    # There is no Dataset Universe: the Campaign filter chooses the CDRs, listed read-only.
+    assert 'id="ds-apply-universe"' not in page.text and 'id="ds-save-universe"' not in page.text
+    assert 'id="ds-auto-cdrs"' in page.text and '>CDRs Used<' in page.text
     assert page.text.index('>Apply Filters<') < page.text.index('>Save Filters<')
     assert 'id="ds-apply-filters" title="Apply the current Dashboard filters without saving them" disabled' in page.text
     assert 'id="ds-refresh"' not in page.text
     assert '>Import Dashboard<' in page.text
     assert 'Total Dashboards: 0' in page.text
-    assert '>Dashboard Datasets & Filters<' in page.text
+    assert '>Dashboard Scope & Filters<' in page.text
     assert 'id="ds-active-dashboard-heading">Dashboard Filters<' in page.text
     filter_panel = page.text.split('id="ds-filter-panel"', 1)[1].split('>', 1)[0]
     assert ' open' in filter_panel
     assert ' hidden' in filter_panel
     assert 'data-panel-state-storage="session"' in filter_panel
     assert 'id="ds-ppt-dataset-overlay"' in page.text
-    assert 'id="ds-ppt-dataset-choices"' in page.text
+    assert 'id="ds-ppt-dataset-choices"' not in page.text
     assert 'id="ds-ppt-dataset-scope"' in page.text
-    assert '>Select Dashboard Universe and Filters<' in page.text
-    # The PPT dialog groups the Dashboard Universe above the Dashboard Filters.
+    assert '>Select Dashboard Scope and Filters<' in page.text
+    # The PPT dialog groups the Scope and dates above the Dashboard Filters, the Campaign (which chooses the CDRs) first.
     universe_group = page.text.index('class="ds-ppt-group ds-ppt-universe-group"')
     filters_group = page.text.index('class="ds-ppt-group ds-ppt-filters-group"')
-    assert universe_group < page.text.index('id="ds-ppt-cdr-section"') < page.text.index('id="ds-ppt-dates-section"') < filters_group
-    assert filters_group < page.text.index('id="ds-ppt-operator-section"') < page.text.index('id="ds-ppt-city-section"')
+    assert universe_group < page.text.index('id="ds-ppt-dates-section"') < filters_group
+    assert filters_group < page.text.index('id="ds-ppt-campaign-section"') < page.text.index('id="ds-ppt-operator-section"') < page.text.index('id="ds-ppt-city-section"')
     # Main Dashboard Filters can reveal every other filter, including Additional Filters.
     assert '>Main Dashboard Filters</h3><button type="button" id="ds-ppt-show-all-filters"' in page.text
     # The heading names the Dashboard's NR Mode and the Dashboard.
     assert '<span class="ds-ppt-eyebrow-part" id="ds-ppt-dataset-nr-mode"></span><span class="ds-ppt-eyebrow-part ds-ppt-eyebrow-dashboard" id="ds-ppt-dataset-dashboard"></span><span class="ds-ppt-eyebrow-part">PowerPoint export</span>' in page.text
     assert page.text.index('id="ds-ppt-city-section"') < page.text.index('id="ds-ppt-extra-main-filters"') < page.text.index('id="ds-ppt-additional-group"')
-    # Save Universe and Save Filters sit between Cancel and Generate PPT.
-    actions = [page.text.index(f'id="{name}"') for name in ('ds-ppt-dataset-cancel', 'ds-ppt-save-universe', 'ds-ppt-save-filters', 'ds-ppt-dataset-confirm')]
+    # Save Filters sits between Cancel and Generate PPT.
+    assert 'id="ds-ppt-save-universe"' not in page.text
+    actions = [page.text.index(f'id="{name}"') for name in ('ds-ppt-dataset-cancel', 'ds-ppt-save-filters', 'ds-ppt-dataset-confirm')]
     assert actions == sorted(actions)
     dialog_script = (Path(__file__).parents[1] / 'src/web_interface/static/js/ppt_dashboards.js').read_text(encoding='utf-8')
     assert "return [key, saved?.length ? {values: saved, all: false} : {values: [], all: true}];" in dialog_script
     assert "options = (await api('/filter-options/batch', 'POST', {definition: exportUniverse(), fields: [...extraFilters.keys()]})).options || {};" in dialog_script
     assert "for (const [field, values] of Object.entries(universeChoice.extra_filters || {})) withPptSelection(exportDefinition, field, values);" in dialog_script
-    assert "saveFiltersButton.disabled = busy || !Object.keys(changedFilterFields()).length;" in dialog_script
-    assert "saveUniverseButton.disabled = busy || !choices.querySelector('input:checked') || !universeChanged();" in dialog_script
+    assert "saveFiltersButton.disabled = busy || (!universeChanged() && !Object.keys(changedFilterFields()).length);" in dialog_script
     # An opened selector menu is fixed below its field and may overflow the dialog.
     assert "menu.style.top = `${shellBounds.bottom + gap - origin.top}px`;" in dialog_script
     assert 'id="ds-ppt-date-from"' in page.text
     assert 'id="ds-ppt-date-to"' in page.text
-    assert '>Dataset Universe<' in page.text
-    assert '>Select Dataset Universe<' in page.text
-    assert '>Select Dataset Filters<' in page.text
-    assert page.text.index('>Select Dataset Universe<') < page.text.index('>Dashboard Scope<')
-    assert page.text.index('>Select Dataset Filters<') < page.text.index('>Default Filters<')
+    assert '>Dataset Universe<' not in page.text
+    assert '>Comparison &amp; CDRs<' in page.text
+    assert '>Select Dashboard Filters<' in page.text
+    assert page.text.index('>Comparison &amp; CDRs<') < page.text.index('>Dashboard Scope<')
+    assert page.text.index('>Select Dashboard Filters<') < page.text.index('>Default Filters<')
     assert '>Dashboard Scope<' in page.text
     assert '>Select Comparison Scope<' in page.text
-    assert page.text.index('class="ds-scope-control"') < page.text.index('id="ds-sources"')
+    # The Date filters open the Default Filters.
+    assert page.text.index('class="ds-scope-control"') < page.text.index('>Default Filters<') < page.text.index('id="ds-sources"') < page.text.index('id="ds-default-facets"')
     assert '>Default Filters<' in page.text
     assert '>Additional Filters<' in page.text
     assert '>Clear Filters<' in page.text
@@ -1617,8 +1630,8 @@ def test_dashboards_lifecycle_and_layout(client, ppt_reporting_old):
     assert "closeOnOutsidePointer('ds-editor-overlay', closeTemplateEditor);" in dashboard_script
     assert "$('ds-unapplied-filters-badge').hidden = !hasUnappliedFilterChanges();" in dashboard_script
     assert "$('ds-unsaved-filters-badge').hidden = !hasUnsavedFilterChanges();" in dashboard_script
-    assert "$('ds-unapplied-universe-badge').hidden = !hasUnappliedUniverseChanges();" in dashboard_script
-    assert "$('ds-unsaved-universe-badge').hidden = !hasUnsavedUniverseChanges();" in dashboard_script
+    # The Scope and dates are applied and saved with the filters: there are no Universe badges.
+    assert "ds-unapplied-universe-badge" not in dashboard_script
     assert "if (!$('ds-filter-overlay').hidden) await closeFilters();" in dashboard_script
     assert "This Dashboard has unsaved changes. Close Adaptative Filters without saving them?" not in dashboard_script
     assert "This Report Template has unsaved changes. Close the editor without saving them?" in dashboard_script
@@ -1719,13 +1732,12 @@ def test_dashboards_lifecycle_and_layout(client, ppt_reporting_old):
     assert "const filterControlState = (current, applied, saved, equal = sameFilterValues) =>" in dashboard_script
     assert "if (!equal(current, applied)) return 'unapplied';" in dashboard_script
     assert "return equal(applied, saved) ? '' : 'applied-unsaved';" in dashboard_script
-    assert "const sourceState = kind => filterControlState(" in dashboard_script
     assert "const scopeState = () => filterControlState(" in dashboard_script
     assert "const dateState = key => filterControlState(" in dashboard_script
     assert "const hasUnappliedFilterChanges = () =>" in dashboard_script
     assert "filterStateFingerprint(definition) !== filterStateFingerprint(appliedDefinition())" in dashboard_script
-    assert "const hasUnappliedUniverseChanges = () =>" in dashboard_script
-    assert "universeStateFingerprint(definition) !== universeStateFingerprint(appliedDefinition())" in dashboard_script
+    # Scope, vendor comparison and dates are part of the Dashboard filters.
+    assert "scope: selection.scope || 'single', vendor_comparison: selection.vendor_comparison || 'operator_vendor'," in dashboard_script
     assert 'const resolveUnappliedFilterChanges = async () =>' in dashboard_script
     assert "title: 'Unapplied Dashboard filters'" in dashboard_script
     assert "confirmLabel: 'Apply Filters and Continue'" in dashboard_script
@@ -1743,15 +1755,16 @@ def test_dashboards_lifecycle_and_layout(client, ppt_reporting_old):
     assert "async function queueDashboardPptExport(id, item, {chooseScope = false} = {})" in dashboard_script
     assert "const universeChoice = await chooseDashboardPptUniverse(item, id);" in dashboard_script
     assert "title: 'Choose PowerPoint Scope'" not in dashboard_script
-    assert "const host = node('label', label, 'ds-source-filter')" in dashboard_script
     assert "updateFilterControlState(facet, filterState(field));" in dashboard_script
     assert "updateFilterControlState(wrapper, dateState(key), true);" in dashboard_script
-    assert 'savedDefinition = definitionFingerprint(result.definition); rememberUniverse(); updateDirtyState(); sources(); facets(); library();' in dashboard_script
+    # Saving makes what the server saved the saved state, and applies it.
+    assert "savedDefinition = definitionFingerprint(result.definition);" in dashboard_script
+    assert "if (hasUnappliedFilterChanges()) await preparePart();" in dashboard_script
     assert 'await prepare();' in dashboard_script
     assert 'if (next.length === current.length && next.every(value => current.includes(value))) return;' in dashboard_script
     assert 'function filterChanged() {' in dashboard_script
-    assert "? 'Filter changes are ready to apply.'" in dashboard_script
-    assert ": 'All Dashboard filters and Dataset Universe controls are applied.'" in dashboard_script
+    assert "? 'Scope, date and filter changes are ready to apply.'" in dashboard_script
+    assert ": 'The Dashboard Scope, dates and filters are applied.'" in dashboard_script
     assert 'if (preparing && cached && currentFilterState !== preparingFilterState)' not in dashboard_script
     assert "status('Restored the previously prepared filters.');" in dashboard_script
     assert "const payload = await api('/filter-options', 'POST', {definition, field});" in dashboard_script
@@ -1813,23 +1826,18 @@ def test_dashboards_lifecycle_and_layout(client, ppt_reporting_old):
     assert "if (backgroundPreparationToken === preparationToken) dismissPreparationStatus();" in dashboard_script
     assert "bind('ds-apply-filters', async () => {" in dashboard_script
     assert "if (!hasUnappliedFilterChanges()) return;" in dashboard_script
-    assert "bind('ds-apply-universe', async () => {" in dashboard_script
-    assert "if (!hasUnappliedUniverseChanges()) return;" in dashboard_script
-    assert "bind('ds-reload-universe', () => {" in dashboard_script
-    assert "copyDefinitionFields(definition, savedDashboardDefinition(), universeDefinitionFields);" in dashboard_script
+    assert "bind('ds-apply-universe'" not in dashboard_script
+    assert "bind('ds-reload-universe'" not in dashboard_script
     assert "await api(`/prepare?${params}`, 'POST', definition, controller.signal);" in dashboard_script
     assert "window.dispatchEvent(new Event('drivetest-analyzer:refresh-background-tasks'));" in dashboard_script
     assert "title: 'Unsaved Dashboard filters'" in dashboard_script
     assert "confirmLabel: 'Save Filters'" in dashboard_script
-    assert "title: 'Unsaved Dataset Universe'" in dashboard_script
-    assert "confirmLabel: 'Save Universe'" in dashboard_script
+    assert "title: 'Unsaved Dataset Universe'" not in dashboard_script
     assert "if (link.classList.contains('topnav-link-logout'))" in dashboard_script
     assert 'for (const key of [openStorageKey, filtersOpenStorageKey, scrollStorageKey, preparedStorageKey, universeStorageKey])' in dashboard_script
     assert "secondaryLabel: 'Discard'" in dashboard_script
     assert "window.location.assign(target.href);" in dashboard_script
     assert "$('ds-apply-filters').disabled = !hasUnappliedFilterChanges() || filterActionBusy;" in dashboard_script
-    assert "$('ds-apply-universe').disabled = !hasUnappliedUniverseChanges() || filterActionBusy;" in dashboard_script
-    assert "$('ds-reload-universe').disabled = !hasUnsavedUniverseChanges() || filterActionBusy;" in dashboard_script
     assert "const dashboardStatuses = new Map();" in dashboard_script
     assert 'const dashboardPreparationTokens = new Map();' in dashboard_script
     assert "if (!dashboardPreparationTokens.has(id)) dashboardStatuses.set(id, value);" in dashboard_script
@@ -1903,14 +1911,15 @@ def test_dashboards_lifecycle_and_layout(client, ppt_reporting_old):
     assert "title: 'Refresh Dashboard?'" in dashboard_script
     assert "api(`/charts/${encodeURIComponent(token)}/refresh`, 'POST')" in dashboard_script
     assert "api(`/chart/${encodeURIComponent(token)}/${chart.index}/refresh`, 'POST')" in dashboard_script
-    assert "function resetAutomaticDatesForDatasetChange()" in dashboard_script
     assert "definition[key] = automaticValue;" in dashboard_script
     assert "input.value = dateInputDisplayValue(key, automaticValue);" in dashboard_script
-    assert "const latestDatasetsForScope = (scope, nrMode = 'NSA', vendorComparison = 'operator_vendor') =>" in dashboard_script
-    assert ".slice(0, scope === 'multivendor' && vendorComparison === 'operator_vendor' ? 1 : 2)" in dashboard_script
-    assert "datasetRecency(right) - datasetRecency(left)" in dashboard_script
+    # The Campaign of a new Dashboard follows its newest two campaigns (the newest one for Multivendor Operator_Vendor),
+    # as its newest CDRs did; a Scope change updates a Campaign that still is the default of the former Scope.
+    assert "const defaultCampaignFilter = (scope = 'single', vendorComparison = 'operator_vendor') => [" in dashboard_script
+    assert "scope === 'multivendor' && vendorComparison === 'operator_vendor' ? LATEST_CAMPAIGN : LATEST_TWO_CAMPAIGNS," in dashboard_script
     assert "if (selectedScope !== definition.scope)" in dashboard_script
-    assert "definition.datasets = latestDatasetsForScope(selectedScope, dashboardNrMode(definition), definition.vendor_comparison);" in dashboard_script
+    assert "followDefaultCampaign(previousScope, previousComparison);" in dashboard_script
+    assert "latestDatasetsForScope" not in dashboard_script
     assert "chooseScopeDatasets" not in dashboard_script
     assert 'async function restorePrepared(id) {' in dashboard_script
     assert 'const preparedPayloads = new Map();' in dashboard_script
@@ -1951,22 +1960,20 @@ def test_dashboards_lifecycle_and_layout(client, ppt_reporting_old):
     assert 'const setPreparationRows = payload =>' in dashboard_script
     assert 'setPreparationRows(payload);' in dashboard_script
     assert 'applyPreparedPayload(cached.payload);' not in dashboard_script
-    assert "['Dataset Universe', universe, 'ds-preparing-universe-label']" in dashboard_script
-    assert "['Filtered Universe', filtered, 'ds-preparing-filtered-label']" in dashboard_script
+    assert "['CDRs used', universe, 'ds-preparing-universe-label']" in dashboard_script
+    assert "['Filtered rows', filtered, 'ds-preparing-filtered-label']" in dashboard_script
     assert 'rows.hidden = !rows.textContent;' in dashboard_script
     assert 'const zoomResetIcon = () =>' in dashboard_script
     assert "if (request.filter_column) parameters.set('filter_column', request.filter_column);" in dashboard_script
     assert "Clear ${activeFilters} Filter${activeFilters === 1 ? '' : 's'}" in app_script
     assert "window.createUnifiedDatasetViewer" in dashboard_script
     assert "const reset = node('button', undefined, 'ds-chart-zoom-button ds-chart-zoom-reset');" in dashboard_script
-    assert "bind('ds-clear-filters', () => { definition.filters = {}; facets(); filterChanged(); });" in dashboard_script
+    assert "bind('ds-clear-filters', () => { definition.filters = {Campaign: defaultCampaignFilter(definition.scope, definition.vendor_comparison)}; facets(); filterChanged(); });" in dashboard_script
     assert "bind('ds-last-saved-filters', () => {" in dashboard_script
-    assert 'id="ds-reload-universe"' in page.text
+    assert 'id="ds-reload-universe"' not in page.text
     assert "definition.datasets = structuredClone(saved.datasets || {});" not in dashboard_script
-    assert "definition.scope = saved.scope || 'single';" not in dashboard_script
-    assert "definition.filters = structuredClone(saved.filters || {});" in dashboard_script
-    assert "definition.custom_fields = structuredClone(saved.custom_fields || []);" in dashboard_script
-    assert "definition.hidden_filters = structuredClone(saved.hidden_filters || []);" in dashboard_script
+    # Reload Saved Filters restores the saved Scope, dates and filters.
+    assert "copyDefinitionFields(definition, savedDashboardDefinition(), filterDefinitionFields);" in dashboard_script
     dashboard_css = (Path(__file__).parents[1] / 'src/web_interface/static/css/ppt_dashboards.css').read_text(encoding='utf-8')
     assert '.ds-dashboard-status-ready{' in dashboard_css
     assert '.ds-dashboard-status-rendering{' in dashboard_css
@@ -2714,12 +2721,14 @@ def test_dashboard_migrates_all_saved_definitions_to_current_default_filters(cli
 
     assert result.status_code == 200
     migrated = result.json()['legacy']
-    assert migrated['filters'] == {'Operator': ['A'], 'Region': ['North']}
+    # Its CDRs, which hold no campaign, become the newest two campaigns.
+    assert migrated['filters'] == {'Operator': ['A'], 'Region': ['North'], 'Campaign': ['@latest-2-campaigns']}
     assert migrated['custom_fields'] == ['Mean_Data_Rate']
     assert migrated['hidden_filters'] == ['Former custom filter']
-    assert {key: migrated[key] for key in ('scope', 'datasets', 'date_from', 'date_to')} == {
-        key: payload[key] for key in ('scope', 'datasets', 'date_from', 'date_to')
+    assert {key: migrated[key] for key in ('scope', 'date_from', 'date_to')} == {
+        key: payload[key] for key in ('scope', 'date_from', 'date_to')
     }
+    assert 'datasets' not in migrated and migrated['auto_cdrs'] is True
     assert core.repository.get_workspace_state('ppt_dashboard_default_filters_v6') == '1'
     assert json.loads(core.repository.get_workspace_state('ppt_dashboards_v2'))['legacy'] == migrated
 
@@ -2859,7 +2868,8 @@ def test_dashboard_validates_template_dates_and_sources(client):
     payload['date_from'], payload['date_to'] = '2026-09-03', '2026-09-01'
     assert client.post('/api/ppt-dashboards/prepare', json=payload).status_code == 400
     payload['date_from'] = payload['date_to'] = None
-    payload['datasets'] = {}
+    # A Campaign that no CDR of the NR Mode holds chooses no CDR.
+    payload['filters'] = {'Campaign': ['UK_Q1_2030']}
     assert client.post('/api/ppt-dashboards/prepare', json=payload).status_code == 400
     payload['template'] = 'Unknown'
     assert client.put('/api/ppt-dashboards/test', json=payload).status_code == 400
@@ -3138,7 +3148,7 @@ def test_dashboard_viewer_scope_selector_confirms_before_rerendering():
     assert template.index('id="ds-viewer-scope"') < template.index('id="ds-floating-filters"')
     assert "title: 'Change Dashboard Scope', confirmLabel: 'Change Scope', tone: 'warning'" in script
     assert "if (!accepted) { control.value = current; return; }" in script
-    assert "await preparePart('universe');" in script
+    assert "await preparePart();" in script
     assert "for (const id of ['ds-scope', 'ds-ppt-dataset-scope', 'ds-viewer-scope'])" in script
 
 

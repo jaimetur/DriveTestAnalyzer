@@ -29,8 +29,9 @@
         <label title="The inventory snapshot whose cells serve the samples and describe the deployment: the newest one of every network, or one snapshot for the networks it covers (the newest one for the others)">Inventory snapshot<select id="ni-snapshot"><option value="">Newest of each network</option>{% for snapshot in network_insights_config.snapshots %}<option value="{{ snapshot.dataset_id }}">{{ snapshot.snapshot_date }} · {{ snapshot.file_name }}</option>{% endfor %}</select></label>
         </div></fieldset>
       </div>
-      <h3 class="ni-filter-title">Filters</h3>
+      <h3 class="ni-filter-title">Filters</h3><p class="form-note ni-filter-note">The Campaigns choose the CDRs: those of the NR Mode that the combined CDR tables include (the Final CDR of each campaign, else its newest Weekly or Daily CDRs, or the In Combined? choice of Workspace).</p>
       <div class="ni-filter-grid">
+        <label class="ni-campaign-filter" title="The Campaigns choose the CDRs of the analysis: those of the NR Mode that the combined CDR tables include">Campaigns<select id="ni-campaigns" data-multiselect-no-values-label="Loading values…" data-multiselect-dynamic-all="true" multiple size="1" aria-label="Campaigns"></select></label>
         <label>Operators<select id="ni-operators" data-multiselect-no-values-label="Loading values…" data-multiselect-dynamic-all="true" multiple size="1" aria-label="Operators"></select></label>
         <label>Operator_Vendor<select id="ni-operator_vendors" data-operator-vendor-pair="operator_vendor" data-multiselect-no-values-label="Loading values…" data-multiselect-dynamic-all="true" multiple size="1" aria-label="Operator_Vendor"></select></label>
         <label>Vendor_Operator<select id="ni-vendor_operators" data-operator-vendor-pair="vendor_operator" data-multiselect-no-values-label="Loading values…" data-multiselect-dynamic-all="true" multiple size="1" aria-label="Vendor_Operator"></select></label>
@@ -38,12 +39,11 @@
         <label>Regions<select id="ni-regions" data-multiselect-no-values-label="Loading values…" data-multiselect-dynamic-all="true" multiple size="1" aria-label="Regions"></select></label>
         <label>Clusters<select id="ni-clusters" data-multiselect-no-values-label="Loading values…" data-multiselect-dynamic-all="true" multiple size="1" aria-label="Clusters"></select></label>
         <label>Cities<select id="ni-cities" data-multiselect-preset-label="Main Cities" data-multiselect-preset-first="true" data-multiselect-no-values-label="Loading values…" data-multiselect-dynamic-all="true" multiple size="1" aria-label="Cities"></select></label>
-        <label>Campaigns<select id="ni-campaigns" data-multiselect-no-values-label="Loading values…" data-multiselect-dynamic-all="true" multiple size="1" aria-label="Campaigns"></select></label>
       </div>
-      <div class="ni-dataset-groups" id="ni-datasets"></div>
+      <div class="ni-auto-cdrs" id="ni-auto-cdrs" aria-live="polite"></div>
       <div class="ni-actions">
         <button type="button" id="ni-analyse" class="ni-analyse">Analyse Network</button>
-        <p class="form-note" id="ni-status" role="status">Choose the CDRs and press Analyse Network. Filter values load automatically for the selected CDRs.</p>
+        <p class="form-note" id="ni-status" role="status">Choose the NR Mode, Campaigns and filters and press Analyse Network. Every filter lists the values of every CDR of the NR Mode that the other filters leave.</p>
         <button type="button" class="document-export-action document-export-powerpoint" data-ni-export="powerpoint" title="Summary of the current selection in PowerPoint"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4M7 13l3-3 2 2 4-4"/></svg>Export PowerPoint</button>
         <button type="button" class="document-export-action document-export-word" data-ni-export="word" title="Summary of the current selection in Word"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M8.5 12l1.2 5 1.8-4 1.8 4 1.2-5"/></svg>Export Word</button>
       </div>

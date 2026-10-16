@@ -13,8 +13,8 @@ from src.modules.report_tasks import (
 )
 from src.modules.scoring_reports import default_report_configuration
 
-# The Reporting Job every workspace starts with (assets/reporting-jobs).
-STARTER_JOB = 'Weekly NetCheck Report'
+# The Reporting Jobs every workspace starts with (assets/reporting-jobs).
+STARTER_JOBS = {'Weekly NetCheck Report (@latest campaings)', 'All Modules Report (@latest 2 campaings)', 'Scoring Report (@All Campaigns)'}
 
 TZ = timezone(timedelta(hours=2))
 # Every Scoring artifact is configured with the report editor.
@@ -71,10 +71,23 @@ def test_definitions_keep_every_module_option_and_need_an_artifact():
         'scoring': [{'nr_mode': 'sa', 'label': 'Weekly', 'report': default_report_configuration(
             context_filters={'Vendor': ['Huawei']}, aggregation_levels=['Operator', 'Campaign'], main_cities=True)}],
     })
+    # An entry saved when CDRs were chosen by hand keeps them until it is migrated (see migrate_auto_cdrs).
     assert definition['dashboards'] == [{
-        'dashboard_id': 'd1', 'label': '', 'scope': 'multivendor', 'vendor_comparison': 'vendor_only',
+        'dashboard_id': 'd1', 'label': '', 'scope': 'multivendor', 'vendor_comparison': 'vendor_only', 'auto_cdrs': False,
         'datasets': {'data': [3, 4]}, 'cdr_selection': '', 'date_from': '2026-01-01', 'date_to': '', 'filters': {'Operator': ['EE']},
     }]
+    # The entries of the editor choose their CDRs by Campaign: they carry no CDRs.
+    automatic = normalize_definition({
+        'dashboards': [{'dashboard_id': 'd1', 'auto_cdrs': True, 'datasets': {'data': [3]}, 'cdr_selection': 'newest',
+                        'filters': {'Campaign': ['@latest-2-campaigns']}}],
+        'scoring': [{**SCORING_ENTRY, 'auto_cdrs': True, 'campaigns': ['@latest-campaign'], 'dataset_ids': [1]}],
+        'network_insights': [{'auto_cdrs': True, 'selection': {'datasets': {'data': [1]}, 'campaigns': ['2026-Q2']}}],
+    })
+    assert (automatic['dashboards'][0]['datasets'], automatic['dashboards'][0]['cdr_selection']) == ({}, '')
+    assert automatic['dashboards'][0]['filters'] == {'Campaign': ['@latest-2-campaigns']}
+    assert (automatic['scoring'][0]['dataset_ids'], automatic['scoring'][0]['campaigns']) == ([], ['@latest-campaign'])
+    assert automatic['network_insights'][0]['selection']['datasets'] == {}
+    assert automatic['network_insights'][0]['selection']['campaigns'] == ['2026-Q2']
     scoring = definition['scoring'][0]
     scenario = scoring['report']['scenarios'][0]
     assert (scoring['nr_mode'], scenario['aggregation_levels'], scenario['context_filters'], scenario['main_cities']) == (
@@ -248,7 +261,7 @@ def test_reporting_job_runs_emails_and_travels_with_exports(client, monkeypatch,
         assert [part.get_filename() for part in message.iter_attachments()] == [run['artifacts'][0]['file_name']]
         assert client.get(f'/api/reporting/runs/{run_id}/download').status_code == 200
         state = client.get('/api/reporting/state').json()
-        assert state['tasks'][0]['last_run']['id'] == run_id
+        assert next(item for item in state['tasks'] if item['id'] == task['id'])['last_run']['id'] == run_id
         # Duplicates are disabled copies.
         copy = client.post(f"/api/reporting/tasks/{task['id']}/duplicate").json()['task']
         assert copy['name'] == 'Weekly check (copy)' and not copy['enabled'] and copy['next_run_at'] is None
@@ -261,21 +274,23 @@ def test_reporting_job_runs_emails_and_travels_with_exports(client, monkeypatch,
         wait_for_run(client, due[0])
         # Reporting Jobs travel with workspace packages.
         document = json.loads(report_tasks.export_tasks_document(core.repository))
-        # The starter Reporting Job of every workspace travels too.
-        assert {item['name'] for item in document['reporting_jobs']} == {'Weekly check', 'Weekly check (copy)', STARTER_JOB}
-        assert core._restore_workspace_reporting_jobs(core.active_workspace, json.dumps(document).encode(), 'super') == 3
-        assert len(client.get('/api/reporting/state').json()['tasks']) == 3
+        # The starter Reporting Jobs of every workspace travel too.
+        assert {item['name'] for item in document['reporting_jobs']} == {'Weekly check', 'Weekly check (copy)', *STARTER_JOBS}
+        assert core._restore_workspace_reporting_jobs(core.active_workspace, json.dumps(document).encode(), 'super') == 2 + len(STARTER_JOBS)
+        assert len(client.get('/api/reporting/state').json()['tasks']) == 2 + len(STARTER_JOBS)
         assert client.delete(f"/api/reporting/tasks/{copy['id']}").status_code == 200
     finally:
         report_tasks.ARTIFACT_PROVIDERS.pop('fake', None)
 
 
-def test_scoring_entries_can_use_every_complete_set_of_cdrs_at_each_run(client, monkeypatch):
+def test_scoring_entries_choose_the_cdrs_of_their_campaigns_at_each_run(client, monkeypatch):
     definition = normalize_definition({'scoring': [
         {**SCORING_ENTRY, 'cdr_selection': 'all_complete'}, SCORING_ENTRY, {**SCORING_ENTRY, 'cdr_selection': 'other'}]})
     assert [entry['cdr_selection'] for entry in definition['scoring']] == ['all_complete', 'newest', 'newest']
     calls = []
-    monkeypatch.setattr(core, 'select_all_complete_cdrs', lambda repository, nr_mode: calls.append(nr_mode) or [11, 12, 13])
+    # Each campaign with Data, Voice and Speech CDRs is scored; the CDRs are chosen when the job runs.
+    monkeypatch.setattr(report_tasks, 'complete_campaign_cdrs',
+                        lambda repository, nr_mode, campaigns: calls.append((nr_mode, list(campaigns))) or ([11, 12, 13], []))
 
     def build(repository, base, report, username):
         calls.append(base['dataset_ids'])
@@ -283,14 +298,21 @@ def test_scoring_entries_can_use_every_complete_set_of_cdrs_at_each_run(client, 
 
     monkeypatch.setattr(core, 'build_scoring_report_document', build)
     login(client)
+    # A job saved with every complete set of CDRs scores every complete campaign.
     payload = {'name': 'Every complete set', 'schedule': {'mode': 'manual'},
                'definition': {'scoring': [{**SCORING_ENTRY, 'cdr_selection': 'all_complete'}]}}
     created = client.post('/api/reporting/tasks', json=payload)
     assert created.status_code == 200, created.text
-    assert created.json()['task']['definition']['scoring'][0]['cdr_selection'] == 'all_complete'
     run = wait_for_run(client, client.post(f"/api/reporting/tasks/{created.json()['task']['id']}/run").json()['run_id'])
-    assert calls == ['NSA', [11, 12, 13]], run
-    # The editor shows the CDRs each automatic choice selects now, per NR Mode.
+    assert calls == [('NSA', []), [11, 12, 13]], run
+    # The editor opens such jobs with the campaigns of their former choice: every campaign, or the newest one.
+    newest = client.post('/api/reporting/tasks', json={**payload, 'name': 'Newest set', 'definition': {'scoring': [SCORING_ENTRY]}})
+    tasks = {task['name']: task for task in client.get('/api/reporting/state').json()['tasks']}
+    assert tasks['Every complete set']['definition']['scoring'][0] | {'report': None} == tasks['Every complete set']['definition']['scoring'][0] | {
+        'auto_cdrs': True, 'campaigns': [], 'dataset_ids': [], 'report': None}
+    assert tasks['Newest set']['definition']['scoring'][0]['campaigns'] == ['@latest-campaign']
+    assert newest.status_code == 200
+    # The CDR Analysis artifact keeps showing the CDRs each automatic choice selects now, per NR Mode.
     def every_complete_set(repository, nr_mode):
         if nr_mode == 'SA':
             raise ValueError('There is no complete set of Data, Voice and Speech CDRs in SA NR Mode.')
@@ -301,11 +323,12 @@ def test_scoring_entries_can_use_every_complete_set_of_cdrs_at_each_run(client, 
     assert preview == {'NSA': {'newest': [], 'all_complete': [11, 12, 13]}, 'SA': {'newest': [], 'all_complete': []}}
 
 
-def test_cdr_analysis_uses_the_automatic_choice_in_each_nr_mode(client, monkeypatch):
-    def every_complete_set(repository, nr_mode):
-        if nr_mode == 'SA':
-            raise ValueError('There is no complete set of Data, Voice and Speech CDRs in SA NR Mode.')
-        return [21, 22, 23]
+def test_cdr_analysis_chooses_its_cdrs_by_nr_mode_and_campaigns(client, monkeypatch):
+    asked = []
+
+    def chosen_cdrs(repository, nr_mode, campaigns=None, kinds=None):
+        asked.append((nr_mode, list(campaigns or [])))
+        return {'data': [21], 'voice': [22], 'speech': [23]} if nr_mode == 'NSA' else {'data': [31], 'voice': [], 'speech': []}
 
     used = []
 
@@ -314,14 +337,19 @@ def test_cdr_analysis_uses_the_automatic_choice_in_each_nr_mode(client, monkeypa
         Path(destination).write_bytes(b'pptx')
         return destination, [], []
 
-    monkeypatch.setattr(core, 'select_all_complete_cdrs', every_complete_set)
+    monkeypatch.setattr(report_tasks, 'resolve_cdrs', chosen_cdrs)
     monkeypatch.setattr(core, 'write_dataset_summary', write_summary)
     login(client)
-    created = client.post('/api/reporting/tasks', json={'name': 'CDR Analysis complete sets', 'schedule': {'mode': 'manual'},
-                                                         'definition': {'dataset_analysis': {'enabled': True, 'cdr_selection': 'all_complete'}}})
-    assert created.status_code == 200, created.text
-    run = wait_for_run(client, client.post(f"/api/reporting/tasks/{created.json()['task']['id']}/run").json()['run_id'])
-    assert used == [[21, 22, 23]], run
+    # A job saved with every complete set of CDRs chooses every campaign of NSA; a new one its NR Mode and Campaigns.
+    for definition in ({'enabled': True, 'cdr_selection': 'all_complete'},
+                       {'enabled': True, 'auto_cdrs': True, 'nr_mode': 'SA', 'campaigns': ['@latest-campaign']}):
+        created = client.post('/api/reporting/tasks', json={'name': f"CDR Analysis {len(used)}", 'schedule': {'mode': 'manual'},
+                                                             'definition': {'dataset_analysis': definition}})
+        assert created.status_code == 200, created.text
+        run = wait_for_run(client, client.post(f"/api/reporting/tasks/{created.json()['task']['id']}/run").json()['run_id'])
+        assert run['status'] in {'completed', 'partial'}, run
+    assert ('NSA', []) in asked and ('SA', ['@latest-campaign']) in asked
+    assert used == [[21, 22, 23], [31]]
 
 
 def test_imported_reporting_jobs_keep_an_owner_that_exists_here(client):
@@ -348,7 +376,8 @@ def test_imported_reporting_jobs_keep_an_owner_that_exists_here(client):
     assert core._restore_workspace_reporting_jobs(core.active_workspace, json.dumps(document).encode(), 'super') == 3
 
     owners = {task['name']: task['created_by'] for task in report_tasks.list_tasks(core.repository)}
-    assert owners == {'Owned by editor': 'editor', 'Owner from elsewhere': 'super', 'Older export': 'super', STARTER_JOB: 'system'}
+    assert owners == {'Owned by editor': 'editor', 'Owner from elsewhere': 'super', 'Older export': 'super',
+                      **{name: 'system' for name in STARTER_JOBS}}
     exported = json.loads(report_tasks.export_tasks_document(core.repository))
     assert {item['name']: item['created_by'] for item in exported['reporting_jobs']} == owners
 

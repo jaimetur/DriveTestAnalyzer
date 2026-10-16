@@ -375,3 +375,10 @@ body:has(dialog.ni-expand-dialog[open]){overflow:hidden}
 .ni-measure-label{fill:#1e1b4b;font:800 14px/1 "IBM Plex Sans",system-ui,sans-serif;paint-order:stroke;stroke:#fff;stroke-width:4px;stroke-linejoin:round}
 .network-insights .ni-chart-card canvas.is-panning{cursor:grabbing}
 .network-insights .ni-chart-card canvas.is-selecting{cursor:crosshair}
+/* The CDRs used: chosen from the NR Mode and Campaigns, listed read-only below the filters. */
+.ni-filter-note{margin:-.2rem 0 .6rem;font-size:.76rem}
+.network-insights .ni-campaign-filter{color:var(--ni-dark);font-weight:800}
+.ni-auto-cdrs{display:grid;gap:10px;margin-top:16px;padding:14px 16px;border:1px solid var(--ni-border);border-radius:12px;background:var(--ni-soft)}
+.ni-auto-cdrs-title{margin:0;font-size:.85rem;color:var(--ni-dark)}
+.ni-auto-cdrs-title span{color:#5a5a9e;font-size:.76rem;font-weight:600}
+.ni-auto-cdrs .auto-cdr{border-color:var(--ni-border)}

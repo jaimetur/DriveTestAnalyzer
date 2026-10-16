@@ -14,11 +14,15 @@ New deployments and new workspaces, and existing workspaces once, receive the co
 - ``assets/query-builder-queries/*.json``: saved Query Builder queries (``name``, ``description`` and
   ``query_sql`` on the ``selected_data``, ``selected_voice`` and ``selected_speech`` views);
 - ``assets/reporting-jobs/*.json``: Reporting Jobs, which name their Dashboards (``dashboard``: ``name`` and
-  ``template_technology``) and their Scoring report configuration (``report_configuration``).
+  ``template_technology``) and carry the report of each Scoring entry (``report``) or name a shipped Scoring report
+  configuration (``report_configuration``); their CDR Analysis, Network Insights and module artifacts are kept as
+  they are.
 
 The Vendor Maps of a new workspace come from ``assets/labels-vendors/default-vendor-maps.json`` (see ``repository``);
 the default Campaign Maps from ``assets/labels-campaigns/default-campaign-map.json`` (see ``column_names``).
-The shipped content names no Operator or Vendor, so it fits any market.
+The base content names no Operator or Vendor, so it fits any market; the Reporting Jobs, the NetCheck CDR Report
+(Main Cities) Dashboards and their Report Templates are those of the UK workspace (UK cities, operators and GAP
+references).
 """
 from __future__ import annotations
 
@@ -192,12 +196,18 @@ def _seed_reporting_jobs(repository: Any, username: str) -> int:
         definition['dashboards'] = entries
         scoring = []
         for entry in definition.get('scoring') or []:
+            if isinstance(entry.get('report'), dict) and entry['report'].get('scenarios'):
+                # The report of the entry itself.
+                scoring.append({key: value for key, value in entry.items() if key != 'report_configuration'})
+                continue
             configuration = configurations.get(str(entry.get('report_configuration') or '').casefold())
             if configuration:
                 scoring.append({**{key: value for key, value in entry.items() if key != 'report_configuration'},
                                 'report': {**configuration, 'name': entry['report_configuration']}})
         definition['scoring'] = scoring
-        if not (entries or scoring):
+        modules = definition.get('modules') if isinstance(definition.get('modules'), dict) else {}
+        if not (entries or scoring or (definition.get('dataset_analysis') or {}).get('enabled') or definition.get('network_insights')
+                or any(isinstance(config, dict) and config.get('enabled') for config in modules.values())):
             continue
         report_tasks.save_task(repository, None, {**item, 'definition': definition}, username,
                                parse_recipients=lambda value: [str(address) for address in value or []],

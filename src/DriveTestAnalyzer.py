@@ -114,11 +114,14 @@ from src.modules.saved_filters import (
     use_newer_cdrs,
     validate_complete_scoring_cdr_selection,
 )
+from src.modules.cdr_facets import fill_missing_facets
 from src.modules.scoring_selection import (
     SCORING_SELECTION_STATE_KEY,
     load_scoring_selection,
     normalize_scoring_selection,
     save_scoring_selection,
+    scoring_auto_cdrs,
+    expand_scoring_context_filters,
 )
 from src.modules.repository import APP_EVENT_ORIGIN, APP_EVENTS_LIMIT, Repository, SCORING_CONFIGURATION_STATE_KEY, USER_ROLES, WORKSPACE_REGISTRY_TABLE, workspace_write_lock
 from src.modules.runtime_config import IGNORE_EVENT_TIME_FILTERING_ENV, env_flag, ignore_event_time_filtering
@@ -4727,6 +4730,11 @@ def rebuild_dataset_artifacts(
     )
     if dataset_kind in CDR_DATASET_KINDS:
         _record_vendor_mapping_signature(task_repository, dataset_id, inventory_vendor_signature)
+        # The cascading filter values of the CDR, read once now so that no filter list waits for its rows.
+        try:
+            fill_missing_facets(task_repository, [dataset_id])
+        except Exception:  # noqa: BLE001 - read again when a filter list first needs them.
+            pass
     if dataset_kind in CDR_DATASET_KINDS and update_combined_reporting:
         # A Daily CDR replaced by a Final CDR, or a Final CDR that replaces Daily CDRs, changes the combined tables.
         try_sync_combined_cdr_inclusion(task_repository)
@@ -10896,6 +10904,7 @@ def render_admin_template(
         'dashboard_filter_selections': 'Dashboard filter selections',
         'dashboard_ppt_jobs': 'Dashboard PPT jobs',
         'cdr_catalogues': 'CDR Operator, Operator Vendor, Vendor, Region, Cluster, City, Campaign And Source Level Catalogues',
+        'cdr_filter_facets': 'CDR Filter Facets',
         'dataset_profiles': 'Dataset profiles',
         'dataset_source_columns': 'Dataset source columns',
         'datasets': 'Datasets',
@@ -12578,6 +12587,17 @@ def _place_tests_when_idle() -> None:
 
 
 register_idle_task(_place_tests_when_idle, MAP_AREA_FILL_IDLE_SECONDS)
+
+
+def _fill_cdr_facets_when_idle() -> None:
+    """Read the cascading filter values of the active workspace's CDRs that do not have them (see ``cdr_facets``)."""
+    if not active_workspace or APP_SHUTTING_DOWN.is_set():
+        return
+    fill_missing_facets(Repository(active_workspace.database_path, global_db_path=repository.global_db_path,
+                                   workspace_registry_db_path=workspace_registry.registry_path), max_seconds=20)
+
+
+register_idle_task(_fill_cdr_facets_when_idle, MAP_AREA_FILL_IDLE_SECONDS)
 
 
 def _global_background_tasks(user: SessionUser, accessible_ids: set[str]) -> list[dict[str, Any]]:
@@ -17648,10 +17668,27 @@ def scoring_selection_put(
     return {'selection': selection, 'warnings': warnings, 'accepted': accepted}
 
 
+class ScoringCdrSelectionRequest(BaseModel):
+    nr_mode: str = 'NSA'
+    context_filters: dict[str, Any] = Field(default_factory=dict)
+    # Choose the newest campaign with Data, Voice and Speech CDRs of the NR Mode (another NR Mode was chosen).
+    default_campaign: bool = False
+
+
+@app.post('/api/scoring/cdr-selection')
+def scoring_cdr_selection(payload: ScoringCdrSelectionRequest, user: SessionUser = Depends(current_user)) -> dict[str, Any]:
+    """The CDRs chosen for the NR Mode and Campaign filter, and the cascading values of the context filters."""
+    filters = {str(key): [str(value) for value in (values if isinstance(values, list) else [values]) if value is not None]
+               for key, values in (payload.context_filters or {}).items()}
+    return scoring_auto_cdrs(scoring_repository(user), payload.nr_mode, filters, default_campaign=payload.default_campaign)
+
+
 @app.post('/api/scoring/saved-filters/match')
 def saved_filters_match(payload: SavedFilterRequest, user: SessionUser = Depends(current_user)) -> dict[str, Any]:
     """The Saved Filter of the selection being made, if it was used before, and whether its result is up to date."""
     task_repository = scoring_repository(user)
+    # A Latest campaign choice is calculated with the campaigns it stands for now.
+    payload.context_filters = expand_scoring_context_filters(task_repository, payload.nr_mode, payload.context_filters)
     try:
         selected_ids = validate_complete_scoring_cdr_selection(
             task_repository, payload.dataset_ids, payload.nr_mode, context_filters=payload.context_filters,
@@ -17670,6 +17707,8 @@ def saved_filters_match(payload: SavedFilterRequest, user: SessionUser = Depends
 def saved_filters_save(payload: SavedFilterRequest, user: SessionUser = Depends(current_user)) -> dict[str, Any]:
     """Use a selection: its Saved Filter with its saved result, calculated in the background when needed."""
     task_repository = scoring_repository(user)
+    # A Latest campaign choice is calculated with the campaigns it stands for now.
+    payload.context_filters = expand_scoring_context_filters(task_repository, payload.nr_mode, payload.context_filters)
     try:
         selected_ids = validate_complete_scoring_cdr_selection(
             task_repository, payload.dataset_ids, payload.nr_mode, context_filters=payload.context_filters,

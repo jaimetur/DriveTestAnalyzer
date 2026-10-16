@@ -60,31 +60,24 @@ def test_scoring_selection_roundtrips_explicit_empty_filters_and_methodology():
     assert '.scoring-note[data-kind="warning"]' in template
 
 
-def test_scoring_calculation_picker_orders_cdr_aggregation_and_gap_reference_controls():
+def test_scoring_calculation_panel_orders_nr_mode_campaign_cdrs_filters_and_gap_reference():
     template = SCORING_TEMPLATE.read_text(encoding='utf-8')
     parser = _ScoringMarkupParser()
     parser.feed(template)
     elements = parser.elements
 
-    assert 'Select CDRs, filters, Split by &amp; GAP reference' in template
-    assert template.index('<label>NR Mode') < template.index('<strong>CDR datasets</strong>')
-    assert template.index('<strong>CDR datasets</strong>') < template.index('<strong>Split by</strong>')
+    assert 'Select NR Mode, Campaign, filters, Split by &amp; GAP reference' in template
+    # NR Mode and Campaign choose the CDRs, listed read-only below them; the CDR checklist is hidden.
+    assert template.index('data-nr-filter') < template.index('data-scoring-context-filter="Campaign"')
+    assert template.index('data-scoring-context-filter="Campaign"') < template.index('data-scoring-auto-cdrs')
+    assert template.index('data-scoring-auto-cdrs') < template.index('id="scoring-context-filters-title"')
+    assert template.index('id="scoring-context-filters-title"') < template.index('<strong>Split by</strong>')
     assert template.index('<strong>Split by</strong>') < template.index('id="scoring-gap-reference-title"')
-
-    buttons = [
-        (attrs, ancestors) for tag, attrs, ancestors in elements
-        if tag == 'button' and attrs.get('data-scoring-select-datasets')
-    ]
-    assert [attrs['data-scoring-select-datasets'] for attrs, _ancestors in buttons] == ['all', 'latest', 'latest-two']
-    for _attrs, ancestors in buttons:
-        assert any(
-            ancestor_attrs.get('class') == 'scoring-dataset-actions'
-            for _tag, ancestor_attrs in ancestors
-        )
-        assert any(
-            ancestor_attrs.get('class') == 'scoring-picker'
-            for _tag, ancestor_attrs in ancestors
-        )
+    assert 'data-scoring-select-datasets' not in template
+    dataset_list = next(attrs for tag, attrs, _ancestors in elements if 'data-dataset-list' in attrs)
+    assert 'hidden' in dataset_list
+    # The Campaign is not repeated among the context filters.
+    assert "{% for level in aggregation_levels if level != 'Campaign' %}" in template
 
     gap_select = next(
         (attrs, ancestors) for tag, attrs, ancestors in elements
@@ -96,79 +89,43 @@ def test_scoring_calculation_picker_orders_cdr_aggregation_and_gap_reference_con
     )
 
 
-def test_cdr_shortcuts_select_latest_two_or_all_visible_and_keep_gap_reference_in_selection():
+def test_server_chosen_cdrs_are_checked_unless_an_opened_saved_filter_keeps_its_own():
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
-    handler_start = script.index("  root.querySelectorAll('[data-scoring-select-datasets]').forEach(button => {")
-    handler_end = script.index("\n\n  datasetInputs.forEach(input => input.addEventListener", handler_start)
     functions = '\n'.join(_function_source(script, name) for name in (
-        'datasetNameDate', 'selectLatestDatasetForEachKind', 'calculationSelectionFromControls',
+        'applyAutoCdrResponse', 'calculationSelectionFromControls',
     ))
-    handlers = script[handler_start:handler_end]
-    program = r'''
+    program = r"""
+let autoCdrs = {options: null, incomplete: []};
+let pinnedCdrs = false;
 const selectedAreaSummary = () => ({enabled: false});
-const selectedIds = [];
-const datasetInputs = [];
-const datasetOptions = [];
-const datasetKindOrder = ['data', 'voice', 'speech'];
-const selectedButtons = new Map();
-let updateCount = 0, saveCount = 0;
-const root = {querySelectorAll: () => buttons};
-const buttons = ['all', 'latest', 'latest-two'].map(choice => ({
-  dataset: {scoringSelectDatasets: choice},
-  addEventListener: (_name, handler) => selectedButtons.set(choice, handler),
-}));
-const updateSelection = () => {updateCount += 1;};
-const scheduleSelectionSave = () => {saveCount += 1;};
-const selectedDatasetIds = () => datasetInputs
-  .filter(input => input.checked && !input.option.hidden).map(input => input.value);
-const selectedLevels = () => ['Operator', 'Region'];
-const selectedContextFilters = () => ({Region: [], City: [], Operator: [], Vendor: [], Campaign: []});
+const option = {hidden: false};
+const datasetInputs = [1, 2, 3].map(id => ({value: String(id), checked: id === 3, closest: () => option}));
+const selectedDatasetIds = () => datasetInputs.filter(input => input.checked).map(input => input.value);
+const selectedLevels = () => ['Operator'];
+const selectedContextFilters = () => ({Campaign: ['UK_Q2_2026']});
 const selectionFieldOrder = ['Region', 'City', 'Operator', 'Vendor', 'Campaign'];
-const nrFilter = {value: 'NSA'};
-const baselineInput = {value: 'GAP reference O2'};
+const nrFilter = {value: 'SA'};
+const baselineInput = {value: 'EE'};
 const scoringProfileSelect = {value: 'methodology-1'};
 const activeProfileId = 'methodology-1';
-function addDataset(kind, id, date, nrMode = 'NSA') {
-  const input = {value: String(id), checked: true};
-  const option = {hidden: nrMode !== 'NSA', dataset: {datasetKind: kind, uploadedAt: date, nrMode},
-    querySelector: () => input};
-  input.option = option;
-  datasetInputs.push(input); datasetOptions.push(option);
-  return input;
-}
-addDataset('data', 1, '2026-08-01T00:00:00Z');
-addDataset('data', 2, '2026-08-01T00:00:00Z');
-addDataset('data', 3, '2026-07-31T00:00:00Z');
-addDataset('data', 99, '2026-09-01T00:00:00Z', 'SA');
-addDataset('voice', 10, '');
-addDataset('voice', 11, '');
-addDataset('speech', 14, '');
-''' + functions + '\n' + handlers + r'''
-async function main() {
-  selectedButtons.get('latest-two')();
-  const latestTwo = [...selectedDatasetIds()].map(Number).sort((a, b) => a - b);
-  const savedCalculation = calculationSelectionFromControls();
-  selectedButtons.get('latest')();
-  const latestOne = [...selectedDatasetIds()].map(Number).sort((a, b) => a - b);
-  selectedButtons.get('all')();
-  const allVisible = [...selectedDatasetIds()].map(Number).sort((a, b) => a - b);
-  process.stdout.write(JSON.stringify({latestTwo, latestOne, allVisible, savedCalculation, updateCount, saveCount}));
-}
-main().catch(error => {console.error(error); process.exitCode = 1;});
-'''
+""" + functions + r"""
+applyAutoCdrResponse({dataset_ids: [1, 2], options: {Campaign: ['UK_Q2_2026']}, incomplete_campaigns: ['2026-Q3']});
+const automatic = {ids: selectedDatasetIds(), selection: calculationSelectionFromControls(), incomplete: autoCdrs.incomplete};
+pinnedCdrs = true;
+applyAutoCdrResponse({dataset_ids: [3], options: {}});
+process.stdout.write(JSON.stringify({automatic, pinned: {ids: selectedDatasetIds(), auto: calculationSelectionFromControls().auto_cdrs}}));
+"""
     result = _run_node_json(program, {})
-    assert result['latestTwo'] == [1, 2, 10, 11, 14]
-    assert result['latestOne'] == [2, 11, 14]
-    assert result['allVisible'] == [1, 2, 3, 10, 11, 14]
-    assert result['savedCalculation'] == {
-        'dataset_ids': [1, 2, 10, 11, 14], 'aggregation_levels': ['Operator', 'Region'],
-        'nr_mode': 'NSA', 'baseline_operator': 'GAP reference O2',
-        'scoring_profile_id': 'methodology-1',
-        'context_filters': {'Region': [], 'City': [], 'Operator': [], 'Vendor': [], 'Campaign': []},
+    assert result['automatic']['ids'] == ['1', '2']
+    assert result['automatic']['incomplete'] == ['2026-Q3']
+    assert result['automatic']['selection'] == {
+        'dataset_ids': [1, 2], 'auto_cdrs': True, 'aggregation_levels': ['Operator'], 'nr_mode': 'SA',
+        'baseline_operator': 'EE', 'scoring_profile_id': 'methodology-1',
+        'context_filters': {'Region': [], 'City': [], 'Operator': [], 'Vendor': [], 'Campaign': ['UK_Q2_2026']},
         'area_summary': {'enabled': False},
     }
-    assert result['updateCount'] == 3
-    assert result['saveCount'] == 3
+    # An opened Saved Filter keeps its own CDRs while its filter lists are refreshed.
+    assert result['pinned'] == {'ids': ['1', '2'], 'auto': False}
 
 
 def test_dataset_name_date_parses_supported_dates_and_rejects_invalid_calendar_values():
@@ -197,26 +154,16 @@ process.stdout.write(JSON.stringify({expected: values.map(([, timestamp]) => tim
     assert all(value is None for value in result['invalid'])
 
 
-def test_latest_dataset_shortcuts_prioritize_filename_dates_then_upload_and_id_and_skip_hidden_nr():
+def test_latest_dataset_fallback_prioritizes_filename_dates_then_upload_and_id_and_skips_hidden_nr():
+    # Used only when the server cannot choose the CDRs (the saved selection cannot be loaded).
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
-    handler_start = script.index("  root.querySelectorAll('[data-scoring-select-datasets]').forEach(button => {")
-    handler_end = script.index("\n\n  datasetInputs.forEach(input => input.addEventListener", handler_start)
     functions = '\n'.join(_function_source(script, name) for name in (
         'datasetNameDate', 'selectLatestDatasetForEachKind',
     ))
-    handlers = script[handler_start:handler_end]
     program = r'''
 const datasetInputs = [];
 const datasetOptions = [];
 const datasetKindOrder = ['data', 'voice', 'speech'];
-const selectedButtons = new Map();
-const buttons = ['latest', 'latest-two'].map(choice => ({
-  dataset: {scoringSelectDatasets: choice},
-  addEventListener: (_name, handler) => selectedButtons.set(choice, handler),
-}));
-const root = {querySelectorAll: () => buttons};
-const updateSelection = () => {};
-const scheduleSelectionSave = () => {};
 function addDataset(kind, id, name, uploadedAt, nrMode = 'NSA') {
   const input = {value: String(id), checked: false};
   const option = {hidden: nrMode !== 'NSA', dataset: {
@@ -237,12 +184,12 @@ addDataset('voice', 11, '', '2026-01-01T00:00:00Z');
 addDataset('voice', 12, '', '2025-12-31T00:00:00Z');
 addDataset('speech', 14, '', '');
 addDataset('speech', 99, 'speech_2026-12-01.csv', '2026-12-01T00:00:00Z', 'SA');
-''' + functions + '\n' + handlers + r'''
+''' + functions + r'''
 const selectedIds = () => datasetInputs
   .filter(input => input.checked && !input.option.hidden).map(input => Number(input.value)).sort((a, b) => a - b);
-selectedButtons.get('latest-two')();
+selectLatestDatasetForEachKind(2);
 const latestTwo = selectedIds();
-selectedButtons.get('latest')();
+selectLatestDatasetForEachKind(1);
 const latestOne = selectedIds();
 selectLatestDatasetForEachKind(3);
 const latestThree = selectedIds();
@@ -276,10 +223,11 @@ def test_job_selection_restoration_maps_job_fields_and_schedules_persistence():
         'restoreCalculationSelectionFromSavedFilter', 'scheduleSelectionSave',
     ))
     program = r'''
-let applied, persisted = false, timeoutDelay, timeoutCallback;
-let restoringSelection = false, selectionLoaded = true, selectionDirty = false;
+let applied, persisted = false, timeoutDelay, timeoutCallback, autoRefresh = null;
+let restoringSelection = false, selectionLoaded = true, selectionDirty = false, pinnedCdrs = false;
 let selectionSaveTimer = null;
 const applySavedCalculationSelection = selection => {applied = selection;};
+const scheduleAutoCdrRefresh = options => {autoRefresh = options;};
 const persistCalculationSelection = () => {persisted = true;};
 const window = {
   clearTimeout: () => {},
@@ -291,7 +239,7 @@ restoreCalculationSelectionFromSavedFilter({
   nr_mode: 'NR', baseline_operator: 'EE', scoring_profile_id: 'profile-7',
   context_filters: {Region: ['North'], City: [], Operator: ['EE'], Vendor: [], Campaign: ['Spring']},
 });
-const queued = {applied, selectionDirty, selectionSaveTimer, timeoutDelay};
+const queued = {applied, selectionDirty, selectionSaveTimer, timeoutDelay, pinnedCdrs, autoRefresh};
 timeoutCallback();
 process.stdout.write(JSON.stringify({queued, persisted}));
 '''
@@ -308,6 +256,9 @@ process.stdout.write(JSON.stringify({queued, persisted}));
     assert result['queued']['selectionDirty'] is True
     assert result['queued']['selectionSaveTimer'] == 42
     assert result['queued']['timeoutDelay'] == 250
+    # The panel shows the CDRs of the Saved Filter, and the lists of its filters follow for its NR Mode and filters.
+    assert result['queued']['pinnedCdrs'] is True
+    assert result['queued']['autoRefresh'] == {'delay': 0}
     assert result['persisted'] is True
 
 
@@ -315,9 +266,10 @@ def test_job_selection_restoration_uses_legacy_levels_field():
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
     restore = _function_source(script, 'restoreCalculationSelectionFromSavedFilter')
     program = r'''
-let applied;
+let applied, pinnedCdrs = false;
 const applySavedCalculationSelection = selection => {applied = selection;};
 const scheduleSelectionSave = () => {};
+const scheduleAutoCdrRefresh = () => {};
 ''' + restore + r'''
 restoreCalculationSelectionFromSavedFilter({dataset_ids: [5], levels: ['Operator', 'City']});
 process.stdout.write(JSON.stringify(applied));
@@ -333,7 +285,8 @@ def test_job_selection_restoration_clears_filters_on_actual_controls():
     apply_saved = _function_source(script, 'applySavedCalculationSelection')
     restore = _function_source(script, 'restoreCalculationSelectionFromSavedFilter')
     program = r'''
-let restoringSelection = false, message = '';
+let restoringSelection = false, message = '', pinnedCdrs = false;
+const scheduleAutoCdrRefresh = () => {};
 const areaSummaryEnabled = null, areaSummaryTimeSplit = null, areaSummaryBreakdown = null, areaSummaryCities = null;
 const syncAreaSummary = () => {}, refreshAreaSummaryCities = () => {};
 const selectionFieldOrder = ['Region', 'City'];
@@ -394,6 +347,7 @@ def test_context_filters_keep_all_values_and_remembered_values_when_the_cdrs_cha
     refresh = _function_source(script, 'refreshContextFilterOptions')
     program = r'''
 let selectedIds = ['sa'];
+let autoCdrs = {options: null};
 const datasetCatalogues = new Map([
   ['sa', {operators: ['VF', 'EE', 'VF-SA']}], ['nsa', {operators: ['VF', 'EE', 'VF-VoNR']}],
 ]);
@@ -405,6 +359,9 @@ const scoringVendorName = value => value;
 const mainCityIdentities = new Set();
 const decorateOperatorOptions = () => {};
 const refreshAreaSummaryCities = () => {};
+const campaignPresetLabels = {};
+const isCampaignPreset = () => false;
+const chosenCampaignPreset = () => '';
 const document = {createElement: () => ({value: '', textContent: '', selected: false, disabled: false, dataset: {}, style: {}})};
 const Event = class {constructor(type) {this.type = type;}};
 const select = {

@@ -296,7 +296,9 @@ def test_network_insights_page_and_analysis(client, tmp_path) -> None:
 
     empty = client.post('/api/network-insights/analysis', json={'datasets': {'data': ids}, 'operators': ['Nobody']})
     assert empty.status_code == 400
-    assert client.post('/api/network-insights/analysis', json={'datasets': {}}).status_code == 400
+    # Without CDRs of its own, an analysis uses the CDRs of its NR Mode and Campaigns; Campaigns no CDR holds choose none.
+    assert client.post('/api/network-insights/analysis', json={'datasets': {}}).status_code == 200
+    assert client.post('/api/network-insights/analysis', json={'datasets': {}, 'campaigns': ['2030-Q1']}).status_code == 400
 
 
 def test_network_deployment_counts_inventory_sites(client, tmp_path) -> None:

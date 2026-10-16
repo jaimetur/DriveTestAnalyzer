@@ -52,6 +52,19 @@
   .scoring-hierarchy-cancel { border: 1px solid rgba(11,122,117,.35); background: #fff; color: #0b7a75; }
   .scoring-levels-shortcut svg { flex: 0 0 auto; width: 1rem; height: 1rem; margin-right: .3rem; }
   .scoring-picker-note { margin: .5rem .1rem 0; color: var(--muted); font-size: .69rem; }
+  /* NR Mode and Campaign choose the CDRs, listed read-only below them by type. */
+  .scoring-scope-row { display: grid; grid-template-columns: minmax(8rem, 11rem) minmax(0, 22rem); gap: .6rem 1rem; align-items: end; }
+  .scoring-scope-control { display: grid; gap: .3rem; color: #245b43; font-size: .82rem; font-weight: 750; }
+  .scoring-auto-cdrs { margin-top: .75rem; padding: .7rem .75rem; border: 1px solid #c0ddce; border-radius: 12px; background: #f0f8f3; }
+  .scoring-auto-cdrs-head { display: flex; align-items: center; flex-wrap: wrap; gap: .45rem; margin-bottom: .5rem; }
+  .scoring-auto-cdrs-head strong { color: #245b43; font-size: .82rem; }
+  .scoring-auto-cdrs-source { padding: .1rem .5rem; border-radius: 999px; background: #d9efe3; color: #245b43; font-size: .68rem; font-weight: 800; }
+  .scoring-auto-cdrs-source[data-source="saved"] { background: #eaf0fa; color: #274a77; }
+  .scoring-auto-cdrs-reset { min-height: 1.6rem; margin-left: auto; padding: .15rem .6rem; border: 1px solid #8ab7b0; border-radius: 999px; background: #fff; color: #174f49; font-size: .7rem; font-weight: 800; }
+  .scoring-auto-cdrs .auto-cdr { border-color: #cfe3d8; }
+  .scoring-auto-cdrs-warning { margin: .45rem 0 0; color: #795b20; font-size: .72rem; font-weight: 700; }
+  .scoring-dataset-groups[hidden] { display: none; }
+  @media(max-width:760px) { .scoring-scope-row { grid-template-columns: minmax(0, 1fr); } }
   .scoring-dataset-list { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,18rem),1fr)); gap: .45rem; max-height: 15rem; overflow: auto; padding: .1rem .15rem .1rem 0; }
   .scoring-dataset-groups { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: .6rem; }
   .scoring-dataset-group { min-width: 0; padding: .65rem; border: 1px solid rgba(25,42,53,.1); border-radius: 12px; background: rgba(255,255,255,.42); }
@@ -601,44 +614,51 @@
 
   <article class="panel scoring-controls" aria-labelledby="scoring-run-title">
     <div class="section-head tight-head">
-      <div><p class="eyebrow">Scoring Calculation</p><h3 id="scoring-run-title">Select CDRs, filters, Split by &amp; GAP reference</h3></div>
-      <div class="scoring-controls-meta"><span class="scoring-hero-badge"><span aria-hidden="true">◉</span> CDR benchmark workspace</span><span class="pill" data-selected-count>0 CDRs selected</span></div>
+      <div><p class="eyebrow">Scoring Calculation</p><h3 id="scoring-run-title">Select NR Mode, Campaign, filters, Split by &amp; GAP reference</h3></div>
+      <div class="scoring-controls-meta"><span class="scoring-hero-badge"><span aria-hidden="true">◉</span> CDR benchmark workspace</span><span class="pill" data-selected-count>0 CDRs used</span></div>
     </div>
-    <div class="scoring-filter-grid scoring-dataset-filter-grid">
-      <div class="scoring-nr-row">
-        <label>NR Mode
-          <select data-nr-filter>
+    <div class="scoring-picker scoring-scope-picker">
+      <div class="scoring-picker-head"><strong>NR Mode &amp; Campaign</strong><span>The CDRs are chosen from them</span></div>
+      <div class="scoring-scope-row">
+        <label class="scoring-scope-control">NR Mode
+          <select data-nr-filter aria-label="NR Mode">
             {% for mode in scoring_datasets | map(attribute='nr_mode') | reject('equalto', none) | reject('equalto', '') | unique | sort %}
             <option value="{{ mode }}" {% if mode == 'NSA' %}selected{% endif %}>{{ mode }}</option>
             {% endfor %}
           </select>
         </label>
+        <label class="scoring-scope-control scoring-scope-campaign">Campaign
+          <select multiple size="1" data-scoring-context-filter="Campaign" data-multiselect-auto-close="1000" data-multiselect-empty-label="All complete campaigns" aria-label="Filter by Campaign">
+            <option value="" disabled>No values</option>
+          </select>
+        </label>
       </div>
-      <div class="scoring-picker">
-        <div class="scoring-picker-head"><strong>CDR datasets</strong><span data-visible-count>{{ scoring_datasets | length }} available</span></div>
-        <div class="scoring-dataset-actions" aria-label="CDR selection shortcuts">
-          <button type="button" data-scoring-select-datasets="all"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="2" y="2" width="16" height="16" rx="3"/><path d="m5 10 3 3 7-7"/></svg><span>Select all CDRs</span></button>
-          <button type="button" data-scoring-select-datasets="latest"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 2h8l4 4v12H4zM12 2v4h4"/><circle cx="10" cy="11" r="3"/><path d="M10 9v2l1.5 1"/></svg><span>Select latest of each type</span></button>
-          <button type="button" data-scoring-select-datasets="latest-two"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 5H1v14h12v-2M5 1h9l4 4v12H5zM14 1v4h4M9 9c0-2 4-2 4 0 0 1-1 2-4 4h4"/></svg><span>Select latest two of each type</span></button>
+      <section class="scoring-auto-cdrs" data-scoring-auto-cdrs aria-labelledby="scoring-auto-cdrs-title" aria-live="polite">
+        <div class="scoring-auto-cdrs-head">
+          <strong id="scoring-auto-cdrs-title">CDRs used</strong>
+          <span class="scoring-auto-cdrs-source" data-auto-cdrs-source>Chosen automatically</span>
+          <button type="button" class="scoring-auto-cdrs-reset" data-auto-cdrs-reset hidden title="Choose the CDRs again from the NR Mode and Campaign">Use automatic CDRs</button>
         </div>
-        <div class="scoring-dataset-groups" data-dataset-list>
-          {% for kind, kind_label in [('data', 'Data'), ('voice', 'Voice'), ('speech', 'Speech')] %}
-          {% set kind_datasets = scoring_datasets | selectattr('dataset_kind', 'equalto', kind) | list %}
-          <section class="scoring-dataset-group" data-dataset-group="{{ kind }}">
-            <div class="scoring-dataset-group-head"><strong>{{ kind_label }}</strong><span data-kind-count="{{ kind }}">{{ kind_datasets | length }} available</span></div>
-            <div class="scoring-dataset-list" data-kind-list="{{ kind }}">
-              {% for dataset in kind_datasets %}
-              <label class="scoring-dataset-option" data-dataset-option data-dataset-kind="{{ dataset.dataset_kind }}" data-cdr-stage="{{ dataset.cdr_stage or 'final' }}" data-dataset-name="{{ dataset.original_name }}" data-nr-mode="{{ dataset.nr_mode or '' }}" data-uploaded-at="{{ dataset.uploaded_at or dataset.created_at or '' }}" data-catalogue="{{ dataset.catalogue | default({}, true) | tojson | forceescape }}">
-                <input type="checkbox" value="{{ dataset.id }}" data-dataset-id>
-                <span class="scoring-dataset-copy"><strong title="{{ dataset.original_name }}">{{ dataset.original_name }}</strong><small>{% if dataset.cdr_stage in ('weekly', 'daily') %}<span class="cdr-stage-badge" data-cdr-stage="{{ dataset.cdr_stage }}">{{ dataset.cdr_stage | title }}</span> {% endif %}{{ kind_label }}{% if dataset.campaign %} · {{ dataset.campaign | campaign_label }}{% endif %}{% if dataset.nr_mode %} · {{ dataset.nr_mode }}{% endif %}</small></span>
-              </label>
-              {% endfor %}
-              <p class="scoring-empty" data-kind-empty hidden>No ready {{ kind_label }} CDR datasets are available for this NR Mode.</p>
-            </div>
-          </section>
-          {% endfor %}
-        </div>
-        <p class="scoring-picker-note">The latest CDR for each type in the selected NR Mode is selected by default, using the date in its name when recognized, then upload date and ID. You can add older datasets if needed.</p>
+        <div class="scoring-auto-cdr-groups" data-auto-cdr-groups></div>
+        <p class="scoring-picker-note" data-auto-cdrs-note>The CDRs of the NR Mode and campaigns that the combined CDR tables include: the Final CDR of each campaign, else its newest Weekly or Daily CDRs, or the In Combined? choice of Workspace. Without a Campaign, every campaign with Data, Voice and Speech CDRs.</p>
+      </section>
+      {# The CDRs of the calculation, checked automatically from the NR Mode and Campaign (or those of an opened Saved Filter). #}
+      <div class="scoring-dataset-groups" data-dataset-list hidden>
+        {% for kind, kind_label in [('data', 'Data'), ('voice', 'Voice'), ('speech', 'Speech')] %}
+        {% set kind_datasets = scoring_datasets | selectattr('dataset_kind', 'equalto', kind) | list %}
+        <section class="scoring-dataset-group" data-dataset-group="{{ kind }}">
+          <span data-kind-count="{{ kind }}">{{ kind_datasets | length }} available</span>
+          <div class="scoring-dataset-list" data-kind-list="{{ kind }}">
+            {% for dataset in kind_datasets %}
+            <label class="scoring-dataset-option" data-dataset-option data-dataset-kind="{{ dataset.dataset_kind }}" data-cdr-stage="{{ dataset.cdr_stage or 'final' }}" data-dataset-name="{{ dataset.original_name }}" data-nr-mode="{{ dataset.nr_mode or '' }}" data-uploaded-at="{{ dataset.uploaded_at or dataset.created_at or '' }}" data-catalogue="{{ dataset.catalogue | default({}, true) | tojson | forceescape }}">
+              <input type="checkbox" value="{{ dataset.id }}" data-dataset-id>
+              <span class="scoring-dataset-copy"><strong>{{ dataset.original_name }}</strong></span>
+            </label>
+            {% endfor %}
+            <p class="scoring-empty" data-kind-empty hidden>No ready {{ kind_label }} CDR datasets are available for this NR Mode.</p>
+          </div>
+        </section>
+        {% endfor %}
       </div>
     </div>
     {% if scoring_incomplete_catalogue_datasets %}
@@ -650,14 +670,14 @@
     </div>
     {% endif %}
     <div class="scoring-picker" aria-labelledby="scoring-context-filters-title">
-      <div class="scoring-picker-head"><strong id="scoring-context-filters-title">Context filters</strong><span>From selected CDRs</span></div>
+      <div class="scoring-picker-head"><strong id="scoring-context-filters-title">Context filters</strong><span>Every CDR of the NR Mode · each filter lists what the others leave</span></div>
       <div class="scoring-area-filter-lock" role="status" data-scoring-area-filter-lock hidden>
         <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="4" y="9" width="12" height="9" rx="2"/><path d="M7 9V6a3 3 0 0 1 6 0v3"/></svg>
         <p><strong>The <span data-scoring-area-filter-lock-names>Region, Cluster and City filters are</span> disabled because Include National &amp; area summary is checked.</strong> The National &amp; area summary needs the scoring of the whole country to calculate the National scoring and each area, so the selection cannot be filtered by area.</p>
         <button type="button" data-scoring-area-filter-unlock>Uncheck the summary to filter by area</button>
       </div>
       <div class="scoring-context-filter-grid" data-scoring-context-filters>
-        {% for level in aggregation_levels %}{% for field in (['Operator_Vendor', 'Vendor_Operator', 'Vendor'] if level == 'Vendor' else [level]) %}
+        {% for level in aggregation_levels if level != 'Campaign' %}{% for field in (['Operator_Vendor', 'Vendor_Operator', 'Vendor'] if level == 'Vendor' else [level]) %}
         <label>{{ field }}
           <select multiple size="1" data-scoring-context-filter="{{ field }}"{% if field in ['Operator_Vendor', 'Vendor_Operator'] %} data-operator-vendor-pair="{{ field | lower }}"{% endif %} data-multiselect-auto-close="1000" data-multiselect-empty-label="All values" aria-label="Filter by {{ field }}">
             <option value="" disabled>No values</option>
@@ -665,7 +685,7 @@
         </label>
         {% endfor %}{% endfor %}
       </div>
-      <p class="scoring-context-filter-note">Values come from the selected CDR catalogues. Leaving a filter empty includes all values. Main Cities uses the workspace city list.</p>
+      <p class="scoring-context-filter-note">Values come from every CDR of the NR Mode, with the labels of the Operator and Vendor Maps; each filter lists only the values the other filters leave. Leaving a filter empty includes all values. Main Cities uses the workspace city list.</p>
     </div>
     <div class="scoring-picker">
       <div class="scoring-picker-head"><strong>Split by</strong></div>

@@ -17,10 +17,19 @@ def test_the_shipped_content_names_no_operator_or_vendor():
         ('nsa', 'NSA - NetCheck CDR Report'), ('sa', 'SA - NetCheck CDR Report'), ('nsa', 'NSA - RF Quality (RSRP & SINR)')}
     for path in templates:
         rows = list(csv.DictReader(io.StringIO(path.read_text(encoding='utf-8'))))
-        assert rows and not any(VENDOR_FILTER.search(row.get('Filters') or '') for row in rows), path.name
+        # No template filters an Operator, nor Vendors by their operator (3_Ericsson); the Tableau templates of the UK
+        # workspace chart some Vendors of their own.
+        assert rows and not re.search(r'Operator\s+(NOT\s+)?IN\s*\(', path.read_text(encoding='utf-8')), path.name
+        assert not any(re.search(r'\bVendor\s+(NOT\s+)?IN\s*\([^)]*_', row.get('Filters') or '', re.I) for row in rows), path.name
+        assert 'G_Level_4 NOT IN (London)' not in path.read_text(encoding='utf-8'), path.name
+        assert path.stem.startswith('Tableau') or not any(VENDOR_FILTER.search(row.get('Filters') or '') for row in rows), path.name
     dashboards = [json.loads(path.read_text(encoding='utf-8')) for path in (ASSETS / 'ppt-dashboards').glob('*.json')]
     assert {(item['name'], item['template_technology']) for item in dashboards} >= {
-        ('NetCheck CDR Report', 'nsa'), ('NetCheck CDR Report', 'sa'), ('RF Quality (RSRP & SINR)', 'nsa')}
+        ('NetCheck CDR Report', 'nsa'), ('NetCheck CDR Report', 'sa'), ('RF Quality (RSRP & SINR)', 'nsa'),
+        ('NetCheck CDR Report (Main Cities)', 'nsa'), ('NetCheck CDR Report (Main Cities)', 'sa'),
+        ('Tableau Dashboards', 'nsa'), ('Tableau Charts', 'nsa')}
+    # The (Main Cities) Dashboards use the Main Cities of each workspace.
+    assert all(item['filters']['City'] == ['@main-cities'] for item in dashboards if item['name'].endswith('(Main Cities)'))
     for item in dashboards:
         assert 'datasets' not in item and not any(
             field.replace(' ', '_').casefold() in {'operator', 'vendor', 'operator_vendor', 'vendor_operator'}
@@ -78,13 +87,29 @@ def test_the_other_starter_content_fits_any_market(client):
     queries = {row['name']: row for row in repository.list_query_builder_queries()}
     assert len(queries) >= 6 and all(json.loads(row['dataset_ids_json']) == [] for row in queries.values())
     assert all(re.search(r'\bselected_(data|voice|speech)\b', row['query_sql']) for row in queries.values())
-    # The weekly Reporting Job is disabled and uses the starter Dashboards and the National & Main Cities report.
-    job = next(task for task in report_tasks.list_tasks(repository) if task['name'] == 'Weekly NetCheck Report')
-    assert job['enabled'] is False and job['schedule']['mode'] == 'weekly'
+    # The Reporting Jobs of the UK workspace, with the starter Dashboards and their own Scoring reports.
+    jobs = {task['name']: task for task in report_tasks.list_tasks(repository)}
+    assert {'Weekly NetCheck Report (@latest campaings)', 'All Modules Report (@latest 2 campaings)',
+            'Scoring Report (@All Campaigns)'} <= set(jobs)
     dashboards = json.loads(repository.get_workspace_state(starter_content.DASHBOARDS_STATE_KEY))
-    assert sorted(dashboards[entry['dashboard_id']]['name'] for entry in job['definition']['dashboards']) == [
+    weekly = jobs['Weekly NetCheck Report (@latest campaings)']
+    # The weekly job is disabled until it is enabled in the workspace.
+    assert weekly['enabled'] is False and weekly['schedule']['mode'] == 'weekly'
+    assert sorted(dashboards[entry['dashboard_id']]['name'] for entry in weekly['definition']['dashboards']) == [
         'NetCheck CDR Report', 'NetCheck CDR Report', 'RF Quality (RSRP & SINR)']
-    assert [scenario['name'] for scenario in job['definition']['scoring'][0]['report']['scenarios']] == ['National', 'Main Cities']
+    assert all(entry['filters'] == {'Campaign': ['@latest-campaign']} for entry in weekly['definition']['dashboards'])
+    assert [scenario['name'] for scenario in weekly['definition']['scoring'][0]['report']['scenarios']] == ['National', 'Main Cities']
+    every = jobs['All Modules Report (@latest 2 campaings)']['definition']
+    assert sorted((dashboards[entry['dashboard_id']]['name'], dashboards[entry['dashboard_id']]['template_technology'])
+                  for entry in every['dashboards']) == [
+        ('NetCheck CDR Report', 'nsa'), ('NetCheck CDR Report', 'sa'), ('NetCheck CDR Report (Main Cities)', 'nsa'),
+        ('NetCheck CDR Report (Main Cities)', 'sa'), ('RF Quality (RSRP & SINR)', 'nsa')]
+    assert [entry['selection']['nr_mode'] for entry in every['network_insights']] == ['NSA', 'SA']
+    assert every['dataset_analysis']['enabled'] and every['dataset_analysis']['auto_cdrs']
+    assert every['modules']['non_qualified_calls']['enabled']
+    assert [scenario['name'] for scenario in every['scoring'][0]['report']['scenarios']] == ['National', 'London', 'Main Cities']
+    scoring = jobs['Scoring Report (@All Campaigns)']['definition']['scoring']
+    assert [(entry['nr_mode'], entry['campaigns']) for entry in scoring] == [('NSA', ['@all-campaigns']), ('SA', ['@all-campaigns'])]
 
 
 def test_new_workspaces_take_their_vendor_maps_from_the_assets(client):

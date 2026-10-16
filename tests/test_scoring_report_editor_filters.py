@@ -100,9 +100,8 @@ def test_the_selector_shows_the_configuration_whose_scenarios_are_shown():
 def test_reporting_artifacts_show_the_cdrs_of_their_automatic_choice_and_tabs_sit_on_their_panel():
     root = Path(__file__).resolve().parents[1]
     script = (root / 'src/web_interface/static/js/report_jobs.js').read_text(encoding='utf-8')
-    # Every automatic CDR choice shows the CDRs it selects now, checked in the locked list.
-    assert 'preview = preview || {primary: datasets.map((item) => item.id)};' in script
-    assert 'if (shown) box.checked = shown.has(Number(box.value));' in script
+    # Every artifact lists the CDRs its Campaigns choose now.
+    assert "const result = await api('/api/reporting/auto-cdrs', {method: 'POST', body: JSON.stringify({nr_mode: nrModeOf(), campaigns: value(), complete})});" in script
     css = (root / 'src/web_interface/static/css/report_jobs.css').read_text(encoding='utf-8')
     assert 'border-radius: 10px 10px 0 0;' in css and 'margin: .3rem 0 -1rem;' in css
     assert 'margin-bottom: -1px; padding: .62rem 1.15rem .6rem;' in css
@@ -110,14 +109,25 @@ def test_reporting_artifacts_show_the_cdrs_of_their_automatic_choice_and_tabs_si
     assert '.report-jobs :is(.rj-artifact-tabs ~ .rj-card, .rj-artifact-tabs ~ #rj-providers > .rj-card)[data-rj-module] { margin-top: 0;' in css
 
 
-def test_every_reporting_artifact_with_cdrs_offers_the_two_automatic_choices():
+def test_reporting_artifacts_choose_their_cdrs_by_campaign():
     script = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/report_jobs.js').read_text(encoding='utf-8')
     assert 'Every ready' not in script
-    # CDR Analysis (in each NR Mode), Network Insights and Scoring share the picker with both choices.
-    assert script.count('selected, NEWEST_COMPLETE_TEXT, allCompleteChoice(') == 2
-    assert "allCompleteChoice(dataset.cdr_selection === 'all_complete'), automaticPreview());" in script
-    # Dashboards keep their own CDR list with the same two choices.
-    assert "{selection: config.cdr_selection || '', preview: automaticPreview(nrMode.value)}" in script
+    # CDR Analysis chooses its CDRs from its NR Mode and Campaigns too: no CDR list is left.
+    assert 'function datasetPicker(' not in script and 'NEWEST_COMPLETE_TEXT' not in script
+    assert "const daCampaigns = campaignPicker(() => daNrMode.value, dataset.campaigns || [], {compact: true});" in script
+    assert "$('rj-da-scope').replaceChildren(field('NR Mode', daNrMode), daCampaigns.field);" in script
+    # Dashboards, Scoring and Network Insights choose their Campaigns (Latest campaign, Latest 2 campaigns or chosen ones)
+    # in one list right after NR Mode, with the CDRs they choose below that row.
+    assert "campaigns = name ? campaignPicker(() => nrMode.value, saved || [], {onChange: () => scheduleLoad()}) : null;" in script
+    assert "head.append(field('NR Mode', nrMode), campaignSlot, field('Dashboard', dashboard)" in script
+    assert "head.append(field('NR Mode', nrMode), campaigns.field, field('Name in the email', label)" in script
+    assert "head.append(field('NR Mode', nrMode), campaigns.field, field('Technology', technology)" in script
+    assert "picker = multiPicker('Campaigns', listed(), chosen, {exclusive: presets," in script
+    assert "const campaigns = campaignPicker(() => nrMode.value, entry.campaigns || [], {complete: true});" in script
+    assert "const campaigns = campaignPicker(() => nrMode.value, selection.campaigns || [], {compact: true});" in script
+    # CDR Analysis, the entries of Dashboards, Scoring and Network Insights, and the Dashboard whose filter values are loaded.
+    assert script.count('auto_cdrs: true') == 5
+    assert 'function datasetsByKind(' not in script
 
 
 @pytest.mark.skipif(not shutil.which('node'), reason='Node.js is required')

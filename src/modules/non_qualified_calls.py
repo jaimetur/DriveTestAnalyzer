@@ -48,7 +48,7 @@ from io import BytesIO
 from threading import Lock
 from typing import Any, Callable
 
-from src.modules.cdr_stage import CDR_STAGE_LABELS, dataset_cdr_stage
+from src.modules.cdr_stage import CDR_STAGE_LABELS, combined_inclusion, dataset_cdr_stage
 from src.modules.cell_identity import nr_cell_bits
 from src.modules.column_names import campaign_sort_key, column_identity
 from src.modules.value_maps import ValueMapper, field_kind
@@ -204,7 +204,7 @@ ANALYSIS_CENTER_V22_STATE_KEY = 'nq_analysis_center_v22'
 V22_FORMER_LABELS = (('implementation_proposal', 'Implementation Proposal'),)
 # Set once the tables and columns of this version exist, so the requests check the schema without writing.
 SCHEMA_STATE_KEY = 'nq_calls_schema'
-SCHEMA_VERSION = '2026-10-13.12'
+SCHEMA_VERSION = '2026-10-16.1'
 # Indexed call fields that the suggestion rule can read, with their labels.
 RULE_FIELDS = {
     'failure_classification': 'Failure Classification', 'failure_category': 'Failure Category',
@@ -347,7 +347,8 @@ CREATE TABLE IF NOT EXISTS {NQ_CALL_SOURCES_TABLE} (
     synced_at TEXT NOT NULL,
     stage_rank INTEGER NOT NULL DEFAULT 1,
     data_date TEXT NOT NULL DEFAULT '',
-    population_count INTEGER NOT NULL DEFAULT 0
+    population_count INTEGER NOT NULL DEFAULT 0,
+    combined_rank INTEGER NOT NULL DEFAULT -1
 );
 CREATE TABLE IF NOT EXISTS {NQ_CALL_POPULATION_TABLE} (
     dataset_id INTEGER NOT NULL,
@@ -591,7 +592,8 @@ def ensure_nq_tables(task_repository: Any) -> None:
             connection.execute(f"ALTER TABLE {NQ_ROOT_CATALOG_TABLE} ADD COLUMN category TEXT NOT NULL DEFAULT ''")
         sources = _columns_of(connection, NQ_CALL_SOURCES_TABLE)
         for column, definition in (('stage_rank', 'INTEGER NOT NULL DEFAULT 1'), ('data_date', "TEXT NOT NULL DEFAULT ''"),
-                                   ('population_count', 'INTEGER NOT NULL DEFAULT 0')):
+                                   ('population_count', 'INTEGER NOT NULL DEFAULT 0'),
+                                   ('combined_rank', 'INTEGER NOT NULL DEFAULT -1')):
             if sources and column not in sources:
                 connection.execute(f'ALTER TABLE {NQ_CALL_SOURCES_TABLE} ADD COLUMN {column} {definition}')
         latest = _columns_of(connection, NQ_CALL_LATEST_TABLE)
@@ -1694,7 +1696,7 @@ def _rebuild_versions(connection: Any, affected: set[str]) -> None:
         UPDATE {NQ_CALL_POPULATION_TABLE} SET is_latest = 1 WHERE rowid IN (
             SELECT rid FROM (
                 SELECT p.rowid AS rid, ROW_NUMBER() OVER (
-                    PARTITION BY p.call_key ORDER BY s.stage_rank DESC, s.data_date DESC, p.dataset_id DESC) AS rn
+                    PARTITION BY p.call_key ORDER BY s.combined_rank DESC, s.stage_rank DESC, s.data_date DESC, p.dataset_id DESC) AS rn
                 FROM {NQ_CALL_POPULATION_TABLE} p
                 JOIN {NQ_CALL_SOURCES_TABLE} s ON s.dataset_id = p.dataset_id
                 WHERE p.call_key IN (SELECT call_key FROM nq_affected_keys)
@@ -1729,6 +1731,28 @@ def _rebuild_versions(connection: Any, affected: set[str]) -> None:
     """)
 
 
+def _combined_ranks(task_repository: Any) -> dict[int, int]:
+    """How each CDR ranks among the versions of a call: the CDRs the combined tables include first (the Final CDR of
+    a campaign, else its newest Weekly or Daily CDRs, or the In Combined? choice of Workspace), then the Final, the
+    Weekly and the Daily CDRs."""
+    try:
+        inclusion = combined_inclusion(task_repository)
+    except Exception:  # noqa: BLE001 - the versions keep their order until the next indexing.
+        return {}
+    order = {'final': 2, 'weekly': 1, 'daily': 0}
+    return {int(dataset_id): (10 if item.get('included') else 0) + order.get(str(item.get('stage') or 'final'), 2)
+            for dataset_id, item in inclusion.items()}
+
+
+def _rank_changes(task_repository: Any, ranks: dict[int, int] | None = None) -> dict[int, int]:
+    """The indexed CDRs whose rank changed (another In Combined? choice, or a Final CDR that replaces them)."""
+    ranks = _combined_ranks(task_repository) if ranks is None else ranks
+    with task_repository.connection() as connection:
+        stored = {int(row[0]): int(row[1]) for row in connection.execute(
+            f'SELECT dataset_id, combined_rank FROM {NQ_CALL_SOURCES_TABLE}')}
+    return {dataset_id: ranks[dataset_id] for dataset_id, rank in stored.items() if dataset_id in ranks and ranks[dataset_id] != rank}
+
+
 def _index_changes(task_repository: Any, force: bool = False) -> tuple[list[str], str, dict[int, Any], list[int], list[Any]]:
     """The indexed CDR columns and their signature, the CDRs, the indexed CDRs now removed and the CDRs to index."""
     cdr_columns = indexed_cdr_columns(task_repository)
@@ -1756,6 +1780,7 @@ def sync_nq_calls(task_repository: Any, *, force: bool = False) -> dict[str, Any
         cdr_columns, signature, datasets, removed, changed = _index_changes(task_repository, force)
         migrating = str(task_repository.get_workspace_state(KEY_SCHEME_STATE_KEY) or '') != KEY_SCHEME
         moved = 0
+        ranks = _combined_ranks(task_repository)
         if removed or changed:
             # Read every changed CDR before taking the write transaction.
             with task_repository.connection() as connection:
@@ -1786,14 +1811,23 @@ def sync_nq_calls(task_repository: Any, *, force: bool = False) -> dict[str, Any
                                               row['file_name'])
                     connection.execute(
                         f'INSERT INTO {NQ_CALL_SOURCES_TABLE} (dataset_id, revision, call_count, synced_at, stage_rank, '
-                        'data_date, population_count) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                        'data_date, population_count, combined_rank) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
                         (dataset_id, _dataset_revision(row, signature), len({call[2] for call in content['calls']}), now_iso(),
-                         int(stage == 'final'), content['data_date'], len(content['population'])),
+                         int(stage == 'final'), content['data_date'], len(content['population']), ranks.get(dataset_id, -1)),
                     )
                     affected.update(entry[1] for entry in content['population'])
                 if old_rows:
                     moved = _move_follow_up(connection, old_rows, [call for content in fresh.values() for call in content['calls']])
                 _rebuild_versions(connection, affected)
+        # A CDR that the combined tables include or leave out now changes the version of its calls, without reading it.
+        reranked = _rank_changes(task_repository, ranks)
+        if reranked:
+            with task_repository.connection() as connection:
+                marks = ', '.join('?' for _ in reranked)
+                connection.executemany(f'UPDATE {NQ_CALL_SOURCES_TABLE} SET combined_rank = ? WHERE dataset_id = ?',
+                                       [(rank, dataset_id) for dataset_id, rank in reranked.items()])
+                _rebuild_versions(connection, {str(row[0]) for row in connection.execute(
+                    f'SELECT DISTINCT call_key FROM {NQ_CALL_POPULATION_TABLE} WHERE dataset_id IN ({marks})', list(reranked))})
         if migrating:
             task_repository.set_workspace_state(KEY_SCHEME_STATE_KEY, KEY_SCHEME)
             if moved and hasattr(task_repository, 'try_add_log'):
@@ -1857,13 +1891,14 @@ def start_nq_index(task_repository: Any, submit: Callable[..., Any], *, force: b
 def nq_index_status(task_repository: Any) -> dict[str, Any]:
     """The indexed calls and CDRs, when they were last indexed, the CDRs waiting to be indexed and the running job."""
     _columns, _signature, datasets, removed, changed = _index_changes(task_repository)
+    reranked = [dataset_id for dataset_id in _rank_changes(task_repository) if dataset_id not in {int(row['id']) for row in changed}]
     with task_repository.connection() as connection:
         total = connection.execute(f'SELECT COUNT(DISTINCT call_key) FROM {NQ_CALLS_TABLE}').fetchone()[0]
         synced_at = connection.execute(f'SELECT MAX(synced_at) FROM {NQ_CALL_SOURCES_TABLE}').fetchone()[0]
     job = nq_index_job(task_repository.db_path)
     running = bool(job and job['status'] in {'queued', 'processing'})
     return {'datasets': len(datasets), 'calls': int(total or 0), 'synced_at': synced_at or '',
-            'pending': len(removed) + len(changed), 'indexing': running, 'reindexing': running and bool(job['force']),
+            'pending': len(removed) + len(changed) + len(reranked), 'indexing': running, 'reindexing': running and bool(job['force']),
             'error': job['error'] if job and job['status'] == 'failed' else ''}
 
 
@@ -3041,7 +3076,8 @@ def _latest_sql(maps: dict[str, str], dataset_ids: list[int] | None = None) -> t
         FROM (
             SELECT n.*, COUNT(*) OVER (PARTITION BY n.call_key, n.dataset_id) AS nq_samples,
                    ROW_NUMBER() OVER (PARTITION BY n.call_key
-                                      ORDER BY s.stage_rank DESC, s.data_date DESC, n.dataset_id DESC, n.start_time, n.rowid) AS rn
+                                      ORDER BY s.combined_rank DESC, s.stage_rank DESC, s.data_date DESC, n.dataset_id DESC,
+                                               n.start_time, n.rowid) AS rn
             FROM {NQ_CALLS_TABLE} n JOIN {NQ_CALL_SOURCES_TABLE} s ON s.dataset_id = n.dataset_id
             {scope_sql}
         ) c
@@ -3054,7 +3090,8 @@ def _latest_sql(maps: dict[str, str], dataset_ids: list[int] | None = None) -> t
 def _latest_fingerprint(connection: Any, maps: dict[str, str]) -> str:
     """What the latest versions depend on: the indexed CDRs, their calls and the Operator and Vendor maps."""
     sources = [tuple(row) for row in connection.execute(
-        f'SELECT dataset_id, revision, stage_rank, data_date, synced_at FROM {NQ_CALL_SOURCES_TABLE} ORDER BY dataset_id')]
+        f'SELECT dataset_id, revision, stage_rank, data_date, synced_at, combined_rank FROM {NQ_CALL_SOURCES_TABLE} '
+        'ORDER BY dataset_id')]
     calls = tuple(connection.execute(f'SELECT COUNT(*), MAX(rowid) FROM {NQ_CALLS_TABLE}').fetchone())
     payload = json.dumps([INDEX_VERSION, sources, calls, maps], sort_keys=True, default=str)
     return hashlib.sha1(payload.encode()).hexdigest()
@@ -3661,6 +3698,10 @@ def filter_options(task_repository: Any) -> dict[str, list[str]]:
                 f"AND call_key IN (SELECT call_key FROM {NQ_CALLS_TABLE}) ORDER BY value COLLATE NOCASE "
                 f"LIMIT {MAX_COLUMN_FILTER_VALUES}", (key,))]
     values['assignee'] = [str(row['assignee']) for row in assignees]
+    # NR Mode, the first General Filter: with Campaign it says which CDRs the calls come from.
+    with task_repository.connection() as connection:
+        values['nr_mode'] = sorted({str(row[0]) for row in connection.execute(
+            f"SELECT DISTINCT nr_mode FROM {NQ_CALLS_TABLE} WHERE nr_mode <> ''")}, key=lambda value: (value != 'NSA', value))
     return values
 
 
@@ -3668,6 +3709,7 @@ def _filter_expressions(task_repository: Any, definitions: list[dict[str, Any]])
     """The SQL value, in the calls query, of every filter of the Filters panel listed with its values (CDRs and CDR
     Version aside): the indexed and follow-up fields, the fields of the analysis and the columns of the table."""
     expressions = {field: field for field in (*FIELD_FILTERS, *TRACKING_FILTERS)}
+    expressions['nr_mode'] = 'nr_mode'
     for definition in definitions:
         if definition['source'] in {'user', 'derived'} and (definition['type'] in {'list', 'yes_no'} or definition['key'] in VALUE_FILTER_FIELDS):
             expressions[f"field:{definition['key']}"] = field_sql(definition)
@@ -4188,7 +4230,8 @@ def nq_rates(task_repository: Any, filters: dict[str, Any]) -> dict[str, Any]:
         source = f"""
             SELECT service, campaign, operator, nr_mode, COUNT(*) AS total, SUM(is_nq) AS nq FROM (
                 SELECT p.service, p.campaign, p.operator, p.nr_mode, p.is_nq, ROW_NUMBER() OVER (
-                    PARTITION BY p.call_key ORDER BY s.stage_rank DESC, s.data_date DESC, p.dataset_id DESC) AS rn
+                    PARTITION BY p.call_key ORDER BY s.combined_rank DESC, s.stage_rank DESC, s.data_date DESC,
+                                                     p.dataset_id DESC) AS rn
                 FROM {NQ_CALL_POPULATION_TABLE} p JOIN {NQ_CALL_SOURCES_TABLE} s ON s.dataset_id = p.dataset_id
                 WHERE {' AND '.join(where)}
             ) WHERE rn = 1 GROUP BY service, campaign, operator, nr_mode"""
@@ -4299,7 +4342,7 @@ def _call_versions(connection: Any, call_key: str, spellings: dict[str, str] | N
         LEFT JOIN datasets d ON d.id = p.dataset_id
         LEFT JOIN dataset_profiles dp ON dp.dataset_id = p.dataset_id
         WHERE p.call_key = ?
-        ORDER BY s.stage_rank DESC, s.data_date DESC, p.dataset_id DESC
+        ORDER BY s.combined_rank DESC, s.stage_rank DESC, s.data_date DESC, p.dataset_id DESC
     """, (call_key,)).fetchall()
     return [{
         'dataset_id': int(row['dataset_id']), 'name': str(row['file_name'] or ''),
@@ -6824,8 +6867,9 @@ def install_non_qualified_calls_routes(core: Any) -> None:
             raise HTTPException(400, str(exc)) from exc
 
     # -- Reporting Jobs artifact ---------------------------------------------
+    # NR Mode first and Campaign after it, listing only the campaigns of the NR Modes chosen (campaign@nr_mode).
     report_filters = (
-        ('datasets', 'CDRs'), ('service', 'Service'), ('campaign', 'Campaign'), ('operator', 'Operator'),
+        ('nr_mode', 'NR Mode'), ('campaign', 'Campaign'), ('service', 'Service'), ('operator', 'Operator'),
         ('operator_vendor', 'Operator_Vendor'), ('vendor_operator', 'Vendor_Operator'), ('vendor', 'Vendor'),
         ('region', 'Region'), ('cluster', 'Cluster'), ('city', 'City'), ('result', 'Result'), ('failure_classification', 'Failure Classification'),
         ('status', 'Status'), ('status_mode', 'Status Set'), ('team', 'Team'), ('assignee', 'Assignee'), ('root_domain', 'Root Domain'),
@@ -6854,6 +6898,14 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         values['root_cause'] = [[UNASSIGNED, 'No cause'], *[item['name'] for item in taxonomy['causes']]]
         values['status_mode'] = [['auto', 'Automatic'], ['manual', 'By hand']]
         values['version'] = [[key, label] for key, label in VERSION_LABELS.items()]
+        # The campaigns of each NR Mode: the Campaign filter lists those of the NR Modes chosen.
+        with repository.connection() as connection:
+            pairs = connection.execute(
+                f"SELECT DISTINCT nr_mode, campaign FROM {NQ_CALLS_TABLE} WHERE campaign <> ''").fetchall()
+        by_mode: dict[str, set[str]] = {}
+        for nr_mode, campaign in pairs:
+            by_mode.setdefault(str(nr_mode or ''), set()).add(str(campaign))
+        values['campaign@nr_mode'] = {mode: sorted(campaigns, key=campaign_sort_key) for mode, campaigns in by_mode.items()}
         return values
 
     def summary_parts(repository, filters: dict[str, Any], username: str, granularity: str, include_suggestions: bool = True):

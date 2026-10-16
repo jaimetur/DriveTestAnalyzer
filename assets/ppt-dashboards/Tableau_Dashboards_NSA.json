@@ -1,0 +1,17 @@
+{
+  "name": "Tableau Dashboards",
+  "template": "Tableau Dashboards",
+  "template_technology": "nsa",
+  "technology": "nsa",
+  "scope": "single",
+  "vendor_comparison": "operator_vendor",
+  "custom_fields": [],
+  "hidden_filters": [],
+  "auto_cdrs": true,
+  "filters": {
+    "Campaign": [
+      "@latest-2-campaigns"
+    ]
+  },
+  "slide_comments": {}
+}

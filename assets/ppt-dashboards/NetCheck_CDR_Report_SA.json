@@ -4,7 +4,7 @@
   "template_technology": "sa",
   "technology": "sa",
   "scope": "single",
-  "filters": {},
+  "vendor_comparison": "operator_vendor",
   "custom_fields": [
     "Call_Family",
     "Test_Family",
@@ -12,5 +12,11 @@
     "RAT_Group"
   ],
   "hidden_filters": [],
+  "auto_cdrs": true,
+  "filters": {
+    "Campaign": [
+      "@latest-2-campaigns"
+    ]
+  },
   "slide_comments": {}
 }

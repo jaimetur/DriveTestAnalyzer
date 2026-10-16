@@ -5499,12 +5499,85 @@ function isCampaignSelect(select, field) {
 
 function labelCampaignOptions(select) {
   if (typeof globalThis.campaignLabel !== 'function') return;
-  const options = Array.from(select.options).filter((option) => option.value && option.parentElement === select);
+  // Choices such as Latest campaign (data-campaign-preset) keep their label and stay first.
+  const options = Array.from(select.options).filter((option) => option.value && option.parentElement === select
+    && option.dataset.campaignPreset !== 'true');
   options.forEach((option) => { option.textContent = globalThis.campaignLabel(option.value) || option.textContent; });
   if (typeof globalThis.campaignCompare !== 'function' || options.length < 2) return;
   const sorted = [...options].sort((left, right) => globalThis.campaignCompare(left.value, right.value));
   if (sorted.some((option, index) => option !== options[index])) sorted.forEach((option) => select.appendChild(option));
 }
+
+// The CDRs a module uses, by type (PPT Dashboards, Network Insights, Reporting): Data, Voice and Speech side by
+// side when there is room (one under the other when narrow), each CDR with its stage and campaigns. `cdrs` maps
+// each type to its CDRs ({id, name, stage, campaigns} or file names); `loading` keeps the CDRs shown, dimmed.
+function renderAutoCdrList(host, cdrs, {loading = false} = {}) {
+  if (!host) return;
+  host.classList.add('auto-cdrs');
+  host.setAttribute('aria-busy', loading ? 'true' : 'false');
+  if (loading && host.querySelector(':scope > .auto-cdr-grid')) {
+    host.classList.add('is-updating');
+    return;
+  }
+  host.classList.remove('is-updating');
+  const labels = {data: 'Data', voice: 'Voice', speech: 'Speech'};
+  const grid = document.createElement('div');
+  grid.className = 'auto-cdr-grid';
+  for (const [kind, label] of Object.entries(labels)) {
+    const rows = (Array.isArray(cdrs?.[kind]) ? cdrs[kind] : []).map((row) => (typeof row === 'object' && row ? row : {name: String(row)}));
+    const group = document.createElement('section');
+    group.className = 'auto-cdr-group';
+    group.dataset.kind = kind;
+    const head = document.createElement('div');
+    head.className = 'auto-cdr-group-head';
+    const badge = document.createElement('span');
+    badge.className = 'auto-cdr-kind';
+    badge.dataset.kind = kind;
+    badge.textContent = label;
+    const count = document.createElement('span');
+    count.className = 'auto-cdr-count';
+    count.textContent = cdrs && !loading ? `${rows.length} CDR${rows.length === 1 ? '' : 's'}` : '';
+    head.append(badge, count);
+    const list = document.createElement('div');
+    list.className = 'auto-cdr-list';
+    if (!rows.length) {
+      const empty = document.createElement('span');
+      empty.className = 'auto-cdr-empty';
+      empty.textContent = cdrs && !loading ? `No ${label} CDR` : 'Loading…';
+      list.append(empty);
+    }
+    for (const row of rows) {
+      const stage = String(row.stage || 'final').toLowerCase();
+      const item = document.createElement('div');
+      item.className = 'auto-cdr';
+      item.dataset.cdrStage = stage;
+      const name = document.createElement('strong');
+      name.className = 'auto-cdr-name';
+      name.textContent = String(row.name || (row.id ? `CDR ${row.id}` : ''));
+      name.title = name.textContent;
+      const meta = document.createElement('span');
+      meta.className = 'auto-cdr-meta';
+      const stageBadge = document.createElement('span');
+      stageBadge.className = 'auto-cdr-stage';
+      stageBadge.textContent = `${stage.charAt(0).toUpperCase()}${stage.slice(1)}`;
+      meta.append(stageBadge);
+      const campaigns = [...new Set((Array.isArray(row.campaigns) ? row.campaigns : []).map(String).filter(Boolean))];
+      if (campaigns.length) {
+        const campaign = document.createElement('span');
+        campaign.className = 'auto-cdr-campaign';
+        campaign.textContent = campaigns.join(', ');
+        meta.append(campaign);
+      }
+      item.append(name, meta);
+      list.append(item);
+    }
+    group.append(head, list);
+    grid.append(group);
+  }
+  const previous = host.querySelector(':scope > .auto-cdr-grid');
+  if (previous) previous.replaceWith(grid); else host.append(grid);
+}
+globalThis.renderAutoCdrList = renderAutoCdrList;
 
 function setupCustomMultiSelects() {
   document.querySelectorAll('select[multiple]:not([data-native-multiselect])').forEach((select) => {
@@ -5603,7 +5676,16 @@ function setupCustomMultiSelects() {
 
     const syncTrigger = () => {
       syncGroupActions();
-      const enabledOptions = Array.from(select.options).filter((option) => !option.disabled || (select.dataset.multiselectCountLocked === 'true' && option.selected));
+      // A choice that stands alone (Latest campaign, Main Cities) is shown by its name and is not counted among the values.
+      const isStandalone = (option) => option.dataset.campaignPreset === 'true' || option.dataset.standaloneChoice === 'true';
+      const standaloneChoice = Array.from(select.options).find((option) => isStandalone(option) && option.selected);
+      if (standaloneChoice) {
+        triggerLabel.textContent = standaloneChoice.textContent?.trim() || '';
+        trigger.setAttribute('aria-expanded', String(!menu.hidden));
+        return;
+      }
+      const enabledOptions = Array.from(select.options).filter((option) => !isStandalone(option)
+        && (!option.disabled || (select.dataset.multiselectCountLocked === 'true' && option.selected)));
       const selectedOptions = enabledOptions.filter((option) => option.selected).map((option) => option.textContent?.trim()).filter(Boolean);
       const totalEnabled = enabledOptions.length;
       if (totalEnabled === 0) {
@@ -5632,9 +5714,14 @@ function setupCustomMultiSelects() {
 
     const selectAllOrNone = () => {
       cancelAutoClose();
-      const options = Array.from(select.options).filter((option) => !option.disabled);
+      // Choices that stand alone (Latest campaign, Latest 2 campaigns) are not values: Select All checks every
+      // value and clears them, Select None clears everything.
+      const standalone = (option) => option.dataset.campaignPreset === 'true' || option.dataset.standaloneChoice === 'true';
+      const options = Array.from(select.options).filter((option) => !option.disabled && !standalone(option));
       // Toggle: select every value unless all are already selected, then none.
-      const shouldSelectAll = options.some((option) => !option.selected);
+      const shouldSelectAll = options.some((option) => !option.selected)
+        || Array.from(select.options).some((option) => standalone(option) && option.selected);
+      Array.from(select.options).filter(standalone).forEach((option) => { option.selected = false; });
       options.forEach((option) => {
         option.selected = shouldSelectAll;
       });
@@ -5650,7 +5737,8 @@ function setupCustomMultiSelects() {
       normalizeExportTargetSelection(select);
       Array.from(menu.querySelectorAll('input[type="checkbox"][data-option-value]')).forEach((checkbox) => {
         if (!checkbox.disabled) {
-          checkbox.checked = shouldSelectAll;
+          const option = Array.from(select.options).find((item) => item.value === checkbox.getAttribute('data-option-value'));
+          checkbox.checked = Boolean(option?.selected);
         }
       });
       dispatchNativeChange();
@@ -5837,7 +5925,8 @@ function setupCustomMultiSelects() {
     }
 
     document.addEventListener('click', (event) => {
-      if (!shell.contains(event.target)) {
+      // A click on a menu rebuilt while it was handled (its options changed) is not a click outside.
+      if (!shell.contains(event.target) && event.target?.isConnected !== false) {
         cancelAutoClose();
         menu.hidden = true;
         syncTrigger();
@@ -5846,12 +5935,33 @@ function setupCustomMultiSelects() {
 
     select.addEventListener('change', syncCheckboxes);
     const rebuildOnOptionUpdate = () => {
-      // Dynamic option lists need a new checkbox menu to remain in sync.
+      // Dynamic option lists need a new checkbox menu to remain in sync. An open menu stays open, with its
+      // search and scroll position, so the lists that follow each choice (cascading filters) do not close it.
+      const reopen = !menu.hidden && shell.isConnected ? {
+        query: search.value, scrollTop: menu.scrollTop,
+        focused: document.activeElement === search ? 'search'
+          : menu.contains(document.activeElement) ? document.activeElement.getAttribute?.('data-option-value') : null,
+      } : null;
       select.removeEventListener('multiselect:options-updated', rebuildOnOptionUpdate);
       shell.remove();
       select.classList.remove('multiselect-native');
       delete select.dataset.multiselectReady;
       setupCustomMultiSelects();
+      if (!reopen) return;
+      const nextShell = select.nextElementSibling;
+      const nextTrigger = nextShell?.classList.contains('multiselect-shell') ? nextShell.querySelector('.multiselect-trigger') : null;
+      const nextMenu = nextShell?.querySelector('.multiselect-menu');
+      if (!nextTrigger || !nextMenu || nextTrigger.disabled) return;
+      nextTrigger.click();
+      const nextSearch = nextMenu.querySelector('.multiselect-search');
+      if (nextSearch && reopen.query) {
+        nextSearch.value = reopen.query;
+        nextSearch.dispatchEvent(new Event('input'));
+      }
+      nextMenu.scrollTop = reopen.scrollTop;
+      if (reopen.focused && reopen.focused !== 'search') {
+        nextMenu.querySelector(`input[data-option-value="${CSS.escape(reopen.focused)}"]`)?.focus({preventScroll: true});
+      }
     };
     select.addEventListener('multiselect:options-updated', rebuildOnOptionUpdate);
     select.after(shell);
