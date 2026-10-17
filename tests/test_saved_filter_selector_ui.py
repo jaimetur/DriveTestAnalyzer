@@ -108,7 +108,7 @@ process.stdout.write(JSON.stringify({latest, earlier, cards, separateCopy, histo
     assert result['historyCounts'] == ['2 filters', '2 filters']
     assert result['unstarred']['listed'] == ['20'] and 'Earlier savedFilter' in result['unstarred']['card']
     assert result['unstarred']['counts'] == ['1 filter', '1 filter']
-    assert 'No starred Saved Filters yet' in result['emptyHistory']
+    assert 'No Favourites Filters yet' in result['emptyHistory']
     assert result['empty'] == 'No Saved Filters yet'
 
 

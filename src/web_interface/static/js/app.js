@@ -5439,7 +5439,7 @@ function setupWorkspaceUserPickers() {
 const workspaceElementExportTargets = new Set([
   'dashboards', 'ppt-templates', 'main-cities', 'mappings-reference-data', 'scoring-configuration',
   'auto-calculated-fields', 'query-builder-queries', 'reporting-jobs', 'nq-call-tracking', 'nq-calls-configuration', 'app-events',
-  'network-insights-favourites', 'complete-report-favourites', 'scoring-starred-filters', 'scoring-report-templates',
+  'network-insights-favourites', 'complete-report-favourites', 'scoring-favourites-filters', 'scoring-report-templates',
 ]);
 
 // The Input and Output folders of a backup only make sense with the workspace database they belong to.
@@ -7206,8 +7206,8 @@ function importWarningDetails(payload) {
   }
   if (kind === 'scoring-configuration') {
     return {
-      title: 'Overwrite Scoring & GAP Analysis Configuration?',
-      message: 'Choose the destination workspaces next. The package data will replace their Scoring & GAP Analysis Configuration, including its available KPI methodology profiles and GAP KPI priorities.',
+      title: 'Overwrite Scoring & GAP Analysis Methodologies?',
+      message: 'Choose the destination workspaces next. The package data will replace their Scoring & GAP Analysis Methodologies, including its available KPI methodology profiles and GAP KPI priorities.',
     };
   }
   if (kind === 'app-events') {
@@ -7248,10 +7248,10 @@ function importPackageContents(payload) {
     config: 'Application Config', workspace: 'Full Workspace', 'full-environment': 'Full Environment',
     dashboards: 'Dashboards', 'ppt-templates': 'PPT Templates',
     'mappings-reference-data': 'Mappings & Reference Data', 'main-cities': 'Main Cities',
-    'scoring-configuration': 'Scoring & GAP Analysis Configuration',
+    'scoring-configuration': 'Scoring & GAP Analysis Methodologies',
     'auto-calculated-fields': 'Auto-calculated Fields',
     'query-builder-queries': 'Query Builder Queries', 'network-insights-favourites': 'Network Insights Favourites',
-    'complete-report-favourites': 'Complete Report Favourites', 'scoring-starred-filters': 'Scoring & GAP Starred Filters',
+    'complete-report-favourites': 'Complete Report Favourites', 'scoring-favourites-filters': 'Scoring & GAP Favourites Filters',
     'scoring-report-templates': 'Scoring & GAP Report Templates',
     'reporting-jobs': 'Reporting Jobs',
     'nq-call-tracking': 'NQ Call Tracking', 'nq-calls-configuration': 'NQ Calls Configuration', 'app-events': 'App Events',
@@ -7373,7 +7373,7 @@ document.querySelectorAll('[data-import-package-form]').forEach((form) => {
     confirmed.value = '0';
     showLoadingOverlay(
       'Uploading import package',
-      'Uploading the selected ZIP package or Scoring & GAP Analysis Configuration JSON for inspection. Large workspace packages can take several minutes; the import warning will appear as soon as the upload is ready.',
+      'Uploading the selected ZIP package or Scoring & GAP Analysis Methodologies JSON for inspection. Large workspace packages can take several minutes; the import warning will appear as soon as the upload is ready.',
     );
     try {
       // Let the browser paint the progress dialog before starting a potentially large upload.
@@ -8112,7 +8112,7 @@ document.querySelectorAll('[data-export-package-form]').forEach((form) => {
         'ppt-templates': 'PPT Templates',
         'mappings-reference-data': 'Mappings & Reference Data',
         'main-cities': 'Main Cities',
-        'scoring-configuration': 'Scoring & GAP Analysis Configuration',
+        'scoring-configuration': 'Scoring & GAP Analysis Methodologies',
         'auto-calculated-fields': 'Auto-calculated Fields',
         workspace_database: 'Workspace database',
         input: 'Input CDR files',
@@ -8120,7 +8120,7 @@ document.querySelectorAll('[data-export-package-form]').forEach((form) => {
         report_templates: 'PPT Templates',
         main_cities: 'Main Cities',
         mappings_reference_data: 'Mappings & Reference Data',
-        scoring_configuration: 'Scoring & GAP Analysis Configuration',
+        scoring_configuration: 'Scoring & GAP Analysis Methodologies',
         auto_calculated_fields: 'Auto-calculated Fields',
         'query-builder-queries': 'Query Builder Queries',
         query_builder_queries: 'Query Builder Queries',
@@ -8128,8 +8128,8 @@ document.querySelectorAll('[data-export-package-form]').forEach((form) => {
         network_insights_favourites: 'Network Insights Favourites',
         'complete-report-favourites': 'Complete Report Favourites',
         complete_report_favourites: 'Complete Report Favourites',
-        'scoring-starred-filters': 'Scoring & GAP Starred Filters',
-        scoring_starred_filters: 'Scoring & GAP Starred Filters',
+        'scoring-favourites-filters': 'Scoring & GAP Favourites Filters',
+        scoring_favourites_filters: 'Scoring & GAP Favourites Filters',
         'scoring-report-templates': 'Scoring & GAP Report Templates',
         scoring_report_templates: 'Scoring & GAP Report Templates',
         'reporting-jobs': 'Reporting Jobs',

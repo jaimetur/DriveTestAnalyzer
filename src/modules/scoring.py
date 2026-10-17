@@ -110,7 +110,7 @@ def test_window(frames: dict[str, pd.DataFrame]) -> dict | None:
 
 def _required_configuration(configuration: dict | None) -> dict:
     if configuration is None:
-        raise ValueError('A scoring configuration is required. Import a Scoring Configuration before calculating scoring.')
+        raise ValueError('A scoring configuration is required. Import the Scoring & GAP Analysis Methodologies before calculating scoring.')
     return validate_scoring_configuration(configuration)
 
 

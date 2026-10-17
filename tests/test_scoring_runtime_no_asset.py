@@ -115,5 +115,5 @@ def test_scoring_calculation_views_and_export_use_only_the_persisted_configurati
     )
     assert output.startswith(b'PK')
 
-    with pytest.raises(ValueError, match='Import a Scoring Configuration'):
+    with pytest.raises(ValueError, match='Import the Scoring & GAP Analysis Methodologies'):
         scoring.calculate_scoring({})

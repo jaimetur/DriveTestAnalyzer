@@ -68,7 +68,7 @@ def _scoring_engine():
 def _method_version(configuration: dict[str, Any]) -> str:
     engine = _scoring_engine()
     if configuration is None:
-        raise ValueError('A scoring configuration is required. Import a Scoring Configuration before calculating scoring.')
+        raise ValueError('A scoring configuration is required. Import the Scoring & GAP Analysis Methodologies before calculating scoring.')
     configured_version = getattr(engine, 'method_version_for_configuration', None)
     if callable(configured_version):
         return str(configured_version(configuration))
@@ -83,7 +83,7 @@ def _workspace_scoring_configuration(repository: Repository) -> dict[str, Any]:
         raise ValueError('Scoring configuration storage is unavailable. Initialize the workspace database before calculating scoring.')
     payload = getter()
     if payload is None:
-        raise ValueError('Import a Scoring Configuration before calculating scoring.')
+        raise ValueError('Import the Scoring & GAP Analysis Methodologies before calculating scoring.')
     return validate_scoring_configuration(payload)
 
 
@@ -1361,7 +1361,7 @@ def _update_saved_filter(repository: Repository, filter_id: int, **fields: Any) 
 
 
 # -- Export, import, transfers and backups -----------------------------------------------------------------------
-# A Saved Filter travels with the Scoring Configuration, without its result: its CDRs are named by the SHA-256 of
+# A Favourites Filter travels as the Scoring & GAP Favourites Filters element, without its result: its CDRs are named by the SHA-256 of
 # their files, so the workspace that receives it finds them whatever their name or id there.
 
 SAVED_FILTERS_FORMAT = 'drivetest-analyzer-saved-filters'
@@ -1390,14 +1390,14 @@ def _cdr_hashes(repository: Repository) -> dict[int, dict[str, str]]:
     return hashes
 
 
-def saved_filters_document(repository: Repository, *, starred_only: bool = False) -> dict[str, Any]:
-    """Every Saved Filter of the workspace (``starred_only``: the Starred Filters, the Scoring & GAP Starred Filters
+def saved_filters_document(repository: Repository, *, favourites_only: bool = False) -> dict[str, Any]:
+    """Every Saved Filter of the workspace (``favourites_only``: the Favourites Filters, the Scoring & GAP Favourites Filters
     element of Import / Export / Transfer, workspace transfers and backups), without its result, with its CDRs named
     by their file."""
     hashes: dict[int, dict[str, str]] | None = None
     entries = []
     with repository.connection() as connection:
-        rows = connection.execute(f'SELECT * FROM {SAVED_FILTERS_TABLE}{" WHERE pinned = 1" if starred_only else ""} '
+        rows = connection.execute(f'SELECT * FROM {SAVED_FILTERS_TABLE}{" WHERE pinned = 1" if favourites_only else ""} '
                                   'ORDER BY id').fetchall()
     for row in rows:
         saved_filter = _row_to_saved_filter(row, include_snapshot=False)
@@ -1721,7 +1721,7 @@ def calculate_saved_filter(repository: Repository, filter_id: int,
         configuration = saved_filter.get('configuration')
         if configuration is None:
             raise ValueError(
-                'This Saved Filter has no saved methodology. Import a Scoring Configuration and calculate it again.'
+                'This Saved Filter has no saved methodology. Import the Scoring & GAP Analysis Methodologies and calculate it again.'
             )
         current_version = _method_version(configuration)
         if current_version != saved_filter['method_version']:

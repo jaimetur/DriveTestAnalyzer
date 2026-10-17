@@ -41,7 +41,7 @@ def test_workspace_initialization_does_not_seed_scoring_or_read_the_reference(mo
     repository.initialize()
 
     assert repository.get_workspace_state(SCORING_CONFIGURATION_STATE_KEY) is None
-    with pytest.raises(ValueError, match='Import a Scoring Configuration before calculating scoring'):
+    with pytest.raises(ValueError, match='Import the Scoring & GAP Analysis Methodologies before calculating scoring'):
         repository.get_scoring_configuration()
 
 

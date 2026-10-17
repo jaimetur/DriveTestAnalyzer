@@ -8,7 +8,7 @@ Region, Cluster or City filters) can also include the National & Areas Trends: t
 scoring next to the scoring of chosen cities and of each Region, Cluster or City, with its own
 time split (all CDRs, per campaign or per period).
 Saved configurations and the last one used are kept in the workspace and travel with
-the Scoring & GAP Analysis Configuration.
+the Scoring & GAP Analysis Methodologies.
 """
 from __future__ import annotations
 

@@ -1910,7 +1910,7 @@
     if (!starred.length) {
       const empty = document.createElement('div');
       empty.className = 'scoring-empty';
-      empty.textContent = 'No starred Saved Filters yet: star (☆) a scoring to keep its filters here.';
+      empty.textContent = 'No Favourites Filters yet: star (☆) a scoring to keep its filters here.';
       savedFilterList.append(empty);
     }
     for (const savedFilter of ordered) {

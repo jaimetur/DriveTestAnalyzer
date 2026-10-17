@@ -747,9 +747,6 @@ body [data-section-bar].is-compact > a.section-bar-top { padding: .45rem .55rem;
 /* The modules of Workspace Content: a title over the contents of each, which sit a step further in. */
 .database-backup-components .multiselect-subgroup-label { margin: 0.4rem 0 0.05rem 1.35rem; padding: 0.15rem 0.2rem; color: #9a4650; font-size: 0.74rem; font-weight: 800; letter-spacing: 0.02em; }
 .database-backup-components .multiselect-option[data-multiselect-subgroup] { padding-left: 2.15rem; }
-/* Contents that go with another one (such as the Starred Filters with the Scoring & GAP Analysis Configuration)
-   sit under it, a step further in. */
-.database-backup-components .multiselect-option.multiselect-option-child { padding-left: 3.4rem; }
 .database-backup-components .multiselect-option input { flex: 0 0 auto; order: -1; accent-color: #9d2b35; }
 .admin-export-components { display: grid; gap: 0.35rem; width: 100%; color: #8b2429; font-size: 0.85rem; font-weight: 700; }
 .admin-export-components .multiselect-shell { width: 100%; }
@@ -769,9 +766,6 @@ body [data-section-bar].is-compact > a.section-bar-top { padding: .45rem .55rem;
 /* The modules of Current Workspace Content: a title over the contents of each, which sit a step further in. */
 .admin-export-components .multiselect-subgroup-label { margin: 0.4rem 0 0.05rem 1.35rem; padding: 0.15rem 0.2rem; color: #9a4650; font-size: 0.74rem; font-weight: 800; letter-spacing: 0.02em; }
 .admin-export-components .multiselect-option[data-multiselect-subgroup] { padding-left: 2.15rem; }
-/* Contents that go with another one (such as the Starred Filters with the Scoring & GAP Analysis Configuration)
-   sit under it, a step further in. */
-.admin-export-components .multiselect-option.multiselect-option-child { padding-left: 3.4rem; }
 .admin-export-components .multiselect-option input { flex: 0 0 auto; order: -1; accent-color: #9d2b35; }
 .import-export-panel:has(.admin-export-components .multiselect-menu:not([hidden])), .import-export-panel:has(.admin-export-components .multiselect-menu:not([hidden])) .import-export-content, .import-export-panel:has(.admin-export-components .multiselect-menu:not([hidden])) .import-export-grid, .import-export-panel:has(.admin-export-components .multiselect-menu:not([hidden])) .form-stack { overflow: visible; position: relative; z-index: 50; }
 .database-backup-workspaces { display: grid; gap: 0.35rem; width: min(100%, 620px); color: #8b2429; font-size: 0.85rem; font-weight: 700; }

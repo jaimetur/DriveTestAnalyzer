@@ -181,7 +181,7 @@ def test_scoring_job_creation_requires_a_persisted_configuration(repository):
     dataset_id = add_dataset(repository)
     repository.set_workspace_state(SCORING_CONFIGURATION_STATE_KEY, '')
 
-    with pytest.raises(ValueError, match='Import a Scoring Configuration'):
+    with pytest.raises(ValueError, match='Import the Scoring & GAP Analysis Methodologies'):
         saved_filters.save_saved_filter(repository, [dataset_id], ['Region'], 'NSA')
 
 

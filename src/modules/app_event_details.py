@@ -108,7 +108,7 @@ def fields_text(details: dict[str, Any], skip: tuple[str, ...] = ()) -> str:
         if key in skip or _empty(value) or (key == 'starred' and starred is not None):
             continue
         if key == 'saved_filter_id' and starred is not None:
-            parts.append(f'saved filter ID {value} (starred)' if starred else f'unsaved filter ID {value}')
+            parts.append(f'saved filter ID {value} (favourite)' if starred else f'unsaved filter ID {value}')
         elif key == 'changes':
             parts.append(changes_text(value))
         else:

@@ -330,7 +330,7 @@ MODULE_SECTIONS: dict[str, list[tuple[Any, ...] | None]] = {
                     ('scoring-results-tables', 'Scoring Tables', 'table'), ('scoring-results-locations', 'Locations', 'pin'),
                     ('scoring-results-trends', 'Scoring Trends', 'activity'), ('scoring-results-gap', 'GAP Analysis', 'gap'),
                     ('scoring-results-points-lost', 'Points Lost', 'map')]),
-                ('Starred Filters', 'Starred Filters', 'filter')],
+                ('Favourites Filters', 'Favourites Filters', 'filter')],
     # In the order of the page (templates/network_insights.html).
     'network-insights': [('Analysis Selection', 'Analysis Selection', 'select'), ('Overview', 'Overview', 'summary'),
                          ('Coverage & Interference Maps', 'Coverage & Interference Maps', 'map'), ('RF Quality', 'RF Quality', 'activity'),

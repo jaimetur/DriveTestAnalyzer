@@ -3136,7 +3136,7 @@ class Repository:
 
         raw = self.get_workspace_state(SCORING_CONFIGURATION_STATE_KEY)
         if raw is None or not raw.strip():
-            raise ValueError('Import a Scoring Configuration before calculating scoring.')
+            raise ValueError('Import the Scoring & GAP Analysis Methodologies before calculating scoring.')
         try:
             payload = json.loads(raw)
             if isinstance(payload, dict) and 'profiles' in payload:

@@ -1017,7 +1017,7 @@ class SectionGenerator:
         }]}
         base = {'dataset_ids': dataset_ids, 'nr_mode': nr_mode, 'baseline_operator': options['baseline_operator'],
                 'scoring_profile_id': options['methodology'] or None,
-                # A Saved Filter already calculated for these CDRs and filters (such as a Starred Filter) is used as it is.
+                # A Saved Filter already calculated for these CDRs and filters (such as a Favourites Filter) is used as it is.
                 'reuse_saved_filters': True}
         self.progress('Calculating Scoring & GAP Analysis')
         try:

@@ -2501,7 +2501,7 @@ def test_workspace_content_of_exports_and_backups_is_grouped_by_module_in_menu_o
         ('mappings-reference-data', 'Workspace Config'), ('ppt-templates', 'Workspace Config'),
         ('app-events', 'App Logs'),
         ('dashboards', 'PPT Dashboards'),
-        ('scoring-configuration', 'Benchmark'), ('scoring-report-templates', 'Benchmark'), ('scoring-starred-filters', 'Benchmark'),
+        ('scoring-configuration', 'Benchmark'), ('scoring-favourites-filters', 'Benchmark'), ('scoring-report-templates', 'Benchmark'),
         ('network-insights-favourites', 'Network Insights'),
         ('nq-call-tracking', 'Non-Qualified Calls'), ('nq-calls-configuration', 'Non-Qualified Calls'),
         ('complete-report-favourites', 'Reporting'), ('reporting-jobs', 'Reporting'),
@@ -2509,9 +2509,6 @@ def test_workspace_content_of_exports_and_backups_is_grouped_by_module_in_menu_o
     ]
     export = group('Current Workspace Content', 'data-export-target-select')
     assert re.findall(r'<option value="([^"]+)" data-subgroup="([^"]+)"', export) == modules
-    # The Report Templates and Starred Filters go with the Scoring & GAP Analysis Configuration: under it, indented.
-    children = ['scoring-report-templates', 'scoring-starred-filters']
-    assert re.findall(r'<option value="([^"]+)"[^>]* data-option-class="multiselect-option-child"', export) == children
     assert set(app_module.WORKSPACE_ELEMENT_MODULES) == set(app_module.WORKSPACE_ELEMENT_EXPORT_TARGETS)
     # Backups list the same modules, after the workspace database and its folders, which belong to none.
     backup = group('Workspace Content', 'data-backup-components')
@@ -2520,7 +2517,8 @@ def test_workspace_content_of_exports_and_backups_is_grouped_by_module_in_menu_o
     assert not any(subgroup for subgroup, _value in options[:3])
     elements = {value: element for value, _label, element in app_module.BACKUP_WORKSPACE_CONTENT}
     assert [(elements[value], subgroup) for subgroup, value in options[3:]] == modules
-    assert [elements[value] for value in re.findall(r'value="([^"]+)"[^>]* data-option-class="multiselect-option-child"', backup)] == children
+    # Every content of a module is at the same level.
+    assert 'multiselect-option-child' not in export + backup
     app_script = app_module.PROJECT_ROOT.joinpath('src/web_interface/static/js/app.js').read_text(encoding='utf-8')
     assert "subheading.className = 'multiselect-subgroup-label';" in app_script
 
@@ -2545,11 +2543,11 @@ def test_admin_import_export_packages_detect_configuration_and_workspaces(client
     assert 'Main Cities (from active workspace)</option>' in admin_response.text
     assert 'Mappings &amp; Reference Data (from active workspace)</option>' in admin_response.text
     assert admin_response.text.index('Main Cities (from active workspace)</option>') < admin_response.text.index('Mappings &amp; Reference Data (from active workspace)</option>')
-    assert 'Scoring &amp; GAP Analysis Configuration (from active workspace)' in admin_response.text
-    assert 'Full Environment (Application Config + Dashboards + PPT Templates + Main Cities + Mappings &amp; Reference Data + Scoring &amp; GAP Analysis Configuration + Auto-calculated Fields + Query Builder Queries + Network Insights Favourites + Complete Report Favourites + Scoring &amp; GAP Starred Filters + Scoring &amp; GAP Report Templates + Reporting Jobs + NQ Call Tracking + Selected Workspaces)' in admin_response.text
+    assert 'Scoring &amp; GAP Analysis Methodologies (from active workspace)' in admin_response.text
+    assert 'Full Environment (Application Config + Dashboards + PPT Templates + Main Cities + Mappings &amp; Reference Data + Scoring &amp; GAP Analysis Methodologies + Auto-calculated Fields + Query Builder Queries + Network Insights Favourites + Complete Report Favourites + Scoring &amp; GAP Favourites Filters + Scoring &amp; GAP Report Templates + Reporting Jobs + NQ Call Tracking + Selected Workspaces)' in admin_response.text
     assert admin_response.text.index('Main Cities (workspace city selection)') < admin_response.text.index('Mappings &amp; Reference Data (Operator and Vendor aliases, order and theme colors')
-    assert 'Scoring &amp; GAP Analysis Configuration (KPI methodology profiles and GAP KPI priorities)' in admin_response.text
-    assert "main_cities: 'Main Cities', mappings_reference_data: 'Mappings & Reference Data', scoring_configuration: 'Scoring & GAP Analysis Configuration'" in admin_response.text
+    assert 'Scoring &amp; GAP Analysis Methodologies (KPI methodology profiles and GAP KPI priorities)' in admin_response.text
+    assert "main_cities: 'Main Cities', mappings_reference_data: 'Mappings & Reference Data', scoring_configuration: 'Scoring & GAP Analysis Methodologies'" in admin_response.text
     assert "['Workspace Content', ['workspace_database', 'dashboards', 'report_templates', 'main_cities', 'mappings_reference_data', 'scoring_configuration'" in admin_response.text
     assert {'main_cities', 'scoring_configuration'} <= set(app_module.recurring_backup_settings()['components'])
     assert 'value="main_cities" selected' in admin_response.text
@@ -2561,7 +2559,7 @@ def test_admin_import_export_packages_detect_configuration_and_workspaces(client
     assert '.multiselect-trigger-label { flex: 1 1 auto; min-width: 0;' in stylesheet
     assert '.admin-export-components { min-width: 0; }' in stylesheet
     assert "title: 'Overwrite Main Cities?'" in app_script
-    assert "title: 'Overwrite Scoring & GAP Analysis Configuration?'" in app_script
+    assert "title: 'Overwrite Scoring & GAP Analysis Methodologies?'" in app_script
     assert 'KPI methodology profiles and GAP KPI priorities.' in app_script
 
     config_response = client.get('/admin/import-export/export?export_target=config')
@@ -3270,7 +3268,7 @@ def test_admin_import_upload_explains_each_refused_file_in_the_app_events(client
     exported = client.get('/admin/import-export/export?export_target=config').content
     uploads = {
         'cut-short.zip': (exported[:len(exported) // 2], 'The ZIP package is incomplete or damaged'),
-        'large.json': (b'{"rows": "' + b'x' * (4 * 1024 * 1024) + b'"}', 'Only a Scoring & GAP Analysis Configuration'),
+        'large.json': (b'{"rows": "' + b'x' * (4 * 1024 * 1024) + b'"}', 'Only Scoring & GAP Analysis Methodologies'),
         'cells.csv': (b'market,period\nES,2026-Q1\n', 'Choose a supported ZIP package'),
     }
     for name, (content, message) in uploads.items():
@@ -4096,7 +4094,7 @@ def test_admin_export_and_transfer_are_limited_to_templates_and_accessible_works
     assert 'PPT Templates (from active workspace)</option>' in panel.text
     assert 'Main Cities (from active workspace)</option>' in panel.text
     # Admins export the favourites of the active workspace too.
-    for label in ('Network Insights Favourites', 'Complete Report Favourites', 'Scoring &amp; GAP Starred Filters',
+    for label in ('Network Insights Favourites', 'Complete Report Favourites', 'Scoring &amp; GAP Favourites Filters',
                   'Scoring &amp; GAP Report Templates'):
         assert f'{label} (from active workspace)</option>' in panel.text, label
     assert client.get('/admin/import-export/export?export_target=complete-report-favourites').status_code == 200

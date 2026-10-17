@@ -467,7 +467,7 @@ def test_favourites_are_saved_listed_and_travel_as_their_own_element(client):
         core._archive_workspace_complete_report_favourites(archive, core.active_workspace, 'workspaces/Default')
     assert zipfile.ZipFile(BytesIO(output.getvalue())).namelist() == [f'workspaces/Default/{core.CR_FAVOURITES_ARCHIVE_NAME}']
     page = client.get('/admin').text
-    assert 'Complete Report Favourites (from active workspace)' in page and 'Scoring &amp; GAP Starred Filters (from active workspace)' in page
+    assert 'Complete Report Favourites (from active workspace)' in page and 'Scoring &amp; GAP Favourites Filters (from active workspace)' in page
 
 
 def test_a_report_without_sections_is_refused_and_the_table_is_listed(client):
@@ -718,7 +718,7 @@ def test_favourite_elements_are_exported_and_imported_on_their_own(client):
 
     configurations = [item['name'] for item in load_report_state(core.repository)['configurations']]
     for target, label in (('complete-report-favourites', 'Complete Report Favourites'),
-                          ('scoring-starred-filters', 'Scoring & GAP Starred Filters'),
+                          ('scoring-favourites-filters', 'Scoring & GAP Favourites Filters'),
                           ('scoring-report-templates', 'Scoring & GAP Report Templates')):
         exported = client.get(f'/admin/import-export/export?export_target={target}')
         assert exported.status_code == 200, exported.text
@@ -742,7 +742,7 @@ def test_favourite_elements_are_exported_and_imported_on_their_own(client):
         if target == 'complete-report-favourites':
             assert [item['name'] for item in document['favourites']] == ['Quarterly']
             assert [item['name'] for item in complete_reports.list_favourites(core.repository)] == ['Quarterly']
-        elif target == 'scoring-starred-filters':
+        elif target == 'scoring-favourites-filters':
             assert document['saved_filters'] == []
         else:
             # The saved configurations of the Scoring report editor travel on their own too.

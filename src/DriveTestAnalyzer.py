@@ -6312,7 +6312,7 @@ APPLICATION_BACKUP_COMPONENTS = ('app_database', 'users_access', 'bugs_report')
 WORKSPACE_ARCHIVE_COMPONENTS = frozenset({
     'workspace_database', 'input', 'output', 'dashboards', 'report_templates', 'mappings_reference_data',
     'auto_calculated_fields', 'query_builder_queries', 'reporting_jobs', 'nq_call_tracking', 'nq_calls_configuration', 'main_cities',
-    'scoring_configuration', 'app_events', 'network_insights_favourites', 'complete_report_favourites', 'scoring_starred_filters',
+    'scoring_configuration', 'app_events', 'network_insights_favourites', 'complete_report_favourites', 'scoring_favourites_filters',
     'scoring_report_templates',
 })
 ARCHIVE_KIND_COMPONENTS = {
@@ -6333,7 +6333,7 @@ ARCHIVE_KIND_COMPONENTS = {
 WORKSPACE_ELEMENT_EXPORT_TARGETS = frozenset({
     'ppt-templates', 'auto-calculated-fields', 'dashboards', 'mappings-reference-data', 'query-builder-queries',
     'reporting-jobs', 'nq-call-tracking', 'nq-calls-configuration', 'app-events', 'main-cities', 'scoring-configuration',
-    'network-insights-favourites', 'complete-report-favourites', 'scoring-starred-filters', 'scoring-report-templates',
+    'network-insights-favourites', 'complete-report-favourites', 'scoring-favourites-filters', 'scoring-report-templates',
 })
 # The module of each Workspace Content element (Export / Transfer and backups), where the content is managed: the
 # subgroups of Workspace Content start with Workspace Config (the Config pages and the Workspace module together) and
@@ -6343,15 +6343,11 @@ WORKSPACE_ELEMENT_MODULES = {
     'auto-calculated-fields': 'workspace-config', 'main-cities': 'workspace-config',
     'mappings-reference-data': 'workspace-config', 'ppt-templates': 'workspace-config',
     'dashboards': 'ppt-dashboards',
-    'scoring-configuration': 'scoring', 'scoring-report-templates': 'scoring', 'scoring-starred-filters': 'scoring',
+    'scoring-configuration': 'scoring', 'scoring-report-templates': 'scoring', 'scoring-favourites-filters': 'scoring',
     'network-insights-favourites': 'network-insights',
     'nq-call-tracking': 'non-qualified-calls', 'nq-calls-configuration': 'non-qualified-calls',
     'complete-report-favourites': 'reporting', 'reporting-jobs': 'reporting',
     'query-builder-queries': 'builders',
-}
-# Elements shown under another element of their module (that they go with), indented.
-WORKSPACE_ELEMENT_PARENTS = {
-    'scoring-report-templates': 'scoring-configuration', 'scoring-starred-filters': 'scoring-configuration',
 }
 # The Workspace Content of backups: each component with its label and the element it holds (the workspace database and
 # its Input and Output folders hold none, so they belong to no module).
@@ -6364,7 +6360,7 @@ BACKUP_WORKSPACE_CONTENT: tuple[tuple[str, str, str], ...] = (
     ('main_cities', 'Main Cities (workspace city selection)', 'main-cities'),
     ('mappings_reference_data', 'Mappings & Reference Data (Operator and Vendor aliases, order and theme colors, Campaign Maps, '
                                 'Map Areas and Spectrum Holdings)', 'mappings-reference-data'),
-    ('scoring_configuration', 'Scoring & GAP Analysis Configuration (KPI methodology profiles and GAP KPI priorities)',
+    ('scoring_configuration', 'Scoring & GAP Analysis Methodologies (KPI methodology profiles and GAP KPI priorities)',
      'scoring-configuration'),
     ('auto_calculated_fields', 'Auto-calculated Fields (one JSON file with all definitions)', 'auto-calculated-fields'),
     ('query_builder_queries', 'Query Builder Queries (one JSON file with all saved queries)', 'query-builder-queries'),
@@ -6372,8 +6368,8 @@ BACKUP_WORKSPACE_CONTENT: tuple[tuple[str, str, str], ...] = (
      'network-insights-favourites'),
     ('complete_report_favourites', 'Complete Report Favourites (one JSON file with the favourite Complete Reports)',
      'complete-report-favourites'),
-    ('scoring_starred_filters', 'Scoring & GAP Starred Filters (one JSON file with the Starred Filters, without their results)',
-     'scoring-starred-filters'),
+    ('scoring_favourites_filters', 'Scoring & GAP Favourites Filters (one JSON file with the Favourites Filters, without their results)',
+     'scoring-favourites-filters'),
     ('scoring_report_templates', 'Scoring & GAP Report Templates (one JSON file with the saved configurations of '
                                       'the Scoring report editor)', 'scoring-report-templates'),
     ('reporting_jobs', 'Reporting Jobs (one JSON file with all Reporting Job definitions)', 'reporting-jobs'),
@@ -6438,7 +6434,7 @@ def archive_workspace_components(manifest: dict[str, Any]) -> list[str]:
         'query-builder-queries': ('query_builder_queries',),
         'network-insights-favourites': ('network_insights_favourites',),
         'complete-report-favourites': ('complete_report_favourites',),
-        'scoring-starred-filters': ('scoring_starred_filters',),
+        'scoring-favourites-filters': ('scoring_favourites_filters',),
         'scoring-report-templates': ('scoring_report_templates',),
         'reporting-jobs': ('reporting_jobs',),
         'nq-call-tracking': ('nq_call_tracking',),
@@ -6510,7 +6506,7 @@ def full_workspace_archive_components(*, include_input_files: bool = True, inclu
         components.append('input')
     if include_generated_outputs:
         components.append('output')
-    return [*components, 'dashboards', 'report_templates', 'main_cities', 'mappings_reference_data', 'scoring_configuration', 'auto_calculated_fields', 'query_builder_queries', 'network_insights_favourites', 'complete_report_favourites', 'scoring_starred_filters', 'scoring_report_templates', 'reporting_jobs', 'nq_call_tracking']
+    return [*components, 'dashboards', 'report_templates', 'main_cities', 'mappings_reference_data', 'scoring_configuration', 'auto_calculated_fields', 'query_builder_queries', 'network_insights_favourites', 'complete_report_favourites', 'scoring_favourites_filters', 'scoring_report_templates', 'reporting_jobs', 'nq_call_tracking']
 
 
 def archive_workspace_components_for_target(
@@ -6535,8 +6531,8 @@ def archive_workspace_components_for_target(
         return ['network_insights_favourites']
     if target == 'complete-report-favourites':
         return ['complete_report_favourites']
-    if target == 'scoring-starred-filters':
-        return ['scoring_starred_filters']
+    if target == 'scoring-favourites-filters':
+        return ['scoring_favourites_filters']
     if target == 'scoring-report-templates':
         return ['scoring_report_templates']
     if target == 'reporting-jobs':
@@ -6794,7 +6790,7 @@ def create_recurring_database_backup(
         component for component in (
             'workspace_database', 'dashboards', 'input', 'output', 'report_templates',
             'mappings_reference_data', 'main_cities', 'auto_calculated_fields', 'query_builder_queries',
-            'network_insights_favourites', 'complete_report_favourites', 'scoring_starred_filters', 'scoring_report_templates', 'reporting_jobs',
+            'network_insights_favourites', 'complete_report_favourites', 'scoring_favourites_filters', 'scoring_report_templates', 'reporting_jobs',
             'nq_call_tracking', 'nq_calls_configuration', 'scoring_configuration', 'app_events',
         )
         if component in components
@@ -6843,8 +6839,8 @@ def create_recurring_database_backup(
             total_bytes += len(_network_insights_favourites_payload(workspace))
         if 'complete_report_favourites' in components:
             total_bytes += len(_complete_report_favourites_payload(workspace))
-        if 'scoring_starred_filters' in components:
-            total_bytes += len(_starred_filters_payload(workspace))
+        if 'scoring_favourites_filters' in components:
+            total_bytes += len(_favourites_filters_payload(workspace))
         if 'scoring_report_templates' in components:
             total_bytes += len(_scoring_report_templates_archive_payload(workspace))
         if 'reporting_jobs' in components:
@@ -6911,7 +6907,7 @@ def create_recurring_database_backup(
                     report_progress(f'Exporting Main Cities for {workspace.name}', max(5.0, completed_bytes * 96.0 / max(total_bytes, 1)))
                     _archive_workspace_main_cities(archive, workspace, archive_workspace_root, archived_bytes)
                 if 'scoring_configuration' in components:
-                    report_progress(f'Exporting Scoring & GAP Analysis Configuration for {workspace.name}', max(5.0, completed_bytes * 96.0 / max(total_bytes, 1)))
+                    report_progress(f'Exporting Scoring & GAP Analysis Methodologies for {workspace.name}', max(5.0, completed_bytes * 96.0 / max(total_bytes, 1)))
                     _archive_workspace_scoring_configuration(archive, workspace, archive_workspace_root, archived_bytes)
                 if 'auto_calculated_fields' in components:
                     report_progress(f'Exporting Auto-calculated Fields for {workspace.name}', max(5.0, completed_bytes * 96.0 / max(total_bytes, 1)))
@@ -6929,9 +6925,9 @@ def create_recurring_database_backup(
                 if 'complete_report_favourites' in components:
                     report_progress(f'Exporting Complete Report Favourites for {workspace.name}', max(5.0, completed_bytes * 96.0 / max(total_bytes, 1)))
                     _archive_workspace_complete_report_favourites(archive, workspace, archive_workspace_root, archived_bytes)
-                if 'scoring_starred_filters' in components:
-                    report_progress(f'Exporting Scoring & GAP Starred Filters for {workspace.name}', max(5.0, completed_bytes * 96.0 / max(total_bytes, 1)))
-                    _archive_workspace_starred_filters(archive, workspace, archive_workspace_root, archived_bytes)
+                if 'scoring_favourites_filters' in components:
+                    report_progress(f'Exporting Scoring & GAP Favourites Filters for {workspace.name}', max(5.0, completed_bytes * 96.0 / max(total_bytes, 1)))
+                    _archive_workspace_favourites_filters(archive, workspace, archive_workspace_root, archived_bytes)
                 if 'scoring_report_templates' in components:
                     report_progress(f'Exporting Scoring & GAP Report Templates for {workspace.name}', max(5.0, completed_bytes * 96.0 / max(total_bytes, 1)))
                     _archive_workspace_scoring_report_templates(archive, workspace, archive_workspace_root, archived_bytes)
@@ -7265,8 +7261,8 @@ def _backup_archive_components(archive_path: Path) -> list[str]:
         components.append('network_insights_favourites')
     if any(name.startswith('workspaces/') and f'/{CR_FAVOURITES_ARCHIVE_NAME}' in name for name in names):
         components.append('complete_report_favourites')
-    if any(name.startswith('workspaces/') and f'/{STARRED_FILTERS_ARCHIVE_NAME}' in name for name in names):
-        components.append('scoring_starred_filters')
+    if any(name.startswith('workspaces/') and f'/{FAVOURITES_FILTERS_ARCHIVE_NAME}' in name for name in names):
+        components.append('scoring_favourites_filters')
     if any(name.startswith('workspaces/') and f'/{SCORING_REPORT_TEMPLATES_ARCHIVE_NAME}' in name for name in names):
         components.append('scoring_report_templates')
     if any(name.startswith('workspaces/') and '/reporting-jobs/reporting-jobs.json' in name for name in names):
@@ -7363,8 +7359,8 @@ def restore_database_backup(
                 total_steps += int(f'{prefix}{NI_FAVOURITES_ARCHIVE_NAME}' in name_set)
             if 'complete_report_favourites' in selected:
                 total_steps += int(f'{prefix}{CR_FAVOURITES_ARCHIVE_NAME}' in name_set)
-            if 'scoring_starred_filters' in selected:
-                total_steps += int(f'{prefix}{STARRED_FILTERS_ARCHIVE_NAME}' in name_set)
+            if 'scoring_favourites_filters' in selected:
+                total_steps += int(f'{prefix}{FAVOURITES_FILTERS_ARCHIVE_NAME}' in name_set)
             if 'scoring_report_templates' in selected:
                 total_steps += int(f'{prefix}{SCORING_REPORT_TEMPLATES_ARCHIVE_NAME}' in name_set)
             if 'reporting_jobs' in selected:
@@ -7463,7 +7459,7 @@ def restore_database_backup(
                 member = f'{prefix}scoring-configuration/scoring-configuration.json'
                 if member in names:
                     if progress_callback:
-                        progress_callback(f'Restoring Scoring & GAP Analysis Configuration for {workspace_name}', completed_steps, total_steps)
+                        progress_callback(f'Restoring Scoring & GAP Analysis Methodologies for {workspace_name}', completed_steps, total_steps)
                     _restore_workspace_scoring_configuration(workspace, archive.read(member))
                     reports_member = _scoring_report_configurations_member(member)
                     _restore_workspace_scoring_report_configurations(
@@ -7471,7 +7467,7 @@ def restore_database_backup(
                     filters_member = _saved_filters_member(member)
                     _restore_workspace_saved_filters(
                         workspace, archive.read(filters_member) if filters_member in names else None)
-                    advance(f'Scoring & GAP Analysis Configuration restored for {workspace_name}')
+                    advance(f'Scoring & GAP Analysis Methodologies restored for {workspace_name}')
             if 'auto_calculated_fields' in selected:
                 member = next((candidate for candidate in (
                     f'{prefix}auto-calculated-fields/auto-calculated-fields.json',
@@ -7514,13 +7510,13 @@ def restore_database_backup(
                         progress_callback(f'Restoring Complete Report Favourites for {workspace_name}', completed_steps, total_steps)
                     _restore_workspace_complete_report_favourites(workspace, archive.read(member), importing_user)
                     advance(f'Complete Report Favourites restored for {workspace_name}')
-            if 'scoring_starred_filters' in selected:
-                member = f'{prefix}{STARRED_FILTERS_ARCHIVE_NAME}'
+            if 'scoring_favourites_filters' in selected:
+                member = f'{prefix}{FAVOURITES_FILTERS_ARCHIVE_NAME}'
                 if member in names:
                     if progress_callback:
-                        progress_callback(f'Restoring Scoring & GAP Starred Filters for {workspace_name}', completed_steps, total_steps)
-                    _restore_workspace_starred_filters(workspace, archive.read(member))
-                    advance(f'Scoring & GAP Starred Filters restored for {workspace_name}')
+                        progress_callback(f'Restoring Scoring & GAP Favourites Filters for {workspace_name}', completed_steps, total_steps)
+                    _restore_workspace_favourites_filters(workspace, archive.read(member))
+                    advance(f'Scoring & GAP Favourites Filters restored for {workspace_name}')
             if 'scoring_report_templates' in selected:
                 member = f'{prefix}{SCORING_REPORT_TEMPLATES_ARCHIVE_NAME}'
                 if member in names:
@@ -7862,13 +7858,13 @@ def _archive_workspace_scoring_configuration(
 ) -> None:
     payload = _scoring_configuration_archive_payload(workspace)
     archive.writestr(f'{archive_prefix}/scoring-configuration/scoring-configuration.json', payload)
-    # The report configurations and the Starred Filters travel as elements of their own (Scoring & GAP Report
-    # Configurations and Scoring & GAP Starred Filters); packages made before still restore what they carried.
+    # The report configurations and the Favourites Filters travel as elements of their own (Scoring & GAP Report
+    # Configurations and Scoring & GAP Favourites Filters); packages made before still restore what they carried.
     if progress_callback:
         progress_callback(len(payload))
 
 
-# The report configurations that Scoring & GAP Analysis Configuration packages carried before they travelled on their
+# The report configurations that Scoring & GAP Analysis Methodologies packages carried before they travelled on their
 # own.
 SCORING_REPORT_CONFIGURATIONS_MEMBER = 'scoring-report-configurations.json'
 SCORING_REPORT_TEMPLATES_ARCHIVE_NAME = 'scoring-report-templates/scoring-report-templates.json'
@@ -7912,7 +7908,7 @@ def _scoring_report_configurations_member(member: str) -> str:
     return member.rsplit('/', 1)[0] + '/' + SCORING_REPORT_CONFIGURATIONS_MEMBER
 
 
-# The Saved Filters that Scoring & GAP Analysis Configuration packages carried before the Starred Filters travelled on
+# The Saved Filters that Scoring & GAP Analysis Methodologies packages carried before the Favourites Filters travelled on
 # their own.
 SAVED_FILTERS_MEMBER = 'saved-filters.json'
 
@@ -7963,7 +7959,7 @@ def _restore_workspace_scoring_configuration(workspace: Workspace, payload: byte
         else:
             task_repository.replace_scoring_profiles(profiles)
     except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
-        raise ValueError(f'Scoring & GAP Analysis Configuration for "{workspace.name}" is invalid.') from exc
+        raise ValueError(f'Scoring & GAP Analysis Methodologies for "{workspace.name}" are invalid.') from exc
 
 def _dashboard_archive_payload(workspace: Workspace) -> bytes:
     """Serialize saved Dashboard definitions only; generated chart caches are excluded."""
@@ -8169,29 +8165,29 @@ def _restore_workspace_complete_report_favourites(workspace: Workspace, payload:
         raise ValueError(f'Complete Report Favourites for "{workspace.name}" are invalid: {exc}') from exc
 
 
-STARRED_FILTERS_ARCHIVE_NAME = 'scoring-starred-filters/scoring-starred-filters.json'
+FAVOURITES_FILTERS_ARCHIVE_NAME = 'scoring-favourites-filters/scoring-favourites-filters.json'
 
 
-def _starred_filters_payload(workspace: Workspace) -> bytes:
-    """The Starred Filters of a workspace without their results, their CDRs named by the SHA-256 of their files."""
+def _favourites_filters_payload(workspace: Workspace) -> bytes:
+    """The Favourites Filters of a workspace without their results, their CDRs named by the SHA-256 of their files."""
     from src.modules.saved_filters import saved_filters_document
 
     task_repository = Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path)
-    return json.dumps(saved_filters_document(task_repository, starred_only=True), ensure_ascii=False, indent=2).encode('utf-8')
+    return json.dumps(saved_filters_document(task_repository, favourites_only=True), ensure_ascii=False, indent=2).encode('utf-8')
 
 
-def _archive_workspace_starred_filters(
+def _archive_workspace_favourites_filters(
     archive: zipfile.ZipFile, workspace: Workspace, archive_prefix: str,
     progress_callback: Callable[[int], None] | None = None,
 ) -> None:
-    payload = _starred_filters_payload(workspace)
-    archive.writestr(f'{archive_prefix}/{STARRED_FILTERS_ARCHIVE_NAME}', payload)
+    payload = _favourites_filters_payload(workspace)
+    archive.writestr(f'{archive_prefix}/{FAVOURITES_FILTERS_ARCHIVE_NAME}', payload)
     if progress_callback:
         progress_callback(len(payload))
 
 
-def _restore_workspace_starred_filters(workspace: Workspace, payload: bytes) -> int:
-    """Add the Starred Filters of a package to a workspace (they find their CDRs there by file); returns how many were
+def _restore_workspace_favourites_filters(workspace: Workspace, payload: bytes) -> int:
+    """Add the Favourites Filters of a package to a workspace (they find their CDRs there by file); returns how many were
     added."""
     from src.modules.saved_filters import import_saved_filters
 
@@ -8199,7 +8195,7 @@ def _restore_workspace_starred_filters(workspace: Workspace, payload: bytes) -> 
     try:
         return import_saved_filters(task_repository, json.loads(payload.decode('utf-8')))
     except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
-        raise ValueError(f'Scoring & GAP Starred Filters for "{workspace.name}" are invalid: {exc}') from exc
+        raise ValueError(f'Scoring & GAP Favourites Filters for "{workspace.name}" are invalid: {exc}') from exc
 
 
 def _reporting_jobs_payload(workspace: Workspace) -> bytes:
@@ -8419,7 +8415,7 @@ def _archive_workspace(
     _archive_workspace_query_builder_queries(archive, workspace, archive_prefix, progress_callback)
     _archive_workspace_network_insights_favourites(archive, workspace, archive_prefix, progress_callback)
     _archive_workspace_complete_report_favourites(archive, workspace, archive_prefix, progress_callback)
-    _archive_workspace_starred_filters(archive, workspace, archive_prefix, progress_callback)
+    _archive_workspace_favourites_filters(archive, workspace, archive_prefix, progress_callback)
     _archive_workspace_scoring_report_templates(archive, workspace, archive_prefix, progress_callback)
     _archive_workspace_reporting_jobs(archive, workspace, archive_prefix, progress_callback)
     _archive_workspace_nq_call_tracking(archive, workspace, archive_prefix, progress_callback)
@@ -8471,9 +8467,9 @@ def export_archive_filename(target: str | Iterable[str]) -> str:
     if target == 'complete-report-favourites':
         workspace_name = active_workspace.name if active_workspace else 'workspace'
         return f'{workspace_name}_complete-report-favourites_{generated_at}.zip'
-    if target == 'scoring-starred-filters':
+    if target == 'scoring-favourites-filters':
         workspace_name = active_workspace.name if active_workspace else 'workspace'
-        return f'{workspace_name}_scoring-starred-filters_{generated_at}.zip'
+        return f'{workspace_name}_scoring-favourites-filters_{generated_at}.zip'
     if target == 'scoring-report-templates':
         workspace_name = active_workspace.name if active_workspace else 'workspace'
         return f'{workspace_name}_scoring-report-templates_{generated_at}.zip'
@@ -8638,7 +8634,7 @@ def _build_single_export_archive_file(
             source_workspace_id = next(iter(workspace_ids or ()), active_workspace.id if active_workspace else '')
             source_workspace = workspace_registry.get(source_workspace_id) if source_workspace_id else None
             if not source_workspace:
-                raise ValueError('Open a workspace before exporting Scoring & GAP Analysis Configuration.')
+                raise ValueError('Open a workspace before exporting Scoring & GAP Analysis Methodologies.')
             archive_path = f'workspaces/{source_workspace.name}/scoring-configuration/scoring-configuration.json'
             manifest = archive_manifest(
                 'scoring-configuration',
@@ -8691,13 +8687,13 @@ def _build_single_export_archive_file(
             )
             archive.writestr('manifest.json', json.dumps(manifest, indent=2, sort_keys=True))
             _archive_workspace_network_insights_favourites(archive, source_workspace, f'workspaces/{source_workspace.name}', progress_callback)
-        elif target in {'complete-report-favourites', 'scoring-starred-filters', 'scoring-report-templates'}:
+        elif target in {'complete-report-favourites', 'scoring-favourites-filters', 'scoring-report-templates'}:
             source_workspace_id = next(iter(workspace_ids or ()), active_workspace.id if active_workspace else '')
             source_workspace = workspace_registry.get(source_workspace_id) if source_workspace_id else None
             label, archive_name, write = {
                 'complete-report-favourites': ('Complete Report Favourites', CR_FAVOURITES_ARCHIVE_NAME,
                                                _archive_workspace_complete_report_favourites),
-                'scoring-starred-filters': ('Scoring & GAP Starred Filters', STARRED_FILTERS_ARCHIVE_NAME, _archive_workspace_starred_filters),
+                'scoring-favourites-filters': ('Scoring & GAP Favourites Filters', FAVOURITES_FILTERS_ARCHIVE_NAME, _archive_workspace_favourites_filters),
                 'scoring-report-templates': ('Scoring & GAP Report Templates', SCORING_REPORT_TEMPLATES_ARCHIVE_NAME,
                                                   _archive_workspace_scoring_report_templates),
             }[target]
@@ -9074,7 +9070,7 @@ def _recovered_transfer_details(manifest: dict[str, Any]) -> tuple[str, list[str
     if kind == 'scoring-configuration':
         source = manifest.get('source_workspace')
         name = str(source.get('name') or '') if isinstance(source, dict) else ''
-        return ('Scoring & GAP Analysis Configuration', [name] if name else [])
+        return ('Scoring & GAP Analysis Methodologies', [name] if name else [])
     if kind == 'query-builder-queries':
         source = manifest.get('source_workspace')
         name = str(source.get('name') or '') if isinstance(source, dict) else ''
@@ -9083,10 +9079,10 @@ def _recovered_transfer_details(manifest: dict[str, Any]) -> tuple[str, list[str
         source = manifest.get('source_workspace')
         name = str(source.get('name') or '') if isinstance(source, dict) else ''
         return ('Network Insights Favourites', [name] if name else [])
-    if kind in {'complete-report-favourites', 'scoring-starred-filters', 'scoring-report-templates'}:
+    if kind in {'complete-report-favourites', 'scoring-favourites-filters', 'scoring-report-templates'}:
         source = manifest.get('source_workspace')
         name = str(source.get('name') or '') if isinstance(source, dict) else ''
-        return ({'complete-report-favourites': 'Complete Report Favourites', 'scoring-starred-filters': 'Scoring & GAP Starred Filters',
+        return ({'complete-report-favourites': 'Complete Report Favourites', 'scoring-favourites-filters': 'Scoring & GAP Favourites Filters',
                  'scoring-report-templates': 'Scoring & GAP Report Templates'}[kind], [name] if name else [])
     if kind == 'reporting-jobs':
         source = manifest.get('source_workspace')
@@ -9143,7 +9139,7 @@ def _recover_unimported_transfer_packages() -> None:
                 'config', 'users-access', 'bugs-report', 'workspace', 'full-environment', 'ppt-templates',
                 'auto-calculated-fields', 'dashboards', 'mappings-reference-data', 'main-cities',
                 'scoring-configuration', 'query-builder-queries', 'reporting-jobs', 'nq-call-tracking', 'nq-calls-configuration', 'app-events',
-                'network-insights-favourites', 'complete-report-favourites', 'scoring-starred-filters', 'scoring-report-templates',
+                'network-insights-favourites', 'complete-report-favourites', 'scoring-favourites-filters', 'scoring-report-templates',
                 'database-backup', 'bundle',
             }:
                 raise ValueError('Unsupported transfer package.')
@@ -10153,7 +10149,7 @@ def _apply_import_archive(
                 member not in archive.namelist()
                 or not re.fullmatch(r'workspaces/[^/]+/scoring-configuration/scoring-configuration\.json', member)
             ):
-                raise ValueError('The package does not contain a valid Scoring & GAP Analysis Configuration.')
+                raise ValueError('The package does not contain valid Scoring & GAP Analysis Methodologies.')
             destinations = [workspace_registry.get(workspace_id) for workspace_id in destination_workspace_ids]
             destinations = [workspace for workspace in destinations if workspace]
             if not destinations:
@@ -10172,7 +10168,7 @@ def _apply_import_archive(
                 _restore_workspace_scoring_configuration(workspace, payload)
                 _restore_workspace_scoring_report_configurations(workspace, reports)
                 _restore_workspace_saved_filters(workspace, saved_filters)
-            return f'Imported Scoring & GAP Analysis Configuration into {len(destinations)} workspaces.'
+            return f'Imported Scoring & GAP Analysis Methodologies into {len(destinations)} workspaces.'
         if kind == 'auto-calculated-fields':
             try:
                 member = next((candidate for candidate in (
@@ -10227,11 +10223,11 @@ def _apply_import_archive(
             imported_count = sum(_restore_workspace_network_insights_favourites(workspace, payload, importing_user)
                                  for workspace in destinations)
             return f'Imported {imported_count} Network Insights Favourites into {len(destinations)} workspaces.'
-        if kind in {'complete-report-favourites', 'scoring-starred-filters', 'scoring-report-templates'}:
+        if kind in {'complete-report-favourites', 'scoring-favourites-filters', 'scoring-report-templates'}:
             favourites = kind == 'complete-report-favourites'
             label, archive_name = {
                 'complete-report-favourites': ('Complete Report Favourites', CR_FAVOURITES_ARCHIVE_NAME),
-                'scoring-starred-filters': ('Scoring & GAP Starred Filters', STARRED_FILTERS_ARCHIVE_NAME),
+                'scoring-favourites-filters': ('Scoring & GAP Favourites Filters', FAVOURITES_FILTERS_ARCHIVE_NAME),
                 'scoring-report-templates': ('Scoring & GAP Report Templates', SCORING_REPORT_TEMPLATES_ARCHIVE_NAME),
             }[kind]
             member = str(manifest.get('archive_path') or '')
@@ -10249,7 +10245,7 @@ def _apply_import_archive(
             payload = archive.read(member)
             imported_count = sum(
                 _restore_workspace_complete_report_favourites(workspace, payload, importing_user) if favourites
-                else _restore_workspace_starred_filters(workspace, payload) if kind == 'scoring-starred-filters'
+                else _restore_workspace_favourites_filters(workspace, payload) if kind == 'scoring-favourites-filters'
                 else _import_workspace_scoring_report_templates(workspace, payload) for workspace in destinations)
             return f'Imported {imported_count} {label} into {len(destinations)} workspaces.'
         if kind == 'reporting-jobs':
@@ -10562,11 +10558,11 @@ def _transfer_content_label(target: str | Iterable[str]) -> str:
         'dashboards': 'Dashboards',
         'mappings-reference-data': 'Mappings & Reference Data',
         'main-cities': 'Main Cities',
-        'scoring-configuration': 'Scoring & GAP Analysis Configuration',
+        'scoring-configuration': 'Scoring & GAP Analysis Methodologies',
         'query-builder-queries': 'Query Builder Queries',
         'network-insights-favourites': 'Network Insights Favourites',
         'complete-report-favourites': 'Complete Report Favourites',
-        'scoring-starred-filters': 'Scoring & GAP Starred Filters',
+        'scoring-favourites-filters': 'Scoring & GAP Favourites Filters',
         'scoring-report-templates': 'Scoring & GAP Report Templates',
         'reporting-jobs': 'Reporting Jobs',
         'nq-call-tracking': 'NQ Call Tracking',
@@ -11131,7 +11127,7 @@ def require_import_export_permission(user: SessionUser, target: str) -> None:
     if user.role == 'super-admin' or target in {
         'ppt-templates', 'auto-calculated-fields', 'dashboards', 'mappings-reference-data', 'main-cities',
         'scoring-configuration', 'query-builder-queries', 'reporting-jobs', 'nq-call-tracking', 'nq-calls-configuration', 'app-events',
-        'network-insights-favourites', 'complete-report-favourites', 'scoring-starred-filters', 'scoring-report-templates',
+        'network-insights-favourites', 'complete-report-favourites', 'scoring-favourites-filters', 'scoring-report-templates',
     }:
         return
     raise HTTPException(
@@ -11165,7 +11161,7 @@ def require_export_permission(user: SessionUser, target: str) -> None:
     """Authorize exports and transfers without exposing other workspaces."""
     if user.role == 'super-admin':
         return
-    if target in {'auto-calculated-fields', 'ppt-templates', 'dashboards', 'mappings-reference-data', 'main-cities', 'scoring-configuration', 'query-builder-queries', 'reporting-jobs', 'nq-call-tracking', 'nq-calls-configuration', 'app-events', 'network-insights-favourites', 'complete-report-favourites', 'scoring-starred-filters', 'scoring-report-templates'}:
+    if target in {'auto-calculated-fields', 'ppt-templates', 'dashboards', 'mappings-reference-data', 'main-cities', 'scoring-configuration', 'query-builder-queries', 'reporting-jobs', 'nq-call-tracking', 'nq-calls-configuration', 'app-events', 'network-insights-favourites', 'complete-report-favourites', 'scoring-favourites-filters', 'scoring-report-templates'}:
         if active_workspace and repository.user_has_workspace_access(user.username, active_workspace.id):
             return
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Open a workspace you can access first.')
@@ -11355,18 +11351,18 @@ def render_admin_template(
         {'value': 'ppt-templates', 'label': 'PPT Templates (from active workspace)', 'disabled': not active_workspace},
         {'value': 'main-cities', 'label': 'Main Cities (from active workspace)', 'disabled': not active_workspace},
         {'value': 'mappings-reference-data', 'label': 'Mappings & Reference Data (from active workspace)', 'disabled': not active_workspace},
-        {'value': 'scoring-configuration', 'label': 'Scoring & GAP Analysis Configuration (from active workspace)', 'disabled': not active_workspace},
+        {'value': 'scoring-configuration', 'label': 'Scoring & GAP Analysis Methodologies (from active workspace)', 'disabled': not active_workspace},
         {'value': 'auto-calculated-fields', 'label': 'Auto-calculated Fields (from active workspace)', 'disabled': not active_workspace},
         {'value': 'query-builder-queries', 'label': 'Query Builder Queries (from active workspace)', 'disabled': not active_workspace},
         {'value': 'network-insights-favourites', 'label': 'Network Insights Favourites (from active workspace)', 'disabled': not active_workspace},
         {'value': 'complete-report-favourites', 'label': 'Complete Report Favourites (from active workspace)', 'disabled': not active_workspace},
-        {'value': 'scoring-starred-filters', 'label': 'Scoring & GAP Starred Filters (from active workspace)', 'disabled': not active_workspace},
+        {'value': 'scoring-favourites-filters', 'label': 'Scoring & GAP Favourites Filters (from active workspace)', 'disabled': not active_workspace},
         {'value': 'scoring-report-templates', 'label': 'Scoring & GAP Report Templates (from active workspace)', 'disabled': not active_workspace},
         {'value': 'reporting-jobs', 'label': 'Reporting Jobs (from active workspace)', 'disabled': not active_workspace},
         {'value': 'nq-call-tracking', 'label': 'NQ Call Tracking (from active workspace)', 'disabled': not active_workspace},
         {'value': 'nq-calls-configuration', 'label': 'NQ Calls Configuration (from active workspace)', 'disabled': not active_workspace},
         {'value': 'app-events', 'label': 'App Events (from active workspace)', 'disabled': not active_workspace},
-        {'value': 'full-environment', 'label': 'Full Environment (Application Config + Dashboards + PPT Templates + Main Cities + Mappings & Reference Data + Scoring & GAP Analysis Configuration + Auto-calculated Fields + Query Builder Queries + Network Insights Favourites + Complete Report Favourites + Scoring & GAP Starred Filters + Scoring & GAP Report Templates + Reporting Jobs + NQ Call Tracking + Selected Workspaces)'},
+        {'value': 'full-environment', 'label': 'Full Environment (Application Config + Dashboards + PPT Templates + Main Cities + Mappings & Reference Data + Scoring & GAP Analysis Methodologies + Auto-calculated Fields + Query Builder Queries + Network Insights Favourites + Complete Report Favourites + Scoring & GAP Favourites Filters + Scoring & GAP Report Templates + Reporting Jobs + NQ Call Tracking + Selected Workspaces)'},
         *[
             {'value': f'workspace:{workspace.id}', 'label': f'Full Workspace: {workspace.name}'}
             for workspace in accessible_workspaces(user)
@@ -11380,7 +11376,7 @@ def render_admin_template(
             option for option in export_options
             if option['value'] in {
                 'ppt-templates', 'auto-calculated-fields', 'dashboards', 'mappings-reference-data', 'main-cities', 'scoring-configuration',
-                'network-insights-favourites', 'complete-report-favourites', 'scoring-starred-filters', 'scoring-report-templates',
+                'network-insights-favourites', 'complete-report-favourites', 'scoring-favourites-filters', 'scoring-report-templates',
             } or option['value'].startswith('workspace:')
         ]
     export_option_groups = [
@@ -11473,28 +11469,17 @@ def workspace_content_subgroups(module_labels: dict[str, dict[str, Any]]) -> dic
 def by_module(entries: list[dict[str, Any]], element_of: Callable[[dict[str, Any]], str],
               module_labels: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
     """``entries`` (each with its ``label``) with the title of the module of their element as their ``subgroup``: the
-    modules in the order of the subgroups and the entries of each alphabetically, those part of another one (``child``)
-    right under it; entries of no module go first, in their order."""
+    modules in the order of the subgroups and the entries of each alphabetically; entries of no module go first, in
+    their order."""
     titles = workspace_content_subgroups(module_labels)
     order = list(titles)
-    labels = {element_of(entry): str(entry['label']).casefold() for entry in entries}
 
     def module(entry: dict[str, Any]) -> str:
         return WORKSPACE_ELEMENT_MODULES.get(element_of(entry), '')
 
-    def parent(entry: dict[str, Any]) -> str | None:
-        """The element ``entry`` is part of, when it is listed too."""
-        element = WORKSPACE_ELEMENT_PARENTS.get(element_of(entry))
-        return element if element in labels else None
-
-    def position(entry: dict[str, Any]) -> tuple[Any, ...]:
-        label = str(entry['label']).casefold()
-        return (order.index(module(entry)), labels.get(parent(entry), label), parent(entry) is not None, label)
-
     loose = [entry for entry in entries if module(entry) not in titles]
-    grouped = [entry | {'subgroup': titles[module(entry)], 'child': parent(entry) is not None}
-               for entry in entries if module(entry) in titles]
-    return loose + sorted(grouped, key=position)
+    grouped = [entry | {'subgroup': titles[module(entry)]} for entry in entries if module(entry) in titles]
+    return loose + sorted(grouped, key=lambda entry: (order.index(module(entry)), str(entry['label']).casefold()))
 
 
 def workspace_content_options(options: list[dict[str, Any]], module_labels: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
@@ -21447,7 +21432,7 @@ async def import_workspace_scoring_configuration(
     try:
         payload = await package.read(4 * 1024 * 1024 + 1)
         if len(payload) > 4 * 1024 * 1024:
-            raise ValueError('Scoring & GAP Analysis Configuration JSON must not exceed 4 MiB.')
+            raise ValueError('Scoring & GAP Analysis Methodologies JSON must not exceed 4 MiB.')
         document = json.loads(payload.decode('utf-8'))
         profiles = unwrap_scoring_profiles_payload(document)
         if mode not in {'replace', 'merge'}:
@@ -21782,7 +21767,7 @@ async def receive_transfer_offer(request: Request) -> JSONResponse:
             'config', 'users-access', 'bugs-report', 'workspace', 'full-environment', 'ppt-templates',
             'auto-calculated-fields', 'dashboards', 'mappings-reference-data', 'main-cities',
             'scoring-configuration', 'query-builder-queries', 'reporting-jobs', 'nq-call-tracking', 'nq-calls-configuration', 'app-events',
-            'network-insights-favourites', 'complete-report-favourites', 'scoring-starred-filters', 'scoring-report-templates',
+            'network-insights-favourites', 'complete-report-favourites', 'scoring-favourites-filters', 'scoring-report-templates',
                 'database-backup', 'bundle',
     }:
         raise HTTPException(status_code=400, detail='The offered export type is not supported.')
@@ -22503,17 +22488,17 @@ def _retain_import_upload(upload_id: str, package_path: Path, user: SessionUser,
         if head.startswith(b'PK'):
             raise ValueError('The ZIP package is incomplete or damaged: export or download it again and import the new copy.')
         if not head.lstrip(b'\xef\xbb\xbf \t\r\n').startswith((b'{', b'[')):
-            raise ValueError('Choose a supported ZIP package or Scoring & GAP Analysis Configuration JSON document.')
+            raise ValueError('Choose a supported ZIP package or Scoring & GAP Analysis Methodologies JSON document.')
         if package_path.stat().st_size > 4 * 1024 * 1024:
             raise ValueError(
-                'Only a Scoring & GAP Analysis Configuration, of at most 4 MiB, is imported as a JSON document; '
+                'Only Scoring & GAP Analysis Methodologies, of at most 4 MiB, are imported as a JSON document; '
                 'import any other content in the ZIP package it was exported in.'
             )
         try:
             document = json.loads(package_path.read_text(encoding='utf-8-sig'))
             profiles = unwrap_scoring_profiles_payload(document)
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise ValueError('Choose a supported ZIP package or Scoring & GAP Analysis Configuration JSON document.') from exc
+            raise ValueError('Choose a supported ZIP package or Scoring & GAP Analysis Methodologies JSON document.') from exc
         archive_path = 'workspaces/Imported/scoring-configuration/scoring-configuration.json'
         manifest = archive_manifest(
             'scoring-configuration', source_workspace={'id': '', 'name': 'Imported'},
@@ -22530,7 +22515,7 @@ def _retain_import_upload(upload_id: str, package_path: Path, user: SessionUser,
         'config', 'users-access', 'bugs-report', 'workspace', 'full-environment', 'ppt-templates',
         'auto-calculated-fields', 'dashboards', 'mappings-reference-data', 'main-cities',
         'scoring-configuration', 'query-builder-queries', 'reporting-jobs', 'nq-call-tracking', 'nq-calls-configuration', 'app-events',
-        'network-insights-favourites', 'complete-report-favourites', 'scoring-starred-filters', 'scoring-report-templates',
+        'network-insights-favourites', 'complete-report-favourites', 'scoring-favourites-filters', 'scoring-report-templates',
                 'database-backup', 'bundle',
     }:
         raise ValueError('The export package type is not supported.')

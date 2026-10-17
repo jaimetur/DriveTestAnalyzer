@@ -271,7 +271,7 @@ def test_scoring_json_import_export_uses_workspace_database(client):
                             app_module.workspace_registry.registry_path)
     repository.set_workspace_state('scoring_configuration', '')
     assert client.get('/api/workspace-config/scoring-configuration').status_code == 409
-    assert 'Import a Scoring Configuration' in client.get('/scoring').text
+    assert 'Import the Scoring &amp; GAP Analysis Methodologies' in client.get('/scoring').text
     document = {'format': 'drivetest-analyzer-scoring-configuration', 'version': 1,
                 'configuration': scoring_configuration()}
     response = client.post('/api/workspace-config/scoring-configuration/import', files={
@@ -545,13 +545,13 @@ def test_scoring_configuration_backup_leaves_the_report_configurations_to_their_
         'components': ['scoring_configuration'], 'workspace_ids': [workspace.id],
         'backup_path': str(tmp_path), 'max_backups': 5,
     })
-    # The report configurations travel as Scoring & GAP Report Templates, not in the Scoring Configuration.
+    # The report configurations travel as Scoring & GAP Report Templates, not in the Scoring & GAP Analysis Methodologies.
     with zipfile.ZipFile(backup_path) as archive:
         assert not any(name.endswith(app_module.SCORING_REPORT_CONFIGURATIONS_MEMBER) for name in archive.namelist())
     save_named_configuration(repository, 'Other', {'scenarios': [default_scenario()]})
     app_module.restore_database_backup(backup_path, ['scoring_configuration'])
     assert {'Other', 'Weekly'} <= {item['name'] for item in load_report_state(repository)['configurations']}
-    # Packages created before carried them in the Scoring Configuration: restoring one replaces them as it did.
+    # Packages created before carried them in the Methodologies: restoring one replaces them as it did.
     app_module._restore_workspace_scoring_report_configurations(workspace, json.dumps(report_configurations_document(expected)).encode())
     assert load_report_state(repository) == expected
     # Packages created before report configurations existed keep the current ones.

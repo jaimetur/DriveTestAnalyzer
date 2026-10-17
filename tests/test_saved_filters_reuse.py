@@ -1,4 +1,4 @@
-"""Saved Filters: reused selections that travel with the Scoring Configuration, find their CDRs by file in
+"""Saved Filters: reused selections that travel as Favourites Filters, find their CDRs by file in
 another workspace, tell when newer CDRs replace theirs, and keep their result when their CDRs are gone."""
 from __future__ import annotations
 
@@ -202,7 +202,7 @@ def test_edit_saved_filter_endpoint_is_recorded_and_calculates_only_a_changed_se
     assert queued == [7]
 
 
-def test_starred_filters_travel_with_their_own_backup_element(client, tmp_path: Path) -> None:
+def test_favourites_filters_travel_with_their_own_backup_element(client, tmp_path: Path) -> None:
     response = client.post('/login', data={'username': 'admin', 'password': 'admin123'}, follow_redirects=False)
     assert response.status_code == 303
     workspace = app_module.active_workspace
@@ -217,22 +217,22 @@ def test_starred_filters_travel_with_their_own_backup_element(client, tmp_path: 
     saved_filters.update_saved_filter(repository, used['id'], name='Weekly view', pinned=True)
     other, _ = saved_filters.save_saved_filter(repository, ids, ['Operator', 'Campaign'], 'NSA')
     backup_path = app_module.create_recurring_database_backup({
-        'components': ['scoring_configuration', 'scoring_starred_filters'], 'workspace_ids': [workspace.id],
+        'components': ['scoring_configuration', 'scoring_favourites_filters'], 'workspace_ids': [workspace.id],
         'backup_path': str(tmp_path), 'max_backups': 5,
     })
     for item in (used, other):
         saved_filters.delete_saved_filter(repository, item['id'])
-    # The Scoring & GAP Analysis Configuration no longer carries them.
+    # The Scoring & GAP Analysis Methodologies no longer carries them.
     app_module.restore_database_backup(backup_path, ['scoring_configuration'])
     assert saved_filters.list_saved_filters(repository) == []
-    # The Starred Filters (not the others) travel as an element of their own.
-    app_module.restore_database_backup(backup_path, ['scoring_starred_filters'])
+    # The Favourites Filters (not the others) travel as an element of their own.
+    app_module.restore_database_backup(backup_path, ['scoring_favourites_filters'])
     [restored] = saved_filters.list_saved_filters(repository)
     assert restored['name'] == 'Weekly view' and restored['pinned'] and sorted(restored['dataset_ids']) == sorted(ids)
-    assert 'scoring-starred-filters' in app_module.WORKSPACE_ELEMENT_EXPORT_TARGETS
-    assert app_module.archive_workspace_components_for_target('scoring-starred-filters') == ['scoring_starred_filters']
-    assert 'scoring_starred_filters' in app_module.full_workspace_archive_components()
-    # Scoring & GAP Analysis Configuration packages created before keep restoring their Saved Filters (and those made
+    assert 'scoring-favourites-filters' in app_module.WORKSPACE_ELEMENT_EXPORT_TARGETS
+    assert app_module.archive_workspace_components_for_target('scoring-favourites-filters') == ['scoring_favourites_filters']
+    assert 'scoring_favourites_filters' in app_module.full_workspace_archive_components()
+    # Scoring & GAP Analysis Methodologies packages created before keep restoring their Saved Filters (and those made
     # before Saved Filters existed leave the current ones).
     earlier_package = json.dumps(saved_filters.saved_filters_document(repository)).encode()
     saved_filters.delete_saved_filter(repository, restored['id'])
@@ -337,7 +337,7 @@ def test_scoring_report_templates_travel_with_their_own_backup_element(client, t
     })
     earlier_package = json.dumps(scoring_reports.report_configurations_document(scoring_reports.load_report_state(repository))).encode()
     scoring_reports.delete_named_configuration(repository, 'Weekly custom')
-    # The Scoring & GAP Analysis Configuration no longer carries them: they travel as an element of their own.
+    # The Scoring & GAP Analysis Methodologies no longer carries them: they travel as an element of their own.
     app_module.restore_database_backup(backup_path, ['scoring_configuration'])
     assert 'Weekly custom' not in names()
     app_module.restore_database_backup(backup_path, ['scoring_report_templates'])
@@ -345,7 +345,7 @@ def test_scoring_report_templates_travel_with_their_own_backup_element(client, t
     assert 'scoring-report-templates' in app_module.WORKSPACE_ELEMENT_EXPORT_TARGETS
     assert app_module.archive_workspace_components_for_target('scoring-report-templates') == ['scoring_report_templates']
     assert 'scoring_report_templates' in app_module.full_workspace_archive_components()
-    # Scoring & GAP Analysis Configuration packages created before keep restoring the configurations they carried.
+    # Scoring & GAP Analysis Methodologies packages created before keep restoring the configurations they carried.
     scoring_reports.delete_named_configuration(repository, 'Weekly custom')
     app_module._restore_workspace_scoring_report_configurations(workspace, earlier_package)
     assert 'Weekly custom' in names()

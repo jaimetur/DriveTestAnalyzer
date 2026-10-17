@@ -101,7 +101,7 @@ Runtime `config/` and `data/` directories use project-local defaults but are exc
 
 ## Persistent data layout
 
-Scoring calculations live in `src/modules/scoring.py`, with the authoritative rules stored in the workspace database. `saved_filters.py` keeps the Saved Filters (every selection used, with its result calculated in the background and saved until its CDRs or methodology change) in `saved_filters`; `scoring_history.py` keeps the Scoring History; `scoring_config.py` validates workspace KPI settings and GAP priority; `scoring_views.py` projects saved configuration snapshots into comparison matrices and signed GAP views. `scoring_exports.py` uses the CDR PowerPoint master for saved-result exports. The Saved Filters and their results travel with the workspace SQLite database, and the Saved Filters without results with the Scoring Configuration packages.
+Scoring calculations live in `src/modules/scoring.py`, with the authoritative rules stored in the workspace database. `saved_filters.py` keeps the Saved Filters (every selection used, with its result calculated in the background and saved until its CDRs or methodology change) in `saved_filters`; `scoring_history.py` keeps the Scoring History; `scoring_config.py` validates workspace KPI settings and GAP priority; `scoring_views.py` projects saved configuration snapshots into comparison matrices and signed GAP views. `scoring_exports.py` uses the CDR PowerPoint master for saved-result exports. The Saved Filters and their results travel with the workspace SQLite database, and the Favourites Filters without results as the Scoring & GAP Favourites Filters element of packages and backups.
 
 ```text
 APP_CONFIG_DIR/
