@@ -1092,7 +1092,7 @@ class SectionGenerator:
 
 
 # -- generated sections kept for the next exports ------------------------------------------
-SECTION_CACHE_VERSION = 5
+SECTION_CACHE_VERSION = 7
 SECTION_CACHE_HOURS = 24
 SECTION_CACHE_FOLDER = 'cache'
 # The composed documents (PowerPoint, the packed Word and their previews), inside the section cache.

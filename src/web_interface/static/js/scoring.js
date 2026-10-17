@@ -2358,6 +2358,22 @@
       + '</fieldset>';
   }
 
+  // The sections whose operators the page chooses with its chips, as the export names them.
+  const EXPORT_OPERATOR_SECTIONS = ['summary-operators', 'ranking-operators', 'gap-parts-operators', 'gap-insight-operators',
+    'vendor_losses-operators', 'site_type_losses-operators', 'sites-operators'];
+
+  // The operators chosen in each section ({section: [operators]}); a section never changed is left out, so the export
+  // uses its default (as the page does).
+  function scoringExportOperators() {
+    const chosen = {};
+    for (const section of EXPORT_OPERATOR_SECTIONS) {
+      let stored = null;
+      try { stored = JSON.parse(insightSelections.get(section) || 'null'); } catch (_error) { stored = null; }
+      if (Array.isArray(stored) && stored.length) chosen[section] = stored.map(String);
+    }
+    return chosen;
+  }
+
   async function exportSelectedScoringReport(link) {
     const message = 'Export the selected scoring report with the CDRs, Split by levels and filters it was calculated with. '
       + 'Choose the scorings and the environments to include.';
@@ -2383,6 +2399,9 @@
     if (choice === 'secondary') url.pathname = url.pathname.replace(/\/export\/ppt$/, '/export/word');
     for (const scoring of scorings) url.searchParams.append('scorings', scoring);
     for (const environment of environments) url.searchParams.append('environments', environment);
+    // The operators enabled in each section of the page: the document shows the same ones.
+    const operators = scoringExportOperators();
+    if (Object.keys(operators).length) url.searchParams.set('operators', JSON.stringify(operators));
     await downloadScoringDocument(url.href, choice === 'secondary' ? 'Word' : 'PowerPoint');
   }
 
@@ -2970,24 +2989,39 @@
     table.append(footer);
   }
 
-  function orderGapRows(rows, valuesForRow, sortByGap = true) {
-    const gapMean = item => {
-      const values = valuesForRow(item)
+  // ``latestValuesForRow`` (the GAPs of the latest campaign) orders first; ``valuesForRow`` (every GAP shown) breaks
+  // the ties and orders the KPIs without a GAP in the latest campaign, which go after the others.
+  function orderGapRows(rows, valuesForRow, sortByGap = true, latestValuesForRow = null) {
+    const gapMean = (item, valuesOf) => {
+      const values = valuesOf(item)
         .filter(value => value !== null && value !== undefined
           && typeof value !== 'boolean' && String(value).trim() !== '')
         .map(Number).filter(Number.isFinite);
       return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
     };
     const compare = (left, right) => {
-      const leftGap = gapMean(left);
-      const rightGap = gapMean(right);
-      if (leftGap === null) return rightGap === null ? 0 : 1;
-      if (rightGap === null) return -1;
-      return leftGap - rightGap;
+      for (const valuesOf of [latestValuesForRow, valuesForRow].filter(Boolean)) {
+        const leftGap = gapMean(left, valuesOf);
+        const rightGap = gapMean(right, valuesOf);
+        if (leftGap === null && rightGap === null) continue;
+        if (leftGap === null) return 1;
+        if (rightGap === null) return -1;
+        if (leftGap !== rightGap) return leftGap - rightGap;
+      }
+      return 0;
     };
     const kpis = rows.filter(item => item?.row_type !== 'category');
     if (sortByGap) kpis.sort(compare);
     return kpis;
+  }
+
+  // The hierarchy columns of the latest campaign (all of them when they have one campaign or none).
+  function latestCampaignColumns(columns) {
+    const campaign = column => (Array.isArray(column?.path) ? column.path : []).find(item => item?.level === 'Campaign')?.value;
+    const campaigns = [...new Set(columns.map(campaign).filter(value => value !== undefined && value !== null && value !== ''))];
+    if (campaigns.length <= 1) return columns;
+    const latest = campaigns.reduce((best, value) => (insightCampaignKey(value) > insightCampaignKey(best) ? value : best));
+    return columns.filter(column => campaign(column) === latest);
   }
 
   function applyGapCategoryRunColors(tbody) {
@@ -3003,7 +3037,8 @@
     const notice = document.createElement('p');
     notice.className = 'scoring-priority-order-notice';
     const text = document.createElement('strong');
-    text.textContent = 'KPIs are ordered by GAP, from lowest to highest.';
+    text.textContent = sortByGap === 'latest' ? 'KPIs are ordered by GAP in the latest campaign, from lowest to highest.'
+      : 'KPIs are ordered by GAP, from lowest to highest.';
     notice.append(text);
     parent.append(notice);
   }
@@ -3952,8 +3987,11 @@
       ? allColumns
       : allColumns.filter(column => hierarchyColumnOperator(column) === selectedOperator);
     const sortByGap = comparison !== 'all';
+    // One operator: its KPIs ordered by their GAP in the latest campaign.
+    const latestColumns = latestCampaignColumns(columns);
     const rows = orderGapRows(Array.isArray(tableData.rows) ? tableData.rows : [],
-      item => columns.map(column => firstValue(item?.gaps || {}, [column.id], null)), sortByGap);
+      item => columns.map(column => firstValue(item?.gaps || {}, [column.id], null)), sortByGap,
+      item => latestColumns.map(column => firstValue(item?.gaps || {}, [column.id], null)));
     const comparisonLabel = comparison === 'all' ? `All vs ${baseline}` : `${selectedOperator} vs ${baseline}`;
     const scaleRows = rows.flatMap(item => columns.map(column => ({gap_points: firstValue(item?.gaps || {}, [column.id], null)})))
       .filter(item => item.gap_points !== null && item.gap_points !== undefined && Number.isFinite(Number(item.gap_points)));
@@ -3997,7 +4035,7 @@
       pane.append(empty);
       return;
     }
-    appendGapScaleAside(gapInfo, tableData, scaleRows, comparison !== 'all');
+    appendGapScaleAside(gapInfo, tableData, scaleRows, sortByGap && (latestColumns.length < columns.length ? 'latest' : true));
 
     const blocks = [{label: comparisonLabel, className: 'scoring-gap-group', headerClass: 'scoring-gap-header', column: 'gap', columns}];
     const wrapper = document.createElement('div');
@@ -6351,6 +6389,18 @@
         if (content instanceof Node) cell.append(content);
         else if (content && typeof content === 'object') {
           cell.textContent = content.text ?? '';
+          if (content.kpiType) {
+            // A KPI starts with the R or D badge of its type, as in the Score and GAP tables.
+            const type = String(content.kpiType).trim().toLocaleLowerCase();
+            if (type === 'reliable' || type === 'diff') {
+              const badge = document.createElement('span');
+              badge.className = 'scoring-kpi-badge';
+              badge.dataset.kpiType = type;
+              badge.textContent = type === 'reliable' ? 'R' : 'D';
+              badge.title = `${content.kpiType} KPI`;
+              cell.prepend(badge);
+            }
+          }
           if (content.title) cell.title = content.title;
           if (content.className) cell.className = content.className;
           if (content.style) Object.assign(cell.style, content.style);
@@ -6428,8 +6478,7 @@
           className: 'scoring-insight-number scoring-insight-group'})),
         {text: insightNumber(group.total, 2), className: 'scoring-insight-number scoring-insight-group scoring-insight-total'}]);
       for (const row of group.rows) {
-        const underline = profile.underline_most_reliable && row.most_reliable ? ' scoring-insight-reliable' : '';
-        tableRows.push([{text: row.kpi, className: `scoring-insight-kpi${underline}`},
+        tableRows.push([{text: row.kpi, className: 'scoring-insight-kpi', kpiType: row.kpi_type},
           ...profile.columns.map(column => gapBarCell(row[valueKey]?.[column], scales[column], {loss: kind === 'maximum'})),
           gapBarCell(row[totalKey], scale, {loss: kind === 'maximum', total: true})]);
       }
@@ -6526,7 +6575,6 @@
           insightStrong(`${gap >= 0 ? '+' : ''}${insightNumber(gap, 2)} points`), ` against ${profile.reference_label}`);
       });
       note.append('. The GAP of a KPI is the points of the operator minus those of the reference; each category sums its KPIs, the categories furthest behind first.');
-      if (shown[0].underline_most_reliable) note.append(' Underlined KPIs are used for the Most Reliable Network scoring.');
       section.append(note);
     }
     pane.append(section);
@@ -6558,7 +6606,6 @@
         insightStrong(`${insightNumber(lost, 2)} ${scoringLabel()} points`));
     });
     note.append('. The points lost of a KPI are its maximum minus the points scored; each category sums its KPIs, the categories that lose most first.');
-    if (shown[0]?.underline_most_reliable) note.append(' Underlined KPIs are used for the Most Reliable Network scoring.');
     section.append(grid, note);
     pane.append(section);
   }
@@ -6691,7 +6738,8 @@
     const standing = inScope[0];
     if (standing) {
       const operators = standing.operators.map(item => ({...item}));
-      const {control: chips, chosen} = insightOperatorChips('summary-operators', operators, {compared: true});
+      // The Summary shows every operator by default, the reference included.
+      const {control: chips, chosen} = insightOperatorChips('summary-operators', operators);
       const section = insightSection(pane, `Where each operator stands${standing.campaign ? ` — ${standing.campaign}` : ''}`,
         'scoring-standings-card', context);
       section.append(insightControls(scopeControl, chips));
@@ -6701,7 +6749,7 @@
     const matrices = insightItems(payload, 'position_matrices', environment).filter(item => !context || sameScope(item.context, context));
     if (matrices.length) {
       const matrix = matrices[0];
-      const {control: chips, chosen} = insightOperatorChips('summary-operators', matrix.operators, {compared: true});
+      const {control: chips, chosen} = insightOperatorChips('summary-operators', matrix.operators);
       const section = insightSection(pane, `Position in every environment and service${matrix.campaign ? ` — ${matrix.campaign}` : ''}`,
         'scoring-position-card', matrix.context);
       section.append(insightControls(chips));
@@ -6714,7 +6762,7 @@
     }
     const levers = insightItems(payload, 'levers', environment).filter(item => !context || sameScope(item.context, context));
     if (levers.length) {
-      const {control: chips, chosen} = insightOperatorChips('summary-operators', levers, {compared: true});
+      const {control: chips, chosen} = insightOperatorChips('summary-operators', levers);
       const section = insightSection(pane, 'Biggest levers: the KPIs where matching the reference wins most points', 'scoring-levers-card',
         levers[0].context);
       section.append(insightControls(chips));

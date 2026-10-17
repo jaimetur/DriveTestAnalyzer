@@ -202,7 +202,7 @@ A list of more than three values keeps the first two and counts the others; hove
 
 Opening the page starts on **Summary**; reloading it keeps the tab shown. The menu of the Scoring & GAP Analysis tab lists the seven tabs beside Scoring & GAP Results, and the sections bar of the page does too.
 
-A section with several operators has **Operators** chips: every operator compared with the reference is chosen by default, clicking one enables or disables it (its tooltip says so) and one always stays enabled. When the results have several locations or Vendors, a selector chooses the one shown (for example **City: London**), the first by default; sections listed per campaign offer the campaigns chronologically, the latest chosen by default. These choices are kept when the page is reloaded (opening the page again starts from the defaults). Throughout the tabs, in the NetCheck theme, a GAP or a loss behind the reference is red and a lead green, Data points are teal and Voice points amber; the other themes give them their own colours (see [Choose a theme](#choose-a-theme)).
+A section with several operators has **Operators** chips: every operator compared with the reference is chosen by default (in the Summary, every operator, the reference included), clicking one enables or disables it (its tooltip says so) and one always stays enabled. **Export Selected Scoring Report** shows in each section the operators enabled on the page. When the results have several locations or Vendors, a selector chooses the one shown (for example **City: London**), the first by default; sections listed per campaign offer the campaigns chronologically, the latest chosen by default. These choices are kept when the page is reloaded (opening the page again starts from the defaults). Throughout the tabs, in the NetCheck theme, a GAP or a loss behind the reference is red and a lead green, Data points are teal and Voice points amber; the other themes give them their own colours (see [Choose a theme](#choose-a-theme)).
 
 ### Summary
 
@@ -245,7 +245,7 @@ GAP visibility starts unchecked. It affects Scoring Tables and its PowerPoint ta
 | Zero | Equal weighted points |
 | **N/A*** | No valid comparison is available |
 
-**GAP comparison** offers **All vs reference** and each individual operator. Individual comparisons order KPI rows from lowest to highest GAP, with unavailable values last. All Operators retains KPI definition order. Saved GAP priorities do not control this display order.
+**GAP comparison** offers **All vs reference** and each individual operator. Individual comparisons order KPI rows from lowest to highest GAP in the latest campaign (with several campaigns; the other campaigns break ties), with the KPIs unavailable in it last, on the page and in the PowerPoint and Word exports. All Operators retains KPI definition order. Saved GAP priorities do not control this display order.
 
 Every GAP table ends with **Total KPI GAP**, the sum of the valid KPI GAPs in **each column separately**, in web and PowerPoint.
 
@@ -271,7 +271,7 @@ Below the GAP tables, **GAP by part of the scoring over the campaigns** gives, p
 
 Below them, **KPI GAP Profile** first chooses the location (for example **City: London**, when the results have several; campaigns are listed chronologically, the latest chosen by default) and then one or more **Operators** (all of them by default; choosing an operator in **GAP comparison** above shows that one, and GAP comparison follows a single chosen operator). Each chosen operator other than the reference gets a table of its **GAP to <reference>** per KPI (operator points − reference points, per environment and in total), two operators side by side. The KPIs are grouped by category, the categories furthest behind first, each with its subtotal. The points each operator loses against the maximum are in [Points lost per KPI](#points-lost-per-kpi). The location and operators are shared with **Points lost per KPI** and the **Points Lost Map**, and they are kept when the page is reloaded (opening the page again starts from the defaults).
 
-The columns are the environments of the selected environment (each environment of All Environments) and **Total**. Every column has its own data bars, red below zero and green above, which fade from the colour to white like Excel data bars, with the value written over them. In the Best Network scoring, the KPIs of the Most Reliable scoring are underlined. The note below names the total GAP of each operator to the reference.
+The columns are the environments of the selected environment (each environment of All Environments) and **Total**. Every column has its own data bars, red below zero and green above, which fade from the colour to white like Excel data bars, with the value written over them. Each KPI starts with the **R** (Reliable) or **D** (Diff) badge of its type, as in the Score and GAP tables; the Reliable KPIs are the ones of the Most Reliable scoring. The note below names the total GAP of each operator to the reference.
 
 ### Points Lost
 
@@ -284,7 +284,7 @@ The columns are the environments of the selected environment (each environment o
 
 #### Points lost per KPI
 
-Per chosen operator, the reference included, a table of the points it loses per KPI (KPI maximum points − points scored, per environment and in total), grouped by category, the categories that lose most first, two operators side by side, with red data bars in every column. It shares the location and **Operators** of the KPI GAP Profile and the Points Lost Map, and its note names the total points each operator loses.
+Per chosen operator, the reference included, a table of the points it loses per KPI (KPI maximum points − points scored, per environment and in total), grouped by category, the categories that lose most first, two operators side by side, with red data bars in every column and the **R** or **D** badge of each KPI. It shares the location and **Operators** of the KPI GAP Profile and the Points Lost Map, and its note names the total points each operator loses.
 
 #### Points Lost Map
 
@@ -649,7 +649,7 @@ Reference filenames, workbook cells, denominator descriptions and Tableau groupi
 Version-2 exchange envelopes must be replaced with a new export. Existing supported workspace records are normalized on read; this is different from accepting an obsolete exchange envelope.
 
 > [!IMPORTANT]
-> JSON import/export, ZIP configuration packages, transfers and configuration backup/restore use the same methodology format. The Starred Filters travel on their own, as the **Scoring & GAP Starred Filters** element of Admin's Import / Export / Transfer, with Full Workspace transfers and with backups, without their results (each one finds its CDRs by file in the receiving workspace and keeps its name and order); the results travel only with the workspace database. Scoring Configuration packages and backups made before, which carried the Saved Filters, still restore them.
+> JSON import/export, ZIP configuration packages, transfers and configuration backup/restore use the same methodology format. The Starred Filters travel on their own, as the **Scoring & GAP Starred Filters** element of Admin's Import / Export / Transfer, with Full Workspace transfers and with backups, without their results (each one finds its CDRs by file in the receiving workspace and keeps its name and order); the results travel only with the workspace database. The saved configurations of the report editor travel the same way, as the **Scoring & GAP Report Configurations** element (one JSON file; importing it adds new configurations and replaces those with the same name), on top of the editor's **Export JSON** / **Import JSON** buttons. Scoring Configuration packages and backups made before, which carried the Saved Filters and the report configurations, still restore them.
 
 ### Reference Prep flow and implemented calculation
 
@@ -762,7 +762,7 @@ The document starts with a cover listing the scenarios; each scenario then has a
 
 The **Theme** selector of the editor's toolbar chooses the colours of the document (see [Choose a theme](#choose-a-theme)): a saved configuration keeps its theme, Default takes the theme of the page, and Reporting Jobs keep the theme of their report.
 
-The editor opens with the scenarios of the last report, remembered as soon as **Generate PowerPoint** or **Generate Word** is pressed. Its selector always tells the saved configuration (or **Default**) whose scenarios are the ones shown, and **<Not saved configuration>** when no saved configuration has them; it follows every change of the scenarios. The editor's toolbar saves (**Save as…**) and deletes **named configurations** of the workspace, and exports or imports them as JSON. Choosing a configuration in its selector loads it at once, **Default** included (one scenario with the filters and aggregation of the selected Saved Filter plus **Campaign**, which is left out when there is a single campaign; *Default* is always listed, cannot be deleted and is not available as a saved name). When the scenarios have unsaved changes, choosing another configuration asks first: **Cancel** keeps them, **Discard changes** loads the chosen configuration and **Save as…** saves them before loading it. The last configuration used to generate a document opens again in any later session. Saved configurations and the last one used travel with the **Scoring & GAP Analysis Configuration** in Import / Export, transfers and backups.
+The editor opens with the scenarios of the last report, remembered as soon as **Generate PowerPoint** or **Generate Word** is pressed. Its selector always tells the saved configuration (or **Default**) whose scenarios are the ones shown, and **<Not saved configuration>** when no saved configuration has them; it follows every change of the scenarios. The editor's toolbar saves (**Save as…**) and deletes **named configurations** of the workspace, and exports or imports them as JSON; they also travel as the **Scoring & GAP Report Configurations** element of Admin's Import / Export / Transfer, with Full Workspace transfers and with backups. Choosing a configuration in its selector loads it at once, **Default** included (one scenario with the filters and aggregation of the selected Saved Filter plus **Campaign**, which is left out when there is a single campaign; *Default* is always listed, cannot be deleted and is not available as a saved name). When the scenarios have unsaved changes, choosing another configuration asks first: **Cancel** keeps them, **Discard changes** loads the chosen configuration and **Save as…** saves them before loading it. The last configuration used to generate a document opens again in any later session. Saved configurations and the last one used travel with the **Scoring & GAP Analysis Configuration** in Import / Export, transfers and backups.
 
 Exports use the saved results; they do not recalculate KPIs. Both **Export to CSV** buttons export the selected Saved Filter.
 
@@ -798,7 +798,7 @@ Slide titles take the colours of the theme (blue in NetCheck), with the part tha
 
 Covers and transitions show white titles and field labels, with **bold yellow filter, Split by and campaign values**. The **Campaigns:** label is bold white. Long lists can be shortened visually without changing the calculation.
 
-The export follows Scoring Tables GAP visibility and column placement. Dedicated GAP slides remain included. Individual slides include the Priority arrow, mean KPI GAP and column-averaged total; every GAP table includes its column totals and color scale.
+The export follows Scoring Tables GAP visibility and column placement. Dedicated GAP slides remain included. Individual slides include the Priority arrow, mean KPI GAP and column-averaged total; every GAP table includes its column totals and, on one line under it, its color scale, and takes the height of the slide down to it with the largest text its rows fit (the KPIs wider when the GAP columns are few).
 
 ### Dense-chart options
 

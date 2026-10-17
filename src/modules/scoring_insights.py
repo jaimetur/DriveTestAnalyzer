@@ -27,11 +27,7 @@ COMBINED = 'Combined'
 def build_scoring_insights(score_tables: list[dict[str, Any]], configuration: dict[str, Any],
                            levels: list[str], result: dict[str, Any] | None = None) -> dict[str, Any]:
     """Insights for every environment of the views; each item names its environment."""
-    from src.modules.scoring_config import has_most_reliable_scoring, is_reliable_kpi
     environments = list(dict.fromkeys(str(table['context'].get('environment')) for table in score_tables))
-    # Best Network marks the KPIs of the Most Reliable scoring when the methodology has one.
-    reliable_codes = ({metric['code'] for metric in configuration.get('metrics', []) if is_reliable_kpi(metric)}
-                      if has_most_reliable_scoring(configuration) else set())
     scopes = _scopes(score_tables)
     insights: dict[str, list[dict[str, Any]]] = {
         'location_cards': [], 'kpi_gap_profiles': [], 'campaign_trends': [], 'campaign_comparisons': [],
@@ -47,7 +43,7 @@ def build_scoring_insights(score_tables: list[dict[str, Any]], configuration: di
         insights['location_cards'].extend(_location_cards(summaries, levels, environment))
         insights['campaign_trends'].extend(_campaign_trends(summaries, levels, environment))
         insights['campaign_comparisons'].extend(_campaign_comparisons(scopes, levels, environment))
-        insights['kpi_gap_profiles'].extend(_kpi_gap_profiles(scopes, environment, reliable_codes))
+        insights['kpi_gap_profiles'].extend(_kpi_gap_profiles(scopes, environment))
         insights['standings'].extend(_standings(scopes, levels, environment))
         insights['position_matrices'].extend(_position_matrices(scopes, levels, environment))
         insights['gap_parts'].extend(_gap_parts(scopes, levels, environment))
@@ -363,8 +359,7 @@ def _campaign_comparisons(scopes: dict[tuple, dict[str, dict[str, Any]]], levels
     return comparisons
 
 
-def _kpi_gap_profiles(scopes: dict[tuple, dict[str, dict[str, Any]]], environment: str,
-                      reliable_codes: set[str]) -> list[dict[str, Any]]:
+def _kpi_gap_profiles(scopes: dict[tuple, dict[str, dict[str, Any]]], environment: str) -> list[dict[str, Any]]:
     """Per compared operator: the points lost against the maximum and the GAP to the reference, per KPI."""
     profiles = []
     for tables in scopes.values():
@@ -395,7 +390,7 @@ def _kpi_gap_profiles(scopes: dict[tuple, dict[str, dict[str, Any]]], environmen
                     continue
                 rows.append({
                     'kpi_code': row['kpi_code'], 'kpi': row.get('kpi'), 'category': row.get('category'),
-                    'service': _service(row), 'most_reliable': row['kpi_code'] in reliable_codes,
+                    'service': _service(row), 'kpi_type': row.get('kpi_type'),
                     'gap_to_maximum': to_maximum,
                     'total_gap_to_maximum': sum(value for value in to_maximum.values() if value is not None),
                     'gap_to_reference': to_reference,
@@ -414,7 +409,6 @@ def _kpi_gap_profiles(scopes: dict[tuple, dict[str, dict[str, Any]]], environmen
                 'to_reference': sorted(
                     (item for item in rows if item['total_gap_to_reference'] is not None),
                     key=lambda item: item['total_gap_to_reference']),
-                'underline_most_reliable': bool(reliable_codes),
             })
     return profiles
 

@@ -121,10 +121,11 @@ def test_kpi_gap_profiles_rank_points_lost_and_reference_gaps():
     assert gaps == sorted(gaps)
     row = profile['to_maximum'][0]
     assert row['total_gap_to_maximum'] == pytest.approx(sum(row['gap_to_maximum'].values()))
-    # Best Network marks the KPIs of the Most Reliable scoring.
-    assert profile['underline_most_reliable'] is True
-    assert {item['kpi_code'] for item in profile['to_maximum'] if item['most_reliable']} == {
+    # Every KPI carries its type, so the tables mark the Reliable KPIs (those of the Most Reliable scoring) and the Diff ones.
+    assert {item['kpi_code'] for item in profile['to_maximum'] if item['kpi_type'] == 'Reliable'} == {
         'K1', 'K4', 'K7', 'K8', 'K12', 'K14', 'K16', 'K21', 'K27', 'K28'}
+    assert all(item['kpi_type'] in ('Reliable', 'Diff') for item in profile['to_maximum'])
+    assert 'underline_most_reliable' not in profile
 
 
 def test_most_reliable_insights_use_its_points():
@@ -136,7 +137,7 @@ def test_most_reliable_insights_use_its_points():
     assert (group['max_voice'], group['max_data']) == (pytest.approx(350), pytest.approx(650))
     profile = _combined(insights['kpi_gap_profiles'])[0]
     assert len(profile['to_maximum']) == 10
-    assert profile['underline_most_reliable'] is False
+    assert all(item['kpi_type'] == 'Reliable' for item in profile['to_maximum'])
 
 
 def test_powerpoint_adds_the_insight_slides_to_all_environments():

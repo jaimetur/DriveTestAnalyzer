@@ -211,3 +211,39 @@ process.stdout.write(JSON.stringify({
     assert 'Environment:' not in result['chart']
     assert 'environment: All Environments' in result['default']
     assert "contextLabel(selected.context, {environmentPrefix: false})" in script
+
+
+def test_gap_of_one_operator_is_ordered_by_its_latest_campaign():
+    script = SCORING_SCRIPT.read_text(encoding='utf-8')
+    program = r'''
+const payload = JSON.parse(require('node:fs').readFileSync(0, 'utf8'));
+function insightCampaignKey(value) { return Number(String(value).replace(/\D/g, '')); }
+''' + _function_source(script, 'orderGapRows') + _function_source(script, 'latestCampaignColumns') + r'''
+const columns = payload.columns;
+const latest = latestCampaignColumns(columns);
+const gaps = (item, chosen) => chosen.map(column => item.gaps[column.id] ?? null);
+const ordered = orderGapRows(payload.rows, item => gaps(item, columns), true, item => gaps(item, latest));
+process.stdout.write(JSON.stringify({latest: latest.map(column => column.id), order: ordered.map(row => row.kpi_code)}));
+'''
+    columns = [{'id': f'VF|{campaign}', 'path': [{'level': 'Operator', 'value': 'VF'}, {'level': 'Campaign', 'value': campaign}]}
+               for campaign in ('2026-Q3', '2026-Q2')]
+    rows = [
+        {'row_type': 'kpi', 'kpi_code': 'K1', 'gaps': {'VF|2026-Q2': -10, 'VF|2026-Q3': 1}},
+        {'row_type': 'kpi', 'kpi_code': 'K2', 'gaps': {'VF|2026-Q2': 5, 'VF|2026-Q3': -3}},
+        {'row_type': 'kpi', 'kpi_code': 'K3', 'gaps': {'VF|2026-Q2': 0, 'VF|2026-Q3': None}},
+        {'row_type': 'kpi', 'kpi_code': 'K4', 'gaps': {'VF|2026-Q2': 1, 'VF|2026-Q3': 1}},
+    ]
+    result = _run_node_json(program, {'columns': columns, 'rows': rows})
+
+    assert result['latest'] == ['VF|2026-Q3']
+    # By the GAP of the latest campaign; the other campaigns break ties and those without it go last.
+    assert result['order'] == ['K2', 'K1', 'K4', 'K3']
+
+
+def test_kpi_gap_profile_tables_mark_each_kpi_with_its_type():
+    script = SCORING_SCRIPT.read_text(encoding='utf-8')
+    profile_table = _function_source(script, 'profileTable')
+    assert "kpiType: row.kpi_type" in profile_table and 'underline' not in profile_table
+    insight_table = _function_source(script, 'insightTable')
+    assert "badge.className = 'scoring-kpi-badge'" in insight_table
+    assert 'Underlined KPIs' not in script

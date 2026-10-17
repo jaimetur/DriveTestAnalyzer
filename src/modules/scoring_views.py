@@ -991,6 +991,24 @@ def _gap_order_key(row: dict[str, Any], operators: list[str] | None = None) -> t
     return (value is None, value or 0.0, identity.casefold(), identity)
 
 
+def latest_campaign_columns(columns: list[dict[str, Any]]) -> list[str]:
+    """The ids of the hierarchy columns of the latest campaign (all of them when the columns have one campaign or none)."""
+    def campaign(column: dict[str, Any]) -> Any:
+        return next((item.get('value') for item in column.get('path') or [] if item.get('level') == 'Campaign'), None)
+    campaigns = {campaign(column) for column in columns} - {None, ''}
+    if len(campaigns) <= 1:
+        return [column['id'] for column in columns]
+    latest = max(campaigns, key=lambda value: (campaign_sort_key(value), str(value)))
+    return [column['id'] for column in columns if campaign(column) == latest]
+
+
+def gap_priority_order_key(row: dict[str, Any], columns: list[dict[str, Any]]) -> tuple[Any, ...]:
+    """The order of a KPI in the GAP table of one operator: by its GAP in the latest campaign (the mean of its columns
+    there), then by the mean of all its columns; KPIs without a GAP in the latest campaign go after the others."""
+    latest = _gap_order_key(row, latest_campaign_columns(columns))
+    return (*latest[:2], *_gap_order_key(row, [column['id'] for column in columns]))
+
+
 def _priority_order_rows(rows: list[dict[str, Any]], _gap_priority_rank: dict[str, int]) -> list[dict[str, Any]]:
     return sorted(rows, key=_gap_order_key)
 

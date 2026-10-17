@@ -777,6 +777,7 @@ def test_scoring_ppt_export_normalizes_legacy_gap_without_mutating_saved_result(
 
     def capture_export(job, result, *_args, **kwargs):
         captured['result'] = deepcopy(result)
+        captured['operators'] = job.get('_operator_choices')
         captured['gap_layout'] = kwargs.get('gap_layout')
         captured['show_gap_values'] = kwargs.get('show_gap_values')
         return b'ppt'
@@ -790,6 +791,12 @@ def test_scoring_ppt_export_normalizes_legacy_gap_without_mutating_saved_result(
     exported = client.get(f'/scoring/saved-filters/{job_id}/export/ppt')
     assert exported.status_code == 200
     assert exported.content == b'ppt' and composed == [('scoring', b'ppt', 'powerpoint')]
+    assert captured['operators'] == {}
+    # The operators enabled in each section of the page travel with the export.
+    exported = client.get(f'/scoring/saved-filters/{job_id}/export/ppt',
+                          params={'operators': json.dumps({'summary-operators': ['VF', 'EE']})})
+    assert exported.status_code == 200 and captured['operators'] == {'summary-operators': ['VF', 'EE']}
+    assert client.get(f'/scoring/saved-filters/{job_id}/export/ppt', params={'operators': '[1]'}).status_code == 400
     assert captured['gap_layout'] == 'end'
     assert captured['show_gap_values'] is True
     assert captured['result']['gap'][0]['gap_points'] == -0.6

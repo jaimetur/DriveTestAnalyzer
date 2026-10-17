@@ -2501,7 +2501,7 @@ def test_admin_import_export_packages_detect_configuration_and_workspaces(client
     assert 'Mappings &amp; Reference Data (from active workspace)</option>' in admin_response.text
     assert admin_response.text.index('Main Cities (from active workspace)</option>') < admin_response.text.index('Mappings &amp; Reference Data (from active workspace)</option>')
     assert 'Scoring &amp; GAP Analysis Configuration (from active workspace)' in admin_response.text
-    assert 'Full Environment (Application Config + Dashboards + PPT Templates + Main Cities + Mappings &amp; Reference Data + Scoring &amp; GAP Analysis Configuration + Auto-calculated Fields + Query Builder Queries + Network Insights Favourites + Complete Report Favourites + Scoring &amp; GAP Starred Filters + Reporting Jobs + NQ Call Tracking + Selected Workspaces)' in admin_response.text
+    assert 'Full Environment (Application Config + Dashboards + PPT Templates + Main Cities + Mappings &amp; Reference Data + Scoring &amp; GAP Analysis Configuration + Auto-calculated Fields + Query Builder Queries + Network Insights Favourites + Complete Report Favourites + Scoring &amp; GAP Starred Filters + Scoring &amp; GAP Report Configurations + Reporting Jobs + NQ Call Tracking + Selected Workspaces)' in admin_response.text
     assert admin_response.text.index('Main Cities (workspace city selection)') < admin_response.text.index('Mappings &amp; Reference Data (Operator and Vendor aliases, order and theme colors')
     assert 'Scoring &amp; GAP Analysis Configuration (KPI methodology profiles and GAP KPI priorities)' in admin_response.text
     assert "main_cities: 'Main Cities', mappings_reference_data: 'Mappings & Reference Data', scoring_configuration: 'Scoring & GAP Analysis Configuration'" in admin_response.text
@@ -4051,7 +4051,8 @@ def test_admin_export_and_transfer_are_limited_to_templates_and_accessible_works
     assert 'PPT Templates (from active workspace)</option>' in panel.text
     assert 'Main Cities (from active workspace)</option>' in panel.text
     # Admins export the favourites of the active workspace too.
-    for label in ('Network Insights Favourites', 'Complete Report Favourites', 'Scoring &amp; GAP Starred Filters'):
+    for label in ('Network Insights Favourites', 'Complete Report Favourites', 'Scoring &amp; GAP Starred Filters',
+                  'Scoring &amp; GAP Report Configurations'):
         assert f'{label} (from active workspace)</option>' in panel.text, label
     assert client.get('/admin/import-export/export?export_target=complete-report-favourites').status_code == 200
     assert 'Transfer to other server' in panel.text

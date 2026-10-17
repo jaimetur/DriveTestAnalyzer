@@ -407,3 +407,86 @@ def test_bar_fills_keep_their_edges_at_whole_percents():
         assert all(after - before >= 1000 for before, after in zip(positions, positions[1:]))
     loss = [(int(stop.get('pos')), stop[0].get('val')) for stop in table.cell(0, 0)._tc.tcPr.iter(qn('a:gs'))]
     assert loss == [(0, 'F5F5F5'), (39000, 'F5F5F5'), (40000, 'FFB3B3'), (50000, 'FFB3B3'), (51000, 'F5F5F5'), (100000, 'F5F5F5')]
+
+
+def test_exports_show_the_operators_each_section_of_the_page_has_enabled():
+    from src.modules.pptx_compose import title_parts
+
+    job, result = synthetic_result(levels=('Operator', 'Campaign'))
+
+    def operators_of(deck, title):
+        """The operators named over the panels of the first slide with ``title``."""
+        slide = next(slide for slide in deck.slides if title_parts(slide)[0].startswith(title))
+        return {shape.text_frame.text for shape in slide.shapes if shape.has_text_frame and shape.text_frame.text in labels}
+
+    deck = Presentation(BytesIO(export_scoring_powerpoint(job, result, TEMPLATE, scorings=['best_network'], environments=['Combined'])))
+    labels = {'EE', 'O2 UK', 'Three UK', 'Vodafone UK'}
+    # By default the Summary shows every operator, the reference (EE) included, as the page does.
+    assert operators_of(deck, 'Position — per environment') == labels
+    # The operators the page has enabled in a section are those of its slides.
+    job['_operator_choices'] = {'summary-operators': ['O2 UK', 'Vodafone UK']}
+    chosen = Presentation(BytesIO(export_scoring_powerpoint(job, result, TEMPLATE, scorings=['best_network'], environments=['Combined'])))
+    assert operators_of(chosen, 'Position — per environment') == {'O2 UK', 'Vodafone UK'}
+
+
+def test_reliable_and_diff_kpis_carry_badges_of_distinct_colours():
+    from src.modules.pptx_compose import title_parts
+
+    # Every theme gives the R and D badges two different colours, neither the colour of the KPI names.
+    for name, current in STYLES.items():
+        assert current['reliable'].upper() != current['diff'].upper(), name
+        assert current['ink'].upper() not in {current['reliable'].upper(), current['diff'].upper()}, name
+    job, result = synthetic_result(levels=('Operator',))
+    deck = Presentation(BytesIO(export_scoring_powerpoint(job, result, TEMPLATE, scorings=['best_network'],
+                                                          environments=['Combined'], theme='ericsson')))
+    for title in ('KPI GAP Profile', 'Points lost per KPI'):
+        slide = next(slide for slide in deck.slides if title_parts(slide)[0].startswith(title))
+        table = next(shape for shape in slide.shapes if shape.name.startswith('Scoring KPI GAP')).table
+        badges = {}
+        for row in list(table.rows)[2:]:
+            runs = [run for paragraph in row.cells[0].text_frame.paragraphs for run in paragraph.runs]
+            assert not any(run.font.underline for run in runs)
+            if runs and runs[0].text.strip() in {'R', 'D'}:
+                badges[runs[0].text.strip()] = str(runs[0].font.color.rgb)
+        # Its KPIs start with the R or D of their type, as in the GAP tables, instead of being underlined.
+        assert badges == {'R': STYLES['ericsson']['reliable'].lstrip('#'), 'D': STYLES['ericsson']['diff'].lstrip('#')}
+        note = next(shape for shape in slide.shapes if shape.name == 'Scoring KPI GAP Profile Note')
+        assert 'Underlined' not in note.text_frame.text
+
+
+def test_gap_of_one_operator_follows_its_latest_campaign_and_fills_the_slide():
+    import re as regex
+
+    from src.modules.pptx_compose import title_parts
+
+    job, result = synthetic_result(levels=('Operator', 'Campaign'))
+    deck = Presentation(BytesIO(export_scoring_powerpoint(job, result, TEMPLATE, scorings=['best_network'],
+                                                          environments=['Combined'])))
+    gap_slides = [slide for slide in deck.slides if title_parts(slide)[0].startswith('GAP Analysis')]
+    individual = next(slide for slide in gap_slides if not title_parts(slide)[0].startswith('GAP Analysis — All vs'))
+    table_shape = next(shape for shape in individual.shapes if shape.has_table)
+    table = table_shape.table
+    campaigns = [cell.text_frame.text for cell in list(table.rows[1].cells)[1:]]
+    assert campaigns == sorted(campaigns) and len(campaigns) > 1
+
+    def number(text):
+        found = regex.search(r'[-−]?\d+\.\d+', text)
+        return float(found.group().replace('−', '-')) if found else None
+
+    # The KPIs are ordered by their GAP in the latest campaign (the last column), and the slide says so.
+    values = [number(row.cells[len(campaigns)].text_frame.text) for row in list(table.rows)[2:-1]]
+    known = [value for value in values if value is not None]
+    assert known == sorted(known) and values[:len(known)] == known
+    assert any(shape.has_text_frame and shape.text_frame.text.startswith('KPIs ordered by GAP in the latest campaign')
+               for shape in individual.shapes)
+    for slide in gap_slides:
+        table_shape = next(shape for shape in slide.shapes if shape.has_table)
+        heading = next(shape for shape in slide.shapes if shape.has_text_frame and shape.text_frame.text == 'GAP color scale')
+        segment = next(shape for shape in slide.shapes if shape.name == 'GAP Color Scale Segment 1')
+        # The color scale is one line under the table, which takes the height of the slide down to it.
+        assert abs(segment.top - heading.top) < 914400 * .05
+        bottom = (table_shape.top + sum(row.height for row in table_shape.table.rows)) / 914400
+        assert 6.4 < bottom <= 6.71 and bottom < heading.top / 914400
+        sizes = [run.font.size.pt for row in list(table_shape.table.rows)[2:] for cell in row.cells
+                 for paragraph in cell.text_frame.paragraphs for run in paragraph.runs if run.font.size]
+        assert max(sizes) >= 6

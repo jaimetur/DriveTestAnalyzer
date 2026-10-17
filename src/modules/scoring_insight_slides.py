@@ -334,7 +334,7 @@ def _table(slide, rows: int, columns: int, left: float, top: float, width: float
 
 
 def _cell(cell, text: str, *, size: float, bold: bool = False, color: str = '#263746', fill: str | None = '#FFFFFF',
-          align=PP_ALIGN.LEFT, underline: bool = False) -> None:
+          align=PP_ALIGN.LEFT, kpi_type: str = '') -> None:
     cell.margin_left = cell.margin_right = Inches(.04)
     cell.margin_top = cell.margin_bottom = Inches(0)
     cell.vertical_anchor = MSO_ANCHOR.MIDDLE
@@ -347,12 +347,21 @@ def _cell(cell, text: str, *, size: float, bold: bool = False, color: str = '#26
     frame.word_wrap = False
     paragraph = frame.paragraphs[0]
     paragraph.alignment = align
+    # A KPI starts with the R or D of its type in the colour the GAP tables give it.
+    badge = {'reliable': 'R', 'diff': 'D'}.get(str(kpi_type or '').strip().lower())
+    if badge:
+        from src.modules.scoring_pptx_scorecard import style
+        run = paragraph.add_run()
+        run.text = f'{badge}  '
+        run.font.name = _FONT
+        run.font.size = Pt(size)
+        run.font.bold = True
+        run.font.color.rgb = _rgb(style()[str(kpi_type).strip().lower()])
     run = paragraph.add_run()
     run.text = text
     run.font.name = _FONT
     run.font.size = Pt(size)
     run.font.bold = bold
-    run.font.underline = underline
     run.font.color.rgb = _rgb(color)
 
 
@@ -445,8 +454,8 @@ def _profile_table(slide, profile: dict[str, Any], *, kind: str, left: float, wi
             _cell(table.cell(row_index, len(widths) - 1), _points(sum(item[total_key] or 0 for item in row['rows']), 2), size=size,
                   bold=True, fill=fill, align=PP_ALIGN.RIGHT)
             continue
-        underline = bool(profile.get('underline_most_reliable') and row.get('most_reliable'))
-        _cell(table.cell(row_index, 0), f"   {row.get('kpi') or ''}", size=size, fill='#FFFFFF', underline=underline)
+        _cell(table.cell(row_index, 0), row.get('kpi') or '', size=size, fill='#FFFFFF', kpi_type=row.get('kpi_type') or '')
+        table.cell(row_index, 0).margin_left = Inches(.14)
         for offset, name in enumerate(columns):
             value = row[gap_key].get(name)
             _cell(table.cell(row_index, 1 + offset), _points(value, 2), size=size, fill=None, align=PP_ALIGN.RIGHT)
@@ -490,8 +499,6 @@ def add_kpi_gap_profile_slides(presentation, profiles: list[dict[str, Any]], *, 
                      (f'{gap:+,.2f} points', True, None), (f" against {profile['reference_label']}", False, None)]
         runs.append(('. The GAP of a KPI is the points of the operator minus those of the reference; each category sums its '
                      'KPIs, the categories furthest behind first.', False, None))
-        if first.get('underline_most_reliable'):
-            runs.append((' Underlined KPIs are used for the Most Reliable Network scoring.', False, None))
         _profile_note(slide, runs)
 
 
@@ -515,8 +522,6 @@ def add_points_per_kpi_slides(presentation, profiles: list[dict[str, Any]], *, s
                      (f'{lost:,.2f} {scoring_label} points', True, None)]
         runs.append(('. The points lost of a KPI are its maximum minus the points scored; each category sums its KPIs, the '
                      'categories that lose most first.', False, None))
-        if first.get('underline_most_reliable'):
-            runs.append((' Underlined KPIs are used for the Most Reliable Network scoring.', False, None))
         _profile_note(slide, runs)
 
 

@@ -27,18 +27,18 @@ STYLES: dict[str, dict[str, Any]] = {
                  'header': '#FFFFFF', 'header_ink': '#17232D', 'section': '#FFFFFF', 'section_ink': '#17232D',
                  'section_rule': '#C9D2DB', 'total': '#FFFFFF', 'total_ink': '#17232D', 'total_rule': '#17232D',
                  'gap_card': '#FFFFFF', 'gain_bar': '#4CA65A', 'loss_bar': '#E8414F', 'fade': True, 'gain': '#2E8540',
-                 'loss': '#C62835', 'reliable': '#455B65', 'diff': '#455B65', 'best': '#DFF3E4', 'worst': '#FBE1DF',
+                 'loss': '#C62835', 'reliable': '#1F6FB2', 'diff': '#C25E00', 'best': '#DFF3E4', 'worst': '#FBE1DF',
                  'operators': 'fill'},
     'ericsson': {'score': 'bar', 'bar_mix': .38, 'card': '#F5F5F5', 'label': '#FFFFFF', 'ink': '#0C0C0C', 'muted': '#6A6A6A',
                  'header': '#FFFFFF', 'header_ink': '#0C0C0C', 'section': '#FFFFFF', 'section_ink': '#0C0C0C',
                  'section_rule': '#0C0C0C', 'total': '#FFFFFF', 'total_ink': '#0C0C0C', 'total_rule': '#0C0C0C',
                  'gap_card': '#F5F5F5', 'gain_bar': '#9FE6C6', 'loss_bar': '#FFB3B3', 'gain': '#0A8F55', 'loss': '#D11F1F',
-                 'reliable': '#0069C2', 'diff': '#4E4E4E', 'best': '#E7F9F0', 'worst': '#FFECEC', 'operators': 'underline',
+                 'reliable': '#0069C2', 'diff': '#C25E00', 'best': '#E7F9F0', 'worst': '#FFECEC', 'operators': 'underline',
                  'gap_marker': True},
     'vodafone': {'score': 'solid', 'bar_mix': .26, 'card': '#F4F4F4', 'label': '#FFFFFF', 'ink': '#333333', 'muted': '#7E7E7E',
                  'header': '#FFFFFF', 'header_ink': '#4A4D4E', 'section': '#F2F2F2', 'section_ink': '#333333',
                  'total': '#4A4D4E', 'total_ink': '#FFFFFF', 'gap_card': '#F4F4F4', 'gain_bar': '#A3E4ED',
-                 'loss_bar': '#F8B8B8', 'gain': '#00697C', 'loss': '#B80000', 'reliable': '#00697C', 'diff': '#8A6100',
+                 'loss_bar': '#F8B8B8', 'gain': '#00697C', 'loss': '#B80000', 'reliable': '#00697C', 'diff': '#B86E00',
                  'best': '#D6F3F7', 'worst': '#FDD9D9', 'operators': 'fill'},
     'midnight': {'score': 'bar', 'bar_mix': .7, 'card': '#131F33', 'label': '#0F1726', 'ink': '#DCE6F2', 'muted': '#7F93B0',
                  'header': '#0F1726', 'header_ink': '#8FB3D9', 'section': '#16233A', 'section_ink': '#8FD3FF',
@@ -49,12 +49,12 @@ STYLES: dict[str, dict[str, Any]] = {
               'header': '#FFFEFB', 'header_ink': '#1A1A1A', 'section': '#FFFEFB', 'section_ink': '#1A1A1A',
               'section_rule': '#1A1A1A', 'total': '#FFFEFB', 'total_ink': '#1A1A1A', 'total_rule': '#1A1A1A',
               'gap_card': '#F7F4EE', 'gain_bar': '#B4C7DC', 'loss_bar': '#E8BCB0', 'gain': '#1F4E79', 'loss': '#B23A1E',
-              'reliable': '#2F6B3A', 'diff': '#8A6D1A', 'best': '#FFFEFB', 'worst': '#FFFEFB', 'operators': 'underline',
+              'reliable': '#2F6B3A', 'diff': '#B5561D', 'best': '#FFFEFB', 'worst': '#FFFEFB', 'operators': 'underline',
               'italic': True},
     'heatmap': {'score': 'heat', 'bar_mix': 0, 'card': '#F6F8FA', 'label': '#FFFFFF', 'ink': '#1F2A37', 'muted': '#8A96A0',
                 'header': '#FFFFFF', 'header_ink': '#5B6B78', 'section': '#F3F5F7', 'section_ink': '#1F2A37',
                 'total': '#EEF1F4', 'total_ink': '#1F2A37', 'gap_card': '#F6F8FA', 'gain_bar': '#A9DCD5',
-                'loss_bar': '#F4B9B3', 'gain': '#1F6F66', 'loss': '#A63A33', 'reliable': '#1F6F66', 'diff': '#9A5B12',
+                'loss_bar': '#F4B9B3', 'gain': '#1F6F66', 'loss': '#A63A33', 'reliable': '#1F6F66', 'diff': '#C06A0A',
                 'best': '#D3EDE4', 'worst': '#F9D5D3', 'operators': 'underline'},
 }
 FIXED_ROLES = {'CATEGORY': 'category', 'KPI': 'kpi', 'NETCHECK KPIS': 'kpi', 'TYPE OF KPI': 'type',
@@ -339,7 +339,7 @@ def _label_runs(name: str, *, size: float, kpi_type: str = '', meta: str = '', c
         runs.append((f'{category.upper()} · ', {'size': size * .8, 'color': current['section_ink'], 'bold': True}))
     badge = {'reliable': 'R', 'diff': 'D'}.get(kpi_type.strip().lower())
     if badge and not section and not total:
-        runs.append((f'{badge}  ', {'size': size * .9, 'color': current[kpi_type.strip().lower()], 'bold': True}))
+        runs.append((f'{badge}  ', {'size': size, 'color': current[kpi_type.strip().lower()], 'bold': True}))
     runs.append((name, {'size': size, 'color': ink, 'bold': section or total, 'italic': italic}))
     if meta:
         runs.append((f'   {meta}', {'size': size * .8, 'color': current['total_ink'] if total else current['muted']}))

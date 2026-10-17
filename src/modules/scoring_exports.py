@@ -7,7 +7,7 @@ import json
 from io import BytesIO, StringIO
 from math import ceil, floor, isclose, isfinite, log10
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from textwrap import wrap
 
 from pptx import Presentation
@@ -42,7 +42,7 @@ from src.modules.scoring_pptx_scorecard import apply_scorecard
 from src.modules.scoring_themes import DEFAULT_THEME, active_theme, themed, use_theme
 from src.modules.scoring_vendors import normalize_scoring_vendor_result
 from src.modules.scoring_views import (
-    THRESHOLD_COLORS, _gap_order_key, _hierarchy_display_value, build_scoring_views, refresh_baseline_warning, scoring_coverage_notes,
+    THRESHOLD_COLORS, _hierarchy_display_value, gap_priority_order_key, latest_campaign_columns, build_scoring_views, refresh_baseline_warning, scoring_coverage_notes,
 )
 from src.modules.scoring_pptx_allocation import (
     _environment_display_label, add_maximum_allocation_donut, category_maximum_allocations,
@@ -342,8 +342,11 @@ def _add_individual_gap_notes(slide, matrix: dict, rows: list[dict]) -> None:
     value_text = _number(average) + marker
     total_text = _number(total) + marker
     positive_name, negative_name = active_theme()['gap_names']
+    columns = matrix.get('hierarchy_columns') or []
+    order = ('KPIs ordered by GAP in the latest campaign' if len(latest_campaign_columns(columns)) < len(columns)
+             else 'KPIs ordered by GAP')
     box = _text(
-        slide, f'KPIs ordered by GAP\n\nAverage KPI GAP: {value_text} points\n\n'
+        slide, f'{order}\n\nAverage KPI GAP: {value_text} points\n\n'
         f'Average total KPI GAP: {total_text} points\n\n'
         f'Operator − reference\n{positive_name}: positive\n{negative_name}: negative\n\n{matrix["note"]}',
         1.8, left=10.2, width=2.5, height=4.65, size=13,
@@ -394,8 +397,9 @@ def _add_gap_priority_arrow(slide, table, *, header_rows: int = 1) -> None:
         reference.set('idx', '0')
 
 
-def _add_gap_color_scale(slide, matrix: dict, *, left: float, width: float, top: float = 6.57) -> None:
-    """Add an editable red-white-green bar with this comparison's actual GAP range."""
+def _add_gap_color_scale(slide, matrix: dict, *, left: float, width: float, top: float = 6.8) -> None:
+    """Add an editable red-white-green bar with this comparison's actual GAP range, on one line under the table: its
+    heading, the range behind the reference, the bar (zero in its middle) and the range ahead."""
     colors = matrix.get('gap_scale_colors') or {
         'negative': '#E57373', 'zero': '#FFFFFF', 'positive': '#70AD47',
     }
@@ -409,9 +413,9 @@ def _add_gap_color_scale(slide, matrix: dict, *, left: float, width: float, top:
         ]
         return '#' + ''.join(f'{channel:02X}' for channel in channels)
 
-    heading = _text(slide, 'GAP color scale', top, left=left, width=width, size=7.5, height=.14)
+    heading = _text(slide, 'GAP color scale', top, left=left, width=width * .15, size=7.5, height=.14)
     heading.text_frame.paragraphs[0].font.bold = True
-    bar_left, bar_width, bar_top, bar_height = left + width * .25, width * .5, top + .16, .12
+    bar_left, bar_width, bar_top, bar_height = left + width * .32, width * .36, top + .01, .12
     segments = 24
     for index in range(segments):
         midpoint = (index + .5) / segments
@@ -428,12 +432,12 @@ def _add_gap_color_scale(slide, matrix: dict, *, left: float, width: float, top:
         shape.fill.solid()
         shape.fill.fore_color.rgb = _theme_rgb(color)
         shape.line.fill.background()
-    _text(slide, f'−{maximum:.2f} (operator trails)', top + .28, left=left,
-          width=width * .43, size=6.5, height=.13)
-    _text(slide, '· 0 ·', top + .28, left=left + width * .44,
-          width=width * .12, size=6.5, height=.13, align=PP_ALIGN.CENTER)
-    _text(slide, f'+{maximum:.2f} (operator leads)', top + .28, left=left + width * .57,
-          width=width * .43, size=6.5, height=.13, align=PP_ALIGN.RIGHT)
+    _text(slide, f'−{maximum:.2f} (operator trails)', top + .01, left=left + width * .15,
+          width=width * .16, size=6.5, height=.13, align=PP_ALIGN.RIGHT)
+    _text(slide, '0', top + .01, left=bar_left + bar_width * .45,
+          width=bar_width * .1, size=6.5, height=.13, align=PP_ALIGN.CENTER)
+    _text(slide, f'+{maximum:.2f} (operator leads)', top + .01, left=left + width * .69,
+          width=width * .16, size=6.5, height=.13)
 
 
 def _cell(cell, text: str, *, color: str = _WHITE, foreground: str = '#17232D',
@@ -2141,13 +2145,14 @@ def _hierarchy_gap_projection(matrix: dict, columns: list[dict]) -> dict:
         }
         for row in projected.get('rows', [])
     ]
-    compared_ids = [column['id'] for column in columns if not column.get('is_reference')]
-    if len({column['operator'] for column in columns if not column.get('is_reference')}) == 1:
+    compared = [column for column in columns if not column.get('is_reference')]
+    if len({column['operator'] for column in compared}) == 1:
+        # One operator: its KPIs ordered by their GAP in the latest campaign.
         if projected.get('table_mode') == 'summary':
-            projected['rows'].sort(key=lambda row: _gap_order_key(row, compared_ids))
+            projected['rows'].sort(key=lambda row: gap_priority_order_key(row, compared))
         else:
             kpis = [row for row in projected['rows'] if row.get('row_type') != 'category']
-            projected['rows'] = sorted(kpis, key=lambda row: _gap_order_key(row, compared_ids))
+            projected['rows'] = sorted(kpis, key=lambda row: gap_priority_order_key(row, compared))
     projected['total'] = {
         'gaps': {leaf_id: matrix.get('total', {}).get('gaps', {}).get(leaf_id) for leaf_id in leaf_ids},
         'gap_partial': {leaf_id: matrix.get('total', {}).get('gap_partial', {}).get(leaf_id, False)
@@ -2156,6 +2161,84 @@ def _hierarchy_gap_projection(matrix: dict, columns: list[dict]) -> dict:
                              for leaf_id in leaf_ids},
     }
     return projected
+
+
+# The GAP tables grow down to their colour scale (at 6.8 in), their text up to this size.
+GAP_TABLE_BOTTOM = 6.7
+GAP_TABLE_MAXIMUM_FONT = 9.0
+# A line of a row, as a multiple of its text size, and what a row adds around its lines, in points.
+_ROW_LINE = 1.2
+_ROW_PADDING = .5
+
+
+def _text_points(text: str, size: float, bold: bool | None) -> float:
+    """About how wide ``text`` is at ``size`` points (Arial-like widths, a little wider when bold)."""
+    width = 0.0
+    for char in text:
+        width += (.28 if char in ' .,:;|!il' else .34 if char in '[]()/-' else .89 if char in '%@MW' else
+                  .56 if char.isdigit() or char.islower() else .68 if char.isupper() else .6)
+    return width * size * (1.06 if bold else 1.0)
+
+
+def _fill_gap_table(table, *, header_rows: int, bottom: float = GAP_TABLE_BOTTOM,
+                    maximum: float = GAP_TABLE_MAXIMUM_FONT) -> None:
+    """Make the text of the rows under the header of a scorecard GAP table as large as they fit down to ``bottom``
+    (inches), never smaller than it is: every run keeps its size relative to the others, the KPI labels (first column)
+    wrap when they must and the values never do; the rows then share the room left, up to half their height more."""
+    frame = table._graphic_frame
+    rows = list(table.rows)
+    columns = [column.width / 12700 for column in table.columns]
+    available = (Inches(bottom) - frame.top - sum(row.height for row in rows[:header_rows])) / 12700
+    body = []
+    for row in rows[header_rows:]:
+        cells = []
+        for index, cell in enumerate(row.cells):
+            if cell.is_spanned:
+                continue
+            span = cell.span_width if cell.is_merge_origin else 1
+            runs = [run for paragraph in cell.text_frame.paragraphs for run in paragraph.runs
+                    if run.text and run.font.size is not None]
+            # The cell margins (.04 in each side) and a little room for the renderer.
+            cells.append((index == 0, sum(columns[index:index + span]) * .96 - 6, runs))
+        body.append(cells)
+    sizes = [run.font.size.pt for cells in body for _wraps, _width, runs in cells for run in runs]
+    if not sizes or available <= 0:
+        return
+    largest = max(sizes)
+
+    def heights(scale: float) -> list[float] | None:
+        result = []
+        for cells in body:
+            lines, tallest = 1, 0.0
+            for wraps, width, runs in cells:
+                if not runs:
+                    continue
+                needed = sum(_text_points(run.text, run.font.size.pt * scale, run.font.bold) for run in runs)
+                tallest = max(tallest, *(run.font.size.pt * scale for run in runs))
+                if needed > width:
+                    if not wraps:
+                        return None
+                    lines = max(lines, ceil(needed * 1.08 / max(1.0, width)))
+            result.append(lines * (tallest or largest * scale) * _ROW_LINE + _ROW_PADDING)
+        return result
+
+    scale = maximum / largest
+    while scale > 1:
+        layout = heights(scale)
+        if layout is not None and sum(layout) <= available:
+            break
+        scale *= .97
+    else:
+        return
+    grow = min(1.5, available / sum(layout))
+    for row, height, cells in zip(rows[header_rows:], layout, body):
+        row.height = Pt(height * grow)
+        for _wraps, _width, runs in cells:
+            for run in runs:
+                run.font.size = Pt(round(run.font.size.pt * scale, 1))
+        for cell in row.cells:
+            cell.margin_top = cell.margin_bottom = 0
+    frame.height = sum(row.height for row in rows)
 
 
 def _add_gap_total_row(table, rows: list[dict], column_ids: list[str | None], *, size: float) -> None:
@@ -2244,8 +2327,10 @@ def _hierarchy_gap_tables(presentation, matrices: list[dict], *,
         header_rows = apply_scorecard(
             table, header_rows=header_rows, metrics=metrics, total={}, total_label='Total KPI GAP', font=_FONT,
             value_columns=[(index, 'GAP', column['id']) for index, column in enumerate(columns, 3)],
-            drop_leaf_header=True, label_width=3.0,
+            # The KPIs take the width the GAP columns do not need (each keeps about an inch).
+            drop_leaf_header=True, label_width=max(3.0, min(4.6, table_width - 1.0 * len(columns))),
         )
+        _fill_gap_table(table, header_rows=header_rows)
         _text(slide, matrix['note'], 7.05, height=.25, size=9)
         if show_priority:
             _add_individual_gap_notes(slide, matrix, metrics)
@@ -2301,6 +2386,7 @@ def _gap_summary_tables(presentation, matrices: list[dict]) -> None:
             apply_scorecard(table, header_rows=1, metrics=rows, total={}, total_label='Total KPI GAP', font=_FONT,
                             value_columns=[(index, 'GAP', operator) for index, operator in enumerate(operators, 3)],
                             label_width=4.2)
+            _fill_gap_table(table, header_rows=1)
             _add_gap_color_scale(slide, matrix, left=.65, width=12.03)
 
 
@@ -2350,6 +2436,7 @@ def _gap_tables(presentation, matrices: list[dict]) -> None:
             _add_gap_total_row(table, rows, [None], size=metric_font)
             apply_scorecard(table, header_rows=1, metrics=rows, total={}, total_label='Total KPI GAP', font=_FONT,
                             value_columns=[(3, 'GAP', None)], label_width=5.6)
+            _fill_gap_table(table, header_rows=1)
             _add_gap_priority_arrow(slide, table)
             _add_gap_color_scale(slide, matrix, left=.65, width=9.3)
             _text(slide, 'KPIs are ordered by GAP, from lowest to highest. GAP Priority does not affect this order.', 7.12, height=.25, size=9)
@@ -2441,16 +2528,31 @@ def _add_insight_slides(presentation, views: dict, environment: str, scoring: st
     def compared(operator: str, operator_label: str | None = None) -> bool:
         return _compared_operator(options, operator, operator_label)
 
+    # The operators each section of the page has enabled (sent with the export of a Saved Filter); without them, the
+    # operators the scenario compares, as the page shows by default (with the reference in the Summary only).
+    choices = views.get('_operator_choices') or {}
+
+    def chosen(section: str) -> Callable[..., bool]:
+        names = {str(name).casefold() for name in choices.get(section) or []}
+        if not names:
+            return compared
+        return lambda operator, operator_label=None: (str(operator).casefold() in names
+                                                      or str(operator_label or '').casefold() in names)
+
+    def compared_items(section: str, entries: list[dict]) -> list[dict]:
+        """The items of a section whose page leaves the reference out by default."""
+        return entries if choices.get(section) else [entry for entry in entries if not entry.get('is_reference')]
+
     if stage == 'summary':
         if _option(options, 'summary', 'standings'):
             add_standings_slides(presentation, items.get('standings', []), scoring_label=label, subtitle=subtitle,
-                                 new_slide=_slide, scope=scope, compared=compared)
+                                 new_slide=_slide, scope=scope, compared=chosen('summary-operators'))
         if _option(options, 'summary', 'position'):
             add_position_matrix_slides(presentation, items.get('position_matrices', []), subtitle=subtitle, new_slide=_slide,
-                                       environment_labels=environment_labels, scope=scope, compared=compared)
+                                       environment_labels=environment_labels, scope=scope, compared=chosen('summary-operators'))
         if _option(options, 'summary', 'levers'):
             add_levers_slides(presentation, items.get('levers', []), subtitle=subtitle, new_slide=_slide, scope=scope,
-                              compared=compared)
+                              compared=chosen('summary-operators'))
         if _option(options, 'summary', 'scope'):
             add_campaign_scope_slides(presentation, items.get('campaign_scope', []), subtitle=subtitle, new_slide=_slide,
                                       environment_labels=environment_labels)
@@ -2466,21 +2568,21 @@ def _add_insight_slides(presentation, views: dict, environment: str, scoring: st
                                      subtitle=subtitle, new_slide=_slide, scope=scope)
         rankings = _first_ranking_group(items.get('location_rankings', []))
         if _option(options, 'locations', 'ranking'):
-            add_location_ranking_slides(presentation, rankings, subtitle=subtitle, new_slide=_slide, scope=scope,
-                                        compared=compared)
+            add_location_ranking_slides(presentation, compared_items('ranking-operators', rankings), subtitle=subtitle,
+                                        new_slide=_slide, scope=scope, compared=chosen('ranking-operators'))
         if _option(options, 'locations', 'versus'):
             add_location_versus_slides(presentation, rankings, subtitle=subtitle, new_slide=_slide, scope=scope,
-                                       compared=compared)
+                                       compared=chosen('ranking-operators'))
         return
     styles = operator_styles(views.get('score_tables', []))
     if stage == 'gaps':
         if _option(options, 'gap', 'parts'):
-            add_gap_parts_slides(presentation, items.get('gap_parts', []), subtitle=subtitle, new_slide=_slide, scope=scope,
-                                 compared=compared)
+            add_gap_parts_slides(presentation, compared_items('gap-parts-operators', items.get('gap_parts', [])),
+                                 subtitle=subtitle, new_slide=_slide, scope=scope, compared=chosen('gap-parts-operators'))
         if _option(options, 'gap', 'profile'):
             # The slides of one campaign show its latest one (of each operator and place).
             profiles = [item for item in latest_campaign_items(items.get('kpi_gap_profiles', []))
-                        if _compared_operator(options, item['operator'], item.get('label'))]
+                        if chosen('gap-insight-operators')(item['operator'], item.get('label'))]
             add_kpi_gap_profile_slides(
                 presentation, profiles, scoring_label=label, subtitle=subtitle,
                 environment_labels=environment_labels,
@@ -2495,7 +2597,7 @@ def _add_insight_slides(presentation, views: dict, environment: str, scoring: st
                                        new_slide=_slide, scope=scope)
         if _option(options, 'points', 'kpis'):
             profiles = [item for item in latest_campaign_items(items.get('kpi_gap_profiles', []))
-                        if _compared_operator(options, item['operator'], item.get('label'))]
+                        if chosen('gap-insight-operators')(item['operator'], item.get('label'))]
             add_points_per_kpi_slides(
                 presentation, profiles, scoring_label=label, subtitle=subtitle, environment_labels=environment_labels,
                 new_slide=_slide, operator_colors={name: style.get('color') for name, style in styles.items()}, scope=scope,
@@ -2510,15 +2612,16 @@ def _add_insight_slides(presentation, views: dict, environment: str, scoring: st
                                    outlines=views.get('_points_loss_outlines'),
                                    environment_labels=environment_labels, scope=scope)
         if _option(options, 'points', 'vendors'):
-            add_serving_loss_slides(presentation, items.get('vendor_losses', []), title='Points Lost — per Vendor',
-                                    column='Vendor', subtitle=subtitle, new_slide=_slide, scope=scope, compared=compared)
+            add_serving_loss_slides(presentation, compared_items('vendor_losses-operators', items.get('vendor_losses', [])),
+                                    title='Points Lost — per Vendor', column='Vendor', subtitle=subtitle, new_slide=_slide,
+                                    scope=scope, compared=chosen('vendor_losses-operators'))
         if _option(options, 'points', 'site_types'):
-            add_serving_loss_slides(presentation, items.get('site_type_losses', []),
+            add_serving_loss_slides(presentation, compared_items('site_type_losses-operators', items.get('site_type_losses', [])),
                                     title='Points Lost — per kind of site', column='Kind of site', subtitle=subtitle,
-                                    new_slide=_slide, scope=scope, compared=compared)
+                                    new_slide=_slide, scope=scope, compared=chosen('site_type_losses-operators'))
         if _option(options, 'points', 'sites'):
-            add_sites_slides(presentation, latest_campaign_items(items.get('sites_to_review', [])), subtitle=subtitle,
-                             new_slide=_slide, scope=scope, compared=compared)
+            add_sites_slides(presentation, compared_items('sites-operators', latest_campaign_items(items.get('sites_to_review', []))),
+                             subtitle=subtitle, new_slide=_slide, scope=scope, compared=chosen('sites-operators'))
         if _option(options, 'points', 'stretches'):
             add_stretch_slides(presentation, latest_campaign_items(items.get('route_stretches', [])),
                                insights.get('points_loss_background') or [],
@@ -2554,6 +2657,8 @@ def _add_scoring_block(presentation, job: dict[str, Any], result: dict[str, Any]
     )
     refresh_baseline_warning(result, views, str(job.get('baseline_operator') or 'EE'))
     views['_export_environment'] = 'all' if combined_only else environment
+    # The operators each section of the page has enabled, when the export comes from the page (see _add_insight_slides).
+    views['_operator_choices'] = job.get('_operator_choices') or {}
     boundary_cache: dict[str, dict] = {}
 
     def points_loss_boundaries(field: str) -> dict:

@@ -714,8 +714,12 @@ def test_favourite_elements_are_exported_and_imported_on_their_own(client):
     login(client)
     definition = complete_reports.normalize_definition({})
     complete_reports.save_favourite(core.repository, None, 'Quarterly', definition, 'super')
+    from src.modules.scoring_reports import load_report_state
+
+    configurations = [item['name'] for item in load_report_state(core.repository)['configurations']]
     for target, label in (('complete-report-favourites', 'Complete Report Favourites'),
-                          ('scoring-starred-filters', 'Scoring & GAP Starred Filters')):
+                          ('scoring-starred-filters', 'Scoring & GAP Starred Filters'),
+                          ('scoring-report-configurations', 'Scoring & GAP Report Configurations')):
         exported = client.get(f'/admin/import-export/export?export_target={target}')
         assert exported.status_code == 200, exported.text
         with zipfile.ZipFile(BytesIO(exported.content)) as archive:
@@ -738,5 +742,10 @@ def test_favourite_elements_are_exported_and_imported_on_their_own(client):
         if target == 'complete-report-favourites':
             assert [item['name'] for item in document['favourites']] == ['Quarterly']
             assert [item['name'] for item in complete_reports.list_favourites(core.repository)] == ['Quarterly']
-        else:
+        elif target == 'scoring-starred-filters':
             assert document['saved_filters'] == []
+        else:
+            # The saved configurations of the Scoring report editor travel on their own too.
+            assert document['format'] == 'drivetest-analyzer-scoring-report-configurations'
+            assert [item['name'] for item in document['configurations']] == configurations and configurations
+            assert [item['name'] for item in load_report_state(core.repository)['configurations']] == configurations

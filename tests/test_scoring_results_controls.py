@@ -890,7 +890,8 @@ def test_gap_value_choice_is_sent_only_to_powerpoint_export():
 def test_export_selected_scoring_report_asks_for_scorings_environments_and_format():
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
     payload = {'snippets': {name: _function_source(script, name) for name in (
-        'scoringExportChoices', 'scoringExportDialogHtml', 'exportSelectedScoringReport')}}
+        'scoringExportChoices', 'scoringExportDialogHtml', 'scoringExportOperators', 'exportSelectedScoringReport')}}
+    payload['snippets']['sections'] = re.search(r"const EXPORT_OPERATOR_SECTIONS = \[[^\]]*\];", script).group(0)
     program = r"""
 const vm = require('node:vm');
 const payload = JSON.parse(require('node:fs').readFileSync(0, 'utf8'));
@@ -902,6 +903,7 @@ const results = [];
     {choice: 'secondary', toggle: ['most_reliable', 'Combined', 'Drive - City'], reliable: true},
     {choice: 'confirm', toggle: ['best_network'], reliable: false},
     {choice: null, toggle: [], reliable: true},
+    {choice: 'confirm', toggle: [], reliable: true, selections: [['summary-operators', '["VF","EE"]'], ['points-loss-colour', 'losses']]},
   ];
   for (const item of cases) {
     let downloaded = null;
@@ -909,7 +911,7 @@ const results = [];
     let warning = null;
     let inputs = [];
     const context = {
-      URL, window: {location: {href: 'https://example.test/scoring'}},
+      URL, window: {location: {href: 'https://example.test/scoring'}}, insightSelections: new Map(item.selections || []),
       environmentSelect: {options: [{value: 'all', textContent: 'All Environments'},
                                     {value: 'Drive - City', textContent: 'Drive - City'},
                                     {value: 'Drive - Roads', textContent: 'Drive - Roads'}]},
@@ -933,7 +935,7 @@ const results = [];
   process.stdout.write(JSON.stringify(results));
 })().catch(error => { console.error(error); process.exitCode = 1; });
 """
-    default, custom, nothing, cancelled = _run_node_json(program, payload)
+    default, custom, nothing, cancelled, operators = _run_node_json(program, payload)
     # Best Network and All Environments are ticked; Most Reliable only when the Saved Filter has it.
     assert [(item['value'], item['checked'], item['disabled']) for item in default['inputs']] == [
         ('best_network', True, False), ('most_reliable', False, False), ('Combined', True, False),
@@ -948,6 +950,10 @@ const results = [];
     assert ('most_reliable', False, True) in [(item['value'], item['checked'], item['disabled']) for item in nothing['inputs']]
     assert nothing['downloaded'] is None and 'Tick at least one scoring' in nothing['warning']
     assert cancelled['downloaded'] is None
+    # The operators enabled in the sections of the page travel with the export (only the sections changed).
+    assert operators['downloaded']['url'] == (
+        'https://example.test/scoring/saved-filters/7/export/ppt?environment=all&scorings=best_network&environments=Combined'
+        '&operators=%7B%22summary-operators%22%3A%5B%22VF%22%2C%22EE%22%5D%7D')
 
 
 def test_generate_scoring_report_uses_the_calculation_selection():
@@ -1979,3 +1985,13 @@ process.stdout.write(JSON.stringify({scopes: context.scopes, tooltip: context.to
     for rule in ('.scoring-scope-pill { display: inline-flex;', '.scoring-scope-pill.is-operator {',
                  '.scoring-scope-pill.is-vendor {'):
         assert rule in template
+
+
+def test_summary_sections_enable_the_reference_operator_by_default():
+    script = SCORING_SCRIPT.read_text(encoding='utf-8')
+    calls = re.findall(r"insightOperatorChips\('([\w-]+)', [^)]*\)", script)
+    summary = [call for call in re.findall(r"insightOperatorChips\('summary-operators', [^;]*\);", script)]
+    # The Summary (standings, position and levers) chooses every operator, the reference included; the other sections
+    # start with the operators compared with it.
+    assert len(summary) == 3 and not any('compared: true' in call for call in summary)
+    assert {'ranking-operators', 'gap-parts-operators', 'sites-operators'} <= set(calls)

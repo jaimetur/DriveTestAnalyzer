@@ -484,7 +484,6 @@
   .scoring-content-zoom { position: relative; touch-action: none; user-select: none; }
   .scoring-content-zoom.is-zoomed { overflow: hidden; }
   .scoring-content-zoom-rect { position: absolute; z-index: 3; border: 1.5px dashed #1f6fd1; background: rgba(31, 111, 209, .12); pointer-events: none; }
-  .scoring-insight-reliable { text-decoration: underline; }
   .scoring-insight-note { margin: .6rem 0 0; color: #4a5b65; font-size: .78rem; }
   .scoring-insight-compare { overflow-x: auto; }
   .scoring-insight-total { margin: .5rem 0 0; text-align: right; font-weight: 800; }
@@ -816,10 +815,10 @@
   [data-scoring-workspace] .scoring-scorecard .scoring-operator-chip::before { content: ''; flex: 0 0 auto; width: .62rem; height: .62rem; border-radius: 50%; background: var(--operator-accent, #607d8b); }
   /* The KPI: the badge of its type, its name and its weight and maximum. */
   [data-scoring-workspace] .scoring-comparison-table.scoring-scorecard tr > .scoring-kpi-label { min-width: 18rem; max-width: 28rem; text-align: left !important; white-space: normal; }
-  [data-scoring-workspace] .scoring-scorecard .scoring-kpi-badge { display: inline-grid; place-items: center; width: 1.2rem; height: 1.2rem; margin-right: .5rem; border-radius: 6px;
+  [data-scoring-workspace] .scoring-scorecard .scoring-kpi-badge, [data-scoring-workspace] .scoring-insight-table .scoring-kpi-badge { display: inline-grid; place-items: center; width: 1.2rem; height: 1.2rem; margin-right: .5rem; border-radius: 6px;
     font-size: .6rem; font-weight: 800; vertical-align: middle; }
-  [data-scoring-workspace] .scoring-scorecard .scoring-kpi-badge[data-kpi-type="reliable"] { background: var(--sc-reliable-bg); color: var(--sc-reliable-ink); }
-  [data-scoring-workspace] .scoring-scorecard .scoring-kpi-badge[data-kpi-type="diff"] { background: var(--sc-diff-bg); color: var(--sc-diff-ink); }
+  [data-scoring-workspace] .scoring-scorecard .scoring-kpi-badge[data-kpi-type="reliable"], [data-scoring-workspace] .scoring-insight-table .scoring-kpi-badge[data-kpi-type="reliable"] { background: var(--sc-reliable-bg); color: var(--sc-reliable-ink); }
+  [data-scoring-workspace] .scoring-scorecard .scoring-kpi-badge[data-kpi-type="diff"], [data-scoring-workspace] .scoring-insight-table .scoring-kpi-badge[data-kpi-type="diff"] { background: var(--sc-diff-bg); color: var(--sc-diff-ink); }
   [data-scoring-workspace] .scoring-scorecard .scoring-kpi-name { color: var(--sc-ink); font-weight: 550; vertical-align: middle; }
   [data-scoring-workspace] .scoring-scorecard .scoring-kpi-meta { margin-left: .55rem; color: var(--sc-muted); font-size: .64rem; font-weight: 500; white-space: nowrap; vertical-align: middle; }
   [data-scoring-workspace] .scoring-scorecard .scoring-kpi-category { display: inline-block; margin-right: .45rem; padding: .08rem .42rem; border-radius: 5px; background: var(--sc-section);
@@ -868,7 +867,7 @@
      left, green to the right), the operators on strips in their colour and a bold total under a dark rule. */
   [data-scoring-workspace][data-scoring-theme="netcheck"] { --sc-row-line: #e6e9ed; --sc-chip: transparent; --sc-section: transparent;
     --sc-section-ink: #17232d; --sc-total: #ffffff; --sc-total-ink: #17232d; --sc-gap-card: transparent; --sc-radius: 0px; --sc-track: #c9d2db;
-    --sc-gain-bar: #4ca65a; --sc-loss-bar: #e8414f; --sc-reliable-bg: #eef1f4; --sc-reliable-ink: #455b65; --sc-diff-bg: #eef1f4; --sc-diff-ink: #455b65; }
+    --sc-gain-bar: #4ca65a; --sc-loss-bar: #e8414f; --sc-reliable-bg: #e5effa; --sc-reliable-ink: #1f6fb2; --sc-diff-bg: #fcefe0; --sc-diff-ink: #c25e00; }
   [data-scoring-workspace][data-scoring-theme="netcheck"] .scoring-comparison-table.scoring-scorecard { border-spacing: 0; }
   [data-scoring-workspace][data-scoring-theme="netcheck"] .scoring-comparison-table.scoring-scorecard thead tr > th { color: #17232d !important; font-size: .64rem !important; }
   [data-scoring-workspace][data-scoring-theme="netcheck"] .scoring-scorecard .scoring-operator-chip { display: flex; width: 100%; box-sizing: border-box;
@@ -915,7 +914,7 @@
      for the reliable KPIs. */
   [data-scoring-workspace][data-scoring-theme="ericsson"] { --sc-ink: #0c0c0c; --sc-muted: #6a6a6a; --sc-row-line: #ececec; --sc-chip: transparent; --sc-section: #ffffff; --sc-section-ink: #0c0c0c;
     --sc-cell: #f5f5f5; --sc-total: #ffffff; --sc-total-ink: #0c0c0c; --sc-accent: #0082f0; --sc-gain: #0a8f55; --sc-loss: #d11f1f; --sc-gain-bar: #0fc373; --sc-loss-bar: #ff3232;
-    --sc-reliable-bg: #e5f2fe; --sc-reliable-ink: #0069c2; --sc-diff-bg: #f0f0f0; --sc-diff-ink: #4e4e4e; --sc-best: #e7f9f0; --sc-worst: #ffecec;
+    --sc-reliable-bg: #e5f2fe; --sc-reliable-ink: #0069c2; --sc-diff-bg: #fcefe0; --sc-diff-ink: #c25e00; --sc-best: #e7f9f0; --sc-worst: #ffecec;
     --sc-track: #d6d6d6; --sc-gap-card: #f5f5f5; --sc-radius: 0px; --sc-gap-bar: 4px; }
   [data-scoring-workspace][data-scoring-theme="ericsson"] .scoring-comparison-table.scoring-scorecard tbody tr:not(.scoring-section-row) > td[data-column="score"] {
     background: linear-gradient(90deg, color-mix(in srgb, var(--band-dot, #0082f0) 34%, #fff) calc(var(--share, 0) * 100%), #f5f5f5 0) !important; }

@@ -234,7 +234,8 @@ def add_standings_slides(presentation, standings: list[dict[str, Any]], *, scori
         _write_runs(legend.text_frame, [('■ ', False, DATA_COLOR), ('Data   ', False, None), ('■ ', False, VOICE_COLOR),
                                         ('Voice', False, None), (f'   ·   Points of {maximum:,.0f}', False, None)],
                     size=8, color=MUTED)
-        panels = [row for row in rows if not row.get('is_reference') and compared(row['operator'], row['label'])][:3]
+        # The tiles of the chosen operators, the reference included (as the page shows by default).
+        panels = [row for row in rows if compared(row['operator'], row['label'])][:4]
         if not panels:
             continue
         top = legend_top + .32
@@ -290,8 +291,7 @@ def add_position_matrix_slides(presentation, matrices: list[dict[str, Any]], *, 
     """Each compared operator's position and share of the points available in Voice, Data and overall, in every
     environment and in all of them, with the points it missed (up to six operators per slide, see operator_groups)."""
     for item in matrices[:MAX_SCOPE_SLIDES]:
-        operators = [style for style in item['operators'] if not style.get('is_reference')
-                     and compared(style['operator'], style['label'])] or item['operators'][:1]
+        operators = [style for style in item['operators'] if compared(style['operator'], style['label'])] or item['operators'][:1]
         services = [service for service in ('Voice', 'Data', 'Overall') if any(row['cells'].get(service) for row in item['rows'])]
         for group in operator_groups(operators):
             slide = new_slide(presentation, 'Position — per environment',
@@ -437,7 +437,7 @@ def add_location_ranking_slides(presentation, rankings: list[dict[str, Any]], *,
                                 scope: ScopeLabels | None = None,
                                 compared: Callable[[str, str], bool] = lambda _operator, _label: True) -> None:
     """Every location ranked by its share of the points, per compared operator."""
-    chosen = [item for item in rankings if not item.get('is_reference') and compared(item['operator'], item['label'])]
+    chosen = [item for item in rankings if compared(item['operator'], item['label'])]
     for item in chosen[:MAX_OPERATOR_SLIDES]:
         plural = {'City': 'Cities and routes', 'Cluster': 'Clusters', 'Region': 'Regions'}.get(item['level'], 'Locations')
         pages = _pages(item['rows'])
