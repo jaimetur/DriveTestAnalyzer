@@ -526,7 +526,8 @@ body [data-section-bar] > a.section-bar-top { padding: .5rem .62rem; }
 body [data-section-bar].is-compact > a.section-bar-top { padding: .45rem .55rem; }
 /* The parts of an entry of the bar, below it, as in the sections menu. */
 .section-bar-menu { --section-bar-accent: #0b6664; position: fixed; inset: auto; box-sizing: border-box; width: max-content; min-width: 13rem; max-width: calc(100vw - 1rem); margin: 0; padding: .4rem; border: 1px solid rgba(15, 23, 42, .1); border-radius: 12px; background: #fff; box-shadow: 0 16px 34px rgba(15, 23, 42, .2); }
-.section-bar-menu:popover-open { display: grid; gap: .15rem; }
+/* As tall as its parts, never stretched to the bottom of the screen (as Safari on phones does with a popover); it scrolls when the screen is shorter. */
+.section-bar-menu:popover-open { display: grid; align-content: start; gap: .15rem; height: max-content; bottom: auto; overflow-y: auto; overscroll-behavior: contain; }
 .section-bar-menu a { display: flex; align-items: center; gap: .6rem; padding: .5rem .75rem; border-radius: 8px; color: #1f2937; font-size: .9rem; font-weight: 650; text-decoration: none; white-space: nowrap; }
 .section-bar-menu a:hover, .section-bar-menu a:focus-visible { background: color-mix(in srgb, var(--section-bar-accent) 10%, #fff); }
 .section-bar-menu a.is-active { background: color-mix(in srgb, var(--section-bar-accent) 15%, #fff); color: color-mix(in srgb, var(--section-bar-accent) 80%, #000); }

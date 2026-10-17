@@ -6767,11 +6767,13 @@
   function makeCampaignScope(scope) {
     const box = document.createElement('div');
     box.className = 'scoring-scope';
+    // A detail given as a list has a line per item (each environment with its points).
     const tile = (label, value, detail) => {
       const element = document.createElement('div');
       element.className = 'scoring-scope-tile';
+      const lines = Array.isArray(detail) ? detail : [detail];
       element.append(insightParagraph('scoring-standing-label', label), insightParagraph('scoring-scope-value', value),
-        insightParagraph('scoring-standing-detail', detail));
+        ...lines.map(line => insightParagraph('scoring-standing-detail', line)));
       return element;
     };
     const tiles = document.createElement('div');
@@ -6781,7 +6783,7 @@
     if (window_) tiles.append(tile('Measurements', `${window_.first} → ${window_.last}`, `${window_.days} days with tests`));
     if (scope.places) tiles.append(tile('Places', `${scope.places.cities} cities`, `${scope.places.routes} Connecting Roads routes`));
     const environments = scope.environments.filter(item => item.max_points > 0);
-    tiles.append(tile('Environments', `${environments.length}`, environments.map(item => `${item.label} ${insightNumber(item.max_points)} pts`).join(' · ')));
+    tiles.append(tile('Environments', `${environments.length}`, environments.map(item => `${item.label} ${insightNumber(item.max_points)} pts`)));
     const kinds = ['data', 'voice', 'speech'];
     const names = [...new Set(Object.values(scope.tests || {}).flatMap(byKind => Object.values(byKind).flatMap(byEnvironment => Object.keys(byEnvironment))))];
     const rows = scope.operators.filter(style => scope.tests?.[style.operator]).map(style => [

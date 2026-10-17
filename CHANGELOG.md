@@ -22,6 +22,7 @@
 - **Compact Word reports of Scoring & GAP Analysis:** the Word documents of Export Selected Scoring Report, Generate Scoring Report and the Reporting Jobs put the slides of each section on shared portrait pages without their empty bands, every section from a new page, merge consecutive covers into one and give the cover a whole page with its background.
 
 #### 🐛 Bug fixes:
+- **Section bar menus on phones:** the list of parts that opens from the section bar of every module is as tall as its parts and scrolls within the screen, instead of stretching to the bottom of the screen with wide gaps between its entries on phones.
 
 #### 📚 Documentation:
 

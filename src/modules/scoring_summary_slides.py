@@ -327,6 +327,12 @@ def add_levers_slides(presentation, levers: list[dict[str, Any]], *, subtitle: s
                   .45, CONTENT_BOTTOM - .25, 12.4, .25, size=8, color=MUTED)
 
 
+def _fitted_size(text: str, width: float, maximum: float, minimum: float = 10) -> float:
+    """The largest size up to ``maximum`` at which ``text`` fits on one line ``width`` inches wide (bold figures)."""
+    estimate = width * 72 / max(1, .62 * len(str(text)))
+    return max(minimum, min(maximum, round(estimate * 2) / 2))
+
+
 def add_campaign_scope_slides(presentation, scopes: list[dict[str, Any]], *, subtitle: str, new_slide: Callable,
                               environment_labels: dict[str, str]) -> None:
     """How the measurements ran: campaigns and dates, places, environments and the tests of every operator."""
@@ -340,15 +346,21 @@ def add_campaign_scope_slides(presentation, scopes: list[dict[str, Any]], *, sub
         if item.get('places'):
             tiles.append(('Places', f"{item['places']['cities']} cities", f"{item['places']['routes']} Connecting Roads routes"))
         environments = [environment for environment in item['environments'] if environment['max_points'] > 0]
+        # Each environment on a line of its own.
         tiles.append(('Environments', str(len(environments)),
-                      ' · '.join(f"{environment['label']} {environment['max_points']:,.0f} pts" for environment in environments)))
+                      [f"{environment['label']} {environment['max_points']:,.0f} pts" for environment in environments]))
         width = (12.45 - .18 * (len(tiles) - 1)) / len(tiles)
+        lines = max(len(detail) if isinstance(detail, list) else 1 for _label, _value, detail in tiles)
+        tile_height = max(1.25, .88 + .16 * lines)
         for index, (label, value, detail) in enumerate(tiles):
             left = .45 + index * (width + .18)
-            _box(slide, left, CONTENT_TOP, width, 1.25, CARD).name = 'Scoring Scope Tile'
+            _box(slide, left, CONTENT_TOP, width, tile_height, CARD).name = 'Scoring Scope Tile'
             _text(slide, label.upper(), left + .15, CONTENT_TOP + .1, width - .3, .22, size=8, bold=True, color=MUTED)
-            _text(slide, value, left + .15, CONTENT_TOP + .34, width - .3, .4, size=17, bold=True)
-            _text(slide, detail, left + .15, CONTENT_TOP + .78, width - .3, .42, size=8.5, color=MUTED)
+            # A long value (such as the dates of the measurements) gets a smaller size, so it keeps one line.
+            _text(slide, value, left + .15, CONTENT_TOP + .34, width - .3, .4, size=_fitted_size(value, width - .46, 17), bold=True)
+            box = _text(slide, '', left + .15, CONTENT_TOP + .78, width - .3, tile_height - .86, size=8.5, color=MUTED)
+            _write(box.text_frame, [(line, 8.5, False, MUTED) for line in (detail if isinstance(detail, list) else [detail])])
+            box.text_frame.margin_left = box.text_frame.margin_right = 0
         tests = item.get('tests') or {}
         names = list(dict.fromkeys(name for kinds in tests.values() for counts in kinds.values() for name in counts))
         kinds = [kind for kind in ('data', 'voice', 'speech') if any(kind in value for value in tests.values())]
@@ -357,7 +369,7 @@ def add_campaign_scope_slides(presentation, scopes: list[dict[str, Any]], *, sub
             continue
         labels = {'data': 'Data tests', 'voice': 'Calls', 'speech': 'Speech samples'}
         headers = ['Operator', *[f"{labels[kind]} · {environment_labels.get(name, name).split(' - ')[-1]}" for kind in kinds for name in names]]
-        top = CONTENT_TOP + 1.65
+        top = CONTENT_TOP + tile_height + .4
         _text(slide, f"Tests of each operator in {item.get('latest_campaign') or 'the measurements'}, as scored in each environment.",
               .45, top - .35, 12.4, .3, size=9, color=MUTED)
         widths = [1.8, *([(12.45 - 1.8) / (len(headers) - 1)] * (len(headers) - 1))]

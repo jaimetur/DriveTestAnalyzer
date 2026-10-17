@@ -9797,6 +9797,8 @@ document.addEventListener('click', (event) => {
     const box = group.wrap.getBoundingClientRect();
     group.list.style.top = `${Math.round(box.bottom + 6)}px`;
     group.list.style.left = `${Math.round(Math.max(8, Math.min(box.left, window.innerWidth - group.list.offsetWidth - 8)))}px`;
+    // It ends above the bottom of the screen; a list longer than the room left scrolls.
+    group.list.style.maxHeight = `${Math.max(120, Math.round(window.innerHeight - box.bottom - 18))}px`;
   };
   const close = (group) => {
     if (group.list.matches(':popover-open')) group.list.hidePopover();
