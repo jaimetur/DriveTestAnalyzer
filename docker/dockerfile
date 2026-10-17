@@ -15,9 +15,11 @@ COPY requirements.txt ./requirements.txt
 # must not force pip to run again under ARM64 emulation.
 RUN pip install --no-cache-dir -r requirements.txt
 
-# LibreOffice Impress renders PowerPoint slides for the Word versions of the reports.
+# LibreOffice Impress renders PowerPoint slides for the Word versions of the reports and the previews of the
+# PowerPoint ones; Writer renders the previews of the Word ones.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends chromium nodejs node-ws tzdata fonts-liberation libreoffice-impress-nogui \
+       libreoffice-writer-nogui \
     && ln -snf /usr/share/zoneinfo/${TZ} /etc/localtime \
     && echo ${TZ} > /etc/timezone \
     && rm -rf /var/lib/apt/lists/*

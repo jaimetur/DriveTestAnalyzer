@@ -56,6 +56,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_complete_reports_name ON {COMPLETE_REPORTS
 MAX_FAVOURITES = 100
 DEFAULT_TITLE = 'Complete Report'
 FORMATS = ('powerpoint', 'word')
+FORMAT_SUFFIXES = {'powerpoint': 'pptx', 'word': 'docx'}
+FORMAT_LABELS = {'powerpoint': 'PowerPoint', 'word': 'Word'}
 # The sections in their default order, with the feature (main module) a user needs to include each one.
 SECTIONS: tuple[tuple[str, str, str], ...] = (
     ('dashboards', 'ppt-dashboards', 'PPT Dashboards'),
@@ -582,6 +584,8 @@ class BuildResult:
     outline: list[dict[str, Any]]
     # The sections of the document of the export (PowerPoint or Word) and their pages, for the preview.
     navigation: list[dict[str, Any]] = field(default_factory=list)
+    # The sections of the PowerPoint and their slides (the same as ``navigation`` for a PowerPoint export).
+    slides_navigation: list[dict[str, Any]] = field(default_factory=list)
     # The sections used as an earlier export generated them.
     reused: list[str] = field(default_factory=list)
     # The identity of the composed document (None when a section cannot be kept) and whether an earlier export
@@ -841,11 +845,22 @@ def compose_word(template: Path, powerpoint: bytes, sections: list[SectionDeck],
                 plan.append(('heading2', PackItem('heading2', title or 'Section', [line for line in subtitle.split(' · ') if line][:3])))
                 continue
             for slide in _place_component(composer, component, legible_font):
-                shapes = compose.content_shapes(slide)
+                content = compose.content_shapes(slide)
+                shapes = content
                 title_shape = compose.title_shape(slide)
                 if title_shape is not None and title_shape.left is not None:
                     shapes = [*shapes, title_shape]
-                plan.append(('image', (slide, compose.bounds(shapes), component.title[0])))
+                # Without its title too: on a page after one of the same title and context (the first line under the
+                # title), it does not repeat them.
+                untitled = None
+                if len(shapes) > len(content):
+                    # The shapes beside the title (such as the logos) go with it.
+                    title_bottom = title_shape.top + title_shape.height
+                    untitled = compose.bounds([shape for shape in content if shape.top + shape.height > title_bottom])
+                lines = [' '.join(paragraph.text.split()) for paragraph in title_shape.text_frame.paragraphs
+                         if paragraph.text.strip()] if title_shape is not None else []
+                group = '\n'.join(compose.base_title(line) for line in lines[:2])
+                plan.append(('image', (slide, compose.bounds(shapes), untitled, component.title[0], group)))
     if not any(kind == 'image' for kind, _item in plan):
         return None
     images = slide_images(composer.save(), dpi=WORD_RENDER_DPI)
@@ -858,22 +873,28 @@ def compose_word(template: Path, powerpoint: bytes, sections: list[SectionDeck],
         if kind != 'image':
             items.append(item)
             continue
-        slide, box, caption = item
+        slide, box, untitled_box, caption, group = item
         image = images[image_index]
         image_index += 1
-        share = None
-        if box is not None:
-            share = (box[0] / slide_width, box[1] / composer.height, box[2] / slide_width, box[3] / composer.height)
-        cropped, width_px, height_px = crop_to_content(image, share)
-        # The blank bands inside a component (such as the space above its footnote) shrink too.
-        cropped = compact_slide_image(cropped)
-        with Image.open(BytesIO(cropped)) as raster:
-            width_px, height_px = raster.size
-        pixels_per_inch = WORD_RENDER_DPI
-        width, height = width_px / pixels_per_inch * base, height_px / pixels_per_inch * base
-        if width > page_width:
-            width, height = page_width, height * page_width / width
-        items.append(PackItem('image', caption, image=cropped, width=width, height=height))
+
+        def cropped_image(box: tuple[int, int, int, int] | None) -> tuple[bytes, float, float]:
+            share = None
+            if box is not None:
+                share = (box[0] / slide_width, box[1] / composer.height, box[2] / slide_width, box[3] / composer.height)
+            cropped, _width_px, _height_px = crop_to_content(image, share)
+            # The blank bands inside a component (such as the space above its footnote) shrink too.
+            cropped = compact_slide_image(cropped)
+            with Image.open(BytesIO(cropped)) as raster:
+                width_px, height_px = raster.size
+            width, height = width_px / WORD_RENDER_DPI * base, height_px / WORD_RENDER_DPI * base
+            if width > page_width:
+                width, height = page_width, height * page_width / width
+            return cropped, width, height
+
+        cropped, width, height = cropped_image(box)
+        untitled, untitled_width, untitled_height = cropped_image(untitled_box) if untitled_box is not None else (b'', 0.0, 0.0)
+        items.append(PackItem('image', caption, image=cropped, width=width, height=height, group=group, untitled=untitled,
+                              untitled_width=untitled_width, untitled_height=untitled_height))
     page_items: list[list[Any]] = []
     cover = [PackItem('cover', 'Cover', image=pages[0])] if pages else []
     document = packed_component_document([*cover, *items], None, page_items)
@@ -1131,7 +1152,7 @@ SECTION_CACHE_HOURS = 24
 SECTION_CACHE_FOLDER = 'cache'
 # The composed documents (PowerPoint, the packed Word and their previews), inside the section cache.
 DOCUMENT_CACHE_FOLDER = 'documents'
-DOCUMENT_CACHE_VERSION = 3
+DOCUMENT_CACHE_VERSION = 4
 _section_locks: dict[str, Lock] = {}
 _section_locks_guard = Lock()
 
@@ -1393,16 +1414,17 @@ def build_report(core: Any, repository: Any, user: Any, definition: dict[str, An
         if key:
             _store_document(cache_root, key, powerpoint, outline, powerpoint_navigation(outline, titles), covers)
     word = None
-    navigation = powerpoint_navigation(outline, titles)
+    navigation = slides_navigation = powerpoint_navigation(outline, titles)
     reused_document = document is not None
     if export_format == 'word':
         if document is not None and document['word'] is not None:
             progress(90, f'Using the Word pages packed at {stamp}')
             word, navigation = document['word'], document['word_navigation']
         else:
-            reused_document = False
             progress(90, 'Packing the Word pages')
             packed = compose_word(template, powerpoint, decks, covers)
+            # Without LibreOffice the Word document has one page per slide: the document composed is still reused.
+            reused_document = reused_document and packed is None
             if packed is None:
                 from src.modules.pptx_to_docx import pptx_to_docx
                 warnings.append('LibreOffice is not available: the Word document has one page per slide.')
@@ -1412,7 +1434,7 @@ def build_report(core: Any, repository: Any, user: Any, definition: dict[str, An
                 if key:
                     _store_document(cache_root, key, powerpoint, outline, powerpoint_navigation(outline, titles), covers,
                                     word, navigation)
-    return BuildResult(powerpoint, word, warnings, outline, navigation, reused, document_key=key,
+    return BuildResult(powerpoint, word, warnings, outline, navigation, slides_navigation, reused, document_key=key,
                        document_reused=reused_document)
 
 
@@ -1431,9 +1453,8 @@ _jobs_lock = Lock()
 
 
 def _public(job: dict[str, Any]) -> dict[str, Any]:
-    return {key: job[key] for key in ('id', 'status', 'progress', 'message', 'format', 'file_name', 'previews', 'warnings',
-                                      'outline', 'navigation', 'created_at', 'finished_at', 'title', 'error', 'reused',
-                                      'document_reused')}
+    return {key: job[key] for key in ('id', 'status', 'progress', 'message', 'formats', 'warnings', 'outline', 'created_at',
+                                      'finished_at', 'title', 'error', 'reused', 'document_reused')}
 
 
 def _forget_old_jobs(root: Path) -> None:
@@ -1465,7 +1486,6 @@ def install_complete_report_routes(core: Any) -> None:
 
     class JobPayload(BaseModel):
         definition: dict[str, Any] = Field(default_factory=dict)
-        format: str = 'powerpoint'
         name: str = ''
         # Generate every section again instead of using those of earlier exports whose data has not changed.
         refresh: bool = False
@@ -1576,51 +1596,58 @@ def install_complete_report_routes(core: Any) -> None:
         try:
             with _jobs_lock:
                 job.update(status='running', progress=2, message='Starting')
-            result = build_report(core, repository, user, definition, job['format'], job['folder'], name=job['title'],
+            # Both formats and their previews are ready before the preview opens, so switching between them is
+            # immediate.
+            result = build_report(core, repository, user, definition, 'word', job['folder'], name=job['title'],
                                   section_titles=titles, progress=progress, cache_root=output_root() / SECTION_CACHE_FOLDER,
                                   reuse=reuse)
             stem = compose_file_stem(job['title'])
-            content = result.word if job['format'] == 'word' and result.word is not None else result.powerpoint
-            suffix = 'docx' if job['format'] == 'word' else 'pptx'
-            path = job['folder'] / f'{stem}.{suffix}'
-            path.write_bytes(content)
             cache_root = output_root() / SECTION_CACHE_FOLDER
-            # A document an earlier export composed has its preview too.
-            kept = cached_preview(cache_root, result.document_key, suffix) if result.document_reused else None
-            if kept is not None:
-                progress(96, 'Using the preview of the earlier export')
-                pdf, pages = kept
-            else:
-                progress(96, 'Preparing the preview')
-                from src.modules.pptx_to_docx import document_pdf, pdf_page_images
-                pdf = document_pdf(content, suffix)
-                pages = pdf_page_images(pdf, PREVIEW_DPI[suffix]) if pdf else []
-                store_preview(cache_root, result.document_key, suffix, pdf, pages)
-            if pdf:
-                # Kept to render a page large when it is opened in the preview.
-                (job['folder'] / 'preview.pdf').write_bytes(pdf)
-            for index, image in enumerate(pages):
-                (job['folder'] / f'preview-{index}.png').write_bytes(image)
+            formats: dict[str, dict[str, Any]] = {}
+            paths: dict[str, str] = {}
+            from src.modules.pptx_to_docx import document_pdf, pdf_page_images
+            for export_format, content, navigation, percent in (('powerpoint', result.powerpoint, result.slides_navigation, 94),
+                                                                ('word', result.word, result.navigation, 97)):
+                suffix = FORMAT_SUFFIXES[export_format]
+                path = job['folder'] / f'{stem}.{suffix}'
+                path.write_bytes(content)
+                # A document an earlier export composed has its preview too.
+                kept = cached_preview(cache_root, result.document_key, suffix) if result.document_reused else None
+                if kept is not None:
+                    progress(percent, f'Using the {FORMAT_LABELS[export_format]} preview of the earlier export')
+                    pdf, pages = kept
+                else:
+                    progress(percent, f'Preparing the {FORMAT_LABELS[export_format]} preview')
+                    pdf = document_pdf(content, suffix)
+                    pages = pdf_page_images(pdf, PREVIEW_DPI[suffix]) if pdf else []
+                    store_preview(cache_root, result.document_key, suffix, pdf, pages)
+                if pdf:
+                    # Kept to render a page large when it is opened in the preview; the first one is ready at once.
+                    (job['folder'] / f'preview-{suffix}.pdf').write_bytes(pdf)
+                    for image in pdf_page_images(pdf, LARGE_PREVIEW_DPI[suffix], [0]):
+                        (job['folder'] / f'preview-large-{suffix}-0.png').write_bytes(image)
+                for index, image in enumerate(pages):
+                    (job['folder'] / f'preview-{suffix}-{index}.png').write_bytes(image)
+                formats[export_format] = {'file_name': path.name, 'previews': len(pages), 'navigation': navigation}
+                paths[export_format] = str(path)
             with _jobs_lock:
-                job.update(status='ready', progress=100, message='Ready', file_name=path.name, path=str(path),
-                           previews=len(pages), warnings=result.warnings, outline=result.outline, navigation=result.navigation,
+                job.update(status='ready', progress=100, message='Ready', formats=formats, paths=paths,
+                           warnings=result.warnings, outline=result.outline,
                            reused=[titles.get(key, SECTION_TITLES[key]) for key in result.reused],
                            document_reused=result.document_reused,
                            finished_at=datetime.now().isoformat(timespec='seconds'))
             log(repository, user, 'complete_report_generated', {
-                'job': job['id'], 'title': job['title'], 'format': job['format'], 'file_name': path.name,
-                'slides': len(result.outline), 'warnings': result.warnings, 'reused_sections': result.reused})
+                'job': job['id'], 'title': job['title'], 'file_names': [item['file_name'] for item in formats.values()],
+                'slides': len(result.outline), 'pages': formats['word']['previews'], 'warnings': result.warnings,
+                'reused_sections': result.reused})
         except Exception as exc:  # noqa: BLE001 - every failure is reported to the dialog and to App Events.
             message = str(getattr(exc, 'detail', exc)) or exc.__class__.__name__
             with _jobs_lock:
                 job.update(status='failed', message=message, error=message, finished_at=datetime.now().isoformat(timespec='seconds'))
-            log(repository, user, 'complete_report_failed', {'job': job['id'], 'title': job['title'], 'format': job['format'],
-                                                             'error': message})
+            log(repository, user, 'complete_report_failed', {'job': job['id'], 'title': job['title'], 'error': message})
 
     @app.post('/api/reporting/complete-report/jobs')
     def complete_report_job_create(payload: JobPayload, user=Depends(reporting_user)):
-        if payload.format not in FORMATS:
-            raise HTTPException(400, 'Choose PowerPoint or Word.')
         repository = repository_for(user)
         definition = normalize_definition(payload.definition)
         sections = [section for section in enabled_sections(definition) if core.user_has_feature(user, SECTION_FEATURES[section['key']])]
@@ -1633,13 +1660,13 @@ def install_complete_report_routes(core: Any) -> None:
         folder = root / f"{datetime.now():%Y%m%d_%H%M%S} - {job_id[:8]}"
         folder.mkdir(parents=True, exist_ok=True)
         title = report_title(definition, payload.name.strip())
-        job = {'id': job_id, 'status': 'queued', 'progress': 0, 'message': 'Queued', 'format': payload.format, 'file_name': '',
-               'previews': 0, 'warnings': [], 'outline': [], 'created_at': datetime.now().isoformat(timespec='seconds'),
-               'finished_at': '', 'title': title, 'error': '', 'reused': [], 'document_reused': False, 'navigation': [], 'folder': folder, 'path': '', 'username': user.username,
-               'workspace_id': core.active_workspace.id}
+        job = {'id': job_id, 'status': 'queued', 'progress': 0, 'message': 'Queued', 'formats': {}, 'paths': {},
+               'warnings': [], 'outline': [], 'created_at': datetime.now().isoformat(timespec='seconds'),
+               'finished_at': '', 'title': title, 'error': '', 'reused': [], 'document_reused': False, 'folder': folder,
+               'username': user.username, 'workspace_id': core.active_workspace.id}
         with _jobs_lock:
             _jobs[job_id] = job
-        log(repository, user, 'complete_report_requested', {'job': job_id, 'title': title, 'format': payload.format,
+        log(repository, user, 'complete_report_requested', {'job': job_id, 'title': title, 'formats': list(FORMATS),
                                                            'favourite': payload.name.strip(), 'refresh': payload.refresh,
                                                            **definition_summary(definition)})
         Thread(target=run_job, args=(job, repository, user, definition, section_titles(), not payload.refresh), daemon=True,
@@ -1659,34 +1686,42 @@ def install_complete_report_routes(core: Any) -> None:
         with _jobs_lock:
             return {'job': _public(job)}
 
-    @app.get('/api/reporting/complete-report/jobs/{job_id}/preview/{index}')
-    def complete_report_preview(job_id: str, index: int, large: bool = False, user=Depends(reporting_user)):
-        """A page of the preview; ``large`` renders it at a higher resolution (once) to open it on the whole screen."""
+    def format_or_404(export_format: str) -> str:
+        if export_format not in FORMATS:
+            raise HTTPException(404, 'Choose PowerPoint or Word.')
+        return FORMAT_SUFFIXES[export_format]
+
+    @app.get('/api/reporting/complete-report/jobs/{job_id}/preview/{export_format}/{index}')
+    def complete_report_preview(job_id: str, export_format: str, index: int, large: bool = False, user=Depends(reporting_user)):
+        """A page of the preview of a format; ``large`` renders it at a higher resolution (once) to show it whole."""
         job = job_or_404(job_id, user)
-        path = job['folder'] / f"preview-{'large-' if large else ''}{int(index)}.png"
-        pdf = job['folder'] / 'preview.pdf'
+        suffix = format_or_404(export_format)
+        path = job['folder'] / f"preview-{'large-' if large else ''}{suffix}-{int(index)}.png"
+        pdf = job['folder'] / f'preview-{suffix}.pdf'
         if large and not path.is_file() and pdf.is_file():
             from src.modules.pptx_to_docx import pdf_page_images
-            suffix = 'docx' if job['format'] == 'word' else 'pptx'
             images = pdf_page_images(pdf.read_bytes(), LARGE_PREVIEW_DPI[suffix], [int(index)])
             if images:
                 path.write_bytes(images[0])
         if large and not path.is_file():
-            path = job['folder'] / f'preview-{int(index)}.png'
+            path = job['folder'] / f'preview-{suffix}-{int(index)}.png'
         if not path.is_file():
             raise HTTPException(404, 'This page has no preview.')
         return Response(path.read_bytes(), media_type='image/png', headers={'Cache-Control': 'private, max-age=3600'})
 
-    @app.get('/api/reporting/complete-report/jobs/{job_id}/download')
-    def complete_report_download(job_id: str, user=Depends(reporting_user)):
+    @app.get('/api/reporting/complete-report/jobs/{job_id}/download/{export_format}')
+    def complete_report_download(job_id: str, export_format: str, user=Depends(reporting_user)):
         job = job_or_404(job_id, user)
-        if job['status'] != 'ready' or not job['path'] or not Path(job['path']).is_file():
+        format_or_404(export_format)
+        path = job['paths'].get(export_format) if job['status'] == 'ready' else None
+        if not path or not Path(path).is_file():
             raise HTTPException(409, 'The Complete Report is not ready.')
         repository = repository_for(user)
-        log(repository, user, 'complete_report_downloaded', {'job': job_id, 'title': job['title'], 'file_name': job['file_name']})
-        media = ('application/vnd.openxmlformats-officedocument.wordprocessingml.document' if job['format'] == 'word'
+        log(repository, user, 'complete_report_downloaded', {'job': job_id, 'title': job['title'], 'format': export_format,
+                                                            'file_name': Path(path).name})
+        media = ('application/vnd.openxmlformats-officedocument.wordprocessingml.document' if export_format == 'word'
                  else 'application/vnd.openxmlformats-officedocument.presentationml.presentation')
-        return FileResponse(job['path'], media_type=media, filename=job['file_name'])
+        return FileResponse(path, media_type=media, filename=Path(path).name)
 
     _register_reporting_artifact(core)
 

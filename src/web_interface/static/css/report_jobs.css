@@ -384,6 +384,13 @@
 .cr-dialog-head { display: flex; justify-content: space-between; align-items: start; gap: 1rem; padding: 1rem 1.2rem .8rem; background: linear-gradient(135deg, #1f5f3a, #4fb37a); color: #fff; }
 .cr-dialog-head .eyebrow { color: rgba(255, 255, 255, .85); margin: 0; }
 .cr-dialog-head h2 { margin: .1rem 0 0; font-size: 1.25rem; }
+/* PowerPoint or Word: both are generated before the preview opens, so switching is immediate. */
+.cr-format-switch { display: inline-flex; align-self: center; gap: .2rem; margin-left: auto; padding: .2rem; border-radius: 999px; background: rgba(255, 255, 255, .16); }
+.cr-format-switch[hidden] { display: none; }
+.cr-format-switch button { padding: .38rem .95rem; border: 0; border-radius: 999px; background: transparent; color: #fff; font-size: .86rem; font-weight: 800; cursor: pointer; }
+.cr-format-switch button:hover { background: rgba(255, 255, 255, .18); }
+.cr-format-switch button.is-current { background: #fff; color: #1f5f3a; }
+.cr-format-switch button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 .cr-dialog-close { width: 2.2rem; height: 2.2rem; padding: 0; border: 0; border-radius: 999px; background: rgba(255, 255, 255, .18); color: inherit; font-size: 1.4rem; line-height: 1; cursor: pointer; }
 .cr-dialog-progress { display: grid; gap: .4rem; padding: 1rem 1.2rem 0; }
 .cr-progress { height: .55rem; border-radius: 999px; background: #e3eee7; overflow: hidden; }

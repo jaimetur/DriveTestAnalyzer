@@ -26,6 +26,7 @@
 - **Workspace Content by module in Export / Transfer and backups:** Current Workspace Content of Export / Transfer and Workspace Content of the backups list their elements under the module where each is managed (first Workspace Config for the Config pages and the Workspace module, then App Logs and the main modules in the order of the menu, with their titles of Interface Settings), the elements of each module alphabetically; the backups list the Workspace Database, Input and Output before them.
 - **Favourites Filters:** the Starred Filters of Scoring & GAP Analysis (the Saved Filters marked with the star) are called Favourites Filters everywhere: their panel, the Scoring tab menu and sections bar, the Saved Filters lists, App Events (`saved filter ID 57 (favourite)`) and Help.
 - **Overwrite a favourite Complete Report:** **★ Save as favourite** with the name of an existing favourite overwrites it once the user confirms it.
+- **One Generate for the Complete Report:** **Generate** replaces the PowerPoint and Word buttons: it creates the report in both formats with their previews, and the preview chooses the format to check and download (PowerPoint slide by slide, Word page by page in portrait), switching between them at once on the same section; a Word page no longer repeats the title of components with the same title and context.
 
 #### 🐛 Bug fixes:
 - **Scoring Methodology selector:** wide enough to show *By campaign (each campaign with its methodology)* whole.
@@ -33,6 +34,7 @@
 - **GAP and score bars in PowerPoint:** the bars inside the cells of the Scoring and GAP tables keep their side and length on screen in PowerPoint (a GAP behind the reference to the left of the middle, ahead to the right), as in its PDF export and in the other viewers.
 - **GAP order of one operator over several campaigns:** the GAP Analysis of a single operator (on the page and its PowerPoint and Word slides with the Priority arrow) orders the KPIs by their GAP in the latest campaign, the other campaigns breaking ties and the KPIs without a GAP in it last, and says so, instead of by the mean of every campaign.
 - **Favourite Complete Reports in another workspace:** imported favourites find their Dashboards by name and NR Mode (Dashboards with the same name in NSA and SA are no longer mixed up), so the same Dashboards stay checked and in the same order, and transfers with several elements import the favourites and Reporting Jobs after the Dashboards.
+- **Report previews in Docker:** the image installs LibreOffice Writer, so the Word previews are shown, and the previews no longer show the letters of the fonts the image does not have spaced and overlapping (an installed font stands in for them).
 
 #### 📚 Documentation:
 

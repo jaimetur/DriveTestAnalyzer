@@ -173,4 +173,4 @@ On-demand and scheduled backups configured in Admin are written below the mounte
 
 See [Deployment Configuration](configuration.md) for the complete variable reference.
 
-The image includes Chromium and Node.js (chart rendering for exports) and LibreOffice Impress, which renders the PowerPoint slides of the Word versions of CDR Analysis and Scoring & GAP Analysis reports.
+The image includes Chromium and Node.js (chart rendering for exports) and LibreOffice Impress and Writer: Impress renders the PowerPoint slides of the Word versions of the reports and the previews of the PowerPoint ones, and Writer the previews of the Word ones. The image only has the Liberation fonts, so the previews show the text of the fonts it does not have (such as Ericsson Hilda) in Liberation Sans; the documents downloaded keep their fonts.

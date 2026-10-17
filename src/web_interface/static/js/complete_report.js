@@ -570,6 +570,12 @@
   // -- export dialog --------------------------------------------------------------------------------
   const dialog = $('cr-dialog');
   const formatLabel = (format) => (format === 'word' ? 'Word' : 'PowerPoint');
+  // The format shown in the preview (remembered in this browser): both are generated before the preview opens, so
+  // switching between them is immediate.
+  const FORMAT_KEY = 'drivetest.completeReport.previewFormat';
+  let previewFormat = 'powerpoint';
+  try { if (localStorage.getItem(FORMAT_KEY) === 'word') previewFormat = 'word'; } catch {}
+  const shownFormat = (job) => job.formats?.[previewFormat] || {previews: 0, navigation: [], file_name: ''};
 
   function stopPolling() {
     if (pollTimer) window.clearTimeout(pollTimer);
@@ -581,7 +587,7 @@
     const ready = job.status === 'ready';
     const failed = job.status === 'failed';
     $('cr-dialog-title').textContent = job.title || 'Complete Report';
-    $('cr-dialog-format').textContent = formatLabel(job.format);
+    $('cr-dialog-format').textContent = ready ? formatLabel(previewFormat) : 'PowerPoint and Word';
     $('cr-dialog-progress').hidden = ready;
     const bar = $('cr-progress-bar');
     bar.style.width = `${Math.max(3, job.progress || 0)}%`;
@@ -591,37 +597,59 @@
     const warnings = $('cr-warnings');
     warnings.replaceChildren(...(job.warnings || []).map((warning) => node('li', warning)));
     warnings.hidden = !(job.warnings || []).length;
-    const summary = $('cr-dialog-summary');
-    summary.hidden = !ready;
-    const pages = job.previews || 0;
-    const unit = job.format === 'word' ? 'page' : 'slide';
-    const count = pages || job.outline.length;
-    const reused = (job.reused || []).length ? ` Reused from an earlier export (their data has not changed): ${job.reused.join(', ')}`
-      + `${job.document_reused ? ', and the document composed from them' : ''}.` : '';
-    summary.textContent = ready ? `${count} ${unit}${count === 1 ? '' : 's'} · Choose a section or ${unit} on the left to check it before downloading.${reused}${pages ? '' : ' The preview needs LibreOffice: the list shows the title of each slide.'}` : '';
-    const download = $('cr-download');
-    download.hidden = !ready;
-    if (ready) {
-      download.href = `/api/reporting/complete-report/jobs/${job.id}/download`;
-      download.textContent = `Download ${formatLabel(job.format)}`;
-    }
+    $('cr-format-switch').hidden = !ready;
     // Ready, the dialog takes almost the whole screen: the sections and pages on the left, the chosen page on the right.
     dialog.classList.toggle('is-previewing', ready);
-    dialog.classList.toggle('is-word', job.format === 'word');
-    const preview = $('cr-preview');
-    if (ready && preview.hidden) {
-      preview.hidden = false;
-      renderNavigation(job);
-      if (pages) showPage(0);
-      else $('cr-viewer-stage').classList.add('is-empty');
-    }
+    if (ready) showFormat(0);
+    else $('cr-download').hidden = true;
+  }
+
+  // The chosen format of a ready report: its summary, download, sections and pages, from ``index`` (a slide or page).
+  function showFormat(index) {
+    const job = currentJob;
+    const shown = shownFormat(job);
+    const pages = shown.previews || 0;
+    const unit = previewFormat === 'word' ? 'page' : 'slide';
+    const count = pages || job.outline.length;
+    const reused = (job.reused || []).length ? ` Reused from an earlier export (their data has not changed): ${job.reused.join(', ')}`
+      + `${job.document_reused ? ', and the documents composed from them' : ''}.` : '';
+    $('cr-dialog-summary').hidden = false;
+    $('cr-dialog-summary').textContent = `${count} ${unit}${count === 1 ? '' : 's'} · Choose a section or ${unit} on the left to check it before downloading.${reused}${pages ? '' : ' The preview needs LibreOffice: the list shows the title of each slide.'}`;
+    $('cr-dialog-format').textContent = formatLabel(previewFormat);
+    const download = $('cr-download');
+    download.hidden = false;
+    download.href = `/api/reporting/complete-report/jobs/${job.id}/download/${previewFormat}`;
+    download.textContent = `Download ${formatLabel(previewFormat)}`;
+    $('cr-format-switch').querySelectorAll('[data-cr-format]').forEach((button) => {
+      const current = button.dataset.crFormat === previewFormat;
+      button.classList.toggle('is-current', current);
+      button.setAttribute('aria-pressed', String(current));
+    });
+    // Word shows portrait pages; PowerPoint landscape slides.
+    dialog.classList.toggle('is-word', previewFormat === 'word');
+    $('cr-preview').hidden = false;
+    renderNavigation(job);
+    stage.classList.toggle('is-empty', !pages);
+    if (pages) showPage(index);
+    else viewerImage.removeAttribute('src');
+  }
+
+  // Switching the format keeps the section shown: its first page (or slide) in the other format.
+  function switchFormat(format) {
+    if (format === previewFormat || currentJob?.status !== 'ready') return;
+    const group = (shownFormat(currentJob).navigation || []).find((item) => item.pages.some((page) => page.index === viewerIndex));
+    previewFormat = format;
+    try { localStorage.setItem(FORMAT_KEY, format); } catch {}
+    const target = group && (shownFormat(currentJob).navigation || []).find((item) => item.title === group.title);
+    showFormat(target?.pages[0]?.index || 0);
   }
 
   // The sections of the report with their pages (or slides): selecting one shows it.
   function renderNavigation(job) {
     const nav = $('cr-preview-nav');
-    const groups = (job.navigation || []).length ? job.navigation
-      : [{title: 'Pages', pages: Array.from({length: job.previews || job.outline.length}, (_value, index) => ({index, title: job.outline[index]?.title || `Page ${index + 1}`}))}];
+    const shown = shownFormat(job);
+    const groups = (shown.navigation || []).length ? shown.navigation
+      : [{title: 'Pages', pages: Array.from({length: shown.previews || job.outline.length}, (_value, index) => ({index, title: job.outline[index]?.title || `Page ${index + 1}`}))}];
     nav.replaceChildren(...groups.map((group) => {
       const section = node('section', undefined, 'cr-nav-section');
       const heading = node('button', group.title, 'cr-nav-heading');
@@ -636,7 +664,7 @@
         button.dataset.page = String(page.index);
         button.append(node('span', String(page.index + 1), 'cr-nav-number'), node('span', page.title, 'cr-nav-title'));
         button.title = page.title;
-        button.disabled = !job.previews;
+        button.disabled = !shown.previews;
         button.addEventListener('click', () => showPage(page.index));
         item.append(button);
         list.append(item);
@@ -650,6 +678,8 @@
   const stage = $('cr-viewer-stage');
   const viewerImage = $('cr-viewer-image');
   let viewerIndex = 0;
+  // Each page shown has its token: images of a page left in the meantime are ignored when they arrive.
+  let pageToken = 0;
   let view = {scale: 1, fit: 1, x: 0, y: 0};
   const prefetched = new Map();
 
@@ -679,16 +709,33 @@
     clampView();
     renderView();
   }
-  const pageUrl = (index) => `/api/reporting/complete-report/jobs/${currentJob.id}/preview/${index}?large=true`;
+  const pageUrl = (index, large = true) => `/api/reporting/complete-report/jobs/${currentJob.id}/preview/${previewFormat}/${index}${large ? '?large=true' : ''}`;
   function showPage(index) {
-    if (!currentJob?.previews) return;
-    viewerIndex = Math.max(0, Math.min(currentJob.previews - 1, index));
-    const unit = currentJob.format === 'word' ? 'Page' : 'Slide';
-    $('cr-page-label').textContent = `${unit} ${viewerIndex + 1} / ${currentJob.previews}`;
+    const total = shownFormat(currentJob || {}).previews || 0;
+    if (!total) return;
+    viewerIndex = Math.max(0, Math.min(total - 1, index));
+    const unit = previewFormat === 'word' ? 'Page' : 'Slide';
+    $('cr-page-label').textContent = `${unit} ${viewerIndex + 1} / ${total}`;
     viewerImage.alt = `${unit} ${viewerIndex + 1}`;
-    stage.classList.add('is-loading');
-    viewerImage.onload = () => { stage.classList.remove('is-loading'); fitView(); };
-    viewerImage.src = pageUrl(viewerIndex);
+    // The page shows at once from its preview image, then sharper once its large rendering arrives (keeping the zoom).
+    const token = ++pageToken;
+    let sharp = false;
+    viewerImage.onload = () => { if (token === pageToken && !sharp) { stage.classList.remove('is-loading'); fitView(); } };
+    viewerImage.src = pageUrl(viewerIndex, false);
+    const large = new Image();
+    large.onload = () => {
+      if (token !== pageToken) return;
+      const zoom = view.fit && viewerImage.naturalWidth ? view.scale / view.fit : 1;
+      sharp = true;
+      viewerImage.onload = () => {
+        if (token !== pageToken) return;
+        stage.classList.remove('is-loading');
+        fitView();
+        if (zoom > 1.001) zoomView(zoom);
+      };
+      viewerImage.src = large.src;
+    };
+    large.src = pageUrl(viewerIndex);
     document.querySelectorAll('.cr-nav-page').forEach((button) => {
       const current = Number(button.dataset.page) === viewerIndex;
       button.classList.toggle('is-current', current);
@@ -701,10 +748,10 @@
     });
     // The next page is fetched ahead, so moving through the report does not wait for it.
     const next = viewerIndex + 1;
-    if (next < currentJob.previews && !prefetched.has(`${currentJob.id}:${next}`)) {
+    if (next < total && !prefetched.has(`${currentJob.id}:${previewFormat}:${next}`)) {
       const image = new Image();
       image.src = pageUrl(next);
-      prefetched.set(`${currentJob.id}:${next}`, image);
+      prefetched.set(`${currentJob.id}:${previewFormat}:${next}`, image);
     }
   }
   const local = (event) => {
@@ -798,31 +845,33 @@
     }
   }
 
-  async function exportReport(format) {
+  // The report is generated in PowerPoint and in Word, with both previews, before the preview opens.
+  async function exportReport() {
     stopPolling();
     $('cr-preview').hidden = true;
     $('cr-preview-nav').replaceChildren();
     viewerImage.removeAttribute('src');
     stage.classList.remove('is-empty', 'is-loading');
-    showJob({id: '', status: 'queued', progress: 0, message: 'Starting…', format, title: $('cr-title').value.trim() || $('cr-name').value.trim() || 'Complete Report',
-      warnings: [], previews: 0, outline: [], navigation: []});
+    showJob({id: '', status: 'queued', progress: 0, message: 'Starting…', title: $('cr-title').value.trim() || $('cr-name').value.trim() || 'Complete Report',
+      warnings: [], formats: {}, outline: []});
     if (!dialog.open) dialog.showModal();
     try {
       const result = await api('/api/reporting/complete-report/jobs', {method: 'POST', body: JSON.stringify({
-        definition: collect(), format, name: $('cr-name').value.trim(), refresh: !$('cr-reuse').checked,
+        definition: collect(), name: $('cr-name').value.trim(), refresh: !$('cr-reuse').checked,
       })});
       showJob(result.job);
       pollTimer = window.setTimeout(() => poll(result.job.id), 1000);
     } catch (error) {
-      showJob({id: '', status: 'failed', progress: 0, message: error.message, error: error.message, format, title: 'Complete Report',
-        warnings: [], previews: 0, outline: [], navigation: []});
+      showJob({id: '', status: 'failed', progress: 0, message: error.message, error: error.message, title: 'Complete Report',
+        warnings: [], formats: {}, outline: []});
     }
   }
 
   root.querySelectorAll('[data-cr-export]').forEach((button) => button.addEventListener('click', () => {
     if (!definition) { status('The Complete Report is still loading.', 'error'); return; }
-    void exportReport(button.dataset.crExport);
+    void exportReport();
   }));
+  $('cr-format-switch').querySelectorAll('[data-cr-format]').forEach((button) => button.addEventListener('click', () => switchFormat(button.dataset.crFormat)));
   const closeDialog = () => { stopPolling(); dialog.close(); };
   $('cr-dialog-close').addEventListener('click', closeDialog);
   $('cr-dialog-cancel').addEventListener('click', closeDialog);

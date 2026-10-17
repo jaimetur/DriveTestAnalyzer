@@ -11,9 +11,13 @@ from __future__ import annotations
 
 import math
 import os
+import re
 import shutil
 import subprocess
+import sys
 import tempfile
+import zipfile
+from functools import lru_cache
 from dataclasses import dataclass, field
 from io import BytesIO
 from pathlib import Path
@@ -188,6 +192,50 @@ def without_unused_layouts(content: bytes) -> bytes:
         return content
 
 
+# On Linux, the fonts that stand in for those of a document that are not installed, in this order.
+FALLBACK_FONTS = ('Liberation Sans', 'DejaVu Sans', 'Noto Sans')
+_FONT_ATTRIBUTE = re.compile(rb'((?:typeface|w:ascii|w:hAnsi|w:cs|w:eastAsia)=")([^"+][^"]*)(")')
+
+
+@lru_cache(maxsize=1)
+def installed_fonts() -> frozenset[str] | None:
+    """The font families fontconfig knows (lower case), on Linux; None elsewhere, where LibreOffice finds a font that
+    stands in for a missing one by itself."""
+    if not sys.platform.startswith('linux') or not shutil.which('fc-list'):
+        return None
+    try:
+        listing = subprocess.run(['fc-list', ':', 'family'], check=True, capture_output=True, text=True, timeout=30).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return frozenset(name.strip().casefold() for line in listing.splitlines() for name in line.split(',') if name.strip())
+
+
+def with_installed_fonts(content: bytes) -> bytes:
+    """The document (PowerPoint or Word) with every font that is not installed replaced by one that is. On Linux
+    LibreOffice lays out the text of a missing font with metrics that do not match the font it draws, so the letters
+    of the preview come out spaced and overlapping; the documents themselves keep their fonts."""
+    installed = installed_fonts()
+    fallback = next((font for font in FALLBACK_FONTS if installed and font.casefold() in installed), None)
+    if fallback is None:
+        return content
+
+    def replace(match: re.Match[bytes]) -> bytes:
+        name = match.group(2).decode('utf-8', 'ignore').strip()
+        return match.group(0) if name.casefold() in installed else match.group(1) + fallback.encode() + match.group(3)
+
+    output = BytesIO()
+    try:
+        with zipfile.ZipFile(BytesIO(content)) as source, zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED) as target:
+            for info in source.infolist():
+                data = source.read(info.filename)
+                if info.filename.endswith('.xml'):
+                    data = _FONT_ATTRIBUTE.sub(replace, data)
+                target.writestr(info, data)
+    except zipfile.BadZipFile:
+        return content
+    return output.getvalue()
+
+
 def document_pdf(content: bytes, suffix: str) -> bytes | None:
     """A PowerPoint (``pptx``) or Word (``docx``) document as PDF, converted by LibreOffice, or None when LibreOffice
     is unavailable."""
@@ -199,6 +247,7 @@ def document_pdf(content: bytes, suffix: str) -> bytes | None:
         return None
     if suffix == 'pptx':
         content = without_unused_layouts(content)
+    content = with_installed_fonts(content)
     with tempfile.TemporaryDirectory() as folder:
         source = Path(folder) / f'report.{suffix}'
         source.write_bytes(content)
@@ -348,6 +397,16 @@ class PackItem:
     image: bytes = b''
     width: float = 0.0
     height: float = 0.0
+    # An image may come without its title (``untitled``, of ``untitled_width`` × ``untitled_height`` inches), shown
+    # when it follows on the same page an image of the same ``group`` (the same title and subtitle).
+    group: str = ''
+    untitled: bytes = b''
+    untitled_width: float = 0.0
+    untitled_height: float = 0.0
+
+    def without_title(self) -> 'PackItem':
+        return PackItem('image', self.text, image=self.untitled, width=self.untitled_width, height=self.untitled_height,
+                        group=self.group)
 
     @property
     def fixed_height(self) -> float:
@@ -406,7 +465,8 @@ def page_layout(items: list[PackItem], width: float, height: float) -> tuple[lis
 def pack_pages(items: list[PackItem], width: float, height: float, minimum_scale: float = 0.88) -> list[tuple[list[list[PackItem]], float]]:
     """Pages of consecutive items: each page takes the next items while they fit (a little smaller, down to
     ``minimum_scale``), so an item never goes after one that follows it; a section heading starts a new page, a
-    heading never ends a page, and an item larger than a page fills one page on its own, made smaller."""
+    heading never ends a page, and an item larger than a page fills one page on its own, made smaller. An image that
+    follows on the same page one of its group goes without its title, which that one already shows."""
     pages: list[list[PackItem]] = []
     current: list[PackItem] = []
 
@@ -433,7 +493,11 @@ def pack_pages(items: list[PackItem], width: float, height: float, minimum_scale
             if current:
                 pages.append(current)
                 current = []
-        candidate = [*current, item]
+        shown = item
+        if item.kind == 'image' and item.untitled and item.group and current and current[-1].kind == 'image' \
+                and current[-1].group == item.group:
+            shown = item.without_title()
+        candidate = [*current, shown]
         if not any(entry.kind == 'image' for entry in current) or page_layout(candidate, width, height)[1] >= minimum_scale:
             current = candidate
             continue

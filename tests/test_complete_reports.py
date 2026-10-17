@@ -470,14 +470,68 @@ def test_favourites_are_saved_listed_and_travel_as_their_own_element(client):
     assert 'Complete Report Favourites (from active workspace)' in page and 'Scoring &amp; GAP Favourites Filters (from active workspace)' in page
 
 
+def test_word_pages_do_not_repeat_the_title_of_components_that_share_it():
+    def component(group, height=3.0):
+        return PackItem('image', 'Biggest levers', image=PNG, width=7, height=height, group=group, untitled=PNG,
+                        untitled_width=7, untitled_height=height - 0.5)
+
+    items = [PackItem('heading1', 'Scoring'), component('levers'), component('levers'), component('other'), component('levers')]
+    shown = [item for rows, _scale in pack_pages(items, 7.37, 10.4) for row in rows for item in row if item.kind == 'image']
+    # On the same page, a component after one with the same title and context goes without its title.
+    assert [item.height for item in shown] == [3.0, 2.5, 3.0, 3.0]
+    # One that starts a page shows its title.
+    pages = pack_pages([component('levers', 7), component('levers', 7)], 7.37, 10.4)
+    assert [[item.height for row in rows for item in row] for rows, _scale in pages] == [[7], [7]]
+
+
+def test_previews_on_linux_use_installed_fonts_instead_of_missing_ones(monkeypatch):
+    from pptx import Presentation as NewPresentation
+    from src.modules import pptx_to_docx
+
+    presentation = NewPresentation()
+    slide = presentation.slides.add_slide(presentation.slide_layouts[6])
+    paragraph = slide.shapes.add_textbox(0, 0, 914400, 914400).text_frame.paragraphs[0]
+    for text, font in (('GAP Analysis', 'Ericsson Hilda Light'), (' vs EE', 'Arial')):
+        run = paragraph.add_run()
+        run.text, run.font.name = text, font
+    output = BytesIO()
+    presentation.save(output)
+    content = output.getvalue()
+    # Where LibreOffice finds stand-ins itself (macOS, Windows), the document is converted as it is.
+    monkeypatch.setattr(pptx_to_docx, 'installed_fonts', lambda: None)
+    assert pptx_to_docx.with_installed_fonts(content) == content
+    # On Linux a missing font would come out with spaced letters: an installed one stands in for it.
+    monkeypatch.setattr(pptx_to_docx, 'installed_fonts', lambda: frozenset({'liberation sans', 'arial'}))
+    converted = NewPresentation(BytesIO(pptx_to_docx.with_installed_fonts(content)))
+    runs = converted.slides[0].shapes[0].text_frame.paragraphs[0].runs
+    assert [run.font.name for run in runs] == ['Liberation Sans', 'Arial']
+    # The fonts of the theme too; the references to them are kept.
+    converted_zip = zipfile.ZipFile(BytesIO(pptx_to_docx.with_installed_fonts(content)))
+    theme = next(converted_zip.read(name) for name in converted_zip.namelist() if name.startswith('ppt/theme/'))
+    assert b'typeface="Liberation Sans"' in theme and b'typeface="Calibri"' not in theme
+    # The Docker image installs LibreOffice Writer too, which renders the previews of the Word documents.
+    dockerfile = (core.PROJECT_ROOT / 'docker/dockerfile').read_text(encoding='utf-8')
+    assert 'libreoffice-impress-nogui' in dockerfile and 'libreoffice-writer-nogui' in dockerfile
+
+
+def test_one_action_generates_both_formats_and_the_preview_chooses_one():
+    page = (core.PROJECT_ROOT / 'src/web_interface/templates/report_jobs.html').read_text(encoding='utf-8')
+    assert page.count('data-cr-export') == 1 and 'data-cr-export="powerpoint"' not in page
+    assert 'data-cr-format="powerpoint"' in page and 'data-cr-format="word"' in page
+    script = (core.PROJECT_ROOT / 'src/web_interface/static/js/complete_report.js').read_text(encoding='utf-8')
+    # Switching the format shows what is already generated: its pages, its sections and its download.
+    assert "download.href = `/api/reporting/complete-report/jobs/${job.id}/download/${previewFormat}`" in script
+    assert "dialog.classList.toggle('is-word', previewFormat === 'word')" in script
+    assert 'function switchFormat(format)' in script
+
+
 def test_a_report_without_sections_is_refused_and_the_table_is_listed(client):
     login(client)
     definition = complete_reports.normalize_definition({})
     for section in definition['sections']:
         section['enabled'] = False
-    response = client.post('/api/reporting/complete-report/jobs', json={'definition': definition, 'format': 'powerpoint'})
+    response = client.post('/api/reporting/complete-report/jobs', json={'definition': definition})
     assert response.status_code == 400
-    assert client.post('/api/reporting/complete-report/jobs', json={'definition': {}, 'format': 'pdf'}).status_code == 400
     page = client.get('/admin')
     assert page.status_code == 200
     assert 'Complete Reports' in page.text
@@ -499,6 +553,10 @@ def test_a_report_job_generates_the_chosen_sections_and_previews_them(client, mo
     rendered = []
     monkeypatch.setattr('src.modules.pptx_to_docx.pdf_page_images',
                         lambda pdf, dpi, pages=None: rendered.append((dpi, pages)) or [PNG] * (len(pages) if pages is not None else 2))
+    # The Word version is packed with the PowerPoint, before the preview opens.
+    packed = packed_component_document([PackItem('heading1', 'Network Insights')])
+    monkeypatch.setattr(complete_reports, 'compose_word', lambda *args, **kwargs: (
+        packed, [{'title': 'Network Insights', 'pages': [{'index': 0, 'title': 'Network Snapshot'}, {'index': 1, 'title': 'Network Snapshot'}]}]))
     definition = complete_reports.normalize_definition({'filters': {'nr_mode': 'SA'}})
     for section in definition['sections']:
         section['enabled'] = section['key'] == 'network_insights'
@@ -507,7 +565,7 @@ def test_a_report_job_generates_the_chosen_sections_and_previews_them(client, mo
             item['enabled'] = item['key'] == 'snapshot'
             if 'components' in item:
                 item['components'] = {key: key == 'snapshot' for key in item['components']}
-    response = client.post('/api/reporting/complete-report/jobs', json={'definition': definition, 'format': 'powerpoint', 'name': 'Snapshot'})
+    response = client.post('/api/reporting/complete-report/jobs', json={'definition': definition, 'name': 'Snapshot'})
     assert response.status_code == 200, response.text
     job_id = response.json()['job']['id']
     import time
@@ -517,14 +575,24 @@ def test_a_report_job_generates_the_chosen_sections_and_previews_them(client, mo
             break
         time.sleep(0.1)
     assert job['status'] == 'ready', job
-    assert job['previews'] == 2 and [item['title'] for item in job['outline']][:3] == ['Snapshot', 'Network Insights', 'Network Snapshot']
-    assert client.get(f'/api/reporting/complete-report/jobs/{job_id}/preview/1').content == PNG
-    # Opened on the whole screen, a page is rendered large from the preview PDF, once.
+    assert [item['title'] for item in job['outline']][:3] == ['Snapshot', 'Network Insights', 'Network Snapshot']
+    # Both formats are ready with their previews: the slides of the PowerPoint and the pages of the Word document.
+    assert {name: item['previews'] for name, item in job['formats'].items()} == {'powerpoint': 2, 'word': 2}
+    assert job['formats']['word']['navigation'][0]['title'] == 'Network Insights'
+    assert job['formats']['powerpoint']['file_name'].endswith('.pptx') and job['formats']['word']['file_name'].endswith('.docx')
+    for export_format in ('powerpoint', 'word'):
+        assert client.get(f'/api/reporting/complete-report/jobs/{job_id}/preview/{export_format}/1').content == PNG
+    # Opened on the whole screen, a page is rendered large from the preview PDF, once (the first one is ready).
     for _attempt in range(2):
-        assert client.get(f'/api/reporting/complete-report/jobs/{job_id}/preview/1?large=true').content == PNG
-    assert rendered == [(complete_reports.PREVIEW_DPI['pptx'], None), (complete_reports.LARGE_PREVIEW_DPI['pptx'], [1])]
-    download = client.get(f'/api/reporting/complete-report/jobs/{job_id}/download')
-    assert download.status_code == 200 and download.content[:2] == b'PK'
+        assert client.get(f'/api/reporting/complete-report/jobs/{job_id}/preview/word/1?large=true').content == PNG
+    assert rendered == [(complete_reports.PREVIEW_DPI['pptx'], None), (complete_reports.LARGE_PREVIEW_DPI['pptx'], [0]),
+                        (complete_reports.PREVIEW_DPI['docx'], None), (complete_reports.LARGE_PREVIEW_DPI['docx'], [0]),
+                        (complete_reports.LARGE_PREVIEW_DPI['docx'], [1])]
+    assert client.get(f'/api/reporting/complete-report/jobs/{job_id}/preview/pdf/1').status_code == 404
+    for export_format in ('powerpoint', 'word'):
+        download = client.get(f'/api/reporting/complete-report/jobs/{job_id}/download/{export_format}')
+        assert download.status_code == 200 and download.content[:2] == b'PK'
+    assert download.headers['content-disposition'].endswith('.docx')
     actions = [row['action'] for row in core.repository.list_logs(limit=20)]
     assert {'complete_report_requested', 'complete_report_generated', 'complete_report_downloaded'} <= set(actions)
 
@@ -717,7 +785,7 @@ def test_a_second_export_reuses_the_sections_whose_data_has_not_changed(client, 
         section['options']['campaigns'] = ['2026-Q3']
 
     def export(**extra):
-        job_id = client.post('/api/reporting/complete-report/jobs', json={'definition': definition, 'format': 'powerpoint', **extra}).json()['job']['id']
+        job_id = client.post('/api/reporting/complete-report/jobs', json={'definition': definition, **extra}).json()['job']['id']
         for _attempt in range(100):
             job = client.get(f'/api/reporting/complete-report/jobs/{job_id}').json()['job']
             if job['status'] in {'ready', 'failed'}:
