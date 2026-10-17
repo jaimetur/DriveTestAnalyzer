@@ -38,7 +38,7 @@ class Element {
   cloneNode() {
     const copy = new Element(this.tag);
     copy.text = this.text; copy.dataset = {...this.dataset}; copy.attributes = {...this.attributes};
-    copy.children = this.children.map(child => child.cloneNode(true));
+    copy.children = this.children.map(child => (typeof child === 'string' ? child : child.cloneNode(true)));
     return copy;
   }
 }
@@ -68,7 +68,7 @@ const isActive = savedFilter => savedFilter.status === 'processing';
 const progressValue = () => 40;
 const deletingSavedFilterIds = new Set();
 const syncSavedFiltersBulk = () => {};
-''' + _function_source(script, 'savedFilterAreaSummaryParts') + _function_source(script, 'savedFilterDurationText') + _function_source(script, 'syncSavedFilterLists') + _function_source(script, 'renderSavedFilters') + r'''
+''' + _function_source(script, 'savedFilterTrendCampaigns') + _function_source(script, 'savedFilterAreaSummaryParts') + _function_source(script, 'savedFilterDurationText') + _function_source(script, 'syncSavedFilterLists') + _function_source(script, 'renderSavedFilters') + r'''
 renderSavedFilters();
 const latest = selectedSavedFilterCard.textContent;
 const cards = savedFilterList.children.map(row => ({id: row.children[0].dataset.savedFilterId,

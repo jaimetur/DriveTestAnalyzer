@@ -2501,7 +2501,7 @@ def test_admin_import_export_packages_detect_configuration_and_workspaces(client
     assert 'Mappings &amp; Reference Data (from active workspace)</option>' in admin_response.text
     assert admin_response.text.index('Main Cities (from active workspace)</option>') < admin_response.text.index('Mappings &amp; Reference Data (from active workspace)</option>')
     assert 'Scoring &amp; GAP Analysis Configuration (from active workspace)' in admin_response.text
-    assert 'Full Environment (Application Config + Dashboards + PPT Templates + Main Cities + Mappings &amp; Reference Data + Scoring &amp; GAP Analysis Configuration + Auto-calculated Fields + Query Builder Queries + Reporting Jobs + NQ Call Tracking + Selected Workspaces)' in admin_response.text
+    assert 'Full Environment (Application Config + Dashboards + PPT Templates + Main Cities + Mappings &amp; Reference Data + Scoring &amp; GAP Analysis Configuration + Auto-calculated Fields + Query Builder Queries + Network Insights Favourites + Reporting Jobs + NQ Call Tracking + Selected Workspaces)' in admin_response.text
     assert admin_response.text.index('Main Cities (workspace city selection)') < admin_response.text.index('Mappings &amp; Reference Data (Operator and Vendor aliases, order and theme colors')
     assert 'Scoring &amp; GAP Analysis Configuration (KPI methodology profiles and GAP KPI priorities)' in admin_response.text
     assert "main_cities: 'Main Cities', mappings_reference_data: 'Mappings & Reference Data', scoring_configuration: 'Scoring & GAP Analysis Configuration'" in admin_response.text
@@ -11040,10 +11040,10 @@ def test_every_tab_lists_its_sections_with_icons_in_the_colour_of_its_module(cli
         assert key in menus, key
         assert f'data-module-sections="{key}"' in page, key
     # Each entry has its icon, and the menu the colour of its module.
-    assert menus['scoring'].count('class="menu-item-icon"') == 9
+    assert menus['scoring'].count('class="menu-item-icon"') == 10
     assert 'data-module-sections-for="scoring" aria-label="Scoring &amp; GAP Analysis sections" style="--menu-accent: ' in page
     # Scoring Results lists its result tabs beside it.
-    for tab in ('summary', 'charts', 'tables', 'locations', 'gap', 'points-lost'):
+    for tab in ('summary', 'charts', 'tables', 'locations', 'trends', 'gap', 'points-lost'):
         assert f'href="/scoring#scoring-results-{tab}"' in menus['scoring'], tab
     # Help groups its chapters, Reference with the Readme and the Changelog.
     help_menu = menus['help']
