@@ -6335,6 +6335,20 @@ WORKSPACE_ELEMENT_EXPORT_TARGETS = frozenset({
     'reporting-jobs', 'nq-call-tracking', 'nq-calls-configuration', 'app-events', 'main-cities', 'scoring-configuration',
     'network-insights-favourites', 'complete-report-favourites', 'scoring-starred-filters', 'scoring-report-configurations',
 })
+# The module of each Workspace Content element of Export / Transfer, where the content is managed: the subgroups of
+# Current Workspace Content follow the menu (App Logs and Config, then the main modules in tab order).
+WORKSPACE_ELEMENT_MODULES = {
+    'app-events': 'app-logs',
+    'main-cities': 'config', 'mappings-reference-data': 'config', 'ppt-templates': 'config',
+    'auto-calculated-fields': 'workspace',
+    'dashboards': 'ppt-dashboards',
+    'scoring-configuration': 'scoring', 'scoring-report-configurations': 'scoring', 'scoring-starred-filters': 'scoring',
+    'network-insights-favourites': 'network-insights',
+    'nq-call-tracking': 'non-qualified-calls', 'nq-calls-configuration': 'non-qualified-calls',
+    'complete-report-favourites': 'reporting', 'reporting-jobs': 'reporting',
+    'query-builder-queries': 'builders',
+}
+ADMINISTRATIVE_MENU_TITLES = {'app-logs': 'App Logs', 'config': 'Config'}
 STATIC_EXPORT_TARGETS = frozenset({'config', 'config-with-templates', 'users-access', 'bugs-report', 'full-environment'})
 UNCOMPRESSED_ARCHIVE_SUFFIXES = frozenset({
     '.7z', '.avi', '.docx', '.gif', '.gz', '.jpeg', '.jpg', '.mp3', '.mp4', '.pdf', '.png', '.pptx', '.rar',
@@ -11336,12 +11350,7 @@ def render_admin_template(
         ]
     export_option_groups = [
         ('Configuration Content', [option for option in export_options if option['value'] in {'config', 'users-access', 'bugs-report'}]),
-        ('Current Workspace Content', [
-            option for option in export_options
-            if option['value'] in {'dashboards', 'ppt-templates', 'main-cities', 'mappings-reference-data', 'scoring-configuration', 'auto-calculated-fields', 'query-builder-queries',
-                                   'network-insights-favourites', 'complete-report-favourites', 'scoring-starred-filters', 'scoring-report-configurations',
-                                   'reporting-jobs', 'nq-call-tracking', 'nq-calls-configuration', 'app-events'}
-        ]),
+        ('Current Workspace Content', workspace_content_options(export_options, load_module_labels(repository))),
         ('Full Workspace', [option for option in export_options if option['value'].startswith('workspace:')]),
         ('Full Environment', [option for option in export_options if option['value'] == 'full-environment']),
     ]
@@ -11415,6 +11424,17 @@ def render_admin_template(
         },
         status_code=status_code,
     )
+
+
+def workspace_content_options(options: list[dict[str, Any]], module_labels: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+    """The Workspace Content options of Export / Transfer, each with the title of its module as its subgroup: the
+    modules in the order of the menu (their titles as Interface Settings names them), their contents alphabetically."""
+    titles = {**ADMINISTRATIVE_MENU_TITLES, **{module: label['title'] for module, label in module_labels.items()}}
+    order = list(titles)
+    chosen = [option | {'subgroup': titles[WORKSPACE_ELEMENT_MODULES[option['value']]]}
+              for option in options if option['value'] in WORKSPACE_ELEMENT_MODULES]
+    return sorted(chosen, key=lambda option: (order.index(WORKSPACE_ELEMENT_MODULES[option['value']]),
+                                              str(option['label']).casefold()))
 
 
 def render_workspace_config_template(

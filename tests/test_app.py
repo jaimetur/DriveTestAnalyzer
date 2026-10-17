@@ -2480,6 +2480,34 @@ def test_bootstrap_users_have_default_workspace_access(client) -> None:
     assert super_admin.status_code == 303
 
 
+def test_export_workspace_content_is_grouped_by_module_in_menu_order(client) -> None:
+    import src.DriveTestAnalyzer as app_module
+    from src.modules.module_labels import MODULE_LABELS_STATE_KEY
+
+    login_super(client)
+    # A module renamed in Interface Settings names its subgroup.
+    app_module.repository.set_application_state(MODULE_LABELS_STATE_KEY, json.dumps({'scoring': {'title': 'Benchmark'}}))
+    page = client.get('/admin').text
+    group = page[page.index('<optgroup label="Current Workspace Content">'):]
+    group = group[:group.index('</optgroup>')]
+    options = re.findall(r'<option value="([^"]+)" data-subgroup="([^"]+)"', group)
+    # The modules in the order of the menu (App Logs, Config, then the main tabs), their contents alphabetically.
+    assert options == [
+        ('app-events', 'App Logs'),
+        ('main-cities', 'Config'), ('mappings-reference-data', 'Config'), ('ppt-templates', 'Config'),
+        ('auto-calculated-fields', 'Workspace'),
+        ('dashboards', 'PPT Dashboards'),
+        ('scoring-configuration', 'Benchmark'), ('scoring-report-configurations', 'Benchmark'), ('scoring-starred-filters', 'Benchmark'),
+        ('network-insights-favourites', 'Network Insights'),
+        ('nq-call-tracking', 'Non-Qualified Calls'), ('nq-calls-configuration', 'Non-Qualified Calls'),
+        ('complete-report-favourites', 'Reporting'), ('reporting-jobs', 'Reporting'),
+        ('query-builder-queries', 'Builders'),
+    ]
+    assert set(app_module.WORKSPACE_ELEMENT_MODULES) == set(app_module.WORKSPACE_ELEMENT_EXPORT_TARGETS)
+    app_script = app_module.PROJECT_ROOT.joinpath('src/web_interface/static/js/app.js').read_text(encoding='utf-8')
+    assert "subheading.className = 'multiselect-subgroup-label';" in app_script
+
+
 def test_admin_import_export_packages_detect_configuration_and_workspaces(client) -> None:
     import src.DriveTestAnalyzer as app_module
 

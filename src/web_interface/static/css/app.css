@@ -48,7 +48,7 @@ select[multiple] { min-height: 10rem; border-radius: 18px; padding-right: 0.55re
 .multiselect-search { min-width: 0; padding: 0.58rem 0.72rem; border-radius: 10px; font-size: 0.82rem; }
 .multiselect-action { display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; width: 100%; padding: 0.72rem 0.85rem; border: 0; border-radius: 12px; background: rgba(11, 122, 117, 0.08); color: var(--brand); font-weight: 700; cursor: pointer; }
 .multiselect-option { display: flex; align-items: center; gap: 0.7rem; padding: 0.4rem 0.75rem; border-radius: 10px; color: var(--text); cursor: pointer; }
-.multiselect-option[hidden], .multiselect-group-label[hidden] { display: none !important; }
+.multiselect-option[hidden], .multiselect-group-label[hidden], .multiselect-subgroup-label[hidden] { display: none !important; }
 .multiselect-group-label { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; }
 .multiselect-group-action { flex: 0 0 auto; padding: 0.16rem 0.55rem; border: 1px solid rgba(139, 29, 36, 0.24); border-radius: 999px; background: #fff; color: #7d2731; font-size: 0.7rem; font-weight: 700; letter-spacing: 0; text-transform: none; cursor: pointer; }
 .multiselect-group-action:hover:not(:disabled) { background: #f4d5d3; }
@@ -760,6 +760,9 @@ body [data-section-bar].is-compact > a.section-bar-top { padding: .45rem .55rem;
 .admin-export-components .multiselect-group-label { margin: 0.45rem 0 0.08rem; padding: 0.34rem 0.55rem; border-bottom: 1px solid rgba(139, 29, 36, 0.18); color: #6d222b; font-size: 0.76rem; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; }
 .admin-export-components .multiselect-group-label:first-of-type { margin-top: 0; }
 .admin-export-components .multiselect-option[data-multiselect-group] { padding-left: 1.35rem; }
+/* The modules of Current Workspace Content: a title over the contents of each, which sit a step further in. */
+.admin-export-components .multiselect-subgroup-label { margin: 0.4rem 0 0.05rem 1.35rem; padding: 0.15rem 0.2rem; color: #9a4650; font-size: 0.74rem; font-weight: 800; letter-spacing: 0.02em; }
+.admin-export-components .multiselect-option[data-multiselect-subgroup] { padding-left: 2.15rem; }
 .admin-export-components .multiselect-option input { flex: 0 0 auto; order: -1; accent-color: #9d2b35; }
 .import-export-panel:has(.admin-export-components .multiselect-menu:not([hidden])), .import-export-panel:has(.admin-export-components .multiselect-menu:not([hidden])) .import-export-content, .import-export-panel:has(.admin-export-components .multiselect-menu:not([hidden])) .import-export-grid, .import-export-panel:has(.admin-export-components .multiselect-menu:not([hidden])) .form-stack { overflow: visible; position: relative; z-index: 50; }
 .database-backup-workspaces { display: grid; gap: 0.35rem; width: min(100%, 620px); color: #8b2429; font-size: 0.85rem; font-weight: 700; }

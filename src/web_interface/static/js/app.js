@@ -5770,6 +5770,7 @@ function setupCustomMultiSelects() {
     }
 
     let previousGroup = '';
+    let previousSubgroup = '';
     const groupSizes = new Map();
     Array.from(select.options).forEach((option) => {
       const group = optionGroup(option);
@@ -5815,7 +5816,19 @@ function setupCustomMultiSelects() {
         }
         menu.appendChild(heading);
         previousGroup = group;
+        previousSubgroup = '';
       }
+      // Options of a group may be split in subgroups (data-subgroup), each under its own title.
+      const subgroup = group ? String(option.dataset.subgroup || '').trim() : '';
+      if (subgroup && subgroup !== previousSubgroup) {
+        const subheading = document.createElement('div');
+        subheading.className = 'multiselect-subgroup-label';
+        subheading.dataset.multiselectGroup = group;
+        subheading.dataset.multiselectSubgroup = subgroup;
+        subheading.textContent = subgroup;
+        menu.appendChild(subheading);
+      }
+      previousSubgroup = subgroup;
       // Options may ask for a line before them, a tag beside their name (data-name) and a class of their own.
       if (option.dataset.dividerBefore === 'true') {
         const divider = document.createElement('div');
@@ -5827,6 +5840,7 @@ function setupCustomMultiSelects() {
       optionLabel.className = 'multiselect-option';
       if (option.dataset.optionClass) optionLabel.classList.add(...option.dataset.optionClass.split(/\s+/).filter(Boolean));
       if (group) optionLabel.dataset.multiselectGroup = group;
+      if (subgroup) optionLabel.dataset.multiselectSubgroup = subgroup;
 
       const checkbox = document.createElement('input');
       checkbox.type = singleChoice ? 'radio' : 'checkbox';
@@ -5890,6 +5904,11 @@ function setupCustomMultiSelects() {
           const group = heading.dataset.multiselectGroup;
           heading.hidden = Array.from(menu.querySelectorAll(`.multiselect-option[data-multiselect-group="${CSS.escape(group || '')}"]`))
             .every((optionLabel) => optionLabel.hidden);
+        });
+        menu.querySelectorAll('.multiselect-subgroup-label').forEach((heading) => {
+          const options = `.multiselect-option[data-multiselect-group="${CSS.escape(heading.dataset.multiselectGroup || '')}"]`
+            + `[data-multiselect-subgroup="${CSS.escape(heading.dataset.multiselectSubgroup || '')}"]`;
+          heading.hidden = Array.from(menu.querySelectorAll(options)).every((optionLabel) => optionLabel.hidden);
         });
       }
     };
