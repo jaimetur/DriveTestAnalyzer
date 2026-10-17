@@ -529,9 +529,10 @@ def test_unconfigured_workspace_configuration_backup_round_trip(client):
     assert not repository.get_workspace_state('scoring_configuration')
 
 
-def test_scoring_report_configurations_travel_with_the_scoring_configuration_backup(client, tmp_path: Path) -> None:
+def test_scoring_configuration_backup_leaves_the_report_configurations_to_their_own_element(client, tmp_path: Path) -> None:
     from src.modules.scoring_reports import (
-        default_scenario, load_report_state, remember_last_configuration, save_named_configuration,
+        default_scenario, load_report_state, remember_last_configuration, report_configurations_document,
+        save_named_configuration,
     )
     _login(client)
     workspace, repository = _workspace_repository()
@@ -544,8 +545,14 @@ def test_scoring_report_configurations_travel_with_the_scoring_configuration_bac
         'components': ['scoring_configuration'], 'workspace_ids': [workspace.id],
         'backup_path': str(tmp_path), 'max_backups': 5,
     })
+    # The report configurations travel as Scoring & GAP Report Configurations, not in the Scoring Configuration.
+    with zipfile.ZipFile(backup_path) as archive:
+        assert not any(name.endswith(app_module.SCORING_REPORT_CONFIGURATIONS_MEMBER) for name in archive.namelist())
     save_named_configuration(repository, 'Other', {'scenarios': [default_scenario()]})
     app_module.restore_database_backup(backup_path, ['scoring_configuration'])
+    assert {'Other', 'Weekly'} <= {item['name'] for item in load_report_state(repository)['configurations']}
+    # Packages created before carried them in the Scoring Configuration: restoring one replaces them as it did.
+    app_module._restore_workspace_scoring_report_configurations(workspace, json.dumps(report_configurations_document(expected)).encode())
     assert load_report_state(repository) == expected
     # Packages created before report configurations existed keep the current ones.
     app_module._restore_workspace_scoring_report_configurations(workspace, None)

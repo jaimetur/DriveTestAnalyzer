@@ -6336,8 +6336,8 @@ WORKSPACE_ELEMENT_EXPORT_TARGETS = frozenset({
     'network-insights-favourites', 'complete-report-favourites', 'scoring-starred-filters', 'scoring-report-configurations',
 })
 # The module of each Workspace Content element (Export / Transfer and backups), where the content is managed: the
-# subgroups of Workspace Content follow the menu (App Logs, then the main modules in tab order) and end with Workspace
-# Config, the Config pages and the Workspace module together.
+# subgroups of Workspace Content start with Workspace Config (the Config pages and the Workspace module together) and
+# follow the menu (App Logs, then the main modules in tab order).
 WORKSPACE_ELEMENT_MODULES = {
     'app-events': 'app-logs',
     'auto-calculated-fields': 'workspace-config', 'main-cities': 'workspace-config',
@@ -11459,11 +11459,11 @@ def render_admin_template(
 
 
 def workspace_content_subgroups(module_labels: dict[str, dict[str, Any]]) -> dict[str, str]:
-    """The titles of the subgroups of Workspace Content in the order of the menu: App Logs, the main modules in tab
-    order with their titles of Interface Settings and, last, Workspace Config (the Config pages and the Workspace module
-    together)."""
-    return {'app-logs': 'App Logs', **{module: label['title'] for module, label in module_labels.items() if module != 'workspace'},
-            'workspace-config': 'Workspace Config'}
+    """The titles of the subgroups of Workspace Content: Workspace Config (the Config pages and the Workspace module
+    together), then in the order of the menu App Logs and the main modules in tab order with their titles of Interface
+    Settings."""
+    return {'workspace-config': 'Workspace Config', 'app-logs': 'App Logs',
+            **{module: label['title'] for module, label in module_labels.items() if module != 'workspace'}}
 
 
 def by_module(entries: list[dict[str, Any]], element_of: Callable[[dict[str, Any]], str],

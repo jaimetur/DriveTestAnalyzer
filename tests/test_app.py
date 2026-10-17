@@ -2494,9 +2494,11 @@ def test_workspace_content_of_exports_and_backups_is_grouped_by_module_in_menu_o
         text = text[text.index(f'<optgroup label="{label}"'):]
         return text[:text.index('</optgroup>')]
 
-    # The modules in the order of the menu (App Logs, then the main tabs) and, last, Workspace Config for the Config
-    # pages and the Workspace module, their contents alphabetically.
+    # Workspace Config first (the Config pages and the Workspace module), then the modules in the order of the menu
+    # (App Logs, then the main tabs), their contents alphabetically.
     modules = [
+        ('auto-calculated-fields', 'Workspace Config'), ('main-cities', 'Workspace Config'),
+        ('mappings-reference-data', 'Workspace Config'), ('ppt-templates', 'Workspace Config'),
         ('app-events', 'App Logs'),
         ('dashboards', 'PPT Dashboards'),
         ('scoring-configuration', 'Benchmark'), ('scoring-report-configurations', 'Benchmark'), ('scoring-starred-filters', 'Benchmark'),
@@ -2504,8 +2506,6 @@ def test_workspace_content_of_exports_and_backups_is_grouped_by_module_in_menu_o
         ('nq-call-tracking', 'Non-Qualified Calls'), ('nq-calls-configuration', 'Non-Qualified Calls'),
         ('complete-report-favourites', 'Reporting'), ('reporting-jobs', 'Reporting'),
         ('query-builder-queries', 'Builders'),
-        ('auto-calculated-fields', 'Workspace Config'), ('main-cities', 'Workspace Config'),
-        ('mappings-reference-data', 'Workspace Config'), ('ppt-templates', 'Workspace Config'),
     ]
     export = group('Current Workspace Content', 'data-export-target-select')
     assert re.findall(r'<option value="([^"]+)" data-subgroup="([^"]+)"', export) == modules
