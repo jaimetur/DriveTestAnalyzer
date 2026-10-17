@@ -94,7 +94,7 @@ def test_definitions_keep_the_order_and_options_of_every_section():
     assert len(network['items']) == len(ni.REPORT_PANELS)
     assert network['options']['technology'] == 'nr' and network['options']['group'] == ['vendor']
     assert network['options']['overshoot_km'] == 100
-    assert definition['sections'][1]['items'] == [{'key': 'd1', 'label': 'Weekly', 'enabled': True}]
+    assert definition['sections'][1]['items'] == [{'key': 'd1', 'label': 'Weekly', 'enabled': True, 'nr_mode': ''}]
     chosen = [section['key'] for section in complete_reports.enabled_sections(definition)]
     # Dashboards is unchecked; Scoring, Network Insights and Non-Qualified Calls have checked sub-modules.
     assert chosen == ['network_insights', 'scoring', 'non_qualified_calls']
@@ -556,11 +556,58 @@ def test_imported_favourites_find_their_dashboards_by_name_only_when_their_id_is
     definition = complete_reports.normalize_definition({'sections': [{'key': 'dashboards', 'items': [
         {'key': 'elsewhere', 'label': 'Weekly'}, {'key': 'sa-weekly', 'label': 'Weekly'}]}]})
     imported = complete_reports.import_entries(core.repository, [{'name': 'Imported', 'definition': definition}], 'super',
-                                               {'weekly': 'nsa-weekly', 'other': 'sa-weekly'})
+                                               {'nsa-weekly': ('Weekly', 'NSA'), 'sa-weekly': ('Other', 'SA')})
     assert imported == 1
     favourite = complete_reports.list_favourites(core.repository)[0]
     dashboards = next(section for section in favourite['definition']['sections'] if section['key'] == 'dashboards')
     assert [item['key'] for item in dashboards['items']] == ['nsa-weekly', 'sa-weekly']
+
+
+def test_favourites_keep_their_dashboards_checked_and_ordered_in_another_workspace(client):
+    from src.modules.ppt_dashboards import STATE_KEY
+
+    login(client)
+
+    def dashboards(ids):
+        names = ['NetCheck CDR Report', 'NetCheck CDR Report (Main Cities)', 'RF Quality (RSRP & SINR)']
+        return {ids[index * 2 + offset]: {'name': name, 'technology': mode}
+                for index, name in enumerate(names) for offset, mode in enumerate(('nsa', 'sa'))}
+
+    # The source workspace: every Dashboard in NSA and in SA with the same name; the NSA report checks two of them,
+    # RF Quality first.
+    source = [f'source-{index}' for index in range(6)]
+    core.repository.set_workspace_state(STATE_KEY, json.dumps(dashboards(source)))
+    definition = complete_reports.normalize_definition({'sections': [{'key': 'dashboards', 'items': [
+        {'key': source[4], 'enabled': True}, {'key': source[0], 'enabled': True}, {'key': source[2], 'enabled': False},
+        {'key': source[1], 'enabled': False}, {'key': source[3], 'enabled': False}, {'key': source[5], 'enabled': False}]}]})
+    complete_reports.save_favourite(core.repository, None, 'Final CDR', definition, 'super')
+    document = complete_reports.export_favourites_document(core.repository)
+    exported = json.loads(document)['favourites'][0]['definition']['sections'][0]['items']
+    # Each Dashboard travels with its name and NR Mode.
+    assert [(item['label'], item['nr_mode']) for item in exported[:2]] == [('RF Quality (RSRP & SINR)', 'NSA'), ('NetCheck CDR Report', 'NSA')]
+    # Another workspace has the same Dashboards with other IDs, in another order.
+    target = [f'target-{index}' for index in range(6)]
+    core.repository.set_workspace_state(STATE_KEY, json.dumps(dict(reversed(list(dashboards(target).items())))))
+    complete_reports.delete_favourite(core.repository, complete_reports.list_favourites(core.repository)[0]['id'])
+    assert complete_reports.import_favourites_document(core.repository, document, 'super') == 1
+    items = complete_reports.list_favourites(core.repository)[0]['definition']['sections'][0]['items']
+    # They find the Dashboards of their NR Mode, in the same order and checked as they were.
+    assert [(item['key'], item['enabled']) for item in items] == [
+        (target[4], True), (target[0], True), (target[2], False), (target[1], False), (target[3], False), (target[5], False)]
+    # Documents of earlier versions do not name the NR Mode: the checked Dashboards take those of the report's NR Mode.
+    legacy = json.loads(document)
+    for item in legacy['favourites'][0]['definition']['sections'][0]['items']:
+        item.pop('nr_mode')
+    complete_reports.delete_favourite(core.repository, complete_reports.list_favourites(core.repository)[0]['id'])
+    complete_reports.import_favourites_document(core.repository, json.dumps(legacy), 'super')
+    items = complete_reports.list_favourites(core.repository)[0]['definition']['sections'][0]['items']
+    assert [item['key'] for item in items if item['enabled']] == [target[4], target[0]]
+    assert len({item['key'] for item in items}) == 6
+    # Saving with the name of a favourite overwrites it once the user confirms it, on the page.
+    script = (core.PROJECT_ROOT / 'src/web_interface/static/js/complete_report.js').read_text(encoding='utf-8')
+    assert "title: 'Overwrite Favourite'" in script
+    assert "existing ? `/api/reporting/complete-report/favourites/${existing.id}`" in script
+    assert "nr_mode: catalogueItem.nr_mode || ''" in script
 
 
 def test_a_stored_scheduled_reporting_title_becomes_reporting_once(client):

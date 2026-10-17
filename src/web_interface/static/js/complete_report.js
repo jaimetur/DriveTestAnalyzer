@@ -384,7 +384,8 @@
     }
     row.collect = () => ({
       key: catalogueItem.key, enabled: enabled.box.checked,
-      ...(sectionKey === 'dashboards' ? {label: catalogueItem.title}
+      // A Dashboard keeps its name and NR Mode, which find it again in another workspace.
+      ...(sectionKey === 'dashboards' ? {label: catalogueItem.title, nr_mode: catalogueItem.nr_mode || ''}
         : {components: Object.fromEntries(boxes.map((box) => [box.value, box.checked]))}),
     });
     return row;
@@ -521,12 +522,20 @@
   $('cr-save').addEventListener('click', async () => {
     const name = $('cr-name').value.trim();
     if (!name) { status('Enter a name for the favourite.', 'error'); $('cr-name').focus(); return; }
-    const selected = favourites.find((item) => String(item.id) === $('cr-favourite').value);
-    // The chosen favourite is updated when the name is kept; another name saves a new favourite.
-    const update = selected && selected.name.toLocaleLowerCase() === name.toLocaleLowerCase();
+    // A name that a favourite already has overwrites it once the user confirms; another name saves a new favourite.
+    const existing = favourites.find((item) => item.name.toLocaleLowerCase() === name.toLocaleLowerCase());
+    if (existing) {
+      const escape = (value) => String(value).replace(/[&<>"']/g, (character) => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[character]));
+      const confirmed = typeof window.showConfirmDialog === 'function'
+        ? Boolean(await window.showConfirmDialog('', {title: 'Overwrite Favourite',
+          copyHtml: `<p>A favourite Complete Report named <strong>${escape(existing.name)}</strong> already exists. Overwrite it with this report?</p>`,
+          confirmLabel: 'Overwrite', cancelLabel: 'Cancel'}))
+        : window.confirm(`A favourite Complete Report named ${existing.name} already exists. Overwrite it with this report?`);
+      if (!confirmed) return;
+    }
     try {
-      const result = await api(update ? `/api/reporting/complete-report/favourites/${selected.id}` : '/api/reporting/complete-report/favourites', {
-        method: update ? 'PUT' : 'POST', body: JSON.stringify({name, definition: collect()}),
+      const result = await api(existing ? `/api/reporting/complete-report/favourites/${existing.id}` : '/api/reporting/complete-report/favourites', {
+        method: existing ? 'PUT' : 'POST', body: JSON.stringify({name, definition: collect()}),
       });
       favourites = result.favourites;
       renderFavourites(result.favourite.id);

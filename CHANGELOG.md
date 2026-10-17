@@ -25,12 +25,14 @@
 - **Operators of the Scoring sections:** the Summary (where each operator stands, position and levers) enables every operator by default, the reference included, and Export Selected Scoring Report shows in each section the operators enabled on the page.
 - **Workspace Content by module in Export / Transfer and backups:** Current Workspace Content of Export / Transfer and Workspace Content of the backups list their elements under the module where each is managed (first Workspace Config for the Config pages and the Workspace module, then App Logs and the main modules in the order of the menu, with their titles of Interface Settings), the elements of each module alphabetically; the backups list the Workspace Database, Input and Output before them.
 - **Favourites Filters:** the Starred Filters of Scoring & GAP Analysis (the Saved Filters marked with the star) are called Favourites Filters everywhere: their panel, the Scoring tab menu and sections bar, the Saved Filters lists, App Events (`saved filter ID 57 (favourite)`) and Help.
+- **Overwrite a favourite Complete Report:** **★ Save as favourite** with the name of an existing favourite overwrites it once the user confirms it.
 
 #### 🐛 Bug fixes:
 - **Scoring Methodology selector:** wide enough to show *By campaign (each campaign with its methodology)* whole.
 - **Renaming an Operator or Vendor label in the Report Templates:** only their titles, legends and the values of their Operator and Vendor filters follow the new name (with a number such as 3, only the filters and legends), never their layouts or other conditions, so renaming 3 to Three no longer breaks a template's *3 columns* grid; templates it changed before (*Three columns*) work again.
 - **GAP and score bars in PowerPoint:** the bars inside the cells of the Scoring and GAP tables keep their side and length on screen in PowerPoint (a GAP behind the reference to the left of the middle, ahead to the right), as in its PDF export and in the other viewers.
 - **GAP order of one operator over several campaigns:** the GAP Analysis of a single operator (on the page and its PowerPoint and Word slides with the Priority arrow) orders the KPIs by their GAP in the latest campaign, the other campaigns breaking ties and the KPIs without a GAP in it last, and says so, instead of by the mean of every campaign.
+- **Favourite Complete Reports in another workspace:** imported favourites find their Dashboards by name and NR Mode (Dashboards with the same name in NSA and SA are no longer mixed up), so the same Dashboards stay checked and in the same order, and transfers with several elements import the Dashboards before the favourites.
 
 #### 📚 Documentation:
 

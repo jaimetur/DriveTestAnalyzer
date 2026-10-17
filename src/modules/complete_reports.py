@@ -229,7 +229,10 @@ def _normalize_items(section: str, raw: Any) -> list[dict[str, Any]]:
             key = str(item.get('key') or '').strip()[:200]
             if key and key not in seen:
                 seen.add(key)
-                items.append({'key': key, 'label': str(item.get('label') or '').strip()[:160], 'enabled': bool(item.get('enabled', True))})
+                # The name and NR Mode of the Dashboard find it again in another workspace.
+                mode = str(item.get('nr_mode') or '').upper()
+                items.append({'key': key, 'label': str(item.get('label') or '').strip()[:160], 'enabled': bool(item.get('enabled', True)),
+                              'nr_mode': mode if mode in {'NSA', 'SA'} else ''})
         return items
     catalogue = {key: (title, components) for key, title, components in _panels()[section]}
     saved = {str(item.get('key')): item for item in raw_items if str(item.get('key')) in catalogue}
@@ -446,13 +449,23 @@ FAVOURITES_FORMAT = 'drivetest-analyzer-complete-report-favourites'
 
 
 def export_entries(repository: Any) -> list[dict[str, Any]]:
-    """The favourites as their documents carry them (with the names of their Dashboards)."""
-    return [{'name': item['name'], 'definition': item['definition'], 'created_by': item['created_by']}
-            for item in list_favourites(repository)]
+    """The favourites as their documents carry them: each Dashboard with its current name and NR Mode, which find it
+    in another workspace."""
+    dashboards = workspace_dashboards(repository)
+    entries = []
+    for item in list_favourites(repository):
+        definition = item['definition']
+        for section in definition['sections']:
+            if section['key'] == 'dashboards':
+                for dashboard in section['items']:
+                    if dashboard['key'] in dashboards:
+                        dashboard['label'], dashboard['nr_mode'] = dashboards[dashboard['key']]
+        entries.append({'name': item['name'], 'definition': definition, 'created_by': item['created_by']})
+    return entries
 
 
-def dashboard_ids_by_name(repository: Any) -> dict[str, str]:
-    """The Dashboards of the workspace by their name (lower case), to find those of another workspace."""
+def workspace_dashboards(repository: Any) -> dict[str, tuple[str, str]]:
+    """The Dashboards of the workspace: each ID with its name and NR Mode (NSA or SA)."""
     from src.modules.ppt_dashboards import LEGACY_STATE_KEY, STATE_KEY
     try:
         stored = json.loads(repository.get_workspace_state(STATE_KEY) or repository.get_workspace_state(LEGACY_STATE_KEY) or '{}')
@@ -460,7 +473,31 @@ def dashboard_ids_by_name(repository: Any) -> dict[str, str]:
         stored = {}
     if not isinstance(stored, dict):
         return {}
-    return {str(value.get('name') or '').casefold(): str(key) for key, value in stored.items() if isinstance(value, dict)}
+    return {str(key): (str(value.get('name') or ''), 'SA' if str(value.get('technology') or '').casefold() == 'sa' else 'NSA')
+            for key, value in stored.items() if isinstance(value, dict)}
+
+
+def match_dashboards(items: list[dict[str, Any]], dashboards: dict[str, tuple[str, str]], nr_mode: str) -> None:
+    """Give the Dashboards of a favourite from another workspace the IDs of those here with their name and NR Mode,
+    never the same one to two of them; a Dashboard of this workspace keeps its ID. Documents of earlier versions do not
+    name the NR Mode: their checked Dashboards take first those of the NR Mode of the report (``nr_mode``)."""
+    if not dashboards:
+        return
+    used = {item['key'] for item in items if item['key'] in dashboards}
+    by_name: dict[str, list[str]] = {}
+    for key, (name, _mode) in dashboards.items():
+        by_name.setdefault(name.casefold(), []).append(key)
+    pending = sorted((item for item in items if item['key'] not in dashboards),
+                     key=lambda item: (not item.get('nr_mode'), not item['enabled']))
+    for item in pending:
+        candidates = [key for key in by_name.get(str(item.get('label') or '').casefold(), []) if key not in used]
+        mode = item.get('nr_mode') or nr_mode
+        chosen = next((key for key in candidates if dashboards[key][1] == mode), None)
+        if chosen is None and not item.get('nr_mode'):
+            chosen = next(iter(candidates), None)
+        if chosen is not None:
+            item['key'], item['nr_mode'] = chosen, dashboards[chosen][1]
+            used.add(chosen)
 
 
 def export_favourites_document(repository: Any) -> bytes:
@@ -475,27 +512,24 @@ def import_favourites_document(repository: Any, content: bytes | str, username: 
     document = json.loads(content)
     if not isinstance(document, dict) or document.get('format') != FAVOURITES_FORMAT:
         raise ValueError('The file is not a DriveTest Analyzer Complete Report Favourites export.')
-    return import_entries(repository, document.get('favourites') or [], username, dashboard_ids_by_name(repository))
+    return import_entries(repository, document.get('favourites') or [], username, workspace_dashboards(repository))
 
 
-def import_entries(repository: Any, entries: Any, username: str, dashboard_ids: dict[str, str] | None = None) -> int:
-    """Add or replace (by name) the favourites of a document. ``dashboard_ids`` maps Dashboard names to their IDs here,
-    so a Dashboard of another workspace is found by its name."""
+def import_entries(repository: Any, entries: Any, username: str,
+                   dashboards: dict[str, tuple[str, str]] | None = None) -> int:
+    """Add or replace (by name) the favourites of a document. ``dashboards`` are those of this workspace (see
+    workspace_dashboards), so a Dashboard of another workspace is found by its name and NR Mode."""
     if not isinstance(entries, list):
         return 0
     existing = {item['name'].casefold(): item['id'] for item in list_favourites(repository)}
-    known_ids = set((dashboard_ids or {}).values())
     imported = 0
     for entry in entries:
         if not isinstance(entry, dict) or not str(entry.get('name') or '').strip():
             continue
         definition = normalize_definition(entry.get('definition'))
         for section in definition['sections']:
-            if section['key'] == 'dashboards' and dashboard_ids:
-                for item in section['items']:
-                    # A Dashboard of this workspace keeps its ID (several Dashboards may share a name).
-                    if item['key'] not in known_ids:
-                        item['key'] = dashboard_ids.get(str(item.get('label') or '').casefold(), item['key'])
+            if section['key'] == 'dashboards':
+                match_dashboards(section['items'], dashboards or {}, definition['filters']['nr_mode'])
         name = ' '.join(str(entry['name']).split())[:120]
         save_favourite(repository, existing.get(name.casefold()), name, definition, username)
         imported += 1

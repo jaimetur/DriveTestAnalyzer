@@ -790,8 +790,8 @@ def import_tasks_document(
     if document.get('complete_reports'):
         # Documents that carried the favourite Complete Reports with the Reporting Jobs: their Dashboards are found here
         # by their name.
-        from src.modules.complete_reports import dashboard_ids_by_name, import_entries
-        import_entries(task_repository, document['complete_reports'], username, dashboard_ids_by_name(task_repository))
+        from src.modules.complete_reports import import_entries, workspace_dashboards
+        import_entries(task_repository, document['complete_reports'], username, workspace_dashboards(task_repository))
     return imported
 
 

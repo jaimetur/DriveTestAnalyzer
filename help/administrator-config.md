@@ -112,7 +112,7 @@ After signing in, and while signed in on any page (the pages check every few sec
 - Auto-calculated Fields from the active workspace
 - Query Builder Queries from the active workspace
 - Network Insights Favourites from the active workspace (the favourite Analysis Selections; importing them adds new favourites and replaces those with the same name)
-- Complete Report Favourites from the active workspace (the favourite Complete Reports of [Reporting](reporting.md); importing them adds new favourites and replaces those with the same name, and each finds its Dashboards by name)
+- Complete Report Favourites from the active workspace (the favourite Complete Reports of [Reporting](reporting.md); importing them adds new favourites and replaces those with the same name, and each finds its Dashboards by name and NR Mode, keeping which are checked and their order)
 - Scoring & GAP Favourites Filters from the active workspace (the Favourites Filters of [Scoring & GAP Analysis](scoring-gap-analysis.md) without their results; importing them adds those the workspace does not have, each finding its CDRs by file, and keeps their name and order)
 - Scoring & GAP Report Templates from the active workspace (the saved configurations of the Scoring report editor; importing them adds new configurations and replaces those with the same name)
 - Reporting Jobs from the active workspace (packages exported before also carry the favourite Complete Reports, which their import still restores)

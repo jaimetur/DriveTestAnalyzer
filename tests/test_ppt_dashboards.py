@@ -1563,7 +1563,7 @@ def test_dashboards_lifecycle_and_layout(client, ppt_reporting_old):
     assert '#ds-subtitle:empty{display:none}' not in dashboard_styles
     assert 'text-transform: uppercase;' in dashboard_styles
     assert 'height: 14rem;' in dashboard_styles
-    assert '.multiselect-option[hidden], .multiselect-group-label[hidden] { display: none !important; }' in app_styles
+    assert '.multiselect-option[hidden], .multiselect-group-label[hidden], .multiselect-subgroup-label[hidden] { display: none !important; }' in app_styles
     task_panel_start = app_script.index("const root = document.getElementById('background-task-panels');")
     task_listener = app_script.index("window.addEventListener('drivetest-analyzer:background-task'")
     assert task_listener > task_panel_start
