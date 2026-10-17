@@ -6850,6 +6850,28 @@ def test_admin_vendor_mappings_support_aliases_colours_and_reordering(client) ->
     assert "title: 'Unsaved mapping changes', confirmLabel: 'Leave without saving'" in script
 
 
+def test_renaming_a_numeric_operator_leaves_layouts_and_numbers_of_the_templates(client) -> None:
+    import src.DriveTestAnalyzer as app_module
+
+    login(client)
+    entry = app_module.CatalogEntry(
+        slide=15, slide_title='Top 3 operators', slide_subtitle='', layout='Title + 1 rows + 3 columns + comments down',
+        chart_title='FDFS DL of 3', cdr_source='CDR-Data', kpi='Mean_Data_Rate', chart_type='CDF Line',
+        filters='Mean_Data_Rate >= 3; Operator IN (VF, 3)', rows_split='Operator', columns_split='', legend='Operator',
+    )
+    app_module.repository.add_report_template('nsa', 'Numeric operator', app_module.catalogue_csv([entry]))
+    renamed = client.post('/workspace-config/operator-mappings/save', data={
+        'original_canonical': '3', 'canonical_value': 'Three', 'aliases': '3\nThree UK', 'color': '#000000',
+    }, follow_redirects=False)
+    assert renamed.status_code == 303
+    stored = app_module.parse_catalog_csv(app_module.repository.report_template_content('nsa', 'Numeric operator'), 'nsa',
+                                          validate_filters=False)[0]
+    # Only the Operator condition follows the new name: the grid, the threshold and the titles keep their 3.
+    assert stored.layout == 'Title + 1 rows + 3 columns + comments down'
+    assert stored.filters == 'Mean_Data_Rate >= 3; Operator IN (VF, Three)'
+    assert stored.slide_title == 'Top 3 operators' and stored.chart_title == 'FDFS DL of 3'
+
+
 def test_canonical_mapping_renames_update_all_templates_and_dashboards_exactly(client) -> None:
     import src.DriveTestAnalyzer as app_module
 

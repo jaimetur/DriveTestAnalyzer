@@ -431,8 +431,9 @@ def _profile_table(slide, profile: dict[str, Any], *, kind: str, left: float, wi
     _cell(table.cell(0, 0), title, size=size + 3, bold=True, color='#FFFFFF', fill=header_color, align=PP_ALIGN.RIGHT)
     headers = ['KPI', *[_environment_label(name, environment_labels) for name in columns], 'Total']
     for column, text in enumerate(headers):
+        # Headers aligned like the values of their column, so each column visibly ends where its header does.
         _cell(table.cell(1, column), text, size=size, bold=True, fill='#E9ECEF',
-              align=PP_ALIGN.LEFT if column < 1 else PP_ALIGN.CENTER)
+              align=PP_ALIGN.LEFT if column < 1 else PP_ALIGN.RIGHT)
         table.cell(1, column).text_frame.word_wrap = True
     for row_index, (line, row) in enumerate(lines, start=2):
         if line == 'group':
@@ -599,7 +600,7 @@ def _comparison_table(slide, comparison: dict[str, Any], *, left: float, width: 
     table.rows[0].height = Inches(row_height * 1.6)
     for column, text in enumerate(headers):
         _cell(table.cell(0, column), text, size=size, bold=True, fill='#E9ECEF',
-              align=PP_ALIGN.LEFT if column < 2 else PP_ALIGN.CENTER)
+              align=PP_ALIGN.LEFT if column < 2 else PP_ALIGN.RIGHT)
         table.cell(0, column).text_frame.word_wrap = True
     scale = max((abs(row['delta']) for row in rows if row['delta'] is not None), default=0)
     for index, row in enumerate(rows, start=1):
@@ -777,7 +778,7 @@ def add_area_summary_slides(presentation, summaries: list[dict[str, Any]], *, sc
         high = ceil((highest + padding) / unit) * unit
         for number, page in enumerate(pages, start=1):
             suffix = f' · {number}/{len(pages)}' if len(pages) > 1 else ''
-            slide = new_slide(presentation, f'{scoring_label} — National & Areas', subtitle + suffix)
+            slide = new_slide(presentation, f'{scoring_label} Trends — National & Areas', subtitle + suffix)
             width = 6.3 if trend else 8.4
             incomplete = _area_summary_table(slide, summary, page, left=.45 if trend else 2.45, width=width)
             split = summary.get('time_split') or 'Campaign'

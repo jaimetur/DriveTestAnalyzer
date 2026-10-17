@@ -1993,7 +1993,90 @@
     setTimeout(stopFollowing, 15000);
   }
   renderAutoCdrs(null);
-  void loadFilterOptions().then(() => { showLastAnalysis(); void loadNrDuplex(); });
+  // -- favourite Analysis Selections, kept in the workspace ------------------------------------------------------
+  // Opening one makes it the selection of the page and analyses it (at once when the analysis is stored).
+  const FAVOURITE_OPENED = 'network-insights:favourite-opened';
+  let favourites = Array.isArray(config.favourites) ? config.favourites : [];
+  const favouriteStatus = (message, tone = '') => {
+    const element = $('ni-favourite-status');
+    element.textContent = message || '';
+    element.dataset.tone = tone;
+  };
+  const renderFavourites = (selected = '') => {
+    const select = $('ni-favourite');
+    select.replaceChildren(new Option('Current selection', ''), ...favourites.map(item => new Option(item.name, String(item.id))));
+    select.value = favourites.some(item => String(item.id) === String(selected)) ? String(selected) : '';
+    $('ni-favourite-delete').disabled = !select.value || !config.can_edit;
+    $('ni-favourite-save').disabled = !config.can_edit;
+  };
+  let openedFavourite = '';
+  try { openedFavourite = sessionStorage.getItem(FAVOURITE_OPENED) || ''; sessionStorage.removeItem(FAVOURITE_OPENED); } catch {}
+  renderFavourites(openedFavourite);
+  const chosenFavourite = favourites.find(item => String(item.id) === openedFavourite);
+  if (chosenFavourite) $('ni-favourite-name').value = chosenFavourite.name;
+  $('ni-favourite').addEventListener('change', async () => {
+    const favourite = favourites.find(item => String(item.id) === $('ni-favourite').value);
+    $('ni-favourite-delete').disabled = !favourite || !config.can_edit;
+    if (!favourite) return;
+    try {
+      await fetch(`/api/network-insights/favourites/${favourite.id}/open`, {method: 'POST', credentials: 'same-origin'});
+      if (storageKey) {
+        localStorage.setItem(storageKey, JSON.stringify(favourite.selection));
+        localStorage.removeItem(`${storageKey}:last-analysis:selection`);
+        localStorage.removeItem(`${storageKey}:last-analysis`);
+      }
+      sessionStorage.setItem(FAVOURITE_OPENED, String(favourite.id));
+    } catch {}
+    location.reload();
+  });
+  $('ni-favourite-save').addEventListener('click', async () => {
+    const name = $('ni-favourite-name').value.trim();
+    if (!name) { favouriteStatus('Enter a name for the favourite.', 'error'); $('ni-favourite-name').focus(); return; }
+    rememberSelection();
+    const selected = favourites.find(item => String(item.id) === $('ni-favourite').value);
+    // The chosen favourite is updated when its name is kept; another name saves a new favourite.
+    const update = selected && selected.name.toLocaleLowerCase() === name.toLocaleLowerCase();
+    try {
+      const response = await fetch(update ? `/api/network-insights/favourites/${selected.id}` : '/api/network-insights/favourites', {
+        method: update ? 'PUT' : 'POST', headers: {'Content-Type': 'application/json'}, credentials: 'same-origin',
+        body: JSON.stringify({name, selection: savedSelection}),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.detail || 'Unable to save the favourite.');
+      favourites = payload.favourites;
+      renderFavourites(payload.favourite.id);
+      favouriteStatus(`${payload.favourite.name} saved as a favourite.`, 'done');
+    } catch (error) {
+      favouriteStatus(error.message, 'error');
+    }
+  });
+  $('ni-favourite-delete').addEventListener('click', async () => {
+    const selected = favourites.find(item => String(item.id) === $('ni-favourite').value);
+    if (!selected) return;
+    const confirmed = typeof window.showConfirmDialog === 'function'
+      ? Boolean(await window.showConfirmDialog('', {title: 'Delete Favourite', copyHtml: `<p>Delete the favourite Analysis Selection <strong>${escapeHtml(selected.name)}</strong>?</p>`,
+        confirmLabel: 'Delete', cancelLabel: 'Cancel'}))
+      : window.confirm(`Delete the favourite Analysis Selection ${selected.name}?`);
+    if (!confirmed) return;
+    try {
+      const response = await fetch(`/api/network-insights/favourites/${selected.id}`, {method: 'DELETE', credentials: 'same-origin'});
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.detail || 'Unable to delete the favourite.');
+      favourites = payload.favourites;
+      renderFavourites('');
+      $('ni-favourite-name').value = '';
+      favouriteStatus(`${selected.name} deleted.`, 'done');
+    } catch (error) {
+      favouriteStatus(error.message, 'error');
+    }
+  });
+
+  void loadFilterOptions().then(() => {
+    // A favourite just opened is analysed (its stored analysis, when there is one, is shown at once).
+    if (chosenFavourite) void analyse();
+    else showLastAnalysis();
+    void loadNrDuplex();
+  });
   void loadDeployment();
   // The site tables do not read the snapshot: the Snapshot, density and spectrum panels still need it.
   if (isSiteTable($('ni-deployment-group').value)) void loadSnapshot();

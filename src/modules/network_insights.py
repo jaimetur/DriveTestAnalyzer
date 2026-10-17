@@ -37,6 +37,7 @@ from src.modules.cdr_facets import cascading_options, stored_facets
 from src.modules.mapping_order import dimension_order_key, operator_order_key, vendor_order_key
 from src.modules.output_layout import NETWORK_INSIGHTS_FOLDER, module_output_dir
 from src.modules import inventory_insights as ii
+from src.modules import network_insights_favourites as ni_favourites
 from src.modules.network_inventory import dataset_revision, effective_snapshot_date, ensure_inventory_cells, network_family
 from src.modules.network_inventory import inventory_datasets as snapshot_datasets
 from src.modules.serving_cells import load_serving_networks, serving_families
@@ -46,6 +47,9 @@ NETWORK_INSIGHTS_KINDS = ('data', 'voice', 'speech')
 # Bump when the normalised samples or the analysis payload change shape.
 SAMPLES_CACHE_VERSION = 9
 ANALYSIS_CACHE_VERSION = 27
+# Analyses kept in the workspace cache (each a few MB) and in memory, to show them again without calculating them.
+ANALYSES_KEPT = 500
+ANALYSES_IN_MEMORY = 24
 INVENTORY_CACHE_VERSION = 4
 OBSERVED_CACHE_VERSION = 9
 # Columns of the Observed Sites/Cells (from CDRs) tables.
@@ -1755,6 +1759,61 @@ def install_network_insights_routes(core: Any) -> None:
             frames.append(normalise_samples(frame, kind, columns))
         return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
+    # -- favourite Analysis Selections (see network_insights_favourites) --------------------------------------------
+    class FavouritePayload(BaseModel):
+        name: str = ''
+        selection: dict[str, Any] = Field(default_factory=dict)
+
+    def log_favourite(task_repository, user, action: str, details: dict[str, Any]) -> None:
+        task_repository.try_add_log(user.username, action, json.dumps(details, ensure_ascii=False))
+
+    @app.get('/api/network-insights/favourites')
+    def network_insights_favourites(user=Depends(insights_user)):
+        return {'favourites': ni_favourites.list_favourites(bound_repository())}
+
+    @app.post('/api/network-insights/favourites')
+    def network_insights_favourite_create(payload: FavouritePayload, user=Depends(editor_user)):
+        task_repository = bound_repository()
+        try:
+            favourite = ni_favourites.save_favourite(task_repository, None, payload.name, payload.selection, user.username)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        log_favourite(task_repository, user, 'network_insights_favourite_saved',
+                      {'id': favourite['id'], 'name': favourite['name'], 'created': True, 'selection': favourite['selection']})
+        return {'favourite': favourite, 'favourites': ni_favourites.list_favourites(task_repository)}
+
+    @app.put('/api/network-insights/favourites/{favourite_id}')
+    def network_insights_favourite_update(favourite_id: int, payload: FavouritePayload, user=Depends(editor_user)):
+        task_repository = bound_repository()
+        try:
+            favourite = ni_favourites.save_favourite(task_repository, favourite_id, payload.name, payload.selection, user.username)
+        except LookupError as exc:
+            raise HTTPException(404, str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        log_favourite(task_repository, user, 'network_insights_favourite_saved',
+                      {'id': favourite['id'], 'name': favourite['name'], 'created': False, 'selection': favourite['selection']})
+        return {'favourite': favourite, 'favourites': ni_favourites.list_favourites(task_repository)}
+
+    @app.delete('/api/network-insights/favourites/{favourite_id}')
+    def network_insights_favourite_delete(favourite_id: int, user=Depends(editor_user)):
+        task_repository = bound_repository()
+        favourite = ni_favourites.delete_favourite(task_repository, favourite_id)
+        if favourite is None:
+            raise HTTPException(404, 'The favourite Analysis Selection no longer exists.')
+        log_favourite(task_repository, user, 'network_insights_favourite_deleted', {'id': favourite_id, 'name': favourite['name']})
+        return {'favourites': ni_favourites.list_favourites(task_repository)}
+
+    @app.post('/api/network-insights/favourites/{favourite_id}/open')
+    def network_insights_favourite_open(favourite_id: int, user=Depends(insights_user)):
+        """Record that a favourite was opened (App Events) and return it."""
+        task_repository = bound_repository()
+        favourite = ni_favourites.get_favourite(task_repository, favourite_id)
+        if favourite is None:
+            raise HTTPException(404, 'The favourite Analysis Selection no longer exists.')
+        log_favourite(task_repository, user, 'network_insights_favourite_opened', {'id': favourite_id, 'name': favourite['name']})
+        return {'favourite': favourite}
+
     @app.get('/network-insights', response_class=HTMLResponse)
     def network_insights_page(request: Request, user=Depends(insights_user)):
         task_repository = bound_repository()
@@ -1764,6 +1823,9 @@ def install_network_insights_routes(core: Any) -> None:
             'user': user,
             'network_insights_config': {
                 'selection_storage_key': f'network-insights:selection:{core.active_workspace.id}:{user.username}',
+                # The Analysis Selections saved as favourites in this workspace, and whether this account saves them.
+                'favourites': ni_favourites.list_favourites(task_repository),
+                'can_edit': user.role in {'user-editor', 'admin', 'super-admin'},
                 # Latest campaign and Latest 2 campaigns, first in Campaigns: the newest campaigns of the NR Mode each time.
                 # [value, label] pairs in their order (the page JSON sorts object keys).
                 'campaign_presets': [[value, label] for value, label in CAMPAIGN_PRESET_LABELS.items()],
@@ -1847,6 +1909,21 @@ def install_network_insights_routes(core: Any) -> None:
         # ``cached_only`` answers 204 instead of calculating a missing result.
         task_repository = bound_repository()
         request = with_auto_cdrs(task_repository, request)
+        cached = stored_analysis(task_repository, request, calculate=False)
+        if cached is None and cached_only:
+            return Response(status_code=204)
+        if not cached_only:
+            task_repository.try_add_log(user.username, 'network_insights_analysis', json.dumps({
+                'datasets': sum(len(ids) for ids in request.datasets.values()), 'technology': request.technology,
+                'stored_result': cached is not None,
+            }))
+        if cached is None:
+            cached = stored_analysis(task_repository, request)
+        return Response(cached, media_type='application/json')
+
+    def stored_analysis(task_repository, request: AnalysisRequest, calculate: bool = True) -> bytes | None:
+        """The stored result of an analysis (kept in memory and in the workspace cache, also after a restart), or its
+        new result stored for the next time; None when it is not stored and ``calculate`` is False."""
         key = analysis_key(task_repository, request)
         with analysis_cache_lock:
             cached = analysis_cache.get(key)
@@ -1857,21 +1934,17 @@ def install_network_insights_routes(core: Any) -> None:
         if cached is None and stored.is_file():
             cached = stored.read_bytes()
             stored.touch()
-        if cached is None and cached_only:
-            return Response(status_code=204)
-        if not cached_only:
-            task_repository.try_add_log(user.username, 'network_insights_analysis', json.dumps({
-                'datasets': sum(len(ids) for ids in request.datasets.values()), 'technology': request.technology,
-                'stored_result': cached is not None,
-            }))
+        if cached is None and not calculate:
+            return None
         if cached is None:
             cached = json.dumps(run_analysis(request), ensure_ascii=False, allow_nan=False, separators=(',', ':')).encode('utf-8')
-            write_cache_file(folder, stored.name, cached, keep=40, pattern='analysis-*.json')
+            # Every analysis made is kept (the newest 500, a few MB each) to show it again at once.
+            write_cache_file(folder, stored.name, cached, keep=ANALYSES_KEPT, pattern='analysis-*.json')
         with analysis_cache_lock:
             analysis_cache[key] = cached
-            while len(analysis_cache) > 12:
+            while len(analysis_cache) > ANALYSES_IN_MEMORY:
                 analysis_cache.popitem(last=False)
-        return Response(cached, media_type='application/json')
+        return cached
 
     def technology_thresholds(request: AnalysisRequest, radio: str) -> tuple[float, float]:
         if radio == 'nr':
@@ -3155,20 +3228,22 @@ def install_network_insights_routes(core: Any) -> None:
     def network_insights_cluster_inventories(user=Depends(insights_user)):
         return cluster_inventory_summary()
 
-    def write_summary(selection: dict[str, Any], export_kind: str, destination: Path) -> dict[str, Any]:
+    def write_summary(selection: dict[str, Any], export_kind: str, destination: Path,
+                      components: list[str] | None = None) -> dict[str, Any]:
         """Write the Summary Network Insights (PowerPoint or Word) for a saved or current selection.
 
-        Without CDRs of its own, a selection analyses those of its NR Mode and Campaigns.
-        Returns the selection description used in the document.
+        Without CDRs of its own, a selection analyses those of its NR Mode and Campaigns. ``components`` keeps only
+        those charts and tables in the PowerPoint (a Complete Report). Returns the selection description used in the
+        document.
         """
         from src.modules.cdr_reporting import _render_dashboard_payload
         from src.modules.network_insights_export import export_network_insights_powerpoint, export_network_insights_word
 
         task_repository = bound_repository()
         available = ready_cdrs(task_repository)
-        request = with_auto_cdrs(task_repository, AnalysisRequest.model_validate(selection or {}))
-        request.map_all_groups = True
-        analysis = run_analysis(request)
+        request = summary_request(task_repository, selection)
+        # An analysis already made with the same selection and inputs is used as it is.
+        analysis = json.loads(stored_analysis(task_repository, request))
         names = {row['id']: row['file_name'] for row in available}
         description = {
             **request.model_dump(), 'technology_label': analysis['technology_label'], 'group_label': analysis['group_label'],
@@ -3180,18 +3255,35 @@ def install_network_insights_routes(core: Any) -> None:
         groupings = []
         for group in SUMMARY_DEPLOYMENT_GROUPS:
             grouped = snapshot_payload(task_repository, request.snapshot, group)
-            sources = {item['family']: f"{item['snapshot_date']} · {item['file_name']}" for item in grouped['selection']}
+            # Each table is named after its network and the date of its snapshot (not its long file name).
+            sources = {item['family']: str(item['snapshot_date'] or item['file_name']) for item in grouped['selection']}
             groupings.append({'group': group, 'group_label': grouped['group_label'], 'inventories': [
                 {'operator': table['operator'], 'file_name': sources.get(table['family'], ''), 'rows': table['rows'], 'totals': table['totals']}
                 for table in grouped['deployment']]})
         deployment = {'groupings': groupings, 'cluster_inventories': cluster_inventory_summary(), 'snapshot': snapshot,
                       'nr_duplex': nr_duplex_payload(task_repository, NrDuplexRequest.model_validate(request.model_dump()))}
         render = lambda payload, width, height: _render_dashboard_payload(payload, width=width, height=height)[0]
-        writer = export_network_insights_word if export_kind == 'word' else export_network_insights_powerpoint
-        writer(destination, analysis, deployment, description, render)
+        if export_kind == 'word':
+            export_network_insights_word(destination, analysis, deployment, description, render)
+        else:
+            chosen = {} if components is None else {'components': components}
+            export_network_insights_powerpoint(destination, analysis, deployment, description, render, **chosen)
         return description
 
+    def summary_request(task_repository, selection: dict[str, Any]) -> AnalysisRequest:
+        """The analysis of a summary: the selection with its CDRs, drawing the maps of every group."""
+        request = with_auto_cdrs(task_repository, AnalysisRequest.model_validate(selection or {}))
+        request.map_all_groups = True
+        return request
+
+    def summary_key(selection: dict[str, Any]) -> str:
+        """Identity of the summary of a selection: its analysis and every input it reads (such as the CDRs and the
+        inventory), so a Complete Report knows when its Network Insights section is still the same."""
+        task_repository = bound_repository()
+        return analysis_key(task_repository, summary_request(task_repository, selection))
+
     core.write_network_insights_summary = write_summary
+    core.network_insights_summary_key = summary_key
 
     @app.post('/api/network-insights/export/{export_kind}')
     def network_insights_export(export_kind: str, request: AnalysisRequest, user=Depends(insights_user)):

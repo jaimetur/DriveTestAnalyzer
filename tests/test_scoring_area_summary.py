@@ -1,4 +1,4 @@
-"""National & Area Summary: the National scoring next to chosen cities and each Region, Cluster or City."""
+"""National & Areas Trends: the National scoring next to chosen cities and each Region, Cluster or City."""
 from __future__ import annotations
 
 import json
@@ -23,7 +23,7 @@ from tests.test_scoring_exports import TEMPLATE
 from tests.test_scoring_api import scoring_api  # noqa: F401  (fixture)
 from tests.test_scoring_most_reliable import _reliable_configuration
 
-SUMMARY_TITLE = 'Best Network — National & Areas'
+SUMMARY_TITLE = 'Best Network Trends — National & Areas'
 
 
 def _calls(city, region, statuses):
@@ -87,7 +87,7 @@ def test_each_area_is_scored_with_its_own_measurements():
     missing = calculate_area_summary(scoring_engine.calculate_scoring, frames, job['levels'],
                                      {'breakdown': None, 'cities': ['Bristol']}, kwargs)
     assert [item['kind'] for item in missing['passes']] == ['National']
-    assert missing['warnings'] == ['National & Area Summary: the selected CDRs have no Bristol measurements.']
+    assert missing['warnings'] == ['National & Areas Trends: the selected CDRs have no Bristol measurements.']
 
 
 def test_the_summary_lists_national_the_chosen_cities_and_the_breakdown():
@@ -224,12 +224,21 @@ def test_scenarios_of_the_whole_country_calculate_their_area_summary(monkeypatch
     scenario = normalize_report_configuration({'scenarios': [default_scenario(name='National')]})['scenarios'][0]
     # By default a scenario of the whole country has it, with the four regions and London.
     assert scenario['area_summary'] == {'enabled': True, 'time_split': 'Campaign', 'breakdown': 'Region',
-                                        'cities': ['London'], 'main_cities': False}
+                                        'cities': ['London'], 'main_cities': False, 'campaigns': ['@all-campaigns']}
+    # The Scoring Trends take All available campaigns by default.
     assert core._scenario_area_summary(Repository(), scenario) == {'breakdown': 'Region', 'cities': ['London'],
-                                                                   'time_split': 'Campaign'}
+                                                                   'time_split': 'Campaign', 'campaigns': ['@all-campaigns']}
     scenario['area_summary'] = {'enabled': True, 'breakdown': 'None', 'cities': ['London'], 'main_cities': True}
     assert core._scenario_area_summary(Repository(), scenario) == {
         'breakdown': None, 'cities': ['London', 'Leeds', 'Bristol'], 'time_split': 'Campaign'}
+    # The campaigns of the Scoring Trends join them; alone, they give the scoring trend of those campaigns.
+    scenario['area_summary'] = {**scenario['area_summary'], 'campaigns': ['@latest-2-campaigns']}
+    assert core._scenario_area_summary(Repository(), scenario)['campaigns'] == ['@latest-2-campaigns']
+    trends_only = {**scenario, 'area_summary': {'enabled': False, 'campaigns': ['2026-Q1', '2026-Q2']}}
+    assert core._scenario_area_summary(Repository(), trends_only) == core._scenario_area_summary(
+        Repository(), {**trends_only, 'context_filters': {'Region': ['Vendor A']}}) == {
+        'breakdown': None, 'cities': [], 'time_split': 'Campaign', 'campaigns': ['2026-Q1', '2026-Q2']}
+    scenario['area_summary'] = {'enabled': True, 'breakdown': 'None', 'cities': ['London'], 'main_cities': True}
     # Without the whole country there is no National scoring.
     for filtered in ({'context_filters': {'Region': ['Vendor A']}}, {'main_cities': True}):
         assert has_geographic_filters({**scenario, **filtered})
@@ -254,8 +263,8 @@ def test_scenarios_of_the_whole_country_calculate_their_area_summary(monkeypatch
     core._scenario_saved_filter(Repository(), {'dataset_ids': [1], 'nr_mode': 'NSA'},
                                normalize_report_configuration({'scenarios': [default_scenario()]})['scenarios'][0], 'super')
     # Also when the scenario is calculated again without a Campaign level of a single value.
-    assert calculated and all(item == {'breakdown': 'Region', 'cities': ['London'], 'time_split': 'Campaign'}
-                              for item in calculated)
+    assert calculated and all(item == {'breakdown': 'Region', 'cities': ['London'], 'time_split': 'Campaign',
+                                       'campaigns': ['@all-campaigns']} for item in calculated)
 
 
 def _timed_calls():
@@ -324,7 +333,7 @@ def test_the_area_summary_has_its_own_time_split(monkeypatch):
     assert 'time_split' not in scenario and scenario['area_summary']['time_split'] == 'Campaign'
     scenario['area_summary']['time_split'] = 'Monthly'
     assert core._scenario_area_summary(None, scenario) == {'breakdown': 'Region', 'cities': ['London'],
-                                                           'time_split': 'Monthly'}
+                                                           'time_split': 'Monthly', 'campaigns': ['@all-campaigns']}
 
 
 def test_the_scoring_page_calculates_and_shows_the_national_and_areas(scoring_api, monkeypatch):
@@ -367,14 +376,74 @@ def test_the_scoring_page_calculates_and_shows_the_national_and_areas(scoring_ap
 def test_the_calculation_selection_keeps_the_national_and_area_summary(scoring_api):
     client = scoring_api['client']
     assert client.get('/api/scoring/selection').json()['selection']['area_summary'] == {
-        'enabled': False, 'time_split': 'Campaign', 'breakdown': 'Region', 'cities': ['London']}
+        'enabled': False, 'time_split': 'Campaign', 'breakdown': 'Region', 'cities': ['London'], 'campaigns': ['@all-campaigns']}
     selection = client.get('/api/scoring/selection').json()['selection']
-    summary = {'enabled': True, 'time_split': 'weekly', 'breakdown': 'cluster', 'cities': ['London', 'Leeds']}
+    summary = {'enabled': True, 'time_split': 'weekly', 'breakdown': 'cluster', 'cities': ['London', 'Leeds'],
+               'campaigns': ['@latest-2-campaigns', '2026-Q1']}
     saved = client.put('/api/scoring/selection', json={'selection': {**selection, 'area_summary': summary}}).json()
+    # The campaigns of the Scoring Trends are kept with them (an automatic choice alone).
     assert saved['selection']['area_summary'] == {'enabled': True, 'time_split': 'Weekly', 'breakdown': 'Cluster',
-                                                  'cities': ['London', 'Leeds']}
+                                                  'cities': ['London', 'Leeds'], 'campaigns': ['@latest-2-campaigns']}
     assert client.get('/api/scoring/selection').json()['selection']['area_summary']['time_split'] == 'Weekly'
     page = client.get('/scoring').text
-    for marker in ('data-scoring-area-enabled', 'Include National &amp; area summary', 'data-scoring-area-time-split',
-                   'data-scoring-area-breakdown', 'data-scoring-area-cities'):
+    # The National & Areas Trends inside the Scoring Trends with their campaigns, and the Scoring Trends results tab.
+    for marker in ('data-scoring-trends', 'data-scoring-trend-campaigns', 'data-scoring-area-enabled',
+                   'Include National &amp; Areas Trends', 'data-scoring-area-time-split', 'data-scoring-area-breakdown',
+                   'data-scoring-area-cities', 'data-result-tab="trends"', 'data-result-pane="trends"'):
         assert marker in page
+    assert page.index('data-scoring-trend-campaigns') < page.index('data-scoring-area-enabled')
+
+
+def test_national_and_areas_trends_score_campaigns_of_their_own(scoring_api, monkeypatch):
+    from types import ModuleType
+
+    from src.modules import saved_filters
+
+    client = scoring_api['client']
+    repository = scoring_api['repository']
+    repository.replace_scoring_configuration(_reliable_configuration())
+    earlier = [scoring_api['add_ready_cdr'](name=f'UK_Q1_2026_NSA_{kind.title()}.csv', kind=kind, campaign='2026-Q1')
+               for kind in ('data', 'voice', 'speech')]
+    engine = ModuleType('src.modules.scoring')
+    engine.METHOD_VERSION = 'scoring-area-trends-api-test'
+    engine.required_input_columns = lambda kind, levels: [*levels, 'score']
+
+    def calculate_scoring(frames, levels, *, baseline_operator, configuration=None, **kwargs):
+        # The calls of every campaign of the CDRs read.
+        campaigns = sorted({value for frame in frames.values() if 'Campaign' in frame for value in frame['Campaign']})
+        rows = [{**row, 'Campaign': campaign} for campaign in campaigns for row in ROWS]
+        return scoring_engine.calculate_scoring({'voice': pd.DataFrame(rows)}, levels, baseline_operator=baseline_operator,
+                                                configuration=configuration, **kwargs)
+    engine.calculate_scoring = calculate_scoring
+    monkeypatch.setattr(saved_filters, '_scoring_engine', lambda: engine)
+    request = {'dataset_ids': scoring_api['complete_dataset_ids'], 'aggregation_levels': ['Operator', 'Campaign'],
+               'nr_mode': 'NSA', 'baseline_operator': 'EE', 'context_filters': {'Campaign': ['2026-Q2']},
+               'area_summary': {'time_split': 'Campaign', 'breakdown': 'Region', 'cities': [], 'campaigns': ['@all-campaigns']}}
+    created = client.post('/api/scoring/saved-filters', json=request)
+    assert created.status_code == 200, created.text
+    job_id = created.json()['saved_filter']['id']
+    assert created.json()['saved_filter']['area_summary']['campaigns'] == ['@all-campaigns']
+    assert sorted(created.json()['saved_filter']['trend_campaigns']) == ['2026-Q1', '2026-Q2']
+    saved_filters.calculate_saved_filter(repository, job_id)
+    stored = saved_filters.get_saved_filter(repository, job_id, include_internal_snapshot=True)
+    assert stored['status'] == 'completed', stored['error']
+    assert sorted(stored['area_trends']['dataset_ids']) == sorted([*earlier, *scoring_api['complete_dataset_ids']])
+    result = client.get(f'/api/scoring/saved-filters/{job_id}').json()
+    # The job keeps its own campaign; the trends score every campaign.
+    assert {row['campaign'] for row in result['scoring']} == {'2026-Q2'}
+    insights = result['views']['insights']
+    combined = next(item for item in insights['area_summaries'] if item['environment'] == 'Combined')
+    assert combined['campaigns'] == ['2026-Q1', '2026-Q2']
+    assert [area['label'] for area in combined['areas']] == ['National', 'Vendor A', 'VMO2 North']
+    # The scoring trend follows the campaigns of the trends, from two campaigns on.
+    trend = next(item for item in insights['campaign_trends'] if item['environment'] == 'Combined')
+    assert len(trend['campaigns']) == 2 and len(trend['series']) == 2 and all(None not in series['points'] for series in trend['series'])
+    reliable = result['scorings']['most_reliable']['views']['insights']
+    assert reliable['campaign_trends'] and reliable['area_summaries'][0]['campaigns'] == ['2026-Q1', '2026-Q2']
+    # Without campaigns of its own a summary keeps the form (and the Saved Filter) of the summaries saved before.
+    assert normalize_area_summary_request({'breakdown': 'Region', 'campaigns': []}, {}) == {
+        'breakdown': 'Region', 'cities': [], 'time_split': 'Campaign'}
+    # Campaigns alone give the scoring trend of the selection (filtered by area too); an automatic choice stands alone.
+    assert normalize_area_summary_request({'breakdown': 'None', 'campaigns': ['2026-Q1', '@latest-2-campaigns']},
+                                          {'City': ['London']}) == {
+        'breakdown': None, 'cities': [], 'time_split': 'Campaign', 'campaigns': ['@latest-2-campaigns']}

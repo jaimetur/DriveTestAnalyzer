@@ -503,7 +503,7 @@ PROFILE_COLOR_ALL_MODULES, PROFILE_COLOR_BENCHMARKING, PROFILE_COLOR_NON_QUALIFI
 # The Modules Profiles of a new deployment: (name, description, modules, colour, default).
 # PPT Reporting (old) is in none of them, so only super-admins without a profile see it.
 DEFAULT_MODULES_PROFILES: tuple[tuple[str, str, tuple[str, ...], str, bool], ...] = (
-    ('Non-Qualified Calls', 'Workspace, Non-Qualified Calls, Scheduled Reporting, Builders & Bugs Report.',
+    ('Non-Qualified Calls', 'Workspace, Non-Qualified Calls, Reporting, Builders & Bugs Report.',
      ('workspace', 'non-qualified-calls', 'reporting', 'builders', 'bugs-report'), PROFILE_COLOR_NON_QUALIFIED_CALLS, False),
     ('Benchmarking', 'Every main module except Non-Qualified Calls.',
      tuple(key for key, _name in MAIN_MODULES if key not in {'non-qualified-calls', 'ppt-reporting-old'}), PROFILE_COLOR_BENCHMARKING, False),

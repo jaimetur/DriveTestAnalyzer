@@ -15,7 +15,8 @@ from src.modules.column_names import campaign_sort_key as shared_campaign_sort_k
 
 LOCATION_LEVELS = ('City', 'Cluster', 'Region')
 MAX_LOCATION_CARDS = 12
-MIN_TREND_CAMPAIGNS = 5
+# A trend needs two campaigns (or periods) at least.
+MIN_TREND_CAMPAIGNS = 2
 MIN_COMPARISON_CAMPAIGNS = 2
 _CONTEXT_FIELDS = ('vendor', 'region', 'cluster', 'city', 'campaign', 'dataset_type')
 _LEVEL_FIELDS = {'Vendor': 'vendor', 'Region': 'region', 'Cluster': 'cluster', 'City': 'city', 'Campaign': 'campaign',

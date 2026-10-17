@@ -29,7 +29,7 @@ Help Navigation groups chapters under General, Main Modules, Administrative Modu
 | Uploading data | the [Data Ingestion](workspace-management.md#data-ingestion) section in Workspace Management |
 | Analysing one dataset | [CDR Analysis](datasets-analysis.md) |
 | Exploring a complete template as a live dashboard or generating its PowerPoint | [PPT Dashboards](ppt-dashboards.md) |
-| Scheduling reports and emailing them | [Reporting](reporting.md) |
+| Building one report from several modules, or scheduling reports and emailing them | [Reporting](reporting.md) |
 | Generating persistent Reports or Chart Sets | [PPT Reporting (old)](ppt-reporting-old.md) |
 | Calculating NetCheck scores or comparing operator gaps | [Scoring & GAP Analysis](scoring-gap-analysis.md) |
 | Building ad-hoc SQL queries with guided controls | [Query Builder](query-builder.md) |
@@ -52,7 +52,7 @@ Help Navigation groups chapters under General, Main Modules, Administrative Modu
 - [PPT Dashboards](ppt-dashboards.md) — saved Dashboards, synchronized filters and slide layouts.
 - [PPT Reporting (old)](ppt-reporting-old.md) — classic Reports, Chart Sets, interactive previews and jobs.
 - [Non-Qualified Calls](non-qualified-calls.md) — the NQ Analysis Center: summary, NQ rate by campaign and operator, lifecycle and phases, root cause analysis and sources, drill-down and shared follow-up (status set by rules or by hand, team, assignee, root category and cause recommended from NetCheck, the Ericsson RCA and previous decisions, fields by section and comments) of every call and test that did not complete, across Daily and Final CDRs.
-- [Reporting](reporting.md) — scheduled Reporting Jobs that email CDR Analysis, Network Insights, Dashboard and Scoring artifacts.
+- [Reporting](reporting.md) — Complete Reports with parts of several modules, and scheduled Reporting Jobs that email CDR Analysis, Network Insights, Dashboard and Scoring artifacts.
 - [Chart Builder](chart-builder.md) — temporary ad-hoc chart construction.
 - [Query Builder](query-builder.md) — guided query design, SQL editing, execution and saved queries.
 - [Bugs Report](bugs-report.md) — bug reports with screenshots, the version and date they were opened with, priorities, statuses and a timeline of comments and changes.

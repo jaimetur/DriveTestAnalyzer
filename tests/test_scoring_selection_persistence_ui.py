@@ -252,7 +252,7 @@ process.stdout.write(JSON.stringify({queued, persisted}));
             'Region': ['North'], 'City': [], 'Operator': ['EE'], 'Vendor': [], 'Campaign': ['Spring'],
         },
         # A job without the National & area summary leaves it out.
-        'area_summary': {'enabled': False},
+        'area_summary': {'enabled': False, 'campaigns': []},
     }
     assert result['queued']['selectionDirty'] is True
     assert result['queued']['selectionSaveTimer'] == 42
@@ -289,7 +289,7 @@ def test_job_selection_restoration_clears_filters_on_actual_controls():
 let restoringSelection = false, message = '', pinnedCdrs = false;
 const scheduleAutoCdrRefresh = () => {};
 const areaSummaryEnabled = null, areaSummaryTimeSplit = null, areaSummaryBreakdown = null, areaSummaryCities = null;
-const syncAreaSummary = () => {}, refreshAreaSummaryCities = () => {};
+const syncAreaSummary = () => {}, refreshAreaSummaryCities = () => {}, applyTrendCampaigns = () => {};
 const selectionFieldOrder = ['Region', 'City'];
 const nrFilter = {value: 'NSA', options: [{value: 'NSA'}, {value: 'NR'}]};
 const datasetInput = {value: '8', checked: true, closest: () => ({hidden: false})};
@@ -359,7 +359,7 @@ const contextFilterOptions = (key, values) => values.map(value => ({value, label
 const scoringVendorName = value => value;
 const mainCityIdentities = new Set();
 const decorateOperatorOptions = () => {};
-const refreshAreaSummaryCities = () => {};
+const refreshAreaSummaryCities = () => {}, refreshTrendCampaigns = () => {};
 const campaignPresetLabels = {};
 const isCampaignPreset = () => false;
 const chosenCampaignPreset = () => '';
@@ -396,7 +396,7 @@ def test_included_area_summary_says_why_the_area_filters_are_locked():
     template = SCORING_TEMPLATE.read_text(encoding='utf-8')
 
     assert 'data-scoring-area-filter-lock hidden' in template
-    assert 'needs the scoring of the whole country' in template
+    assert 'need the scoring of the whole country' in template
     assert 'data-scoring-area-filter-unlock' in template
     assert "select.closest('label')?.classList.toggle('is-area-locked', included);" in script
     assert 'areaFilterLock.hidden = !included || !locked.length;' in script

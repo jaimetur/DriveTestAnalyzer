@@ -226,6 +226,38 @@ def normalize_module_labels(raw: object) -> dict[str, dict[str, Any]]:
     return {module: {**labels[module], 'position': position} for position, module in enumerate(order)}
 
 
+# Interface Settings saved when the Reporting module was called Scheduled Reporting keep that title: it becomes
+# Reporting once, and any title chosen afterwards stays.
+REPORTING_TITLE_MIGRATION_KEY = 'module_tab_labels_reporting_title_v1'
+FORMER_REPORTING_TITLES = frozenset({'scheduled reporting', 'scheduled reporting jobs'})
+
+
+def migrate_reporting_title(repository: Any) -> bool:
+    """Rename a stored Scheduled Reporting title of the Reporting tab to Reporting; True when it changed."""
+    if repository.get_application_state(REPORTING_TITLE_MIGRATION_KEY) == '1':
+        return False
+    try:
+        stored = json.loads(repository.get_application_state(MODULE_LABELS_STATE_KEY) or '{}')
+    except (TypeError, ValueError):
+        stored = {}
+    entry = stored.get('reporting') if isinstance(stored, dict) else None
+    changed = isinstance(entry, dict) and str(entry.get('title') or '').strip().casefold() in FORMER_REPORTING_TITLES
+    if changed:
+        entry['title'] = MODULE_TABS['reporting']['title']
+        if str(entry.get('short_title') or '').strip().casefold() in FORMER_REPORTING_TITLES:
+            entry['short_title'] = MODULE_TABS['reporting']['short_title']
+        repository.set_application_state(MODULE_LABELS_STATE_KEY, json.dumps(stored, sort_keys=True))
+    # The Non-Qualified Calls profile of a deployment started before keeps the description it was created with.
+    former = 'Workspace, Non-Qualified Calls, Scheduled Reporting, Builders & Bugs Report.'
+    for profile in repository.list_modules_profiles() if hasattr(repository, 'list_modules_profiles') else []:
+        if str(profile.get('description') or '') == former:
+            repository.save_modules_profile(profile['id'], profile['name'], former.replace('Scheduled Reporting', 'Reporting'),
+                                            profile['modules'])
+            changed = True
+    repository.set_application_state(REPORTING_TITLE_MIGRATION_KEY, '1')
+    return changed
+
+
 def load_module_labels(repository: Any) -> dict[str, dict[str, str]]:
     try:
         return normalize_module_labels(json.loads(repository.get_application_state(MODULE_LABELS_STATE_KEY) or '{}'))
@@ -249,6 +281,9 @@ SECTION_ICONS: dict[str, str] = {
     'spectrum': '<path d="M3 12c1.5-4 3-4 4.5 0s3 4 4.5 0 3-4 4.5 0 3 4 4.5 0"/>',
     'filter': '<path d="M4 5h16l-6 7.5V19l-4 1.5v-8z"/>',
     'trend': '<path d="M4 18 9 12l4 3 7-8"/><path d="M15 7h5v5"/>',
+    # GAP Analysis: the difference between a taller and a shorter bar.
+    'gap': '<path d="M2 21h20"/><path d="M3 21V5h4v16"/><path d="M17 21v-9h4v9"/><path d="M7 5h3.5M13.5 12H17"/>'
+           '<path d="M12 5.5v6"/><path d="m10 7.5 2-2 2 2"/><path d="m10 9.5 2 2 2-2"/>',
     'search': '<circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/>',
     'phone': '<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/>',
     'user-plus': '<circle cx="9" cy="8" r="3.5"/><path d="M3 20a6 6 0 0 1 12 0M18 8v6M15 11h6"/>',
@@ -293,7 +328,8 @@ MODULE_SECTIONS: dict[str, list[tuple[Any, ...] | None]] = {
                 ('Scoring & GAP Results', 'Scoring & GAP Results', 'chart', [
                     ('scoring-results-summary', 'Summary', 'summary'), ('scoring-results-charts', 'Scoring Charts', 'chart'),
                     ('scoring-results-tables', 'Scoring Tables', 'table'), ('scoring-results-locations', 'Locations', 'pin'),
-                    ('scoring-results-gap', 'GAP Analysis', 'trend'), ('scoring-results-points-lost', 'Points Lost', 'map')]),
+                    ('scoring-results-trends', 'Scoring Trends', 'activity'), ('scoring-results-gap', 'GAP Analysis', 'gap'),
+                    ('scoring-results-points-lost', 'Points Lost', 'map')]),
                 ('Starred Filters', 'Starred Filters', 'filter')],
     # In the order of the page (templates/network_insights.html).
     'network-insights': [('Analysis Selection', 'Analysis Selection', 'select'), ('Overview', 'Overview', 'summary'),
@@ -317,7 +353,8 @@ MODULE_SECTIONS: dict[str, list[tuple[Any, ...] | None]] = {
                                 ('import-ericsson-rca-results', 'Import Ericsson RCA Results', 'upload'),
                                 ('import-previous-nq-analyses', 'Import Previous NQ Analyses', 'upload'),
                                 ('analysts-reviewers-to-asignees', 'Analysts / Reviewers → Asignees', 'user-plus')])],
-    'reporting': [('Reporting Jobs', 'Reporting Jobs', 'jobs'), ('Run History', 'Run History', 'log')],
+    'reporting': [('Complete Report', 'Complete Report', 'presentation'), ('Reporting Jobs', 'Reporting Jobs', 'jobs'),
+                  ('Run History', 'Run History', 'log')],
     'bugs-report': [('New Bug Report', 'New Bug Report', 'bug'), ('Bug Reports', 'Bug Reports', 'table')],
     'chart-builder': [('Interactive Preview', 'Interactive Preview', 'eye')],
     'query-builder': [('Selected CDR tables', 'Query editor', 'code'), ('Saved queries', 'Saved queries', 'bookmark'),

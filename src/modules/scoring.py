@@ -743,7 +743,7 @@ def most_reliable_result(result: dict, baseline_operator: str = 'EE', configurat
     reliable = {}
     if 'area_summary' in result:
         from src.modules.scoring_area_summary import most_reliable_area_summary
-        # The calculations of the National & Area Summary rate the same KPI subset.
+        # The calculations of the National & Areas Trends rate the same KPI subset.
         reliable['area_summary'] = most_reliable_area_summary(
             result['area_summary'], lambda item: most_reliable_result(item, baseline_operator, snapshot),
         )

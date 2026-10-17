@@ -17,6 +17,17 @@ def dynamic_layout_axes(layout: str) -> tuple[bool, bool]:
     return 'dynamic rows' in canonical, 'dynamic columns' in canonical
 
 
+# Counts written as words: renaming the Operator label 3 to Three once turned "3 columns" into "Three columns" in the
+# Report Templates (see chart_mapping_reference_renamer), and those templates keep their grid.
+_COUNT_WORDS = {word: number for number, word in enumerate(
+    ('zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve'))}
+_COUNT = r"(\d+|" + "|".join(_COUNT_WORDS) + r")"
+
+
+def _count(value: str) -> int:
+    return int(value) if value.isdigit() else _COUNT_WORDS[value.casefold()]
+
+
 def grid_layout_name(rows: int, columns: int, comments: str = "") -> str:
     return f"Title + {rows} rows + {columns} columns" + (f" + comments {comments}" if comments else "")
 
@@ -30,10 +41,10 @@ def canonical_layout_name(value: str) -> str:
         direction = direction.lower()
         axes = direction if direction != "2 columns + dynamic rows" else "dynamic rows + 2 columns"
         return f"Title + {axes}" + (f" + comments {comments.lower()}" if comments else "")
-    canonical = re.fullmatch(r"Title \+ (\d+) rows \+ (\d+) columns(?: \+ comments (down|right))?", name, re.I)
+    canonical = re.fullmatch(rf"Title \+ {_COUNT} rows \+ {_COUNT} columns(?: \+ comments (down|right))?", name, re.I)
     if canonical:
         rows, columns, comments = canonical.groups()
-        return grid_layout_name(int(rows), int(columns), (comments or "").lower())
+        return grid_layout_name(_count(rows), _count(columns), (comments or "").lower())
     old = re.fullmatch(r"Title and (\d+) (rows?|columns?)(?: and (\d+) (rows?|columns?))?(?: \((.*?)\))?(?: \+ Comments(?: (down|right))?)?", name, re.I)
     if old:
         first, direction, second, other, variant, comments = old.groups()

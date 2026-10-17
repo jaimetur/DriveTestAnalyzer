@@ -282,9 +282,15 @@ def build_scoring_views(job: dict[str, Any] | None, result: dict[str, Any] | Non
     ) if hierarchy_levels else ([], [])
 
     selected_levels = [level for level in (_HIERARCHY_LEVELS.get(_level_identity(item)) for item in levels) if level]
+    insights = build_scoring_insights(score_tables, configuration, selected_levels, result)
+    # National & Areas Trends with campaigns of their own give the scoring trend of their campaigns.
+    from src.modules.scoring_area_summary import build_national_trends
+    national_trends = build_national_trends(job, result, operator_mapping_groups, vendor_mapping_groups=vendor_mapping_groups)
+    if national_trends is not None:
+        insights['campaign_trends'] = national_trends
     return {
         'score_tables': score_tables,
-        'insights': build_scoring_insights(score_tables, configuration, selected_levels, result),
+        'insights': insights,
         'gap_tables': gap_tables,
         'gap_summary_tables': gap_summary_tables,
         'hierarchy_score_tables': hierarchy_score_tables,

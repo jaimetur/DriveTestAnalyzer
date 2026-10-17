@@ -5439,6 +5439,7 @@ function setupWorkspaceUserPickers() {
 const workspaceElementExportTargets = new Set([
   'dashboards', 'ppt-templates', 'main-cities', 'mappings-reference-data', 'scoring-configuration',
   'auto-calculated-fields', 'query-builder-queries', 'reporting-jobs', 'nq-call-tracking', 'nq-calls-configuration', 'app-events',
+  'network-insights-favourites',
 ]);
 
 // The Input and Output folders of a backup only make sense with the workspace database they belong to.
@@ -7230,7 +7231,8 @@ function importPackageContents(payload) {
     'mappings-reference-data': 'Mappings & Reference Data', 'main-cities': 'Main Cities',
     'scoring-configuration': 'Scoring & GAP Analysis Configuration',
     'auto-calculated-fields': 'Auto-calculated Fields',
-    'query-builder-queries': 'Query Builder Queries', 'reporting-jobs': 'Reporting Jobs',
+    'query-builder-queries': 'Query Builder Queries', 'network-insights-favourites': 'Network Insights Favourites',
+    'reporting-jobs': 'Reporting Jobs',
     'nq-call-tracking': 'NQ Call Tracking', 'nq-calls-configuration': 'NQ Calls Configuration', 'app-events': 'App Events',
   };
   const targets = Array.isArray(payload.targets) && payload.targets.length ? payload.targets : [payload.kind];
@@ -8101,6 +8103,8 @@ document.querySelectorAll('[data-export-package-form]').forEach((form) => {
         auto_calculated_fields: 'Auto-calculated Fields',
         'query-builder-queries': 'Query Builder Queries',
         query_builder_queries: 'Query Builder Queries',
+        'network-insights-favourites': 'Network Insights Favourites',
+        network_insights_favourites: 'Network Insights Favourites',
         'reporting-jobs': 'Reporting Jobs',
         reporting_jobs: 'Reporting Jobs',
         'nq-call-tracking': 'NQ Call Tracking',

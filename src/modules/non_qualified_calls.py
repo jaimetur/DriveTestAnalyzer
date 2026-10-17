@@ -7117,11 +7117,13 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         labels = {field['key']: field['label'] for field in list_fields(repository)}
         return executive, progress, options, selection_lines(filters, names, granularity, labels)
 
-    def write_summary_document(export_format: str, destination: Path, executive, progress, options, lines) -> None:
+    def write_summary_document(export_format: str, destination: Path, executive, progress, options, lines,
+                               components: list[str] | None = None) -> None:
         from src.modules.non_qualified_calls_export import export_powerpoint, export_word
 
         if export_format == 'powerpoint':
-            export_powerpoint(destination, lines, executive['summary'], executive['breakdowns'], progress, options)
+            export_powerpoint(destination, lines, executive['summary'], executive['breakdowns'], progress, options,
+                              components=components)
         else:
             export_word(destination, lines, executive['summary'], executive['breakdowns'], progress, options)
 
@@ -7156,6 +7158,11 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         include_suggestions = str(settings.get('include_suggestions', '1') or '') == '1'
         executive, progress, options, lines = summary_parts(repository, filters, user.username, granularity,
                                                             include_suggestions)
+        # A Complete Report chooses the charts and tables (``components``) and whether the Root Cause Analysis shows
+        # the Not classified calls and the Lifecycle the calls without a value.
+        options = {**options, 'show_not_classified': str(settings.get('show_not_classified') or '') == '1',
+                   'show_empty': str(settings.get('show_empty') or '') == '1'}
+        components = [str(value) for value in settings['components']] if isinstance(settings.get('components'), list) else None
         summary = executive['summary']
         details = [*lines[:-1], f"{summary['total']:,} Non-Qualified Calls · {summary['open']:,} open · {summary['closed']:,} closed · "
                    f"{progress['summary']['attended']:,} attended"]
@@ -7165,7 +7172,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
             label = {'powerpoint': 'PPT', 'word': 'Word', 'excel': 'Excel'}[export_format]
             destination = artifact_path(folder, stamp, 'Non-Qualified Calls', 'Executive Summary and Progress Status', suffix)
             if export_format in {'powerpoint', 'word'}:
-                write_summary_document(export_format, destination, executive, progress, options, lines)
+                write_summary_document(export_format, destination, executive, progress, options, lines, components)
             else:
                 destination.write_bytes(export_workbook(repository, filters, user.username))
             artifacts.append({'module': 'non_qualified_calls', 'title': f'Non-Qualified Calls ({label})',

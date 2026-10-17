@@ -20,7 +20,8 @@ import pandas as pd
 
 from src.modules.column_names import campaign_sort_key, column_identity, resolve_column_name
 from src.modules.scoring_area_summary import (
-    area_summary_levels, calculate_area_summary, calculate_area_summary_from_history, normalize_area_summary_request,
+    WARNING_PREFIXES, area_summary_levels, calculate_area_summary, calculate_area_summary_from_history,
+    detach_area_summary, normalize_area_summary_request,
 )
 from src.modules.scoring_vendors import scoring_vendor_name, scoring_vendor_operators
 from src.modules.cdr_auto_selection import CAMPAIGN_PRESET_LABELS, campaign_presets
@@ -713,6 +714,9 @@ def _row_to_saved_filter(
         # The campaigns its Campaign filter stood for when it was last prepared (an automatic choice such as Latest
         # campaign is resolved each time).
         'resolved_campaigns': [str(value) for value in resolved_context_filters.get('Campaign') or [] if str(value).strip()],
+        # The campaigns of its National & Areas Trends when they have campaigns of their own, as last prepared.
+        'trend_campaigns': [str(value) for value in (source_metadata_payload.get('area_trends') or {}).get('campaigns') or []
+                            if str(value).strip()] if isinstance(source_metadata_payload.get('area_trends'), dict) else [],
     }
     if include_snapshot:
         saved_filter['configuration'] = configuration
@@ -730,6 +734,8 @@ def _row_to_saved_filter(
         }
         groups = source_metadata_payload.get('methodology_groups')
         saved_filter['methodology_groups'] = groups if isinstance(groups, list) else []
+        trends = source_metadata_payload.get('area_trends')
+        saved_filter['area_trends'] = trends if isinstance(trends, dict) else None
     return saved_filter
 
 
@@ -830,10 +836,15 @@ def _prepare_saved_filter(
     version = _method_version(configuration)
     profile_id = str(scoring_profile.get('id') or '')
     profile_name = str(scoring_profile.get('name') or '')
+    area_trends = _area_trends(repository, selected_mode, normalized_area_summary, scoring_profile_id)
+    # The result changes with the CDRs and methodologies of the campaigns of the trends too.
+    key_area_summary = normalized_area_summary if area_trends is None else {**normalized_area_summary, 'trends': {
+        'campaigns': area_trends['campaigns'], 'source_fingerprint': area_trends['source_fingerprint'],
+        'methodologies': area_trends.get('configuration_hash', '')}}
     result_key, _canonical = _result_key(
         normalized_levels, selected_mode, baseline, version, source_fingerprint, config_hash, baseline_aliases,
         normalized_context_filters, resolved_context_filters, operator_mappings, profile_id, profile_name,
-        normalized_area_summary,
+        key_area_summary,
     )
     snapshot = {
         'sources': [source['metadata'] for source in sources],
@@ -849,6 +860,8 @@ def _prepare_saved_filter(
     }
     if normalized_area_summary:
         snapshot['area_summary'] = normalized_area_summary
+    if area_trends is not None:
+        snapshot['area_trends'] = area_trends
     if len(groups) > 1:
         snapshot['methodology_groups'] = groups
     return {
@@ -859,6 +872,39 @@ def _prepare_saved_filter(
         'dataset_ids': normalized_ids, 'snapshot': snapshot, 'nr_mode': selected_mode, 'levels': normalized_levels,
         'baseline_operator': baseline,
     }
+
+
+def _area_trends(repository: Repository, nr_mode: str, area_summary: dict[str, Any] | None,
+                 scoring_profile_id: str | None) -> dict[str, Any] | None:
+    """The campaigns, CDRs and methodologies of National & Areas Trends with campaigns of their own (an automatic
+    choice such as Latest 2 campaigns stands for its campaigns now), or None when they score the job's campaigns."""
+    if not area_summary or not area_summary.get('campaigns'):
+        return None
+    from src.modules.scoring_methodologies import BY_CAMPAIGN, display_configuration, methodology_groups
+    from src.modules.scoring_selection import auto_scoring_cdr_ids, expand_scoring_campaigns
+    campaigns = expand_scoring_campaigns(repository, nr_mode, area_summary['campaigns'])
+    dataset_ids = auto_scoring_cdr_ids(repository, nr_mode, area_summary['campaigns'])
+    if not dataset_ids:
+        raise ValueError(f'National & Areas Trends: the chosen campaigns have no Data, Voice and Speech CDRs of {nr_mode} now.')
+    sources, _campaigns, fingerprint = _source_snapshot(repository, dataset_ids, expected_nr_mode=nr_mode)
+    trends: dict[str, Any] = {'campaigns': list(campaigns), 'dataset_ids': list(dataset_ids), 'source_fingerprint': fingerprint}
+    if scoring_profile_id == BY_CAMPAIGN:
+        # Each campaign of the trends with the methodology that applies to it, as the job's own campaigns.
+        wanted = {value.casefold() for value in campaigns}
+        found = [campaign for source in sources for campaign in source['metadata'].get('campaigns') or []
+                 if not wanted or campaign.casefold() in wanted]
+        groups = methodology_groups(repository.get_scoring_profiles(), found or [''])
+        if len(groups) > 1 and area_summary.get('time_split') == 'All':
+            raise ValueError('National & Areas Trends of campaigns with different methodologies cannot aggregate every '
+                             'selected CDR: choose another time split.')
+        trends['configuration'] = validate_scoring_configuration(
+            groups[0]['configuration'] if len(groups) == 1 else display_configuration(groups))
+        if len(groups) > 1:
+            trends['methodology_groups'] = groups
+        trends['configuration_hash'] = hashlib.sha256(json.dumps(
+            [[group['profile_id'], configuration_hash(group['configuration']), group['campaigns']] for group in groups],
+            sort_keys=True).encode('utf-8')).hexdigest()
+    return trends
 
 
 def _prepare_saved_selection(repository: Repository, saved_filter: dict[str, Any]) -> dict[str, Any]:
@@ -930,7 +976,7 @@ def save_saved_filter(
     Returns the Saved Filter and whether its result is ready or already being calculated (``True``), or must be
     calculated (``False``): the first time, when its CDRs, methodology or Operator Maps changed since its result was
     saved, after a failure, or with ``force``. ``area_summary`` (a breakdown level, chosen cities and a time split)
-    adds the National & Area Summary to a selection without Region, Cluster or City filters.
+    adds the National & Areas Trends (and, with campaigns, the Scoring Trends of those campaigns) to a selection.
     """
     prepared = _prepare_saved_filter(
         repository, dataset_ids, levels, nr_mode, baseline_operator=baseline_operator,
@@ -1688,6 +1734,9 @@ def calculate_saved_filter(repository: Repository, filter_id: int,
         engine = _scoring_engine()
         context_filters = saved_filter.get('resolved_context_filters', saved_filter.get('context_filters', {}))
         groups = saved_filter.get('methodology_groups') or []
+        trends = saved_filter.get('area_trends') if saved_filter.get('area_summary') else None
+        # National & Areas Trends with campaigns of their own are scored apart, from the CDRs of those campaigns.
+        job_filter = {**saved_filter, 'area_summary': None} if trends else saved_filter
         if len(groups) > 1:
             # By campaign: the campaigns of each methodology are scored with it, then put together.
             from src.modules.scoring_methodologies import merge_results
@@ -1695,7 +1744,7 @@ def calculate_saved_filter(repository: Repository, filter_id: int,
             share = 90 / len(groups)
             for index, group in enumerate(groups):
                 group_configuration = validate_scoring_configuration(group['configuration'])
-                group_filter = {**saved_filter, 'configuration': group_configuration}
+                group_filter = {**job_filter, 'configuration': group_configuration}
 
                 def group_progress(progress: int, message: str, index: int = index, name: str = group['profile_name']) -> None:
                     update_progress(round(index * share + progress * share / 100), f'{name}: {message}')
@@ -1708,8 +1757,13 @@ def calculate_saved_filter(repository: Repository, filter_id: int,
             if map_pending:
                 result['points_loss'] = {'version': 2, 'pending': True}
         else:
-            result, map_pending = _scoring_result(repository, saved_filter, configuration, dataset_ids, sources,
+            result, map_pending = _scoring_result(repository, job_filter, configuration, dataset_ids, sources,
                                                   context_filters, engine, update_progress)
+        if trends:
+            summary = _trend_area_summary(repository, saved_filter, trends, configuration, context_filters, engine,
+                                          update_progress)
+            result['warnings'] = [*(result.get('warnings') or []), *summary.pop('warnings', [])]
+            result['area_summary'] = summary
         _save_scoring_result(repository, saved_filter, filter_id, dataset_ids, configuration, result,
                              points_loss_pending=map_pending)
         if map_pending:
@@ -1723,6 +1777,54 @@ def calculate_saved_filter(repository: Repository, filter_id: int,
     except Exception as exc:
         _fail_calculation(repository, saved_filter, filter_id, exc)
     return get_saved_filter(repository, filter_id, include_result=True)
+
+
+def _trend_area_summary(repository: Repository, saved_filter: dict[str, Any], trends: dict[str, Any],
+                        configuration: dict[str, Any], context_filters: dict[str, list[str]], engine: Any,
+                        update_progress: Callable[[int, str], None]) -> dict[str, Any]:
+    """National & Areas Trends with campaigns of their own: the CDRs of those campaigns scored with the job's filters
+    (its campaigns aside) and methodology (each campaign with its own By campaign), split by Operator and Campaign."""
+    area_summary = saved_filter['area_summary']
+    dataset_ids = [int(value) for value in trends.get('dataset_ids') or []]
+    sources, _campaigns, fingerprint = _source_snapshot(repository, dataset_ids, expected_nr_mode=saved_filter['nr_mode'])
+    if fingerprint != trends.get('source_fingerprint'):
+        raise ValueError('A CDR of the National & Areas Trends changed after this calculation was queued. Calculate it again.')
+    # Split as the National calculation of the summary, which then reuses this one.
+    levels = ['Operator'] if area_summary.get('time_split') == 'All' else ['Operator', 'Campaign']
+    filters = {**context_filters, 'Campaign': list(trends.get('campaigns') or [])}
+    trend_filter = {**saved_filter, 'dataset_ids': dataset_ids, 'levels': levels, 'source_fingerprint': fingerprint}
+
+    def progress(value: int, message: str) -> None:
+        update_progress(88 + round(value * 7 / 100), f'National & Areas Trends: {message}')
+    groups = trends.get('methodology_groups') or []
+    if len(groups) > 1:
+        from src.modules.scoring_methodologies import merge_results
+        parts = []
+        for group in groups:
+            group_configuration = validate_scoring_configuration(group['configuration'])
+            part, _from_history = _scoring_result(
+                repository, {**trend_filter, 'configuration': group_configuration}, group_configuration, dataset_ids,
+                [dict(source) for source in sources], {**filters, 'Campaign': list(group['campaigns'])}, engine, progress)
+            parts.append((group, detach_area_summary(part)))
+        result = merge_results(parts)
+        summary = result.get('area_summary') or {}
+        summary['methodology_groups'] = result.get('methodology_groups')
+    else:
+        trend_configuration = (validate_scoring_configuration(trends['configuration']) if trends.get('configuration')
+                               else configuration)
+        result, _from_history = _scoring_result(repository, trend_filter, trend_configuration, dataset_ids, sources,
+                                                filters, engine, progress)
+        summary = detach_area_summary(result).get('area_summary') or {}
+    summary = {'breakdown': area_summary.get('breakdown'), 'cities': list(area_summary.get('cities') or []),
+               'time_split': area_summary.get('time_split') or 'Campaign', 'passes': [], **summary}
+    # The warnings of the summary join those of the job (its other warnings repeat the job's).
+    summary['warnings'] = [warning for warning in result.get('warnings') or []
+                           if any(prefix in str(warning) for prefix in WARNING_PREFIXES)]
+    # Its campaigns and methodology, which the views of its calculations use instead of the job's.
+    summary['campaigns'] = list(trends.get('campaigns') or [])
+    if trends.get('configuration'):
+        summary['configuration'] = trends['configuration']
+    return summary
 
 
 def _scoring_result(repository: Repository, saved_filter: dict[str, Any], configuration: dict[str, Any],

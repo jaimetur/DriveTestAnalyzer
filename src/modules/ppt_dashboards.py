@@ -1940,7 +1940,7 @@ def install_dashboard_routes(core):
         }))
         return job_id
 
-    # Scheduled Reporting jobs generate Dashboard PPTs through the PPT jobs.
+    # Reporting Jobs and Complete Reports generate Dashboard PPTs through the PPT jobs.
     core.dashboard_reporting = SimpleNamespace(
         definition_model=DashboardDefinition,
         list_dashboards=lambda task_repository: read_dashboards(task_repository),

@@ -432,3 +432,16 @@ body:has(dialog.ni-expand-dialog[open]){overflow:hidden}
 /* Latency & Interactivity: a table per environment. */
 .ni-interactivity-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,34rem),1fr));gap:1rem}
 .network-insights .ni-ladder-toolbar{margin-top:1rem}
+/* Favourite Analysis Selections: choose one to analyse it again, or save the current selection with a name. */
+.ni-favourites{display:flex;flex-wrap:wrap;align-items:end;gap:.6rem 1rem;margin-bottom:1rem;padding:.75rem .9rem;border:1px solid rgba(79,70,229,.22);border-radius:14px;background:rgba(238,240,255,.6)}
+.ni-favourites label{display:grid;gap:.3rem;min-width:0;color:var(--muted);font-size:.86rem}
+.ni-favourite-field{flex:1 1 16rem;max-width:24rem}
+.ni-favourite-name{flex:1 1 14rem;max-width:20rem}
+.ni-favourites button{padding:.55rem 1rem;border:1px solid rgba(79,70,229,.45);border-radius:999px;background:#fff;color:#3f37c9;font:inherit;font-weight:700;cursor:pointer}
+.ni-favourites button:hover:not(:disabled){background:#eef0ff}
+.ni-favourites button:disabled{opacity:.5;cursor:not-allowed}
+.ni-favourites .ni-favourite-delete{border-color:rgba(161,43,29,.4);color:#a12b1d}
+.ni-favourites .ni-favourite-delete:hover:not(:disabled){background:#ffeae6}
+.ni-favourite-status{flex-basis:100%;margin:0;min-height:1em}
+.ni-favourite-status[data-tone="error"]{color:#b42318;font-weight:700}
+.ni-favourite-status[data-tone="done"]{color:#1f6043;font-weight:700}

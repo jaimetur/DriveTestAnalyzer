@@ -111,14 +111,15 @@ After signing in, and while signed in on any page (the pages check every few sec
 - Scoring & GAP Analysis Configuration from the active workspace (all saved methodologies, default methodology, KPI definitions and GAP KPI priorities, and the Saved Filters without their results, whose CDRs are found by file in the receiving workspace)
 - Auto-calculated Fields from the active workspace
 - Query Builder Queries from the active workspace
-- Reporting Jobs from the active workspace
+- Network Insights Favourites from the active workspace (the favourite Analysis Selections; importing them adds new favourites and replaces those with the same name)
+- Reporting Jobs from the active workspace (with the favourite Complete Reports of [Reporting](reporting.md))
 - NQ Call Tracking from the active workspace (the Non-Qualified Calls Analysis Center: sections, field catalog, statuses, teams, Status Rules, root cause catalog, Ericsson RCA results, follow-up, comments and history)
 - NQ Calls Configuration from the active workspace (only the configuration of the Non-Qualified Calls Analysis Center: sections, field catalog with its lists, statuses, teams with their members, Status Rules, root cause catalog with its suggestion rule and table columns, without Ericsson RCA results, follow-up, comments or history)
 - App Events from the active workspace (every event with its user, action, details and time; importing them adds the events a workspace does not have, among its own by date, without replacing or deleting any)
 - An accessible workspace
 - Full Environment with selected workspaces
 
-Admins can export/transfer the active workspace's Dashboards, PPT Templates, Main Cities, Mappings & Reference Data, Scoring & GAP Analysis Configuration, Auto-calculated Fields, Query Builder Queries, Reporting Jobs, NQ Call Tracking and NQ Calls Configuration, plus complete workspaces they can access. Super-admins can also export Application Config, Users & Access and a Full Environment.
+Admins can export/transfer the active workspace's Dashboards, PPT Templates, Main Cities, Mappings & Reference Data, Scoring & GAP Analysis Configuration, Auto-calculated Fields, Query Builder Queries, Network Insights Favourites, Reporting Jobs, NQ Call Tracking and NQ Calls Configuration, plus complete workspaces they can access. Super-admins can also export Application Config, Users & Access and a Full Environment.
 
 **Users & Access** moves the users between servers without the rest of the configuration: every account with its name, password, role, active status (with its pending access request), Modules Profile, Workspace Groups and individual workspaces, plus every Modules Profile and Workspace Group. Its import, transfer or restore adds the users, profiles and groups that are missing and updates those with the same name (without case differences), keeping the others; a user keeps its membership of groups the package does not have. Workspaces are matched by name: those the destination does not have are left out and listed in the completion message, and the destination keeps the workspaces of groups and users that only it has. The account that imports keeps its role, status and password, and nothing is imported when no active super-admin would remain.
 
@@ -130,7 +131,7 @@ Importing or transferring PPT Templates synchronizes the destination library wit
 
 When the same package also includes Dashboards, its PPT Templates replace the destination library because the Dashboard definitions are replaced too. Selective backup restore uses the same rule.
 
-A Full Environment always contains Application Config and the complete database/input content, Dashboard definitions, PPT Templates, Main Cities, Mappings & Reference Data, Scoring & GAP Analysis Configuration, Auto-calculated Fields, Query Builder Queries, Reporting Jobs and NQ Call Tracking for every selected workspace. Selecting Full Environment only chooses the package type; the workspace picker opens when **Export ZIP** or **Transfer to other server** is pressed.
+A Full Environment always contains Application Config and the complete database/input content, Dashboard definitions, PPT Templates, Main Cities, Mappings & Reference Data, Scoring & GAP Analysis Configuration, Auto-calculated Fields, Query Builder Queries, Network Insights Favourites, Reporting Jobs and NQ Call Tracking for every selected workspace. Selecting Full Environment only chooses the package type; the workspace picker opens when **Export ZIP** or **Transfer to other server** is pressed.
 
 **Include generated Reports, Chart Sets and Dashboard PPT jobs** controls whether their `output/` trees, and the [Reporting](reporting.md) run history, are included. Reporting Job imports add new jobs and replace jobs with the same name; their dataset references are matched by file name in the destination workspace. At least one workspace is required.
 

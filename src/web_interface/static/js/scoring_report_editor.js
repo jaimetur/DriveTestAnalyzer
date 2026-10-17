@@ -12,33 +12,40 @@
   ];
   const CHART_OPTIONS = [
     ['service', 'Scoring per Service'], ['category', 'Scoring per Category'],
-    ['breakdown', 'Scoring per Category (Breakdown)'], ['trend', 'Scoring trend (more than four campaigns)'],
+    ['breakdown', 'Scoring per Category (Breakdown)'],
   ];
   const LOCATION_OPTIONS = [
     ['cards', 'Scoring per City / Cluster / Region cards'], ['ranking', 'Locations ranked'],
     ['versus', 'Each operator against the reference per location'],
   ];
+  // The Scoring Trends, of the campaigns of the Scoring Trends of the scenario.
+  const TREND_OPTIONS = [['trend', 'Scoring Trend (two campaigns or more)'], ['areas', 'National & Areas Trends']];
   const POINTS_OPTIONS = [
     ['stake', 'Where the points go'], ['kpis', 'Points lost per KPI'], ['map', 'Points lost per City map'], ['vendors', 'Points lost per Vendor'],
     ['site_types', 'Points lost per kind of site'], ['sites', 'Sites to review'], ['stretches', 'Route stretches'],
   ];
   // Options of configurations saved before that are now in another group.
   const MOVED_OPTIONS = {'locations:cards': ['charts', 'location_cards'], 'points:map': ['gap', 'points_loss_map'],
-    'points:kpis': ['gap', 'profile']};
+    'points:kpis': ['gap', 'profile'], 'trends:trend': ['charts', 'trend']};
   const TABLE_OPTIONS = [
     ['summary', 'Category table'], ['breakdown', 'Breakdown table'], ['kpi_values', 'Show KPI values'],
     ['gap_values', 'Show GAP values'], ['campaign_comparison', 'Campaign comparison (two latest campaigns)'],
   ];
-  // The filters that leave out part of the country: the National & area summary needs none of them.
+  // The filters that leave out part of the country: the National & Areas Trends need none of them.
   const GEOGRAPHIC_FILTERS = ['Region', 'Cluster', 'City'];
   const AREA_BREAKDOWNS = ['None', 'Region', 'Cluster', 'City'];
-  // The time split of the National & area summary: every selected CDR in one value, per campaign or per period.
+  // The time split of the National & Areas Trends: every selected CDR in one value, per campaign or per period.
   const TIME_SPLITS = [['All', 'All selected CDRs'], ['Campaign', 'Campaign'], ['Daily', 'Daily'], ['Weekly', 'Weekly'],
     ['Monthly', 'Monthly'], ['Quarterly', 'Quarterly'], ['Yearly', 'Yearly']];
   const hasGeographicFilters = (scenario) => Boolean(scenario.main_cities)
     || GEOGRAPHIC_FILTERS.some((field) => (scenario.context_filters[field] || []).length);
+  // Its campaigns are those of the Scoring Trends of the scenario: All available campaigns by default (none: the
+  // campaigns of the scenario).
   const defaultAreaSummary = (scenario) => ({enabled: !scenario || !hasGeographicFilters(scenario), time_split: 'Campaign',
-    breakdown: 'Region', cities: ['London'], main_cities: false});
+    breakdown: 'Region', cities: ['London'], main_cities: false, campaigns: ['@all-campaigns']});
+  // The automatic choices of the campaigns of the Scoring Trends, which follow the newest campaigns at each report.
+  const TREND_PRESETS = [['@latest-campaign', 'Latest campaign'], ['@previous-campaign', 'Previous campaign'],
+    ['@latest-2-campaigns', 'Latest 2 campaigns'], ['@all-campaigns', 'All available campaigns']];
   const GAP_OPTIONS = [
     ['all_operators', 'Table comparing all the chosen operators'], ['individual', 'Individual tables against the reference'],
     ['parts', 'GAP by part over the campaigns'], ['profile', 'KPI GAP Profile'],
@@ -57,9 +64,10 @@
     return {
       enabled: true, environments: 'all',
       summary: {standings: true, position: true, levers: true, scope: true},
-      charts: {service: true, category: true, breakdown: true, trend: true},
+      charts: {service: true, category: true, breakdown: true},
       tables: {summary: true, breakdown: true, kpi_values: false, gap_values: false, campaign_comparison: true},
       locations: {cards: true, ranking: true, versus: true},
+      trends: {trend: true, areas: true},
       gap: {operators: (operators || []).filter((name) => DEFAULT_OPERATORS.test(String(name).trim())),
         all_operators: true, individual: true, parts: true, profile: true},
       points: {stake: true, kpis: true, map: true, vendors: true, site_types: true, sites: true, stretches: true},
@@ -276,6 +284,7 @@
     if (kind === 'level') return String(scenario.aggregation_levels.includes(name));
     if (kind === 'area') {
       const summary = scenario.area_summary;
+      if (name === 'campaigns') return JSON.stringify([...(summary.campaigns || [])].map(String).sort());
       if (name === 'enabled') return String(Boolean(summary.enabled));
       if (!summary.enabled) return undefined;
       if (name === 'time_split') return summary.time_split || 'Campaign';
@@ -337,6 +346,7 @@
         options.charts, (option, checked) => { options.charts[option] = checked; }, `scoring:${key}:charts`),
       group('Scoring Tables', TABLE_OPTIONS, 'tables'),
       group('Locations', LOCATION_OPTIONS.map(([option, text]) => [option, option === 'cards' ? `${label} ${text}` : text]), 'locations'),
+      group('Scoring Trends', TREND_OPTIONS.map(([option, text]) => [option, `${label} ${text}`]), 'trends'),
     );
     const gap = group('GAP Analysis', GAP_OPTIONS, 'gap');
     const compared = checklist('Operators to compare', operators, options.gap.operators,
@@ -426,10 +436,41 @@
       levels.append(box);
     }
 
-    // The National & area summary: its checkbox heads the panel and enables its settings.
+    // The Scoring Trends: their campaigns, whatever the Campaign filter of the scenario, and inside them the National &
+    // Areas Trends, whose checkbox heads their panel and enables their settings.
+    // (Saved before the Scoring Trends had campaigns: the default.)
+    scenario.area_summary.campaigns = Array.isArray(scenario.area_summary.campaigns) ? scenario.area_summary.campaigns : ['@all-campaigns'];
+    const trendsPanel = el('fieldset', 'scoring-report-subpanel scoring-report-trends');
+    trendsPanel.append(el('legend', 'scoring-report-label', 'Scoring Trends'));
+    const trendRow = el('div', 'scoring-report-subpanel-row');
+    const trendChoice = el('select');
+    trendChoice.setAttribute('aria-label', 'Campaigns of the Scoring Trends');
+    trendChoice.title = 'The campaigns of the Scoring Trend and the National & Areas Trends, whatever the Campaign filter of the scenario';
+    for (const [value, text] of [...TREND_PRESETS, ['', 'Same as the scenario'], ['chosen', 'Chosen campaigns']]) {
+      const option = el('option', '', `Campaigns: ${text}`);
+      option.value = value;
+      trendChoice.append(option);
+    }
+    const trendValues = scenario.area_summary.campaigns;
+    const chosenPreset = TREND_PRESETS.find(([value]) => trendValues.includes(value));
+    trendChoice.value = chosenPreset ? chosenPreset[0] : trendValues.length ? 'chosen' : '';
+    trendChoice.dataset.diffKey = 'area:campaigns';
+    const trendCampaigns = checklist('Campaign', (context.filterOptions?.Campaign || []).filter((value) => !String(value).startsWith('@')),
+      trendValues.filter((value) => !String(value).startsWith('@')), (values) => {
+        scenario.area_summary.campaigns = values;
+      }, {emptyLabel: 'None'});
+    const syncTrendCampaigns = () => { trendCampaigns.hidden = trendChoice.value !== 'chosen'; };
+    trendChoice.addEventListener('change', () => {
+      scenario.area_summary.campaigns = trendChoice.value === 'chosen' ? [] : trendChoice.value ? [trendChoice.value] : [];
+      trendCampaigns.setSelection([]);
+      syncTrendCampaigns();
+    });
+    syncTrendCampaigns();
+    trendRow.append(trendChoice, trendCampaigns);
+    trendsPanel.append(trendRow);
     const subpanel = el('fieldset', 'scoring-report-subpanel');
     const legend = el('legend');
-    const enabled = checkbox('Include National & area summary', scenario.area_summary.enabled, (checked) => {
+    const enabled = checkbox('Include National & Areas Trends', scenario.area_summary.enabled, (checked) => {
       scenario.area_summary.enabled = checked;
       if (checked) {
         // The National scoring needs the whole country: the geographic filters are cleared.
@@ -446,8 +487,8 @@
     subpanel.append(legend);
     const row = el('div', 'scoring-report-subpanel-row');
     const time = el('select');
-    time.setAttribute('aria-label', 'Time split of the National & area summary');
-    time.title = 'Only for the National & area summary. All selected CDRs aggregates every selected CDR into one value; '
+    time.setAttribute('aria-label', 'Time split of the National & Areas Trends');
+    time.title = 'Only for the National & Areas Trends. All selected CDRs aggregates every selected CDR into one value; '
       + 'Campaign splits by campaign; Daily to Yearly split by the period of the start time of each test, '
       + 'whatever the CDRs (daily, weekly or per campaign)';
     for (const [value, text] of TIME_SPLITS) {
@@ -459,7 +500,7 @@
     time.addEventListener('change', () => { scenario.area_summary.time_split = time.value; });
     time.dataset.diffKey = 'area:time_split';
     const breakdown = el('select');
-    breakdown.setAttribute('aria-label', 'Area summary breakdown');
+    breakdown.setAttribute('aria-label', 'Breakdown of the National & Areas Trends');
     for (const value of AREA_BREAKDOWNS) {
       const option = el('option', '', value === 'None' ? 'Breakdown: None' : `Breakdown: ${value}`);
       option.value = value;
@@ -479,9 +520,10 @@
     });
     cities.dataset.diffKey = 'area:cities';
     row.append(time, breakdown, cities);
-    const note = el('p', 'scoring-report-note', 'The National & area summary is only available for the whole country: '
-      + 'including it clears and disables the Region, Cluster, City and Main Cities filters. Its time split applies to its slide only.');
+    const note = el('p', 'scoring-report-note', 'The National & Areas Trends are only available for the whole country: '
+      + 'including them clears and disables the Region, Cluster, City and Main Cities filters. Their time split applies to their slides only.');
     subpanel.append(row, note);
+    trendsPanel.append(subpanel);
     // A disabled picker cannot be opened.
     const setPickerDisabled = (picker, disabled, title = '') => {
       picker.dataset.disabled = disabled ? 'true' : '';
@@ -496,17 +538,17 @@
     function updateAreaSummary() {
       const active = Boolean(scenario.area_summary.enabled);
       for (const field of GEOGRAPHIC_FILTERS) {
-        setPickerDisabled(pickers[field], active, 'Disabled by the National & area summary, which needs the whole country');
+        setPickerDisabled(pickers[field], active, 'Disabled by the National & Areas Trends, which need the whole country');
       }
       time.disabled = !active;
       breakdown.disabled = !active;
-      setPickerDisabled(cities, !active, 'Include the National & area summary to choose the separate cities');
+      setPickerDisabled(cities, !active, 'Include the National & Areas Trends to choose the separate cities');
       subpanel.dataset.disabled = active ? '' : 'true';
     }
     updateAreaSummary();
     const scorings = el('div', 'scoring-report-scorings');
     for (const [key, label] of SCORINGS) scorings.append(scoringPanel(scenario, key, label, context.operators || [], rerender));
-    card.append(filters, levels, subpanel, scorings);
+    card.append(filters, levels, trendsPanel, scorings);
     return card;
   }
 

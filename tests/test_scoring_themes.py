@@ -33,6 +33,14 @@ def test_every_theme_has_every_token():
     assert payload['default'] == 'netcheck' and [theme['id'] for theme in payload['themes']] == list(THEMES)
 
 
+def test_the_rings_of_the_maximum_score_donuts_have_colours_of_their_own():
+    # The outer ring (environments) never repeats a colour of the inner one (Voice and Data, or the KPI categories).
+    for name, theme in THEMES.items():
+        assert set(theme['environments'][:2]).isdisjoint(theme['categories']), name
+        if name != DEFAULT_THEME:
+            assert set(theme['environments']).isdisjoint(theme['categories']), name
+
+
 def test_netcheck_colours_translate_into_the_active_theme():
     # NetCheck is the default: its colours stay as they are.
     assert themed('#1450A8') == '#1450A8' and themed(THRESHOLD_COLORS['Low']) == THRESHOLD_COLORS['Low']

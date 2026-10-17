@@ -11,10 +11,12 @@ on a page as fit, and every section from a new page.
 from __future__ import annotations
 
 import copy
+import math
 import os
 import shutil
 import subprocess
 import tempfile
+from dataclasses import dataclass, field
 from io import BytesIO
 from pathlib import Path
 from typing import Any
@@ -32,6 +34,8 @@ from pptx.enum.shapes import MSO_SHAPE_TYPE, PP_PLACEHOLDER
 from src.utils.fonts import load_image_font
 
 EMU_PER_INCH = 914400
+# The logos of the slide master and of the dark layouts of the template.
+TEMPLATE_LOGO_NAMES = frozenset({'Logo', 'Graphic 6', 'Logo (white)', 'Operators logo'})
 CHART_PALETTE = ['#245a96', '#e08a1e', '#2e8b57', '#b0234f', '#6a63c9', '#0f6f7d', '#b85b20', '#7b8790']
 TITLE_TYPES = {PP_PLACEHOLDER.TITLE, PP_PLACEHOLDER.CENTER_TITLE}
 
@@ -154,15 +158,27 @@ def _soffice() -> str | None:
 
 def slide_images(content: bytes, dpi: int = 160) -> list[bytes] | None:
     """Every slide as a PNG, rendered by LibreOffice through PDF, or None when LibreOffice is unavailable."""
+    return document_page_images(content, 'pptx', dpi)
+
+
+def document_page_images(content: bytes, suffix: str, dpi: int = 160) -> list[bytes] | None:
+    """Every page of a PowerPoint (``pptx``) or Word (``docx``) document as a PNG, rendered by LibreOffice through
+    PDF, or None when LibreOffice is unavailable."""
+    pdf = document_pdf(content, suffix)
+    return None if pdf is None else pdf_page_images(pdf, dpi)
+
+
+def document_pdf(content: bytes, suffix: str) -> bytes | None:
+    """A PowerPoint (``pptx``) or Word (``docx``) document as PDF, converted by LibreOffice, or None when LibreOffice
+    is unavailable."""
+    import importlib.util
+
     soffice = _soffice()
-    try:
-        import pymupdf
-    except ImportError:
-        return None
-    if soffice is None:
+    # The pages are rendered with PyMuPDF.
+    if soffice is None or importlib.util.find_spec('pymupdf') is None:
         return None
     with tempfile.TemporaryDirectory() as folder:
-        source = Path(folder) / 'report.pptx'
+        source = Path(folder) / f'report.{suffix}'
         source.write_bytes(content)
         # A private profile lets the conversion run while the user has LibreOffice open.
         profile = (Path(folder) / 'profile').as_uri()
@@ -172,10 +188,16 @@ def slide_images(content: bytes, dpi: int = 160) -> list[bytes] | None:
         except (OSError, subprocess.SubprocessError):
             return None
         pdf = Path(folder) / 'report.pdf'
-        if not pdf.is_file():
-            return None
-        with pymupdf.open(pdf) as document:
-            return [page.get_pixmap(dpi=dpi).tobytes('png') for page in document]
+        return pdf.read_bytes() if pdf.is_file() else None
+
+
+def pdf_page_images(pdf: bytes, dpi: int, pages: list[int] | None = None) -> list[bytes]:
+    """The pages of a PDF (every one, or those at ``pages``) as PNGs at ``dpi``."""
+    import pymupdf
+
+    with pymupdf.open(stream=pdf, filetype='pdf') as document:
+        chosen = range(document.page_count) if pages is None else [page for page in pages if 0 <= page < document.page_count]
+        return [document[page].get_pixmap(dpi=dpi).tobytes('png') for page in chosen]
 
 
 SECTION_PREFIX = 'section:'
@@ -287,32 +309,293 @@ _PAGE_WIDTH, _PAGE_HEIGHT = 8.27, 11.69
 def portrait_cover(content: bytes) -> bytes | None:
     """The first slide (the cover of the document) as a portrait A4 page with its background across the whole page:
     the text keeps its place under the logo, which stays at the top right."""
+    images = portrait_covers(content, [0])
+    return images[0] if images else None
+
+
+def portrait_covers(content: bytes, positions: list[int]) -> list[bytes] | None:
+    """The slides at ``positions`` (covers) as portrait A4 pages, in that order, rendered at once; None when
+    LibreOffice cannot render them."""
     presentation = Presentation(BytesIO(content))
     slide_ids = presentation.slides._sldIdLst
-    for slide_id in list(slide_ids)[1:]:
-        presentation.part.drop_rel(slide_id.rId)
+    every = list(slide_ids)
+    kept = [every[position] for position in dict.fromkeys(positions) if 0 <= position < len(every)]
+    if not kept:
+        return []
+    for slide_id in every:
+        if slide_id not in kept:
+            presentation.part.drop_rel(slide_id.rId)
+            slide_ids.remove(slide_id)
+    for slide_id in kept:  # In the order asked for.
         slide_ids.remove(slide_id)
+        slide_ids.append(slide_id)
     old_width, old_height = presentation.slide_width, presentation.slide_height
     width, height = Inches(_PAGE_WIDTH), Inches(_PAGE_HEIGHT)
     presentation.slide_width, presentation.slide_height = width, height
-    slide = presentation.slides[0]
-    layout = slide.slide_layout
     lower = int((height - old_height) * 0.3)
-    for container, move_down in ((slide, True), (layout, True), (layout.slide_master, False)):
-        for shape in container.shapes:
-            if shape.left is None or shape.width is None:
+    # Placeholders that take their place from the layout get it written out first, on every cover before any layout
+    # moves: moving only their top would give them no width or height, and a moved layout would move them twice.
+    for slide in presentation.slides:
+        for shape in slide.placeholders:
+            geometry = (shape.left, shape.top, shape.width, shape.height)
+            if None not in geometry:
+                shape.left, shape.top, shape.width, shape.height = geometry
+    done: set[int] = set()
+    for slide in presentation.slides:
+        layout = slide.slide_layout
+        for container, move_down in ((slide, True), (layout, True), (layout.slide_master, False)):
+            # Each layout and master moves once, whatever the number of covers that use it.
+            if container is not slide and id(container.part) in done:
                 continue
-            if shape.left > old_width / 2:
-                # A logo at the right edge stays at the right edge.
-                shape.left = max(0, shape.left - (old_width - width))
-            elif shape.left + shape.width > width:
-                shape.width = max(Inches(1), width - shape.left - Inches(0.4))
-            if move_down and shape.top is not None and shape.top > Inches(1) and shape.left <= old_width / 2:
-                shape.top = shape.top + lower
+            done.add(id(container.part))
+            for shape in container.shapes:
+                if shape.left is None or shape.width is None:
+                    continue
+                if shape.left > old_width / 2:
+                    # A logo at the right edge stays at the right edge.
+                    shape.left = max(0, shape.left - (old_width - width))
+                elif shape.left + shape.width > width:
+                    shape.width = max(Inches(1), width - shape.left - Inches(0.4))
+                if move_down and shape.top is not None and shape.top > Inches(1) and shape.left <= old_width / 2:
+                    shape.top = shape.top + lower
     output = BytesIO()
     presentation.save(output)
-    images = slide_images(output.getvalue(), dpi=150)
-    return images[0] if images else None
+    return slide_images(output.getvalue(), dpi=150)
+
+
+def crop_to_content(image: bytes, box: tuple[float, float, float, float] | None = None) -> tuple[bytes, int, int]:
+    """The part of a slide image inside ``box`` (left, top, right, bottom as shares of the image) without the blank
+    margins around what it shows; returns the PNG and its width and height in pixels."""
+    with Image.open(BytesIO(image)) as raster:
+        rgb = raster.convert('RGB')
+    if box is not None:
+        width, height = rgb.size
+        left, top, right, bottom = (max(0, int(box[0] * width)), max(0, int(box[1] * height)),
+                                    min(width, int(math.ceil(box[2] * width))), min(height, int(math.ceil(box[3] * height))))
+        if right - left > 4 and bottom - top > 4:
+            rgb = rgb.crop((left, top, right, bottom))
+    pixels = np.asarray(rgb).astype(np.int16)
+    background = pixels[0, 0]
+    filled = np.abs(pixels - background).max(axis=2) > 16
+    rows, columns = np.where(filled.any(axis=1))[0], np.where(filled.any(axis=0))[0]
+    if rows.size and columns.size:
+        pad = max(2, int(min(rgb.size) * 0.01))
+        rgb = rgb.crop((max(0, int(columns[0]) - pad), max(0, int(rows[0]) - pad),
+                        min(rgb.width, int(columns[-1]) + pad + 1), min(rgb.height, int(rows[-1]) + pad + 1)))
+    output = BytesIO()
+    rgb.save(output, format='PNG')
+    return output.getvalue(), rgb.width, rgb.height
+
+
+@dataclass
+class PackItem:
+    """What a packed page holds: a ``cover`` (an image that fills a page of its own, without margins), a heading
+    (``heading1`` opens a section and starts a new page, ``heading2`` opens a part of it, both with optional
+    ``subtitle`` lines) or an ``image`` of ``width`` × ``height`` inches."""
+    kind: str
+    text: str = ''
+    subtitle: list[str] = field(default_factory=list)
+    image: bytes = b''
+    width: float = 0.0
+    height: float = 0.0
+
+    @property
+    def fixed_height(self) -> float:
+        heading = {'heading1': 0.46, 'heading2': 0.38}.get(self.kind, 0.0)
+        return heading + 0.21 * len(self.subtitle) if self.kind != 'image' else 0.0
+
+
+_PACK_GAP = 0.15
+_ROW_EXTRA = 0.06
+
+
+def _shelves(images: list[PackItem], width: float, reorder: bool) -> list[list[PackItem]]:
+    """Rows of images side by side: in their order (a new row when the next one does not fit beside the others), or
+    the tallest first, each one in the first row with room for it."""
+    rows: list[list[PackItem]] = []
+    if not reorder:
+        for item in images:
+            if rows and sum(other.width for other in rows[-1]) + _PACK_GAP * len(rows[-1]) + item.width <= width + 1e-6:
+                rows[-1].append(item)
+            else:
+                rows.append([item])
+        return rows
+    for item in sorted(images, key=lambda image: -image.height):
+        row = next((row for row in rows if sum(other.width for other in row) + _PACK_GAP * len(row) + item.width <= width + 1e-6), None)
+        if row is None:
+            rows.append([item])
+        else:
+            row.append(item)
+    return rows
+
+
+def page_layout(items: list[PackItem], width: float, height: float) -> tuple[list[list[PackItem]], float]:
+    """The rows of a page and the scale its images need to fit: in their order, or with the images between two
+    headings reordered when that fits them larger (the page holds the same items either way)."""
+    best: tuple[list[list[PackItem]], float] | None = None
+    for reorder in (False, True):
+        rows: list[list[PackItem]] = []
+        run: list[PackItem] = []
+        for item in items:
+            if item.kind == 'image':
+                run.append(item)
+                continue
+            rows.extend(_shelves(run, width, reorder))
+            run = []
+            rows.append([item])
+        rows.extend(_shelves(run, width, reorder))
+        fixed = sum(row[0].fixed_height for row in rows if row[0].kind != 'image')
+        images = sum(max(item.height for item in row) + _ROW_EXTRA for row in rows if row[0].kind == 'image')
+        gaps = _PACK_GAP * max(0, len(rows) - 1)
+        scale = 1.0 if not images else min(1.0, max(0.05, (height - fixed - gaps) / images))
+        if best is None or scale > best[1] + 1e-6:
+            best = (rows, scale)
+    return best or ([], 1.0)
+
+
+def pack_pages(items: list[PackItem], width: float, height: float, minimum_scale: float = 0.88) -> list[tuple[list[list[PackItem]], float]]:
+    """Pages of consecutive items: each page takes the next items while they fit (a little smaller, down to
+    ``minimum_scale``), so an item never goes after one that follows it; a section heading starts a new page, a
+    heading never ends a page, and an item larger than a page fills one page on its own, made smaller."""
+    pages: list[list[PackItem]] = []
+    current: list[PackItem] = []
+
+    def close() -> list[PackItem]:
+        # Headings at the end of a page go to the next one, with the item they introduce.
+        trailing: list[PackItem] = []
+        while current and current[-1].kind != 'image':
+            trailing.insert(0, current.pop())
+        if current:
+            pages.append(list(current))
+        return trailing
+
+    for item in items:
+        if item.kind == 'cover':
+            # A cover fills a page of its own; what follows it starts the next page.
+            trailing = close()
+            if trailing:
+                pages.append(trailing)
+            pages.append([item])
+            current = []
+            continue
+        if item.kind == 'heading1' and current:
+            current = close()
+            if current:
+                pages.append(current)
+                current = []
+        candidate = [*current, item]
+        if not any(entry.kind == 'image' for entry in current) or page_layout(candidate, width, height)[1] >= minimum_scale:
+            current = candidate
+            continue
+        current = [*close(), item]
+    trailing = close()
+    if trailing:
+        pages.append(trailing)
+    return [page_layout(page, width, height) for page in pages]
+
+
+def _cover_page(document: Any, cover: bytes) -> Any:
+    """The first page of ``document`` as ``cover`` without margins, so its background reaches every edge; returns the
+    section of the pages that follow it."""
+    section = document.sections[0]
+    section.left_margin = section.right_margin = section.top_margin = section.bottom_margin = 0
+    section.header_distance = section.footer_distance = 0
+    paragraph = document.paragraphs[0] if document.paragraphs else document.add_paragraph()
+    paragraph.paragraph_format.space_before = paragraph.paragraph_format.space_after = Pt(0)
+    paragraph.paragraph_format.line_spacing = 1.0
+    paragraph.add_run().add_picture(BytesIO(cover), width=Inches(_PAGE_WIDTH - 0.01), height=Inches(_PAGE_HEIGHT - 0.05))
+    following = document.add_section(WD_SECTION.NEW_PAGE)
+    # The break of the cover section goes into the paragraph of the cover, so no empty line follows it.
+    break_paragraph = document.paragraphs[-1]._p
+    paragraph._p.get_or_add_pPr().append(break_paragraph.pPr.sectPr)
+    break_paragraph.getparent().remove(break_paragraph)
+    return following
+
+
+def _margins(section: Any, inches: float) -> None:
+    section.left_margin = section.right_margin = section.top_margin = section.bottom_margin = Inches(inches)
+    if not inches:
+        section.header_distance = section.footer_distance = 0
+
+
+def _next_section(document: Any, inches: float) -> Any:
+    """A new section from a new page with ``inches`` margins. python-docx ends the previous section with an empty
+    paragraph that holds its properties: they go into the last paragraph of that section instead, so it adds no line
+    (after a full page, that line would take a blank page)."""
+    section = document.add_section(WD_SECTION.NEW_PAGE)
+    breaker = document.paragraphs[-1]._p
+    previous = breaker.getprevious()
+    if previous is not None and previous.tag == qn('w:p'):
+        previous.get_or_add_pPr().append(breaker.pPr.sectPr)
+        breaker.getparent().remove(breaker)
+    _margins(section, inches)
+    return section
+
+
+_CONTENT_MARGIN = 0.45
+
+
+def packed_component_document(items: list[PackItem], cover: bytes | None = None,
+                              page_items: list[list[PackItem]] | None = None) -> bytes:
+    """Portrait pages of covers, headings and component images packed by ``pack_pages``, after a full-page ``cover``.
+    Every cover fills a page without margins (the report cover and the cover of each section). ``page_items`` receives
+    the items of each page, in order (to name the pages of the document)."""
+    if cover is not None:
+        items = [PackItem('cover', image=cover), *items]
+    document = Document()
+    section = document.sections[0]
+    section.orientation = WD_ORIENT.PORTRAIT
+    section.page_width, section.page_height = Inches(_PAGE_WIDTH), Inches(_PAGE_HEIGHT)
+    width = _PAGE_WIDTH - 2 * _CONTENT_MARGIN
+    height = _PAGE_HEIGHT - 2 * _CONTENT_MARGIN - 0.3
+    previous_cover = None
+    pages = pack_pages(items, width, height)
+    if page_items is not None:
+        page_items.extend([item for row in rows for item in row] for rows, _scale in pages)
+    for page_number, (rows, scale) in enumerate(pages):
+        is_cover = rows[0][0].kind == 'cover'
+        if page_number == 0:
+            _margins(section, 0 if is_cover else _CONTENT_MARGIN)
+        elif is_cover or previous_cover:
+            # A cover has a section of its own without margins; the pages after it, one with margins.
+            section = _next_section(document, 0 if is_cover else _CONTENT_MARGIN)
+        new_section = page_number == 0 or is_cover or previous_cover
+        previous_cover = is_cover
+        if is_cover:
+            paragraph = document.add_paragraph()
+            paragraph.paragraph_format.space_before = paragraph.paragraph_format.space_after = Pt(0)
+            paragraph.paragraph_format.line_spacing = 1.0
+            paragraph.add_run().add_picture(BytesIO(rows[0][0].image), width=Inches(_PAGE_WIDTH - 0.01),
+                                            height=Inches(_PAGE_HEIGHT - 0.05))
+            continue
+        for row_number, row in enumerate(rows):
+            paragraph = document.add_paragraph()
+            paragraph.paragraph_format.page_break_before = row_number == 0 and not new_section
+            paragraph.paragraph_format.space_before = Pt(0)
+            item = row[0]
+            if item.kind != 'image':
+                paragraph.style = document.styles['Heading 1' if item.kind == 'heading1' else 'Heading 2']
+                paragraph.paragraph_format.space_after = Pt(4)
+                paragraph.paragraph_format.keep_with_next = True
+                paragraph.add_run(item.text)
+                for line in item.subtitle:
+                    note = document.add_paragraph()
+                    note.paragraph_format.space_before = note.paragraph_format.space_after = Pt(0)
+                    note.paragraph_format.keep_with_next = True
+                    run = note.add_run(line)
+                    run.font.size = Pt(9)
+                    run.font.color.rgb = RGBColor(0x5B, 0x63, 0x77)
+                continue
+            paragraph.alignment = 1
+            paragraph.paragraph_format.space_after = Pt(_PACK_GAP * 72)
+            for index, image in enumerate(row):
+                if index:
+                    paragraph.add_run('\u2002')
+                paragraph.add_run().add_picture(BytesIO(image.image), width=Inches(image.width * scale),
+                                                height=Inches(image.height * scale))
+    output = BytesIO()
+    document.save(output)
+    return output.getvalue()
 
 
 def _packed_document(images: list[bytes], sections: list[str], cover: bytes | None = None) -> bytes:
@@ -326,18 +609,8 @@ def _packed_document(images: list[bytes], sections: list[str], cover: bytes | No
     first = True
     if cover is not None and sections and sections[0] == 'cover':
         # A page of its own without margins, so its background reaches every edge.
-        section.left_margin = section.right_margin = section.top_margin = section.bottom_margin = 0
-        section.header_distance = section.footer_distance = 0
-        paragraph = document.paragraphs[0] if document.paragraphs else document.add_paragraph()
-        paragraph.paragraph_format.space_before = paragraph.paragraph_format.space_after = Pt(0)
-        paragraph.paragraph_format.line_spacing = 1.0
-        paragraph.add_run().add_picture(BytesIO(cover), width=Inches(_PAGE_WIDTH - 0.01), height=Inches(_PAGE_HEIGHT - 0.05))
+        section = _cover_page(document, cover)
         images, sections = images[1:], sections[1:]
-        section = document.add_section(WD_SECTION.NEW_PAGE)
-        # The break of the cover section goes into the paragraph of the cover, so no empty line follows it.
-        break_paragraph = document.paragraphs[-1]._p
-        paragraph._p.get_or_add_pPr().append(break_paragraph.pPr.sectPr)
-        break_paragraph.getparent().remove(break_paragraph)
         first = False
     section.left_margin = section.right_margin = Inches(0.45)
     section.top_margin = section.bottom_margin = Inches(0.45)
@@ -428,8 +701,9 @@ def pptx_to_docx(content: bytes, title: str = '', *, pack_sections: bool = False
         heading_text, title_shape = _slide_title(slide)
         shapes = sorted((shape for shape in slide.shapes if shape is not title_shape),
                         key=lambda shape: (round((shape.top or 0) / (EMU_PER_INCH * 0.25)), shape.left or 0))
+        # The logos of the template a slide draws itself (see template_logos) are not content.
         body = [shape for shape in shapes if shape.has_table or getattr(shape, 'has_chart', False)
-                or shape.shape_type == MSO_SHAPE_TYPE.PICTURE
+                or (shape.shape_type == MSO_SHAPE_TYPE.PICTURE and shape.name not in TEMPLATE_LOGO_NAMES)
                 or (shape.has_text_frame and shape.text_frame.text.strip())]
         if not heading_text and not body:
             continue

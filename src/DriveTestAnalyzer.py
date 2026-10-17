@@ -32,7 +32,7 @@ import zipfile
 from collections import OrderedDict
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import asynccontextmanager, closing, contextmanager, nullcontext
-from dataclasses import asdict, fields, replace
+from dataclasses import asdict, replace
 from datetime import datetime, timedelta, timezone, tzinfo
 from functools import lru_cache
 from pathlib import Path, PurePosixPath
@@ -897,6 +897,27 @@ def chart_mapping_reference_renamer(
     return renamed_text
 
 
+# The fields of a Report Template entry that can name an operator or vendor: its titles, legend and dynamic values, and
+# in its filters the values of the Operator and Vendor conditions. The layout, sources, KPIs, chart types, splits,
+# formats and the other conditions never do (renaming the operator 3 must not turn "3 columns" into "Three columns").
+MAPPING_TEXT_FIELDS = ('slide_title', 'slide_subtitle', 'chart_title', 'legend', 'dynamic_row_value', 'dynamic_column_value',
+                       'dynamic_value')
+MAPPING_FILTER_COLUMNS = {'operator', 'operatorvendor', 'vendoroperator', 'vendor', 'vendoronly'}
+_FILTER_CONDITION = re.compile(
+    r'(\s*)([^=<>!]+?)(\s*(?:!=|<>|>=|<=|=|>|<|\bNOT\s+IN\b|\bIN\b|\bNOT\s+CONTAINS\b|\bCONTAINS\b).*)$', re.I | re.S)
+
+
+def renamed_mapping_filters(filters: str, renamed_text: Callable[[str], str]) -> str:
+    """The filters of a Report Template entry with the values of their Operator and Vendor conditions renamed."""
+    renamed = []
+    for part in re.split(r'(;)', filters):
+        match = _FILTER_CONDITION.match(part)
+        if match and re.sub(r'[^a-z]', '', match.group(2).casefold()) in MAPPING_FILTER_COLUMNS:
+            part = match.group(1) + match.group(2) + renamed_text(match.group(3))
+        renamed.append(part)
+    return ''.join(renamed)
+
+
 def rename_chart_mapping_template_references(
     mapping_type: str,
     old_name: str,
@@ -907,6 +928,9 @@ def rename_chart_mapping_template_references(
     renamed_text = chart_mapping_reference_renamer(
         mapping_type, old_name, new_name, mapping_settings,
     )
+    # A number (the operator 3) is too common in free text: only its filters, legends and dynamic values follow it.
+    text_fields = MAPPING_TEXT_FIELDS if not str(old_name).strip().isdigit() else (
+        'legend', 'dynamic_row_value', 'dynamic_column_value', 'dynamic_value')
 
     pending_writes: dict[tuple[str, str], bytes] = {}
     for technology in TEMPLATE_NAMES:
@@ -916,11 +940,13 @@ def rename_chart_mapping_template_references(
             updated_entries: list[CatalogEntry] = []
             for entry in entries:
                 updates = {
-                    field.name: renamed
-                    for field in fields(entry)
-                    if isinstance((value := getattr(entry, field.name)), str)
+                    name: renamed
+                    for name in text_fields
+                    if isinstance((value := getattr(entry, name, None)), str)
                     and (renamed := renamed_text(value)) != value
                 }
+                if (filters := renamed_mapping_filters(entry.filters, renamed_text)) != entry.filters:
+                    updates['filters'] = filters
                 updated_entries.append(replace(entry, **updates) if updates else entry)
             if updated_entries != entries:
                 pending_writes[(technology, str(template['name']))] = catalogue_csv(updated_entries)
@@ -3003,6 +3029,8 @@ async def lifespan(_: FastAPI):
         apply_runtime_configuration(stored_runtime_configuration)
     migrate_workspace_template_registries()
     migrate_ppt_module_names()
+    from src.modules.module_labels import migrate_reporting_title
+    migrate_reporting_title(repository)
     submit_background_task(empty_workspace_trash)
     # Workspace schema cleanup and interrupted-job recovery happen when a
     # workspace becomes active.  Scanning every workspace here opens and
@@ -6284,7 +6312,7 @@ APPLICATION_BACKUP_COMPONENTS = ('app_database', 'users_access', 'bugs_report')
 WORKSPACE_ARCHIVE_COMPONENTS = frozenset({
     'workspace_database', 'input', 'output', 'dashboards', 'report_templates', 'mappings_reference_data',
     'auto_calculated_fields', 'query_builder_queries', 'reporting_jobs', 'nq_call_tracking', 'nq_calls_configuration', 'main_cities',
-    'scoring_configuration', 'app_events',
+    'scoring_configuration', 'app_events', 'network_insights_favourites',
 })
 ARCHIVE_KIND_COMPONENTS = {
     'config': ('app_database',),
@@ -6304,6 +6332,7 @@ ARCHIVE_KIND_COMPONENTS = {
 WORKSPACE_ELEMENT_EXPORT_TARGETS = frozenset({
     'ppt-templates', 'auto-calculated-fields', 'dashboards', 'mappings-reference-data', 'query-builder-queries',
     'reporting-jobs', 'nq-call-tracking', 'nq-calls-configuration', 'app-events', 'main-cities', 'scoring-configuration',
+    'network-insights-favourites',
 })
 STATIC_EXPORT_TARGETS = frozenset({'config', 'config-with-templates', 'users-access', 'bugs-report', 'full-environment'})
 UNCOMPRESSED_ARCHIVE_SUFFIXES = frozenset({
@@ -6357,6 +6386,7 @@ def archive_workspace_components(manifest: dict[str, Any]) -> list[str]:
         'main-cities': ('main_cities',),
         'scoring-configuration': ('scoring_configuration',),
         'query-builder-queries': ('query_builder_queries',),
+        'network-insights-favourites': ('network_insights_favourites',),
         'reporting-jobs': ('reporting_jobs',),
         'nq-call-tracking': ('nq_call_tracking',),
         'nq-calls-configuration': ('nq_calls_configuration',),
@@ -6427,7 +6457,7 @@ def full_workspace_archive_components(*, include_input_files: bool = True, inclu
         components.append('input')
     if include_generated_outputs:
         components.append('output')
-    return [*components, 'dashboards', 'report_templates', 'main_cities', 'mappings_reference_data', 'scoring_configuration', 'auto_calculated_fields', 'query_builder_queries', 'reporting_jobs', 'nq_call_tracking']
+    return [*components, 'dashboards', 'report_templates', 'main_cities', 'mappings_reference_data', 'scoring_configuration', 'auto_calculated_fields', 'query_builder_queries', 'network_insights_favourites', 'reporting_jobs', 'nq_call_tracking']
 
 
 def archive_workspace_components_for_target(
@@ -6448,6 +6478,8 @@ def archive_workspace_components_for_target(
         return ['scoring_configuration']
     if target == 'query-builder-queries':
         return ['query_builder_queries']
+    if target == 'network-insights-favourites':
+        return ['network_insights_favourites']
     if target == 'reporting-jobs':
         return ['reporting_jobs']
     if target == 'nq-call-tracking':
@@ -6703,7 +6735,8 @@ def create_recurring_database_backup(
         component for component in (
             'workspace_database', 'dashboards', 'input', 'output', 'report_templates',
             'mappings_reference_data', 'main_cities', 'auto_calculated_fields', 'query_builder_queries',
-            'reporting_jobs', 'nq_call_tracking', 'nq_calls_configuration', 'scoring_configuration', 'app_events',
+            'network_insights_favourites', 'reporting_jobs', 'nq_call_tracking', 'nq_calls_configuration', 'scoring_configuration',
+            'app_events',
         )
         if component in components
     ]
@@ -6748,6 +6781,8 @@ def create_recurring_database_backup(
             total_bytes += len(_saved_filters_archive_payload(workspace))
         if 'query_builder_queries' in components:
             total_bytes += len(json.dumps(_query_builder_queries_payload(workspace), ensure_ascii=False).encode('utf-8'))
+        if 'network_insights_favourites' in components:
+            total_bytes += len(_network_insights_favourites_payload(workspace))
         if 'reporting_jobs' in components:
             total_bytes += len(_reporting_jobs_payload(workspace))
         if 'nq_call_tracking' in components:
@@ -6824,6 +6859,9 @@ def create_recurring_database_backup(
                 if 'query_builder_queries' in components:
                     report_progress(f'Exporting Query Builder Queries for {workspace.name}', max(5.0, completed_bytes * 96.0 / max(total_bytes, 1)))
                     _archive_workspace_query_builder_queries(archive, workspace, archive_workspace_root, archived_bytes)
+                if 'network_insights_favourites' in components:
+                    report_progress(f'Exporting Network Insights Favourites for {workspace.name}', max(5.0, completed_bytes * 96.0 / max(total_bytes, 1)))
+                    _archive_workspace_network_insights_favourites(archive, workspace, archive_workspace_root, archived_bytes)
                 if 'reporting_jobs' in components:
                     report_progress(f'Exporting Reporting Jobs for {workspace.name}', max(5.0, completed_bytes * 96.0 / max(total_bytes, 1)))
                     _archive_workspace_reporting_jobs(archive, workspace, archive_workspace_root, archived_bytes)
@@ -7150,6 +7188,8 @@ def _backup_archive_components(archive_path: Path) -> list[str]:
         components.append('auto_calculated_fields')
     if any(name.startswith('workspaces/') and '/query-builder-queries/query-builder-queries.json' in name for name in names):
         components.append('query_builder_queries')
+    if any(name.startswith('workspaces/') and f'/{NI_FAVOURITES_ARCHIVE_NAME}' in name for name in names):
+        components.append('network_insights_favourites')
     if any(name.startswith('workspaces/') and '/reporting-jobs/reporting-jobs.json' in name for name in names):
         components.append('reporting_jobs')
     if any(name.startswith('workspaces/') and '/nq-call-tracking/nq-call-tracking.json' in name for name in names):
@@ -7240,6 +7280,8 @@ def restore_database_backup(
                 )))
             if 'query_builder_queries' in selected:
                 total_steps += int(f'{prefix}query-builder-queries/query-builder-queries.json' in name_set)
+            if 'network_insights_favourites' in selected:
+                total_steps += int(f'{prefix}{NI_FAVOURITES_ARCHIVE_NAME}' in name_set)
             if 'reporting_jobs' in selected:
                 total_steps += int(f'{prefix}reporting-jobs/reporting-jobs.json' in name_set)
             if 'nq_call_tracking' in selected:
@@ -7373,6 +7415,13 @@ def restore_database_backup(
                         progress_callback(f'Restoring Query Builder Queries for {workspace_name}', completed_steps, total_steps)
                     _restore_workspace_query_builder_queries(workspace, archive.read(member))
                     advance(f'Query Builder Queries restored for {workspace_name}')
+            if 'network_insights_favourites' in selected:
+                member = f'{prefix}{NI_FAVOURITES_ARCHIVE_NAME}'
+                if member in names:
+                    if progress_callback:
+                        progress_callback(f'Restoring Network Insights Favourites for {workspace_name}', completed_steps, total_steps)
+                    _restore_workspace_network_insights_favourites(workspace, archive.read(member), importing_user)
+                    advance(f'Network Insights Favourites restored for {workspace_name}')
             if 'reporting_jobs' in selected:
                 member = f'{prefix}reporting-jobs/reporting-jobs.json'
                 if member in names:
@@ -7933,6 +7982,38 @@ def _restore_workspace_query_builder_queries(workspace: Workspace, payload: byte
     return len(valid_queries)
 
 
+NI_FAVOURITES_ARCHIVE_NAME = 'network-insights-favourites/network-insights-favourites.json'
+
+
+def _network_insights_favourites_payload(workspace: Workspace) -> bytes:
+    """Portable Network Insights favourite Analysis Selections of a workspace."""
+    from src.modules.network_insights_favourites import export_document
+
+    task_repository = Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path)
+    return export_document(task_repository)
+
+
+def _archive_workspace_network_insights_favourites(
+    archive: zipfile.ZipFile, workspace: Workspace, archive_prefix: str,
+    progress_callback: Callable[[int], None] | None = None,
+) -> None:
+    payload = _network_insights_favourites_payload(workspace)
+    archive.writestr(f'{archive_prefix}/{NI_FAVOURITES_ARCHIVE_NAME}', payload)
+    if progress_callback:
+        progress_callback(len(payload))
+
+
+def _restore_workspace_network_insights_favourites(workspace: Workspace, payload: bytes, importing_user: str) -> int:
+    """Add or replace (by name) the Network Insights favourites of a package in a workspace."""
+    from src.modules.network_insights_favourites import import_document
+
+    task_repository = Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path)
+    try:
+        return import_document(task_repository, payload, importing_user)
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        raise ValueError(f'Network Insights Favourites for "{workspace.name}" are invalid: {exc}') from exc
+
+
 def _reporting_jobs_payload(workspace: Workspace) -> bytes:
     """Portable Reporting Jobs of a workspace (definitions only; runs are generated output)."""
     from src.modules.report_tasks import export_tasks_document
@@ -8148,6 +8229,7 @@ def _archive_workspace(
         json.dumps(task_repository.list_calculated_dimensions(), ensure_ascii=False, indent=2),
     )
     _archive_workspace_query_builder_queries(archive, workspace, archive_prefix, progress_callback)
+    _archive_workspace_network_insights_favourites(archive, workspace, archive_prefix, progress_callback)
     _archive_workspace_reporting_jobs(archive, workspace, archive_prefix, progress_callback)
     _archive_workspace_nq_call_tracking(archive, workspace, archive_prefix, progress_callback)
     if include_input_files:
@@ -8192,6 +8274,9 @@ def export_archive_filename(target: str | Iterable[str]) -> str:
     if target == 'query-builder-queries':
         workspace_name = active_workspace.name if active_workspace else 'workspace'
         return f'{workspace_name}_query-builder-queries_{generated_at}.zip'
+    if target == 'network-insights-favourites':
+        workspace_name = active_workspace.name if active_workspace else 'workspace'
+        return f'{workspace_name}_network-insights-favourites_{generated_at}.zip'
     if target == 'reporting-jobs':
         workspace_name = active_workspace.name if active_workspace else 'workspace'
         return f'{workspace_name}_reporting-jobs_{generated_at}.zip'
@@ -8394,6 +8479,18 @@ def _build_single_export_archive_file(
             )
             archive.writestr('manifest.json', json.dumps(manifest, indent=2, sort_keys=True))
             _archive_workspace_query_builder_queries(archive, source_workspace, f'workspaces/{source_workspace.name}', progress_callback)
+        elif target == 'network-insights-favourites':
+            source_workspace_id = next(iter(workspace_ids or ()), active_workspace.id if active_workspace else '')
+            source_workspace = workspace_registry.get(source_workspace_id) if source_workspace_id else None
+            if not source_workspace:
+                raise ValueError('Open a workspace before exporting Network Insights Favourites.')
+            archive_path = f'workspaces/{source_workspace.name}/{NI_FAVOURITES_ARCHIVE_NAME}'
+            manifest = archive_manifest(
+                'network-insights-favourites', source_workspace={'id': source_workspace.id, 'name': source_workspace.name},
+                workspace_components=archive_workspace_components_for_target(target), archive_path=archive_path,
+            )
+            archive.writestr('manifest.json', json.dumps(manifest, indent=2, sort_keys=True))
+            _archive_workspace_network_insights_favourites(archive, source_workspace, f'workspaces/{source_workspace.name}', progress_callback)
         elif target == 'reporting-jobs':
             source_workspace_id = next(iter(workspace_ids or ()), active_workspace.id if active_workspace else '')
             source_workspace = workspace_registry.get(source_workspace_id) if source_workspace_id else None
@@ -8763,6 +8860,10 @@ def _recovered_transfer_details(manifest: dict[str, Any]) -> tuple[str, list[str
         source = manifest.get('source_workspace')
         name = str(source.get('name') or '') if isinstance(source, dict) else ''
         return ('Query Builder Queries', [name] if name else [])
+    if kind == 'network-insights-favourites':
+        source = manifest.get('source_workspace')
+        name = str(source.get('name') or '') if isinstance(source, dict) else ''
+        return ('Network Insights Favourites', [name] if name else [])
     if kind == 'reporting-jobs':
         source = manifest.get('source_workspace')
         name = str(source.get('name') or '') if isinstance(source, dict) else ''
@@ -8818,7 +8919,7 @@ def _recover_unimported_transfer_packages() -> None:
                 'config', 'users-access', 'bugs-report', 'workspace', 'full-environment', 'ppt-templates',
                 'auto-calculated-fields', 'dashboards', 'mappings-reference-data', 'main-cities',
                 'scoring-configuration', 'query-builder-queries', 'reporting-jobs', 'nq-call-tracking', 'nq-calls-configuration', 'app-events',
-                'database-backup', 'bundle',
+                'network-insights-favourites', 'database-backup', 'bundle',
             }:
                 raise ValueError('Unsupported transfer package.')
         except (OSError, ValueError, zipfile.BadZipFile):
@@ -9883,6 +9984,24 @@ def _apply_import_archive(
             payload = archive.read(member)
             imported_count = sum(_restore_workspace_query_builder_queries(workspace, payload) for workspace in destinations)
             return f'Imported {imported_count} Query Builder queries into {len(destinations)} workspaces.'
+        if kind == 'network-insights-favourites':
+            member = str(manifest.get('archive_path') or '')
+            if member not in archive.namelist() or not re.fullmatch(
+                    r'workspaces/[^/]+/' + re.escape(NI_FAVOURITES_ARCHIVE_NAME), member):
+                raise ValueError('The package does not contain valid Network Insights Favourites.')
+            destinations = [workspace_registry.get(workspace_id) for workspace_id in destination_workspace_ids]
+            destinations = [workspace for workspace in destinations if workspace]
+            if not destinations:
+                source = manifest.get('source_workspace')
+                if isinstance(source, dict) and source.get('id'):
+                    candidate = workspace_registry.get(str(source['id']))
+                    destinations = [candidate] if candidate else []
+            if not destinations:
+                raise ValueError('Select at least one destination workspace.')
+            payload = archive.read(member)
+            imported_count = sum(_restore_workspace_network_insights_favourites(workspace, payload, importing_user)
+                                 for workspace in destinations)
+            return f'Imported {imported_count} Network Insights Favourites into {len(destinations)} workspaces.'
         if kind == 'reporting-jobs':
             member = str(manifest.get('archive_path') or '')
             if (
@@ -10195,6 +10314,7 @@ def _transfer_content_label(target: str | Iterable[str]) -> str:
         'main-cities': 'Main Cities',
         'scoring-configuration': 'Scoring & GAP Analysis Configuration',
         'query-builder-queries': 'Query Builder Queries',
+        'network-insights-favourites': 'Network Insights Favourites',
         'reporting-jobs': 'Reporting Jobs',
         'nq-call-tracking': 'NQ Call Tracking',
         'nq-calls-configuration': 'NQ Calls Configuration',
@@ -10758,6 +10878,7 @@ def require_import_export_permission(user: SessionUser, target: str) -> None:
     if user.role == 'super-admin' or target in {
         'ppt-templates', 'auto-calculated-fields', 'dashboards', 'mappings-reference-data', 'main-cities',
         'scoring-configuration', 'query-builder-queries', 'reporting-jobs', 'nq-call-tracking', 'nq-calls-configuration', 'app-events',
+        'network-insights-favourites',
     }:
         return
     raise HTTPException(
@@ -10791,7 +10912,7 @@ def require_export_permission(user: SessionUser, target: str) -> None:
     """Authorize exports and transfers without exposing other workspaces."""
     if user.role == 'super-admin':
         return
-    if target in {'auto-calculated-fields', 'ppt-templates', 'dashboards', 'mappings-reference-data', 'main-cities', 'scoring-configuration', 'query-builder-queries', 'reporting-jobs', 'nq-call-tracking', 'nq-calls-configuration', 'app-events'}:
+    if target in {'auto-calculated-fields', 'ppt-templates', 'dashboards', 'mappings-reference-data', 'main-cities', 'scoring-configuration', 'query-builder-queries', 'reporting-jobs', 'nq-call-tracking', 'nq-calls-configuration', 'app-events', 'network-insights-favourites'}:
         if active_workspace and repository.user_has_workspace_access(user.username, active_workspace.id):
             return
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Open a workspace you can access first.')
@@ -10935,6 +11056,8 @@ def render_admin_template(
         'bug_report_attachments': 'Bug Report Attachments',
         'admin_notices_seen': 'Admin Notices Seen',
         'report_tasks': 'Report Tasks',
+        'complete_reports': 'Complete Reports',
+        'network_insights_favourites': 'Network Insights Favourites',
         'map_area_layers': 'Map Area Layers',
         'map_area_fills': 'Map Area Fills',
         'report_task_runs': 'Report Task Runs',
@@ -10982,11 +11105,12 @@ def render_admin_template(
         {'value': 'scoring-configuration', 'label': 'Scoring & GAP Analysis Configuration (from active workspace)', 'disabled': not active_workspace},
         {'value': 'auto-calculated-fields', 'label': 'Auto-calculated Fields (from active workspace)', 'disabled': not active_workspace},
         {'value': 'query-builder-queries', 'label': 'Query Builder Queries (from active workspace)', 'disabled': not active_workspace},
+        {'value': 'network-insights-favourites', 'label': 'Network Insights Favourites (from active workspace)', 'disabled': not active_workspace},
         {'value': 'reporting-jobs', 'label': 'Reporting Jobs (from active workspace)', 'disabled': not active_workspace},
         {'value': 'nq-call-tracking', 'label': 'NQ Call Tracking (from active workspace)', 'disabled': not active_workspace},
         {'value': 'nq-calls-configuration', 'label': 'NQ Calls Configuration (from active workspace)', 'disabled': not active_workspace},
         {'value': 'app-events', 'label': 'App Events (from active workspace)', 'disabled': not active_workspace},
-        {'value': 'full-environment', 'label': 'Full Environment (Application Config + Dashboards + PPT Templates + Main Cities + Mappings & Reference Data + Scoring & GAP Analysis Configuration + Auto-calculated Fields + Query Builder Queries + Reporting Jobs + NQ Call Tracking + Selected Workspaces)'},
+        {'value': 'full-environment', 'label': 'Full Environment (Application Config + Dashboards + PPT Templates + Main Cities + Mappings & Reference Data + Scoring & GAP Analysis Configuration + Auto-calculated Fields + Query Builder Queries + Network Insights Favourites + Reporting Jobs + NQ Call Tracking + Selected Workspaces)'},
         *[
             {'value': f'workspace:{workspace.id}', 'label': f'Full Workspace: {workspace.name}'}
             for workspace in accessible_workspaces(user)
@@ -17448,7 +17572,7 @@ class SavedFilterRequest(BaseModel):
     baseline_operator: str = 'EE'
     scoring_profile_id: str | None = None
     context_filters: dict[str, list[str]] = Field(default_factory=dict)
-    # The National & area summary: its breakdown, separate cities and time split.
+    # The Scoring Trends: their campaigns and the breakdown, separate cities and time split of the National & Areas Trends.
     area_summary: dict[str, Any] | None = None
 
 
@@ -17984,7 +18108,7 @@ def _saved_filter_payload(saved_filter: dict[str, Any], operator_groups: list[di
                 vendor_mapping_groups=vendor_groups,
             )
             refresh_baseline_warning(result, views, baseline)
-            # The National & area summary of the Saved Filter, shown with the scoring charts.
+            # The National & Areas Trends of the Saved Filter, shown in Scoring Trends.
             from src.modules.scoring_area_summary import build_area_summary
             views.setdefault('insights', {})['area_summaries'] = build_area_summary(
                 saved_filter if saved_filter.get('configuration') or result.get('configuration') else {**saved_filter, 'configuration': fallback},
@@ -18259,6 +18383,13 @@ def _scenario_saved_filter(task_repository: Repository, base: dict[str, Any], sc
         )
     except ValueError as exc:
         raise ValueError(f'Scenario "{scenario["name"]}": {exc}') from exc
+    matching = (_matching_saved_filter(task_repository, base, selected, context_filters, (area_summary or {}).get('campaigns'))
+                if base.get('reuse_saved_filters') else None)
+    if matching is not None:
+        # A Saved Filter of the same CDRs, filters, methodology and GAP reference (a starred one first) is used with its
+        # own Split by and National & Areas Trends, so its result is not calculated again.
+        return _completed_scenario_calculation(task_repository, base, scenario, matching['dataset_ids'], matching['levels'],
+                                               matching['context_filters'], username, matching['area_summary'])
     levels = list(scenario['aggregation_levels'])
     saved_filter = _completed_scenario_calculation(task_repository, base, scenario, selected, levels,
                                                       context_filters, username, area_summary)
@@ -18270,21 +18401,51 @@ def _scenario_saved_filter(task_repository: Repository, base: dict[str, Any], sc
     return saved_filter
 
 
+def _matching_saved_filter(task_repository: Repository, base: dict[str, Any], dataset_ids: Any,
+                           context_filters: dict[str, Any], trend_campaigns: list[str] | None = None) -> dict[str, Any] | None:
+    """The Saved Filter that scores the same CDRs with the same filters (its Campaigns are its CDRs), NR Mode,
+    methodology and GAP reference, whatever its Split by (and, with ``trend_campaigns``, whose Scoring Trends have those
+    campaigns): a starred one first, then the latest used; None without one (or when it failed)."""
+    def comparable(filters: dict[str, Any]) -> dict[str, list[str]]:
+        return {str(field): sorted(str(value).casefold() for value in values) for field, values in (filters or {}).items()
+                if values and field != 'Campaign'}
+
+    wanted_ids = sorted(int(value) for value in dataset_ids)
+    wanted_filters = comparable(context_filters)
+    methodology = str(base.get('scoring_profile_id') or '')
+    baseline = str(base.get('baseline_operator') or 'EE').casefold()
+    for item in list_saved_filters(task_repository):
+        if (item['status'] != 'failed' and sorted(item['dataset_ids']) == wanted_ids
+                and str(item['nr_mode'] or '').upper() == str(base['nr_mode']).upper()
+                and str(item['baseline_operator'] or '').casefold() == baseline
+                and str(item['scoring_profile_id'] or '') == methodology
+                and comparable(item['context_filters']) == wanted_filters
+                and (not trend_campaigns or [str(value).casefold() for value in (item.get('area_summary') or {}).get('campaigns') or []]
+                     == [str(value).casefold() for value in trend_campaigns])):
+            return item
+    return None
+
+
 def _scenario_area_summary(task_repository: Repository, scenario: dict[str, Any]) -> dict[str, Any] | None:
-    """The National & Area Summary of a scenario of the whole country that includes it, or None."""
+    """The Scoring Trends of a scenario: the National & Areas Trends of a scenario of the whole country that includes
+    them and the campaigns of its trends when they have some of their own; None with neither."""
     from src.modules.scoring_reports import has_geographic_filters
 
     summary = scenario.get('area_summary') or {}
-    if not summary.get('enabled') or has_geographic_filters(scenario):
-        return None
-    cities = list(summary.get('cities') or [])
-    if summary.get('main_cities'):
-        cities.extend(task_repository.list_main_cities())
-    breakdown = summary.get('breakdown')
-    if (not breakdown or breakdown == 'None') and not cities:
-        return None
-    return {'breakdown': None if breakdown == 'None' else breakdown, 'cities': cities,
-            'time_split': summary.get('time_split') or 'Campaign'}
+    campaigns = list(summary.get('campaigns') or [])
+    request = None
+    if summary.get('enabled') and not has_geographic_filters(scenario):
+        cities = list(summary.get('cities') or [])
+        if summary.get('main_cities'):
+            cities.extend(task_repository.list_main_cities())
+        breakdown = summary.get('breakdown')
+        if (breakdown and breakdown != 'None') or cities:
+            request = {'breakdown': None if breakdown == 'None' else breakdown, 'cities': cities,
+                       'time_split': summary.get('time_split') or 'Campaign'}
+    if campaigns:
+        # Alone, the campaigns give the scoring trend of those campaigns.
+        request = {**(request or {'breakdown': None, 'cities': [], 'time_split': 'Campaign'}), 'campaigns': campaigns}
+    return request
 
 
 def _completed_scenario_calculation(task_repository: Repository, base: dict[str, Any], scenario: dict[str, Any],
@@ -24506,3 +24667,5 @@ install_scoring_history(sys.modules[__name__])
 # Dashboard and Scoring artifacts and email them.
 from src.modules.report_tasks import install_report_task_routes
 install_report_task_routes(sys.modules[__name__])
+from src.modules.complete_reports import install_complete_report_routes
+install_complete_report_routes(sys.modules[__name__])

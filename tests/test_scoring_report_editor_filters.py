@@ -203,13 +203,13 @@ const picker = label => nodes.find(node => node.tagName === 'SUMMARY' && node.te
 const details = label => nodes.find(node => node.tagName === 'DETAILS' && node.children[0] === picker(label));
 const labelled = text => nodes.find(node => node.tagName === 'LABEL' && node.text === text).querySelector('input');
 const selects = nodes.filter(node => node.tagName === 'SELECT');
-const [time, breakdown] = selects;
+const [trendChoice, time, breakdown] = selects;
 const result = {defaults: defaultScenario().area_summary, scenarioTime: 'time_split' in defaultScenario(),
   cities: picker('Separate cities:').textContent, tables: scenario.scorings.best_network.tables.area_summary,
   before: {region: details('Region:').dataset.disabled, cities: details('Separate cities:').dataset.disabled,
     breakdown: breakdown.disabled, time: time.disabled}, time: time.value};
 // Including the summary clears and disables the geographic filters and enables its settings.
-labelled('Include National & area summary').click();
+labelled('Include National & Areas Trends').click();
 result.after = {region: details('Region:').dataset.disabled, cities: details('Separate cities:').dataset.disabled,
   breakdown: breakdown.disabled, time: time.disabled, filters: scenario.context_filters, enabled: scenario.area_summary.enabled,
   summary: picker('Region:').textContent};
@@ -218,13 +218,18 @@ time.value = 'Weekly'; time.dispatch('change');
 result.weekly = {levels: scenario.aggregation_levels, split: scenario.area_summary.time_split,
   value: settingValue(scenario, 'area:time_split')};
 result.disabledValue = settingValue({...scenario, area_summary: {...scenario.area_summary, enabled: false}}, 'area:time_split');
+// The campaigns of the Scoring Trends: the scenario's by default, an automatic choice or chosen campaigns.
+result.trends = {choice: trendChoice.value, campaigns: [...scenario.area_summary.campaigns],
+  legend: nodes.some(node => node.tagName === 'LEGEND' && node.textContent === 'Scoring Trends')};
+trendChoice.value = '@latest-2-campaigns'; trendChoice.dispatch('change');
+result.trends.preset = [...scenario.area_summary.campaigns];
 console.log(JSON.stringify(result));
 '''
     completed = subprocess.run(['node', '-e', program], capture_output=True, text=True, check=True)
     result = json.loads(completed.stdout)
     # By default the summary breaks the country down by Region, shows London apart and splits by campaign.
     assert result['defaults'] == {'enabled': True, 'time_split': 'Campaign', 'breakdown': 'Region', 'cities': ['London'],
-                                  'main_cities': False}
+                                  'main_cities': False, 'campaigns': ['@all-campaigns']}
     assert result['scenarioTime'] is False and result['time'] == 'Campaign'
     assert result['cities'] == 'Separate cities: London' and 'tables' not in result
     # Not included, its settings are disabled and the geographic filters can be used.
@@ -234,3 +239,6 @@ console.log(JSON.stringify(result));
                                'enabled': True, 'summary': 'Region: All'}
     assert result['weekly'] == {'levels': ['Operator', 'Campaign'], 'split': 'Weekly', 'value': 'Weekly'}
     assert 'disabledValue' not in result
+    # The National & Areas Trends are inside the Scoring Trends, whose campaigns are All available campaigns by default.
+    assert result['trends'] == {'choice': '@all-campaigns', 'campaigns': ['@all-campaigns'], 'legend': True,
+                                'preset': ['@latest-2-campaigns']}

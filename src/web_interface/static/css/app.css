@@ -752,8 +752,11 @@ body [data-section-bar].is-compact > a.section-bar-top { padding: .45rem .55rem;
 .admin-export-components .multiselect-trigger:hover:not(:disabled), .admin-export-components .multiselect-trigger:focus-visible { border-color: rgba(110, 24, 36, 0.66); background: linear-gradient(135deg, #f9dfdf, #f2cccc); color: #5c1721; box-shadow: 0 0 0 3px rgba(139, 29, 36, 0.13); }
 .admin-export-components .multiselect-trigger:hover .multiselect-trigger-label, .admin-export-components .multiselect-trigger:focus-visible .multiselect-trigger-label { color: #5c1721; }
 .admin-export-components .multiselect-menu { min-width: 100%; max-width: calc(100vw - 3rem); max-height: min(620px, calc(100vh - 3rem)); border-color: rgba(139, 29, 36, 0.40); background: #fffafa; z-index: 100; }
-.admin-export-components .multiselect-option { justify-content: flex-start; min-width: 0; color: #7d2731; overflow-wrap: anywhere; }
-.admin-export-components .multiselect-option span { min-width: 0; }
+/* As wide as a long entry reads well, not as its whole text: the long entries (Full Environment lists every part)
+   wrap on several lines. */
+.admin-export-components .multiselect-menu { width: min(38rem, calc(100vw - 3rem)); }
+.admin-export-components .multiselect-option { justify-content: flex-start; align-items: flex-start; min-width: 0; color: #7d2731; overflow-wrap: anywhere; }
+.admin-export-components .multiselect-option span { min-width: 0; white-space: normal; }
 .admin-export-components .multiselect-group-label { margin: 0.45rem 0 0.08rem; padding: 0.34rem 0.55rem; border-bottom: 1px solid rgba(139, 29, 36, 0.18); color: #6d222b; font-size: 0.76rem; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; }
 .admin-export-components .multiselect-group-label:first-of-type { margin-top: 0; }
 .admin-export-components .multiselect-option[data-multiselect-group] { padding-left: 1.35rem; }
@@ -4554,6 +4557,9 @@ body:has(dialog.vendor-mapping-dialog[open]) { overflow: hidden; }
 .scoring-report-subpanel[data-disabled="true"] { background: #fbfcfd; }
 .scoring-report-subpanel[data-disabled="true"] :is(.scoring-report-subpanel-row, .scoring-report-note) { opacity: .6; }
 .scoring-report-subpanel-row { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .8rem; }
+/* The Scoring Trends hold their campaigns and, inside them, the National & Areas Trends. */
+.scoring-report-trends > .scoring-report-subpanel { margin: .15rem 0 0; background: #fff; }
+.scoring-report-trends > legend.scoring-report-label { color: #1450a8; }
 .scoring-report-subpanel select { min-height: 0; padding: .3rem .5rem; font-size: .8rem; }
 .scoring-report-note { margin: 0; color: #5d7280; font-size: .74rem; }
 .scoring-report-picker[data-disabled="true"] > summary { opacity: .5; background: #eef2f5; cursor: not-allowed; }

@@ -11,6 +11,13 @@
   <details class="panel collapsible-panel ni-selection-panel" open data-panel-state-key="network-insights:selection">
     <summary class="collapsible-summary"><div><p class="eyebrow">Common selection</p><h2>Analysis Selection</h2></div><span class="collapse-chip">Collapse</span></summary>
     <div class="collapsible-panel-body">
+      <div class="ni-favourites" id="ni-favourites">
+        <label class="ni-favourite-field">Favourite<select id="ni-favourite" aria-label="Favourite Analysis Selection"><option value="">Current selection</option></select></label>
+        <label class="ni-favourite-name">Name<input type="text" id="ni-favourite-name" maxlength="120" placeholder="Name of the favourite"></label>
+        <button type="button" class="ni-favourite-save" id="ni-favourite-save" title="Save this Analysis Selection as a favourite to analyse it again"><span aria-hidden="true">★</span> Save as favourite</button>
+        <button type="button" class="ni-favourite-delete" id="ni-favourite-delete" title="Delete the chosen favourite" disabled>Delete</button>
+        <p class="form-note ni-favourite-status" id="ni-favourite-status" role="status"></p>
+      </div>
       <div class="ni-selection-groups">
         <fieldset class="ni-control-group"><legend>Scope</legend><div class="ni-selection-grid">
         <label>NR Mode<select id="ni-nr-mode"><option value="NSA">NSA</option><option value="SA">SA</option></select></label>

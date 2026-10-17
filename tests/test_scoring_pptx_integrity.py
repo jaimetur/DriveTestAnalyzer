@@ -165,17 +165,22 @@ def test_generated_scoring_pptx_serializes_valid_table_and_combo_chart_structure
 
 def test_titles_keep_the_template_size_while_they_fit_the_title_placeholder():
     from pptx.util import Pt
-    from src.modules.scoring_exports import _fit_slide_title_on_one_line
+    from src.modules.scoring_exports import _emphasize_title, _fit_slide_title_on_one_line
 
     presentation = Presentation(TEMPLATE)
     layout = next(layout for layout in presentation.slide_layouts if layout.name == 'Title Only')
     sizes = {}
-    for text in ('Best Network Scoring per Category (Breakdown)', 'Most Reliable Network Scoring per Category (Breakdown)'):
+    for text in ('GAP Analysis — 3 vs EE', 'Best Network Scoring per Category (Breakdown)',
+                 'Most Reliable Network Scoring per Category (Breakdown)'):
         title = presentation.slides.add_slide(layout).shapes.title
         title.text_frame.text = text
         paragraph = title.text_frame.paragraphs[0]
+        _emphasize_title(paragraph)
         _fit_slide_title_on_one_line(title, paragraph)
         sizes[text] = paragraph.runs[0].font.size
-    # The 27.5 cm placeholder holds the Breakdown title at the template's 40pt; only a longer title shrinks.
-    assert sizes['Best Network Scoring per Category (Breakdown)'] is None
-    assert Pt(20) <= sizes['Most Reliable Network Scoring per Category (Breakdown)'] < Pt(40)
+        assert len({run.font.size for run in paragraph.runs}) == 1
+    # A short title keeps the template's 40pt; a title that would take a second line over the content (measured with
+    # the font LibreOffice renders, its bold focus included) is made smaller.
+    assert sizes['GAP Analysis — 3 vs EE'] is None
+    assert Pt(20) <= sizes['Best Network Scoring per Category (Breakdown)'] < Pt(40)
+    assert Pt(20) <= sizes['Most Reliable Network Scoring per Category (Breakdown)'] < sizes['Best Network Scoring per Category (Breakdown)']

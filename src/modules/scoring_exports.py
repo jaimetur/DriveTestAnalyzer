@@ -212,7 +212,6 @@ def _scoring_chart_title(matrix: dict[str, Any], suffix: str) -> str:
 # 0.41em wide (bold focus included), and its placeholder is 27.5 cm wide. Only a title wider than
 # the placeholder at 40pt is made smaller, measured with a small margin over the font's width.
 TITLE_FONT_PT = 40
-TITLE_CHARACTER_EM = .42
 TITLE_MIN_FONT_PT = 20
 # The subtitle (the scoring, environment, area, operators and vendors) is 14pt bold, about 0.6em a character: a longer
 # one is made smaller so it does not wrap over the content of the slide.
@@ -222,20 +221,12 @@ SUBTITLE_MIN_FONT_PT = 8
 
 
 def _fit_slide_title_on_one_line(title_shape, paragraph) -> None:
-    """Make a title that would wrap smaller, so it fits its placeholder on one line."""
-    text = paragraph.text.strip()
-    if not text or title_shape.width is None:
-        return
-    text_frame = title_shape.text_frame
-    insets = (text_frame.margin_left if text_frame.margin_left is not None else Emu(72000)) + (text_frame.margin_right or 0)
-    width_pt = (int(title_shape.width) - int(insets)) / 12700
-    size = width_pt / (len(text) * TITLE_CHARACTER_EM)
-    if size >= TITLE_FONT_PT:
-        return
-    size = max(TITLE_MIN_FONT_PT, floor(size * 2) / 2)
-    text_frame.word_wrap = False
-    for run in paragraph.runs:
-        run.font.size = Pt(size)
+    """Make a title that would wrap smaller, so it fits its placeholder on one line (measured with the metrics of a
+    real font, its bold focus included)."""
+    from src.modules.slide_titles import fit_paragraph_on_one_line
+
+    if fit_paragraph_on_one_line(title_shape, paragraph, TITLE_FONT_PT, TITLE_MIN_FONT_PT) is not None:
+        title_shape.text_frame.word_wrap = False
 
 
 def _subtitle_font_size(title_shape, paragraph) -> float:
@@ -257,6 +248,9 @@ def _slide(presentation, title: str, subtitle: str):
     slide = presentation.slides.add_slide(layout)
     slide.background.fill.solid()
     slide.background.fill.fore_color.rgb = RGBColor(255, 255, 255)
+    # On the white background, the dark logos of the master instead of the white ones of the layout.
+    from src.modules.template_logos import use_dark_logos
+    use_dark_logos(slide)
     _set_slide_header(slide, title, subtitle)
     title_shape = slide.shapes.title
     if title_shape is not None:
@@ -2431,8 +2425,8 @@ def _add_insight_slides(presentation, views: dict, environment: str, scoring: st
     """Add the insight slides of one stage of an environment block, in the order of the results tabs.
 
     ``summary`` (after the cover): where each operator stands, its position, the biggest levers and how the measurements
-    ran; ``charts`` (after the scoring charts): the scoring trend; ``locations`` (after the scoring tables): the location
-    cards, the locations ranked and against the reference; ``gaps`` (after the GAP tables): the GAP by part and the KPI
+    ran; ``locations`` (after the scoring tables): the location cards, the locations ranked and against the reference;
+    ``trends`` (after the locations): the scoring trend; ``gaps`` (after the GAP tables): the GAP by part and the KPI
     GAP profiles; ``points``: where the points go, the points-lost maps, Vendors, kinds of site, sites and route
     stretches; ``comparison``: the campaign comparison.
     """
@@ -2470,8 +2464,8 @@ def _add_insight_slides(presentation, views: dict, environment: str, scoring: st
             add_campaign_scope_slides(presentation, items.get('campaign_scope', []), subtitle=subtitle, new_slide=_slide,
                                       environment_labels=environment_labels)
         return
-    if stage == 'charts':
-        if _option(options, 'charts', 'trend'):
+    if stage == 'trends':
+        if _option(options, 'trends', 'trend'):
             add_trend_slides(presentation, items.get('campaign_trends', []), scoring_label=label,
                              subtitle=subtitle, new_slide=_slide, scope=scope)
         return
@@ -2635,20 +2629,22 @@ def _add_scoring_block(presentation, job: dict[str, Any], result: dict[str, Any]
         _add_insight_slides(presentation, views, environment_name, scoring, configuration, stage='summary', options=options)
         section('summary')
 
-    located: set[str] = set()
+    trended: set[str] = set()
 
     def locations(environment_name: str) -> None:
-        # The National & Area Summary opens the Locations of its environment.
-        if environment_name not in located:
-            located.add(environment_name)
+        _add_insight_slides(presentation, views, environment_name, scoring, configuration, stage='locations', options=options)
+        section('locations')
+        # The Scoring Trends follow the Locations: the scoring trend, then the National & Areas Trends.
+        _add_insight_slides(presentation, views, environment_name, scoring, configuration, stage='trends', options=options)
+        if environment_name not in trended and _option(options, 'trends', 'areas'):
+            trended.add(environment_name)
             add_area_summary_slides(
                 presentation, [item for item in area_summaries if item['environment'] == environment_name
                                or (item['environment'] == 'Combined' and environment_name == 'All Environments')],
                 scoring_label=SCORING_LABELS[scoring or BEST_NETWORK_SCORING],
                 subtitle=_scoring_block_subtitle(scoring, environment_name, configuration), new_slide=_slide,
             )
-        _add_insight_slides(presentation, views, environment_name, scoring, configuration, stage='locations', options=options)
-        section('locations')
+        section('trends')
 
     def closing_stages(environment_name: str) -> None:
         for stage in ('gaps', 'points', 'comparison'):
@@ -2684,8 +2680,6 @@ def _add_scoring_block(presentation, job: dict[str, Any], result: dict[str, Any]
                     _hierarchy_chart(presentation, matrix)
                 if _option(options, 'charts', 'breakdown'):
                     _hierarchy_category_comparison_chart(presentation, matrix)
-                _add_insight_slides(presentation, views, current_environment, scoring, configuration,
-                                    stage='charts', options=options)
                 section('charts')
                 score_tables(matrix, _hierarchy_score_tables)
                 locations(current_environment)
@@ -2730,8 +2724,6 @@ def _add_scoring_block(presentation, job: dict[str, Any], result: dict[str, Any]
                     _stacked_category_chart(presentation, matrix)
                 if _option(options, 'charts', 'breakdown'):
                     _charts(presentation, [matrix])
-                _add_insight_slides(presentation, views, current_environment, scoring, configuration,
-                                    stage='charts', options=options)
                 section('charts')
                 score_tables(matrix, _score_tables)
                 locations(current_environment)
@@ -2879,6 +2871,7 @@ def _export_scoring_report(entries: list[dict[str, Any]], template_path: Path,
                 table_mode='expanded', gap_layout=gap_layout, environment='all',
                 show_gap_values=False, split_charts=split_charts,
                 vendor_mapping_groups=vendor_mapping_groups, options=options,
+                environments=options.get('environment_names') or None,
             )
             notes = '\n'.join(_scoring_slide_notes(block_result))
             for index, slide in enumerate(presentation.slides):

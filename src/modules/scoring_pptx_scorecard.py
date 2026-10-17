@@ -33,7 +33,8 @@ STYLES: dict[str, dict[str, Any]] = {
                  'header': '#FFFFFF', 'header_ink': '#0C0C0C', 'section': '#FFFFFF', 'section_ink': '#0C0C0C',
                  'section_rule': '#0C0C0C', 'total': '#FFFFFF', 'total_ink': '#0C0C0C', 'total_rule': '#0C0C0C',
                  'gap_card': '#F5F5F5', 'gain_bar': '#9FE6C6', 'loss_bar': '#FFB3B3', 'gain': '#0A8F55', 'loss': '#D11F1F',
-                 'reliable': '#0069C2', 'diff': '#4E4E4E', 'best': '#E7F9F0', 'worst': '#FFECEC', 'operators': 'underline'},
+                 'reliable': '#0069C2', 'diff': '#4E4E4E', 'best': '#E7F9F0', 'worst': '#FFECEC', 'operators': 'underline',
+                 'gap_marker': True},
     'vodafone': {'score': 'solid', 'bar_mix': .26, 'card': '#F4F4F4', 'label': '#FFFFFF', 'ink': '#333333', 'muted': '#7E7E7E',
                  'header': '#FFFFFF', 'header_ink': '#4A4D4E', 'section': '#F2F2F2', 'section_ink': '#333333',
                  'total': '#4A4D4E', 'total_ink': '#FFFFFF', 'gap_card': '#F4F4F4', 'gain_bar': '#A3E4ED',
@@ -298,16 +299,22 @@ def _style_gap(cell, gap: Any, color: Any, size: float, font: str | None) -> Non
     except (TypeError, ValueError):
         number = None
     run = {'size': size, 'color': current['muted'], 'bold': False}
+    runs = []
     if number is None or number == 0:
         solid(cell, current['gap_card'])
     else:
         gain = number > 0
         diverging_bar(cell, current['gain_bar' if gain else 'loss_bar'], max(gap_share(color), .08),
                       current['gap_card'], gain, fade=bool(current.get('fade')))
-        run.update(color=current['gain' if gain else 'loss'], bold=True)
+        if current.get('gap_marker'):
+            # The figure in black after a small ▲ or ▼ in the colour of the GAP.
+            runs.append(('▲ ' if gain else '▼ ', {'size': size * .68, 'color': current['gain' if gain else 'loss']}))
+            run.update(color=current['ink'], bold=True)
+        else:
+            run.update(color=current['gain' if gain else 'loss'], bold=True)
     if text.endswith('*'):
         run.update(color='#C62828', bold=True)
-    write(cell, [(text, run)], font=font)
+    write(cell, [*runs, (text, run)], font=font)
 
 
 def _label_runs(name: str, *, size: float, kpi_type: str = '', meta: str = '', category: str = '',
@@ -376,6 +383,11 @@ def _style_headers(table, header_rows: int, label_column: int, font: str | None)
                 write(cell, [(text, {'size': size, 'color': ink, 'bold': True,
                                      'italic': bool(current.get('italic'))})], font=font)
                 border(cell, 'lnB', fill, 2.25)
+                # Under every column of the operator, so the rule shows how far they go.
+                spanned = column_index + 1
+                while spanned < len(table.columns) and table.cell(row_index, spanned)._tc.get('hMerge') == '1':
+                    border(table.cell(row_index, spanned), 'lnB', fill, 2.25)
+                    spanned += 1
 
 
 def apply_scorecard(table, *, header_rows: int, metrics: list[dict], value_columns: list[tuple[int, str, str | None]],

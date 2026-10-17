@@ -217,8 +217,9 @@ def test_scoring_selection_defaults_use_catalogue_metadata_without_reading_cdr_r
                 # Latest campaign: the newest campaign with Data, Voice and Speech CDRs (2026-Q2).
                 'Region': [], 'City': [], 'Operator': [], 'Vendor': [], 'Campaign': ['@latest-campaign'],
             },
-            # The National & area summary is not included by default.
-            'area_summary': {'enabled': False, 'time_split': 'Campaign', 'breakdown': 'Region', 'cities': ['London']},
+            # The National & Areas Trends are not included by default; the Scoring Trends take All available campaigns.
+            'area_summary': {'enabled': False, 'time_split': 'Campaign', 'breakdown': 'Region', 'cities': ['London'],
+                             'campaigns': ['@all-campaigns']},
         },
         'warnings': [],
         'persisted': False,
@@ -235,7 +236,8 @@ def test_scoring_selection_persists_for_workspace_and_rejects_delayed_tab_update
         'baseline_operator': 'O2',
         'scoring_profile_id': 'netcheck-2026',
         'context_filters': {'Region': ['North'], 'City': [], 'Operator': [], 'Vendor': [], 'Campaign': []},
-        'area_summary': {'enabled': False, 'time_split': 'Campaign', 'breakdown': 'Region', 'cities': ['London']},
+        'area_summary': {'enabled': False, 'time_split': 'Campaign', 'breakdown': 'Region', 'cities': ['London'],
+                         'campaigns': ['@all-campaigns']},
     }
     saved = client.put('/api/scoring/selection', json={
         'selection': common_selection, 'client_id': 'tab-a', 'client_revision': 1,

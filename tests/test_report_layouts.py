@@ -349,3 +349,11 @@ def test_rows_and_column_aggregation_columns_become_rows_and_columns_split():
     migrated = list(csv.DictReader(io.StringIO(normalize_catalog_layouts(old.encode('utf-8')).decode('utf-8'))))
     assert migrated[0]['Rows Split'] == 'Call_Family' and migrated[0]['Columns Split'] == 'Operator'
     assert 'Rows Aggregation' not in migrated[0] and 'Column Aggregation' not in migrated[0]
+
+
+def test_counts_written_as_words_keep_their_grid():
+    from src.modules.report_layouts import canonical_layout_name
+
+    # Templates whose "3 columns" a rename of the operator 3 turned into "Three columns" keep their grid.
+    assert canonical_layout_name('Title + 1 rows + Three columns + comments down') == 'Title + 1 rows + 3 columns + comments down'
+    assert canonical_layout_name('Title + two rows + 2 columns') == 'Title + 2 rows + 2 columns'

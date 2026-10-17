@@ -268,9 +268,54 @@ def classified_root_stats(stats: dict[str, Any]) -> dict[str, Any]:
             'technologies': groups(stats.get('technologies'), ordered=True)}
 
 
-def report_panels(summary: dict[str, Any], breakdowns: list[dict[str, Any]], progress: dict[str, Any],
-                  options: dict[str, Any]) -> list[tuple[str, Any]]:
-    """The Executive Summary, NQ rates, Root Cause Sources and Analysis, Lifecycle and Progress View drawn like the page, as panels."""
+# The panels of the page and the charts and tables of each one, in the order of the page, as a Complete Report
+# chooses them (see complete_reports): (panel key, panel title, ((component key, label), ...)).
+REPORT_PANELS: tuple[tuple[str, str, tuple[tuple[str, str], ...]], ...] = (
+    ('summary', 'Summary', (('executive', 'Executive Summary'),)),
+    ('rates', 'NQ Rate by Campaign and Operator', (('rates', 'NQ rate of each campaign and operator'),)),
+    ('failures', 'Failures by Type, Technology & Serving Cell', (
+        ('types', 'Failure types of each service'), ('technology', 'Technology and classification'),
+        ('serving', 'Serving Vendor and host network'), ('sites', 'Sites with the most Non-Qualified Calls'))),
+    ('sources', 'Root Cause Sources', (('sources', 'The root cause sources compared'),)),
+    ('root', 'Root Cause Analysis', (('netcheck', 'NetCheck RCA'), ('script', 'Ericsson RCA'), ('analysts', 'Analysts'))),
+    ('lifecycle', 'Lifecycle & Phases', (('pipeline', 'NQ Call Status Pipeline'), ('phases', 'Phases'),
+                                         ('times', 'Time in each status and most frequent moves'), ('stalled', 'Stalled open calls'))),
+    ('progress', 'Progress View', (('overview', 'Follow-up Overview'), ('timeline', 'Progress per period'),
+                                   ('workload', 'Age and Workload'), ('details', 'Details per period'), ('activity', 'User Activity'))),
+)
+REPORT_SECTION_PREFIX = 'section:'
+
+
+def _lifecycle_component(title: Any) -> str:
+    subtitle = str(getattr(title, 'subtitle', '') or '')
+    if subtitle.startswith('NQ Call Status Pipeline'):
+        return 'pipeline'
+    if subtitle.startswith('Time in Each Status'):
+        return 'times'
+    return 'stalled' if subtitle.startswith('Stalled Open Calls') else 'phases'
+
+
+def _progress_component(title: Any) -> str:
+    subtitle = str(getattr(title, 'subtitle', '') or '')
+    for start, key in (('Follow-up Overview', 'overview'), ('Progress per', 'timeline'), ('Age and Workload', 'workload'),
+                       ('Details per', 'details'), ('User Activity', 'activity')):
+        if subtitle.startswith(start):
+            return key
+    return 'overview'
+
+
+def _failure_component(subtitle: str) -> str:
+    for end, key in (('Failure type', 'types'), ('Technology and classification', 'technology'),
+                     ('Serving Vendor and host network', 'serving')):
+        if subtitle.endswith(end):
+            return key
+    return 'sites'
+
+
+def keyed_report_panels(summary: dict[str, Any], breakdowns: list[dict[str, Any]], progress: dict[str, Any],
+                        options: dict[str, Any]) -> list[tuple[str, str, Any, Any]]:
+    """The panels of ``report_panels`` with the panel and component of REPORT_PANELS each one belongs to:
+    (panel key, component key, title, image)."""
     from src.modules.non_qualified_calls_visuals import (
         SlideTitle, executive_summary_panels, lifecycle_panels, progress_title, progress_view_panels, rate_panels,
         rca_insight_panels, root_cause_panels, table_panels,
@@ -281,28 +326,39 @@ def report_panels(summary: dict[str, Any], breakdowns: list[dict[str, Any]], pro
     tables = []
     for subtitle, columns, rows in detail_tables(progress):
         pages = table_panels(subtitle, columns, rows)
-        tables.extend((progress_title(label, subtitle + (f' · {number}/{len(pages)}' if len(pages) > 1 else '')), image)
+        tables.extend(('progress', 'activity' if subtitle == 'User Activity' else 'details',
+                       progress_title(label, subtitle + (f' · {number}/{len(pages)}' if len(pages) > 1 else '')), image)
                       for number, (_title, image) in enumerate(pages, start=1))
     # The Root Cause Sources that compare the sources, then the Root Cause Analysis of each one with its tables. As on
     # the page by default, the charts leave out the Not classified calls and the phases the calls without a value,
     # unless the options ask for them (Show Not classified, Show Empty Status).
-    analysis = [panel for stats in options.get('root_causes') or []
+    analysis = [('root', str(stats.get('source') or 'analysts'), *panel) for stats in options.get('root_causes') or []
                 for shown in [stats if options.get('show_not_classified') else classified_root_stats(stats)]
                 for panel in (*root_cause_panels(shown), *root_cause_table_panels(shown))]
-    sources = rca_insight_panels(options['rca_insights']) if options.get('rca_insights') else []
-    rates = rate_panels(options['rates']) if options.get('rates') else []
+    sources = [('sources', 'sources', *panel) for panel in rca_insight_panels(options['rca_insights'])] if options.get('rca_insights') else []
+    rates = [('rates', 'rates', *panel) for panel in rate_panels(options['rates'])] if options.get('rates') else []
     # Failures by Type, Technology & Serving Cell, each table on its own panels with what it shows in the subtitle.
     failures = []
     for subtitle, columns, rows in failure_tables(options.get('failures') or {}):
         pages = table_panels(subtitle, columns, rows)
-        failures.extend((SlideTitle(FAILURES_TITLE, '', subtitle + (f' · {number}/{len(pages)}' if len(pages) > 1 else '')), image)
+        failures.extend(('failures', _failure_component(subtitle),
+                         SlideTitle(FAILURES_TITLE, '', subtitle + (f' · {number}/{len(pages)}' if len(pages) > 1 else '')), image)
                         for number, (_title, image) in enumerate(pages, start=1))
     life = options.get('lifecycle')
     if life and not options.get('show_empty'):
         life = {**life, 'phases': [{**phase, 'empty': 0} for phase in life.get('phases') or []]}
-    lifecycle = lifecycle_panels(life, options.get('sections')) if life else []
-    return [*executive_summary_panels(summary, breakdowns, options), *rates, *failures, *sources, *analysis, *lifecycle,
-            *progress_view_panels(progress, options, label), *tables]
+    lifecycle = [('lifecycle', _lifecycle_component(title), title, image)
+                 for title, image in (lifecycle_panels(life, options.get('sections')) if life else [])]
+    return [*[('summary', 'executive', *panel) for panel in executive_summary_panels(summary, breakdowns, options)], *rates,
+            *failures, *sources, *analysis, *lifecycle,
+            *[('progress', _progress_component(title), title, image) for title, image in progress_view_panels(progress, options, label)],
+            *tables]
+
+
+def report_panels(summary: dict[str, Any], breakdowns: list[dict[str, Any]], progress: dict[str, Any],
+                  options: dict[str, Any]) -> list[tuple[str, Any]]:
+    """The Executive Summary, NQ rates, Root Cause Sources and Analysis, Lifecycle and Progress View drawn like the page, as panels."""
+    return [(title, image) for _panel, _component, title, image in keyed_report_panels(summary, breakdowns, progress, options)]
 
 
 FAILURES_TITLE = 'Failures by Type, Technology & Serving Cell'
@@ -365,7 +421,11 @@ def detail_tables(progress: dict[str, Any]) -> list[tuple[str, list[str], list[l
 
 
 def export_powerpoint(destination: Path, lines: list[str], summary: dict[str, Any], breakdowns: list[dict[str, Any]],
-                      progress: dict[str, Any], options: dict[str, Any], template: Path | None = None) -> Path:
+                      progress: dict[str, Any], options: dict[str, Any], template: Path | None = None,
+                      components: Any = None) -> Path:
+    """The Executive Summary and Progress Status in PowerPoint. ``components`` (``panel.component`` keys of
+    REPORT_PANELS) keeps only those charts and tables, as a Complete Report chooses them; every slide is named after
+    its panel."""
     from PIL import Image
 
     from src.config import settings
@@ -377,9 +437,14 @@ def export_powerpoint(destination: Path, lines: list[str], summary: dict[str, An
     cover = presentation.slides.add_slide(_named_slide_layout(presentation, 'Title Page'))
     _set_structural_slide_text(cover, 'Non-Qualified Calls', 'Executive Summary and Progress Status')
     _cover_selection(cover, lines)
-    for title, image in report_panels(summary, breakdowns, progress, options):
+    cover._element.cSld.set('name', f'{REPORT_SECTION_PREFIX}cover')
+    wanted = None if components is None else set(components)
+    for panel, component, title, image in keyed_report_panels(summary, breakdowns, progress, options):
+        if wanted is not None and f'{panel}.{component}' not in wanted:
+            continue
         heading = title if isinstance(title, SlideTitle) else SlideTitle(title)
         slide = _slide(presentation, heading.heading, heading.subtitle)
+        slide._element.cSld.set('name', f'{REPORT_SECTION_PREFIX}{panel}')
         if heading.bold:
             # The title ends in its part in bold, such as the source of the root causes.
             paragraph = slide.shapes.title.text_frame.paragraphs[0]
@@ -387,6 +452,8 @@ def export_powerpoint(destination: Path, lines: list[str], summary: dict[str, An
             run = paragraph.add_run()
             run.text = heading.bold
             run.font.bold = True
+            from src.modules.slide_titles import fit_slide_title
+            fit_slide_title(slide)
         left, top, width, height = _content_frame(slide)
         with Image.open(image) as raster:
             ratio = raster.width / raster.height

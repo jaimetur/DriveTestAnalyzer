@@ -3,9 +3,10 @@
 A report has one or more scenarios (for example National, London, Main Cities and
 per Vendor). Each scenario uses the job's CDRs, NR Mode, methodology and GAP reference
 with its own filters and aggregation levels, and chooses the slides of each scoring.
-A scenario of the whole country (no Region, Cluster or City filters) can also include the
-National & area summary: the National scoring next to the scoring of chosen cities and of
-each Region, Cluster or City, with its own time split (all CDRs, per campaign or per period).
+Its Scoring Trends can have campaigns of their own, and a scenario of the whole country (no
+Region, Cluster or City filters) can also include the National & Areas Trends: the National
+scoring next to the scoring of chosen cities and of each Region, Cluster or City, with its own
+time split (all CDRs, per campaign or per period).
 Saved configurations and the last one used are kept in the workspace and travel with
 the Scoring & GAP Analysis Configuration.
 """
@@ -16,6 +17,8 @@ import json
 import re
 from typing import Any
 
+from src.modules.cdr_auto_selection import ALL_CAMPAIGNS
+from src.modules.scoring_area_summary import normalize_trend_campaigns
 from src.modules.scoring_themes import DEFAULT_THEME, normalize_theme
 
 REPORT_CONFIGURATIONS_STATE_KEY = 'scoring_report_configurations'
@@ -27,8 +30,9 @@ REPORT_FILTER_FIELDS = ('Operator', 'Operator_Vendor', 'Vendor', 'Region', 'Clus
 # Filters that leave out part of the country: with any of them there is no National scoring.
 GEOGRAPHIC_FILTER_FIELDS = ('Region', 'Cluster', 'City')
 AREA_SUMMARY_BREAKDOWNS = ('None', 'Region', 'Cluster', 'City')
+# Its campaigns are those of the Scoring Trends: All available campaigns by default (none: those of the scenario).
 DEFAULT_AREA_SUMMARY = {'enabled': True, 'time_split': 'Campaign', 'breakdown': 'Region', 'cities': ['London'],
-                        'main_cities': False}
+                        'main_cities': False, 'campaigns': [ALL_CAMPAIGNS]}
 # The time split of the area summary: every selected CDR in one value, per campaign or per period of the tests' start time.
 AREA_SUMMARY_TIME_SPLITS = ('All', 'Campaign', 'Daily', 'Weekly', 'Monthly', 'Quarterly', 'Yearly')
 MAX_SCENARIOS = 20
@@ -39,18 +43,20 @@ _OPTION_DEFAULTS = {
     # 'all' shows only All Environments; 'split' adds a block per environment.
     'environments': 'all',
     'summary': {'standings': True, 'position': True, 'levers': True, 'scope': True},
-    'charts': {'service': True, 'category': True, 'breakdown': True, 'trend': True},
+    'charts': {'service': True, 'category': True, 'breakdown': True},
     'tables': {'summary': True, 'breakdown': True, 'kpi_values': False, 'gap_values': False,
                'campaign_comparison': True},
     'locations': {'cards': True, 'ranking': True, 'versus': True},
+    # The Scoring Trends: the scoring trend and the National & Areas Trends.
+    'trends': {'trend': True, 'areas': True},
     # An empty operator list compares every operator with the reference.
     'gap': {'operators': [], 'all_operators': True, 'individual': True, 'parts': True, 'profile': True},
     'points': {'stake': True, 'kpis': True, 'map': True, 'vendors': True, 'site_types': True, 'sites': True, 'stretches': True},
 }
-# Options of configurations saved before that are now in another group: the location cards were Scoring Charts and the
-# Points Lost Map was GAP Analysis.
+# Options of configurations saved before that are now in another group: the location cards and the scoring trend were
+# Scoring Charts and the Points Lost Map was GAP Analysis.
 _MOVED_OPTIONS = {('locations', 'cards'): ('charts', 'location_cards'), ('points', 'map'): ('gap', 'points_loss_map'),
-                  ('points', 'kpis'): ('gap', 'profile')}
+                  ('points', 'kpis'): ('gap', 'profile'), ('trends', 'trend'): ('charts', 'trend')}
 _DEFAULT_COMPARED_OPERATORS = re.compile(r'^(vf|vodafone|3|three|h3g)(?![a-z0-9])', re.IGNORECASE)
 
 
@@ -78,7 +84,12 @@ def _normalize_options(raw: Any) -> dict[str, Any]:
     options = copy.deepcopy(_OPTION_DEFAULTS)
     options['enabled'] = bool(raw.get('enabled', True))
     options['environments'] = 'split' if raw.get('environments') == 'split' else 'all'
-    for group in ('summary', 'charts', 'tables', 'locations', 'gap', 'points'):
+    # Only these environments (All Environments for the combined one), as the export of a Saved Filter chooses them;
+    # without them, All Environments or a block per environment (``environments``).
+    names = _strings(raw.get('environment_names'))
+    if names:
+        options['environment_names'] = names
+    for group in ('summary', 'charts', 'tables', 'locations', 'trends', 'gap', 'points'):
         supplied = raw.get(group) if isinstance(raw.get(group), dict) else {}
         for key, default in _OPTION_DEFAULTS[group].items():
             moved = _MOVED_OPTIONS.get((group, key))
@@ -95,8 +106,9 @@ def _normalize_options(raw: Any) -> dict[str, Any]:
 
 
 def _normalize_area_summary(raw: Any, whole_country: bool) -> dict[str, Any]:
-    """Whether the scenario has the National & area summary and its rows besides National:
-    the chosen cities, then each Region, Cluster or City. By default only scenarios of the whole country have it.
+    """The Scoring Trends of the scenario: the campaigns of its trends (none: those of the scenario) and whether it has
+    the National & Areas Trends, with their rows besides National: the chosen cities, then each Region, Cluster or City.
+    By default only scenarios of the whole country have them.
     """
     if not isinstance(raw, dict):
         return {**copy.deepcopy(DEFAULT_AREA_SUMMARY), 'enabled': whole_country}
@@ -108,6 +120,8 @@ def _normalize_area_summary(raw: Any, whole_country: bool) -> dict[str, Any]:
         'breakdown': next((name for name in AREA_SUMMARY_BREAKDOWNS if name.casefold() == breakdown), 'None'),
         'cities': _strings(raw.get('cities')),
         'main_cities': bool(raw.get('main_cities')),
+        # (Saved before the Scoring Trends had campaigns: the default.)
+        'campaigns': normalize_trend_campaigns(raw['campaigns']) if 'campaigns' in raw else [ALL_CAMPAIGNS],
     }
 
 

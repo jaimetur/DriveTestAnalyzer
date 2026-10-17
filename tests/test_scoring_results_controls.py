@@ -89,7 +89,7 @@ def test_best_network_charts_start_scoring_charts_and_legacy_tab_migrates():
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
 
     assert 'data-result-tab="best-network"' not in template
-    assert "const resultTabNames = new Set(['summary', 'charts', 'scoring', 'locations', 'gap', 'points']);" in script
+    assert "const resultTabNames = new Set(['summary', 'charts', 'scoring', 'locations', 'trends', 'gap', 'points']);" in script
     assert "stored.result_tab === 'best-network' ? 'charts'" in script
     renderer = _function_source(script, 'renderBestNetworkChart')
     allocation_renderer = _function_source(script, 'renderCategoryAllocation')
@@ -1656,15 +1656,15 @@ def test_result_tabs_have_their_own_colours_on_a_panel_holding_every_result():
     from lxml import html
     tabbed = html.fromstring(template).xpath('//div[@class="scoring-results-tabbed"]')[0]
     tabs = tabbed.xpath('./div[@class="scoring-result-tabs"]/button')
-    names = ['summary', 'charts', 'scoring', 'locations', 'gap', 'points']
+    names = ['summary', 'charts', 'scoring', 'locations', 'trends', 'gap', 'points']
     assert [tab.get('data-result-tab') for tab in tabs] == names
     assert all(tab.xpath('./svg') for tab in tabs)
-    # The six result panes sit in one panel below the tabs, Summary shown first.
+    # The seven result panes sit in one panel below the tabs, Summary shown first.
     panes = tabbed.xpath('./div[@class="scoring-result-panels"]/div[@role="tabpanel"]')
     assert [pane.get('data-result-pane') for pane in panes] == names
     assert panes[0].get('hidden') is None and all(pane.get('hidden') is not None for pane in panes[1:])
-    for tab, colour in (('summary', '#0369a1'), ('scoring', '#0f766e'), ('locations', '#7c3aed'), ('gap', '#c2410c'),
-                        ('points', '#be123c')):
+    for tab, colour in (('summary', '#0369a1'), ('scoring', '#0f766e'), ('locations', '#7c3aed'), ('trends', '#4d7c0f'),
+                        ('gap', '#c2410c'), ('points', '#be123c')):
         assert f'.scoring-result-tab[data-result-tab="{tab}"] {{ --tab-color: {colour}; }}' in template
         assert f'.scoring-results-tabbed:has([data-result-tab="{tab}"][aria-selected="true"]) {{ --result-accent: {colour}; }}' in template
 
@@ -1810,34 +1810,41 @@ process.stdout.write(JSON.stringify([campaignComparisonRows(comparison, 0, 2), c
 
 
 @pytest.mark.skipif(not shutil.which('node'), reason='Node.js is required')
-def test_scoring_jobs_show_their_national_and_area_summary():
+def test_scoring_jobs_show_their_scoring_trends():
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
-    assert "areaMeta.textContent = 'National & area summary: ';" in _function_source(script, 'renderSavedFilters')
+    cards = _function_source(script, 'renderSavedFilters')
+    # The campaigns of the Scoring Trends, then the National & Areas Trends indented under them.
+    assert "trendMeta.append('Scoring Trends: Campaigns: ', trendValue);" in cards
+    assert "areaMeta.className = 'saved-filter-meta saved-filter-meta-nested';" in cards
+    assert "areaMeta.textContent = '↳ National & Areas Trends: ';" in cards
+    assert cards.index('trendMeta') < cards.index('areaMeta')
     # Each value in its own colour, after its label.
-    assert ("areaValue.className = `saved-filter-area-summary saved-filter-area-summary-${['time', 'breakdown', 'cities'][index]}`;"
-            in _function_source(script, 'renderSavedFilters'))
+    assert "areaValue.className = `saved-filter-area-summary saved-filter-area-summary-${kind}`;" in cards
     program = _function_source(script, 'savedFilterAreaSummaryParts') + r'''
 process.stdout.write(JSON.stringify([
   savedFilterAreaSummaryParts({area_summary: {time_split: 'Campaign', breakdown: 'Region', cities: ['London']}}),
   savedFilterAreaSummaryParts({area_summary: {time_split: 'All', breakdown: null, cities: ['London', 'Leeds']}}),
+  savedFilterAreaSummaryParts({area_summary: {time_split: 'Campaign', breakdown: null, cities: [], campaigns: ['@all-campaigns']}}),
   savedFilterAreaSummaryParts({area_summary: null}),
 ]));
 '''
     shown = json.loads(subprocess.run(['node', '-e', program], capture_output=True, text=True, check=True).stdout)
-    assert shown == [[['Time split', 'Campaign'], ['Breakdown', 'Region'], ['Separate cities', 'London']],
-                     [['Time split', 'All selected CDRs'], ['Breakdown', 'None'], ['Separate cities', 'London, Leeds']],
-                     []]
+    assert shown == [[['time', 'Time split', 'Campaign'], ['breakdown', 'Breakdown', 'Region'], ['cities', 'Separate cities', 'London']],
+                     [['time', 'Time split', 'All selected CDRs'], ['breakdown', 'Breakdown', 'None'],
+                      ['cities', 'Separate cities', 'London, Leeds']],
+                     [], []]
 
 
 def test_the_scoring_trend_comes_before_the_national_and_areas():
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
-    charts = _function_source(script, 'renderInsightCharts')
-    # The Scoring Trend stays in Scoring Charts; the National & Areas opens Locations, before the scoring per location.
-    assert "insightItems(payload, 'campaign_trends', environment)" in charts
-    assert "'area_summaries'" not in charts and "'location_cards'" not in charts
+    trends = _function_source(script, 'renderTrends')
+    # The Scoring Trends tab: the Scoring Trend, then the National & Areas Trends; Locations keeps the scoring per location.
+    assert trends.index("insightItems(payload, 'campaign_trends', environment)") < trends.index(
+        "insightItems(payload, 'area_summaries', environment)")
+    assert "`${scoringLabel()} Trends — National & Areas`" in trends
     locations = _function_source(script, 'renderLocations')
-    assert locations.index("insightItems(payload, 'area_summaries', environment)") < locations.index(
-        "insightItems(payload, 'location_cards', environment)")
+    assert "'area_summaries'" not in locations and "insightItems(payload, 'location_cards', environment)" in locations
+    assert 'No Locations views: they need Region, Cluster or City in the Split by' in locations
     # The titles of the area charts: National, the separate cities and the breakdown in their own colours.
     chart = _function_source(SCORING_SCRIPT.read_text(encoding='utf-8'), 'makeAreaTrendChart')
     assert "area.kind === 'National' ? 'is-national' : area.kind === 'City' ? 'is-city' : 'is-breakdown'" in chart
@@ -1858,7 +1865,7 @@ def test_the_area_charts_take_the_height_of_the_table_and_tilt_crowded_labels():
     assert 'if (part?.expandPart) part.expandPart();' in card
     # The table beside the charts enlarges on its own too.
     assert 'tableWrap.expandPart = () => openExpandedView(' in _function_source(script, 'makeAreaSummaryView')
-    assert "openExpandedView(large, `${scoringLabel()} — ${area.label}`, 'National & Areas trend', figure, 'Area trend');" in chart
+    assert "openExpandedView(large, `${scoringLabel()} — ${area.label}`, 'National & Areas Trends', figure, 'Area trend');" in chart
 
 
 

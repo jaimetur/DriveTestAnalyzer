@@ -1,8 +1,9 @@
-"""National & Area Summary: the National scoring next to the scoring of chosen cities and areas.
+"""National & Areas Trends: the National scoring next to the scoring of chosen cities and areas.
 
 A scoring job of the whole country (no Region, Cluster or City filters) can ask for an area
-summary. The same job, from the CDR rows it already loaded, then calculates up to three
-scorings with different Split by levels:
+summary. The same job, from the CDR rows it already loaded (or, when the summary has campaigns of its
+own, from the CDRs of those campaigns), then calculates up to three scorings with different Split by
+levels:
 
 * National: Operator, split by the summary's time split;
 * the chosen cities (for example London), each scored with its own tests only;
@@ -20,6 +21,7 @@ from typing import Any, Callable
 
 import pandas as pd
 
+from src.modules.cdr_auto_selection import campaign_presets
 from src.modules.column_names import campaign_sort_key, column_identity, resolve_column_name
 from src.modules.scoring import START_TIME_COLUMNS, normalize_time_split
 
@@ -28,17 +30,31 @@ GEOGRAPHIC_FILTER_FIELDS = ('Region', 'Cluster', 'City')
 # All aggregates every selected CDR; Campaign splits by campaign; the periods split by the tests' start time.
 AREA_SUMMARY_TIME_SPLITS = ('All', 'Campaign', 'Daily', 'Weekly', 'Monthly', 'Quarterly', 'Yearly')
 NATIONAL = 'National'
+# The prefix of the warnings of the summary (summaries calculated before name it National & Area Summary).
+WARNING_PREFIXES = ('National & Areas Trends:', 'National & Area Summary:')
 _CITY_COLUMNS = ('City', 'G_Level_4')
 # Saved per calculation: what the views of the summary read. The points-lost shares stay with the job's own result.
 _PASS_RESULT_KEYS = ('scoring', 'totals', 'global_kpis', 'environment_scaling', 'aggregation_levels',
                      'aggregation_contract_version', 'campaigns', 'warnings', 'notices', 'baseline_aliases')
 
 
-def normalize_area_summary_request(area_summary: Any, context_filters: dict[str, list[str]]) -> dict[str, Any] | None:
-    """The breakdown level, the chosen cities and the time split of a job's area summary, or None
-    without a breakdown or cities.
+def normalize_trend_campaigns(values: Any) -> list[str]:
+    """The campaigns of the summary: campaign names, or one automatic choice (Latest 2 campaigns…) alone."""
+    names: dict[str, str] = {}
+    for value in values if isinstance(values, (list, tuple, set)) else [values] if values else []:
+        text = str(value or '').strip()[:200]
+        if text:
+            names.setdefault(text.casefold(), text)
+    presets = campaign_presets(names.values())
+    return presets[:1] if presets else list(names.values())
 
-    The summary needs the whole country: a job with Region, Cluster or City filters cannot have one.
+
+def normalize_area_summary_request(area_summary: Any, context_filters: dict[str, list[str]]) -> dict[str, Any] | None:
+    """The breakdown level, the chosen cities, the time split and the campaigns of a job's area summary, or None
+    without a breakdown, cities or campaigns of its own. Without campaigns, the summary scores the campaigns of the job;
+    with campaigns alone, it gives the scoring trend of those campaigns.
+
+    The areas need the whole country: a job with Region, Cluster or City filters cannot have a breakdown or cities.
     """
     if not isinstance(area_summary, dict):
         return None
@@ -51,11 +67,17 @@ def normalize_area_summary_request(area_summary: Any, context_filters: dict[str,
         text = str(value).strip()
         if text:
             cities.setdefault(text.casefold(), text)
-    if breakdown is None and not cities:
+    campaigns = normalize_trend_campaigns(area_summary.get('campaigns'))
+    if breakdown is None and not cities and not campaigns:
         return None
-    if any((context_filters or {}).get(field) for field in GEOGRAPHIC_FILTER_FIELDS):
-        raise ValueError('The National & Area Summary needs the whole country: remove the Region, Cluster and City filters.')
-    return {'breakdown': breakdown, 'cities': list(cities.values()), 'time_split': time_split}
+    # The areas need the whole country; the scoring trend of campaigns of their own alone follows the area filters.
+    if (breakdown is not None or cities) and any((context_filters or {}).get(field) for field in GEOGRAPHIC_FILTER_FIELDS):
+        raise ValueError('National & Areas Trends need the whole country: remove the Region, Cluster and City filters.')
+    normalized = {'breakdown': breakdown, 'cities': list(cities.values()), 'time_split': time_split}
+    # (Without campaigns of its own, the request keeps the form of the summaries saved before they had any.)
+    if campaigns:
+        normalized['campaigns'] = campaigns
+    return normalized
 
 
 def area_summary_levels(levels: list[str], area_summary: dict[str, Any] | None) -> list[str]:
@@ -124,7 +146,7 @@ def calculate_area_summary(calculate: Callable[..., dict], frames: dict[str, pd.
             rows = result.get('scoring') if isinstance(result, dict) else None
             if not rows or (item['field'] and not any(row.get(item['field']) not in (None, '') for row in rows)):
                 what = ', '.join(item['cities']) if 'cities' in item else item['kind']
-                warnings.append(f'National & Area Summary: the selected CDRs have no {what} measurements.')
+                warnings.append(f'National & Areas Trends: the selected CDRs have no {what} measurements.')
                 continue
             saved['result'] = {key: result[key] for key in _PASS_RESULT_KEYS if key in result}
         passes.append(saved)
@@ -152,7 +174,7 @@ def calculate_area_summary_from_history(calculate: Callable[..., dict], levels: 
             rows = result.get('scoring') if isinstance(result, dict) else None
             if not rows or (item['field'] and not any(row.get(item['field']) not in (None, '') for row in rows)):
                 what = ', '.join(item['cities']) if 'cities' in item else item['kind']
-                warnings.append(f'National & Area Summary: the selected CDRs have no {what} measurements.')
+                warnings.append(f'National & Areas Trends: the selected CDRs have no {what} measurements.')
                 continue
             saved['result'] = {key: result[key] for key in _PASS_RESULT_KEYS if key in result}
         passes.append(saved)
@@ -160,14 +182,28 @@ def calculate_area_summary_from_history(calculate: Callable[..., dict], levels: 
             'time_split': area_summary.get('time_split') or 'Campaign', 'passes': passes, 'warnings': warnings}
 
 
+def detach_area_summary(result: dict[str, Any]) -> dict[str, Any]:
+    """The result with the calculations of its area summary that reuse it holding a copy of it instead: the summary
+    of National & Areas Trends with campaigns of their own is scored apart from the job, which it then joins."""
+    summary = result.get('area_summary') if isinstance(result, dict) else None
+    if not isinstance(summary, dict):
+        return result
+    own = {key: result[key] for key in _PASS_RESULT_KEYS if key in result}
+    passes = [{**item, 'reuses_job': False, 'result': own} if isinstance(item, dict) and item.get('reuses_job') else item
+              for item in summary.get('passes') or []]
+    return {**result, 'area_summary': {**summary, 'passes': passes}}
+
+
 def most_reliable_area_summary(summary: Any, transform: Callable[[dict], dict | None]) -> Any:
     """The area summary of the Most Reliable scoring: each calculation transformed like the job's own result."""
     if not isinstance(summary, dict) or not isinstance(summary.get('passes'), list):
         return summary
+    # The calculations of a summary with campaigns of its own follow their methodology.
+    own = {key: summary[key] for key in ('configuration', 'methodology_groups') if summary.get(key)}
     passes = []
     for item in summary['passes']:
         if isinstance(item, dict) and isinstance(item.get('result'), dict):
-            reliable = transform(item['result'])
+            reliable = transform({**item['result'], **own})
             if reliable is None:
                 continue
             item = {**item, 'result': reliable}
@@ -180,36 +216,39 @@ def _single_value(rows: list[dict[str, Any]], field: str) -> Any:
     return next(iter(values)) if len(values) == 1 else None
 
 
-def build_area_summary(job: dict[str, Any], result: dict[str, Any], operator_mapping_groups: list[dict] | None = None,
-                       *, vendor_mapping_groups: list[dict] | None = None,
-                       include_operator: Callable[[str, str], bool] | None = None) -> list[dict[str, Any]]:
-    """One summary per environment: the areas in order (National, chosen cities, breakdown) and,
-    for each operator, its points in the latest campaign, the GAP to the reference and the change
-    from the previous campaign, with its points in every campaign for the trend charts.
-    """
+def _summary_areas(job: dict[str, Any], result: dict[str, Any], summary: dict[str, Any],
+                   operator_mapping_groups: list[dict] | None, vendor_mapping_groups: list[dict] | None,
+                   kinds: set[str] | None = None) -> list[dict[str, Any]]:
+    """The areas of a summary in order (National, chosen cities, breakdown), each with the score tables of every
+    campaign or period; ``kinds`` keeps only the calculations of those kinds."""
     from src.modules.scoring_insights import _scopes
     from src.modules.scoring_views import build_scoring_views
 
-    summary = result.get('area_summary') if isinstance(result, dict) else None
-    if not isinstance(summary, dict) or not summary.get('passes'):
-        return []
-    configuration = job.get('configuration') or result.get('configuration')
+    # A summary with campaigns of its own was scored with their methodology (By campaign, each campaign's).
+    default_configuration = summary.get('configuration') or job.get('configuration') or result.get('configuration')
     chosen = [city.casefold() for city in summary.get('cities') or []]
     areas: list[dict[str, Any]] = []
     for item in summary['passes']:
+        if kinds is not None and item.get('kind') not in kinds:
+            continue
         if item.get('reuses_job'):
             source, source_job = result, job
+            configuration = job.get('configuration') or result.get('configuration')
+            payload = {**source, 'configuration': configuration}
         else:
             source = item.get('result')
             if not isinstance(source, dict):
                 continue
+            configuration = source.get('configuration') or default_configuration
             source_job = {'levels': list(item['levels']), 'aggregation_levels': list(item['levels']),
                           'aggregation_contract_version': job.get('aggregation_contract_version') or 2,
                           'baseline_operator': job.get('baseline_operator') or 'EE',
                           'baseline_aliases': job.get('baseline_aliases') or source.get('baseline_aliases'),
                           'configuration': configuration}
-        views = build_scoring_views(source_job, {**source, 'configuration': configuration}, operator_mapping_groups,
-                                    vendor_mapping_groups=vendor_mapping_groups)
+            payload = {**source, 'configuration': configuration}
+            if summary.get('methodology_groups') and not source.get('methodology_groups'):
+                payload['methodology_groups'] = summary['methodology_groups']
+        views = build_scoring_views(source_job, payload, operator_mapping_groups, vendor_mapping_groups=vendor_mapping_groups)
         field = item.get('field')
         single = _single_value(source.get('scoring') or [], field) if field else None
         # An area measured in a single campaign has no campaign in its scope: it is that campaign.
@@ -230,6 +269,20 @@ def build_area_summary(job: dict[str, Any], result: dict[str, Any], operator_map
         elif field is not None:
             found.sort(key=lambda area: area['label'].casefold())
         areas.extend(found)
+    return areas
+
+
+def build_area_summary(job: dict[str, Any], result: dict[str, Any], operator_mapping_groups: list[dict] | None = None,
+                       *, vendor_mapping_groups: list[dict] | None = None,
+                       include_operator: Callable[[str, str], bool] | None = None) -> list[dict[str, Any]]:
+    """One summary per environment: the areas in order (National, chosen cities, breakdown) and,
+    for each operator, its points in the latest campaign, the GAP to the reference and the change
+    from the previous campaign, with its points in every campaign for the trend charts.
+    """
+    summary = result.get('area_summary') if isinstance(result, dict) else None
+    if not isinstance(summary, dict) or not summary.get('passes'):
+        return []
+    areas = _summary_areas(job, result, summary, operator_mapping_groups, vendor_mapping_groups)
     if not areas:
         return []
     environments = list(dict.fromkeys(
@@ -240,6 +293,48 @@ def build_area_summary(job: dict[str, Any], result: dict[str, Any], operator_map
     for summary_item in summaries:
         summary_item['time_split'] = summary.get('time_split') or 'Campaign'
     return summaries
+
+
+def build_national_trends(job: dict[str, Any], result: dict[str, Any], operator_mapping_groups: list[dict] | None = None,
+                          *, vendor_mapping_groups: list[dict] | None = None) -> list[dict[str, Any]] | None:
+    """The scoring trend of each environment from the National calculation of National & Areas Trends with campaigns
+    of their own (every campaign or period of the summary, from two on), in the form of the job's campaign trends; None
+    when the summary has no campaigns of its own (the trends then come from the job's campaigns)."""
+    from src.modules.scoring_insights import MIN_TREND_CAMPAIGNS, _display, _scope_summary
+
+    summary = result.get('area_summary') if isinstance(result, dict) else None
+    if not isinstance(summary, dict) or not summary.get('campaigns'):
+        return None
+    if not summary.get('passes'):
+        return []
+    national = next(iter(_summary_areas(job, result, summary, operator_mapping_groups, vendor_mapping_groups,
+                                        kinds={NATIONAL})), None)
+    if national is None:
+        return []
+    campaigns = sorted((campaign for campaign in national['campaigns'] if campaign not in (None, '')), key=campaign_sort_key)
+    if len(campaigns) < MIN_TREND_CAMPAIGNS:
+        return []
+    environments = list(dict.fromkeys(environment for tables in national['campaigns'].values() for environment in tables))
+    trends = []
+    for environment in environments:
+        operators: dict[str, dict[str, Any]] = {}
+        maximum = None
+        for index, campaign in enumerate(campaigns):
+            scope = _scope_summary(national['campaigns'][campaign], environment)
+            if scope is None:
+                continue
+            maximum = scope['maximum'] if maximum is None else max(maximum, scope['maximum'])
+            for item in scope['operators']:
+                series = operators.setdefault(item['operator'], {
+                    'operator': item['operator'], 'label': item['label'], 'color': item['color'],
+                    'is_reference': item['is_reference'], 'points': [None] * len(campaigns),
+                })
+                series['points'][index] = item['total']
+        if operators:
+            trends.append({'environment': environment, 'title': '', 'maximum': maximum,
+                           'campaigns': [_display('Campaign', campaign) for campaign in campaigns],
+                           'series': list(operators.values())})
+    return trends
 
 
 def _environment_summary(areas: list[dict[str, Any]], environment: str,

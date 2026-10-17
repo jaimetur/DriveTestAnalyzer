@@ -182,8 +182,11 @@ def add_standings_slides(presentation, standings: list[dict[str, Any]], *, scori
                 _text(slide, f"{_signed(row['delta'])} vs {item['previous_campaign']}", 10.85, top, 2.0, row_height, size=8.5,
                       bold=True, color=_tone(row['delta']), anchor=MSO_ANCHOR.MIDDLE)
         legend_top = CONTENT_TOP + len(rows) * row_height + .02
-        _text(slide, f"Points of {maximum:,.0f}: each bar is the Data points of the operator followed by its Voice points.",
-              .45, legend_top, 12.4, .22, size=8, color=MUTED)
+        legend = slide.shapes.add_textbox(Inches(.45), Inches(legend_top), Inches(12.4), Inches(.22))
+        legend.name = 'Scoring Leaderboard Legend'
+        _write_runs(legend.text_frame, [('■ ', False, DATA_COLOR), ('Data   ', False, None), ('■ ', False, VOICE_COLOR),
+                                        ('Voice', False, None), (f'   ·   Points of {maximum:,.0f}', False, None)],
+                    size=8, color=MUTED)
         panels = [row for row in rows if not row.get('is_reference') and compared(row['operator'], row['label'])][:3]
         if not panels:
             continue

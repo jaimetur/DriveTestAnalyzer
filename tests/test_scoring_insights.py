@@ -60,9 +60,11 @@ def test_location_cards_scale_a_city_measured_in_one_environment():
     assert ee['total'] == pytest.approx(city_points * 1000 / 650)
 
 
-def test_campaign_trend_needs_more_than_four_campaigns():
-    _job, _result, insights = _insights(campaigns=('2026-Q1', '2026-Q2', '2025-Q4', '2025-Q3'))
+def test_campaign_trend_needs_two_campaigns():
+    _job, _result, insights = _insights(campaigns=('2026-Q2',))
     assert insights['campaign_trends'] == []
+    _job, _result, insights = _insights(campaigns=('2026-Q1', '2026-Q2'))
+    assert _combined(insights['campaign_trends'])[0]['campaigns'] == ['2026-Q1', '2026-Q2']
     _job, _result, insights = _insights()
     trends = _combined(insights['campaign_trends'])
     assert len(trends) == len(CITIES)

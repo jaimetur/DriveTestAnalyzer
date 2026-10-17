@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 from io import BytesIO
 from pathlib import Path
 from typing import Any
@@ -27,6 +27,69 @@ from src.utils.fonts import load_image_font
 ChartRenderer = Callable[[dict[str, Any], int, int], bytes]
 
 TABLE_ROWS_PER_SLIDE = 12
+
+# The panels of the page and the charts and tables of each one, in the order of the page, as a Complete Report
+# chooses them (see complete_reports): (panel key, panel title, ((component key, label), ...)).
+REPORT_PANELS: tuple[tuple[str, str, tuple[tuple[str, str], ...]], ...] = (
+    ('overview', 'Overview', (('cards', 'Overview cards'),)),
+    ('maps', 'Coverage & Interference Maps', (('maps', 'Coverage and interference maps with their weakest areas'),
+                                              ('cell_status', 'Cell status near the weak areas'))),
+    ('rf_quality', 'RF Quality', (('cdfs', 'RSRP and SINR distributions with their classes'),
+                                  ('nr_carriers', 'NR quality per carrier'))),
+    ('interactivity', 'Latency & Interactivity', (('environments', 'Interactivity tests per environment'),)),
+    ('serving', 'Serving Cells', (('distance', 'Distance to the serving site and overshooting'),
+                                  ('breakdowns', 'By serving band, RAN vendor, serving and host network'),
+                                  ('overshooting', 'Overshooting cells'),
+                                  ('nr_leg', 'NR cell of the NSA samples and NR vendor'),
+                                  ('mimo', 'MIMO: inventory TX antennas and reported rank'))),
+    ('nr_availability', '5G Availability', (('summary', 'EN-DC on 5G sites'),
+                                            ('sites_without_nr', 'Sites with the most samples without NR'),
+                                            ('nr_sites', 'NR sites serving the most NSA samples'))),
+    ('snapshot', 'Network Snapshot', (('snapshot', 'Inventory snapshot'), ('host_matrix', 'Owner network × host network'),
+                                      ('quality', 'Inventory quality'))),
+    ('deployment', 'Network Deployment', (('deployment', 'Sites and cells of each view'),)),
+    ('sites', 'Cluster Sites Density', (('observed', 'Observed sites and cells'), ('inventory', 'Inventory sites and cells'),
+                                        ('density', 'Inventory snapshot density'))),
+    ('spectrum', 'Spectrum', (('observed', 'Observed spectrum'), ('licensed', 'Licensed spectrum'),
+                              ('deployed', 'Deployed in the inventory snapshot'), ('nr_duplex', 'NR sites by duplex mode'),
+                              ('bandwidth', 'Bandwidth per band and total bandwidth of the tests'),
+                              ('bandwidth_splits', 'Bandwidth per kind of site, RAN Vendor and location'))),
+)
+# Slide titles (their start) and the panel and component they belong to; the first match wins.
+_COMPONENT_TITLES: tuple[tuple[str, str], ...] = (
+    ('Analysis Selection', 'selection.selection'), ('Analysis Notes', 'selection.notes'),
+    ('Overview', 'overview.cards'), ('Coverage & Interference Maps', 'maps.maps'),
+    ('Cell status near the weak areas', 'maps.cell_status'), ('RF Quality · NR quality per carrier', 'rf_quality.nr_carriers'),
+    ('RF Quality', 'rf_quality.cdfs'), ('Latency & Interactivity', 'interactivity.environments'),
+    ('Serving Cells · NR cell', 'serving.nr_leg'), ('Serving Cells · By NR vendor', 'serving.nr_leg'),
+    ('Serving Cells · By ', 'serving.breakdowns'), ('Serving Cells · Overshooting cells', 'serving.overshooting'),
+    ('Serving Cells · MIMO', 'serving.mimo'), ('Serving Cells', 'serving.distance'),
+    ('5G Availability · Sites with the most', 'nr_availability.sites_without_nr'),
+    ('5G Availability · NR sites', 'nr_availability.nr_sites'), ('5G Availability', 'nr_availability.summary'),
+    ('Network Snapshot · Owner', 'snapshot.host_matrix'), ('Network Snapshot · Inventory quality', 'snapshot.quality'),
+    ('Network Snapshot', 'snapshot.snapshot'), ('Network Deployment', 'deployment.deployment'),
+    ('Cluster Sites Density · Observed', 'sites.observed'), ('Cluster Sites Density · Inventory Sites', 'sites.inventory'),
+    ('Cluster Sites Density', 'sites.density'), ('Observed Spectrum', 'spectrum.observed'),
+    ('Licensed Spectrum', 'spectrum.licensed'), ('Spectrum · Deployed', 'spectrum.deployed'),
+    ('Spectrum · NR sites by duplex mode', 'spectrum.nr_duplex'), ('Spectrum · ', 'spectrum.bandwidth'),
+    ('Bandwidth per ', 'spectrum.bandwidth_splits'),
+)
+REPORT_SECTION_PREFIX = 'section:'
+
+
+def report_component(title: str) -> str:
+    """The panel and component (``panel.component``) a slide title belongs to; the total bandwidth chart, whose title
+    follows the page, and the tables by location are Spectrum."""
+    for start, key in _COMPONENT_TITLES:
+        if title.startswith(start):
+            return key
+    return 'spectrum.bandwidth_splits' if ' by location (' in title else 'spectrum.bandwidth'
+
+
+def _tag_report_slides(presentation: Presentation, start: int, panel: str) -> None:
+    """Name the slides from ``start`` after their panel, so a Complete Report orders and packs them."""
+    for slide in list(presentation.slides)[start:]:
+        slide._element.cSld.set('name', f'{REPORT_SECTION_PREFIX}{panel}')
 
 
 def _number(value: Any, digits: int = 1, suffix: str = '') -> str:
@@ -784,6 +847,9 @@ def _slide(presentation: Presentation, title: str, subtitle: str = ''):
     for placeholder in slide.placeholders:
         if placeholder.has_text_frame:
             placeholder.text_frame.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
+    # A long title is made smaller instead of taking a second line over the content.
+    from src.modules.slide_titles import fit_slide_title
+    fit_slide_title(slide)
     return slide
 
 
@@ -960,17 +1026,33 @@ def _visual_slides(presentation: Presentation, title: str, panels: list[tuple[st
 
 
 def export_network_insights_powerpoint(destination: Path, analysis: dict[str, Any], deployment: dict[str, Any],
-                                       selection: dict[str, Any], render: ChartRenderer, template: Path | None = None) -> Path:
+                                       selection: dict[str, Any], render: ChartRenderer, template: Path | None = None,
+                                       components: Collection[str] | None = None) -> Path:
+    """The summary in PowerPoint. ``components`` (``panel.component`` keys of REPORT_PANELS) keeps only those charts and
+    tables, as a Complete Report chooses them; every slide is named after its panel."""
     from src.config import settings
     from src.modules.cdr_reporting import _named_slide_layout, _remove_all_slides, _set_structural_slide_text
 
     presentation = Presentation(template or settings.powerpoint_templates_dir / 'Template_01.pptx')
     _remove_all_slides(presentation)
+    wanted = None if components is None else {*components, 'selection.selection', 'selection.notes'}
+
+    def emitted(title: str, write: Callable[[], Any]) -> None:
+        """Add the slides of ``title`` when its component is chosen, named after its panel."""
+        key = report_component(title)
+        if wanted is not None and key not in wanted:
+            return
+        start = len(presentation.slides)
+        write()
+        _tag_report_slides(presentation, start, key.split('.', 1)[0])
+
     cover = presentation.slides.add_slide(_named_slide_layout(presentation, 'Title Page'))
     _set_structural_slide_text(cover, 'Summary Network Insights', 'DriveTest Analyzer')
     from src.modules.exports import remove_empty_placeholders
     remove_empty_placeholders(cover)
+    _tag_report_slides(presentation, 0, 'cover')
     selection_slide = _slide(presentation, 'Analysis Selection')
+    _tag_report_slides(presentation, 1, 'selection')
     left, top, width, height = _content_frame(selection_slide)
     shape = selection_slide.shapes.add_textbox(Inches(left), Inches(top), Inches(width), Inches(height))
     shape.text_frame.word_wrap = True
@@ -986,50 +1068,58 @@ def export_network_insights_powerpoint(destination: Path, analysis: dict[str, An
     # Sections follow the order of the page: Overview, maps, RF Quality, Serving Cells, Network Deployment, Cluster Sites
     # Density, Spectrum.
     for suffix, section in sections:
-        _overview_slides(presentation, f'Overview{suffix}', overview_cards(analysis, section), subtitle=measured)
+        emitted(f'Overview{suffix}', lambda section=section, suffix=suffix: _overview_slides(
+            presentation, f'Overview{suffix}', overview_cards(analysis, section), subtitle=measured))
     for suffix, _section, _cdfs, groups in visuals:
         for group, panels in groups:
-            _visual_slides(presentation, f'Coverage & Interference Maps{suffix}' + (f' · {group}' if group else ''), panels, subtitle=measured)
+            title = f'Coverage & Interference Maps{suffix}' + (f' · {group}' if group else '')
+            emitted(title, lambda title=title, panels=panels: _visual_slides(presentation, title, panels, subtitle=measured))
     for title, columns, rows in cell_status_tables(analysis):
-        _table_slides(presentation, title, columns, rows, measured)
+        emitted(title, lambda title=title, columns=columns, rows=rows: _table_slides(presentation, title, columns, rows, measured))
     for suffix, section, cdfs, _groups in visuals:
         if cdfs:
-            _visual_slides(presentation, f'RF Quality{suffix}', cdfs, rf_quality_table(section, analysis.get('colours')), subtitle=measured)
+            emitted(f'RF Quality{suffix}', lambda suffix=suffix, section=section, cdfs=cdfs: _visual_slides(
+                presentation, f'RF Quality{suffix}', cdfs, rf_quality_table(section, analysis.get('colours')), subtitle=measured))
     serving = serving_tables(analysis)
     distance = serving_visuals(analysis, render)
     if distance and serving:
         # The distance CDF with the summary of each group under it.
-        _visual_slides(presentation, 'Serving Cells', [(caption, image, note, (serving[0][1], serving[0][2])) for caption, image, note, _table in distance],
-                       subtitle=measured)
+        emitted('Serving Cells', lambda: _visual_slides(
+            presentation, 'Serving Cells', [(caption, image, note, (serving[0][1], serving[0][2])) for caption, image, note, _table in distance],
+            subtitle=measured))
     for title, columns, rows in serving[1:] if distance else serving:
-        _table_slides(presentation, title, columns, rows, measured)
+        emitted(title, lambda title=title, columns=columns, rows=rows: _table_slides(presentation, title, columns, rows, measured))
     for title, columns, rows in [table for table in snapshot_tables(deployment) if not table[0].startswith(('Spectrum', 'Cluster'))]:
-        _table_slides(presentation, title, columns, rows, scope_for(title, selection))
+        emitted(title, lambda title=title, columns=columns, rows=rows: _table_slides(
+            presentation, title, columns, rows, scope_for(title, selection)))
     for title, panels in deployment_table_groups(deployment):
-        _paired_table_slides(presentation, title, panels, scope_for(title, selection))
+        emitted(title, lambda title=title, panels=panels: _paired_table_slides(presentation, title, panels, scope_for(title, selection)))
     for title, columns, rows in [*cluster_sites_tables(analysis, deployment),
                                  *[table for table in snapshot_tables(deployment) if table[0].startswith('Cluster')],
                                  *spectrum_tables(analysis), *[table for table in snapshot_tables(deployment) if table[0].startswith('Spectrum')],
                                  *nr_duplex_table(deployment)]:
-        _table_slides(presentation, title, columns, rows, scope_for(title, selection))
+        emitted(title, lambda title=title, columns=columns, rows=rows: _table_slides(
+            presentation, title, columns, rows, scope_for(title, selection)))
     ladder = bandwidth_ladder_image(analysis)
     for title, columns, rows in bandwidth_tables(analysis):
         # The total bandwidth ladders, then their figures.
         if title.startswith('Spectrum · Total bandwidth,') and ladder is not None:
             # As a benchmark slide: the chart title, with its scope and the line that explains it under it.
-            _visual_slides(presentation, bandwidth_title(analysis), [('', ladder, '', None)],
-                           subtitle=f'{measured}\n{bandwidth_caption(analysis)}')
-        _table_slides(presentation, title, columns, rows, measured)
+            emitted(title, lambda: _visual_slides(presentation, bandwidth_title(analysis), [('', ladder, '', None)],
+                                                  subtitle=f'{measured}\n{bandwidth_caption(analysis)}'))
+        emitted(title, lambda title=title, columns=columns, rows=rows: _table_slides(presentation, title, columns, rows, measured))
     for title, columns, rows in [*nr_band_tables(analysis), *interactivity_tables(analysis)]:
-        _table_slides(presentation, title, columns, rows, measured)
+        emitted(title, lambda title=title, columns=columns, rows=rows: _table_slides(presentation, title, columns, rows, measured))
     warnings = analysis.get('warnings') or []
     if warnings:
+        start = len(presentation.slides)
         slide = _slide(presentation, 'Analysis Notes')
         left, top, width, height = _content_frame(slide)
         shape = slide.shapes.add_textbox(Inches(left), Inches(top), Inches(width), Inches(height))
         shape.text_frame.text = '\n'.join(str(warning) for warning in warnings)
         shape.text_frame.word_wrap = True
         shape.text_frame.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
+        _tag_report_slides(presentation, start, 'selection')
     closing = _named_slide_layout(presentation, 'Black logo end slide')
     if closing is not None:
         _set_structural_slide_text(presentation.slides.add_slide(closing), '', '')

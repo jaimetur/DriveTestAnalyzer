@@ -56,7 +56,8 @@
 
   // ``exclusive`` lists [value, label] choices shown first that stand alone (Latest campaign, Latest 2 campaigns):
   // checking one clears the others and every value, checking a value clears them.
-  function multiPicker(label, values, selected = [], {preset = null, onChange = null, exclusive = []} = {}) {
+  // `allLabel` names every value selected (or none), which saves no restriction.
+  function multiPicker(label, values, selected = [], {preset = null, onChange = null, exclusive = [], allLabel = 'All'} = {}) {
     const wrapper = node('details', undefined, 'workspace-user-picker rj-multi');
     const summary = node('summary');
     const caption = node('span', '', 'rj-multi-caption');
@@ -112,7 +113,7 @@
       const count = boxes.filter((box) => box.checked && !box.disabled).length;
       const enabled = boxes.filter((box) => !box.disabled).length;
       // All: every value selected, or none (no restriction either way).
-      const state = count === 0 || count === enabled ? 'All' : `${count} of ${enabled}`;
+      const state = count === 0 || count === enabled ? allLabel : `${count} of ${enabled}`;
       const exclusiveChoice = exclusiveBoxes.find((box) => box.checked);
       caption.textContent = exclusiveChoice ? exclusiveChoice.nextElementSibling.textContent
         : presetBox?.checked && preset.dynamic ? preset.label : state;
@@ -167,6 +168,8 @@
     };
     return field;
   }
+  // The Complete Report panel of the page builds its filters with the same pickers.
+  window.reportingPickers = {multiPicker, campaignLabel, campaignCompare};
   document.addEventListener('click', (event) => {
     document.querySelectorAll('details.rj-multi[open]').forEach((picker) => { if (!picker.contains(event.target)) picker.open = false; });
   });
