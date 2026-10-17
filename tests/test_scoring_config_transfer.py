@@ -545,7 +545,7 @@ def test_scoring_configuration_backup_leaves_the_report_configurations_to_their_
         'components': ['scoring_configuration'], 'workspace_ids': [workspace.id],
         'backup_path': str(tmp_path), 'max_backups': 5,
     })
-    # The report configurations travel as Scoring & GAP Report Configurations, not in the Scoring Configuration.
+    # The report configurations travel as Scoring & GAP Report Templates, not in the Scoring Configuration.
     with zipfile.ZipFile(backup_path) as archive:
         assert not any(name.endswith(app_module.SCORING_REPORT_CONFIGURATIONS_MEMBER) for name in archive.namelist())
     save_named_configuration(repository, 'Other', {'scenarios': [default_scenario()]})

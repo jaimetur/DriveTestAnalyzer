@@ -320,7 +320,7 @@ def test_use_newer_cdrs_endpoint_is_recorded_and_leaves_the_open_saved_filter_wh
     assert pruned == [7]
 
 
-def test_scoring_report_configurations_travel_with_their_own_backup_element(client, tmp_path: Path) -> None:
+def test_scoring_report_templates_travel_with_their_own_backup_element(client, tmp_path: Path) -> None:
     from src.modules import scoring_reports
 
     response = client.post('/login', data={'username': 'admin', 'password': 'admin123'}, follow_redirects=False)
@@ -332,7 +332,7 @@ def test_scoring_report_configurations_travel_with_their_own_backup_element(clie
     scoring_reports.save_named_configuration(repository, 'Weekly custom', scoring_reports.default_report_configuration())
     names = lambda: [item['name'] for item in scoring_reports.load_report_state(repository)['configurations']]  # noqa: E731
     backup_path = app_module.create_recurring_database_backup({
-        'components': ['scoring_configuration', 'scoring_report_configurations'], 'workspace_ids': [workspace.id],
+        'components': ['scoring_configuration', 'scoring_report_templates'], 'workspace_ids': [workspace.id],
         'backup_path': str(tmp_path), 'max_backups': 5,
     })
     earlier_package = json.dumps(scoring_reports.report_configurations_document(scoring_reports.load_report_state(repository))).encode()
@@ -340,14 +340,14 @@ def test_scoring_report_configurations_travel_with_their_own_backup_element(clie
     # The Scoring & GAP Analysis Configuration no longer carries them: they travel as an element of their own.
     app_module.restore_database_backup(backup_path, ['scoring_configuration'])
     assert 'Weekly custom' not in names()
-    app_module.restore_database_backup(backup_path, ['scoring_report_configurations'])
+    app_module.restore_database_backup(backup_path, ['scoring_report_templates'])
     assert 'Weekly custom' in names()
-    assert 'scoring-report-configurations' in app_module.WORKSPACE_ELEMENT_EXPORT_TARGETS
-    assert app_module.archive_workspace_components_for_target('scoring-report-configurations') == ['scoring_report_configurations']
-    assert 'scoring_report_configurations' in app_module.full_workspace_archive_components()
+    assert 'scoring-report-templates' in app_module.WORKSPACE_ELEMENT_EXPORT_TARGETS
+    assert app_module.archive_workspace_components_for_target('scoring-report-templates') == ['scoring_report_templates']
+    assert 'scoring_report_templates' in app_module.full_workspace_archive_components()
     # Scoring & GAP Analysis Configuration packages created before keep restoring the configurations they carried.
     scoring_reports.delete_named_configuration(repository, 'Weekly custom')
     app_module._restore_workspace_scoring_report_configurations(workspace, earlier_package)
     assert 'Weekly custom' in names()
     page = client.get('/admin').text
-    assert 'Scoring &amp; GAP Report Configurations (from active workspace)' in page
+    assert 'Scoring &amp; GAP Report Templates (from active workspace)' in page

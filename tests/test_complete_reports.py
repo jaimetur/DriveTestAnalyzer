@@ -719,7 +719,7 @@ def test_favourite_elements_are_exported_and_imported_on_their_own(client):
     configurations = [item['name'] for item in load_report_state(core.repository)['configurations']]
     for target, label in (('complete-report-favourites', 'Complete Report Favourites'),
                           ('scoring-starred-filters', 'Scoring & GAP Starred Filters'),
-                          ('scoring-report-configurations', 'Scoring & GAP Report Configurations')):
+                          ('scoring-report-templates', 'Scoring & GAP Report Templates')):
         exported = client.get(f'/admin/import-export/export?export_target={target}')
         assert exported.status_code == 200, exported.text
         with zipfile.ZipFile(BytesIO(exported.content)) as archive:
