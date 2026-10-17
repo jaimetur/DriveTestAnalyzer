@@ -442,15 +442,45 @@ def delete_favourite(repository: Any, favourite_id: int) -> dict[str, Any] | Non
     return favourite
 
 
+FAVOURITES_FORMAT = 'drivetest-analyzer-complete-report-favourites'
+
+
 def export_entries(repository: Any) -> list[dict[str, Any]]:
-    """The favourites as the Reporting Jobs document carries them (with the names of their Dashboards)."""
+    """The favourites as their documents carry them (with the names of their Dashboards)."""
     return [{'name': item['name'], 'definition': item['definition'], 'created_by': item['created_by']}
             for item in list_favourites(repository)]
 
 
+def dashboard_ids_by_name(repository: Any) -> dict[str, str]:
+    """The Dashboards of the workspace by their name (lower case), to find those of another workspace."""
+    from src.modules.ppt_dashboards import LEGACY_STATE_KEY, STATE_KEY
+    try:
+        stored = json.loads(repository.get_workspace_state(STATE_KEY) or repository.get_workspace_state(LEGACY_STATE_KEY) or '{}')
+    except (AttributeError, TypeError, json.JSONDecodeError):
+        stored = {}
+    if not isinstance(stored, dict):
+        return {}
+    return {str(value.get('name') or '').casefold(): str(key) for key, value in stored.items() if isinstance(value, dict)}
+
+
+def export_favourites_document(repository: Any) -> bytes:
+    """The favourite Complete Reports of a workspace as a portable document (the Complete Report Favourites element
+    of Import / Export / Transfer, workspace transfers and backups)."""
+    return json.dumps({'format': FAVOURITES_FORMAT, 'version': 1, 'favourites': export_entries(repository)},
+                      ensure_ascii=False, indent=2).encode('utf-8')
+
+
+def import_favourites_document(repository: Any, content: bytes | str, username: str) -> int:
+    """Add or replace (by name) the favourite Complete Reports of a portable document; returns how many it had."""
+    document = json.loads(content)
+    if not isinstance(document, dict) or document.get('format') != FAVOURITES_FORMAT:
+        raise ValueError('The file is not a DriveTest Analyzer Complete Report Favourites export.')
+    return import_entries(repository, document.get('favourites') or [], username, dashboard_ids_by_name(repository))
+
+
 def import_entries(repository: Any, entries: Any, username: str, dashboard_ids: dict[str, str] | None = None) -> int:
-    """Add or replace (by name) the favourites of a Reporting Jobs document. ``dashboard_ids`` maps Dashboard names to
-    their IDs here, so a Dashboard of another workspace is found by its name."""
+    """Add or replace (by name) the favourites of a document. ``dashboard_ids`` maps Dashboard names to their IDs here,
+    so a Dashboard of another workspace is found by its name."""
     if not isinstance(entries, list):
         return 0
     existing = {item['name'].casefold(): item['id'] for item in list_favourites(repository)}
@@ -588,6 +618,10 @@ def _place_component(composer: compose.DeckComposer, component: Component) -> An
         title, subtitle = component.title
         if compose.join_table_pages(composer, copies):
             blocks = [compose.Block(target, compose.content_shapes(target))]
+            # A long or wide table keeps readable text: its rows continue in tables side by side.
+            frame = compose.content_frame(target, composer.width, composer.height, [blocks[0].box])
+            if compose.fit_table(target, frame) is not None:
+                blocks = []
         else:
             blocks = [compose.Block(slide, compose.content_shapes(slide)) for slide in copies]
         if any(block.shapes for block in blocks):
@@ -684,10 +718,13 @@ def compose_powerpoint(template: Path, title: str, subtitle: str, common_filters
                         break
                     group.append(candidate)
             if len(group) > 1:
-                blocks = [compose.Block(item_slide, compose.content_shapes(item_slide), item.title) for item, item_slide in group]
-                compose.merge_onto_slide(composer, slide, blocks, captions=True)
                 items = {item.item for item, _slide in group}
                 heading = section.item_titles.get(next(iter(items)), section.title) if len(items) == 1 else section.title
+                # A caption does not repeat the title of the slide: its subtitle is its caption then.
+                blocks = [compose.Block(item_slide, compose.content_shapes(item_slide),
+                                        (item.title[1], '') if item.title[0] == heading and item.title[1] else item.title)
+                          for item, item_slide in group]
+                compose.merge_onto_slide(composer, slide, blocks, captions=True)
                 compose.set_title(slide, heading, '')
                 for _item, other in group[1:]:
                     composer.remove_slide(other)
@@ -975,12 +1012,12 @@ class SectionGenerator:
 
 
 # -- generated sections kept for the next exports ------------------------------------------
-SECTION_CACHE_VERSION = 2
+SECTION_CACHE_VERSION = 3
 SECTION_CACHE_HOURS = 24
 SECTION_CACHE_FOLDER = 'cache'
 # The composed documents (PowerPoint, the packed Word and their previews), inside the section cache.
 DOCUMENT_CACHE_FOLDER = 'documents'
-DOCUMENT_CACHE_VERSION = 1
+DOCUMENT_CACHE_VERSION = 2
 _section_locks: dict[str, Lock] = {}
 _section_locks_guard = Lock()
 

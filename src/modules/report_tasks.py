@@ -740,9 +740,8 @@ def _remap_dataset_ids(definition: dict[str, Any], mapping: dict[int, int]) -> d
 
 
 def export_tasks_document(task_repository: Any) -> bytes:
-    """Portable Reporting Jobs and favourite Complete Reports; dataset references also carry their file names."""
-    from src.modules.complete_reports import export_entries
-
+    """Portable Reporting Jobs; dataset references also carry their file names. The favourite Complete Reports travel
+    as an element of their own (Complete Report Favourites)."""
     tasks = list_tasks(task_repository)
     names = {int(row['id']): str(row['file_name']) for row in task_repository.list_datasets()}
     used = set().union(*(_definition_dataset_ids(task['definition']) for task in tasks)) if tasks else set()
@@ -750,8 +749,6 @@ def export_tasks_document(task_repository: Any) -> bytes:
         'format': 'drivetest-analyzer-reporting-jobs', 'version': 1,
         'dataset_names': {str(dataset_id): names[dataset_id] for dataset_id in sorted(used) if dataset_id in names},
         'reporting_jobs': [{key: task[key] for key in ('name', 'definition', 'send_email', 'recipients', 'schedule', 'enabled', 'created_by')} for task in tasks],
-        # The favourite Complete Reports of the Reporting module (documents of earlier versions have none).
-        'complete_reports': export_entries(task_repository),
     }
     return json.dumps(document, ensure_ascii=False, indent=2).encode('utf-8')
 
@@ -791,17 +788,10 @@ def import_tasks_document(
                   parse_recipients=parse_recipients, invalid_recipients=invalid_recipients, reassign_owner=True)
         imported += 1
     if document.get('complete_reports'):
-        from src.modules.complete_reports import import_entries
-        # The Dashboards of a favourite are found here by their name.
-        from src.modules.ppt_dashboards import LEGACY_STATE_KEY, STATE_KEY
-        dashboard_ids = {}
-        try:
-            stored = json.loads(task_repository.get_workspace_state(STATE_KEY) or task_repository.get_workspace_state(LEGACY_STATE_KEY) or '{}')
-        except (AttributeError, TypeError, json.JSONDecodeError):
-            stored = {}
-        if isinstance(stored, dict):
-            dashboard_ids = {str(value.get('name') or '').casefold(): str(key) for key, value in stored.items() if isinstance(value, dict)}
-        import_entries(task_repository, document['complete_reports'], username, dashboard_ids)
+        # Documents that carried the favourite Complete Reports with the Reporting Jobs: their Dashboards are found here
+        # by their name.
+        from src.modules.complete_reports import dashboard_ids_by_name, import_entries
+        import_entries(task_repository, document['complete_reports'], username, dashboard_ids_by_name(task_repository))
     return imported
 
 

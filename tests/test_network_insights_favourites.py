@@ -67,4 +67,4 @@ def test_favourites_travel_with_their_element_and_full_workspaces(client):
     names = zipfile.ZipFile(BytesIO(output.getvalue())).namelist()
     assert names == [f'workspaces/Default/{core.NI_FAVOURITES_ARCHIVE_NAME}']
     page = client.get('/admin')
-    assert 'Network Insights Favourites' in page.text
+    assert 'Network Insights Favourites (from active workspace)' in page.text

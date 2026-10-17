@@ -1390,12 +1390,15 @@ def _cdr_hashes(repository: Repository) -> dict[int, dict[str, str]]:
     return hashes
 
 
-def saved_filters_document(repository: Repository) -> dict[str, Any]:
-    """Every Saved Filter of the workspace, without its result, with its CDRs named by their file."""
+def saved_filters_document(repository: Repository, *, starred_only: bool = False) -> dict[str, Any]:
+    """Every Saved Filter of the workspace (``starred_only``: the Starred Filters, the Scoring & GAP Starred Filters
+    element of Import / Export / Transfer, workspace transfers and backups), without its result, with its CDRs named
+    by their file."""
     hashes: dict[int, dict[str, str]] | None = None
     entries = []
     with repository.connection() as connection:
-        rows = connection.execute(f'SELECT * FROM {SAVED_FILTERS_TABLE} ORDER BY id').fetchall()
+        rows = connection.execute(f'SELECT * FROM {SAVED_FILTERS_TABLE}{" WHERE pinned = 1" if starred_only else ""} '
+                                  'ORDER BY id').fetchall()
     for row in rows:
         saved_filter = _row_to_saved_filter(row, include_snapshot=False)
         refs = _decode_json(row['cdr_refs_json'], [])

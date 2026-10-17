@@ -290,22 +290,21 @@ def interactivity_tables(analysis: dict[str, Any]) -> list[tuple[str, list[str],
     return tables
 
 
-def nr_band_tables(analysis: dict[str, Any]) -> list[tuple[str, list[str], list[list[str]]]]:
-    """NR quality per carrier (RF Quality): each group's NR samples per NR band with their medians and classes."""
+def nr_band_tables(analysis: dict[str, Any]) -> list[tuple[str, list[str], list[list[str]], list[tuple]]]:
+    """NR quality per carrier (RF Quality): each group's NR samples per NR band with their medians; its RSRP and SINR
+    classes are drawn as coloured bars from the returned classes, as in the RF Quality table, so the table keeps all
+    its columns on one slide."""
     rows = analysis.get('nr_bands') or []
     if not rows:
         return []
-
-    def classes(items: list[dict[str, Any]]) -> str:
-        return ' · '.join(f"{item['label']} {item['share']:.0f}%" for item in items if item.get('share'))
-
+    colours = analysis.get('colours') or {}
     return [('RF Quality · NR quality per carrier',
              [analysis.get('group_label') or 'Group', 'NR band', 'Samples', 'Share of the group', 'Median SS-RSRP', 'Median SS-SINR',
               'RSRP classes', 'SINR classes'],
              [[row['column'], row['band'], _number(row['samples'], 0), _number(row['share'], 1, '%'),
                '—' if row.get('rsrp_median') is None else f"{row['rsrp_median']:.1f} dBm",
-               '—' if row.get('sinr_median') is None else f"{row['sinr_median']:.1f} dB",
-               classes(row.get('rsrp_classes') or []), classes(row.get('sinr_classes') or [])] for row in rows])]
+               '—' if row.get('sinr_median') is None else f"{row['sinr_median']:.1f} dB", '', ''] for row in rows],
+             [(row.get('rsrp_classes') or [], row.get('sinr_classes') or [], colours.get(row['column'])) for row in rows])]
 
 
 def bandwidth_title(analysis: dict[str, Any]) -> str:
@@ -329,6 +328,10 @@ def bandwidth_caption(analysis: dict[str, Any], scope: str = 'download') -> str:
     return text
 
 
+# Width to height of the room the ladders get on a slide, under the title and the line that explains them.
+LADDER_ASPECT = 2.6
+
+
 def bandwidth_ladder_image(analysis: dict[str, Any], scope: str = 'download') -> BytesIO | None:
     """The total bandwidth ladders of the page as a PNG: per group (column) and environment (row), one block per
     bandwidth class, widest at the bottom, as wide as the class midpoint and as tall as its share of the tests."""
@@ -346,56 +349,70 @@ def bandwidth_ladder_image(analysis: dict[str, Any], scope: str = 'download') ->
     figure_font, wide_font = load_image_font(21, bold=True), load_image_font(21)
     wide = f"{bandwidth.get('wide_from_mhz', 100):g}"
     widest = max(item['width'] for item in classes)
+
+    def size(per: int) -> tuple[int, int]:
+        bands = -(-len(columns) // per)
+        return int(max(label_width + per * column_width, 1400)), bands * (header + len(rows) * row_height) + legend_height
+
+    # Many groups wrap onto more bands of ladders, as many as show them largest on a slide (fewer bands on a tie).
+    per = max(range(1, len(columns) + 1), key=lambda count: (min(LADDER_ASPECT / size(count)[0], 1 / size(count)[1]), count), default=1)
+    per = -(-len(columns) // -(-len(columns) // per)) if columns else 1
+    bands = [columns[index:index + per] for index in range(0, len(columns), per)]
+    band_height = header + len(rows) * row_height
     # The legend flows over as many lines as the chart width needs (at least 1,400 px wide).
-    width = int(max(label_width + len(columns) * column_width, 1400))
+    width = size(per)[0]
     legend, cursor, line = [], label_width, 0
     for item in classes:
-        size = small_font.getlength(item['label']) if hasattr(small_font, 'getlength') else 12 * len(item['label'])
-        if cursor + size + 44 > width - 24 and cursor > label_width:
+        size_text = small_font.getlength(item['label']) if hasattr(small_font, 'getlength') else 12 * len(item['label'])
+        if cursor + size_text + 44 > width - 24 and cursor > label_width:
             cursor, line = label_width, line + 1
         legend.append((item, cursor, line))
-        cursor += size + 76
-    height = header + len(rows) * row_height + legend_height + line * 48
+        cursor += size_text + 76
+    height = len(bands) * band_height + legend_height + line * 48
     image = Image.new('RGB', (width, height), 'white')
     draw = ImageDraw.Draw(image)
-    for index, column in enumerate(columns):
-        centre = label_width + index * column_width + column_width / 2
-        draw.text((centre, header - 28), str(column), fill=bandwidth.get('column_colours', {}).get(column) or '#312E81',
-                  font=title_font, anchor='ms')
-    for row_index, row in enumerate(rows):
-        top = header + row_index * row_height
-        base, plot = top + row_height - 64, row_height - 110
-        # The largest share at 100 MHz or more of the row is in bold, as in benchmark slides.
-        known = [cells[(column, row)] for column in columns if cells.get((column, row), {}).get('known')]
-        most_wide = max((cell.get('wide_share') or 0 for cell in known), default=None) if len(known) > 1 else None
-        draw.text((24, top + row_height / 2), str(row), fill='#1F2433', font=text_font, anchor='lm')
-        if row_index:
-            draw.line([(0, top), (width, top)], fill='#EEF0FF', width=4)
-        for index, column in enumerate(columns):
+    for band_index, band in enumerate(bands):
+        band_top = band_index * band_height
+        if band_index:
+            draw.line([(0, band_top + 8), (width, band_top + 8)], fill='#C7CBF7', width=4)
+        for index, column in enumerate(band):
             centre = label_width + index * column_width + column_width / 2
-            span = column_width - 56
-            draw.line([(centre - span / 2, base), (centre + span / 2, base)], fill='#C7CBF7', width=2)
-            cell = cells.get((column, row))
-            if not cell or not cell.get('known'):
-                draw.text((centre, base - 24), 'No bandwidth' if cell else 'No tests', fill='#8A8FB5', font=small_font, anchor='ms')
-                continue
-            # The figure stands right of the narrow blocks (up to 40–59 MHz), level with the top of the ladder.
-            cursor, narrow_top = float(base), float(base)
-            narrow_right = centre + classes[-3]['width'] / widest * span / 2 if len(classes) >= 3 else centre
-            for class_index, item in enumerate(classes):
-                block_width = item['width'] / widest * span
-                block_height = cell['shares'][class_index] / 100 * plot
-                cursor -= block_height
-                if class_index == len(classes) - 1:
-                    narrow_top = cursor
-                if block_height > 0:
-                    draw.rectangle([(centre - block_width / 2, cursor), (centre + block_width / 2, cursor + block_height)], fill=item['colour'])
-            # The share under 25 MHz takes the colour of its block.
-            draw.text((narrow_right + 10, narrow_top), f"{cell['narrow_share']:.0f}%", fill=classes[-1]['colour'], font=figure_font, anchor='lt')
-            is_most = most_wide is not None and (cell.get('wide_share') or 0) == most_wide
-            draw.text((centre, base + 34), f"{cell.get('wide_share') or 0:.0f}% at {wide} MHz+", fill='#1F2433' if is_most else '#3B4060',
-                      font=figure_font if is_most else wide_font, anchor='mm')
-    legend_top = header + len(rows) * row_height + 44
+            draw.text((centre, band_top + header - 28), str(column), fill=bandwidth.get('column_colours', {}).get(column) or '#312E81',
+                      font=title_font, anchor='ms')
+        for row_index, row in enumerate(rows):
+            top = band_top + header + row_index * row_height
+            base, plot = top + row_height - 64, row_height - 110
+            # The largest share at 100 MHz or more of the row is in bold, as in benchmark slides.
+            known = [cells[(column, row)] for column in columns if cells.get((column, row), {}).get('known')]
+            most_wide = max((cell.get('wide_share') or 0 for cell in known), default=None) if len(known) > 1 else None
+            draw.text((24, top + row_height / 2), str(row), fill='#1F2433', font=text_font, anchor='lm')
+            if row_index:
+                draw.line([(0, top), (width, top)], fill='#EEF0FF', width=4)
+            for index, column in enumerate(band):
+                centre = label_width + index * column_width + column_width / 2
+                span = column_width - 56
+                draw.line([(centre - span / 2, base), (centre + span / 2, base)], fill='#C7CBF7', width=2)
+                cell = cells.get((column, row))
+                if not cell or not cell.get('known'):
+                    draw.text((centre, base - 24), 'No bandwidth' if cell else 'No tests', fill='#8A8FB5', font=small_font, anchor='ms')
+                    continue
+                # The figure stands right of the narrow blocks (up to 40–59 MHz), level with the top of the ladder.
+                cursor, narrow_top = float(base), float(base)
+                narrow_right = centre + classes[-3]['width'] / widest * span / 2 if len(classes) >= 3 else centre
+                for class_index, item in enumerate(classes):
+                    block_width = item['width'] / widest * span
+                    block_height = cell['shares'][class_index] / 100 * plot
+                    cursor -= block_height
+                    if class_index == len(classes) - 1:
+                        narrow_top = cursor
+                    if block_height > 0:
+                        draw.rectangle([(centre - block_width / 2, cursor), (centre + block_width / 2, cursor + block_height)], fill=item['colour'])
+                # The share under 25 MHz takes the colour of its block.
+                draw.text((narrow_right + 10, narrow_top), f"{cell['narrow_share']:.0f}%", fill=classes[-1]['colour'], font=figure_font, anchor='lt')
+                is_most = most_wide is not None and (cell.get('wide_share') or 0) == most_wide
+                draw.text((centre, base + 34), f"{cell.get('wide_share') or 0:.0f}% at {wide} MHz+", fill='#1F2433' if is_most else '#3B4060',
+                          font=figure_font if is_most else wide_font, anchor='mm')
+    legend_top = len(bands) * band_height + 44
     draw.text((24, legend_top), 'Width, MHz (LTE + NR)', fill='#1F2433', font=text_font, anchor='lm')
     for item, left, line in legend:
         top = legend_top + line * 48
@@ -874,6 +891,16 @@ def _table_slides(presentation: Presentation, title: str, columns: list[str], ro
                 _add_textbox(slide, left, top, width, 0.3, 'No data for this selection.', size=12, color=MUTED)
 
 
+def _bar_table_slides(presentation: Presentation, title: str, columns: list[str], rows: list[list[str]], bars: list[tuple],
+                      subtitle: str = '') -> None:
+    """A table whose class columns are coloured bars (see _add_bar_table); long tables continue on more slides."""
+    pages = [range(index, min(index + TABLE_ROWS_PER_SLIDE, len(rows))) for index in range(0, len(rows), TABLE_ROWS_PER_SLIDE)]
+    for page_number, page in enumerate(pages, start=1):
+        slide = _slide(presentation, title + (f' · {page_number}/{len(pages)}' if len(pages) > 1 else ''), subtitle)
+        left, top, width, _height = _content_frame(slide)
+        _add_bar_table(slide, columns, [rows[index] for index in page], [bars[index] for index in page], left, top, width, 0.3)
+
+
 PANEL_GAP = 0.3
 
 
@@ -989,8 +1016,10 @@ def _visual_slides(presentation: Presentation, title: str, panels: list[tuple[st
     row_height = 0.24
     slide = _slide(presentation, title, subtitle)
     left, top, width, height = _content_frame(slide)
-    has_tables = below is not None or any(table for *_rest, table in panels)
-    image_height = height * (0.52 if has_tables else 1) - 0.35
+    # Tables with rows take the lower half; without rows (only the line that says so) the charts take its room.
+    has_rows = below is not None or any(table and table[1] for *_rest, table in panels)
+    notes = not has_rows and any(table for *_rest, table in panels)
+    image_height = height * (0.52 if has_rows else 1) - 0.35 - (0.45 if notes else 0)
     remaining_rows = []
     for (caption, image, note, table), (panel_left, panel_width) in zip(panels, _panel_frames(left, width, len(panels)), strict=False):
         cursor = top
@@ -1108,7 +1137,10 @@ def export_network_insights_powerpoint(destination: Path, analysis: dict[str, An
             emitted(title, lambda: _visual_slides(presentation, bandwidth_title(analysis), [('', ladder, '', None)],
                                                   subtitle=f'{measured}\n{bandwidth_caption(analysis)}'))
         emitted(title, lambda title=title, columns=columns, rows=rows: _table_slides(presentation, title, columns, rows, measured))
-    for title, columns, rows in [*nr_band_tables(analysis), *interactivity_tables(analysis)]:
+    for title, columns, rows, bars in nr_band_tables(analysis):
+        emitted(title, lambda title=title, columns=columns, rows=rows, bars=bars: _bar_table_slides(
+            presentation, title, columns, rows, bars, measured))
+    for title, columns, rows in interactivity_tables(analysis):
         emitted(title, lambda title=title, columns=columns, rows=rows: _table_slides(presentation, title, columns, rows, measured))
     warnings = analysis.get('warnings') or []
     if warnings:
@@ -1299,7 +1331,8 @@ def export_network_insights_word(destination: Path, analysis: dict[str, Any], de
                 for key, unit in [('coverage_hotspots', 'dBm'), ('interference_hotspots', 'dB')]),
               *((columns, rows) for _title, columns, rows in [*spectrum_tables(analysis), *deployment_tables(deployment), *cluster_sites_tables(analysis, deployment),
                                                               *bandwidth_tables(analysis), *nr_duplex_table(deployment),
-                                                              *nr_band_tables(analysis), *interactivity_tables(analysis)])]
+                                                              *interactivity_tables(analysis)]),
+              *((columns, rows) for _title, columns, rows, _bars in nr_band_tables(analysis))]
     needed = max((sum(length * 9 + 0.14 * 72 for length in _column_text_widths(columns, rows)) / 72
                   for columns, rows in tables), default=0)
     if needed > 10.49:
@@ -1362,8 +1395,7 @@ def export_network_insights_word(destination: Path, analysis: dict[str, Any], de
     ladder = bandwidth_ladder_image(analysis)
     for title, columns, rows in [*cluster_sites_tables(analysis, deployment), *[table for table in snapshot if table[0].startswith('Cluster')],
                                  *spectrum_tables(analysis), *[table for table in snapshot if table[0].startswith('Spectrum')],
-                                 *nr_duplex_table(deployment), *bandwidth_tables(analysis), *nr_band_tables(analysis),
-                                 *interactivity_tables(analysis)]:
+                                 *nr_duplex_table(deployment), *bandwidth_tables(analysis)]:
         if title.startswith('Spectrum · Total bandwidth,') and ladder is not None:
             # The chart on a page of its own under its title and the line that explains its figures, then its figures.
             _docx_section_heading(document, bandwidth_title(analysis), scope_text(selection))
@@ -1371,6 +1403,12 @@ def export_network_insights_word(destination: Path, analysis: dict[str, Any], de
             caption = document.add_paragraph().add_run(bandwidth_caption(analysis))
             caption.font.color.rgb = DocxRGBColor(0xA8, 0x40, 0x4D)
             document.add_picture(ladder, width=DocxInches(min(10.0, (page.page_width - page.left_margin - page.right_margin) / 914400)))
+        _docx_section_heading(document, title, scope_for(title, selection))
+        _docx_table(document, columns, rows)
+    for title, columns, rows, bars in nr_band_tables(analysis):
+        _docx_section_heading(document, title, scope_for(title, selection))
+        _docx_bar_table(document, columns, rows, bars)
+    for title, columns, rows in interactivity_tables(analysis):
         _docx_section_heading(document, title, scope_for(title, selection))
         _docx_table(document, columns, rows)
     document.save(destination)

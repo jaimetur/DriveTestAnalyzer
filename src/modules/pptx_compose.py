@@ -5,8 +5,9 @@ the layout of the same name in the destination template, or a copy of it when th
 
 A component is a chart or table of a module: the slides with the same title whose titles end in a page number
 (`· 1/3`, `· Page 2/4`, `· KPIs 1/2`) are one component, and `merge_onto_slide` puts their content on one slide,
-side by side or one under the other and as small as needed, so a component never spans several slides. Small
-consecutive components share a slide in the same way, each one under its own caption.
+side by side or one under the other and as small as needed, so a component never spans several slides. The pages of a
+table become one table (`join_table_pages`), which `fit_table` shows in up to four tables side by side when it is long.
+Small consecutive components share a slide in the same way, each one under its own caption.
 """
 from __future__ import annotations
 
@@ -24,6 +25,8 @@ from pptx.opc.constants import RELATIONSHIP_TYPE as RT
 from pptx.opc.package import PartFactory, _Relationship
 from pptx.opc.packuri import PackURI
 from pptx.util import Emu, Inches, Pt
+
+from src.modules.slide_titles import text_width_pt
 
 SECTION_PREFIX = 'section:'
 R_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
@@ -493,10 +496,16 @@ def _row_texts(row: Any) -> list[str]:
     return [' '.join(''.join(node.text or '' for node in cell.iter(f'{{{A_NS}}}t')).split()) for cell in row.iter(f'{{{A_NS}}}tc')]
 
 
+def _table_rows(table: Any) -> list[Any]:
+    return table._element.find(f'.//{{{A_NS}}}tbl').findall(f'{{{A_NS}}}tr')
+
+
 def join_table_pages(composer: DeckComposer, pages: list[Any]) -> bool:
-    """Join the pages of a table into the table of the first page: when every page has one table with the same columns
-    and the same other shapes (such as a legend), the rows of the next pages (without their header) are added to it and
-    the shapes under it move down. Returns whether the pages were joined; the other pages are then removed."""
+    """Join the pages of a table into the table of the first page: when every page has one table and the same other
+    shapes (such as a legend), the rows of the next pages with the same columns (without their header) are added to
+    it, and the pages of a table too wide for one slide (parts with other columns, each starting with the same first
+    column) add their columns to it; the shapes under it move down. Returns whether the pages were joined; the other
+    pages are then removed."""
     tables, extras = [], []
     for page in pages:
         shapes = content_shapes(page)
@@ -506,29 +515,209 @@ def join_table_pages(composer: DeckComposer, pages: list[Any]) -> bool:
         tables.append(found[0])
         extras.append(sorted(' '.join(shape.text_frame.text.split()) for shape in shapes
                              if shape is not found[0] and shape.has_text_frame))
-    first = tables[0]._element.find(f'.//{{{A_NS}}}tbl')
-    first_rows = first.findall(f'{{{A_NS}}}tr')
-    columns = len(first.findall(f'.//{{{A_NS}}}gridCol'))
-    if any(len(table._element.findall(f'.//{{{A_NS}}}gridCol')) != columns for table in tables) or any(item != extras[0] for item in extras):
+    if any(item != extras[0] for item in extras):
+        return False
+    # Consecutive pages with the same header are one part: the rows of a part continue over its pages.
+    parts: list[list[Any]] = []
+    for table in tables:
+        if parts and _row_texts(_table_rows(table)[0]) == _row_texts(_table_rows(parts[-1][0])[0]):
+            parts[-1].append(table)
+        else:
+            parts.append([table])
+    joined: list[list[Any]] = []
+    for part in parts:
+        first_rows = _table_rows(part[0])
+        rows = list(first_rows)
+        for table in part[1:]:
+            page_rows = _table_rows(table)
+            header = 0
+            while header < min(len(page_rows), len(first_rows)) - 1 and _row_texts(page_rows[header]) == _row_texts(first_rows[header]):
+                header += 1
+            rows.extend(page_rows[header:])
+        joined.append(rows)
+    # The parts of a wide table show the same rows: the same count and the same first column.
+    if len(parts) > 1 and any(len(rows) != len(joined[0]) or [_row_texts(row)[:1] for row in rows[1:]] != [_row_texts(row)[:1] for row in joined[0][1:]]
+                              for rows in joined[1:]):
         return False
     shape = tables[0]
-    bottom = shape.top + shape.height
-    for table in tables[1:]:
-        rows = table._element.find(f'.//{{{A_NS}}}tbl').findall(f'{{{A_NS}}}tr')
-        header = 0
-        while header < min(len(rows), len(first_rows)) - 1 and _row_texts(rows[header]) == _row_texts(first_rows[header]):
-            header += 1
-        for row in rows[header:]:
-            first.append(copy.deepcopy(row))
+    first = shape._element.find(f'.//{{{A_NS}}}tbl')
+    bottom, right = shape.top + shape.height, shape.left + shape.width
+    for row in joined[0][len(_table_rows(shape)):]:
+        first.append(copy.deepcopy(row))
+    grid = first.find(f'{{{A_NS}}}tblGrid')
+    for part, rows in zip(parts[1:], joined[1:]):
+        for column in part[0]._element.find(f'.//{{{A_NS}}}tblGrid').findall(f'{{{A_NS}}}gridCol')[1:]:
+            grid.append(copy.deepcopy(column))
+        for target, row in zip(first.findall(f'{{{A_NS}}}tr'), rows):
+            for cell in row.findall(f'{{{A_NS}}}tc')[1:]:
+                target.append(copy.deepcopy(cell))
+    if len(parts) > 1:
+        # The parts may have their own font size: the joined table takes the smallest.
+        sizes = [node for node in first.iter(*_TEXT_PROPERTIES) if (node.get('sz') or '').isdigit()]
+        smallest = min((int(node.get('sz')) for node in sizes), default=0)
+        for node in sizes:
+            node.set('sz', str(smallest))
     height = sum(int(row.get('h') or 0) for row in first.findall(f'{{{A_NS}}}tr'))
+    width = sum(int(column.get('w') or 0) for column in grid.findall(f'{{{A_NS}}}gridCol'))
     delta = max(0, height - shape.height)
     shape.height = max(shape.height, height)
+    shape.width = max(shape.width, width)
     for other in content_shapes(pages[0]):
         if other.shape_id != shape.shape_id and other.top >= bottom - Inches(0.05):
             other.top = other.top + delta
+        elif other.shape_id != shape.shape_id and other.left >= right - Inches(0.05):
+            other.left = other.left + max(0, width - (right - shape.left))
     for page in pages[1:]:
         composer.remove_slide(page)
     return True
+
+
+# Text is measured with Arial (as wide as the fonts LibreOffice uses for the template's Ericsson Hilda when it is not
+# installed, see slide_titles) with room for a substituted font; a block or square drawn as a bar is this wide in ems.
+TEXT_ROOM, BLOCK_CHARACTER_EM = 1.15, 0.8
+# Height of a line of text in ems.
+LINE_EM = 1.25
+# A table continues in another column beside it only when each column keeps at least these rows.
+MINIMUM_FLOW_ROWS = 6
+
+
+def _scaled_size(size: int, factor: float) -> int:
+    """A font size made ``factor`` times smaller as _scale_fonts makes it."""
+    return max(min(size, MINIMUM_FONT), int(round(size * factor)))
+
+
+def _is_block(character: str) -> bool:
+    return '\u2580' <= character <= '\u25ff'
+
+
+def _text_ems(text: str, header: bool) -> float:
+    """The width of ``text`` in ems; a header (in bold) wraps onto up to two lines, so its longest word or half of it
+    counts."""
+    def ems(value: str) -> float:
+        rest = ''.join(character for character in value if not _is_block(character))
+        return (len(value) - len(rest)) * BLOCK_CHARACTER_EM + text_width_pt(rest, 1, bold=header) * TEXT_ROOM
+    if not header:
+        return ems(text)
+    return max(max((ems(word) for word in text.split()), default=0), ems(text) / 2)
+
+
+@dataclass
+class _TableCells:
+    """What sizes a table: per cell its text width in ems, its font size and its margins, and the height of each row."""
+    cells: list[list[tuple[float, int, int, int]]]
+    heights: list[int]
+    count: int
+
+    def widths(self, factor: float) -> list[int]:
+        widths = [0] * self.count
+        for row in self.cells:
+            for column, (ems, size, sides, _ends) in enumerate(row[:self.count]):
+                widths[column] = max(widths[column], int(ems * _scaled_size(size, factor) / 100 * 12700 + sides * factor))
+        return widths
+
+    def row_heights(self, factor: float) -> list[int]:
+        return [max(int(height * factor), max((int((2 if index == 0 else 1) * LINE_EM * _scaled_size(size, factor) / 100 * 12700 + ends * factor)
+                                                for _ems, size, _sides, ends in row), default=0))
+                for index, (row, height) in enumerate(zip(self.cells, self.heights))]
+
+
+def _table_cells(table: Any, fallback_height: int) -> _TableCells:
+    rows = table.findall(f'{{{A_NS}}}tr')
+    cells = []
+    for index, row in enumerate(rows):
+        values = []
+        for cell, text in zip(row.findall(f'{{{A_NS}}}tc'), _row_texts(row)):
+            properties = cell.find(f'{{{A_NS}}}tcPr')
+            # DrawingML cell margins default to 0.1" at the sides and 0.05" at the top and bottom.
+            margins = {side: int(properties.get(side) or default) if properties is not None else default
+                       for side, default in (('marL', 91440), ('marR', 91440), ('marT', 45720), ('marB', 45720))}
+            values.append((_text_ems(text, index == 0), _cell_size(cell), margins['marL'] + margins['marR'], margins['marT'] + margins['marB']))
+        cells.append(values)
+    return _TableCells(cells, [int(row.get('h') or 0) or fallback_height for row in rows], len(table.findall(f'.//{{{A_NS}}}gridCol')))
+
+
+def _cell_size(cell: Any) -> int:
+    """The largest font size of a table cell in hundredths of a point (18pt, the DrawingML default, when it has none)."""
+    sizes = [int(node.get('sz')) for node in cell.iter(*_TEXT_PROPERTIES) if (node.get('sz') or '').isdigit()]
+    return max(sizes or [1800])
+
+
+def fit_table(slide: Any, frame: tuple[int, int, int, int], gap: int = Inches(0.25)) -> float | None:
+    """Show the only content of ``slide``, a table, as large as it fits in ``frame``: its rows in one to four tables
+    side by side (each under the header) and its columns as wide as their text needs, sharing the width of the
+    frame. Returns the scale of its text, or None when the slide has other content or the table merges cells."""
+    shapes = content_shapes(slide)
+    if len(shapes) != 1 or not shapes[0].has_table:
+        return None
+    shape = shapes[0]
+    table = shape._element.find(f'.//{{{A_NS}}}tbl')
+    rows = table.findall(f'{{{A_NS}}}tr')
+    merged = ('gridSpan', 'rowSpan', 'hMerge', 'vMerge')
+    if len(rows) < 2 or any(cell.get(name) for cell in table.iter(f'{{{A_NS}}}tc') for name in merged):
+        return None
+    sizes = _table_cells(table, shape.height // len(rows))
+    left, top, width, height = frame
+    body = len(rows) - 1
+
+    def fits(factor: float, per: int, cell: float) -> bool:
+        heights = sizes.row_heights(factor)
+        tallest = heights[0] + max(sum(heights[1 + start:1 + start + per]) for start in range(0, body, per))
+        return tallest <= height and sum(sizes.widths(factor)) <= cell
+
+    best: tuple[float, int, int] | None = None
+    for columns in range(1, 5):
+        per = math.ceil(body / columns)
+        if columns > 1 and (per < MINIMUM_FLOW_ROWS or math.ceil(body / per) < columns):
+            break
+        cell = (width - gap * (columns - 1)) / columns
+        # The largest scale that fits (both the widths and the heights grow with it).
+        low, high = 0.2, 1.0
+        if fits(high, per, cell):
+            low = high
+        else:
+            for _step in range(16):
+                middle = (low + high) / 2
+                low, high = (middle, high) if fits(middle, per, cell) else (low, middle)
+        # Another column beside it only for clearly larger text.
+        if best is None or low > best[0] * 1.15:
+            best = (low, columns, per)
+    scale, columns, per = best
+    cell = int((width - gap * (columns - 1)) / columns)
+    needed = sizes.widths(scale)
+    table_width = cell if columns > 1 else min(cell, max(shape.width, sum(needed)))
+    total = max(1, sum(needed))
+    for column, value in zip(table.findall(f'.//{{{A_NS}}}gridCol'), needed):
+        column.set('w', str(int(value * table_width / total)))
+    _scale_fonts(shape._element, scale)
+    for row, row_height in zip(rows, sizes.row_heights(scale)):
+        row.set('h', str(row_height))
+    for properties in table.iter(f'{{{A_NS}}}tcPr'):
+        for side in ('marL', 'marR', 'marT', 'marB'):
+            if properties.get(side):
+                properties.set(side, str(int(int(properties.get(side)) * scale)))
+    starts = list(range(0, body, per))
+    copies = [shape._element]
+    for _start in starts[1:]:
+        element = copy.deepcopy(shape._element)
+        copies[-1].addnext(element)
+        copies.append(element)
+    shape_id = slide.shapes._next_shape_id
+    for index, (element, start) in enumerate(zip(copies, starts)):
+        if index:
+            for properties in element.iter(f'{{{P_NS}}}cNvPr'):
+                properties.set('id', str(shape_id))
+                shape_id += 1
+        element_table = element.find(f'.//{{{A_NS}}}tbl')
+        # Each table keeps the header and its own rows.
+        for position, row in enumerate(element_table.findall(f'{{{A_NS}}}tr')[1:]):
+            if not start <= position < start + per:
+                element_table.remove(row)
+    placed = [item for item in slide.shapes if item._element in copies]
+    for index, item in enumerate(sorted(placed, key=lambda item: copies.index(item._element))):
+        item.left, item.top = int(left + index * (cell + gap)), int(top)
+        item.width = table_width
+        item.height = sum(int(row.get('h') or 0) for row in item._element.find(f'.//{{{A_NS}}}tbl').findall(f'{{{A_NS}}}tr'))
+    return scale
 
 
 def fits_together(composer: DeckComposer, blocks: list[Block], minimum_scale: float = 0.9) -> bool:

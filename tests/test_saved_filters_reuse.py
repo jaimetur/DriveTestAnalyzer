@@ -2,6 +2,7 @@
 another workspace, tell when newer CDRs replace theirs, and keep their result when their CDRs are gone."""
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import src.DriveTestAnalyzer as app_module
@@ -201,7 +202,7 @@ def test_edit_saved_filter_endpoint_is_recorded_and_calculates_only_a_changed_se
     assert queued == [7]
 
 
-def test_saved_filters_travel_with_the_scoring_configuration_backup(client, tmp_path: Path) -> None:
+def test_starred_filters_travel_with_their_own_backup_element(client, tmp_path: Path) -> None:
     response = client.post('/login', data={'username': 'admin', 'password': 'admin123'}, follow_redirects=False)
     assert response.status_code == 303
     workspace = app_module.active_workspace
@@ -213,18 +214,31 @@ def test_saved_filters_travel_with_the_scoring_configuration_backup(client, tmp_
     folder.mkdir()
     ids = _three_cdrs(repository, folder)
     used, _ = saved_filters.save_saved_filter(repository, ids, ['Operator'], 'NSA')
-    saved_filters.update_saved_filter(repository, used['id'], name='Weekly view')
+    saved_filters.update_saved_filter(repository, used['id'], name='Weekly view', pinned=True)
+    other, _ = saved_filters.save_saved_filter(repository, ids, ['Operator', 'Campaign'], 'NSA')
     backup_path = app_module.create_recurring_database_backup({
-        'components': ['scoring_configuration'], 'workspace_ids': [workspace.id],
+        'components': ['scoring_configuration', 'scoring_starred_filters'], 'workspace_ids': [workspace.id],
         'backup_path': str(tmp_path), 'max_backups': 5,
     })
-    saved_filters.delete_saved_filter(repository, used['id'])
+    for item in (used, other):
+        saved_filters.delete_saved_filter(repository, item['id'])
+    # The Scoring & GAP Analysis Configuration no longer carries them.
     app_module.restore_database_backup(backup_path, ['scoring_configuration'])
+    assert saved_filters.list_saved_filters(repository) == []
+    # The Starred Filters (not the others) travel as an element of their own.
+    app_module.restore_database_backup(backup_path, ['scoring_starred_filters'])
     [restored] = saved_filters.list_saved_filters(repository)
-    assert restored['name'] == 'Weekly view' and sorted(restored['dataset_ids']) == sorted(ids)
-    # Packages created before Saved Filters existed leave the current ones.
+    assert restored['name'] == 'Weekly view' and restored['pinned'] and sorted(restored['dataset_ids']) == sorted(ids)
+    assert 'scoring-starred-filters' in app_module.WORKSPACE_ELEMENT_EXPORT_TARGETS
+    assert app_module.archive_workspace_components_for_target('scoring-starred-filters') == ['scoring_starred_filters']
+    assert 'scoring_starred_filters' in app_module.full_workspace_archive_components()
+    # Scoring & GAP Analysis Configuration packages created before keep restoring their Saved Filters (and those made
+    # before Saved Filters existed leave the current ones).
+    earlier_package = json.dumps(saved_filters.saved_filters_document(repository)).encode()
+    saved_filters.delete_saved_filter(repository, restored['id'])
+    app_module._restore_workspace_saved_filters(workspace, earlier_package)
     app_module._restore_workspace_saved_filters(workspace, None)
-    assert len(saved_filters.list_saved_filters(repository)) == 1
+    assert [item['name'] for item in saved_filters.list_saved_filters(repository)] == ['Weekly view']
 
 
 def _starred_order(repository: Repository) -> list[int]:

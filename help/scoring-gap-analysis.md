@@ -649,7 +649,7 @@ Reference filenames, workbook cells, denominator descriptions and Tableau groupi
 Version-2 exchange envelopes must be replaced with a new export. Existing supported workspace records are normalized on read; this is different from accepting an obsolete exchange envelope.
 
 > [!IMPORTANT]
-> JSON import/export, ZIP configuration packages, transfers and configuration backup/restore use the same methodology format. Admin's Scoring Configuration packages, transfers and backups also carry the Saved Filters without their results (each one finds its CDRs by file in the receiving workspace); the results travel only with the workspace database.
+> JSON import/export, ZIP configuration packages, transfers and configuration backup/restore use the same methodology format. The Starred Filters travel on their own, as the **Scoring & GAP Starred Filters** element of Admin's Import / Export / Transfer, with Full Workspace transfers and with backups, without their results (each one finds its CDRs by file in the receiving workspace and keeps its name and order); the results travel only with the workspace database. Scoring Configuration packages and backups made before, which carried the Saved Filters, still restore them.
 
 ### Reference Prep flow and implemented calculation
 

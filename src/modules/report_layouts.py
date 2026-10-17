@@ -18,7 +18,7 @@ def dynamic_layout_axes(layout: str) -> tuple[bool, bool]:
 
 
 # Counts written as words: renaming the Operator label 3 to Three once turned "3 columns" into "Three columns" in the
-# Report Templates (see chart_mapping_reference_renamer), and those templates keep their grid.
+# Report Templates (see rename_chart_mapping_template_references), and those templates keep their grid.
 _COUNT_WORDS = {word: number for number, word in enumerate(
     ('zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve'))}
 _COUNT = r"(\d+|" + "|".join(_COUNT_WORDS) + r")"

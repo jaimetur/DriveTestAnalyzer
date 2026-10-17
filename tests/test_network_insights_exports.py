@@ -262,6 +262,14 @@ def test_bandwidth_views_and_nr_sites_by_duplex_mode_are_exported(tmp_path):
     image = bandwidth_ladder_image(analysis)
     with Image.open(image) as raster:
         assert raster.width > raster.height > 400
+    # Many groups wrap onto more rows of ladders, so the chart is not a thin strip on its slide.
+    spectrum = _bandwidth_spectrum()
+    ladders = spectrum['bandwidth']['scopes']['download']['ladders']
+    template = ladders['cells'][0]
+    ladders.update({'columns': [f'G{index}' for index in range(12)], 'environments': ['Cities'],
+                    'cells': [{**template, 'column': f'G{index}'} for index in range(12)]})
+    with Image.open(bandwidth_ladder_image({**analysis, 'spectrum': spectrum})) as raster:
+        assert 2 < raster.width / raster.height < 4
     deployment = {'nr_duplex': {'radius_m': 50, 'rows': [
         {'operator': name, 'sites': 10, 'tdd_sites': 8, 'fdd_sites': 6, 'both_sites': 4, 'tdd_only_sites': 4, 'fdd_only_sites': 2,
          'physical_sites': 9, 'physical_tdd_sites': 7, 'physical_fdd_sites': 6} for name in ('VF', 'All networks')]}}

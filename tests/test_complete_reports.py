@@ -231,6 +231,37 @@ def test_a_table_spread_over_several_slides_becomes_one_table_on_one_slide():
     assert shape.top + shape.height <= composer.height
 
 
+def test_wide_tables_join_their_parts_and_long_tables_continue_side_by_side():
+    columns = ['Operator → Campaign', *[f'Location number {index}' for index in range(14)]]
+    source = pptx_compose.deck(_deck(lambda presentation: ni._table_slides(
+        presentation, 'Under 25 MHz', columns, [[f'VF · Q{row}', *[f'{row + index}%' for index in range(14)]] for row in range(12)], 'Scope')))
+    assert len(source.slides) == 2
+    composer = pptx_compose.DeckComposer(TEMPLATE)
+    pages = [composer.add_slide(slide) for slide in source.slides]
+    assert pptx_compose.join_table_pages(composer, pages)
+    table = pptx_compose.content_shapes(pages[0])[0].table
+    # The second part adds its columns (without repeating the first one) to the same rows.
+    assert [table.cell(0, index).text for index in range(len(table.columns))] == columns
+    assert len(table.rows) == 13 and table.cell(12, 14).text == '24%'
+    frame = pptx_compose.content_frame(pages[0], composer.width, composer.height, [pptx_compose.bounds(pptx_compose.content_shapes(pages[0]))])
+    assert pptx_compose.fit_table(pages[0], frame) > 0.9
+    shape = pptx_compose.content_shapes(pages[0])[0]
+    assert shape.left + shape.width <= frame[0] + frame[2] + 10 and shape.top + shape.height <= frame[1] + frame[3]
+
+    source = pptx_compose.deck(_deck(lambda presentation: _table_pages(presentation, rows=70)))
+    pages = [composer.add_slide(slide) for slide in source.slides]
+    assert pptx_compose.join_table_pages(composer, pages)
+    frame = pptx_compose.content_frame(pages[0], composer.width, composer.height, [pptx_compose.bounds(pptx_compose.content_shapes(pages[0]))])
+    scale = pptx_compose.fit_table(pages[0], frame)
+    tables = pptx_compose.content_shapes(pages[0])
+    # The rows continue in tables beside the first one, each under the header, at a larger size than in one table.
+    assert len(tables) > 1 and scale > 0.5
+    assert all(shape.table.cell(0, 0).text == 'Group' for shape in tables)
+    assert [shape.table.cell(row, 0).text for shape in tables for row in range(1, len(shape.table.rows))] == [f'Op{index}' for index in range(70)]
+    assert all(shape.top + shape.height <= frame[1] + frame[3] and shape.left + shape.width <= frame[0] + frame[2] + 10 for shape in tables)
+    assert len({shape.shape_id for shape in tables}) == len(tables)
+
+
 def test_components_join_the_pages_of_a_chart_or_table_but_not_slides_of_the_same_title():
     def build(presentation):
         _small_table(presentation, 'RF Quality', 'rf_quality')
@@ -287,6 +318,8 @@ def test_the_powerpoint_has_a_cover_a_cover_per_section_and_compacts_small_compo
     snapshot = deck.slides[3]
     texts = [shape.text_frame.text for shape in snapshot.shapes if shape.has_text_frame]
     assert any(text.startswith('Network Snapshot · Inventory quality') for text in texts)
+    # A caption does not repeat the title of the slide: the subtitle of the first table is its caption then.
+    assert 'Scope' in texts and not any(text.startswith('Network Snapshot\n') for text in texts)
 
 
 def _item(width, height):
@@ -318,7 +351,7 @@ def test_word_pages_take_consecutive_components_of_one_section_without_splitting
     assert document[:2] == b'PK'
 
 
-def test_favourites_are_saved_listed_and_travel_with_the_reporting_jobs(client):
+def test_favourites_are_saved_listed_and_travel_as_their_own_element(client):
     login(client)
     options = client.get('/api/reporting/complete-report/options')
     assert options.status_code == 200, options.text
@@ -335,16 +368,35 @@ def test_favourites_are_saved_listed_and_travel_with_the_reporting_jobs(client):
     assert renamed.status_code == 200 and renamed.json()['favourite']['name'] == 'Monthly report'
     actions = [row['action'] for row in core.repository.list_logs(limit=20)]
     assert 'complete_report_favourite_saved' in actions
-    # The favourites travel with the Reporting Jobs document, and are added or replaced by name.
-    document = json.loads(report_tasks.export_tasks_document(core.repository))
-    assert [item['name'] for item in document['complete_reports']] == ['Monthly report']
+    # The favourites travel as the Complete Report Favourites element (not with the Reporting Jobs), and are added or
+    # replaced by name.
+    assert 'complete_reports' not in json.loads(report_tasks.export_tasks_document(core.repository))
+    document = json.loads(complete_reports.export_favourites_document(core.repository))
+    assert document['format'] == complete_reports.FAVOURITES_FORMAT
+    assert [item['name'] for item in document['favourites']] == ['Monthly report']
     assert client.delete(f"/api/reporting/complete-report/favourites/{favourite['id']}").status_code == 200
     assert complete_reports.list_favourites(core.repository) == []
-    core._restore_workspace_reporting_jobs(core.active_workspace, json.dumps(document).encode(), 'super')
+    assert core._restore_workspace_complete_report_favourites(core.active_workspace, json.dumps(document).encode(), 'super') == 1
     restored = complete_reports.list_favourites(core.repository)
     assert [item['name'] for item in restored] == ['Monthly report']
     assert restored[0]['definition']['sections'][0]['items'][0]['label'] == 'Weekly Dashboard'
     assert 'complete_report_favourite_deleted' in [row['action'] for row in core.repository.list_logs(limit=20)]
+    # Reporting Jobs documents that carried them still bring them.
+    complete_reports.delete_favourite(core.repository, restored[0]['id'])
+    jobs = {'format': 'drivetest-analyzer-reporting-jobs', 'version': 1, 'reporting_jobs': [],
+            'complete_reports': document['favourites']}
+    core._restore_workspace_reporting_jobs(core.active_workspace, json.dumps(jobs).encode(), 'super')
+    assert [item['name'] for item in complete_reports.list_favourites(core.repository)] == ['Monthly report']
+    # The element, the workspace packages and the backups carry them.
+    assert 'complete-report-favourites' in core.WORKSPACE_ELEMENT_EXPORT_TARGETS
+    assert core.archive_workspace_components_for_target('complete-report-favourites') == ['complete_report_favourites']
+    assert 'complete_report_favourites' in core.full_workspace_archive_components()
+    output = BytesIO()
+    with zipfile.ZipFile(output, 'w') as archive:
+        core._archive_workspace_complete_report_favourites(archive, core.active_workspace, 'workspaces/Default')
+    assert zipfile.ZipFile(BytesIO(output.getvalue())).namelist() == [f'workspaces/Default/{core.CR_FAVOURITES_ARCHIVE_NAME}']
+    page = client.get('/admin').text
+    assert 'Complete Report Favourites (from active workspace)' in page and 'Scoring &amp; GAP Starred Filters (from active workspace)' in page
 
 
 def test_a_report_without_sections_is_refused_and_the_table_is_listed(client):
@@ -582,3 +634,37 @@ def test_a_saved_filter_of_the_same_cdrs_and_filters_is_used_whatever_its_split_
     assert core._matching_saved_filter(None, base, [1, 2, 3], {'Operator': ['vf']}) is starred
     assert core._matching_saved_filter(None, base, [1, 2, 3], {'Operator': ['EE']}) is None
     assert core._matching_saved_filter(None, {**base, 'scoring_profile_id': None}, [1, 2, 3], {'Operator': ['VF']}) is None
+
+
+def test_favourite_elements_are_exported_and_imported_on_their_own(client):
+    import time
+
+    login(client)
+    definition = complete_reports.normalize_definition({})
+    complete_reports.save_favourite(core.repository, None, 'Quarterly', definition, 'super')
+    for target, label in (('complete-report-favourites', 'Complete Report Favourites'),
+                          ('scoring-starred-filters', 'Scoring & GAP Starred Filters')):
+        exported = client.get(f'/admin/import-export/export?export_target={target}')
+        assert exported.status_code == 200, exported.text
+        with zipfile.ZipFile(BytesIO(exported.content)) as archive:
+            manifest = json.loads(archive.read('manifest.json'))
+            document = json.loads(archive.read(manifest['archive_path']))
+        assert manifest['kind'] == target and manifest['source_workspace']['name'] == 'Default'
+        inspection = client.post('/admin/import-export/inspect',
+                                 files={'package': (f'{target}.zip', BytesIO(exported.content), 'application/zip')})
+        assert inspection.status_code == 200, inspection.text
+        imported = client.post('/admin/import-export/import/jobs', data={
+            'upload_id': inspection.headers['X-Import-Upload-Id'], 'confirmed_import': 'true', 'workspace_ids': 'default'})
+        assert imported.status_code == 200, imported.text
+        for _attempt in range(100):
+            status = client.get(imported.json()['status_url']).json()
+            if status['status'] in {'ready', 'failed'}:
+                break
+            time.sleep(0.01)
+        assert status['status'] == 'ready', status
+        assert label in json.dumps(status)
+        if target == 'complete-report-favourites':
+            assert [item['name'] for item in document['favourites']] == ['Quarterly']
+            assert [item['name'] for item in complete_reports.list_favourites(core.repository)] == ['Quarterly']
+        else:
+            assert document['saved_filters'] == []
