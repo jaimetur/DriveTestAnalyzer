@@ -74,7 +74,18 @@
     <summary class="collapsible-summary"><div><p class="eyebrow">RSRP &amp; SINR</p><h2>RF Quality</h2></div><span class="collapse-chip">Collapse</span></summary>
     <div class="collapsible-panel-body"><p class="ni-intro">How RSRP and SINR are distributed in every group: cumulative curves, percentiles and quality classes.</p>
       <div id="ni-rf-sections" class="ni-technology-sections"><p class="form-note">No analysis yet.</p></div>
+      <h3 class="ni-subtitle" id="ni-nr-bands-title">NR quality per carrier</h3>
+      <div class="table-wrap ni-table-wrap"><table class="ni-table" id="ni-nr-bands"><tbody><tr><td class="form-note">No analysis yet.</td></tr></tbody></table></div>
+      <p class="form-note ni-note">NR quality per carrier: the NR samples of each group per NR band, with their share of the group, median SS-RSRP and SS-SINR and the share in each quality class, so a carrier that reaches a lower quality than the others stands out.</p>
       <p class="form-note ni-note">With LTE+NR, LTE and NR are analysed separately, each with its own thresholds. Curves keep the Operator/Vendor colour; the latest campaign is drawn thickest and older campaigns progressively thinner. Quality classes — RSRP: Excellent ≥ -80, Good ≥ -90, Fair ≥ -100, Poor ≥ -110 dBm, Very poor below. SINR: Excellent ≥ 20, Good ≥ 13, Fair ≥ 5, Poor ≥ 0 dB, Bad below. Voice uses the measuring (A) side.</p>
+    </div>
+  </details>
+
+  <details class="panel collapsible-panel ni-panel" open data-panel-state-key="network-insights:interactivity">
+    <summary class="collapsible-summary"><div><p class="eyebrow">Gaming &amp; video chat tests</p><h2>Latency &amp; Interactivity</h2></div><span class="collapse-chip">Collapse</span></summary>
+    <div class="collapsible-panel-body"><p class="ni-intro">How the interactivity tests (gaming and video chat) of every group went in each environment: their failures, round trip, packet loss and jitter, each ranked among the groups.</p>
+      <div id="ni-interactivity" class="ni-interactivity"><p class="form-note">No analysis yet.</p></div>
+      <p class="form-note ni-note">The CDR Data tests of type Interactivity. Failed: their result is not completed; the round trip is the median of each passed test (Interactivity_RTT_Median), shown as the median and the slowest tenth (P90) of the tests; packet loss: the share of passed tests that lost a packet; jitter: the median delay variation of the tests. The shade ranks the groups of each environment, from the best (green) to the worst (red).</p>
     </div>
   </details>
 
@@ -147,8 +158,11 @@
       <div class="ni-map-toolbar ni-bandwidth-toolbar"><label title="The CDR Data tests whose bandwidths are counted below">Tests<select id="ni-bandwidth-tests">{% for key, label in network_insights_config.bandwidth_scopes.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select></label><p class="form-note" id="ni-bandwidth-status"></p></div>
       <h3 class="ni-subtitle" id="ni-band-bandwidth-title">Bandwidth per band</h3>
       <div class="table-wrap ni-table-wrap"><table class="ni-table" id="ni-band-bandwidth"><tbody><tr><td class="form-note">No analysis yet.</td></tr></tbody></table></div>
+      <div class="ni-map-toolbar ni-ladder-toolbar"><label title="The columns of the ladders: the groups of the analysis, or each group split by the kind of site or the RAN Vendor of the cell that served the tests">Ladders per<select id="ni-ladder-split"><option value="group">Group</option><option value="site_type">Group and kind of serving site</option><option value="vendor">Group and RAN Vendor of the serving cell</option></select></label></div>
       <div id="ni-total-bandwidth" class="ni-ladder-host"><div class="ni-ladder"><div class="ni-ladder-head"><h3 class="ni-ladder-title">{{ network_insights_config.bandwidth_title }}</h3></div><p class="form-note">No analysis yet.</p></div></div>
-      <p class="form-note ni-note">Bandwidth per band: the samples of each serving band per DL bandwidth of its primary carrier (LTE PCell or NR PCell). Total bandwidth (LTE + 5G): each test's LTE bandwidth (its mean over the aggregated LTE carriers, else its LTE PCell bandwidth, rounded up to 5 MHz) plus its NR PCell bandwidth; the CDRs do not report the bandwidth of NR secondary carriers, so NR carrier aggregation is not added. Each block is as wide as the midpoint of its class and as tall as its share of the tests with a known bandwidth; the figure is the share below 25 MHz. Big cities (driven and walked) are Cities, medium and small cities are Towns, and connecting roads, highways and train routes are Roads and railways.</p>
+      <h3 class="ni-subtitle" id="ni-locations-title">Download tests by location</h3>
+      <div id="ni-bandwidth-locations" class="ni-strips"><p class="form-note">No analysis yet.</p></div>
+      <p class="form-note ni-note">Bandwidth per band: the samples of each serving band per DL bandwidth of its primary carrier (LTE PCell or NR PCell). Bandwidth of each test (LTE + NR): each test's LTE bandwidth (its mean over the aggregated LTE carriers, else its LTE PCell bandwidth, rounded up to 5 MHz) plus its NR PCell bandwidth; the CDRs do not report the bandwidth of NR secondary carriers, so NR carrier aggregation is not added. Each block is as wide as the midpoint of its class and as tall as its share of the tests with a known bandwidth; the figure beside it is the share below 25 MHz and the one under it the share at 100 MHz or more. Ladders per kind of serving site or RAN Vendor split each group by the cell that served the start of the tests (the serving-cell Vendor Mapping), keeping the combinations with 20 tests or more of a known bandwidth. Download tests by location: per City (the most measured ones, with 15 tests or more in a group), the share of the download tests under 25 MHz and the share that failed or reached 5 Mbit/s or less. Big cities (driven and walked) are Cities, medium and small cities are Towns, and connecting roads, highways and train routes are Roads and railways.</p>
     </div>
   </details>
 

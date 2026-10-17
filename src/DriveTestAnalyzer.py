@@ -95,6 +95,7 @@ from src.modules.cdr_stage import (
     CDR_STAGE_LABELS, CDR_STAGES, IN_COMBINED_LABELS, IN_COMBINED_VALUES, combined_dataset_ids, combined_inclusion,
     dataset_cdr_stage, infer_cdr_stage, normalize_cdr_stage, normalize_in_combined,
 )
+from src.modules.scoring_themes import THEMES as SCORING_THEMES, load_user_theme, normalize_theme, save_user_theme, themes_payload
 from src.modules.scoring_vendors import normalize_scoring_vendor_result, scoring_vendor_name, scoring_vendor_names, scoring_vendor_operators
 from src.modules.cdr_auto_selection import campaign_presets
 from src.modules.saved_filters import (
@@ -17451,6 +17452,10 @@ class SavedFilterRequest(BaseModel):
     area_summary: dict[str, Any] | None = None
 
 
+class ScoringThemeRequest(BaseModel):
+    theme: str
+
+
 class ScoringSelectionRequest(BaseModel):
     selection: dict[str, Any] | None = None
     dataset_ids: list[Any] = Field(default_factory=list)
@@ -17629,12 +17634,32 @@ def scoring_page(request: Request, user: SessionUser = Depends(current_user)) ->
         'scoring_profiles': scoring_profiles,
         'scoring_active_profile_id': active_profile_id,
         'scoring_active_profile_name': active_profile_name,
+        'scoring_themes': themes_payload(),
+        'scoring_theme': load_user_theme(task_repository, user.username),
     })
 
 
 @app.get('/api/scoring/saved-filters')
 def saved_filters_list(user: SessionUser = Depends(current_user)) -> dict[str, Any]:
     return {'saved_filters': list_saved_filters(scoring_repository(user))}
+
+
+@app.get('/api/scoring/theme')
+def scoring_theme_get(user: SessionUser = Depends(current_user)) -> dict[str, Any]:
+    """The colour theme the user chose for the Scoring & GAP Analysis charts and tables, with every theme."""
+    return {'theme': load_user_theme(scoring_repository(user), user.username), **themes_payload()}
+
+
+@app.put('/api/scoring/theme')
+def scoring_theme_put(payload: ScoringThemeRequest, user: SessionUser = Depends(current_user)) -> dict[str, Any]:
+    task_repository = scoring_repository(user)
+    if payload.theme.strip().casefold() not in SCORING_THEMES:
+        raise HTTPException(status_code=400, detail=f'Unknown theme: {payload.theme}.')
+    previous = load_user_theme(task_repository, user.username)
+    theme = save_user_theme(task_repository, user.username, payload.theme)
+    if theme != previous:
+        task_repository.try_add_log(user.username, 'scoring_theme_changed', json.dumps({'theme': theme, 'previous': previous}))
+    return {'theme': theme}
 
 
 @app.get('/api/scoring/selection')
@@ -18060,12 +18085,24 @@ def scoring_saved_filter_export(
     show_gap_values: bool = True,
     split_charts: bool = True,
     scoring: str = 'best_network',
+    theme: str | None = None,
+    scorings: list[str] | None = Query(default=None),
+    environments: list[str] | None = Query(default=None),
     user: SessionUser = Depends(current_user),
 ) -> Response:
     if table_mode is not None and table_mode not in {'expanded', 'summary'}:
         raise HTTPException(status_code=400, detail='Table mode must be expanded or summary.')
     if scoring not in {'best_network', 'most_reliable'}:
         raise HTTPException(status_code=400, detail='Scoring must be best_network or most_reliable.')
+    # The PowerPoint and Word take the scorings and environments ticked in the export dialog; without them, every
+    # scoring and environment of the Saved Filter.
+    export_scorings = list(dict.fromkeys(str(item).strip() for item in scorings or [] if str(item).strip())) or None
+    if export_scorings and not set(export_scorings) <= {'best_network', 'most_reliable'}:
+        raise HTTPException(status_code=400, detail='Scorings must be best_network or most_reliable.')
+    export_environments = list(dict.fromkeys(str(item).strip() for item in environments or [] if str(item).strip())) or None
+    if export_kind in {'ppt', 'word'} and export_environments:
+        # The ticked environments replace the one the page shows.
+        environment = 'all'
     if gap_layout is not None and gap_layout not in {'end', 'adjacent'}:
         raise HTTPException(status_code=400, detail='GAP layout must be end or adjacent.')
     task_repository = scoring_repository(user)
@@ -18075,10 +18112,15 @@ def scoring_saved_filter_export(
     if saved_filter['status'] != 'completed':
         raise HTTPException(status_code=409, detail='The Saved Filter must finish calculating before export.')
 
+    # The PowerPoint and Word take the theme of the page, else the one the user chose.
+    export_theme = normalize_theme(theme) if theme else load_user_theme(task_repository, user.username)
+
     def logged_export(response: Response) -> Response:
         task_repository.try_add_log(user.username, f'export_scoring_{export_kind}', json.dumps({
             'saved_filter_id': filter_id, 'starred': bool(saved_filter.get('pinned')), 'name': saved_filter.get('name') or '',
-            'environment': environment,
+            'environment': environment, **({'theme': export_theme} if export_kind in {'ppt', 'word'} else {}),
+            **({'scorings': export_scorings} if export_kind in {'ppt', 'word'} and export_scorings else {}),
+            **({'environments': export_environments} if export_kind in {'ppt', 'word'} and export_environments else {}),
         }))
         return response
     from src.modules.scoring_views import normalize_result_gaps
@@ -18172,7 +18214,8 @@ def scoring_saved_filter_export(
                 vendor_mapping_groups=vendor_mapping_groups,
                 gap_layout=gap_layout or 'end', environment=selected_environment,
                 show_gap_values=show_gap_values,
-                split_charts=split_charts,
+                split_charts=split_charts, theme=export_theme,
+                scorings=export_scorings, environments=export_environments,
             )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -18184,7 +18227,7 @@ def scoring_saved_filter_export(
         if export_kind == 'word':
             # The Word document carries the same slides: one landscape page per slide.
             from src.modules.pptx_to_docx import pptx_to_docx
-            content = pptx_to_docx(content, 'Scoring & GAP Analysis')
+            content = pptx_to_docx(content, 'Scoring & GAP Analysis', pack_sections=True)
             filename = str(Path(filename).with_suffix('.docx'))
             media_type = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
         disposition = f"attachment; filename*=UTF-8''{quote(filename)}"
@@ -18299,7 +18342,7 @@ def build_scoring_report_document(task_repository: Repository, base: dict[str, A
         entries.append({'scenario': scenario, 'job': export_job, 'result': result})
     content = export_scoring_report(
         entries, template, operator_mapping_groups, split_charts=split_charts,
-        vendor_mapping_groups=task_repository.list_vendor_mapping_groups(),
+        vendor_mapping_groups=task_repository.list_vendor_mapping_groups(), theme=report['theme'],
     )
     first = entries[0]['job']
     if len(entries) == 1:
@@ -18354,7 +18397,7 @@ def scoring_report(export_kind: str, payload: ScoringReportRequest, user: Sessio
     media_type = 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
     if export_kind == 'word':
         from src.modules.pptx_to_docx import pptx_to_docx
-        content = pptx_to_docx(content, 'Scoring & GAP Analysis')
+        content = pptx_to_docx(content, 'Scoring & GAP Analysis', pack_sections=True)
         filename = str(Path(filename).with_suffix('.docx'))
         media_type = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
     task_repository.try_add_log(user.username, f'export_scoring_report_{export_kind}', json.dumps({

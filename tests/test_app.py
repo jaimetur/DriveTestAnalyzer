@@ -11018,10 +11018,11 @@ def test_every_tab_lists_its_sections_with_icons_in_the_colour_of_its_module(cli
         assert key in menus, key
         assert f'data-module-sections="{key}"' in page, key
     # Each entry has its icon, and the menu the colour of its module.
-    assert menus['scoring'].count('class="menu-item-icon"') == 6
+    assert menus['scoring'].count('class="menu-item-icon"') == 9
     assert 'data-module-sections-for="scoring" aria-label="Scoring &amp; GAP Analysis sections" style="--menu-accent: ' in page
     # Scoring Results lists its result tabs beside it.
-    assert 'href="/scoring#scoring-results-tables"' in menus['scoring']
+    for tab in ('summary', 'charts', 'tables', 'locations', 'gap', 'points-lost'):
+        assert f'href="/scoring#scoring-results-{tab}"' in menus['scoring'], tab
     # Help groups its chapters, Reference with the Readme and the Changelog.
     help_menu = menus['help']
     assert '>Help Home<' in help_menu

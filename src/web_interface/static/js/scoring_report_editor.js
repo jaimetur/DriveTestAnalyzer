@@ -5,11 +5,26 @@
   const LEVELS = ['Operator', 'Vendor', 'Region', 'Cluster', 'City', 'Campaign'];
   const FILTERS = ['Operator', 'Operator_Vendor', 'Vendor_Operator', 'Vendor', 'Region', 'Cluster', 'City', 'Campaign'];
   const SCORINGS = [['best_network', 'Best Network'], ['most_reliable', 'Most Reliable Network']];
+  // The slides of each scoring, in the groups (and order) of the results tabs.
+  const SUMMARY_OPTIONS = [
+    ['standings', 'Standings: where each operator stands'], ['position', 'Position per environment and service'],
+    ['levers', 'Biggest levers against the reference'], ['scope', 'How the measurements ran'],
+  ];
   const CHART_OPTIONS = [
     ['service', 'Scoring per Service'], ['category', 'Scoring per Category'],
-    ['breakdown', 'Scoring per Category (Breakdown)'], ['location_cards', 'Scoring per City / Cluster / Region cards'],
-    ['trend', 'Scoring trend (more than four campaigns)'],
+    ['breakdown', 'Scoring per Category (Breakdown)'], ['trend', 'Scoring trend (more than four campaigns)'],
   ];
+  const LOCATION_OPTIONS = [
+    ['cards', 'Scoring per City / Cluster / Region cards'], ['ranking', 'Locations ranked'],
+    ['versus', 'Each operator against the reference per location'],
+  ];
+  const POINTS_OPTIONS = [
+    ['stake', 'Where the points go'], ['kpis', 'Points lost per KPI'], ['map', 'Points lost per City map'], ['vendors', 'Points lost per Vendor'],
+    ['site_types', 'Points lost per kind of site'], ['sites', 'Sites to review'], ['stretches', 'Route stretches'],
+  ];
+  // Options of configurations saved before that are now in another group.
+  const MOVED_OPTIONS = {'locations:cards': ['charts', 'location_cards'], 'points:map': ['gap', 'points_loss_map'],
+    'points:kpis': ['gap', 'profile']};
   const TABLE_OPTIONS = [
     ['summary', 'Category table'], ['breakdown', 'Breakdown table'], ['kpi_values', 'Show KPI values'],
     ['gap_values', 'Show GAP values'], ['campaign_comparison', 'Campaign comparison (two latest campaigns)'],
@@ -26,7 +41,7 @@
     breakdown: 'Region', cities: ['London'], main_cities: false});
   const GAP_OPTIONS = [
     ['all_operators', 'Table comparing all the chosen operators'], ['individual', 'Individual tables against the reference'],
-    ['profile', 'KPI GAP Profile'], ['points_loss_map', 'Points lost per City map'],
+    ['parts', 'GAP by part over the campaigns'], ['profile', 'KPI GAP Profile'],
   ];
   const DEFAULT_OPERATORS = /^(vf|vodafone|3|three|h3g)(?![a-z0-9])/i;
 
@@ -41,11 +56,29 @@
   function defaultOptions(operators) {
     return {
       enabled: true, environments: 'all',
-      charts: {service: true, category: true, breakdown: true, location_cards: true, trend: true},
+      summary: {standings: true, position: true, levers: true, scope: true},
+      charts: {service: true, category: true, breakdown: true, trend: true},
       tables: {summary: true, breakdown: true, kpi_values: false, gap_values: false, campaign_comparison: true},
+      locations: {cards: true, ranking: true, versus: true},
       gap: {operators: (operators || []).filter((name) => DEFAULT_OPERATORS.test(String(name).trim())),
-        all_operators: true, individual: true, profile: true, points_loss_map: true},
+        all_operators: true, individual: true, parts: true, profile: true},
+      points: {stake: true, kpis: true, map: true, vendors: true, site_types: true, sites: true, stretches: true},
     };
+  }
+
+  // The options of a scoring with every group, those saved before in another group read from it.
+  function completeOptions(options) {
+    const defaults = defaultOptions([]);
+    for (const [group, values] of Object.entries(defaults)) {
+      if (typeof values !== 'object' || Array.isArray(values)) continue;
+      options[group] = options[group] && typeof options[group] === 'object' ? options[group] : {};
+      for (const [option, value] of Object.entries(values)) {
+        if (option === 'operators' || option in options[group]) continue;
+        const moved = MOVED_OPTIONS[`${group}:${option}`];
+        options[group][option] = moved && options[moved[0]] && moved[1] in options[moved[0]] ? Boolean(options[moved[0]][moved[1]]) : value;
+      }
+    }
+    return options;
   }
 
   function defaultScenario({name = 'National', filters = {}, levels = ['Operator'], mainCities = false, operators = []} = {}) {
@@ -294,18 +327,23 @@
     head.append(environments);
     panel.append(head);
     if (!options.enabled) return panel;
+    completeOptions(options);
     const body = el('div', 'scoring-report-scoring-body');
+    const group = (title, list, name) => optionGroup(title, list, options[name], (option, checked) => { options[name][option] = checked; },
+      `scoring:${key}:${name}`);
     body.append(
+      group('Summary', SUMMARY_OPTIONS, 'summary'),
       optionGroup('Scoring Charts', CHART_OPTIONS.map(([option, text]) => [option, text.startsWith('Scoring per') ? `${label} ${text}` : text]),
         options.charts, (option, checked) => { options.charts[option] = checked; }, `scoring:${key}:charts`),
-      optionGroup('Scoring Tables', TABLE_OPTIONS, options.tables, (option, checked) => { options.tables[option] = checked; }, `scoring:${key}:tables`),
+      group('Scoring Tables', TABLE_OPTIONS, 'tables'),
+      group('Locations', LOCATION_OPTIONS.map(([option, text]) => [option, option === 'cards' ? `${label} ${text}` : text]), 'locations'),
     );
-    const gap = optionGroup('GAP Analysis', GAP_OPTIONS, options.gap, (option, checked) => { options.gap[option] = checked; }, `scoring:${key}:gap`);
+    const gap = group('GAP Analysis', GAP_OPTIONS, 'gap');
     const compared = checklist('Operators to compare', operators, options.gap.operators,
       (values) => { options.gap.operators = values; });
     compared.dataset.diffKey = `scoring:${key}:gap:operators`;
     gap.prepend(compared);
-    body.append(gap);
+    body.append(gap, group('Points Lost', POINTS_OPTIONS, 'points'));
     panel.append(body);
     return panel;
   }
@@ -592,6 +630,7 @@
           if (!scenario.context_filters.Operator.length) delete scenario.context_filters.Operator;
         }
         Object.values(scenario.scorings || {}).forEach((options) => {
+          if (options && typeof options === 'object') completeOptions(options);
           if (options?.gap?.operators) options.gap.operators = available(options.gap.operators, gapOperators);
         });
       });
@@ -616,6 +655,10 @@
       // The configuration it was chosen from, shown in the selector when the editor opens.
       const openedName = String(state.name || '');
       delete state.name;
+      // The colour theme of the document: the one of the configuration, else the one chosen on the page.
+      const themes = Array.isArray(context.themes) ? context.themes : [];
+      const knownTheme = (id) => themes.some((theme) => theme.id === id);
+      state.theme = knownTheme(state.theme) ? state.theme : knownTheme(context.theme) ? context.theme : 'netcheck';
       const dialog = el('dialog', 'scoring-report-dialog');
       const header = el('div', 'scoring-report-header');
       header.append(el('h2', '', title));
@@ -674,17 +717,37 @@
         return node;
       };
       toolbar.append(saved);
+      if (themes.length) {
+        const themeLabel = el('label', 'scoring-report-theme', 'Theme ');
+        themeLabel.title = 'The colours of the charts and tables of the document';
+        const themeSelect = el('select');
+        themeSelect.setAttribute('aria-label', 'Colour theme of the report');
+        for (const theme of themes) {
+          const option = el('option', '', theme.label);
+          option.value = theme.id;
+          option.title = theme.description || '';
+          themeSelect.append(option);
+        }
+        themeSelect.value = state.theme;
+        themeSelect.addEventListener('change', () => { state.theme = themeSelect.value; });
+        themeLabel.append(themeSelect);
+        toolbar.append(themeLabel);
+        state.syncTheme = () => { themeSelect.value = state.theme; };
+      }
       // Choosing a configuration in the selector loads it (Default included).
       const load = (value) => {
         if (value === DEFAULT_VALUE) {
           state.scenarios = defaultConfiguration(context.defaults).scenarios;
+          state.theme = knownTheme(context.theme) ? context.theme : 'netcheck';
           setStatus('Default configuration: one scenario with the calculation filters and Split by levels.', 'success');
         } else {
           const item = savedConfigurations.find((entry) => entry.name === value);
           if (!item) return;
           state.scenarios = operators.configuration(clone(item.configuration), knownOperators).scenarios;
+          state.theme = knownTheme(item.configuration?.theme) ? item.configuration.theme : 'netcheck';
           setStatus(`Loaded “${item.name}”.`, 'success');
         }
+        state.syncTheme?.();
         render();
         lastChosen = value === DEFAULT_VALUE ? '' : value;
         syncSelector();
@@ -703,7 +766,7 @@
         try {
           const payload = await api('/api/scoring/report-configurations', {
             method: 'POST', headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({name: name.trim(), configuration: {scenarios: state.scenarios}}),
+            body: JSON.stringify({name: name.trim(), configuration: {scenarios: state.scenarios, theme: state.theme}}),
           });
           lastChosen = name.trim();
           refreshSaved(payload);
@@ -787,7 +850,8 @@
           // The chosen configuration's name is kept while its scenarios have no unsaved changes.
           const match = matchingConfiguration();
           const chosenName = match === DEFAULT_VALUE ? DEFAULT_NAME : match;
-          close({configuration: {...clone(state), ...(chosenName ? {name: chosenName} : {})}, action});
+          const {syncTheme: _syncTheme, ...chosen} = state;
+          close({configuration: {...clone(chosen), ...(chosenName ? {name: chosenName} : {})}, action});
         });
         footer.append(node);
       }

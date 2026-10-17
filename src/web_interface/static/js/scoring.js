@@ -84,6 +84,76 @@
     }
   });
 
+  // The colour themes of the charts and tables (see scoring_themes.py), NetCheck by default. The views are written in
+  // the NetCheck colours: themedColor translates each one, and every shade of the GAP scale, into the chosen theme.
+  const scoringThemeData = (() => {
+    try { return JSON.parse(document.getElementById('scoring-themes-data')?.textContent || '{}'); } catch { return {}; }
+  })();
+  const scoringThemes = Array.isArray(scoringThemeData.themes) ? scoringThemeData.themes : [];
+  const netcheckTheme = scoringThemes.find(theme => theme.id === 'netcheck') || scoringThemes[0] || null;
+  const themeSources = new Map((scoringThemeData.sources || []).map(([color, token, position]) => [String(color).toUpperCase(), [token, position]]));
+  let activeTheme = scoringThemes.find(theme => theme.id === root.dataset.scoringTheme) || netcheckTheme || {};
+  const themeSelect = root.querySelector('[data-scoring-theme-select]');
+  const hexChannels = color => [1, 3, 5].map(index => Number.parseInt(color.slice(index, index + 2), 16));
+  const blendHex = (start, end, amount) => `#${hexChannels(start).map((value, index) => Math.round(value + (hexChannels(end)[index] - value)
+    * Math.max(0, Math.min(1, amount))).toString(16).padStart(2, '0')).join('').toUpperCase()}`;
+  // How far a colour lies from white towards ``end``, when it lies on that blend.
+  function gradientAmount(color, end, start = '#FFFFFF') {
+    const low = hexChannels(start), high = hexChannels(end), value = hexChannels(color);
+    const spans = high.map((channel, index) => channel - low[index]);
+    const axis = spans.reduce((best, span, index) => (Math.abs(span) > Math.abs(spans[best]) ? index : best), 0);
+    if (!spans[axis]) return null;
+    const amount = (value[axis] - low[axis]) / spans[axis];
+    if (!(amount > 0 && amount <= 1)) return null;
+    return spans.every((span, index) => Math.abs(low[index] + span * amount - value[index]) <= 2.5) ? amount : null;
+  }
+  function themedColor(color) {
+    const text = String(color || '').trim();
+    const key = /^#?[0-9a-f]{6}$/i.test(text) ? `#${text.replace('#', '').toUpperCase()}` : null;
+    if (!key || !activeTheme || !netcheckTheme || activeTheme.id === netcheckTheme.id) return color;
+    const source = themeSources.get(key);
+    if (source) {
+      const [token, position] = source;
+      const value = position === null || position === undefined ? activeTheme[token]
+        : token === 'bands' ? activeTheme.bands?.[position] : activeTheme[token]?.[position];
+      if (value) return value;
+    }
+    for (const token of ['gap_negative', 'gap_positive']) {
+      const amount = gradientAmount(key, netcheckTheme[token], netcheckTheme.gap_neutral);
+      if (amount !== null) return blendHex(activeTheme.gap_neutral, activeTheme[token], amount);
+    }
+    return color;
+  }
+  const rgbaOf = (color, alpha) => `rgba(${hexChannels(color).join(',')},${alpha})`;
+  // The share of the largest GAP of its table a GAP cell holds (0 to 1), read from the NetCheck shade the views give it.
+  function gapShare(color) {
+    const text = String(color || '').trim();
+    if (!netcheckTheme || !/^#?[0-9a-f]{6}$/i.test(text)) return 0;
+    const key = `#${text.replace('#', '').toUpperCase()}`;
+    for (const token of ['gap_negative', 'gap_positive']) {
+      const amount = gradientAmount(key, netcheckTheme[token], netcheckTheme.gap_neutral);
+      if (amount !== null) return Math.min(1, amount / .85);
+    }
+    return 0;
+  }
+  const themeStyleTokens = {
+    title: 'title', accent: 'accent', header: 'header', 'header-text': 'header_text', 'soft-header': 'soft_header',
+    'soft-header-text': 'soft_header_text', weight: 'weight', maximum: 'maximum', 'gap-header': 'gap_header', group: 'group',
+    'group-alt': 'group_alt', font: 'font', 'number-font': 'number_font', surface: 'surface', ink: 'ink', muted: 'muted', line: 'line',
+    category: 'category', total: 'total', 'row-alt': 'row_alt', border: 'border', best: 'best', worst: 'worst', loss: 'loss',
+    gain: 'gain', 'loss-text': 'loss_text', 'gain-text': 'gain_text', voice: 'voice', data: 'data',
+    'kpi-reliable': 'kpi_reliable', 'kpi-diff': 'kpi_diff', 'gap-negative': 'gap_negative', 'gap-positive': 'gap_positive',
+  };
+  function applyThemeStyles() {
+    for (const [name, token] of Object.entries(themeStyleTokens)) {
+      if (activeTheme?.[token]) root.style.setProperty(`--st-${name}`, activeTheme[token]);
+    }
+    // The strong colour of each score band: the dot, bar or tile of the themes that do not fill the cells.
+    for (const [band, color] of Object.entries(activeTheme?.band_strong || {})) root.style.setProperty(`--st-band-${band.toLowerCase()}`, color);
+    root.dataset.scoringTheme = activeTheme?.id || 'netcheck';
+  }
+  applyThemeStyles();
+
   const savedFiltersUrl = root.dataset.savedFiltersUrl || '/api/scoring/saved-filters';
   const selectionUrl = root.dataset.selectionUrl || '/api/scoring/selection';
   const exportBase = root.dataset.exportBase || '/scoring/saved-filters';
@@ -94,7 +164,7 @@
     encodeURIComponent(document.body.dataset.authenticatedUser || 'anonymous'),
     encodeURIComponent(root.dataset.scoringWorkspaceId || 'unknown'),
   ].join(':');
-  const resultTabNames = new Set(['scoring', 'gap', 'charts']);
+  const resultTabNames = new Set(['summary', 'charts', 'scoring', 'locations', 'gap', 'points']);
   function readScoringViewState() {
     try {
       const stored = JSON.parse(window.sessionStorage.getItem(scoringViewStorageKey) || 'null');
@@ -358,11 +428,11 @@
   // table titles.
   let resultScopeFilters = {};
   // Reloading the page keeps the selected results tab; opening the page again
-  // from another page always starts on Scoring Charts.
+  // from another page always starts on Summary.
   const pageReloaded = (() => {
     try { return performance.getEntriesByType('navigation')[0]?.type === 'reload'; } catch { return false; }
   })();
-  let activeResultTab = (pageReloaded && restoredScoringViewState.resultTab) || 'charts';
+  let activeResultTab = (pageReloaded && restoredScoringViewState.resultTab) || 'summary';
   // Insight selections (such as the KPI GAP Profile and Points Lost Map location and operators) are kept
   // when the page is reloaded; opening the page again starts from the defaults.
   const insightSelections = new Map(pageReloaded ? Object.entries(restoredScoringViewState.insightSelections || {}) : []);
@@ -2114,7 +2184,7 @@
       link.setAttribute('aria-disabled', String(!enabled));
       link.tabIndex = enabled ? 0 : -1;
       const query = `table_mode=${encodeURIComponent(selectedTableMode())}&gap_layout=${encodeURIComponent(selectedGapLayout())}&environment=${encodeURIComponent(selectedEnvironment || 'all')}`;
-      const gapOption = kind === 'ppt' ? `&show_gap_values=${showGapValues() ? 'true' : 'false'}` : '';
+      const gapOption = kind === 'ppt' ? `&show_gap_values=${showGapValues() ? 'true' : 'false'}&theme=${encodeURIComponent(activeTheme?.id || 'netcheck')}` : '';
       // CSV files carry the selected scoring; PowerPoint and Word carry both scorings.
       const scoringOption = kind !== 'ppt' && typeof effectiveScoring === 'function'
         && effectiveScoring() === 'most_reliable' ? '&scoring=most_reliable' : '';
@@ -2152,7 +2222,8 @@
     const choice = await window.ScoringReportEditor.open({
       title: 'Scoring & GAP Analysis report',
       configuration: state?.last || window.ScoringReportEditor.defaultConfiguration(defaults),
-      context: {filterOptions, operators: filterOptions.Operator || [], mainCities, defaults, operatorGroups},
+      context: {filterOptions, operators: filterOptions.Operator || [], mainCities, defaults, operatorGroups,
+        themes: scoringThemes, theme: activeTheme?.id || 'netcheck'},
       actions: [['word', 'Generate Word'], ['ppt', 'Generate PowerPoint']],
     });
     if (!choice) return;
@@ -2169,17 +2240,57 @@
 
   // Export Selected Scoring Report (Results panel) exports the selected Saved Filter as it was calculated (its
   // CDRs, Split by levels and filters): it only asks for PowerPoint or Word.
+  // The scorings and environments the export offers: Best Network and All Environments are ticked; Most Reliable only
+  // when the Saved Filter has it, and each environment of its results.
+  function scoringExportChoices() {
+    const mostReliable = currentResults ? Boolean(currentResults?.scorings?.most_reliable) : true;
+    const environments = [...(environmentSelect?.options || [])]
+      .filter(option => option.value && option.value !== 'all')
+      .map(option => ({value: option.value, label: option.textContent.trim() || option.value}));
+    return {mostReliable, environments};
+  }
+
+  function scoringExportDialogHtml(message, {mostReliable, environments}) {
+    const escape = value => String(value ?? '').replace(/[&<>'"]/g, character => (
+      {'&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'}[character]));
+    const box = (group, value, label, checked, disabled = false, note = '') => `<label class="scoring-export-choice">`
+      + `<input type="checkbox" data-scoring-export-${group} value="${escape(value)}"${checked ? ' checked' : ''}${disabled ? ' disabled' : ''}>`
+      + `<span>${escape(label)}${note ? ` <small>${escape(note)}</small>` : ''}</span></label>`;
+    return `<p>${escape(message)}</p>`
+      + '<fieldset class="scoring-export-choices"><legend>Scorings</legend>'
+      + box('scoring', 'best_network', 'Best Network', true)
+      + box('scoring', 'most_reliable', 'Most Reliable', false, !mostReliable, mostReliable ? '' : '(not calculated for this Saved Filter)')
+      + '</fieldset><fieldset class="scoring-export-choices"><legend>Environments</legend>'
+      + box('environment', 'Combined', 'All Environments', true, false, '(all the environments combined)')
+      + environments.map(environment => box('environment', environment.value, environment.label, false)).join('')
+      + '</fieldset>';
+  }
+
   async function exportSelectedScoringReport(link) {
-    const message = 'Export the selected scoring report with the CDRs, Split by levels and filters it was calculated with.';
+    const message = 'Export the selected scoring report with the CDRs, Split by levels and filters it was calculated with. '
+      + 'Choose the scorings and the environments to include.';
+    const choices = scoringExportChoices();
     const choice = typeof showConfirmDialog === 'function'
       ? await showConfirmDialog(message, {
         title: 'Export Selected Scoring Report', confirmLabel: 'PowerPoint', secondaryLabel: 'Word', cancelLabel: 'Cancel',
-        variant: 'document-format',
+        variant: 'document-format', copyHtml: scoringExportDialogHtml(message, choices),
       })
       : 'confirm';
     if (choice !== 'confirm' && choice !== 'secondary') return;
+    const ticked = group => [...document.querySelectorAll(`input[data-scoring-export-${group}]`)]
+      .filter(input => input.checked && !input.disabled).map(input => input.value);
+    const scorings = typeof showConfirmDialog === 'function' ? ticked('scoring') : ['best_network'];
+    const environments = typeof showConfirmDialog === 'function' ? ticked('environment') : ['Combined'];
+    if (!scorings.length || !environments.length) {
+      const warning = `Tick at least one ${scorings.length ? 'environment' : 'scoring'} to export.`;
+      if (typeof showInfoDialog === 'function') showInfoDialog(warning, {title: 'Nothing to export'});
+      else window.alert(warning);
+      return;
+    }
     const url = new URL(link.href, window.location.href);
     if (choice === 'secondary') url.pathname = url.pathname.replace(/\/export\/ppt$/, '/export/word');
+    for (const scoring of scorings) url.searchParams.append('scorings', scoring);
+    for (const environment of environments) url.searchParams.append('environments', environment);
     await downloadScoringDocument(url.href, choice === 'secondary' ? 'Word' : 'PowerPoint');
   }
 
@@ -2500,7 +2611,8 @@
       measurement.font = styles.font;
       const contentWidth = measurement.measureText(cell.textContent.trim()).width;
       if (contentWidth <= 0 || available <= contentWidth * 1.05) continue;
-      const scale = Math.min(1.65, available / (contentWidth * 1.05));
+      // How much larger than their font the values may grow to fill their cells depends on the theme.
+      const scale = Math.min(Number(activeTheme?.value_scale) || 1.65, available / (contentWidth * 1.05));
       cell.style.fontSize = `${Math.round(fontSize * scale * 10) / 10}px`;
     }
   }
@@ -2542,7 +2654,7 @@
       item.className = 'scoring-legend-item';
       const swatch = document.createElement('span');
       swatch.className = 'scoring-legend-swatch';
-      if (color) swatch.style.backgroundColor = color;
+      if (color) swatch.style.backgroundColor = themedColor(color);
       swatch.setAttribute('aria-hidden', 'true');
       const copy = document.createElement('span');
       copy.className = 'scoring-legend-copy';
@@ -2565,7 +2677,7 @@
   function appendOperatorRankingLegend(pane) {
     const container = document.createElement('div');
     container.className = 'scoring-threshold-legend scoring-operator-ranking-legend';
-    for (const [label, color] of [['Best operator', '#C6EFCE'], ['Worst operator', '#FFC7CE']]) {
+    for (const [label, color] of [['Best operator', activeTheme.best || '#C6EFCE'], ['Worst operator', activeTheme.worst || '#FFC7CE']]) {
       const item = document.createElement('span');
       item.className = 'scoring-legend-item';
       const swatch = document.createElement('span');
@@ -2595,8 +2707,8 @@
       const maximum = Math.max(...entries.map(entry => entry.points));
       const minimum = Math.min(...entries.map(entry => entry.points));
       for (const entry of maximum === minimum ? [] : entries) {
-        if (entry.points === maximum) colors.set(entry.id, '#C6EFCE');
-        else if (entry.points === minimum) colors.set(entry.id, '#FFC7CE');
+        if (entry.points === maximum) colors.set(entry.id, activeTheme.best || '#C6EFCE');
+        else if (entry.points === minimum) colors.set(entry.id, activeTheme.worst || '#FFC7CE');
       }
     }
     return colors;
@@ -2607,9 +2719,9 @@
     const maximum = Number(tableData?.gap_scale_max);
     if (!Number.isFinite(maximum) || maximum <= 0) return;
     const colors = tableData?.gap_scale_colors && typeof tableData.gap_scale_colors === 'object' ? tableData.gap_scale_colors : {};
-    const negativeColor = safeHexColor(firstValue(colors, ['loss', 'negative'], ''));
-    const neutralColor = safeHexColor(firstValue(colors, ['zero', 'neutral'], ''));
-    const positiveColor = safeHexColor(firstValue(colors, ['advantage', 'positive'], ''));
+    const negativeColor = themedColor(safeHexColor(firstValue(colors, ['loss', 'negative'], '')));
+    const neutralColor = themedColor(safeHexColor(firstValue(colors, ['zero', 'neutral'], '')));
+    const positiveColor = themedColor(safeHexColor(firstValue(colors, ['advantage', 'positive'], '')));
     const container = document.createElement('div');
     container.className = 'scoring-gap-scale';
     const label = document.createElement('span');
@@ -2633,9 +2745,9 @@
     const maximum = Number(tableData?.gap_scale_max);
     if (!Number.isFinite(maximum) || maximum <= 0 || !rows.length) return;
     const colors = tableData?.gap_scale_colors && typeof tableData.gap_scale_colors === 'object' ? tableData.gap_scale_colors : {};
-    const neutralColor = safeHexColor(firstValue(colors, ['zero', 'neutral'], ''));
-    const positiveColor = safeHexColor(firstValue(colors, ['advantage', 'positive'], ''));
-    const negativeColor = safeHexColor(firstValue(colors, ['loss', 'negative'], ''));
+    const neutralColor = themedColor(safeHexColor(firstValue(colors, ['zero', 'neutral'], '')));
+    const positiveColor = themedColor(safeHexColor(firstValue(colors, ['advantage', 'positive'], '')));
+    const negativeColor = themedColor(safeHexColor(firstValue(colors, ['loss', 'negative'], '')));
     const container = document.createElement('div');
     container.className = 'scoring-gap-scale scoring-gap-scale-positive';
     const label = document.createElement('span');
@@ -2671,8 +2783,12 @@
     if (className) td.className = className;
     styleIncompleteValue(td);
     const band = firstValue(cell, ['threshold_band', 'band'], '');
-    const color = safeHexColor(firstValue(cell, ['color', 'threshold_color'], ''));
+    const color = themedColor(safeHexColor(firstValue(cell, ['color', 'threshold_color'], '')));
     if (!isTotal && color) td.style.backgroundColor = color;
+    if (!isTotal && band) {
+      td.classList.add('scoring-band-cell');
+      td.dataset.band = band;
+    }
     if (isTotal && !formatted.complete) {
       td.classList.add('scoring-total-partial');
       td.style.backgroundColor = '#e6e9ea';
@@ -2692,7 +2808,7 @@
     }
     if (summaryColor !== null) {
       td.style.backgroundColor = summaryColor;
-      if (summaryColor) td.dataset.operatorRank = summaryColor === '#C6EFCE' ? 'best' : 'worst';
+      if (summaryColor) td.dataset.operatorRank = summaryColor === (activeTheme.best || '#C6EFCE') ? 'best' : 'worst';
     }
     row.append(td);
   }
@@ -2712,7 +2828,7 @@
     const numeric = value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value));
     td.textContent = `${formatMatrixNumber(value, true)}${partial && numeric ? '*' : ''}`;
     styleIncompleteValue(td);
-    const safeColor = safeHexColor(color);
+    const safeColor = themedColor(safeHexColor(color));
     if (safeColor) td.style.backgroundColor = safeColor;
     const partialNote = partialGapCoverage(partial, environments);
     if (partialNote) td.title = partialNote;
@@ -2727,6 +2843,12 @@
       } else if (numericValue < 0) {
         td.className = 'scoring-gap-loss';
       }
+      const share = gapShare(color);
+      td.dataset.gap = numericValue > 0 ? 'gain' : numericValue < 0 ? 'loss' : 'zero';
+      td.style.setProperty('--gap-share', share.toFixed(3));
+      if (share >= .45) td.dataset.gapStrong = 'true';
+    } else {
+      td.dataset.gap = 'none';
     }
     row.append(td);
   }
@@ -2739,7 +2861,7 @@
     const label = document.createElement('td');
     label.colSpan = 3;
     label.textContent = 'Total KPI GAP';
-    label.style.backgroundColor = '#D7E0E5';
+    label.style.backgroundColor = themedColor('#D7E0E5');
     row.append(label);
     for (const columnId of columnIds) {
       const values = rows.map(item => columnId === null ? item?.gap_points : item?.gaps?.[columnId]);
@@ -2777,9 +2899,10 @@
   }
 
   function applyGapCategoryRunColors(tbody) {
-    const colors = ['#edf3f8', '#e3ecf3'];
+    // The category runs alternate two shades of the group colour of the theme.
+    const colors = [activeTheme.group || '#edf3f8', activeTheme.group_alt || '#e3ecf3'];
     [...tbody.querySelectorAll('td.scoring-category-cell')].forEach((cell, index) => {
-      cell.style.setProperty('background-color', colors[index % colors.length], 'important');
+      cell.style.setProperty('--run-color', colors[index % colors.length]);
     });
   }
 
@@ -2818,6 +2941,214 @@
     const scale = aside.querySelector('.scoring-gap-scale');
     if (scale) scale.style.cssText = 'margin: 0; justify-content: flex-end;';
     parent.append(aside);
+  }
+
+  function scorecardNumber(text) {
+    const number = Number.parseFloat(String(text ?? '').replace('−', '-').replace(/[^0-9.+-]/g, ''));
+    return Number.isFinite(number) ? number : null;
+  }
+
+  // The KPI cell of the scorecard: the badge of its type, its name and, quietly, its weight and maximum.
+  function decorateScorecardLabel(cell, {type = '', typeLabel = '', weight = '', maximum = '', category = ''} = {}) {
+    const name = document.createElement('span');
+    name.className = 'scoring-kpi-name';
+    name.textContent = cell.textContent.trim();
+    cell.replaceChildren();
+    cell.classList.add('scoring-kpi-label');
+    if (category) {
+      const tag = document.createElement('span');
+      tag.className = 'scoring-kpi-category';
+      tag.textContent = category;
+      cell.append(tag);
+    }
+    if (type === 'reliable' || type === 'diff') {
+      const badge = document.createElement('span');
+      badge.className = 'scoring-kpi-badge';
+      badge.dataset.kpiType = type;
+      badge.textContent = type === 'reliable' ? 'R' : 'D';
+      badge.title = `${typeLabel || type} KPI`;
+      cell.append(badge);
+    }
+    cell.append(name);
+    const meta = [weight && weight !== 'N/A*' ? `${weight}%` : '', maximum && maximum !== 'N/A*' ? `${maximum} pts` : '']
+      .filter(Boolean).join(' · ');
+    if (meta) {
+      const detail = document.createElement('span');
+      detail.className = 'scoring-kpi-meta';
+      detail.textContent = meta;
+      cell.append(detail);
+    }
+    const description = [typeLabel && typeLabel !== '—' ? `${typeLabel} KPI` : '', weight && weight !== 'N/A*' ? `weight ${weight}%` : '',
+      maximum && maximum !== 'N/A*' ? `maximum ${maximum} points` : ''].filter(Boolean).join(' · ');
+    if (description) cell.title = [cell.title, description].filter(Boolean).join(' — ');
+  }
+
+  // A row of the scorecard: the type, weight and maximum move into the KPI cell, and every score keeps the share of
+  // its maximum (the bar or tile the theme draws) and every score and GAP its colour (the tint the theme may use).
+  function decorateScorecardRow(row) {
+    const cells = [...row.cells];
+    const column = name => cells.find(cell => cell.dataset.column === name);
+    const type = column('type');
+    const weight = column('weight');
+    const maximum = column('maximum');
+    let label = column('kpi');
+    if (!label) {
+      label = cells.find(cell => !cell.dataset.column || cell.dataset.column === 'category');
+      if (!label) return;
+      label.dataset.column = 'kpi';
+    }
+    const info = {
+      type: type?.dataset.kpiType || '',
+      typeLabel: type?.textContent.trim() || '',
+      weight: weight?.textContent.trim() || '',
+      maximum: maximum?.textContent.trim() || '',
+    };
+    for (const cell of [type, weight, maximum, column('category')]) {
+      if (cell && cell !== label) cell.remove();
+    }
+    label.colSpan = 1;
+    label.style.removeProperty('background-color');
+    decorateScorecardLabel(label, info);
+    const maximumPoints = scorecardNumber(info.maximum);
+    for (const cell of [...row.cells]) {
+      if (cell.dataset.column !== 'score' && cell.dataset.column !== 'gap') continue;
+      const tint = cell.style.backgroundColor;
+      if (tint) {
+        cell.style.setProperty('--cell-tint', tint);
+        cell.style.removeProperty('background-color');
+      }
+      const points = scorecardNumber(cell.textContent);
+      if (cell.dataset.column === 'score' && points !== null && maximumPoints) {
+        cell.style.setProperty('--share', Math.max(0, Math.min(1, points / maximumPoints)).toFixed(3));
+      }
+    }
+  }
+
+  // The tables of Scoring Tables and GAP Analysis read as a scorecard: no Category, Type, Weight or Max columns, each
+  // category opens its own section (its subtotal, when the table has one) and the header starts with the operators.
+  // When the KPIs are ordered by GAP, their categories are no longer together, so each KPI carries its category.
+  function applyScorecardLayout(table) {
+    if (!table?.tHead) return;
+    table.classList.add('scoring-scorecard');
+    const head = table.tHead;
+    let corner = null;
+    for (const row of [...head.rows]) {
+      for (const cell of [...row.cells]) {
+        if (cell.dataset.column === 'kpi' && !corner) corner = cell;
+        else if (['category', 'type', 'weight', 'maximum'].includes(cell.dataset.column)) cell.remove();
+      }
+    }
+    if (corner) {
+      corner.textContent = corner.textContent.trim() === 'CATEGORY' ? 'Category' : corner.textContent.trim();
+      corner.classList.add('scoring-scorecard-corner');
+    }
+    // A lone Score group says nothing the operators below it do not: the header starts with the operators.
+    const first = head.rows[0];
+    const groups = first ? [...first.cells].filter(cell => cell.classList.contains('scoring-column-group')) : [];
+    if (corner && head.rows.length > 1 && groups.length === 1 && groups[0].classList.contains('scoring-score-group')) {
+      groups[0].remove();
+      corner.rowSpan = Math.max(1, corner.rowSpan - 1);
+      head.rows[1].prepend(corner);
+      if (!first.cells.length) first.remove();
+    }
+    for (const row of head.rows) {
+      for (const cell of row.cells) {
+        if (!cell.classList.contains('scoring-operator-header') && !cell.classList.contains('scoring-gap-operator-header')) continue;
+        cell.style.removeProperty('background-color');
+        cell.style.removeProperty('color');
+        const chip = document.createElement('span');
+        chip.className = 'scoring-operator-chip';
+        chip.append(...cell.childNodes);
+        cell.append(chip);
+      }
+    }
+
+    const body = table.tBodies[0];
+    const runs = [];
+    for (const row of body ? [...body.rows] : []) {
+      const categoryCell = [...row.cells].find(cell => cell.dataset.column === 'category');
+      if (categoryCell) {
+        runs.push({category: categoryCell.textContent.trim(), rows: []});
+        categoryCell.remove();
+      }
+      runs.at(-1)?.rows.push(row);
+      decorateScorecardRow(row);
+    }
+    for (const row of table.tFoot ? [...table.tFoot.rows] : []) decorateScorecardRow(row);
+    const width = Math.max(1, ...[...(body?.rows || [])].map(row => [...row.cells].reduce((sum, cell) => sum + (cell.colSpan || 1), 0)));
+    const grouped = new Set(runs.map(run => run.category)).size === runs.length;
+    for (const run of runs) {
+      if (!grouped) {
+        for (const row of run.rows) {
+          const label = [...row.cells].find(cell => cell.dataset.column === 'kpi');
+          if (!label) continue;
+          const tag = document.createElement('span');
+          tag.className = 'scoring-kpi-category';
+          tag.textContent = run.category;
+          label.prepend(tag);
+        }
+        continue;
+      }
+      let section = run.rows.find(row => row.classList.contains('scoring-category-subtotal'));
+      if (section) {
+        const name = [...section.cells].find(cell => cell.dataset.column === 'kpi')?.querySelector('.scoring-kpi-name');
+        if (name) name.textContent = run.category;
+      } else {
+        section = document.createElement('tr');
+        const cell = document.createElement('th');
+        cell.scope = 'rowgroup';
+        cell.colSpan = width;
+        cell.dataset.column = 'kpi';
+        cell.className = 'scoring-kpi-label';
+        const name = document.createElement('span');
+        name.className = 'scoring-kpi-name';
+        name.textContent = run.category;
+        const count = document.createElement('span');
+        count.className = 'scoring-kpi-meta';
+        const kpis = run.rows.length;
+        count.textContent = `${kpis} KPI${kpis === 1 ? '' : 's'}`;
+        cell.append(name, count);
+        section.append(cell);
+      }
+      body.insertBefore(section, run.rows[0]);
+      section.classList.add('scoring-section-row');
+      section.dataset.category = run.category;
+    }
+    markScorecardGroupEdges(table);
+  }
+
+  // The first column of each operator (major) and of each group below it, such as a city (minor), so the themes can
+  // set the groups apart.
+  function markScorecardGroupEdges(table) {
+    const occupied = [];
+    const edges = new Map();
+    [...table.tHead.rows].forEach((row, rowIndex) => {
+      occupied[rowIndex] ||= [];
+      let column = 0;
+      for (const cell of row.cells) {
+        while (occupied[rowIndex][column]) column += 1;
+        const span = cell.colSpan || 1;
+        const major = cell.classList.contains('scoring-operator-header') || cell.classList.contains('scoring-gap-operator-header')
+          || cell.classList.contains('scoring-column-group');
+        if (major || span > 1) {
+          if (column > 0) edges.set(column, major || edges.get(column) === 'major' ? 'major' : 'minor');
+          cell.dataset.groupEdge = major ? 'major' : 'minor';
+        }
+        for (let rowOffset = 0; rowOffset < (cell.rowSpan || 1); rowOffset += 1) {
+          occupied[rowIndex + rowOffset] ||= [];
+          for (let columnOffset = 0; columnOffset < span; columnOffset += 1) occupied[rowIndex + rowOffset][column + columnOffset] = true;
+        }
+        column += span;
+      }
+    });
+    for (const row of [...table.tBodies[0]?.rows || [], ...table.tFoot?.rows || []]) {
+      let column = 0;
+      for (const cell of row.cells) {
+        const edge = edges.get(column);
+        if (edge && cell.colSpan === 1) cell.dataset.groupEdge = edge;
+        column += cell.colSpan || 1;
+      }
+    }
   }
 
   function appendMatrixTable(pane, tableData) {
@@ -3072,6 +3403,7 @@
       tfoot.append(row);
       table.append(tfoot);
     }
+    applyScorecardLayout(table);
     wrapper.append(table);
     pane.append(wrapper);
     observeScoringValueCells(table, wrapper);
@@ -3456,6 +3788,7 @@
       tfoot.append(row);
       table.append(tfoot);
     }
+    applyScorecardLayout(table);
     wrapper.append(table);
     pane.append(wrapper);
     observeScoringValueCells(table, wrapper);
@@ -3623,6 +3956,7 @@
     applyGapCategoryRunColors(tbody);
     table.append(thead, tbody);
     appendGapTotals(table, rows, columns.map(column => column.id));
+    applyScorecardLayout(table);
     wrapper.append(table);
     pane.append(wrapper);
     observeScoringValueCells(table, wrapper);
@@ -3763,9 +4097,11 @@
             partialGapCoverage(partial, item?.gap_environments),
           ].filter(Boolean).join(' ');
           const color = safeHexColor(item?.gap_color);
-          if (color) cell.style.backgroundColor = color;
+          if (color) cell.style.backgroundColor = themedColor(color);
           if (Number(value) > 0) cell.classList.add('scoring-gap-gain');
           if (Number(value) < 0) cell.classList.add('scoring-gap-loss');
+          cell.dataset.gap = !numericGap ? 'none' : Number(value) > 0 ? 'gain' : Number(value) < 0 ? 'loss' : 'zero';
+          cell.style.setProperty('--gap-share', gapShare(color).toFixed(3));
         } else {
           cell.textContent = value === null || value === undefined || value === '' ? 'N/A' : String(value);
           if (key === 'kpi') cell.title = String(item.kpi_code || item.kpi || '');
@@ -3777,6 +4113,7 @@
     applyGapCategoryRunColors(tbody);
     table.append(thead, tbody);
     appendGapTotals(table, rows, [null]);
+    applyScorecardLayout(table);
     wrapper.append(table);
     pane.append(wrapper);
     observeScoringValueCells(table, wrapper);
@@ -3923,7 +4260,7 @@
     applyGapCategoryRunColors(tbody);
     table.append(thead, tbody);
     appendGapTotals(table, rows, comparisons);
-
+    applyScorecardLayout(table);
     wrapper.append(table);
     pane.append(wrapper);
     observeScoringValueCells(table, wrapper);
@@ -5162,7 +5499,7 @@
         environments.set(name, {name, ...bestNetworkTotals(table).allocation});
       }
     }
-    const palette = ['#176E77', '#E6A81D', '#C55A11', '#5B9BD5', '#A64D79'];
+    const palette = activeTheme.environments || ['#176E77', '#E6A81D', '#C55A11', '#5B9BD5', '#A64D79'];
     const allocations = [...environments.values()].map((item, index) => ({...item, color: palette[index % palette.length]}))
       .filter(item => combined || item.name.toLowerCase() === requested.toLowerCase());
     if (!allocations.length) return [{name: requested, ...bestNetworkTotals(tableData).allocation, color: palette[0]}];
@@ -5204,7 +5541,7 @@
         if (Number.isFinite(points) && points > 0) totals.set(category, (totals.get(category) || 0) + points);
       }
     }
-    const palette = ['#4472C4', '#7030A0', '#C55A11', '#5B9BD5', '#A64D79', '#548235', '#D65F8D', '#8064A2'];
+    const palette = activeTheme.categories || ['#4472C4', '#7030A0', '#C55A11', '#5B9BD5', '#A64D79', '#548235', '#D65F8D', '#8064A2'];
     return [...totals].map(([label, value], index) => ({label, value, original: originals.get(label), color: palette[index % palette.length]}));
   }
 
@@ -5255,8 +5592,9 @@
   }
 
   function makeMaximumAllocationDonut(environments, categories = null) {
-    const voiceColor = '#4472C4';
-    const dataColor = '#7030A0';
+    // Voice and Data take the first two colours of the categories of the theme.
+    const voiceColor = activeTheme.categories?.[0] || '#4472C4';
+    const dataColor = activeTheme.categories?.[1] || '#7030A0';
     const combined = environments.length > 1;
     const total = environments.reduce((sum, item) => sum + item.Voice + item.Data, 0);
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -5510,12 +5848,16 @@
     chartFocusReturn = null;
   }
 
-  // Information about the calculation, such as environments scaled to the maximum scoring.
-  // NetCheck-style insights of the selected scoring: location cards, scoring trends,
-  // KPI GAP profiles and campaign comparisons, as in the PowerPoint and Word exports.
-  const insightVoiceColor = '#F2A900';
-  const insightDataColor = '#0E6B66';
+  // Insights of the selected scoring (where each operator stands, location cards and rankings, scoring trends, KPI GAP
+  // profiles, campaign comparisons and Points Lost), as in the PowerPoint and Word exports. Losses and GAPs behind the
+  // reference are red and gains green; Voice points are amber and Data points teal.
+  let insightVoiceColor = activeTheme.voice || '#F2A900';
+  let insightDataColor = activeTheme.data || '#0E6B66';
+  let insightLossColor = activeTheme.loss || '#e8414f';
+  let insightGainColor = activeTheme.gain || '#4ca65a';
   const insightFallbackColors = ['#E60000', '#0B6E8F', '#7A3DB8', '#00A3AD', '#F2A900', '#4CA65A', '#8C564B', '#5B6770'];
+  // The position of an operator: green for the first, light green for the second, light red in between, red for the last.
+  let insightRankColors = activeTheme.ranks || ['#2f8a3e', '#7cbf73', '#f0868e', '#e8414f'];
 
   function insightItems(payload, kind, environment) {
     const items = payload?.views?.insights?.[kind];
@@ -5562,123 +5904,136 @@
     return {wrapper, value: select.value};
   }
 
+  // The rank of each value (1 for the highest; equal values share their rank).
+  function insightRanks(values) {
+    return values.map(value => 1 + values.filter(other => other > value + 1e-9).length);
+  }
+
+  // A card per City, Cluster or Region: its operators from the highest score, each a bar of its Data points followed by
+  // its Voice points (in the Data and Voice colours of the theme), with its total and, behind the first, its distance to it.
   function makeLocationCardChart(card, maximum) {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    const operators = card.operators || [];
-    const width = Math.max(190, operators.length * 48 + 20), height = 230;
-    const top = 26, bottom = 30, plotHeight = height - top - bottom;
-    const scale = value => (Number(value) || 0) / (Number(maximum) || 1) * plotHeight * .9;
+    const operators = [...(card.operators || [])].sort((left, right) => right.total - left.total);
+    const ranks = insightRanks(operators.map(item => item.total));
+    const width = 320, rowHeight = 30, top = 4, labelWidth = 96, valueWidth = 78;
+    const height = top + operators.length * rowHeight + 4;
+    const plot = width - labelWidth - valueWidth;
+    const scale = value => Math.max(0, Number(value) || 0) / (Number(maximum) || 1) * plot;
     svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
     svg.setAttribute('class', 'scoring-location-card-chart');
     svg.setAttribute('role', 'img');
     svg.setAttribute('aria-label', `${card.label}: ${operators.map(item => `${item.label} ${insightNumber(item.total)}`).join(', ')}`);
-    const step = (width - 20) / Math.max(1, operators.length);
-    const barWidth = Math.min(34, step * .62);
+    const leader = operators[0]?.total ?? 0;
     operators.forEach((item, index) => {
-      const x = 10 + step * index + (step - barWidth) / 2;
-      const voiceHeight = scale(item.voice), dataHeight = scale(item.data);
-      const baseline = top + plotHeight;
+      const y = top + index * rowHeight;
+      const color = safeHexColor(item.color) || insightFallbackColors[index % insightFallbackColors.length];
       const group = svgElement(svg, 'g');
-      setChartTooltip(group, `${item.label}: ${insightNumber(item.total, 1)} points (Voice ${insightNumber(item.voice, 1)}, Data ${insightNumber(item.data, 1)})${item.complete ? '' : ' — incomplete coverage'}`, true);
-      group.append(svgElement(svg, 'rect', {x, y: baseline - voiceHeight, width: barWidth, height: voiceHeight, fill: insightVoiceColor}));
-      group.append(svgElement(svg, 'rect', {x, y: baseline - voiceHeight - dataHeight, width: barWidth, height: dataHeight, fill: insightDataColor}));
-      for (const [value, y, size] of [[item.voice, baseline - voiceHeight / 2, 10], [item.data, baseline - voiceHeight - dataHeight / 2, 10]]) {
-        if (scale(value) < 14) continue;
-        const text = svgElement(svg, 'text', {x: x + barWidth / 2, y: y + 3.5, 'text-anchor': 'middle', 'font-size': size, fill: '#ffffff'});
-        text.textContent = insightNumber(value);
-        group.append(text);
-      }
-      const total = svgElement(svg, 'text', {x: x + barWidth / 2, y: baseline - voiceHeight - dataHeight - 6, 'text-anchor': 'middle', 'font-size': 12, 'font-weight': 800, fill: '#17232d'});
+      setChartTooltip(group, `${item.label}: ${insightNumber(item.total, 1)} points (Data ${insightNumber(item.data, 1)}, Voice ${insightNumber(item.voice, 1)})${item.complete ? '' : ' — incomplete coverage'}`, true);
+      const badge = svgElement(svg, 'circle', {cx: 9, cy: y + 15, r: 8, fill: ranks[index] === 1 ? color : '#ffffff', stroke: color, 'stroke-width': 1.5});
+      const rank = svgElement(svg, 'text', {x: 9, y: y + 18.5, 'text-anchor': 'middle', 'font-size': 9.5, 'font-weight': 800,
+        fill: ranks[index] === 1 ? readableTextColor(color) : color});
+      rank.textContent = String(ranks[index]);
+      const label = svgElement(svg, 'text', {x: 22, y: y + 19, 'font-size': 11.5, 'font-weight': 700, fill: '#263746'});
+      label.textContent = String(item.label ?? '').length > 13 ? `${String(item.label).slice(0, 12)}…` : String(item.label ?? '');
+      const dataWidth = scale(item.data), voiceWidth = scale(item.voice);
+      group.append(badge, rank, label,
+        svgElement(svg, 'rect', {x: labelWidth, y: y + 7, width: Math.max(0, dataWidth), height: 16, fill: insightDataColor}),
+        svgElement(svg, 'rect', {x: labelWidth + dataWidth, y: y + 7, width: Math.max(0, voiceWidth), height: 16, fill: insightVoiceColor}));
+      const total = svgElement(svg, 'text', {x: labelWidth + dataWidth + voiceWidth + 5, y: y + 19, 'font-size': 11.5, 'font-weight': 800, fill: '#17232d'});
       total.textContent = `${insightNumber(item.total)}${item.complete ? '' : '*'}`;
-      const labelText = String(item.label ?? '');
-      const labelSize = Math.max(8, Math.min(12, step / Math.max(1, labelText.length * .62)));
-      const label = svgElement(svg, 'text', {x: x + barWidth / 2, y: baseline + 18, 'text-anchor': 'middle', 'font-size': labelSize, fill: '#4a5b65'});
-      label.textContent = labelText;
-      group.append(total, label);
+      group.append(total);
+      if (index) {
+        const behind = svgElement(svg, 'tspan', {dx: 4, 'font-size': 9.5, 'font-weight': 600, fill: '#7a8a96'});
+        behind.textContent = insightNumber(item.total - leader, 1).replace('-', '−');
+        total.append(behind);
+      }
       svg.append(group);
     });
-    svg.append(svgElement(svg, 'line', {x1: 4, x2: width - 4, y1: top + plotHeight, y2: top + plotHeight, stroke: '#bfc6cc'}));
     return svg;
   }
 
   function makeLocationCardsView(group) {
+    const wrapper = document.createElement('div');
+    const plural = {City: 'cities', Cluster: 'clusters', Region: 'regions'}[group.level] || 'locations';
+    const note = document.createElement('p');
+    note.className = 'scoring-insight-note scoring-location-note';
+    note.append(`The ${scoringLabel()} scoring of the selected ${plural}, each from its highest score: `);
+    const maximum = document.createElement('strong');
+    maximum.textContent = `${insightNumber(group.maximum)} points`;
+    note.append(maximum, ` at most (Voice ${insightNumber(group.max_voice)} · Data ${insightNumber(group.max_data)})`,
+      group.scaled ? ', the environments measured in each one scaled to them, so they compare with the overall scoring.' : '.');
     const layout = document.createElement('div');
     layout.className = 'scoring-location-cards';
-    const panel = document.createElement('div');
-    panel.className = 'scoring-location-panel';
-    const plural = {City: 'cities', Cluster: 'clusters', Region: 'regions'}[group.level] || 'locations';
-    const lines = [`The ${scoringLabel()} scoring per ${String(group.level).toLowerCase()} for the selected ${plural}.`];
-    if (group.scaled) lines.push(`The scoring points are scaled to a maximum of ${insightNumber(group.maximum)} points, providing comparability with the overall scoring.`);
-    for (const line of lines) {
-      const paragraph = document.createElement('p');
-      paragraph.textContent = line;
-      panel.append(paragraph);
-    }
-    const total = document.createElement('strong');
-    total.textContent = `Total: ${insightNumber(group.maximum)} points`;
-    const split = document.createElement('span');
-    split.textContent = `Voice: ${insightNumber(group.max_voice)} · Data: ${insightNumber(group.max_data)}`;
-    panel.append(total, split);
-    layout.append(panel);
     for (const card of group.cards || []) {
       const article = document.createElement('article');
       article.className = 'scoring-location-card';
       const heading = document.createElement('h5');
-      heading.textContent = String(card.label).toUpperCase();
+      heading.textContent = String(card.label);
       article.append(heading, makeLocationCardChart(card, group.maximum));
       layout.append(article);
     }
     const legend = document.createElement('div');
     legend.className = 'scoring-location-legend';
-    legend.innerHTML = `<span><i style="background:${insightVoiceColor}"></i>Voice</span><span><i style="background:${insightDataColor}"></i>Data</span>`;
-    const wrapper = document.createElement('div');
-    wrapper.append(layout, legend);
+    legend.innerHTML = '<span><i class="is-data"></i>Data</span><span><i class="is-voice"></i>Voice</span><span><b>1</b> Position in the location</span>';
+    wrapper.append(note, layout, legend);
     return wrapper;
   }
 
+  // The scoring of each operator in every campaign: a line per operator ending in its name and latest score, the latest
+  // campaign shaded.
   function makeTrendChart(trend) {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    const width = 980, height = 380, left = 56, right = 30, top = 22, bottom = 70;
+    const width = 980, height = 360, left = 56, right = 170, top = 18, bottom = 40;
     const values = trend.series.flatMap(series => series.points).filter(value => Number.isFinite(Number(value)) && value !== null);
     const minimum = Math.max(0, Math.floor((Math.min(...values) - 25) / 50) * 50);
     const maximum = Number(trend.maximum) || Math.max(...values);
-    const x = index => left + (width - left - right) * (trend.campaigns.length > 1 ? index / (trend.campaigns.length - 1) : .5);
+    const count = trend.campaigns.length;
+    const x = index => left + (width - left - right) * (count > 1 ? index / (count - 1) : .5);
     const y = value => top + (height - top - bottom) * (1 - (value - minimum) / Math.max(1, maximum - minimum));
     svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
     svg.setAttribute('class', 'scoring-trend-chart');
     svg.setAttribute('role', 'img');
     svg.setAttribute('aria-label', `${scoringLabel()} scoring trend`);
-    const gridStep = [25, 50, 100, 200, 250].find(step => (maximum - minimum) / step <= 10) || 500;
+    const step = count > 1 ? (width - left - right) / (count - 1) : width - left - right;
+    svg.append(svgElement(svg, 'rect', {x: x(count - 1) - step / 2, y: top, width: step / 2 + 14, height: height - top - bottom, fill: '#f1f5f9'}));
+    const gridStep = [25, 50, 100, 200, 250].find(item => (maximum - minimum) / item <= 8) || 500;
     for (let value = minimum; value <= maximum + .001; value += gridStep) {
-      svg.append(svgElement(svg, 'line', {x1: left, x2: width - right, y1: y(value), y2: y(value), stroke: '#e3e6e9'}));
-      const label = svgElement(svg, 'text', {x: left - 8, y: y(value) + 4, 'text-anchor': 'end', 'font-size': 11, fill: '#4a5b65'});
+      svg.append(svgElement(svg, 'line', {x1: left, x2: width - right + 14, y1: y(value), y2: y(value), stroke: '#e6eaee', 'stroke-dasharray': value === minimum ? '' : '3 4'}));
+      const label = svgElement(svg, 'text', {x: left - 8, y: y(value) + 4, 'text-anchor': 'end', 'font-size': 11, fill: '#6b7a85'});
       label.textContent = insightNumber(value);
       svg.append(label);
     }
     trend.campaigns.forEach((campaign, index) => {
-      const label = svgElement(svg, 'text', {x: x(index), y: height - bottom + 20, 'text-anchor': 'middle', 'font-size': 12, fill: '#263746'});
+      const label = svgElement(svg, 'text', {x: x(index), y: height - bottom + 22, 'text-anchor': 'middle', 'font-size': 12,
+        'font-weight': index === count - 1 ? 800 : 500, fill: '#263746'});
       label.textContent = campaign;
       svg.append(label);
     });
+    const ends = [];
     trend.series.forEach((series, seriesIndex) => {
       const color = safeHexColor(series.color) || insightFallbackColors[seriesIndex % insightFallbackColors.length];
       const points = series.points.map((value, index) => (value === null || value === undefined ? null : [x(index), y(value), value]));
       const path = points.filter(Boolean).map(([px, py], index) => `${index ? 'L' : 'M'}${px},${py}`).join(' ');
-      svg.append(svgElement(svg, 'path', {d: path, fill: 'none', stroke: color, 'stroke-width': 2.5}));
+      svg.append(svgElement(svg, 'path', {d: path, fill: 'none', stroke: color, 'stroke-width': series.is_reference ? 3 : 2.25,
+        'stroke-linejoin': 'round', 'stroke-linecap': 'round'}));
+      const last = points.reduce((found, point, index) => (point ? index : found), -1);
       points.forEach((point, index) => {
         if (!point) return;
-        const marker = svgElement(svg, 'circle', {cx: point[0], cy: point[1], r: 4.5, fill: color});
+        const marker = svgElement(svg, 'circle', {cx: point[0], cy: point[1], r: index === last ? 5 : 3,
+          fill: index === last ? color : '#ffffff', stroke: color, 'stroke-width': 1.75});
         setChartTooltip(marker, `${series.label} · ${trend.campaigns[index]}: ${insightNumber(point[2], 1)} points`, true);
-        const label = svgElement(svg, 'text', {x: point[0], y: point[1] - 9, 'text-anchor': 'middle', 'font-size': 10, fill: color, 'font-weight': 700});
-        label.textContent = insightNumber(point[2]);
-        svg.append(marker, label);
+        svg.append(marker);
       });
-      const legendX = left + seriesIndex * 170;
-      svg.append(svgElement(svg, 'line', {x1: legendX, x2: legendX + 22, y1: height - 18, y2: height - 18, stroke: color, 'stroke-width': 3}));
-      const legend = svgElement(svg, 'text', {x: legendX + 28, y: height - 14, 'font-size': 12, fill: '#263746'});
-      legend.textContent = series.label;
-      svg.append(legend);
+      if (last >= 0) ends.push({y: points[last][1], text: `${series.label} ${insightNumber(points[last][2])}`, color});
     });
+    // The names at the end of the lines, moved apart so they never overlap.
+    ends.sort((first, second) => first.y - second.y);
+    for (let index = 1; index < ends.length; index += 1) ends[index].y = Math.max(ends[index].y, ends[index - 1].y + 15);
+    for (const end of ends) {
+      const label = svgElement(svg, 'text', {x: x(count - 1) + 16, y: end.y + 4, 'font-size': 12, 'font-weight': 800, fill: end.color});
+      label.textContent = end.text;
+      svg.append(label);
+    }
     return svg;
   }
 
@@ -5859,7 +6214,7 @@
 
   function renderInsightCharts(pane, payload, environment) {
     if (!environment) return;
-    // The Scoring Trend first, above the National & Areas.
+    // The Scoring Trend; the National & Areas and the scoring per location are in Locations.
     const trends = insightItems(payload, 'campaign_trends', environment);
     if (trends.length) {
       const {wrapper, value} = insightSelect('trend', trends.map((trend, index) => [String(index), trend.title || 'All series']), 'Series');
@@ -5868,22 +6223,6 @@
         [environmentLabel(environment), trend.title].filter(Boolean).join(' · '), makeTrendChart(trend));
       if (trends.length > 1) card.insertBefore(wrapper, card.children[1]);
       pane.append(card);
-    }
-    for (const summary of insightItems(payload, 'area_summaries', environment)) {
-      const split = summary.time_split === 'All' ? 'All selected CDRs' : summary.time_split === 'Campaign' ? 'Per campaign'
-        : `${summary.time_split} periods`;
-      pane.append(makeExpandableChartCard(`${scoringLabel()} — National & Areas`,
-        [environmentLabel(environment), `Time split: ${split}`].filter(Boolean).join(' · '), makeAreaSummaryView(summary), false));
-    }
-    let groups = insightItems(payload, 'location_cards', environment);
-    const campaigns = [...new Set(groups.map(group => group.campaign).filter(Boolean))];
-    if (campaigns.length > 1) {
-      const latest = campaigns.sort((left, right) => insightCampaignKey(left) - insightCampaignKey(right)).at(-1);
-      groups = groups.filter(group => !group.campaign || group.campaign === latest);
-    }
-    for (const group of groups) {
-      pane.append(makeExpandableChartCard(`${scoringLabel()} Scoring per ${group.level}`,
-        [environmentLabel(environment), group.title].filter(Boolean).join(' · '), makeLocationCardsView(group)));
     }
   }
 
@@ -5912,6 +6251,12 @@
             const bar = document.createElement('span');
             bar.className = 'scoring-insight-databar';
             bar.style.width = `calc((100% - .3rem) * ${content.bar.ratio})`;
+            if (content.bar.side) {
+              bar.classList.add(`is-${content.bar.side}`);
+              bar.style.width = `calc((50% - .15rem) * ${content.bar.ratio})`;
+              if (content.bar.side === 'left') Object.assign(bar.style, {left: 'auto', right: '50%'});
+              else bar.style.left = '50%';
+            }
             bar.style.setProperty('--databar-color', content.bar.color);
             const text = document.createElement('span');
             text.className = 'scoring-insight-databar-value';
@@ -5926,36 +6271,57 @@
 
   function gapBarCell(value, scale, {loss = false, total = false} = {}) {
     const cell = {text: insightNumber(value, 2),
-      className: `scoring-insight-bar-cell${total ? ' scoring-insight-total' : ''}`};
+      className: `scoring-insight-bar-cell${total ? ' scoring-insight-total' : ''}${loss ? '' : ' is-signed'}`};
     if (value === null || value === undefined || !Number(value) || !scale) return cell;
-    cell.bar = {ratio: Math.min(1, Math.abs(value) / scale), color: loss || value < 0 ? '#e8414f' : '#4ca65a'};
+    // A GAP grows from the middle of its cell: to the left when the operator is behind, to the right when it is ahead.
+    // Points lost always grow from the left.
+    cell.bar = {ratio: Math.min(1, Math.abs(value) / scale), color: loss || value < 0 ? insightLossColor : insightGainColor,
+      side: loss ? '' : value < 0 ? 'left' : 'right'};
     return cell;
   }
 
+  // The KPIs of an operator grouped by their category (the categories that lose most first), each with its points lost
+  // against the maximum or its GAP to the reference per environment and in total, with a bar in every column.
   function profileTable(profile, kind) {
     const rows = kind === 'maximum' ? profile.to_maximum : profile.to_reference;
     const totalKey = kind === 'maximum' ? 'total_gap_to_maximum' : 'total_gap_to_reference';
     const valueKey = kind === 'maximum' ? 'gap_to_maximum' : 'gap_to_reference';
-    // Each value column has its own bar scale.
     const columnScale = values => Math.max(0, ...values.map(value => Math.abs(Number(value) || 0)));
     const scale = columnScale(rows.map(row => row[totalKey]));
     const scales = Object.fromEntries(profile.columns.map(name => [name, columnScale(rows.map(row => row[valueKey]?.[name]))]));
+    const groups = new Map();
+    for (const row of rows) {
+      const key = `${row.service}|${row.category}`;
+      if (!groups.has(key)) groups.set(key, {service: row.service, category: row.category, rows: [], total: 0});
+      const group = groups.get(key);
+      group.rows.push(row);
+      group.total += Number(row[totalKey]) || 0;
+    }
+    const ordered = [...groups.values()].sort((left, right) => (kind === 'maximum' ? right.total - left.total : left.total - right.total));
     const wrapper = document.createElement('div');
     wrapper.className = 'scoring-insight-table-wrap';
     const banner = document.createElement('div');
     banner.className = 'scoring-insight-banner';
     const bannerColor = safeHexColor(profile.color);
-    if (bannerColor) banner.style.background = bannerColor;
-    banner.textContent = kind === 'maximum' ? `${profile.label}: Gap to Maximum` : `${profile.label}: Gap to ${profile.reference_label}`;
-    wrapper.append(banner, insightTable(
-      ['Service', 'Area', 'KPI', ...profile.columns.map(name => environmentLabel(name)), 'Total KPI'],
-      rows.map(row => {
-        const underline = profile.underline_most_reliable && row.most_reliable ? 'scoring-insight-reliable' : '';
-        return [row.service.toUpperCase(), {text: row.category, className: underline}, {text: row.kpi, className: underline},
-          ...profile.columns.map(name => gapBarCell(row[valueKey]?.[name], scales[name], {loss: kind === 'maximum'})),
-          gapBarCell(row[totalKey], scale, {loss: kind === 'maximum', total: true})];
-      }),
-    ));
+    if (bannerColor) banner.style.setProperty('--banner-color', bannerColor);
+    const name = document.createElement('strong');
+    name.textContent = profile.label;
+    banner.append(name, kind === 'maximum' ? ' · points lost per KPI' : ` · GAP to ${profile.reference_label} per KPI`);
+    const tableRows = [];
+    for (const group of ordered) {
+      tableRows.push([{text: `${group.category} · ${group.service}`, className: 'scoring-insight-group'},
+        ...profile.columns.map(column => ({text: insightNumber(group.rows.reduce((sum, row) => sum + (Number(row[valueKey]?.[column]) || 0), 0), 2),
+          className: 'scoring-insight-number scoring-insight-group'})),
+        {text: insightNumber(group.total, 2), className: 'scoring-insight-number scoring-insight-group scoring-insight-total'}]);
+      for (const row of group.rows) {
+        const underline = profile.underline_most_reliable && row.most_reliable ? ' scoring-insight-reliable' : '';
+        tableRows.push([{text: row.kpi, className: `scoring-insight-kpi${underline}`},
+          ...profile.columns.map(column => gapBarCell(row[valueKey]?.[column], scales[column], {loss: kind === 'maximum'})),
+          gapBarCell(row[totalKey], scale, {loss: kind === 'maximum', total: true})]);
+      }
+    }
+    wrapper.append(banner, insightTable(['KPI', ...profile.columns.map(column => environmentLabel(column)), 'Total'], tableRows,
+      {className: 'scoring-profile-table'}));
     return wrapper;
   }
 
@@ -6016,9 +6382,10 @@
     return {controls, inScope, chosen};
   }
 
+  // The KPI GAP Profile (GAP Analysis): each compared operator's GAP to the reference per KPI. The points each operator
+  // loses per KPI against the maximum are in Points Lost (see renderPointsPerKpi).
   function renderKpiGapProfiles(pane, payload, environment) {
     if (!environment) return;
-    // The reference operator is shown too, with its Gap to Maximum only: its GAP to itself would be empty.
     const profiles = insightItems(payload, 'kpi_gap_profiles', environment);
     if (!profiles.length) return;
     const section = document.createElement('section');
@@ -6029,48 +6396,782 @@
     const {controls, inScope, chosen} = gapInsightControls(pane, profiles);
     appendResultScope(heading, inScope[0]?.context);
     section.append(heading, controls);
-    for (const profile of inScope.filter(item => chosen.includes(item.operator))) {
-      const isReference = profile.operator === profile.reference;
-      const tables = document.createElement('div');
-      tables.className = 'scoring-insight-pair';
-      tables.append(profileTable(profile, 'maximum'));
-      if (!isReference) tables.append(profileTable(profile, 'reference'));
-      const lost = profile.to_maximum.reduce((sum, row) => sum + (Number(row.total_gap_to_maximum) || 0), 0);
-      const gap = profile.to_reference.reduce((sum, row) => sum + (Number(row.total_gap_to_reference) || 0), 0);
+    const grid = document.createElement('div');
+    grid.className = 'scoring-insight-pair';
+    const shown = inScope.filter(item => chosen.includes(item.operator) && item.operator !== item.reference);
+    for (const profile of shown) grid.append(profileTable(profile, 'reference'));
+    section.append(grid);
+    if (!shown.length) {
+      section.append(insightParagraph('scoring-insight-note', 'Choose an operator other than the reference to see its GAP to it per KPI.'));
+    } else {
       const note = document.createElement('p');
       note.className = 'scoring-insight-note';
-      const operator = document.createElement('strong');
-      operator.textContent = profile.label;
-      const reference = document.createElement('strong');
-      reference.textContent = profile.reference_label;
-      const lostText = document.createElement('strong');
-      lostText.textContent = `${insightNumber(lost, 2)} ${scoringLabel()} points`;
-      const gapText = document.createElement('strong');
-      gapText.textContent = `${gap >= 0 ? '+' : ''}${insightNumber(gap, 2)} points`;
-      if (isReference) {
-        note.append(operator, ' is the reference operator and loses ', lostText,
-          ' against the maximum. Gap to Maximum is the KPI maximum minus the points scored.');
-      } else {
-        note.append(operator, ' loses ', lostText, ' against the maximum; its GAP to ', reference, ' is ', gapText,
-          '. Gap to Maximum is the KPI maximum minus the points scored; Gap to the reference is the operator points minus the reference points.');
-      }
-      if (profile.underline_most_reliable) note.append(' Underlined KPIs are used for the Most Reliable Network scoring.');
-      section.append(tables, note);
+      shown.forEach((profile, index) => {
+        const gap = profile.to_reference.reduce((sum, row) => sum + (Number(row.total_gap_to_reference) || 0), 0);
+        note.append(index ? '; ' : '', insightStrong(profile.label, safeHexColor(profile.color)), ' is ',
+          insightStrong(`${gap >= 0 ? '+' : ''}${insightNumber(gap, 2)} points`), ` against ${profile.reference_label}`);
+      });
+      note.append('. The GAP of a KPI is the points of the operator minus those of the reference; each category sums its KPIs, the categories furthest behind first.');
+      if (shown[0].underline_most_reliable) note.append(' Underlined KPIs are used for the Most Reliable Network scoring.');
+      section.append(note);
     }
     pane.append(section);
+  }
+
+  // Points lost per KPI (Points Lost): the points each operator, the reference included, loses against the maximum of
+  // every KPI. It shares the location and operators of the KPI GAP Profile and the Points Lost Map.
+  function renderPointsPerKpi(pane, payload, environment) {
+    if (!environment) return;
+    const profiles = insightItems(payload, 'kpi_gap_profiles', environment);
+    if (!profiles.length) return;
+    const section = document.createElement('section');
+    section.className = 'scoring-insight-section scoring-result-card scoring-points-kpi-card';
+    const heading = document.createElement('h4');
+    heading.className = 'scoring-table-section-title';
+    heading.textContent = 'Points lost per KPI';
+    const {controls, inScope, chosen} = gapInsightControls(pane, profiles);
+    appendResultScope(heading, inScope[0]?.context);
+    section.append(heading, controls);
+    const grid = document.createElement('div');
+    grid.className = 'scoring-insight-pair';
+    const shown = inScope.filter(item => chosen.includes(item.operator));
+    for (const profile of shown) grid.append(profileTable(profile, 'maximum'));
+    const note = document.createElement('p');
+    note.className = 'scoring-insight-note';
+    shown.forEach((profile, index) => {
+      const lost = profile.to_maximum.reduce((sum, row) => sum + (Number(row.total_gap_to_maximum) || 0), 0);
+      note.append(index ? '; ' : '', insightStrong(profile.label, safeHexColor(profile.color)), ' loses ',
+        insightStrong(`${insightNumber(lost, 2)} ${scoringLabel()} points`));
+    });
+    note.append('. The points lost of a KPI are its maximum minus the points scored; each category sums its KPIs, the categories that lose most first.');
+    if (shown[0]?.underline_most_reliable) note.append(' Underlined KPIs are used for the Most Reliable Network scoring.');
+    section.append(grid, note);
+    pane.append(section);
+  }
+
+  // Choosing the operators of a section: every operator offered is chosen by default (with ``compared``, those that are
+  // not the reference); clicking one enables or disables it, and one always stays enabled.
+  function insightOperatorChips(key, items, {compared = false} = {}) {
+    const operators = [...new Map(items.map(item => [item.operator, item])).values()];
+    const names = operators.map(item => item.operator);
+    let stored = null;
+    try { stored = JSON.parse(insightSelections.get(key) || 'null'); } catch (_error) { stored = null; }
+    let chosen = Array.isArray(stored) ? stored.filter(name => names.includes(name)) : [];
+    if (!chosen.length) {
+      chosen = compared ? operators.filter(item => !item.is_reference).map(item => item.operator) : [...names];
+      if (!chosen.length) chosen = [...names];
+    }
+    const group = document.createElement('div');
+    group.className = 'scoring-environment-filter scoring-loss-operators';
+    group.setAttribute('role', 'group');
+    group.setAttribute('aria-label', 'Operators');
+    group.append(document.createTextNode('Operators: '));
+    for (const item of operators) {
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'scoring-loss-operator';
+      chip.dataset.insightChipKey = key;
+      chip.dataset.insightChip = item.operator;
+      chip.dataset.insightChosen = JSON.stringify(chosen);
+      chip.setAttribute('aria-pressed', String(chosen.includes(item.operator)));
+      chip.textContent = item.label + (item.is_reference ? ' (reference)' : '');
+      chip.title = !chosen.includes(item.operator) ? `Click to enable ${item.label}`
+        : chosen.length > 1 ? `Click to disable ${item.label}` : `${item.label} is the only enabled operator: click another one to enable it too`;
+      const color = safeHexColor(item.color);
+      if (color) chip.style.setProperty('--operator-color', color);
+      group.append(chip);
+    }
+    return {control: group, chosen};
+  }
+
+  // The scope of a section when the results have several (for example City: London or Vendor: Nokia), the first one by
+  // default; ``items`` carry their context.
+  function insightScopeControl(key, items, {withCampaign = false} = {}) {
+    const keyOf = item => JSON.stringify(Object.fromEntries(Object.entries(item.context || {})
+      .filter(([field]) => withCampaign || field !== 'campaign').sort()));
+    const scopes = [...new Map(items.map(item => [keyOf(item), item.context || {}])).entries()];
+    if (scopes.length <= 1) return {control: null, inScope: items, context: scopes[0]?.[1] || {}};
+    const label = context => lossScopeLabel(Object.fromEntries(Object.entries(context).filter(([field]) => withCampaign || field !== 'campaign')));
+    // Scopes by campaign are listed chronologically, the latest chosen by default.
+    const byCampaign = withCampaign && scopes.every(([, context]) => context.campaign) && typeof globalThis.campaignCompare === 'function';
+    if (byCampaign) scopes.sort(([, left], [, right]) => globalThis.campaignCompare(left.campaign, right.campaign) || 0);
+    const latestOf = context => scopes.filter(([, other]) => sameScope(other, context)).at(-1)?.[0];
+    const {wrapper, value} = insightSelect(key, scopes.map(([scope, context]) => [scope, label(context).value || 'All']),
+      label(scopes[0][1]).title || 'Scope', byCampaign ? latestOf(scopes[0][1]) : scopes[0][0]);
+    return {control: wrapper, inScope: items.filter(item => keyOf(item) === value), context: (scopes.find(([scope]) => scope === value) || scopes[0])[1]};
+  }
+
+  function insightSection(pane, title, className, context = null) {
+    const section = document.createElement('section');
+    section.className = `scoring-insight-section scoring-result-card ${className}`.trim();
+    const heading = document.createElement('h4');
+    heading.className = 'scoring-table-section-title';
+    heading.textContent = title;
+    appendResultScope(heading, context);
+    section.append(heading);
+    pane.append(section);
+    return section;
+  }
+
+  function insightControls(...controls) {
+    const box = document.createElement('div');
+    box.className = 'scoring-loss-controls';
+    box.append(...controls.filter(Boolean));
+    return box;
+  }
+
+  function insightParagraph(className, ...parts) {
+    const paragraph = document.createElement('p');
+    paragraph.className = className;
+    paragraph.append(...parts.map(part => (part instanceof Node ? part : document.createTextNode(String(part)))));
+    return paragraph;
+  }
+
+  function insightStrong(text, color = null) {
+    const element = document.createElement('strong');
+    element.textContent = text;
+    if (color) element.style.color = color;
+    return element;
+  }
+
+  const signedPoints = (value, digits = 1) => (value === null || value === undefined ? '—'
+    : `${Number(value) > 0 ? '+' : ''}${insightNumber(value, digits)}`.replace('-', '−'));
+  const ordinalText = number => `${number}${number % 100 >= 11 && number % 100 <= 13 ? 'th' : ({1: 'st', 2: 'nd', 3: 'rd'}[number % 10] || 'th')}`;
+  const toneClass = value => (value === null || value === undefined || Math.abs(Number(value)) < .05 ? ''
+    : Number(value) > 0 ? 'is-gain' : 'is-loss');
+
+  // A diverging bar for a value between −scale and +scale: red to the left (behind), green to the right (ahead).
+  function divergingBar(value, scale, {label = true, digits = 1} = {}) {
+    const box = document.createElement('span');
+    box.className = 'scoring-diverging';
+    const track = document.createElement('span');
+    track.className = 'scoring-diverging-track';
+    const bar = document.createElement('i');
+    const share = scale ? Math.min(1, Math.abs(Number(value) || 0) / scale) * 50 : 0;
+    bar.style.width = `${share}%`;
+    bar.style.left = Number(value) < 0 ? `${50 - share}%` : '50%';
+    bar.className = Number(value) < 0 ? 'is-loss' : 'is-gain';
+    track.append(bar);
+    box.append(track);
+    if (label) {
+      const text = document.createElement('b');
+      text.textContent = signedPoints(value, digits);
+      text.className = toneClass(value);
+      box.append(text);
+    }
+    return box;
+  }
+
+  // ---- Summary: where each operator stands -------------------------------------------------------------------------
+  function renderSummary(pane, payload, environment) {
+    pane.replaceChildren();
+    if (!environment) return;
+    const standings = insightItems(payload, 'standings', environment);
+    if (!standings.length) {
+      const empty = document.createElement('div');
+      empty.className = 'scoring-empty';
+      empty.textContent = 'No summary is available for this environment.';
+      pane.append(empty);
+    }
+    const {control: scopeControl, inScope, context} = insightScopeControl('summary-scope', standings);
+    const standing = inScope[0];
+    if (standing) {
+      const operators = standing.operators.map(item => ({...item}));
+      const {control: chips, chosen} = insightOperatorChips('summary-operators', operators, {compared: true});
+      const section = insightSection(pane, `Where each operator stands${standing.campaign ? ` — ${standing.campaign}` : ''}`,
+        'scoring-standings-card', context);
+      section.append(insightControls(scopeControl, chips));
+      section.append(makeStandingsLeaderboard(standing));
+      for (const row of operators.filter(item => chosen.includes(item.operator))) section.append(makeStandingTiles(standing, row));
+    }
+    const matrices = insightItems(payload, 'position_matrices', environment).filter(item => !context || sameScope(item.context, context));
+    if (matrices.length) {
+      const matrix = matrices[0];
+      const {control: chips, chosen} = insightOperatorChips('summary-operators', matrix.operators, {compared: true});
+      const section = insightSection(pane, `Position in every environment and service${matrix.campaign ? ` — ${matrix.campaign}` : ''}`,
+        'scoring-position-card', matrix.context);
+      section.append(insightControls(chips));
+      const grid = document.createElement('div');
+      grid.className = 'scoring-position-grid';
+      for (const style of matrix.operators.filter(item => chosen.includes(item.operator))) grid.append(makePositionMatrix(matrix, style));
+      section.append(grid, insightParagraph('scoring-insight-note',
+        'Each tile is the position of the operator among those measured and its share of the points available; the bar under it, the points it missed there of those available (missed / available). ',
+        'All Environments scales the environments measured to the full maximum, as the scoring per location does.'));
+    }
+    const levers = insightItems(payload, 'levers', environment).filter(item => !context || sameScope(item.context, context));
+    if (levers.length) {
+      const {control: chips, chosen} = insightOperatorChips('summary-operators', levers, {compared: true});
+      const section = insightSection(pane, 'Biggest levers: the KPIs where matching the reference wins most points', 'scoring-levers-card',
+        levers[0].context);
+      section.append(insightControls(chips));
+      const grid = document.createElement('div');
+      grid.className = 'scoring-insight-pair';
+      for (const item of levers.filter(entry => chosen.includes(entry.operator))) grid.append(makeLeversTable(item));
+      section.append(grid);
+    }
+    const scope = insightItems(payload, 'campaign_scope', environment)[0];
+    if (scope) {
+      const section = insightSection(pane, 'How the measurements ran', 'scoring-scope-card', false);
+      section.append(makeCampaignScope(scope));
+    }
+  }
+
+  function sameScope(left, right) {
+    const clean = context => JSON.stringify(Object.fromEntries(Object.entries(context || {}).filter(([field]) => field !== 'campaign').sort()));
+    return clean(left) === clean(right);
+  }
+
+  function makeStandingsLeaderboard(standing) {
+    const list = document.createElement('div');
+    list.className = 'scoring-leaderboard';
+    const top = standing.operators[0]?.total || 1;
+    for (const row of standing.operators) {
+      const color = safeHexColor(row.color) || '#475569';
+      const item = document.createElement('div');
+      item.className = `scoring-leaderboard-row${row.is_reference ? ' is-reference' : ''}`;
+      const rank = insightStrong(ordinalText(row.rank));
+      rank.className = 'scoring-leaderboard-rank';
+      rank.style.setProperty('--operator-color', color);
+      const name = insightStrong(`${row.label}${row.is_reference ? ' (reference)' : ''}`);
+      name.className = 'scoring-leaderboard-name';
+      const bar = document.createElement('span');
+      bar.className = 'scoring-leaderboard-bar';
+      const data = document.createElement('i');
+      data.style.width = `${Math.max(0, row.data) / standing.maximum * 100}%`;
+      data.style.background = insightDataColor;
+      const voice = document.createElement('i');
+      voice.style.width = `${Math.max(0, row.voice) / standing.maximum * 100}%`;
+      voice.style.background = insightVoiceColor;
+      bar.append(data, voice);
+      bar.title = `${row.label}: Data ${insightNumber(row.data, 1)} · Voice ${insightNumber(row.voice, 1)}`;
+      const total = insightStrong(`${insightNumber(row.total, 1)}${row.complete ? '' : '*'}`);
+      total.className = 'scoring-leaderboard-total';
+      const delta = document.createElement('span');
+      delta.className = `scoring-leaderboard-delta ${toneClass(row.delta)}`;
+      delta.textContent = row.delta === null || row.delta === undefined ? '' : `${signedPoints(row.delta)} vs ${standing.previous_campaign}`;
+      item.append(rank, name, bar, total, delta);
+      list.append(item);
+    }
+    // The colours of Data and Voice in the theme, as small swatches in the note.
+    const swatch = color => Object.assign(document.createElement('i'), {className: 'scoring-note-swatch', style: `background:${color}`});
+    const legend = insightParagraph('scoring-insight-note', `Points of ${insightNumber(standing.maximum)}; each bar is the Data points of the operator `,
+      swatch(insightDataColor), ' followed by its Voice points ', swatch(insightVoiceColor), `${top ? '' : ''}.`);
+    const box = document.createElement('div');
+    box.append(list, legend);
+    return box;
+  }
+
+  function makeStandingTiles(standing, row) {
+    const color = safeHexColor(row.color) || '#475569';
+    const box = document.createElement('div');
+    box.className = 'scoring-standing';
+    box.style.setProperty('--operator-color', color);
+    const tile = (label, value, detail, tone = '') => {
+      const element = document.createElement('div');
+      element.className = `scoring-standing-tile ${tone}`.trim();
+      element.append(insightParagraph('scoring-standing-label', label), insightParagraph(`scoring-standing-value ${tone}`.trim(), value),
+        insightParagraph('scoring-standing-detail', detail));
+      return element;
+    };
+    const tiles = document.createElement('div');
+    tiles.className = 'scoring-standing-tiles';
+    tiles.append(tile(row.label, insightNumber(row.total, 1), `${ordinalText(row.rank)} of ${row.of} · of ${insightNumber(standing.maximum)} points`));
+    if (row.gap_to_reference !== null && row.gap_to_reference !== undefined) {
+      tiles.append(tile(`GAP to ${standing.reference_label}`, signedPoints(row.gap_to_reference),
+        `Data ${signedPoints(row.data_gap)} · Voice ${signedPoints(row.voice_gap)}`, toneClass(row.gap_to_reference)));
+    }
+    // The operators around it, unless one of them is the reference, whose GAP is already shown.
+    const shownReference = row.gap_to_reference !== null && row.gap_to_reference !== undefined;
+    if (row.rank > 1 && !(shownReference && row.above_label === standing.reference_label)) {
+      tiles.append(tile(`Behind ${row.above_label}`, signedPoints(row.gap_to_above), `${signedPoints(row.gap_to_leader)} to the leader`, 'is-loss'));
+    }
+    if (row.below_label && !(shownReference && row.below_label === standing.reference_label)) {
+      tiles.append(tile(`Ahead of ${row.below_label}`, signedPoints(row.lead_over_below), row.rank === 1 ? 'Leader' : 'Lead to defend', 'is-gain'));
+    }
+    if (row.rank === 1 && shownReference && row.below_label === standing.reference_label) {
+      tiles.append(tile('Position', 'Leader', `${signedPoints(row.lead_over_below)} over ${row.below_label}`, 'is-gain'));
+    }
+    const parts = Object.entries(row.parts || {});
+    const partsBox = document.createElement('div');
+    partsBox.className = 'scoring-standing-parts';
+    if (parts.length && row.gap_to_reference !== null && row.gap_to_reference !== undefined) {
+      const scale = Math.max(...parts.map(([, value]) => Math.abs(value)), 1);
+      partsBox.append(insightParagraph('scoring-standing-label', `GAP to ${standing.reference_label} by part`));
+      for (const [name, value] of parts) {
+        const line = document.createElement('div');
+        line.className = 'scoring-standing-part';
+        line.append(insightParagraph('', name), divergingBar(value, scale));
+        partsBox.append(line);
+      }
+    }
+    box.append(tiles, partsBox, insightParagraph('scoring-standing-takeaway', row.takeaway));
+    return box;
+  }
+
+  function makePositionMatrix(matrix, style) {
+    const color = safeHexColor(style.color) || '#475569';
+    const wrapper = document.createElement('div');
+    wrapper.className = 'scoring-position';
+    const title = insightStrong(style.label, color);
+    title.className = 'scoring-position-title';
+    const table = document.createElement('table');
+    table.className = 'scoring-position-table';
+    const services = ['Voice', 'Data', 'Overall'].filter(service => matrix.rows.some(row => row.cells[service]));
+    const head = table.createTHead().insertRow();
+    for (const text of ['', ...services]) head.append(Object.assign(document.createElement('th'), {textContent: text}));
+    const body = table.createTBody();
+    for (const row of matrix.rows) {
+      const line = body.insertRow();
+      if (row.environment === 'Combined') line.className = 'is-combined';
+      line.append(Object.assign(document.createElement('th'), {textContent: row.environment === 'Combined' ? 'All Environments' : environmentLabel(row.environment)}));
+      for (const service of services) {
+        const cell = line.insertCell();
+        const value = row.cells[service]?.[style.operator];
+        if (!value) { cell.textContent = '—'; continue; }
+        const rankIndex = value.rank === 1 ? 0 : value.rank === value.of ? 3 : value.rank === 2 ? 1 : 2;
+        const tile = document.createElement('span');
+        tile.className = 'scoring-position-tile';
+        tile.style.setProperty('--rank-color', insightRankColors[rankIndex]);
+        tile.textContent = `${ordinalText(value.rank)} · ${insightNumber(value.percent, 0)}%`;
+        const missed = document.createElement('span');
+        missed.className = 'scoring-position-missed';
+        const bar = document.createElement('i');
+        bar.style.width = `${Math.min(100, value.missed / Math.max(1, value.maximum) * 100)}%`;
+        missed.append(bar, document.createTextNode(`${insightNumber(value.missed, 1)} / ${insightNumber(value.maximum, 0)}`));
+        cell.title = `${style.label} · ${environmentLabel(row.environment)} · ${service}: ${ordinalText(value.rank)} of ${value.of}, ${insightNumber(value.points, 1)} of ${insightNumber(value.maximum, 1)} points`;
+        cell.append(tile, missed);
+      }
+    }
+    wrapper.append(title, table);
+    return wrapper;
+  }
+
+  function makeLeversTable(item) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'scoring-insight-table-wrap';
+    const banner = document.createElement('div');
+    banner.className = 'scoring-insight-banner';
+    const color = safeHexColor(item.color);
+    if (color) banner.style.setProperty('--banner-color', color);
+    banner.append(insightStrong(item.label), ` · ${insightNumber(-item.total_behind, 1)} points behind ${item.reference_label} in ${item.count} KPIs`);
+    const scale = Math.max(...item.levers.map(row => Math.abs(row.gap)), 0);
+    wrapper.append(banner, insightTable(['KPI', item.label, item.reference_label, 'Points to win'], item.levers.map(row => [
+      {text: `${row.kpi} · ${row.category}`, title: `${row.service} · ${row.category}`},
+      {text: insightNumber(row.value, 2), className: 'scoring-insight-number'},
+      {text: insightNumber(row.reference_value, 2), className: 'scoring-insight-number'},
+      {...gapBarCell(-row.gap, scale, {loss: true, total: true}), text: insightNumber(-row.gap, 2)},
+    ])));
+    return wrapper;
+  }
+
+  function makeCampaignScope(scope) {
+    const box = document.createElement('div');
+    box.className = 'scoring-scope';
+    const tile = (label, value, detail) => {
+      const element = document.createElement('div');
+      element.className = 'scoring-scope-tile';
+      element.append(insightParagraph('scoring-standing-label', label), insightParagraph('scoring-scope-value', value),
+        insightParagraph('scoring-standing-detail', detail));
+      return element;
+    };
+    const tiles = document.createElement('div');
+    tiles.className = 'scoring-scope-tiles';
+    const window_ = scope.window;
+    tiles.append(tile('Campaigns', scope.latest_campaign || '—', scope.campaigns.length > 1 ? `${scope.campaigns.length} campaigns: ${scope.campaigns.join(', ')}` : 'One campaign'));
+    if (window_) tiles.append(tile('Measurements', `${window_.first} → ${window_.last}`, `${window_.days} days with tests`));
+    if (scope.places) tiles.append(tile('Places', `${scope.places.cities} cities`, `${scope.places.routes} Connecting Roads routes`));
+    const environments = scope.environments.filter(item => item.max_points > 0);
+    tiles.append(tile('Environments', `${environments.length}`, environments.map(item => `${item.label} ${insightNumber(item.max_points)} pts`).join(' · ')));
+    const kinds = ['data', 'voice', 'speech'];
+    const names = [...new Set(Object.values(scope.tests || {}).flatMap(byKind => Object.values(byKind).flatMap(byEnvironment => Object.keys(byEnvironment))))];
+    const rows = scope.operators.filter(style => scope.tests?.[style.operator]).map(style => [
+      {text: style.label, style: {color: safeHexColor(style.color) || '#263746', fontWeight: 800}},
+      ...kinds.flatMap(kind => names.map(name => ({text: insightNumber(scope.tests[style.operator]?.[kind]?.[name] || 0), className: 'scoring-insight-number'}))),
+    ]);
+    const table = insightTable(['Operator', ...kinds.flatMap(kind => names.map(name => `${{data: 'Data tests', voice: 'Calls', speech: 'Speech samples'}[kind]} · ${shortEnvironmentLabel(name)}`))], rows);
+    box.append(tiles);
+    if (rows.length) {
+      const wrap = document.createElement('div');
+      wrap.className = 'scoring-insight-table-wrap';
+      wrap.append(table);
+      box.append(insightParagraph('scoring-insight-note', `Tests of each operator in ${scope.latest_campaign || 'the measurements'}: the CDR Data tests, the Voice calls and the Speech samples scored in each environment.`), wrap);
+    }
+    return box;
+  }
+
+  // ---- Locations ---------------------------------------------------------------------------------------------------
+  function renderLocations(pane, payload, environment) {
+    pane.replaceChildren();
+    if (!environment) return;
+    for (const summary of insightItems(payload, 'area_summaries', environment)) {
+      const split = summary.time_split === 'All' ? 'All selected CDRs' : summary.time_split === 'Campaign' ? 'Per campaign'
+        : `${summary.time_split} periods`;
+      pane.append(makeExpandableChartCard(`${scoringLabel()} — National & Areas`,
+        [environmentLabel(environment), `Time split: ${split}`].filter(Boolean).join(' · '), makeAreaSummaryView(summary), false));
+    }
+    let groups = insightItems(payload, 'location_cards', environment);
+    const campaigns = [...new Set(groups.map(group => group.campaign).filter(Boolean))];
+    if (campaigns.length > 1) {
+      const latest = campaigns.sort((left, right) => insightCampaignKey(left) - insightCampaignKey(right)).at(-1);
+      groups = groups.filter(group => !group.campaign || group.campaign === latest);
+    }
+    for (const group of groups) {
+      pane.append(makeExpandableChartCard(`${scoringLabel()} Scoring per ${group.level}`,
+        [environmentLabel(environment), group.title].filter(Boolean).join(' · '), makeLocationCardsView(group)));
+    }
+    const rankings = insightItems(payload, 'location_rankings', environment);
+    if (rankings.length) {
+      const levels = [...new Set(rankings.map(item => item.level))];
+      const {wrapper: levelControl, value: storedLevel} = insightSelect('ranking-level', levels.map(level => [level, level]), 'Locations');
+      const level = levels.includes(storedLevel) ? storedLevel : levels[0];
+      const ofLevel = rankings.filter(item => item.level === level);
+      const titles = [...new Set(ofLevel.map(item => item.title || ''))];
+      const {wrapper: groupControl, value: storedGroup} = insightSelect('ranking-group', titles.map(title => [title, title || 'All']), 'Group');
+      const title = titles.includes(storedGroup) ? storedGroup : titles[0];
+      const inGroup = ofLevel.filter(item => (item.title || '') === title);
+      const {control: chips, chosen} = insightOperatorChips('ranking-operators', inGroup, {compared: true});
+      const plural = {City: 'Cities and routes', Cluster: 'Clusters', Region: 'Regions'}[level] || 'Locations';
+      const section = insightSection(pane, `${plural} ranked${inGroup[0]?.campaign ? ` — ${inGroup[0].campaign}` : ''}`, 'scoring-ranking-card', inGroup[0]?.context);
+      section.append(insightControls(levels.length > 1 ? levelControl : null, titles.length > 1 ? groupControl : null, chips));
+      for (const item of inGroup.filter(entry => chosen.includes(entry.operator))) section.append(makeRankingTable(item));
+      section.append(insightParagraph('scoring-insight-note', 'Points %: the share of the points available in each location (its environments scaled to the full maximum); ',
+        'Δ: the change since the previous campaign in points of percentage; the bar of Points lost shares one scale per table.'));
+      const versus = inGroup.filter(entry => chosen.includes(entry.operator) && !entry.is_reference && entry.rows.some(row => row.gap !== null));
+      if (versus.length) {
+        const compare = insightSection(pane, `Each operator against ${versus[0].reference_label} per location`, 'scoring-versus-card', versus[0].context);
+        for (const item of versus) compare.append(makeVersusTable(item));
+        compare.append(insightParagraph('scoring-insight-note', `The GAP in points of percentage of the points available: to the left the operator trails ${versus[0].reference_label}, to the right it is ahead.`));
+      }
+    }
+  }
+
+  function makeRankingTable(item) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'scoring-insight-table-wrap';
+    const banner = document.createElement('div');
+    banner.className = 'scoring-insight-banner';
+    const color = safeHexColor(item.color);
+    if (color) banner.style.setProperty('--banner-color', color);
+    const lost = item.rows.reduce((sum, row) => sum + row.lost, 0);
+    banner.append(insightStrong(item.label), ` · ${item.rows.length} ${item.level === 'City' ? 'cities and routes' : `${item.level.toLowerCase()}s`}${item.title ? ` · ${item.title}` : ''}`);
+    const peak = Math.max(...item.rows.map(row => row.lost), 0);
+    const hasVendors = item.rows.some(row => row.vendors?.length);
+    const rows = item.rows.map((row, index) => [
+      {text: String(index + 1), className: 'scoring-insight-number'},
+      {text: `${row.location}${row.kind === 'route' ? ' (route)' : ''}`, className: 'scoring-insight-kpi'},
+      ...(hasVendors ? [{text: (row.vendors || []).map(vendor => `${vendor.name} ${insightNumber(vendor.share, 0)}%`).join(' · '), className: 'scoring-ranking-vendors'}] : []),
+      {text: `${insightNumber(row.percent, 1)}%${row.complete ? '' : '*'}`, className: 'scoring-insight-number scoring-insight-total',
+        bar: {ratio: Math.min(1, row.percent / 100), color: color || '#475569'}},
+      {text: signedPoints(row.delta), className: `scoring-insight-number ${toneClass(row.delta)}`},
+      {text: row.voice_percent === null ? '—' : `${insightNumber(row.voice_percent, 1)}%`, className: 'scoring-insight-number'},
+      {text: row.data_percent === null ? '—' : `${insightNumber(row.data_percent, 1)}%`, className: 'scoring-insight-number'},
+      gapBarCell(row.lost, peak, {loss: true}),
+    ]);
+    const table = insightTable(['#', 'Location', ...(hasVendors ? ['Vendors (share of tests)'] : []), 'Points %',
+      item.previous_campaign ? `Δ vs ${item.previous_campaign}` : 'Δ', 'Voice %', 'Data %', 'Points lost'], rows, {className: 'scoring-ranking-table'});
+    table.querySelectorAll('td.scoring-insight-total').forEach(cell => cell.classList.add('scoring-insight-bar-cell'));
+    wrapper.append(banner, table, insightParagraph('scoring-insight-note', `${item.label} loses ${insightNumber(lost, 1)} points in these locations, scaled to ${insightNumber(item.rows[0]?.maximum || 0)} each.`));
+    return wrapper;
+  }
+
+  function makeVersusTable(item) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'scoring-insight-table-wrap';
+    const banner = document.createElement('div');
+    banner.className = 'scoring-insight-banner';
+    const color = safeHexColor(item.color);
+    if (color) banner.style.setProperty('--banner-color', color);
+    banner.append(insightStrong(item.label), ` minus ${item.reference_label}`);
+    const rows = item.rows.filter(row => row.gap !== null).sort((left, right) => left.gap - right.gap);
+    const scale = Math.max(...rows.flatMap(row => [row.gap, row.voice_gap, row.data_gap].map(value => Math.abs(Number(value) || 0))), 1);
+    wrapper.append(banner, insightTable(['Location', 'Points %', 'Voice %', 'Data %', item.label, item.reference_label],
+      rows.map(row => [row.location, divergingBar(row.gap, scale), divergingBar(row.voice_gap, scale), divergingBar(row.data_gap, scale),
+        {text: `${insightNumber(row.percent, 1)}%`, className: 'scoring-insight-number'},
+        {text: `${insightNumber(row.reference_percent, 1)}%`, className: 'scoring-insight-number'}]), {className: 'scoring-versus-table'}));
+    return wrapper;
+  }
+
+  // ---- GAP Analysis: the GAP of each part of the scoring over the campaigns ----------------------------------------
+  function renderGapParts(pane, payload, environment) {
+    const items = insightItems(payload, 'gap_parts', environment);
+    if (!items.length) return;
+    const {control: scopeControl, inScope, context} = insightScopeControl('gap-parts-scope', items);
+    const {control: chips, chosen} = insightOperatorChips('gap-parts-operators', inScope, {compared: true});
+    const byReliability = inScope[0]?.by_reliability;
+    const section = insightSection(pane, 'GAP by part of the scoring over the campaigns', 'scoring-gap-parts-card', context);
+    section.append(insightControls(scopeControl, chips));
+    const grid = document.createElement('div');
+    grid.className = 'scoring-insight-pair';
+    for (const item of inScope.filter(entry => chosen.includes(entry.operator))) {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'scoring-insight-table-wrap';
+      const banner = document.createElement('div');
+      banner.className = 'scoring-insight-banner';
+      const color = safeHexColor(item.color);
+      if (color) banner.style.setProperty('--banner-color', color);
+      banner.append(insightStrong(item.label), ` minus ${item.reference_label}`);
+      const values = [...item.parts.flatMap(part => part.values), ...item.totals].filter(value => value !== null && value !== undefined);
+      const scale = Math.max(...values.map(value => Math.abs(value)), 1);
+      const latest = item.campaigns.length - 1;
+      const cell = (value, index, total = false) => {
+        if (value === null || value === undefined) return {text: '—', className: 'scoring-insight-number'};
+        const alpha = Math.min(1, Math.abs(value) / scale) * .55;
+        return {text: signedPoints(value), className: `scoring-insight-number${total ? ' scoring-insight-total' : ''}${index === latest ? ' is-latest' : ''}`,
+          style: {background: rgbaOf(value < 0 ? insightLossColor : insightGainColor, alpha)}};
+      };
+      const headers = ['Part', ...item.campaigns.map(campaign => campaign || 'GAP'), ...(item.campaigns.length > 1 ? ['Latest'] : [])];
+      const rows = item.parts.map(part => [part.label, ...part.values.map((value, index) => cell(value, index)),
+        ...(item.campaigns.length > 1 ? [divergingBar(part.values[latest], scale)] : [])]);
+      rows.push([{text: 'Total', className: 'scoring-insight-total'}, ...item.totals.map((value, index) => cell(value, index, true)),
+        ...(item.campaigns.length > 1 ? [divergingBar(item.totals[latest], scale)] : [])]);
+      wrapper.append(banner, insightTable(headers, rows, {className: 'scoring-gap-parts-table'}));
+      grid.append(wrapper);
+    }
+    section.append(grid, insightParagraph('scoring-insight-note', byReliability
+      ? 'Reliability: the KPIs typed Reliable (calls and tests that complete, POLQA below 1.6, throughput above 2 or 1 Mbit/s); quality: the others (speeds, times, speech quality and the higher thresholds). '
+      : 'Each part is a category of KPIs. ', 'The total is the GAP of the whole scoring; red: behind the reference, green: ahead.'));
+  }
+
+  // ---- Points Lost --------------------------------------------------------------------------------------------------
+  function renderPointsLost(pane, payload, environment, savedFilterId) {
+    pane.replaceChildren();
+    if (!environment) return;
+    renderPointsAtStake(pane, payload, environment);
+    renderPointsPerKpi(pane, payload, environment);
+    renderPointsLossMaps(pane, payload, environment, savedFilterId);
+    const pending = payload.points_loss_pending;
+    renderServingLosses(pane, payload, environment, 'vendor_losses', 'Points lost per Vendor of the serving cell', 'Vendor', pending);
+    renderServingLosses(pane, payload, environment, 'site_type_losses', 'Points lost per kind of serving site', 'Kind of site', pending);
+    renderSitesToReview(pane, payload, environment, pending);
+    renderRouteStretches(pane, payload, environment, pending);
+    if (!pane.childElementCount) {
+      const empty = document.createElement('div');
+      empty.className = 'scoring-empty';
+      empty.textContent = 'No points lost are available for this environment.';
+      pane.append(empty);
+    }
+  }
+
+  function renderPointsAtStake(pane, payload, environment) {
+    const items = insightItems(payload, 'points_at_stake', environment);
+    if (!items.length) return;
+    const {control: scopeControl, inScope, context} = insightScopeControl('stake-scope', items);
+    const item = inScope[0];
+    const section = insightSection(pane, `Where the points go${item.campaign ? ` — ${item.campaign}` : ''}`, 'scoring-stake-card', context);
+    section.append(insightControls(scopeControl));
+    const kinds = item.kinds;
+    const [failedColour, belowColour, qualityColour] = activeTheme.stake || ['#a51c30', '#e8414f', '#f4a3aa'];
+    const colours = {failed: failedColour, below_par: belowColour, quality: qualityColour};
+    const peak = Math.max(...item.operators.map(row => row.lost), 1);
+    const list = document.createElement('div');
+    list.className = 'scoring-stake';
+    for (const row of item.operators) {
+      const line = document.createElement('div');
+      line.className = 'scoring-stake-row';
+      const name = insightStrong(`${row.label}${row.is_reference ? ' (reference)' : ''}`, safeHexColor(row.color));
+      const bar = document.createElement('span');
+      bar.className = 'scoring-stake-bar';
+      for (const kind of kinds) {
+        const segment = document.createElement('i');
+        segment.style.width = `${row.parts[kind.key] / peak * 100}%`;
+        segment.style.background = colours[kind.key];
+        segment.title = `${kind.label}: ${insightNumber(row.parts[kind.key], 1)} points${(row.kpis?.[kind.key] || []).length
+          ? `\n${row.kpis[kind.key].map(kpi => `${kpi.kpi} (${kpi.service}): ${insightNumber(kpi.lost, 1)}`).join('\n')}` : ''}`;
+        if (row.parts[kind.key] / peak > .08) segment.textContent = insightNumber(row.parts[kind.key], 0);
+        bar.append(segment);
+      }
+      const total = insightStrong(`${insightNumber(row.lost, 1)} lost`);
+      total.className = 'scoring-stake-total';
+      line.append(name, bar, total);
+      list.append(line);
+    }
+    const legend = document.createElement('div');
+    legend.className = 'scoring-location-legend';
+    legend.innerHTML = kinds.map(kind => `<span><i style="background:${colours[kind.key]}"></i>${kind.label}</span>`).join('');
+    const table = insightTable(['Operator', ...kinds.map(kind => kind.label), 'Points lost', 'Points'], item.operators.map(row => [
+      {text: row.label, style: {color: safeHexColor(row.color) || '#263746', fontWeight: 800}},
+      ...kinds.map(kind => ({text: insightNumber(row.parts[kind.key], 1), className: 'scoring-insight-number',
+        title: (row.kpis?.[kind.key] || []).map(kpi => `${kpi.kpi}: ${insightNumber(kpi.lost, 1)}`).join('\n')})),
+      {text: insightNumber(row.lost, 1), className: 'scoring-insight-number scoring-insight-total'},
+      {text: insightNumber(row.points, 1), className: 'scoring-insight-number'}]));
+    const wrap = document.createElement('div');
+    wrap.className = 'scoring-insight-table-wrap';
+    wrap.append(table);
+    section.append(list, legend, wrap, insightParagraph('scoring-insight-note',
+      'Failed tests: the points of the Reliable KPIs (calls and tests that did not complete, POLQA below 1.6, the lowest throughputs); ',
+      'below the threshold: the tests that passed but under the threshold of a KPI (setup over 10 s, under 5, 20 or 100 Mbit/s…); ',
+      'quality shortfall: what the averages, medians and 90th percentiles miss of their best score. Hover a bar for the KPIs that lose most.'));
+  }
+
+  function servingNotice(section, pending) {
+    section.append(insightParagraph('scoring-insight-note', pending ? 'Preparing the Points Lost of the tests…'
+      : 'Calculate the scoring again to share its points lost among the Vendors, kinds of site, sites and route stretches of the cells that served the tests (the CDRs need the serving cells of the Vendor Mapping).'));
+  }
+
+  function renderServingLosses(pane, payload, environment, kind, title, column, pending) {
+    const items = insightItems(payload, kind, environment);
+    const maps = insightItems(payload, 'points_loss_maps', environment);
+    if (!items.length) {
+      if (kind === 'vendor_losses' && (maps.length || pending)) servingNotice(insightSection(pane, title, 'scoring-serving-card'), pending);
+      return;
+    }
+    const {control: scopeControl, inScope, context} = insightScopeControl(`${kind}-scope`, items, {withCampaign: true});
+    const {control: chips, chosen} = insightOperatorChips(`${kind}-operators`, inScope, {compared: true});
+    const section = insightSection(pane, title, 'scoring-serving-card', context);
+    section.append(insightControls(scopeControl, chips));
+    const grid = document.createElement('div');
+    grid.className = 'scoring-insight-pair';
+    for (const item of inScope.filter(entry => chosen.includes(entry.operator))) {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'scoring-insight-table-wrap';
+      const banner = document.createElement('div');
+      banner.className = 'scoring-insight-banner';
+      const color = safeHexColor(item.color);
+      if (color) banner.style.setProperty('--banner-color', color);
+      banner.append(insightStrong(item.label), ` · ${insightNumber(item.total, 1)} points lost`);
+      const peak = Math.max(...item.rows.map(row => row.points), 0);
+      const withTests = item.has_tests;
+      const withCities = kind === 'vendor_losses' && item.rows.some(row => row.cities?.length);
+      const withEnvironments = item.rows.some(row => row.environments?.length);
+      wrapper.append(banner, insightTable([column, 'Points lost', 'Share of points', ...(withTests ? ['Share of tests'] : []),
+        ...(withEnvironments ? ['Where'] : []), ...(withCities ? ['Cities and routes that lose most'] : [])], item.rows.map(row => [
+        {text: row.name, className: row.identified ? 'scoring-insight-kpi' : 'scoring-insight-kpi is-muted'},
+        gapBarCell(row.points, peak, {loss: true, total: true}),
+        {text: `${insightNumber(row.share, 1)}%`, className: 'scoring-insight-number'},
+        ...(withTests ? [{text: row.tests_share === null ? '—' : `${insightNumber(row.tests_share, 1)}%`,
+          className: `scoring-insight-number ${row.tests_share !== null && row.share > row.tests_share * 1.25 && row.share - row.tests_share > 3 ? 'is-loss' : ''}`,
+          title: 'Share of the tests of the operator served by it'}] : []),
+        ...(withEnvironments ? [{text: (row.environments || []).map(name => shortEnvironmentLabel(name)).join(', '), className: 'scoring-loss-environment'}] : []),
+        ...(withCities ? [(row.cities || []).map(city => `${city.name} ${insightNumber(city.points, 1)}`).join(' · ')] : []),
+      ])));
+      grid.append(wrapper);
+    }
+    section.append(grid, insightParagraph('scoring-insight-note', kind === 'vendor_losses'
+      ? 'Each test belongs to the RAN Vendor of the cell that served its start (Not identified: no serving cell in the inventories). In red, a share of the points lost well above the share of the tests.'
+      : 'The kind of each serving site: the network that owns it and, when another network hosts its RAN, "on" that network (Beacon, MORAN); NNS sites apart. In red, a share of the points lost well above the share of the tests.'));
+  }
+
+  function renderSitesToReview(pane, payload, environment, pending) {
+    const items = insightItems(payload, 'sites_to_review', environment);
+    if (!items.length) return;
+    const {control: scopeControl, inScope, context} = insightScopeControl('sites-scope', items);
+    const {control: chips, chosen} = insightOperatorChips('sites-operators', inScope, {compared: true});
+    const section = insightSection(pane, `Sites to review${inScope[0]?.campaign ? ` — ${inScope[0].campaign}` : ''}`, 'scoring-sites-card', context);
+    section.append(insightControls(scopeControl, chips));
+    for (const item of inScope.filter(entry => chosen.includes(entry.operator))) {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'scoring-insight-table-wrap';
+      const banner = document.createElement('div');
+      banner.className = 'scoring-insight-banner';
+      const color = safeHexColor(item.color);
+      if (color) banner.style.setProperty('--banner-color', color);
+      const high = item.rows.filter(row => row.priority === 'High').length;
+      banner.append(insightStrong(item.label), ` · ${item.rows.length} sites hold ${insightNumber(item.listed_points, 1)} of ${insightNumber(item.total, 1)} points lost · ${high} High`);
+      const peak = Math.max(...item.rows.map(row => row.points), 0);
+      wrapper.append(banner, insightTable(['Priority', 'Site', 'Network', 'Vendor', 'City or route', 'Points lost', 'Failed tests',
+        ...item.earlier_campaigns.map(campaign => `${campaign} points`)], item.rows.map(row => [
+        {text: row.priority, className: `scoring-priority is-${row.priority.toLowerCase()}`},
+        {text: row.site, className: 'scoring-insight-kpi'}, row.network || '—', row.vendor || '—', row.city || '—',
+        gapBarCell(row.points, peak, {loss: true, total: true}),
+        {text: row.failures ? insightNumber(row.failures, 0) : '—', className: 'scoring-insight-number'},
+        ...row.history.map(entry => ({text: entry.points ? insightNumber(entry.points, 1) : '—', className: 'scoring-insight-number'})),
+      ])));
+      section.append(wrapper);
+    }
+    section.append(insightParagraph('scoring-insight-note', `High: ${insightNumber(inScope[0].priority_points, 0)}+ points lost and losses on the same site in an earlier campaign; Medium: one of the two; Low: neither. `,
+      'Failed tests: the calls and tests that missed the Reliable KPIs. Please review their cells: configuration, alarms and changes on the days of the measurements.'));
+  }
+
+  function renderRouteStretches(pane, payload, environment, pending) {
+    const items = insightItems(payload, 'route_stretches', environment);
+    if (!items.length) return;
+    const {control: scopeControl, inScope, context} = insightScopeControl('stretches-scope', items, {withCampaign: true});
+    const operators = inScope.map(item => [item.operator, item.label]);
+    const {wrapper: operatorControl, value: storedOperator} = insightSelect('stretches-operator', operators, 'Operator',
+      (inScope.find(item => !item.is_reference) || inScope[0])?.operator);
+    const item = inScope.find(entry => entry.operator === storedOperator) || inScope[0];
+    const routes = item.routes.map(route => [route.route, `${route.route} (${insightNumber(route.points, 1)})`]);
+    const {wrapper: routeControl, value: storedRoute} = insightSelect('stretches-route', routes, 'Route');
+    const route = item.routes.find(entry => entry.route === storedRoute) || item.routes[0];
+    const section = insightSection(pane, 'Connecting Roads: where along each route the points are', 'scoring-stretches-card', context);
+    section.append(insightControls(scopeControl, operatorControl, routeControl));
+    const color = safeHexColor(item.color) || '#7c3aed';
+    const body = document.createElement('div');
+    body.className = 'scoring-stretches';
+    body.append(makeStretchMap(route, color, payload?.views?.insights?.points_loss_background || []));
+    const peak = Math.max(...route.stretches.map(row => row.points), 0);
+    const table = insightTable(['#', 'Stretch', 'Points lost', 'Main Vendor'], route.stretches.map((row, index) => [
+      {text: String(index + 1), className: 'scoring-insight-number'}, row.label, gapBarCell(row.points, peak, {loss: true, total: true}), row.vendor || '—']));
+    const wrap = document.createElement('div');
+    wrap.className = 'scoring-insight-table-wrap';
+    wrap.append(insightParagraph('scoring-insight-note', insightStrong(item.label, color), ` loses ${insightNumber(route.points, 1)} points on ${route.route}; the stretches with most of them:`), table);
+    body.append(wrap);
+    section.append(body, insightParagraph('scoring-insight-note', 'A stretch gathers the tests of the route within about 20 km, named after the nearest city of the measurements; circle area: points lost.'));
+  }
+
+  function makeStretchMap(route, color, background) {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    const width = 520, height = 420, margin = 34;
+    const points = [...(route.path || []), ...route.all_stretches.map(([lat, lon]) => [lat, lon])];
+    const latitudes = points.map(point => point[0]), longitudes = points.map(point => point[1]);
+    const south = Math.min(...latitudes) - .15, north = Math.max(...latitudes) + .15;
+    const west = Math.min(...longitudes) - .25, east = Math.max(...longitudes) + .25;
+    const factor = Math.cos((south + north) / 2 * Math.PI / 180);
+    const unit = Math.max((east - west) * factor / (width - 2 * margin), (north - south) / (height - 2 * margin)) || 1;
+    const project = (lat, lon) => [margin + ((lon - west) * factor) / unit + ((width - 2 * margin) - (east - west) * factor / unit) / 2,
+      height - margin - (lat - south) / unit - ((height - 2 * margin) - (north - south) / unit) / 2];
+    svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    svg.setAttribute('class', 'scoring-stretch-map');
+    svg.setAttribute('role', 'img');
+    svg.setAttribute('aria-label', `${route.route}: points lost along the route`);
+    svg.append(svgElement(svg, 'rect', {x: 0, y: 0, width, height, rx: 10, fill: '#f8fafc'}));
+    for (const [lat, lon] of background) {
+      if (lat < south || lat > north || lon < west || lon > east) continue;
+      const [x, y] = project(lat, lon);
+      svg.append(svgElement(svg, 'circle', {cx: x, cy: y, r: 1.4, fill: '#d5dbe2'}));
+    }
+    // The tests of the route (a sample of their positions), darker than the other tests.
+    for (const [lat, lon] of route.path || []) {
+      const [x, y] = project(lat, lon);
+      svg.append(svgElement(svg, 'circle', {cx: x, cy: y, r: 2.2, fill: '#94a3b8'}));
+    }
+    const peak = Math.max(...route.all_stretches.map(item => item[2]), 0) || 1;
+    const top = new Map(route.stretches.map((row, index) => [`${row.latitude},${row.longitude}`, index + 1]));
+    for (const [lat, lon, points] of [...route.all_stretches].sort((left, right) => left[2] - right[2])) {
+      const [x, y] = project(lat, lon);
+      const radius = 4 + 22 * Math.sqrt(points / peak);
+      const circle = svgElement(svg, 'circle', {cx: x, cy: y, r: radius, fill: color, 'fill-opacity': .55, stroke: '#ffffff', 'stroke-width': 1.5});
+      setChartTooltip(circle, `${insightNumber(points, 2)} points lost`, true);
+      svg.append(circle);
+      const rank = top.get(`${lat},${lon}`);
+      if (rank) {
+        const label = svgElement(svg, 'text', {x, y: y + 4, 'text-anchor': 'middle', 'font-size': 11, 'font-weight': 800, fill: '#ffffff'});
+        label.textContent = String(rank);
+        svg.append(label);
+      }
+    }
+    return svg;
   }
 
   // Points lost per area: the map areas (the ITL3 areas in the UK, the workspace's Map Areas elsewhere,
   // or the workspace Clusters and Regions) coloured by the points lost, and the cities, routes or
   // clusters that lose most.
   const lossBoundaryCache = new Map();
-  const lossLow = [249, 214, 92];
-  const lossHigh = [200, 16, 46];
+  let lossLow = activeTheme.loss_ramp ? hexChannels(activeTheme.loss_ramp[0]) : [249, 214, 92];
+  let lossHigh = activeTheme.loss_ramp ? hexChannels(activeTheme.loss_ramp[1]) : [200, 16, 46];
   const maxLossBars = 30;
 
   function lossColor(ratio) {
     const value = Math.max(0, Math.min(1, Number(ratio) || 0));
     return `rgb(${lossLow.map((low, index) => Math.round(low + (lossHigh[index] - low) * value)).join(',')})`;
+  }
+
+  // The areas without points lost and the borders between areas, in the colours of the theme's panels.
+  function lossMapNeutral() {
+    const surface = hexChannels(activeTheme?.surface || '#FFFFFF');
+    const ink = hexChannels(activeTheme?.ink || '#1F2A37');
+    return {zero: `rgb(${surface.map((value, index) => Math.round(value + (ink[index] - value) * .08)).join(',')})`,
+      border: activeTheme?.surface || '#FFFFFF'};
   }
 
   function lossBoundaries(savedFilterId, field) {
@@ -6103,7 +7204,7 @@
     const project = (x, y) => [10 + (x - minX) * scaleX / unit, height - 10 - (y - minY) / unit];
     const positive = Object.values(values).filter(value => value > 0);
     const low = positive.length ? Math.min(...positive) : 0;
-    const span = (positive.length ? Math.max(...positive) : 0) - low || 1;
+    const span = (positive.length ? Math.max(...positive) : 0) - low;
     const tooltip = (element, name, value) => {
       const title = document.createElementNS(svgNs, 'title');
       title.textContent = describe ? describe(name, value) : `${name}: ${insightNumber(value, 2)} points lost`;
@@ -6121,10 +7222,11 @@
         const path = document.createElementNS(svgNs, 'path');
         path.setAttribute('d', `M${ring.map(([x, y]) => project(x, y).map(value => value.toFixed(1)).join(',')).join('L')}Z`);
         const value = values[name] || 0;
-        path.setAttribute('fill', value > 0 ? lossColor((value - low) / span) : '#eaecef');
+        const neutral = lossMapNeutral();
+        path.setAttribute('fill', value > 0 ? lossColor(span ? (value - low) / span : 1) : neutral.zero);
         path.dataset.area = name;
         path.dataset.value = String(value);
-        path.setAttribute('stroke', '#fff');
+        path.setAttribute('stroke', neutral.border);
         path.setAttribute('stroke-width', '.6');
         tooltip(path, name, value);
         svg.append(path);
@@ -6498,10 +7600,10 @@
       recolour(values, describe, nextLinks) {
         const positive = Object.values(values).filter(value => value > 0);
         const low = positive.length ? Math.min(...positive) : 0;
-        const span = (positive.length ? Math.max(...positive) : 0) - low || 1;
+        const span = (positive.length ? Math.max(...positive) : 0) - low;
         marks.forEach(mark => {
           const value = values[mark.dataset.area] || 0;
-          mark.setAttribute('fill', value > 0 ? lossColor((value - low) / span) : '#eaecef');
+          mark.setAttribute('fill', value > 0 ? lossColor(span ? (value - low) / span : 1) : lossMapNeutral().zero);
           mark.dataset.value = String(value);
           const title = mark.querySelector('title');
           if (title) title.textContent = describe(mark.dataset.area, value);
@@ -6776,7 +7878,7 @@
       const cell = {text: insightNumber(delta, 2), className: 'scoring-insight-number scoring-insight-delta'};
       if (delta === null || delta === undefined || !scale || !delta) return cell;
       const alpha = Math.min(1, Math.abs(delta) / scale) * .75;
-      cell.style = {background: delta < 0 ? `rgba(232,65,79,${alpha})` : `rgba(76,166,90,${alpha})`};
+      cell.style = {background: rgbaOf(delta < 0 ? insightLossColor : insightGainColor, alpha)};
       return cell;
     };
     const table = insightTable(
@@ -7037,6 +8139,27 @@
   // Drawing the results again (another operator, environment or option) keeps the card being looked at
   // where it was on the screen: each pane keeps its height until its maps are drawn, and the page
   // scrolls by what the cards above that card grew or shrank.
+  function setScoringTheme(id) {
+    const theme = scoringThemes.find(item => item.id === id);
+    if (!theme || theme.id === activeTheme?.id) return;
+    activeTheme = theme;
+    applyThemeStyles();
+    insightVoiceColor = theme.voice;
+    insightDataColor = theme.data;
+    insightLossColor = theme.loss;
+    insightGainColor = theme.gain;
+    insightRankColors = theme.ranks;
+    lossLow = hexChannels(theme.loss_ramp[0]);
+    lossHigh = hexChannels(theme.loss_ramp[1]);
+    // The other tabs are drawn again, in the new theme, when they are opened.
+    if (currentResults) renderResult(currentResults, selectedSavedFilter);
+    if (currentResultsSavedFilterId) setExportLinks(currentResultsSavedFilterId, true);
+    document.dispatchEvent(new CustomEvent('scoring-theme-change', {detail: {theme: theme.id}}));
+    fetch('/api/scoring/theme', {
+      method: 'PUT', credentials: 'same-origin', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({theme: theme.id}),
+    }).catch(() => {});
+  }
+
   function renderResult(savedPayload, savedFilter, panesToRender = [activeResultTab]) {
     const held = panesToRender.map(name => root.querySelector(`[data-result-pane="${name}"]`))
       .filter(pane => pane && pane.childElementCount && pane.offsetHeight).map(pane => [pane, pane.offsetHeight]);
@@ -7161,6 +8284,12 @@
       renderBestNetworkChart(chartPane, scoreTables, hierarchyScoreTable, allScoreTables);
       renderInsightCharts(chartPane, payload, effectiveEnvironment);
     }
+    if (shouldRenderPane('summary')) renderSummary(root.querySelector('[data-result-pane="summary"]'), payload, effectiveEnvironment);
+    if (shouldRenderPane('locations')) renderLocations(root.querySelector('[data-result-pane="locations"]'), payload, effectiveEnvironment);
+    if (shouldRenderPane('points')) {
+      renderPointsLost(root.querySelector('[data-result-pane="points"]'), payload, effectiveEnvironment,
+        savedFilterIdOf(savedFilter || payload.saved_filter || {}));
+    }
     if (shouldRenderPane('gap')) {
       const gapTotals = normalizeRows(payload.gap_totals ?? []);
       if (displayHierarchyGapTable) {
@@ -7184,13 +8313,13 @@
       } else {
         renderTable(gapPane, gapRows, 'No GAP rows are available for the selected baseline operator.');
       }
-      // The GAP tables, the KPI GAP Profile and the Points Lost Map are each in their own card.
+      // The GAP tables, the GAP by part and the KPI GAP Profile are each in their own card.
       const gapTablesCard = document.createElement('section');
       gapTablesCard.className = 'scoring-result-card scoring-gap-tables-card';
       gapTablesCard.append(...gapPane.childNodes);
       if (gapTablesCard.childNodes.length) gapPane.append(gapTablesCard);
+      renderGapParts(gapPane, payload, effectiveEnvironment);
       renderKpiGapProfiles(gapPane, payload, effectiveEnvironment);
-      renderPointsLossMaps(gapPane, payload, effectiveEnvironment, savedFilterIdOf(savedFilter || payload.saved_filter || {}));
       if (tableExports.gap) gapPane.prepend(tableExports.gap);
     }
     const warnings = payload.warnings ?? savedFilter?.warnings ?? [];
@@ -7469,8 +8598,8 @@
       return false;
     }
     const payload = {...calculationPayload(), force};
-    // A new scoring always opens on Scoring Charts.
-    showResultTab('charts');
+    // A new scoring always opens on Summary.
+    showResultTab('summary');
     syncResultTableControls();
     persistScoringViewState();
     submittingCalculation = true;
@@ -7579,6 +8708,10 @@
       if (event.target === areaSummaryEnabled && !restoringSelection) scheduleAutoCdrRefresh();
       updateSelection();
       scheduleSelectionSave();
+      return;
+    }
+    if (event.target === themeSelect) {
+      setScoringTheme(themeSelect.value);
       return;
     }
     if (event.target === environmentSelect && currentResults) {
@@ -7890,7 +9023,8 @@
         gapComparisonSelections.set(key, `operator:${chosen[0]}`);
         persistScoringViewState();
       }
-      renderResult(currentResults, selectedSavedFilter, ['gap']);
+      // The KPI GAP Profile (GAP Analysis) and the Points Lost Map (Points Lost) share the choice.
+      renderResult(currentResults, selectedSavedFilter);
       return;
     }
     if (event.target.closest('[data-generate-report]')) {
@@ -7906,6 +9040,18 @@
     if (exportLink?.matches('[data-export-ppt]')) {
       event.preventDefault();
       void exportSelectedScoringReport(exportLink);
+      return;
+    }
+    const chip = event.target.closest('[data-insight-chip]');
+    if (chip && currentResults) {
+      let chosen = [];
+      try { chosen = JSON.parse(chip.dataset.insightChosen || '[]'); } catch (_error) { chosen = []; }
+      const operator = chip.dataset.insightChip;
+      chosen = chosen.includes(operator) ? chosen.filter(item => item !== operator) : [...chosen, operator];
+      if (!chosen.length) return;
+      insightSelections.set(chip.dataset.insightChipKey, JSON.stringify(chosen));
+      persistScoringViewState();
+      renderResult(currentResults, selectedSavedFilter);
       return;
     }
     const tab = event.target.closest('[data-result-tab]');
@@ -7924,10 +9070,12 @@
     if (currentResults) renderResult(currentResults, selectedSavedFilter, [name]);
   });
   expandedChartClose?.addEventListener('click', closeExpandedChart);
-  // The Scoring Results entries of the Scoring tab menu (#scoring-results-charts, -tables or -gap) open that
+  // The Scoring Results entries of the Scoring tab menu (#scoring-results-summary, -charts, -tables, -locations, -gap or
+  // -points-lost) open that
   // results tab and show the results tabs at the top of the page.
   const openResultTabFromHash = () => {
-    const name = {'scoring-results-charts': 'charts', 'scoring-results-tables': 'scoring', 'scoring-results-gap': 'gap'}[
+    const name = {'scoring-results-summary': 'summary', 'scoring-results-charts': 'charts', 'scoring-results-tables': 'scoring',
+      'scoring-results-locations': 'locations', 'scoring-results-gap': 'gap', 'scoring-results-points-lost': 'points'}[
       decodeURIComponent(window.location.hash.slice(1))];
     if (!name) return;
     root.querySelector(`[data-result-tab="${name}"]`)?.click();

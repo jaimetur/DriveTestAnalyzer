@@ -573,7 +573,7 @@ def test_cdr_analysis_word_keeps_the_powerpoint_of_the_same_run(tmp_path, monkey
     # from an intermediate presentation must not replace or remove the PowerPoint next to it.
     monkeypatch.setattr(core, 'build_dataset_summary_reports', lambda *_args, **_kwargs: ([], []))
     monkeypatch.setattr(core, 'export_dataset_summary_powerpoint', lambda path, _reports: Path(path).write_bytes(b'pptx'))
-    monkeypatch.setattr('src.modules.pptx_to_docx.pptx_to_docx', lambda content, *_args: b'docx')
+    monkeypatch.setattr('src.modules.pptx_to_docx.pptx_to_docx', lambda content, *_args, **_kwargs: b'docx')
     powerpoint = tmp_path / '20261007_120000 - CDR Analysis.pptx'
     core.write_dataset_summary([1], 'powerpoint', powerpoint, 'super')
     word = tmp_path / '20261007_120000 - CDR Analysis.docx'

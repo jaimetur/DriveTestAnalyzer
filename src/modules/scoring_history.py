@@ -26,7 +26,7 @@ from src.modules.cdr_stage import dataset_cdr_stage
 from src.modules.column_names import column_identity, resolve_column_name, vendor_match_values
 from src.modules.scoring import (
     START_TIME_COLUMNS, _FIELDS, _LEVEL_SOURCE_ALIASES, _SHARED, _condition, _filter, _is_condition_expression,
-    _key_name, _numeric, finish_scoring, normalize_time_split, period_labels, required_input_columns,
+    _key_name, _numeric, finish_scoring, normalize_time_split, period_labels, required_input_columns, window_of_days,
 )
 from src.modules.scoring_config import validate_scoring_configuration
 from src.modules.scoring_vendors import scoring_vendor_group, scoring_vendor_name
@@ -743,6 +743,7 @@ def calculate_scoring_from_history(
 
     rows: list[dict[str, Any]] = []
     global_kpis: list[dict[str, Any]] = []
+    test_counts: list[dict[str, Any]] = []
     for kind, kind_rows in rows_by_kind.items():
         present = present_by_kind[kind]
         needed = {'Operator': 'operator', 'Campaign': 'campaign', 'G_Level_1': 'g_level_1', 'G_Level_2': 'g_level_2',
@@ -758,6 +759,7 @@ def calculate_scoring_from_history(
         vendor_labels: dict[str | None, str] = {}
         grouped: dict[tuple, dict[str, dict[str, Any]]] = {}
         global_grouped: dict[tuple, dict[str, Any]] = {}
+        tests: dict[tuple, int] = {}
         invalid = 0
         for values, group in kind_rows:
             operator = values['operator']
@@ -788,6 +790,7 @@ def calculate_scoring_from_history(
                 invalid += group['rows']
             base = tuple(dimension_values.get(field) for field in group_fields if field != 'environment')
             if valid:
+                tests[(*base, environment)] = tests.get((*base, environment), 0) + int(group['rows'])
                 target = grouped.setdefault((*base, environment), {})
                 for signature, components in group['metrics'].items():
                     merge_components(target.setdefault(signature, {}), components)
@@ -808,6 +811,7 @@ def calculate_scoring_from_history(
                 return None, 0
             return metric_value(components.get(signatures[metric['code']]), metric)
 
+        test_counts.extend({**dict(zip(keys, group_key)), 'kind': kind, 'tests': count} for group_key, count in tests.items())
         for group_key, components in grouped.items():
             metadata = dict(zip(keys, group_key))
             for metric in kind_metrics:
@@ -838,6 +842,10 @@ def calculate_scoring_from_history(
         points_loss_document=None,
     )
     result['source'] = 'history'
+    window = window_of_days(values['day'] for kind_rows in rows_by_kind.values() for values, _group in kind_rows)
+    if window:
+        result['test_window'] = window
+    result['test_counts'] = test_counts
     return result
 
 

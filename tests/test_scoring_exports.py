@@ -11,12 +11,15 @@ from pptx.dml.color import RGBColor
 from pptx.enum.chart import XL_CHART_TYPE, XL_DATA_LABEL_POSITION, XL_LEGEND_POSITION, XL_TICK_LABEL_POSITION
 from pptx.enum.shapes import MSO_SHAPE_TYPE
 from pptx.enum.text import MSO_ANCHOR
+from pptx.oxml.ns import qn
 from pptx.util import Inches
 
 from src.modules.scoring_exports import (
     _add_chart_hierarchy_grid, _charts, _cell, _format_chart, _format_stacked_segment_labels, _header_foreground,
     _hierarchy_chart_color, _stacked_chart_pages, export_scoring_powerpoint,
 )
+from src.modules.scoring_pptx_scorecard import STYLES
+from src.modules.scoring_themes import THEMES, blend
 from src.modules.scoring_views import THRESHOLD_COLORS, _hierarchy_display_value, build_scoring_views
 from tests.scoring_fixtures import scoring_configuration
 
@@ -125,7 +128,9 @@ def _table_shapes(presentation):
 def _comparison_matrices(presentation):
     return [
         table for table in _table_shapes(presentation)
-        if len(table.rows) >= 3 and table.cell(0, 0).text.strip() in {'NETCHECK KPIs', 'CATEGORY'}
+        # The Scoring tables start with their KPI (or Category, in a Summary) column and end with the weighted score.
+        if len(table.rows) >= 3 and table.cell(0, 0).text.strip() in {'KPI', 'Category'}
+        and table.cell(len(table.rows) - 1, 0).text.startswith('Weighted score')
     ]
 
 
@@ -136,12 +141,31 @@ def _normalized_headers(table):
 def _operator_columns(table):
     headers = _normalized_headers(table)
     gap_start = next((index for index, label in enumerate(headers) if label.startswith('GAP ')), len(headers))
-    operator_start = headers.index('Max score') + 1
-    return {headers[index]: index for index in range(operator_start, gap_start)}
+    # The scorecard has a single KPI (or Category) column before the operators.
+    return {headers[index]: index for index in range(1, gap_start)}
 
 
 def _rgb(cell):
+    """The colour of a cell: its solid fill, or the first colour of the bar that fills it."""
+    properties = cell._tc.tcPr
+    gradient = properties.find(qn('a:gradFill')) if properties is not None else None
+    if gradient is not None:
+        return gradient.find(qn('a:gsLst'))[0][0].get('val')
     return str(cell.fill.fore_color.rgb)
+
+
+def _label_name(text):
+    """The KPI or category of a scorecard label, without its category tag, type badge, weight and maximum."""
+    head, _separator, rest = text.partition(' · ')
+    if rest and head.isupper() and '   ' not in head:
+        text = rest
+    if text[:3] in {'R  ', 'D  '}:
+        text = text[3:]
+    return text.split('   ')[0]
+
+
+SECTION_FILL = STYLES['netcheck']['section'].lstrip('#')
+TOTAL_FILL = STYLES['netcheck']['total'].lstrip('#')
 
 
 def _slide_text(slide):
@@ -187,10 +211,16 @@ def _assert_sparse_series_values(series, expected_values):
 
 
 def _assert_gray_category_row(table, row_index):
-    category_fill = _rgb(table.cell(row_index, 0)).upper()
-    assert category_fill == 'DCE5E9'
-    assert all(_rgb(table.cell(row_index, column)).upper() == category_fill
-               for column in range(len(table.columns)))
+    """A category section: the whole row in the colour of the theme's sections."""
+    assert all(_rgb(table.cell(row_index, column)).upper() == SECTION_FILL for column in range(len(table.columns)))
+
+
+def _section_rows(table, start=1):
+    """The rows that open a category: their label in bold (a KPI label starts with its type badge)."""
+    def opens_section(cell):
+        runs = cell.text_frame.paragraphs[0].runs
+        return bool(runs) and bool(runs[0].font.bold) and runs[0].text.strip() not in {'R', 'D'}
+    return [index for index in range(start, len(table.rows) - 1) if opens_section(table.cell(index, 0))]
 
 
 def _assert_row_matches_category_fill(table, row_index, expected_fill):
@@ -581,52 +611,47 @@ def test_powerpoint_exports_one_reference_style_scoring_matrix_with_signed_gaps_
     assert presentation.slide_width == source.slide_width
     assert presentation.slide_height == source.slide_height
     assert len(matrices) == 2
-    assert _normalized_headers(matrices[0])[:4] == [
-        'CATEGORY', 'Score weight (%)', 'Max score', 'EE',
-    ]
-    assert _rgb(matrices[0].cell(0, 0)) == '455B65'
+    # The scorecard: a Category (Summary) or KPI (Breakdown) column, then the operators; no Weight or Max columns.
+    assert _normalized_headers(matrices[0])[:2] == ['Category', 'EE']
+    assert _rgb(matrices[0].cell(0, 0)) == STYLES['netcheck']['header'].lstrip('#')
     table = matrices[-1]
     headers = _normalized_headers(table)
-    assert headers[:5] == ['CATEGORY', 'KPI', 'Type of KPI', 'Score weight (%)', 'Max score']
-    assert [_rgb(table.cell(0, index)) for index in range(3)] == ['455B65'] * 3
-    assert _rgb(table.cell(1, 0)) == 'DCE5E9'
+    assert headers[0] == 'KPI'
+    assert not {'CATEGORY', 'Type of KPI', 'Score weight (%)', 'Max score'} & set(headers)
     operator_columns = _operator_columns(table)
     assert list(operator_columns) == list(MAPPED_OPERATOR_ORDER)
     gap_columns = [index for index, header in enumerate(headers) if header.startswith('GAP ')]
     assert len(gap_columns) == 3
     display_rows = views['score_tables'][0]['expanded_rows']
     assert len(table.rows) == len(display_rows) + 2
-    assert len(table.columns) == 12
-    assert [table.cell(row, 1).text for row in range(1, len(table.rows) - 1)] == [row['kpi'] for row in display_rows]
+    assert len(table.columns) == 8
+    # Each category opens a section with its subtotal, then its KPIs, each with its type, weight and maximum.
+    expected_labels = []
+    for category in dict.fromkeys(row['category'] for row in display_rows):
+        expected_labels.append(category)
+        expected_labels.extend(row['kpi'] for row in display_rows
+                               if row['category'] == category and row.get('row_type') != 'category')
+    labels = [table.cell(row, 0).text for row in range(1, len(table.rows) - 1)]
+    assert [_label_name(label) for label in labels] == expected_labels
+    assert all(label.endswith(' pts') for label in labels)
     assert all(table.cell(row, 0).text not in OPERATORS for row in range(1, 33))
-    for row_index, row in enumerate(display_rows, 1):
-        if row.get('row_type') == 'category':
-            _assert_gray_category_row(table, row_index)
+    sections = _section_rows(table)
+    assert [_label_name(table.cell(row, 0).text) for row in sections] == list(dict.fromkeys(row['category'] for row in display_rows))
+    for row_index in sections:
+        _assert_gray_category_row(table, row_index)
 
     total_row = len(table.rows) - 1
-    assert table.cell(total_row, 0).text == 'TOTAL'
+    # The weighted total names the weight and maximum of the environment (65% of the 1,000 points).
+    assert table.cell(total_row, 0).text.startswith('Weighted score')
+    assert table.cell(total_row, 0).text.endswith('65.00% · 650.00 pts')
     for scoring_matrix in matrices:
-        if 'KPI' not in _normalized_headers(scoring_matrix):
-            assert _rgb(scoring_matrix.cell(len(scoring_matrix.rows) - 1, 0)) == 'D8DFE4'
-        else:
-            _assert_row_matches_category_fill(scoring_matrix, len(scoring_matrix.rows) - 1, 'DCE5E9')
-    assert table.cell(total_row, 3).text == '65.00%'
-    assert table.cell(total_row, 4).text == '650.00'
-    assert table.cell(total_row, 3).text != '100.00%'
+        assert _rgb(scoring_matrix.cell(len(scoring_matrix.rows) - 1, 0)) == TOTAL_FILL
 
-    # Scoring bands keep the reference colors; operator headers follow workspace mappings.
-    reference_header_colors = {
-        'Score weight (%)': _rgb(table.cell(0, 3)),
-        'Max score': _rgb(table.cell(0, 4)),
-    }
-    assert reference_header_colors == {
-        'Score weight (%)': '4EA72E',
-        'Max score': 'FF0000',
-    }
+    # The operators are on strips in the colours of the workspace mappings (as in the NetCheck reports); the GAP
+    # headers stay light.
     assert {operator: _rgb(table.cell(0, column)) for operator, column in operator_columns.items()} == {
-        operator: color.lstrip('#').upper() for operator, color in MAPPED_OPERATOR_COLORS.items()
-    }
-    assert all(_rgb(table.cell(0, column)) == 'FFFF00' for column in gap_columns)
+        operator: color.lstrip('#').upper() for operator, color in MAPPED_OPERATOR_COLORS.items()}
+    assert all(_rgb(table.cell(0, column)) == STYLES['netcheck']['header'].lstrip('#') for column in gap_columns)
 
     signed_gaps = [
         float(table.cell(row, column).text)
@@ -636,22 +661,32 @@ def test_powerpoint_exports_one_reference_style_scoring_matrix_with_signed_gaps_
     assert any(value > 0 for value in signed_gaps)
     assert any(value < 0 for value in signed_gaps)
 
-    c5_index = next(index for index, metric in enumerate(display_rows, 1) if metric['kpi_code'] == 'K1')
+    row_of, section = {}, None
+    for row in range(1, len(table.rows) - 1):
+        name = _label_name(table.cell(row, 0).text)
+        if row in sections:
+            section = name
+        else:
+            row_of[(section, name)] = row
+    k1, k5 = (next(metric for metric in display_rows if metric.get('kpi_code') == code) for code in ('K1', 'K5'))
+    c5_index = row_of[(k1['category'], k1['kpi'])]
     missing_cell = table.cell(c5_index, operator_columns['O2 UK'])
     assert missing_cell.text == 'N/A*'
     missing_paragraph = missing_cell.text_frame.paragraphs[0]
     assert str(missing_paragraph.font.color.rgb) == 'C62828'
     assert missing_paragraph.font.bold
 
-    c9_index = next(index for index, metric in enumerate(display_rows, 1) if metric['kpi_code'] == 'K5')
+    c9_index = row_of[(k5['category'], k5['kpi'])]
     expected_bands = {'Vodafone UK': 'Low', 'O2 UK': 'Medium', 'Three UK': 'High', 'EE': 'UltraHigh'}
+    # Each score fills its cell in the colour of its band (NetCheck: soft cards with a bar).
     for operator, band in expected_bands.items():
-        assert _rgb(table.cell(c9_index, operator_columns[operator])) == THRESHOLD_COLORS[band].lstrip('#')
+        expected = blend(STYLES['netcheck']['card'], THEMES['netcheck']['band_strong'][band], STYLES['netcheck']['bar_mix'])
+        assert _rgb(table.cell(c9_index, operator_columns[operator])) == expected.lstrip('#')
 
     gap_slide, gap_table = next(
         (slide, shape.table) for slide in presentation.slides for shape in slide.shapes
-        if shape.has_table and len(shape.table.columns) == 4
-        and _normalized_headers(shape.table)[:3] == ['Category', 'NETCHECK KPIs', 'Type of KPI']
+        if shape.has_table and len(shape.table.columns) == 2
+        and _normalized_headers(shape.table)[0] == 'NetCheck KPIs'
     )
     expected_gap_table = views['gap_tables'][0]
     assert gap_slide.shapes.title.text.split('\n')[0] == 'GAP Analysis — Three UK vs EE'
@@ -667,22 +702,24 @@ def test_powerpoint_exports_one_reference_style_scoring_matrix_with_signed_gaps_
     # Header, one row per KPI and the closing Total KPI GAP row.
     assert len(gap_table.rows) == len(expected_gap_rows) + 2
     assert gap_table.cell(len(gap_table.rows) - 1, 0).text == 'Total KPI GAP'
-    assert [gap_table.cell(row, 1).text for row in range(1, len(gap_table.rows) - 1)] == [
-        row['kpi'] for row in expected_gap_rows
-    ]
-    assert [float(gap_table.cell(row, 3).text) for row in range(1, len(gap_table.rows) - 1)] == pytest.approx(
+    # Ordered by GAP, each KPI carries its category and type.
+    gap_labels = [gap_table.cell(row, 0).text for row in range(1, len(gap_table.rows) - 1)]
+    assert [_label_name(label) for label in gap_labels] == [row['kpi'] for row in expected_gap_rows]
+    assert [label.split(' · ')[0] for label in gap_labels] == [row['category'].upper() for row in expected_gap_rows]
+    assert [float(gap_table.cell(row, 1).text) for row in range(1, len(gap_table.rows) - 1)] == pytest.approx(
         [row['gap_points'] for row in expected_gap_rows], abs=.0051,
     )
-    assert _rgb(gap_table.cell(0, 3)) == MAPPED_OPERATOR_COLORS[expected_gap_table['operator']].lstrip('#')
-    assert all(_rgb(gap_table.cell(0, column)) == '455B65' for column in range(3))
-    assert _rgb(gap_table.cell(1, 0)) == 'E6F0F7'
-    reliable_rows = [row for row in range(1, len(gap_table.rows)) if gap_table.cell(row, 2).text == 'Reliable']
-    if reliable_rows:
-        assert _rgb(gap_table.cell(reliable_rows[0], 2)) == THRESHOLD_COLORS['High'].lstrip('#')
+    assert _rgb(gap_table.cell(0, 1)) == MAPPED_OPERATOR_COLORS[expected_gap_table['operator']].lstrip('#')
+    assert _rgb(gap_table.cell(0, 0)) == STYLES['netcheck']['header'].lstrip('#')
+    reliable = next(label for label, row in zip(gap_labels, expected_gap_rows) if row['kpi_type'] == 'Reliable')
+    assert ' · R  ' in reliable
 
     titles = [slide.shapes.title.text.split('\n')[0] for slide in presentation.slides]
     assert titles[:2] == ['Scoring & GAP Analysis', 'Drive - City']
-    assert titles[2:4] == [
+    # The Summary opens the block, before the scoring charts.
+    start = titles.index('Best Network Scoring per Service')
+    assert titles[2] == 'Best Network — Standings' and titles[start - 1] == 'How the measurements ran'
+    assert titles[start:start + 2] == [
         'Best Network Scoring per Service', 'Best Network Scoring per Category',
     ]
     category_chart_slides = [slide for slide in presentation.slides
@@ -691,13 +728,16 @@ def test_powerpoint_exports_one_reference_style_scoring_matrix_with_signed_gaps_
     assert len(category_chart_slides) == 1
     assert len(_charts_on_slide(category_chart_slides[0])[0].plots[0].categories) == 7
     assert 'Page 1 of' not in _slide_text(category_chart_slides[0])
-    assert titles[5:7] == ['Scoring Tables — Summary', 'Scoring Tables — Breakdown']
+    assert titles[start + 3:start + 5] == ['Scoring Tables — Summary', 'Scoring Tables — Breakdown']
     gap_start = titles.index('GAP Analysis — All vs EE')
     # The subtitle names the area of the table (the Region of its context), its operators and its vendors.
     assert presentation.slides[gap_start].shapes.title.text.split('\n')[1] == \
         'Best Network — Drive - City · Region: North · All Operators · All Vendors'
-    # The GAP tables end the block, followed by the KPI GAP Profiles.
-    assert all(title.startswith(('GAP Analysis', 'KPI GAP Profile')) for title in titles[gap_start:])
+    # The GAP tables are followed by the GAP by part and the KPI GAP Profiles, and Points Lost ends the block.
+    assert all(title.startswith(('GAP Analysis', 'GAP by part', 'KPI GAP Profile', 'Points Lost', 'Points lost per KPI'))
+               for title in titles[gap_start:])
+    assert titles.index('GAP by part — vs EE') < next(index for index, title in enumerate(titles) if title.startswith('KPI GAP Profile')) \
+        < titles.index('Points Lost — where the points go')
     for slide in presentation.slides:
         if slide.shapes.title.text.startswith('GAP Analysis') and any(shape.has_table for shape in slide.shapes):
             assert sum(shape.name.startswith('GAP Color Scale Segment ') for shape in slide.shapes) == 24
@@ -720,36 +760,43 @@ def test_powerpoint_exports_one_reference_style_scoring_matrix_with_signed_gaps_
 
     summary_view = views['gap_summary_tables'][0]
     summary_slide, summary_table = _slide_with_table(
-        presentation,
-        ['Category', 'NETCHECK KPIs', 'Type of KPI',
-         *[f'{operator} − EE' for operator in summary_view['operators']]],
+        presentation, ['NetCheck KPIs', *[f'{operator} − EE' for operator in summary_view['operators']]],
     )
     assert presentation.slides.index(summary_slide) == gap_start
     summary_gap_rows = [row for row in summary_view['expanded_rows']
                         if row.get('row_type') != 'category'
                         and row['kpi'].casefold() != 'average kpi gap']
     assert all(not row['kpi'].casefold().endswith(' total') for row in summary_gap_rows)
-    assert len(summary_table.rows) == len(summary_gap_rows) + 2
+    categories = list(dict.fromkeys(row['category'] for row in summary_gap_rows))
+    # A section per category, its KPIs and the closing Total KPI GAP.
+    assert len(summary_table.rows) == len(summary_gap_rows) + len(categories) + 2
     assert summary_table.cell(len(summary_table.rows) - 1, 0).text == 'Total KPI GAP'
-    assert len(summary_table.columns) == len(summary_view['operators']) + 3
-    assert [summary_table.cell(row, 1).text for row in range(1, len(summary_table.rows) - 1)] == [
-        row['kpi'] for row in summary_gap_rows
-    ]
-    for row_index, row in enumerate(summary_gap_rows, 1):
-        for operator_index, operator in enumerate(summary_view['operators'], 3):
+    assert len(summary_table.columns) == len(summary_view['operators']) + 1
+    sections = _section_rows(summary_table)
+    assert [_label_name(summary_table.cell(row, 0).text) for row in sections] == categories
+    kpi_rows = [row for row in range(1, len(summary_table.rows) - 1) if row not in sections]
+    assert [_label_name(summary_table.cell(row, 0).text) for row in kpi_rows] == [row['kpi'] for row in summary_gap_rows]
+    for row_index, row in zip(kpi_rows, summary_gap_rows):
+        for operator_index, operator in enumerate(summary_view['operators'], 1):
             expected = row['gaps'][operator]
             cell = summary_table.cell(row_index, operator_index)
             if expected is None:
                 assert cell.text == 'N/A*'
-                assert _rgb(cell) == THRESHOLD_COLORS['Unavailable'].lstrip('#')
-                assert cell.text_frame.paragraphs[0].font.bold
-                assert str(cell.text_frame.paragraphs[0].font.color.rgb) == 'C62828'
+                assert cell.text_frame.paragraphs[0].runs[0].font.bold
+                assert str(cell.text_frame.paragraphs[0].runs[0].font.color.rgb) == 'C62828'
             else:
                 assert float(cell.text) == pytest.approx(expected, abs=.0051)
-                assert _rgb(cell) == row['gap_colors'][operator].lstrip('#')
+                # A GAP is a bar from the middle: to the left when behind (red), to the right when ahead (green).
+                gradient = cell._tc.tcPr.find(qn('a:gradFill'))
+                if expected and gradient is not None:
+                    stops = [(int(stop.get('pos')), stop[0].get('val')) for stop in gradient.find(qn('a:gsLst'))]
+                    coloured = [position for position, color in stops if color != 'FFFFFF']
+                    assert (min(coloured) >= 50000) if expected > 0 else (max(coloured) <= 50000)
     assert 'Average KPI GAP' not in _slide_text(summary_slide)
 
-    chart_shapes = [chart for slide in presentation.slides for chart in _charts_on_slide(slide)]
+    # The scoring charts, without the chart of Points Lost (where the points go).
+    chart_shapes = [chart for slide in presentation.slides if not slide.shapes.title.text.startswith('Points Lost')
+                    for chart in _charts_on_slide(slide)]
     # One Breakdown slide (28 bars) instead of two.
     assert len(chart_shapes) == 7
     best_network_chart = chart_shapes[0]
@@ -1350,8 +1397,11 @@ def test_multilevel_hierarchy_export_uses_editable_nested_tables_and_one_chart_p
     assert len(score_slides) == 2
     score_table_shape = next(shape for shape in score_slides[-1].shapes if shape.has_table)
     score_table = score_table_shape.table
-    assert len(score_table.rows) == 5 + len(METRICS) + len({metric['category'] for metric in METRICS}) + 1
-    assert len(score_table.columns) == 5 + 15 + 12
+    # The header (the Score and GAP groups and the levels), a section per category with its KPIs and the total; no
+    # Category, Type, Weight or Max columns.
+    header_rows = 4
+    assert len(score_table.rows) == header_rows + len(METRICS) + len({metric['category'] for metric in METRICS}) + 1
+    assert len(score_table.columns) == 1 + 15 + 12
     export_views = build_scoring_views(
         {
             'aggregation_contract_version': 2,
@@ -1363,13 +1413,16 @@ def test_multilevel_hierarchy_export_uses_editable_nested_tables_and_one_chart_p
         result,
         operator_mapping_groups=_mapping_groups(),
     )
-    for row_index, row in enumerate(export_views['hierarchy_score_tables'][0]['expanded_rows'], 5):
-        if row.get('row_type') == 'category':
-            _assert_gray_category_row(score_table, row_index)
-    _assert_row_matches_category_fill(score_table, len(score_table.rows) - 1, 'DCE5E9')
-    for row in list(score_table.rows)[5:]:
-        for cell in list(row.cells)[5:]:
-            assert cell.text_frame.paragraphs[0].font.size.pt <= row.height.pt
+    sections = _section_rows(score_table, header_rows)
+    expected_categories = list(dict.fromkeys(row['category'] for row in export_views['hierarchy_score_tables'][0]['expanded_rows']))
+    assert [_label_name(score_table.cell(row, 0).text) for row in sections] == expected_categories
+    for row_index in sections:
+        _assert_gray_category_row(score_table, row_index)
+    assert _rgb(score_table.cell(len(score_table.rows) - 1, 0)) == TOTAL_FILL
+    for row in list(score_table.rows)[header_rows:]:
+        for cell in list(row.cells)[1:]:
+            runs = cell.text_frame.paragraphs[0].runs
+            assert not runs or runs[0].font.size.pt <= row.height.pt
     summary_main_table = next(shape for shape in score_slides[0].shapes
                               if shape.has_table and len(shape.table.columns) > 1)
     summary_legend = [shape for shape in score_slides[0].shapes
@@ -1401,33 +1454,38 @@ def test_multilevel_hierarchy_export_uses_editable_nested_tables_and_one_chart_p
                           if row.get('row_type') != 'category'
                           and row['kpi'].casefold() != 'average kpi gap']
     assert all(not row['kpi'].casefold().endswith(' total') for row in hierarchy_gap_rows)
-    assert len(all_gap_tables[0].rows) == 4 + len(METRICS) + 1
-    assert len(all_gap_tables[0].columns) == 3 + 3 * len(contexts)
+    # Three header rows (Operator, Region and Campaign: the repeated GAP row is gone), a section per category with its
+    # KPIs and the Total KPI GAP; the KPI column only.
+    gap_header_rows = 3
+    gap_categories = list(dict.fromkeys(row['category'] for row in hierarchy_gap_rows))
+    assert len(all_gap_tables[0].rows) == gap_header_rows + len(METRICS) + len(gap_categories) + 1
+    assert len(all_gap_tables[0].columns) == 1 + 3 * len(contexts)
     for table in all_gap_tables:
         assert table.cell(len(table.rows) - 1, 0).text == 'Total KPI GAP'
-        assert [table.cell(row_index, 1).text for row_index in range(4, len(table.rows) - 1)] == [
-            row['kpi'] for row in hierarchy_gap_rows
-        ]
+        sections = _section_rows(table, gap_header_rows)
+        assert [_label_name(table.cell(row, 0).text) for row in sections] == gap_categories
+        assert [_label_name(table.cell(row_index, 0).text) for row_index in range(gap_header_rows, len(table.rows) - 1)
+                if row_index not in sections] == [row['kpi'] for row in hierarchy_gap_rows]
     assert not any(cell.text == 'EE' for table in all_gap_tables
                    for row in table.rows for cell in row.cells)
     assert len(individual_gap_slides) == 3
     expected_gap_kpis = {metric['kpi'] for metric in METRICS}
     for slide in individual_gap_slides:
         operator_gap_table = next(shape.table for shape in slide.shapes if shape.has_table)
-        assert len(operator_gap_table.rows) == 4 + len(METRICS) + 1
-        assert len(operator_gap_table.columns) == 3 + len(contexts)
-        operator_gap_kpis = [operator_gap_table.cell(row_index, 1).text
-                             for row_index in range(4, len(operator_gap_table.rows) - 1)]
+        # Ordered by GAP: no sections, each KPI with its category.
+        assert len(operator_gap_table.rows) == gap_header_rows + len(METRICS) + 1
+        assert len(operator_gap_table.columns) == 1 + len(contexts)
+        operator_gap_kpis = [_label_name(operator_gap_table.cell(row_index, 0).text)
+                             for row_index in range(gap_header_rows, len(operator_gap_table.rows) - 1)]
         assert len(operator_gap_kpis) == len(METRICS)
         assert set(operator_gap_kpis) == expected_gap_kpis
         assert all(not kpi.casefold().endswith(' total') for kpi in operator_gap_kpis)
         assert all(kpi.casefold() != 'average kpi gap' for kpi in operator_gap_kpis)
-        header_text = '\n'.join(cell.text for row in list(operator_gap_table.rows)[:4] for cell in row.cells)
+        header_text = '\n'.join(cell.text for row in list(operator_gap_table.rows)[:gap_header_rows] for cell in row.cells)
         assert 'North' in header_text and 'South' in header_text
         assert '2026-Q2' in header_text and '2026-Q3' in header_text
         assert not re.search(r'\b(?:Operator|Vendor|Region|City|Campaign):', header_text)
-        gap_header = operator_gap_table.rows[len(['Operator', 'Region', 'Campaign'])]
-        assert all(cell.text == 'GAP' for cell in list(gap_header.cells)[3:])
+        assert 'GAP' not in header_text.split('\n')
     assert any(_charts_on_slide(slide) for slide, title in zip(presentation.slides, titles)
                if title == 'Best Network Scoring per Category')
     assert any(

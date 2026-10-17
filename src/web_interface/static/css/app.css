@@ -2641,6 +2641,13 @@ body[data-embedded-dataset-preview] > .shell > main { width: 100%; max-width: no
 .confirm-panel #confirm-copy { white-space: pre-line; max-height: min(42vh, 360px); overflow-y: auto; padding-right: 0.2rem; }
 .confirm-option { display: flex; align-items: flex-start; gap: 0.65rem; margin-top: 1rem; padding: 0.82rem 0.9rem; border: 1px solid rgba(187, 60, 60, 0.24); border-radius: 13px; background: rgba(200, 74, 74, 0.07); color: #5d3232; font-weight: 600; line-height: 1.35; cursor: pointer; }
 .confirm-option[hidden] { display: none !important; }
+/* Export Selected Scoring Report: the scorings and environments to include, as checkboxes. */
+.confirm-panel #confirm-copy > .scoring-export-choices { display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: 0.35rem 0.9rem; margin: 0.75rem 0 0; padding: 0.55rem 0.8rem 0.7rem; border: 1px solid rgba(25, 42, 53, 0.14); border-radius: 12px; white-space: normal; }
+.scoring-export-choices > legend { padding: 0 0.35rem; color: #445a65; font-size: 0.78em; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
+.scoring-export-choice { display: flex; align-items: flex-start; gap: 0.5rem; margin: 0; color: #24343d; font-size: 0.95em; font-weight: 600; line-height: 1.3; text-align: left; cursor: pointer; }
+.scoring-export-choice > input[type="checkbox"] { flex: 0 0 auto; width: 1rem; min-width: 0; height: 1rem; min-height: 0; margin: 0.12rem 0 0; padding: 0; }
+.scoring-export-choice small { color: #74838b; font-weight: 500; }
+.scoring-export-choice:has(> input:disabled) { opacity: 0.55; cursor: not-allowed; }
 .confirm-option input { flex: 0 0 auto; width: 1.05rem; height: 1.05rem; margin: 0.1rem 0 0; accent-color: #bb3c3c; }
 .background-task-dock { position: fixed; bottom: 1rem; z-index: 8500; display: flex; flex-direction: column-reverse; gap: 0.65rem; width: min(360px, calc(100vw - 2rem)); max-height: min(70vh, 620px); overflow-y: auto; pointer-events: none; }
 .background-task-dock:empty { display: none; }
@@ -4509,6 +4516,8 @@ body:has(dialog.vendor-mapping-dialog[open]) { overflow: hidden; }
 .scoring-report-header h2 { margin: 0; color: #1450a8; font-size: 1.15rem; }
 .scoring-report-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; }
 .scoring-report-toolbar select { min-width: 13rem; }
+.scoring-report-theme { display: inline-flex; align-items: center; gap: .35rem; font-size: .8rem; font-weight: 700; }
+.scoring-report-toolbar .scoring-report-theme select { min-width: 10rem; }
 .scoring-report-dialog .scoring-report-tool { display: inline-flex; align-items: center; gap: .35rem; font-weight: 700; }
 .scoring-report-dialog .scoring-report-tool svg { width: 1rem; height: 1rem; flex: none; }
 .scoring-report-dialog .scoring-report-tool.is-save { border-color: #2f8a57; background: #2f8a57; color: #fff; }

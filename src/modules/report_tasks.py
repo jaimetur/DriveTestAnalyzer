@@ -35,6 +35,7 @@ from src.modules.cdr_auto_selection import (
 )
 from src.modules.column_names import compact_campaign_value
 from src.modules.output_layout import REPORTING_JOBS_FOLDER, module_output_dir
+from src.modules.scoring_themes import themes_payload
 
 REPORT_TASKS_TABLE = 'report_tasks'
 REPORT_TASK_RUNS_TABLE = 'report_task_runs'
@@ -1213,7 +1214,7 @@ def install_report_task_routes(core: Any) -> None:
                 if export_format == 'word':
                     # The Word document carries the same slides: one landscape page per slide.
                     from src.modules.pptx_to_docx import pptx_to_docx
-                    destination.write_bytes(pptx_to_docx(content, 'Scoring & GAP Analysis'))
+                    destination.write_bytes(pptx_to_docx(content, 'Scoring & GAP Analysis', pack_sections=True))
                 else:
                     destination.write_bytes(content)
                 artifacts.append(ready_artifact('scoring', f"{title} ({FORMAT_LABELS[export_format]})", destination,
@@ -1478,6 +1479,8 @@ def install_report_task_routes(core: Any) -> None:
             'operator_groups': [{'canonical': group['canonical'], 'aliases': group['aliases']}
                                 for group in task_repository.list_operator_mapping_groups()],
             'methodologies': methodologies, 'active_methodology': active_methodology,
+            # The colour themes the Scoring report editor offers (see scoring_themes).
+            'scoring_themes': themes_payload()['themes'],
             # The CDRs the automatic choices of CDR Analysis select now, per NR Mode (they choose again at each run).
             'automatic_cdrs': automatic_cdr_preview(task_repository),
             # The campaigns of the CDRs of each NR Mode, and the choices that follow the newest ones.

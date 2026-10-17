@@ -87,9 +87,10 @@ def test_choosing_a_configuration_loads_it_and_unsaved_changes_ask_first():
 
 def test_the_selector_shows_the_configuration_whose_scenarios_are_shown():
     assert "const openedName = String(state.name || '');" in SCRIPT
-    assert "close({configuration: {...clone(state), ...(chosenName ? {name: chosenName} : {})}, action});" in SCRIPT
+    assert "const {syncTheme: _syncTheme, ...chosen} = state;" in SCRIPT
+    assert "close({configuration: {...clone(chosen), ...(chosenName ? {name: chosenName} : {})}, action});" in SCRIPT
     # Named configurations keep only their scenarios.
-    assert "configuration: {scenarios: state.scenarios}" in SCRIPT
+    assert "configuration: {scenarios: state.scenarios, theme: state.theme}" in SCRIPT
     # The selector follows the content: the saved configuration with the same scenarios, or none.
     assert "saved.replaceChildren(el('option', '', '<Not saved configuration>'));" in SCRIPT
     assert "current = matchingConfiguration();" in SCRIPT
@@ -189,7 +190,7 @@ const createElement = globalThis.document.createElement;
 globalThis.document.createElement = tag => Object.assign(createElement(tag), {dataset: {}, style: {}, value: ''});
 ''' + SCRIPT[constants_start:constants_end] + "const clone = (value) => JSON.parse(JSON.stringify(value));\n" \
         + SCRIPT[el_start:el_end] + "const campaignField = () => false;\n" + ''.join(
-            _function(name) for name in ('defaultOptions', 'defaultScenario', 'checkbox', 'checklist', 'optionGroup',
+            _function(name) for name in ('completeOptions', 'defaultOptions', 'defaultScenario', 'checkbox', 'checklist', 'optionGroup',
                                          'settingValue', 'scoringPanel', 'scenarioCard')) + r'''
 const scenario = defaultScenario({operators: ['EE', '3']});
 scenario.area_summary.enabled = false;

@@ -237,7 +237,7 @@ def _bandwidth_spectrum():
                                    {'environment': 'Towns', 'column': '3', 'narrow_share': 30.0}], 'cells': [
             cell('3', 'Cities', [10, 40, 30, 10, 0, 0, 10], 10.0), cell('3', 'Towns', [0, 20, 30, 20, 0, 0, 30], 30.0),
             cell('EE', 'Cities', [0, 0, 50, 20, 20, 0, 10], 10.0), cell('EE', 'Towns', [0, 0, 20, 30, 20, 10, 20], 20.0)]}}
-    return {'bandwidth': {'title': 'Total bandwidth: LTE and 5G together', 'classes': classes, 'narrow_below_mhz': 25, 'wide_from_mhz': 100, 'scope_labels': {'download': 'Download tests', 'all': 'All Data tests'},
+    return {'bandwidth': {'title': 'Bandwidth of each test: LTE + NR', 'classes': classes, 'narrow_below_mhz': 25, 'wide_from_mhz': 100, 'scope_labels': {'download': 'Download tests', 'all': 'All Data tests'},
                           'scopes': {'download': scope, 'all': scope}, 'column_label': 'Operator',
                           'column_colours': {'3': '#000000', 'EE': '#00B2A9'}}}
 
@@ -252,11 +252,11 @@ def test_bandwidth_views_and_nr_sites_by_duplex_mode_are_exported(tmp_path):
     columns, rows = tables['Spectrum · Bandwidth per band (Download tests)']
     assert columns == ['Operator → Campaign', 'Technology', 'Band', 'Duplex', 'Samples', '40 MHz', '100 MHz', 'Unknown', 'Typical']
     assert rows[0][5:] == ['8 (20%)', '30 (75%)', '2', '100 MHz']
-    columns, rows = tables['Spectrum · Total bandwidth, LTE and 5G (Download tests)']
+    columns, rows = tables['Spectrum · Total bandwidth, LTE and NR (Download tests)']
     assert columns[:3] == ['Operator', 'Environment', 'Tests'] and columns[-3:] == ['At 100 MHz+', 'Below 25 MHz', 'Median']
     assert rows[1][:2] == ['3', 'Towns'] and rows[1][-3:-1] == ['50.0%', '30.0%']
     caption = bandwidth_caption(analysis)
-    assert caption == ('Each ladder splits the download tests with a known bandwidth by their total width (LTE + 5G), widest at the '
+    assert caption == ('Each ladder splits the download tests with a known bandwidth by their total width (LTE + NR), widest at the '
                        'bottom; the number beside it is the share under 25 MHz (dark red) and the one below it the share at 100 MHz or more. '
                        'Most under 25 MHz: Cities, 3 (10%); Towns, 3 (30%).')
     image = bandwidth_ladder_image(analysis)
@@ -275,15 +275,15 @@ def test_bandwidth_views_and_nr_sites_by_duplex_mode_are_exported(tmp_path):
     titles = [shape.text_frame.text.splitlines()[0] for slide in Presentation(output).slides for shape in slide.shapes
               if shape.has_text_frame and shape.text_frame.text.startswith('Spectrum ·')]
     assert {'Spectrum · NR sites by duplex mode', 'Spectrum · Bandwidth per band (Download tests)',
-            'Spectrum · Total bandwidth, LTE and 5G (Download tests)'} <= set(titles)
+            'Spectrum · Total bandwidth, LTE and NR (Download tests)'} <= set(titles)
     pictures = [shape for slide in Presentation(output).slides for shape in slide.shapes if shape.shape_type == 13]
     assert pictures
     # The ladders slide has the title of the chart and the line that explains its figures under it, as the page does.
     ladder_slide = next(slide for slide in Presentation(output).slides
                         if any(shape.shape_type == 13 for shape in slide.shapes)
-                        and any(shape.has_text_frame and shape.text_frame.text.startswith('Total bandwidth: LTE and 5G together') for shape in slide.shapes))
+                        and any(shape.has_text_frame and shape.text_frame.text.startswith('Bandwidth of each test: LTE + NR') for shape in slide.shapes))
     measured = scope_text(selection)
-    assert any(shape.has_text_frame and shape.text_frame.text.splitlines() == ['Total bandwidth: LTE and 5G together', measured, caption]
+    assert any(shape.has_text_frame and shape.text_frame.text.splitlines() == ['Bandwidth of each test: LTE + NR', measured, caption]
                for shape in ladder_slide.shapes)
     # Every slide names its scope under its title: the inventory filters for the NR sites, no filter for the whole inventory.
     headers = [shape.text_frame.text.splitlines() for slide in Presentation(output).slides for shape in slide.shapes
@@ -294,8 +294,8 @@ def test_bandwidth_views_and_nr_sites_by_duplex_mode_are_exported(tmp_path):
     export_network_insights_word(output, analysis, deployment, selection, _png)
     document = Document(output)
     headings = [paragraph.text for paragraph in document.paragraphs if paragraph.style.name.startswith('Heading')]
-    assert 'Spectrum · Total bandwidth, LTE and 5G (Download tests)' in headings and 'Spectrum · NR sites by duplex mode' in headings
+    assert 'Spectrum · Total bandwidth, LTE and NR (Download tests)' in headings and 'Spectrum · NR sites by duplex mode' in headings
     assert document.inline_shapes
     texts = [paragraph.text for paragraph in document.paragraphs]
-    assert texts[texts.index('Total bandwidth: LTE and 5G together') + 1:][:2] == [measured, caption]
+    assert texts[texts.index('Bandwidth of each test: LTE + NR') + 1:][:2] == [measured, caption]
     assert texts[texts.index('Spectrum · NR sites by duplex mode') + 1] == scope_text(selection, environments=False)

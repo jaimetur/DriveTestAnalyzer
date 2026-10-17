@@ -145,7 +145,8 @@ def test_powerpoint_adds_the_insight_slides_to_all_environments():
     for heading in ('Best Network Scoring per City', 'Best Network Scoring Trend', 'Best Network Campaign Comparison',
                     'Most Reliable Network Scoring per City', 'Most Reliable Network Scoring Trend'):
         assert heading in first
-    assert any(title.startswith('KPI GAP Profile — Three UK vs EE') for title in first)
+    # The KPI GAP Profile shows the compared operators two by two.
+    assert any(title.startswith('KPI GAP Profile — ') and 'Three UK' in title and title.endswith(' vs EE') for title in first)
     # Only All Environments gets them, and the cards only for the latest campaign.
     insight_titles = [title for title in titles if 'Scoring per City' in title or 'Profile' in title]
     # All Environments subtitles name only the scoring (and the context), never an environment.
@@ -156,32 +157,38 @@ def test_powerpoint_adds_the_insight_slides_to_all_environments():
     assert len(charts) == len(CITIES)
     # The cards show the operator labels as mapped, never shortened.
     assert set(charts[0].chart.plots[0].categories) == {'EE', 'O2 UK', 'Three UK', 'Vodafone UK'}
-    assert next(shape for shape in cards.shapes if shape.name == 'Scoring Location Cards Panel').text_frame.text.count(
-        'Total: 1,000 points') == 1
+    assert next(shape for shape in cards.shapes if shape.name == 'Scoring Location Cards Note').text_frame.text.count(
+        '1,000 points') == 1
 
 
 def test_profile_bars_line_up_with_their_rows():
     job, result = synthetic_result(levels=('Operator',))
     presentation = Presentation(BytesIO(export_scoring_powerpoint(job, result, TEMPLATE)))
-    profiles = [slide for slide in presentation.slides
-                if slide.shapes.title is not None and slide.shapes.title.text_frame.text.startswith('KPI GAP Profile')]
-    # The reference operator has its Gap to Maximum only; each compared operator has its GAP to the reference too.
-    reference = next(slide for slide in profiles if slide.shapes.title.text_frame.text.split('\n')[0].endswith(' (reference)'))
-    assert [shape.name for shape in reference.shapes if shape.name.startswith('Scoring KPI GAP')] == [
-        'Scoring KPI GAP Maximum Table', 'Scoring KPI GAP Profile Note']
-    slide = next(slide for slide in profiles if ' vs ' in slide.shapes.title.text_frame.text)
-    assert any(shape.name == 'Scoring KPI GAP Reference Table' for shape in slide.shapes)
+    slides = [(slide, slide.shapes.title.text_frame.text.split('\n')[0]) for slide in presentation.slides
+              if slide.shapes.title is not None]
+    profiles = [slide for slide, title in slides if title.startswith('KPI GAP Profile')]
+    # The KPI GAP Profile shows the GAP to the reference of two compared operators per slide, never the reference.
+    assert profiles and all(' vs EE' in title for slide, title in slides if slide in profiles)
+    assert all(not title.endswith('(reference)') for _slide, title in slides)
+    assert [shape.name for shape in profiles[0].shapes if shape.name.startswith('Scoring KPI GAP')].count(
+        'Scoring KPI GAP Reference Table') == 2
+    assert not any(shape.name == 'Scoring KPI GAP Maximum Table' for slide in profiles for shape in slide.shapes)
+    # The points lost against the maximum are in Points Lost, the reference operator included.
+    lost = [(slide, title) for slide, title in slides if title.startswith('Points lost per KPI')]
+    assert lost and any('EE' in title for _slide, title in lost)
+    slide = lost[0][0]
     table_shape = next(shape for shape in slide.shapes if shape.name == 'Scoring KPI GAP Maximum Table')
     table = table_shape.table
     first_row_top = table_shape.top + table.rows[0].height + table.rows[1].height
     bars = sorted((shape for shape in slide.shapes if shape.name == 'Scoring GAP Bar' and shape.left < table_shape.left
                    + table_shape.width), key=lambda shape: shape.top)
-    assert bars and bars[0].top > first_row_top
-    assert bars[0].top < first_row_top + table.rows[2].height
+    # The first row is a category, with its subtotal; its first KPI has the first bar.
+    assert bars and bars[0].top > first_row_top + table.rows[2].height
+    assert bars[0].top < first_row_top + table.rows[2].height + table.rows[3].height
     note = next(shape for shape in slide.shapes if shape.name == 'Scoring KPI GAP Profile Note')
     assert note.top > table_shape.top + sum(row.height for row in table.rows)
     bold = [run.text for run in note.text_frame.paragraphs[0].runs if run.font.bold]
-    operator = slide.shapes.title.text_frame.text.split('\n')[0].removeprefix('KPI GAP Profile — ').split(' vs ')[0]
+    operator = lost[0][1].removeprefix('Points lost per KPI — ').split(' & ')[0]
     assert bold[0] == operator and any('Best Network points' in text for text in bold)
 
 

@@ -1,6 +1,14 @@
 {% extends 'base.html' %}
 {% block content %}
 <style>
+  /* The colour theme of the charts and tables: NetCheck here, the chosen one set by the page (see scoring_themes.py). */
+  [data-scoring-workspace] { --st-title: #1450a8; --st-accent: #245e5a; --st-header: #455b65; --st-header-text: #fff;
+    --st-soft-header: #edf2f6; --st-soft-header-text: #344858; --st-weight: #5b9a44; --st-maximum: #c9483f; --st-gap-header: #f6d55c;
+    --st-group: #e6f0f7; --st-category: #dce5e9; --st-total: #d7e0e5; --st-row-alt: #f8fafc; --st-border: #e2e8ed;
+    --st-best: #c6efce; --st-worst: #ffc7ce; --st-loss: #e8414f; --st-gain: #4ca65a; --st-loss-text: #c62835; --st-gain-text: #2e8540;
+    --st-voice: #f2a900; --st-data: #0e6b66; --st-kpi-reliable: #d8efca; --st-kpi-diff: #fff2cc; }
+  .scoring-theme-filter select { min-width: 9.5rem; }
+  .scoring-note-swatch { display: inline-block; width: .7rem; height: .7rem; margin: 0 .15rem; border-radius: 2px; vertical-align: -.05rem; }
   .scoring-stack { gap: 1.1rem; }
   .scoring-hero { color: #fff; background: linear-gradient(128deg, #143653 0%, #176e77 58%, #40a88a 100%); }
   .scoring-hero .eyebrow, .scoring-hero .lede { color: rgba(255,255,255,.78); }
@@ -267,15 +275,16 @@
   .scoring-environment-filter select { width: auto; min-width: 12rem; max-width: min(100%, 20rem); min-height: 2.1rem; padding: .32rem 1.8rem .32rem .6rem; font-size: .76rem; }
   .scoring-results-value-row select[data-scoring-gap-layout] { width: 12rem; min-width: 12rem; }
   .scoring-environment-filter[hidden] { display: none; }
-  .scoring-location-cards { display: grid; grid-template-columns: minmax(10rem, 13rem) repeat(auto-fill, minmax(12rem, 1fr)); gap: .6rem; align-items: stretch; }
-  .scoring-location-panel { grid-row: span 2; display: flex; flex-direction: column; justify-content: center; gap: .6rem; padding: 1rem; border-radius: 4px; background: #0b2a5b; color: #fff; text-align: center; font-size: .78rem; line-height: 1.35; }
-  .scoring-location-panel p { margin: 0; }
-  .scoring-location-panel strong { font-size: .95rem; }
-  .scoring-location-card { padding: .55rem .5rem .3rem; border-radius: 4px; background: #f2f3f5; box-shadow: 0 1px 3px rgba(23,35,45,.12); }
-  .scoring-location-card h5 { margin: 0 0 .2rem; color: #1450a8; font-size: .82rem; font-weight: 800; letter-spacing: .02em; }
+  .scoring-location-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 17rem), 1fr)); gap: .7rem; align-items: stretch; }
+  .scoring-location-note { margin: 0 0 .6rem; }
+  .scoring-location-card { padding: .6rem .7rem .45rem; border-radius: 4px; background: color-mix(in srgb, var(--st-soft-header) 70%, #fff); box-shadow: 0 1px 3px rgba(23,35,45,.12); }
+  .scoring-location-card h5 { margin: 0 0 .35rem; color: var(--st-title); font-size: .9rem; font-weight: 800; letter-spacing: .02em; }
   .scoring-location-card-chart { display: block; width: 100%; height: auto; }
-  .scoring-location-legend { display: flex; justify-content: center; gap: 1.6rem; margin-top: .55rem; color: #4a5b65; font-size: .75rem; }
-  .scoring-location-legend i { display: inline-block; width: .8rem; height: .8rem; margin-right: .35rem; vertical-align: -.1rem; }
+  .scoring-location-legend { display: flex; flex-wrap: wrap; justify-content: center; gap: .4rem 1.6rem; margin-top: .55rem; color: #4a5b65; font-size: .75rem; }
+  .scoring-location-legend i { display: inline-block; width: .8rem; height: .8rem; margin-right: .35rem; vertical-align: -.1rem; border-radius: 2px; }
+  .scoring-location-legend i.is-data { background: var(--st-data); }
+  .scoring-location-legend i.is-voice { background: var(--st-voice); }
+  .scoring-location-legend b { display: inline-grid; place-items: center; width: 1rem; height: 1rem; margin-right: .3rem; border: 1.5px solid #475569; border-radius: 50%; font-size: .6rem; }
   .scoring-trend-chart { display: block; width: 100%; min-width: 46rem; height: auto; }
   .scoring-insight-select { margin: .2rem 0 .55rem; }
   .scoring-insight-select select { min-width: 18rem; max-width: 100%; }
@@ -291,6 +300,9 @@
   [data-result-pane] { --pane-accent: #4f46e5; }
   [data-result-pane="scoring"] { --pane-accent: #0f766e; }
   [data-result-pane="gap"] { --pane-accent: #c2410c; }
+  [data-result-pane="summary"] { --pane-accent: #0369a1; }
+  [data-result-pane="locations"] { --pane-accent: #7c3aed; }
+  [data-result-pane="points"] { --pane-accent: #be123c; }
   [data-result-pane] > * > :is(.scoring-table-section-title, h4):first-child { margin-top: 0; }
   .scoring-insight-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 30rem), 1fr)); gap: 1rem; }
   .scoring-insight-table-wrap { overflow-x: auto; }
@@ -328,9 +340,82 @@
   .scoring-area-trend figcaption.is-breakdown { color: #1450a8; }
   .scoring-area-trend svg { display: block; width: 100%; height: auto; }
   @media (max-width: 900px) { .scoring-area-summary-view { grid-template-columns: minmax(0, 1fr); } }
-  .scoring-insight-banner { padding: .3rem .6rem; background: #c8102e; color: #fff; font-weight: 800; text-align: right; font-size: .85rem; }
+  .scoring-insight-banner { --banner-color: var(--st-header); padding: .3rem .6rem; background: var(--banner-color); color: #fff; font-weight: 800; text-align: right; font-size: .85rem; }
+  .scoring-insight-banner strong { font-weight: 850; }
+  .scoring-insight-table td.scoring-insight-group { background-color: var(--st-group) !important; color: var(--st-soft-header-text); font-weight: 800; }
+  .scoring-profile-table td.scoring-insight-kpi, .scoring-insight-table td.scoring-insight-kpi { padding-left: .9rem; white-space: normal; }
+  .scoring-insight-table td.is-muted { color: #7a8a96; font-style: italic; }
+  .scoring-insight-table td.is-loss, .scoring-insight-table .is-loss, .scoring-standing-value.is-loss { color: var(--st-loss-text); }
+  .scoring-insight-table td.is-gain, .scoring-insight-table .is-gain, .scoring-standing-value.is-gain { color: var(--st-gain-text); }
+  .scoring-insight-table td.is-latest { box-shadow: inset 0 0 0 2px rgba(15,23,42,.18); }
+  .scoring-diverging { display: inline-flex; align-items: center; gap: .35rem; vertical-align: middle; }
+  .scoring-diverging-track { position: relative; display: inline-block; width: 9rem; height: 1.15rem; background: linear-gradient(90deg, transparent calc(50% - .5px), #c3ccd5 calc(50% - .5px), #c3ccd5 calc(50% + .5px), transparent calc(50% + .5px)); }
+  .scoring-diverging i { position: absolute; top: 18%; bottom: 18%; border-radius: 2px; }
+  .scoring-diverging i.is-loss { background: var(--st-loss); }
+  .scoring-diverging i.is-gain { background: var(--st-gain); }
+  .scoring-diverging b { min-width: 3rem; font-size: .72rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .scoring-diverging b.is-loss { color: var(--st-loss-text); }
+  .scoring-diverging b.is-gain { color: var(--st-gain-text); }
+  /* Summary: where each operator stands. */
+  .scoring-leaderboard { display: grid; gap: .3rem; margin: .4rem 0 .2rem; }
+  .scoring-leaderboard-row { display: grid; grid-template-columns: 2.6rem minmax(7rem, 12rem) minmax(8rem, 1fr) 5.2rem minmax(0, 9rem); align-items: center; gap: .6rem; padding: .25rem .4rem; border-radius: 8px; }
+  .scoring-leaderboard-row.is-reference { background: #f6f8fa; }
+  .scoring-leaderboard-rank { justify-self: center; padding: .1rem .4rem; border: 1.5px solid var(--operator-color); border-radius: 999px; color: var(--operator-color); font-size: .72rem; }
+  .scoring-leaderboard-name { font-size: .86rem; }
+  .scoring-leaderboard-bar { display: flex; height: 1rem; border-radius: 3px; overflow: hidden; background: #eef1f4; }
+  .scoring-leaderboard-bar i { display: block; height: 100%; }
+  .scoring-leaderboard-total { font-size: .95rem; text-align: right; font-variant-numeric: tabular-nums; }
+  .scoring-leaderboard-delta { color: #6b7a85; font-size: .74rem; font-weight: 700; }
+  .scoring-leaderboard-delta.is-gain { color: var(--st-gain-text); }
+  .scoring-leaderboard-delta.is-loss { color: var(--st-loss-text); }
+  .scoring-standing { margin-top: .9rem; padding: .75rem .85rem; border: 1px solid #e3e8ee; border-left: 5px solid var(--operator-color); border-radius: 10px; background: #fff; }
+  .scoring-standing-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: .6rem; }
+  .scoring-standing-tile, .scoring-scope-tile { padding: .55rem .7rem; border-radius: 9px; background: #f6f8fa; }
+  .scoring-standing-tile p, .scoring-scope-tile p, .scoring-standing-parts p { margin: 0; }
+  .scoring-standing-label { color: #5b6b78; font-size: .72rem; font-weight: 800; letter-spacing: .02em; text-transform: uppercase; }
+  .scoring-standing-value { color: #17232d; font-size: 1.55rem; font-weight: 850; line-height: 1.2; font-variant-numeric: tabular-nums; }
+  .scoring-standing-detail { color: #5b6b78; font-size: .76rem; }
+  .scoring-standing-parts { display: grid; gap: .25rem; margin-top: .7rem; }
+  .scoring-standing-part { display: grid; grid-template-columns: minmax(8rem, 12rem) auto; align-items: center; gap: .6rem; font-size: .8rem; }
+  .scoring-standing-takeaway { margin: .65rem 0 0; color: #1f2a37; font-size: .86rem; font-weight: 600; }
+  .scoring-position-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 30rem), 1fr)); gap: 1rem; }
+  /* Each matrix stays in its column: a narrow one scrolls instead of running over the next. */
+  .scoring-position { min-width: 0; overflow-x: auto; }
+  .scoring-position-title { display: block; margin-bottom: .3rem; font-size: .95rem; }
+  .scoring-position-table { width: 100%; min-width: 0; border-collapse: separate; border-spacing: .3rem; font-size: .76rem; }
+  .scoring-position-table th { color: #4a5b65; font-weight: 800; text-align: left; white-space: nowrap; }
+  .scoring-position-table thead th { text-align: center; }
+  .scoring-position-table tr.is-combined th { color: #17232d; }
+  .scoring-position-table th:first-child { width: 1%; white-space: nowrap; }
+  .scoring-position-table td { min-width: 5.4rem; }
+  .scoring-position-tile { display: block; padding: .3rem .4rem; border-radius: 6px; background: var(--rank-color); color: #fff; font-weight: 850; text-align: center; text-shadow: 0 1px 1px rgba(0,0,0,.18); }
+  .scoring-position-missed { position: relative; display: block; margin-top: .2rem; padding: .05rem .3rem; overflow: hidden; border-radius: 4px; background: #eef1f4; color: #4a5b65; font-size: .66rem; white-space: nowrap; }
+  .scoring-position-missed i { position: absolute; inset: 0 auto 0 0; background: color-mix(in srgb, var(--st-loss) 28%, transparent); }
+  .scoring-scope-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: .6rem; margin-bottom: .6rem; }
+  .scoring-scope-value { color: #17232d; font-size: 1.15rem; font-weight: 850; }
+  .scoring-ranking-table td.scoring-ranking-vendors { color: #4a5b65; font-size: .68rem; white-space: normal; }
+  .scoring-versus-table td { padding-top: .25rem; padding-bottom: .25rem; }
+  /* Points Lost: where the points go, Vendors, kinds of site, sites and stretches. */
+  .scoring-stake { display: grid; gap: .35rem; margin: .3rem 0 .2rem; }
+  .scoring-stake-row { display: grid; grid-template-columns: minmax(7rem, 11rem) minmax(10rem, 1fr) 6.5rem; align-items: center; gap: .7rem; font-size: .84rem; }
+  .scoring-stake-bar { display: flex; height: 1.35rem; overflow: hidden; border-radius: 4px; background: #f1f4f7; }
+  .scoring-stake-bar i { display: flex; align-items: center; justify-content: center; height: 100%; color: #fff; font-size: .68rem; font-style: normal; font-weight: 800; }
+  .scoring-stake-total { text-align: right; font-variant-numeric: tabular-nums; }
+  .scoring-priority { font-weight: 850; }
+  .scoring-priority.is-high { color: color-mix(in srgb, var(--st-loss) 70%, #000); }
+  .scoring-priority.is-medium { color: var(--st-loss); }
+  .scoring-priority.is-low { color: #6b7a85; }
+  .scoring-stretches { display: grid; grid-template-columns: minmax(16rem, 32rem) minmax(0, 1fr); gap: 1rem; align-items: start; }
+  .scoring-stretch-map { display: block; width: 100%; height: auto; }
+  @media (max-width: 760px) {
+    .scoring-stretches { grid-template-columns: 1fr; }
+    .scoring-leaderboard-row { grid-template-columns: 2.4rem minmax(5rem, 1fr) 4.5rem; }
+    .scoring-leaderboard-bar, .scoring-leaderboard-delta { grid-column: 1 / -1; }
+    .scoring-stake-row { grid-template-columns: minmax(5rem, 8rem) minmax(0, 1fr); }
+    .scoring-stake-total { grid-column: 1 / -1; text-align: left; }
+  }
   .scoring-insight-table { width: 100%; min-width: 0; border-collapse: collapse; font-size: .72rem; }
-  .scoring-insight-table th { padding: .3rem .4rem; background: #e9ecef; color: #263746; text-align: left; font-weight: 750; white-space: normal; vertical-align: bottom; }
+  .scoring-insight-table th { padding: .3rem .4rem; background: var(--st-soft-header); color: var(--st-soft-header-text); text-align: left; font-weight: 750; white-space: normal; vertical-align: bottom; }
   .scoring-insight-table th:nth-child(n+4) { min-width: 4.2rem; text-align: right; }
   .scoring-insight-table td { padding: .18rem .4rem; border-bottom: 1px solid #eef0f2; white-space: nowrap; }
   .scoring-insight-table tbody tr:nth-child(even) td { background-color: #f7f8f9; }
@@ -339,6 +424,9 @@
   .scoring-insight-table td.scoring-insight-bar-cell { position: relative; }
   .scoring-insight-databar { position: absolute; left: .15rem; top: 15%; bottom: 15%; box-sizing: border-box; border: 1px solid var(--databar-color); background: linear-gradient(90deg, var(--databar-color), color-mix(in srgb, var(--databar-color) 12%, #fff)); pointer-events: none; }
   .scoring-insight-databar-value { position: relative; }
+  /* A GAP bar grows from the middle line of its cell: behind the reference to the left, ahead of it to the right. */
+  td.scoring-insight-bar-cell.is-signed { background-image: linear-gradient(#c9d2db, #c9d2db); background-repeat: no-repeat; background-size: 1px 70%; background-position: 50% 50%; }
+  .scoring-insight-databar.is-left { background: linear-gradient(270deg, var(--databar-color), color-mix(in srgb, var(--databar-color) 12%, #fff)); }
   .scoring-loss-map { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1rem; align-items: start; }
   .scoring-loss-map-figure { min-height: 12rem; color: #6b7a85; font-size: .8rem; }
   .scoring-loss-map-svg { display: block; width: 100%; max-height: 36rem; }
@@ -393,8 +481,8 @@
   .scoring-insight-note { margin: .6rem 0 0; color: #4a5b65; font-size: .78rem; }
   .scoring-insight-compare { overflow-x: auto; }
   .scoring-insight-total { margin: .5rem 0 0; text-align: right; font-weight: 800; }
-  .scoring-insight-loss { color: #c62835; }
-  .scoring-insight-gain { color: #2f8a3e; }
+  .scoring-insight-loss { color: var(--st-loss-text); }
+  .scoring-insight-gain { color: var(--st-gain-text); }
   .scoring-kpi-values-toggle { display: inline-flex; align-items: center; gap: .35rem; color: var(--muted); font-size: .74rem; font-weight: 750; white-space: nowrap; }
   .scoring-kpi-values-toggle input { width: 1rem; height: 1rem; margin: 0; accent-color: var(--brand); }
   .scoring-results-config-shortcuts { margin: 0; display: flex; flex-wrap: nowrap; gap: .45rem; }
@@ -420,10 +508,16 @@
   .scoring-results-tabbed { --result-accent: #4f46e5; margin-top: .9rem; }
   .scoring-results-tabbed:has([data-result-tab="scoring"][aria-selected="true"]) { --result-accent: #0f766e; }
   .scoring-results-tabbed:has([data-result-tab="gap"][aria-selected="true"]) { --result-accent: #c2410c; }
+  .scoring-results-tabbed:has([data-result-tab="summary"][aria-selected="true"]) { --result-accent: #0369a1; }
+  .scoring-results-tabbed:has([data-result-tab="locations"][aria-selected="true"]) { --result-accent: #7c3aed; }
+  .scoring-results-tabbed:has([data-result-tab="points"][aria-selected="true"]) { --result-accent: #be123c; }
   .scoring-result-tabs { position: relative; z-index: 1; display: flex; flex-wrap: wrap; align-items: flex-end; gap: .3rem; margin: 0; padding: 0; border: 0; }
   .scoring-result-tab { --tab-color: #4f46e5; display: inline-flex; align-items: center; gap: .45rem; margin-bottom: 0; padding: .5rem 1.05rem; border: 1px solid color-mix(in srgb, var(--tab-color) 26%, transparent); border-bottom: 0; border-radius: 12px 12px 0 0; background: color-mix(in srgb, var(--tab-color) 7%, #f6f7f9); color: color-mix(in srgb, var(--tab-color) 82%, #44505c); font-size: .82rem; font-weight: 800; letter-spacing: .01em; box-shadow: none; transition: background .15s ease, color .15s ease; }
   .scoring-result-tab[data-result-tab="scoring"] { --tab-color: #0f766e; }
   .scoring-result-tab[data-result-tab="gap"] { --tab-color: #c2410c; }
+  .scoring-result-tab[data-result-tab="summary"] { --tab-color: #0369a1; }
+  .scoring-result-tab[data-result-tab="locations"] { --tab-color: #7c3aed; }
+  .scoring-result-tab[data-result-tab="points"] { --tab-color: #be123c; }
   .scoring-result-tab svg { width: 1rem; height: 1rem; flex: none; }
   .scoring-result-tab:hover:not(:disabled) { border-color: color-mix(in srgb, var(--tab-color) 45%, transparent); background: color-mix(in srgb, var(--tab-color) 14%, white); color: var(--tab-color); box-shadow: none; transform: none; }
   .scoring-result-tab[aria-selected="true"], .scoring-result-tab[aria-selected="true"]:hover:not(:disabled) { margin-bottom: -1px; padding: .62rem 1.2rem .66rem; border-color: var(--tab-color); background: linear-gradient(135deg, var(--tab-color), color-mix(in srgb, var(--tab-color) 72%, #000)); color: #fff; box-shadow: 0 -4px 12px color-mix(in srgb, var(--tab-color) 22%, transparent); }
@@ -431,12 +525,12 @@
   .scoring-result-panels { padding: 1rem; border: 1px solid color-mix(in srgb, var(--result-accent) 28%, transparent); border-top: 3px solid var(--result-accent); border-radius: 0 14px 14px 14px; background: #fff; box-shadow: 0 8px 22px rgba(18, 31, 43, .07); }
   .scoring-result-pane[hidden] { display: none; }
   .scoring-table-wrap { max-height: none; overflow-x: auto; overflow-y: visible; border: 1px solid var(--line); border-radius: 12px; background: rgba(255,255,255,.72); }
-  .scoring-table-section-title { margin: .75rem 0 .45rem; color: #245e5a; font-size: .86rem; }
+  .scoring-table-section-title { margin: .75rem 0 .45rem; color: var(--st-accent); font-size: .86rem; }
   .scoring-table-mode-section + .scoring-table-mode-section { margin-top: 1.25rem; }
   .scoring-table-section + .scoring-table-section-title { margin-top: 1.1rem; }
   .scoring-table-wrap table { width: 100%; border-collapse: collapse; font-size: .78rem; }
   .scoring-table-wrap th, .scoring-table-wrap td { padding: .58rem .68rem; border-bottom: 1px solid rgba(25,42,53,.08); text-align: left; white-space: nowrap; }
-  .scoring-table-wrap th { position: sticky; top: 0; z-index: 1; background: #eaf3f1; color: #245e5a; font-size: .72rem; font-weight: 800; }
+  .scoring-table-wrap th { position: sticky; top: 0; z-index: 1; background: var(--st-soft-header); color: var(--st-accent); font-size: .72rem; font-weight: 800; }
   .scoring-table-wrap td[data-numeric="true"] { text-align: right; font-variant-numeric: tabular-nums; }
   .scoring-comparison-controls { display: flex; align-items: center; flex-wrap: wrap; gap: .55rem; margin: .25rem 0 .65rem; }
   .scoring-comparison-controls label { display: inline-flex; align-items: center; gap: .45rem; color: var(--muted); font-size: .75rem; font-weight: 700; }
@@ -461,68 +555,68 @@
   .scoring-gap-info > .scoring-gap-scale { margin: 0 0 0 auto; justify-content: flex-end; }
   .scoring-gap-scale-bar { display: inline-block; width: min(15rem,35vw); height: .62rem; border: 1px solid rgba(25,42,53,.12); border-radius: 999px; }
   .scoring-matrix-wrap { max-height: none; overflow-x: auto; overflow-y: visible; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
-  .scoring-table-wrap tbody tr.scoring-total-row > td { background-color: #edf3f8; font-weight: 700; }
+  .scoring-table-wrap tbody tr.scoring-total-row > td { background-color: color-mix(in srgb, var(--st-total) 55%, #fff); font-weight: 700; }
   .scoring-comparison-table { width: max-content !important; min-width: 100%; border-collapse: collapse; table-layout: auto; font-size: .72rem !important; }
-  .scoring-comparison-table th, .scoring-comparison-table td { padding: .42rem .48rem !important; border: 1px solid #e2e8ed !important; text-align: center !important; white-space: nowrap; }
-  .scoring-comparison-table th { position: static; background: #edf2f6; color: #344858; font-size: .85rem !important; font-weight: 800; vertical-align: middle; }
+  .scoring-comparison-table th, .scoring-comparison-table td { padding: .42rem .48rem !important; border: 1px solid var(--st-border) !important; text-align: center !important; white-space: nowrap; }
+  .scoring-comparison-table th { position: static; background: var(--st-soft-header); color: var(--st-soft-header-text); font-size: .85rem !important; font-weight: 800; vertical-align: middle; }
   .scoring-comparison-table th[data-column="category"], .scoring-comparison-table td[data-column="category"] { min-width: 7.2rem; text-align: left !important; }
   .scoring-comparison-table th[data-column="kpi"], .scoring-comparison-table td[data-column="kpi"] { min-width: 12rem; max-width: 22rem; white-space: normal; text-align: left !important; }
-  .scoring-comparison-table .scoring-column-group { background: #dce6ee; color: #344858; font-size: .9rem !important; letter-spacing: .025em; }
-  .scoring-comparison-table .scoring-adjacent-group { background: #dce6ee; color: #344858; }
-  .scoring-comparison-table .scoring-gap-group { background: #f4ecd5 !important; color: #655331 !important; }
-  .scoring-comparison-table th.scoring-weight-header { background: #e7def4 !important; color: #51406d !important; }
-  .scoring-comparison-table th.scoring-maximum-header { background: #cce7e8 !important; color: #285f63 !important; }
+  .scoring-comparison-table .scoring-column-group { background: color-mix(in srgb, var(--st-header) 12%, var(--st-soft-header)); color: var(--st-soft-header-text); font-size: .9rem !important; letter-spacing: .025em; }
+  .scoring-comparison-table .scoring-adjacent-group { background: color-mix(in srgb, var(--st-header) 12%, var(--st-soft-header)); color: var(--st-soft-header-text); }
+  .scoring-comparison-table .scoring-gap-group { background: color-mix(in srgb, var(--st-gap-header) 30%, #fff) !important; color: var(--st-soft-header-text) !important; }
+  .scoring-comparison-table th.scoring-weight-header { background: color-mix(in srgb, var(--st-weight) 16%, #fff) !important; color: color-mix(in srgb, var(--st-weight) 72%, #111) !important; }
+  .scoring-comparison-table th.scoring-maximum-header { background: color-mix(in srgb, var(--st-maximum) 16%, #fff) !important; color: color-mix(in srgb, var(--st-maximum) 72%, #111) !important; }
   .scoring-comparison-table td[data-numeric="true"] { font-variant-numeric: tabular-nums; }
   .scoring-comparison-table :is(th,td)[data-column="weight"], .scoring-comparison-table :is(th,td)[data-column="maximum"], .scoring-comparison-table :is(th,td)[data-column="kpi-value"], .scoring-comparison-table :is(th,td)[data-column="score"], .scoring-comparison-table :is(th,td)[data-column="gap"] { text-align: center !important; }
-  .scoring-comparison-table td[data-column="weight"] { background: #f4f0f9; }
-  .scoring-comparison-table td[data-column="maximum"] { background: #e8f4f4; }
-  .scoring-comparison-table th.scoring-kpi-value-header { background: #e6eaeb; color: #334854; }
-  .scoring-comparison-table td.scoring-kpi-value-cell { background: #f3f5f6; font-variant-numeric: tabular-nums; }
+  .scoring-comparison-table td[data-column="weight"] { background: color-mix(in srgb, var(--st-weight) 6%, #fff); }
+  .scoring-comparison-table td[data-column="maximum"] { background: color-mix(in srgb, var(--st-maximum) 6%, #fff); }
+  .scoring-comparison-table th.scoring-kpi-value-header { background: color-mix(in srgb, var(--st-accent) 10%, #fff); color: var(--st-soft-header-text); }
+  .scoring-comparison-table td.scoring-kpi-value-cell { background: color-mix(in srgb, var(--st-accent) 4%, #fff); font-variant-numeric: tabular-nums; }
   /* With Show KPI values, the measured values and the scores are two clearly separate blocks. */
-  .scoring-comparison-table th.scoring-column-group.scoring-kpi-value-group { background: #4a5d7e !important; color: #fff !important; }
-  .scoring-comparison-table th.scoring-column-group.scoring-score-group { background: #0f6f6a !important; color: #fff !important; }
-  .scoring-comparison-table :is(tbody, tfoot) tr > td.scoring-kpi-value-cell { background-color: #f1f4fa !important; color: #2f3e5c; }
-  .scoring-comparison-table tbody tr:nth-child(even) > td.scoring-kpi-value-cell { background-color: #e9eef7 !important; }
+  .scoring-comparison-table th.scoring-column-group.scoring-kpi-value-group { background: var(--st-accent) !important; color: #fff !important; }
+  .scoring-comparison-table th.scoring-column-group.scoring-score-group { background: var(--st-header) !important; color: var(--st-header-text) !important; }
+  .scoring-comparison-table :is(tbody, tfoot) tr > td.scoring-kpi-value-cell { background-color: color-mix(in srgb, var(--st-accent) 5%, #fff) !important; color: var(--st-soft-header-text); }
+  .scoring-comparison-table tbody tr:nth-child(even) > td.scoring-kpi-value-cell { background-color: color-mix(in srgb, var(--st-accent) 9%, #fff) !important; }
   .scoring-comparison-table :is(th, td)[data-column="maximum"] + :is(th, td)[data-column="kpi-value"],
   .scoring-comparison-table th.scoring-maximum-header + th.scoring-kpi-value-group,
   .scoring-comparison-table :is(th, td)[data-column="kpi-value"] + :is(th, td):not([data-column="kpi-value"]),
-  .scoring-comparison-table th.scoring-kpi-value-group + th { border-left: 3px solid #4a5d7e !important; }
+  .scoring-comparison-table th.scoring-kpi-value-group + th { border-left: 3px solid var(--st-accent) !important; }
   .scoring-comparison-table th.scoring-operator-header { background: color-mix(in srgb, var(--operator-accent, #607d8b) 20%, #fff) !important; color: #263f4b !important; box-shadow: inset 0 3px var(--operator-accent, #607d8b); }
-  .scoring-comparison-table .scoring-gap-header { background: #f4ecd5 !important; }
-  .scoring-comparison-table th.scoring-gap-header { background: #f4ecd5 !important; color: #655331 !important; }
-  .scoring-comparison-table th.scoring-hierarchy-header { min-width: 8rem; max-width: 20rem; white-space: normal; background: #f1f5f8; color: #344858; }
-  .scoring-comparison-table th.scoring-hierarchy-header[data-hierarchy-depth="0"] { background: #e4ecf2; }
-  .scoring-comparison-table th.scoring-hierarchy-header[data-hierarchy-depth="1"] { background: #edf2f6; }
-  .scoring-comparison-table th.scoring-hierarchy-header.scoring-gap-header { background: #f4ecd5 !important; }
+  .scoring-comparison-table .scoring-gap-header { background: color-mix(in srgb, var(--st-gap-header) 30%, #fff) !important; }
+  .scoring-comparison-table th.scoring-gap-header { background: color-mix(in srgb, var(--st-gap-header) 30%, #fff) !important; color: var(--st-soft-header-text) !important; }
+  .scoring-comparison-table th.scoring-hierarchy-header { min-width: 8rem; max-width: 20rem; white-space: normal; background: var(--st-soft-header); color: var(--st-soft-header-text); }
+  .scoring-comparison-table th.scoring-hierarchy-header[data-hierarchy-depth="0"] { background: color-mix(in srgb, var(--st-header) 14%, var(--st-soft-header)); }
+  .scoring-comparison-table th.scoring-hierarchy-header[data-hierarchy-depth="1"] { background: color-mix(in srgb, var(--st-header) 7%, var(--st-soft-header)); }
+  .scoring-comparison-table th.scoring-hierarchy-header.scoring-gap-header { background: color-mix(in srgb, var(--st-gap-header) 30%, #fff) !important; }
   .scoring-comparison-table th.scoring-gap-header.scoring-gap-operator-header { background: color-mix(in srgb, var(--operator-accent, #607d8b) 20%, #fff) !important; color: #263f4b !important; box-shadow: inset 0 3px var(--operator-accent, #607d8b); }
-  .scoring-comparison-table .scoring-category-cell { vertical-align: middle; background: #f0f2f3; color: #334854; font-weight: 800; }
-  .scoring-comparison-table tbody tr:nth-child(even) td { background-color: #f8fafc; }
-  .scoring-comparison-table tbody tr.scoring-category-subtotal > td { background-color: #edf3f8 !important; font-weight: 700 !important; }
-  .scoring-comparison-table tbody tr > td.scoring-category-cell { background-color: #edf3f8 !important; color: #334854; }
-  .scoring-comparison-table tbody tr:nth-child(even) td.scoring-category-cell { background-color: #edf3f8 !important; }
-  .scoring-comparison-table td.scoring-gap-loss { color: #a43d2f; font-weight: 750; }
-  .scoring-comparison-table td.scoring-gap-gain { color: #247048; font-weight: 750; }
+  .scoring-comparison-table .scoring-category-cell { vertical-align: middle; background: var(--st-group); color: var(--st-soft-header-text); font-weight: 800; }
+  .scoring-comparison-table tbody tr:nth-child(even) td { background-color: var(--st-row-alt); }
+  .scoring-comparison-table tbody tr.scoring-category-subtotal > td { background-color: color-mix(in srgb, var(--st-total) 55%, #fff) !important; font-weight: 700 !important; }
+  .scoring-comparison-table tbody tr > td.scoring-category-cell { background-color: var(--st-group) !important; color: var(--st-soft-header-text); }
+  .scoring-comparison-table tbody tr:nth-child(even) td.scoring-category-cell { background-color: var(--st-group) !important; }
+  .scoring-comparison-table td.scoring-gap-loss { color: var(--st-loss-text); font-weight: 750; }
+  .scoring-comparison-table td.scoring-gap-gain { color: var(--st-gain-text); font-weight: 750; }
   .scoring-comparison-table td.scoring-total-partial { color: #64747b; }
-  .scoring-comparison-table tfoot th, .scoring-comparison-table tfoot td { position: static; background: #edf3f8 !important; color: #203744; font-weight: 850; border-top: 2px solid #bccbd7 !important; }
-  .scoring-priority-table td[data-column="category"] { background: #edf3f8 !important; color: #334854 !important; font-weight: 800; }
-  .scoring-priority-table td[data-column="gap"] { background: #fff5a6; font-weight: 800; text-align: center !important; }
-  .scoring-comparison-table td[data-column="type"][data-kpi-type="reliable"] { background: #e1efdc !important; color: #3d6135; font-weight: 750; }
-  .scoring-comparison-table td[data-column="type"][data-kpi-type="diff"] { background: #f1e2ec !important; color: #754a67; font-weight: 750; }
+  .scoring-comparison-table tfoot th, .scoring-comparison-table tfoot td { position: static; background: var(--st-total) !important; color: var(--st-soft-header-text); font-weight: 850; border-top: 2px solid color-mix(in srgb, var(--st-header) 35%, #fff) !important; }
+  .scoring-priority-table td[data-column="category"] { background: var(--st-group) !important; color: var(--st-soft-header-text) !important; font-weight: 800; }
+  .scoring-priority-table td[data-column="gap"] { background: color-mix(in srgb, var(--st-gap-header) 35%, #fff); font-weight: 800; text-align: center !important; }
+  .scoring-comparison-table td[data-column="type"][data-kpi-type="reliable"] { background: color-mix(in srgb, var(--st-kpi-reliable) 70%, #fff) !important; color: var(--st-soft-header-text); font-weight: 750; }
+  .scoring-comparison-table td[data-column="type"][data-kpi-type="diff"] { background: color-mix(in srgb, var(--st-kpi-diff) 70%, #fff) !important; color: var(--st-soft-header-text); font-weight: 750; }
   .scoring-comparison-table td[data-column="type"][data-kpi-type="neutral"] { background: #f2f4f6 !important; color: #64747b; }
   .scoring-comparison-table tbody tr.scoring-category-subtotal > td,
-  .scoring-comparison-table tfoot tr > :is(th, td) { background-color: #edf3f8 !important; }
+  .scoring-comparison-table tfoot tr > :is(th, td) { background-color: color-mix(in srgb, var(--st-total) 70%, #fff) !important; }
   .scoring-comparison-table tbody tr.scoring-category-subtotal > td[data-column="type"],
   .scoring-comparison-table tfoot tr > td[data-column="type"][data-kpi-type],
-  .scoring-comparison-table tfoot tr > td[data-column="gap"] { background-color: #edf3f8 !important; }
-  .scoring-comparison-table :is(tbody, tfoot) tr > td[data-column="score"][data-operator-rank="best"] { background-color: #C6EFCE !important; }
-  .scoring-comparison-table :is(tbody, tfoot) tr > td[data-column="score"][data-operator-rank="worst"] { background-color: #FFC7CE !important; }
+  .scoring-comparison-table tfoot tr > td[data-column="gap"] { background-color: var(--st-total) !important; }
+  .scoring-comparison-table :is(tbody, tfoot) tr > td[data-column="score"][data-operator-rank="best"] { background-color: var(--st-best) !important; }
+  .scoring-comparison-table :is(tbody, tfoot) tr > td[data-column="score"][data-operator-rank="worst"] { background-color: var(--st-worst) !important; }
   .scoring-comparison-table td:is([data-column="score"], [data-column="gap"]),
   .scoring-legend-swatch { background-image: linear-gradient(rgba(255,255,255,.25), rgba(255,255,255,.25)); }
   .scoring-gap-scale-bar { opacity: .75; }
-  .scoring-comparison-table :is(tbody, tfoot) tr > td[data-column="weight"] { background-color: #f4f0f9 !important; }
-  .scoring-comparison-table :is(tbody, tfoot) tr > td[data-column="maximum"] { background-color: #e8f4f4 !important; }
+  .scoring-comparison-table :is(tbody, tfoot) tr > td[data-column="weight"] { background-color: color-mix(in srgb, var(--st-weight) 6%, #fff) !important; }
+  .scoring-comparison-table :is(tbody, tfoot) tr > td[data-column="maximum"] { background-color: color-mix(in srgb, var(--st-maximum) 6%, #fff) !important; }
   .scoring-comparison-table tbody tr.scoring-category-subtotal > td:is([data-column="weight"], [data-column="maximum"], [data-column="type"]),
-  .scoring-comparison-table tfoot tr > td:is([data-column="weight"], [data-column="maximum"], [data-column="type"]) { background-color: #edf3f8 !important; }
+  .scoring-comparison-table tfoot tr > td:is([data-column="weight"], [data-column="maximum"], [data-column="type"]) { background-color: var(--st-total) !important; }
   .scoring-tone-0 { --operator-accent: #315f9a; }
   .scoring-tone-1 { --operator-accent: #bd4540; }
   .scoring-tone-2 { --operator-accent: #43835b; }
@@ -535,6 +629,9 @@
   /* In Scoring Tables and GAP Analysis the bar takes the colour of their tab. */
   [data-result-pane="scoring"] .scoring-calculating { --calc-strong: #0f766e; --calc-soft: #4fb3a7; --calc-title: #0f766e; --calc-track: #ecf8f6; --calc-border: #9fd6cf; }
   [data-result-pane="gap"] .scoring-calculating { --calc-strong: #c2410c; --calc-soft: #f08a5d; --calc-title: #c2410c; --calc-track: #fff3ec; --calc-border: #f4b99c; }
+  [data-result-pane="summary"] .scoring-calculating { --calc-strong: #0369a1; --calc-soft: #38a1d6; --calc-title: #0369a1; --calc-track: #eef7fc; --calc-border: #a5d3ee; }
+  [data-result-pane="locations"] .scoring-calculating { --calc-strong: #7c3aed; --calc-soft: #a78bfa; --calc-title: #7c3aed; --calc-track: #f5f0ff; --calc-border: #cdb9fb; }
+  [data-result-pane="points"] .scoring-calculating { --calc-strong: #be123c; --calc-soft: #f0567a; --calc-title: #be123c; --calc-track: #fff1f4; --calc-border: #f5a9bb; }
   .scoring-calculating-title { margin: 0; color: var(--calc-title); font-size: 1.05rem; font-weight: 800; letter-spacing: .01em; }
   .scoring-calculating-bar { width: min(36rem, 100%); height: 1.15rem; overflow: hidden; border: 1px solid var(--calc-border); border-radius: 999px; background: var(--calc-track); box-shadow: inset 0 1px 3px color-mix(in srgb, var(--calc-strong) 18%, transparent); }
   .scoring-calculating-fill { display: block; height: 100%; border-radius: inherit; background: repeating-linear-gradient(-45deg, var(--calc-strong) 0 .7rem, var(--calc-soft) .7rem 1.05rem, #ffffff 1.05rem 1.4rem, var(--calc-soft) 1.4rem 1.75rem); background-size: 2.475rem 2.475rem; box-shadow: 0 0 12px color-mix(in srgb, var(--calc-strong) 45%, transparent); transition: width .6s ease; animation: scoring-calculating-stripes .9s linear infinite; }
@@ -545,7 +642,7 @@
   .scoring-best-network-layout { display: grid; grid-template-columns: minmax(0,2fr) minmax(17rem,1fr); gap: .8rem; align-items: stretch; }
   .scoring-best-network-layout .scoring-chart-card { min-width: 0; }
   .scoring-chart-card { min-width: 0; padding: 1rem; border: 1px solid var(--line); border-radius: 13px; background: rgba(255,255,255,.82); cursor: default; }
-  .scoring-chart-card h4 { margin: 0 0 .6rem; color: #245e5a; font-size: 1.3rem; font-weight: 800; }
+  .scoring-chart-card h4 { margin: 0 0 .6rem; color: var(--st-accent); font-size: 1.3rem; font-weight: 800; }
   /* The area, operators and vendors of a chart or table, in the colours of their filters on the Saved Filter cards. */
   .scoring-scope-pill { display: inline-flex; align-items: center; margin-left: .55rem; padding: .14rem .62rem; border: 1px solid rgba(36,94,90,.32); border-radius: 999px; background: #d9eeea; color: #164c47; font-size: .8rem; font-weight: 800; line-height: 1.35; vertical-align: .08em; }
   .scoring-scope-pill + .scoring-scope-pill { margin-left: .35rem; }
@@ -629,9 +726,388 @@
     .scoring-results-tools a { flex: 1 1 auto; justify-content: center; white-space: normal; }
     .saved-filter-selector > .saved-filter-item { padding-right: .8rem; }
   }
+  /* ===== Themes: the style of every results table, card and chart (see scoring_themes.py) ===== */
+  /* Every theme: the theme's type, quiet zeros, the operator of a group in sight at its start and lighter KPI types. */
+  [data-scoring-workspace] .scoring-results-tabbed { font-family: var(--st-font, inherit); }
+  [data-scoring-workspace] .scoring-comparison-table td[data-numeric="true"] { font-family: var(--st-number-font, inherit); font-weight: 600; }
+  [data-scoring-workspace] .scoring-comparison-table th.scoring-operator-header { text-align: left !important; padding-left: .85rem !important; }
+  [data-scoring-workspace] .scoring-comparison-table td[data-gap="zero"],
+  [data-scoring-workspace] .scoring-comparison-table td[data-gap="none"] { color: var(--st-muted) !important; font-weight: 400 !important; }
+  [data-scoring-workspace] .scoring-comparison-table td[data-column="type"] { font-size: .64rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+  [data-scoring-workspace] .scoring-comparison-table td:is([data-column="weight"], [data-column="maximum"]) { color: var(--st-muted); font-weight: 500; }
+  [data-scoring-workspace] .scoring-comparison-table tbody tr > td.scoring-category-cell { background-color: var(--run-color, var(--st-group)) !important; }
+  [data-scoring-workspace] .scoring-comparison-table td[data-band="Low"] { --band-dot: var(--st-band-low); }
+  [data-scoring-workspace] .scoring-comparison-table td[data-band="Medium"] { --band-dot: var(--st-band-medium); }
+  [data-scoring-workspace] .scoring-comparison-table td[data-band="High"] { --band-dot: var(--st-band-high); }
+  [data-scoring-workspace] .scoring-comparison-table td[data-band="UltraHigh"] { --band-dot: var(--st-band-ultrahigh); }
+  [data-scoring-workspace] .scoring-comparison-table td[data-band="Unavailable"] { --band-dot: var(--st-muted); }
+
+  /* Ericsson: white panels under a black rule. */
+  [data-scoring-workspace][data-scoring-theme="ericsson"] [data-result-pane] > :is(.scoring-table-mode-section, .scoring-best-network-layout, .scoring-chart-card, .scoring-insight-section, .scoring-result-card) {
+    border: 0; border-top: 3px solid #0c0c0c; border-radius: 0; background: #fff; box-shadow: 0 1px 0 #e6e6e6; padding-top: 1.25rem; }
+  [data-scoring-workspace][data-scoring-theme="ericsson"] :is(.scoring-table-section-title, .scoring-chart-card h4, .scoring-insight-section h4) { color: #0c0c0c !important; font-weight: 700; letter-spacing: .01em; }
+  [data-scoring-workspace][data-scoring-theme="ericsson"] :is(.scoring-matrix-wrap, .scoring-table-wrap) { border: 0; border-radius: 0; background: #fff; }
+
+  /* Vodafone: rounded white panels under a red band. */
+  [data-scoring-workspace][data-scoring-theme="vodafone"] [data-result-pane] > :is(.scoring-table-mode-section, .scoring-best-network-layout, .scoring-chart-card, .scoring-insight-section, .scoring-result-card) {
+    border: 0; border-top: 6px solid #e60000; border-radius: 22px; background: #fff; box-shadow: 0 10px 28px rgba(0,0,0,.08); }
+  [data-scoring-workspace][data-scoring-theme="vodafone"] :is(.scoring-table-section-title, .scoring-chart-card h4, .scoring-insight-section h4) { color: #333 !important; font-weight: 800; }
+  [data-scoring-workspace][data-scoring-theme="vodafone"] :is(.scoring-matrix-wrap, .scoring-table-wrap) { border: 0; background: #fff; }
+
+  /* Midnight: navy panels with light text under a neon line. */
+  [data-scoring-workspace][data-scoring-theme="midnight"] [data-result-pane] > :is(.scoring-table-mode-section, .scoring-best-network-layout, .scoring-chart-card, .scoring-insight-section, .scoring-result-card) {
+    border: 1px solid #22314a; border-radius: 14px; color: #dce6f2; box-shadow: 0 14px 34px rgba(5,10,20,.35);
+    background: linear-gradient(90deg, #00e0ff, #b47cff 55%, #ff4d6d) top / 100% 3px no-repeat, #0f1726; }
+  [data-scoring-workspace][data-scoring-theme="midnight"] [data-result-pane] :is(h3, h4, h5, strong, .scoring-table-section-title) { color: #e6edf7 !important; }
+  [data-scoring-workspace][data-scoring-theme="midnight"] [data-result-pane] :is(p, small, label, .scoring-insight-note, .form-note) { color: #9fb1cc !important; }
+  [data-scoring-workspace][data-scoring-theme="midnight"] [data-result-pane] :is(.scoring-matrix-wrap, .scoring-table-wrap, .scoring-chart-card, .scoring-threshold-legend, .scoring-insight-table-wrap) { background: #0f1726 !important; border-color: #22314a !important; }
+  [data-scoring-workspace][data-scoring-theme="midnight"] .scoring-insight-table th { background: #16233a !important; color: #8fb3d9 !important;
+    border-color: #22314a !important; box-shadow: none !important; text-transform: uppercase; font-size: .66rem !important; letter-spacing: .06em; }
+  [data-scoring-workspace][data-scoring-theme="midnight"] .scoring-insight-table td { background: #0f1726 !important; color: #dce6f2 !important; border-color: #1b2840 !important; }
+  [data-scoring-workspace][data-scoring-theme="midnight"] [data-result-pane] svg text { fill: #c8d6e8 !important; }
+  [data-scoring-workspace][data-scoring-theme="midnight"] [data-result-pane] svg line { stroke: #22314a; }
+
+  /* Paper: panels between a double and a single black rule. */
+  [data-scoring-workspace][data-scoring-theme="paper"] [data-result-pane] > :is(.scoring-table-mode-section, .scoring-best-network-layout, .scoring-chart-card, .scoring-insight-section, .scoring-result-card) {
+    border: 0; border-top: 3px double #1a1a1a; border-bottom: 1px solid #1a1a1a; border-radius: 0; background: #fffefb; box-shadow: none; }
+  [data-scoring-workspace][data-scoring-theme="paper"] :is(.scoring-table-section-title, .scoring-chart-card h4, .scoring-insight-section h4) { color: #1a1a1a !important; font-style: italic; font-weight: 700; }
+  [data-scoring-workspace][data-scoring-theme="paper"] :is(.scoring-matrix-wrap, .scoring-table-wrap) { border: 0; border-radius: 0; background: transparent; }
+
+  /* Heatmap: light panels under the colours of its heat scale. */
+  [data-scoring-workspace][data-scoring-theme="heatmap"] [data-result-pane] > :is(.scoring-table-mode-section, .scoring-best-network-layout, .scoring-chart-card, .scoring-insight-section, .scoring-result-card) {
+    border: 1px solid #e6eaee; border-radius: 10px; box-shadow: none;
+    background: linear-gradient(90deg, #e05a4f, #e89b2e 35%, #6aa84f 65%, #2a9d8f) top / 100% 4px no-repeat, #fff; }
+  [data-scoring-workspace][data-scoring-theme="heatmap"] :is(.scoring-table-section-title, .scoring-chart-card h4, .scoring-insight-section h4) { color: #1f2a37 !important; font-weight: 900; text-transform: uppercase; letter-spacing: .03em; }
+
+  /* ===== The scorecard: the Scoring and GAP tables (applyScorecardLayout in scoring.js). Each theme gives the cells a
+     design of their own (cards with a bar, heat tiles, tags, pills, coloured figures), never a flat grid. ===== */
+  [data-scoring-workspace] { --sc-ink: #1f2a37; --sc-muted: #8a96a0; --sc-line: #e3e8ee; --sc-row-line: transparent; --sc-chip: #eef3f8;
+    --sc-section: #eaf0f7; --sc-section-ink: #1450a8; --sc-cell: #f6f8fb; --sc-track: #e3e9ef; --sc-total: #1f2a37; --sc-total-ink: #ffffff;
+    --sc-accent: #1450a8; --sc-gain: #2e8540; --sc-loss: #c0392b; --sc-gain-bar: #6aa84f; --sc-loss-bar: #e06666;
+    --sc-reliable-bg: #e3f2e6; --sc-reliable-ink: #2e7d4f; --sc-diff-bg: #fbf0d9; --sc-diff-ink: #9a6a12; --sc-best: #dff3e4; --sc-worst: #fbe1df;
+    --sc-gap-card: var(--sc-cell); --sc-radius: 8px; --sc-gap-bar: 3px; --sc-gap-glow: 0px; }
+  [data-scoring-workspace] .scoring-matrix-wrap:has(> .scoring-scorecard) { border: 0 !important; border-radius: 14px; background: transparent !important; padding: .1rem 0 .3rem; }
+  [data-scoring-workspace] .scoring-comparison-table.scoring-scorecard { border-collapse: separate !important; border-spacing: 3px; font-size: .74rem !important; }
+  [data-scoring-workspace] .scoring-comparison-table.scoring-scorecard :is(thead, tbody, tfoot) tr > :is(th, td) { border: 0 !important; box-shadow: none !important;
+    padding: .45rem .6rem !important; background: transparent !important; color: var(--sc-ink) !important; }
+  /* The header: the operators as chips, the levels below them as quiet labels. */
+  [data-scoring-workspace] .scoring-comparison-table.scoring-scorecard thead tr > th { color: var(--sc-muted) !important; font-size: .66rem !important; font-weight: 650;
+    letter-spacing: .02em; text-transform: none; vertical-align: bottom; }
+  [data-scoring-workspace] .scoring-comparison-table.scoring-scorecard thead tr > th.scoring-scorecard-corner { min-width: 18rem; text-align: left !important;
+    font-size: .6rem !important; letter-spacing: .12em; text-transform: uppercase; }
+  [data-scoring-workspace] .scoring-comparison-table.scoring-scorecard thead tr > th.scoring-hierarchy-header:not(.scoring-operator-header) { color: var(--sc-ink) !important; font-weight: 700; }
+  [data-scoring-workspace] .scoring-comparison-table.scoring-scorecard thead tr:last-child > th:not(.scoring-operator-header, .scoring-gap-operator-header, .scoring-scorecard-corner) {
+    color: var(--sc-muted) !important; font-size: .63rem !important; font-weight: 650; padding-top: .15rem !important; }
+  [data-scoring-workspace] .scoring-comparison-table.scoring-scorecard thead tr > th:is(.scoring-operator-header, .scoring-gap-operator-header) { text-align: left !important; padding: .5rem .2rem .3rem !important; }
+  [data-scoring-workspace] .scoring-comparison-table.scoring-scorecard thead tr > th.scoring-column-group { color: var(--sc-accent) !important; font-size: .6rem !important; letter-spacing: .14em;
+    text-align: left !important; text-transform: uppercase; box-shadow: inset 0 -2px 0 currentColor !important; }
+  [data-scoring-workspace] .scoring-scorecard .scoring-operator-chip { display: inline-flex; align-items: center; gap: .45rem; padding: .3rem .8rem .3rem .55rem; border-radius: 999px;
+    background: var(--sc-chip); color: var(--sc-ink); font-size: .78rem; font-weight: 750; letter-spacing: 0; text-transform: none; white-space: nowrap; }
+  [data-scoring-workspace] .scoring-scorecard .scoring-operator-chip::before { content: ''; flex: 0 0 auto; width: .62rem; height: .62rem; border-radius: 50%; background: var(--operator-accent, #607d8b); }
+  /* The KPI: the badge of its type, its name and its weight and maximum. */
+  [data-scoring-workspace] .scoring-comparison-table.scoring-scorecard tr > .scoring-kpi-label { min-width: 18rem; max-width: 28rem; text-align: left !important; white-space: normal; }
+  [data-scoring-workspace] .scoring-scorecard .scoring-kpi-badge { display: inline-grid; place-items: center; width: 1.2rem; height: 1.2rem; margin-right: .5rem; border-radius: 6px;
+    font-size: .6rem; font-weight: 800; vertical-align: middle; }
+  [data-scoring-workspace] .scoring-scorecard .scoring-kpi-badge[data-kpi-type="reliable"] { background: var(--sc-reliable-bg); color: var(--sc-reliable-ink); }
+  [data-scoring-workspace] .scoring-scorecard .scoring-kpi-badge[data-kpi-type="diff"] { background: var(--sc-diff-bg); color: var(--sc-diff-ink); }
+  [data-scoring-workspace] .scoring-scorecard .scoring-kpi-name { color: var(--sc-ink); font-weight: 550; vertical-align: middle; }
+  [data-scoring-workspace] .scoring-scorecard .scoring-kpi-meta { margin-left: .55rem; color: var(--sc-muted); font-size: .64rem; font-weight: 500; white-space: nowrap; vertical-align: middle; }
+  [data-scoring-workspace] .scoring-scorecard .scoring-kpi-category { display: inline-block; margin-right: .45rem; padding: .08rem .42rem; border-radius: 5px; background: var(--sc-section);
+    color: var(--sc-section-ink); font-size: .58rem; font-weight: 750; letter-spacing: .04em; vertical-align: middle; }
+  [data-scoring-workspace] .scoring-comparison-table.scoring-scorecard tbody tr:not(.scoring-section-row) > td { box-shadow: inset 0 -1px 0 var(--sc-row-line) !important; }
+  [data-scoring-workspace] .scoring-comparison-table.scoring-scorecard tbody tr:not(.scoring-section-row):hover > td.scoring-kpi-label { color: var(--sc-accent) !important; }
+  /* Each category opens a section with its subtotal. */
+  [data-scoring-workspace] .scoring-comparison-table.scoring-scorecard tbody tr.scoring-section-row > :is(th, td) { background: var(--sc-section) !important; padding-top: .55rem !important;
+    padding-bottom: .55rem !important; font-weight: 800 !important; }
+  [data-scoring-workspace] .scoring-comparison-table.scoring-scorecard tbody tr.scoring-section-row > :first-child { border-radius: 9px 0 0 9px; }
+  [data-scoring-workspace] .scoring-comparison-table.scoring-scorecard tbody tr.scoring-section-row > :last-child { border-radius: 0 9px 9px 0; }
+  [data-scoring-workspace] .scoring-comparison-table.scoring-scorecard tbody tr.scoring-section-row > :only-child { border-radius: 9px; }
+  [data-scoring-workspace] .scoring-scorecard tr.scoring-section-row .scoring-kpi-name { color: var(--sc-section-ink); font-size: .76rem; font-weight: 800; letter-spacing: .02em; }
+  /* The scores and GAPs: the share of the maximum of each score and the size of each GAP drawn under the figure. */
+  [data-scoring-workspace] .scoring-comparison-table.scoring-scorecard :is(tbody, tfoot) tr > td:is([data-column="score"], [data-column="gap"]) { position: relative; min-width: 4.6rem; font-weight: 650; }
+  [data-scoring-workspace] .scoring-comparison-table.scoring-scorecard td.scoring-kpi-value-cell { color: var(--sc-muted) !important; font-weight: 500; }
+  [data-scoring-workspace] .scoring-comparison-table.scoring-scorecard td[data-gap="gain"] { color: var(--sc-gain) !important; font-weight: 750; }
+  [data-scoring-workspace] .scoring-comparison-table.scoring-scorecard td[data-gap="loss"] { color: var(--sc-loss) !important; font-weight: 750; }
+  [data-scoring-workspace] .scoring-comparison-table.scoring-scorecard td:is([data-gap="zero"], [data-gap="none"]) { color: color-mix(in srgb, var(--sc-muted) 70%, transparent) !important; font-weight: 450; }
+  [data-scoring-workspace] .scoring-comparison-table.scoring-scorecard td[data-column="score"][data-operator-rank="best"] { background: var(--sc-best) !important; }
+  [data-scoring-workspace] .scoring-comparison-table.scoring-scorecard td[data-column="score"][data-operator-rank="worst"] { background: var(--sc-worst) !important; }
+  [data-scoring-workspace] .scoring-comparison-table.scoring-scorecard td.scoring-total-partial { color: var(--sc-muted) !important; }
+  /* Every GAP a card with a bar either side of zero as long as the GAP, in the colours and shape of the theme. */
+  [data-scoring-workspace] .scoring-comparison-table.scoring-scorecard tbody tr:not(.scoring-section-row) > td[data-column="gap"] {
+    border-radius: var(--sc-radius); padding-bottom: .8rem !important;
+    background: linear-gradient(var(--sc-track), var(--sc-track)) 50% calc(100% - .3rem) / 1px 8px no-repeat, var(--sc-gap-card) !important; }
+  [data-scoring-workspace] .scoring-comparison-table.scoring-scorecard tbody tr:not(.scoring-section-row) > td:is([data-gap="gain"], [data-gap="loss"])::after {
+    content: ''; position: absolute; bottom: .38rem; height: var(--sc-gap-bar); border-radius: 99px; width: calc(var(--gap-share, 0) * (50% - .6rem)); }
+  [data-scoring-workspace] .scoring-comparison-table.scoring-scorecard tbody tr > td[data-gap="gain"]::after { left: 50%; background: var(--sc-gain-bar);
+    box-shadow: 0 0 var(--sc-gap-glow) var(--sc-gain-bar); }
+  [data-scoring-workspace] .scoring-comparison-table.scoring-scorecard tbody tr > td[data-gap="loss"]::after { right: 50%; background: var(--sc-loss-bar);
+    box-shadow: 0 0 var(--sc-gap-glow) var(--sc-loss-bar); }
+  /* The weighted total closes the table. */
+  [data-scoring-workspace] .scoring-comparison-table.scoring-scorecard tfoot tr > td { background: var(--sc-total) !important; color: var(--sc-total-ink) !important; font-weight: 800 !important;
+    padding-top: .7rem !important; padding-bottom: .7rem !important; }
+  [data-scoring-workspace] .scoring-scorecard tfoot .scoring-kpi-name { color: inherit; font-weight: 800; }
+  [data-scoring-workspace] .scoring-scorecard tfoot .scoring-kpi-meta { color: inherit; opacity: .65; }
+  [data-scoring-workspace] .scoring-comparison-table.scoring-scorecard tfoot tr > td:first-child { border-radius: 10px 0 0 10px; }
+  [data-scoring-workspace] .scoring-comparison-table.scoring-scorecard tfoot tr > td:last-child { border-radius: 0 10px 10px 0; }
+  /* The first column of each operator stands apart from the one before. */
+  [data-scoring-workspace] .scoring-comparison-table.scoring-scorecard :is(thead, tbody, tfoot) tr > [data-group-edge="major"] { border-left: 10px solid transparent !important; background-clip: padding-box !important; }
+  [data-scoring-workspace] .scoring-comparison-table.scoring-scorecard :is(tbody, tfoot) tr > td[data-group-edge="minor"] { border-left: 3px solid transparent !important; background-clip: padding-box !important; }
+
+  /* NetCheck: as in the NetCheck reports. White lists with thin grey rules, each score with an Excel-like data bar in
+     the colour of its band as long as its share of the maximum, each GAP a data bar either side of zero (red to the
+     left, green to the right), the operators on strips in their colour and a bold total under a dark rule. */
+  [data-scoring-workspace][data-scoring-theme="netcheck"] { --sc-row-line: #e6e9ed; --sc-chip: transparent; --sc-section: transparent;
+    --sc-section-ink: #17232d; --sc-total: #ffffff; --sc-total-ink: #17232d; --sc-gap-card: transparent; --sc-radius: 0px; --sc-track: #c9d2db;
+    --sc-gain-bar: #4ca65a; --sc-loss-bar: #e8414f; --sc-reliable-bg: #eef1f4; --sc-reliable-ink: #455b65; --sc-diff-bg: #eef1f4; --sc-diff-ink: #455b65; }
+  [data-scoring-workspace][data-scoring-theme="netcheck"] .scoring-comparison-table.scoring-scorecard { border-spacing: 0; }
+  [data-scoring-workspace][data-scoring-theme="netcheck"] .scoring-comparison-table.scoring-scorecard thead tr > th { color: #17232d !important; font-size: .64rem !important; }
+  [data-scoring-workspace][data-scoring-theme="netcheck"] .scoring-scorecard .scoring-operator-chip { display: flex; width: 100%; box-sizing: border-box;
+    justify-content: flex-start; padding: .28rem .55rem; border-radius: 0; background: var(--operator-accent, #455b65); color: #fff; font-size: .74rem; }
+  [data-scoring-workspace][data-scoring-theme="netcheck"] .scoring-scorecard .scoring-operator-chip::before { display: none; }
+  [data-scoring-workspace][data-scoring-theme="netcheck"] .scoring-scorecard .scoring-kpi-badge { border-radius: 2px; }
+  [data-scoring-workspace][data-scoring-theme="netcheck"] .scoring-comparison-table.scoring-scorecard tbody tr:not(.scoring-section-row) > td[data-column="score"] {
+    background: linear-gradient(90deg, var(--band-dot, #0e6b66) 0, color-mix(in srgb, var(--band-dot, #0e6b66) 14%, #fff) calc(var(--share, 0) * 100%),
+      transparent calc(var(--share, 0) * 100%)) 0 50% / 100% 64% no-repeat !important; }
+  [data-scoring-workspace][data-scoring-theme="netcheck"] .scoring-comparison-table.scoring-scorecard tbody tr:not(.scoring-section-row) > td[data-column="gap"] { isolation: isolate; padding-bottom: .45rem !important;
+    background: none !important; text-align: right !important; }
+  [data-scoring-workspace][data-scoring-theme="netcheck"] .scoring-comparison-table.scoring-scorecard tbody tr:not(.scoring-section-row) > td:is([data-gap="gain"], [data-gap="loss"])::after {
+    top: 18%; bottom: 18%; height: auto; border-radius: 0; z-index: -1; }
+  [data-scoring-workspace][data-scoring-theme="netcheck"] .scoring-comparison-table.scoring-scorecard tbody tr > td[data-gap="gain"]::after {
+    background: linear-gradient(90deg, var(--sc-gain-bar), color-mix(in srgb, var(--sc-gain-bar) 14%, #fff)); }
+  [data-scoring-workspace][data-scoring-theme="netcheck"] .scoring-comparison-table.scoring-scorecard tbody tr > td[data-gap="loss"]::after {
+    background: linear-gradient(270deg, var(--sc-loss-bar), color-mix(in srgb, var(--sc-loss-bar) 14%, #fff)); }
+  [data-scoring-workspace][data-scoring-theme="netcheck"] .scoring-comparison-table.scoring-scorecard tbody tr.scoring-section-row > :is(th, td) {
+    border-radius: 0 !important; box-shadow: inset 0 -1px 0 #c9d2db !important; padding-top: .7rem !important; }
+  [data-scoring-workspace][data-scoring-theme="netcheck"] .scoring-scorecard tr.scoring-section-row .scoring-kpi-name { font-size: .66rem; letter-spacing: .06em; text-transform: uppercase; }
+  [data-scoring-workspace][data-scoring-theme="netcheck"] .scoring-comparison-table.scoring-scorecard tfoot tr > td { border-radius: 0 !important; box-shadow: inset 0 1.5px 0 #17232d !important; }
+
+  /* Heatmap: light heat tiles. Every score a tile tinted by the share of its maximum on the scale of its band, outlined
+     subtotals and the operators underlined in their colour. */
+  [data-scoring-workspace][data-scoring-theme="heatmap"] { --sc-ink: #1f2a37; --sc-muted: #8a96a0; --sc-section: #f3f5f7; --sc-section-ink: #1f2a37; --sc-total: #eef1f4; --sc-total-ink: #1f2a37;
+    --sc-accent: #2a9d8f; --sc-gain: #1f6f66; --sc-loss: #a63a33; --sc-best: #d3ede4; --sc-worst: #f9d5d3; --sc-reliable-bg: #d7efe9; --sc-reliable-ink: #1f6f66;
+    --sc-diff-bg: #fde8cf; --sc-diff-ink: #9a5b12; --sc-gap-card: #f6f8fa; --sc-gap-bar: 4px; --sc-gain-bar: #2a9d8f; --sc-loss-bar: #e05a4f; }
+  [data-scoring-workspace][data-scoring-theme="heatmap"] .scoring-comparison-table.scoring-scorecard { border-spacing: 4px; }
+  [data-scoring-workspace][data-scoring-theme="heatmap"] .scoring-scorecard .scoring-operator-chip { width: 100%; justify-content: center; padding: .2rem 0 .35rem; border-radius: 0; background: transparent;
+    color: var(--operator-accent, #1f2a37); font-weight: 800; box-shadow: inset 0 -3px 0 var(--operator-accent, #1f2a37); }
+  [data-scoring-workspace][data-scoring-theme="heatmap"] .scoring-scorecard .scoring-operator-chip::before { display: none; }
+  [data-scoring-workspace][data-scoring-theme="heatmap"] .scoring-comparison-table.scoring-scorecard thead tr > th:is(.scoring-operator-header, .scoring-gap-operator-header) { text-align: center !important; }
+  [data-scoring-workspace][data-scoring-theme="heatmap"] .scoring-comparison-table.scoring-scorecard tbody tr:not(.scoring-section-row) > td[data-column="score"] { border-radius: 8px; font-weight: 700;
+    background: color-mix(in srgb, var(--band-dot, #bfc5ca) calc(14% + var(--share, .5) * 30%), #fff) !important;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--band-dot, #bfc5ca) 38%, #fff) !important; }
+  [data-scoring-workspace][data-scoring-theme="heatmap"] .scoring-comparison-table.scoring-scorecard tbody tr.scoring-section-row > td:is([data-column="score"], [data-column="gap"]) {
+    background: #fff !important; border-radius: 8px; box-shadow: inset 0 0 0 1.5px #cfd8e1 !important; }
+  [data-scoring-workspace][data-scoring-theme="heatmap"] .scoring-scorecard tr.scoring-section-row .scoring-kpi-name::before { content: '▾'; margin-right: .45rem; color: var(--sc-muted); }
+  [data-scoring-workspace][data-scoring-theme="heatmap"] .scoring-comparison-table.scoring-scorecard tfoot tr > td { border-radius: 8px !important; box-shadow: inset 0 0 0 1.5px #c3ccd5 !important; }
+
+  /* Ericsson: fill bars. Square cells, every score filling its cell as far as its share of the maximum in the colour of
+     its band, black rules opening the sections and closing the table, Ericsson blue for the reliable KPIs. */
+  [data-scoring-workspace][data-scoring-theme="ericsson"] { --sc-ink: #0c0c0c; --sc-muted: #6a6a6a; --sc-row-line: #ececec; --sc-chip: transparent; --sc-section: #ffffff; --sc-section-ink: #0c0c0c;
+    --sc-cell: #f5f5f5; --sc-total: #ffffff; --sc-total-ink: #0c0c0c; --sc-accent: #0082f0; --sc-gain: #0a8f55; --sc-loss: #d11f1f; --sc-gain-bar: #0fc373; --sc-loss-bar: #ff3232;
+    --sc-reliable-bg: #e5f2fe; --sc-reliable-ink: #0069c2; --sc-diff-bg: #f0f0f0; --sc-diff-ink: #4e4e4e; --sc-best: #e7f9f0; --sc-worst: #ffecec;
+    --sc-track: #d6d6d6; --sc-gap-card: #f5f5f5; --sc-radius: 0px; --sc-gap-bar: 4px; }
+  [data-scoring-workspace][data-scoring-theme="ericsson"] .scoring-comparison-table.scoring-scorecard tbody tr:not(.scoring-section-row) > td[data-column="score"] {
+    background: linear-gradient(90deg, color-mix(in srgb, var(--band-dot, #0082f0) 34%, #fff) calc(var(--share, 0) * 100%), #f5f5f5 0) !important; }
+  [data-scoring-workspace][data-scoring-theme="ericsson"] .scoring-comparison-table.scoring-scorecard { border-spacing: 2px 3px; }
+  [data-scoring-workspace][data-scoring-theme="ericsson"] .scoring-comparison-table.scoring-scorecard thead tr > th { color: #0c0c0c !important; font-size: .6rem !important; letter-spacing: .12em; text-transform: uppercase; }
+  [data-scoring-workspace][data-scoring-theme="ericsson"] .scoring-scorecard .scoring-operator-chip { padding: .2rem 0 .35rem; border-radius: 0; background: transparent; font-size: .74rem;
+    letter-spacing: .06em; text-transform: uppercase; box-shadow: inset 0 -3px 0 var(--operator-accent, #0c0c0c); }
+  [data-scoring-workspace][data-scoring-theme="ericsson"] .scoring-scorecard .scoring-operator-chip::before { border-radius: 0; width: .5rem; height: .5rem; }
+  [data-scoring-workspace][data-scoring-theme="ericsson"] .scoring-scorecard .scoring-kpi-badge { border-radius: 0; }
+  [data-scoring-workspace][data-scoring-theme="ericsson"] .scoring-comparison-table.scoring-scorecard tbody tr.scoring-section-row > :is(th, td) { border-radius: 0 !important; box-shadow: inset 0 2px 0 #0c0c0c !important; padding-top: .8rem !important; }
+  [data-scoring-workspace][data-scoring-theme="ericsson"] .scoring-scorecard tr.scoring-section-row .scoring-kpi-name { font-size: .66rem; letter-spacing: .12em; text-transform: uppercase; }
+  [data-scoring-workspace][data-scoring-theme="ericsson"] .scoring-comparison-table.scoring-scorecard tfoot tr > td { border-radius: 0 !important; box-shadow: inset 0 2px 0 #0c0c0c, inset 0 -2px 0 #0c0c0c !important; }
+
+  /* Vodafone: pills. Every score a rounded pill, every GAP a rounded card, the operators as pills in their colour,
+     sections with a red dot and a dark grey total. */
+  [data-scoring-workspace][data-scoring-theme="vodafone"] { --sc-ink: #333333; --sc-muted: #7e7e7e; --sc-section: #f2f2f2; --sc-section-ink: #333333; --sc-total: #4a4d4e; --sc-total-ink: #ffffff;
+    --sc-accent: #e60000; --sc-gain: #00697c; --sc-loss: #b80000; --sc-best: #d6f3f7; --sc-worst: #fdd9d9; --sc-reliable-bg: #d6f3f7; --sc-reliable-ink: #00697c;
+    --sc-diff-bg: #fff1cc; --sc-diff-ink: #8a6100; --sc-gap-card: #f4f4f4; --sc-radius: 14px; --sc-gap-bar: 4px; --sc-gain-bar: #00b0ca; --sc-loss-bar: #e60000; }
+  [data-scoring-workspace][data-scoring-theme="vodafone"] .scoring-comparison-table.scoring-scorecard { border-spacing: 4px 5px; }
+  [data-scoring-workspace][data-scoring-theme="vodafone"] .scoring-scorecard .scoring-operator-chip { background: var(--operator-accent, #4a4d4e); color: #fff; padding: .35rem .95rem .35rem .7rem; }
+  [data-scoring-workspace][data-scoring-theme="vodafone"] .scoring-scorecard .scoring-operator-chip::before { background: #fff; width: .5rem; height: .5rem; }
+  [data-scoring-workspace][data-scoring-theme="vodafone"] .scoring-scorecard .scoring-kpi-badge { border-radius: 999px; }
+  [data-scoring-workspace][data-scoring-theme="vodafone"] .scoring-comparison-table.scoring-scorecard tbody tr:not(.scoring-section-row) > td[data-column="score"] {
+    border-radius: 999px; font-weight: 750; background: color-mix(in srgb, var(--band-dot, #bdbdbd) 24%, #fff) !important; }
+  [data-scoring-workspace][data-scoring-theme="vodafone"] .scoring-comparison-table.scoring-scorecard tbody tr.scoring-section-row > :is(th, td) { border-radius: 999px !important; }
+  [data-scoring-workspace][data-scoring-theme="vodafone"] .scoring-scorecard tr.scoring-section-row .scoring-kpi-name::before { content: ''; display: inline-block; width: .55rem; height: .55rem;
+    margin-right: .5rem; border-radius: 50%; background: #e60000; vertical-align: .05rem; }
+  [data-scoring-workspace][data-scoring-theme="vodafone"] .scoring-comparison-table.scoring-scorecard tfoot tr > td { border-radius: 999px !important; }
+
+  /* Midnight: glowing cards on navy. Every score a dark card with a glowing bar of its share of the maximum, neon mint
+     and pink GAP bars, sections in deep blue and a total under a neon line. */
+  [data-scoring-workspace][data-scoring-theme="midnight"] { --sc-ink: #dce6f2; --sc-muted: #7f93b0; --sc-line: #22314a; --sc-chip: #16233a; --sc-section: #16233a; --sc-section-ink: #8fd3ff;
+    --sc-cell: #131f33; --sc-track: #22314a; --sc-total: #0b1220; --sc-total-ink: #e6edf7; --sc-accent: #3db9ff; --sc-gain: #2ee6a6; --sc-loss: #ff4d6d;
+    --sc-gain-bar: #2ee6a6; --sc-loss-bar: #ff4d6d; --sc-reliable-bg: rgba(46,230,166,.16); --sc-reliable-ink: #2ee6a6; --sc-diff-bg: rgba(255,193,69,.16); --sc-diff-ink: #ffc145;
+    --sc-best: rgba(46,230,166,.18); --sc-worst: rgba(255,77,109,.18); --sc-gap-glow: 6px; }
+  [data-scoring-workspace][data-scoring-theme="midnight"] .scoring-comparison-table.scoring-scorecard tbody tr:not(.scoring-section-row) > td[data-column="score"] {
+    background: var(--sc-cell) !important; border-radius: 8px; padding-bottom: .75rem !important; }
+  [data-scoring-workspace][data-scoring-theme="midnight"] .scoring-comparison-table.scoring-scorecard tbody tr:not(.scoring-section-row) > td[data-column="score"]::after {
+    content: ''; position: absolute; left: .6rem; right: .6rem; bottom: .38rem; height: 3px; border-radius: 99px;
+    background: linear-gradient(90deg, var(--band-dot, var(--sc-accent)) calc(var(--share, 0) * 100%), var(--sc-track) 0);
+    box-shadow: 0 0 6px color-mix(in srgb, var(--band-dot, #3db9ff) 55%, transparent); }
+  [data-scoring-workspace][data-scoring-theme="midnight"] .scoring-comparison-table.scoring-scorecard tfoot tr > td { box-shadow: inset 0 2px 0 #3db9ff !important; }
+  [data-scoring-workspace][data-scoring-theme="midnight"] .scoring-comparison-table.scoring-scorecard td[data-column="score"][data-operator-rank="best"] { box-shadow: inset 0 0 0 1px #2ee6a6 !important; }
+  [data-scoring-workspace][data-scoring-theme="midnight"] .scoring-comparison-table.scoring-scorecard td[data-column="score"][data-operator-rank="worst"] { box-shadow: inset 0 0 0 1px #ff4d6d !important; }
+
+  /* The best and worst operator of each row of a summary, in every theme. */
+  [data-scoring-workspace][data-scoring-theme] .scoring-comparison-table.scoring-scorecard tbody tr:not(.scoring-section-row) > td[data-column="score"][data-operator-rank="best"] {
+    background: var(--sc-best) !important; box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--sc-gain) 55%, transparent) !important; }
+  [data-scoring-workspace][data-scoring-theme] .scoring-comparison-table.scoring-scorecard tbody tr:not(.scoring-section-row) > td[data-column="score"][data-operator-rank="worst"] {
+    background: var(--sc-worst) !important; box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--sc-loss) 55%, transparent) !important; }
+
+  /* Paper: a typeset report. Every score underlined in the colour of its band, GAPs on cream cards with fine blue and
+     vermilion bars, sections in italic small capitals under a rule and the total under a double rule. */
+  [data-scoring-workspace][data-scoring-theme="paper"] { --sc-ink: #1a1a1a; --sc-muted: #8a8376; --sc-row-line: #ebe6da; --sc-chip: transparent; --sc-section: transparent; --sc-section-ink: #1a1a1a;
+    --sc-total: transparent; --sc-total-ink: #1a1a1a; --sc-accent: #7a1f1f; --sc-gain: #1f4e79; --sc-loss: #b23a1e; --sc-reliable-bg: transparent; --sc-reliable-ink: #2f6b3a;
+    --sc-diff-bg: transparent; --sc-diff-ink: #8a6d1a; --sc-best: transparent; --sc-worst: transparent;
+    --sc-track: #c9c2b4; --sc-gap-card: #f7f4ee; --sc-radius: 0px; --sc-gap-bar: 2px; --sc-gain-bar: #1f4e79; --sc-loss-bar: #b23a1e; }
+  [data-scoring-workspace][data-scoring-theme="paper"] .scoring-comparison-table.scoring-scorecard { border-spacing: 0; }
+  [data-scoring-workspace][data-scoring-theme="paper"] .scoring-comparison-table.scoring-scorecard thead tr > th { font-style: italic; color: #1a1a1a !important; }
+  [data-scoring-workspace][data-scoring-theme="paper"] .scoring-comparison-table.scoring-scorecard thead tr:last-child > th { box-shadow: inset 0 -1.5px 0 #1a1a1a !important; }
+  [data-scoring-workspace][data-scoring-theme="paper"] .scoring-scorecard .scoring-operator-chip { padding: 0 0 .2rem; border-radius: 0; background: transparent; font-variant: small-caps; font-size: .9rem;
+    box-shadow: inset 0 -2px 0 var(--operator-accent, #1a1a1a); }
+  [data-scoring-workspace][data-scoring-theme="paper"] .scoring-scorecard .scoring-operator-chip::before { display: none; }
+  [data-scoring-workspace][data-scoring-theme="paper"] .scoring-scorecard .scoring-kpi-badge { width: auto; height: auto; margin-right: .4rem; font-style: italic; font-weight: 700; }
+  [data-scoring-workspace][data-scoring-theme="paper"] .scoring-comparison-table.scoring-scorecard tbody tr:not(.scoring-section-row) > td.scoring-band-cell {
+    text-decoration: underline 2px var(--band-dot); text-underline-offset: 4px; font-weight: 700; }
+  [data-scoring-workspace][data-scoring-theme="paper"] .scoring-comparison-table.scoring-scorecard tbody tr.scoring-section-row > :is(th, td) { border-radius: 0 !important; box-shadow: inset 0 1px 0 #1a1a1a !important; padding-top: .75rem !important; }
+  [data-scoring-workspace][data-scoring-theme="paper"] .scoring-scorecard tr.scoring-section-row .scoring-kpi-name { font-style: italic; font-variant: small-caps; font-size: .86rem; letter-spacing: .03em; }
+  [data-scoring-workspace][data-scoring-theme="paper"] .scoring-comparison-table.scoring-scorecard tfoot tr > td { border-radius: 0 !important; border-top: 3px double #1a1a1a !important; }
+  [data-scoring-workspace][data-scoring-theme="paper"] .scoring-comparison-table.scoring-scorecard td[data-column="score"][data-operator-rank="best"] { text-decoration: underline; text-underline-offset: 3px; color: #1f4e79 !important; }
+  [data-scoring-workspace][data-scoring-theme="paper"] .scoring-comparison-table.scoring-scorecard td[data-column="score"][data-operator-rank="worst"] { text-decoration: underline wavy; text-underline-offset: 3px; color: #b23a1e !important; }
+
+  /* The National & Areas table in the style of each theme. */
+  [data-scoring-workspace][data-scoring-theme] table.scoring-area-summary-table td.scoring-area-name { box-shadow: none; }
+  [data-scoring-workspace][data-scoring-theme="netcheck"] table.scoring-area-summary-table { border: 0; border-radius: 0; }
+  [data-scoring-workspace][data-scoring-theme="netcheck"] table.scoring-area-summary-table th { background: #fff; color: #17232d; box-shadow: inset 0 -1.5px 0 #17232d; font-size: .66rem; }
+  [data-scoring-workspace][data-scoring-theme="netcheck"] table.scoring-area-summary-table td { border-bottom: 1px solid #e6e9ed; }
+  [data-scoring-workspace][data-scoring-theme="netcheck"] table.scoring-area-summary-table tbody tr.is-area-shaded td { background-color: #fff; }
+  [data-scoring-workspace][data-scoring-theme="netcheck"] table.scoring-area-summary-table td.scoring-area-name { color: #1450a8; font-size: .82rem; letter-spacing: .04em; text-transform: uppercase; }
+  [data-scoring-workspace][data-scoring-theme="netcheck"] table.scoring-area-summary-table td.scoring-area-gain { background-color: #dff1e2 !important; }
+  [data-scoring-workspace][data-scoring-theme="netcheck"] table.scoring-area-summary-table td.scoring-area-loss { background-color: #fbe0de !important; }
+
+  [data-scoring-workspace][data-scoring-theme="ericsson"] table.scoring-area-summary-table { border: 0; border-radius: 0; }
+  [data-scoring-workspace][data-scoring-theme="ericsson"] table.scoring-area-summary-table th { background: #fff; color: #0c0c0c; box-shadow: inset 0 -2px 0 #0c0c0c; font-size: .6rem; letter-spacing: .12em; }
+  [data-scoring-workspace][data-scoring-theme="ericsson"] table.scoring-area-summary-table td { border-bottom: 1px solid #ececec; }
+  [data-scoring-workspace][data-scoring-theme="ericsson"] table.scoring-area-summary-table tbody tr.is-area-shaded td { background-color: #f5f5f5; }
+  [data-scoring-workspace][data-scoring-theme="ericsson"] table.scoring-area-summary-table td.scoring-area-name { box-shadow: inset 4px 0 0 #0082f0; color: #0c0c0c;
+    font-size: .74rem; letter-spacing: .1em; text-transform: uppercase; }
+  [data-scoring-workspace][data-scoring-theme="ericsson"] table.scoring-area-summary-table td.scoring-area-operator::before { border-radius: 0; }
+  [data-scoring-workspace][data-scoring-theme="ericsson"] table.scoring-area-summary-table td.scoring-area-gain::before { content: '▲ '; font-size: .7em; }
+  [data-scoring-workspace][data-scoring-theme="ericsson"] table.scoring-area-summary-table td.scoring-area-loss::before { content: '▼ '; font-size: .7em; }
+
+  [data-scoring-workspace][data-scoring-theme="vodafone"] table.scoring-area-summary-table { border: 0; border-spacing: 3px 4px; }
+  [data-scoring-workspace][data-scoring-theme="vodafone"] table.scoring-area-summary-table th { background: #e60000; color: #fff; border-radius: 12px; }
+  [data-scoring-workspace][data-scoring-theme="vodafone"] table.scoring-area-summary-table td { border-radius: 999px; background-color: #f4f4f4 !important; }
+  [data-scoring-workspace][data-scoring-theme="vodafone"] table.scoring-area-summary-table td.scoring-area-name { border-radius: 12px; background-color: #fff !important; }
+  [data-scoring-workspace][data-scoring-theme="vodafone"] table.scoring-area-summary-table td.scoring-area-name:not(:empty)::before { content: ''; display: inline-block; width: .55rem; height: .55rem;
+    margin-right: .45rem; border-radius: 50%; background: #e60000; vertical-align: .05rem; }
+  [data-scoring-workspace][data-scoring-theme="vodafone"] table.scoring-area-summary-table td.scoring-area-gain { background-color: #d6f3f7 !important; color: #00697c; }
+  [data-scoring-workspace][data-scoring-theme="vodafone"] table.scoring-area-summary-table td.scoring-area-loss { background-color: #fdd9d9 !important; color: #b80000; }
+  [data-scoring-workspace][data-scoring-theme="vodafone"] table.scoring-area-summary-table tbody tr.is-area-start:not(:first-child) td { border-top: 0; }
+
+  [data-scoring-workspace][data-scoring-theme="midnight"] table.scoring-area-summary-table { border-color: #22314a; }
+  [data-scoring-workspace][data-scoring-theme="midnight"] table.scoring-area-summary-table th { background: #16233a; color: #8fb3d9; }
+  [data-scoring-workspace][data-scoring-theme="midnight"] table.scoring-area-summary-table tbody tr td { background-color: #0f1726; color: #dce6f2; }
+  [data-scoring-workspace][data-scoring-theme="midnight"] table.scoring-area-summary-table tbody tr.is-area-shaded td { background-color: #131f33; }
+  [data-scoring-workspace][data-scoring-theme="midnight"] table.scoring-area-summary-table tbody tr.is-area-start:not(:first-child) td { border-top-color: #22314a; }
+  [data-scoring-workspace][data-scoring-theme="midnight"] table.scoring-area-summary-table td.scoring-area-name { color: #8fd3ff; box-shadow: inset 3px 0 0 #3db9ff; }
+  [data-scoring-workspace][data-scoring-theme="midnight"] table.scoring-area-summary-table td.scoring-area-gain { color: #2ee6a6; text-shadow: 0 0 8px rgba(46,230,166,.45); }
+  [data-scoring-workspace][data-scoring-theme="midnight"] table.scoring-area-summary-table td.scoring-area-loss { color: #ff4d6d; text-shadow: 0 0 8px rgba(255,77,109,.45); }
+
+  [data-scoring-workspace][data-scoring-theme="paper"] table.scoring-area-summary-table { border: 0; border-radius: 0; border-top: 3px double #1a1a1a; border-bottom: 1px solid #1a1a1a; }
+  [data-scoring-workspace][data-scoring-theme="paper"] table.scoring-area-summary-table th { background: transparent; color: #1a1a1a; font-style: italic; text-transform: none; letter-spacing: 0;
+    box-shadow: inset 0 -1px 0 #1a1a1a; }
+  [data-scoring-workspace][data-scoring-theme="paper"] table.scoring-area-summary-table tbody tr td,
+  [data-scoring-workspace][data-scoring-theme="paper"] table.scoring-area-summary-table tbody tr.is-area-shaded td { background-color: transparent; }
+  [data-scoring-workspace][data-scoring-theme="paper"] table.scoring-area-summary-table tbody tr.is-area-start:not(:first-child) td { border-top: 1px solid #1a1a1a; }
+  [data-scoring-workspace][data-scoring-theme="paper"] table.scoring-area-summary-table td.scoring-area-name { color: #1a1a1a; font-style: italic; font-variant: small-caps; }
+  [data-scoring-workspace][data-scoring-theme="paper"] table.scoring-area-summary-table td.scoring-area-gain { color: #1f4e79; }
+  [data-scoring-workspace][data-scoring-theme="paper"] table.scoring-area-summary-table td.scoring-area-loss { color: #b23a1e; }
+  [data-scoring-workspace][data-scoring-theme="paper"] table.scoring-area-summary-table td.scoring-area-gain::before { content: '▲ '; font-size: .7em; }
+  [data-scoring-workspace][data-scoring-theme="paper"] table.scoring-area-summary-table td.scoring-area-loss::before { content: '▼ '; font-size: .7em; }
+
+  [data-scoring-workspace][data-scoring-theme="heatmap"] table.scoring-area-summary-table { border: 0; border-spacing: 3px; }
+  [data-scoring-workspace][data-scoring-theme="heatmap"] table.scoring-area-summary-table th { background: #fff; color: #1f2a37; box-shadow: inset 0 -3px 0 #2a9d8f; border-radius: 0; }
+  [data-scoring-workspace][data-scoring-theme="heatmap"] table.scoring-area-summary-table tbody tr td { border-radius: 8px; background-color: #f6f8fa; }
+  [data-scoring-workspace][data-scoring-theme="heatmap"] table.scoring-area-summary-table tbody tr.is-area-start:not(:first-child) td { border-top: 0; }
+  [data-scoring-workspace][data-scoring-theme="heatmap"] table.scoring-area-summary-table td.scoring-area-name { background-color: #f3f5f7; }
+  [data-scoring-workspace][data-scoring-theme="heatmap"] table.scoring-area-summary-table td.scoring-area-gain { background-color: #cde9e6 !important; color: #1f6f66; }
+  [data-scoring-workspace][data-scoring-theme="heatmap"] table.scoring-area-summary-table td.scoring-area-loss { background-color: #f9d5d3 !important; color: #a63a33; }
+
+  /* The insight tables (Summary, Locations, GAP by part, Points Lost) in the style of each theme. */
+  [data-scoring-workspace][data-scoring-theme="netcheck"] .scoring-insight-table th { background: var(--st-header) !important; color: #fff !important; text-transform: uppercase; font-size: .66rem; letter-spacing: .04em; }
+  [data-scoring-workspace][data-scoring-theme="ericsson"] .scoring-insight-table th { background: #fff !important; color: #0c0c0c !important; text-transform: uppercase; font-size: .6rem;
+    letter-spacing: .1em; border-bottom: 1px solid #0c0c0c; }
+  [data-scoring-workspace][data-scoring-theme="ericsson"] .scoring-insight-table td { border-bottom: 1px solid #ededed; }
+  [data-scoring-workspace][data-scoring-theme="ericsson"] .scoring-insight-banner { background: #fff !important; color: #0c0c0c !important; text-align: left; border-bottom: 3px solid var(--banner-color); padding-left: 0; }
+  [data-scoring-workspace][data-scoring-theme="vodafone"] .scoring-insight-table { border-collapse: separate; border-spacing: 2px 3px; }
+  [data-scoring-workspace][data-scoring-theme="vodafone"] .scoring-insight-table th { background: #4a4d4e !important; color: #fff !important; border-radius: 8px; }
+  [data-scoring-workspace][data-scoring-theme="vodafone"] .scoring-insight-table td { background: #f6f6f6; border-radius: 8px; border-bottom: 0; }
+  [data-scoring-workspace][data-scoring-theme="vodafone"] .scoring-insight-banner { border-radius: 14px; text-align: left; padding: .45rem .9rem; }
+  [data-scoring-workspace][data-scoring-theme="midnight"] .scoring-insight-banner { background: #16233a !important; color: #e6edf7 !important; box-shadow: inset 4px 0 0 var(--banner-color); text-align: left; }
+  [data-scoring-workspace][data-scoring-theme="paper"] .scoring-insight-table th { background: transparent !important; color: #1a1a1a !important; font-style: italic; border-bottom: 1.5px solid #1a1a1a; }
+  [data-scoring-workspace][data-scoring-theme="paper"] .scoring-insight-table td { border-bottom: 1px solid #e5e0d3; background: transparent; }
+  [data-scoring-workspace][data-scoring-theme="paper"] .scoring-insight-banner { background: transparent !important; color: #1a1a1a !important; font-style: italic; text-align: left;
+    border-bottom: 2px solid var(--banner-color); padding-left: 0; }
+  [data-scoring-workspace][data-scoring-theme="heatmap"] .scoring-insight-table { border-collapse: separate; border-spacing: 3px; }
+  [data-scoring-workspace][data-scoring-theme="heatmap"] .scoring-insight-table th { background: #fff !important; color: #1f2a37 !important; box-shadow: inset 0 -3px 0 #2a9d8f; }
+  [data-scoring-workspace][data-scoring-theme="heatmap"] .scoring-insight-table td { background: #f6f8fa; border-bottom: 0; border-radius: 6px; }
+  [data-scoring-workspace][data-scoring-theme="heatmap"] .scoring-insight-banner { text-transform: uppercase; letter-spacing: .04em; font-weight: 900; text-align: left; }
+
+  /* The insight panels, tiles and bars of each theme. */
+  [data-scoring-workspace][data-scoring-theme="ericsson"] :is(.scoring-standing, .scoring-location-card) { border: 0; border-top: 1px solid #0c0c0c; border-left: 0; border-radius: 0; background: #fff; box-shadow: none; }
+  [data-scoring-workspace][data-scoring-theme="ericsson"] :is(.scoring-standing-tile, .scoring-scope-tile) { border-radius: 0; background: #fff; border-left: 2px solid #0082f0; }
+  [data-scoring-workspace][data-scoring-theme="ericsson"] :is(.scoring-leaderboard-bar, .scoring-stake-bar) { height: .55rem; border-radius: 0; background: #f2f2f2; }
+  [data-scoring-workspace][data-scoring-theme="ericsson"] .scoring-position-tile { border-radius: 0; background: transparent !important; color: var(--rank-color); text-shadow: none;
+    box-shadow: inset 0 -3px 0 var(--rank-color); font-weight: 800; }
+  [data-scoring-workspace][data-scoring-theme="vodafone"] :is(.scoring-standing, .scoring-location-card) { border: 0; border-radius: 20px; background: #fafafa; box-shadow: inset 6px 0 0 var(--operator-color, #e60000); }
+  [data-scoring-workspace][data-scoring-theme="vodafone"] :is(.scoring-standing-tile, .scoring-scope-tile) { border-radius: 18px; background: #fff; box-shadow: 0 4px 12px rgba(0,0,0,.06); }
+  [data-scoring-workspace][data-scoring-theme="vodafone"] :is(.scoring-leaderboard-bar, .scoring-stake-bar) { height: 1.2rem; border-radius: 999px; }
+  [data-scoring-workspace][data-scoring-theme="vodafone"] .scoring-position-tile { border-radius: 999px; }
+  [data-scoring-workspace][data-scoring-theme="midnight"] :is(.scoring-standing, .scoring-location-card, .scoring-leaderboard-row.is-reference) { background: #131f33 !important; border-color: #22314a; }
+  [data-scoring-workspace][data-scoring-theme="midnight"] :is(.scoring-standing-tile, .scoring-scope-tile) { background: #16233a; }
+  [data-scoring-workspace][data-scoring-theme="midnight"] :is(.scoring-standing-value, .scoring-scope-value, .scoring-leaderboard-total, .scoring-leaderboard-name) { color: #e6edf7 !important; }
+  [data-scoring-workspace][data-scoring-theme="midnight"] :is(.scoring-standing-label, .scoring-standing-detail, .scoring-standing-takeaway) { color: #9fb1cc !important; }
+  [data-scoring-workspace][data-scoring-theme="midnight"] :is(.scoring-leaderboard-bar, .scoring-stake-bar, .scoring-position-missed) { background: #1b2840; color: #9fb1cc; }
+  [data-scoring-workspace][data-scoring-theme="midnight"] .scoring-position-tile { box-shadow: 0 0 10px color-mix(in srgb, var(--rank-color) 55%, transparent); }
+  [data-scoring-workspace][data-scoring-theme="paper"] :is(.scoring-standing, .scoring-location-card) { border: 0; border-top: 1px solid #1a1a1a; border-radius: 0; background: transparent; box-shadow: none; }
+  [data-scoring-workspace][data-scoring-theme="paper"] :is(.scoring-standing-tile, .scoring-scope-tile) { border-radius: 0; background: transparent; border-bottom: 1px solid #d9d4c7; }
+  [data-scoring-workspace][data-scoring-theme="paper"] :is(.scoring-leaderboard-bar, .scoring-stake-bar) { height: .5rem; border-radius: 0; background: #efeae0; }
+  [data-scoring-workspace][data-scoring-theme="paper"] .scoring-position-tile { border-radius: 0; background: transparent !important; color: var(--rank-color); text-shadow: none; font-style: italic; }
+  [data-scoring-workspace][data-scoring-theme="heatmap"] :is(.scoring-standing, .scoring-location-card) { border: 0; border-radius: 10px; background: #f6f8fa; box-shadow: inset 0 4px 0 var(--operator-color, #2a9d8f); }
+  [data-scoring-workspace][data-scoring-theme="heatmap"] :is(.scoring-standing-tile, .scoring-scope-tile) { border-radius: 8px; background: #fff; box-shadow: inset 0 0 0 1.5px #d5dde5; }
+  [data-scoring-workspace][data-scoring-theme="heatmap"] :is(.scoring-standing-tile, .scoring-scope-tile) :is(.scoring-standing-value, .scoring-scope-value) { color: #1f2a37 !important; }
+  [data-scoring-workspace][data-scoring-theme="heatmap"] :is(.scoring-standing-tile, .scoring-scope-tile) :is(.scoring-standing-label, .scoring-standing-detail) { color: #8a96a0 !important; }
+  [data-scoring-workspace][data-scoring-theme="heatmap"] :is(.scoring-leaderboard-bar, .scoring-stake-bar) { height: 1.4rem; border-radius: 6px; }
+  [data-scoring-workspace][data-scoring-theme="heatmap"] .scoring-position-tile { border-radius: 8px; }
+
+  /* The charts of each theme. */
+  [data-scoring-workspace][data-scoring-theme="ericsson"] [data-result-pane] svg text { letter-spacing: .02em; }
+  [data-scoring-workspace][data-scoring-theme="ericsson"] [data-result-pane] svg rect[data-chart-tooltip] { stroke: #fff; stroke-width: 1.5px; }
+  [data-scoring-workspace][data-scoring-theme="vodafone"] [data-result-pane] svg rect[data-chart-tooltip] { rx: 6px; ry: 6px; stroke: #fff; stroke-width: 2px; }
+  [data-scoring-workspace][data-scoring-theme="vodafone"] [data-result-pane] svg text { font-weight: 700; }
+  [data-scoring-workspace][data-scoring-theme="midnight"] [data-result-pane] svg rect[data-chart-tooltip] { filter: drop-shadow(0 0 5px rgba(0, 224, 255, .25)); }
+  [data-scoring-workspace][data-scoring-theme="midnight"] [data-result-pane] svg rect:is([fill="#ffffff"], [fill="#fff"], [fill="#f6f8f8"], [fill="#f1f5f9"], [fill="#f8fafc"]) { fill: #131f33; }
+  [data-scoring-workspace][data-scoring-theme="paper"] [data-result-pane] svg rect[data-chart-tooltip] { filter: saturate(.6); stroke: #1a1a1a; stroke-width: .6px; }
+  [data-scoring-workspace][data-scoring-theme="paper"] [data-result-pane] svg text { font-family: Georgia, "Times New Roman", serif; }
+  [data-scoring-workspace][data-scoring-theme="heatmap"] [data-result-pane] svg rect[data-chart-tooltip] { rx: 3px; ry: 3px; }
+  [data-scoring-workspace][data-scoring-theme="heatmap"] [data-result-pane] svg text { font-weight: 800; }
+
+  /* The data bars of the insight tables in the shape of each theme. */
+  [data-scoring-workspace][data-scoring-theme="ericsson"] .scoring-insight-databar { top: auto; bottom: 8%; height: 3px; border: 0; background: var(--databar-color); }
+  [data-scoring-workspace][data-scoring-theme="vodafone"] .scoring-insight-databar { top: 18%; bottom: 18%; border: 0; border-radius: 999px; background: color-mix(in srgb, var(--databar-color) 30%, #fff); }
+  [data-scoring-workspace][data-scoring-theme="midnight"] .scoring-insight-databar { border: 0; border-radius: 3px; background: linear-gradient(90deg, color-mix(in srgb, var(--databar-color) 70%, transparent), transparent);
+    box-shadow: 0 0 8px color-mix(in srgb, var(--databar-color) 45%, transparent); }
+  [data-scoring-workspace][data-scoring-theme="midnight"] .scoring-insight-databar.is-left {
+    background: linear-gradient(270deg, color-mix(in srgb, var(--databar-color) 70%, transparent), transparent); }
+  [data-scoring-workspace][data-scoring-theme="paper"] .scoring-insight-databar { top: auto; bottom: 10%; height: 2px; border: 0;
+    background: repeating-linear-gradient(90deg, var(--databar-color) 0 3px, transparent 3px 5px); }
+  [data-scoring-workspace][data-scoring-theme="heatmap"] .scoring-insight-databar { top: 0; bottom: 0; left: 0; border: 0; border-radius: 6px; background: color-mix(in srgb, var(--databar-color) 35%, #fff); }
 </style>
 
-<section class="dashboard-stack spacious-stack scoring-stack" data-scoring-workspace data-scoring-workspace-id="{{ active_workspace.id if active_workspace else '' }}" data-configuration-error="{{ scoring_configuration_error or '' }}" data-saved-filters-url="/api/scoring/saved-filters" data-selection-url="/api/scoring/selection" data-export-base="/scoring/saved-filters">
+<section class="dashboard-stack spacious-stack scoring-stack" data-scoring-workspace data-scoring-workspace-id="{{ active_workspace.id if active_workspace else '' }}" data-configuration-error="{{ scoring_configuration_error or '' }}" data-saved-filters-url="/api/scoring/saved-filters" data-selection-url="/api/scoring/selection" data-export-base="/scoring/saved-filters" data-scoring-theme="{{ scoring_theme or 'netcheck' }}">
+<script type="application/json" id="scoring-themes-data">{{ scoring_themes | tojson }}</script>
   <article class="panel scoring-hero">
     <div class="section-head tight-head">
       <div>
@@ -815,6 +1291,11 @@
                   <option value="most_reliable">Most Reliable</option>
                 </select>
               </label>
+              <label class="scoring-environment-filter scoring-theme-filter" title="The colours of every chart and table of the results and of the PowerPoint and Word exports">Theme
+                <select data-scoring-theme-select aria-label="Colour theme of the Scoring &amp; GAP Analysis charts, tables and exports">
+                  {% for theme in scoring_themes.themes %}<option value="{{ theme.id }}" title="{{ theme.description }}"{% if theme.id == scoring_theme %} selected{% endif %}>{{ theme.label }}</option>{% endfor %}
+                </select>
+              </label>
               <label class="scoring-environment-filter" data-result-environment-control>Environment
                 <select data-result-environment aria-label="Filter scoring tables, charts and GAP analysis by environment; defaults to the first complete environment when all environments are incomplete" disabled><option value="all">All Environments</option></select>
               </label>
@@ -855,14 +1336,20 @@
       </div>
       <div class="scoring-results-tabbed">
       <div class="scoring-result-tabs" role="tablist" aria-label="Scoring outputs">
-        <button type="button" class="scoring-result-tab" role="tab" aria-selected="true" aria-controls="scoring-chart-pane" data-result-tab="charts"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 17h14M5.5 14V9M10 14V5M14.5 14v-3"/></svg><span>Scoring Charts</span></button>
+        <button type="button" class="scoring-result-tab" role="tab" aria-selected="true" aria-controls="scoring-summary-pane" data-result-tab="summary"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3.5" width="6" height="5" rx="1"/><rect x="11" y="3.5" width="6" height="5" rx="1"/><path d="M3 12.5h14M3 16h9"/></svg><span>Summary</span></button>
+        <button type="button" class="scoring-result-tab" role="tab" aria-selected="false" aria-controls="scoring-chart-pane" data-result-tab="charts"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 17h14M5.5 14V9M10 14V5M14.5 14v-3"/></svg><span>Scoring Charts</span></button>
         <button type="button" class="scoring-result-tab" role="tab" aria-selected="false" aria-controls="scoring-table-pane" data-result-tab="scoring"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="14" height="12" rx="1.5"/><path d="M3 8h14M3 12h14M8 4v12"/></svg><span>Scoring Tables</span></button>
+        <button type="button" class="scoring-result-tab" role="tab" aria-selected="false" aria-controls="scoring-locations-pane" data-result-tab="locations"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 17.5s5.5-5 5.5-9.5a5.5 5.5 0 0 0-11 0c0 4.5 5.5 9.5 5.5 9.5z"/><circle cx="10" cy="8" r="2"/></svg><span>Locations</span></button>
         <button type="button" class="scoring-result-tab" role="tab" aria-selected="false" aria-controls="scoring-gap-pane" data-result-tab="gap"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 15l4-4 3 3 5-6"/><path d="M12.5 8H16v3.5"/></svg><span>GAP Analysis</span></button>
+        <button type="button" class="scoring-result-tab" role="tab" aria-selected="false" aria-controls="scoring-points-pane" data-result-tab="points"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5.5l4.5-2 5 2 4.5-2v11l-4.5 2-5-2-4.5 2z"/><path d="M7.5 3.5v11M12.5 5.5v11"/></svg><span>Points Lost</span></button>
       </div>
       <div class="scoring-result-panels">
-      <div class="scoring-result-pane" id="scoring-chart-pane" role="tabpanel" data-result-pane="charts"><div class="scoring-empty">No scoring charts are selected.</div></div>
+      <div class="scoring-result-pane" id="scoring-summary-pane" role="tabpanel" data-result-pane="summary"><div class="scoring-empty">No scoring summary is selected.</div></div>
+      <div class="scoring-result-pane" id="scoring-chart-pane" role="tabpanel" data-result-pane="charts" hidden><div class="scoring-empty">No scoring charts are selected.</div></div>
       <div class="scoring-result-pane" id="scoring-table-pane" role="tabpanel" data-result-pane="scoring" hidden><div class="scoring-table-export" data-table-export="scoring"><a href="#" data-export-scoring aria-disabled="true" tabindex="-1" title="The scoring table shown below as CSV"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M11.5 2H5.5A1.5 1.5 0 0 0 4 3.5v13A1.5 1.5 0 0 0 5.5 18h9a1.5 1.5 0 0 0 1.5-1.5V6.5z"/><path d="M11.5 2v4.5H16"/><path d="M10 9.5v5.5M7.6 12.6 10 15l2.4-2.4"/></svg><span>Export to CSV</span></a></div><div class="scoring-empty">No scoring table is selected.</div></div>
+      <div class="scoring-result-pane" id="scoring-locations-pane" role="tabpanel" data-result-pane="locations" hidden><div class="scoring-empty">No locations are selected.</div></div>
       <div class="scoring-result-pane" id="scoring-gap-pane" role="tabpanel" data-result-pane="gap" hidden><div class="scoring-table-export" data-table-export="gap"><a href="#" data-export-gap aria-disabled="true" tabindex="-1" title="The GAP table shown below as CSV"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M11.5 2H5.5A1.5 1.5 0 0 0 4 3.5v13A1.5 1.5 0 0 0 5.5 18h9a1.5 1.5 0 0 0 1.5-1.5V6.5z"/><path d="M11.5 2v4.5H16"/><path d="M10 9.5v5.5M7.6 12.6 10 15l2.4-2.4"/></svg><span>Export to CSV</span></a></div><div class="scoring-empty">No GAP analysis is selected.</div></div>
+      <div class="scoring-result-pane" id="scoring-points-pane" role="tabpanel" data-result-pane="points" hidden><div class="scoring-empty">No Points Lost are selected.</div></div>
       </div>
       </div>
 

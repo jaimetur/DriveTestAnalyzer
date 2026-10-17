@@ -13,17 +13,13 @@ from src.modules.mapping_order import vendor_order_key
 from src.modules.scoring_vendors import normalize_scoring_vendor_result
 from src.modules.scoring_config import validate_scoring_configuration
 from src.modules.scoring_insights import build_scoring_insights
+from src.modules.scoring_themes import DEFAULT_THEME, THEMES
 
 
 _ENVIRONMENT_ORDER = ('DriveCity', 'DriveConnectionroad', 'Walk')
 _SCOPE_FIELDS = ('campaign', 'region', 'cluster', 'city', 'vendor', 'dataset_type')
-THRESHOLD_COLORS = {
-    'Low': '#F8CCCC',
-    'Medium': '#FFE3A3',
-    'High': '#D8EFCA',
-    'UltraHigh': '#98D8D7',
-    'Unavailable': '#ECEFF1',
-}
+# The score bands and GAP scale of the NetCheck theme; the other themes translate them (see scoring_themes).
+THRESHOLD_COLORS = dict(THEMES[DEFAULT_THEME]['bands'])
 THRESHOLD_LEGEND = [
     {'band': 'Low', 'color': THRESHOLD_COLORS['Low'], 'definition': 'Score below the configured Medium score anchor.'},
     {'band': 'Medium', 'color': THRESHOLD_COLORS['Medium'], 'definition': 'Score at Medium and below the configured High score anchor.'},
@@ -31,9 +27,12 @@ THRESHOLD_LEGEND = [
     {'band': 'UltraHigh', 'color': THRESHOLD_COLORS['UltraHigh'], 'definition': 'Score at or above the configured Ultra score anchor.'},
     {'band': 'Unavailable', 'color': THRESHOLD_COLORS['Unavailable'], 'definition': 'Score is incomplete or unavailable.'},
 ]
-_GAP_NEUTRAL = '#FFFFFF'
-_GAP_POSITIVE_MAX = '#70AD47'
-_GAP_NEGATIVE_MAX = '#E57373'
+_GAP_NEUTRAL = THEMES[DEFAULT_THEME]['gap_neutral']
+_GAP_POSITIVE_MAX = THEMES[DEFAULT_THEME]['gap_positive']
+_GAP_NEGATIVE_MAX = THEMES[DEFAULT_THEME]['gap_negative']
+# The largest GAP of a context takes this share of the colour and the others less, so small GAPs stay almost white.
+_GAP_MAX_INTENSITY = .85
+_GAP_MIN_INTENSITY = .05
 
 
 def _positive_scoring_environments(configuration: dict[str, Any]) -> list[str]:
@@ -198,10 +197,10 @@ def build_scoring_views(job: dict[str, Any] | None, result: dict[str, Any] | Non
         # The points-lost shares are matched to the score rows by the same fields: hide them there too.
         points_loss = result.get('points_loss')
         if isinstance(points_loss, dict) and isinstance(points_loss.get('shares'), list):
-            result['points_loss'] = {**points_loss, 'shares': [
+            result['points_loss'] = {**points_loss, **{name: [
                 {key: (None if _key(key) in hidden else value) for key, value in share.items()}
-                for share in points_loss['shares'] if isinstance(share, dict)
-            ]}
+                for share in points_loss[name] if isinstance(share, dict)
+            ] for name in ('shares', 'serving_tests') if isinstance(points_loss.get(name), list)}}
     include_dataset_type = any(_level_identity(level) == 'datasettype' for level in levels)
     requested_baseline = str(job.get('baseline_operator') or job.get('baseline') or 'EE').strip() or 'EE'
     baseline_aliases = job.get('baseline_aliases') or result.get('baseline_aliases') or _mapping_aliases(
@@ -721,7 +720,7 @@ def gap_color(value: Any, scale_max: Any) -> str:
     ratio = min(1.0, magnitude / maximum) if maximum > 0 else (1.0 if magnitude else 0.0)
     if gap == 0:
         return _GAP_NEUTRAL
-    intensity = max(0.15, math.sqrt(ratio))
+    intensity = max(_GAP_MIN_INTENSITY, ratio ** .85) * _GAP_MAX_INTENSITY
     return _blend_hex(_GAP_NEUTRAL, _GAP_POSITIVE_MAX if gap > 0 else _GAP_NEGATIVE_MAX, intensity)
 
 

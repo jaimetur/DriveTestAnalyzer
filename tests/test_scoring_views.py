@@ -634,9 +634,10 @@ def test_gap_gradient_uses_shared_context_scale_for_matrix_and_gap_rows():
     assert c5['gap_colors']['Three UK'] != c5['gap_colors']['O2 UK']
     assert gap_color(None, table['gap_scale_max']) == THRESHOLD_COLORS['Unavailable']
     assert gap_color(0, table['gap_scale_max']) == '#FFFFFF'
-    assert gap_color(1, 2) == '#9AC57D'
-    assert gap_color(2, 2) == '#70AD47'
-    assert gap_color(-2, 2) == '#E57373'
+    # The largest GAP of the context takes 85% of the colour; smaller GAPs fade towards white.
+    assert gap_color(1, 2) == '#B9D6AC'
+    assert gap_color(2, 2) == '#80B569'
+    assert gap_color(-2, 2) == '#E57D7D'
 
 
 def test_gap_priority_configuration_does_not_override_signed_gap_value():

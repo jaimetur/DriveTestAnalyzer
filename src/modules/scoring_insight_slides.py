@@ -1,7 +1,8 @@
-"""NetCheck-style insight slides of the Scoring & GAP Analysis exports.
+"""Insight slides of the Scoring & GAP Analysis exports.
 
-Location cards, KPI GAP profiles, scoring trends and campaign comparisons use the
-insights of the scoring views (see ``scoring_insights``).
+Location cards, KPI GAP profiles, scoring trends, campaign comparisons, the National & Areas and the points-lost maps
+use the insights of the scoring views (see ``scoring_insights``), in the palette of the web page: Data in teal and Voice
+in amber, losses and GAPs behind the reference in red and gains in green.
 """
 from __future__ import annotations
 
@@ -10,17 +11,18 @@ from typing import Any, Callable
 
 from pptx.chart.data import CategoryChartData
 from pptx.dml.color import RGBColor
-from pptx.enum.chart import XL_CHART_TYPE, XL_DATA_LABEL_POSITION, XL_LEGEND_POSITION, XL_TICK_MARK
+from pptx.enum.chart import XL_CHART_TYPE, XL_DATA_LABEL_POSITION, XL_TICK_MARK
 from pptx.enum.shapes import MSO_SHAPE
 from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
 from pptx.util import Inches, Pt
 
+from src.modules.scoring_themes import active_theme, themed
 from src.modules.scoring_vendors import scoring_vendor_name
 
 VOICE_COLOR = '#F2A900'
 DATA_COLOR = '#0E6B66'
-PANEL_COLOR = '#0B2A5B'
 TITLE_BLUE = '#1450A8'
+TEXT_COLOR = '#17232D'
 CARD_COLOR = '#F2F3F5'
 LOSS_COLOR = '#E8414F'
 WIN_COLOR = '#4CA65A'
@@ -34,7 +36,8 @@ FALLBACK_COLORS = ('#E60000', '#0B6E8F', '#7A3DB8', '#00A3AD', '#F2A900', '#4CA6
 
 
 def _rgb(color: str) -> RGBColor:
-    return RGBColor.from_string(color.lstrip('#'))
+    """The colour in the active theme (see scoring_themes.themed)."""
+    return RGBColor.from_string(themed(color).lstrip('#'))
 
 
 def _points(value: float | None, digits: int = 0) -> str:
@@ -50,16 +53,25 @@ def _box(slide, left, top, width, height, color, *, shape=MSO_SHAPE.RECTANGLE):
     return box
 
 
+def _unsigned_axis_ids(chart) -> None:
+    """Axis identifiers are unsigned integers in DrawingML; the bar chart templates of python-pptx use negative ones."""
+    references = chart._chartSpace.xpath('.//c:axId | .//c:crossAx')
+    numbers = {value: str(index + 1) for index, value in enumerate(dict.fromkeys(reference.get('val') for reference in references))}
+    for reference in references:
+        reference.set('val', numbers[reference.get('val')])
+
+
 def _lighten(color: str, amount: float) -> RGBColor:
-    red, green, blue = (int(color.lstrip('#')[index:index + 2], 16) for index in (0, 2, 4))
+    red, green, blue = (int(themed(color).lstrip('#')[index:index + 2], 16) for index in (0, 2, 4))
     return RGBColor(*(round(value + (255 - value) * amount) for value in (red, green, blue)))
 
 
-def _gradient_bar(slide, left, top, width, height, color: str):
-    """A data bar like the Excel ones: the colour fading to white, with a border of the same colour."""
+def _gradient_bar(slide, left, top, width, height, color: str, *, reverse: bool = False):
+    """A data bar like the Excel ones: the colour fading to white (towards the left when ``reverse``), with a border of
+    the same colour."""
     bar = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(left), Inches(top), Inches(width), Inches(height))
     bar.fill.gradient()
-    bar.fill.gradient_angle = 0
+    bar.fill.gradient_angle = 180 if reverse else 0
     stops = bar.fill.gradient_stops
     stops[0].position, stops[1].position = 0, 1
     stops[0].color.rgb = _rgb(color)
@@ -222,7 +234,8 @@ def _latest_campaign_groups(groups: list[dict[str, Any]]) -> list[dict[str, Any]
 
 def add_location_card_slides(presentation, groups: list[dict[str, Any]], *, scoring_label: str, subtitle: str,
                              new_slide: Callable, scope: ScopeLabels | None = None) -> None:
-    """One slide per group: a card per City, Cluster or Region with Voice and Data points per operator.
+    """One slide per group: a card per City, Cluster or Region with each operator's Data and Voice points as a bar,
+    from the highest score.
 
     With several campaigns only the latest one gets cards; the scoring trend shows the others.
     """
@@ -235,81 +248,76 @@ def add_location_card_slides(presentation, groups: list[dict[str, Any]], *, scor
         cards = group['cards']
         maximum = group['maximum']
         voice_max, data_max = group.get('max_voice') or 0, group.get('max_data') or 0
-        panel = _box(slide, .45, 1.55, 2.25, 5.35, PANEL_COLOR)
-        panel.name = 'Scoring Location Cards Panel'
-        paragraphs = [(f'The {scoring_label} scoring per {level.lower()} for the selected {plural}.', 11, False, '#FFFFFF'),
-                      ('', 6, False, '#FFFFFF')]
-        if group['scaled']:
-            paragraphs.append((f'The scoring points are scaled to a maximum of {_points(maximum)} points, providing '
-                               'comparability with the overall scoring.', 10, False, '#FFFFFF'))
-            paragraphs.append(('', 6, False, '#FFFFFF'))
-        paragraphs.append((f'Total: {_points(maximum)} points', 12, True, '#FFFFFF'))
-        if voice_max or data_max:
-            paragraphs.append((f'Voice: {_points(voice_max)} · Data: {_points(data_max)}', 10, False, '#FFFFFF'))
-        _write(panel.text_frame, paragraphs, align=PP_ALIGN.CENTER)
-        panel.text_frame.vertical_anchor = MSO_ANCHOR.MIDDLE
+        note = slide.shapes.add_textbox(Inches(.45), Inches(1.45), Inches(12.4), Inches(.3))
+        note.name = 'Scoring Location Cards Note'
+        _write_runs(note.text_frame, [
+            (f'The {scoring_label} scoring of the selected {plural}, each from its highest score: ', False, None),
+            (f'{_points(maximum)} points', True, None),
+            (f' at most (Voice {_points(voice_max)} · Data {_points(data_max)})', False, None),
+            (', the environments measured in each one scaled to them.' if group['scaled'] else '.', False, None)],
+            size=9.5, color='#4A5B65')
         count = len(cards)
-        columns = count if count <= 4 else ceil(count / 2)
-        rows = 1 if count <= 4 else 2
-        gap = .12
-        area_left, area_top, area_width, area_height = 2.85, 1.55, 10.05, 5.35
+        columns = count if count <= 3 else 4 if count <= 8 else ceil(count / 3)
+        rows = ceil(count / columns)
+        gap = .14
+        area_left, area_top, area_width, area_height = .45, 1.85, 12.45, 4.95
         width = (area_width - gap * (columns - 1)) / columns
         height = (area_height - gap * (rows - 1)) / rows
-        label_size = 8 if columns <= 4 else 7
+        label_size = 8 if rows <= 2 else 7
         for index, card in enumerate(cards):
             left = area_left + (index % columns) * (width + gap)
             top = area_top + (index // columns) * (height + gap)
             background = _box(slide, left, top, width, height, CARD_COLOR)
             background.name = f'Scoring Location Card {card["label"]}'
-            heading = slide.shapes.add_textbox(Inches(left + .05), Inches(top + .05), Inches(width - .1), Inches(.32))
-            _write(heading.text_frame, [(str(card['label']).upper(), 12 if columns <= 4 else 10, True, TITLE_BLUE)])
+            heading = slide.shapes.add_textbox(Inches(left + .08), Inches(top + .04), Inches(width - .16), Inches(.3))
+            _write(heading.text_frame, [(str(card['label']), 11 if rows <= 2 else 9.5, True, TITLE_BLUE)])
+            operators = sorted(card['operators'], key=lambda item: item['total'])
             data = CategoryChartData()
-            data.categories = [str(item['label']) for item in card['operators']]
-            data.add_series('Voice', [item['voice'] for item in card['operators']])
-            data.add_series('Data', [item['data'] for item in card['operators']])
-            data.add_series('Total', [item['total'] for item in card['operators']])
+            data.categories = [str(item['label']) for item in operators]
+            data.add_series('Data', [item['data'] for item in operators])
+            data.add_series('Voice', [item['voice'] for item in operators])
+            # An empty segment after each bar carries its total.
+            data.add_series('Total', [max(1, maximum) * .2 for _item in operators])
             chart_shape = slide.shapes.add_chart(
-                XL_CHART_TYPE.COLUMN_STACKED, Inches(left + .03), Inches(top + .38),
-                Inches(width - .06), Inches(height - .42), data,
+                XL_CHART_TYPE.BAR_STACKED, Inches(left + .03), Inches(top + .34),
+                Inches(width - .06), Inches(height - .38), data,
             )
             chart_shape.name = f'Scoring Location Chart {card["label"]}'
-            chart = chart_shape.chart
-            _format_card_chart(chart, maximum, label_size)
-        _legend_key(slide, 7.0, 6.98, [('Voice', VOICE_COLOR), ('Data', DATA_COLOR)])
-        note = slide.shapes.add_textbox(Inches(9.7), Inches(6.98), Inches(3.2), Inches(.24))
-        _write(note.text_frame, [(f'Scoring points scaled to a maximum of {_points(maximum)} points' if group['scaled']
-                                  else f'Maximum scoring: {_points(maximum)} points', 8, False, '#6B7A85')],
-               align=PP_ALIGN.RIGHT)
+            _format_card_chart(chart_shape.chart, maximum, label_size, operators)
+        _legend_key(slide, 5.6, 6.98, [('Data', DATA_COLOR), ('Voice', VOICE_COLOR)])
 
 
-def _format_card_chart(chart, maximum: float, label_size: float) -> None:
-    from src.modules.scoring_exports import _add_total_labels, _fill_series
+def _format_card_chart(chart, maximum: float, label_size: float, operators: list[dict[str, Any]]) -> None:
+    from src.modules.scoring_exports import _fill_series
+    _unsigned_axis_ids(chart)
     chart.has_legend = False
     chart.font.name = _FONT
     chart.font.size = Pt(label_size)
     chart.value_axis.minimum_scale = 0
-    chart.value_axis.maximum_scale = max(1, maximum) * 1.18
+    chart.value_axis.maximum_scale = max(1, maximum) * 1.2
     chart.value_axis.visible = False
     chart.value_axis.has_major_gridlines = False
-    chart.category_axis.tick_labels.font.size = Pt(label_size)
+    chart.category_axis.tick_labels.font.size = Pt(label_size + .5)
+    chart.category_axis.tick_labels.font.bold = True
     chart.category_axis.major_tick_mark = XL_TICK_MARK.NONE
-    chart.category_axis.format.line.color.rgb = _rgb('#BFC6CC')
+    chart.category_axis.format.line.color.rgb = _rgb('#D5DBE2')
     plot = chart.plots[0]
-    plot.gap_width = 70
-    plot.has_data_labels = True
-    labels = plot.data_labels
-    labels.position = XL_DATA_LABEL_POSITION.CENTER
-    labels.number_format = '0'
-    labels.number_format_is_linked = False
-    labels.font.size = Pt(label_size)
-    labels.font.color.rgb = _rgb('#FFFFFF')
-    _fill_series(chart.series[0], VOICE_COLOR)
-    _fill_series(chart.series[1], DATA_COLOR)
-    _add_total_labels(chart)
-    for run_properties in chart._chartSpace.xpath('.//c:lineChart//a:defRPr'):
-        run_properties.set('sz', str(round((label_size + 1) * 100)))
-    for number_format in chart._chartSpace.xpath('.//c:lineChart/c:dLbls/c:numFmt'):
-        number_format.set('formatCode', '0')
+    plot.gap_width = 55
+    _fill_series(chart.series[0], DATA_COLOR)
+    _fill_series(chart.series[1], VOICE_COLOR)
+    # The total at the start of the empty segment after each bar.
+    total = chart.series[2]
+    total.format.fill.background()
+    total.format.line.fill.background()
+    for index, item in enumerate(operators):
+        label = total.points[index].data_label
+        label.position = XL_DATA_LABEL_POSITION.INSIDE_BASE
+        label.text_frame.text = f"{item['total']:,.0f}{'' if item.get('complete', True) else '*'}"
+        for paragraph in label.text_frame.paragraphs:
+            for run in paragraph.runs:
+                run.font.size = Pt(label_size + .5)
+                run.font.bold = True
+                run.font.color.rgb = _rgb(TEXT_COLOR)
 
 
 def _table(slide, rows: int, columns: int, left: float, top: float, width: float, row_height: float, widths: list[float]):
@@ -352,110 +360,169 @@ def _environment_label(name: str, labels: dict[str, str]) -> str:
     return labels.get(name) or name
 
 
+def _profile_rows(profile: dict[str, Any], kind: str) -> list[tuple[str, dict[str, Any]]]:
+    """The rows of a profile table: each category (the ones that lose most first) and then its KPIs."""
+    rows = profile['to_maximum'] if kind == 'maximum' else profile['to_reference']
+    total_key = 'total_gap_to_maximum' if kind == 'maximum' else 'total_gap_to_reference'
+    groups: dict[tuple, list[dict[str, Any]]] = {}
+    for row in rows:
+        groups.setdefault((row['service'], row.get('category') or ''), []).append(row)
+    ordered = sorted(groups.items(), key=lambda item: sum(row[total_key] or 0 for row in item[1]) * (-1 if kind == 'maximum' else 1))
+    result: list[tuple[str, dict[str, Any]]] = []
+    for (service, category), members in ordered:
+        result.append(('group', {'service': service, 'category': category, 'rows': members}))
+        result.extend(('kpi', row) for row in members)
+    return result
+
+
 def _profile_table(slide, profile: dict[str, Any], *, kind: str, left: float, width: float,
                    environment_labels: dict[str, str], header_color: str) -> None:
-    rows = profile['to_maximum'] if kind == 'maximum' else profile['to_reference']
+    lines = _profile_rows(profile, kind)
     columns = profile['columns']
-    title = (f"{profile['label']}: Gap to Maximum" if kind == 'maximum'
-             else f"{profile['label']}: Gap to {profile['reference_label']}")
-    count = max(1, len(rows))
+    title = (f"{profile['label']} · points lost per KPI" if kind == 'maximum'
+             else f"{profile['label']} · GAP to {profile['reference_label']} per KPI")
+    count = max(1, len(lines))
     top = 1.62
-    # The banner and the column headers (up to three lines) have explicit heights, so the
-    # bars drawn under the Total column line up with their rows whatever the KPI count.
-    banner_height, header_height = .3, .46
+    # The banner and the column headers have explicit heights, so the bars drawn under the values line up with their
+    # rows whatever the KPI count.
+    banner_height, header_height = .3, .3
     row_height = min(.22, (PROFILE_TABLE_BOTTOM - top - banner_height - header_height) / count)
     size = 7 if row_height >= .17 else 6
-    environment_width = .62
+    environment_width = .7
     total_width = 1.0
-    fixed = [.5, 1.3]
-    kpi_width = width - sum(fixed) - environment_width * len(columns) - total_width
-    widths = [*fixed, kpi_width, *([environment_width] * len(columns)), total_width]
+    kpi_width = width - environment_width * len(columns) - total_width
+    widths = [kpi_width, *([environment_width] * len(columns)), total_width]
     gap_key = 'gap_to_maximum' if kind == 'maximum' else 'gap_to_reference'
     total_key = 'total_gap_to_maximum' if kind == 'maximum' else 'total_gap_to_reference'
-    # Data bars in every value column, each column with its own scale; the values are
-    # written over them, right-aligned.
-    bar_columns = [[row[gap_key].get(name) for row in rows] for name in columns]
-    bar_columns.append([row[total_key] for row in rows])
+    # Data bars in every value column of the KPI rows, each column with its own scale; the values are written over
+    # them, right-aligned.
+    kpis = [row for line, row in lines if line == 'kpi']
+    bar_columns = [[row[gap_key].get(name) for row in kpis] for name in columns]
+    bar_columns.append([row[total_key] for row in kpis])
     for offset, values in enumerate(bar_columns):
-        column = 3 + offset
+        column = 1 + offset
         scale = max((abs(value) for value in values if value is not None), default=0) or 1
         bar_left = left + sum(widths[:column]) + .03
         bar_width = widths[column] - .06
-        for index, value in enumerate(values):
+        line_index = 0
+        for index, (line, row) in enumerate(lines):
+            if line != 'kpi':
+                continue
+            value = values[line_index]
+            line_index += 1
             if value is None or value == 0:
                 continue
             color = LOSS_COLOR if kind == 'maximum' or value < 0 else WIN_COLOR
-            bar = _gradient_bar(slide, bar_left, top + banner_height + header_height + index * row_height + .02,
-                                max(.02, bar_width * abs(value) / scale), row_height - .04, color)
+            bar_top = top + banner_height + header_height + index * row_height + .02
+            if kind == 'maximum':
+                bar = _gradient_bar(slide, bar_left, bar_top, max(.02, bar_width * abs(value) / scale), row_height - .04, color)
+            else:
+                # A GAP grows from the middle of its cell: to the left when behind the reference, to the right when ahead.
+                length = max(.02, bar_width / 2 * abs(value) / scale)
+                middle = bar_left + bar_width / 2
+                bar = _gradient_bar(slide, middle - length if value < 0 else middle, bar_top, length, row_height - .04,
+                                    color, reverse=value < 0)
             bar.name = 'Scoring GAP Bar'
-    shape, table = _table(slide, len(rows) + 2, len(widths), left, top, width, row_height, widths)
+    shape, table = _table(slide, len(lines) + 2, len(widths), left, top, width, row_height, widths)
     table.rows[0].height = Inches(banner_height)
     table.rows[1].height = Inches(header_height)
     shape.name = f"Scoring KPI GAP {'Maximum' if kind == 'maximum' else 'Reference'} Table"
     table.cell(0, 0).merge(table.cell(0, len(widths) - 1))
     _cell(table.cell(0, 0), title, size=size + 3, bold=True, color='#FFFFFF', fill=header_color, align=PP_ALIGN.RIGHT)
-    headers = ['Service', 'Area', 'KPIs', *[_environment_label(name, environment_labels) for name in columns], 'Total KPI']
+    headers = ['KPI', *[_environment_label(name, environment_labels) for name in columns], 'Total']
     for column, text in enumerate(headers):
         _cell(table.cell(1, column), text, size=size, bold=True, fill='#E9ECEF',
-              align=PP_ALIGN.LEFT if column < 3 else PP_ALIGN.CENTER)
+              align=PP_ALIGN.LEFT if column < 1 else PP_ALIGN.CENTER)
         table.cell(1, column).text_frame.word_wrap = True
-    for row_index, row in enumerate(rows, start=2):
-        fill = '#FFFFFF' if row_index % 2 else '#F7F8F9'
+    for row_index, (line, row) in enumerate(lines, start=2):
+        if line == 'group':
+            fill = '#F1F4F7'
+            _cell(table.cell(row_index, 0), f"{row['category']} · {row['service']}", size=size, bold=True, fill=fill)
+            for offset, name in enumerate(columns):
+                _cell(table.cell(row_index, 1 + offset), _points(sum(item[gap_key].get(name) or 0 for item in row['rows']), 2),
+                      size=size, bold=True, fill=fill, align=PP_ALIGN.RIGHT)
+            _cell(table.cell(row_index, len(widths) - 1), _points(sum(item[total_key] or 0 for item in row['rows']), 2), size=size,
+                  bold=True, fill=fill, align=PP_ALIGN.RIGHT)
+            continue
         underline = bool(profile.get('underline_most_reliable') and row.get('most_reliable'))
-        _cell(table.cell(row_index, 0), row['service'].upper(), size=size, fill=fill, align=PP_ALIGN.CENTER)
-        _cell(table.cell(row_index, 1), str(row.get('category') or ''), size=size, fill=fill, underline=underline)
-        _cell(table.cell(row_index, 2), str(row.get('kpi') or ''), size=size, fill=fill, underline=underline)
+        _cell(table.cell(row_index, 0), f"   {row.get('kpi') or ''}", size=size, fill='#FFFFFF', underline=underline)
         for offset, name in enumerate(columns):
             value = row[gap_key].get(name)
-            _cell(table.cell(row_index, 3 + offset), _points(value, 2), size=size, fill=None, align=PP_ALIGN.RIGHT)
+            _cell(table.cell(row_index, 1 + offset), _points(value, 2), size=size, fill=None, align=PP_ALIGN.RIGHT)
         _cell(table.cell(row_index, len(widths) - 1), _points(row[total_key], 2), size=size, bold=True, fill=None,
               align=PP_ALIGN.RIGHT)
+
+
+def _profile_pairs(profiles: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
+    """The profiles two by two, never mixing two locations or campaigns on a slide."""
+    by_context: dict[tuple, list[dict[str, Any]]] = {}
+    for profile in profiles:
+        by_context.setdefault(tuple(sorted(profile['context'].items())), []).append(profile)
+    return [members[start:start + 2] for members in by_context.values() for start in range(0, len(members), 2)]
+
+
+def _profile_note(slide, runs: list[tuple[str, bool, str | None]]) -> None:
+    note = slide.shapes.add_textbox(Inches(.35), Inches(PROFILE_TABLE_BOTTOM + .14), Inches(12.6), Inches(.36))
+    note.name = 'Scoring KPI GAP Profile Note'
+    _write_runs(note.text_frame, runs, size=8.5, color='#4A5B65')
 
 
 def add_kpi_gap_profile_slides(presentation, profiles: list[dict[str, Any]], *, scoring_label: str, subtitle: str,
                                environment_labels: dict[str, str], new_slide: Callable,
                                operator_colors: dict[str, str], scope: ScopeLabels | None = None) -> None:
-    """Per compared operator: the KPIs sorted by the points lost against the maximum and the GAP to the reference.
-
-    The reference operator, when it is one of the compared operators, has its Gap to Maximum only.
-    """
-    for profile in _block_profiles(profiles):
-        context = _context_text(profile['context'])
-        is_reference = profile['operator'] == profile['reference']
-        title = (f"KPI GAP Profile — {profile['label']} (reference)" if is_reference
-                 else f"KPI GAP Profile — {profile['label']} vs {profile['reference_label']}")
-        slide = new_slide(presentation, title, ' · '.join(
-            part for part in (_with_scope(subtitle, scope, profile['context']), context) if part))
-        header = profile.get('color') or operator_colors.get(profile['operator']) or '#C8102E'
-        _profile_table(slide, profile, kind='maximum', left=.35, width=6.2,
-                       environment_labels=environment_labels, header_color=header)
-        lost = sum(row['total_gap_to_maximum'] for row in profile['to_maximum'])
-        if is_reference:
-            runs = [(profile['label'], True, header), (' is the reference operator and loses ', False, None),
-                    (f'{lost:,.2f} {scoring_label} points', True, None),
-                    (' against the maximum. Gap to Maximum is the KPI maximum minus the points scored.', False, None)]
-        else:
-            _profile_table(slide, profile, kind='reference', left=6.78, width=6.2,
+    """The GAP of each compared operator to the reference per KPI, grouped by category, two operators per slide (the
+    points they lose against the maximum are in the Points Lost slides, see add_points_per_kpi_slides)."""
+    compared = [profile for profile in _block_profiles(profiles) if profile['operator'] != profile['reference']]
+    for pair in _profile_pairs(compared):
+        first = pair[0]
+        context = _context_text(first['context'])
+        names = ' & '.join(profile['label'] for profile in pair)
+        slide = new_slide(presentation, f"KPI GAP Profile — {names} vs {first['reference_label']}", ' · '.join(
+            part for part in (_with_scope(subtitle, scope, first['context']), context) if part))
+        runs: list[tuple[str, bool, str | None]] = []
+        for index, profile in enumerate(pair):
+            header = profile.get('color') or operator_colors.get(profile['operator']) or '#C8102E'
+            _profile_table(slide, profile, kind='reference', left=.35 + index * 6.43, width=6.2 if len(pair) == 2 else 12.6,
                            environment_labels=environment_labels, header_color=header)
-            reference = sum(row['total_gap_to_reference'] for row in profile['to_reference'])
-            reference_color = operator_colors.get(profile['reference']) or '#17232D'
-            runs = [(profile['label'], True, header), (' loses ', False, None),
-                    (f'{lost:,.2f} {scoring_label} points', True, None), (' against the maximum; its GAP to ', False, None),
-                    (profile['reference_label'], True, reference_color), (' is ', False, None),
-                    (f'{reference:+,.2f} points', True, None),
-                    ('. Gap to Maximum is the KPI maximum minus the points scored; Gap to the reference is the operator '
-                     'points minus the reference points.', False, None)]
-        if profile.get('underline_most_reliable'):
+            gap = sum(row['total_gap_to_reference'] for row in profile['to_reference'])
+            runs += [('; ' if index else '', False, None), (profile['label'], True, header), (' is ', False, None),
+                     (f'{gap:+,.2f} points', True, None), (f" against {profile['reference_label']}", False, None)]
+        runs.append(('. The GAP of a KPI is the points of the operator minus those of the reference; each category sums its '
+                     'KPIs, the categories furthest behind first.', False, None))
+        if first.get('underline_most_reliable'):
             runs.append((' Underlined KPIs are used for the Most Reliable Network scoring.', False, None))
-        note = slide.shapes.add_textbox(Inches(.35), Inches(PROFILE_TABLE_BOTTOM + .14), Inches(12.6), Inches(.36))
-        note.name = 'Scoring KPI GAP Profile Note'
-        _write_runs(note.text_frame, runs, size=8.5, color='#4A5B65')
+        _profile_note(slide, runs)
+
+
+def add_points_per_kpi_slides(presentation, profiles: list[dict[str, Any]], *, scoring_label: str, subtitle: str,
+                              environment_labels: dict[str, str], new_slide: Callable,
+                              operator_colors: dict[str, str], scope: ScopeLabels | None = None) -> None:
+    """The points each operator (the reference included) loses against the maximum of every KPI, grouped by category,
+    two operators per slide."""
+    for pair in _profile_pairs(_block_profiles(profiles)):
+        first = pair[0]
+        context = _context_text(first['context'])
+        slide = new_slide(presentation, f"Points lost per KPI — {' & '.join(profile['label'] for profile in pair)}",
+                          ' · '.join(part for part in (_with_scope(subtitle, scope, first['context']), context) if part))
+        runs: list[tuple[str, bool, str | None]] = []
+        for index, profile in enumerate(pair):
+            header = profile.get('color') or operator_colors.get(profile['operator']) or '#C8102E'
+            _profile_table(slide, profile, kind='maximum', left=.35 + index * 6.43, width=6.2 if len(pair) == 2 else 12.6,
+                           environment_labels=environment_labels, header_color=header)
+            lost = sum(row['total_gap_to_maximum'] for row in profile['to_maximum'])
+            runs += [('; ' if index else '', False, None), (profile['label'], True, header), (' loses ', False, None),
+                     (f'{lost:,.2f} {scoring_label} points', True, None)]
+        runs.append(('. The points lost of a KPI are its maximum minus the points scored; each category sums its KPIs, the '
+                     'categories that lose most first.', False, None))
+        if first.get('underline_most_reliable'):
+            runs.append((' Underlined KPIs are used for the Most Reliable Network scoring.', False, None))
+        _profile_note(slide, runs)
 
 
 def add_trend_slides(presentation, trends: list[dict[str, Any]], *, scoring_label: str, subtitle: str,
                      new_slide: Callable, scope: ScopeLabels | None = None) -> None:
-    """A line chart of each operator's scoring across the campaigns of every group."""
-    from src.modules.scoring_exports import _fill_series  # noqa: F401  (keeps helpers in one module)
+    """A line chart of each operator's scoring across the campaigns of every group, each line ending in the name and
+    latest score of its operator."""
     for trend in trends[:MAX_GROUP_SLIDES]:
         slide = new_slide(presentation, f'{scoring_label} Scoring Trend',
                           ' · '.join(part for part in (_with_scope(subtitle, scope), trend['title']) if part))
@@ -469,30 +536,40 @@ def add_trend_slides(presentation, trends: list[dict[str, Any]], *, scoring_labe
         chart = chart_shape.chart
         chart.font.name = _FONT
         chart.font.size = Pt(10)
-        chart.has_legend = True
-        chart.legend.position = XL_LEGEND_POSITION.BOTTOM
-        chart.legend.include_in_layout = False
+        chart.has_legend = False
         values = [value for series in trend['series'] for value in series['points'] if value is not None]
         low = min(values, default=0)
         chart.value_axis.minimum_scale = max(0, floor((low - 25) / 50) * 50)
         chart.value_axis.maximum_scale = trend['maximum']
-        chart.value_axis.major_gridlines.format.line.color.rgb = _rgb('#E3E6E9')
+        chart.value_axis.major_gridlines.format.line.color.rgb = _rgb('#E6EAEE')
+        chart.value_axis.major_gridlines.format.line.dash_style = 4
         chart.value_axis.format.line.fill.background()
         chart.category_axis.major_tick_mark = XL_TICK_MARK.NONE
+        chart.category_axis.format.line.color.rgb = _rgb('#C3CCD5')
         for index, (plot_series, series) in enumerate(zip(chart.series, trend['series'])):
             color = series.get('color') or FALLBACK_COLORS[index % len(FALLBACK_COLORS)]
             plot_series.format.line.color.rgb = _rgb(color)
-            plot_series.format.line.width = Pt(2.25)
+            plot_series.format.line.width = Pt(3 if series.get('is_reference') else 2.25)
             plot_series.smooth = False
+            plot_series.marker.size = 6
             plot_series.marker.format.fill.solid()
-            plot_series.marker.format.fill.fore_color.rgb = _rgb(color)
+            plot_series.marker.format.fill.fore_color.rgb = _rgb('#FFFFFF')
             plot_series.marker.format.line.color.rgb = _rgb(color)
-        plot = chart.plots[0]
-        plot.has_data_labels = True
-        plot.data_labels.number_format = '0'
-        plot.data_labels.number_format_is_linked = False
-        plot.data_labels.position = XL_DATA_LABEL_POSITION.ABOVE
-        plot.data_labels.font.size = Pt(8)
+            last = max((position for position, value in enumerate(series['points']) if value is not None), default=None)
+            if last is None:
+                continue
+            point = plot_series.points[last]
+            point.marker.size = 9
+            point.marker.format.fill.solid()
+            point.marker.format.fill.fore_color.rgb = _rgb(color)
+            label = point.data_label
+            label.position = XL_DATA_LABEL_POSITION.RIGHT
+            label.text_frame.text = f"{series['label']} {series['points'][last]:,.0f}"
+            for paragraph in label.text_frame.paragraphs:
+                for run in paragraph.runs:
+                    run.font.size = Pt(10)
+                    run.font.bold = True
+                    run.font.color.rgb = _rgb(color)
 
 
 def _delta_color(value: float | None, scale: float) -> str:
@@ -500,7 +577,8 @@ def _delta_color(value: float | None, scale: float) -> str:
         return '#FFFFFF'
     ratio = min(1.0, abs(value) / scale)
     start = (255, 255, 255)
-    end = (232, 65, 79) if value < 0 else (76, 166, 90)
+    color = active_theme()['loss' if value < 0 else 'gain']
+    end = tuple(int(color[index:index + 2], 16) for index in (1, 3, 5))
     return '#{:02X}{:02X}{:02X}'.format(*(round(a + (b - a) * ratio) for a, b in zip(start, end)))
 
 
@@ -738,15 +816,20 @@ def add_area_summary_slides(presentation, summaries: list[dict[str, Any]], *, sc
                     key.text_frame.margin_left = 0
 
 
-LOSS_LOW = (249, 214, 92)
-LOSS_HIGH = (200, 16, 46)
 MAX_LOSS_BARS = 30
 MAX_LOSS_MAPS = 8
 
 
+def _loss_ramp() -> tuple[tuple[int, int, int], tuple[int, int, int]]:
+    """The scale of the points lost of the active theme (yellow to red in NetCheck)."""
+    low, high = active_theme().get('loss_ramp') or ('#F9D65C', '#C8102E')
+    return tuple(int(low[index:index + 2], 16) for index in (1, 3, 5)), tuple(int(high[index:index + 2], 16) for index in (1, 3, 5))
+
+
 def _loss_color(ratio: float) -> tuple[int, int, int]:
     ratio = max(0.0, min(1.0, ratio))
-    return tuple(round(low + (high - low) * ratio) for low, high in zip(LOSS_LOW, LOSS_HIGH))
+    low_color, high_color = _loss_ramp()
+    return tuple(round(low + (high - low) * ratio) for low, high in zip(low_color, high_color))
 
 
 def render_points_loss_map(areas: list[dict[str, Any]], background: list[list[float]], *,
@@ -864,7 +947,8 @@ def render_points_loss_choropleth(boundaries: dict[str, list[list[list[float]]]]
     span = (peak - floor_value) or 1
     for name, ring in rings:
         value = values.get(name, 0)
-        fill = _loss_color((value - floor_value) / span) if value > 0 else (234, 236, 239)
+        # When every area loses the same points, they all lose most: the strongest colour.
+        fill = _loss_color((value - floor_value) / span if peak > floor_value else 1) if value > 0 else (234, 236, 239)
         draw.polygon([project(x, y) for x, y in ring], fill=fill, outline=(255, 255, 255))
     try:
         font = ImageFont.truetype('Arial.ttf', 30)
@@ -893,7 +977,7 @@ def _loss_scale(slide, left: float, top: float, width: float, low: float, high: 
     scale.fill.gradient_angle = 0
     stops = scale.fill.gradient_stops
     stops[0].position, stops[1].position = 0, 1
-    stops[0].color.rgb, stops[1].color.rgb = RGBColor(*LOSS_LOW), RGBColor(*LOSS_HIGH)
+    stops[0].color.rgb, stops[1].color.rgb = (RGBColor(*color) for color in _loss_ramp())
     scale.line.fill.background()
     scale.shadow.inherit = False
     for text, position, align in ((_points(low, 1), left, PP_ALIGN.RIGHT), (_points(high, 1), left + width - .5, PP_ALIGN.LEFT)):

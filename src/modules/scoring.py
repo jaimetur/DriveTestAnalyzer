@@ -83,8 +83,29 @@ def required_input_columns(kind: str, levels: Iterable[str] = ()) -> list[str]:
 
 
 def load_input_columns(kind: str, levels: Iterable[str] = ()) -> list[str]:
-    """Columns read from the CDR rows: the scoring fields plus the areas and coordinates of the points-lost map."""
-    return list(dict.fromkeys([*required_input_columns(kind, levels), *points_loss.source_columns(kind)]))
+    """Columns read from the CDR rows: the scoring fields plus the areas and coordinates of the points-lost map and the
+    start time of the tests (for the dates of the measurements)."""
+    return list(dict.fromkeys([*required_input_columns(kind, levels), *points_loss.source_columns(kind),
+                               *START_TIME_COLUMNS]))
+
+
+def window_of_days(days: Iterable[Any]) -> dict | None:
+    """The first and last day of the measurements and the number of days with tests."""
+    days = sorted({str(day)[:10] for day in days if day is not None and str(day).strip()})
+    return {'first': days[0], 'last': days[-1], 'days': len(days)} if days else None
+
+
+def test_window(frames: dict[str, pd.DataFrame]) -> dict | None:
+    """The dates of the measurements of the CDR rows, from the start time of their tests."""
+    days: set[str] = set()
+    for source in frames.values():
+        start = next((column for name in START_TIME_COLUMNS
+                      if (column := resolve_column_name(source.columns, name)) is not None), None)
+        if start is None:
+            continue
+        times = pd.to_datetime(source[start], errors='coerce', format='mixed')
+        days.update(times.dropna().dt.strftime('%Y-%m-%d').unique().tolist())
+    return window_of_days(days)
 
 
 def _required_configuration(configuration: dict | None) -> dict:
@@ -423,6 +444,9 @@ def calculate_scoring(
     global_kpis = []
     # Where each KPI loses its points: area shares of the tests that cause the loss.
     loss_shares: list[dict] = []
+    # The tests of each group per Vendor and Site Type of their serving cell.
+    serving_tests: list[dict] = []
+    test_counts: list[dict] = []
     geometry = points_loss.AreaGeometry()
     if map_areas is None:
         from src.modules.map_areas import area_index
@@ -449,6 +473,8 @@ def calculate_scoring(
         for values, group in frame[valid].groupby(group_fields, dropna=False, sort=False):
             metadata = dict(zip(keys, values))
             metadata = {key: (None if pd.isna(value) else value) for key, value in metadata.items()}
+            # The tests of each group, for how the measurements ran.
+            test_counts.append({**metadata, 'kind': kind, 'tests': int(len(group))})
             for metric in (m for m in metrics if m['source_kind'] == kind):
                 try:
                     value, count = _aggregate(group, metric)
@@ -467,7 +493,12 @@ def calculate_scoring(
                         weights = None
                     shares = points_loss.area_shares(group, weights) if weights is not None else {}
                     if shares:
-                        loss_shares.append({**metadata, 'kpi_code': metric['code'], 'areas': shares})
+                        loss_shares.append({**metadata, 'kpi_code': metric['code'], 'areas': shares,
+                                            'weight': round(float(weights.sum()), 4),
+                                            'tests': points_loss.counts_tests(metric)})
+            served = points_loss.serving_counts(group)
+            if served:
+                serving_tests.append({**metadata, 'counts': served})
         geometry.add(frame[valid])
         global_valid = frame['__matched_environments'].map(bool) & frame['Operator'].notna()
         if campaign_selected:
@@ -502,12 +533,17 @@ def calculate_scoring(
                                     'unit': metric.get('unit'), 'value': value, 'sample_count': count,
                                     'complete_coverage': value is not None and not missing_environments,
                                     'missing_environments': missing_environments})
-    return finish_scoring(
+    result = finish_scoring(
         rows, global_kpis, keys=keys, dimensions=dimensions, config=config, baseline_operator=baseline_operator,
         baseline_aliases=baseline_aliases, warnings=warnings, campaigns=campaign_values.values(),
-        points_loss_document={'version': 2, **geometry.document(), 'map_areas': geometry.map_areas(map_areas),
-                              'shares': loss_shares},
+        points_loss_document={'version': 3, **geometry.document(), 'map_areas': geometry.map_areas(map_areas),
+                              'shares': loss_shares, 'serving_tests': serving_tests},
     )
+    window = test_window(frames)
+    if window:
+        result['test_window'] = window
+    result['test_counts'] = test_counts
+    return result
 
 
 def calculate_points_loss(
@@ -544,6 +580,7 @@ def calculate_points_loss(
     time_split = normalize_time_split(time_split) if campaign_selected else None
     geometry = points_loss.AreaGeometry()
     loss_shares: list[dict] = []
+    serving_tests: list[dict] = []
     kinds = max(1, len(frames))
     for kind_index, (kind, frame, valid) in enumerate(_prepared_frames(frames, dimensions, config, mappings, map_areas,
                                                                         time_split, campaign_selected, [])):
@@ -570,9 +607,15 @@ def calculate_points_loss(
                     weights = None
                 shares = points_loss.area_shares(group, weights) if weights is not None else {}
                 if shares:
-                    loss_shares.append({**metadata, 'kpi_code': metric['code'], 'areas': shares})
+                    loss_shares.append({**metadata, 'kpi_code': metric['code'], 'areas': shares,
+                                        'weight': round(float(weights.sum()), 4),
+                                        'tests': points_loss.counts_tests(metric)})
+            served = points_loss.serving_counts(group)
+            if served:
+                serving_tests.append({**metadata, 'counts': served})
         geometry.add(frame[valid])
-    return {'version': 2, **geometry.document(), 'map_areas': geometry.map_areas(map_areas), 'shares': loss_shares}
+    return {'version': 3, **geometry.document(), 'map_areas': geometry.map_areas(map_areas), 'shares': loss_shares,
+            'serving_tests': serving_tests}
 
 
 def finish_scoring(

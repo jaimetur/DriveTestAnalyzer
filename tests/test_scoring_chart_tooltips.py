@@ -122,10 +122,10 @@ def test_scoring_subtotal_and_total_rows_share_the_category_background():
     assert re.search(
         r'\.scoring-comparison-table tbody tr\.scoring-category-subtotal > td,\s*'
         r'\.scoring-comparison-table tfoot tr > :is\(th, td\)\s*'
-        r'\{\s*background-color:\s*#edf3f8\s*!important;',
+        r'\{\s*background-color:\s*color-mix\(in srgb, var\(--st-total\) 70%, #fff\)\s*!important;',
         template,
     )
-    assert '.scoring-table-wrap tbody tr.scoring-total-row > td { background-color: #edf3f8;' in template
+    assert '.scoring-table-wrap tbody tr.scoring-total-row > td { background-color: color-mix(in srgb, var(--st-total) 55%, #fff);' in template
 
 
 def test_stacked_chart_segment_labels_use_contrasting_plain_text():
@@ -164,7 +164,7 @@ def test_stacked_chart_labels_fit_segments_and_service_chart_explains_grayscale(
     assert '.scoring-chart-svg .scoring-chart-tick { fill: #657780; font-size: 15px;' in template
     assert '.scoring-chart-svg .scoring-chart-legend { fill: #334854; font-size: 15px;' in template
     assert '.scoring-chart-svg .scoring-chart-category { fill: #435964; font-size: 16px;' in template
-    assert '.scoring-chart-card h4 { margin: 0 0 .6rem; color: #245e5a; font-size: 1.3rem; font-weight: 800; }' in template
+    assert '.scoring-chart-card h4 { margin: 0 0 .6rem; color: var(--st-accent); font-size: 1.3rem; font-weight: 800; }' in template
 
 
 def test_chart_numbers_keep_decimal_dot_under_spanish_locale():

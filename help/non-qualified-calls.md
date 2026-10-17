@@ -17,6 +17,7 @@ The module is in development, so its main tab can show a red **ALPHA** label (se
 | Go to each panel | [Sections bar](#sections-bar) |
 | See how many calls fail and where they concentrate | [Summary](#summary) |
 | Compare the NQ rate of campaigns and operators | [NQ Rate by Campaign and Operator](#nq-rate-by-campaign-and-operator) |
+| See how and where the calls fail: result, technology, serving Vendor and sites | [Failures by Type, Technology & Serving Cell](#failures-by-type-technology--serving-cell) |
 | Compare the NetCheck RCA, the Ericsson RCA and the analysts | [Root Cause Sources](#root-cause-sources) |
 | See where the calls fail by root domain, category and cause | [Root Cause Analysis](#root-cause-analysis) |
 | Follow the calls through their statuses and phases | [Lifecycle & Phases](#lifecycle-phases) |
@@ -122,6 +123,17 @@ The **NQ Rate by Campaign and Operator** panel, below the Summary, is the manage
 > Only the **NR Mode**, **Campaign**, **Service**, **Operator** and **CDR** filters apply: the other filters describe Non-Qualified Calls only, so changing them does not recalculate the panel, and its counts are reused until the CDRs are indexed again.
 
 The PowerPoint and Word exports and the Reporting artifact show it after the Executive Summary as one heat map with a column per service (and **All services**, their total) under each operator and the overall NQ rate of the selection at its top right (*Overall 0.9% · 992 NQ calls of 104,304 calls*), on one slide, or on two when the operators or campaigns are many (each slide with half of the operators or of the campaigns).
+
+## Failures by Type, Technology & Serving Cell
+
+The **Failures by Type, Technology & Serving Cell** panel, below the NQ Rate, shows how and where the filtered calls fail, with one tab per service:
+
+- **Failure type**: per operator and environment (City or Connecting Roads, from `G_Level_2`), the calls of each result (Failed, Dropped, Cutoff…; **Not reported** when the CDR gives none), each as a share of every call of the operator in that environment.
+- **Technology and classification**: per operator, the technology at the failure (else the technology of the call) against the NetCheck failure classification.
+- **Serving Vendor and host network**: per operator, the calls and Non-Qualified Calls on the cells of each Vendor and host network that served them, with their shares and NQ rate; a share of the Non-Qualified Calls well above the share of the calls is red.
+- **Sites with the most Non-Qualified Calls**: per operator, the serving sites (with 5 calls or more) with the most Non-Qualified Calls (up to 25), with their host network, Vendor, city or route, calls and NQ rate.
+
+The shares and rates divide by every call (qualified or not) of the CDRs, Service, Campaign, Operator and NR Mode filters, as the NQ Rate does. The serving cell comes from the [Vendor Mapping](workspace-management.md#vendor-mapping) of the CDRs (`Vendor`, `Serving_Host_Network`, `Serving_Site_ID`); the CDRs indexed before this version are indexed again in the background to add it. A click on a cell shows only those calls in the other panels; a second click removes the filter. The PowerPoint and Word exports and the Reporting artifact show its tables after the NQ Rate.
 
 ## Root Cause Sources
 

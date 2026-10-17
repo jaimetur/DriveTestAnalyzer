@@ -134,7 +134,7 @@ def test_powerpoint_maps_the_points_lost_of_the_compared_operators():
     assert heading.text_frame.text == 'Vodafone UK' and heading.text_frame.paragraphs[0].runs[0].font.size.pt == 24
     scenario = default_scenario(operators=['Vodafone UK', 'Three UK'])
     for options in scenario['scorings'].values():
-        options['gap']['points_loss_map'] = False
+        options['points']['map'] = False
     without = export_scoring_report([{'job': job, 'result': result, 'scenario': scenario}], TEMPLATE)
     assert not any(title.startswith('Points Lost per') for title in _titles(without))
 
@@ -220,10 +220,12 @@ def test_the_reference_operator_has_its_map_and_its_gap_to_maximum():
     from pathlib import Path
 
     script = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/scoring.js').read_text(encoding='utf-8')
-    # The reference operator keeps its Points Lost Map and its KPI GAP Profile, without the GAP to itself.
+    # The reference operator keeps its Points Lost Map and its points lost per KPI; the KPI GAP Profile leaves it out,
+    # as its GAP to itself would be empty.
     assert "const maps = insightItems(payload, 'points_loss_maps', environment);" in script
     assert "const profiles = insightItems(payload, 'kpi_gap_profiles', environment);" in script
-    assert "if (!isReference) tables.append(profileTable(profile, 'reference'));" in script
+    assert "const shown = inScope.filter(item => chosen.includes(item.operator) && item.operator !== item.reference);" in script
+    assert "for (const profile of shown) grid.append(profileTable(profile, 'maximum'));" in script
     # A choice of operators saved before the reference was offered leaves the reference enabled.
     assert "const newlyOffered = item => offered === '*' ? false : Array.isArray(offered) ? !offered.includes(item.operator) : isReference(item);" in script
     job, result = _result()
@@ -242,7 +244,8 @@ def test_exports_include_the_reference_operator_only_when_it_is_compared():
         return chosen
 
     titles = _titles(export_scoring_report([{'job': job, 'result': result, 'scenario': scenario(['Vodafone UK', 'EE'])}], TEMPLATE))
-    assert any(title.startswith('KPI GAP Profile — EE (reference)') for title in titles)
+    # The reference has its points lost per KPI, and no GAP to itself.
+    assert any(title.startswith('Points lost per KPI — ') and 'EE' in title.split(' | ')[0] for title in titles)
     assert any(title.startswith('KPI GAP Profile — Vodafone UK vs EE') for title in titles)
     titles = _titles(export_scoring_report([{'job': job, 'result': result, 'scenario': scenario(['Vodafone UK'])}], TEMPLATE))
-    assert not any(title.startswith('KPI GAP Profile — EE') for title in titles)
+    assert not any(title.startswith('Points lost per KPI — ') and 'EE' in title.split(' | ')[0] for title in titles)

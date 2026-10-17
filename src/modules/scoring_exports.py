@@ -28,11 +28,18 @@ from src.modules.scoring import most_reliable_result
 from src.modules.scoring_points_loss import map_background, map_boundaries
 from src.modules.scoring_insight_slides import (
     TITLE_BLUE, add_area_summary_slides, add_campaign_comparison_slides, add_kpi_gap_profile_slides,
-    add_location_card_slides, add_points_loss_slides, add_trend_slides, scoring_scope_labels,
+    add_location_card_slides, add_points_loss_slides, add_points_per_kpi_slides, add_trend_slides, scoring_scope_labels,
+)
+from src.modules.scoring_summary_slides import (
+    add_campaign_scope_slides, add_gap_parts_slides, add_levers_slides, add_location_ranking_slides,
+    add_location_versus_slides, add_points_at_stake_slides, add_position_matrix_slides, add_serving_loss_slides,
+    add_sites_slides, add_standings_slides, add_stretch_slides,
 )
 from src.modules.scoring_area_summary import build_area_summary
 from src.modules.scoring_config import BEST_NETWORK_SCORING, MOST_RELIABLE_SCORING, SCORING_LABELS
 from src.modules.scoring_insights import operator_styles
+from src.modules.scoring_pptx_scorecard import apply_scorecard
+from src.modules.scoring_themes import DEFAULT_THEME, active_theme, themed, use_theme
 from src.modules.scoring_vendors import normalize_scoring_vendor_result
 from src.modules.scoring_views import (
     THRESHOLD_COLORS, _gap_order_key, _hierarchy_display_value, build_scoring_views, refresh_baseline_warning, scoring_coverage_notes,
@@ -51,6 +58,12 @@ _GAP_SUMMARY_COMPARISON_HEADER = '#DDEBE6'
 _GAP_SUMMARY_CATEGORY = '#E6F0F7'
 _SCORING_EXPANDED_CATEGORY = '#DCE5E9'
 _KPI_TYPE_COLORS = {'Reliable': '#D8EFCA', 'Diff': '#FFF2CC'}
+_SUBTITLE_COLOR = '#245A96'
+
+
+def _theme_rgb(color: str) -> RGBColor:
+    """A colour written in the NetCheck palette, in the active theme (see scoring_themes.themed)."""
+    return RGBColor.from_string(themed(color).lstrip('#'))
 _LEGACY_CAMPAIGN_WARNING = 'Campaigns are scored separately; the supplied Tableau Prep flow pools campaigns.'
 _SCOPE_FILTER_FIELDS = ('Operator', 'Vendor', 'Region', 'Cluster', 'City', 'Campaign')
 _SCORING_SECTION_TITLES = {BEST_NETWORK_SCORING: 'Best Network Scoring',
@@ -250,26 +263,26 @@ def _slide(presentation, title: str, subtitle: str):
         paragraphs = title_shape.text_frame.paragraphs
         if paragraphs:
             title_paragraph = paragraphs[0]
-            title_paragraph.font.color.rgb = RGBColor.from_string(TITLE_BLUE.lstrip('#'))
+            title_paragraph.font.color.rgb = _theme_rgb(TITLE_BLUE)
             for run in title_paragraph.runs:
-                run.font.color.rgb = RGBColor.from_string(TITLE_BLUE.lstrip('#'))
+                run.font.color.rgb = _theme_rgb(TITLE_BLUE)
             _emphasize_title(title_paragraph)
             _fit_slide_title_on_one_line(title_shape, title_paragraph)
         for subtitle_paragraph in paragraphs[1:]:
             size = _subtitle_font_size(title_shape, subtitle_paragraph)
             subtitle_paragraph.font.size = Pt(size)
             subtitle_paragraph.font.bold = True
-            subtitle_paragraph.font.color.rgb = RGBColor.from_string('245A96')
+            subtitle_paragraph.font.color.rgb = _theme_rgb(_SUBTITLE_COLOR)
             for run in subtitle_paragraph.runs:
                 run.font.size = Pt(size)
                 run.font.bold = True
-                run.font.color.rgb = RGBColor.from_string('245A96')
+                run.font.color.rgb = _theme_rgb(_SUBTITLE_COLOR)
     return slide
 
 
 def _emphasize_title(paragraph) -> None:
-    """NetCheck-style title: the subject in regular weight and, in bold, what tells it from the slides next
-    to it: the part after " — " ("GAP Analysis — 3 vs EE", "Scoring Tables — Summary") or the focus
+    """The subject of a title in the title colour of the theme and, in bold and in its accent, what tells it from the
+    slides next to it: the part after " — " ("GAP Analysis — 3 vs EE", "Scoring Tables — Summary") or the focus
     ("Best Network Scoring per City")."""
     text = paragraph.text
     if ' — ' in text:
@@ -288,7 +301,8 @@ def _emphasize_title(paragraph) -> None:
             run._r.insert(0, deepcopy(properties))
         run.text = text
         run.font.bold = bold
-        run.font.color.rgb = RGBColor.from_string(TITLE_BLUE.lstrip('#'))
+        run.font.color.rgb = (RGBColor.from_string(active_theme()['title_accent'].lstrip('#')) if bold
+                              else _theme_rgb(TITLE_BLUE))
 
 
 def _text(slide, text: str, top: float, *, left: float = .55, width: float = 12.2,
@@ -301,7 +315,7 @@ def _text(slide, text: str, top: float, *, left: float = .55, width: float = 12.
     for paragraph in box.text_frame.paragraphs:
         paragraph.font.name = _FONT
         paragraph.font.size = Pt(size)
-        paragraph.font.color.rgb = RGBColor.from_string(color.lstrip('#'))
+        paragraph.font.color.rgb = _theme_rgb(color)
         paragraph.alignment = align
     return box
 
@@ -333,10 +347,11 @@ def _add_individual_gap_notes(slide, matrix: dict, rows: list[dict]) -> None:
     marker = '*' if any(partial for _, partial in valid) else ''
     value_text = _number(average) + marker
     total_text = _number(total) + marker
+    positive_name, negative_name = active_theme()['gap_names']
     box = _text(
         slide, f'KPIs ordered by GAP\n\nAverage KPI GAP: {value_text} points\n\n'
         f'Average total KPI GAP: {total_text} points\n\n'
-        f'Operator − reference\nGreen: positive\nRed: negative\n\n{matrix["note"]}',
+        f'Operator − reference\n{positive_name}: positive\n{negative_name}: negative\n\n{matrix["note"]}',
         1.8, left=10.2, width=2.5, height=4.65, size=13,
     )
     box.text_frame.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
@@ -350,7 +365,7 @@ def _add_individual_gap_notes(slide, matrix: dict, rows: list[dict]) -> None:
         value_run = paragraph.add_run()
         value_run.text = text
         value_run.font.bold = True
-        value_run.font.color.rgb = RGBColor.from_string(
+        value_run.font.color.rgb = _theme_rgb(
             '228B22' if value is not None and value > 0 else
             'CC2424' if value is not None and value < 0 else '263746'
         )
@@ -365,7 +380,7 @@ def _add_gap_priority_arrow(slide, table, *, header_rows: int = 1) -> None:
     label.name = 'GAP KPI Priority Label'
     label.fill.solid()
     label.fill.fore_color.rgb = RGBColor(255, 255, 255)
-    label.line.color.rgb = RGBColor.from_string('245A96')
+    label.line.color.rgb = _theme_rgb(_SUBTITLE_COLOR)
     label.line.width = Pt(1)
     label.text_frame.vertical_anchor = MSO_ANCHOR.MIDDLE
     label.text_frame.paragraphs[0].font.name = 'Arial'
@@ -378,7 +393,7 @@ def _add_gap_priority_arrow(slide, table, *, header_rows: int = 1) -> None:
     )
     arrow.name = 'GAP KPI Priority Arrow'
     arrow.fill.solid()
-    arrow.fill.fore_color.rgb = RGBColor.from_string('245A96')
+    arrow.fill.fore_color.rgb = _theme_rgb(_SUBTITLE_COLOR)
     arrow.line.fill.background()
     arrow._element.spPr.append(OxmlElement('a:effectLst'))
     for reference in arrow._element.xpath('./p:style/a:effectRef'):
@@ -417,7 +432,7 @@ def _add_gap_color_scale(slide, matrix: dict, *, left: float, width: float, top:
         )
         shape.name = f'GAP Color Scale Segment {index + 1}'
         shape.fill.solid()
-        shape.fill.fore_color.rgb = RGBColor.from_string(color.lstrip('#'))
+        shape.fill.fore_color.rgb = _theme_rgb(color)
         shape.line.fill.background()
     _text(slide, f'−{maximum:.2f} (operator trails)', top + .28, left=left,
           width=width * .43, size=6.5, height=.13)
@@ -439,27 +454,31 @@ def _cell(cell, text: str, *, color: str = _WHITE, foreground: str = '#17232D',
     cell.margin_top = cell.margin_bottom = 0
     cell.vertical_anchor = MSO_ANCHOR.MIDDLE
     cell.fill.solid()
-    cell.fill.fore_color.rgb = RGBColor.from_string(color.lstrip('#'))
+    cell.fill.fore_color.rgb = _theme_rgb(color)
     for paragraph in cell.text_frame.paragraphs:
         paragraph.font.name = _FONT
         paragraph.font.size = Pt(size)
         paragraph.font.bold = bold
-        paragraph.font.color.rgb = RGBColor.from_string(foreground.lstrip('#'))
+        paragraph.font.color.rgb = _theme_rgb(foreground)
         paragraph.alignment = PP_ALIGN.LEFT if left else PP_ALIGN.CENTER
         paragraph.line_spacing = 1.0
         paragraph.space_before = paragraph.space_after = 0
     properties = cell._tc.get_or_add_tcPr()
     border_namespace = '{http://schemas.openxmlformats.org/drawingml/2006/main}'
     edges = ('lnL', 'lnR', 'lnT', 'lnB')
+    # The cells are set apart by the lines of the theme (white gaps in most themes), not drawn on a grid.
+    theme = active_theme()
+    border_width = str(int(float(theme.get('cell_border_pt', 1.5)) * 12700))
+    border_color = str(theme.get('cell_border', '#FFFFFF')).lstrip('#').upper()
     for edge_index, edge in enumerate(edges):
         existing = properties.find(f'{border_namespace}{edge}')
         if existing is not None:
             properties.remove(existing)
         line = OxmlElement(f'a:{edge}')
-        line.set('w', '4500')
+        line.set('w', border_width)
         fill = OxmlElement('a:solidFill')
         rgb = OxmlElement('a:srgbClr')
-        rgb.set('val', '65717A')
+        rgb.set('val', border_color)
         fill.append(rgb)
         line.append(fill)
         properties.insert(edge_index, line)
@@ -792,6 +811,17 @@ def _fit_title_on_one_line(slide, title: str) -> None:
             run.font.size = Pt(size)
 
 
+SECTION_TAG_PREFIX = 'section:'
+
+
+def _tag_slides(presentation, start: int, section: str) -> None:
+    """Name the slides from ``start`` that have no section yet after ``section`` (the Word version keeps the
+    slides of a section together on its pages)."""
+    for slide in list(presentation.slides)[start:]:
+        if not str(slide._element.cSld.get('name') or '').startswith(SECTION_TAG_PREFIX):
+            slide._element.cSld.set('name', f'{SECTION_TAG_PREFIX}{section}')
+
+
 def _add_scoring_intro_slides(
     presentation, job: dict[str, Any], result: dict[str, Any], *, environment: str | None = None,
     scoring: str | None = None, title: str | None = None, subtitle: str | None = None,
@@ -817,6 +847,7 @@ def _add_scoring_intro_slides(
     if layout is None:
         raise ValueError(f"The PowerPoint template needs a '{layout_name}' layout for scoring exports.")
     slide = presentation.slides.add_slide(layout)
+    _tag_slides(presentation, len(presentation.slides) - 1, 'cover')
     _set_structural_slide_text(slide, title, subtitle)
     _fit_title_on_one_line(slide, title)
     _fit_scoring_intro_subtitle(presentation, slide, layout_name, subtitle)
@@ -845,7 +876,7 @@ def _add_scoring_intro_slides(
 
 
 def _header_foreground(color: str) -> str:
-    red, green, blue = (int(color.lstrip('#')[index:index + 2], 16) for index in (0, 2, 4))
+    red, green, blue = (int(themed(color).lstrip('#')[index:index + 2], 16) for index in (0, 2, 4))
     return '#17232D' if .299 * red + .587 * green + .114 * blue > 155 else _WHITE
 
 
@@ -973,8 +1004,8 @@ def _score_tables(presentation, matrices: list[dict], legend: list[dict], *, gap
                     numeric_texts, remaining, maximum=min(11, min(body_heights) * 72 * .82),
                 )
                 colors = [_GAP_SUMMARY_HEADER, _GAP_SUMMARY_HEADER,
-                          *([] if is_summary else [_GAP_SUMMARY_HEADER]), '#4EA72E', '#FF0000',
-                          *[_operator_color(matrix, name) for name in operators], *['#FFFF00'] * len(comparisons)]
+                          *([] if is_summary else [_GAP_SUMMARY_HEADER]), '#5B9A44', '#C9483F',
+                          *[_operator_color(matrix, name) for name in operators], *['#F6D55C'] * len(comparisons)]
                 for index, header in enumerate(headers):
                     _cell(table.cell(0, index), header, color=colors[index],
                           foreground=_header_foreground(colors[index]), size=8.5, bold=True)
@@ -1040,14 +1071,21 @@ def _score_tables(presentation, matrices: list[dict], legend: list[dict], *, gap
                               color=score_color, bold=True, size=numeric_font)
                     for column, operator in enumerate(comparisons, fixed_count + len(operators)):
                         _cell(table.cell(index, column), _gap_number(total, operator), color=total_color, bold=True, size=numeric_font)
+                apply_scorecard(
+                    table, header_rows=1, metrics=metrics, total=matrix['total'] if include_total else None,
+                    total_label=total_label, font=_FONT, label_width=2.6 if is_summary else 3.2,
+                    value_columns=[*[(column, 'Score', operator) for column, operator in enumerate(operators, fixed_count)],
+                                   *[(column, 'GAP', operator) for column, operator
+                                     in enumerate(comparisons, fixed_count + len(operators))]],
+                )
                 if is_summary:
-                    _remove_summary_category_column(table)
                     _add_summary_operator_legend(slide, presentation.slide_width.inches - .55)
                 else:
                     for index, item in enumerate(legend):
                         legend_table = slide.shapes.add_table(1, 1, Inches(.55 + index * 1.15), Inches(7.02), Inches(1.1), Inches(.18)).table
                         _cell(legend_table.cell(0, 0), item.get('band', ''), color=item['color'], size=8)
-                _text(slide, f'GAP = operator − reference; ±{matrix.get("gap_scale_max", 0):.2f} points; green + / red −',
+                _text(slide, f'GAP = operator − reference; ±{matrix.get("gap_scale_max", 0):.2f} points; '
+                      f'{active_theme()["gap_names"][0].lower()} + / {active_theme()["gap_names"][1].lower()} −',
                       7.03, left=6.5, width=6.2, size=8.5, height=.18)
                 _text(slide, matrix['coverage_note'], 7.27, size=8, height=.18)
 
@@ -1107,7 +1145,7 @@ def _hide_chart_legend_entries(chart, indexes: set[int]) -> None:
 
 def _fill_series(series, color: str) -> None:
     series.format.fill.solid()
-    series.format.fill.fore_color.rgb = RGBColor.from_string(color.lstrip('#'))
+    series.format.fill.fore_color.rgb = _theme_rgb(color)
     series.format.line.color.rgb = RGBColor.from_string('FFFFFF')
     series.format.line.width = Pt(.5)
 
@@ -1860,7 +1898,7 @@ def _hierarchy_header_groups(table, columns: list[dict], levels: list[str], *, s
               color=color, foreground=_header_foreground(color), size=leaf_font_size, bold=True)
         if leaf_width == 2:
             _cell(table.cell(subheader_row, start_col + column_index * leaf_width + 1), 'GAP',
-                  color='#FFFF00', foreground='#17232D', size=leaf_font_size, bold=True)
+                  color='#F6D55C', foreground='#17232D', size=leaf_font_size, bold=True)
 
 
 def _score_column_plan(columns: list[dict], gap_layout: str, *, show_gap_values: bool = True,
@@ -1892,7 +1930,7 @@ def _score_column_headers(table, plan: list[tuple[dict, str]], levels: list[str]
         cell = table.cell(0, fixed_count + start)
         if end - start > 1:
             cell.merge(table.cell(0, fixed_count + end - 1))
-        _cell(cell, label, color='#FFFF00' if label == 'GAP' else '#455B65',
+        _cell(cell, label, color='#F6D55C' if label == 'GAP' else '#455B65',
               foreground='#17232D' if label == 'GAP' else _WHITE, size=7, bold=True)
     for depth, level in enumerate(levels):
         start = 0
@@ -1918,7 +1956,7 @@ def _score_column_headers(table, plan: list[tuple[dict, str]], levels: list[str]
                   foreground=_header_foreground(color), size=size, bold=True)
             start = end + 1
     for index, (column, kind) in enumerate(plan, fixed_count):
-        color = '#FFFF00' if kind == 'GAP' else '#E6ECFA' if kind == 'Value' else column['color']
+        color = '#F6D55C' if kind == 'GAP' else '#E6ECFA' if kind == 'Value' else column['color']
         cell = table.cell(len(levels) + 1, index)
         _cell(cell, kind, color=color, foreground=_header_foreground(color),
               size=min(7, max(2.5, leaf_width * 12)), bold=True)
@@ -1971,7 +2009,7 @@ def _hierarchy_score_tables(presentation, matrices: list[dict], legend: list[dic
         static_headers = [('CATEGORY', _GAP_SUMMARY_HEADER),
                           ('CATEGORY' if is_summary else 'KPI', _GAP_SUMMARY_HEADER),
                           *([] if is_summary else [('Type of KPI', _GAP_SUMMARY_HEADER)]),
-                          ('Score weight\n(%)', '#4EA72E'), ('Max score', '#FF0000')]
+                          ('Score weight\n(%)', '#5B9A44'), ('Max score', '#C9483F')]
         for index, (label, color) in enumerate(static_headers):
             cell = table.cell(0, index)
             cell.merge(table.cell(header_rows - 1, index))
@@ -2040,8 +2078,13 @@ def _hierarchy_score_tables(presentation, matrices: list[dict], legend: list[dic
             _cell(table.cell(total_index, index), text, color=color, size=numeric_font, bold=True)
         _merge_category_cells(table, metrics, header_rows,
                               color=category_color, include_subtotals=True, bold_categories=True)
+        apply_scorecard(
+            table, header_rows=header_rows, metrics=metrics, total=total, total_label=total_label, font=_FONT,
+            value_columns=[(index, kind, column['id']) for index, (column, kind) in enumerate(plan, fixed_count)],
+            drop_leaf_header=gap_layout == 'end' and not any(kind == 'Value' for _column, kind in plan),
+            label_width=2.6 if is_summary else 3.0,
+        )
         if is_summary:
-            _remove_summary_category_column(table)
             _add_summary_operator_legend(slide, presentation.slide_width.inches - .55)
         else:
             for index, item in enumerate(legend):
@@ -2061,16 +2104,6 @@ def _kpi_value_text(metric: dict, value: dict) -> str:
     return _number(measured) if isinstance(measured, (int, float)) and not isinstance(measured, bool) else 'N/A'
 
 
-def _remove_summary_category_column(table) -> None:
-    """Retain category total labels in a single summary identity column."""
-    grid = table._tbl.tblGrid
-    removed_width = int(grid[0].get('w'))
-    grid.remove(grid[0])
-    grid[0].set('w', str(int(grid[0].get('w')) + removed_width))
-    for row in table._tbl.tr_lst:
-        row.remove(row.tc_lst[0])
-
-
 def _merge_category_cells(table, metrics: list[dict], start_row: int,
                           *, color: str = '#E6F0F7', include_subtotals: bool = False,
                           bold_categories: bool = False,
@@ -2086,7 +2119,7 @@ def _merge_category_cells(table, metrics: list[dict], start_row: int,
         run_color = alternate_colors[run_index % 2] if alternate_colors else color
         if alternate_colors:
             cell.fill.solid()
-            cell.fill.fore_color.rgb = RGBColor.from_string(run_color.lstrip('#'))
+            cell.fill.fore_color.rgb = _theme_rgb(run_color)
         if last > first:
             cell.merge(table.cell(start_row + last, 0))
             subtotal = metrics[first].get('row_type') == 'category'
@@ -2214,6 +2247,11 @@ def _hierarchy_gap_tables(presentation, matrices: list[dict], *,
                               bold_categories=True, alternate_colors=('#E6F0F7', '#D7E5EE'))
         table.rows[len(table.rows) - 1].height = Inches(.28)
         _add_gap_total_row(table, metrics, [column['id'] for column in columns], size=leaf_font)
+        header_rows = apply_scorecard(
+            table, header_rows=header_rows, metrics=metrics, total={}, total_label='Total KPI GAP', font=_FONT,
+            value_columns=[(index, 'GAP', column['id']) for index, column in enumerate(columns, 3)],
+            drop_leaf_header=True, label_width=3.0,
+        )
         _text(slide, matrix['note'], 7.05, height=.25, size=9)
         if show_priority:
             _add_individual_gap_notes(slide, matrix, metrics)
@@ -2266,6 +2304,9 @@ def _gap_summary_tables(presentation, matrices: list[dict]) -> None:
                                   alternate_colors=('#E6F0F7', '#D7E5EE'))
             table.rows[len(table.rows) - 1].height = Inches(.28)
             _add_gap_total_row(table, rows, operators, size=metric_font)
+            apply_scorecard(table, header_rows=1, metrics=rows, total={}, total_label='Total KPI GAP', font=_FONT,
+                            value_columns=[(index, 'GAP', operator) for index, operator in enumerate(operators, 3)],
+                            label_width=4.2)
             _add_gap_color_scale(slide, matrix, left=.65, width=12.03)
 
 
@@ -2306,13 +2347,15 @@ def _gap_tables(presentation, matrices: list[dict]) -> None:
                 _cell(table.cell(index, 2), row['kpi_type'],
                       color=row_color or _kpi_type_color(row),
                       size=metric_font, bold=subtotal)
-                _cell(table.cell(index, 3), _gap_number(row), color=row_color or row.get('gap_color', '#FFFF80'),
+                _cell(table.cell(index, 3), _gap_number(row), color=row_color or row.get('gap_color', '#FFF6C2'),
                       size=metric_font, bold=True)
             _add_individual_gap_notes(slide, matrix, rows)
             _merge_category_cells(table, rows, 1, include_subtotals=True, bold_categories=True,
                                   alternate_colors=('#E6F0F7', '#D7E5EE'))
             table.rows[len(table.rows) - 1].height = Inches(.28)
             _add_gap_total_row(table, rows, [None], size=metric_font)
+            apply_scorecard(table, header_rows=1, metrics=rows, total={}, total_label='Total KPI GAP', font=_FONT,
+                            value_columns=[(3, 'GAP', None)], label_width=5.6)
             _add_gap_priority_arrow(slide, table)
             _add_gap_color_scale(slide, matrix, left=.65, width=9.3)
             _text(slide, 'KPIs are ordered by GAP, from lowest to highest. GAP Priority does not affect this order.', 7.12, height=.25, size=9)
@@ -2345,10 +2388,17 @@ def _scoring_slide_notes(result: dict[str, Any]) -> list[str]:
 
 
 def _option(options: dict | None, group: str, key: str, default: bool = True) -> bool:
-    """A report scenario option; without a scenario every slide is included."""
+    """A report scenario option; without a scenario every slide is included. Options that moved to another group are
+    still read where configurations saved before kept them (the location cards in charts, the Points Lost Map in gap)."""
     if options is None:
         return default
-    return bool((options.get(group) or {}).get(key, default))
+    moved = {('locations', 'cards'): ('charts', 'location_cards'), ('points', 'map'): ('gap', 'points_loss_map'),
+             ('points', 'kpis'): ('gap', 'profile')}
+    supplied = options.get(group) or {}
+    if key not in supplied and (group, key) in moved:
+        old_group, old_key = moved[(group, key)]
+        return bool((options.get(old_group) or {}).get(old_key, default))
+    return bool(supplied.get(key, default))
 
 
 def _compared_operator(options: dict | None, operator: str, label: str | None = None) -> bool:
@@ -2366,59 +2416,127 @@ def _latest_campaign_maps(maps: list[dict]) -> list[dict]:
     return [item for item in maps if item['context'].get('campaign') in (None, latest)]
 
 
+def _first_ranking_group(rankings: list[dict]) -> list[dict]:
+    """The location rankings of the most specific level (City, then Cluster, then Region) and its first group."""
+    for level in ('City', 'Cluster', 'Region'):
+        items = [item for item in rankings if item['level'] == level]
+        if items:
+            title = items[0].get('title') or ''
+            return [item for item in items if (item.get('title') or '') == title]
+    return []
+
+
 def _add_insight_slides(presentation, views: dict, environment: str, scoring: str | None, configuration: dict,
                         *, stage: str, options: dict | None = None) -> None:
-    """Add the NetCheck-style insight slides of one environment block.
+    """Add the insight slides of one stage of an environment block, in the order of the results tabs.
 
-    After the service chart (stage ``charts``): the location cards and the scoring trend.
-    After the GAP tables (stage ``gaps``): the KPI GAP profiles and the campaign comparison.
+    ``summary`` (after the cover): where each operator stands, its position, the biggest levers and how the measurements
+    ran; ``charts`` (after the scoring charts): the scoring trend; ``locations`` (after the scoring tables): the location
+    cards, the locations ranked and against the reference; ``gaps`` (after the GAP tables): the GAP by part and the KPI
+    GAP profiles; ``points``: where the points go, the points-lost maps, Vendors, kinds of site, sites and route
+    stretches; ``comparison``: the campaign comparison.
     """
     insights = views.get('insights') or {}
     key = 'Combined' if str(environment).casefold() in {'all environments', 'combined', 'all'} else environment
-    # Like the NetCheck reports, the insights summarise All Environments; a single exported
-    # environment gets its own.
+    # The insights summarise All Environments; a single exported environment gets its own.
     if views.get('_export_environment') == 'all' and key != 'Combined':
         return
     label = SCORING_LABELS[scoring or BEST_NETWORK_SCORING]
     subtitle = _scoring_block_subtitle(scoring, key, configuration)
     scope = views.get('_scope')
     items = {name: [item for item in values if isinstance(item, dict) and item.get('environment') == key]
-             for name, values in insights.items()}
+             for name, values in insights.items() if isinstance(values, list)}
     done = views.setdefault('_insight_slides', set())
     if (key, stage) in done:
         return
     done.add((key, stage))
+    environment_labels = {name: _scoring_environment_title(name, configuration)
+                          for name in configuration.get('scope', {}).get('environments', {})}
+
+    def compared(operator: str, operator_label: str | None = None) -> bool:
+        return _compared_operator(options, operator, operator_label)
+
+    if stage == 'summary':
+        if _option(options, 'summary', 'standings'):
+            add_standings_slides(presentation, items.get('standings', []), scoring_label=label, subtitle=subtitle,
+                                 new_slide=_slide, scope=scope, compared=compared)
+        if _option(options, 'summary', 'position'):
+            add_position_matrix_slides(presentation, items.get('position_matrices', []), subtitle=subtitle, new_slide=_slide,
+                                       environment_labels=environment_labels, scope=scope, compared=compared)
+        if _option(options, 'summary', 'levers'):
+            add_levers_slides(presentation, items.get('levers', []), subtitle=subtitle, new_slide=_slide, scope=scope,
+                              compared=compared)
+        if _option(options, 'summary', 'scope'):
+            add_campaign_scope_slides(presentation, items.get('campaign_scope', []), subtitle=subtitle, new_slide=_slide,
+                                      environment_labels=environment_labels)
+        return
     if stage == 'charts':
-        if _option(options, 'charts', 'location_cards'):
-            add_location_card_slides(presentation, items.get('location_cards', []), scoring_label=label,
-                                     subtitle=subtitle, new_slide=_slide, scope=scope)
         if _option(options, 'charts', 'trend'):
             add_trend_slides(presentation, items.get('campaign_trends', []), scoring_label=label,
                              subtitle=subtitle, new_slide=_slide, scope=scope)
         return
+    if stage == 'locations':
+        if _option(options, 'locations', 'cards'):
+            add_location_card_slides(presentation, items.get('location_cards', []), scoring_label=label,
+                                     subtitle=subtitle, new_slide=_slide, scope=scope)
+        rankings = _first_ranking_group(items.get('location_rankings', []))
+        if _option(options, 'locations', 'ranking'):
+            add_location_ranking_slides(presentation, rankings, subtitle=subtitle, new_slide=_slide, scope=scope,
+                                        compared=compared)
+        if _option(options, 'locations', 'versus'):
+            add_location_versus_slides(presentation, rankings, subtitle=subtitle, new_slide=_slide, scope=scope,
+                                       compared=compared)
+        return
     styles = operator_styles(views.get('score_tables', []))
-    if _option(options, 'gap', 'profile'):
-        profiles = [item for item in items.get('kpi_gap_profiles', [])
+    if stage == 'gaps':
+        if _option(options, 'gap', 'parts'):
+            add_gap_parts_slides(presentation, items.get('gap_parts', []), subtitle=subtitle, new_slide=_slide, scope=scope,
+                                 compared=compared)
+        if _option(options, 'gap', 'profile'):
+            profiles = [item for item in items.get('kpi_gap_profiles', [])
+                        if _compared_operator(options, item['operator'], item.get('label'))]
+            add_kpi_gap_profile_slides(
+                presentation, profiles, scoring_label=label, subtitle=subtitle,
+                environment_labels=environment_labels,
+                new_slide=_slide, operator_colors={name: style.get('color') for name, style in styles.items()},
+                scope=scope,
+            )
+        return
+    if stage == 'points':
+        if _option(options, 'points', 'stake'):
+            add_points_at_stake_slides(presentation, items.get('points_at_stake', []), subtitle=subtitle, new_slide=_slide,
+                                       scope=scope)
+        if _option(options, 'points', 'kpis'):
+            profiles = [item for item in items.get('kpi_gap_profiles', [])
+                        if _compared_operator(options, item['operator'], item.get('label'))]
+            add_points_per_kpi_slides(
+                presentation, profiles, scoring_label=label, subtitle=subtitle, environment_labels=environment_labels,
+                new_slide=_slide, operator_colors={name: style.get('color') for name, style in styles.items()}, scope=scope,
+            )
+        if _option(options, 'points', 'map'):
+            # The reference operator has its map too when it is one of the operators to compare.
+            maps = [item for item in items.get('points_loss_maps', [])
                     if _compared_operator(options, item['operator'], item.get('label'))]
-        add_kpi_gap_profile_slides(
-            presentation, profiles, scoring_label=label, subtitle=subtitle,
-            environment_labels={name: _scoring_environment_title(name, configuration)
-                                for name in configuration.get('scope', {}).get('environments', {})},
-            new_slide=_slide, operator_colors={name: style.get('color') for name, style in styles.items()},
-            scope=scope,
-        )
-    if _option(options, 'gap', 'points_loss_map'):
-        # The reference operator has its map too when it is one of the operators to compare.
-        maps = [item for item in items.get('points_loss_maps', [])
-                if _compared_operator(options, item['operator'], item.get('label'))]
-        add_points_loss_slides(presentation, _latest_campaign_maps(maps), insights.get('points_loss_background') or [],
-                               scoring_label=label, subtitle=subtitle, new_slide=_slide,
-                               boundaries=views.get('_points_loss_boundaries'),
-                               outlines=views.get('_points_loss_outlines'),
-                               environment_labels={name: _scoring_environment_title(name, configuration)
-                                                   for name in configuration.get('scope', {}).get('environments', {})},
-                               scope=scope)
-    if _option(options, 'tables', 'campaign_comparison'):
+            add_points_loss_slides(presentation, _latest_campaign_maps(maps), insights.get('points_loss_background') or [],
+                                   scoring_label=label, subtitle=subtitle, new_slide=_slide,
+                                   boundaries=views.get('_points_loss_boundaries'),
+                                   outlines=views.get('_points_loss_outlines'),
+                                   environment_labels=environment_labels, scope=scope)
+        if _option(options, 'points', 'vendors'):
+            add_serving_loss_slides(presentation, items.get('vendor_losses', []), title='Points Lost — per Vendor',
+                                    column='Vendor', subtitle=subtitle, new_slide=_slide, scope=scope, compared=compared)
+        if _option(options, 'points', 'site_types'):
+            add_serving_loss_slides(presentation, items.get('site_type_losses', []),
+                                    title='Points Lost — per kind of site', column='Kind of site', subtitle=subtitle,
+                                    new_slide=_slide, scope=scope, compared=compared)
+        if _option(options, 'points', 'sites'):
+            add_sites_slides(presentation, items.get('sites_to_review', []), subtitle=subtitle, new_slide=_slide, scope=scope,
+                             compared=compared)
+        if _option(options, 'points', 'stretches'):
+            add_stretch_slides(presentation, items.get('route_stretches', []), insights.get('points_loss_background') or [],
+                               subtitle=subtitle, new_slide=_slide, scope=scope, compared=compared)
+        return
+    if stage == 'comparison' and _option(options, 'tables', 'campaign_comparison'):
         comparisons = [item for item in items.get('campaign_comparisons', [])
                        if options is None or _compared_operator(options, item['operator'], item.get('label'))]
         add_campaign_comparison_slides(presentation, comparisons, scoring_label=label,
@@ -2429,13 +2547,17 @@ def _add_scoring_block(presentation, job: dict[str, Any], result: dict[str, Any]
                        operator_mapping_groups: list[dict[str, Any]] | None, *, scoring: str | None,
                        table_mode: str, gap_layout: str, environment: str, show_gap_values: bool,
                        split_charts: bool, vendor_mapping_groups: list[dict[str, Any]] | None,
-                       options: dict | None = None, section_cover: bool = True) -> None:
+                       options: dict | None = None, section_cover: bool = True,
+                       environments: list[str] | None = None) -> None:
     """Add the charts, tables and GAP slides of one scoring; scoring is None when the job has only Best Network.
 
     ``options`` are the content options of a report scenario: All Environments only or
     a block per environment, and the charts, tables and GAP slides to include.
+    ``environments`` keeps only those environments (Combined for All Environments).
     """
-    combined_only = options is not None and options.get('environments') != 'split'
+    selected_environments = ({'combined' if str(name).casefold() in {'all', 'all environments', 'combined'}
+                              else str(name).casefold() for name in environments} if environments else None)
+    combined_only = (options is not None and options.get('environments') != 'split') or selected_environments == {'combined'}
     if options is not None:
         show_gap_values = _option(options, 'tables', 'gap_values', False)
     show_kpi_values = _option(options, 'tables', 'kpi_values', False)
@@ -2480,12 +2602,26 @@ def _add_scoring_block(presentation, job: dict[str, Any], result: dict[str, Any]
             }
     if scoring is not None and section_cover:
         _add_scoring_intro_slides(presentation, job, result, scoring=scoring)
+    # Each slide is named after its section (summary, charts, tables, locations, gap, points, comparison).
+    untagged = [len(presentation.slides)]
+
+    def section(name: str) -> None:
+        _tag_slides(presentation, untagged[0], name)
+        untagged[0] = len(presentation.slides)
     subtitle = 'All Environments' if environment == 'all' else _scoring_environment_title(environment, configuration)
     matrices = views['score_tables']
     hierarchy_matrices = views.get('hierarchy_score_tables', [])
 
     def keep(environment_name: str) -> bool:
-        return not combined_only or environment_name.casefold() in {'all environments', 'combined'}
+        combined = environment_name.casefold() in {'all environments', 'combined'}
+        if selected_environments is not None:
+            return 'combined' in selected_environments if combined else environment_name.casefold() in selected_environments
+        return not combined_only or combined
+
+    if selected_environments is not None and not any(
+            keep(str(matrix['context'].get('environment') or 'Unspecified'))
+            for matrix in (hierarchy_matrices or matrices)):
+        raise ValueError('None of the selected environments is available for this Saved Filter.')
 
     area_summaries = build_area_summary(
         job, result, operator_mapping_groups, vendor_mapping_groups=vendor_mapping_groups,
@@ -2493,16 +2629,31 @@ def _add_scoring_block(presentation, job: dict[str, Any], result: dict[str, Any]
     )
 
     def environment_cover(environment_name: str) -> None:
-        # With All Environments only, the scoring cover already introduces the block.
+        # With All Environments only, the scoring cover already introduces the block; the Summary follows it.
         if not combined_only:
             _add_scoring_intro_slides(presentation, job, result, environment=environment_name, scoring=scoring)
-        # The National & Area Summary opens the block of its environment.
-        add_area_summary_slides(
-            presentation, [item for item in area_summaries if item['environment'] == environment_name
-                           or (item['environment'] == 'Combined' and environment_name == 'All Environments')],
-            scoring_label=SCORING_LABELS[scoring or BEST_NETWORK_SCORING],
-            subtitle=_scoring_block_subtitle(scoring, environment_name, configuration), new_slide=_slide,
-        )
+        _add_insight_slides(presentation, views, environment_name, scoring, configuration, stage='summary', options=options)
+        section('summary')
+
+    located: set[str] = set()
+
+    def locations(environment_name: str) -> None:
+        # The National & Area Summary opens the Locations of its environment.
+        if environment_name not in located:
+            located.add(environment_name)
+            add_area_summary_slides(
+                presentation, [item for item in area_summaries if item['environment'] == environment_name
+                               or (item['environment'] == 'Combined' and environment_name == 'All Environments')],
+                scoring_label=SCORING_LABELS[scoring or BEST_NETWORK_SCORING],
+                subtitle=_scoring_block_subtitle(scoring, environment_name, configuration), new_slide=_slide,
+            )
+        _add_insight_slides(presentation, views, environment_name, scoring, configuration, stage='locations', options=options)
+        section('locations')
+
+    def closing_stages(environment_name: str) -> None:
+        for stage in ('gaps', 'points', 'comparison'):
+            _add_insight_slides(presentation, views, environment_name, scoring, configuration, stage=stage, options=options)
+            section('gap' if stage == 'gaps' else stage)
 
     def score_tables(matrix: dict, render) -> None:
         for mode, title, key in (('summary', 'Scoring Tables — Summary', 'summary'),
@@ -2511,6 +2662,7 @@ def _add_scoring_block(presentation, job: dict[str, Any], result: dict[str, Any]
                 render(presentation, [_table_for_mode(matrix, mode)], views.get('threshold_legend', []),
                        gap_layout=gap_layout, show_gap_values=show_gap_values, title=title,
                        show_kpi_values=show_kpi_values and mode == 'expanded')
+        section('tables')
 
     use_hierarchy = bool(hierarchy_matrices) and len(hierarchy_matrices[0].get('hierarchy_levels', [])) > 1
     if use_hierarchy:
@@ -2528,13 +2680,15 @@ def _add_scoring_block(presentation, job: dict[str, Any], result: dict[str, Any]
             for matrix in environment_matrices:
                 if _option(options, 'charts', 'service'):
                     _best_network(presentation, [matrix])
-                _add_insight_slides(presentation, views, current_environment, scoring, configuration,
-                                    stage='charts', options=options)
                 if _option(options, 'charts', 'category'):
                     _hierarchy_chart(presentation, matrix)
                 if _option(options, 'charts', 'breakdown'):
                     _hierarchy_category_comparison_chart(presentation, matrix)
+                _add_insight_slides(presentation, views, current_environment, scoring, configuration,
+                                    stage='charts', options=options)
+                section('charts')
                 score_tables(matrix, _hierarchy_score_tables)
+                locations(current_environment)
                 gap_matrix = gap_by_environment.get(matrix['context'].get('environment'))
                 if gap_matrix is not None:
                     # Finish the full comparison block before advancing to the next environment.
@@ -2559,8 +2713,8 @@ def _add_scoring_block(presentation, job: dict[str, Any], result: dict[str, Any]
                                 presentation, [operator_matrix],
                                 title=f'GAP Analysis — {operator} vs {reference}', show_priority=True,
                             )
-                _add_insight_slides(presentation, views, current_environment, scoring, configuration,
-                                    stage='gaps', options=options)
+                section('gap')
+                closing_stages(current_environment)
     elif matrices:
         grouped_scores: dict[str, list[dict[str, Any]]] = {}
         for matrix in matrices:
@@ -2576,7 +2730,11 @@ def _add_scoring_block(presentation, job: dict[str, Any], result: dict[str, Any]
                     _stacked_category_chart(presentation, matrix)
                 if _option(options, 'charts', 'breakdown'):
                     _charts(presentation, [matrix])
+                _add_insight_slides(presentation, views, current_environment, scoring, configuration,
+                                    stage='charts', options=options)
+                section('charts')
                 score_tables(matrix, _score_tables)
+                locations(current_environment)
                 if _option(options, 'gap', 'all_operators'):
                     _gap_summary_tables(presentation, [_table_for_mode(table, 'expanded') for table in views['gap_summary_tables']
                                                        if table['context'] == matrix['context']])
@@ -2585,8 +2743,8 @@ def _add_scoring_block(presentation, job: dict[str, Any], result: dict[str, Any]
                                                if table['context'] == matrix['context']
                                                and _compared_operator(options, table.get('operator', ''),
                                                                       _operator_label(table, table.get('operator', '')))])
-            _add_insight_slides(presentation, views, current_environment, scoring, configuration,
-                                stage='gaps', options=options)
+                section('gap')
+            closing_stages(current_environment)
     else:
         slide = _slide(presentation, 'Scoring Tables', subtitle)
         _text(slide, 'No scoring measurements are available for this saved job.', 1.8, height=1, size=16)
@@ -2597,8 +2755,26 @@ def export_scoring_powerpoint(job: dict[str, Any], result: dict[str, Any], templ
                              *, table_mode: str = 'expanded', gap_layout: str = 'end',
                              environment: str = 'all', show_gap_values: bool = True,
                              split_charts: bool = True,
-                             vendor_mapping_groups: list[dict[str, Any]] | None = None) -> bytes:
-    """Export saved points as comparison matrices, charts and prioritized gaps."""
+                             vendor_mapping_groups: list[dict[str, Any]] | None = None,
+                             theme: str = DEFAULT_THEME, scorings: list[str] | None = None,
+                             environments: list[str] | None = None) -> bytes:
+    """Export saved points as comparison matrices, charts and prioritized gaps, in the colours of ``theme``.
+
+    ``scorings`` (best_network, most_reliable) and ``environments`` (Combined for All Environments, or the names of
+    the environments) keep only those blocks; without them, every scoring and environment is exported.
+    """
+    with use_theme(theme):
+        return _export_scoring_powerpoint(
+            job, result, template_path, operator_mapping_groups, table_mode=table_mode, gap_layout=gap_layout,
+            environment=environment, show_gap_values=show_gap_values, split_charts=split_charts,
+            vendor_mapping_groups=vendor_mapping_groups, scorings=scorings, environments=environments)
+
+
+def _export_scoring_powerpoint(job: dict[str, Any], result: dict[str, Any], template_path: Path,
+                               operator_mapping_groups: list[dict[str, Any]] | None, *, table_mode: str,
+                               gap_layout: str, environment: str, show_gap_values: bool, split_charts: bool,
+                               vendor_mapping_groups: list[dict[str, Any]] | None, scorings: list[str] | None = None,
+                               environments: list[str] | None = None) -> bytes:
     if not template_path.is_file():
         raise ValueError('The configured CDR PowerPoint template is missing.')
     if table_mode not in {'expanded', 'summary'}:
@@ -2618,6 +2794,11 @@ def export_scoring_powerpoint(job: dict[str, Any], result: dict[str, Any], templ
         # Both scorings share the cover, filters and aggregation; each one has its own block.
         blocks = [(BEST_NETWORK_SCORING, job, result),
                   (MOST_RELIABLE_SCORING, {**job, 'configuration': reliable['configuration']}, reliable)]
+    if scorings:
+        if reliable is None and MOST_RELIABLE_SCORING in scorings and BEST_NETWORK_SCORING not in scorings:
+            raise ValueError('This Saved Filter has no Most Reliable scoring.')
+        if reliable is not None:
+            blocks = [block for block in blocks if block[0] in scorings]
     for scoring, block_job, block_result in blocks:
         # The cover keeps the notes of the first scoring.
         first_slide = len(presentation.slides) if block_result is not result else 0
@@ -2625,7 +2806,7 @@ def export_scoring_powerpoint(job: dict[str, Any], result: dict[str, Any], templ
             presentation, block_job, block_result, operator_mapping_groups, scoring=scoring,
             table_mode=table_mode, gap_layout=gap_layout, environment=environment,
             show_gap_values=show_gap_values, split_charts=split_charts,
-            vendor_mapping_groups=vendor_mapping_groups,
+            vendor_mapping_groups=vendor_mapping_groups, environments=environments,
         )
         notes = '\n'.join(_scoring_slide_notes(block_result))
         for index, slide in enumerate(presentation.slides):
@@ -2639,13 +2820,22 @@ def export_scoring_powerpoint(job: dict[str, Any], result: dict[str, Any], templ
 def export_scoring_report(entries: list[dict[str, Any]], template_path: Path,
                           operator_mapping_groups: list[dict[str, Any]] | None = None, *,
                           gap_layout: str = 'end', split_charts: bool = True,
-                          vendor_mapping_groups: list[dict[str, Any]] | None = None) -> bytes:
-    """One document with the scenarios of a scoring report.
+                          vendor_mapping_groups: list[dict[str, Any]] | None = None,
+                          theme: str = DEFAULT_THEME) -> bytes:
+    """One document with the scenarios of a scoring report, in the colours of ``theme``.
 
     Each entry has a normalized ``scenario`` and the completed ``job`` and ``result`` of
     its filters and aggregation. Every scenario adds, for each scoring it includes, a
     cover with its filters followed by the slides its options choose.
     """
+    with use_theme(theme):
+        return _export_scoring_report(entries, template_path, operator_mapping_groups, gap_layout=gap_layout,
+                                      split_charts=split_charts, vendor_mapping_groups=vendor_mapping_groups)
+
+
+def _export_scoring_report(entries: list[dict[str, Any]], template_path: Path,
+                           operator_mapping_groups: list[dict[str, Any]] | None, *, gap_layout: str,
+                           split_charts: bool, vendor_mapping_groups: list[dict[str, Any]] | None) -> bytes:
     if not template_path.is_file():
         raise ValueError('The configured CDR PowerPoint template is missing.')
     if not entries:

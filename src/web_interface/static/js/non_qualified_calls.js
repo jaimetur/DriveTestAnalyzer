@@ -73,7 +73,7 @@
     unassigned: '__unassigned__', datasets: [], mainCities: [], sort: 'start_time', direction: 'desc', page: 1, pageSize: 10,
     result: null, selected: new Set(), detail: null, requestToken: 0, busy: false, extraFilters: {}, stale: new Set(),
     fields: [], fieldTypes: {}, tableColumns: {builtin: [], cdr: []}, optionalColumns: {}, cdrColumns: [], versionLabels: {},
-    rateService: '', sections: [], statusRules: [], conditionFields: {}, ruleOperators: {}, fieldSources: {}, trackingRefs: {},
+    rateService: '', failureService: '', sections: [], statusRules: [], conditionFields: {}, ruleOperators: {}, fieldSources: {}, trackingRefs: {},
     rcaRefs: {}, callFields: [], rcaResults: {}, rcaSources: {}, matrixSource: 'netcheck',
     // The values each filter offers among the calls of the other filters (null until known: every value).
     available: null, availableSignature: '',
@@ -1725,7 +1725,7 @@
       hidePanelLoading(panel);
     }
   };
-  const PANEL_LOADERS = Object.fromEntries(Object.entries({rates: loadRates, progress: loadProgress, lifecycle: loadLifecycle, root: loadRootCauses, sources: loadSources})
+  const PANEL_LOADERS = Object.fromEntries(Object.entries({rates: loadRates, failures: loadFailures, progress: loadProgress, lifecycle: loadLifecycle, root: loadRootCauses, sources: loadSources})
     .map(([name, load]) => [name, withLoadingBar(name, load)]));
   const panelShown = (name) => {
     const panel = panelOf(name);
@@ -2918,6 +2918,151 @@
       if (token === rateToken) {
         rateKey = '';
         $('nq-rate-overview').replaceChildren(node('p', error.message, 'nq-muted'));
+      }
+    }
+  }
+
+  // -- failures by type, technology and serving cell ------------------------------
+  // A table of the panel: its headers and rows of cells ({text, title, pairs, heat: [value, highest], className}).
+  const failureTable = (headers, rows) => {
+    const table = node('table', undefined, 'nq-failure-table');
+    const head = node('thead');
+    const headRow = node('tr');
+    headRow.append(...headers.map((text) => node('th', text)));
+    head.append(headRow);
+    const body = node('tbody');
+    for (const cells of rows) {
+      const row = node('tr');
+      for (const cell of cells) {
+        const item = cell && typeof cell === 'object' ? cell : {text: cell};
+        const td = node('td', undefined, item.className || '');
+        const content = item.pairs ? node('button', item.text, 'nq-failure-drill') : node('span', item.text);
+        if (item.pairs) {
+          content.type = 'button';
+          content.classList.toggle('is-active', isDrilled(item.pairs));
+          content.addEventListener('click', () => drill(item.pairs));
+        }
+        if (item.heat && item.heat[1]) {
+          const [fill, ink] = heat(item.heat[0], item.heat[1]);
+          td.style.background = fill;
+          td.style.color = ink;
+        }
+        if (item.title) td.title = item.title;
+        td.append(content);
+        row.append(td);
+      }
+      body.append(row);
+    }
+    table.append(head, body);
+    const wrap = node('div', undefined, 'nq-table-wrap nq-failure-wrap');
+    wrap.append(table);
+    return wrap;
+  };
+  const operatorName = (operator, colors) => {
+    const label = node('strong', operator || 'Unassigned', 'nq-failure-operator');
+    if (colors?.[operator]) label.style.color = colors[operator];
+    return label;
+  };
+  const renderFailures = (data) => {
+    const host = $('nq-failures');
+    const services = [...new Set([...data.types, ...data.technology, ...data.serving].map((item) => item.service))];
+    if (!services.includes(state.failureService)) state.failureService = services.includes('voice') ? 'voice' : services[0] || '';
+    const labels = Object.fromEntries([...data.types, ...data.technology, ...data.serving].map((item) => [item.service, item.label]));
+    $('nq-failure-tabs').replaceChildren(...services.map((service) => {
+      const tab = node('button', labels[service], 'nq-rate-tab');
+      tab.type = 'button';
+      tab.setAttribute('role', 'tab');
+      tab.setAttribute('aria-selected', String(service === state.failureService));
+      tab.classList.toggle('is-active', service === state.failureService);
+      tab.addEventListener('click', () => { state.failureService = service; renderFailures(data); });
+      return tab;
+    }));
+    const service = state.failureService;
+    const sections = [];
+    const section = (title, note, ...content) => {
+      const box = node('section', undefined, 'nq-failure-section');
+      box.append(node('h3', title, 'nq-failure-title'), ...(note ? [node('p', note, 'nq-hint')] : []), ...content);
+      sections.push(box);
+    };
+    const types = data.types.find((item) => item.service === service);
+    if (types) {
+      const highest = Math.max(0.01, ...types.rows.flatMap((row) => Object.values(row.rates).map((value) => Number(value || 0))));
+      section('Failure type', 'Each result as a share of every call of the operator in the environment (the count under it).',
+        failureTable(['Operator', 'Environment', 'Calls', 'Non-Qualified', ...types.results], types.rows.map((row) => [
+          {text: row.operator, className: 'nq-failure-name'}, row.environment, number(row.calls), number(row.nq),
+          ...types.results.map((result) => (row.counts[result] ? {
+            text: `${row.rates[result] === null ? '—' : `${Number(row.rates[result]).toFixed(2)}%`} · ${number(row.counts[result])}`,
+            heat: [row.rates[result] || 0, highest], pairs: [['service', service], ['operator', row.operator], ['result', result]],
+            title: `${row.operator} · ${row.environment} · ${result}: ${number(row.counts[result])} of ${number(row.calls)} calls`,
+          } : {text: '—', className: 'nq-muted'})),
+        ])));
+    }
+    const technology = data.technology.find((item) => item.service === service);
+    if (technology) {
+      const classes = technology.classes.slice(0, 7);
+      const cards = node('div', undefined, 'nq-failure-grid');
+      for (const operator of technology.operators) {
+        const byName = technology.cells[operator] || {};
+        const highest = Math.max(1, ...Object.values(byName).flatMap((counts) => Object.values(counts)));
+        const card = node('div', undefined, 'nq-failure-card');
+        card.append(operatorName(operator, data.operator_colors), failureTable(['Technology', ...classes, 'Total'],
+          technology.technologies.filter((name) => byName[name]).map((name) => {
+            const counts = byName[name];
+            return [{text: name, className: 'nq-failure-name'}, ...classes.map((label) => (counts[label] ? {
+              text: number(counts[label]), heat: [counts[label], highest],
+              pairs: [['service', service], ['operator', operator], ['failure_classification', label]],
+              title: `${operator} · ${name} · ${label}: ${number(counts[label])} Non-Qualified Calls`,
+            } : {text: '—', className: 'nq-muted'})), {text: number(Object.values(counts).reduce((sum, value) => sum + value, 0)), className: 'nq-failure-total'}];
+          })));
+        cards.append(card);
+      }
+      section('Technology at the failure and failure classification', 'The Non-Qualified Calls by the technology at their failure (else of the call) and their NetCheck failure classification (the most frequent ones).', cards);
+    }
+    const serving = data.serving.find((item) => item.service === service);
+    if (serving) {
+      const cards = node('div', undefined, 'nq-failure-grid');
+      for (const item of serving.operators) {
+        const highest = Math.max(0.01, ...item.rows.map((row) => Number(row.rate || 0)));
+        const card = node('div', undefined, 'nq-failure-card');
+        card.append(operatorName(item.operator, data.operator_colors), failureTable(['Vendor', 'Host network', 'Calls', 'Share of calls', 'Non-Qualified', 'Share of NQ', 'NQ rate'],
+          item.rows.slice(0, 12).map((row) => [
+            {text: row.vendor, className: 'nq-failure-name'}, row.host_network, number(row.calls), `${row.calls_share ?? '—'}%`, number(row.nq),
+            {text: `${row.nq_share ?? '—'}%`, className: row.nq_share !== null && row.calls_share !== null && row.nq_share > row.calls_share * 1.25 && row.nq_share - row.calls_share > 3 ? 'nq-failure-above' : ''},
+            {text: row.rate === null ? '—' : `${Number(row.rate).toFixed(2)}%`, heat: [row.rate || 0, highest]},
+          ])));
+        cards.append(card);
+      }
+      section('Vendor and host network of the serving cell', 'The calls and Non-Qualified Calls per Vendor and host network of the cell that served them (the serving-cell Vendor Mapping); in orange, a share of the Non-Qualified Calls well above the share of the calls.', cards);
+    }
+    if (data.sites.length) {
+      const cards = node('div', undefined, 'nq-failure-grid');
+      for (const item of data.sites) {
+        const highest = Math.max(0.01, ...item.rows.map((row) => Number(row.rate || 0)));
+        const card = node('div', undefined, 'nq-failure-card');
+        card.append(operatorName(item.operator, data.operator_colors), failureTable(['Site', 'Host network', 'Vendor', 'City or route', 'Calls', 'Non-Qualified', 'NQ rate'],
+          item.rows.map((row) => [{text: row.site_id, className: 'nq-failure-name'}, row.host_network || '—', row.vendor || '—', row.city || '—',
+            number(row.calls), number(row.nq), {text: `${Number(row.rate).toFixed(2)}%`, heat: [row.rate, highest]}])));
+        cards.append(card);
+      }
+      section('Sites with the most Non-Qualified Calls', `Every service; the serving sites with ${data.min_site_calls} calls or more, the most Non-Qualified Calls first.`, cards);
+    }
+    host.replaceChildren(...(sections.length ? sections : [node('p', 'No Non-Qualified Calls for this selection.', 'nq-muted')]));
+  };
+  let failureToken = 0;
+  let failureKey = '';
+  async function loadFailures() {
+    const filters = currentFilters();
+    const key = JSON.stringify([filters, state.result?.sync?.synced_at || '']);
+    if (key === failureKey) return;
+    failureKey = key;
+    const token = ++failureToken;
+    try {
+      const data = await api('/api/non-qualified-calls/failures', {method: 'POST', body: JSON.stringify({filters})});
+      if (token === failureToken) renderFailures(data);
+    } catch (error) {
+      if (token === failureToken) {
+        failureKey = '';
+        $('nq-failures').replaceChildren(node('p', error.message, 'nq-muted'));
       }
     }
   }

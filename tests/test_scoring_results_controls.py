@@ -6,6 +6,8 @@ import subprocess
 
 import pytest
 
+from src.modules.scoring_themes import THEMES
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SCORING_TEMPLATE = PROJECT_ROOT / 'src/web_interface/templates/scoring.html'
@@ -27,12 +29,24 @@ def _constant_source(script: str, name: str) -> str:
     return script[start:end]
 
 
+# The colour theme the functions of the page read: NetCheck, whose colours stay as the views write them.
+THEME_PRELUDE = ('const activeTheme = ' + json.dumps({'id': 'netcheck', **THEMES['netcheck']}) + ';\n'
+                 'const scoringThemes = [activeTheme];\n'
+                 'const themedColor = (color) => color;\n'
+                 'const hexChannels = (color) => [1, 3, 5].map((index) => Number.parseInt(color.slice(index, index + 2), 16));\n'
+                 'const rgbaOf = (color, alpha) => `rgba(${hexChannels(color).join(",")},${alpha})`;\n'
+                 # The contexts the checks run the page code in get the theme too.
+                 '{ const vm = require("node:vm"); const createContext = vm.createContext;\n'
+                 '  const bindings = {activeTheme, scoringThemes, themedColor, hexChannels, rgbaOf};\n'
+                 '  vm.createContext = (context = {}, ...rest) => createContext(Object.assign(context, {...bindings, ...context}), ...rest); }\n')
+
+
 def _run_node_json(program: str, payload: dict) -> dict:
     node = shutil.which('node')
     if not node:
         pytest.skip('Node.js is required for scoring results state behavior checks.')
     completed = subprocess.run(
-        [node, '-e', program], input=json.dumps(payload), capture_output=True, text=True, check=False,
+        [node, '-e', THEME_PRELUDE + program], input=json.dumps(payload), capture_output=True, text=True, check=False,
     )
     assert completed.returncode == 0, completed.stderr
     return json.loads(completed.stdout)
@@ -75,7 +89,7 @@ def test_best_network_charts_start_scoring_charts_and_legacy_tab_migrates():
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
 
     assert 'data-result-tab="best-network"' not in template
-    assert "const resultTabNames = new Set(['scoring', 'gap', 'charts']);" in script
+    assert "const resultTabNames = new Set(['summary', 'charts', 'scoring', 'locations', 'gap', 'points']);" in script
     assert "stored.result_tab === 'best-network' ? 'charts'" in script
     renderer = _function_source(script, 'renderBestNetworkChart')
     allocation_renderer = _function_source(script, 'renderCategoryAllocation')
@@ -799,7 +813,7 @@ def test_reference_header_uses_operator_mapping_accent_without_yellow_marker():
     assert '.scoring-comparison-table th.scoring-operator-header { background: color-mix(in srgb, var(--operator-accent, #607d8b) 20%, #fff) !important; color: #263f4b !important; box-shadow: inset 0 3px var(--operator-accent, #607d8b); }' in template
     assert '.scoring-comparison-table th.scoring-reference-header' not in template
     assert '.scoring-comparison-table th.scoring-hierarchy-header.scoring-reference-header' not in template
-    assert '.scoring-comparison-table th.scoring-gap-header { background: #f4ecd5 !important; color: #655331 !important; }' in template
+    assert '.scoring-comparison-table th.scoring-gap-header { background: color-mix(in srgb, var(--st-gap-header) 30%, #fff) !important; color: var(--st-soft-header-text) !important; }' in template
     assert "function markReferenceHeader(header) {\n    header.classList.add('scoring-reference-header');" in script
     assert 'header.title = `${label} is the reference operator`;' in script
 
@@ -866,45 +880,74 @@ def test_environment_selector_precedes_value_toggles_and_gap_layout_is_condition
 def test_gap_value_choice_is_sent_only_to_powerpoint_export():
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
 
-    assert "const gapOption = kind === 'ppt' ? `&show_gap_values=${showGapValues() ? 'true' : 'false'}` : '';" in script
+    # The PowerPoint and Word take the theme of the page too.
+    assert "const gapOption = kind === 'ppt' ? `&show_gap_values=${showGapValues() ? 'true' : 'false'}&theme=${encodeURIComponent(activeTheme?.id || 'netcheck')}` : '';" in script
     assert "link.href = enabled ? `${exportBase}/${encodeURIComponent(savedFilterId)}/export/${kind}?${query}${gapOption}${scoringOption}` : '#';" in script
     assert "const scoringOption = kind !== 'ppt' && typeof effectiveScoring === 'function'" in script
     assert "const query = `table_mode=${encodeURIComponent(selectedTableMode())}&gap_layout=${encodeURIComponent(selectedGapLayout())}&environment=${encodeURIComponent(selectedEnvironment || 'all')}`;" in script
 
 
-def test_export_selected_scoring_report_only_asks_for_powerpoint_or_word():
+def test_export_selected_scoring_report_asks_for_scorings_environments_and_format():
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
-    payload = {'snippets': {'exportSelectedScoringReport': _function_source(script, 'exportSelectedScoringReport')}}
+    payload = {'snippets': {name: _function_source(script, name) for name in (
+        'scoringExportChoices', 'scoringExportDialogHtml', 'exportSelectedScoringReport')}}
     program = r"""
 const vm = require('node:vm');
 const payload = JSON.parse(require('node:fs').readFileSync(0, 'utf8'));
 const results = [];
 (async () => {
-  for (const choice of ['confirm', 'secondary', null]) {
+  // Each case: the button chosen, the boxes the user changes and whether the Saved Filter has Most Reliable.
+  const cases = [
+    {choice: 'confirm', toggle: [], reliable: true},
+    {choice: 'secondary', toggle: ['most_reliable', 'Combined', 'Drive - City'], reliable: true},
+    {choice: 'confirm', toggle: ['best_network'], reliable: false},
+    {choice: null, toggle: [], reliable: true},
+  ];
+  for (const item of cases) {
     let downloaded = null;
     let dialog = null;
+    let warning = null;
+    let inputs = [];
     const context = {
       URL, window: {location: {href: 'https://example.test/scoring'}},
-      showConfirmDialog: async (message, options) => { dialog = {message, ...options}; return choice; },
+      environmentSelect: {options: [{value: 'all', textContent: 'All Environments'},
+                                    {value: 'Drive - City', textContent: 'Drive - City'},
+                                    {value: 'Drive - Roads', textContent: 'Drive - Roads'}]},
+      currentResults: {scorings: item.reliable ? {most_reliable: {}} : {}},
+      showConfirmDialog: async (message, options) => {
+        dialog = {message, ...options};
+        inputs = [...options.copyHtml.matchAll(/data-scoring-export-(\w+) value="([^"]*)"( checked)?( disabled)?/g)]
+          .map(([, group, value, checked, disabled]) => ({group, value, checked: Boolean(checked), disabled: Boolean(disabled)}));
+        for (const input of inputs) if (item.toggle.includes(input.value) && !input.disabled) input.checked = !input.checked;
+        return item.choice;
+      },
+      document: {querySelectorAll: selector => inputs.filter(input => selector.includes(`data-scoring-export-${input.group}`))},
+      showInfoDialog: message => { warning = message; },
       downloadScoringDocument: async (url, label) => { downloaded = {url, label}; },
     };
     vm.createContext(context);
-    vm.runInContext(Object.values(payload.snippets).join('\\n'), context);
+    vm.runInContext(Object.values(payload.snippets).join('\n'), context);
     await vm.runInContext("exportSelectedScoringReport({href: 'https://example.test/scoring/saved-filters/7/export/ppt?environment=all'})", context);
-    results.push({downloaded, dialog});
+    results.push({downloaded, warning, inputs, title: dialog?.title, labels: [dialog?.confirmLabel, dialog?.secondaryLabel]});
   }
   process.stdout.write(JSON.stringify(results));
 })().catch(error => { console.error(error); process.exitCode = 1; });
 """
-    result = _run_node_json(program, payload)
-    assert [item['downloaded'] for item in result] == [
-        {'url': 'https://example.test/scoring/saved-filters/7/export/ppt?environment=all', 'label': 'PowerPoint'},
-        {'url': 'https://example.test/scoring/saved-filters/7/export/word?environment=all', 'label': 'Word'},
-        None,
-    ]
-    dialog = result[0]['dialog']
-    assert (dialog['title'], dialog['confirmLabel'], dialog['secondaryLabel'], dialog['variant']) == (
-        'Export Selected Scoring Report', 'PowerPoint', 'Word', 'document-format')
+    default, custom, nothing, cancelled = _run_node_json(program, payload)
+    # Best Network and All Environments are ticked; Most Reliable only when the Saved Filter has it.
+    assert [(item['value'], item['checked'], item['disabled']) for item in default['inputs']] == [
+        ('best_network', True, False), ('most_reliable', False, False), ('Combined', True, False),
+        ('Drive - City', False, False), ('Drive - Roads', False, False)]
+    assert default['title'] == 'Export Selected Scoring Report' and default['labels'] == ['PowerPoint', 'Word']
+    assert default['downloaded'] == {
+        'url': 'https://example.test/scoring/saved-filters/7/export/ppt?environment=all&scorings=best_network&environments=Combined',
+        'label': 'PowerPoint'}
+    assert custom['downloaded'] == {
+        'url': 'https://example.test/scoring/saved-filters/7/export/word?environment=all&scorings=best_network'
+               '&scorings=most_reliable&environments=Drive+-+City', 'label': 'Word'}
+    assert ('most_reliable', False, True) in [(item['value'], item['checked'], item['disabled']) for item in nothing['inputs']]
+    assert nothing['downloaded'] is None and 'Tick at least one scoring' in nothing['warning']
+    assert cancelled['downloaded'] is None
 
 
 def test_generate_scoring_report_uses_the_calculation_selection():
@@ -954,10 +997,10 @@ def test_scoring_tab_is_plural_and_subtotals_and_totals_share_category_backgroun
     assert re.search(
         r'\.scoring-comparison-table tbody tr\.scoring-category-subtotal > td,\s*'
         r'\.scoring-comparison-table tfoot tr > :is\(th, td\)\s*'
-        r'\{\s*background-color:\s*#edf3f8\s*!important;',
+        r'\{\s*background-color:\s*color-mix\(in srgb, var\(--st-total\) 70%, #fff\)\s*!important;',
         template,
     )
-    assert '.scoring-table-wrap tbody tr.scoring-total-row > td { background-color: #edf3f8;' in template
+    assert '.scoring-table-wrap tbody tr.scoring-total-row > td { background-color: color-mix(in srgb, var(--st-total) 55%, #fff);' in template
 
 
 def test_render_warnings_hides_only_legacy_campaign_pooling_notice():
@@ -1174,6 +1217,7 @@ const context = {
   appendThresholdLegend: () => {},
   appendScoringGapScale: () => {},
   addMatrixGapCell: () => {},
+  applyScorecardLayout: () => {},
 };
 vm.createContext(context);
 vm.runInContext(Object.values(payload.snippets).join('\n') + `
@@ -1470,7 +1514,7 @@ class Element {
 const context = {
   document: {createElement: tag => new Element(tag)}, showKpiValuesToggle: {checked: false},
   showGapValuesToggle: {checked: false}, gapLayoutSelect: {value: 'end'},
-  observeScoringValueCells: () => {},
+  observeScoringValueCells: () => {}, applyScorecardLayout: () => {},
   appendHierarchyHeaders: (thead, _data, _columns, definitions) => {
     const row = new Element('tr');
     for (const [label, column] of definitions) {
@@ -1612,12 +1656,15 @@ def test_result_tabs_have_their_own_colours_on_a_panel_holding_every_result():
     from lxml import html
     tabbed = html.fromstring(template).xpath('//div[@class="scoring-results-tabbed"]')[0]
     tabs = tabbed.xpath('./div[@class="scoring-result-tabs"]/button')
-    assert [tab.get('data-result-tab') for tab in tabs] == ['charts', 'scoring', 'gap']
+    names = ['summary', 'charts', 'scoring', 'locations', 'gap', 'points']
+    assert [tab.get('data-result-tab') for tab in tabs] == names
     assert all(tab.xpath('./svg') for tab in tabs)
-    # The three result panes sit in one panel below the tabs.
+    # The six result panes sit in one panel below the tabs, Summary shown first.
     panes = tabbed.xpath('./div[@class="scoring-result-panels"]/div[@role="tabpanel"]')
-    assert [pane.get('data-result-pane') for pane in panes] == ['charts', 'scoring', 'gap']
-    for tab, colour in (('scoring', '#0f766e'), ('gap', '#c2410c')):
+    assert [pane.get('data-result-pane') for pane in panes] == names
+    assert panes[0].get('hidden') is None and all(pane.get('hidden') is not None for pane in panes[1:])
+    for tab, colour in (('summary', '#0369a1'), ('scoring', '#0f766e'), ('locations', '#7c3aed'), ('gap', '#c2410c'),
+                        ('points', '#be123c')):
         assert f'.scoring-result-tab[data-result-tab="{tab}"] {{ --tab-color: {colour}; }}' in template
         assert f'.scoring-results-tabbed:has([data-result-tab="{tab}"][aria-selected="true"]) {{ --result-accent: {colour}; }}' in template
 
@@ -1783,9 +1830,14 @@ process.stdout.write(JSON.stringify([
 
 
 def test_the_scoring_trend_comes_before_the_national_and_areas():
-    charts = _function_source(SCORING_SCRIPT.read_text(encoding='utf-8'), 'renderInsightCharts')
-    assert charts.index("insightItems(payload, 'campaign_trends', environment)") < charts.index(
-        "insightItems(payload, 'area_summaries', environment)")
+    script = SCORING_SCRIPT.read_text(encoding='utf-8')
+    charts = _function_source(script, 'renderInsightCharts')
+    # The Scoring Trend stays in Scoring Charts; the National & Areas opens Locations, before the scoring per location.
+    assert "insightItems(payload, 'campaign_trends', environment)" in charts
+    assert "'area_summaries'" not in charts and "'location_cards'" not in charts
+    locations = _function_source(script, 'renderLocations')
+    assert locations.index("insightItems(payload, 'area_summaries', environment)") < locations.index(
+        "insightItems(payload, 'location_cards', environment)")
     # The titles of the area charts: National, the separate cities and the breakdown in their own colours.
     chart = _function_source(SCORING_SCRIPT.read_text(encoding='utf-8'), 'makeAreaTrendChart')
     assert "area.kind === 'National' ? 'is-national' : area.kind === 'City' ? 'is-city' : 'is-breakdown'" in chart
@@ -1915,7 +1967,7 @@ process.stdout.write(JSON.stringify({scopes: context.scopes, tooltip: context.to
         'appendResultScope(heading, chosen.context);',
     ):
         assert script.count(line) == 1, line
-    assert script.count('appendResultScope(heading, inScope[0]?.context);') == 2
+    assert script.count('appendResultScope(heading, inScope[0]?.context);') == 3
     assert "pill.className = `scoring-scope-pill is-${item.kind}`;" in script
     for rule in ('.scoring-scope-pill { display: inline-flex;', '.scoring-scope-pill.is-operator {',
                  '.scoring-scope-pill.is-vendor {'):

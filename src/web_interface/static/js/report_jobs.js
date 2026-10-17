@@ -600,7 +600,8 @@
         title: 'Scoring report of this artifact',
         configuration: report || window.ScoringReportEditor.defaultConfiguration(defaults),
         context: {filterOptions: valuesForDatasets(cdrsInUse()), operators: defaults.operators,
-          mainCities: options.main_cities || [], defaults, operatorGroups: options.operator_groups || []},
+          mainCities: options.main_cities || [], defaults, operatorGroups: options.operator_groups || [],
+          themes: options.scoring_themes || []},
         actions: [['apply', 'Apply to this artifact']],
       });
       if (choice) { report = choice.configuration; describeReport(); }

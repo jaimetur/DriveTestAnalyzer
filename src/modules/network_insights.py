@@ -44,8 +44,8 @@ from src.modules.serving_cells import load_serving_networks, serving_families
 
 NETWORK_INSIGHTS_KINDS = ('data', 'voice', 'speech')
 # Bump when the normalised samples or the analysis payload change shape.
-SAMPLES_CACHE_VERSION = 7
-ANALYSIS_CACHE_VERSION = 24
+SAMPLES_CACHE_VERSION = 9
+ANALYSIS_CACHE_VERSION = 27
 INVENTORY_CACHE_VERSION = 4
 OBSERVED_CACHE_VERSION = 9
 # Columns of the Observed Sites/Cells (from CDRs) tables.
@@ -119,6 +119,40 @@ RF_FIELD_ALIASES: dict[str, dict[str, tuple[str, ...]]] = {
     },
     'nr_layers': {
         'data': ('NR_DL_Max_MIMO_Layers',), 'voice': (), 'speech': (),
+    },
+    # The result, speed and interactivity of the CDR Data tests, for the download tests by location and Latency &
+    # Interactivity.
+    'test_result': {
+        'data': ('Test_Result',), 'voice': (), 'speech': (),
+    },
+    'type_of_test': {
+        'data': ('Type_of_Test',), 'voice': (), 'speech': (),
+    },
+    'mean_data_rate': {
+        'data': ('Mean_Data_Rate',), 'voice': (), 'speech': (),
+    },
+    'rtt_median': {
+        'data': ('Interactivity_RTT_Median',), 'voice': (), 'speech': (),
+    },
+    'packets_lost': {
+        'data': ('Packets_Lost',), 'voice': (), 'speech': (),
+    },
+    'packets_sent': {
+        'data': ('Packets_Sent',), 'voice': (), 'speech': (),
+    },
+    'jitter': {
+        'data': ('Packet_Delay_Variation_Median', 'jitter_ms'), 'voice': (), 'speech': (),
+    },
+    # The network, host network and eMOCN scenario of the cell that served the start of each sample (the serving-cell
+    # Vendor Mapping), for the kind of serving site.
+    'serving_network': {
+        'data': ('Serving_Network',), 'voice': ('Serving_Network',), 'speech': ('Serving_Network',),
+    },
+    'serving_host': {
+        'data': ('Serving_Host_Network',), 'voice': ('Serving_Host_Network',), 'speech': ('Serving_Host_Network',),
+    },
+    'serving_scenario': {
+        'data': ('Serving_eMOCN_Scenario',), 'voice': ('Serving_eMOCN_Scenario',), 'speech': ('Serving_eMOCN_Scenario',),
     },
 }
 DIMENSION_ALIASES = {
@@ -328,9 +362,19 @@ def normalise_samples(frame: pd.DataFrame, kind: str, columns: dict[str, str]) -
     swapped = {value: swap_operator_vendor(value, groups) for value in pd.unique(result['operator_vendor'])}
     result['vendor_operator'] = result['operator_vendor'].map(swapped)
     for field in ('latitude', 'longitude', 'lte_rsrp', 'nr_rsrp', 'lte_sinr', 'nr_sinr', 'lte_bandwidth', 'nr_bandwidth',
-                  'lte_aggregated_bandwidth'):
+                  'lte_aggregated_bandwidth', 'mean_data_rate', 'rtt_median', 'packets_lost', 'packets_sent', 'jitter'):
         source = columns.get(field)
         result[field] = pd.to_numeric(frame[source], errors='coerce') if source in frame.columns else math.nan
+    for field in ('test_result', 'type_of_test', 'serving_network', 'serving_host', 'serving_scenario'):
+        source = columns.get(field)
+        values = frame[source] if source in frame.columns else pd.Series('', index=frame.index)
+        result[field] = values.fillna('').astype(str).str.strip()
+    # The kind of the site that served each sample: its network, "on" the host network when another one hosts it, NNS
+    # sites apart (as the Points Lost of Scoring).
+    owner, host = result['serving_network'], result['serving_host']
+    kinds = owner.where(~((host != '') & (host.str.casefold() != owner.str.casefold())), owner + ' on ' + host)
+    kinds = kinds.where(result['serving_scenario'].str.casefold() != 'nns', 'NNS · ' + kinds)
+    result['site_type'] = kinds.where(owner != '', '')
     # Cities, Towns or Roads and railways, from the most detailed environment level of each test.
     environments = pd.Series('', index=frame.index, dtype=object)
     for field in ('environment', 'environment_route'):
@@ -727,8 +771,8 @@ BANDWIDTH_CLASSES = (
 NARROW_BANDWIDTH_MHZ = 25.0
 # The share of tests with this total bandwidth or more is labelled under each ladder.
 WIDE_BANDWIDTH_MHZ = 100.0
-# The title the total bandwidth chart carries on the page and in the summaries, as in benchmark slides.
-BANDWIDTH_LADDER_TITLE = 'Total bandwidth: LTE and 5G together'
+# The title the total bandwidth chart carries on the page and in the summaries.
+BANDWIDTH_LADDER_TITLE = 'Bandwidth of each test: LTE + NR'
 BANDWIDTH_SCOPES = {'download': 'Download tests', 'all': 'All Data tests'}
 ALL_ENVIRONMENTS = 'All environments'
 
@@ -800,6 +844,162 @@ def bandwidth_ladders(samples: pd.DataFrame, columns: pd.Series, column_order: l
         'environments': rows, 'cells': cells, 'tests': int(len(samples)), 'unknown': int(totals.loc[environments.isin(rows)].isna().sum()),
         'without_environment': without_environment, 'highlights': highlights,
     }
+
+
+# A test failed when its result is not completed, and was slow at this speed (Mbit/s) or less.
+SLOW_DOWNLOAD_MBPS = 5.0
+# Per location: the places with the most download tests, each with enough tests in some group.
+MAX_STRIP_LOCATIONS = 25
+MIN_STRIP_TESTS = 15
+# The ladders per kind of serving site or RAN Vendor keep the combinations with enough tests of a known bandwidth.
+MIN_SPLIT_LADDER_TESTS = 20
+MAX_SPLIT_LADDER_COLUMNS = 12
+
+
+def failed_tests(samples: pd.DataFrame) -> pd.Series:
+    """Whether each CDR Data test failed (its result is known and not completed)."""
+    results = samples['test_result'].fillna('').astype(str) if 'test_result' in samples else pd.Series('', index=samples.index)
+    return (results != '') & ~results.str.casefold().str.contains('complet')
+
+
+def split_columns(samples: pd.DataFrame, columns: pd.Series, column_order: list[str], field: str) -> tuple[pd.Series, list[str]]:
+    """The groups of the ladders split by a field of the serving cell (the kind of site or the RAN Vendor): each group and
+    value with enough tests of a known bandwidth, the groups in their order and their values by tests."""
+    values = samples[field].fillna('').astype(str) if field in samples else pd.Series('', index=samples.index)
+    known = total_bandwidth(samples).notna() & (values != '') & ~values.str.casefold().isin({'unknown', 'n/a'})
+    combined = (columns.loc[samples.index].astype(str) + ' · ' + values).where(known, '')
+    counts = combined[combined != ''].value_counts()
+    kept = [name for name, count in counts.items() if count >= MIN_SPLIT_LADDER_TESTS]
+    position = {column: index for index, column in enumerate(column_order)}
+    order = sorted(kept, key=lambda name: (position.get(name.rsplit(' · ', 1)[0], 999), -int(counts[name]), name))
+    return combined, order[:MAX_SPLIT_LADDER_COLUMNS]
+
+
+def location_strips(tests: pd.DataFrame, columns: pd.Series, column_order: list[str]) -> dict[str, Any]:
+    """The download tests of every City (the most measured ones) per group: the share of tests under 25 MHz in total
+    (of those with a known bandwidth) and the share that failed or reached 5 Mbit/s or less."""
+    cities = tests['city'].fillna('').astype(str) if 'city' in tests else pd.Series('', index=tests.index)
+    if cities.eq('').all() or tests.empty:
+        return {'cities': [], 'rows': []}
+    totals = total_bandwidth(tests)
+    failed = failed_tests(tests)
+    rates = pd.to_numeric(tests['mean_data_rate'], errors='coerce') if 'mean_data_rate' in tests else pd.Series(math.nan, index=tests.index)
+    slow = failed | (rates <= SLOW_DOWNLOAD_MBPS)
+    judged = failed | rates.notna()
+    group_of = columns.loc[tests.index].astype(str)
+    frame = pd.DataFrame({'city': cities, 'group': group_of, 'narrow': (totals < NARROW_BANDWIDTH_MHZ).where(totals.notna()),
+                          'slow': slow.where(judged)})
+    frame = frame[frame['city'] != '']
+    order = frame['city'].value_counts()
+    leading = frame.groupby(['city', 'group']).size().groupby('city').max()
+    shown = [city for city in order.index if leading.get(city, 0) >= MIN_STRIP_TESTS][:MAX_STRIP_LOCATIONS]
+    rows = []
+    for column in column_order:
+        part = frame[(frame['group'] == column) & frame['city'].isin(shown)]
+        if part.empty:
+            continue
+        cells = {}
+        for city, group in part.groupby('city'):
+            narrow, slowed = group['narrow'].dropna(), group['slow'].dropna()
+            cells[city] = {'tests': int(len(group)),
+                           'narrow_share': round(float(narrow.mean()) * 100, 1) if len(narrow) else None,
+                           'slow_share': round(float(slowed.mean()) * 100, 1) if len(slowed) else None,
+                           'known': int(len(narrow)), 'judged': int(len(slowed))}
+        rows.append({'column': column, 'cells': cells})
+    return {'cities': shown, 'rows': rows, 'min_tests': MIN_STRIP_TESTS, 'slow_mbps': SLOW_DOWNLOAD_MBPS,
+            'narrow_below_mhz': NARROW_BANDWIDTH_MHZ}
+
+
+INTERACTIVITY_MEASURES = (
+    ('failed', 'Failed tests, %', False), ('rtt_median', 'Round trip, median (ms)', False),
+    ('rtt_p90', 'Round trip, slowest tenth P90 (ms)', False), ('loss_share', 'Tests with packet loss, %', False),
+    ('jitter', 'Jitter, median (ms)', False),
+)
+
+
+def interactivity_detail(samples: pd.DataFrame, columns: pd.Series, column_order: list[str]) -> dict[str, Any]:
+    """The gaming and video chat (interactivity) tests of each group in every environment and in all of them: their
+    failures, round trip (median and slowest tenth of the per-test medians), the share with packet loss and the median
+    jitter, each ranked among the groups of the environment (1 is the best: lowest)."""
+    kinds = samples['type_of_test'].fillna('').astype(str).str.casefold() if 'type_of_test' in samples else pd.Series('', index=samples.index)
+    tests = samples.loc[samples['kind'].eq('Data') & kinds.str.contains('interactiv')]
+    if tests.empty:
+        return {'measures': [], 'environments': [], 'cells': []}
+    named = tests['environment'].fillna('').astype(str)
+    known = sorted((value for value in pd.unique(named) if value), key=environment_order)
+    # Each environment, then every test (also those without an environment) unless a single environment holds them all.
+    scopes = [(environment, named == environment) for environment in known]
+    if len(known) != 1 or named.eq('').any():
+        scopes.append((ALL_ENVIRONMENTS, pd.Series(True, index=tests.index)))
+    rows = [environment for environment, _mask in scopes]
+    failed = failed_tests(tests)
+    cells = []
+    for environment, mask in scopes:
+        values: dict[str, dict[str, float | None]] = {}
+        for column in column_order:
+            part = tests.loc[(columns.loc[tests.index] == column) & mask]
+            if part.empty:
+                continue
+            passed = part.loc[~failed.loc[part.index]]
+            rtt = pd.to_numeric(passed['rtt_median'], errors='coerce').dropna()
+            lost = pd.to_numeric(passed['packets_lost'], errors='coerce')
+            jitter = pd.to_numeric(passed['jitter'], errors='coerce').dropna()
+            values[column] = {
+                'tests': int(len(part)),
+                'failed': round(float(failed.loc[part.index].mean()) * 100, 1),
+                'rtt_median': round(float(rtt.median()), 1) if len(rtt) else None,
+                'rtt_p90': round(float(rtt.quantile(.9)), 1) if len(rtt) else None,
+                'loss_share': round(float((lost.dropna() > 0).mean()) * 100, 1) if lost.notna().any() else None,
+                'jitter': round(float(jitter.median()), 1) if len(jitter) else None,
+            }
+        for key, _label, _higher in INTERACTIVITY_MEASURES:
+            known = {column: entry[key] for column, entry in values.items() if entry[key] is not None}
+            for column, value in known.items():
+                values[column][f'{key}_rank'] = 1 + sum(1 for other in known.values() if other < value - 1e-9)
+                values[column][f'{key}_of'] = len(known)
+        cells.extend({'column': column, 'environment': environment, **entry} for column, entry in values.items())
+    return {'measures': [{'key': key, 'label': label} for key, label, _higher in INTERACTIVITY_MEASURES],
+            'environments': rows, 'columns': [column for column in column_order if any(cell['column'] == column for cell in cells)],
+            'cells': cells}
+
+
+def nr_band_quality(samples: pd.DataFrame, columns: pd.Series, column_order: list[str]) -> list[dict[str, Any]]:
+    """The NR samples of each group per NR band (carrier): their share of the group, median RSRP and SINR and the
+    share in each RSRP and SINR class, so the carriers that reach a lower quality stand out."""
+    bands = samples['nr_band'].fillna('').astype(str) if 'nr_band' in samples else pd.Series('', index=samples.index)
+    measured = samples.loc[(bands != '') & (samples['nr_rsrp'].notna() | samples['nr_sinr'].notna())]
+    rows = []
+    for column in column_order:
+        group = measured.loc[columns.loc[measured.index] == column]
+        if group.empty:
+            continue
+        for band, part in group.groupby(bands.loc[group.index], sort=False):
+            rsrp, sinr = part['nr_rsrp'].dropna(), part['nr_sinr'].dropna()
+            rows.append({
+                'column': column, 'band': band, 'samples': int(len(part)), 'share': round(len(part) / len(group) * 100, 1),
+                'rsrp_median': _quantile(rsrp, .5), 'sinr_median': _quantile(sinr, .5),
+                'rsrp_classes': class_distribution(rsrp, RSRP_CLASSES), 'sinr_classes': class_distribution(sinr, SINR_CLASSES),
+            })
+    position = {column: index for index, column in enumerate(column_order)}
+    return sorted(rows, key=lambda row: (position.get(row['column'], 999), -row['samples']))
+
+
+# Bandwidth per band shows a bandwidth column only where it holds a real share of a band: a column with no samples, or
+# with under this share of the known samples of every band, is left out (its samples go to Other), unless it is the
+# only bandwidth of a band.
+LOW_BANDWIDTH_SHARE = 3.0
+
+
+def shown_bandwidths(bands: list[dict[str, Any]]) -> list[str]:
+    """The bandwidth columns of Bandwidth per band, narrowest first (see ``LOW_BANDWIDTH_SHARE``)."""
+    shown = set()
+    for row in bands:
+        counts = {width: count for width, count in (row.get('bandwidths') or {}).items() if count}
+        known = sum(counts.values())
+        for width, count in counts.items():
+            if len(counts) == 1 or count / known * 100 >= LOW_BANDWIDTH_SHARE:
+                shown.add(width)
+    return sorted(shown, key=float)
 
 
 def band_bandwidths(samples: pd.DataFrame) -> list[dict[str, Any]]:
@@ -1766,6 +1966,18 @@ def install_network_insights_routes(core: Any) -> None:
             return order
 
         group_order = ordered_by(groups)
+        # The groups of the views with the environments as rows (the total bandwidth, Latency & Interactivity): the
+        # grouping fields other than the environment.
+        column_groups = [field for field in groups if field != 'environment']
+        if column_groups:
+            # (The values before the Operator column became the group labels.)
+            column_parts = grouping_values[column_groups]
+            group_columns = column_parts[column_groups[0]].replace('', '(Empty)')
+            for field in column_groups[1:]:
+                group_columns = group_columns.str.cat(column_parts[field].replace('', '(Empty)'), sep=' · ')
+        else:
+            group_columns = pd.Series('All samples', index=filtered.index)
+        group_column_order = sorted(pd.unique(group_columns), key=ordered_by(column_groups))
 
         if 'operator' in groups:
             source_colours = operator_colours(original_operators, mapping_groups)
@@ -1863,15 +2075,7 @@ def install_network_insights_routes(core: Any) -> None:
             """Samples per band and bandwidth, and the total bandwidth (LTE + NR) of the CDR Data tests per group
             and environment, for the download tests and for every test."""
             # The environment makes the rows of the total bandwidth, so the columns are the other grouping fields.
-            column_groups = [field for field in groups if field != 'environment']
-            if column_groups:
-                parts = grouping_values[column_groups]
-                columns = parts[column_groups[0]].replace('', '(Empty)')
-                for field in column_groups[1:]:
-                    columns = columns.str.cat(parts[field].replace('', '(Empty)'), sep=' · ')
-            else:
-                columns = pd.Series('All samples', index=filtered.index)
-            column_order = sorted(pd.unique(columns), key=ordered_by(column_groups))
+            columns, column_order = group_columns, group_column_order
             band_order = {name: index for index, name in enumerate(BAND_CATALOGUE)}
             data = filtered['kind'].eq('Data')
             scopes = {}
@@ -1879,8 +2083,15 @@ def install_network_insights_routes(core: Any) -> None:
                 tests = filtered.loc[data & (filtered['download'].astype(bool) if scope == 'download' else True)]
                 bands = sorted(band_bandwidths(tests), key=lambda row: (group_order(row['operator']), row['technology'],
                                                                         band_order.get(row['band'], 999), row['band']))
+                split_ladders = {}
+                for name, field in (('site_type', 'site_type'), ('vendor', 'vendor')):
+                    split, order = split_columns(tests, columns, column_order, field)
+                    if order:
+                        split_ladders[name] = bandwidth_ladders(tests, split, order)
                 scopes[scope] = {'tests': int(len(tests)), 'bands': bands,
-                                 'ladders': bandwidth_ladders(tests, columns.loc[tests.index], column_order)}
+                                 'ladders': bandwidth_ladders(tests, columns.loc[tests.index], column_order),
+                                 'split_ladders': split_ladders,
+                                 'locations': location_strips(tests, columns, column_order)}
             return {
                 'classes': [{'label': label, 'lower': lower, 'upper': upper, 'colour': colour, 'width': width}
                             for label, lower, upper, colour, width in BANDWIDTH_CLASSES],
@@ -1914,6 +2125,9 @@ def install_network_insights_routes(core: Any) -> None:
                 'licensed': sorted(licensed_spectrum_summary(holdings), key=lambda row: operator_order_key(row['operator'], mapping_groups)),
                 'bandwidth': bandwidth_payload(),
             },
+            # Latency & Interactivity, and the NR quality of each carrier (RF Quality), per group.
+            'interactivity': interactivity_detail(filtered, group_columns, group_column_order),
+            'nr_bands': nr_band_quality(filtered, group_columns, group_column_order),
             'colours': colours,
             'warnings': warnings,
             'serving': serving_payload(serving_state, filtered, labels, colours, group_order, request.overshoot_km,

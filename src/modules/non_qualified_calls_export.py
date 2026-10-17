@@ -272,8 +272,8 @@ def report_panels(summary: dict[str, Any], breakdowns: list[dict[str, Any]], pro
                   options: dict[str, Any]) -> list[tuple[str, Any]]:
     """The Executive Summary, NQ rates, Root Cause Sources and Analysis, Lifecycle and Progress View drawn like the page, as panels."""
     from src.modules.non_qualified_calls_visuals import (
-        executive_summary_panels, lifecycle_panels, progress_title, progress_view_panels, rate_panels, rca_insight_panels,
-        root_cause_panels, table_panels,
+        SlideTitle, executive_summary_panels, lifecycle_panels, progress_title, progress_view_panels, rate_panels,
+        rca_insight_panels, root_cause_panels, table_panels,
     )
 
     label = GRANULARITY_LABELS.get(progress['granularity'], 'Week')
@@ -291,12 +291,55 @@ def report_panels(summary: dict[str, Any], breakdowns: list[dict[str, Any]], pro
                 for panel in (*root_cause_panels(shown), *root_cause_table_panels(shown))]
     sources = rca_insight_panels(options['rca_insights']) if options.get('rca_insights') else []
     rates = rate_panels(options['rates']) if options.get('rates') else []
+    # Failures by Type, Technology & Serving Cell, each table on its own panels with what it shows in the subtitle.
+    failures = []
+    for subtitle, columns, rows in failure_tables(options.get('failures') or {}):
+        pages = table_panels(subtitle, columns, rows)
+        failures.extend((SlideTitle(FAILURES_TITLE, '', subtitle + (f' · {number}/{len(pages)}' if len(pages) > 1 else '')), image)
+                        for number, (_title, image) in enumerate(pages, start=1))
     life = options.get('lifecycle')
     if life and not options.get('show_empty'):
         life = {**life, 'phases': [{**phase, 'empty': 0} for phase in life.get('phases') or []]}
     lifecycle = lifecycle_panels(life, options.get('sections')) if life else []
-    return [*executive_summary_panels(summary, breakdowns, options), *rates, *sources, *analysis, *lifecycle,
+    return [*executive_summary_panels(summary, breakdowns, options), *rates, *failures, *sources, *analysis, *lifecycle,
             *progress_view_panels(progress, options, label), *tables]
+
+
+FAILURES_TITLE = 'Failures by Type, Technology & Serving Cell'
+
+
+def failure_tables(failures: dict[str, Any]) -> list[tuple[str, list[str], list[list[str]]]]:
+    """Failures by Type, Technology & Serving Cell as on the page: the failure types of each service, the technology at
+    the failure against the classification and the Vendor and host network of each operator, and the sites with the
+    most Non-Qualified Calls."""
+    tables = []
+    for item in failures.get('types') or []:
+        tables.append((f"{item['label']} · Failure type", ['Operator', 'Environment', 'Calls', 'Non-Qualified', *item['results']],
+                       [[row['operator'], row['environment'], f"{row['calls']:,}", f"{row['nq']:,}",
+                         *[(f"{row['rates'][result]:.2f}% · {row['counts'][result]:,}" if row['rates'].get(result) is not None
+                            else f"{row['counts'][result]:,}") if row['counts'].get(result) else '—' for result in item['results']]]
+                        for row in item['rows']]))
+    for item in failures.get('technology') or []:
+        classes = item['classes'][:6]
+        rows = [[operator, name, *[f"{counts.get(label, 0):,}" if counts.get(label) else '—' for label in classes],
+                 f"{sum(counts.values()):,}"]
+                for operator in item['operators'] for name, counts in sorted(
+                    item['cells'].get(operator, {}).items(), key=lambda pair: -sum(pair[1].values()))]
+        if rows:
+            tables.append((f"{item['label']} · Technology and classification", ['Operator', 'Technology', *classes, 'Total'], rows))
+    for item in failures.get('serving') or []:
+        rows = [[operator['operator'], row['vendor'], row['host_network'], f"{row['calls']:,}", f"{row['calls_share']}%",
+                 f"{row['nq']:,}", f"{row['nq_share']}%", '—' if row['rate'] is None else f"{row['rate']:.2f}%"]
+                for operator in item['operators'] for row in operator['rows'][:8]]
+        if rows:
+            tables.append((f"{item['label']} · Serving Vendor and host network",
+                           ['Operator', 'Vendor', 'Host network', 'Calls', 'Share of calls', 'Non-Qualified', 'Share of NQ', 'NQ rate'], rows))
+    rows = [[item['operator'], row['site_id'], row['host_network'] or '—', row['vendor'] or '—', row['city'] or '—', f"{row['calls']:,}",
+             f"{row['nq']:,}", f"{row['rate']:.2f}%"] for item in failures.get('sites') or [] for row in item['rows'][:10]]
+    if rows:
+        tables.append(('Sites with the most Non-Qualified Calls',
+                       ['Operator', 'Site', 'Host network', 'Vendor', 'City or route', 'Calls', 'Non-Qualified', 'NQ rate'], rows))
+    return tables
 
 
 def node_table(stats: dict[str, Any]) -> tuple[list[str], list[list[str]]]:

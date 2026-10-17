@@ -16,6 +16,8 @@ import json
 import re
 from typing import Any
 
+from src.modules.scoring_themes import DEFAULT_THEME, normalize_theme
+
 REPORT_CONFIGURATIONS_STATE_KEY = 'scoring_report_configurations'
 REPORT_CONFIGURATIONS_FORMAT = 'drivetest-analyzer-scoring-report-configurations'
 REPORT_CONFIGURATIONS_VERSION = 1
@@ -31,16 +33,24 @@ DEFAULT_AREA_SUMMARY = {'enabled': True, 'time_split': 'Campaign', 'breakdown': 
 AREA_SUMMARY_TIME_SPLITS = ('All', 'Campaign', 'Daily', 'Weekly', 'Monthly', 'Quarterly', 'Yearly')
 MAX_SCENARIOS = 20
 MAX_SAVED_CONFIGURATIONS = 50
+# The slides of each scoring, in the groups (and order) of the results tabs.
 _OPTION_DEFAULTS = {
     'enabled': True,
     # 'all' shows only All Environments; 'split' adds a block per environment.
     'environments': 'all',
-    'charts': {'service': True, 'category': True, 'breakdown': True, 'location_cards': True, 'trend': True},
+    'summary': {'standings': True, 'position': True, 'levers': True, 'scope': True},
+    'charts': {'service': True, 'category': True, 'breakdown': True, 'trend': True},
     'tables': {'summary': True, 'breakdown': True, 'kpi_values': False, 'gap_values': False,
                'campaign_comparison': True},
+    'locations': {'cards': True, 'ranking': True, 'versus': True},
     # An empty operator list compares every operator with the reference.
-    'gap': {'operators': [], 'all_operators': True, 'individual': True, 'profile': True, 'points_loss_map': True},
+    'gap': {'operators': [], 'all_operators': True, 'individual': True, 'parts': True, 'profile': True},
+    'points': {'stake': True, 'kpis': True, 'map': True, 'vendors': True, 'site_types': True, 'sites': True, 'stretches': True},
 }
+# Options of configurations saved before that are now in another group: the location cards were Scoring Charts and the
+# Points Lost Map was GAP Analysis.
+_MOVED_OPTIONS = {('locations', 'cards'): ('charts', 'location_cards'), ('points', 'map'): ('gap', 'points_loss_map'),
+                  ('points', 'kpis'): ('gap', 'profile')}
 _DEFAULT_COMPARED_OPERATORS = re.compile(r'^(vf|vodafone|3|three|h3g)(?![a-z0-9])', re.IGNORECASE)
 
 
@@ -68,13 +78,17 @@ def _normalize_options(raw: Any) -> dict[str, Any]:
     options = copy.deepcopy(_OPTION_DEFAULTS)
     options['enabled'] = bool(raw.get('enabled', True))
     options['environments'] = 'split' if raw.get('environments') == 'split' else 'all'
-    for group in ('charts', 'tables', 'gap'):
+    for group in ('summary', 'charts', 'tables', 'locations', 'gap', 'points'):
         supplied = raw.get(group) if isinstance(raw.get(group), dict) else {}
         for key, default in _OPTION_DEFAULTS[group].items():
+            moved = _MOVED_OPTIONS.get((group, key))
+            earlier = raw.get(moved[0]) if moved and isinstance(raw.get(moved[0]), dict) else {}
             if key == 'operators':
                 options[group][key] = _strings(supplied.get(key))
             elif key in supplied:
                 options[group][key] = bool(supplied[key])
+            elif moved and moved[1] in earlier:
+                options[group][key] = bool(earlier[moved[1]])
             else:
                 options[group][key] = default
     return options
@@ -144,7 +158,8 @@ def normalize_report_configuration(raw: Any) -> dict[str, Any]:
     normalized = [normalize_scenario(item, index) for index, item in enumerate(scenarios)]
     if not any(any(options['enabled'] for options in scenario['scorings'].values()) for scenario in normalized):
         raise ValueError('Include the Best Network or the Most Reliable Network scoring in at least one scenario.')
-    configuration: dict[str, Any] = {'scenarios': normalized}
+    # The colour theme of the document (see scoring_themes); configurations saved before have NetCheck.
+    configuration: dict[str, Any] = {'scenarios': normalized, 'theme': normalize_theme(raw.get('theme'))}
     # The saved configuration (or Default) it was chosen from, shown again in the editor's selector.
     name = str(raw.get('name') or '').strip()[:80]
     if name:
@@ -155,9 +170,10 @@ def normalize_report_configuration(raw: Any) -> dict[str, Any]:
 def default_report_configuration(*, context_filters: dict[str, Any] | None = None,
                                  aggregation_levels: list[str] | None = None, main_cities: bool = False,
                                  operators: list[str] | None = None) -> dict[str, Any]:
-    """One scenario with the calculation's filters and aggregation and the default content."""
+    """One scenario with the calculation's filters and aggregation and the default content, in the default theme."""
     return {'scenarios': [default_scenario(context_filters=context_filters, aggregation_levels=aggregation_levels,
-                                           main_cities=main_cities, operators=operators)]}
+                                           main_cities=main_cities, operators=operators)],
+            'theme': DEFAULT_THEME}
 
 
 def _empty_state() -> dict[str, Any]:

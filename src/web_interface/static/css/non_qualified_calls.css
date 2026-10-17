@@ -1233,3 +1233,20 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
   .nq-panel-count { padding: .22rem .6rem; font-size: .72rem; }
   .nq-panel-count strong { font-size: .92rem; }
 }
+/* Failures by Type, Technology & Serving Cell. */
+.nq-failures { display: grid; gap: 1.1rem; }
+.nq-failure-section { display: grid; gap: .45rem; }
+.nq-failure-title { margin: .2rem 0 0; color: var(--nq-dark); font-size: .98rem; font-weight: 850; }
+.nq-failure-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 30rem), 1fr)); gap: .9rem; }
+.nq-failure-card { display: grid; gap: .35rem; min-width: 0; }
+.nq-failure-operator { font-size: .95rem; }
+.nq-failure-wrap { overflow-x: auto; }
+.nq-failure-table { width: 100%; min-width: 0; border-collapse: separate; border-spacing: 0; font-size: .78rem; }
+.nq-failure-table th { padding: .4rem .5rem; background: var(--nq-soft); color: var(--nq-dark); font-weight: 800; text-align: right; white-space: nowrap; }
+.nq-failure-table th:first-child, .nq-failure-table td.nq-failure-name { text-align: left; }
+.nq-failure-table td { padding: .32rem .5rem; border-bottom: 1px solid rgba(0,0,0,.06); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.nq-failure-table td.nq-failure-name { font-weight: 750; }
+.nq-failure-table td.nq-failure-total { font-weight: 850; }
+.nq-failure-table td.nq-failure-above { color: #c62835; font-weight: 850; }
+.nq-failure-drill { padding: 0; border: 0; background: none; color: inherit; font: inherit; font-weight: 750; cursor: pointer; }
+.nq-failure-drill:hover, .nq-failure-drill.is-active { text-decoration: underline; }

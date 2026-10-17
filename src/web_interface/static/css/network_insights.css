@@ -387,6 +387,10 @@ body:has(dialog.ni-expand-dialog[open]){overflow:hidden}
 .network-insights .ni-heat small{margin-left:.25rem;color:#5a5a9e;font-weight:700}
 .network-insights .ni-heat-empty{color:#a0a4c8}
 .network-insights .ni-table th.ni-group-head{text-align:center;background:#dfe2fd}
+/* NR sites by duplex mode: the logical and the physical site columns split like the site density networks. */
+.network-insights .ni-table th.ni-group-head{box-shadow:inset 0 -4px 0 var(--ni-color)}
+.network-insights .ni-table th.ni-group-head.is-physical{box-shadow:inset 0 -4px 0 #dc2626}
+.network-insights .ni-table :is(th,td).ni-group-start{border-left:2px solid #c7cbf7}
 .network-insights .ni-table tr.ni-total-row td{font-weight:800;background:#f3f4ff}
 .network-insights .ni-bandwidth-toolbar{margin-top:1.4rem}
 .ni-ladder-host{display:grid;gap:.5rem}
@@ -419,3 +423,12 @@ body:has(dialog.ni-expand-dialog[open]){overflow:hidden}
 .ni-scope-row .ni-scope-pills{margin-left:0}
 .ni-ladder-title .ni-scope-pills{vertical-align:.25em}
 .ni-expand-header .ni-scope-pills{margin-left:.6rem}
+/* Download tests by location: the cells shaded by their share; hatched with few tests. */
+.ni-strips{display:grid;gap:1rem}
+.network-insights .ni-strip-title{margin:.2rem 0 .45rem;color:#2e2a6b;font-size:.92rem;font-weight:800}
+.network-insights .ni-strip-table td.ni-strip-cell{background:rgba(var(--ni-strip),calc(var(--ni-strip-share,0) * .75 + .04));font-weight:700}
+.network-insights .ni-strip-table td.ni-strip-cell.is-few{background-image:repeating-linear-gradient(135deg,rgba(255,255,255,.7) 0 3px,transparent 3px 7px);color:#6b6f8a;font-weight:500}
+.network-insights .ni-strip-table th{font-size:.74rem}
+/* Latency & Interactivity: a table per environment. */
+.ni-interactivity-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,34rem),1fr));gap:1rem}
+.network-insights .ni-ladder-toolbar{margin-top:1rem}

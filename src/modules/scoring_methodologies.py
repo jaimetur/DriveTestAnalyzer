@@ -15,7 +15,7 @@ from src.modules.column_names import campaign_sort_key
 
 BY_CAMPAIGN = 'by-campaign'
 BY_CAMPAIGN_NAME = 'By campaign'
-_RESULT_LISTS = ('scoring', 'global_kpis', 'totals', 'charts', 'gap', 'gap_totals')
+_RESULT_LISTS = ('scoring', 'global_kpis', 'totals', 'charts', 'gap', 'gap_totals', 'test_counts')
 
 
 def _quarter(value: object) -> tuple[int, int] | None:
@@ -134,15 +134,15 @@ def _merge_points_loss(documents: list[Any]) -> Any:
     merged = copy.deepcopy(documents[0])
     for document in documents[1:]:
         for key, value in document.items():
-            if key == 'shares':
-                merged.setdefault('shares', []).extend(value or [])
+            if key in ('shares', 'serving_tests'):
+                merged.setdefault(key, []).extend(value or [])
             elif isinstance(value, dict) and isinstance(merged.get(key), dict):
                 for field, entries in value.items():
                     if isinstance(entries, dict) and isinstance(merged[key].get(field), dict):
                         merged[key][field] = {**entries, **merged[key][field]}
                     else:
                         merged[key].setdefault(field, entries)
-            elif isinstance(value, list) and isinstance(merged.get(key), list) and key != 'shares':
+            elif isinstance(value, list) and isinstance(merged.get(key), list) and key not in ('shares', 'serving_tests'):
                 merged[key] = [*merged[key], *(item for item in value if item not in merged[key])]
             else:
                 merged.setdefault(key, value)
@@ -198,6 +198,11 @@ def merge_results(parts: list[tuple[dict[str, Any], dict[str, Any]]]) -> dict[st
     from src.modules.scoring import environment_scaling
     merged['environment_scaling'] = environment_scaling(merged['totals'])
     merged['points_loss'] = _merge_points_loss([result.get('points_loss') for _group, result in parts])
+    windows = [result['test_window'] for _group, result in parts if isinstance(result.get('test_window'), dict)]
+    if windows:
+        merged['test_window'] = {'first': min(window['first'] for window in windows),
+                                 'last': max(window['last'] for window in windows),
+                                 'days': sum(int(window.get('days') or 0) for window in windows)}
     if any('area_summary' in result for _group, result in parts):
         for group, result in parts:
             for item in (result.get('area_summary') or {}).get('passes', []):

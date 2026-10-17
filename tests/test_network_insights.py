@@ -172,6 +172,81 @@ def test_environments_bandwidth_classes_and_band_bandwidths() -> None:
     assert bands[('Vodafone UK', 'n1')]['unknown'] == 1
 
 
+def test_bandwidth_per_band_leaves_out_low_bandwidth_columns() -> None:
+    """A bandwidth under 3% of the known samples of every band is left out, unless it is the only one of a band."""
+    bands = [
+        {'bandwidths': {'5': 2, '10': 225}},          # 5 MHz under 1%: left out
+        {'bandwidths': {'5.7': 1, '20': 44}},         # 5.7 MHz about 2%: left out
+        {'bandwidths': {'15': 3}},                    # the only bandwidth of its band: shown
+        {'bandwidths': {'100': 96, '90': 4, '40': 0}},  # 4% is a real share; no samples is no column
+    ]
+    assert ni.shown_bandwidths(bands) == ['10', '15', '20', '90', '100']
+
+
+def test_interactivity_ranks_the_groups_of_each_environment() -> None:
+    samples = pd.DataFrame({
+        'kind': ['Data'] * 6,
+        'type_of_test': ['Interactivity'] * 5 + ['FDTT'],
+        'environment': ['Cities'] * 6,
+        'test_result': ['Completed', 'Completed', 'Failed', 'Completed', 'Completed', 'Completed'],
+        'rtt_median': [20.0, 30.0, None, 50.0, 70.0, 5.0],
+        'packets_lost': [0, 2, None, 0, 0, 0],
+        'jitter': [2.0, 4.0, None, 6.0, 8.0, 1.0],
+    })
+    columns = pd.Series(['EE', 'EE', 'EE', 'VF', 'VF', 'EE'], index=samples.index)
+    detail = ni.interactivity_detail(samples, columns, ['EE', 'VF'])
+    cells = {cell['column']: cell for cell in detail['cells'] if cell['environment'] == 'Cities'}
+    # Only the interactivity tests count; a failed test has no round trip.
+    assert cells['EE']['tests'] == 3 and cells['EE']['failed'] == pytest.approx(33.3)
+    assert cells['EE']['rtt_median'] == 25.0 and cells['VF']['rtt_median'] == 60.0
+    assert cells['EE']['loss_share'] == 50.0 and cells['VF']['loss_share'] == 0.0
+    # 1 is the best (the lowest) of the environment.
+    assert (cells['EE']['rtt_median_rank'], cells['VF']['rtt_median_rank'], cells['VF']['rtt_median_of']) == (1, 2, 2)
+    assert cells['VF']['loss_share_rank'] == 1 and cells['VF']['failed_rank'] == 1
+    # A single environment holds every test, so it needs no row of all of them.
+    assert detail['environments'] == ['Cities']
+    # Tests without an environment count only in the row of all of them, after each environment.
+    samples.loc[[0, 3], 'environment'] = ''
+    detail = ni.interactivity_detail(samples, columns, ['EE', 'VF'])
+    assert detail['environments'] == ['Cities', ni.ALL_ENVIRONMENTS]
+    every = {cell['column']: cell for cell in detail['cells'] if cell['environment'] == ni.ALL_ENVIRONMENTS}
+    assert every['EE']['tests'] == 3 and every['VF']['tests'] == 2
+    assert {cell['column']: cell['tests'] for cell in detail['cells'] if cell['environment'] == 'Cities'} == {'EE': 2, 'VF': 1}
+
+
+def test_download_tests_by_location_and_ladders_per_serving_site() -> None:
+    count = 40
+    tests = pd.DataFrame({
+        'city': ['Leeds'] * count + ['York'] * 4,
+        'nr_bandwidth': [20.0] * 10 + [100.0] * (count - 10) + [100.0] * 4,
+        'test_result': ['Failed'] * 4 + ['Completed'] * (count - 4) + ['Completed'] * 4,
+        'mean_data_rate': [None] * 4 + [3.0] * 4 + [80.0] * (count - 8) + [80.0] * 4,
+        'site_type': ['Vodafone'] * 25 + ['Vodafone on Telefonica'] * 15 + ['Vodafone'] * 4,
+    })
+    columns = pd.Series(['VF'] * len(tests), index=tests.index)
+    strips = ni.location_strips(tests, columns, ['VF'])
+    # York has too few tests to be listed.
+    assert strips['cities'] == ['Leeds']
+    leeds = strips['rows'][0]['cells']['Leeds']
+    assert (leeds['narrow_share'], leeds['slow_share']) == (25.0, 20.0)
+    split, order = ni.split_columns(tests, columns, ['VF'], 'site_type')
+    # Only the combinations with enough tests of a known bandwidth get a ladder.
+    assert order == ['VF · Vodafone']
+    assert split.iloc[0] == 'VF · Vodafone' and split.iloc[30] == 'VF · Vodafone on Telefonica'
+
+
+def test_nr_quality_per_carrier_shares_the_samples_of_each_group() -> None:
+    samples = pd.DataFrame({
+        'nr_band': ['n78', 'n78', 'n78', 'n28', ''],
+        'nr_rsrp': [-85.0, -95.0, -105.0, -115.0, -80.0],
+        'nr_sinr': [15.0, 10.0, 5.0, -2.0, 20.0],
+    })
+    columns = pd.Series(['EE'] * 5, index=samples.index)
+    rows = ni.nr_band_quality(samples, columns, ['EE'])
+    assert [(row['band'], row['samples'], row['share']) for row in rows] == [('n78', 3, 75.0), ('n28', 1, 25.0)]
+    assert rows[0]['rsrp_median'] == -95.0 and rows[1]['sinr_median'] == -2.0
+
+
 def test_grid_cells_rank_weak_areas_and_build_map_payload() -> None:
     samples = pd.DataFrame({
         'latitude': [51.5] * 4 + [51.6] * 4,

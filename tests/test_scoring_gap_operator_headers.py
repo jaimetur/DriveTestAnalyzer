@@ -21,6 +21,7 @@ def test_gap_operator_headers_use_mapping_fill_in_combined_and_individual_slides
                 for label, color in MAPPED_OPERATOR_COLORS.items():
                     short_label = {'Three UK': '3', 'O2 UK': 'O2', 'Vodafone UK': 'VF'}.get(label, label)
                     if cell.text in {f'{label} − EE', f'{short_label} − EE'}:
+                        # The operator is on a strip in its mapping colour (NetCheck, the default theme).
                         assert str(cell.fill.fore_color.rgb) == color.lstrip('#').upper()
                         mapped_count += 1
     assert mapped_count >= 3

@@ -1214,3 +1214,71 @@ def test_page_polls_are_not_activity():
     assert not core.is_interactive_request('POST', '/api/non-qualified-calls/calls', 'application/json', background_refresh=True)
     assert not core.is_interactive_request('POST', '/api/scoring/saved-filters/match', 'application/json')
 
+
+
+def serving_voice_rows() -> pd.DataFrame:
+    """The voice calls with the cell that served them (Vendor Mapping) and where they ran."""
+    rows = pd.concat([voice_rows()] * 2, ignore_index=True)
+    rows['Session_ID_A'] = range(2001, 2001 + len(rows))
+    rows['Vendor'] = ['Ericsson', 'Ericsson', 'Nokia'] * 2
+    rows['Serving_Host_Network'] = ['EE', 'EE', 'Telefonica'] * 2
+    rows['Serving_Site_ID'] = ['S1', 'S1', 'S9'] * 2
+    rows['G_Level_2'] = ['City', 'City', 'Connecting Roads'] * 2
+    return rows
+
+
+def test_failures_by_type_technology_and_serving_cell(client, tmp_path, monkeypatch):
+    from pptx import Presentation
+
+    enable_module()
+    add_cdr(tmp_path, 'NetCheck_UK_CDR_Voice_2026_Q1.xlsx', 'voice', serving_voice_rows())
+    login(client)
+    index_cdrs()
+    monkeypatch.setattr(nq, 'MIN_SITE_CALLS', 2)
+    failures = client.post('/api/non-qualified-calls/failures', json={'filters': {}}).json()
+    # Each result of the Non-Qualified Calls is a share of every call of its operator and environment.
+    voice = next(item for item in failures['types'] if item['service'] == 'voice')
+    ee = next(row for row in voice['rows'] if row['operator'] == 'EE')
+    assert (ee['environment'], ee['calls'], ee['nq'], ee['rates']) == ('City', 4, 2, {'Failed': 50.0})
+    # The technology at the failure against the NetCheck classification.
+    technology = next(item for item in failures['technology'] if item['service'] == 'voice')
+    assert sum(sum(counts.values()) for counts in technology['cells']['EE'].values()) == 2
+    assert 'RF Problems' in technology['classes']
+    # The calls and NQ rate of each Vendor and host network of the serving cell, and the sites.
+    serving = next(item for item in failures['serving'] if item['service'] == 'voice')
+    row = next(operator for operator in serving['operators'] if operator['operator'] == 'EE')['rows'][0]
+    assert (row['vendor'], row['host_network'], row['calls'], row['nq'], row['rate']) == ('Ericsson', 'EE', 4, 2, 50.0)
+    sites = next(item for item in failures['sites'] if item['operator'] == 'EE')['rows']
+    assert [(site['site_id'], site['calls'], site['nq'], site['city']) for site in sites] == [('S1', 4, 2, 'Leeds')]
+    # Only the CDRs, Service, Campaign, Operator and NR Mode filters change the calls the shares divide by.
+    filtered = client.post('/api/non-qualified-calls/failures', json={'filters': {'result': ['Failed']}}).json()
+    voice = next(item for item in filtered['types'] if item['service'] == 'voice')
+    assert next(row for row in voice['rows'] if row['operator'] == 'EE')['calls'] == 4
+    deck = client.post('/api/non-qualified-calls/export/powerpoint', json={'filters': {}})
+    titles = [slide.shapes.title.text_frame.text for slide in Presentation(io.BytesIO(deck.content)).slides
+              if slide.shapes.title is not None]
+    assert any(title.startswith('Failures by Type, Technology & Serving Cell') for title in titles)
+
+
+def test_workspaces_indexed_before_get_the_serving_cell_columns(client, tmp_path):
+    enable_module()
+    add_cdr(tmp_path, 'NetCheck_UK_CDR_Voice_2026_Q1.xlsx', 'voice', serving_voice_rows())
+    login(client)
+    index_cdrs()
+    repository = core.repository
+    # A workspace of the previous version: no serving-cell columns in the population of the calls, which were indexed
+    # by the previous index version.
+    with repository.connection() as connection:
+        for column in nq.POPULATION_FIELDS:
+            connection.execute(f'ALTER TABLE {nq.NQ_CALL_POPULATION_TABLE} DROP COLUMN {column}')
+        connection.execute(f"UPDATE {nq.NQ_CALL_SOURCES_TABLE} SET revision = replace(revision, '|v{nq.INDEX_VERSION}|', '|v4|')")
+    repository.set_workspace_state(nq.SCHEMA_STATE_KEY, '2026-10-16.1')
+    nq.ensure_nq_tables(repository)
+    with repository.connection() as connection:
+        columns = {row[1] for row in connection.execute(f'PRAGMA table_info({nq.NQ_CALL_POPULATION_TABLE})')}
+    assert set(nq.POPULATION_FIELDS) <= columns
+    assert repository.get_workspace_state(nq.SCHEMA_STATE_KEY) == nq.SCHEMA_VERSION
+    # The calls are indexed again, so their serving cells are known.
+    index_cdrs()
+    failures = client.post('/api/non-qualified-calls/failures', json={'filters': {}}).json()
+    assert any(item['service'] == 'voice' for item in failures['serving'])

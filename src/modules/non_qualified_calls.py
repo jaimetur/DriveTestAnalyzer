@@ -96,7 +96,7 @@ SERVICES = ('voice', 'speech', 'data')
 SERVICE_LABELS = {'voice': 'Voice', 'speech': 'Speech', 'data': 'Data'}
 QUALIFIED_RESULT = 'completed'
 # Bump when the indexed fields or the call key change so every CDR is indexed again.
-INDEX_VERSION = 4
+INDEX_VERSION = 5
 # The call key of version 3: the JOIN_ID first, and Speech calls (not samples).
 KEY_SCHEME = '3'
 KEY_SCHEME_STATE_KEY = 'nq_calls_key_scheme'
@@ -204,7 +204,7 @@ ANALYSIS_CENTER_V22_STATE_KEY = 'nq_analysis_center_v22'
 V22_FORMER_LABELS = (('implementation_proposal', 'Implementation Proposal'),)
 # Set once the tables and columns of this version exist, so the requests check the schema without writing.
 SCHEMA_STATE_KEY = 'nq_calls_schema'
-SCHEMA_VERSION = '2026-10-16.1'
+SCHEMA_VERSION = '2026-10-16.2'
 # Indexed call fields that the suggestion rule can read, with their labels.
 RULE_FIELDS = {
     'failure_classification': 'Failure Classification', 'failure_category': 'Failure Category',
@@ -242,11 +242,17 @@ FIELD_SOURCES: dict[str, tuple[str, ...]] = {
     'failure_category': ('Failure_Category',),
     'failure_subcategory': ('Failure_Subcategory',),
     'failure_comment': ('Failure_Comment',),
+    # The cell that served the call (the serving-cell Vendor Mapping) and where it ran (City or Connecting Roads).
+    'host_network': ('Serving_Host_Network',),
+    'site_id': ('Serving_Site_ID',),
+    'environment': ('G_Level_2',),
     'latitude': ('Call_Start_Latitude_A', 'Test_Start_Latitude', 'Playing_Latitude', 'Recording_Latitude'),
     'longitude': ('Call_Start_Longitude_A', 'Test_Start_Longitude', 'Playing_Longitude', 'Recording_Longitude'),
     'cell_id': ('Cell_ID_A', 'Cell_ID', 'Cell_IDs_A', 'LAC_CID_xARFCN_A', 'LAC_CID_xARFCN'),
 }
 CALL_FIELDS = tuple(FIELD_SOURCES)
+# The fields of every call (qualified or not) kept for the rates per Vendor, host network, site and environment.
+POPULATION_FIELDS = ('vendor', 'host_network', 'site_id', 'environment', 'session_type', 'city')
 # The values a catalog field can read from the call: the indexed fields and the last cell of the Cell ID chain.
 CATALOG_CALL_FIELDS = (*CALL_FIELDS, 'last_cell_id')
 
@@ -359,6 +365,7 @@ CREATE TABLE IF NOT EXISTS {NQ_CALL_POPULATION_TABLE} (
     nr_mode TEXT NOT NULL DEFAULT '',
     is_nq INTEGER NOT NULL DEFAULT 0,
     is_latest INTEGER NOT NULL DEFAULT 0,
+    {', '.join(f"{field} TEXT NOT NULL DEFAULT ''" for field in POPULATION_FIELDS)},
     PRIMARY KEY (dataset_id, call_key)
 );
 CREATE INDEX IF NOT EXISTS idx_{NQ_CALL_POPULATION_TABLE}_key ON {NQ_CALL_POPULATION_TABLE}(call_key);
@@ -590,6 +597,11 @@ def ensure_nq_tables(task_repository: Any) -> None:
         catalog_columns = _columns_of(connection, NQ_ROOT_CATALOG_TABLE)
         if catalog_columns and 'category' not in catalog_columns:
             connection.execute(f"ALTER TABLE {NQ_ROOT_CATALOG_TABLE} ADD COLUMN category TEXT NOT NULL DEFAULT ''")
+        # The serving cell, environment, session and City of every call (indexed again with INDEX_VERSION).
+        population = _columns_of(connection, NQ_CALL_POPULATION_TABLE)
+        for column in POPULATION_FIELDS:
+            if population and column not in population:
+                connection.execute(f"ALTER TABLE {NQ_CALL_POPULATION_TABLE} ADD COLUMN {column} TEXT NOT NULL DEFAULT ''")
         sources = _columns_of(connection, NQ_CALL_SOURCES_TABLE)
         for column, definition in (('stage_rank', 'INTEGER NOT NULL DEFAULT 1'), ('data_date', "TEXT NOT NULL DEFAULT ''"),
                                    ('population_count', 'INTEGER NOT NULL DEFAULT 0'),
@@ -1584,7 +1596,7 @@ def _dataset_calls(connection: Any, dataset: Any, cdr_columns: tuple[str, ...] =
     # Every call of the CDR, with whether it is Non-Qualified: the population of the NQ rates.
     key_selected = list(dict.fromkeys(column for column in (
         result_column, join_column, identifier_column, subscriber_column,
-        *(column for field in _KEY_FIELDS for column in resolved[field])) if column))
+        *(column for field in (*_KEY_FIELDS, *POPULATION_FIELDS) for column in resolved[field])) if column))
     key_aliases = {column: f'c{index}' for index, column in enumerate(key_selected)}
     population: dict[str, list[Any]] = {}
     data_date = ''
@@ -1595,12 +1607,13 @@ def _dataset_calls(connection: Any, dataset: Any, cdr_columns: tuple[str, ...] =
         if not result:
             continue
         values = {field: next((text for column in resolved[field] if (text := _text(row[key_aliases[column]]))), '')
-                  for field in _KEY_FIELDS}
+                  for field in (*_KEY_FIELDS, *POPULATION_FIELDS)}
         key, _join_id = identity(row, key_aliases, values)
         is_nq = int(result != QUALIFIED_RESULT)
         entry = population.get(key)
         if entry is None:
-            population[key] = [dataset_id, key, service, values['campaign'], values['operator'], nr_mode, is_nq]
+            population[key] = [dataset_id, key, service, values['campaign'], values['operator'], nr_mode, is_nq,
+                               *(values[field] for field in POPULATION_FIELDS)]
         elif is_nq:
             entry[6] = 1
         moment = _time_text(values['start_time'])
@@ -1805,7 +1818,8 @@ def sync_nq_calls(task_repository: Any, *, force: bool = False) -> dict[str, Any
                                            content['calls'])
                     connection.executemany(
                         f'INSERT OR REPLACE INTO {NQ_CALL_POPULATION_TABLE} '
-                        '(dataset_id, call_key, service, campaign, operator, nr_mode, is_nq) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                        f"(dataset_id, call_key, service, campaign, operator, nr_mode, is_nq, {', '.join(POPULATION_FIELDS)}) "
+                        f"VALUES ({', '.join('?' for _ in range(7 + len(POPULATION_FIELDS)))})",
                         content['population'])
                     stage = dataset_cdr_stage(row['dataset_kind'], row['cdr_stage'] if 'cdr_stage' in row.keys() else None,
                                               row['file_name'])
@@ -4299,6 +4313,179 @@ def nq_rates(task_repository: Any, filters: dict[str, Any]) -> dict[str, Any]:
     if len([service for service in ordered if service != 'all']) < 2:
         ordered = [service for service in ordered if service != 'all']
     return {'matrices': [matrix(service) for service in ordered], 'filters': list(RATE_FILTERS)}
+
+
+# The sites of each operator with the most Non-Qualified Calls, and the fewest calls a site needs to be listed.
+MAX_FAILURE_SITES = 25
+MIN_SITE_CALLS = 5
+NOT_REPORTED = 'Not reported'
+
+
+def _population_counts(task_repository: Any, filters: dict[str, Any], fields: tuple[str, ...]) -> list[dict[str, Any]]:
+    """Calls and Non-Qualified Calls of the latest version of every call per Service, Campaign, Operator, NR Mode and
+    ``fields`` (of POPULATION_FIELDS). As the NQ rates, only the CDRs, Service, Campaign, Operator and NR Mode filters
+    apply; Operators show their Operator Map label and Vendors their Vendor Map label."""
+    scope = _scope(filters)
+    services = _strings(filters.get('service'))
+    campaigns = set(_strings(filters.get('campaign')))
+    nr_modes = {'' if value in {UNASSIGNED, 'Unknown'} else value for value in _strings(filters.get('nr_mode'))}
+    mapper = ValueMapper.from_repository(task_repository)
+    operators = {str(mapper.map(field_kind('operator'), value)) for value in _strings(filters.get('operator'))}
+    columns = ['service', 'campaign', 'operator', 'nr_mode', *fields]
+    where, params = [], []
+    if services:
+        where.append(f"p.service IN ({', '.join('?' for _ in services)})")
+        params.extend(services)
+    if scope:
+        where.append(f"p.dataset_id IN ({', '.join('?' for _ in scope)})")
+        params.extend(scope)
+        source = f"""
+            SELECT {', '.join(columns)}, COUNT(*) AS total, SUM(is_nq) AS nq FROM (
+                SELECT {', '.join(f'p.{column}' for column in columns)}, p.is_nq, ROW_NUMBER() OVER (
+                    PARTITION BY p.call_key ORDER BY s.combined_rank DESC, s.stage_rank DESC, s.data_date DESC,
+                                                     p.dataset_id DESC) AS rn
+                FROM {NQ_CALL_POPULATION_TABLE} p JOIN {NQ_CALL_SOURCES_TABLE} s ON s.dataset_id = p.dataset_id
+                WHERE {' AND '.join(where)}
+            ) WHERE rn = 1 GROUP BY {', '.join(columns)}"""
+    else:
+        where.append('p.is_latest = 1')
+        source = f"""
+            SELECT {', '.join(f'p.{column}' for column in columns)}, COUNT(*) AS total, SUM(p.is_nq) AS nq
+            FROM {NQ_CALL_POPULATION_TABLE} p WHERE {' AND '.join(where)} GROUP BY {', '.join(f'p.{column}' for column in columns)}"""
+    with task_repository.connection() as connection:
+        sources = tuple(tuple(row) for row in connection.execute(
+            f'SELECT dataset_id, revision, synced_at FROM {NQ_CALL_SOURCES_TABLE} ORDER BY dataset_id').fetchall())
+        key = (str(task_repository.db_path), sources, tuple(sorted(scope or ())), tuple(sorted(services)), fields)
+        with _rate_counts_guard:
+            rows = _rate_counts_cache.get(key)
+        if rows is None:
+            rows = [tuple(row) for row in connection.execute(source, params).fetchall()]
+            with _rate_counts_guard:
+                if len(_rate_counts_cache) >= RATE_COUNTS_CACHE_SIZE:
+                    _rate_counts_cache.pop(next(iter(_rate_counts_cache)))
+                _rate_counts_cache[key] = rows
+    counts = []
+    for row in rows:
+        entry = dict(zip([*columns, 'total', 'nq'], row))
+        entry['operator'] = str(mapper.map(field_kind('operator'), entry['operator'] or '') or '')
+        if campaigns and str(entry['campaign'] or '') not in campaigns:
+            continue
+        if operators and entry['operator'] not in operators:
+            continue
+        if nr_modes and str(entry['nr_mode'] or '') not in nr_modes:
+            continue
+        if 'vendor' in entry:
+            entry['vendor'] = str(mapper.map(field_kind('vendor'), entry['vendor'] or '') or '')
+        counts.append(entry)
+    return counts
+
+
+def failure_breakdowns(task_repository: Any, filters: dict[str, Any], username: str) -> dict[str, Any]:
+    """How and where the Non-Qualified Calls fail, per Service and Operator:
+
+    - ``types``: the result of the filtered calls (Failed, Dropped, Cutoff…) per environment, as a share of every call;
+    - ``technology``: the technology at the failure (else of the call) against the NetCheck failure classification;
+    - ``serving``: the calls and Non-Qualified Calls per Vendor and host network of the serving cell, with their shares;
+    - ``sites``: the serving sites with the most Non-Qualified Calls and their rate.
+    The shares and rates divide by every call of the CDRs, Service, Campaign, Operator and NR Mode filters.
+    """
+    rows, _context = _filtered_calls(task_repository, filters, username,
+                                     'service, operator, environment, result, technology, failure_technology, failure_classification')
+    mapping_settings = task_repository.chart_mapping_settings()
+
+    def operator_order(values: set[str]) -> list[str]:
+        return sorted(values, key=lambda value: dimension_order_key('operator', value, mapping_settings['operator_mapping_groups'],
+                                                                     mapping_settings['vendor_mapping_groups']))
+
+    colors = {operator: str(group.get('color') or '') for operator in {str(row['operator'] or '') for row in rows}
+              if (group := mapping_group(operator, mapping_settings['operator_mapping_groups']))}
+    population = _population_counts(task_repository, filters, ('environment',))
+    calls: dict[tuple[str, str, str], int] = {}
+    for entry in population:
+        key = (str(entry['service']), entry['operator'], str(entry['environment'] or ''))
+        calls[key] = calls.get(key, 0) + int(entry['total'] or 0)
+    types = []
+    for service in SERVICES:
+        members = [row for row in rows if row['service'] == service]
+        if not members:
+            continue
+        results = [name for name, _count in Counter(str(row['result'] or NOT_REPORTED) for row in members).most_common()]
+        grouped: dict[tuple[str, str], Counter] = {}
+        for row in members:
+            grouped.setdefault((str(row['operator'] or ''), str(row['environment'] or '')), Counter())[str(row['result'] or NOT_REPORTED)] += 1
+        table = []
+        for operator in operator_order({operator for operator, _environment in grouped}):
+            for environment in sorted({environment for name, environment in grouped if name == operator}):
+                counts = grouped[(operator, environment)]
+                total = calls.get((service, operator, environment), 0)
+                table.append({'operator': operator, 'environment': environment or NOT_REPORTED, 'calls': total,
+                              'nq': sum(counts.values()), 'counts': dict(counts),
+                              'rates': {name: round(count * 100 / total, 2) if total else None for name, count in counts.items()}})
+        types.append({'service': service, 'label': SERVICE_LABELS[service], 'results': results, 'rows': table})
+    technology = []
+    for service in SERVICES:
+        members = [row for row in rows if row['service'] == service]
+        if not members:
+            continue
+        cells: dict[str, dict[str, Counter]] = {}
+        for row in members:
+            name = str(row['failure_technology'] or row['technology'] or NOT_REPORTED)
+            cells.setdefault(str(row['operator'] or ''), {}).setdefault(name, Counter())[
+                str(row['failure_classification'] or NOT_CLASSIFIED)] += 1
+        technologies = [name for name, _count in Counter(
+            name for by_name in cells.values() for name, counts in by_name.items() for _ in range(sum(counts.values()))).most_common()]
+        classes = [name for name, _count in Counter(
+            name for by_name in cells.values() for counts in by_name.values() for name in counts.elements()).most_common()]
+        technology.append({'service': service, 'label': SERVICE_LABELS[service], 'operators': operator_order(set(cells)),
+                           'technologies': technologies, 'classes': classes,
+                           'cells': {operator: {name: dict(counts) for name, counts in by_name.items()}
+                                     for operator, by_name in cells.items()}})
+    serving_counts = _population_counts(task_repository, filters, ('vendor', 'host_network'))
+    serving = []
+    for service in SERVICES:
+        members = [entry for entry in serving_counts if entry['service'] == service]
+        if not members or all(not entry['vendor'] and not entry['host_network'] for entry in members):
+            continue
+        by_operator: dict[str, dict[tuple[str, str], list[int]]] = {}
+        for entry in members:
+            cell = by_operator.setdefault(entry['operator'], {}).setdefault(
+                (entry['vendor'] or NOT_REPORTED, entry['host_network'] or NOT_REPORTED), [0, 0])
+            cell[0] += int(entry['total'] or 0)
+            cell[1] += int(entry['nq'] or 0)
+        operators = []
+        for operator in operator_order(set(by_operator)):
+            cells = by_operator[operator]
+            total_calls, total_nq = sum(value[0] for value in cells.values()), sum(value[1] for value in cells.values())
+            operators.append({'operator': operator, 'calls': total_calls, 'nq': total_nq, 'rows': [
+                {'vendor': vendor, 'host_network': host, 'calls': value[0], 'nq': value[1],
+                 'rate': round(value[1] * 100 / value[0], 2) if value[0] else None,
+                 'calls_share': round(value[0] * 100 / total_calls, 1) if total_calls else None,
+                 'nq_share': round(value[1] * 100 / total_nq, 1) if total_nq else None}
+                for (vendor, host), value in sorted(cells.items(), key=lambda item: -item[1][1])]})
+        serving.append({'service': service, 'label': SERVICE_LABELS[service], 'operators': operators})
+    site_counts = _population_counts(task_repository, filters, ('host_network', 'site_id', 'vendor', 'city'))
+    sites_by_operator: dict[str, dict[tuple[str, str], dict[str, Any]]] = {}
+    for entry in site_counts:
+        if not entry['site_id']:
+            continue
+        site = sites_by_operator.setdefault(entry['operator'], {}).setdefault(
+            (entry['host_network'] or '', entry['site_id']), {'calls': 0, 'nq': 0, 'vendors': Counter(), 'cities': Counter()})
+        site['calls'] += int(entry['total'] or 0)
+        site['nq'] += int(entry['nq'] or 0)
+        site['vendors'][entry['vendor'] or ''] += int(entry['total'] or 0)
+        site['cities'][str(entry['city'] or '')] += int(entry['total'] or 0)
+    sites = []
+    for operator in operator_order(set(sites_by_operator)):
+        listed = [(key, value) for key, value in sites_by_operator[operator].items() if value['nq'] and value['calls'] >= MIN_SITE_CALLS]
+        listed.sort(key=lambda item: (-item[1]['nq'], -item[1]['nq'] / item[1]['calls']))
+        if listed:
+            sites.append({'operator': operator, 'rows': [
+                {'host_network': host, 'site_id': site, 'calls': value['calls'], 'nq': value['nq'],
+                 'rate': round(value['nq'] * 100 / value['calls'], 2),
+                 'vendor': value['vendors'].most_common(1)[0][0], 'city': value['cities'].most_common(1)[0][0]}
+                for (host, site), value in listed[:MAX_FAILURE_SITES]]})
+    return {'types': types, 'technology': technology, 'serving': serving, 'sites': sites, 'operator_colors': colors,
+            'min_site_calls': MIN_SITE_CALLS}
 
 
 def indexed_datasets(task_repository: Any) -> list[dict[str, Any]]:
@@ -6922,6 +7109,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
                    'root_causes': [root_cause_stats(repository, filters, username, include_suggestions, source)
                                    for source in ('netcheck', 'script', 'analysts')],
                    'rates': nq_rates(repository, filters),
+                   'failures': failure_breakdowns(repository, filters, username),
                    'lifecycle': lifecycle_stats(repository, filters, username),
                    'rca_insights': rca_insights(repository, filters, username),
                    'sections': list_sections(repository)}
@@ -7256,6 +7444,11 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         """Calls and Non-Qualified Calls of every campaign and operator."""
         repository = workspace_repository(user)
         return JSONResponse(nq_rates(repository, payload.filters))
+
+    @core.app.post('/api/non-qualified-calls/failures')
+    def nq_failures_route(payload: ExportPayload, user=Depends(core.current_user)) -> JSONResponse:
+        """How and where the filtered calls fail: result, technology, serving Vendor and host network, and sites."""
+        return JSONResponse(failure_breakdowns(workspace_repository(user), payload.filters, user.username))
 
     @core.app.put('/api/non-qualified-calls/filters')
     def nq_save_filters(payload: QueryPayload, user=Depends(core.current_user)) -> JSONResponse:

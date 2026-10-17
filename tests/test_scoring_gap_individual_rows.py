@@ -5,6 +5,8 @@ from pathlib import Path
 
 import pytest
 
+from src.modules.scoring_themes import THEMES
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SCORING_SCRIPT = PROJECT_ROOT / 'src/web_interface/static/js/scoring.js'
@@ -16,12 +18,24 @@ def _function_source(script: str, name: str) -> str:
     return script[start:end]
 
 
+# The colour theme the functions of the page read: NetCheck, whose colours stay as the views write them.
+THEME_PRELUDE = ('const activeTheme = ' + json.dumps({'id': 'netcheck', **THEMES['netcheck']}) + ';\n'
+                 'const scoringThemes = [activeTheme];\n'
+                 'const themedColor = (color) => color;\n'
+                 'const hexChannels = (color) => [1, 3, 5].map((index) => Number.parseInt(color.slice(index, index + 2), 16));\n'
+                 'const rgbaOf = (color, alpha) => `rgba(${hexChannels(color).join(",")},${alpha})`;\n'
+                 # The contexts the checks run the page code in get the theme too.
+                 '{ const vm = require("node:vm"); const createContext = vm.createContext;\n'
+                 '  const bindings = {activeTheme, scoringThemes, themedColor, hexChannels, rgbaOf};\n'
+                 '  vm.createContext = (context = {}, ...rest) => createContext(Object.assign(context, {...bindings, ...context}), ...rest); }\n')
+
+
 def _run_node_json(program: str, payload: dict) -> dict:
     node = shutil.which('node')
     if not node:
         pytest.skip('Node.js is required for scoring GAP view checks.')
     completed = subprocess.run(
-        [node, '-e', program], input=json.dumps(payload), capture_output=True, text=True, check=False,
+        [node, '-e', THEME_PRELUDE + program], input=json.dumps(payload), capture_output=True, text=True, check=False,
     )
     assert completed.returncode == 0, completed.stderr
     return json.loads(completed.stdout)
@@ -162,17 +176,16 @@ def test_gap_category_column_colors_alternate_by_consecutive_category_run():
     helper = _function_source(script, 'applyGapCategoryRunColors')
     program = r'''
 const cells = JSON.parse(require('node:fs').readFileSync(0, 'utf8')).runs.map(() => ({
-  style: {setProperty(name, value, priority) {this.color = value; this.priority = priority;}}
+  style: {setProperty(name, value) {this.name = name; this.color = value;}}
 }));
 ''' + helper + r'''
 applyGapCategoryRunColors({querySelectorAll: () => cells});
-process.stdout.write(JSON.stringify(cells.map(cell => [cell.style.color, cell.style.priority])));
+process.stdout.write(JSON.stringify(cells.map(cell => [cell.style.name, cell.style.color])));
 '''
     result = _run_node_json(program, {'runs': ['A', 'B', 'A', 'C']})
-    assert result == [
-        ['#edf3f8', 'important'], ['#e3ecf3', 'important'],
-        ['#edf3f8', 'important'], ['#e3ecf3', 'important'],
-    ]
+    # The runs alternate the two group shades of the theme (NetCheck here), given to the CSS of the theme.
+    group, alternate = THEMES['netcheck']['group'], THEMES['netcheck']['group_alt']
+    assert result == [['--run-color', group], ['--run-color', alternate], ['--run-color', group], ['--run-color', alternate]]
     for name in ('renderGapViews', 'renderGapSummaryViews', 'renderHierarchyGapViews'):
         assert 'applyGapCategoryRunColors(tbody);' in _function_source(script, name)
     for name in ('appendMatrixTable', 'appendHierarchyMatrixTable'):

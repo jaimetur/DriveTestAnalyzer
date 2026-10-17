@@ -15,7 +15,29 @@ from src.modules.scoring_exports import (
 )
 from src.modules.scoring_views import build_scoring_views
 from tests.scoring_fixtures import scoring_configuration
-from tests.test_scoring_exports import TEMPLATE, _result, _comparison_matrices, _nested_shapes
+from src.modules.scoring_pptx_scorecard import STYLES
+from tests.test_scoring_exports import (
+    SECTION_FILL, TEMPLATE, TOTAL_FILL, _comparison_matrices, _label_name, _nested_shapes, _result, _rgb, _section_rows,
+)
+
+HEADER_FILL = STYLES['netcheck']['header'].lstrip('#')
+
+
+def _header_rows(table):
+    """The header rows of a scorecard table: the KPI (or Category) cell spans them."""
+    rows = 1
+    while rows < len(table.rows) and table.cell(rows, 0).is_spanned:
+        rows += 1
+    return rows
+
+
+def _header_text(table, row, column):
+    """The text of a header cell, read from the cell its merge starts in."""
+    while column > 0 and table.cell(row, column)._tc.get('hMerge') == '1':
+        column -= 1
+    while row > 0 and table.cell(row, column)._tc.get('vMerge') == '1':
+        row -= 1
+    return table.cell(row, column).text
 
 
 def _job():
@@ -92,28 +114,22 @@ def test_ppt_table_modes_include_bold_category_totals_and_keep_identical_charts(
             if slide.shapes.title and slide.shapes.title.text.startswith('Scoring Tables')] == [
                 'Scoring Tables — Summary', 'Scoring Tables — Breakdown',
             ]
+    # The subtotals open the sections of the Breakdown: no row is added or lost.
     assert len(expanded.rows) == 32 + 7 + 2
     assert len(summary.rows) == 7 + 2
     for table in (summary, expanded):
-        assert str(table.cell(0, 0).fill.fore_color.rgb) == '455B65'
-        category_fill = 'E3E6E7' if table is summary else 'DCE5E9'
-        category_cells = [row.cells[0] for row in list(table.rows)[1:-1]
-                          if row.cells[0].text and row.cells[0].text != 'TOTAL']
-        assert category_cells
-        for cell in category_cells:
-            for paragraph in cell.text_frame.paragraphs:
-                assert paragraph.alignment == PP_ALIGN.LEFT
-                assert paragraph.runs
-                assert all(run.font.bold if run.font.bold is not None else paragraph.font.bold
-                           for run in paragraph.runs)
-        assert all(str(cell.fill.fore_color.rgb) == category_fill for cell in category_cells)
-        if table is expanded:
-            _assert_row_matches_category_fill(table, len(table.rows) - 1, category_fill)
-        else:
-            assert str(table.cell(len(table.rows) - 1, 0).fill.fore_color.rgb) == 'D8DFE4'
-    assert all(summary.cell(index, 4).text_frame.paragraphs[0].font.bold for index in range(1, 8))
-    assert all(summary.cell(index, 0).text.endswith(' total') for index in range(1, 8))
-    assert expanded.cell(len(expanded.rows) - 1, 5).text == summary.cell(len(summary.rows) - 1, 3).text
+        assert _rgb(table.cell(0, 0)) == HEADER_FILL
+        assert _rgb(table.cell(len(table.rows) - 1, 0)) == TOTAL_FILL
+        labels = [row.cells[0] for row in list(table.rows)[1:-1]]
+        assert all(cell.text_frame.paragraphs[0].alignment == PP_ALIGN.LEFT for cell in labels)
+    # The category totals of the Breakdown are bold and open their section.
+    sections = _section_rows(expanded)
+    assert len(sections) == 7
+    for row in sections:
+        assert all(_rgb(expanded.cell(row, column)) == SECTION_FILL for column in range(len(expanded.columns)))
+        assert all(cell.text_frame.paragraphs[0].runs[0].font.bold for cell in expanded.rows[row].cells if cell.text)
+    assert all(_label_name(summary.cell(index, 0).text).endswith(' total') for index in range(1, 8))
+    assert expanded.cell(len(expanded.rows) - 1, 1).text == summary.cell(len(summary.rows) - 1, 1).text
     summary_slide = presentations[0].slides[
         next(index for index, slide in enumerate(presentations[0].slides)
              if slide.shapes.title and slide.shapes.title.text.startswith('Scoring Tables'))
@@ -133,9 +149,10 @@ def test_ppt_table_modes_include_bold_category_totals_and_keep_identical_charts(
     all_gap_slides = [slide for slide in presentations[1].slides
                       if slide.shapes.title.text.split('\n')[0] == 'GAP Analysis — All vs EE']
     table = next(shape.table for shape in all_gap_slides[0].shapes if shape.has_table)
-    assert len(table.rows) == 1 + len(scoring_configuration()['metrics']) + 1
+    categories = {metric['category'] for metric in scoring_configuration()['metrics']}
+    assert len(table.rows) == 1 + len(scoring_configuration()['metrics']) + len(categories) + 1
     assert table.cell(len(table.rows) - 1, 0).text == 'Total KPI GAP'
-    gap_kpis = [table.cell(row, 1).text for row in range(1, len(table.rows) - 1)]
+    gap_kpis = [_label_name(table.cell(row, 0).text) for row in range(1, len(table.rows) - 1) if row not in _section_rows(table)]
     assert all(not kpi.casefold().endswith(' total') for kpi in gap_kpis)
     assert all(kpi.casefold() != 'average kpi gap' for kpi in gap_kpis)
 
@@ -157,14 +174,16 @@ def test_gap_placement_excludes_reference_and_preserves_score_and_gap_values(lay
     slide = next(slide for slide in presentation.slides if slide.shapes.title.text.split('\n')[0] == 'Scoring Tables — Breakdown')
     table = next(shape.table for shape in slide.shapes if shape.has_table)
     if layout == 'end':
-        headers = [cell.text for cell in table.rows[0].cells][5:]
+        headers = [cell.text for cell in table.rows[0].cells][1:]
         assert headers[:4] == ['EE', 'O2 UK', 'Three UK', 'Vodafone UK']
         assert len(headers) == 7
         assert all('GAP' in text and 'GAP EE' not in text for text in headers[4:])
     else:
-        headers = [cell.text for cell in table.rows[2].cells][5:]
+        # Next to each score its GAP: the row of kinds stays to tell them apart.
+        headers = [cell.text for cell in table.rows[2].cells][1:]
         assert headers == ['Score', 'Score', 'GAP', 'Score', 'GAP', 'Score', 'GAP']
-        values = [cell.text for cell in table.rows[3].cells][5:]
+        # The first row under the header opens the first category; its first KPI follows.
+        values = [cell.text for cell in table.rows[4].cells][1:]
         assert values[0] == '58.79'
         assert values[2] != '0.00'
     with pytest.raises(ValueError, match='GAP layout'):
@@ -186,16 +205,14 @@ def _gap_slide_contents(presentation):
 
 
 def _scoring_table_score_cells(table, aggregation_levels, layout, operator_count):
-    if len(aggregation_levels) == 1 and layout == 'end':
-        start_row = 1
-        score_columns = list(range(4, 4 + operator_count))
+    start_row = _header_rows(table)
+    kinds = [_header_text(table, start_row - 1, column) for column in range(len(table.columns))]
+    if 'Score' in kinds:
+        # A row of kinds (Score next to its GAP) tells the score columns.
+        score_columns = [column for column, kind in enumerate(kinds) if kind == 'Score']
     else:
-        kind_row = len(aggregation_levels) + 1
-        start_row = kind_row + 1
-        score_columns = [
-            index for index in range(4, len(table.columns))
-            if table.cell(kind_row, index).text == 'Score'
-        ]
+        score_columns = [column for column in range(1, len(table.columns))
+                         if not any('GAP' in _header_text(table, row, column) for row in range(start_row))]
     return [
         tuple(table.cell(row, column).text for column in score_columns)
         for row in range(start_row, len(table.rows))
@@ -224,7 +241,7 @@ def test_hiding_scoring_table_gaps_preserves_scores_and_gap_analysis(levels, lay
     assert _scoring_table_score_cells(table_with, levels, layout, operator_count) == \
         _scoring_table_score_cells(table_without, levels, layout, operator_count)
     assert len(table_without.columns) < len(table_with.columns)
-    header_row_count = 1 if len(levels) == 1 and layout == 'end' else len(levels) + 2
+    header_row_count = _header_rows(table_without)
     assert all(
         'GAP' not in table_without.cell(row, column).text
         for row in range(header_row_count)
@@ -382,7 +399,7 @@ def test_summary_tables_preserve_category_fill_extreme_highlights_and_legend(hie
         _score_tables(presentation, [matrix], views.get('threshold_legend', []),
                       show_gap_values=False, title='Scoring Tables — Summary')
     slide = presentation.slides[0]
-    table = next(shape.table for shape in slide.shapes if shape.has_table and len(shape.table.columns) > 5)
+    table = next(shape.table for shape in slide.shapes if shape.has_table and len(shape.table.columns) > 1)
     labels = [cell.text for shape in slide.shapes if shape.has_table and len(shape.table.columns) == 1
               for row in shape.table.rows for cell in row.cells]
     assert labels == ['Best operator', 'Worst operator']
@@ -390,62 +407,50 @@ def test_summary_tables_preserve_category_fill_extreme_highlights_and_legend(hie
                             for row in shape.table.rows for cell in row.cells]
     assert not any(band in all_slide_table_text for band in ('Low', 'Medium', 'High', 'UltraHigh', 'Unavailable'))
 
-    if hierarchy:
-        score_columns = [index for index in range(4, len(table.columns))
-                         if table.cell(len(matrix['hierarchy_levels']) + 1, index).text == 'Score']
-        first_metric_row = len(matrix['hierarchy_levels']) + 2
-        category_rows = [row_index for row_index in range(first_metric_row, len(table.rows) - 1)
-                         if table.cell(row_index, 0).text.endswith(' total')]
-    else:
-        score_columns = list(range(3, 3 + len(matrix['operators'])))
-        category_rows = [row_index for row_index in range(1, len(table.rows) - 1)
-                         if table.cell(row_index, 0).text.endswith(' total')]
+    first_metric_row = _header_rows(table)
+    score_columns = list(range(1, len(table.columns)))
+    category_rows = [row_index for row_index in range(first_metric_row, len(table.rows) - 1)
+                     if _label_name(table.cell(row_index, 0).text).endswith(' total')]
     assert category_rows
-    assert str(table.cell(0, 0).fill.fore_color.rgb) == '455B65'
+    assert _rgb(table.cell(0, 0)) == HEADER_FILL
     for row_index in category_rows:
-        assert str(table.cell(row_index, 0).fill.fore_color.rgb) == 'E3E6E7'
-    assert str(table.cell(len(table.rows) - 1, 0).fill.fore_color.rgb) == 'D8DFE4'
+        assert _rgb(table.cell(row_index, 0)) == STYLES['netcheck']['label'].lstrip('#')
+    assert _rgb(table.cell(len(table.rows) - 1, 0)) == TOTAL_FILL
+    best, worst = STYLES['netcheck']['best'].lstrip('#'), STYLES['netcheck']['worst'].lstrip('#')
     for row_index in [*category_rows, len(table.rows) - 1]:
-        colors = [str(table.cell(row_index, column).fill.fore_color.rgb) for column in score_columns]
-        assert colors.count('C6EFCE') == 2  # Tied best operators.
-        assert colors.count('FFC7CE') == 1
+        colors = [_rgb(table.cell(row_index, column)) for column in score_columns]
+        assert colors.count(best) == 2  # Tied best operators.
+        assert colors.count(worst) == 1
 
 
 
 @pytest.mark.parametrize('mode', ['expanded', 'summary'])
 @pytest.mark.parametrize(('layout', 'show_gap'), [('end', True), ('adjacent', True), ('end', False)])
-def test_ppt_kpi_type_column_colors_and_category_background_aggregates(mode, layout, show_gap):
+def test_ppt_kpis_carry_their_type_badge_in_the_colours_of_the_theme(mode, layout, show_gap):
     presentation = Presentation(BytesIO(export_scoring_powerpoint(
         _job(), _result(), TEMPLATE, table_mode=mode, gap_layout=layout,
         show_gap_values=show_gap, environment='DriveCity',
     )))
     checked_types = set()
+    badge_colours = {'R': STYLES['netcheck']['reliable'].lstrip('#'), 'D': STYLES['netcheck']['diff'].lstrip('#')}
     for slide in presentation.slides:
         title = slide.shapes.title.text.split('\n')[0]
         if not title.startswith('Scoring Tables —') and not title.startswith('GAP Analysis'):
             continue
-        table = next((shape.table for shape in slide.shapes if shape.has_table
-                      and any(cell.text == 'Type of KPI' for cell in shape.table.rows[0].cells)), None)
-        if table is None:
-            continue
-        type_column = next(i for i, cell in enumerate(table.rows[0].cells) if cell.text == 'Type of KPI')
-        if title.startswith('Scoring Tables —'):
-            assert type_column == 2
-        for row in table.rows:
-            cell = row.cells[type_column]
-            if cell.text in {'Reliable', 'Diff'}:
-                checked_types.add(cell.text)
-                expected = 'D8EFCA' if cell.text == 'Reliable' else 'FFF2CC'
-                assert str(cell.fill.fore_color.rgb) == expected
-            elif row.cells[0].text.upper() in {'TOTAL', 'TOTALS'} or row.cells[1].text.endswith(' total'):
-                assert cell.text == ''
-                if title.startswith('Scoring Tables —'):
-                    expected = 'E6F0F7' if title.endswith('Summary') else 'DCE5E9'
-                    assert str(cell.fill.fore_color.rgb) == expected
-    if mode == 'expanded':
-        assert checked_types == {'Reliable', 'Diff'}
-    else:
-        assert checked_types == {'Reliable', 'Diff'}
+        for shape in slide.shapes:
+            if not shape.has_table or len(shape.table.columns) < 2:
+                continue
+            table = shape.table
+            # No Type of KPI column: the type is the badge of each KPI.
+            assert not any(cell.text == 'Type of KPI' for cell in table.rows[0].cells)
+            for row in table.rows:
+                runs = row.cells[0].text_frame.paragraphs[0].runs
+                badge = next((run for run in runs if run.text.strip() in badge_colours), None)
+                if badge is not None:
+                    checked_types.add(badge.text.strip())
+                    assert str(badge.font.color.rgb) == badge_colours[badge.text.strip()]
+                    assert badge.font.bold
+    assert checked_types == {'R', 'D'}
 
 
 def test_ppt_score_numeric_font_uses_available_space_without_exceeding_cell_height():

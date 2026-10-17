@@ -36,7 +36,7 @@ def _environment_matrix_slide(presentation, environment):
             continue
         matrix = next(
             shape.table for shape in slide.shapes
-            if shape.has_table and shape.table.cell(0, 0).text.strip() in {'CATEGORY', 'NETCHECK KPIs'}
+            if shape.has_table and shape.table.cell(0, 0).text.strip() in {'KPI', 'NetCheck KPIs'}
         )
         return slide, matrix
     raise AssertionError(f'No Scoring Table slide found for {environment}.')
@@ -107,8 +107,9 @@ def test_all_environments_ppt_uses_full_allocation_in_tables_and_charts():
     matrices = _comparison_matrices(presentation)
     assert len(matrices) == 6
     matrices = [matrices[index] for index in (1, 3, 5)]
-    assert [matrices[index].cell(_total_row(matrices[index]), 4).text for index in range(3)] == [
-        '1000.00', '650.00', '350.00',
+    # The weighted total names the maximum of its environment.
+    assert [matrices[index].cell(_total_row(matrices[index]), 0).text.rsplit(' · ', 1)[-1] for index in range(3)] == [
+        '1000.00 pts', '650.00 pts', '350.00 pts',
     ]
 
     donut = _chart_for_environment(
@@ -150,10 +151,10 @@ def test_all_environments_ppt_keeps_full_maximum_and_marks_missing_road_incomple
     matrices = _comparison_matrices(presentation)
     assert len(matrices) == 4
     combined_slide, combined_matrix = _environment_matrix_slide(presentation, 'All Environments')
-    assert combined_matrix.cell(_total_row(combined_matrix), 4).text == '1000.00'
+    assert combined_matrix.cell(_total_row(combined_matrix), 0).text.endswith('100.00% · 1000.00 pts')
     assert all(
         combined_matrix.cell(_total_row(combined_matrix), column).text.endswith('*')
-        for column in range(5, 5 + len(combined['operators']))
+        for column in range(1, 1 + len(combined['operators']))
     )
     assert 'All Environments is incomplete because weighted environments are missing: DriveConnectionroad.' in _slide_text(combined_slide)
 

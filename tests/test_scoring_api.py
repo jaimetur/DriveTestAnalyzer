@@ -625,11 +625,9 @@ def test_scoring_job_results_cache_force_and_exports(scoring_api):
             scoring_slides.setdefault(mode, slide)
     assert set(scoring_slides) == {'Summary', 'Breakdown'}
     expected_operators = ['Three UK', 'O2', 'Vodafone UK', 'EE']
-    expected_headers = {
-        'Summary': ['CATEGORY', 'Score weight\n(%)', 'Max score'],
-        'Breakdown': ['CATEGORY', 'KPI', 'Type of KPI', 'Score weight\n(%)', 'Max score'],
-    }
-    for mode, fixed_count in [('Summary', 3), ('Breakdown', 5)]:
+    # The scorecard: a Category (Summary) or KPI (Breakdown) column, then the operators.
+    expected_headers = {'Summary': ['Category'], 'Breakdown': ['KPI']}
+    for mode, fixed_count in [('Summary', 1), ('Breakdown', 1)]:
         slide = scoring_slides[mode]
         scoring_table = next(shape.table for shape in slide.shapes if shape.has_table)
         assert [scoring_table.cell(0, column).text for column in range(fixed_count)] == expected_headers[mode]

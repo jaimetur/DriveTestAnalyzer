@@ -15,10 +15,11 @@ from pptx.oxml.ns import qn
 from pptx.util import Inches, Pt
 
 
-_GLOBAL_COLORS = ('176E77', 'E6A81D', 'C55A11', '5B9BD5', 'A64D79')
-_VOICE_COLOR = '4472C4'
-_DATA_COLOR = '7030A0'
-_CATEGORY_COLORS = ('4472C4', '7030A0', 'C55A11', '5B9BD5', 'A64D79', '548235', 'D65F8D', '8064A2')
+def _theme_colors(token: str) -> tuple[str, ...]:
+    """A palette of the active theme without the leading #: the colours of the environments, or of the categories
+    (whose first two also colour Voice and Data)."""
+    from src.modules.scoring_themes import active_theme
+    return tuple(color.lstrip('#') for color in active_theme()[token])
 
 
 def _number(value: Any) -> float:
@@ -508,7 +509,8 @@ def _global_color(environment: str, environment_allocations: dict[str, Any]) -> 
     original_order = list(environment_allocations)
     index = next((i for i, name in enumerate(original_order)
                   if str(name).casefold() == environment.casefold()), 0)
-    return _GLOBAL_COLORS[index % len(_GLOBAL_COLORS)]
+    colors = _theme_colors('environments')
+    return colors[index % len(colors)]
 
 
 def _allocation_legend_heading(slide, x, y, width, height, label):
@@ -553,9 +555,10 @@ def add_maximum_allocation_donut(
     }
     category_mode = bool(category_allocations)
     inner_labels = [_category_display_label(category) for category in category_allocations] if category_mode else ['Voice', 'Data']
-    inner_colors = ([_CATEGORY_COLORS[index % len(_CATEGORY_COLORS)]
-                     for index in range(len(inner_labels))]
-                    if category_mode else [_VOICE_COLOR, _DATA_COLOR])
+    categories = _theme_colors('categories')
+    voice_color, data_color = categories[0], categories[1]
+    inner_colors = ([categories[index % len(categories)] for index in range(len(inner_labels))]
+                    if category_mode else [voice_color, data_color])
     if category_mode:
         inner_totals = list(category_allocations.values())
     elif len(allocations) > 1:
@@ -588,7 +591,7 @@ def add_maximum_allocation_donut(
                                  f'{_legend_points(value)} pts ({percent:.1f}%)'))
     else:
         for index, (label, color, kind) in enumerate((
-            ('Voice', _VOICE_COLOR, 'voice'), ('Data', _DATA_COLOR, 'data'),
+            ('Voice', voice_color, 'voice'), ('Data', data_color, 'data'),
         )):
             value = inner_totals[index]
             percent = value * 100 / center_total if center_total else 0
