@@ -6335,12 +6335,13 @@ WORKSPACE_ELEMENT_EXPORT_TARGETS = frozenset({
     'reporting-jobs', 'nq-call-tracking', 'nq-calls-configuration', 'app-events', 'main-cities', 'scoring-configuration',
     'network-insights-favourites', 'complete-report-favourites', 'scoring-starred-filters', 'scoring-report-configurations',
 })
-# The module of each Workspace Content element of Export / Transfer, where the content is managed: the subgroups of
-# Current Workspace Content follow the menu (App Logs and Config, then the main modules in tab order).
+# The module of each Workspace Content element (Export / Transfer and backups), where the content is managed: the
+# subgroups of Workspace Content follow the menu (App Logs, then the main modules in tab order) and end with Workspace
+# Config, the Config pages and the Workspace module together.
 WORKSPACE_ELEMENT_MODULES = {
     'app-events': 'app-logs',
-    'main-cities': 'config', 'mappings-reference-data': 'config', 'ppt-templates': 'config',
-    'auto-calculated-fields': 'workspace',
+    'auto-calculated-fields': 'workspace-config', 'main-cities': 'workspace-config',
+    'mappings-reference-data': 'workspace-config', 'ppt-templates': 'workspace-config',
     'dashboards': 'ppt-dashboards',
     'scoring-configuration': 'scoring', 'scoring-report-configurations': 'scoring', 'scoring-starred-filters': 'scoring',
     'network-insights-favourites': 'network-insights',
@@ -6348,7 +6349,37 @@ WORKSPACE_ELEMENT_MODULES = {
     'complete-report-favourites': 'reporting', 'reporting-jobs': 'reporting',
     'query-builder-queries': 'builders',
 }
-ADMINISTRATIVE_MENU_TITLES = {'app-logs': 'App Logs', 'config': 'Config'}
+# The Workspace Content of backups: each component with its label and the element it holds (the workspace database and
+# its Input and Output folders hold none, so they belong to no module).
+BACKUP_WORKSPACE_CONTENT: tuple[tuple[str, str, str], ...] = (
+    ('workspace_database', 'Workspace Database', ''),
+    ('input', 'Input (includes all raw datasets files)', ''),
+    ('output', 'Output (includes all generated reports, chart sets and Dashboard PPT jobs)', ''),
+    ('dashboards', 'Dashboards (one JSON file with all Dashboard definitions)', 'dashboards'),
+    ('report_templates', 'PPT Templates (one CSV file per Report Template)', 'ppt-templates'),
+    ('main_cities', 'Main Cities (workspace city selection)', 'main-cities'),
+    ('mappings_reference_data', 'Mappings & Reference Data (Operator and Vendor aliases, order and theme colors, Campaign Maps, '
+                                'Map Areas and Spectrum Holdings)', 'mappings-reference-data'),
+    ('scoring_configuration', 'Scoring & GAP Analysis Configuration (KPI methodology profiles and GAP KPI priorities)',
+     'scoring-configuration'),
+    ('auto_calculated_fields', 'Auto-calculated Fields (one JSON file with all definitions)', 'auto-calculated-fields'),
+    ('query_builder_queries', 'Query Builder Queries (one JSON file with all saved queries)', 'query-builder-queries'),
+    ('network_insights_favourites', 'Network Insights Favourites (one JSON file with the favourite Analysis Selections)',
+     'network-insights-favourites'),
+    ('complete_report_favourites', 'Complete Report Favourites (one JSON file with the favourite Complete Reports)',
+     'complete-report-favourites'),
+    ('scoring_starred_filters', 'Scoring & GAP Starred Filters (one JSON file with the Starred Filters, without their results)',
+     'scoring-starred-filters'),
+    ('scoring_report_configurations', 'Scoring & GAP Report Configurations (one JSON file with the saved configurations of '
+                                      'the Scoring report editor)', 'scoring-report-configurations'),
+    ('reporting_jobs', 'Reporting Jobs (one JSON file with all Reporting Job definitions)', 'reporting-jobs'),
+    ('nq_call_tracking', 'NQ Call Tracking (one JSON file with the Non-Qualified Calls statuses, teams, follow-up, comments '
+                         'and history)', 'nq-call-tracking'),
+    ('nq_calls_configuration', 'NQ Calls Configuration (one JSON file with the Non-Qualified Calls Analysis Center '
+                               'configuration, without the follow-up)', 'nq-calls-configuration'),
+    ('app_events', 'App Events (one JSON file with every event of the workspace; restore adds the ones it does not have)',
+     'app-events'),
+)
 STATIC_EXPORT_TARGETS = frozenset({'config', 'config-with-templates', 'users-access', 'bugs-report', 'full-environment'})
 UNCOMPRESSED_ARCHIVE_SUFFIXES = frozenset({
     '.7z', '.avi', '.docx', '.gif', '.gz', '.jpeg', '.jpg', '.mp3', '.mp4', '.pdf', '.png', '.pptx', '.rar',
@@ -11405,6 +11436,7 @@ def render_admin_template(
             **spectrum_holdings_context(request),
             **serving_networks_context(request),
             'recurring_backup': recurring_backup_settings(),
+            'backup_workspace_content': backup_workspace_content(load_module_labels(repository)),
             # Until a selection is saved, every workspace is offered selected.
             'recurring_backup_saved': repository.get_application_state(RECURRING_BACKUP_STATE_KEY) is not None,
             'recurring_backup_status': recurring_backup_status(recurring_backup_settings()),
@@ -11426,15 +11458,40 @@ def render_admin_template(
     )
 
 
-def workspace_content_options(options: list[dict[str, Any]], module_labels: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
-    """The Workspace Content options of Export / Transfer, each with the title of its module as its subgroup: the
-    modules in the order of the menu (their titles as Interface Settings names them), their contents alphabetically."""
-    titles = {**ADMINISTRATIVE_MENU_TITLES, **{module: label['title'] for module, label in module_labels.items()}}
+def workspace_content_subgroups(module_labels: dict[str, dict[str, Any]]) -> dict[str, str]:
+    """The titles of the subgroups of Workspace Content in the order of the menu: App Logs, the main modules in tab
+    order with their titles of Interface Settings and, last, Workspace Config (the Config pages and the Workspace module
+    together)."""
+    return {'app-logs': 'App Logs', **{module: label['title'] for module, label in module_labels.items() if module != 'workspace'},
+            'workspace-config': 'Workspace Config'}
+
+
+def by_module(entries: list[dict[str, Any]], element_of: Callable[[dict[str, Any]], str],
+              module_labels: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+    """``entries`` (each with its ``label``) with the title of the module of their element as their ``subgroup``: the
+    modules in the order of the menu and the entries of each alphabetically; entries of no module go first, in their
+    order."""
+    titles = workspace_content_subgroups(module_labels)
     order = list(titles)
-    chosen = [option | {'subgroup': titles[WORKSPACE_ELEMENT_MODULES[option['value']]]}
-              for option in options if option['value'] in WORKSPACE_ELEMENT_MODULES]
-    return sorted(chosen, key=lambda option: (order.index(WORKSPACE_ELEMENT_MODULES[option['value']]),
-                                              str(option['label']).casefold()))
+
+    def module(entry: dict[str, Any]) -> str:
+        return WORKSPACE_ELEMENT_MODULES.get(element_of(entry), '')
+
+    loose = [entry for entry in entries if module(entry) not in titles]
+    grouped = [entry | {'subgroup': titles[module(entry)]} for entry in entries if module(entry) in titles]
+    return loose + sorted(grouped, key=lambda entry: (order.index(module(entry)), str(entry['label']).casefold()))
+
+
+def workspace_content_options(options: list[dict[str, Any]], module_labels: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+    """The Current Workspace Content options of Export / Transfer, grouped by module."""
+    return by_module([option for option in options if option['value'] in WORKSPACE_ELEMENT_MODULES],
+                     lambda option: option['value'], module_labels)
+
+
+def backup_workspace_content(module_labels: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+    """The Workspace Content components of backups: the workspace database and its folders, then the rest by module."""
+    return by_module([{'value': value, 'label': label, 'element': element} for value, label, element in BACKUP_WORKSPACE_CONTENT],
+                     lambda entry: entry['element'], module_labels)
 
 
 def render_workspace_config_template(

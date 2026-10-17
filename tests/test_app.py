@@ -2480,7 +2480,7 @@ def test_bootstrap_users_have_default_workspace_access(client) -> None:
     assert super_admin.status_code == 303
 
 
-def test_export_workspace_content_is_grouped_by_module_in_menu_order(client) -> None:
+def test_workspace_content_of_exports_and_backups_is_grouped_by_module_in_menu_order(client) -> None:
     import src.DriveTestAnalyzer as app_module
     from src.modules.module_labels import MODULE_LABELS_STATE_KEY
 
@@ -2488,22 +2488,35 @@ def test_export_workspace_content_is_grouped_by_module_in_menu_order(client) -> 
     # A module renamed in Interface Settings names its subgroup.
     app_module.repository.set_application_state(MODULE_LABELS_STATE_KEY, json.dumps({'scoring': {'title': 'Benchmark'}}))
     page = client.get('/admin').text
-    group = page[page.index('<optgroup label="Current Workspace Content">'):]
-    group = group[:group.index('</optgroup>')]
-    options = re.findall(r'<option value="([^"]+)" data-subgroup="([^"]+)"', group)
-    # The modules in the order of the menu (App Logs, Config, then the main tabs), their contents alphabetically.
-    assert options == [
+
+    def group(label: str, start: str) -> str:
+        text = page[page.index(start):]
+        text = text[text.index(f'<optgroup label="{label}"'):]
+        return text[:text.index('</optgroup>')]
+
+    # The modules in the order of the menu (App Logs, then the main tabs) and, last, Workspace Config for the Config
+    # pages and the Workspace module, their contents alphabetically.
+    modules = [
         ('app-events', 'App Logs'),
-        ('main-cities', 'Config'), ('mappings-reference-data', 'Config'), ('ppt-templates', 'Config'),
-        ('auto-calculated-fields', 'Workspace'),
         ('dashboards', 'PPT Dashboards'),
         ('scoring-configuration', 'Benchmark'), ('scoring-report-configurations', 'Benchmark'), ('scoring-starred-filters', 'Benchmark'),
         ('network-insights-favourites', 'Network Insights'),
         ('nq-call-tracking', 'Non-Qualified Calls'), ('nq-calls-configuration', 'Non-Qualified Calls'),
         ('complete-report-favourites', 'Reporting'), ('reporting-jobs', 'Reporting'),
         ('query-builder-queries', 'Builders'),
+        ('auto-calculated-fields', 'Workspace Config'), ('main-cities', 'Workspace Config'),
+        ('mappings-reference-data', 'Workspace Config'), ('ppt-templates', 'Workspace Config'),
     ]
+    export = group('Current Workspace Content', 'data-export-target-select')
+    assert re.findall(r'<option value="([^"]+)" data-subgroup="([^"]+)"', export) == modules
     assert set(app_module.WORKSPACE_ELEMENT_MODULES) == set(app_module.WORKSPACE_ELEMENT_EXPORT_TARGETS)
+    # Backups list the same modules, after the workspace database and its folders, which belong to none.
+    backup = group('Workspace Content', 'data-backup-components')
+    options = re.findall(r'<option(?: data-subgroup="([^"]+)")? value="([^"]+)"', backup)
+    assert [value for _subgroup, value in options[:3]] == ['workspace_database', 'input', 'output']
+    assert not any(subgroup for subgroup, _value in options[:3])
+    elements = {value: element for value, _label, element in app_module.BACKUP_WORKSPACE_CONTENT}
+    assert [(elements[value], subgroup) for subgroup, value in options[3:]] == modules
     app_script = app_module.PROJECT_ROOT.joinpath('src/web_interface/static/js/app.js').read_text(encoding='utf-8')
     assert "subheading.className = 'multiselect-subgroup-label';" in app_script
 

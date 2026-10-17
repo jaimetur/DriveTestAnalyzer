@@ -744,6 +744,9 @@ body [data-section-bar].is-compact > a.section-bar-top { padding: .45rem .55rem;
 .database-backup-components .multiselect-group-label { margin: 0.45rem 0 0.08rem; padding: 0.34rem 0.55rem; border-bottom: 1px solid rgba(139, 29, 36, 0.18); color: #6d222b; font-size: 0.76rem; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; }
 .database-backup-components .multiselect-group-label:first-of-type { margin-top: 0; }
 .database-backup-components .multiselect-option[data-multiselect-group] { padding-left: 1.35rem; }
+/* The modules of Workspace Content: a title over the contents of each, which sit a step further in. */
+.database-backup-components .multiselect-subgroup-label { margin: 0.4rem 0 0.05rem 1.35rem; padding: 0.15rem 0.2rem; color: #9a4650; font-size: 0.74rem; font-weight: 800; letter-spacing: 0.02em; }
+.database-backup-components .multiselect-option[data-multiselect-subgroup] { padding-left: 2.15rem; }
 .database-backup-components .multiselect-option input { flex: 0 0 auto; order: -1; accent-color: #9d2b35; }
 .admin-export-components { display: grid; gap: 0.35rem; width: 100%; color: #8b2429; font-size: 0.85rem; font-weight: 700; }
 .admin-export-components .multiselect-shell { width: 100%; }
