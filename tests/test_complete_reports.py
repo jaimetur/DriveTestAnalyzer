@@ -262,6 +262,77 @@ def test_wide_tables_join_their_parts_and_long_tables_continue_side_by_side():
     assert len({shape.shape_id for shape in tables}) == len(tables)
 
 
+def test_a_table_too_long_for_a_legible_font_continues_on_more_slides():
+    def build(presentation):
+        _table_pages(presentation, rows=400)
+
+    section = complete_reports.SectionDeck('network_insights', 'Network Insights', [], decks=[(None, _deck(build))], order=['serving'])
+    component = complete_reports._components(complete_reports._section_entries(section))[0]
+    composer = pptx_compose.DeckComposer(TEMPLATE)
+    pages = complete_reports._place_component(composer, component)
+    assert len(pages) > 1 and len(composer.presentation.slides) == len(pages)
+    titles = [pptx_compose.title_parts(page)[0] for page in pages]
+    assert titles == [f'Serving Cells · By serving band · {number}/{len(pages)}' for number in range(1, len(pages) + 1)]
+    # Every row once, in its order, each slide under the header and with values of a legible size.
+    tables = [shape.table for page in pages for shape in pptx_compose.content_shapes(page)]
+    assert all(table.cell(0, 0).text == 'Group' for table in tables)
+    assert [table.cell(row, 0).text for table in tables for row in range(1, len(table.rows))] == [f'Op{index}' for index in range(400)]
+    sizes = [run.font.size.pt for table in tables for row in list(table.rows)[1:] for cell in row.cells
+             for paragraph in cell.text_frame.paragraphs for run in paragraph.runs if run.font.size]
+    assert min(sizes) >= pptx_compose.LEGIBLE_FONT / 100
+    # The slides of a table that continues are not compacted with other components.
+    content, _outline, _covers = complete_reports.compose_powerpoint(TEMPLATE, 'Report', '', [], [section], {})
+    assert len(Presentation(BytesIO(content)).slides) == 2 + len(pages) + 1
+
+
+def test_pages_that_would_be_too_small_on_one_slide_continue_on_more_slides():
+    def pages(width, *heights):
+        def build(presentation):
+            for number, height in enumerate(heights, start=1):
+                slide = ni._slide(presentation, f'Sites · {number}/{len(heights)}', 'Scope')
+                left, top, _width, _height = ni._content_frame(slide)
+                slide.shapes.add_picture(BytesIO(PNG), Inches(left), Inches(top), Inches(width), Inches(height))
+        return [composer.add_slide(slide) for slide in pptx_compose.deck(_deck(build)).slides]
+
+    composer = pptx_compose.DeckComposer(TEMPLATE)
+    minimum = complete_reports.PAGE_MINIMUM_SCALE
+    # Small pages share one slide; pages as large as the slide each keep a slide of their own, and a short last page
+    # joins the one before it; pages of the same size share the slides evenly.
+    assert pptx_compose.page_groups(composer, pages(5, 2, 2, 2, 2), minimum) == [[0, 1, 2, 3]]
+    assert pptx_compose.page_groups(composer, pages(12, 4.5, 4.5, 4.5, 4.5), minimum) == [[0], [1], [2], [3]]
+    assert pptx_compose.page_groups(composer, pages(12, 4.5, 4.5, 4.5, 0.4), minimum) == [[0], [1], [2, 3]]
+    assert pptx_compose.page_groups(composer, pages(12, 2.2, 2.2, 2.2, 2.2), minimum) == [[0, 1], [2, 3]]
+
+
+def test_tables_side_by_side_continue_together_on_as_few_slides_as_keep_them_legible():
+    counts = {'VF': 110, 'Three': 60, 'VMO2': 14}
+
+    def build(presentation):
+        start = len(presentation.slides)
+        ni._paired_table_slides(presentation, 'Network Deployment · Cluster', [
+            (f'{operator} (2026-09-17)', ['Cluster', 'Sites', 'Cells'], [[f'{operator}_Cluster{index:03d}', '10', '1,000'] for index in range(rows)])
+            for operator, rows in counts.items()], 'Scope')
+        ni._tag_report_slides(presentation, start, 'deployment')
+
+    section = complete_reports.SectionDeck('network_insights', 'Network Insights', [], decks=[(None, _deck(build))], order=['deployment'])
+    component = complete_reports._components(complete_reports._section_entries(section))[0]
+    assert len(component.slides) == 10
+    composer = pptx_compose.DeckComposer(TEMPLATE)
+    pages = complete_reports._place_component(composer, component)
+    assert 1 < len(pages) < 10
+    rows = {operator: [] for operator in counts}
+    for page in pages:
+        captions = {shape.text_frame.text for shape in pptx_compose.content_shapes(page) if not shape.has_table and shape.has_text_frame}
+        for shape in (shape for shape in pptx_compose.content_shapes(page) if shape.has_table):
+            names = [shape.table.cell(row, 0).text for row in range(1, len(shape.table.rows))]
+            operator = names[0].split('_')[0]
+            rows[operator].extend(names)
+            assert shape.table.cell(0, 0).text == 'Cluster' and f'{operator} (2026-09-17)' in captions
+        # A table that has run out of rows leaves its place empty, with its caption.
+        assert len(captions) == len([shape for shape in pptx_compose.content_shapes(page) if shape.has_table])
+    assert rows == {operator: [f'{operator}_Cluster{index:03d}' for index in range(count)] for operator, count in counts.items()}
+
+
 def test_components_join_the_pages_of_a_chart_or_table_but_not_slides_of_the_same_title():
     def build(presentation):
         _small_table(presentation, 'RF Quality', 'rf_quality')
@@ -415,8 +486,9 @@ def test_a_report_without_sections_is_refused_and_the_table_is_listed(client):
 def test_a_report_job_generates_the_chosen_sections_and_previews_them(client, monkeypatch):
     login(client)
 
-    def network_summary(selection, export_kind, destination, components=None):
-        assert export_kind == 'powerpoint' and components == ['snapshot.snapshot']
+    def network_summary(selection, export_kind, destination, components=None, compose=True):
+        # The Complete Report composes the deck of the module itself.
+        assert export_kind == 'powerpoint' and components == ['snapshot.snapshot'] and not compose
         # The NR Mode of the report and the Campaigns of the section.
         assert selection['nr_mode'] == 'SA' and selection['campaigns'] == ['2026-Q3']
         Path(destination).write_bytes(_deck(lambda presentation: _small_table(presentation, 'Network Snapshot', 'snapshot')))
@@ -460,7 +532,7 @@ def test_a_report_job_generates_the_chosen_sections_and_previews_them(client, mo
 def test_favourites_are_an_artifact_of_reporting_jobs(client, monkeypatch, tmp_path):
     login(client)
 
-    def network_summary(selection, export_kind, destination, components=None):
+    def network_summary(selection, export_kind, destination, components=None, compose=True):
         Path(destination).write_bytes(_deck(lambda presentation: _small_table(presentation, 'Network Snapshot', 'snapshot')))
         return {}
 
@@ -584,7 +656,7 @@ def test_a_second_export_reuses_the_sections_whose_data_has_not_changed(client, 
     login(client)
     calls = []
 
-    def network_summary(selection, export_kind, destination, components=None):
+    def network_summary(selection, export_kind, destination, components=None, compose=True):
         calls.append(selection['campaigns'])
         Path(destination).write_bytes(_deck(lambda presentation: _small_table(presentation, 'Network Snapshot', 'snapshot')))
         return {}

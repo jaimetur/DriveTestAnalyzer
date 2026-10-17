@@ -353,6 +353,7 @@ def _campaign_comparisons(scopes: dict[tuple, dict[str, dict[str, Any]]], levels
             style = (latest.get('operator_styles') or {}).get(operator) or {}
             comparisons.append({
                 'environment': environment, 'operator': operator, 'label': style.get('label') or operator,
+                'color': style.get('color'),
                 'title': _group_label(latest['context'], levels, {'Campaign'}),
                 'previous_campaign': _display('Campaign', previous['context'].get('campaign')),
                 'latest_campaign': _display('Campaign', latest['context'].get('campaign')),

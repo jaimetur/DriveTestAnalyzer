@@ -560,9 +560,10 @@ class CompleteReportError(RuntimeError):
     pass
 
 
-def _section_entries(section: SectionDeck) -> list[Entry]:
-    """The slides of a section in the order of its sub-modules: the report cover each module starts with and the
-    closing slides left out, each block (after a cover, such as a scoring or an environment) ordered on its own."""
+def _section_entries(section: SectionDeck, *, module_cover: bool = False) -> list[Entry]:
+    """The slides of a section in the order of its sub-modules: the report cover each module starts with (unless
+    ``module_cover``, for the export of the module on its own) and the closing slides left out, each block (after a
+    cover, such as a scoring or an environment) ordered on its own."""
     entries: list[Entry] = []
     for item_key, content in section.decks:
         presentation = compose.deck(content)
@@ -571,7 +572,7 @@ def _section_entries(section: SectionDeck) -> list[Entry]:
             if compose.is_closing(slide):
                 continue
             tag = compose.slide_tag(slide)
-            if item_key is None and index == 0 and compose.is_cover(slide):
+            if item_key is None and index == 0 and compose.is_cover(slide) and not module_cover:
                 continue
             if item_key is not None:
                 item = item_key
@@ -610,30 +611,51 @@ def _components(entries: list[Entry]) -> list[Component]:
     return components
 
 
-def _place_component(composer: compose.DeckComposer, component: Component) -> Any:
-    """The component on one slide of ``composer``: its pages joined (tables) or side by side, as large as they fit."""
+# The pages of a chart or table that cannot become one table share a slide down to this share of their size; smaller,
+# they continue on more slides.
+PAGE_MINIMUM_SCALE = 0.6
+
+
+def _place_component(composer: compose.DeckComposer, component: Component, legible_font: int = compose.LEGIBLE_FONT) -> list[Any]:
+    """The component on one slide of ``composer`` (its slides): its pages joined (tables) or side by side, as large as
+    they fit; a table that would need a font smaller than ``legible_font`` there continues on more slides."""
     copies = [composer.add_slide(slide, component.size) for slide in component.slides]
     target = copies[0]
+    pages = [target]
     if len(copies) > 1:
         title, subtitle = component.title
         if compose.join_table_pages(composer, copies):
             blocks = [compose.Block(target, compose.content_shapes(target))]
-            # A long or wide table keeps readable text: its rows continue in tables side by side.
+            # A long or wide table keeps readable text: its rows continue in tables side by side, and on more slides
+            # when even so its values would be too small.
             frame = compose.content_frame(target, composer.width, composer.height, [blocks[0].box])
-            if compose.fit_table(target, frame) is not None:
-                blocks = []
+            pages = compose.split_table(composer, target, compose.table_slides(target, frame, legible_font=legible_font))
+            if not all(compose.fit_table(page, frame) is not None for page in pages) and any(block.shapes for block in blocks):
+                compose.merge_onto_slide(composer, target, blocks, captions=False)
+        elif compose.join_panel_pages(composer, copies):
+            # Tables side by side (such as one per network) continue together on as few slides as keep them legible.
+            frame = compose.content_frame(target, composer.width, composer.height, [compose.bounds(compose.content_shapes(target))])
+            pages = compose.split_panels(composer, target, frame, legible_font)
         else:
-            blocks = [compose.Block(slide, compose.content_shapes(slide)) for slide in copies]
-        if any(block.shapes for block in blocks):
-            compose.merge_onto_slide(composer, target, blocks, captions=False)
+            # Other pages share a slide side by side or one under the other, and continue on more slides when they
+            # would be too small to read.
+            groups = compose.page_groups(composer, copies, PAGE_MINIMUM_SCALE)
+            pages = [copies[group[0]] for group in groups]
+            for group in groups:
+                blocks = [compose.Block(copies[index], compose.content_shapes(copies[index])) for index in group]
+                if len(group) > 1 and any(block.shapes for block in blocks):
+                    compose.merge_onto_slide(composer, copies[group[0]], blocks, captions=False)
+        kept = [page.part for page in pages]
         for slide in copies[1:]:
-            if slide.part in [item.part for item in composer.presentation.slides]:
+            if slide.part not in kept and slide.part in [item.part for item in composer.presentation.slides]:
                 composer.remove_slide(slide)
-        compose.set_title(target, title, subtitle)
-    # Every module's title fits on one line here, so it never covers the content under it.
-    fit_slide_title(target)
-    compose.tag(target, component.section)
-    return target
+        for number, page in enumerate(pages, start=1):
+            compose.set_title(page, f'{title} · {number}/{len(pages)}' if len(pages) > 1 else title, subtitle)
+    for page in pages:
+        # Every module's title fits on one line here, so it never covers the content under it.
+        fit_slide_title(page)
+        compose.tag(page, component.section)
+    return pages
 
 
 COVER_TITLE_PT = 54
@@ -687,6 +709,49 @@ def _cover(composer: compose.DeckComposer, title: str, subtitle: str, blocks: li
     return slide
 
 
+def _compose_section(composer: compose.DeckComposer, section: SectionDeck, entries: list[Entry]) -> None:
+    """The slides of ``entries`` (a section) in ``composer``: each component on one slide (see _place_component) and
+    small consecutive charts and tables sharing a slide, each under its caption."""
+    # (component, slide, whether the component continues on other slides)
+    placed: list[tuple[Component, Any, bool]] = []
+    for component in _components(entries):
+        pages = _place_component(composer, component)
+        placed.extend((component, page, len(pages) > 1) for page in pages)
+    index = 0
+    while index < len(placed):
+        component, slide, split = placed[index]
+        group = [(component, slide)]
+        if not component.cover and not split:
+            while index + len(group) < len(placed) and len(group) < COMPACT_MAXIMUM:
+                candidate, candidate_slide, candidate_split = placed[index + len(group)]
+                if candidate.cover or candidate_split:
+                    break
+                blocks = [compose.Block(item_slide, compose.content_shapes(item_slide), item.title)
+                          for item, item_slide in [*group, (candidate, candidate_slide)]]
+                if not compose.fits_together(composer, blocks, COMPACT_SCALE):
+                    break
+                group.append((candidate, candidate_slide))
+        if len(group) > 1:
+            items = {item.item for item, _slide in group}
+            heading = section.item_titles.get(next(iter(items)), section.title) if len(items) == 1 else section.title
+            # A caption does not repeat the title of the slide: its subtitle is its caption then.
+            blocks = [compose.Block(item_slide, compose.content_shapes(item_slide),
+                                    (item.title[1], '') if item.title[0] == heading and item.title[1] else item.title)
+                      for item, item_slide in group]
+            compose.merge_onto_slide(composer, slide, blocks, captions=True)
+            compose.set_title(slide, heading, '')
+            for _item, other in group[1:]:
+                composer.remove_slide(other)
+        index += len(group)
+
+
+def _add_closing(composer: compose.DeckComposer) -> None:
+    """The closing slide of the template, when it has one."""
+    if any(str(layout.name or '').strip().casefold() in compose.CLOSING_LAYOUTS
+           for master in composer.presentation.slide_masters for layout in master.slide_layouts):
+        composer.add_layout_slide(next(iter(compose.CLOSING_LAYOUTS)))
+
+
 def compose_powerpoint(template: Path, title: str, subtitle: str, common_filters: list[str], sections: list[SectionDeck],
                        titles: dict[str, str], generated: str = '') -> tuple[bytes, list[dict[str, Any]], list[int]]:
     """The PowerPoint of a Complete Report, its outline (the title of each slide) and the position of its covers (the
@@ -700,38 +765,8 @@ def compose_powerpoint(template: Path, title: str, subtitle: str, common_filters
         covers.append(_cover(composer, section.title, section.lines[0] if section.lines else '',
                              [('Common filters', [filters_line]), ('Section options', section.lines[1:])], section.key,
                              SECTION_COVER_TITLE_PT))
-        placed: list[tuple[Component, Any]] = []
-        for component in _components(_section_entries(section)):
-            placed.append((component, _place_component(composer, component)))
-        # Small consecutive charts and tables of the section share a slide, each under its caption.
-        index = 0
-        while index < len(placed):
-            component, slide = placed[index]
-            group = [(component, slide)]
-            if not component.cover:
-                while index + len(group) < len(placed) and len(group) < COMPACT_MAXIMUM:
-                    candidate = placed[index + len(group)]
-                    if candidate[0].cover:
-                        break
-                    blocks = [compose.Block(item_slide, compose.content_shapes(item_slide), item.title) for item, item_slide in [*group, candidate]]
-                    if not compose.fits_together(composer, blocks, COMPACT_SCALE):
-                        break
-                    group.append(candidate)
-            if len(group) > 1:
-                items = {item.item for item, _slide in group}
-                heading = section.item_titles.get(next(iter(items)), section.title) if len(items) == 1 else section.title
-                # A caption does not repeat the title of the slide: its subtitle is its caption then.
-                blocks = [compose.Block(item_slide, compose.content_shapes(item_slide),
-                                        (item.title[1], '') if item.title[0] == heading and item.title[1] else item.title)
-                          for item, item_slide in group]
-                compose.merge_onto_slide(composer, slide, blocks, captions=True)
-                compose.set_title(slide, heading, '')
-                for _item, other in group[1:]:
-                    composer.remove_slide(other)
-            index += len(group)
-    if any(str(layout.name or '').strip().casefold() in compose.CLOSING_LAYOUTS
-           for master in composer.presentation.slide_masters for layout in master.slide_layouts):
-        composer.add_layout_slide(next(iter(compose.CLOSING_LAYOUTS)))
+        _compose_section(composer, section, _section_entries(section))
+    _add_closing(composer)
     slides = list(composer.presentation.slides)
     for slide in slides:
         outline.append({'title': compose.title_parts(slide)[0], 'section': compose.slide_tag(slide)})
@@ -740,11 +775,12 @@ def compose_powerpoint(template: Path, title: str, subtitle: str, common_filters
 
 
 def compose_word(template: Path, powerpoint: bytes, sections: list[SectionDeck],
-                 covers: list[int] | None = None) -> tuple[bytes, list[dict[str, Any]]] | None:
+                 covers: list[int] | None = None, *, module: bool = False) -> tuple[bytes, list[dict[str, Any]]] | None:
     """The Word version: the report cover on a full page, then each section after its own full-page cover (``covers``:
     the position of the report cover and of each section cover in ``powerpoint``) with its components packed on
     portrait pages, with the sections and pages of the document (see word_navigation); None when LibreOffice cannot
-    render the slides."""
+    render the slides. With ``module`` (the export of a module on its own), the cover of the module (the first slide
+    of ``powerpoint``) is the cover and the module has no section cover."""
     from src.modules.pptx_to_docx import (
         PackItem, compact_slide_image, crop_to_content, packed_component_document, portrait_covers, slide_images,
     )
@@ -752,33 +788,36 @@ def compose_word(template: Path, powerpoint: bytes, sections: list[SectionDeck],
     from pptx.util import Inches
 
     composer = compose.DeckComposer(template, slide_height=Inches(WORD_SLIDE_HEIGHT_INCHES))
+    page_width = 8.27 - 0.9
+    # Slides are shown at the scale that fits their content area (the slide less its margins) across the page, so a
+    # table keeps a legible font on the page.
+    base = page_width / ((composer.width - Inches(0.9)) / 914400)
+    legible_font = int(compose.LEGIBLE_FONT / base)
     pages = portrait_covers(powerpoint, covers or [0]) or []
     plan: list[tuple[str, Any]] = []
     for position, section in enumerate(sections, start=1):
-        if position < len(pages):
+        # The export of a module has only the cover of the module.
+        if not module and position < len(pages):
             plan.append(('cover', PackItem('cover', section.title, image=pages[position])))
-        else:
+        elif not module:
             plan.append(('heading1', PackItem('heading1', section.title, list(section.lines))))
         for component in _components(_section_entries(section)):
             if component.cover:
                 title, subtitle = compose.title_parts(component.slides[0])
                 plan.append(('heading2', PackItem('heading2', title or 'Section', [line for line in subtitle.split(' · ') if line][:3])))
                 continue
-            slide = _place_component(composer, component)
-            shapes = compose.content_shapes(slide)
-            title_shape = compose.title_shape(slide)
-            if title_shape is not None and title_shape.left is not None:
-                shapes = [*shapes, title_shape]
-            plan.append(('image', (slide, compose.bounds(shapes), component.title[0])))
+            for slide in _place_component(composer, component, legible_font):
+                shapes = compose.content_shapes(slide)
+                title_shape = compose.title_shape(slide)
+                if title_shape is not None and title_shape.left is not None:
+                    shapes = [*shapes, title_shape]
+                plan.append(('image', (slide, compose.bounds(shapes), component.title[0])))
     if not any(kind == 'image' for kind, _item in plan):
         return None
     images = slide_images(composer.save(), dpi=WORD_RENDER_DPI)
     if not images:
         return None
     slide_width = composer.width
-    page_width = 8.27 - 0.9
-    # Slides are shown at the scale that fits their content area (the slide less its margins) across the page.
-    base = page_width / ((slide_width - Inches(0.9)) / 914400)
     items: list[Any] = []
     image_index = 0
     for kind, item in plan:
@@ -805,6 +844,47 @@ def compose_word(template: Path, powerpoint: bytes, sections: list[SectionDeck],
     cover = [PackItem('cover', 'Cover', image=pages[0])] if pages else []
     document = packed_component_document([*cover, *items], None, page_items)
     return document, word_navigation(page_items)
+
+
+def compose_module_powerpoint(template: Path, section: SectionDeck) -> bytes:
+    """The PowerPoint export of a module on its own: its deck (its covers included) composed as its section of a
+    Complete Report (see _compose_section), with the closing slide of the template."""
+    composer = compose.DeckComposer(template)
+    _compose_section(composer, section, _section_entries(section, module_cover=True))
+    _add_closing(composer)
+    return composer.save()
+
+
+def module_item_titles(key: str) -> dict[str, str]:
+    """The titles of the sub-modules of a module (a slide its small components share is named after them)."""
+    if key == 'scoring':
+        return {item: title for item, title, _components in SCORING_SUBMODULES}
+    if key == 'network_insights':
+        from src.modules.network_insights_export import REPORT_PANELS
+    elif key == 'non_qualified_calls':
+        from src.modules.non_qualified_calls_export import REPORT_PANELS
+    else:
+        return {}
+    return {item: title for item, title, _items in REPORT_PANELS}
+
+
+def module_document(key: str, content: bytes, export_format: str, title: str = '') -> bytes:
+    """The PowerPoint or Word export of a module on its own (``key``: scoring, network_insights or
+    non_qualified_calls) from the deck its module generated (``content``): the same composition as its section of a
+    Complete Report, so both exports always look alike. Word packs the components on portrait pages after the cover
+    of the module (one page per slide when LibreOffice is not available)."""
+    from src.config import settings
+
+    template = settings.powerpoint_templates_dir / 'Template_01.pptx'
+    section = SectionDeck(key, title, [], decks=[(None, content)], item_titles=module_item_titles(key))
+    powerpoint = compose_module_powerpoint(template, section)
+    if export_format != 'word':
+        return powerpoint
+    packed = compose_word(template, content, [section], [0], module=True)
+    if packed is None:
+        from src.modules.pptx_to_docx import pptx_to_docx
+        return pptx_to_docx(powerpoint, title)
+    return packed[0]
 
 
 def word_navigation(page_items: list[list[Any]]) -> list[dict[str, Any]]:
@@ -972,7 +1052,7 @@ class SectionGenerator:
         destination = self.folder / 'network-insights.pptx'
         self.progress('Analysing Network Insights')
         try:
-            self.core.write_network_insights_summary(selection, 'powerpoint', destination, components=components)
+            self.core.write_network_insights_summary(selection, 'powerpoint', destination, components=components, compose=False)
         except Exception as exc:  # The module reports its own errors (HTTPException included).
             raise CompleteReportError(str(getattr(exc, 'detail', exc))) from exc
         from src.modules.network_insights_export import REPORT_PANELS
@@ -998,7 +1078,7 @@ class SectionGenerator:
             'filters': filters, 'granularity': options['granularity'], 'open_only': '1' if options['open_only'] else '',
             'include_suggestions': '1' if options['include_suggestions'] else '',
             'show_not_classified': '1' if options['show_not_classified'] else '', 'show_empty': '1' if options['show_empty'] else '',
-            'components': components,
+            'components': components, 'compose': False,
         }}
         self.progress('Summarising Non-Qualified Calls')
         folder = self.folder / 'non-qualified-calls'
@@ -1012,12 +1092,12 @@ class SectionGenerator:
 
 
 # -- generated sections kept for the next exports ------------------------------------------
-SECTION_CACHE_VERSION = 3
+SECTION_CACHE_VERSION = 5
 SECTION_CACHE_HOURS = 24
 SECTION_CACHE_FOLDER = 'cache'
 # The composed documents (PowerPoint, the packed Word and their previews), inside the section cache.
 DOCUMENT_CACHE_FOLDER = 'documents'
-DOCUMENT_CACHE_VERSION = 2
+DOCUMENT_CACHE_VERSION = 3
 _section_locks: dict[str, Lock] = {}
 _section_locks_guard = Lock()
 

@@ -110,14 +110,26 @@ def solid(cell, color: str) -> None:
     cell.fill.fore_color.rgb = _rgb(color)
 
 
+# The width of the edge between two colours of a bar. PowerPoint draws the fills of the slides on screen with their stops
+# at whole percents (its PDF export does not), so two stops closer than that merge and the colour runs on to the next
+# stop: a bar to the left of the middle of a cell would fade to the right of it.
+HARD_EDGE = .01
+
+
 def gradient(cell, stops: list[tuple[float, str]]) -> None:
-    """A horizontal fill with hard stops: each colour from its position to the next one."""
+    """A horizontal fill with hard stops: each colour from its position to the next one, the stops at whole percents
+    and at least one percent apart (see HARD_EDGE)."""
     fill = etree.Element(qn('a:gradFill'))
     fill.set('rotWithShape', '1')
     stop_list = etree.SubElement(fill, qn('a:gsLst'))
+    previous = -1
     for position, color in stops:
+        percent = max(previous + 1, int(round(max(0.0, min(1.0, position)) * 100)))
+        if percent > 100:
+            continue
+        previous = percent
         stop = etree.SubElement(stop_list, qn('a:gs'))
-        stop.set('pos', str(int(round(max(0.0, min(1.0, position)) * 100000))))
+        stop.set('pos', str(percent * 1000))
         etree.SubElement(stop, qn('a:srgbClr')).set('val', _hex(color).lstrip('#'))
     linear = etree.SubElement(fill, qn('a:lin'))
     linear.set('ang', '0')
@@ -132,7 +144,7 @@ def share_bar(cell, color: str, share: float, rest: str) -> None:
     elif share >= 1:
         solid(cell, color)
     else:
-        gradient(cell, [(0, color), (share, color), (share + .0005, rest), (1, rest)])
+        gradient(cell, [(0, color), (share, color), (share + HARD_EDGE, rest), (1, rest)])
 
 
 def fading_bar(cell, color: str, share: float, rest: str) -> None:
@@ -142,7 +154,7 @@ def fading_bar(cell, color: str, share: float, rest: str) -> None:
         solid(cell, rest)
         return
     end = blend('#FFFFFF', color, .14)
-    stops = [(0, color), (share, end)] + ([(share + .0005, rest), (1, rest)] if share < 1 else [])
+    stops = [(0, color), (share, end)] + ([(share + HARD_EDGE, rest), (1, rest)] if share < 1 else [])
     gradient(cell, stops)
 
 
@@ -156,7 +168,7 @@ def diverging_bar(cell, color: str, share: float, rest: str, gain: bool, *, fade
     low, high = (.5, .5 + half) if gain else (.5 - half, .5)
     light = blend('#FFFFFF', color, .14) if fade else color
     inner, outer = (color, light) if gain else (light, color)
-    gradient(cell, [(0, rest), (low, rest), (low + .0005, inner), (high, outer), (high + .0005, rest), (1, rest)])
+    gradient(cell, [(0, rest), (low, rest), (low + HARD_EDGE, inner), (high, outer), (high + HARD_EDGE, rest), (1, rest)])
 
 
 def border(cell, edge: str, color: str, width_pt: float) -> None:
@@ -383,11 +395,15 @@ def _style_headers(table, header_rows: int, label_column: int, font: str | None)
                 write(cell, [(text, {'size': size, 'color': ink, 'bold': True,
                                      'italic': bool(current.get('italic'))})], font=font)
                 border(cell, 'lnB', fill, 2.25)
-                # Under every column of the operator, so the rule shows how far they go.
+                # Under every column of the operator, so the rule shows how far they go: PowerPoint draws the bottom
+                # line of merged cells under their first column only, so the cells under them have it on top too.
                 spanned = column_index + 1
                 while spanned < len(table.columns) and table.cell(row_index, spanned)._tc.get('hMerge') == '1':
                     border(table.cell(row_index, spanned), 'lnB', fill, 2.25)
                     spanned += 1
+                if row_index + 1 < len(table.rows):
+                    for column in range(column_index, spanned):
+                        border(table.cell(row_index + 1, column), 'lnT', fill, 2.25)
 
 
 def apply_scorecard(table, *, header_rows: int, metrics: list[dict], value_columns: list[tuple[int, str, str | None]],

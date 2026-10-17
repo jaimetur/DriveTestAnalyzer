@@ -1217,12 +1217,9 @@ def install_report_task_routes(core: Any) -> None:
             for export_format in entry.get('formats') or ['powerpoint']:
                 suffix = '.docx' if export_format == 'word' else '.pptx'
                 destination = artifact_path(folder, stamp, 'Scoring & GAP Analysis', entry.get('label') or Path(filename).stem, suffix)
-                if export_format == 'word':
-                    # The Word document carries the same slides: one landscape page per slide.
-                    from src.modules.pptx_to_docx import pptx_to_docx
-                    destination.write_bytes(pptx_to_docx(content, 'Scoring & GAP Analysis', pack_sections=True))
-                else:
-                    destination.write_bytes(content)
+                # Composed as the Scoring section of a Complete Report (PowerPoint and Word alike).
+                from src.modules.complete_reports import module_document
+                destination.write_bytes(module_document('scoring', content, export_format, 'Scoring & GAP Analysis'))
                 artifacts.append(ready_artifact('scoring', f"{title} ({FORMAT_LABELS[export_format]})", destination,
                                                 scoring_details(export_job, entry, names)))
             return artifacts

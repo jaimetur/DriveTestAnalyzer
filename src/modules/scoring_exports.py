@@ -33,7 +33,7 @@ from src.modules.scoring_insight_slides import (
 from src.modules.scoring_summary_slides import (
     add_campaign_scope_slides, add_gap_parts_slides, add_levers_slides, add_location_ranking_slides,
     add_location_versus_slides, add_points_at_stake_slides, add_position_matrix_slides, add_serving_loss_slides,
-    add_sites_slides, add_standings_slides, add_stretch_slides,
+    add_sites_slides, add_standings_slides, add_stretch_slides, latest_campaign_items,
 )
 from src.modules.scoring_area_summary import build_area_summary
 from src.modules.scoring_config import BEST_NETWORK_SCORING, MOST_RELIABLE_SCORING, SCORING_LABELS
@@ -2401,15 +2401,6 @@ def _compared_operator(options: dict | None, operator: str, label: str | None = 
     return not chosen or str(operator).casefold() in chosen or str(label or '').casefold() in chosen
 
 
-def _latest_campaign_maps(maps: list[dict]) -> list[dict]:
-    """With several campaigns, the points-lost maps of the latest one."""
-    campaigns = [item['context'].get('campaign') for item in maps if item['context'].get('campaign')]
-    if len(set(campaigns)) <= 1:
-        return maps
-    latest = max(campaigns, key=campaign_sort_key)
-    return [item for item in maps if item['context'].get('campaign') in (None, latest)]
-
-
 def _first_ranking_group(rankings: list[dict]) -> list[dict]:
     """The location rankings of the most specific level (City, then Cluster, then Region) and its first group."""
     for level in ('City', 'Cluster', 'Region'):
@@ -2487,7 +2478,8 @@ def _add_insight_slides(presentation, views: dict, environment: str, scoring: st
             add_gap_parts_slides(presentation, items.get('gap_parts', []), subtitle=subtitle, new_slide=_slide, scope=scope,
                                  compared=compared)
         if _option(options, 'gap', 'profile'):
-            profiles = [item for item in items.get('kpi_gap_profiles', [])
+            # The slides of one campaign show its latest one (of each operator and place).
+            profiles = [item for item in latest_campaign_items(items.get('kpi_gap_profiles', []))
                         if _compared_operator(options, item['operator'], item.get('label'))]
             add_kpi_gap_profile_slides(
                 presentation, profiles, scoring_label=label, subtitle=subtitle,
@@ -2497,11 +2489,12 @@ def _add_insight_slides(presentation, views: dict, environment: str, scoring: st
             )
         return
     if stage == 'points':
+        # The slides of one campaign show its latest one (of each operator and place).
         if _option(options, 'points', 'stake'):
-            add_points_at_stake_slides(presentation, items.get('points_at_stake', []), subtitle=subtitle, new_slide=_slide,
-                                       scope=scope)
+            add_points_at_stake_slides(presentation, latest_campaign_items(items.get('points_at_stake', [])), subtitle=subtitle,
+                                       new_slide=_slide, scope=scope)
         if _option(options, 'points', 'kpis'):
-            profiles = [item for item in items.get('kpi_gap_profiles', [])
+            profiles = [item for item in latest_campaign_items(items.get('kpi_gap_profiles', []))
                         if _compared_operator(options, item['operator'], item.get('label'))]
             add_points_per_kpi_slides(
                 presentation, profiles, scoring_label=label, subtitle=subtitle, environment_labels=environment_labels,
@@ -2511,7 +2504,7 @@ def _add_insight_slides(presentation, views: dict, environment: str, scoring: st
             # The reference operator has its map too when it is one of the operators to compare.
             maps = [item for item in items.get('points_loss_maps', [])
                     if _compared_operator(options, item['operator'], item.get('label'))]
-            add_points_loss_slides(presentation, _latest_campaign_maps(maps), insights.get('points_loss_background') or [],
+            add_points_loss_slides(presentation, latest_campaign_items(maps), insights.get('points_loss_background') or [],
                                    scoring_label=label, subtitle=subtitle, new_slide=_slide,
                                    boundaries=views.get('_points_loss_boundaries'),
                                    outlines=views.get('_points_loss_outlines'),
@@ -2524,10 +2517,11 @@ def _add_insight_slides(presentation, views: dict, environment: str, scoring: st
                                     title='Points Lost — per kind of site', column='Kind of site', subtitle=subtitle,
                                     new_slide=_slide, scope=scope, compared=compared)
         if _option(options, 'points', 'sites'):
-            add_sites_slides(presentation, items.get('sites_to_review', []), subtitle=subtitle, new_slide=_slide, scope=scope,
-                             compared=compared)
+            add_sites_slides(presentation, latest_campaign_items(items.get('sites_to_review', [])), subtitle=subtitle,
+                             new_slide=_slide, scope=scope, compared=compared)
         if _option(options, 'points', 'stretches'):
-            add_stretch_slides(presentation, items.get('route_stretches', []), insights.get('points_loss_background') or [],
+            add_stretch_slides(presentation, latest_campaign_items(items.get('route_stretches', [])),
+                               insights.get('points_loss_background') or [],
                                subtitle=subtitle, new_slide=_slide, scope=scope, compared=compared)
         return
     if stage == 'comparison' and _option(options, 'tables', 'campaign_comparison'):

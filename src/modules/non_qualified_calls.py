@@ -7118,14 +7118,24 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         return executive, progress, options, selection_lines(filters, names, granularity, labels)
 
     def write_summary_document(export_format: str, destination: Path, executive, progress, options, lines,
-                               components: list[str] | None = None) -> None:
-        from src.modules.non_qualified_calls_export import export_powerpoint, export_word
+                               components: list[str] | None = None, compose: bool = True) -> None:
+        """The summary in PowerPoint or Word, composed as the Non-Qualified Calls section of a Complete Report; without
+        ``compose`` (the Complete Report itself), the PowerPoint is the deck of the module."""
+        from src.modules.complete_reports import module_document
+        from src.modules.non_qualified_calls_export import export_powerpoint
 
-        if export_format == 'powerpoint':
+        if not compose:
             export_powerpoint(destination, lines, executive['summary'], executive['breakdowns'], progress, options,
                               components=components)
-        else:
-            export_word(destination, lines, executive['summary'], executive['breakdowns'], progress, options)
+            return
+        # The deck of the module has its own name, so it never replaces a document written next to it.
+        deck = destination.with_name(f'.{destination.stem}.{uuid.uuid4().hex}.pptx')
+        try:
+            export_powerpoint(deck, lines, executive['summary'], executive['breakdowns'], progress, options,
+                              components=components)
+            destination.write_bytes(module_document('non_qualified_calls', deck.read_bytes(), export_format, 'Non-Qualified Calls'))
+        finally:
+            deck.unlink(missing_ok=True)
 
     def resolve_report_campaigns(repository, filters: dict[str, list[str]]) -> dict[str, list[str]]:
         """The filters of a Reporting Job with an automatic Campaign choice (Latest campaign, Previous campaign, Latest 2
@@ -7163,6 +7173,8 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         options = {**options, 'show_not_classified': str(settings.get('show_not_classified') or '') == '1',
                    'show_empty': str(settings.get('show_empty') or '') == '1'}
         components = [str(value) for value in settings['components']] if isinstance(settings.get('components'), list) else None
+        # A Complete Report composes the deck of the module itself.
+        compose = settings.get('compose', True) is not False
         summary = executive['summary']
         details = [*lines[:-1], f"{summary['total']:,} Non-Qualified Calls · {summary['open']:,} open · {summary['closed']:,} closed · "
                    f"{progress['summary']['attended']:,} attended"]
@@ -7172,7 +7184,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
             label = {'powerpoint': 'PPT', 'word': 'Word', 'excel': 'Excel'}[export_format]
             destination = artifact_path(folder, stamp, 'Non-Qualified Calls', 'Executive Summary and Progress Status', suffix)
             if export_format in {'powerpoint', 'word'}:
-                write_summary_document(export_format, destination, executive, progress, options, lines, components)
+                write_summary_document(export_format, destination, executive, progress, options, lines, components, compose)
             else:
                 destination.write_bytes(export_workbook(repository, filters, user.username))
             artifacts.append({'module': 'non_qualified_calls', 'title': f'Non-Qualified Calls ({label})',

@@ -782,9 +782,14 @@ def test_scoring_ppt_export_normalizes_legacy_gap_without_mutating_saved_result(
         return b'ppt'
 
     monkeypatch.setattr(scoring_exports, 'export_scoring_powerpoint', capture_export)
+    # The deck is composed as the Scoring section of a Complete Report.
+    from src.modules import complete_reports
+    composed = []
+    monkeypatch.setattr(complete_reports, 'module_document',
+                        lambda key, content, kind, _title='': composed.append((key, content, kind)) or content)
     exported = client.get(f'/scoring/saved-filters/{job_id}/export/ppt')
     assert exported.status_code == 200
-    assert exported.content == b'ppt'
+    assert exported.content == b'ppt' and composed == [('scoring', b'ppt', 'powerpoint')]
     assert captured['gap_layout'] == 'end'
     assert captured['show_gap_values'] is True
     assert captured['result']['gap'][0]['gap_points'] == -0.6

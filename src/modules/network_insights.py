@@ -3229,15 +3229,17 @@ def install_network_insights_routes(core: Any) -> None:
         return cluster_inventory_summary()
 
     def write_summary(selection: dict[str, Any], export_kind: str, destination: Path,
-                      components: list[str] | None = None) -> dict[str, Any]:
+                      components: list[str] | None = None, compose: bool = True) -> dict[str, Any]:
         """Write the Summary Network Insights (PowerPoint or Word) for a saved or current selection.
 
         Without CDRs of its own, a selection analyses those of its NR Mode and Campaigns. ``components`` keeps only
-        those charts and tables in the PowerPoint (a Complete Report). Returns the selection description used in the
-        document.
+        those charts and tables in the PowerPoint. Both formats are composed as the Network Insights section of a
+        Complete Report; without ``compose`` (the Complete Report itself), the PowerPoint is the deck of the module.
+        Returns the selection description used in the document.
         """
         from src.modules.cdr_reporting import _render_dashboard_payload
-        from src.modules.network_insights_export import export_network_insights_powerpoint, export_network_insights_word
+        from src.modules.complete_reports import module_document
+        from src.modules.network_insights_export import export_network_insights_powerpoint
 
         task_repository = bound_repository()
         available = ready_cdrs(task_repository)
@@ -3263,11 +3265,17 @@ def install_network_insights_routes(core: Any) -> None:
         deployment = {'groupings': groupings, 'cluster_inventories': cluster_inventory_summary(), 'snapshot': snapshot,
                       'nr_duplex': nr_duplex_payload(task_repository, NrDuplexRequest.model_validate(request.model_dump()))}
         render = lambda payload, width, height: _render_dashboard_payload(payload, width=width, height=height)[0]
-        if export_kind == 'word':
-            export_network_insights_word(destination, analysis, deployment, description, render)
-        else:
-            chosen = {} if components is None else {'components': components}
+        chosen = {} if components is None else {'components': components}
+        if not compose:
             export_network_insights_powerpoint(destination, analysis, deployment, description, render, **chosen)
+            return description
+        # The deck of the module has its own name, so it never replaces a document written next to it.
+        deck = destination.with_name(f'.{destination.stem}.{uuid4().hex}.pptx')
+        try:
+            export_network_insights_powerpoint(deck, analysis, deployment, description, render, **chosen)
+            destination.write_bytes(module_document('network_insights', deck.read_bytes(), export_kind, 'Network Insights'))
+        finally:
+            deck.unlink(missing_ok=True)
         return description
 
     def summary_request(task_repository, selection: dict[str, Any]) -> AnalysisRequest:

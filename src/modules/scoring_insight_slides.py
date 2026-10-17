@@ -520,6 +520,103 @@ def add_points_per_kpi_slides(presentation, profiles: list[dict[str, Any]], *, s
         _profile_note(slide, runs)
 
 
+# Where the plot of a trend chart stands in it: left, top, width and height as shares of the chart.
+TREND_PLOT = (.06, .05, .8, .84)
+# The height of a label (10 pt bold) and the gap kept between two labels, in points.
+LABEL_HEIGHT_PT = 13
+
+
+def _plot_layout(chart, plot: tuple[float, float, float, float]) -> None:
+    """Place the plot area of ``chart`` at ``plot`` (shares of the chart) instead of where the renderer puts it."""
+    from pptx.oxml.ns import qn
+
+    plot_area = chart._chartSpace.chart.plotArea
+    layout = plot_area.find(qn('c:layout'))
+    if layout is None:
+        layout = plot_area.makeelement(qn('c:layout'), {})
+        plot_area.insert(0, layout)
+    for child in list(layout):
+        layout.remove(child)
+    manual = layout.makeelement(qn('c:manualLayout'), {})
+    layout.append(manual)
+    for name, value in (('layoutTarget', 'inner'), ('xMode', 'edge'), ('yMode', 'edge'), ('x', plot[0]), ('y', plot[1]),
+                        ('w', plot[2]), ('h', plot[3])):
+        manual.append(manual.makeelement(qn(f'c:{name}'), {'val': str(value)}))
+
+
+def _spread_labels(labels: list[tuple[int, float, Any]], minimum: float, maximum: float, plot: tuple[float, float, float, float],
+                   *, chart_height: float) -> None:
+    """Move apart the labels of the same category closer than a line of text: each keeps its order and moves the
+    least, up or down, by a manual offset of its data label."""
+    from pptx.oxml.ns import qn
+
+    span = (maximum - minimum) or 1
+    step = LABEL_HEIGHT_PT / (chart_height * 72)
+    by_category: dict[int, list[tuple[float, Any]]] = {}
+    for category, value, label in labels:
+        # Where the label stands: a share of the chart height from its top.
+        by_category.setdefault(category, []).append((plot[1] + plot[3] * (1 - (value - minimum) / span), label))
+    for members in by_category.values():
+        members.sort(key=lambda member: member[0])
+        # Labels too close form a group, centred where its labels would stand, one line of text apart; groups that then
+        # touch join.
+        groups = [[member] for member in members]
+
+        def start(group: list[tuple[float, Any]]) -> float:
+            return sum(position for position, _label in group) / len(group) - (len(group) - 1) * step / 2
+
+        joined = True
+        while joined:
+            joined = False
+            for index in range(1, len(groups)):
+                if start(groups[index]) < start(groups[index - 1]) + len(groups[index - 1]) * step:
+                    groups[index - 1:index + 1] = [groups[index - 1] + groups[index]]
+                    joined = True
+                    break
+        placed = [start(group) + offset * step for group in groups for offset in range(len(group))]
+        for (position, label), target in zip(members, placed):
+            offset = target - position
+            if abs(offset) < 1e-4:
+                continue
+            element = label._get_or_add_dLbl()
+            layout = element.find(qn('c:layout'))
+            if layout is None:
+                layout = element.makeelement(qn('c:layout'), {})
+                element.find(qn('c:idx')).addnext(layout)
+            for child in list(layout):
+                layout.remove(child)
+            manual = layout.makeelement(qn('c:manualLayout'), {})
+            layout.append(manual)
+            manual.append(manual.makeelement(qn('c:x'), {'val': '0'}))
+            manual.append(manual.makeelement(qn('c:y'), {'val': f'{offset:.4f}'}))
+
+
+def _label_side(series: list[dict[str, Any]], index: int, last: int, *, label_span: float):
+    """Where the label of a line that ends at campaign ``last`` stands clearest of the other lines: on its right
+    (between that campaign and the next), above or below its point (``label_span``: the height of a label in points
+    of the axis)."""
+    value = series[index]['points'][last]
+
+    def at(points: list[float | None], position: int) -> float | None:
+        return points[position] if 0 <= position < len(points) else None
+
+    def clearance(level: float, positions: list[int]) -> float:
+        others = []
+        for other_index, other in enumerate(series):
+            if other_index == index:
+                continue
+            known = [at(other['points'], position) for position in positions]
+            known = [item for item in known if item is not None]
+            if known:
+                others.append(sum(known) / len(known))
+        return min((abs(level - other) for other in others), default=float('inf'))
+
+    sides = [(clearance(value, [last, last + 1]), 2, XL_DATA_LABEL_POSITION.RIGHT),
+             (clearance(value + label_span, [last]), 1, XL_DATA_LABEL_POSITION.ABOVE),
+             (clearance(value - label_span, [last]), 0, XL_DATA_LABEL_POSITION.BELOW)]
+    return max(sides, key=lambda side: (side[0], side[1]))[2]
+
+
 def add_trend_slides(presentation, trends: list[dict[str, Any]], *, scoring_label: str, subtitle: str,
                      new_slide: Callable, scope: ScopeLabels | None = None) -> None:
     """A line chart of each operator's scoring across the campaigns of every group, each line ending in the name and
@@ -547,6 +644,9 @@ def add_trend_slides(presentation, trends: list[dict[str, Any]], *, scoring_labe
         chart.value_axis.format.line.fill.background()
         chart.category_axis.major_tick_mark = XL_TICK_MARK.NONE
         chart.category_axis.format.line.color.rgb = _rgb('#C3CCD5')
+        # The plot keeps a fixed place in the chart (room on the right for the names), so the labels can be kept apart.
+        _plot_layout(chart, TREND_PLOT)
+        labels: list[tuple[int, float, Any]] = []
         for index, (plot_series, series) in enumerate(zip(chart.series, trend['series'])):
             color = series.get('color') or FALLBACK_COLORS[index % len(FALLBACK_COLORS)]
             plot_series.format.line.color.rgb = _rgb(color)
@@ -564,13 +664,20 @@ def add_trend_slides(presentation, trends: list[dict[str, Any]], *, scoring_labe
             point.marker.format.fill.solid()
             point.marker.format.fill.fore_color.rgb = _rgb(color)
             label = point.data_label
-            label.position = XL_DATA_LABEL_POSITION.RIGHT
+            final = last == len(trend['campaigns']) - 1
+            # A line that ends before the latest campaign is named where the other lines leave it most room.
+            label.position = XL_DATA_LABEL_POSITION.RIGHT if final else _label_side(
+                trend['series'], index, last, label_span=(trend['maximum'] - chart.value_axis.minimum_scale) * LABEL_HEIGHT_PT
+                / (5.3 * 72 * TREND_PLOT[3]))
             label.text_frame.text = f"{series['label']} {series['points'][last]:,.0f}"
             for paragraph in label.text_frame.paragraphs:
                 for run in paragraph.runs:
                     run.font.size = Pt(10)
                     run.font.bold = True
                     run.font.color.rgb = _rgb(color)
+            if final:
+                labels.append((last, series['points'][last], label))
+        _spread_labels(labels, chart.value_axis.minimum_scale, trend['maximum'], TREND_PLOT, chart_height=5.3)
 
 
 def _delta_color(value: float | None, scale: float) -> str:
@@ -589,9 +696,17 @@ def _comparison_table(slide, comparison: dict[str, Any], *, left: float, width: 
     row_height = min(.2, (7.05 - top) / (len(rows) + 2.6))
     size = 7 if row_height >= .17 else 6
     widths = [.5, width - .5 - 4 * .62 - .8, .62, .62, .62, .62, .8]
-    heading = slide.shapes.add_textbox(Inches(left), Inches(1.86), Inches(width), Inches(.32))
-    title = f"{comparison['label']}" + (f" · {comparison['title']}" if comparison['title'] else '')
-    _write(heading.text_frame, [(title, 12, True, '#17232D')], align=PP_ALIGN.CENTER)
+    heading = slide.shapes.add_textbox(Inches(left), Inches(1.84), Inches(width), Inches(.3))
+    # The operator in its colour, with a rule of its colour under it.
+    color = comparison.get('color') if str(comparison.get('color') or '').startswith('#') else '#17232D'
+    runs = [(comparison['label'], True, color)] + ([(f" · {comparison['title']}", False, '#17232D')] if comparison['title'] else [])
+    _write_runs(heading.text_frame, runs, size=12, color='#17232D')
+    heading.text_frame.paragraphs[0].alignment = PP_ALIGN.CENTER
+    rule = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(left), Inches(2.14), Inches(width), Inches(.045))
+    rule.fill.solid()
+    rule.fill.fore_color.rgb = _rgb(color)
+    rule.line.fill.background()
+    rule.name = 'Scoring Campaign Comparison Rule'
     shape, table = _table(slide, len(rows) + 2, len(widths), left, top, width, row_height, widths)
     shape.name = 'Scoring Campaign Comparison Table'
     previous, latest = comparison['previous_campaign'], comparison['latest_campaign']

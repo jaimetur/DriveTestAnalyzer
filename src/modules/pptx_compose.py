@@ -575,10 +575,13 @@ def join_table_pages(composer: DeckComposer, pages: list[Any]) -> bool:
 # Text is measured with Arial (as wide as the fonts LibreOffice uses for the template's Ericsson Hilda when it is not
 # installed, see slide_titles) with room for a substituted font; a block or square drawn as a bar is this wide in ems.
 TEXT_ROOM, BLOCK_CHARACTER_EM = 1.15, 0.8
-# Height of a line of text in ems.
-LINE_EM = 1.25
+# Height of a line of text in ems, and the room a row keeps around its text.
+LINE_EM, ROW_ROOM = 1.25, 1.2
 # A table continues in another column beside it only when each column keeps at least these rows.
 MINIMUM_FLOW_ROWS = 6
+# A table whose values would need a smaller font (hundredths of a point) continues on more slides.
+LEGIBLE_FONT = 600
+MAXIMUM_TABLE_SLIDES = 12
 
 
 def _scaled_size(size: int, factor: float) -> int:
@@ -603,10 +606,15 @@ def _text_ems(text: str, header: bool) -> float:
 
 @dataclass
 class _TableCells:
-    """What sizes a table: per cell its text width in ems, its font size and its margins, and the height of each row."""
+    """What sizes a table: per cell its text width in ems, its font size and its margins, and the height of each row
+    (the header first)."""
     cells: list[list[tuple[float, int, int, int]]]
     heights: list[int]
     count: int
+
+    def part(self, start: int, end: int) -> _TableCells:
+        """The header and the rows ``start`` to ``end`` (counted without the header)."""
+        return _TableCells([self.cells[0], *self.cells[1 + start:1 + end]], [self.heights[0], *self.heights[1 + start:1 + end]], self.count)
 
     def widths(self, factor: float) -> list[int]:
         widths = [0] * self.count
@@ -616,9 +624,48 @@ class _TableCells:
         return widths
 
     def row_heights(self, factor: float) -> list[int]:
-        return [max(int(height * factor), max((int((2 if index == 0 else 1) * LINE_EM * _scaled_size(size, factor) / 100 * 12700 + ends * factor)
-                                                for _ems, size, _sides, ends in row), default=0))
-                for index, (row, height) in enumerate(zip(self.cells, self.heights))]
+        """The height of each row with its text at ``factor`` of its size: what its lines and margins need, with some
+        room (rows taller than that in the table shrink to it before the text gets smaller)."""
+        heights = []
+        for index, (row, height) in enumerate(zip(self.cells, self.heights)):
+            text = max((int((2 if index == 0 else 1) * LINE_EM * _scaled_size(size, factor) / 100 * 12700 + ends * factor)
+                        for _ems, size, _sides, ends in row), default=0)
+            heights.append(max(text, min(height or 10 ** 9, int(text * ROW_ROOM))))
+        return heights
+
+    def smallest_font(self, factor: float) -> int:
+        """The smallest font of the values at ``factor`` of their size."""
+        return min((_scaled_size(size, factor) for row in self.cells[1:] for _ems, size, _sides, _ends in row), default=MINIMUM_FONT)
+
+    def plan(self, frame: tuple[int, int, int, int], gap: int, flows: int = 4) -> tuple[float, int, int]:
+        """The scale, the number of tables side by side (up to ``flows``) and the rows of each that show the table
+        largest in ``frame``."""
+        _left, _top, width, height = frame
+        body = len(self.cells) - 1
+
+        def fits(factor: float, per: int, cell: float) -> bool:
+            heights = self.row_heights(factor)
+            tallest = heights[0] + max(sum(heights[1 + start:1 + start + per]) for start in range(0, body, per))
+            return tallest <= height and sum(self.widths(factor)) <= cell
+
+        best: tuple[float, int, int] | None = None
+        for columns in range(1, flows + 1):
+            per = math.ceil(body / columns)
+            if columns > 1 and (per < MINIMUM_FLOW_ROWS or math.ceil(body / per) < columns):
+                break
+            cell = (width - gap * (columns - 1)) / columns
+            # The largest scale that fits (both the widths and the heights grow with it).
+            low, high = 0.2, 1.0
+            if fits(high, per, cell):
+                low = high
+            else:
+                for _step in range(16):
+                    middle = (low + high) / 2
+                    low, high = (middle, high) if fits(middle, per, cell) else (low, middle)
+            # Another column beside it only for clearly larger text.
+            if best is None or low > best[0] * 1.15:
+                best = (low, columns, per)
+        return best
 
 
 def _table_cells(table: Any, fallback_height: int) -> _TableCells:
@@ -642,46 +689,72 @@ def _cell_size(cell: Any) -> int:
     return max(sizes or [1800])
 
 
+def _only_table(slide: Any) -> tuple[Any, Any] | None:
+    """The shape and the table of a slide whose only content is a table without merged cells, else None."""
+    shapes = content_shapes(slide)
+    if len(shapes) != 1 or not shapes[0].has_table:
+        return None
+    table = shapes[0]._element.find(f'.//{{{A_NS}}}tbl')
+    merged = ('gridSpan', 'rowSpan', 'hMerge', 'vMerge')
+    if len(table.findall(f'{{{A_NS}}}tr')) < 2 or any(cell.get(name) for cell in table.iter(f'{{{A_NS}}}tc') for name in merged):
+        return None
+    return shapes[0], table
+
+
+def table_slides(slide: Any, frame: tuple[int, int, int, int], gap: int = Inches(0.25), legible_font: int = LEGIBLE_FONT) -> int:
+    """How many slides the only table of ``slide`` needs so that, shown by fit_table in ``frame``, its values keep a
+    legible font (``legible_font``, or their own size when smaller); 1 for other content."""
+    found = _only_table(slide)
+    if found is None:
+        return 1
+    shape, table = found
+    rows = table.findall(f'{{{A_NS}}}tr')
+    sizes = _table_cells(table, shape.height // len(rows))
+    body = len(rows) - 1
+    legible = min(legible_font, sizes.smallest_font(1.0))
+    for slides in range(1, MAXIMUM_TABLE_SLIDES + 1):
+        per = math.ceil(body / slides)
+        parts = [sizes.part(start, min(start + per, body)) for start in range(0, body, per)]
+        if all(part.smallest_font(part.plan(frame, gap)[0]) >= legible for part in parts):
+            return len(parts)
+    return len(parts)
+
+
+def split_table(composer: DeckComposer, slide: Any, slides: int) -> list[Any]:
+    """``slide`` and ``slides`` - 1 copies of it after it, each keeping the header of its only table and its share of
+    the rows (in their order)."""
+    found = _only_table(slide)
+    if found is None or slides < 2:
+        return [slide]
+    body = len(found[1].findall(f'{{{A_NS}}}tr')) - 1
+    per = math.ceil(body / slides)
+    starts = list(range(0, body, per))
+    pages = [slide, *(composer.add_slide(slide) for _start in starts[1:])]
+    for page, start in zip(pages, starts):
+        table = _only_table(page)[1]
+        for position, row in enumerate(table.findall(f'{{{A_NS}}}tr')[1:]):
+            if not start <= position < start + per:
+                table.remove(row)
+    return pages
+
+
 def fit_table(slide: Any, frame: tuple[int, int, int, int], gap: int = Inches(0.25)) -> float | None:
     """Show the only content of ``slide``, a table, as large as it fits in ``frame``: its rows in one to four tables
     side by side (each under the header) and its columns as wide as their text needs, sharing the width of the
     frame. Returns the scale of its text, or None when the slide has other content or the table merges cells."""
-    shapes = content_shapes(slide)
-    if len(shapes) != 1 or not shapes[0].has_table:
+    found = _only_table(slide)
+    if found is None:
         return None
-    shape = shapes[0]
-    table = shape._element.find(f'.//{{{A_NS}}}tbl')
+    return _fit(slide, *found, frame, gap)
+
+
+def _fit(slide: Any, shape: Any, table: Any, frame: tuple[int, int, int, int], gap: int, flows: int = 4) -> float:
+    """Lay out ``table`` (of ``shape``) in ``frame`` as fit_table does, in up to ``flows`` tables side by side."""
     rows = table.findall(f'{{{A_NS}}}tr')
-    merged = ('gridSpan', 'rowSpan', 'hMerge', 'vMerge')
-    if len(rows) < 2 or any(cell.get(name) for cell in table.iter(f'{{{A_NS}}}tc') for name in merged):
-        return None
     sizes = _table_cells(table, shape.height // len(rows))
-    left, top, width, height = frame
+    left, top, width, _height = frame
     body = len(rows) - 1
-
-    def fits(factor: float, per: int, cell: float) -> bool:
-        heights = sizes.row_heights(factor)
-        tallest = heights[0] + max(sum(heights[1 + start:1 + start + per]) for start in range(0, body, per))
-        return tallest <= height and sum(sizes.widths(factor)) <= cell
-
-    best: tuple[float, int, int] | None = None
-    for columns in range(1, 5):
-        per = math.ceil(body / columns)
-        if columns > 1 and (per < MINIMUM_FLOW_ROWS or math.ceil(body / per) < columns):
-            break
-        cell = (width - gap * (columns - 1)) / columns
-        # The largest scale that fits (both the widths and the heights grow with it).
-        low, high = 0.2, 1.0
-        if fits(high, per, cell):
-            low = high
-        else:
-            for _step in range(16):
-                middle = (low + high) / 2
-                low, high = (middle, high) if fits(middle, per, cell) else (low, middle)
-        # Another column beside it only for clearly larger text.
-        if best is None or low > best[0] * 1.15:
-            best = (low, columns, per)
-    scale, columns, per = best
+    scale, columns, per = sizes.plan(frame, gap, flows)
     cell = int((width - gap * (columns - 1)) / columns)
     needed = sizes.widths(scale)
     table_width = cell if columns > 1 else min(cell, max(shape.width, sum(needed)))
@@ -718,6 +791,109 @@ def fit_table(slide: Any, frame: tuple[int, int, int, int], gap: int = Inches(0.
         item.width = table_width
         item.height = sum(int(row.get('h') or 0) for row in item._element.find(f'.//{{{A_NS}}}tbl').findall(f'{{{A_NS}}}tr'))
     return scale
+
+
+def _panel_tables(slide: Any) -> list[Any]:
+    """The tables of a slide that stand side by side (such as one per network), left to right; [] when it has none or
+    one, or when they do not stand side by side."""
+    tables = sorted((shape for shape in content_shapes(slide) if shape.has_table), key=lambda shape: shape.left)
+    if len(tables) < 2 or any(after.left < before.left + before.width - Inches(.05) for before, after in zip(tables, tables[1:])):
+        return []
+    return tables
+
+
+def join_panel_pages(composer: DeckComposer, pages: list[Any]) -> bool:
+    """Join the pages of tables that stand side by side (each under its caption, such as one per network): each table
+    of the first page takes the rows (without the header) of the table in its place on the next pages, whose tables
+    may have run out of rows. Returns whether the pages were joined; the other pages are then removed."""
+    panels = _panel_tables(pages[0])
+    if not panels:
+        return False
+    headers = [_row_texts(_table_rows(shape)[0]) for shape in panels]
+    rows: list[list[Any]] = [[] for _panel in panels]
+    for page in pages[1:]:
+        for shape in (shape for shape in content_shapes(page) if shape.has_table):
+            place = next((index for index, panel in enumerate(panels)
+                          if abs(panel.left - shape.left) < Inches(.1) and _row_texts(_table_rows(shape)[0]) == headers[index]), None)
+            if place is None:
+                return False
+            rows[place].extend(_table_rows(shape)[1:])
+    for panel, extra in zip(panels, rows):
+        element = panel._element.find(f'.//{{{A_NS}}}tbl')
+        for row in extra:
+            element.append(copy.deepcopy(row))
+        panel.height = sum(int(row.get('h') or 0) for row in element.findall(f'{{{A_NS}}}tr'))
+    for page in pages[1:]:
+        composer.remove_slide(page)
+    return True
+
+
+def split_panels(composer: DeckComposer, slide: Any, frame: tuple[int, int, int, int], legible_font: int = LEGIBLE_FONT,
+                 gap: int = Inches(0.25)) -> list[Any]:
+    """Show tables that stand side by side (see join_panel_pages) on as few slides as keep their values legible, each
+    slide with the same rows of every table under its header (a table that has run out of rows leaves its place, and
+    its caption, empty); returns the slides."""
+    panels = _panel_tables(slide)
+    bottom = frame[1] + frame[3]
+
+    def panel_frame(shape: Any) -> tuple[int, int, int, int]:
+        return shape.left, shape.top, shape.width, max(Inches(1), bottom - shape.top)
+
+    sizes = []
+    for shape in panels:
+        table = shape._element.find(f'.//{{{A_NS}}}tbl')
+        sizes.append(_table_cells(table, shape.height // max(1, len(table.findall(f'{{{A_NS}}}tr')))))
+    bodies = [len(item.cells) - 1 for item in sizes]
+    tallest = max(bodies)
+    legible = min(legible_font, *(item.smallest_font(1.0) for item in sizes))
+    count = 1
+    for count in range(1, MAXIMUM_TABLE_SLIDES + 1):
+        per = math.ceil(tallest / count)
+        if all(part.smallest_font(part.plan(panel_frame(shape), gap, 1)[0]) >= legible
+               for shape, item, body in zip(panels, sizes, bodies)
+               for part in [item.part(start, min(start + per, body)) for start in range(0, body, per)]):
+            break
+    per = math.ceil(tallest / count)
+    starts = list(range(0, tallest, per))
+    pages = [slide, *(composer.add_slide(slide) for _start in starts[1:])]
+    for page, start in zip(pages, starts):
+        for shape in _panel_tables(page):
+            table = shape._element.find(f'.//{{{A_NS}}}tbl')
+            body = table.findall(f'{{{A_NS}}}tr')[1:]
+            if start >= len(body):
+                # Its rows have run out: its caption goes too.
+                for other in content_shapes(page):
+                    if (not other.has_table and other.has_text_frame and abs(other.left - shape.left) < Inches(.1)
+                            and other.top + other.height <= shape.top + Inches(.05)):
+                        other._element.getparent().remove(other._element)
+                shape._element.getparent().remove(shape._element)
+                continue
+            for position, row in enumerate(body):
+                if not start <= position < start + per:
+                    table.remove(row)
+            _fit(page, shape, table, panel_frame(shape), gap, flows=1)
+    return pages
+
+
+def page_groups(composer: DeckComposer, slides: list[Any], minimum_scale: float) -> list[list[int]]:
+    """The pages of a chart or table (``slides``, by position) on as few slides as keep them at least ``minimum_scale``
+    of their size: consecutive pages share a slide while they fit, as evenly as possible when that needs no more
+    slides (a short last page joins the one before it)."""
+    blocks = [Block(slide, content_shapes(slide)) for slide in slides]
+    frame = content_frame(slides[0], composer.width, composer.height, [block.box for block in blocks])
+
+    def fit(group: list[int]) -> bool:
+        return len(group) == 1 or arrange([blocks[index] for index in group], frame).scale >= minimum_scale
+
+    groups = [[0]]
+    for index in range(1, len(blocks)):
+        if fit([*groups[-1], index]):
+            groups[-1].append(index)
+        else:
+            groups.append([index])
+    per = math.ceil(len(blocks) / len(groups))
+    even = [list(range(start, min(start + per, len(blocks)))) for start in range(0, len(blocks), per)]
+    return even if len(even) == len(groups) and all(fit(group) for group in even) else groups
 
 
 def fits_together(composer: DeckComposer, blocks: list[Block], minimum_scale: float = 0.9) -> bool:

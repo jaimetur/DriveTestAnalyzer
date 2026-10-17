@@ -2,7 +2,6 @@ from pathlib import Path
 import zipfile
 
 from docx import Document
-from docx.oxml.ns import qn
 from lxml import etree
 from pptx import Presentation
 
@@ -10,7 +9,7 @@ import io
 
 from PIL import Image
 
-from src.modules.network_insights_export import export_network_insights_powerpoint, export_network_insights_word, rf_quality_table
+from src.modules.network_insights_export import export_network_insights_powerpoint, rf_quality_table
 
 TEMPLATE = Path(__file__).resolve().parents[1] / 'assets/powerpoint-templates/Template_01.pptx'
 
@@ -65,34 +64,28 @@ def test_network_ppt_preserves_dashboard_template_and_fits_group_cells(tmp_path)
             assert canonical(generated.read(part)) == canonical(original.read(part))
 
 
-def test_network_word_uses_landscape_fixed_single_line_tables(tmp_path):
-    output = tmp_path / 'network.docx'
-    source = _analysis()
-    export_network_insights_word(output, source, {}, {}, _png)
-    document = Document(output)
-    section = document.sections[0]
-    assert section.page_width > section.page_height
-    columns, values, _bars = rf_quality_table(source)
-    tables = [table for table in document.tables if [cell.text for cell in table.rows[0].cells] == columns]
-    assert len(tables) == 1
-    table = tables[0]
-    assert table.autofit is False
-    assert table.columns[0].width > table.columns[1].width
-    assert sum(column.width for column in table.columns) <= section.page_width - section.left_margin - section.right_margin + 9144
-    assert [[cell.text for cell in row.cells] for row in list(table.rows)[1:]] == values
-    assert table.rows[0]._tr.trPr.find(qn('w:tblHeader')) is not None
-    for row in table.rows:
-        assert row._tr.trPr.find(qn('w:cantSplit')) is not None
-        for cell in row.cells:
-            assert cell._tc.tcPr.find(qn('w:noWrap')) is not None
-            assert len(cell.paragraphs) == 1 and '\n' not in cell.text
-            assert all(run.font.size.pt >= 8 for run in cell.paragraphs[0].runs)
+def test_network_word_is_composed_from_the_powerpoint_as_the_complete_report(tmp_path, monkeypatch):
+    import src.modules.pptx_to_docx as pptx_to_docx_module
+    from src.modules import complete_reports
+
+    output = tmp_path / 'network.pptx'
+    export_network_insights_powerpoint(output, _analysis(), {}, {}, _png, template=TEMPLATE)
+    raster = io.BytesIO()
+    Image.new('RGB', (400, 300), 'white').save(raster, format='PNG')
+    monkeypatch.setattr(pptx_to_docx_module, 'portrait_covers', lambda _content, positions: [raster.getvalue()] * len(positions))
+    monkeypatch.setattr(pptx_to_docx_module, 'slide_images',
+                        lambda deck, dpi=160: [raster.getvalue()] * len(Presentation(io.BytesIO(deck)).slides))
+    document = Document(io.BytesIO(complete_reports.module_document('network_insights', output.read_bytes(), 'word', 'Network Insights')))
+    # The cover of the module on a page of its own, then portrait pages with the components, as a Complete Report.
+    cover_page, *pages = document.sections
+    assert cover_page.left_margin == 0 and pages and pages[0].page_height > pages[0].page_width
+    assert document.inline_shapes
 
 
 def test_network_summaries_include_all_grouped_deployment_views_and_exclude_full_inventory(client, tmp_path, monkeypatch):
     import pandas as pd
     import src.DriveTestAnalyzer as app_module
-    from src.modules import network_insights as ni, network_insights_export as export
+    from src.modules import complete_reports, network_insights as ni, network_insights_export as export
     from src.modules.repository import local_now_iso
 
     client.post('/login', data={'username': 'admin', 'password': 'admin123'}, follow_redirects=False)
@@ -113,17 +106,21 @@ def test_network_summaries_include_all_grouped_deployment_views_and_exclude_full
     ready('mapping.xlsx', 'mapping_vodafone', pd.DataFrame({'Site_ID': ['S1'], 'Cell ID': ['1'], 'eMOCNScenario': ['NNS']}))
     ready('clusters.geojson', 'clusters', pd.DataFrame({'Cluster_Field': ['Cluster']}))
     (tmp_path / 'clusters.geojson').write_text('{"type":"FeatureCollection","features":[{"type":"Feature","properties":{"Name":"Cluster A"},"geometry":{"type":"Polygon","coordinates":[[[0,0],[1,0],[1,1],[0,1],[0,0]]]}}]}', encoding='utf-8')
-    captured = []
+    captured, composed = [], []
 
     def writer(destination, _analysis, deployment, _selection, _render):
         captured.append(deployment)
         destination.write_bytes(b'export')
         return destination
 
-    monkeypatch.setattr(export, 'export_network_insights_word', writer)
     monkeypatch.setattr(export, 'export_network_insights_powerpoint', writer)
+    # Both formats are composed from the deck of the module, as its section of a Complete Report.
+    monkeypatch.setattr(complete_reports, 'module_document', lambda key, content, kind, _title: composed.append((key, content, kind)) or b'document')
     for kind in ['word', 'powerpoint']:
         app_module.write_network_insights_summary({'datasets': {'data': [data_id]}}, kind, tmp_path / f'{kind}.output')
+        assert (tmp_path / f'{kind}.output').read_bytes() == b'document'
+    assert composed == [('network_insights', b'export', 'word'), ('network_insights', b'export', 'powerpoint')]
+    assert not list(tmp_path.glob('.*.pptx'))
     for deployment in captured:
         # The grouped views come from the inventory snapshot, as on the page.
         assert [group['group'] for group in deployment['groupings']] == list(ni.SUMMARY_DEPLOYMENT_GROUPS)
@@ -135,23 +132,19 @@ def test_network_summaries_include_all_grouped_deployment_views_and_exclude_full
         assert deployment['cluster_inventories']['rows'] == [{'operator': 'Vodafone', 'sites': 1, 'cells': 1}]
 
 
-def test_cluster_sites_sources_are_both_present_in_ppt_and_word(tmp_path):
+def test_cluster_sites_sources_are_both_present(tmp_path):
     analysis = _analysis()
     deployment = {'cluster_inventories': {'rows': [{'operator': 'Vodafone', 'sites': 37201, 'cells': 516898},
                                                  {'operator': 'Three', 'sites': 16107, 'cells': 140127}]}}
     ppt = tmp_path / 'density.pptx'
-    word = tmp_path / 'density.docx'
     export_network_insights_powerpoint(ppt, analysis, deployment, {}, lambda *_args: b'', template=TEMPLATE)
-    export_network_insights_word(word, analysis, deployment, {}, lambda *_args: b'')
-    ppt_tables = [shape.table for slide in Presentation(ppt).slides for shape in slide.shapes if shape.has_table]
-    word_tables = Document(word).tables
-    for tables in [ppt_tables, word_tables]:
-        observed = [table for table in tables if table.cell(0, 1).text == 'Observed eNodeBs']
-        inventory = [table for table in tables if table.cell(0, 1).text == 'Inventory sites']
-        assert sum(len(table.rows) - 1 for table in observed) == 25
-        assert len(inventory) == 1
-        assert [[cell.text for cell in row.cells] for row in list(inventory[0].rows)[1:]] == [
-            ['Vodafone', '37,201', '516,898'], ['Three', '16,107', '140,127']]
+    tables = [shape.table for slide in Presentation(ppt).slides for shape in slide.shapes if shape.has_table]
+    observed = [table for table in tables if table.cell(0, 1).text == 'Observed eNodeBs']
+    inventory = [table for table in tables if table.cell(0, 1).text == 'Inventory sites']
+    assert sum(len(table.rows) - 1 for table in observed) == 25
+    assert len(inventory) == 1
+    assert [[cell.text for cell in row.cells] for row in list(inventory[0].rows)[1:]] == [
+        ['Vodafone', '37,201', '516,898'], ['Three', '16,107', '140,127']]
 
 
 def test_serving_cells_5g_availability_and_snapshot_tables_are_exported(tmp_path):
@@ -179,13 +172,10 @@ def test_serving_cells_5g_availability_and_snapshot_tables_are_exported(tmp_path
         'density': {'region': [{'area': 'North', 'operator': 'VF', 'sites': 2, 'nr_sites': 1, 'area_km2': None, 'sites_per_km2': None,
                                 'median_isd_km': 1.3, 'p90_isd_km': 1.3}]},
     }}
-    ppt, word = tmp_path / 'serving.pptx', tmp_path / 'serving.docx'
+    ppt = tmp_path / 'serving.pptx'
     export_network_insights_powerpoint(ppt, analysis, deployment, {}, lambda *_args: b'', template=TEMPLATE)
-    export_network_insights_word(word, analysis, deployment, {}, lambda *_args: b'')
-    ppt_headers = {shape.table.cell(0, 1).text for slide in Presentation(ppt).slides for shape in slide.shapes if shape.has_table}
-    word_headers = {table.cell(0, 1).text for table in Document(word).tables}
-    for headers in (ppt_headers, word_headers):
-        assert {'Samples', 'Cell', 'Samples on LTE cells', 'Snapshot date', 'Technology', 'Network'} <= headers
+    headers = {shape.table.cell(0, 1).text for slide in Presentation(ppt).slides for shape in slide.shapes if shape.has_table}
+    assert {'Samples', 'Cell', 'Samples on LTE cells', 'Snapshot date', 'Technology', 'Network'} <= headers
 
 
 def test_nr_cell_of_nsa_samples_mimo_and_cell_status_tables_are_exported(tmp_path):
@@ -208,17 +198,15 @@ def test_nr_cell_of_nsa_samples_mimo_and_cell_status_tables_are_exported(tmp_pat
                                           'median_km': 1.9}]},
         'distance_cdf': {'type': 'empty', 'message': 'No chart'},
     }
-    ppt, word = tmp_path / 'phase3.pptx', tmp_path / 'phase3.docx'
+    ppt = tmp_path / 'phase3.pptx'
     export_network_insights_powerpoint(ppt, analysis, {}, {}, lambda *_args: b'', template=TEMPLATE)
-    export_network_insights_word(word, analysis, {}, {}, lambda *_args: b'')
-    ppt_tables = [shape.table for slide in Presentation(ppt).slides for shape in slide.shapes if shape.has_table]
-    for tables in (ppt_tables, Document(word).tables):
-        headers = {table.cell(0, 1).text for table in tables}
-        assert {'Samples with NR PCI', 'NR vendor', 'Technology', 'Network → Host', 'NR site'} <= headers
-        five_g = next(table for table in tables if table.cell(0, 1).text == 'Samples on LTE cells')
-        assert [cell.text for cell in five_g.rows[0].cells][-3:] == ['NR cell found', 'NR on the anchor site', 'Median km to the NR site']
-        status = next(table for table in tables if table.cell(0, 1).text == 'Network → Host')
-        assert [cell.text for cell in status.rows[1].cells][3:6] == ['Locked: 1 cell (B20)', 'Yes', 'Coverage · Leeds']
+    tables = [shape.table for slide in Presentation(ppt).slides for shape in slide.shapes if shape.has_table]
+    headers = {table.cell(0, 1).text for table in tables}
+    assert {'Samples with NR PCI', 'NR vendor', 'Technology', 'Network → Host', 'NR site'} <= headers
+    five_g = next(table for table in tables if table.cell(0, 1).text == 'Samples on LTE cells')
+    assert [cell.text for cell in five_g.rows[0].cells][-3:] == ['NR cell found', 'NR on the anchor site', 'Median km to the NR site']
+    status = next(table for table in tables if table.cell(0, 1).text == 'Network → Host')
+    assert [cell.text for cell in status.rows[1].cells][3:6] == ['Locked: 1 cell (B20)', 'Yes', 'Coverage · Leeds']
 
 
 def _bandwidth_spectrum():
@@ -298,12 +286,3 @@ def test_bandwidth_views_and_nr_sites_by_duplex_mode_are_exported(tmp_path):
                if shape.has_text_frame and shape.is_placeholder]
     assert ['Spectrum · NR sites by duplex mode', scope_text(selection, environments=False)] in headers
     assert ['Spectrum · Bandwidth per band (Download tests)', measured] in headers
-    output = tmp_path / 'network.docx'
-    export_network_insights_word(output, analysis, deployment, selection, _png)
-    document = Document(output)
-    headings = [paragraph.text for paragraph in document.paragraphs if paragraph.style.name.startswith('Heading')]
-    assert 'Spectrum · Total bandwidth, LTE and NR (Download tests)' in headings and 'Spectrum · NR sites by duplex mode' in headings
-    assert document.inline_shapes
-    texts = [paragraph.text for paragraph in document.paragraphs]
-    assert texts[texts.index('Bandwidth of each test: LTE + NR') + 1:][:2] == [measured, caption]
-    assert texts[texts.index('Spectrum · NR sites by duplex mode') + 1] == scope_text(selection, environments=False)

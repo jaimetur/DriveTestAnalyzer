@@ -9,7 +9,7 @@ are teal and Voice points amber.
 from __future__ import annotations
 
 from io import BytesIO
-from math import cos, radians, sqrt
+from math import ceil, cos, radians, sqrt
 from typing import Any, Callable
 
 from pptx.chart.data import CategoryChartData
@@ -37,6 +37,53 @@ MAX_OPERATOR_SLIDES = 4
 MAX_TABLE_ROWS = 22
 CONTENT_TOP = 1.55
 CONTENT_BOTTOM = 7.05
+
+
+# Compared operators share a slide: up to three side by side, four in two rows of two, five or six in two rows of three
+# rather than leaving one or two on a slide of their own; more spread evenly over slides of four.
+OPERATORS_PER_SLIDE, MAX_OPERATORS_PER_SLIDE = 4, 6
+PANEL_GAP_X, PANEL_GAP_Y = .25, .2
+# The panels end above the note at the bottom of the slide.
+PANELS_BOTTOM = CONTENT_BOTTOM - .32
+
+
+def operator_groups(items: list) -> list[list]:
+    """The operators (or their items) of each slide: up to six together, else slides of four at most sharing them
+    evenly, so a slide never has one alone."""
+    count = len(items)
+    if count <= MAX_OPERATORS_PER_SLIDE:
+        return [list(items)] if items else []
+    slides = ceil(count / OPERATORS_PER_SLIDE)
+    per, extra = divmod(count, slides)
+    groups, start = [], 0
+    for index in range(slides):
+        size = per + (1 if index < extra else 0)
+        groups.append(list(items[start:start + size]))
+        start += size
+    return groups
+
+
+def operator_frames(count: int) -> list[tuple[float, float, float, float]]:
+    """(left, top, width, height) of the panel of each operator of a slide: one centred, two or three side by side,
+    four in two rows of two, five or six in two rows of three."""
+    if count <= 1:
+        return [(2.45, CONTENT_TOP, 8.4, PANELS_BOTTOM - CONTENT_TOP)]
+    columns = 2 if count in (2, 4) else 3
+    rows = 1 if count <= 3 else 2
+    width = (12.45 - PANEL_GAP_X * (columns - 1)) / columns
+    height = (PANELS_BOTTOM - CONTENT_TOP - PANEL_GAP_Y * (rows - 1)) / rows
+    return [(.45 + (index % columns) * (width + PANEL_GAP_X), CONTENT_TOP + (index // columns) * (height + PANEL_GAP_Y), width, height)
+            for index in range(count)]
+
+
+def _fitted_rows(height: float, rows: int, *, largest: float, smallest: float = .2) -> float:
+    """The height of each of ``rows`` table rows in ``height`` (between ``smallest`` and ``largest``)."""
+    return max(smallest, min(largest, height / max(1, rows)))
+
+
+def _font(row_height: float, size: float, largest: float) -> float:
+    """``size`` made smaller in proportion with rows lower than ``largest``, down to 6 pt."""
+    return max(6.0, round(size * min(1.0, row_height / largest) * 2) / 2)
 
 
 def _signed(value: float | None, digits: int = 1) -> str:
@@ -241,44 +288,43 @@ def add_position_matrix_slides(presentation, matrices: list[dict[str, Any]], *, 
                                environment_labels: dict[str, str], scope: ScopeLabels | None = None,
                                compared: Callable[[str, str], bool] = lambda _operator, _label: True) -> None:
     """Each compared operator's position and share of the points available in Voice, Data and overall, in every
-    environment and in all of them, with the points it missed (two operators per slide)."""
+    environment and in all of them, with the points it missed (up to six operators per slide, see operator_groups)."""
     for item in matrices[:MAX_SCOPE_SLIDES]:
         operators = [style for style in item['operators'] if not style.get('is_reference')
                      and compared(style['operator'], style['label'])] or item['operators'][:1]
         services = [service for service in ('Voice', 'Data', 'Overall') if any(row['cells'].get(service) for row in item['rows'])]
-        for start in range(0, len(operators), 2):
-            pair = operators[start:start + 2]
+        for group in operator_groups(operators):
             slide = new_slide(presentation, 'Position — per environment',
                               _subtitle(subtitle, scope, item['context'], item.get('title') or '', item.get('campaign') or ''))
-            width = 6.1 if len(pair) == 2 else 8.0
-            for index, style in enumerate(pair):
-                left = .45 + index * 6.35 if len(pair) == 2 else 2.65
+            for index, (style, (left, top, width, height)) in enumerate(zip(group, operator_frames(len(group)))):
                 color = _color(style.get('color'), index)
-                _text(slide, style['label'], left, CONTENT_TOP, width, .32, size=13, bold=True, color=color)
+                _text(slide, style['label'], left, top, width, .3, size=13 if len(group) <= 2 else 11, bold=True, color=color)
                 rows = item['rows']
-                row_height = min(.7, (CONTENT_BOTTOM - CONTENT_TOP - .9) / max(1, len(rows) + 1))
-                shape, table = _table(slide, len(rows) + 1, len(services) + 1, left, CONTENT_TOP + .4, width, row_height,
-                                      [1.9, *([(width - 1.9) / len(services)] * len(services))])
+                row_height = _fitted_rows(height - .38, len(rows) + 1, largest=.7, smallest=.3)
+                label_width = min(1.9, width * .32)
+                shape, table = _table(slide, len(rows) + 1, len(services) + 1, left, top + .36, width, row_height,
+                                      [label_width, *([(width - label_width) / len(services)] * len(services))])
                 shape.name = 'Scoring Position Table'
-                _header(table, ['', *services], size=9)
+                size = _font(row_height, 9, .55)
+                _header(table, ['', *services], size=size)
                 for row_index, row in enumerate(rows, start=1):
                     name = 'All Environments' if row['environment'] == 'Combined' else environment_labels.get(row['environment'], row['environment'])
-                    _cell(table.cell(row_index, 0), name, size=9, bold=row['environment'] == 'Combined')
+                    _cell(table.cell(row_index, 0), name, size=size, bold=row['environment'] == 'Combined')
                     for column, service in enumerate(services, start=1):
                         value = (row['cells'].get(service) or {}).get(style['operator'])
                         cell = table.cell(row_index, column)
                         if not value:
-                            _cell(cell, '—', size=9, align=PP_ALIGN.CENTER)
+                            _cell(cell, '—', size=size, align=PP_ALIGN.CENTER)
                             continue
                         rank_index = 0 if value['rank'] == 1 else 3 if value['rank'] == value['of'] else 1 if value['rank'] == 2 else 2
                         fill = RANK_COLORS[rank_index]
-                        _cell(cell, f"{_ordinal(value['rank'])} · {value['percent']:.0f}%", size=10, bold=True, color='#FFFFFF',
-                              fill=fill, align=PP_ALIGN.CENTER)
+                        _cell(cell, f"{_ordinal(value['rank'])} · {value['percent']:.0f}%", size=_font(row_height, 10, .55), bold=True,
+                              color='#FFFFFF', fill=fill, align=PP_ALIGN.CENTER)
                         paragraph = cell.text_frame.add_paragraph()
                         paragraph.alignment = PP_ALIGN.CENTER
                         run = paragraph.add_run()
                         run.text = f"{value['missed']:,.1f} of {value['maximum']:,.0f} missed"
-                        run.font.size = Pt(7.5)
+                        run.font.size = Pt(_font(row_height, 7.5, .55))
                         run.font.color.rgb = _rgb('#FFFFFF')
             legend_top = CONTENT_BOTTOM - .3
             for index, (label, color) in enumerate((('1st', RANK_COLORS[0]), ('2nd', RANK_COLORS[1]), ('3rd', RANK_COLORS[2]),
@@ -293,37 +339,37 @@ def add_position_matrix_slides(presentation, matrices: list[dict[str, Any]], *, 
 def add_levers_slides(presentation, levers: list[dict[str, Any]], *, subtitle: str, new_slide: Callable,
                       scope: ScopeLabels | None = None,
                       compared: Callable[[str, str], bool] = lambda _operator, _label: True) -> None:
-    """The KPIs where matching the reference wins most points, two compared operators per slide."""
+    """The KPIs where matching the reference wins most points, up to six compared operators per slide."""
     by_scope: dict[str, list[dict[str, Any]]] = {}
     for item in levers:
         if compared(item['operator'], item['label']):
             by_scope.setdefault(repr(sorted(item['context'].items())), []).append(item)
     for items in list(by_scope.values())[:MAX_SCOPE_SLIDES]:
-        for start in range(0, len(items), 2):
-            pair = items[start:start + 2]
-            first = pair[0]
+        for group in operator_groups(items):
+            first = group[0]
             slide = new_slide(presentation, f"Biggest levers — vs {first['reference_label']}",
                               _subtitle(subtitle, scope, first['context'], first.get('title') or '', first.get('campaign') or ''))
-            width = 6.1 if len(pair) == 2 else 8.4
-            for index, item in enumerate(pair):
-                left = .45 + index * 6.35 if len(pair) == 2 else 2.45
+            for index, (item, (left, top, width, height)) in enumerate(zip(group, operator_frames(len(group)))):
                 color = _color(item.get('color'), index)
                 _banner(slide, [(item['label'], True, color),
                                 (f" · {-item['total_behind']:,.1f} points behind {item['reference_label']} in {item['count']} KPIs", False, None)],
-                        left, CONTENT_TOP, width, color)
+                        left, top, width, color)
                 rows = item['levers']
-                row_height = .36
-                widths = [width - 3.2, 1.0, 1.0, 1.2]
-                shape, table = _table(slide, len(rows) + 1, 4, left, CONTENT_TOP + .38, width, row_height, widths)
+                row_height = _fitted_rows(height - .38, len(rows) + 1, largest=.36)
+                size = _font(row_height, 8, .36)
+                # Narrow panels give the KPI most of the width and leave its category out.
+                widths = ([width - 3.2, 1.0, 1.0, 1.2] if width >= 6 else
+                          [width * share for share in (.46, .16, .16, .22)])
+                shape, table = _table(slide, len(rows) + 1, 4, left, top + .38, width, row_height, widths)
                 shape.name = 'Scoring Levers Table'
-                _header(table, ['KPI', item['label'], item['reference_label'], 'Points to win'], size=8.5)
+                _header(table, ['KPI', item['label'], item['reference_label'], 'Points to win'], size=size + .5)
                 for row_index, row in enumerate(rows, start=1):
-                    _cell(table.cell(row_index, 0), f"{row['kpi']} · {row['category']}", size=8)
+                    _cell(table.cell(row_index, 0), f"{row['kpi']} · {row['category']}" if width >= 5 else str(row['kpi']), size=size)
                     table.cell(row_index, 0).text_frame.word_wrap = True
-                    _cell(table.cell(row_index, 1), _points(row['value'], 2), size=8, align=PP_ALIGN.RIGHT)
-                    _cell(table.cell(row_index, 2), _points(row['reference_value'], 2), size=8, align=PP_ALIGN.RIGHT)
-                    _cell(table.cell(row_index, 3), f"{-row['gap']:,.2f}", size=8, bold=True, fill=None, align=PP_ALIGN.RIGHT)
-                _row_bars(slide, [-row['gap'] for row in rows], left=left + sum(widths[:3]), top=CONTENT_TOP + .38 + row_height,
+                    _cell(table.cell(row_index, 1), _points(row['value'], 2), size=size, align=PP_ALIGN.RIGHT)
+                    _cell(table.cell(row_index, 2), _points(row['reference_value'], 2), size=size, align=PP_ALIGN.RIGHT)
+                    _cell(table.cell(row_index, 3), f"{-row['gap']:,.2f}", size=size, bold=True, fill=None, align=PP_ALIGN.RIGHT)
+                _row_bars(slide, [-row['gap'] for row in rows], left=left + sum(widths[:3]), top=top + .38 + row_height,
                           width=widths[3], row_height=row_height, color=LOSS_COLOR)
                 _to_front(slide, shape)
             _text(slide, 'Points to win: the GAP of the KPI to the reference (the points the operator would add with its value).',
@@ -477,46 +523,44 @@ def add_location_versus_slides(presentation, rankings: list[dict[str, Any]], *, 
 def add_gap_parts_slides(presentation, items: list[dict[str, Any]], *, subtitle: str, new_slide: Callable,
                          scope: ScopeLabels | None = None,
                          compared: Callable[[str, str], bool] = lambda _operator, _label: True) -> None:
-    """The GAP of each part of the scoring over the campaigns, two compared operators per slide."""
+    """The GAP of each part of the scoring over the campaigns, up to six compared operators per slide."""
     by_scope: dict[str, list[dict[str, Any]]] = {}
     for item in items:
         if compared(item['operator'], item['label']):
             by_scope.setdefault(repr(sorted(item['context'].items())), []).append(item)
-    for group in list(by_scope.values())[:MAX_SCOPE_SLIDES]:
-        for start in range(0, len(group), 2):
-            pair = group[start:start + 2]
-            first = pair[0]
+    for scope_items in list(by_scope.values())[:MAX_SCOPE_SLIDES]:
+        for group in operator_groups(scope_items):
+            first = group[0]
             slide = new_slide(presentation, f"GAP by part — vs {first['reference_label']}",
                               _subtitle(subtitle, scope, first['context'], first.get('title') or ''))
-            width = 6.1 if len(pair) == 2 else 8.4
-            for index, item in enumerate(pair):
-                left = .45 + index * 6.35 if len(pair) == 2 else 2.45
+            for index, (item, (left, top, width, height)) in enumerate(zip(group, operator_frames(len(group)))):
                 color = _color(item.get('color'), index)
                 _banner(slide, [(item['label'], True, color), (f" minus {item['reference_label']}", False, None)], left,
-                        CONTENT_TOP, width, color)
+                        top, width, color)
                 campaigns = [campaign or 'GAP' for campaign in item['campaigns']]
                 with_latest = len(campaigns) > 1
                 rows = [(part['label'], part['values']) for part in item['parts']] + [('Total', item['totals'])]
                 values = [value for _label, line in rows for value in line if value is not None]
                 scale = max((abs(value) for value in values), default=1) or 1
-                part_width = 1.55
-                latest_width = 1.7 if with_latest else 0
+                part_width = min(1.55, width * .27)
+                latest_width = min(1.7, width * .27) if with_latest else 0
                 value_width = (width - part_width - latest_width) / len(campaigns)
                 widths = [part_width, *([value_width] * len(campaigns)), *([latest_width] if with_latest else [])]
-                row_height = .38
-                shape, table = _table(slide, len(rows) + 1, len(widths), left, CONTENT_TOP + .38, width, row_height, widths)
+                row_height = _fitted_rows(height - .38, len(rows) + 1, largest=.38)
+                size = _font(row_height, 8.5, .38)
+                shape, table = _table(slide, len(rows) + 1, len(widths), left, top + .38, width, row_height, widths)
                 shape.name = 'Scoring GAP Parts Table'
-                _header(table, ['Part', *campaigns, *(['Latest'] if with_latest else [])], size=8.5)
+                _header(table, ['Part', *campaigns, *(['Latest'] if with_latest else [])], size=size)
                 for row_index, (label, line) in enumerate(rows, start=1):
                     total = label == 'Total'
-                    _cell(table.cell(row_index, 0), label, size=8.5, bold=total)
+                    _cell(table.cell(row_index, 0), label, size=size, bold=total)
                     for column, value in enumerate(line, start=1):
                         fill = '#FFFFFF' if value is None else _blend(LOSS_COLOR if value < 0 else GAIN_COLOR, min(1, abs(value) / scale) * .55)
-                        _cell(table.cell(row_index, column), _signed(value), size=8.5, bold=total, fill=fill, align=PP_ALIGN.RIGHT)
+                        _cell(table.cell(row_index, column), _signed(value), size=size, bold=total, fill=fill, align=PP_ALIGN.RIGHT)
                     if with_latest:
-                        _cell(table.cell(row_index, len(widths) - 1), '', size=8.5, fill=None)
-                        _diverging(slide, left + sum(widths[:-1]) + .08, CONTENT_TOP + .38 + row_index * row_height + .1,
-                                   latest_width - .12, row_height - .2, line[-1], scale, size=7.5)
+                        _cell(table.cell(row_index, len(widths) - 1), '', size=size, fill=None)
+                        _diverging(slide, left + sum(widths[:-1]) + .08, top + .38 + row_index * row_height + row_height * .26,
+                                   latest_width - .12, row_height * .48, line[-1], scale, size=max(6.0, size - 1))
             _text(slide, ('Reliability: the KPIs typed Reliable (calls and tests that complete, POLQA below 1.6, the lowest throughputs); '
                           'quality: the others. ' if first.get('by_reliability') else 'Each part is a category of KPIs. ')
                   + 'Red: behind the reference; green: ahead.', .45, CONTENT_BOTTOM - .25, 12.4, .25, size=8, color=MUTED)
@@ -580,55 +624,64 @@ def add_points_at_stake_slides(presentation, items: list[dict[str, Any]], *, sub
 
 
 def latest_campaign_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Of the items of every campaign (their context names it), those of the latest campaign of each series."""
+    """Of the items of every campaign (their context names it), those of the latest campaign (and those without a
+    campaign): the slides of a single campaign show the latest one, without the operators it did not measure."""
     from src.modules.scoring_insights import campaign_sort_key
-    series: dict[tuple, list[dict[str, Any]]] = {}
-    for item in items:
-        key = (item.get('operator'), tuple(sorted((field, str(value)) for field, value in item['context'].items() if field != 'campaign')))
-        series.setdefault(key, []).append(item)
-    return [max(members, key=lambda entry: campaign_sort_key(entry['context'].get('campaign'))) for members in series.values()]
+    campaigns = {item['context'].get('campaign') for item in items if item['context'].get('campaign')}
+    if len(campaigns) <= 1:
+        return list(items)
+    latest = max(campaigns, key=campaign_sort_key)
+    return [item for item in items if item['context'].get('campaign') in (None, latest)]
 
 
 def add_serving_loss_slides(presentation, items: list[dict[str, Any]], *, title: str, column: str, subtitle: str,
                             new_slide: Callable, scope: ScopeLabels | None = None,
                             compared: Callable[[str, str], bool] = lambda _operator, _label: True) -> None:
-    """The points each compared operator lost per Vendor or kind of serving site, with its share of the tests."""
+    """The points each compared operator lost per Vendor or kind of serving site, with its share of the tests (up to
+    six operators per slide)."""
     chosen = [item for item in latest_campaign_items(items) if compared(item['operator'], item['label'])]
     by_scope: dict[str, list[dict[str, Any]]] = {}
     for item in chosen:
         by_scope.setdefault(repr(sorted(item['context'].items())), []).append(item)
-    for group in list(by_scope.values())[:MAX_SCOPE_SLIDES]:
-        for start in range(0, len(group), 2):
-            pair = group[start:start + 2]
-            first = pair[0]
+    for scope_items in list(by_scope.values())[:MAX_SCOPE_SLIDES]:
+        for group in operator_groups(scope_items):
+            first = group[0]
             slide = new_slide(presentation, title, _subtitle(subtitle, scope, first['context'], _context_text(first['context'])))
-            width = 6.1 if len(pair) == 2 else 8.4
-            for index, item in enumerate(pair):
-                left = .45 + index * 6.35 if len(pair) == 2 else 2.45
+            for index, (item, (left, top, width, height)) in enumerate(zip(group, operator_frames(len(group)))):
                 color = _color(item.get('color'), index)
                 _banner(slide, [(item['label'], True, color), (f" · {item['total']:,.1f} points lost", False, None)], left,
-                        CONTENT_TOP, width, color)
-                rows = item['rows'][:16]
+                        top, width, color)
+                # As many rows as keep a legible size (the Vendors or kinds of site that lose most first).
+                rows = item['rows'][:min(16, max(3, int((height - .38) / .2) - 1))]
                 with_tests = item.get('has_tests')
-                headers = [column, 'Points lost', 'Share of points', *(['Share of tests'] if with_tests else []), 'Cities and routes that lose most']
-                widths = [1.45, 1.1, .8, *([.8] if with_tests else []), width - (4.15 if with_tests else 3.35)]
-                row_height = min(.34, (CONTENT_BOTTOM - CONTENT_TOP - .9) / (len(rows) + 1))
-                shape, table = _table(slide, len(rows) + 1, len(headers), left, CONTENT_TOP + .38, width, row_height, widths)
+                # Narrow panels leave the cities and routes out.
+                narrow = width < 5
+                headers = [column, 'Points lost', 'Share of points', *(['Share of tests'] if with_tests else []),
+                           *([] if narrow else ['Cities and routes that lose most'])]
+                if narrow:
+                    shares = (.36, .24, .2, .2) if with_tests else (.44, .3, .26)
+                    widths = [width * share for share in shares]
+                else:
+                    widths = [1.45, 1.1, .8, *([.8] if with_tests else []), width - (4.15 if with_tests else 3.35)]
+                row_height = _fitted_rows(height - .38, len(rows) + 1, largest=.34)
+                size = _font(row_height, 8, .34)
+                shape, table = _table(slide, len(rows) + 1, len(headers), left, top + .38, width, row_height, widths)
                 shape.name = 'Scoring Serving Loss Table'
-                _header(table, headers, size=8)
+                _header(table, headers, size=size)
                 for row_index, row in enumerate(rows, start=1):
-                    _cell(table.cell(row_index, 0), row['name'], size=8, color=INK if row['identified'] else MUTED)
-                    _cell(table.cell(row_index, 1), f"{row['points']:,.2f}", size=8, bold=True, fill=None, align=PP_ALIGN.RIGHT)
-                    _cell(table.cell(row_index, 2), f"{row['share']:.1f}%", size=8, align=PP_ALIGN.RIGHT)
+                    _cell(table.cell(row_index, 0), row['name'], size=size, color=INK if row['identified'] else MUTED)
+                    _cell(table.cell(row_index, 1), f"{row['points']:,.2f}", size=size, bold=True, fill=None, align=PP_ALIGN.RIGHT)
+                    _cell(table.cell(row_index, 2), f"{row['share']:.1f}%", size=size, align=PP_ALIGN.RIGHT)
                     offset = 3
                     if with_tests:
                         above = row['tests_share'] is not None and row['share'] > row['tests_share'] * 1.25 and row['share'] - row['tests_share'] > 3
-                        _cell(table.cell(row_index, 3), '—' if row['tests_share'] is None else f"{row['tests_share']:.1f}%", size=8,
+                        _cell(table.cell(row_index, 3), '—' if row['tests_share'] is None else f"{row['tests_share']:.1f}%", size=size,
                               color=LOSS_COLOR if above else INK, bold=above, align=PP_ALIGN.RIGHT)
                         offset = 4
-                    _cell(table.cell(row_index, offset), ' · '.join(f"{city['name']} {city['points']:,.1f}" for city in (row.get('cities') or [])[:2]),
-                          size=7)
-                _row_bars(slide, [row['points'] for row in rows], left=left + widths[0], top=CONTENT_TOP + .38 + row_height,
+                    if not narrow:
+                        _cell(table.cell(row_index, offset), ' · '.join(f"{city['name']} {city['points']:,.1f}"
+                                                                         for city in (row.get('cities') or [])[:2]), size=max(6.0, size - 1))
+                _row_bars(slide, [row['points'] for row in rows], left=left + widths[0], top=top + .38 + row_height,
                           width=widths[1], row_height=row_height, color=LOSS_COLOR)
                 _to_front(slide, shape)
             _text(slide, 'Each test belongs to the serving cell of its start (Not identified: no serving cell in the inventories). '

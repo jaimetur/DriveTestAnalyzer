@@ -1,12 +1,10 @@
-"""Non-Qualified Calls report: Executive Summary, Progress Status and Root Cause Analysis in PowerPoint and Word."""
+"""Non-Qualified Calls report: Executive Summary, Progress Status and Root Cause Analysis in PowerPoint; its Word
+version and its section of a Complete Report are composed from it (see complete_reports.module_document)."""
 
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from docx import Document
-from docx.enum.section import WD_ORIENT
-from docx.shared import Inches as DocxInches
 from pptx import Presentation
 from pptx.chart.data import CategoryChartData
 from pptx.dml.color import RGBColor
@@ -14,7 +12,7 @@ from pptx.enum.chart import XL_CHART_TYPE, XL_LEGEND_POSITION
 from pptx.enum.text import MSO_AUTO_SIZE
 from pptx.util import Inches, Pt
 
-from src.modules.network_insights_export import _content_frame, _docx_table, _slide, _table_slides
+from src.modules.network_insights_export import _content_frame, _slide, _table_slides
 
 FILTER_LABELS = (
     ('nr_mode', 'NR Mode'), ('datasets', 'CDRs'), ('service', 'Service'), ('campaign', 'Campaign'), ('operator', 'Operator'),
@@ -465,33 +463,4 @@ def export_powerpoint(destination: Path, lines: list[str], summary: dict[str, An
     if closing is not None:
         _set_structural_slide_text(presentation.slides.add_slide(closing), '', '')
     presentation.save(destination)
-    return destination
-
-
-def export_word(destination: Path, lines: list[str], summary: dict[str, Any], breakdowns: list[dict[str, Any]],
-                progress: dict[str, Any], options: dict[str, Any] | None = None) -> Path:
-    from src.modules.non_qualified_calls_visuals import SlideTitle
-
-    document = Document()
-    section = document.sections[0]
-    section.orientation = WD_ORIENT.LANDSCAPE
-    section.page_width, section.page_height = DocxInches(11.69), DocxInches(8.27)
-    section.left_margin = section.right_margin = DocxInches(0.6)
-    section.top_margin = section.bottom_margin = DocxInches(0.6)
-    document.add_heading('DriveTest Analyzer · Non-Qualified Calls', level=0)
-    document.add_paragraph('Executive Summary and Progress Status')
-    for line in lines:
-        document.add_paragraph(line, style='List Bullet')
-    usable = (section.page_width - section.left_margin - section.right_margin) / 914400
-    for title, image in report_panels(summary, breakdowns, progress, options or {'statuses': [], 'teams': []}):
-        title = title if isinstance(title, SlideTitle) else SlideTitle(title)
-        heading = document.add_heading(f'{title.text} · ' if title.bold else title.text, level=1)
-        if title.bold:
-            heading.add_run(title.bold).bold = True
-        # Every section starts on its own page, as each one has its own slide in PowerPoint.
-        heading.paragraph_format.page_break_before = True
-        if title.subtitle:
-            document.add_paragraph(title.subtitle, style='Subtitle')
-        document.add_picture(image, width=DocxInches(usable))
-    document.save(destination)
     return destination

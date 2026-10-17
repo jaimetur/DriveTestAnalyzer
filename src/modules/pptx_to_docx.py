@@ -3,14 +3,12 @@
 Slide titles become headings, tables become Word tables with their colours, native charts are drawn as
 images from their data, and pictures and text boxes are copied in reading order.
 
-With ``pack_sections``, the slides named after a section (``section:<name>``, as the Scoring & GAP Analysis
-exports name them) share portrait pages instead: each slide without its empty bands, as many slides of a section
-on a page as fit, and every section from a new page.
+The Complete Report and the exports of Scoring & GAP Analysis, Network Insights and Non-Qualified Calls pack their
+components on portrait pages instead (see complete_reports.compose_word), with the helpers here.
 """
 
 from __future__ import annotations
 
-import copy
 import math
 import os
 import shutil
@@ -29,7 +27,9 @@ from docx.shared import Inches, Pt, RGBColor
 import numpy as np
 from PIL import Image, ImageDraw
 from pptx import Presentation
+from pptx.enum.dml import MSO_COLOR_TYPE
 from pptx.enum.shapes import MSO_SHAPE_TYPE, PP_PLACEHOLDER
+from pptx.oxml.ns import qn as pptx_qn
 
 from src.utils.fonts import load_image_font
 
@@ -168,6 +168,26 @@ def document_page_images(content: bytes, suffix: str, dpi: int = 160) -> list[by
     return None if pdf is None else pdf_page_images(pdf, dpi)
 
 
+def without_unused_layouts(content: bytes) -> bytes:
+    """A PowerPoint without the slide layouts none of its slides uses. LibreOffice converts every layout of a deck,
+    and the template has well over a hundred, so a deck converts in seconds instead of about a minute."""
+    try:
+        presentation = Presentation(BytesIO(content))
+        used = {id(slide.slide_layout.part) for slide in presentation.slides}
+        for master in presentation.slide_masters:
+            layouts = master._element.find(pptx_qn('p:sldLayoutIdLst'))
+            for entry in list(layouts if layouts is not None else []):
+                rId = entry.get(pptx_qn('r:id'))
+                if id(master.part.related_part(rId)) not in used:
+                    master.part.drop_rel(rId)
+                    layouts.remove(entry)
+        output = BytesIO()
+        presentation.save(output)
+        return output.getvalue()
+    except Exception:  # noqa: BLE001 - a deck that cannot be read this way is converted as it is.
+        return content
+
+
 def document_pdf(content: bytes, suffix: str) -> bytes | None:
     """A PowerPoint (``pptx``) or Word (``docx``) document as PDF, converted by LibreOffice, or None when LibreOffice
     is unavailable."""
@@ -177,6 +197,8 @@ def document_pdf(content: bytes, suffix: str) -> bytes | None:
     # The pages are rendered with PyMuPDF.
     if soffice is None or importlib.util.find_spec('pymupdf') is None:
         return None
+    if suffix == 'pptx':
+        content = without_unused_layouts(content)
     with tempfile.TemporaryDirectory() as folder:
         source = Path(folder) / f'report.{suffix}'
         source.write_bytes(content)
@@ -200,19 +222,9 @@ def pdf_page_images(pdf: bytes, dpi: int, pages: list[int] | None = None) -> lis
         return [document[page].get_pixmap(dpi=dpi).tobytes('png') for page in chosen]
 
 
-SECTION_PREFIX = 'section:'
 # Empty bands taller than this share of the slide height shrink to the band kept between two blocks.
 _EMPTY_BAND = 0.025
 _KEPT_BAND = 0.012
-
-
-def slide_sections(presentation: Any) -> list[str]:
-    """The section each slide is named after; slides without one are a section of their own."""
-    sections = []
-    for index, slide in enumerate(presentation.slides):
-        name = str(slide._element.cSld.get('name') or '')
-        sections.append(name[len(SECTION_PREFIX):] if name.startswith(SECTION_PREFIX) else f'slide-{index}')
-    return sections
 
 
 def compact_slide_image(image: bytes) -> bytes:
@@ -248,69 +260,7 @@ def compact_slide_image(image: bytes) -> bytes:
     return output.getvalue()
 
 
-def _add_cover_titles(slide: Any, titles: list[str]) -> None:
-    """Write ``titles`` under the title of a cover, moving the rest of the cover down to make room."""
-    _title, title_shape = _slide_title(slide)
-    if title_shape is None or not titles:
-        return
-    step = Inches(0.5)
-    bottom = title_shape.top + title_shape.height
-    # The subtitle moves into the space above the filters; the shapes below move only when there are more titles.
-    for shape in list(slide.shapes):
-        top = shape.top or 0
-        if shape is not title_shape and bottom - Inches(0.1) <= top < bottom + Inches(0.5):
-            shape.top = top + step * len(titles)
-        elif shape is not title_shape and top >= bottom + Inches(0.5) and len(titles) > 1:
-            shape.top = top + step * (len(titles) - 1)
-    for offset, text in enumerate(titles):
-        element = copy.deepcopy(title_shape._element)
-        element.nvSpPr.cNvPr.id = slide.shapes._next_shape_id
-        element.nvSpPr.cNvPr.name = f'Cover Title {offset + 2}'
-        slide.shapes._spTree.append(element)
-        shape = slide.shapes[-1]
-        shape.top, shape.height = bottom + step * offset - Inches(0.05), step
-        shape.text_frame.text = text
-        for paragraph in shape.text_frame.paragraphs:
-            for run in paragraph.runs:
-                run.font.size = Pt(26)
-
-
-def merge_cover_slides(content: bytes) -> bytes:
-    """Consecutive covers become one: the first cover with the titles of the covers that follow it written under its
-    title, such as the report cover with the title of the first scoring under it."""
-    presentation = Presentation(BytesIO(content))
-    sections = slide_sections(presentation)
-    slides = list(presentation.slides)
-    removed: list[int] = []
-    index = 0
-    while index < len(slides):
-        end = index + 1
-        while sections[index] == 'cover' and end < len(slides) and sections[end] == 'cover':
-            end += 1
-        if end - index > 1:
-            _add_cover_titles(slides[index], [_slide_title(slide)[0] for slide in slides[index + 1:end]])
-            removed.extend(range(index + 1, end))
-        index = end
-    if not removed:
-        return content
-    slide_ids = presentation.slides._sldIdLst
-    for position in sorted(removed, reverse=True):
-        slide_id = slide_ids[position]
-        presentation.part.drop_rel(slide_id.rId)
-        slide_ids.remove(slide_id)
-    output = BytesIO()
-    presentation.save(output)
-    return output.getvalue()
-
-
 _PAGE_WIDTH, _PAGE_HEIGHT = 8.27, 11.69
-
-
-def portrait_cover(content: bytes) -> bytes | None:
-    """The first slide (the cover of the document) as a portrait A4 page with its background across the whole page:
-    the text keeps its place under the logo, which stays at the top right."""
-    images = portrait_covers(content, [0])
-    return images[0] if images else None
 
 
 def portrait_covers(content: bytes, positions: list[int]) -> list[bytes] | None:
@@ -598,71 +548,13 @@ def packed_component_document(items: list[PackItem], cover: bytes | None = None,
     return output.getvalue()
 
 
-def _packed_document(images: list[bytes], sections: list[str], cover: bytes | None = None) -> bytes:
-    """Portrait pages with as many compacted slides of the same section as fit. The cover of the document fills its
-    page (``cover``, with its background across the page, else the slide); the covers inside it share the page of the
-    section that follows them."""
-    document = Document()
-    section = document.sections[0]
-    section.orientation = WD_ORIENT.PORTRAIT
-    section.page_width, section.page_height = Inches(_PAGE_WIDTH), Inches(_PAGE_HEIGHT)
-    first = True
-    if cover is not None and sections and sections[0] == 'cover':
-        # A page of its own without margins, so its background reaches every edge.
-        section = _cover_page(document, cover)
-        images, sections = images[1:], sections[1:]
-        first = False
-    section.left_margin = section.right_margin = Inches(0.45)
-    section.top_margin = section.bottom_margin = Inches(0.45)
-    width = (section.page_width - section.left_margin - section.right_margin) / EMU_PER_INCH
-    page_height = (section.page_height - section.top_margin - section.bottom_margin) / EMU_PER_INCH - 0.25
-    spacing = 0.12
-    used, page_sections = 0.0, []
-    standalone_cover = cover is None and bool(sections) and sections[0] == 'cover'
-    for position, (image, name) in enumerate(zip(images, sections)):
-        compact = compact_slide_image(image)
-        with Image.open(BytesIO(compact)) as raster:
-            ratio = raster.width / raster.height
-        item_width = min(width, page_height * ratio)
-        item_height = item_width / ratio
-        room = page_height - used - (spacing if page_sections else 0)
-        # The cover of the document stands alone on the first page.
-        document_cover = position == 1 and standalone_cover
-        same_section = not document_cover and all(item == name or item == 'cover' for item in page_sections)
-        if page_sections and same_section and item_height > room and room * ratio >= item_width * 0.82:
-            # A little smaller, it still fits under the slides of its section.
-            item_width, item_height = room * ratio, room
-        new_page = bool(page_sections) and (not same_section or item_height > room)
-        paragraph = document.paragraphs[0] if first and document.paragraphs else document.add_paragraph()
-        paragraph.alignment = 1
-        paragraph.paragraph_format.space_before = Pt(0)
-        paragraph.paragraph_format.space_after = Pt(spacing * 72)
-        paragraph.paragraph_format.page_break_before = new_page
-        paragraph.add_run().add_picture(BytesIO(compact), width=Inches(item_width))
-        if new_page:
-            used, page_sections = 0.0, []
-        used += item_height + (spacing if page_sections else 0)
-        page_sections.append(name)
-        first = False
-    output = BytesIO()
-    document.save(output)
-    return output.getvalue()
-
-
-def pptx_to_docx(content: bytes, title: str = '', *, pack_sections: bool = False) -> bytes:
+def pptx_to_docx(content: bytes, title: str = '') -> bytes:
     """Convert a generated PowerPoint into a landscape Word document with one page per slide.
 
     With LibreOffice, every page shows the slide exactly as in PowerPoint (layout, colours, tables and charts);
     without it, the slide content is rebuilt: headings, tables with their colours and charts drawn from their data.
-    With ``pack_sections``, the slides of each section share portrait pages (see the module notes).
     """
-    if pack_sections:
-        content = merge_cover_slides(content)
-    images = slide_images(content, dpi=200 if pack_sections else 160)
-    if images and pack_sections:
-        sections = slide_sections(Presentation(BytesIO(content)))
-        cover = portrait_cover(content) if sections and sections[0] == 'cover' else None
-        return _packed_document(images, sections, cover)
+    images = slide_images(content, dpi=160)
     if images:
         document = Document()
         section = document.sections[0]
@@ -695,9 +587,7 @@ def pptx_to_docx(content: bytes, title: str = '', *, pack_sections: bool = False
     if title:
         document.add_heading(title, level=0)
     first_content = True
-    sections = slide_sections(presentation)
-    previous_section = None
-    for slide, slide_section in zip(presentation.slides, sections):
+    for slide in presentation.slides:
         heading_text, title_shape = _slide_title(slide)
         shapes = sorted((shape for shape in slide.shapes if shape is not title_shape),
                         key=lambda shape: (round((shape.top or 0) / (EMU_PER_INCH * 0.25)), shape.left or 0))
@@ -709,10 +599,8 @@ def pptx_to_docx(content: bytes, title: str = '', *, pack_sections: bool = False
             continue
         if heading_text:
             heading = document.add_heading(heading_text, level=1)
-            heading.paragraph_format.page_break_before = not first_content and (
-                not pack_sections or slide_section != previous_section)
+            heading.paragraph_format.page_break_before = not first_content
         first_content = False
-        previous_section = slide_section
         for shape in body:
             if shape.has_table:
                 _copy_table(document, shape.table, scale)
@@ -730,8 +618,9 @@ def pptx_to_docx(content: bytes, title: str = '', *, pack_sections: bool = False
                         # Keep the colour of coloured notes, such as the orange scaling notice.
                         run = document.add_paragraph().add_run(text)
                         font = paragraph.runs[0].font if paragraph.runs else paragraph.font
-                        colour = font.color.rgb if font.color and font.color.type is not None else (
-                            paragraph.font.color.rgb if paragraph.font.color and paragraph.font.color.type is not None else None)
+                        # Only an explicit colour is kept (theme colours have no RGB value of their own).
+                        colour = font.color.rgb if font.color and font.color.type == MSO_COLOR_TYPE.RGB else (
+                            paragraph.font.color.rgb if paragraph.font.color and paragraph.font.color.type == MSO_COLOR_TYPE.RGB else None)
                         if colour is not None and str(colour).upper() not in {'FFFFFF'}:
                             run.font.color.rgb = RGBColor.from_string(str(colour))
                         run.font.bold = bool(paragraph.font.bold or (paragraph.runs and paragraph.runs[0].font.bold))

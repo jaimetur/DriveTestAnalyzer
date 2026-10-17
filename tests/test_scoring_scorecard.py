@@ -281,15 +281,18 @@ def test_exports_keep_the_chosen_scorings_and_environments_and_name_their_sectio
         export_scoring_powerpoint(job, result, TEMPLATE, environments=['Nowhere'])
 
 
-def test_word_reports_merge_covers_and_pack_each_section(monkeypatch):
+def test_scoring_exports_are_composed_as_the_complete_report(monkeypatch):
+    from src.modules import complete_reports, pptx_compose
+
     job, result = synthetic_result(levels=('Operator',))
     content = export_scoring_powerpoint(job, result, TEMPLATE, scorings=['best_network'], environments=['Combined'])
-    # The report cover takes the title of the first scoring under its own title.
-    merged = Presentation(BytesIO(pptx_to_docx_module.merge_cover_slides(content)))
+    # The PowerPoint keeps the covers of the module and composes the rest as the Scoring section of a Complete Report.
     original = Presentation(BytesIO(content))
-    assert len(merged.slides) == len(original.slides) - 1
-    cover_texts = [shape.text_frame.text for shape in merged.slides[0].shapes if shape.has_text_frame]
-    assert 'Scoring & GAP Analysis' in cover_texts and 'Best Network Scoring' in cover_texts
+    composed = Presentation(BytesIO(complete_reports.module_document('scoring', content, 'powerpoint', 'Scoring & GAP Analysis')))
+    titles = [pptx_compose.title_parts(slide)[0] for slide in composed.slides]
+    assert titles[0] == 'Scoring & GAP Analysis' and any('Best Network Scoring' in title for title in titles)
+    # It ends with the closing slide of the template, as a Complete Report.
+    assert 1 < len(composed.slides) <= len(original.slides) + 1 and composed.slides[-1].slide_layout.name == 'Black logo end slide'
 
     # A slide image keeps its blocks and loses its empty bands.
     image = Image.new('RGB', (400, 300), 'white')
@@ -301,20 +304,106 @@ def test_word_reports_merge_covers_and_pack_each_section(monkeypatch):
     with Image.open(BytesIO(pptx_to_docx_module.compact_slide_image(raw.getvalue()))) as compact:
         assert compact.width == 400 and compact.height < 120
 
-    # Portrait pages: the cover fills a page of its own without margins, then each section starts a new page with
-    # as many of its slides as fit.
-    sections = pptx_to_docx_module.slide_sections(merged)
-    monkeypatch.setattr(pptx_to_docx_module, 'slide_images', lambda *_args, **_kwargs: [raw.getvalue()] * len(sections))
-    document = Document(BytesIO(pptx_to_docx_module.pptx_to_docx(content, 'Scoring & GAP Analysis', pack_sections=True)))
-    breaks = [bool(paragraph.paragraph_format.page_break_before) for paragraph in document.paragraphs]
-    assert len(breaks) == len(sections) and len(document.sections) == 2
-    cover_page, pages = document.sections
-    assert cover_page.left_margin == cover_page.top_margin == 0 and pages.left_margin > 0
-    assert pages.page_height > pages.page_width
-    assert breaks[:2] == [False, False]
-    # Every section starts a new page; within a section, a new page only once the page is full.
-    changes = [index for index in range(2, len(sections)) if sections[index] != sections[index - 1]]
-    assert all(breaks[index] for index in changes)
-    for index in range(2, len(sections)):
-        if breaks[index] and index not in changes:
-            assert not any(breaks[index - offset] for offset in range(1, 5)), index
+    # Word: the cover of the module fills a page of its own without margins, then portrait pages hold as many
+    # components as fit, as in the Word version of a Complete Report.
+    monkeypatch.setattr(pptx_to_docx_module, 'portrait_covers', lambda _content, positions: [raw.getvalue()] * len(positions))
+    monkeypatch.setattr(pptx_to_docx_module, 'slide_images',
+                        lambda deck, dpi=160: [raw.getvalue()] * len(Presentation(BytesIO(deck)).slides))
+    document = Document(BytesIO(complete_reports.module_document('scoring', content, 'word', 'Scoring & GAP Analysis')))
+    cover_page, *pages = document.sections
+    assert cover_page.left_margin == cover_page.top_margin == 0
+    assert pages and pages[0].left_margin > 0 and pages[0].page_height > pages[0].page_width
+
+
+def test_compared_operators_share_slides_without_leaving_one_alone():
+    from src.modules.scoring_summary_slides import operator_frames, operator_groups
+
+    sizes = {count: [len(group) for group in operator_groups(list(range(count)))] for count in range(1, 11)}
+    # Up to six on one slide, more on slides of four at most shared evenly: never one alone.
+    assert sizes == {1: [1], 2: [2], 3: [3], 4: [4], 5: [5], 6: [6], 7: [4, 3], 8: [4, 4], 9: [3, 3, 3], 10: [4, 3, 3]}
+    # One centred, two or three side by side, four in two rows of two, five or six in two rows of three.
+    rows = {count: len({round(top, 2) for _left, top, _width, _height in operator_frames(count)}) for count in range(1, 7)}
+    columns = {count: len({round(left, 2) for left, _top, _width, _height in operator_frames(count)}) for count in range(1, 7)}
+    assert rows == {1: 1, 2: 1, 3: 1, 4: 2, 5: 2, 6: 2} and columns == {1: 1, 2: 2, 3: 3, 4: 2, 5: 3, 6: 3}
+    assert all(left + width <= 12.91 and top + height <= 7.05 for count in range(1, 7)
+               for left, top, width, height in operator_frames(count))
+
+
+def test_slides_of_one_campaign_keep_the_latest_campaign():
+    from src.modules.scoring_summary_slides import latest_campaign_items
+
+    items = [{'operator': 'VF', 'context': {'campaign': '2026-Q2'}}, {'operator': 'VF', 'context': {'campaign': '2026-Q3'}},
+             {'operator': 'VF SA', 'context': {'campaign': '2026-Q2'}}, {'operator': 'Lebara', 'context': {'campaign': '2026-Q1'}},
+             {'operator': 'EE', 'context': {}}]
+    # The operators not measured in the latest campaign are left out of those slides.
+    assert latest_campaign_items(items) == [items[1], items[4]]
+    assert latest_campaign_items(items[:1]) == items[:1]
+
+
+def test_operator_rules_reach_every_campaign_and_trend_labels_stand_apart():
+    from src.modules.scoring_insight_slides import add_trend_slides
+
+    job, result = synthetic_result(levels=('Operator', 'Campaign'))
+    deck = Presentation(BytesIO(export_scoring_powerpoint(job, result, TEMPLATE, theme='ericsson', scorings=['best_network'],
+                                                          environments=['Combined'])))
+    summary = next(slide for slide in deck.slides if slide.shapes.title is not None
+                   and slide.shapes.title.text_frame.text.startswith('Scoring Tables'))
+    table = next(shape.table for shape in summary.shapes if shape.has_table)
+    # PowerPoint draws the bottom line of a merged cell under its first column only: the cells under an operator have its
+    # colour on top, under every campaign of the operator.
+    ruled = 0
+    for row_index in range(len(table.rows) - 1):
+        for column, cell in enumerate(table.rows[row_index].cells):
+            if cell.is_merge_origin and cell.span_width > 1:
+                line = cell._tc.tcPr.find(qn('a:lnB'))
+                # The rule of an operator (2.25 pt), not the white lines between cards.
+                if line is None or line.get('w') != str(int(2.25 * 12700)):
+                    continue
+                colour = line.find(qn('a:solidFill'))[0].get('val')
+                tops = [table.cell(row_index + 1, spanned)._tc.tcPr.find(qn('a:lnT')) for spanned in range(column, column + cell.span_width)]
+                assert all(top is not None and top.find(qn('a:solidFill'))[0].get('val') == colour for top in tops)
+                ruled += 1
+    assert ruled
+
+    # Two lines that end close together have their names moved apart, one up and one down.
+    from pptx import Presentation as NewPresentation
+    from src.modules.cdr_reporting import _remove_all_slides
+
+    presentation = NewPresentation(TEMPLATE)
+    _remove_all_slides(presentation)
+
+    def new_slide(target, _title, _subtitle):
+        return target.slides.add_slide(target.slide_layouts[0])
+
+    trend = {'title': '', 'campaigns': ['2026-Q2', '2026-Q3'], 'maximum': 1000, 'series': [
+        {'label': 'VF', 'color': '#E60000', 'points': [846.3, 863.1]},
+        {'label': 'Three', 'color': '#1A1A1A', 'points': [838.0, 861.4]},
+        {'label': 'BT', 'color': '#00A6A6', 'points': [940.6, 938.5], 'is_reference': True}]}
+    add_trend_slides(presentation, [trend], scoring_label='Best Network', subtitle='', new_slide=new_slide)
+    chart = next(shape.chart for shape in presentation.slides[0].shapes if shape.has_chart)
+    offsets = {}
+    for series in chart.plots[0].series:
+        label = series.points[1].data_label._dLbl
+        layout = None if label is None else label.find(qn('c:layout'))
+        offsets[series.name] = 0.0 if layout is None else float(layout.find(qn('c:manualLayout')).find(qn('c:y')).get('val'))
+    assert offsets['VF'] < 0 < offsets['Three'] and offsets['BT'] == 0.0
+
+
+def test_bar_fills_keep_their_edges_at_whole_percents():
+    from pptx import Presentation as NewPresentation
+    from pptx.util import Inches
+
+    from src.modules.scoring_pptx_scorecard import diverging_bar, share_bar
+
+    slide = NewPresentation().slides.add_slide(NewPresentation().slide_layouts[6])
+    table = slide.shapes.add_table(1, 2, Inches(1), Inches(1), Inches(4), Inches(.4)).table
+    # PowerPoint draws fills with their stops at whole percents on screen: a loss bar ends at the middle of the cell
+    # and the next stop is one percent further, so the bar never runs on to the right.
+    diverging_bar(table.cell(0, 0), '#FFB3B3', .223, '#F5F5F5', gain=False)
+    share_bar(table.cell(0, 1), '#4F46E5', .4321, '#FFFFFF')
+    for cell in table.rows[0].cells:
+        positions = [int(stop.get('pos')) for stop in cell._tc.tcPr.iter(qn('a:gs'))]
+        assert all(position % 1000 == 0 for position in positions)
+        assert all(after - before >= 1000 for before, after in zip(positions, positions[1:]))
+    loss = [(int(stop.get('pos')), stop[0].get('val')) for stop in table.cell(0, 0)._tc.tcPr.iter(qn('a:gs'))]
+    assert loss == [(0, 'F5F5F5'), (39000, 'F5F5F5'), (40000, 'FFB3B3'), (50000, 'FFB3B3'), (51000, 'F5F5F5'), (100000, 'F5F5F5')]

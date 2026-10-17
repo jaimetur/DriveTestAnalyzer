@@ -18497,10 +18497,10 @@ def scoring_saved_filter_export(
             display_selections=export_job['_scoring_display_selections'],
         )
         media_type = 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+        # Composed as the Scoring section of a Complete Report (PowerPoint and Word alike).
+        from src.modules.complete_reports import module_document
+        content = module_document('scoring', content, 'word' if export_kind == 'word' else 'powerpoint', 'Scoring & GAP Analysis')
         if export_kind == 'word':
-            # The Word document carries the same slides: one landscape page per slide.
-            from src.modules.pptx_to_docx import pptx_to_docx
-            content = pptx_to_docx(content, 'Scoring & GAP Analysis', pack_sections=True)
             filename = str(Path(filename).with_suffix('.docx'))
             media_type = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
         disposition = f"attachment; filename*=UTF-8''{quote(filename)}"
@@ -18705,9 +18705,10 @@ def scoring_report(export_kind: str, payload: ScoringReportRequest, user: Sessio
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     media_type = 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+    # Composed as the Scoring section of a Complete Report (PowerPoint and Word alike).
+    from src.modules.complete_reports import module_document
+    content = module_document('scoring', content, 'word' if export_kind == 'word' else 'powerpoint', 'Scoring & GAP Analysis')
     if export_kind == 'word':
-        from src.modules.pptx_to_docx import pptx_to_docx
-        content = pptx_to_docx(content, 'Scoring & GAP Analysis', pack_sections=True)
         filename = str(Path(filename).with_suffix('.docx'))
         media_type = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
     task_repository.try_add_log(user.username, f'export_scoring_report_{export_kind}', json.dumps({

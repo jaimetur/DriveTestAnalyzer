@@ -1349,24 +1349,35 @@ def test_repeated_analysis_reuses_cached_result_until_cdrs_change(client, tmp_pa
     assert third.status_code == 200 and calls
 
 
-def test_lte_nr_summary_export_has_separate_technology_sections(client, tmp_path):
+def test_lte_nr_summary_export_has_separate_technology_sections(client, tmp_path, monkeypatch):
     from docx import Document
+    from pptx import Presentation
+
+    import src.modules.pptx_to_docx as pptx_to_docx_module
 
     _login(client)
     rows = _data_rows('2026-Q1')
     rows['NR_PCell_RSRP_Avg'] = rows['LTE_PCell_RSRP_Avg'] - 8
     cdr = _add_ready_dataset(tmp_path, 'analysis.xlsx', 'data', rows)
-    response = client.post('/api/network-insights/export/word', json={
-        'datasets': {'data': [cdr]}, 'technology': 'lte_nr', 'nr_coverage_threshold': -120})
+    body = {'datasets': {'data': [cdr]}, 'technology': 'lte_nr', 'nr_coverage_threshold': -120}
+    response = client.post('/api/network-insights/export/powerpoint', json=body)
     assert response.status_code == 200
-    document = Document(io.BytesIO(response.content))
-    headings = [paragraph.text for paragraph in document.paragraphs if paragraph.style.name.startswith('Heading')]
-    assert 'Overview · LTE' in headings and 'Overview · NR' in headings
+    texts = [shape.text_frame.text for slide in Presentation(io.BytesIO(response.content)).slides
+             for shape in slide.shapes if shape.has_text_frame]
+    lines = [line for text in texts for line in text.splitlines()]
+    assert 'Overview · LTE' in lines and 'Overview · NR' in lines
     # One maps section per technology and group.
-    assert any(heading.startswith('Coverage & Interference Maps · NR · ') for heading in headings)
-    assert 'RF Quality · LTE' in headings and 'Overview · NR' in headings
-    text = '\n'.join(paragraph.text for paragraph in document.paragraphs)
-    assert 'NR thresholds: low coverage below -120.0 dBm RSRP' in text
+    assert any(line.startswith('Coverage & Interference Maps · NR · ') for line in lines)
+    assert 'RF Quality · LTE' in lines
+    assert any('NR thresholds: low coverage below -120.0 dBm RSRP' in text for text in texts)
+    # The Word version is composed from the same deck (here without LibreOffice: one page per slide).
+    monkeypatch.setattr(pptx_to_docx_module, 'portrait_covers', lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(pptx_to_docx_module, 'slide_images', lambda *_args, **_kwargs: None)
+    response = client.post('/api/network-insights/export/word', json=body)
+    assert response.status_code == 200
+    headings = [paragraph.text for paragraph in Document(io.BytesIO(response.content)).paragraphs
+                if paragraph.style.name.startswith('Heading')]
+    assert 'Overview · LTE' in headings or 'Overview' in headings
 
 
 def test_processes_can_still_fork_after_a_worker_thread_loads_the_polygon_libraries():
