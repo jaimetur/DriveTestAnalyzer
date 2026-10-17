@@ -9983,8 +9983,10 @@ def _apply_import_archive(
             notices: list[str] = []
             # Long updates (the materialization of Auto-calculated Fields) start once every package is imported.
             bundle_jobs: list[Callable[[], Any]] = []
-            # The Dashboards go first: the favourite Complete Reports of the bundle find theirs among them.
-            packages = sorted(packages, key=lambda entry: not (isinstance(entry, dict) and entry.get('kind') == 'dashboards'))
+            # The favourite Complete Reports and the Reporting Jobs go last: they find their Dashboards among those of the
+            # bundle (which come after their PPT Templates).
+            packages = sorted(packages, key=lambda entry: isinstance(entry, dict)
+                              and entry.get('kind') in {'complete-report-favourites', 'reporting-jobs'})
             for index, entry in enumerate(packages):
                 member = str(entry.get('archive_path') or '') if isinstance(entry, dict) else ''
                 if not re.fullmatch(r'packages/[^/]+\.zip', member) or member not in archive.namelist():

@@ -32,7 +32,7 @@
 - **Renaming an Operator or Vendor label in the Report Templates:** only their titles, legends and the values of their Operator and Vendor filters follow the new name (with a number such as 3, only the filters and legends), never their layouts or other conditions, so renaming 3 to Three no longer breaks a template's *3 columns* grid; templates it changed before (*Three columns*) work again.
 - **GAP and score bars in PowerPoint:** the bars inside the cells of the Scoring and GAP tables keep their side and length on screen in PowerPoint (a GAP behind the reference to the left of the middle, ahead to the right), as in its PDF export and in the other viewers.
 - **GAP order of one operator over several campaigns:** the GAP Analysis of a single operator (on the page and its PowerPoint and Word slides with the Priority arrow) orders the KPIs by their GAP in the latest campaign, the other campaigns breaking ties and the KPIs without a GAP in it last, and says so, instead of by the mean of every campaign.
-- **Favourite Complete Reports in another workspace:** imported favourites find their Dashboards by name and NR Mode (Dashboards with the same name in NSA and SA are no longer mixed up), so the same Dashboards stay checked and in the same order, and transfers with several elements import the Dashboards before the favourites.
+- **Favourite Complete Reports in another workspace:** imported favourites find their Dashboards by name and NR Mode (Dashboards with the same name in NSA and SA are no longer mixed up), so the same Dashboards stay checked and in the same order, and transfers with several elements import the favourites and Reporting Jobs after the Dashboards.
 
 #### 📚 Documentation:
 
