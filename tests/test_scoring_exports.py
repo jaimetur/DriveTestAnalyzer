@@ -114,9 +114,10 @@ def _export(result, *, levels=('Operator',), baseline='EE', operator_mapping_gro
         'configuration': scoring_configuration(),
     }
     job.update(job_fields or {})
+    # Drawn in NetCheck, the theme whose colours these tests assert (Ericsson is the default of the users).
     output = export_scoring_powerpoint(
         job, result, TEMPLATE, operator_mapping_groups=operator_mapping_groups,
-        environment=environment, split_charts=split_charts,
+        environment=environment, split_charts=split_charts, theme='netcheck',
     )
     return Presentation(BytesIO(output))
 
