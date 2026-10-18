@@ -211,7 +211,8 @@ def test_force_creates_a_fresh_calculation_and_method_baseline_are_cached(reposi
     )
     assert not reused
     assert other_baseline['id'] != forced['id']
-    assert len(calls) == 2
+    # Two calculations of the job (besides the Geographical Areas per Region and of London of each one).
+    assert len([call for call in calls if not {'Region', 'City'} & set(call[1])]) == 2
 
 
 def test_filters_used_again_move_to_the_top_with_their_last_use(repository, scoring_engine, monkeypatch):

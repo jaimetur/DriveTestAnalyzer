@@ -213,7 +213,9 @@ def test_vendor_filter_selects_all_matching_operator_prefixes_and_outputs_legacy
     assert completed['status'] == 'completed', completed.get('error')
     # Starred, so it is kept when the other selections are calculated (its result is read again below).
     saved_filters.update_saved_filter(repository, job['id'], pinned=True)
-    frames = scoring_api['calls'][0]['frames']
+    # The calculations of each job (not those of its Geographical Areas per Region and of London).
+    job_calls = lambda: [call for call in scoring_api['calls'] if call['levels'] == ['Operator']]
+    frames = job_calls()[0]['frames']
     source_frames = frames.values() if isinstance(frames, dict) else [item[-1] for item in frames]
     actual_operators = {operator for frame in source_frames for operator in frame['Operator']}
     assert actual_operators == expected_operators
@@ -227,7 +229,7 @@ def test_vendor_filter_selects_all_matching_operator_prefixes_and_outputs_legacy
     alias_filter_job = alias_filter_response.json()['saved_filter']
     alias_filter = saved_filters.calculate_saved_filter(repository, alias_filter_job['id'])
     assert alias_filter['status'] == 'completed', alias_filter.get('error')
-    alias_frames = scoring_api['calls'][1]['frames']
+    alias_frames = job_calls()[1]['frames']
     alias_source_frames = alias_frames.values() if isinstance(alias_frames, dict) else [item[-1] for item in alias_frames]
     assert {operator for frame in alias_source_frames for operator in frame['Operator']} == {'VF_UK'}
 
@@ -240,7 +242,7 @@ def test_vendor_filter_selects_all_matching_operator_prefixes_and_outputs_legacy
     operator_scoped_job = operator_scoped_response.json()['saved_filter']
     operator_scoped = saved_filters.calculate_saved_filter(repository, operator_scoped_job['id'])
     assert operator_scoped['status'] == 'completed', operator_scoped.get('last_error')
-    scoped_frames = scoring_api['calls'][2]['frames']
+    scoped_frames = job_calls()[2]['frames']
     scoped_source_frames = scoped_frames.values() if isinstance(scoped_frames, dict) else [item[-1] for item in scoped_frames]
     scoped_operators = {operator for frame in scoped_source_frames for operator in frame['Operator']}
     assert scoped_operators == {'3', 'EE', 'VF_UK'}

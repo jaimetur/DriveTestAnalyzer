@@ -131,12 +131,14 @@ def test_a_saved_filter_by_campaign_scores_each_campaign_with_its_methodology(tm
         'By campaign (NetCheck 2026: 2026-Q2 · NetCheck 2026-Q3: 2026-Q3)')
     result = saved_filters.calculate_saved_filter(repository, saved['id'])
     assert result['status'] == 'completed', result['error']
-    # One calculation per methodology, with the rows of its campaigns only.
-    assert len(calls) == 2
-    assert [sorted({campaign for frame in frames.values() for campaign in frame['Campaign']})
-            for frames, _levels, _baseline in calls] == [['2026-Q2'], ['2026-Q3']]
-    assert ['TIKTOK' in [metric['code'] for metric in configuration['metrics']]
-            for configuration in engine.configuration_snapshots] == [False, True]
+    # One calculation per methodology, with the rows of its campaigns only (and, with them, its Geographical Areas
+    # per Region and of London).
+    own = [index for index, (_frames, levels, _baseline) in enumerate(calls) if not {'Region', 'City'} & set(levels)]
+    assert len(own) == 2 and len(calls) == 6
+    assert [sorted({campaign for frame in calls[index][0].values() for campaign in frame['Campaign']})
+            for index in own] == [['2026-Q2'], ['2026-Q3']]
+    assert ['TIKTOK' in [metric['code'] for metric in engine.configuration_snapshots[index]['metrics']]
+            for index in own] == [False, True]
     assert [row['methodology'] for row in result['result']['scoring']] == ['netcheck-2026', 'netcheck-2026-q3']
 
 
