@@ -78,9 +78,10 @@ SCORING_SUBMODULES: tuple[tuple[str, str, tuple[tuple[str, str], ...]], ...] = (
                                   ('breakdown', 'Scoring per Category (Breakdown)'))),
     ('tables', 'Scoring Tables', (('summary', 'Category table'), ('breakdown', 'Breakdown table'),
                                   ('campaign_comparison', 'Campaign comparison (two latest campaigns)'))),
-    ('locations', 'Locations', (('cards', 'Scoring per City / Cluster / Region cards'), ('ranking', 'Locations ranked'),
-                                ('versus', 'Each operator against the reference per location'))),
-    ('trends', 'Scoring Trends', (('trend', 'Scoring Trend (two campaigns or more)'), ('areas', 'National & Areas Trends'))),
+    ('geographical_areas', 'Geographical Areas', (('cards', 'Scoring per City / Cluster / Region cards'),
+                                                  ('ranking', 'Geographical Areas ranked'),
+                                                  ('versus', 'Each operator against the reference per geographical area'))),
+    ('trends', 'Scoring Trends', (('trend', 'Scoring Trend (two campaigns or more)'), ('areas', 'National & Geographical Areas Trends'))),
     ('gap', 'GAP Analysis', (('all_operators', 'Table comparing all the chosen operators'), ('individual', 'Individual tables against the reference'),
                              ('parts', 'GAP by part over the campaigns'), ('profile', 'KPI GAP Profile'))),
     ('points', 'Points Lost', (('stake', 'Where the points go'), ('kpis', 'Points lost per KPI'), ('map', 'Points lost per City map'),
@@ -88,8 +89,11 @@ SCORING_SUBMODULES: tuple[tuple[str, str, tuple[tuple[str, str], ...]], ...] = (
                                ('sites', 'Sites to review'), ('stretches', 'Route stretches'))),
 )
 # The section each Scoring slide is named after (see scoring_exports) and its results tab.
-SCORING_TAGS = {'summary': 'summary', 'charts': 'charts', 'tables': 'tables', 'comparison': 'tables', 'locations': 'locations',
+SCORING_TAGS = {'summary': 'summary', 'charts': 'charts', 'tables': 'tables', 'comparison': 'tables',
+                'geographical_areas': 'geographical_areas', 'locations': 'geographical_areas',
                 'trends': 'trends', 'gap': 'gap', 'points': 'points'}
+# Sub-modules of reports saved before with another name: Geographical Areas was Locations.
+RENAMED_SCORING_SUBMODULES = {'locations': 'geographical_areas'}
 SCORINGS = (('best_network', 'Best Network'), ('most_reliable', 'Most Reliable Network'))
 COMBINED_ENVIRONMENT = 'all'
 FILTER_FIELDS = ('operators', 'operator_vendors', 'vendor_operators', 'vendors', 'regions', 'clusters', 'cities')
@@ -161,7 +165,7 @@ def _module_options(section: str) -> dict[str, Any]:
         return {'scorings': ['best_network'], 'environments': [COMBINED_ENVIRONMENT], 'kpi_values': False, 'gap_values': False,
                 'baseline_operator': 'EE', 'methodology': BY_CAMPAIGN, 'compared_operators': [], 'theme': DEFAULT_THEME,
                 # The Scoring Trends: their campaigns (All available campaigns by default; none: those of the section)
-                # and the National & Areas Trends.
+                # and the National & Geographical Areas Trends.
                 'area_summary': {'enabled': True, 'breakdown': 'Region', 'time_split': 'Campaign', 'campaigns': [ALL_CAMPAIGNS]}}
     if section == 'network_insights':
         return {'technology': 'lte', 'group': ['operator', 'campaign'], 'coverage_threshold': -110.0, 'interference_threshold': 0.0,
@@ -238,14 +242,17 @@ def _normalize_items(section: str, raw: Any) -> list[dict[str, Any]]:
                               'nr_mode': mode if mode in {'NSA', 'SA'} else ''})
         return items
     catalogue = {key: (title, components) for key, title, components in _panels()[section]}
+    if section == 'scoring':
+        raw_items = [{**item, 'key': RENAMED_SCORING_SUBMODULES.get(str(item.get('key')), item.get('key'))} for item in raw_items]
     saved = {str(item.get('key')): item for item in raw_items if str(item.get('key')) in catalogue}
     order = [key for key in dict.fromkeys(str(item.get('key')) for item in raw_items) if key in catalogue]
     if section == 'scoring' and raw_items and 'trends' not in saved:
-        # Reports saved before the Scoring Trends had the scoring trend in Scoring Charts: the trends follow Locations.
+        # Reports saved before the Scoring Trends had the scoring trend in Scoring Charts: the trends follow the
+        # Geographical Areas.
         charts = (saved.get('charts') or {}).get('components')
         trend = bool(charts.get('trend', True)) if isinstance(charts, dict) else True
         saved['trends'] = {'key': 'trends', 'enabled': True, 'components': {'trend': trend, 'areas': True}}
-        order.insert(order.index('locations') + 1 if 'locations' in order else len(order), 'trends')
+        order.insert(order.index('geographical_areas') + 1 if 'geographical_areas' in order else len(order), 'trends')
     order += [key for key in catalogue if key not in order]
     items = []
     for key in order:
@@ -353,7 +360,7 @@ def _option_lines(section: dict[str, Any], dashboard_names: dict[str, str] | Non
         area = options['area_summary']
         trend_campaigns = ', '.join(CAMPAIGN_PRESET_LABELS.get(value) or format_campaign(value) or value
                                     for value in area.get('campaigns') or []) or 'the campaigns of the section'
-        areas = (f" · National & Areas Trends: {'National only' if area['breakdown'] == 'None' else 'each ' + area['breakdown']}"
+        areas = (f" · National & Geographical Areas Trends: {'National only' if area['breakdown'] == 'None' else 'each ' + area['breakdown']}"
                  f", time split {'All selected CDRs' if area['time_split'] == 'All' else area['time_split']}"
                  if area.get('enabled') else '')
         return [f"{scorings} · Environments: {environments}",
@@ -1180,7 +1187,7 @@ class SectionGenerator:
 
 
 # -- generated sections kept for the next exports ------------------------------------------
-SECTION_CACHE_VERSION = 7
+SECTION_CACHE_VERSION = 8
 SECTION_CACHE_HOURS = 24
 SECTION_CACHE_FOLDER = 'cache'
 # The composed documents (PowerPoint, the packed Word and their previews), inside the section cache.

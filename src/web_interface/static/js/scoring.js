@@ -164,14 +164,15 @@
     encodeURIComponent(document.body.dataset.authenticatedUser || 'anonymous'),
     encodeURIComponent(root.dataset.scoringWorkspaceId || 'unknown'),
   ].join(':');
-  const resultTabNames = new Set(['summary', 'charts', 'scoring', 'locations', 'trends', 'gap', 'points']);
+  const resultTabNames = new Set(['summary', 'charts', 'scoring', 'geographical-areas', 'trends', 'gap', 'points']);
   function readScoringViewState() {
     try {
       const stored = JSON.parse(window.sessionStorage.getItem(scoringViewStorageKey) || 'null');
       if (!stored || typeof stored !== 'object' || Array.isArray(stored)) return {};
       return {
         savedFilterId: typeof stored.saved_filter_id === 'string' && stored.saved_filter_id ? stored.saved_filter_id : null,
-        resultTab: stored.result_tab === 'best-network' ? 'charts'
+        // (Tabs saved by earlier versions: Best Network is Scoring Charts, Locations is Geographical Areas.)
+        resultTab: stored.result_tab === 'best-network' ? 'charts' : stored.result_tab === 'locations' ? 'geographical-areas'
           : resultTabNames.has(stored.result_tab) ? stored.result_tab : null,
         scrollY: Number.isFinite(stored.scroll_y) && stored.scroll_y >= 0 ? stored.scroll_y : null,
         environment: typeof stored.environment === 'string' && stored.environment ? stored.environment : 'all',
@@ -356,7 +357,7 @@
   // The selection of the panel before the editing (given back when it is cancelled) and the place of the panel.
   let selectionBeforeEdit = null;
   let editPanelPlaceholder = null;
-  // The National & Areas Trends of the calculation: included or not, its time split, breakdown and separate cities.
+  // The National & Geographical Areas Trends of the calculation: included or not, its time split, breakdown and separate cities.
   const areaSummaryPanel = root.querySelector('[data-scoring-area-summary]');
   const areaSummaryEnabled = root.querySelector('[data-scoring-area-enabled]');
   const areaSummaryTimeSplit = root.querySelector('[data-scoring-area-time-split]');
@@ -364,8 +365,6 @@
   const areaSummaryCities = root.querySelector('[data-scoring-area-cities]');
   // The campaigns of the Scoring Trends tab, whatever the Campaign filter of the rest of the scoring.
   const trendCampaigns = root.querySelector('[data-scoring-trend-campaigns]');
-  const geographicFilterKeys = ['Region', 'Cluster', 'City'];
-  const areaFilterLock = root.querySelector('[data-scoring-area-filter-lock]');
   const message = root.querySelector('[data-scoring-message]');
   const savedFilterLists = [...root.querySelectorAll('[data-saved-filter-list]')];
   const savedFilterPanelList = savedFilterLists.find(list => list.closest('.saved-filters-panel')) || null;
@@ -743,32 +742,12 @@
     };
   }
 
-  // Included, the summary needs the whole country: the Region, Cluster and City filters are cleared and disabled.
-  function syncAreaSummary({clearFilters = false} = {}) {
+  // Included, the summary is scored on the whole country, also when the Region, Cluster or City filters choose part of it.
+  function syncAreaSummary() {
     if (!areaSummaryPanel) return;
     const included = Boolean(areaSummaryEnabled?.checked);
     areaSummaryPanel.classList.toggle('is-included', included);
     for (const control of [areaSummaryTimeSplit, areaSummaryBreakdown]) if (control) control.disabled = !included;
-    for (const key of geographicFilterKeys) {
-      const select = contextFilterSelects.get(key);
-      if (!select) continue;
-      if (included && clearFilters) {
-        for (const option of select.options) option.selected = false;
-        select.removeAttribute('data-scoring-remembered-values');
-      }
-      select.closest('label')?.classList.toggle('is-area-locked', included);
-      if (select.disabled !== included) {
-        select.disabled = included;
-        select.title = included ? 'Disabled while Include National & Areas Trends is checked: they need the scoring of the whole country' : '';
-        select.dispatchEvent(new Event('multiselect:options-updated'));
-      }
-    }
-    if (areaFilterLock) {
-      const locked = geographicFilterKeys.filter(key => contextFilterSelects.has(key));
-      areaFilterLock.hidden = !included || !locked.length;
-      const names = areaFilterLock.querySelector('[data-scoring-area-filter-lock-names]');
-      if (names) names.textContent = locked.length > 1 ? `${locked.slice(0, -1).join(', ')} and ${locked.at(-1)} filters are` : `${locked[0] || ''} filter is`;
-    }
     if (areaSummaryCities && areaSummaryCities.disabled !== !included) {
       areaSummaryCities.disabled = !included;
       areaSummaryCities.dispatchEvent(new Event('multiselect:options-updated'));
@@ -860,11 +839,6 @@
     } finally {
       save.disabled = false;
     }
-  });
-  areaFilterLock?.querySelector('[data-scoring-area-filter-unlock]')?.addEventListener('click', () => {
-    if (!areaSummaryEnabled) return;
-    areaSummaryEnabled.checked = false;
-    areaSummaryEnabled.dispatchEvent(new Event('change', {bubbles: true}));
   });
   root.querySelector('[data-scoring-hierarchy-open]')?.addEventListener('click', (event) => {
     event.preventDefault();
@@ -1080,7 +1054,7 @@
       baseline_operator: savedFilter.baseline_operator,
       scoring_profile_id: savedFilter.scoring_profile_id,
       context_filters: savedFilter.context_filters || {},
-      // A Saved Filter without the National & Areas Trends leaves them out and keeps their settings; the campaigns of
+      // A Saved Filter without the National & Geographical Areas Trends leaves them out and keeps their settings; the campaigns of
       // its Scoring Trends come with it.
       area_summary: savedFilter.area_summary ? {...savedFilter.area_summary, breakdown: savedFilter.area_summary.breakdown || 'None',
         campaigns: savedFilter.area_summary.campaigns || [],
@@ -1239,7 +1213,7 @@
       } catch (_error) {
         autoCdrs = {options: null, incomplete: []};
       }
-      // A new scoring starts without the National & Areas Trends (only a Saved Filter that has them includes them); it
+      // A new scoring starts without the National & Geographical Areas Trends (only a Saved Filter that has them includes them); it
       // keeps the campaigns of the Scoring Trends.
       const savedSummary = body.selection.area_summary && typeof body.selection.area_summary === 'object' ? body.selection.area_summary : {};
       applySavedCalculationSelection({...body.selection, area_summary: {...savedSummary, enabled: false}});
@@ -1321,7 +1295,7 @@
     };
   }
 
-  // The Scoring Trends of the calculation: the National & Areas Trends when included, and the campaigns of the trends
+  // The Scoring Trends of the calculation: the National & Geographical Areas Trends when included, and the campaigns of the trends
   // when they have some (alone, the scoring trend of those campaigns).
   function areaSummaryPayload() {
     const summary = selectedAreaSummary();
@@ -1623,7 +1597,7 @@
     return display(own).join(', ');
   }
 
-  // The settings of the National & Areas Trends of a Saved Filter as [kind, label, value] triples, or [] when it has
+  // The settings of the National & Geographical Areas Trends of a Saved Filter as [kind, label, value] triples, or [] when it has
   // none: their time split, breakdown and separate cities.
   function savedFilterAreaSummaryParts(savedFilter) {
     const summary = savedFilter?.area_summary;
@@ -1982,12 +1956,12 @@
       button.append(trendMeta);
       const areaSummary = savedFilterAreaSummaryParts(savedFilter);
       if (areaSummary.length) {
-        // The National & Areas Trends of the Saved Filter, when it includes them: their time split, breakdown and
+        // The National & Geographical Areas Trends of the Saved Filter, when it includes them: their time split, breakdown and
         // cities, each value in its own colour.
         // (Inside the Scoring Trends, whose campaigns they share.)
         const areaMeta = document.createElement('span');
         areaMeta.className = 'saved-filter-meta saved-filter-meta-nested';
-        areaMeta.textContent = '↳ National & Areas Trends: ';
+        areaMeta.textContent = '↳ National & Geographical Areas Trends: ';
         areaSummary.forEach(([kind, label, value], index) => {
           const areaValue = document.createElement('strong');
           areaValue.className = `saved-filter-area-summary saved-filter-area-summary-${kind}`;
@@ -5123,7 +5097,7 @@
   }
 
   // ``context`` is the context of the chart's table, for its area, operators and vendors; false leaves them out (the
-  // National & Areas card shows every area).
+  // National & Geographical Areas card shows every area).
   function makeExpandableChartCard(title, meta, chart, context = null) {
     const card = document.createElement('article');
     card.className = 'scoring-chart-card';
@@ -5146,7 +5120,7 @@
     else enableContentZoom(card, scroll);
     card.addEventListener('dblclick', event => {
       if (event.target.closest('.scoring-map-zoom')) return;
-      // The zoom captures the pointer, so the part under it (a National & Areas trend or table) is found by its
+      // The zoom captures the pointer, so the part under it (a National & Geographical Areas trend or table) is found by its
       // position: it enlarges alone.
       const part = document.elementsFromPoint(event.clientX, event.clientY)
         .map(element => element.closest?.('.scoring-expandable-part')).find(Boolean);
@@ -6167,7 +6141,7 @@
     return svg;
   }
 
-  // The National & Areas Trends: each operator's score per area, its change from the previous campaign or
+  // The National & Geographical Areas Trends: each operator's score per area, its change from the previous campaign or
   // period and its GAP to the reference, with a trend chart per area on the same scale.
   function makeAreaSummaryView(summary) {
     const view = document.createElement('div');
@@ -6210,8 +6184,8 @@
     tableWrap.className = 'scoring-insight-table-wrap scoring-expandable-part';
     // The table enlarges on its own with a double click, as each chart does.
     tableWrap.title = 'Double-click to enlarge this table';
-    tableWrap.expandPart = () => openExpandedView(tableWrap.querySelector('table'), `${scoringLabel()} Trends — National & Areas`,
-      'National & Areas Trends table', tableWrap, 'Table');
+    tableWrap.expandPart = () => openExpandedView(tableWrap.querySelector('table'), `${scoringLabel()} Trends — National & Geographical Areas`,
+      'National & Geographical Areas Trends table', tableWrap, 'Table');
     const table = insightTable(headers, rows, {className: 'scoring-area-summary-table'});
     [...table.tBodies[0].rows].forEach((row, index) => { if (rowClasses[index]) row.className = rowClasses[index]; });
     tableWrap.append(table);
@@ -6332,18 +6306,18 @@
       }
     });
     figure.append(caption, svg);
-    // Each chart enlarges on its own with a double click (not the whole National & Areas card).
+    // Each chart enlarges on its own with a double click (not the whole National & Geographical Areas card).
     figure.title = 'Double-click to enlarge this chart';
     figure.classList.add('scoring-expandable-part');
     figure.expandPart = () => {
       const large = makeAreaTrendChart(area, campaigns, low, high, step, Math.max(height, 240)).querySelector('svg');
-      openExpandedView(large, `${scoringLabel()} — ${area.label}`, 'National & Areas Trends', figure, 'Area trend');
+      openExpandedView(large, `${scoringLabel()} — ${area.label}`, 'National & Geographical Areas Trends', figure, 'Area trend');
     };
     return figure;
   }
 
   // ---- Scoring Trends ----------------------------------------------------------------------------------------------
-  // The Scoring Trend, then the National & Areas Trends, of the campaigns of the Scoring Trends of the calculation (those
+  // The Scoring Trend, then the National & Geographical Areas Trends, of the campaigns of the Scoring Trends of the calculation (those
   // of the scoring without campaigns of their own).
   function renderTrends(pane, payload, environment) {
     pane.replaceChildren();
@@ -6360,14 +6334,14 @@
     for (const summary of insightItems(payload, 'area_summaries', environment)) {
       const split = summary.time_split === 'All' ? 'All selected CDRs' : summary.time_split === 'Campaign' ? 'Per campaign'
         : `${summary.time_split} periods`;
-      pane.append(makeExpandableChartCard(`${scoringLabel()} Trends — National & Areas`,
+      pane.append(makeExpandableChartCard(`${scoringLabel()} Trends — National & Geographical Areas`,
         [environmentLabel(environment), `Time split: ${split}`].filter(Boolean).join(' · '), makeAreaSummaryView(summary), false));
     }
     if (!pane.children.length) {
       const empty = document.createElement('div');
       empty.className = 'scoring-empty';
       empty.textContent = 'No Scoring Trends are available: a trend needs two campaigns or more. Choose the campaigns of the '
-        + 'Scoring Trends (and include the National & Areas Trends) in the Scoring Calculation panel.';
+        + 'Scoring Trends (and include the National & Geographical Areas Trends) in the Scoring Calculation panel.';
       pane.append(empty);
     }
   }
@@ -6962,8 +6936,9 @@
     return box;
   }
 
-  // ---- Locations ---------------------------------------------------------------------------------------------------
-  function renderLocations(pane, payload, environment) {
+  // ---- Geographical Areas ------------------------------------------------------------------------------------------
+  // A calculation split by no Region, Cluster or City shows each Region and London (calculated with it).
+  function renderGeographicalAreas(pane, payload, environment) {
     pane.replaceChildren();
     if (!environment) return;
     let groups = insightItems(payload, 'location_cards', environment);
@@ -6979,7 +6954,7 @@
     const rankings = insightItems(payload, 'location_rankings', environment);
     if (rankings.length) {
       const levels = [...new Set(rankings.map(item => item.level))];
-      const {wrapper: levelControl, value: storedLevel} = insightSelect('ranking-level', levels.map(level => [level, level]), 'Locations');
+      const {wrapper: levelControl, value: storedLevel} = insightSelect('ranking-level', levels.map(level => [level, level]), 'Geographical Areas');
       const level = levels.includes(storedLevel) ? storedLevel : levels[0];
       const ofLevel = rankings.filter(item => item.level === level);
       const titles = [...new Set(ofLevel.map(item => item.title || ''))];
@@ -7004,8 +6979,9 @@
       // The location views split the scoring by location: without one in the Split by there is nothing to show.
       const empty = document.createElement('div');
       empty.className = 'scoring-empty';
-      empty.textContent = 'No Locations views: they need Region, Cluster or City in the Split by of the calculation. '
-        + 'The National & Areas Trends are in the Scoring Trends tab.';
+      empty.textContent = 'No Geographical Areas views: calculate the scoring again to see them per Region and for London '
+        + '(results calculated before them do not have them), or add Region, Cluster or City to the Split by. '
+        + 'The National & Geographical Areas Trends are in the Scoring Trends tab.';
       pane.append(empty);
     }
   }
@@ -8449,7 +8425,7 @@
       renderBestNetworkChart(chartPane, scoreTables, hierarchyScoreTable, allScoreTables);
     }
     if (shouldRenderPane('summary')) renderSummary(root.querySelector('[data-result-pane="summary"]'), payload, effectiveEnvironment);
-    if (shouldRenderPane('locations')) renderLocations(root.querySelector('[data-result-pane="locations"]'), payload, effectiveEnvironment);
+    if (shouldRenderPane('geographical-areas')) renderGeographicalAreas(root.querySelector('[data-result-pane="geographical-areas"]'), payload, effectiveEnvironment);
     if (shouldRenderPane('trends')) renderTrends(root.querySelector('[data-result-pane="trends"]'), payload, effectiveEnvironment);
     if (shouldRenderPane('points')) {
       renderPointsLost(root.querySelector('[data-result-pane="points"]'), payload, effectiveEnvironment,
@@ -8869,7 +8845,7 @@
       return;
     }
     if (event.target.matches?.('[data-scoring-area-enabled], [data-scoring-area-summary] select, [data-scoring-trend-campaigns]')) {
-      syncAreaSummary({clearFilters: event.target === areaSummaryEnabled});
+      syncAreaSummary();
       if (event.target === areaSummaryEnabled && !restoringSelection) scheduleAutoCdrRefresh();
       updateSelection();
       scheduleSelectionSave();
@@ -9235,12 +9211,13 @@
     if (currentResults) renderResult(currentResults, selectedSavedFilter, [name]);
   });
   expandedChartClose?.addEventListener('click', closeExpandedChart);
-  // The Scoring Results entries of the Scoring tab menu (#scoring-results-summary, -charts, -tables, -locations, -trends,
-  // -gap or -points-lost) open that
+  // The Scoring Results entries of the Scoring tab menu (#scoring-results-summary, -charts, -tables, -geographical-areas,
+  // -trends, -gap or -points-lost; -locations from earlier links) open that
   // results tab and show the results tabs at the top of the page.
   const openResultTabFromHash = () => {
     const name = {'scoring-results-summary': 'summary', 'scoring-results-charts': 'charts', 'scoring-results-tables': 'scoring',
-      'scoring-results-locations': 'locations', 'scoring-results-trends': 'trends', 'scoring-results-gap': 'gap',
+      'scoring-results-geographical-areas': 'geographical-areas', 'scoring-results-locations': 'geographical-areas',
+      'scoring-results-trends': 'trends', 'scoring-results-gap': 'gap',
       'scoring-results-points-lost': 'points'}[
       decodeURIComponent(window.location.hash.slice(1))];
     if (!name) return;

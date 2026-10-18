@@ -212,9 +212,9 @@ def _fallback_selection(
 
 
 def _normalize_area_summary(raw: object) -> dict[str, Any]:
-    """The Scoring Trends of the calculation: their campaigns, and the National & Areas Trends, not included by default."""
+    """The Scoring Trends of the calculation: their campaigns, and the National & Geographical Areas Trends, not included by default."""
     from src.modules.scoring_reports import DEFAULT_AREA_SUMMARY, _normalize_area_summary as normalize
-    summary = normalize(raw if isinstance(raw, dict) else {**DEFAULT_AREA_SUMMARY, 'enabled': False}, False)
+    summary = normalize({'enabled': False, **raw} if isinstance(raw, dict) else {**DEFAULT_AREA_SUMMARY, 'enabled': False})
     # Main Cities are chosen as their cities in this panel.
     summary.pop('main_cities', None)
     return summary

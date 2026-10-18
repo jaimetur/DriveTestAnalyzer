@@ -204,13 +204,16 @@ def merge_results(parts: list[tuple[dict[str, Any], dict[str, Any]]]) -> dict[st
         merged['test_window'] = {'first': min(window['first'] for window in windows),
                                  'last': max(window['last'] for window in windows),
                                  'days': sum(int(window.get('days') or 0) for window in windows)}
-    if any('area_summary' in result for _group, result in parts):
+    # The National & Geographical Areas Trends and the Geographical calculations of a job split by no area.
+    for key in ('area_summary', 'geographical'):
+        if not any(key in result for _group, result in parts):
+            continue
         for group, result in parts:
-            for item in (result.get('area_summary') or {}).get('passes', []):
+            for item in (result.get(key) or {}).get('passes', []):
                 for field, value in (item.get('result') or {}).items():
                     if isinstance(value, list):
                         item['result'][field] = _tag(value, group['profile_id'])
-        merged['area_summary'] = _merge_area_summaries([result.get('area_summary') for _group, result in parts])
+        merged[key] = _merge_area_summaries([result.get(key) for _group, result in parts])
     merged['configuration'] = display_configuration(groups)
     merged['methodology_groups'] = [{key: group[key] for key in ('profile_id', 'profile_name', 'campaigns')}
                                     | {'configuration': group['configuration']} for group in groups]
@@ -227,10 +230,11 @@ def split_result(result: dict[str, Any], group: dict[str, Any]) -> dict[str, Any
     part = {**result, 'configuration': group['configuration'], 'methodology_groups': None}
     for field in _RESULT_LISTS:
         part[field] = rows_of(result.get(field), group['profile_id'])
-    summary = result.get('area_summary')
-    if isinstance(summary, dict):
-        part['area_summary'] = {**summary, 'passes': [
-            {**item, 'result': {field: (rows_of(value, group['profile_id']) if isinstance(value, list) else value)
-                                for field, value in (item.get('result') or {}).items()}}
-            for item in summary.get('passes') or []]}
+    for key in ('area_summary', 'geographical'):
+        summary = result.get(key)
+        if isinstance(summary, dict):
+            part[key] = {**summary, 'passes': [
+                {**item, 'result': {field: (rows_of(value, group['profile_id']) if isinstance(value, list) else value)
+                                    for field, value in (item.get('result') or {}).items()}}
+                for item in summary.get('passes') or []]}
     return part

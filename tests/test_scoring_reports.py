@@ -47,7 +47,7 @@ def test_default_scenario_follows_the_requested_defaults():
         assert options['enabled'] is True and options['environments'] == 'all'
         assert options['summary'] == {'standings': True, 'position': True, 'levers': True, 'scope': True}
         assert options['charts'] == {'service': True, 'category': True, 'breakdown': True}
-        assert options['locations'] == {'cards': True, 'ranking': True, 'versus': True}
+        assert options['geographical_areas'] == {'cards': True, 'ranking': True, 'versus': True}
         assert options['trends'] == {'trend': True, 'areas': True}
         assert options['points'] == {'stake': True, 'kpis': True, 'map': True, 'vendors': True, 'site_types': True,
                                      'sites': True, 'stretches': True}
@@ -70,13 +70,17 @@ def test_report_configuration_is_normalized():
     assert second['name'] == 'Scenario 2'
     with pytest.raises(ValueError):
         normalize_report_configuration({'scenarios': []})
-    # Configurations saved before the Locations and Points Lost groups keep the choices of their former options.
+    # Configurations saved before the Geographical Areas (then Locations) and Points Lost groups keep the choices of
+    # their former options.
     earlier = normalize_report_configuration({'scenarios': [{'scorings': {'best_network': {
         'charts': {'location_cards': False}, 'gap': {'points_loss_map': False, 'profile': False}}}}]})
     options = earlier['scenarios'][0]['scorings']['best_network']
-    assert options['locations']['cards'] is False and options['points']['map'] is False
+    assert options['geographical_areas']['cards'] is False and options['points']['map'] is False
     assert options['points']['kpis'] is False and options['gap']['profile'] is False
-    assert options['locations']['ranking'] is True and options['points']['stake'] is True
+    assert options['geographical_areas']['ranking'] is True and options['points']['stake'] is True
+    # Geographical Areas was called Locations.
+    from src.modules.scoring_reports import _normalize_options
+    assert _normalize_options({'locations': {'ranking': False}})['geographical_areas'] == {'cards': True, 'ranking': False, 'versus': True}
     assert 'location_cards' not in options['charts'] and 'points_loss_map' not in options['gap']
     with pytest.raises(ValueError, match='at least one scenario'):
         normalize_report_configuration({'scenarios': [{'scorings': {

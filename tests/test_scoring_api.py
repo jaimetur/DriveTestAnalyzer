@@ -217,7 +217,7 @@ def test_scoring_selection_defaults_use_catalogue_metadata_without_reading_cdr_r
                 # Latest campaign: the newest campaign with Data, Voice and Speech CDRs (2026-Q2).
                 'Region': [], 'City': [], 'Operator': [], 'Vendor': [], 'Campaign': ['@latest-campaign'],
             },
-            # The National & Areas Trends are not included by default; the Scoring Trends take All available campaigns.
+            # The National & Geographical Areas Trends are not included by default; the Scoring Trends take All available campaigns.
             'area_summary': {'enabled': False, 'time_split': 'Campaign', 'breakdown': 'Region', 'cities': ['London'],
                              'campaigns': ['@all-campaigns']},
         },

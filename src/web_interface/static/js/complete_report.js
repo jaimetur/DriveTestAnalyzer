@@ -236,7 +236,7 @@
     const kpiValues = check('Show KPI values', saved.kpi_values);
     const gapValues = check('Show GAP values', saved.gap_values);
     tables.append(kpiValues, gapValues);
-    // The Scoring Trends: their campaigns (none: those of the section) and, inside them, the National & Areas Trends.
+    // The Scoring Trends: their campaigns (none: those of the section) and, inside them, the National & Geographical Areas Trends.
     const trends = node('fieldset', undefined, 'cr-choice-group cr-trends');
     trends.append(node('legend', 'Scoring Trends'));
     const presets = Object.entries(options.campaign_presets || {});
@@ -246,7 +246,7 @@
     let trendCampaigns = null;
     const renderTrendCampaigns = (selected) => {
       trendCampaigns = multiField('Campaigns', campaignValues(), selected, {exclusive: presets, allLabel: 'Same as the section'});
-      trendCampaigns.title = 'The campaigns of the Scoring Trend and the National & Areas Trends (none: the campaigns of the section)';
+      trendCampaigns.title = 'The campaigns of the Scoring Trend and the National & Geographical Areas Trends (none: the campaigns of the section)';
       trendHost.replaceChildren(trendCampaigns);
     };
     renderTrendCampaigns(saved.area_summary.campaigns || []);
@@ -254,7 +254,7 @@
       renderTrendCampaigns((trendCampaigns?.getValue?.() || []).filter((value) => presets.some(([key]) => key === value)));
     });
     const area = node('fieldset', undefined, 'cr-choice-group cr-area');
-    const areaEnabled = check('Include National & Areas Trends', saved.area_summary.enabled);
+    const areaEnabled = check('Include National & Geographical Areas Trends', saved.area_summary.enabled);
     areaEnabled.title = 'When the common filters choose no Region, Cluster or City: the National scoring next to each area, with the campaigns of the Scoring Trends';
     const areaLegend = node('legend');
     areaLegend.append(areaEnabled);

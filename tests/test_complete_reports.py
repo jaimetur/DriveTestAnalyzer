@@ -66,7 +66,7 @@ def test_definitions_keep_the_order_and_options_of_every_section():
     # Each section has its own Campaigns.
     assert all(section['options']['campaigns'] == [] and 'nr_mode' not in section['options'] for section in defaults['sections'])
     scoring = next(section for section in defaults['sections'] if section['key'] == 'scoring')
-    assert [item['key'] for item in scoring['items']] == ['summary', 'charts', 'tables', 'locations', 'trends', 'gap', 'points']
+    assert [item['key'] for item in scoring['items']] == ['summary', 'charts', 'tables', 'geographical_areas', 'trends', 'gap', 'points']
     assert all(all(item['components'].values()) for item in scoring['items'])
     assert scoring['options']['scorings'] == ['best_network'] and scoring['options']['environments'] == ['all']
     # Saved order first, then what the report did not have yet; unknown keys are dropped. A report saved when the
@@ -107,13 +107,13 @@ def test_reports_saved_before_the_scoring_trends_keep_their_trend_after_the_loca
         'options': {'area_summary': {'enabled': True, 'campaigns': ['@all-campaigns', '2026-Q1']}}}]})
     scoring = next(section for section in definition['sections'] if section['key'] == 'scoring')
     keys = [item['key'] for item in scoring['items']]
-    assert keys[:3] == ['locations', 'trends', 'charts']
+    assert keys[:3] == ['geographical_areas', 'trends', 'charts']
     trends = next(item for item in scoring['items'] if item['key'] == 'trends')
     assert trends['components'] == {'trend': False, 'areas': True}
     # The campaigns of the Scoring Trends: an automatic choice stands alone.
     assert scoring['options']['area_summary']['campaigns'] == ['@all-campaigns']
     lines = complete_reports._option_lines(scoring, None, None)
-    assert lines[-1] == 'Scoring Trends: All available campaigns · National & Areas Trends: each Region, time split Campaign'
+    assert lines[-1] == 'Scoring Trends: All available campaigns · National & Geographical Areas Trends: each Region, time split Campaign'
 
 
 def test_section_lines_and_filters_describe_the_report():

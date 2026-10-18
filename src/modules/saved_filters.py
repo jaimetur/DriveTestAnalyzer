@@ -21,6 +21,8 @@ import pandas as pd
 from src.modules.column_names import campaign_sort_key, column_identity, resolve_column_name
 from src.modules.scoring_area_summary import (
     WARNING_PREFIXES, area_summary_levels, calculate_area_summary, calculate_area_summary_from_history,
+    calculate_geographical, calculate_geographical_from_history, geographical_levels, has_area_filters,
+    whole_country_filters,
     detach_area_summary, normalize_area_summary_request,
 )
 from src.modules.scoring_vendors import scoring_vendor_name, scoring_vendor_operators
@@ -714,7 +716,7 @@ def _row_to_saved_filter(
         # The campaigns its Campaign filter stood for when it was last prepared (an automatic choice such as Latest
         # campaign is resolved each time).
         'resolved_campaigns': [str(value) for value in resolved_context_filters.get('Campaign') or [] if str(value).strip()],
-        # The campaigns of its National & Areas Trends when they have campaigns of their own, as last prepared.
+        # The campaigns of its National & Geographical Areas Trends when they have campaigns of their own, as last prepared.
         'trend_campaigns': [str(value) for value in (source_metadata_payload.get('area_trends') or {}).get('campaigns') or []
                             if str(value).strip()] if isinstance(source_metadata_payload.get('area_trends'), dict) else [],
     }
@@ -876,7 +878,7 @@ def _prepare_saved_filter(
 
 def _area_trends(repository: Repository, nr_mode: str, area_summary: dict[str, Any] | None,
                  scoring_profile_id: str | None) -> dict[str, Any] | None:
-    """The campaigns, CDRs and methodologies of National & Areas Trends with campaigns of their own (an automatic
+    """The campaigns, CDRs and methodologies of National & Geographical Areas Trends with campaigns of their own (an automatic
     choice such as Latest 2 campaigns stands for its campaigns now), or None when they score the job's campaigns."""
     if not area_summary or not area_summary.get('campaigns'):
         return None
@@ -885,7 +887,7 @@ def _area_trends(repository: Repository, nr_mode: str, area_summary: dict[str, A
     campaigns = expand_scoring_campaigns(repository, nr_mode, area_summary['campaigns'])
     dataset_ids = auto_scoring_cdr_ids(repository, nr_mode, area_summary['campaigns'])
     if not dataset_ids:
-        raise ValueError(f'National & Areas Trends: the chosen campaigns have no Data, Voice and Speech CDRs of {nr_mode} now.')
+        raise ValueError(f'National & Geographical Areas Trends: the chosen campaigns have no Data, Voice and Speech CDRs of {nr_mode} now.')
     sources, _campaigns, fingerprint = _source_snapshot(repository, dataset_ids, expected_nr_mode=nr_mode)
     trends: dict[str, Any] = {'campaigns': list(campaigns), 'dataset_ids': list(dataset_ids), 'source_fingerprint': fingerprint}
     if scoring_profile_id == BY_CAMPAIGN:
@@ -895,7 +897,7 @@ def _area_trends(repository: Repository, nr_mode: str, area_summary: dict[str, A
                  if not wanted or campaign.casefold() in wanted]
         groups = methodology_groups(repository.get_scoring_profiles(), found or [''])
         if len(groups) > 1 and area_summary.get('time_split') == 'All':
-            raise ValueError('National & Areas Trends of campaigns with different methodologies cannot aggregate every '
+            raise ValueError('National & Geographical Areas Trends of campaigns with different methodologies cannot aggregate every '
                              'selected CDR: choose another time split.')
         trends['configuration'] = validate_scoring_configuration(
             groups[0]['configuration'] if len(groups) == 1 else display_configuration(groups))
@@ -976,7 +978,7 @@ def save_saved_filter(
     Returns the Saved Filter and whether its result is ready or already being calculated (``True``), or must be
     calculated (``False``): the first time, when its CDRs, methodology or Operator Maps changed since its result was
     saved, after a failure, or with ``force``. ``area_summary`` (a breakdown level, chosen cities and a time split)
-    adds the National & Areas Trends (and, with campaigns, the Scoring Trends of those campaigns) to a selection.
+    adds the National & Geographical Areas Trends (and, with campaigns, the Scoring Trends of those campaigns) to a selection.
     """
     prepared = _prepare_saved_filter(
         repository, dataset_ids, levels, nr_mode, baseline_operator=baseline_operator,
@@ -1738,7 +1740,7 @@ def calculate_saved_filter(repository: Repository, filter_id: int,
         context_filters = saved_filter.get('resolved_context_filters', saved_filter.get('context_filters', {}))
         groups = saved_filter.get('methodology_groups') or []
         trends = saved_filter.get('area_trends') if saved_filter.get('area_summary') else None
-        # National & Areas Trends with campaigns of their own are scored apart, from the CDRs of those campaigns.
+        # National & Geographical Areas Trends with campaigns of their own are scored apart, from the CDRs of those campaigns.
         job_filter = {**saved_filter, 'area_summary': None} if trends else saved_filter
         if len(groups) > 1:
             # By campaign: the campaigns of each methodology are scored with it, then put together.
@@ -1785,20 +1787,22 @@ def calculate_saved_filter(repository: Repository, filter_id: int,
 def _trend_area_summary(repository: Repository, saved_filter: dict[str, Any], trends: dict[str, Any],
                         configuration: dict[str, Any], context_filters: dict[str, list[str]], engine: Any,
                         update_progress: Callable[[int, str], None]) -> dict[str, Any]:
-    """National & Areas Trends with campaigns of their own: the CDRs of those campaigns scored with the job's filters
+    """National & Geographical Areas Trends with campaigns of their own: the CDRs of those campaigns scored with the job's filters
     (its campaigns aside) and methodology (each campaign with its own By campaign), split by Operator and Campaign."""
     area_summary = saved_filter['area_summary']
     dataset_ids = [int(value) for value in trends.get('dataset_ids') or []]
     sources, _campaigns, fingerprint = _source_snapshot(repository, dataset_ids, expected_nr_mode=saved_filter['nr_mode'])
     if fingerprint != trends.get('source_fingerprint'):
-        raise ValueError('A CDR of the National & Areas Trends changed after this calculation was queued. Calculate it again.')
+        raise ValueError('A CDR of the National & Geographical Areas Trends changed after this calculation was queued. Calculate it again.')
     # Split as the National calculation of the summary, which then reuses this one.
     levels = ['Operator'] if area_summary.get('time_split') == 'All' else ['Operator', 'Campaign']
-    filters = {**context_filters, 'Campaign': list(trends.get('campaigns') or [])}
-    trend_filter = {**saved_filter, 'dataset_ids': dataset_ids, 'levels': levels, 'source_fingerprint': fingerprint}
+    # Scored on the whole country, whatever the job's area filters; the Geographical views are the job's own.
+    filters = {**whole_country_filters(context_filters), 'Campaign': list(trends.get('campaigns') or [])}
+    trend_filter = {**saved_filter, 'dataset_ids': dataset_ids, 'levels': levels, 'source_fingerprint': fingerprint,
+                    'geographical': False}
 
     def progress(value: int, message: str) -> None:
-        update_progress(88 + round(value * 7 / 100), f'National & Areas Trends: {message}')
+        update_progress(88 + round(value * 7 / 100), f'National & Geographical Areas Trends: {message}')
     groups = trends.get('methodology_groups') or []
     if len(groups) > 1:
         from src.modules.scoring_methodologies import merge_results
@@ -1847,10 +1851,13 @@ def _scoring_result(repository: Repository, saved_filter: dict[str, Any], config
     update_progress(6, 'Reading processed CDR rows')
     # The points-lost map also reads the area and coordinate columns.
     required_columns = getattr(engine, 'load_input_columns', None) or getattr(engine, 'required_input_columns')
-    # The area summary also reads its breakdown and City columns, and the test start time for its time split.
+    # The area summary also reads its breakdown and City columns, and the test start time for its time split; the
+    # Geographical views of a job split by no area read Region and City.
+    extra = area_summary_levels(saved_filter['levels'], saved_filter.get('area_summary'))
+    if saved_filter.get('geographical', True):
+        extra = [*extra, *(level for level in geographical_levels(saved_filter['levels']) if level not in extra)]
     for source in sources:
-        source['levels'] = [*saved_filter['levels'],
-                            *area_summary_levels(saved_filter['levels'], saved_filter.get('area_summary'))]
+        source['levels'] = [*saved_filter['levels'], *extra]
     frames = _load_source_frames(repository, sources, update_progress, required_columns, context_filters)
     _current_sources, _campaigns, post_load_fingerprint = _source_snapshot(
         repository, dataset_ids, expected_nr_mode=saved_filter['nr_mode'],
@@ -1863,9 +1870,19 @@ def _scoring_result(repository: Repository, saved_filter: dict[str, Any], config
     result = calculate(frames, saved_filter['levels'], **call_kwargs)
     if not isinstance(result, dict):
         raise TypeError('The scoring engine must return a result object.')
+    if saved_filter.get('geographical', True):
+        geographical = calculate_geographical(calculate, frames, saved_filter['levels'], call_kwargs, update_progress)
+        if geographical:
+            result['geographical'] = geographical
     if saved_filter.get('area_summary'):
+        # The summary is scored on the whole country: a job with area filters reads its rows apart.
+        job_filtered = has_area_filters(context_filters)
+        if job_filtered:
+            update_progress(87, 'Reading the CDR rows of the whole country for the National & Geographical Areas Trends')
+            frames = _load_source_frames(repository, [dict(source) for source in sources], lambda *_args: None,
+                                         required_columns, whole_country_filters(context_filters))
         summary = calculate_area_summary(calculate, frames, saved_filter['levels'],
-                                         saved_filter['area_summary'], call_kwargs, update_progress)
+                                         saved_filter['area_summary'], call_kwargs, update_progress, job_filtered=job_filtered)
         result['warnings'] = [*(result.get('warnings') or []), *summary.pop('warnings')]
         result['area_summary'] = summary
     return result, False
@@ -1916,11 +1933,21 @@ def _history_result(repository: Repository, saved_filter: dict[str, Any], config
     }
     try:
         result = calculate_scoring_from_history(repository, dataset_ids, saved_filter['levels'], **options)
+        if saved_filter.get('geographical', True):
+            geographical = calculate_geographical_from_history(
+                lambda levels, *, cities=None: calculate_scoring_from_history(repository, dataset_ids, levels, cities=cities, **options),
+                saved_filter['levels'], update_progress)
+            if geographical:
+                result['geographical'] = geographical
         if saved_filter.get('area_summary'):
+            # The summary is scored on the whole country, whatever the job's area filters.
+            summary_options = {**options, 'context_filters': whole_country_filters(context_filters)}
+
             def calculate(levels: list[str], *, time_split: str | None = None, cities=None) -> dict[str, Any]:
                 return calculate_scoring_from_history(repository, dataset_ids, levels, time_split=time_split,
-                                                      cities=cities, **options)
-            summary = calculate_area_summary_from_history(calculate, saved_filter['levels'], saved_filter['area_summary'], update_progress)
+                                                      cities=cities, **summary_options)
+            summary = calculate_area_summary_from_history(calculate, saved_filter['levels'], saved_filter['area_summary'],
+                                                          update_progress, job_filtered=has_area_filters(context_filters))
             result['warnings'] = [*(result.get('warnings') or []), *summary.pop('warnings')]
             result['area_summary'] = summary
     except HistoryUnavailable:

@@ -185,6 +185,8 @@ def build_scoring_views(job: dict[str, Any] | None, result: dict[str, Any] | Non
     # A level with a single value in the results (for example one Campaign) splits nothing:
     # charts, tables and documents leave it out, as if it had not been chosen.
     single = single_value_levels(levels, result)
+    # The calculations of the Geographical views keep their area, also a single one (such as London).
+    single = [level for level in single if level not in (job.get('keep_levels') or [])]
     if single:
         levels = [level for level in levels if level not in single]
         hidden = {_key(_HIERARCHY_CONTEXT_FIELDS[_HIERARCHY_LEVELS[_level_identity(level)]]) for level in single}
@@ -282,8 +284,16 @@ def build_scoring_views(job: dict[str, Any] | None, result: dict[str, Any] | Non
     ) if hierarchy_levels else ([], [])
 
     selected_levels = [level for level in (_HIERARCHY_LEVELS.get(_level_identity(item)) for item in levels) if level]
-    insights = build_scoring_insights(score_tables, configuration, selected_levels, result)
-    # National & Areas Trends with campaigns of their own give the scoring trend of their campaigns.
+    insights = build_scoring_insights(score_tables, configuration, selected_levels, result,
+                                      location_minimum=int(job.get('location_minimum') or 2))
+    from src.modules.scoring_insights import LOCATION_LEVELS
+    if not any(level in LOCATION_LEVELS for level in selected_levels) and result.get('geographical'):
+        # A job split by no area: its Geographical views come from its calculations per Region and of London.
+        from src.modules.scoring_area_summary import geographical_insights
+        extra = geographical_insights(job, result, operator_mapping_groups, vendor_mapping_groups=vendor_mapping_groups)
+        insights['location_cards'].extend(extra['location_cards'])
+        insights['location_rankings'].extend(extra['location_rankings'])
+    # National & Geographical Areas Trends with campaigns of their own give the scoring trend of their campaigns.
     from src.modules.scoring_area_summary import build_national_trends
     national_trends = build_national_trends(job, result, operator_mapping_groups, vendor_mapping_groups=vendor_mapping_groups)
     if national_trends is not None:

@@ -741,12 +741,13 @@ def most_reliable_result(result: dict, baseline_operator: str = 'EE', configurat
         warnings.append(_INCOMPLETE_COVERAGE_WARNING)
     gap = _gap_rows(reliable_rows, keys, baseline_operator, aliases, [])
     reliable = {}
-    if 'area_summary' in result:
-        from src.modules.scoring_area_summary import most_reliable_area_summary
-        # The calculations of the National & Areas Trends rate the same KPI subset.
-        reliable['area_summary'] = most_reliable_area_summary(
-            result['area_summary'], lambda item: most_reliable_result(item, baseline_operator, snapshot),
-        )
+    # The calculations of the National & Geographical Areas Trends and of the Geographical views rate the same KPI subset.
+    for key in ('area_summary', 'geographical'):
+        if key in result:
+            from src.modules.scoring_area_summary import most_reliable_area_summary
+            reliable[key] = most_reliable_area_summary(
+                result[key], lambda item: most_reliable_result(item, baseline_operator, snapshot),
+            )
     return {**result, **reliable, 'scoring': reliable_rows,
             'global_kpis': [row for row in result.get('global_kpis') or [] if row.get('kpi_code') in metrics],
             'totals': totals, 'charts': [dict(row) for row in totals], 'gap': gap,

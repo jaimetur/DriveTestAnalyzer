@@ -2470,12 +2470,13 @@ def _scoring_slide_notes(result: dict[str, Any]) -> list[str]:
 
 def _option(options: dict | None, group: str, key: str, default: bool = True) -> bool:
     """A report scenario option; without a scenario every slide is included. Options that moved to another group are
-    still read where configurations saved before kept them (the location cards in charts, the Points Lost Map in gap)."""
+    still read where configurations saved before kept them (the location cards in charts, the Points Lost Map in gap),
+    and the Geographical Areas where they were called Locations."""
     if options is None:
         return default
-    moved = {('locations', 'cards'): ('charts', 'location_cards'), ('points', 'map'): ('gap', 'points_loss_map'),
+    moved = {('geographical_areas', 'cards'): ('charts', 'location_cards'), ('points', 'map'): ('gap', 'points_loss_map'),
              ('points', 'kpis'): ('gap', 'profile')}
-    supplied = options.get(group) or {}
+    supplied = options.get(group) or (options.get('locations') if group == 'geographical_areas' else None) or {}
     if key not in supplied and (group, key) in moved:
         old_group, old_key = moved[(group, key)]
         return bool((options.get(old_group) or {}).get(old_key, default))
@@ -2503,8 +2504,8 @@ def _add_insight_slides(presentation, views: dict, environment: str, scoring: st
     """Add the insight slides of one stage of an environment block, in the order of the results tabs.
 
     ``summary`` (after the cover): where each operator stands, its position, the biggest levers and how the measurements
-    ran; ``locations`` (after the scoring tables): the location cards, the locations ranked and against the reference;
-    ``trends`` (after the locations): the scoring trend; ``gaps`` (after the GAP tables): the GAP by part and the KPI
+    ran; ``geographical_areas`` (after the scoring tables): the location cards, the locations ranked and against the
+    reference; ``trends`` (after the Geographical Areas): the scoring trend; ``gaps`` (after the GAP tables): the GAP by part and the KPI
     GAP profiles; ``points``: where the points go, the points-lost maps, Vendors, kinds of site, sites and route
     stretches; ``comparison``: the campaign comparison.
     """
@@ -2562,15 +2563,15 @@ def _add_insight_slides(presentation, views: dict, environment: str, scoring: st
             add_trend_slides(presentation, items.get('campaign_trends', []), scoring_label=label,
                              subtitle=subtitle, new_slide=_slide, scope=scope)
         return
-    if stage == 'locations':
-        if _option(options, 'locations', 'cards'):
+    if stage == 'geographical_areas':
+        if _option(options, 'geographical_areas', 'cards'):
             add_location_card_slides(presentation, items.get('location_cards', []), scoring_label=label,
                                      subtitle=subtitle, new_slide=_slide, scope=scope)
         rankings = _first_ranking_group(items.get('location_rankings', []))
-        if _option(options, 'locations', 'ranking'):
+        if _option(options, 'geographical_areas', 'ranking'):
             add_location_ranking_slides(presentation, compared_items('ranking-operators', rankings), subtitle=subtitle,
                                         new_slide=_slide, scope=scope, compared=chosen('ranking-operators'))
-        if _option(options, 'locations', 'versus'):
+        if _option(options, 'geographical_areas', 'versus'):
             add_location_versus_slides(presentation, rankings, subtitle=subtitle, new_slide=_slide, scope=scope,
                                        compared=chosen('ranking-operators'))
         return
@@ -2695,7 +2696,7 @@ def _add_scoring_block(presentation, job: dict[str, Any], result: dict[str, Any]
             }
     if scoring is not None and section_cover:
         _add_scoring_intro_slides(presentation, job, result, scoring=scoring)
-    # Each slide is named after its section (summary, charts, tables, locations, gap, points, comparison).
+    # Each slide is named after its section (summary, charts, tables, geographical_areas, gap, points, comparison).
     untagged = [len(presentation.slides)]
 
     def section(name: str) -> None:
@@ -2730,10 +2731,10 @@ def _add_scoring_block(presentation, job: dict[str, Any], result: dict[str, Any]
 
     trended: set[str] = set()
 
-    def locations(environment_name: str) -> None:
-        _add_insight_slides(presentation, views, environment_name, scoring, configuration, stage='locations', options=options)
-        section('locations')
-        # The Scoring Trends follow the Locations: the scoring trend, then the National & Areas Trends.
+    def geographical_areas(environment_name: str) -> None:
+        _add_insight_slides(presentation, views, environment_name, scoring, configuration, stage='geographical_areas', options=options)
+        section('geographical_areas')
+        # The Scoring Trends follow the Geographical Areas: the scoring trend, then the National & Geographical Areas Trends.
         _add_insight_slides(presentation, views, environment_name, scoring, configuration, stage='trends', options=options)
         if environment_name not in trended and _option(options, 'trends', 'areas'):
             trended.add(environment_name)
@@ -2781,7 +2782,7 @@ def _add_scoring_block(presentation, job: dict[str, Any], result: dict[str, Any]
                     _hierarchy_category_comparison_chart(presentation, matrix)
                 section('charts')
                 score_tables(matrix, _hierarchy_score_tables)
-                locations(current_environment)
+                geographical_areas(current_environment)
                 gap_matrix = gap_by_environment.get(matrix['context'].get('environment'))
                 if gap_matrix is not None:
                     # Finish the full comparison block before advancing to the next environment.
@@ -2825,7 +2826,7 @@ def _add_scoring_block(presentation, job: dict[str, Any], result: dict[str, Any]
                     _charts(presentation, [matrix])
                 section('charts')
                 score_tables(matrix, _score_tables)
-                locations(current_environment)
+                geographical_areas(current_environment)
                 if _option(options, 'gap', 'all_operators'):
                     _gap_summary_tables(presentation, [_table_for_mode(table, 'expanded') for table in views['gap_summary_tables']
                                                        if table['context'] == matrix['context']])

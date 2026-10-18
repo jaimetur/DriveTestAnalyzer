@@ -4566,7 +4566,7 @@ body:has(dialog.vendor-mapping-dialog[open]) { overflow: hidden; }
 .scoring-report-subpanel[data-disabled="true"] { background: #fbfcfd; }
 .scoring-report-subpanel[data-disabled="true"] :is(.scoring-report-subpanel-row, .scoring-report-note) { opacity: .6; }
 .scoring-report-subpanel-row { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .8rem; }
-/* The Scoring Trends hold their campaigns and, inside them, the National & Areas Trends. */
+/* The Scoring Trends hold their campaigns and, inside them, the National & Geographical Areas Trends. */
 .scoring-report-trends > .scoring-report-subpanel { margin: .15rem 0 0; background: #fff; }
 .scoring-report-trends > legend.scoring-report-label { color: #1450a8; }
 .scoring-report-subpanel select { min-height: 0; padding: .3rem .5rem; font-size: .8rem; }

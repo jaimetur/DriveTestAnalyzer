@@ -25,8 +25,10 @@ COMBINED = 'Combined'
 
 
 def build_scoring_insights(score_tables: list[dict[str, Any]], configuration: dict[str, Any],
-                           levels: list[str], result: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Insights for every environment of the views; each item names its environment."""
+                           levels: list[str], result: dict[str, Any] | None = None, *,
+                           location_minimum: int = 2) -> dict[str, Any]:
+    """Insights for every environment of the views; each item names its environment. The location cards need
+    ``location_minimum`` locations in a group (one for the Geographical calculation of London)."""
     environments = list(dict.fromkeys(str(table['context'].get('environment')) for table in score_tables))
     scopes = _scopes(score_tables)
     insights: dict[str, list[dict[str, Any]]] = {
@@ -40,7 +42,7 @@ def build_scoring_insights(score_tables: list[dict[str, Any]], configuration: di
     for environment in environments:
         summaries = {scope: _scope_summary(tables, environment) for scope, tables in scopes.items()}
         summaries = {scope: summary for scope, summary in summaries.items() if summary is not None}
-        insights['location_cards'].extend(_location_cards(summaries, levels, environment))
+        insights['location_cards'].extend(_location_cards(summaries, levels, environment, location_minimum))
         insights['campaign_trends'].extend(_campaign_trends(summaries, levels, environment))
         insights['campaign_comparisons'].extend(_campaign_comparisons(scopes, levels, environment))
         insights['kpi_gap_profiles'].extend(_kpi_gap_profiles(scopes, environment))
@@ -232,7 +234,8 @@ def _group_label(context: dict[str, Any], levels: list[str], excluded: set[str])
     return ' · '.join(parts)
 
 
-def _location_cards(summaries: dict[tuple, dict[str, Any]], levels: list[str], environment: str) -> list[dict[str, Any]]:
+def _location_cards(summaries: dict[tuple, dict[str, Any]], levels: list[str], environment: str,
+                    minimum: int = 2) -> list[dict[str, Any]]:
     selected = [level for level in LOCATION_LEVELS if level in levels]
     for level in selected:
         field = _LEVEL_FIELDS[level]
@@ -243,7 +246,7 @@ def _location_cards(summaries: dict[tuple, dict[str, Any]], levels: list[str], e
                 continue
             key = tuple((name, context.get(name)) for name in _CONTEXT_FIELDS if name != field)
             groups.setdefault(key, []).append(summary)
-        usable = [cards for cards in groups.values() if 2 <= len(cards) <= MAX_LOCATION_CARDS]
+        usable = [cards for cards in groups.values() if minimum <= len(cards) <= MAX_LOCATION_CARDS]
         if not usable:
             continue
         return [{
@@ -414,7 +417,7 @@ def _kpi_gap_profiles(scopes: dict[tuple, dict[str, dict[str, Any]]], environmen
 
 
 # ---------------------------------------------------------------------------------------------------------------------
-# Summary, Locations and Points Lost: where each operator stands, how it ranks in each environment and service, which
+# Summary, Geographical Areas and Points Lost: where each operator stands, how it ranks in each environment and service, which
 # parts of the scoring hold its GAP, the KPIs that would close it, the points it can still win back, every location
 # ranked, and who serves the tests where it loses its points.
 MAX_GAP_CAMPAIGNS = 6

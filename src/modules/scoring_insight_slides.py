@@ -1,6 +1,6 @@
 """Insight slides of the Scoring & GAP Analysis exports.
 
-Location cards, KPI GAP profiles, scoring trends, campaign comparisons, the National & Areas and the points-lost maps
+Location cards, KPI GAP profiles, scoring trends, campaign comparisons, the National & Geographical Areas and the points-lost maps
 use the insights of the scoring views (see ``scoring_insights``), in the palette of the web page: Data in teal and Voice
 in amber, losses and GAPs behind the reference in red and gains in green.
 """
@@ -898,7 +898,7 @@ def add_area_summary_slides(presentation, summaries: list[dict[str, Any]], *, sc
         high = ceil((highest + padding) / unit) * unit
         for number, page in enumerate(pages, start=1):
             suffix = f' · {number}/{len(pages)}' if len(pages) > 1 else ''
-            slide = new_slide(presentation, f'{scoring_label} Trends — National & Areas', subtitle + suffix)
+            slide = new_slide(presentation, f'{scoring_label} Trends — National & Geographical Areas', subtitle + suffix)
             width = 6.3 if trend else 8.4
             incomplete = _area_summary_table(slide, summary, page, left=.45 if trend else 2.45, width=width)
             split = summary.get('time_split') or 'Campaign'

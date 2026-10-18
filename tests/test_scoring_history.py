@@ -245,7 +245,7 @@ def test_a_city_without_measurements_in_the_filtered_campaigns_is_left_out_of_th
                                                               context_filters=filters, time_split=time_split, cities=cities)
     summary = calculate_area_summary_from_history(
         calculate, ['Operator'], {'breakdown': 'Region', 'cities': ['Madrid'], 'time_split': 'Monthly'})
-    assert 'National & Areas Trends: the selected CDRs have no Madrid measurements.' in summary['warnings']
+    assert 'National & Geographical Areas Trends: the selected CDRs have no Madrid measurements.' in summary['warnings']
     # A filter that leaves a CDR type without rows still fails the scoring.
     with pytest.raises(ValueError, match='no matching processed rows'):
         scoring_history.calculate_scoring_from_history(repository, ids, ['Operator'], configuration=configuration,

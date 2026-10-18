@@ -89,7 +89,7 @@ def test_best_network_charts_start_scoring_charts_and_legacy_tab_migrates():
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
 
     assert 'data-result-tab="best-network"' not in template
-    assert "const resultTabNames = new Set(['summary', 'charts', 'scoring', 'locations', 'trends', 'gap', 'points']);" in script
+    assert "const resultTabNames = new Set(['summary', 'charts', 'scoring', 'geographical-areas', 'trends', 'gap', 'points']);" in script
     assert "stored.result_tab === 'best-network' ? 'charts'" in script
     renderer = _function_source(script, 'renderBestNetworkChart')
     allocation_renderer = _function_source(script, 'renderCategoryAllocation')
@@ -1662,14 +1662,14 @@ def test_result_tabs_have_their_own_colours_on_a_panel_holding_every_result():
     from lxml import html
     tabbed = html.fromstring(template).xpath('//div[@class="scoring-results-tabbed"]')[0]
     tabs = tabbed.xpath('./div[@class="scoring-result-tabs"]/button')
-    names = ['summary', 'charts', 'scoring', 'locations', 'trends', 'gap', 'points']
+    names = ['summary', 'charts', 'scoring', 'geographical-areas', 'trends', 'gap', 'points']
     assert [tab.get('data-result-tab') for tab in tabs] == names
     assert all(tab.xpath('./svg') for tab in tabs)
     # The seven result panes sit in one panel below the tabs, Summary shown first.
     panes = tabbed.xpath('./div[@class="scoring-result-panels"]/div[@role="tabpanel"]')
     assert [pane.get('data-result-pane') for pane in panes] == names
     assert panes[0].get('hidden') is None and all(pane.get('hidden') is not None for pane in panes[1:])
-    for tab, colour in (('summary', '#0369a1'), ('scoring', '#0f766e'), ('locations', '#7c3aed'), ('trends', '#4d7c0f'),
+    for tab, colour in (('summary', '#0369a1'), ('scoring', '#0f766e'), ('geographical-areas', '#7c3aed'), ('trends', '#4d7c0f'),
                         ('gap', '#c2410c'), ('points', '#be123c')):
         assert f'.scoring-result-tab[data-result-tab="{tab}"] {{ --tab-color: {colour}; }}' in template
         assert f'.scoring-results-tabbed:has([data-result-tab="{tab}"][aria-selected="true"]) {{ --result-accent: {colour}; }}' in template
@@ -1822,7 +1822,7 @@ def test_scoring_jobs_show_their_scoring_trends():
     # The campaigns of the Scoring Trends, then the National & Areas Trends indented under them.
     assert "trendMeta.append('Scoring Trends: Campaigns: ', trendValue);" in cards
     assert "areaMeta.className = 'saved-filter-meta saved-filter-meta-nested';" in cards
-    assert "areaMeta.textContent = '↳ National & Areas Trends: ';" in cards
+    assert "areaMeta.textContent = '↳ National & Geographical Areas Trends: ';" in cards
     assert cards.index('trendMeta') < cards.index('areaMeta')
     # Each value in its own colour, after its label.
     assert "areaValue.className = `saved-filter-area-summary saved-filter-area-summary-${kind}`;" in cards
@@ -1844,13 +1844,14 @@ process.stdout.write(JSON.stringify([
 def test_the_scoring_trend_comes_before_the_national_and_areas():
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
     trends = _function_source(script, 'renderTrends')
-    # The Scoring Trends tab: the Scoring Trend, then the National & Areas Trends; Locations keeps the scoring per location.
+    # The Scoring Trends tab: the Scoring Trend, then the National & Geographical Areas Trends; Geographical Areas keeps
+    # the scoring per location.
     assert trends.index("insightItems(payload, 'campaign_trends', environment)") < trends.index(
         "insightItems(payload, 'area_summaries', environment)")
-    assert "`${scoringLabel()} Trends — National & Areas`" in trends
-    locations = _function_source(script, 'renderLocations')
+    assert "`${scoringLabel()} Trends — National & Geographical Areas`" in trends
+    locations = _function_source(script, 'renderGeographicalAreas')
     assert "'area_summaries'" not in locations and "insightItems(payload, 'location_cards', environment)" in locations
-    assert 'No Locations views: they need Region, Cluster or City in the Split by' in locations
+    assert 'No Geographical Areas views: calculate the scoring again to see them per Region and for London' in locations
     # The titles of the area charts: National, the separate cities and the breakdown in their own colours.
     chart = _function_source(SCORING_SCRIPT.read_text(encoding='utf-8'), 'makeAreaTrendChart')
     assert "area.kind === 'National' ? 'is-national' : area.kind === 'City' ? 'is-city' : 'is-breakdown'" in chart
@@ -1871,7 +1872,7 @@ def test_the_area_charts_take_the_height_of_the_table_and_tilt_crowded_labels():
     assert 'if (part?.expandPart) part.expandPart();' in card
     # The table beside the charts enlarges on its own too.
     assert 'tableWrap.expandPart = () => openExpandedView(' in _function_source(script, 'makeAreaSummaryView')
-    assert "openExpandedView(large, `${scoringLabel()} — ${area.label}`, 'National & Areas Trends', figure, 'Area trend');" in chart
+    assert "openExpandedView(large, `${scoringLabel()} — ${area.label}`, 'National & Geographical Areas Trends', figure, 'Area trend');" in chart
 
 
 

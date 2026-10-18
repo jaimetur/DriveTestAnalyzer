@@ -387,7 +387,7 @@
 .cr-choice-group legend { padding: 0 .3rem; color: var(--muted); font-size: .8rem; font-weight: 700; }
 .cr-area { align-items: end; }
 .cr-area .cr-field { min-width: 11rem; }
-/* The Scoring Trends hold their campaigns and, inside them, the National & Areas Trends. */
+/* The Scoring Trends hold their campaigns and, inside them, the National & Geographical Areas Trends. */
 .cr-trends { flex-direction: column; align-items: stretch; }
 .cr-trend-campaigns { max-width: 28rem; }
 .cr-trends > .cr-area { background: #fff; }

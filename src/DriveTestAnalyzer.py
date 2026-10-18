@@ -17863,7 +17863,7 @@ class SavedFilterRequest(BaseModel):
     baseline_operator: str = 'EE'
     scoring_profile_id: str | None = None
     context_filters: dict[str, list[str]] = Field(default_factory=dict)
-    # The Scoring Trends: their campaigns and the breakdown, separate cities and time split of the National & Areas Trends.
+    # The Scoring Trends: their campaigns and the breakdown, separate cities and time split of the National & Geographical Areas Trends.
     area_summary: dict[str, Any] | None = None
 
 
@@ -18399,7 +18399,7 @@ def _saved_filter_payload(saved_filter: dict[str, Any], operator_groups: list[di
                 vendor_mapping_groups=vendor_groups,
             )
             refresh_baseline_warning(result, views, baseline)
-            # The National & Areas Trends of the Saved Filter, shown in Scoring Trends.
+            # The National & Geographical Areas Trends of the Saved Filter, shown in Scoring Trends.
             from src.modules.scoring_area_summary import build_area_summary
             views.setdefault('insights', {})['area_summaries'] = build_area_summary(
                 saved_filter if saved_filter.get('configuration') or result.get('configuration') else {**saved_filter, 'configuration': fallback},
@@ -18693,7 +18693,7 @@ def _scenario_saved_filter(task_repository: Repository, base: dict[str, Any], sc
                 if base.get('reuse_saved_filters') else None)
     if matching is not None:
         # A Saved Filter of the same CDRs, filters, methodology and GAP reference (a starred one first) is used with its
-        # own Split by and National & Areas Trends, so its result is not calculated again.
+        # own Split by and National & Geographical Areas Trends, so its result is not calculated again.
         return _completed_scenario_calculation(task_repository, base, scenario, matching['dataset_ids'], matching['levels'],
                                                matching['context_filters'], username, matching['area_summary'])
     levels = list(scenario['aggregation_levels'])
@@ -18733,14 +18733,13 @@ def _matching_saved_filter(task_repository: Repository, base: dict[str, Any], da
 
 
 def _scenario_area_summary(task_repository: Repository, scenario: dict[str, Any]) -> dict[str, Any] | None:
-    """The Scoring Trends of a scenario: the National & Areas Trends of a scenario of the whole country that includes
-    them and the campaigns of its trends when they have some of their own; None with neither."""
-    from src.modules.scoring_reports import has_geographic_filters
-
+    """The Scoring Trends of a scenario: the National & Geographical Areas Trends of a scenario that includes them (scored on the
+    whole country, whatever its area filters) and the campaigns of its trends when they have some of their own; None
+    with neither."""
     summary = scenario.get('area_summary') or {}
     campaigns = list(summary.get('campaigns') or [])
     request = None
-    if summary.get('enabled') and not has_geographic_filters(scenario):
+    if summary.get('enabled'):
         cities = list(summary.get('cities') or [])
         if summary.get('main_cities'):
             cities.extend(task_repository.list_main_cities())

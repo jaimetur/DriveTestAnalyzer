@@ -175,7 +175,7 @@ console.log(JSON.stringify(result));
 
 
 @pytest.mark.skipif(not shutil.which('node'), reason='Node.js is required')
-def test_the_area_summary_shows_only_for_the_whole_country():
+def test_the_area_summary_keeps_the_area_filters():
     constants_start = SCRIPT.index('  const LEVELS = ')
     constants_end = SCRIPT.index('  const clone = ')
     el_start = SCRIPT.index('  const el = (tag, className, text) => {')
@@ -208,8 +208,8 @@ const result = {defaults: defaultScenario().area_summary, scenarioTime: 'time_sp
   cities: picker('Separate cities:').textContent, tables: scenario.scorings.best_network.tables.area_summary,
   before: {region: details('Region:').dataset.disabled, cities: details('Separate cities:').dataset.disabled,
     breakdown: breakdown.disabled, time: time.disabled}, time: time.value};
-// Including the summary clears and disables the geographic filters and enables its settings.
-labelled('Include National & Areas Trends').click();
+// Including the summary keeps the area filters (it is scored on the whole country) and enables its settings.
+labelled('Include National & Geographical Areas Trends').click();
 result.after = {region: details('Region:').dataset.disabled, cities: details('Separate cities:').dataset.disabled,
   breakdown: breakdown.disabled, time: time.disabled, filters: scenario.context_filters, enabled: scenario.area_summary.enabled,
   summary: picker('Region:').textContent};
@@ -233,12 +233,13 @@ console.log(JSON.stringify(result));
     assert result['scenarioTime'] is False and result['time'] == 'Campaign'
     assert result['cities'] == 'Separate cities: London' and 'tables' not in result
     # Not included, its settings are disabled and the geographic filters can be used.
-    assert result['before'] == {'region': '', 'cities': 'true', 'breakdown': True, 'time': True}
-    # Included, the geographic filters are cleared and disabled.
-    assert result['after'] == {'region': 'true', 'cities': '', 'breakdown': False, 'time': False, 'filters': {},
-                               'enabled': True, 'summary': 'Region: All'}
+    assert result['before'] == {'cities': 'true', 'breakdown': True, 'time': True}
+    # Included, the area filters stay as they are.
+    # (The area pickers are never disabled.)
+    assert result['after'] == {'cities': '', 'breakdown': False, 'time': False, 'filters': {'Region': ['Vendor A']},
+                               'enabled': True, 'summary': 'Region: Vendor A'}
     assert result['weekly'] == {'levels': ['Operator', 'Campaign'], 'split': 'Weekly', 'value': 'Weekly'}
     assert 'disabledValue' not in result
-    # The National & Areas Trends are inside the Scoring Trends, whose campaigns are All available campaigns by default.
+    # The National & Geographical Areas Trends are inside the Scoring Trends, whose campaigns are All available campaigns by default.
     assert result['trends'] == {'choice': '@all-campaigns', 'campaigns': ['@all-campaigns'], 'legend': True,
                                 'preset': ['@latest-2-campaigns']}

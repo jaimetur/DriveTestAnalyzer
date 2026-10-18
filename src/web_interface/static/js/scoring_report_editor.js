@@ -14,34 +14,30 @@
     ['service', 'Scoring per Service'], ['category', 'Scoring per Category'],
     ['breakdown', 'Scoring per Category (Breakdown)'],
   ];
-  const LOCATION_OPTIONS = [
-    ['cards', 'Scoring per City / Cluster / Region cards'], ['ranking', 'Locations ranked'],
-    ['versus', 'Each operator against the reference per location'],
+  const GEOGRAPHICAL_AREA_OPTIONS = [
+    ['cards', 'Scoring per City / Cluster / Region cards'], ['ranking', 'Geographical Areas ranked'],
+    ['versus', 'Each operator against the reference per geographical area'],
   ];
   // The Scoring Trends, of the campaigns of the Scoring Trends of the scenario.
-  const TREND_OPTIONS = [['trend', 'Scoring Trend (two campaigns or more)'], ['areas', 'National & Areas Trends']];
+  const TREND_OPTIONS = [['trend', 'Scoring Trend (two campaigns or more)'], ['areas', 'National & Geographical Areas Trends']];
   const POINTS_OPTIONS = [
     ['stake', 'Where the points go'], ['kpis', 'Points lost per KPI'], ['map', 'Points lost per City map'], ['vendors', 'Points lost per Vendor'],
     ['site_types', 'Points lost per kind of site'], ['sites', 'Sites to review'], ['stretches', 'Route stretches'],
   ];
   // Options of configurations saved before that are now in another group.
-  const MOVED_OPTIONS = {'locations:cards': ['charts', 'location_cards'], 'points:map': ['gap', 'points_loss_map'],
+  const MOVED_OPTIONS = {'geographical_areas:cards': ['charts', 'location_cards'], 'points:map': ['gap', 'points_loss_map'],
     'points:kpis': ['gap', 'profile'], 'trends:trend': ['charts', 'trend']};
   const TABLE_OPTIONS = [
     ['summary', 'Category table'], ['breakdown', 'Breakdown table'], ['kpi_values', 'Show KPI values'],
     ['gap_values', 'Show GAP values'], ['campaign_comparison', 'Campaign comparison (two latest campaigns)'],
   ];
-  // The filters that leave out part of the country: the National & Areas Trends need none of them.
-  const GEOGRAPHIC_FILTERS = ['Region', 'Cluster', 'City'];
   const AREA_BREAKDOWNS = ['None', 'Region', 'Cluster', 'City'];
-  // The time split of the National & Areas Trends: every selected CDR in one value, per campaign or per period.
+  // The time split of the National & Geographical Areas Trends: every selected CDR in one value, per campaign or per period.
   const TIME_SPLITS = [['All', 'All selected CDRs'], ['Campaign', 'Campaign'], ['Daily', 'Daily'], ['Weekly', 'Weekly'],
     ['Monthly', 'Monthly'], ['Quarterly', 'Quarterly'], ['Yearly', 'Yearly']];
-  const hasGeographicFilters = (scenario) => Boolean(scenario.main_cities)
-    || GEOGRAPHIC_FILTERS.some((field) => (scenario.context_filters[field] || []).length);
   // Its campaigns are those of the Scoring Trends of the scenario: All available campaigns by default (none: the
-  // campaigns of the scenario).
-  const defaultAreaSummary = (scenario) => ({enabled: !scenario || !hasGeographicFilters(scenario), time_split: 'Campaign',
+  // campaigns of the scenario). Every scenario has the National & Geographical Areas Trends by default (scored on the whole country).
+  const defaultAreaSummary = () => ({enabled: true, time_split: 'Campaign',
     breakdown: 'Region', cities: ['London'], main_cities: false, campaigns: ['@all-campaigns']});
   // The automatic choices of the campaigns of the Scoring Trends, which follow the newest campaigns at each report.
   const TREND_PRESETS = [['@latest-campaign', 'Latest campaign'], ['@previous-campaign', 'Previous campaign'],
@@ -66,7 +62,7 @@
       summary: {standings: true, position: true, levers: true, scope: true},
       charts: {service: true, category: true, breakdown: true},
       tables: {summary: true, breakdown: true, kpi_values: false, gap_values: false, campaign_comparison: true},
-      locations: {cards: true, ranking: true, versus: true},
+      geographical_areas: {cards: true, ranking: true, versus: true},
       trends: {trend: true, areas: true},
       gap: {operators: (operators || []).filter((name) => DEFAULT_OPERATORS.test(String(name).trim())),
         all_operators: true, individual: true, parts: true, profile: true},
@@ -77,6 +73,9 @@
   // The options of a scoring with every group, those saved before in another group read from it.
   function completeOptions(options) {
     const defaults = defaultOptions([]);
+    // (Geographical Areas was Locations.)
+    if (!options.geographical_areas && options.locations && typeof options.locations === 'object') options.geographical_areas = options.locations;
+    delete options.locations;
     for (const [group, values] of Object.entries(defaults)) {
       if (typeof values !== 'object' || Array.isArray(values)) continue;
       options[group] = options[group] && typeof options[group] === 'object' ? options[group] : {};
@@ -345,7 +344,7 @@
       optionGroup('Scoring Charts', CHART_OPTIONS.map(([option, text]) => [option, text.startsWith('Scoring per') ? `${label} ${text}` : text]),
         options.charts, (option, checked) => { options.charts[option] = checked; }, `scoring:${key}:charts`),
       group('Scoring Tables', TABLE_OPTIONS, 'tables'),
-      group('Locations', LOCATION_OPTIONS.map(([option, text]) => [option, option === 'cards' ? `${label} ${text}` : text]), 'locations'),
+      group('Geographical Areas', GEOGRAPHICAL_AREA_OPTIONS.map(([option, text]) => [option, option === 'cards' ? `${label} ${text}` : text]), 'geographical_areas'),
       group('Scoring Trends', TREND_OPTIONS.map(([option, text]) => [option, `${label} ${text}`]), 'trends'),
     );
     const gap = group('GAP Analysis', GAP_OPTIONS, 'gap');
@@ -445,7 +444,7 @@
     const trendRow = el('div', 'scoring-report-subpanel-row');
     const trendChoice = el('select');
     trendChoice.setAttribute('aria-label', 'Campaigns of the Scoring Trends');
-    trendChoice.title = 'The campaigns of the Scoring Trend and the National & Areas Trends, whatever the Campaign filter of the scenario';
+    trendChoice.title = 'The campaigns of the Scoring Trend and the National & Geographical Areas Trends, whatever the Campaign filter of the scenario';
     for (const [value, text] of [...TREND_PRESETS, ['', 'Same as the scenario'], ['chosen', 'Chosen campaigns']]) {
       const option = el('option', '', `Campaigns: ${text}`);
       option.value = value;
@@ -470,16 +469,8 @@
     trendsPanel.append(trendRow);
     const subpanel = el('fieldset', 'scoring-report-subpanel');
     const legend = el('legend');
-    const enabled = checkbox('Include National & Areas Trends', scenario.area_summary.enabled, (checked) => {
+    const enabled = checkbox('Include National & Geographical Areas Trends', scenario.area_summary.enabled, (checked) => {
       scenario.area_summary.enabled = checked;
-      if (checked) {
-        // The National scoring needs the whole country: the geographic filters are cleared.
-        for (const field of GEOGRAPHIC_FILTERS) {
-          delete scenario.context_filters[field];
-          pickers[field].setSelection([]);
-        }
-        scenario.main_cities = false;
-      }
       updateAreaSummary();
     }, 'The National scoring next to the separate cities and each area of the breakdown, each scored with its own measurements');
     enabled.dataset.diffKey = 'area:enabled';
@@ -487,8 +478,8 @@
     subpanel.append(legend);
     const row = el('div', 'scoring-report-subpanel-row');
     const time = el('select');
-    time.setAttribute('aria-label', 'Time split of the National & Areas Trends');
-    time.title = 'Only for the National & Areas Trends. All selected CDRs aggregates every selected CDR into one value; '
+    time.setAttribute('aria-label', 'Time split of the National & Geographical Areas Trends');
+    time.title = 'Only for the National & Geographical Areas Trends. All selected CDRs aggregates every selected CDR into one value; '
       + 'Campaign splits by campaign; Daily to Yearly split by the period of the start time of each test, '
       + 'whatever the CDRs (daily, weekly or per campaign)';
     for (const [value, text] of TIME_SPLITS) {
@@ -500,7 +491,7 @@
     time.addEventListener('change', () => { scenario.area_summary.time_split = time.value; });
     time.dataset.diffKey = 'area:time_split';
     const breakdown = el('select');
-    breakdown.setAttribute('aria-label', 'Breakdown of the National & Areas Trends');
+    breakdown.setAttribute('aria-label', 'Breakdown of the National & Geographical Areas Trends');
     for (const value of AREA_BREAKDOWNS) {
       const option = el('option', '', value === 'None' ? 'Breakdown: None' : `Breakdown: ${value}`);
       option.value = value;
@@ -520,8 +511,8 @@
     });
     cities.dataset.diffKey = 'area:cities';
     row.append(time, breakdown, cities);
-    const note = el('p', 'scoring-report-note', 'The National & Areas Trends are only available for the whole country: '
-      + 'including them clears and disables the Region, Cluster, City and Main Cities filters. Their time split applies to their slides only.');
+    const note = el('p', 'scoring-report-note', 'The National & Geographical Areas Trends are always scored on the whole country, '
+      + 'also when the Region, Cluster, City or Main Cities filters choose part of it. Their time split applies to their slides only.');
     subpanel.append(row, note);
     trendsPanel.append(subpanel);
     // A disabled picker cannot be opened.
@@ -530,19 +521,16 @@
       picker.title = disabled ? title : '';
       if (disabled) picker.open = false;
     };
-    for (const picker of [...GEOGRAPHIC_FILTERS.map((field) => pickers[field]), cities]) {
+    for (const picker of [cities]) {
       picker.querySelector('summary').addEventListener('click', (event) => {
         if (picker.dataset.disabled === 'true') event.preventDefault();
       });
     }
     function updateAreaSummary() {
       const active = Boolean(scenario.area_summary.enabled);
-      for (const field of GEOGRAPHIC_FILTERS) {
-        setPickerDisabled(pickers[field], active, 'Disabled by the National & Areas Trends, which need the whole country');
-      }
       time.disabled = !active;
       breakdown.disabled = !active;
-      setPickerDisabled(cities, !active, 'Include the National & Areas Trends to choose the separate cities');
+      setPickerDisabled(cities, !active, 'Include the National & Geographical Areas Trends to choose the separate cities');
       subpanel.dataset.disabled = active ? '' : 'true';
     }
     updateAreaSummary();

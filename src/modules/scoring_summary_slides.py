@@ -1,4 +1,4 @@
-"""Summary, Locations, GAP by part and Points Lost slides of the Scoring & GAP Analysis exports.
+"""Summary, Geographical Areas, GAP by part and Points Lost slides of the Scoring & GAP Analysis exports.
 
 They draw, as the web page does, where each operator stands, its position in every environment and service, the KPIs
 that would close its GAP, how the measurements ran, every location ranked and against the reference, the GAP of each
@@ -432,7 +432,7 @@ def add_campaign_scope_slides(presentation, scopes: list[dict[str, Any]], *, sub
                       align=PP_ALIGN.RIGHT)
 
 
-# ---- Locations --------------------------------------------------------------------------------------------------------
+# ---- Geographical Areas ----------------------------------------------------------------------------------------------
 def add_location_ranking_slides(presentation, rankings: list[dict[str, Any]], *, subtitle: str, new_slide: Callable,
                                 scope: ScopeLabels | None = None,
                                 compared: Callable[[str, str], bool] = lambda _operator, _label: True) -> None:

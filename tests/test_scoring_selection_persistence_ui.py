@@ -391,15 +391,13 @@ process.stdout.write(JSON.stringify(log));
     ]
 
 
-def test_included_area_summary_says_why_the_area_filters_are_locked():
+def test_included_area_summary_keeps_the_area_filters():
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
     template = SCORING_TEMPLATE.read_text(encoding='utf-8')
 
-    assert 'data-scoring-area-filter-lock hidden' in template
-    assert 'need the scoring of the whole country' in template
-    assert 'data-scoring-area-filter-unlock' in template
-    assert "select.closest('label')?.classList.toggle('is-area-locked', included);" in script
-    assert 'areaFilterLock.hidden = !included || !locked.length;' in script
+    # The summary is scored on the whole country: the Region, Cluster and City filters stay usable.
+    assert 'data-scoring-area-filter-lock' not in template and 'is-area-locked' not in script
+    assert 'It is always scored on the whole country, also when the Region, Cluster or City filters choose part of it.' in template
 
 
 def test_an_opened_saved_filter_queued_again_keeps_its_progress_over_an_earlier_list():

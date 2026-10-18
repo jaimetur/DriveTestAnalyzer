@@ -93,26 +93,16 @@
   .scoring-dataset-group .scoring-dataset-list { grid-template-columns: 1fr; max-height: 11rem; }
   .scoring-dataset-option { display: flex; align-items: flex-start; gap: .65rem; min-width: 0; padding: .62rem .7rem; border: 1px solid rgba(25,42,53,.09); border-radius: 11px; background: rgba(255,255,255,.76); cursor: pointer; }
   .scoring-dataset-option[hidden] { display: none; }
-  /* The National & Areas Trends: their settings are enabled while they are included. */
+  /* The National & Geographical Areas Trends: their settings are enabled while they are included. */
   .scoring-area-toggle { display: inline-flex; align-items: center; gap: .5rem; cursor: pointer; }
   .scoring-area-toggle input { width: 1rem; height: 1rem; margin: 0; accent-color: var(--brand); }
   .scoring-area-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(13rem, 16rem)); gap: .6rem 1rem; }
   .scoring-area-grid > label { display: grid; gap: .3rem; font-size: .82rem; font-weight: 700; color: #31545a; }
   .scoring-area-summary:not(.is-included) .scoring-area-grid { opacity: .55; }
-  /* Scoring Trends holds its campaigns and, inside it, the National & Areas Trends. */
+  /* Scoring Trends holds its campaigns and, inside it, the National & Geographical Areas Trends. */
   .scoring-trends-picker > .scoring-area-summary { margin-top: .7rem; border-color: #c9e0d4; background: rgba(255,255,255,.55); }
   .scoring-trends-grid { margin-bottom: .1rem; }
   /* Included, the summary locks the area filters of the Context filters, and says why. */
-  .scoring-area-filter-lock { display: flex; align-items: center; gap: .7rem; margin: 0 0 .7rem; padding: .65rem .8rem; border: 1px solid rgba(197,138,0,.45); border-left: 4px solid #c58a00; border-radius: 11px; background: #fff7e3; color: #6b4a00; line-height: 1.4; }
-  .scoring-area-filter-lock[hidden] { display: none; }
-  .scoring-area-filter-lock > svg { flex: 0 0 auto; width: 1.4rem; height: 1.4rem; color: #c58a00; }
-  .scoring-area-filter-lock p { flex: 1 1 auto; min-width: 0; margin: 0; font-size: .78rem; }
-  .scoring-area-filter-lock strong { color: #5a3e00; }
-  .scoring-area-filter-lock button { flex: 0 0 auto; padding: .38rem .7rem; border: 1px solid rgba(197,138,0,.55); border-radius: 9px; background: #fff; color: #6b4a00; font-size: .74rem; font-weight: 750; white-space: nowrap; cursor: pointer; }
-  .scoring-area-filter-lock button:hover { background: #fff1cc; }
-  @media(max-width:900px) { .scoring-area-filter-lock { flex-wrap: wrap; } .scoring-area-filter-lock p { flex-basis: calc(100% - 2.1rem); } .scoring-area-filter-lock button { margin-left: 2.1rem; } }
-  .scoring-context-filter-grid > label.is-area-locked { position: relative; color: #8a5a00; }
-  .scoring-context-filter-grid > label.is-area-locked::after { content: 'Locked'; position: absolute; top: -.05rem; right: 0; padding: 0 .4rem 0 1.05rem; border-radius: 999px; background: #fff1cc url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%238a5a00' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='4' y='9' width='12' height='9' rx='2'/%3E%3Cpath d='M7 9V6a3 3 0 0 1 6 0v3'/%3E%3C/svg%3E") no-repeat .3rem 50% / .62rem; color: #8a5a00; font-size: .6rem; font-weight: 800; letter-spacing: .03em; line-height: 1.35; text-transform: uppercase; }
   /* Weekly and Daily CDRs stand out from the Final CDRs, as when they are uploaded. */
   .scoring-dataset-option[data-cdr-stage="daily"] { border: 1px dashed rgba(240, 122, 26, .75); background: #fff8ef; }
   .scoring-dataset-option[data-cdr-stage="weekly"] { border: 1px dashed rgba(123, 92, 196, .75); background: #f7f3ff; }
@@ -306,16 +296,16 @@
   [data-result-pane="scoring"] { --pane-accent: #0f766e; }
   [data-result-pane="gap"] { --pane-accent: #c2410c; }
   [data-result-pane="summary"] { --pane-accent: #0369a1; }
-  [data-result-pane="locations"] { --pane-accent: #7c3aed; }
+  [data-result-pane="geographical-areas"] { --pane-accent: #7c3aed; }
   [data-result-pane="trends"] { --pane-accent: #4d7c0f; }
   [data-result-pane="points"] { --pane-accent: #be123c; }
   [data-result-pane] > * > :is(.scoring-table-section-title, h4):first-child { margin-top: 0; }
   .scoring-insight-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 30rem), 1fr)); gap: 1rem; }
   .scoring-insight-table-wrap { overflow-x: auto; }
-  /* National & Areas: the table next to a trend chart per area. */
+  /* National & Geographical Areas: the table next to a trend chart per area. */
   .scoring-area-summary-view { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: .8rem 1rem; align-items: start; }
   .scoring-area-summary-view > .scoring-note { grid-column: 1 / -1; margin: 0; }
-  /* National & Areas table: larger figures, a band per area, a dot in the colour of each operator and arrows on the changes. */
+  /* National & Geographical Areas table: larger figures, a band per area, a dot in the colour of each operator and arrows on the changes. */
   table.scoring-area-summary-table { font-size: .92rem; border-collapse: separate; border-spacing: 0; overflow: hidden; border: 1px solid #dde5eb; border-radius: 12px; }
   table.scoring-area-summary-table th { padding: .55rem .75rem; background: linear-gradient(180deg, #f0f4f7, #e2e9ee); color: #2b3f4c; font-size: .74rem; letter-spacing: .05em; text-transform: uppercase; }
   table.scoring-area-summary-table td { padding: .42rem .75rem; border-bottom: 0; }
@@ -515,7 +505,7 @@
   .scoring-results-tabbed:has([data-result-tab="scoring"][aria-selected="true"]) { --result-accent: #0f766e; }
   .scoring-results-tabbed:has([data-result-tab="gap"][aria-selected="true"]) { --result-accent: #c2410c; }
   .scoring-results-tabbed:has([data-result-tab="summary"][aria-selected="true"]) { --result-accent: #0369a1; }
-  .scoring-results-tabbed:has([data-result-tab="locations"][aria-selected="true"]) { --result-accent: #7c3aed; }
+  .scoring-results-tabbed:has([data-result-tab="geographical-areas"][aria-selected="true"]) { --result-accent: #7c3aed; }
   .scoring-results-tabbed:has([data-result-tab="trends"][aria-selected="true"]) { --result-accent: #4d7c0f; }
   .scoring-results-tabbed:has([data-result-tab="points"][aria-selected="true"]) { --result-accent: #be123c; }
   .scoring-result-tabs { position: relative; z-index: 1; display: flex; flex-wrap: wrap; align-items: flex-end; gap: .3rem; margin: 0; padding: 0; border: 0; }
@@ -523,7 +513,7 @@
   .scoring-result-tab[data-result-tab="scoring"] { --tab-color: #0f766e; }
   .scoring-result-tab[data-result-tab="gap"] { --tab-color: #c2410c; }
   .scoring-result-tab[data-result-tab="summary"] { --tab-color: #0369a1; }
-  .scoring-result-tab[data-result-tab="locations"] { --tab-color: #7c3aed; }
+  .scoring-result-tab[data-result-tab="geographical-areas"] { --tab-color: #7c3aed; }
   .scoring-result-tab[data-result-tab="trends"] { --tab-color: #4d7c0f; }
   .scoring-result-tab[data-result-tab="points"] { --tab-color: #be123c; }
   .scoring-result-tab svg { width: 1rem; height: 1rem; flex: none; }
@@ -638,7 +628,7 @@
   [data-result-pane="scoring"] .scoring-calculating { --calc-strong: #0f766e; --calc-soft: #4fb3a7; --calc-title: #0f766e; --calc-track: #ecf8f6; --calc-border: #9fd6cf; }
   [data-result-pane="gap"] .scoring-calculating { --calc-strong: #c2410c; --calc-soft: #f08a5d; --calc-title: #c2410c; --calc-track: #fff3ec; --calc-border: #f4b99c; }
   [data-result-pane="summary"] .scoring-calculating { --calc-strong: #0369a1; --calc-soft: #38a1d6; --calc-title: #0369a1; --calc-track: #eef7fc; --calc-border: #a5d3ee; }
-  [data-result-pane="locations"] .scoring-calculating { --calc-strong: #7c3aed; --calc-soft: #a78bfa; --calc-title: #7c3aed; --calc-track: #f5f0ff; --calc-border: #cdb9fb; }
+  [data-result-pane="geographical-areas"] .scoring-calculating { --calc-strong: #7c3aed; --calc-soft: #a78bfa; --calc-title: #7c3aed; --calc-track: #f5f0ff; --calc-border: #cdb9fb; }
   [data-result-pane="trends"] .scoring-calculating { --calc-strong: #4d7c0f; --calc-soft: #84cc16; --calc-title: #4d7c0f; --calc-track: #f4fbe8; --calc-border: #bfe08f; }
   [data-result-pane="points"] .scoring-calculating { --calc-strong: #be123c; --calc-soft: #f0567a; --calc-title: #be123c; --calc-track: #fff1f4; --calc-border: #f5a9bb; }
   .scoring-calculating-title { margin: 0; color: var(--calc-title); font-size: 1.05rem; font-weight: 800; letter-spacing: .01em; }
@@ -997,7 +987,7 @@
   [data-scoring-workspace][data-scoring-theme="paper"] .scoring-comparison-table.scoring-scorecard td[data-column="score"][data-operator-rank="best"] { text-decoration: underline; text-underline-offset: 3px; color: #1f4e79 !important; }
   [data-scoring-workspace][data-scoring-theme="paper"] .scoring-comparison-table.scoring-scorecard td[data-column="score"][data-operator-rank="worst"] { text-decoration: underline wavy; text-underline-offset: 3px; color: #b23a1e !important; }
 
-  /* The National & Areas table in the style of each theme. */
+  /* The National & Geographical Areas table in the style of each theme. */
   [data-scoring-workspace][data-scoring-theme] table.scoring-area-summary-table td.scoring-area-name { box-shadow: none; }
   [data-scoring-workspace][data-scoring-theme="netcheck"] table.scoring-area-summary-table { border: 0; border-radius: 0; }
   [data-scoring-workspace][data-scoring-theme="netcheck"] table.scoring-area-summary-table th { background: #fff; color: #17232d; box-shadow: inset 0 -1.5px 0 #17232d; font-size: .66rem; }
@@ -1056,7 +1046,7 @@
   [data-scoring-workspace][data-scoring-theme="heatmap"] table.scoring-area-summary-table td.scoring-area-gain { background-color: #cde9e6 !important; color: #1f6f66; }
   [data-scoring-workspace][data-scoring-theme="heatmap"] table.scoring-area-summary-table td.scoring-area-loss { background-color: #f9d5d3 !important; color: #a63a33; }
 
-  /* The insight tables (Summary, Locations, GAP by part, Points Lost) in the style of each theme. */
+  /* The insight tables (Summary, Geographical Areas, GAP by part, Points Lost) in the style of each theme. */
   [data-scoring-workspace][data-scoring-theme="netcheck"] .scoring-insight-table th { background: var(--st-header) !important; color: #fff !important; text-transform: uppercase; font-size: .66rem; letter-spacing: .04em; }
   [data-scoring-workspace][data-scoring-theme="ericsson"] .scoring-insight-table th { background: #fff !important; color: #0c0c0c !important; text-transform: uppercase; font-size: .6rem;
     letter-spacing: .1em; border-bottom: 1px solid #0c0c0c; }
@@ -1202,11 +1192,6 @@
     {% endif %}
     <div class="scoring-picker" aria-labelledby="scoring-context-filters-title">
       <div class="scoring-picker-head"><strong id="scoring-context-filters-title">Context filters</strong><span>Every CDR of the NR Mode · each filter lists what the others leave</span></div>
-      <div class="scoring-area-filter-lock" role="status" data-scoring-area-filter-lock hidden>
-        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="4" y="9" width="12" height="9" rx="2"/><path d="M7 9V6a3 3 0 0 1 6 0v3"/></svg>
-        <p><strong>The <span data-scoring-area-filter-lock-names>Region, Cluster and City filters are</span> disabled because Include National &amp; Areas Trends is checked.</strong> The National &amp; Areas Trends need the scoring of the whole country to calculate the National scoring and each area, so the selection cannot be filtered by area.</p>
-        <button type="button" data-scoring-area-filter-unlock>Uncheck the National &amp; Areas Trends to filter by area</button>
-      </div>
       <div class="scoring-context-filter-grid" data-scoring-context-filters>
         {% for level in aggregation_levels if level != 'Campaign' %}{% for field in (['Operator_Vendor', 'Vendor_Operator', 'Vendor'] if level == 'Vendor' else [level]) %}
         <label>{{ field }}
@@ -1242,27 +1227,27 @@
           </select>
         </label>
       </div>
-      <p class="scoring-context-filter-note">The Scoring Trend and the National &amp; Areas Trends are calculated with these campaigns, whatever the Campaign filter of the rest of the scoring, with the same filters, methodology and GAP reference. Without campaigns they follow the Campaign filter.</p>
+      <p class="scoring-context-filter-note">The Scoring Trend and the National &amp; Geographical Areas Trends are calculated with these campaigns, whatever the Campaign filter of the rest of the scoring, with the same filters, methodology and GAP reference. Without campaigns they follow the Campaign filter.</p>
       <div class="scoring-picker scoring-area-summary" data-scoring-area-summary>
-        <div class="scoring-picker-head"><label class="scoring-area-toggle"><input type="checkbox" data-scoring-area-enabled><strong>Include National &amp; Areas Trends</strong></label></div>
+        <div class="scoring-picker-head"><label class="scoring-area-toggle"><input type="checkbox" data-scoring-area-enabled><strong>Include National &amp; Geographical Areas Trends</strong></label></div>
         <div class="scoring-area-grid">
           <label>Time split
-            <select data-scoring-area-time-split aria-label="Time split of the National &amp; Areas Trends" title="All selected CDRs aggregates every selected CDR into one value; Campaign splits by campaign; Daily to Yearly split by the period of the start time of each test">
+            <select data-scoring-area-time-split aria-label="Time split of the National &amp; Geographical Areas Trends" title="All selected CDRs aggregates every selected CDR into one value; Campaign splits by campaign; Daily to Yearly split by the period of the start time of each test">
               {% for value, label in [('All', 'All selected CDRs'), ('Campaign', 'Campaign'), ('Daily', 'Daily'), ('Weekly', 'Weekly'), ('Monthly', 'Monthly'), ('Quarterly', 'Quarterly'), ('Yearly', 'Yearly')] %}<option value="{{ value }}"{% if value == 'Campaign' %} selected{% endif %}>{{ label }}</option>{% endfor %}
             </select>
           </label>
           <label>Breakdown
-            <select data-scoring-area-breakdown aria-label="Breakdown of the National &amp; Areas Trends">
+            <select data-scoring-area-breakdown aria-label="Breakdown of the National &amp; Geographical Areas Trends">
               {% for value in ['None', 'Region', 'Cluster', 'City'] %}<option value="{{ value }}"{% if value == 'Region' %} selected{% endif %}>{{ value }}</option>{% endfor %}
             </select>
           </label>
           <label>Separate cities
-            <select multiple size="1" data-scoring-area-cities data-multiselect-auto-close="1000" data-multiselect-empty-label="None" aria-label="Separate cities of the National &amp; Areas Trends">
+            <select multiple size="1" data-scoring-area-cities data-multiselect-auto-close="1000" data-multiselect-empty-label="None" aria-label="Separate cities of the National &amp; Geographical Areas Trends">
               <option value="London" selected>London</option>
             </select>
           </label>
         </div>
-        <p class="scoring-context-filter-note">The National scoring next to the separate cities and each area of the breakdown, each scored with its own measurements, in the National &amp; Areas Trends of the Scoring Trends tab and slides of the reports. It is only available for the whole country: including it clears and disables the Region, Cluster and City filters. Its time split applies to it only.</p>
+        <p class="scoring-context-filter-note">The National scoring next to the separate cities and each area of the breakdown, each scored with its own measurements, in the National &amp; Geographical Areas Trends of the Scoring Trends tab and slides of the reports. It is always scored on the whole country, also when the Region, Cluster or City filters choose part of it. Its time split applies to it only.</p>
       </div>
     </div>
     <div class="scoring-picker" aria-labelledby="scoring-gap-reference-title">
@@ -1371,7 +1356,7 @@
         <button type="button" class="scoring-result-tab" role="tab" aria-selected="true" aria-controls="scoring-summary-pane" data-result-tab="summary"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3.5" width="6" height="5" rx="1"/><rect x="11" y="3.5" width="6" height="5" rx="1"/><path d="M3 12.5h14M3 16h9"/></svg><span>Summary</span></button>
         <button type="button" class="scoring-result-tab" role="tab" aria-selected="false" aria-controls="scoring-chart-pane" data-result-tab="charts"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 17h14M5.5 14V9M10 14V5M14.5 14v-3"/></svg><span>Scoring Charts</span></button>
         <button type="button" class="scoring-result-tab" role="tab" aria-selected="false" aria-controls="scoring-table-pane" data-result-tab="scoring"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="14" height="12" rx="1.5"/><path d="M3 8h14M3 12h14M8 4v12"/></svg><span>Scoring Tables</span></button>
-        <button type="button" class="scoring-result-tab" role="tab" aria-selected="false" aria-controls="scoring-locations-pane" data-result-tab="locations"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 17.5s5.5-5 5.5-9.5a5.5 5.5 0 0 0-11 0c0 4.5 5.5 9.5 5.5 9.5z"/><circle cx="10" cy="8" r="2"/></svg><span>Locations</span></button>
+        <button type="button" class="scoring-result-tab" role="tab" aria-selected="false" aria-controls="scoring-geographical-areas-pane" data-result-tab="geographical-areas"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 17.5s5.5-5 5.5-9.5a5.5 5.5 0 0 0-11 0c0 4.5 5.5 9.5 5.5 9.5z"/><circle cx="10" cy="8" r="2"/></svg><span>Geographical Areas</span></button>
         <button type="button" class="scoring-result-tab" role="tab" aria-selected="false" aria-controls="scoring-trends-pane" data-result-tab="trends"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 16.5h14"/><path d="m3.5 13 4-4.5 3 2.5 5.5-6.5"/><path d="M13 4.5h3v3"/></svg><span>Scoring Trends</span></button>
         <button type="button" class="scoring-result-tab" role="tab" aria-selected="false" aria-controls="scoring-gap-pane" data-result-tab="gap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 21h20"/><path d="M3 21V5h4v16"/><path d="M17 21v-9h4v9"/><path d="M7 5h3.5M13.5 12H17"/><path d="M12 5.5v6"/><path d="m10 7.5 2-2 2 2"/><path d="m10 9.5 2 2 2-2"/></svg><span>GAP Analysis</span></button>
         <button type="button" class="scoring-result-tab" role="tab" aria-selected="false" aria-controls="scoring-points-pane" data-result-tab="points"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5.5l4.5-2 5 2 4.5-2v11l-4.5 2-5-2-4.5 2z"/><path d="M7.5 3.5v11M12.5 5.5v11"/></svg><span>Points Lost</span></button>
@@ -1380,7 +1365,7 @@
       <div class="scoring-result-pane" id="scoring-summary-pane" role="tabpanel" data-result-pane="summary"><div class="scoring-empty">No scoring summary is selected.</div></div>
       <div class="scoring-result-pane" id="scoring-chart-pane" role="tabpanel" data-result-pane="charts" hidden><div class="scoring-empty">No scoring charts are selected.</div></div>
       <div class="scoring-result-pane" id="scoring-table-pane" role="tabpanel" data-result-pane="scoring" hidden><div class="scoring-table-export" data-table-export="scoring"><a href="#" data-export-scoring aria-disabled="true" tabindex="-1" title="The scoring table shown below as CSV"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M11.5 2H5.5A1.5 1.5 0 0 0 4 3.5v13A1.5 1.5 0 0 0 5.5 18h9a1.5 1.5 0 0 0 1.5-1.5V6.5z"/><path d="M11.5 2v4.5H16"/><path d="M10 9.5v5.5M7.6 12.6 10 15l2.4-2.4"/></svg><span>Export to CSV</span></a></div><div class="scoring-empty">No scoring table is selected.</div></div>
-      <div class="scoring-result-pane" id="scoring-locations-pane" role="tabpanel" data-result-pane="locations" hidden><div class="scoring-empty">No locations are selected.</div></div>
+      <div class="scoring-result-pane" id="scoring-geographical-areas-pane" role="tabpanel" data-result-pane="geographical-areas" hidden><div class="scoring-empty">No Geographical Areas are selected.</div></div>
       <div class="scoring-result-pane" id="scoring-trends-pane" role="tabpanel" data-result-pane="trends" hidden><div class="scoring-empty">No Scoring Trends are selected.</div></div>
       <div class="scoring-result-pane" id="scoring-gap-pane" role="tabpanel" data-result-pane="gap" hidden><div class="scoring-table-export" data-table-export="gap"><a href="#" data-export-gap aria-disabled="true" tabindex="-1" title="The GAP table shown below as CSV"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M11.5 2H5.5A1.5 1.5 0 0 0 4 3.5v13A1.5 1.5 0 0 0 5.5 18h9a1.5 1.5 0 0 0 1.5-1.5V6.5z"/><path d="M11.5 2v4.5H16"/><path d="M10 9.5v5.5M7.6 12.6 10 15l2.4-2.4"/></svg><span>Export to CSV</span></a></div><div class="scoring-empty">No GAP analysis is selected.</div></div>
       <div class="scoring-result-pane" id="scoring-points-pane" role="tabpanel" data-result-pane="points" hidden><div class="scoring-empty">No Points Lost are selected.</div></div>

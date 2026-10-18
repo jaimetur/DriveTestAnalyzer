@@ -3,8 +3,8 @@
 A report has one or more scenarios (for example National, London, Main Cities and
 per Vendor). Each scenario uses the job's CDRs, NR Mode, methodology and GAP reference
 with its own filters and aggregation levels, and chooses the slides of each scoring.
-Its Scoring Trends can have campaigns of their own, and a scenario of the whole country (no
-Region, Cluster or City filters) can also include the National & Areas Trends: the National
+Its Scoring Trends can have campaigns of their own, and a scenario can also include the National & Geographical Areas Trends
+(scored on the whole country, also for a scenario with Region, Cluster, City or Main Cities filters): the National
 scoring next to the scoring of chosen cities and of each Region, Cluster or City, with its own
 time split (all CDRs, per campaign or per period).
 Saved configurations and the last one used are kept in the workspace and travel with
@@ -46,8 +46,8 @@ _OPTION_DEFAULTS = {
     'charts': {'service': True, 'category': True, 'breakdown': True},
     'tables': {'summary': True, 'breakdown': True, 'kpi_values': False, 'gap_values': False,
                'campaign_comparison': True},
-    'locations': {'cards': True, 'ranking': True, 'versus': True},
-    # The Scoring Trends: the scoring trend and the National & Areas Trends.
+    'geographical_areas': {'cards': True, 'ranking': True, 'versus': True},
+    # The Scoring Trends: the scoring trend and the National & Geographical Areas Trends.
     'trends': {'trend': True, 'areas': True},
     # An empty operator list compares every operator with the reference.
     'gap': {'operators': [], 'all_operators': True, 'individual': True, 'parts': True, 'profile': True},
@@ -55,8 +55,10 @@ _OPTION_DEFAULTS = {
 }
 # Options of configurations saved before that are now in another group: the location cards and the scoring trend were
 # Scoring Charts and the Points Lost Map was GAP Analysis.
-_MOVED_OPTIONS = {('locations', 'cards'): ('charts', 'location_cards'), ('points', 'map'): ('gap', 'points_loss_map'),
+_MOVED_OPTIONS = {('geographical_areas', 'cards'): ('charts', 'location_cards'), ('points', 'map'): ('gap', 'points_loss_map'),
                   ('points', 'kpis'): ('gap', 'profile'), ('trends', 'trend'): ('charts', 'trend')}
+# Groups of configurations saved before with another name: Geographical Areas was Locations.
+_RENAMED_GROUPS = {'geographical_areas': 'locations'}
 _DEFAULT_COMPARED_OPERATORS = re.compile(r'^(vf|vodafone|3|three|h3g)(?![a-z0-9])', re.IGNORECASE)
 
 
@@ -89,8 +91,10 @@ def _normalize_options(raw: Any) -> dict[str, Any]:
     names = _strings(raw.get('environment_names'))
     if names:
         options['environment_names'] = names
-    for group in ('summary', 'charts', 'tables', 'locations', 'trends', 'gap', 'points'):
+    for group in ('summary', 'charts', 'tables', 'geographical_areas', 'trends', 'gap', 'points'):
         supplied = raw.get(group) if isinstance(raw.get(group), dict) else {}
+        if not supplied and isinstance(raw.get(_RENAMED_GROUPS.get(group, '')), dict):
+            supplied = raw[_RENAMED_GROUPS[group]]
         for key, default in _OPTION_DEFAULTS[group].items():
             moved = _MOVED_OPTIONS.get((group, key))
             earlier = raw.get(moved[0]) if moved and isinstance(raw.get(moved[0]), dict) else {}
@@ -105,17 +109,17 @@ def _normalize_options(raw: Any) -> dict[str, Any]:
     return options
 
 
-def _normalize_area_summary(raw: Any, whole_country: bool) -> dict[str, Any]:
+def _normalize_area_summary(raw: Any) -> dict[str, Any]:
     """The Scoring Trends of the scenario: the campaigns of its trends (none: those of the scenario) and whether it has
-    the National & Areas Trends, with their rows besides National: the chosen cities, then each Region, Cluster or City.
-    By default only scenarios of the whole country have them.
+    the National & Geographical Areas Trends, with their rows besides National: the chosen cities, then each Region, Cluster or City.
+    Every scenario has them by default: they are scored on the whole country, whatever its area filters.
     """
     if not isinstance(raw, dict):
-        return {**copy.deepcopy(DEFAULT_AREA_SUMMARY), 'enabled': whole_country}
+        return copy.deepcopy(DEFAULT_AREA_SUMMARY)
     breakdown = str(raw.get('breakdown') or '').strip().casefold()
     time_split = str(raw.get('time_split') or '').strip().casefold()
     return {
-        'enabled': bool(raw['enabled']) if 'enabled' in raw else whole_country,
+        'enabled': bool(raw['enabled']) if 'enabled' in raw else True,
         'time_split': next((name for name in AREA_SUMMARY_TIME_SPLITS if name.casefold() == time_split), 'Campaign'),
         'breakdown': next((name for name in AREA_SUMMARY_BREAKDOWNS if name.casefold() == breakdown), 'None'),
         'cities': _strings(raw.get('cities')),
@@ -157,7 +161,7 @@ def normalize_scenario(raw: Any, index: int = 0) -> dict[str, Any]:
         'aggregation_levels': ['Operator', *[level for level in REPORT_LEVELS if level in levels and level != 'Operator']],
         'scorings': {kind: _normalize_options(scorings.get(kind)) for kind in SCORING_KINDS},
     }
-    scenario['area_summary'] = _normalize_area_summary(raw.get('area_summary'), not has_geographic_filters(scenario))
+    scenario['area_summary'] = _normalize_area_summary(raw.get('area_summary'))
     return scenario
 
 

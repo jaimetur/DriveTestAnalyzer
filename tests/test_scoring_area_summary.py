@@ -1,4 +1,4 @@
-"""National & Areas Trends: the National scoring next to chosen cities and each Region, Cluster or City."""
+"""National & Geographical Areas Trends: the National scoring next to chosen cities and each Region, Cluster or City."""
 from __future__ import annotations
 
 import json
@@ -14,7 +14,8 @@ from pptx import Presentation
 from src.modules import scoring as scoring_engine
 from src.modules.scoring import most_reliable_result
 from src.modules.scoring_area_summary import (
-    area_summary_levels, build_area_summary, calculate_area_summary, normalize_area_summary_request,
+    area_summary_levels, build_area_summary, calculate_area_summary, calculate_geographical, geographical_insights,
+    geographical_levels, geographical_passes, has_area_filters, normalize_area_summary_request, whole_country_filters,
 )
 from src.modules.scoring_exports import export_scoring_report
 from src.modules.scoring_reports import default_scenario, has_geographic_filters, normalize_report_configuration
@@ -23,7 +24,7 @@ from tests.test_scoring_exports import TEMPLATE
 from tests.test_scoring_api import scoring_api  # noqa: F401  (fixture)
 from tests.test_scoring_most_reliable import _reliable_configuration
 
-SUMMARY_TITLE = 'Best Network Trends — National & Areas'
+SUMMARY_TITLE = 'Best Network Trends — National & Geographical Areas'
 
 
 def _calls(city, region, statuses):
@@ -53,13 +54,16 @@ def _kpi_values(result):
             for row in result['scoring'] if row['value'] is not None}
 
 
-def test_area_summary_request_needs_the_whole_country():
+def test_area_summary_request_is_scored_on_the_whole_country():
     assert normalize_area_summary_request(None, {}) is None
     assert normalize_area_summary_request({'breakdown': 'None', 'cities': []}, {}) is None
     assert normalize_area_summary_request({'breakdown': 'region', 'cities': ['London', 'london', ' ']}, {}) == {
         'breakdown': 'Region', 'cities': ['London'], 'time_split': 'Campaign'}
-    with pytest.raises(ValueError, match='whole country'):
-        normalize_area_summary_request({'breakdown': 'Region'}, {'City': ['London']})
+    # Area filters are allowed: the summary is scored without them.
+    assert normalize_area_summary_request({'breakdown': 'Region'}, {'City': ['London']}) == {
+        'breakdown': 'Region', 'cities': [], 'time_split': 'Campaign'}
+    assert whole_country_filters({'City': ['London'], 'Region': ['North'], 'Operator': ['EE']}) == {'Operator': ['EE']}
+    assert has_area_filters({'Cluster': ['C1']}) and not has_area_filters({'Operator': ['EE'], 'City': []})
     # Operator or Campaign filters keep the whole country.
     assert normalize_area_summary_request({'cities': ['London']}, {'Operator': ['EE']}) == {
         'breakdown': None, 'cities': ['London'], 'time_split': 'Campaign'}
@@ -87,7 +91,45 @@ def test_each_area_is_scored_with_its_own_measurements():
     missing = calculate_area_summary(scoring_engine.calculate_scoring, frames, job['levels'],
                                      {'breakdown': None, 'cities': ['Bristol']}, kwargs)
     assert [item['kind'] for item in missing['passes']] == ['National']
-    assert missing['warnings'] == ['National & Areas Trends: the selected CDRs have no Bristol measurements.']
+    assert missing['warnings'] == ['National & Geographical Areas Trends: the selected CDRs have no Bristol measurements.']
+
+
+def test_a_job_with_area_filters_never_reuses_its_rows_for_the_summary():
+    job, result, frames, kwargs = _calculation()
+    # The rows of the whole country (read apart): the National calculation is not the filtered job's own.
+    summary = calculate_area_summary(scoring_engine.calculate_scoring, frames, job['levels'],
+                                     {'breakdown': None, 'cities': [], 'time_split': 'All'}, kwargs, job_filtered=True)
+    national = summary['passes'][0]
+    assert not national['reuses_job']
+    assert _kpi_values(national['result']) == _kpi_values(result)
+
+
+def test_a_job_split_by_no_area_has_its_geographical_areas():
+    from src.modules.scoring_views import build_scoring_views
+    job, result, frames, kwargs = _calculation()
+    assert [item['kind'] for item in geographical_passes(['Operator', 'Campaign'])] == ['Region', 'City']
+    assert geographical_passes(['Operator', 'Region']) == geographical_passes(['Operator', 'City']) == []
+    assert geographical_levels(['Operator']) == ['Region', 'City'] and geographical_levels(['Operator', 'Cluster']) == []
+    geographical = calculate_geographical(scoring_engine.calculate_scoring, frames, job['levels'], kwargs)
+    regions, london = geographical['passes']
+    assert {row['region'] for row in regions['result']['scoring']} == {'Vendor A', 'VMO2 North'}
+    # London is scored with its own calls only.
+    assert {row['city'] for row in london['result']['scoring']} == {'London'} and london['cities'] == ['London']
+    result['geographical'] = geographical
+    # The Geographical Areas views: a card per Region and one of London.
+    cards = geographical_insights(job, result)['location_cards']
+    assert {(item['level'], tuple(card['label'] for card in item['cards'])) for item in cards} >= {
+        ('Region', ('Vendor A', 'VMO2 North')), ('City', ('London',))}
+    views = build_scoring_views(job, result)
+    assert {item['level'] for item in views['insights']['location_cards']} >= {'Region', 'City'}
+    # A job split by an area has its own views: the calculations are not used.
+    split = {**job, 'levels': ['Operator', 'Region'], 'aggregation_levels': ['Operator', 'Region']}
+    by_region = scoring_engine.calculate_scoring(frames, ['Operator', 'Region'], **kwargs)
+    split_views = build_scoring_views(split, {**by_region, 'geographical': geographical})
+    assert {item['level'] for item in split_views['insights']['location_cards']} == {'Region'}
+    # Without measurements of London (or with filters leaving none), only the Regions.
+    leeds = {'voice': pd.DataFrame([row for row in ROWS if row['City'] == 'Leeds'])}
+    assert [item['kind'] for item in calculate_geographical(scoring_engine.calculate_scoring, leeds, job['levels'], kwargs)['passes']] == ['Region']
 
 
 def test_the_summary_lists_national_the_chosen_cities_and_the_breakdown():
@@ -239,13 +281,14 @@ def test_scenarios_of_the_whole_country_calculate_their_area_summary(monkeypatch
         Repository(), {**trends_only, 'context_filters': {'Region': ['Vendor A']}}) == {
         'breakdown': None, 'cities': [], 'time_split': 'Campaign', 'campaigns': ['2026-Q1', '2026-Q2']}
     scenario['area_summary'] = {'enabled': True, 'breakdown': 'None', 'cities': ['London'], 'main_cities': True}
-    # Without the whole country there is no National scoring.
+    # A scenario with area filters has them too: they are scored on the whole country.
     for filtered in ({'context_filters': {'Region': ['Vendor A']}}, {'main_cities': True}):
         assert has_geographic_filters({**scenario, **filtered})
-        assert core._scenario_area_summary(Repository(), {**scenario, **filtered}) is None
+        assert core._scenario_area_summary(Repository(), {**scenario, **filtered}) == {
+            'breakdown': None, 'cities': ['London', 'Leeds', 'Bristol'], 'time_split': 'Campaign'}
     london = normalize_report_configuration({'scenarios': [default_scenario(name='London', context_filters={
         'City': ['London']})]})['scenarios'][0]
-    assert london['area_summary']['enabled'] is False
+    assert london['area_summary']['enabled'] is True
     # Nor when it is not checked.
     scenario['area_summary']['enabled'] = False
     assert core._scenario_area_summary(Repository(), scenario) is None
@@ -353,9 +396,11 @@ def test_the_scoring_page_calculates_and_shows_the_national_and_areas(scoring_ap
     monkeypatch.setattr(saved_filters, '_scoring_engine', lambda: engine)
     request = {'dataset_ids': scoring_api['complete_dataset_ids'], 'aggregation_levels': ['Operator'], 'nr_mode': 'NSA',
                'baseline_operator': 'EE', 'area_summary': {'time_split': 'All', 'breakdown': 'Region', 'cities': []}}
-    # The summary needs the whole country.
+    # Area filters are allowed: the summary is scored on the whole country.
     filtered = client.post('/api/scoring/saved-filters', json={**request, 'context_filters': {'City': ['London']}})
-    assert filtered.status_code == 400 and 'whole country' in filtered.json()['detail']
+    assert filtered.status_code == 200, filtered.text
+    assert filtered.json()['saved_filter']['area_summary'] == {'breakdown': 'Region', 'cities': [], 'time_split': 'All'}
+    client.delete(f"/api/scoring/saved-filters/{filtered.json()['saved_filter']['id']}")
     created = client.post('/api/scoring/saved-filters', json=request)
     assert created.status_code == 200, created.text
     job_id = created.json()['saved_filter']['id']
@@ -386,9 +431,9 @@ def test_the_calculation_selection_keeps_the_national_and_area_summary(scoring_a
                                                   'cities': ['London', 'Leeds'], 'campaigns': ['@latest-2-campaigns']}
     assert client.get('/api/scoring/selection').json()['selection']['area_summary']['time_split'] == 'Weekly'
     page = client.get('/scoring').text
-    # The National & Areas Trends inside the Scoring Trends with their campaigns, and the Scoring Trends results tab.
+    # The National & Geographical Areas Trends inside the Scoring Trends with their campaigns, and the Scoring Trends results tab.
     for marker in ('data-scoring-trends', 'data-scoring-trend-campaigns', 'data-scoring-area-enabled',
-                   'Include National &amp; Areas Trends', 'data-scoring-area-time-split', 'data-scoring-area-breakdown',
+                   'Include National &amp; Geographical Areas Trends', 'data-scoring-area-time-split', 'data-scoring-area-breakdown',
                    'data-scoring-area-cities', 'data-result-tab="trends"', 'data-result-pane="trends"'):
         assert marker in page
     assert page.index('data-scoring-trend-campaigns') < page.index('data-scoring-area-enabled')

@@ -1,9 +1,9 @@
-"""National & Areas Trends: the National scoring next to the scoring of chosen cities and areas.
+"""National & Geographical Areas Trends: the National scoring next to the scoring of chosen cities and areas.
 
-A scoring job of the whole country (no Region, Cluster or City filters) can ask for an area
-summary. The same job, from the CDR rows it already loaded (or, when the summary has campaigns of its
-own, from the CDRs of those campaigns), then calculates up to three scorings with different Split by
-levels:
+A scoring job can ask for an area summary, also with Region, Cluster or City filters: the summary is always scored
+on the whole country (the job's other filters apply). The same job, from the CDR rows it already loaded (those of the
+whole country, read apart when the job has area filters, or, when the summary has campaigns of its own, from the CDRs
+of those campaigns), then calculates up to three scorings with different Split by levels:
 
 * National: Operator, split by the summary's time split;
 * the chosen cities (for example London), each scored with its own tests only;
@@ -14,6 +14,9 @@ Campaign, or splits by the Daily, Weekly, Monthly, Quarterly or Yearly period of
 of each test. Each area is scored with its own measurements: KPI values (rates, medians,
 P90...) are not additive and the points come from non-linear thresholds, so they cannot be
 derived from the National scoring. A calculation equal to the job's own reuses the job's result.
+
+The Geographical views of a job split by no Region, Cluster or City are calculated the same way, from the job's own
+rows and filters: one scoring per Region and one of London (see ``geographical_passes``).
 """
 from __future__ import annotations
 
@@ -30,9 +33,12 @@ GEOGRAPHIC_FILTER_FIELDS = ('Region', 'Cluster', 'City')
 # All aggregates every selected CDR; Campaign splits by campaign; the periods split by the tests' start time.
 AREA_SUMMARY_TIME_SPLITS = ('All', 'Campaign', 'Daily', 'Weekly', 'Monthly', 'Quarterly', 'Yearly')
 NATIONAL = 'National'
-# The prefix of the warnings of the summary (summaries calculated before name it National & Area Summary).
-WARNING_PREFIXES = ('National & Areas Trends:', 'National & Area Summary:')
+# The prefix of the warnings of the summary (summaries calculated before name it National & Areas Trends or National
+# & Area Summary).
+WARNING_PREFIXES = ('National & Geographical Areas Trends:', 'National & Areas Trends:', 'National & Area Summary:')
 _CITY_COLUMNS = ('City', 'G_Level_4')
+# The Geographical views of a job split by no area: each Region and these cities (those its CDRs have).
+GEOGRAPHICAL_CITIES = ('London',)
 # Saved per calculation: what the views of the summary read. The points-lost shares stay with the job's own result.
 _PASS_RESULT_KEYS = ('scoring', 'totals', 'global_kpis', 'environment_scaling', 'aggregation_levels',
                      'aggregation_contract_version', 'campaigns', 'warnings', 'notices', 'baseline_aliases')
@@ -54,7 +60,8 @@ def normalize_area_summary_request(area_summary: Any, context_filters: dict[str,
     without a breakdown, cities or campaigns of its own. Without campaigns, the summary scores the campaigns of the job;
     with campaigns alone, it gives the scoring trend of those campaigns.
 
-    The areas need the whole country: a job with Region, Cluster or City filters cannot have a breakdown or cities.
+    The summary is scored on the whole country, whatever Region, Cluster or City filters the job has
+    (see ``whole_country_filters``).
     """
     if not isinstance(area_summary, dict):
         return None
@@ -70,14 +77,21 @@ def normalize_area_summary_request(area_summary: Any, context_filters: dict[str,
     campaigns = normalize_trend_campaigns(area_summary.get('campaigns'))
     if breakdown is None and not cities and not campaigns:
         return None
-    # The areas need the whole country; the scoring trend of campaigns of their own alone follows the area filters.
-    if (breakdown is not None or cities) and any((context_filters or {}).get(field) for field in GEOGRAPHIC_FILTER_FIELDS):
-        raise ValueError('National & Areas Trends need the whole country: remove the Region, Cluster and City filters.')
     normalized = {'breakdown': breakdown, 'cities': list(cities.values()), 'time_split': time_split}
     # (Without campaigns of its own, the request keeps the form of the summaries saved before they had any.)
     if campaigns:
         normalized['campaigns'] = campaigns
     return normalized
+
+
+def has_area_filters(context_filters: dict[str, list[str]] | None) -> bool:
+    """Whether a job leaves out part of the country with Region, Cluster or City filters."""
+    return any((context_filters or {}).get(field) for field in GEOGRAPHIC_FILTER_FIELDS)
+
+
+def whole_country_filters(context_filters: dict[str, list[str]] | None) -> dict[str, list[str]]:
+    """The filters of a job without its Region, Cluster and City filters: those of its area summary."""
+    return {field: values for field, values in (context_filters or {}).items() if field not in GEOGRAPHIC_FILTER_FIELDS}
 
 
 def area_summary_levels(levels: list[str], area_summary: dict[str, Any] | None) -> list[str]:
@@ -94,7 +108,7 @@ def area_summary_levels(levels: list[str], area_summary: dict[str, Any] | None) 
     return [level for level in extra if column_identity(level) not in identities]
 
 
-def _passes(levels: list[str], area_summary: dict[str, Any]) -> list[dict[str, Any]]:
+def _passes(levels: list[str], area_summary: dict[str, Any], job_filtered: bool = False) -> list[dict[str, Any]]:
     time_split = area_summary.get('time_split') or 'Campaign'
     base = ['Operator'] if time_split == 'All' else ['Operator', 'Campaign']
     breakdown = area_summary.get('breakdown')
@@ -105,9 +119,10 @@ def _passes(levels: list[str], area_summary: dict[str, Any]) -> list[dict[str, A
     if breakdown:
         passes.append({'kind': breakdown, 'field': breakdown.lower(), 'levels': [*base, breakdown]})
     identities = {column_identity(level) for level in levels}
-    # A calculation split by period is never the job's own, which splits Campaign by campaign.
+    # A calculation split by period is never the job's own, which splits Campaign by campaign; nor is one of a job
+    # with area filters, which scores part of the country.
     for item in passes:
-        item['reuses_job'] = (not normalize_time_split(time_split) and 'cities' not in item
+        item['reuses_job'] = (not job_filtered and not normalize_time_split(time_split) and 'cities' not in item
                               and {column_identity(level) for level in item['levels']} == identities)
     return passes
 
@@ -128,13 +143,14 @@ def _city_frames(frames: dict[str, pd.DataFrame], cities: list[str]) -> dict[str
 
 def calculate_area_summary(calculate: Callable[..., dict], frames: dict[str, pd.DataFrame], levels: list[str],
                            area_summary: dict[str, Any], call_kwargs: dict[str, Any],
-                           progress: Callable[[int, str], None] | None = None) -> dict[str, Any]:
-    """Score the National, chosen-city and breakdown calculations of an area summary from the loaded rows."""
+                           progress: Callable[[int, str], None] | None = None, *, job_filtered: bool = False) -> dict[str, Any]:
+    """Score the National, chosen-city and breakdown calculations of an area summary from the loaded rows (those of
+    the whole country: with ``job_filtered``, the job's own rows have area filters and are never reused)."""
     passes = []
     warnings = []
     period = normalize_time_split(area_summary.get('time_split'))
     kwargs = {**call_kwargs, 'time_split': period} if period else call_kwargs
-    for index, item in enumerate(_passes(levels, area_summary)):
+    for index, item in enumerate(_passes(levels, area_summary, job_filtered)):
         saved = {key: item[key] for key in ('kind', 'field', 'levels', 'reuses_job') if key in item}
         if 'cities' in item:
             saved['cities'] = item['cities']
@@ -146,7 +162,7 @@ def calculate_area_summary(calculate: Callable[..., dict], frames: dict[str, pd.
             rows = result.get('scoring') if isinstance(result, dict) else None
             if not rows or (item['field'] and not any(row.get(item['field']) not in (None, '') for row in rows)):
                 what = ', '.join(item['cities']) if 'cities' in item else item['kind']
-                warnings.append(f'National & Areas Trends: the selected CDRs have no {what} measurements.')
+                warnings.append(f'National & Geographical Areas Trends: the selected CDRs have no {what} measurements.')
                 continue
             saved['result'] = {key: result[key] for key in _PASS_RESULT_KEYS if key in result}
         passes.append(saved)
@@ -155,15 +171,17 @@ def calculate_area_summary(calculate: Callable[..., dict], frames: dict[str, pd.
 
 
 def calculate_area_summary_from_history(calculate: Callable[..., dict], levels: list[str], area_summary: dict[str, Any],
-                                        progress: Callable[[int, str], None] | None = None) -> dict[str, Any]:
+                                        progress: Callable[[int, str], None] | None = None, *,
+                                        job_filtered: bool = False) -> dict[str, Any]:
     """The National, chosen-city and breakdown calculations of an area summary from the Scoring History.
 
-    ``calculate(levels, time_split=..., cities=...)`` scores the job's CDRs and filters from the history.
+    ``calculate(levels, time_split=..., cities=...)`` scores the job's CDRs and filters (without its area filters)
+    from the history.
     """
     passes = []
     warnings = []
     period = normalize_time_split(area_summary.get('time_split'))
-    for index, item in enumerate(_passes(levels, area_summary)):
+    for index, item in enumerate(_passes(levels, area_summary, job_filtered)):
         saved = {key: item[key] for key in ('kind', 'field', 'levels', 'reuses_job') if key in item}
         if 'cities' in item:
             saved['cities'] = item['cities']
@@ -174,7 +192,7 @@ def calculate_area_summary_from_history(calculate: Callable[..., dict], levels: 
             rows = result.get('scoring') if isinstance(result, dict) else None
             if not rows or (item['field'] and not any(row.get(item['field']) not in (None, '') for row in rows)):
                 what = ', '.join(item['cities']) if 'cities' in item else item['kind']
-                warnings.append(f'National & Areas Trends: the selected CDRs have no {what} measurements.')
+                warnings.append(f'National & Geographical Areas Trends: the selected CDRs have no {what} measurements.')
                 continue
             saved['result'] = {key: result[key] for key in _PASS_RESULT_KEYS if key in result}
         passes.append(saved)
@@ -182,9 +200,88 @@ def calculate_area_summary_from_history(calculate: Callable[..., dict], levels: 
             'time_split': area_summary.get('time_split') or 'Campaign', 'passes': passes, 'warnings': warnings}
 
 
+def geographical_passes(levels: list[str]) -> list[dict[str, Any]]:
+    """The calculations of the Geographical views of a job split by no Region, Cluster or City: its split by Region,
+    and by City for London alone; none for a job split by an area (its own rows give those views)."""
+    identities = {column_identity(level) for level in levels}
+    if identities & {column_identity(field) for field in GEOGRAPHIC_FILTER_FIELDS}:
+        return []
+    return [{'kind': 'Region', 'field': 'region', 'levels': [*levels, 'Region']},
+            {'kind': 'City', 'field': 'city', 'levels': [*levels, 'City'], 'cities': list(GEOGRAPHICAL_CITIES)}]
+
+
+def geographical_levels(levels: list[str]) -> list[str]:
+    """The columns the job reads for its Geographical views, besides its own levels."""
+    return ['Region', 'City'] if geographical_passes(levels) else []
+
+
+def _geographical(score: Callable[[dict[str, Any]], dict | None], levels: list[str],
+                  progress: Callable[[int, str], None] | None) -> dict[str, Any] | None:
+    passes = []
+    for item in geographical_passes(levels):
+        if progress is not None:
+            progress(86, f"Calculating the Geographical views per {item['kind']}")
+        try:
+            result = score(item)
+        except ValueError:  # Filters that leave none of its measurements (no tests in London).
+            result = None
+        rows = result.get('scoring') if isinstance(result, dict) else None
+        # A calculation without measurements of its areas is left out, without a warning: the views are optional.
+        if rows and any(row.get(item['field']) not in (None, '') for row in rows):
+            passes.append({**item, 'reuses_job': False, 'result': {key: result[key] for key in _PASS_RESULT_KEYS if key in result}})
+    return {'passes': passes} if passes else None
+
+
+def calculate_geographical(calculate: Callable[..., dict], frames: dict[str, pd.DataFrame], levels: list[str],
+                           call_kwargs: dict[str, Any], progress: Callable[[int, str], None] | None = None) -> dict[str, Any] | None:
+    """The Geographical calculations of a job split by no area, from its loaded rows: ``{'passes': [...]}`` in the form
+    of an area summary, or None."""
+    def score(item: dict[str, Any]) -> dict | None:
+        source = _city_frames(frames, item['cities']) if 'cities' in item else frames
+        return calculate(source, item['levels'], **call_kwargs) if source else None
+    return _geographical(score, levels, progress)
+
+
+def calculate_geographical_from_history(calculate: Callable[..., dict], levels: list[str],
+                                        progress: Callable[[int, str], None] | None = None) -> dict[str, Any] | None:
+    """The Geographical calculations of a job split by no area from the Scoring History; ``calculate(levels,
+    cities=...)`` scores the job's CDRs and filters."""
+    return _geographical(lambda item: calculate(item['levels'], cities=item.get('cities')), levels, progress)
+
+
+def geographical_insights(job: dict[str, Any], result: dict[str, Any], operator_mapping_groups: list[dict] | None = None,
+                          *, vendor_mapping_groups: list[dict] | None = None) -> dict[str, list[dict[str, Any]]]:
+    """The location cards and rankings of the Geographical calculations of a job split by no area: the Regions, and
+    London on its own card."""
+    from src.modules.scoring_views import build_scoring_views
+
+    insights: dict[str, list[dict[str, Any]]] = {'location_cards': [], 'location_rankings': []}
+    geographical = result.get('geographical') if isinstance(result, dict) else None
+    if not isinstance(geographical, dict):
+        return insights
+    configuration = result.get('configuration') or job.get('configuration')
+    for item in geographical.get('passes') or []:
+        source = item.get('result') if isinstance(item, dict) else None
+        if not isinstance(source, dict):
+            continue
+        source_job = {'levels': list(item['levels']), 'aggregation_levels': list(item['levels']),
+                      'aggregation_contract_version': job.get('aggregation_contract_version') or 2,
+                      'baseline_operator': job.get('baseline_operator') or 'EE',
+                      'baseline_aliases': job.get('baseline_aliases') or source.get('baseline_aliases'),
+                      'configuration': configuration, 'keep_levels': [item['kind']], 'location_minimum': 1}
+        payload = {**source, 'configuration': source.get('configuration') or configuration}
+        # By campaign, the rows of each methodology are scored with it.
+        if result.get('methodology_groups') and not source.get('methodology_groups'):
+            payload['methodology_groups'] = result['methodology_groups']
+        views = build_scoring_views(source_job, payload, operator_mapping_groups, vendor_mapping_groups=vendor_mapping_groups)
+        for key in insights:
+            insights[key].extend((views.get('insights') or {}).get(key) or [])
+    return insights
+
+
 def detach_area_summary(result: dict[str, Any]) -> dict[str, Any]:
     """The result with the calculations of its area summary that reuse it holding a copy of it instead: the summary
-    of National & Areas Trends with campaigns of their own is scored apart from the job, which it then joins."""
+    of National & Geographical Areas Trends with campaigns of their own is scored apart from the job, which it then joins."""
     summary = result.get('area_summary') if isinstance(result, dict) else None
     if not isinstance(summary, dict):
         return result
@@ -297,7 +394,7 @@ def build_area_summary(job: dict[str, Any], result: dict[str, Any], operator_map
 
 def build_national_trends(job: dict[str, Any], result: dict[str, Any], operator_mapping_groups: list[dict] | None = None,
                           *, vendor_mapping_groups: list[dict] | None = None) -> list[dict[str, Any]] | None:
-    """The scoring trend of each environment from the National calculation of National & Areas Trends with campaigns
+    """The scoring trend of each environment from the National calculation of National & Geographical Areas Trends with campaigns
     of their own (every campaign or period of the summary, from two on), in the form of the job's campaign trends; None
     when the summary has no campaigns of its own (the trends then come from the job's campaigns)."""
     from src.modules.scoring_insights import MIN_TREND_CAMPAIGNS, _display, _scope_summary

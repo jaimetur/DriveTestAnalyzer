@@ -1,4 +1,4 @@
-"""Summary, Locations, GAP by part and Points Lost insights of Scoring & GAP Analysis, and their slides.
+"""Summary, Geographical Areas, GAP by part and Points Lost insights of Scoring & GAP Analysis, and their slides.
 
 They are calculated from synthetic NetCheck CDRs with NetCheck 2026: four operators in eight cities and on four
 Connecting Roads routes over three campaigns, with the serving cell of every test and a few sites that fail often.
