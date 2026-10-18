@@ -168,10 +168,11 @@ def test_ericsson_titles_are_light_with_the_part_that_changes_in_bold():
     with use_theme('ericsson'):
         slide = _slide(deck, 'RF Quality · NR quality per carrier', 'National · All Operators')
         heading, focus = slide.shapes.title.text_frame.paragraphs[0].runs
-        # Ericsson Hilda Light in grey, only the part that changes from one slide to the next in Ericsson Hilda black bold.
+        # Ericsson Hilda Light in grey, only the part that changes from one slide to the next in bold Ericsson Hilda and the
+        # deep Ericsson blue.
         assert heading.font.name == 'Ericsson Hilda Light' and heading.font.bold is False
         assert focus.font.name == 'Ericsson Hilda' and focus.font.bold
-        assert str(heading.font.color.rgb) == '767676' and str(focus.font.color.rgb) == '0C0C0C'
+        assert str(heading.font.color.rgb) == '767676' and str(focus.font.color.rgb) == '0068BF'
         only = _slide(deck, 'Overview', 'National').shapes.title.text_frame.paragraphs[0].runs
         assert [(run.text, run.font.bold) for run in only] == [('Overview', False)]
     # A component on several slides of a composed report keeps the light heading and its focus in bold.

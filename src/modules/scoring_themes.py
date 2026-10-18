@@ -107,7 +107,7 @@ THEMES: dict[str, dict[str, Any]] = {
         'stake': ['#CC2828', '#FF8484', '#FFC1C1'],
         'loss_ramp': ['#B2D8F9', '#0068BF'],
         'environments': ['#242424', '#A0A0A0', '#0068BF', '#E0E0E0', '#C6A823'],
-        'categories': ['#0082F0', '#AF78D2', '#0FC373', '#FF8C0A', '#FAD22D', '#FF3232', '#242424', '#66B5F4'],
+        'categories': ['#0082F0', '#AF78D2', '#0FC373', '#FF8C0A', '#FAD22D', '#FF3232', '#767676', '#66B5F4'],
         'kpi_reliable': '#B7EDD6', 'kpi_diff': '#FCF2BF',
         'scale': ['#CC2828', '#FEBA7E', '#FCE282', '#70DBAA', '#0C9B5B'],
         'series': ['#0068BF', '#66B5F4', '#8C60A8', '#C6A823', '#CC7007', '#767676', '#E0E0E0'],

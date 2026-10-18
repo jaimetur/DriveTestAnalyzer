@@ -210,7 +210,7 @@ def test_every_theme_styles_the_scorecard_and_gaps_share_the_card_with_a_bar():
     assert re.search(r'td\[data-gap="gain"\]::after \{ left: 50%; background: var\(--sc-gain-bar\);', template)
     assert re.search(r'td\[data-gap="loss"\]::after \{ right: 50%; background: var\(--sc-loss-bar\);', template)
     # Ericsson fills each score as far as its share of the maximum; Midnight is the only dark theme.
-    assert 'calc(var(--share, 0) * 100%), #f5f5f5 0)' in template
+    assert 'calc(var(--share, 0) * 100%), #f2f2f2 0)' in template
     assert THEMES['midnight']['surface'] == '#0F1726'
     for name, theme in THEMES.items():
         if name == 'midnight':

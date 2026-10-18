@@ -117,7 +117,8 @@ def test_finding_slides_are_drawn_with_shapes_in_the_theme() -> None:
         heading, headline = title.text_frame.paragraphs[:2]
         assert heading.text == view['title'] and heading.runs[0].font.bold
         assert headline.text == view['headline']
-        assert str(headline.runs[0].font.color.rgb) == THEMES['vodafone']['title_accent'].lstrip('#')
+        # The headline is a subtitle: in the subtitle colour of the theme (Vodafone anthracite, not its red).
+        assert str(headline.runs[0].font.color.rgb) == THEMES['vodafone']['titles']['subtitle_color'].lstrip('#')
         texts = [shape.text_frame.text for shape in slide.shapes if shape.has_text_frame]
         assert 'Data · drive and walk' in texts
         assert any(text.startswith('What it means: ') for text in texts)
