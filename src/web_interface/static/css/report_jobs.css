@@ -276,6 +276,11 @@
 /* What a favourite Complete Report includes, below its name. */
 .report-jobs .rj-artifact-contents { margin: .15rem 0 .25rem; padding-left: 1.1rem; list-style: square; display: grid; gap: .1rem; color: var(--muted); font-size: .82rem; }
 .report-jobs .rj-artifact-section { color: var(--text); font-weight: 600; }
+.report-jobs .rj-artifact-missing { margin: .15rem 0 .1rem; color: #b42318; font-size: .82rem; font-weight: 700; }
+/* Jobs ordered by dragging their handle. */
+.report-jobs .rj-drag-handle { display: inline-block; width: auto; min-width: 0; margin: 0 .35rem 0 0; padding: 0 .2rem; border: 0; border-radius: 4px; background: none; box-shadow: none; color: #7a8794; font: inherit; font-size: 1rem; line-height: 1.2; cursor: grab; user-select: none; touch-action: none; }
+.report-jobs .rj-drag-handle:hover, .report-jobs .rj-drag-handle:focus-visible { color: #1f5f3a; background: #e3f3e9; outline: none; }
+.report-jobs #rj-tasks tr.rj-dragging { opacity: .45; outline: 2px dashed #2f8a57; outline-offset: -2px; }
 .report-jobs .rj-based-on { display: inline-block; padding: .12rem .5rem; border-radius: 999px; font-size: .78rem; font-weight: 700; background: #e3edf9; color: #1f4f8a; white-space: nowrap; }
 .report-jobs .rj-based-on-favourite { background: #e3f3e9; color: #1f6b44; }
 /* Jobs counted in the header of their panel, Complete Report and Manual Artifacts in the colours of Based On. */

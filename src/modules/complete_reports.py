@@ -1525,6 +1525,9 @@ def install_complete_report_routes(core: Any) -> None:
         name: str = ''
         definition: dict[str, Any] = Field(default_factory=dict)
 
+    class RenamePayload(BaseModel):
+        name: str = ''
+
     class JobPayload(BaseModel):
         definition: dict[str, Any] = Field(default_factory=dict)
         name: str = ''
@@ -1617,14 +1620,49 @@ def install_complete_report_routes(core: Any) -> None:
                                                                  **definition_summary(favourite['definition'])})
         return {'favourite': favourite, 'favourites': list_favourites(repository)}
 
+    @app.get('/api/reporting/complete-report/favourites/{favourite_id}/jobs')
+    def complete_report_favourite_jobs(favourite_id: int, user=Depends(reporting_user)):
+        """The Reporting Jobs that generate a favourite, to tell what deleting or renaming it changes."""
+        from src.modules.report_tasks import favourite_jobs
+        return favourite_jobs(repository_for(user), favourite_id)
+
+    @app.post('/api/reporting/complete-report/favourites/{favourite_id}/rename')
+    def complete_report_favourite_rename(favourite_id: int, payload: RenamePayload, user=Depends(editor_user)):
+        from src.modules.report_tasks import rename_favourite_jobs
+        repository = repository_for(user)
+        favourite = get_favourite(repository, favourite_id)
+        if favourite is None:
+            raise HTTPException(404, 'The favourite Complete Report no longer exists.')
+        try:
+            renamed = save_favourite(repository, favourite_id, payload.name, favourite['definition'], user.username)
+        except LookupError as exc:
+            raise HTTPException(404, str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        # The jobs based on it that took its name take the new one.
+        jobs = rename_favourite_jobs(repository, favourite_id, favourite['name'], renamed['name'])
+        log(repository, user, 'complete_report_favourite_renamed', {'id': favourite_id, 'old_name': favourite['name'],
+                                                                   'name': renamed['name'], 'renamed_jobs': jobs})
+        for job in jobs:
+            log(repository, user, 'save_reporting_job', {'task_id': job['id'], 'name': job['name'], 'old_name': job['old_name'],
+                                                         'reason': 'favourite Complete Report renamed'})
+        return {'favourite': renamed, 'favourites': list_favourites(repository), 'renamed_jobs': [job['name'] for job in jobs]}
+
     @app.delete('/api/reporting/complete-report/favourites/{favourite_id}')
     def complete_report_favourite_delete(favourite_id: int, user=Depends(editor_user)):
+        from src.modules.report_tasks import forget_favourite
         repository = repository_for(user)
         favourite = delete_favourite(repository, favourite_id)
         if favourite is None:
             raise HTTPException(404, 'The favourite Complete Report no longer exists.')
-        log(repository, user, 'complete_report_favourite_deleted', {'id': favourite_id, 'name': favourite['name']})
-        return {'favourites': list_favourites(repository)}
+        # The jobs based on it are disabled; every job that generated it names it as no longer existing.
+        jobs = forget_favourite(repository, favourite_id, favourite['name'])
+        log(repository, user, 'complete_report_favourite_deleted', {'id': favourite_id, 'name': favourite['name'], 'jobs': jobs})
+        for job in jobs:
+            if job['disabled']:
+                log(repository, user, 'disable_reporting_job', {'task_id': job['id'], 'name': job['name'],
+                                                                'reason': f'favourite Complete Report "{favourite["name"]}" deleted'})
+        return {'favourites': list_favourites(repository), 'disabled_jobs': [job['name'] for job in jobs if job['disabled']]}
 
     def output_root() -> Path:
         return module_output_dir(core.settings.output_dir, COMPLETE_REPORTS_FOLDER)
@@ -1833,7 +1871,8 @@ def _register_reporting_artifact(core: Any) -> None:
         chosen = {str(value) for value in ((config.get('options') or {}).get('filters') or {}).get('favourites') or []}
         favourites = [item for item in list_favourites(repository) if not chosen or str(item['id']) in chosen]
         if not favourites:
-            raise CompleteReportError('There is no favourite Complete Report to generate.')
+            raise CompleteReportError('The associated Complete Report no longer exists.' if chosen
+                                      else 'There is no favourite Complete Report to generate.')
         artifacts = []
         for favourite in favourites:
             work = folder / f".complete-report-{favourite['id']}"

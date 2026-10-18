@@ -579,10 +579,14 @@
       item.append(node('strong', group.module, 'rj-artifact-module'));
       const entries = group.items.map((entry) => (typeof entry === 'string' ? withColouredFormats(entry) : entry));
       const contents = group.contents || [];
+      // A favourite Complete Report deleted since the job was saved.
+      const missing = group.missing || [];
+      const missingNote = () => node('div', 'The associated Complete Report no longer exists.', 'rj-artifact-missing');
       if (entries.length > 1) {
         const nested = node('ul', undefined, 'rj-artifact-entries');
         entries.forEach((entry, index) => {
           const row = node('li'); row.append(entry);
+          if (missing[index]) row.append(missingNote());
           if (contents[index]?.length) row.append(favouriteContents(contents[index]));
           nested.append(row);
         });
@@ -591,6 +595,7 @@
         const text = entries[0].textContent || '';
         item.append(document.createTextNode(text.startsWith('(') ? ' ' : ' · '), entries[0]);
         // A fragment empties when appended; the row text above was read before that.
+        if (missing[0]) item.append(missingNote());
         if (contents[0]?.length) item.append(favouriteContents(contents[0]));
       }
       list.append(item);
@@ -1207,8 +1212,89 @@
     $('rj-count-manual').textContent = `Manual Artifacts: ${state.tasks.length - favourites}`;
   }
 
+  // -- order of the jobs ----------------------------------------------------
+  // Editors drag a job by its handle (or move it with the up and down arrow keys on the handle) to order the table;
+  // the order is kept in the workspace and travels with the jobs.
+  let draggedRow = null;
+  let orderBefore = '';
+  const taskRows = () => [...$('rj-tasks').tBodies[0].querySelectorAll('tr[data-task-id]')];
+  const currentOrder = () => taskRows().map((row) => Number(row.dataset.taskId));
+  async function saveOrder() {
+    const ids = currentOrder();
+    if (JSON.stringify(ids) === orderBefore) return;
+    orderBefore = JSON.stringify(ids);
+    state.tasks.sort((first, second) => ids.indexOf(first.id) - ids.indexOf(second.id));
+    placeEditor();
+    try {
+      await api('/api/reporting/tasks/order', {method: 'POST', body: JSON.stringify({ids})});
+      status('Order of the Reporting Jobs saved.', 'done');
+    } catch (error) {
+      status(error.message, 'error');
+      await refresh();
+    }
+  }
+  function dragHandle() {
+    const handle = node('button', '⠿', 'rj-drag-handle');
+    handle.type = 'button';
+    handle.title = 'Drag to order the Reporting Jobs (or press the up and down arrow keys)';
+    handle.setAttribute('aria-label', 'Move this Reporting Job');
+    return handle;
+  }
+  // Dragging follows the pointer (mouse, pen or touch), as the sections of the Complete Report.
+  const tasksBody = $('rj-tasks').tBodies[0];
+  tasksBody.addEventListener('pointerdown', (event) => {
+    const handle = event.target.closest('.rj-drag-handle');
+    const row = handle?.closest('tr[data-task-id]');
+    if (!row) return;
+    event.preventDefault();
+    try { handle.setPointerCapture?.(event.pointerId); } catch {}
+    draggedRow = row;
+    orderBefore = JSON.stringify(currentOrder());
+    row.classList.add('rj-dragging');
+    const move = (moveEvent) => {
+      if (moveEvent.clientY < 70) window.scrollBy(0, -14);
+      else if (moveEvent.clientY > window.innerHeight - 70) window.scrollBy(0, 14);
+      const next = taskRows().filter((element) => element !== row).find((element) => {
+        const box = element.getBoundingClientRect();
+        return moveEvent.clientY < box.top + box.height / 2;
+      });
+      if (next) {
+        if (row.nextElementSibling !== next) next.before(row);
+      } else {
+        const rows = taskRows();
+        if (rows[rows.length - 1] !== row) rows[rows.length - 1].after(row);
+      }
+    };
+    const stop = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', stop);
+      window.removeEventListener('pointercancel', stop);
+      row.classList.remove('rj-dragging');
+      draggedRow = null;
+      void saveOrder();
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', stop);
+    window.addEventListener('pointercancel', stop);
+  });
+  tasksBody.addEventListener('keydown', (event) => {
+    const handle = event.target.closest('.rj-drag-handle');
+    const row = handle?.closest('tr[data-task-id]');
+    if (!row || !['ArrowUp', 'ArrowDown'].includes(event.key)) return;
+    event.preventDefault();
+    const rows = taskRows();
+    const target = rows[rows.indexOf(row) + (event.key === 'ArrowUp' ? -1 : 1)];
+    if (!target) return;
+    orderBefore = JSON.stringify(currentOrder());
+    if (event.key === 'ArrowUp') target.before(row); else target.after(row);
+    handle.focus();
+    void saveOrder();
+  });
+
   function renderTasks() {
     renderTaskCounts();
+    // A job being dragged keeps its row until it is dropped (the next refresh shows the rest).
+    if (draggedRow) return;
     const body = $('rj-tasks').tBodies[0];
     if (!state.tasks.length) {
       emptyRow(body, 'No Reporting Jobs yet.', 9);
@@ -1266,8 +1352,11 @@
           }, 'danger-button icon-action'),
         );
       }
+      const nameCell = node('td', undefined, 'rj-task-name-cell');
+      if (state.can_edit) nameCell.append(dragHandle());
+      nameCell.append(node('span', task.name, 'rj-task-name'));
       row.append(
-        node('td', task.name), cellWith(artifacts), basedOn,
+        nameCell, cellWith(artifacts), basedOn,
         node('td', task.recurrence), node('td', task.enabled ? localTime(task.next_run_at) : 'Disabled'),
         node('td', task.send_email ? `Yes · ${task.recipients.length} recipient${task.recipients.length === 1 ? '' : 's'}` : 'No'),
         lastCell, statusCell, cellWith(actions),
@@ -1416,6 +1505,9 @@
       button.disabled = false;
     }
   });
+
+  // Saving, renaming or deleting a favourite Complete Report changes the jobs that generate it.
+  document.addEventListener('complete-report:favourites-changed', () => { void refresh().catch((error) => status(error.message, 'error')); });
 
   void refresh().then(restoreDraft).catch((error) => status(error.message, 'error'));
 })();

@@ -603,7 +603,7 @@ def test_a_job_can_start_from_a_favourite_complete_report():
     # The jobs table names the favourite the job generates (every one when it chooses none) with what it includes.
     contents = [{'title': 'Scoring & GAP Analysis', 'items': ['Summary', 'GAP Analysis']}]
     groups = report_tasks.artifact_groups(definition, {}, {'7': 'Weekly NetCheck'}, {'7': contents})
-    assert groups == [{'module': 'Complete Report', 'items': ['Weekly NetCheck (PPT/Word)'], 'contents': [contents]}]
+    assert groups == [{'module': 'Complete Report', 'items': ['Weekly NetCheck (PPT/Word)'], 'contents': [contents], 'missing': [False]}]
     assert report_tasks.based_on_favourite(definition)
     assert report_tasks.artifact_labels(definition, {}, {'7': 'Weekly NetCheck'}) == ['Complete Report · Weekly NetCheck (PPT/Word)']
     every = report_tasks.normalize_definition({'modules': {'complete_report': {'enabled': True, 'formats': ['powerpoint']}}})
@@ -671,3 +671,120 @@ def test_imported_reporting_jobs_find_their_favourites_by_name(client):
     core._restore_workspace_reporting_jobs(core.active_workspace, json.dumps(exported).encode(), 'super')
     job = next(task for task in report_tasks.list_tasks(core.repository) if task['name'] == 'Monthly job')
     assert job['definition']['modules']['complete_report']['options']['filters']['favourites'] == [str(monthly['id'])]
+
+
+def test_deleting_a_favourite_disables_the_jobs_based_on_it(client):
+    from src.modules import complete_reports
+    login(client)
+    weekly = complete_reports.save_favourite(core.repository, None, 'Weekly', {}, 'super')
+    other = complete_reports.save_favourite(core.repository, None, 'Other', {}, 'super')
+    report = lambda *ids: {'enabled': True, 'formats': ['word'], 'options': {'filters': {'favourites': [str(value) for value in ids]}}}
+    based = client.post('/api/reporting/tasks', json={'name': 'Weekly', 'schedule': {'mode': 'daily', 'time': '08:00'},
+                                                      'definition': {'modules': {'complete_report': report(weekly['id'])}}}).json()['task']
+    both = client.post('/api/reporting/tasks', json={'name': 'Both', 'schedule': {'mode': 'manual'},
+                                                     'definition': {'modules': {'complete_report': report(weekly['id'], other['id'])}}}).json()['task']
+    jobs = client.get(f"/api/reporting/complete-report/favourites/{weekly['id']}/jobs").json()
+    assert jobs == {'based_on': ['Weekly'], 'others': ['Both']}
+    response = client.delete(f"/api/reporting/complete-report/favourites/{weekly['id']}")
+    assert response.status_code == 200 and response.json()['disabled_jobs'] == ['Weekly']
+    tasks = {task['id']: task for task in client.get('/api/reporting/state').json()['tasks']}
+    # The job based on it is disabled and both name it as no longer existing (never every favourite).
+    assert tasks[based['id']]['enabled'] is False and tasks[based['id']]['next_run_at'] is None
+    assert tasks[both['id']]['enabled'] is True
+    assert tasks[based['id']]['definition']['modules']['complete_report']['options']['filters']['favourites'] == ['Weekly']
+    group = tasks[based['id']]['artifact_groups'][-1]
+    assert group['items'] == ['Weekly (Word)'] and group['missing'] == [True]
+    assert tasks[both['id']]['artifact_groups'][-1]['missing'] == [True, False]
+    actions = [row['action'] for row in core.repository.list_logs(limit=20)] if hasattr(core.repository, 'list_logs') else []
+    if actions:
+        assert 'complete_report_favourite_deleted' in actions and 'disable_reporting_job' in actions
+    script = (core.PROJECT_ROOT / 'src/web_interface/static/js/report_jobs.js').read_text(encoding='utf-8')
+    assert "'The associated Complete Report no longer exists.'" in script
+
+
+def test_renaming_a_favourite_renames_the_jobs_based_on_it(client):
+    from src.modules import complete_reports
+    login(client)
+    weekly = complete_reports.save_favourite(core.repository, None, 'Weekly', {}, 'super')
+    complete_reports.save_favourite(core.repository, None, 'Taken', {}, 'super')
+    report = {'enabled': True, 'formats': ['word'], 'options': {'filters': {'favourites': [str(weekly['id'])]}}}
+    for name in ('Weekly', 'My weekly job'):
+        client.post('/api/reporting/tasks', json={'name': name, 'schedule': {'mode': 'manual'},
+                                                  'definition': {'modules': {'complete_report': report}}}).raise_for_status()
+    assert client.post(f"/api/reporting/complete-report/favourites/{weekly['id']}/rename", json={'name': 'Taken'}).status_code == 400
+    response = client.post(f"/api/reporting/complete-report/favourites/{weekly['id']}/rename", json={'name': 'Weekly NetCheck'})
+    assert response.status_code == 200, response.text
+    assert response.json()['favourite']['name'] == 'Weekly NetCheck' and response.json()['renamed_jobs'] == ['Weekly NetCheck']
+    # The job that had its name takes the new one; a job with a name of its own keeps it. Both name the new favourite.
+    tasks = {task['name']: task for task in client.get('/api/reporting/state').json()['tasks']}
+    assert {'Weekly NetCheck', 'My weekly job'} <= set(tasks) and 'Weekly' not in tasks
+    assert tasks['My weekly job']['artifact_groups'][-1]['items'] == ['Weekly NetCheck (Word)']
+    assert complete_reports.get_favourite(core.repository, weekly['id'])['definition'] == weekly['definition']
+    page = (core.PROJECT_ROOT / 'src/web_interface/templates/report_jobs.html').read_text(encoding='utf-8')
+    assert 'id="cr-rename"' in page
+
+
+def test_reporting_jobs_keep_the_order_they_are_dragged_to(client):
+    login(client)
+    names = [task['name'] for task in report_tasks.list_tasks(core.repository)]
+    created = [client.post('/api/reporting/tasks', json={'name': name, 'schedule': {'mode': 'manual'},
+                                                         'definition': {'scoring': [SCORING_ENTRY]}}).json()['task']['id']
+               for name in ('Zulu', 'Alpha')]
+    # New jobs go to the end, in the order they are created.
+    assert [task['name'] for task in report_tasks.list_tasks(core.repository)] == [*names, 'Zulu', 'Alpha']
+    response = client.post('/api/reporting/tasks/order', json={'ids': [created[1], created[0]]})
+    assert response.status_code == 200
+    order = [task['name'] for task in report_tasks.list_tasks(core.repository)]
+    assert order == ['Alpha', 'Zulu', *names]
+    # A copy follows its job.
+    client.post(f'/api/reporting/tasks/{created[1]}/duplicate').raise_for_status()
+    assert [task['name'] for task in report_tasks.list_tasks(core.repository)][:3] == ['Alpha', 'Alpha (copy)', 'Zulu']
+    # The order travels with the jobs: an import puts them in their order, before the jobs only this workspace has.
+    exported = json.loads(report_tasks.export_tasks_document(core.repository))
+    assert [item['position'] for item in exported['reporting_jobs']] == list(range(1, len(exported['reporting_jobs']) + 1))
+    client.post('/api/reporting/tasks/order', json={'ids': list(reversed([task['id'] for task in report_tasks.list_tasks(core.repository)]))})
+    client.post('/api/reporting/tasks', json={'name': 'Only here', 'schedule': {'mode': 'manual'}, 'definition': {'scoring': [SCORING_ENTRY]}})
+    core._restore_workspace_reporting_jobs(core.active_workspace, json.dumps(exported).encode(), 'super')
+    assert [task['name'] for task in report_tasks.list_tasks(core.repository)] == [item['name'] for item in exported['reporting_jobs']] + ['Only here']
+    actions = [str(row['action']) for row in core.repository.list_logs(limit=50)] if hasattr(core.repository, 'list_logs') else []
+    if actions:
+        assert 'reorder_reporting_jobs' in actions
+    script = (core.PROJECT_ROOT / 'src/web_interface/static/js/report_jobs.js').read_text(encoding='utf-8')
+    assert "api('/api/reporting/tasks/order', {method: 'POST', body: JSON.stringify({ids})})" in script
+
+
+def test_jobs_saved_before_the_order_keep_their_alphabetical_order(tmp_path):
+    import sqlite3
+
+    class Repository:
+        def __init__(self, path):
+            self.path = path
+
+        def connection(self):
+            connection = sqlite3.connect(self.path)
+            connection.row_factory = sqlite3.Row
+            return _Committing(connection)
+
+    class _Committing:
+        def __init__(self, connection):
+            self.inner = connection
+
+        def __enter__(self):
+            return self.inner
+
+        def __exit__(self, kind, *_args):
+            if kind is None:
+                self.inner.commit()
+            self.inner.close()
+
+    path = tmp_path / 'old.db'
+    with sqlite3.connect(path) as connection:
+        connection.execute("CREATE TABLE report_tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, definition_json TEXT NOT NULL DEFAULT '{}', "
+                           "send_email INTEGER NOT NULL DEFAULT 1, recipients_json TEXT NOT NULL DEFAULT '[]', schedule_json TEXT NOT NULL DEFAULT '{}', "
+                           "enabled INTEGER NOT NULL DEFAULT 1, next_run_at TEXT, last_run_id INTEGER, created_by TEXT NOT NULL, created_at TEXT NOT NULL, "
+                           "updated_at TEXT NOT NULL)")
+        for name in ('Charlie', 'alpha', 'Bravo'):
+            connection.execute("INSERT INTO report_tasks (name, created_by, created_at, updated_at) VALUES (?, 'super', '', '')", (name,))
+    repository = Repository(path)
+    assert [task['name'] for task in report_tasks.list_tasks(repository)] == ['alpha', 'Bravo', 'Charlie']
+    assert [task['position'] for task in report_tasks.list_tasks(repository)] == [1, 2, 3]

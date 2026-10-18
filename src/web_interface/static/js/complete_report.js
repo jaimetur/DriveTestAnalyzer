@@ -503,14 +503,23 @@
     });
     select.value = selected && favourites.some((item) => String(item.id) === String(selected)) ? String(selected) : '';
     $('cr-delete').disabled = !select.value || !crOptions.can_edit;
+    $('cr-rename').disabled = $('cr-delete').disabled;
     $('cr-save').disabled = !crOptions.can_edit;
   }
+  // The Reporting Jobs follow the favourites they generate.
+  const favouritesChanged = () => document.dispatchEvent(new CustomEvent('complete-report:favourites-changed'));
+  const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (character) => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[character]));
+  // The jobs that generate a favourite: those based on it and the others.
+  const jobsOf = async (favourite) => {
+    try { return await api(`/api/reporting/complete-report/favourites/${favourite.id}/jobs`); } catch { return {based_on: [], others: []}; }
+  };
 
   $('cr-favourite').addEventListener('change', () => {
     const favourite = favourites.find((item) => String(item.id) === $('cr-favourite').value);
     definition = clone(favourite ? favourite.definition : crOptions.defaults);
     $('cr-name').value = favourite ? favourite.name : '';
     $('cr-delete').disabled = !favourite || !crOptions.can_edit;
+    $('cr-rename').disabled = $('cr-delete').disabled;
     render();
     changed();
     status(favourite ? `${favourite.name} loaded.` : '');
@@ -541,6 +550,33 @@
       renderFavourites(result.favourite.id);
       changed();
       status(`${result.favourite.name} saved as a favourite.`, 'done');
+      favouritesChanged();
+    } catch (error) {
+      status(error.message, 'error');
+    }
+  });
+
+  // Renaming keeps what the favourite saved (not the changes of the panel); the jobs based on it with its name take
+  // the new one.
+  $('cr-rename').addEventListener('click', async () => {
+    const selected = favourites.find((item) => String(item.id) === $('cr-favourite').value);
+    if (!selected) return;
+    const named = (await jobsOf(selected)).based_on.filter((name) => name.toLocaleLowerCase() === selected.name.toLocaleLowerCase());
+    const note = named.length ? `The Reporting Job${named.length === 1 ? '' : 's'} based on it with its name will take the new one.` : '';
+    const answer = typeof showTextInputDialog === 'function'
+      ? await showTextInputDialog('New name', {title: 'Rename Favourite', value: selected.name, maxLength: 120, confirmLabel: 'Rename', cancelLabel: 'Cancel', note})
+      : window.prompt('New name of the favourite Complete Report', selected.name);
+    const name = String(answer ?? '').trim();
+    if (!name || name === selected.name) return;
+    try {
+      const result = await api(`/api/reporting/complete-report/favourites/${selected.id}/rename`, {method: 'POST', body: JSON.stringify({name})});
+      favourites = result.favourites;
+      renderFavourites(result.favourite.id);
+      $('cr-name').value = result.favourite.name;
+      changed();
+      const jobs = result.renamed_jobs || [];
+      status(`${selected.name} renamed to ${result.favourite.name}.${jobs.length ? ` Reporting Jobs renamed: ${jobs.length}.` : ''}`, 'done');
+      favouritesChanged();
     } catch (error) {
       status(error.message, 'error');
     }
@@ -549,10 +585,14 @@
   $('cr-delete').addEventListener('click', async () => {
     const selected = favourites.find((item) => String(item.id) === $('cr-favourite').value);
     if (!selected) return;
-    const escape = (value) => String(value).replace(/[&<>"']/g, (character) => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[character]));
+    // The jobs based on it are disabled and the others that generate it no longer find it.
+    const jobs = await jobsOf(selected);
+    const list = (names) => `<ul>${names.map((name) => `<li>${escapeHtml(name)}</li>`).join('')}</ul>`;
+    const copy = `<p>Delete the favourite Complete Report <strong>${escapeHtml(selected.name)}</strong>?</p>`
+      + (jobs.based_on.length ? `<p>These Reporting Jobs based on it will be disabled:</p>${list(jobs.based_on)}` : '')
+      + (jobs.others.length ? `<p>These Reporting Jobs also generate it and will tell that it no longer exists:</p>${list(jobs.others)}` : '');
     const confirmed = typeof window.showConfirmDialog === 'function'
-      ? Boolean(await window.showConfirmDialog('', {title: 'Delete Favourite', copyHtml: `<p>Delete the favourite Complete Report <strong>${escape(selected.name)}</strong>?</p>`,
-        confirmLabel: 'Delete', cancelLabel: 'Cancel'}))
+      ? Boolean(await window.showConfirmDialog('', {title: 'Delete Favourite', copyHtml: copy, confirmLabel: 'Delete', cancelLabel: 'Cancel'}))
       : window.confirm(`Delete the favourite Complete Report ${selected.name}?`);
     if (!confirmed) return;
     try {
@@ -561,7 +601,9 @@
       renderFavourites('');
       $('cr-name').value = '';
       changed();
-      status(`${selected.name} deleted.`, 'done');
+      const disabled = result.disabled_jobs || [];
+      status(`${selected.name} deleted.${disabled.length ? ` Reporting Jobs disabled: ${disabled.join(', ')}.` : ''}`, 'done');
+      favouritesChanged();
     } catch (error) {
       status(error.message, 'error');
     }
@@ -946,6 +988,16 @@
   }
 
   root.querySelectorAll('[data-cr-export]').forEach((button) => button.addEventListener('click', () => {
+    // While a report is generated, Generate opens its progress again, with Cancel and Hide (also before the panel and
+    // the progress of a report followed after a reload have arrived).
+    if (isPending(currentJob) && currentJob.id) { openPreview(); return; }
+    if (!currentJob && resumingJob) {
+      jobSeenAt = Date.now();
+      currentJob = {id: resumingJob.id, status: 'running', progress: 0, message: 'Following the report being generated…',
+        title: resumingJob.title || 'Complete Report', warnings: [], formats: {}, outline: []};
+      openPreview();
+      return;
+    }
     if (!definition) { status('The Complete Report is still loading.', 'error'); return; }
     void exportReport();
   }));
@@ -974,6 +1026,7 @@
   dialog.addEventListener('close', updateGenerateButton);
 
   // A report generated before this page opened (in the background, or from another page): its dialog follows it.
+  let resumingJob = null;
   async function resumeJob() {
     const asked = new URLSearchParams(window.location.search).get('complete_report_job');
     if (asked) {
@@ -988,11 +1041,18 @@
     if (!jobId) return;
     // Generate tells at once that a report is being generated, before its progress arrives.
     const label = root.querySelector('[data-cr-export] span');
-    if (label && !asked && !stored?.notified) label.textContent = 'Generating…';
+    if (label && !asked && !stored?.notified && !currentJob) {
+      label.textContent = 'Generating…';
+      resumingJob = {id: jobId, title: stored?.title};
+    }
     try {
       const {job} = await api(`/api/reporting/complete-report/jobs/${jobId}`);
+      resumingJob = null;
+      // Its progress opened meanwhile from Generate: the dialog shows what arrived.
+      const opened = dialog.open && currentJob?.id === job.id;
       currentJob = job;
       jobSeenAt = Date.now();
+      if (opened) { showJob(job); if (isPending(job)) pollTimer = window.setTimeout(() => poll(job.id), 1500); else await finished(job); return; }
       if (asked && job.status === 'ready') { openPreview(); return; }
       // Told on another page and left for later: Open last report opens it.
       if (stored?.notified && !asked) { forgetJob(); updateGenerateButton(); return; }

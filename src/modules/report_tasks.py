@@ -102,7 +102,8 @@ CREATE TABLE IF NOT EXISTS {REPORT_TASKS_TABLE} (
     last_run_id INTEGER,
     created_by TEXT NOT NULL,
     created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
+    updated_at TEXT NOT NULL,
+    position INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS {REPORT_TASK_RUNS_TABLE} (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -134,6 +135,15 @@ def now_local() -> datetime:
 def ensure_report_task_tables(task_repository: Any) -> None:
     with task_repository.connection() as connection:
         connection.executescript(SCHEMA)
+        # The order of the jobs table (dragged by the users); jobs saved before it keep their alphabetical order.
+        if 'position' not in {row[1] for row in connection.execute(f'PRAGMA table_info({REPORT_TASKS_TABLE})')}:
+            try:
+                connection.execute(f'ALTER TABLE {REPORT_TASKS_TABLE} ADD COLUMN position INTEGER NOT NULL DEFAULT 0')
+            except sqlite3.OperationalError:  # Added meanwhile by another request.
+                return
+            ids = [row[0] for row in connection.execute(f'SELECT id FROM {REPORT_TASKS_TABLE} ORDER BY name COLLATE NOCASE, id')]
+            connection.executemany(f'UPDATE {REPORT_TASKS_TABLE} SET position = ? WHERE id = ?',
+                                   [(index, task_id) for index, task_id in enumerate(ids, 1)])
 
 
 # ---------------------------------------------------------------------------
@@ -450,9 +460,10 @@ def _chosen_favourites(definition: dict[str, Any]) -> list[str]:
 
 
 def _favourite_items(config: dict[str, Any], favourite_names: dict[str, str] | None) -> list[str]:
-    """The favourite Complete Reports a Complete Report artifact generates (every one when it chooses none)."""
+    """The favourite Complete Reports a Complete Report artifact generates (every one when it chooses none). One that
+    no longer exists is named as the job keeps it (by its name, or its ID for those deleted before)."""
     chosen = [str(value) for value in ((config.get('options') or {}).get('filters') or {}).get('favourites') or []]
-    return [(favourite_names or {}).get(value, value) for value in chosen] or ['Every favourite']
+    return [(favourite_names or {}).get(value) or (f'Favourite {value}' if value.isdigit() else value) for value in chosen] or ['Every favourite']
 
 
 def artifact_groups(definition: dict[str, Any], dashboard_names: dict[str, str] | None = None,
@@ -461,7 +472,8 @@ def artifact_groups(definition: dict[str, Any], dashboard_names: dict[str, str] 
     """The artifacts of a job by module: [{'module', 'items'}], each item an entry name with its formats.
 
     The jobs table lists a module once and, when it has several entries, its entries indented below it. The Complete
-    Report also has 'contents', one per item: the sections of that favourite with their sub-modules.
+    Report also has 'contents', one per item: the sections of that favourite with their sub-modules, and 'missing',
+    whether that favourite no longer exists (known when ``favourite_names`` is given).
     """
     def formats(values: list[str] | None, default: str = 'powerpoint') -> str:
         return f"({'/'.join(FORMAT_LABELS.get(value, value) for value in values or [default])})"
@@ -486,7 +498,8 @@ def artifact_groups(definition: dict[str, Any], dashboard_names: dict[str, str] 
             chosen = _chosen_favourites(definition)
             items = [f'{name} {formats(config.get("formats"))}' for name in _favourite_items(config, favourite_names)]
             groups.append({'module': provider['label'] if provider else key, 'items': items,
-                           'contents': [(favourite_contents or {}).get(value, []) for value in chosen] or [[]]})
+                           'contents': [(favourite_contents or {}).get(value, []) for value in chosen] or [[]],
+                           'missing': [favourite_names is not None and value not in favourite_names for value in chosen] or [False]})
             continue
         groups.append({'module': provider['label'] if provider else key, 'items': [formats(config.get('formats'))]})
     return groups
@@ -551,6 +564,7 @@ def task_from_row(row: sqlite3.Row) -> dict[str, Any]:
         'next_run_at': row['next_run_at'], 'last_run_id': row['last_run_id'],
         'artifacts': artifact_labels(definition),
         'created_by': str(row['created_by']), 'created_at': str(row['created_at']), 'updated_at': str(row['updated_at']),
+        'position': int(row['position']) if 'position' in row.keys() else 0,
     }
 
 
@@ -569,8 +583,70 @@ def run_from_row(row: sqlite3.Row) -> dict[str, Any]:
 def list_tasks(task_repository: Any) -> list[dict[str, Any]]:
     ensure_report_task_tables(task_repository)
     with task_repository.connection() as connection:
-        rows = connection.execute(f'SELECT * FROM {REPORT_TASKS_TABLE} ORDER BY name COLLATE NOCASE, id').fetchall()
+        rows = connection.execute(f'SELECT * FROM {REPORT_TASKS_TABLE} ORDER BY position, name COLLATE NOCASE, id').fetchall()
     return [task_from_row(row) for row in rows]
+
+
+def reorder_tasks(task_repository: Any, task_ids: list[int]) -> list[dict[str, Any]]:
+    """Put the jobs in the order of ``task_ids``; the jobs it does not name follow in their current order."""
+    ensure_report_task_tables(task_repository)
+    with task_repository.connection() as connection:
+        current = [int(row[0]) for row in connection.execute(f'SELECT id FROM {REPORT_TASKS_TABLE} ORDER BY position, name COLLATE NOCASE, id')]
+        chosen = [task_id for task_id in dict.fromkeys(int(value) for value in task_ids) if task_id in current]
+        order = chosen + [task_id for task_id in current if task_id not in chosen]
+        connection.executemany(f'UPDATE {REPORT_TASKS_TABLE} SET position = ? WHERE id = ?',
+                               [(index, task_id) for index, task_id in enumerate(order, 1)])
+    return list_tasks(task_repository)
+
+
+def favourite_jobs(task_repository: Any, favourite_id: int) -> dict[str, list[str]]:
+    """The names of the jobs based on a favourite Complete Report and of the other jobs that generate it."""
+    value, jobs = str(favourite_id), {'based_on': [], 'others': []}
+    for task in list_tasks(task_repository):
+        if value in _chosen_favourites(task['definition']):
+            jobs['based_on' if based_on_favourite(task['definition']) else 'others'].append(task['name'])
+    return jobs
+
+
+def rename_favourite_jobs(task_repository: Any, favourite_id: int, old_name: str, name: str) -> list[dict[str, Any]]:
+    """A renamed favourite Complete Report renames the jobs based on it that have its former name (a job from a
+    favourite takes its name); returns them: [{'id', 'name', 'old_name'}]."""
+    value, renamed = str(favourite_id), []
+    if old_name == name:
+        return renamed
+    now = now_local().isoformat()
+    for task in list_tasks(task_repository):
+        if (task['name'].casefold() == old_name.casefold() and based_on_favourite(task['definition'])
+                and _chosen_favourites(task['definition']) == [value]):
+            with task_repository.connection() as connection:
+                connection.execute(f'UPDATE {REPORT_TASKS_TABLE} SET name = ?, updated_at = ? WHERE id = ?', (name[:160], now, task['id']))
+            renamed.append({'id': task['id'], 'name': name[:160], 'old_name': task['name']})
+    return renamed
+
+
+def forget_favourite(task_repository: Any, favourite_id: int, name: str) -> list[dict[str, Any]]:
+    """A deleted favourite Complete Report in the jobs that generate it: they name it from now on (the jobs table says
+    it no longer exists, and an empty list would generate every favourite), and those based on it are disabled.
+    Returns those jobs: [{'id', 'name', 'disabled'}]."""
+    value = str(favourite_id)
+    # A name of digits would read as the ID of another favourite: the ID stays.
+    kept = value if str(name).isdigit() else str(name)
+    changed = []
+    now = now_local().isoformat()
+    for task in list_tasks(task_repository):
+        if value not in _chosen_favourites(task['definition']):
+            continue
+        definition = json.loads(json.dumps(task['definition']))
+        filters = definition['modules']['complete_report'].setdefault('options', {}).setdefault('filters', {})
+        filters['favourites'] = list(dict.fromkeys(kept if item == value else item for item in _chosen_favourites(definition)))
+        disabled = based_on_favourite(definition) and task['enabled']
+        with task_repository.connection() as connection:
+            connection.execute(
+                f'UPDATE {REPORT_TASKS_TABLE} SET definition_json = ?, enabled = ?, next_run_at = ?, updated_at = ? WHERE id = ?',
+                (json.dumps(definition, ensure_ascii=False), 0 if disabled else int(task['enabled']),
+                 None if disabled else task['next_run_at'], now, task['id']))
+        changed.append({'id': task['id'], 'name': task['name'], 'disabled': disabled})
+    return changed
 
 
 def get_task(task_repository: Any, task_id: int) -> dict[str, Any] | None:
@@ -608,9 +684,11 @@ def save_task(task_repository: Any, task_id: int | None, payload: dict[str, Any]
     ensure_report_task_tables(task_repository)
     with task_repository.connection() as connection:
         if task_id is None:
+            # A new job goes to the end of the jobs table.
             task_id = int(connection.execute(
                 f'INSERT INTO {REPORT_TASKS_TABLE} (name, definition_json, send_email, recipients_json, schedule_json, enabled, next_run_at, '
-                'created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                f'created_by, created_at, updated_at, position) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '
+                f'(SELECT COALESCE(MAX(position), 0) + 1 FROM {REPORT_TASKS_TABLE}))',
                 (*values, username, now, now),
             ).lastrowid)
         elif connection.execute(
@@ -784,7 +862,9 @@ def export_tasks_document(task_repository: Any) -> bytes:
         'format': 'drivetest-analyzer-reporting-jobs', 'version': 1,
         'dataset_names': {str(dataset_id): names[dataset_id] for dataset_id in sorted(used) if dataset_id in names},
         'favourite_names': {value: favourite_names[value] for value in sorted(chosen) if value in favourite_names},
-        'reporting_jobs': [{key: task[key] for key in ('name', 'definition', 'send_email', 'recipients', 'schedule', 'enabled', 'created_by')} for task in tasks],
+        # In the order of the jobs table, which ``position`` keeps.
+        'reporting_jobs': [{key: task[key] for key in ('name', 'definition', 'send_email', 'recipients', 'schedule', 'enabled', 'created_by', 'position')}
+                           for task in tasks],
     }
     return json.dumps(document, ensure_ascii=False, indent=2).encode('utf-8')
 
@@ -831,8 +911,8 @@ def import_tasks_document(
     from src.modules.complete_reports import list_favourites
     favourite_names = {str(key): str(value) for key, value in (document.get('favourite_names') or {}).items()}
     favourites_here = {item['name'].casefold(): str(item['id']) for item in list_favourites(task_repository)}
-    imported = 0
-    for item in document.get('reporting_jobs') or []:
+    imported, ordered = 0, []
+    for index, item in enumerate(document.get('reporting_jobs') or []):
         if not isinstance(item, dict):
             continue
         schedule = dict(item.get('schedule') or {})
@@ -841,10 +921,16 @@ def import_tasks_document(
         definition = _remap_favourites(_remap_dataset_ids(item.get('definition') or {}, mapping), favourite_names, favourites_here)
         source_owner = str(item.get('created_by') or '').strip()
         owner = source_owner if source_owner and user_exists(source_owner) else username
-        save_task(task_repository, existing.get(str(item.get('name') or '').strip().casefold()),
-                  {**item, 'definition': definition, 'schedule': schedule}, owner,
-                  parse_recipients=parse_recipients, invalid_recipients=invalid_recipients, reassign_owner=True)
+        task = save_task(task_repository, existing.get(str(item.get('name') or '').strip().casefold()),
+                         {**item, 'definition': definition, 'schedule': schedule}, owner,
+                         parse_recipients=parse_recipients, invalid_recipients=invalid_recipients, reassign_owner=True)
+        if isinstance(item.get('position'), int):
+            ordered.append((item['position'], index, task['id']))
         imported += 1
+    if ordered:
+        # The jobs keep the order they had in their workspace, before the jobs only this one has (documents made before
+        # the order leave new jobs at the end).
+        reorder_tasks(task_repository, [task_id for _position, _index, task_id in sorted(ordered)])
     if document.get('complete_reports'):
         # Documents that carried the favourite Complete Reports with the Reporting Jobs: their Dashboards are found here
         # by their name.
@@ -1687,7 +1773,22 @@ def install_report_task_routes(core: Any) -> None:
         schedule = task['schedule'] if task['schedule'].get('mode') != 'once' or next_run_after(task['schedule'], now_local()) else {**task['schedule'], 'mode': 'manual'}
         payload = ReportTaskPayload(name=name, definition=task['definition'], send_email=task['send_email'],
                                     recipients=task['recipients'], schedule=schedule, enabled=False)
-        return save_route(None, payload, user)
+        result = save_route(None, payload, user)
+        # The copy follows the job it copies.
+        order = [item['id'] for item in list_tasks(task_repository) if item['id'] != result['task']['id']]
+        order.insert(order.index(task_id) + 1 if task_id in order else len(order), result['task']['id'])
+        reorder_tasks(task_repository, order)
+        return result
+
+    class OrderPayload(BaseModel):
+        ids: list[int] = Field(default_factory=list)
+
+    @app.post('/api/reporting/tasks/order')
+    def reporting_jobs_order(payload: OrderPayload, user=Depends(editor_user)):
+        task_repository = reporting_repository(user)
+        tasks = reorder_tasks(task_repository, payload.ids)
+        task_repository.try_add_log(user.username, 'reorder_reporting_jobs', json.dumps({'order': [task['name'] for task in tasks]}, ensure_ascii=False))
+        return {'order': [task['id'] for task in tasks]}
 
     @app.delete('/api/reporting/tasks/{task_id}')
     def reporting_jobs_delete(task_id: int, user=Depends(editor_user)):
