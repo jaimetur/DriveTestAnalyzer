@@ -598,6 +598,10 @@ class CompleteReportError(RuntimeError):
     pass
 
 
+class CompleteReportCancelled(CompleteReportError):
+    """The user cancelled the generation: it stops at its next step."""
+
+
 def _section_entries(section: SectionDeck, *, module_cover: bool = False) -> list[Entry]:
     """The slides of a section in the order of its sub-modules: the report cover each module starts with (unless
     ``module_cover``, for the export of the module on its own) and the closing slides left out, each block (after a
@@ -831,56 +835,49 @@ def compose_word(template: Path, powerpoint: bytes, sections: list[SectionDeck],
     # table keeps a legible font on the page.
     base = page_width / ((composer.width - Inches(0.9)) / 914400)
     legible_font = int(compose.LEGIBLE_FONT / base)
-    pages = portrait_covers(powerpoint, covers or [0]) or []
-    plan: list[tuple[str, Any]] = []
-    for position, section in enumerate(sections, start=1):
-        # The export of a module has only the cover of the module.
-        if not module and position < len(pages):
-            plan.append(('cover', PackItem('cover', section.title, image=pages[position])))
-        elif not module:
-            plan.append(('heading1', PackItem('heading1', section.title, list(section.lines))))
-        for component in _components(_section_entries(section)):
-            if component.cover:
-                title, subtitle = compose.title_parts(component.slides[0])
-                plan.append(('heading2', PackItem('heading2', title or 'Section', [line for line in subtitle.split(' · ') if line][:3])))
-                continue
-            for slide in _place_component(composer, component, legible_font):
-                content = compose.content_shapes(slide)
-                shapes = content
-                title_shape = compose.title_shape(slide)
-                if title_shape is not None and title_shape.left is not None:
-                    shapes = [*shapes, title_shape]
-                # Without its title too: on a page after one of the same title and context (the first line under the
-                # title), it does not repeat them.
-                untitled = None
-                if len(shapes) > len(content):
-                    # The shapes beside the title (such as the logos) go with it.
-                    title_bottom = title_shape.top + title_shape.height
-                    untitled = compose.bounds([shape for shape in content if shape.top + shape.height > title_bottom])
-                lines = [' '.join(paragraph.text.split()) for paragraph in title_shape.text_frame.paragraphs
-                         if paragraph.text.strip()] if title_shape is not None else []
-                group = '\n'.join(compose.base_title(line) for line in lines[:2])
-                plan.append(('image', (slide, compose.bounds(shapes), untitled, component.title[0], group)))
-    if not any(kind == 'image' for kind, _item in plan):
-        return None
-    images = slide_images(composer.save(), dpi=WORD_RENDER_DPI)
-    if not images:
-        return None
-    slide_width = composer.width
-    items: list[Any] = []
-    image_index = 0
-    for kind, item in plan:
-        if kind != 'image':
-            items.append(item)
-            continue
-        slide, box, untitled_box, caption, group = item
-        image = images[image_index]
-        image_index += 1
+    # The covers are rendered while the components are placed and rendered, and the images are cropped at once.
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        covers_rendered = pool.submit(portrait_covers, powerpoint, covers or [0])
+        plan: list[tuple[str, Any]] = []
+        for position, section in enumerate(sections, start=1):
+            # The export of a module has only the cover of the module; a section has its cover (or, without the
+            # covers, a heading) once they are rendered.
+            if not module:
+                plan.append(('section', (position, section)))
+            for component in _components(_section_entries(section)):
+                if component.cover:
+                    title, subtitle = compose.title_parts(component.slides[0])
+                    plan.append(('heading2', PackItem('heading2', title or 'Section', [line for line in subtitle.split(' · ') if line][:3])))
+                    continue
+                for slide in _place_component(composer, component, legible_font):
+                    content = compose.content_shapes(slide)
+                    shapes = content
+                    title_shape = compose.title_shape(slide)
+                    if title_shape is not None and title_shape.left is not None:
+                        shapes = [*shapes, title_shape]
+                    # Without its title too: on a page after one of the same title and context (the first line under
+                    # the title), it does not repeat them.
+                    untitled = None
+                    if len(shapes) > len(content):
+                        # The shapes beside the title (such as the logos) go with it.
+                        title_bottom = title_shape.top + title_shape.height
+                        untitled = compose.bounds([shape for shape in content if shape.top + shape.height > title_bottom])
+                    lines = [' '.join(paragraph.text.split()) for paragraph in title_shape.text_frame.paragraphs
+                             if paragraph.text.strip()] if title_shape is not None else []
+                    group = '\n'.join(compose.base_title(line) for line in lines[:2])
+                    plan.append(('image', (compose.bounds(shapes), untitled, component.title[0], group)))
+        if not any(kind == 'image' for kind, _item in plan):
+            return None
+        images = slide_images(composer.save(), dpi=WORD_RENDER_DPI)
+        if not images:
+            return None
+        slide_width, slide_height = composer.width, composer.height
 
-        def cropped_image(box: tuple[int, int, int, int] | None) -> tuple[bytes, float, float]:
+        def cropped_image(image: bytes, box: tuple[int, int, int, int] | None) -> tuple[bytes, float, float]:
             share = None
             if box is not None:
-                share = (box[0] / slide_width, box[1] / composer.height, box[2] / slide_width, box[3] / composer.height)
+                share = (box[0] / slide_width, box[1] / slide_height, box[2] / slide_width, box[3] / slide_height)
             cropped, _width_px, _height_px = crop_to_content(image, share)
             # The blank bands inside a component (such as the space above its footnote) shrink too.
             cropped = compact_slide_image(cropped)
@@ -891,10 +888,27 @@ def compose_word(template: Path, powerpoint: bytes, sections: list[SectionDeck],
                 width, height = page_width, height * page_width / width
             return cropped, width, height
 
-        cropped, width, height = cropped_image(box)
-        untitled, untitled_width, untitled_height = cropped_image(untitled_box) if untitled_box is not None else (b'', 0.0, 0.0)
-        items.append(PackItem('image', caption, image=cropped, width=width, height=height, group=group, untitled=untitled,
-                              untitled_width=untitled_width, untitled_height=untitled_height))
+        def image_item(image: bytes, entry: tuple[Any, ...]) -> PackItem:
+            box, untitled_box, caption, group = entry
+            cropped, width, height = cropped_image(image, box)
+            untitled, untitled_width, untitled_height = (cropped_image(image, untitled_box) if untitled_box is not None
+                                                         else (b'', 0.0, 0.0))
+            return PackItem('image', caption, image=cropped, width=width, height=height, group=group, untitled=untitled,
+                            untitled_width=untitled_width, untitled_height=untitled_height)
+
+        entries = [item for kind, item in plan if kind == 'image']
+        image_items = iter(list(pool.map(image_item, images, entries)))
+        pages = covers_rendered.result() or []
+    items: list[Any] = []
+    for kind, item in plan:
+        if kind == 'image':
+            items.append(next(image_items))
+        elif kind == 'section':
+            position, section = item
+            items.append(PackItem('cover', section.title, image=pages[position]) if position < len(pages)
+                         else PackItem('heading1', section.title, list(section.lines)))
+        else:
+            items.append(item)
     page_items: list[list[Any]] = []
     cover = [PackItem('cover', 'Cover', image=pages[0])] if pages else []
     document = packed_component_document([*cover, *items], None, page_items)
@@ -1344,7 +1358,8 @@ def store_preview(root: Path | None, key: str | None, suffix: str, pdf: bytes | 
 def build_report(core: Any, repository: Any, user: Any, definition: dict[str, Any], export_format: str, folder: Path, *,
                  name: str = '', section_titles: dict[str, str] | None = None,
                  progress: Callable[[int, str], None] = lambda _percent, _message: None,
-                 cache_root: Path | None = None, reuse: bool = True) -> BuildResult:
+                 cache_root: Path | None = None, reuse: bool = True,
+                 on_powerpoint: Callable[[bytes, str | None, bool], None] | None = None) -> BuildResult:
     """Generate every chosen section with its module and compose the PowerPoint (and the Word version).
 
     With ``cache_root``, each generated section is kept there and used again by the next exports while its identity
@@ -1413,6 +1428,9 @@ def build_report(core: Any, repository: Any, user: Any, definition: dict[str, An
                                                          datetime.now().strftime('Generated %Y-%m-%d %H:%M'))
         if key:
             _store_document(cache_root, key, powerpoint, outline, powerpoint_navigation(outline, titles), covers)
+    if on_powerpoint is not None:
+        # The PowerPoint is ready (for example to render its preview while the Word pages are packed).
+        on_powerpoint(powerpoint, key, document is not None)
     word = None
     navigation = slides_navigation = powerpoint_navigation(outline, titles)
     reused_document = document is not None
@@ -1453,13 +1471,17 @@ _jobs_lock = Lock()
 
 
 def _public(job: dict[str, Any]) -> dict[str, Any]:
-    return {key: job[key] for key in ('id', 'status', 'progress', 'message', 'formats', 'warnings', 'outline', 'created_at',
-                                      'finished_at', 'title', 'error', 'reused', 'document_reused')}
+    # The processing time so far (or until it finished), in seconds.
+    elapsed = round((job.get('ended') or time.time()) - job.get('started', time.time()))
+    return {**{key: job[key] for key in ('id', 'status', 'progress', 'message', 'formats', 'warnings', 'outline', 'created_at',
+                                         'finished_at', 'title', 'error', 'reused', 'document_reused')},
+            'elapsed_seconds': max(0, elapsed)}
 
 
 def _forget_old_jobs(root: Path) -> None:
     with _jobs_lock:
-        finished = sorted((job for job in _jobs.values() if job['status'] in {'ready', 'failed'}), key=lambda job: job['created_at'])
+        finished = sorted((job for job in _jobs.values() if job['status'] in {'ready', 'failed', 'cancelled'}),
+                          key=lambda job: job['created_at'])
         for job in finished[:-JOBS_KEPT] if len(finished) > JOBS_KEPT else []:
             _jobs.pop(job['id'], None)
             shutil.rmtree(job['folder'], ignore_errors=True)
@@ -1591,47 +1613,64 @@ def install_complete_report_routes(core: Any) -> None:
     def run_job(job: dict[str, Any], repository, user, definition: dict[str, Any], titles: dict[str, str], reuse: bool = True) -> None:
         def progress(percent: int, message: str) -> None:
             with _jobs_lock:
+                if job.get('cancelled'):
+                    raise CompleteReportCancelled('Cancelled.')
                 job.update(progress=max(job['progress'], min(99, percent)), message=message)
 
         try:
             with _jobs_lock:
                 job.update(status='running', progress=2, message='Starting')
             # Both formats and their previews are ready before the preview opens, so switching between them is
-            # immediate.
-            result = build_report(core, repository, user, definition, 'word', job['folder'], name=job['title'],
-                                  section_titles=titles, progress=progress, cache_root=output_root() / SECTION_CACHE_FOLDER,
-                                  reuse=reuse)
-            stem = compose_file_stem(job['title'])
+            # immediate. The PowerPoint preview is rendered while the Word pages are packed.
             cache_root = output_root() / SECTION_CACHE_FOLDER
-            formats: dict[str, dict[str, Any]] = {}
-            paths: dict[str, str] = {}
+            from concurrent.futures import ThreadPoolExecutor
             from src.modules.pptx_to_docx import document_pdf, pdf_page_images
-            for export_format, content, navigation, percent in (('powerpoint', result.powerpoint, result.slides_navigation, 94),
-                                                                ('word', result.word, result.navigation, 97)):
+
+            def preview(export_format: str, content: bytes, key: str | None, reused: bool) -> tuple[bytes | None, list[bytes]]:
                 suffix = FORMAT_SUFFIXES[export_format]
-                path = job['folder'] / f'{stem}.{suffix}'
-                path.write_bytes(content)
                 # A document an earlier export composed has its preview too.
-                kept = cached_preview(cache_root, result.document_key, suffix) if result.document_reused else None
+                kept = cached_preview(cache_root, key, suffix) if reused else None
                 if kept is not None:
-                    progress(percent, f'Using the {FORMAT_LABELS[export_format]} preview of the earlier export')
-                    pdf, pages = kept
-                else:
+                    return kept
+                pdf = document_pdf(content, suffix)
+                pages = pdf_page_images(pdf, PREVIEW_DPI[suffix]) if pdf else []
+                store_preview(cache_root, key, suffix, pdf, pages)
+                return pdf, pages
+
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                previews: dict[str, Any] = {}
+
+                def powerpoint_ready(content: bytes, key: str | None, reused: bool) -> None:
+                    previews['powerpoint'] = pool.submit(preview, 'powerpoint', content, key, reused)
+
+                result = build_report(core, repository, user, definition, 'word', job['folder'], name=job['title'],
+                                      section_titles=titles, progress=progress, cache_root=cache_root, reuse=reuse,
+                                      on_powerpoint=powerpoint_ready)
+                stem = compose_file_stem(job['title'])
+                formats: dict[str, dict[str, Any]] = {}
+                paths: dict[str, str] = {}
+                for export_format, content, navigation, percent in (('powerpoint', result.powerpoint, result.slides_navigation, 94),
+                                                                    ('word', result.word, result.navigation, 97)):
+                    suffix = FORMAT_SUFFIXES[export_format]
+                    path = job['folder'] / f'{stem}.{suffix}'
+                    path.write_bytes(content)
                     progress(percent, f'Preparing the {FORMAT_LABELS[export_format]} preview')
-                    pdf = document_pdf(content, suffix)
-                    pages = pdf_page_images(pdf, PREVIEW_DPI[suffix]) if pdf else []
-                    store_preview(cache_root, result.document_key, suffix, pdf, pages)
-                if pdf:
-                    # Kept to render a page large when it is opened in the preview; the first one is ready at once.
-                    (job['folder'] / f'preview-{suffix}.pdf').write_bytes(pdf)
-                    for image in pdf_page_images(pdf, LARGE_PREVIEW_DPI[suffix], [0]):
-                        (job['folder'] / f'preview-large-{suffix}-0.png').write_bytes(image)
-                for index, image in enumerate(pages):
-                    (job['folder'] / f'preview-{suffix}-{index}.png').write_bytes(image)
-                formats[export_format] = {'file_name': path.name, 'previews': len(pages), 'navigation': navigation}
-                paths[export_format] = str(path)
+                    future = previews.get(export_format)
+                    pdf, pages = future.result() if future is not None else preview(
+                        export_format, content, result.document_key, result.document_reused)
+                    if pdf:
+                        # Kept to render a page large when it is opened in the preview; the first one is ready at once.
+                        (job['folder'] / f'preview-{suffix}.pdf').write_bytes(pdf)
+                        for image in pdf_page_images(pdf, LARGE_PREVIEW_DPI[suffix], [0]):
+                            (job['folder'] / f'preview-large-{suffix}-0.png').write_bytes(image)
+                    for index, image in enumerate(pages):
+                        (job['folder'] / f'preview-{suffix}-{index}.png').write_bytes(image)
+                    formats[export_format] = {'file_name': path.name, 'previews': len(pages), 'navigation': navigation}
+                    paths[export_format] = str(path)
             with _jobs_lock:
-                job.update(status='ready', progress=100, message='Ready', formats=formats, paths=paths,
+                if job.get('cancelled'):
+                    raise CompleteReportCancelled('Cancelled.')
+                job.update(status='ready', progress=100, message='Ready', formats=formats, paths=paths, ended=time.time(),
                            warnings=result.warnings, outline=result.outline,
                            reused=[titles.get(key, SECTION_TITLES[key]) for key in result.reused],
                            document_reused=result.document_reused,
@@ -1639,11 +1678,17 @@ def install_complete_report_routes(core: Any) -> None:
             log(repository, user, 'complete_report_generated', {
                 'job': job['id'], 'title': job['title'], 'file_names': [item['file_name'] for item in formats.values()],
                 'slides': len(result.outline), 'pages': formats['word']['previews'], 'warnings': result.warnings,
-                'reused_sections': result.reused})
+                'reused_sections': result.reused, 'seconds': _public(job)['elapsed_seconds']})
+        except CompleteReportCancelled:
+            # The cancellation is recorded when the user asks for it; what was generated is left out.
+            return
         except Exception as exc:  # noqa: BLE001 - every failure is reported to the dialog and to App Events.
+            if job.get('cancelled'):
+                return
             message = str(getattr(exc, 'detail', exc)) or exc.__class__.__name__
             with _jobs_lock:
-                job.update(status='failed', message=message, error=message, finished_at=datetime.now().isoformat(timespec='seconds'))
+                job.update(status='failed', message=message, error=message, ended=time.time(),
+                           finished_at=datetime.now().isoformat(timespec='seconds'))
             log(repository, user, 'complete_report_failed', {'job': job['id'], 'title': job['title'], 'error': message})
 
     @app.post('/api/reporting/complete-report/jobs')
@@ -1663,7 +1708,8 @@ def install_complete_report_routes(core: Any) -> None:
         job = {'id': job_id, 'status': 'queued', 'progress': 0, 'message': 'Queued', 'formats': {}, 'paths': {},
                'warnings': [], 'outline': [], 'created_at': datetime.now().isoformat(timespec='seconds'),
                'finished_at': '', 'title': title, 'error': '', 'reused': [], 'document_reused': False, 'folder': folder,
-               'username': user.username, 'workspace_id': core.active_workspace.id}
+               'username': user.username, 'workspace_id': core.active_workspace.id, 'started': time.time(), 'ended': None,
+               'cancelled': False}
         with _jobs_lock:
             _jobs[job_id] = job
         log(repository, user, 'complete_report_requested', {'job': job_id, 'title': title, 'formats': list(FORMATS),
@@ -1679,6 +1725,20 @@ def install_complete_report_routes(core: Any) -> None:
         if job is None or (job['username'] != user.username and user.role != 'super-admin'):
             raise HTTPException(404, 'The Complete Report is no longer available; export it again.')
         return job
+
+    @app.post('/api/reporting/complete-report/jobs/{job_id}/cancel')
+    def complete_report_job_cancel(job_id: str, user=Depends(reporting_user)):
+        """Cancel a generation: it stops at its next step and what it generated is left out."""
+        job = job_or_404(job_id, user)
+        with _jobs_lock:
+            if job['status'] in {'queued', 'running'}:
+                job.update(cancelled=True, status='cancelled', message='Cancelled', ended=time.time(),
+                           finished_at=datetime.now().isoformat(timespec='seconds'))
+            public = _public(job)
+        if public['status'] == 'cancelled':
+            log(repository_for(user), user, 'complete_report_cancelled', {'job': job_id, 'title': job['title'],
+                                                                          'seconds': public['elapsed_seconds']})
+        return {'job': public}
 
     @app.get('/api/reporting/complete-report/jobs/{job_id}')
     def complete_report_job(job_id: str, user=Depends(reporting_user)):

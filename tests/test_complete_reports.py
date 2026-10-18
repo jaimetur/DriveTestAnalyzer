@@ -1,4 +1,5 @@
 import json
+import time
 import zipfile
 from collections import Counter
 from io import BytesIO
@@ -512,6 +513,81 @@ def test_previews_on_linux_use_installed_fonts_instead_of_missing_ones(monkeypat
     # The Docker image installs LibreOffice Writer too, which renders the previews of the Word documents.
     dockerfile = (core.PROJECT_ROOT / 'docker/dockerfile').read_text(encoding='utf-8')
     assert 'libreoffice-impress-nogui' in dockerfile and 'libreoffice-writer-nogui' in dockerfile
+
+
+def test_long_decks_are_converted_by_several_libreoffice_runs_at_once(monkeypatch):
+    import pymupdf
+    from pptx import Presentation as NewPresentation
+    from src.modules import pptx_to_docx
+
+    presentation = NewPresentation()
+    for number in range(20):
+        slide = presentation.slides.add_slide(presentation.slide_layouts[6])
+        slide.shapes.add_textbox(0, 0, 914400, 914400).text_frame.text = f'Slide {number + 1}'
+    output = BytesIO()
+    presentation.save(output)
+    runs = []
+
+    def convert(soffice, content, suffix, slides):
+        # Each run gets consecutive slides and a time limit that grows with them.
+        deck = NewPresentation(BytesIO(content))
+        texts = [slide.shapes[0].text_frame.text for slide in deck.slides]
+        runs.append((texts, slides))
+        with pymupdf.open() as document:
+            for text in texts:
+                document.new_page().insert_text((72, 72), text)
+            return document.tobytes()
+
+    monkeypatch.setattr(pptx_to_docx, '_soffice', lambda: '/usr/bin/soffice')
+    monkeypatch.setattr(pptx_to_docx, '_convert_to_pdf', convert)
+    monkeypatch.setattr(pptx_to_docx, 'libreoffice_workers', lambda: 3)
+    pdf = pptx_to_docx.document_pdf(output.getvalue(), 'pptx')
+    assert len(runs) == 3 and all(slides == len(texts) for texts, slides in runs)
+    with pymupdf.open(stream=pdf, filetype='pdf') as document:
+        # The PDFs of the runs are joined in the order of the deck.
+        assert [document[index].get_text().strip() for index in range(document.page_count)] == [f'Slide {n + 1}' for n in range(20)]
+    # More processors than runs of six slides: the runs keep six slides at least.
+    runs.clear()
+    monkeypatch.setattr(pptx_to_docx, 'libreoffice_workers', lambda: 8)
+    pptx_to_docx.document_pdf(output.getvalue(), 'pptx')
+    assert len(runs) == 3  # Twenty slides give three runs of at least six.
+    # The number of runs at once can be set for the machine.
+    monkeypatch.undo()
+    monkeypatch.setenv('DRIVETEST_ANALYZER_LIBREOFFICE_WORKERS', '2')
+    assert pptx_to_docx.libreoffice_workers() == 2
+
+
+def test_a_report_being_generated_can_be_cancelled_and_tells_its_processing_time(client, monkeypatch):
+    login(client)
+    started = __import__('threading').Event()
+    release = __import__('threading').Event()
+
+    def slow_build(*args, progress=lambda *_: None, **kwargs):
+        started.set()
+        release.wait(5)
+        progress(50, 'Composing the PowerPoint')
+        raise AssertionError('A cancelled report goes no further.')
+
+    monkeypatch.setattr(complete_reports, 'build_report', slow_build)
+    definition = complete_reports.normalize_definition({})
+    job = client.post('/api/reporting/complete-report/jobs', json={'definition': definition}).json()['job']
+    assert job['elapsed_seconds'] >= 0
+    assert started.wait(5)
+    cancelled = client.post(f"/api/reporting/complete-report/jobs/{job['id']}/cancel").json()['job']
+    assert cancelled['status'] == 'cancelled'
+    release.set()
+    time.sleep(0.3)
+    # The generation stops at its next step and does not change the job any more.
+    assert client.get(f"/api/reporting/complete-report/jobs/{job['id']}").json()['job']['status'] == 'cancelled'
+    assert 'complete_report_cancelled' in [row['action'] for row in core.repository.list_logs(limit=20)]
+    page = (core.PROJECT_ROOT / 'src/web_interface/templates/report_jobs.html').read_text(encoding='utf-8')
+    # While it runs, the dialog offers Cancel and Hide (it keeps being generated) and shows its processing time.
+    assert all(f'id="{name}"' in page for name in ('cr-dialog-cancel', 'cr-dialog-hide', 'cr-dialog-done', 'cr-dialog-elapsed', 'cr-open-last'))
+    script = (core.PROJECT_ROOT / 'src/web_interface/static/js/complete_report.js').read_text(encoding='utf-8')
+    assert "title: 'Complete Report Ready'" in script and 'Processed in ${duration(job.elapsed_seconds)}' in script
+    # Every page tells when a report hidden in Reporting is ready.
+    app_script = (core.PROJECT_ROOT / 'src/web_interface/static/js/app.js').read_text(encoding='utf-8')
+    assert "(function watchCompleteReport()" in app_script and '/reporting?complete_report_job=' in app_script
 
 
 def test_one_action_generates_both_formats_and_the_preview_chooses_one():

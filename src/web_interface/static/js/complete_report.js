@@ -583,9 +583,12 @@
   }
 
   function showJob(job) {
+    const wasReady = currentJob?.id === job.id && currentJob?.status === 'ready';
     currentJob = job;
+    jobSeenAt = Date.now();
     const ready = job.status === 'ready';
     const failed = job.status === 'failed';
+    const pending = isPending(job);
     $('cr-dialog-title').textContent = job.title || 'Complete Report';
     $('cr-dialog-format').textContent = ready ? formatLabel(previewFormat) : 'PowerPoint and Word';
     $('cr-dialog-progress').hidden = ready;
@@ -594,6 +597,14 @@
     bar.parentElement.setAttribute('aria-valuenow', String(job.progress || 0));
     $('cr-dialog-message').textContent = failed ? job.error || job.message : job.message || '';
     $('cr-dialog-message').dataset.tone = failed ? 'error' : '';
+    // While it runs the report can be cancelled or hidden; finished, the dialog closes.
+    $('cr-dialog-cancel').hidden = !pending;
+    $('cr-dialog-hide').hidden = !pending;
+    $('cr-dialog-done').hidden = pending;
+    $('cr-dialog-close').setAttribute('aria-label', pending ? 'Hide the progress' : 'Close the preview');
+    updateElapsed();
+    updateGenerateButton();
+    if (wasReady) return;
     const warnings = $('cr-warnings');
     warnings.replaceChildren(...(job.warnings || []).map((warning) => node('li', warning)));
     warnings.hidden = !(job.warnings || []).length;
@@ -614,7 +625,7 @@
     const reused = (job.reused || []).length ? ` Reused from an earlier export (their data has not changed): ${job.reused.join(', ')}`
       + `${job.document_reused ? ', and the documents composed from them' : ''}.` : '';
     $('cr-dialog-summary').hidden = false;
-    $('cr-dialog-summary').textContent = `${count} ${unit}${count === 1 ? '' : 's'} · Choose a section or ${unit} on the left to check it before downloading.${reused}${pages ? '' : ' The preview needs LibreOffice: the list shows the title of each slide.'}`;
+    $('cr-dialog-summary').textContent = `${count} ${unit}${count === 1 ? '' : 's'} · Processed in ${duration(job.elapsed_seconds)} · Choose a section or ${unit} on the left to check it before downloading.${reused}${pages ? '' : ' The preview needs LibreOffice: the list shows the title of each slide.'}`;
     $('cr-dialog-format').textContent = formatLabel(previewFormat);
     const download = $('cr-download');
     download.hidden = false;
@@ -835,18 +846,84 @@
   }));
   window.addEventListener('resize', () => { if (dialog.open && dialog.classList.contains('is-previewing')) fitView(); });
 
+  // The report keeps being generated when its dialog is hidden: a dialog tells when it is ready, here or (see app.js)
+  // on any other page, where the job is remembered in this browser.
+  const JOB_KEY = 'drivetest.completeReport.job';
+  let jobSeenAt = 0;
+  let elapsedTimer = null;
+  const isPending = (job) => ['queued', 'running'].includes(job?.status);
+  const rememberJob = (job) => { try { localStorage.setItem(JOB_KEY, JSON.stringify({id: job.id, title: job.title})); } catch {} };
+  const forgetJob = () => { try { localStorage.removeItem(JOB_KEY); } catch {} };
+  const elapsedNow = (job) => (job?.elapsed_seconds || 0) + (isPending(job) ? Math.round((Date.now() - jobSeenAt) / 1000) : 0);
+  const clock = (seconds) => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+  const duration = (seconds = 0) => (seconds >= 60 ? `${Math.floor(seconds / 60)} min ${String(seconds % 60).padStart(2, '0')} s` : `${seconds} s`);
+  function updateElapsed() {
+    const job = currentJob;
+    $('cr-dialog-elapsed').textContent = !job ? '' : isPending(job) ? `Processing time: ${clock(elapsedNow(job))}`
+      : job.status === 'failed' || job.status === 'cancelled' ? `Processing time: ${duration(job.elapsed_seconds)}` : '';
+    if (isPending(job) && !elapsedTimer) elapsedTimer = window.setInterval(() => { updateElapsed(); updateGenerateButton(); }, 1000);
+    if (!isPending(job) && elapsedTimer) { window.clearInterval(elapsedTimer); elapsedTimer = null; }
+  }
+  // While a report is generated in the background, Generate shows its progress and opens its dialog.
+  function updateGenerateButton() {
+    const button = root.querySelector('[data-cr-export]');
+    const label = button?.querySelector('span');
+    if (!label) return;
+    const pending = isPending(currentJob) && Boolean(currentJob.id);
+    label.textContent = pending ? `Generating · ${currentJob.progress || 0}% · ${clock(elapsedNow(currentJob))}` : 'Generate';
+    button.classList.toggle('is-generating', pending);
+    $('cr-open-last').hidden = pending || currentJob?.status !== 'ready' || dialog.open;
+  }
+  function openPreview() {
+    if (!dialog.open) dialog.showModal();
+    const job = currentJob;
+    currentJob = null;
+    $('cr-preview').hidden = true;
+    showJob(job);
+    if (job.status === 'ready') forgetJob();
+  }
+  async function finished(job) {
+    if (dialog.open) {
+      if (job.status !== 'queued' && job.status !== 'running') forgetJob();
+      return;
+    }
+    if (job.status === 'ready') {
+      const escape = (value) => String(value).replace(/[&<>"']/g, (character) => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[character]));
+      const open = typeof window.showConfirmDialog === 'function'
+        ? Boolean(await window.showConfirmDialog('', {title: 'Complete Report Ready', copyHtml: `<p><strong>${escape(job.title)}</strong> is ready in PowerPoint and Word (processed in ${duration(job.elapsed_seconds)}).</p><p>Open its preview to check it and download it?</p>`,
+          confirmLabel: 'Open preview', cancelLabel: 'Later'}))
+        : window.confirm(`${job.title} is ready. Open its preview?`);
+      forgetJob();
+      if (open) openPreview();
+      else updateGenerateButton();
+    } else if (job.status === 'failed') {
+      forgetJob();
+      if (typeof window.showInfoDialog === 'function') window.showInfoDialog(job.error || job.message, {title: 'Complete Report Failed', tone: 'error'});
+      else status(job.error || job.message, 'error');
+    } else {
+      forgetJob();
+    }
+  }
+
   async function poll(jobId) {
     try {
       const result = await api(`/api/reporting/complete-report/jobs/${jobId}`);
-      showJob(result.job);
-      if (!['ready', 'failed'].includes(result.job.status) && dialog.open) pollTimer = window.setTimeout(() => poll(jobId), 1500);
+      if (currentJob && currentJob.id && currentJob.id !== jobId) return;
+      const before = currentJob?.status;
+      if (!dialog.open && result.job.status === 'ready') currentJob = result.job;
+      else showJob(result.job);
+      if (isPending(result.job)) pollTimer = window.setTimeout(() => poll(jobId), 1500);
+      else if (before !== result.job.status || !dialog.open) { currentJob = result.job; updateElapsed(); await finished(result.job); }
     } catch (error) {
+      if (/no longer available/i.test(error.message)) { forgetJob(); currentJob = null; updateGenerateButton(); return; }
       $('cr-dialog-message').textContent = error.message;
+      pollTimer = window.setTimeout(() => poll(jobId), 5000);
     }
   }
 
   // The report is generated in PowerPoint and in Word, with both previews, before the preview opens.
   async function exportReport() {
+    if (isPending(currentJob) && currentJob.id) { openPreview(); return; }
     stopPolling();
     $('cr-preview').hidden = true;
     $('cr-preview-nav').replaceChildren();
@@ -860,6 +937,7 @@
         definition: collect(), name: $('cr-name').value.trim(), refresh: !$('cr-reuse').checked,
       })});
       showJob(result.job);
+      rememberJob(result.job);
       pollTimer = window.setTimeout(() => poll(result.job.id), 1000);
     } catch (error) {
       showJob({id: '', status: 'failed', progress: 0, message: error.message, error: error.message, title: 'Complete Report',
@@ -872,10 +950,55 @@
     void exportReport();
   }));
   $('cr-format-switch').querySelectorAll('[data-cr-format]').forEach((button) => button.addEventListener('click', () => switchFormat(button.dataset.crFormat)));
-  const closeDialog = () => { stopPolling(); dialog.close(); };
-  $('cr-dialog-close').addEventListener('click', closeDialog);
-  $('cr-dialog-cancel').addEventListener('click', closeDialog);
-  dialog.addEventListener('close', stopPolling);
+  // Hide keeps the report being generated; Cancel stops it; once it has finished, the dialog closes.
+  const hideDialog = () => { dialog.close(); updateGenerateButton(); };
+  async function cancelJob() {
+    const job = currentJob;
+    stopPolling();
+    forgetJob();
+    if (job?.id) {
+      try { showJob((await api(`/api/reporting/complete-report/jobs/${job.id}/cancel`, {method: 'POST'})).job); } catch {}
+    }
+    currentJob = null;
+    dialog.close();
+    updateGenerateButton();
+    status('The Complete Report was cancelled.');
+  }
+  $('cr-dialog-close').addEventListener('click', () => (isPending(currentJob) ? hideDialog() : dialog.close()));
+  $('cr-dialog-hide').addEventListener('click', hideDialog);
+  $('cr-dialog-cancel').addEventListener('click', () => { void cancelJob(); });
+  $('cr-dialog-done').addEventListener('click', () => dialog.close());
+  $('cr-open-last').addEventListener('click', () => { if (currentJob?.status === 'ready') openPreview(); });
+  // Escape hides a report being generated, as Hide does.
+  dialog.addEventListener('cancel', (event) => { if (isPending(currentJob)) { event.preventDefault(); hideDialog(); } });
+  dialog.addEventListener('close', updateGenerateButton);
+
+  // A report generated before this page opened (in the background, or from another page): its dialog follows it.
+  async function resumeJob() {
+    const asked = new URLSearchParams(window.location.search).get('complete_report_job');
+    if (asked) {
+      // Opened once: reloading the page does not open it again.
+      const url = new URL(window.location.href);
+      url.searchParams.delete('complete_report_job');
+      window.history.replaceState(window.history.state, '', url);
+    }
+    let stored = null;
+    try { stored = JSON.parse(localStorage.getItem(JOB_KEY) || 'null'); } catch {}
+    const jobId = asked || stored?.id;
+    if (!jobId) return;
+    try {
+      const {job} = await api(`/api/reporting/complete-report/jobs/${jobId}`);
+      currentJob = job;
+      jobSeenAt = Date.now();
+      if (asked && job.status === 'ready') { openPreview(); return; }
+      // Told on another page and left for later: Open last report opens it.
+      if (stored?.notified && !asked) { forgetJob(); updateGenerateButton(); return; }
+      if (isPending(job)) { updateElapsed(); updateGenerateButton(); pollTimer = window.setTimeout(() => poll(job.id), 1500); return; }
+      await finished(job);
+    } catch {
+      forgetJob();
+    }
+  }
 
   // -- start -------------------------------------------------------------------------------------------
   async function load() {
@@ -894,6 +1017,7 @@
     $('cr-name').value = draft?.name || '';
     render();
     if (options.catalogues_pending) status('The filter values of some CDRs are being prepared in the background; reload the page in a few minutes to see all of them.', 'info');
+    void resumeJob();
   }
 
   // A draft saved by an earlier version gets the sections and options it lacks; the Campaigns it had as a common filter

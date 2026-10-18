@@ -17,7 +17,9 @@ import subprocess
 import sys
 import tempfile
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
+from threading import BoundedSemaphore
 from dataclasses import dataclass, field
 from io import BytesIO
 from pathlib import Path
@@ -236,9 +238,93 @@ def with_installed_fonts(content: bytes) -> bytes:
     return output.getvalue()
 
 
+def libreoffice_workers() -> int:
+    """How many LibreOffice conversions run at once: the processors of the machine, at most 4, or
+    DRIVETEST_ANALYZER_LIBREOFFICE_WORKERS (each one takes a few hundred MB of memory)."""
+    configured = os.environ.get('DRIVETEST_ANALYZER_LIBREOFFICE_WORKERS', '').strip()
+    if configured.isdigit() and int(configured) > 0:
+        return min(8, int(configured))
+    try:
+        processors = len(os.sched_getaffinity(0))
+    except AttributeError:
+        processors = os.cpu_count() or 1
+    return max(1, min(4, processors))
+
+
+# Every LibreOffice conversion of the application waits for one of these (several reports or previews at once share
+# the processors instead of overloading the machine).
+_CONVERSIONS = BoundedSemaphore(libreoffice_workers())
+# A deck is shared among several conversions at once when each gets at least this many slides.
+SLIDES_PER_CONVERSION = 6
+# The time a conversion may take: a fixed part (starting LibreOffice) and a part per slide (or page).
+CONVERSION_TIMEOUT_SECONDS = 180
+CONVERSION_SECONDS_PER_SLIDE = 12
+
+
+def _slide_count(content: bytes) -> int:
+    try:
+        with zipfile.ZipFile(BytesIO(content)) as archive:
+            return sum(1 for name in archive.namelist() if re.fullmatch(r'ppt/slides/slide\d+\.xml', name))
+    except zipfile.BadZipFile:
+        return 0
+
+
+# What a slide costs LibreOffice besides its content, in bytes of slide XML (about a tenth of a second).
+_SLIDE_BASE_WEIGHT = 30000
+
+
+def _deck_parts(content: bytes, parts: int) -> list[bytes]:
+    """The deck split into ``parts`` decks of consecutive slides that take LibreOffice about as long (weighed by the
+    size of their XML and of their charts: a chart of many bars or a large table cost much more than a few shapes),
+    each with only its layouts."""
+    presentation = Presentation(BytesIO(content))
+    weights = [_SLIDE_BASE_WEIGHT + len(slide.part.blob)
+               + sum(len(rel.target_part.blob) for rel in slide.part.rels.values()
+                     if not rel.is_external and rel.reltype.endswith('/chart'))
+               for slide in presentation.slides]
+    total = sum(weights)
+    cumulative = [sum(weights[:end]) for end in range(len(weights) + 1)]
+    bounds = [0]
+    for part in range(1, parts):
+        # Each part ends where the slides before it come closest to its share; every part keeps at least one slide.
+        candidates = range(bounds[-1] + 1, len(weights) - (parts - part) + 1)
+        bounds.append(min(candidates, key=lambda end: abs(cumulative[end] - total * part / parts)))
+    bounds.append(len(weights))
+    decks = []
+    for first, last in zip(bounds, bounds[1:]):
+        part = Presentation(BytesIO(content))
+        slide_ids = part.slides._sldIdLst
+        for position, slide_id in enumerate(list(slide_ids)):
+            if not first <= position < last:
+                part.part.drop_rel(slide_id.rId)
+                slide_ids.remove(slide_id)
+        output = BytesIO()
+        part.save(output)
+        decks.append(without_unused_layouts(output.getvalue()))
+    return decks
+
+
+def _convert_to_pdf(soffice: str, content: bytes, suffix: str, slides: int) -> bytes | None:
+    """One LibreOffice conversion to PDF, or None when it fails or takes too long."""
+    with _CONVERSIONS, tempfile.TemporaryDirectory() as folder:
+        source = Path(folder) / f'report.{suffix}'
+        source.write_bytes(content)
+        # A private profile lets the conversion run while the user (or another conversion) has LibreOffice open.
+        profile = (Path(folder) / 'profile').as_uri()
+        try:
+            subprocess.run([soffice, f'-env:UserInstallation={profile}', '--headless', '--convert-to', 'pdf',
+                            '--outdir', folder, str(source)], check=True, capture_output=True,
+                           timeout=CONVERSION_TIMEOUT_SECONDS + CONVERSION_SECONDS_PER_SLIDE * max(1, slides))
+        except (OSError, subprocess.SubprocessError):
+            return None
+        pdf = Path(folder) / 'report.pdf'
+        return pdf.read_bytes() if pdf.is_file() else None
+
+
 def document_pdf(content: bytes, suffix: str) -> bytes | None:
     """A PowerPoint (``pptx``) or Word (``docx``) document as PDF, converted by LibreOffice, or None when LibreOffice
-    is unavailable."""
+    is unavailable. A long deck is shared among several conversions that run at once (see libreoffice_workers), whose
+    PDFs are joined in order."""
     import importlib.util
 
     soffice = _soffice()
@@ -248,18 +334,22 @@ def document_pdf(content: bytes, suffix: str) -> bytes | None:
     if suffix == 'pptx':
         content = without_unused_layouts(content)
     content = with_installed_fonts(content)
-    with tempfile.TemporaryDirectory() as folder:
-        source = Path(folder) / f'report.{suffix}'
-        source.write_bytes(content)
-        # A private profile lets the conversion run while the user has LibreOffice open.
-        profile = (Path(folder) / 'profile').as_uri()
-        try:
-            subprocess.run([soffice, f'-env:UserInstallation={profile}', '--headless', '--convert-to', 'pdf',
-                            '--outdir', folder, str(source)], check=True, capture_output=True, timeout=300)
-        except (OSError, subprocess.SubprocessError):
-            return None
-        pdf = Path(folder) / 'report.pdf'
-        return pdf.read_bytes() if pdf.is_file() else None
+    slides = _slide_count(content) if suffix == 'pptx' else 0
+    parts = min(libreoffice_workers(), slides // SLIDES_PER_CONVERSION) if suffix == 'pptx' else 1
+    if parts <= 1:
+        return _convert_to_pdf(soffice, content, suffix, slides or 20)
+    decks = _deck_parts(content, parts)
+    with ThreadPoolExecutor(max_workers=len(decks)) as pool:
+        pdfs = list(pool.map(lambda deck: _convert_to_pdf(soffice, deck, suffix, _slide_count(deck)), decks))
+    if any(pdf is None for pdf in pdfs):
+        return None
+    import pymupdf
+
+    with pymupdf.open() as joined:
+        for pdf in pdfs:
+            with pymupdf.open(stream=pdf, filetype='pdf') as part:
+                joined.insert_pdf(part)
+        return joined.tobytes()
 
 
 def pdf_page_images(pdf: bytes, dpi: int, pages: list[int] | None = None) -> list[bytes]:

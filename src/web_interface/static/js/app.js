@@ -12637,3 +12637,43 @@ document.addEventListener('change', async (event) => {
   };
   document.querySelectorAll('select[data-user-select]').forEach(enhance);
 })();
+
+// A Complete Report generated in the background (its dialog hidden in Reporting) tells on every page when it is ready,
+// with a dialog that opens its preview in Reporting; Reporting follows it itself (complete_report.js).
+(function watchCompleteReport() {
+  const key = 'drivetest.completeReport.job';
+  let stored = null;
+  try { stored = JSON.parse(localStorage.getItem(key) || 'null'); } catch {}
+  if (!stored?.id || stored.notified || document.getElementById('cr-dialog')) return;
+  const escape = (value) => String(value ?? '').replace(/[&<>"']/g, (character) => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[character]));
+  const duration = (seconds = 0) => (seconds >= 60 ? `${Math.floor(seconds / 60)} min ${String(seconds % 60).padStart(2, '0')} s` : `${seconds} s`);
+  const forget = () => { try { localStorage.removeItem(key); } catch {} };
+  const check = async () => {
+    let job;
+    try {
+      const response = await fetch(`/api/reporting/complete-report/jobs/${encodeURIComponent(stored.id)}`, {headers: {Accept: 'application/json'}});
+      if ([401, 403, 404].includes(response.status)) { forget(); return; }
+      if (!response.ok) { window.setTimeout(check, 10000); return; }
+      job = (await response.json()).job;
+    } catch {
+      window.setTimeout(check, 10000);
+      return;
+    }
+    if (['queued', 'running'].includes(job.status)) { window.setTimeout(check, 4000); return; }
+    if (job.status === 'ready') {
+      const open = await showConfirmDialog('', {title: 'Complete Report Ready', copyHtml: `<p><strong>${escape(job.title)}</strong> is ready in PowerPoint and Word (processed in ${duration(job.elapsed_seconds)}).</p><p>Open its preview in Reporting to check it and download it?</p>`,
+        confirmLabel: 'Open preview', cancelLabel: 'Later'});
+      // Later, Reporting offers to open it (Open last report).
+      if (open) {
+        forget();
+        window.location.href = `/reporting?complete_report_job=${encodeURIComponent(job.id)}`;
+      } else {
+        try { localStorage.setItem(key, JSON.stringify({...stored, notified: true})); } catch {}
+      }
+      return;
+    }
+    forget();
+    if (job.status === 'failed') showInfoDialog(job.error || job.message || 'The Complete Report could not be generated.', {title: 'Complete Report Failed', tone: 'error'});
+  };
+  window.setTimeout(check, 1500);
+})();

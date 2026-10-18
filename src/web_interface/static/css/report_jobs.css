@@ -396,6 +396,11 @@
 .cr-progress { height: .55rem; border-radius: 999px; background: #e3eee7; overflow: hidden; }
 .cr-progress span { display: block; height: 100%; width: 3%; border-radius: inherit; background: linear-gradient(90deg, #2e8c58, #6ccf96); transition: width .4s ease; }
 .cr-dialog-progress [data-tone="error"] { color: #b42318; font-weight: 700; }
+.cr-dialog-status { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .3rem 1rem; }
+.cr-dialog-status p { margin: 0; }
+.cr-elapsed { font-variant-numeric: tabular-nums; font-weight: 700; }
+.cr-dialog-actions .cr-cancel { color: #b42318; }
+.complete-report-panel [data-cr-export].is-generating { font-variant-numeric: tabular-nums; }
 .cr-warnings { margin: .8rem 1.2rem 0; padding: .6rem .8rem .6rem 1.8rem; border-radius: 10px; background: #fff6dc; color: #6c4a00; font-size: .86rem; }
 .cr-dialog-summary { margin: .8rem 1.2rem 0; }
 .cr-dialog-actions { display: flex; justify-content: flex-end; gap: .6rem; padding: .8rem 1.2rem; border-top: 1px solid var(--line); background: #fff; }
