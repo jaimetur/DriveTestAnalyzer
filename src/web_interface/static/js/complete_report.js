@@ -278,7 +278,7 @@
       environments: environmentBoxes.filter((item) => item.checked).map((item) => item.value),
       kpi_values: kpiValues.box.checked, gap_values: gapValues.box.checked,
       baseline_operator: reference.input.value, methodology: methodology.input.value,
-      compared_operators: compared.getValue?.() || [], theme: reportTheme(),
+      compared_operators: compared.getValue?.() || [],
       area_summary: {enabled: areaEnabled.box.checked, breakdown: breakdown.input.value, time_split: timeSplit.input.value,
         campaigns: trendCampaigns?.getValue?.() || []},
     });
@@ -314,7 +314,7 @@
       coverage_threshold: number(fields[0], -110), interference_threshold: number(fields[1], 0),
       nr_coverage_threshold: number(fields[2], -115), nr_interference_threshold: number(fields[3], -3),
       overshoot_km: number(fields[4], 5), grid_metres: Number(gridSize.input.value) || 250,
-      environments: environments.getValue?.() || [], theme: reportTheme(),
+      environments: environments.getValue?.() || [],
     });
     return box;
   }

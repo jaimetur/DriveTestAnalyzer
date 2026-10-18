@@ -165,14 +165,14 @@ def default_options(section: str) -> dict[str, Any]:
 def _module_options(section: str) -> dict[str, Any]:
     if section == 'scoring':
         return {'scorings': ['best_network'], 'environments': [COMBINED_ENVIRONMENT], 'kpi_values': False, 'gap_values': False,
-                'baseline_operator': 'EE', 'methodology': BY_CAMPAIGN, 'compared_operators': [], 'theme': DEFAULT_THEME,
+                'baseline_operator': 'EE', 'methodology': BY_CAMPAIGN, 'compared_operators': [],
                 # The Scoring Trends: their campaigns (All available campaigns by default; none: those of the section)
                 # and the National & Geographical Areas Trends.
                 'area_summary': {'enabled': True, 'breakdown': 'Region', 'time_split': 'Campaign', 'campaigns': [ALL_CAMPAIGNS]}}
     if section == 'network_insights':
         return {'technology': 'lte', 'group': ['operator', 'campaign'], 'coverage_threshold': -110.0, 'interference_threshold': 0.0,
                 'nr_coverage_threshold': -115.0, 'nr_interference_threshold': -3.0, 'overshoot_km': 5.0, 'grid_metres': 250.0,
-                'environments': [], 'theme': DEFAULT_THEME}
+                'environments': []}
     if section == 'non_qualified_calls':
         return {'granularity': 'week', 'open_only': False, 'include_suggestions': True, 'show_not_classified': False,
                 'show_empty': False}
@@ -199,7 +199,6 @@ def _normalize_options(section: str, raw: Any, legacy_campaigns: Any = None) -> 
             # By campaign (each campaign with its methodology) unless a methodology is chosen.
             'methodology': str(raw.get('methodology') or '').strip()[:120] or BY_CAMPAIGN,
             'compared_operators': _strings(raw.get('compared_operators')),
-            'theme': normalize_theme(raw.get('theme')),
             'area_summary': {'enabled': bool(area.get('enabled', True)),
                              'breakdown': breakdown if breakdown in AREA_SUMMARY_BREAKDOWNS else 'Region',
                              'time_split': time_split if time_split in AREA_SUMMARY_TIME_SPLITS else 'Campaign',
@@ -218,7 +217,6 @@ def _normalize_options(section: str, raw: Any, legacy_campaigns: Any = None) -> 
             'overshoot_km': _number(raw.get('overshoot_km'), 5.0, 0.5, 100),
             'grid_metres': _number(raw.get('grid_metres'), 250.0, 50, 5000),
             'environments': _strings(raw.get('environments')),
-            'theme': normalize_theme(raw.get('theme')),
         })
     elif section == 'non_qualified_calls':
         options.update({
@@ -299,11 +297,12 @@ def normalize_definition(raw: Any) -> dict[str, Any]:
         'items': _normalize_items(key, raw_sections.get(key, {}).get('items')),
         'options': _normalize_options(key, raw_sections.get(key, {}).get('options'), legacy),
     } for key in order]
-    # One colour theme for every section that supports themes (Scoring & GAP Analysis, Network Insights and PPT
-    # Dashboards), chosen beside the title; reports saved before take that of their Scoring section.
-    options = {section['key']: section['options'] for section in definition['sections']}
-    definition['theme'] = normalize_theme(raw.get('theme') or options['scoring']['theme'])
-    options['scoring']['theme'] = options['network_insights']['theme'] = definition['theme']
+    # The one colour theme of the report, read by every section that supports themes (Scoring & GAP Analysis, Network
+    # Insights and PPT Dashboards), chosen beside the title; reports saved before, which kept it in their Scoring and
+    # Network Insights sections, take that of their Scoring section.
+    legacy_theme = (raw_sections.get('scoring', {}).get('options') or {}).get('theme') \
+        if isinstance(raw_sections.get('scoring', {}).get('options'), dict) else None
+    definition['theme'] = normalize_theme(raw.get('theme') or legacy_theme or DEFAULT_THEME)
     return definition
 
 
@@ -1146,7 +1145,7 @@ class SectionGenerator:
             return scenario_options
 
         context_filters = {column: list(self.filters[name]) for name, column in SCORING_FILTERS.items() if self.filters[name]}
-        report = {'theme': options['theme'], 'scenarios': [{
+        report = {'theme': self.definition['theme'], 'scenarios': [{
             'name': report_title(self.definition), 'context_filters': context_filters,
             'main_cities': self.filters['main_cities'], 'aggregation_levels': ['Operator', 'Campaign'],
             'scorings': {kind: content(kind) for kind, _label in SCORINGS},
@@ -1190,7 +1189,7 @@ class SectionGenerator:
         self.progress('Analysing Network Insights')
         try:
             self.core.write_network_insights_summary(selection, 'powerpoint', destination, components=components, compose=False,
-                                                     theme=section['options'].get('theme'))
+                                                     theme=self.definition['theme'])
         except Exception as exc:  # The module reports its own errors (HTTPException included).
             raise CompleteReportError(str(getattr(exc, 'detail', exc))) from exc
         from src.modules.network_insights_export import REPORT_PANELS
@@ -1270,6 +1269,8 @@ def section_fingerprint(core: Any, repository: Any, definition: dict[str, Any], 
     inventory of the analysis or the follow-up of the calls). The same identity means the same document."""
     inputs: dict[str, Any] = {
         'version': SECTION_CACHE_VERSION, 'section': section, 'filters': definition['filters'],
+        # The theme of the report colours every section that supports themes.
+        'theme': definition.get('theme'),
         'datasets': [dict(row) for row in repository.list_datasets()],
         'operators': repository.list_operator_mapping_groups(), 'vendors': repository.list_vendor_mapping_groups(),
         'main_cities': list(repository.list_main_cities()),
@@ -1277,7 +1278,6 @@ def section_fingerprint(core: Any, repository: Any, definition: dict[str, Any], 
     if section['key'] == 'dashboards':
         stored = core.dashboard_reporting.list_dashboards(repository)
         inputs['dashboards'] = {item['key']: stored.get(item['key']) for item in section['items']}
-        inputs['theme'] = definition.get('theme')
     elif section['key'] == 'scoring':
         inputs['methodologies'] = repository.get_scoring_profiles()
     elif section['key'] == 'network_insights':

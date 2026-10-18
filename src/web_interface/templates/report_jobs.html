@@ -128,6 +128,7 @@
         <label class="rj-source-option"><input type="radio" name="rj-source" value="favourite" checked><span><strong>A Complete Report favourite</strong><small>The job generates one favourite Complete Report of the panel above, in PowerPoint and/or Word.</small></span></label>
         <label class="rj-source-option"><input type="radio" name="rj-source" value="editor"><span><strong>Design the artifacts</strong><small>Choose and set up each artifact of the job in this editor.</small></span></label>
       </div>
+      <div class="rj-grid rj-one-row rj-job-theme"><label title="The colours and slide titles of every artifact of the job that supports themes: CDR Analysis, Network Insights, Scoring &amp; GAP Analysis, PPT Dashboards and Complete Reports (it replaces the theme of a Complete Report favourite)">Theme<select id="rj-theme" aria-label="Colour theme of the artifacts of the job"></select></label></div>
       <section class="rj-card rj-favourite-card" id="rj-favourite-card" data-rj-source="favourite">
         <div class="rj-grid rj-one-row" id="rj-favourite-field"></div>
         <div class="rj-formats" id="rj-favourite-formats"></div>
@@ -136,7 +137,6 @@
 
       <h3 data-rj-source="editor">Artifacts</h3>
       <p class="form-note" data-rj-source="editor">Choose an artifact in its tab and check it to include it; unchecked artifacts keep their configuration but are not generated.</p>
-      <div class="rj-grid rj-one-row rj-job-theme" data-rj-source="editor"><label title="The colours and slide titles of every artifact of the job that supports themes: CDR Analysis, Network Insights, Scoring &amp; GAP Analysis, PPT Dashboards and Complete Reports. Each artifact's own theme keeps the theme set in each one.">Theme<select id="rj-theme" aria-label="Colour theme of the artifacts of the job"></select></label></div>
       <div class="rj-artifact-tabs" id="rj-artifact-tabs" role="tablist" aria-label="Artifacts" data-rj-source="editor"></div>
       <section class="rj-card" data-rj-section="dataset_analysis" data-rj-module="dataset_analysis">
         <label class="rj-card-toggle"><input type="checkbox" id="rj-da-enabled"><strong>CDR Analysis</strong><small>The selected metrics of each CDR of its NR Mode and Campaigns (chosen again at each run) with their filters, global comparison and global CDF comparison, in PowerPoint and/or Word.</small></label>

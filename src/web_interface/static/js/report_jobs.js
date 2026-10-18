@@ -646,8 +646,8 @@
         title: 'Scoring report of this artifact',
         configuration: report || window.ScoringReportEditor.defaultConfiguration(defaults),
         context: {filterOptions: valuesForDatasets(cdrsInUse()), operators: defaults.operators,
-          mainCities: options.main_cities || [], defaults, operatorGroups: options.operator_groups || [],
-          themes: options.scoring_themes || []},
+          // No theme here: the theme of the job colours every artifact.
+          mainCities: options.main_cities || [], defaults, operatorGroups: options.operator_groups || [], themes: []},
         actions: [['apply', 'Apply to this artifact']],
       });
       if (choice) { report = choice.configuration; describeReport(); }
@@ -759,8 +759,6 @@
     const label = node('input'); label.type = 'text'; label.placeholder = 'Optional artifact name'; label.value = entry.label || '';
     const nrMode = select([['NSA', 'NSA'], ['SA', 'SA']], selection.nr_mode || 'NSA');
     const technology = select(Object.entries(options.technologies), selection.technology || 'lte');
-    // The colours of the charts and tables of its documents (the themes of Scoring & GAP Analysis).
-    const theme = select((options.scoring_themes || []).map((item) => [item.id, item.label || item.id]), entry.theme || options.default_theme || 'netcheck');
     const number = (value, step) => { const input = node('input'); input.type = 'number'; input.step = step; input.value = value; return input; };
     const thresholds = [
       ['lte', 'LTE coverage below (dBm)', 'coverage_threshold', number(selection.coverage_threshold ?? -110, 1)],
@@ -777,7 +775,7 @@
     const campaigns = campaignPicker(() => nrMode.value, selection.campaigns || [], {compact: true});
     const head = node('div', undefined, 'rj-grid rj-one-row');
     head.append(field('NR Mode', nrMode), campaigns.field, field('Technology', technology), field('Name in the email', label),
-      ...thresholds.map((item) => item.wrapper), field('Theme', theme), remove);
+      ...thresholds.map((item) => item.wrapper), remove);
     const groups = selection.group || ['operator', 'campaign'];
     const grouping = node('div', undefined, 'rj-inline');
     grouping.append(node('span', 'Grouping:', 'rj-inline-label'), ...Object.entries(options.network_groupings).map(([value, text]) => {
@@ -807,7 +805,7 @@
     card.append(entryHead(card, 'Network Insights', () => [nrMode.value, technology.selectedOptions[0]?.textContent, label.value.trim()].filter(Boolean).join(' · ')),
       formats, head, campaigns.preview, grouping, node('strong', 'Filters'), filters);
     card.getValue = () => ({
-      label: label.value.trim(), formats: formats.getValue(), auto_cdrs: true, theme: theme.value,
+      label: label.value.trim(), formats: formats.getValue(), auto_cdrs: true,
       selection: {
         nr_mode: nrMode.value, technology: technology.value,
         group: [...grouping.querySelectorAll('input:checked')].map((box) => box.value),
@@ -872,10 +870,10 @@
     editingUpdatedAt = task?.updated_at || '';
     $('rj-editor-title').textContent = task?.id ? `Edit ${task.name}` : 'New Reporting Job';
     $('rj-name').value = task?.name || '';
-    // One theme for every artifact of the job that supports themes, or each artifact's own (jobs saved before).
-    $('rj-theme').replaceChildren(...[['', "Each artifact's own theme"], ...(options.scoring_themes || []).map((item) => [item.id, item.label || item.id])]
+    // The one theme of the job, read by every artifact that supports themes.
+    $('rj-theme').replaceChildren(...(options.scoring_themes || []).map((item) => [item.id, item.label || item.id])
       .map(([value, label]) => { const option = node('option', label); option.value = value; return option; }));
-    $('rj-theme').value = (options.scoring_themes || []).some((item) => item.id === definition.theme) ? definition.theme : '';
+    $('rj-theme').value = (options.scoring_themes || []).some((item) => item.id === definition.theme) ? definition.theme : (options.default_theme || 'netcheck');
     $('rj-da-enabled').checked = Boolean(dataset.enabled);
     formatChoices(document.querySelector('[data-rj-formats="rj-da"]'), 'rj-da', dataset.formats || ['powerpoint']);
     // CDR Analysis chooses its CDRs from its NR Mode and Campaigns, as the other artifacts, and lists them below.
@@ -1074,7 +1072,7 @@
   function favouriteDefinition(base) {
     const favourite = $('rj-favourite')?.value || '';
     return {
-      ...base, theme: '', dataset_analysis: {...base.dataset_analysis, enabled: false}, network_insights: [], dashboards: [], scoring: [],
+      ...base, dataset_analysis: {...base.dataset_analysis, enabled: false}, network_insights: [], dashboards: [], scoring: [],
       modules: {
         ...Object.fromEntries(Object.entries(base.modules).map(([key, module]) => [key, {...module, enabled: false}])),
         complete_report: {enabled: true, formats: $('rj-favourite-formats').getValue(), options: {filters: {favourites: favourite ? [favourite] : []}}},
@@ -1098,7 +1096,7 @@
         dashboards: $('rj-dashboards-enabled').checked ? [...$('rj-dashboards').children].map((card) => card.getValue()) : [],
         scoring: $('rj-scoring-enabled').checked ? [...$('rj-scoring').children].map((card) => card.getValue()) : [],
         modules: Object.fromEntries([...$('rj-providers').children].map((card) => card.getValue())),
-        theme: $('rj-theme').value || '',
+        theme: $('rj-theme').value || options.default_theme || '',
     };
   }
 

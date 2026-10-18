@@ -35,7 +35,7 @@ from src.modules.cdr_auto_selection import (
 )
 from src.modules.column_names import compact_campaign_value
 from src.modules.output_layout import REPORTING_JOBS_FOLDER, module_output_dir
-from src.modules.scoring_themes import normalize_theme, themes_payload
+from src.modules.scoring_themes import DEFAULT_THEME, normalize_theme, themes_payload
 
 REPORT_TASKS_TABLE = 'report_tasks'
 REPORT_TASK_RUNS_TABLE = 'report_task_runs'
@@ -188,8 +188,6 @@ def _network_entry(entry: dict[str, Any]) -> dict[str, Any]:
     return {
         'label': str(entry.get('label') or '').strip()[:120],
         'formats': _formats(entry.get('formats')),
-        # The colour theme of its charts and tables (see scoring_themes); entries saved before have NetCheck.
-        'theme': normalize_theme(entry.get('theme')),
         # The CDRs of the NR Mode and Campaigns at each run (auto_cdrs); entries saved before chose them by hand
         # or with an automatic choice, and take the campaigns of that choice (see migrate_auto_cdrs).
         'auto_cdrs': auto_cdrs,
@@ -239,6 +237,18 @@ def _datasets_by_kind(value: Any) -> dict[str, list[int]]:
     if not isinstance(value, dict):
         return {}
     return {str(kind): _ids(ids) for kind, ids in value.items() if _ids(ids)}
+
+
+def _legacy_theme(raw: dict[str, Any]) -> str:
+    """The theme of the first Network Insights or Scoring artifact of a job saved when each artifact had its own."""
+    for entry in _network_entries(raw.get('network_insights')):
+        if str(entry.get('theme') or '').strip():
+            return str(entry['theme'])
+    for entry in raw.get('scoring') or []:
+        report = entry.get('report') if isinstance(entry, dict) and isinstance(entry.get('report'), dict) else {}
+        if str(report.get('theme') or '').strip():
+            return str(report['theme'])
+    return ''
 
 
 def _scoring_report(value: Any) -> dict[str, Any]:
@@ -314,9 +324,10 @@ def normalize_definition(raw: Any) -> dict[str, Any]:
         'scoring': [],
         # Artifacts of modules registered in ARTIFACT_PROVIDERS.
         'modules': {},
-        # One colour theme for every artifact that supports themes (CDR Analysis, Network Insights, Scoring & GAP
-        # Analysis, PPT Dashboards and Complete Reports); empty: each artifact keeps its own (jobs saved before).
-        'theme': normalize_theme(raw['theme']) if str(raw.get('theme') or '').strip() else '',
+        # The one colour theme of the job, read by every artifact that supports themes (CDR Analysis, Network Insights,
+        # Scoring & GAP Analysis, PPT Dashboards and Complete Reports); jobs saved before, whose Network Insights and
+        # Scoring artifacts had their own, take the first of them.
+        'theme': normalize_theme(str(raw.get('theme') or '').strip() or _legacy_theme(raw) or DEFAULT_THEME),
     }
     for key, config in (raw.get('modules') or {}).items() if isinstance(raw.get('modules'), dict) else ():
         provider = ARTIFACT_PROVIDERS.get(key)
@@ -367,7 +378,8 @@ def normalize_definition(raw: Any) -> dict[str, Any]:
             # PowerPoint and/or Word; jobs saved before Word was offered keep PowerPoint.
             'formats': [value for value in _formats(entry.get('formats')) if value in {'powerpoint', 'word'}] or ['powerpoint'],
             # Scenarios (filters and aggregation) and content of the report.
-            'report': _scoring_report(entry.get('report')),
+            # The theme is that of the job (see execute_run).
+            'report': {key: value for key, value in _scoring_report(entry.get('report')).items() if key != 'theme'},
         })
     if not (definition['dataset_analysis']['enabled'] or definition['network_insights']
             or definition['dashboards'] or definition['scoring'] or definition['modules']):
@@ -1417,8 +1429,9 @@ def install_report_task_routes(core: Any) -> None:
                           **{module: ({'enabled': False} if module == 'dataset_analysis' else [])
                              for module, permitted in allowed.items() if not permitted and module in MODULE_FEATURES},
                           'modules': {key: value for key, value in (definition.get('modules') or {}).items() if allowed.get(key)}}
-            # The theme of the job, when it has one, colours every artifact that supports themes.
-            theme = definition.get('theme') or ''
+            # The theme of the job colours every artifact that supports themes, also the favourite Complete Reports it
+            # generates (it prevails over theirs).
+            theme = normalize_theme(definition.get('theme') or DEFAULT_THEME)
             if theme:
                 definition = {
                     **definition,
