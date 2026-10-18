@@ -111,11 +111,12 @@ THEMES: dict[str, dict[str, Any]] = {
         'kpi_reliable': '#B7EDD6', 'kpi_diff': '#FCF2BF',
         'scale': ['#CC2828', '#FEBA7E', '#FCE282', '#70DBAA', '#0C9B5B'],
         'series': ['#0068BF', '#66B5F4', '#8C60A8', '#C6A823', '#CC7007', '#767676', '#E0E0E0'],
-        # The grey heading of Ericsson Hilda Light and only the part that tells the slide apart in bold Ericsson deep blue.
+        # A black heading of Ericsson Hilda Light, only the part that tells the slide apart in bold Ericsson deep blue, and
+        # grey subtitles.
         'titles': {'font': 'Ericsson Hilda Light', 'focus_font': 'Ericsson Hilda', 'size': 32, 'bold': False, 'focus_bold': True,
                    'caps': False, 'italic': False, 'focus_color': '#0068BF', 'subtitle_font': 'Ericsson Hilda', 'subtitle_size': 16,
-                   'subtitle_bold': False, 'subtitle_italic': False, 'subtitle_color': None, 'lead_bold': False, 'focus_italic': False,
-                   'heading_color': '#767676'},
+                   'subtitle_bold': False, 'subtitle_italic': False, 'subtitle_color': '#767676', 'lead_bold': False, 'focus_italic': False,
+                   'heading_color': '#000000'},
         'cell_border': '#FFFFFF', 'cell_border_pt': 1.0,
     },
     'vodafone': {
