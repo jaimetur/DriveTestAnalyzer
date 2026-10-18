@@ -45,7 +45,8 @@ def test_default_scenario_follows_the_requested_defaults():
     for kind in ('best_network', 'most_reliable'):
         options = scenario['scorings'][kind]
         assert options['enabled'] is True and options['environments'] == 'all'
-        assert options['summary'] == {'standings': True, 'position': True, 'levers': True, 'scope': True}
+        assert options['summary'] == {'standings': True, 'position': True, 'levers': True, 'act': True, 'owners': True,
+                                      'places': True, 'route': True, 'scope': True}
         assert options['charts'] == {'service': True, 'category': True, 'breakdown': True}
         assert options['geographical_areas'] == {'cards': True, 'ranking': True, 'versus': True}
         assert options['trends'] == {'trend': True, 'areas': True}

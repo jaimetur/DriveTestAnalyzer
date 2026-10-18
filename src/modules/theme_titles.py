@@ -93,6 +93,7 @@ def style_title(slide: Any, *, subtitle_size: float | None = None, theme: dict[s
         elif font._rPr.get('cap') is not None:
             del font._rPr.attrib['cap']
     title.font.size = Pt(style.get('size', 28))
+    title.font.color.rgb = _rgb(style['color'])
     fit_slide_title(slide, style.get('size', 28))
     for paragraph in paragraphs[1:]:
         text = ''.join(run.text for run in paragraph.runs)
@@ -101,6 +102,7 @@ def style_title(slide: Any, *, subtitle_size: float | None = None, theme: dict[s
                    else [(run, False) for run in paragraph.runs])
         size = Pt(subtitle_size or style.get('subtitle_size', 16))
         paragraph.font.size = size
+        paragraph.font.color.rgb = _rgb(style['subtitle_color'])
         for run, lead_part in written:
             font = run.font
             font.name = style.get('subtitle_font') or style.get('font') or None

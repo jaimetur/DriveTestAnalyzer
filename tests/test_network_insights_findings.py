@@ -193,3 +193,11 @@ def test_complete_reports_and_reporting_jobs_choose_a_network_insights_theme() -
     assert [item['key'] for item in network['items']][:3] == ['overview', 'findings', 'spectrum']
     assert _network_entry({'theme': 'midnight', 'selection': {}})['theme'] == 'midnight'
     assert _network_entry({'selection': {}})['theme'] == 'netcheck'
+
+
+def test_a_headline_names_only_the_values_the_tests_have() -> None:
+    # The CDRs log the 5G RSRP but not the 5G SINR: the 5G headline names the weakest signal only.
+    samples = _samples().assign(nr_sinr=np.nan)
+    views = {view['key']: view for view in findings_payload(samples, samples['operator'], ['A', 'B'], {})['views']}
+    assert views['nr_signal']['headline'] == "B's 5G signal is the weakest in every environment"
+    assert views['nr_signal']['meaning'].startswith("B's 5G is the weakest (median RSRP −")

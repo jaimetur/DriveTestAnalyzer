@@ -890,7 +890,8 @@
   [data-scoring-workspace]:is([data-scoring-theme="netcheck"], [data-scoring-theme="umlaut"]) { --sc-row-line: #e6e9ed; --sc-chip: transparent; --sc-section: transparent;
     --sc-section-ink: #17232d; --sc-total: #ffffff; --sc-total-ink: #17232d; --sc-gap-card: transparent; --sc-radius: 0px; --sc-track: #c9d2db;
     --sc-gain-bar: #4ca65a; --sc-loss-bar: #e8414f; --sc-reliable-bg: #e5effa; --sc-reliable-ink: #1f6fb2; --sc-diff-bg: #fcefe0; --sc-diff-ink: #c25e00; }
-  [data-scoring-workspace]:is([data-scoring-theme="netcheck"], [data-scoring-theme="umlaut"]) .scoring-comparison-table.scoring-scorecard { border-spacing: 0; }
+  [data-scoring-workspace][data-scoring-theme="netcheck"] .scoring-comparison-table.scoring-scorecard,
+  [data-scoring-workspace][data-scoring-theme="umlaut"] .scoring-comparison-table.scoring-scorecard { border-spacing: 0; }
   [data-scoring-workspace]:is([data-scoring-theme="netcheck"], [data-scoring-theme="umlaut"]) .scoring-comparison-table.scoring-scorecard thead tr > th { color: #17232d !important; font-size: .64rem !important; }
   [data-scoring-workspace]:is([data-scoring-theme="netcheck"], [data-scoring-theme="umlaut"]) .scoring-scorecard .scoring-operator-chip { display: flex; width: 100%; box-sizing: border-box;
     justify-content: flex-start; padding: .28rem .55rem; border-radius: 0; background: var(--operator-accent, #455b65); color: #fff; font-size: .74rem; }

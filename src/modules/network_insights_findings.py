@@ -212,15 +212,23 @@ def _signal_view(tests: pd.DataFrame, groups: pd.Series, order: list[str], radio
         headline = (f"{_possessive(group)} median {label} RSRP was {_number(figures.get('rsrp'))} dBm and its median SINR "
                     f"{_number(figures.get('sinr'))} dB") if figures else f'{label} signal at the test'
     elif radio == 'lte':
-        signal = f"{_possessive(weakest)} LTE signal is the weakest of the {count}{every if weakest_everywhere else ''}"
-        quality = (f"its LTE SINR is the lowest{every if sinr_everywhere else ''}" if lowest_sinr == weakest
-                   else f"{_possessive(lowest_sinr)} LTE SINR is the lowest{every if sinr_everywhere else ''}")
-        headline = f'{signal}; {quality}'
+        # A group is named only for the values its tests have (a CDR may log RSRP without SINR).
+        parts = []
+        if weakest:
+            parts.append(f"{_possessive(weakest)} LTE signal is the weakest of the {count}{every if weakest_everywhere else ''}")
+        if lowest_sinr:
+            parts.append(f"its LTE SINR is the lowest{every if sinr_everywhere else ''}" if lowest_sinr == weakest
+                         else f"{_possessive(lowest_sinr)} LTE SINR is the lowest{every if sinr_everywhere else ''}")
+        headline = '; '.join(parts) or f'{label} signal at the test'
     else:
-        quality = f"{_possessive(best_sinr)} 5G quality is the best of the {count}{every if best_everywhere else ''}"
-        signal = (f"yet its 5G signal is the weakest{every if weakest_everywhere else ''}" if weakest == best_sinr
-                  else f"{_possessive(weakest)} 5G signal is the weakest{every if weakest_everywhere else ''}")
-        headline = f'{quality}; {signal}'
+        parts = []
+        if best_sinr:
+            parts.append(f"{_possessive(best_sinr)} 5G quality is the best of the {count}{every if best_everywhere else ''}")
+        if weakest:
+            parts.append(f"yet its 5G signal is the weakest{every if weakest_everywhere else ''}" if weakest == best_sinr
+                         else f"{_possessive(weakest)} 5G signal is the weakest{every if weakest_everywhere else ''}")
+        headline = '; '.join(parts) or f'{label} signal at the test'
+        headline = headline[:1].upper() + headline[1:]
     meaning = ''
     if radio == 'lte' and weakest and statistics.get(weakest):
         parts = [f'{_environment_phrase(environment)} {_percent(share)}'
@@ -228,11 +236,13 @@ def _signal_view(tests: pd.DataFrame, groups: pd.Series, order: list[str], radio
         if parts:
             meaning = f"{_join(parts)} of {_possessive(weakest)} tests ran below −100 dBm on LTE."
     elif radio == 'nr' and len(statistics) > 1:
-        cleanest = f"{_possessive(best_sinr)} 5G is the cleanest (median SINR {_number(statistics[best_sinr]['sinr'])} dB)"
-        weakest_text = ('' if weakest == best_sinr else
-                        f" and {_possessive(weakest)} the weakest (median RSRP {_number(statistics[weakest]['rsrp'])} dBm)")
+        parts = []
+        if best_sinr:
+            parts.append(f"{_possessive(best_sinr)} 5G is the cleanest (median SINR {_number(statistics[best_sinr]['sinr'])} dB)")
+        if weakest and weakest != best_sinr:
+            parts.append(f"{_possessive(weakest)} 5G is the weakest (median RSRP {_number(statistics[weakest]['rsrp'])} dBm)")
         shares = [f"{group} {_percent(figures['share'])}" for group, figures in statistics.items()]
-        meaning = f"{cleanest}{weakest_text}; 5G was logged in {_join(shares)} of the Data tests."
+        meaning = ' and '.join(parts) + ('; ' if parts else '') + f"5G was logged in {_join(shares)} of the Data tests."
     field_names = 'LTE PCell RSRP Avg, LTE PCell SINR Avg' if radio == 'lte' else 'NR PCell RSRP Avg, NR PCell SINR Avg'
     basis = (f"one value per test, the test average on the primary {label} {'carrier' if radio == 'lte' else 'cell'} "
              f"({field_names}); not the individual samples.")
