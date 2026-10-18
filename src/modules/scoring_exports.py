@@ -719,7 +719,8 @@ def _fit_scoring_intro_subtitle(presentation, slide, layout_name: str, subtitle:
     filters_shape.name = 'Scoring Aggregations and Filters'
     frame = filters_shape.text_frame
     frame.clear()
-    frame.word_wrap = True
+    # Each line fits one line: its values are cut to the room of the template (prepare_scoring_display_selections).
+    frame.word_wrap = False
     frame.auto_size = MSO_AUTO_SIZE.NONE
     for index, line in enumerate(details):
         paragraph = frame.paragraphs[0] if index == 0 else frame.add_paragraph()

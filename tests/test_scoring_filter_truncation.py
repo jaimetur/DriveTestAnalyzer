@@ -44,8 +44,8 @@ def test_template_lines_never_wrap_and_share_retained_values():
                  if shape.name == 'Scoring Aggregations and Filters')
     assert shape.text_frame.word_wrap is False
     assert len(shape.text_frame.paragraphs) == 6
-    assert shape.text_frame.paragraphs[0].font.size.pt == 16
-    assert all(paragraph.font.size.pt <= 16 for paragraph in shape.text_frame.paragraphs)
+    assert shape.text_frame.paragraphs[0].font.size.pt == 12
+    assert all(paragraph.font.size.pt <= 12 for paragraph in shape.text_frame.paragraphs)
     assert 'Operator: All Operators' in shape.text
 
 

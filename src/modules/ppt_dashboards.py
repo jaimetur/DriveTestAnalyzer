@@ -859,7 +859,8 @@ def install_dashboard_routes(core):
         """Place the cover Campaigns above the decorative line and the Scope and geography below it."""
         title = next((shape for shape in slide.placeholders if shape.placeholder_format.type in {1, 3}), None)
         subtitle = next((shape for shape in slide.placeholders if shape.placeholder_format.type == 4), None)
-        left = title.left if title is not None else Inches(0.52)
+        # At the left of the title once report_structure.finish places the cover.
+        left = report_structure.TITLE_LEFT
         width = title.width if title is not None else Inches(11)
         margin_left = title.text_frame.margin_left if title is not None else 0
         anchor = subtitle or title
@@ -899,7 +900,7 @@ def install_dashboard_routes(core):
         )
         first_top = min(first_top, slide_height - Inches(0.4 + 0.38 * len(details)))
         if campaigns:
-            # The larger orange Campaigns line sits right above the decorative
+            # The larger Campaigns line sits right above the decorative
             # line. Title and subtitle move up just enough to make room for it.
             campaign_height = Inches(0.42)
             separator = next((

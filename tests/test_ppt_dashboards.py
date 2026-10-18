@@ -749,8 +749,10 @@ def test_dashboard_campaigns_keep_their_nr_mode_suffix(client):
     separator = next(shape for shape in slide.slide_layout.shapes if shape.shape_type == MSO_SHAPE_TYPE.LINE)
     assert subtitle.top + subtitle.height <= campaigns.top
     assert campaigns.top + campaigns.height <= separator.top < scope.top
-    assert campaigns.text_frame.paragraphs[0].font.size > scope.text_frame.paragraphs[0].font.size
-    assert campaigns.text_frame.paragraphs[0].font.color.rgb == RGBColor(255, 140, 66)
+    assert campaigns.text_frame.paragraphs[0].runs[0].font.size > scope.text_frame.paragraphs[0].runs[0].font.size
+    # White on the red of the cover, its label bold.
+    assert all(run.font.color.rgb == RGBColor(255, 255, 255) for run in campaigns.text_frame.paragraphs[0].runs)
+    assert campaigns.text_frame.paragraphs[0].runs[0].font.bold
 
 
 def test_dashboard_filter_catalogue_includes_values_beyond_legacy_profile_limit(client, monkeypatch):
@@ -1046,14 +1048,14 @@ def test_dashboard_ppt_cover_uses_scope_and_catalogue_geography(client):
     assert title.text == 'Quarterly review'
     assert placeholders[4].text == 'Template subtitle'
     details = {shape.name: shape for shape in slide.shapes if shape.name.startswith('dashboard-ppt-')}
-    # The Scope is listed above the Regions and Cities in its own colour.
+    # The Scope is listed above the Regions and Cities, white on the red of the cover.
     assert details['dashboard-ppt-scope'].text == 'Operator Comparison'
     assert details['dashboard-ppt-region'].text == 'All Regions'
     assert details['dashboard-ppt-city'].text == 'All Cities'
     assert details['dashboard-ppt-scope'].top < details['dashboard-ppt-region'].top < details['dashboard-ppt-city'].top
     assert details['dashboard-ppt-scope'].left == details['dashboard-ppt-region'].left == title.left
     assert details['dashboard-ppt-city'].left == title.left
-    assert details['dashboard-ppt-scope'].text_frame.paragraphs[0].font.color.rgb == RGBColor(139, 240, 166)
+    assert details['dashboard-ppt-scope'].text_frame.paragraphs[0].runs[0].font.color.rgb == RGBColor(255, 255, 255)
     # The job's viewer snapshot shows exactly the same cover lines.
     # This CDR has no Campaign column, so no Campaigns line is drawn.
     assert 'dashboard-ppt-campaigns' not in details
@@ -1073,9 +1075,7 @@ def test_dashboard_ppt_cover_uses_scope_and_catalogue_geography(client):
     assert placeholders[4].text_frame.paragraphs[0].runs[0].font.color.theme_color == MSO_THEME_COLOR.ACCENT_4
     # The cover subtitle does not inherit the layout's condensed letter spacing.
     assert placeholders[4].text_frame.paragraphs[0].runs[0].font._rPr.get('spc') == '0'
-    assert details['dashboard-ppt-region'].text_frame.paragraphs[0].font.color.rgb not in {
-        RGBColor(255, 255, 255), RGBColor(255, 255, 0),
-    }
+    assert details['dashboard-ppt-region'].text_frame.paragraphs[0].runs[0].font.color.rgb == RGBColor(255, 255, 255)
 
 
 def test_expanded_dashboard_chart_apply_builds_a_new_temporary_model(client):
