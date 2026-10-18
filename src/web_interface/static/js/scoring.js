@@ -3221,8 +3221,9 @@
     markScorecardGroupEdges(table);
   }
 
-  // The first column of each operator (major) and of each group below it, such as a city (minor), so the themes can
-  // set the groups apart.
+  // The first column of each operator (major) and of each group below it, such as a route, city or campaign (minor), in
+  // the header and the body, so the themes can set the groups apart; the labels of the groups below the operators
+  // (data-group-header) are ruled across their columns, so each one shows where it ends.
   function markScorecardGroupEdges(table) {
     const occupied = [];
     const edges = new Map();
@@ -3236,7 +3237,10 @@
           || cell.classList.contains('scoring-column-group');
         if (major || span > 1) {
           if (column > 0) edges.set(column, major || edges.get(column) === 'major' ? 'major' : 'minor');
-          cell.dataset.groupEdge = major ? 'major' : 'minor';
+          cell.dataset.groupEdge = column > 0 ? edges.get(column) : major ? 'major' : 'minor';
+          if (!major) cell.dataset.groupHeader = '';
+        } else if (column > 0 && edges.has(column)) {
+          cell.dataset.groupEdge = edges.get(column);
         }
         for (let rowOffset = 0; rowOffset < (cell.rowSpan || 1); rowOffset += 1) {
           occupied[rowIndex + rowOffset] ||= [];

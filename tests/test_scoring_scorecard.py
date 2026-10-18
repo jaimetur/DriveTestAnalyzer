@@ -490,3 +490,74 @@ def test_gap_of_one_operator_follows_its_latest_campaign_and_fills_the_slide():
         sizes = [run.font.size.pt for row in list(table_shape.table.rows)[2:] for cell in row.cells
                  for paragraph in cell.text_frame.paragraphs for run in paragraph.runs if run.font.size]
         assert max(sizes) >= 6
+
+
+def test_the_groups_below_the_operators_are_set_apart_down_the_header_and_the_body():
+    result = _run_node(r"""
+const table = make('table', '', {className: 'scoring-comparison-table scoring-scorecard'});
+const thead = make('thead');
+const operator = name => make('th', name, {colSpan: 4, className: 'scoring-hierarchy-header scoring-operator-header'});
+const region = name => make('th', name, {colSpan: 2, className: 'scoring-hierarchy-header'});
+thead.append(row(make('th', 'Category', {rowSpan: 3, className: 'scoring-scorecard-corner'}), operator('EE'), operator('O2')),
+  row(region('North'), region('South'), region('North'), region('South')),
+  row(...Array.from({length: 8}, (_value, index) => make('th', index % 2 ? '2026-Q3' : '2026-Q2', {className: 'scoring-hierarchy-header'}))));
+const tbody = make('tbody');
+tbody.append(row(make('td', 'Voice total'), ...Array.from({length: 8}, () => make('td', '10.00', {dataset: {column: 'score'}}))));
+table.append(thead, tbody);
+markScorecardGroupEdges(table);
+console.log(JSON.stringify({
+  head: table.tHead.rows.map(tr => tr.cells.map(cell => `${cell.dataset.groupEdge || ''}${cell.dataset.groupHeader === undefined ? '' : '*'}`)),
+  body: table.tBodies[0].rows[0].cells.map(cell => cell.dataset.groupEdge || ''),
+}));
+""")
+    # Each operator (major) and each region below it (minor) opens a group in every header row below it and in the body;
+    # the regions are the labels ruled across their columns (*).
+    assert result['head'] == [['', 'major', 'major'], ['major*', 'minor*', 'major*', 'minor*'],
+                              ['major', '', 'minor', '', 'major', '', 'minor', '']]
+    assert result['body'] == ['', 'major', '', 'minor', '', 'major', '', 'minor', '']
+    css = SCORING_TEMPLATE.read_text(encoding='utf-8')
+    assert ':is(thead, tbody, tfoot) tr > [data-group-edge="minor"] { border-left: 8px solid transparent !important;' in css
+    assert 'thead tr > th[data-group-header] { box-shadow: inset 0 -1.5px 0' in css
+
+
+def test_the_powerpoint_scorecard_sets_apart_the_groups_below_the_operators():
+    from tests.test_scoring_exports import _mapping_groups, _result, scoring_configuration
+    base = _result()
+    rows = [{**row, 'region': region, 'campaign': campaign} for region in ('North', 'South')
+            for campaign in ('UK_Q2_2026', 'UK_Q3_2026') for row in base['scoring']]
+    levels = ['Operator', 'Region', 'Campaign']
+    result = {'aggregation_contract_version': 2, 'aggregation_levels': levels, 'scoring': rows, 'totals': [],
+              'configuration': scoring_configuration(), 'warnings': []}
+    job = {'aggregation_levels': levels, 'aggregation_contract_version': 2, 'nr_mode': 'NSA', 'baseline_operator': 'EE',
+           'campaigns': ['UK_Q2_2026', 'UK_Q3_2026'], 'configuration': scoring_configuration()}
+    presentation = Presentation(BytesIO(export_scoring_powerpoint(job, result, TEMPLATE, operator_mapping_groups=_mapping_groups(),
+                                                                  environment='DriveCity', theme='netcheck')))
+    table = next(shape.table for slide in presentation.slides for shape in slide.shapes
+                 if shape.has_table and any(cell.text_frame.text == 'South' for row in shape.table.rows for cell in row.cells))
+
+    def width(cell, edge):
+        line = cell._tc.get_or_add_tcPr().find(qn(f'a:{edge}'))
+        return int(line.get('w')) if line is not None and line.find(qn('a:solidFill')) is not None else 0
+    regions = next(index for index, row in enumerate(table.rows) if any(cell.text_frame.text == 'South' for cell in row.cells))
+    named = {}
+    for column, cell in enumerate(table.rows[regions].cells):
+        named.setdefault(cell.text_frame.text, []).append(column)
+    total = len(table.rows) - 1
+    # A line before each region (thin) and each operator (stronger) down to the total, and each region ruled under its name.
+    assert width(table.cell(total, named['South'][0]), 'lnL') == 9525
+    assert width(table.cell(total, named['North'][1]), 'lnL') == 19050
+    assert width(table.cell(regions, named['North'][1]), 'lnB') == 12700
+
+
+def test_ericsson_heads_its_scorecards_in_white_and_highlights_stay_in_their_box():
+    # The Ericsson scorecards (page and exports) have a white header: the operators in dark ink over the rule of their
+    # colour, the levels below them in grey.
+    assert (STYLES['ericsson']['header'], STYLES['ericsson']['header_label'], STYLES['ericsson']['header_ink']) == ('#FFFFFF', '#242424', '#767676')
+    css = SCORING_TEMPLATE.read_text(encoding='utf-8')
+    assert '[data-scoring-theme="ericsson"] .scoring-comparison-table.scoring-scorecard thead tr > th { background: #0068bf' not in css
+    assert '[data-scoring-theme="ericsson"] .scoring-scorecard thead .scoring-operator-chip { color: #242424; }' in css
+    # In every theme the bar, card or highlight of a cell stays inside its box, never in the gap that opens a group, and
+    # a highlighted total keeps the ink of the cells.
+    assert ('> td[data-column][data-group-edge]:is([data-group-edge="major"], [data-group-edge="minor"]) { background-clip: padding-box !important;'
+            in css)
+    assert 'tfoot tr > td[data-column="score"][data-operator-rank] { color: var(--sc-ink) !important; }' in css

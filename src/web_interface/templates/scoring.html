@@ -889,9 +889,12 @@
   [data-scoring-workspace] .scoring-scorecard tfoot .scoring-kpi-meta { color: inherit; opacity: .65; }
   [data-scoring-workspace] .scoring-comparison-table.scoring-scorecard tfoot tr > td:first-child { border-radius: 10px 0 0 10px; }
   [data-scoring-workspace] .scoring-comparison-table.scoring-scorecard tfoot tr > td:last-child { border-radius: 0 10px 10px 0; }
-  /* The first column of each operator stands apart from the one before. */
-  [data-scoring-workspace] .scoring-comparison-table.scoring-scorecard :is(thead, tbody, tfoot) tr > [data-group-edge="major"] { border-left: 10px solid transparent !important; background-clip: padding-box !important; }
-  [data-scoring-workspace] .scoring-comparison-table.scoring-scorecard :is(tbody, tfoot) tr > td[data-group-edge="minor"] { border-left: 3px solid transparent !important; background-clip: padding-box !important; }
+  /* The first column of each operator stands apart from the one before, and so does the first column of each group below
+     it (a route, city or campaign), in the header and the body; the label of each such group is ruled across its
+     columns, so it shows where the group ends. */
+  [data-scoring-workspace] .scoring-comparison-table.scoring-scorecard :is(thead, tbody, tfoot) tr > [data-group-edge="major"] { border-left: 14px solid transparent !important; background-clip: padding-box !important; }
+  [data-scoring-workspace] .scoring-comparison-table.scoring-scorecard :is(thead, tbody, tfoot) tr > [data-group-edge="minor"] { border-left: 8px solid transparent !important; background-clip: padding-box !important; }
+  [data-scoring-workspace] .scoring-comparison-table.scoring-scorecard thead tr > th[data-group-header] { box-shadow: inset 0 -1.5px 0 color-mix(in srgb, var(--sc-ink) 38%, transparent) !important; }
 
   /* NetCheck: as in the NetCheck reports. White lists with thin grey rules, each score with an Excel-like data bar in
      the colour of its band as long as its share of the maximum, each GAP a data bar either side of zero (red to the
@@ -953,7 +956,8 @@
   /* Ericsson: fill bars. Square cells, every score filling its cell as far as its share of the maximum in the colour of
      its band, every GAP in dark grey with a small ▲ or ▼ in its colour over a bar either side of zero, headers in the deep
      Ericsson blue with each operator ruled in its colour across all its columns, dark grey rules opening the sections and
-     closing the table, the deep Ericsson blue for the reliable KPIs. */
+     closing the table, the deep Ericsson blue for the reliable KPIs. The header stays white: the operators in dark ink over the
+     rule of their colour, the levels below them in grey. */
   [data-scoring-workspace][data-scoring-theme="ericsson"] { --sc-ink: #242424; --sc-muted: #767676; --sc-row-line: #e0e0e0; --sc-chip: transparent; --sc-section: #ffffff; --sc-section-ink: #242424;
     --sc-cell: #f2f2f2; --sc-total: #ffffff; --sc-total-ink: #242424; --sc-accent: #0068bf; --sc-gain: #0c9b5b; --sc-loss: #cc2828; --sc-gain-bar: #70dbaa; --sc-loss-bar: #ff8484;
     --sc-reliable-bg: #e5f2fe; --sc-reliable-ink: #0068bf; --sc-diff-bg: #ffdbb5; --sc-diff-ink: #cc7007; --sc-best: #b7edd6; --sc-worst: #ffc1c1;
@@ -961,12 +965,13 @@
   [data-scoring-workspace][data-scoring-theme="ericsson"] .scoring-comparison-table.scoring-scorecard tbody tr:not(.scoring-section-row) > td[data-column="score"] {
     background: linear-gradient(90deg, color-mix(in srgb, var(--band-dot, #0068bf) 34%, #fff) calc(var(--share, 0) * 100%), #f2f2f2 0) !important; }
   [data-scoring-workspace][data-scoring-theme="ericsson"] .scoring-comparison-table.scoring-scorecard { border-spacing: 2px 3px; }
-  [data-scoring-workspace][data-scoring-theme="ericsson"] .scoring-comparison-table.scoring-scorecard thead tr > th { background: #0068bf !important; color: #fff !important; font-size: .6rem !important; letter-spacing: .12em; text-transform: uppercase; }
+  [data-scoring-workspace][data-scoring-theme="ericsson"] .scoring-comparison-table.scoring-scorecard thead tr > th { font-size: .6rem !important; letter-spacing: .12em; text-transform: uppercase; }
+  [data-scoring-workspace][data-scoring-theme="ericsson"] .scoring-comparison-table.scoring-scorecard thead tr > th.scoring-scorecard-corner { color: #242424 !important; }
   [data-scoring-workspace][data-scoring-theme="ericsson"] .scoring-scorecard .scoring-operator-chip { padding: .2rem 0 .3rem; border-radius: 0; background: transparent; font-size: .74rem;
     letter-spacing: .06em; text-transform: uppercase; }
   [data-scoring-workspace][data-scoring-theme="ericsson"] .scoring-comparison-table.scoring-scorecard thead tr > th:is(.scoring-operator-header, .scoring-gap-operator-header) {
     box-shadow: inset 0 -3px 0 var(--operator-accent, #242424) !important; }
-  [data-scoring-workspace][data-scoring-theme="ericsson"] .scoring-scorecard thead .scoring-operator-chip { color: #fff; }
+  [data-scoring-workspace][data-scoring-theme="ericsson"] .scoring-scorecard thead .scoring-operator-chip { color: #242424; }
   [data-scoring-workspace][data-scoring-theme="ericsson"] .scoring-scorecard .scoring-operator-chip::before { border-radius: 0; width: .5rem; height: .5rem; }
   [data-scoring-workspace][data-scoring-theme="ericsson"] .scoring-scorecard .scoring-kpi-badge { border-radius: 0; }
   [data-scoring-workspace][data-scoring-theme="ericsson"] .scoring-comparison-table.scoring-scorecard tbody tr.scoring-section-row > :is(th, td) { border-radius: 0 !important; box-shadow: inset 0 2px 0 #242424 !important; padding-top: .8rem !important; }
@@ -1018,6 +1023,12 @@
     background: var(--sc-best) !important; box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--sc-gain) 55%, transparent) !important; }
   [data-scoring-workspace][data-scoring-theme] .scoring-comparison-table.scoring-scorecard tbody tr:not(.scoring-section-row) > td[data-column="score"][data-operator-rank="worst"] {
     background: var(--sc-worst) !important; box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--sc-loss) 55%, transparent) !important; }
+  /* The gap that opens each operator and campaign stays clear in every theme: the bar, pill, card or highlight of a cell
+     (the box of the best and worst operators included) is drawn inside its box, never in the gap beside it. */
+  [data-scoring-workspace][data-scoring-theme] .scoring-comparison-table.scoring-scorecard :is(tbody, tfoot) tr:not(.scoring-section-row)
+    > td[data-column][data-group-edge]:is([data-group-edge="major"], [data-group-edge="minor"]) { background-clip: padding-box !important; background-origin: padding-box !important; }
+  /* The best and worst totals keep the ink of the cells on their light highlight, also on a dark total row (Vodafone). */
+  [data-scoring-workspace][data-scoring-theme] .scoring-comparison-table.scoring-scorecard tfoot tr > td[data-column="score"][data-operator-rank] { color: var(--sc-ink) !important; }
 
   /* Paper: a typeset report. Every score underlined in the colour of its band, GAPs on cream cards with fine blue and
      vermilion bars, sections in italic small capitals under a rule and the total under a double rule. */

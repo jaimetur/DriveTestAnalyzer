@@ -36,7 +36,7 @@ STYLES: dict[str, dict[str, Any]] = {
                'gap_card': '#FFFFFF', 'gain_bar': '#93C47D', 'loss_bar': '#E39B94', 'gain': '#2F7D4A', 'loss': '#A6192E',
                'reliable': '#5B7A99', 'diff': '#B86E00', 'best': '#DCEFD6', 'worst': '#F6D5D2', 'operators': 'fill'},
     'ericsson': {'score': 'bar', 'bar_mix': .38, 'card': '#F2F2F2', 'label': '#FFFFFF', 'ink': '#242424', 'muted': '#767676',
-                 'header': '#0068BF', 'header_ink': '#FFFFFF', 'header_label': '#FFFFFF', 'section': '#FFFFFF',
+                 'header': '#FFFFFF', 'header_ink': '#767676', 'header_label': '#242424', 'section': '#FFFFFF',
                  'section_ink': '#242424', 'section_rule': '#242424', 'total': '#FFFFFF', 'total_ink': '#242424',
                  'total_rule': '#242424', 'gap_card': '#F2F2F2', 'gain_bar': '#B7EDD6', 'loss_bar': '#FFC1C1',
                  'gain': '#0C9B5B', 'loss': '#CC2828', 'reliable': '#0068BF', 'diff': '#CC7007', 'best': '#B7EDD6',
@@ -415,6 +415,49 @@ def _style_headers(table, header_rows: int, label_column: int, font: str | None)
                         border(table.cell(row_index + 1, column), 'lnT', fill, 2.25)
 
 
+def _column_groups(table, header_rows: int, label_column: int) -> tuple[dict[int, tuple[int, bool]], int]:
+    """The first column of each group of columns of the header, with the header row of the group and whether it is an
+    operator (or the Score and GAP groups above them) or a group below one, such as a route, city or campaign. Read
+    before the header is styled, while the operators still have their colours; also returns the row of the operators."""
+    neutral = {_hex(themed(color)) for color in _NEUTRAL_HEADERS} | {_hex(color) for color in _NEUTRAL_HEADERS}
+    origins = [(row, column, cell.span_width, (_cell_fill(cell) or '') not in neutral | {''})
+               for row in range(header_rows) for column, cell in enumerate(table.rows[row].cells)
+               if column != label_column and not cell.is_spanned]
+    # The first row in the colours of the operators (the leaf header row under them may carry them too).
+    operator_row = min((row for row, _column, _span, operator in origins if operator), default=-1)
+    starts: dict[int, tuple[int, bool]] = {}
+    for row, column, span, _operator in origins:
+        if span > 1 or row == operator_row:
+            first_row, major = starts.get(column, (row, False))
+            starts[column] = (min(first_row, row), major or row <= operator_row)
+    return starts, operator_row
+
+
+def _group_lines(table, starts: dict[int, tuple[int, bool]], operator_row: int, header_rows: int) -> None:
+    """Where each group of columns starts, as on the page: a line down the header rows below its label and the body,
+    stronger before an operator than before a route, city or campaign, and the label of each group below an operator
+    ruled across its columns, so each group shows where it ends."""
+    color = style()['muted']
+    first = min(starts, default=None)
+    rows = len(table.rows)
+    for column, (row, major) in starts.items():
+        if column == first:
+            continue
+        width = 1.5 if major else .75
+        for below in range(row + 1, rows):
+            border(table.cell(below, column), 'lnL', color, width)
+            border(table.cell(below, column - 1), 'lnR', color, width)
+    for row in range(operator_row + 1, header_rows):
+        for column, cell in enumerate(table.rows[row].cells):
+            if cell.is_spanned or cell.span_width < 2 or column not in starts:
+                continue
+            # PowerPoint draws the bottom line of merged cells under their first column only.
+            for spanned in range(column, column + cell.span_width):
+                border(table.cell(row, spanned), 'lnB', color, 1)
+                if row + 1 < rows:
+                    border(table.cell(row + 1, spanned), 'lnT', color, 1)
+
+
 def apply_scorecard(table, *, header_rows: int, metrics: list[dict], value_columns: list[tuple[int, str, str | None]],
                     total: dict | None = None, total_label: str = '', gap_column: str = 'gaps',
                     drop_leaf_header: bool = False, font: str | None = None, label_width: float | None = None) -> int:
@@ -506,7 +549,9 @@ def apply_scorecard(table, *, header_rows: int, metrics: list[dict], value_colum
         if current.get('total_rule'):
             for cell in table.rows[total_index].cells:
                 border(cell, 'lnT', current['total_rule'], 2)
+    groups, operator_row = _column_groups(table, header_rows, label_column)
     _style_headers(table, header_rows, label_column, font)
+    _group_lines(table, groups, operator_row, header_rows)
 
     # The columns: Category, Type of KPI, Score weight and Max score go; the KPI keeps room for its badge and meta.
     drop_columns(table, dropped)
