@@ -607,6 +607,8 @@ def test_scoring_job_results_cache_force_and_exports(scoring_api):
     gap_csv_rows = pd.read_csv(StringIO(gap_csv.content.decode('utf-8-sig')))
     assert gap_csv_rows.loc[0, 'gap_points'] == -0.6
 
+    # Drawn in NetCheck, whose operators fill the headers with their colour (Ericsson is the default of the users).
+    assert client.put('/api/scoring/theme', json={'theme': 'netcheck'}).status_code == 200
     ppt_response = client.get(f'/scoring/saved-filters/{job_id}/export/ppt')
     assert ppt_response.status_code == 200, ppt_response.text
     presentation = Presentation(BytesIO(ppt_response.content))
