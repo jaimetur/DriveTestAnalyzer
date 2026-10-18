@@ -967,3 +967,22 @@ def test_favourite_elements_are_exported_and_imported_on_their_own(client):
             assert document['format'] == 'drivetest-analyzer-scoring-report-configurations'
             assert [item['name'] for item in document['configurations']] == configurations and configurations
             assert [item['name'] for item in load_report_state(core.repository)['configurations']] == configurations
+
+
+def test_favourites_saved_before_store_only_the_theme_of_the_report(tmp_path):
+    # Favourites whose Scoring and Network Insights sections kept the theme store only that of the report.
+    from src.modules import complete_reports
+    from src.modules.repository import Repository
+
+    repository = Repository(tmp_path / 'workspace.db')
+    with repository.connection() as connection:
+        connection.executescript(complete_reports.SCHEMA)
+        legacy = {'sections': [{'key': 'scoring', 'options': {'theme': 'paper'}}, {'key': 'network_insights', 'options': {'theme': 'paper'}}]}
+        connection.execute(f'INSERT INTO {complete_reports.COMPLETE_REPORTS_TABLE} (name, definition_json, created_by, created_at, updated_at) '
+                           "VALUES ('Legacy', ?, 'super', '2026-10-18', '2026-10-18')", (json.dumps(legacy),))
+    favourite = complete_reports.list_favourites(repository)[0]
+    with repository.connection() as connection:
+        stored = json.loads(connection.execute(f'SELECT definition_json FROM {complete_reports.COMPLETE_REPORTS_TABLE}').fetchone()[0])
+    assert stored['theme'] == favourite['definition']['theme'] == 'paper'
+    assert all('theme' not in section['options'] for section in stored['sections'])
+    assert json.dumps(favourite['definition']).count('"theme"') == 1

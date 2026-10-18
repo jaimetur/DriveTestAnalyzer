@@ -788,3 +788,26 @@ def test_jobs_saved_before_the_order_keep_their_alphabetical_order(tmp_path):
     repository = Repository(path)
     assert [task['name'] for task in report_tasks.list_tasks(repository)] == ['alpha', 'Bravo', 'Charlie']
     assert [task['position'] for task in report_tasks.list_tasks(repository)] == [1, 2, 3]
+
+
+def test_jobs_saved_before_store_one_theme(tmp_path):
+    # Jobs saved when each artifact had its own theme (or none) store the default theme of the job, once.
+    from src.modules.repository import Repository
+    from src.modules.scoring_themes import DEFAULT_THEME
+
+    repository = Repository(tmp_path / 'workspace.db')
+    with repository.connection() as connection:
+        connection.executescript(report_tasks.SCHEMA)
+        for name, definition in (
+                ('Legacy', {'network_insights': [{'formats': ['powerpoint'], 'theme': 'umlaut'}],
+                            'scoring': [{'report': {'scenarios': [], 'theme': 'netcheck'}}]}),
+                ('Chosen', {'theme': 'midnight', 'network_insights': [{'formats': ['powerpoint']}]})):
+            connection.execute(f'INSERT INTO {report_tasks.REPORT_TASKS_TABLE} (name, definition_json, created_by, created_at, updated_at) '
+                               "VALUES (?, ?, 'super', '2026-10-18', '2026-10-18')", (name, json.dumps(definition)))
+    report_tasks.ensure_report_task_tables(repository)
+    with repository.connection() as connection:
+        stored = {row['name']: json.loads(row['definition_json']) for row in connection.execute(
+            f'SELECT name, definition_json FROM {report_tasks.REPORT_TASKS_TABLE}')}
+    assert stored['Legacy']['theme'] == DEFAULT_THEME == 'ericsson'
+    assert 'theme' not in stored['Legacy']['network_insights'][0] and 'theme' not in stored['Legacy']['scoring'][0]['report']
+    assert stored['Chosen']['theme'] == 'midnight'

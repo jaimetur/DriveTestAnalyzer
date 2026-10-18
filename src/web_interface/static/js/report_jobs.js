@@ -1011,6 +1011,8 @@
     const picker = select(choices.length ? choices : [['', 'No favourite Complete Report yet']], saved?.id || choices[0]?.[0] || '');
     picker.id = 'rj-favourite';
     picker.disabled = !choices.length;
+    // Without favourites the editor designs the artifacts: a clear tip says how much easier a favourite makes it.
+    $('rj-favourite-tip').hidden = Boolean(choices.length);
     $('rj-favourite-field').replaceChildren(field('Favourite Complete Report', picker));
     formatChoices($('rj-favourite-formats'), 'rj-favourite', saved?.formats?.length ? saved.formats : ['powerpoint', 'word'], ['powerpoint', 'word']);
     $('rj-favourite-note').textContent = choices.length

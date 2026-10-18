@@ -400,9 +400,43 @@ def catalogue_payload(dashboards: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 # -- favourites -------------------------------------------------------------------
+# The databases whose favourites already keep only the theme of the report (see _store_report_themes), once per process.
+_REPORT_THEMES_STORED: set[str] = set()
+_REPORT_THEMES_LOCK = Lock()
+
+
+def _store_report_themes(connection: Any) -> None:
+    """Favourites saved when their Scoring and Network Insights sections kept the theme store only the theme of the
+    report: theirs, else that of their Scoring section, else the default theme."""
+    for favourite_id, raw in connection.execute(f'SELECT id, definition_json FROM {COMPLETE_REPORTS_TABLE}').fetchall():
+        try:
+            definition = json.loads(raw or '{}')
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(definition, dict):
+            continue
+        sections = [section for section in definition.get('sections') or [] if isinstance(section, dict)]
+        options = {str(section.get('key')): section.get('options') for section in sections if isinstance(section.get('options'), dict)}
+        changed = not str(definition.get('theme') or '').strip()
+        if changed:
+            definition['theme'] = normalize_theme((options.get('scoring') or {}).get('theme') or DEFAULT_THEME)
+        for section_options in options.values():
+            if 'theme' in section_options:
+                section_options.pop('theme')
+                changed = True
+        if changed:
+            connection.execute(f'UPDATE {COMPLETE_REPORTS_TABLE} SET definition_json = ? WHERE id = ?',
+                               (json.dumps(definition, ensure_ascii=False), favourite_id))
+
+
 def ensure_tables(repository: Any) -> None:
     with repository.connection() as connection:
         connection.executescript(SCHEMA)
+        database = str(getattr(repository, 'db_path', ''))
+        with _REPORT_THEMES_LOCK:
+            if database not in _REPORT_THEMES_STORED:
+                _store_report_themes(connection)
+                _REPORT_THEMES_STORED.add(database)
 
 
 def favourite_contents(definition: Any, dashboard_names: dict[str, str] | None = None) -> list[dict[str, Any]]:

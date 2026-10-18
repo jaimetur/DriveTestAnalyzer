@@ -132,9 +132,46 @@ def now_local() -> datetime:
     return datetime.now().astimezone()
 
 
+# The databases whose jobs already store their one theme (see _store_job_themes), once per process.
+_JOB_THEMES_STORED: set[str] = set()
+_JOB_THEMES_LOCK = Lock()
+
+
+def _store_job_themes(connection: Any) -> None:
+    """Jobs saved before every job had one theme store it: the default theme (Ericsson) for those without one, and the
+    themes their Network Insights and Scoring artifacts had are dropped (the theme of the job colours them)."""
+    for job_id, raw in connection.execute(f'SELECT id, definition_json FROM {REPORT_TASKS_TABLE}').fetchall():
+        try:
+            definition = json.loads(raw or '{}')
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(definition, dict):
+            continue
+        changed = not str(definition.get('theme') or '').strip()
+        if changed:
+            definition['theme'] = DEFAULT_THEME
+        network = definition.get('network_insights')
+        for entry in (network if isinstance(network, list) else [network]):
+            if isinstance(entry, dict) and 'theme' in entry:
+                entry.pop('theme')
+                changed = True
+        for entry in definition.get('scoring') or []:
+            report = entry.get('report') if isinstance(entry, dict) else None
+            if isinstance(report, dict) and 'theme' in report:
+                report.pop('theme')
+                changed = True
+        if changed:
+            connection.execute(f'UPDATE {REPORT_TASKS_TABLE} SET definition_json = ? WHERE id = ?', (json.dumps(definition, ensure_ascii=False), job_id))
+
+
 def ensure_report_task_tables(task_repository: Any) -> None:
     with task_repository.connection() as connection:
         connection.executescript(SCHEMA)
+        database = str(getattr(task_repository, 'db_path', ''))
+        with _JOB_THEMES_LOCK:
+            if database not in _JOB_THEMES_STORED:
+                _store_job_themes(connection)
+                _JOB_THEMES_STORED.add(database)
         # The order of the jobs table (dragged by the users); jobs saved before it keep their alphabetical order.
         if 'position' not in {row[1] for row in connection.execute(f'PRAGMA table_info({REPORT_TASKS_TABLE})')}:
             try:
@@ -239,18 +276,6 @@ def _datasets_by_kind(value: Any) -> dict[str, list[int]]:
     return {str(kind): _ids(ids) for kind, ids in value.items() if _ids(ids)}
 
 
-def _legacy_theme(raw: dict[str, Any]) -> str:
-    """The theme of the first Network Insights or Scoring artifact of a job saved when each artifact had its own."""
-    for entry in _network_entries(raw.get('network_insights')):
-        if str(entry.get('theme') or '').strip():
-            return str(entry['theme'])
-    for entry in raw.get('scoring') or []:
-        report = entry.get('report') if isinstance(entry, dict) and isinstance(entry.get('report'), dict) else {}
-        if str(report.get('theme') or '').strip():
-            return str(report['theme'])
-    return ''
-
-
 def _scoring_report(value: Any) -> dict[str, Any]:
     """The scenarios and content of a Scoring artifact's report, which every Scoring artifact needs."""
     from src.modules.scoring_reports import normalize_report_configuration
@@ -325,9 +350,8 @@ def normalize_definition(raw: Any) -> dict[str, Any]:
         # Artifacts of modules registered in ARTIFACT_PROVIDERS.
         'modules': {},
         # The one colour theme of the job, read by every artifact that supports themes (CDR Analysis, Network Insights,
-        # Scoring & GAP Analysis, PPT Dashboards and Complete Reports); jobs saved before, whose Network Insights and
-        # Scoring artifacts had their own, take the first of them.
-        'theme': normalize_theme(str(raw.get('theme') or '').strip() or _legacy_theme(raw) or DEFAULT_THEME),
+        # Scoring & GAP Analysis, PPT Dashboards and Complete Reports); jobs without one take the default theme.
+        'theme': normalize_theme(str(raw.get('theme') or '').strip() or DEFAULT_THEME),
     }
     for key, config in (raw.get('modules') or {}).items() if isinstance(raw.get('modules'), dict) else ():
         provider = ARTIFACT_PROVIDERS.get(key)
