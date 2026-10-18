@@ -855,30 +855,40 @@
   /* NetCheck: as in the NetCheck reports. White lists with thin grey rules, each score with an Excel-like data bar in
      the colour of its band as long as its share of the maximum, each GAP a data bar either side of zero (red to the
      left, green to the right), the operators on strips in their colour and a bold total under a dark rule. */
-  [data-scoring-workspace][data-scoring-theme="netcheck"] { --sc-row-line: #e6e9ed; --sc-chip: transparent; --sc-section: transparent;
+  [data-scoring-workspace]:is([data-scoring-theme="netcheck"], [data-scoring-theme="umlaut"]) { --sc-row-line: #e6e9ed; --sc-chip: transparent; --sc-section: transparent;
     --sc-section-ink: #17232d; --sc-total: #ffffff; --sc-total-ink: #17232d; --sc-gap-card: transparent; --sc-radius: 0px; --sc-track: #c9d2db;
     --sc-gain-bar: #4ca65a; --sc-loss-bar: #e8414f; --sc-reliable-bg: #e5effa; --sc-reliable-ink: #1f6fb2; --sc-diff-bg: #fcefe0; --sc-diff-ink: #c25e00; }
-  [data-scoring-workspace][data-scoring-theme="netcheck"] .scoring-comparison-table.scoring-scorecard { border-spacing: 0; }
-  [data-scoring-workspace][data-scoring-theme="netcheck"] .scoring-comparison-table.scoring-scorecard thead tr > th { color: #17232d !important; font-size: .64rem !important; }
-  [data-scoring-workspace][data-scoring-theme="netcheck"] .scoring-scorecard .scoring-operator-chip { display: flex; width: 100%; box-sizing: border-box;
+  [data-scoring-workspace]:is([data-scoring-theme="netcheck"], [data-scoring-theme="umlaut"]) .scoring-comparison-table.scoring-scorecard { border-spacing: 0; }
+  [data-scoring-workspace]:is([data-scoring-theme="netcheck"], [data-scoring-theme="umlaut"]) .scoring-comparison-table.scoring-scorecard thead tr > th { color: #17232d !important; font-size: .64rem !important; }
+  [data-scoring-workspace]:is([data-scoring-theme="netcheck"], [data-scoring-theme="umlaut"]) .scoring-scorecard .scoring-operator-chip { display: flex; width: 100%; box-sizing: border-box;
     justify-content: flex-start; padding: .28rem .55rem; border-radius: 0; background: var(--operator-accent, #455b65); color: #fff; font-size: .74rem; }
-  [data-scoring-workspace][data-scoring-theme="netcheck"] .scoring-scorecard .scoring-operator-chip::before { display: none; }
-  [data-scoring-workspace][data-scoring-theme="netcheck"] .scoring-scorecard .scoring-kpi-badge { border-radius: 2px; }
-  [data-scoring-workspace][data-scoring-theme="netcheck"] .scoring-comparison-table.scoring-scorecard tbody tr:not(.scoring-section-row) > td[data-column="score"] {
+  [data-scoring-workspace]:is([data-scoring-theme="netcheck"], [data-scoring-theme="umlaut"]) .scoring-scorecard .scoring-operator-chip::before { display: none; }
+  [data-scoring-workspace]:is([data-scoring-theme="netcheck"], [data-scoring-theme="umlaut"]) .scoring-scorecard .scoring-kpi-badge { border-radius: 2px; }
+  [data-scoring-workspace]:is([data-scoring-theme="netcheck"], [data-scoring-theme="umlaut"]) .scoring-comparison-table.scoring-scorecard tbody tr:not(.scoring-section-row) > td[data-column="score"] {
     background: linear-gradient(90deg, var(--band-dot, #0e6b66) 0, color-mix(in srgb, var(--band-dot, #0e6b66) 14%, #fff) calc(var(--share, 0) * 100%),
       transparent calc(var(--share, 0) * 100%)) 0 50% / 100% 64% no-repeat !important; }
-  [data-scoring-workspace][data-scoring-theme="netcheck"] .scoring-comparison-table.scoring-scorecard tbody tr:not(.scoring-section-row) > td[data-column="gap"] { isolation: isolate; padding-bottom: .45rem !important;
+  [data-scoring-workspace]:is([data-scoring-theme="netcheck"], [data-scoring-theme="umlaut"]) .scoring-comparison-table.scoring-scorecard tbody tr:not(.scoring-section-row) > td[data-column="gap"] { isolation: isolate; padding-bottom: .45rem !important;
     background: none !important; text-align: right !important; }
-  [data-scoring-workspace][data-scoring-theme="netcheck"] .scoring-comparison-table.scoring-scorecard tbody tr:not(.scoring-section-row) > td:is([data-gap="gain"], [data-gap="loss"])::after {
+  [data-scoring-workspace]:is([data-scoring-theme="netcheck"], [data-scoring-theme="umlaut"]) .scoring-comparison-table.scoring-scorecard tbody tr:not(.scoring-section-row) > td:is([data-gap="gain"], [data-gap="loss"])::after {
     top: 18%; bottom: 18%; height: auto; border-radius: 0; z-index: -1; }
-  [data-scoring-workspace][data-scoring-theme="netcheck"] .scoring-comparison-table.scoring-scorecard tbody tr > td[data-gap="gain"]::after {
+  [data-scoring-workspace]:is([data-scoring-theme="netcheck"], [data-scoring-theme="umlaut"]) .scoring-comparison-table.scoring-scorecard tbody tr > td[data-gap="gain"]::after {
     background: linear-gradient(90deg, var(--sc-gain-bar), color-mix(in srgb, var(--sc-gain-bar) 14%, #fff)); }
-  [data-scoring-workspace][data-scoring-theme="netcheck"] .scoring-comparison-table.scoring-scorecard tbody tr > td[data-gap="loss"]::after {
+  [data-scoring-workspace]:is([data-scoring-theme="netcheck"], [data-scoring-theme="umlaut"]) .scoring-comparison-table.scoring-scorecard tbody tr > td[data-gap="loss"]::after {
     background: linear-gradient(270deg, var(--sc-loss-bar), color-mix(in srgb, var(--sc-loss-bar) 14%, #fff)); }
-  [data-scoring-workspace][data-scoring-theme="netcheck"] .scoring-comparison-table.scoring-scorecard tbody tr.scoring-section-row > :is(th, td) {
+  [data-scoring-workspace]:is([data-scoring-theme="netcheck"], [data-scoring-theme="umlaut"]) .scoring-comparison-table.scoring-scorecard tbody tr.scoring-section-row > :is(th, td) {
     border-radius: 0 !important; box-shadow: inset 0 -1px 0 #c9d2db !important; padding-top: .7rem !important; }
-  [data-scoring-workspace][data-scoring-theme="netcheck"] .scoring-scorecard tr.scoring-section-row .scoring-kpi-name { font-size: .66rem; letter-spacing: .06em; text-transform: uppercase; }
-  [data-scoring-workspace][data-scoring-theme="netcheck"] .scoring-comparison-table.scoring-scorecard tfoot tr > td { border-radius: 0 !important; box-shadow: inset 0 1.5px 0 #17232d !important; }
+  [data-scoring-workspace]:is([data-scoring-theme="netcheck"], [data-scoring-theme="umlaut"]) .scoring-scorecard tr.scoring-section-row .scoring-kpi-name { font-size: .66rem; letter-spacing: .06em; text-transform: uppercase; }
+  [data-scoring-workspace]:is([data-scoring-theme="netcheck"], [data-scoring-theme="umlaut"]) .scoring-comparison-table.scoring-scorecard tfoot tr > td { border-radius: 0 !important; box-shadow: inset 0 1.5px 0 #17232d !important; }
+
+  /* Umlaut: the lists of NetCheck as the umlaut benchmark reports draw them: dark ink, operators on rounded strips,
+     bars in the red-to-green colours of the bands and bold dark titles. */
+  [data-scoring-workspace][data-scoring-theme="umlaut"] { --sc-section-ink: #1c1c28; --sc-total-ink: #1c1c28; --sc-track: #e4e2e6;
+    --sc-gain-bar: #5e9e58; --sc-loss-bar: #c9483f; --sc-reliable-bg: #e6edf4; --sc-reliable-ink: #5b7a99; --sc-diff-bg: #fbf0c9; --sc-diff-ink: #9a6a0a; }
+  [data-scoring-workspace][data-scoring-theme="umlaut"] .scoring-comparison-table.scoring-scorecard thead tr > th { color: #3f3f4c !important; }
+  [data-scoring-workspace][data-scoring-theme="umlaut"] .scoring-scorecard .scoring-operator-chip { border-radius: 4px; }
+  [data-scoring-workspace][data-scoring-theme="umlaut"] :is(.scoring-table-section-title, .scoring-chart-card h4, .scoring-insight-section h4) { color: #1c1c28 !important; font-weight: 800; }
+  [data-scoring-workspace][data-scoring-theme="umlaut"] .scoring-comparison-table.scoring-scorecard tfoot tr > td { box-shadow: inset 0 1.5px 0 #1c1c28 !important; }
+  [data-scoring-workspace][data-scoring-theme="umlaut"] table.scoring-area-summary-table td.scoring-area-name { color: #1c1c28; }
 
   /* Heatmap: light heat tiles. Every score a tile tinted by the share of its maximum on the scale of its band, outlined
      subtotals and the operators underlined in their colour. */
@@ -989,13 +999,13 @@
 
   /* The National & Geographical Areas table in the style of each theme. */
   [data-scoring-workspace][data-scoring-theme] table.scoring-area-summary-table td.scoring-area-name { box-shadow: none; }
-  [data-scoring-workspace][data-scoring-theme="netcheck"] table.scoring-area-summary-table { border: 0; border-radius: 0; }
-  [data-scoring-workspace][data-scoring-theme="netcheck"] table.scoring-area-summary-table th { background: #fff; color: #17232d; box-shadow: inset 0 -1.5px 0 #17232d; font-size: .66rem; }
-  [data-scoring-workspace][data-scoring-theme="netcheck"] table.scoring-area-summary-table td { border-bottom: 1px solid #e6e9ed; }
-  [data-scoring-workspace][data-scoring-theme="netcheck"] table.scoring-area-summary-table tbody tr.is-area-shaded td { background-color: #fff; }
-  [data-scoring-workspace][data-scoring-theme="netcheck"] table.scoring-area-summary-table td.scoring-area-name { color: #1450a8; font-size: .82rem; letter-spacing: .04em; text-transform: uppercase; }
-  [data-scoring-workspace][data-scoring-theme="netcheck"] table.scoring-area-summary-table td.scoring-area-gain { background-color: #dff1e2 !important; }
-  [data-scoring-workspace][data-scoring-theme="netcheck"] table.scoring-area-summary-table td.scoring-area-loss { background-color: #fbe0de !important; }
+  [data-scoring-workspace]:is([data-scoring-theme="netcheck"], [data-scoring-theme="umlaut"]) table.scoring-area-summary-table { border: 0; border-radius: 0; }
+  [data-scoring-workspace]:is([data-scoring-theme="netcheck"], [data-scoring-theme="umlaut"]) table.scoring-area-summary-table th { background: #fff; color: #17232d; box-shadow: inset 0 -1.5px 0 #17232d; font-size: .66rem; }
+  [data-scoring-workspace]:is([data-scoring-theme="netcheck"], [data-scoring-theme="umlaut"]) table.scoring-area-summary-table td { border-bottom: 1px solid #e6e9ed; }
+  [data-scoring-workspace]:is([data-scoring-theme="netcheck"], [data-scoring-theme="umlaut"]) table.scoring-area-summary-table tbody tr.is-area-shaded td { background-color: #fff; }
+  [data-scoring-workspace]:is([data-scoring-theme="netcheck"], [data-scoring-theme="umlaut"]) table.scoring-area-summary-table td.scoring-area-name { color: #1450a8; font-size: .82rem; letter-spacing: .04em; text-transform: uppercase; }
+  [data-scoring-workspace]:is([data-scoring-theme="netcheck"], [data-scoring-theme="umlaut"]) table.scoring-area-summary-table td.scoring-area-gain { background-color: #dff1e2 !important; }
+  [data-scoring-workspace]:is([data-scoring-theme="netcheck"], [data-scoring-theme="umlaut"]) table.scoring-area-summary-table td.scoring-area-loss { background-color: #fbe0de !important; }
 
   [data-scoring-workspace][data-scoring-theme="ericsson"] table.scoring-area-summary-table { border: 0; border-radius: 0; }
   [data-scoring-workspace][data-scoring-theme="ericsson"] table.scoring-area-summary-table th { background: #fff; color: #0c0c0c; box-shadow: inset 0 -2px 0 #0c0c0c; font-size: .6rem; letter-spacing: .12em; }
@@ -1047,7 +1057,7 @@
   [data-scoring-workspace][data-scoring-theme="heatmap"] table.scoring-area-summary-table td.scoring-area-loss { background-color: #f9d5d3 !important; color: #a63a33; }
 
   /* The insight tables (Summary, Geographical Areas, GAP by part, Points Lost) in the style of each theme. */
-  [data-scoring-workspace][data-scoring-theme="netcheck"] .scoring-insight-table th { background: var(--st-header) !important; color: #fff !important; text-transform: uppercase; font-size: .66rem; letter-spacing: .04em; }
+  [data-scoring-workspace]:is([data-scoring-theme="netcheck"], [data-scoring-theme="umlaut"]) .scoring-insight-table th { background: var(--st-header) !important; color: #fff !important; text-transform: uppercase; font-size: .66rem; letter-spacing: .04em; }
   [data-scoring-workspace][data-scoring-theme="ericsson"] .scoring-insight-table th { background: #fff !important; color: #0c0c0c !important; text-transform: uppercase; font-size: .6rem;
     letter-spacing: .1em; border-bottom: 1px solid #0c0c0c; }
   [data-scoring-workspace][data-scoring-theme="ericsson"] .scoring-insight-table td { border-bottom: 1px solid #ededed; }

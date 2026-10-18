@@ -23,7 +23,7 @@ def _channels(color: str) -> tuple[int, ...]:
 
 def test_every_theme_has_every_token():
     tokens = set(THEMES[DEFAULT_THEME])
-    assert DEFAULT_THEME == 'netcheck' and list(THEMES) == ['netcheck', 'ericsson', 'vodafone', 'midnight', 'paper', 'heatmap']
+    assert DEFAULT_THEME == 'netcheck' and list(THEMES) == ['netcheck', 'umlaut', 'ericsson', 'vodafone', 'midnight', 'paper', 'heatmap']
     for name, theme in THEMES.items():
         assert set(theme) == tokens, name
         assert set(theme['bands']) == set(THRESHOLD_COLORS), name
@@ -111,3 +111,48 @@ def test_each_user_keeps_a_theme_and_the_page_offers_every_theme(client):
     assert client.put('/api/scoring/theme', json={'theme': 'sunset'}).status_code == 400
     changes = [json.loads(row['details']) for row in core.repository.list_logs() if row['action'] == 'scoring_theme_changed']
     assert changes[0] == {'theme': 'vodafone', 'previous': 'netcheck'}
+
+
+def test_each_theme_styles_the_titles_and_subtitles_of_the_slides():
+    from src.modules.cdr_reporting import _remove_all_slides
+    from src.modules.network_insights_export import _slide
+    from src.modules.theme_titles import split_focus, title_style
+
+    assert split_focus('Scoring Tables — Summary') == ('Scoring Tables — ', 'Summary')
+    assert split_focus('Best Network Scoring per Category') == ('Best Network Scoring ', 'per Category')
+    assert split_focus('Overview') == ('Overview', '')
+    for name in THEMES:
+        assert set(THEMES[name]['titles']) == set(THEMES['netcheck']['titles']), name
+    deck = Presentation(TEMPLATE)
+    _remove_all_slides(deck)
+    with use_theme('netcheck'):
+        slide = _slide(deck, 'RF Quality · NR quality per carrier', 'National · All Operators')
+        heading, focus = slide.shapes.title.text_frame.paragraphs[0].runs
+        # NetCheck: the heading in capitals (without changing its text), the focus in bold, both blue, in Montserrat.
+        assert heading.text == 'RF Quality · ' and heading.font._rPr.get('cap') == 'all' and not heading.font.bold
+        assert focus.font.bold and focus.font._rPr.get('cap') is None and focus.font.name == 'Montserrat'
+        assert str(focus.font.color.rgb) == THEMES['netcheck']['title_accent'].lstrip('#')
+        lead = slide.shapes.title.text_frame.paragraphs[1].runs[0]
+        assert lead.text == 'National · ' and lead.font.bold
+    with use_theme('umlaut'):
+        slide = _slide(deck, 'Overview', 'National')
+        title, subtitle = slide.shapes.title.text_frame.paragraphs[:2]
+        assert title.runs[0].font.bold and title.runs[0].font.name == 'Arial'
+        assert str(title.runs[0].font.color.rgb) == '1C1C28' and str(subtitle.runs[0].font.color.rgb) == 'A6192E'
+        assert title_style()['subtitle_color'] == '#A6192E'
+    with use_theme('paper'):
+        slide = _slide(deck, 'Spectrum · Deployed', 'National')
+        assert slide.shapes.title.text_frame.paragraphs[0].runs[-1].font.italic
+        assert slide.shapes.title.text_frame.paragraphs[1].runs[0].font.name == 'Georgia'
+
+
+def test_light_scoring_slides_leave_out_the_mark_of_the_red_layouts():
+    from src.modules.cdr_reporting import _remove_all_slides
+    from src.modules.scoring_exports import _slide
+
+    deck = Presentation(TEMPLATE)
+    _remove_all_slides(deck)
+    slide = _slide(deck, 'Scoring Tables — Summary', 'Best Network')
+    names = [shape.name for shape in slide.shapes]
+    # The dark logos of the master, without the Ericsson mark drawn on the red of the covers and transitions.
+    assert 'Logo' in names and not any(name.startswith('Ericsson watermark') for name in names)

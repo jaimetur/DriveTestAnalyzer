@@ -41,6 +41,7 @@ from src.modules.scoring_config import BEST_NETWORK_SCORING, MOST_RELIABLE_SCORI
 from src.modules.scoring_insights import operator_styles
 from src.modules.scoring_pptx_scorecard import apply_scorecard
 from src.modules.scoring_themes import DEFAULT_THEME, active_theme, themed, use_theme
+from src.modules.theme_titles import style_title
 from src.modules.scoring_vendors import normalize_scoring_vendor_result
 from src.modules.scoring_views import (
     THRESHOLD_COLORS, _hierarchy_display_value, gap_priority_order_key, latest_campaign_columns, build_scoring_views, refresh_baseline_warning, scoring_coverage_notes,
@@ -257,21 +258,12 @@ def _slide(presentation, title: str, subtitle: str):
     if title_shape is not None:
         paragraphs = title_shape.text_frame.paragraphs
         if paragraphs:
-            title_paragraph = paragraphs[0]
-            title_paragraph.font.color.rgb = _theme_rgb(TITLE_BLUE)
-            for run in title_paragraph.runs:
-                run.font.color.rgb = _theme_rgb(TITLE_BLUE)
-            _emphasize_title(title_paragraph)
-            _fit_slide_title_on_one_line(title_shape, title_paragraph)
-        for subtitle_paragraph in paragraphs[1:]:
-            size = _subtitle_font_size(title_shape, subtitle_paragraph)
-            subtitle_paragraph.font.size = Pt(size)
-            subtitle_paragraph.font.bold = True
-            subtitle_paragraph.font.color.rgb = _theme_rgb(_SUBTITLE_COLOR)
-            for run in subtitle_paragraph.runs:
-                run.font.size = Pt(size)
-                run.font.bold = True
-                run.font.color.rgb = _theme_rgb(_SUBTITLE_COLOR)
+            _emphasize_title(paragraphs[0])
+        # The title and subtitle in the style of the theme (see theme_titles), the subtitle on one line.
+        sizes = [_subtitle_font_size(title_shape, paragraph) for paragraph in paragraphs[1:]]
+        style_title(slide, subtitle_size=min(sizes) if sizes else None)
+        if paragraphs:
+            _fit_slide_title_on_one_line(title_shape, paragraphs[0])
     return slide
 
 

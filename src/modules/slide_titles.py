@@ -46,7 +46,9 @@ def fit_paragraph_on_one_line(shape: Any, paragraph: Any, default_size: float = 
     available = (int(shape.width) - int(insets)) / 12700 * margin
     fallback = paragraph.font.size.pt if paragraph.font.size is not None else default_size
     sizes = [run.font.size.pt if run.font.size is not None else fallback for run in runs]
-    width = sum(text_width_pt(run.text, size, bool(run.font.bold)) for run, size in zip(runs, sizes))
+    # A run in capitals (cap="all", such as the NetCheck titles) is measured in capitals.
+    texts = [run.text.upper() if run.font._rPr.get('cap') == 'all' else run.text for run in runs]
+    width = sum(text_width_pt(text, size, bool(run.font.bold)) for text, run, size in zip(texts, runs, sizes))
     if width <= available:
         return None
     factor = available / width

@@ -23,7 +23,6 @@ CONTENT_TOP = 1.86
 # The headline wraps before the pill under the logos.
 TITLE_WIDTH = 9.95
 PILL_TOP, PILL_HEIGHT = 1.13, 0.3
-TITLE_PT = 28
 FOOTNOTE_BOTTOM = 6.98
 # Groups per slide: the signal views list every group in each environment.
 SIGNAL_GROUPS_PER_SLIDE = 5
@@ -54,6 +53,9 @@ def palette(theme: dict[str, Any] | None = None) -> dict[str, Any]:
     soft = _hex(theme.get('soft_header'), '#EDF2F6')
     if _luminance(soft) < .8:
         soft = blend(soft, '#FFFFFF', .85)
+    # A white panel stands apart from the slide in the shade of the groups of the theme.
+    if _luminance(soft) > .99:
+        soft = _hex(theme.get('group'), '#F5F5F5')
     return {
         'ink': ink, 'muted': _hex(theme.get('muted'), '#8A96A0'), 'accent': _hex(theme.get('title_accent'), '#1450A8'),
         'soft': soft, 'line': _hex(theme.get('line'), '#E3E8EC'),
@@ -140,22 +142,18 @@ def _text(slide, left: float, top: float, width: float, height: float, text: str
 
 def _header(slide, view: dict[str, Any], colours: dict[str, Any]) -> None:
     """The headline in the accent of the theme under the title, and the pill of the tests at the right."""
-    from src.modules.slide_titles import fit_paragraph_on_one_line, fit_slide_title
+    from src.modules.slide_titles import fit_paragraph_on_one_line
+    from src.modules.theme_titles import style_title, title_style
 
     title = next((shape for shape in slide.placeholders if shape.placeholder_format.type in {1, 3} and shape.has_text_frame), None)
     if title is not None:
         title.left, title.top, title.width, title.height = title.left, title.top, Inches(TITLE_WIDTH), title.height
+        # The title and the headline under it in the style of the theme, the headline on one line when it fits.
+        style_title(slide)
         paragraphs = title.text_frame.paragraphs
-        # A bold title, as benchmark slides have.
-        for run in paragraphs[0].runs:
-            run.font.size, run.font.bold = Pt(TITLE_PT), True
-            run.font.color.rgb = _rgb(colours['ink'])
         if len(paragraphs) > 1:
-            for run in paragraphs[1].runs:
-                run.font.color.rgb = _rgb(colours['accent'])
-                run.font.size = Pt(16)
-            fit_paragraph_on_one_line(title, paragraphs[1], default_size=16, minimum=13)
-        fit_slide_title(slide, TITLE_PT)
+            size = title_style().get('subtitle_size', 16)
+            fit_paragraph_on_one_line(title, paragraphs[1], default_size=size, minimum=min(size, 13))
     tag = str(view.get('tag') or '')
     if tag:
         width = 0.5 + len(tag) * 0.075

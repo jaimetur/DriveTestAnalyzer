@@ -168,11 +168,26 @@ The **Theme** selector, beside Scoring and Environment, gives every chart and ta
 | Theme | Colours | Scoring and GAP cells |
 | --- | --- | --- |
 | **NetCheck** | As the NetCheck reports: blue titles, white lists with thin rules, operators on strips in their colour, amber Voice and teal Data, a bold total | Excel-like data bars as long as the share of the maximum, in the colour of the score band |
+| **Umlaut** | As the umlaut benchmark reports: bold dark titles over a red headline, white lists with thin rules, light grey panels and quality classes from red to green | Bars as long as the share of the maximum, in the colour of the score band |
 | **Ericsson** | Ericsson blue on black and white, black rules opening the sections and closing the table, each operator ruled in its colour across all its columns | Square cells filled as far as the share of the maximum, in the colour of the band; GAPs in black after a small ▲ or ▼ in their colour, over a bar either side of zero |
 | **Vodafone** | Vodafone red and anthracite, operators as pills in their colour, a dark grey total | Rounded pills tinted with the score band |
 | **Midnight** | Navy panels with light text and neon accents | Dark cards with a glowing bar of the share of the maximum |
 | **Paper** | A typeset report: serif type, black rules, italic small-capital sections | Scores underlined in the colour of their band |
 | **Heatmap** | Light panels with a red, amber, green and teal heat scale and outlined subtotals | Soft tiles tinted by the share of the maximum on the scale of their band |
+
+Each theme also styles the titles and subtitles of every content slide of the PowerPoint and Word exports (the covers and transitions keep the Vodafone-Three style of the template):
+
+| Theme | Titles | Subtitles |
+| --- | --- | --- |
+| **NetCheck** | Montserrat, blue, the first part in light capitals and what tells the slide apart in bold (*BEST NETWORK SCORING* **per Category**) | Blue, their first part in bold |
+| **Umlaut** | Arial, bold, dark | Red |
+| **Ericsson** | Ericsson Hilda, light black, what tells the slide apart in bold Ericsson blue | Grey |
+| **Vodafone** | Vodafone Rg, bold anthracite, what tells the slide apart in red | Red |
+| **Midnight** | Segoe UI, bold navy, what tells the slide apart in cyan | Cyan |
+| **Paper** | Georgia, black, what tells the slide apart in dark red italics | Dark red italics |
+| **Heatmap** | Segoe UI, bold, what tells the slide apart in teal | Grey |
+
+A computer without the font of a theme shows its titles in a similar font.
 
 In every theme a GAP is a bar either side of zero as long as the GAP: red (or the loss colour of the theme) to the left when the operator is behind the reference, green (or its gain colour) to the right when it is ahead; the GAP bars of the KPI GAP Profile and the other insight tables grow the same way, and points lost always grow from the left. In every table the header of a column is aligned like its values (right for numbers), so each column visibly ends where its header does. The National & Geographical Areas table, the scale of the Points Lost Map (yellow to red in NetCheck, blues in Ericsson, reds in Vodafone, cyan to pink in Midnight, sepia to oxblood in Paper, teal to red in Heatmap) and the tables of the exports follow the theme too. A theme also colours the best and worst operators of the Summary, Voice and Data, the points behind and ahead of the reference, positions, the maximum score allocation donuts (whose outer ring of environments never repeats a colour of the inner ring of Voice and Data or KPI categories) and the slide titles. Operator colours always come from the [Operator Maps](workspace-config.md#operator-maps). The page keeps the theme each user chooses in each workspace, and the choice is registered in App Events. **Export Selected Scoring Report (PPT/Word)** uses the theme of the page; the report editor has its own **Theme** selector (see [Report scenarios](#report-scenarios)). [Network Insights](network-insights.md#theme) offers the same themes, chosen apart.
 

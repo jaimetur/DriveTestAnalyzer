@@ -452,8 +452,8 @@ body:has(dialog.ni-expand-dialog[open]){overflow:hidden}
 .ni-finding{--nit-surface:#fff;--nit-ink:#1f2a37;--nit-muted:#8a96a0;--nit-accent:#1450a8;--nit-soft:#edf2f6;--nit-line:#e3e8ec;--nit-track:#c1c8ce;display:grid;gap:16px;padding:26px 30px 20px;border:1px solid var(--nit-line);border-radius:14px;background:var(--nit-surface);color:var(--nit-ink);font-family:var(--nit-font,inherit);box-shadow:0 10px 26px rgba(15,23,42,.07)}
 .ni-finding h3,.ni-finding h4,.ni-finding p{margin:0}
 .ni-finding-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px}
-.ni-finding-head h3{font-size:1.6rem;font-weight:850;letter-spacing:-.01em;color:var(--nit-ink)}
-.ni-finding-headline{margin-top:.35rem!important;font-size:1.02rem;font-weight:550;color:var(--nit-accent)}
+.ni-finding-head h3{font-family:var(--nit-title-font,inherit);font-size:1.6rem;font-weight:var(--nit-title-weight,850);letter-spacing:-.01em;text-transform:var(--nit-title-transform,none);color:var(--nit-title,var(--nit-ink))}
+.ni-finding-headline{margin-top:.35rem!important;font-family:var(--nit-title-font,inherit);font-size:1.02rem;font-weight:550;font-style:var(--nit-headline-style,normal);color:var(--nit-headline,var(--nit-accent))}
 .ni-finding-tag{flex:0 0 auto;padding:.28rem .95rem;border:1.5px solid var(--nit-ink);border-radius:999px;font-size:.78rem;font-weight:800;white-space:nowrap}
 .ni-finding h4{margin-bottom:.6rem!important;font-size:.92rem;font-weight:800}
 .ni-finding-legend{display:flex;flex-wrap:wrap;gap:.45rem 1.2rem;margin-top:.55rem;font-size:.76rem;color:var(--nit-muted)}

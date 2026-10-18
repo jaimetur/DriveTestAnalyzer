@@ -297,6 +297,9 @@ def normalize_definition(raw: Any) -> dict[str, Any]:
         'items': _normalize_items(key, raw_sections.get(key, {}).get('items')),
         'options': _normalize_options(key, raw_sections.get(key, {}).get('options'), legacy),
     } for key in order]
+    # Scoring & GAP Analysis and Network Insights share one theme (reports saved before take that of Scoring).
+    options = {section['key']: section['options'] for section in definition['sections']}
+    options['network_insights']['theme'] = options['scoring']['theme']
     return definition
 
 

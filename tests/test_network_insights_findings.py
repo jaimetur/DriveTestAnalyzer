@@ -183,9 +183,11 @@ def test_complete_reports_and_reporting_jobs_choose_a_network_insights_theme() -
     from src.modules.report_tasks import _network_entry
 
     assert complete_reports.default_options('network_insights')['theme'] == 'netcheck'
-    definition = complete_reports.normalize_definition({'sections': [{
-        'key': 'network_insights', 'items': [{'key': 'overview'}, {'key': 'spectrum'}], 'options': {'theme': 'Vodafone'}}]})
+    definition = complete_reports.normalize_definition({'sections': [
+        {'key': 'scoring', 'options': {'theme': 'Vodafone'}},
+        {'key': 'network_insights', 'items': [{'key': 'overview'}, {'key': 'spectrum'}], 'options': {'theme': 'paper'}}]})
     network = next(section for section in definition['sections'] if section['key'] == 'network_insights')
+    # One theme for the whole report: that of Scoring & GAP Analysis.
     assert network['options']['theme'] == 'vodafone'
     # Reports saved before the Key Findings have them right after the Overview.
     assert [item['key'] for item in network['items']][:3] == ['overview', 'findings', 'spectrum']

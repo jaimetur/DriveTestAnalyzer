@@ -886,9 +886,10 @@ def _slide(presentation: Presentation, title: str, subtitle: str = ''):
     for placeholder in slide.placeholders:
         if placeholder.has_text_frame:
             placeholder.text_frame.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
-    # A long title is made smaller instead of taking a second line over the content.
-    from src.modules.slide_titles import fit_slide_title
-    fit_slide_title(slide)
+    # The title and subtitle in the style of the theme (see theme_titles); a long title is made smaller instead of
+    # taking a second line over the content.
+    from src.modules.theme_titles import style_title
+    style_title(slide)
     return slide
 
 

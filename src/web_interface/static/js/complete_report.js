@@ -126,6 +126,15 @@
     wrapper.input = select;
     return wrapper;
   };
+  // The Scoring & GAP Analysis and Network Insights sections share their theme, so the whole report has one: choosing it
+  // in one section chooses it in the other.
+  document.addEventListener('change', (event) => {
+    const select = event.target;
+    if (!(select instanceof HTMLSelectElement) || !select.dataset.crTheme) return;
+    document.querySelectorAll('select[data-cr-theme]').forEach((other) => {
+      if (other !== select && other.value !== select.value) other.value = select.value;
+    });
+  });
   const numberField = (label, value, step, title = '') => {
     const wrapper = node('label', label, 'cr-field');
     const input = node('input');
@@ -231,6 +240,7 @@
     const compared = multiField('Compared operators', operators, saved.compared_operators);
     compared.title = 'The operators GAP Analysis compares with the GAP reference (all when none is chosen)';
     const theme = selectField('Theme', (options.scoring_themes || []).map((item) => [item.id, item.label || item.id]), saved.theme);
+    theme.input.dataset.crTheme = 'scoring';
     const tables = node('fieldset', undefined, 'cr-choice-group');
     tables.append(node('legend', 'Scoring tables'));
     const kpiValues = check('Show KPI values', saved.kpi_values);
@@ -298,7 +308,8 @@
     const gridSize = selectField('Map grid', [['100', '100 m'], ['250', '250 m'], ['500', '500 m'], ['1000', '1 km']], String(saved.grid_metres));
     const environments = multiField('Environments', NI_ENVIRONMENTS, saved.environments);
     const theme = selectField('Theme', (options.scoring_themes || []).map((item) => [item.id, item.label || item.id]), saved.theme);
-    theme.title = 'The colours of the charts and tables of the Network Insights section';
+    theme.title = 'The colours and titles of the Network Insights section, the same as those of the Scoring & GAP Analysis section';
+    theme.input.dataset.crTheme = 'network_insights';
     const grid = node('div', undefined, 'cr-option-grid');
     grid.append(technology, group, ...fields, gridSize, environments, theme);
     box.append(grid);

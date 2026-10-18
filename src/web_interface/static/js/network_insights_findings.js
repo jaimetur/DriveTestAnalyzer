@@ -27,7 +27,9 @@
     return {
       surface, ink, dark, muted: hex(theme.muted, '#8A96A0'), accent: hex(theme.title_accent, '#1450A8'),
       soft: dark ? blend(surface, ink, .08) : (luminance(hex(theme.soft_header, '#EDF2F6')) < .8
-        ? blend(hex(theme.soft_header), '#FFFFFF', .85) : hex(theme.soft_header, '#EDF2F6')),
+        ? blend(hex(theme.soft_header), '#FFFFFF', .85)
+        // A white panel stands apart from the card in the shade of the groups of the theme.
+        : luminance(hex(theme.soft_header, '#EDF2F6')) > .99 ? hex(theme.group, '#F5F5F5') : hex(theme.soft_header, '#EDF2F6')),
       line: hex(theme.line, '#E3E8EC'),
       scale: (theme.scale || ['#C9483F', '#E8A060', '#F2D06B', '#93C47D', '#3E8E4F']).map(colour => hex(colour)),
       series: (theme.series || ['#5B7A99', '#A9C4DB', '#8BA88E', '#C9B27C', '#B48C7C', '#8E87A0', '#DADDE0']).map(colour => hex(colour)),
@@ -38,6 +40,12 @@
       rowAlt: dark ? blend(surface, ink, .05) : hex(theme.row_alt, '#F8FAFC'),
       hover: dark ? blend(surface, ink, .1) : blend(hex(theme.row_alt, '#F8FAFC'), ink, .05),
       gain: hex(theme.gain, '#4CA65A'), loss: hex(theme.loss, '#E8414F'),
+      // The title and the headline of the views in the style of the slides of the theme (see theme_titles.py).
+      title: dark ? ink : hex(theme.title, '#1F2A37'),
+      headline: hex(theme.titles?.subtitle_color || theme.subtitle, '#245A96'),
+      titleFont: theme.titles?.font ? `"${theme.titles.font}", ${theme.font || 'inherit'}` : '',
+      titleWeight: theme.titles?.bold === false ? 400 : 850,
+      titleCaps: Boolean(theme.titles?.caps), headlineItalic: Boolean(theme.titles?.subtitle_italic),
     };
   };
   const ladderColours = (colours, count) => {
@@ -127,8 +135,11 @@
 
   const style = colours => [
     ['surface', colours.surface], ['ink', colours.ink], ['muted', colours.muted], ['accent', colours.accent],
-    ['soft', colours.soft], ['line', colours.line], ['track', colours.track],
-  ].map(([name, value]) => `--nit-${name}:${value}`).join(';') + (colours.font ? `;--nit-font:${colours.font}` : '');
+    ['soft', colours.soft], ['line', colours.line], ['track', colours.track], ['title', colours.title],
+    ['headline', colours.headline], ['title-weight', colours.titleWeight],
+    ['title-transform', colours.titleCaps ? 'uppercase' : 'none'], ['headline-style', colours.headlineItalic ? 'italic' : 'normal'],
+  ].map(([name, value]) => `--nit-${name}:${value}`).join(';') + (colours.font ? `;--nit-font:${colours.font}` : '')
+    + (colours.titleFont ? `;--nit-title-font:${colours.titleFont}` : '');
 
   // Draw the views of ``findings`` in ``host``; ``scope`` (the filters of the analysis) ends each footnote.
   const render = (host, findings, theme, scope = '') => {

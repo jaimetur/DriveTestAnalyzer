@@ -29,6 +29,12 @@ STYLES: dict[str, dict[str, Any]] = {
                  'gap_card': '#FFFFFF', 'gain_bar': '#4CA65A', 'loss_bar': '#E8414F', 'fade': True, 'gain': '#2E8540',
                  'loss': '#C62835', 'reliable': '#1F6FB2', 'diff': '#C25E00', 'best': '#DFF3E4', 'worst': '#FBE1DF',
                  'operators': 'fill'},
+    # Umlaut: white tables with thin rules, each score a bar in the colour of its band, operators on strips.
+    'umlaut': {'score': 'bar', 'bar_mix': .55, 'card': '#FFFFFF', 'label': '#FFFFFF', 'ink': '#1C1C28', 'muted': '#8C8C99',
+               'header': '#FFFFFF', 'header_ink': '#3F3F4C', 'section': '#F4F2F4', 'section_ink': '#1C1C28',
+               'section_rule': '#E4E2E6', 'total': '#FFFFFF', 'total_ink': '#1C1C28', 'total_rule': '#1C1C28',
+               'gap_card': '#FFFFFF', 'gain_bar': '#93C47D', 'loss_bar': '#E39B94', 'gain': '#2F7D4A', 'loss': '#A6192E',
+               'reliable': '#5B7A99', 'diff': '#B86E00', 'best': '#DCEFD6', 'worst': '#F6D5D2', 'operators': 'fill'},
     'ericsson': {'score': 'bar', 'bar_mix': .38, 'card': '#F5F5F5', 'label': '#FFFFFF', 'ink': '#0C0C0C', 'muted': '#6A6A6A',
                  'header': '#FFFFFF', 'header_ink': '#0C0C0C', 'section': '#FFFFFF', 'section_ink': '#0C0C0C',
                  'section_rule': '#0C0C0C', 'total': '#FFFFFF', 'total_ink': '#0C0C0C', 'total_rule': '#0C0C0C',

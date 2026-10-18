@@ -2,7 +2,7 @@
 PowerPoint and Word exports.
 
 NetCheck, the default, keeps the colours of the NetCheck reports. Every other theme gives the same tokens its own
-colours. The scoring views and the export code are written in the NetCheck colours; :func:`themed` translates each of
+colours, and each theme gives the titles and subtitles of the slides its own style (``titles``, see theme_titles). The scoring views and the export code are written in the NetCheck colours; :func:`themed` translates each of
 them, and every shade of the NetCheck GAP scale, into the active theme. Operator colours always come from the
 Operator Maps, whatever the theme.
 """
@@ -41,12 +41,48 @@ _NETCHECK = {
     # of Network Insights).
     'scale': ['#C9483F', '#E8A060', '#F2D06B', '#93C47D', '#3E8E4F'],
     'series': ['#5B7A99', '#A9C4DB', '#8BA88E', '#C9B27C', '#B48C7C', '#8E87A0', '#DADDE0'],
+    # The titles and subtitles of the slides: their font, size and weight, the first part of a title in capitals
+    # (caps), the colours that replace the title tokens (None: title, title_accent and subtitle) and whether the
+    # first part of a subtitle (before ' · ') is bold (lead_bold).
+    'titles': {'font': 'Montserrat', 'size': 32, 'bold': False, 'focus_bold': True, 'caps': True, 'italic': False,
+               'focus_color': None, 'subtitle_font': 'Montserrat', 'subtitle_size': 16, 'subtitle_bold': False,
+               'subtitle_italic': False, 'subtitle_color': None, 'lead_bold': True, 'focus_italic': False},
     # The lines between the cells of the PowerPoint tables: white gaps that set the cells apart, never a grid.
     'cell_border': '#FFFFFF', 'cell_border_pt': 1.5,
 }
 
 THEMES: dict[str, dict[str, Any]] = {
     'netcheck': _NETCHECK,
+    'umlaut': {
+        'label': 'Umlaut',
+        'description': 'As the umlaut benchmark reports: bold dark titles over a red headline, white tables with thin rules and '
+                       'bars in the colour of each band, light grey panels and quality classes from red to green.',
+        'font': 'Arial, "Helvetica Neue", Helvetica, sans-serif', 'number_font': 'Arial, "Helvetica Neue", Helvetica, sans-serif',
+        'surface': '#FFFFFF', 'ink': '#1C1C28', 'muted': '#8C8C99', 'line': '#E4E2E6', 'value_scale': 1,
+        'title': '#1C1C28', 'title_accent': '#A6192E', 'subtitle': '#A6192E', 'accent': '#A6192E',
+        'header': '#F4F2F4', 'header_text': '#3F3F4C', 'soft_header': '#F4F2F4', 'soft_header_text': '#1C1C28',
+        'weight': '#5B7A99', 'maximum': '#A6192E', 'gap_header': '#F2D06B', 'gap_cell': '#FBF3D9',
+        'group': '#F4F2F4', 'group_alt': '#EAE7EB', 'category': '#F4F2F4', 'kpi': '#FFFFFF', 'kpi_alt': '#FAF9FA',
+        'total': '#EAE7EB', 'subtotal': '#F4F2F4', 'summary_total': '#EAE7EB', 'row_alt': '#F7F6F8', 'border': '#E4E2E6',
+        'bands': {'Low': '#F6D5D2', 'Medium': '#FBF0C9', 'High': '#DCEFD6', 'UltraHigh': '#CFE6D4', 'Unavailable': '#EEEDEF'},
+        'band_strong': {'Low': '#C9483F', 'Medium': '#E8B94A', 'High': '#5E9E58', 'UltraHigh': '#2F7D4A'},
+        'gap_negative': '#C9483F', 'gap_positive': '#5E9E58', 'gap_neutral': '#FFFFFF', 'gap_names': ['Green', 'Red'],
+        'best': '#DCEFD6', 'worst': '#F6D5D2',
+        'loss': '#C9483F', 'gain': '#5E9E58', 'loss_text': '#A6192E', 'gain_text': '#2F7D4A',
+        'voice': '#8E87A0', 'data': '#5B7A99',
+        'ranks': ['#2F7D4A', '#93C47D', '#E8A060', '#C9483F'],
+        'stake': ['#7E1220', '#C9483F', '#EBA39C'],
+        'loss_ramp': ['#F2D06B', '#A6192E'],
+        'environments': ['#3F3F4C', '#C9B27C', '#B48C7C', '#A9C4DB', '#6E6A7C'],
+        'categories': ['#5B7A99', '#A6192E', '#8BA88E', '#E8A060', '#8E87A0', '#2F7D4A', '#D58A94', '#7C93AE'],
+        'kpi_reliable': '#DCEFD6', 'kpi_diff': '#FBF0C9',
+        'scale': ['#C9483F', '#E8A060', '#F2D06B', '#93C47D', '#3E8E4F'],
+        'series': ['#5B7A99', '#A9C4DB', '#8BA88E', '#C9B27C', '#B48C7C', '#8E87A0', '#DADDE0'],
+        'titles': {'font': 'Arial', 'size': 28, 'bold': True, 'focus_bold': True, 'caps': False, 'italic': False,
+                   'focus_color': '#1C1C28', 'subtitle_font': 'Arial', 'subtitle_size': 16, 'subtitle_bold': False,
+                   'subtitle_italic': False, 'subtitle_color': '#A6192E', 'lead_bold': False, 'focus_italic': False},
+        'cell_border': '#FFFFFF', 'cell_border_pt': 1.5,
+    },
     'ericsson': {
         'label': 'Ericsson',
         'description': 'Minimal and editorial: white space, black hairlines and uppercase headers, a coloured dot for each '
@@ -73,6 +109,9 @@ THEMES: dict[str, dict[str, Any]] = {
         'kpi_reliable': '#DDF7EA', 'kpi_diff': '#FFF5D1',
         'scale': ['#FF3232', '#FF8C0A', '#FAD22D', '#7FD8A6', '#0FC373'],
         'series': ['#0082F0', '#7FC0F7', '#AF78D2', '#FAD22D', '#FF8C0A', '#4E4E4E', '#DCDCDC'],
+        'titles': {'font': 'Ericsson Hilda', 'size': 32, 'bold': False, 'focus_bold': True, 'caps': False, 'italic': False,
+                   'focus_color': None, 'subtitle_font': 'Ericsson Hilda', 'subtitle_size': 16, 'subtitle_bold': False,
+                   'subtitle_italic': False, 'subtitle_color': None, 'lead_bold': False, 'focus_italic': False},
         'cell_border': '#FFFFFF', 'cell_border_pt': 1.0,
     },
     'vodafone': {
@@ -101,6 +140,9 @@ THEMES: dict[str, dict[str, Any]] = {
         'kpi_reliable': '#DFF0C2', 'kpi_diff': '#FFEDB3',
         'scale': ['#B30000', '#EB9700', '#FECB00', '#A8B400', '#00B0CA'],
         'series': ['#E60000', '#F39A9A', '#00B0CA', '#FECB00', '#5E2750', '#4A4D4E', '#D9D9D9'],
+        'titles': {'font': 'Vodafone Rg', 'size': 30, 'bold': True, 'focus_bold': True, 'caps': False, 'italic': False,
+                   'focus_color': None, 'subtitle_font': 'Vodafone Rg', 'subtitle_size': 16, 'subtitle_bold': False,
+                   'subtitle_italic': False, 'subtitle_color': '#E60000', 'lead_bold': False, 'focus_italic': False},
         'cell_border': '#FFFFFF', 'cell_border_pt': 2.25,
     },
     'midnight': {
@@ -128,6 +170,9 @@ THEMES: dict[str, dict[str, Any]] = {
         'kpi_reliable': '#CCF7E8', 'kpi_diff': '#FFF0CC',
         'scale': ['#FF4D6D', '#FF9F45', '#FFC145', '#7EE8C1', '#2EE6A6'],
         'series': ['#3DB9FF', '#9ED8FF', '#2EE6A6', '#FFC145', '#FF8FAB', '#B47CFF', '#5C6F8F'],
+        'titles': {'font': 'Segoe UI', 'size': 28, 'bold': True, 'focus_bold': True, 'caps': False, 'italic': False,
+                   'focus_color': None, 'subtitle_font': 'Segoe UI', 'subtitle_size': 16, 'subtitle_bold': False,
+                   'subtitle_italic': False, 'subtitle_color': '#00A3C4', 'lead_bold': False, 'focus_italic': False},
         'cell_border': '#FFFFFF', 'cell_border_pt': 1.5,
     },
     'paper': {
@@ -155,6 +200,9 @@ THEMES: dict[str, dict[str, Any]] = {
         'kpi_reliable': '#E2EBDA', 'kpi_diff': '#F5EDD6',
         'scale': ['#9B2C2C', '#C46A3A', '#C9A227', '#7FA06A', '#2F6B3A'],
         'series': ['#2F3B4A', '#8DA2B8', '#5F7F4F', '#C9A27A', '#8C5A4A', '#7B6F8F', '#D9D4C7'],
+        'titles': {'font': 'Georgia', 'size': 30, 'bold': False, 'focus_bold': False, 'caps': False, 'italic': False,
+                   'focus_color': None, 'subtitle_font': 'Georgia', 'subtitle_size': 16, 'subtitle_bold': False,
+                   'subtitle_italic': True, 'subtitle_color': '#7A1F1F', 'lead_bold': False, 'focus_italic': True},
         'cell_border': '#D9D4C7', 'cell_border_pt': 0.5,
     },
     'heatmap': {
@@ -183,6 +231,9 @@ THEMES: dict[str, dict[str, Any]] = {
         'kpi_reliable': '#D7EFE9', 'kpi_diff': '#FDE8CF',
         'scale': ['#E05A4F', '#EE9A5B', '#F3C969', '#8CC084', '#2A9D8F'],
         'series': ['#457B9D', '#A8DADC', '#2A9D8F', '#E9C46A', '#E76F51', '#8E7DBE', '#DDE3E8'],
+        'titles': {'font': 'Segoe UI', 'size': 28, 'bold': True, 'focus_bold': True, 'caps': False, 'italic': False,
+                   'focus_color': None, 'subtitle_font': 'Segoe UI', 'subtitle_size': 16, 'subtitle_bold': False,
+                   'subtitle_italic': False, 'subtitle_color': None, 'lead_bold': False, 'focus_italic': False},
         'cell_border': '#FFFFFF', 'cell_border_pt': 2.0,
     },
 }
