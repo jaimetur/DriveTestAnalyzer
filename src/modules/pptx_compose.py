@@ -16,7 +16,7 @@ import math
 import re
 from dataclasses import dataclass, field
 from io import BytesIO
-from typing import Any
+from typing import Any, Callable
 
 from pptx import Presentation
 from pptx.dml.color import RGBColor
@@ -701,9 +701,29 @@ def _only_table(slide: Any) -> tuple[Any, Any] | None:
     return shapes[0], table
 
 
+# Below a legible font, more slides are used only when they make the values at least this much larger.
+SPLIT_MINIMUM_GAIN = 1.15
+
+
+def _slides_needed(font_on: Callable[[int], float], legible: float, body: int) -> int:
+    """The fewest slides whose share of the ``body`` rows keeps a legible font (``font_on(slides)``: the smallest
+    font on them). When no number of slides does it (a wide table: its columns, not its rows, keep its font small),
+    the fewest that give about the largest font, or one when more slides hardly make it larger."""
+    fonts: list[float] = []
+    for slides in range(1, min(MAXIMUM_TABLE_SLIDES, max(1, body)) + 1):
+        font = font_on(slides)
+        if font >= legible:
+            return slides
+        fonts.append(font)
+    best = max(fonts)
+    if best < fonts[0] * SPLIT_MINIMUM_GAIN:
+        return 1
+    return next(index + 1 for index, font in enumerate(fonts) if font >= best * 0.97)
+
+
 def table_slides(slide: Any, frame: tuple[int, int, int, int], gap: int = Inches(0.25), legible_font: int = LEGIBLE_FONT) -> int:
     """How many slides the only table of ``slide`` needs so that, shown by fit_table in ``frame``, its values keep a
-    legible font (``legible_font``, or their own size when smaller); 1 for other content."""
+    legible font (``legible_font``, or their own size when smaller; see _slides_needed); 1 for other content."""
     found = _only_table(slide)
     if found is None:
         return 1
@@ -711,13 +731,18 @@ def table_slides(slide: Any, frame: tuple[int, int, int, int], gap: int = Inches
     rows = table.findall(f'{{{A_NS}}}tr')
     sizes = _table_cells(table, shape.height // len(rows))
     body = len(rows) - 1
+    if body < 2:
+        return 1
     legible = min(legible_font, sizes.smallest_font(1.0))
-    for slides in range(1, MAXIMUM_TABLE_SLIDES + 1):
+
+    def font_on(slides: int) -> float:
         per = math.ceil(body / slides)
-        parts = [sizes.part(start, min(start + per, body)) for start in range(0, body, per)]
-        if all(part.smallest_font(part.plan(frame, gap)[0]) >= legible for part in parts):
-            return len(parts)
-    return len(parts)
+        return min(part.smallest_font(part.plan(frame, gap)[0])
+                   for part in [sizes.part(start, min(start + per, body)) for start in range(0, body, per)])
+
+    slides = _slides_needed(font_on, legible, body)
+    per = math.ceil(body / slides)
+    return len(range(0, body, per))
 
 
 def split_table(composer: DeckComposer, slide: Any, slides: int) -> list[Any]:
@@ -846,13 +871,14 @@ def split_panels(composer: DeckComposer, slide: Any, frame: tuple[int, int, int,
     bodies = [len(item.cells) - 1 for item in sizes]
     tallest = max(bodies)
     legible = min(legible_font, *(item.smallest_font(1.0) for item in sizes))
-    count = 1
-    for count in range(1, MAXIMUM_TABLE_SLIDES + 1):
+
+    def font_on(count: int) -> float:
         per = math.ceil(tallest / count)
-        if all(part.smallest_font(part.plan(panel_frame(shape), gap, 1)[0]) >= legible
-               for shape, item, body in zip(panels, sizes, bodies)
-               for part in [item.part(start, min(start + per, body)) for start in range(0, body, per)]):
-            break
+        return min(part.smallest_font(part.plan(panel_frame(shape), gap, 1)[0])
+                   for shape, item, body in zip(panels, sizes, bodies)
+                   for part in [item.part(start, min(start + per, body)) for start in range(0, body, per)])
+
+    count = _slides_needed(font_on, legible, tallest) if tallest > 1 else 1
     per = math.ceil(tallest / count)
     starts = list(range(0, tallest, per))
     pages = [slide, *(composer.add_slide(slide) for _start in starts[1:])]

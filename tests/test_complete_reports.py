@@ -286,6 +286,29 @@ def test_a_table_too_long_for_a_legible_font_continues_on_more_slides():
     assert len(Presentation(BytesIO(content)).slides) == 2 + len(pages) + 1
 
 
+def test_a_wide_table_of_few_rows_keeps_one_slide():
+    places = ['London', 'Birmingham', 'Glasgow', 'Lowestoft to Rochester', 'Kingston upon Hull (Hull)', 'Plymouth to Oxford',
+              'Newcastle upon Tyne', 'Bangor to Newcastle-under-Lyme', 'Blackburn to Liverpool', 'Luton to Lowestoft',
+              *[f'Location number {index}' for index in range(16)]]
+
+    def build(presentation):
+        start = len(presentation.slides)
+        ni._table_slides(presentation, 'Spectrum · Under 25 MHz by location (Download tests)', ['Operator → Campaign', *places],
+                         [[f'{operator} · 26-Q3', *[f'{(row * 7 + index) % 50}%' for index in range(len(places))]]
+                          for row, operator in enumerate(['VF', 'Three', 'BT', 'VMO2'])], 'Scope')
+        ni._tag_report_slides(presentation, start, 'spectrum')
+
+    section = complete_reports.SectionDeck('network_insights', 'Network Insights', [], decks=[(None, _deck(build))], order=['spectrum'])
+    component = complete_reports._components(complete_reports._section_entries(section))[0]
+    composer = pptx_compose.DeckComposer(TEMPLATE)
+    pages = complete_reports._place_component(composer, component)
+    # Its columns, not its rows, keep its font small: more slides would not make it larger, so its four rows stay
+    # together instead of one per slide.
+    assert len(pages) == 1
+    tables = [shape.table for shape in pptx_compose.content_shapes(pages[0]) if shape.has_table]
+    assert sum(len(table.rows) - 1 for table in tables) == 4
+
+
 def test_pages_that_would_be_too_small_on_one_slide_continue_on_more_slides():
     def pages(width, *heights):
         def build(presentation):
@@ -431,7 +454,10 @@ def test_favourites_are_saved_listed_and_travel_as_their_own_element(client):
     assert payload['favourites'] == [] and payload['can_edit'] is True
     assert [section['key'] for section in payload['catalogue']['sections']] == list(complete_reports.SECTION_KEYS)
     definition = payload['defaults']
-    definition['sections'][0]['items'] = [{'key': 'd1', 'label': 'Weekly Dashboard', 'enabled': True}]
+    # PPT Dashboards is the last section by default.
+    assert [section['key'] for section in definition['sections']][-1] == 'dashboards'
+    next(section for section in definition['sections'] if section['key'] == 'dashboards')['items'] = [
+        {'key': 'd1', 'label': 'Weekly Dashboard', 'enabled': True}]
     created = client.post('/api/reporting/complete-report/favourites', json={'name': 'Monthly', 'definition': definition})
     assert created.status_code == 200, created.text
     favourite = created.json()['favourite']
@@ -451,7 +477,8 @@ def test_favourites_are_saved_listed_and_travel_as_their_own_element(client):
     assert core._restore_workspace_complete_report_favourites(core.active_workspace, json.dumps(document).encode(), 'super') == 1
     restored = complete_reports.list_favourites(core.repository)
     assert [item['name'] for item in restored] == ['Monthly report']
-    assert restored[0]['definition']['sections'][0]['items'][0]['label'] == 'Weekly Dashboard'
+    assert next(section for section in restored[0]['definition']['sections']
+                if section['key'] == 'dashboards')['items'][0]['label'] == 'Weekly Dashboard'
     assert 'complete_report_favourite_deleted' in [row['action'] for row in core.repository.list_logs(limit=20)]
     # Reporting Jobs documents that carried them still bring them.
     complete_reports.delete_favourite(core.repository, restored[0]['id'])
@@ -879,7 +906,7 @@ def test_a_second_export_reuses_the_sections_whose_data_has_not_changed(client, 
     assert first['document_reused'] is False and second['document_reused'] is True and len(composed) == 1
     # Another identity (other Campaigns), or Generate again, generates it.
     assert export(refresh=True)['reused'] == [] and len(calls) == 2
-    definition['sections'][2]['options']['campaigns'] = ['2026-Q2']
+    next(section for section in definition['sections'] if section['key'] == 'network_insights')['options']['campaigns'] = ['2026-Q2']
     assert export()['reused'] == [] and calls[-1] == ['2026-Q2']
 
 

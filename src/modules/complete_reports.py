@@ -58,12 +58,13 @@ DEFAULT_TITLE = 'Complete Report'
 FORMATS = ('powerpoint', 'word')
 FORMAT_SUFFIXES = {'powerpoint': 'pptx', 'word': 'docx'}
 FORMAT_LABELS = {'powerpoint': 'PowerPoint', 'word': 'Word'}
-# The sections in their default order, with the feature (main module) a user needs to include each one.
+# The sections in their default order (PPT Dashboards last), with the feature (main module) a user needs to include
+# each one. A saved report keeps its own order.
 SECTIONS: tuple[tuple[str, str, str], ...] = (
-    ('dashboards', 'ppt-dashboards', 'PPT Dashboards'),
     ('scoring', 'scoring', 'Scoring & GAP Analysis'),
     ('network_insights', 'network-insights', 'Network Insights'),
     ('non_qualified_calls', 'non-qualified-calls', 'Non-Qualified Calls'),
+    ('dashboards', 'ppt-dashboards', 'PPT Dashboards'),
 )
 SECTION_KEYS = tuple(key for key, _feature, _title in SECTIONS)
 SECTION_FEATURES = {key: feature for key, feature, _title in SECTIONS}

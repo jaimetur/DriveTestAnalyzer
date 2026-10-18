@@ -1007,16 +1007,29 @@ def _add_bar_table(slide, columns: list[str], rows: list[list[str]], bars: list[
                 first._r.addprevious(swatch._r)
 
 def _visual_slides(presentation: Presentation, title: str, panels: list[tuple[str, BytesIO | None, str, Any]],
-                   below: tuple[list[str], list[list[str]], list[Any]] | None = None, subtitle: str = '') -> None:
+                   below: tuple[list[str], list[list[str]], list[Any]] | None = None, subtitle: str = '',
+                   footnote: str = '') -> None:
     """Charts side by side as on the page, each with an optional table under it (the map areas), or one table
-    under all of them (RF Quality with its class bars). Rows that do not fit continue on further slides."""
+    under all of them (RF Quality with its class bars), and an optional ``footnote`` (what the charts show) under them.
+    Rows that do not fit continue on further slides."""
     row_height = 0.24
     slide = _slide(presentation, title, subtitle)
     left, top, width, height = _content_frame(slide)
     # Tables with rows take the lower half; without rows (only the line that says so) the charts take its room.
     has_rows = below is not None or any(table and table[1] for *_rest, table in panels)
     notes = not has_rows and any(table for *_rest, table in panels)
-    image_height = height * (0.52 if has_rows else 1) - 0.35 - (0.45 if notes else 0)
+    footnote_height = 0.55 if footnote else 0
+    image_height = height * (0.52 if has_rows else 1) - 0.35 - (0.45 if notes else 0) - footnote_height
+    if footnote:
+        # A note at the foot of the content, in the muted colour of notes, not a line of the title.
+        box = slide.shapes.add_textbox(Inches(left), Inches(top + height - footnote_height + 0.05), Inches(width),
+                                       Inches(footnote_height - 0.05))
+        box.name = 'Network Insights Chart Note'
+        box.text_frame.word_wrap = True
+        box.text_frame.text = footnote
+        for run in box.text_frame.paragraphs[0].runs:
+            run.font.size = Pt(10)
+            run.font.color.rgb = RGBColor.from_string(MUTED.lstrip('#'))
     remaining_rows = []
     for (caption, image, note, table), (panel_left, panel_width) in zip(panels, _panel_frames(left, width, len(panels)), strict=False):
         cursor = top
@@ -1132,7 +1145,7 @@ def export_network_insights_powerpoint(destination: Path, analysis: dict[str, An
         if title.startswith('Spectrum · Total bandwidth,') and ladder is not None:
             # As a benchmark slide: the chart title, with its scope and the line that explains it under it.
             emitted(title, lambda: _visual_slides(presentation, bandwidth_title(analysis), [('', ladder, '', None)],
-                                                  subtitle=f'{measured}\n{bandwidth_caption(analysis)}'))
+                                                  subtitle=measured, footnote=bandwidth_caption(analysis)))
         emitted(title, lambda title=title, columns=columns, rows=rows: _table_slides(presentation, title, columns, rows, measured))
     for title, columns, rows, bars in nr_band_tables(analysis):
         emitted(title, lambda title=title, columns=columns, rows=rows, bars=bars: _bar_table_slides(

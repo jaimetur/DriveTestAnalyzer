@@ -19,7 +19,7 @@ Use **Reporting** to build a **Complete Report**, one PowerPoint or Word documen
 
 ## Complete Report
 
-The **Complete Report** panel, above the Reporting Jobs, builds one document from four sections: **PPT Dashboards**, **Scoring & GAP Analysis**, **Network Insights** and **Non-Qualified Calls** (each with the title its module has in Interface Settings).
+The **Complete Report** panel, above the Reporting Jobs, builds one document from four sections, by default in this order: **Scoring & GAP Analysis**, **Network Insights**, **Non-Qualified Calls** and **PPT Dashboards** (each with the title its module has in Interface Settings; a saved favourite keeps its own order).
 
 | Part | What it chooses |
 | --- | --- |

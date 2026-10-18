@@ -274,13 +274,18 @@ def test_bandwidth_views_and_nr_sites_by_duplex_mode_are_exported(tmp_path):
             'Spectrum · Total bandwidth, LTE and NR (Download tests)'} <= set(titles)
     pictures = [shape for slide in Presentation(output).slides for shape in slide.shapes if shape.shape_type == 13]
     assert pictures
-    # The ladders slide has the title of the chart and the line that explains its figures under it, as the page does.
+    # The ladders slide has the title of the chart with its scope, and the line that explains its figures as a note at
+    # its foot (in the muted colour of notes), not under the title.
     ladder_slide = next(slide for slide in Presentation(output).slides
                         if any(shape.shape_type == 13 for shape in slide.shapes)
                         and any(shape.has_text_frame and shape.text_frame.text.startswith('Bandwidth of each test: LTE + NR') for shape in slide.shapes))
     measured = scope_text(selection)
-    assert any(shape.has_text_frame and shape.text_frame.text.splitlines() == ['Bandwidth of each test: LTE + NR', measured, caption]
+    assert any(shape.has_text_frame and shape.text_frame.text.splitlines() == ['Bandwidth of each test: LTE + NR', measured]
                for shape in ladder_slide.shapes)
+    note = next(shape for shape in ladder_slide.shapes if shape.name == 'Network Insights Chart Note')
+    picture = next(shape for shape in ladder_slide.shapes if shape.shape_type == 13)
+    assert note.text_frame.text == caption and note.top >= picture.top + picture.height
+    assert str(note.text_frame.paragraphs[0].runs[0].font.color.rgb) == '61727D'
     # Every slide names its scope under its title: the inventory filters for the NR sites, no filter for the whole inventory.
     headers = [shape.text_frame.text.splitlines() for slide in Presentation(output).slides for shape in slide.shapes
                if shape.has_text_frame and shape.is_placeholder]
