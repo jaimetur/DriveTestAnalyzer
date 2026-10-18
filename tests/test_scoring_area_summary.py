@@ -127,6 +127,18 @@ def test_a_job_split_by_no_area_has_its_geographical_areas():
     by_region = scoring_engine.calculate_scoring(frames, ['Operator', 'Region'], **kwargs)
     split_views = build_scoring_views(split, {**by_region, 'geographical': geographical})
     assert {item['level'] for item in split_views['insights']['location_cards']} == {'Region'}
+    # With an area summary of the same rows, its calculations per Region and of London are read from it.
+    summary = calculate_area_summary(scoring_engine.calculate_scoring, frames, job['levels'],
+                                     {'breakdown': 'Region', 'cities': ['London'], 'time_split': 'All'}, kwargs)
+    calls = []
+    counting = lambda source, levels, **options: calls.append(levels) or scoring_engine.calculate_scoring(source, levels, **options)
+    reused = calculate_geographical(counting, frames, job['levels'], kwargs, summary=summary)
+    assert calls == [] and all(item['reuses_summary'] and 'result' not in item for item in reused['passes'])
+    reused_views = build_scoring_views(job, {**result, 'geographical': reused, 'area_summary': summary})
+    assert {item['level'] for item in reused_views['insights']['location_cards']} >= {'Region', 'City'}
+    # Not one split by period, nor of other cities.
+    assert len(calculate_geographical(counting, frames, job['levels'], kwargs, summary={**summary, 'time_split': 'Weekly'})['passes']) == 2
+    assert len(calls) == 2
     # Without measurements of London (or with filters leaving none), only the Regions.
     leeds = {'voice': pd.DataFrame([row for row in ROWS if row['City'] == 'Leeds'])}
     assert [item['kind'] for item in calculate_geographical(scoring_engine.calculate_scoring, leeds, job['levels'], kwargs)['passes']] == ['Region']

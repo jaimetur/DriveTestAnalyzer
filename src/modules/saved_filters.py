@@ -1870,21 +1870,25 @@ def _scoring_result(repository: Repository, saved_filter: dict[str, Any], config
     result = calculate(frames, saved_filter['levels'], **call_kwargs)
     if not isinstance(result, dict):
         raise TypeError('The scoring engine must return a result object.')
-    if saved_filter.get('geographical', True):
-        geographical = calculate_geographical(calculate, frames, saved_filter['levels'], call_kwargs, update_progress)
-        if geographical:
-            result['geographical'] = geographical
+    job_filtered = has_area_filters(context_filters)
     if saved_filter.get('area_summary'):
         # The summary is scored on the whole country: a job with area filters reads its rows apart.
-        job_filtered = has_area_filters(context_filters)
+        summary_frames = frames
         if job_filtered:
             update_progress(87, 'Reading the CDR rows of the whole country for the National & Geographical Areas Trends')
-            frames = _load_source_frames(repository, [dict(source) for source in sources], lambda *_args: None,
-                                         required_columns, whole_country_filters(context_filters))
-        summary = calculate_area_summary(calculate, frames, saved_filter['levels'],
+            summary_frames = _load_source_frames(repository, [dict(source) for source in sources], lambda *_args: None,
+                                                 required_columns, whole_country_filters(context_filters))
+        summary = calculate_area_summary(calculate, summary_frames, saved_filter['levels'],
                                          saved_filter['area_summary'], call_kwargs, update_progress, job_filtered=job_filtered)
+        del summary_frames
         result['warnings'] = [*(result.get('warnings') or []), *summary.pop('warnings')]
         result['area_summary'] = summary
+    if saved_filter.get('geographical', True):
+        # Its calculations per Region and of London are those of the summary of the same rows, when it has them.
+        geographical = calculate_geographical(calculate, frames, saved_filter['levels'], call_kwargs, update_progress,
+                                              None if job_filtered else result.get('area_summary'))
+        if geographical:
+            result['geographical'] = geographical
     return result, False
 
 
@@ -1933,12 +1937,7 @@ def _history_result(repository: Repository, saved_filter: dict[str, Any], config
     }
     try:
         result = calculate_scoring_from_history(repository, dataset_ids, saved_filter['levels'], **options)
-        if saved_filter.get('geographical', True):
-            geographical = calculate_geographical_from_history(
-                lambda levels, *, cities=None: calculate_scoring_from_history(repository, dataset_ids, levels, cities=cities, **options),
-                saved_filter['levels'], update_progress)
-            if geographical:
-                result['geographical'] = geographical
+        job_filtered = has_area_filters(context_filters)
         if saved_filter.get('area_summary'):
             # The summary is scored on the whole country, whatever the job's area filters.
             summary_options = {**options, 'context_filters': whole_country_filters(context_filters)}
@@ -1947,9 +1946,16 @@ def _history_result(repository: Repository, saved_filter: dict[str, Any], config
                 return calculate_scoring_from_history(repository, dataset_ids, levels, time_split=time_split,
                                                       cities=cities, **summary_options)
             summary = calculate_area_summary_from_history(calculate, saved_filter['levels'], saved_filter['area_summary'],
-                                                          update_progress, job_filtered=has_area_filters(context_filters))
+                                                          update_progress, job_filtered=job_filtered)
             result['warnings'] = [*(result.get('warnings') or []), *summary.pop('warnings')]
             result['area_summary'] = summary
+        if saved_filter.get('geographical', True):
+            # Its calculations per Region and of London are those of the summary, when it has them.
+            geographical = calculate_geographical_from_history(
+                lambda levels, *, cities=None: calculate_scoring_from_history(repository, dataset_ids, levels, cities=cities, **options),
+                saved_filter['levels'], update_progress, None if job_filtered else result.get('area_summary'))
+            if geographical:
+                result['geographical'] = geographical
     except HistoryUnavailable:
         return None
     result['points_loss'] = {'version': 2, 'pending': True}

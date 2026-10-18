@@ -215,10 +215,29 @@ def geographical_levels(levels: list[str]) -> list[str]:
     return ['Region', 'City'] if geographical_passes(levels) else []
 
 
+def _summary_result(item: dict[str, Any], summary: dict[str, Any] | None) -> dict[str, Any] | None:
+    """The result of the calculation of an area summary equal to a Geographical one (the same split, cities and filters,
+    without a split by period), which is then not calculated again."""
+    if not isinstance(summary, dict) or normalize_time_split(summary.get('time_split')):
+        return None
+    identities = {column_identity(level) for level in item['levels']}
+    cities = [city.casefold() for city in item.get('cities') or []]
+    for saved in summary.get('passes') or []:
+        if (isinstance(saved, dict) and saved.get('kind') == item['kind'] and isinstance(saved.get('result'), dict)
+                and [city.casefold() for city in saved.get('cities') or []] == cities
+                and {column_identity(level) for level in saved.get('levels') or []} == identities):
+            return saved['result']
+    return None
+
+
 def _geographical(score: Callable[[dict[str, Any]], dict | None], levels: list[str],
-                  progress: Callable[[int, str], None] | None) -> dict[str, Any] | None:
+                  progress: Callable[[int, str], None] | None, summary: dict[str, Any] | None = None) -> dict[str, Any] | None:
     passes = []
     for item in geographical_passes(levels):
+        if _summary_result(item, summary) is not None:
+            # The same calculation as one of the area summary: its result is read from there.
+            passes.append({**item, 'reuses_job': False, 'reuses_summary': True})
+            continue
         if progress is not None:
             progress(86, f"Calculating the Geographical views per {item['kind']}")
         try:
@@ -233,20 +252,23 @@ def _geographical(score: Callable[[dict[str, Any]], dict | None], levels: list[s
 
 
 def calculate_geographical(calculate: Callable[..., dict], frames: dict[str, pd.DataFrame], levels: list[str],
-                           call_kwargs: dict[str, Any], progress: Callable[[int, str], None] | None = None) -> dict[str, Any] | None:
+                           call_kwargs: dict[str, Any], progress: Callable[[int, str], None] | None = None,
+                           summary: dict[str, Any] | None = None) -> dict[str, Any] | None:
     """The Geographical calculations of a job split by no area, from its loaded rows: ``{'passes': [...]}`` in the form
-    of an area summary, or None."""
+    of an area summary, or None. Those equal to a calculation of ``summary`` (an area summary of the same rows and
+    filters) take its result."""
     def score(item: dict[str, Any]) -> dict | None:
         source = _city_frames(frames, item['cities']) if 'cities' in item else frames
         return calculate(source, item['levels'], **call_kwargs) if source else None
-    return _geographical(score, levels, progress)
+    return _geographical(score, levels, progress, summary)
 
 
 def calculate_geographical_from_history(calculate: Callable[..., dict], levels: list[str],
-                                        progress: Callable[[int, str], None] | None = None) -> dict[str, Any] | None:
+                                        progress: Callable[[int, str], None] | None = None,
+                                        summary: dict[str, Any] | None = None) -> dict[str, Any] | None:
     """The Geographical calculations of a job split by no area from the Scoring History; ``calculate(levels,
     cities=...)`` scores the job's CDRs and filters."""
-    return _geographical(lambda item: calculate(item['levels'], cities=item.get('cities')), levels, progress)
+    return _geographical(lambda item: calculate(item['levels'], cities=item.get('cities')), levels, progress, summary)
 
 
 def geographical_insights(job: dict[str, Any], result: dict[str, Any], operator_mapping_groups: list[dict] | None = None,
@@ -261,8 +283,10 @@ def geographical_insights(job: dict[str, Any], result: dict[str, Any], operator_
         return insights
     configuration = result.get('configuration') or job.get('configuration')
     for item in geographical.get('passes') or []:
-        source = item.get('result') if isinstance(item, dict) else None
-        if not isinstance(source, dict):
+        if not isinstance(item, dict):
+            continue
+        source = _summary_result(item, result.get('area_summary')) if item.get('reuses_summary') else item.get('result')
+        if not isinstance(source, dict) or not source.get('scoring'):
             continue
         source_job = {'levels': list(item['levels']), 'aggregation_levels': list(item['levels']),
                       'aggregation_contract_version': job.get('aggregation_contract_version') or 2,

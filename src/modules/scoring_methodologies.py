@@ -165,6 +165,9 @@ def _merge_area_summaries(summaries: list[Any]) -> Any:
                 merged.setdefault('passes', []).append(copy.deepcopy(item))
                 passes[key] = merged['passes'][-1]
                 continue
+            if item.get('reuses_summary') or target.get('reuses_summary'):
+                # (A Geographical calculation read from the merged area summary.)
+                continue
             source_result, target_result = item.get('result') or {}, target.setdefault('result', {})
             for field, value in source_result.items():
                 if isinstance(value, list):
@@ -234,6 +237,7 @@ def split_result(result: dict[str, Any], group: dict[str, Any]) -> dict[str, Any
         summary = result.get(key)
         if isinstance(summary, dict):
             part[key] = {**summary, 'passes': [
+                item if item.get('reuses_summary') else
                 {**item, 'result': {field: (rows_of(value, group['profile_id']) if isinstance(value, list) else value)
                                     for field, value in (item.get('result') or {}).items()}}
                 for item in summary.get('passes') or []]}
