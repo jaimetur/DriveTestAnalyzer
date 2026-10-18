@@ -4491,7 +4491,7 @@ body:has(dialog.vendor-mapping-dialog[open]) { overflow: hidden; }
 .document-export-action.document-export-powerpoint:hover:not(:disabled) { background: linear-gradient(125deg, #9c3b22, #c95a33); color: #fff; }
 .document-export-action.document-export-word { background: linear-gradient(125deg, #1f4e96, #3b7bd4); }
 .document-export-action.document-export-word:hover:not(:disabled) { background: linear-gradient(125deg, #1a427f, #2f68b8); color: #fff; }
-/* One action for both formats (the Complete Report chooses PowerPoint or Word in its preview). */
+/* One action for both formats (the Bundle Report Template chooses PowerPoint or Word in its preview). */
 .document-export-action.document-export-report { background: linear-gradient(125deg, #1f5f3a, #2e8c58); }
 .document-export-action.document-export-report:hover:not(:disabled) { background: linear-gradient(125deg, #184d2f, #257349); color: #fff; }
 /* PowerPoint or Word choice: the colours of the document export buttons. */

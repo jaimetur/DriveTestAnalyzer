@@ -11,7 +11,7 @@ from pptx.enum.chart import XL_CHART_TYPE
 from pptx.util import Inches
 
 import src.DriveTestAnalyzer as core
-from src.modules import complete_reports, pptx_compose
+from src.modules import bundle_report_templates, pptx_compose
 from src.modules import network_insights_export as ni
 from src.modules import non_qualified_calls_export as nq_export
 from src.modules import report_tasks
@@ -59,8 +59,8 @@ def _unique_parts(content: bytes) -> bool:
 
 
 def test_definitions_keep_the_order_and_options_of_every_section():
-    defaults = complete_reports.normalize_definition({})
-    assert [section['key'] for section in defaults['sections']] == list(complete_reports.SECTION_KEYS)
+    defaults = bundle_report_templates.normalize_definition({})
+    assert [section['key'] for section in defaults['sections']] == list(bundle_report_templates.SECTION_KEYS)
     assert defaults['filters'] == {'nr_mode': 'NSA', 'operators': [], 'operator_vendors': [], 'vendor_operators': [], 'vendors': [],
                                    'regions': [], 'clusters': [], 'cities': [], 'main_cities': False}
     # Each section has its own Campaigns.
@@ -71,7 +71,7 @@ def test_definitions_keep_the_order_and_options_of_every_section():
     assert scoring['options']['scorings'] == ['best_network'] and scoring['options']['environments'] == ['all']
     # Saved order first, then what the report did not have yet; unknown keys are dropped. A report saved when the
     # Campaigns were a common filter gives them to the sections without their own.
-    definition = complete_reports.normalize_definition({
+    definition = bundle_report_templates.normalize_definition({
         'title': '  Monthly  ', 'filters': {'nr_mode': 'sa', 'campaigns': ['@latest-campaign', ''], 'operators': ['EE', 'EE']},
         'sections': [
             {'key': 'network_insights', 'enabled': True, 'items': [
@@ -87,7 +87,7 @@ def test_definitions_keep_the_order_and_options_of_every_section():
     assert campaigns == {'network_insights': ['2026-Q2'], 'dashboards': ['@latest-campaign'], 'scoring': ['@latest-campaign'],
                          'non_qualified_calls': ['@latest-campaign']}
     # A report saved when the NR Mode was an option of each section takes that of the first one.
-    assert complete_reports.normalize_definition({'sections': [{'key': 'scoring', 'options': {'nr_mode': 'SA'}}]})['filters']['nr_mode'] == 'SA'
+    assert bundle_report_templates.normalize_definition({'sections': [{'key': 'scoring', 'options': {'nr_mode': 'SA'}}]})['filters']['nr_mode'] == 'SA'
     assert [section['key'] for section in definition['sections']] == ['network_insights', 'dashboards', 'scoring', 'non_qualified_calls']
     network = definition['sections'][0]
     assert network['items'][0]['key'] == 'spectrum' and network['items'][0]['components']['licensed'] is False
@@ -96,13 +96,13 @@ def test_definitions_keep_the_order_and_options_of_every_section():
     assert network['options']['technology'] == 'nr' and network['options']['group'] == ['vendor']
     assert network['options']['overshoot_km'] == 100
     assert definition['sections'][1]['items'] == [{'key': 'd1', 'label': 'Weekly', 'enabled': True, 'nr_mode': ''}]
-    chosen = [section['key'] for section in complete_reports.enabled_sections(definition)]
+    chosen = [section['key'] for section in bundle_report_templates.enabled_sections(definition)]
     # Dashboards is unchecked; Scoring, Network Insights and Non-Qualified Calls have checked sub-modules.
     assert chosen == ['network_insights', 'scoring', 'non_qualified_calls']
 
 
 def test_reports_saved_before_the_scoring_trends_keep_their_trend_after_the_locations():
-    definition = complete_reports.normalize_definition({'sections': [{'key': 'scoring', 'items': [
+    definition = bundle_report_templates.normalize_definition({'sections': [{'key': 'scoring', 'items': [
         {'key': 'locations', 'components': {}}, {'key': 'charts', 'components': {'trend': False}}],
         'options': {'area_summary': {'enabled': True, 'campaigns': ['@all-campaigns', '2026-Q1']}}}]})
     scoring = next(section for section in definition['sections'] if section['key'] == 'scoring')
@@ -112,21 +112,21 @@ def test_reports_saved_before_the_scoring_trends_keep_their_trend_after_the_loca
     assert trends['components'] == {'trend': False, 'areas': True}
     # The campaigns of the Scoring Trends: an automatic choice stands alone.
     assert scoring['options']['area_summary']['campaigns'] == ['@all-campaigns']
-    lines = complete_reports._option_lines(scoring, None, None)
+    lines = bundle_report_templates._option_lines(scoring, None, None)
     assert lines[-1] == 'Scoring Trends: All available campaigns · National & Geographical Areas Trends: each Region, time split Campaign'
 
 
 def test_section_lines_and_filters_describe_the_report():
-    definition = complete_reports.normalize_definition({'subtitle': ' Q3 benchmark ', 'filters': {'regions': ['North'], 'main_cities': True}})
+    definition = bundle_report_templates.normalize_definition({'subtitle': ' Q3 benchmark ', 'filters': {'regions': ['North'], 'main_cities': True}})
     assert definition['subtitle'] == 'Q3 benchmark'
-    assert complete_reports.filter_lines(definition) == ['NR Mode: NSA', 'Regions: North · Main Cities']
+    assert bundle_report_templates.filter_lines(definition) == ['NR Mode: NSA', 'Regions: North · Main Cities']
     # The covers name every common filter, All when it has no value.
-    assert complete_reports.common_filter_items(definition) == [
+    assert bundle_report_templates.common_filter_items(definition) == [
         'NR Mode: NSA', 'Operators: All', 'Operator_Vendor: All', 'Vendor_Operator: All', 'Vendors: All', 'Regions: North',
         'Clusters: All', 'Cities: Main Cities']
     scoring = next(section for section in definition['sections'] if section['key'] == 'scoring')
     scoring['options'].update(scorings=['best_network', 'most_reliable'], environments=['all', 'Cities'], campaigns=['@latest-campaign'])
-    lines = complete_reports.section_lines(scoring)
+    lines = bundle_report_templates.section_lines(scoring)
     assert lines[0] == 'Campaigns: Latest campaign'
     assert lines[1] == 'Best Network, Most Reliable Network · Environments: All Environments, Cities'
 
@@ -267,10 +267,10 @@ def test_a_table_too_long_for_a_legible_font_continues_on_more_slides():
     def build(presentation):
         _table_pages(presentation, rows=400)
 
-    section = complete_reports.SectionDeck('network_insights', 'Network Insights', [], decks=[(None, _deck(build))], order=['serving'])
-    component = complete_reports._components(complete_reports._section_entries(section))[0]
+    section = bundle_report_templates.SectionDeck('network_insights', 'Network Insights', [], decks=[(None, _deck(build))], order=['serving'])
+    component = bundle_report_templates._components(bundle_report_templates._section_entries(section))[0]
     composer = pptx_compose.DeckComposer(TEMPLATE)
-    pages = complete_reports._place_component(composer, component)
+    pages = bundle_report_templates._place_component(composer, component)
     assert len(pages) > 1 and len(composer.presentation.slides) == len(pages)
     titles = [pptx_compose.title_parts(page)[0] for page in pages]
     assert titles == [f'Serving Cells · By serving band · {number}/{len(pages)}' for number in range(1, len(pages) + 1)]
@@ -282,7 +282,7 @@ def test_a_table_too_long_for_a_legible_font_continues_on_more_slides():
              for paragraph in cell.text_frame.paragraphs for run in paragraph.runs if run.font.size]
     assert min(sizes) >= pptx_compose.LEGIBLE_FONT / 100
     # The slides of a table that continues are not compacted with other components.
-    content, _outline, _covers = complete_reports.compose_powerpoint(TEMPLATE, 'Report', '', [], [section], {})
+    content, _outline, _covers = bundle_report_templates.compose_powerpoint(TEMPLATE, 'Report', '', [], [section], {})
     assert len(Presentation(BytesIO(content)).slides) == 2 + len(pages) + 1
 
 
@@ -298,10 +298,10 @@ def test_a_wide_table_of_few_rows_keeps_one_slide():
                           for row, operator in enumerate(['VF', 'Three', 'BT', 'VMO2'])], 'Scope')
         ni._tag_report_slides(presentation, start, 'spectrum')
 
-    section = complete_reports.SectionDeck('network_insights', 'Network Insights', [], decks=[(None, _deck(build))], order=['spectrum'])
-    component = complete_reports._components(complete_reports._section_entries(section))[0]
+    section = bundle_report_templates.SectionDeck('network_insights', 'Network Insights', [], decks=[(None, _deck(build))], order=['spectrum'])
+    component = bundle_report_templates._components(bundle_report_templates._section_entries(section))[0]
     composer = pptx_compose.DeckComposer(TEMPLATE)
-    pages = complete_reports._place_component(composer, component)
+    pages = bundle_report_templates._place_component(composer, component)
     # Its columns, not its rows, keep its font small: more slides would not make it larger, so its four rows stay
     # together instead of one per slide.
     assert len(pages) == 1
@@ -319,7 +319,7 @@ def test_pages_that_would_be_too_small_on_one_slide_continue_on_more_slides():
         return [composer.add_slide(slide) for slide in pptx_compose.deck(_deck(build)).slides]
 
     composer = pptx_compose.DeckComposer(TEMPLATE)
-    minimum = complete_reports.PAGE_MINIMUM_SCALE
+    minimum = bundle_report_templates.PAGE_MINIMUM_SCALE
     # Small pages share one slide; pages as large as the slide each keep a slide of their own, and a short last page
     # joins the one before it; pages of the same size share the slides evenly.
     assert pptx_compose.page_groups(composer, pages(5, 2, 2, 2, 2), minimum) == [[0, 1, 2, 3]]
@@ -338,11 +338,11 @@ def test_tables_side_by_side_continue_together_on_as_few_slides_as_keep_them_leg
             for operator, rows in counts.items()], 'Scope')
         ni._tag_report_slides(presentation, start, 'deployment')
 
-    section = complete_reports.SectionDeck('network_insights', 'Network Insights', [], decks=[(None, _deck(build))], order=['deployment'])
-    component = complete_reports._components(complete_reports._section_entries(section))[0]
+    section = bundle_report_templates.SectionDeck('network_insights', 'Network Insights', [], decks=[(None, _deck(build))], order=['deployment'])
+    component = bundle_report_templates._components(bundle_report_templates._section_entries(section))[0]
     assert len(component.slides) == 10
     composer = pptx_compose.DeckComposer(TEMPLATE)
-    pages = complete_reports._place_component(composer, component)
+    pages = bundle_report_templates._place_component(composer, component)
     assert 1 < len(pages) < 10
     rows = {operator: [] for operator in counts}
     for page in pages:
@@ -364,8 +364,8 @@ def test_components_join_the_pages_of_a_chart_or_table_but_not_slides_of_the_sam
         _small_table(presentation, 'Position', 'rf_quality')
         _small_table(presentation, 'Position', 'rf_quality')
 
-    section = complete_reports.SectionDeck('network_insights', 'Network Insights', [], decks=[(None, _deck(build))], order=['rf_quality'])
-    components = complete_reports._components(complete_reports._section_entries(section))
+    section = bundle_report_templates.SectionDeck('network_insights', 'Network Insights', [], decks=[(None, _deck(build))], order=['rf_quality'])
+    components = bundle_report_templates._components(bundle_report_templates._section_entries(section))
     assert [len(component.slides) for component in components] == [2, 1, 1]
     assert components[0].title == ('RF Quality', 'Scope')
 
@@ -378,9 +378,9 @@ def test_sections_follow_the_order_of_their_sub_modules_inside_each_block():
         _small_table(presentation, 'Overview cards', 'overview')
         _small_table(presentation, 'Snapshot table', 'snapshot')
 
-    section = complete_reports.SectionDeck('network_insights', 'Network Insights', [], decks=[(None, _deck(build))],
+    section = bundle_report_templates.SectionDeck('network_insights', 'Network Insights', [], decks=[(None, _deck(build))],
                                            order=['snapshot', 'spectrum', 'overview'])
-    entries = complete_reports._section_entries(section)
+    entries = bundle_report_templates._section_entries(section)
     # The report cover of the module is left out.
     assert [entry.item for entry in entries] == ['snapshot', 'spectrum', 'overview']
 
@@ -391,9 +391,9 @@ def test_the_powerpoint_has_a_cover_a_cover_per_section_and_compacts_small_compo
         _small_table(presentation, 'Network Snapshot', 'snapshot')
         _small_table(presentation, 'Network Snapshot · Inventory quality', 'snapshot')
 
-    section = complete_reports.SectionDeck('network_insights', 'Network Insights', ['Technology: LTE'], decks=[(None, _deck(build))],
+    section = bundle_report_templates.SectionDeck('network_insights', 'Network Insights', ['Technology: LTE'], decks=[(None, _deck(build))],
                                            order=['serving', 'snapshot'], item_titles={'snapshot': 'Network Snapshot'})
-    content, outline, covers = complete_reports.compose_powerpoint(
+    content, outline, covers = bundle_report_templates.compose_powerpoint(
         TEMPLATE, 'Monthly', 'Network benchmark', ['NR Mode: NSA', 'Operators: All'], [section], {}, 'Generated today')
     assert _unique_parts(content)
     titles = [item['title'] for item in outline]
@@ -404,7 +404,7 @@ def test_the_powerpoint_has_a_cover_a_cover_per_section_and_compacts_small_compo
     cover, section_cover = deck.slides[0], deck.slides[1]
     # The report cover: a large title, the subtitle and every common filter; the section cover adds its options.
     cover_title = next(shape for shape in cover.placeholders if shape.placeholder_format.type in {1, 3})
-    assert cover_title.text_frame.paragraphs[0].runs[0].font.size.pt == complete_reports.COVER_TITLE_PT
+    assert cover_title.text_frame.paragraphs[0].runs[0].font.size.pt == bundle_report_templates.COVER_TITLE_PT
     cover_texts = [shape.text_frame.text for shape in cover.shapes if shape.has_text_frame]
     assert 'Network benchmark' in cover_texts
     assert 'Common filters\nNR Mode: NSA · Operators: All' in cover_texts and 'Generated today' in cover_texts
@@ -448,54 +448,57 @@ def test_word_pages_take_consecutive_components_of_one_section_without_splitting
 
 def test_favourites_are_saved_listed_and_travel_as_their_own_element(client):
     login(client)
-    options = client.get('/api/reporting/complete-report/options')
+    options = client.get('/api/reporting/bundle-report-template/options')
     assert options.status_code == 200, options.text
     payload = options.json()
     assert payload['favourites'] == [] and payload['can_edit'] is True
-    assert [section['key'] for section in payload['catalogue']['sections']] == list(complete_reports.SECTION_KEYS)
+    assert [section['key'] for section in payload['catalogue']['sections']] == list(bundle_report_templates.SECTION_KEYS)
     definition = payload['defaults']
     # PPT Dashboards is the last section by default.
     assert [section['key'] for section in definition['sections']][-1] == 'dashboards'
     next(section for section in definition['sections'] if section['key'] == 'dashboards')['items'] = [
         {'key': 'd1', 'label': 'Weekly Dashboard', 'enabled': True}]
-    created = client.post('/api/reporting/complete-report/favourites', json={'name': 'Monthly', 'definition': definition})
+    created = client.post('/api/reporting/bundle-report-template/favourites', json={'name': 'Monthly', 'definition': definition})
     assert created.status_code == 200, created.text
     favourite = created.json()['favourite']
-    assert client.post('/api/reporting/complete-report/favourites', json={'name': 'monthly', 'definition': definition}).status_code == 400
-    renamed = client.put(f"/api/reporting/complete-report/favourites/{favourite['id']}", json={'name': 'Monthly report', 'definition': definition})
+    assert client.post('/api/reporting/bundle-report-template/favourites', json={'name': 'monthly', 'definition': definition}).status_code == 400
+    renamed = client.put(f"/api/reporting/bundle-report-template/favourites/{favourite['id']}", json={'name': 'Monthly report', 'definition': definition})
     assert renamed.status_code == 200 and renamed.json()['favourite']['name'] == 'Monthly report'
     actions = [row['action'] for row in core.repository.list_logs(limit=20)]
-    assert 'complete_report_favourite_saved' in actions
-    # The favourites travel as the Complete Report Favourites element (not with the Reporting Jobs), and are added or
+    assert 'bundle_report_template_favourite_saved' in actions
+    # The favourites travel as the Bundle Report Template Favourites element (not with the Reporting Jobs), and are added or
     # replaced by name.
     assert 'complete_reports' not in json.loads(report_tasks.export_tasks_document(core.repository))
-    document = json.loads(complete_reports.export_favourites_document(core.repository))
-    assert document['format'] == complete_reports.FAVOURITES_FORMAT
+    document = json.loads(bundle_report_templates.export_favourites_document(core.repository))
+    assert document['format'] == bundle_report_templates.FAVOURITES_FORMAT
     assert [item['name'] for item in document['favourites']] == ['Monthly report']
-    assert client.delete(f"/api/reporting/complete-report/favourites/{favourite['id']}").status_code == 200
-    assert complete_reports.list_favourites(core.repository) == []
-    assert core._restore_workspace_complete_report_favourites(core.active_workspace, json.dumps(document).encode(), 'super') == 1
-    restored = complete_reports.list_favourites(core.repository)
+    assert client.delete(f"/api/reporting/bundle-report-template/favourites/{favourite['id']}").status_code == 200
+    assert bundle_report_templates.list_favourites(core.repository) == []
+    assert core._restore_workspace_bundle_report_template_favourites(core.active_workspace, json.dumps(document).encode(), 'super') == 1
+    restored = bundle_report_templates.list_favourites(core.repository)
     assert [item['name'] for item in restored] == ['Monthly report']
     assert next(section for section in restored[0]['definition']['sections']
                 if section['key'] == 'dashboards')['items'][0]['label'] == 'Weekly Dashboard'
-    assert 'complete_report_favourite_deleted' in [row['action'] for row in core.repository.list_logs(limit=20)]
+    assert 'bundle_report_template_favourite_deleted' in [row['action'] for row in core.repository.list_logs(limit=20)]
     # Reporting Jobs documents that carried them still bring them.
-    complete_reports.delete_favourite(core.repository, restored[0]['id'])
+    bundle_report_templates.delete_favourite(core.repository, restored[0]['id'])
     jobs = {'format': 'drivetest-analyzer-reporting-jobs', 'version': 1, 'reporting_jobs': [],
             'complete_reports': document['favourites']}
     core._restore_workspace_reporting_jobs(core.active_workspace, json.dumps(jobs).encode(), 'super')
-    assert [item['name'] for item in complete_reports.list_favourites(core.repository)] == ['Monthly report']
+    assert [item['name'] for item in bundle_report_templates.list_favourites(core.repository)] == ['Monthly report']
+    # Documents exported when they were called Complete Reports or Reporting Jobs Templates still import.
+    for former in bundle_report_templates.LEGACY_FAVOURITES_FORMATS:
+        assert bundle_report_templates.import_favourites_document(core.repository, json.dumps({**document, 'format': former}), 'super') == 1
     # The element, the workspace packages and the backups carry them.
-    assert 'complete-report-favourites' in core.WORKSPACE_ELEMENT_EXPORT_TARGETS
-    assert core.archive_workspace_components_for_target('complete-report-favourites') == ['complete_report_favourites']
-    assert 'complete_report_favourites' in core.full_workspace_archive_components()
+    assert 'bundle-report-template-favourites' in core.WORKSPACE_ELEMENT_EXPORT_TARGETS
+    assert core.archive_workspace_components_for_target('bundle-report-template-favourites') == ['bundle_report_template_favourites']
+    assert 'bundle_report_template_favourites' in core.full_workspace_archive_components()
     output = BytesIO()
     with zipfile.ZipFile(output, 'w') as archive:
-        core._archive_workspace_complete_report_favourites(archive, core.active_workspace, 'workspaces/Default')
-    assert zipfile.ZipFile(BytesIO(output.getvalue())).namelist() == [f'workspaces/Default/{core.CR_FAVOURITES_ARCHIVE_NAME}']
+        core._archive_workspace_bundle_report_template_favourites(archive, core.active_workspace, 'workspaces/Default')
+    assert zipfile.ZipFile(BytesIO(output.getvalue())).namelist() == [f'workspaces/Default/{core.BRT_FAVOURITES_ARCHIVE_NAME}']
     page = client.get('/admin').text
-    assert 'Complete Report Favourites (from active workspace)' in page and 'Scoring &amp; GAP Favourites Filters (from active workspace)' in page
+    assert 'Bundle Report Template Favourites (from active workspace)' in page and 'Scoring &amp; GAP Favourites Filters (from active workspace)' in page
 
 
 def test_word_pages_do_not_repeat_the_title_of_components_that_share_it():
@@ -595,56 +598,56 @@ def test_a_report_being_generated_can_be_cancelled_and_tells_its_processing_time
         progress(50, 'Composing the PowerPoint')
         raise AssertionError('A cancelled report goes no further.')
 
-    monkeypatch.setattr(complete_reports, 'build_report', slow_build)
-    definition = complete_reports.normalize_definition({})
-    job = client.post('/api/reporting/complete-report/jobs', json={'definition': definition}).json()['job']
+    monkeypatch.setattr(bundle_report_templates, 'build_report', slow_build)
+    definition = bundle_report_templates.normalize_definition({})
+    job = client.post('/api/reporting/bundle-report-template/jobs', json={'definition': definition}).json()['job']
     assert job['elapsed_seconds'] >= 0
     assert started.wait(5)
-    cancelled = client.post(f"/api/reporting/complete-report/jobs/{job['id']}/cancel").json()['job']
+    cancelled = client.post(f"/api/reporting/bundle-report-template/jobs/{job['id']}/cancel").json()['job']
     assert cancelled['status'] == 'cancelled'
     release.set()
     time.sleep(0.3)
     # The generation stops at its next step and does not change the job any more.
-    assert client.get(f"/api/reporting/complete-report/jobs/{job['id']}").json()['job']['status'] == 'cancelled'
-    assert 'complete_report_cancelled' in [row['action'] for row in core.repository.list_logs(limit=20)]
+    assert client.get(f"/api/reporting/bundle-report-template/jobs/{job['id']}").json()['job']['status'] == 'cancelled'
+    assert 'bundle_report_template_cancelled' in [row['action'] for row in core.repository.list_logs(limit=20)]
     page = (core.PROJECT_ROOT / 'src/web_interface/templates/report_jobs.html').read_text(encoding='utf-8')
     # While it runs, the dialog offers Cancel and Hide (it keeps being generated) and shows its processing time.
-    assert all(f'id="{name}"' in page for name in ('cr-dialog-cancel', 'cr-dialog-hide', 'cr-dialog-done', 'cr-dialog-elapsed', 'cr-open-last'))
-    script = (core.PROJECT_ROOT / 'src/web_interface/static/js/complete_report.js').read_text(encoding='utf-8')
-    assert "title: 'Complete Report Ready'" in script and 'Processed in ${duration(job.elapsed_seconds)}' in script
+    assert all(f'id="{name}"' in page for name in ('brt-dialog-cancel', 'brt-dialog-hide', 'brt-dialog-done', 'brt-dialog-elapsed', 'brt-open-last'))
+    script = (core.PROJECT_ROOT / 'src/web_interface/static/js/bundle_report_template.js').read_text(encoding='utf-8')
+    assert "title: 'Report Ready'" in script and 'Processed in ${duration(job.elapsed_seconds)}' in script
     # Every page tells when a report hidden in Reporting is ready.
     app_script = (core.PROJECT_ROOT / 'src/web_interface/static/js/app.js').read_text(encoding='utf-8')
-    assert "(function watchCompleteReport()" in app_script and '/reporting?complete_report_job=' in app_script
+    assert "(function watchBundleReportTemplate()" in app_script and '/reporting?bundle_report_template_job=' in app_script
 
 
 def test_one_action_generates_both_formats_and_the_preview_chooses_one():
     page = (core.PROJECT_ROOT / 'src/web_interface/templates/report_jobs.html').read_text(encoding='utf-8')
-    assert page.count('data-cr-export') == 1 and 'data-cr-export="powerpoint"' not in page
-    assert 'data-cr-format="powerpoint"' in page and 'data-cr-format="word"' in page
-    script = (core.PROJECT_ROOT / 'src/web_interface/static/js/complete_report.js').read_text(encoding='utf-8')
+    assert page.count('data-brt-export') == 1 and 'data-brt-export="powerpoint"' not in page
+    assert 'data-brt-format="powerpoint"' in page and 'data-brt-format="word"' in page
+    script = (core.PROJECT_ROOT / 'src/web_interface/static/js/bundle_report_template.js').read_text(encoding='utf-8')
     # Switching the format shows what is already generated: its pages, its sections and its download.
-    assert "download.href = `/api/reporting/complete-report/jobs/${job.id}/download/${previewFormat}`" in script
+    assert "download.href = `/api/reporting/bundle-report-template/jobs/${job.id}/download/${previewFormat}`" in script
     assert "dialog.classList.toggle('is-word', previewFormat === 'word')" in script
     assert 'function switchFormat(format)' in script
 
 
 def test_a_report_without_sections_is_refused_and_the_table_is_listed(client):
     login(client)
-    definition = complete_reports.normalize_definition({})
+    definition = bundle_report_templates.normalize_definition({})
     for section in definition['sections']:
         section['enabled'] = False
-    response = client.post('/api/reporting/complete-report/jobs', json={'definition': definition})
+    response = client.post('/api/reporting/bundle-report-template/jobs', json={'definition': definition})
     assert response.status_code == 400
     page = client.get('/admin')
     assert page.status_code == 200
-    assert 'Complete Reports' in page.text
+    assert 'Bundle Report Templates' in page.text
 
 
 def test_a_report_job_generates_the_chosen_sections_and_previews_them(client, monkeypatch):
     login(client)
 
     def network_summary(selection, export_kind, destination, components=None, compose=True, theme=None):
-        # The Complete Report composes the deck of the module itself.
+        # The Bundle Report Template composes the deck of the module itself.
         assert export_kind == 'powerpoint' and components == ['snapshot.snapshot'] and not compose
         # The NR Mode of the report and the Campaigns of the section.
         assert selection['nr_mode'] == 'SA' and selection['campaigns'] == ['2026-Q3']
@@ -658,9 +661,9 @@ def test_a_report_job_generates_the_chosen_sections_and_previews_them(client, mo
                         lambda pdf, dpi, pages=None: rendered.append((dpi, pages)) or [PNG] * (len(pages) if pages is not None else 2))
     # The Word version is packed with the PowerPoint, before the preview opens.
     packed = packed_component_document([PackItem('heading1', 'Network Insights')])
-    monkeypatch.setattr(complete_reports, 'compose_word', lambda *args, **kwargs: (
+    monkeypatch.setattr(bundle_report_templates, 'compose_word', lambda *args, **kwargs: (
         packed, [{'title': 'Network Insights', 'pages': [{'index': 0, 'title': 'Network Snapshot'}, {'index': 1, 'title': 'Network Snapshot'}]}]))
-    definition = complete_reports.normalize_definition({'filters': {'nr_mode': 'SA'}})
+    definition = bundle_report_templates.normalize_definition({'filters': {'nr_mode': 'SA'}})
     for section in definition['sections']:
         section['enabled'] = section['key'] == 'network_insights'
         section['options'].update(campaigns=['2026-Q3'])
@@ -668,12 +671,12 @@ def test_a_report_job_generates_the_chosen_sections_and_previews_them(client, mo
             item['enabled'] = item['key'] == 'snapshot'
             if 'components' in item:
                 item['components'] = {key: key == 'snapshot' for key in item['components']}
-    response = client.post('/api/reporting/complete-report/jobs', json={'definition': definition, 'name': 'Snapshot'})
+    response = client.post('/api/reporting/bundle-report-template/jobs', json={'definition': definition, 'name': 'Snapshot'})
     assert response.status_code == 200, response.text
     job_id = response.json()['job']['id']
     import time
     for _attempt in range(100):
-        job = client.get(f'/api/reporting/complete-report/jobs/{job_id}').json()['job']
+        job = client.get(f'/api/reporting/bundle-report-template/jobs/{job_id}').json()['job']
         if job['status'] in {'ready', 'failed'}:
             break
         time.sleep(0.1)
@@ -684,20 +687,37 @@ def test_a_report_job_generates_the_chosen_sections_and_previews_them(client, mo
     assert job['formats']['word']['navigation'][0]['title'] == 'Network Insights'
     assert job['formats']['powerpoint']['file_name'].endswith('.pptx') and job['formats']['word']['file_name'].endswith('.docx')
     for export_format in ('powerpoint', 'word'):
-        assert client.get(f'/api/reporting/complete-report/jobs/{job_id}/preview/{export_format}/1').content == PNG
+        assert client.get(f'/api/reporting/bundle-report-template/jobs/{job_id}/preview/{export_format}/1').content == PNG
     # Opened on the whole screen, a page is rendered large from the preview PDF, once (the first one is ready).
     for _attempt in range(2):
-        assert client.get(f'/api/reporting/complete-report/jobs/{job_id}/preview/word/1?large=true').content == PNG
-    assert rendered == [(complete_reports.PREVIEW_DPI['pptx'], None), (complete_reports.LARGE_PREVIEW_DPI['pptx'], [0]),
-                        (complete_reports.PREVIEW_DPI['docx'], None), (complete_reports.LARGE_PREVIEW_DPI['docx'], [0]),
-                        (complete_reports.LARGE_PREVIEW_DPI['docx'], [1])]
-    assert client.get(f'/api/reporting/complete-report/jobs/{job_id}/preview/pdf/1').status_code == 404
+        assert client.get(f'/api/reporting/bundle-report-template/jobs/{job_id}/preview/word/1?large=true').content == PNG
+    assert rendered == [(bundle_report_templates.PREVIEW_DPI['pptx'], None), (bundle_report_templates.LARGE_PREVIEW_DPI['pptx'], [0]),
+                        (bundle_report_templates.PREVIEW_DPI['docx'], None), (bundle_report_templates.LARGE_PREVIEW_DPI['docx'], [0]),
+                        (bundle_report_templates.LARGE_PREVIEW_DPI['docx'], [1])]
+    assert client.get(f'/api/reporting/bundle-report-template/jobs/{job_id}/preview/pdf/1').status_code == 404
     for export_format in ('powerpoint', 'word'):
-        download = client.get(f'/api/reporting/complete-report/jobs/{job_id}/download/{export_format}')
+        download = client.get(f'/api/reporting/bundle-report-template/jobs/{job_id}/download/{export_format}')
         assert download.status_code == 200 and download.content[:2] == b'PK'
     assert download.headers['content-disposition'].endswith('.docx')
     actions = [row['action'] for row in core.repository.list_logs(limit=20)]
-    assert {'complete_report_requested', 'complete_report_generated', 'complete_report_downloaded'} <= set(actions)
+    assert {'bundle_report_template_requested', 'bundle_report_template_generated', 'bundle_report_template_downloaded'} <= set(actions)
+    # The workspace keeps it as the last report of the user, in output/reports/bundle-reports: Open last report opens it
+    # whenever there is one, also after a restart, and its documents are kept until a newer one replaces it.
+    assert client.get('/api/reporting/bundle-report-template/options').json()['last_report']['id'] == job_id
+    with bundle_report_templates._jobs_lock:
+        folder = bundle_report_templates._jobs.pop(job_id)['folder']
+    assert folder.parent.name == 'bundle-reports'
+    __import__('os').utime(folder, (0, 0))
+    kept = {str(record['folder']) for record in bundle_report_templates._last_report_records(core.repository).values()}
+    bundle_report_templates._forget_old_jobs(folder.parent, kept)
+    assert folder.is_dir()
+    reopened = client.get(f'/api/reporting/bundle-report-template/jobs/{job_id}').json()['job']
+    assert reopened['status'] == 'ready' and reopened['formats'] == job['formats'] and reopened['title'] == job['title']
+    assert client.get(f'/api/reporting/bundle-report-template/jobs/{job_id}/download/word').status_code == 200
+    assert client.get('/api/reporting/bundle-report-template/options').json()['last_report']['id'] == job_id
+    script = (core.PROJECT_ROOT / 'src/web_interface/static/js/bundle_report_template.js').read_text(encoding='utf-8')
+    assert "$('brt-open-last').hidden = pending || !lastReport || dialog.open;" in script
+    assert 'lastReport = brtOptions.last_report' in script
 
 
 def test_favourites_are_an_artifact_of_reporting_jobs(client, monkeypatch, tmp_path):
@@ -708,28 +728,28 @@ def test_favourites_are_an_artifact_of_reporting_jobs(client, monkeypatch, tmp_p
         return {}
 
     monkeypatch.setattr(core, 'write_network_insights_summary', network_summary)
-    definition = complete_reports.normalize_definition({})
+    definition = bundle_report_templates.normalize_definition({})
     for section in definition['sections']:
         section['enabled'] = section['key'] == 'network_insights'
-    favourite = complete_reports.save_favourite(core.repository, None, 'Weekly', definition, 'super')
-    provider = report_tasks.ARTIFACT_PROVIDERS['complete_report']
+    favourite = bundle_report_templates.save_favourite(core.repository, None, 'Weekly', definition, 'super')
+    provider = report_tasks.ARTIFACT_PROVIDERS['bundle_report_template']
     assert provider['values'](core.SessionUser(username='super', role='super-admin')) == {'favourites': [[str(favourite['id']), 'Weekly']]}
     artifacts = provider['generate']({'formats': ['powerpoint'], 'options': {'filters': {'favourites': [str(favourite['id'])]}}},
                                      tmp_path, '20261017_120000', core.SessionUser(username='super', role='super-admin'))
     assert [item['status'] for item in artifacts] == ['ready'], artifacts
-    assert artifacts[0]['title'] == 'Complete Report · Weekly (PPT)'
+    assert artifacts[0]['title'] == 'Bundle Report Template · Weekly (PPT)'
     assert (tmp_path / artifacts[0]['file_name']).read_bytes()[:2] == b'PK'
-    assert not list(tmp_path.glob('.complete-report-*'))
+    assert not list(tmp_path.glob('.bundle-report-template-*'))
 
 
 def test_imported_favourites_find_their_dashboards_by_name_only_when_their_id_is_unknown(client):
     login(client)
-    definition = complete_reports.normalize_definition({'sections': [{'key': 'dashboards', 'items': [
+    definition = bundle_report_templates.normalize_definition({'sections': [{'key': 'dashboards', 'items': [
         {'key': 'elsewhere', 'label': 'Weekly'}, {'key': 'sa-weekly', 'label': 'Weekly'}]}]})
-    imported = complete_reports.import_entries(core.repository, [{'name': 'Imported', 'definition': definition}], 'super',
+    imported = bundle_report_templates.import_entries(core.repository, [{'name': 'Imported', 'definition': definition}], 'super',
                                                {'nsa-weekly': ('Weekly', 'NSA'), 'sa-weekly': ('Other', 'SA')})
     assert imported == 1
-    favourite = complete_reports.list_favourites(core.repository)[0]
+    favourite = bundle_report_templates.list_favourites(core.repository)[0]
     dashboards = next(section for section in favourite['definition']['sections'] if section['key'] == 'dashboards')
     assert [item['key'] for item in dashboards['items']] == ['nsa-weekly', 'sa-weekly']
 
@@ -748,20 +768,20 @@ def test_favourites_keep_their_dashboards_checked_and_ordered_in_another_workspa
     # RF Quality first.
     source = [f'source-{index}' for index in range(6)]
     core.repository.set_workspace_state(STATE_KEY, json.dumps(dashboards(source)))
-    definition = complete_reports.normalize_definition({'sections': [{'key': 'dashboards', 'items': [
+    definition = bundle_report_templates.normalize_definition({'sections': [{'key': 'dashboards', 'items': [
         {'key': source[4], 'enabled': True}, {'key': source[0], 'enabled': True}, {'key': source[2], 'enabled': False},
         {'key': source[1], 'enabled': False}, {'key': source[3], 'enabled': False}, {'key': source[5], 'enabled': False}]}]})
-    complete_reports.save_favourite(core.repository, None, 'Final CDR', definition, 'super')
-    document = complete_reports.export_favourites_document(core.repository)
+    bundle_report_templates.save_favourite(core.repository, None, 'Final CDR', definition, 'super')
+    document = bundle_report_templates.export_favourites_document(core.repository)
     exported = json.loads(document)['favourites'][0]['definition']['sections'][0]['items']
     # Each Dashboard travels with its name and NR Mode.
     assert [(item['label'], item['nr_mode']) for item in exported[:2]] == [('RF Quality (RSRP & SINR)', 'NSA'), ('NetCheck CDR Report', 'NSA')]
     # Another workspace has the same Dashboards with other IDs, in another order.
     target = [f'target-{index}' for index in range(6)]
     core.repository.set_workspace_state(STATE_KEY, json.dumps(dict(reversed(list(dashboards(target).items())))))
-    complete_reports.delete_favourite(core.repository, complete_reports.list_favourites(core.repository)[0]['id'])
-    assert complete_reports.import_favourites_document(core.repository, document, 'super') == 1
-    items = complete_reports.list_favourites(core.repository)[0]['definition']['sections'][0]['items']
+    bundle_report_templates.delete_favourite(core.repository, bundle_report_templates.list_favourites(core.repository)[0]['id'])
+    assert bundle_report_templates.import_favourites_document(core.repository, document, 'super') == 1
+    items = bundle_report_templates.list_favourites(core.repository)[0]['definition']['sections'][0]['items']
     # They find the Dashboards of their NR Mode, in the same order and checked as they were.
     assert [(item['key'], item['enabled']) for item in items] == [
         (target[4], True), (target[0], True), (target[2], False), (target[1], False), (target[3], False), (target[5], False)]
@@ -769,15 +789,15 @@ def test_favourites_keep_their_dashboards_checked_and_ordered_in_another_workspa
     legacy = json.loads(document)
     for item in legacy['favourites'][0]['definition']['sections'][0]['items']:
         item.pop('nr_mode')
-    complete_reports.delete_favourite(core.repository, complete_reports.list_favourites(core.repository)[0]['id'])
-    complete_reports.import_favourites_document(core.repository, json.dumps(legacy), 'super')
-    items = complete_reports.list_favourites(core.repository)[0]['definition']['sections'][0]['items']
+    bundle_report_templates.delete_favourite(core.repository, bundle_report_templates.list_favourites(core.repository)[0]['id'])
+    bundle_report_templates.import_favourites_document(core.repository, json.dumps(legacy), 'super')
+    items = bundle_report_templates.list_favourites(core.repository)[0]['definition']['sections'][0]['items']
     assert [item['key'] for item in items if item['enabled']] == [target[4], target[0]]
     assert len({item['key'] for item in items}) == 6
     # Saving with the name of a favourite overwrites it once the user confirms it, on the page.
-    script = (core.PROJECT_ROOT / 'src/web_interface/static/js/complete_report.js').read_text(encoding='utf-8')
+    script = (core.PROJECT_ROOT / 'src/web_interface/static/js/bundle_report_template.js').read_text(encoding='utf-8')
     assert "title: 'Overwrite Favourite'" in script
-    assert "existing ? `/api/reporting/complete-report/favourites/${existing.id}`" in script
+    assert "existing ? `/api/reporting/bundle-report-template/favourites/${existing.id}`" in script
     assert "nr_mode: catalogueItem.nr_mode || ''" in script
 
 
@@ -882,23 +902,23 @@ def test_a_second_export_reuses_the_sections_whose_data_has_not_changed(client, 
     monkeypatch.setattr(core, 'write_network_insights_summary', network_summary)
     monkeypatch.setattr(core, 'network_insights_summary_key', lambda selection: 'analysis-' + ','.join(selection['campaigns']))
     monkeypatch.setattr('src.modules.pptx_to_docx.document_pdf', lambda content, suffix: None)
-    definition = complete_reports.normalize_definition({})
+    definition = bundle_report_templates.normalize_definition({})
     for section in definition['sections']:
         section['enabled'] = section['key'] == 'network_insights'
         section['options']['campaigns'] = ['2026-Q3']
 
     def export(**extra):
-        job_id = client.post('/api/reporting/complete-report/jobs', json={'definition': definition, **extra}).json()['job']['id']
+        job_id = client.post('/api/reporting/bundle-report-template/jobs', json={'definition': definition, **extra}).json()['job']['id']
         for _attempt in range(100):
-            job = client.get(f'/api/reporting/complete-report/jobs/{job_id}').json()['job']
+            job = client.get(f'/api/reporting/bundle-report-template/jobs/{job_id}').json()['job']
             if job['status'] in {'ready', 'failed'}:
                 return job
             time.sleep(0.1)
         return job
 
     composed = []
-    original_compose = complete_reports.compose_powerpoint
-    monkeypatch.setattr(complete_reports, 'compose_powerpoint', lambda *args, **kwargs: composed.append(1) or original_compose(*args, **kwargs))
+    original_compose = bundle_report_templates.compose_powerpoint
+    monkeypatch.setattr(bundle_report_templates, 'compose_powerpoint', lambda *args, **kwargs: composed.append(1) or original_compose(*args, **kwargs))
     first, second = export(), export()
     assert first['status'] == second['status'] == 'ready'
     assert first['reused'] == [] and second['reused'] == ['Network Insights'] and calls == [['2026-Q3']]
@@ -930,12 +950,12 @@ def test_favourite_elements_are_exported_and_imported_on_their_own(client):
     import time
 
     login(client)
-    definition = complete_reports.normalize_definition({})
-    complete_reports.save_favourite(core.repository, None, 'Quarterly', definition, 'super')
+    definition = bundle_report_templates.normalize_definition({})
+    bundle_report_templates.save_favourite(core.repository, None, 'Quarterly', definition, 'super')
     from src.modules.scoring_reports import load_report_state
 
     configurations = [item['name'] for item in load_report_state(core.repository)['configurations']]
-    for target, label in (('complete-report-favourites', 'Complete Report Favourites'),
+    for target, label in (('bundle-report-template-favourites', 'Bundle Report Template Favourites'),
                           ('scoring-favourites-filters', 'Scoring & GAP Favourites Filters'),
                           ('scoring-report-templates', 'Scoring & GAP Report Templates')):
         exported = client.get(f'/admin/import-export/export?export_target={target}')
@@ -957,9 +977,9 @@ def test_favourite_elements_are_exported_and_imported_on_their_own(client):
             time.sleep(0.01)
         assert status['status'] == 'ready', status
         assert label in json.dumps(status)
-        if target == 'complete-report-favourites':
+        if target == 'bundle-report-template-favourites':
             assert [item['name'] for item in document['favourites']] == ['Quarterly']
-            assert [item['name'] for item in complete_reports.list_favourites(core.repository)] == ['Quarterly']
+            assert [item['name'] for item in bundle_report_templates.list_favourites(core.repository)] == ['Quarterly']
         elif target == 'scoring-favourites-filters':
             assert document['saved_filters'] == []
         else:
@@ -971,18 +991,63 @@ def test_favourite_elements_are_exported_and_imported_on_their_own(client):
 
 def test_favourites_saved_before_store_only_the_theme_of_the_report(tmp_path):
     # Favourites whose Scoring and Network Insights sections kept the theme store only that of the report.
-    from src.modules import complete_reports
+    from src.modules import bundle_report_templates
     from src.modules.repository import Repository
 
     repository = Repository(tmp_path / 'workspace.db')
     with repository.connection() as connection:
-        connection.executescript(complete_reports.SCHEMA)
+        connection.executescript(bundle_report_templates.SCHEMA)
         legacy = {'sections': [{'key': 'scoring', 'options': {'theme': 'paper'}}, {'key': 'network_insights', 'options': {'theme': 'paper'}}]}
-        connection.execute(f'INSERT INTO {complete_reports.COMPLETE_REPORTS_TABLE} (name, definition_json, created_by, created_at, updated_at) '
+        connection.execute(f'INSERT INTO {bundle_report_templates.BUNDLE_REPORT_TEMPLATES_TABLE} (name, definition_json, created_by, created_at, updated_at) '
                            "VALUES ('Legacy', ?, 'super', '2026-10-18', '2026-10-18')", (json.dumps(legacy),))
-    favourite = complete_reports.list_favourites(repository)[0]
+    favourite = bundle_report_templates.list_favourites(repository)[0]
     with repository.connection() as connection:
-        stored = json.loads(connection.execute(f'SELECT definition_json FROM {complete_reports.COMPLETE_REPORTS_TABLE}').fetchone()[0])
+        stored = json.loads(connection.execute(f'SELECT definition_json FROM {bundle_report_templates.BUNDLE_REPORT_TEMPLATES_TABLE}').fetchone()[0])
     assert stored['theme'] == favourite['definition']['theme'] == 'paper'
     assert all('theme' not in section['options'] for section in stored['sections'])
     assert json.dumps(favourite['definition']).count('"theme"') == 1
+
+
+def test_favourites_saved_with_a_former_name_move_to_the_bundle_report_templates(tmp_path):
+    # The favourites of a workspace made when they were Complete Reports keep their IDs (which the jobs name), and those
+    # of the tables of the names they had briefly are added unless one of the same name is there.
+    from src.modules.repository import Repository
+
+    repository = Repository(tmp_path / 'workspace.db')
+    table = bundle_report_templates.BUNDLE_REPORT_TEMPLATES_TABLE
+    with repository.connection() as connection:
+        for legacy in bundle_report_templates.LEGACY_TABLES:
+            connection.executescript(bundle_report_templates.SCHEMA.replace(table, legacy))
+        connection.execute("INSERT INTO complete_reports (id, name, definition_json, created_by, created_at, updated_at) "
+                           "VALUES (7, 'Monthly', '{}', 'super', '2026-10-18', '2026-10-18')")
+        connection.executemany("INSERT INTO reporting_jobs_templates (name, definition_json, created_by, created_at, updated_at) "
+                               "VALUES (?, '{}', 'super', '2026-10-19', '2026-10-19')", [('monthly',), ('Weekly',)])
+    assert [(item['id'], item['name']) for item in bundle_report_templates.list_favourites(repository)] == [(7, 'Monthly'), (8, 'Weekly')]
+    with repository.connection() as connection:
+        names = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type IN ('table', 'index')")}
+    assert table in names and f'idx_{table}_name' in names
+    assert not {name for name in names if any(legacy in name for legacy in bundle_report_templates.LEGACY_TABLES)}
+
+
+def test_jobs_packages_and_folders_with_a_former_name_take_the_current_one(tmp_path):
+    from src.modules.output_layout import migrate_output_layout
+
+    # Jobs saved or exported with a former artifact key take the current one.
+    for former in report_tasks.LEGACY_PROVIDER_KEYS:
+        definition = report_tasks.normalize_definition({'modules': {former: {'enabled': True, 'formats': ['word'], 'options': {}}}})
+        assert list(definition['modules']) == ['bundle_report_template']
+    # Packages, backups and saved selections named after the Complete Reports or the Reporting Jobs Templates.
+    manifest = core.current_archive_manifest({
+        'kind': 'complete-report-favourites', 'targets': ['reporting-jobs-template-favourites'],
+        'workspace_components': ['complete_report_favourites'],
+        'packages': [{'kind': 'complete-report-favourites', 'target': 'reporting-jobs-template-favourites'}]})
+    assert manifest['kind'] == manifest['targets'][0] == manifest['packages'][0]['kind'] == 'bundle-report-template-favourites'
+    assert core.archive_workspace_components(manifest) == ['bundle_report_template_favourites']
+    assert core.backup_components(['workspace_database', 'reporting_jobs_template_favourites']) == ['workspace_database', 'bundle_report_template_favourites']
+    assert core.normalize_export_targets(['complete-report-favourites'], active_workspace_id='') == ['bundle-report-template-favourites']
+    assert 'complete-report-favourites/complete-report-favourites.json' in core.BRT_FAVOURITES_ARCHIVE_NAMES
+    # Their documents move to output/reports/bundle-reports once.
+    for index, former in enumerate(('complete-reports', 'reporting-jobs-templates')):
+        (tmp_path / 'output' / 'reports' / former / f'run-{index}').mkdir(parents=True)
+    assert migrate_output_layout(tmp_path / 'output', tmp_path / 'workspace.db')
+    assert sorted(path.name for path in (tmp_path / 'output' / 'reports' / 'bundle-reports').iterdir()) == ['run-0', 'run-1']

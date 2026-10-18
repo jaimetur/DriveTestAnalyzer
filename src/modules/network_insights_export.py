@@ -1,5 +1,5 @@
-"""The PowerPoint summary of a Network Insights analysis; its Word version and its section of a Complete Report are
-composed from it (see complete_reports.module_document)."""
+"""The PowerPoint summary of a Network Insights analysis; its Word version and its section of a Bundle Report Template are
+composed from it (see bundle_report_templates.module_document)."""
 from __future__ import annotations
 
 import re
@@ -28,8 +28,8 @@ ChartRenderer = Callable[[dict[str, Any], int, int], bytes]
 
 TABLE_ROWS_PER_SLIDE = 12
 
-# The panels of the page and the charts and tables of each one, in the order of the page, as a Complete Report
-# chooses them (see complete_reports): (panel key, panel title, ((component key, label), ...)).
+# The panels of the page and the charts and tables of each one, in the order of the page, as a Bundle Report Template
+# chooses them (see bundle_report_templates): (panel key, panel title, ((component key, label), ...)).
 REPORT_PANELS: tuple[tuple[str, str, tuple[tuple[str, str], ...]], ...] = (
     ('overview', 'Overview', (('cards', 'Overview cards'),)),
     ('findings', 'Key Findings', (('lte_signal', 'LTE signal at the test'), ('nr_signal', '5G signal at the test'),
@@ -91,7 +91,7 @@ def report_component(title: str) -> str:
 
 
 def _tag_report_slides(presentation: Presentation, start: int, panel: str) -> None:
-    """Name the slides from ``start`` after their panel, so a Complete Report orders and packs them."""
+    """Name the slides from ``start`` after their panel, so a Bundle Report Template orders and packs them."""
     for slide in list(presentation.slides)[start:]:
         slide._element.cSld.set('name', f'{REPORT_SECTION_PREFIX}{panel}')
 
@@ -1094,7 +1094,7 @@ def export_network_insights_powerpoint(destination: Path, analysis: dict[str, An
                                        selection: dict[str, Any], render: ChartRenderer, template: Path | None = None,
                                        components: Collection[str] | None = None) -> Path:
     """The summary in PowerPoint. ``components`` (``panel.component`` keys of REPORT_PANELS) keeps only those charts and
-    tables, as a Complete Report chooses them; every slide is named after its panel."""
+    tables, as a Bundle Report Template chooses them; every slide is named after its panel."""
     from src.config import settings
     from src.modules.cdr_reporting import _named_slide_layout, _remove_all_slides, _set_structural_slide_text
 

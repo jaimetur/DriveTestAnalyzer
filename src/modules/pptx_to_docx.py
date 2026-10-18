@@ -3,8 +3,8 @@
 Slide titles become headings, tables become Word tables with their colours, native charts are drawn as
 images from their data, and pictures and text boxes are copied in reading order.
 
-The Complete Report and the exports of Scoring & GAP Analysis, Network Insights and Non-Qualified Calls pack their
-components on portrait pages instead (see complete_reports.compose_word), with the helpers here.
+The Bundle Report Template and the exports of Scoring & GAP Analysis, Network Insights and Non-Qualified Calls pack their
+components on portrait pages instead (see bundle_report_templates.compose_word), with the helpers here.
 """
 
 from __future__ import annotations

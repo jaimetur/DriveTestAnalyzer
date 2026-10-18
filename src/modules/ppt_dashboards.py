@@ -1017,7 +1017,7 @@ def install_dashboard_routes(core):
     ):
         run_key = (str(Path(task_repository.db_path).resolve()), job_id)
         # The colour theme of the titles of the content slides and of the charts: that of the report generating the PPT
-        # (a Complete Report or a Reporting Job), else the one the user chose for PPT Dashboards.
+        # (a Bundle Report Template or a Reporting Job), else the one the user chose for PPT Dashboards.
         theme = normalize_theme(theme) if theme else load_user_theme(task_repository, user.username, DASHBOARD_THEME_MODULE)
         chart_style = dashboard_chart_style(theme)
 
@@ -2009,7 +2009,7 @@ def install_dashboard_routes(core):
         }))
         return job_id
 
-    # Reporting Jobs and Complete Reports generate Dashboard PPTs through the PPT jobs.
+    # Reporting Jobs and Bundle Report Templates generate Dashboard PPTs through the PPT jobs.
     core.dashboard_reporting = SimpleNamespace(
         definition_model=DashboardDefinition,
         list_dashboards=lambda task_repository: read_dashboards(task_repository),

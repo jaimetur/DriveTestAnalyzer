@@ -181,12 +181,12 @@ def test_each_user_keeps_a_network_insights_theme(client) -> None:
     assert changes[0] == {'theme': 'paper', 'previous': 'ericsson'}
 
 
-def test_complete_reports_and_reporting_jobs_choose_a_network_insights_theme() -> None:
-    from src.modules import complete_reports
+def test_bundle_report_templates_and_reporting_jobs_choose_a_network_insights_theme() -> None:
+    from src.modules import bundle_report_templates
     from src.modules.report_tasks import _network_entry
 
-    assert complete_reports.default_options('network_insights')['theme'] == 'ericsson'
-    definition = complete_reports.normalize_definition({'sections': [
+    assert bundle_report_templates.default_options('network_insights')['theme'] == 'ericsson'
+    definition = bundle_report_templates.normalize_definition({'sections': [
         {'key': 'scoring', 'options': {'theme': 'Vodafone'}},
         {'key': 'network_insights', 'items': [{'key': 'overview'}, {'key': 'spectrum'}], 'options': {'theme': 'paper'}}]})
     network = next(section for section in definition['sections'] if section['key'] == 'network_insights')

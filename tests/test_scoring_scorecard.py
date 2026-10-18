@@ -281,17 +281,17 @@ def test_exports_keep_the_chosen_scorings_and_environments_and_name_their_sectio
         export_scoring_powerpoint(job, result, TEMPLATE, environments=['Nowhere'])
 
 
-def test_scoring_exports_are_composed_as_the_complete_report(monkeypatch):
-    from src.modules import complete_reports, pptx_compose
+def test_scoring_exports_are_composed_as_the_bundle_report_template(monkeypatch):
+    from src.modules import bundle_report_templates, pptx_compose
 
     job, result = synthetic_result(levels=('Operator',))
     content = export_scoring_powerpoint(job, result, TEMPLATE, scorings=['best_network'], environments=['Combined'])
-    # The PowerPoint keeps the covers of the module and composes the rest as the Scoring section of a Complete Report.
+    # The PowerPoint keeps the covers of the module and composes the rest as the Scoring section of a Bundle Report Template.
     original = Presentation(BytesIO(content))
-    composed = Presentation(BytesIO(complete_reports.module_document('scoring', content, 'powerpoint', 'Scoring & GAP Analysis')))
+    composed = Presentation(BytesIO(bundle_report_templates.module_document('scoring', content, 'powerpoint', 'Scoring & GAP Analysis')))
     titles = [pptx_compose.title_parts(slide)[0] for slide in composed.slides]
     assert titles[0] == 'Scoring & GAP Analysis' and any('Best Network Scoring' in title for title in titles)
-    # It ends with the closing slide of the template, as a Complete Report.
+    # It ends with the closing slide of the template, as a Bundle Report Template.
     assert 1 < len(composed.slides) <= len(original.slides) + 1 and composed.slides[-1].slide_layout.name == 'Black logo end slide'
 
     # A slide image keeps its blocks and loses its empty bands.
@@ -305,11 +305,11 @@ def test_scoring_exports_are_composed_as_the_complete_report(monkeypatch):
         assert compact.width == 400 and compact.height < 120
 
     # Word: the cover of the module fills a page of its own without margins, then portrait pages hold as many
-    # components as fit, as in the Word version of a Complete Report.
+    # components as fit, as in the Word version of a Bundle Report Template.
     monkeypatch.setattr(pptx_to_docx_module, 'portrait_covers', lambda _content, positions: [raw.getvalue()] * len(positions))
     monkeypatch.setattr(pptx_to_docx_module, 'slide_images',
                         lambda deck, dpi=160: [raw.getvalue()] * len(Presentation(BytesIO(deck)).slides))
-    document = Document(BytesIO(complete_reports.module_document('scoring', content, 'word', 'Scoring & GAP Analysis')))
+    document = Document(BytesIO(bundle_report_templates.module_document('scoring', content, 'word', 'Scoring & GAP Analysis')))
     cover_page, *pages = document.sections
     assert cover_page.left_margin == cover_page.top_margin == 0
     assert pages and pages[0].left_margin > 0 and pages[0].page_height > pages[0].page_width

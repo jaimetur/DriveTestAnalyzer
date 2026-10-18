@@ -1,6 +1,6 @@
-"""Complete Report: one PowerPoint or Word report with chosen parts of several modules.
+"""Bundle Report Template: one PowerPoint or Word report with chosen parts of several modules.
 
-A Complete Report has four sections — PPT Dashboards, Scoring & GAP Analysis, Network Insights and Non-Qualified
+A Bundle Report Template has four sections — PPT Dashboards, Scoring & GAP Analysis, Network Insights and Non-Qualified
 Calls — in the order the user chooses, each with its sub-modules (the Dashboards, the results tabs of Scoring and the
 panels of Network Insights and Non-Qualified Calls) in its own order, and the charts and tables of each sub-module.
 Common filters (NR Mode, Operators, Vendors and area) apply to every section and replace the saved filters of the
@@ -13,7 +13,7 @@ spread over several slides is put on one slide; small consecutive components of 
 version packs the components of each section on portrait pages: each page takes the next components that fit, never
 mixing sections or splitting a component (pptx_to_docx.pack_pages).
 
-Reports saved as favourites (``complete_reports``) travel with the Reporting Jobs in exports, transfers and backups,
+Reports saved as favourites (``bundle_report_templates``) travel with the Reporting Jobs in exports, transfers and backups,
 and a Reporting Job can include them as an artifact.
 """
 import json
@@ -34,16 +34,19 @@ from src.modules.cdr_auto_selection import (
     ALL_CAMPAIGNS, CAMPAIGN_PRESET_LABELS, campaign_presets, complete_campaign_cdrs, resolve_campaign_filter, sort_campaigns,
 )
 from src.modules.column_names import compact_campaign_value, format_campaign
-from src.modules.output_layout import COMPLETE_REPORTS_FOLDER, module_output_dir
+from src.modules.output_layout import BUNDLE_REPORTS_FOLDER, module_output_dir
 from src.modules.scoring_area_summary import normalize_trend_campaigns
 from src.modules.scoring_methodologies import BY_CAMPAIGN
 from src.modules.scoring_themes import DEFAULT_THEME, normalize_theme
 from src.modules.slide_titles import fit_slide_title
 
-COMPLETE_REPORTS_TABLE = 'complete_reports'
-COMPLETE_REPORTS_FORMAT = 'drivetest-analyzer-complete-reports'
+BUNDLE_REPORT_TEMPLATES_TABLE = 'bundle_report_templates'
+# The tables of the workspaces made when Bundle Report Templates were called Complete Reports, then (briefly, while they
+# were renamed) Reporting Jobs Templates and Bundle Reports Templates (see ensure_tables).
+LEGACY_TABLES = ('complete_reports', 'reporting_jobs_templates', 'bundle_reports_templates')
+BUNDLE_REPORT_TEMPLATES_FORMAT = 'drivetest-analyzer-bundle-report-templates'
 SCHEMA = f"""
-CREATE TABLE IF NOT EXISTS {COMPLETE_REPORTS_TABLE} (
+CREATE TABLE IF NOT EXISTS {BUNDLE_REPORT_TEMPLATES_TABLE} (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     definition_json TEXT NOT NULL DEFAULT '{{}}',
@@ -51,10 +54,10 @@ CREATE TABLE IF NOT EXISTS {COMPLETE_REPORTS_TABLE} (
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
-CREATE UNIQUE INDEX IF NOT EXISTS idx_complete_reports_name ON {COMPLETE_REPORTS_TABLE}(name COLLATE NOCASE);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_bundle_report_templates_name ON {BUNDLE_REPORT_TEMPLATES_TABLE}(name COLLATE NOCASE);
 """
 MAX_FAVOURITES = 100
-DEFAULT_TITLE = 'Complete Report'
+DEFAULT_TITLE = 'Drive Test Analyzer Report'
 FORMATS = ('powerpoint', 'word')
 FORMAT_SUFFIXES = {'powerpoint': 'pptx', 'word': 'docx'}
 FORMAT_LABELS = {'powerpoint': 'PowerPoint', 'word': 'Word'}
@@ -102,7 +105,7 @@ FILTER_FIELDS = ('operators', 'operator_vendors', 'vendor_operators', 'vendors',
 FILTER_LABELS = {'operators': 'Operators', 'operator_vendors': 'Operator_Vendor', 'vendor_operators': 'Vendor_Operator',
                  'vendors': 'Vendors', 'regions': 'Regions', 'clusters': 'Clusters', 'cities': 'Cities'}
 # The common filters as each module names them: Scoring context filters, Dashboard Adaptative Filters and
-# Non-Qualified Calls filters (Network Insights uses the same names as the Complete Report).
+# Non-Qualified Calls filters (Network Insights uses the same names as the Bundle Report Template).
 SCORING_FILTERS = {'operators': 'Operator', 'operator_vendors': 'Operator_Vendor', 'vendor_operators': 'Vendor_Operator',
                    'vendors': 'Vendor', 'regions': 'Region', 'clusters': 'Cluster', 'cities': 'City'}
 DASHBOARD_FILTERS = SCORING_FILTERS
@@ -126,6 +129,12 @@ PREVIEW_DPI = {'pptx': 80, 'docx': 100}
 LARGE_PREVIEW_DPI = {'pptx': 180, 'docx': 200}
 JOBS_KEPT = 30
 JOB_FILES_KEPT_HOURS = 24
+# The last report each user generated from the panel, kept in the workspace state (see remember_last_report).
+LAST_REPORT_KEY = 'bundle_report_template_last_report:'
+# The key it had while Bundle Report Templates were briefly called Bundle Reports Templates (the current one prevails).
+FORMER_LAST_REPORT_KEYS = ('bundle_reports_template_last_report:',)
+LAST_REPORT_FIELDS = {'id': '', 'title': '', 'created_at': '', 'finished_at': '', 'started': 0.0, 'ended': 0.0, 'formats': {},
+                      'warnings': [], 'outline': [], 'reused': [], 'document_reused': False, 'username': '', 'workspace_id': ''}
 
 
 def _panels() -> dict[str, tuple[tuple[str, str, tuple[tuple[str, str], ...]], ...]]:
@@ -268,7 +277,7 @@ def _normalize_items(section: str, raw: Any) -> list[dict[str, Any]]:
 
 
 def normalize_definition(raw: Any) -> dict[str, Any]:
-    """A Complete Report: its title, the common filters and the four sections in order with their sub-modules,
+    """A Bundle Report Template: its title, the common filters and the four sections in order with their sub-modules,
     components and options. Sections, sub-modules and components it lacks are added (checked)."""
     raw = raw if isinstance(raw, dict) else {}
     filters = raw.get('filters') if isinstance(raw.get('filters'), dict) else {}
@@ -408,7 +417,7 @@ _REPORT_THEMES_LOCK = Lock()
 def _store_report_themes(connection: Any) -> None:
     """Favourites saved when their Scoring and Network Insights sections kept the theme store only the theme of the
     report: theirs, else that of their Scoring section, else the default theme."""
-    for favourite_id, raw in connection.execute(f'SELECT id, definition_json FROM {COMPLETE_REPORTS_TABLE}').fetchall():
+    for favourite_id, raw in connection.execute(f'SELECT id, definition_json FROM {BUNDLE_REPORT_TEMPLATES_TABLE}').fetchall():
         try:
             definition = json.loads(raw or '{}')
         except json.JSONDecodeError:
@@ -425,12 +434,31 @@ def _store_report_themes(connection: Any) -> None:
                 section_options.pop('theme')
                 changed = True
         if changed:
-            connection.execute(f'UPDATE {COMPLETE_REPORTS_TABLE} SET definition_json = ? WHERE id = ?',
+            connection.execute(f'UPDATE {BUNDLE_REPORT_TEMPLATES_TABLE} SET definition_json = ? WHERE id = ?',
                                (json.dumps(definition, ensure_ascii=False), favourite_id))
+
+
+def _rename_legacy_table(connection: Any) -> None:
+    """The favourites of a workspace made with a former name (a restored workspace database too) move to the table of
+    the Bundle Report Templates: the first former table keeps its IDs, which the jobs name, and the favourites of
+    another one are added unless one of the same name is there."""
+    tables = {str(row[0]) for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    for legacy in LEGACY_TABLES:
+        if legacy not in tables:
+            continue
+        if BUNDLE_REPORT_TEMPLATES_TABLE not in tables:
+            connection.execute(f'ALTER TABLE {legacy} RENAME TO {BUNDLE_REPORT_TEMPLATES_TABLE}')
+            tables.add(BUNDLE_REPORT_TEMPLATES_TABLE)
+        else:
+            columns = 'name, definition_json, created_by, created_at, updated_at'
+            connection.execute(f'INSERT OR IGNORE INTO {BUNDLE_REPORT_TEMPLATES_TABLE} ({columns}) SELECT {columns} FROM {legacy}')
+            connection.execute(f'DROP TABLE {legacy}')
+        connection.execute(f'DROP INDEX IF EXISTS idx_{legacy}_name')
 
 
 def ensure_tables(repository: Any) -> None:
     with repository.connection() as connection:
+        _rename_legacy_table(connection)
         connection.executescript(SCHEMA)
         database = str(getattr(repository, 'db_path', ''))
         with _REPORT_THEMES_LOCK:
@@ -440,7 +468,7 @@ def ensure_tables(repository: Any) -> None:
 
 
 def favourite_contents(definition: Any, dashboard_names: dict[str, str] | None = None) -> list[dict[str, Any]]:
-    """What a Complete Report includes: its checked sections in order, each with its checked sub-modules (the
+    """What a Bundle Report Template includes: its checked sections in order, each with its checked sub-modules (the
     Dashboards by name). Sections without any are left out."""
     titles = {key: {item_key: title for item_key, title, _components in panels} for key, panels in _panels().items()}
     contents = []
@@ -469,14 +497,14 @@ def _favourite(row: sqlite3.Row) -> dict[str, Any]:
 def list_favourites(repository: Any) -> list[dict[str, Any]]:
     ensure_tables(repository)
     with repository.connection() as connection:
-        rows = connection.execute(f'SELECT * FROM {COMPLETE_REPORTS_TABLE} ORDER BY name COLLATE NOCASE, id').fetchall()
+        rows = connection.execute(f'SELECT * FROM {BUNDLE_REPORT_TEMPLATES_TABLE} ORDER BY name COLLATE NOCASE, id').fetchall()
     return [_favourite(row) for row in rows]
 
 
 def get_favourite(repository: Any, favourite_id: int) -> dict[str, Any] | None:
     ensure_tables(repository)
     with repository.connection() as connection:
-        row = connection.execute(f'SELECT * FROM {COMPLETE_REPORTS_TABLE} WHERE id = ?', (int(favourite_id),)).fetchone()
+        row = connection.execute(f'SELECT * FROM {BUNDLE_REPORT_TEMPLATES_TABLE} WHERE id = ?', (int(favourite_id),)).fetchone()
     return _favourite(row) if row else None
 
 
@@ -484,28 +512,28 @@ def save_favourite(repository: Any, favourite_id: int | None, name: str, definit
     """Create (``favourite_id`` None) or update a favourite; names are unique, ignoring case."""
     name = ' '.join(str(name or '').split())[:120]
     if not name:
-        raise ValueError('Enter a name for the favourite Complete Report.')
+        raise ValueError('Enter a name for the favourite Bundle Report Template.')
     normalized = normalize_definition(definition)
     now = datetime.now().isoformat(timespec='seconds')
     ensure_tables(repository)
     with repository.connection() as connection:
-        clash = connection.execute(f'SELECT id FROM {COMPLETE_REPORTS_TABLE} WHERE name = ? COLLATE NOCASE', (name,)).fetchone()
+        clash = connection.execute(f'SELECT id FROM {BUNDLE_REPORT_TEMPLATES_TABLE} WHERE name = ? COLLATE NOCASE', (name,)).fetchone()
         if clash and (favourite_id is None or int(clash['id']) != int(favourite_id)):
-            raise ValueError(f'A favourite Complete Report named "{name}" already exists.')
+            raise ValueError(f'A favourite Bundle Report Template named "{name}" already exists.')
         if favourite_id is None:
-            count = connection.execute(f'SELECT COUNT(*) FROM {COMPLETE_REPORTS_TABLE}').fetchone()[0]
+            count = connection.execute(f'SELECT COUNT(*) FROM {BUNDLE_REPORT_TEMPLATES_TABLE}').fetchone()[0]
             if count >= MAX_FAVOURITES:
-                raise ValueError(f'A workspace keeps up to {MAX_FAVOURITES} favourite Complete Reports.')
+                raise ValueError(f'A workspace keeps up to {MAX_FAVOURITES} favourite Bundle Report Templates.')
             cursor = connection.execute(
-                f'INSERT INTO {COMPLETE_REPORTS_TABLE} (name, definition_json, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
+                f'INSERT INTO {BUNDLE_REPORT_TEMPLATES_TABLE} (name, definition_json, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
                 (name, json.dumps(normalized, ensure_ascii=False), username, now, now))
             favourite_id = int(cursor.lastrowid)
         else:
             updated = connection.execute(
-                f'UPDATE {COMPLETE_REPORTS_TABLE} SET name = ?, definition_json = ?, updated_at = ? WHERE id = ?',
+                f'UPDATE {BUNDLE_REPORT_TEMPLATES_TABLE} SET name = ?, definition_json = ?, updated_at = ? WHERE id = ?',
                 (name, json.dumps(normalized, ensure_ascii=False), now, int(favourite_id))).rowcount
             if not updated:
-                raise LookupError('The favourite Complete Report no longer exists.')
+                raise LookupError('The favourite Bundle Report Template no longer exists.')
     return get_favourite(repository, int(favourite_id))
 
 
@@ -513,11 +541,14 @@ def delete_favourite(repository: Any, favourite_id: int) -> dict[str, Any] | Non
     favourite = get_favourite(repository, favourite_id)
     if favourite is not None:
         with repository.connection() as connection:
-            connection.execute(f'DELETE FROM {COMPLETE_REPORTS_TABLE} WHERE id = ?', (int(favourite_id),))
+            connection.execute(f'DELETE FROM {BUNDLE_REPORT_TEMPLATES_TABLE} WHERE id = ?', (int(favourite_id),))
     return favourite
 
 
-FAVOURITES_FORMAT = 'drivetest-analyzer-complete-report-favourites'
+FAVOURITES_FORMAT = 'drivetest-analyzer-bundle-report-template-favourites'
+# The formats of the documents exported when Bundle Report Templates had a former name.
+LEGACY_FAVOURITES_FORMATS = ('drivetest-analyzer-complete-report-favourites', 'drivetest-analyzer-reporting-jobs-template-favourites',
+                             'drivetest-analyzer-bundle-reports-template-favourites')
 
 
 def export_entries(repository: Any) -> list[dict[str, Any]]:
@@ -573,17 +604,17 @@ def match_dashboards(items: list[dict[str, Any]], dashboards: dict[str, tuple[st
 
 
 def export_favourites_document(repository: Any) -> bytes:
-    """The favourite Complete Reports of a workspace as a portable document (the Complete Report Favourites element
+    """The favourite Bundle Report Templates of a workspace as a portable document (the Bundle Report Template Favourites element
     of Import / Export / Transfer, workspace transfers and backups)."""
     return json.dumps({'format': FAVOURITES_FORMAT, 'version': 1, 'favourites': export_entries(repository)},
                       ensure_ascii=False, indent=2).encode('utf-8')
 
 
 def import_favourites_document(repository: Any, content: bytes | str, username: str) -> int:
-    """Add or replace (by name) the favourite Complete Reports of a portable document; returns how many it had."""
+    """Add or replace (by name) the favourite Bundle Report Templates of a portable document; returns how many it had."""
     document = json.loads(content)
-    if not isinstance(document, dict) or document.get('format') != FAVOURITES_FORMAT:
-        raise ValueError('The file is not a DriveTest Analyzer Complete Report Favourites export.')
+    if not isinstance(document, dict) or document.get('format') not in {FAVOURITES_FORMAT, *LEGACY_FAVOURITES_FORMATS}:
+        raise ValueError('The file is not a DriveTest Analyzer Bundle Report Template Favourites export.')
     return import_entries(repository, document.get('favourites') or [], username, workspace_dashboards(repository))
 
 
@@ -664,11 +695,11 @@ class BuildResult:
     document_reused: bool = False
 
 
-class CompleteReportError(RuntimeError):
+class BundleReportTemplateError(RuntimeError):
     pass
 
 
-class CompleteReportCancelled(CompleteReportError):
+class BundleReportTemplateCancelled(BundleReportTemplateError):
     """The user cancelled the generation: it stops at its next step."""
 
 
@@ -858,7 +889,7 @@ def _compose_section(composer: compose.DeckComposer, section: SectionDeck, entri
 
 
 def _nest_transitions(slides: list[Any]) -> None:
-    """The transitions of a module inside its section of a Complete Report, one level down; a module whose own cover
+    """The transitions of a module inside its section of a Bundle Report Template, one level down; a module whose own cover
     stays (each Dashboard) has it as a transition of the second level and its transitions one more level down."""
     depth = 1
     for slide in slides:
@@ -878,7 +909,7 @@ def _add_closing(composer: compose.DeckComposer) -> None:
 
 def compose_powerpoint(template: Path, title: str, subtitle: str, common_filters: list[str], sections: list[SectionDeck],
                        titles: dict[str, str], generated: str = '') -> tuple[bytes, list[dict[str, Any]], list[int]]:
-    """The PowerPoint of a Complete Report, its outline (the title of each slide) and the position of its covers (the
+    """The PowerPoint of a Bundle Report Template, its outline (the title of each slide) and the position of its covers (the
     report cover, then that of each section)."""
     composer = compose.DeckComposer(template)
     filters_line = ' · '.join(common_filters)
@@ -1017,7 +1048,7 @@ def compose_word(template: Path, powerpoint: bytes, sections: list[SectionDeck],
 
 def compose_module_powerpoint(template: Path, section: SectionDeck) -> bytes:
     """The PowerPoint export of a module on its own: its deck (its covers included) composed as its section of a
-    Complete Report (see _compose_section), with the closing slide of the template."""
+    Bundle Report Template (see _compose_section), with the closing slide of the template."""
     composer = compose.DeckComposer(template)
     _compose_section(composer, section, _section_entries(section, module_cover=True))
     _add_closing(composer)
@@ -1041,7 +1072,7 @@ def module_item_titles(key: str) -> dict[str, str]:
 def module_document(key: str, content: bytes, export_format: str, title: str = '') -> bytes:
     """The PowerPoint or Word export of a module on its own (``key``: scoring, network_insights or
     non_qualified_calls) from the deck its module generated (``content``): the same composition as its section of a
-    Complete Report, so both exports always look alike. Word packs the components on portrait pages after the cover
+    Bundle Report Template, so both exports always look alike. Word packs the components on portrait pages after the cover
     of the module (one page per slide when LibreOffice is not available)."""
     from src.config import settings
 
@@ -1106,7 +1137,7 @@ class SectionGenerator:
     def dashboards(self, section: dict[str, Any]) -> SectionDeck:
         tools = getattr(self.core, 'dashboard_reporting', None)
         if tools is None:
-            raise CompleteReportError('PPT Dashboards are not available.')
+            raise BundleReportTemplateError('PPT Dashboards are not available.')
         stored = tools.list_dashboards(self.repository)
         names = {str(key): str(value.get('name') or key) for key, value in stored.items() if isinstance(value, dict)}
         deck = SectionDeck('dashboards', '', [], order=[item['key'] for item in section['items']], item_titles=names)
@@ -1140,18 +1171,18 @@ class SectionGenerator:
             while True:
                 row = tools.job(self.repository, job_id)
                 if row is None:
-                    raise CompleteReportError('The Dashboard PPT job was deleted.')
+                    raise BundleReportTemplateError('The Dashboard PPT job was deleted.')
                 if str(row['status']) == 'ready':
                     break
                 if str(row['status']) in {'failed', 'stopped'}:
-                    raise CompleteReportError(str(row['last_error'] or f"The Dashboard PPT job {row['status']}."))
+                    raise BundleReportTemplateError(str(row['last_error'] or f"The Dashboard PPT job {row['status']}."))
                 if time.monotonic() > deadline:
-                    raise CompleteReportError('The Dashboard PPT job did not finish within three hours.')
+                    raise BundleReportTemplateError('The Dashboard PPT job did not finish within three hours.')
                 self.progress(f"Generating the Dashboard {names.get(item['key'])} ({int(row['progress'] or 0)}%)")
                 time.sleep(2)
             deck.decks.append((item['key'], Path(str(row['output_path'])).read_bytes()))
         if not deck.decks:
-            raise CompleteReportError(f"None of the chosen Dashboards is a {self.filters['nr_mode']} Dashboard.")
+            raise BundleReportTemplateError(f"None of the chosen Dashboards is a {self.filters['nr_mode']} Dashboard.")
         return deck
 
     def scoring(self, section: dict[str, Any]) -> SectionDeck:
@@ -1161,7 +1192,7 @@ class SectionGenerator:
         dataset_ids, incomplete = complete_campaign_cdrs(self.repository, nr_mode, campaigns)
         if not dataset_ids:
             missing = f" ({', '.join(incomplete)} lack a CDR type)" if incomplete else ''
-            raise CompleteReportError(f'There is no campaign with Data, Voice and Speech {nr_mode} CDRs to score{missing}.')
+            raise BundleReportTemplateError(f'There is no campaign with Data, Voice and Speech {nr_mode} CDRs to score{missing}.')
         chosen = {item['key']: item for item in section['items']}
         environments = [name for name in options['environments'] if name != COMBINED_ENVIRONMENT]
         names = ['All Environments' if name == COMBINED_ENVIRONMENT else name for name in options['environments']]
@@ -1193,7 +1224,7 @@ class SectionGenerator:
         try:
             content_bytes, _filename, _job = self.core.build_scoring_report_document(self.repository, base, report, self.user.username)
         except ValueError as exc:
-            raise CompleteReportError(str(exc)) from exc
+            raise BundleReportTemplateError(str(exc)) from exc
         titles = {key: title for key, title, _components in SCORING_SUBMODULES}
         return SectionDeck('scoring', '', [], decks=[(None, content_bytes)], order=[item['key'] for item in section['items']],
                            item_titles=titles)
@@ -1225,7 +1256,7 @@ class SectionGenerator:
             self.core.write_network_insights_summary(selection, 'powerpoint', destination, components=components, compose=False,
                                                      theme=self.definition['theme'])
         except Exception as exc:  # The module reports its own errors (HTTPException included).
-            raise CompleteReportError(str(getattr(exc, 'detail', exc))) from exc
+            raise BundleReportTemplateError(str(getattr(exc, 'detail', exc))) from exc
         from src.modules.network_insights_export import REPORT_PANELS
         return SectionDeck('network_insights', '', [], decks=[(None, destination.read_bytes())],
                            order=[item['key'] for item in section['items']], item_titles={key: title for key, title, _items in REPORT_PANELS})
@@ -1236,7 +1267,7 @@ class SectionGenerator:
 
         provider = ARTIFACT_PROVIDERS.get('non_qualified_calls')
         if provider is None:
-            raise CompleteReportError('Non-Qualified Calls are not available.')
+            raise BundleReportTemplateError('Non-Qualified Calls are not available.')
         options = section['options']
         filters = {column: list(self.filters[name]) for name, column in NQ_FILTERS.items() if self.filters.get(name)}
         if self.filters['main_cities']:
@@ -1257,7 +1288,7 @@ class SectionGenerator:
         artifacts = list(provider['generate'](config, folder, datetime.now().strftime('%Y%m%d_%H%M%S'), self.user))
         ready = next((item for item in artifacts if item.get('status') == 'ready' and str(item.get('file_name', '')).endswith('.pptx')), None)
         if ready is None:
-            raise CompleteReportError(next((str(item.get('error')) for item in artifacts if item.get('error')), 'No document was generated.'))
+            raise BundleReportTemplateError(next((str(item.get('error')) for item in artifacts if item.get('error')), 'No document was generated.'))
         return SectionDeck('non_qualified_calls', '', [], decks=[(None, (folder / ready['file_name']).read_bytes())],
                            order=[item['key'] for item in section['items']], item_titles={key: title for key, title, _items in REPORT_PANELS})
 
@@ -1472,7 +1503,7 @@ def build_report(core: Any, repository: Any, user: Any, definition: dict[str, An
     definition = normalize_definition(definition)
     sections = [section for section in enabled_sections(definition) if core.user_has_feature(user, SECTION_FEATURES[section['key']])]
     if not sections:
-        raise CompleteReportError('Check at least one section with a sub-module that your account can use.')
+        raise BundleReportTemplateError('Check at least one section with a sub-module that your account can use.')
     titles = {**SECTION_TITLES, **(section_titles or {})}
     try:
         profiles = repository.get_scoring_profiles()
@@ -1514,7 +1545,7 @@ def build_report(core: Any, repository: Any, user: Any, definition: dict[str, An
         decks.append(deck)
         section_keys.append(key)
     if not decks:
-        raise CompleteReportError(' '.join(warnings) or 'No section could be generated.')
+        raise BundleReportTemplateError(' '.join(warnings) or 'No section could be generated.')
     from src.config import settings
     template = settings.powerpoint_template
     title = report_title(definition, name)
@@ -1561,7 +1592,7 @@ def build_report(core: Any, repository: Any, user: Any, definition: dict[str, An
 
 
 def definition_summary(definition: dict[str, Any]) -> dict[str, Any]:
-    """What App Events record of a Complete Report: its filters and the checked sections, sub-modules and options."""
+    """What App Events record of a Bundle Report Template: its filters and the checked sections, sub-modules and options."""
     return {'filters': definition['filters'], 'sections': [{
         'key': section['key'], 'items': [item['key'] for item in section['items']],
         'components': {item['key']: [name for name, chosen in item.get('components', {}).items() if chosen] for item in section['items']
@@ -1582,24 +1613,69 @@ def _public(job: dict[str, Any]) -> dict[str, Any]:
             'elapsed_seconds': max(0, elapsed)}
 
 
-def _forget_old_jobs(root: Path) -> None:
+def remember_last_report(repository: Any, job: dict[str, Any]) -> None:
+    """Keep a ready report as the last one its user generated in the workspace, to open and download it again (also
+    after a restart); its documents are kept until a newer one replaces it."""
+    record = {key: job.get(key, default) for key, default in LAST_REPORT_FIELDS.items()}
+    record['folder'] = Path(job['folder']).name
+    repository.set_workspace_state(LAST_REPORT_KEY + str(job['username']), json.dumps(record, ensure_ascii=False, default=str))
+
+
+def _last_report_records(repository: Any) -> dict[str, dict[str, Any]]:
+    """The last report of each user of the workspace, by user name."""
+    records = {}
+    with repository.connection() as connection:
+        for prefix in (*FORMER_LAST_REPORT_KEYS, LAST_REPORT_KEY):
+            for key, value in connection.execute('SELECT key, value FROM workspace_state WHERE substr(key, 1, ?) = ?',
+                                                 (len(prefix), prefix)).fetchall():
+                try:
+                    record = json.loads(value or 'null')
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(record, dict) and record.get('id') and str(record.get('folder') or '').strip():
+                    records[str(key)[len(prefix):]] = record
+    return records
+
+
+def last_report_job(repository: Any, username: str, root: Path) -> dict[str, Any] | None:
+    """The last report a user generated in the workspace, as a ready job, while its documents are there."""
+    record = _last_report_records(repository).get(username)
+    if not record:
+        return None
+    folder = root / Path(str(record['folder'])).name
+    formats = record.get('formats') if isinstance(record.get('formats'), dict) else {}
+    paths = {key: str(folder / str(item['file_name'])) for key, item in formats.items()
+             if isinstance(item, dict) and str(item.get('file_name') or '').strip()}
+    if not paths or not all(Path(path).is_file() for path in paths.values()):
+        return None
+    return {**{key: record.get(key, default) for key, default in LAST_REPORT_FIELDS.items()}, 'status': 'ready', 'progress': 100,
+            'message': 'Ready', 'error': '', 'paths': paths, 'folder': folder, 'cancelled': False}
+
+
+def _forget_old_jobs(root: Path, kept: set[str] = frozenset()) -> None:
+    """Forget the oldest finished jobs and the documents of the old ones; ``kept`` names the folders of the last report
+    of each user of the workspace, and the newest ready job of each user and workspace keeps its documents too."""
     with _jobs_lock:
         finished = sorted((job for job in _jobs.values() if job['status'] in {'ready', 'failed', 'cancelled'}),
                           key=lambda job: job['created_at'])
+        newest = {}
+        for job in sorted((job for job in finished if job['status'] == 'ready'), key=lambda job: job.get('ended') or 0):
+            newest[(job['username'], job['workspace_id'])] = job['id']
         for job in finished[:-JOBS_KEPT] if len(finished) > JOBS_KEPT else []:
             _jobs.pop(job['id'], None)
-            shutil.rmtree(job['folder'], ignore_errors=True)
+            if job['id'] not in newest.values() and Path(job['folder']).name not in kept:
+                shutil.rmtree(job['folder'], ignore_errors=True)
     if root.is_dir():
         limit = time.time() - JOB_FILES_KEPT_HOURS * 3600
         active = {str(job['folder']) for job in _jobs.values()}
         for folder in root.iterdir():
             if folder.name == SECTION_CACHE_FOLDER:
                 forget_old_sections(folder)
-            elif folder.is_dir() and str(folder) not in active and folder.stat().st_mtime < limit:
+            elif folder.is_dir() and str(folder) not in active and folder.name not in kept and folder.stat().st_mtime < limit:
                 shutil.rmtree(folder, ignore_errors=True)
 
 
-def install_complete_report_routes(core: Any) -> None:
+def install_bundle_report_template_routes(core: Any) -> None:
     from fastapi import Depends, HTTPException
     from fastapi.responses import FileResponse, Response
     from pydantic import BaseModel, Field
@@ -1635,7 +1711,7 @@ def install_complete_report_routes(core: Any) -> None:
 
     def editor_user(user=Depends(reporting_user)):
         if user.role not in {'user-editor', 'admin', 'super-admin'}:
-            raise HTTPException(403, 'Editor access is required to change favourite Complete Reports.')
+            raise HTTPException(403, 'Editor access is required to change favourite Bundle Report Templates.')
         return user
 
     def log(repository, user, action: str, details: dict[str, Any]) -> None:
@@ -1659,8 +1735,8 @@ def install_complete_report_routes(core: Any) -> None:
             pass
         return [{'value': name, 'label': label} for name, label in environments.items()]
 
-    @app.get('/api/reporting/complete-report/options')
-    def complete_report_options(user=Depends(reporting_user)):
+    @app.get('/api/reporting/bundle-report-template/options')
+    def bundle_report_template_options(user=Depends(reporting_user)):
         repository = repository_for(user)
         tools = getattr(core, 'dashboard_reporting', None)
         dashboards = sorted(({'id': str(key), 'name': str(value.get('name') or key),
@@ -1679,21 +1755,23 @@ def install_complete_report_routes(core: Any) -> None:
             'nq_granularities': NQ_GRANULARITIES,
             'area_summary_breakdowns': list(AREA_SUMMARY_BREAKDOWNS), 'area_summary_time_splits': list(AREA_SUMMARY_TIME_SPLITS),
             'can_edit': user.role in {'user-editor', 'admin', 'super-admin'},
+            # Open last report opens it, also after a restart.
+            'last_report': (lambda job: _public(job) if job else None)(last_report_job(repository, user.username, output_root())),
         }
 
-    @app.post('/api/reporting/complete-report/favourites')
-    def complete_report_favourite_create(payload: FavouritePayload, user=Depends(editor_user)):
+    @app.post('/api/reporting/bundle-report-template/favourites')
+    def bundle_report_template_favourite_create(payload: FavouritePayload, user=Depends(editor_user)):
         repository = repository_for(user)
         try:
             favourite = save_favourite(repository, None, payload.name, payload.definition, user.username)
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
-        log(repository, user, 'complete_report_favourite_saved', {'id': favourite['id'], 'name': favourite['name'], 'created': True,
+        log(repository, user, 'bundle_report_template_favourite_saved', {'id': favourite['id'], 'name': favourite['name'], 'created': True,
                                                                  **definition_summary(favourite['definition'])})
         return {'favourite': favourite, 'favourites': list_favourites(repository)}
 
-    @app.put('/api/reporting/complete-report/favourites/{favourite_id}')
-    def complete_report_favourite_update(favourite_id: int, payload: FavouritePayload, user=Depends(editor_user)):
+    @app.put('/api/reporting/bundle-report-template/favourites/{favourite_id}')
+    def bundle_report_template_favourite_update(favourite_id: int, payload: FavouritePayload, user=Depends(editor_user)):
         repository = repository_for(user)
         try:
             favourite = save_favourite(repository, favourite_id, payload.name, payload.definition, user.username)
@@ -1701,23 +1779,23 @@ def install_complete_report_routes(core: Any) -> None:
             raise HTTPException(404, str(exc)) from exc
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
-        log(repository, user, 'complete_report_favourite_saved', {'id': favourite['id'], 'name': favourite['name'], 'created': False,
+        log(repository, user, 'bundle_report_template_favourite_saved', {'id': favourite['id'], 'name': favourite['name'], 'created': False,
                                                                  **definition_summary(favourite['definition'])})
         return {'favourite': favourite, 'favourites': list_favourites(repository)}
 
-    @app.get('/api/reporting/complete-report/favourites/{favourite_id}/jobs')
-    def complete_report_favourite_jobs(favourite_id: int, user=Depends(reporting_user)):
+    @app.get('/api/reporting/bundle-report-template/favourites/{favourite_id}/jobs')
+    def bundle_report_template_favourite_jobs(favourite_id: int, user=Depends(reporting_user)):
         """The Reporting Jobs that generate a favourite, to tell what deleting or renaming it changes."""
         from src.modules.report_tasks import favourite_jobs
         return favourite_jobs(repository_for(user), favourite_id)
 
-    @app.post('/api/reporting/complete-report/favourites/{favourite_id}/rename')
-    def complete_report_favourite_rename(favourite_id: int, payload: RenamePayload, user=Depends(editor_user)):
+    @app.post('/api/reporting/bundle-report-template/favourites/{favourite_id}/rename')
+    def bundle_report_template_favourite_rename(favourite_id: int, payload: RenamePayload, user=Depends(editor_user)):
         from src.modules.report_tasks import rename_favourite_jobs
         repository = repository_for(user)
         favourite = get_favourite(repository, favourite_id)
         if favourite is None:
-            raise HTTPException(404, 'The favourite Complete Report no longer exists.')
+            raise HTTPException(404, 'The favourite Bundle Report Template no longer exists.')
         try:
             renamed = save_favourite(repository, favourite_id, payload.name, favourite['definition'], user.username)
         except LookupError as exc:
@@ -1726,37 +1804,37 @@ def install_complete_report_routes(core: Any) -> None:
             raise HTTPException(400, str(exc)) from exc
         # The jobs based on it that took its name take the new one.
         jobs = rename_favourite_jobs(repository, favourite_id, favourite['name'], renamed['name'])
-        log(repository, user, 'complete_report_favourite_renamed', {'id': favourite_id, 'old_name': favourite['name'],
+        log(repository, user, 'bundle_report_template_favourite_renamed', {'id': favourite_id, 'old_name': favourite['name'],
                                                                    'name': renamed['name'], 'renamed_jobs': jobs})
         for job in jobs:
             log(repository, user, 'save_reporting_job', {'task_id': job['id'], 'name': job['name'], 'old_name': job['old_name'],
-                                                         'reason': 'favourite Complete Report renamed'})
+                                                         'reason': 'favourite Bundle Report Template renamed'})
         return {'favourite': renamed, 'favourites': list_favourites(repository), 'renamed_jobs': [job['name'] for job in jobs]}
 
-    @app.delete('/api/reporting/complete-report/favourites/{favourite_id}')
-    def complete_report_favourite_delete(favourite_id: int, user=Depends(editor_user)):
+    @app.delete('/api/reporting/bundle-report-template/favourites/{favourite_id}')
+    def bundle_report_template_favourite_delete(favourite_id: int, user=Depends(editor_user)):
         from src.modules.report_tasks import forget_favourite
         repository = repository_for(user)
         favourite = delete_favourite(repository, favourite_id)
         if favourite is None:
-            raise HTTPException(404, 'The favourite Complete Report no longer exists.')
+            raise HTTPException(404, 'The favourite Bundle Report Template no longer exists.')
         # The jobs based on it are disabled; every job that generated it names it as no longer existing.
         jobs = forget_favourite(repository, favourite_id, favourite['name'])
-        log(repository, user, 'complete_report_favourite_deleted', {'id': favourite_id, 'name': favourite['name'], 'jobs': jobs})
+        log(repository, user, 'bundle_report_template_favourite_deleted', {'id': favourite_id, 'name': favourite['name'], 'jobs': jobs})
         for job in jobs:
             if job['disabled']:
                 log(repository, user, 'disable_reporting_job', {'task_id': job['id'], 'name': job['name'],
-                                                                'reason': f'favourite Complete Report "{favourite["name"]}" deleted'})
+                                                                'reason': f'favourite Bundle Report Template "{favourite["name"]}" deleted'})
         return {'favourites': list_favourites(repository), 'disabled_jobs': [job['name'] for job in jobs if job['disabled']]}
 
     def output_root() -> Path:
-        return module_output_dir(core.settings.output_dir, COMPLETE_REPORTS_FOLDER)
+        return module_output_dir(core.settings.output_dir, BUNDLE_REPORTS_FOLDER)
 
     def run_job(job: dict[str, Any], repository, user, definition: dict[str, Any], titles: dict[str, str], reuse: bool = True) -> None:
         def progress(percent: int, message: str) -> None:
             with _jobs_lock:
                 if job.get('cancelled'):
-                    raise CompleteReportCancelled('Cancelled.')
+                    raise BundleReportTemplateCancelled('Cancelled.')
                 job.update(progress=max(job['progress'], min(99, percent)), message=message)
 
         try:
@@ -1811,17 +1889,21 @@ def install_complete_report_routes(core: Any) -> None:
                     paths[export_format] = str(path)
             with _jobs_lock:
                 if job.get('cancelled'):
-                    raise CompleteReportCancelled('Cancelled.')
+                    raise BundleReportTemplateCancelled('Cancelled.')
                 job.update(status='ready', progress=100, message='Ready', formats=formats, paths=paths, ended=time.time(),
                            warnings=result.warnings, outline=result.outline,
                            reused=[titles.get(key, SECTION_TITLES[key]) for key in result.reused],
                            document_reused=result.document_reused,
                            finished_at=datetime.now().isoformat(timespec='seconds'))
-            log(repository, user, 'complete_report_generated', {
+            try:
+                remember_last_report(repository, job)
+            except sqlite3.Error as exc:  # The report stays ready; only reopening it after a restart is lost.
+                log(repository, user, 'bundle_report_template_last_report_not_kept', {'job': job['id'], 'error': str(exc)})
+            log(repository, user, 'bundle_report_template_generated', {
                 'job': job['id'], 'title': job['title'], 'file_names': [item['file_name'] for item in formats.values()],
                 'slides': len(result.outline), 'pages': formats['word']['previews'], 'warnings': result.warnings,
                 'reused_sections': result.reused, 'seconds': _public(job)['elapsed_seconds']})
-        except CompleteReportCancelled:
+        except BundleReportTemplateCancelled:
             # The cancellation is recorded when the user asks for it; what was generated is left out.
             return
         except Exception as exc:  # noqa: BLE001 - every failure is reported to the dialog and to App Events.
@@ -1831,18 +1913,18 @@ def install_complete_report_routes(core: Any) -> None:
             with _jobs_lock:
                 job.update(status='failed', message=message, error=message, ended=time.time(),
                            finished_at=datetime.now().isoformat(timespec='seconds'))
-            log(repository, user, 'complete_report_failed', {'job': job['id'], 'title': job['title'], 'error': message})
+            log(repository, user, 'bundle_report_template_failed', {'job': job['id'], 'title': job['title'], 'error': message})
 
-    @app.post('/api/reporting/complete-report/jobs')
-    def complete_report_job_create(payload: JobPayload, user=Depends(reporting_user)):
+    @app.post('/api/reporting/bundle-report-template/jobs')
+    def bundle_report_template_job_create(payload: JobPayload, user=Depends(reporting_user)):
         repository = repository_for(user)
         definition = normalize_definition(payload.definition)
         sections = [section for section in enabled_sections(definition) if core.user_has_feature(user, SECTION_FEATURES[section['key']])]
         if not sections:
-            raise HTTPException(400, 'Check at least one section with a sub-module to include in the Complete Report.')
+            raise HTTPException(400, 'Check at least one section with a sub-module to include in the report.')
         root = output_root()
         root.mkdir(parents=True, exist_ok=True)
-        _forget_old_jobs(root)
+        _forget_old_jobs(root, {str(record['folder']) for record in _last_report_records(repository).values()})
         job_id = uuid.uuid4().hex
         folder = root / f"{datetime.now():%Y%m%d_%H%M%S} - {job_id[:8]}"
         folder.mkdir(parents=True, exist_ok=True)
@@ -1854,22 +1936,28 @@ def install_complete_report_routes(core: Any) -> None:
                'cancelled': False}
         with _jobs_lock:
             _jobs[job_id] = job
-        log(repository, user, 'complete_report_requested', {'job': job_id, 'title': title, 'formats': list(FORMATS),
+        log(repository, user, 'bundle_report_template_requested', {'job': job_id, 'title': title, 'formats': list(FORMATS),
                                                            'favourite': payload.name.strip(), 'refresh': payload.refresh,
                                                            **definition_summary(definition)})
         Thread(target=run_job, args=(job, repository, user, definition, section_titles(), not payload.refresh), daemon=True,
-               name=f'complete-report-{job_id[:8]}').start()
+               name=f'bundle-report-template-{job_id[:8]}').start()
         return {'job': _public(job)}
 
     def job_or_404(job_id: str, user) -> dict[str, Any]:
         with _jobs_lock:
             job = _jobs.get(job_id)
+        if job is None:
+            # The last report of the user in the workspace, kept after the application restarted.
+            last = last_report_job(repository_for(user), user.username, output_root())
+            if last and last['id'] == job_id:
+                with _jobs_lock:
+                    job = _jobs.setdefault(job_id, last)
         if job is None or (job['username'] != user.username and user.role != 'super-admin'):
-            raise HTTPException(404, 'The Complete Report is no longer available; export it again.')
+            raise HTTPException(404, 'The report is no longer available; generate it again.')
         return job
 
-    @app.post('/api/reporting/complete-report/jobs/{job_id}/cancel')
-    def complete_report_job_cancel(job_id: str, user=Depends(reporting_user)):
+    @app.post('/api/reporting/bundle-report-template/jobs/{job_id}/cancel')
+    def bundle_report_template_job_cancel(job_id: str, user=Depends(reporting_user)):
         """Cancel a generation: it stops at its next step and what it generated is left out."""
         job = job_or_404(job_id, user)
         with _jobs_lock:
@@ -1878,12 +1966,12 @@ def install_complete_report_routes(core: Any) -> None:
                            finished_at=datetime.now().isoformat(timespec='seconds'))
             public = _public(job)
         if public['status'] == 'cancelled':
-            log(repository_for(user), user, 'complete_report_cancelled', {'job': job_id, 'title': job['title'],
+            log(repository_for(user), user, 'bundle_report_template_cancelled', {'job': job_id, 'title': job['title'],
                                                                           'seconds': public['elapsed_seconds']})
         return {'job': public}
 
-    @app.get('/api/reporting/complete-report/jobs/{job_id}')
-    def complete_report_job(job_id: str, user=Depends(reporting_user)):
+    @app.get('/api/reporting/bundle-report-template/jobs/{job_id}')
+    def bundle_report_template_job(job_id: str, user=Depends(reporting_user)):
         job = job_or_404(job_id, user)
         with _jobs_lock:
             return {'job': _public(job)}
@@ -1893,8 +1981,8 @@ def install_complete_report_routes(core: Any) -> None:
             raise HTTPException(404, 'Choose PowerPoint or Word.')
         return FORMAT_SUFFIXES[export_format]
 
-    @app.get('/api/reporting/complete-report/jobs/{job_id}/preview/{export_format}/{index}')
-    def complete_report_preview(job_id: str, export_format: str, index: int, large: bool = False, user=Depends(reporting_user)):
+    @app.get('/api/reporting/bundle-report-template/jobs/{job_id}/preview/{export_format}/{index}')
+    def bundle_report_template_preview(job_id: str, export_format: str, index: int, large: bool = False, user=Depends(reporting_user)):
         """A page of the preview of a format; ``large`` renders it at a higher resolution (once) to show it whole."""
         job = job_or_404(job_id, user)
         suffix = format_or_404(export_format)
@@ -1911,15 +1999,15 @@ def install_complete_report_routes(core: Any) -> None:
             raise HTTPException(404, 'This page has no preview.')
         return Response(path.read_bytes(), media_type='image/png', headers={'Cache-Control': 'private, max-age=3600'})
 
-    @app.get('/api/reporting/complete-report/jobs/{job_id}/download/{export_format}')
-    def complete_report_download(job_id: str, export_format: str, user=Depends(reporting_user)):
+    @app.get('/api/reporting/bundle-report-template/jobs/{job_id}/download/{export_format}')
+    def bundle_report_template_download(job_id: str, export_format: str, user=Depends(reporting_user)):
         job = job_or_404(job_id, user)
         format_or_404(export_format)
         path = job['paths'].get(export_format) if job['status'] == 'ready' else None
         if not path or not Path(path).is_file():
-            raise HTTPException(409, 'The Complete Report is not ready.')
+            raise HTTPException(409, 'The report is not ready.')
         repository = repository_for(user)
-        log(repository, user, 'complete_report_downloaded', {'job': job_id, 'title': job['title'], 'format': export_format,
+        log(repository, user, 'bundle_report_template_downloaded', {'job': job_id, 'title': job['title'], 'format': export_format,
                                                             'file_name': Path(path).name})
         media = ('application/vnd.openxmlformats-officedocument.wordprocessingml.document' if export_format == 'word'
                  else 'application/vnd.openxmlformats-officedocument.presentationml.presentation')
@@ -1931,11 +2019,11 @@ def install_complete_report_routes(core: Any) -> None:
 def compose_file_stem(title: str) -> str:
     import re
     stem = re.sub(r'[\\/:*?"<>|]+', '-', f"{datetime.now():%Y%m%d_%H%M%S} - {title}").strip(' .-')
-    return stem[:180] or 'Complete Report'
+    return stem[:180] or DEFAULT_TITLE
 
 
 def _register_reporting_artifact(core: Any) -> None:
-    """Complete Reports saved as favourites become an artifact of Reporting Jobs."""
+    """Bundle Report Templates saved as favourites become an artifact of Reporting Jobs."""
     from src.modules.report_tasks import register_report_artifact_provider
 
     def repository_of(user) -> Any:
@@ -1956,38 +2044,38 @@ def _register_reporting_artifact(core: Any) -> None:
         chosen = {str(value) for value in ((config.get('options') or {}).get('filters') or {}).get('favourites') or []}
         favourites = [item for item in list_favourites(repository) if not chosen or str(item['id']) in chosen]
         if not favourites:
-            raise CompleteReportError('The associated Complete Report no longer exists.' if chosen
-                                      else 'There is no favourite Complete Report to generate.')
+            raise BundleReportTemplateError('The associated Bundle Report Template no longer exists.' if chosen
+                                      else 'There is no favourite Bundle Report Template to generate.')
         artifacts = []
         # The theme of a Reporting Job generating them replaces the theme of each favourite.
         theme = str(config.get('theme') or '').strip()
         for favourite in favourites:
             if theme:
                 favourite = {**favourite, 'definition': normalize_definition({**favourite['definition'], 'theme': theme})}
-            work = folder / f".complete-report-{favourite['id']}"
+            work = folder / f".bundle-report-template-{favourite['id']}"
             work.mkdir(parents=True, exist_ok=True)
             formats = [value for value in config.get('formats') or ['powerpoint'] if value in FORMATS] or ['powerpoint']
             try:
                 result = build_report(core, repository, user, favourite['definition'], 'word' if 'word' in formats else 'powerpoint',
                                       work, name=favourite['name'],
-                                      cache_root=module_output_dir(core.settings.output_dir, COMPLETE_REPORTS_FOLDER) / SECTION_CACHE_FOLDER)
+                                      cache_root=module_output_dir(core.settings.output_dir, BUNDLE_REPORTS_FOLDER) / SECTION_CACHE_FOLDER)
                 for export_format in formats:
                     suffix = '.docx' if export_format == 'word' else '.pptx'
-                    destination = artifact_path(folder, stamp, 'Complete Report', favourite['name'], suffix)
+                    destination = artifact_path(folder, stamp, 'Bundle Report Template', favourite['name'], suffix)
                     destination.write_bytes(result.word if export_format == 'word' and result.word else result.powerpoint)
                     label = 'Word' if export_format == 'word' else 'PPT'
                     details = [*filter_lines(favourite['definition']),
                                'Sections: ' + ', '.join(SECTION_TITLES[section['key']] for section in enabled_sections(favourite['definition'])),
                                *[f'Skipped: {warning}' for warning in result.warnings]]
-                    artifacts.append({'module': 'complete_report', 'title': f"Complete Report · {favourite['name']} ({label})",
+                    artifacts.append({'module': 'bundle_report_template', 'title': f"Bundle Report Template · {favourite['name']} ({label})",
                                       'file_name': destination.name, 'size': destination.stat().st_size, 'status': 'ready',
                                       'details': details})
             except Exception as exc:  # noqa: BLE001 - one favourite that fails leaves the others.
-                artifacts.append({'module': 'complete_report', 'title': f"Complete Report · {favourite['name']}", 'file_name': '',
+                artifacts.append({'module': 'bundle_report_template', 'title': f"Bundle Report Template · {favourite['name']}", 'file_name': '',
                                   'size': 0, 'status': 'failed', 'error': str(getattr(exc, 'detail', exc))})
             finally:
                 shutil.rmtree(work, ignore_errors=True)
         return artifacts
 
-    register_report_artifact_provider('complete_report', 'Complete Report', 'reporting', generate, formats=FORMATS,
-                                      filters=(('favourites', 'Favourite Complete Reports'),), values=values)
+    register_report_artifact_provider('bundle_report_template', 'Bundle Report Template', 'reporting', generate, formats=FORMATS,
+                                      filters=(('favourites', 'Favourite Bundle Report Templates'),), values=values)

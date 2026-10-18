@@ -5474,7 +5474,7 @@ function setupWorkspaceUserPickers() {
 const workspaceElementExportTargets = new Set([
   'dashboards', 'ppt-templates', 'main-cities', 'mappings-reference-data', 'scoring-configuration',
   'auto-calculated-fields', 'query-builder-queries', 'reporting-jobs', 'nq-call-tracking', 'nq-calls-configuration', 'app-events',
-  'network-insights-favourites', 'complete-report-favourites', 'scoring-favourites-filters', 'scoring-report-templates',
+  'network-insights-favourites', 'bundle-report-template-favourites', 'scoring-favourites-filters', 'scoring-report-templates',
 ]);
 
 // The Input and Output folders of a backup only make sense with the workspace database they belong to.
@@ -7286,7 +7286,7 @@ function importPackageContents(payload) {
     'scoring-configuration': 'Scoring & GAP Analysis Methodologies',
     'auto-calculated-fields': 'Auto-calculated Fields',
     'query-builder-queries': 'Query Builder Queries', 'network-insights-favourites': 'Network Insights Favourites',
-    'complete-report-favourites': 'Complete Report Favourites', 'scoring-favourites-filters': 'Scoring & GAP Favourites Filters',
+    'bundle-report-template-favourites': 'Bundle Report Template Favourites', 'scoring-favourites-filters': 'Scoring & GAP Favourites Filters',
     'scoring-report-templates': 'Scoring & GAP Report Templates',
     'reporting-jobs': 'Reporting Jobs',
     'nq-call-tracking': 'NQ Call Tracking', 'nq-calls-configuration': 'NQ Calls Configuration', 'app-events': 'App Events',
@@ -8161,8 +8161,8 @@ document.querySelectorAll('[data-export-package-form]').forEach((form) => {
         query_builder_queries: 'Query Builder Queries',
         'network-insights-favourites': 'Network Insights Favourites',
         network_insights_favourites: 'Network Insights Favourites',
-        'complete-report-favourites': 'Complete Report Favourites',
-        complete_report_favourites: 'Complete Report Favourites',
+        'bundle-report-template-favourites': 'Bundle Report Template Favourites',
+        bundle_report_template_favourites: 'Bundle Report Template Favourites',
         'scoring-favourites-filters': 'Scoring & GAP Favourites Filters',
         scoring_favourites_filters: 'Scoring & GAP Favourites Filters',
         'scoring-report-templates': 'Scoring & GAP Report Templates',
@@ -12701,20 +12701,20 @@ document.addEventListener('change', async (event) => {
   document.querySelectorAll('select[data-user-select]').forEach(enhance);
 })();
 
-// A Complete Report generated in the background (its dialog hidden in Reporting) tells on every page when it is ready,
-// with a dialog that opens its preview in Reporting; Reporting follows it itself (complete_report.js).
-(function watchCompleteReport() {
-  const key = 'drivetest.completeReport.job';
+// A report of a Bundle Report Template generated in the background (its dialog hidden in Reporting) tells on every page when it is ready,
+// with a dialog that opens its preview in Reporting; Reporting follows it itself (bundle_report_template.js).
+(function watchBundleReportTemplate() {
+  const key = 'drivetest.bundleReportTemplate.job';
   let stored = null;
   try { stored = JSON.parse(localStorage.getItem(key) || 'null'); } catch {}
-  if (!stored?.id || stored.notified || document.getElementById('cr-dialog')) return;
+  if (!stored?.id || stored.notified || document.getElementById('brt-dialog')) return;
   const escape = (value) => String(value ?? '').replace(/[&<>"']/g, (character) => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[character]));
   const duration = (seconds = 0) => (seconds >= 60 ? `${Math.floor(seconds / 60)} min ${String(seconds % 60).padStart(2, '0')} s` : `${seconds} s`);
   const forget = () => { try { localStorage.removeItem(key); } catch {} };
   const check = async () => {
     let job;
     try {
-      const response = await fetch(`/api/reporting/complete-report/jobs/${encodeURIComponent(stored.id)}`, {headers: {Accept: 'application/json'}});
+      const response = await fetch(`/api/reporting/bundle-report-template/jobs/${encodeURIComponent(stored.id)}`, {headers: {Accept: 'application/json'}});
       if ([401, 403, 404].includes(response.status)) { forget(); return; }
       if (!response.ok) { window.setTimeout(check, 10000); return; }
       job = (await response.json()).job;
@@ -12724,19 +12724,19 @@ document.addEventListener('change', async (event) => {
     }
     if (['queued', 'running'].includes(job.status)) { window.setTimeout(check, 4000); return; }
     if (job.status === 'ready') {
-      const open = await showConfirmDialog('', {title: 'Complete Report Ready', copyHtml: `<p><strong>${escape(job.title)}</strong> is ready in PowerPoint and Word (processed in ${duration(job.elapsed_seconds)}).</p><p>Open its preview in Reporting to check it and download it?</p>`,
+      const open = await showConfirmDialog('', {title: 'Report Ready', copyHtml: `<p><strong>${escape(job.title)}</strong> is ready in PowerPoint and Word (processed in ${duration(job.elapsed_seconds)}).</p><p>Open its preview in Reporting to check it and download it?</p>`,
         confirmLabel: 'Open preview', cancelLabel: 'Later'});
       // Later, Reporting offers to open it (Open last report).
       if (open) {
         forget();
-        window.location.href = `/reporting?complete_report_job=${encodeURIComponent(job.id)}`;
+        window.location.href = `/reporting?bundle_report_template_job=${encodeURIComponent(job.id)}`;
       } else {
         try { localStorage.setItem(key, JSON.stringify({...stored, notified: true})); } catch {}
       }
       return;
     }
     forget();
-    if (job.status === 'failed') showInfoDialog(job.error || job.message || 'The Complete Report could not be generated.', {title: 'Complete Report Failed', tone: 'error'});
+    if (job.status === 'failed') showInfoDialog(job.error || job.message || 'The report could not be generated.', {title: 'Report Failed', tone: 'error'});
   };
   window.setTimeout(check, 1500);
 })();

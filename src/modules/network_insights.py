@@ -3304,7 +3304,7 @@ def install_network_insights_routes(core: Any) -> None:
 
         Without CDRs of its own, a selection analyses those of its NR Mode and Campaigns. ``components`` keeps only
         those charts and tables in the PowerPoint. Both formats are composed as the Network Insights section of a
-        Complete Report; without ``compose`` (the Complete Report itself), the PowerPoint is the deck of the module.
+        Bundle Report Template; without ``compose`` (the Bundle Report Template itself), the PowerPoint is the deck of the module.
         ``theme`` (else that of the selection, else NetCheck) colours its charts and tables. Returns the selection
         description used in the document.
         """
@@ -3314,7 +3314,7 @@ def install_network_insights_routes(core: Any) -> None:
     def write_themed_summary(selection: dict[str, Any], export_kind: str, destination: Path,
                              components: list[str] | None, compose: bool) -> dict[str, Any]:
         from src.modules.cdr_reporting import _render_dashboard_payload
-        from src.modules.complete_reports import module_document
+        from src.modules.bundle_report_templates import module_document
         from src.modules.network_insights_export import export_network_insights_powerpoint
 
         task_repository = bound_repository()
@@ -3364,7 +3364,7 @@ def install_network_insights_routes(core: Any) -> None:
 
     def summary_key(selection: dict[str, Any]) -> str:
         """Identity of the summary of a selection: its analysis and every input it reads (such as the CDRs and the
-        inventory), so a Complete Report knows when its Network Insights section is still the same."""
+        inventory), so a Bundle Report Template knows when its Network Insights section is still the same."""
         task_repository = bound_repository()
         return analysis_key(task_repository, summary_request(task_repository, selection))
 

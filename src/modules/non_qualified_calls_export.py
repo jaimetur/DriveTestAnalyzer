@@ -1,5 +1,5 @@
 """Non-Qualified Calls report: Executive Summary, Progress Status and Root Cause Analysis in PowerPoint; its Word
-version and its section of a Complete Report are composed from it (see complete_reports.module_document)."""
+version and its section of a Bundle Report Template are composed from it (see bundle_report_templates.module_document)."""
 
 from datetime import datetime
 from pathlib import Path
@@ -266,8 +266,8 @@ def classified_root_stats(stats: dict[str, Any]) -> dict[str, Any]:
             'technologies': groups(stats.get('technologies'), ordered=True)}
 
 
-# The panels of the page and the charts and tables of each one, in the order of the page, as a Complete Report
-# chooses them (see complete_reports): (panel key, panel title, ((component key, label), ...)).
+# The panels of the page and the charts and tables of each one, in the order of the page, as a Bundle Report Template
+# chooses them (see bundle_report_templates): (panel key, panel title, ((component key, label), ...)).
 REPORT_PANELS: tuple[tuple[str, str, tuple[tuple[str, str], ...]], ...] = (
     ('summary', 'Summary', (('executive', 'Executive Summary'),)),
     ('rates', 'NQ Rate by Campaign and Operator', (('rates', 'NQ rate of each campaign and operator'),)),
@@ -422,7 +422,7 @@ def export_powerpoint(destination: Path, lines: list[str], summary: dict[str, An
                       progress: dict[str, Any], options: dict[str, Any], template: Path | None = None,
                       components: Any = None) -> Path:
     """The Executive Summary and Progress Status in PowerPoint. ``components`` (``panel.component`` keys of
-    REPORT_PANELS) keeps only those charts and tables, as a Complete Report chooses them; every slide is named after
+    REPORT_PANELS) keeps only those charts and tables, as a Bundle Report Template chooses them; every slide is named after
     its panel."""
     from PIL import Image
 

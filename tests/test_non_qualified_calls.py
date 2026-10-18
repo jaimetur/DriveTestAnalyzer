@@ -594,9 +594,9 @@ def test_root_cause_taxonomy_imports_with_the_tracking_and_shows_in_exports(clie
     headers = [cell.value for cell in sheet[2]]
     assert {'Selected Root Category', 'Selected Root Cause', 'Root Domain', 'Recommended Root Category',
             'Recommended Root Cause'} <= set(headers)
-    # The slides of the module, before they are composed as a Complete Report composes its section.
-    from src.modules import complete_reports
-    monkeypatch.setattr(complete_reports, 'module_document', lambda _key, content, _kind, _title='': content)
+    # The slides of the module, before they are composed as a Bundle Report Template composes its section.
+    from src.modules import bundle_report_templates
+    monkeypatch.setattr(bundle_report_templates, 'module_document', lambda _key, content, _kind, _title='': content)
     deck = client.post('/api/non-qualified-calls/export/powerpoint', json={'filters': {}, 'granularity': 'month'})
     headers = [slide.shapes.title.text_frame.paragraphs for slide in Presentation(io.BytesIO(deck.content)).slides
                if slide.shapes.title is not None]

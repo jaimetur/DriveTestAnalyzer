@@ -208,7 +208,7 @@ Non-Qualified Calls follows Scoring & GAP Analysis in the main tabs. It lists ev
 
 ## Reporting
 
-**Reporting** builds **Complete Reports**, one PowerPoint or Word document with the chosen parts of PPT Dashboards, Scoring & GAP Analysis, Network Insights and Non-Qualified Calls, under common filters and with the Campaigns of each section, previewed before the download and saved as favourites, and schedules **Reporting Jobs** that collect a Summary CDR Analysis, a Summary Network Insights, Dashboard PPTs and Scoring PPTs, each with its own filters, run once or on a daily, weekly or monthly schedule and email the artifacts with a description of each one. It is available to every user unless Admin → Features Activation restricts it, and it can also include the Non-Qualified Calls Executive Summary and Progress Status. See [Reporting](reporting.md).
+**Reporting** builds bundle reports from **Bundle Report Templates**, one PowerPoint or Word document with the chosen parts of PPT Dashboards, Scoring & GAP Analysis, Network Insights and Non-Qualified Calls, under common filters and with the Campaigns of each section, previewed before the download and saved as favourites, and schedules **Reporting Jobs** that collect a Summary CDR Analysis, a Summary Network Insights, Dashboard PPTs and Scoring PPTs, each with its own filters, run once or on a daily, weekly or monthly schedule and email the artifacts with a description of each one. It is available to every user unless Admin → Features Activation restricts it, and it can also include the Non-Qualified Calls Executive Summary and Progress Status. See [Reporting](reporting.md).
 
 ## PPT Reporting (old)
 

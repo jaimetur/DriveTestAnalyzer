@@ -597,28 +597,28 @@ def test_the_non_qualified_calls_artifact_keeps_campaign_choices_until_each_run(
     assert "return {**filters, 'campaign': chosen or [NO_PREVIOUS_CAMPAIGN]}" in module
 
 
-def test_a_job_can_start_from_a_favourite_complete_report():
-    definition = report_tasks.normalize_definition({'modules': {'complete_report': {
+def test_a_job_can_start_from_a_favourite_bundle_report_template():
+    definition = report_tasks.normalize_definition({'modules': {'bundle_report_template': {
         'enabled': True, 'formats': ['powerpoint', 'word'], 'options': {'filters': {'favourites': ['7']}}}}})
     # The jobs table names the favourite the job generates (every one when it chooses none) with what it includes.
     contents = [{'title': 'Scoring & GAP Analysis', 'items': ['Summary', 'GAP Analysis']}]
     groups = report_tasks.artifact_groups(definition, {}, {'7': 'Weekly NetCheck'}, {'7': contents})
-    assert groups == [{'module': 'Complete Report', 'items': ['Weekly NetCheck (PPT/Word)'], 'contents': [contents], 'missing': [False]}]
+    assert groups == [{'module': 'Bundle Report Template', 'items': ['Weekly NetCheck (PPT/Word)'], 'contents': [contents], 'missing': [False]}]
     assert report_tasks.based_on_favourite(definition)
-    assert report_tasks.artifact_labels(definition, {}, {'7': 'Weekly NetCheck'}) == ['Complete Report · Weekly NetCheck (PPT/Word)']
-    every = report_tasks.normalize_definition({'modules': {'complete_report': {'enabled': True, 'formats': ['powerpoint']}}})
+    assert report_tasks.artifact_labels(definition, {}, {'7': 'Weekly NetCheck'}) == ['Bundle Report Template · Weekly NetCheck (PPT/Word)']
+    every = report_tasks.normalize_definition({'modules': {'bundle_report_template': {'enabled': True, 'formats': ['powerpoint']}}})
     assert report_tasks.artifact_groups(every)[0]['items'] == ['Every favourite (PPT)']
     assert not report_tasks.based_on_favourite(every)
     assert not report_tasks.based_on_favourite({**definition, 'scoring': [SCORING_ENTRY]})
     page = (core.PROJECT_ROOT / 'src/web_interface/templates/report_jobs.html').read_text(encoding='utf-8')
     assert 'name="rj-source" value="favourite" checked' in page and 'name="rj-source" value="editor"' in page
     script = (core.PROJECT_ROOT / 'src/web_interface/static/js/report_jobs.js').read_text(encoding='utf-8')
-    # From a favourite, the job generates only its Complete Report; one that does opens as such in the editor.
+    # From a favourite, the job generates only its Bundle Report Template; one that does opens as such in the editor.
     assert 'function favouriteDefinition(base)' in script and 'function favouriteOf(definition)' in script
     assert "if (jobSource() === 'favourite' && !$('rj-favourite')?.value)" in script
     # Based On tells a job of a favourite from one with artifacts chosen in the editor.
     assert '<th>Artifacts</th><th>Based On</th><th>Recurrence</th><th>Next Run</th>' in page and 'colspan="9"' in page
-    assert "fromFavourite ? 'Complete Report' : 'Manual Artifacts'" in script and 'function favouriteContents(sections)' in script
+    assert "fromFavourite ? 'Bundle Report Template' : 'Manual Artifacts'" in script and 'function favouriteContents(sections)' in script
     # The header of the panel counts the jobs of each kind.
     assert all(f'id="rj-count-{kind}"' in page for kind in ('total', 'favourite', 'manual'))
     assert "$('rj-count-manual').textContent = `Manual Artifacts: ${state.tasks.length - favourites}`;" in script
@@ -633,24 +633,24 @@ def test_reporting_page_keeps_its_scroll_position_when_reloaded():
 
 
 def test_imported_reporting_jobs_find_their_favourites_by_name(client):
-    from src.modules import complete_reports
+    from src.modules import bundle_report_templates
     login(client)
-    weekly = complete_reports.save_favourite(core.repository, None, 'Weekly', {}, 'super')
-    monthly = complete_reports.save_favourite(core.repository, None, 'Monthly', {'sections': [{'key': 'scoring', 'enabled': False}]}, 'super')
+    weekly = bundle_report_templates.save_favourite(core.repository, None, 'Weekly', {}, 'super')
+    monthly = bundle_report_templates.save_favourite(core.repository, None, 'Monthly', {'sections': [{'key': 'scoring', 'enabled': False}]}, 'super')
     report = {'enabled': True, 'formats': ['word'], 'options': {'filters': {'favourites': [str(monthly['id'])]}}}
     client.post('/api/reporting/tasks', json={'name': 'Monthly job', 'schedule': {'mode': 'manual'},
-                                              'definition': {'modules': {'complete_report': report}}}).raise_for_status()
+                                              'definition': {'modules': {'bundle_report_template': report}}}).raise_for_status()
     exported = json.loads(report_tasks.export_tasks_document(core.repository))
     assert exported['favourite_names'] == {str(monthly['id']): 'Monthly'}
     # In another workspace the favourites have other IDs: the job takes the one of the same name.
     with core.repository.connection() as connection:
-        connection.execute(f'DELETE FROM {complete_reports.COMPLETE_REPORTS_TABLE}')
-    complete_reports.save_favourite(core.repository, None, 'Other', {}, 'super')
-    here = complete_reports.save_favourite(core.repository, None, 'monthly', {}, 'super')
+        connection.execute(f'DELETE FROM {bundle_report_templates.BUNDLE_REPORT_TEMPLATES_TABLE}')
+    bundle_report_templates.save_favourite(core.repository, None, 'Other', {}, 'super')
+    here = bundle_report_templates.save_favourite(core.repository, None, 'monthly', {}, 'super')
     assert here['id'] not in {weekly['id'], monthly['id']}
     assert core._restore_workspace_reporting_jobs(core.active_workspace, json.dumps(exported).encode(), 'super') >= 1
     job = next(task for task in report_tasks.list_tasks(core.repository) if task['name'] == 'Monthly job')
-    assert job['definition']['modules']['complete_report']['options']['filters']['favourites'] == [str(here['id'])]
+    assert job['definition']['modules']['bundle_report_template']['options']['filters']['favourites'] == [str(here['id'])]
     state = client.get('/api/reporting/state').json()
     listed = next(task for task in state['tasks'] if task['name'] == 'Monthly job')
     assert listed['based_on'] == 'favourite'
@@ -661,67 +661,67 @@ def test_imported_reporting_jobs_find_their_favourites_by_name(client):
     exported['favourite_names'] = {str(monthly['id']): 'Missing'}
     core._restore_workspace_reporting_jobs(core.active_workspace, json.dumps(exported).encode(), 'super')
     job = next(task for task in report_tasks.list_tasks(core.repository) if task['name'] == 'Monthly job')
-    assert job['definition']['modules']['complete_report']['options']['filters']['favourites'] == ['Missing']
+    assert job['definition']['modules']['bundle_report_template']['options']['filters']['favourites'] == ['Missing']
     missing = report_tasks.export_tasks_document(core.repository)
-    found = complete_reports.save_favourite(core.repository, None, 'Missing', {}, 'super')
+    found = bundle_report_templates.save_favourite(core.repository, None, 'Missing', {}, 'super')
     core._restore_workspace_reporting_jobs(core.active_workspace, missing, 'super')
     job = next(task for task in report_tasks.list_tasks(core.repository) if task['name'] == 'Monthly job')
-    assert job['definition']['modules']['complete_report']['options']['filters']['favourites'] == [str(found['id'])]
+    assert job['definition']['modules']['bundle_report_template']['options']['filters']['favourites'] == [str(found['id'])]
     del exported['favourite_names']
     core._restore_workspace_reporting_jobs(core.active_workspace, json.dumps(exported).encode(), 'super')
     job = next(task for task in report_tasks.list_tasks(core.repository) if task['name'] == 'Monthly job')
-    assert job['definition']['modules']['complete_report']['options']['filters']['favourites'] == [str(monthly['id'])]
+    assert job['definition']['modules']['bundle_report_template']['options']['filters']['favourites'] == [str(monthly['id'])]
 
 
 def test_deleting_a_favourite_disables_the_jobs_based_on_it(client):
-    from src.modules import complete_reports
+    from src.modules import bundle_report_templates
     login(client)
-    weekly = complete_reports.save_favourite(core.repository, None, 'Weekly', {}, 'super')
-    other = complete_reports.save_favourite(core.repository, None, 'Other', {}, 'super')
+    weekly = bundle_report_templates.save_favourite(core.repository, None, 'Weekly', {}, 'super')
+    other = bundle_report_templates.save_favourite(core.repository, None, 'Other', {}, 'super')
     report = lambda *ids: {'enabled': True, 'formats': ['word'], 'options': {'filters': {'favourites': [str(value) for value in ids]}}}
     based = client.post('/api/reporting/tasks', json={'name': 'Weekly', 'schedule': {'mode': 'daily', 'time': '08:00'},
-                                                      'definition': {'modules': {'complete_report': report(weekly['id'])}}}).json()['task']
+                                                      'definition': {'modules': {'bundle_report_template': report(weekly['id'])}}}).json()['task']
     both = client.post('/api/reporting/tasks', json={'name': 'Both', 'schedule': {'mode': 'manual'},
-                                                     'definition': {'modules': {'complete_report': report(weekly['id'], other['id'])}}}).json()['task']
-    jobs = client.get(f"/api/reporting/complete-report/favourites/{weekly['id']}/jobs").json()
+                                                     'definition': {'modules': {'bundle_report_template': report(weekly['id'], other['id'])}}}).json()['task']
+    jobs = client.get(f"/api/reporting/bundle-report-template/favourites/{weekly['id']}/jobs").json()
     assert jobs == {'based_on': ['Weekly'], 'others': ['Both']}
-    response = client.delete(f"/api/reporting/complete-report/favourites/{weekly['id']}")
+    response = client.delete(f"/api/reporting/bundle-report-template/favourites/{weekly['id']}")
     assert response.status_code == 200 and response.json()['disabled_jobs'] == ['Weekly']
     tasks = {task['id']: task for task in client.get('/api/reporting/state').json()['tasks']}
     # The job based on it is disabled and both name it as no longer existing (never every favourite).
     assert tasks[based['id']]['enabled'] is False and tasks[based['id']]['next_run_at'] is None
     assert tasks[both['id']]['enabled'] is True
-    assert tasks[based['id']]['definition']['modules']['complete_report']['options']['filters']['favourites'] == ['Weekly']
+    assert tasks[based['id']]['definition']['modules']['bundle_report_template']['options']['filters']['favourites'] == ['Weekly']
     group = tasks[based['id']]['artifact_groups'][-1]
     assert group['items'] == ['Weekly (Word)'] and group['missing'] == [True]
     assert tasks[both['id']]['artifact_groups'][-1]['missing'] == [True, False]
     actions = [row['action'] for row in core.repository.list_logs(limit=20)] if hasattr(core.repository, 'list_logs') else []
     if actions:
-        assert 'complete_report_favourite_deleted' in actions and 'disable_reporting_job' in actions
+        assert 'bundle_report_template_favourite_deleted' in actions and 'disable_reporting_job' in actions
     script = (core.PROJECT_ROOT / 'src/web_interface/static/js/report_jobs.js').read_text(encoding='utf-8')
-    assert "'The associated Complete Report no longer exists.'" in script
+    assert "'The associated Bundle Report Template no longer exists.'" in script
 
 
 def test_renaming_a_favourite_renames_the_jobs_based_on_it(client):
-    from src.modules import complete_reports
+    from src.modules import bundle_report_templates
     login(client)
-    weekly = complete_reports.save_favourite(core.repository, None, 'Weekly', {}, 'super')
-    complete_reports.save_favourite(core.repository, None, 'Taken', {}, 'super')
+    weekly = bundle_report_templates.save_favourite(core.repository, None, 'Weekly', {}, 'super')
+    bundle_report_templates.save_favourite(core.repository, None, 'Taken', {}, 'super')
     report = {'enabled': True, 'formats': ['word'], 'options': {'filters': {'favourites': [str(weekly['id'])]}}}
     for name in ('Weekly', 'My weekly job'):
         client.post('/api/reporting/tasks', json={'name': name, 'schedule': {'mode': 'manual'},
-                                                  'definition': {'modules': {'complete_report': report}}}).raise_for_status()
-    assert client.post(f"/api/reporting/complete-report/favourites/{weekly['id']}/rename", json={'name': 'Taken'}).status_code == 400
-    response = client.post(f"/api/reporting/complete-report/favourites/{weekly['id']}/rename", json={'name': 'Weekly NetCheck'})
+                                                  'definition': {'modules': {'bundle_report_template': report}}}).raise_for_status()
+    assert client.post(f"/api/reporting/bundle-report-template/favourites/{weekly['id']}/rename", json={'name': 'Taken'}).status_code == 400
+    response = client.post(f"/api/reporting/bundle-report-template/favourites/{weekly['id']}/rename", json={'name': 'Weekly NetCheck'})
     assert response.status_code == 200, response.text
     assert response.json()['favourite']['name'] == 'Weekly NetCheck' and response.json()['renamed_jobs'] == ['Weekly NetCheck']
     # The job that had its name takes the new one; a job with a name of its own keeps it. Both name the new favourite.
     tasks = {task['name']: task for task in client.get('/api/reporting/state').json()['tasks']}
     assert {'Weekly NetCheck', 'My weekly job'} <= set(tasks) and 'Weekly' not in tasks
     assert tasks['My weekly job']['artifact_groups'][-1]['items'] == ['Weekly NetCheck (Word)']
-    assert complete_reports.get_favourite(core.repository, weekly['id'])['definition'] == weekly['definition']
+    assert bundle_report_templates.get_favourite(core.repository, weekly['id'])['definition'] == weekly['definition']
     page = (core.PROJECT_ROOT / 'src/web_interface/templates/report_jobs.html').read_text(encoding='utf-8')
-    assert 'id="cr-rename"' in page
+    assert 'id="brt-rename"' in page
 
 
 def test_reporting_jobs_keep_the_order_they_are_dragged_to(client):
@@ -791,7 +791,8 @@ def test_jobs_saved_before_the_order_keep_their_alphabetical_order(tmp_path):
 
 
 def test_jobs_saved_before_store_one_theme(tmp_path):
-    # Jobs saved when each artifact had its own theme (or none) store the default theme of the job, once.
+    # Jobs saved when each artifact had its own theme (or none) store the default theme of the job, once, and those saved
+    # when Bundle Report Templates had a former name their current artifact key.
     from src.modules.repository import Repository
     from src.modules.scoring_themes import DEFAULT_THEME
 
@@ -801,7 +802,8 @@ def test_jobs_saved_before_store_one_theme(tmp_path):
         for name, definition in (
                 ('Legacy', {'network_insights': [{'formats': ['powerpoint'], 'theme': 'umlaut'}],
                             'scoring': [{'report': {'scenarios': [], 'theme': 'netcheck'}}]}),
-                ('Chosen', {'theme': 'midnight', 'network_insights': [{'formats': ['powerpoint']}]})):
+                ('Chosen', {'theme': 'midnight', 'network_insights': [{'formats': ['powerpoint']}]}),
+                ('Former', {'theme': 'paper', 'modules': {'complete_report': {'enabled': True, 'formats': ['word']}}})):
             connection.execute(f'INSERT INTO {report_tasks.REPORT_TASKS_TABLE} (name, definition_json, created_by, created_at, updated_at) '
                                "VALUES (?, ?, 'super', '2026-10-18', '2026-10-18')", (name, json.dumps(definition)))
     report_tasks.ensure_report_task_tables(repository)
@@ -811,3 +813,4 @@ def test_jobs_saved_before_store_one_theme(tmp_path):
     assert stored['Legacy']['theme'] == DEFAULT_THEME == 'ericsson'
     assert 'theme' not in stored['Legacy']['network_insights'][0] and 'theme' not in stored['Legacy']['scoring'][0]['report']
     assert stored['Chosen']['theme'] == 'midnight'
+    assert stored['Former']['modules'] == {'bundle_report_template': {'enabled': True, 'formats': ['word']}}

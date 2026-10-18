@@ -1,4 +1,4 @@
-"""One PowerPoint from the slides of several decks built on the same template, such as a Complete Report.
+"""One PowerPoint from the slides of several decks built on the same template, such as a Bundle Report Template.
 
 Slides are copied with everything they use (pictures, charts with their workbooks, media) and keep their layout:
 the layout of the same name in the destination template, or a copy of it when the template has none.

@@ -64,9 +64,9 @@ def test_network_ppt_preserves_dashboard_template_and_fits_group_cells(tmp_path)
             assert canonical(generated.read(part)) == canonical(original.read(part))
 
 
-def test_network_word_is_composed_from_the_powerpoint_as_the_complete_report(tmp_path, monkeypatch):
+def test_network_word_is_composed_from_the_powerpoint_as_the_bundle_report_template(tmp_path, monkeypatch):
     import src.modules.pptx_to_docx as pptx_to_docx_module
-    from src.modules import complete_reports
+    from src.modules import bundle_report_templates
 
     output = tmp_path / 'network.pptx'
     export_network_insights_powerpoint(output, _analysis(), {}, {}, _png, template=TEMPLATE)
@@ -75,8 +75,8 @@ def test_network_word_is_composed_from_the_powerpoint_as_the_complete_report(tmp
     monkeypatch.setattr(pptx_to_docx_module, 'portrait_covers', lambda _content, positions: [raster.getvalue()] * len(positions))
     monkeypatch.setattr(pptx_to_docx_module, 'slide_images',
                         lambda deck, dpi=160: [raster.getvalue()] * len(Presentation(io.BytesIO(deck)).slides))
-    document = Document(io.BytesIO(complete_reports.module_document('network_insights', output.read_bytes(), 'word', 'Network Insights')))
-    # The cover of the module on a page of its own, then portrait pages with the components, as a Complete Report.
+    document = Document(io.BytesIO(bundle_report_templates.module_document('network_insights', output.read_bytes(), 'word', 'Network Insights')))
+    # The cover of the module on a page of its own, then portrait pages with the components, as a Bundle Report Template.
     cover_page, *pages = document.sections
     assert cover_page.left_margin == 0 and pages and pages[0].page_height > pages[0].page_width
     assert document.inline_shapes
@@ -85,7 +85,7 @@ def test_network_word_is_composed_from_the_powerpoint_as_the_complete_report(tmp
 def test_network_summaries_include_all_grouped_deployment_views_and_exclude_full_inventory(client, tmp_path, monkeypatch):
     import pandas as pd
     import src.DriveTestAnalyzer as app_module
-    from src.modules import complete_reports, network_insights as ni, network_insights_export as export
+    from src.modules import bundle_report_templates, network_insights as ni, network_insights_export as export
     from src.modules.repository import local_now_iso
 
     client.post('/login', data={'username': 'admin', 'password': 'admin123'}, follow_redirects=False)
@@ -114,8 +114,8 @@ def test_network_summaries_include_all_grouped_deployment_views_and_exclude_full
         return destination
 
     monkeypatch.setattr(export, 'export_network_insights_powerpoint', writer)
-    # Both formats are composed from the deck of the module, as its section of a Complete Report.
-    monkeypatch.setattr(complete_reports, 'module_document', lambda key, content, kind, _title: composed.append((key, content, kind)) or b'document')
+    # Both formats are composed from the deck of the module, as its section of a Bundle Report Template.
+    monkeypatch.setattr(bundle_report_templates, 'module_document', lambda key, content, kind, _title: composed.append((key, content, kind)) or b'document')
     for kind in ['word', 'powerpoint']:
         app_module.write_network_insights_summary({'datasets': {'data': [data_id]}}, kind, tmp_path / f'{kind}.output')
         assert (tmp_path / f'{kind}.output').read_bytes() == b'document'

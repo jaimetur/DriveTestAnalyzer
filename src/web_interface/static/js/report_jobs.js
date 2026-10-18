@@ -22,7 +22,7 @@
   let editingUpdatedAt = '';
   let pollTimer = null;
 
-  // Reloading the page keeps its scroll position. The panels fill in after the page loads (the Complete Report, the
+  // Reloading the page keeps its scroll position. The panels fill in after the page loads (the Bundle Report Template, the
   // jobs and their runs), so the position is applied again as the page grows, until the user moves it.
   const SCROLL_KEY = 'drivetest-analyzer:/reporting:scroll';
   const navigation = performance.getEntriesByType?.('navigation')?.[0]?.type;
@@ -190,7 +190,7 @@
     };
     return field;
   }
-  // The Complete Report panel of the page builds its filters with the same pickers.
+  // The Bundle Report Templates panel of the page builds its filters with the same pickers.
   window.reportingPickers = {multiPicker, campaignLabel, campaignCompare};
   document.addEventListener('click', (event) => {
     document.querySelectorAll('details.rj-multi[open]').forEach((picker) => { if (!picker.contains(event.target)) picker.open = false; });
@@ -563,7 +563,7 @@
     fragment.append(')');
     return fragment;
   }
-  // What a favourite Complete Report includes: its sections in order, each with its sub-modules.
+  // What a favourite Bundle Report Template includes: its sections in order, each with its sub-modules.
   function favouriteContents(sections) {
     const list = node('ul', undefined, 'rj-artifact-contents');
     sections.forEach((section) => {
@@ -579,9 +579,9 @@
       item.append(node('strong', group.module, 'rj-artifact-module'));
       const entries = group.items.map((entry) => (typeof entry === 'string' ? withColouredFormats(entry) : entry));
       const contents = group.contents || [];
-      // A favourite Complete Report deleted since the job was saved.
+      // A favourite Bundle Report Template deleted since the job was saved.
       const missing = group.missing || [];
-      const missingNote = () => node('div', 'The associated Complete Report no longer exists.', 'rj-artifact-missing');
+      const missingNote = () => node('div', 'The associated Bundle Report Template no longer exists.', 'rj-artifact-missing');
       if (entries.length > 1) {
         const nested = node('ul', undefined, 'rj-artifact-entries');
         entries.forEach((entry, index) => {
@@ -990,17 +990,17 @@
       : window.confirm('Discard the unsaved changes of this Reporting Job?');
   }
 
-  // A job starts from a favourite Complete Report (the default for a new job when there is one) or has its artifacts
+  // A job starts from a favourite Bundle Report Template (the default for a new job when there is one) or has its artifacts
   // designed in the editor. A job that only generates one favourite opens as such.
-  const favouriteChoices = () => (options.providers.find((provider) => provider.key === 'complete_report')?.values?.favourites || [])
+  const favouriteChoices = () => (options.providers.find((provider) => provider.key === 'bundle_report_template')?.values?.favourites || [])
     .map((item) => (Array.isArray(item) ? item : [item, item]).map(String));
   const jobSource = () => document.querySelector('input[name="rj-source"]:checked')?.value || 'editor';
   function favouriteOf(definition) {
-    const report = definition.modules?.complete_report || {};
+    const report = definition.modules?.bundle_report_template || {};
     const chosen = report.options?.filters?.favourites || [];
     const others = Boolean(definition.dataset_analysis?.enabled) || (definition.network_insights || []).length > 0
       || (definition.dashboards || []).length > 0 || (definition.scoring || []).length > 0
-      || Object.entries(definition.modules || {}).some(([key, module]) => key !== 'complete_report' && module?.enabled);
+      || Object.entries(definition.modules || {}).some(([key, module]) => key !== 'bundle_report_template' && module?.enabled);
     return report.enabled && chosen.length === 1 && !others ? {id: String(chosen[0]), formats: report.formats || []} : null;
   }
   function fillFavourite(task, definition) {
@@ -1008,16 +1008,16 @@
     const saved = favouriteOf(definition);
     const source = saved || (!task?.id && choices.length && !task?.definition) ? 'favourite' : 'editor';
     document.querySelectorAll('input[name="rj-source"]').forEach((radio) => { radio.checked = radio.value === source; });
-    const picker = select(choices.length ? choices : [['', 'No favourite Complete Report yet']], saved?.id || choices[0]?.[0] || '');
+    const picker = select(choices.length ? choices : [['', 'No favourite Bundle Report Template yet']], saved?.id || choices[0]?.[0] || '');
     picker.id = 'rj-favourite';
     picker.disabled = !choices.length;
     // Without favourites the editor designs the artifacts: a clear tip says how much easier a favourite makes it.
     $('rj-favourite-tip').hidden = Boolean(choices.length);
-    $('rj-favourite-field').replaceChildren(field('Favourite Complete Report', picker));
+    $('rj-favourite-field').replaceChildren(field('Favourite Bundle Report Template', picker));
     formatChoices($('rj-favourite-formats'), 'rj-favourite', saved?.formats?.length ? saved.formats : ['powerpoint', 'word'], ['powerpoint', 'word']);
     $('rj-favourite-note').textContent = choices.length
       ? 'Each run generates the favourite as it is saved then: its sections, filters and Campaigns (the latest ones are chosen again at each run).'
-      : 'There is no favourite Complete Report yet: save one in the Complete Report panel above, or design the artifacts.';
+      : 'There is no favourite Bundle Report Template yet: save one in the Bundle Report Templates panel above, or design the artifacts.';
     // A new job takes the name of its favourite (until it is given another).
     const nameOf = (id) => choices.find(([value]) => value === id)?.[1] || '';
     let named = nameOf(picker.value);
@@ -1070,14 +1070,14 @@
     };
   }
 
-  // A job from a favourite generates only its Complete Report, in the formats chosen.
+  // A job from a favourite generates only its Bundle Report Template, in the formats chosen.
   function favouriteDefinition(base) {
     const favourite = $('rj-favourite')?.value || '';
     return {
       ...base, dataset_analysis: {...base.dataset_analysis, enabled: false}, network_insights: [], dashboards: [], scoring: [],
       modules: {
         ...Object.fromEntries(Object.entries(base.modules).map(([key, module]) => [key, {...module, enabled: false}])),
-        complete_report: {enabled: true, formats: $('rj-favourite-formats').getValue(), options: {filters: {favourites: favourite ? [favourite] : []}}},
+        bundle_report_template: {enabled: true, formats: $('rj-favourite-formats').getValue(), options: {filters: {favourites: favourite ? [favourite] : []}}},
       },
     };
   }
@@ -1211,11 +1211,11 @@
     return link;
   };
 
-  // The header of the panel counts the jobs, those of a favourite Complete Report and those with manual artifacts.
+  // The header of the panel counts the jobs, those of a favourite Bundle Report Template and those with manual artifacts.
   function renderTaskCounts() {
     const favourites = state.tasks.filter((task) => task.based_on === 'favourite').length;
     $('rj-count-total').textContent = `Total Jobs: ${state.tasks.length}`;
-    $('rj-count-favourite').textContent = `Complete Report: ${favourites}`;
+    $('rj-count-favourite').textContent = `Bundle Report Template: ${favourites}`;
     $('rj-count-manual').textContent = `Manual Artifacts: ${state.tasks.length - favourites}`;
   }
 
@@ -1247,7 +1247,7 @@
     handle.setAttribute('aria-label', 'Move this Reporting Job');
     return handle;
   }
-  // Dragging follows the pointer (mouse, pen or touch), as the sections of the Complete Report.
+  // Dragging follows the pointer (mouse, pen or touch), as the sections of the Bundle Report Template.
   const tasksBody = $('rj-tasks').tBodies[0];
   tasksBody.addEventListener('pointerdown', (event) => {
     const handle = event.target.closest('.rj-drag-handle');
@@ -1316,10 +1316,10 @@
       const artifacts = node('ul', undefined, 'rj-artifacts');
       if (task.artifact_groups) renderArtifactGroups(artifacts, task.artifact_groups);
       else task.artifacts.forEach((text) => artifacts.append(node('li', text)));
-      // Whether the job generates a favourite Complete Report or the artifacts chosen in the Job Editor.
+      // Whether the job generates a favourite Bundle Report Template or the artifacts chosen in the Job Editor.
       const fromFavourite = task.based_on === 'favourite';
-      const basedOn = cellWith(node('span', fromFavourite ? 'Complete Report' : 'Manual Artifacts', `rj-based-on${fromFavourite ? ' rj-based-on-favourite' : ''}`));
-      basedOn.title = fromFavourite ? 'The job generates a favourite Complete Report' : 'The artifacts of the job were chosen in the Job Editor';
+      const basedOn = cellWith(node('span', fromFavourite ? 'Bundle Report Template' : 'Manual Artifacts', `rj-based-on${fromFavourite ? ' rj-based-on-favourite' : ''}`));
+      basedOn.title = fromFavourite ? 'The job generates a favourite Bundle Report Template' : 'The artifacts of the job were chosen in the Job Editor';
       const last = task.last_run;
       const lastCell = node('td', last ? localTime(last.started_at || last.created_at) : '—');
       const statusCell = node('td');
@@ -1502,9 +1502,9 @@
   $('rj-form').addEventListener('submit', async (event) => {
     event.preventDefault();
     const button = $('rj-save');
-    // A job from a favourite needs one (without it, the Complete Report artifact would generate every favourite).
+    // A job from a favourite needs one (without it, the Bundle Report Template artifact would generate every favourite).
     if (jobSource() === 'favourite' && !$('rj-favourite')?.value) {
-      status('Choose the favourite Complete Report of the job, or design its artifacts.', 'error');
+      status('Choose the favourite Bundle Report Template of the job, or design its artifacts.', 'error');
       return;
     }
     button.disabled = true;
@@ -1524,8 +1524,8 @@
     }
   });
 
-  // Saving, renaming or deleting a favourite Complete Report changes the jobs that generate it.
-  document.addEventListener('complete-report:favourites-changed', () => { void refresh().catch((error) => status(error.message, 'error')); });
+  // Saving, renaming or deleting a favourite Bundle Report Template changes the jobs that generate it.
+  document.addEventListener('bundle-report-template:favourites-changed', () => { void refresh().catch((error) => status(error.message, 'error')); });
 
   void refresh().then(restoreDraft).catch((error) => status(error.message, 'error'));
 })();

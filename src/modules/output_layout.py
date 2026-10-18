@@ -20,17 +20,20 @@ NETWORK_INSIGHTS_FOLDER = 'network-insights'
 REPORTS_OLD_FOLDER = 'reports-old'
 REPORTS_CHARTS_OLD_FOLDER = 'reports-charts-old'
 REPORTING_JOBS_FOLDER = 'reporting-jobs'
-COMPLETE_REPORTS_FOLDER = 'complete-reports'
+BUNDLE_REPORTS_FOLDER = 'bundle-reports'
 MODULE_FOLDERS = frozenset({
     DASHBOARDS_FOLDER, CDR_ANALYSIS_FOLDER, NETWORK_INSIGHTS_FOLDER,
-    REPORTS_OLD_FOLDER, REPORTS_CHARTS_OLD_FOLDER, REPORTING_JOBS_FOLDER, COMPLETE_REPORTS_FOLDER,
+    REPORTS_OLD_FOLDER, REPORTS_CHARTS_OLD_FOLDER, REPORTING_JOBS_FOLDER, BUNDLE_REPORTS_FOLDER,
 })
-# Former folders directly below output/ and the module folder that replaces each one.
+# Former folders directly below output/ (and those of the Bundle Report Templates when they were called Complete
+# Reports or Reporting Jobs Templates) and the module folder that replaces each one.
 LEGACY_OUTPUT_FOLDERS = (
     ('dashboards', DASHBOARDS_FOLDER),
     ('reporting', REPORTING_JOBS_FOLDER),
     ('charts', REPORTS_CHARTS_OLD_FOLDER),
     ('report-charts', REPORTS_CHARTS_OLD_FOLDER),
+    (f'{REPORTS_FOLDER}/complete-reports', BUNDLE_REPORTS_FOLDER),
+    (f'{REPORTS_FOLDER}/reporting-jobs-templates', BUNDLE_REPORTS_FOLDER),
 )
 STORED_PATH_COLUMNS = (
     ('dashboard_ppt_jobs', 'output_path'),

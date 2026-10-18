@@ -1,13 +1,13 @@
 """The covers and transitions of the PowerPoint reports, alike in every module.
 
-A report starts with its cover; its transitions open each part of it (a module of a Complete Report, a scenario, a
+A report starts with its cover; its transitions open each part of it (a module of a Bundle Report Template, a scenario, a
 scoring, an environment, a Dashboard or a transition of its PPT Template). Every cover has one size of title and
 subtitle and every transition another, smaller one, whatever the module; the subtitle starts right below the room of
 two title lines, so a long title wraps into it. Each transition shows its counter above the title: 01, 02… for the first
 level and 2.1, 2.1.1… below it.
 
 A module marks each of its transitions with its level (``mark``), kept in the slide (the name of the box of its counter),
-so a Complete Report that copies the slides of a module can move them one or two levels down (``shift``) before
+so a Bundle Report Template that copies the slides of a module can move them one or two levels down (``shift``) before
 ``finish`` writes every counter and size.
 """
 from __future__ import annotations
@@ -58,7 +58,7 @@ def level(slide: Any) -> int | None:
 
 
 def shift(slide: Any, by: int) -> None:
-    """A transition ``by`` levels down (a module's transitions inside a Complete Report)."""
+    """A transition ``by`` levels down (a module's transitions inside a Bundle Report Template)."""
     current = level(slide)
     if current is not None:
         mark(slide, current + by)

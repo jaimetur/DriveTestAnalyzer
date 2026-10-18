@@ -7119,9 +7119,9 @@ def install_non_qualified_calls_routes(core: Any) -> None:
 
     def write_summary_document(export_format: str, destination: Path, executive, progress, options, lines,
                                components: list[str] | None = None, compose: bool = True) -> None:
-        """The summary in PowerPoint or Word, composed as the Non-Qualified Calls section of a Complete Report; without
-        ``compose`` (the Complete Report itself), the PowerPoint is the deck of the module."""
-        from src.modules.complete_reports import module_document
+        """The summary in PowerPoint or Word, composed as the Non-Qualified Calls section of a Bundle Report Template; without
+        ``compose`` (the Bundle Report Template itself), the PowerPoint is the deck of the module."""
+        from src.modules.bundle_report_templates import module_document
         from src.modules.non_qualified_calls_export import export_powerpoint
 
         if not compose:
@@ -7168,12 +7168,12 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         include_suggestions = str(settings.get('include_suggestions', '1') or '') == '1'
         executive, progress, options, lines = summary_parts(repository, filters, user.username, granularity,
                                                             include_suggestions)
-        # A Complete Report chooses the charts and tables (``components``) and whether the Root Cause Analysis shows
+        # A Bundle Report Template chooses the charts and tables (``components``) and whether the Root Cause Analysis shows
         # the Not classified calls and the Lifecycle the calls without a value.
         options = {**options, 'show_not_classified': str(settings.get('show_not_classified') or '') == '1',
                    'show_empty': str(settings.get('show_empty') or '') == '1'}
         components = [str(value) for value in settings['components']] if isinstance(settings.get('components'), list) else None
-        # A Complete Report composes the deck of the module itself.
+        # A Bundle Report Template composes the deck of the module itself.
         compose = settings.get('compose', True) is not False
         summary = executive['summary']
         details = [*lines[:-1], f"{summary['total']:,} Non-Qualified Calls · {summary['open']:,} open · {summary['closed']:,} closed · "

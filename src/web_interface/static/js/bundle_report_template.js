@@ -1,10 +1,10 @@
-/* Reporting: the Complete Report panel. Its common filters, its four sections with their sub-modules, charts and
+/* Reporting: the Bundle Report Templates panel. Its common filters, its four sections with their sub-modules, charts and
    tables (checked and ordered by dragging), the options of each section, the favourites and the export dialog that
    previews every page before the download. */
 (() => {
   'use strict';
 
-  const root = document.getElementById('complete-report');
+  const root = document.getElementById('bundle-report-template');
   if (!root) return;
   const $ = (id) => document.getElementById(id);
   const node = (tag, text, className) => {
@@ -21,23 +21,25 @@
     if (!response.ok) throw new Error(typeof payload.detail === 'string' ? payload.detail : 'The request failed.');
     return payload;
   };
-  const DRAFT_KEY = 'reporting:complete-report:draft';
-  const COLLAPSED_KEY = (key) => `reporting:complete-report:collapsed:${key}`;
+  const DRAFT_KEY = 'reporting:bundle-report-template:draft';
+  const COLLAPSED_KEY = (key) => `reporting:bundle-report-template:collapsed:${key}`;
   const FILTERS = [['operators', 'Operators', 'Operator'], ['operator_vendors', 'Operator_Vendor', 'Operator_Vendor'],
     ['vendor_operators', 'Vendor_Operator', 'Vendor_Operator'], ['vendors', 'Vendors', 'Vendor'], ['regions', 'Regions', 'Region'],
     ['clusters', 'Clusters', 'Cluster'], ['cities', 'Cities', 'City']];
   const NI_ENVIRONMENTS = ['Cities', 'Towns', 'Roads and railways'];
 
   let options = null;
-  let crOptions = null;
+  let brtOptions = null;
   let definition = null;
   let filterPickers = {};
   let favourites = [];
   let pollTimer = null;
   let currentJob = null;
+  // The last report generated from the panel, kept in the workspace: Open last report opens it whenever there is one.
+  let lastReport = null;
 
   const status = (message, tone = '') => {
-    const element = $('cr-status');
+    const element = $('brt-status');
     element.textContent = message || '';
     element.dataset.tone = tone;
   };
@@ -95,7 +97,7 @@
     });
   }
   const handleButton = (className, label) => {
-    const button = node('button', '', `cr-handle ${className}`);
+    const button = node('button', '', `brt-handle ${className}`);
     button.type = 'button';
     button.title = `Drag to move ${label}, or use the arrow keys`;
     button.setAttribute('aria-label', `Move ${label}`);
@@ -104,7 +106,7 @@
   };
 
   // -- small fields ---------------------------------------------------------------------------
-  const check = (label, checked, className = 'cr-check') => {
+  const check = (label, checked, className = 'brt-check') => {
     const wrapper = node('label', undefined, className);
     const box = node('input');
     box.type = 'checkbox';
@@ -114,7 +116,7 @@
     return wrapper;
   };
   const selectField = (label, choices, value) => {
-    const wrapper = node('label', label, 'cr-field');
+    const wrapper = node('label', label, 'brt-field');
     const select = node('select');
     choices.forEach(([key, text]) => {
       const option = node('option', text);
@@ -128,10 +130,10 @@
   };
   // One colour theme for the whole report, beside its title: every section that supports themes takes it.
   // The default theme of the application (that of a new report) when none is chosen.
-  const defaultTheme = () => crOptions?.defaults?.theme || 'netcheck';
-  const reportTheme = () => $('cr-theme').value || definition?.theme || defaultTheme();
+  const defaultTheme = () => brtOptions?.defaults?.theme || 'netcheck';
+  const reportTheme = () => $('brt-theme').value || definition?.theme || defaultTheme();
   const numberField = (label, value, step, title = '') => {
-    const wrapper = node('label', label, 'cr-field');
+    const wrapper = node('label', label, 'brt-field');
     const input = node('input');
     input.type = 'number';
     input.step = String(step);
@@ -156,14 +158,14 @@
   // All available campaigns, which follow the newest campaigns at each export and stand alone, then the campaigns of
   // the NR Mode of the common filters (listed again when it changes, keeping a Latest choice).
   function scopeFields(saved) {
-    const row = node('div', undefined, 'cr-scope');
+    const row = node('div', undefined, 'brt-scope');
     const presets = Object.entries(options.campaign_presets || {});
     const campaignValues = () => [...(options.campaigns?.[nrMode()] || [])]
       .sort((left, right) => (pickers().campaignCompare ? pickers().campaignCompare(left, right) : 0));
     let campaigns = null;
     const renderCampaigns = (selected) => {
       campaigns = multiField('Campaigns', campaignValues(), selected, {exclusive: presets});
-      campaigns.classList.add('cr-campaigns-field');
+      campaigns.classList.add('brt-campaigns-field');
       row.replaceChildren(campaigns);
     };
     renderCampaigns(saved.campaigns || []);
@@ -175,16 +177,16 @@
   }
 
   function renderFilters() {
-    const host = $('cr-filters');
+    const host = $('brt-filters');
     const filters = definition.filters;
     // The NR Mode on its own row: it lists the campaigns of every section and the Dashboards.
     const mode = selectField('NR Mode', [['NSA', 'NSA (Non-Standalone)'], ['SA', 'SA (Standalone)']], filters.nr_mode || 'NSA');
-    mode.input.id = 'cr-nr-mode';
+    mode.input.id = 'brt-nr-mode';
     filterPickers.nr_mode = mode.input;
     mode.input.addEventListener('change', () => { nrModeHandlers.forEach((handler) => handler()); changed(); });
-    const modeRow = node('div', undefined, 'cr-filter-mode');
+    const modeRow = node('div', undefined, 'brt-filter-mode');
     modeRow.append(mode);
-    const grid = node('div', undefined, 'cr-filter-grid');
+    const grid = node('div', undefined, 'brt-filter-grid');
     const fields = FILTERS.map(([key, label, valuesKey]) => {
       const extra = key === 'cities' ? {preset: {label: 'Main Cities (workspace list at each export)', values: options.main_cities || [],
         checked: filters.main_cities, dynamic: true}} : {};
@@ -205,22 +207,22 @@
   }
 
   // -- sections ----------------------------------------------------------------------------------
-  const sectionCatalogue = (key) => crOptions.catalogue.sections.find((section) => section.key === key);
+  const sectionCatalogue = (key) => brtOptions.catalogue.sections.find((section) => section.key === key);
   const operatorValues = () => options.values?.Operator || [];
 
   function scoringOptions(saved) {
-    const box = node('div', undefined, 'cr-options');
-    const scorings = node('fieldset', undefined, 'cr-choice-group');
+    const box = node('div', undefined, 'brt-options');
+    const scorings = node('fieldset', undefined, 'brt-choice-group');
     scorings.append(node('legend', 'Scorings'));
-    const scoringBoxes = crOptions.scorings.map((item) => {
+    const scoringBoxes = brtOptions.scorings.map((item) => {
       const field = check(item.label, saved.scorings.includes(item.value));
       field.box.value = item.value;
       scorings.append(field);
       return field.box;
     });
-    const environments = node('fieldset', undefined, 'cr-choice-group');
+    const environments = node('fieldset', undefined, 'brt-choice-group');
     environments.append(node('legend', 'Environments'));
-    const environmentBoxes = [{value: 'all', label: 'All Environments'}, ...crOptions.scoring_environments].map((item) => {
+    const environmentBoxes = [{value: 'all', label: 'All Environments'}, ...brtOptions.scoring_environments].map((item) => {
       const field = check(item.label, saved.environments.includes(item.value));
       field.box.value = item.value;
       if (item.value === 'all') field.title = 'All the environments combined';
@@ -235,42 +237,42 @@
       .map((value) => [value, value]), saved.baseline_operator);
     const compared = multiField('Compared operators', operators, saved.compared_operators);
     compared.title = 'The operators GAP Analysis compares with the GAP reference (all when none is chosen)';
-    const tables = node('fieldset', undefined, 'cr-choice-group');
+    const tables = node('fieldset', undefined, 'brt-choice-group');
     tables.append(node('legend', 'Scoring tables'));
     const kpiValues = check('Show KPI values', saved.kpi_values);
     const gapValues = check('Show GAP values', saved.gap_values);
     tables.append(kpiValues, gapValues);
     // The Scoring Trends: their campaigns (none: those of the section) and, inside them, the National & Geographical Areas Trends.
-    const trends = node('fieldset', undefined, 'cr-choice-group cr-trends');
+    const trends = node('fieldset', undefined, 'brt-choice-group brt-trends');
     trends.append(node('legend', 'Scoring Trends'));
     const presets = Object.entries(options.campaign_presets || {});
     const campaignValues = () => [...(options.campaigns?.[nrMode()] || [])]
       .sort((left, right) => (pickers().campaignCompare ? pickers().campaignCompare(left, right) : 0));
-    const trendHost = node('div', undefined, 'cr-trend-campaigns');
+    const trendHost = node('div', undefined, 'brt-trend-campaigns');
     let trendCampaigns = null;
     const renderTrendCampaigns = (selected) => {
       trendCampaigns = multiField('Campaigns', campaignValues(), selected, {exclusive: presets, allLabel: 'Same as the section'});
       trendCampaigns.title = 'The campaigns of the Scoring Trend and the National & Geographical Areas Trends (none: the campaigns of the section)';
-      trendCampaigns.classList.add('cr-campaigns-field');
+      trendCampaigns.classList.add('brt-campaigns-field');
       trendHost.replaceChildren(trendCampaigns);
     };
     renderTrendCampaigns(saved.area_summary.campaigns || []);
     nrModeHandlers.push(() => {
       renderTrendCampaigns((trendCampaigns?.getValue?.() || []).filter((value) => presets.some(([key]) => key === value)));
     });
-    const area = node('fieldset', undefined, 'cr-choice-group cr-area');
+    const area = node('fieldset', undefined, 'brt-choice-group brt-area');
     const areaEnabled = check('Include National & Geographical Areas Trends', saved.area_summary.enabled);
     areaEnabled.title = 'When the common filters choose no Region, Cluster or City: the National scoring next to each area, with the campaigns of the Scoring Trends';
     const areaLegend = node('legend');
     areaLegend.append(areaEnabled);
     area.append(areaLegend);
-    const breakdown = selectField('Rows', crOptions.area_summary_breakdowns.map((value) => [value, value === 'None' ? 'National only' : `Each ${value}`]),
+    const breakdown = selectField('Rows', brtOptions.area_summary_breakdowns.map((value) => [value, value === 'None' ? 'National only' : `Each ${value}`]),
       saved.area_summary.breakdown);
-    const timeSplit = selectField('Time split', crOptions.area_summary_time_splits.map((value) => [value, value === 'All' ? 'All selected CDRs' : value]),
+    const timeSplit = selectField('Time split', brtOptions.area_summary_time_splits.map((value) => [value, value === 'All' ? 'All selected CDRs' : value]),
       saved.area_summary.time_split);
     area.append(breakdown, timeSplit);
     trends.append(trendHost, area);
-    const grid = node('div', undefined, 'cr-option-grid');
+    const grid = node('div', undefined, 'brt-option-grid');
     grid.append(methodology, reference, compared);
     box.append(scorings, environments, tables, grid, trends);
     box.collect = () => ({
@@ -286,12 +288,12 @@
   }
 
   function networkOptions(saved) {
-    const box = node('div', undefined, 'cr-options');
-    const technology = selectField('Technology', Object.entries(crOptions.network_technologies), saved.technology);
-    const group = multiField('Split by', Object.keys(crOptions.network_groupings), saved.group);
+    const box = node('div', undefined, 'brt-options');
+    const technology = selectField('Technology', Object.entries(brtOptions.network_technologies), saved.technology);
+    const group = multiField('Split by', Object.keys(brtOptions.network_groupings), saved.group);
     // The Split by picker lists keys: their labels are shown instead.
     group.querySelectorAll?.('.rj-multi-option span').forEach((span) => {
-      span.textContent = crOptions.network_groupings[span.textContent] || span.textContent;
+      span.textContent = brtOptions.network_groupings[span.textContent] || span.textContent;
     });
     const fields = [
       numberField('LTE coverage below (dBm)', saved.coverage_threshold, 1, 'Samples below this LTE RSRP count as low coverage'),
@@ -302,7 +304,7 @@
     ];
     const gridSize = selectField('Map grid', [['100', '100 m'], ['250', '250 m'], ['500', '500 m'], ['1000', '1 km']], String(saved.grid_metres));
     const environments = multiField('Environments', NI_ENVIRONMENTS, saved.environments);
-    const grid = node('div', undefined, 'cr-option-grid');
+    const grid = node('div', undefined, 'brt-option-grid');
     grid.append(technology, group, ...fields, gridSize, environments);
     box.append(grid);
     const number = (field, fallback) => {
@@ -320,16 +322,16 @@
   }
 
   function callsOptions(saved) {
-    const box = node('div', undefined, 'cr-options');
-    const periods = selectField('Progress periods', Object.entries(crOptions.nq_granularities), saved.granularity);
+    const box = node('div', undefined, 'brt-options');
+    const periods = selectField('Progress periods', Object.entries(brtOptions.nq_granularities), saved.granularity);
     const calls = selectField('Calls', [['', 'Every call'], ['1', 'Open calls only']], saved.open_only ? '1' : '');
     const suggestions = selectField('Root Cause Analysis', [['1', 'Count suggested root causes'], ['', 'Labelled root causes only']],
       saved.include_suggestions ? '1' : '');
     const notClassified = check('Show Not classified calls', saved.show_not_classified);
     const empty = check('Show calls without a value in the phases', saved.show_empty);
-    const grid = node('div', undefined, 'cr-option-grid');
+    const grid = node('div', undefined, 'brt-option-grid');
     grid.append(periods, calls, suggestions);
-    const flags = node('div', undefined, 'cr-inline');
+    const flags = node('div', undefined, 'brt-inline');
     flags.append(notClassified, empty);
     box.append(grid, flags);
     box.collect = () => ({
@@ -340,23 +342,23 @@
   }
 
   function itemRow(sectionKey, catalogueItem, saved) {
-    const row = node('li', undefined, 'cr-item');
+    const row = node('li', undefined, 'brt-item');
     row.dataset.key = catalogueItem.key;
-    const head = node('div', undefined, 'cr-item-head');
-    const enabled = check(catalogueItem.title, saved ? saved.enabled : sectionKey !== 'dashboards', 'cr-check cr-item-check');
-    head.append(handleButton('cr-item-handle', catalogueItem.title), enabled);
+    const head = node('div', undefined, 'brt-item-head');
+    const enabled = check(catalogueItem.title, saved ? saved.enabled : sectionKey !== 'dashboards', 'brt-check brt-item-check');
+    head.append(handleButton('brt-item-handle', catalogueItem.title), enabled);
     if (catalogueItem.nr_mode) {
       // Each Dashboard is made for one NR Mode: the list shows those of the NR Mode of the common filters.
       row.dataset.nrMode = catalogueItem.nr_mode;
-      head.append(node('span', catalogueItem.nr_mode, 'cr-badge'));
+      head.append(node('span', catalogueItem.nr_mode, 'brt-badge'));
     }
     row.append(head);
     const boxes = [];
     if (catalogueItem.components.length) {
-      const count = node('span', '', 'cr-count');
-      const toggle = node('button', 'Charts & tables', 'cr-expand');
+      const count = node('span', '', 'brt-count');
+      const toggle = node('button', 'Charts & tables', 'brt-expand');
       toggle.type = 'button';
-      const components = node('div', undefined, 'cr-components');
+      const components = node('div', undefined, 'brt-components');
       catalogueItem.components.forEach((component) => {
         const field = check(component.title, saved ? saved.components?.[component.key] !== false : true);
         field.box.value = component.key;
@@ -398,22 +400,22 @@
 
   function sectionCard(saved) {
     const catalogue = sectionCatalogue(saved.key);
-    const allowed = crOptions.allowed_sections[saved.key];
-    const title = crOptions.section_titles[saved.key] || catalogue.title;
-    const card = node('li', undefined, `cr-section cr-section-${saved.key}`);
+    const allowed = brtOptions.allowed_sections[saved.key];
+    const title = brtOptions.section_titles[saved.key] || catalogue.title;
+    const card = node('li', undefined, `brt-section brt-section-${saved.key}`);
     card.dataset.key = saved.key;
-    const head = node('div', undefined, 'cr-section-head');
-    const enabled = check(title, allowed && saved.enabled, 'cr-check cr-section-check');
+    const head = node('div', undefined, 'brt-section-head');
+    const enabled = check(title, allowed && saved.enabled, 'brt-check brt-section-check');
     enabled.box.disabled = !allowed;
-    const summary = node('span', '', 'cr-count');
-    const collapse = node('button', 'Collapse', 'collapse-chip cr-collapse');
+    const summary = node('span', '', 'brt-count');
+    const collapse = node('button', 'Collapse', 'collapse-chip brt-collapse');
     collapse.type = 'button';
-    head.append(handleButton('cr-section-handle', title), enabled, summary, collapse);
-    const body = node('div', undefined, 'cr-section-body');
+    head.append(handleButton('brt-section-handle', title), enabled, summary, collapse);
+    const body = node('div', undefined, 'brt-section-body');
     if (!allowed) body.append(node('p', 'Your account cannot use this module: the section is left out.', 'form-note'));
     const scope = scopeFields(saved.options || {});
     body.append(scope);
-    const list = node('ol', undefined, 'cr-items');
+    const list = node('ol', undefined, 'brt-items');
     list.setAttribute('aria-label', `Sub-modules of ${title}`);
     const savedItems = Object.fromEntries((saved.items || []).map((item) => [item.key, item]));
     const catalogueItems = Object.fromEntries(catalogue.items.map((item) => [item.key, item]));
@@ -421,29 +423,29 @@
       ...catalogue.items.map((item) => item.key).filter((key) => !savedItems[key])];
     order.forEach((key) => list.append(itemRow(saved.key, catalogueItems[key], savedItems[key])));
     if (saved.key === 'dashboards' && !catalogue.items.length) {
-      list.append(node('li', 'There are no saved Dashboards in this workspace.', 'form-note cr-empty'));
+      list.append(node('li', 'There are no saved Dashboards in this workspace.', 'form-note brt-empty'));
     }
-    sortable(list, '.cr-item', '.cr-item-handle', changed);
+    sortable(list, '.brt-item', '.brt-item-handle', changed);
     body.append(list);
     const optionsBox = saved.key === 'scoring' ? scoringOptions(saved.options)
       : saved.key === 'network_insights' ? networkOptions(saved.options)
         : saved.key === 'non_qualified_calls' ? callsOptions(saved.options) : null;
     if (optionsBox) {
-      const optionsWrap = node('div', undefined, 'cr-section-options');
+      const optionsWrap = node('div', undefined, 'brt-section-options');
       optionsWrap.append(node('h4', 'Options'), optionsBox);
       body.append(optionsWrap);
     }
     card.append(head, body);
-    const empty = node('li', '', 'form-note cr-empty');
+    const empty = node('li', '', 'form-note brt-empty');
     const refresh = () => {
       if (saved.key === 'dashboards') {
         const mode = nrMode();
-        list.querySelectorAll(':scope > .cr-item').forEach((row) => { row.hidden = Boolean(row.dataset.nrMode) && row.dataset.nrMode !== mode; });
+        list.querySelectorAll(':scope > .brt-item').forEach((row) => { row.hidden = Boolean(row.dataset.nrMode) && row.dataset.nrMode !== mode; });
         empty.textContent = `There are no saved ${mode} Dashboards in this workspace.`;
         if (catalogue.items.length) list.append(empty);
-        empty.hidden = [...list.querySelectorAll(':scope > .cr-item')].some((row) => !row.hidden);
+        empty.hidden = [...list.querySelectorAll(':scope > .brt-item')].some((row) => !row.hidden);
       }
-      const rows = [...list.querySelectorAll(':scope > .cr-item')].filter((row) => !row.hidden);
+      const rows = [...list.querySelectorAll(':scope > .brt-item')].filter((row) => !row.hidden);
       const chosen = rows.filter((row) => !row.classList.contains('is-off')).length;
       const noun = saved.key === 'dashboards' ? 'Dashboards' : 'sub-modules';
       summary.textContent = `${chosen} of ${rows.length} ${noun}`;
@@ -462,7 +464,7 @@
     refresh();
     card.collect = () => ({
       key: saved.key, enabled: enabled.box.checked,
-      items: [...list.querySelectorAll(':scope > .cr-item')].map((row) => row.collect()),
+      items: [...list.querySelectorAll(':scope > .brt-item')].map((row) => row.collect()),
       options: {...(optionsBox ? optionsBox.collect() : {}), ...scope.collect()},
     });
     return card;
@@ -470,30 +472,30 @@
 
   function renderSections() {
     nrModeHandlers = [];
-    const list = $('cr-sections');
+    const list = $('brt-sections');
     list.replaceChildren(...definition.sections.map((section) => sectionCard(section)));
   }
-  sortable($('cr-sections'), '.cr-section', '.cr-section-handle', changed);
+  sortable($('brt-sections'), '.brt-section', '.brt-section-handle', changed);
 
   function collect() {
     return {
-      title: $('cr-title').value.trim(),
-      subtitle: $('cr-subtitle').value.trim(),
+      title: $('brt-title').value.trim(),
+      subtitle: $('brt-subtitle').value.trim(),
       theme: reportTheme(),
       filters: collectFilters(),
-      sections: [...$('cr-sections').children].map((card) => card.collect()),
+      sections: [...$('brt-sections').children].map((card) => card.collect()),
     };
   }
 
   function changed() {
-    try { localStorage.setItem(DRAFT_KEY, JSON.stringify({definition: collect(), favourite: $('cr-favourite').value, name: $('cr-name').value})); } catch {}
+    try { localStorage.setItem(DRAFT_KEY, JSON.stringify({definition: collect(), favourite: $('brt-favourite').value, name: $('brt-name').value})); } catch {}
   }
 
   function render() {
-    $('cr-title').value = definition.title || '';
-    $('cr-subtitle').value = definition.subtitle || '';
+    $('brt-title').value = definition.title || '';
+    $('brt-subtitle').value = definition.subtitle || '';
     // Reports saved before the common theme take that of their Scoring section.
-    const theme = $('cr-theme');
+    const theme = $('brt-theme');
     const scoringTheme = (definition.sections || []).find((section) => section.key === 'scoring')?.options?.theme;
     theme.replaceChildren(...(options.scoring_themes || []).map((item) => {
       const option = node('option', item.label || item.id);
@@ -510,8 +512,8 @@
 
   // -- favourites ----------------------------------------------------------------------------------
   function renderFavourites(selected = '') {
-    const select = $('cr-favourite');
-    select.replaceChildren(node('option', 'New Complete Report'));
+    const select = $('brt-favourite');
+    select.replaceChildren(node('option', 'New Bundle Report Template'));
     select.firstElementChild.value = '';
     favourites.forEach((item) => {
       const option = node('option', item.name);
@@ -519,49 +521,49 @@
       select.append(option);
     });
     select.value = selected && favourites.some((item) => String(item.id) === String(selected)) ? String(selected) : '';
-    $('cr-delete').disabled = !select.value || !crOptions.can_edit;
-    $('cr-rename').disabled = $('cr-delete').disabled;
-    $('cr-save').disabled = !crOptions.can_edit;
+    $('brt-delete').disabled = !select.value || !brtOptions.can_edit;
+    $('brt-rename').disabled = $('brt-delete').disabled;
+    $('brt-save').disabled = !brtOptions.can_edit;
   }
   // The Reporting Jobs follow the favourites they generate.
-  const favouritesChanged = () => document.dispatchEvent(new CustomEvent('complete-report:favourites-changed'));
+  const favouritesChanged = () => document.dispatchEvent(new CustomEvent('bundle-report-template:favourites-changed'));
   const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (character) => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[character]));
   // The jobs that generate a favourite: those based on it and the others.
   const jobsOf = async (favourite) => {
-    try { return await api(`/api/reporting/complete-report/favourites/${favourite.id}/jobs`); } catch { return {based_on: [], others: []}; }
+    try { return await api(`/api/reporting/bundle-report-template/favourites/${favourite.id}/jobs`); } catch { return {based_on: [], others: []}; }
   };
 
-  $('cr-favourite').addEventListener('change', () => {
-    const favourite = favourites.find((item) => String(item.id) === $('cr-favourite').value);
-    definition = clone(favourite ? favourite.definition : crOptions.defaults);
-    $('cr-name').value = favourite ? favourite.name : '';
-    $('cr-delete').disabled = !favourite || !crOptions.can_edit;
-    $('cr-rename').disabled = $('cr-delete').disabled;
+  $('brt-favourite').addEventListener('change', () => {
+    const favourite = favourites.find((item) => String(item.id) === $('brt-favourite').value);
+    definition = clone(favourite ? favourite.definition : brtOptions.defaults);
+    $('brt-name').value = favourite ? favourite.name : '';
+    $('brt-delete').disabled = !favourite || !brtOptions.can_edit;
+    $('brt-rename').disabled = $('brt-delete').disabled;
     render();
     changed();
     status(favourite ? `${favourite.name} loaded.` : '');
   });
-  $('cr-name').addEventListener('input', changed);
-  $('cr-title').addEventListener('input', changed);
-  $('cr-subtitle').addEventListener('input', changed);
-  $('cr-theme').addEventListener('change', () => { definition.theme = $('cr-theme').value; changed(); });
+  $('brt-name').addEventListener('input', changed);
+  $('brt-title').addEventListener('input', changed);
+  $('brt-subtitle').addEventListener('input', changed);
+  $('brt-theme').addEventListener('change', () => { definition.theme = $('brt-theme').value; changed(); });
 
-  $('cr-save').addEventListener('click', async () => {
-    const name = $('cr-name').value.trim();
-    if (!name) { status('Enter a name for the favourite.', 'error'); $('cr-name').focus(); return; }
+  $('brt-save').addEventListener('click', async () => {
+    const name = $('brt-name').value.trim();
+    if (!name) { status('Enter a name for the favourite.', 'error'); $('brt-name').focus(); return; }
     // A name that a favourite already has overwrites it once the user confirms; another name saves a new favourite.
     const existing = favourites.find((item) => item.name.toLocaleLowerCase() === name.toLocaleLowerCase());
     if (existing) {
       const escape = (value) => String(value).replace(/[&<>"']/g, (character) => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[character]));
       const confirmed = typeof window.showConfirmDialog === 'function'
         ? Boolean(await window.showConfirmDialog('', {title: 'Overwrite Favourite',
-          copyHtml: `<p>A favourite Complete Report named <strong>${escape(existing.name)}</strong> already exists. Overwrite it with this report?</p>`,
+          copyHtml: `<p>A favourite Bundle Report Template named <strong>${escape(existing.name)}</strong> already exists. Overwrite it with this report?</p>`,
           confirmLabel: 'Overwrite', cancelLabel: 'Cancel'}))
-        : window.confirm(`A favourite Complete Report named ${existing.name} already exists. Overwrite it with this report?`);
+        : window.confirm(`A favourite Bundle Report Template named ${existing.name} already exists. Overwrite it with this report?`);
       if (!confirmed) return;
     }
     try {
-      const result = await api(existing ? `/api/reporting/complete-report/favourites/${existing.id}` : '/api/reporting/complete-report/favourites', {
+      const result = await api(existing ? `/api/reporting/bundle-report-template/favourites/${existing.id}` : '/api/reporting/bundle-report-template/favourites', {
         method: existing ? 'PUT' : 'POST', body: JSON.stringify({name, definition: collect()}),
       });
       favourites = result.favourites;
@@ -576,21 +578,21 @@
 
   // Renaming keeps what the favourite saved (not the changes of the panel); the jobs based on it with its name take
   // the new one.
-  $('cr-rename').addEventListener('click', async () => {
-    const selected = favourites.find((item) => String(item.id) === $('cr-favourite').value);
+  $('brt-rename').addEventListener('click', async () => {
+    const selected = favourites.find((item) => String(item.id) === $('brt-favourite').value);
     if (!selected) return;
     const named = (await jobsOf(selected)).based_on.filter((name) => name.toLocaleLowerCase() === selected.name.toLocaleLowerCase());
     const note = named.length ? `The Reporting Job${named.length === 1 ? '' : 's'} based on it with its name will take the new one.` : '';
     const answer = typeof showTextInputDialog === 'function'
       ? await showTextInputDialog('New name', {title: 'Rename Favourite', value: selected.name, maxLength: 120, confirmLabel: 'Rename', cancelLabel: 'Cancel', note})
-      : window.prompt('New name of the favourite Complete Report', selected.name);
+      : window.prompt('New name of the favourite Bundle Report Template', selected.name);
     const name = String(answer ?? '').trim();
     if (!name || name === selected.name) return;
     try {
-      const result = await api(`/api/reporting/complete-report/favourites/${selected.id}/rename`, {method: 'POST', body: JSON.stringify({name})});
+      const result = await api(`/api/reporting/bundle-report-template/favourites/${selected.id}/rename`, {method: 'POST', body: JSON.stringify({name})});
       favourites = result.favourites;
       renderFavourites(result.favourite.id);
-      $('cr-name').value = result.favourite.name;
+      $('brt-name').value = result.favourite.name;
       changed();
       const jobs = result.renamed_jobs || [];
       status(`${selected.name} renamed to ${result.favourite.name}.${jobs.length ? ` Reporting Jobs renamed: ${jobs.length}.` : ''}`, 'done');
@@ -600,24 +602,24 @@
     }
   });
 
-  $('cr-delete').addEventListener('click', async () => {
-    const selected = favourites.find((item) => String(item.id) === $('cr-favourite').value);
+  $('brt-delete').addEventListener('click', async () => {
+    const selected = favourites.find((item) => String(item.id) === $('brt-favourite').value);
     if (!selected) return;
     // The jobs based on it are disabled and the others that generate it no longer find it.
     const jobs = await jobsOf(selected);
     const list = (names) => `<ul>${names.map((name) => `<li>${escapeHtml(name)}</li>`).join('')}</ul>`;
-    const copy = `<p>Delete the favourite Complete Report <strong>${escapeHtml(selected.name)}</strong>?</p>`
+    const copy = `<p>Delete the favourite Bundle Report Template <strong>${escapeHtml(selected.name)}</strong>?</p>`
       + (jobs.based_on.length ? `<p>These Reporting Jobs based on it will be disabled:</p>${list(jobs.based_on)}` : '')
       + (jobs.others.length ? `<p>These Reporting Jobs also generate it and will tell that it no longer exists:</p>${list(jobs.others)}` : '');
     const confirmed = typeof window.showConfirmDialog === 'function'
       ? Boolean(await window.showConfirmDialog('', {title: 'Delete Favourite', copyHtml: copy, confirmLabel: 'Delete', cancelLabel: 'Cancel'}))
-      : window.confirm(`Delete the favourite Complete Report ${selected.name}?`);
+      : window.confirm(`Delete the favourite Bundle Report Template ${selected.name}?`);
     if (!confirmed) return;
     try {
-      const result = await api(`/api/reporting/complete-report/favourites/${selected.id}`, {method: 'DELETE'});
+      const result = await api(`/api/reporting/bundle-report-template/favourites/${selected.id}`, {method: 'DELETE'});
       favourites = result.favourites;
       renderFavourites('');
-      $('cr-name').value = '';
+      $('brt-name').value = '';
       changed();
       const disabled = result.disabled_jobs || [];
       status(`${selected.name} deleted.${disabled.length ? ` Reporting Jobs disabled: ${disabled.join(', ')}.` : ''}`, 'done');
@@ -628,13 +630,16 @@
   });
 
   // -- export dialog --------------------------------------------------------------------------------
-  const dialog = $('cr-dialog');
+  const dialog = $('brt-dialog');
   const formatLabel = (format) => (format === 'word' ? 'Word' : 'PowerPoint');
   // The format shown in the preview (remembered in this browser): both are generated before the preview opens, so
   // switching between them is immediate.
-  const FORMAT_KEY = 'drivetest.completeReport.previewFormat';
+  const FORMAT_KEY = 'drivetest.bundleReportTemplate.previewFormat';
   let previewFormat = 'powerpoint';
-  try { if (localStorage.getItem(FORMAT_KEY) === 'word') previewFormat = 'word'; } catch {}
+  // The browsers that chose it when Bundle Report Templates had a former name keep it.
+  const FORMER_FORMAT_KEYS = ['drivetest.bundleReportsTemplate.previewFormat', 'drivetest.reportingJobsTemplate.previewFormat',
+    'drivetest.completeReport.previewFormat'];
+  try { if ([FORMAT_KEY, ...FORMER_FORMAT_KEYS].map((key) => localStorage.getItem(key)).find(Boolean) === 'word') previewFormat = 'word'; } catch {}
   const shownFormat = (job) => job.formats?.[previewFormat] || {previews: 0, navigation: [], file_name: ''};
 
   function stopPolling() {
@@ -647,32 +652,33 @@
     currentJob = job;
     jobSeenAt = Date.now();
     const ready = job.status === 'ready';
+    if (ready) lastReport = job;
     const failed = job.status === 'failed';
     const pending = isPending(job);
-    $('cr-dialog-title').textContent = job.title || 'Complete Report';
-    $('cr-dialog-format').textContent = ready ? formatLabel(previewFormat) : 'PowerPoint and Word';
-    $('cr-dialog-progress').hidden = ready;
-    const bar = $('cr-progress-bar');
+    $('brt-dialog-title').textContent = job.title || 'Drive Test Analyzer Report';
+    $('brt-dialog-format').textContent = ready ? formatLabel(previewFormat) : 'PowerPoint and Word';
+    $('brt-dialog-progress').hidden = ready;
+    const bar = $('brt-progress-bar');
     bar.style.width = `${Math.max(3, job.progress || 0)}%`;
     bar.parentElement.setAttribute('aria-valuenow', String(job.progress || 0));
-    $('cr-dialog-message').textContent = failed ? job.error || job.message : job.message || '';
-    $('cr-dialog-message').dataset.tone = failed ? 'error' : '';
+    $('brt-dialog-message').textContent = failed ? job.error || job.message : job.message || '';
+    $('brt-dialog-message').dataset.tone = failed ? 'error' : '';
     // While it runs the report can be cancelled or hidden; finished, the dialog closes.
-    $('cr-dialog-cancel').hidden = !pending;
-    $('cr-dialog-hide').hidden = !pending;
-    $('cr-dialog-done').hidden = pending;
-    $('cr-dialog-close').setAttribute('aria-label', pending ? 'Hide the progress' : 'Close the preview');
+    $('brt-dialog-cancel').hidden = !pending;
+    $('brt-dialog-hide').hidden = !pending;
+    $('brt-dialog-done').hidden = pending;
+    $('brt-dialog-close').setAttribute('aria-label', pending ? 'Hide the progress' : 'Close the preview');
     updateElapsed();
     updateGenerateButton();
     if (wasReady) return;
-    const warnings = $('cr-warnings');
+    const warnings = $('brt-warnings');
     warnings.replaceChildren(...(job.warnings || []).map((warning) => node('li', warning)));
     warnings.hidden = !(job.warnings || []).length;
-    $('cr-format-switch').hidden = !ready;
+    $('brt-format-switch').hidden = !ready;
     // Ready, the dialog takes almost the whole screen: the sections and pages on the left, the chosen page on the right.
     dialog.classList.toggle('is-previewing', ready);
     if (ready) showFormat(0);
-    else $('cr-download').hidden = true;
+    else $('brt-download').hidden = true;
   }
 
   // The chosen format of a ready report: its summary, download, sections and pages, from ``index`` (a slide or page).
@@ -684,21 +690,21 @@
     const count = pages || job.outline.length;
     const reused = (job.reused || []).length ? ` Reused from an earlier export (their data has not changed): ${job.reused.join(', ')}`
       + `${job.document_reused ? ', and the documents composed from them' : ''}.` : '';
-    $('cr-dialog-summary').hidden = false;
-    $('cr-dialog-summary').textContent = `${count} ${unit}${count === 1 ? '' : 's'} · Processed in ${duration(job.elapsed_seconds)} · Choose a section or ${unit} on the left to check it before downloading.${reused}${pages ? '' : ' The preview needs LibreOffice: the list shows the title of each slide.'}`;
-    $('cr-dialog-format').textContent = formatLabel(previewFormat);
-    const download = $('cr-download');
+    $('brt-dialog-summary').hidden = false;
+    $('brt-dialog-summary').textContent = `${count} ${unit}${count === 1 ? '' : 's'} · Processed in ${duration(job.elapsed_seconds)} · Choose a section or ${unit} on the left to check it before downloading.${reused}${pages ? '' : ' The preview needs LibreOffice: the list shows the title of each slide.'}`;
+    $('brt-dialog-format').textContent = formatLabel(previewFormat);
+    const download = $('brt-download');
     download.hidden = false;
-    download.href = `/api/reporting/complete-report/jobs/${job.id}/download/${previewFormat}`;
+    download.href = `/api/reporting/bundle-report-template/jobs/${job.id}/download/${previewFormat}`;
     download.textContent = `Download ${formatLabel(previewFormat)}`;
-    $('cr-format-switch').querySelectorAll('[data-cr-format]').forEach((button) => {
-      const current = button.dataset.crFormat === previewFormat;
+    $('brt-format-switch').querySelectorAll('[data-brt-format]').forEach((button) => {
+      const current = button.dataset.brtFormat === previewFormat;
       button.classList.toggle('is-current', current);
       button.setAttribute('aria-pressed', String(current));
     });
     // Word shows portrait pages; PowerPoint landscape slides.
     dialog.classList.toggle('is-word', previewFormat === 'word');
-    $('cr-preview').hidden = false;
+    $('brt-preview').hidden = false;
     renderNavigation(job);
     stage.classList.toggle('is-empty', !pages);
     if (pages) showPage(index);
@@ -717,23 +723,23 @@
 
   // The sections of the report with their pages (or slides): selecting one shows it.
   function renderNavigation(job) {
-    const nav = $('cr-preview-nav');
+    const nav = $('brt-preview-nav');
     const shown = shownFormat(job);
     const groups = (shown.navigation || []).length ? shown.navigation
       : [{title: 'Pages', pages: Array.from({length: shown.previews || job.outline.length}, (_value, index) => ({index, title: job.outline[index]?.title || `Page ${index + 1}`}))}];
     nav.replaceChildren(...groups.map((group) => {
-      const section = node('section', undefined, 'cr-nav-section');
-      const heading = node('button', group.title, 'cr-nav-heading');
+      const section = node('section', undefined, 'brt-nav-section');
+      const heading = node('button', group.title, 'brt-nav-heading');
       heading.type = 'button';
       heading.title = `Go to ${group.title}`;
       heading.addEventListener('click', () => { if (group.pages.length) showPage(group.pages[0].index); });
-      const list = node('ol', undefined, 'cr-nav-pages');
+      const list = node('ol', undefined, 'brt-nav-pages');
       group.pages.forEach((page) => {
         const item = node('li');
-        const button = node('button', undefined, 'cr-nav-page');
+        const button = node('button', undefined, 'brt-nav-page');
         button.type = 'button';
         button.dataset.page = String(page.index);
-        button.append(node('span', String(page.index + 1), 'cr-nav-number'), node('span', page.title, 'cr-nav-title'));
+        button.append(node('span', String(page.index + 1), 'brt-nav-number'), node('span', page.title, 'brt-nav-title'));
         button.title = page.title;
         button.disabled = !shown.previews;
         button.addEventListener('click', () => showPage(page.index));
@@ -746,8 +752,8 @@
   }
 
   // -- the chosen page, zoomed with the wheel, a rectangle or the buttons, as the Scoring charts ---------------------
-  const stage = $('cr-viewer-stage');
-  const viewerImage = $('cr-viewer-image');
+  const stage = $('brt-viewer-stage');
+  const viewerImage = $('brt-viewer-image');
   let viewerIndex = 0;
   // Each page shown has its token: images of a page left in the meantime are ignored when they arrive.
   let pageToken = 0;
@@ -780,13 +786,13 @@
     clampView();
     renderView();
   }
-  const pageUrl = (index, large = true) => `/api/reporting/complete-report/jobs/${currentJob.id}/preview/${previewFormat}/${index}${large ? '?large=true' : ''}`;
+  const pageUrl = (index, large = true) => `/api/reporting/bundle-report-template/jobs/${currentJob.id}/preview/${previewFormat}/${index}${large ? '?large=true' : ''}`;
   function showPage(index) {
     const total = shownFormat(currentJob || {}).previews || 0;
     if (!total) return;
     viewerIndex = Math.max(0, Math.min(total - 1, index));
     const unit = previewFormat === 'word' ? 'Page' : 'Slide';
-    $('cr-page-label').textContent = `${unit} ${viewerIndex + 1} / ${total}`;
+    $('brt-page-label').textContent = `${unit} ${viewerIndex + 1} / ${total}`;
     viewerImage.alt = `${unit} ${viewerIndex + 1}`;
     // The page shows at once from its preview image, then sharper once its large rendering arrives (keeping the zoom).
     const token = ++pageToken;
@@ -807,7 +813,7 @@
       viewerImage.src = large.src;
     };
     large.src = pageUrl(viewerIndex);
-    document.querySelectorAll('.cr-nav-page').forEach((button) => {
+    document.querySelectorAll('.brt-nav-page').forEach((button) => {
       const current = Number(button.dataset.page) === viewerIndex;
       button.classList.toggle('is-current', current);
       if (current) {
@@ -841,7 +847,7 @@
     event.preventDefault();
     const start = local(event);
     const pan = event.button === 1 || event.shiftKey;
-    const rectangle = pan ? null : node('div', undefined, 'cr-viewer-rect');
+    const rectangle = pan ? null : node('div', undefined, 'brt-viewer-rect');
     if (rectangle) stage.append(rectangle);
     drag = {start, pan, rectangle, x: view.x, y: view.y};
     try { stage.setPointerCapture(event.pointerId); } catch {}
@@ -896,8 +902,8 @@
     else return;
     event.preventDefault();
   });
-  dialog.querySelectorAll('[data-cr-viewer]').forEach((button) => button.addEventListener('click', () => {
-    const action = button.dataset.crViewer;
+  dialog.querySelectorAll('[data-brt-viewer]').forEach((button) => button.addEventListener('click', () => {
+    const action = button.dataset.brtViewer;
     if (action === 'previous') showPage(viewerIndex - 1);
     else if (action === 'next') showPage(viewerIndex + 1);
     else if (action === 'zoom-in') zoomView(1.4);
@@ -908,7 +914,7 @@
 
   // The report keeps being generated when its dialog is hidden: a dialog tells when it is ready, here or (see app.js)
   // on any other page, where the job is remembered in this browser.
-  const JOB_KEY = 'drivetest.completeReport.job';
+  const JOB_KEY = 'drivetest.bundleReportTemplate.job';
   let jobSeenAt = 0;
   let elapsedTimer = null;
   const isPending = (job) => ['queued', 'running'].includes(job?.status);
@@ -919,26 +925,27 @@
   const duration = (seconds = 0) => (seconds >= 60 ? `${Math.floor(seconds / 60)} min ${String(seconds % 60).padStart(2, '0')} s` : `${seconds} s`);
   function updateElapsed() {
     const job = currentJob;
-    $('cr-dialog-elapsed').textContent = !job ? '' : isPending(job) ? `Processing time: ${clock(elapsedNow(job))}`
+    $('brt-dialog-elapsed').textContent = !job ? '' : isPending(job) ? `Processing time: ${clock(elapsedNow(job))}`
       : job.status === 'failed' || job.status === 'cancelled' ? `Processing time: ${duration(job.elapsed_seconds)}` : '';
     if (isPending(job) && !elapsedTimer) elapsedTimer = window.setInterval(() => { updateElapsed(); updateGenerateButton(); }, 1000);
     if (!isPending(job) && elapsedTimer) { window.clearInterval(elapsedTimer); elapsedTimer = null; }
   }
   // While a report is generated in the background, Generate shows its progress and opens its dialog.
   function updateGenerateButton() {
-    const button = root.querySelector('[data-cr-export]');
+    const button = root.querySelector('[data-brt-export]');
     const label = button?.querySelector('span');
     if (!label) return;
     const pending = isPending(currentJob) && Boolean(currentJob.id);
     label.textContent = pending ? `Generating · ${currentJob.progress || 0}% · ${clock(elapsedNow(currentJob))}` : 'Generate';
     button.classList.toggle('is-generating', pending);
-    $('cr-open-last').hidden = pending || currentJob?.status !== 'ready' || dialog.open;
+    if (currentJob?.status === 'ready') lastReport = currentJob;
+    $('brt-open-last').hidden = pending || !lastReport || dialog.open;
   }
   function openPreview() {
     if (!dialog.open) dialog.showModal();
     const job = currentJob;
     currentJob = null;
-    $('cr-preview').hidden = true;
+    $('brt-preview').hidden = true;
     showJob(job);
     if (job.status === 'ready') forgetJob();
   }
@@ -950,7 +957,7 @@
     if (job.status === 'ready') {
       const escape = (value) => String(value).replace(/[&<>"']/g, (character) => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[character]));
       const open = typeof window.showConfirmDialog === 'function'
-        ? Boolean(await window.showConfirmDialog('', {title: 'Complete Report Ready', copyHtml: `<p><strong>${escape(job.title)}</strong> is ready in PowerPoint and Word (processed in ${duration(job.elapsed_seconds)}).</p><p>Open its preview to check it and download it?</p>`,
+        ? Boolean(await window.showConfirmDialog('', {title: 'Report Ready', copyHtml: `<p><strong>${escape(job.title)}</strong> is ready in PowerPoint and Word (processed in ${duration(job.elapsed_seconds)}).</p><p>Open its preview to check it and download it?</p>`,
           confirmLabel: 'Open preview', cancelLabel: 'Later'}))
         : window.confirm(`${job.title} is ready. Open its preview?`);
       forgetJob();
@@ -958,7 +965,7 @@
       else updateGenerateButton();
     } else if (job.status === 'failed') {
       forgetJob();
-      if (typeof window.showInfoDialog === 'function') window.showInfoDialog(job.error || job.message, {title: 'Complete Report Failed', tone: 'error'});
+      if (typeof window.showInfoDialog === 'function') window.showInfoDialog(job.error || job.message, {title: 'Report Failed', tone: 'error'});
       else status(job.error || job.message, 'error');
     } else {
       forgetJob();
@@ -967,7 +974,7 @@
 
   async function poll(jobId) {
     try {
-      const result = await api(`/api/reporting/complete-report/jobs/${jobId}`);
+      const result = await api(`/api/reporting/bundle-report-template/jobs/${jobId}`);
       if (currentJob && currentJob.id && currentJob.id !== jobId) return;
       const before = currentJob?.status;
       if (!dialog.open && result.job.status === 'ready') currentJob = result.job;
@@ -976,7 +983,7 @@
       else if (before !== result.job.status || !dialog.open) { currentJob = result.job; updateElapsed(); await finished(result.job); }
     } catch (error) {
       if (/no longer available/i.test(error.message)) { forgetJob(); currentJob = null; updateGenerateButton(); return; }
-      $('cr-dialog-message').textContent = error.message;
+      $('brt-dialog-message').textContent = error.message;
       pollTimer = window.setTimeout(() => poll(jobId), 5000);
     }
   }
@@ -985,41 +992,41 @@
   async function exportReport() {
     if (isPending(currentJob) && currentJob.id) { openPreview(); return; }
     stopPolling();
-    $('cr-preview').hidden = true;
-    $('cr-preview-nav').replaceChildren();
+    $('brt-preview').hidden = true;
+    $('brt-preview-nav').replaceChildren();
     viewerImage.removeAttribute('src');
     stage.classList.remove('is-empty', 'is-loading');
-    showJob({id: '', status: 'queued', progress: 0, message: 'Starting…', title: $('cr-title').value.trim() || $('cr-name').value.trim() || 'Complete Report',
+    showJob({id: '', status: 'queued', progress: 0, message: 'Starting…', title: $('brt-title').value.trim() || $('brt-name').value.trim() || 'Drive Test Analyzer Report',
       warnings: [], formats: {}, outline: []});
     if (!dialog.open) dialog.showModal();
     try {
-      const result = await api('/api/reporting/complete-report/jobs', {method: 'POST', body: JSON.stringify({
-        definition: collect(), name: $('cr-name').value.trim(), refresh: !$('cr-reuse').checked,
+      const result = await api('/api/reporting/bundle-report-template/jobs', {method: 'POST', body: JSON.stringify({
+        definition: collect(), name: $('brt-name').value.trim(), refresh: !$('brt-reuse').checked,
       })});
       showJob(result.job);
       rememberJob(result.job);
       pollTimer = window.setTimeout(() => poll(result.job.id), 1000);
     } catch (error) {
-      showJob({id: '', status: 'failed', progress: 0, message: error.message, error: error.message, title: 'Complete Report',
+      showJob({id: '', status: 'failed', progress: 0, message: error.message, error: error.message, title: 'Drive Test Analyzer Report',
         warnings: [], formats: {}, outline: []});
     }
   }
 
-  root.querySelectorAll('[data-cr-export]').forEach((button) => button.addEventListener('click', () => {
+  root.querySelectorAll('[data-brt-export]').forEach((button) => button.addEventListener('click', () => {
     // While a report is generated, Generate opens its progress again, with Cancel and Hide (also before the panel and
     // the progress of a report followed after a reload have arrived).
     if (isPending(currentJob) && currentJob.id) { openPreview(); return; }
     if (!currentJob && resumingJob) {
       jobSeenAt = Date.now();
       currentJob = {id: resumingJob.id, status: 'running', progress: 0, message: 'Following the report being generated…',
-        title: resumingJob.title || 'Complete Report', warnings: [], formats: {}, outline: []};
+        title: resumingJob.title || 'Drive Test Analyzer Report', warnings: [], formats: {}, outline: []};
       openPreview();
       return;
     }
-    if (!definition) { status('The Complete Report is still loading.', 'error'); return; }
+    if (!definition) { status('The Bundle Report Template is still loading.', 'error'); return; }
     void exportReport();
   }));
-  $('cr-format-switch').querySelectorAll('[data-cr-format]').forEach((button) => button.addEventListener('click', () => switchFormat(button.dataset.crFormat)));
+  $('brt-format-switch').querySelectorAll('[data-brt-format]').forEach((button) => button.addEventListener('click', () => switchFormat(button.dataset.brtFormat)));
   // Hide keeps the report being generated; Cancel stops it; once it has finished, the dialog closes.
   const hideDialog = () => { dialog.close(); updateGenerateButton(); };
   async function cancelJob() {
@@ -1027,18 +1034,22 @@
     stopPolling();
     forgetJob();
     if (job?.id) {
-      try { showJob((await api(`/api/reporting/complete-report/jobs/${job.id}/cancel`, {method: 'POST'})).job); } catch {}
+      try { showJob((await api(`/api/reporting/bundle-report-template/jobs/${job.id}/cancel`, {method: 'POST'})).job); } catch {}
     }
     currentJob = null;
     dialog.close();
     updateGenerateButton();
-    status('The Complete Report was cancelled.');
+    status('The report was cancelled.');
   }
-  $('cr-dialog-close').addEventListener('click', () => (isPending(currentJob) ? hideDialog() : dialog.close()));
-  $('cr-dialog-hide').addEventListener('click', hideDialog);
-  $('cr-dialog-cancel').addEventListener('click', () => { void cancelJob(); });
-  $('cr-dialog-done').addEventListener('click', () => dialog.close());
-  $('cr-open-last').addEventListener('click', () => { if (currentJob?.status === 'ready') openPreview(); });
+  $('brt-dialog-close').addEventListener('click', () => (isPending(currentJob) ? hideDialog() : dialog.close()));
+  $('brt-dialog-hide').addEventListener('click', hideDialog);
+  $('brt-dialog-cancel').addEventListener('click', () => { void cancelJob(); });
+  $('brt-dialog-done').addEventListener('click', () => dialog.close());
+  $('brt-open-last').addEventListener('click', () => {
+    if (!lastReport || (isPending(currentJob) && currentJob.id)) return;
+    currentJob = lastReport;
+    openPreview();
+  });
   // Escape hides a report being generated, as Hide does.
   dialog.addEventListener('cancel', (event) => { if (isPending(currentJob)) { event.preventDefault(); hideDialog(); } });
   dialog.addEventListener('close', updateGenerateButton);
@@ -1046,11 +1057,11 @@
   // A report generated before this page opened (in the background, or from another page): its dialog follows it.
   let resumingJob = null;
   async function resumeJob() {
-    const asked = new URLSearchParams(window.location.search).get('complete_report_job');
+    const asked = new URLSearchParams(window.location.search).get('bundle_report_template_job');
     if (asked) {
       // Opened once: reloading the page does not open it again.
       const url = new URL(window.location.href);
-      url.searchParams.delete('complete_report_job');
+      url.searchParams.delete('bundle_report_template_job');
       window.history.replaceState(window.history.state, '', url);
     }
     let stored = null;
@@ -1058,13 +1069,13 @@
     const jobId = asked || stored?.id;
     if (!jobId) return;
     // Generate tells at once that a report is being generated, before its progress arrives.
-    const label = root.querySelector('[data-cr-export] span');
+    const label = root.querySelector('[data-brt-export] span');
     if (label && !asked && !stored?.notified && !currentJob) {
       label.textContent = 'Generating…';
       resumingJob = {id: jobId, title: stored?.title};
     }
     try {
-      const {job} = await api(`/api/reporting/complete-report/jobs/${jobId}`);
+      const {job} = await api(`/api/reporting/bundle-report-template/jobs/${jobId}`);
       resumingJob = null;
       // Its progress opened meanwhile from Generate: the dialog shows what arrived.
       const opened = dialog.open && currentJob?.id === job.id;
@@ -1085,26 +1096,29 @@
 
   // -- start -------------------------------------------------------------------------------------------
   async function load() {
-    // The favourites come with the Complete Report options and show at once; the filter values of every CDR (the
+    // The favourites come with the Bundle Report Template options and show at once; the filter values of every CDR (the
     // Reporting options) arrive after them and complete the panel.
     const optionsRequest = api('/api/reporting/options');
     optionsRequest.catch(() => {});
     let draft = null;
-    try { draft = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null'); } catch {}
+    // A draft saved when Bundle Report Templates had a former name is restored too.
+    const formerDraftKeys = ['reporting:bundle-reports-template:draft', 'reporting:reporting-jobs-template:draft', 'reporting:complete-report:draft'];
+    try { draft = JSON.parse([DRAFT_KEY, ...formerDraftKeys].map((key) => localStorage.getItem(key)).find(Boolean) || 'null'); } catch {}
     try {
-      crOptions = await api('/api/reporting/complete-report/options');
-      favourites = crOptions.favourites || [];
+      brtOptions = await api('/api/reporting/bundle-report-template/options');
+      favourites = brtOptions.favourites || [];
+      if (!lastReport && brtOptions.last_report) { lastReport = brtOptions.last_report; updateGenerateButton(); }
       renderFavourites(draft?.favourite || '');
-      $('cr-name').value = draft?.name || '';
-      $('cr-favourite').disabled = true;
+      $('brt-name').value = draft?.name || '';
+      $('brt-favourite').disabled = true;
       options = await optionsRequest;
     } catch (error) {
       status(error.message, 'error');
-      $('cr-filters').replaceChildren(node('p', error.message, 'form-note'));
+      $('brt-filters').replaceChildren(node('p', error.message, 'form-note'));
       return;
     }
-    $('cr-favourite').disabled = false;
-    definition = clone(draft?.definition && draft.definition.sections ? mergeDefaults(draft.definition) : crOptions.defaults);
+    $('brt-favourite').disabled = false;
+    definition = clone(draft?.definition && draft.definition.sections ? mergeDefaults(draft.definition) : brtOptions.defaults);
     render();
     if (options.catalogues_pending) status('The filter values of some CDRs are being prepared in the background; reload the page in a few minutes to see all of them.', 'info');
   }
@@ -1112,7 +1126,7 @@
   // A draft saved by an earlier version gets the sections and options it lacks; the Campaigns it had as a common filter
   // go to every section.
   function mergeDefaults(saved) {
-    const defaults = clone(crOptions.defaults);
+    const defaults = clone(brtOptions.defaults);
     const legacy = saved.filters?.campaigns !== undefined ? {campaigns: saved.filters.campaigns} : {};
     const sections = (saved.sections || []).filter((section) => defaults.sections.some((item) => item.key === section.key));
     defaults.sections.forEach((section) => {

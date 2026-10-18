@@ -74,6 +74,20 @@ MODULE_FEATURES = {
 # ``generate(config, folder, stamp, user)`` returns artifact dictionaries; the
 # config's ``options`` holds the chosen ``filters`` and ``settings``.
 ARTIFACT_PROVIDERS: dict[str, dict[str, Any]] = {}
+# The artifacts of jobs saved when Bundle Report Templates had a former name (Complete Reports, then briefly Reporting
+# Jobs Templates and Bundle Reports Templates), and the key that replaced each.
+LEGACY_PROVIDER_KEYS = {'complete_report': 'bundle_report_template', 'reporting_jobs_template': 'bundle_report_template',
+                        'bundle_reports_template': 'bundle_report_template'}
+
+
+def _current_provider_keys(definition: Any) -> bool:
+    """Give in place the artifacts of a job saved with a former key their current key; returns whether any changed."""
+    modules = definition.get('modules') if isinstance(definition, dict) else None
+    if not isinstance(modules, dict) or not any(key in LEGACY_PROVIDER_KEYS for key in modules):
+        return False
+    definition['modules'] = {LEGACY_PROVIDER_KEYS.get(key, key): config for key, config in modules.items()
+                             if not (key in LEGACY_PROVIDER_KEYS and LEGACY_PROVIDER_KEYS[key] in modules)}
+    return True
 
 
 def register_report_artifact_provider(
@@ -132,14 +146,16 @@ def now_local() -> datetime:
     return datetime.now().astimezone()
 
 
-# The databases whose jobs already store their one theme (see _store_job_themes), once per process.
-_JOB_THEMES_STORED: set[str] = set()
-_JOB_THEMES_LOCK = Lock()
+# The databases whose jobs already store their one theme and current artifact keys (see _store_legacy_jobs), once per
+# process.
+_LEGACY_JOBS_STORED: set[str] = set()
+_LEGACY_JOBS_LOCK = Lock()
 
 
-def _store_job_themes(connection: Any) -> None:
+def _store_legacy_jobs(connection: Any) -> None:
     """Jobs saved before every job had one theme store it: the default theme (Ericsson) for those without one, and the
-    themes their Network Insights and Scoring artifacts had are dropped (the theme of the job colours them)."""
+    themes their Network Insights and Scoring artifacts had are dropped (the theme of the job colours them). Jobs saved
+    when Bundle Report Templates had a former name store their current artifact key."""
     for job_id, raw in connection.execute(f'SELECT id, definition_json FROM {REPORT_TASKS_TABLE}').fetchall():
         try:
             definition = json.loads(raw or '{}')
@@ -147,9 +163,10 @@ def _store_job_themes(connection: Any) -> None:
             continue
         if not isinstance(definition, dict):
             continue
-        changed = not str(definition.get('theme') or '').strip()
-        if changed:
+        changed = _current_provider_keys(definition)
+        if not str(definition.get('theme') or '').strip():
             definition['theme'] = DEFAULT_THEME
+            changed = True
         network = definition.get('network_insights')
         for entry in (network if isinstance(network, list) else [network]):
             if isinstance(entry, dict) and 'theme' in entry:
@@ -168,10 +185,10 @@ def ensure_report_task_tables(task_repository: Any) -> None:
     with task_repository.connection() as connection:
         connection.executescript(SCHEMA)
         database = str(getattr(task_repository, 'db_path', ''))
-        with _JOB_THEMES_LOCK:
-            if database not in _JOB_THEMES_STORED:
-                _store_job_themes(connection)
-                _JOB_THEMES_STORED.add(database)
+        with _LEGACY_JOBS_LOCK:
+            if database not in _LEGACY_JOBS_STORED:
+                _store_legacy_jobs(connection)
+                _LEGACY_JOBS_STORED.add(database)
         # The order of the jobs table (dragged by the users); jobs saved before it keep their alphabetical order.
         if 'position' not in {row[1] for row in connection.execute(f'PRAGMA table_info({REPORT_TASKS_TABLE})')}:
             try:
@@ -350,10 +367,11 @@ def normalize_definition(raw: Any) -> dict[str, Any]:
         # Artifacts of modules registered in ARTIFACT_PROVIDERS.
         'modules': {},
         # The one colour theme of the job, read by every artifact that supports themes (CDR Analysis, Network Insights,
-        # Scoring & GAP Analysis, PPT Dashboards and Complete Reports); jobs without one take the default theme.
+        # Scoring & GAP Analysis, PPT Dashboards and Bundle Report Templates); jobs without one take the default theme.
         'theme': normalize_theme(str(raw.get('theme') or '').strip() or DEFAULT_THEME),
     }
     for key, config in (raw.get('modules') or {}).items() if isinstance(raw.get('modules'), dict) else ():
+        key = LEGACY_PROVIDER_KEYS.get(key, key)
         provider = ARTIFACT_PROVIDERS.get(key)
         if provider and isinstance(config, dict) and config.get('enabled'):
             formats = [value for value in _strings(config.get('formats')) if value in provider['formats']] or [provider['formats'][0]]
@@ -495,13 +513,13 @@ def recurrence_label(schedule: dict[str, Any]) -> str:
 
 
 def _chosen_favourites(definition: dict[str, Any]) -> list[str]:
-    """The IDs of the favourite Complete Reports a job generates (none: every favourite)."""
-    report = (definition.get('modules') or {}).get('complete_report') or {}
+    """The IDs of the favourite Bundle Report Templates a job generates (none: every favourite)."""
+    report = (definition.get('modules') or {}).get('bundle_report_template') or {}
     return [str(value) for value in ((report.get('options') or {}).get('filters') or {}).get('favourites') or []]
 
 
 def _favourite_items(config: dict[str, Any], favourite_names: dict[str, str] | None) -> list[str]:
-    """The favourite Complete Reports a Complete Report artifact generates (every one when it chooses none). One that
+    """The favourite Bundle Report Templates a Bundle Report Template artifact generates (every one when it chooses none). One that
     no longer exists is named as the job keeps it (by its name, or its ID for those deleted before)."""
     chosen = [str(value) for value in ((config.get('options') or {}).get('filters') or {}).get('favourites') or []]
     return [(favourite_names or {}).get(value) or (f'Favourite {value}' if value.isdigit() else value) for value in chosen] or ['Every favourite']
@@ -535,7 +553,7 @@ def artifact_groups(definition: dict[str, Any], dashboard_names: dict[str, str] 
         groups.append({'module': 'Scoring & GAP Analysis', 'items': scoring})
     for key, config in (definition.get('modules') or {}).items():
         provider = ARTIFACT_PROVIDERS.get(key)
-        if key == 'complete_report':
+        if key == 'bundle_report_template':
             chosen = _chosen_favourites(definition)
             items = [f'{name} {formats(config.get("formats"))}' for name in _favourite_items(config, favourite_names)]
             groups.append({'module': provider['label'] if provider else key, 'items': items,
@@ -547,10 +565,10 @@ def artifact_groups(definition: dict[str, Any], dashboard_names: dict[str, str] 
 
 
 def based_on_favourite(definition: dict[str, Any]) -> bool:
-    """Whether a job only generates one favourite Complete Report (made from a favourite in the Job Editor)."""
-    report = (definition.get('modules') or {}).get('complete_report') or {}
+    """Whether a job only generates one favourite Bundle Report Template (made from a favourite in the Job Editor)."""
+    report = (definition.get('modules') or {}).get('bundle_report_template') or {}
     others = (bool((definition.get('dataset_analysis') or {}).get('enabled')) or any(definition.get(key) for key in ('network_insights', 'dashboards', 'scoring'))
-              or any(key != 'complete_report' and (module or {}).get('enabled') for key, module in (definition.get('modules') or {}).items()))
+              or any(key != 'bundle_report_template' and (module or {}).get('enabled') for key, module in (definition.get('modules') or {}).items()))
     return bool(report.get('enabled')) and len(_chosen_favourites(definition)) == 1 and not others
 
 
@@ -574,7 +592,7 @@ def artifact_labels(definition: dict[str, Any], dashboard_names: dict[str, str] 
             labels.append(f"{MODULE_LABELS['scoring']} · {name} ({formats})")
     for key, config in (definition.get('modules') or {}).items():
         provider = ARTIFACT_PROVIDERS.get(key)
-        named = f" · {', '.join(_favourite_items(config, favourite_names))}" if key == 'complete_report' else ''
+        named = f" · {', '.join(_favourite_items(config, favourite_names))}" if key == 'bundle_report_template' else ''
         labels.append(f"{provider['label'] if provider else key}{named} ({'/'.join(FORMAT_LABELS.get(value, value) for value in config.get('formats') or [])})")
     return labels
 
@@ -641,7 +659,7 @@ def reorder_tasks(task_repository: Any, task_ids: list[int]) -> list[dict[str, A
 
 
 def favourite_jobs(task_repository: Any, favourite_id: int) -> dict[str, list[str]]:
-    """The names of the jobs based on a favourite Complete Report and of the other jobs that generate it."""
+    """The names of the jobs based on a favourite Bundle Report Template and of the other jobs that generate it."""
     value, jobs = str(favourite_id), {'based_on': [], 'others': []}
     for task in list_tasks(task_repository):
         if value in _chosen_favourites(task['definition']):
@@ -650,7 +668,7 @@ def favourite_jobs(task_repository: Any, favourite_id: int) -> dict[str, list[st
 
 
 def rename_favourite_jobs(task_repository: Any, favourite_id: int, old_name: str, name: str) -> list[dict[str, Any]]:
-    """A renamed favourite Complete Report renames the jobs based on it that have its former name (a job from a
+    """A renamed favourite Bundle Report Template renames the jobs based on it that have its former name (a job from a
     favourite takes its name); returns them: [{'id', 'name', 'old_name'}]."""
     value, renamed = str(favourite_id), []
     if old_name == name:
@@ -666,7 +684,7 @@ def rename_favourite_jobs(task_repository: Any, favourite_id: int, old_name: str
 
 
 def forget_favourite(task_repository: Any, favourite_id: int, name: str) -> list[dict[str, Any]]:
-    """A deleted favourite Complete Report in the jobs that generate it: they name it from now on (the jobs table says
+    """A deleted favourite Bundle Report Template in the jobs that generate it: they name it from now on (the jobs table says
     it no longer exists, and an empty list would generate every favourite), and those based on it are disabled.
     Returns those jobs: [{'id', 'name', 'disabled'}]."""
     value = str(favourite_id)
@@ -678,7 +696,7 @@ def forget_favourite(task_repository: Any, favourite_id: int, name: str) -> list
         if value not in _chosen_favourites(task['definition']):
             continue
         definition = json.loads(json.dumps(task['definition']))
-        filters = definition['modules']['complete_report'].setdefault('options', {}).setdefault('filters', {})
+        filters = definition['modules']['bundle_report_template'].setdefault('options', {}).setdefault('filters', {})
         filters['favourites'] = list(dict.fromkeys(kept if item == value else item for item in _chosen_favourites(definition)))
         disabled = based_on_favourite(definition) and task['enabled']
         with task_repository.connection() as connection:
@@ -890,13 +908,13 @@ def _remap_dataset_ids(definition: dict[str, Any], mapping: dict[int, int]) -> d
 
 
 def export_tasks_document(task_repository: Any) -> bytes:
-    """Portable Reporting Jobs; dataset references also carry their file names. The favourite Complete Reports travel
-    as an element of their own (Complete Report Favourites)."""
+    """Portable Reporting Jobs; dataset references also carry their file names. The favourite Bundle Report Templates travel
+    as an element of their own (Bundle Report Template Favourites)."""
     tasks = list_tasks(task_repository)
     names = {int(row['id']): str(row['file_name']) for row in task_repository.list_datasets()}
     used = set().union(*(_definition_dataset_ids(task['definition']) for task in tasks)) if tasks else set()
-    # The favourite Complete Reports a job generates are named, so the workspace that receives it finds its own.
-    from src.modules.complete_reports import list_favourites
+    # The favourite Bundle Report Templates a job generates are named, so the workspace that receives it finds its own.
+    from src.modules.bundle_report_templates import list_favourites
     favourite_names = {str(item['id']): item['name'] for item in list_favourites(task_repository)}
     chosen = {value for task in tasks for value in _chosen_favourites(task['definition'])}
     document = {
@@ -911,7 +929,7 @@ def export_tasks_document(task_repository: Any) -> bytes:
 
 
 def _remap_favourites(definition: dict[str, Any], source_names: dict[str, str], destination: dict[str, str]) -> dict[str, Any]:
-    """A job of another workspace with the IDs of the favourite Complete Reports of the same name here. A favourite not
+    """A job of another workspace with the IDs of the favourite Bundle Report Templates of the same name here. A favourite not
     found here is kept by its name (an empty list would generate every favourite; the run reports that it has none to
     generate) and documents that do not name them keep their IDs."""
     chosen = _chosen_favourites(definition)
@@ -924,7 +942,7 @@ def _remap_favourites(definition: dict[str, Any], source_names: dict[str, str], 
 
     mapped = list(dict.fromkeys(mapped_value(value) for value in chosen))
     definition = json.loads(json.dumps(definition))
-    definition['modules']['complete_report'].setdefault('options', {}).setdefault('filters', {})['favourites'] = mapped
+    definition['modules']['bundle_report_template'].setdefault('options', {}).setdefault('filters', {})['favourites'] = mapped
     return definition
 
 
@@ -948,8 +966,8 @@ def import_tasks_document(
         destination.setdefault(str(row['file_name']).casefold(), int(row['id']))
     mapping = {source_id: destination[name.casefold()] for source_id, name in source_names.items() if name.casefold() in destination}
     existing = {task['name'].casefold(): task['id'] for task in list_tasks(task_repository)}
-    # Favourite Complete Reports are matched by name too (they are imported before the jobs, as their own element).
-    from src.modules.complete_reports import list_favourites
+    # Favourite Bundle Report Templates are matched by name too (they are imported before the jobs, as their own element).
+    from src.modules.bundle_report_templates import list_favourites
     favourite_names = {str(key): str(value) for key, value in (document.get('favourite_names') or {}).items()}
     favourites_here = {item['name'].casefold(): str(item['id']) for item in list_favourites(task_repository)}
     imported, ordered = 0, []
@@ -959,7 +977,9 @@ def import_tasks_document(
         schedule = dict(item.get('schedule') or {})
         if schedule.get('mode') == 'once' and next_run_after(normalize_schedule(schedule), now_local()) is None:
             schedule['mode'] = 'manual'  # A past single execution cannot be scheduled again.
-        definition = _remap_favourites(_remap_dataset_ids(item.get('definition') or {}, mapping), favourite_names, favourites_here)
+        definition = json.loads(json.dumps(item.get('definition') or {}))
+        _current_provider_keys(definition)  # Jobs exported when Bundle Report Templates had a former name.
+        definition = _remap_favourites(_remap_dataset_ids(definition, mapping), favourite_names, favourites_here)
         source_owner = str(item.get('created_by') or '').strip()
         owner = source_owner if source_owner and user_exists(source_owner) else username
         task = save_task(task_repository, existing.get(str(item.get('name') or '').strip().casefold()),
@@ -973,9 +993,9 @@ def import_tasks_document(
         # the order leave new jobs at the end).
         reorder_tasks(task_repository, [task_id for _position, _index, task_id in sorted(ordered)])
     if document.get('complete_reports'):
-        # Documents that carried the favourite Complete Reports with the Reporting Jobs: their Dashboards are found here
+        # Documents that carried the favourite Bundle Report Templates with the Reporting Jobs: their Dashboards are found here
         # by their name.
-        from src.modules.complete_reports import import_entries, workspace_dashboards
+        from src.modules.bundle_report_templates import import_entries, workspace_dashboards
         import_entries(task_repository, document['complete_reports'], username, workspace_dashboards(task_repository))
     return imported
 
@@ -1403,8 +1423,8 @@ def install_report_task_routes(core: Any) -> None:
             for export_format in entry.get('formats') or ['powerpoint']:
                 suffix = '.docx' if export_format == 'word' else '.pptx'
                 destination = artifact_path(folder, stamp, 'Scoring & GAP Analysis', entry.get('label') or Path(filename).stem, suffix)
-                # Composed as the Scoring section of a Complete Report (PowerPoint and Word alike).
-                from src.modules.complete_reports import module_document
+                # Composed as the Scoring section of a Bundle Report Template (PowerPoint and Word alike).
+                from src.modules.bundle_report_templates import module_document
                 destination.write_bytes(module_document('scoring', content, export_format, 'Scoring & GAP Analysis'))
                 artifacts.append(ready_artifact('scoring', f"{title} ({FORMAT_LABELS[export_format]})", destination,
                                                 scoring_details(export_job, entry, names)))
@@ -1453,7 +1473,7 @@ def install_report_task_routes(core: Any) -> None:
                           **{module: ({'enabled': False} if module == 'dataset_analysis' else [])
                              for module, permitted in allowed.items() if not permitted and module in MODULE_FEATURES},
                           'modules': {key: value for key, value in (definition.get('modules') or {}).items() if allowed.get(key)}}
-            # The theme of the job colours every artifact that supports themes, also the favourite Complete Reports it
+            # The theme of the job colours every artifact that supports themes, also the favourite Bundle Report Templates it
             # generates (it prevails over theirs).
             theme = normalize_theme(definition.get('theme') or DEFAULT_THEME)
             if theme:
@@ -1746,9 +1766,9 @@ def install_report_task_routes(core: Any) -> None:
         tools = getattr(core, 'dashboard_reporting', None)
         dashboard_names = {str(key): str(value.get('name') or key) for key, value in tools.list_dashboards(task_repository).items()
                            if isinstance(value, dict)} if tools is not None else {}
-        # The jobs that generate favourite Complete Reports name them and list what each one includes.
+        # The jobs that generate favourite Bundle Report Templates name them and list what each one includes.
         try:
-            from src.modules.complete_reports import favourite_contents as contents_of, list_favourites
+            from src.modules.bundle_report_templates import favourite_contents as contents_of, list_favourites
             favourites = list_favourites(task_repository)
             favourite_names = {str(item['id']): item['name'] for item in favourites}
             favourite_contents = {str(item['id']): contents_of(item['definition'], dashboard_names) for item in favourites}

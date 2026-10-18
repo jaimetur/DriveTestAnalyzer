@@ -3,7 +3,7 @@ theme, a pill with the tests it covers, the charts drawn as native shapes (stack
 bars and bandwidth ladders), what it means in a box with an accent bar, and the basis and footnote.
 
 Every colour comes from the active theme (see scoring_themes): its five-step scale for the classes, its series for the
-bands and its accent for the headline. The Word version renders these same slides (see complete_reports.compose_word).
+bands and its accent for the headline. The Word version renders these same slides (see bundle_report_templates.compose_word).
 """
 from __future__ import annotations
 
