@@ -72,11 +72,28 @@ def _runs(paragraph: Any, parts: list[tuple[str, bool]]) -> list[tuple[Any, bool
     return written
 
 
+def paint_slide(slide: Any, theme: dict[str, Any] | None = None) -> bool:
+    """The background of a content slide in a dark theme (its ``slide`` colour, night blue in Midnight) with the white
+    logos of the template; light themes leave the slide as it is. The content of a dark slide turns dark when the deck
+    is finished (theme_dark.darken_presentation)."""
+    theme = theme or active_theme()
+    colour = str(theme.get('slide') or '#FFFFFF').upper()
+    if colour == '#FFFFFF':
+        return False
+    slide.background.fill.solid()
+    slide.background.fill.fore_color.rgb = _rgb(colour)
+    from src.modules.template_logos import use_white_logos
+    use_white_logos(slide)
+    return True
+
+
 def style_title(slide: Any, *, subtitle_size: float | None = None, theme: dict[str, Any] | None = None) -> None:
     """Give the title (its first paragraph) and the subtitle (the other paragraphs) of a content slide the style of the
-    theme, its focus found in its text (see split_focus). ``subtitle_size`` replaces the size of the subtitle of the theme (a subtitle made smaller to fit its line)."""
+    theme, its focus found in its text (see split_focus). ``subtitle_size`` replaces the size of the subtitle of the theme (a subtitle made smaller to fit its line).
+    In a dark theme the slide takes its dark background too (see paint_slide)."""
     from src.modules.slide_titles import fit_slide_title
 
+    paint_slide(slide, theme)
     shape = _title_shape(slide)
     if shape is None or not shape.text_frame.paragraphs:
         return

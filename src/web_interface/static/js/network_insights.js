@@ -94,6 +94,9 @@
   const applyTheme = () => {
     const root = $('network-insights');
     root.dataset.niTheme = activeTheme.id || 'netcheck';
+    // The CDFs and maps in the font and colours of the theme (dark cards in a dark theme).
+    globalThis.dashboardChartStyle = (config.chart_styles || {})[activeTheme.id] || null;
+    globalThis.redrawDashboardCharts?.();
     const colours = window.NetworkInsightsFindings?.palette(activeTheme);
     if (!colours) return;
     themeColours = colours;

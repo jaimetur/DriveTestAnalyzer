@@ -98,9 +98,15 @@ def content_shapes(slide: Any) -> list[Any]:
     """The shapes of a slide besides its title: tables, charts, pictures, text and drawings (empty placeholders left
     out)."""
     title = title_shape(slide)
+    # The logos and footer copied onto a slide of a dark theme stay where the template puts them.
+    from src.modules.template_logos import decoration_names
+    from src.modules.theme_dark import dark_theme_of
+    decorations = decoration_names(slide) if dark_theme_of(slide) is not None else set()
     shapes = []
     for shape in slide.shapes:
         if title is not None and shape.shape_id == title.shape_id:
+            continue
+        if not shape.is_placeholder and shape.name in decorations:
             continue
         if shape.is_placeholder and shape.has_text_frame and not shape.text_frame.text.strip():
             continue

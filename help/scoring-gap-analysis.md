@@ -171,7 +171,7 @@ The **Theme** selector, beside Scoring and Environment, gives every chart and ta
 | **Umlaut** | As the umlaut benchmark reports: bold dark titles over a red headline, white lists with thin rules, light grey panels and quality classes from red to green | Bars as long as the share of the maximum, in the colour of the score band |
 | **Ericsson** | The colours of the Ericsson brand guide: its greys, table headers in its deep blue, the light tints of its colours for the fills and its deep shades for the ends of each scale; dark grey rules opening the sections and closing the table, each operator ruled in its colour across all its columns | Square cells filled as far as the share of the maximum, in the tint of the band; GAPs in dark grey after a small ▲ or ▼ in their colour, over a bar either side of zero |
 | **Vodafone** | Vodafone red and anthracite, operators as pills in their colour, a dark grey total | Rounded pills tinted with the score band |
-| **Midnight** | Navy panels with light text and neon accents | Dark cards with a glowing bar of the share of the maximum |
+| **Midnight** | The dark theme: night-blue panels with light text and neon accents; in the PowerPoint and Word exports the content slides are night blue with the logos in white, and every table, card, panel and chart on them is dark | Dark cards with a glowing bar of the share of the maximum |
 | **Paper** | A typeset report: serif type, black rules, italic small-capital sections | Scores underlined in the colour of their band |
 | **Heatmap** | Light panels with a red, amber, green and teal heat scale and outlined subtotals | Soft tiles tinted by the share of the maximum on the scale of their band |
 
@@ -183,7 +183,7 @@ Each theme also styles the titles and subtitles of every content slide of the Po
 | **Umlaut** | Arial, bold, dark | Red |
 | **Ericsson** | Ericsson Hilda Light in black, not bold; only what tells the slide apart from the next ones in Ericsson Hilda, bold and in the deep Ericsson blue | Grey |
 | **Vodafone** | Vodafone Rg, bold anthracite, what tells the slide apart in red | Anthracite |
-| **Midnight** | Segoe UI, bold navy, what tells the slide apart in cyan | Cyan |
+| **Midnight** | Segoe UI, bold and light on the night-blue slide, what tells the slide apart in cyan | Cyan |
 | **Paper** | Georgia, black, what tells the slide apart in dark red italics | Dark red italics |
 | **Heatmap** | Segoe UI, bold, what tells the slide apart in teal | Grey |
 

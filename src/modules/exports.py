@@ -17,7 +17,7 @@ from src.modules.scoring_themes import active_theme, blend
 from src.utils.fonts import load_image_font
 
 # Bump whenever the PowerPoint layout changes: exports are cached by this version and their content.
-POWERPOINT_EXPORT_VERSION = "2026-10-18-v12"
+POWERPOINT_EXPORT_VERSION = "2026-10-18-v13"
 PPT_WIDTH_IN = 13.333
 PPT_HEIGHT_IN = 7.5
 SLIDE_WIDTH = 1280

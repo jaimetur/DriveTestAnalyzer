@@ -630,6 +630,14 @@ body:has(dialog.ni-expand-dialog[open]){overflow:hidden}
 .network-insights[data-ni-theme="midnight"] .ni-table-wrap{border-color:#22314a;box-shadow:0 0 0 1px rgba(61,185,255,.12)}
 .network-insights[data-ni-theme="midnight"] :is(.ni-class-bar,.ni-share,.ni-inline-bar){box-shadow:0 0 8px rgba(61,185,255,.35)}
 .network-insights[data-ni-theme="midnight"] .ni-finding{box-shadow:0 0 0 1px #22314a,0 18px 40px rgba(0,0,0,.35)}
+/* Midnight: the result panels in its night blue, as its slides; the Analysis Selection keeps the look of the page. */
+.network-insights[data-ni-theme="midnight"] .ni-panel{background:#0b1220!important;border-color:#22314a!important;color:#dce6f2}
+.network-insights[data-ni-theme="midnight"] .ni-panel :is(h2,h3,h4,h5,strong,summary){color:#e6edf7}
+.network-insights[data-ni-theme="midnight"] .ni-panel :is(p,small,label,.form-note,.eyebrow){color:#9fb1cc}
+.network-insights[data-ni-theme="midnight"] .ni-panel :is(.ni-operator-card,.ni-chart-card,.ni-map-toolbar,.ni-control-group,.ni-note,.ni-ladder,.ni-secondary-action){background:#0f1726!important;border-color:#22314a!important;color:#dce6f2}
+.network-insights[data-ni-theme="midnight"] .ni-panel .ni-pending-box{background:#2a2410!important;border-color:#5a4a1a!important;color:#ffd27a!important}
+.network-insights[data-ni-theme="midnight"] .ni-panel .ni-scope-pill{background:#16233a!important;color:#cfe0f5!important;border-color:#2a3b58!important}
+.network-insights[data-ni-theme="midnight"] .ni-panel :is(select,input,.multiselect-trigger){background-color:#0f1726!important;color:#dce6f2!important;border-color:#2a3b58!important}
 /* Paper: a printed page, serif type, black rules and no fills. */
 .network-insights[data-ni-theme="paper"] .ni-table{font-family:Georgia,"Times New Roman",serif}
 .network-insights[data-ni-theme="paper"] .ni-table th{background:transparent!important;color:#1a1a1a!important;font-style:italic;border-bottom:1px solid #1a1a1a}

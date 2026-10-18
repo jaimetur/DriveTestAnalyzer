@@ -39,7 +39,7 @@ from src.modules.output_layout import NETWORK_INSIGHTS_FOLDER, module_output_dir
 from src.modules import inventory_insights as ii
 from src.modules import network_insights_favourites as ni_favourites
 from src.modules.network_insights_findings import findings_payload, mode_of_test
-from src.modules.scoring_themes import THEMES, load_user_theme, normalize_theme, save_user_theme, themes_payload, use_theme
+from src.modules.scoring_themes import THEMES, dashboard_chart_style, load_user_theme, normalize_theme, save_user_theme, themes_payload, use_theme
 from src.modules.network_inventory import dataset_revision, effective_snapshot_date, ensure_inventory_cells, network_family
 from src.modules.network_inventory import inventory_datasets as snapshot_datasets
 from src.modules.serving_cells import load_serving_networks, serving_families
@@ -1877,6 +1877,8 @@ def install_network_insights_routes(core: Any) -> None:
                 # The colour themes of Scoring & GAP Analysis, for the charts, tables and exports (see scoring_themes).
                 'themes': themes_payload()['themes'],
                 'theme': load_user_theme(task_repository, user.username, THEME_MODULE),
+                # The font and colours of each theme for the CDFs and maps (dashboard_charts.js).
+                'chart_styles': {key: dashboard_chart_style(key) for key in THEMES},
             },
         })
 
@@ -3338,7 +3340,9 @@ def install_network_insights_routes(core: Any) -> None:
                 for table in grouped['deployment']]})
         deployment = {'groupings': groupings, 'cluster_inventories': cluster_inventory_summary(), 'snapshot': snapshot,
                       'nr_duplex': nr_duplex_payload(task_repository, NrDuplexRequest.model_validate(request.model_dump()))}
-        render = lambda payload, width, height: _render_dashboard_payload(payload, width=width, height=height)[0]
+        # The CDFs and maps in the font and colours of the theme (on the dark cards of a dark theme).
+        chart_style = dashboard_chart_style()
+        render = lambda payload, width, height: _render_dashboard_payload({**payload, 'style': chart_style}, width=width, height=height)[0]
         chosen = {} if components is None else {'components': components}
         if not compose:
             export_network_insights_powerpoint(destination, analysis, deployment, description, render, **chosen)

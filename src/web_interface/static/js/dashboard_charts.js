@@ -1468,15 +1468,20 @@
         return null;
       };
       const translate = value => {
-        const colours = styled.style?.colours;
-        if (!colours || typeof value !== 'string') return value;
-        return colours[value.toUpperCase()] || value;
+        const style = styled.style;
+        if (!style || typeof value !== 'string') return value;
+        const key = value.toUpperCase();
+        // A dark theme paints the white of the canvas, its panels and separators in its background.
+        if (style.background && (key === '#FFFFFF' || key === '#FFF')) return style.background;
+        return style.colours?.[key] || value;
       };
       ['fillStyle', 'strokeStyle'].forEach(name => {
         const base = descriptor(name);
         if (!base?.set) return;
+        if (name === 'fillStyle') styled.setFill = value => base.set.call(context, value);
         Object.defineProperty(context, name, {
-          configurable: true, get() { return base.get.call(context); }, set(value) { base.set.call(context, translate(value)); },
+          configurable: true, get() { return base.get.call(context); },
+          set(value) { if (name === 'fillStyle') styled.rawFill = value; base.set.call(context, translate(value)); },
         });
       });
       const fontBase = descriptor('font');
@@ -1492,6 +1497,16 @@
       styledContexts.set(context, styled);
     }
     styled.style = style && typeof style === 'object' ? style : null;
+    if (styled.style?.background) {
+      // White text (on headers and bars) stays white on a dark background.
+      const drawText = context.fillText;
+      context.fillText = (...args) => {
+        const raw = String(styled.rawFill || '').toUpperCase();
+        if (raw !== '#FFFFFF' && raw !== '#FFF') { drawText(...args); return; }
+        const current = context.fillStyle;
+        styled.setFill?.('#FFFFFF'); drawText(...args); styled.setFill?.(current);
+      };
+    }
   }
 
   function draw(canvas, payload) {

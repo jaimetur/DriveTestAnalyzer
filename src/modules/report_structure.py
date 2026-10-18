@@ -146,7 +146,8 @@ class Counter:
 
 def finish(presentation: Any) -> None:
     """Write the counter of every transition, in order, and give the cover and the transitions their sizes and places.
-    The cover is the first slide when it is a cover layout and no transition."""
+    The cover is the first slide when it is a cover layout and no transition. The slides of a dark theme turn their
+    content dark (theme_dark)."""
     from src.modules.pptx_compose import is_cover
 
     width = presentation.slide_width
@@ -159,3 +160,6 @@ def finish(presentation: Any) -> None:
             continue
         _write_counter(slide, counter.next(current))
         _place(slide, 'transition', width)
+    # The content of the slides of a dark theme (Midnight) on their dark background.
+    from src.modules.theme_dark import darken_presentation
+    darken_presentation(presentation)

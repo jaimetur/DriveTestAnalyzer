@@ -19,7 +19,8 @@ _NETCHECK = {
     'description': 'As the NetCheck reports: white lists with thin rules, Excel-like data bars in the colour of each score band, '
                    'GAP bars either side of zero, operators on strips in their colour and blue titles.',
     'font': 'Arial, "Helvetica Neue", Helvetica, sans-serif', 'number_font': 'Arial, "Helvetica Neue", Helvetica, sans-serif',
-    'surface': '#FFFFFF', 'ink': '#1F2A37', 'muted': '#8A96A0', 'line': '#E3E8EC', 'value_scale': 1.12,
+    # The background of the content slides (slide): white, night blue in the dark theme (Midnight).
+    'surface': '#FFFFFF', 'slide': '#FFFFFF', 'ink': '#1F2A37', 'muted': '#8A96A0', 'line': '#E3E8EC', 'value_scale': 1.12,
     'title': '#1450A8', 'title_accent': '#1450A8', 'subtitle': '#245A96', 'accent': '#245E5A',
     'header': '#455B65', 'header_text': '#FFFFFF', 'soft_header': '#EDF2F6', 'soft_header_text': '#344858',
     'weight': '#5B9A44', 'maximum': '#C9483F', 'gap_header': '#F6D55C', 'gap_cell': '#FFF6C2',
@@ -59,7 +60,7 @@ THEMES: dict[str, dict[str, Any]] = {
         'description': 'As the umlaut benchmark reports: bold dark titles over a red headline, white tables with thin rules and '
                        'bars in the colour of each band, light grey panels and quality classes from red to green.',
         'font': 'Arial, "Helvetica Neue", Helvetica, sans-serif', 'number_font': 'Arial, "Helvetica Neue", Helvetica, sans-serif',
-        'surface': '#FFFFFF', 'ink': '#1C1C28', 'muted': '#8C8C99', 'line': '#E4E2E6', 'value_scale': 1,
+        'surface': '#FFFFFF', 'slide': '#FFFFFF', 'ink': '#1C1C28', 'muted': '#8C8C99', 'line': '#E4E2E6', 'value_scale': 1,
         'title': '#1C1C28', 'title_accent': '#A6192E', 'subtitle': '#A6192E', 'accent': '#A6192E',
         'header': '#F4F2F4', 'header_text': '#3F3F4C', 'soft_header': '#F4F2F4', 'soft_header_text': '#1C1C28',
         'weight': '#5B7A99', 'maximum': '#A6192E', 'gap_header': '#F2D06B', 'gap_cell': '#FBF3D9',
@@ -91,7 +92,7 @@ THEMES: dict[str, dict[str, Any]] = {
                        'with a ▲ or ▼ over a bar.',
         'font': '"Ericsson Hilda", "Helvetica Neue", Helvetica, Arial, sans-serif',
         'number_font': '"Ericsson Hilda", "Helvetica Neue", Helvetica, Arial, sans-serif',
-        'surface': '#FFFFFF', 'ink': '#242424', 'muted': '#A0A0A0', 'line': '#E0E0E0', 'value_scale': 1,
+        'surface': '#FFFFFF', 'slide': '#FFFFFF', 'ink': '#242424', 'muted': '#A0A0A0', 'line': '#E0E0E0', 'value_scale': 1,
         'title': '#242424', 'title_accent': '#0068BF', 'subtitle': '#767676', 'accent': '#0068BF',
         'header': '#0068BF', 'header_text': '#FFFFFF', 'soft_header': '#FFFFFF', 'soft_header_text': '#242424',
         'weight': '#767676', 'maximum': '#0068BF', 'gap_header': '#0068BF', 'gap_cell': '#E6F2FD',
@@ -125,7 +126,7 @@ THEMES: dict[str, dict[str, Any]] = {
                        'with Vodafone aqua, aubergine and lemon.',
         'font': '"Vodafone Rg", "Avenir Next", "Segoe UI", Arial, sans-serif',
         'number_font': '"Vodafone Rg", "Avenir Next", "Segoe UI", Arial, sans-serif',
-        'surface': '#FFFFFF', 'ink': '#333333', 'muted': '#9B9B9B', 'line': '#EBEBEB', 'value_scale': 1,
+        'surface': '#FFFFFF', 'slide': '#FFFFFF', 'ink': '#333333', 'muted': '#9B9B9B', 'line': '#EBEBEB', 'value_scale': 1,
         'title': '#333333', 'title_accent': '#E60000', 'subtitle': '#666666', 'accent': '#E60000',
         'header': '#E60000', 'header_text': '#FFFFFF', 'soft_header': '#F4F4F4', 'soft_header_text': '#333333',
         'weight': '#4A4D4E', 'maximum': '#5E2750', 'gap_header': '#00B0CA', 'gap_cell': '#E6F7FA',
@@ -152,40 +153,41 @@ THEMES: dict[str, dict[str, Any]] = {
     },
     'midnight': {
         'label': 'Midnight',
-        'description': 'Dark: navy cards with light text, a glowing bar for each score band and neon mint and pink GAPs.',
+        'description': 'Dark: night-blue slides and cards with light text, a glowing bar for each score band and neon mint and '
+                       'pink GAPs.',
         'font': '"SF Pro Display", "Segoe UI", system-ui, sans-serif',
         'number_font': '"SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
-        'surface': '#0F1726', 'ink': '#DCE6F2', 'muted': '#56688A', 'line': '#22314A', 'value_scale': 1,
-        'title': '#16233A', 'title_accent': '#00A3C4', 'subtitle': '#4A5D7A', 'accent': '#00C2E0',
-        'header': '#16233A', 'header_text': '#FFFFFF', 'soft_header': '#E8EEF7', 'soft_header_text': '#16233A',
-        'weight': '#7B8CFF', 'maximum': '#00C2E0', 'gap_header': '#B47CFF', 'gap_cell': '#F0E6FF',
-        'group': '#E8EEF7', 'group_alt': '#DCE5F2', 'category': '#E3EAF4', 'kpi': '#F1F5FA', 'kpi_alt': '#E9F0F8',
-        'total': '#D5DEEA', 'subtotal': '#E3EAF4', 'summary_total': '#D5DEEA', 'row_alt': '#F6F8FB', 'border': '#D9E1EC',
-        'bands': {'Low': '#FFD9E1', 'Medium': '#FFF0CC', 'High': '#CCF7E8', 'UltraHigh': '#D1EEFF', 'Unavailable': '#E9EDF2'},
+        'surface': '#0F1726', 'slide': '#080D18', 'ink': '#DCE6F2', 'muted': '#8094B4', 'line': '#22314A', 'value_scale': 1,
+        'title': '#EAF1FA', 'title_accent': '#22C7E8', 'subtitle': '#9FB3CF', 'accent': '#00C2E0',
+        'header': '#1F3354', 'header_text': '#FFFFFF', 'soft_header': '#1A2A44', 'soft_header_text': '#CFE0F5',
+        'weight': '#9AA8FF', 'maximum': '#00C2E0', 'gap_header': '#6D4BC2', 'gap_cell': '#241B3A',
+        'group': '#16233A', 'group_alt': '#1B2B45', 'category': '#18263F', 'kpi': '#0F1726', 'kpi_alt': '#152139',
+        'total': '#22324F', 'subtotal': '#1B2942', 'summary_total': '#22324F', 'row_alt': '#152139', 'border': '#2A3B58',
+        'bands': {'Low': '#4A1D2B', 'Medium': '#4A3C16', 'High': '#11402F', 'UltraHigh': '#123650', 'Unavailable': '#1E2A3D'},
         'band_strong': {'Low': '#FF4D6D', 'Medium': '#FFC145', 'High': '#2EE6A6', 'UltraHigh': '#3DB9FF'},
-        'gap_negative': '#FF4D6D', 'gap_positive': '#2EE6A6', 'gap_neutral': '#FFFFFF', 'gap_names': ['Mint', 'Pink'],
-        'best': '#CCF7E8', 'worst': '#FFD9E1',
-        'loss': '#FF4D6D', 'gain': '#14C38E', 'loss_text': '#D6234A', 'gain_text': '#0E9A70',
+        'gap_negative': '#FF4D6D', 'gap_positive': '#2EE6A6', 'gap_neutral': '#0F1726', 'gap_names': ['Mint', 'Pink'],
+        'best': '#11402F', 'worst': '#4A1D2B',
+        'loss': '#FF4D6D', 'gain': '#14C38E', 'loss_text': '#FF7A93', 'gain_text': '#3BE8B0',
         'voice': '#B47CFF', 'data': '#3DB9FF',
         'ranks': ['#2EE6A6', '#3DB9FF', '#FFC145', '#FF4D6D'],
         'stake': ['#B3123A', '#FF4D6D', '#FF9FB2'],
         'loss_ramp': ['#00E0FF', '#FF2E63'],
         'environments': ['#E6EDF7', '#5C6F8F', '#C9F27B', '#8A9BB8', '#F2E8CF'],
         'categories': ['#3DB9FF', '#B47CFF', '#2EE6A6', '#FFC145', '#FF4D6D', '#00E0FF', '#FF8FAB', '#7B8CFF'],
-        'kpi_reliable': '#CCF7E8', 'kpi_diff': '#FFF0CC',
+        'kpi_reliable': '#11402F', 'kpi_diff': '#4A3C16',
         'scale': ['#FF4D6D', '#FF9F45', '#FFC145', '#7EE8C1', '#2EE6A6'],
         'series': ['#3DB9FF', '#9ED8FF', '#2EE6A6', '#FFC145', '#FF8FAB', '#B47CFF', '#5C6F8F'],
         'titles': {'font': 'Segoe UI', 'focus_font': None, 'size': 28, 'bold': True, 'focus_bold': True, 'caps': False, 'italic': False,
                    'focus_color': None, 'subtitle_font': 'Segoe UI', 'subtitle_size': 16, 'subtitle_bold': False,
-                   'subtitle_italic': False, 'subtitle_color': '#00A3C4', 'lead_bold': False, 'focus_italic': False, 'heading_color': None},
-        'cell_border': '#FFFFFF', 'cell_border_pt': 1.5,
+                   'subtitle_italic': False, 'subtitle_color': '#22C7E8', 'lead_bold': False, 'focus_italic': False, 'heading_color': None},
+        'cell_border': '#080D18', 'cell_border_pt': 1.5,
     },
     'paper': {
         'label': 'Paper',
         'description': 'A printed report: serif type, black rules and no fills; each score written in the colour of its '
                        'band and each GAP with ▲ or ▼ in blue or vermilion, readable with any colour vision.',
         'font': 'Georgia, "Times New Roman", Times, serif', 'number_font': 'Georgia, "Times New Roman", Times, serif',
-        'surface': '#FFFEFB', 'ink': '#1A1A1A', 'muted': '#A39C90', 'line': '#D9D4C7', 'value_scale': 1,
+        'surface': '#FFFEFB', 'slide': '#FFFFFF', 'ink': '#1A1A1A', 'muted': '#A39C90', 'line': '#D9D4C7', 'value_scale': 1,
         'title': '#1A1A1A', 'title_accent': '#7A1F1F', 'subtitle': '#555555', 'accent': '#7A1F1F',
         'header': '#F2EFE8', 'header_text': '#1A1A1A', 'soft_header': '#FBFAF7', 'soft_header_text': '#1A1A1A',
         'weight': '#555555', 'maximum': '#7A1F1F', 'gap_header': '#E9E4D8', 'gap_cell': '#F7F4EE',
@@ -216,7 +218,7 @@ THEMES: dict[str, dict[str, Any]] = {
                        'every GAP a tile as strong as the GAP, with outlined subtotals and light headers.',
         'font': '"Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
         'number_font': '"Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-        'surface': '#FFFFFF', 'ink': '#1F2A37', 'muted': '#8A96A0', 'line': '#E6EAEE', 'value_scale': 1.05,
+        'surface': '#FFFFFF', 'slide': '#FFFFFF', 'ink': '#1F2A37', 'muted': '#8A96A0', 'line': '#E6EAEE', 'value_scale': 1.05,
         'title': '#1F2A37', 'title_accent': '#2A9D8F', 'subtitle': '#5B6B78', 'accent': '#2A9D8F',
         'header': '#E9EEF2', 'header_text': '#1F2A37', 'soft_header': '#F3F5F7', 'soft_header_text': '#1F2A37',
         'weight': '#457B9D', 'maximum': '#E05A4F', 'gap_header': '#FCE6C4', 'gap_cell': '#FEF5E7',
@@ -391,19 +393,30 @@ _RENDERER_ROLES = {
 }
 
 
+# The light panels of the renderer's maps, which only a dark theme recolours.
+_RENDERER_DARK_ROLES = {'panel': ('#EDF4F0',), 'panel_line': ('#D8E5DF', '#B9CDC4')}
+
+
 def dashboard_chart_style(theme: dict[str, Any] | str | None = None) -> dict[str, Any]:
     """The style of a theme for the chart renderer of PPT Dashboards (the ``style`` of a chart model): its font and the
-    colours that replace the renderer's greys. The charts sit on white slides and cards, so the text is the theme's ink
-    (its title colour when its surface is dark, as in Midnight) and the table headers its header colour (its title
-    colour when that header carries dark text)."""
+    colours that replace the renderer's greys. On the white slides of a light theme the text is the theme's ink and the
+    table headers its header colour (its title colour when that header carries dark text); a dark theme (Midnight)
+    paints the charts in its surface (``background``) with its light ink, as its slides."""
     theme = theme if isinstance(theme, dict) else get_theme(theme)
     luminance = lambda color: sum(weight * channel for weight, channel in zip((.299, .587, .114), _rgb(color))) / 255
-    ink = theme['title'] if luminance(theme['surface']) < .5 else theme['ink']
     header = theme['header'] if luminance(theme['header_text']) > .5 else theme['title']
+    if luminance(theme.get('slide') or '#FFFFFF') < .5:
+        # A dark theme (Midnight): the charts are cards of its surface with its light ink, as its slides.
+        ink, background = theme['ink'], theme['surface']
+        colours = {'title': theme['title'], 'header': header, 'strong': ink, 'text': blend(ink, background, .15),
+                   'soft': blend(ink, background, .35), 'axis': blend(ink, background, .55), 'grid': blend(ink, background, .82),
+                   'alternate': theme['row_alt'], 'panel': theme['row_alt'], 'panel_line': theme['border']}
+        roles = {**_RENDERER_ROLES, **_RENDERER_DARK_ROLES}
+        return {'theme': theme.get('id'), 'font': theme['font'], 'background': background,
+                'colours': {source: colours[role] for role, sources in roles.items() for source in sources}}
+    ink = theme['ink']
     colours = {'title': theme['title'], 'header': header, 'strong': ink, 'text': blend(ink, '#FFFFFF', .2), 'soft': blend(ink, '#FFFFFF', .45),
                'axis': blend(ink, '#FFFFFF', .62), 'grid': blend(ink, '#FFFFFF', .86), 'alternate': theme['row_alt']}
-    if luminance(theme['row_alt']) < .5:
-        colours['alternate'] = '#F7F8FA'
     return {'theme': theme['id'] if 'id' in theme else None, 'font': theme['font'],
             'colours': {source: colours[role] for role, sources in _RENDERER_ROLES.items() for source in sources}}
 
