@@ -29,7 +29,7 @@ from pathlib import Path
 from threading import Lock, Thread
 from typing import Any, Callable
 
-from src.modules import pptx_compose as compose
+from src.modules import pptx_compose as compose, report_structure
 from src.modules.cdr_auto_selection import (
     ALL_CAMPAIGNS, CAMPAIGN_PRESET_LABELS, campaign_presets, complete_campaign_cdrs, resolve_campaign_filter, sort_campaigns,
 )
@@ -813,6 +813,18 @@ def _compose_section(composer: compose.DeckComposer, section: SectionDeck, entri
         index += len(group)
 
 
+def _nest_transitions(slides: list[Any]) -> None:
+    """The transitions of a module inside its section of a Complete Report, one level down; a module whose own cover
+    stays (each Dashboard) has it as a transition of the second level and its transitions one more level down."""
+    depth = 1
+    for slide in slides:
+        if report_structure.level(slide) is not None:
+            report_structure.shift(slide, depth)
+        elif compose.is_cover(slide):
+            report_structure.mark(slide, 2)
+            depth = 2
+
+
 def _add_closing(composer: compose.DeckComposer) -> None:
     """The closing slide of the template, when it has one."""
     if any(str(layout.name or '').strip().casefold() in compose.CLOSING_LAYOUTS
@@ -829,12 +841,18 @@ def compose_powerpoint(template: Path, title: str, subtitle: str, common_filters
     covers = [_cover(composer, title, subtitle, [('Common filters', [filters_line]), ('', [generated])], 'cover')]
     outline: list[dict[str, Any]] = []
     for section in sections:
-        # Each section starts with a cover: its name, its Campaigns, the common filters and its options.
-        covers.append(_cover(composer, section.title, section.lines[0] if section.lines else '',
-                             [('Common filters', [filters_line]), ('Section options', section.lines[1:])], section.key,
-                             SECTION_COVER_TITLE_PT))
+        # Each section starts with a cover: its name, its Campaigns, the common filters and its options. It is a
+        # transition of the first level, and the transitions of its module are the levels below it.
+        cover = _cover(composer, section.title, section.lines[0] if section.lines else '',
+                       [('Common filters', [filters_line]), ('Section options', section.lines[1:])], section.key,
+                       SECTION_COVER_TITLE_PT)
+        report_structure.mark(cover, 1)
+        covers.append(cover)
+        first = len(composer.presentation.slides)
         _compose_section(composer, section, _section_entries(section))
+        _nest_transitions(list(composer.presentation.slides)[first:])
     _add_closing(composer)
+    report_structure.finish(composer.presentation)
     slides = list(composer.presentation.slides)
     for slide in slides:
         outline.append({'title': compose.title_parts(slide)[0], 'section': compose.slide_tag(slide)})
@@ -866,14 +884,26 @@ def compose_word(template: Path, powerpoint: bytes, sections: list[SectionDeck],
     with ThreadPoolExecutor(max_workers=4) as pool:
         covers_rendered = pool.submit(portrait_covers, powerpoint, covers or [0])
         plan: list[tuple[str, Any]] = []
+        # The transitions inside the sections are headings with the counter they have in the PowerPoint.
+        counter = report_structure.Counter()
         for position, section in enumerate(sections, start=1):
             # The export of a module has only the cover of the module; a section has its cover (or, without the
             # covers, a heading) once they are rendered.
+            depth = 0
             if not module:
                 plan.append(('section', (position, section)))
+                counter.next(1)
+                depth = 1
             for component in _components(_section_entries(section)):
                 if component.cover:
-                    title, subtitle = compose.title_parts(component.slides[0])
+                    slide = component.slides[0]
+                    title, subtitle = compose.title_parts(slide)
+                    current = report_structure.level(slide)
+                    if current is not None:
+                        title = f'{counter.next(current + depth)}  {title}'
+                    elif not module:
+                        # The cover a module keeps in its section (each Dashboard), as in _nest_transitions.
+                        title, depth = f'{counter.next(2)}  {title}', 2
                     plan.append(('heading2', PackItem('heading2', title or 'Section', [line for line in subtitle.split(' · ') if line][:3])))
                     continue
                 for slide in _place_component(composer, component, legible_font):
@@ -947,6 +977,7 @@ def compose_module_powerpoint(template: Path, section: SectionDeck) -> bytes:
     composer = compose.DeckComposer(template)
     _compose_section(composer, section, _section_entries(section, module_cover=True))
     _add_closing(composer)
+    report_structure.finish(composer.presentation)
     return composer.save()
 
 
@@ -970,7 +1001,7 @@ def module_document(key: str, content: bytes, export_format: str, title: str = '
     of the module (one page per slide when LibreOffice is not available)."""
     from src.config import settings
 
-    template = settings.powerpoint_templates_dir / 'Template_01.pptx'
+    template = settings.powerpoint_template
     section = SectionDeck(key, title, [], decks=[(None, content)], item_titles=module_item_titles(key))
     powerpoint = compose_module_powerpoint(template, section)
     if export_format != 'word':
@@ -1187,12 +1218,12 @@ class SectionGenerator:
 
 
 # -- generated sections kept for the next exports ------------------------------------------
-SECTION_CACHE_VERSION = 8
+SECTION_CACHE_VERSION = 9
 SECTION_CACHE_HOURS = 24
 SECTION_CACHE_FOLDER = 'cache'
 # The composed documents (PowerPoint, the packed Word and their previews), inside the section cache.
 DOCUMENT_CACHE_FOLDER = 'documents'
-DOCUMENT_CACHE_VERSION = 4
+DOCUMENT_CACHE_VERSION = 5
 _section_locks: dict[str, Lock] = {}
 _section_locks_guard = Lock()
 
@@ -1438,7 +1469,7 @@ def build_report(core: Any, repository: Any, user: Any, definition: dict[str, An
     if not decks:
         raise CompleteReportError(' '.join(warnings) or 'No section could be generated.')
     from src.config import settings
-    template = settings.powerpoint_templates_dir / 'Template_01.pptx'
+    template = settings.powerpoint_template
     title = report_title(definition, name)
     filters = common_filter_items(definition)
     key = document_key(template, title, definition['subtitle'], filters, decks, section_keys) if cache_root is not None else None

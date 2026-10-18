@@ -12,6 +12,7 @@ from pptx.enum.shapes import MSO_AUTO_SHAPE_TYPE, PP_PLACEHOLDER
 from pptx.enum.text import MSO_AUTO_SIZE, PP_ALIGN
 from pptx.util import Inches, Pt
 
+from src.config import POWERPOINT_TEMPLATE
 from src.utils.fonts import load_image_font
 
 # Bump whenever the PowerPoint layout changes: exports are cached by this version and their content.
@@ -669,7 +670,7 @@ def _build_powerpoint_payload(report: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-CDR_ANALYSIS_TEMPLATE = "Template_01.pptx"
+CDR_ANALYSIS_TEMPLATE = POWERPOINT_TEMPLATE
 # Content slides of the template keep their title area: content starts this much lower.
 TEMPLATE_CONTENT_SHIFT = 0.6
 
@@ -793,6 +794,8 @@ def export_powerpoint_report(destination: Path, report: dict[str, Any]) -> Path:
     presentation = _init_presentation()
     _append_dataset_report_slides(presentation, _build_powerpoint_payload(report))
     _closing_slide(presentation)
+    from src.modules import report_structure
+    report_structure.finish(presentation)
     presentation.save(destination)
     return destination
 
@@ -884,9 +887,15 @@ def export_dataset_summary_powerpoint(destination: Path, reports: list[dict[str,
                      [*names[:11], *([f"… and {len(names) - 11} more"] if len(names) > 11 else [])])
     else:
         _dataset_summary_cover(presentation, title, reports)
+    from src.modules import report_structure
     for report in reports:
+        first = len(presentation.slides)
         _append_dataset_report_slides(presentation, _build_powerpoint_payload(report))
+        # The title page of each CDR opens its part of the export: 01, 02…
+        if getattr(presentation, "cdr_template", False) and len(presentation.slides) > first:
+            report_structure.mark(presentation.slides[first], 1)
     _closing_slide(presentation)
+    report_structure.finish(presentation)
     presentation.save(destination)
     return destination
 

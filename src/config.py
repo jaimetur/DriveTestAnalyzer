@@ -53,6 +53,10 @@ def project_path(env_var: str, default: str) -> Path:
     return path if path.is_absolute() else PROJECT_ROOT / path
 
 
+# The PowerPoint master of every report and export (its covers and transitions in the Vodafone-Three red).
+POWERPOINT_TEMPLATE = "Template_VodafoneThree.pptx"
+
+
 @dataclass(frozen=True)
 class Settings:
     app_name: str = os.getenv("APP_NAME", "DriveTest Analyzer")
@@ -77,5 +81,9 @@ class Settings:
     input_dir: Path = data_dir / "input"
     output_dir: Path = data_dir / "output"
     export_dir: Path = data_dir / "output" / "reports"
+
+    @property
+    def powerpoint_template(self) -> Path:
+        return self.powerpoint_templates_dir / POWERPOINT_TEMPLATE
 
 settings = Settings()

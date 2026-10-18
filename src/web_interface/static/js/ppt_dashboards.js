@@ -3182,29 +3182,73 @@
       }));
     context.hidden = !context.childElementCount;
   }
+  // The covers and transitions of a Dashboard, as in its PPT: the Vodafone-Three red with the Ericsson mark, the logos
+  // at the top right, the title (two lines of room) and its subtitle; each transition after the cover with its counter
+  // (01, 02…). A Title Slide that opens the Dashboard shows its Campaigns, Scope, Regions and Cities in white.
+  const svgNamespace = 'http://www.w3.org/2000/svg';
+  function structuralWatermark() {
+    const svg = document.createElementNS(svgNamespace, 'svg');
+    svg.setAttribute('class', 'ds-structural-watermark'); svg.setAttribute('viewBox', '0 0 403 536'); svg.setAttribute('aria-hidden', 'true');
+    // The three bars of the official mark: 18.4°, 3.91 times as long as thick, 1.586 thicknesses apart.
+    for (const centre of [109.2, 267.8, 426.4]) {
+      const bar = document.createElementNS(svgNamespace, 'rect');
+      Object.entries({x: 5.8, y: centre - 50, width: 391, height: 100, rx: 50, transform: `rotate(-18.4 201.3 ${centre})`})
+        .forEach(([name, value]) => bar.setAttribute(name, String(value)));
+      svg.append(bar);
+    }
+    return svg;
+  }
+  function structuralBrand() {
+    const brand = node('div', undefined, 'ds-structural-logos');
+    for (const [source, label, className] of [[config.operators_logo, 'Vodafone Three', 'ds-structural-operators'], [config.ericsson_logo, 'Ericsson', 'ds-structural-ericsson']]) {
+      if (!source) continue;
+      const image = document.createElement('img'); image.src = source; image.alt = `${label} logo`; image.className = className;
+      brand.append(image);
+    }
+    return brand;
+  }
+  const labelledLine = (text, className) => {
+    // White on the red of the cover: the label bold, its values regular.
+    const line = node('p', undefined, className);
+    const [label, ...rest] = String(text).split(': ');
+    if (rest.length) line.append(node('b', `${label}: `), document.createTextNode(rest.join(': ')));
+    else line.textContent = text;
+    return line;
+  };
   function structuralDashboard(stage, slide) {
     const kind = String(slide.structural_type || '').toLowerCase().includes('transition') ? 'transition' : 'title';
-    const cover = node('section', undefined, `ds-structural-slide ds-structural-${kind}`);
+    const slides = prepared?.slides || [slide];
+    const firstSlideNumber = Math.min(...slides.map(item => Number(item.number)));
+    const isCover = kind === 'title' && Number(slide.number) === firstSlideNumber;
+    const cover = node('section', undefined, `ds-structural-slide ds-structural-${kind} ${isCover ? 'ds-structural-cover' : 'ds-structural-numbered'}`);
     cover.setAttribute('aria-label', `${kind === 'transition' ? 'Transition' : 'Title'} dashboard: ${slide.title || 'Untitled'}`);
-    const brand = dashboardViewerBrand();
     const content = node('div', undefined, 'ds-structural-content');
+    if (!isCover) {
+      // The counter of the transition: its place among the title and transition slides after the cover.
+      const transitions = slides.filter(item => item.structural_type && !(Number(item.number) === firstSlideNumber
+        && !String(item.structural_type).toLowerCase().includes('transition')));
+      const index = transitions.findIndex(item => Number(item.number) === Number(slide.number));
+      content.append(node('p', String(Math.max(1, index + 1)).padStart(2, '0'), 'ds-structural-number'));
+    }
     content.append(node('h3', slide.title || 'Dashboard', 'ds-structural-title'));
     if (slide.subtitle) content.append(node('p', slide.subtitle, 'ds-structural-subtitle'));
-    // Like the exported PPT, a Title Slide that opens the Dashboard shows the
-    // Campaigns right above the decorative line, then the Scope and the
+    // Like the exported PPT, the cover shows the Campaigns right above the decorative line, then the Scope and the
     // selected Regions and Cities below it.
-    const firstSlideNumber = Math.min(...(prepared?.slides || [slide]).map(item => Number(item.number)));
-    const coverLabels = kind === 'title' && Number(slide.number) === firstSlideNumber ? viewerGeographyLabels() : [];
+    const coverLabels = isCover ? viewerGeographyLabels() : [];
+    const details = node('div', undefined, 'ds-structural-details');
     const campaigns = coverLabels.find(([name]) => name === 'campaigns')?.[1];
-    if (campaigns) content.append(node('p', campaigns, 'ds-structural-campaigns'));
-    // Title slides draw the template's decorative line right below the subtitle.
-    if (kind === 'title') content.append(node('span', undefined, 'ds-structural-rule'));
-    cover.append(content, brand);
+    if (campaigns) details.append(labelledLine(campaigns, 'ds-structural-campaigns'));
+    if (isCover) details.append(node('span', undefined, 'ds-structural-rule'));
     const geography = node('div', undefined, 'ds-structural-geography');
     // A PPT job snapshot shows exactly the cover lines of its exported PPT.
     for (const [name, label] of coverLabels)
-      if (label && name !== 'campaigns') geography.append(node('p', label, `ds-structural-geography-${name}`));
-    if (geography.childElementCount) content.append(geography);
+      if (label && name !== 'campaigns') geography.append(labelledLine(label, `ds-structural-geography-${name}`));
+    if (geography.childElementCount) details.append(geography);
+    // The title block and, at the bottom, the details flow inside the slide, whose size the text follows.
+    const flow = node('div', undefined, 'ds-structural-flow');
+    flow.append(content);
+    if (details.childElementCount) flow.append(details);
+    cover.append(structuralWatermark(), flow, structuralBrand());
     stage.append(cover);
   }
   function chartZoomControls(canvas) {

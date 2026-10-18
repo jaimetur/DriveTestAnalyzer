@@ -120,7 +120,7 @@ APP_DATA_DIR/
 
 APP_ASSETS_DIR/
 └── powerpoint-templates/
-    └── Template_01.pptx
+    └── Template_VodafoneThree.pptx
 ```
 
 Report Templates are records in each workspace database. CSV files appear in export, transfer and backup ZIPs as their portable representation; no persistent template CSV directory is required.

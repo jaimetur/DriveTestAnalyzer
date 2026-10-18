@@ -24,6 +24,7 @@ from src.modules.cdr_reporting import (
     _set_structural_slide_text,
 )
 from src.modules.column_names import campaign_sort_key, compact_campaign_value
+from src.modules import report_structure
 from src.modules.scoring import most_reliable_result
 from src.modules.scoring_points_loss import map_background, map_boundaries
 from src.modules.scoring_insight_slides import (
@@ -674,7 +675,10 @@ def _style_scoring_intro_field(paragraph, text: str, *, bold_label: bool = False
         value_run.font.bold = True
 
 
-def _fit_scoring_intro_subtitle(presentation, slide, layout_name: str, subtitle: str) -> None:
+def _fit_scoring_intro_subtitle(presentation, slide, layout_name: str, subtitle: str, campaign_text: str) -> None:
+    """The title (its first line), the NR Mode as its subtitle and, under the line of the layout, the Campaigns and the
+    Split by and filters of a scoring cover or transition; report_structure gives the title and subtitle their places
+    and sizes, as on every cover and transition."""
     title_shape = next(
         (shape for shape in slide.placeholders if shape.placeholder_format.type in {1, 3}),
         None,
@@ -698,27 +702,10 @@ def _fit_scoring_intro_subtitle(presentation, slide, layout_name: str, subtitle:
 
     title_text = title_shape.text_frame.text.split('\x0b', 1)[0].split('\n', 1)[0]
     title_shape.text_frame.text = title_text
-    _set_shape_geometry(title_shape, Inches(.7))
-    title_shape.top = Inches(1.8)
-    for paragraph in title_shape.text_frame.paragraphs:
-        paragraph.alignment = PP_ALIGN.LEFT
-        paragraph.font.size = Pt(44)
-        paragraph.font.color.rgb = RGBColor.from_string('FFFFFF')
-
     lines = subtitle.splitlines()
-    subtitle_shape.height = Inches(.45)
-    subtitle_shape.left = title_shape.left
-    subtitle_shape.width = title_shape.width
-    subtitle_shape.top = title_shape.top + title_shape.height + Inches(.05)
     subtitle_shape.text_frame.text = lines[0] if lines else ''
-    subtitle_shape.text_frame.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
     mode = subtitle_shape.text_frame.paragraphs[0]
     mode.alignment = PP_ALIGN.LEFT
-    mode.font.size = Pt(18)
-    mode.font.bold = True
-    mode.font.color.rgb = RGBColor.from_string('FFC700')
-    mode.line_spacing = 1.0
-    mode.space_before = mode.space_after = Pt(0)
     properties = mode._p.get_or_add_pPr()
     properties.set('marL', '0')
     properties.set('indent', '0')
@@ -726,42 +713,26 @@ def _fit_scoring_intro_subtitle(presentation, slide, layout_name: str, subtitle:
         properties.remove(bullet)
     properties.insert_element_before(OxmlElement('a:buNone'), 'a:tabLst', 'a:defRPr', 'a:extLst')
 
-    filters_shape = _text(
-        slide, '', 3.6, left=title_shape.left / Inches(1),
-        width=title_shape.width / Inches(1), height=1.85,
-        size=16, color=_WHITE,
-    )
+    # The Campaigns, then the Split by and each filter, under the line of the layout as the blocks of every cover.
+    details = [campaign_text, *lines[1:]]
+    filters_shape = _text(slide, '', 5.92, left=.52, width=12.29, height=.21 * len(details) + .1, size=12, color=_WHITE)
     filters_shape.name = 'Scoring Aggregations and Filters'
     frame = filters_shape.text_frame
     frame.clear()
-    frame.word_wrap = False
+    frame.word_wrap = True
     frame.auto_size = MSO_AUTO_SIZE.NONE
-    for index, line in enumerate(['Split by & Filters:', *lines[1:]]):
+    for index, line in enumerate(details):
         paragraph = frame.paragraphs[0] if index == 0 else frame.add_paragraph()
         paragraph.text = line
-        paragraph.font.size = Pt(16 if index == 0 else _hierarchy_content_font(
-            [line], filters_shape.width / Inches(1) - .72, maximum=16,
-        ))
-        paragraph.font.bold = index == 0
+        paragraph.font.size = Pt(12 if index == 0 else 11)
         properties = paragraph._p.get_or_add_pPr()
-        properties.set('marL', str(Inches(.22) if index else 0))
+        properties.set('marL', '0')
         properties.set('indent', '0')
         properties.insert(0, OxmlElement('a:buNone'))
-        paragraph.font.color.rgb = RGBColor.from_string('FFFFFF')
-        if index:
-            _style_scoring_intro_field(paragraph, line)
+        _style_scoring_intro_field(paragraph, line, bold_label=True)
         paragraph.line_spacing = 1.0
         paragraph.space_before = Pt(0)
-        paragraph.space_after = Pt(3)
-    for shape in (title_shape, subtitle_shape, filters_shape):
-        for paragraph in shape.text_frame.paragraphs:
-            paragraph.font.name = 'Aptos'
-            paragraph.font._rPr.set('spc', '0')
-            paragraph.font._rPr.set('kern', '0')
-            for run in paragraph.runs:
-                run.font.name = 'Aptos'
-                run.font._rPr.set('spc', '0')
-                run.font._rPr.set('kern', '0')
+        paragraph.space_after = Pt(1)
 
 
 def _set_shape_geometry(shape, height: int) -> None:
@@ -788,27 +759,6 @@ def _scoring_environment_title(environment: str, configuration: dict) -> str:
     return _environment_display_label(environment)
 
 
-_TITLE_PAGE_TITLE_SIZE = 80
-# Average glyph width of the template title font, in ems.
-_TITLE_GLYPH_WIDTH = .34
-
-
-def _fit_title_on_one_line(slide, title: str) -> None:
-    """Shrink a cover or transition title that is wider than its placeholder so it keeps one line."""
-    shape = next((item for item in slide.placeholders if item.placeholder_format.type in {1, 3}), None)
-    if shape is None or not title:
-        return
-    width = shape.width / Inches(1) - .2
-    size = min(_TITLE_PAGE_TITLE_SIZE, floor(width * 72 / (_TITLE_GLYPH_WIDTH * len(title))))
-    if size >= _TITLE_PAGE_TITLE_SIZE:
-        return
-    shape.text_frame.word_wrap = False
-    for paragraph in shape.text_frame.paragraphs:
-        paragraph.font.size = Pt(size)
-        for run in paragraph.runs:
-            run.font.size = Pt(size)
-
-
 SECTION_TAG_PREFIX = 'section:'
 
 
@@ -822,8 +772,9 @@ def _tag_slides(presentation, start: int, section: str) -> None:
 
 def _add_scoring_intro_slides(
     presentation, job: dict[str, Any], result: dict[str, Any], *, environment: str | None = None,
-    scoring: str | None = None, title: str | None = None, subtitle: str | None = None,
+    scoring: str | None = None, title: str | None = None, subtitle: str | None = None, level: int | None = None,
 ) -> None:
+    """The cover of the export (without ``level``) or a transition of ``level``: a scoring or one of its environments."""
     configuration = job.get('configuration') or result.get('configuration') or {}
     if title is not None:
         pass
@@ -831,8 +782,6 @@ def _add_scoring_intro_slides(
         title = _scoring_block_title(scoring, _scoring_environment_title(environment, configuration))
     else:
         title = _SCORING_SECTION_TITLES[scoring] if scoring else 'Scoring & GAP Analysis'
-    if job.get('_scenario_name') and scoring and (environment or title == _SCORING_SECTION_TITLES[scoring]):
-        title = f"{job['_scenario_name']} — {title}"
     subtitle = _scoring_filter_subtitle(job, environment) if subtitle is None else subtitle
     campaigns = _campaigns_for_export(job, result)
     plan = job.get('_scoring_display_selections')
@@ -847,30 +796,30 @@ def _add_scoring_intro_slides(
     slide = presentation.slides.add_slide(layout)
     _tag_slides(presentation, len(presentation.slides) - 1, 'cover')
     _set_structural_slide_text(slide, title, subtitle)
-    _fit_title_on_one_line(slide, title)
-    _fit_scoring_intro_subtitle(presentation, slide, layout_name, subtitle)
-    campaign_top = 5.9
-    campaign_shape = _text(slide, campaign_text, campaign_top, left=.52, width=10.68, height=.32,
-                           size=16, color=_WHITE)
-    campaign_shape.name = 'Scoring Campaigns'
-    campaign_shape.text_frame.word_wrap = False
-    for paragraph in campaign_shape.text_frame.paragraphs:
-        paragraph.font.size = Pt(_hierarchy_content_font(
-            [campaign_text], campaign_shape.width / Inches(1) - .5, maximum=16,
-        ))
-        paragraph.font.name = 'Aptos'
-        _style_scoring_intro_field(paragraph, campaign_text, bold_label=True)
-        for run in paragraph.runs:
-            run.font.name = 'Aptos'
-    # Combined scores scaled because environments have no results are announced in orange.
+    _fit_scoring_intro_subtitle(presentation, slide, layout_name, subtitle, campaign_text)
+    if level is not None:
+        report_structure.mark(slide, level)
+    # Combined scores scaled because environments have no results are announced in orange, above the line.
     notices = [str(notice) for notice in result.get('notices') or []]
     if notices and (environment is None or str(environment).casefold() in {'combined', 'all', 'all environments'}):
-        notice_shape = _text(slide, ' '.join(notices), campaign_top + .45, left=.52, width=10.68, height=.6,
+        notice_shape = _text(slide, ' '.join(notices), 4.75, left=.52, width=12.29, height=.6,
                              size=12, color=_SCALING_NOTICE_COLOR)
         notice_shape.name = 'Scoring Scaling Notice'
         for paragraph in notice_shape.text_frame.paragraphs:
             paragraph.font.bold = True
-            paragraph.font.name = 'Aptos'
+
+
+def _add_scenario_transition(presentation, name: str, job: dict[str, Any]) -> None:
+    """The transition of a scenario of a report: its name, with its NR Mode and the filters that choose part of the
+    country or of the operators (none: the NR Mode alone)."""
+    layout = _named_slide_layout(presentation, 'Transition') or _named_slide_layout(presentation, 'Title Page')
+    slide = presentation.slides.add_slide(layout)
+    _tag_slides(presentation, len(presentation.slides) - 1, 'cover')
+    lines = _scoring_filter_subtitle(job).splitlines()
+    chosen = [line for line in lines[1:] if not line.startswith('Split by') and ': ' in line
+              and line.split(': ', 1)[1].strip() and not line.split(': ', 1)[1].startswith('All')]
+    _set_structural_slide_text(slide, name, ' · '.join([lines[0], *chosen]) if lines else '')
+    report_structure.mark(slide, 1)
 
 
 def _header_foreground(color: str) -> str:
@@ -2640,8 +2589,9 @@ def _add_scoring_block(presentation, job: dict[str, Any], result: dict[str, Any]
                        table_mode: str, gap_layout: str, environment: str, show_gap_values: bool,
                        split_charts: bool, vendor_mapping_groups: list[dict[str, Any]] | None,
                        options: dict | None = None, section_cover: bool = True,
-                       environments: list[str] | None = None) -> None:
+                       environments: list[str] | None = None, level: int = 1) -> None:
     """Add the charts, tables and GAP slides of one scoring; scoring is None when the job has only Best Network.
+    Its cover is a transition of ``level``, and each environment one of the level below it.
 
     ``options`` are the content options of a report scenario: All Environments only or
     a block per environment, and the charts, tables and GAP slides to include.
@@ -2694,8 +2644,10 @@ def _add_scoring_block(presentation, job: dict[str, Any], result: dict[str, Any]
                 name: str(scope.get('display_name') or _environment_display_label(name))
                 for name, scope in configuration.get('scope', {}).get('environments', {}).items()
             }
+    environment_level = level
     if scoring is not None and section_cover:
-        _add_scoring_intro_slides(presentation, job, result, scoring=scoring)
+        _add_scoring_intro_slides(presentation, job, result, scoring=scoring, level=level)
+        environment_level = level + 1
     # Each slide is named after its section (summary, charts, tables, geographical_areas, gap, points, comparison).
     untagged = [len(presentation.slides)]
 
@@ -2725,7 +2677,8 @@ def _add_scoring_block(presentation, job: dict[str, Any], result: dict[str, Any]
     def environment_cover(environment_name: str) -> None:
         # With All Environments only, the scoring cover already introduces the block; the Summary follows it.
         if not combined_only:
-            _add_scoring_intro_slides(presentation, job, result, environment=environment_name, scoring=scoring)
+            _add_scoring_intro_slides(presentation, job, result, environment=environment_name, scoring=scoring,
+                                      level=environment_level)
         _add_insight_slides(presentation, views, environment_name, scoring, configuration, stage='summary', options=options)
         section('summary')
 
@@ -2904,6 +2857,7 @@ def _export_scoring_powerpoint(job: dict[str, Any], result: dict[str, Any], temp
         for index, slide in enumerate(presentation.slides):
             if index >= first_slide:
                 slide.notes_slide.notes_text_frame.text = notes
+    report_structure.finish(presentation)
     output = BytesIO()
     presentation.save(output)
     return output.getvalue()
@@ -2951,6 +2905,9 @@ def _export_scoring_report(entries: list[dict[str, Any]], template_path: Path,
     else:
         _add_scoring_intro_slides(presentation, first_job, first_result)
     for scenario, job, result in prepared:
+        if several:
+            # Each scenario opens with its transition; its scorings and environments are the levels below it.
+            _add_scenario_transition(presentation, scenario['name'], job)
         baseline = str(job.get('baseline_operator') or 'EE')
         blocks = [(BEST_NETWORK_SCORING, job, result)]
         reliable = most_reliable_result(result, baseline, job.get('configuration'))
@@ -2971,7 +2928,7 @@ def _export_scoring_report(entries: list[dict[str, Any]], template_path: Path,
                 table_mode='expanded', gap_layout=gap_layout, environment='all',
                 show_gap_values=False, split_charts=split_charts,
                 vendor_mapping_groups=vendor_mapping_groups, options=options,
-                environments=options.get('environment_names') or None,
+                environments=options.get('environment_names') or None, level=2 if several else 1,
             )
             notes = '\n'.join(_scoring_slide_notes(block_result))
             for index, slide in enumerate(presentation.slides):
@@ -2979,6 +2936,7 @@ def _export_scoring_report(entries: list[dict[str, Any]], template_path: Path,
                     if index == 0 and slide.notes_slide.notes_text_frame.text:
                         continue
                     slide.notes_slide.notes_text_frame.text = notes
+    report_structure.finish(presentation)
     output = BytesIO()
     presentation.save(output)
     return output.getvalue()

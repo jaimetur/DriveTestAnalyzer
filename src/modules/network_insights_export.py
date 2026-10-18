@@ -1072,7 +1072,7 @@ def export_network_insights_powerpoint(destination: Path, analysis: dict[str, An
     from src.config import settings
     from src.modules.cdr_reporting import _named_slide_layout, _remove_all_slides, _set_structural_slide_text
 
-    presentation = Presentation(template or settings.powerpoint_templates_dir / 'Template_01.pptx')
+    presentation = Presentation(template or settings.powerpoint_template)
     _remove_all_slides(presentation)
     wanted = None if components is None else {*components, 'selection.selection', 'selection.notes'}
 
@@ -1165,5 +1165,7 @@ def export_network_insights_powerpoint(destination: Path, analysis: dict[str, An
     closing = _named_slide_layout(presentation, 'Black logo end slide')
     if closing is not None:
         _set_structural_slide_text(presentation.slides.add_slide(closing), '', '')
+    from src.modules import report_structure
+    report_structure.finish(presentation)
     presentation.save(destination)
     return destination

@@ -48,12 +48,13 @@ from pptx.opc.constants import RELATIONSHIP_TYPE as RT
 from pptx.util import Inches, Pt
 
 from src.utils.fonts import load_image_font
-from src.config import settings
+from src.config import POWERPOINT_TEMPLATE, settings
+from src.modules import report_structure
 
 
 TEMPLATE_NAMES = {
-    "nsa": "Template_01.pptx",
-    "sa": "Template_01.pptx",
+    "nsa": POWERPOINT_TEMPLATE,
+    "sa": POWERPOINT_TEMPLATE,
 }
 CDR_REPORT_VERSION = "2026-09-22-v14"
 REPORTING_KINDS = {"data", "voice", "speech"}
@@ -7822,6 +7823,9 @@ def render_cdr_report(destination: Path, template: Path, frames: dict[str, pd.Da
                 raise ValueError(f"Slide {number}: layout '{layout_name}' does not exist in the selected template.")
             slide = presentation.slides.add_slide(layout)
             _set_structural_slide_text(slide, header.slide_title, header.slide_subtitle)
+            if number != min(catalogue_slides):
+                # The title and transition rows after the cover open the parts of the report: 01, 02…
+                report_structure.mark(slide, 1)
             continue
 
         chart_entries = [entry for entry in slide_entries if entry.source_kind]
@@ -7940,6 +7944,7 @@ def render_cdr_report(destination: Path, template: Path, frames: dict[str, pd.Da
         hover_executor.shutdown(wait=True)
     cached_frames.clear()
     gc.collect()
+    report_structure.finish(presentation)
     presentation.save(destination)
     if chart_output_dir is not None:
         (chart_output_dir / 'manifest.json').write_text(

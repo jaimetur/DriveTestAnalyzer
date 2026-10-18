@@ -50,7 +50,7 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
 
     for directory in (config_dir, input_dir, output_dir, export_dir, slides_templates_dir, powerpoint_templates_dir):
         directory.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(app_module.PROJECT_ROOT / "assets" / "powerpoint-templates" / "Template_01.pptx", powerpoint_templates_dir / "Template_01.pptx")
+    shutil.copy2(app_module.PROJECT_ROOT / "assets" / "powerpoint-templates" / "Template_VodafoneThree.pptx", powerpoint_templates_dir / "Template_VodafoneThree.pptx")
     nsa_target = slides_templates_dir / "default" / "nsa" / "NSA Slide Template.csv"
     nsa_target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(Path(__file__).parent / "fixtures" / "NSA Slide Template.csv", nsa_target)

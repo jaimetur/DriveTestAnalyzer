@@ -59,7 +59,7 @@ output/reports/reports-old/<report-name>/
   report-charts/
 ```
 
-The PPTX uses `Template_01.pptx` masters/layouts and the selected Report Template definition. Commentary placeholders remain available to the analyst.
+The PPTX uses `Template_VodafoneThree.pptx` masters/layouts and the selected Report Template definition. Commentary placeholders remain available to the analyst.
 
 ## Generate Report Charts
 

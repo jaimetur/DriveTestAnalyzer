@@ -272,7 +272,7 @@ Campaign labels are compact, such as **2026-Q2**, **2026-Q2-NSA** or **2026-Q2-S
 
 Changing Scope renders the charts again with the Dashboard filters (a Campaign that still has the default of the former Scope takes the default of the new one). Multivendor is unavailable when the workspace has fewer than two Vendors.
 
-Title and Transition slides preserve the template text and branded typography. A title cover shows Campaigns above its decorative divider, with Scope, Regions and Cities beneath it, matching PPT. Chart rows preserve template order and placeholder geometry.
+Title and Transition slides preserve the template text and look as in the exported PPT: the Vodafone-Three red with the Ericsson mark, the Vodafone-Three and Ericsson logos at the top right, light titles with the room of two lines and the yellow subtitle below them. A title cover shows Campaigns above its decorative divider, with Scope, Regions and Cities beneath it, in white with bold labels; each Title or Transition slide after it shows its counter (01, 02…), as in the PPT. Chart rows preserve template order and placeholder geometry.
 
 In grids with three or more rows or four or more columns, each chart's title appears as text above the chart, in the viewer and in the PPT, so it stays readable in small cells. Dynamic grids show the row or column value (for example the Operator) in bold before the title, such as **EE** · LTE RSRP histogram.
 

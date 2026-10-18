@@ -430,7 +430,7 @@ def export_powerpoint(destination: Path, lines: list[str], summary: dict[str, An
     from src.modules.cdr_reporting import _named_slide_layout, _remove_all_slides, _set_structural_slide_text
     from src.modules.non_qualified_calls_visuals import SlideTitle
 
-    presentation = Presentation(template or settings.powerpoint_templates_dir / 'Template_01.pptx')
+    presentation = Presentation(template or settings.powerpoint_template)
     _remove_all_slides(presentation)
     cover = presentation.slides.add_slide(_named_slide_layout(presentation, 'Title Page'))
     _set_structural_slide_text(cover, 'Non-Qualified Calls', 'Executive Summary and Progress Status')
@@ -462,5 +462,7 @@ def export_powerpoint(destination: Path, lines: list[str], summary: dict[str, An
     closing = _named_slide_layout(presentation, 'Black logo end slide')
     if closing is not None:
         _set_structural_slide_text(presentation.slides.add_slide(closing), '', '')
+    from src.modules import report_structure
+    report_structure.finish(presentation)
     presentation.save(destination)
     return destination

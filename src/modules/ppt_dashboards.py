@@ -26,6 +26,7 @@ from uuid import uuid4
 
 import pandas as pd
 from src.modules.column_names import campaign_sort_key, column_identity, compact_campaign_value, sort_vendor_values, vendor_filter_column, vendor_filter_value, vendor_filter_values, vendor_match_values
+from src.modules import report_structure
 from src.modules.value_maps import ValueMapper, field_kind
 from src.modules.cdr_auto_selection import (
     LATEST_CAMPAIGN, LATEST_TWO_CAMPAIGNS, campaign_identity, campaign_presets, campaign_values, cdr_campaigns, candidate_cdrs, describe_cdrs,
@@ -873,20 +874,23 @@ def install_dashboard_routes(core):
             box.text_frame.word_wrap = True
             box.text_frame.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
             paragraph = box.text_frame.paragraphs[0]
-            paragraph.text = value
-            paragraph.font.size = Pt(size)
-            paragraph.font.bold = True
-            paragraph.font.color.rgb = color
+            # White on the red of the cover: the label bold, its values regular.
+            label, separator, rest = value.partition(': ')
+            for text, bold in ((label + separator, True), (rest, False)) if separator else ((value, True),):
+                if not text:
+                    continue
+                run = paragraph.add_run()
+                run.text = text
+                run.font.size = Pt(size)
+                run.font.bold = bold
+                run.font.color.rgb = color
 
         # Like the Dashboard viewer, Scope, Regions and Cities follow the
         # template's decorative line under the subtitle.
+        white = RGBColor(255, 255, 255)
         details = [
-            (name, value, color)
-            for name, value, color in (
-                ('scope', scope, RGBColor(139, 240, 166)),
-                ('region', regions, RGBColor(82, 221, 240)),
-                ('city', cities, RGBColor(255, 166, 203)),
-            )
+            (name, value, white)
+            for name, value in (('scope', scope), ('region', regions), ('city', cities))
             if value
         ]
         first_top = (
@@ -914,7 +918,7 @@ def install_dashboard_routes(core):
             else:
                 campaign_top = anchor_bottom + Inches(0.06) if anchor_bottom is not None else first_top
                 first_top = max(first_top, campaign_top + campaign_height + Inches(0.08))
-            add_line('campaigns', campaigns, RGBColor(255, 140, 66), 20, campaign_top, campaign_height)
+            add_line('campaigns', campaigns, white, 20, campaign_top, campaign_height)
         for index, (name, value, color) in enumerate(details):
             add_line(name, value, color, 16, first_top + Inches(0.38 * index), Inches(0.34))
 
@@ -1108,7 +1112,7 @@ def install_dashboard_routes(core):
                     progress=model_progress_end, last_error='',
                 )
             update_dashboard_ppt_job(task_repository, job_id, progress=90, last_error='')
-            presentation = Presentation(core.settings.powerpoint_templates_dir / 'Template_01.pptx')
+            presentation = Presentation(core.settings.powerpoint_template)
             _remove_all_slides(presentation)
             # Legend entries hidden in the viewer stay hidden in the PPT charts.
             job_row = dashboard_ppt_job(task_repository, job_id)
@@ -1177,6 +1181,9 @@ def install_dashboard_routes(core):
                             slide, cover_campaigns, dashboard_ppt_scope_label(snapshot.definition.scope),
                             cover_regions, cover_cities, presentation.slide_height,
                         )
+                    else:
+                        # The other title and transition rows open the parts of the Dashboard: 01, 02…
+                        report_structure.mark(slide, 1)
                     _set_commentary(slide, comments)
                     continue
                 chart_entries = [
@@ -1309,6 +1316,7 @@ def install_dashboard_routes(core):
             )
             destination.parent.mkdir(parents=True, exist_ok=True)
             update_dashboard_ppt_job(task_repository, job_id, progress=96, chart_count=rendered)
+            report_structure.finish(presentation)
             presentation.save(destination)
             if not run_is_active():
                 shutil.rmtree(destination.parent, ignore_errors=True)
@@ -1673,7 +1681,7 @@ def install_dashboard_routes(core):
             for rows in range(1, row_limit + 1) for columns in range(1, column_limit + 1)
         }
         if names and deck is None:
-            deck = Presentation(core.settings.powerpoint_templates_dir / 'Template_01.pptx')
+            deck = Presentation(core.settings.powerpoint_template)
         payload['grid_layouts'] = {
             name: normalized_frame_positions(_layout_chart_frames(_named_slide_layout(deck, name)))
             for name in sorted(names)
@@ -3530,7 +3538,7 @@ def install_dashboard_routes(core):
         slide_entries_by_number: dict[int, list] = defaultdict(list)
         for entry in entries:
             slide_entries_by_number[entry.slide].append(entry)
-        deck = Presentation(core.settings.powerpoint_templates_dir / 'Template_01.pptx')
+        deck = Presentation(core.settings.powerpoint_template)
         for editor_index, (index, entry) in enumerate(sorted(enumerate(entries), key=lambda item: (item[1].slide, item[0]))):
             editor_index = entry.template_index if entry.template_index is not None else editor_index
             slide = slides.setdefault(entry.slide, {

@@ -182,7 +182,7 @@ Workspaces, backups and transfer packages created with the former layout (module
 
 ## Bundled assets
 
-- `assets/powerpoint-templates/Template_01.pptx` supplies slide masters, named layouts and placeholders.
+- `assets/powerpoint-templates/Template_VodafoneThree.pptx` supplies slide masters, named layouts and placeholders; its Title Page, Transition and Title Only layouts have the Vodafone-Three red with the Ericsson mark. `src/modules/report_structure.py` gives every cover and transition its sizes, places and counter.
 - `assets/autocalculated-fields/default-autocalculated-fields.json` holds the Auto-calculated Fields every new workspace starts with (the only source of default fields).
 - Starter content added to every workspace that does not have it yet (see `src/modules/starter_content.py`): `assets/scoring-methodologies/*.json` (Scoring methodologies in the portable configuration format), `assets/ppt-templates/<nsa|sa>/*.csv` (Report Templates, named after their file), `assets/ppt-dashboards/*.json` (Dashboards without CDRs, dates or Operator and Vendor filters), `assets/scoring-report-configurations/*.json` (saved Scoring report configurations), `assets/query-builder-queries/*.json` (saved Query Builder queries) and `assets/reporting-jobs/*.json` (Reporting Jobs, naming their Dashboards and carrying their Scoring reports, or naming a Scoring report configuration). Adding a file to these folders ships it.
 - `assets/labels-operators/operators-by-country.json` holds the operators (labels, corporate colours and CDR spellings) of the 50 main countries, which a workspace created for one of them starts with (see `src/modules/workspace_countries.py`).

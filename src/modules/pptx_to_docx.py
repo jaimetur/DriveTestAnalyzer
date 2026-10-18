@@ -402,6 +402,32 @@ def compact_slide_image(image: bytes) -> bytes:
 _PAGE_WIDTH, _PAGE_HEIGHT = 8.27, 11.69
 
 
+# The Ericsson mark drawn behind the covers and transitions of the template: three bars, smaller and at the bottom
+# right of a portrait page, below the text.
+WATERMARK_PREFIX = 'Ericsson watermark'
+PORTRAIT_WATERMARK_HEIGHT = Inches(3.6)
+
+
+def _place_portrait_watermark(layout, width: int, height: int) -> None:
+    bars = sorted((shape for shape in layout.shapes if str(shape.name).startswith(WATERMARK_PREFIX)),
+                  key=lambda shape: shape.top)
+    if len(bars) != 3 or None in (bars[0].width, bars[0].height):
+        return
+    angle = math.radians((360 - bars[0].rotation) % 360)
+    length, thickness = bars[0].width, bars[0].height
+    spacing = (bars[2].top - bars[0].top) / 2
+    mark_height = 2 * spacing + length * math.sin(angle) + thickness * math.cos(angle)
+    scale = PORTRAIT_WATERMARK_HEIGHT / mark_height if mark_height else 1
+    length, thickness, spacing = length * scale, thickness * scale, spacing * scale
+    mark_width = length * math.cos(angle) + thickness * math.sin(angle)
+    centre_x = width - Inches(0.55) - mark_width / 2
+    middle = height - Inches(0.6) - PORTRAIT_WATERMARK_HEIGHT / 2
+    for index, bar in enumerate(bars):
+        centre_y = middle + (index - 1) * spacing
+        bar.left, bar.top = int(centre_x - length / 2), int(centre_y - thickness / 2)
+        bar.width, bar.height = int(length), int(thickness)
+
+
 def portrait_covers(content: bytes, positions: list[int]) -> list[bytes] | None:
     """The slides at ``positions`` (covers) as portrait A4 pages, in that order, rendered at once; None when
     LibreOffice cannot render them."""
@@ -437,8 +463,10 @@ def portrait_covers(content: bytes, positions: list[int]) -> list[bytes] | None:
             if container is not slide and id(container.part) in done:
                 continue
             done.add(id(container.part))
+            if container is layout:
+                _place_portrait_watermark(layout, width, height)
             for shape in container.shapes:
-                if shape.left is None or shape.width is None:
+                if shape.left is None or shape.width is None or str(shape.name).startswith(WATERMARK_PREFIX):
                     continue
                 if shape.left > old_width / 2:
                     # A logo at the right edge stays at the right edge.

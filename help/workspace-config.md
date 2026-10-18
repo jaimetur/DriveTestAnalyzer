@@ -101,7 +101,7 @@ Removing the last template reference leaves the existing column available for fu
 
 ## Report Template reference
 
-This is the canonical authoring reference for templates used by both [PPT Dashboards](ppt-dashboards.md) and [PPT Reporting (old)](ppt-reporting-old.md). The common `assets/powerpoint-templates/Template_01.pptx` supplies the masters, named layouts and placeholders. Each distinct `Slide` value creates one slide; chart rows sharing that value fill its chart placeholders in row order.
+This is the canonical authoring reference for templates used by both [PPT Dashboards](ppt-dashboards.md) and [PPT Reporting (old)](ppt-reporting-old.md). The common `assets/powerpoint-templates/Template_VodafoneThree.pptx` supplies the masters, named layouts and placeholders. Each distinct `Slide` value creates one slide; chart rows sharing that value fill its chart placeholders in row order.
 
 ### Template columns
 
@@ -137,6 +137,7 @@ Use one row without `Source Dataset` or KPI fields. A structural row cannot shar
 - `Title Slide` normally uses `Title Page` and fills title/subtitle placeholders.
 - `Transition Slide` normally uses `Title Only` and creates a section divider.
 - Title and Transition subtitles use the template's yellow accent (theme accent 4) in exported presentations, whatever layout hosts them.
+- Every Title or Transition slide after the cover is a transition with its counter (01, 02…) above its title, with the sizes and places of every transition of the reports.
 - In PPT Dashboards, a Title Slide that opens the Dashboard also lists the Scope, Regions and Cities below its subtitle and decorative line, in the viewer and in the exported PPT.
 
 ```text

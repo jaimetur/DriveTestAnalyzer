@@ -11,7 +11,7 @@ from PIL import Image
 
 from src.modules.network_insights_export import export_network_insights_powerpoint, rf_quality_table
 
-TEMPLATE = Path(__file__).resolve().parents[1] / 'assets/powerpoint-templates/Template_01.pptx'
+TEMPLATE = Path(__file__).resolve().parents[1] / 'assets/powerpoint-templates/Template_VodafoneThree.pptx'
 
 
 def _png(*_args) -> bytes:

@@ -267,7 +267,7 @@ Key behaviour:
 - Uses `${IMAGE_REPOSITORY}:${IMAGE_TAG}`.
 - Pulls the selected tag on start.
 - Supports native `linux/amd64` and `linux/arm64` images.
-- Includes `assets/powerpoint-templates/Template_01.pptx` in the image.
+- Includes `assets/powerpoint-templates/Template_VodafoneThree.pptx` in the image.
 - Mounts configuration and workspace data outside the container.
 - Exposes port `7278` by default.
 
@@ -371,7 +371,7 @@ DriveTestAnalyzer/
 ├── tests/                                     # Unit and integration tests
 ├── tools/                                     # Release helper (CreateUpdateRelease.py)
 ├── docker/                                    # Dockerfile, Compose files and environment settings
-├── assets/powerpoint-templates/               # PowerPoint master/layout file (Template_01.pptx)
+├── assets/powerpoint-templates/               # PowerPoint master/layout file (Template_VodafoneThree.pptx)
 ├── assets/autocalculated-fields/             # Auto-calculated Fields every new workspace starts with
 ├── assets/scoring-methodologies/             # Scoring methodologies added to every workspace
 ├── assets/ppt-templates/                     # Report Templates (nsa/, sa/) added to every workspace

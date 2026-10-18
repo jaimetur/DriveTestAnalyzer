@@ -126,11 +126,16 @@ def test_report_document_has_one_section_per_scenario_and_scoring():
     cover = Presentation(BytesIO(content)).slides[0]
     assert 'Scenarios: National, Main Cities' in ' '.join(shape.text_frame.text for shape in cover.shapes
                                                           if shape.has_text_frame)
-    assert first.count('National — Best Network Scoring') == 1
-    assert first.count('National — Most Reliable Network Scoring') == 1
-    assert first.count('Main Cities — Best Network Scoring') == 1
-    assert 'Main Cities — Most Reliable Network Scoring' not in first
-    main_cities = titles[first.index('Main Cities — Best Network Scoring'):]
+    # Each scenario opens with its transition (01, 02); its scorings are the transitions below it.
+    from src.modules import report_structure
+    deck = Presentation(BytesIO(content))
+    transitions = [(next(shape.text for shape in slide.shapes if shape.name.startswith(report_structure.COUNTER_PREFIX)),
+                    slide.shapes.title.text_frame.paragraphs[0].text)
+                   for slide in deck.slides if report_structure.level(slide) is not None]
+    assert [item for item in transitions if '.' not in item[0] or item[0].count('.') == 1] == [
+        ('01', 'National'), ('1.1', 'Best Network Scoring'), ('1.2', 'Most Reliable Network Scoring'),
+        ('02', 'Main Cities'), ('2.1', 'Best Network Scoring')]
+    main_cities = titles[first.index('Main Cities'):]
     assert not any('per Category (Breakdown)' in title for title in main_cities)
     assert not any(title.startswith('GAP Analysis — Three UK vs EE') for title in main_cities)
     assert any(title.startswith('Best Network Scoring per City | Main Cities · Best Network') for title in main_cities)
@@ -217,8 +222,9 @@ def test_report_api_generates_scenarios_and_remembers_the_configuration(scoring_
     assert response.status_code == 200, response.text
     assert 'National' in response.headers['content-disposition'] and 'Leeds' in response.headers['content-disposition']
     titles = [title.split(' | ')[0] for title in _titles(response.content)]
-    assert 'National — Best Network Scoring' in titles and 'Leeds — Best Network Scoring' in titles
-    assert 'Leeds — Most Reliable Network Scoring' not in titles
+    # Each scenario has its transition, then its scorings (Leeds without Most Reliable).
+    leeds = titles[titles.index('Leeds'):]
+    assert 'National' in titles and 'Best Network Scoring' in leeds and 'Most Reliable Network Scoring' not in leeds
     assert client.get('/api/scoring/report-configurations').json()['last']['scenarios'][1]['name'] == 'Leeds'
     # The Leeds scenario has its own scoring job with its filter.
     jobs = saved_filters.list_saved_filters(repository)

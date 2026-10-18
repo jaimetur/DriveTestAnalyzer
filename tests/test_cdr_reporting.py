@@ -2878,7 +2878,7 @@ def test_nsa_speech_catalogue_filters_produce_samples_and_use_latest_campaign() 
 
 
 def test_layout_chart_frames_are_always_ordered_by_visual_rows_then_columns() -> None:
-    presentation = Presentation('assets/powerpoint-templates/Template_01.pptx')
+    presentation = Presentation('assets/powerpoint-templates/Template_VodafoneThree.pptx')
     layout = _named_slide_layout(presentation, 'Title and 2 columns and 2 rows + Comments right')
 
     frames = _layout_chart_frames(layout)
@@ -3235,7 +3235,7 @@ def test_catalogue_rows_use_matching_master_image_placeholders(tmp_path) -> None
 
     render_cdr_report(
         destination,
-        Path('assets/powerpoint-templates/Template_01.pptx'),
+        Path('assets/powerpoint-templates/Template_VodafoneThree.pptx'),
         frames,
         'nsa',
         False,
@@ -3281,7 +3281,7 @@ def test_grid_layout_without_comments_keeps_placeholder_ten_as_a_chart() -> None
         _set_commentary,
     )
 
-    presentation = Presentation('assets/powerpoint-templates/Template_01.pptx')
+    presentation = Presentation('assets/powerpoint-templates/Template_VodafoneThree.pptx')
     layout = _named_slide_layout(presentation, 'Title + 1 rows + 1 columns')
     assert layout is not None
     slide = presentation.slides.add_slide(layout)
@@ -3298,7 +3298,7 @@ def test_grid_layout_without_comments_keeps_placeholder_ten_as_a_chart() -> None
 
 
 def test_layout_only_template_builds_one_new_slide_per_catalogue_number(tmp_path) -> None:
-    template = Path('assets/powerpoint-templates/Template_01.pptx')
+    template = Path('assets/powerpoint-templates/Template_VodafoneThree.pptx')
     assert len(Presentation(template).slides) == 0
     catalogue = (
         ','.join(TRAILING_DYNAMIC_CATALOG_HEADERS)
@@ -3336,7 +3336,7 @@ def test_powerpoint_report_can_disable_tooltip_sidecars(tmp_path) -> None:
 
     render_cdr_report(
         tmp_path / 'without-tooltips.pptx',
-        Path('assets/powerpoint-templates/Template_01.pptx'),
+        Path('assets/powerpoint-templates/Template_VodafoneThree.pptx'),
         {'data': pd.DataFrame(), 'speech': pd.DataFrame(), 'voice': pd.DataFrame({
             'Campaign': ['Q1'], 'Operator': ['EE'], 'Call_Status': ['Completed'],
         })},

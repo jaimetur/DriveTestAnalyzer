@@ -3124,21 +3124,25 @@ def test_dashboard_viewer_cover_matches_the_exported_ppt_cover():
 
     assert "coverGeographyLabel('Region', 'Region', 'Regions', 'All Regions')" in script
     assert "coverGeographyLabel('City', 'City', 'Cities', 'All Cities')" in script
-    assert "const coverLabels = kind === 'title' && Number(slide.number) === firstSlideNumber ? viewerGeographyLabels() : [];" in script
-    # Campaigns sit right above the decorative line, the other details below it.
-    assert "if (campaigns) content.append(node('p', campaigns, 'ds-structural-campaigns'));" in script
+    assert "const coverLabels = isCover ? viewerGeographyLabels() : [];" in script
+    # Campaigns sit right above the decorative line, the other details below it, all in white (labels bold).
+    assert "if (campaigns) details.append(labelledLine(campaigns, 'ds-structural-campaigns'));" in script
     assert script.index("'ds-structural-campaigns'") < script.index("node('span', undefined, 'ds-structural-rule')")
-    assert '.ds-structural-slide .ds-structural-campaigns + .ds-structural-rule { margin-top:1.4cqh; }' in stylesheet
     # Regions and Cities use the same per-CDR catalogue as the PPT cover.
     assert "api('/geography-options', 'POST', canonicalDashboardDefinition(appliedDashboardDefinition || definition))" in script
-    assert '.ds-structural-slide .ds-structural-rule { display:block; width:18.5cqw; height:max(3px,.6cqh); margin-top:9.5cqh;' in stylesheet
-    # These selectors outrank the viewer panel's generic paragraph colour.
-    # Title and Transition subtitles use the template's yellow accent.
-    assert '.ds-structural-slide p.ds-structural-subtitle{color:#fad22d}' in stylesheet
+    # The Vodafone-Three red with the Ericsson mark and the logos, as the PPT covers and transitions.
+    assert 'background:linear-gradient(128deg,#6f0f16 0%,#9c1b22 45%,#d42b21 100%)' in stylesheet
+    assert "svg.setAttribute('class', 'ds-structural-watermark')" in script and 'config.operators_logo' in script
+    assert '.ds-structural-slide p.ds-structural-campaigns { margin:0; overflow:hidden; color:#fff;' in stylesheet
+    assert '.ds-structural-slide .ds-structural-geography p { margin:0; overflow:hidden; color:#fff;' in stylesheet
+    assert 'color:#8bf0a6' not in stylesheet and 'color:#52ddf0' not in stylesheet and 'color:#ff8c42' not in stylesheet
+    # The subtitle in the template's yellow; the cover 54/24 pt and each transition 48/40/20 pt of a 13.33 in slide.
+    assert '.ds-structural-slide p.ds-structural-subtitle { margin:0; color:#ffc700; font-size:min(2.08cqw,3.7cqh);' in stylesheet
+    assert '.ds-structural-cover h3.ds-structural-title { font-size:min(5.63cqw,10cqh); }' in stylesheet
+    assert '.ds-structural-slide p.ds-structural-number { margin:0 0 min(2.64cqw,4.7cqh); color:#fff; font-size:min(5cqw,8.9cqh);' in stylesheet
+    # Each transition after the cover has its counter: 01, 02…
+    assert "String(Math.max(1, index + 1)).padStart(2, '0'), 'ds-structural-number'" in script
     assert "['scope', scope]," in script
-    assert '.ds-structural-slide .ds-structural-geography p.ds-structural-geography-scope{color:#8bf0a6}' in stylesheet
-    assert '.ds-structural-slide .ds-structural-geography p.ds-structural-geography-region{color:#52ddf0}' in stylesheet
-    assert '.ds-structural-slide .ds-structural-geography p.ds-structural-geography-city{color:#ffa6cb}' in stylesheet
 
 
 def test_dashboard_viewer_scope_selector_confirms_before_rerendering():
@@ -3157,7 +3161,7 @@ def test_transition_slide_subtitle_uses_the_template_yellow_accent():
     from pptx import Presentation as PptxPresentation
     from src.modules.cdr_reporting import _named_slide_layout, _set_structural_slide_text
 
-    deck = PptxPresentation(Path(__file__).parents[1] / 'assets/powerpoint-templates/Template_01.pptx')
+    deck = PptxPresentation(Path(__file__).parents[1] / 'assets/powerpoint-templates/Template_VodafoneThree.pptx')
     slide = deck.slides.add_slide(_named_slide_layout(deck, 'Title Only'))
     _set_structural_slide_text(slide, 'Executive Summary', 'Key findings')
 

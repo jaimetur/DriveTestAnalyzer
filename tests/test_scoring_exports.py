@@ -25,7 +25,7 @@ from tests.scoring_fixtures import scoring_configuration
 
 
 ROOT = Path(__file__).parents[1]
-TEMPLATE = ROOT / 'assets/powerpoint-templates/Template_01.pptx'
+TEMPLATE = ROOT / 'assets/powerpoint-templates/Template_VodafoneThree.pptx'
 METRICS = scoring_configuration()['metrics']
 OPERATORS = ('Vodafone UK', 'O2 UK', 'Three UK', 'EE')
 MAPPED_OPERATOR_ORDER = ('EE', 'Three UK', 'O2 UK', 'Vodafone UK')
@@ -750,13 +750,9 @@ def test_powerpoint_exports_one_reference_style_scoring_matrix_with_signed_gaps_
     assert [slide.slide_layout.name for slide in intro_slides] == ['Title Page', 'Title Page']
     cover_text = _slide_text(presentation.slides[0]).replace('\x0b', '\n')
     transition_text = _slide_text(presentation.slides[1]).replace('\x0b', '\n')
-    expected_filter_text = 'Non-Standalone\nSplit by & Filters:\nSplit by: Operator\nOperator: All Operators\nVendor: All Vendors\nRegion: All Regions\nCity: All Cities'
-    assert expected_filter_text in cover_text
-    assert expected_filter_text in transition_text
-    assert 'Campaigns: 2026-Q2' in cover_text
-    assert 'Campaigns: 2026-Q2' in transition_text
-    assert next(shape for shape in presentation.slides[0].shapes if shape.name == 'Scoring Campaigns').top > Inches(5.66)
-    assert next(shape for shape in presentation.slides[1].shapes if shape.name == 'Scoring Campaigns').top > Inches(1.7)
+    expected_filter_text = 'Campaigns: 2026-Q2\nSplit by: Operator\nOperator: All Operators\nVendor: All Vendors\nRegion: All Regions\nCity: All Cities'
+    for text in (cover_text, transition_text):
+        assert 'Non-Standalone' in text and expected_filter_text in text
 
     summary_view = views['gap_summary_tables'][0]
     summary_slide, summary_table = _slide_with_table(
@@ -1023,6 +1019,7 @@ def test_cover_campaigns_prefer_scored_contexts_and_include_context_filters():
 
 
 def test_intro_slides_show_all_canonical_scope_filters_without_overlapping_campaigns():
+    from src.modules import report_structure
     job_fields = {
         'context_filters': {
             'Region': ['North', 'South'],
@@ -1042,51 +1039,32 @@ def test_intro_slides_show_all_canonical_scope_filters_without_overlapping_campa
         assert 'Vendor: All Vendors' in text
         assert 'Campaign: UK_Q2_2026, UK_Q3_2026' not in text
         assert 'Campaigns: 2026-Q2' in text
-        ordered_labels = [
-            'Split by: Operator', 'Operator: O2 UK', 'Vendor: All Vendors',
-            'Region: North, South', 'City: All Cities',
-        ]
-        assert [text.index(label) for label in ordered_labels] == sorted(
-            text.index(label) for label in ordered_labels
-        )
-        campaign_shape = next(shape for shape in slide.shapes if shape.name == 'Scoring Campaigns')
-        subtitle_shape = next(
-            shape for shape in slide.placeholders if shape.placeholder_format.type == 4
-        )
         assert slide.slide_layout.name == 'Title Page'
-        assert campaign_shape.top > Inches(5.77)
-        assert subtitle_shape.top + subtitle_shape.height <= Inches(5.771)
-        mode_paragraph = subtitle_shape.text_frame.paragraphs[0]
+        # The NR Mode is the subtitle, right below the room of two title lines (the cover's larger than a transition's).
+        subtitle_shape = next(shape for shape in slide.placeholders if shape.placeholder_format.type == 4)
         title_shape = slide.shapes.title
-        assert subtitle_shape.top - (title_shape.top + title_shape.height) == Inches(.05)
-        assert 'Split by:' not in subtitle_shape.text
-        filters_shape = next(shape for shape in slide.shapes
-                             if shape.name == 'Scoring Aggregations and Filters')
-        assert filters_shape.text.startswith('Split by & Filters:')
-        assert filters_shape.text_frame.paragraphs[0]._p.get_or_add_pPr().get('marL') == '0'
-        assert all(int(paragraph._p.get_or_add_pPr().get('marL')) > 0
-                   for paragraph in filters_shape.text_frame.paragraphs[1:])
-        assert filters_shape.top >= subtitle_shape.top + subtitle_shape.height
-        assert filters_shape.top + filters_shape.height < campaign_shape.top
-        assert all(str(paragraph.font.color.rgb) == 'FFFFFF'
-                   for paragraph in filters_shape.text_frame.paragraphs)
+        kind = 'cover' if index == 0 else 'transition'
         assert subtitle_shape.text == 'Non-Standalone'
-        assert mode_paragraph.font.size.pt == 18
-        assert str(mode_paragraph.font.color.rgb) == 'FFC700'
-        assert mode_paragraph._p.xpath('./a:pPr/a:buNone')
-        if index == 1:
-            assert mode_paragraph.alignment == 1  # Left.
-            title = slide.shapes.title.text_frame.paragraphs[0]
-            assert title.alignment == 1
-            assert str(title.font.color.rgb) == 'FFFFFF'
-            assert title.font.size.pt == 44
-        for paragraph in subtitle_shape.text_frame.paragraphs:
-            assert paragraph.font.name == 'Aptos'
-            assert paragraph.font._rPr.get('spc') == '0'
-            assert all(run.font._rPr.get('spc') == '0' for run in paragraph.runs)
-        assert subtitle_shape.left > 0
-        assert subtitle_shape.top > 0
-        assert subtitle_shape.width > Inches(9)
+        assert title_shape.top == report_structure.TITLE_TOP
+        assert subtitle_shape.top == title_shape.top + report_structure.TWO_TITLE_LINES[kind]
+        assert title_shape.text_frame.paragraphs[0].runs[0].font.size.pt == (54 if index == 0 else 40)
+        assert subtitle_shape.text_frame.paragraphs[0].runs[0].font.size.pt == (24 if index == 0 else 20)
+        assert subtitle_shape.text_frame.paragraphs[0]._p.xpath('./a:pPr/a:buNone')
+        # The Campaigns, then the Split by and each filter, under the line of the layout.
+        filters_shape = next(shape for shape in slide.shapes if shape.name == 'Scoring Aggregations and Filters')
+        assert filters_shape.top > Inches(5.77) and filters_shape.top + filters_shape.height <= Inches(7.5)
+        ordered_labels = ['Campaigns: 2026-Q2', 'Split by: Operator', 'Operator: O2 UK', 'Vendor: All Vendors',
+                          'Region: North, South', 'City: All Cities']
+        assert [line for line in filters_shape.text.splitlines()] == [label for label in ordered_labels] or \
+            [filters_shape.text.index(label) for label in ordered_labels] == sorted(filters_shape.text.index(label) for label in ordered_labels)
+        # Labels white, values yellow.
+        first = filters_shape.text_frame.paragraphs[0].runs
+        assert str(first[0].font.color.rgb) == 'FFFFFF' and str(first[1].font.color.rgb) == 'FFC700'
+    # The cover has no counter; the Best Network block opens as the first transition.
+    assert report_structure.level(presentation.slides[0]) is None
+    assert report_structure.level(presentation.slides[1]) == 1
+    counter = next(shape for shape in presentation.slides[1].shapes if shape.name.startswith(report_structure.COUNTER_PREFIX))
+    assert counter.text == '01' and counter.top < presentation.slides[1].shapes.title.top
 
 
 def test_intro_dimension_lines_keep_requested_order_independent_of_hierarchy_configuration():
