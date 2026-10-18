@@ -595,3 +595,20 @@ def test_the_non_qualified_calls_artifact_keeps_campaign_choices_until_each_run(
     assert 'filters = resolve_report_campaigns(repository, filters)' in module
     assert "chosen = [value for group in preset_campaign_groups(campaign_groups(campaigns), presets[:1]) for value in group]" in module
     assert "return {**filters, 'campaign': chosen or [NO_PREVIOUS_CAMPAIGN]}" in module
+
+
+def test_a_job_can_start_from_a_favourite_complete_report():
+    definition = report_tasks.normalize_definition({'modules': {'complete_report': {
+        'enabled': True, 'formats': ['powerpoint', 'word'], 'options': {'filters': {'favourites': ['7']}}}}})
+    # The jobs table names the favourite the job generates (every one when it chooses none).
+    groups = report_tasks.artifact_groups(definition, {}, {'7': 'Weekly NetCheck'})
+    assert groups == [{'module': 'Complete Report', 'items': ['Weekly NetCheck (PPT/Word)']}]
+    assert report_tasks.artifact_labels(definition, {}, {'7': 'Weekly NetCheck'}) == ['Complete Report · Weekly NetCheck (PPT/Word)']
+    every = report_tasks.normalize_definition({'modules': {'complete_report': {'enabled': True, 'formats': ['powerpoint']}}})
+    assert report_tasks.artifact_groups(every)[0]['items'] == ['Every favourite (PPT)']
+    page = (core.PROJECT_ROOT / 'src/web_interface/templates/report_jobs.html').read_text(encoding='utf-8')
+    assert 'name="rj-source" value="favourite" checked' in page and 'name="rj-source" value="editor"' in page
+    script = (core.PROJECT_ROOT / 'src/web_interface/static/js/report_jobs.js').read_text(encoding='utf-8')
+    # From a favourite, the job generates only its Complete Report; one that does opens as such in the editor.
+    assert 'function favouriteDefinition(base)' in script and 'function favouriteOf(definition)' in script
+    assert "if (jobSource() === 'favourite' && !$('rj-favourite')?.value)" in script

@@ -870,6 +870,7 @@
     $('rj-modules-note').textContent = `Artifacts of modules not activated for your account are not available: ${unavailable.map((module) => labels[module]).join(', ')}.`;
     const modules = definition.modules || {};
     $('rj-providers').replaceChildren(...options.providers.map((provider) => providerCard(provider, modules[provider.key] || {})));
+    fillFavourite(task, definition);
     syncArtifactTabs();
     $('rj-send-email').checked = Boolean(task?.send_email);
     $('rj-recipients').value = (task?.recipients || []).join(', ');
@@ -942,7 +943,57 @@
       : window.confirm('Discard the unsaved changes of this Reporting Job?');
   }
 
+  // A job starts from a favourite Complete Report (the default for a new job when there is one) or has its artifacts
+  // designed in the editor. A job that only generates one favourite opens as such.
+  const favouriteChoices = () => (options.providers.find((provider) => provider.key === 'complete_report')?.values?.favourites || [])
+    .map((item) => (Array.isArray(item) ? item : [item, item]).map(String));
+  const jobSource = () => document.querySelector('input[name="rj-source"]:checked')?.value || 'editor';
+  function favouriteOf(definition) {
+    const report = definition.modules?.complete_report || {};
+    const chosen = report.options?.filters?.favourites || [];
+    const others = Boolean(definition.dataset_analysis?.enabled) || (definition.network_insights || []).length > 0
+      || (definition.dashboards || []).length > 0 || (definition.scoring || []).length > 0
+      || Object.entries(definition.modules || {}).some(([key, module]) => key !== 'complete_report' && module?.enabled);
+    return report.enabled && chosen.length === 1 && !others ? {id: String(chosen[0]), formats: report.formats || []} : null;
+  }
+  function fillFavourite(task, definition) {
+    const choices = favouriteChoices();
+    const saved = favouriteOf(definition);
+    const source = saved || (!task?.id && choices.length && !task?.definition) ? 'favourite' : 'editor';
+    document.querySelectorAll('input[name="rj-source"]').forEach((radio) => { radio.checked = radio.value === source; });
+    const picker = select(choices.length ? choices : [['', 'No favourite Complete Report yet']], saved?.id || choices[0]?.[0] || '');
+    picker.id = 'rj-favourite';
+    picker.disabled = !choices.length;
+    $('rj-favourite-field').replaceChildren(field('Favourite Complete Report', picker));
+    formatChoices($('rj-favourite-formats'), 'rj-favourite', saved?.formats?.length ? saved.formats : ['powerpoint', 'word'], ['powerpoint', 'word']);
+    $('rj-favourite-note').textContent = choices.length
+      ? 'Each run generates the favourite as it is saved then: its sections, filters and Campaigns (the latest ones are chosen again at each run).'
+      : 'There is no favourite Complete Report yet: save one in the Complete Report panel above, or design the artifacts.';
+    // A new job takes the name of its favourite (until it is given another).
+    const nameOf = (id) => choices.find(([value]) => value === id)?.[1] || '';
+    let named = nameOf(picker.value);
+    if (!task?.id && !$('rj-name').value.trim() && source === 'favourite') $('rj-name').value = named;
+    picker.addEventListener('change', () => {
+      if (!$('rj-name').value.trim() || $('rj-name').value.trim() === named) $('rj-name').value = nameOf(picker.value);
+      named = nameOf(picker.value);
+    });
+  }
+  document.querySelectorAll('input[name="rj-source"]').forEach((radio) => radio.addEventListener('change', () => {
+    if (jobSource() === 'favourite' && !$('rj-name').value.trim()) {
+      const picker = $('rj-favourite');
+      $('rj-name').value = picker?.selectedOptions?.[0]?.textContent && !picker.disabled ? picker.selectedOptions[0].textContent : '';
+    }
+    syncEditor();
+    syncArtifactTabs();
+  }));
+
   function syncEditor() {
+    const source = jobSource();
+    document.querySelectorAll('[data-rj-source]').forEach((element) => { element.hidden = element.dataset.rjSource !== source; });
+    document.querySelectorAll('[data-rj-module]').forEach((card) => {
+      if (source === 'favourite') card.dataset.rjSourceHidden = 'true';
+      else delete card.dataset.rjSourceHidden;
+    });
     document.querySelectorAll('[data-rj-section]').forEach((section) => {
       const enabled = section.querySelector('.rj-card-toggle input').checked;
       section.querySelector('[data-rj-body]').hidden = !enabled;
@@ -955,9 +1006,35 @@
   }
 
   function editorPayload() {
+    const base = editorDefinition();
     return {
       name: $('rj-name').value.trim(),
-      definition: {
+      definition: jobSource() === 'favourite' ? favouriteDefinition(base) : base,
+      send_email: $('rj-send-email').checked,
+      recipients: $('rj-recipients').value,
+      schedule: {
+        mode: $('rj-schedule-mode').value, date: $('rj-schedule-date').value, time: $('rj-schedule-time').value || '08:00',
+        day_of_month: Number($('rj-schedule-day').value || 1),
+        weekdays: [...$('rj-schedule-weekdays').querySelectorAll('input:checked')].map((box) => Number(box.value)),
+      },
+      enabled: $('rj-enabled').checked,
+    };
+  }
+
+  // A job from a favourite generates only its Complete Report, in the formats chosen.
+  function favouriteDefinition(base) {
+    const favourite = $('rj-favourite')?.value || '';
+    return {
+      ...base, dataset_analysis: {...base.dataset_analysis, enabled: false}, network_insights: [], dashboards: [], scoring: [],
+      modules: {
+        ...Object.fromEntries(Object.entries(base.modules).map(([key, module]) => [key, {...module, enabled: false}])),
+        complete_report: {enabled: true, formats: $('rj-favourite-formats').getValue(), options: {filters: {favourites: favourite ? [favourite] : []}}},
+      },
+    };
+  }
+
+  function editorDefinition() {
+    return {
         dataset_analysis: {
           enabled: $('rj-da-enabled').checked && options.allowed_modules.dataset_analysis, formats: document.querySelector('[data-rj-formats="rj-da"]').getValue(),
           ...$('rj-da-scope').getValue(), auto_cdrs: true, dataset_ids: [], cdr_selection: '',
@@ -972,15 +1049,6 @@
         dashboards: $('rj-dashboards-enabled').checked ? [...$('rj-dashboards').children].map((card) => card.getValue()) : [],
         scoring: $('rj-scoring-enabled').checked ? [...$('rj-scoring').children].map((card) => card.getValue()) : [],
         modules: Object.fromEntries([...$('rj-providers').children].map((card) => card.getValue())),
-      },
-      send_email: $('rj-send-email').checked,
-      recipients: $('rj-recipients').value,
-      schedule: {
-        mode: $('rj-schedule-mode').value, date: $('rj-schedule-date').value, time: $('rj-schedule-time').value || '08:00',
-        day_of_month: Number($('rj-schedule-day').value || 1),
-        weekdays: [...$('rj-schedule-weekdays').querySelectorAll('input:checked')].map((box) => Number(box.value)),
-      },
-      enabled: $('rj-enabled').checked,
     };
   }
 
@@ -1275,6 +1343,11 @@
   $('rj-form').addEventListener('submit', async (event) => {
     event.preventDefault();
     const button = $('rj-save');
+    // A job from a favourite needs one (without it, the Complete Report artifact would generate every favourite).
+    if (jobSource() === 'favourite' && !$('rj-favourite')?.value) {
+      status('Choose the favourite Complete Report of the job, or design its artifacts.', 'error');
+      return;
+    }
     button.disabled = true;
     try {
       const payload = editorPayload();

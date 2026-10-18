@@ -443,7 +443,14 @@ def recurrence_label(schedule: dict[str, Any]) -> str:
     return 'Manual only'
 
 
-def artifact_groups(definition: dict[str, Any], dashboard_names: dict[str, str] | None = None) -> list[dict[str, Any]]:
+def _favourite_items(config: dict[str, Any], favourite_names: dict[str, str] | None) -> list[str]:
+    """The favourite Complete Reports a Complete Report artifact generates (every one when it chooses none)."""
+    chosen = [str(value) for value in ((config.get('options') or {}).get('filters') or {}).get('favourites') or []]
+    return [(favourite_names or {}).get(value, value) for value in chosen] or ['Every favourite']
+
+
+def artifact_groups(definition: dict[str, Any], dashboard_names: dict[str, str] | None = None,
+                    favourite_names: dict[str, str] | None = None) -> list[dict[str, Any]]:
     """The artifacts of a job by module: [{'module', 'items'}], each item an entry name with its formats.
 
     The jobs table lists a module once and, when it has several entries, its entries indented below it.
@@ -467,11 +474,14 @@ def artifact_groups(definition: dict[str, Any], dashboard_names: dict[str, str] 
         groups.append({'module': 'Scoring & GAP Analysis', 'items': scoring})
     for key, config in (definition.get('modules') or {}).items():
         provider = ARTIFACT_PROVIDERS.get(key)
-        groups.append({'module': provider['label'] if provider else key, 'items': [formats(config.get('formats'))]})
+        items = ([f'{name} {formats(config.get("formats"))}' for name in _favourite_items(config, favourite_names)]
+                 if key == 'complete_report' else [formats(config.get('formats'))])
+        groups.append({'module': provider['label'] if provider else key, 'items': items})
     return groups
 
 
-def artifact_labels(definition: dict[str, Any], dashboard_names: dict[str, str] | None = None) -> list[str]:
+def artifact_labels(definition: dict[str, Any], dashboard_names: dict[str, str] | None = None,
+                    favourite_names: dict[str, str] | None = None) -> list[str]:
     labels = []
     section = definition.get('dataset_analysis') or {}
     if section.get('enabled'):
@@ -490,7 +500,8 @@ def artifact_labels(definition: dict[str, Any], dashboard_names: dict[str, str] 
             labels.append(f"{MODULE_LABELS['scoring']} · {name} ({formats})")
     for key, config in (definition.get('modules') or {}).items():
         provider = ARTIFACT_PROVIDERS.get(key)
-        labels.append(f"{provider['label'] if provider else key} ({'/'.join(FORMAT_LABELS.get(value, value) for value in config.get('formats') or [])})")
+        named = f" · {', '.join(_favourite_items(config, favourite_names))}" if key == 'complete_report' else ''
+        labels.append(f"{provider['label'] if provider else key}{named} ({'/'.join(FORMAT_LABELS.get(value, value) for value in config.get('formats') or [])})")
     return labels
 
 
@@ -1522,10 +1533,10 @@ def install_report_task_routes(core: Any) -> None:
                 'filters': [{'key': name, 'label': text} for name, text in provider.get('filters') or ()],
                 'settings': list(provider.get('settings') or ()), 'values': values}
 
-    def serialize_task(task, runs_by_id, dashboard_names) -> dict[str, Any]:
+    def serialize_task(task, runs_by_id, dashboard_names, favourite_names=None) -> dict[str, Any]:
         last = runs_by_id.get(task['last_run_id']) if task['last_run_id'] else None
-        return {**task, 'artifacts': artifact_labels(task['definition'], dashboard_names),
-                'artifact_groups': artifact_groups(task['definition'], dashboard_names), 'last_run': last}
+        return {**task, 'artifacts': artifact_labels(task['definition'], dashboard_names, favourite_names),
+                'artifact_groups': artifact_groups(task['definition'], dashboard_names, favourite_names), 'last_run': last}
 
     # -- routes -------------------------------------------------------------
     @app.get('/reporting', response_class=HTMLResponse)
@@ -1545,6 +1556,12 @@ def install_report_task_routes(core: Any) -> None:
         tools = getattr(core, 'dashboard_reporting', None)
         dashboard_names = {str(key): str(value.get('name') or key) for key, value in tools.list_dashboards(task_repository).items()
                            if isinstance(value, dict)} if tools is not None else {}
+        # The jobs that generate favourite Complete Reports name them.
+        try:
+            from src.modules.complete_reports import list_favourites
+            favourite_names = {str(item['id']): item['name'] for item in list_favourites(task_repository)}
+        except Exception:  # noqa: BLE001 - without them the jobs still list their artifacts.
+            favourite_names = {}
         # Run History links only the files that still exist.
         for run in runs:
             folder = Path(run['output_dir']) if run.get('output_dir') else None
@@ -1554,7 +1571,7 @@ def install_report_task_routes(core: Any) -> None:
         # Jobs saved when CDRs were chosen by hand open with the campaigns of those CDRs.
         tasks = [{**task, 'definition': migrate_auto_cdrs(task['definition'], task_repository)} for task in list_tasks(task_repository)]
         return {
-            'tasks': [serialize_task(task, runs_by_id, dashboard_names) for task in tasks],
+            'tasks': [serialize_task(task, runs_by_id, dashboard_names, favourite_names) for task in tasks],
             'runs': runs, 'can_edit': user.role in {'user-editor', 'admin', 'super-admin'},
             'workspace_id': core.active_workspace.id if core.active_workspace else '',
         }

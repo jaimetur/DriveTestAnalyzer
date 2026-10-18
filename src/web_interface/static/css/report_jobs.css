@@ -454,3 +454,14 @@
   .cr-preview-nav { border-right: 0; border-bottom: 1px solid var(--line); }
   .cr-viewer-hint { display: none; }
 }
+
+/* Start from: a favourite Complete Report (the job generates it) or the artifacts designed in the editor. */
+.rj-source { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: .6rem; margin-bottom: .8rem; }
+.report-jobs-form .rj-source-option { display: flex; align-items: flex-start; gap: .6rem; padding: .75rem .9rem; border: 1px solid var(--line); border-radius: 14px; background: #fff; cursor: pointer; }
+.report-jobs-form .rj-source-option:has(input:checked) { border-color: #2e8c58; background: #f1faf4; box-shadow: 0 0 0 2px rgba(46, 140, 88, .15); }
+.report-jobs-form .rj-source-option input { flex: 0 0 auto; width: auto; margin: .2rem 0 0; accent-color: #2e8c58; }
+.report-jobs-form .rj-source-option span { display: grid; gap: .15rem; min-width: 0; }
+.report-jobs-form .rj-source-option small { color: var(--muted); font-weight: 500; }
+.rj-favourite-card { display: grid; gap: .6rem; }
+.rj-favourite-card[hidden], [data-rj-source][hidden] { display: none !important; }
+.rj-card[data-rj-source-hidden] { display: none !important; }
