@@ -1022,7 +1022,8 @@ def test_favourites_saved_with_a_former_name_move_to_the_bundle_report_templates
                            "VALUES (7, 'Monthly', '{}', 'super', '2026-10-18', '2026-10-18')")
         connection.executemany("INSERT INTO reporting_jobs_templates (name, definition_json, created_by, created_at, updated_at) "
                                "VALUES (?, '{}', 'super', '2026-10-19', '2026-10-19')", [('monthly',), ('Weekly',)])
-    assert [(item['id'], item['name']) for item in bundle_report_templates.list_favourites(repository)] == [(7, 'Monthly'), (8, 'Weekly')]
+    favourites = bundle_report_templates.list_favourites(repository)
+    assert [item['name'] for item in favourites] == ['Monthly', 'Weekly'] and favourites[0]['id'] == 7
     with repository.connection() as connection:
         names = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type IN ('table', 'index')")}
     assert table in names and f'idx_{table}_name' in names

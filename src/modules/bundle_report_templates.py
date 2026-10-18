@@ -448,12 +448,15 @@ def _rename_legacy_table(connection: Any) -> None:
             continue
         if BUNDLE_REPORT_TEMPLATES_TABLE not in tables:
             connection.execute(f'ALTER TABLE {legacy} RENAME TO {BUNDLE_REPORT_TEMPLATES_TABLE}')
+            connection.execute(f'DROP INDEX IF EXISTS idx_{legacy}_name')
             tables.add(BUNDLE_REPORT_TEMPLATES_TABLE)
         else:
             columns = 'name, definition_json, created_by, created_at, updated_at'
             connection.execute(f'INSERT OR IGNORE INTO {BUNDLE_REPORT_TEMPLATES_TABLE} ({columns}) SELECT {columns} FROM {legacy}')
             connection.execute(f'DROP TABLE {legacy}')
-        connection.execute(f'DROP INDEX IF EXISTS idx_{legacy}_name')
+        # The unique names of the current table, before the favourites of another former table are added.
+        connection.execute(f'CREATE UNIQUE INDEX IF NOT EXISTS idx_{BUNDLE_REPORT_TEMPLATES_TABLE}_name '
+                           f'ON {BUNDLE_REPORT_TEMPLATES_TABLE}(name COLLATE NOCASE)')
 
 
 def ensure_tables(repository: Any) -> None:
