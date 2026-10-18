@@ -6349,6 +6349,11 @@
     }
   }
 
+  // A KPI name whose comparison, threshold and unit stay together when it wraps: FDTT DL THROUGHPUT / > 5Mbit/s [%].
+  function kpiNameText(text) {
+    return String(text).replace(/([<>≤≥=]+)\s+(?=\S)/g, '$1\u00A0').replace(/\s+(\[[^\]]*\])\s*$/, '\u00A0$1');
+  }
+
   function insightTable(headers, rows, {className = ''} = {}) {
     const table = document.createElement('table');
     table.className = `scoring-insight-table ${className}`.trim();
@@ -6367,15 +6372,23 @@
         else if (content && typeof content === 'object') {
           cell.textContent = content.text ?? '';
           if (content.kpiType) {
-            // A KPI starts with the R or D badge of its type, as in the Score and GAP tables.
+            // A KPI starts with the R or D badge of its type, as in the Score and GAP tables. Its name wraps beside the
+            // badge, and its threshold and unit (> 5Mbit/s [%]) never break apart, so a unit never stands alone on a line.
             const type = String(content.kpiType).trim().toLocaleLowerCase();
+            const name = document.createElement('span');
+            name.className = 'scoring-kpi-name';
+            name.textContent = kpiNameText(content.text ?? '');
+            cell.replaceChildren(name);
             if (type === 'reliable' || type === 'diff') {
               const badge = document.createElement('span');
               badge.className = 'scoring-kpi-badge';
               badge.dataset.kpiType = type;
               badge.textContent = type === 'reliable' ? 'R' : 'D';
               badge.title = `${content.kpiType} KPI`;
-              cell.prepend(badge);
+              const label = document.createElement('span');
+              label.className = 'scoring-kpi-name-row';
+              label.append(badge, name);
+              cell.replaceChildren(label);
             }
           }
           if (content.title) cell.title = content.title;
@@ -7468,47 +7481,125 @@
     section.append(body, insightParagraph('scoring-insight-note', 'A stretch gathers the tests of the route within about 20 km, named after the nearest city of the measurements; circle area: points lost.'));
   }
 
+  // The colour of a stretch by its share of the points of the stretch that loses most: from the third colour of the
+  // quality scale of the theme (yellow, little lost) through its second (orange) to its first (red, the most lost), as
+  // in the exports (scoring_summary_slides.stretch_colour).
+  function stretchColour(share) {
+    const scale = activeTheme.scale || ['#C9483F', '#E8A060', '#F2D06B'];
+    const value = Math.max(0, Math.min(1, share));
+    return value <= .5 ? blendHex(scale[2], scale[1], value * 2) : blendHex(scale[1], scale[0], (value - .5) * 2);
+  }
+
+  // The map of a route: the map areas as the land (else the other tests in grey), the route in the colour of the
+  // operator, the measured cities around it named, and a circle per stretch whose area and colour (yellow to red, on
+  // the scale of the theme) tell its points lost; the stretches that lose most are numbered and named after their
+  // nearest city.
   function makeStretchMap(route, color, background) {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    const width = 520, height = 420, margin = 34;
+    const width = 560, height = 460, margin = 30;
     const points = [...(route.path || []), ...route.all_stretches.map(([lat, lon]) => [lat, lon])];
     const latitudes = points.map(point => point[0]), longitudes = points.map(point => point[1]);
-    const south = Math.min(...latitudes) - .15, north = Math.max(...latitudes) + .15;
-    const west = Math.min(...longitudes) - .25, east = Math.max(...longitudes) + .25;
+    // The route fills the map, with room around it for the cities near it and the names of its stretches.
+    const padLat = Math.max(.1, (Math.max(...latitudes) - Math.min(...latitudes)) * .25);
+    const padLon = Math.max(.18, (Math.max(...longitudes) - Math.min(...longitudes)) * .25);
+    const south = Math.min(...latitudes) - padLat, north = Math.max(...latitudes) + padLat;
+    const west = Math.min(...longitudes) - padLon, east = Math.max(...longitudes) + padLon;
     const factor = Math.cos((south + north) / 2 * Math.PI / 180);
     const unit = Math.max((east - west) * factor / (width - 2 * margin), (north - south) / (height - 2 * margin)) || 1;
-    const project = (lat, lon) => [margin + ((lon - west) * factor) / unit + ((width - 2 * margin) - (east - west) * factor / unit) / 2,
-      height - margin - (lat - south) / unit - ((height - 2 * margin) - (north - south) / unit) / 2];
+    const offsetX = (width - (east - west) * factor / unit) / 2, offsetY = (height - (north - south) / unit) / 2;
+    const project = (lat, lon) => [offsetX + (lon - west) * factor / unit, height - offsetY - (lat - south) / unit];
     svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
     svg.setAttribute('class', 'scoring-stretch-map');
     svg.setAttribute('role', 'img');
     svg.setAttribute('aria-label', `${route.route}: points lost along the route`);
-    svg.append(svgElement(svg, 'rect', {x: 0, y: 0, width, height, rx: 10, fill: '#f8fafc'}));
+    svg.append(svgElement(svg, 'rect', {x: 0, y: 0, width, height, rx: 10, fill: '#e9eef3'}));
+    const land = svgElement(svg, 'g', {});
+    svg.append(land);
+    const tests = svgElement(svg, 'g', {});
+    svg.append(tests);
     for (const [lat, lon] of background) {
       if (lat < south || lat > north || lon < west || lon > east) continue;
       const [x, y] = project(lat, lon);
-      svg.append(svgElement(svg, 'circle', {cx: x, cy: y, r: 1.4, fill: '#d5dbe2'}));
+      tests.append(svgElement(svg, 'circle', {cx: x, cy: y, r: 1.4, fill: '#d5dbe2'}));
     }
-    // The tests of the route (a sample of their positions), darker than the other tests.
+    // The map areas (ITL3 in the UK) as the land under the route, once loaded: they replace the other tests.
+    if (currentResultsSavedFilterId) {
+      renderLoads.push(lossBoundaries(currentResultsSavedFilterId, 'Area').then(({boundaries}) => {
+        let drawn = false;
+        for (const rings of Object.values(boundaries || {})) {
+          for (const ring of rings) {
+            if (!ring.some(([lon, lat]) => lat >= south && lat <= north && lon >= west && lon <= east)) continue;
+            land.append(svgElement(svg, 'path', {d: `M${ring.map(([lon, lat]) => project(lat, lon).map(value => value.toFixed(1)).join(',')).join('L')}Z`,
+              fill: '#ffffff', stroke: '#d5dde5', 'stroke-width': .8}));
+            drawn = true;
+          }
+        }
+        if (drawn) tests.remove();
+      }));
+    }
+    // The tests of the route (a sample of their positions) in the colour of the operator.
     for (const [lat, lon] of route.path || []) {
       const [x, y] = project(lat, lon);
-      svg.append(svgElement(svg, 'circle', {cx: x, cy: y, r: 2.2, fill: '#94a3b8'}));
+      svg.append(svgElement(svg, 'circle', {cx: x, cy: y, r: 2.2, fill: blendHex(color, '#FFFFFF', .35)}));
     }
+    // The measured cities around the route on the map.
+    const cities = (route.landmarks || []).filter(place => place.latitude >= south && place.latitude <= north
+      && place.longitude >= west && place.longitude <= east).map(place => [...project(place.latitude, place.longitude), place.name]);
+    for (const [x, y] of cities) svg.append(svgElement(svg, 'circle', {cx: x, cy: y, r: 3.5, fill: '#1c1c28', stroke: '#ffffff', 'stroke-width': 1.2}));
     const peak = Math.max(...route.all_stretches.map(item => item[2]), 0) || 1;
-    const top = new Map(route.stretches.map((row, index) => [`${row.latitude},${row.longitude}`, index + 1]));
+    const top = new Map(route.stretches.map((row, index) => [`${row.latitude},${row.longitude}`, [index + 1, row]]));
+    const names = [];
     for (const [lat, lon, points] of [...route.all_stretches].sort((left, right) => left[2] - right[2])) {
       const [x, y] = project(lat, lon);
-      const radius = 4 + 22 * Math.sqrt(points / peak);
-      const circle = svgElement(svg, 'circle', {cx: x, cy: y, r: radius, fill: color, 'fill-opacity': .55, stroke: '#ffffff', 'stroke-width': 1.5});
-      setChartTooltip(circle, `${insightNumber(points, 2)} points lost`, true);
+      const share = Math.sqrt(points / peak);
+      const radius = 4 + 20 * share;
+      const fill = stretchColour(share);
+      const circle = svgElement(svg, 'circle', {cx: x, cy: y, r: radius, fill, 'fill-opacity': .9, stroke: '#ffffff', 'stroke-width': 1.5});
+      const ranked = top.get(`${lat},${lon}`);
+      setChartTooltip(circle, `${ranked ? `${ranked[1].label} · ` : ''}${insightNumber(points, 2)} points lost`, true);
       svg.append(circle);
-      const rank = top.get(`${lat},${lon}`);
-      if (rank) {
-        const label = svgElement(svg, 'text', {x, y: y + 4, 'text-anchor': 'middle', 'font-size': 11, 'font-weight': 800, fill: '#ffffff'});
-        label.textContent = String(rank);
+      if (ranked) {
+        const [red, green, blue] = hexChannels(fill);
+        const label = svgElement(svg, 'text', {x, y: y + 4, 'text-anchor': 'middle', 'font-size': 11, 'font-weight': 800,
+          fill: .299 * red + .587 * green + .114 * blue > 160 ? '#1c1c28' : '#ffffff'});
+        label.textContent = String(ranked[0]);
         svg.append(label);
+        names.push([x, y, radius, ranked[0], ranked[1].label || '']);
       }
     }
+    // The names on the map, above the circles: the cities first, then the nearest city of each numbered stretch (the
+    // most lost first), each beside its point where it covers no number or name placed before it, else left out (the
+    // list beside the map names every stretch).
+    const taken = names.map(([x, y, radius]) => [x - radius, y - radius, x + radius, y + radius]);
+    const placeName = (x, y, gap, text, size, weight) => {
+      const textWidth = text.length * size * .56;
+      for (const [left, baseline, anchor] of [[x + gap, y + size * .35, 'start'], [x - gap, y + size * .35, 'end'],
+        [x, y - gap - 1, 'middle'], [x, y + gap + size * .85, 'middle']]) {
+        const start = anchor === 'start' ? left : anchor === 'end' ? left - textWidth : left - textWidth / 2;
+        const box = [start - 2, baseline - size, start + textWidth + 2, baseline + 3];
+        if (box[0] < 4 || box[2] > width - 4 || box[1] < 4 || box[3] > height - 30) continue;
+        if (taken.some(other => box[0] < other[2] && other[0] < box[2] && box[1] < other[3] && other[1] < box[3])) continue;
+        taken.push(box);
+        const label = svgElement(svg, 'text', {x: left, y: baseline, 'text-anchor': anchor, 'font-size': size, 'font-weight': weight,
+          fill: '#1c1c28', stroke: '#ffffff', 'stroke-width': 3, 'paint-order': 'stroke'});
+        label.textContent = text;
+        svg.append(label);
+        return;
+      }
+    };
+    for (const [x, y, name] of cities) placeName(x, y, 6, name, 12.5, 800);
+    for (const [x, y, radius, , text] of names.sort((left, right) => left[3] - right[3])) if (text) placeName(x, y, radius + 4, text, 10.5, 600);
+    // The scale of the colours: little lost to the most lost.
+    const gradientId = `scoring-stretch-scale-${Math.random().toString(36).slice(2, 8)}`;
+    const gradient = svgElement(svg, 'linearGradient', {id: gradientId});
+    [0, .5, 1].forEach(offset => gradient.append(svgElement(svg, 'stop', {offset, 'stop-color': stretchColour(offset)})));
+    svg.append(gradient);
+    svg.append(svgElement(svg, 'rect', {x: margin, y: height - 18, width: 120, height: 7, rx: 3.5, fill: `url(#${gradientId})`}));
+    const scaleLabel = svgElement(svg, 'text', {x: margin, y: height - 23, 'font-size': 10, fill: '#475569'});
+    scaleLabel.textContent = 'Points lost';
+    const scaleMax = svgElement(svg, 'text', {x: margin + 126, y: height - 12, 'font-size': 10, fill: '#475569'});
+    scaleMax.textContent = `up to ${insightNumber(peak, 1)}`;
+    svg.append(scaleLabel, scaleMax);
     return svg;
   }
 

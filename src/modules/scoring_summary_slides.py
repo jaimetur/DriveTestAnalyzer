@@ -732,21 +732,40 @@ def add_sites_slides(presentation, items: list[dict[str, Any]], *, subtitle: str
               .45, CONTENT_BOTTOM - .22, 12.4, .25, size=8, color=MUTED)
 
 
-def render_stretch_map(route: dict[str, Any], color: str, background: list[list[float]], *, width: int = 1100,
-                       height: int = 900) -> bytes:
-    """PNG map of a route: the test locations in grey, the route dashed and a circle per stretch (area: points lost)."""
-    from PIL import Image, ImageDraw, ImageFont
+def stretch_colour(share: float, scale: list[str]) -> str:
+    """The colour of a stretch by its share of the points of the stretch that loses most: from the third colour of the
+    quality scale of the theme (yellow, little lost) through its second (orange) to its first (red, the most lost)."""
+    from src.modules.scoring_themes import blend
+    low, middle, high = scale[2], scale[1], scale[0]
+    share = max(0.0, min(1.0, share))
+    return blend(low, middle, share * 2) if share <= .5 else blend(middle, high, (share - .5) * 2)
+
+
+def render_stretch_map(route: dict[str, Any], color: str, background: list[list[float]], *,
+                       boundaries: dict[str, list] | None = None, width: int = 1100, height: int = 900) -> bytes:
+    """PNG map of a route: the map areas as the land (else the other tests in grey), the route in the colour of the
+    operator, the measured cities around it named, and a circle per stretch whose area and colour (yellow to red, on
+    the scale of the theme) tell its points lost; the stretches that lose most are numbered and named after their
+    nearest city."""
+    from PIL import Image, ImageDraw
+
+    from src.modules.scoring_themes import active_theme, blend
+    from src.utils.fonts import load_image_font
 
     points = [*(route.get('path') or []), *([entry[0], entry[1]] for entry in route['all_stretches'])]
-    image = Image.new('RGB', (width, height), (248, 250, 252))
+    image = Image.new('RGB', (width, height), (233, 238, 243) if boundaries else (248, 250, 252))
     if not points:
         output = BytesIO()
         image.save(output, format='PNG')
         return output.getvalue()
-    south, north = min(point[0] for point in points) - .15, max(point[0] for point in points) + .15
-    west, east = min(point[1] for point in points) - .25, max(point[1] for point in points) + .25
+    latitudes, longitudes = [point[0] for point in points], [point[1] for point in points]
+    # The route fills the map, with room around it for the cities near it and the names of its stretches.
+    pad_lat = max(.1, (max(latitudes) - min(latitudes)) * .25)
+    pad_lon = max(.18, (max(longitudes) - min(longitudes)) * .25)
+    south, north = min(latitudes) - pad_lat, max(latitudes) + pad_lat
+    west, east = min(longitudes) - pad_lon, max(longitudes) + pad_lon
     factor = cos(radians((south + north) / 2))
-    margin = 60
+    margin = 50
     unit = max((east - west) * factor / (width - 2 * margin), (north - south) / (height - 2 * margin)) or 1
     offset_x = (width - (east - west) * factor / unit) / 2
     offset_y = (height - (north - south) / unit) / 2
@@ -754,30 +773,76 @@ def render_stretch_map(route: dict[str, Any], color: str, background: list[list[
     def project(lat: float, lon: float) -> tuple[float, float]:
         return offset_x + (lon - west) * factor / unit, height - offset_y - (lat - south) / unit
 
+    def rgb(value: str) -> tuple[int, int, int]:
+        value = value.lstrip('#')
+        return tuple(int(value[index:index + 2], 16) for index in (0, 2, 4))
+
     draw = ImageDraw.Draw(image)
-    for lat, lon in background:
-        if south <= lat <= north and west <= lon <= east:
-            x, y = project(lat, lon)
-            draw.ellipse((x - 2, y - 2, x + 2, y + 2), fill=(213, 219, 226))
-    # The tests of the route (a sample of their positions), darker than the other tests.
+    for rings in (boundaries or {}).values():
+        for ring in rings:
+            if not any(south <= lat <= north and west <= lon <= east for lon, lat in ring):
+                continue
+            draw.polygon([project(lat, lon) for lon, lat in ring], fill=(255, 255, 255), outline=(213, 221, 229))
+    if not boundaries:
+        for lat, lon in background:
+            if south <= lat <= north and west <= lon <= east:
+                x, y = project(lat, lon)
+                draw.ellipse((x - 2, y - 2, x + 2, y + 2), fill=(213, 219, 226))
+    # The tests of the route (a sample of their positions) in the colour of the operator.
+    route_fill = rgb(blend(color, '#FFFFFF', .35))
     for lat, lon in route.get('path') or []:
         x, y = project(lat, lon)
-        draw.ellipse((x - 4, y - 4, x + 4, y + 4), fill=(148, 163, 184))
-    red, green, blue = (int(color.lstrip('#')[index:index + 2], 16) for index in (0, 2, 4))
-    fill = (round(255 + (red - 255) * .6), round(255 + (green - 255) * .6), round(255 + (blue - 255) * .6))
+        draw.ellipse((x - 4, y - 4, x + 4, y + 4), fill=route_fill)
+    label_font, number_font, note_font = load_image_font(24, bold=True), load_image_font(22, bold=True), load_image_font(20)
+    ink = (28, 28, 40)
+    # The measured cities around the route on the map.
+    cities = [(*project(place['latitude'], place['longitude']), place['name']) for place in route.get('landmarks') or []
+              if south <= place['latitude'] <= north and west <= place['longitude'] <= east]
+    for x, y, _name in cities:
+        draw.ellipse((x - 7, y - 7, x + 7, y + 7), fill=ink, outline=(255, 255, 255), width=2)
+    scale = active_theme()['scale']
     peak = max((item[2] for item in route['all_stretches']), default=0) or 1
-    top = {(row['latitude'], row['longitude']): index for index, row in enumerate(route['stretches'], start=1)}
-    try:
-        font = ImageFont.truetype('Arial Bold.ttf', 26)
-    except OSError:
-        font = ImageFont.load_default()
+    top = {(row['latitude'], row['longitude']): (index, row) for index, row in enumerate(route['stretches'], start=1)}
+    labels = []
     for lat, lon, lost, *_owner in sorted(route['all_stretches'], key=lambda item: item[2]):
         x, y = project(lat, lon)
-        radius = 10 + 52 * sqrt(lost / peak)
+        share = sqrt(lost / peak)
+        radius = 10 + 46 * share
+        fill = rgb(stretch_colour(share, scale))
         draw.ellipse((x - radius, y - radius, x + radius, y + radius), fill=fill, outline=(255, 255, 255), width=4)
-        rank = top.get((lat, lon))
-        if rank:
-            draw.text((x, y), str(rank), fill=(255, 255, 255), font=font, anchor='mm')
+        ranked = top.get((lat, lon))
+        if ranked:
+            dark = .299 * fill[0] + .587 * fill[1] + .114 * fill[2] > 160
+            draw.text((x, y), str(ranked[0]), fill=ink if dark else (255, 255, 255), font=number_font, anchor='mm')
+            labels.append((x, y, radius, ranked[0], ranked[1].get('label') or ''))
+    # The names on the map, above the circles: the cities first, then the nearest city of each numbered stretch (the
+    # most lost first), each beside its point where it covers no number or name placed before it, else left out (the
+    # list beside the map names every stretch).
+    taken = [(x - radius, y - radius, x + radius, y + radius) for x, y, radius, *_rest in labels]
+
+    def place_name(x: float, y: float, gap: float, text: str, font) -> None:
+        for point, anchor in (((x + gap, y), 'lm'), ((x - gap, y), 'rm'), ((x, y - gap), 'mb'), ((x, y + gap), 'mt')):
+            left, top_edge, right, bottom = draw.textbbox(point, text, font=font, anchor=anchor, stroke_width=4)
+            box = (left - 2, top_edge - 2, right + 2, bottom + 2)
+            if box[0] < 6 or box[2] > width - 6 or box[1] < 6 or box[3] > height - margin:
+                continue
+            if any(box[0] < other[2] and other[0] < box[2] and box[1] < other[3] and other[1] < box[3] for other in taken):
+                continue
+            taken.append(box)
+            draw.text(point, text, fill=ink, font=font, anchor=anchor, stroke_width=4, stroke_fill=(255, 255, 255))
+            return
+
+    for x, y, name in cities:
+        place_name(x, y, 12, name, label_font)
+    for x, y, radius, _rank, text in sorted(labels, key=lambda entry: entry[3]):
+        if text:
+            place_name(x, y, radius + 8, text, note_font)
+    # The scale of the colours: little lost to the most lost.
+    bar_left, bar_top, bar_width = margin, height - margin + 6, 240
+    for step in range(bar_width):
+        draw.line((bar_left + step, bar_top, bar_left + step, bar_top + 12), fill=rgb(stretch_colour(step / (bar_width - 1), scale)))
+    draw.text((bar_left, bar_top - 4), 'Points lost', fill=ink, font=note_font, anchor='lb')
+    draw.text((bar_left + bar_width + 10, bar_top + 6), f'up to {peak:,.1f}', fill=ink, font=note_font, anchor='lm')
     output = BytesIO()
     image.save(output, format='PNG')
     return output.getvalue()
@@ -785,7 +850,8 @@ def render_stretch_map(route: dict[str, Any], color: str, background: list[list[
 
 def add_stretch_slides(presentation, items: list[dict[str, Any]], background: list[list[float]], *, subtitle: str,
                        new_slide: Callable, scope: ScopeLabels | None = None,
-                       compared: Callable[[str, str], bool] = lambda _operator, _label: True) -> None:
+                       compared: Callable[[str, str], bool] = lambda _operator, _label: True,
+                       boundaries: dict[str, list] | None = None) -> None:
     """Where along its routes each compared operator loses its points: the two routes that lose most."""
     chosen = [item for item in latest_campaign_items(items) if not item.get('is_reference') and compared(item['operator'], item['label'])]
     for item in chosen[:MAX_OPERATOR_SLIDES]:
@@ -793,7 +859,7 @@ def add_stretch_slides(presentation, items: list[dict[str, Any]], background: li
         for route in item['routes'][:2]:
             slide = new_slide(presentation, f"Route stretches — {item['label']}",
                               _subtitle(subtitle, scope, item['context'], route['route'], _context_text(item['context'])))
-            image = render_stretch_map(route, color, background)
+            image = render_stretch_map(route, color, background, boundaries=boundaries)
             picture = slide.shapes.add_picture(BytesIO(image), Inches(.45), Inches(CONTENT_TOP), Inches(5.6), Inches(4.58))
             picture.name = 'Scoring Route Stretch Map'
             box = slide.shapes.add_textbox(Inches(6.35), Inches(CONTENT_TOP), Inches(6.55), Inches(.5))

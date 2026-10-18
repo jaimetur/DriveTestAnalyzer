@@ -59,125 +59,140 @@
     </div>
   </details>
 
-  <details class="panel collapsible-panel ni-panel" open data-panel-state-key="network-insights:overview">
-    <summary class="collapsible-summary"><div><p class="eyebrow">Main indicators</p><h2>Overview</h2></div><span class="collapse-chip">Collapse</span></summary>
-    <div class="collapsible-panel-body"><p class="ni-intro">The headline radio quality of every group: median RSRP and SINR, the share of samples below the thresholds and the change from the previous campaign.</p><div id="ni-overview" class="ni-overview"><p class="form-note">No analysis yet.</p></div></div>
+  <details class="panel collapsible-panel ni-category-panel" open data-panel-state-key="network-insights:summary">
+    <summary class="collapsible-summary"><div><p class="eyebrow">Main indicators &amp; key findings</p><h2>Summary</h2></div><span class="collapse-chip">Collapse</span></summary>
+    <div class="collapsible-panel-body ni-subpanels">
+    <details id="section-overview" class="panel collapsible-panel ni-panel" open data-panel-state-key="network-insights:overview">
+      <summary class="collapsible-summary"><div><p class="eyebrow">Main indicators</p><h2>Overview</h2></div><span class="collapse-chip">Collapse</span></summary>
+      <div class="collapsible-panel-body"><p class="ni-intro">The headline radio quality of every group: median RSRP and SINR, the share of samples below the thresholds and the change from the previous campaign.</p><div id="ni-overview" class="ni-overview"><p class="form-note">No analysis yet.</p></div></div>
+    </details>
+
+    <details id="section-key-findings" class="panel collapsible-panel ni-panel" open data-panel-state-key="network-insights:findings">
+      <summary class="collapsible-summary"><div><p class="eyebrow">Signal, bandwidth, technology &amp; bands at the test</p><h2>Key Findings</h2></div><span class="collapse-chip">Collapse</span></summary>
+      <div class="collapsible-panel-body"><p class="ni-intro">Six benchmark views of the Data tests, one value per test: the LTE and 5G signal per environment, the spread of the total bandwidth and the downloads under 40 MHz, how often 5G was used, the main 4G band and 5G on 3.5 GHz, and the total bandwidth. Each one with its headline and what it means, written from the figures; the PowerPoint and Word exports show them as slides.</p><div id="ni-findings" class="ni-findings"><p class="form-note">No analysis yet.</p></div></div>
+    </details>
+    </div>
   </details>
 
-  <details class="panel collapsible-panel ni-panel" open data-panel-state-key="network-insights:findings">
-    <summary class="collapsible-summary"><div><p class="eyebrow">Signal, bandwidth, technology &amp; bands at the test</p><h2>Key Findings</h2></div><span class="collapse-chip">Collapse</span></summary>
-    <div class="collapsible-panel-body"><p class="ni-intro">Six benchmark views of the Data tests, one value per test: the LTE and 5G signal per environment, the spread of the total bandwidth and the downloads under 40 MHz, how often 5G was used, the main 4G band and 5G on 3.5 GHz, and the total bandwidth. Each one with its headline and what it means, written from the figures; the PowerPoint and Word exports show them as slides.</p><div id="ni-findings" class="ni-findings"><p class="form-note">No analysis yet.</p></div></div>
-  </details>
-
-  <details class="panel collapsible-panel ni-panel" open data-panel-state-key="network-insights:maps">
-    <summary class="collapsible-summary"><div><p class="eyebrow">Weak coverage &amp; interference</p><h2>Coverage &amp; Interference Maps</h2></div><span class="collapse-chip">Collapse</span></summary>
-    <div class="collapsible-panel-body"><p class="ni-intro">Where coverage is weak or interference high: grid squares coloured by their mean value, with the inventory sites around the weakest areas and the cells the snapshot shows locked, halted, disabled, planned or in progress there.</p>
-      <div class="ni-map-toolbar">
-        <label>Group<select id="ni-map-operator"></select></label>
-        <button type="button" id="ni-map-reset" class="ni-secondary-action">Show Whole Area</button>
-        <label class="ni-check" title="The inventory sites around the weakest areas: a triangle per site on the whole area, its sectors once an area is zoomed"><input type="checkbox" id="ni-map-sites" checked> Inventory sites</label>
-        <p class="form-note" id="ni-map-note"></p>
+  <details class="panel collapsible-panel ni-category-panel" open data-panel-state-key="network-insights:radio-performance">
+    <summary class="collapsible-summary"><div><p class="eyebrow">Coverage, radio quality, latency, serving cells &amp; 5G</p><h2>Radio Performance</h2></div><span class="collapse-chip">Collapse</span></summary>
+    <div class="collapsible-panel-body ni-subpanels">
+    <details id="section-coverage-interference-maps" class="panel collapsible-panel ni-panel" open data-panel-state-key="network-insights:maps">
+      <summary class="collapsible-summary"><div><p class="eyebrow">Weak coverage &amp; interference</p><h2>Coverage &amp; Interference Maps</h2></div><span class="collapse-chip">Collapse</span></summary>
+      <div class="collapsible-panel-body"><p class="ni-intro">Where coverage is weak or interference high: grid squares coloured by their mean value, with the inventory sites around the weakest areas and the cells the snapshot shows locked, halted, disabled, planned or in progress there.</p>
+        <div class="ni-map-toolbar">
+          <label>Group<select id="ni-map-operator"></select></label>
+          <button type="button" id="ni-map-reset" class="ni-secondary-action">Show Whole Area</button>
+          <label class="ni-check" title="The inventory sites around the weakest areas: a triangle per site on the whole area, its sectors once an area is zoomed"><input type="checkbox" id="ni-map-sites" checked> Inventory sites</label>
+          <p class="form-note" id="ni-map-note"></p>
+        </div>
+        <div id="ni-map-sections" class="ni-technology-sections"><p class="form-note">No analysis yet.</p></div>
+        <p class="form-note ni-note">Areas are grid squares where at least half of the samples fall below the threshold, ranked by the number of affected samples. Select an area to zoom the map to it. Drag any map to move it, zoom it with the mouse wheel or by drawing a rectangle with Ctrl/Cmd+drag, measure the distance between two places with Alt/Opt+drag (Escape or a click clears it), and double-click it to open it larger.</p>
       </div>
-      <div id="ni-map-sections" class="ni-technology-sections"><p class="form-note">No analysis yet.</p></div>
-      <p class="form-note ni-note">Areas are grid squares where at least half of the samples fall below the threshold, ranked by the number of affected samples. Select an area to zoom the map to it. Drag any map to move it, zoom it with the mouse wheel or by drawing a rectangle with Ctrl/Cmd+drag, measure the distance between two places with Alt/Opt+drag (Escape or a click clears it), and double-click it to open it larger.</p>
-    </div>
-  </details>
+    </details>
 
-  <details class="panel collapsible-panel ni-panel" open data-panel-state-key="network-insights:rf-quality">
-    <summary class="collapsible-summary"><div><p class="eyebrow">RSRP &amp; SINR</p><h2>RF Quality</h2></div><span class="collapse-chip">Collapse</span></summary>
-    <div class="collapsible-panel-body"><p class="ni-intro">How RSRP and SINR are distributed in every group: cumulative curves, percentiles and quality classes.</p>
-      <div id="ni-rf-sections" class="ni-technology-sections"><p class="form-note">No analysis yet.</p></div>
-      <h3 class="ni-subtitle" id="ni-nr-bands-title">NR quality per carrier</h3>
-      <div class="table-wrap ni-table-wrap"><table class="ni-table" id="ni-nr-bands"><tbody><tr><td class="form-note">No analysis yet.</td></tr></tbody></table></div>
-      <p class="form-note ni-note">NR quality per carrier: the NR samples of each group per NR band, with their share of the group, median SS-RSRP and SS-SINR and the share in each quality class, so a carrier that reaches a lower quality than the others stands out.</p>
-      <p class="form-note ni-note">With LTE+NR, LTE and NR are analysed separately, each with its own thresholds. Curves keep the Operator/Vendor colour; the latest campaign is drawn thickest and older campaigns progressively thinner. Quality classes — RSRP: Excellent ≥ -80, Good ≥ -90, Fair ≥ -100, Poor ≥ -110 dBm, Very poor below. SINR: Excellent ≥ 20, Good ≥ 13, Fair ≥ 5, Poor ≥ 0 dB, Bad below. Voice uses the measuring (A) side.</p>
-    </div>
-  </details>
-
-  <details class="panel collapsible-panel ni-panel" open data-panel-state-key="network-insights:interactivity">
-    <summary class="collapsible-summary"><div><p class="eyebrow">Gaming &amp; video chat tests</p><h2>Latency &amp; Interactivity</h2></div><span class="collapse-chip">Collapse</span></summary>
-    <div class="collapsible-panel-body"><p class="ni-intro">How the interactivity tests (gaming and video chat) of every group went in each environment: their failures, round trip, packet loss and jitter, each ranked among the groups.</p>
-      <div id="ni-interactivity" class="ni-interactivity"><p class="form-note">No analysis yet.</p></div>
-      <p class="form-note ni-note">The CDR Data tests of type Interactivity. Failed: their result is not completed; the round trip is the median of each passed test (Interactivity_RTT_Median), shown as the median and the slowest tenth (P90) of the tests; packet loss: the share of passed tests that lost a packet; jitter: the median delay variation of the tests. The shade ranks the groups of each environment, from the best (green) to the worst (red).</p>
-    </div>
-  </details>
-
-  <details class="panel collapsible-panel ni-panel" open data-panel-state-key="network-insights:serving">
-    <summary class="collapsible-summary"><div><p class="eyebrow">Serving cells, distance &amp; overshooting</p><h2>Serving Cells</h2></div><span class="collapse-chip">Collapse</span></summary>
-    <div class="collapsible-panel-body"><p class="ni-intro">Which cell served each sample, how far away it was and whose equipment carried it, the NR cell of the NSA samples and how the MIMO of the cells is used.</p>
-      <div id="ni-serving" class="ni-serving"><p class="form-note">No analysis yet.</p></div>
-      <p class="form-note ni-note">Each sample's first serving cell is looked up in the inventory snapshot, among the networks that serve its Operator (Workspace Config → Serving Networks), its own network first; the distance is measured from the sample's start position to the cell's site. Overshooting samples are served from farther than the selected distance.</p>
-    </div>
-  </details>
-
-  <details class="panel collapsible-panel ni-panel" open data-panel-state-key="network-insights:nr-availability">
-    <summary class="collapsible-summary"><div><p class="eyebrow">EN-DC on 5G sites</p><h2>5G Availability</h2></div><span class="collapse-chip">Collapse</span></summary>
-    <div class="collapsible-panel-body"><p class="ni-intro">Whether the samples anchored on sites that have NR cells actually reached NR (EN-DC), and which NR cell served them.</p>
-      <div id="ni-nr" class="ni-serving"><p class="form-note">No analysis yet.</p></div>
-      <p class="form-note ni-note">Samples anchored on an LTE cell whose site also has NR cells in the inventory snapshot should normally reach NR (EN-DC). The gap is the share of those samples with no NR measurement; it is compared with the samples anchored on sites without NR. For the samples that reached NR, the NR cell is found from their NR PCI and band/SSB frequency (see Serving Cells): the share found, the share on the anchor's own site and the median distance to the NR site.</p>
-    </div>
-  </details>
-
-  <details class="panel collapsible-panel ni-panel" open data-panel-state-key="network-insights:snapshot">
-    <summary class="collapsible-summary"><div><p class="eyebrow">Inventory snapshot, host networks &amp; data quality</p><h2>Network Snapshot</h2></div><span class="collapse-chip">Collapse</span></summary>
-    <div class="collapsible-panel-body"><p class="ni-intro">What the inventory snapshot contains: sites and cells per network, who hosts whom, data quality and the changes from another snapshot.</p>
-      <div id="ni-snapshot-panel" class="ni-snapshot-panel"><p class="form-note">Loading the inventory snapshots…</p></div>
-    </div>
-  </details>
-
-  <details class="panel collapsible-panel ni-panel" open data-panel-state-key="network-insights:deployment">
-    <summary class="collapsible-summary"><div><p class="eyebrow">Sites and cells of the inventory snapshot</p><h2>Network Deployment</h2></div><span class="collapse-chip">Collapse</span></summary>
-    <div class="collapsible-panel-body"><p class="ni-intro">How each network is deployed: its sites and cells grouped by host network, vendor, technology, band, region and more.</p>
-      <div class="ni-map-toolbar">
-        <label>View / Split by<select id="ni-deployment-group">{% for key, label in network_insights_config.inventory_dimensions.items() %}<option value="{{ key }}"{% if key == 'host_network' %} selected{% endif %}>{{ label }}</option>{% endfor %}<option value="observed">Observed Sites/Cells (from CDRs)</option><option value="inventory">Full Sites/Cells Inventory</option></select></label>
-        <label data-ni-deployment-filter>Technology<select id="ni-deployment-technology"><option value="">LTE + NR</option><option value="LTE">LTE</option><option value="NR">NR</option></select></label>
-        <label class="ni-check" data-ni-deployment-filter><input type="checkbox" id="ni-deployment-in-service" checked> In service only</label>
-        <button type="button" id="ni-deployment-export-all" class="ni-secondary-action ni-export-action" disabled>Export All to CSV</button>
-        <p class="form-note" id="ni-deployment-status"></p>
+    <details id="section-rf-quality" class="panel collapsible-panel ni-panel" open data-panel-state-key="network-insights:rf-quality">
+      <summary class="collapsible-summary"><div><p class="eyebrow">RSRP &amp; SINR</p><h2>RF Quality</h2></div><span class="collapse-chip">Collapse</span></summary>
+      <div class="collapsible-panel-body"><p class="ni-intro">How RSRP and SINR are distributed in every group: cumulative curves, percentiles and quality classes.</p>
+        <div id="ni-rf-sections" class="ni-technology-sections"><p class="form-note">No analysis yet.</p></div>
+        <h3 class="ni-subtitle" id="ni-nr-bands-title">NR quality per carrier</h3>
+        <div class="table-wrap ni-table-wrap"><table class="ni-table" id="ni-nr-bands"><tbody><tr><td class="form-note">No analysis yet.</td></tr></tbody></table></div>
+        <p class="form-note ni-note">NR quality per carrier: the NR samples of each group per NR band, with their share of the group, median SS-RSRP and SS-SINR and the share in each quality class, so a carrier that reaches a lower quality than the others stands out.</p>
+        <p class="form-note ni-note">With LTE+NR, LTE and NR are analysed separately, each with its own thresholds. Curves keep the Operator/Vendor colour; the latest campaign is drawn thickest and older campaigns progressively thinner. Quality classes — RSRP: Excellent ≥ -80, Good ≥ -90, Fair ≥ -100, Poor ≥ -110 dBm, Very poor below. SINR: Excellent ≥ 20, Good ≥ 13, Fair ≥ 5, Poor ≥ 0 dB, Bad below. Voice uses the measuring (A) side.</p>
       </div>
-      <div id="ni-deployment" class="ni-deployment"></div>
+    </details>
+
+    <details id="section-latency-interactivity" class="panel collapsible-panel ni-panel" open data-panel-state-key="network-insights:interactivity">
+      <summary class="collapsible-summary"><div><p class="eyebrow">Gaming &amp; video chat tests</p><h2>Latency &amp; Interactivity</h2></div><span class="collapse-chip">Collapse</span></summary>
+      <div class="collapsible-panel-body"><p class="ni-intro">How the interactivity tests (gaming and video chat) of every group went in each environment: their failures, round trip, packet loss and jitter, each ranked among the groups.</p>
+        <div id="ni-interactivity" class="ni-interactivity"><p class="form-note">No analysis yet.</p></div>
+        <p class="form-note ni-note">The CDR Data tests of type Interactivity. Failed: their result is not completed; the round trip is the median of each passed test (Interactivity_RTT_Median), shown as the median and the slowest tenth (P90) of the tests; packet loss: the share of passed tests that lost a packet; jitter: the median delay variation of the tests. The shade ranks the groups of each environment, from the best (green) to the worst (red).</p>
+      </div>
+    </details>
+
+    <details id="section-serving-cells" class="panel collapsible-panel ni-panel" open data-panel-state-key="network-insights:serving">
+      <summary class="collapsible-summary"><div><p class="eyebrow">Serving cells, distance &amp; overshooting</p><h2>Serving Cells</h2></div><span class="collapse-chip">Collapse</span></summary>
+      <div class="collapsible-panel-body"><p class="ni-intro">Which cell served each sample, how far away it was and whose equipment carried it, the NR cell of the NSA samples and how the MIMO of the cells is used.</p>
+        <div id="ni-serving" class="ni-serving"><p class="form-note">No analysis yet.</p></div>
+        <p class="form-note ni-note">Each sample's first serving cell is looked up in the inventory snapshot, among the networks that serve its Operator (Workspace Config → Serving Networks), its own network first; the distance is measured from the sample's start position to the cell's site. Overshooting samples are served from farther than the selected distance.</p>
+      </div>
+    </details>
+
+    <details id="section-5g-availability" class="panel collapsible-panel ni-panel" open data-panel-state-key="network-insights:nr-availability">
+      <summary class="collapsible-summary"><div><p class="eyebrow">EN-DC on 5G sites</p><h2>5G Availability</h2></div><span class="collapse-chip">Collapse</span></summary>
+      <div class="collapsible-panel-body"><p class="ni-intro">Whether the samples anchored on sites that have NR cells actually reached NR (EN-DC), and which NR cell served them.</p>
+        <div id="ni-nr" class="ni-serving"><p class="form-note">No analysis yet.</p></div>
+        <p class="form-note ni-note">Samples anchored on an LTE cell whose site also has NR cells in the inventory snapshot should normally reach NR (EN-DC). The gap is the share of those samples with no NR measurement; it is compared with the samples anchored on sites without NR. For the samples that reached NR, the NR cell is found from their NR PCI and band/SSB frequency (see Serving Cells): the share found, the share on the anchor's own site and the median distance to the NR site.</p>
+      </div>
+    </details>
     </div>
   </details>
 
-  <details class="panel collapsible-panel ni-panel" open data-panel-state-key="network-insights:sites">
-    <summary class="collapsible-summary"><div><p class="eyebrow">Observed and inventoried sites</p><h2>Cluster Sites Density</h2></div><span class="collapse-chip">Collapse</span></summary>
-    <div class="collapsible-panel-body"><p class="ni-intro">How dense each network is: the eNodeBs observed along the route and the inventory sites per km² with their inter-site distance.</p>
-      <p class="ni-pending-box" id="ni-sites-pending" hidden></p>
-      <p class="ni-pending-box" id="ni-cluster-pending"><strong>Cluster polygons.</strong> Site density per km² needs the cluster or region shapes: import them in Workspace as <strong>Clusters — Geospatial</strong> or <strong>Regions — Geospatial</strong> (GeoJSON, JSON or a ZIP containing a shapefile). Without them the density table groups the sites by the Cluster or Region of the inventory, without areas.</p>
-      <div class="ni-map-toolbar"><label>Data source<select id="ni-sites-source"><option value="observed">Observed Sites/Cells</option><option value="inventory">Inventory Sites/Cells</option></select></label></div>
-      <div class="table-wrap ni-table-wrap"><table class="ni-table" id="ni-sites-table"><tbody><tr><td class="form-note">No analysis yet.</td></tr></tbody></table></div>
-      <p class="form-note ni-note" id="ni-sites-inventory-note" hidden>Complete uploaded inventories, independent of CDR selection and filters. Overlapping uploads are deduplicated per operator.</p>
-      <div id="ni-inventory-totals" class="ni-inventory-totals" hidden></div>
-      <h3 class="ni-subtitle" id="ni-density-title">Site density of the inventory snapshot</h3>
-      <div id="ni-density" class="ni-density"><p class="form-note">Loading the inventory snapshots…</p></div>
-      <p class="form-note ni-note" id="ni-sites-note">Observed eNodeBs are the distinct LTE eNodeBs (Cell Identity ÷ 256) that served the measuring devices along the route, not the deployed sites. The Inventory Sites/Cells source counts the Vodafone and Three Multivendor Mappings; the density table below uses the inventory snapshot of every network.</p>
-    </div>
-  </details>
+  <details class="panel collapsible-panel ni-category-panel" open data-panel-state-key="network-insights:network-spectrum">
+    <summary class="collapsible-summary"><div><p class="eyebrow">Inventory, deployment, site density &amp; bands</p><h2>Network &amp; Spectrum</h2></div><span class="collapse-chip">Collapse</span></summary>
+    <div class="collapsible-panel-body ni-subpanels">
+    <details id="section-network-snapshot" class="panel collapsible-panel ni-panel" open data-panel-state-key="network-insights:snapshot">
+      <summary class="collapsible-summary"><div><p class="eyebrow">Inventory snapshot, host networks &amp; data quality</p><h2>Network Snapshot</h2></div><span class="collapse-chip">Collapse</span></summary>
+      <div class="collapsible-panel-body"><p class="ni-intro">What the inventory snapshot contains: sites and cells per network, who hosts whom, data quality and the changes from another snapshot.</p>
+        <div id="ni-snapshot-panel" class="ni-snapshot-panel"><p class="form-note">Loading the inventory snapshots…</p></div>
+      </div>
+    </details>
 
-  <details class="panel collapsible-panel ni-panel" open data-panel-state-key="network-insights:spectrum">
-    <summary class="collapsible-summary"><div><p class="eyebrow">Low, mid and high TDD bands</p><h2>Spectrum</h2></div><span class="collapse-chip">Collapse</span></summary>
-    <div class="collapsible-panel-body"><p class="ni-intro">Spectrum licensed to each Operator, deployed in the inventory snapshot and used by the samples: the sites with NR TDD and NR FDD, the bandwidth of every band and the total bandwidth of the tests.</p>
-      <h3 class="ni-subtitle" id="ni-licensed-title">Licensed spectrum</h3>
-      <div id="ni-licensed" class="ni-licensed"></div>
-      <h3 class="ni-subtitle" id="ni-deployed-title">Spectrum deployed in the inventory snapshot</h3>
-      <div class="table-wrap ni-table-wrap"><table class="ni-table" id="ni-deployed-spectrum"><tbody><tr><td class="form-note">Loading the inventory snapshots…</td></tr></tbody></table></div>
-      <h3 class="ni-subtitle" id="ni-nr-duplex-title">NR sites by duplex mode</h3>
-      <div class="ni-map-toolbar"><label>Split by<select id="ni-nr-duplex-split">{% for key, label in network_insights_config.nr_duplex_splits.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select></label><p class="form-note" id="ni-nr-duplex-status"></p></div>
-      <div class="table-wrap ni-table-wrap"><table class="ni-table" id="ni-nr-duplex-sites"><tbody><tr><td class="form-note">Loading the inventory snapshots…</td></tr></tbody></table></div>
-      <p class="form-note ni-note" id="ni-nr-duplex-note">In-service sites with NR cells of the inventory snapshot, after the Operators, Operator_Vendor, Vendors, Regions, Clusters and Cities filters (Campaigns, NR Mode and Environments describe the measurements and do not restrict the inventory). NR TDD bands are n77, n78, n38, n40, n41 and n258; NR FDD bands are n1, n3, n7, n8, n20 and n28. A logical site is a site ID of one network; sites of any network within 50 m of each other stand on one physical site, so the All networks row counts a shared site once.</p>
-      <h3 class="ni-subtitle" id="ni-observed-title">Spectrum observed in the measurements</h3>
-      <div id="ni-observed-chart" class="ni-band-shares" aria-live="polite"></div>
-      <details class="ni-table-details"><summary>Every band with its frequency, duplex, samples and typical bandwidth</summary>
-      <div class="table-wrap ni-table-wrap"><table class="ni-table" id="ni-observed-spectrum"><tbody><tr><td class="form-note">No analysis yet.</td></tr></tbody></table></div></details>
-      <p class="form-note ni-note">Bands come from the serving EARFCN and NR band of each sample; typical bandwidths come from CDR Data, the only CDR type that reports them.</p>
-      <div class="ni-map-toolbar ni-bandwidth-toolbar"><label title="The CDR Data tests whose bandwidths are counted below">Tests<select id="ni-bandwidth-tests">{% for key, label in network_insights_config.bandwidth_scopes.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select></label><p class="form-note" id="ni-bandwidth-status"></p></div>
-      <h3 class="ni-subtitle" id="ni-band-bandwidth-title">Bandwidth per band</h3>
-      <div class="table-wrap ni-table-wrap"><table class="ni-table" id="ni-band-bandwidth"><tbody><tr><td class="form-note">No analysis yet.</td></tr></tbody></table></div>
-      <div class="ni-map-toolbar ni-ladder-toolbar"><label title="The columns of the ladders: the groups of the analysis, or each group split by the kind of site or the RAN Vendor of the cell that served the tests">Ladders per<select id="ni-ladder-split"><option value="group">Group</option><option value="site_type">Group and kind of serving site</option><option value="vendor">Group and RAN Vendor of the serving cell</option></select></label></div>
-      <div id="ni-total-bandwidth" class="ni-ladder-host"><div class="ni-ladder"><div class="ni-ladder-head"><h3 class="ni-ladder-title">{{ network_insights_config.bandwidth_title }}</h3></div><p class="form-note">No analysis yet.</p></div></div>
-      <h3 class="ni-subtitle" id="ni-locations-title">Download tests by location</h3>
-      <div id="ni-bandwidth-locations" class="ni-strips"><p class="form-note">No analysis yet.</p></div>
-      <p class="form-note ni-note">Bandwidth per band: the samples of each serving band per DL bandwidth of its primary carrier (LTE PCell or NR PCell). Bandwidth of each test (LTE + NR): each test's LTE bandwidth (its mean over the aggregated LTE carriers, else its LTE PCell bandwidth, rounded up to 5 MHz) plus its NR PCell bandwidth; the CDRs do not report the bandwidth of NR secondary carriers, so NR carrier aggregation is not added. Each block is as wide as the midpoint of its class and as tall as its share of the tests with a known bandwidth; the figure beside it is the share below 25 MHz and the one under it the share at 100 MHz or more. Ladders per kind of serving site or RAN Vendor split each group by the cell that served the start of the tests (the serving-cell Vendor Mapping), keeping the combinations with 20 tests or more of a known bandwidth. Download tests by location: per City (the most measured ones, with 15 tests or more in a group), the share of the download tests under 25 MHz and the share that failed or reached 5 Mbit/s or less. Big cities (driven and walked) are Cities, medium and small cities are Towns, and connecting roads, highways and train routes are Roads and railways.</p>
+    <details id="section-network-deployment" class="panel collapsible-panel ni-panel" open data-panel-state-key="network-insights:deployment">
+      <summary class="collapsible-summary"><div><p class="eyebrow">Sites and cells of the inventory snapshot</p><h2>Network Deployment</h2></div><span class="collapse-chip">Collapse</span></summary>
+      <div class="collapsible-panel-body"><p class="ni-intro">How each network is deployed: its sites and cells grouped by host network, vendor, technology, band, region and more.</p>
+        <div class="ni-map-toolbar">
+          <label>View / Split by<select id="ni-deployment-group">{% for key, label in network_insights_config.inventory_dimensions.items() %}<option value="{{ key }}"{% if key == 'host_network' %} selected{% endif %}>{{ label }}</option>{% endfor %}<option value="observed">Observed Sites/Cells (from CDRs)</option><option value="inventory">Full Sites/Cells Inventory</option></select></label>
+          <label data-ni-deployment-filter>Technology<select id="ni-deployment-technology"><option value="">LTE + NR</option><option value="LTE">LTE</option><option value="NR">NR</option></select></label>
+          <label class="ni-check" data-ni-deployment-filter><input type="checkbox" id="ni-deployment-in-service" checked> In service only</label>
+          <button type="button" id="ni-deployment-export-all" class="ni-secondary-action ni-export-action" disabled>Export All to CSV</button>
+          <p class="form-note" id="ni-deployment-status"></p>
+        </div>
+        <div id="ni-deployment" class="ni-deployment"></div>
+      </div>
+    </details>
+
+    <details id="section-cluster-sites-density" class="panel collapsible-panel ni-panel" open data-panel-state-key="network-insights:sites">
+      <summary class="collapsible-summary"><div><p class="eyebrow">Observed and inventoried sites</p><h2>Cluster Sites Density</h2></div><span class="collapse-chip">Collapse</span></summary>
+      <div class="collapsible-panel-body"><p class="ni-intro">How dense each network is: the eNodeBs observed along the route and the inventory sites per km² with their inter-site distance.</p>
+        <p class="ni-pending-box" id="ni-sites-pending" hidden></p>
+        <p class="ni-pending-box" id="ni-cluster-pending"><strong>Cluster polygons.</strong> Site density per km² needs the cluster or region shapes: import them in Workspace as <strong>Clusters — Geospatial</strong> or <strong>Regions — Geospatial</strong> (GeoJSON, JSON or a ZIP containing a shapefile). Without them the density table groups the sites by the Cluster or Region of the inventory, without areas.</p>
+        <div class="ni-map-toolbar"><label>Data source<select id="ni-sites-source"><option value="observed">Observed Sites/Cells</option><option value="inventory">Inventory Sites/Cells</option></select></label></div>
+        <div class="table-wrap ni-table-wrap"><table class="ni-table" id="ni-sites-table"><tbody><tr><td class="form-note">No analysis yet.</td></tr></tbody></table></div>
+        <p class="form-note ni-note" id="ni-sites-inventory-note" hidden>Complete uploaded inventories, independent of CDR selection and filters. Overlapping uploads are deduplicated per operator.</p>
+        <div id="ni-inventory-totals" class="ni-inventory-totals" hidden></div>
+        <h3 class="ni-subtitle" id="ni-density-title">Site density of the inventory snapshot</h3>
+        <div id="ni-density" class="ni-density"><p class="form-note">Loading the inventory snapshots…</p></div>
+        <p class="form-note ni-note" id="ni-sites-note">Observed eNodeBs are the distinct LTE eNodeBs (Cell Identity ÷ 256) that served the measuring devices along the route, not the deployed sites. The Inventory Sites/Cells source counts the Vodafone and Three Multivendor Mappings; the density table below uses the inventory snapshot of every network.</p>
+      </div>
+    </details>
+
+    <details id="section-spectrum" class="panel collapsible-panel ni-panel" open data-panel-state-key="network-insights:spectrum">
+      <summary class="collapsible-summary"><div><p class="eyebrow">Low, mid and high TDD bands</p><h2>Spectrum</h2></div><span class="collapse-chip">Collapse</span></summary>
+      <div class="collapsible-panel-body"><p class="ni-intro">Spectrum licensed to each Operator, deployed in the inventory snapshot and used by the samples: the sites with NR TDD and NR FDD, the bandwidth of every band and the total bandwidth of the tests.</p>
+        <h3 class="ni-subtitle" id="ni-licensed-title">Licensed spectrum</h3>
+        <div id="ni-licensed" class="ni-licensed"></div>
+        <h3 class="ni-subtitle" id="ni-deployed-title">Spectrum deployed in the inventory snapshot</h3>
+        <div class="table-wrap ni-table-wrap"><table class="ni-table" id="ni-deployed-spectrum"><tbody><tr><td class="form-note">Loading the inventory snapshots…</td></tr></tbody></table></div>
+        <h3 class="ni-subtitle" id="ni-nr-duplex-title">NR sites by duplex mode</h3>
+        <div class="ni-map-toolbar"><label>Split by<select id="ni-nr-duplex-split">{% for key, label in network_insights_config.nr_duplex_splits.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select></label><p class="form-note" id="ni-nr-duplex-status"></p></div>
+        <div class="table-wrap ni-table-wrap"><table class="ni-table" id="ni-nr-duplex-sites"><tbody><tr><td class="form-note">Loading the inventory snapshots…</td></tr></tbody></table></div>
+        <p class="form-note ni-note" id="ni-nr-duplex-note">In-service sites with NR cells of the inventory snapshot, after the Operators, Operator_Vendor, Vendors, Regions, Clusters and Cities filters (Campaigns, NR Mode and Environments describe the measurements and do not restrict the inventory). NR TDD bands are n77, n78, n38, n40, n41 and n258; NR FDD bands are n1, n3, n7, n8, n20 and n28. A logical site is a site ID of one network; sites of any network within 50 m of each other stand on one physical site, so the All networks row counts a shared site once.</p>
+        <h3 class="ni-subtitle" id="ni-observed-title">Spectrum observed in the measurements</h3>
+        <div id="ni-observed-chart" class="ni-band-shares" aria-live="polite"></div>
+        <details class="ni-table-details"><summary>Every band with its frequency, duplex, samples and typical bandwidth</summary>
+        <div class="table-wrap ni-table-wrap"><table class="ni-table" id="ni-observed-spectrum"><tbody><tr><td class="form-note">No analysis yet.</td></tr></tbody></table></div></details>
+        <p class="form-note ni-note">Bands come from the serving EARFCN and NR band of each sample; typical bandwidths come from CDR Data, the only CDR type that reports them.</p>
+        <div class="ni-map-toolbar ni-bandwidth-toolbar"><label title="The CDR Data tests whose bandwidths are counted below">Tests<select id="ni-bandwidth-tests">{% for key, label in network_insights_config.bandwidth_scopes.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select></label><p class="form-note" id="ni-bandwidth-status"></p></div>
+        <h3 class="ni-subtitle" id="ni-band-bandwidth-title">Bandwidth per band</h3>
+        <div class="table-wrap ni-table-wrap"><table class="ni-table" id="ni-band-bandwidth"><tbody><tr><td class="form-note">No analysis yet.</td></tr></tbody></table></div>
+        <div class="ni-map-toolbar ni-ladder-toolbar"><label title="The columns of the ladders: the groups of the analysis, or each group split by the kind of site or the RAN Vendor of the cell that served the tests">Ladders per<select id="ni-ladder-split"><option value="group">Group</option><option value="site_type">Group and kind of serving site</option><option value="vendor">Group and RAN Vendor of the serving cell</option></select></label></div>
+        <div id="ni-total-bandwidth" class="ni-ladder-host"><div class="ni-ladder"><div class="ni-ladder-head"><h3 class="ni-ladder-title">{{ network_insights_config.bandwidth_title }}</h3></div><p class="form-note">No analysis yet.</p></div></div>
+        <h3 class="ni-subtitle" id="ni-locations-title">Download tests by location</h3>
+        <div id="ni-bandwidth-locations" class="ni-strips"><p class="form-note">No analysis yet.</p></div>
+        <p class="form-note ni-note">Bandwidth per band: the samples of each serving band per DL bandwidth of its primary carrier (LTE PCell or NR PCell). Bandwidth of each test (LTE + NR): each test's LTE bandwidth (its mean over the aggregated LTE carriers, else its LTE PCell bandwidth, rounded up to 5 MHz) plus its NR PCell bandwidth; the CDRs do not report the bandwidth of NR secondary carriers, so NR carrier aggregation is not added. Each block is as wide as the midpoint of its class and as tall as its share of the tests with a known bandwidth; the figure beside it is the share below 25 MHz and the one under it the share at 100 MHz or more. Ladders per kind of serving site or RAN Vendor split each group by the cell that served the start of the tests (the serving-cell Vendor Mapping), keeping the combinations with 20 tests or more of a known bandwidth. Download tests by location: per City (the most measured ones, with 15 tests or more in a group), the share of the download tests under 25 MHz and the share that failed or reached 5 Mbit/s or less. Big cities (driven and walked) are Cities, medium and small cities are Towns, and connecting roads, highways and train routes are Roads and railways.</p>
+      </div>
+    </details>
     </div>
   </details>
 

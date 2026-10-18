@@ -6,6 +6,12 @@
 .network-insights .ni-hero h2{margin:1.25rem 0}
 .network-insights .ni-hero .lede{margin:1rem 0}
 .network-insights .collapsible-summary h2{color:var(--ni-dark)}
+/* The category panels (Summary, Radio Performance, Network & Spectrum) hold the result panels as subpanels. */
+.ni-subpanels{display:grid;grid-template-columns:minmax(0,1fr);gap:1.25rem}
+.ni-subpanels>.collapsible-panel{min-width:0;max-width:100%}
+.ni-subpanels>.collapsible-panel>.collapsible-summary{padding:1rem 1.3rem;background:linear-gradient(135deg,var(--ni-soft),#e2e5ff);border-bottom:1px solid var(--ni-border)}
+.ni-subpanels>.collapsible-panel>.collapsible-summary h2{font-size:1.2rem}
+.ni-subpanels>.collapsible-panel>.collapsible-summary .eyebrow{color:#5b57a8}
 /* Every visible selection control shares one row on wide screens. */
 .ni-selection-grid{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);align-items:end;gap:12px}
 .ni-filter-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-top:16px}
@@ -638,6 +644,10 @@ body:has(dialog.ni-expand-dialog[open]){overflow:hidden}
 .network-insights[data-ni-theme="midnight"] .ni-panel .ni-pending-box{background:#2a2410!important;border-color:#5a4a1a!important;color:#ffd27a!important}
 .network-insights[data-ni-theme="midnight"] .ni-panel .ni-scope-pill{background:#16233a!important;color:#cfe0f5!important;border-color:#2a3b58!important}
 .network-insights[data-ni-theme="midnight"] .ni-panel :is(select,input,.multiselect-trigger){background-color:#0f1726!important;color:#dce6f2!important;border-color:#2a3b58!important}
+.network-insights[data-ni-theme="midnight"] .ni-category-panel{background:#070d18!important;border-color:#22314a!important}
+.network-insights[data-ni-theme="midnight"] .ni-category-panel>.collapsible-summary h2{color:#e6edf7}
+.network-insights[data-ni-theme="midnight"] .ni-category-panel>.collapsible-summary .eyebrow{color:#9fb1cc}
+.network-insights[data-ni-theme="midnight"] .ni-subpanels>.collapsible-panel>.collapsible-summary{background:#0f1726;border-bottom-color:#22314a}
 /* Paper: a printed page, serif type, black rules and no fills. */
 .network-insights[data-ni-theme="paper"] .ni-table{font-family:Georgia,"Times New Roman",serif}
 .network-insights[data-ni-theme="paper"] .ni-table th{background:transparent!important;color:#1a1a1a!important;font-style:italic;border-bottom:1px solid #1a1a1a}

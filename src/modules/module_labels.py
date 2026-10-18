@@ -331,12 +331,19 @@ MODULE_SECTIONS: dict[str, list[tuple[Any, ...] | None]] = {
                     ('scoring-results-trends', 'Scoring Trends', 'activity'), ('scoring-results-gap', 'GAP Analysis', 'gap'),
                     ('scoring-results-points-lost', 'Points Lost', 'map')]),
                 ('Favourites Filters', 'Favourites Filters', 'filter')],
-    # In the order of the page (templates/network_insights.html).
-    'network-insights': [('Launch Analysis', 'Launch Analysis', 'select'), ('Overview', 'Overview', 'summary'),
-                         ('Key Findings', 'Key Findings', 'chart'), ('Coverage & Interference Maps', 'RSRP & SINR Maps', 'map'), ('RF Quality', 'RF Quality', 'activity'),
-                         ('Latency & Interactivity', 'Latency & Interactivity', 'gauge'), ('Serving Cells', 'Serving Cells', 'link'), ('5G Availability', '5G Availability', 'gauge'),
-                         ('Network Snapshot', 'Network Snapshot', 'database'), ('Network Deployment', 'Network Deployment', 'antenna'),
-                         ('Cluster Sites Density', 'Cluster Sites Density', 'pin'), ('Spectrum', 'Spectrum', 'spectrum')],
+    # In the order of the page (templates/network_insights.html): its category panels, each with its panels as parts.
+    'network-insights': [('Launch Analysis', 'Launch Analysis', 'select'),
+                         ('Summary', 'Summary', 'summary', [
+                             ('section-overview', 'Overview', 'summary'), ('section-key-findings', 'Key Findings', 'chart')]),
+                         ('Radio Performance', 'Radio Performance', 'activity', [
+                             ('section-coverage-interference-maps', 'Coverage & Interference Maps', 'map'),
+                             ('section-rf-quality', 'RF Quality', 'activity'),
+                             ('section-latency-interactivity', 'Latency & Interactivity', 'gauge'),
+                             ('section-serving-cells', 'Serving Cells', 'link'), ('section-5g-availability', '5G Availability', 'gauge')]),
+                         ('Network & Spectrum', 'Network & Spectrum', 'antenna', [
+                             ('section-network-snapshot', 'Network Snapshot', 'database'),
+                             ('section-network-deployment', 'Network Deployment', 'antenna'),
+                             ('section-cluster-sites-density', 'Cluster Sites Density', 'pin'), ('section-spectrum', 'Spectrum', 'spectrum')])],
     'non-qualified-calls': [('Filters', 'Filters', 'filter'), ('Non-Qualified Calls', 'Non-Qualified Calls', 'phone'),
                             ('Summary', 'Summary', 'summary'),
                             ('NQ Rate by Campaign and Operator', 'NQ Rate by Campaign and Operator', 'chart'),

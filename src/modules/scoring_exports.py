@@ -2591,9 +2591,12 @@ def _add_insight_slides(presentation, views: dict, environment: str, scoring: st
             add_sites_slides(presentation, compared_items('sites-operators', latest_campaign_items(items.get('sites_to_review', []))),
                              subtitle=subtitle, new_slide=_slide, scope=scope, compared=chosen('sites-operators'))
         if _option(options, 'points', 'stretches'):
+            # The map areas (ITL3 in the UK) as the land under each route, as in the route of Where to act.
+            boundaries = views.get('_points_loss_boundaries')
             add_stretch_slides(presentation, latest_campaign_items(items.get('route_stretches', [])),
                                insights.get('points_loss_background') or [],
-                               subtitle=subtitle, new_slide=_slide, scope=scope, compared=compared)
+                               subtitle=subtitle, new_slide=_slide, scope=scope, compared=compared,
+                               boundaries=boundaries('Area') if boundaries else None)
         return
     if stage == 'comparison' and _option(options, 'tables', 'campaign_comparison'):
         comparisons = [item for item in items.get('campaign_comparisons', [])

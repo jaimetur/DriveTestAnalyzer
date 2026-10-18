@@ -1032,14 +1032,19 @@ def _serving_views(maps: list[dict[str, Any]], result: dict[str, Any] | None) ->
                     'region': area.get('region')})
             ordered = sorted(routes.items(), key=lambda pair: -sum(row['points'] for row in pair[1]))[:MAX_STRETCH_ROUTES]
             if ordered:
-                views['route_stretches'].append({**base, 'routes': [{
+                from src.modules.scoring_where_to_act import _landmarks
+                stretch_routes = [{
                     'route': route, 'points': sum(row['points'] for row in stretches),
                     'path': (places.get(route) or {}).get('points') or [],
                     'stretches': sorted(stretches, key=lambda row: -row['points'])[:MAX_ROUTE_STRETCHES],
                     # [latitude, longitude, points, performance owner (Region)] of every stretch.
                     'all_stretches': [[row['latitude'], row['longitude'], round(row['points'], 3), row.get('region') or '']
                                       for row in stretches],
-                } for route, stretches in ordered]})
+                } for route, stretches in ordered]
+                # The measured cities around each route, to name its map.
+                for stretch_route in stretch_routes:
+                    stretch_route['landmarks'] = _landmarks(stretch_route, places)
+                views['route_stretches'].append({**base, 'routes': stretch_routes})
     for (operator, environment, _series), by_campaign in sites_by_series.items():
         campaigns = sorted(by_campaign, key=campaign_sort_key)
         latest = by_campaign[campaigns[-1]]

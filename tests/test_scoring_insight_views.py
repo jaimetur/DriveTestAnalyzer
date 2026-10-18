@@ -127,6 +127,27 @@ def test_sites_vendors_and_stretches_find_where_the_points_are_lost(national):
     for route in stretches['routes']:
         shown = [row['points'] for row in route['stretches']]
         assert len(shown) <= MAX_ROUTE_STRETCHES and shown == sorted(shown, reverse=True)
+        # The measured cities around the route name its map, and each numbered stretch its nearest city.
+        assert route['landmarks'] and all({'name', 'latitude', 'longitude'} <= set(place) for place in route['landmarks'])
+        assert all(row['label'] for row in route['stretches'])
+    assert {'Manchester', 'Leeds'} <= {place['name'] for place in stretches['routes'][0]['landmarks']}
+
+
+def test_the_route_stretch_map_colours_each_stretch_by_its_points_lost(national) -> None:
+    from PIL import Image
+
+    from src.modules.scoring_summary_slides import render_stretch_map, stretch_colour
+    from src.modules.scoring_themes import THEMES
+    scale = THEMES['ericsson']['scale']
+    # From the third colour of the quality scale (little lost) through the second to the first (the most lost).
+    assert (stretch_colour(0, scale), stretch_colour(.5, scale), stretch_colour(1, scale)) == (scale[2], scale[1], scale[0])
+    _job, _result, insights = national
+    route = _combined(insights['route_stretches'], 'Vodafone UK')[-1]['routes'][0]
+    square = [[-3.0, 52.5], [-0.5, 52.5], [-0.5, 54.5], [-3.0, 54.5], [-3.0, 52.5]]
+    image = Image.open(BytesIO(render_stretch_map(route, '#E60000', [], boundaries={'Area': [square]})))
+    assert image.size == (1100, 900)
+    # The map areas are the land: white over the grey sea.
+    assert image.getpixel((5, 5)) == (233, 238, 243) and (255, 255, 255) in {colour for _count, colour in image.getcolors(1 << 20)}
 
 
 def test_locations_are_ranked_and_compared_with_the_reference(cities):
