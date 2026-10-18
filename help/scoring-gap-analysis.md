@@ -181,13 +181,13 @@ Each theme also styles the titles and subtitles of every content slide of the Po
 | --- | --- | --- |
 | **NetCheck** | Montserrat, blue, the first part in light capitals and what tells the slide apart in bold (*BEST NETWORK SCORING* **per Category**) | Blue, their first part in bold |
 | **Umlaut** | Arial, bold, dark | Red |
-| **Ericsson** | Ericsson Hilda, light black, what tells the slide apart in bold Ericsson blue | Grey |
+| **Ericsson** | Ericsson Hilda Light, black and not bold, as the titles of the template; only what tells the slide apart from the next ones in Ericsson Hilda bold, in Ericsson blue | Grey |
 | **Vodafone** | Vodafone Rg, bold anthracite, what tells the slide apart in red | Red |
 | **Midnight** | Segoe UI, bold navy, what tells the slide apart in cyan | Cyan |
 | **Paper** | Georgia, black, what tells the slide apart in dark red italics | Dark red italics |
 | **Heatmap** | Segoe UI, bold, what tells the slide apart in teal | Grey |
 
-A computer without the font of a theme shows its titles in a similar font.
+A computer without the font of a theme shows its titles in a similar font. A chart or table on several slides of a composed document (*· 1/2*) keeps the plain heading and its part in bold.
 
 In every theme a GAP is a bar either side of zero as long as the GAP: red (or the loss colour of the theme) to the left when the operator is behind the reference, green (or its gain colour) to the right when it is ahead; the GAP bars of the KPI GAP Profile and the other insight tables grow the same way, and points lost always grow from the left. In every table the header of a column is aligned like its values (right for numbers), so each column visibly ends where its header does. The National & Geographical Areas table, the scale of the Points Lost Map (yellow to red in NetCheck, blues in Ericsson, reds in Vodafone, cyan to pink in Midnight, sepia to oxblood in Paper, teal to red in Heatmap) and the tables of the exports follow the theme too. A theme also colours the best and worst operators of the Summary, Voice and Data, the points behind and ahead of the reference, positions, the maximum score allocation donuts (whose outer ring of environments never repeats a colour of the inner ring of Voice and Data or KPI categories) and the slide titles. Operator colours always come from the [Operator Maps](workspace-config.md#operator-maps). The page keeps the theme each user chooses in each workspace, and the choice is registered in App Events. **Export Selected Scoring Report (PPT/Word)** uses the theme of the page; the report editor has its own **Theme** selector (see [Report scenarios](#report-scenarios)). [Network Insights](network-insights.md#theme) offers the same themes, chosen apart.
 

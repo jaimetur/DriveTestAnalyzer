@@ -444,13 +444,38 @@ def _caption(slide: Any, left: int, top: int, width: int, title: str, subtitle: 
 
 
 def set_title(slide: Any, title: str, subtitle: str | None = None) -> None:
-    """Write ``title`` (and ``subtitle``, when given) in the title placeholder keeping its formatting."""
+    """Write ``title`` (and ``subtitle``, when given) in the title placeholder keeping its formatting: a title written in
+    a plain and a bold part (the style of the themes, see theme_titles) keeps them, its new focus in the bold one."""
+    from src.modules.theme_titles import split_focus
+
     shape = title_shape(slide)
     if shape is None:
         return
     paragraphs = shape.text_frame.paragraphs
 
-    def write(paragraph: Any, text: str) -> None:
+    def write(paragraph: Any, text: str, lead: bool = False) -> None:
+        runs = [run for run in paragraph.runs if run.text]
+        plain = next((run for run in runs if not run.font.bold), None)
+        bold = next((run for run in runs if run.font.bold), None)
+        if plain is not None and bold is not None:
+            # The heading and its focus (or, in a subtitle, its bold first part and the rest).
+            if lead:
+                first, separator, rest = text.partition(' · ')
+                parts = [(first + separator, bold), (rest, plain)] if separator else [(text, plain)]
+            else:
+                heading, focus = split_focus(text)
+                parts = [(heading, plain), (focus, bold)]
+            properties = [(part, copy.deepcopy(run._r.rPr) if run._r.rPr is not None else None) for part, run in parts]
+            for run in list(paragraph.runs):
+                run._r.getparent().remove(run._r)
+            for part, rpr in properties:
+                if not part:
+                    continue
+                run = paragraph.add_run()
+                if rpr is not None:
+                    run._r.insert(0, rpr)
+                run.text = part
+            return
         runs = paragraph.runs
         if runs:
             runs[0].text = text
@@ -463,7 +488,7 @@ def set_title(slide: Any, title: str, subtitle: str | None = None) -> None:
     if subtitle is None:
         return
     if len(paragraphs) > 1:
-        write(paragraphs[1], subtitle)
+        write(paragraphs[1], subtitle, lead=True)
         for paragraph in paragraphs[2:]:
             paragraph._p.getparent().remove(paragraph._p)
         if not subtitle:

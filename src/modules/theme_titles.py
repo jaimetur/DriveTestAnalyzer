@@ -82,7 +82,7 @@ def style_title(slide: Any, *, subtitle_size: float | None = None, theme: dict[s
         parts = _runs(title, [(heading, False), (focus, True)])
     for run, focus in parts:
         font = run.font
-        font.name = style.get('font') or None
+        font.name = (style.get('focus_font') if focus else None) or style.get('font') or None
         font.size = Pt(style.get('size', 28))
         font.bold = bool(style.get('focus_bold') if focus else style.get('bold'))
         font.italic = bool(style.get('focus_italic') if focus else style.get('italic'))

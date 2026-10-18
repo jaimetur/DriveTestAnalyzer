@@ -156,3 +156,24 @@ def test_light_scoring_slides_leave_out_the_mark_of_the_red_layouts():
     names = [shape.name for shape in slide.shapes]
     # The dark logos of the master, without the Ericsson mark drawn on the red of the covers and transitions.
     assert 'Logo' in names and not any(name.startswith('Ericsson watermark') for name in names)
+
+
+def test_ericsson_titles_are_light_with_the_part_that_changes_in_bold():
+    from src.modules.cdr_reporting import _remove_all_slides
+    from src.modules.network_insights_export import _slide
+    from src.modules.pptx_compose import set_title
+
+    deck = Presentation(TEMPLATE)
+    _remove_all_slides(deck)
+    with use_theme('ericsson'):
+        slide = _slide(deck, 'RF Quality · NR quality per carrier', 'National · All Operators')
+        heading, focus = slide.shapes.title.text_frame.paragraphs[0].runs
+        assert heading.font.name == 'Ericsson Hilda Light' and heading.font.bold is False
+        assert focus.font.name == 'Ericsson Hilda' and focus.font.bold
+        only = _slide(deck, 'Overview', 'National').shapes.title.text_frame.paragraphs[0].runs
+        assert [(run.text, run.font.bold) for run in only] == [('Overview', False)]
+    # A component on several slides of a composed report keeps the light heading and its focus in bold.
+    set_title(slide, 'RF Quality · NR quality per carrier · 1/2', 'National · All Operators')
+    heading, focus = slide.shapes.title.text_frame.paragraphs[0].runs
+    assert (heading.text, heading.font.bold, heading.font.name) == ('RF Quality · ', False, 'Ericsson Hilda Light')
+    assert (focus.text, focus.font.bold, focus.font.name) == ('NR quality per carrier · 1/2', True, 'Ericsson Hilda')
