@@ -42,11 +42,12 @@ _NETCHECK = {
     'scale': ['#C9483F', '#E8A060', '#F2D06B', '#93C47D', '#3E8E4F'],
     'series': ['#5B7A99', '#A9C4DB', '#8BA88E', '#C9B27C', '#B48C7C', '#8E87A0', '#DADDE0'],
     # The titles and subtitles of the slides: their font (and that of the focus of a title, focus_font), size and
-    # weight, the first part of a title in capitals (caps), the colours that replace the title tokens (None: title, title_accent and subtitle) and whether the
+    # weight, the first part of a title in capitals (caps), the colours that replace the title tokens (heading_color,
+    # focus_color and subtitle_color; None: title, title_accent and subtitle) and whether the
     # first part of a subtitle (before ' · ') is bold (lead_bold).
     'titles': {'font': 'Montserrat', 'focus_font': None, 'size': 32, 'bold': False, 'focus_bold': True, 'caps': True, 'italic': False,
                'focus_color': None, 'subtitle_font': 'Montserrat', 'subtitle_size': 16, 'subtitle_bold': False,
-               'subtitle_italic': False, 'subtitle_color': None, 'lead_bold': True, 'focus_italic': False},
+               'subtitle_italic': False, 'subtitle_color': None, 'lead_bold': True, 'focus_italic': False, 'heading_color': None},
     # The lines between the cells of the PowerPoint tables: white gaps that set the cells apart, never a grid.
     'cell_border': '#FFFFFF', 'cell_border_pt': 1.5,
 }
@@ -80,7 +81,7 @@ THEMES: dict[str, dict[str, Any]] = {
         'series': ['#5B7A99', '#A9C4DB', '#8BA88E', '#C9B27C', '#B48C7C', '#8E87A0', '#DADDE0'],
         'titles': {'font': 'Arial', 'focus_font': None, 'size': 28, 'bold': True, 'focus_bold': True, 'caps': False, 'italic': False,
                    'focus_color': '#1C1C28', 'subtitle_font': 'Arial', 'subtitle_size': 16, 'subtitle_bold': False,
-                   'subtitle_italic': False, 'subtitle_color': '#A6192E', 'lead_bold': False, 'focus_italic': False},
+                   'subtitle_italic': False, 'subtitle_color': '#A6192E', 'lead_bold': False, 'focus_italic': False, 'heading_color': None},
         'cell_border': '#FFFFFF', 'cell_border_pt': 1.5,
     },
     'ericsson': {
@@ -109,9 +110,11 @@ THEMES: dict[str, dict[str, Any]] = {
         'kpi_reliable': '#DDF7EA', 'kpi_diff': '#FFF5D1',
         'scale': ['#FF3232', '#FF8C0A', '#FAD22D', '#7FD8A6', '#0FC373'],
         'series': ['#0082F0', '#7FC0F7', '#AF78D2', '#FAD22D', '#FF8C0A', '#4E4E4E', '#DCDCDC'],
-        'titles': {'font': 'Ericsson Hilda', 'focus_font': 'Ericsson Hilda', 'size': 32, 'bold': False, 'focus_bold': True, 'caps': False, 'italic': False,
-                   'focus_color': '#0C0C0C', 'subtitle_font': 'Ericsson Hilda', 'subtitle_size': 16, 'subtitle_bold': False,
-                   'subtitle_italic': False, 'subtitle_color': None, 'lead_bold': False, 'focus_italic': False},
+        # The light grey heading of Ericsson Hilda Light and only the part that tells the slide apart in black bold.
+        'titles': {'font': 'Ericsson Hilda Light', 'focus_font': 'Ericsson Hilda', 'size': 32, 'bold': False, 'focus_bold': True,
+                   'caps': False, 'italic': False, 'focus_color': '#0C0C0C', 'subtitle_font': 'Ericsson Hilda', 'subtitle_size': 16,
+                   'subtitle_bold': False, 'subtitle_italic': False, 'subtitle_color': None, 'lead_bold': False, 'focus_italic': False,
+                   'heading_color': '#767676'},
         'cell_border': '#FFFFFF', 'cell_border_pt': 1.0,
     },
     'vodafone': {
@@ -142,7 +145,7 @@ THEMES: dict[str, dict[str, Any]] = {
         'series': ['#E60000', '#F39A9A', '#00B0CA', '#FECB00', '#5E2750', '#4A4D4E', '#D9D9D9'],
         'titles': {'font': 'Vodafone Rg', 'focus_font': None, 'size': 30, 'bold': True, 'focus_bold': True, 'caps': False, 'italic': False,
                    'focus_color': None, 'subtitle_font': 'Vodafone Rg', 'subtitle_size': 16, 'subtitle_bold': False,
-                   'subtitle_italic': False, 'subtitle_color': '#E60000', 'lead_bold': False, 'focus_italic': False},
+                   'subtitle_italic': False, 'subtitle_color': '#4A4D4E', 'lead_bold': False, 'focus_italic': False, 'heading_color': None},
         'cell_border': '#FFFFFF', 'cell_border_pt': 2.25,
     },
     'midnight': {
@@ -172,7 +175,7 @@ THEMES: dict[str, dict[str, Any]] = {
         'series': ['#3DB9FF', '#9ED8FF', '#2EE6A6', '#FFC145', '#FF8FAB', '#B47CFF', '#5C6F8F'],
         'titles': {'font': 'Segoe UI', 'focus_font': None, 'size': 28, 'bold': True, 'focus_bold': True, 'caps': False, 'italic': False,
                    'focus_color': None, 'subtitle_font': 'Segoe UI', 'subtitle_size': 16, 'subtitle_bold': False,
-                   'subtitle_italic': False, 'subtitle_color': '#00A3C4', 'lead_bold': False, 'focus_italic': False},
+                   'subtitle_italic': False, 'subtitle_color': '#00A3C4', 'lead_bold': False, 'focus_italic': False, 'heading_color': None},
         'cell_border': '#FFFFFF', 'cell_border_pt': 1.5,
     },
     'paper': {
@@ -202,7 +205,7 @@ THEMES: dict[str, dict[str, Any]] = {
         'series': ['#2F3B4A', '#8DA2B8', '#5F7F4F', '#C9A27A', '#8C5A4A', '#7B6F8F', '#D9D4C7'],
         'titles': {'font': 'Georgia', 'focus_font': None, 'size': 30, 'bold': False, 'focus_bold': False, 'caps': False, 'italic': False,
                    'focus_color': None, 'subtitle_font': 'Georgia', 'subtitle_size': 16, 'subtitle_bold': False,
-                   'subtitle_italic': True, 'subtitle_color': '#7A1F1F', 'lead_bold': False, 'focus_italic': True},
+                   'subtitle_italic': True, 'subtitle_color': '#7A1F1F', 'lead_bold': False, 'focus_italic': True, 'heading_color': None},
         'cell_border': '#D9D4C7', 'cell_border_pt': 0.5,
     },
     'heatmap': {
@@ -233,7 +236,7 @@ THEMES: dict[str, dict[str, Any]] = {
         'series': ['#457B9D', '#A8DADC', '#2A9D8F', '#E9C46A', '#E76F51', '#8E7DBE', '#DDE3E8'],
         'titles': {'font': 'Segoe UI', 'focus_font': None, 'size': 28, 'bold': True, 'focus_bold': True, 'caps': False, 'italic': False,
                    'focus_color': None, 'subtitle_font': 'Segoe UI', 'subtitle_size': 16, 'subtitle_bold': False,
-                   'subtitle_italic': False, 'subtitle_color': None, 'lead_bold': False, 'focus_italic': False},
+                   'subtitle_italic': False, 'subtitle_color': None, 'lead_bold': False, 'focus_italic': False, 'heading_color': None},
         'cell_border': '#FFFFFF', 'cell_border_pt': 2.0,
     },
 }

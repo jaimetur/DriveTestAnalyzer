@@ -28,7 +28,8 @@ def title_style(theme: dict[str, Any] | None = None) -> dict[str, Any]:
     """The style of the titles of a theme with its colours: title, focus and subtitle."""
     theme = theme or active_theme()
     titles = theme.get('titles') or {}
-    return {**titles, 'color': theme['title'], 'focus_color': titles.get('focus_color') or theme['title_accent'],
+    return {**titles, 'color': titles.get('heading_color') or theme['title'],
+            'focus_color': titles.get('focus_color') or theme['title_accent'],
             'subtitle_color': titles.get('subtitle_color') or theme['subtitle']}
 
 
