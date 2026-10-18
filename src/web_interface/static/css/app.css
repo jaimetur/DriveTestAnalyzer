@@ -509,6 +509,14 @@ body.has-section-bar { --section-top-offset: 68px; }
 .section-bar a:hover { background: rgba(255, 255, 255, .14); color: #fff; }
 .section-bar a.is-active { background: #fff; color: color-mix(in srgb, var(--section-bar-accent) 80%, #000); box-shadow: 0 4px 12px rgba(0, 0, 0, .22); }
 .section-bar svg { display: block; flex: 0 0 auto; width: 1.05rem; height: 1.05rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+/* The colour theme of the module at the start of the bar (a copy of the module's Theme selector), in the colours of
+   the bar whatever the selects of the module look like. */
+.section-bar .section-bar-theme { display: inline-flex; flex: 0 0 auto; align-items: center; gap: .35rem; margin-right: .2rem; padding: 0 .55rem 0 .35rem; border-right: 1px solid rgba(255, 255, 255, .28); color: rgba(255, 255, 255, .92); }
+.section-bar .section-bar-theme select { -webkit-appearance: none; appearance: none; width: auto; min-width: 0; height: 2.1rem; min-height: 0; padding: .2rem 1.9rem .2rem .85rem; border: 1px solid rgba(255, 255, 255, .35); border-radius: 999px; box-shadow: none;
+  background: rgba(255, 255, 255, .16) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right .7rem center / .75rem;
+  color: #fff; font-size: .86rem; font-weight: 800; cursor: pointer; }
+.section-bar .section-bar-theme select:hover, .section-bar .section-bar-theme select:focus-visible { border-color: rgba(255, 255, 255, .7); background-color: rgba(255, 255, 255, .26); }
+.section-bar .section-bar-theme select option { color: #17232d; }
 .section-bar-group { display: inline-flex; flex: 0 0 auto; align-items: center; border-radius: 999px; }
 .section-bar-group > a { padding-right: .3rem; }
 .section-bar-group:hover { background: rgba(255, 255, 255, .14); }
@@ -1647,6 +1655,21 @@ body[data-embedded-template-editor] .slides-templates-editor-table-wrap .form-ac
 .dataset-export-actions .action-link-preview { margin-right: auto; }
 .dataset-export-actions .cdr-theme-field { display: flex; align-items: center; gap: .5rem; flex: 0 0 auto; }
 .dataset-export-actions .cdr-theme-field select { width: auto; min-width: 9rem; }
+/* The colour theme of CDR Analysis (cdr_analysis_chart_tokens): the cards, statistic tiles, tables, labels and
+   accents of the page follow the theme the user chose, at once; the hero and dataset panels keep their blue. */
+.datasets-analysis-stack[data-cdr-theme] :is(.metric-card, .score-item, .premium-metric-card, .executive-metric-subpanel, .multi-metric-panel, .chart-card, .grouped-scorecard-table-wrap, .data-table-wrap) { background: var(--cdr-card); border-color: var(--cdr-line); color: var(--cdr-ink); }
+.datasets-analysis-stack[data-cdr-theme] :is(.metric-card, .score-item) span { color: var(--cdr-muted); }
+.datasets-analysis-stack[data-cdr-theme] .metric-stat-card { background: linear-gradient(145deg, var(--cdr-tile), var(--cdr-tile-end)); }
+.datasets-analysis-stack[data-cdr-theme] .metric-stat-card::before { background: var(--cdr-accent); }
+.datasets-analysis-stack[data-cdr-theme] .metric-stat-card span { color: var(--cdr-tile-muted); }
+.datasets-analysis-stack[data-cdr-theme] .metric-stat-card strong { color: var(--cdr-tile-text); }
+.datasets-analysis-stack[data-cdr-theme] .panel:not(.module-hero-datasets-analysis):not(.cdr-dataset-panel) .eyebrow { color: var(--cdr-accent); }
+.datasets-analysis-stack[data-cdr-theme] .executive-metric-subpanel .pill { border-color: var(--cdr-accent); background: transparent; color: var(--cdr-accent); }
+.datasets-analysis-stack[data-cdr-theme] :is(.grouped-scorecard-table, .data-table-wrap table) thead th { background: var(--cdr-header); color: var(--cdr-header-text); }
+.datasets-analysis-stack[data-cdr-theme] :is(.grouped-scorecard-table, .data-table-wrap table) tbody td { color: var(--cdr-ink); }
+.datasets-analysis-stack[data-cdr-theme] :is(.grouped-scorecard-table, .data-table-wrap table) tbody tr:nth-child(even) td { background: var(--cdr-row-alt); }
+/* The Visible X Range slider of the CDFs draws in the brand colour: the theme's accent. */
+.datasets-analysis-stack[data-cdr-theme] .cdf-range-control { --brand: var(--cdr-accent); }
 .upload-dropzone { display: grid; gap: 1rem; margin-top: 1.25rem; }
 /* File classification: one colourful card per file, tinted by its detected type. */
 .upload-type-list { display: grid; gap: 0.45rem; padding: 1.1rem 1.15rem 1.2rem; border: 1px solid rgba(11, 122, 117, 0.18); border-radius: 20px;

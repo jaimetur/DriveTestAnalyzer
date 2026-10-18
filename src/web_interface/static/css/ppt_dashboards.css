@@ -1893,3 +1893,12 @@
 .ds-structural-slide .ds-structural-geography { display:grid; gap:.5cqh; font-size:min(1.46cqw,2.6cqh); line-height:1.25; }
 .ds-structural-slide .ds-structural-geography p { margin:0; overflow:hidden; color:#fff; text-overflow:ellipsis; white-space:nowrap; }
 .ds-structural-slide b { font-weight:700; }
+
+/* The colour theme of the viewer (dashboard_viewer_tokens), changed at once with the theme: the slide title and
+   subtitle take the fonts and colours of the theme's slide titles, the part that tells the slide apart in its focus
+   style, as on the content slides of the Dashboard PPTs (still in capitals); the chart cards take its rules. */
+#ds-viewer[data-ds-theme] #ds-title { font-family:var(--ds-title-font); font-style:var(--ds-title-style); }
+#ds-viewer[data-ds-theme] #ds-title .ds-title-heading { color:var(--ds-title-color); font-weight:var(--ds-title-weight); }
+#ds-viewer[data-ds-theme] #ds-title .ds-title-focus { color:var(--ds-title-focus-color); font-family:var(--ds-title-focus-font); font-weight:var(--ds-title-focus-weight); font-style:var(--ds-title-focus-style); }
+#ds-viewer[data-ds-theme] #ds-subtitle { color:var(--ds-subtitle-color); font-family:var(--ds-subtitle-font); font-weight:var(--ds-subtitle-weight); font-style:var(--ds-subtitle-style); }
+#ds-viewer[data-ds-theme] .ds-chart { border-color:var(--ds-card-line); }

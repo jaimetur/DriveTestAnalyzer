@@ -1612,7 +1612,7 @@
     const inUse = `<div class="ni-snapshot-in-use"><span class="ni-snapshot-in-use-label">Snapshot in use</span>
       <strong>${escapeHtml(choice.options[choice.selectedIndex]?.textContent || 'Newest of each network')}</strong>
       <span>${[...used.values()].map(entry => `<span class="ni-snapshot-file-chip">${escapeHtml(entry.date)} · ${escapeHtml(entry.file)} <small>${escapeHtml(entry.networks.join(', '))}</small></span>`).join('')}</span>
-      <span class="form-note">Change it in Analysis Selection → Inventory snapshot.</span></div>`;
+      <span class="form-note">Change it in Launch Analysis → Inventory snapshot.</span></div>`;
     panel.innerHTML = `${inUse}<div class="ni-snapshot-cards">${snapshotPayload.selection.map(item => `<article class="ni-snapshot-card" style="--ni-operator:${snapshotPayload.colours?.[item.operator] || 'var(--ni-color)'}">
         <p class="eyebrow">${escapeHtml(item.snapshot_date)}</p><h3>${escapeHtml(item.operator)}</h3>
         <p class="ni-snapshot-file" title="${escapeHtml(item.file_name)}">${escapeHtml(item.file_name)}</p>

@@ -163,7 +163,7 @@ Custom methodologies can change these allocations. When the combined result has 
 
 ### Choose a theme
 
-The **Theme** selector, beside Scoring and Environment, gives every chart and table of the results its colours and the design of its Scoring and GAP cells, and the PowerPoint and Word exports with them. **NetCheck** is the default; every theme is light except **Midnight**:
+The **Theme** selector, beside Scoring and Environment, gives every chart and table of the results its colours and the design of its Scoring and GAP cells, and the PowerPoint and Word exports with them. **Ericsson** is the default. One theme serves every themed module (Scoring & GAP Analysis, Network Insights, CDR Analysis and PPT Dashboards): choosing it in one module chooses it in all of them, and a copy of the selector at the start of the floating section bar of each of them keeps it at hand while reading the page. Every theme is light except **Midnight**:
 
 | Theme | Colours | Scoring and GAP cells |
 | --- | --- | --- |

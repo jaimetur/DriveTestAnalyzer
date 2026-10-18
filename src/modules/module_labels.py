@@ -332,8 +332,8 @@ MODULE_SECTIONS: dict[str, list[tuple[Any, ...] | None]] = {
                     ('scoring-results-points-lost', 'Points Lost', 'map')]),
                 ('Favourites Filters', 'Favourites Filters', 'filter')],
     # In the order of the page (templates/network_insights.html).
-    'network-insights': [('Analysis Selection', 'Analysis Selection', 'select'), ('Overview', 'Overview', 'summary'),
-                         ('Key Findings', 'Key Findings', 'chart'), ('Coverage & Interference Maps', 'Coverage & Interference Maps', 'map'), ('RF Quality', 'RF Quality', 'activity'),
+    'network-insights': [('Launch Analysis', 'Launch Analysis', 'select'), ('Overview', 'Overview', 'summary'),
+                         ('Key Findings', 'Key Findings', 'chart'), ('Coverage & Interference Maps', 'RSRP & SINR Maps', 'map'), ('RF Quality', 'RF Quality', 'activity'),
                          ('Latency & Interactivity', 'Latency & Interactivity', 'gauge'), ('Serving Cells', 'Serving Cells', 'link'), ('5G Availability', '5G Availability', 'gauge'),
                          ('Network Snapshot', 'Network Snapshot', 'database'), ('Network Deployment', 'Network Deployment', 'antenna'),
                          ('Cluster Sites Density', 'Cluster Sites Density', 'pin'), ('Spectrum', 'Spectrum', 'spectrum')],

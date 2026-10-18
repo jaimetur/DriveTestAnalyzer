@@ -84,7 +84,7 @@
           <button type="button" class="document-export-action document-export-word" data-dataset-summary-open="word" title="Export the open CDR as on screen, or several CDRs with every KPI"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M8.5 12l1.2 5 1.8-4 1.8 4 1.2-5"/></svg>Export Word</button>
           {% endif %}
           {% if cdr_analysis_theme %}
-          <label class="cdr-theme-field" title="The colours of the charts and tables of the page and of the PowerPoint and Word exports">Theme<select id="cdr-theme" aria-label="Colour theme of the CDR Analysis charts, tables and exports" data-cdr-theme-select>{% for theme in cdr_analysis_themes %}<option value="{{ theme.id }}" title="{{ theme.description }}"{% if theme.id == cdr_analysis_theme %} selected{% endif %}>{{ theme.label }}</option>{% endfor %}</select></label>
+          <label class="cdr-theme-field" title="The colours of the charts and tables of the page and of the PowerPoint and Word exports">Theme<select id="cdr-theme" aria-label="Colour theme of the CDR Analysis charts, tables and exports" data-cdr-theme-select data-section-bar-theme>{% for theme in cdr_analysis_themes %}<option value="{{ theme.id }}" title="{{ theme.description }}"{% if theme.id == cdr_analysis_theme %} selected{% endif %}>{{ theme.label }}</option>{% endfor %}</select></label>
           <script type="application/json" id="cdr-chart-tokens">{{ cdr_analysis_chart_tokens | tojson }}</script>
           {% endif %}
         </div>

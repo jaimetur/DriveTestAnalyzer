@@ -110,6 +110,28 @@ DASHBOARD_PPT_JOBS_TABLE = 'dashboard_ppt_jobs'
 DASHBOARD_THEME_MODULE = 'ppt_dashboards'
 
 
+def dashboard_viewer_tokens(theme_name: str) -> dict[str, str]:
+    """The CSS variables of the Dashboard viewer in a theme, set on the viewer and changed at once with the theme: the
+    slide title and subtitle in the theme's title style (as on the content slides of the Dashboard PPTs, the part that
+    tells the slide apart in its focus style) and the chart cards in its rules."""
+    from src.modules.scoring_themes import get_theme
+    from src.modules.theme_titles import title_style
+    theme = get_theme(theme_name)
+    style = title_style(theme)
+    family = lambda name: f'"{name}", {theme["font"]}' if name else theme['font']
+    weight = lambda bold: '700' if bold else '400'
+    return {'--ds-title-font': family(style.get('font')), '--ds-title-color': style['color'],
+            '--ds-title-weight': weight(style.get('bold')), '--ds-title-transform': 'uppercase' if style.get('caps') else 'none',
+            '--ds-title-style': 'italic' if style.get('italic') else 'normal',
+            '--ds-title-focus-font': family(style.get('focus_font') or style.get('font')),
+            '--ds-title-focus-color': style['focus_color'], '--ds-title-focus-weight': weight(style.get('focus_bold', style.get('bold'))),
+            '--ds-title-focus-style': 'italic' if style.get('focus_italic', style.get('italic')) else 'normal',
+            '--ds-subtitle-font': family(style.get('subtitle_font') or style.get('font')),
+            '--ds-subtitle-color': style['subtitle_color'], '--ds-subtitle-weight': weight(style.get('subtitle_bold')),
+            '--ds-subtitle-style': 'italic' if style.get('subtitle_italic') else 'normal',
+            '--ds-card-line': theme['line'], '--ds-accent': theme['title_accent']}
+
+
 class DashboardDefinition(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     template: str = Field(min_length=1)
@@ -1776,6 +1798,7 @@ def install_dashboard_routes(core):
             'dashboard_themes': themes_payload()['themes'],
             'dashboard_theme': load_user_theme(bound_repository(), user.username, DASHBOARD_THEME_MODULE),
             'dashboard_chart_styles': {key: dashboard_chart_style(key) for key in THEMES},
+            'dashboard_viewer_tokens': {key: dashboard_viewer_tokens(key) for key in THEMES},
         })
 
     @app.get('/api/ppt-dashboards/theme')

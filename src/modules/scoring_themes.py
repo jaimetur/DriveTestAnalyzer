@@ -12,7 +12,11 @@ import contextvars
 from contextlib import contextmanager
 from typing import Any, Iterator
 
-DEFAULT_THEME = 'netcheck'
+# The modules draw in the NetCheck colours: every other theme translates them (themed()), and the documents of modules
+# without themes keep them.
+BASE_THEME = 'netcheck'
+# The theme of a user who has chosen none (in every themed module) and of new reports.
+DEFAULT_THEME = 'ericsson'
 
 _NETCHECK = {
     'label': 'NetCheck',
@@ -258,7 +262,7 @@ _TOKEN_ORDER = ('title', 'subtitle', 'header', 'soft_header', 'soft_header_text'
                 'best', 'worst', 'loss', 'gain', 'loss_text', 'gain_text', 'voice', 'data', 'kpi_reliable', 'kpi_diff',
                 'accent', 'border', 'row_alt')
 
-_ACTIVE: contextvars.ContextVar[str] = contextvars.ContextVar('scoring_theme', default=DEFAULT_THEME)
+_ACTIVE: contextvars.ContextVar[str] = contextvars.ContextVar('scoring_theme', default=BASE_THEME)
 
 
 def normalize_theme(name: Any) -> str:
@@ -339,7 +343,7 @@ def themed(color: Any, theme: dict[str, Any] | None = None) -> Any:
     a palette or a shade of the GAP scale. Other colours, such as those of the operators, are returned as they are."""
     theme = theme or active_theme()
     key = _hex(color)
-    if theme['id'] == DEFAULT_THEME or key is None:
+    if theme['id'] == BASE_THEME or key is None:
         return color
     prefix = '#' if str(color).strip().startswith('#') else ''
     source = _SOURCES.get(key)
@@ -422,12 +426,14 @@ def dashboard_chart_style(theme: dict[str, Any] | str | None = None) -> dict[str
 
 
 def user_theme_key(username: str, module: str = 'scoring') -> str:
-    return f'{module}_theme:{username}'
+    """The theme of a user in a workspace: one for every themed module (Scoring & GAP Analysis, Network Insights, CDR
+    Analysis and PPT Dashboards), so choosing it in one module chooses it in all of them; ``module`` only names the module
+    that reads or changes it."""
+    return f'theme:{username}'
 
 
 def load_user_theme(task_repository: Any, username: str, module: str = 'scoring') -> str:
-    """The theme the user chose in a module (Scoring & GAP Analysis, or network_insights) in this workspace, else the
-    default."""
+    """The theme the user chose in any themed module of this workspace, else the default (Ericsson)."""
     return normalize_theme(task_repository.get_workspace_state(user_theme_key(username, module)))
 
 

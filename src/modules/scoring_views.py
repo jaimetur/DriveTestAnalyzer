@@ -13,13 +13,13 @@ from src.modules.mapping_order import vendor_order_key
 from src.modules.scoring_vendors import normalize_scoring_vendor_result
 from src.modules.scoring_config import validate_scoring_configuration
 from src.modules.scoring_insights import build_scoring_insights
-from src.modules.scoring_themes import DEFAULT_THEME, THEMES
+from src.modules.scoring_themes import BASE_THEME, THEMES
 
 
 _ENVIRONMENT_ORDER = ('DriveCity', 'DriveConnectionroad', 'Walk')
 _SCOPE_FIELDS = ('campaign', 'region', 'cluster', 'city', 'vendor', 'dataset_type')
 # The score bands and GAP scale of the NetCheck theme; the other themes translate them (see scoring_themes).
-THRESHOLD_COLORS = dict(THEMES[DEFAULT_THEME]['bands'])
+THRESHOLD_COLORS = dict(THEMES[BASE_THEME]['bands'])
 THRESHOLD_LEGEND = [
     {'band': 'Low', 'color': THRESHOLD_COLORS['Low'], 'definition': 'Score below the configured Medium score anchor.'},
     {'band': 'Medium', 'color': THRESHOLD_COLORS['Medium'], 'definition': 'Score at Medium and below the configured High score anchor.'},
@@ -27,9 +27,9 @@ THRESHOLD_LEGEND = [
     {'band': 'UltraHigh', 'color': THRESHOLD_COLORS['UltraHigh'], 'definition': 'Score at or above the configured Ultra score anchor.'},
     {'band': 'Unavailable', 'color': THRESHOLD_COLORS['Unavailable'], 'definition': 'Score is incomplete or unavailable.'},
 ]
-_GAP_NEUTRAL = THEMES[DEFAULT_THEME]['gap_neutral']
-_GAP_POSITIVE_MAX = THEMES[DEFAULT_THEME]['gap_positive']
-_GAP_NEGATIVE_MAX = THEMES[DEFAULT_THEME]['gap_negative']
+_GAP_NEUTRAL = THEMES[BASE_THEME]['gap_neutral']
+_GAP_POSITIVE_MAX = THEMES[BASE_THEME]['gap_positive']
+_GAP_NEGATIVE_MAX = THEMES[BASE_THEME]['gap_negative']
 # The largest GAP of a context takes this share of the colour and the others less, so small GAPs stay almost white.
 _GAP_MAX_INTENSITY = .85
 _GAP_MIN_INTENSITY = .05

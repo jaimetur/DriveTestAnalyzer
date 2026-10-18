@@ -4058,6 +4058,34 @@
     $('ds-comments-list').replaceChildren();
     $('ds-comments-status').textContent = '';
   }
+  // The title of the slide in the viewer as on the content slides of the Dashboard PPTs (theme_titles.split_focus): what
+  // follows the first " — ", " · " or ": " (or the start of " per ") tells it apart from the next ones and takes the
+  // focus style of the colour theme (dashboard_viewer_tokens); the page of the title stays with it.
+  function setSlideTitle(text) {
+    const value = String(text || '');
+    const page = value.match(/(\s*·\s*\d+\s*\/\s*\d+|\s*\(\d+ of \d+\))+\s*$/);
+    const body = page ? value.slice(0, page.index) : value;
+    const found = [' — ', ' · ', ': '].map((separator) => [body.indexOf(separator), separator]).filter(([position]) => position >= 0)
+      .sort((left, right) => left[0] - right[0])[0];
+    let heading = value, focus = '';
+    if (found) {
+      heading = body.slice(0, found[0] + found[1].length);
+      focus = body.slice(found[0] + found[1].length) + (page ? page[0] : '');
+    } else if (body.includes(' per ')) {
+      heading = `${body.slice(0, body.indexOf(' per '))} `;
+      focus = body.slice(body.indexOf(' per ') + 1) + (page ? page[0] : '');
+    }
+    const headingPart = document.createElement('span');
+    headingPart.className = 'ds-title-heading';
+    headingPart.textContent = heading;
+    $('ds-title').replaceChildren(headingPart);
+    if (focus) {
+      const focusPart = document.createElement('span');
+      focusPart.className = 'ds-title-focus';
+      focusPart.textContent = focus;
+      $('ds-title').append(focusPart);
+    }
+  }
   function renderSlide() {
     if (!prepared) return; slideIndex = Math.max(0,Math.min(slideIndex,prepared.slides.length-1));
     closeLegendMenu();
@@ -4066,7 +4094,7 @@
     const preloadToken = prepared.token;
     const preloadOrigin = slideIndex;
     const visibleLoads = [];
-    $('ds-title').textContent = slide.title || `Dashboard ${slide.number}`; $('ds-subtitle').textContent = slide.subtitle;
+    setSlideTitle(slide.title || `Dashboard ${slide.number}`); $('ds-subtitle').textContent = slide.subtitle;
     renderViewerContext();
     const viewer = viewerDefinition();
     $('ds-position').textContent = `${dashboardNrMode(viewer)} · ${viewer?.name || 'Dashboard'} · Slide ${slideIndex+1} / ${prepared.slides.length}`;

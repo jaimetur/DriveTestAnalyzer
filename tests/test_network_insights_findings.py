@@ -168,22 +168,24 @@ def test_each_user_keeps_a_network_insights_theme(client) -> None:
     page = client.get('/network-insights').text
     assert 'id="ni-theme"' in page and 'id="ni-findings"' in page and 'js/network_insights_findings.js' in page
     config = json.loads(page.split('<script id="ni-config" type="application/json">', 1)[1].split('</script>', 1)[0])
-    assert config['theme'] == 'netcheck' and [theme['id'] for theme in config['themes']] == list(THEMES)
-    assert client.get('/api/network-insights/theme').json() == {'theme': 'netcheck'}
+    assert config['theme'] == 'ericsson' and [theme['id'] for theme in config['themes']] == list(THEMES)
+    assert client.get('/api/network-insights/theme').json() == {'theme': 'ericsson'}
     assert client.put('/api/network-insights/theme', json={'theme': 'paper'}).json() == {'theme': 'paper'}
     assert client.get('/api/network-insights/theme').json() == {'theme': 'paper'}
-    # The theme of Scoring stays apart.
-    assert client.get('/api/scoring/theme').json()['theme'] == 'netcheck'
+    # One theme for every themed module: Scoring, CDR Analysis and PPT Dashboards take it too.
+    assert client.get('/api/scoring/theme').json()['theme'] == 'paper'
+    assert client.get('/api/cdr-analysis/theme').json()['theme'] == 'paper'
+    assert client.get('/api/ppt-dashboards/theme').json()['theme'] == 'paper'
     assert client.put('/api/network-insights/theme', json={'theme': 'sunset'}).status_code == 400
     changes = [json.loads(row['details']) for row in core.repository.list_logs() if row['action'] == 'network_insights_theme_changed']
-    assert changes[0] == {'theme': 'paper', 'previous': 'netcheck'}
+    assert changes[0] == {'theme': 'paper', 'previous': 'ericsson'}
 
 
 def test_complete_reports_and_reporting_jobs_choose_a_network_insights_theme() -> None:
     from src.modules import complete_reports
     from src.modules.report_tasks import _network_entry
 
-    assert complete_reports.default_options('network_insights')['theme'] == 'netcheck'
+    assert complete_reports.default_options('network_insights')['theme'] == 'ericsson'
     definition = complete_reports.normalize_definition({'sections': [
         {'key': 'scoring', 'options': {'theme': 'Vodafone'}},
         {'key': 'network_insights', 'items': [{'key': 'overview'}, {'key': 'spectrum'}], 'options': {'theme': 'paper'}}]})
@@ -193,7 +195,7 @@ def test_complete_reports_and_reporting_jobs_choose_a_network_insights_theme() -
     # Reports saved before the Key Findings have them right after the Overview.
     assert [item['key'] for item in network['items']][:3] == ['overview', 'findings', 'spectrum']
     assert _network_entry({'theme': 'midnight', 'selection': {}})['theme'] == 'midnight'
-    assert _network_entry({'selection': {}})['theme'] == 'netcheck'
+    assert _network_entry({'selection': {}})['theme'] == 'ericsson'
 
 
 def test_a_headline_names_only_the_values_the_tests_have() -> None:

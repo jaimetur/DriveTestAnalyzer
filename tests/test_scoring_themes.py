@@ -11,7 +11,7 @@ import src.DriveTestAnalyzer as core
 from src.modules.scoring_exports import export_scoring_powerpoint
 from src.modules.scoring_pptx_scorecard import STYLES
 from src.modules.scoring_reports import normalize_report_configuration
-from src.modules.scoring_themes import DEFAULT_THEME, THEMES, blend, normalize_theme, themed, themes_payload, use_theme
+from src.modules.scoring_themes import BASE_THEME, DEFAULT_THEME, THEMES, blend, normalize_theme, themed, themes_payload, use_theme
 from src.modules.scoring_views import THRESHOLD_COLORS, gap_color
 from tests.scoring_synthetic import synthetic_result
 from tests.test_scoring_exports import TEMPLATE
@@ -22,22 +22,23 @@ def _channels(color: str) -> tuple[int, ...]:
 
 
 def test_every_theme_has_every_token():
-    tokens = set(THEMES[DEFAULT_THEME])
-    assert DEFAULT_THEME == 'netcheck' and list(THEMES) == ['netcheck', 'umlaut', 'ericsson', 'vodafone', 'midnight', 'paper', 'heatmap']
+    tokens = set(THEMES[BASE_THEME])
+    # The modules draw in the NetCheck colours; a user who has chosen no theme has Ericsson.
+    assert BASE_THEME == 'netcheck' and DEFAULT_THEME == 'ericsson' and list(THEMES) == ['netcheck', 'umlaut', 'ericsson', 'vodafone', 'midnight', 'paper', 'heatmap']
     for name, theme in THEMES.items():
         assert set(theme) == tokens, name
         assert set(theme['bands']) == set(THRESHOLD_COLORS), name
         for token in ('ranks', 'stake', 'loss_ramp', 'environments', 'categories'):
-            assert len(theme[token]) == len(THEMES[DEFAULT_THEME][token]), (name, token)
+            assert len(theme[token]) == len(THEMES[BASE_THEME][token]), (name, token)
     payload = themes_payload()
-    assert payload['default'] == 'netcheck' and [theme['id'] for theme in payload['themes']] == list(THEMES)
+    assert payload['default'] == 'ericsson' and [theme['id'] for theme in payload['themes']] == list(THEMES)
 
 
 def test_the_rings_of_the_maximum_score_donuts_have_colours_of_their_own():
     # The outer ring (environments) never repeats a colour of the inner one (Voice and Data, or the KPI categories).
     for name, theme in THEMES.items():
         assert set(theme['environments'][:2]).isdisjoint(theme['categories']), name
-        if name != DEFAULT_THEME:
+        if name != BASE_THEME:
             assert set(theme['environments']).isdisjoint(theme['categories']), name
 
 
@@ -58,7 +59,7 @@ def test_netcheck_colours_translate_into_the_active_theme():
         # Operator colours and the other colours are left as they are.
         assert themed('#E60000') == '#E60000' and themed('#17232D') == '#17232D'
     assert themed('#1450A8') == '#1450A8'
-    assert normalize_theme('Colour blind') == 'netcheck' and normalize_theme(' Vodafone ') == 'vodafone'
+    assert normalize_theme('Colour blind') == 'ericsson' and normalize_theme(' Vodafone ') == 'vodafone'
 
 
 def test_small_gaps_stay_almost_white():
@@ -91,9 +92,9 @@ def test_exports_take_the_colours_of_their_theme():
 def test_report_configurations_keep_their_theme():
     assert normalize_report_configuration({'scenarios': [{}], 'theme': 'Paper'})['theme'] == 'paper'
     # Themes of earlier versions that are gone fall back to NetCheck.
-    assert normalize_report_configuration({'scenarios': [{}], 'theme': 'ocean'})['theme'] == 'netcheck'
-    assert normalize_report_configuration({'scenarios': [{}]})['theme'] == 'netcheck'
-    assert normalize_report_configuration({'scenarios': [{}], 'theme': 'unknown'})['theme'] == 'netcheck'
+    assert normalize_report_configuration({'scenarios': [{}], 'theme': 'ocean'})['theme'] == 'ericsson'
+    assert normalize_report_configuration({'scenarios': [{}]})['theme'] == 'ericsson'
+    assert normalize_report_configuration({'scenarios': [{}], 'theme': 'unknown'})['theme'] == 'ericsson'
 
 
 def test_each_user_keeps_a_theme_and_the_page_offers_every_theme(client):
@@ -101,16 +102,16 @@ def test_each_user_keeps_a_theme_and_the_page_offers_every_theme(client):
     assert client.post('/login', data={'username': 'super', 'password': 'super123'}, follow_redirects=False).status_code == 303
     page = client.get('/scoring').text
     assert 'data-scoring-theme-select' in page and 'id="scoring-themes-data"' in page
-    assert 'data-scoring-theme="netcheck"' in page
+    assert 'data-scoring-theme="ericsson"' in page
     for theme in THEMES.values():
         assert f'>{theme["label"]}</option>' in page
-    assert client.get('/api/scoring/theme').json()['theme'] == 'netcheck'
+    assert client.get('/api/scoring/theme').json()['theme'] == 'ericsson'
     assert client.put('/api/scoring/theme', json={'theme': 'vodafone'}).json() == {'theme': 'vodafone'}
     assert client.get('/api/scoring/theme').json()['theme'] == 'vodafone'
     assert 'data-scoring-theme="vodafone"' in client.get('/scoring').text
     assert client.put('/api/scoring/theme', json={'theme': 'sunset'}).status_code == 400
     changes = [json.loads(row['details']) for row in core.repository.list_logs() if row['action'] == 'scoring_theme_changed']
-    assert changes[0] == {'theme': 'vodafone', 'previous': 'netcheck'}
+    assert changes[0] == {'theme': 'vodafone', 'previous': 'ericsson'}
 
 
 def test_each_theme_styles_the_titles_and_subtitles_of_the_slides():

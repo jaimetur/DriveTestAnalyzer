@@ -9857,6 +9857,34 @@ document.addEventListener('click', (event) => {
   });
   bar.prepend(toTop);
 
+  // The colour theme of a themed module (Scoring & GAP Analysis, Network Insights, CDR Analysis, PPT Dashboards) stays
+  // at hand at the start of the bar (always in sight, however many sections follow) while reading the page: a copy of the module's own Theme selector, kept in step with
+  // it both ways, that changes the theme exactly as that selector does.
+  const themeSelect = document.querySelector('select[data-section-bar-theme], select[data-scoring-theme-select], select#ni-theme');
+  if (themeSelect instanceof HTMLSelectElement && !bar.querySelector('.section-bar-theme')) {
+    const field = document.createElement('label');
+    field.className = 'section-bar-theme';
+    field.title = 'The colour theme of the page and of its exports';
+    field.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.6-.8 1.6-1.6 0-.5-.2-.8-.4-1.1-.3-.3-.4-.6-.4-1.1 0-.9.7-1.6 1.6-1.6H16a5 5 0 0 0 5-5C21 6.4 17 3 12 3Z"/><circle cx="7.5" cy="11" r="1"/><circle cx="10.5" cy="7.5" r="1"/><circle cx="15" cy="7.5" r="1"/></svg>';
+    const copy = document.createElement('select');
+    copy.setAttribute('aria-label', 'Colour theme');
+    [...themeSelect.options].forEach((option) => copy.append(new Option(option.textContent, option.value, false, option.selected)));
+    const sync = () => { if (copy.value !== themeSelect.value) copy.value = themeSelect.value; };
+    copy.addEventListener('change', () => {
+      if (themeSelect.value === copy.value) return;
+      themeSelect.value = copy.value;
+      themeSelect.dispatchEvent(new Event('input', {bubbles: true}));
+      themeSelect.dispatchEvent(new Event('change', {bubbles: true}));
+    });
+    themeSelect.addEventListener('change', sync);
+    // A module may set its selector without a change event (a theme loaded with its results): the copy reads it again
+    // before it opens.
+    field.addEventListener('pointerenter', sync);
+    copy.addEventListener('focus', sync);
+    field.append(copy);
+    toTop.after(field);
+  }
+
   // The list of parts opens below its entry on hover, focus or a click on its arrow, and closes on leaving it.
   let closeTimer = 0;
   const place = (group) => {

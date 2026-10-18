@@ -20905,14 +20905,19 @@ CDR_ANALYSIS_THEME_MODULE = 'cdr_analysis'
 
 
 def cdr_analysis_chart_tokens(theme: dict[str, Any]) -> dict[str, str]:
-    """The CSS variables of the CDR Analysis page charts in a theme. The charts sit on the light cards of the page, so
-    their text is the theme's ink softened (its title colour when its surface is dark, as in Midnight), the bars without
-    an Operator or Vendor colour take its accent and the curves its series."""
+    """The CSS variables of the CDR Analysis page in a theme, set on the page and changed at once with the theme: its
+    cards (and the charts on them) in its surface and ink, its tables with its headers and alternate rows, its statistic
+    tiles in its header colour, its labels and accents in its accent; the bars without an Operator or Vendor colour take
+    its accent and the curves its series."""
     from src.modules.scoring_themes import blend
-    red, green, blue = (int(theme['surface'][index:index + 2], 16) for index in (1, 3, 5))
-    ink = theme['title'] if .299 * red + .587 * green + .114 * blue < 128 else theme['ink']
-    return {'--cdr-chart-ink': ink, '--cdr-chart-muted': blend(ink, '#FFFFFF', .35), '--cdr-chart-axis': blend(ink, '#FFFFFF', .6),
-            '--cdr-chart-bar': theme['accent'], '--cdr-chart-series': ','.join(theme['series'])}
+    surface, ink = theme['surface'], theme['ink']
+    return {'--cdr-chart-ink': ink, '--cdr-chart-muted': blend(ink, surface, .35), '--cdr-chart-axis': blend(ink, surface, .6),
+            '--cdr-chart-bar': theme['accent'], '--cdr-chart-series': ','.join(theme['series']),
+            '--cdr-card': surface, '--cdr-ink': ink, '--cdr-muted': blend(ink, surface, .4), '--cdr-line': theme['line'],
+            '--cdr-accent': theme['title_accent'], '--cdr-header': theme['header'], '--cdr-header-text': theme['header_text'],
+            '--cdr-row-alt': theme['row_alt'], '--cdr-tile': theme['header'],
+            '--cdr-tile-end': blend(theme['header'], theme['accent'], .45), '--cdr-tile-text': theme['header_text'],
+            '--cdr-tile-muted': blend(theme['header_text'], theme['header'], .3)}
 
 
 @app.get('/api/cdr-analysis/theme')
