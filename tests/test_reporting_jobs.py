@@ -600,15 +600,74 @@ def test_the_non_qualified_calls_artifact_keeps_campaign_choices_until_each_run(
 def test_a_job_can_start_from_a_favourite_complete_report():
     definition = report_tasks.normalize_definition({'modules': {'complete_report': {
         'enabled': True, 'formats': ['powerpoint', 'word'], 'options': {'filters': {'favourites': ['7']}}}}})
-    # The jobs table names the favourite the job generates (every one when it chooses none).
-    groups = report_tasks.artifact_groups(definition, {}, {'7': 'Weekly NetCheck'})
-    assert groups == [{'module': 'Complete Report', 'items': ['Weekly NetCheck (PPT/Word)']}]
+    # The jobs table names the favourite the job generates (every one when it chooses none) with what it includes.
+    contents = [{'title': 'Scoring & GAP Analysis', 'items': ['Summary', 'GAP Analysis']}]
+    groups = report_tasks.artifact_groups(definition, {}, {'7': 'Weekly NetCheck'}, {'7': contents})
+    assert groups == [{'module': 'Complete Report', 'items': ['Weekly NetCheck (PPT/Word)'], 'contents': [contents]}]
+    assert report_tasks.based_on_favourite(definition)
     assert report_tasks.artifact_labels(definition, {}, {'7': 'Weekly NetCheck'}) == ['Complete Report · Weekly NetCheck (PPT/Word)']
     every = report_tasks.normalize_definition({'modules': {'complete_report': {'enabled': True, 'formats': ['powerpoint']}}})
     assert report_tasks.artifact_groups(every)[0]['items'] == ['Every favourite (PPT)']
+    assert not report_tasks.based_on_favourite(every)
+    assert not report_tasks.based_on_favourite({**definition, 'scoring': [SCORING_ENTRY]})
     page = (core.PROJECT_ROOT / 'src/web_interface/templates/report_jobs.html').read_text(encoding='utf-8')
     assert 'name="rj-source" value="favourite" checked' in page and 'name="rj-source" value="editor"' in page
     script = (core.PROJECT_ROOT / 'src/web_interface/static/js/report_jobs.js').read_text(encoding='utf-8')
     # From a favourite, the job generates only its Complete Report; one that does opens as such in the editor.
     assert 'function favouriteDefinition(base)' in script and 'function favouriteOf(definition)' in script
     assert "if (jobSource() === 'favourite' && !$('rj-favourite')?.value)" in script
+    # Based On tells a job of a favourite from one with artifacts chosen in the editor.
+    assert '<th>Artifacts</th><th>Based On</th><th>Recurrence</th><th>Next Run</th>' in page and 'colspan="9"' in page
+    assert "fromFavourite ? 'Complete Report' : 'Manual Artifacts'" in script and 'function favouriteContents(sections)' in script
+    # The header of the panel counts the jobs of each kind.
+    assert all(f'id="rj-count-{kind}"' in page for kind in ('total', 'favourite', 'manual'))
+    assert "$('rj-count-manual').textContent = `Manual Artifacts: ${state.tasks.length - favourites}`;" in script
+
+
+def test_reporting_page_keeps_its_scroll_position_when_reloaded():
+    script = (core.PROJECT_ROOT / 'src/web_interface/static/js/report_jobs.js').read_text(encoding='utf-8')
+    assert "const SCROLL_KEY = 'drivetest-analyzer:/reporting:scroll';" in script
+    assert "['reload', 'back_forward'].includes(navigation)" in script
+    # An editor reopened by the reload does not move the page to it.
+    assert "if (!followingScroll) editor.scrollIntoView({behavior: 'smooth', block: 'start'});" in script
+
+
+def test_imported_reporting_jobs_find_their_favourites_by_name(client):
+    from src.modules import complete_reports
+    login(client)
+    weekly = complete_reports.save_favourite(core.repository, None, 'Weekly', {}, 'super')
+    monthly = complete_reports.save_favourite(core.repository, None, 'Monthly', {'sections': [{'key': 'scoring', 'enabled': False}]}, 'super')
+    report = {'enabled': True, 'formats': ['word'], 'options': {'filters': {'favourites': [str(monthly['id'])]}}}
+    client.post('/api/reporting/tasks', json={'name': 'Monthly job', 'schedule': {'mode': 'manual'},
+                                              'definition': {'modules': {'complete_report': report}}}).raise_for_status()
+    exported = json.loads(report_tasks.export_tasks_document(core.repository))
+    assert exported['favourite_names'] == {str(monthly['id']): 'Monthly'}
+    # In another workspace the favourites have other IDs: the job takes the one of the same name.
+    with core.repository.connection() as connection:
+        connection.execute(f'DELETE FROM {complete_reports.COMPLETE_REPORTS_TABLE}')
+    complete_reports.save_favourite(core.repository, None, 'Other', {}, 'super')
+    here = complete_reports.save_favourite(core.repository, None, 'monthly', {}, 'super')
+    assert here['id'] not in {weekly['id'], monthly['id']}
+    assert core._restore_workspace_reporting_jobs(core.active_workspace, json.dumps(exported).encode(), 'super') >= 1
+    job = next(task for task in report_tasks.list_tasks(core.repository) if task['name'] == 'Monthly job')
+    assert job['definition']['modules']['complete_report']['options']['filters']['favourites'] == [str(here['id'])]
+    state = client.get('/api/reporting/state').json()
+    listed = next(task for task in state['tasks'] if task['name'] == 'Monthly job')
+    assert listed['based_on'] == 'favourite'
+    assert listed['artifact_groups'][-1]['items'] == ['monthly (Word)']
+    assert listed['artifact_groups'][-1]['contents'][0][0]['title'] == 'Scoring & GAP Analysis'
+    # A favourite the destination does not have is kept by name (never every favourite) and found once it is there;
+    # documents without names keep the IDs.
+    exported['favourite_names'] = {str(monthly['id']): 'Missing'}
+    core._restore_workspace_reporting_jobs(core.active_workspace, json.dumps(exported).encode(), 'super')
+    job = next(task for task in report_tasks.list_tasks(core.repository) if task['name'] == 'Monthly job')
+    assert job['definition']['modules']['complete_report']['options']['filters']['favourites'] == ['Missing']
+    missing = report_tasks.export_tasks_document(core.repository)
+    found = complete_reports.save_favourite(core.repository, None, 'Missing', {}, 'super')
+    core._restore_workspace_reporting_jobs(core.active_workspace, missing, 'super')
+    job = next(task for task in report_tasks.list_tasks(core.repository) if task['name'] == 'Monthly job')
+    assert job['definition']['modules']['complete_report']['options']['filters']['favourites'] == [str(found['id'])]
+    del exported['favourite_names']
+    core._restore_workspace_reporting_jobs(core.active_workspace, json.dumps(exported).encode(), 'super')
+    job = next(task for task in report_tasks.list_tasks(core.repository) if task['name'] == 'Monthly job')
+    assert job['definition']['modules']['complete_report']['options']['filters']['favourites'] == [str(monthly['id'])]

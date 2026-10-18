@@ -60,8 +60,9 @@
 .report-jobs .reporting-jobs-table td, .report-jobs .reporting-jobs-table th { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
 .report-jobs #rj-tasks th:nth-child(1) { width: 14%; }
 .report-jobs #rj-tasks th:nth-child(2) { width: 30%; }
-.report-jobs #rj-tasks th:nth-child(3), .report-jobs #rj-tasks th:nth-child(4), .report-jobs #rj-tasks th:nth-child(5) { width: 11%; }
-.report-jobs #rj-tasks th:nth-child(6) { width: 9%; }
+.report-jobs #rj-tasks th:nth-child(3) { width: 8%; }
+.report-jobs #rj-tasks th:nth-child(4), .report-jobs #rj-tasks th:nth-child(5), .report-jobs #rj-tasks th:nth-child(6) { width: 11%; }
+.report-jobs #rj-tasks th:nth-child(7) { width: 9%; }
 .report-jobs .reporting-jobs-table .table-actions { display: flex; flex-wrap: wrap; gap: .3rem; }
 .rj-kinds { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr)); gap: .8rem; }
 .rj-kind-group { display: grid; gap: .25rem; align-content: start; }
@@ -126,9 +127,9 @@
 .report-jobs .rj-filters.rj-filters-one-row { grid-template-columns: repeat(auto-fit, minmax(min(100%, 8.5rem), 1fr)); }
 /* Saved jobs: narrow Name and Email columns so Last Run and Status keep one line. */
 #rj-tasks th:nth-child(1), #rj-tasks td:nth-child(1) { width: 9rem; overflow-wrap: anywhere; }
-#rj-tasks th:nth-child(5), #rj-tasks td:nth-child(5) { width: 5.5rem; }
-#rj-tasks th:nth-child(6), #rj-tasks td:nth-child(6) { white-space: nowrap; }
-#rj-tasks th:nth-child(7), #rj-tasks td:nth-child(7) { width: 1%; white-space: nowrap; }
+#rj-tasks th:nth-child(6), #rj-tasks td:nth-child(6) { width: 5.5rem; }
+#rj-tasks th:nth-child(7), #rj-tasks td:nth-child(7) { white-space: nowrap; }
+#rj-tasks th:nth-child(8), #rj-tasks td:nth-child(8) { width: 1%; white-space: nowrap; }
 #rj-tasks .rj-status { white-space: nowrap; }
 /* Reporting palette in the artifact panels: green checkboxes, highlighted row titles and more room between rows. */
 .report-jobs input[type="checkbox"], .report-jobs input[type="radio"] { accent-color: #2f8a57; }
@@ -272,6 +273,17 @@
 .report-jobs .rj-artifact-tab .rj-tab-icon { display: inline-block; width: 1.05rem; height: 1.05rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: 0 0 auto; }
 .report-jobs .rj-artifact-module { font-weight: 700; }
 .report-jobs .rj-artifact-entries { margin: .1rem 0 .2rem; padding-left: 1.1rem; list-style: circle; display: grid; gap: .1rem; }
+/* What a favourite Complete Report includes, below its name. */
+.report-jobs .rj-artifact-contents { margin: .15rem 0 .25rem; padding-left: 1.1rem; list-style: square; display: grid; gap: .1rem; color: var(--muted); font-size: .82rem; }
+.report-jobs .rj-artifact-section { color: var(--text); font-weight: 600; }
+.report-jobs .rj-based-on { display: inline-block; padding: .12rem .5rem; border-radius: 999px; font-size: .78rem; font-weight: 700; background: #e3edf9; color: #1f4f8a; white-space: nowrap; }
+.report-jobs .rj-based-on-favourite { background: #e3f3e9; color: #1f6b44; }
+/* Jobs counted in the header of their panel, Complete Report and Manual Artifacts in the colours of Based On. */
+.report-jobs .rj-summary-badges { flex-wrap: wrap; justify-content: flex-end; gap: .5rem; }
+.report-jobs .rj-count { padding: .38rem .7rem; font-size: .82rem; font-weight: 800; line-height: 1.1; white-space: nowrap; }
+.report-jobs .rj-count-total { background: linear-gradient(135deg, #1f5f3a, #3f9a66); border-color: #1f5f3a; color: #fff; }
+.report-jobs .rj-count-favourite { background: #e3f3e9; border-color: rgba(31, 107, 68, .35); color: #1f6b44; }
+.report-jobs .rj-count-manual { background: #e3edf9; border-color: rgba(31, 79, 138, .35); color: #1f4f8a; }
 .report-jobs .rj-format { font-weight: 800; }
 .report-jobs .rj-format-ppt { color: #c4461f; }
 .report-jobs .rj-format-word { color: #2b5797; }

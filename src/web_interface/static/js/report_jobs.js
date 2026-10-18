@@ -22,6 +22,28 @@
   let editingUpdatedAt = '';
   let pollTimer = null;
 
+  // Reloading the page keeps its scroll position. The panels fill in after the page loads (the Complete Report, the
+  // jobs and their runs), so the position is applied again as the page grows, until the user moves it.
+  const SCROLL_KEY = 'drivetest-analyzer:/reporting:scroll';
+  const navigation = performance.getEntriesByType?.('navigation')?.[0]?.type;
+  let savedScroll = 0;
+  try { savedScroll = ['reload', 'back_forward'].includes(navigation) ? Number(sessionStorage.getItem(SCROLL_KEY)) || 0 : 0; } catch (_) { /* Storage is optional. */ }
+  // A section chosen in a menu (#…) opens the page there instead.
+  let followingScroll = savedScroll > 0 && !window.location.hash;
+  const rememberScroll = () => { try { sessionStorage.setItem(SCROLL_KEY, String(followingScroll ? savedScroll : window.scrollY)); } catch (_) { /* Storage is optional. */ } };
+  let scrollTimer = 0;
+  window.addEventListener('scroll', () => { if (!followingScroll) { clearTimeout(scrollTimer); scrollTimer = setTimeout(rememberScroll, 200); } }, {passive: true});
+  window.addEventListener('pagehide', rememberScroll);
+  if (followingScroll) {
+    if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+    const growth = 'ResizeObserver' in window ? new ResizeObserver(() => { if (followingScroll) window.scrollTo(0, savedScroll); }) : null;
+    const stopFollowing = () => { followingScroll = false; growth?.disconnect(); };
+    for (const type of ['wheel', 'touchmove', 'keydown', 'pointerdown']) window.addEventListener(type, stopFollowing, {once: true, passive: true});
+    growth?.observe(document.body);
+    window.scrollTo(0, savedScroll);
+    setTimeout(stopFollowing, 15000);
+  }
+
   const status = (message, tone = '') => {
     const element = $('rj-status');
     element.textContent = message || '';
@@ -541,19 +563,35 @@
     fragment.append(')');
     return fragment;
   }
+  // What a favourite Complete Report includes: its sections in order, each with its sub-modules.
+  function favouriteContents(sections) {
+    const list = node('ul', undefined, 'rj-artifact-contents');
+    sections.forEach((section) => {
+      const row = node('li');
+      row.append(node('span', section.title, 'rj-artifact-section'), document.createTextNode(`: ${section.items.join(', ')}`));
+      list.append(row);
+    });
+    return list;
+  }
   function renderArtifactGroups(list, groups) {
     groups.forEach((group) => {
       const item = node('li');
       item.append(node('strong', group.module, 'rj-artifact-module'));
       const entries = group.items.map((entry) => (typeof entry === 'string' ? withColouredFormats(entry) : entry));
+      const contents = group.contents || [];
       if (entries.length > 1) {
         const nested = node('ul', undefined, 'rj-artifact-entries');
-        entries.forEach((entry) => { const row = node('li'); row.append(entry); nested.append(row); });
+        entries.forEach((entry, index) => {
+          const row = node('li'); row.append(entry);
+          if (contents[index]?.length) row.append(favouriteContents(contents[index]));
+          nested.append(row);
+        });
         item.append(nested);
       } else if (entries.length) {
         const text = entries[0].textContent || '';
         item.append(document.createTextNode(text.startsWith('(') ? ' ' : ' · '), entries[0]);
         // A fragment empties when appended; the row text above was read before that.
+        if (contents[0]?.length) item.append(favouriteContents(contents[0]));
       }
       list.append(item);
     });
@@ -1075,7 +1113,7 @@
     }
     if (!row) {
       row = node('tr'); row.id = 'rj-editor-row'; row.className = 'rj-editor-row';
-      const cell = node('td', undefined, 'rj-editor-cell'); cell.colSpan = 8;
+      const cell = node('td', undefined, 'rj-editor-cell'); cell.colSpan = 9;
       row.append(cell);
     }
     row.cells[0].append(editor);
@@ -1095,7 +1133,8 @@
     editor.classList.remove('is-closing');
     editor.classList.add('is-opening');
     editor.addEventListener('animationend', () => editor.classList.remove('is-opening'), {once: true});
-    editor.scrollIntoView({behavior: 'smooth', block: 'start'});
+    // An editor reopened by a reload keeps the position of the page.
+    if (!followingScroll) editor.scrollIntoView({behavior: 'smooth', block: 'start'});
   }
   function closeEditor() {
     const editor = editorElement;
@@ -1160,10 +1199,19 @@
     return link;
   };
 
+  // The header of the panel counts the jobs, those of a favourite Complete Report and those with manual artifacts.
+  function renderTaskCounts() {
+    const favourites = state.tasks.filter((task) => task.based_on === 'favourite').length;
+    $('rj-count-total').textContent = `Total Jobs: ${state.tasks.length}`;
+    $('rj-count-favourite').textContent = `Complete Report: ${favourites}`;
+    $('rj-count-manual').textContent = `Manual Artifacts: ${state.tasks.length - favourites}`;
+  }
+
   function renderTasks() {
+    renderTaskCounts();
     const body = $('rj-tasks').tBodies[0];
     if (!state.tasks.length) {
-      emptyRow(body, 'No Reporting Jobs yet.', 8);
+      emptyRow(body, 'No Reporting Jobs yet.', 9);
       placeEditor();
       return;
     }
@@ -1175,6 +1223,10 @@
       const artifacts = node('ul', undefined, 'rj-artifacts');
       if (task.artifact_groups) renderArtifactGroups(artifacts, task.artifact_groups);
       else task.artifacts.forEach((text) => artifacts.append(node('li', text)));
+      // Whether the job generates a favourite Complete Report or the artifacts chosen in the Job Editor.
+      const fromFavourite = task.based_on === 'favourite';
+      const basedOn = cellWith(node('span', fromFavourite ? 'Complete Report' : 'Manual Artifacts', `rj-based-on${fromFavourite ? ' rj-based-on-favourite' : ''}`));
+      basedOn.title = fromFavourite ? 'The job generates a favourite Complete Report' : 'The artifacts of the job were chosen in the Job Editor';
       const last = task.last_run;
       const lastCell = node('td', last ? localTime(last.started_at || last.created_at) : '—');
       const statusCell = node('td');
@@ -1215,12 +1267,12 @@
         );
       }
       row.append(
-        node('td', task.name), cellWith(artifacts),
-        node('td', task.enabled ? localTime(task.next_run_at) : 'Disabled'), node('td', task.recurrence),
+        node('td', task.name), cellWith(artifacts), basedOn,
+        node('td', task.recurrence), node('td', task.enabled ? localTime(task.next_run_at) : 'Disabled'),
         node('td', task.send_email ? `Yes · ${task.recipients.length} recipient${task.recipients.length === 1 ? '' : 's'}` : 'No'),
         lastCell, statusCell, cellWith(actions),
       );
-      row.cells[4].title = task.recipients.join(', ');
+      row.cells[5].title = task.recipients.join(', ');
       return row;
     }));
     placeEditor();

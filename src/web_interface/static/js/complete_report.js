@@ -986,6 +986,9 @@
     try { stored = JSON.parse(localStorage.getItem(JOB_KEY) || 'null'); } catch {}
     const jobId = asked || stored?.id;
     if (!jobId) return;
+    // Generate tells at once that a report is being generated, before its progress arrives.
+    const label = root.querySelector('[data-cr-export] span');
+    if (label && !asked && !stored?.notified) label.textContent = 'Generating…';
     try {
       const {job} = await api(`/api/reporting/complete-report/jobs/${jobId}`);
       currentJob = job;
@@ -995,8 +998,10 @@
       if (stored?.notified && !asked) { forgetJob(); updateGenerateButton(); return; }
       if (isPending(job)) { updateElapsed(); updateGenerateButton(); pollTimer = window.setTimeout(() => poll(job.id), 1500); return; }
       await finished(job);
-    } catch {
-      forgetJob();
+    } catch (error) {
+      // A report no longer kept is forgotten; a busy or unreachable server is asked again.
+      if (/no longer available/i.test(error?.message || '')) { forgetJob(); updateGenerateButton(); }
+      else window.setTimeout(resumeJob, 5000);
     }
   }
 
@@ -1017,7 +1022,6 @@
     $('cr-name').value = draft?.name || '';
     render();
     if (options.catalogues_pending) status('The filter values of some CDRs are being prepared in the background; reload the page in a few minutes to see all of them.', 'info');
-    void resumeJob();
   }
 
   // A draft saved by an earlier version gets the sections and options it lacks; the Campaigns it had as a common filter
@@ -1034,5 +1038,8 @@
     return {...defaults, ...saved, filters: {...defaults.filters, ...(saved.filters || {})}, sections};
   }
 
+  // A report being generated is followed at once, without waiting for the panel (a busy server answers its options
+  // late).
+  void resumeJob();
   void load();
 })();

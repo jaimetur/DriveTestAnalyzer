@@ -77,7 +77,7 @@
   </dialog>
 
   <details class="panel collapsible-panel" open data-panel-state-key="reporting:jobs">
-    <summary class="collapsible-summary"><div><p class="eyebrow">Saved jobs</p><h2>Reporting Jobs</h2></div><span class="collapse-chip">Collapse</span></summary>
+    <summary class="collapsible-summary"><div><p class="eyebrow">Saved jobs</p><h2>Reporting Jobs</h2></div><div class="summary-inline-actions rj-summary-badges"><span class="pill rj-count rj-count-total" id="rj-count-total" title="Reporting Jobs of the workspace">Total Jobs: 0</span><span class="pill rj-count rj-count-favourite" id="rj-count-favourite" title="Jobs that generate a favourite Complete Report">Complete Report: 0</span><span class="pill rj-count rj-count-manual" id="rj-count-manual" title="Jobs whose artifacts were chosen in the Job Editor">Manual Artifacts: 0</span><span class="collapse-chip">Collapse</span></div></summary>
     <div class="collapsible-panel-body">
       <div class="report-jobs-toolbar">
         <button type="button" id="rj-new" hidden>New Reporting Job</button>
@@ -85,8 +85,8 @@
       </div>
       <div class="table-wrap">
         <table class="reporting-jobs-table" id="rj-tasks" data-phone-cards>
-          <thead><tr><th>Name</th><th>Artifacts</th><th>Next Run</th><th>Recurrence</th><th>Email</th><th>Last Run</th><th>Status</th><th>Actions</th></tr></thead>
-          <tbody><tr><td colspan="8" class="form-note">Loading Reporting Jobs…</td></tr></tbody>
+          <thead><tr><th>Name</th><th>Artifacts</th><th>Based On</th><th>Recurrence</th><th>Next Run</th><th>Email</th><th>Last Run</th><th>Status</th><th>Actions</th></tr></thead>
+          <tbody><tr><td colspan="9" class="form-note">Loading Reporting Jobs…</td></tr></tbody>
         </table>
       </div>
       <section class="rj-editor-subpanel report-jobs-editor" id="rj-editor" hidden aria-labelledby="rj-editor-title">

@@ -388,6 +388,24 @@ def ensure_tables(repository: Any) -> None:
         connection.executescript(SCHEMA)
 
 
+def favourite_contents(definition: Any, dashboard_names: dict[str, str] | None = None) -> list[dict[str, Any]]:
+    """What a Complete Report includes: its checked sections in order, each with its checked sub-modules (the
+    Dashboards by name). Sections without any are left out."""
+    titles = {key: {item_key: title for item_key, title, _components in panels} for key, panels in _panels().items()}
+    contents = []
+    for section in normalize_definition(definition)['sections']:
+        if not section['enabled']:
+            continue
+        if section['key'] == 'dashboards':
+            items = [item['label'] or (dashboard_names or {}).get(item['key'], item['key']) for item in section['items'] if item['enabled']]
+        else:
+            items = [titles[section['key']].get(item['key'], item['key']) for item in section['items']
+                     if item['enabled'] and any(item['components'].values())]
+        if items:
+            contents.append({'title': SECTION_TITLES[section['key']], 'items': items})
+    return contents
+
+
 def _favourite(row: sqlite3.Row) -> dict[str, Any]:
     try:
         definition = json.loads(row['definition_json'] or '{}')
