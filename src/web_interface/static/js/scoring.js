@@ -5970,9 +5970,32 @@
   // The position of an operator: green for the first, light green for the second, light red in between, red for the last.
   let insightRankColors = activeTheme.ranks || ['#2f8a3e', '#7cbf73', '#f0868e', '#e8414f'];
 
+  // The position of each operator in the Operator Maps (as the operator columns of the Scoring tables carry it).
+  const mappedOperatorPositions = new WeakMap();
+  function mappedOperatorPosition(payload) {
+    if (!payload || typeof payload !== 'object') return () => 0;
+    if (!mappedOperatorPositions.has(payload)) {
+      const positions = new Map();
+      for (const table of payload.views?.score_tables || []) {
+        (table?.operators || []).forEach((operator, index) => {
+          const position = Number(table.operator_styles?.[operator]?.position ?? index);
+          const name = String(operator);
+          if (!positions.has(name) || position < positions.get(name)) positions.set(name, position);
+        });
+      }
+      mappedOperatorPositions.set(payload, positions);
+    }
+    const positions = mappedOperatorPositions.get(payload);
+    return operator => positions.get(String(operator ?? '')) ?? Number.MAX_SAFE_INTEGER;
+  }
+
+  // The insights of a kind for the environment, their operators in the order of the Operator Maps, so every operator
+  // selector and list of the results follows it.
   function insightItems(payload, kind, environment) {
     const items = payload?.views?.insights?.[kind];
-    return (Array.isArray(items) ? items : []).filter(item => item?.environment === environment);
+    const position = mappedOperatorPosition(payload);
+    return (Array.isArray(items) ? items : []).filter(item => item?.environment === environment)
+      .sort((left, right) => position(left?.operator) - position(right?.operator));
   }
 
   function insightNumber(value, digits = 0) {
@@ -6902,7 +6925,6 @@
       const body = document.createElement('div');
       body.className = 'scoring-route-focus';
       const map = makeOwnerRouteMap(route, ownerColor);
-      body.append(map);
       const side = document.createElement('div');
       side.className = 'scoring-route-side';
       const ownerPeak = Math.max(0.01, ...route.owners.map(item => item.points));
@@ -6910,81 +6932,25 @@
         insightTable(['Owner', 'Share of tests', 'Points'], route.owners.map(item => [
           pill(item.name), item.tests_share === null || item.tests_share === undefined ? '–' : {text: `${insightNumber(item.tests_share, 0)}%`, className: 'scoring-insight-number'},
           gapBarCell(item.points, ownerPeak, {loss: true, total: true})])),
-        insightParagraph('scoring-route-table-title', `The ${route.top.length} stretches with the most points`),
-        insightTable(['#', 'Stretch', 'Points', 'Main owner'], route.top.map((row, index) => [
-          {text: String(index + 1), className: 'scoring-insight-number'}, row.label, gapBarCell(row.points, route.top[0]?.points || 1, {loss: true, total: true}),
-          row.region ? pill(row.region) : '—'])));
-      body.append(side);
+        insightParagraph('scoring-route-table-title', `The ${route.top.length} stretches with the most points`));
+      const stretchTable = insightTable(['#', 'Stretch', 'Points', 'Main owner'], route.top.map((row, index) => [
+        {text: String(index + 1), className: 'scoring-insight-number'}, row.label, gapBarCell(row.points, route.top[0]?.points || 1, {loss: true, total: true}),
+        row.region ? pill(row.region) : '—']));
+      side.append(stretchTable);
+      body.append(linkStretchTable(map, stretchTable, route.top), side);
       section.append(body);
       if (route.review) section.append(insightParagraph('scoring-act-review', insightStrong('Please review: '), route.review));
       section.append(insightParagraph('scoring-insight-note', 'A stretch gathers the tests of the route within about 20 km, named after the nearest city of the measurements; ',
-        'circle area: points at stake, in the colour of its owner.'));
+        'circle area and colour (yellow to red): points at stake; its ring: the colour of its owner.'));
     }
   }
 
-  // The map of a route: the map areas in light grey, the route and a circle per stretch (area: points at stake) in the
-  // colour of its owner, the stretches with the most points numbered.
+  // The map of a route of Where to act, drawn as the map of the Points Lost routes (makeStretchMap): its stretches with the
+  // most points at stake numbered, and the owner of each stretch as the ring of its circle.
   function makeOwnerRouteMap(route, ownerColor) {
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    const width = 520, height = 520, margin = 30;
-    const points = [...(route.path || []), ...route.all_stretches.map(([lat, lon]) => [lat, lon])];
-    if (!points.length) return svg;
-    const latitudes = points.map(point => point[0]), longitudes = points.map(point => point[1]);
-    const padLat = Math.max(.25, (Math.max(...latitudes) - Math.min(...latitudes)) * .25);
-    const padLon = Math.max(.4, (Math.max(...longitudes) - Math.min(...longitudes)) * .25);
-    const south = Math.min(...latitudes) - padLat, north = Math.max(...latitudes) + padLat;
-    const west = Math.min(...longitudes) - padLon, east = Math.max(...longitudes) + padLon;
-    const factor = Math.cos((south + north) / 2 * Math.PI / 180);
-    const unit = Math.max((east - west) * factor / (width - 2 * margin), (north - south) / (height - 2 * margin)) || 1;
-    const offsetX = (width - (east - west) * factor / unit) / 2, offsetY = (height - (north - south) / unit) / 2;
-    const project = (lat, lon) => [offsetX + (lon - west) * factor / unit, height - offsetY - (lat - south) / unit];
-    svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
-    svg.setAttribute('class', 'scoring-stretch-map scoring-owner-route-map');
-    svg.setAttribute('role', 'img');
-    svg.setAttribute('aria-label', `${route.route}: points at stake along the route by owner`);
-    svg.append(svgElement(svg, 'rect', {x: 0, y: 0, width, height, rx: 10, fill: '#e9eef3'}));
-    const land = svgElement(svg, 'g', {});
-    svg.append(land);
-    // The map areas (ITL3 in the UK) as the land under the route, once loaded.
-    if (currentResultsSavedFilterId) {
-      renderLoads.push(lossBoundaries(currentResultsSavedFilterId, 'Area').then(({boundaries}) => {
-        for (const rings of Object.values(boundaries || {})) {
-          for (const ring of rings) {
-            if (!ring.some(([lon, lat]) => lat >= south && lat <= north && lon >= west && lon <= east)) continue;
-            land.append(svgElement(svg, 'path', {d: `M${ring.map(([lon, lat]) => project(lat, lon).map(value => value.toFixed(1)).join(',')).join('L')}Z`,
-              fill: '#ffffff', stroke: '#d5dde5', 'stroke-width': .8}));
-          }
-        }
-      }));
-    }
-    const path = (route.path || []).map(([lat, lon]) => project(lat, lon));
-    for (const [x, y] of path) svg.append(svgElement(svg, 'circle', {cx: x, cy: y, r: 2, fill: '#94a3b8'}));
-    // The measured cities around the route.
-    for (const place of route.landmarks || []) {
-      const [x, y] = project(place.latitude, place.longitude);
-      svg.append(svgElement(svg, 'circle', {cx: x, cy: y, r: 3, fill: '#1c1c28'}));
-      const label = svgElement(svg, 'text', {x: x + 6, y: y - 5, 'font-size': 12, 'font-weight': 700, fill: '#1c1c28',
-        stroke: '#ffffff', 'stroke-width': 3, 'paint-order': 'stroke'});
-      label.textContent = place.name;
-      svg.append(label);
-    }
-    const peak = Math.max(...route.all_stretches.map(item => item[2]), 0) || 1;
-    const top = new Map(route.top.map((row, index) => [`${row.latitude},${row.longitude}`, index + 1]));
-    for (const [lat, lon, points, owner] of [...route.all_stretches].sort((left, right) => left[2] - right[2])) {
-      const [x, y] = project(lat, lon);
-      const circle = svgElement(svg, 'circle', {cx: x, cy: y, r: 4 + 20 * Math.sqrt(points / peak), fill: ownerColor(owner), 'fill-opacity': .85,
-        stroke: '#ffffff', 'stroke-width': 1.5});
-      setChartTooltip(circle, `${owner || 'No Region'} · ${insightNumber(points, 2)} points at stake`, true);
-      svg.append(circle);
-      const rank = top.get(`${lat},${lon}`);
-      if (rank) {
-        svg.append(svgElement(svg, 'circle', {cx: x - 24, cy: y - 14, r: 9, fill: '#1c1c28'}));
-        const label = svgElement(svg, 'text', {x: x - 24, y: y - 10.5, 'text-anchor': 'middle', 'font-size': 10, 'font-weight': 800, fill: '#ffffff'});
-        label.textContent = String(rank);
-        svg.append(label);
-      }
-    }
-    return svg;
+    if (![...(route.path || []), ...route.all_stretches].length) return document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    return makeStretchMap(route, '#64748b', [], {ranked: route.top, ringColor: ownerColor, measure: 'points at stake',
+      className: 'scoring-stretch-map scoring-owner-route-map'});
   }
 
   function sameScope(left, right) {
@@ -7474,15 +7440,15 @@
     const color = safeHexColor(item.color) || '#7c3aed';
     const body = document.createElement('div');
     body.className = 'scoring-stretches';
-    body.append(makeStretchMap(route, color, payload?.views?.insights?.points_loss_background || []));
     const peak = Math.max(...route.stretches.map(row => row.points), 0);
     const table = insightTable(['#', 'Stretch', 'Points lost', 'Main Vendor'], route.stretches.map((row, index) => [
       {text: String(index + 1), className: 'scoring-insight-number'}, row.label, gapBarCell(row.points, peak, {loss: true, total: true}), row.vendor || '—']));
+    body.append(linkStretchTable(makeStretchMap(route, color, payload?.views?.insights?.points_loss_background || []), table, route.stretches));
     const wrap = document.createElement('div');
     wrap.className = 'scoring-insight-table-wrap';
     wrap.append(insightParagraph('scoring-insight-note', insightStrong(item.label, color), ` loses ${insightNumber(route.points, 1)} points on ${route.route}; the stretches with most of them:`), table);
     body.append(wrap);
-    section.append(body, insightParagraph('scoring-insight-note', 'A stretch gathers the tests of the route within about 20 km, named after the nearest city of the measurements; circle area: points lost.'));
+    section.append(body, insightParagraph('scoring-insight-note', 'A stretch gathers the tests of the route within about 20 km, named after the nearest city of the measurements; circle area and colour (yellow to red): points lost.'));
   }
 
   // The colour of a stretch by its share of the points of the stretch that loses most: from the third colour of the
@@ -7496,9 +7462,10 @@
 
   // The map of a route: the map areas as the land (else the other tests in grey), the route in the colour of the
   // operator, the measured cities around it named, and a circle per stretch whose area and colour (yellow to red, on
-  // the scale of the theme) tell its points lost; the stretches that lose most are numbered and named after their
-  // nearest city.
-  function makeStretchMap(route, color, background) {
+  // the scale of the theme) tell its points lost; the stretches that lose most (ranked) are numbered and named after
+  // their nearest city. With ringColor, each circle is ringed in the colour of the owner of its stretch (Where to act).
+  function makeStretchMap(route, color, background, {ranked = route.stretches, ringColor = null, measure = 'points lost',
+    className = 'scoring-stretch-map'} = {}) {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     const width = 560, height = 460, margin = 30;
     const points = [...(route.path || []), ...route.all_stretches.map(([lat, lon]) => [lat, lon])];
@@ -7513,9 +7480,9 @@
     const offsetX = (width - (east - west) * factor / unit) / 2, offsetY = (height - (north - south) / unit) / 2;
     const project = (lat, lon) => [offsetX + (lon - west) * factor / unit, height - offsetY - (lat - south) / unit];
     svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
-    svg.setAttribute('class', 'scoring-stretch-map');
+    svg.setAttribute('class', className);
     svg.setAttribute('role', 'img');
-    svg.setAttribute('aria-label', `${route.route}: points lost along the route`);
+    svg.setAttribute('aria-label', `${route.route}: ${measure} along the route${ringColor ? ' by owner' : ''}`);
     svg.append(svgElement(svg, 'rect', {x: 0, y: 0, width, height, rx: 10, fill: '#e9eef3'}));
     const land = svgElement(svg, 'g', {});
     svg.append(land);
@@ -7551,16 +7518,17 @@
       && place.longitude >= west && place.longitude <= east).map(place => [...project(place.latitude, place.longitude), place.name]);
     for (const [x, y] of cities) svg.append(svgElement(svg, 'circle', {cx: x, cy: y, r: 3.5, fill: '#1c1c28', stroke: '#ffffff', 'stroke-width': 1.2}));
     const peak = Math.max(...route.all_stretches.map(item => item[2]), 0) || 1;
-    const top = new Map(route.stretches.map((row, index) => [`${row.latitude},${row.longitude}`, [index + 1, row]]));
+    const top = new Map(ranked.map((row, index) => [`${row.latitude},${row.longitude}`, [index + 1, row]]));
     const names = [];
-    for (const [lat, lon, points] of [...route.all_stretches].sort((left, right) => left[2] - right[2])) {
+    for (const [lat, lon, points, owner] of [...route.all_stretches].sort((left, right) => left[2] - right[2])) {
       const [x, y] = project(lat, lon);
       const share = Math.sqrt(points / peak);
       const radius = 4 + 20 * share;
       const fill = stretchColour(share);
-      const circle = svgElement(svg, 'circle', {cx: x, cy: y, r: radius, fill, 'fill-opacity': .9, stroke: '#ffffff', 'stroke-width': 1.5});
+      const circle = svgElement(svg, 'circle', {cx: x, cy: y, r: radius, fill, 'fill-opacity': .9,
+        stroke: ringColor && owner ? ringColor(owner) : '#ffffff', 'stroke-width': ringColor && owner ? 3 : 1.5, 'data-stretch': `${lat},${lon}`});
       const ranked = top.get(`${lat},${lon}`);
-      setChartTooltip(circle, `${ranked ? `${ranked[1].label} · ` : ''}${insightNumber(points, 2)} points lost`, true);
+      setChartTooltip(circle, `${ranked ? `${ranked[1].label} · ` : ''}${ringColor ? `${owner || 'No Region'} · ` : ''}${insightNumber(points, 2)} ${measure}`, true);
       svg.append(circle);
       if (ranked) {
         const [red, green, blue] = hexChannels(fill);
@@ -7571,27 +7539,38 @@
         names.push([x, y, radius, ranked[0], ranked[1].label || '']);
       }
     }
-    // The names on the map, above the circles: the cities first, then the nearest city of each numbered stretch (the
-    // most lost first), each beside its point where it covers no number or name placed before it, else left out (the
-    // list beside the map names every stretch).
-    const taken = names.map(([x, y, radius]) => [x - radius, y - radius, x + radius, y + radius]);
-    const placeName = (x, y, gap, text, size, weight) => {
+    // The names on the map, above the circles: the cities first, always named (where their name covers no other city,
+    // else beside their dot, inside the map), then the nearest city of each numbered stretch (the most lost first), each
+    // beside its point where it covers no number or name placed before it, else left out (the list beside the map
+    // names every stretch).
+    const circles = names.map(([x, y, radius]) => [x - radius, y - radius, x + radius, y + radius]);
+    const taken = [];
+    const overlaps = (box, others) => others.some(other => box[0] < other[2] && other[0] < box[2] && box[1] < other[3] && other[1] < box[3]);
+    const placeName = (x, y, gap, text, size, weight, city = false) => {
       const textWidth = text.length * size * .56;
-      for (const [left, baseline, anchor] of [[x + gap, y + size * .35, 'start'], [x - gap, y + size * .35, 'end'],
-        [x, y - gap - 1, 'middle'], [x, y + gap + size * .85, 'middle']]) {
+      const candidates = [[x + gap, y + size * .35, 'start'], [x - gap, y + size * .35, 'end'], [x, y - gap - 1, 'middle'],
+        [x, y + gap + size * .85, 'middle'], [x + gap, y - gap, 'start'], [x - gap, y - gap, 'end'],
+        [x + gap, y + gap + size * .7, 'start'], [x - gap, y + gap + size * .7, 'end']];
+      const boxOf = ([left, baseline, anchor]) => {
         const start = anchor === 'start' ? left : anchor === 'end' ? left - textWidth : left - textWidth / 2;
-        const box = [start - 2, baseline - size, start + textWidth + 2, baseline + 3];
-        if (box[0] < 4 || box[2] > width - 4 || box[1] < 4 || box[3] > height - 30) continue;
-        if (taken.some(other => box[0] < other[2] && other[0] < box[2] && box[1] < other[3] && other[1] < box[3])) continue;
-        taken.push(box);
-        const label = svgElement(svg, 'text', {x: left, y: baseline, 'text-anchor': anchor, 'font-size': size, 'font-weight': weight,
-          fill: '#1c1c28', stroke: '#ffffff', 'stroke-width': 3, 'paint-order': 'stroke'});
-        label.textContent = text;
-        svg.append(label);
-        return;
+        return [start - 2, baseline - size, start + textWidth + 2, baseline + 3];
+      };
+      const inside = box => box[0] >= 4 && box[2] <= width - 4 && box[1] >= 4 && box[3] <= height - 30;
+      let place = candidates.find(candidate => { const box = boxOf(candidate); return inside(box) && !overlaps(box, taken) && (city || !overlaps(box, circles)); });
+      if (!place && city) {
+        // Beside its dot, moved inside the map.
+        const box = boxOf(candidates[0]);
+        const shift = Math.min(0, width - 4 - box[2]);
+        place = [candidates[0][0] + shift, Math.max(size + 4, Math.min(height - 33, candidates[0][1])), 'start'];
       }
+      if (!place) return;
+      taken.push(boxOf(place));
+      const label = svgElement(svg, 'text', {x: place[0], y: place[1], 'text-anchor': place[2], 'font-size': size, 'font-weight': weight,
+        fill: '#1c1c28', stroke: '#ffffff', 'stroke-width': 3, 'paint-order': 'stroke'});
+      label.textContent = text;
+      svg.append(label);
     };
-    for (const [x, y, name] of cities) placeName(x, y, 6, name, 12.5, 800);
+    for (const [x, y, name] of cities) placeName(x, y, 6, name, 12.5, 800, true);
     for (const [x, y, radius, , text] of names.sort((left, right) => left[3] - right[3])) if (text) placeName(x, y, radius + 4, text, 10.5, 600);
     // The scale of the colours: little lost to the most lost.
     const gradientId = `scoring-stretch-scale-${Math.random().toString(36).slice(2, 8)}`;
@@ -7600,11 +7579,78 @@
     svg.append(gradient);
     svg.append(svgElement(svg, 'rect', {x: margin, y: height - 18, width: 120, height: 7, rx: 3.5, fill: `url(#${gradientId})`}));
     const scaleLabel = svgElement(svg, 'text', {x: margin, y: height - 23, 'font-size': 10, fill: '#475569'});
-    scaleLabel.textContent = 'Points lost';
+    scaleLabel.textContent = measure[0].toUpperCase() + measure.slice(1);
     const scaleMax = svgElement(svg, 'text', {x: margin + 126, y: height - 12, 'font-size': 10, fill: '#475569'});
     scaleMax.textContent = `up to ${insightNumber(peak, 1)}`;
     svg.append(scaleLabel, scaleMax);
+    // The stretch chosen in the table beside the map (linkStretchTable): the map zooms in on it and rings it; without a
+    // stretch, it shows the whole route again.
+    let view = [0, 0, width, height];
+    const animateView = target => {
+      const from = [...view];
+      const start = performance.now();
+      const step = now => {
+        const progress = Math.min(1, (now - start) / 350), eased = 1 - (1 - progress) ** 3;
+        view = from.map((value, index) => value + (target[index] - value) * eased);
+        svg.setAttribute('viewBox', view.map(value => value.toFixed(1)).join(' '));
+        if (progress < 1) requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
+    };
+    svg.focusStretch = (latitude = null, longitude = null) => {
+      svg.querySelectorAll('circle.is-focused').forEach(node => node.classList.remove('is-focused'));
+      if (latitude === null || longitude === null) {
+        animateView([0, 0, width, height]);
+        return;
+      }
+      const [x, y] = project(latitude, longitude);
+      const zoomWidth = width / 2.2, zoomHeight = height / 2.2;
+      animateView([Math.max(0, Math.min(width - zoomWidth, x - zoomWidth / 2)), Math.max(0, Math.min(height - zoomHeight, y - zoomHeight / 2)),
+        zoomWidth, zoomHeight]);
+      svg.querySelector(`circle[data-stretch="${latitude},${longitude}"]`)?.classList.add('is-focused');
+    };
     return svg;
+  }
+
+  // The table of the stretches beside a route map: choosing a stretch (a click, Enter or Space) shows it on the map, zoomed
+  // in and ringed; choosing it again, or Whole route on the map, shows the whole route again. Returns the map in its frame.
+  function linkStretchTable(map, table, stretches) {
+    const frame = document.createElement('div');
+    frame.className = 'scoring-route-map-frame';
+    const reset = document.createElement('button');
+    reset.type = 'button';
+    reset.className = 'scoring-route-map-reset';
+    reset.textContent = 'Whole route';
+    reset.hidden = true;
+    frame.append(map, reset);
+    const rows = [...(table.tBodies[0]?.rows || [])];
+    let chosen = null;
+    const choose = index => {
+      chosen = index === chosen ? null : index;
+      rows.forEach((row, rowIndex) => {
+        row.classList.toggle('is-chosen', rowIndex === chosen);
+        row.setAttribute('aria-pressed', String(rowIndex === chosen));
+      });
+      const stretch = chosen === null ? null : stretches[chosen];
+      map.focusStretch?.(stretch?.latitude ?? null, stretch?.longitude ?? null);
+      reset.hidden = chosen === null;
+    };
+    rows.forEach((row, index) => {
+      if (!Number.isFinite(Number(stretches[index]?.latitude))) return;
+      row.classList.add('scoring-stretch-row');
+      row.tabIndex = 0;
+      row.setAttribute('role', 'button');
+      row.setAttribute('aria-pressed', 'false');
+      row.title = 'Show this stretch on the map (choose it again for the whole route)';
+      row.addEventListener('click', () => choose(index));
+      row.addEventListener('keydown', event => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        choose(index);
+      });
+    });
+    reset.addEventListener('click', () => { if (chosen !== null) choose(chosen); });
+    return frame;
   }
 
   // Points lost per area: the map areas (the ITL3 areas in the UK, the workspace's Map Areas elsewhere,
@@ -9549,7 +9595,7 @@
   };
   window.addEventListener('hashchange', openResultTabFromHash);
   openResultTabFromHash();
-  // Double-clicking a map or a table of the Scoring Tables and GAP Analysis tabs opens it larger.
+  // Double-clicking a map (the Points Lost Map and the maps of the routes) or a table of the results opens it larger.
   root.addEventListener('dblclick', event => {
     if (event.target.closest('.scoring-chart-card, .scoring-map-zoom, [data-scoring-chart-overlay]')) return;
     const pane = event.target.closest('[data-result-pane]');
@@ -9560,6 +9606,13 @@
       const operator = map.closest('.scoring-loss-map-card')?.querySelector('.scoring-insight-note strong')?.textContent;
       openExpandedView(map.querySelector('svg'), ['Points Lost Map', operator].filter(Boolean).join(' — '), meta, map, 'Map');
       appendExpandedScope(map.closest('.scoring-insight-section')?.querySelector('h4'));
+      return;
+    }
+    const routeMap = event.target.closest('svg.scoring-stretch-map');
+    if (routeMap) {
+      const heading = routeMap.closest('.scoring-insight-section')?.querySelector('h4');
+      openExpandedView(routeMap, titleWithoutScope(heading) || 'Route map', meta, routeMap, 'Map');
+      appendExpandedScope(heading);
       return;
     }
     const table = event.target.closest('table');

@@ -742,11 +742,14 @@ def stretch_colour(share: float, scale: list[str]) -> str:
 
 
 def render_stretch_map(route: dict[str, Any], color: str, background: list[list[float]], *,
-                       boundaries: dict[str, list] | None = None, width: int = 1100, height: int = 900) -> bytes:
+                       boundaries: dict[str, list] | None = None, width: int = 1100, height: int = 900,
+                       ranked: list[dict[str, Any]] | None = None, ring_color: Callable[[str], str] | None = None,
+                       measure: str = 'Points lost') -> bytes:
     """PNG map of a route: the map areas as the land (else the other tests in grey), the route in the colour of the
     operator, the measured cities around it named, and a circle per stretch whose area and colour (yellow to red, on
-    the scale of the theme) tell its points lost; the stretches that lose most are numbered and named after their
-    nearest city."""
+    the scale of the theme) tell its points lost; the stretches that lose most (``ranked``, by default those of the
+    route) are numbered and named after their nearest city. With ``ring_color``, each circle is ringed in the colour of the
+    owner of its stretch (Where to act)."""
     from PIL import Image, ImageDraw
 
     from src.modules.scoring_themes import active_theme, blend
@@ -802,38 +805,54 @@ def render_stretch_map(route: dict[str, Any], color: str, background: list[list[
         draw.ellipse((x - 7, y - 7, x + 7, y + 7), fill=ink, outline=(255, 255, 255), width=2)
     scale = active_theme()['scale']
     peak = max((item[2] for item in route['all_stretches']), default=0) or 1
-    top = {(row['latitude'], row['longitude']): (index, row) for index, row in enumerate(route['stretches'], start=1)}
+    top = {(row['latitude'], row['longitude']): (index, row)
+           for index, row in enumerate(route['stretches'] if ranked is None else ranked, start=1)}
     labels = []
-    for lat, lon, lost, *_owner in sorted(route['all_stretches'], key=lambda item: item[2]):
+    for lat, lon, lost, *owner in sorted(route['all_stretches'], key=lambda item: item[2]):
         x, y = project(lat, lon)
         share = sqrt(lost / peak)
         radius = 10 + 46 * share
         fill = rgb(stretch_colour(share, scale))
-        draw.ellipse((x - radius, y - radius, x + radius, y + radius), fill=fill, outline=(255, 255, 255), width=4)
+        owner_name = owner[0] if owner else ''
+        outline = rgb(ring_color(owner_name)) if ring_color and owner_name else (255, 255, 255)
+        draw.ellipse((x - radius, y - radius, x + radius, y + radius), fill=fill, outline=outline, width=7 if ring_color and owner_name else 4)
         ranked = top.get((lat, lon))
         if ranked:
             dark = .299 * fill[0] + .587 * fill[1] + .114 * fill[2] > 160
             draw.text((x, y), str(ranked[0]), fill=ink if dark else (255, 255, 255), font=number_font, anchor='mm')
             labels.append((x, y, radius, ranked[0], ranked[1].get('label') or ''))
-    # The names on the map, above the circles: the cities first, then the nearest city of each numbered stretch (the
-    # most lost first), each beside its point where it covers no number or name placed before it, else left out (the
-    # list beside the map names every stretch).
-    taken = [(x - radius, y - radius, x + radius, y + radius) for x, y, radius, *_rest in labels]
+    # The names on the map, above the circles: the cities first, always named (where their name covers no other city,
+    # else beside their dot, inside the map), then the nearest city of each numbered stretch (the most lost first), each
+    # beside its point where it covers no number or name placed before it, else left out (the list beside the map
+    # names every stretch).
+    circles = [(x - radius, y - radius, x + radius, y + radius) for x, y, radius, *_rest in labels]
+    taken: list[tuple[float, float, float, float]] = []
 
-    def place_name(x: float, y: float, gap: float, text: str, font) -> None:
-        for point, anchor in (((x + gap, y), 'lm'), ((x - gap, y), 'rm'), ((x, y - gap), 'mb'), ((x, y + gap), 'mt')):
+    def overlaps(box, others) -> bool:
+        return any(box[0] < other[2] and other[0] < box[2] and box[1] < other[3] and other[1] < box[3] for other in others)
+
+    def place_name(x: float, y: float, gap: float, text: str, font, city: bool = False) -> None:
+        candidates = (((x + gap, y), 'lm'), ((x - gap, y), 'rm'), ((x, y - gap), 'mb'), ((x, y + gap), 'mt'),
+                      ((x + gap, y - gap), 'lb'), ((x - gap, y - gap), 'rb'), ((x + gap, y + gap), 'lt'), ((x - gap, y + gap), 'rt'))
+        for point, anchor in candidates:
             left, top_edge, right, bottom = draw.textbbox(point, text, font=font, anchor=anchor, stroke_width=4)
             box = (left - 2, top_edge - 2, right + 2, bottom + 2)
             if box[0] < 6 or box[2] > width - 6 or box[1] < 6 or box[3] > height - margin:
                 continue
-            if any(box[0] < other[2] and other[0] < box[2] and box[1] < other[3] and other[1] < box[3] for other in taken):
+            if overlaps(box, taken) or (not city and overlaps(box, circles)):
                 continue
             taken.append(box)
             draw.text(point, text, fill=ink, font=font, anchor=anchor, stroke_width=4, stroke_fill=(255, 255, 255))
             return
+        if city:
+            # Beside its dot, moved inside the map.
+            left, top_edge, right, bottom = draw.textbbox((x + gap, y), text, font=font, anchor='lm', stroke_width=4)
+            point = (x + gap + min(0, width - 6 - right), min(max(y, 6 + (bottom - top_edge) / 2), height - margin - (bottom - top_edge) / 2))
+            taken.append(draw.textbbox(point, text, font=font, anchor='lm', stroke_width=4))
+            draw.text(point, text, fill=ink, font=font, anchor='lm', stroke_width=4, stroke_fill=(255, 255, 255))
 
     for x, y, name in cities:
-        place_name(x, y, 12, name, label_font)
+        place_name(x, y, 12, name, label_font, city=True)
     for x, y, radius, _rank, text in sorted(labels, key=lambda entry: entry[3]):
         if text:
             place_name(x, y, radius + 8, text, note_font)
@@ -841,7 +860,7 @@ def render_stretch_map(route: dict[str, Any], color: str, background: list[list[
     bar_left, bar_top, bar_width = margin, height - margin + 6, 240
     for step in range(bar_width):
         draw.line((bar_left + step, bar_top, bar_left + step, bar_top + 12), fill=rgb(stretch_colour(step / (bar_width - 1), scale)))
-    draw.text((bar_left, bar_top - 4), 'Points lost', fill=ink, font=note_font, anchor='lb')
+    draw.text((bar_left, bar_top - 4), measure, fill=ink, font=note_font, anchor='lb')
     draw.text((bar_left + bar_width + 10, bar_top + 6), f'up to {peak:,.1f}', fill=ink, font=note_font, anchor='lm')
     output = BytesIO()
     image.save(output, format='PNG')

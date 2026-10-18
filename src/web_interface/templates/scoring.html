@@ -405,6 +405,15 @@
   .scoring-priority.is-low { color: #6b7a85; }
   .scoring-stretches { display: grid; grid-template-columns: minmax(16rem, 32rem) minmax(0, 1fr); gap: 1rem; align-items: start; }
   .scoring-stretch-map { display: block; width: 100%; height: auto; }
+  /* A stretch chosen in the table beside a route map: its row marked, the map zoomed in on it and its circle ringed. */
+  .scoring-route-map-frame { position: relative; min-width: 0; }
+  .scoring-route-map-reset { position: absolute; top: .55rem; right: .55rem; padding: .25rem .75rem; border: 1px solid #cbd5e1; border-radius: 999px;
+    background: #fff; color: #1c1c28; font: inherit; font-size: .74rem; font-weight: 750; cursor: pointer; box-shadow: 0 2px 6px rgba(15, 23, 42, .12); }
+  .scoring-route-map-reset:hover { border-color: #64748b; }
+  .scoring-stretch-map circle.is-focused { stroke: #1c1c28 !important; stroke-width: 3.5px !important; }
+  .scoring-insight-table tr.scoring-stretch-row { cursor: pointer; }
+  .scoring-insight-table tr.scoring-stretch-row:is(:hover, :focus-visible, .is-chosen) > td { background-color: color-mix(in srgb, #1450a8 9%, transparent) !important; }
+  .scoring-insight-table tr.scoring-stretch-row.is-chosen > td:first-child { box-shadow: inset 3px 0 0 #1c1c28; }
   @media (max-width: 760px) {
     .scoring-stretches { grid-template-columns: 1fr; }
     .scoring-leaderboard-row { grid-template-columns: 2.4rem minmax(5rem, 1fr) 4.5rem; }

@@ -6,7 +6,6 @@ its categories on every slide.
 from __future__ import annotations
 
 from io import BytesIO
-from math import cos, radians, sqrt
 from typing import Any, Callable
 
 from pptx.enum.shapes import MSO_SHAPE
@@ -238,66 +237,12 @@ def add_place_ranking_slides(presentation, items: list[dict[str, Any]], *, subti
 
 def render_owner_route_map(route: dict[str, Any], owner_color: Callable[[str], str], boundaries: dict[str, list] | None, *,
                            width: int = 1100, height: int = 1100) -> bytes:
-    """PNG map of a route: the map areas as the land, the route, a circle per stretch (area: points at stake) in the
-    colour of its owner, the stretches with the most points numbered and the measured cities around it named."""
-    from PIL import Image, ImageDraw
-
-    from src.utils.fonts import load_image_font
-
-    points = [*(route.get('path') or []), *([entry[0], entry[1]] for entry in route['all_stretches'])]
-    image = Image.new('RGB', (width, height), (233, 238, 243))
-    if not points:
-        output = BytesIO()
-        image.save(output, format='PNG')
-        return output.getvalue()
-    latitudes, longitudes = [point[0] for point in points], [point[1] for point in points]
-    pad_lat = max(.25, (max(latitudes) - min(latitudes)) * .25)
-    pad_lon = max(.4, (max(longitudes) - min(longitudes)) * .25)
-    south, north = min(latitudes) - pad_lat, max(latitudes) + pad_lat
-    west, east = min(longitudes) - pad_lon, max(longitudes) + pad_lon
-    factor = cos(radians((south + north) / 2))
-    margin = 50
-    unit = max((east - west) * factor / (width - 2 * margin), (north - south) / (height - 2 * margin)) or 1
-    offset_x = (width - (east - west) * factor / unit) / 2
-    offset_y = (height - (north - south) / unit) / 2
-
-    def project(lat: float, lon: float) -> tuple[float, float]:
-        return offset_x + (lon - west) * factor / unit, height - offset_y - (lat - south) / unit
-
-    draw = ImageDraw.Draw(image)
-    for rings in (boundaries or {}).values():
-        for ring in rings:
-            if not any(south <= lat <= north and west <= lon <= east for lon, lat in ring):
-                continue
-            draw.polygon([project(lat, lon) for lon, lat in ring], fill=(255, 255, 255), outline=(213, 221, 229))
-    for lat, lon in route.get('path') or []:
-        x, y = project(lat, lon)
-        draw.ellipse((x - 4, y - 4, x + 4, y + 4), fill=(148, 163, 184))
-    peak = max((entry[2] for entry in route['all_stretches']), default=0) or 1
-    top = {(row['latitude'], row['longitude']): index for index, row in enumerate(route['top'], start=1)}
-    label_font, number_font = load_image_font(26, bold=True), load_image_font(22, bold=True)
-    for entry in sorted(route['all_stretches'], key=lambda item: item[2]):
-        lat, lon, lost = entry[:3]
-        owner = entry[3] if len(entry) > 3 else ''
-        x, y = project(lat, lon)
-        radius = 10 + 46 * sqrt(lost / peak)
-        color = owner_color(owner).lstrip('#')
-        fill = tuple(int(color[index:index + 2], 16) for index in (0, 2, 4))
-        draw.ellipse((x - radius, y - radius, x + radius, y + radius), fill=fill, outline=(255, 255, 255), width=4)
-        rank = top.get((lat, lon))
-        if rank:
-            cx, cy = x - radius - 26, y - radius * .6 - 12
-            draw.line((cx, cy, x - radius * .7, y - radius * .5), fill=(28, 28, 40), width=3)
-            draw.ellipse((cx - 18, cy - 18, cx + 18, cy + 18), fill=(28, 28, 40))
-            draw.text((cx, cy), str(rank), fill=(255, 255, 255), font=number_font, anchor='mm')
-    for place in route.get('landmarks') or []:
-        x, y = project(place['latitude'], place['longitude'])
-        draw.ellipse((x - 6, y - 6, x + 6, y + 6), fill=(28, 28, 40))
-        draw.text((x + 12, y - 10), place['name'], fill=(28, 28, 40), font=label_font, anchor='ls', stroke_width=5,
-                  stroke_fill=(255, 255, 255))
-    output = BytesIO()
-    image.save(output, format='PNG')
-    return output.getvalue()
+    """PNG map of a route of Where to act, drawn as the map of the Route stretches (render_stretch_map): the stretches
+    with the most points at stake numbered and named after their nearest city, and the owner of each stretch as the
+    ring of its circle."""
+    from src.modules.scoring_summary_slides import render_stretch_map
+    return render_stretch_map(route, '#64748B', [], boundaries=boundaries, width=width, height=height,
+                              ranked=route['top'], ring_color=owner_color, measure='Points at stake')
 
 
 def add_route_focus_slides(presentation, items: list[dict[str, Any]], *, subtitle: str, new_slide: Callable,
