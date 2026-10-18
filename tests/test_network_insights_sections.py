@@ -25,3 +25,11 @@ def test_every_panel_is_a_part_of_its_category() -> None:
         for anchor, name, _part_icon in parts[0]:
             assert anchor == section_anchor(name)
             assert f'<h2>{name.replace("&", "&amp;")}</h2>' in category
+
+
+def test_the_owners_of_the_host_matrix_read_as_its_body_in_every_theme() -> None:
+    css = (TEMPLATE.parents[1] / 'static' / 'css' / 'network_insights.css').read_text(encoding='utf-8')
+    # The header colour of a theme (the Ericsson blue…) stays on the header row: the owners heading the rows take the
+    # rows and ink of the body, and the own-network cells stay readable on the dark Midnight rows.
+    assert '.network-insights[data-ni-theme] .ni-matrix tbody th{background:transparent!important;color:var(--nit-ink' in css
+    assert '.network-insights[data-ni-theme="midnight"] .ni-matrix td.is-own{background:#123527!important' in css
