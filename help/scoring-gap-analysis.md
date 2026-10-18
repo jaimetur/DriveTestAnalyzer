@@ -181,7 +181,7 @@ Each theme also styles the titles and subtitles of every content slide of the Po
 | --- | --- | --- |
 | **NetCheck** | Montserrat, blue, the first part in light capitals and what tells the slide apart in bold (*BEST NETWORK SCORING* **per Category**) | Blue, their first part in bold |
 | **Umlaut** | Arial, bold, dark | Red |
-| **Ericsson** | Ericsson Hilda Light, black and not bold, as the titles of the template; only what tells the slide apart from the next ones in Ericsson Hilda bold, in Ericsson blue | Grey |
+| **Ericsson** | Ericsson Hilda (the font of Ericsson), black and not bold; only what tells the slide apart from the next ones in bold | Grey |
 | **Vodafone** | Vodafone Rg, bold anthracite, what tells the slide apart in red | Red |
 | **Midnight** | Segoe UI, bold navy, what tells the slide apart in cyan | Cyan |
 | **Paper** | Georgia, black, what tells the slide apart in dark red italics | Dark red italics |
