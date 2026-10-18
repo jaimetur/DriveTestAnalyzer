@@ -179,3 +179,24 @@ def test_ericsson_titles_are_light_with_the_part_that_changes_in_bold():
     heading, focus = slide.shapes.title.text_frame.paragraphs[0].runs
     assert (heading.text, heading.font.bold, heading.font.name) == ('RF Quality · ', False, 'Ericsson Hilda')
     assert (focus.text, focus.font.bold, focus.font.name) == ('NR quality per carrier · 1/2', True, 'Ericsson Hilda')
+
+
+def test_a_title_styled_twice_keeps_its_heading_and_focus():
+    from src.modules.cdr_reporting import _remove_all_slides
+    from src.modules.network_insights_export import _slide
+    from src.modules.pptx_compose import set_title
+    from src.modules.theme_titles import style_title
+
+    deck = Presentation(TEMPLATE)
+    _remove_all_slides(deck)
+    for name in ('vodafone', 'heatmap'):
+        with use_theme(name):
+            slide = _slide(deck, 'LTE signal at the test: RSRP and SINR', 'National')
+            style_title(slide)
+            heading, focus = slide.shapes.title.text_frame.paragraphs[0].runs
+            # The heading in the title colour and only the focus in the accent, also styled again.
+            assert str(heading.font.color.rgb) == THEMES[name]['title'].lstrip('#')
+            assert str(focus.font.color.rgb) == THEMES[name]['title_accent'].lstrip('#')
+            set_title(slide, 'LTE signal at the test: RSRP and SINR · 1/2', 'National')
+            heading, focus = slide.shapes.title.text_frame.paragraphs[0].runs
+            assert str(heading.font.color.rgb) == THEMES[name]['title'].lstrip('#') and focus.text == 'RSRP and SINR · 1/2'

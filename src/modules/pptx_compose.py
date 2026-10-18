@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from io import BytesIO
 from typing import Any, Callable
 
+from lxml.etree import tostring as etree_tostring
 from pptx import Presentation
 from pptx.dml.color import RGBColor
 from pptx.opc.constants import RELATIONSHIP_TARGET_MODE as RTM
@@ -455,13 +456,18 @@ def set_title(slide: Any, title: str, subtitle: str | None = None) -> None:
 
     def write(paragraph: Any, text: str, lead: bool = False) -> None:
         runs = [run for run in paragraph.runs if run.text]
-        plain = next((run for run in runs if not run.font.bold), None)
-        bold = next((run for run in runs if run.font.bold), None)
-        if plain is not None and bold is not None:
+        # A paragraph in two parts of different formatting: the heading and its focus (the style of a theme), or the
+        # bold first part of a subtitle and the rest.
+        def signature(run: Any) -> bytes:
+            return etree_tostring(run._r.rPr) if run._r.rPr is not None else b''
+
+        first, last = (runs[0], runs[-1]) if len(runs) > 1 else (None, None)
+        plain, bold = (last, first) if lead else (first, last)
+        if first is not None and signature(first) != signature(last):
             # The heading and its focus (or, in a subtitle, its bold first part and the rest).
             if lead:
-                first, separator, rest = text.partition(' · ')
-                parts = [(first + separator, bold), (rest, plain)] if separator else [(text, plain)]
+                opening, separator, rest = text.partition(' · ')
+                parts = [(opening + separator, bold), (rest, plain)] if separator else [(text, plain)]
             else:
                 heading, focus = split_focus(text)
                 parts = [(heading, plain), (focus, bold)]

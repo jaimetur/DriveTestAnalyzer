@@ -8,6 +8,7 @@ style of the template (see report_structure).
 """
 from __future__ import annotations
 
+import re
 from copy import deepcopy
 from typing import Any
 
@@ -35,14 +36,22 @@ def _title_shape(slide: Any) -> Any:
     return next((shape for shape in slide.placeholders if shape.placeholder_format.type in {1, 3} and shape.has_text_frame), None)
 
 
+# The page of a chart or table on several slides (· 1/2, (1 of 2)) is never the focus of its title.
+PAGE = re.compile(r'(\s*·\s*\d+\s*/\s*\d+|\s*\(\d+ of \d+\))+\s*$')
+
+
 def split_focus(text: str) -> tuple[str, str]:
-    """The heading of a title and its focus: what follows " — ", " · " or ": ", or the start of " per "."""
-    for separator in FOCUS_SEPARATORS:
-        if separator in text:
-            heading, found, focus = text.partition(separator)
-            return heading + found, focus
-    heading, found, focus = text.partition(' per ')
-    return (heading + ' ', 'per ' + focus) if found else (text, '')
+    """The heading of a title and its focus: what follows the first " — ", " · " or ": ", or the start of " per "; the
+    page of the title stays with its focus."""
+    match = PAGE.search(text)
+    body, page = (text[:match.start()], text[match.start():]) if match else (text, '')
+    found = [(body.find(separator), separator) for separator in FOCUS_SEPARATORS if separator in body]
+    if found:
+        position, separator = min(found)
+        heading, focus = body[:position + len(separator)], body[position + len(separator):]
+        return heading, focus + page
+    heading, per, focus = body.partition(' per ')
+    return (heading + ' ', 'per ' + focus + page) if per else (text, '')
 
 
 def _runs(paragraph: Any, parts: list[tuple[str, bool]]) -> list[tuple[Any, bool]]:
@@ -64,8 +73,7 @@ def _runs(paragraph: Any, parts: list[tuple[str, bool]]) -> list[tuple[Any, bool
 
 def style_title(slide: Any, *, subtitle_size: float | None = None, theme: dict[str, Any] | None = None) -> None:
     """Give the title (its first paragraph) and the subtitle (the other paragraphs) of a content slide the style of the
-    theme. A title written in runs keeps them: its bold runs are its focus; otherwise its focus is found in its text.
-    ``subtitle_size`` replaces the size of the subtitle of the theme (a subtitle made smaller to fit its line)."""
+    theme, its focus found in its text (see split_focus). ``subtitle_size`` replaces the size of the subtitle of the theme (a subtitle made smaller to fit its line)."""
     from src.modules.slide_titles import fit_slide_title
 
     shape = _title_shape(slide)
@@ -74,12 +82,9 @@ def style_title(slide: Any, *, subtitle_size: float | None = None, theme: dict[s
     style = title_style(theme)
     paragraphs = shape.text_frame.paragraphs
     title = paragraphs[0]
-    runs = [run for run in title.runs if run.text]
-    if len(runs) > 1 and any(run.font.bold for run in runs):
-        parts = [(run, bool(run.font.bold)) for run in runs]
-    else:
-        heading, focus = split_focus(title.text)
-        parts = _runs(title, [(heading, False), (focus, True)])
+    # The focus is found in the text each time, so styling a title again (or in another theme) gives the same parts.
+    heading, focus = split_focus(title.text)
+    parts = _runs(title, [(heading, False), (focus, True)])
     for run, focus in parts:
         font = run.font
         font.name = (style.get('focus_font') if focus else None) or style.get('font') or None
