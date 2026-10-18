@@ -427,9 +427,10 @@ def test_summary_tables_preserve_category_fill_extreme_highlights_and_legend(hie
 @pytest.mark.parametrize('mode', ['expanded', 'summary'])
 @pytest.mark.parametrize(('layout', 'show_gap'), [('end', True), ('adjacent', True), ('end', False)])
 def test_ppt_kpis_carry_their_type_badge_in_the_colours_of_the_theme(mode, layout, show_gap):
+    # Drawn in NetCheck, the theme whose badge colours the test asserts (Ericsson is the default of the users).
     presentation = Presentation(BytesIO(export_scoring_powerpoint(
         _job(), _result(), TEMPLATE, table_mode=mode, gap_layout=layout,
-        show_gap_values=show_gap, environment='DriveCity',
+        show_gap_values=show_gap, environment='DriveCity', theme='netcheck',
     )))
     checked_types = set()
     badge_colours = {'R': STYLES['netcheck']['reliable'].lstrip('#'), 'D': STYLES['netcheck']['diff'].lstrip('#')}
