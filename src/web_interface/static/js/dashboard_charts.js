@@ -1452,8 +1452,52 @@
     else if (payload.type === 'table') drawTable(context, payload, state);
   }
 
+  // The colour theme of a chart (its model's style, or the page's: scoring_themes.dashboard_chart_style): its font and
+  // its colours instead of the renderer's greys. Series, operator, vendor and threshold colours stay as they are.
+  const styledContexts = new WeakMap();
+  const renderedCanvases = new Set();
+  function applyStyle(context, style) {
+    let styled = styledContexts.get(context);
+    if (!styled) {
+      styled = {style: null};
+      const descriptor = name => {
+        for (let proto = Object.getPrototypeOf(context); proto; proto = Object.getPrototypeOf(proto)) {
+          const found = Object.getOwnPropertyDescriptor(proto, name);
+          if (found) return found;
+        }
+        return null;
+      };
+      const translate = value => {
+        const colours = styled.style?.colours;
+        if (!colours || typeof value !== 'string') return value;
+        return colours[value.toUpperCase()] || value;
+      };
+      ['fillStyle', 'strokeStyle'].forEach(name => {
+        const base = descriptor(name);
+        if (!base?.set) return;
+        Object.defineProperty(context, name, {
+          configurable: true, get() { return base.get.call(context); }, set(value) { base.set.call(context, translate(value)); },
+        });
+      });
+      const fontBase = descriptor('font');
+      if (fontBase?.set) {
+        Object.defineProperty(context, 'font', {
+          configurable: true, get() { return fontBase.get.call(context); },
+          set(value) {
+            const family = styled.style?.font;
+            fontBase.set.call(context, family ? String(value).replace(FONT_FAMILY, family) : value);
+          },
+        });
+      }
+      styledContexts.set(context, styled);
+    }
+    styled.style = style && typeof style === 'object' ? style : null;
+  }
+
   function draw(canvas, payload) {
     const context = prepareCanvas(canvas), state = {canvas, hits: []};
+    applyStyle(context, payload?.style || globalThis.dashboardChartStyle || null);
+    renderedCanvases.add(canvas);
     context.fillStyle = '#FFFFFF'; context.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
     const visible = legendHiddenPayload(payload, hiddenLegendItems.get(canvas));
     state.drawnPayload = visible;
@@ -1912,6 +1956,13 @@
     }
     models.set(canvas, payload); draw(canvas, payload); attachTooltip(canvas); attachTableReordering(canvas); attachPan(canvas); attachLegendToggle(canvas);
     if (resizeObserver && !observed.has(canvas)) { observed.add(canvas); resizeObserver.observe(canvas); }
+  };
+  // Another page theme (globalThis.dashboardChartStyle) redraws the charts on the page at once.
+  globalThis.redrawDashboardCharts = () => {
+    renderedCanvases.forEach(canvas => {
+      if (!canvas.isConnected) { renderedCanvases.delete(canvas); return; }
+      const payload = models.get(canvas); if (payload) draw(canvas, payload);
+    });
   };
   globalThis.getDashboardChartHits = canvas => structuredClone(renderStates.get(canvas)?.hits || []);
   globalThis.getDashboardChartLegendHits = canvas => structuredClone(renderStates.get(canvas)?.legendHits || []);

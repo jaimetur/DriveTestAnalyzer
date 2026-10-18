@@ -27,6 +27,8 @@ from uuid import uuid4
 import pandas as pd
 from src.modules.column_names import campaign_sort_key, column_identity, compact_campaign_value, sort_vendor_values, vendor_filter_column, vendor_filter_value, vendor_filter_values, vendor_match_values
 from src.modules import report_structure
+from src.modules.scoring_themes import THEMES, dashboard_chart_style, load_user_theme, save_user_theme, themes_payload, use_theme
+from src.modules.theme_titles import style_title
 from src.modules.value_maps import ValueMapper, field_kind
 from src.modules.cdr_auto_selection import (
     LATEST_CAMPAIGN, LATEST_TWO_CAMPAIGNS, campaign_identity, campaign_presets, campaign_values, cdr_campaigns, candidate_cdrs, describe_cdrs,
@@ -104,6 +106,8 @@ MAIN_CITIES = '@main-cities'
 # Main Cities becomes the Main Cities choice.
 MAIN_CITIES_MIGRATION_KEY = 'ppt_dashboard_main_cities_reference_v1'
 DASHBOARD_PPT_JOBS_TABLE = 'dashboard_ppt_jobs'
+# The colour theme of PPT Dashboards: per user in each workspace, as in the other themed modules.
+DASHBOARD_THEME_MODULE = 'ppt_dashboards'
 
 
 class DashboardDefinition(BaseModel):
@@ -123,6 +127,10 @@ class DashboardDefinition(BaseModel):
     # The CDRs follow the NR Mode and the Campaign filter (see ``cdr_auto_selection``); Dashboards saved
     # before (without it) chose their CDRs by hand and are migrated once (``migrate_auto_cdrs``).
     auto_cdrs: bool = False
+
+
+class DashboardThemeRequest(BaseModel):
+    theme: str
 
 
 class DashboardPptExportRequest(BaseModel):
@@ -986,6 +994,9 @@ def install_dashboard_routes(core):
         destination, dashboard_id, preview_fingerprint, cover_regions, cover_cities, cover_campaigns='',
     ):
         run_key = (str(Path(task_repository.db_path).resolve()), job_id)
+        # The colour theme the user chose for PPT Dashboards: the titles of the content slides and the charts.
+        theme = load_user_theme(task_repository, user.username, DASHBOARD_THEME_MODULE)
+        chart_style = dashboard_chart_style(theme)
 
         def run_is_active():
             with lock:
@@ -1203,6 +1214,8 @@ def install_dashboard_routes(core):
                     placements = [placements[reflowed_cells[slide_number][index]] for index, _entry in chart_entries]
                 slide = presentation.slides.add_slide(layout)
                 _set_slide_header(slide, header.slide_title, header.slide_subtitle)
+                with use_theme(theme):
+                    style_title(slide)
                 _clear_commentary(slide)
                 _set_commentary(slide, comments)
                 _remove_template_chart_placeholders(slide)
@@ -1229,7 +1242,7 @@ def install_dashboard_routes(core):
                     else:
                         try:
                             model_path = canvas_model_path(snapshot, entry)
-                            payload = json.loads(model_path.read_text(encoding='utf-8'))
+                            payload = {**json.loads(model_path.read_text(encoding='utf-8')), 'style': chart_style}
                             if compact_titles:
                                 payload = {**payload, 'hide_title': True}
                             hidden_items, shown_items = chart_legend_lists(legend_visibility, legend_keys.get(index))
@@ -1758,7 +1771,28 @@ def install_dashboard_routes(core):
             'dashboard_ignore_event_time_filtering': ignore_event_time_filtering(),
             'dashboard_multivendor_available': len(catalogue['vendors']) >= 2,
             'dashboard_main_cities': core.repository.list_main_cities(),
+            # The colour theme of the charts and slide titles of the viewer and of the Dashboard PPTs.
+            'dashboard_themes': themes_payload()['themes'],
+            'dashboard_theme': load_user_theme(bound_repository(), user.username, DASHBOARD_THEME_MODULE),
+            'dashboard_chart_styles': {key: dashboard_chart_style(key) for key in THEMES},
         })
+
+    @app.get('/api/ppt-dashboards/theme')
+    def dashboard_theme(user=Depends(dashboard_user)):
+        """The colour theme the user chose for the PPT Dashboards charts and slide titles in this workspace."""
+        theme = load_user_theme(bound_repository(), user.username, DASHBOARD_THEME_MODULE)
+        return {'theme': theme, 'style': dashboard_chart_style(theme)}
+
+    @app.put('/api/ppt-dashboards/theme')
+    def dashboard_theme_save(payload: DashboardThemeRequest, user=Depends(dashboard_user)):
+        if payload.theme.strip().casefold() not in THEMES:
+            raise HTTPException(400, f'Unknown theme: {payload.theme}.')
+        task_repository = bound_repository()
+        previous = load_user_theme(task_repository, user.username, DASHBOARD_THEME_MODULE)
+        theme = save_user_theme(task_repository, user.username, payload.theme, DASHBOARD_THEME_MODULE)
+        if theme != previous:
+            task_repository.try_add_log(user.username, 'ppt_dashboards_theme_changed', json.dumps({'theme': theme, 'previous': previous}))
+        return {'theme': theme, 'style': dashboard_chart_style(theme)}
 
     @app.get('/api/ppt-dashboards')
     def list_dashboards(user=Depends(dashboard_user)):
@@ -1946,6 +1980,7 @@ def install_dashboard_routes(core):
         )
         task_repository.add_log(user.username, 'export_dashboard_ppt', json.dumps({
             'dashboard_id': dashboard_id, 'job_id': job_id, 'output': str(destination),
+            'theme': load_user_theme(task_repository, user.username, DASHBOARD_THEME_MODULE),
         }))
         return job_id
 

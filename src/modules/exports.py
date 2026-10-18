@@ -13,10 +13,11 @@ from pptx.enum.text import MSO_AUTO_SIZE, PP_ALIGN
 from pptx.util import Inches, Pt
 
 from src.config import POWERPOINT_TEMPLATE
+from src.modules.scoring_themes import active_theme, blend
 from src.utils.fonts import load_image_font
 
 # Bump whenever the PowerPoint layout changes: exports are cached by this version and their content.
-POWERPOINT_EXPORT_VERSION = "2026-10-06-v11"
+POWERPOINT_EXPORT_VERSION = "2026-10-18-v12"
 PPT_WIDTH_IN = 13.333
 PPT_HEIGHT_IN = 7.5
 SLIDE_WIDTH = 1280
@@ -38,6 +39,21 @@ CONTENT_LAYOUT = "Title + 1 rows + 1 columns"
 # How much lower the content of a slide with a subtitle starts.
 SUBTITLE_CONTENT_SHIFT = 0.5
 SERIES_COLORS = ["#0B7A75", "#DD653E", "#245A96", "#B84D3A", "#6D46A8", "#228A5D", "#C78B1D", "#4D6A88"]
+
+
+def _palette() -> dict[str, Any]:
+    """The colours of the CDR Analysis exports in the active colour theme (scoring_themes): the charts are cards in its
+    surface and ink, the tables and cards on the slide take its headers and alternate rows, and the text on the slide
+    its ink (its title colour when the surface is dark, as in Midnight)."""
+    theme = active_theme()
+    red, green, blue = (int(theme['surface'][index:index + 2], 16) for index in (1, 3, 5))
+    dark = .299 * red + .587 * green + .114 * blue < 128
+    return {'chart_bg': theme['surface'], 'chart_ink': theme['ink'], 'chart_muted': theme['muted'], 'chart_line': theme['line'],
+            'bar': theme['accent'], 'series': list(theme['series']) + SERIES_COLORS, 'text': theme['title'] if dark else theme['ink'],
+            'muted': theme['muted'], 'title': theme['title'], 'accent': theme['accent'], 'panel': theme['row_alt'],
+            'line': theme['border'], 'header': theme['header'], 'header_text': theme['header_text'], 'row_alt': theme['row_alt'],
+            'card_inner': blend(theme['header'], theme['header_text'], .14),
+            'card_label': blend(theme['header_text'], theme['header'], .3)}
 
 
 def export_word_report(destination: Path, analysis: dict[str, Any]) -> Path:
@@ -269,13 +285,14 @@ def _format_axis_tick(value: float) -> str:
 
 
 def _empty_chart_image(title: str, message: str) -> BytesIO:
-    image = Image.new("RGB", (SLIDE_WIDTH, SLIDE_HEIGHT), BG)
+    colours = _palette()
+    image = Image.new("RGB", (SLIDE_WIDTH, SLIDE_HEIGHT), colours["chart_bg"])
     draw = ImageDraw.Draw(image)
     title_font = _load_font(26, bold=True)
     body_font = _load_font(18)
-    draw.rounded_rectangle((24, 24, SLIDE_WIDTH - 24, SLIDE_HEIGHT - 24), radius=20, fill=PANEL, outline=LINE, width=2)
-    draw.text((44, 34), title, font=title_font, fill=TEXT)
-    _draw_wrapped_text(draw, (44, 120, SLIDE_WIDTH - 44, SLIDE_HEIGHT - 44), message, body_font, fill=MUTED)
+    draw.rounded_rectangle((24, 24, SLIDE_WIDTH - 24, SLIDE_HEIGHT - 24), radius=20, fill=colours["chart_bg"], outline=colours["chart_line"], width=2)
+    draw.text((44, 34), title, font=title_font, fill=colours["chart_ink"])
+    _draw_wrapped_text(draw, (44, 120, SLIDE_WIDTH - 44, SLIDE_HEIGHT - 44), message, body_font, fill=colours["chart_muted"])
     buffer = BytesIO()
     image.save(buffer, format="PNG")
     buffer.seek(0)
@@ -302,7 +319,8 @@ def _is_hex_color(value: Any) -> bool:
 
 def _series_color(series: dict[str, Any], index: int) -> str:
     color = series.get("color")
-    return color if _is_hex_color(color) else SERIES_COLORS[index % len(SERIES_COLORS)]
+    colours = _palette()["series"]
+    return color if _is_hex_color(color) else colours[index % len(colours)]
 
 
 def _draw_bar_chart(chart: dict[str, Any]) -> BytesIO:
@@ -311,17 +329,18 @@ def _draw_bar_chart(chart: dict[str, Any]) -> BytesIO:
     if not labels or not values:
         return _empty_chart_image("Group Benchmark", "The selected comparison does not contain grouped values for this metric.")
 
-    image = Image.new("RGBA", (SLIDE_WIDTH, SLIDE_HEIGHT), BG)
+    colours = _palette()
+    image = Image.new("RGBA", (SLIDE_WIDTH, SLIDE_HEIGHT), colours["chart_bg"])
     draw = ImageDraw.Draw(image)
     title_font = _load_font(22, bold=True)
     axis_font = _load_font(15)
     value_font = _load_font(14, bold=True)
-    draw.rounded_rectangle((20, 20, SLIDE_WIDTH - 20, SLIDE_HEIGHT - 20), radius=18, fill=PANEL, outline=LINE, width=2)
-    draw.text((36, 28), "Group Benchmark", font=title_font, fill=TEXT)
+    draw.rounded_rectangle((20, 20, SLIDE_WIDTH - 20, SLIDE_HEIGHT - 20), radius=18, fill=colours["chart_bg"], outline=colours["chart_line"], width=2)
+    draw.text((36, 28), "Group Benchmark", font=title_font, fill=colours["chart_ink"])
 
     left, top, right, bottom = 70, 90, SLIDE_WIDTH - 40, SLIDE_HEIGHT - 70
-    draw.line((left, top, left, bottom), fill=MUTED, width=3)
-    draw.line((left, bottom, right, bottom), fill=MUTED, width=3)
+    draw.line((left, top, left, bottom), fill=colours["chart_muted"], width=3)
+    draw.line((left, bottom, right, bottom), fill=colours["chart_muted"], width=3)
 
     compact_labels = labels[:8]
     compact_values = values[:8]
@@ -336,12 +355,12 @@ def _draw_bar_chart(chart: dict[str, Any]) -> BytesIO:
     chart_height = bottom - top - 24
     zero = bottom - int((0 - low) / span * chart_height)
     if low < 0:
-        draw.line((left, zero, right, zero), fill=MUTED, width=2)
+        draw.line((left, zero, right, zero), fill=colours["chart_muted"], width=2)
 
     colors = list(chart.get("colors") or [])
     for index, (label, value) in enumerate(zip(compact_labels, compact_values, strict=False)):
         # Each bar keeps its Operator or Vendor colour, as on the page.
-        bar_color = colors[index] if index < len(colors) and _is_hex_color(colors[index]) else ORANGE
+        bar_color = colors[index] if index < len(colors) and _is_hex_color(colors[index]) else colours["bar"]
         x0 = left + gap + index * (bar_width + gap)
         x1 = x0 + bar_width
         end = zero - int(value / span * chart_height)
@@ -356,14 +375,15 @@ def _draw_bar_chart(chart: dict[str, Any]) -> BytesIO:
             label_color = "#FFFFFF"
         else:
             label_y = max(top + 8, y0 - 20) if value >= 0 else min(bottom - 22, y1 + 4)
-            label_color = TEXT
+            label_color = colours["chart_ink"]
         draw.text((x0 + (bar_width - text_width) / 2, label_y), value_text, font=value_font, fill=label_color)
         short_label = label if len(label) <= 14 else f"{label[:12]}.."
         text_width = draw.textlength(short_label, font=axis_font)
-        draw.text((x0 + (bar_width - text_width) / 2, bottom + 10), short_label, font=axis_font, fill=MUTED)
+        draw.text((x0 + (bar_width - text_width) / 2, bottom + 10), short_label, font=axis_font, fill=colours["chart_muted"])
 
     y_axis_label = str(chart.get("y_axis_label") or "Mean metric")
-    _draw_rotated_text(image, (left - 18, top + max(0, (bottom - top - 120) // 2)), y_axis_label, axis_font)
+    _draw_rotated_text(image, (left - 18, top + max(0, (bottom - top - 120) // 2)), y_axis_label, axis_font,
+                       fill=colours["chart_muted"])
 
     buffer = BytesIO()
     image.convert("RGB").save(buffer, format="PNG")
@@ -422,18 +442,19 @@ def _draw_line_chart(chart: dict[str, Any]) -> BytesIO:
     if not series_collection:
         return _empty_chart_image("CDF Curve", "The selected CDF comparison does not contain numeric values for this metric.")
 
-    image = Image.new("RGBA", (SLIDE_WIDTH, SLIDE_HEIGHT), BG)
+    colours = _palette()
+    image = Image.new("RGBA", (SLIDE_WIDTH, SLIDE_HEIGHT), colours["chart_bg"])
     draw = ImageDraw.Draw(image)
     title_font = _load_font(22, bold=True)
     legend_font = _load_font(14)
-    draw.rounded_rectangle((20, 20, SLIDE_WIDTH - 20, SLIDE_HEIGHT - 20), radius=18, fill=PANEL, outline=LINE, width=2)
-    draw.text((36, 28), "CDF Curve", font=title_font, fill=TEXT)
+    draw.rounded_rectangle((20, 20, SLIDE_WIDTH - 20, SLIDE_HEIGHT - 20), radius=18, fill=colours["chart_bg"], outline=colours["chart_line"], width=2)
+    draw.text((36, 28), "CDF Curve", font=title_font, fill=colours["chart_ink"])
     x_axis_label = str(chart.get("x_axis_label") or "Metric value")
     y_axis_label = str(chart.get("y_axis_label") or "Cumulative probability")
 
     left, top, right, bottom = 70, 90, SLIDE_WIDTH - 40, SLIDE_HEIGHT - 110
-    draw.line((left, top, left, bottom), fill=MUTED, width=3)
-    draw.line((left, bottom, right, bottom), fill=MUTED, width=3)
+    draw.line((left, top, left, bottom), fill=colours["chart_muted"], width=3)
+    draw.line((left, bottom, right, bottom), fill=colours["chart_muted"], width=3)
 
     all_x = [value for s in series_collection for value in s["labels"]]
     all_y = [value for s in series_collection for value in s["series"]]
@@ -450,19 +471,19 @@ def _draw_line_chart(chart: dict[str, Any]) -> BytesIO:
 
     for tick in x_ticks:
         px = left + ((tick - min_x) / (max_x - min_x)) * (right - left)
-        draw.line((px, top, px, bottom), fill=GRID, width=2)
-        draw.line((px, bottom, px, bottom + 8), fill=MUTED, width=3)
+        draw.line((px, top, px, bottom), fill=colours["chart_line"], width=2)
+        draw.line((px, bottom, px, bottom + 8), fill=colours["chart_muted"], width=3)
         tick_label = _format_axis_tick(tick)
         tick_width = draw.textlength(tick_label, font=axis_font)
-        draw.text((px - tick_width / 2, bottom + 12), tick_label, font=axis_font, fill=MUTED)
+        draw.text((px - tick_width / 2, bottom + 12), tick_label, font=axis_font, fill=colours["chart_muted"])
 
     for tick in y_ticks:
         py = bottom - ((tick - 0.0) / (1.0 - 0.0)) * (bottom - top)
-        draw.line((left, py, right, py), fill=GRID, width=2)
-        draw.line((left - 8, py, left, py), fill=MUTED, width=3)
+        draw.line((left, py, right, py), fill=colours["chart_line"], width=2)
+        draw.line((left - 8, py, left, py), fill=colours["chart_muted"], width=3)
         tick_label = _format_axis_tick(tick)
         tick_width = draw.textlength(tick_label, font=axis_font)
-        draw.text((left - 18 - tick_width, py - 8), tick_label, font=axis_font, fill=MUTED)
+        draw.text((left - 18 - tick_width, py - 8), tick_label, font=axis_font, fill=colours["chart_muted"])
 
     for index, s in enumerate(series_collection[:8]):
         # Each curve keeps its Operator or Vendor colour, as on the page.
@@ -477,15 +498,16 @@ def _draw_line_chart(chart: dict[str, Any]) -> BytesIO:
         for point in points[::max(1, len(points) // 10 or 1)]:
             draw.ellipse((point[0] - 3, point[1] - 3, point[0] + 3, point[1] + 3), fill=color)
 
-    draw.text((left + ((right - left) / 2) - (draw.textlength(x_axis_label, font=axis_font) / 2), bottom + 26), x_axis_label, font=axis_font, fill=MUTED)
-    _draw_rotated_text(image, (left - 18, top + max(0, (bottom - top - 180) // 2)), y_axis_label, axis_font)
+    draw.text((left + ((right - left) / 2) - (draw.textlength(x_axis_label, font=axis_font) / 2), bottom + 26), x_axis_label, font=axis_font, fill=colours["chart_muted"])
+    _draw_rotated_text(image, (left - 18, top + max(0, (bottom - top - 180) // 2)), y_axis_label, axis_font,
+                       fill=colours["chart_muted"])
 
     legend_x = 48
     legend_y = SLIDE_HEIGHT - 64
     for index, s in enumerate(series_collection[:8]):
         color = _series_color(s, index)
         draw.rounded_rectangle((legend_x, legend_y, legend_x + 16, legend_y + 16), radius=4, fill=color)
-        draw.text((legend_x + 24, legend_y - 2), str(s["name"])[:18], font=legend_font, fill=MUTED)
+        draw.text((legend_x + 24, legend_y - 2), str(s["name"])[:18], font=legend_font, fill=colours["chart_muted"])
         legend_x += 140
         if legend_x > SLIDE_WIDTH - 180:
             legend_x = 48
@@ -511,6 +533,7 @@ def _card_value(value: Any) -> str:
 
 
 def _add_metric_cards(slide, analyses: list[dict[str, Any]], *, start_y: float = 1.64, card_h: float = 2.45) -> None:
+    colours = _palette()
     cols = 3
     gap_x = 0.2
     gap_y = 0.18
@@ -523,9 +546,10 @@ def _add_metric_cards(slide, analyses: list[dict[str, Any]], *, start_y: float =
         col = index % cols
         x = start_x + col * (card_w + gap_x)
         y = start_y + row * (card_h + gap_y)
-        _add_panel(slide, x, y, card_w, card_h, fill="#163247", line="#254961")
-        _add_textbox(slide, x + 0.16, y + 0.12, 2.4, 0.24, metric_name, size=14, bold=True, color="#FFFFFF")
-        _add_badge(slide, x + card_w - 1.28, y + 0.12, 1.0, f"{result.get('metric_kpis', {}).get('samples', 0)}", fill=TEAL)
+        _add_panel(slide, x, y, card_w, card_h, fill=colours["header"], line=colours["header"])
+        _add_textbox(slide, x + 0.16, y + 0.12, 2.4, 0.24, metric_name, size=14, bold=True, color=colours["header_text"])
+        _add_badge(slide, x + card_w - 1.28, y + 0.12, 1.0, f"{result.get('metric_kpis', {}).get('samples', 0)}",
+                   fill=colours["card_inner"], color=colours["header_text"])
         metrics = result.get("metric_kpis") or {}
         summary = [
             ("Mean", metrics.get("mean_metric", 0)),
@@ -548,15 +572,18 @@ def _add_metric_cards(slide, analyses: list[dict[str, Any]], *, start_y: float =
             inner_col = metric_index % inner_cols
             sx = start_stat_x + inner_col * (stat_w + stat_gap_x)
             sy = start_stat_y + inner_row * (stat_h + stat_gap_y)
-            _add_panel(slide, sx, sy, stat_w, stat_h, fill="#21435B", line="#2B536B")
-            _add_textbox(slide, sx + 0.08, sy + 0.05, stat_w - 0.16, 0.12, label, size=8, bold=True, color="#AFC3D2")
-            _add_textbox(slide, sx + 0.08, sy + stat_h * 0.42, stat_w - 0.16, 0.16, _card_value(value), size=11, bold=True, color="#FFFFFF")
+            _add_panel(slide, sx, sy, stat_w, stat_h, fill=colours["card_inner"], line=colours["card_inner"])
+            _add_textbox(slide, sx + 0.08, sy + 0.05, stat_w - 0.16, 0.12, label, size=8, bold=True, color=colours["card_label"])
+            _add_textbox(slide, sx + 0.08, sy + stat_h * 0.42, stat_w - 0.16, 0.16, _card_value(value), size=11, bold=True,
+                         color=colours["header_text"])
 
 
 def _add_kpi_grid(slide, items: list[tuple[str, Any]], *, left: float, top: float, width: float, columns: int, card_height: float = 0.9,
-                  fill: str = PANEL_ALT, accent: str = TEAL) -> None:
+                  fill: str | None = None, accent: str | None = None) -> None:
     if not items:
         return
+    colours = _palette()
+    fill = fill or colours["panel"]
     gap_x = 0.16
     gap_y = 0.14
     card_width = (width - gap_x * (columns - 1)) / columns
@@ -565,9 +592,9 @@ def _add_kpi_grid(slide, items: list[tuple[str, Any]], *, left: float, top: floa
         col = index % columns
         x = left + col * (card_width + gap_x)
         y = top + row * (card_height + gap_y)
-        _add_panel(slide, x, y, card_width, card_height, fill=fill, line=LINE)
-        _add_textbox(slide, x + 0.14, y + 0.12, card_width - 0.28, 0.18, _format_label(label), size=9, bold=True, color=MUTED)
-        _add_textbox(slide, x + 0.14, y + 0.44, card_width - 0.28, 0.24, _format_value(value), size=17, bold=True, color=TEXT)
+        _add_panel(slide, x, y, card_width, card_height, fill=fill, line=colours["line"])
+        _add_textbox(slide, x + 0.14, y + 0.12, card_width - 0.28, 0.18, _format_label(label), size=9, bold=True, color=colours["muted"])
+        _add_textbox(slide, x + 0.14, y + 0.44, card_width - 0.28, 0.24, _format_value(value), size=17, bold=True, color=colours["text"])
 
 
 def _add_metric_kpi_strip(slide, metric_kpis: dict[str, Any], *, left: float, top: float, width: float) -> None:
@@ -579,19 +606,22 @@ def _add_metric_kpi_strip(slide, metric_kpis: dict[str, Any], *, left: float, to
         ("Min", metric_kpis.get("min_metric", 0)),
         ("Max", metric_kpis.get("max_metric", 0)),
     ]
+    colours = _palette()
     cols = len(summary)
     gap = 0.08
     cell_width = (width - gap * (cols - 1)) / cols
     for index, (label, value) in enumerate(summary):
         x = left + index * (cell_width + gap)
-        _add_panel(slide, x, top, cell_width, 0.34, fill="#FFF9F3", line=LINE)
-        _add_textbox(slide, x + 0.05, top + 0.04, cell_width - 0.1, 0.08, label, size=6, bold=True, color=MUTED, align=PP_ALIGN.CENTER)
-        _add_textbox(slide, x + 0.05, top + 0.15, cell_width - 0.1, 0.1, _format_value(value), size=9, bold=True, color=TEXT, align=PP_ALIGN.CENTER)
+        _add_panel(slide, x, top, cell_width, 0.34, fill=colours["panel"], line=colours["line"])
+        _add_textbox(slide, x + 0.05, top + 0.04, cell_width - 0.1, 0.08, label, size=6, bold=True, color=colours["muted"], align=PP_ALIGN.CENTER)
+        _add_textbox(slide, x + 0.05, top + 0.15, cell_width - 0.1, 0.1, _format_value(value), size=9, bold=True, color=colours["text"],
+                     align=PP_ALIGN.CENTER)
 
 
 def _add_grouped_scorecard_table(slide, groups: list[dict[str, Any]], left: float, top: float, width: float, height: float) -> None:
+    colours = _palette()
     if not groups:
-        _add_textbox(slide, left, top, width, 0.3, "No percentile groups available for this metric.", size=12, color=MUTED)
+        _add_textbox(slide, left, top, width, 0.3, "No percentile groups available for this metric.", size=12, color=colours["muted"])
         return
     table = slide.shapes.add_table(len(groups) + 1, 6, Inches(left), Inches(top), Inches(width), Inches(height)).table
     headers = ["Group", "P10", "P25", "P50", "P75", "P90"]
@@ -599,12 +629,12 @@ def _add_grouped_scorecard_table(slide, groups: list[dict[str, Any]], left: floa
         cell = table.cell(0, index)
         cell.text = header
         cell.fill.solid()
-        cell.fill.fore_color.rgb = _rgb("E8F4F3")
+        cell.fill.fore_color.rgb = _rgb(colours["header"])
         for paragraph in cell.text_frame.paragraphs:
             for run in paragraph.runs:
                 run.font.bold = True
                 run.font.size = Pt(10)
-                run.font.color.rgb = _rgb(TEXT)
+                run.font.color.rgb = _rgb(colours["header_text"])
     for row_index, group in enumerate(groups[:8], start=1):
         values_by_label = {str(item.get("label")): item.get("value") for item in group.get("items") or []}
         row_values = [
@@ -619,16 +649,17 @@ def _add_grouped_scorecard_table(slide, groups: list[dict[str, Any]], left: floa
             cell = table.cell(row_index, col_index)
             cell.text = value
             cell.fill.solid()
-            cell.fill.fore_color.rgb = _rgb("FFFFFF" if row_index % 2 else "F8FBFB")
+            cell.fill.fore_color.rgb = _rgb("FFFFFF" if row_index % 2 else colours["row_alt"])
             for paragraph in cell.text_frame.paragraphs:
                 for run in paragraph.runs:
                     run.font.size = Pt(9)
-                    run.font.color.rgb = _rgb(TEXT)
+                    run.font.color.rgb = _rgb(colours["text"])
 
 
 def _add_data_table(slide, rows: list[dict[str, Any]], left: float, top: float, width: float, height: float) -> None:
+    colours = _palette()
     if not rows:
-        _add_textbox(slide, left, top, width, 0.3, "No table rows are available for the selected filters.", size=12, color=MUTED)
+        _add_textbox(slide, left, top, width, 0.3, "No table rows are available for the selected filters.", size=12, color=colours["muted"])
         return
     headers = list(rows[0].keys())[:8]
     sliced_rows = rows[:10]
@@ -638,22 +669,22 @@ def _add_data_table(slide, rows: list[dict[str, Any]], left: float, top: float, 
         cell = table.cell(0, index)
         cell.text = _format_label(header)
         cell.fill.solid()
-        cell.fill.fore_color.rgb = _rgb("EAF1F8")
+        cell.fill.fore_color.rgb = _rgb(colours["header"])
         for paragraph in cell.text_frame.paragraphs:
             for run in paragraph.runs:
                 run.font.bold = True
                 run.font.size = Pt(9)
-                run.font.color.rgb = _rgb(TEXT)
+                run.font.color.rgb = _rgb(colours["header_text"])
     for row_index, row in enumerate(sliced_rows, start=1):
         for col_index, header in enumerate(headers):
             cell = table.cell(row_index, col_index)
             cell.text = _format_value(row.get(header, ""))
             cell.fill.solid()
-            cell.fill.fore_color.rgb = _rgb("FFFFFF" if row_index % 2 else "F9FBFD")
+            cell.fill.fore_color.rgb = _rgb("FFFFFF" if row_index % 2 else colours["row_alt"])
             for paragraph in cell.text_frame.paragraphs:
                 for run in paragraph.runs:
                     run.font.size = Pt(8)
-                    run.font.color.rgb = _rgb(TEXT)
+                    run.font.color.rgb = _rgb(colours["text"])
 
 
 def _build_powerpoint_payload(report: dict[str, Any]) -> dict[str, Any]:
@@ -716,11 +747,15 @@ def _content_slide(presentation: Presentation, title: str, subtitle: str = "") -
         for placeholder in list(slide.placeholders):
             if placeholder.placeholder_format.type not in {PP_PLACEHOLDER.TITLE, PP_PLACEHOLDER.CENTER_TITLE}:
                 placeholder.element.getparent().remove(placeholder.element)
+        from src.modules.theme_titles import style_title
         if subtitle:
             # The analysed CDR is the subtitle, in the template's subtitle style under the title.
             from src.modules.cdr_reporting import _set_slide_header
             _set_slide_header(slide, title, subtitle)
+            # Titles and subtitles in the style of the colour theme, as in the other themed modules.
+            style_title(slide)
             return slide, TEMPLATE_CONTENT_SHIFT + SUBTITLE_CONTENT_SHIFT
+        style_title(slide)
         return slide, TEMPLATE_CONTENT_SHIFT
     slide = presentation.slides.add_slide(presentation.slide_layouts[6])
     _add_full_bg(slide, BG)
@@ -832,7 +867,7 @@ def _append_dataset_report_slides(presentation: Presentation, payload: dict[str,
 
     dataset_name = payload["dataset_name"]
     global_slide, shift = _content_slide(presentation, "CDR Summary", dataset_name)
-    _add_multiline_textbox(global_slide, 0.55, 0.72 + shift, 12.1, 0.18, summary_lines, size=9, color=MUTED)
+    _add_multiline_textbox(global_slide, 0.55, 0.72 + shift, 12.1, 0.18, summary_lines, size=9, color=_palette()["muted"])
     global_items = [(key, value) for key, value in payload["global_kpis"].items() if key not in {"date_from", "date_to"}]
     _add_kpi_grid(global_slide, global_items[:16], left=0.55, top=1.58 + shift, width=12.2, columns=4,
                   card_height=1.0 if not shift else 0.9)
@@ -841,14 +876,14 @@ def _append_dataset_report_slides(presentation: Presentation, payload: dict[str,
     for page_index, metric_page in enumerate(metric_card_pages, start=1):
         title = "Selected Metric Cards" if len(metric_card_pages) == 1 else f"Selected Metric Cards · {page_index}/{len(metric_card_pages)}"
         metric_slide, shift = _content_slide(presentation, title, dataset_name)
-        _add_multiline_textbox(metric_slide, 0.55, 0.72 + shift, 12.1, 0.18, summary_lines, size=9, color=MUTED)
+        _add_multiline_textbox(metric_slide, 0.55, 0.72 + shift, 12.1, 0.18, summary_lines, size=9, color=_palette()["muted"])
         _add_metric_cards(metric_slide, metric_page, start_y=1.4 + shift, card_h=2.45 if not shift else 1.95)
 
     for analysis_item in payload["analyses"]:
         result = analysis_item["result"]
         metric_name = result.get("selected_metric") or analysis_item.get("metric") or "Metric"
         visual, shift = _content_slide(presentation, f"Visual Analytics · {metric_name}", dataset_name)
-        _add_multiline_textbox(visual, 0.55, 0.72 + shift, 12.1, 0.18, summary_lines, size=9, color=MUTED)
+        _add_multiline_textbox(visual, 0.55, 0.72 + shift, 12.1, 0.18, summary_lines, size=9, color=_palette()["muted"])
         cdf_image = _draw_line_chart(result.get("cdf_chart") or {})
         comparison_image = _draw_bar_chart(result.get("comparison_chart") or {})
         chart_height = 2.8 if not shift else 2.6
@@ -856,12 +891,12 @@ def _append_dataset_report_slides(presentation: Presentation, payload: dict[str,
         visual.shapes.add_picture(comparison_image, Inches(6.78), Inches(1.48 + shift), width=Inches(6.0), height=Inches(chart_height))
         below = 1.48 + shift + chart_height
         _add_metric_kpi_strip(visual, result.get("metric_kpis") or {}, left=0.55, top=below + 0.1, width=12.2)
-        _add_textbox(visual, 0.55, below + 0.54, 3.4, 0.18, f"Grouped Percentiles · { _format_label(result.get('filters', {}).get('aggregation') or 'all') }", size=9, bold=True, color=BLUE)
+        _add_textbox(visual, 0.55, below + 0.54, 3.4, 0.18, f"Grouped Percentiles · { _format_label(result.get('filters', {}).get('aggregation') or 'all') }", size=9, bold=True, color=_palette()["title"])
         _add_grouped_scorecard_table(visual, (result.get("scorecard_groups") or [])[:8], left=0.55, top=below + 0.76, width=12.2, height=0.84)
 
     primary_result = payload["analyses"][0]["result"] if payload["analyses"] else {}
     table_slide, shift = _content_slide(presentation, "Processed Metrics", dataset_name)
-    _add_multiline_textbox(table_slide, 0.55, 0.72 + shift, 12.1, 0.18, summary_lines, size=9, color=MUTED)
+    _add_multiline_textbox(table_slide, 0.55, 0.72 + shift, 12.1, 0.18, summary_lines, size=9, color=_palette()["muted"])
     _add_data_table(table_slide, primary_result.get("table_rows") or [], left=0.55, top=1.56 + shift, width=12.2, height=5.28 - shift)
 
 

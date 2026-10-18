@@ -1645,6 +1645,8 @@ body[data-embedded-template-editor] .slides-templates-editor-table-wrap .form-ac
 .retry-form { margin-bottom: 1rem; }
 .dataset-export-actions { justify-content: flex-end; margin-top: 1rem; width: 100%; }
 .dataset-export-actions .action-link-preview { margin-right: auto; }
+.dataset-export-actions .cdr-theme-field { display: flex; align-items: center; gap: .5rem; flex: 0 0 auto; }
+.dataset-export-actions .cdr-theme-field select { width: auto; min-width: 9rem; }
 .upload-dropzone { display: grid; gap: 1rem; margin-top: 1.25rem; }
 /* File classification: one colourful card per file, tinted by its detected type. */
 .upload-type-list { display: grid; gap: 0.45rem; padding: 1.1rem 1.15rem 1.2rem; border: 1px solid rgba(11, 122, 117, 0.18); border-radius: 20px;

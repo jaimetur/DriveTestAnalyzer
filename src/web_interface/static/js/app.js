@@ -1109,14 +1109,28 @@ function limitSeriesCollectionByX(seriesCollection, xMaxOverride) {
   refreshAll();
 })();
 
+// The colours of the CDR Analysis charts: those of the colour theme the user chose (CSS variables set on the page
+// from the theme), else the historical defaults.
+function cdrChartColours(svg) {
+  const style = svg && window.getComputedStyle ? window.getComputedStyle(svg) : null;
+  const read = (name, fallback) => (style ? style.getPropertyValue(name).trim() : '') || fallback;
+  const series = read('--cdr-chart-series', '').split(',').map((value) => value.trim()).filter(Boolean);
+  return {
+    text: read('--cdr-chart-muted', '#526371'), axis: read('--cdr-chart-axis', '#9ab0bc'), ink: read('--cdr-chart-ink', '#334550'),
+    bar: read('--cdr-chart-bar', '#dd653e'),
+    palette: series.length ? series : ['#0b7a75', '#dd653e', '#245a96', '#b84d3a', '#6d46a8', '#228a5d', '#c78b1d', '#4d6a88'],
+  };
+}
+
 function drawLineChart(svg, labels, series, width, height, padding, axisLabels = {}, xMaxOverride = null, xMinOverride = null, yRange = null) {
-  const palette = ['#0b7a75', '#dd653e', '#245a96', '#b84d3a', '#6d46a8', '#228a5d', '#c78b1d', '#4d6a88'];
+  const colours = cdrChartColours(svg);
+  const palette = colours.palette;
   const rawSeriesCollection = Array.isArray(series) && series.length > 0 && typeof series[0] === 'object' && Array.isArray(series[0].series)
     ? series
     : [{name: 'CDF', labels, series}];
   const seriesCollection = limitSeriesCollectionByX(rawSeriesCollection, xMaxOverride);
   if (seriesCollection.length === 0) {
-    svg.innerHTML = '<text x="50%" y="50%" text-anchor="middle" fill="#526371">No chart data available</text>';
+    svg.innerHTML = `<text x="50%" y="50%" text-anchor="middle" fill="${colours.text}">No chart data available</text>`;
     return;
   }
   const flatLabels = seriesCollection.flatMap((item) => item.labels || []);
@@ -1149,12 +1163,12 @@ function drawLineChart(svg, labels, series, width, height, padding, axisLabels =
   const yTicks = yRange ? [minY, (minY + topY) / 2, topY] : [0, 0.5, 1.0];
   const clipId = `cdf-clip-${Math.random().toString(36).slice(2, 9)}`;
   const xTickLabels = xTicks.map((value) => `
-    <line x1="${scaleX(value)}" y1="${height - bottomPadding}" x2="${scaleX(value)}" y2="${height - bottomPadding + 6}" stroke="#9ab0bc" />
-    <text x="${scaleX(value)}" y="${height - bottomPadding + 18}" text-anchor="middle" fill="#526371" font-size="11">${formatAxisValue(value)}</text>
+    <line x1="${scaleX(value)}" y1="${height - bottomPadding}" x2="${scaleX(value)}" y2="${height - bottomPadding + 6}" stroke="${colours.axis}" />
+    <text x="${scaleX(value)}" y="${height - bottomPadding + 18}" text-anchor="middle" fill="${colours.text}" font-size="11">${formatAxisValue(value)}</text>
   `).join('');
   const yTickLabels = yTicks.map((value) => `
-    <line x1="${leftPadding - 6}" y1="${scaleY(value)}" x2="${leftPadding}" y2="${scaleY(value)}" stroke="#9ab0bc" />
-    <text x="${leftPadding - 10}" y="${scaleY(value) + 4}" text-anchor="end" fill="#526371" font-size="11">${formatAxisValue(value)}</text>
+    <line x1="${leftPadding - 6}" y1="${scaleY(value)}" x2="${leftPadding}" y2="${scaleY(value)}" stroke="${colours.axis}" />
+    <text x="${leftPadding - 10}" y="${scaleY(value) + 4}" text-anchor="end" fill="${colours.text}" font-size="11">${formatAxisValue(value)}</text>
   `).join('');
   const lines = seriesCollection.map((item, index) => {
     const color = item.color || palette[index % palette.length];
@@ -1168,30 +1182,31 @@ function drawLineChart(svg, labels, series, width, height, padding, axisLabels =
         const y = 18 + Math.floor(index / legendColumns) * 18;
         return `
           <circle cx="${x}" cy="${y}" r="5" fill="${color}"></circle>
-          <text x="${x + 10}" y="${y + 4}" fill="#526371" font-size="11">${String(item.name).slice(0, 20)}</text>
+          <text x="${x + 10}" y="${y + 4}" fill="${colours.text}" font-size="11">${String(item.name).slice(0, 20)}</text>
         `;
       }).join('')
-    : `<text x="${padding}" y="18" fill="#526371">CDF</text>`;
+    : `<text x="${padding}" y="18" fill="${colours.text}">CDF</text>`;
   // Geometry for the hover tooltip: the x value under the pointer and each curve's probability there.
   svg.chartGeometry = {
     kind: 'line', left: leftPadding, top: innerTop, width: innerWidth, height: innerHeight, minX: domainMinX, maxX: domainMaxX, minY, maxY: topY,
     series: seriesCollection.map((item, index) => ({name: item.name, color: item.color || palette[index % palette.length], labels: item.labels || [], series: item.series || []})),
   };
   svg.innerHTML = `
-    <line x1="${leftPadding}" y1="${height - bottomPadding}" x2="${width - rightPadding}" y2="${height - bottomPadding}" stroke="#9ab0bc" />
-    <line x1="${leftPadding}" y1="${innerTop}" x2="${leftPadding}" y2="${height - bottomPadding}" stroke="#9ab0bc" />
-    <line class="chart-hover-guide" x1="0" y1="${innerTop}" x2="0" y2="${height - bottomPadding}" stroke="#526371" stroke-dasharray="4 4" visibility="hidden" />
+    <line x1="${leftPadding}" y1="${height - bottomPadding}" x2="${width - rightPadding}" y2="${height - bottomPadding}" stroke="${colours.axis}" />
+    <line x1="${leftPadding}" y1="${innerTop}" x2="${leftPadding}" y2="${height - bottomPadding}" stroke="${colours.axis}" />
+    <line class="chart-hover-guide" x1="0" y1="${innerTop}" x2="0" y2="${height - bottomPadding}" stroke="${colours.text}" stroke-dasharray="4 4" visibility="hidden" />
     ${xTickLabels}
     ${yTickLabels}
     ${legend}
     <clipPath id="${clipId}"><rect x="${leftPadding}" y="${innerTop}" width="${innerWidth}" height="${innerHeight}"></rect></clipPath>
     <g clip-path="url(#${clipId})">${lines}</g>
-    <text x="${leftPadding + innerWidth / 2}" y="${height - 4}" text-anchor="middle" fill="#526371" font-size="12" font-weight="600">${xAxisLabel}</text>
-    <text x="16" y="${innerTop + innerHeight / 2}" text-anchor="middle" fill="#526371" font-size="12" font-weight="600" transform="rotate(-90 16 ${innerTop + innerHeight / 2})">${yAxisLabel}</text>
+    <text x="${leftPadding + innerWidth / 2}" y="${height - 4}" text-anchor="middle" fill="${colours.text}" font-size="12" font-weight="600">${xAxisLabel}</text>
+    <text x="16" y="${innerTop + innerHeight / 2}" text-anchor="middle" fill="${colours.text}" font-size="12" font-weight="600" transform="rotate(-90 16 ${innerTop + innerHeight / 2})">${yAxisLabel}</text>
   `;
 }
 
 function drawBarChart(svg, labels, series, width, height, padding, axisLabels = {}, colors = []) {
+  const colours = cdrChartColours(svg);
   const numericSeries = series.map((value) => Number(value)).filter((value) => Number.isFinite(value));
   const maxValue = numericSeries.length > 0 ? Math.max(...numericSeries) : 1;
   const yAxisLabel = String(axisLabels.y || 'Mean metric');
@@ -1214,23 +1229,23 @@ function drawBarChart(svg, labels, series, width, height, padding, axisLabels = 
     const textX = x + Math.max(barWidth - 16, 24) / 2;
     const valueLabel = Number.isFinite(Number(value)) ? Number(value).toFixed(Math.abs(Number(value)) >= 100 ? 0 : 2).replace(/\.00$/, '') : String(value);
     const valueY = scaledHeight > 28 ? y + 18 : Math.max(y - 8, topPadding + 12);
-    const valueFill = scaledHeight > 28 ? 'rgba(255,255,255,0.96)' : '#334550';
+    const valueFill = scaledHeight > 28 ? 'rgba(255,255,255,0.96)' : colours.ink;
     const labelY = height - bottomPadding + 16;
     const tip = escapeChartText(`${label}: ${Number.isFinite(Number(value)) ? Number(value).toFixed(2) : value}`);
     return `
-      <rect x="${x}" y="${y}" width="${Math.max(barWidth - 16, 24)}" height="${scaledHeight}" rx="10" fill="${colors[index] || '#dd653e'}" data-chart-tip="${tip}"></rect>
+      <rect x="${x}" y="${y}" width="${Math.max(barWidth - 16, 24)}" height="${scaledHeight}" rx="10" fill="${colors[index] || colours.bar}" data-chart-tip="${tip}"></rect>
       <text x="${textX}" y="${valueY}" text-anchor="middle" fill="${valueFill}" font-size="11" font-weight="700" pointer-events="none">${valueLabel}</text>
       ${rotateLabels
-        ? `<text x="${textX}" y="${labelY}" text-anchor="end" fill="#526371" font-size="11" transform="rotate(-35 ${textX} ${labelY})" data-chart-tip="${tip}">${escapeChartText(shortLabel(label))}</text>`
-        : `<text x="${textX}" y="${labelY}" text-anchor="middle" fill="#526371" font-size="11" data-chart-tip="${tip}">${escapeChartText(shortLabel(label))}</text>`}
+        ? `<text x="${textX}" y="${labelY}" text-anchor="end" fill="${colours.text}" font-size="11" transform="rotate(-35 ${textX} ${labelY})" data-chart-tip="${tip}">${escapeChartText(shortLabel(label))}</text>`
+        : `<text x="${textX}" y="${labelY}" text-anchor="middle" fill="${colours.text}" font-size="11" data-chart-tip="${tip}">${escapeChartText(shortLabel(label))}</text>`}
     `;
   }).join('');
   svg.chartGeometry = {kind: 'bar', left: leftPadding, top: topPadding, width: innerWidth, height: innerHeight};
   svg.innerHTML = `
-    <line x1="${leftPadding}" y1="${height - bottomPadding}" x2="${width - padding}" y2="${height - bottomPadding}" stroke="#9ab0bc" />
-    <line x1="${leftPadding}" y1="${topPadding}" x2="${leftPadding}" y2="${height - bottomPadding}" stroke="#9ab0bc" />
+    <line x1="${leftPadding}" y1="${height - bottomPadding}" x2="${width - padding}" y2="${height - bottomPadding}" stroke="${colours.axis}" />
+    <line x1="${leftPadding}" y1="${topPadding}" x2="${leftPadding}" y2="${height - bottomPadding}" stroke="${colours.axis}" />
     ${bars}
-    <text x="16" y="${topPadding + innerHeight / 2}" text-anchor="middle" fill="#526371" font-size="12" font-weight="600" transform="rotate(-90 16 ${topPadding + innerHeight / 2})">${yAxisLabel}</text>
+    <text x="16" y="${topPadding + innerHeight / 2}" text-anchor="middle" fill="${colours.text}" font-size="12" font-weight="600" transform="rotate(-90 16 ${topPadding + innerHeight / 2})">${yAxisLabel}</text>
   `;
 }
 
@@ -1518,6 +1533,26 @@ function setupCdfRangeControls(root = document) {
 }
 
 document.querySelectorAll('[data-chart]').forEach((container) => { drawChart(container); setupChartInteractions(container); });
+
+// The colour theme of CDR Analysis: another one recolours the charts at once and is kept for the next visit and the
+// PowerPoint and Word exports.
+(() => {
+  const select = document.querySelector('[data-cdr-theme-select]');
+  const stack = document.querySelector('.datasets-analysis-stack');
+  const tokensNode = document.getElementById('cdr-chart-tokens');
+  if (!select || !stack || !tokensNode) return;
+  const tokens = JSON.parse(tokensNode.textContent || '{}');
+  select.addEventListener('change', () => {
+    const theme = select.value;
+    if (!tokens[theme] || theme === stack.dataset.cdrTheme) return;
+    Object.entries(tokens[theme]).forEach(([name, value]) => stack.style.setProperty(name, value));
+    stack.dataset.cdrTheme = theme;
+    stack.querySelectorAll('[data-chart]').forEach((container) => drawChart(container));
+    fetch('/api/cdr-analysis/theme', {
+      method: 'PUT', credentials: 'same-origin', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({theme}),
+    }).catch(() => {});
+  });
+})();
 setupCdfRangeControls();
 
 document.querySelectorAll('[data-horizontal-wheel-scroll]').forEach((container) => {

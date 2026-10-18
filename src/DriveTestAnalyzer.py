@@ -95,7 +95,7 @@ from src.modules.cdr_stage import (
     CDR_STAGE_LABELS, CDR_STAGES, IN_COMBINED_LABELS, IN_COMBINED_VALUES, combined_dataset_ids, combined_inclusion,
     dataset_cdr_stage, infer_cdr_stage, normalize_cdr_stage, normalize_in_combined,
 )
-from src.modules.scoring_themes import THEMES as SCORING_THEMES, load_user_theme, normalize_theme, save_user_theme, themes_payload
+from src.modules.scoring_themes import THEMES as SCORING_THEMES, load_user_theme, normalize_theme, save_user_theme, themes_payload, use_theme
 from src.modules.scoring_vendors import normalize_scoring_vendor_result, scoring_vendor_name, scoring_vendor_names, scoring_vendor_operators
 from src.modules.cdr_auto_selection import campaign_presets
 from src.modules.saved_filters import (
@@ -15027,6 +15027,10 @@ def datasets_analysis(
             'input_kind_options': input_kind_options,
             'error': analysis_error,
             'restored_address': restored_address,
+            # The colour theme of the charts and tables of the page and of the PowerPoint and Word exports.
+            'cdr_analysis_themes': themes_payload()['themes'],
+            'cdr_analysis_theme': load_user_theme(repository, user.username, CDR_ANALYSIS_THEME_MODULE) if active_workspace else None,
+            'cdr_analysis_chart_tokens': {key: cdr_analysis_chart_tokens(theme) for key, theme in SCORING_THEMES.items()},
         },
     )
 
@@ -20876,21 +20880,59 @@ def build_dataset_summary_reports(
 def write_dataset_summary(
     dataset_ids: list[int] | None, export_kind: str, destination: Path, username: str, **options: Any,
 ) -> tuple[Path, list[dict[str, Any]], list[str]]:
-    """Write the Summary CDR Analysis as PowerPoint ('powerpoint') or Word ('word')."""
+    """Write the Summary CDR Analysis as PowerPoint ('powerpoint') or Word ('word'), in the colour theme the user
+    chose for CDR Analysis."""
     reports, errors = build_dataset_summary_reports(dataset_ids, username, **options)
-    if export_kind == 'word':
-        # The Word document is the PowerPoint summary: one landscape page per slide. The intermediate
-        # presentation has its own name, so it never replaces a PowerPoint written next to it.
-        from src.modules.pptx_to_docx import pptx_to_docx
-        presentation = destination.with_name(f'.{destination.stem}.{uuid4().hex}.pptx')
-        export_dataset_summary_powerpoint(presentation, reports)
-        try:
-            destination.write_bytes(pptx_to_docx(presentation.read_bytes()))
-        finally:
-            presentation.unlink(missing_ok=True)
-    else:
-        export_dataset_summary_powerpoint(destination, reports)
+    with use_theme(load_user_theme(repository, username, CDR_ANALYSIS_THEME_MODULE)):
+        if export_kind == 'word':
+            # The Word document is the PowerPoint summary: one landscape page per slide. The intermediate
+            # presentation has its own name, so it never replaces a PowerPoint written next to it.
+            from src.modules.pptx_to_docx import pptx_to_docx
+            presentation = destination.with_name(f'.{destination.stem}.{uuid4().hex}.pptx')
+            export_dataset_summary_powerpoint(presentation, reports)
+            try:
+                destination.write_bytes(pptx_to_docx(presentation.read_bytes()))
+            finally:
+                presentation.unlink(missing_ok=True)
+        else:
+            export_dataset_summary_powerpoint(destination, reports)
     return destination, reports, errors
+
+
+# The colour theme of CDR Analysis: per user in each workspace, as in Scoring & GAP Analysis and Network Insights.
+CDR_ANALYSIS_THEME_MODULE = 'cdr_analysis'
+
+
+def cdr_analysis_chart_tokens(theme: dict[str, Any]) -> dict[str, str]:
+    """The CSS variables of the CDR Analysis page charts in a theme. The charts sit on the light cards of the page, so
+    their text is the theme's ink softened (its title colour when its surface is dark, as in Midnight), the bars without
+    an Operator or Vendor colour take its accent and the curves its series."""
+    from src.modules.scoring_themes import blend
+    red, green, blue = (int(theme['surface'][index:index + 2], 16) for index in (1, 3, 5))
+    ink = theme['title'] if .299 * red + .587 * green + .114 * blue < 128 else theme['ink']
+    return {'--cdr-chart-ink': ink, '--cdr-chart-muted': blend(ink, '#FFFFFF', .35), '--cdr-chart-axis': blend(ink, '#FFFFFF', .6),
+            '--cdr-chart-bar': theme['accent'], '--cdr-chart-series': ','.join(theme['series'])}
+
+
+@app.get('/api/cdr-analysis/theme')
+def cdr_analysis_theme_get(user: SessionUser = Depends(current_user)) -> dict[str, Any]:
+    """The colour theme the user chose for the CDR Analysis charts, tables and exports, with every theme."""
+    if not active_workspace:
+        raise HTTPException(status_code=409, detail='Open a workspace before using CDR Analysis.')
+    return {'theme': load_user_theme(repository, user.username, CDR_ANALYSIS_THEME_MODULE), **themes_payload()}
+
+
+@app.put('/api/cdr-analysis/theme')
+def cdr_analysis_theme_put(payload: ScoringThemeRequest, user: SessionUser = Depends(current_user)) -> dict[str, Any]:
+    if not active_workspace:
+        raise HTTPException(status_code=409, detail='Open a workspace before using CDR Analysis.')
+    if payload.theme.strip().casefold() not in SCORING_THEMES:
+        raise HTTPException(status_code=400, detail=f'Unknown theme: {payload.theme}.')
+    previous = load_user_theme(repository, user.username, CDR_ANALYSIS_THEME_MODULE)
+    theme = save_user_theme(repository, user.username, payload.theme, CDR_ANALYSIS_THEME_MODULE)
+    if theme != previous:
+        repository.add_log(user.username, 'cdr_analysis_theme_changed', json.dumps({'theme': theme, 'previous': previous}))
+    return {'theme': theme}
 
 
 def cdr_analysis_export_dir() -> Path:
@@ -20913,7 +20955,8 @@ def export_dataset_summary(
         write_dataset_summary(dataset_ids, export_kind, destination, user.username)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    repository.add_log(user.username, f'export_dataset_summary_{export_kind}', json.dumps({'dataset_ids': dataset_ids, 'file': destination.name}))
+    repository.add_log(user.username, f'export_dataset_summary_{export_kind}', json.dumps({
+        'dataset_ids': dataset_ids, 'file': destination.name, 'theme': load_user_theme(repository, user.username, CDR_ANALYSIS_THEME_MODULE)}))
     media_type = ('application/vnd.openxmlformats-officedocument.wordprocessingml.document' if export_kind == 'word'
                   else 'application/vnd.openxmlformats-officedocument.presentationml.presentation')
     return FileResponse(destination, filename=f'{stamp} - CDR Analysis - Summary.{suffix}', media_type=media_type)
@@ -21002,11 +21045,13 @@ def export_report(
                      for item in analyses],
     }
 
+    export_theme = load_user_theme(repository, user.username, CDR_ANALYSIS_THEME_MODULE)
     report_hash = hashlib.sha1(
         json.dumps(
             {
                 'version': POWERPOINT_EXPORT_VERSION,
                 'payload': report_payload,
+                'theme': export_theme,
             },
             sort_keys=True,
             default=str,
@@ -21015,7 +21060,9 @@ def export_report(
     presentation = safe_join(cdr_analysis_export_dir(), f'{file_stem}_report_{report_hash}.pptx')
     try:
         if not presentation.exists():
-            export_powerpoint_report(presentation, report_payload)
+            # In the colour theme the user chose for CDR Analysis.
+            with use_theme(export_theme):
+                export_powerpoint_report(presentation, report_payload)
         if export_kind == 'word':
             # The Word document is the same report: one landscape page per slide, as in PowerPoint.
             from src.modules.pptx_to_docx import pptx_to_docx
@@ -21030,7 +21077,7 @@ def export_report(
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f'The {export_kind} export failed: {exc}') from exc
 
-    repository.add_log(user.username, f'export_{export_kind}', destination.name)
+    repository.add_log(user.username, f'export_{export_kind}', json.dumps({'file': destination.name, 'theme': export_theme}))
     original_name = Path(selected_dataset['file_name']).name
     original_stem = Path(original_name).stem
     # Every document starts with its time stamp and module: yyyymmdd_hhmmss - CDR Analysis - <CDR>.

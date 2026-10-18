@@ -376,6 +376,37 @@ def themes_payload() -> dict[str, Any]:
             'sources': sources}
 
 
+# The neutral colours the chart renderer of PPT Dashboards (dashboard_charts.js) draws with, by role: what a theme
+# translates (series, operator, vendor and threshold colours stay as they are).
+_RENDERER_ROLES = {
+    'title': ('#1D3345',),
+    'header': ('#23384A',),
+    'strong': ('#263B4A', '#34495A'),
+    'text': ('#405765', '#4E6271', '#495057', '#566A78', '#5A6B78', '#607887', '#61727D', '#62727E'),
+    'soft': ('#868E96', '#8296A3'),
+    'axis': ('#AEBBC4', '#A8B7C0', '#B5C0C8', '#BCC8D0'),
+    'grid': ('#C8D2D9', '#CDD7DE', '#D7DEE3', '#D9E1E6', '#E4E9ED', '#E8ECEF'),
+    'alternate': ('#F4F7F9',),
+}
+
+
+def dashboard_chart_style(theme: dict[str, Any] | str | None = None) -> dict[str, Any]:
+    """The style of a theme for the chart renderer of PPT Dashboards (the ``style`` of a chart model): its font and the
+    colours that replace the renderer's greys. The charts sit on white slides and cards, so the text is the theme's ink
+    (its title colour when its surface is dark, as in Midnight) and the table headers its header colour (its title
+    colour when that header carries dark text)."""
+    theme = theme if isinstance(theme, dict) else get_theme(theme)
+    luminance = lambda color: sum(weight * channel for weight, channel in zip((.299, .587, .114), _rgb(color))) / 255
+    ink = theme['title'] if luminance(theme['surface']) < .5 else theme['ink']
+    header = theme['header'] if luminance(theme['header_text']) > .5 else theme['title']
+    colours = {'title': theme['title'], 'header': header, 'strong': ink, 'text': blend(ink, '#FFFFFF', .2), 'soft': blend(ink, '#FFFFFF', .45),
+               'axis': blend(ink, '#FFFFFF', .62), 'grid': blend(ink, '#FFFFFF', .86), 'alternate': theme['row_alt']}
+    if luminance(theme['row_alt']) < .5:
+        colours['alternate'] = '#F7F8FA'
+    return {'theme': theme['id'] if 'id' in theme else None, 'font': theme['font'],
+            'colours': {source: colours[role] for role, sources in _RENDERER_ROLES.items() for source in sources}}
+
+
 def user_theme_key(username: str, module: str = 'scoring') -> str:
     return f'{module}_theme:{username}'
 

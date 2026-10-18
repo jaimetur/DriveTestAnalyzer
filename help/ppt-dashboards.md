@@ -267,8 +267,11 @@ Campaign labels are compact, such as **2026-Q2**, **2026-Q2-NSA** or **2026-Q2-S
 | Left / Right Arrow | Navigate when focus is outside editable controls |
 | **Scope** | Switch Operator/Multivendor after confirmation |
 | **Dashboard Filters** | Edit the live selection in a floating panel |
+| **Theme** | Colour the charts and the content slide titles of the viewer and of the Dashboard PPTs |
 | **Generate PPT** | Export the selection |
 | **Refresh Dashboard** | Refresh the Dashboard preparation |
+
+**Theme** uses the colour themes of [Scoring & GAP Analysis](scoring-gap-analysis.md) (**NetCheck** by default, **Umlaut**, **Ericsson**, **Vodafone**, **Midnight**, **Paper** and **Heatmap**): the charts take its font and its colours for text, axes, grid lines, table headers and alternate rows (the colours of operators, vendors and thresholds stay as they are), and the titles and subtitles of the content slides of the PPT take its title style; Title and Transition slides keep the template look. Each user keeps a theme per workspace; changing it redraws the charts at once, is kept for the next visit and the Dashboard PPTs generated afterwards (also from Reporting Jobs), and is recorded in the App Events log.
 
 Changing Scope renders the charts again with the Dashboard filters (a Campaign that still has the default of the former Scope takes the default of the new one). Multivendor is unavailable when the workspace has fewer than two Vendors.
 
