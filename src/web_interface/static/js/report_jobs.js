@@ -760,7 +760,7 @@
     const nrMode = select([['NSA', 'NSA'], ['SA', 'SA']], selection.nr_mode || 'NSA');
     const technology = select(Object.entries(options.technologies), selection.technology || 'lte');
     // The colours of the charts and tables of its documents (the themes of Scoring & GAP Analysis).
-    const theme = select((options.scoring_themes || []).map((item) => [item.id, item.label || item.id]), entry.theme || 'netcheck');
+    const theme = select((options.scoring_themes || []).map((item) => [item.id, item.label || item.id]), entry.theme || options.default_theme || 'netcheck');
     const number = (value, step) => { const input = node('input'); input.type = 'number'; input.step = step; input.value = value; return input; };
     const thresholds = [
       ['lte', 'LTE coverage below (dBm)', 'coverage_threshold', number(selection.coverage_threshold ?? -110, 1)],

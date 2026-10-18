@@ -127,7 +127,9 @@
     return wrapper;
   };
   // One colour theme for the whole report, beside its title: every section that supports themes takes it.
-  const reportTheme = () => $('cr-theme').value || definition?.theme || 'netcheck';
+  // The default theme of the application (that of a new report) when none is chosen.
+  const defaultTheme = () => crOptions?.defaults?.theme || 'netcheck';
+  const reportTheme = () => $('cr-theme').value || definition?.theme || defaultTheme();
   const numberField = (label, value, step, title = '') => {
     const wrapper = node('label', label, 'cr-field');
     const input = node('input');
@@ -499,7 +501,7 @@
       if (item.description) option.title = item.description;
       return option;
     }));
-    theme.value = definition.theme || scoringTheme || 'netcheck';
+    theme.value = definition.theme || scoringTheme || defaultTheme();
     if (!theme.value && theme.options.length) theme.selectedIndex = 0;
     filterPickers = {};
     renderFilters();

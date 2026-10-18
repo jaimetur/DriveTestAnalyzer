@@ -1645,6 +1645,8 @@ def install_report_task_routes(core: Any) -> None:
             'methodologies': methodologies, 'active_methodology': active_methodology,
             # The colour themes the Scoring report editor offers (see scoring_themes).
             'scoring_themes': themes_payload()['themes'],
+            # The default theme of the application, that of a new artifact.
+            'default_theme': themes_payload()['default'],
             # The CDRs the automatic choices of CDR Analysis select now, per NR Mode (they choose again at each run).
             'automatic_cdrs': automatic_cdr_preview(task_repository),
             # The campaigns of the CDRs of each NR Mode, and the choices that follow the newest ones.
