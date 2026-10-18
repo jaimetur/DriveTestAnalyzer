@@ -169,7 +169,7 @@ The **Theme** selector, beside Scoring and Environment, gives every chart and ta
 | --- | --- | --- |
 | **NetCheck** | As the NetCheck reports: blue titles, white lists with thin rules, operators on strips in their colour, amber Voice and teal Data, a bold total | Excel-like data bars as long as the share of the maximum, in the colour of the score band |
 | **Umlaut** | As the umlaut benchmark reports: bold dark titles over a red headline, white lists with thin rules, light grey panels and quality classes from red to green | Bars as long as the share of the maximum, in the colour of the score band |
-| **Ericsson** | Ericsson blue on black and white, black rules opening the sections and closing the table, each operator ruled in its colour across all its columns | Square cells filled as far as the share of the maximum, in the colour of the band; GAPs in black after a small ▲ or ▼ in their colour, over a bar either side of zero |
+| **Ericsson** | The colours of the Ericsson brand guide: its greys, table headers in its deep blue, the light tints of its colours for the fills and its deep shades for the ends of each scale; dark grey rules opening the sections and closing the table, each operator ruled in its colour across all its columns | Square cells filled as far as the share of the maximum, in the tint of the band; GAPs in dark grey after a small ▲ or ▼ in their colour, over a bar either side of zero |
 | **Vodafone** | Vodafone red and anthracite, operators as pills in their colour, a dark grey total | Rounded pills tinted with the score band |
 | **Midnight** | Navy panels with light text and neon accents | Dark cards with a glowing bar of the share of the maximum |
 | **Paper** | A typeset report: serif type, black rules, italic small-capital sections | Scores underlined in the colour of their band |
@@ -181,7 +181,7 @@ Each theme also styles the titles and subtitles of every content slide of the Po
 | --- | --- | --- |
 | **NetCheck** | Montserrat, blue, the first part in light capitals and what tells the slide apart in bold (*BEST NETWORK SCORING* **per Category**) | Blue, their first part in bold |
 | **Umlaut** | Arial, bold, dark | Red |
-| **Ericsson** | Ericsson Hilda Light in grey, not bold; only what tells the slide apart from the next ones in Ericsson Hilda, black and bold | Grey |
+| **Ericsson** | Ericsson Hilda Light in grey, not bold; only what tells the slide apart from the next ones in Ericsson Hilda, bold and in the deep Ericsson blue | Grey |
 | **Vodafone** | Vodafone Rg, bold anthracite, what tells the slide apart in red | Anthracite |
 | **Midnight** | Segoe UI, bold navy, what tells the slide apart in cyan | Cyan |
 | **Paper** | Georgia, black, what tells the slide apart in dark red italics | Dark red italics |

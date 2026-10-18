@@ -547,3 +547,93 @@ body:has(dialog.ni-expand-dialog[open]){overflow:hidden}
 .ni-table-details>.ni-table-wrap{margin-top:8px}
 .ni-inline-bar{display:inline-block;width:3.2rem;height:.5rem;margin-right:.45rem;border-radius:999px;background:color-mix(in srgb,var(--nit-track,#c1c8ce) 40%,transparent);overflow:hidden;vertical-align:middle}
 .ni-inline-bar>span{display:block;height:100%;border-radius:inherit;background:var(--nit-loss,#e8414f)}
+/* ===== The design of each theme (data-ni-theme): not only its colours, the way its tables, bars and cards are drawn ===== */
+/* Ericsson: white space, Ericsson Hilda, black hairlines, uppercase grey headers, thin square bars and a blue accent. */
+.network-insights[data-ni-theme="ericsson"] .ni-table-wrap{border:0;border-radius:0;background:transparent}
+.network-insights[data-ni-theme="ericsson"] .ni-table{font-family:"Ericsson Hilda","Helvetica Neue",Helvetica,Arial,sans-serif;border:0;border-radius:0}
+.network-insights[data-ni-theme="ericsson"] .ni-table th{background:#0068bf!important;color:#fff!important;font-size:.68rem;font-weight:500;letter-spacing:.07em;text-transform:uppercase;border-bottom:0;padding-top:12px}
+.network-insights[data-ni-theme="ericsson"] .ni-table tbody tr:nth-child(n){background:transparent}
+.network-insights[data-ni-theme="ericsson"] .ni-table tbody tr:hover{background:#f2f8fe}
+.network-insights[data-ni-theme="ericsson"] .ni-table td{border-top:0;border-bottom:1px solid #e0e0e0;font-weight:400}
+.network-insights[data-ni-theme="ericsson"] .ni-table td.num{font-weight:500}
+.network-insights[data-ni-theme="ericsson"] :is(.ni-class-bar,.ni-share,.ni-inline-bar){height:.42rem;border-radius:0;background:#e0e0e0}
+.network-insights[data-ni-theme="ericsson"] .ni-class-bar>span{box-shadow:inset -1px 0 0 #fff}
+.network-insights[data-ni-theme="ericsson"] .ni-inline-bar>span{border-radius:0;background:#0068bf}
+.network-insights[data-ni-theme="ericsson"] .ni-swatch{width:.55rem;height:.55rem;border-radius:50%}
+.network-insights[data-ni-theme="ericsson"] .ni-range-chart,.network-insights[data-ni-theme="ericsson"] .ni-band-share-card{border:0;border-top:3px solid #0068bf;border-radius:0;box-shadow:0 1px 0 #e0e0e0,0 12px 28px rgba(12,12,12,.06)}
+.network-insights[data-ni-theme="ericsson"] .ni-range-band{height:.3rem;top:calc(50% - .15rem);border:0;border-radius:0}
+.network-insights[data-ni-theme="ericsson"] .ni-range-median{width:2px;margin-left:-1px;background:#242424!important}
+.network-insights[data-ni-theme="ericsson"] .ni-band-share-bar{height:.85rem;border-radius:0;gap:2px}
+.network-insights[data-ni-theme="ericsson"] .ni-band-share-bar span{text-shadow:none;font-weight:500}
+.network-insights[data-ni-theme="ericsson"] .ni-finding{border:0;border-top:3px solid #0068bf;border-radius:0;padding:30px 34px 24px;box-shadow:0 1px 0 #e0e0e0,0 18px 40px rgba(12,12,12,.07)}
+.network-insights[data-ni-theme="ericsson"] .ni-finding-head h3{font-weight:300;letter-spacing:-.015em}
+.network-insights[data-ni-theme="ericsson"] .ni-finding-tag{border-width:1px;border-radius:0;font-weight:500;letter-spacing:.06em;text-transform:uppercase;font-size:.66rem}
+.network-insights[data-ni-theme="ericsson"] .ni-finding h4{font-weight:500;font-size:.72rem;letter-spacing:.07em;text-transform:uppercase;color:#767676}
+.network-insights[data-ni-theme="ericsson"] .ni-finding-stack{height:.85rem;gap:2px}
+.network-insights[data-ni-theme="ericsson"] .ni-finding-row.is-tall .ni-finding-stack{height:1.5rem}
+.network-insights[data-ni-theme="ericsson"] .ni-finding-stack span{font-weight:500}
+.network-insights[data-ni-theme="ericsson"] .ni-finding-card{border-radius:0;background:#fafafa;border-left:1px solid #e0e0e0}
+.network-insights[data-ni-theme="ericsson"] .ni-finding-meaning{border-left:3px solid #0068bf;background:#f2f8fe}
+.network-insights[data-ni-theme="ericsson"] .ni-finding-meaning strong{color:#242424;font-weight:600}
+.network-insights[data-ni-theme="ericsson"] .ni-finding-mark{width:3px;margin-left:-1.5px;border-radius:0}
+.network-insights[data-ni-theme="ericsson"] .ni-finding-range{height:3px;border-radius:0;top:calc(50% - 1.5px)}
+.network-insights[data-ni-theme="ericsson"] .ni-finding-bar span{height:.7rem;border-radius:0}
+.network-insights[data-ni-theme="ericsson"] .ni-finding-ladder-stack span{box-shadow:inset 0 -2px 0 #fff}
+/* Heatmap: soft tiles. Rows of tiles apart from each other, rounded bars and tinted panels. */
+.network-insights[data-ni-theme="heatmap"] .ni-table-wrap{border:0;background:transparent}
+.network-insights[data-ni-theme="heatmap"] .ni-table{border-collapse:separate;border-spacing:0 4px;border:0}
+.network-insights[data-ni-theme="heatmap"] .ni-table th{background:transparent!important;color:#5b6b78!important;font-weight:700;border:0}
+.network-insights[data-ni-theme="heatmap"] .ni-table tbody tr:nth-child(n) td{background:#f4f7f9;border:0}
+.network-insights[data-ni-theme="heatmap"] .ni-table tbody tr:hover td{background:#e8f4f2}
+.network-insights[data-ni-theme="heatmap"] .ni-table tbody td:first-child{border-radius:8px 0 0 8px}
+.network-insights[data-ni-theme="heatmap"] .ni-table tbody td:last-child{border-radius:0 8px 8px 0}
+.network-insights[data-ni-theme="heatmap"] :is(.ni-class-bar,.ni-share,.ni-inline-bar){height:.7rem;border-radius:6px}
+.network-insights[data-ni-theme="heatmap"] .ni-class-bar{gap:2px;background:transparent}
+.network-insights[data-ni-theme="heatmap"] .ni-class-bar>span{border-radius:3px}
+.network-insights[data-ni-theme="heatmap"] .ni-heat{border-radius:6px}
+.network-insights[data-ni-theme="heatmap"] .ni-range-chart,.network-insights[data-ni-theme="heatmap"] .ni-band-share-card{border:0;border-radius:16px;background:#f6f8fa}
+.network-insights[data-ni-theme="heatmap"] .ni-band-share-bar{gap:3px;height:1.35rem;border-radius:0}
+.network-insights[data-ni-theme="heatmap"] .ni-band-share-bar span{border-radius:5px}
+.network-insights[data-ni-theme="heatmap"] .ni-finding{border:0;border-radius:20px;background:linear-gradient(180deg,#fff,#f8fafb);box-shadow:0 14px 34px rgba(31,42,55,.08)}
+.network-insights[data-ni-theme="heatmap"] .ni-finding-stack{gap:3px;height:1.25rem;border-radius:0}
+.network-insights[data-ni-theme="heatmap"] .ni-finding-row.is-tall .ni-finding-stack{height:2.2rem}
+.network-insights[data-ni-theme="heatmap"] .ni-finding-stack span{border-radius:5px}
+.network-insights[data-ni-theme="heatmap"] .ni-finding-card{border-radius:16px;background:#f1f5f7}
+.network-insights[data-ni-theme="heatmap"] .ni-finding-meaning{border-left:0;border-radius:12px;background:#e6f4f1}
+.network-insights[data-ni-theme="heatmap"] .ni-finding-tag{border:0;background:#e6f4f1;color:#1f6f66}
+.network-insights[data-ni-theme="heatmap"] .ni-finding-bar span{border-radius:6px}
+.network-insights[data-ni-theme="heatmap"] .ni-finding-ladder-stack span{border-radius:4px;margin-top:2px}
+/* Umlaut: white with light grey panels, grey headers without a band, thin rules and flat bars. */
+.network-insights[data-ni-theme="umlaut"] .ni-table th{background:#fff!important;color:#5b5b6b!important;font-weight:700;border-bottom:1px solid #d9d6dc}
+.network-insights[data-ni-theme="umlaut"] .ni-table tbody tr:nth-child(odd){background:#fff}
+.network-insights[data-ni-theme="umlaut"] .ni-table tbody tr:nth-child(even){background:#f7f6f8}
+.network-insights[data-ni-theme="umlaut"] .ni-table td{border-top:0}
+.network-insights[data-ni-theme="umlaut"] :is(.ni-class-bar,.ni-share,.ni-inline-bar){border-radius:0;height:.75rem}
+.network-insights[data-ni-theme="umlaut"] .ni-range-chart,.network-insights[data-ni-theme="umlaut"] .ni-band-share-card{border:0;border-radius:4px;background:#f4f2f4}
+.network-insights[data-ni-theme="umlaut"] .ni-finding{border-radius:2px;box-shadow:0 2px 10px rgba(28,28,40,.08)}
+.network-insights[data-ni-theme="umlaut"] .ni-finding-card{border-radius:4px;background:#f4f2f4}
+/* NetCheck: as the NetCheck reports, white lists with thin grey rules, a light header and Excel-like data bars. */
+.network-insights[data-ni-theme="netcheck"] .ni-table th{background:#f2f4f6!important;color:#17232d!important;font-size:.72rem;text-transform:uppercase;letter-spacing:.03em}
+.network-insights[data-ni-theme="netcheck"] .ni-table tbody tr:nth-child(n){background:#fff}
+.network-insights[data-ni-theme="netcheck"] .ni-table td{border-top:1px solid #e6e9ed}
+.network-insights[data-ni-theme="netcheck"] .ni-inline-bar{border-radius:0;height:.7rem}
+.network-insights[data-ni-theme="netcheck"] .ni-inline-bar>span{border-radius:0;background:linear-gradient(90deg,#e8414f,#fbe1df)}
+.network-insights[data-ni-theme="netcheck"] .ni-share>span{background:linear-gradient(90deg,#1450a8,#dce8f8)}
+.network-insights[data-ni-theme="netcheck"] .ni-finding{border-radius:4px;border-top:4px solid #1450a8}
+/* Vodafone: rounded, red header bands and pill bars. */
+.network-insights[data-ni-theme="vodafone"] .ni-table-wrap{border-radius:14px}
+.network-insights[data-ni-theme="vodafone"] :is(.ni-class-bar,.ni-share,.ni-inline-bar){height:.8rem;border-radius:999px}
+.network-insights[data-ni-theme="vodafone"] .ni-finding{border-radius:22px;border-top:6px solid #e60000}
+.network-insights[data-ni-theme="vodafone"] .ni-finding-stack{border-radius:999px}
+.network-insights[data-ni-theme="vodafone"] .ni-finding-card{border-radius:18px}
+/* Midnight: dark glowing panels. */
+.network-insights[data-ni-theme="midnight"] .ni-table-wrap{border-color:#22314a;box-shadow:0 0 0 1px rgba(61,185,255,.12)}
+.network-insights[data-ni-theme="midnight"] :is(.ni-class-bar,.ni-share,.ni-inline-bar){box-shadow:0 0 8px rgba(61,185,255,.35)}
+.network-insights[data-ni-theme="midnight"] .ni-finding{box-shadow:0 0 0 1px #22314a,0 18px 40px rgba(0,0,0,.35)}
+/* Paper: a printed page, serif type, black rules and no fills. */
+.network-insights[data-ni-theme="paper"] .ni-table{font-family:Georgia,"Times New Roman",serif}
+.network-insights[data-ni-theme="paper"] .ni-table th{background:transparent!important;color:#1a1a1a!important;font-style:italic;border-bottom:1px solid #1a1a1a}
+.network-insights[data-ni-theme="paper"] .ni-table tbody tr:nth-child(n){background:transparent}
+.network-insights[data-ni-theme="paper"] :is(.ni-class-bar,.ni-share,.ni-inline-bar){border-radius:0;height:.35rem}
+.network-insights[data-ni-theme="paper"] .ni-finding{border-radius:0;box-shadow:none;border:1px solid #1a1a1a}
+.network-insights[data-ni-theme="paper"] .ni-finding-card{border-radius:0;background:transparent;border:1px solid #d9d4c7}

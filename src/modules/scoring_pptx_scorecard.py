@@ -35,11 +35,12 @@ STYLES: dict[str, dict[str, Any]] = {
                'section_rule': '#E4E2E6', 'total': '#FFFFFF', 'total_ink': '#1C1C28', 'total_rule': '#1C1C28',
                'gap_card': '#FFFFFF', 'gain_bar': '#93C47D', 'loss_bar': '#E39B94', 'gain': '#2F7D4A', 'loss': '#A6192E',
                'reliable': '#5B7A99', 'diff': '#B86E00', 'best': '#DCEFD6', 'worst': '#F6D5D2', 'operators': 'fill'},
-    'ericsson': {'score': 'bar', 'bar_mix': .38, 'card': '#F5F5F5', 'label': '#FFFFFF', 'ink': '#0C0C0C', 'muted': '#6A6A6A',
-                 'header': '#FFFFFF', 'header_ink': '#0C0C0C', 'section': '#FFFFFF', 'section_ink': '#0C0C0C',
-                 'section_rule': '#0C0C0C', 'total': '#FFFFFF', 'total_ink': '#0C0C0C', 'total_rule': '#0C0C0C',
-                 'gap_card': '#F5F5F5', 'gain_bar': '#9FE6C6', 'loss_bar': '#FFB3B3', 'gain': '#0A8F55', 'loss': '#D11F1F',
-                 'reliable': '#0069C2', 'diff': '#C25E00', 'best': '#E7F9F0', 'worst': '#FFECEC', 'operators': 'underline',
+    'ericsson': {'score': 'bar', 'bar_mix': .38, 'card': '#F2F2F2', 'label': '#FFFFFF', 'ink': '#242424', 'muted': '#767676',
+                 'header': '#0068BF', 'header_ink': '#FFFFFF', 'header_label': '#FFFFFF', 'section': '#FFFFFF',
+                 'section_ink': '#242424', 'section_rule': '#242424', 'total': '#FFFFFF', 'total_ink': '#242424',
+                 'total_rule': '#242424', 'gap_card': '#F2F2F2', 'gain_bar': '#B7EDD6', 'loss_bar': '#FFC1C1',
+                 'gain': '#0C9B5B', 'loss': '#CC2828', 'reliable': '#0068BF', 'diff': '#CC7007', 'best': '#B7EDD6',
+                 'worst': '#FFC1C1', 'operators': 'underline',
                  'gap_marker': True},
     'vodafone': {'score': 'solid', 'bar_mix': .26, 'card': '#F4F4F4', 'label': '#FFFFFF', 'ink': '#333333', 'muted': '#7E7E7E',
                  'header': '#FFFFFF', 'header_ink': '#4A4D4E', 'section': '#F2F2F2', 'section_ink': '#333333',
@@ -382,7 +383,8 @@ def _style_headers(table, header_rows: int, label_column: int, font: str | None)
             if row_index == 0 and column_index == label_column:
                 solid(cell, current['header'])
                 write(cell, [({'CATEGORY': 'Category', 'NETCHECK KPIS': 'NetCheck KPIs'}.get(text.strip().upper(), text),
-                              {'size': size, 'color': current['muted'], 'bold': True})], align=PP_ALIGN.LEFT, font=font)
+                              {'size': size, 'color': current.get('header_label', current['muted']), 'bold': True})],
+                      align=PP_ALIGN.LEFT, font=font)
                 continue
             if fill is None or fill in neutral:
                 solid(cell, current['header'])
@@ -397,7 +399,8 @@ def _style_headers(table, header_rows: int, label_column: int, font: str | None)
                 write(cell, [(text, {'size': size, 'color': ink, 'bold': True})], font=font)
             else:
                 solid(cell, current['header'])
-                ink = current['ink'] if current['header'] != '#FFFFFF' and current['header'] != '#FFFEFB' else fill
+                ink = current.get('header_label') or (
+                    current['ink'] if current['header'] != '#FFFFFF' and current['header'] != '#FFFEFB' else fill)
                 write(cell, [(text, {'size': size, 'color': ink, 'bold': True,
                                      'italic': bool(current.get('italic'))})], font=font)
                 border(cell, 'lnB', fill, 2.25)
