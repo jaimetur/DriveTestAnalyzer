@@ -18,6 +18,9 @@ from pptx import Presentation
 from pptx.util import Inches, Pt
 
 from src.modules.exports import MUTED, ORANGE, _add_textbox
+from src.modules.network_insights_findings import VIEW_TITLES
+from src.modules.network_insights_findings_slides import add_band_share_slides, add_finding_slides, ladder_colours, palette
+from src.modules.scoring_themes import active_theme
 from src.utils.fonts import load_image_font
 
 # Renders a Canvas chart model to PNG bytes at the requested pixel size.
@@ -29,6 +32,9 @@ TABLE_ROWS_PER_SLIDE = 12
 # chooses them (see complete_reports): (panel key, panel title, ((component key, label), ...)).
 REPORT_PANELS: tuple[tuple[str, str, tuple[tuple[str, str], ...]], ...] = (
     ('overview', 'Overview', (('cards', 'Overview cards'),)),
+    ('findings', 'Key Findings', (('lte_signal', 'LTE signal at the test'), ('nr_signal', '5G signal at the test'),
+                                  ('bandwidth_spread', 'Bandwidth: spread and narrow tests'), ('technology', 'Technology in use'),
+                                  ('bands', 'Bands in use'), ('total_bandwidth', 'Total bandwidth'))),
     ('maps', 'Coverage & Interference Maps', (('maps', 'Coverage and interference maps with their weakest areas'),
                                               ('cell_status', 'Cell status near the weak areas'))),
     ('rf_quality', 'RF Quality', (('cdfs', 'RSRP and SINR distributions with their classes'),
@@ -54,6 +60,7 @@ REPORT_PANELS: tuple[tuple[str, str, tuple[tuple[str, str], ...]], ...] = (
 )
 # Slide titles (their start) and the panel and component they belong to; the first match wins.
 _COMPONENT_TITLES: tuple[tuple[str, str], ...] = (
+    *((title, f'findings.{key}') for key, title in VIEW_TITLES.items()),
     ('Analysis Selection', 'selection.selection'), ('Analysis Notes', 'selection.notes'),
     ('Overview', 'overview.cards'), ('Coverage & Interference Maps', 'maps.maps'),
     ('Cell status near the weak areas', 'maps.cell_status'), ('RF Quality · NR quality per carrier', 'rf_quality.nr_carriers'),
@@ -339,7 +346,9 @@ def bandwidth_ladder_image(analysis: dict[str, Any], scope: str = 'download') ->
     cells = {(cell['column'], cell['environment']): cell for cell in ladders.get('cells') or []}
     if not any(cell.get('known') for cell in cells.values()):
         return None
+    # The classes in the scale of the active theme, the widest in its best colour.
     classes = bandwidth.get('classes') or []
+    classes = [{**item, 'colour': colour} for item, colour in zip(classes, ladder_colours(palette(), len(classes)))]
     columns, rows = ladders.get('columns') or [], ladders.get('environments') or []
     label_width, column_width, header, row_height, legend_height = 340, 420, 80, 360, 112
     title_font, text_font, small_font = load_image_font(30, bold=True), load_image_font(28, bold=True), load_image_font(26)
@@ -723,11 +732,15 @@ CLASS_BAR_BLOCK = '\u2588'
 
 
 def class_bar_segments(classes: list[dict[str, Any]], blocks: int = CLASS_BAR_BLOCKS) -> list[tuple[int, str]]:
-    """Split a bar of ``blocks`` characters between the quality classes in proportion to their shares.
+    """Split a bar of ``blocks`` characters between the quality classes in proportion to their shares, the best
+    class first, in the scale of the active theme.
 
     The bar is written as coloured block characters inside the table cell, so it always stays in its row.
     """
-    shares = [(float(item.get('share') or 0), str(item.get('colour') or '#999999')) for item in classes]
+    scale = palette()['scale']
+    shares = [(float(item.get('share') or 0),
+               scale[round((len(classes) - 1 - index) / max(1, len(classes) - 1) * (len(scale) - 1))] if scale
+               else str(item.get('colour') or '#999999')) for index, item in enumerate(classes)]
     total = sum(share for share, _colour in shares)
     if total <= 0:
         return []
@@ -775,6 +788,17 @@ def _ppt_table_parts(columns: list[str], rows: list[list[str]], width: float):
 
 
 # Tables follow the page: a light teal header, light lavender alternate rows, thin lines and right-aligned numbers.
+def table_colours() -> dict[str, str]:
+    """The colours of the tables in the active theme (see scoring_themes): its header, alternate rows, rules, text and
+    share bars."""
+    theme = active_theme()
+    colours = palette(theme)
+    plain = lambda value, fallback: str(value or fallback).lstrip('#').upper()
+    return {'header': plain(theme.get('header'), TABLE_HEADER_FILL), 'header_text': plain(theme.get('header_text'), TABLE_HEADER_TEXT),
+            'odd': plain(theme.get('row_alt'), TABLE_ODD_FILL), 'even': TABLE_EVEN_FILL, 'line': plain(theme.get('line'), TABLE_LINE),
+            'text': plain(colours['ink'], TABLE_TEXT), 'share': plain(colours['accent'], SHARE_BAR_FILL)}
+
+
 TABLE_HEADER_FILL = 'D9EEF1'
 TABLE_HEADER_TEXT = '16505A'
 TABLE_ODD_FILL = 'F7F7FF'
@@ -815,10 +839,11 @@ def _add_table(slide, columns: list[str], rows: list[list[str]], left: float, to
     for index, column_width in enumerate(widths):
         table.columns[index].width = Inches(column_width)
     numeric = _numeric_columns(rows, len(columns))
-    # The template's banded style is replaced by the colours of the page.
+    # The template's banded style is replaced by the colours of the theme.
     table.first_row = table.horz_banding = False
+    colours = table_colours()
     for row_index, values in enumerate([columns, *rows]):
-        fill = TABLE_HEADER_FILL if row_index == 0 else (TABLE_ODD_FILL if row_index % 2 else TABLE_EVEN_FILL)
+        fill = colours['header'] if row_index == 0 else (colours['odd'] if row_index % 2 else colours['even'])
         for column, value in enumerate(values):
             cell = table.cell(row_index, column)
             cell.text = _single_line(value)
@@ -828,7 +853,7 @@ def _add_table(slide, columns: list[str], rows: list[list[str]], left: float, to
             cell.fill.solid()
             cell.fill.fore_color.rgb = RGBColor.from_string(fill)
             cell.vertical_anchor = MSO_ANCHOR.MIDDLE
-            _ppt_cell_line(cell, TABLE_LINE)
+            _ppt_cell_line(cell, colours['line'])
             for paragraph in cell.text_frame.paragraphs:
                 paragraph.space_before = paragraph.space_after = Pt(0)
                 paragraph.alignment = PP_ALIGN.RIGHT if column in numeric else PP_ALIGN.LEFT
@@ -836,7 +861,7 @@ def _add_table(slide, columns: list[str], rows: list[list[str]], left: float, to
                     run.font.size = Pt(font_size)
                     run.font.bold = row_index == 0
                     run.font.color.rgb = RGBColor.from_string(
-                        TABLE_HEADER_TEXT if row_index == 0 else SHARE_BAR_FILL if _is_share_bar(str(value)) else TABLE_TEXT)
+                        colours['header_text'] if row_index == 0 else colours['share'] if _is_share_bar(str(value)) else colours['text'])
     for row in table.rows:
         row.height = Inches(row_height)
     return table
@@ -1109,6 +1134,14 @@ def export_network_insights_powerpoint(destination: Path, analysis: dict[str, An
     for suffix, section in sections:
         emitted(f'Overview{suffix}', lambda section=section, suffix=suffix: _overview_slides(
             presentation, f'Overview{suffix}', overview_cards(analysis, section), subtitle=measured))
+    # Key Findings: benchmark slides of the Data tests, their scope and Campaigns in the footnote.
+    findings = analysis.get('findings') or {}
+    # The campaigns the views compare: the latest one with a split by Campaign.
+    campaigns = [str(value) for value in findings.get('campaigns') or selection.get('campaigns') or [] if str(value).strip()]
+    finding_scope = (f"Scope: {measured}"
+                     + (f"; {'Campaigns' if len(campaigns) > 1 else 'Campaign'}: {', '.join(campaigns)}." if campaigns else '.'))
+    for view in findings.get('views') or []:
+        emitted(view['title'], lambda view=view: add_finding_slides(presentation, view, findings, finding_scope, _slide))
     for suffix, _section, _cdfs, groups in visuals:
         for group, panels in groups:
             title = f'Coverage & Interference Maps{suffix}' + (f' · {group}' if group else '')
@@ -1137,6 +1170,11 @@ def export_network_insights_powerpoint(destination: Path, analysis: dict[str, An
                                  *[table for table in snapshot_tables(deployment) if table[0].startswith('Cluster')],
                                  *spectrum_tables(analysis), *[table for table in snapshot_tables(deployment) if table[0].startswith('Spectrum')],
                                  *nr_duplex_table(deployment)]:
+        if title == 'Observed Spectrum':
+            # The bands of each group as bars, then their table.
+            emitted(title, lambda: add_band_share_slides(
+                presentation, (analysis.get('spectrum') or {}).get('observed') or [], analysis.get('colours') or {},
+                scope_for(title, selection), _slide, 'Observed Spectrum · Serving band of the samples'))
         emitted(title, lambda title=title, columns=columns, rows=rows: _table_slides(
             presentation, title, columns, rows, scope_for(title, selection)))
     ladder = bandwidth_ladder_image(analysis)

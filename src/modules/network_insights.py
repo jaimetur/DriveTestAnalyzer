@@ -38,6 +38,8 @@ from src.modules.mapping_order import dimension_order_key, operator_order_key, v
 from src.modules.output_layout import NETWORK_INSIGHTS_FOLDER, module_output_dir
 from src.modules import inventory_insights as ii
 from src.modules import network_insights_favourites as ni_favourites
+from src.modules.network_insights_findings import findings_payload, mode_of_test
+from src.modules.scoring_themes import THEMES, load_user_theme, normalize_theme, save_user_theme, themes_payload, use_theme
 from src.modules.network_inventory import dataset_revision, effective_snapshot_date, ensure_inventory_cells, network_family
 from src.modules.network_inventory import inventory_datasets as snapshot_datasets
 from src.modules.serving_cells import load_serving_networks, serving_families
@@ -45,8 +47,8 @@ from src.modules.serving_cells import load_serving_networks, serving_families
 
 NETWORK_INSIGHTS_KINDS = ('data', 'voice', 'speech')
 # Bump when the normalised samples or the analysis payload change shape.
-SAMPLES_CACHE_VERSION = 9
-ANALYSIS_CACHE_VERSION = 27
+SAMPLES_CACHE_VERSION = 10
+ANALYSIS_CACHE_VERSION = 29
 # Analyses kept in the workspace cache (each a few MB) and in memory, to show them again without calculating them.
 ANALYSES_KEPT = 500
 ANALYSES_IN_MEMORY = 24
@@ -58,6 +60,8 @@ OBSERVED_COLUMNS = (
     'CDR_Types', 'Campaigns', 'Samples', 'Latitude', 'Longitude', 'RSRP_Mean', 'SINR_Mean',
 )
 SPECTRUM_HOLDINGS_STATE_KEY = 'network_spectrum_holdings'
+# The colour theme each user chose here is kept apart from that of Scoring (see scoring_themes.load_user_theme).
+THEME_MODULE = 'network_insights'
 
 # Each logical radio field lists, per CDR type, the source columns that carry
 # it in priority order. Voice uses the measuring (A) side.
@@ -107,6 +111,13 @@ RF_FIELD_ALIASES: dict[str, dict[str, tuple[str, ...]]] = {
     },
     'test_name': {
         'data': ('Test_Name',), 'voice': (), 'speech': (),
+    },
+    # The time of a test on NR and its duration (s), for the share of the tests that used 5G (Key Findings).
+    'nr_time': {
+        'data': ('NR_Total_Time',), 'voice': (), 'speech': (),
+    },
+    'test_duration': {
+        'data': ('Test_Duration',), 'voice': (), 'speech': (),
     },
     # The NR leg of NSA samples (its PCI and SSB NR-ARFCN) and the MIMO rank and layers the device reported.
     'nr_pci': {
@@ -170,6 +181,8 @@ DIMENSION_ALIASES = {
     # The test environment (see cdr_environments): the most detailed level, else the route level.
     'environment': ('G_Level_3',),
     'environment_route': ('G_Level_2',),
+    # Drive or Walk (see network_insights_findings.mode_of_test).
+    'mode': ('G_Level_1',),
     'source_sheet': ('source_sheet',),
 }
 GROUPINGS = {'operator': 'Operator', 'vendor': 'Vendor', 'region': 'Region', 'cluster': 'Cluster', 'city': 'City',
@@ -366,7 +379,8 @@ def normalise_samples(frame: pd.DataFrame, kind: str, columns: dict[str, str]) -
     swapped = {value: swap_operator_vendor(value, groups) for value in pd.unique(result['operator_vendor'])}
     result['vendor_operator'] = result['operator_vendor'].map(swapped)
     for field in ('latitude', 'longitude', 'lte_rsrp', 'nr_rsrp', 'lte_sinr', 'nr_sinr', 'lte_bandwidth', 'nr_bandwidth',
-                  'lte_aggregated_bandwidth', 'mean_data_rate', 'rtt_median', 'packets_lost', 'packets_sent', 'jitter'):
+                  'lte_aggregated_bandwidth', 'mean_data_rate', 'rtt_median', 'packets_lost', 'packets_sent', 'jitter',
+                  'nr_time', 'test_duration'):
         source = columns.get(field)
         result[field] = pd.to_numeric(frame[source], errors='coerce') if source in frame.columns else math.nan
     for field in ('test_result', 'type_of_test', 'serving_network', 'serving_host', 'serving_scenario'):
@@ -388,6 +402,12 @@ def normalise_samples(frame: pd.DataFrame, kind: str, columns: dict[str, str]) -
             classes = values.map({value: environment_class(value) for value in pd.unique(values)})
             environments = environments.where(environments != '', classes)
     result['environment'] = environments
+    mode_source = columns.get('mode')
+    if mode_source in frame.columns:
+        modes = frame[mode_source].astype(object).where(frame[mode_source].notna(), '')
+        result['mode'] = modes.map({value: mode_of_test(value) for value in pd.unique(modes)})
+    else:
+        result['mode'] = ''
     test_source = columns.get('test_name')
     if test_source in frame.columns:
         names = frame[test_source].astype(object).where(frame[test_source].notna(), '')
@@ -1854,8 +1874,31 @@ def install_network_insights_routes(core: Any) -> None:
                 'bandwidth_title': BANDWIDTH_LADDER_TITLE,
                 'nr_duplex_splits': NR_DUPLEX_SPLITS,
                 'can_edit': user.role in {'user-editor', 'admin', 'super-admin'},
+                # The colour themes of Scoring & GAP Analysis, for the charts, tables and exports (see scoring_themes).
+                'themes': themes_payload()['themes'],
+                'theme': load_user_theme(task_repository, user.username, THEME_MODULE),
             },
         })
+
+    class ThemeRequest(BaseModel):
+        theme: str
+
+    @app.get('/api/network-insights/theme')
+    def network_insights_theme(user=Depends(insights_user)):
+        """The colour theme the user chose for the Network Insights charts, tables and exports in this workspace."""
+        return {'theme': load_user_theme(bound_repository(), user.username, THEME_MODULE)}
+
+    @app.put('/api/network-insights/theme')
+    def network_insights_theme_save(payload: ThemeRequest, user=Depends(insights_user)):
+        if payload.theme.strip().casefold() not in THEMES:
+            raise HTTPException(400, f'Unknown theme: {payload.theme}.')
+        task_repository = bound_repository()
+        previous = load_user_theme(task_repository, user.username, THEME_MODULE)
+        theme = save_user_theme(task_repository, user.username, payload.theme, THEME_MODULE)
+        if theme != previous:
+            task_repository.try_add_log(user.username, 'network_insights_theme_changed',
+                                        json.dumps({'theme': theme, 'previous': previous}))
+        return {'theme': theme}
 
     @app.post('/api/network-insights/filter-options')
     def network_insights_filter_options(request: AnalysisRequest, vendor_only: bool = False, user=Depends(insights_user)):
@@ -2176,6 +2219,30 @@ def install_network_insights_routes(core: Any) -> None:
                                    pd.DataFrame({'column': columns, 'label': labels}).drop_duplicates('column').itertuples(index=False)},
             }
 
+        def findings_section() -> dict[str, Any]:
+            """Key Findings: six benchmark views of the Data tests, the groups without the environment as columns. A
+            split by Campaign compares the groups of the latest campaign, as benchmark reports do."""
+            fields = [field for field in column_groups if field != 'campaign']
+            frame = filtered
+            campaign = ''
+            if 'campaign' in column_groups and campaigns:
+                campaign = campaigns[-1]
+                frame = filtered.loc[filtered['campaign'] == campaign]
+            if fields:
+                parts = grouping_values.loc[frame.index, fields]
+                columns = parts[fields[0]].replace('', '(Empty)')
+                for field in fields[1:]:
+                    columns = columns.str.cat(parts[field].replace('', '(Empty)'), sep=' · ')
+            else:
+                columns = pd.Series('All samples', index=frame.index)
+            order = sorted(pd.unique(columns), key=ordered_by(fields))
+            column_colours = {column: colours.get(label, '') for column, label in
+                              pd.DataFrame({'column': columns, 'label': labels.loc[frame.index]}).drop_duplicates('column')
+                              .itertuples(index=False)}
+            # The campaigns the views compare (the latest one with a split by Campaign), for their footnotes.
+            return {**findings_payload(frame, columns, order, column_colours), 'campaign': campaign,
+                    'campaigns': [campaign] if campaign else campaigns}
+
         sections = [technology_section(radio) for radio in radios]
         if filtered[['latitude', 'longitude']].dropna().empty:
             warnings.append('The selected CDRs carry no sample coordinates, so maps are unavailable.')
@@ -2198,6 +2265,7 @@ def install_network_insights_routes(core: Any) -> None:
                 'licensed': sorted(licensed_spectrum_summary(holdings), key=lambda row: operator_order_key(row['operator'], mapping_groups)),
                 'bandwidth': bandwidth_payload(),
             },
+            'findings': findings_section(),
             # Latency & Interactivity, and the NR quality of each carrier (RF Quality), per group.
             'interactivity': interactivity_detail(filtered, group_columns, group_column_order),
             'nr_bands': nr_band_quality(filtered, group_columns, group_column_order),
@@ -3229,14 +3297,20 @@ def install_network_insights_routes(core: Any) -> None:
         return cluster_inventory_summary()
 
     def write_summary(selection: dict[str, Any], export_kind: str, destination: Path,
-                      components: list[str] | None = None, compose: bool = True) -> dict[str, Any]:
+                      components: list[str] | None = None, compose: bool = True, theme: str | None = None) -> dict[str, Any]:
         """Write the Summary Network Insights (PowerPoint or Word) for a saved or current selection.
 
         Without CDRs of its own, a selection analyses those of its NR Mode and Campaigns. ``components`` keeps only
         those charts and tables in the PowerPoint. Both formats are composed as the Network Insights section of a
         Complete Report; without ``compose`` (the Complete Report itself), the PowerPoint is the deck of the module.
-        Returns the selection description used in the document.
+        ``theme`` (else that of the selection, else NetCheck) colours its charts and tables. Returns the selection
+        description used in the document.
         """
+        with use_theme(normalize_theme(theme or (selection or {}).get('theme'))):
+            return write_themed_summary(selection, export_kind, destination, components, compose)
+
+    def write_themed_summary(selection: dict[str, Any], export_kind: str, destination: Path,
+                             components: list[str] | None, compose: bool) -> dict[str, Any]:
         from src.modules.cdr_reporting import _render_dashboard_payload
         from src.modules.complete_reports import module_document
         from src.modules.network_insights_export import export_network_insights_powerpoint
@@ -3294,7 +3368,7 @@ def install_network_insights_routes(core: Any) -> None:
     core.network_insights_summary_key = summary_key
 
     @app.post('/api/network-insights/export/{export_kind}')
-    def network_insights_export(export_kind: str, request: AnalysisRequest, user=Depends(insights_user)):
+    def network_insights_export(export_kind: str, request: AnalysisRequest, theme: str = Query(''), user=Depends(insights_user)):
         from datetime import datetime
 
         from fastapi.responses import FileResponse
@@ -3305,8 +3379,10 @@ def install_network_insights_routes(core: Any) -> None:
         stamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         destination = core.safe_join(module_output_dir(core.settings.output_dir, NETWORK_INSIGHTS_FOLDER, create=True),
                                      f'{stamp}_summary_network_insights.{suffix}')
+        # The theme of the page, else the one the user chose last.
+        theme = normalize_theme(theme) if theme else load_user_theme(bound_repository(), user.username, THEME_MODULE)
         try:
-            write_summary(request.model_dump(), export_kind, destination)
+            write_summary(request.model_dump(), export_kind, destination, theme=theme)
         except HTTPException:
             raise
         except Exception as exc:
@@ -3314,7 +3390,8 @@ def install_network_insights_routes(core: Any) -> None:
             import traceback
             traceback.print_exc()
             raise HTTPException(500, f'The {export_kind} export failed: {exc}') from exc
-        core.repository.try_add_log(user.username, f'export_network_insights_{export_kind}', json.dumps({'file': destination.name}))
+        core.repository.try_add_log(user.username, f'export_network_insights_{export_kind}',
+                                    json.dumps({'file': destination.name, 'theme': theme}))
         media_type = ('application/vnd.openxmlformats-officedocument.wordprocessingml.document' if export_kind == 'word'
                       else 'application/vnd.openxmlformats-officedocument.presentationml.presentation')
         return FileResponse(destination, filename=f'{stamp} - Network Insights - Summary.{suffix}', media_type=media_type)

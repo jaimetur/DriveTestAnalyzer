@@ -76,6 +76,36 @@
   const sections = () => analysis?.sections || (analysis ? [analysis] : []);
   const multipleSections = () => sections().length > 1;
 
+  // The colour theme of the charts and tables, of the page and of the exports (the themes of Scoring, see
+  // scoring_themes.py): the one the user chose in this workspace.
+  const themes = Array.isArray(config.themes) ? config.themes : [];
+  let activeTheme = themes.find(theme => theme.id === config.theme) || themes[0] || {};
+  // Its colours (see network_insights_findings.js palette): the scale of the quality classes, the series of the bands.
+  let themeColours = null;
+  const scaleColour = (index, count) => {
+    const scale = themeColours?.scale || [];
+    return scale.length ? scale[Math.round((count - 1 - index) / Math.max(1, count - 1) * (scale.length - 1))] : '';
+  };
+  const alpha = (colour, amount) => {
+    const text = String(colour || '').replace('#', '');
+    if (!/^[0-9a-f]{6}$/i.test(text)) return colour;
+    return `rgba(${[0, 2, 4].map(index => parseInt(text.slice(index, index + 2), 16)).join(',')},${amount})`;
+  };
+  const applyTheme = () => {
+    const root = $('network-insights');
+    root.dataset.niTheme = activeTheme.id || 'netcheck';
+    const colours = window.NetworkInsightsFindings?.palette(activeTheme);
+    if (!colours) return;
+    themeColours = colours;
+    const tokens = {surface: colours.surface, ink: colours.ink, muted: colours.muted, accent: colours.accent, soft: colours.soft,
+      line: colours.line, track: colours.track, header: colours.header, 'header-text': colours.headerText,
+      'row-alt': colours.rowAlt, hover: colours.hover, gain: colours.gain, loss: colours.loss};
+    colours.scale.forEach((colour, index) => { tokens[`scale-${index}`] = colour; });
+    colours.series.forEach((colour, index) => { tokens[`series-${index}`] = colour; });
+    for (const [name, value] of Object.entries(tokens)) if (value) root.style.setProperty(`--nit-${name}`, value);
+    if (colours.font) root.style.setProperty('--nit-font', colours.font);
+  };
+
   const status = (message, tone = '') => {
     const element = $('ni-status');
     element.textContent = message;
@@ -358,7 +388,7 @@
     showProgress(`Preparing the Summary Network Insights ${label}: the analysis of the selected CDRs, its charts and the maps of every group are rendered at full size, so it can take a minute or more. The document downloads when it is ready.`,
       `Preparing the ${label} document`);
     try {
-      const response = await fetch(`/api/network-insights/export/${kind}`, {
+      const response = await fetch(`/api/network-insights/export/${kind}?theme=${encodeURIComponent(activeTheme.id || '')}`, {
         method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(requestBody(analysis?.maps?.operator || '')),
       });
       if (!response.ok) {
@@ -417,8 +447,8 @@
       host.append(card);
     }
   };
-  const classBar = classes => `<span class="ni-class-bar">${(classes || []).map(item =>
-    `<span style="width:${item.share}%;background:${item.colour}" title="${escapeHtml(item.label)}: ${number(item.share)}%"></span>`).join('')}</span>`;
+  const classBar = classes => `<span class="ni-class-bar">${(classes || []).map((item, index, all) =>
+    `<span style="width:${item.share}%;background:${scaleColour(index, all.length) || item.colour}" title="${escapeHtml(item.label)}: ${number(item.share)}%"></span>`).join('')}</span>`;
   // RF Quality: CDFs and table per technology (LTE and NR separately with LTE+NR).
   const renderRfSections = () => {
     const host = $('ni-rf-sections');
@@ -457,7 +487,8 @@
     const shade = (rank, of) => {
       if (!rank || !of || of < 2) return '';
       const position = (rank - 1) / (of - 1);
-      const colour = position <= .5 ? `rgba(76,166,90,${(.5 - position) * .7 + .08})` : `rgba(232,65,79,${(position - .5) * .7 + .08})`;
+      const colour = position <= .5 ? alpha(themeColours?.gain || '#4CA65A', (.5 - position) * .7 + .08)
+        : alpha(themeColours?.loss || '#E8414F', (position - .5) * .7 + .08);
       return ` style="background:${colour}"`;
     };
     const unit = {failed: '%', loss_share: '%', rtt_median: ' ms', rtt_p90: ' ms', jitter: ' ms'};
@@ -471,22 +502,41 @@
     }).join('')}</div>`;
   };
   // P10, P50 and P90 of every group under its CDF: the values below which 10%, 50% and 90% of the samples fall.
+  // Each group as a band from its P10 to its P90 in its colour with its median marked, on one scale for all the groups.
   const percentileTable = (title, entries, unit, digits, {heading = analysis.group_label || 'All samples', colours = analysis.colours} = {}) => {
-    const cell = item => item === null || item === undefined ? '—' : `${number(item, digits)} ${unit}`;
-    return `<div class="table-wrap ni-table-wrap ni-percentiles" aria-label="${escapeHtml(title)}"><table class="ni-table"><thead><tr><th>${escapeHtml(heading)}</th><th>P10</th><th>P50</th><th>P90</th></tr></thead>
-      <tbody>${entries.map(({row, values}) => `<tr><td><span class="ni-swatch" style="background:${colours?.[row.operator] || '#6D46A8'}"></span>${escapeHtml(row.operator)}${row.group ? ` · ${escapeHtml(row.group)}` : ''}</td>${values.map(item => `<td class="num">${cell(item)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+    const known = entries.flatMap(({values}) => values).filter(value => value !== null && value !== undefined && Number.isFinite(Number(value)));
+    if (!known.length) return '';
+    const low = Math.min(...known);
+    const high = Math.max(...known);
+    const span = high - low || 1;
+    const at = value => `${((Number(value) - low) / span) * 100}%`;
+    const text = value => (value === null || value === undefined ? '—' : number(value, digits));
+    return `<div class="ni-percentiles ni-range-chart" role="img" aria-label="${escapeHtml(title)}: P10, P50 and P90 of every group">
+      <p class="ni-range-legend"><span>${escapeHtml(heading)}</span><span><i class="ni-range-key"></i>P10 to P90 · <b>|</b> P50 (${escapeHtml(unit)})</span></p>
+      ${entries.map(({row, values: [p10, p50, p90]}) => {
+        const colour = colours?.[row.operator] || '#6D46A8';
+        const label = `${row.operator}${row.group ? ` · ${row.group}` : ''}`;
+        return `<div class="ni-range-row" title="${escapeHtml(label)}: P10 ${text(p10)}, P50 ${text(p50)}, P90 ${text(p90)} ${escapeHtml(unit)}">
+          <span class="ni-range-name"><span class="ni-swatch" style="background:${colour}"></span>${escapeHtml(label)}</span>
+          <span class="ni-range-track">${p10 !== null && p90 !== null ? `<span class="ni-range-band" style="left:${at(p10)};width:calc(${at(p90)} - ${at(p10)});background:${alpha(colour, .35)};border-color:${colour}"></span>
+            <span class="ni-range-value is-low" style="right:calc(100% - ${at(p10)})">${text(p10)}</span><span class="ni-range-value" style="left:${at(p90)}">${text(p90)}</span>` : ''}
+            ${p50 !== null ? `<span class="ni-range-median" style="left:${at(p50)};background:${colour}"><b>${text(p50)}</b></span>` : ''}</span></div>`;
+      }).join('')}</div>`;
   };
   const rfTable = section => {
     const grouped = Boolean(section.rf_rows.some(row => row.group));
     const measure = (value, unit) => (number(value) === '—' ? '—' : `${number(value)} ${unit}`);
+    // The shares below the thresholds as bars in the loss colour of the theme, the largest of the table full.
+    const largest = key => Math.max(...section.rf_rows.map(row => Number(row[key]) || 0), 0.1);
+    const shareBar = (value, key) => `<span class="ni-inline-bar"><span style="width:${(Number(value) || 0) / largest(key) * 100}%"></span></span>${number(value)}%`;
     return `<thead><tr><th>${escapeHtml(analysis.group_label || 'All samples')}</th>${grouped ? `<th>${escapeHtml(analysis.group_label)}</th>` : ''}<th>Samples</th><th>${escapeHtml(section.technology_label)} RSRP samples</th><th>Median RSRP</th><th>P10 RSRP</th><th>Low coverage</th><th>RSRP classes</th><th>Median SINR</th><th>P10 SINR</th><th>High interference</th><th>SINR classes</th></tr></thead>
     <tbody>${section.rf_rows.map(row => `<tr>
       <td><span class="ni-swatch" style="background:${analysis.colours[row.operator] || '#6D46A8'}"></span>${escapeHtml(row.operator)}</td>
       ${grouped ? `<td>${escapeHtml(row.group)}</td>` : ''}
       <td class="num">${integer(row.samples)}</td><td class="num">${integer(row.rsrp_samples)}</td><td class="num">${measure(row.rsrp_median, 'dBm')}</td><td class="num">${measure(row.rsrp_p10, 'dBm')}</td>
-      <td class="num">${number(row.low_coverage_share)}%</td><td>${classBar(row.rsrp_classes)}</td>
+      <td class="num">${shareBar(row.low_coverage_share, 'low_coverage_share')}</td><td>${classBar(row.rsrp_classes)}</td>
       <td class="num">${measure(row.sinr_median, 'dB')}</td><td class="num">${measure(row.sinr_p10, 'dB')}</td>
-      <td class="num">${number(row.high_interference_share)}%</td><td>${classBar(row.sinr_classes)}</td></tr>`).join('')}</tbody>`;
+      <td class="num">${shareBar(row.high_interference_share, 'high_interference_share')}</td><td>${classBar(row.sinr_classes)}</td></tr>`).join('')}</tbody>`;
   };
 
   // In-chart zoom controls, as in PPT Dashboards: zoom out/in, level, reset
@@ -666,12 +716,35 @@
     const maximum = Math.max(...summary.map(row => row.total), 1);
     host.innerHTML = `<div class="table-wrap ni-table-wrap"><table class="ni-table"><thead><tr><th>Operator</th>${classes.map(name => `<th>${escapeHtml(name)} (MHz)</th>`).join('')}<th>Total (MHz)</th><th></th></tr></thead><tbody>${summary.map(row => `<tr>
       <td>${escapeHtml(row.operator)}</td>${classes.map(name => `<td class="num">${number(row[name])}</td>`).join('')}<td class="num"><strong>${number(row.total)}</strong></td>
-      <td class="ni-spectrum-bar-cell"><span class="ni-class-bar ni-spectrum-bar" style="width:${row.total / maximum * 100}%">${classes.map((name, index) => `<span style="width:${row.total ? row[name] / row.total * 100 : 0}%;background:${['#5C940D', '#1C7ED6', '#C2255C'][index]}" title="${escapeHtml(name)}: ${number(row[name])} MHz"></span>`).join('')}</span></td></tr>`).join('')}</tbody></table></div>`;
+      <td class="ni-spectrum-bar-cell"><span class="ni-class-bar ni-spectrum-bar" style="width:${row.total / maximum * 100}%">${classes.map((name, index) => `<span style="width:${row.total ? row[name] / row.total * 100 : 0}%;background:${themeColours?.series?.[[2, 0, 4][index]] || ['#5C940D', '#1C7ED6', '#C2255C'][index]}" title="${escapeHtml(name)}: ${number(row[name])} MHz"></span>`).join('')}</span></td></tr>`).join('')}</tbody></table></div>`;
+  };
+  // The spectrum observed as one bar per group and technology: the share of its samples on each band, each band in one
+  // colour of the series of the theme.
+  const renderBandShares = rows => {
+    const host = $('ni-observed-chart');
+    if (!rows.length) { host.innerHTML = ''; return; }
+    const series = themeColours?.series || ['#5B7A99', '#A9C4DB', '#8BA88E', '#C9B27C', '#B48C7C', '#8E87A0', '#DADDE0'];
+    host.innerHTML = ['LTE', 'NR'].map(technology => {
+      const own = rows.filter(row => row.technology === technology);
+      if (!own.length) return '';
+      const bands = [...new Set(own.map(row => row.band))];
+      const colour = band => {
+        const index = bands.indexOf(band);
+        return index < series.length ? series[index] : alpha(series[index % series.length], .55);
+      };
+      const groups = [...new Set(own.map(row => row.operator))];
+      return `<section class="ni-band-share-card"><h4>${technologyChip(technology)} Serving band, % of the samples</h4>
+        ${groups.map(group => `<div class="ni-band-share-row"><span class="ni-range-name"><span class="ni-swatch" style="background:${analysis.colours[group] || '#6D46A8'}"></span>${escapeHtml(group)}</span>
+          <span class="ni-band-share-bar">${own.filter(row => row.operator === group).map(row => `<span style="flex:0 0 ${row.share}%;background:${colour(row.band)}" title="${escapeHtml(`${group} · ${row.band}: ${number(row.share)}% of the samples`)}">${row.share >= 7 ? escapeHtml(row.band) : ''}</span>`).join('')}</span></div>`).join('')}
+        <p class="ni-band-share-legend">${bands.map(band => `<span><i style="background:${colour(band)}"></i>${escapeHtml(band)}${(() => { const frequency = own.find(row => row.band === band)?.frequency_mhz; return frequency ? ` · ${integer(frequency)} MHz` : ''; })()}</span>`).join('')}</p>
+      </section>`;
+    }).join('');
   };
   const renderSpectrum = () => {
     renderLicensed(analysis.spectrum.licensed);
     const table = $('ni-observed-spectrum');
     const rows = analysis.spectrum.observed;
+    renderBandShares(rows);
     if (!rows.length) { table.innerHTML = '<tbody><tr><td class="form-note">The selected CDRs report no serving bands.</td></tr></tbody>'; return; }
     table.innerHTML = `<thead><tr><th>${escapeHtml(analysis.group_label || 'All samples')}</th><th>Technology</th><th>Band</th><th>Frequency</th><th>Duplex</th><th>Class</th><th>Samples</th><th>Share</th><th>Typical DL bandwidth</th></tr></thead><tbody>${rows.map(row => `<tr>
       <td><span class="ni-swatch" style="background:${analysis.colours[row.operator] || '#6D46A8'}"></span>${escapeHtml(row.operator)}</td><td>${technologyChip(row.technology)}</td><td>${escapeHtml(row.band)}</td>
@@ -773,7 +846,9 @@
       host.innerHTML = ladderFrame('<p class="form-note">The selected tests report no LTE or NR bandwidth.</p>');
       return;
     }
-    const classes = bandwidth.classes;
+    // The classes in the scale of the theme, the widest in its best colour.
+    const ladder = themeColours ? window.NetworkInsightsFindings.ladderColours(themeColours, bandwidth.classes.length) : [];
+    const classes = bandwidth.classes.map((item, index) => ({...item, colour: ladder[index] || item.colour}));
     const columns = ladders.columns;
     const rows = ladders.environments;
     const labelWidth = 170, columnWidth = 210, header = 40, rowHeight = 180, legendHeight = 56;
@@ -894,9 +969,18 @@
   $('ni-nr-duplex-split').addEventListener('change', () => { void loadNrDuplex(); });
   $('ni-bandwidth-tests').addEventListener('change', renderBandwidth);
   $('ni-ladder-split').addEventListener('change', renderBandwidth);
+  // Key Findings: their footnotes end with the scope and Campaigns of the analysis.
+  const renderFindings = () => {
+    const filters = analysedFilters || {};
+    // The campaigns the views compare: the latest one with a split by Campaign.
+    const campaigns = analysis.findings?.campaigns || [];
+    const scope = `Scope: ${scopeItems(filters).map(item => item.label).join(' · ')}${campaigns.length ? `; ${campaigns.length > 1 ? 'Campaigns' : 'Campaign'}: ${campaigns.join(', ')}.` : '.'}`;
+    window.NetworkInsightsFindings?.render($('ni-findings'), analysis.findings, activeTheme, scope);
+  };
   const render = () => {
     if (!analysis) return;
     renderOverview();
+    renderFindings();
     renderRfSections();
     renderNrBands();
     renderInteractivity();
@@ -2069,6 +2153,19 @@
     } catch (error) {
       favouriteStatus(error.message, 'error');
     }
+  });
+
+  applyTheme();
+  // Another theme colours the page at once and is kept for the next visit and the exports.
+  $('ni-theme').addEventListener('change', () => {
+    const theme = themes.find(item => item.id === $('ni-theme').value);
+    if (!theme || theme.id === activeTheme.id) return;
+    activeTheme = theme;
+    applyTheme();
+    render();
+    fetch('/api/network-insights/theme', {
+      method: 'PUT', credentials: 'same-origin', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({theme: theme.id}),
+    }).catch(() => {});
   });
 
   void loadFilterOptions().then(() => {

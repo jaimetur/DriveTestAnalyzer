@@ -1,4 +1,5 @@
-"""Colour themes of the Scoring & GAP Analysis charts and tables, on the page and in its PowerPoint and Word exports.
+"""Colour themes of the Scoring & GAP Analysis and Network Insights charts and tables, on the page and in their
+PowerPoint and Word exports.
 
 NetCheck, the default, keeps the colours of the NetCheck reports. Every other theme gives the same tokens its own
 colours. The scoring views and the export code are written in the NetCheck colours; :func:`themed` translates each of
@@ -36,6 +37,10 @@ _NETCHECK = {
     'environments': ['#176E77', '#E6A81D', '#C55A11', '#5B9BD5', '#A64D79'],
     'categories': ['#4472C4', '#7030A0', '#C55A11', '#5B9BD5', '#A64D79', '#548235', '#D65F8D', '#8064A2'],
     'kpi_reliable': '#D8EFCA', 'kpi_diff': '#FFF2CC',
+    # The five steps of a scale, from the worst to the best class, and the muted colours of a series (the Key Findings
+    # of Network Insights).
+    'scale': ['#C9483F', '#E8A060', '#F2D06B', '#93C47D', '#3E8E4F'],
+    'series': ['#5B7A99', '#A9C4DB', '#8BA88E', '#C9B27C', '#B48C7C', '#8E87A0', '#DADDE0'],
     # The lines between the cells of the PowerPoint tables: white gaps that set the cells apart, never a grid.
     'cell_border': '#FFFFFF', 'cell_border_pt': 1.5,
 }
@@ -66,6 +71,8 @@ THEMES: dict[str, dict[str, Any]] = {
         'environments': ['#4E4E4E', '#AFAFAF', '#004F8F', '#DCDCDC', '#7A5A00'],
         'categories': ['#0082F0', '#AF78D2', '#0FC373', '#FF8C0A', '#FAD22D', '#FF3232', '#0C0C0C', '#7FC0F7'],
         'kpi_reliable': '#DDF7EA', 'kpi_diff': '#FFF5D1',
+        'scale': ['#FF3232', '#FF8C0A', '#FAD22D', '#7FD8A6', '#0FC373'],
+        'series': ['#0082F0', '#7FC0F7', '#AF78D2', '#FAD22D', '#FF8C0A', '#4E4E4E', '#DCDCDC'],
         'cell_border': '#FFFFFF', 'cell_border_pt': 1.0,
     },
     'vodafone': {
@@ -92,6 +99,8 @@ THEMES: dict[str, dict[str, Any]] = {
         'environments': ['#9C9C9C', '#25282B', '#CCCCCC', '#6F7376', '#E8E8E8'],
         'categories': ['#E60000', '#5E2750', '#00B0CA', '#FECB00', '#A8B400', '#EB9700', '#4A4D4E', '#9C2AA0'],
         'kpi_reliable': '#DFF0C2', 'kpi_diff': '#FFEDB3',
+        'scale': ['#B30000', '#EB9700', '#FECB00', '#A8B400', '#00B0CA'],
+        'series': ['#E60000', '#F39A9A', '#00B0CA', '#FECB00', '#5E2750', '#4A4D4E', '#D9D9D9'],
         'cell_border': '#FFFFFF', 'cell_border_pt': 2.25,
     },
     'midnight': {
@@ -117,6 +126,8 @@ THEMES: dict[str, dict[str, Any]] = {
         'environments': ['#E6EDF7', '#5C6F8F', '#C9F27B', '#8A9BB8', '#F2E8CF'],
         'categories': ['#3DB9FF', '#B47CFF', '#2EE6A6', '#FFC145', '#FF4D6D', '#00E0FF', '#FF8FAB', '#7B8CFF'],
         'kpi_reliable': '#CCF7E8', 'kpi_diff': '#FFF0CC',
+        'scale': ['#FF4D6D', '#FF9F45', '#FFC145', '#7EE8C1', '#2EE6A6'],
+        'series': ['#3DB9FF', '#9ED8FF', '#2EE6A6', '#FFC145', '#FF8FAB', '#B47CFF', '#5C6F8F'],
         'cell_border': '#FFFFFF', 'cell_border_pt': 1.5,
     },
     'paper': {
@@ -142,6 +153,8 @@ THEMES: dict[str, dict[str, Any]] = {
         'environments': ['#7B2D3B', '#D9A441', '#3E5C5A', '#D8CFC0', '#1A1A1A'],
         'categories': ['#2F3B4A', '#1F4E79', '#8C7B5A', '#6E8FAE', '#B23A1E', '#5F7F4F', '#A0896A', '#4A4A4A'],
         'kpi_reliable': '#E2EBDA', 'kpi_diff': '#F5EDD6',
+        'scale': ['#9B2C2C', '#C46A3A', '#C9A227', '#7FA06A', '#2F6B3A'],
+        'series': ['#2F3B4A', '#8DA2B8', '#5F7F4F', '#C9A27A', '#8C5A4A', '#7B6F8F', '#D9D4C7'],
         'cell_border': '#D9D4C7', 'cell_border_pt': 0.5,
     },
     'heatmap': {
@@ -168,6 +181,8 @@ THEMES: dict[str, dict[str, Any]] = {
         'environments': ['#3D405B', '#B5838D', '#A8DADC', '#9C6644', '#CED4DA'],
         'categories': ['#2A9D8F', '#E05A4F', '#457B9D', '#E89B2E', '#8AB17D', '#E9C46A', '#6D597A', '#5FA35A'],
         'kpi_reliable': '#D7EFE9', 'kpi_diff': '#FDE8CF',
+        'scale': ['#E05A4F', '#EE9A5B', '#F3C969', '#8CC084', '#2A9D8F'],
+        'series': ['#457B9D', '#A8DADC', '#2A9D8F', '#E9C46A', '#E76F51', '#8E7DBE', '#DDE3E8'],
         'cell_border': '#FFFFFF', 'cell_border_pt': 2.0,
     },
 }
@@ -306,16 +321,17 @@ def themes_payload() -> dict[str, Any]:
             'sources': sources}
 
 
-def user_theme_key(username: str) -> str:
-    return f'scoring_theme:{username}'
+def user_theme_key(username: str, module: str = 'scoring') -> str:
+    return f'{module}_theme:{username}'
 
 
-def load_user_theme(task_repository: Any, username: str) -> str:
-    """The theme the user chose in Scoring & GAP Analysis in this workspace, else the default."""
-    return normalize_theme(task_repository.get_workspace_state(user_theme_key(username)))
+def load_user_theme(task_repository: Any, username: str, module: str = 'scoring') -> str:
+    """The theme the user chose in a module (Scoring & GAP Analysis, or network_insights) in this workspace, else the
+    default."""
+    return normalize_theme(task_repository.get_workspace_state(user_theme_key(username, module)))
 
 
-def save_user_theme(task_repository: Any, username: str, name: Any) -> str:
+def save_user_theme(task_repository: Any, username: str, name: Any, module: str = 'scoring') -> str:
     theme = normalize_theme(name)
-    task_repository.set_workspace_state(user_theme_key(username), theme)
+    task_repository.set_workspace_state(user_theme_key(username, module), theme)
     return theme

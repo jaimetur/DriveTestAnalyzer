@@ -35,7 +35,7 @@ from src.modules.cdr_auto_selection import (
 )
 from src.modules.column_names import compact_campaign_value
 from src.modules.output_layout import REPORTING_JOBS_FOLDER, module_output_dir
-from src.modules.scoring_themes import themes_payload
+from src.modules.scoring_themes import normalize_theme, themes_payload
 
 REPORT_TASKS_TABLE = 'report_tasks'
 REPORT_TASK_RUNS_TABLE = 'report_task_runs'
@@ -188,6 +188,8 @@ def _network_entry(entry: dict[str, Any]) -> dict[str, Any]:
     return {
         'label': str(entry.get('label') or '').strip()[:120],
         'formats': _formats(entry.get('formats')),
+        # The colour theme of its charts and tables (see scoring_themes); entries saved before have NetCheck.
+        'theme': normalize_theme(entry.get('theme')),
         # The CDRs of the NR Mode and Campaigns at each run (auto_cdrs); entries saved before chose them by hand
         # or with an automatic choice, and take the campaigns of that choice (see migrate_auto_cdrs).
         'auto_cdrs': auto_cdrs,
@@ -1137,7 +1139,7 @@ def install_report_task_routes(core: Any) -> None:
             title = f"Network Insights · {name} ({FORMAT_LABELS[export_kind]})"
             destination = artifact_path(folder, stamp, 'Network Insights', name, f'.{suffix}')
             try:
-                description = core.write_network_insights_summary(selection, export_kind, destination)
+                description = core.write_network_insights_summary(selection, export_kind, destination, theme=section.get('theme'))
                 artifacts.append(ready_artifact('network_insights', title, destination, summary_selection_lines(description)))
             except Exception as exc:
                 artifacts.append(failed_artifact('network_insights', title, getattr(exc, 'detail', exc)))

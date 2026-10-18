@@ -170,7 +170,7 @@ def _module_options(section: str) -> dict[str, Any]:
     if section == 'network_insights':
         return {'technology': 'lte', 'group': ['operator', 'campaign'], 'coverage_threshold': -110.0, 'interference_threshold': 0.0,
                 'nr_coverage_threshold': -115.0, 'nr_interference_threshold': -3.0, 'overshoot_km': 5.0, 'grid_metres': 250.0,
-                'environments': []}
+                'environments': [], 'theme': DEFAULT_THEME}
     if section == 'non_qualified_calls':
         return {'granularity': 'week', 'open_only': False, 'include_suggestions': True, 'show_not_classified': False,
                 'show_empty': False}
@@ -216,6 +216,7 @@ def _normalize_options(section: str, raw: Any, legacy_campaigns: Any = None) -> 
             'overshoot_km': _number(raw.get('overshoot_km'), 5.0, 0.5, 100),
             'grid_metres': _number(raw.get('grid_metres'), 250.0, 50, 5000),
             'environments': _strings(raw.get('environments')),
+            'theme': normalize_theme(raw.get('theme')),
         })
     elif section == 'non_qualified_calls':
         options.update({
@@ -253,6 +254,9 @@ def _normalize_items(section: str, raw: Any) -> list[dict[str, Any]]:
         trend = bool(charts.get('trend', True)) if isinstance(charts, dict) else True
         saved['trends'] = {'key': 'trends', 'enabled': True, 'components': {'trend': trend, 'areas': True}}
         order.insert(order.index('geographical_areas') + 1 if 'geographical_areas' in order else len(order), 'trends')
+    if section == 'network_insights' and 'overview' in order and 'findings' not in saved:
+        # Reports saved before the Key Findings have them after the Overview.
+        order.insert(order.index('overview') + 1, 'findings')
     order += [key for key in catalogue if key not in order]
     items = []
     for key in order:
@@ -1178,7 +1182,8 @@ class SectionGenerator:
         destination = self.folder / 'network-insights.pptx'
         self.progress('Analysing Network Insights')
         try:
-            self.core.write_network_insights_summary(selection, 'powerpoint', destination, components=components, compose=False)
+            self.core.write_network_insights_summary(selection, 'powerpoint', destination, components=components, compose=False,
+                                                     theme=section['options'].get('theme'))
         except Exception as exc:  # The module reports its own errors (HTTPException included).
             raise CompleteReportError(str(getattr(exc, 'detail', exc))) from exc
         from src.modules.network_insights_export import REPORT_PANELS
@@ -1218,12 +1223,12 @@ class SectionGenerator:
 
 
 # -- generated sections kept for the next exports ------------------------------------------
-SECTION_CACHE_VERSION = 9
+SECTION_CACHE_VERSION = 10
 SECTION_CACHE_HOURS = 24
 SECTION_CACHE_FOLDER = 'cache'
 # The composed documents (PowerPoint, the packed Word and their previews), inside the section cache.
 DOCUMENT_CACHE_FOLDER = 'documents'
-DOCUMENT_CACHE_VERSION = 5
+DOCUMENT_CACHE_VERSION = 6
 _section_locks: dict[str, Lock] = {}
 _section_locks_guard = Lock()
 

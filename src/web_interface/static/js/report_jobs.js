@@ -759,6 +759,8 @@
     const label = node('input'); label.type = 'text'; label.placeholder = 'Optional artifact name'; label.value = entry.label || '';
     const nrMode = select([['NSA', 'NSA'], ['SA', 'SA']], selection.nr_mode || 'NSA');
     const technology = select(Object.entries(options.technologies), selection.technology || 'lte');
+    // The colours of the charts and tables of its documents (the themes of Scoring & GAP Analysis).
+    const theme = select((options.scoring_themes || []).map((item) => [item.id, item.label || item.id]), entry.theme || 'netcheck');
     const number = (value, step) => { const input = node('input'); input.type = 'number'; input.step = step; input.value = value; return input; };
     const thresholds = [
       ['lte', 'LTE coverage below (dBm)', 'coverage_threshold', number(selection.coverage_threshold ?? -110, 1)],
@@ -775,7 +777,7 @@
     const campaigns = campaignPicker(() => nrMode.value, selection.campaigns || [], {compact: true});
     const head = node('div', undefined, 'rj-grid rj-one-row');
     head.append(field('NR Mode', nrMode), campaigns.field, field('Technology', technology), field('Name in the email', label),
-      ...thresholds.map((item) => item.wrapper), remove);
+      ...thresholds.map((item) => item.wrapper), field('Theme', theme), remove);
     const groups = selection.group || ['operator', 'campaign'];
     const grouping = node('div', undefined, 'rj-inline');
     grouping.append(node('span', 'Grouping:', 'rj-inline-label'), ...Object.entries(options.network_groupings).map(([value, text]) => {
@@ -805,7 +807,7 @@
     card.append(entryHead(card, 'Network Insights', () => [nrMode.value, technology.selectedOptions[0]?.textContent, label.value.trim()].filter(Boolean).join(' · ')),
       formats, head, campaigns.preview, grouping, node('strong', 'Filters'), filters);
     card.getValue = () => ({
-      label: label.value.trim(), formats: formats.getValue(), auto_cdrs: true,
+      label: label.value.trim(), formats: formats.getValue(), auto_cdrs: true, theme: theme.value,
       selection: {
         nr_mode: nrMode.value, technology: technology.value,
         group: [...grouping.querySelectorAll('input:checked')].map((box) => box.value),

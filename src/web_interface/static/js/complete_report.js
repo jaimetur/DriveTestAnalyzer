@@ -297,8 +297,10 @@
     ];
     const gridSize = selectField('Map grid', [['100', '100 m'], ['250', '250 m'], ['500', '500 m'], ['1000', '1 km']], String(saved.grid_metres));
     const environments = multiField('Environments', NI_ENVIRONMENTS, saved.environments);
+    const theme = selectField('Theme', (options.scoring_themes || []).map((item) => [item.id, item.label || item.id]), saved.theme);
+    theme.title = 'The colours of the charts and tables of the Network Insights section';
     const grid = node('div', undefined, 'cr-option-grid');
-    grid.append(technology, group, ...fields, gridSize, environments);
+    grid.append(technology, group, ...fields, gridSize, environments, theme);
     box.append(grid);
     const number = (field, fallback) => {
       const value = Number.parseFloat(field.input.value);
@@ -309,7 +311,7 @@
       coverage_threshold: number(fields[0], -110), interference_threshold: number(fields[1], 0),
       nr_coverage_threshold: number(fields[2], -115), nr_interference_threshold: number(fields[3], -3),
       overshoot_km: number(fields[4], 5), grid_metres: Number(gridSize.input.value) || 250,
-      environments: environments.getValue?.() || [],
+      environments: environments.getValue?.() || [], theme: theme.input.value,
     });
     return box;
   }

@@ -333,7 +333,7 @@ MODULE_SECTIONS: dict[str, list[tuple[Any, ...] | None]] = {
                 ('Favourites Filters', 'Favourites Filters', 'filter')],
     # In the order of the page (templates/network_insights.html).
     'network-insights': [('Analysis Selection', 'Analysis Selection', 'select'), ('Overview', 'Overview', 'summary'),
-                         ('Coverage & Interference Maps', 'Coverage & Interference Maps', 'map'), ('RF Quality', 'RF Quality', 'activity'),
+                         ('Key Findings', 'Key Findings', 'chart'), ('Coverage & Interference Maps', 'Coverage & Interference Maps', 'map'), ('RF Quality', 'RF Quality', 'activity'),
                          ('Latency & Interactivity', 'Latency & Interactivity', 'gauge'), ('Serving Cells', 'Serving Cells', 'link'), ('5G Availability', '5G Availability', 'gauge'),
                          ('Network Snapshot', 'Network Snapshot', 'database'), ('Network Deployment', 'Network Deployment', 'antenna'),
                          ('Cluster Sites Density', 'Cluster Sites Density', 'pin'), ('Spectrum', 'Spectrum', 'spectrum')],

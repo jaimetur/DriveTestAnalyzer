@@ -643,7 +643,7 @@ def test_a_report_without_sections_is_refused_and_the_table_is_listed(client):
 def test_a_report_job_generates_the_chosen_sections_and_previews_them(client, monkeypatch):
     login(client)
 
-    def network_summary(selection, export_kind, destination, components=None, compose=True):
+    def network_summary(selection, export_kind, destination, components=None, compose=True, theme=None):
         # The Complete Report composes the deck of the module itself.
         assert export_kind == 'powerpoint' and components == ['snapshot.snapshot'] and not compose
         # The NR Mode of the report and the Campaigns of the section.
@@ -703,7 +703,7 @@ def test_a_report_job_generates_the_chosen_sections_and_previews_them(client, mo
 def test_favourites_are_an_artifact_of_reporting_jobs(client, monkeypatch, tmp_path):
     login(client)
 
-    def network_summary(selection, export_kind, destination, components=None, compose=True):
+    def network_summary(selection, export_kind, destination, components=None, compose=True, theme=None):
         Path(destination).write_bytes(_deck(lambda presentation: _small_table(presentation, 'Network Snapshot', 'snapshot')))
         return {}
 
@@ -874,7 +874,7 @@ def test_a_second_export_reuses_the_sections_whose_data_has_not_changed(client, 
     login(client)
     calls = []
 
-    def network_summary(selection, export_kind, destination, components=None, compose=True):
+    def network_summary(selection, export_kind, destination, components=None, compose=True, theme=None):
         calls.append(selection['campaigns'])
         Path(destination).write_bytes(_deck(lambda presentation: _small_table(presentation, 'Network Snapshot', 'snapshot')))
         return {}

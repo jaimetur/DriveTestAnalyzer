@@ -78,6 +78,7 @@ Runtime `config/` and `data/` directories use project-local defaults but are exc
 - `src/modules/analytics.py`: single-dataset analytical calculations.
 - `src/modules/exports.py`: CDR Analysis Word and PowerPoint output, including the multi-dataset Summary CDR Analysis.
 - `src/modules/network_insights_export.py`: Summary Network Insights PowerPoint and Word output.
+- `src/modules/network_insights_findings.py` and `network_insights_findings_slides.py`: the Key Findings of Network Insights (six benchmark views of the Data tests with their headlines) and their slides drawn with shapes in the colours of the theme; `static/js/network_insights_findings.js` draws them on the page.
 - `src/modules/starter_content.py`: the starter content of every workspace (methodologies, Report Templates, Dashboards and Auto-calculated Fields from `assets`).
 - `src/modules/map_areas.py`: Map Areas of a workspace (`map_area_layers`): the countries of the tests, the geoBoundaries levels and downloads, imported layers and the area of each test used by the Scoring points-lost map.
 - `src/modules/report_tasks.py`: Reporting Jobs (`report_tasks`, `report_task_runs`), schedules, artifact generation, email bodies, the scheduler and the artifact provider registry for other modules.
