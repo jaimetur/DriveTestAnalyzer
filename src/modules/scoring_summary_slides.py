@@ -834,16 +834,18 @@ def render_stretch_map(route: dict[str, Any], color: str, background: list[list[
     def place_name(x: float, y: float, gap: float, text: str, font, city: bool = False) -> None:
         candidates = (((x + gap, y), 'lm'), ((x - gap, y), 'rm'), ((x, y - gap), 'mb'), ((x, y + gap), 'mt'),
                       ((x + gap, y - gap), 'lb'), ((x - gap, y - gap), 'rb'), ((x + gap, y + gap), 'lt'), ((x - gap, y + gap), 'rt'))
-        for point, anchor in candidates:
-            left, top_edge, right, bottom = draw.textbbox(point, text, font=font, anchor=anchor, stroke_width=4)
-            box = (left - 2, top_edge - 2, right + 2, bottom + 2)
-            if box[0] < 6 or box[2] > width - 6 or box[1] < 6 or box[3] > height - margin:
-                continue
-            if overlaps(box, taken) or (not city and overlaps(box, circles)):
-                continue
-            taken.append(box)
-            draw.text(point, text, fill=ink, font=font, anchor=anchor, stroke_width=4, stroke_fill=(255, 255, 255))
-            return
+        # Clear of the circles first; a city that has no such place may cover a circle rather than go unnamed.
+        for clear_of_circles in ((True, False) if city else (True,)):
+            for point, anchor in candidates:
+                left, top_edge, right, bottom = draw.textbbox(point, text, font=font, anchor=anchor, stroke_width=4)
+                box = (left - 2, top_edge - 2, right + 2, bottom + 2)
+                if box[0] < 6 or box[2] > width - 6 or box[1] < 6 or box[3] > height - margin:
+                    continue
+                if overlaps(box, taken) or (clear_of_circles and overlaps(box, circles)):
+                    continue
+                taken.append(box)
+                draw.text(point, text, fill=ink, font=font, anchor=anchor, stroke_width=4, stroke_fill=(255, 255, 255))
+                return
         if city:
             # Beside its dot, moved inside the map.
             left, top_edge, right, bottom = draw.textbbox((x + gap, y), text, font=font, anchor='lm', stroke_width=4)
@@ -852,7 +854,10 @@ def render_stretch_map(route: dict[str, Any], color: str, background: list[list[
             draw.text(point, text, fill=ink, font=font, anchor='lm', stroke_width=4, stroke_fill=(255, 255, 255))
 
     for x, y, name in cities:
-        place_name(x, y, 12, name, label_font, city=True)
+        # A city under a numbered circle is named beyond it.
+        reach = max((radius + sqrt((x - cx) ** 2 + (y - cy) ** 2) + 6 for cx, cy, radius, *_rest in labels
+                     if sqrt((x - cx) ** 2 + (y - cy) ** 2) < radius), default=12)
+        place_name(x, y, max(12, reach), name, label_font, city=True)
     for x, y, radius, _rank, text in sorted(labels, key=lambda entry: entry[3]):
         if text:
             place_name(x, y, radius + 8, text, note_font)

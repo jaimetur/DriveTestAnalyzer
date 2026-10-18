@@ -7556,7 +7556,12 @@
         return [start - 2, baseline - size, start + textWidth + 2, baseline + 3];
       };
       const inside = box => box[0] >= 4 && box[2] <= width - 4 && box[1] >= 4 && box[3] <= height - 30;
-      let place = candidates.find(candidate => { const box = boxOf(candidate); return inside(box) && !overlaps(box, taken) && (city || !overlaps(box, circles)); });
+      // Clear of the circles first; a city that has no such place may cover a circle rather than go unnamed.
+      const fits = (candidate, clearOfCircles) => {
+        const box = boxOf(candidate);
+        return inside(box) && !overlaps(box, taken) && (!clearOfCircles || !overlaps(box, circles));
+      };
+      let place = candidates.find(candidate => fits(candidate, true)) || (city ? candidates.find(candidate => fits(candidate, false)) : null);
       if (!place && city) {
         // Beside its dot, moved inside the map.
         const box = boxOf(candidates[0]);
@@ -7570,7 +7575,12 @@
       label.textContent = text;
       svg.append(label);
     };
-    for (const [x, y, name] of cities) placeName(x, y, 6, name, 12.5, 800, true);
+    for (const [x, y, name] of cities) {
+      // A city under a numbered circle is named beyond it.
+      const reach = Math.max(6, ...names.filter(([cx, cy, radius]) => Math.hypot(x - cx, y - cy) < radius)
+        .map(([cx, cy, radius]) => radius + Math.hypot(x - cx, y - cy) + 3));
+      placeName(x, y, reach, name, 12.5, 800, true);
+    }
     for (const [x, y, radius, , text] of names.sort((left, right) => left[3] - right[3])) if (text) placeName(x, y, radius + 4, text, 10.5, 600);
     // The scale of the colours: little lost to the most lost.
     const gradientId = `scoring-stretch-scale-${Math.random().toString(36).slice(2, 8)}`;

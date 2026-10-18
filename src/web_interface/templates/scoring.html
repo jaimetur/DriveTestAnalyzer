@@ -1121,6 +1121,8 @@
 
   /* The insight tables (Summary, Geographical Areas, GAP by part, Points Lost) in the style of each theme. */
   [data-scoring-workspace]:is([data-scoring-theme="netcheck"], [data-scoring-theme="umlaut"]) .scoring-insight-table th { background: var(--st-header) !important; color: #fff !important; text-transform: uppercase; font-size: .66rem; letter-spacing: .04em; }
+  /* Umlaut: its light headers in dark grey over a thin rule, as its Network Insights tables. */
+  [data-scoring-workspace][data-scoring-theme="umlaut"] .scoring-insight-table th { background: #fff !important; color: #3f3f4c !important; border-bottom: 1px solid #d9d6dc; }
   [data-scoring-workspace][data-scoring-theme="ericsson"] .scoring-insight-table th { background: #0068bf !important; color: #fff !important; text-transform: uppercase; font-size: .6rem;
     letter-spacing: .1em; border-bottom: 0; }
   [data-scoring-workspace][data-scoring-theme="ericsson"] .scoring-insight-table td { border-bottom: 1px solid #e0e0e0; }

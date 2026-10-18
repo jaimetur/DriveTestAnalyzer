@@ -6,6 +6,7 @@ Connecting Roads routes over three campaigns, with the serving cell of every tes
 from __future__ import annotations
 
 from io import BytesIO
+from pathlib import Path
 import zlib
 
 import pytest
@@ -178,3 +179,27 @@ def test_powerpoint_follows_the_order_of_the_results_tabs(national):
              'Best Network Campaign Comparison']
     positions = [first(prefix) for prefix in order]
     assert positions == sorted(positions)
+
+
+def test_the_route_of_where_to_act_is_drawn_as_the_routes_of_points_lost(national, monkeypatch) -> None:
+    import src.modules.scoring_summary_slides as summary_slides
+    from src.modules.scoring_act_slides import render_owner_route_map
+    _job, _result, insights = national
+    route = next(item for item in insights['route_focus'] if item['routes'])['routes'][0]
+    calls = []
+    original = summary_slides.render_stretch_map
+    monkeypatch.setattr(summary_slides, 'render_stretch_map', lambda *args, **kwargs: calls.append(kwargs) or original(*args, **kwargs))
+    from PIL import Image
+    image = Image.open(BytesIO(render_owner_route_map(route, lambda _owner: '#4472C4', None)))
+    # One map for both: its top stretches numbered, each owner as the ring of its circles, on a square for the slide.
+    assert image.size == (1100, 1100)
+    assert calls and calls[0]['ranked'] == route['top'] and calls[0]['measure'] == 'Points at stake' and calls[0]['ring_color']
+    script = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/scoring.js').read_text(encoding='utf-8')
+    # On the page: the same map, opened larger on a double-click, its stretches chosen in the table beside it, and the
+    # operators of every view of the results in the order of the Operator Maps.
+    assert "return makeStretchMap(route, '#64748b', [], {ranked: route.top, ringColor: ownerColor" in script
+    assert "const routeMap = event.target.closest('svg.scoring-stretch-map');" in script
+    assert 'function linkStretchTable(map, table, stretches) {' in script and 'body.append(linkStretchTable(map, stretchTable, route.top), side);' in script
+    assert '.sort((left, right) => position(left?.operator) - position(right?.operator));' in script
+    template = (Path(__file__).resolve().parents[1] / 'src/web_interface/templates/scoring.html').read_text(encoding='utf-8')
+    assert '[data-scoring-theme="umlaut"] .scoring-insight-table th { background: #fff !important; color: #3f3f4c !important;' in template
