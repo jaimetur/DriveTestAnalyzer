@@ -737,7 +737,7 @@ def render_stretch_map(route: dict[str, Any], color: str, background: list[list[
     """PNG map of a route: the test locations in grey, the route dashed and a circle per stretch (area: points lost)."""
     from PIL import Image, ImageDraw, ImageFont
 
-    points = [*(route.get('path') or []), *([lat, lon] for lat, lon, _points in route['all_stretches'])]
+    points = [*(route.get('path') or []), *([entry[0], entry[1]] for entry in route['all_stretches'])]
     image = Image.new('RGB', (width, height), (248, 250, 252))
     if not points:
         output = BytesIO()
@@ -771,7 +771,7 @@ def render_stretch_map(route: dict[str, Any], color: str, background: list[list[
         font = ImageFont.truetype('Arial Bold.ttf', 26)
     except OSError:
         font = ImageFont.load_default()
-    for lat, lon, lost in sorted(route['all_stretches'], key=lambda item: item[2]):
+    for lat, lon, lost, *_owner in sorted(route['all_stretches'], key=lambda item: item[2]):
         x, y = project(lat, lon)
         radius = 10 + 52 * sqrt(lost / peak)
         draw.ellipse((x - radius, y - radius, x + radius, y + radius), fill=fill, outline=(255, 255, 255), width=4)

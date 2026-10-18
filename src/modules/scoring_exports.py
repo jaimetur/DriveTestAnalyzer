@@ -42,6 +42,10 @@ from src.modules.scoring_insights import operator_styles
 from src.modules.scoring_pptx_scorecard import apply_scorecard
 from src.modules.scoring_themes import DEFAULT_THEME, active_theme, themed, use_theme
 from src.modules.theme_titles import style_title
+from src.modules.scoring_act_slides import (
+    MAX_OPERATORS as MAX_ACT_OPERATORS, add_act_plan_slides, add_owner_card_slides, add_place_ranking_slides,
+    add_route_focus_slides, owner_names, owner_palette,
+)
 from src.modules.scoring_vendors import normalize_scoring_vendor_result
 from src.modules.scoring_views import (
     THRESHOLD_COLORS, _hierarchy_display_value, gap_priority_order_key, latest_campaign_columns, build_scoring_views, refresh_baseline_warning, scoring_coverage_notes,
@@ -2496,6 +2500,27 @@ def _add_insight_slides(presentation, views: dict, environment: str, scoring: st
         if _option(options, 'summary', 'levers'):
             add_levers_slides(presentation, items.get('levers', []), subtitle=subtitle, new_slide=_slide, scope=scope,
                               compared=chosen('summary-operators'))
+        # Where to act: for the operator chosen on the page, else the operators compared (two at most).
+        act_items = {name: items.get(name, []) for name in ('act_plans', 'owner_cards', 'place_rankings', 'route_focus')}
+        act_chosen = chosen('act-operator')
+        act_operators = list(dict.fromkeys(item['operator'] for entries in act_items.values() for item in entries
+                                           if act_chosen(item['operator'], item.get('label'))
+                                           and (choices.get('act-operator') or not item.get('is_reference'))))[:MAX_ACT_OPERATORS]
+        act_items = {name: sorted((item for item in entries if item['operator'] in act_operators),
+                                  key=lambda item: act_operators.index(item['operator'])) for name, entries in act_items.items()}
+        owner_color = owner_palette(owner_names(act_items))
+        if _option(options, 'summary', 'act'):
+            add_act_plan_slides(presentation, act_items['act_plans'], subtitle=subtitle, new_slide=_slide, scope=scope)
+        if _option(options, 'summary', 'owners'):
+            add_owner_card_slides(presentation, act_items['owner_cards'], subtitle=subtitle, new_slide=_slide,
+                                  owner_color=owner_color, scope=scope)
+        if _option(options, 'summary', 'places'):
+            add_place_ranking_slides(presentation, act_items['place_rankings'], subtitle=subtitle, new_slide=_slide,
+                                     owner_color=owner_color, scope=scope)
+        if _option(options, 'summary', 'route'):
+            boundaries = views.get('_points_loss_boundaries')
+            add_route_focus_slides(presentation, act_items['route_focus'], subtitle=subtitle, new_slide=_slide,
+                                   owner_color=owner_color, boundaries=boundaries('Area') if boundaries else None, scope=scope)
         if _option(options, 'summary', 'scope'):
             add_campaign_scope_slides(presentation, items.get('campaign_scope', []), subtitle=subtitle, new_slide=_slide,
                                       environment_labels=environment_labels)

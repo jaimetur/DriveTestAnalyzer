@@ -48,8 +48,13 @@ SHARE_COLUMN = '__share_{}'
 VENDOR, SITE_TYPE, SITE, STRETCH = 'Vendor', 'Site Type', 'Site', 'Stretch'
 SERVING_FIELDS = (VENDOR, SITE_TYPE, SITE, STRETCH)
 SHARE_FIELDS = (*MAP_FIELDS, *SERVING_FIELDS)
-# The points each Vendor loses in each City or route, for the biggest areas of each Vendor.
+# The points each Vendor loses in each City or route, for the biggest areas of each Vendor, and each Region (the
+# performance owners of the networks, such as Vendor A or VMO2 North) in each City or route.
 VENDOR_CITY = 'Vendor|City'
+REGION_CITY = 'Region|City'
+# Where each test ran (Cities, Towns, Roads or Railways) and how (Drive or Walk), for the places ranked in the Summary.
+SETTING, MODE = '__setting', '__mode'
+SETTINGS = ('Cities', 'Towns', 'Roads', 'Railways')
 SERVING_SOURCES = {'vendor': ('Vendor',), 'network': ('Serving_Network',), 'host': ('Serving_Host_Network',),
                    'site': ('Serving_Site_ID',), 'scenario': ('Serving_eMOCN_Scenario',)}
 # A site key is its network and its site ID, as site IDs repeat across networks.
@@ -73,6 +78,7 @@ def source_columns(kind: str) -> list[str]:
     columns = [name for aliases in AREA_FIELDS.values() for name in aliases]
     columns.extend(name for pair in COORDINATE_SOURCES.get(kind, ()) for name in pair)
     columns.extend(name for aliases in SERVING_SOURCES.values() for name in aliases)
+    columns.extend(('G_Level_1', 'G_Level_2', 'G_Level_3'))
     return columns
 
 
@@ -138,6 +144,34 @@ def _stretch_column(frame: pd.DataFrame) -> None:
     frame[AREA_COLUMN.format(STRETCH)] = stretches
 
 
+def setting_of(level_3: Any, level_2: Any) -> str:
+    """Cities, Towns, Roads or Railways from the levels of a test (see cdr_environments): big cities are Cities, medium
+    and small ones Towns, train routes Railways and the other connecting routes Roads."""
+    from src.modules.cdr_environments import environment_class
+
+    environment = environment_class(level_3) or environment_class(level_2)
+    if environment != 'Roads and railways':
+        return environment
+    text = f'{level_3 or ""} {level_2 or ""}'.casefold()
+    return 'Railways' if 'train' in text or 'rail' in text else 'Roads'
+
+
+def _setting_columns(frame: pd.DataFrame, source: pd.DataFrame, resolve) -> None:
+    """Where each test ran (``SETTING``) and how (``MODE``: Drive or Walk), when the CDR names them."""
+    from src.modules.network_insights_findings import mode_of_test
+
+    def column(name: str) -> pd.Series:
+        resolved = resolve(source.columns, name)
+        return (source[resolved].astype(object).where(source[resolved].notna(), '') if resolved is not None
+                else pd.Series('', index=source.index, dtype=object))
+
+    level_3, level_2, level_1 = column('G_Level_3'), column('G_Level_2'), column('G_Level_1')
+    pairs = pd.Series(list(zip(level_3, level_2)), index=source.index)
+    settings = {pair: setting_of(*pair) for pair in pd.unique(pairs)}
+    frame[SETTING] = pairs.map(settings).replace('', pd.NA).astype('string')
+    frame[MODE] = level_1.map({value: mode_of_test(value) for value in pd.unique(level_1)}).replace('', pd.NA).astype('string')
+
+
 def attach_location(frame: pd.DataFrame, source: pd.DataFrame, kind: str, resolve, areas=None) -> None:
     """Copy the area and coordinate columns of the source rows into the scoring frame.
 
@@ -174,6 +208,7 @@ def attach_location(frame: pd.DataFrame, source: pd.DataFrame, kind: str, resolv
     level_2 = resolve(source.columns, 'G_Level_2')
     # Drive City tests are places; other tests (Connecting Roads) follow a route.
     frame[PLACE] = (source[level_2].astype('string').str.casefold() == 'city') if level_2 is not None else True
+    _setting_columns(frame, source, resolve)
     _serving_columns(frame, source, resolve)
     _stretch_column(frame)
     for field in SHARE_FIELDS:
@@ -321,7 +356,7 @@ def _category_shares(frame: pd.DataFrame, weights: pd.Series, total: float) -> d
         if field_shares:
             shares[field] = field_shares
     lost = values > 0
-    for pair_field, first, second in ((CITY_AREA, 'City', AREA), (VENDOR_CITY, VENDOR, 'City')):
+    for pair_field, first, second in ((CITY_AREA, 'City', AREA), (VENDOR_CITY, VENDOR, 'City'), (REGION_CITY, 'Region', 'City')):
         if first not in codes or second not in codes or not lost.any():
             continue
         # Where each City (or route) loses, in each map area; where each Vendor loses, in each City or route.
@@ -331,7 +366,7 @@ def _category_shares(frame: pd.DataFrame, weights: pd.Series, total: float) -> d
         pair_shares = {
             f'{firsts[pair // len(seconds)]}{CITY_AREA_SEPARATOR}{seconds[pair % len(seconds)]}': round(float(value) / total, 6)
             for pair, value in by_pair.items() if value > 0}
-        if pair_field == VENDOR_CITY:
+        if pair_field in (VENDOR_CITY, REGION_CITY):
             pair_shares = {pair: share for pair, share in pair_shares.items()
                            if not pair.startswith(NOT_SPECIFIED + CITY_AREA_SEPARATOR)}
         if pair_shares:
@@ -439,6 +474,15 @@ class AreaGeometry:
                     counts = entry.setdefault('vendor_tests', {})
                     for name, count in group[vendor].dropna().value_counts().items():
                         counts[str(name)] = counts.get(str(name), 0) + int(count)
+                if field == 'City':
+                    # The Regions (performance owners), settings and modes of the tests of each City or route.
+                    for key, source_column in (('region_tests', AREA_COLUMN.format('Region')), ('setting_tests', SETTING),
+                                               ('mode_tests', MODE)):
+                        if source_column in group:
+                            counts = entry.setdefault(key, {})
+                            for name, count in group[source_column].dropna().value_counts().items():
+                                if str(name) and str(name) != NOT_SPECIFIED:
+                                    counts[str(name)] = counts.get(str(name), 0) + int(count)
                 entry['latitude_sum'] += float(group[LATITUDE].sum())
                 entry['longitude_sum'] += float(group[LONGITUDE].sum())
                 entry['tests'] += len(group)
@@ -465,7 +509,7 @@ class AreaGeometry:
             sums = grouped.agg(columns)
             counts = grouped.size()
             labels = {}
-            for label_field in ((VENDOR, 'City') if field == SITE else (VENDOR,)):
+            for label_field in ((VENDOR, 'City', 'Region') if field == SITE else (VENDOR, 'Region')):
                 label_column = AREA_COLUMN.format(label_field)
                 if label_column in rows:
                     labels[label_field] = (rows[[column, label_column]].dropna().astype(str)
@@ -499,6 +543,11 @@ class AreaGeometry:
                     'points': entry['points'] if entry['places'] * 2 < entry['tests'] else [],
                     **({'area_tests': entry['area_tests']} if entry['area_tests'] else {}),
                     **({'vendor_tests': entry['vendor_tests']} if entry.get('vendor_tests') else {}),
+                    **({'region_tests': entry['region_tests']} if entry.get('region_tests') else {}),
+                    # The setting of most of its tests and the modes it was tested in (Drive, Walk).
+                    **({'setting': max(entry['setting_tests'], key=entry['setting_tests'].get)} if entry.get('setting_tests') else {}),
+                    **({'modes': sorted(entry['mode_tests'], key=lambda mode: ({'Drive': 0, 'Walk': 1}.get(mode, 2), mode))}
+                       if entry.get('mode_tests') else {}),
                 }
                 for area, entry in entries.items()
             }
@@ -511,11 +560,10 @@ class AreaGeometry:
                         'longitude': round(entry['longitude_sum'] / entry['tests'], 5), 'tests': entry['tests']}
                 if field == SITE:
                     item['network'], item['site'] = site_parts(name)
-                    item.update({key: entry[key] for key in ('vendor', 'city') if entry.get(key)})
+                    item.update({key: entry[key] for key in ('vendor', 'city', 'region') if entry.get(key)})
                 else:
                     item['route_name'] = name.partition(SITE_SEPARATOR)[0]
-                    if entry.get('vendor'):
-                        item['vendor'] = entry['vendor']
+                    item.update({key: entry[key] for key in ('vendor', 'region') if entry.get(key)})
                 located[name] = item
             areas[field] = located
         return {'areas': areas, 'background': self.background}
@@ -595,7 +643,7 @@ def points_loss_maps(result: dict[str, Any], keys: list[str]) -> list[dict[str, 
     for (identity, environment), fields in series.items():
         context = dict(zip(keys, identity))
         # The points each City loses in each map area, kept on the City map, and each Vendor in each City or route.
-        pair_losses: dict[str, dict[str, dict[str, float]]] = {CITY_AREA: {}, VENDOR_CITY: {}}
+        pair_losses: dict[str, dict[str, dict[str, float]]] = {CITY_AREA: {}, VENDOR_CITY: {}, REGION_CITY: {}}
         for pair_field, losses in pair_losses.items():
             for pair, points in (fields.get(pair_field) or {}).items():
                 first, _separator, second = pair.partition(CITY_AREA_SEPARATOR)
@@ -610,6 +658,8 @@ def points_loss_maps(result: dict[str, Any], keys: list[str]) -> list[dict[str, 
                 item['area_losses'] = city_areas
             if field == VENDOR and pair_losses[VENDOR_CITY]:
                 item['city_losses'] = pair_losses[VENDOR_CITY]
+            if field == 'Region' and pair_losses[REGION_CITY]:
+                item['city_losses'] = pair_losses[REGION_CITY]
             if field == SITE and failures.get((identity, environment)):
                 item['failures'] = {name: round(value, 2) for name, value in failures[(identity, environment)].items()}
             if environment is None:

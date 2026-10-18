@@ -42,7 +42,8 @@ _OPTION_DEFAULTS = {
     'enabled': True,
     # 'all' shows only All Environments; 'split' adds a block per environment.
     'environments': 'all',
-    'summary': {'standings': True, 'position': True, 'levers': True, 'scope': True},
+    'summary': {'standings': True, 'position': True, 'levers': True, 'act': True, 'owners': True, 'places': True, 'route': True,
+                'scope': True},
     'charts': {'service': True, 'category': True, 'breakdown': True},
     'tables': {'summary': True, 'breakdown': True, 'kpi_values': False, 'gap_values': False,
                'campaign_comparison': True},

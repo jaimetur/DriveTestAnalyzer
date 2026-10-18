@@ -2345,6 +2345,9 @@
       try { stored = JSON.parse(insightSelections.get(section) || 'null'); } catch (_error) { stored = null; }
       if (Array.isArray(stored) && stored.length) chosen[section] = stored.map(String);
     }
+    // The operator of Where to act, its owners, places and route.
+    const actOperator = insightSelections.get('act-operator');
+    if (actOperator) chosen['act-operator'] = [String(actOperator)];
     return chosen;
   }
 
@@ -6745,11 +6748,226 @@
       for (const item of levers.filter(entry => chosen.includes(entry.operator))) grid.append(makeLeversTable(item));
       section.append(grid);
     }
+    renderWhereToAct(pane, payload, environment);
     const scope = insightItems(payload, 'campaign_scope', environment)[0];
     if (scope) {
       const section = insightSection(pane, 'How the measurements ran', 'scoring-scope-card', false);
       section.append(makeCampaignScope(scope));
     }
+  }
+
+  // ---- Summary: where to act (see scoring_where_to_act.py) --------------------------------------------------------
+  // The plan of an operator, its performance owners, its Cities, Towns, Roads and Railways ranked and the route that
+  // loses most, for the operator chosen (the first compared operator by default).
+  function renderWhereToAct(pane, payload, environment) {
+    const views = ['act_plans', 'owner_cards', 'place_rankings', 'route_focus'].map(key => insightItems(payload, key, environment));
+    const [plans, cards, places, routes] = views;
+    const all = views.flat();
+    if (!all.length) return;
+    const operators = [...new Map(all.map(item => [item.operator, item.label || item.operator])).entries()];
+    const fallback = (all.find(item => !item.is_reference) || all[0]).operator;
+    const {wrapper: operatorControl, value: operator} = insightSelect('act-operator', operators, 'Operator', fallback);
+    // Each performance owner keeps one colour of the categories of the theme on every view.
+    const owners = [...new Set([...cards.flatMap(item => item.cards.map(card => card.owner)),
+      ...places.flatMap(item => item.groups.flatMap(group => group.rows.flatMap(row => row.owners.map(owner => owner.name)))),
+      ...routes.flatMap(item => item.routes.flatMap(route => route.owners.filter(owner => !owner.unidentified).map(owner => owner.name)))])].sort();
+    const palette = activeTheme?.categories || ['#4472C4', '#7030A0', '#C55A11', '#5B9BD5', '#A64D79', '#548235'];
+    const ownerColor = name => (owners.includes(name) ? palette[owners.indexOf(name) % palette.length] : '#9aa3ad');
+    const pill = (name, text = name) => {
+      const element = document.createElement('span');
+      element.className = 'scoring-owner-pill';
+      element.style.setProperty('--owner-color', ownerColor(name));
+      element.textContent = text;
+      return element;
+    };
+    let controlsShown = false;
+    const controls = (...extra) => {
+      const box = insightControls(controlsShown ? null : operatorControl, ...extra);
+      controlsShown = true;
+      return box;
+    };
+    const plan = plans.find(item => item.operator === operator);
+    if (plan) {
+      const section = insightSection(pane, `Where to act — ${plan.label}`, 'scoring-act-card', plan.context);
+      section.append(controls(), insightParagraph('scoring-act-headline', plan.headline));
+      const list = document.createElement('div');
+      list.className = 'scoring-act-list';
+      const stripes = activeTheme?.categories || palette;
+      plan.rows.forEach((row, index) => {
+        const item = document.createElement('div');
+        item.className = 'scoring-act-row';
+        item.style.setProperty('--act-color', stripes[index % stripes.length]);
+        const theme = document.createElement('div');
+        theme.className = 'scoring-act-theme';
+        theme.append(insightStrong(row.theme), insightParagraph('scoring-act-points',
+          row.points === null || row.points === undefined ? 'Within the points above' : `${insightNumber(row.points, 1)} points at stake`));
+        item.append(theme, insightParagraph('scoring-act-action', row.action), insightParagraph('scoring-act-deep-dive', row.deep_dive));
+        list.append(item);
+      });
+      section.append(list, insightParagraph('scoring-insight-note', 'Points at stake: the points lost, each place counting by its share of the tests (national estimates). ',
+        'Sites to review and route stretches are within the points above.'));
+    }
+    const ownerItem = cards.find(item => item.operator === operator);
+    if (ownerItem) {
+      const section = insightSection(pane, `Where to act, by performance owner — ${ownerItem.label}`, 'scoring-owner-card', ownerItem.context);
+      section.append(controls(), insightParagraph('scoring-act-headline', "Each performance owner's points at stake, what drives them and where they are"));
+      const grid = document.createElement('div');
+      grid.className = 'scoring-owner-grid';
+      const peak = Math.max(0.01, ...ownerItem.cards.flatMap(card => Object.values(card.settings)));
+      for (const card of ownerItem.cards) {
+        const box = document.createElement('article');
+        box.className = 'scoring-owner';
+        box.style.setProperty('--owner-color', ownerColor(card.owner));
+        const head = document.createElement('header');
+        const points = document.createElement('b');
+        points.textContent = insightNumber(card.points, 1);
+        head.append(insightStrong(card.owner), document.createElement('br'), points, document.createTextNode(' points at stake'));
+        const facts = document.createElement('div');
+        facts.className = 'scoring-owner-facts';
+        const fact = (label, text) => { if (text) facts.append(insightParagraph('', insightStrong(`${label}: `), text)); };
+        fact('Main issue', card.main);
+        fact('Biggest areas', card.areas.map(area => `${area.name} (${area.setting.toLowerCase()}) ${insightNumber(area.points, 1)}`).join(', '));
+        fact('High sites', card.high_sites.length ? `${card.high_sites.length} (${[...new Set(card.high_sites.map(site => site.city).filter(Boolean))].join('; ')})` : 'none');
+        const where = document.createElement('div');
+        where.className = 'scoring-owner-where';
+        where.append(insightParagraph('scoring-owner-where-title', 'Where its points are'));
+        for (const [setting, value] of Object.entries(card.settings)) {
+          const row = document.createElement('div');
+          const bar = document.createElement('i');
+          bar.style.width = `${Math.max(value > 0 ? 2 : 0, value / peak * 100)}%`;
+          const track = document.createElement('span');
+          track.append(bar);
+          row.append(document.createTextNode(setting), track, insightStrong(insightNumber(value, 1)));
+          where.append(row);
+        }
+        box.append(head, facts, where);
+        grid.append(box);
+      }
+      section.append(grid, insightParagraph('scoring-insight-note', 'Performance owner: the Region of the tests (such as Vendor A, Vendor B, VMO2 North or VMO2 South). ',
+        `High site: ${insightNumber(1, 0)}+ point lost and losses on the same site in an earlier campaign.${ownerItem.unidentified > .05 ? ` ${insightNumber(ownerItem.unidentified, 1)} points have no Region.` : ''}`));
+    }
+    const ranking = places.find(item => item.operator === operator);
+    if (ranking) {
+      const peak = Math.max(0.01, ...ranking.groups.flatMap(group => group.rows.map(row => row.lost)));
+      const band = value => (value >= 85 ? activeTheme?.band_strong?.High || '#6AA84F' : value >= 75 ? activeTheme?.band_strong?.Medium || '#E8A33D'
+        : activeTheme?.band_strong?.Low || '#E06666');
+      for (const group of ranking.groups) {
+        const section = insightSection(pane, `${group.title} — ${ranking.label}`, 'scoring-places-card', ranking.context);
+        section.append(controls(), insightParagraph('scoring-act-headline', group.headline));
+        const owner = row => {
+          const box = document.createElement('span');
+          box.className = 'scoring-owner-pills';
+          for (const item of row.owners) box.append(pill(item.name, `${item.name} ${insightNumber(item.share, 0)}%`));
+          return box;
+        };
+        const share = value => (value === null || value === undefined ? '—'
+          : {text: `${insightNumber(value, 0)}%`, className: 'scoring-insight-bar-cell', bar: {ratio: Math.min(1, value / 100), color: band(value)}});
+        const table = insightTable(['Place', 'Owner', 'Points %', `vs ${ranking.previous_campaign || 'previous'}`, 'Voice %', 'Data %', 'Points at stake'],
+          group.rows.map(row => [
+            `${row.location}${row.note ? ` ${row.note}` : ''}`, owner(row), share(row.percent),
+            {text: row.delta === null || row.delta === undefined ? '–' : signedPoints(row.delta, 0), className: `scoring-insight-number ${toneClass(row.delta)}`},
+            share(row.voice_percent), share(row.data_percent),
+            {text: insightNumber(row.lost, 1), className: 'scoring-insight-bar-cell scoring-stake-cell', bar: {ratio: row.lost / peak, color: activeTheme?.ink || '#475569'}},
+          ]), {className: 'scoring-places-table'});
+        const wrap = document.createElement('div');
+        wrap.className = 'scoring-insight-table-wrap';
+        wrap.append(table);
+        section.append(wrap, insightParagraph('scoring-insight-note', 'Colour: 85% or more in the High colour, 75–85% Medium, under 75% Low. ',
+          `vs ${ranking.previous_campaign || 'previous'}: change in Points % (–: not measured then). Points at stake: one bar scale on every ranking.`));
+      }
+    }
+    const focus = routes.find(item => item.operator === operator);
+    if (focus) {
+      const {wrapper: routeControl, value: chosen} = insightSelect('act-route', focus.routes.map(route => [route.route, `${route.route} (${insightNumber(route.points, 1)})`]), 'Route');
+      const route = focus.routes.find(item => item.route === chosen) || focus.routes[0];
+      const section = insightSection(pane, `${route.route}: where the points are — ${focus.label}`, 'scoring-route-card', focus.context);
+      section.append(controls(routeControl), insightParagraph('scoring-act-headline', route.headline));
+      const body = document.createElement('div');
+      body.className = 'scoring-route-focus';
+      const map = makeOwnerRouteMap(route, ownerColor);
+      body.append(map);
+      const side = document.createElement('div');
+      side.className = 'scoring-route-side';
+      const ownerPeak = Math.max(0.01, ...route.owners.map(item => item.points));
+      side.append(insightParagraph('scoring-route-table-title', 'Points at stake by owner'),
+        insightTable(['Owner', 'Share of tests', 'Points'], route.owners.map(item => [
+          pill(item.name), item.tests_share === null || item.tests_share === undefined ? '–' : {text: `${insightNumber(item.tests_share, 0)}%`, className: 'scoring-insight-number'},
+          gapBarCell(item.points, ownerPeak, {loss: true, total: true})])),
+        insightParagraph('scoring-route-table-title', `The ${route.top.length} stretches with the most points`),
+        insightTable(['#', 'Stretch', 'Points', 'Main owner'], route.top.map((row, index) => [
+          {text: String(index + 1), className: 'scoring-insight-number'}, row.label, gapBarCell(row.points, route.top[0]?.points || 1, {loss: true, total: true}),
+          row.region ? pill(row.region) : '—'])));
+      body.append(side);
+      section.append(body);
+      if (route.review) section.append(insightParagraph('scoring-act-review', insightStrong('Please review: '), route.review));
+      section.append(insightParagraph('scoring-insight-note', 'A stretch gathers the tests of the route within about 20 km, named after the nearest city of the measurements; ',
+        'circle area: points at stake, in the colour of its owner.'));
+    }
+  }
+
+  // The map of a route: the map areas in light grey, the route and a circle per stretch (area: points at stake) in the
+  // colour of its owner, the stretches with the most points numbered.
+  function makeOwnerRouteMap(route, ownerColor) {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    const width = 520, height = 520, margin = 30;
+    const points = [...(route.path || []), ...route.all_stretches.map(([lat, lon]) => [lat, lon])];
+    if (!points.length) return svg;
+    const latitudes = points.map(point => point[0]), longitudes = points.map(point => point[1]);
+    const padLat = Math.max(.25, (Math.max(...latitudes) - Math.min(...latitudes)) * .25);
+    const padLon = Math.max(.4, (Math.max(...longitudes) - Math.min(...longitudes)) * .25);
+    const south = Math.min(...latitudes) - padLat, north = Math.max(...latitudes) + padLat;
+    const west = Math.min(...longitudes) - padLon, east = Math.max(...longitudes) + padLon;
+    const factor = Math.cos((south + north) / 2 * Math.PI / 180);
+    const unit = Math.max((east - west) * factor / (width - 2 * margin), (north - south) / (height - 2 * margin)) || 1;
+    const offsetX = (width - (east - west) * factor / unit) / 2, offsetY = (height - (north - south) / unit) / 2;
+    const project = (lat, lon) => [offsetX + (lon - west) * factor / unit, height - offsetY - (lat - south) / unit];
+    svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    svg.setAttribute('class', 'scoring-stretch-map scoring-owner-route-map');
+    svg.setAttribute('role', 'img');
+    svg.setAttribute('aria-label', `${route.route}: points at stake along the route by owner`);
+    svg.append(svgElement(svg, 'rect', {x: 0, y: 0, width, height, rx: 10, fill: '#e9eef3'}));
+    const land = svgElement(svg, 'g', {});
+    svg.append(land);
+    // The map areas (ITL3 in the UK) as the land under the route, once loaded.
+    if (currentResultsSavedFilterId) {
+      renderLoads.push(lossBoundaries(currentResultsSavedFilterId, 'Area').then(({boundaries}) => {
+        for (const rings of Object.values(boundaries || {})) {
+          for (const ring of rings) {
+            if (!ring.some(([lon, lat]) => lat >= south && lat <= north && lon >= west && lon <= east)) continue;
+            land.append(svgElement(svg, 'path', {d: `M${ring.map(([lon, lat]) => project(lat, lon).map(value => value.toFixed(1)).join(',')).join('L')}Z`,
+              fill: '#ffffff', stroke: '#d5dde5', 'stroke-width': .8}));
+          }
+        }
+      }));
+    }
+    const path = (route.path || []).map(([lat, lon]) => project(lat, lon));
+    for (const [x, y] of path) svg.append(svgElement(svg, 'circle', {cx: x, cy: y, r: 2, fill: '#94a3b8'}));
+    // The measured cities around the route.
+    for (const place of route.landmarks || []) {
+      const [x, y] = project(place.latitude, place.longitude);
+      svg.append(svgElement(svg, 'circle', {cx: x, cy: y, r: 3, fill: '#1c1c28'}));
+      const label = svgElement(svg, 'text', {x: x + 6, y: y - 5, 'font-size': 12, 'font-weight': 700, fill: '#1c1c28',
+        stroke: '#ffffff', 'stroke-width': 3, 'paint-order': 'stroke'});
+      label.textContent = place.name;
+      svg.append(label);
+    }
+    const peak = Math.max(...route.all_stretches.map(item => item[2]), 0) || 1;
+    const top = new Map(route.top.map((row, index) => [`${row.latitude},${row.longitude}`, index + 1]));
+    for (const [lat, lon, points, owner] of [...route.all_stretches].sort((left, right) => left[2] - right[2])) {
+      const [x, y] = project(lat, lon);
+      const circle = svgElement(svg, 'circle', {cx: x, cy: y, r: 4 + 20 * Math.sqrt(points / peak), fill: ownerColor(owner), 'fill-opacity': .85,
+        stroke: '#ffffff', 'stroke-width': 1.5});
+      setChartTooltip(circle, `${owner || 'No Region'} · ${insightNumber(points, 2)} points at stake`, true);
+      svg.append(circle);
+      const rank = top.get(`${lat},${lon}`);
+      if (rank) {
+        svg.append(svgElement(svg, 'circle', {cx: x - 24, cy: y - 14, r: 9, fill: '#1c1c28'}));
+        const label = svgElement(svg, 'text', {x: x - 24, y: y - 10.5, 'text-anchor': 'middle', 'font-size': 10, 'font-weight': 800, fill: '#ffffff'});
+        label.textContent = String(rank);
+        svg.append(label);
+      }
+    }
+    return svg;
   }
 
   function sameScope(left, right) {

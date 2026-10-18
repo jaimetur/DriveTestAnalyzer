@@ -73,7 +73,9 @@ SECTION_TITLES = {key: title for key, _feature, title in SECTIONS}
 # see scoring_reports); the KPI and GAP values of the tables are options of the section.
 SCORING_SUBMODULES: tuple[tuple[str, str, tuple[tuple[str, str], ...]], ...] = (
     ('summary', 'Summary', (('standings', 'Standings: where each operator stands'), ('position', 'Position per environment and service'),
-                            ('levers', 'Biggest levers against the reference'), ('scope', 'How the measurements ran'))),
+                            ('levers', 'Biggest levers against the reference'), ('act', 'Where to act'),
+                            ('owners', 'Where to act, by performance owner'), ('places', 'Cities, Towns, Roads and Railways ranked'),
+                            ('route', 'The route that loses most: where the points are'), ('scope', 'How the measurements ran'))),
     ('charts', 'Scoring Charts', (('service', 'Scoring per Service'), ('category', 'Scoring per Category'),
                                   ('breakdown', 'Scoring per Category (Breakdown)'))),
     ('tables', 'Scoring Tables', (('summary', 'Category table'), ('breakdown', 'Breakdown table'),

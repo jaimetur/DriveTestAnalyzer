@@ -57,6 +57,13 @@ def build_scoring_insights(score_tables: list[dict[str, Any]], configuration: di
     # The maps of the areas; the Vendors, kinds of site, sites and stretches have their own views.
     insights['points_loss_maps'] = [item for item in maps if item['field'] in {'City', 'Area', 'Region', 'Cluster'}]
     insights.update(_serving_views(maps, result))
+    # Where to act: the plan, each performance owner, the places ranked and the route that loses most.
+    from src.modules.scoring_where_to_act import build_where_to_act
+    labels = {name: str(scope.get('display_name') or name)
+              for name, scope in (configuration.get('scope') or {}).get('environments', {}).items()}
+    styles = {name: {**style, 'is_reference': name in {table.get('baseline_operator') for table in score_tables}}
+              for name, style in operator_styles(score_tables).items()}
+    insights.update(build_where_to_act(insights, maps, result, labels, formulas, styles))
     return insights
 
 
@@ -107,7 +114,7 @@ def _points_loss_maps(result: dict[str, Any] | None, score_tables: list[dict[str
                           # All environments: the environments where the area loses points, most first.
                           'environments': (item.get('environments') or {}).get(name, []),
                           # A site: its network, ID, Vendor and City; a stretch: its route and Vendor.
-                          **{key: place[key] for key in ('network', 'site', 'vendor', 'city', 'route_name') if place.get(key)}})
+                          **{key: place[key] for key in ('network', 'site', 'vendor', 'city', 'route_name', 'region') if place.get(key)}})
         maps.append({
             'environment': item.get('environment') or COMBINED, 'operator': operator, 'label': style.get('label') or operator,
             'color': style.get('color'), 'is_reference': operator in references, 'field': item['field'],
@@ -739,6 +746,27 @@ def _losses(table: dict[str, Any], operator: str, formulas: dict[str, str]) -> t
     return parts, {kind: sorted(rows, key=lambda item: -item['lost'])[:3] for kind, rows in kpis.items()}
 
 
+def _service_losses(table: dict[str, Any], operator: str, formulas: dict[str, str]) -> dict[str, dict[str, Any]]:
+    """The points lost on Voice and on Data by kind, with the KPIs that lose most: every kind of Voice (``kpis``), the
+    failed Data tests (``failed_kpis``) and the Data below the thresholds or short of quality (``below_kpis``)."""
+    services: dict[str, dict[str, Any]] = {}
+    for row in _kpi_rows(table):
+        maximum = _number(row.get('max_points')) or 0.0
+        points = _number(((row.get('values') or {}).get(operator) or {}).get('points'))
+        if maximum <= 0 or points is None or maximum - points <= 0:
+            continue
+        lost, kind, service = maximum - points, loss_kind(row, formulas), _service(row)
+        entry = services.setdefault(service, {**dict.fromkeys(LOSS_KINDS, 0.0), 'kpis': [], 'failed_kpis': [], 'below_kpis': []})
+        entry[kind] += lost
+        kpi = {'kpi': row.get('kpi'), 'lost': lost, 'kind': kind}
+        entry['kpis'].append(kpi)
+        entry['failed_kpis' if kind == 'failed' else 'below_kpis'].append(kpi)
+    for entry in services.values():
+        for key in ('kpis', 'failed_kpis', 'below_kpis'):
+            entry[key] = sorted(entry[key], key=lambda item: -item['lost'])[:3]
+    return services
+
+
 def _points_at_stake(scopes, levels: list[str], environment: str, formulas: dict[str, str]) -> list[dict[str, Any]]:
     """Per scope (its latest campaign): the points each operator lost, on failed tests, on tests below the KPI
     thresholds and as a quality shortfall, in all environments and in each one."""
@@ -756,7 +784,8 @@ def _points_at_stake(scopes, levels: list[str], environment: str, formulas: dict
             by_environment = {name: _losses(latest[name], operator, formulas)[0] for name in names
                               if any((_number(row.get('max_points')) or 0) > 0 for row in _kpi_rows(latest[name]))}
             operators.append({**_styles(table, operator), 'points': total, 'lost': sum(parts.values()),
-                              'parts': parts, 'environments': by_environment, 'kpis': kpis})
+                              'parts': parts, 'environments': by_environment, 'kpis': kpis,
+                              'services': _service_losses(table, operator, formulas)})
         if not operators:
             continue
         context = table.get('context') or {}
@@ -983,7 +1012,7 @@ def _serving_views(maps: list[dict[str, Any]], result: dict[str, Any] | None) ->
                     continue
                 sites[area['name']] = {'key': area['name'], 'site': area.get('site') or area['name'],
                                        'network': area.get('network'), 'vendor': area.get('vendor'),
-                                       'city': area.get('city'), 'latitude': area.get('latitude'),
+                                       'city': area.get('city'), 'region': area.get('region'), 'latitude': area.get('latitude'),
                                        'longitude': area.get('longitude'), 'points': area['points'],
                                        'failures': failures.get(area['name'])}
             series = tuple((key, value) for key, value in sorted(item['context'].items()) if key != 'campaign')
@@ -999,14 +1028,17 @@ def _serving_views(maps: list[dict[str, Any]], result: dict[str, Any] | None) ->
                 route = area.get('route_name') or area['name'].split('\x1e')[0]
                 routes.setdefault(route, []).append({
                     'label': _bearing_label(area['latitude'], area['longitude'], places), 'points': area['points'],
-                    'latitude': area['latitude'], 'longitude': area['longitude'], 'vendor': area.get('vendor')})
+                    'latitude': area['latitude'], 'longitude': area['longitude'], 'vendor': area.get('vendor'),
+                    'region': area.get('region')})
             ordered = sorted(routes.items(), key=lambda pair: -sum(row['points'] for row in pair[1]))[:MAX_STRETCH_ROUTES]
             if ordered:
                 views['route_stretches'].append({**base, 'routes': [{
                     'route': route, 'points': sum(row['points'] for row in stretches),
                     'path': (places.get(route) or {}).get('points') or [],
                     'stretches': sorted(stretches, key=lambda row: -row['points'])[:MAX_ROUTE_STRETCHES],
-                    'all_stretches': [[row['latitude'], row['longitude'], round(row['points'], 3)] for row in stretches],
+                    # [latitude, longitude, points, performance owner (Region)] of every stretch.
+                    'all_stretches': [[row['latitude'], row['longitude'], round(row['points'], 3), row.get('region') or '']
+                                      for row in stretches],
                 } for route, stretches in ordered]})
     for (operator, environment, _series), by_campaign in sites_by_series.items():
         campaigns = sorted(by_campaign, key=campaign_sort_key)

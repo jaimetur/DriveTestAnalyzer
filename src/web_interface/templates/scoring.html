@@ -725,6 +725,38 @@
     .scoring-results-tools a { flex: 1 1 auto; justify-content: center; white-space: normal; }
     .saved-filter-selector > .saved-filter-item { padding-right: .8rem; }
   }
+  /* ===== Summary: where to act (see scoring_where_to_act.py) ===== */
+  [data-scoring-workspace] .scoring-act-headline { margin: .2rem 0 .8rem; color: var(--st-accent, #245e5a); font-size: 1rem; font-weight: 600; }
+  [data-scoring-workspace] .scoring-act-list { display: grid; gap: .55rem; }
+  [data-scoring-workspace] .scoring-act-row { display: grid; grid-template-columns: minmax(10rem, 1.1fr) minmax(0, 2.6fr) minmax(9rem, 1fr); align-items: center; gap: 1rem;
+    padding: .7rem 1rem; border: 1px solid var(--st-line, #e3e8ec); border-left: 6px solid var(--act-color, #5b7a99); border-radius: 8px; background: var(--st-surface, #fff); }
+  [data-scoring-workspace] .scoring-act-row p { margin: 0; }
+  [data-scoring-workspace] .scoring-act-theme strong { font-size: .95rem; }
+  [data-scoring-workspace] .scoring-act-points, [data-scoring-workspace] .scoring-act-deep-dive { color: var(--st-muted, #8a96a0); font-size: .8rem; }
+  [data-scoring-workspace] .scoring-act-action { font-size: .86rem; }
+  [data-scoring-workspace] .scoring-act-review { margin: .8rem 0 0; padding: .6rem .9rem; border-left: 5px solid var(--st-loss, #e8414f); background: color-mix(in srgb, var(--st-line, #e3e8ec) 45%, transparent); font-size: .88rem; }
+  [data-scoring-workspace] .scoring-act-review strong { color: var(--st-loss, #e8414f); }
+  [data-scoring-workspace] .scoring-owner-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: .9rem; }
+  [data-scoring-workspace] .scoring-owner { display: flex; flex-direction: column; border: 1px solid var(--st-line, #e3e8ec); border-radius: 8px; overflow: hidden; background: var(--st-surface, #fff); }
+  [data-scoring-workspace] .scoring-owner header { padding: .7rem .9rem; background: var(--owner-color, #5b7a99); color: #fff; font-size: .82rem; }
+  [data-scoring-workspace] .scoring-owner header strong { font-size: .95rem; }
+  [data-scoring-workspace] .scoring-owner header b { font-size: 1.9rem; line-height: 1.15; }
+  [data-scoring-workspace] .scoring-owner-facts { display: grid; gap: .35rem; padding: .7rem .9rem; font-size: .8rem; }
+  [data-scoring-workspace] .scoring-owner-facts p { margin: 0; }
+  [data-scoring-workspace] .scoring-owner-where { margin-top: auto; padding: .55rem .9rem .8rem; border-top: 1px solid var(--st-line, #e3e8ec); font-size: .78rem; }
+  [data-scoring-workspace] .scoring-owner-where-title { margin: 0 0 .3rem; color: var(--st-muted, #8a96a0); font-weight: 700; }
+  [data-scoring-workspace] .scoring-owner-where > div { display: grid; grid-template-columns: 8.5rem minmax(0, 1fr) 2.6rem; align-items: center; gap: .4rem; }
+  [data-scoring-workspace] .scoring-owner-where span { height: .6rem; }
+  [data-scoring-workspace] .scoring-owner-where i { display: block; height: 100%; background: var(--owner-color, #5b7a99); }
+  [data-scoring-workspace] .scoring-owner-where strong { text-align: right; }
+  [data-scoring-workspace] .scoring-owner-pills { display: inline-flex; flex-wrap: wrap; gap: .25rem; }
+  [data-scoring-workspace] .scoring-owner-pill { display: inline-block; padding: .05rem .4rem; border-radius: 3px; background: var(--owner-color, #5b7a99); color: #fff; font-size: .72rem; font-weight: 700; white-space: nowrap; }
+  [data-scoring-workspace] .scoring-route-focus { display: grid; grid-template-columns: minmax(16rem, 1fr) minmax(0, 1.3fr); gap: 1.2rem; align-items: start; }
+  [data-scoring-workspace] .scoring-owner-route-map { width: 100%; height: auto; }
+  [data-scoring-workspace] .scoring-route-side { display: grid; gap: .5rem; min-width: 0; }
+  [data-scoring-workspace] .scoring-route-table-title { margin: .2rem 0 0; font-weight: 800; }
+  @media (max-width: 900px) { [data-scoring-workspace] :is(.scoring-route-focus, .scoring-act-row) { grid-template-columns: minmax(0, 1fr); } }
+
   /* ===== Themes: the style of every results table, card and chart (see scoring_themes.py) ===== */
   /* Every theme: the theme's type, quiet zeros, the operator of a group in sight at its start and lighter KPI types. */
   [data-scoring-workspace] .scoring-results-tabbed { font-family: var(--st-font, inherit); }

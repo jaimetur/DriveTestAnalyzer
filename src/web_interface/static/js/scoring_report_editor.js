@@ -8,7 +8,9 @@
   // The slides of each scoring, in the groups (and order) of the results tabs.
   const SUMMARY_OPTIONS = [
     ['standings', 'Standings: where each operator stands'], ['position', 'Position per environment and service'],
-    ['levers', 'Biggest levers against the reference'], ['scope', 'How the measurements ran'],
+    ['levers', 'Biggest levers against the reference'], ['act', 'Where to act'],
+    ['owners', 'Where to act, by performance owner'], ['places', 'Cities, Towns, Roads and Railways ranked'],
+    ['route', 'The route that loses most: where the points are'], ['scope', 'How the measurements ran'],
   ];
   const CHART_OPTIONS = [
     ['service', 'Scoring per Service'], ['category', 'Scoring per Category'],
@@ -59,7 +61,7 @@
   function defaultOptions(operators) {
     return {
       enabled: true, environments: 'all',
-      summary: {standings: true, position: true, levers: true, scope: true},
+      summary: {standings: true, position: true, levers: true, act: true, owners: true, places: true, route: true, scope: true},
       charts: {service: true, category: true, breakdown: true},
       tables: {summary: true, breakdown: true, kpi_values: false, gap_values: false, campaign_comparison: true},
       geographical_areas: {cards: true, ranking: true, versus: true},
