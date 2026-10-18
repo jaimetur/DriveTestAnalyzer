@@ -314,6 +314,9 @@ def normalize_definition(raw: Any) -> dict[str, Any]:
         'scoring': [],
         # Artifacts of modules registered in ARTIFACT_PROVIDERS.
         'modules': {},
+        # One colour theme for every artifact that supports themes (CDR Analysis, Network Insights, Scoring & GAP
+        # Analysis, PPT Dashboards and Complete Reports); empty: each artifact keeps its own (jobs saved before).
+        'theme': normalize_theme(raw['theme']) if str(raw.get('theme') or '').strip() else '',
     }
     for key, config in (raw.get('modules') or {}).items() if isinstance(raw.get('modules'), dict) else ():
         provider = ARTIFACT_PROVIDERS.get(key)
@@ -1099,7 +1102,7 @@ def install_report_task_routes(core: Any) -> None:
                 _path, reports, errors = core.write_dataset_summary(
                     dataset_ids, export_kind, destination, username, filters=filters,
                     metrics=section.get('metrics') or None, aggregation=section.get('aggregation') or 'all',
-                    cdf_grouping=section.get('cdf_grouping') or 'operator',
+                    cdf_grouping=section.get('cdf_grouping') or 'operator', theme=section.get('theme') or None,
                 )
                 filter_text = '; '.join(f"{CDR_ANALYSIS_AGGREGATIONS.get(dimension, dimension.title())}: {', '.join(values)}"
                                         for dimension, values in filters.items()) or 'none'
@@ -1202,7 +1205,8 @@ def install_report_task_routes(core: Any) -> None:
             if not isinstance(stored, dict):
                 raise RuntimeError('The Dashboard no longer exists.')
             update_run(task_repository, run_id, message=f'Generating {title}')
-            job_id = tools.queue_export(entry['dashboard_id'], user, dashboard_definition(stored, entry, task_repository))
+            job_id = tools.queue_export(entry['dashboard_id'], user, dashboard_definition(stored, entry, task_repository),
+                                        theme=entry.get('theme') or None)
             row = wait_for_dashboard_job(task_repository, job_id, run_id)
             source = Path(str(row['output_path']))
             # Dashboard PPT names start with their own generation time, which is dropped.
@@ -1413,6 +1417,17 @@ def install_report_task_routes(core: Any) -> None:
                           **{module: ({'enabled': False} if module == 'dataset_analysis' else [])
                              for module, permitted in allowed.items() if not permitted and module in MODULE_FEATURES},
                           'modules': {key: value for key, value in (definition.get('modules') or {}).items() if allowed.get(key)}}
+            # The theme of the job, when it has one, colours every artifact that supports themes.
+            theme = definition.get('theme') or ''
+            if theme:
+                definition = {
+                    **definition,
+                    'dataset_analysis': {**(definition.get('dataset_analysis') or {}), 'theme': theme},
+                    'network_insights': [{**entry, 'theme': theme} for entry in definition.get('network_insights') or []],
+                    'dashboards': [{**entry, 'theme': theme} for entry in definition.get('dashboards') or []],
+                    'scoring': [{**entry, 'report': {**(entry.get('report') or {}), 'theme': theme}} for entry in definition.get('scoring') or []],
+                    'modules': {key: {**config, 'theme': theme} for key, config in (definition.get('modules') or {}).items()},
+                }
             if definition.get('dataset_analysis', {}).get('enabled'):
                 steps.append(('CDR Analysis', lambda: generate_dataset_analysis(definition['dataset_analysis'], folder, stamp, user.username, names, task_repository)))
             for index, entry in enumerate(definition.get('network_insights') or [], start=1):
@@ -1700,12 +1715,19 @@ def install_report_task_routes(core: Any) -> None:
             favourite_contents = {str(item['id']): contents_of(item['definition'], dashboard_names) for item in favourites}
         except Exception:  # noqa: BLE001 - without them the jobs still list their artifacts.
             favourite_names, favourite_contents = {}, {}
-        # Run History links only the files that still exist.
+        # Run History links only the files that still exist, and shows how much its artifacts take.
         for run in runs:
             folder = Path(run['output_dir']) if run.get('output_dir') else None
+            run['artifacts_size'] = 0
             for item in run['artifacts']:
                 if item.get('status') == 'ready':
-                    item['available'] = bool(folder and item.get('file_name') and (folder / item['file_name']).is_file())
+                    path = folder / item['file_name'] if folder and item.get('file_name') else None
+                    try:
+                        item['size'] = path.stat().st_size if path is not None and path.is_file() else 0
+                    except OSError:
+                        item['size'] = 0
+                    item['available'] = bool(item['size']) or bool(path is not None and path.is_file())
+                    run['artifacts_size'] += item['size']
         # Jobs saved when CDRs were chosen by hand open with the campaigns of those CDRs.
         tasks = [{**task, 'definition': migrate_auto_cdrs(task['definition'], task_repository)} for task in list_tasks(task_repository)]
         return {

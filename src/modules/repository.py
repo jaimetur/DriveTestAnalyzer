@@ -588,6 +588,11 @@ def _default_vendor_maps() -> tuple[tuple[str, str, tuple[str, ...]], ...]:
                  for item in entries if isinstance(item, dict) and str(item.get('canonical') or '').strip())
 
 
+# The row counts of the datasets per profile (see Repository.profile_row_count), shared by every Repository.
+_PROFILE_ROW_COUNTS: dict[tuple[Any, ...], int] = {}
+_PROFILE_ROW_COUNTS_LOCK = Lock()
+
+
 class Repository:
     def __init__(self, db_path: Path, global_db_path: Path | None = None, workspace_registry_db_path: Path | None = None) -> None:
         self.db_path = db_path
@@ -3838,6 +3843,32 @@ class Repository:
             connection.execute(f'UPDATE {table} SET "{VENDOR_FIELD}" = vendor_filter_identity({self._quote_identifier(source)}, {operator_expression})')
             connection.execute('UPDATE dataset_profiles SET column_count = ?, updated_at = ? WHERE dataset_id = ?',
                                (len(columns) + 1, local_now_iso(), int(dataset_id)))
+
+    def profile_row_count(self, row: Any) -> int:
+        """The materialized rows of a dataset (a row of list_datasets), counted once per profile of the dataset: they
+        change only with it (processed_at and updated_at, normalization and mappings), and a COUNT(*) of millions of
+        rows made every Reporting editor, automatic CDR choice and Scoring history check slow."""
+        key = (str(self.db_path), int(row['id']), str(row['processed_at'] or ''), str(row['updated_at'] or ''),
+               int(row['normalization_version'] or 1), int(row['vendor_mapping_applied'] or 0),
+               int(row['region_mapping_applied'] or 0))
+        with _PROFILE_ROW_COUNTS_LOCK:
+            if key in _PROFILE_ROW_COUNTS:
+                return _PROFILE_ROW_COUNTS[key]
+        count = self.dataset_row_count(int(row['id']))
+        with _PROFILE_ROW_COUNTS_LOCK:
+            _PROFILE_ROW_COUNTS[key] = count
+        return count
+
+    def dataset_has_rows(self, dataset_id: int) -> bool:
+        """Whether the materialized rows of a dataset hold at least one row (without counting millions of them)."""
+        table_name = self.dataset_rows_table_name(dataset_id)
+        with self.connection() as conn:
+            exists = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (table_name,)
+            ).fetchone()
+            if not exists:
+                return False
+            return conn.execute(f"SELECT 1 FROM {self._quote_identifier(table_name)} LIMIT 1").fetchone() is not None
 
     def dataset_row_count(self, dataset_id: int) -> int:
         table_name = self.dataset_rows_table_name(dataset_id)

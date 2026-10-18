@@ -73,10 +73,12 @@
 .report-jobs #rj-runs th:nth-child(1) { width: 4%; }
 .report-jobs #rj-runs th:nth-child(2) { width: 12%; }
 .report-jobs #rj-runs th:nth-child(3), .report-jobs #rj-runs th:nth-child(4) { width: 9%; }
-.report-jobs #rj-runs th:nth-child(5) { width: 20%; }
-.report-jobs #rj-runs th:nth-child(6) { width: 12%; }
-.report-jobs #rj-runs th:nth-child(7) { width: 27%; }
-.report-jobs #rj-runs th:nth-child(8) { width: 7%; }
+.report-jobs #rj-runs th:nth-child(5) { width: 18%; }
+.report-jobs #rj-runs th:nth-child(6) { width: 11%; }
+.report-jobs #rj-runs th:nth-child(7) { width: 26%; }
+.report-jobs #rj-runs th:nth-child(8) { width: 6%; }
+.report-jobs #rj-runs th:nth-child(9) { width: 7%; }
+.report-jobs #rj-runs td.rj-size { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .report-jobs #rj-runs small { display: block; margin-top: .2rem; }
 /* Every field of an artifact entry on one row on wide screens. */
 .report-jobs .rj-one-row { grid-auto-flow: column; grid-template-columns: none; grid-auto-columns: minmax(0, 1fr); align-items: end; }
@@ -345,6 +347,10 @@
 /* The pickers look like the selects of the page: the same height, border and text. */
 .complete-report-panel .rj-multi > summary { display: flex; justify-content: space-between; align-items: center; gap: .6rem; min-height: 2.95rem; box-sizing: border-box; padding: .85rem 1rem; border: 1px solid var(--line); border-radius: 14px; background: rgba(255, 255, 255, .9); color: var(--text); cursor: pointer; list-style: none; font-size: .86rem; font-weight: 400; }
 .complete-report-panel .rj-multi > summary::-webkit-details-marker { display: none; }
+/* The Campaigns of every section (and of the Scoring Trends) choose its CDRs: they stand out in amber. */
+.complete-report-panel .cr-campaigns-field .rj-multi-label { color: #8a5a00; font-weight: 800; }
+.complete-report-panel .cr-campaigns-field .rj-multi > summary { border-color: #e0a526; background: #fff6dc; color: #4a3500; font-weight: 700; box-shadow: inset 4px 0 0 #e0a526; }
+.complete-report-panel .cr-campaigns-field .rj-multi > summary:hover, .complete-report-panel .cr-campaigns-field .rj-multi[open] > summary { background: #ffeec0; }
 .complete-report-panel .rj-multi-caption { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .complete-report-panel .rj-multi .workspace-user-picker-menu { position: absolute; z-index: 30; min-width: 100%; max-height: 16rem; overflow: auto; padding: .5rem; border: 1px solid var(--line); border-radius: 10px; background: #fff; box-shadow: 0 12px 28px rgba(18, 32, 43, .16); }
 .complete-report-panel .rj-multi .workspace-user-picker-menu label { display: flex; gap: .45rem; align-items: center; padding: .15rem 0; font-size: .86rem; color: var(--text); }

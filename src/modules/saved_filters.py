@@ -306,7 +306,7 @@ def _source_snapshot(
         if not repository.dataset_rows_table_exists(dataset_id):
             raise ValueError(f"Dataset '{row['file_name']}' has no processed row table.")
         columns = repository.list_dataset_row_columns(dataset_id)
-        row_count = repository.dataset_row_count(dataset_id)
+        row_count = repository.profile_row_count(row)
         if row_count < 1:
             raise ValueError(f"Dataset '{row['file_name']}' has no processed rows to score.")
         campaigns = campaigns_by_id.get(dataset_id, [])
@@ -417,8 +417,7 @@ def select_all_complete_cdrs(repository: Repository, nr_mode: str) -> list[int]:
         and str(row['dataset_kind'] or '').strip().casefold() in CDR_DATASET_KINDS
         and int(row['id']) in included
         and normalize_nr_mode(row['nr_mode']) == mode
-        and repository.dataset_rows_table_exists(int(row['id']))
-        and repository.dataset_row_count(int(row['id'])) > 0
+        and repository.dataset_has_rows(int(row['id']))
     ]
     campaign_index = _read_campaigns(repository, [int(row['id']) for row in candidates])
     # CDRs without a Campaign form their own set, complete when every type has one.
@@ -455,8 +454,7 @@ def select_latest_companion_cdrs(repository: Repository, dataset_id: int) -> lis
         and str(row['dataset_kind'] or '').strip().casefold() in CDR_DATASET_KINDS
         and int(row['id']) in included
         and normalize_nr_mode(row['nr_mode']) == anchor_mode
-        and repository.dataset_rows_table_exists(int(row['id']))
-        and repository.dataset_row_count(int(row['id'])) > 0
+        and repository.dataset_has_rows(int(row['id']))
     ]
     campaign_index = _read_campaigns(repository, [int(row['id']) for row in candidates])
     candidates.sort(key=lambda row: (str(row['uploaded_at'] or ''), int(row['id'])), reverse=True)

@@ -27,7 +27,7 @@ from uuid import uuid4
 import pandas as pd
 from src.modules.column_names import campaign_sort_key, column_identity, compact_campaign_value, sort_vendor_values, vendor_filter_column, vendor_filter_value, vendor_filter_values, vendor_match_values
 from src.modules import report_structure
-from src.modules.scoring_themes import THEMES, dashboard_chart_style, load_user_theme, save_user_theme, themes_payload, use_theme
+from src.modules.scoring_themes import THEMES, dashboard_chart_style, load_user_theme, normalize_theme, save_user_theme, themes_payload, use_theme
 from src.modules.theme_titles import style_title
 from src.modules.value_maps import ValueMapper, field_kind
 from src.modules.cdr_auto_selection import (
@@ -991,11 +991,12 @@ def install_dashboard_routes(core):
 
     def render_dashboard_ppt_job(
         job_id, run_token, task_repository, snapshot, definition, user,
-        destination, dashboard_id, preview_fingerprint, cover_regions, cover_cities, cover_campaigns='',
+        destination, dashboard_id, preview_fingerprint, cover_regions, cover_cities, cover_campaigns='', theme=None,
     ):
         run_key = (str(Path(task_repository.db_path).resolve()), job_id)
-        # The colour theme the user chose for PPT Dashboards: the titles of the content slides and the charts.
-        theme = load_user_theme(task_repository, user.username, DASHBOARD_THEME_MODULE)
+        # The colour theme of the titles of the content slides and of the charts: that of the report generating the PPT
+        # (a Complete Report or a Reporting Job), else the one the user chose for PPT Dashboards.
+        theme = normalize_theme(theme) if theme else load_user_theme(task_repository, user.username, DASHBOARD_THEME_MODULE)
         chart_style = dashboard_chart_style(theme)
 
         def run_is_active():
@@ -1890,9 +1891,10 @@ def install_dashboard_routes(core):
         dashboard_id, user, *, reuse_job_id=None, export_definition: DashboardDefinition | None = None,
         preparation_token: str | None = None, selected_operators: list[str] | None = None,
         selected_vendors: list[str] | None = None, selected_regions: list[str] | None = None,
-        selected_cities: list[str] | None = None, legend_visibility: dict | None = None,
+        selected_cities: list[str] | None = None, legend_visibility: dict | None = None, theme: str | None = None,
     ):
-        """Create the export job immediately; all preparation runs in the background job."""
+        """Create the export job immediately; all preparation runs in the background job (``theme``: the colour theme
+        of a report generating it, else the user's PPT Dashboards theme)."""
         task_repository = bound_repository()
         workspace = workspace_key()
         # Preparation and pre-caching never block an export: the queued job
@@ -1976,11 +1978,11 @@ def install_dashboard_routes(core):
         core.submit_background_task(
             prepare_and_render_dashboard_ppt_job,
             job_id, run_token, task_repository, user, dashboard_id, raw_definition,
-            explicit_selections, snapshot, export_time, previous_output,
+            explicit_selections, snapshot, export_time, previous_output, theme,
         )
         task_repository.add_log(user.username, 'export_dashboard_ppt', json.dumps({
             'dashboard_id': dashboard_id, 'job_id': job_id, 'output': str(destination),
-            'theme': load_user_theme(task_repository, user.username, DASHBOARD_THEME_MODULE),
+            'theme': normalize_theme(theme) if theme else load_user_theme(task_repository, user.username, DASHBOARD_THEME_MODULE),
         }))
         return job_id
 
@@ -1988,8 +1990,9 @@ def install_dashboard_routes(core):
     core.dashboard_reporting = SimpleNamespace(
         definition_model=DashboardDefinition,
         list_dashboards=lambda task_repository: read_dashboards(task_repository),
-        queue_export=lambda dashboard_id, user, definition=None: queue_dashboard_ppt_export(
+        queue_export=lambda dashboard_id, user, definition=None, theme=None: queue_dashboard_ppt_export(
             dashboard_id, user, export_definition=DashboardDefinition.model_validate(definition) if definition is not None else None,
+            theme=theme,
         ),
         job=dashboard_ppt_job,
         serialize_job=lambda row: serialize_dashboard_ppt_job(row),
@@ -1997,7 +2000,7 @@ def install_dashboard_routes(core):
 
     def prepare_and_render_dashboard_ppt_job(
         job_id, run_token, task_repository, user, dashboard_id, raw_definition,
-        explicit_selections, snapshot, export_time, previous_output,
+        explicit_selections, snapshot, export_time, previous_output, theme=None,
     ):
         """Resolve the export universe, labels and file name, then render the PPT."""
         run_key = (str(Path(task_repository.db_path).resolve()), job_id)
@@ -2094,7 +2097,7 @@ def install_dashboard_routes(core):
             return
         render_dashboard_ppt_job(
             job_id, run_token, task_repository, snapshot, snapshot_definition, user, destination,
-            dashboard_id, preview_fingerprint, cover_regions, cover_cities, cover_campaigns,
+            dashboard_id, preview_fingerprint, cover_regions, cover_cities, cover_campaigns, theme,
         )
 
     @app.post('/api/ppt-dashboards/{dashboard_id}/export-ppt')

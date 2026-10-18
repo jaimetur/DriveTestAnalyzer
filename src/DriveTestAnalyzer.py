@@ -20878,12 +20878,13 @@ def build_dataset_summary_reports(
 
 
 def write_dataset_summary(
-    dataset_ids: list[int] | None, export_kind: str, destination: Path, username: str, **options: Any,
+    dataset_ids: list[int] | None, export_kind: str, destination: Path, username: str, *, theme: str | None = None,
+    **options: Any,
 ) -> tuple[Path, list[dict[str, Any]], list[str]]:
-    """Write the Summary CDR Analysis as PowerPoint ('powerpoint') or Word ('word'), in the colour theme the user
-    chose for CDR Analysis."""
+    """Write the Summary CDR Analysis as PowerPoint ('powerpoint') or Word ('word'), in ``theme`` (that of a Reporting
+    Job) or else the colour theme the user chose for CDR Analysis."""
     reports, errors = build_dataset_summary_reports(dataset_ids, username, **options)
-    with use_theme(load_user_theme(repository, username, CDR_ANALYSIS_THEME_MODULE)):
+    with use_theme(theme or load_user_theme(repository, username, CDR_ANALYSIS_THEME_MODULE)):
         if export_kind == 'word':
             # The Word document is the PowerPoint summary: one landscape page per slide. The intermediate
             # presentation has its own name, so it never replaces a PowerPoint written next to it.

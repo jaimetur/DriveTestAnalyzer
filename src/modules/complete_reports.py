@@ -299,9 +299,11 @@ def normalize_definition(raw: Any) -> dict[str, Any]:
         'items': _normalize_items(key, raw_sections.get(key, {}).get('items')),
         'options': _normalize_options(key, raw_sections.get(key, {}).get('options'), legacy),
     } for key in order]
-    # Scoring & GAP Analysis and Network Insights share one theme (reports saved before take that of Scoring).
+    # One colour theme for every section that supports themes (Scoring & GAP Analysis, Network Insights and PPT
+    # Dashboards), chosen beside the title; reports saved before take that of their Scoring section.
     options = {section['key']: section['options'] for section in definition['sections']}
-    options['network_insights']['theme'] = options['scoring']['theme']
+    definition['theme'] = normalize_theme(raw.get('theme') or options['scoring']['theme'])
+    options['scoring']['theme'] = options['network_insights']['theme'] = definition['theme']
     return definition
 
 
@@ -1100,7 +1102,7 @@ class SectionGenerator:
                 if values:
                     filters[column] = values
             definition.update({'filters': filters, 'auto_cdrs': True})
-            job_id = tools.queue_export(item['key'], self.user, definition)
+            job_id = tools.queue_export(item['key'], self.user, definition, theme=self.definition.get('theme'))
             deadline = time.monotonic() + DASHBOARD_TIMEOUT_SECONDS
             while True:
                 row = tools.job(self.repository, job_id)
@@ -1275,6 +1277,7 @@ def section_fingerprint(core: Any, repository: Any, definition: dict[str, Any], 
     if section['key'] == 'dashboards':
         stored = core.dashboard_reporting.list_dashboards(repository)
         inputs['dashboards'] = {item['key']: stored.get(item['key']) for item in section['items']}
+        inputs['theme'] = definition.get('theme')
     elif section['key'] == 'scoring':
         inputs['methodologies'] = repository.get_scoring_profiles()
     elif section['key'] == 'network_insights':
@@ -1922,7 +1925,11 @@ def _register_reporting_artifact(core: Any) -> None:
             raise CompleteReportError('The associated Complete Report no longer exists.' if chosen
                                       else 'There is no favourite Complete Report to generate.')
         artifacts = []
+        # The theme of a Reporting Job generating them replaces the theme of each favourite.
+        theme = str(config.get('theme') or '').strip()
         for favourite in favourites:
+            if theme:
+                favourite = {**favourite, 'definition': normalize_definition({**favourite['definition'], 'theme': theme})}
             work = folder / f".complete-report-{favourite['id']}"
             work.mkdir(parents=True, exist_ok=True)
             formats = [value for value in config.get('formats') or ['powerpoint'] if value in FORMATS] or ['powerpoint']

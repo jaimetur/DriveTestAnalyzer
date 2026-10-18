@@ -397,7 +397,7 @@ def source_key(repository: Any, row: Any, datasets: dict[int, Any] | None = None
         'vendor_mapping_applied': int(row['vendor_mapping_applied'] or 0),
         'region_mapping': (int(row['region_mapping_applied'] or 0), mapping_file('region_mapping_dataset_id')),
         'cluster_mapping': (int(row['cluster_mapping_applied'] or 0), mapping_file('cluster_mapping_dataset_id')),
-        'row_count': int(repository.dataset_row_count(dataset_id)),
+        'row_count': int(repository.profile_row_count(row)),
         # The map areas of the tests, kept in the rows in the background, do not change the components.
         'columns': sorted(str(column) for column in repository.list_dataset_row_columns(dataset_id)
                           if column not in {'Map_Area', 'Map_Area_Country'}),

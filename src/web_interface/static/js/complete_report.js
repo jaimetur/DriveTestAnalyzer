@@ -126,15 +126,8 @@
     wrapper.input = select;
     return wrapper;
   };
-  // The Scoring & GAP Analysis and Network Insights sections share their theme, so the whole report has one: choosing it
-  // in one section chooses it in the other.
-  document.addEventListener('change', (event) => {
-    const select = event.target;
-    if (!(select instanceof HTMLSelectElement) || !select.dataset.crTheme) return;
-    document.querySelectorAll('select[data-cr-theme]').forEach((other) => {
-      if (other !== select && other.value !== select.value) other.value = select.value;
-    });
-  });
+  // One colour theme for the whole report, beside its title: every section that supports themes takes it.
+  const reportTheme = () => $('cr-theme').value || definition?.theme || 'netcheck';
   const numberField = (label, value, step, title = '') => {
     const wrapper = node('label', label, 'cr-field');
     const input = node('input');
@@ -168,6 +161,7 @@
     let campaigns = null;
     const renderCampaigns = (selected) => {
       campaigns = multiField('Campaigns', campaignValues(), selected, {exclusive: presets});
+      campaigns.classList.add('cr-campaigns-field');
       row.replaceChildren(campaigns);
     };
     renderCampaigns(saved.campaigns || []);
@@ -239,8 +233,6 @@
       .map((value) => [value, value]), saved.baseline_operator);
     const compared = multiField('Compared operators', operators, saved.compared_operators);
     compared.title = 'The operators GAP Analysis compares with the GAP reference (all when none is chosen)';
-    const theme = selectField('Theme', (options.scoring_themes || []).map((item) => [item.id, item.label || item.id]), saved.theme);
-    theme.input.dataset.crTheme = 'scoring';
     const tables = node('fieldset', undefined, 'cr-choice-group');
     tables.append(node('legend', 'Scoring tables'));
     const kpiValues = check('Show KPI values', saved.kpi_values);
@@ -257,6 +249,7 @@
     const renderTrendCampaigns = (selected) => {
       trendCampaigns = multiField('Campaigns', campaignValues(), selected, {exclusive: presets, allLabel: 'Same as the section'});
       trendCampaigns.title = 'The campaigns of the Scoring Trend and the National & Geographical Areas Trends (none: the campaigns of the section)';
+      trendCampaigns.classList.add('cr-campaigns-field');
       trendHost.replaceChildren(trendCampaigns);
     };
     renderTrendCampaigns(saved.area_summary.campaigns || []);
@@ -276,14 +269,14 @@
     area.append(breakdown, timeSplit);
     trends.append(trendHost, area);
     const grid = node('div', undefined, 'cr-option-grid');
-    grid.append(methodology, reference, theme, compared);
+    grid.append(methodology, reference, compared);
     box.append(scorings, environments, tables, grid, trends);
     box.collect = () => ({
       scorings: scoringBoxes.filter((item) => item.checked).map((item) => item.value),
       environments: environmentBoxes.filter((item) => item.checked).map((item) => item.value),
       kpi_values: kpiValues.box.checked, gap_values: gapValues.box.checked,
       baseline_operator: reference.input.value, methodology: methodology.input.value,
-      compared_operators: compared.getValue?.() || [], theme: theme.input.value,
+      compared_operators: compared.getValue?.() || [], theme: reportTheme(),
       area_summary: {enabled: areaEnabled.box.checked, breakdown: breakdown.input.value, time_split: timeSplit.input.value,
         campaigns: trendCampaigns?.getValue?.() || []},
     });
@@ -307,11 +300,8 @@
     ];
     const gridSize = selectField('Map grid', [['100', '100 m'], ['250', '250 m'], ['500', '500 m'], ['1000', '1 km']], String(saved.grid_metres));
     const environments = multiField('Environments', NI_ENVIRONMENTS, saved.environments);
-    const theme = selectField('Theme', (options.scoring_themes || []).map((item) => [item.id, item.label || item.id]), saved.theme);
-    theme.title = 'The colours and titles of the Network Insights section, the same as those of the Scoring & GAP Analysis section';
-    theme.input.dataset.crTheme = 'network_insights';
     const grid = node('div', undefined, 'cr-option-grid');
-    grid.append(technology, group, ...fields, gridSize, environments, theme);
+    grid.append(technology, group, ...fields, gridSize, environments);
     box.append(grid);
     const number = (field, fallback) => {
       const value = Number.parseFloat(field.input.value);
@@ -322,7 +312,7 @@
       coverage_threshold: number(fields[0], -110), interference_threshold: number(fields[1], 0),
       nr_coverage_threshold: number(fields[2], -115), nr_interference_threshold: number(fields[3], -3),
       overshoot_km: number(fields[4], 5), grid_metres: Number(gridSize.input.value) || 250,
-      environments: environments.getValue?.() || [], theme: theme.input.value,
+      environments: environments.getValue?.() || [], theme: reportTheme(),
     });
     return box;
   }
@@ -487,6 +477,7 @@
     return {
       title: $('cr-title').value.trim(),
       subtitle: $('cr-subtitle').value.trim(),
+      theme: reportTheme(),
       filters: collectFilters(),
       sections: [...$('cr-sections').children].map((card) => card.collect()),
     };
@@ -499,6 +490,17 @@
   function render() {
     $('cr-title').value = definition.title || '';
     $('cr-subtitle').value = definition.subtitle || '';
+    // Reports saved before the common theme take that of their Scoring section.
+    const theme = $('cr-theme');
+    const scoringTheme = (definition.sections || []).find((section) => section.key === 'scoring')?.options?.theme;
+    theme.replaceChildren(...(options.scoring_themes || []).map((item) => {
+      const option = node('option', item.label || item.id);
+      option.value = item.id;
+      if (item.description) option.title = item.description;
+      return option;
+    }));
+    theme.value = definition.theme || scoringTheme || 'netcheck';
+    if (!theme.value && theme.options.length) theme.selectedIndex = 0;
     filterPickers = {};
     renderFilters();
     renderSections();
@@ -540,6 +542,7 @@
   $('cr-name').addEventListener('input', changed);
   $('cr-title').addEventListener('input', changed);
   $('cr-subtitle').addEventListener('input', changed);
+  $('cr-theme').addEventListener('change', () => { definition.theme = $('cr-theme').value; changed(); });
 
   $('cr-save').addEventListener('click', async () => {
     const name = $('cr-name').value.trim();
@@ -1080,19 +1083,26 @@
 
   // -- start -------------------------------------------------------------------------------------------
   async function load() {
+    // The favourites come with the Complete Report options and show at once; the filter values of every CDR (the
+    // Reporting options) arrive after them and complete the panel.
+    const optionsRequest = api('/api/reporting/options');
+    optionsRequest.catch(() => {});
+    let draft = null;
+    try { draft = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null'); } catch {}
     try {
-      [options, crOptions] = await Promise.all([api('/api/reporting/options'), api('/api/reporting/complete-report/options')]);
+      crOptions = await api('/api/reporting/complete-report/options');
+      favourites = crOptions.favourites || [];
+      renderFavourites(draft?.favourite || '');
+      $('cr-name').value = draft?.name || '';
+      $('cr-favourite').disabled = true;
+      options = await optionsRequest;
     } catch (error) {
       status(error.message, 'error');
       $('cr-filters').replaceChildren(node('p', error.message, 'form-note'));
       return;
     }
-    favourites = crOptions.favourites || [];
-    let draft = null;
-    try { draft = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null'); } catch {}
+    $('cr-favourite').disabled = false;
     definition = clone(draft?.definition && draft.definition.sections ? mergeDefaults(draft.definition) : crOptions.defaults);
-    renderFavourites(draft?.favourite || '');
-    $('cr-name').value = draft?.name || '';
     render();
     if (options.catalogues_pending) status('The filter values of some CDRs are being prepared in the background; reload the page in a few minutes to see all of them.', 'info');
   }

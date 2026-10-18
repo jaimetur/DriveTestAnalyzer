@@ -872,6 +872,10 @@
     editingUpdatedAt = task?.updated_at || '';
     $('rj-editor-title').textContent = task?.id ? `Edit ${task.name}` : 'New Reporting Job';
     $('rj-name').value = task?.name || '';
+    // One theme for every artifact of the job that supports themes, or each artifact's own (jobs saved before).
+    $('rj-theme').replaceChildren(...[['', "Each artifact's own theme"], ...(options.scoring_themes || []).map((item) => [item.id, item.label || item.id])]
+      .map(([value, label]) => { const option = node('option', label); option.value = value; return option; }));
+    $('rj-theme').value = (options.scoring_themes || []).some((item) => item.id === definition.theme) ? definition.theme : '';
     $('rj-da-enabled').checked = Boolean(dataset.enabled);
     formatChoices(document.querySelector('[data-rj-formats="rj-da"]'), 'rj-da', dataset.formats || ['powerpoint']);
     // CDR Analysis chooses its CDRs from its NR Mode and Campaigns, as the other artifacts, and lists them below.
@@ -1070,7 +1074,7 @@
   function favouriteDefinition(base) {
     const favourite = $('rj-favourite')?.value || '';
     return {
-      ...base, dataset_analysis: {...base.dataset_analysis, enabled: false}, network_insights: [], dashboards: [], scoring: [],
+      ...base, theme: '', dataset_analysis: {...base.dataset_analysis, enabled: false}, network_insights: [], dashboards: [], scoring: [],
       modules: {
         ...Object.fromEntries(Object.entries(base.modules).map(([key, module]) => [key, {...module, enabled: false}])),
         complete_report: {enabled: true, formats: $('rj-favourite-formats').getValue(), options: {filters: {favourites: favourite ? [favourite] : []}}},
@@ -1094,6 +1098,7 @@
         dashboards: $('rj-dashboards-enabled').checked ? [...$('rj-dashboards').children].map((card) => card.getValue()) : [],
         scoring: $('rj-scoring-enabled').checked ? [...$('rj-scoring').children].map((card) => card.getValue()) : [],
         modules: Object.fromEntries([...$('rj-providers').children].map((card) => card.getValue())),
+        theme: $('rj-theme').value || '',
     };
   }
 
@@ -1372,7 +1377,7 @@
   function renderRuns() {
     const body = $('rj-runs').tBodies[0];
     if (!state.runs.length) {
-      emptyRow(body, 'No runs yet.', 8);
+      emptyRow(body, 'No runs yet.', 9);
       return;
     }
     body.replaceChildren(...state.runs.map((run) => {
@@ -1437,10 +1442,21 @@
       }
       const cells = [node('td', String(run.id)), node('td', run.task_name), node('td', run.trigger === 'schedule' ? 'Schedule' : `Manual · ${run.requested_by}`),
         node('td', localTime(run.started_at || run.created_at)), statusCell, node('td', run.send_email ? (run.email_status || 'Pending') : 'No email')];
-      row.append(...cells, cellWith(artifacts), cellWith(actions));
+      // What all the artifacts of the run take on disk.
+      const size = node('td', run.artifacts_size ? formatSize(run.artifacts_size) : '—', 'rj-size');
+      size.title = 'Size of all the artifacts of this run';
+      row.append(...cells, cellWith(artifacts), size, cellWith(actions));
       return row;
     }));
   }
+
+  const formatSize = (bytes) => {
+    const units = ['B', 'KB', 'MB', 'GB'];
+    let value = Number(bytes) || 0;
+    let unit = 0;
+    while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit += 1; }
+    return `${value >= 100 || unit === 0 ? Math.round(value) : value.toFixed(1)} ${units[unit]}`;
+  };
 
   async function refresh() {
     state = await api('/api/reporting/state');
