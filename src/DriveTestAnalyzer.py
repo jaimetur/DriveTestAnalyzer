@@ -128,6 +128,7 @@ from src.modules.scoring_selection import (
     scoring_auto_cdrs,
     expand_scoring_context_filters,
 )
+from src.modules.scoring_export_panels import OPERATOR_MODES, export_panel_catalogue, load_export_panels
 from src.modules.repository import APP_EVENT_ORIGIN, APP_EVENTS_LIMIT, Repository, SCORING_CONFIGURATION_STATE_KEY, USER_ROLES, WORKSPACE_REGISTRY_TABLE, workspace_write_lock
 from src.modules.runtime_config import IGNORE_EVENT_TIME_FILTERING_ENV, env_flag, ignore_event_time_filtering
 from src.modules.query_builder import MAX_PREVIEW_ROWS, execute_query, iter_query_csv, query_column_values, validate_query
@@ -6394,7 +6395,7 @@ BACKUP_WORKSPACE_CONTENT: tuple[tuple[str, str, str], ...] = (
     ('main_cities', 'Main Cities (workspace city selection)', 'main-cities'),
     ('mappings_reference_data', 'Mappings & Reference Data (Operator and Vendor aliases, order and theme colors, Campaign Maps, '
                                 'Map Areas and Spectrum Holdings)', 'mappings-reference-data'),
-    ('scoring_configuration', 'Scoring & GAP Analysis Methodologies (KPI methodology profiles and GAP KPI priorities)',
+    ('scoring_configuration', 'Scoring & GAP Analysis Methodologies (KPI methodology profiles, GAP KPI priorities and Scoring Export Panels)',
      'scoring-configuration'),
     ('auto_calculated_fields', 'Auto-calculated Fields (one JSON file with all definitions)', 'auto-calculated-fields'),
     ('query_builder_queries', 'Query Builder Queries (one JSON file with all saved queries)', 'query-builder-queries'),
@@ -7884,7 +7885,10 @@ def _scoring_configuration_archive_payload(workspace: Workspace) -> bytes:
     profiles = (task_repository.get_scoring_profiles()
                 if task_repository.get_workspace_state(SCORING_CONFIGURATION_STATE_KEY) else None)
     from src.modules.scoring_config import scoring_profiles_document
-    return json.dumps(scoring_profiles_document(profiles), ensure_ascii=False, indent=2).encode('utf-8')
+    from src.modules.scoring_export_panels import export_panels_document
+    # The Scoring Export Panels of Workspace Config travel with the methodologies.
+    document = {**scoring_profiles_document(profiles), 'export_panels': export_panels_document(load_export_panels(task_repository))}
+    return json.dumps(document, ensure_ascii=False, indent=2).encode('utf-8')
 
 
 def _archive_workspace_scoring_configuration(
@@ -7995,6 +7999,10 @@ def _restore_workspace_scoring_configuration(workspace: Workspace, payload: byte
             task_repository.set_workspace_state(SCORING_CONFIGURATION_STATE_KEY, '')
         else:
             task_repository.replace_scoring_profiles(profiles)
+        # (Packages made before the Scoring Export Panels keep those of the workspace.)
+        if isinstance(document, dict) and isinstance(document.get('export_panels'), dict):
+            from src.modules.scoring_export_panels import save_export_panels
+            save_export_panels(task_repository, document['export_panels'])
     except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
         raise ValueError(f'Scoring & GAP Analysis Methodologies for "{workspace.name}" are invalid.') from exc
 
@@ -11473,6 +11481,10 @@ def render_admin_template(
             'selected_main_cities': selected_main_cities,
             'main_cities_notice': request.query_params.get('main_cities_notice') or None,
             'main_cities_error': request.query_params.get('main_cities_error') or None,
+            'scoring_export_panels': export_panel_catalogue(load_export_panels(repository)) if active_workspace else [],
+            'scoring_export_modes': OPERATOR_MODES,
+            'scoring_export_panels_notice': request.query_params.get('scoring_export_panels_notice') or None,
+            'scoring_export_panels_error': request.query_params.get('scoring_export_panels_error') or None,
             'vendor_mapping_groups': repository.list_vendor_mapping_groups() if active_workspace else [],
             'mapping_assignments': mapping_assignment_rows() if active_workspace else {},
             'vendor_mapping_notice': request.query_params.get('vendor_mapping_notice') or None,
@@ -18677,6 +18689,7 @@ def scoring_saved_filter_export(
     scorings: list[str] | None = Query(default=None),
     environments: list[str] | None = Query(default=None),
     operators: str | None = None,
+    all_operators: bool = False,
     user: SessionUser = Depends(current_user),
 ) -> Response:
     if table_mode is not None and table_mode not in {'expanded', 'summary'}:
@@ -18723,6 +18736,7 @@ def scoring_saved_filter_export(
             **({'scorings': export_scorings} if export_kind in {'ppt', 'word'} and export_scorings else {}),
             **({'environments': export_environments} if export_kind in {'ppt', 'word'} and export_environments else {}),
             **({'operators': operator_choices} if export_kind in {'ppt', 'word'} and operator_choices else {}),
+            **({'all_operators': True} if export_kind in {'ppt', 'word'} and all_operators else {}),
         }))
         return response
     from src.modules.scoring_views import normalize_result_gaps
@@ -18808,6 +18822,10 @@ def scoring_saved_filter_export(
                 saved_filter['configuration'] = export_configuration or task_repository.get_scoring_configuration()
             export_job = _scoring_export_job_with_catalogue_defaults(task_repository, saved_filter)
             export_job['_operator_choices'] = operator_choices
+            # The panels the workspace exports and their operators; every operator in the Focus Operators panels when
+            # the export dialog asks for it.
+            export_job['_export_panels'] = load_export_panels(task_repository)
+            export_job['_all_operators'] = all_operators
             export_job['_scoring_display_selections'] = prepare_scoring_display_selections(
                 export_job, result, settings.powerpoint_templates_dir / TEMPLATE_NAMES['nsa'],
             )
@@ -18966,6 +18984,7 @@ def build_scoring_report_document(task_repository: Repository, base: dict[str, A
     report = normalize_report_configuration(configuration)
     operator_mapping_groups = task_repository.list_operator_mapping_groups()
     template = settings.powerpoint_templates_dir / TEMPLATE_NAMES['nsa']
+    export_panels = load_export_panels(task_repository)
     entries = []
     for scenario in report['scenarios']:
         saved_filter = _scenario_saved_filter(task_repository, base, scenario, username)
@@ -18975,6 +18994,10 @@ def build_scoring_report_document(task_repository: Repository, base: dict[str, A
             saved_filter['configuration'] = task_repository.get_scoring_configuration()
         export_job = _scoring_export_job_with_catalogue_defaults(task_repository, saved_filter)
         export_job['_scoring_display_selections'] = prepare_scoring_display_selections(export_job, result, template)
+        # The panels the workspace exports and their operators (every operator in the Focus Operators panels with
+        # all_operators).
+        export_job['_export_panels'] = export_panels
+        export_job['_all_operators'] = report['all_operators']
         entries.append({'scenario': scenario, 'job': export_job, 'result': result})
     content = export_scoring_report(
         entries, template, operator_mapping_groups, split_charts=split_charts,
@@ -21553,6 +21576,48 @@ def save_workspace_main_cities(
     )
 
 
+@app.post('/workspace-config/scoring-export-panels/save')
+async def save_workspace_scoring_export_panels(
+    request: Request, user: SessionUser = Depends(config_editor_user),
+) -> Response:
+    """Save the Scoring panels the PowerPoint and Word documents include and the operators of each one (or restore the
+    defaults)."""
+    from src.modules.scoring_export_panels import (
+        EXPORT_PANELS, OPERATOR_MODES, default_export_panels, export_panel_changes, save_export_panels,
+    )
+
+    target = '/workspace-config?{}#scoring-export-panels'
+    if not active_workspace:
+        return RedirectResponse(target.format(urlencode({'scoring_export_panels_error': 'Open a workspace before editing the Scoring Export Panels.'})),
+                                status_code=status.HTTP_303_SEE_OTHER)
+    form = await request.form()
+    reset = form.get('action') == 'reset'
+    panels = default_export_panels() if reset else {
+        group: {key: {'exportable': f'exportable:{group}:{key}' in form, 'operators': str(form.get(f'operators:{group}:{key}') or '')}
+                for key, _label, _mode in items}
+        for group, _title, items in EXPORT_PANELS}
+    before = load_export_panels(repository)
+    saved = save_export_panels(repository, panels)
+    labels = {(group, key): f'{title} > {label}' for group, title, items in EXPORT_PANELS for key, label, _mode in items}
+    repository.add_log(user.username, 'save_scoring_export_panels', json.dumps({
+        'reset': reset, 'changes': export_panel_changes(before, saved),
+        'not_exportable': [label for (group, key), label in labels.items() if not saved[group][key]['exportable']],
+        'operators': {label: dict(OPERATOR_MODES)[saved[group][key]['operators']] for (group, key), label in labels.items()},
+    }, ensure_ascii=False))
+    notice = 'Scoring Export Panels restored to their defaults.' if reset else 'Scoring Export Panels saved.'
+    return RedirectResponse(target.format(urlencode({'scoring_export_panels_notice': notice})),
+                            status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.get('/api/scoring/export-panels')
+def get_scoring_export_panels(user: SessionUser = Depends(current_user)) -> JSONResponse:
+    """The Scoring panels the workspace exports and the operators of each one, for the editors of the reports."""
+    from src.modules.scoring_export_panels import export_panel_catalogue
+
+    panels = load_export_panels(scoring_repository(user))
+    return JSONResponse({'panels': panels, 'groups': export_panel_catalogue(panels)}, headers={'Cache-Control': 'no-store'})
+
+
 @app.get('/api/workspace-config/scoring-configuration')
 def get_workspace_scoring_configuration(
     user: SessionUser = Depends(config_editor_user),
@@ -21651,7 +21716,12 @@ def export_workspace_scoring_configuration(
             raise HTTPException(status_code=404, detail='The selected scoring methodology no longer exists.')
         profiles = {'active_profile_id': profile_id, 'profiles': [profile]}
     from src.modules.scoring_config import scoring_profiles_document
-    content = json.dumps(scoring_profiles_document(profiles), ensure_ascii=False, indent=2)
+    from src.modules.scoring_export_panels import export_panels_document
+    document = scoring_profiles_document(profiles)
+    if profile_id is None:
+        # Every methodology carries the Scoring Export Panels of Workspace Config too.
+        document['export_panels'] = export_panels_document(load_export_panels(task_repository))
+    content = json.dumps(document, ensure_ascii=False, indent=2)
     task_repository.try_add_log(user.username, 'export_scoring_configuration', json.dumps({
         'methodologies': [profile['name'] for profile in profiles['profiles']],
     }))
@@ -21690,6 +21760,11 @@ async def import_workspace_scoring_configuration(
             result: dict[str, Any] = {'active_profile_id': None, 'profiles': []}
         else:
             result = task_repository.replace_scoring_profiles(profiles)
+        # The Scoring Export Panels the file carries (files of every methodology).
+        export_panels = document.get('export_panels') if isinstance(document, dict) else None
+        if isinstance(export_panels, dict):
+            from src.modules.scoring_export_panels import save_export_panels
+            save_export_panels(task_repository, export_panels)
     except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     finally:
@@ -21697,6 +21772,7 @@ async def import_workspace_scoring_configuration(
     task_repository.try_add_log(user.username, 'import_scoring_configuration', json.dumps({
         'profile_count': len(result['profiles']),
         'active_profile_id': result['active_profile_id'],
+        'export_panels': isinstance(export_panels, dict),
     }))
     return JSONResponse(result, headers={'Cache-Control': 'no-store'})
 

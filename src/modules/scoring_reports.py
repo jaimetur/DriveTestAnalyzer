@@ -165,8 +165,10 @@ def normalize_report_configuration(raw: Any) -> dict[str, Any]:
     normalized = [normalize_scenario(item, index) for index, item in enumerate(scenarios)]
     if not any(any(options['enabled'] for options in scenario['scorings'].values()) for scenario in normalized):
         raise ValueError('Include the Best Network or the Most Reliable Network scoring in at least one scenario.')
-    # The colour theme of the document (see scoring_themes); configurations saved before have NetCheck.
-    configuration: dict[str, Any] = {'scenarios': normalized, 'theme': normalize_theme(raw.get('theme'))}
+    # The colour theme of the document (see scoring_themes); configurations saved before have NetCheck. With
+    # all_operators, the Focus Operators panels show every operator (see scoring_export_panels).
+    configuration: dict[str, Any] = {'scenarios': normalized, 'theme': normalize_theme(raw.get('theme')),
+                                     'all_operators': bool(raw.get('all_operators'))}
     # The saved configuration (or Default) it was chosen from, shown again in the editor's selector.
     name = str(raw.get('name') or '').strip()[:80]
     if name:

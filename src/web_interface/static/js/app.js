@@ -7220,7 +7220,7 @@ function importWarningDetails(payload) {
   if (kind === 'scoring-configuration') {
     return {
       title: 'Overwrite Scoring & GAP Analysis Methodologies?',
-      message: 'Choose the destination workspaces next. The package data will replace their Scoring & GAP Analysis Methodologies, including its available KPI methodology profiles and GAP KPI priorities.',
+      message: 'Choose the destination workspaces next. The package data will replace their Scoring & GAP Analysis Methodologies, including its available KPI methodology profiles, GAP KPI priorities and Scoring Export Panels.',
     };
   }
   if (kind === 'app-events') {

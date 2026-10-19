@@ -89,8 +89,13 @@ def test_the_selector_shows_the_configuration_whose_scenarios_are_shown():
     assert "const openedName = String(state.name || '');" in SCRIPT
     assert "const {syncTheme: _syncTheme, ...chosen} = state;" in SCRIPT
     assert "close({configuration: {...clone(chosen), ...(chosenName ? {name: chosenName} : {})}, action});" in SCRIPT
-    # Named configurations keep only their scenarios.
-    assert "configuration: {scenarios: state.scenarios, theme: state.theme}" in SCRIPT
+    # Named configurations keep only their scenarios, theme and Export All Operators in Focus panels.
+    assert "configuration: {scenarios: state.scenarios, theme: state.theme,\n              all_operators: state.all_operators}" in SCRIPT
+    assert "state.all_operators = Boolean(item.configuration?.all_operators);" in SCRIPT
+    # Only the panels the workspace exports (Workspace Config > Scoring Export Panels), those of the Focus operators tagged.
+    assert "api('/api/scoring/export-panels').then((payload) => {" in SCRIPT
+    assert "const shown = options.filter(([key]) => !name || exportable(name, key));" in SCRIPT
+    assert "if (name && focusPanel(name, key)) {" in SCRIPT
     # The selector follows the content: the saved configuration with the same scenarios, or none.
     assert "saved.replaceChildren(el('option', '', '<Not saved configuration>'));" in SCRIPT
     assert "current = matchingConfiguration();" in SCRIPT

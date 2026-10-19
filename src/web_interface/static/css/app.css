@@ -2699,6 +2699,8 @@ body[data-embedded-dataset-preview] > .shell > main { width: 100%; max-width: no
 .scoring-export-choice > input[type="checkbox"] { flex: 0 0 auto; width: 1rem; min-width: 0; height: 1rem; min-height: 0; margin: 0.12rem 0 0; padding: 0; }
 .scoring-export-choice small { color: #74838b; font-weight: 500; }
 .scoring-export-choice:has(> input:disabled) { opacity: 0.55; cursor: not-allowed; }
+/* Export All Operators in Focus panels takes the whole row. */
+.scoring-export-choice:has(> input[data-scoring-export-all-operators]) { grid-column: 1 / -1; }
 .confirm-option input { flex: 0 0 auto; width: 1.05rem; height: 1.05rem; margin: 0.1rem 0 0; accent-color: #bb3c3c; }
 .background-task-dock { position: fixed; bottom: 1rem; z-index: 8500; display: flex; flex-direction: column-reverse; gap: 0.65rem; width: min(360px, calc(100vw - 2rem)); max-height: min(70vh, 620px); overflow-y: auto; pointer-events: none; }
 .background-task-dock:empty { display: none; }
@@ -4605,6 +4607,14 @@ body:has(dialog.vendor-mapping-dialog[open]) { overflow: hidden; }
 .scoring-report-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; }
 .scoring-report-toolbar select { min-width: 13rem; }
 .scoring-report-theme { display: inline-flex; align-items: center; gap: .35rem; font-size: .8rem; font-weight: 700; }
+.scoring-export-panels-table tbody th { font-weight: 600; }
+.scoring-export-panels-table .scoring-export-panels-group th { background: #eef4f8; color: #1f4f8f; font-size: .78rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.scoring-export-panels-table td:nth-child(2) { width: 7rem; text-align: center; }
+.scoring-export-panels-table td:last-child { width: 17.5rem; }
+.scoring-export-panels-table select { width: 100%; min-width: 16rem; }
+.scoring-export-panels-table tr:has(input[type="checkbox"]:not(:checked)) th[scope="row"] { color: #8a99a3; }
+.scoring-report-header .scoring-report-flag { margin-right: auto; font-size: .8rem; font-weight: 700; }
+.scoring-report-focus-tag { margin-left: .35rem; padding: .05rem .4rem; border-radius: 6px; background: #e3edfb; color: #1f4f8f; font-size: .68rem; font-weight: 800; letter-spacing: .03em; }
 .scoring-report-toolbar .scoring-report-theme select { min-width: 10rem; }
 .scoring-report-dialog .scoring-report-tool { display: inline-flex; align-items: center; gap: .35rem; font-weight: 700; }
 .scoring-report-dialog .scoring-report-tool svg { width: 1rem; height: 1rem; flex: none; }

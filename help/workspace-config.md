@@ -28,6 +28,7 @@ Open **Config → Workspace Config** from the main navigation at `/workspace-con
 | Main Cities | [Open section](#main-cities) |
 | Portable operations | [Open section](#portable-operations) |
 | Scoring & GAP Analysis Setup | [Open section](#scoring-gap-analysis-setup) |
+| Scoring Export Panels | [Open section](#scoring-export-panels) |
 
 ## Access and active workspace
 
@@ -572,6 +573,16 @@ Maintain the transferable KPI priority list with up/down, first/last or specific
 > **Priority and result ordering.** The saved priority list does not currently determine GAP result order. Individual comparisons sort signed GAP from lowest to highest in the latest campaign, with unavailable values last; All Operators retains KPI definition order.
 
 Web and PowerPoint GAP tables include a final sum for each comparison column. Individual PPT comparisons show Average KPI GAP and the average of the column GAP totals. These are distinct statistics; see the [complete Scoring & GAP Analysis guide](scoring-gap-analysis.md) for examples, coverage rules and JSON formats.
+
+
+### Scoring Export Panels
+
+The **Scoring Export Panels** panel, after the Scoring & GAP Analysis Setup, lists every panel of the Scoring & GAP Analysis results that the PowerPoint and Word documents can include, grouped by results tab (Summary, Scoring Charts, Scoring Tables, Geographical Areas, Scoring Trends, GAP Analysis and Points Lost) in the order of the page. For each panel:
+
+- **Exportable** includes it in the documents. A panel that is not exportable is left out of **Export Selected Scoring Report**, **Generate Scoring Report**, the Scoring artifacts of Reporting Jobs and the Scoring section of the Bundle Report Templates, and their editors do not list it.
+- **What to Export** chooses its operators: **All Operators** (the reference included) or **Focus Operators**, those with the **Focus** role in the [Operator Maps](#operator-maps) (every operator when no label has it; the reference only when it is one of them). The default of each panel is marked *(default)*: Focus Operators in Where to act, Where to act by performance owner, Biggest levers, Cities, Towns, Roads and Railways ranked, the route that loses most, Campaign comparison, Geographical Areas ranked, Each operator against the reference, the individual GAP tables, GAP by part, KPI GAP Profile and every Points Lost panel but Where the points go; All Operators in the others.
+
+**Save Export Panels** saves the table for the workspace and **Restore Defaults** brings back the defaults; both are registered in App Events with the panels that changed. **Export All Operators in Focus panels**, in every export dialog and report editor, shows every operator in the Focus Operators panels of one document. The operators chosen on the page with the operator buttons of a panel still apply to **Export Selected Scoring Report** (see [Scoring & GAP Analysis](scoring-gap-analysis.md#what-is-in-the-powerpoint)). The panels travel with the **Scoring & GAP Analysis Methodologies** in Import / Export, transfers and backups (packages made before them keep the panels of the destination).
 
 
 ### Chart layouts

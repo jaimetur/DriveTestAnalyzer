@@ -2595,12 +2595,16 @@
       + '</fieldset><fieldset class="scoring-export-choices"><legend>Environments</legend>'
       + box('environment', 'Combined', 'All Environments', true, false, '(all the environments combined)')
       + environments.map(environment => box('environment', environment.value, environment.label, false)).join('')
+      // The panels that export the Focus operators (Workspace Config > Scoring Export Panels) can show every operator.
+      + '</fieldset><fieldset class="scoring-export-choices"><legend>Operators</legend>'
+      + box('all-operators', 'true', 'Export All Operators in Focus panels', false, false, '(every operator in the Focus Operators panels)')
       + '</fieldset>';
   }
 
   // The sections whose operators the page chooses with its chips, as the export names them.
-  const EXPORT_OPERATOR_SECTIONS = ['summary-operators', 'ranking-operators', 'gap-parts-operators', 'gap-insight-operators',
-    'vendor_losses-operators', 'site_type_losses-operators', 'sites-operators', 'stretches-operators', 'route-operators'];
+  // (The route that loses most and the Campaign Comparison always export the operators of their panel.)
+  const EXPORT_OPERATOR_SECTIONS = ['summary-operators', 'places-operators', 'ranking-operators', 'gap-parts-operators', 'gap-insight-operators',
+    'vendor_losses-operators', 'site_type_losses-operators', 'sites-operators', 'stretches-operators'];
 
   // The operators chosen in each section ({section: [operators]}); a section never changed is left out, so the export
   // uses its default (as the page does).
@@ -2648,6 +2652,7 @@
     if (choice === 'secondary') url.pathname = url.pathname.replace(/\/export\/ppt$/, '/export/word');
     for (const scoring of scorings) url.searchParams.append('scorings', scoring);
     for (const environment of environments) url.searchParams.append('environments', environment);
+    if (typeof showConfirmDialog === 'function' && ticked('all-operators').length) url.searchParams.set('all_operators', 'true');
     // The operators enabled in each section of the page: the document shows the same ones.
     const operators = scoringExportOperators();
     if (Object.keys(operators).length) url.searchParams.set('operators', JSON.stringify(operators));
@@ -7311,34 +7316,46 @@
         'Points lost: the points of the scoring lost against the maximum in its tests (each place by its share of the tests). ',
         `High site: ${insightNumber(1, 0)}+ point lost and losses on the same site in an earlier campaign.${ownerItem.unidentified > .05 ? ` ${insightNumber(ownerItem.unidentified, 1)} points have no Region.` : ''}`));
     }
-    const ranking = places.find(item => item.operator === operator);
-    if (ranking) {
-      const peak = Math.max(0.01, ...ranking.groups.flatMap(group => group.rows.map(row => row.lost)));
+    // The Cities, Towns, Roads and Railways ranked, for every operator chosen with operator buttons of their own (as the
+    // other sections, the Focus operators by default), whatever the operator of Where to act: a table per operator.
+    if (places.length) {
+      const {control: placeChips, chosen: placesChosen} = insightOperatorChips('places-operators', places);
+      const rankings = places.filter(item => placesChosen.includes(item.operator));
+      const peak = Math.max(0.01, ...rankings.flatMap(item => item.groups.flatMap(group => group.rows.map(row => row.lost))));
       const band = value => (value >= 85 ? activeTheme?.band_strong?.High || '#6AA84F' : value >= 75 ? activeTheme?.band_strong?.Medium || '#E8A33D'
         : activeTheme?.band_strong?.Low || '#E06666');
-      for (const group of ranking.groups) {
-        const section = insightSection(later, `${group.title} — ${ranking.label}`, 'scoring-places-card', ranking.context);
-        section.append(controls(), insightParagraph('scoring-act-headline', group.headline));
-        const owner = row => {
-          const box = document.createElement('span');
-          box.className = 'scoring-owner-pills';
-          for (const item of row.owners) box.append(pill(item.name, `${item.name} ${insightNumber(item.share, 0)}%`));
-          return box;
-        };
-        const share = value => (value === null || value === undefined ? '—'
-          : {text: `${insightNumber(value, 0)}%`, className: 'scoring-insight-bar-cell', bar: {ratio: Math.min(1, value / 100), color: band(value)}});
-        const table = insightTable(['Place', 'Owner', 'Points %', `vs ${ranking.previous_campaign || 'previous'}`, 'Voice %', 'Data %', 'Points lost'],
-          group.rows.map(row => [
-            `${row.location}${row.note ? ` ${row.note}` : ''}`, owner(row), share(row.percent),
-            {text: row.delta === null || row.delta === undefined ? '–' : signedPoints(row.delta, 0), className: `scoring-insight-number ${toneClass(row.delta)}`},
-            share(row.voice_percent), share(row.data_percent),
-            {text: insightNumber(row.lost, 1), className: 'scoring-insight-bar-cell scoring-stake-cell', bar: {ratio: row.lost / peak, color: activeTheme?.ink || '#475569'}},
-          ]), {className: 'scoring-places-table'});
-        const wrap = document.createElement('div');
-        wrap.className = 'scoring-insight-table-wrap';
-        wrap.append(table);
-        section.append(wrap, insightParagraph('scoring-insight-note', 'Colour: 85% or more in the High colour, 75–85% Medium, under 75% Low. ',
-          `vs ${ranking.previous_campaign || 'previous'}: change in Points % (–: not measured then). Points lost: one bar scale on every ranking.`));
+      const owner = row => {
+        const box = document.createElement('span');
+        box.className = 'scoring-owner-pills';
+        for (const item of row.owners) box.append(pill(item.name, `${item.name} ${insightNumber(item.share, 0)}%`));
+        return box;
+      };
+      const share = value => (value === null || value === undefined ? '—'
+        : {text: `${insightNumber(value, 0)}%`, className: 'scoring-insight-bar-cell', bar: {ratio: Math.min(1, value / 100), color: band(value)}});
+      const titles = [...new Set(rankings.flatMap(item => item.groups.map(group => group.title)))];
+      for (const title of titles) {
+        const entries = rankings.map(ranking => [ranking, ranking.groups.find(group => group.title === title)]).filter(([, group]) => group);
+        const section = insightSection(later, title, 'scoring-places-card', entries[0][0].context);
+        section.append(insightControls(placeChips.cloneNode(true)));
+        for (const [ranking, group] of entries) {
+          const wrap = document.createElement('div');
+          wrap.className = 'scoring-insight-table-wrap';
+          const banner = document.createElement('div');
+          banner.className = 'scoring-insight-banner';
+          const color = safeHexColor(ranking.color);
+          if (color) banner.style.setProperty('--banner-color', color);
+          banner.append(insightStrong(ranking.label), ` · ${group.headline}`);
+          wrap.append(banner, insightTable(['Place', 'Owner', 'Points %', `vs ${ranking.previous_campaign || 'previous'}`, 'Voice %', 'Data %', 'Points lost'],
+            group.rows.map(row => [
+              `${row.location}${row.note ? ` ${row.note}` : ''}`, owner(row), share(row.percent),
+              {text: row.delta === null || row.delta === undefined ? '–' : signedPoints(row.delta, 0), className: `scoring-insight-number ${toneClass(row.delta)}`},
+              share(row.voice_percent), share(row.data_percent),
+              {text: insightNumber(row.lost, 1), className: 'scoring-insight-bar-cell scoring-stake-cell', bar: {ratio: row.lost / peak, color: activeTheme?.ink || '#475569'}},
+            ]), {className: 'scoring-places-table'}));
+          section.append(wrap);
+        }
+        section.append(insightParagraph('scoring-insight-note', 'Colour: 85% or more in the High colour, 75–85% Medium, under 75% Low. ',
+          'vs previous: change in Points % since the previous campaign (–: not measured then). Points lost: one bar scale on every ranking.'));
       }
     }
     // The route that loses most, for every operator chosen with operator buttons of its own (as the other sections, the
@@ -7635,11 +7652,10 @@
       const title = titles.includes(storedGroup) ? storedGroup : titles[0];
       const inGroup = ofLevel.filter(item => (item.title || '') === title);
       const {control: chips, chosen} = insightOperatorChips('ranking-operators', inGroup);
-      const plural = {City: 'Cities and routes', Cluster: 'Clusters', Region: 'Regions'}[level] || 'Locations';
-      const section = insightSection(pane, `${plural} ranked${inGroup[0]?.campaign ? ` — ${inGroup[0].campaign}` : ''}`, 'scoring-ranking-card', inGroup[0]?.context);
+      const words = locationWords(level, inGroup.flatMap(item => item.rows));
+      const section = insightSection(pane, `${words.title} ranked${inGroup[0]?.campaign ? ` — ${inGroup[0].campaign}` : ''}`, 'scoring-ranking-card', inGroup[0]?.context);
       section.append(insightControls(levels.length > 1 ? levelControl : null, titles.length > 1 ? groupControl : null, chips));
       for (const item of inGroup.filter(entry => chosen.includes(entry.operator))) section.append(makeRankingTable(item));
-      const words = locationWords(level);
       section.append(insightParagraph('scoring-insight-note', `Points %: the share of the points available in each ${words.one} (its environments scaled to the full maximum); `,
         'Δ: the change since the previous campaign in points of percentage; the bar of Points lost shares one scale per table.'));
       const versus = inGroup.filter(entry => chosen.includes(entry.operator) && !entry.is_reference && entry.rows.some(row => row.gap !== null));
@@ -7660,12 +7676,17 @@
     }
   }
 
-  // The words of a level of the Geographical Areas (Region, Cluster or City), for the headers and notes of its tables.
-  function locationWords(level) {
+  // The words of a level of the Geographical Areas (Region, Cluster or City), for the titles, headers and notes of its
+  // tables: the City level names the Connecting Roads routes too when its rows have them.
+  function locationWords(level, rows = []) {
+    if (level === 'City' && rows.some(row => row.kind === 'route')) {
+      return {name: 'City', one: 'city or route', many: 'cities and routes', title: 'Cities and routes'};
+    }
     return {
-      Region: {name: 'Region', one: 'region', many: 'regions'}, Cluster: {name: 'Cluster', one: 'cluster', many: 'clusters'},
-      City: {name: 'City', one: 'city or route', many: 'cities and routes'},
-    }[level] || {name: 'Location', one: 'location', many: 'locations'};
+      Region: {name: 'Region', one: 'region', many: 'regions', title: 'Regions'},
+      Cluster: {name: 'Cluster', one: 'cluster', many: 'clusters', title: 'Clusters'},
+      City: {name: 'City', one: 'city', many: 'cities', title: 'Cities'},
+    }[level] || {name: 'Location', one: 'location', many: 'locations', title: 'Locations'};
   }
 
   function makeRankingTable(item) {
@@ -7676,7 +7697,8 @@
     const color = safeHexColor(item.color);
     if (color) banner.style.setProperty('--banner-color', color);
     const lost = item.rows.reduce((sum, row) => sum + row.lost, 0);
-    banner.append(insightStrong(item.label), ` · ${item.rows.length} ${item.level === 'City' ? 'cities and routes' : `${item.level.toLowerCase()}s`}${item.title ? ` · ${item.title}` : ''}`);
+    const words = locationWords(item.level, item.rows);
+    banner.append(insightStrong(item.label), ` · ${item.rows.length} ${words.many}${item.title ? ` · ${item.title}` : ''}`);
     const peak = Math.max(...item.rows.map(row => row.lost), 0);
     const hasVendors = item.rows.some(row => row.vendors?.length);
     const rows = item.rows.map((row, index) => [
@@ -7690,7 +7712,6 @@
       {text: row.data_percent === null ? '—' : `${insightNumber(row.data_percent, 1)}%`, className: 'scoring-insight-number'},
       gapBarCell(row.lost, peak, {loss: true}),
     ]);
-    const words = locationWords(item.level);
     const table = insightTable(['#', words.name, ...(hasVendors ? ['Vendors (share of tests)'] : []), 'Points %',
       item.previous_campaign ? `Δ vs ${item.previous_campaign}` : 'Δ', 'Voice %', 'Data %', 'Points lost'], rows, {className: 'scoring-ranking-table'});
     table.querySelectorAll('td.scoring-insight-total').forEach(cell => cell.classList.add('scoring-insight-bar-cell'));
@@ -7708,7 +7729,7 @@
     banner.append(insightStrong(item.label), ` minus ${item.reference_label}`);
     const rows = item.rows.filter(row => row.gap !== null).sort((left, right) => left.gap - right.gap);
     const scale = Math.max(...rows.flatMap(row => [row.gap, row.voice_gap, row.data_gap].map(value => Math.abs(Number(value) || 0))), 1);
-    wrapper.append(banner, insightTable([locationWords(item.level).name, 'Points %', 'Voice %', 'Data %', item.label, item.reference_label],
+    wrapper.append(banner, insightTable([locationWords(item.level, item.rows).name, 'Points %', 'Voice %', 'Data %', item.label, item.reference_label],
       rows.map(row => [row.location, divergingBar(row.gap, scale), divergingBar(row.voice_gap, scale), divergingBar(row.data_gap, scale),
         {text: `${insightNumber(row.percent, 1)}%`, className: 'scoring-insight-number'},
         {text: `${insightNumber(row.reference_percent, 1)}%`, className: 'scoring-insight-number'}]), {className: 'scoring-versus-table'}));

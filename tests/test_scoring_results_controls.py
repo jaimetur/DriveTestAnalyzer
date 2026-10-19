@@ -903,6 +903,7 @@ const results = [];
     {choice: 'confirm', toggle: ['best_network'], reliable: false},
     {choice: null, toggle: [], reliable: true},
     {choice: 'confirm', toggle: [], reliable: true, selections: [['summary-operators', '["VF","EE"]'], ['points-loss-colour', 'losses']]},
+    {choice: 'confirm', toggle: ['true'], reliable: true},
   ];
   for (const item of cases) {
     let downloaded = null;
@@ -917,7 +918,7 @@ const results = [];
       currentResults: {scorings: item.reliable ? {most_reliable: {}} : {}},
       showConfirmDialog: async (message, options) => {
         dialog = {message, ...options};
-        inputs = [...options.copyHtml.matchAll(/data-scoring-export-(\w+) value="([^"]*)"( checked)?( disabled)?/g)]
+        inputs = [...options.copyHtml.matchAll(/data-scoring-export-([\w-]+) value="([^"]*)"( checked)?( disabled)?/g)]
           .map(([, group, value, checked, disabled]) => ({group, value, checked: Boolean(checked), disabled: Boolean(disabled)}));
         for (const input of inputs) if (item.toggle.includes(input.value) && !input.disabled) input.checked = !input.checked;
         return item.choice;
@@ -934,11 +935,11 @@ const results = [];
   process.stdout.write(JSON.stringify(results));
 })().catch(error => { console.error(error); process.exitCode = 1; });
 """
-    default, custom, nothing, cancelled, operators = _run_node_json(program, payload)
+    default, custom, nothing, cancelled, operators, every = _run_node_json(program, payload)
     # Best Network and All Environments are ticked; Most Reliable only when the Saved Filter has it.
     assert [(item['value'], item['checked'], item['disabled']) for item in default['inputs']] == [
         ('best_network', True, False), ('most_reliable', False, False), ('Combined', True, False),
-        ('Drive - City', False, False), ('Drive - Roads', False, False)]
+        ('Drive - City', False, False), ('Drive - Roads', False, False), ('true', False, False)]
     assert default['title'] == 'Export Selected Scoring Report' and default['labels'] == ['PowerPoint', 'Word']
     assert default['downloaded'] == {
         'url': 'https://example.test/scoring/saved-filters/7/export/ppt?environment=all&scorings=best_network&environments=Combined',
@@ -953,6 +954,9 @@ const results = [];
     assert operators['downloaded']['url'] == (
         'https://example.test/scoring/saved-filters/7/export/ppt?environment=all&scorings=best_network&environments=Combined'
         '&operators=%7B%22summary-operators%22%3A%5B%22VF%22%2C%22EE%22%5D%7D')
+    # Export All Operators in Focus panels (off by default) shows every operator in the panels of the Focus operators.
+    assert every['downloaded']['url'] == ('https://example.test/scoring/saved-filters/7/export/ppt?environment=all'
+                                          '&scorings=best_network&environments=Combined&all_operators=true')
 
 
 def test_generate_scoring_report_uses_the_calculation_selection():
@@ -2037,14 +2041,17 @@ def test_operator_sections_show_their_operators_together_and_fit_the_page():
     stretches = _function_source(script, 'renderRouteStretches')
     assert "insightOperatorChips('stretches-operators', inScope);" in stretches
     assert "grid.className = `scoring-insight-pair scoring-stretches-grid${shown.length > 1 ? ' is-multiple' : ''}`;" in stretches
-    assert "'stretches-operators', 'route-operators'];" in script
+    assert "'sites-operators', 'stretches-operators'];" in script
     # Where to act: one operator chosen with buttons in the Focus and Other operators subpanels.
     act = _function_source(script, 'renderWhereToAct')
     assert "insightOperatorPicker('act-operator', all, fallback);" in act
-    # The route that loses most shows every operator chosen with operator buttons of its own (shared with the other
-    # sections), whatever the operator of Where to act.
+    # The places ranked and the route that loses most show every operator chosen with operator buttons of their own
+    # (shared with the other sections), whatever the operator of Where to act; the export follows those of the places
+    # (the route always shows the operators of its panel).
     assert "insightOperatorChips('route-operators', routes);" in act and 'for (const focus of shown) {' in act
-    assert "'stretches-operators', 'route-operators'];" in script
+    assert "insightOperatorChips('places-operators', places);" in act and 'for (const [ranking, group] of entries) {' in act
+    assert "const EXPORT_OPERATOR_SECTIONS = ['summary-operators', 'places-operators'," in script
+    assert "'route-operators'" not in re.search(r"const EXPORT_OPERATOR_SECTIONS = \[[^\]]*\];", script).group(0)
     assert 'appendFocusChips(group, operators, makeChip);' in _function_source(script, 'insightOperatorPicker')
     assert 'appendFocusChips(group, operators, makeChip);' in _function_source(script, 'insightOperatorChips')
     # Sites to review: the operators without any identified site are named in a note.

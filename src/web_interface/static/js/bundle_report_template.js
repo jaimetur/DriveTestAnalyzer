@@ -244,6 +244,12 @@
     const kpiValues = check('Show KPI values', saved.kpi_values);
     const gapValues = check('Show GAP values', saved.gap_values);
     tables.append(kpiValues, gapValues);
+    // Every operator in the panels that export the Focus operators (Workspace Config > Scoring Export Panels).
+    const operatorChoices = node('fieldset', undefined, 'brt-choice-group');
+    operatorChoices.append(node('legend', 'Operators'));
+    const allOperators = check('Export All Operators in Focus panels', saved.all_operators);
+    allOperators.title = 'Show every operator in the panels that export the Focus operators of the Operator Maps';
+    operatorChoices.append(allOperators);
     // The Geographical Areas & Scoring Trends, always included: the areas of both tabs (the Breakdown and the Separate
     // cities) and the campaigns and time split of the Scoring Trends, on the whole country.
     const trends = node('fieldset', undefined, 'brt-choice-group brt-trends');
@@ -289,11 +295,11 @@
     // The GAP reference and the Methodology go beside the Campaigns of the section, as on the Scoring & GAP Analysis
     // page (the Focus operators of the PowerPoint and Word are those of the Operator Maps).
     box.scopeFields = [reference, methodology];
-    box.append(scorings, environments, tables, trends);
+    box.append(scorings, environments, tables, operatorChoices, trends);
     box.collect = () => ({
       scorings: scoringBoxes.filter((item) => item.checked).map((item) => item.value),
       environments: environmentBoxes.filter((item) => item.checked).map((item) => item.value),
-      kpi_values: kpiValues.box.checked, gap_values: gapValues.box.checked,
+      kpi_values: kpiValues.box.checked, gap_values: gapValues.box.checked, all_operators: allOperators.box.checked,
       baseline_operator: reference.input.value, methodology: methodology.input.value,
       area_summary: {enabled: true, breakdown: breakdown.input.value, time_split: timeSplit.input.value,
         cities: cities.getValue?.() || [], main_cities: Boolean(cities.getPreset?.()), campaigns: trendCampaigns?.getValue?.() || []},
@@ -376,6 +382,12 @@
       catalogueItem.components.forEach((component) => {
         const field = check(component.title, saved ? saved.components?.[component.key] !== false : true);
         field.box.value = component.key;
+        // The Scoring panels that export the Focus operators (Workspace Config > Scoring Export Panels).
+        if (component.operators === 'focus') {
+          const tag = node('span', 'Focus', 'brt-badge brt-focus-tag');
+          tag.title = 'Exports the Focus operators of the Operator Maps (every operator with Export All Operators in Focus panels)';
+          field.append(tag);
+        }
         components.append(field);
         boxes.push(field.box);
       });

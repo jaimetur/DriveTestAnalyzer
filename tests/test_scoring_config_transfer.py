@@ -13,7 +13,14 @@ from src.modules.scoring_config import (
     default_scoring_profile, scoring_profiles_document,
     validate_scoring_configuration, validate_scoring_profiles,
 )
+from src.modules.scoring_export_panels import default_export_panels
 from tests.scoring_fixtures import legacy_scoring_configuration, scoring_configuration
+
+
+def _methodologies(document: dict) -> dict:
+    """A Scoring & GAP Analysis Methodologies document without the Scoring Export Panels it carries."""
+    assert document['export_panels'] == {'panels': default_export_panels()}
+    return {key: value for key, value in document.items() if key != 'export_panels'}
 
 
 def _login(client) -> None:
@@ -91,7 +98,7 @@ def test_scoring_configuration_export_import_round_trip(client, tmp_path: Path, 
     assert document['format'] == 'drivetest-analyzer-scoring-configuration'
     assert document['version'] == 3
     assert document['active_profile_id'] == expected_profiles['active_profile_id']
-    assert document == scoring_profiles_document(expected_profiles)
+    assert _methodologies(document) == scoring_profiles_document(expected_profiles)
     assert all(profile['configuration']['title'] == 'Urban Drive Quality'
                for profile in document['profiles'])
     assert all(
@@ -227,7 +234,7 @@ def test_renamed_environments_survive_profile_and_workspace_database_round_trips
     assert exported.status_code == 200
     document = exported.json()
     assert document['version'] == 3
-    assert document == scoring_profiles_document(expected_profiles)
+    assert _methodologies(document) == scoring_profiles_document(expected_profiles)
 
     repository.set_workspace_state('scoring_configuration', '')
     imported = client.post('/api/workspace-config/scoring-configuration/import', files={
@@ -284,7 +291,7 @@ def test_scoring_json_import_export_uses_workspace_database(client):
     exported = client.get('/api/workspace-config/scoring-configuration/export')
     assert exported.status_code == 200
     assert exported.json()['version'] == 3
-    assert exported.json() == scoring_profiles_document(repository.get_scoring_profiles())
+    assert _methodologies(exported.json()) == scoring_profiles_document(repository.get_scoring_profiles())
     assert exported.json()['profiles'][0]['configuration']['metrics'][0]['contexts']['DriveCity']['max_points'] == 80
 
 

@@ -37,6 +37,7 @@ from src.modules.cdr_auto_selection import (
 from src.modules.column_names import compact_campaign_value, format_campaign
 from src.modules.output_layout import BUNDLE_REPORTS_FOLDER, module_output_dir
 from src.modules.scoring_area_summary import normalize_trend_campaigns
+from src.modules.scoring_export_panels import EXPORT_PANELS, load_export_panels, normalize_export_panels
 from src.modules.scoring_methodologies import BY_CAMPAIGN
 from src.modules.scoring_themes import DEFAULT_THEME, normalize_theme
 from src.modules.slide_titles import fit_slide_title
@@ -74,27 +75,10 @@ SECTION_KEYS = tuple(key for key, _feature, _title in SECTIONS)
 SECTION_FEATURES = {key: feature for key, feature, _title in SECTIONS}
 SECTION_TITLES = {key: title for key, _feature, title in SECTIONS}
 # The results tabs of Scoring & GAP Analysis and the slides of each one (the content options of a report scenario,
-# see scoring_reports); the KPI and GAP values of the tables are options of the section.
-SCORING_SUBMODULES: tuple[tuple[str, str, tuple[tuple[str, str], ...]], ...] = (
-    ('summary', 'Summary', (('scope', 'How the measurements ran'), ('act', 'Where to act'),
-                            ('owners', 'Where to act, by performance owner'), ('standings', 'Standings: where each operator stands'),
-                            ('position', 'Position per environment and service'), ('levers', 'Biggest levers against the reference'),
-                            ('places', 'Cities, Towns, Roads and Railways ranked'),
-                            ('route', 'The route that loses most: where the points are'))),
-    ('charts', 'Scoring Charts', (('service', 'Scoring per Service'), ('category', 'Scoring per Category'),
-                                  ('breakdown', 'Scoring per Category (Breakdown)'))),
-    ('tables', 'Scoring Tables', (('summary', 'Category table'), ('breakdown', 'Breakdown table'),
-                                  ('campaign_comparison', 'Campaign comparison (two latest campaigns)'))),
-    ('geographical_areas', 'Geographical Areas', (('cards', 'Scoring per City / Cluster / Region cards'),
-                                                  ('ranking', 'Geographical Areas ranked'),
-                                                  ('versus', 'Each operator against the reference per geographical area'))),
-    ('trends', 'Scoring Trends', (('trend', 'Scoring Trend (two campaigns or more)'), ('areas', 'National & Geographical Areas Trends'))),
-    ('gap', 'GAP Analysis', (('all_operators', 'Table comparing all the chosen operators'), ('individual', 'Individual tables against the reference'),
-                             ('parts', 'GAP by part over the campaigns'), ('profile', 'KPI GAP Profile'))),
-    ('points', 'Points Lost', (('stake', 'Where the points go'), ('kpis', 'Points lost per KPI'), ('map', 'Points lost per City map'),
-                               ('vendors', 'Points lost per Vendor'), ('site_types', 'Points lost per kind of site'),
-                               ('sites', 'Sites to review'), ('stretches', 'Route stretches'))),
-)
+# see scoring_reports, and the panels of scoring_export_panels); the KPI and GAP values of the tables are options of
+# the section.
+SCORING_SUBMODULES: tuple[tuple[str, str, tuple[tuple[str, str], ...]], ...] = tuple(
+    (group, title, tuple((key, label) for key, label, _operators in panels)) for group, title, panels in EXPORT_PANELS)
 # The section each Scoring slide is named after (see scoring_exports) and its results tab.
 SCORING_TAGS = {'summary': 'summary', 'charts': 'charts', 'tables': 'tables', 'comparison': 'tables',
                 'geographical_areas': 'geographical_areas', 'locations': 'geographical_areas',
@@ -175,7 +159,9 @@ def default_options(section: str) -> dict[str, Any]:
 
 def _module_options(section: str) -> dict[str, Any]:
     if section == 'scoring':
+        # all_operators: every operator in the Focus Operators panels (see scoring_export_panels).
         return {'scorings': ['best_network'], 'environments': [COMBINED_ENVIRONMENT], 'kpi_values': False, 'gap_values': False,
+                'all_operators': False,
                 'baseline_operator': 'EE', 'methodology': BY_CAMPAIGN,
                 # The Geographical Areas & Scoring Trends: the Breakdown and Separate cities of both tabs (London or the
                 # Main Cities at each export), the campaigns of the trends (All available campaigns by default; none: those
@@ -208,6 +194,7 @@ def _normalize_options(section: str, raw: Any, legacy_campaigns: Any = None) -> 
             'scorings': scorings or ['best_network'],
             'environments': environments or [COMBINED_ENVIRONMENT],
             'kpi_values': bool(raw.get('kpi_values')), 'gap_values': bool(raw.get('gap_values')),
+            'all_operators': bool(raw.get('all_operators')),
             'baseline_operator': str(raw.get('baseline_operator') or 'EE').strip()[:80] or 'EE',
             # By campaign (each campaign with its methodology) unless a methodology is chosen.
             'methodology': str(raw.get('methodology') or '').strip()[:120] or BY_CAMPAIGN,
@@ -389,7 +376,8 @@ def _option_lines(section: dict[str, Any], dashboard_names: dict[str, str] | Non
         rows = ' and '.join(part for part in ('' if area['breakdown'] == 'None' else 'each ' + area['breakdown'], cities) if part)
         areas = (f" · Geographical Areas: {rows or 'each Region and London'}"
                  f" · time split {'All selected CDRs' if area['time_split'] == 'All' else area['time_split']}")
-        return [f"{scorings} · Environments: {environments}",
+        every = ' · All Operators in the Focus Operators panels' if options.get('all_operators') else ''
+        return [f"{scorings} · Environments: {environments}{every}",
                 f"Methodology: {methodology} · GAP reference: {options['baseline_operator']}",
                 f"Scoring Trends: {trend_campaigns}{areas}"]
     if section['key'] == 'network_insights':
@@ -403,15 +391,24 @@ def _option_lines(section: dict[str, Any], dashboard_names: dict[str, str] | Non
             f"{'Suggested root causes counted' if options['include_suggestions'] else 'Labelled root causes only'}"]
 
 
-def catalogue_payload(dashboards: list[dict[str, Any]]) -> dict[str, Any]:
-    """The sections, sub-modules and components the editor lists."""
+def catalogue_payload(dashboards: list[dict[str, Any]], export_panels: Any = None) -> dict[str, Any]:
+    """The sections, sub-modules and components the editor lists: of Scoring & GAP Analysis, the panels the workspace
+    exports (``export_panels``, see scoring_export_panels), each with the operators it exports."""
     panels = _panels()
+    scoring_panels = normalize_export_panels(export_panels)
+
+    def components_of(key: str, item_key: str, components) -> list[dict[str, Any]]:
+        if key != 'scoring':
+            return [{'key': name, 'title': label} for name, label in components]
+        return [{'key': name, 'title': label, 'operators': scoring_panels[item_key][name]['operators']}
+                for name, label in components if scoring_panels[item_key][name]['exportable']]
     return {'sections': [{
         'key': key, 'feature': feature, 'title': title,
         'items': ([{'key': item['id'], 'title': item['name'], 'nr_mode': item.get('nr_mode', ''), 'components': []} for item in dashboards]
                   if key == 'dashboards' else
-                  [{'key': item_key, 'title': item_title, 'components': [{'key': name, 'title': label} for name, label in components]}
-                   for item_key, item_title, components in panels[key]]),
+                  [{'key': item_key, 'title': item_title, 'components': components_of(key, item_key, components)}
+                   for item_key, item_title, components in panels[key]
+                   if key != 'scoring' or components_of(key, item_key, components)]),
     } for key, feature, title in SECTIONS]}
 
 
@@ -1226,7 +1223,7 @@ class SectionGenerator:
             return scenario_options
 
         context_filters = {column: list(self.filters[name]) for name, column in SCORING_FILTERS.items() if self.filters[name]}
-        report = {'theme': self.definition['theme'], 'scenarios': [{
+        report = {'theme': self.definition['theme'], 'all_operators': options['all_operators'], 'scenarios': [{
             'name': report_title(self.definition), 'context_filters': context_filters,
             'main_cities': self.filters['main_cities'], 'aggregation_levels': ['Operator', 'Campaign'],
             'scorings': {kind: content(kind) for kind, _label in SCORINGS},
@@ -1773,7 +1770,7 @@ def install_bundle_report_template_routes(core: Any) -> None:
                              (tools.list_dashboards(repository).items() if tools is not None else []) if isinstance(value, dict)),
                             key=lambda item: item['name'].casefold())
         return {
-            'catalogue': catalogue_payload(dashboards),
+            'catalogue': catalogue_payload(dashboards, load_export_panels(repository)),
             'allowed_sections': {key: core.user_has_feature(user, feature) for key, feature in SECTION_FEATURES.items()},
             'section_titles': section_titles(),
             'defaults': normalize_definition({}),

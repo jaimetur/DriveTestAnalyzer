@@ -427,6 +427,40 @@
 
   {% include 'scoring_config_panels.html' %}
 
+  <details id="scoring-export-panels" class="panel collapsible-panel scoring-config-panel scoring-export-panels-panel" open data-panel-state-key="workspace-config:scoring-export-panels">
+    <summary class="collapsible-summary">
+      <div><p class="eyebrow">Scoring &amp; GAP Analysis exports</p><h2>Scoring Export Panels</h2></div>
+      <span class="collapse-chip">Collapse</span>
+    </summary>
+    <div class="collapsible-panel-body">
+      {% if active_workspace %}
+      <p class="lede">Choose the Scoring &amp; GAP Analysis panels that the PowerPoint and Word documents of <strong>"{{ active_workspace.name }}"</strong> include and the operators each one exports: every operator, or the Focus operators of the Operator Maps. The report editors list only the exportable panels, and <strong>Export All Operators in Focus panels</strong> shows every operator in the Focus Operators panels of a document.</p>
+      {% if scoring_export_panels_notice %}<div class="alert alert-success">{{ scoring_export_panels_notice }}</div>{% endif %}
+      {% if scoring_export_panels_error %}<div class="alert alert-error">{{ scoring_export_panels_error }}</div>{% endif %}
+      <form action="/workspace-config/scoring-export-panels/save" method="post" class="scoring-export-panels-form">
+        <div class="scoring-config-table-scroll" role="region" aria-label="Scoring Export Panels" tabindex="0">
+          <table class="scoring-config-priority-table scoring-export-panels-table">
+            <thead><tr><th scope="col">Panel</th><th scope="col">Exportable</th><th scope="col">What to Export</th></tr></thead>
+            {% for group in scoring_export_panels %}
+            <tbody>
+              <tr class="scoring-export-panels-group"><th scope="rowgroup" colspan="3">{{ group.title }}</th></tr>
+              {% for panel in group.panels %}
+              <tr>
+                <th scope="row">{{ panel.label }}</th>
+                <td><input type="checkbox" name="exportable:{{ group.key }}:{{ panel.key }}" aria-label="Export {{ panel.label }}"{% if panel.exportable %} checked{% endif %}></td>
+                <td><select name="operators:{{ group.key }}:{{ panel.key }}" aria-label="What to Export in {{ panel.label }}">{% for value, label in scoring_export_modes %}<option value="{{ value }}"{% if panel.operators == value %} selected{% endif %}>{{ label }}{% if panel.default == value %} (default){% endif %}</option>{% endfor %}</select></td>
+              </tr>
+              {% endfor %}
+            </tbody>
+            {% endfor %}
+          </table>
+        </div>
+        <div class="form-actions"><button type="submit" class="secondary-button" name="action" value="reset">Restore Defaults</button><button type="submit" name="action" value="save">Save Export Panels</button></div>
+      </form>
+      {% else %}<p class="form-note">Open a workspace before choosing the Scoring Export Panels.</p>{% endif %}
+    </div>
+  </details>
+
   <div class="confirm-overlay report-template-editor-overlay" data-admin-template-editor hidden>
     <section class="confirm-panel report-template-editor-dialog" role="dialog" aria-modal="true" aria-labelledby="admin-template-editor-title">
       <header class="report-chart-viewer-header"><div><p class="eyebrow">PowerPoint reporting</p><h3 id="admin-template-editor-title" data-admin-template-editor-title>Edit PPT Template</h3></div><button type="button" class="report-chart-viewer-close" data-admin-template-editor-close aria-label="Close template editor">×</button></header>

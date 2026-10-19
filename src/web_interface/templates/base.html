@@ -14,7 +14,8 @@
     ('ppt-templates-management', 'PPT Templates Management', false, 'presentation'), ('main-cities', 'Main Cities', false, 'cities'),
     ('mappings-reference-data', 'Mappings & Reference Data', false, 'link'), ('operator-maps', 'Operator Maps', true, 'link'),
     ('vendor-maps', 'Vendor Maps', true, 'link'), ('campaign-maps', 'Campaign Maps', true, 'tag'), ('map-areas', 'Map Areas', true, 'map'),
-    ('spectrum-holdings', 'Spectrum Holdings', true, 'spectrum'), ('serving-networks', 'Serving Networks', true, 'link'), ('scoring-gap-analysis-setup', 'Scoring & GAP Analysis Setup', false, 'sliders')]),
+    ('spectrum-holdings', 'Spectrum Holdings', true, 'spectrum'), ('serving-networks', 'Serving Networks', true, 'link'), ('scoring-gap-analysis-setup', 'Scoring & GAP Analysis Setup', false, 'sliders'),
+    ('scoring-export-panels', 'Scoring Export Panels', false, 'presentation')]),
 ] -%}
 {%- macro new_badge(module) -%}{%- set badge = (module_tab_badges | default({})).get(module) -%}{%- if badge -%}<svg class="module-tab-new module-tab-new-{{ module }}" viewBox="0 0 {{ badge.width }} 14" style="width: {{ '%.2f' | format(badge.width * 1.06 / 14) }}rem" role="img" aria-label="{{ badge.text }}"><title>{{ badge.text }}</title><rect width="{{ badge.width }}" height="14" rx="4" style="fill: {{ badge.color }}"/>{%- if badge.icon_path -%}<path class="module-tab-new-icon" d="{{ badge.icon_path }}" style="{{ 'fill: ' ~ badge.icon_color ~ '; stroke: none' if badge.icon_mode == 'fill' else 'fill: none; stroke: ' ~ badge.icon_color }}"/>{%- endif -%}<text x="{{ badge.text_x }}" y="10.2" text-anchor="middle" style="fill: {{ badge.ink }}">{{ badge.text }}</text></svg>{%- endif -%}{%- endmacro -%}
 <!DOCTYPE html>

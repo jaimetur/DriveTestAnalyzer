@@ -119,13 +119,16 @@ def test_the_summary_slides_of_where_to_act(owned):
     titles = [slide.shapes.title.text_frame.paragraphs[0].text for slide in without.slides if slide.shapes.title is not None]
     # The operator chosen on the page, the reference included.
     assert 'Where to act — EE' in titles and 'Where to act — Vodafone UK' not in titles
-    # The route that loses most follows the operators chosen in its own section, whatever that of Where to act.
+    # The places ranked follow the operators chosen with their own buttons, whatever that of Where to act; the route that
+    # loses most always shows the operators of its panel (every operator but the reference without Focus operators).
     own = Presentation(BytesIO(export_scoring_powerpoint(
-        {**job, '_operator_choices': {'act-operator': ['EE'], 'route-operators': ['Three UK']}}, result, TEMPLATE)))
+        {**job, '_operator_choices': {'act-operator': ['EE'], 'places-operators': ['Three UK'], 'route-operators': ['Three UK']}},
+        result, TEMPLATE)))
     titles = [slide.shapes.title.text_frame.paragraphs[0].text for slide in own.slides if slide.shapes.title is not None]
     assert 'Where to act — EE' in titles
-    assert [title for title in titles if ': where the points are — ' in title and title.endswith('Three UK')]
-    assert not [title for title in titles if ': where the points are — ' in title and not title.endswith('Three UK')]
+    assert {title.rsplit(' — ', 1)[1] for title in titles if title.startswith(('Cities ranked — ', 'Towns ranked — '))} == {'Three UK'}
+    assert {title.rsplit(' — ', 1)[1] for title in titles if ': where the points are — ' in title} == {
+        'O2 UK', 'Three UK', 'Vodafone UK'}
 
 
 def test_where_to_act_of_a_report_follows_the_focus_operators_of_the_operator_maps(owned):

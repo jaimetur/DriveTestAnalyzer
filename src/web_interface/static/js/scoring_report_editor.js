@@ -1,6 +1,7 @@
 // Scoring report editor: scenarios with their filters, Split by levels and the
 // content of each scoring. Used by the Scoring & GAP Analysis exports and by the
-// Scoring artifact of Reporting Jobs.
+// Scoring artifact of Reporting Jobs. It lists the panels the workspace exports
+// (Workspace Config > Scoring Export Panels), each with the operators it exports.
 (() => {
   const LEVELS = ['Operator', 'Vendor', 'Region', 'Cluster', 'City', 'Campaign'];
   const FILTERS = ['Operator', 'Operator_Vendor', 'Vendor_Operator', 'Vendor', 'Region', 'Cluster', 'City', 'Campaign'];
@@ -49,6 +50,11 @@
     ['all_operators', 'Table comparing all the chosen operators'], ['individual', 'Individual tables against the reference'],
     ['parts', 'GAP by part over the campaigns'], ['profile', 'KPI GAP Profile'],
   ];
+
+  // The panels the workspace exports ({group: {panel: {exportable, operators}}}), once loaded; every panel until then.
+  let exportPanels = null;
+  const exportable = (group, option) => exportPanels?.[group]?.[option]?.exportable !== false;
+  const focusPanel = (group, option) => exportPanels?.[group]?.[option]?.operators === 'focus';
 
   const clone = (value) => JSON.parse(JSON.stringify(value));
   const el = (tag, className, text) => {
@@ -316,14 +322,23 @@
     return wrapper;
   }
 
-  function optionGroup(title, options, values, onChange, diffPrefix) {
+  // The options of a group of panels: those the workspace exports (``name`` is the group of the panels; the KPI and GAP
+  // values of the tables are not panels), the panels of the Focus operators tagged.
+  function optionGroup(title, options, values, onChange, diffPrefix, name = '') {
     const group = el('fieldset', 'scoring-report-group');
     group.append(el('legend', '', title));
-    for (const [key, label] of options) {
+    const shown = options.filter(([key]) => !name || exportable(name, key));
+    for (const [key, label] of shown) {
       const box = checkbox(label, values[key], (checked) => onChange(key, checked));
       box.dataset.diffKey = `${diffPrefix}:${key}`;
+      if (name && focusPanel(name, key)) {
+        const tag = el('span', 'scoring-report-focus-tag', 'Focus');
+        tag.title = 'Exports the Focus operators of the Operator Maps (every operator with Export All Operators in Focus panels)';
+        box.append(tag);
+      }
       group.append(box);
     }
+    group.hidden = !shown.length;
     return group;
   }
 
@@ -390,11 +405,11 @@
     completeOptions(options);
     const body = el('div', 'scoring-report-scoring-body');
     const group = (title, list, name) => optionGroup(title, list, options[name], (option, checked) => { options[name][option] = checked; },
-      `scoring:${key}:${name}`);
+      `scoring:${key}:${name}`, name);
     body.append(
       group('Summary', SUMMARY_OPTIONS, 'summary'),
       optionGroup('Scoring Charts', CHART_OPTIONS.map(([option, text]) => [option, text.startsWith('Scoring per') ? `${label} ${text}` : text]),
-        options.charts, (option, checked) => { options.charts[option] = checked; }, `scoring:${key}:charts`),
+        options.charts, (option, checked) => { options.charts[option] = checked; }, `scoring:${key}:charts`, 'charts'),
       group('Scoring Tables', TABLE_OPTIONS, 'tables'),
       group('Geographical Areas', GEOGRAPHICAL_AREA_OPTIONS.map(([option, text]) => [option, option === 'cards' ? `${label} ${text}` : text]), 'geographical_areas'),
       group('Scoring Trends', TREND_OPTIONS.map(([option, text]) => [option, `${label} ${text}`]), 'trends'),
@@ -750,9 +765,16 @@
         state.scenarios = state.scenarios.slice(0, 1);
         if (knownTheme(context.theme)) state.theme = context.theme;
       }
+      // Every operator in the panels that export the Focus operators (configurations saved before: no).
+      state.all_operators = Boolean(state.all_operators);
       const dialog = el('dialog', 'scoring-report-dialog');
       const header = el('div', 'scoring-report-header');
-      header.append(el('h2', '', title));
+      const allOperators = checkbox('Export All Operators in Focus panels', state.all_operators,
+        (checked) => { state.all_operators = checked; },
+        'Show every operator in the panels that export the Focus operators of the Operator Maps (Workspace Config > Scoring Export Panels)');
+      allOperators.classList.add('scoring-report-flag');
+      const syncAllOperators = () => { allOperators.querySelector('input').checked = state.all_operators; };
+      header.append(el('h2', '', title), allOperators);
       const toolbar = el('div', 'scoring-report-toolbar');
       const saved = el('select');
       saved.setAttribute('aria-label', 'Saved report configurations');
@@ -830,15 +852,18 @@
         if (value === DEFAULT_VALUE) {
           state.scenarios = defaultConfiguration(context.defaults).scenarios;
           state.theme = knownTheme(context.theme) ? context.theme : 'netcheck';
+          state.all_operators = false;
           setStatus('Default configuration: one scenario with the calculation filters and Split by levels.', 'success');
         } else {
           const item = savedConfigurations.find((entry) => entry.name === value);
           if (!item) return;
           state.scenarios = operators.configuration(clone(item.configuration), knownOperators).scenarios;
           state.theme = knownTheme(item.configuration?.theme) ? item.configuration.theme : 'netcheck';
+          state.all_operators = Boolean(item.configuration?.all_operators);
           setStatus(`Loaded “${item.name}”.`, 'success');
         }
         state.syncTheme?.();
+        syncAllOperators();
         render();
         lastChosen = value === DEFAULT_VALUE ? '' : value;
         syncSelector();
@@ -857,7 +882,8 @@
         try {
           const payload = await api('/api/scoring/report-configurations', {
             method: 'POST', headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({name: name.trim(), configuration: {scenarios: state.scenarios, theme: state.theme}}),
+            body: JSON.stringify({name: name.trim(), configuration: {scenarios: state.scenarios, theme: state.theme,
+              all_operators: state.all_operators}}),
           });
           lastChosen = name.trim();
           refreshSaved(payload);
@@ -966,6 +992,11 @@
       dialog.showModal();
       refreshSaved(null);
       api('/api/scoring/report-configurations').then(refreshSaved).catch(() => {});
+      // Only the panels the workspace exports.
+      api('/api/scoring/export-panels').then((payload) => {
+        exportPanels = payload?.panels || null;
+        if (dialog.isConnected) render();
+      }).catch(() => {});
     });
   }
 

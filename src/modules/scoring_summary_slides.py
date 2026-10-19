@@ -441,7 +441,7 @@ def add_location_ranking_slides(presentation, rankings: list[dict[str, Any]], *,
     """Every location ranked by its share of the points, per compared operator."""
     chosen = [item for item in rankings if compared(item['operator'], item['label'])]
     for item in chosen[:MAX_OPERATOR_SLIDES]:
-        plural = {'City': 'Cities and routes', 'Cluster': 'Clusters', 'Region': 'Regions'}.get(item['level'], 'Locations')
+        plural = _location_words(item['level'], item['rows'])[2]
         pages = _pages(item['rows'])
         has_vendors = any(row.get('vendors') for row in item['rows'])
         peak = max((row['lost'] for row in item['rows']), default=0)
@@ -450,7 +450,7 @@ def add_location_ranking_slides(presentation, rankings: list[dict[str, Any]], *,
             slide = new_slide(presentation, f"{plural} ranked — {item['label']}",
                               _subtitle(subtitle, scope, item['context'], item.get('title') or '', item.get('campaign') or '') + suffix)
             color = _color(item.get('color'))
-            headers = ['#', _location_words(item['level'])[0], *(['Vendors (share of tests)'] if has_vendors else []), 'Points %',
+            headers = ['#', _location_words(item['level'], item['rows'])[0], *(['Vendors (share of tests)'] if has_vendors else []), 'Points %',
                        f"Δ vs {item['previous_campaign']}" if item.get('previous_campaign') else 'Δ', 'Voice %', 'Data %', 'Points lost']
             widths = [.4, 2.6, *([2.4] if has_vendors else []), 1.9, 1.1, 1.0, 1.0, 1.9]
             scale = 12.45 / sum(widths)
@@ -480,15 +480,18 @@ def add_location_ranking_slides(presentation, rankings: list[dict[str, Any]], *,
             _row_bars(slide, [row['lost'] for row in rows], left=.45 + sum(widths[:-1]), top=body_top, width=widths[-1],
                       row_height=row_height, color=LOSS_COLOR, scale=peak)
             _to_front(slide, shape)
-            _text(slide, f"Points %: the share of the points available in each {_location_words(item['level'])[1]} (its environments scaled to the full maximum); "
+            _text(slide, f"Points %: the share of the points available in each {_location_words(item['level'], item['rows'])[1]} (its environments scaled to the full maximum); "
                          'Δ: the change since the previous campaign in points of percentage.', .45, CONTENT_BOTTOM - .2, 12.4, .25,
                   size=8, color=MUTED)
 
 
-def _location_words(level: Any) -> tuple[str, str]:
-    """The header and the word (of one) of a level of the Geographical Areas: Region, Cluster or City."""
-    return {'Region': ('Region', 'region'), 'Cluster': ('Cluster', 'cluster'), 'City': ('City', 'city or route')}.get(
-        str(level or ''), ('Location', 'location'))
+def _location_words(level: Any, rows: list[dict[str, Any]] | None = None) -> tuple[str, str, str]:
+    """The header, the word (of one) and the title (of several) of a level of the Geographical Areas: Region, Cluster or
+    City, whose rows name the Connecting Roads routes too when its tests have them."""
+    if str(level or '') == 'City' and any(row.get('kind') == 'route' for row in rows or []):
+        return 'City', 'city or route', 'Cities and routes'
+    return {'Region': ('Region', 'region', 'Regions'), 'Cluster': ('Cluster', 'cluster', 'Clusters'),
+            'City': ('City', 'city', 'Cities')}.get(str(level or ''), ('Location', 'location', 'Locations'))
 
 
 def add_location_versus_slides(presentation, rankings: list[dict[str, Any]], *, subtitle: str, new_slide: Callable,
@@ -501,8 +504,9 @@ def add_location_versus_slides(presentation, rankings: list[dict[str, Any]], *, 
     for item in chosen[:MAX_OPERATOR_SLIDES]:
         rows = sorted((row for row in item['rows'] if row.get('gap') is not None), key=lambda row: row['gap'])
         for number, page in enumerate(_pages(rows), start=1):
-            header, one = _location_words(item.get('level'))
-            slide = new_slide(presentation, f"Per {one} — {item['label']} vs {item['reference_label']}",
+            header, one, _title = _location_words(item.get('level'), item['rows'])
+            # As the page names it: the operator against the reference per region, cluster or city (or route).
+            slide = new_slide(presentation, f"{item['label']} against {item['reference_label']} per {one}",
                               _subtitle(subtitle, scope, item['context'], item.get('title') or '', item.get('campaign') or '')
                               + (f' · {number}' if len(rows) > MAX_TABLE_ROWS else ''))
             scale = max((abs(value) for row in rows for value in (row['gap'], row.get('voice_gap'), row.get('data_gap'))
