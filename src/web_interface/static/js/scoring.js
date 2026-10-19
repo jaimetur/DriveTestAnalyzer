@@ -1418,6 +1418,19 @@
       ...(summary.main_cities ? {main_cities: true} : {}), ...(summary.campaigns.length ? {campaigns: summary.campaigns} : {})};
   }
 
+  // Calculate Scoring, or Open Scoring (a folder open) when the selection is a Saved Filter with its result up to date.
+  const CALCULATE_ICON = calculateButton?.querySelector('svg')?.outerHTML || '';
+  const OPEN_ICON = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" '
+    + 'stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2.5 15.5v-10a1 1 0 0 1 1-1h4l1.8 1.8H15a1 1 0 0 1 1 1V8.5"/>'
+    + '<path d="M2.5 15.5 4.8 9.2a1 1 0 0 1 .94-.7H17.6a.6.6 0 0 1 .57.8l-2 5.6a1 1 0 0 1-.94.6H2.5z"/></svg>';
+  function showCalculateAction(open) {
+    const action = open ? 'open' : 'calculate';
+    if (!calculateButton || (calculateButton.dataset.action || 'calculate') === action) return;
+    calculateButton.dataset.action = action;
+    calculateButton.innerHTML = `${open ? OPEN_ICON : CALCULATE_ICON}<span>${open ? 'Open Scoring' : 'Calculate Scoring'}</span>`;
+    calculateButton.title = open ? 'Open the Saved Filter of this selection with its result' : '';
+  }
+
   function updateCalculationMatch(ready) {
     if (submittingCalculation) return;
     const payload = calculationPayload();
@@ -1433,7 +1446,10 @@
       calculateButton.disabled = true;
       recalculateButton.disabled = true;
     }
-    if (!ready || !payload.baseline_operator) return;
+    if (!ready || !payload.baseline_operator) {
+      showCalculateAction(false);
+      return;
+    }
     calculationMatchTimer = window.setTimeout(async () => {
       try {
         const response = await requestJson(`${savedFiltersUrl}/match`, {method: 'POST', body: JSON.stringify(payload)});
@@ -1450,7 +1466,7 @@
           text = `${verb} the scoring of the selected CDRs and filters…`;
           kind = 'busy';
         } else if (existing?.up_to_date) {
-          text = 'This selection is a Saved Filter with its result up to date: Calculate opens it, Recalculate calculates it again.';
+          text = 'This selection is a Saved Filter with its result up to date: Open Scoring opens it, Recalculate calculates it again.';
         } else if (existing) {
           text = 'This selection is a Saved Filter: Calculate updates its result with the current CDRs and methodology.';
         }
@@ -1462,6 +1478,7 @@
             : `Saved Filter ${savedFilterIdOf(existing)} has this selection: Save Changes merges it into the one being edited.`;
           kind = '';
         }
+        showCalculateAction(Boolean(existing?.up_to_date) && !isActive(existing) && !editingSavedFilter);
         selectionStatus = {key, text, kind};
         setMessage(text, kind);
       } catch (error) {

@@ -1570,6 +1570,7 @@ const payload = JSON.parse(require('node:fs').readFileSync(0, 'utf8'));
 const timers = [];
 const messages = [];
 const requests = [];
+const shown = [];
 const context = {
   calculationMatchKey: '', calculationMatchRevision: 0, calculationMatchTimer: null, calculationMatchRefresh: false,
   submittingCalculation: false, savedFiltersUrl: '/api/scoring/saved-filters', editingSavedFilter: null,
@@ -1579,6 +1580,8 @@ const context = {
   baselineInput: {value: 'Operator A'}, selectedContextFilters: () => ({Region: ['North']}),
   areaSummaryPayload: () => null,
   chosenComparedOperators: () => [],
+  // Calculate Scoring or Open Scoring, as each answer tells it.
+  showCalculateAction: open => shown.push(open),
   normalizeStatus: savedFilter => savedFilter?.status || '', isActive: savedFilter => ['queued', 'processing'].includes(savedFilter?.status),
   setMessage: (text, kind = '') => messages.push({text, kind}),
   requestJson: (...args) => new Promise((resolve, reject) => requests.push({args, resolve, reject})),
@@ -1601,9 +1604,9 @@ async function main() {
   context.calculationMatchKey = '';
   context.updateCalculationMatch(true);
   timers[1]();
-  requests[1].resolve({saved_filter: {id: 8, status: 'completed'}});
+  requests[1].resolve({saved_filter: {id: 8, status: 'completed', up_to_date: true}});
   await flush();
-  const completed = [context.calculateButton.disabled, context.recalculateButton.disabled];
+  const completed = [context.calculateButton.disabled, context.recalculateButton.disabled, shown.at(-1), messages.at(-1)?.text];
 
   context.calculationMatchKey = '';
   context.updateCalculationMatch(true);
@@ -1638,7 +1641,7 @@ async function main() {
   const staleResponseIgnored = context.calculationMatchRevision > staleRevision
     && context.calculateButton.disabled === false && context.recalculateButton.disabled === true
     && messages.at(-1)?.text === latestMessage;
-  process.stdout.write(JSON.stringify({pending, noMatch, completed, active, refreshing, refreshed, staleResponseIgnored,
+  process.stdout.write(JSON.stringify({pending, noMatch, completed, active, refreshing, refreshed, staleResponseIgnored, shown,
     matchUrl: requests[0].args[0], matchPayload: JSON.parse(requests[0].args[1].body)}));
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });
@@ -1646,8 +1649,11 @@ main().catch(error => { console.error(error); process.exitCode = 1; });
     result = _run_node_json(program, payload)
     assert result['pending'] == [True, True]
     assert result['noMatch'] == [False, True, 'Ready to calculate the scoring of these filters.']
-    # Filters used before: Calculate opens them (calculated again when out of date), Recalculate calculates them again.
-    assert result['completed'] == [False, False]
+    # Filters used before: Calculate opens them (calculated again when out of date), Recalculate calculates them again;
+    # with their result up to date the button reads Open Scoring.
+    assert result['completed'] == [False, False, True,
+                                   'This selection is a Saved Filter with its result up to date: Open Scoring opens it, Recalculate calculates it again.']
+    assert result['shown'][0] is False and True in result['shown']
     assert result['active'] == [True, True]
     assert result['refreshing'] == [False, True, 3] and result['refreshed'] == [True, True]
     assert result['staleResponseIgnored'] is True
