@@ -796,8 +796,11 @@ process.stdout.write(JSON.stringify({
                 legend_rows.setdefault(item['y'], []).append(item)
             row_starts = [entries[0]['x'] - 21 for entries in legend_rows.values()]
             assert row_starts == pytest.approx(comparison['expectedLegendStarts'])
-        # Up to 16 bars (four operators of four campaigns) fit the card.
-        assert comparison['count'] <= 16 and category['widthStyle'] == service['widthStyle'] == '100%'
+        # Ten bars at their own size fill the card; more widen the chart (then fitted to the card keeping its height).
+        if comparison['count'] <= 10:
+            assert category['widthStyle'] == service['widthStyle'] == '100%'
+        else:
+            assert float(category['widthStyle'].removesuffix('%')) > 100
         for shared_class in ('scoring-chart-axis-label', 'scoring-chart-tick', 'scoring-chart-legend',
                              'scoring-chart-category-legend-title', 'scoring-chart-category-legend-label'):
             assert shared_class in category['sharedText']

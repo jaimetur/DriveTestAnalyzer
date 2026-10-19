@@ -4872,9 +4872,10 @@
     return {width, left, right, step, barWidth: Math.min(120, step * .7)};
   }
 
-  // Up to 16 bars (four operators of four campaigns) fit the width of the card; more widen the chart, which scrolls.
+  // Ten bars at their own size fill the width of the card; more widen the chart (narrowed back to the card, keeping its
+  // height, when its bars keep enough of their width: see CHART_MIN_FIT_SCALE).
   function fitBestNetworkChartWidth(svg, positions, count, width, right) {
-    const visibleWidth = count > 16 ? positions[16] + right : width;
+    const visibleWidth = count > 10 ? positions[10] + right : width;
     svg.style.width = `${100 * width / visibleWidth}%`;
     svg.style.minWidth = '0';
   }
@@ -8731,9 +8732,10 @@
     viewport.addEventListener('pointercancel', () => { rectangle?.remove(); start = null; rectangle = null; });
   }
 
-  // A chart wider than its card (which then scrolls sideways) starts fitted to the width of the card when its bars keep
-  // at least this share of their width; otherwise it keeps its size and zooms out to the card by steps.
-  const CHART_MIN_FIT_SCALE = .75;
+  // A chart wider than its card (which then scrolls sideways) starts fitted to the width of the card, keeping its height,
+  // when its bars keep at least this share of their width (16 bars, such as four operators of four campaigns, do);
+  // otherwise it keeps its size and zooms out to the card by steps.
+  const CHART_MIN_FIT_SCALE = .6;
   const CHART_WIDTH_STEP = .75;
 
   // A chart narrowed by its zoom keeps its height: only its width shrinks (``factor``: its width over its own; 1 gives
