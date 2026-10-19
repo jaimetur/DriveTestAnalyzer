@@ -25,9 +25,9 @@
 
   // Screenshots: chosen, dropped or pasted anywhere in their form, previewed before they are sent.
   const dropzones = new Map();
-  document.querySelectorAll('[data-bug-dropzone]').forEach((zone) => {
-    const input = zone.querySelector('[data-bug-dropzone-input]');
-    const previews = zone.querySelector('[data-bug-dropzone-previews]');
+  document.querySelectorAll('[data-ticket-dropzone]').forEach((zone) => {
+    const input = zone.querySelector('[data-ticket-dropzone-input]');
+    const previews = zone.querySelector('[data-ticket-dropzone-previews]');
     const maxFiles = Number(zone.dataset.maxFiles) || 10;
     const maxBytes = (Number(zone.dataset.maxMb) || 10) * 1024 * 1024;
     let files = [];
@@ -37,7 +37,7 @@
       input.files = transfer.files;
       previews.replaceChildren(...files.map((file, index) => {
         const item = document.createElement('figure');
-        item.className = 'bug-dropzone-preview';
+        item.className = 'ticket-dropzone-preview';
         const image = document.createElement('img');
         image.src = URL.createObjectURL(file);
         image.alt = file.name;
@@ -53,7 +53,7 @@
         return item;
       }));
       zone.classList.toggle('has-files', files.length > 0);
-      zone.dispatchEvent(new CustomEvent('bug-screenshots-change', {bubbles: true, detail: {count: files.length}}));
+      zone.dispatchEvent(new CustomEvent('ticket-screenshots-change', {bubbles: true, detail: {count: files.length}}));
     };
     const add = (incoming) => {
       const images = [...incoming].filter((file) => /^image\/(png|jpeg|gif|webp)$/.test(file.type));
@@ -84,14 +84,14 @@
 
   // The list: the chips (type, status, priority, module and assignee), search, reporter and order of the tickets,
   // remembered by this browser. No chip pressed in a group lists every value of it, and the groups add up.
-  const table = document.querySelector('[data-bugs-table]');
+  const table = document.querySelector('[data-tickets-table]');
   if (table) {
-    const rows = [...table.querySelectorAll('[data-bug-row]')];
+    const rows = [...table.querySelectorAll('[data-ticket-row]')];
     const body = table.tBodies[0];
-    const filters = Object.fromEntries([...document.querySelectorAll('[data-bugs-filter]')].map((control) => [control.dataset.bugsFilter, control]));
-    const sort = document.querySelector('[data-bugs-sort]');
-    const count = document.querySelector('[data-bugs-count]');
-    const empty = document.querySelector('[data-bugs-empty]');
+    const filters = Object.fromEntries([...document.querySelectorAll('[data-tickets-filter]')].map((control) => [control.dataset.ticketsFilter, control]));
+    const sort = document.querySelector('[data-tickets-sort]');
+    const count = document.querySelector('[data-tickets-count]');
+    const empty = document.querySelector('[data-tickets-empty]');
     const chips = [...document.querySelectorAll('[data-chip]')];
     const recentChip = document.querySelector('[data-chip-recent]');
     const groups = ['types', 'statuses', 'priorities', 'modules', 'assignees'];
@@ -106,18 +106,10 @@
       filters.reporter.value = '*';
       if (filters.mine) filters.mine.checked = false;
     };
-    // The key of Bugs Report, as Ticket Center was called: the filters chosen before stay.
-    const storageKey = 'bugs-report:filters';
+    const storageKey = 'ticket-center:filters';
     try {
       const saved = JSON.parse(window.localStorage.getItem(storageKey) || '{}');
-      // Chips remembered as lists; the filters of earlier versions were one value each (status 'open' or '' for all).
-      const list = (value, every) => (Array.isArray(value) ? value : value === undefined || value === every ? null : [value]);
-      const restored = {
-        types: list(saved.types), statuses: Array.isArray(saved.statuses) ? saved.statuses
-          : saved.status === 'open' ? openStatuses : saved.status === '' ? [] : list(saved.status),
-        priorities: list(saved.priorities ?? saved.priority, ''), modules: list(saved.modules ?? saved.module, '*'), assignees: list(saved.assignees),
-      };
-      groups.forEach((group) => { if (restored[group]) state[group] = restored[group].filter((value) => allowed[group].has(value)); });
+      groups.forEach((group) => { if (Array.isArray(saved[group])) state[group] = saved[group].filter((value) => allowed[group].has(value)); });
       state.recent = Boolean(saved.recent);
       if (saved.reporter && [...filters.reporter.options].some((option) => option.value === saved.reporter)) filters.reporter.value = saved.reporter;
       if (filters.mine) filters.mine.checked = Boolean(saved.mine);
@@ -178,7 +170,7 @@
     recentChip?.addEventListener('click', () => { state.recent = false; apply(); });
     Object.values(filters).forEach((control) => control.addEventListener(control.type === 'search' ? 'input' : 'change', apply));
     sort.addEventListener('change', apply);
-    document.querySelector('[data-bugs-reset]')?.addEventListener('click', () => {
+    document.querySelector('[data-tickets-reset]')?.addEventListener('click', () => {
       clear();
       state.statuses = [...openStatuses];
       apply();
@@ -197,7 +189,7 @@
     };
     // The tiles of the header list their tickets; the tile pressed again lists the open ones. The tile of the tickets
     // shown stays pressed.
-    const stats = [...document.querySelectorAll('[data-bugs-stat]')];
+    const stats = [...document.querySelectorAll('[data-tickets-stat]')];
     const tileState = {
       open: {}, new: {statuses: ['new']}, in_progress: {statuses: ['in_progress']}, waiting_info: {statuses: ['waiting_info']},
       recent: {statuses: ['resolved', 'closed'], recent: true}, mine: {mine: true},
@@ -212,26 +204,26 @@
     };
     function syncStats() {
       const pressed = pressedStat();
-      stats.forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.bugsStat === pressed)));
+      stats.forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.ticketsStat === pressed)));
     }
     stats.forEach((button) => button.addEventListener('click', () => {
-      const key = button.dataset.bugsStat;
+      const key = button.dataset.ticketsStat;
       show(key === pressedStat() ? {} : tileState[key]);
     }));
     // The counts of the matrix and the bars of each type list their tickets: a type and a status (the totals, every
     // value of the other one); a priority of a type, its open tickets; a module, its open tickets.
-    document.querySelectorAll('[data-ticket-cell]').forEach((cell) => cell.addEventListener('click', () => show({
+    document.querySelectorAll('[data-board-cell]').forEach((cell) => cell.addEventListener('click', () => show({
       types: cell.dataset.type ? [cell.dataset.type] : [], statuses: cell.dataset.status ? [cell.dataset.status] : [],
     })));
-    document.querySelectorAll('[data-ticket-priority]').forEach((cell) => cell.addEventListener('click', () => show({
+    document.querySelectorAll('[data-board-priority]').forEach((cell) => cell.addEventListener('click', () => show({
       types: [cell.dataset.type], priorities: [cell.dataset.priority],
     })));
-    document.querySelectorAll('[data-ticket-module]').forEach((cell) => cell.addEventListener('click', () => show({
-      modules: allowed.modules.has(cell.dataset.ticketModule) ? [cell.dataset.ticketModule] : [],
+    document.querySelectorAll('[data-board-module]').forEach((cell) => cell.addEventListener('click', () => show({
+      modules: allowed.modules.has(cell.dataset.boardModule) ? [cell.dataset.boardModule] : [],
     })));
     // A click anywhere on a row opens its ticket.
     table.addEventListener('click', (event) => {
-      const row = event.target.closest('[data-bug-row]');
+      const row = event.target.closest('[data-ticket-row]');
       if (!row || event.target.closest('a, button, input, select')) return;
       window.location.href = row.dataset.href;
     });
@@ -239,7 +231,7 @@
   }
 
   // The dashboard tells what each count, bar and week is, over it (data-tip), with the mouse or the keyboard.
-  const tip = document.querySelector('[data-ticket-tip]');
+  const tip = document.querySelector('[data-board-tip]');
   if (tip) {
     const board = tip.parentElement;
     const place = (target) => {
@@ -263,7 +255,7 @@
   }
 
   // The New Ticket link opens and shows its panel.
-  document.querySelector('[data-bugs-new]')?.addEventListener('click', () => {
+  document.querySelector('[data-tickets-new]')?.addEventListener('click', () => {
     const panel = document.getElementById('section-new-ticket');
     if (panel) {
       panel.open = true;
@@ -271,7 +263,7 @@
     }
   });
 
-  const createForm = document.querySelector('[data-bugs-create-form]');
+  const createForm = document.querySelector('[data-tickets-create-form]');
   // The description shows the guide of the type chosen.
   createForm?.querySelectorAll('input[name="ticket_type"]').forEach((radio) => radio.addEventListener('change', () => {
     const description = createForm.querySelector('[data-ticket-description]');
@@ -298,13 +290,13 @@
   });
 
   // The page of a ticket.
-  const page = document.querySelector('[data-bug-report]');
+  const page = document.querySelector('[data-ticket-page]');
   if (!page) return;
-  const bugId = page.dataset.bugReport;
+  const ticketId = page.dataset.ticketPage;
   const reload = () => window.location.reload();
 
-  const editForm = page.querySelector('[data-bug-edit-form]');
-  const editToggle = page.querySelector('[data-bug-edit-toggle]');
+  const editForm = page.querySelector('[data-ticket-edit-form]');
+  const editToggle = page.querySelector('[data-ticket-edit-toggle]');
   const showEdit = (open) => {
     if (!editForm) return;
     editForm.hidden = !open;
@@ -312,12 +304,12 @@
     if (open) editForm.title.focus();
   };
   editToggle?.addEventListener('click', () => showEdit(editForm.hidden));
-  page.querySelector('[data-bug-edit-cancel]')?.addEventListener('click', () => { editForm.reset(); showEdit(false); });
+  page.querySelector('[data-ticket-edit-cancel]')?.addEventListener('click', () => { editForm.reset(); showEdit(false); });
   editForm?.addEventListener('submit', async (event) => {
     event.preventDefault();
     busy(editForm, true);
     try {
-      await send(`/api/tickets/${bugId}/update`, new FormData(editForm));
+      await send(`/api/tickets/${ticketId}/update`, new FormData(editForm));
       reload();
     } catch (error) {
       info(error.message);
@@ -325,24 +317,24 @@
     }
   });
 
-  page.querySelector('[data-bug-priority]')?.addEventListener('change', async (event) => {
+  page.querySelector('[data-ticket-priority]')?.addEventListener('change', async (event) => {
     const body = new FormData();
     body.append('priority', event.target.value);
     try {
-      await send(`/api/tickets/${bugId}/update`, body);
+      await send(`/api/tickets/${ticketId}/update`, body);
       reload();
     } catch (error) { info(error.message); }
   });
 
-  const shotsForm = page.querySelector('[data-bug-shots-form]');
-  shotsForm?.addEventListener('bug-screenshots-change', (event) => {
-    shotsForm.querySelector('[data-bug-shots-actions]').hidden = !event.detail.count;
+  const shotsForm = page.querySelector('[data-ticket-shots-form]');
+  shotsForm?.addEventListener('ticket-screenshots-change', (event) => {
+    shotsForm.querySelector('[data-ticket-shots-actions]').hidden = !event.detail.count;
   });
   shotsForm?.addEventListener('submit', async (event) => {
     event.preventDefault();
     busy(shotsForm, true);
     try {
-      await send(`/api/tickets/${bugId}/screenshots`, new FormData(shotsForm));
+      await send(`/api/tickets/${ticketId}/screenshots`, new FormData(shotsForm));
       reload();
     } catch (error) {
       info(error.message);
@@ -350,17 +342,17 @@
     }
   });
 
-  const commentForm = page.querySelector('[data-bug-comment-form]');
+  const commentForm = page.querySelector('[data-ticket-comment-form]');
   commentForm?.addEventListener('submit', async (event) => {
     event.preventDefault();
-    const zone = commentForm.querySelector('[data-bug-dropzone]');
+    const zone = commentForm.querySelector('[data-ticket-dropzone]');
     if (!commentForm.body.value.trim() && !dropzones.get(zone)?.count()) {
       commentForm.body.focus();
       return info('Write a comment or attach a screenshot.');
     }
     busy(commentForm, true);
     try {
-      await send(`/api/tickets/${bugId}/comments`, new FormData(commentForm));
+      await send(`/api/tickets/${ticketId}/comments`, new FormData(commentForm));
       reload();
     } catch (error) {
       info(error.message);
@@ -369,17 +361,17 @@
   });
 
   // Comments: their author edits them in place; the author and the super-admins delete them.
-  page.querySelectorAll('[data-bug-comment]').forEach((comment) => {
-    const commentId = comment.dataset.bugComment;
-    comment.querySelector('[data-bug-comment-edit]')?.addEventListener('click', () => {
-      if (comment.querySelector('.bug-comment-editor')) return;
-      const text = comment.querySelector('[data-bug-comment-text]');
+  page.querySelectorAll('[data-ticket-comment]').forEach((comment) => {
+    const commentId = comment.dataset.ticketComment;
+    comment.querySelector('[data-ticket-comment-edit]')?.addEventListener('click', () => {
+      if (comment.querySelector('.ticket-comment-editor')) return;
+      const text = comment.querySelector('[data-ticket-comment-text]');
       const editor = document.createElement('form');
-      editor.className = 'bug-comment-editor';
-      editor.innerHTML = '<textarea name="body" rows="4" maxlength="20000"></textarea><div class="bugs-form-actions"><button type="button" class="bug-ghost-button">Cancel</button><button type="submit" class="bugs-primary-button">Save</button></div>';
+      editor.className = 'ticket-comment-editor';
+      editor.innerHTML = '<textarea name="body" rows="4" maxlength="20000"></textarea><div class="tickets-form-actions"><button type="button" class="ticket-ghost-button">Cancel</button><button type="submit" class="tickets-primary-button">Save</button></div>';
       // The comment as written, not as it reads with its bullets.
       editor.body.value = text ? (text.dataset.raw ?? text.textContent) : '';
-      editor.querySelector('.bug-ghost-button').addEventListener('click', () => { editor.remove(); if (text) text.hidden = false; });
+      editor.querySelector('.ticket-ghost-button').addEventListener('click', () => { editor.remove(); if (text) text.hidden = false; });
       editor.addEventListener('submit', async (event) => {
         event.preventDefault();
         busy(editor, true);
@@ -391,10 +383,10 @@
           busy(editor, false);
         }
       });
-      if (text) { text.hidden = true; text.after(editor); } else comment.querySelector('.bug-comment-body header').after(editor);
+      if (text) { text.hidden = true; text.after(editor); } else comment.querySelector('.ticket-comment-body header').after(editor);
       editor.body.focus();
     });
-    comment.querySelector('[data-bug-comment-delete]')?.addEventListener('click', async () => {
+    comment.querySelector('[data-ticket-comment-delete]')?.addEventListener('click', async () => {
       const accepted = await confirmAction('Delete this comment and its screenshots?', {title: 'Delete comment', confirmLabel: 'Delete comment', tone: 'warning'});
       if (!accepted) return;
       try {
@@ -404,58 +396,58 @@
     });
   });
 
-  page.querySelectorAll('[data-bug-shot-delete]').forEach((button) => button.addEventListener('click', async () => {
+  page.querySelectorAll('[data-ticket-shot-delete]').forEach((button) => button.addEventListener('click', async () => {
     const accepted = await confirmAction('Delete this screenshot?', {title: 'Delete screenshot', confirmLabel: 'Delete screenshot', tone: 'warning'});
     if (!accepted) return;
     try {
-      await send(`/api/tickets/screenshots/${button.dataset.bugShotDelete}/delete`, new FormData());
+      await send(`/api/tickets/screenshots/${button.dataset.ticketShotDelete}/delete`, new FormData());
       reload();
     } catch (error) { info(error.message); }
   }));
 
   // Super-admins: attend the ticket (In Progress, assigned to them), or change its status, type, assignment and fixed
   // version.
-  const manageForm = page.querySelector('[data-bug-manage-form]');
+  const manageForm = page.querySelector('[data-ticket-manage-form]');
   manageForm?.addEventListener('submit', async (event) => {
     event.preventDefault();
     busy(manageForm, true);
     try {
-      await send(`/api/tickets/${bugId}/manage`, new FormData(manageForm));
+      await send(`/api/tickets/${ticketId}/manage`, new FormData(manageForm));
       reload();
     } catch (error) {
       info(error.message);
       busy(manageForm, false);
     }
   });
-  page.querySelector('[data-bug-attend]')?.addEventListener('click', async (event) => {
+  page.querySelector('[data-ticket-attend]')?.addEventListener('click', async (event) => {
     const body = new FormData();
     body.append('status', 'in_progress');
     body.append('assigned_to', event.currentTarget.dataset.username);
     try {
-      await send(`/api/tickets/${bugId}/manage`, body);
+      await send(`/api/tickets/${ticketId}/manage`, body);
       reload();
     } catch (error) { info(error.message); }
   });
-  page.querySelector('[data-bug-delete]')?.addEventListener('click', async () => {
+  page.querySelector('[data-ticket-delete]')?.addEventListener('click', async () => {
     const accepted = await confirmAction('Delete this ticket with its timeline and screenshots? This cannot be undone.', {title: 'Delete ticket', confirmLabel: 'Delete ticket', tone: 'warning'});
     if (!accepted) return;
     try {
-      const payload = await send(`/api/tickets/${bugId}/delete`, new FormData());
+      const payload = await send(`/api/tickets/${ticketId}/delete`, new FormData());
       window.location.href = payload.url;
     } catch (error) { info(error.message); }
   });
 
   // Screenshots open full size.
-  const lightbox = page.querySelector('[data-bug-lightbox]');
+  const lightbox = page.querySelector('[data-ticket-lightbox]');
   page.addEventListener('click', (event) => {
-    const shot = event.target.closest('[data-bug-shot]');
+    const shot = event.target.closest('[data-ticket-shot]');
     if (!shot || !lightbox) return;
-    lightbox.querySelector('[data-bug-lightbox-image]').src = shot.dataset.bugShot;
-    lightbox.querySelector('[data-bug-lightbox-image]').alt = shot.dataset.bugShotName;
-    lightbox.querySelector('[data-bug-lightbox-name]').textContent = shot.dataset.bugShotName;
-    lightbox.querySelector('[data-bug-lightbox-link]').href = shot.dataset.bugShot;
+    lightbox.querySelector('[data-ticket-lightbox-image]').src = shot.dataset.ticketShot;
+    lightbox.querySelector('[data-ticket-lightbox-image]').alt = shot.dataset.ticketShotName;
+    lightbox.querySelector('[data-ticket-lightbox-name]').textContent = shot.dataset.ticketShotName;
+    lightbox.querySelector('[data-ticket-lightbox-link]').href = shot.dataset.ticketShot;
     lightbox.showModal();
   });
-  lightbox?.querySelector('[data-bug-lightbox-close]')?.addEventListener('click', () => lightbox.close());
+  lightbox?.querySelector('[data-ticket-lightbox-close]')?.addEventListener('click', () => lightbox.close());
   lightbox?.addEventListener('click', (event) => { if (event.target === lightbox) lightbox.close(); });
 })();

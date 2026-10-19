@@ -55,7 +55,7 @@ def polled(client):
 def acknowledge(client, payload, choice='close', page='/documents/view/help'):
     response = client.post('/api/admin-notices/seen', headers={'Referer': f'http://testserver{page}'}, json={
         'choice': choice, 'access_requests': [item['key'] for item in payload['access_requests']],
-        'bug_reports': [item['key'] for item in payload['bug_reports']],
+        'tickets': [item['key'] for item in payload['tickets']],
     })
     assert response.status_code == 200, response.text
     return response.json()
@@ -74,7 +74,7 @@ def test_each_super_admin_is_told_once_of_each_access_request(client):
 
     login(client)
     payload = notices(client)
-    assert payload['bug_reports'] == []
+    assert payload['tickets'] == []
     assert [(item['username'], item['name'], item['role']) for item in payload['access_requests']] == [('EABCDEF', 'Ana García', 'user-editor')]
     assert payload['access_requests'][0]['requested_at'][:4].isdigit()
     assert payload['access_requests_url'] == '/admin?users=access-requests#users'
@@ -82,9 +82,9 @@ def test_each_super_admin_is_told_once_of_each_access_request(client):
     page = client.get('/admin').text
     assert '<option value="access-request">Pending access requests</option>' in page
     assert 'data-username="EABCDEF"' in page and 'data-access-request="1"' in page
-    assert acknowledge(client, payload, 'access-requests') == {'access_requests': 1, 'bug_reports': 0}
+    assert acknowledge(client, payload, 'access-requests') == {'access_requests': 1, 'tickets': 0}
     assert notices(client)['access_requests'] == []
-    assert logged('admin_notices_seen')[0] == {'choice': 'Open Access Requests', 'access_requests': ['EABCDEF'], 'bug_reports': []}
+    assert logged('admin_notices_seen')[0] == {'choice': 'Open Access Requests', 'access_requests': ['EABCDEF'], 'tickets': []}
 
     # Every super-admin is told on its own.
     login(client, 'chief', 'secret123')
@@ -100,7 +100,7 @@ def test_each_super_admin_is_told_once_of_each_access_request(client):
     assert notices(client)['access_requests'] == []
     assert 'data-access-request="1"' not in client.get('/admin').text
     # Acknowledging forgets what is no longer pending, and keys of other items are ignored.
-    acknowledge(client, {'access_requests': [{'key': 'unknown'}], 'bug_reports': [{'key': 'unknown'}]})
+    acknowledge(client, {'access_requests': [{'key': 'unknown'}], 'tickets': [{'key': 'unknown'}]})
     with core.repository.global_connection() as conn:
         assert conn.execute('SELECT COUNT(*) FROM admin_notices_seen').fetchone()[0] == 0
     # Deleting a super-admin deletes what it was told.
@@ -113,48 +113,48 @@ def test_each_super_admin_is_told_once_of_each_access_request(client):
         assert conn.execute('SELECT COUNT(*) FROM admin_notices_seen').fetchone()[0] == 0
 
 
-def test_each_super_admin_is_told_once_of_new_bug_reports_of_other_users(client):
-    from src.modules.bugs_report import create_bug, delete_bug
+def test_each_super_admin_is_told_once_of_new_tickets_of_other_users(client):
+    from src.modules.ticket_center import create_ticket, delete_ticket
 
     core.repository.create_user('ana', 'secret123', 'user-viewer', first_name='Ana', last_name='García')
-    reported = create_bug(core.repository, title='Export fails', description='', module='scoring', priority='P2', username='ana', app_version='0.7.1',
+    reported = create_ticket(core.repository, title='Export fails', description='', module='scoring', priority='P2', username='ana', app_version='0.7.1',
                           ticket_type='improvement')
-    attended = create_bug(core.repository, title='Map is empty', description='', module='', priority='P3', username='ana', app_version='0.7.1', ticket_type='bug')
-    own = create_bug(core.repository, title='My own bug', description='', module='', priority='P4', username='super', app_version='0.7.1', ticket_type='bug')
+    attended = create_ticket(core.repository, title='Map is empty', description='', module='', priority='P3', username='ana', app_version='0.7.1', ticket_type='bug')
+    own = create_ticket(core.repository, title='My own bug', description='', module='', priority='P4', username='super', app_version='0.7.1', ticket_type='bug')
     with core.repository.global_connection() as conn:
-        conn.execute("UPDATE bug_reports SET status = 'in_progress' WHERE id = ?", (attended,))
+        conn.execute("UPDATE tickets SET status = 'in_progress' WHERE id = ?", (attended,))
 
     login(client)
     payload = notices(client)
     # Only the tickets still New of other users, with their type.
-    scoring = next(module['title'] for module in core.bug_report_modules() if module['key'] == 'scoring')
-    assert [(bug['id'], bug['title'], bug['type'], bug['priority'], bug['reported_by'], bug['module']) for bug in payload['bug_reports']] == [
+    scoring = next(module['title'] for module in core.ticket_modules() if module['key'] == 'scoring')
+    assert [(ticket['id'], ticket['title'], ticket['type'], ticket['priority'], ticket['reported_by'], ticket['module']) for ticket in payload['tickets']] == [
         (reported, 'Export fails', 'Improvement', 'P2', 'Ana García', scoring)]
-    assert payload['bugs_report_url'] == '/tickets?status=new#section-tickets' and payload['bugs_report_title'] == 'Ticket Center'
-    assert acknowledge(client, payload) == {'access_requests': 0, 'bug_reports': 1}
-    assert notices(client)['bug_reports'] == []
-    assert logged('admin_notices_seen')[0] == {'choice': 'Close', 'access_requests': [], 'bug_reports': [f'#{reported} Export fails']}
+    assert payload['ticket_center_url'] == '/tickets?status=new#section-tickets' and payload['ticket_center_title'] == 'Ticket Center'
+    assert acknowledge(client, payload) == {'access_requests': 0, 'tickets': 1}
+    assert notices(client)['tickets'] == []
+    assert logged('admin_notices_seen')[0] == {'choice': 'Close', 'access_requests': [], 'tickets': [f'#{reported} Export fails']}
 
     # Another super-admin is told of the report of super too, unless it opens it.
     core.repository.create_user('chief', 'secret123', 'super-admin')
     login(client, 'chief', 'secret123')
-    assert [bug['id'] for bug in notices(client)['bug_reports']] == [reported, own]
+    assert [ticket['id'] for ticket in notices(client)['tickets']] == [reported, own]
     assert client.get(f'/tickets/{reported}').status_code == 200
-    assert [bug['id'] for bug in notices(client)['bug_reports']] == [own]
+    assert [ticket['id'] for ticket in notices(client)['tickets']] == [own]
     # A deleted report is forgotten.
-    delete_bug(core.repository, reported)
-    acknowledge(client, {'access_requests': [], 'bug_reports': []})
+    delete_ticket(core.repository, reported)
+    acknowledge(client, {'access_requests': [], 'tickets': []})
     with core.repository.global_connection() as conn:
-        seen = conn.execute("SELECT user_id FROM admin_notices_seen WHERE kind = 'bug_report'").fetchall()
+        seen = conn.execute("SELECT user_id FROM admin_notices_seen WHERE kind = 'ticket'").fetchall()
     assert [row[0] for row in seen] == [user_id('super')]
 
     # Super-admins whose Modules Profile has no Ticket Center are not told of tickets.
-    create_bug(core.repository, title='Another bug', description='', module='', priority='P1', username='ana', app_version='0.7.1', ticket_type='bug')
+    create_ticket(core.repository, title='Another bug', description='', module='', priority='P1', username='ana', app_version='0.7.1', ticket_type='bug')
     profile = next(item for item in core.repository.list_modules_profiles() if item['name'] == 'Benchmarking')
     core.repository.save_modules_profile(profile['id'], profile['name'], profile['description'], ['workspace'])
     core.repository.set_users_modules_profile([user_id('chief')], profile['id'])
     core.invalidate_module_access_cache()
-    assert notices(client)['bug_reports'] == []
+    assert notices(client)['tickets'] == []
 
 
 def test_the_dialog_and_its_links_are_in_the_pages(client):
@@ -163,7 +163,7 @@ def test_the_dialog_and_its_links_are_in_the_pages(client):
     assert "fetch('/api/admin-notices'" in script and "'/api/admin-notices/seen'" in script
     # The poll of incoming transfer offers hands the ids to the dialog.
     assert "new CustomEvent('drivetest-analyzer:admin-notices'" in script and 'Administrator notice' in script
-    assert "get('status')" in (root / 'bugs_report.js').read_text(encoding='utf-8')
+    assert "get('status')" in (root / 'ticket_center.js').read_text(encoding='utf-8')
     login(client)
     assert "get('users') === 'access-requests'" in client.get('/admin').text
     # The table is listed in Database Management.
@@ -172,24 +172,24 @@ def test_the_dialog_and_its_links_are_in_the_pages(client):
 
 
 def test_the_poll_of_the_pages_tells_super_admins_while_signed_in(client):
-    from src.modules.bugs_report import create_bug
+    from src.modules.ticket_center import create_ticket
 
     login(client)
-    assert polled(client) == {'access_requests': [], 'bug_reports': []}
+    assert polled(client) == {'access_requests': [], 'tickets': []}
     # A request and a ticket arrive while the super-admin is signed in.
     waiting = core.repository.create_user('EQRSTUV', 'secret1', 'user-editor', active=False, first_name='Eva', last_name='Ruiz')
     core.repository.set_access_requested(waiting, '2026-10-15T10:00:00+02:00')
-    bug = create_bug(core.repository, title='Chart is blank', description='', module='', priority='P2', username='ana', app_version='0.7.1', ticket_type='bug')
-    create_bug(core.repository, title='Mine', description='', module='', priority='P2', username='super', app_version='0.7.1', ticket_type='bug')
-    assert polled(client) == {'access_requests': [waiting], 'bug_reports': [bug]}
+    ticket = create_ticket(core.repository, title='Chart is blank', description='', module='', priority='P2', username='ana', app_version='0.7.1', ticket_type='bug')
+    create_ticket(core.repository, title='Mine', description='', module='', priority='P2', username='super', app_version='0.7.1', ticket_type='bug')
+    assert polled(client) == {'access_requests': [waiting], 'tickets': [ticket]}
     payload = notices(client)
-    assert [item['username'] for item in payload['access_requests']] == ['EQRSTUV'] and [item['id'] for item in payload['bug_reports']] == [bug]
+    assert [item['username'] for item in payload['access_requests']] == ['EQRSTUV'] and [item['id'] for item in payload['tickets']] == [ticket]
     # Told once: the App Event runs in the module of the page the dialog was shown on.
-    acknowledge(client, payload, 'bugs-report', page='/tickets')
-    assert polled(client) == {'access_requests': [], 'bug_reports': []}
+    acknowledge(client, payload, 'ticket-center', page='/tickets')
+    assert polled(client) == {'access_requests': [], 'tickets': []}
     with core.repository.connection() as conn:
         origin = conn.execute("SELECT origin FROM audit_logs WHERE action = 'admin_notices_seen' ORDER BY id DESC").fetchone()[0]
-    assert origin == 'module:bugs-report'
+    assert origin == 'module:ticket-center'
     assert logged('admin_notices_seen')[0]['choice'] == 'Open Ticket Center'
     # The poll and the notices it reports are not activity, so the idle tasks still run.
     assert not core.is_interactive_request('GET', '/admin/import-export/transfers/offers', 'application/json')

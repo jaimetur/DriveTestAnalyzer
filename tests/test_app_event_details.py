@@ -48,7 +48,7 @@ def test_events_read_as_one_sentence_old_and_new() -> None:
         'Scoring calculation requested: unsaved filter ID 57, datasets 18.')
     assert describe_app_event('scoring_calculation_requested', {'saved_filter_id': 57, 'starred': True, 'name': 'UK'}) == (
         'Scoring calculation requested: saved filter ID 57 (favourite), name UK.')
-    assert describe_app_event('bug_report_managed', {'bug_id': 1, 'changes': {'status': ['new', 'resolved']}}) == (
+    assert describe_app_event('ticket_managed', {'ticket_id': 1, 'changes': {'status': ['new', 'resolved']}}) == (
         'Ticket managed: ticket ID 1, status new → resolved.')
     assert describe_app_event('nq_call_options', 'Non-Qualified Calls statuses and teams updated.') == (
         'Non-Qualified Calls statuses and teams updated.')

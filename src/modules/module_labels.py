@@ -30,7 +30,7 @@ MAIN_MODULES: tuple[tuple[str, str], ...] = (
     ('non-qualified-calls', 'Non-Qualified Calls'),
     ('reporting', 'Reporting'),
     ('builders', 'Builders'),
-    ('bugs-report', 'Ticket Center'),
+    ('ticket-center', 'Ticket Center'),
 )
 
 # What each main tab links to and its default title, short title, Modules menu
@@ -63,10 +63,10 @@ MODULE_TABS: dict[str, dict[str, Any]] = {
     'builders': {'css': 'module-tab-chart-builder', 'href': '/chart-builder', 'title': 'Builders', 'short_title': 'Builders',
                  'nav_title': 'Builders', 'tab_icon': 'builders', 'tab_color': '#B85B20',
                  'docs': ('chart-builder.md', 'query-builder.md')},
-    # Ticket Center keeps the key and Help chapter of its former name, Bugs Report; /bugs-report redirects to /tickets.
-    'bugs-report': {'css': 'module-tab-bugs-report', 'href': '/tickets', 'title': 'Ticket Center', 'short_title': 'Tickets',
-                    'nav_title': 'Ticket Center', 'tab_icon': 'ticket-center', 'tab_color': '#DC2626',
-                    'docs': ('bugs-report.md',), 'needs_workspace': False},
+    # Ticket Center was called Bugs Report: its former address, /bugs-report, redirects to /tickets.
+    'ticket-center': {'css': 'module-tab-ticket-center', 'href': '/tickets', 'title': 'Ticket Center', 'short_title': 'Tickets',
+                      'nav_title': 'Ticket Center', 'tab_icon': 'ticket-center', 'tab_color': '#DC2626',
+                      'docs': ('ticket-center.md',), 'needs_workspace': False},
 }
 
 # Icons a main tab can show before its title (24 x 24, drawn with lines).
@@ -90,9 +90,8 @@ TAB_ICONS: dict[str, dict[str, str]] = {
     'builders': {'label': 'Wrench (Builders)',
                  'd': '<path d="M14.7 6.3a4 4 0 0 0-5.3 5.3L3.5 17.5a2 2 0 0 0 2.9 2.9l5.9-5.9a4 4 0 0 0 5.3-5.3l-2.5 2.5-2.4-.5-.5-2.4z"/>'},
     'ticket-center': {'label': 'Ticket (Ticket Center)', 'd': '<path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h15A1.5 1.5 0 0 1 21 7.5V10a2 2 0 0 0 0 4v2.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 16.5V14a2 2 0 0 0 0-4z"/><path d="M15 6.5v2M15 11v2M15 15.5v2"/>'},
-    # The icon of Bugs Report, the former name of Ticket Center, under its key (Interface Settings may have chosen it).
-    'bugs-report': {'label': 'Bug',
-                    'd': '<path d="M9 7.5a3 3 0 0 1 6 0z"/><rect x="7" y="7.5" width="10" height="12" rx="5"/><path d="M12 11v8.5M7 12H3.5M20.5 12H17M7.6 16.5 4.5 18.5M16.4 16.5l3.1 2M7.4 9 4.5 7M16.6 9l2.9-2M10 4.5 9 3M14 4.5 15 3"/>'},
+    'bug': {'label': 'Bug',
+            'd': '<path d="M9 7.5a3 3 0 0 1 6 0z"/><rect x="7" y="7.5" width="10" height="12" rx="5"/><path d="M12 11v8.5M7 12H3.5M20.5 12H17M7.6 16.5 4.5 18.5M16.4 16.5l3.1 2M7.4 9 4.5 7M16.6 9l2.9-2M10 4.5 9 3M14 4.5 15 3"/>'},
     'bar-chart': {'label': 'Bar chart', 'd': '<path d="M4 20h16M7 16v-5M12 16V6M17 16v-8"/>'},
     'line-chart': {'label': 'Line chart', 'd': '<path d="M4 4v16h16"/><path d="m7 15 4-5 3 3 5-6"/>'},
     'pie-chart': {'label': 'Pie chart', 'd': '<path d="M12 3a9 9 0 1 0 9 9h-9z"/><path d="M15 3.5A9 9 0 0 1 20.5 9H15z"/>'},
@@ -150,7 +149,7 @@ DEFAULT_MODULE_LABELS: dict[str, dict[str, str]] = {
     'reporting': {'text': 'BETA', 'color': STAGE_COLOURS['beta'], 'icon': '', 'icon_color': '#3D2A00'},
     'ppt-reporting-old': {'text': '', 'color': '#6B7785', 'icon': '', 'icon_color': '#FFFFFF'},
     'builders': {'text': 'BETA', 'color': STAGE_COLOURS['beta'], 'icon': '', 'icon_color': '#3D2A00'},
-    'bugs-report': {'text': 'NEW', 'color': STAGE_COLOURS['new'], 'icon': '', 'icon_color': '#FFFFFF'},
+    'ticket-center': {'text': 'NEW', 'color': STAGE_COLOURS['new'], 'icon': '', 'icon_color': '#FFFFFF'},
 }
 
 # Predefined icons drawn in a 10 x 10 box at the left of the label (x 3–13, y 2–12).
@@ -241,20 +240,19 @@ TICKET_CENTER_TITLE_MIGRATION_KEY = 'module_tab_labels_ticket_center_title_v1'
 
 
 def migrate_ticket_center_title(repository: Any) -> bool:
-    """Rename a stored Bugs Report title, Bugs short title and bug icon of the Ticket Center tab, and the Bugs Report
-    of the description of the Non-Qualified Calls profile, to Ticket Center; True when something changed."""
+    """Rename a stored Bugs Report title and Bugs short title of the Ticket Center tab, and the Bugs Report of the
+    description of the Non-Qualified Calls profile, to Ticket Center; True when something changed."""
     if repository.get_application_state(TICKET_CENTER_TITLE_MIGRATION_KEY) == '1':
         return False
     try:
         stored = json.loads(repository.get_application_state(MODULE_LABELS_STATE_KEY) or '{}')
     except (TypeError, ValueError):
         stored = {}
-    entry = stored.get('bugs-report') if isinstance(stored, dict) else None
+    entry = stored.get('ticket-center') if isinstance(stored, dict) else None
     changed = False
     if isinstance(entry, dict):
-        default = MODULE_TABS['bugs-report']
-        for setting, former, current in (('title', 'bugs report', default['title']), ('short_title', 'bugs', default['short_title']),
-                                         ('tab_icon', 'bugs-report', default['tab_icon'])):
+        default = MODULE_TABS['ticket-center']
+        for setting, former, current in (('title', 'bugs report', default['title']), ('short_title', 'bugs', default['short_title'])):
             if str(entry.get(setting) or '').strip().casefold() == former:
                 entry[setting] = current
                 changed = True
@@ -401,7 +399,7 @@ MODULE_SECTIONS: dict[str, list[tuple[Any, ...] | None]] = {
                                 ('analysts-reviewers-to-asignees', 'Analysts / Reviewers → Asignees', 'user-plus')])],
     'reporting': [('Bundle Report Templates', 'Bundle Report Templates', 'presentation'), ('Reporting Jobs', 'Reporting Jobs', 'jobs'),
                   ('Run History', 'Run History', 'log')],
-    'bugs-report': [('New Ticket', 'New Ticket', 'ticket'), ('Tickets', 'Tickets', 'table')],
+    'ticket-center': [('New Ticket', 'New Ticket', 'ticket'), ('Tickets', 'Tickets', 'table')],
     'chart-builder': [('Interactive Preview', 'Interactive Preview', 'eye')],
     'query-builder': [('Selected CDR tables', 'Query editor', 'code'), ('Saved queries', 'Saved queries', 'bookmark'),
                       ('Query output', 'Results', 'table')],

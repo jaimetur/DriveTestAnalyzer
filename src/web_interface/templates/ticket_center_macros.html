@@ -1,4 +1,4 @@
-{# Pieces shared by the Ticket Center pages (bugs_report.html and bug_report.html). #}
+{# Pieces shared by the Ticket Center pages (ticket_center.html and ticket.html). #}
 {# The icon of a type of ticket (24 x 24, drawn with lines): a bug, a rising line or a sparkle. #}
 {% macro type_icon(ticket_type) -%}
 <svg class="ticket-type-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">{% if ticket_type == 'improvement' %}<path d="m4 17 6-6 4 4 6-7"/><path d="M15 8h5v5"/>{% elif ticket_type == 'new_feature' %}<path d="M11 3.5c.6 4.4 2.6 6.4 7 7-4.4.6-6.4 2.6-7 7-.6-4.4-2.6-6.4-7-7 4.4-.6 6.4-2.6 7-7z"/><path d="M19 3v4M17 5h4"/>{% else %}<path d="M9 7.5a3 3 0 0 1 6 0z"/><rect x="7" y="7.5" width="10" height="12" rx="5"/><path d="M12 11v8.5M7 12H3.5M20.5 12H17M7.6 16.5 4.5 18.5M16.4 16.5l3.1 2"/>{% endif %}</svg>
@@ -9,37 +9,37 @@
 {%- endmacro %}
 
 {% macro priority_pill(priority, label='') -%}
-<span class="bug-priority" data-priority="{{ priority }}" title="{{ priority }}{% if label %} · {{ label }}{% endif %}">{{ priority }}{% if label %}<small>{{ label }}</small>{% endif %}</span>
+<span class="ticket-priority" data-priority="{{ priority }}" title="{{ priority }}{% if label %} · {{ label }}{% endif %}">{{ priority }}{% if label %}<small>{{ label }}</small>{% endif %}</span>
 {%- endmacro %}
 
 {% macro status_pill(status, label) -%}
-<span class="bug-status" data-status="{{ status }}">{{ label }}</span>
+<span class="ticket-status" data-status="{{ status }}">{{ label }}</span>
 {%- endmacro %}
 
 {% macro module_chip(title, color) -%}
-<span class="bug-module" style="--module-color: {{ color }}">{{ title }}</span>
+<span class="ticket-module" style="--module-color: {{ color }}">{{ title }}</span>
 {%- endmacro %}
 
-{# Screenshots chosen, dropped or pasted (Ctrl+V / Cmd+V anywhere in the form), shown before they are sent (bugs_report.js). #}
+{# Screenshots chosen, dropped or pasted (Ctrl+V / Cmd+V anywhere in the form), shown before they are sent (ticket_center.js). #}
 {% macro screenshots_zone(max_files, max_mb, label='Screenshots') -%}
-<div class="bug-dropzone" data-bug-dropzone data-max-files="{{ max_files }}" data-max-mb="{{ max_mb }}">
-  <label class="bug-dropzone-target">
-    <input type="file" name="screenshots" accept="image/png,image/jpeg,image/gif,image/webp" multiple aria-label="{{ label }}" data-bug-dropzone-input>
-    <span class="bug-dropzone-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.6"/><path d="m21 15-5-5-9 9"/></svg></span>
-    <span class="bug-dropzone-text"><strong>{{ label }}</strong><small>Paste with Ctrl+V / ⌘V, drop or click to choose · up to {{ max_files }} images of {{ max_mb }} MB</small></span>
+<div class="ticket-dropzone" data-ticket-dropzone data-max-files="{{ max_files }}" data-max-mb="{{ max_mb }}">
+  <label class="ticket-dropzone-target">
+    <input type="file" name="screenshots" accept="image/png,image/jpeg,image/gif,image/webp" multiple aria-label="{{ label }}" data-ticket-dropzone-input>
+    <span class="ticket-dropzone-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.6"/><path d="m21 15-5-5-9 9"/></svg></span>
+    <span class="ticket-dropzone-text"><strong>{{ label }}</strong><small>Paste with Ctrl+V / ⌘V, drop or click to choose · up to {{ max_files }} images of {{ max_mb }} MB</small></span>
   </label>
-  <div class="bug-dropzone-previews" data-bug-dropzone-previews></div>
+  <div class="ticket-dropzone-previews" data-ticket-dropzone-previews></div>
 </div>
 {%- endmacro %}
 
 {% macro screenshot_gallery(attachments, user, removable=false) -%}
 {% if attachments %}
-<div class="bug-gallery">
+<div class="ticket-gallery">
   {% for attachment in attachments %}
-  <figure class="bug-shot">
-    <button type="button" class="bug-shot-open" data-bug-shot="/tickets/attachments/{{ attachment.id }}" data-bug-shot-name="{{ attachment.file_name }}" title="{{ attachment.file_name }}"><img src="/tickets/attachments/{{ attachment.id }}" alt="{{ attachment.file_name }}" loading="lazy"></button>
+  <figure class="ticket-shot">
+    <button type="button" class="ticket-shot-open" data-ticket-shot="/tickets/attachments/{{ attachment.id }}" data-ticket-shot-name="{{ attachment.file_name }}" title="{{ attachment.file_name }}"><img src="/tickets/attachments/{{ attachment.id }}" alt="{{ attachment.file_name }}" loading="lazy"></button>
     <figcaption>{{ attachment.file_name }}</figcaption>
-    {% if removable and (user.role == 'super-admin' or attachment.uploaded_by | lower == user.username | lower) %}<button type="button" class="bug-shot-remove" data-bug-shot-delete="{{ attachment.id }}" title="Delete this screenshot" aria-label="Delete {{ attachment.file_name }}">×</button>{% endif %}
+    {% if removable and (user.role == 'super-admin' or attachment.uploaded_by | lower == user.username | lower) %}<button type="button" class="ticket-shot-remove" data-ticket-shot-delete="{{ attachment.id }}" title="Delete this screenshot" aria-label="Delete {{ attachment.file_name }}">×</button>{% endif %}
   </figure>
   {% endfor %}
 </div>

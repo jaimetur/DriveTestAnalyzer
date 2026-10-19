@@ -4568,8 +4568,8 @@ body:has(dialog.vendor-mapping-dialog[open]) { overflow: hidden; }
 .module-tab-report-jobs { --tab-accent: #2e8c58; }
 .module-tab-reporting { --tab-accent: #7650b5; }
 .module-tab-chart-builder { --tab-accent: #b85b20; }
-.module-tab-bugs-report { --tab-accent: #dc2626; }
-.module-tab-bugs-report.active { background: linear-gradient(135deg, #991b1b, #ef4444); border-color: rgba(153, 27, 27, 0.7); color: #fff; box-shadow: 0 10px 24px rgba(220, 38, 38, 0.32); }
+.module-tab-ticket-center { --tab-accent: #dc2626; }
+.module-tab-ticket-center.active { background: linear-gradient(135deg, #991b1b, #ef4444); border-color: rgba(153, 27, 27, 0.7); color: #fff; box-shadow: 0 10px 24px rgba(220, 38, 38, 0.32); }
 .module-tabs-primary .module-tab:not(.active) {
   background: linear-gradient(180deg, #ffffff, #f2f5f8);
   border-color: #d8e0e7;

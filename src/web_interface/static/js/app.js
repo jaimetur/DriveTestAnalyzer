@@ -7188,7 +7188,7 @@ function importWarningDetails(payload) {
       message: 'Users, Modules Profiles and Workspace Groups with the same names will be updated and the missing ones added; the others are kept. Workspaces are matched by name. Your own account keeps its role, status and password.',
     };
   }
-  if (kind === 'bugs-report') {
+  if (kind === 'ticket-center') {
     return {
       title: 'Import Ticket Center?',
       message: 'The tickets, comments and screenshots this server does not have are added, and a ticket changed later in the package takes its newer content. Nothing is deleted.',
@@ -8342,16 +8342,16 @@ document.querySelectorAll('[data-export-package-form]').forEach((form) => {
         body: JSON.stringify({
           choice,
           access_requests: (told?.access_requests || []).map((item) => item.key),
-          bug_reports: (told?.bug_reports || []).map((bug) => bug.key),
+          tickets: (told?.tickets || []).map((ticket) => ticket.key),
         }),
       });
     } catch (_error) { /* Told again by the next poll. */ }
     if (choice === 'access-requests') window.location.href = told?.access_requests_url || '/admin#users';
-    else if (choice === 'bugs-report') window.location.href = told?.bugs_report_url || '/tickets';
+    else if (choice === 'ticket-center') window.location.href = told?.ticket_center_url || '/tickets';
   };
   const render = () => {
     const requests = notices.access_requests || [];
-    const bugs = notices.bug_reports || [];
+    const tickets = notices.tickets || [];
     if (!dialog) {
       const overlay = document.createElement('div');
       overlay.className = 'confirm-overlay incoming-transfer-confirm incoming-transfer-offer admin-notices-overlay';
@@ -8359,7 +8359,7 @@ document.querySelectorAll('[data-export-package-form]').forEach((form) => {
         + '<div class="confirm-icon" aria-hidden="true">!</div><p class="eyebrow">Administrator notice</p>'
         + '<h3 id="admin-notices-title"></h3><div class="admin-notices-copy"></div><div class="confirm-actions">'
         + '<button type="button" class="ghost-link confirm-cancel" data-admin-notices-choice="close">Close</button>'
-        + '<button type="button" class="warning-button" data-admin-notices-choice="bugs-report"></button>'
+        + '<button type="button" class="warning-button" data-admin-notices-choice="ticket-center"></button>'
         + '<button type="button" class="danger-button" data-admin-notices-choice="access-requests">Open Access Requests</button>'
         + '</div></section>';
       overlay.addEventListener('click', (event) => {
@@ -8375,28 +8375,28 @@ document.querySelectorAll('[data-export-package-form]').forEach((form) => {
       dialog = {overlay, onKeydown, title: overlay.querySelector('h3'), copy: overlay.querySelector('.admin-notices-copy')};
     }
     const listHtml = (items) => `<ul class="incoming-transfer-contents">${items.join('')}</ul>`;
-    dialog.title.textContent = requests.length && bugs.length ? 'New access requests and tickets'
+    dialog.title.textContent = requests.length && tickets.length ? 'New access requests and tickets'
       : requests.length ? 'New access requests' : 'New tickets';
     dialog.copy.innerHTML = [
       requests.length ? `<p><strong>${escapeHtml(counted(requests.length, 'access request'))} pending activation</strong></p>${listHtml(requests.map((item) => (
         `<li><strong>${escapeHtml(item.name)}</strong> · ${escapeHtml(item.username)} · ${escapeHtml(item.requested_at)}</li>`)))}` : '',
-      bugs.length ? `<p><strong>${escapeHtml(counted(bugs.length, 'new ticket'))}</strong></p>${listHtml(bugs.map((bug) => (
-        `<li><strong>#${escapeHtml(bug.id)} ${escapeHtml(bug.title)}</strong> · ${escapeHtml(bug.type || 'Bug')} · ${escapeHtml(bug.priority)} · ${escapeHtml(bug.reported_by)}</li>`)))}` : '',
+      tickets.length ? `<p><strong>${escapeHtml(counted(tickets.length, 'new ticket'))}</strong></p>${listHtml(tickets.map((ticket) => (
+        `<li><strong>#${escapeHtml(ticket.id)} ${escapeHtml(ticket.title)}</strong> · ${escapeHtml(ticket.type || 'Bug')} · ${escapeHtml(ticket.priority)} · ${escapeHtml(ticket.reported_by)}</li>`)))}` : '',
       `<p class="incoming-transfer-effect">${requests.length ? 'Activate the users in Admin → Users. ' : ''}You will not be told about these again.</p>`,
     ].join('');
     // The first button opens what is listed first; Open Ticket Center (by its title in Interface Settings) is the second
     // one when both are listed.
     const access = dialog.overlay.querySelector('[data-admin-notices-choice="access-requests"]');
-    const bugsButton = dialog.overlay.querySelector('[data-admin-notices-choice="bugs-report"]');
-    bugsButton.textContent = `Open ${notices.bugs_report_title || 'Ticket Center'}`;
+    const ticketsButton = dialog.overlay.querySelector('[data-admin-notices-choice="ticket-center"]');
+    ticketsButton.textContent = `Open ${notices.ticket_center_title || 'Ticket Center'}`;
     access.hidden = !requests.length;
-    bugsButton.hidden = !bugs.length;
-    bugsButton.className = requests.length ? 'warning-button' : 'danger-button';
-    (requests.length ? access : bugsButton).focus();
+    ticketsButton.hidden = !tickets.length;
+    ticketsButton.className = requests.length ? 'warning-button' : 'danger-button';
+    (requests.length ? access : ticketsButton).focus();
   };
   const refresh = async (ids) => {
-    const key = JSON.stringify([ids?.access_requests || [], ids?.bug_reports || []]);
-    const empty = !(ids?.access_requests?.length || ids?.bug_reports?.length);
+    const key = JSON.stringify([ids?.access_requests || [], ids?.tickets || []]);
+    const empty = !(ids?.access_requests?.length || ids?.tickets?.length);
     // Told in another tab, or no longer pending: the open dialog closes without recording anything.
     if (empty) { if (dialog) close(); return; }
     if (loading || key === shownIds || key === acknowledgedIds || (!dialog && otherDialogOpen())) return;
@@ -8405,7 +8405,7 @@ document.querySelectorAll('[data-export-package-form]').forEach((form) => {
       const response = await fetch('/api/admin-notices', {credentials: 'same-origin', headers: {Accept: 'application/json'}, cache: 'no-store'});
       if (!response.ok) return;
       const latest = await response.json();
-      if (!latest?.access_requests?.length && !latest?.bug_reports?.length) { if (dialog) close(); return; }
+      if (!latest?.access_requests?.length && !latest?.tickets?.length) { if (dialog) close(); return; }
       if (!dialog && otherDialogOpen()) return;
       notices = latest;
       shownIds = key;

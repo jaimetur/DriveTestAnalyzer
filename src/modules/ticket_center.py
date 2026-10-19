@@ -2,10 +2,9 @@
 
 Every ticket has a type (Bug, Improvement or New Feature) and keeps the version of the tool it was opened with, its
 date, a priority from P1 (most urgent) to P5 and a status, with its screenshots and a timeline of comments and changes.
-The tables live in the application database (``bug_reports``, ``bug_report_comments`` and ``bug_report_attachments``,
-named after the module's former name, Bugs Report), so the tickets are shared by every workspace. Each ticket, comment
-and screenshot has a ``uid`` that identifies it on any server, so a Ticket Center package merges into another server
-without duplicating anything.
+The tables live in the application database (``tickets``, ``ticket_comments`` and ``ticket_attachments``), so the
+tickets are shared by every workspace. Each ticket, comment and screenshot has a ``uid`` that identifies it on any
+server, so a Ticket Center package merges into another server without duplicating anything.
 """
 from __future__ import annotations
 
@@ -20,7 +19,7 @@ from markupsafe import Markup, escape
 
 from src.modules.repository import Repository, local_now_iso
 
-# The kinds of ticket, chosen when it is opened; the tickets of earlier versions are bugs.
+# The kinds of ticket, chosen when it is opened (the tickets of before the types are bugs).
 TICKET_TYPES: dict[str, str] = {'bug': 'Bug', 'improvement': 'Improvement', 'new_feature': 'New Feature'}
 DEFAULT_TICKET_TYPE = 'bug'
 # What each type is for, under its name in the New Ticket form.
@@ -55,11 +54,9 @@ FIELD_LABELS = {
 REPORTER_FIELDS = frozenset({'title', 'description', 'module', 'priority'})
 # Super-admins also change the type of a ticket, who reported it, its module and the version it was opened with.
 MANAGER_FIELDS = frozenset({'status', 'ticket_type', 'assigned_to', 'created_by', 'module', 'app_version', 'fixed_version'})
-# The package keeps the format of the Bugs Report packages, so the packages and backups of earlier versions import;
-# version 2 adds the type of each ticket (those without one import as bugs).
-EXPORT_FORMAT = 'drivetest-analyzer-bugs-report'
-EXPORT_VERSION = 2
-ATTACHMENTS_ARCHIVE_DIR = 'bugs-report/attachments'
+EXPORT_FORMAT = 'drivetest-analyzer-ticket-center'
+EXPORT_VERSION = 1
+ATTACHMENTS_ARCHIVE_DIR = 'ticket-center/attachments'
 # The dashboard: tickets resolved in these last days, and created and resolved per week in these last weeks.
 RECENT_RESOLVED_DAYS = 30
 DASHBOARD_WEEKS = 12
@@ -123,7 +120,7 @@ def rich_text_html(text: object) -> Markup:
                 indents.append(indent)
             item = line[bullet.end():]
             content = escape(item)
-            parts.append(f'<li><span class="bug-text-heading">{content}</span>' if item.endswith(':') else f'<li>{content}')
+            parts.append(f'<li><span class="ticket-text-heading">{content}</span>' if item.endswith(':') else f'<li>{content}')
             continue
         if indents and indent > 0:
             parts.append(f'<br>{escape(line)}')
@@ -132,10 +129,10 @@ def rich_text_html(text: object) -> Markup:
         divider = _DIVIDER.match(line)
         if divider:
             end_paragraph()
-            parts.append(f'<p class="bug-text-divider">{escape(divider.group(1) or "")}</p>')
+            parts.append(f'<p class="ticket-text-divider">{escape(divider.group(1) or "")}</p>')
         elif line.endswith(':') and len(line) <= MAX_HEADING_LENGTH:
             end_paragraph()
-            parts.append(f'<p class="bug-text-heading">{escape(line)}</p>')
+            parts.append(f'<p class="ticket-text-heading">{escape(line)}</p>')
         else:
             paragraph.append(str(escape(line)))
     end_paragraph()
@@ -184,21 +181,21 @@ def _new_uid() -> str:
     return uuid.uuid4().hex
 
 
-def _insert_attachments(conn: Any, bug_id: int, comment_id: int | None, username: str,
+def _insert_attachments(conn: Any, ticket_id: int, comment_id: int | None, username: str,
                         screenshots: Iterable[dict[str, Any]], created_at: str) -> int:
     count = 0
     for screenshot in screenshots:
         conn.execute(
-            'INSERT INTO bug_report_attachments (uid, bug_id, comment_id, file_name, content_type, size, content, uploaded_by, created_at) '
+            'INSERT INTO ticket_attachments (uid, ticket_id, comment_id, file_name, content_type, size, content, uploaded_by, created_at) '
             'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-            (screenshot.get('uid') or _new_uid(), bug_id, comment_id, screenshot['file_name'], screenshot['content_type'],
+            (screenshot.get('uid') or _new_uid(), ticket_id, comment_id, screenshot['file_name'], screenshot['content_type'],
              len(screenshot['content']), screenshot['content'], username, created_at),
         )
         count += 1
     return count
 
 
-def create_bug(repository: Repository, *, title: str, description: str, module: str, priority: str, username: str,
+def create_ticket(repository: Repository, *, title: str, description: str, module: str, priority: str, username: str,
                app_version: str, ticket_type: str, browser: str = '', screenshots: Iterable[dict[str, Any]] = ()) -> int:
     """Open a ticket of a type with the version of the tool and the date; returns its id."""
     title = _text(title, MAX_TITLE_LENGTH)
@@ -211,24 +208,24 @@ def create_bug(repository: Repository, *, title: str, description: str, module: 
     now = local_now_iso()
     with repository.global_connection() as conn:
         cursor = conn.execute(
-            'INSERT INTO bug_reports (uid, ticket_type, title, description, module, priority, status, app_version, browser, created_by, '
+            'INSERT INTO tickets (uid, ticket_type, title, description, module, priority, status, app_version, browser, created_by, '
             "created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'new', ?, ?, ?, ?, ?)",
             (_new_uid(), ticket_type, title, _text(description, MAX_TEXT_LENGTH), _text(module, 60), priority,
              _text(app_version, MAX_VERSION_LENGTH), _text(browser, 400), username, now, now),
         )
-        bug_id = int(cursor.lastrowid)
-        _insert_attachments(conn, bug_id, None, username, screenshots, now)
-    return bug_id
+        ticket_id = int(cursor.lastrowid)
+        _insert_attachments(conn, ticket_id, None, username, screenshots, now)
+    return ticket_id
 
 
-def list_bugs(repository: Repository) -> list[dict[str, Any]]:
+def list_tickets(repository: Repository) -> list[dict[str, Any]]:
     """Every ticket, the latest activity first, with how many comments and screenshots it has."""
     with repository.global_connection() as conn:
         rows = conn.execute(
-            "SELECT b.*, "
-            "(SELECT COUNT(*) FROM bug_report_comments c WHERE c.bug_id = b.id AND c.kind = 'comment') AS comment_count, "
-            "(SELECT COUNT(*) FROM bug_report_attachments a WHERE a.bug_id = b.id) AS attachment_count "
-            'FROM bug_reports b ORDER BY b.updated_at DESC, b.id DESC'
+            "SELECT t.*, "
+            "(SELECT COUNT(*) FROM ticket_comments c WHERE c.ticket_id = t.id AND c.kind = 'comment') AS comment_count, "
+            "(SELECT COUNT(*) FROM ticket_attachments a WHERE a.ticket_id = t.id) AS attachment_count "
+            'FROM tickets t ORDER BY t.updated_at DESC, t.id DESC'
         ).fetchall()
     return [dict(row) for row in rows]
 
@@ -314,19 +311,19 @@ def ticket_dashboard(tickets: list[dict[str, Any]], *, username: str | None = No
     }
 
 
-def get_bug(repository: Repository, bug_id: int) -> dict[str, Any] | None:
+def get_ticket(repository: Repository, ticket_id: int) -> dict[str, Any] | None:
     """A ticket with its timeline (comments and changes, oldest first) and the screenshots of each entry."""
     with repository.global_connection() as conn:
-        row = conn.execute('SELECT * FROM bug_reports WHERE id = ?', (int(bug_id),)).fetchone()
+        row = conn.execute('SELECT * FROM tickets WHERE id = ?', (int(ticket_id),)).fetchone()
         if row is None:
             return None
         comments = [dict(item) for item in conn.execute(
-            'SELECT id, uid, username, kind, body, changes_json, created_at, edited_at FROM bug_report_comments WHERE bug_id = ? ORDER BY id',
-            (int(bug_id),),
+            'SELECT id, uid, username, kind, body, changes_json, created_at, edited_at FROM ticket_comments WHERE ticket_id = ? ORDER BY id',
+            (int(ticket_id),),
         ).fetchall()]
         attachments = [dict(item) for item in conn.execute(
-            'SELECT id, uid, comment_id, file_name, content_type, size, uploaded_by, created_at FROM bug_report_attachments '
-            'WHERE bug_id = ? ORDER BY id', (int(bug_id),),
+            'SELECT id, uid, comment_id, file_name, content_type, size, uploaded_by, created_at FROM ticket_attachments '
+            'WHERE ticket_id = ? ORDER BY id', (int(ticket_id),),
         ).fetchall()]
     by_comment: dict[int | None, list[dict[str, Any]]] = {}
     for attachment in attachments:
@@ -341,10 +338,10 @@ def get_bug(repository: Repository, bug_id: int) -> dict[str, Any] | None:
     return {**dict(row), 'comments': comments, 'attachments': by_comment.get(None, [])}
 
 
-def update_bug(repository: Repository, bug_id: int, username: str, values: dict[str, Any]) -> dict[str, list[str]]:
+def update_ticket(repository: Repository, ticket_id: int, username: str, values: dict[str, Any]) -> dict[str, list[str]]:
     """Change fields of a ticket, recording what changed in its timeline; returns the changes as {field: [old, new]}."""
     with repository.global_connection() as conn:
-        row = conn.execute('SELECT * FROM bug_reports WHERE id = ?', (int(bug_id),)).fetchone()
+        row = conn.execute('SELECT * FROM tickets WHERE id = ?', (int(ticket_id),)).fetchone()
         if row is None:
             raise LookupError('The ticket does not exist.')
         changes: dict[str, list[str]] = {}
@@ -377,17 +374,17 @@ def update_bug(repository: Repository, bug_id: int, username: str, values: dict[
             assignments['resolved_at'] = '' if changes['status'][1] in OPEN_STATUSES else (row['resolved_at'] or now)
         assignments['updated_at'] = now
         conn.execute(
-            f"UPDATE bug_reports SET {', '.join(f'{field} = ?' for field in assignments)} WHERE id = ?",
-            (*assignments.values(), int(bug_id)),
+            f"UPDATE tickets SET {', '.join(f'{field} = ?' for field in assignments)} WHERE id = ?",
+            (*assignments.values(), int(ticket_id)),
         )
         conn.execute(
-            "INSERT INTO bug_report_comments (uid, bug_id, username, kind, body, changes_json, created_at) VALUES (?, ?, ?, 'change', '', ?, ?)",
-            (_new_uid(), int(bug_id), username, json.dumps(changes, ensure_ascii=False), now),
+            "INSERT INTO ticket_comments (uid, ticket_id, username, kind, body, changes_json, created_at) VALUES (?, ?, ?, 'change', '', ?, ?)",
+            (_new_uid(), int(ticket_id), username, json.dumps(changes, ensure_ascii=False), now),
         )
     return changes
 
 
-def add_comment(repository: Repository, bug_id: int, username: str, body: str,
+def add_comment(repository: Repository, ticket_id: int, username: str, body: str,
                 screenshots: Iterable[dict[str, Any]] = ()) -> int:
     """Add a comment, with its screenshots, to the timeline of a ticket; returns its id."""
     body = _text(body, MAX_TEXT_LENGTH)
@@ -396,21 +393,21 @@ def add_comment(repository: Repository, bug_id: int, username: str, body: str,
         raise ValueError('Write a comment or attach a screenshot.')
     now = local_now_iso()
     with repository.global_connection() as conn:
-        if conn.execute('SELECT 1 FROM bug_reports WHERE id = ?', (int(bug_id),)).fetchone() is None:
+        if conn.execute('SELECT 1 FROM tickets WHERE id = ?', (int(ticket_id),)).fetchone() is None:
             raise LookupError('The ticket does not exist.')
         cursor = conn.execute(
-            "INSERT INTO bug_report_comments (uid, bug_id, username, kind, body, created_at) VALUES (?, ?, ?, 'comment', ?, ?)",
-            (_new_uid(), int(bug_id), username, body, now),
+            "INSERT INTO ticket_comments (uid, ticket_id, username, kind, body, created_at) VALUES (?, ?, ?, 'comment', ?, ?)",
+            (_new_uid(), int(ticket_id), username, body, now),
         )
         comment_id = int(cursor.lastrowid)
-        _insert_attachments(conn, int(bug_id), comment_id, username, screenshots, now)
-        conn.execute('UPDATE bug_reports SET updated_at = ? WHERE id = ?', (now, int(bug_id)))
+        _insert_attachments(conn, int(ticket_id), comment_id, username, screenshots, now)
+        conn.execute('UPDATE tickets SET updated_at = ? WHERE id = ?', (now, int(ticket_id)))
     return comment_id
 
 
 def get_comment(repository: Repository, comment_id: int) -> dict[str, Any] | None:
     with repository.global_connection() as conn:
-        row = conn.execute('SELECT * FROM bug_report_comments WHERE id = ?', (int(comment_id),)).fetchone()
+        row = conn.execute('SELECT * FROM ticket_comments WHERE id = ?', (int(comment_id),)).fetchone()
     return dict(row) if row else None
 
 
@@ -419,68 +416,68 @@ def edit_comment(repository: Repository, comment_id: int, body: str) -> None:
     if not body:
         raise ValueError('Write the comment, or delete it.')
     with repository.global_connection() as conn:
-        conn.execute("UPDATE bug_report_comments SET body = ?, edited_at = ? WHERE id = ? AND kind = 'comment'",
+        conn.execute("UPDATE ticket_comments SET body = ?, edited_at = ? WHERE id = ? AND kind = 'comment'",
                      (body, local_now_iso(), int(comment_id)))
 
 
 def delete_comment(repository: Repository, comment_id: int) -> None:
     """Delete a comment and its screenshots."""
     with repository.global_connection() as conn:
-        conn.execute('DELETE FROM bug_report_attachments WHERE comment_id = ?', (int(comment_id),))
-        conn.execute("DELETE FROM bug_report_comments WHERE id = ? AND kind = 'comment'", (int(comment_id),))
+        conn.execute('DELETE FROM ticket_attachments WHERE comment_id = ?', (int(comment_id),))
+        conn.execute("DELETE FROM ticket_comments WHERE id = ? AND kind = 'comment'", (int(comment_id),))
 
 
-def add_attachments(repository: Repository, bug_id: int, username: str, screenshots: Iterable[dict[str, Any]]) -> int:
+def add_attachments(repository: Repository, ticket_id: int, username: str, screenshots: Iterable[dict[str, Any]]) -> int:
     """Add screenshots to a ticket itself; returns how many."""
     now = local_now_iso()
     with repository.global_connection() as conn:
-        if conn.execute('SELECT 1 FROM bug_reports WHERE id = ?', (int(bug_id),)).fetchone() is None:
+        if conn.execute('SELECT 1 FROM tickets WHERE id = ?', (int(ticket_id),)).fetchone() is None:
             raise LookupError('The ticket does not exist.')
-        count = _insert_attachments(conn, int(bug_id), None, username, screenshots, now)
+        count = _insert_attachments(conn, int(ticket_id), None, username, screenshots, now)
         if count:
-            conn.execute('UPDATE bug_reports SET updated_at = ? WHERE id = ?', (now, int(bug_id)))
+            conn.execute('UPDATE tickets SET updated_at = ? WHERE id = ?', (now, int(ticket_id)))
     return count
 
 
 def get_attachment(repository: Repository, attachment_id: int, *, with_content: bool = True) -> dict[str, Any] | None:
-    columns = '*' if with_content else 'id, uid, bug_id, comment_id, file_name, content_type, size, uploaded_by, created_at'
+    columns = '*' if with_content else 'id, uid, ticket_id, comment_id, file_name, content_type, size, uploaded_by, created_at'
     with repository.global_connection() as conn:
-        row = conn.execute(f'SELECT {columns} FROM bug_report_attachments WHERE id = ?', (int(attachment_id),)).fetchone()
+        row = conn.execute(f'SELECT {columns} FROM ticket_attachments WHERE id = ?', (int(attachment_id),)).fetchone()
     return dict(row) if row else None
 
 
 def delete_attachment(repository: Repository, attachment_id: int) -> None:
     with repository.global_connection() as conn:
-        conn.execute('DELETE FROM bug_report_attachments WHERE id = ?', (int(attachment_id),))
+        conn.execute('DELETE FROM ticket_attachments WHERE id = ?', (int(attachment_id),))
 
 
-def delete_bug(repository: Repository, bug_id: int) -> None:
+def delete_ticket(repository: Repository, ticket_id: int) -> None:
     """Delete a ticket with its timeline and screenshots."""
     with repository.global_connection() as conn:
-        conn.execute('DELETE FROM bug_report_attachments WHERE bug_id = ?', (int(bug_id),))
-        conn.execute('DELETE FROM bug_report_comments WHERE bug_id = ?', (int(bug_id),))
-        conn.execute('DELETE FROM bug_reports WHERE id = ?', (int(bug_id),))
+        conn.execute('DELETE FROM ticket_attachments WHERE ticket_id = ?', (int(ticket_id),))
+        conn.execute('DELETE FROM ticket_comments WHERE ticket_id = ?', (int(ticket_id),))
+        conn.execute('DELETE FROM tickets WHERE id = ?', (int(ticket_id),))
 
 
 def _attachment_archive_path(attachment: dict[str, Any]) -> str:
     return f"{ATTACHMENTS_ARCHIVE_DIR}/{attachment['uid']}{IMAGE_EXTENSIONS.get(str(attachment['content_type']), '')}"
 
 
-def bugs_report_payload(repository: Repository) -> tuple[dict[str, Any], dict[str, bytes]]:
+def ticket_center_payload(repository: Repository) -> tuple[dict[str, Any], dict[str, bytes]]:
     """The Ticket Center package: every ticket with its type and timeline in one JSON document, and each screenshot as
     a file (its archive path → its content)."""
     files: dict[str, bytes] = {}
     with repository.global_connection() as conn:
-        bugs = [dict(row) for row in conn.execute('SELECT * FROM bug_reports ORDER BY id').fetchall()]
-        comments = [dict(row) for row in conn.execute('SELECT * FROM bug_report_comments ORDER BY id').fetchall()]
-        attachments = [dict(row) for row in conn.execute('SELECT * FROM bug_report_attachments ORDER BY id').fetchall()]
+        rows = [dict(row) for row in conn.execute('SELECT * FROM tickets ORDER BY id').fetchall()]
+        comments = [dict(row) for row in conn.execute('SELECT * FROM ticket_comments ORDER BY id').fetchall()]
+        attachments = [dict(row) for row in conn.execute('SELECT * FROM ticket_attachments ORDER BY id').fetchall()]
     comment_uids = {comment['id']: comment['uid'] for comment in comments}
     tickets = {}
-    for bug in bugs:
-        bug_id = bug.pop('id')
-        tickets[bug_id] = {**bug, 'comments': [], 'attachments': []}
+    for row in rows:
+        ticket_id = row.pop('id')
+        tickets[ticket_id] = {**row, 'comments': [], 'attachments': []}
     for comment in comments:
-        ticket = tickets.get(comment['bug_id'])
+        ticket = tickets.get(comment['ticket_id'])
         if ticket is None:
             continue
         try:
@@ -490,7 +487,7 @@ def bugs_report_payload(repository: Repository) -> tuple[dict[str, Any], dict[st
         ticket['comments'].append({key: comment[key] for key in ('uid', 'username', 'kind', 'body', 'created_at', 'edited_at')}
                                   | {'changes': changes if isinstance(changes, dict) else {}})
     for attachment in attachments:
-        ticket = tickets.get(attachment['bug_id'])
+        ticket = tickets.get(attachment['ticket_id'])
         if ticket is None:
             continue
         path = _attachment_archive_path(attachment)
@@ -500,20 +497,20 @@ def bugs_report_payload(repository: Repository) -> tuple[dict[str, Any], dict[st
             'file_name': attachment['file_name'], 'content_type': attachment['content_type'], 'size': attachment['size'],
             'uploaded_by': attachment['uploaded_by'], 'created_at': attachment['created_at'], 'path': path,
         })
-    return {'format': EXPORT_FORMAT, 'version': EXPORT_VERSION, 'bug_reports': list(tickets.values())}, files
+    return {'format': EXPORT_FORMAT, 'version': EXPORT_VERSION, 'tickets': list(tickets.values())}, files
 
 
-def merge_bugs_report(repository: Repository, payload: object, files: dict[str, bytes]) -> dict[str, int]:
-    """Merge a Ticket Center package (or a Bugs Report one of an earlier version): the tickets, comments and screenshots
-    this server does not have are added, and a ticket or comment changed later on the other server takes its newer
-    content. Nothing here is deleted; a ticket without a type is a bug."""
-    if not isinstance(payload, dict) or payload.get('format') != EXPORT_FORMAT or not isinstance(payload.get('bug_reports'), list):
+def merge_ticket_center(repository: Repository, payload: object, files: dict[str, bytes]) -> dict[str, int]:
+    """Merge a Ticket Center package: the tickets, comments and screenshots this server does not have are added, and a
+    ticket or comment changed later on the other server takes its newer content. Nothing here is deleted; a ticket
+    without a valid type is a bug."""
+    if not isinstance(payload, dict) or payload.get('format') != EXPORT_FORMAT or not isinstance(payload.get('tickets'), list):
         raise ValueError('The Ticket Center file is not valid.')
     summary = {'created': 0, 'updated': 0, 'comments': 0, 'screenshots': 0}
     fields = ('ticket_type', 'title', 'description', 'module', 'priority', 'status', 'app_version', 'fixed_version', 'browser',
               'created_by', 'assigned_to', 'created_at', 'updated_at', 'resolved_at')
     with repository.global_connection() as conn:
-        for ticket in payload['bug_reports']:
+        for ticket in payload['tickets']:
             if not isinstance(ticket, dict) or not str(ticket.get('uid') or '').strip() or not str(ticket.get('title') or '').strip():
                 continue
             values = {field: str(ticket.get(field) or '') for field in fields}
@@ -526,19 +523,19 @@ def merge_bugs_report(repository: Repository, payload: object, files: dict[str, 
             values['created_by'] = values['created_by'] or 'import'
             values['created_at'] = values['created_at'] or local_now_iso()
             values['updated_at'] = values['updated_at'] or values['created_at']
-            existing = conn.execute('SELECT id, updated_at FROM bug_reports WHERE uid = ?', (str(ticket['uid']),)).fetchone()
+            existing = conn.execute('SELECT id, updated_at FROM tickets WHERE uid = ?', (str(ticket['uid']),)).fetchone()
             if existing is None:
                 cursor = conn.execute(
-                    f"INSERT INTO bug_reports (uid, {', '.join(fields)}) VALUES (?, {', '.join('?' for _ in fields)})",
+                    f"INSERT INTO tickets (uid, {', '.join(fields)}) VALUES (?, {', '.join('?' for _ in fields)})",
                     (str(ticket['uid']), *values.values()),
                 )
-                bug_id = int(cursor.lastrowid)
+                ticket_id = int(cursor.lastrowid)
                 summary['created'] += 1
             else:
-                bug_id = int(existing['id'])
+                ticket_id = int(existing['id'])
                 if values['updated_at'] > str(existing['updated_at'] or ''):
-                    conn.execute(f"UPDATE bug_reports SET {', '.join(f'{field} = ?' for field in fields)} WHERE id = ?",
-                                 (*values.values(), bug_id))
+                    conn.execute(f"UPDATE tickets SET {', '.join(f'{field} = ?' for field in fields)} WHERE id = ?",
+                                 (*values.values(), ticket_id))
                     summary['updated'] += 1
             comment_ids: dict[str, int] = {}
             for comment in ticket.get('comments') if isinstance(ticket.get('comments'), list) else []:
@@ -547,11 +544,11 @@ def merge_bugs_report(repository: Repository, payload: object, files: dict[str, 
                 uid = str(comment['uid'])
                 kind = 'change' if comment.get('kind') == 'change' else 'comment'
                 changes = comment.get('changes') if isinstance(comment.get('changes'), dict) else {}
-                local = conn.execute('SELECT id, edited_at FROM bug_report_comments WHERE uid = ?', (uid,)).fetchone()
+                local = conn.execute('SELECT id, edited_at FROM ticket_comments WHERE uid = ?', (uid,)).fetchone()
                 if local is None:
                     cursor = conn.execute(
-                        'INSERT INTO bug_report_comments (uid, bug_id, username, kind, body, changes_json, created_at, edited_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-                        (uid, bug_id, str(comment.get('username') or 'import'), kind, str(comment.get('body') or ''),
+                        'INSERT INTO ticket_comments (uid, ticket_id, username, kind, body, changes_json, created_at, edited_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                        (uid, ticket_id, str(comment.get('username') or 'import'), kind, str(comment.get('body') or ''),
                          json.dumps(changes, ensure_ascii=False), str(comment.get('created_at') or values['created_at']),
                          str(comment.get('edited_at') or '')),
                     )
@@ -560,12 +557,12 @@ def merge_bugs_report(repository: Repository, payload: object, files: dict[str, 
                 else:
                     comment_ids[uid] = int(local['id'])
                     if str(comment.get('edited_at') or '') > str(local['edited_at'] or ''):
-                        conn.execute('UPDATE bug_report_comments SET body = ?, edited_at = ? WHERE id = ?',
+                        conn.execute('UPDATE ticket_comments SET body = ?, edited_at = ? WHERE id = ?',
                                      (str(comment.get('body') or ''), str(comment.get('edited_at') or ''), int(local['id'])))
             for attachment in ticket.get('attachments') if isinstance(ticket.get('attachments'), list) else []:
                 if not isinstance(attachment, dict) or not str(attachment.get('uid') or '').strip():
                     continue
-                if conn.execute('SELECT 1 FROM bug_report_attachments WHERE uid = ?', (str(attachment['uid']),)).fetchone():
+                if conn.execute('SELECT 1 FROM ticket_attachments WHERE uid = ?', (str(attachment['uid']),)).fetchone():
                     continue
                 content = files.get(str(attachment.get('path') or ''))
                 content_type = image_content_type(content) if content else None
@@ -575,7 +572,7 @@ def merge_bugs_report(repository: Repository, payload: object, files: dict[str, 
                 comment_id = comment_ids.get(comment_uid) if comment_uid else None
                 if comment_uid and comment_id is None:
                     continue
-                _insert_attachments(conn, bug_id, comment_id, str(attachment.get('uploaded_by') or 'import'), [{
+                _insert_attachments(conn, ticket_id, comment_id, str(attachment.get('uploaded_by') or 'import'), [{
                     'uid': str(attachment['uid']), 'file_name': str(attachment.get('file_name') or 'screenshot')[:200],
                     'content_type': content_type, 'content': content,
                 }], str(attachment.get('created_at') or values['created_at']))

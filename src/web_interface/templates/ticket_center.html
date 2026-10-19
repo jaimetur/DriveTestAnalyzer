@@ -1,28 +1,28 @@
 {% extends 'base.html' %}
-{% from 'bugs_report_macros.html' import priority_pill, status_pill, module_chip, screenshots_zone, type_badge, type_icon %}
+{% from 'ticket_center_macros.html' import priority_pill, status_pill, module_chip, screenshots_zone, type_badge, type_icon %}
 {% block content %}
-<link rel="stylesheet" href="{{ static_path('css/bugs_report.css') }}?v={{ asset_version('css/bugs_report.css') }}">
+<link rel="stylesheet" href="{{ static_path('css/ticket_center.css') }}?v={{ asset_version('css/ticket_center.css') }}">
 {% set board = ticket_dashboard %}
-<section class="dashboard-stack spacious-stack bugs-report" data-bugs-report data-ticket-center-title="{{ ticket_center_title }}">
-  <article class="panel bugs-hero">
-    <div class="bugs-hero-head">
-      <span class="bugs-hero-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h15A1.5 1.5 0 0 1 21 7.5V10a2 2 0 0 0 0 4v2.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 16.5V14a2 2 0 0 0 0-4z"/><path d="M15 6.5v2M15 11v2M15 15.5v2"/></svg></span>
-      <div class="bugs-hero-copy">
+<section class="dashboard-stack spacious-stack ticket-center" data-ticket-center data-ticket-center-title="{{ ticket_center_title }}">
+  <article class="panel tickets-hero">
+    <div class="tickets-hero-head">
+      <span class="tickets-hero-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h15A1.5 1.5 0 0 1 21 7.5V10a2 2 0 0 0 0 4v2.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 16.5V14a2 2 0 0 0 0-4z"/><path d="M15 6.5v2M15 11v2M15 15.5v2"/></svg></span>
+      <div class="tickets-hero-copy">
         <p class="eyebrow">{{ ticket_center_title }} · Version {{ app_version }}</p>
         <h2>Report bugs, suggest improvements and ask for new features</h2>
         <p class="lede">Open a ticket of its type with what happened or what you need and its screenshots: it keeps the version of the tool and the date. Follow it with comments; its reporter edits it and sets its priority, and the super-admins attend it until it is resolved.</p>
       </div>
-      {% if user %}<a class="bugs-new-link" href="#section-new-ticket" data-bugs-new>New Ticket</a>{% else %}<a class="bugs-new-link" href="/login?next=/tickets">Sign in to open a ticket</a>{% endif %}
+      {% if user %}<a class="tickets-new-link" href="#section-new-ticket" data-tickets-new>New Ticket</a>{% else %}<a class="tickets-new-link" href="/login?next=/tickets">Sign in to open a ticket</a>{% endif %}
     </div>
 
-    {# Each tile lists its tickets below; pressed again, the list shows the open ones (bugs_report.js). #}
-    <div class="bugs-stats" role="group" aria-label="List the tickets of a count">
-      <button type="button" class="bugs-stat" data-status="open" data-bugs-stat="open" aria-pressed="false" title="List the open tickets"><span class="bugs-stat-label">Open</span><strong>{{ board.kpis.open }}</strong></button>
+    {# Each tile lists its tickets below; pressed again, the list shows the open ones (ticket_center.js). #}
+    <div class="tickets-stats" role="group" aria-label="List the tickets of a count">
+      <button type="button" class="tickets-stat" data-status="open" data-tickets-stat="open" aria-pressed="false" title="List the open tickets"><span class="tickets-stat-label">Open</span><strong>{{ board.kpis.open }}</strong></button>
       {% for status in ['new', 'in_progress', 'waiting_info'] %}
-      <button type="button" class="bugs-stat" data-status="{{ status }}" data-bugs-stat="{{ status }}" aria-pressed="false" title="List the {{ bug_statuses[status] }} tickets"><span class="bugs-stat-label">{{ bug_statuses[status] }}</span><strong>{{ board.kpis[status] }}</strong></button>
+      <button type="button" class="tickets-stat" data-status="{{ status }}" data-tickets-stat="{{ status }}" aria-pressed="false" title="List the {{ ticket_statuses[status] }} tickets"><span class="tickets-stat-label">{{ ticket_statuses[status] }}</span><strong>{{ board.kpis[status] }}</strong></button>
       {% endfor %}
-      <button type="button" class="bugs-stat" data-status="resolved" data-bugs-stat="recent" aria-pressed="false" title="List the tickets resolved or closed in the last 30 days"><span class="bugs-stat-label">Resolved · 30 days</span><strong>{{ board.kpis.resolved_recent }}</strong></button>
-      {% if user %}<button type="button" class="bugs-stat" data-status="mine" data-bugs-stat="mine" aria-pressed="false" title="List my open tickets"><span class="bugs-stat-label">My open</span><strong>{{ board.kpis.mine_open }}</strong></button>{% endif %}
+      <button type="button" class="tickets-stat" data-status="resolved" data-tickets-stat="recent" aria-pressed="false" title="List the tickets resolved or closed in the last 30 days"><span class="tickets-stat-label">Resolved · 30 days</span><strong>{{ board.kpis.resolved_recent }}</strong></button>
+      {% if user %}<button type="button" class="tickets-stat" data-status="mine" data-tickets-stat="mine" aria-pressed="false" title="List my open tickets"><span class="tickets-stat-label">My open</span><strong>{{ board.kpis.mine_open }}</strong></button>{% endif %}
     </div>
 
     <div class="tickets-board">
@@ -30,19 +30,19 @@
         <header class="tickets-card-head"><h3 id="tickets-matrix-title">Tickets by type and status</h3><span class="tickets-card-note">Click a count to list its tickets</span></header>
         <div class="tickets-matrix-wrap">
           <table class="tickets-matrix">
-            <thead><tr><th scope="col">Type</th>{% for key, label in bug_statuses.items() %}<th scope="col" data-status="{{ key }}">{{ label }}</th>{% endfor %}<th scope="col">Total</th></tr></thead>
+            <thead><tr><th scope="col">Type</th>{% for key, label in ticket_statuses.items() %}<th scope="col" data-status="{{ key }}">{{ label }}</th>{% endfor %}<th scope="col">Total</th></tr></thead>
             <tbody>
               {% for row in board.types %}
               <tr>
                 <th scope="row">{{ type_badge(row.type, row.label) }}</th>
-                {% for key, label in bug_statuses.items() %}
-                <td><button type="button" class="tickets-cell{% if not row.counts[key] %} is-empty{% endif %}" data-ticket-cell data-type="{{ row.type }}" data-status="{{ key }}" data-tip="{{ row.counts[key] }} {{ row.label }} ticket{{ '' if row.counts[key] == 1 else 's' }} {{ label }}">{{ row.counts[key] }}</button></td>
+                {% for key, label in ticket_statuses.items() %}
+                <td><button type="button" class="tickets-cell{% if not row.counts[key] %} is-empty{% endif %}" data-board-cell data-type="{{ row.type }}" data-status="{{ key }}" data-tip="{{ row.counts[key] }} {{ row.label }} ticket{{ '' if row.counts[key] == 1 else 's' }} {{ label }}">{{ row.counts[key] }}</button></td>
                 {% endfor %}
-                <td><button type="button" class="tickets-cell tickets-cell-total" data-ticket-cell data-type="{{ row.type }}" data-status="" data-tip="{{ row.total }} {{ row.label }} ticket{{ '' if row.total == 1 else 's' }} in every status">{{ row.total }}</button></td>
+                <td><button type="button" class="tickets-cell tickets-cell-total" data-board-cell data-type="{{ row.type }}" data-status="" data-tip="{{ row.total }} {{ row.label }} ticket{{ '' if row.total == 1 else 's' }} in every status">{{ row.total }}</button></td>
               </tr>
               {% endfor %}
             </tbody>
-            <tfoot><tr><th scope="row">Total</th>{% for key, label in bug_statuses.items() %}<td><button type="button" class="tickets-cell tickets-cell-total" data-ticket-cell data-type="" data-status="{{ key }}" data-tip="{{ board.status_totals[key] }} ticket{{ '' if board.status_totals[key] == 1 else 's' }} {{ label }}">{{ board.status_totals[key] }}</button></td>{% endfor %}<td><button type="button" class="tickets-cell tickets-cell-total" data-ticket-cell data-type="" data-status="" data-tip="Every ticket">{{ board.total }}</button></td></tr></tfoot>
+            <tfoot><tr><th scope="row">Total</th>{% for key, label in ticket_statuses.items() %}<td><button type="button" class="tickets-cell tickets-cell-total" data-board-cell data-type="" data-status="{{ key }}" data-tip="{{ board.status_totals[key] }} ticket{{ '' if board.status_totals[key] == 1 else 's' }} {{ label }}">{{ board.status_totals[key] }}</button></td>{% endfor %}<td><button type="button" class="tickets-cell tickets-cell-total" data-board-cell data-type="" data-status="" data-tip="Every ticket">{{ board.total }}</button></td></tr></tfoot>
           </table>
         </div>
       </section>
@@ -77,13 +77,13 @@
         <section class="tickets-card tickets-type-card" data-type="{{ row.type }}" aria-label="{{ row.label }} tickets">
           <header class="tickets-card-head">{{ type_badge(row.type, row.label) }}<span class="tickets-type-count"><strong>{{ row.open }}</strong> open of {{ row.total }}</span></header>
           <div class="tickets-stack" role="img" aria-label="{% for segment in row.segments %}{{ segment.count }} {{ segment.label }}{% if not loop.last %}, {% endif %}{% else %}No ticket{% endfor %}">
-            {% for segment in row.segments %}<button type="button" class="tickets-stack-segment" data-ticket-cell data-type="{{ row.type }}" data-status="{{ segment.status }}" style="flex-grow: {{ segment.count }}" data-tip="{{ segment.count }} {{ segment.label }} ({{ '%.0f' | format(segment.share) }}%)" aria-label="{{ segment.count }} {{ segment.label }}"></button>{% endfor %}
+            {% for segment in row.segments %}<button type="button" class="tickets-stack-segment" data-board-cell data-type="{{ row.type }}" data-status="{{ segment.status }}" style="flex-grow: {{ segment.count }}" data-tip="{{ segment.count }} {{ segment.label }} ({{ '%.0f' | format(segment.share) }}%)" aria-label="{{ segment.count }} {{ segment.label }}"></button>{% endfor %}
           </div>
           {% if row.segments %}<ul class="tickets-stack-legend">{% for segment in row.segments %}<li data-status="{{ segment.status }}">{{ segment.label }} <strong>{{ segment.count }}</strong></li>{% endfor %}</ul>{% endif %}
           <p class="tickets-subhead">Open by priority</p>
           <div class="tickets-priorities">
             {% for item in row.priorities %}
-            <button type="button" class="tickets-priority{% if not item.count %} is-empty{% endif %}" data-ticket-priority data-type="{{ row.type }}" data-priority="{{ item.priority }}" data-tip="{{ item.count }} open {{ row.label }} ticket{{ '' if item.count == 1 else 's' }} {{ item.priority }} · {{ item.label }}">
+            <button type="button" class="tickets-priority{% if not item.count %} is-empty{% endif %}" data-board-priority data-type="{{ row.type }}" data-priority="{{ item.priority }}" data-tip="{{ item.count }} open {{ row.label }} ticket{{ '' if item.count == 1 else 's' }} {{ item.priority }} · {{ item.label }}">
               <span class="tickets-priority-bar"><span style="height: {{ (100 * item.count / row.max_priority) | round(2) if row.max_priority else 0 }}%"></span></span>
               <strong>{{ item.count }}</strong><small>{{ item.priority }}</small>
             </button>
@@ -96,22 +96,22 @@
           {% if board.modules %}
           <ul class="tickets-modules">
             {% for module in board.modules %}
-            <li><button type="button" class="tickets-module" data-ticket-module="{{ module.key }}" style="--module-color: {{ module.color }}" data-tip="{{ module.count }} open ticket{{ '' if module.count == 1 else 's' }} about {{ module.title }}">
+            <li><button type="button" class="tickets-module" data-board-module="{{ module.key }}" style="--module-color: {{ module.color }}" data-tip="{{ module.count }} open ticket{{ '' if module.count == 1 else 's' }} about {{ module.title }}">
               <span class="tickets-module-name">{{ module.title }}</span>
               <span class="tickets-module-bar"><span style="width: {{ (100 * module.count / board.max_module) | round(2) }}%"></span></span>
               <strong>{{ module.count }}</strong>
             </button></li>
             {% endfor %}
           </ul>
-          {% else %}<p class="bug-muted">No ticket is open.</p>{% endif %}
+          {% else %}<p class="ticket-muted">No ticket is open.</p>{% endif %}
         </section>
       </div>
     </div>
-    <div class="tickets-tip" data-ticket-tip role="tooltip" hidden></div>
+    <div class="tickets-tip" data-board-tip role="tooltip" hidden></div>
   </article>
 
   {% if user %}
-  <details class="panel collapsible-panel bugs-new-panel" id="section-new-ticket" data-panel-state-key="bugs-report:new"{% if not bugs %} open{% endif %}>
+  <details class="panel collapsible-panel tickets-new-panel" id="section-new-ticket" data-panel-state-key="ticket-center:new"{% if not tickets %} open{% endif %}>
     <summary class="collapsible-summary">
       <div>
         <p class="eyebrow">Open a ticket</p>
@@ -120,44 +120,44 @@
       </div>
       <span class="collapse-chip">Collapse</span>
     </summary>
-    <form class="bugs-form" data-bugs-create-form novalidate>
-      <fieldset class="bugs-field bugs-field-wide ticket-type-field">
-        <legend>Type <span class="bugs-required">required</span></legend>
+    <form class="tickets-form" data-tickets-create-form novalidate>
+      <fieldset class="tickets-field tickets-field-wide ticket-type-field">
+        <legend>Type <span class="tickets-required">required</span></legend>
         <div class="ticket-type-picker">
           {% for key, label in ticket_types.items() %}
           <label class="ticket-type-option" data-type="{{ key }}"><input type="radio" name="ticket_type" value="{{ key }}" required data-guide="{{ ticket_text_guides[key] }}"><span>{{ type_icon(key) }}<strong>{{ label }}</strong><small>{{ ticket_type_hints[key] }}</small></span></label>
           {% endfor %}
         </div>
       </fieldset>
-      <label class="bugs-field bugs-field-title">Title
+      <label class="tickets-field tickets-field-title">Title
         <input type="text" name="title" maxlength="160" required placeholder="What it is about, in a few words" autocomplete="off">
       </label>
-      <label class="bugs-field">Module
+      <label class="tickets-field">Module
         <select name="module">
-          {% for module in bug_modules %}<option value="{{ module.key }}">{{ module.title }}</option>{% endfor %}
+          {% for module in ticket_modules %}<option value="{{ module.key }}">{{ module.title }}</option>{% endfor %}
         </select>
       </label>
-      <fieldset class="bugs-field bugs-priority-field">
+      <fieldset class="tickets-field tickets-priority-field">
         <legend>Priority</legend>
-        <div class="bug-priority-picker">
-          {% for key, label in bug_priorities.items() %}
-          <label class="bug-priority-option" data-priority="{{ key }}"><input type="radio" name="priority" value="{{ key }}"{% if key == bug_default_priority %} checked{% endif %}><span><strong>{{ key }}</strong><small>{{ label }}</small></span></label>
+        <div class="ticket-priority-picker">
+          {% for key, label in ticket_priorities.items() %}
+          <label class="ticket-priority-option" data-priority="{{ key }}"><input type="radio" name="priority" value="{{ key }}"{% if key == ticket_default_priority %} checked{% endif %}><span><strong>{{ key }}</strong><small>{{ label }}</small></span></label>
           {% endfor %}
         </div>
       </fieldset>
-      <label class="bugs-field bugs-field-wide">Description
-        <textarea name="description" rows="8" maxlength="20000" placeholder="{{ bug_text_guide }}" data-ticket-description></textarea>
+      <label class="tickets-field tickets-field-wide">Description
+        <textarea name="description" rows="8" maxlength="20000" placeholder="{{ ticket_text_guide }}" data-ticket-description></textarea>
       </label>
-      <div class="bugs-field bugs-field-wide">{{ screenshots_zone(bug_max_screenshots, bug_max_screenshot_mb) }}</div>
-      <div class="bugs-form-actions bugs-field-wide">
+      <div class="tickets-field tickets-field-wide">{{ screenshots_zone(ticket_max_screenshots, ticket_max_screenshot_mb) }}</div>
+      <div class="tickets-form-actions tickets-field-wide">
         <p class="form-note">Reported by {{ user.username }} with version {{ app_version }}.</p>
-        <button type="submit" class="bugs-primary-button">Open Ticket</button>
+        <button type="submit" class="tickets-primary-button">Open Ticket</button>
       </div>
     </form>
   </details>
   {% endif %}
 
-  <details class="panel collapsible-panel bugs-list-panel" id="section-tickets" open data-panel-state-key="bugs-report:list">
+  <details class="panel collapsible-panel tickets-list-panel" id="section-tickets" open data-panel-state-key="ticket-center:list">
     <summary class="collapsible-summary">
       <div>
         <p class="eyebrow">Follow-up</p>
@@ -166,68 +166,68 @@
       </div>
       <span class="collapse-chip">Collapse</span>
     </summary>
-    <div class="bugs-toolbar" role="search">
-      <input type="search" class="bugs-search" placeholder="Search by title, reporter or #number…" aria-label="Search tickets" data-bugs-filter="search">
-      <select aria-label="Reporter" data-bugs-filter="reporter" data-user-select>
+    <div class="tickets-toolbar" role="search">
+      <input type="search" class="tickets-search" placeholder="Search by title, reporter or #number…" aria-label="Search tickets" data-tickets-filter="search">
+      <select aria-label="Reporter" data-tickets-filter="reporter" data-user-select>
         <option value="*">Every reporter</option>
-        {% for person in bug_reporters %}{% if person.divider %}<hr>{% endif %}<option value="{{ person.username | lower }}" data-name="{{ person.name }}"{% if person.is_default %} data-default-user="true"{% endif %}>{{ person.label }}</option>{% endfor %}
+        {% for person in ticket_reporters %}{% if person.divider %}<hr>{% endif %}<option value="{{ person.username | lower }}" data-name="{{ person.name }}"{% if person.is_default %} data-default-user="true"{% endif %}>{{ person.label }}</option>{% endfor %}
       </select>
-      <select aria-label="Sort" data-bugs-sort>
+      <select aria-label="Sort" data-tickets-sort>
         <option value="updated">Latest activity</option>
         <option value="priority">Priority</option>
         <option value="created">Newest</option>
         <option value="oldest">Oldest</option>
       </select>
-      {% if user %}<label class="bugs-mine-toggle"><input type="checkbox" data-bugs-filter="mine"><span>Only mine</span></label>{% endif %}
-      <button type="button" class="bug-ghost-button bugs-reset" data-bugs-reset>Reset filters</button>
-      <span class="bugs-count" data-bugs-count role="status"></span>
+      {% if user %}<label class="tickets-mine-toggle"><input type="checkbox" data-tickets-filter="mine"><span>Only mine</span></label>{% endif %}
+      <button type="button" class="ticket-ghost-button tickets-reset" data-tickets-reset>Reset filters</button>
+      <span class="tickets-count" data-tickets-count role="status"></span>
     </div>
-    {# Chips: none pressed in a group lists every value of it; the groups add up (bugs_report.js). #}
+    {# Chips: none pressed in a group lists every value of it; the groups add up (ticket_center.js). #}
     <div class="tickets-chips">
       <div class="tickets-chip-group" role="group" aria-label="Type"><span class="tickets-chip-label">Type</span>
         {% for key, label in ticket_types.items() %}<button type="button" class="tickets-chip" data-chip="types" data-value="{{ key }}" data-type="{{ key }}" aria-pressed="false">{{ type_icon(key) }}{{ label }}</button>{% endfor %}
       </div>
       <div class="tickets-chip-group" role="group" aria-label="Status"><span class="tickets-chip-label">Status</span>
-        {% for key, label in bug_statuses.items() %}<button type="button" class="tickets-chip" data-chip="statuses" data-value="{{ key }}" data-status="{{ key }}" aria-pressed="false">{{ label }}</button>{% endfor %}
+        {% for key, label in ticket_statuses.items() %}<button type="button" class="tickets-chip" data-chip="statuses" data-value="{{ key }}" data-status="{{ key }}" aria-pressed="false">{{ label }}</button>{% endfor %}
         <button type="button" class="tickets-chip tickets-chip-recent" data-chip-recent aria-pressed="true" hidden title="Only the tickets resolved or closed in the last 30 days">Resolved in the last 30 days <span aria-hidden="true">×</span></button>
       </div>
       <div class="tickets-chip-group" role="group" aria-label="Priority"><span class="tickets-chip-label">Priority</span>
-        {% for key, label in bug_priorities.items() %}<button type="button" class="tickets-chip" data-chip="priorities" data-value="{{ key }}" data-priority="{{ key }}" aria-pressed="false" title="{{ key }} · {{ label }}">{{ key }}</button>{% endfor %}
+        {% for key, label in ticket_priorities.items() %}<button type="button" class="tickets-chip" data-chip="priorities" data-value="{{ key }}" data-priority="{{ key }}" aria-pressed="false" title="{{ key }} · {{ label }}">{{ key }}</button>{% endfor %}
       </div>
-      {% if ticket_modules %}<div class="tickets-chip-group" role="group" aria-label="Module"><span class="tickets-chip-label">Module</span>
-        {% for module in ticket_modules %}<button type="button" class="tickets-chip" data-chip="modules" data-value="{{ module.key }}" style="--module-color: {{ module.color }}" aria-pressed="false">{{ module.title }}</button>{% endfor %}
+      {% if ticket_module_chips %}<div class="tickets-chip-group" role="group" aria-label="Module"><span class="tickets-chip-label">Module</span>
+        {% for module in ticket_module_chips %}<button type="button" class="tickets-chip" data-chip="modules" data-value="{{ module.key }}" style="--module-color: {{ module.color }}" aria-pressed="false">{{ module.title }}</button>{% endfor %}
       </div>{% endif %}
       {% if ticket_assignees or ticket_unassigned %}<div class="tickets-chip-group" role="group" aria-label="Assignee"><span class="tickets-chip-label">Assignee</span>
         {% if ticket_unassigned %}<button type="button" class="tickets-chip" data-chip="assignees" data-value="" aria-pressed="false">Unassigned</button>{% endif %}
         {% for person in ticket_assignees %}<button type="button" class="tickets-chip" data-chip="assignees" data-value="{{ person.username | lower }}" aria-pressed="false">{{ person.name }}</button>{% endfor %}
       </div>{% endif %}
     </div>
-    <div class="bugs-table-wrap">
-      <table class="bugs-table" data-bugs-table>
+    <div class="tickets-table-wrap">
+      <table class="tickets-table" data-tickets-table>
         <thead><tr><th>#</th><th>Type</th><th>Ticket</th><th>Priority</th><th>Status</th><th>Assigned to</th><th>Updated</th><th>Activity</th></tr></thead>
         <tbody>
-          {% for bug in bugs %}
-          <tr data-bug-row data-href="/tickets/{{ bug.id }}" data-id="{{ bug.id }}" data-type="{{ bug.ticket_type }}" data-status="{{ bug.status }}" data-open="{{ 'true' if bug.is_open else 'false' }}" data-recent="{{ 'true' if bug.recently_resolved else 'false' }}" data-priority="{{ bug.priority }}" data-module="{{ bug.module }}" data-assignee="{{ bug.assigned_to | lower }}" data-reporter="{{ bug.created_by | lower }}" data-mine="{{ 'true' if user and bug.created_by | lower == user.username | lower else 'false' }}" data-created="{{ bug.created_at }}" data-updated="{{ bug.updated_at }}" data-search="#{{ bug.id }} {{ bug.title | lower }} {{ bug.created_by | lower }} {{ bug.created_by_name | lower }}">
-            <td class="bugs-id">#{{ bug.id }}</td>
-            <td>{{ type_badge(bug.ticket_type, bug.type_label) }}</td>
-            <td class="bugs-title-cell">
-              <a href="/tickets/{{ bug.id }}" class="bugs-title">{{ bug.title }}</a>
-              <span class="bugs-meta">{{ module_chip(bug.module_title, bug.module_color) }}<span>{{ bug.created_by_name }} · {{ bug.created_date }} · v{{ bug.app_version }}</span></span>
+          {% for ticket in tickets %}
+          <tr data-ticket-row data-href="/tickets/{{ ticket.id }}" data-id="{{ ticket.id }}" data-type="{{ ticket.ticket_type }}" data-status="{{ ticket.status }}" data-open="{{ 'true' if ticket.is_open else 'false' }}" data-recent="{{ 'true' if ticket.recently_resolved else 'false' }}" data-priority="{{ ticket.priority }}" data-module="{{ ticket.module }}" data-assignee="{{ ticket.assigned_to | lower }}" data-reporter="{{ ticket.created_by | lower }}" data-mine="{{ 'true' if user and ticket.created_by | lower == user.username | lower else 'false' }}" data-created="{{ ticket.created_at }}" data-updated="{{ ticket.updated_at }}" data-search="#{{ ticket.id }} {{ ticket.title | lower }} {{ ticket.created_by | lower }} {{ ticket.created_by_name | lower }}">
+            <td class="tickets-id">#{{ ticket.id }}</td>
+            <td>{{ type_badge(ticket.ticket_type, ticket.type_label) }}</td>
+            <td class="tickets-title-cell">
+              <a href="/tickets/{{ ticket.id }}" class="tickets-title">{{ ticket.title }}</a>
+              <span class="tickets-meta">{{ module_chip(ticket.module_title, ticket.module_color) }}<span>{{ ticket.created_by_name }} · {{ ticket.created_date }} · v{{ ticket.app_version }}</span></span>
             </td>
-            <td>{{ priority_pill(bug.priority, bug.priority_label) }}</td>
-            <td>{{ status_pill(bug.status, bug.status_label) }}{% if bug.fixed_version %}<small class="bugs-fixed">Fixed in v{{ bug.fixed_version }}</small>{% endif %}</td>
-            <td>{{ bug.assigned_to_name or '—' }}</td>
-            <td class="bugs-date">{{ bug.updated_date }}</td>
-            <td class="bugs-activity"><span class="bugs-activity-items"><span title="Comments">💬 {{ bug.comment_count }}</span><span title="Screenshots">🖼 {{ bug.attachment_count }}</span></span></td>
+            <td>{{ priority_pill(ticket.priority, ticket.priority_label) }}</td>
+            <td>{{ status_pill(ticket.status, ticket.status_label) }}{% if ticket.fixed_version %}<small class="tickets-fixed">Fixed in v{{ ticket.fixed_version }}</small>{% endif %}</td>
+            <td>{{ ticket.assigned_to_name or '—' }}</td>
+            <td class="tickets-date">{{ ticket.updated_date }}</td>
+            <td class="tickets-activity"><span class="tickets-activity-items"><span title="Comments">💬 {{ ticket.comment_count }}</span><span title="Screenshots">🖼 {{ ticket.attachment_count }}</span></span></td>
           </tr>
           {% endfor %}
         </tbody>
       </table>
-      <p class="bugs-empty" data-bugs-empty{% if bugs %} hidden{% endif %}>{% if bugs %}No ticket matches these filters.{% else %}No ticket has been opened yet.{% endif %}</p>
+      <p class="tickets-empty" data-tickets-empty{% if tickets %} hidden{% endif %}>{% if tickets %}No ticket matches these filters.{% else %}No ticket has been opened yet.{% endif %}</p>
     </div>
   </details>
 </section>
 {% endblock %}
 {% block extra_scripts %}
-<script src="{{ static_path('js/bugs_report.js') }}?v={{ asset_version('js/bugs_report.js') }}"></script>
+<script src="{{ static_path('js/ticket_center.js') }}?v={{ asset_version('js/ticket_center.js') }}"></script>
 {% endblock %}

@@ -11,10 +11,7 @@ MAX_LISTED_VALUES = 8
 MAX_TEXT_LENGTH = 160
 MAX_SENTENCE_LENGTH = 600
 # Settings named as Admin names them, and words that read better in capitals in the names of the details.
-_FIELD_NAMES = {'modules_profile': 'Modules Profile', 'workspace_groups': 'Workspace Groups', 'workspaces': 'Workspaces',
-                'bug_id': 'ticket ID', 'bug_reports': 'tickets'}
-# Actions that keep the name of a module's former name, read with its current one (Bugs Report is Ticket Center).
-_ACTION_PREFIXES = (('bug_report_', 'ticket_'),)
+_FIELD_NAMES = {'modules_profile': 'Modules Profile', 'workspace_groups': 'Workspace Groups', 'workspaces': 'Workspaces'}
 # What an event of a version that recorded only the final state says about it.
 _NOT_RECORDED = 'earlier versions did not record which {} changed'
 _UPPER_WORDS = {'id': 'ID', 'ids': 'IDs', 'mb': 'MB', 'cdr': 'CDR', 'cdrs': 'CDRs', 'nq': 'NQ', 'rca': 'RCA', 'ppt': 'PPT',
@@ -59,10 +56,7 @@ def field_label(name: str) -> str:
 
 
 def action_label(action: str) -> str:
-    """``update_user`` → ``Update user``; ``bug_report_created`` → ``Ticket created``."""
-    for former, current in _ACTION_PREFIXES:
-        if action.startswith(former):
-            action = current + action[len(former):]
+    """``update_user`` → ``Update user``."""
     text = field_label(action)
     return text[:1].upper() + text[1:]
 
@@ -302,8 +296,7 @@ def describe_app_event(action: str, details: Any) -> str:
 # empty module when an earlier version did not record it), ``server:<kind>`` (work the server does on its own),
 # ``remote:<server>`` (a transfer another server sent) or ``public:<page>`` (pages used without signing in).
 SERVER_EVENT_KINDS = (('scheduler', 'Scheduler'), ('background', 'Background job'), ('idle', 'Idle task'), ('startup', 'Startup'))
-# The pages of Ticket Center keep the key of Bugs Report, its former name.
-PUBLIC_EVENT_PAGES = (('sign-in', 'Sign-in'), ('access-request', 'Access request'), ('bug-report', 'Ticket Center'), ('page', 'Page'))
+PUBLIC_EVENT_PAGES = (('sign-in', 'Sign-in'), ('access-request', 'Access request'), ('ticket-center', 'Ticket Center'), ('page', 'Page'))
 _SERVER_ACTIONS = {
     'scheduler': {'reporting_scheduler_error'},
     'idle': {'precompute_dashboard_charts', 'prewarm_dashboard_cache', 'prewarm_dashboard_cache_failed', 'nq_calls_reindexed',
@@ -326,7 +319,7 @@ _MODULE_ACTIONS = (
     ('non-qualified-calls', ('nq_',)),
     ('network-insights', ('network_insights_', 'export_network_insights_')),
     ('scoring', ('scoring_', 'save_scoring_', 'export_scoring_', 'import_scoring_', 'delete_scoring_')),
-    ('bugs-report', ('bug_report_',)),
+    ('ticket-center', ('ticket_',)),
     ('ppt-dashboards', ('save_dashboard', 'delete_dashboard', 'rename_dashboard', 'export_dashboard_', 'download_dashboard_ppt',
                         'delete_all_dashboard_ppts', 'stop_dashboard_ppt_job', 'change_dashboard_template',
                         'update_dashboard_chart_template', 'interrupt_dashboard_preparation')),

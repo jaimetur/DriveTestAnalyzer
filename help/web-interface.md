@@ -137,7 +137,7 @@ Long operations use progress dialogs for stages such as:
 
 Server-transfer dialogs can be hidden with **Hide** while the transfer continues as a background task, and are restored after a browser reload while the transfer remains active. On the destination, once the package has arrived, a dialog without **Hide** keeps every open page out of use until the import ends; on the source, the dialog comes back once when that import starts and can be hidden again.
 
-After signing in and while signed in, a super-admin is told in the same style as an incoming server transfer of the [access requests](administrator-config.md#access-requests) waiting for activation and of the new [tickets](bugs-report.md#who-can-do-what) it has not been told of, once each, on any page: the poll of incoming transfers checks for them every few seconds (every 30 seconds in a hidden tab), and an open dialog takes in what arrives meanwhile. The dialog waits for any other dialog or running operation of the page to close first, and a dialog that opens while it is shown goes over it.
+After signing in and while signed in, a super-admin is told in the same style as an incoming server transfer of the [access requests](administrator-config.md#access-requests) waiting for activation and of the new [tickets](ticket-center.md#who-can-do-what) it has not been told of, once each, on any page: the poll of incoming transfers checks for them every few seconds (every 30 seconds in a hidden tab), and an open dialog takes in what arrives meanwhile. The dialog waits for any other dialog or running operation of the page to close first, and a dialog that opens while it is shown goes over it.
 
 ## Floating background-task cards
 

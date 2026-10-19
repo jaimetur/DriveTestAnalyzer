@@ -1,61 +1,61 @@
 {% extends 'base.html' %}
-{% from 'bugs_report_macros.html' import priority_pill, status_pill, module_chip, screenshots_zone, screenshot_gallery, type_badge %}
+{% from 'ticket_center_macros.html' import priority_pill, status_pill, module_chip, screenshots_zone, screenshot_gallery, type_badge %}
 {% block content %}
-<link rel="stylesheet" href="{{ static_path('css/bugs_report.css') }}?v={{ asset_version('css/bugs_report.css') }}">
-<section class="dashboard-stack spacious-stack bugs-report bug-report-page" data-bug-report="{{ bug.id }}" data-ticket-center-title="{{ ticket_center_title }}">
-  <nav class="bug-breadcrumb" aria-label="Back to the list"><a class="bug-back-link" href="/tickets#section-tickets"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M11 18l-6-6 6-6"/></svg>Back to Tickets</a><span class="bug-breadcrumb-id">{{ ticket_center_title }} · Ticket #{{ bug.id }}</span></nav>
+<link rel="stylesheet" href="{{ static_path('css/ticket_center.css') }}?v={{ asset_version('css/ticket_center.css') }}">
+<section class="dashboard-stack spacious-stack ticket-center ticket-page" data-ticket-page="{{ ticket.id }}" data-ticket-center-title="{{ ticket_center_title }}">
+  <nav class="ticket-breadcrumb" aria-label="Back to the list"><a class="ticket-back-link" href="/tickets#section-tickets"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M11 18l-6-6 6-6"/></svg>Back to Tickets</a><span class="ticket-breadcrumb-id">{{ ticket_center_title }} · Ticket #{{ ticket.id }}</span></nav>
 
-  <article class="panel bug-header" data-status="{{ bug.status }}">
-    <div class="bug-header-pills">{{ type_badge(bug.ticket_type, bug.type_label) }}{{ status_pill(bug.status, bug.status_label) }}{{ priority_pill(bug.priority, bug.priority_label) }}{{ module_chip(bug.module_title, bug.module_color) }}</div>
-    <h2 class="bug-title"><span class="bug-number">#{{ bug.id }}</span> {{ bug.title }}</h2>
-    <p class="bug-opened">Opened by <strong>{{ bug.created_by_name }}</strong> on {{ bug.created_date }} with version <strong>v{{ bug.app_version }}</strong>{% if bug.fixed_version %} · fixed in <strong>v{{ bug.fixed_version }}</strong>{% endif %}</p>
-    {% if bug_can_edit %}<button type="button" class="bug-edit-toggle" data-bug-edit-toggle aria-expanded="false">Edit</button>{% endif %}
+  <article class="panel ticket-header" data-status="{{ ticket.status }}">
+    <div class="ticket-header-pills">{{ type_badge(ticket.ticket_type, ticket.type_label) }}{{ status_pill(ticket.status, ticket.status_label) }}{{ priority_pill(ticket.priority, ticket.priority_label) }}{{ module_chip(ticket.module_title, ticket.module_color) }}</div>
+    <h2 class="ticket-title"><span class="ticket-number">#{{ ticket.id }}</span> {{ ticket.title }}</h2>
+    <p class="ticket-opened">Opened by <strong>{{ ticket.created_by_name }}</strong> on {{ ticket.created_date }} with version <strong>v{{ ticket.app_version }}</strong>{% if ticket.fixed_version %} · fixed in <strong>v{{ ticket.fixed_version }}</strong>{% endif %}</p>
+    {% if ticket_can_edit %}<button type="button" class="ticket-edit-toggle" data-ticket-edit-toggle aria-expanded="false">Edit</button>{% endif %}
   </article>
 
-  <div class="bug-layout">
-    <div class="bug-main">
-      {% if bug_can_edit %}
-      <form class="panel bug-card bug-edit-form" data-bug-edit-form hidden novalidate>
+  <div class="ticket-layout">
+    <div class="ticket-main">
+      {% if ticket_can_edit %}
+      <form class="panel ticket-card ticket-edit-form" data-ticket-edit-form hidden novalidate>
         <h3>Edit ticket</h3>
-        <label class="bugs-field">Title<input type="text" name="title" maxlength="160" required value="{{ bug.title }}"></label>
+        <label class="tickets-field">Title<input type="text" name="title" maxlength="160" required value="{{ ticket.title }}"></label>
         {# Super-admins change the module in Manage, with the other details of the ticket. #}
-        {% if not bug_can_manage %}<label class="bugs-field">Module
-          <select name="module">{% for module in bug_modules %}<option value="{{ module.key }}"{% if module.key == bug.module %} selected{% endif %}>{{ module.title }}</option>{% endfor %}</select>
+        {% if not ticket_can_manage %}<label class="tickets-field">Module
+          <select name="module">{% for module in ticket_modules %}<option value="{{ module.key }}"{% if module.key == ticket.module %} selected{% endif %}>{{ module.title }}</option>{% endfor %}</select>
         </label>{% endif %}
-        <label class="bugs-field">Description<textarea name="description" rows="8" maxlength="20000" placeholder="{{ bug_text_guide }}">{{ bug.description }}</textarea></label>
-        <div class="bugs-form-actions"><button type="button" class="bug-ghost-button" data-bug-edit-cancel>Cancel</button><button type="submit" class="bugs-primary-button">Save changes</button></div>
+        <label class="tickets-field">Description<textarea name="description" rows="8" maxlength="20000" placeholder="{{ ticket_text_guide }}">{{ ticket.description }}</textarea></label>
+        <div class="tickets-form-actions"><button type="button" class="ticket-ghost-button" data-ticket-edit-cancel>Cancel</button><button type="submit" class="tickets-primary-button">Save changes</button></div>
       </form>
       {% endif %}
 
-      <article class="panel bug-card bug-description">
+      <article class="panel ticket-card ticket-description">
         <h3>Description</h3>
-        {% if bug.description %}<div class="bug-text">{{ bug.description_html }}</div>{% else %}<p class="bug-muted">No description.</p>{% endif %}
-        {{ screenshot_gallery(bug.attachments, user, removable=bug_can_edit) }}
-        {% if bug_can_edit %}
-        <form class="bug-add-shots" data-bug-shots-form novalidate>
-          {{ screenshots_zone(bug_max_screenshots, bug_max_screenshot_mb, 'Add screenshots') }}
-          <div class="bugs-form-actions" data-bug-shots-actions hidden><button type="submit" class="bugs-primary-button">Add screenshots</button></div>
+        {% if ticket.description %}<div class="ticket-text">{{ ticket.description_html }}</div>{% else %}<p class="ticket-muted">No description.</p>{% endif %}
+        {{ screenshot_gallery(ticket.attachments, user, removable=ticket_can_edit) }}
+        {% if ticket_can_edit %}
+        <form class="ticket-add-shots" data-ticket-shots-form novalidate>
+          {{ screenshots_zone(ticket_max_screenshots, ticket_max_screenshot_mb, 'Add screenshots') }}
+          <div class="tickets-form-actions" data-ticket-shots-actions hidden><button type="submit" class="tickets-primary-button">Add screenshots</button></div>
         </form>
         {% endif %}
       </article>
 
-      <article class="panel bug-card bug-timeline-card">
+      <article class="panel ticket-card ticket-timeline-card">
         <h3>Timeline</h3>
-        <ol class="bug-timeline">
-          <li class="bug-event bug-event-change"><span class="bug-event-dot" aria-hidden="true"></span><p><strong>{{ bug.created_by_name }}</strong> opened the ticket with version v{{ bug.app_version }} <time>{{ bug.created_date }}</time></p></li>
-          {% for entry in bug.comments %}
+        <ol class="ticket-timeline">
+          <li class="ticket-event ticket-event-change"><span class="ticket-event-dot" aria-hidden="true"></span><p><strong>{{ ticket.created_by_name }}</strong> opened the ticket with version v{{ ticket.app_version }} <time>{{ ticket.created_date }}</time></p></li>
+          {% for entry in ticket.comments %}
           {% if entry.kind == 'change' %}
-          <li class="bug-event bug-event-change"><span class="bug-event-dot" aria-hidden="true"></span>
+          <li class="ticket-event ticket-event-change"><span class="ticket-event-dot" aria-hidden="true"></span>
             <p><strong>{{ entry.username_name }}</strong> {% for line in entry.change_lines %}{% if line.long %}edited the {{ line.field | lower }}{% else %}changed {{ line.field }} from <em>{{ line.old or '—' }}</em> to <em>{{ line.new or '—' }}</em>{% endif %}{% if not loop.last %}, {% endif %}{% endfor %} <time>{{ entry.date }}</time></p>
           </li>
           {% else %}
-          <li class="bug-event bug-comment" data-bug-comment="{{ entry.id }}">
-            <span class="bug-avatar" aria-hidden="true">{{ entry.username_name[:1] | upper }}</span>
-            <div class="bug-comment-body">
+          <li class="ticket-event ticket-comment" data-ticket-comment="{{ entry.id }}">
+            <span class="ticket-avatar" aria-hidden="true">{{ entry.username_name[:1] | upper }}</span>
+            <div class="ticket-comment-body">
               <header><strong>{{ entry.username_name }}</strong><time>{{ entry.date }}{% if entry.edited_at %} · edited{% endif %}</time>
-                {% if user and (entry.username | lower == user.username | lower or bug_can_manage) %}<span class="bug-comment-actions">{% if entry.username | lower == user.username | lower %}<button type="button" data-bug-comment-edit>Edit</button>{% endif %}<button type="button" data-bug-comment-delete>Delete</button></span>{% endif %}
+                {% if user and (entry.username | lower == user.username | lower or ticket_can_manage) %}<span class="ticket-comment-actions">{% if entry.username | lower == user.username | lower %}<button type="button" data-ticket-comment-edit>Edit</button>{% endif %}<button type="button" data-ticket-comment-delete>Delete</button></span>{% endif %}
               </header>
-              {% if entry.body %}<div class="bug-text" data-bug-comment-text data-raw="{{ entry.body }}">{{ entry.body_html }}</div>{% endif %}
+              {% if entry.body %}<div class="ticket-text" data-ticket-comment-text data-raw="{{ entry.body }}">{{ entry.body_html }}</div>{% endif %}
               {{ screenshot_gallery(entry.attachments, user, removable=user is not none) }}
             </div>
           </li>
@@ -63,70 +63,70 @@
           {% endfor %}
         </ol>
         {% if user %}
-        <form class="bug-comment-form" data-bug-comment-form novalidate>
-          <label class="bugs-field">Add a comment<textarea name="body" rows="5" maxlength="20000" placeholder="{{ bug_text_guide }}"></textarea></label>
-          {{ screenshots_zone(bug_max_screenshots, bug_max_screenshot_mb) }}
-          <div class="bugs-form-actions"><button type="submit" class="bugs-primary-button">Comment</button></div>
+        <form class="ticket-comment-form" data-ticket-comment-form novalidate>
+          <label class="tickets-field">Add a comment<textarea name="body" rows="5" maxlength="20000" placeholder="{{ ticket_text_guide }}"></textarea></label>
+          {{ screenshots_zone(ticket_max_screenshots, ticket_max_screenshot_mb) }}
+          <div class="tickets-form-actions"><button type="submit" class="tickets-primary-button">Comment</button></div>
         </form>
         {% else %}
-        <p class="bug-signin-note"><a href="/login?next=/tickets/{{ bug.id }}">Sign in</a> to comment on this ticket.</p>
+        <p class="ticket-signin-note"><a href="/login?next=/tickets/{{ ticket.id }}">Sign in</a> to comment on this ticket.</p>
         {% endif %}
       </article>
     </div>
 
-    <aside class="bug-side">
-      <article class="panel bug-card bug-details">
+    <aside class="ticket-side">
+      <article class="panel ticket-card ticket-details">
         <h3>Details</h3>
         <dl>
-          <div><dt>Type</dt><dd>{{ type_badge(bug.ticket_type, bug.type_label) }}</dd></div>
-          <div><dt>Status</dt><dd>{{ status_pill(bug.status, bug.status_label) }}</dd></div>
-          <div><dt>Priority</dt><dd>{% if bug_can_edit %}<select class="bug-priority-select" data-bug-priority aria-label="Priority">{% for key, label in bug_priorities.items() %}<option value="{{ key }}"{% if key == bug.priority %} selected{% endif %}>{{ key }} · {{ label }}</option>{% endfor %}</select>{% else %}{{ priority_pill(bug.priority, bug.priority_label) }}{% endif %}</dd></div>
-          <div><dt>Module</dt><dd>{{ module_chip(bug.module_title, bug.module_color) }}</dd></div>
-          <div><dt>Reported by</dt><dd>{{ bug.created_by_name }}</dd></div>
-          <div><dt>Assigned to</dt><dd>{{ bug.assigned_to_name or 'Nobody yet' }}</dd></div>
-          <div><dt>Opened with</dt><dd>v{{ bug.app_version }}</dd></div>
-          <div><dt>Fixed in</dt><dd>{{ ('v' ~ bug.fixed_version) if bug.fixed_version else '—' }}</dd></div>
-          <div><dt>Opened</dt><dd>{{ bug.created_date }}</dd></div>
-          <div><dt>Updated</dt><dd>{{ bug.updated_date }}</dd></div>
-          {% if bug.resolved_date %}<div><dt>{{ bug.status_label }}</dt><dd>{{ bug.resolved_date }}</dd></div>{% endif %}
+          <div><dt>Type</dt><dd>{{ type_badge(ticket.ticket_type, ticket.type_label) }}</dd></div>
+          <div><dt>Status</dt><dd>{{ status_pill(ticket.status, ticket.status_label) }}</dd></div>
+          <div><dt>Priority</dt><dd>{% if ticket_can_edit %}<select class="ticket-priority-select" data-ticket-priority aria-label="Priority">{% for key, label in ticket_priorities.items() %}<option value="{{ key }}"{% if key == ticket.priority %} selected{% endif %}>{{ key }} · {{ label }}</option>{% endfor %}</select>{% else %}{{ priority_pill(ticket.priority, ticket.priority_label) }}{% endif %}</dd></div>
+          <div><dt>Module</dt><dd>{{ module_chip(ticket.module_title, ticket.module_color) }}</dd></div>
+          <div><dt>Reported by</dt><dd>{{ ticket.created_by_name }}</dd></div>
+          <div><dt>Assigned to</dt><dd>{{ ticket.assigned_to_name or 'Nobody yet' }}</dd></div>
+          <div><dt>Opened with</dt><dd>v{{ ticket.app_version }}</dd></div>
+          <div><dt>Fixed in</dt><dd>{{ ('v' ~ ticket.fixed_version) if ticket.fixed_version else '—' }}</dd></div>
+          <div><dt>Opened</dt><dd>{{ ticket.created_date }}</dd></div>
+          <div><dt>Updated</dt><dd>{{ ticket.updated_date }}</dd></div>
+          {% if ticket.resolved_date %}<div><dt>{{ ticket.status_label }}</dt><dd>{{ ticket.resolved_date }}</dd></div>{% endif %}
         </dl>
-        {% if bug.browser and user %}<p class="bug-browser" title="{{ bug.browser }}">{{ bug.browser }}</p>{% endif %}
+        {% if ticket.browser and user %}<p class="ticket-browser" title="{{ ticket.browser }}">{{ ticket.browser }}</p>{% endif %}
       </article>
 
-      {% if bug_can_manage %}
-      <form class="panel bug-card bug-manage" data-bug-manage-form novalidate>
+      {% if ticket_can_manage %}
+      <form class="panel ticket-card ticket-manage" data-ticket-manage-form novalidate>
         <h3>Manage</h3>
-        {% if bug.status == 'new' %}<button type="button" class="bugs-primary-button bug-attend" data-bug-attend data-username="{{ user.username }}">Attend this ticket</button>{% endif %}
-        <label class="bugs-field">Type
-          <select name="ticket_type">{% for key, label in ticket_types.items() %}<option value="{{ key }}"{% if key == bug.ticket_type %} selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+        {% if ticket.status == 'new' %}<button type="button" class="tickets-primary-button ticket-attend" data-ticket-attend data-username="{{ user.username }}">Attend this ticket</button>{% endif %}
+        <label class="tickets-field">Type
+          <select name="ticket_type">{% for key, label in ticket_types.items() %}<option value="{{ key }}"{% if key == ticket.ticket_type %} selected{% endif %}>{{ label }}</option>{% endfor %}</select>
         </label>
-        <label class="bugs-field">Status
-          <select name="status">{% for key, label in bug_statuses.items() %}<option value="{{ key }}"{% if key == bug.status %} selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+        <label class="tickets-field">Status
+          <select name="status">{% for key, label in ticket_statuses.items() %}<option value="{{ key }}"{% if key == ticket.status %} selected{% endif %}>{{ label }}</option>{% endfor %}</select>
         </label>
-        <label class="bugs-field">Assigned to
-          <select name="assigned_to" data-user-select><option value="">Nobody</option>{% for person in bug_super_admins %}{% if person.divider %}<hr>{% endif %}<option value="{{ person.username }}" data-name="{{ person.name }}"{% if person.is_default %} data-default-user="true"{% endif %}{% if person.username == bug.assigned_to %} selected{% endif %}>{{ person.label }}</option>{% endfor %}{% if bug.assigned_to and bug.assigned_to not in bug_super_admins | map(attribute='username') | list %}<option value="{{ bug.assigned_to }}" selected>{{ bug.assigned_to_name }}</option>{% endif %}</select>
+        <label class="tickets-field">Assigned to
+          <select name="assigned_to" data-user-select><option value="">Nobody</option>{% for person in ticket_super_admins %}{% if person.divider %}<hr>{% endif %}<option value="{{ person.username }}" data-name="{{ person.name }}"{% if person.is_default %} data-default-user="true"{% endif %}{% if person.username == ticket.assigned_to %} selected{% endif %}>{{ person.label }}</option>{% endfor %}{% if ticket.assigned_to and ticket.assigned_to not in ticket_super_admins | map(attribute='username') | list %}<option value="{{ ticket.assigned_to }}" selected>{{ ticket.assigned_to_name }}</option>{% endif %}</select>
         </label>
-        <label class="bugs-field">Reported by
-          <select name="created_by" data-user-select>{% for person in bug_reporters %}{% if person.divider %}<hr>{% endif %}<option value="{{ person.username }}" data-name="{{ person.name }}"{% if person.is_default %} data-default-user="true"{% endif %}{% if person.username == bug.created_by %} selected{% endif %}>{{ person.label }}</option>{% endfor %}</select>
+        <label class="tickets-field">Reported by
+          <select name="created_by" data-user-select>{% for person in ticket_reporters %}{% if person.divider %}<hr>{% endif %}<option value="{{ person.username }}" data-name="{{ person.name }}"{% if person.is_default %} data-default-user="true"{% endif %}{% if person.username == ticket.created_by %} selected{% endif %}>{{ person.label }}</option>{% endfor %}</select>
         </label>
-        <label class="bugs-field">Module
-          <select name="module">{% for module in bug_modules %}<option value="{{ module.key }}"{% if module.key == bug.module %} selected{% endif %}>{{ module.title }}</option>{% endfor %}</select>
+        <label class="tickets-field">Module
+          <select name="module">{% for module in ticket_modules %}<option value="{{ module.key }}"{% if module.key == ticket.module %} selected{% endif %}>{{ module.title }}</option>{% endfor %}</select>
         </label>
-        <label class="bugs-field">Opened with version<input type="text" name="app_version" maxlength="40" required value="{{ bug.app_version }}"></label>
-        <label class="bugs-field">Fixed in version<input type="text" name="fixed_version" maxlength="40" value="{{ bug.fixed_version }}" placeholder="{{ app_version }}"></label>
-        <div class="bugs-form-actions"><button type="submit" class="bugs-primary-button">Save</button></div>
-        <button type="button" class="bug-delete" data-bug-delete>Delete ticket</button>
+        <label class="tickets-field">Opened with version<input type="text" name="app_version" maxlength="40" required value="{{ ticket.app_version }}"></label>
+        <label class="tickets-field">Fixed in version<input type="text" name="fixed_version" maxlength="40" value="{{ ticket.fixed_version }}" placeholder="{{ app_version }}"></label>
+        <div class="tickets-form-actions"><button type="submit" class="tickets-primary-button">Save</button></div>
+        <button type="button" class="ticket-delete" data-ticket-delete>Delete ticket</button>
       </form>
       {% endif %}
     </aside>
   </div>
 
-  <dialog class="bug-lightbox" data-bug-lightbox>
-    <div class="bug-lightbox-head"><strong data-bug-lightbox-name></strong><a data-bug-lightbox-link target="_blank" rel="noopener">Open original</a><button type="button" data-bug-lightbox-close aria-label="Close">×</button></div>
-    <img alt="" data-bug-lightbox-image>
+  <dialog class="ticket-lightbox" data-ticket-lightbox>
+    <div class="ticket-lightbox-head"><strong data-ticket-lightbox-name></strong><a data-ticket-lightbox-link target="_blank" rel="noopener">Open original</a><button type="button" data-ticket-lightbox-close aria-label="Close">×</button></div>
+    <img alt="" data-ticket-lightbox-image>
   </dialog>
 </section>
 {% endblock %}
 {% block extra_scripts %}
-<script src="{{ static_path('js/bugs_report.js') }}?v={{ asset_version('js/bugs_report.js') }}"></script>
+<script src="{{ static_path('js/ticket_center.js') }}?v={{ asset_version('js/ticket_center.js') }}"></script>
 {% endblock %}

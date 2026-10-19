@@ -85,7 +85,7 @@ The page shows the title with its type, status, priority and module, who opened 
 | **Improvement** (teal) | Something that works could work better |
 | **New Feature** (magenta) | Something the tool cannot do yet |
 
-The tickets opened before the types existed, and those of packages and backups of earlier versions, are bugs.
+The tickets opened before the types existed are bugs.
 
 | Priority | Meaning |
 | --- | --- |
@@ -125,4 +125,4 @@ Every action (opening, editing, comments, screenshots, attention, type changes a
 
 ## Portability
 
-The tickets live in the application database, so **Application Config** exports, transfers, backups and restores include them with every workspace. **Ticket Center** in [Import / Export / Transfer](administrator-config.md#import-export-transfer) and in [Backup Protection](administrator-config.md#backup-protection) also moves them on their own (super-admins only): one JSON document with every ticket, its type and its timeline, and each screenshot as a file. Importing or restoring it merges the tickets into the server: the tickets, comments and screenshots it does not have are added, a ticket or comment changed later in the package takes its newer content, and nothing is deleted. The Bugs Report packages and backups of earlier versions import the same way, their tickets as bugs. The tables are **Tickets**, **Ticket Comments** and **Ticket Attachments** in the Database Viewer, where the screenshots show as their size and cannot be edited.
+The tickets live in the application database, so **Application Config** exports, transfers, backups and restores include them with every workspace. **Ticket Center** in [Import / Export / Transfer](administrator-config.md#import-export-transfer) and in [Backup Protection](administrator-config.md#backup-protection) also moves them on their own (super-admins only): one JSON document with every ticket, its type and its timeline, and each screenshot as a file. Importing or restoring it merges the tickets into the server: the tickets, comments and screenshots it does not have are added, a ticket or comment changed later in the package takes its newer content, and nothing is deleted. The tables are **Tickets**, **Ticket Comments** and **Ticket Attachments** in the Database Viewer, where the screenshots show as their size and cannot be edited.

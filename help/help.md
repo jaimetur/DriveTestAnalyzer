@@ -33,7 +33,7 @@ Help Navigation groups chapters under General, Main Modules, Administrative Modu
 | Generating persistent Reports or Chart Sets | [PPT Reporting (old)](ppt-reporting-old.md) |
 | Calculating NetCheck scores or comparing operator gaps | [Scoring & GAP Analysis](scoring-gap-analysis.md) |
 | Building ad-hoc SQL queries with guided controls | [Query Builder](query-builder.md) |
-| Reporting a bug, suggesting an improvement or asking for a new feature, and following it | [Ticket Center](bugs-report.md) |
+| Reporting a bug, suggesting an improvement or asking for a new feature, and following it | [Ticket Center](ticket-center.md) |
 | Authoring templates | [Workspace Config](workspace-config.md), including the [Report Template reference](workspace-config.md#report-template-reference) |
 | Managing users and transfers | [Administrator Config](administrator-config.md) |
 | Changing application-wide runtime settings | [Application Config](app-config.md) |
@@ -55,7 +55,7 @@ Help Navigation groups chapters under General, Main Modules, Administrative Modu
 - [Reporting](reporting.md) — bundle reports with parts of several modules (Bundle Report Templates), and scheduled Reporting Jobs that email CDR Analysis, Network Insights, Dashboard and Scoring artifacts.
 - [Chart Builder](chart-builder.md) — temporary ad-hoc chart construction.
 - [Query Builder](query-builder.md) — guided query design, SQL editing, execution and saved queries.
-- [Ticket Center](bugs-report.md) — tickets of bugs, improvements and new features with screenshots, the version and date they were opened with, priorities, statuses, a timeline of comments and changes, and a dashboard.
+- [Ticket Center](ticket-center.md) — tickets of bugs, improvements and new features with screenshots, the version and date they were opened with, priorities, statuses, a timeline of comments and changes, and a dashboard.
 - [App Logs](app-logs.md) — workspace events and live server output.
 - [Application Config](app-config.md) — application-wide runtime settings and their effect.
 - [Workspace Config](workspace-config.md) — workspace-owned templates, Main Cities, chart mappings and scoring methodologies.

@@ -130,7 +130,7 @@ Build read-only SQL in Assistance Mode or SQL Mode, inspect paginated results an
 
 ### Ticket Center
 
-Report the bugs of the tool, suggest improvements and ask for new features in tickets of their type, with their screenshots (pasted, dropped or chosen), the version and the date, a priority from P1 to P5 and the module they are about, and follow them with comments; super-admins attend them until they are resolved. A dashboard counts them by type and status, the open ones by priority and module, and those created and resolved each week. See [Ticket Center Help](help/bugs-report.md).
+Report the bugs of the tool, suggest improvements and ask for new features in tickets of their type, with their screenshots (pasted, dropped or chosen), the version and the date, a priority from P1 to P5 and the module they are about, and follow them with comments; super-admins attend them until they are resolved. A dashboard counts them by type and status, the open ones by priority and module, and those created and resolved each week. See [Ticket Center Help](help/ticket-center.md).
 
 ### App Logs
 
@@ -418,7 +418,7 @@ DriveTestAnalyzer/
 - [PPT Reporting (old)](help/ppt-reporting-old.md)
 - [Chart Builder](help/chart-builder.md)
 - [Query Builder](help/query-builder.md)
-- [Ticket Center](help/bugs-report.md)
+- [Ticket Center](help/ticket-center.md)
 - [App Logs](help/app-logs.md)
 - [Application Config](help/app-config.md)
 - [Workspace Config](help/workspace-config.md)

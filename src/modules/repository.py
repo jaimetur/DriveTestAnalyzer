@@ -29,7 +29,7 @@ from src.modules.column_names import (
 from src.modules.nr_mode import NR_MODE_DATASET_KINDS, infer_nr_mode, normalize_nr_mode
 from src.modules.operator_roles import normalize_mapping_role
 from src.modules.cdr_stage import CDR_STAGE_KINDS, infer_cdr_stage, normalize_cdr_stage, normalize_in_combined
-from src.modules.module_labels import MAIN_MODULES
+from src.modules.module_labels import MAIN_MODULES, MODULE_LABELS_STATE_KEY
 from src.modules.report_layouts import normalize_catalog_layouts, rename_template_vendor_fields
 from src.modules.runtime_config import ignore_event_time_filtering
 
@@ -443,9 +443,9 @@ CREATE TABLE IF NOT EXISTS workspace_group_members (
     PRIMARY KEY (group_id, user_id)
 );
 
--- Ticket Center (formerly Bugs Report): the tickets of the bugs, improvements and new features of the tool, with their
--- history and screenshots (src/modules/bugs_report.py).
-CREATE TABLE IF NOT EXISTS bug_reports (
+-- Ticket Center: the tickets of the bugs, improvements and new features of the tool, with their history and screenshots
+-- (src/modules/ticket_center.py).
+CREATE TABLE IF NOT EXISTS tickets (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     uid TEXT NOT NULL UNIQUE,
     ticket_type TEXT NOT NULL DEFAULT 'bug',
@@ -464,10 +464,10 @@ CREATE TABLE IF NOT EXISTS bug_reports (
     resolved_at TEXT NOT NULL DEFAULT ''
 );
 
-CREATE TABLE IF NOT EXISTS bug_report_comments (
+CREATE TABLE IF NOT EXISTS ticket_comments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     uid TEXT NOT NULL UNIQUE,
-    bug_id INTEGER NOT NULL REFERENCES bug_reports(id) ON DELETE CASCADE,
+    ticket_id INTEGER NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
     username TEXT NOT NULL,
     kind TEXT NOT NULL DEFAULT 'comment',
     body TEXT NOT NULL DEFAULT '',
@@ -476,13 +476,13 @@ CREATE TABLE IF NOT EXISTS bug_report_comments (
     edited_at TEXT NOT NULL DEFAULT ''
 );
 
-CREATE INDEX IF NOT EXISTS idx_bug_report_comments_bug ON bug_report_comments(bug_id, id);
+CREATE INDEX IF NOT EXISTS idx_ticket_comments_ticket ON ticket_comments(ticket_id, id);
 
-CREATE TABLE IF NOT EXISTS bug_report_attachments (
+CREATE TABLE IF NOT EXISTS ticket_attachments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     uid TEXT NOT NULL UNIQUE,
-    bug_id INTEGER NOT NULL REFERENCES bug_reports(id) ON DELETE CASCADE,
-    comment_id INTEGER REFERENCES bug_report_comments(id) ON DELETE CASCADE,
+    ticket_id INTEGER NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
+    comment_id INTEGER REFERENCES ticket_comments(id) ON DELETE CASCADE,
     file_name TEXT NOT NULL,
     content_type TEXT NOT NULL,
     size INTEGER NOT NULL,
@@ -491,7 +491,7 @@ CREATE TABLE IF NOT EXISTS bug_report_attachments (
     created_at TEXT NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_bug_report_attachments_bug ON bug_report_attachments(bug_id, id);
+CREATE INDEX IF NOT EXISTS idx_ticket_attachments_ticket ON ticket_attachments(ticket_id, id);
 
 -- Admin notices: the access requests and tickets each super-admin has been told about (src/modules/admin_notices.py).
 CREATE TABLE IF NOT EXISTS admin_notices_seen (
@@ -512,7 +512,7 @@ PROFILE_COLOR_ALL_MODULES, PROFILE_COLOR_BENCHMARKING, PROFILE_COLOR_NON_QUALIFI
 # PPT Reporting (old) is in none of them, so only super-admins without a profile see it.
 DEFAULT_MODULES_PROFILES: tuple[tuple[str, str, tuple[str, ...], str, bool], ...] = (
     ('Non-Qualified Calls', 'Workspace, Non-Qualified Calls, Reporting, Builders & Ticket Center.',
-     ('workspace', 'non-qualified-calls', 'reporting', 'builders', 'bugs-report'), PROFILE_COLOR_NON_QUALIFIED_CALLS, False),
+     ('workspace', 'non-qualified-calls', 'reporting', 'builders', 'ticket-center'), PROFILE_COLOR_NON_QUALIFIED_CALLS, False),
     ('Benchmarking', 'Every main module except Non-Qualified Calls.',
      tuple(key for key, _name in MAIN_MODULES if key not in {'non-qualified-calls', 'ppt-reporting-old'}), PROFILE_COLOR_BENCHMARKING, False),
     ('All Modules', 'Every main module.', tuple(key for key, _name in MAIN_MODULES if key != 'ppt-reporting-old'),
@@ -522,7 +522,7 @@ DEFAULT_MODULES_PROFILES: tuple[tuple[str, str, tuple[str, ...], str, bool], ...
 
 # Main modules that joined every Modules Profile of a deployment when they were added to the tool; each one is added
 # once, so a profile it is later taken out of keeps without it.
-MODULES_ADDED_TO_EVERY_PROFILE: tuple[str, ...] = ('bugs-report',)
+MODULES_ADDED_TO_EVERY_PROFILE: tuple[str, ...] = ('ticket-center',)
 MODULES_ADDED_TO_PROFILES_STATE_KEY = 'modules_profiles_added_modules'
 
 
@@ -862,6 +862,7 @@ class Repository:
                 # Where each event ran (Executed by); the events of earlier versions take it from their action.
                 conn.execute("ALTER TABLE audit_logs ADD COLUMN origin TEXT NOT NULL DEFAULT ''")
             self._migrate_process_event_users(conn)
+            self._rename_bugs_report_events(conn)
             conn.execute(
                 """
                 INSERT OR IGNORE INTO dataset_profiles (dataset_id, status, progress, updated_at)
@@ -871,6 +872,7 @@ class Repository:
             )
         with self.global_connection() as conn:
             self._configure_database_journal(conn)
+            self._rename_bugs_report_identifiers(conn)
             conn.executescript(GLOBAL_SCHEMA)
             self._migrate_user_roles(conn)
             self._ensure_user_access_schema(conn)
@@ -915,10 +917,61 @@ class Repository:
                     )
 
     @staticmethod
+    def _rename_bugs_report_identifiers(conn: sqlite3.Connection) -> None:
+        """Ticket Center was Bugs Report: its tables, the module key in the Modules Profiles and Interface Settings, and
+        the notices told to the super-admins take their Ticket Center names, keeping every ticket and setting."""
+        tables = {str(row[0]) for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'").fetchall()}
+        for former, current in (('bug_reports', 'tickets'), ('bug_report_comments', 'ticket_comments'),
+                                ('bug_report_attachments', 'ticket_attachments')):
+            if former not in tables:
+                continue
+            if current in tables and not conn.execute(f'SELECT 1 FROM {current} LIMIT 1').fetchone():
+                conn.execute(f'DROP TABLE {current}')
+                tables.discard(current)
+            if current not in tables:
+                conn.execute(f'ALTER TABLE {former} RENAME TO {current}')
+                tables.add(current)
+        for table in ('ticket_comments', 'ticket_attachments'):
+            if table in tables and 'bug_id' in {str(row[1]) for row in conn.execute(f'PRAGMA table_info({table})').fetchall()}:
+                conn.execute(f'ALTER TABLE {table} RENAME COLUMN bug_id TO ticket_id')
+        conn.execute('DROP INDEX IF EXISTS idx_bug_report_comments_bug')
+        conn.execute('DROP INDEX IF EXISTS idx_bug_report_attachments_bug')
+        if 'admin_notices_seen' in tables:
+            conn.execute("UPDATE admin_notices_seen SET kind = 'ticket' WHERE kind = 'bug_report'")
+        if 'modules_profiles' in tables:
+            for row in conn.execute('SELECT id, modules_json FROM modules_profiles WHERE modules_json LIKE ?', ('%"bugs-report"%',)).fetchall():
+                conn.execute('UPDATE modules_profiles SET modules_json = ? WHERE id = ?',
+                             (str(row[1]).replace('"bugs-report"', '"ticket-center"'), int(row[0])))
+        if 'application_state' in tables:
+            conn.execute('UPDATE application_state SET value = replace(value, ?, ?) WHERE key = ?',
+                         ('"bugs-report"', '"ticket-center"', MODULES_ADDED_TO_PROFILES_STATE_KEY))
+            row = conn.execute('SELECT value FROM application_state WHERE key = ?', (MODULE_LABELS_STATE_KEY,)).fetchone()
+            try:
+                labels = json.loads(row[0]) if row else {}
+            except (TypeError, ValueError):
+                labels = {}
+            if isinstance(labels, dict) and 'bugs-report' in labels:
+                entry = labels.pop('bugs-report')
+                if isinstance(entry, dict) and entry.get('tab_icon') == 'bugs-report':
+                    entry['tab_icon'] = 'ticket-center'
+                labels.setdefault('ticket-center', entry)
+                conn.execute('UPDATE application_state SET value = ? WHERE key = ?', (json.dumps(labels, sort_keys=True), MODULE_LABELS_STATE_KEY))
+
+    @staticmethod
+    def _rename_bugs_report_events(conn: sqlite3.Connection) -> None:
+        """The App Events of Bugs Report, as Ticket Center was called, take the Ticket Center actions and pages."""
+        conn.execute("UPDATE audit_logs SET action = 'ticket_' || substr(action, 12), details = replace(details, ?, ?) "
+                     "WHERE action LIKE 'bug\\_report\\_%' ESCAPE '\\'", ('"bug_id"', '"ticket_id"'))
+        conn.execute("UPDATE audit_logs SET details = replace(details, ?, ?) WHERE action = 'admin_notices_seen' AND details LIKE ?",
+                     ('"bug_reports"', '"tickets"', '%"bug_reports"%'))
+        conn.execute("UPDATE audit_logs SET origin = 'module:ticket-center' WHERE origin = 'module:bugs-report'")
+        conn.execute("UPDATE audit_logs SET origin = 'public:ticket-center' WHERE origin = 'public:bug-report'")
+
+    @staticmethod
     def _ensure_ticket_columns(conn: sqlite3.Connection) -> None:
-        """The type of each ticket of Ticket Center: the tickets of the Bugs Report of earlier versions are bugs."""
-        if 'ticket_type' not in {str(row[1]) for row in conn.execute('PRAGMA table_info(bug_reports)').fetchall()}:
-            conn.execute("ALTER TABLE bug_reports ADD COLUMN ticket_type TEXT NOT NULL DEFAULT 'bug'")
+        """The type of each ticket of Ticket Center: the tickets of before the types are bugs."""
+        if 'ticket_type' not in {str(row[1]) for row in conn.execute('PRAGMA table_info(tickets)').fetchall()}:
+            conn.execute("ALTER TABLE tickets ADD COLUMN ticket_type TEXT NOT NULL DEFAULT 'bug'")
 
     @staticmethod
     def _migrate_user_roles(conn: sqlite3.Connection) -> None:
