@@ -8,7 +8,8 @@ import pytest
 import src.DriveTestAnalyzer as app_module
 from src.modules import cdr_facets
 from src.modules.cdr_auto_selection import (
-    ALL_CAMPAIGNS, LATEST_CAMPAIGN, LATEST_TWO_CAMPAIGNS, NO_PREVIOUS_CAMPAIGN, PREVIOUS_CAMPAIGN, campaign_values,
+    ALL_CAMPAIGNS, LATEST_CAMPAIGN, LATEST_FOUR_CAMPAIGNS, LATEST_THREE_CAMPAIGNS, LATEST_TWO_CAMPAIGNS, NO_PREVIOUS_CAMPAIGN,
+    PREVIOUS_CAMPAIGN, campaign_values,
     complete_campaign_cdrs, expand_campaign_filter, resolve_campaign_filter, resolve_cdrs,
 )
 from src.modules.cdr_facets import cascading_options, fill_missing_facets, stored_facets
@@ -83,6 +84,11 @@ def test_cdrs_follow_nr_mode_campaign_and_combined_tables(workspace):
     assert sorted(value for values in resolve_cdrs(repository, 'NSA', [PREVIOUS_CAMPAIGN]).values() for value in values) == sorted(q1)
     assert expand_campaign_filter([PREVIOUS_CAMPAIGN], ['UK_Q2_2026']) == [NO_PREVIOUS_CAMPAIGN]
     assert expand_campaign_filter([PREVIOUS_CAMPAIGN], []) == []
+    # Latest 3 and Latest 4 campaigns: the newest three or four campaigns, also with fewer of them.
+    campaigns = ['UK_Q1_2026', 'UK_Q2_2026', 'UK_Q3_2026', 'UK_Q4_2026', 'UK_Q1_2027']
+    assert expand_campaign_filter([LATEST_THREE_CAMPAIGNS], campaigns) == ['UK_Q3_2026', 'UK_Q4_2026', 'UK_Q1_2027']
+    assert expand_campaign_filter([LATEST_FOUR_CAMPAIGNS], campaigns) == campaigns[1:]
+    assert expand_campaign_filter([LATEST_FOUR_CAMPAIGNS], campaigns[:2]) == campaigns[:2]
     assert not any(resolve_cdrs(repository, 'SA', [PREVIOUS_CAMPAIGN]).values())
     # All available campaigns is every campaign of the NR Mode when it is used, also one that arrives later.
     assert resolve_campaign_filter(repository, 'NSA', [ALL_CAMPAIGNS]) == ['UK_Q1_2026', 'UK_Q2_2026']
@@ -118,8 +124,13 @@ def test_scoring_previous_campaign_is_the_complete_campaign_before_the_newest(wo
     assert expand_scoring_campaigns(repository, 'NSA', [PREVIOUS_CAMPAIGN]) == ['UK_Q1_2026']
     chosen = scoring_auto_cdrs(repository, 'NSA', {'Campaign': [PREVIOUS_CAMPAIGN]})
     assert sorted(chosen['dataset_ids']) == sorted(q1)
-    assert list(chosen['campaign_presets']) == [LATEST_CAMPAIGN, PREVIOUS_CAMPAIGN, LATEST_TWO_CAMPAIGNS, ALL_CAMPAIGNS]
+    # In the order the Campaign lists offer them: Previous campaign just before All available campaigns.
+    assert list(chosen['campaign_presets']) == [LATEST_CAMPAIGN, LATEST_TWO_CAMPAIGNS, LATEST_THREE_CAMPAIGNS,
+                                                LATEST_FOUR_CAMPAIGNS, PREVIOUS_CAMPAIGN, ALL_CAMPAIGNS]
     assert chosen['campaign_presets'][PREVIOUS_CAMPAIGN] == ['UK_Q1_2026']
+    # With two complete campaigns, Latest 3 and Latest 4 campaigns stand for both.
+    assert chosen['campaign_presets'][LATEST_THREE_CAMPAIGNS] == chosen['campaign_presets'][LATEST_FOUR_CAMPAIGNS] \
+        == chosen['campaign_presets'][LATEST_TWO_CAMPAIGNS]
 
 
 def test_filters_cascade_over_every_cdr_of_the_nr_mode_without_reading_rows(workspace, monkeypatch):

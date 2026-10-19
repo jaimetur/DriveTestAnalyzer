@@ -572,11 +572,12 @@
     }
   }
 
-  // Latest campaign, Previous campaign (the one before it), Latest 2 campaigns and All available campaigns, first in
-  // Campaign: each stands alone and stands for campaigns with Data, Voice and Speech CDRs; the panel keeps the choice
-  // and a calculation uses its campaigns.
-  const campaignPresetLabels = {'@latest-campaign': 'Latest campaign', '@previous-campaign': 'Previous campaign',
-    '@latest-2-campaigns': 'Latest 2 campaigns', '@all-campaigns': 'All available campaigns'};
+  // Latest campaign, Latest 2, 3 and 4 campaigns, Previous campaign (the one before the latest) and All available
+  // campaigns, first in Campaign: each stands alone and stands for campaigns with Data, Voice and Speech CDRs; the panel
+  // keeps the choice and a calculation uses its campaigns.
+  const campaignPresetLabels = {'@latest-campaign': 'Latest campaign', '@latest-2-campaigns': 'Latest 2 campaigns',
+    '@latest-3-campaigns': 'Latest 3 campaigns', '@latest-4-campaigns': 'Latest 4 campaigns',
+    '@previous-campaign': 'Previous campaign', '@all-campaigns': 'All available campaigns'};
   const isCampaignPreset = value => Object.prototype.hasOwnProperty.call(campaignPresetLabels, value);
   const chosenCampaignPreset = select => [...(select?.selectedOptions || [])].map(option => option.value).find(isCampaignPreset) || '';
 

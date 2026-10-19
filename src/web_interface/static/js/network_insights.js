@@ -133,7 +133,7 @@
   // The server chooses the CDRs from the NR Mode and Campaigns.
   const selectedDatasets = () => ({});
   const selectedValues = id => [...$(id).selectedOptions].map(option => option.value);
-  // Latest campaign, Previous campaign and Latest 2 campaigns come first in Campaigns: each stands alone and follows the newest campaigns.
+  // Latest campaign, Latest 2, 3 and 4 campaigns, Previous campaign and All available campaigns come first in Campaigns: each stands alone and follows the newest campaigns.
   const campaignPresetOrder = (config.campaign_presets || []).map(([value]) => value);
   const campaignPresets = Object.fromEntries(config.campaign_presets || []);
   const isCampaignPreset = value => Object.prototype.hasOwnProperty.call(campaignPresets, value);

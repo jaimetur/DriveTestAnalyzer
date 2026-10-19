@@ -336,7 +336,7 @@
 
   // The campaigns of an entry choose its CDRs: those of its NR Mode that the combined CDR tables include (the Final
   // CDR of each campaign, else its newest Weekly or Daily CDRs, or the In Combined? choice of Workspace). One list
-  // offers first Latest campaign, Previous campaign and Latest 2 campaigns, which follow the newest campaigns at each run and stand
+  // offers first Latest campaign, Latest 2, 3 and 4 campaigns, Previous campaign and All available campaigns, which follow the newest campaigns at each run and stand
   // alone, then the campaigns (every campaign when all or none are checked). `compact` lists each campaign once, as
   // the Campaign Maps show it, and `complete` leaves out the campaigns without Data, Voice and Speech CDRs (Scoring).
   // The CDRs used now are listed.
@@ -760,7 +760,7 @@
     }));
     const pickerByKey = new Map();
     // Values are [value, label] pairs or plain values.
-    // Campaign offers first Latest campaign, Previous campaign, Latest 2 campaigns and All available campaigns, each
+    // Campaign offers first Latest campaign, Latest 2, 3 and 4 campaigns, Previous campaign and All available campaigns, each
     // alone, resolved at each run among the campaigns of the NR Modes chosen.
     const campaignPresets = Object.entries(options.campaign_presets || {});
     const makePicker = ({key, label}, chosen) => {

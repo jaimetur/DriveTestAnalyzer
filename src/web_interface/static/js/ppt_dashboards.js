@@ -149,8 +149,9 @@
   const LATEST_CAMPAIGN = '@latest-campaign', PREVIOUS_CAMPAIGN = '@previous-campaign', LATEST_TWO_CAMPAIGNS = '@latest-2-campaigns', ALL_CAMPAIGNS = '@all-campaigns';
   // Previous campaign is the one before the newest; All available campaigns takes every campaign of the NR Mode each
   // time, also those that arrive later.
-  const campaignPresetLabels = {[LATEST_CAMPAIGN]: 'Latest campaign', [PREVIOUS_CAMPAIGN]: 'Previous campaign',
-    [LATEST_TWO_CAMPAIGNS]: 'Latest 2 campaigns', [ALL_CAMPAIGNS]: 'All available campaigns'};
+  const campaignPresetLabels = {[LATEST_CAMPAIGN]: 'Latest campaign', [LATEST_TWO_CAMPAIGNS]: 'Latest 2 campaigns',
+    '@latest-3-campaigns': 'Latest 3 campaigns', '@latest-4-campaigns': 'Latest 4 campaigns',
+    [PREVIOUS_CAMPAIGN]: 'Previous campaign', [ALL_CAMPAIGNS]: 'All available campaigns'};
   const isCampaignPreset = value => Object.prototype.hasOwnProperty.call(campaignPresetLabels, String(value));
   const isCampaignField = field => identity(field) === identity('Campaign');
   const defaultCampaignFilter = (scope = 'single', vendorComparison = 'operator_vendor') => [
@@ -1034,7 +1035,7 @@
       );
       campaignControl.disabled = false;
       campaignControl.dataset.multiselectDynamicAll = 'true';
-      campaignCopy.textContent = `The CDRs of ${dashboardNrMode(dashboard)} of the chosen campaigns are used: Latest campaign, Previous campaign and Latest 2 campaigns follow the newest ones.`;
+      campaignCopy.textContent = `The CDRs of ${dashboardNrMode(dashboard)} of the chosen campaigns are used: Latest campaign, Latest 2, 3 and 4 campaigns and Previous campaign follow the newest ones.`;
       campaignControl.dispatchEvent(new Event('multiselect:options-updated'));
     };
     campaignControl.onchange = () => {
@@ -2188,7 +2189,8 @@
         values.append(entry);
       }
       if (campaign) {
-        // Latest campaign, Previous campaign and Latest 2 campaigns follow the newest campaigns of the NR Mode; then every campaign.
+        // Latest campaign, Latest 2, 3 and 4 campaigns, Previous campaign and All available campaigns follow the newest
+        // campaigns of the NR Mode; then every campaign.
         available.sort((left, right) => (globalThis.campaignCompare?.(left, right) ?? left.localeCompare(right)));
         const presets = Object.keys(campaignPresetLabels).map(value => {
           const item = option(value, campaignPresetLabels[value]); item.selected = hasStoredSelection && selected.includes(value);

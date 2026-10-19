@@ -42,8 +42,9 @@
   const defaultAreaSummary = () => ({enabled: true, time_split: 'Campaign',
     breakdown: 'Region', cities: ['London'], main_cities: false, campaigns: ['@all-campaigns']});
   // The automatic choices of the campaigns of the Scoring Trends, which follow the newest campaigns at each report.
-  const TREND_PRESETS = [['@latest-campaign', 'Latest campaign'], ['@previous-campaign', 'Previous campaign'],
-    ['@latest-2-campaigns', 'Latest 2 campaigns'], ['@all-campaigns', 'All available campaigns']];
+  const TREND_PRESETS = [['@latest-campaign', 'Latest campaign'], ['@latest-2-campaigns', 'Latest 2 campaigns'],
+    ['@latest-3-campaigns', 'Latest 3 campaigns'], ['@latest-4-campaigns', 'Latest 4 campaigns'],
+    ['@previous-campaign', 'Previous campaign'], ['@all-campaigns', 'All available campaigns']];
   const GAP_OPTIONS = [
     ['all_operators', 'Table comparing all the chosen operators'], ['individual', 'Individual tables against the reference'],
     ['parts', 'GAP by part over the campaigns'], ['profile', 'KPI GAP Profile'],

@@ -5462,7 +5462,7 @@ body:has(> .unassigned-values-card:not([hidden], .is-collapsed)) { padding-botto
 .auto-cdr[data-cdr-stage="daily"] .auto-cdr-stage { background: #fcebd7; color: #93500f; }
 .auto-cdr-campaign { color: var(--muted); font-size: .7rem; font-weight: 700; }
 .auto-cdr-empty { color: var(--muted); font-size: .74rem; font-style: italic; }
-/* Latest campaign, Previous campaign, Latest 2 campaigns and All available campaigns, first in the Campaign filters:
+/* Latest campaign, Latest 2, 3 and 4 campaigns, Previous campaign and All available campaigns, first in the Campaign filters:
    each stands alone, and the menu is taller so more campaigns are seen below them. */
 .multiselect-option.campaign-preset span { font-style: italic; font-weight: 800; }
 .multiselect-menu:has(.campaign-preset, .ds-campaign-preset) { max-height: min(600px, calc(100vh - 7rem)); }

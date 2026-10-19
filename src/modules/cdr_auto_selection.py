@@ -9,8 +9,8 @@ ones; every campaign when the Campaign filter is not restricted.
 
 The Campaign filter of a saved definition (a Dashboard, a Reporting Job entry) also accepts
 choices made again each time they are used, so they follow the campaigns that arrive later:
-**Latest campaign**, **Previous campaign** (the one before it), **Latest 2 campaigns** and
-**All available campaigns**.
+**Latest campaign**, **Latest 2 campaigns**, **Latest 3 campaigns**, **Latest 4 campaigns**, **Previous
+campaign** (the one before the latest) and **All available campaigns**.
 """
 
 from __future__ import annotations
@@ -27,13 +27,18 @@ CDR_KIND_LABELS = {'data': 'Data', 'voice': 'Voice', 'speech': 'Speech'}
 LATEST_CAMPAIGN = '@latest-campaign'
 PREVIOUS_CAMPAIGN = '@previous-campaign'
 LATEST_TWO_CAMPAIGNS = '@latest-2-campaigns'
+LATEST_THREE_CAMPAIGNS = '@latest-3-campaigns'
+LATEST_FOUR_CAMPAIGNS = '@latest-4-campaigns'
 ALL_CAMPAIGNS = '@all-campaigns'
 # The campaigns each choice stands for, as a slice of the campaigns newest first (to None: every campaign of the NR
 # Mode at that moment, so the campaigns that arrive later are included too, unlike a list of every campaign checked
 # now).
-CAMPAIGN_PRESETS = {LATEST_CAMPAIGN: (0, 1), PREVIOUS_CAMPAIGN: (1, 2), LATEST_TWO_CAMPAIGNS: (0, 2), ALL_CAMPAIGNS: (0, None)}
-CAMPAIGN_PRESET_LABELS = {LATEST_CAMPAIGN: 'Latest campaign', PREVIOUS_CAMPAIGN: 'Previous campaign',
-                          LATEST_TWO_CAMPAIGNS: 'Latest 2 campaigns', ALL_CAMPAIGNS: 'All available campaigns'}
+# (In the order every Campaign list offers them.)
+CAMPAIGN_PRESETS = {LATEST_CAMPAIGN: (0, 1), LATEST_TWO_CAMPAIGNS: (0, 2), LATEST_THREE_CAMPAIGNS: (0, 3),
+                    LATEST_FOUR_CAMPAIGNS: (0, 4), PREVIOUS_CAMPAIGN: (1, 2), ALL_CAMPAIGNS: (0, None)}
+CAMPAIGN_PRESET_LABELS = {LATEST_CAMPAIGN: 'Latest campaign', LATEST_TWO_CAMPAIGNS: 'Latest 2 campaigns',
+                          LATEST_THREE_CAMPAIGNS: 'Latest 3 campaigns', LATEST_FOUR_CAMPAIGNS: 'Latest 4 campaigns',
+                          PREVIOUS_CAMPAIGN: 'Previous campaign', ALL_CAMPAIGNS: 'All available campaigns'}
 # What a choice stands for when it chooses no campaign although there are some (Previous campaign with only one
 # campaign): no campaign matches it, so no CDR is used (an empty Campaign filter would be every campaign).
 NO_PREVIOUS_CAMPAIGN = '@no-previous-campaign'

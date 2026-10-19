@@ -154,8 +154,8 @@
   // What follows the NR Mode of the common filters in the sections shown now (cleared when they are drawn again).
   let nrModeHandlers = [];
 
-  // The Campaigns of a section, which choose its CDRs: first Latest campaign, Previous campaign, Latest 2 campaigns and
-  // All available campaigns, which follow the newest campaigns at each export and stand alone, then the campaigns of
+  // The Campaigns of a section, which choose its CDRs: first Latest campaign, Latest 2, 3 and 4 campaigns, Previous campaign and All available campaigns,
+  // which follow the newest campaigns at each export and stand alone, then the campaigns of
   // the NR Mode of the common filters (listed again when it changes, keeping a Latest choice).
   function scopeFields(saved) {
     const row = node('div', undefined, 'brt-scope');
