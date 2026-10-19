@@ -2502,7 +2502,7 @@ def test_workspace_content_of_exports_and_backups_is_grouped_by_module_in_menu_o
         ('app-events', 'App Logs'),
         ('dashboards', 'PPT Dashboards'),
         ('scoring-configuration', 'Benchmark'), ('scoring-favourites-filters', 'Benchmark'), ('scoring-report-templates', 'Benchmark'),
-        ('scoring-export-panels', 'Benchmark'),
+        ('scoring-excluded-calls', 'Benchmark'), ('scoring-export-panels', 'Benchmark'),
         ('network-insights-favourites', 'Network Insights'),
         ('nq-call-tracking', 'Non-Qualified Calls'), ('nq-calls-configuration', 'Non-Qualified Calls'),
         ('bundle-report-template-favourites', 'Reporting'), ('reporting-jobs', 'Reporting'),
