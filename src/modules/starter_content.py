@@ -18,13 +18,17 @@ New deployments and new workspaces, and existing workspaces once, receive the co
 - ``assets/reporting-jobs/*.json``: Reporting Jobs, which name their Dashboards (``dashboard``: ``name`` and
   ``template_technology``) and carry the report of each Scoring entry (``report``) or name a shipped Scoring report
   configuration (``report_configuration``); their CDR Analysis, Network Insights and module artifacts are kept as
-  they are.
+  they are;
+- ``assets/bundle-report-template-favourites/*.json``: favourite Bundle Report Templates (``name`` and
+  ``definition``, as their export carries them), which find the shipped Dashboards by their name and NR Mode;
+- ``assets/scoring-favourites-filters/*.json``: Scoring & GAP Favourites Filters (an entry of their export without its
+  CDRs), each with a Campaign choice (Latest campaign…) whose CDRs it takes once the workspace has them.
 
 The Vendor Maps of a new workspace come from ``assets/labels-vendors/default-vendor-maps.json`` (see ``repository``);
 the default Campaign Maps from ``assets/labels-campaigns/default-campaign-map.json`` (see ``column_names``).
-The base content names no Operator or Vendor, so it fits any market; the Reporting Jobs, the NetCheck CDR Report
-(Main Cities) Dashboards and their Report Templates are those of the UK workspace (UK cities, operators and GAP
-references).
+The base content names no Operator or Vendor, so it fits any market; the Reporting Jobs, the favourite Bundle Report
+Templates, the Favourites Filters, the NetCheck CDR Report (Main Cities) Dashboards and their Report Templates are those
+of the UK workspace (UK cities, operators and GAP references).
 """
 from __future__ import annotations
 
@@ -230,6 +234,35 @@ def _seed_reporting_jobs(repository: Any, username: str) -> int:
     return added
 
 
+def _shipped_entries(folder: str, existing: set[str]) -> list[dict[str, Any]]:
+    """The shipped items of a folder whose name the workspace does not have yet."""
+    entries = []
+    for path in _json_files(ASSETS / folder):
+        item = json.loads(path.read_text(encoding='utf-8'))
+        name = str(item.get('name') or '').strip() if isinstance(item, dict) else ''
+        if name and name.casefold() not in existing:
+            entries.append(item)
+    return entries
+
+
+def _seed_bundle_report_template_favourites(repository: Any, username: str) -> int:
+    from src.modules.bundle_report_templates import import_entries, list_favourites, workspace_dashboards
+
+    entries = _shipped_entries('bundle-report-template-favourites', {item['name'].casefold() for item in list_favourites(repository)})
+    # Each finds the shipped Dashboards by their name and NR Mode.
+    return import_entries(repository, entries, username, workspace_dashboards(repository)) if entries else 0
+
+
+def _seed_favourites_filters(repository: Any) -> int:
+    from src.modules.saved_filters import SAVED_FILTERS_FORMAT, SAVED_FILTERS_VERSION, import_saved_filters, list_saved_filters
+
+    entries = _shipped_entries('scoring-favourites-filters', {item['name'].casefold() for item in list_saved_filters(repository)})
+    if not entries:
+        return 0
+    return import_saved_filters(repository, {'format': SAVED_FILTERS_FORMAT, 'version': SAVED_FILTERS_VERSION,
+                                             'saved_filters': entries})
+
+
 def seed_starter_content(repository: Any, username: str = 'system') -> dict[str, int] | None:
     """Add the shipped starter content once per workspace; returns what was added, or None when done before.
 
@@ -250,9 +283,12 @@ def seed_starter_content(repository: Any, username: str = 'system') -> dict[str,
         'auto_calculated_fields': _seed_calculated_dimensions(repository),
         'scoring_report_configurations': _seed_report_configurations(repository),
         'query_builder_queries': _seed_queries(repository, username),
+        'favourites_filters': _seed_favourites_filters(repository),
     }
-    # After the Dashboards and the report configurations, which the Reporting Jobs name.
+    # After the Dashboards and the report configurations, which the Reporting Jobs and the favourite Bundle Report
+    # Templates name.
     added['reporting_jobs'] = _seed_reporting_jobs(repository, username)
+    added['bundle_report_template_favourites'] = _seed_bundle_report_template_favourites(repository, username)
     repository.set_workspace_state(STATE_KEY, '1')
     if any(added.values()) and hasattr(repository, 'try_add_log'):
         repository.try_add_log(username, 'starter_content_added', json.dumps(added))

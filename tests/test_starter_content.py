@@ -11,6 +11,12 @@ ASSETS = PROJECT_ROOT / 'assets'
 VENDOR_FILTER = re.compile(r'^\s*(Operator|Vendor|Operator_Vendor|Vendor_Operator)\s', re.IGNORECASE | re.MULTILINE)
 
 
+def _seed_favourites(repository):
+    """The favourites a new workspace starts with, which the client fixture leaves out (see conftest)."""
+    return (starter_content._seed_favourites_filters(repository),
+            starter_content._seed_bundle_report_template_favourites(repository, 'system'))
+
+
 def test_the_shipped_content_names_no_operator_or_vendor():
     templates = sorted((ASSETS / 'ppt-templates').glob('*/*.csv'))
     assert {(path.parent.name, path.stem) for path in templates} >= {
@@ -54,6 +60,7 @@ def test_a_new_workspace_starts_with_the_shipped_content_once(client):
     # It is added once: content deleted or renamed later is not added again.
     assert starter_content.seed_starter_content(repository) is None
     # A workspace that already has content with those names keeps it.
+    _seed_favourites(repository)
     repository.set_workspace_state(starter_content.STATE_KEY, '0')
     assert set(starter_content.seed_starter_content(repository).values()) == {0}
 
@@ -218,3 +225,34 @@ def test_netcheck_2025_reaches_a_workspace_with_overlapping_campaigns_without_th
     assert starter_content.seed_starter_content(repository) == {'methodologies': 1}
     added = next(profile for profile in repository.get_scoring_profiles()['profiles'] if profile['id'] == 'netcheck-2025')
     assert not added.get('campaigns')
+
+
+def test_a_new_workspace_starts_with_the_favourites_of_the_uk_workspace(client):
+    import src.DriveTestAnalyzer as app_module
+    from src.modules import bundle_report_templates, saved_filters
+
+    repository = app_module.repository
+
+    def shipped(folder):
+        return [json.loads(path.read_text(encoding='utf-8')) for path in sorted((ASSETS / folder).glob('*.json'))]
+
+    assert _seed_favourites(repository) == (len(shipped('scoring-favourites-filters')),
+                                            len(shipped('bundle-report-template-favourites')))
+
+    # The favourite Bundle Report Templates, with the shipped Dashboards of their NR Mode checked as they were.
+    favourites = {item['name']: item['definition'] for item in bundle_report_templates.list_favourites(repository)}
+    assert {item['name'] for item in shipped('bundle-report-template-favourites')} <= set(favourites)
+    dashboards = json.loads(repository.get_workspace_state(starter_content.DASHBOARDS_STATE_KEY))
+    for name, technology in (('Complete Report (@Latest 2 campaigns) · NSA', 'nsa'), ('Complete Report (@Latest 2 campaigns) · SA', 'sa')):
+        items = next(section for section in favourites[name]['sections'] if section['key'] == 'dashboards')['items']
+        checked = [dashboards[item['key']] for item in items if item['enabled']]
+        assert checked and all(dashboard['template_technology'] == technology for dashboard in checked)
+        assert 'NetCheck CDR Report (Main Cities)' in [dashboard['name'] for dashboard in checked]
+    # The Favourites Filters, in their order, wait for the CDRs of their Campaign choice.
+    filters = [item for item in saved_filters.list_saved_filters(repository) if item['pinned']]
+    assert [item['name'] for item in filters] == [item['name'] for item in sorted(
+        shipped('scoring-favourites-filters'), key=lambda item: item['position'])]
+    assert all(item['dataset_ids'] == [] and item['area_summary']['main_cities'] for item in filters)
+    assert filters[0]['missing_cdrs'] == ['Latest campaign CDRs']
+    for item in shipped('scoring-favourites-filters'):
+        assert 'cdrs' not in item and item['context_filters']['Campaign'][0].startswith('@')

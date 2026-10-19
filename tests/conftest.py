@@ -93,7 +93,19 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
         app_module.register_workspace_template_files(app_module.active_workspace)
         # The test CDRs are NetCheck UK CDRs: the workspace is one of the United Kingdom, with its operators.
         set_workspace_country(app_module.repository, 'GBR')
+        # The starter favourites (favourite Bundle Report Templates and Favourites Filters) are seeded explicitly by the
+        # tests that need them; the others start without favourites.
+        remove_starter_favourites(app_module.repository)
         yield test_client
+
+
+def remove_starter_favourites(repository) -> None:
+    from src.modules import bundle_report_templates, saved_filters
+
+    for favourite in bundle_report_templates.list_favourites(repository):
+        bundle_report_templates.delete_favourite(repository, favourite['id'])
+    for saved_filter in saved_filters.list_saved_filters(repository):
+        saved_filters.delete_saved_filter(repository, saved_filter['id'])
 
 
 @pytest.fixture()

@@ -68,7 +68,7 @@ const isActive = savedFilter => savedFilter.status === 'processing';
 const progressValue = () => 40;
 const deletingSavedFilterIds = new Set();
 const syncSavedFiltersBulk = () => {};
-''' + _function_source(script, 'savedFilterTrendCampaigns') + _function_source(script, 'savedFilterAreaSummaryParts') + _function_source(script, 'savedFilterDurationText') + _function_source(script, 'syncSavedFilterLists') + _function_source(script, 'renderSavedFilters') + r'''
+''' + _function_source(script, 'savedFilterTrendCampaigns') + _function_source(script, 'savedFilterAreaSummaryParts') + _function_source(script, 'savedFilterTimeSplit') + _function_source(script, 'savedFilterDurationText') + _function_source(script, 'syncSavedFilterLists') + _function_source(script, 'renderSavedFilters') + r'''
 renderSavedFilters();
 const latest = selectedSavedFilterCard.textContent;
 const cards = savedFilterList.children.map(row => ({id: row.children[0].dataset.savedFilterId,

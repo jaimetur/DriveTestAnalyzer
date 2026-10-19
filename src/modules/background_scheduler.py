@@ -5,7 +5,7 @@ from __future__ import annotations
 from concurrent.futures import Future
 from dataclasses import dataclass, field
 from contextlib import contextmanager
-from threading import Condition, Thread
+from threading import Condition, Thread, local
 from typing import Any, Callable
 
 
@@ -38,6 +38,8 @@ class BackgroundTaskScheduler:
         self._thread_name_prefix = thread_name_prefix
         self._workers: list[Thread] = []
         self._closed = False
+        # The priority of the job each worker runs, which the job reads (see current_priority).
+        self._running = local()
         self._ensure_workers()
 
     def configure(self, max_workers: int) -> None:
@@ -89,6 +91,16 @@ class BackgroundTaskScheduler:
             if promoted:
                 self._condition.notify_all()
             return promoted
+
+    def current_priority(self) -> tuple[int, ...] | None:
+        """The priority of the job running in the calling worker (None outside a job)."""
+        return getattr(self._running, 'priority', None)
+
+    def has_waiting_before(self, workspace_key: str, priority: tuple[int, ...]) -> bool:
+        """Whether work of a Workspace waits with a better priority than ``priority`` (a long job can give way to it)."""
+        with self._condition:
+            return any(task.workspace_key == workspace_key and tuple(task.priority) < tuple(priority)
+                       for task in self._pending)
 
     @contextmanager
     def defer_dispatch(self):
@@ -154,11 +166,13 @@ class BackgroundTaskScheduler:
                     self._active_workspaces[task.workspace_key] = self._active_workspaces.get(task.workspace_key, 0) + 1
                     if not task.parallel:
                         self._exclusive_workspaces.add(task.workspace_key)
+            self._running.priority = tuple(task.priority)
             try:
                 task.future.set_result(task.callback(*task.args, **task.kwargs))
             except BaseException as exc:
                 task.future.set_exception(exc)
             finally:
+                self._running.priority = None
                 with self._condition:
                     self._active -= 1
                     if task.workspace_key is not None:

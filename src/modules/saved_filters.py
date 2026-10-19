@@ -26,7 +26,7 @@ from src.modules.scoring_area_summary import (
     detach_area_summary, normalize_area_summary_request, resolve_main_cities,
 )
 from src.modules.scoring_vendors import scoring_vendor_name, scoring_vendor_operators
-from src.modules.cdr_auto_selection import CAMPAIGN_PRESET_LABELS, campaign_presets
+from src.modules.cdr_auto_selection import CAMPAIGN_PRESET_LABELS, campaign_identity, campaign_presets
 from src.modules.cdr_stage import combined_dataset_ids
 from src.modules.nr_mode import NR_MODES, normalize_nr_mode
 from src.modules.repository import Repository, local_now_iso
@@ -1471,8 +1471,9 @@ def saved_filters_document(repository: Repository, *, favourites_only: bool = Fa
 
 def import_saved_filters(repository: Repository, document: Any) -> int:
     """Add the Saved Filters of a document to the workspace (those it already has keep their name, favourite and
-    use). Their CDRs are found by file; until they are processed here, they wait for them. Returns how many were
-    added."""
+    use). Their CDRs are found by file, except for those with a Campaign choice (Latest campaign…), which take the
+    CDRs it stands for here and need none in the document; until they are processed here, they wait for them.
+    Returns how many were added."""
     if (not isinstance(document, dict) or document.get('format') != SAVED_FILTERS_FORMAT
             or document.get('version') != SAVED_FILTERS_VERSION or not isinstance(document.get('saved_filters'), list)):
         raise ValueError('The Saved Filters are invalid.')
@@ -1496,9 +1497,13 @@ def import_saved_filters(repository: Repository, document: Any) -> int:
         ]
         levels = [str(level) for level in entry.get('levels') or [] if str(level).strip()]
         nr_mode = normalize_nr_mode(entry.get('nr_mode'))
+        context_filters = _normalize_context_filters(entry.get('context_filters') or {})
+        campaign_choice = (campaign_presets(context_filters['Campaign']) or [''])[0]
+        if not refs and campaign_choice:
+            # Without CDRs (the starter Favourites Filters), those its Campaign choice stands for in the workspace.
+            refs = [{'sha256': '', 'name': f'{CAMPAIGN_PRESET_LABELS[campaign_choice]} CDRs', 'kind': ''}]
         if not refs or not levels or nr_mode is None:
             raise ValueError('The Saved Filters are invalid.')
-        context_filters = _normalize_context_filters(entry.get('context_filters') or {})
         area_summary = entry.get('area_summary') if isinstance(entry.get('area_summary'), dict) else None
         selection = {'levels': levels, 'nr_mode': nr_mode, 'baseline_operator': str(entry.get('baseline_operator') or DEFAULT_BASELINE_OPERATOR),
                      'context_filters': context_filters, 'scoring_profile_id': str(entry.get('scoring_profile_id') or ''),
@@ -1536,30 +1541,42 @@ def import_saved_filters(repository: Repository, document: Any) -> int:
     return added
 
 
+def _ready_cdr_hashes(repository: Repository) -> dict[str, int]:
+    """The processed CDRs of the workspace by the SHA-256 of their file."""
+    from src.modules.scoring_history import ensure_history_tables, file_sha256
+    by_hash: dict[str, int] = {}
+    for row in repository.list_datasets():
+        if str(row['status'] or '').casefold() != 'ready' or str(row['dataset_kind'] or '').casefold() not in CDR_DATASET_KINDS:
+            continue
+        ensure_history_tables(repository)
+        sha = file_sha256(repository, row)
+        if sha:
+            by_hash.setdefault(sha, int(row['id']))
+    return by_hash
+
+
 def _resolve_imported_filters(repository: Repository) -> None:
-    """Give the imported Saved Filters their CDRs once every one of them is in the workspace (found by file). One
-    that matches a Saved Filter of the workspace joins it."""
+    """Give the imported Saved Filters their CDRs once every one of them is in the workspace (found by file); those
+    with a Campaign choice (Latest campaign…) take the CDRs it stands for here once the workspace has them. One that
+    matches a Saved Filter of the workspace joins it."""
     with repository.connection() as connection:
         pending = connection.execute(
             f"SELECT * FROM {SAVED_FILTERS_TABLE} WHERE dataset_ids_json = '[]' AND cdr_refs_json <> '[]'"
         ).fetchall()
     if not pending:
         return
-    by_hash: dict[str, int] = {}
-    for row in repository.list_datasets():
-        if str(row['status'] or '').casefold() != 'ready' or str(row['dataset_kind'] or '').casefold() not in CDR_DATASET_KINDS:
-            continue
-        from src.modules.scoring_history import ensure_history_tables, file_sha256
-        ensure_history_tables(repository)
-        sha = file_sha256(repository, row)
-        if sha:
-            by_hash.setdefault(sha, int(row['id']))
+    by_hash: dict[str, int] | None = None
     for row in pending:
-        refs = _decode_json(row['cdr_refs_json'], [])
-        dataset_ids = [by_hash.get(str(ref.get('sha256') or '')) for ref in refs if isinstance(ref, dict)]
-        if not dataset_ids or not all(dataset_ids):
-            continue
         saved_filter = _row_to_saved_filter(row, include_snapshot=False)
+        if campaign_presets(saved_filter['context_filters'].get('Campaign') or []):
+            # Chosen when it is prepared, from the CDRs of this workspace.
+            dataset_ids = []
+        else:
+            by_hash = _ready_cdr_hashes(repository) if by_hash is None else by_hash
+            refs = _decode_json(row['cdr_refs_json'], [])
+            dataset_ids = [by_hash.get(str(ref.get('sha256') or '')) for ref in refs if isinstance(ref, dict)]
+            if not dataset_ids or not all(dataset_ids):
+                continue
         try:
             prepared = _prepare_saved_filter(
                 repository, dataset_ids, saved_filter['levels'], saved_filter['nr_mode'],
@@ -1652,6 +1669,23 @@ def convert_scoring_jobs(connection: Any) -> None:
     connection.execute('DROP TABLE scoring_jobs')
 
 
+def _campaign_sources(sources: list[dict[str, Any]], context_filters: dict[str, list[str]]) -> list[dict[str, Any]]:
+    """The CDRs with tests of the campaigns of a Campaign filter (every CDR without one): the rows of the others are not
+    read (By campaign, each methodology reads only the CDRs of its campaigns)."""
+    chosen = {campaign_identity(value) for value in context_filters.get('Campaign') or [] if str(value).strip()}
+    if not chosen:
+        return list(sources)
+    return [source for source in sources
+            if not (campaigns := {campaign_identity(value) for value in source['metadata'].get('campaigns') or []})
+            or campaigns & chosen]
+
+
+def _filters_key(context_filters: dict[str, list[str]] | None) -> dict[str, list[str]]:
+    """Context filters as a cache key: their values whatever their order and case."""
+    return {field: sorted({str(value).strip().casefold() for value in values})
+            for field, values in _normalize_context_filters(context_filters).items() if values}
+
+
 def _load_source_frames(
     repository: Repository, sources: list[dict[str, Any]], progress_callback, required_columns,
     context_filters: dict[str, list[str]] | None = None,
@@ -1665,8 +1699,12 @@ def _load_source_frames(
     # The CDRs whose tests are placed in the current Map Areas give the map their areas.
     placed = current_datasets(repository, [int(source['metadata']['dataset_id']) for source in sources])
     total = max(1, len(sources))
+    with_rows = {id(source) for source in _campaign_sources(sources, normalized_filters)}
     for index, source in enumerate(sources, start=1):
         dataset_id = int(source['metadata']['dataset_id'])
+        if id(source) not in with_rows:
+            progress_callback(10 + round(index * 45 / total), f"Skipped {source['metadata']['name']} of other campaigns")
+            continue
         if active_filters.get('Vendor'):
             repository.ensure_vendor_column(dataset_id)
         columns = repository.list_dataset_row_columns(dataset_id)
@@ -1753,11 +1791,13 @@ def _attach_mapping_boundaries(repository: Repository, dataset_ids: list[int], r
 
 
 def calculate_saved_filter(repository: Repository, filter_id: int,
-                           submit_points_loss: Callable[[Callable[[], None]], Any] | None = None) -> dict[str, Any] | None:
+                           submit_points_loss: Callable[[Callable[[], None]], Any] | None = None,
+                           work_waiting: Callable[[], bool] | None = None) -> dict[str, Any] | None:
     """Calculate the queued result of a Saved Filter, save it, and keep a failure with its reason.
 
     A result from the Scoring History gets its Points Lost Map from the rows of the tests afterwards: with
-    ``submit_points_loss`` as a job of its own (so the calculations waiting do not wait for it), else at once.
+    ``submit_points_loss`` as a job of its own (so the calculations waiting do not wait for it, and with
+    ``work_waiting`` it gives way to those queued while it is drawn; see queue_points_loss), else at once.
     """
     saved_filter = get_saved_filter(repository, filter_id, include_internal_snapshot=True)
     if saved_filter is None:
@@ -1835,12 +1875,17 @@ def calculate_saved_filter(repository: Repository, filter_id: int,
             result['area_summary'] = summary
         _save_scoring_result(repository, saved_filter, filter_id, dataset_ids, configuration, result,
                              points_loss_pending=map_pending)
+        if map_pending and _complete_points_loss(
+                repository, saved_filter, filter_id, [dict(source) for source in sources], dataset_ids, configuration,
+                context_filters, engine, groups, cached_only=True):
+            # The maps of its CDRs and methodologies were drawn before: it is complete at once.
+            map_pending = False
         if map_pending:
             # The Points Lost Map needs the rows of the tests: it is added once they are read.
             if submit_points_loss is None:
                 complete_saved_filter_points_loss(repository, filter_id)
             else:
-                queue_points_loss(repository, filter_id, submit_points_loss)
+                queue_points_loss(repository, filter_id, submit_points_loss, work_waiting)
     except _SavedFilterDeleted:
         return None
     except Exception as exc:
@@ -1852,7 +1897,8 @@ def _trend_area_summary(repository: Repository, saved_filter: dict[str, Any], tr
                         configuration: dict[str, Any], context_filters: dict[str, list[str]], engine: Any,
                         update_progress: Callable[[int, str], None]) -> dict[str, Any]:
     """National & Geographical Areas Trends with campaigns of their own: the CDRs of those campaigns scored with the job's filters
-    (its campaigns aside) and methodology (each campaign with its own By campaign), split by Operator and Campaign."""
+    (its campaigns aside) and methodology (each campaign with its own By campaign), split by Operator and Campaign. The
+    trends of the same CDRs, methodology and options calculated before (by this Saved Filter or another one) are reused."""
     area_summary = saved_filter['area_summary']
     dataset_ids = [int(value) for value in trends.get('dataset_ids') or []]
     sources, _campaigns, fingerprint = _source_snapshot(repository, dataset_ids, expected_nr_mode=saved_filter['nr_mode'])
@@ -1862,6 +1908,23 @@ def _trend_area_summary(repository: Repository, saved_filter: dict[str, Any], tr
     levels = ['Operator'] if area_summary.get('time_split') == 'All' else ['Operator', 'Campaign']
     # Scored on the whole country, whatever the job's area filters; the Geographical views are the job's own.
     filters = {**whole_country_filters(context_filters), 'Campaign': list(trends.get('campaigns') or [])}
+    from src.modules import scoring as scoring_engine
+    from src.modules import scoring_cache
+    key = None
+    if engine is scoring_engine:
+        key = scoring_cache.key_of({
+            'kind': 'trends', 'method_version': scoring_engine.METHOD_VERSION,
+            'geographical_version': GEOGRAPHICAL_AREAS_VERSION, 'sources': fingerprint, 'levels': levels,
+            'filters': _filters_key(filters), 'area_summary': area_summary,
+            'methodology': [trends.get('configuration_hash'), configuration_hash(trends.get('configuration') or configuration)],
+            'baseline_operator': saved_filter['baseline_operator'], 'baseline_aliases': saved_filter.get('baseline_aliases', []),
+            'operator_mappings': saved_filter.get('operator_mappings', {}),
+            'operator_groups': repository.list_operator_mapping_groups(),
+        })
+        cached = scoring_cache.read(repository, 'trends', key)
+        if cached is not None:
+            update_progress(95, 'National & Geographical Areas Trends: reused from a calculation of the same CDRs and methodology')
+            return cached
     trend_filter = {**saved_filter, 'dataset_ids': dataset_ids, 'levels': levels, 'source_fingerprint': fingerprint,
                     'geographical': False}
 
@@ -1895,6 +1958,9 @@ def _trend_area_summary(repository: Repository, saved_filter: dict[str, Any], tr
     summary['campaigns'] = list(trends.get('campaigns') or [])
     if trends.get('configuration'):
         summary['configuration'] = trends['configuration']
+    if key is not None:
+        summary = _serialize_result_value(summary)
+        scoring_cache.write(repository, 'trends', key, summary)
     return summary
 
 
@@ -2048,15 +2114,26 @@ def _points_loss_key(database_path: Any, filter_id: int) -> tuple[str, int]:
     return str(Path(database_path).resolve()), int(filter_id)
 
 
-def queue_points_loss(repository: Repository, filter_id: int, submit: Callable[[Callable[[], None]], Any]) -> None:
-    """Queue the Points Lost Map of a result calculated from the Scoring History as a job of its own."""
+class _MapGivesWay(Exception):
+    """A Points Lost Map gives way to work of its workspace waiting before it (see queue_points_loss)."""
+
+
+def queue_points_loss(repository: Repository, filter_id: int, submit: Callable[[Callable[[], None]], Any],
+                      work_waiting: Callable[[], bool] | None = None) -> None:
+    """Queue the Points Lost Map of a result calculated from the Scoring History as a job of its own.
+
+    With ``work_waiting`` (whether work of the workspace waits before the job, such as the calculation of another Saved
+    Filter), the map gives way to it after the CDR or group of tests it is on and is queued again: it goes on with the
+    maps of the methodologies it finished (see _points_loss_of)."""
     with _points_loss_guard:
         _points_loss_jobs[_points_loss_key(repository.db_path, filter_id)] = {
             'status': 'queued', 'queued_at': time.time(), 'started_at': None}
-    submit(partial(complete_saved_filter_points_loss, repository, int(filter_id)))
+    submit(partial(complete_saved_filter_points_loss, repository, int(filter_id), submit, work_waiting))
 
 
-def complete_saved_filter_points_loss(repository: Repository, filter_id: int) -> None:
+def complete_saved_filter_points_loss(repository: Repository, filter_id: int,
+                                      requeue: Callable[[Callable[[], None]], Any] | None = None,
+                                      work_waiting: Callable[[], bool] | None = None) -> None:
     """Read the rows of the tests of a Saved Filter and add its Points Lost Map to its saved result."""
     key = _points_loss_key(repository.db_path, filter_id)
     with _points_loss_guard:
@@ -2065,9 +2142,12 @@ def complete_saved_filter_points_loss(repository: Repository, filter_id: int) ->
                                           detail='Reading the rows of the tests')
 
     def report(progress: float, detail: str) -> None:
+        if requeue is not None and work_waiting is not None and progress < 97 and work_waiting():
+            raise _MapGivesWay()
         with _points_loss_guard:
             if key in _points_loss_jobs:
                 _points_loss_jobs[key].update(progress=max(0.0, min(99.0, float(progress))), detail=detail)
+    gave_way = False
     try:
         saved_filter = get_saved_filter(repository, filter_id, include_internal_snapshot=True)
         if saved_filter is None or not saved_filter.get('configuration'):
@@ -2082,9 +2162,14 @@ def complete_saved_filter_points_loss(repository: Repository, filter_id: int) ->
             sources = []
         _complete_points_loss(repository, saved_filter, filter_id, sources, dataset_ids, configuration, context_filters,
                               _scoring_engine(), saved_filter.get('methodology_groups') or [], report)
+    except _MapGivesWay:
+        gave_way = True
     finally:
-        with _points_loss_guard:
-            _points_loss_jobs.pop(key, None)
+        if not gave_way:
+            with _points_loss_guard:
+                _points_loss_jobs.pop(key, None)
+    if gave_way:
+        queue_points_loss(repository, filter_id, requeue, work_waiting)
 
 
 def points_loss_tasks(database_path: Any) -> list[dict[str, Any]]:
@@ -2123,11 +2208,23 @@ def is_saved_filter_work(task_callback: Any, task_args: tuple[Any, ...], filter_
 
 def _points_loss_of(repository: Repository, saved_filter: dict[str, Any], sources: list[dict[str, Any]],
                     configuration: dict[str, Any], context_filters: dict[str, list[str]], engine: Any,
-                    progress: Callable[[float, str], None] = lambda *_args: None) -> Any:
+                    progress: Callable[[float, str], None] = lambda *_args: None, *, cached_only: bool = False) -> Any:
     """The Points Lost Map of a Saved Filter with one methodology, from the rows of its tests.
 
-    ``progress`` (0-100 and the step) follows the CDRs read (the first 45%) and the groups of tests mapped.
+    ``progress`` (0-100 and the step) follows the CDRs read (the first 45%) and the groups of tests mapped. The map of
+    the same CDRs, methodology and options drawn before (by this Saved Filter or another one) is reused; with
+    ``cached_only``, only that one (None without it).
     """
+    from src.modules import scoring as scoring_engine
+    from src.modules import scoring_cache
+    key = (scoring_cache.key_of(_points_loss_inputs(repository, saved_filter, sources, configuration, context_filters))
+           if engine is scoring_engine else None)
+    cached = scoring_cache.read(repository, 'points-loss', key) if key is not None else None
+    if cached is not None:
+        progress(100, 'Reused the map of the same CDRs and methodology')
+        return cached
+    if cached_only:
+        return None
     for source in sources:
         source['levels'] = list(saved_filter['levels'])
     required_columns = getattr(engine, 'load_input_columns', None) or getattr(engine, 'required_input_columns')
@@ -2148,19 +2245,44 @@ def _points_loss_of(repository: Repository, saved_filter: dict[str, Any], source
         # Only the map: the scores are already saved.
         extra = ({'progress_callback': lambda share, step: progress(45 + share * 55, step)}
                  if 'progress_callback' in inspect.signature(engine.calculate_points_loss).parameters else {})
-        return engine.calculate_points_loss(
+        points_loss = engine.calculate_points_loss(
             frames, saved_filter['levels'], configuration=configuration,
             operator_mappings=options.get('operator_mappings'), map_areas=options.get('map_areas'), **extra)
-    return calculate(frames, saved_filter['levels'], **options)['points_loss']
+    else:
+        points_loss = calculate(frames, saved_filter['levels'], **options)['points_loss']
+    if key is not None:
+        points_loss = _serialize_result_value(points_loss)
+        scoring_cache.write(repository, 'points-loss', key, points_loss)
+    return points_loss
+
+
+def _points_loss_inputs(repository: Repository, saved_filter: dict[str, Any], sources: list[dict[str, Any]],
+                        configuration: dict[str, Any], context_filters: dict[str, list[str]]) -> dict[str, Any]:
+    """What the Points Lost Map of one methodology depends on: the revision of the CDRs it reads (and whether their tests
+    are placed in the Map Areas), the split, the methodology, the filters, the Operator Maps and the Map Areas."""
+    from src.modules import scoring as scoring_engine
+    from src.modules.map_area_columns import areas_version, current_datasets
+    read = _campaign_sources(sources, _normalize_context_filters(context_filters))
+    placed = current_datasets(repository, [int(source['metadata']['dataset_id']) for source in read])
+    return {
+        'kind': 'points-loss', 'method_version': scoring_engine.METHOD_VERSION,
+        'sources': sorted((json.dumps({**source['signature'], 'placed': int(source['metadata']['dataset_id']) in placed},
+                                      sort_keys=True, default=str) for source in read)),
+        'levels': list(saved_filter['levels']), 'configuration': configuration_hash(configuration),
+        'filters': _filters_key(context_filters), 'operator_mappings': saved_filter.get('operator_mappings', {}),
+        'map_areas': areas_version(repository),
+    }
 
 
 def _complete_points_loss(repository: Repository, saved_filter: dict[str, Any], filter_id: int, sources: list[dict[str, Any]],
                           dataset_ids: list[int], configuration: dict[str, Any],
                           context_filters: dict[str, list[str]], engine: Any,
                           groups: list[dict[str, Any]] | None = None,
-                          progress: Callable[[float, str], None] = lambda *_args: None) -> None:
+                          progress: Callable[[float, str], None] = lambda *_args: None, *,
+                          cached_only: bool = False) -> bool:
     """Read the rows of the tests and add the Points Lost Map to a result calculated from the Scoring History (By
-    campaign, the map of the campaigns of each methodology with it, each in its share of ``progress``)."""
+    campaign, the map of the campaigns of each methodology with it, each in its share of ``progress``). With
+    ``cached_only``, it is added only when every map was drawn before (see _points_loss_of); returns whether it was."""
     try:
         if groups and len(groups) > 1:
             from src.modules.scoring_methodologies import _merge_points_loss
@@ -2174,28 +2296,37 @@ def _complete_points_loss(repository: Repository, saved_filter: dict[str, Any], 
                 maps.append(_points_loss_of(repository, saved_filter, [dict(source) for source in sources],
                                             validate_scoring_configuration(group['configuration']),
                                             {**context_filters, 'Campaign': list(group['campaigns'])}, engine,
-                                            group_progress))
+                                            group_progress, cached_only=cached_only))
+                if maps[-1] is None:
+                    return False
             points_loss = _merge_points_loss(maps)
         else:
             points_loss = _points_loss_of(repository, saved_filter, sources, configuration, context_filters, engine,
-                                          lambda value, step: progress(value * 0.97, step))
+                                          lambda value, step: progress(value * 0.97, step), cached_only=cached_only)
+            if points_loss is None and cached_only:
+                return False
         progress(97, 'Adding the area boundaries')
         document = {'points_loss': points_loss}
         _attach_mapping_boundaries(repository, dataset_ids, document)
         progress(99, 'Saving the map')
+    except _MapGivesWay:
+        raise
     except Exception as exc:  # The scores stay; only the map is missing.
+        if cached_only:
+            return False
         document = {'points_loss': {'version': 2, 'error': str(exc)}}
     with repository.connection() as connection:
         row = connection.execute(f'SELECT status, result_json FROM {SAVED_FILTERS_TABLE} WHERE id = ?', (int(filter_id),)).fetchone()
     if row is None or row['status'] != 'completed' or not row['result_json']:
-        return
+        return False
     result = json.loads(row['result_json'])
     if not (isinstance(result.get('points_loss'), dict) and result['points_loss'].get('pending')):
-        return
+        return True
     result['points_loss'] = _serialize_result_value(document['points_loss'])
     _update_saved_filter(repository, filter_id, result_json=json.dumps(result, ensure_ascii=False, separators=(',', ':'),
                                                                    allow_nan=False),
                         message='Scoring tables, GAP analysis and Points Lost Map are ready')
+    return True
 
 
 def _save_scoring_result(repository: Repository, saved_filter: dict[str, Any], filter_id: int, dataset_ids: list[int],

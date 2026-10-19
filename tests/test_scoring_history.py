@@ -286,3 +286,84 @@ def test_the_points_lost_map_task_shows_its_progress_and_the_time_left(monkeypat
     # 40% in two minutes: about three more.
     assert task['progress'] == 40.0
     assert task['detail'] == 'Mapping the Voice tests: group 30 of 90 · about 3 min left'
+
+
+def test_saved_filters_reuse_the_points_lost_maps_and_trends_of_the_same_cdrs_and_methodology(history_repository, monkeypatch):
+    from src.modules import scoring_cache
+
+    repository, ids, _configuration = history_repository
+    scoring_history.sync_history(repository)
+    written = []
+    write = scoring_cache.write
+    monkeypatch.setattr(scoring_cache, 'write', lambda repo, kind, key, value: (written.append(kind), write(repo, kind, key, value)))
+    area = {'breakdown': 'Region', 'cities': ['London'], 'time_split': 'Campaign', 'campaigns': ['@all-campaigns']}
+
+    submitted = []
+
+    def calculated(**options):
+        saved, _cached = saved_filters.save_saved_filter(repository, ids, ['Operator', 'Campaign'], 'NSA', area_summary=area, **options)
+        written.clear()
+        submitted.clear()
+        result = saved_filters.calculate_saved_filter(repository, saved['id'], submitted.append)['result']
+        for job in submitted:
+            job()
+        return saved_filters.get_saved_filter(repository, saved['id'], include_result=True)['result'] if submitted else result
+
+    national = calculated()
+    assert sorted(written) == ['points-loss', 'trends'] and 'shares' in national['points_loss'] and len(submitted) == 1
+    # Another GAP reference: the same map (which does not depend on it), at once without a job of its own, and new trends.
+    other_reference = calculated(baseline_operator='Vodafone UK')
+    assert written == ['trends'] and submitted == [] and other_reference['points_loss'] == national['points_loss']
+    # A Region filter: the trends of the whole country, as those of the first one, and a map of its own.
+    north = calculated(context_filters={'Region': ['North']})
+    assert written == ['points-loss'] and north['area_summary'] == national['area_summary']
+    assert north['points_loss'] != national['points_loss']
+
+
+def test_rows_are_read_only_from_the_cdrs_of_the_chosen_campaigns():
+    sources = [{'metadata': {'campaigns': ['UK_Q2_2026']}}, {'metadata': {'campaigns': ['UK_Q3_2026']}}, {'metadata': {'campaigns': []}}]
+    assert saved_filters._campaign_sources(sources, {'Campaign': ['2026-Q3']}) == sources[1:]
+    assert saved_filters._campaign_sources(sources, {'Campaign': []}) == sources
+
+
+def test_a_running_job_sees_the_work_of_its_workspace_waiting_before_it():
+    from threading import Event
+    from src.modules.background_scheduler import BackgroundTaskScheduler
+
+    scheduler = BackgroundTaskScheduler(max_workers=1)
+    started, release, seen = Event(), Event(), []
+
+    def map_job():
+        started.set()
+        release.wait()
+        seen.append((scheduler.current_priority(), scheduler.has_waiting_before('w', scheduler.current_priority())))
+
+    done = scheduler.submit_ordered(map_job, workspace_key='w', priority=(5, 0, 0))
+    assert started.wait(5) and scheduler.current_priority() is None
+    later = scheduler.submit_ordered(lambda: None, workspace_key='w', priority=(5, 0, 0))
+    other_workspace = scheduler.submit_ordered(lambda: None, workspace_key='x', priority=(4, 0, 0))
+    calculation = scheduler.submit_ordered(lambda: None, workspace_key='w', priority=(4, 0, 0))
+    release.set()
+    for future in (done, later, other_workspace, calculation):
+        future.result(timeout=5)
+    scheduler.shutdown()
+    # Only the calculation of its own workspace waits before the map (not another map, nor another workspace).
+    assert seen == [((5, 0, 0), True)]
+
+
+def test_a_points_lost_map_gives_way_to_the_work_waiting_and_goes_on_later(history_repository):
+    repository, ids, _configuration = history_repository
+    scoring_history.sync_history(repository)
+    saved, _cached = saved_filters.save_saved_filter(repository, ids, ['Operator', 'Campaign'], 'NSA')
+    submitted, waiting = [], [True]
+    saved_filters.calculate_saved_filter(repository, saved['id'], submitted.append, lambda: waiting[0])
+    # Another calculation waits: the map gives way at its first step and is queued again, still pending.
+    submitted.pop()()
+    assert len(submitted) == 1 and saved_filters.points_loss_tasks(repository.db_path)[0]['status'] == 'queued'
+    result = saved_filters.get_saved_filter(repository, saved['id'], include_result=True)['result']
+    assert result['points_loss'] == {'version': 2, 'pending': True}
+    # Once nothing waits, it is drawn.
+    waiting[0] = False
+    submitted.pop()()
+    result = saved_filters.get_saved_filter(repository, saved['id'], include_result=True)['result']
+    assert 'shares' in result['points_loss'] and submitted == [] and saved_filters.points_loss_tasks(repository.db_path) == []

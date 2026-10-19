@@ -1,0 +1,27 @@
+{
+  "name": "All Campaigns - All Regions - All Operators - All Vendors - National & Area Summary by Campaigns",
+  "pinned": true,
+  "position": 5,
+  "nr_mode": "NSA",
+  "levels": [
+    "Operator",
+    "Campaign"
+  ],
+  "baseline_operator": "BT",
+  "context_filters": {
+    "Campaign": [
+      "@all-campaigns"
+    ]
+  },
+  "scoring_profile_id": "by-campaign",
+  "area_summary": {
+    "breakdown": "Region",
+    "cities": [],
+    "time_split": "Campaign",
+    "main_cities": true,
+    "campaigns": [
+      "@all-campaigns"
+    ]
+  },
+  "compared_operators": []
+}

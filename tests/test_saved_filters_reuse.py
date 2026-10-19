@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 import src.DriveTestAnalyzer as app_module
 from src.modules import saved_filters
 from src.modules.repository import Repository, local_now_iso
@@ -384,3 +386,62 @@ def test_saved_filters_travel_with_their_geographical_areas_and_compared_operato
     saved_filters.set_compared_operators(target, after['id'], ['3'])
     saved_filters.import_saved_filters(target, document)
     assert saved_filters.list_saved_filters(target)[0]['compared_operators'] == ['3']
+
+
+def test_favourites_filters_with_a_campaign_choice_take_the_cdrs_it_stands_for_in_each_workspace(tmp_path):
+    source = _workspace(tmp_path, 'source')
+    _three_cdrs(source, tmp_path / 'source')
+    used, _ = saved_filters.save_saved_filter(source, [], ['Operator'], 'NSA', context_filters={'Campaign': ['@latest-campaign']})
+    saved_filters.update_saved_filter(source, used['id'], name='Latest campaign', pinned=True)
+    document = json.loads(json.dumps(saved_filters.saved_filters_document(source, favourites_only=True)))
+    # Another workspace with other files: the Favourites Filter waits until it has CDRs of the campaign it stands for.
+    target = _workspace(tmp_path, 'target')
+    saved_filters.import_saved_filters(target, document)
+    assert saved_filters.list_saved_filters(target)[0]['dataset_ids'] == []
+    target_ids = [_add_cdr(target, tmp_path / 'target', kind, f'Other {kind}.xlsx', f'other {kind} file')
+                  for kind in ('data', 'voice', 'speech')]
+    [resolved] = saved_filters.list_saved_filters(target)
+    assert sorted(resolved['dataset_ids']) == sorted(target_ids) and resolved['name'] == 'Latest campaign' and resolved['pinned']
+    # The starter Favourites Filters have no CDRs: they wait for those of their Campaign choice.
+    entry = {key: value for key, value in document['saved_filters'][0].items() if key != 'cdrs'}
+    fresh = _workspace(tmp_path, 'fresh')
+    assert saved_filters.import_saved_filters(fresh, {**document, 'saved_filters': [entry]}) == 1
+    [waiting] = saved_filters.list_saved_filters(fresh)
+    assert waiting['dataset_ids'] == [] and waiting['missing_cdrs'] == ['Latest campaign CDRs']
+    fresh_ids = _three_cdrs(fresh, tmp_path / 'fresh')
+    assert sorted(saved_filters.list_saved_filters(fresh)[0]['dataset_ids']) == sorted(fresh_ids)
+    # Without a Campaign choice, a Saved Filter needs its CDRs.
+    with pytest.raises(ValueError, match='invalid'):
+        saved_filters.import_saved_filters(fresh, {**document, 'saved_filters': [{**entry, 'context_filters': {}}]})
+
+
+def test_favourites_filters_out_of_date_are_calculated_while_the_application_is_idle(client, tmp_path: Path, monkeypatch) -> None:
+    response = client.post('/login', data={'username': 'admin', 'password': 'admin123'}, follow_redirects=False)
+    assert response.status_code == 303
+    workspace = app_module.active_workspace
+    repository = Repository(workspace.database_path, global_db_path=app_module.repository.db_path,
+                            workspace_registry_db_path=app_module.workspace_registry.registry_path)
+    repository.initialize()
+    repository.replace_scoring_configuration(load_initial_scoring_configuration())
+    folder = tmp_path / 'cdrs'
+    folder.mkdir()
+    ids = _three_cdrs(repository, folder)
+    favourite, _ = saved_filters.save_saved_filter(repository, ids, ['Operator'], 'NSA')
+    saved_filters.update_saved_filter(repository, favourite['id'], name='Weekly view', pinned=True)
+    other, _ = saved_filters.save_saved_filter(repository, ids, ['Operator', 'Campaign'], 'NSA')
+    for item in (favourite, other):
+        saved_filters.calculate_saved_filter(repository, item['id'])
+    queued = []
+    monkeypatch.setattr(app_module, '_queue_saved_filter_calculation', lambda _repository, filter_id: queued.append(filter_id))
+    # Up to date: nothing is calculated.
+    app_module._calculate_favourites_filters_when_idle()
+    assert queued == []
+    # Out of date (here, an older calculation): the Favourites Filter is calculated again, not the others.
+    with repository.connection() as connection:
+        connection.execute("UPDATE saved_filters SET result_key = 'older' WHERE id IN (?, ?)", (favourite['id'], other['id']))
+    app_module._calculate_favourites_filters_when_idle()
+    assert queued == [favourite['id']]
+    [event] = [row for row in repository.list_logs(limit=20) if row['action'] == 'scoring_calculation_requested']
+    assert event['username'] == 'system' and '"idle": true' in event['details'] and 'Weekly view' in event['details']
+    assert ('_calculate_favourites_filters_when_idle' in
+            [callback.__name__ for _seconds, callback in app_module.IDLE_TASK_CALLBACKS])

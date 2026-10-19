@@ -18236,11 +18236,48 @@ SAVED_FILTER_PRIORITY_ORDER = itertools.count(1)
 
 def _queue_saved_filter_calculation(task_repository: Repository, filter_id: int) -> None:
     """Queue the calculation of a Saved Filter; its Points Lost Map follows as a job of its own, after the calculations
-    waiting, so they do not wait for it."""
+    waiting, and gives way to the work of the workspace queued before it while it is drawn (such as the calculation of
+    another Saved Filter), so they do not wait for it."""
+    scheduler = _dataset_processing_executor(task_repository)
+    workspace_key = str(task_repository.db_path.resolve())
+
     def submit_points_loss(callback: Callable[[], None]) -> None:
         _submit_workspace_job(task_repository, callback, phase=5)
         _prioritize_saved_filter(task_repository, filter_id, only_if_selected=True)
-    _submit_workspace_job(task_repository, calculate_saved_filter, task_repository, filter_id, submit_points_loss, phase=4)
+
+    def work_waiting() -> bool:
+        return scheduler.has_waiting_before(workspace_key, scheduler.current_priority() or workspace_dataset_job_priority(5, 0))
+    _submit_workspace_job(task_repository, calculate_saved_filter, task_repository, filter_id, submit_points_loss,
+                          work_waiting, phase=4)
+
+
+# While nobody uses the application, the Favourites Filters of the open workspace whose result no longer matches their
+# CDRs, methodology or Operator Maps (such as those of Latest campaign once a new campaign arrives), or that have none
+# yet, are calculated one after another with their Points Lost Maps, so they open at once.
+FAVOURITES_FILTERS_IDLE_SECONDS = 2 * 60
+
+
+def _calculate_favourites_filters_when_idle() -> None:
+    workspace = active_workspace
+    if not workspace:
+        return
+    task_repository = Repository(workspace.database_path, global_db_path=repository.global_db_path,
+                                 workspace_registry_db_path=workspace_registry.registry_path)
+    for saved_filter in list_saved_filters(task_repository):
+        if not saved_filter['pinned'] or saved_filter['status'] in ('queued', 'processing'):
+            continue
+        queued, _unavailable = refresh_saved_filter(task_repository, saved_filter['id'], 'system')
+        if queued:
+            _queue_saved_filter_calculation(task_repository, saved_filter['id'])
+            task_repository.try_add_log('system', 'scoring_calculation_requested', json.dumps({
+                'saved_filter_id': saved_filter['id'], 'starred': True, 'name': saved_filter['name'],
+                'datasets': len(saved_filter['dataset_ids']), 'nr_mode': saved_filter['nr_mode'], 'idle': True,
+            }))
+            # One at a time: the next one is queued once the application is idle again.
+            return
+
+
+register_idle_task(_calculate_favourites_filters_when_idle, FAVOURITES_FILTERS_IDLE_SECONDS)
 
 
 SELECTED_SAVED_FILTERS: dict[str, int] = {}
