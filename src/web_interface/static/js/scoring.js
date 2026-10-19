@@ -183,7 +183,8 @@
         showGapValues: stored.show_gap_values === true,
         gapLayout: ['end', 'adjacent'].includes(stored.gap_layout) ? stored.gap_layout : 'end',
         nrLayout: stored.nr_layout === 'grouped' ? 'grouped' : 'interleaved',
-        nrCharts: stored.nr_charts === 'same' ? 'same' : 'separate',
+        // NSA and SA share the charts by default (nr_charts of earlier versions kept the former default, separate).
+        nrCharts: stored.nr_charts_view === 'separate' ? 'separate' : 'same',
         gapComparisons: stored.gap_comparisons && typeof stored.gap_comparisons === 'object'
           && !Array.isArray(stored.gap_comparisons)
           ? Object.fromEntries(Object.entries(stored.gap_comparisons).filter(([, value]) => (
@@ -221,7 +222,7 @@
         show_gap_values: showGapValues(),
         gap_layout: selectedGapLayout(),
         nr_layout: typeof selectedNrLayout === 'undefined' ? 'interleaved' : selectedNrLayout,
-        nr_charts: typeof selectedNrCharts === 'undefined' ? 'separate' : selectedNrCharts,
+        nr_charts_view: typeof selectedNrCharts === 'undefined' ? 'same' : selectedNrCharts,
         gap_comparisons: typeof gapComparisonSelections === 'undefined'
           ? {} : Object.fromEntries(gapComparisonSelections),
         // Location, operators and analysis of the KPI GAP Profile and Points Lost Map, and the other insight selectors.
@@ -463,7 +464,7 @@
   let selectedScoring = restoredScoringViewState.scoring || 'best_network';
   let selectedNrLayout = restoredScoringViewState.nrLayout || 'interleaved';
   if (nrLayoutSelect) nrLayoutSelect.value = selectedNrLayout;
-  let selectedNrCharts = restoredScoringViewState.nrCharts || 'separate';
+  let selectedNrCharts = restoredScoringViewState.nrCharts || 'same';
   if (nrChartsSelect) nrChartsSelect.value = selectedNrCharts;
   let currentEffectiveEnvironment = null;
   let environmentDefaultSavedFilterId = null;
@@ -10251,7 +10252,7 @@
     if ([environmentSelect, scoringKindSelect, showKpiValuesToggle, showGapValuesToggle, gapLayoutSelect, nrLayoutSelect, nrChartsSelect].includes(event.target)) {
       if (event.target === environmentSelect) selectedEnvironment = environmentSelect.value;
       if (event.target === nrLayoutSelect) selectedNrLayout = nrLayoutSelect.value === 'grouped' ? 'grouped' : 'interleaved';
-      if (event.target === nrChartsSelect) selectedNrCharts = nrChartsSelect.value === 'same' ? 'same' : 'separate';
+      if (event.target === nrChartsSelect) selectedNrCharts = nrChartsSelect.value === 'separate' ? 'separate' : 'same';
       if (event.target === scoringKindSelect) selectedScoring = scoringKindSelect.value === 'most_reliable' ? 'most_reliable' : 'best_network';
       persistScoringViewState();
     }
