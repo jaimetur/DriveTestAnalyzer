@@ -68,10 +68,13 @@ const isActive = savedFilter => savedFilter.status === 'processing';
 const progressValue = () => 40;
 const deletingSavedFilterIds = new Set();
 const syncSavedFiltersBulk = () => {};
-let selectionUnmatched = false;
+let selectionUnmatched = false, scoringClosed = false;
+const closeScoringButton = {disabled: true};
 ''' + _function_source(script, 'savedFilterTrendCampaigns') + _function_source(script, 'savedFilterAreaSummaryParts') + _function_source(script, 'savedFilterTimeSplit') + _function_source(script, 'savedFilterDurationText') + _function_source(script, 'syncSavedFilterLists') + _function_source(script, 'renderSavedFilters') + _function_source(script, 'unmatchedSelectionNotice') + r'''
 renderSavedFilters();
 const latest = selectedSavedFilterCard.textContent;
+// Close Scoring closes the Saved Filter shown.
+const closeEnabled = !closeScoringButton.disabled;
 const cards = savedFilterList.children.map(row => ({id: row.children[0].dataset.savedFilterId,
   selected: row.children[0].attributes['aria-current'], deleteId: row.children[1].children.at(-1).dataset.deleteSavedFilterId}));
 const separateCopy = selectedSavedFilterCard.children[0] !== savedFilterList.children[0].children[0].children[0];
@@ -96,9 +99,14 @@ selectionUnmatched = true;
 renderSavedFilters();
 const unmatchedCard = selectedSavedFilterCard.textContent;
 selectionUnmatched = false;
+// Closed, no scoring is open: the card says so and Close Scoring is disabled.
+scoringClosed = true;
+renderSavedFilters();
+const closed = {card: selectedSavedFilterCard.textContent, closeDisabled: closeScoringButton.disabled};
+scoringClosed = false;
 savedFilters.length = 0;
 renderSavedFilters();
-process.stdout.write(JSON.stringify({latest, earlier, cards, separateCopy, historyMatches, historyCounts, unstarred, unmatchedCard,
+process.stdout.write(JSON.stringify({latest, earlier, cards, separateCopy, historyMatches, historyCounts, unstarred, unmatchedCard, closeEnabled, closed,
   emptyHistory: historyList.textContent, empty: selectedSavedFilterCard.textContent}));
 '''
     result = _run_node_json(program, {})
@@ -117,6 +125,8 @@ process.stdout.write(JSON.stringify({latest, earlier, cards, separateCopy, histo
     assert result['unstarred']['counts'] == ['1 filter', '1 filter']
     assert "No Saved Filter matches the Calculation panel's filters" in result['unmatchedCard']
     assert 'Calculate Scoring' in result['unmatchedCard'] and 'Earlier savedFilter' not in result['unmatchedCard']
+    assert result['closeEnabled'] is True
+    assert result['closed']['card'].startswith('No scoring is open') and result['closed']['closeDisabled'] is True
     assert 'No Favourites Filters yet' in result['emptyHistory']
     assert result['empty'] == 'No Saved Filters yet'
 
@@ -137,8 +147,9 @@ const root = {querySelector: () => ({scrollIntoView: () => {focused = true;}})};
 const savedFilterSelector = {open: true, contains: () => LIST_INDEX === 0, querySelector: () => ({focus: () => {focused = true;}})};
 const persistScoringViewState = () => {persisted = true;};
 const restoreCalculationSelectionFromSavedFilter = savedFilter => {restored = savedFilter.id;};
-let unmatched = true;
+let unmatched = true, reopened = false;
 const showUnmatchedSelection = value => {unmatched = value;};
+const reopenScoring = () => {reopened = true;};
 let editingSavedFilter = null;
 const stopSavedFilterEdit = () => { editingSavedFilter = null; };
 const loadSavedFilter = async (savedFilter, force) => {loaded = {id: savedFilter.id, force};};
@@ -152,7 +163,7 @@ const refreshSavedFilters = async () => { refreshed += 1; };
 (async () => {
   await handler({target: {closest: selector => selector === '[data-saved-filter-id]' ? {dataset: {savedFilterId: '15'}} : null}});
   const selection = {loaded, persisted, focused, open: savedFilterSelector.open, selectedSavedFilterId, userSelectedSavedFilter, restored,
-    unmatched};
+    unmatched, reopened};
   loaded = null;
   await handler({target: {closest: selector => selector === '[data-delete-saved-filter-id]' ? {dataset: {deleteSavedFilterId: '20'}} : null}});
   await new Promise(resolve => setTimeout(resolve));
@@ -163,8 +174,8 @@ const refreshSavedFilters = async () => { refreshed += 1; };
     assert result['selection'] == {
         'loaded': {'id': '15', 'force': True}, 'persisted': True, 'focused': True,
         'open': False, 'selectedSavedFilterId': '15', 'userSelectedSavedFilter': True, 'restored': '15',
-        # Opened, its selection is a Saved Filter again: its card and results show.
-        'unmatched': False,
+        # Opened, its selection is a Saved Filter again: its card and results show, also after Close Scoring.
+        'unmatched': False, 'reopened': True,
     }
     assert result['deleted'] == '20' and result['loaded'] is None
     # Opening it from its card counts as a use.

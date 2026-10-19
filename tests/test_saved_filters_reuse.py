@@ -268,6 +268,28 @@ def test_duplicate_saved_filter_endpoint_is_recorded_and_calculates_the_copy(cli
     assert queued == [12]
 
 
+def test_opening_and_closing_a_saved_filter_are_recorded_in_app_events(client, monkeypatch):
+    client.post('/login', data={'username': 'super', 'password': 'super123'}, follow_redirects=False)
+    repository = app_module.repository
+    record = {'id': 9, 'name': 'Q3 London', 'pinned': True, 'status': 'completed', 'use_count': 4}
+    monkeypatch.setattr(app_module, 'mark_saved_filter_used', lambda _repository, filter_id: record if filter_id == 9 else None)
+    monkeypatch.setattr(app_module, 'get_saved_filter', lambda _repository, filter_id: record if filter_id == 9 else None)
+    monkeypatch.setattr(app_module, 'prune_unpinned_saved_filters', lambda *_args: None)
+
+    assert client.post('/api/scoring/saved-filters/9/use').status_code == 200
+    assert client.post('/api/scoring/saved-filters/9/close').json() == {'closed': 9}
+    # Closing one deleted meanwhile is recorded too.
+    assert client.post('/api/scoring/saved-filters/5/close').status_code == 200
+
+    events = {row['action']: [] for row in repository.list_logs(limit=20)}
+    for row in repository.list_logs(limit=20):
+        events[row['action']].append(json.loads(row['details']))
+    assert events['open_saved_filter'] == [{'saved_filter_id': 9, 'name': 'Q3 London', 'starred': True,
+                                            'status': 'completed', 'use_count': 4}]
+    assert {'saved_filter_id': 9, 'name': 'Q3 London', 'starred': True, 'found': True} in events['close_saved_filter']
+    assert {'saved_filter_id': 5, 'name': '', 'starred': False, 'found': False} in events['close_saved_filter']
+
+
 def test_favourites_filters_travel_with_their_own_backup_element(client, tmp_path: Path) -> None:
     response = client.post('/login', data={'username': 'admin', 'password': 'admin123'}, follow_redirects=False)
     assert response.status_code == 303

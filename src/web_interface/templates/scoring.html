@@ -135,6 +135,8 @@
   .scoring-actions .scoring-edit-save:disabled { box-shadow: none; }
   .scoring-actions .scoring-edit-cancel { border: 1px solid #9fb9dd; background: #fff; color: #274a77; box-shadow: none; }
   .scoring-actions .scoring-edit-cancel:hover { background: #eef4fc; }
+  .scoring-actions .scoring-close-button { border: 1px solid #b9c5cf; background: #fff; color: #3d4f5c; box-shadow: none; }
+  .scoring-actions .scoring-close-button:hover:not(:disabled) { background: #f1f5f8; border-color: #8fa3b3; }
   .scoring-methodology-actions .scoring-actions button[hidden] { display: none; }
   .scoring-note { min-height: 1.2rem; margin: 0; color: var(--muted); font-size: .82rem; }
   .scoring-note[data-kind="error"] { color: var(--danger); font-weight: 650; }
@@ -1402,6 +1404,7 @@
       <div class="scoring-actions">
         <button type="button" data-calculate-scoring disabled><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="4" y="1" width="12" height="18" rx="2"/><path d="M7 4h6v3H7zM7 11h1m4 0h1m-6 4h1m4 0h1"/></svg><span>Calculate Scoring</span></button>
         <button type="button" class="scoring-force-button" data-recalculate-scoring disabled><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M16 7a7 7 0 0 0-12-2L2 7m0-5v5h5M4 13a7 7 0 0 0 12 2l2-2m0 5v-5h-5"/></svg><span>Recalculate</span></button>
+        <button type="button" class="scoring-close-button" data-close-scoring disabled title="Close the scoring shown in Scoring &amp; GAP Results (its Saved Filter stays)"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="2.5" y="3" width="15" height="14" rx="2"/><path d="M7.5 8l5 5M12.5 8l-5 5"/></svg><span>Close Scoring</span></button>
         <button type="button" class="scoring-edit-cancel" data-saved-filter-edit-cancel hidden><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5.5 5.5l9 9M14.5 5.5l-9 9"/></svg><span>Cancel Editing</span></button>
         <button type="button" class="scoring-edit-save" data-saved-filter-edit-save hidden><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 10.5l4 4 8-9"/></svg><span>Save Changes</span></button>
       </div>

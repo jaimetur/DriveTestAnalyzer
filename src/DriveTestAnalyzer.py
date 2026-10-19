@@ -18313,8 +18313,24 @@ def scoring_saved_filters_use(filter_id: int, user: SessionUser = Depends(curren
     saved_filter = mark_saved_filter_used(task_repository, filter_id)
     if saved_filter is None:
         raise HTTPException(status_code=404, detail='Saved Filter not found.')
+    task_repository.try_add_log(user.username, 'open_saved_filter', json.dumps({
+        'saved_filter_id': filter_id, 'name': saved_filter.get('name') or '', 'starred': bool(saved_filter.get('pinned')),
+        'status': saved_filter.get('status'), 'use_count': saved_filter.get('use_count'),
+    }, ensure_ascii=False))
     prune_unpinned_saved_filters(task_repository, filter_id, user.username)
     return {'saved_filter': saved_filter}
+
+
+@app.post('/api/scoring/saved-filters/{filter_id}/close')
+def scoring_saved_filters_close(filter_id: int, user: SessionUser = Depends(current_user)) -> dict[str, Any]:
+    """Record that Close Scoring closed the scoring of a Saved Filter in Scoring & GAP Results (it stays saved)."""
+    task_repository = scoring_repository(user)
+    saved_filter = get_saved_filter(task_repository, filter_id)
+    task_repository.try_add_log(user.username, 'close_saved_filter', json.dumps({
+        'saved_filter_id': filter_id, 'name': (saved_filter or {}).get('name') or '',
+        'starred': bool((saved_filter or {}).get('pinned')), 'found': saved_filter is not None,
+    }, ensure_ascii=False))
+    return {'closed': filter_id}
 
 
 class UseNewerCdrsRequest(BaseModel):
