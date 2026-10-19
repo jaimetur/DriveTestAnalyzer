@@ -101,6 +101,8 @@ def test_the_operator_maps_editor_saves_the_role_of_each_label(client):
     operators = page[page.index('id="operator-maps"'):page.index('id="vendor-maps"')]
     vendors = page[page.index('id="vendor-maps"'):page.index('id="campaign-maps"')]
     assert 'mapping-role-column' in operators and 'mapping-role-column' not in vendors
+    # A note above the labels explains what each Role does.
+    assert 'data-mapping-role-help' in operators and 'data-mapping-role-help' not in vendors
     assert '<option value="focus" selected>Focus</option>' in operators
     # A label with neither role shows Include.
     assert '<option value="" selected>Include</option>' in operators and '>None</option>' not in operators

@@ -4916,6 +4916,13 @@ body:has(dialog.vendor-mapping-dialog[open]) { overflow: hidden; }
 /* The Role of the label of each name of the CDRs (read only), in the colours of the Role of subpanel 2. */
 .mapping-role-badge { display: inline-block; padding: .15rem .55rem; border: 1px solid; border-radius: 999px; font-size: .8rem; font-weight: 800; white-space: nowrap; }
 .mapping-role-badge[hidden] { display: none; }
+/* What each Role does, above the Operator labels. */
+.mapping-role-help { margin: 0 0 .9rem; padding: .75rem 1rem; border: 1px solid rgba(11, 102, 100, .2); border-radius: .75rem; background: #f6fbfa; color: var(--muted); font-size: .88rem; line-height: 1.45; }
+.mapping-role-help > strong { display: block; margin-bottom: .35rem; color: var(--text, #1d2f3a); }
+.mapping-role-help ul { display: grid; gap: .45rem; margin: 0; padding: 0; list-style: none; }
+.mapping-role-help li { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr); gap: .6rem; align-items: start; }
+.mapping-role-help .mapping-role-badge { justify-self: start; }
+@media (max-width: 640px) { .mapping-role-help li { grid-template-columns: minmax(0, 1fr); gap: .25rem; } }
 .mapping-role-badge.is-include { border-color: #c79a1e; background: #fffbea; color: #7a5a00; }
 .mapping-role-badge.is-focus { border-color: #2f855a; background: #f0fff4; color: #22543d; }
 .mapping-role-badge.is-exclude { border-color: #c53030; background: #fff5f5; color: #9b2c2c; }

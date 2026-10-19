@@ -58,6 +58,16 @@
 <details class="mapping-subpanel mapping-labels-view" open data-panel-state-key="workspace-config:{{ kind }}-labels">
   {{ mapping_subpanel_summary(2, title ~ ' labels', 'The labels shown for the ' ~ title ~ 's: their order and colour in charts, and the possible names each label can appear with in different CDRs from different campaigns.') }}
   <div class="mapping-subpanel-body">
+  {% if kind == 'operator' %}
+  <div class="mapping-role-help" data-mapping-role-help>
+    <strong>Role of each label</strong>
+    <ul>
+      <li><span class="mapping-role-badge is-include">Include</span> The default: the operator is analysed and reported as usual.</li>
+      <li><span class="mapping-role-badge is-focus">Focus</span> The operators the Scoring &amp; GAP Analysis PowerPoint and Word focus on: Where to act (with its performance owners, places and route), the locations ranked and per location, the individual GAP comparisons against the reference, GAP by part, the KPI GAP Profile and the Points Lost views (per KPI, maps, per Vendor, per kind of site, sites to review and route stretches) show only the Focus operators, while the other slides and the web page show every operator (on the page, the Focus operators come first and are chosen by default in those sections). Without any Focus operator, every operator is shown.</li>
+      <li><span class="mapping-role-badge is-exclude">Exclude</span> The operator is left out of every analysis, filter, chart and report of the workspace, as if every Operator filter left it out (for example an MVNO that is not benchmarked). At least one label always stays included.</li>
+    </ul>
+  </div>
+  {% endif %}
   <p class="form-note">Highlighted names appear in the current CDRs (with how many); grey ones are names of other campaigns. Remove a name with ×, or add one with +: a name of another label moves to this one.</p>
   <div class="table-wrap operator-mappings-table-wrap">
     <table class="operator-mappings-table">
