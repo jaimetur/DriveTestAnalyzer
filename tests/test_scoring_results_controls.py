@@ -1916,6 +1916,46 @@ process.stdout.write(JSON.stringify([campaignComparisonRows(comparison, 0, 2), c
     # A KPI without points in one of the campaigns has no Δ and goes last.
     assert [(row['kpi_code'], row['delta']) for row in second['rows']] == [('a', -3), ('b', None)]
     assert second['total_delta'] == -3
+    assert first['changed_categories'] == second['changed_categories'] == []
+
+
+@pytest.mark.skipif(not shutil.which('node'), reason='Node.js is required')
+def test_campaign_comparison_compares_a_category_whose_methodology_changed_as_a_whole():
+    script = SCORING_SCRIPT.read_text(encoding='utf-8')
+    render = _function_source(script, 'renderCampaignComparisons')
+    assert "`${row.kpi} · methodology changed`" in render and 'campaignComparisonNote(comparison)' in render
+    # As comparison_rows of scoring_insights (ticket #5): 26-Q3 shares the Video Stream points of YouTube with TikTok.
+    program = _function_source(script, 'campaignComparisonRows') + _function_source(script, 'campaignComparisonNote') + r'''
+const kpi = (kpi_code, category, service, before, after, max_points) => ({kpi_code, kpi: kpi_code, category, service,
+  max_points, values: [before && {value: 1, points: before}, after && {value: 1, points: after}]});
+const comparison = {campaigns: ['26-Q2', '26-Q3'], methodologies: ['NetCheck 2026', 'NetCheck 2026-Q3'], kpis: [
+  kpi('K28', 'VIDEO STREAM', 'Data', 79.86, 52.04, [83.2, 54.08]),
+  kpi('K33', 'VIDEO STREAM', 'Data', null, 28.54, [null, 29.12]),
+  kpi('K1', 'CLASSIC CALLS', 'Voice', 108.84, 110.33, [113, 113]),
+  kpi('K7', 'WHATSAPP CALLS', 'Voice', null, 80, [86, 86]),
+]};
+const rows = campaignComparisonRows(comparison, 0, 1);
+const note = campaignComparisonNote({previous_campaign: '26-Q2', latest_campaign: '26-Q3',
+  previous_methodology: 'NetCheck 2026', latest_methodology: 'NetCheck 2026-Q3', ...rows});
+process.stdout.write(JSON.stringify([rows, note, campaignComparisonRows({...comparison,
+  kpis: comparison.kpis.map(({max_points, ...item}) => item)}, 0, 1)]));
+'''
+    rows, note, without_maxima = json.loads(subprocess.run(['node', '-e', program], capture_output=True, text=True,
+                                                           check=True).stdout)
+    assert [(row['kind'], row.get('kpi_code') or row['kpi'], row['delta'], row.get('in_category', False))
+            for row in rows['rows']] == [
+        ('category', 'VIDEO STREAM', pytest.approx(52.04 + 28.54 - 79.86), False),
+        ('kpi', 'K28', None, True), ('kpi', 'K33', None, True),
+        ('kpi', 'K1', pytest.approx(110.33 - 108.84), False), ('kpi', 'K7', None, False)]
+    assert rows['rows'][0]['previous_points'] == pytest.approx(79.86)
+    assert rows['rows'][0]['latest_points'] == pytest.approx(52.04 + 28.54)
+    assert rows['changed_categories'] == ['VIDEO STREAM']
+    assert rows['total_delta'] == pytest.approx(52.04 + 28.54 - 79.86 + 110.33 - 108.84)
+    assert note == ('VIDEO STREAM: the methodology changed between 26-Q2 (NetCheck 2026) and 26-Q3 (NetCheck 2026-Q3), '
+                    'so the category is compared as a whole and its KPIs have no Δ of their own.')
+    # Without the maximum points of each campaign (as saved before), every KPI is compared on its own.
+    assert without_maxima['changed_categories'] == []
+    assert [row['kpi_code'] for row in without_maxima['rows']] == ['K28', 'K1', 'K33', 'K7']
 
 
 @pytest.mark.skipif(not shutil.which('node'), reason='Node.js is required')

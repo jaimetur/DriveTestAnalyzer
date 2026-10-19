@@ -108,6 +108,141 @@ def test_campaign_comparison_keeps_every_campaign_to_compare_any_two():
         before, after = kpi['values'][-2], kpi['values'][-1]
         if before and after:
             assert latest[kpi['kpi_code']] == pytest.approx(after['points'] - before['points'])
+    # One methodology for every campaign: no category changed, and every KPI is compared on its own.
+    assert comparison['changed_categories'] == []
+    assert {row['kind'] for row in comparison['rows']} == {'kpi'}
+
+
+def _video_kpis():
+    """The KPIs of ticket #5: 26-Q3 splits the Video Stream points of YouTube with the new TikTok KPIs."""
+    def kpi(code, name, category, service, before, after, maxima):
+        return {'kpi_code': code, 'kpi': name, 'category': category, 'service': service, 'max_points': maxima,
+                'values': [None if before is None else {'value': before[0], 'points': before[1]},
+                           None if after is None else {'value': after[0], 'points': after[1]}]}
+    return [
+        kpi('K28', 'YOUTUBE SUCCESS RATIO', 'VIDEO STREAM', 'Data', (99.70, 79.86), (99.72, 52.04), [83.2, 54.08]),
+        kpi('K30', 'YOUTUBE IRRITATING EXPERIENCE', 'VIDEO STREAM', 'Data', (0.23, 40.85), (0.71, 25.51), [41.6, 27.04]),
+        kpi('K33', 'TIK TOK SUCCESS RATIO', 'VIDEO STREAM', 'Data', None, (99.85, 28.54), [None, 29.12]),
+        kpi('K35', 'TIK TOK IRRITATING EXPERIENCE', 'VIDEO STREAM', 'Data', None, (0.15, 14.39), [None, 14.56]),
+        kpi('K1', 'CALL SUCCESS RATIO', 'CLASSIC CALLS', 'Voice', (99.63, 108.84), (99.76, 110.33), [113.0, 113.0]),
+        kpi('K2', 'CALL SETUP TIME', 'CLASSIC CALLS', 'Voice', (1.91, 12.57), (1.95, 12.50), [13.0, 13.0]),
+        # Measured in the latest campaign only, with the same methodology: no Δ, as before.
+        kpi('K7', 'WHATSAPP CALL SUCCESS RATIO', 'WHATSAPP CALLS', 'Voice', None, (99.0, 80.0), [86.0, 86.0]),
+    ]
+
+
+def test_campaign_comparison_compares_a_category_whose_methodology_changed_as_a_whole():
+    from src.modules.scoring_insights import comparison_rows
+    compared = comparison_rows(_video_kpis(), 0, 1)
+    rows = compared['rows']
+    assert compared['changed_categories'] == ['VIDEO STREAM']
+    # The category row (YouTube and TikTok together) and its KPIs, which have no Δ of their own.
+    category = next(index for index, row in enumerate(rows) if row['kind'] == 'category')
+    video = rows[category]
+    assert (video['kpi'], video['service']) == ('VIDEO STREAM', 'Data')
+    assert video['previous_points'] == pytest.approx(79.86 + 40.85)
+    assert video['latest_points'] == pytest.approx(52.04 + 25.51 + 28.54 + 14.39)
+    assert video['delta'] == pytest.approx(video['latest_points'] - video['previous_points'])
+    members = rows[category + 1:category + 5]
+    assert [row['kpi_code'] for row in members] == ['K28', 'K30', 'K33', 'K35']
+    assert all(row['in_category'] and row['delta'] is None for row in members)
+    assert members[0]['previous_points'] == 79.86 and members[2]['previous_points'] is None
+    # The other categories are compared KPI by KPI, from the largest loss; the KPI without a Δ goes last.
+    deltas = [(row.get('kpi_code') or row['kpi'], row['delta']) for row in rows if not row.get('in_category')]
+    assert [code for code, _delta in deltas] == ['VIDEO STREAM', 'K2', 'K1', 'K7']
+    assert deltas[-1][1] is None
+    # The Scoring Points Gap adds up the Δ shown: the change of the whole score but for the KPI measured once.
+    assert compared['total_delta'] == pytest.approx(sum(delta for _code, delta in deltas if delta is not None))
+    assert compared['total_delta'] == pytest.approx(video['delta'] + (110.33 - 108.84) + (12.50 - 12.57))
+    # Compared the other way round, the category still is.
+    assert comparison_rows(_video_kpis(), 1, 0)['changed_categories'] == ['VIDEO STREAM']
+
+
+def test_campaign_comparison_without_maximum_points_compares_every_kpi_on_its_own():
+    from src.modules.scoring_insights import comparison_rows
+    kpis = [{key: value for key, value in kpi.items() if key != 'max_points'} for kpi in _video_kpis()]
+    compared = comparison_rows(kpis, 0, 1)
+    assert compared['changed_categories'] == []
+    assert {row['kind'] for row in compared['rows']} == {'kpi'}
+    assert compared['total_delta'] == pytest.approx(sum(row['delta'] for row in compared['rows'] if row['delta'] is not None))
+
+
+def test_campaign_comparison_names_the_methodologies_of_a_result_by_campaign():
+    import copy
+
+    from src.modules import scoring
+    from src.modules.saved_filters import AGGREGATION_CONTRACT_VERSION
+    from src.modules.scoring_config import validate_scoring_profiles
+    from src.modules.scoring_insights import comparison_note
+    from src.modules.scoring_methodologies import merge_results, methodology_groups
+    from tests.scoring_fixtures import scoring_configuration
+    from tests.test_scoring_history import _rows
+
+    first = scoring_configuration()
+    # The later methodology gives 35% of the YouTube success points to a TikTok KPI of the same category.
+    second = copy.deepcopy(first)
+    youtube = next(metric for metric in second['metrics'] if metric['code'] == 'K28')
+    tiktok = copy.deepcopy(youtube)
+    tiktok.update({'code': 'K33', 'kpi': 'TIK TOK VIDEO STREAMING SUCCESS RATIO [%]'})
+    for name, context in youtube['contexts'].items():
+        tiktok['contexts'][name]['max_points'] = context['max_points'] * .35
+        context['max_points'] *= .65
+    second['metrics'].append(tiktok)
+    profiles = validate_scoring_profiles({'active_profile_id': 'netcheck-2026', 'profiles': [
+        {'id': 'netcheck-2026', 'name': 'NetCheck 2026', 'configuration': first, 'campaigns': {'to': '2026-Q2'}},
+        {'id': 'netcheck-2026-q3', 'name': 'NetCheck 2026-Q3', 'configuration': second, 'campaigns': {'from': '2026-Q3'}},
+    ]})
+    parts = []
+    for (group, campaign), seed in zip(zip(methodology_groups(profiles, ['2026-Q2', '2026-Q3']), ('2026-Q2', '2026-Q3')),
+                                       (3, 5)):
+        frames = {kind: _rows(kind, seed).assign(Campaign=campaign) for kind in ('data', 'voice', 'speech')}
+        parts.append((group, scoring.calculate_scoring(frames, ['Operator', 'Campaign'], baseline_operator='EE',
+                                                       configuration=group['configuration'])))
+    views = build_scoring_views({'levels': ['Operator', 'Campaign'],
+                                 'aggregation_contract_version': AGGREGATION_CONTRACT_VERSION}, merge_results(parts))
+    comparison = next(item for item in _combined(views['insights']['campaign_comparisons']) if item['operator'] == 'EE')
+    assert comparison['methodologies'] == ['NetCheck 2026', 'NetCheck 2026-Q3']
+    assert (comparison['previous_methodology'], comparison['latest_methodology']) == ('NetCheck 2026', 'NetCheck 2026-Q3')
+    assert comparison['changed_categories'] == ['VIDEO STREAM']
+    video = next(row for row in comparison['rows'] if row['kind'] == 'category')
+    kpis = {kpi['kpi_code']: kpi for kpi in comparison['kpis']}
+    assert kpis['K33']['max_points'][0] is None and kpis['K33']['max_points'][1] > 0
+    assert kpis['K28']['max_points'][1] == pytest.approx(kpis['K28']['max_points'][0] * .65)
+    assert video['latest_points'] == pytest.approx(sum(
+        kpis[code]['values'][1]['points'] for code in ('K28', 'K29', 'K30', 'K33') if kpis[code]['values'][1]))
+    # Every KPI measured in both campaigns: the gap is the change of the whole score, TikTok included.
+    assert comparison['total_delta'] == pytest.approx(
+        sum(kpi['values'][1]['points'] for kpi in comparison['kpis'] if kpi['values'][1])
+        - sum(kpi['values'][0]['points'] for kpi in comparison['kpis'] if kpi['values'][0]))
+    assert comparison_note(comparison) == (
+        'VIDEO STREAM: the methodology changed between 2026-Q2 (NetCheck 2026) and 2026-Q3 (NetCheck 2026-Q3), so the '
+        'category is compared as a whole and its KPIs have no Δ of their own.')
+
+
+def test_campaign_comparison_slides_show_a_category_whose_methodology_changed():
+    from pptx.util import Inches
+
+    from src.modules.scoring_insight_slides import add_campaign_comparison_slides
+    from src.modules.scoring_insights import comparison_rows
+    presentation = Presentation(TEMPLATE)
+    comparison = {'operator': 'EE', 'label': 'EE', 'color': '#009A9A', 'title': '',
+                  'previous_campaign': '26-Q2', 'latest_campaign': '26-Q3',
+                  'previous_methodology': 'NetCheck 2026', 'latest_methodology': 'NetCheck 2026-Q3',
+                  **comparison_rows(_video_kpis(), 0, 1)}
+
+    def new_slide(presentation, _title, _subtitle):
+        slide = presentation.slides.add_slide(presentation.slide_layouts[-1])
+        slide.shapes.add_textbox(Inches(0), Inches(0), Inches(1), Inches(1))
+        return slide
+    add_campaign_comparison_slides(presentation, [comparison], scoring_label='Best Network', subtitle='', new_slide=new_slide)
+    table = next(shape.table for shape in presentation.slides[-1].shapes if shape.name == 'Scoring Campaign Comparison Table')
+    lines = [[cell.text for cell in row.cells] for row in table.rows]
+    video = next(line for line in lines if line[1] == 'VIDEO STREAM · methodology changed')
+    delta = next(row['delta'] for row in comparison['rows'] if row['kind'] == 'category')
+    assert video[2].strip() == video[4].strip() == '' and video[6] == f'{delta:,.2f}'
+    assert next(line for line in lines if line[1] == 'TIK TOK SUCCESS RATIO')[6] == '—'
+    assert lines[-2][-1] == f"{comparison['total_delta']:+,.2f}"
+    assert lines[-1][0].startswith('VIDEO STREAM: the methodology changed between 26-Q2 (NetCheck 2026) and 26-Q3')
 
 
 def test_kpi_gap_profiles_rank_points_lost_and_reference_gaps():

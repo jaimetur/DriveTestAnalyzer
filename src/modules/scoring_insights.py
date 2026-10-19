@@ -40,13 +40,14 @@ def build_scoring_insights(score_tables: list[dict[str, Any]], configuration: di
     formulas = {str(metric.get('code')): str((metric.get('calculation') or {}).get('formula') or '')
                 for metric in configuration.get('metrics', [])}
     cities = ((((result or {}).get('points_loss') or {}).get('areas') or {}).get('City') or {})
+    methodology_names = _methodology_names(result)
     for environment in environments:
         summaries = {scope: _scope_summary(tables, environment) for scope, tables in scopes.items()}
         summaries = {scope: summary for scope, summary in summaries.items() if summary is not None}
         insights['location_cards'].extend(_national_cards(summaries, levels, environment) if national_cards
                                           else _location_cards(summaries, levels, environment, location_minimum))
         insights['campaign_trends'].extend(_campaign_trends(summaries, levels, environment))
-        insights['campaign_comparisons'].extend(_campaign_comparisons(scopes, levels, environment))
+        insights['campaign_comparisons'].extend(_campaign_comparisons(scopes, levels, environment, methodology_names))
         insights['kpi_gap_profiles'].extend(_kpi_gap_profiles(scopes, environment))
         insights['standings'].extend(_standings(scopes, levels, environment))
         insights['position_matrices'].extend(_position_matrices(scopes, levels, environment))
@@ -327,10 +328,20 @@ def _campaign_trends(summaries: dict[tuple, dict[str, Any]], levels: list[str], 
     return trends
 
 
+def _methodology_names(result: dict[str, Any] | None) -> dict[str, str]:
+    """The methodology each campaign of a result By campaign was scored with, by campaign (as stored and as shown)."""
+    names: dict[str, str] = {}
+    for group in (result or {}).get('methodology_groups') or []:
+        for campaign in group.get('campaigns') or []:
+            names[str(campaign)] = names[_display('Campaign', campaign)] = str(group.get('profile_name') or '')
+    return names
+
+
 def _campaign_comparisons(scopes: dict[tuple, dict[str, dict[str, Any]]], levels: list[str],
-                          environment: str) -> list[dict[str, Any]]:
-    """Each operator's KPI points in the two latest campaigns of every group, latest minus previous, plus the KPI
-    values and points of every campaign of the group (campaigns and kpis) so any two of them can be compared."""
+                          environment: str, methodology_names: dict[str, str] | None = None) -> list[dict[str, Any]]:
+    """Each operator's KPI points in the two latest campaigns of every group, latest minus previous (see
+    comparison_rows), plus the KPI values, points and maximum points of every campaign of the group (campaigns and
+    kpis) and the methodology of each campaign, so any two of them can be compared."""
     if 'Campaign' not in levels:
         return []
     groups: dict[tuple, list[dict[str, Any]]] = {}
@@ -346,29 +357,13 @@ def _campaign_comparisons(scopes: dict[tuple, dict[str, dict[str, Any]]], levels
         if len(tables) < MIN_COMPARISON_CAMPAIGNS:
             continue
         previous, latest = tables[-2], tables[-1]
-        previous_rows = {row['kpi_code']: row for row in _kpi_rows(previous)}
         # Every KPI with points in a campaign of the group, in the order of the latest campaign first.
         campaign_rows = [{row['kpi_code']: row for row in _kpi_rows(table)} for table in tables]
         kpi_codes = list(dict.fromkeys(row['kpi_code'] for table in reversed(tables) for row in _kpi_rows(table)
                                        if (_number(row.get('max_points')) or 0) > 0))
+        campaigns = [_display('Campaign', table['context'].get('campaign')) for table in tables]
+        methodologies = [(methodology_names or {}).get(str(table['context'].get('campaign'))) or None for table in tables]
         for operator in latest.get('operators', []):
-            rows = []
-            for row in _kpi_rows(latest):
-                if (_number(row.get('max_points')) or 0) <= 0:
-                    continue
-                before = ((previous_rows.get(row['kpi_code']) or {}).get('values') or {}).get(operator) or {}
-                after = (row.get('values') or {}).get(operator) or {}
-                before_points, after_points = _number(before.get('points')), _number(after.get('points'))
-                rows.append({
-                    'kpi_code': row['kpi_code'], 'kpi': row.get('kpi'), 'category': row.get('category'),
-                    'service': _service(row), 'previous_value': _number(before.get('value')),
-                    'previous_points': before_points, 'latest_value': _number(after.get('value')),
-                    'latest_points': after_points,
-                    'delta': after_points - before_points if None not in (after_points, before_points) else None,
-                })
-            if not any(row['delta'] is not None for row in rows):
-                continue
-            rows.sort(key=lambda item: (item['delta'] is None, item['delta'] if item['delta'] is not None else 0))
             kpis = []
             for code in kpi_codes:
                 row = next(rows_by_code[code] for rows_by_code in reversed(campaign_rows) if code in rows_by_code)
@@ -377,19 +372,112 @@ def _campaign_comparisons(scopes: dict[tuple, dict[str, dict[str, Any]]], levels
                     value = (((rows_by_code.get(code) or {}).get('values') or {}).get(operator) or {})
                     points = _number(value.get('points'))
                     values.append({'value': _number(value.get('value')), 'points': points} if points is not None else None)
+                # The maximum points of the methodology each campaign was scored with (none where it has no such KPI).
+                maxima = [_number((rows_by_code.get(code) or {}).get('max_points')) for rows_by_code in campaign_rows]
                 kpis.append({'kpi_code': code, 'kpi': row.get('kpi'), 'category': row.get('category'),
-                             'service': _service(row), 'values': values})
+                             'service': _service(row), 'values': values, 'max_points': maxima})
+            compared = comparison_rows(kpis, len(tables) - 2, len(tables) - 1)
+            if not any(row['delta'] is not None for row in compared['rows']):
+                continue
             style = (latest.get('operator_styles') or {}).get(operator) or {}
             comparisons.append({
                 'environment': environment, 'operator': operator, 'label': style.get('label') or operator,
                 'color': style.get('color'),
                 'title': _group_label(latest['context'], levels, {'Campaign'}),
-                'previous_campaign': _display('Campaign', previous['context'].get('campaign')),
-                'latest_campaign': _display('Campaign', latest['context'].get('campaign')),
-                'rows': rows, 'total_delta': sum(row['delta'] for row in rows if row['delta'] is not None),
-                'campaigns': [_display('Campaign', table['context'].get('campaign')) for table in tables], 'kpis': kpis,
+                'previous_campaign': campaigns[-2], 'latest_campaign': campaigns[-1],
+                'previous_methodology': methodologies[-2], 'latest_methodology': methodologies[-1],
+                **compared, 'campaigns': campaigns, 'methodologies': methodologies, 'kpis': kpis,
             })
     return comparisons
+
+
+# Maximum points that differ by less than this are the same.
+_SAME_MAXIMUM = 1e-6
+
+
+def comparison_rows(kpis: list[dict[str, Any]], baseline: int, target: int) -> dict[str, Any]:
+    """The rows of a Campaign Comparison between two of its campaigns (by position), as the page builds them.
+
+    Each KPI with points in one of them has its value and points in both and its Δ Points (target minus baseline). A
+    category whose methodology changed between the two campaigns (a KPI added, removed or with other maximum points)
+    is compared as a whole: a category row with the points of all its KPIs in each campaign and their Δ, followed by
+    its KPIs without a Δ of their own. The rows go from the largest loss to the largest gain (those without a Δ last),
+    and the Scoring Points Gap (total_delta) adds up the Δ shown."""
+    def cell(kpi: dict[str, Any], index: int) -> dict[str, Any]:
+        values = kpi.get('values') or []
+        return (values[index] if 0 <= index < len(values) else None) or {}
+
+    def maximum(kpi: dict[str, Any], index: int) -> float:
+        maxima = kpi.get('max_points') if isinstance(kpi.get('max_points'), list) else []
+        return (_number(maxima[index]) if 0 <= index < len(maxima) else None) or 0.0
+
+    def key(kpi: dict[str, Any]) -> tuple[str, str]:
+        return str(kpi.get('service') or ''), str(kpi.get('category') or '')
+
+    categories: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for kpi in kpis:
+        categories.setdefault(key(kpi), []).append(kpi)
+    # (Without the maximum points of each campaign, as saved before, every KPI is compared on its own.)
+    changed = {name for name, members in categories.items() if any(
+        isinstance(kpi.get('max_points'), list) and abs(maximum(kpi, baseline) - maximum(kpi, target)) > _SAME_MAXIMUM
+        for kpi in members)}
+    items: list[tuple[float | None, list[dict[str, Any]]]] = []
+    grouped: dict[tuple[str, str], list[dict[str, Any]]] = {name: [] for name in categories if name in changed}
+    for kpi in kpis:
+        before, after = cell(kpi, baseline), cell(kpi, target)
+        before_points, after_points = _number(before.get('points')), _number(after.get('points'))
+        if before_points is None and after_points is None:
+            continue
+        row = {
+            'kind': 'kpi', 'kpi_code': kpi.get('kpi_code'), 'kpi': kpi.get('kpi'), 'category': kpi.get('category'),
+            'service': kpi.get('service') or '', 'previous_value': _number(before.get('value')),
+            'previous_points': before_points, 'latest_value': _number(after.get('value')), 'latest_points': after_points,
+            'delta': after_points - before_points if None not in (after_points, before_points) else None,
+        }
+        if key(kpi) in grouped:
+            grouped[key(kpi)].append({**row, 'delta': None, 'in_category': True})
+        else:
+            items.append((row['delta'], [row]))
+
+    def category_points(members: list[dict[str, Any]], field: str, index: int, name: tuple[str, str]) -> float | None:
+        points = [row[field] for row in members if row[field] is not None]
+        if points:
+            return sum(points)
+        # No points: none to compare when the campaign's methodology scores the category, else none to have.
+        return None if sum(maximum(kpi, index) for kpi in categories[name]) > _SAME_MAXIMUM else 0.0
+
+    for name, members in grouped.items():
+        if not members:
+            continue
+        before = category_points(members, 'previous_points', baseline, name)
+        after = category_points(members, 'latest_points', target, name)
+        delta = after - before if None not in (after, before) else None
+        items.append((delta, [{
+            'kind': 'category', 'kpi_code': None, 'kpi': name[1], 'category': name[1], 'service': name[0],
+            'previous_value': None, 'previous_points': before, 'latest_value': None, 'latest_points': after,
+            'delta': delta,
+        }, *members]))
+    items.sort(key=lambda item: (item[0] is None, item[0] if item[0] is not None else 0))
+    return {
+        'rows': [row for _delta, rows in items for row in rows],
+        'total_delta': sum(delta for delta, _rows in items if delta is not None),
+        'changed_categories': [name[1] for name, members in grouped.items() if members],
+    }
+
+
+def comparison_note(comparison: dict[str, Any]) -> str:
+    """What a Campaign Comparison says under its table when categories changed methodology between its campaigns."""
+    names = [str(name) for name in comparison.get('changed_categories') or [] if name]
+    if not names:
+        return ''
+
+    def campaign(field: str) -> str:
+        methodology = comparison.get(f'{field}_methodology')
+        return f"{comparison.get(f'{field}_campaign')}{f' ({methodology})' if methodology else ''}"
+    listed = names[0] if len(names) == 1 else f"{', '.join(names[:-1])} and {names[-1]}"
+    subject = 'the category is' if len(names) == 1 else 'each category is'
+    return (f"{listed}: the methodology changed between {campaign('previous')} and {campaign('latest')}, so {subject} "
+            'compared as a whole and its KPIs have no Δ of their own.')
 
 
 def _kpi_gap_profiles(scopes: dict[tuple, dict[str, dict[str, Any]]], environment: str) -> list[dict[str, Any]]:

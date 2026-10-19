@@ -9037,7 +9037,9 @@
     const {wrapper: targetWrapper, value: targetValue} = insightSelect(
       'campaign-comparison-target', campaignOptions, 'Compared campaign', String(campaigns.length - 1));
     const baseline = Number(baselineValue), target = Number(targetValue);
-    const comparison = {previous_campaign: campaigns[baseline], latest_campaign: campaigns[target], ...campaignComparisonRows(chosen, baseline, target)};
+    const comparison = {previous_campaign: campaigns[baseline], latest_campaign: campaigns[target],
+      previous_methodology: chosen.methodologies?.[baseline], latest_methodology: chosen.methodologies?.[target],
+      ...campaignComparisonRows(chosen, baseline, target)};
     const scale = Math.max(0, ...comparison.rows.map(row => Math.abs(Number(row.delta) || 0)));
     const deltaCell = delta => {
       const cell = {text: insightNumber(delta, 2), className: 'scoring-insight-number scoring-insight-delta'};
@@ -9046,14 +9048,27 @@
       cell.style = {background: rgbaOf(delta < 0 ? insightLossColor : insightGainColor, alpha)};
       return cell;
     };
-    const table = insightTable(
-      ['Service', 'KPI', `${comparison.previous_campaign} KPI value`, `${comparison.previous_campaign} Points`,
-        `${comparison.latest_campaign} KPI value`, `${comparison.latest_campaign} Points`, 'Δ Points'],
-      comparison.rows.map(row => [row.service.toUpperCase(), row.kpi,
+    // A category whose methodology changed is one row with the points of all its KPIs, which follow it without a Δ.
+    const comparisonRow = row => {
+      if (row.kind === 'category') {
+        const group = 'scoring-insight-number scoring-insight-group';
+        return [{text: row.service.toUpperCase(), className: 'scoring-insight-group'},
+          {text: `${row.kpi} · methodology changed`, className: 'scoring-insight-group',
+            title: 'The methodology of this category changed between the two campaigns: its KPIs are compared together.'},
+          {text: '', className: group}, {text: insightNumber(row.previous_points, 2), className: group},
+          {text: '', className: group}, {text: insightNumber(row.latest_points, 2), className: group}, deltaCell(row.delta)];
+      }
+      return [row.service.toUpperCase(), row.in_category ? {text: row.kpi, className: 'scoring-insight-kpi'} : row.kpi,
         {text: insightNumber(row.previous_value, 2), className: 'scoring-insight-number'},
         {text: insightNumber(row.previous_points, 2), className: 'scoring-insight-number'},
         {text: insightNumber(row.latest_value, 2), className: 'scoring-insight-number'},
-        {text: insightNumber(row.latest_points, 2), className: 'scoring-insight-number'}, deltaCell(row.delta)]),
+        {text: insightNumber(row.latest_points, 2), className: 'scoring-insight-number'},
+        row.in_category ? {text: '—', className: 'scoring-insight-number is-muted'} : deltaCell(row.delta)];
+    };
+    const table = insightTable(
+      ['Service', 'KPI', `${comparison.previous_campaign} KPI value`, `${comparison.previous_campaign} Points`,
+        `${comparison.latest_campaign} KPI value`, `${comparison.latest_campaign} Points`, 'Δ Points'],
+      comparison.rows.map(comparisonRow),
     );
     const total = document.createElement('p');
     total.className = 'scoring-insight-total';
@@ -9064,6 +9079,8 @@
     const body = document.createElement('div');
     body.className = 'scoring-insight-compare';
     body.append(table, total);
+    const note = campaignComparisonNote(comparison);
+    if (note) body.append(insightParagraph('scoring-insight-note', note));
     const controls = document.createElement('div');
     controls.className = 'scoring-loss-controls';
     controls.append(...[operatorControl, groupWrapper, baselineWrapper, targetWrapper].filter(Boolean));
@@ -9071,24 +9088,81 @@
     pane.append(section);
   }
 
-  // The rows of a Campaign Comparison between two of its campaigns (by position): each KPI with its value and
-  // points in both, and the points of the compared campaign minus those of the baseline, from the largest loss.
+  // The rows of a Campaign Comparison between two of its campaigns (by position), as comparison_rows builds them
+  // (scoring_insights): each KPI with its value and points in both, and the points of the compared campaign minus
+  // those of the baseline. A category whose methodology changed between them (a KPI added, removed or with other
+  // maximum points) is compared as a whole: a category row with the points of all its KPIs and their Δ, followed by
+  // its KPIs without a Δ of their own. From the largest loss (those without a Δ last); the Scoring Points Gap adds
+  // up the Δ shown.
   function campaignComparisonRows(comparison, baseline, target) {
     if (!Array.isArray(comparison.kpis) || !Array.isArray(comparison.campaigns)) {
-      return {rows: comparison.rows || [], total_delta: comparison.total_delta};
+      return {rows: comparison.rows || [], total_delta: comparison.total_delta,
+        changed_categories: comparison.changed_categories || []};
     }
-    const rows = comparison.kpis.map(kpi => {
+    const sameMaximum = 1e-6;
+    const maximum = (kpi, index) => (Array.isArray(kpi.max_points) ? Number(kpi.max_points[index]) || 0 : 0);
+    const keyOf = kpi => JSON.stringify([kpi.service || '', kpi.category || '']);
+    const categories = new Map();
+    for (const kpi of comparison.kpis) {
+      if (!categories.has(keyOf(kpi))) categories.set(keyOf(kpi), []);
+      categories.get(keyOf(kpi)).push(kpi);
+    }
+    // (Without the maximum points of each campaign, as saved before, every KPI is compared on its own.)
+    const grouped = new Map([...categories].filter(([, members]) => members.some(kpi => (
+      Array.isArray(kpi.max_points) && Math.abs(maximum(kpi, baseline) - maximum(kpi, target)) > sameMaximum)))
+      .map(([key]) => [key, []]));
+    const items = [];
+    for (const kpi of comparison.kpis) {
       const before = kpi.values?.[baseline] || {}, after = kpi.values?.[target] || {};
       const beforePoints = before.points ?? null, afterPoints = after.points ?? null;
-      return {
-        kpi_code: kpi.kpi_code, kpi: kpi.kpi, service: kpi.service || '',
+      if (beforePoints === null && afterPoints === null) continue;
+      const row = {
+        kind: 'kpi', kpi_code: kpi.kpi_code, kpi: kpi.kpi, category: kpi.category, service: kpi.service || '',
         previous_value: before.value ?? null, previous_points: beforePoints,
         latest_value: after.value ?? null, latest_points: afterPoints,
         delta: beforePoints !== null && afterPoints !== null ? afterPoints - beforePoints : null,
       };
-    }).filter(row => row.previous_points !== null || row.latest_points !== null);
-    rows.sort((left, right) => (left.delta === null) - (right.delta === null) || (left.delta ?? 0) - (right.delta ?? 0));
-    return {rows, total_delta: rows.reduce((sum, row) => sum + (row.delta ?? 0), 0)};
+      if (grouped.has(keyOf(kpi))) grouped.get(keyOf(kpi)).push({...row, delta: null, in_category: true});
+      else items.push({delta: row.delta, rows: [row]});
+    }
+    // No points: none to compare when the campaign's methodology scores the category, else none to have.
+    const categoryPoints = (members, field, index, key) => {
+      const points = members.map(row => row[field]).filter(value => value !== null);
+      if (points.length) return points.reduce((sum, value) => sum + value, 0);
+      return categories.get(key).reduce((sum, kpi) => sum + maximum(kpi, index), 0) > sameMaximum ? null : 0;
+    };
+    for (const [key, members] of grouped) {
+      if (!members.length) continue;
+      const [service, category] = JSON.parse(key);
+      const before = categoryPoints(members, 'previous_points', baseline, key);
+      const after = categoryPoints(members, 'latest_points', target, key);
+      const delta = before !== null && after !== null ? after - before : null;
+      items.push({delta, rows: [{
+        kind: 'category', kpi_code: null, kpi: category, category, service, previous_value: null,
+        previous_points: before, latest_value: null, latest_points: after, delta,
+      }, ...members]});
+    }
+    items.sort((left, right) => (left.delta === null) - (right.delta === null) || (left.delta ?? 0) - (right.delta ?? 0));
+    return {
+      rows: items.flatMap(item => item.rows),
+      total_delta: items.reduce((sum, item) => sum + (item.delta ?? 0), 0),
+      changed_categories: [...grouped].filter(([, members]) => members.length).map(([key]) => JSON.parse(key)[1]),
+    };
+  }
+
+  // What a Campaign Comparison says under its table when categories changed methodology between its campaigns
+  // (as comparison_note of scoring_insights).
+  function campaignComparisonNote(comparison) {
+    const names = (comparison.changed_categories || []).filter(Boolean).map(String);
+    if (!names.length) return '';
+    const campaign = field => {
+      const methodology = comparison[`${field}_methodology`];
+      return `${comparison[`${field}_campaign`]}${methodology ? ` (${methodology})` : ''}`;
+    };
+    const listed = names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+    const subject = names.length === 1 ? 'the category is' : 'each category is';
+    return `${listed}: the methodology changed between ${campaign('previous')} and ${campaign('latest')}, so ${subject} `
+      + 'compared as a whole and its KPIs have no Δ of their own.';
   }
 
   function renderNotices(notices) {

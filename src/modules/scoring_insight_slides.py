@@ -16,6 +16,7 @@ from pptx.enum.shapes import MSO_SHAPE
 from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
 from pptx.util import Inches, Pt
 
+from src.modules.scoring_insights import comparison_note
 from src.modules.scoring_themes import active_theme, themed
 from src.modules.scoring_vendors import scoring_vendor_name
 
@@ -700,8 +701,10 @@ def _delta_color(value: float | None, scale: float) -> str:
 
 def _comparison_table(slide, comparison: dict[str, Any], *, left: float, width: float) -> None:
     rows = comparison['rows']
+    # Under the total, what the comparison says when categories changed methodology between its campaigns.
+    note = comparison_note(comparison)
     top = 2.2
-    row_height = min(.2, (7.05 - top) / (len(rows) + 2.6))
+    row_height = min(.2, (7.05 - top) / (len(rows) + 2.6 + (1.6 if note else 0)))
     size = 7 if row_height >= .17 else 6
     widths = [.5, width - .5 - 4 * .62 - .8, .62, .62, .62, .62, .8]
     heading = slide.shapes.add_textbox(Inches(left), Inches(1.84), Inches(width), Inches(.3))
@@ -715,7 +718,7 @@ def _comparison_table(slide, comparison: dict[str, Any], *, left: float, width: 
     rule.fill.fore_color.rgb = _rgb(color)
     rule.line.fill.background()
     rule.name = 'Scoring Campaign Comparison Rule'
-    shape, table = _table(slide, len(rows) + 2, len(widths), left, top, width, row_height, widths)
+    shape, table = _table(slide, len(rows) + 2 + bool(note), len(widths), left, top, width, row_height, widths)
     shape.name = 'Scoring Campaign Comparison Table'
     previous, latest = comparison['previous_campaign'], comparison['latest_campaign']
     headers = ['Service', 'KPI', f'{previous}\nKPI value', f'{previous}\nPoints', f'{latest}\nKPI value',
@@ -727,20 +730,35 @@ def _comparison_table(slide, comparison: dict[str, Any], *, left: float, width: 
         table.cell(0, column).text_frame.word_wrap = True
     scale = max((abs(row['delta']) for row in rows if row['delta'] is not None), default=0)
     for index, row in enumerate(rows, start=1):
-        fill = '#FFFFFF'
-        _cell(table.cell(index, 0), row['service'].upper(), size=size, fill=fill)
-        _cell(table.cell(index, 1), str(row.get('kpi') or ''), size=size, fill=fill)
+        # A category whose methodology changed is one row with the points of all its KPIs, which follow it without a Δ.
+        category = row.get('kind') == 'category'
+        fill = '#F1F4F7' if category else '#FFFFFF'
+        _cell(table.cell(index, 0), row['service'].upper(), size=size, bold=category, fill=fill)
+        kpi = f"{row.get('kpi') or ''} · methodology changed" if category else str(row.get('kpi') or '')
+        _cell(table.cell(index, 1), kpi, size=size, bold=category, fill=fill)
+        if row.get('in_category'):
+            table.cell(index, 1).margin_left = Inches(.14)
         for column, key, digits in ((2, 'previous_value', 2), (3, 'previous_points', 2),
                                     (4, 'latest_value', 2), (5, 'latest_points', 2)):
-            _cell(table.cell(index, column), _points(row[key], digits), size=size, fill=fill, align=PP_ALIGN.RIGHT)
-        _cell(table.cell(index, 6), _points(row['delta'], 2), size=size, bold=True,
-              fill=_delta_color(row['delta'], scale), align=PP_ALIGN.RIGHT)
+            # (A category has no KPI value: a space, since LibreOffice draws an empty cell as tall as its default text.)
+            text = ' ' if category and key.endswith('_value') else _points(row[key], digits)
+            _cell(table.cell(index, column), text, size=size, bold=category, fill=fill, align=PP_ALIGN.RIGHT)
+        if row.get('in_category'):
+            _cell(table.cell(index, 6), '—', size=size, color='#7A8A96', fill=fill, align=PP_ALIGN.RIGHT)
+        else:
+            _cell(table.cell(index, 6), _points(row['delta'], 2), size=size, bold=True,
+                  fill=_delta_color(row['delta'], scale), align=PP_ALIGN.RIGHT)
     last = len(rows) + 1
     table.cell(last, 0).merge(table.cell(last, 5))
     _cell(table.cell(last, 0), 'Scoring Points Gap:', size=size + 2, bold=True, fill='#FFFFFF', align=PP_ALIGN.RIGHT)
     total = comparison['total_delta']
     _cell(table.cell(last, 6), f'{total:+,.2f}', size=size + 2, bold=True,
           color=LOSS_COLOR if total < 0 else WIN_COLOR, fill='#FFFFFF', align=PP_ALIGN.RIGHT)
+    if note:
+        table.cell(last + 1, 0).merge(table.cell(last + 1, 6))
+        table.rows[last + 1].height = Inches(row_height * 1.6)
+        _cell(table.cell(last + 1, 0), note, size=size, color='#4A5B65', fill='#FFFFFF')
+        table.cell(last + 1, 0).text_frame.word_wrap = True
 
 
 def add_campaign_comparison_slides(presentation, comparisons: list[dict[str, Any]], *, scoring_label: str,
