@@ -102,6 +102,8 @@ def test_the_operator_maps_editor_saves_the_role_of_each_label(client):
     vendors = page[page.index('id="vendor-maps"'):page.index('id="campaign-maps"')]
     assert 'mapping-role-column' in operators and 'mapping-role-column' not in vendors
     assert '<option value="focus" selected>Focus</option>' in operators
+    # A label with neither role shows Include.
+    assert '<option value="" selected>Include</option>' in operators and '>None</option>' not in operators
 
 
 def test_the_dashboard_column_cache_leaves_out_the_excluded_values():

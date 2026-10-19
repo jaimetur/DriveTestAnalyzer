@@ -5,7 +5,7 @@
 - **Exclude**: left out of every analysis, filter, chart and report, as if every Operator filter left it out
   (``-Lebara``), with every name of the CDRs it stands for.
 
-A label without a part is analysed as usual.
+A label with neither (**Include**, the default) is analysed as usual.
 """
 from __future__ import annotations
 
