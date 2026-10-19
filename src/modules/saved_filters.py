@@ -1190,6 +1190,77 @@ def edit_saved_filter(
     return {'saved_filter': updated, 'changed': True, 'previous': previous, 'merged_filter_id': merged_filter_id}
 
 
+def duplicate_saved_filter(
+    repository: Repository,
+    filter_id: int,
+    dataset_ids: list[int],
+    levels: list[str],
+    nr_mode: str | None,
+    *,
+    name: str = '',
+    baseline_operator: str = DEFAULT_BASELINE_OPERATOR,
+    username: str = 'system',
+    context_filters: dict[str, list[str]] | None = None,
+    scoring_profile_id: str | None = None,
+    area_summary: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    """Save a copy of a Saved Filter, with the selection it was given, as a new starred Saved Filter queued to be
+    calculated; the copied one stays as it was, and the copy goes right after it among the Favourites Filters (first
+    when the copied one is not starred).
+
+    Returns ``None`` when the copied Saved Filter does not exist. A selection that is already a Saved Filter (the copied
+    one included) is not saved again.
+    """
+    source = get_saved_filter(repository, filter_id)
+    if source is None:
+        return None
+    text = ' '.join(str(name or '').split())
+    if len(text) > 120:
+        raise ValueError('The name of a Saved Filter can have up to 120 characters.')
+    prepared = _prepare_saved_filter(
+        repository, dataset_ids, levels, nr_mode, baseline_operator=baseline_operator,
+        context_filters=context_filters, scoring_profile_id=scoring_profile_id, area_summary=area_summary,
+    )
+    now = local_now_iso()
+    with repository.connection() as connection:
+        connection.execute('BEGIN IMMEDIATE')
+        existing = connection.execute(f'SELECT id FROM {SAVED_FILTERS_TABLE} WHERE selection_key = ?',
+                                      (prepared['selection_key'],)).fetchone()
+        if existing is not None and int(existing['id']) == int(filter_id):
+            raise ValueError('The copy still has the filters of the Saved Filter: change them to save it as a new one.')
+        if existing is not None:
+            raise ValueError(f'Saved Filter {existing["id"]} already has these filters: change them to save the copy.')
+        row = connection.execute(f'SELECT pinned, position FROM {SAVED_FILTERS_TABLE} WHERE id = ?',
+                                 (int(filter_id),)).fetchone()
+        if row is not None and row['pinned'] and row['position'] is not None:
+            position = int(row['position']) + 1
+            connection.execute(f'UPDATE {SAVED_FILTERS_TABLE} SET position = position + 1 '
+                               'WHERE pinned = 1 AND position >= ?', (position,))
+        else:
+            first = connection.execute(
+                f'SELECT MIN(position) FROM {SAVED_FILTERS_TABLE} WHERE pinned = 1 AND position IS NOT NULL').fetchone()[0]
+            position = (int(first) - 1) if first is not None else 1
+        cursor = connection.execute(
+            f"""
+            INSERT INTO {SAVED_FILTERS_TABLE} (
+                selection_key, name, pinned, position, last_used_at, result_key, method_version, source_fingerprint,
+                dataset_ids_json, source_metadata_json, nr_mode, levels_json, baseline_operator,
+                status, progress, message, created_by, created_at, updated_at
+            ) VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', 0, 'Waiting to calculate scoring', ?, ?, ?)
+            """,
+            (
+                prepared['selection_key'], text, position, now, prepared['result_key'], prepared['method_version'],
+                prepared['source_fingerprint'], json.dumps(prepared['dataset_ids']),
+                json.dumps(prepared['snapshot'], ensure_ascii=False, separators=(',', ':')), prepared['nr_mode'],
+                json.dumps(prepared['levels'], ensure_ascii=False), prepared['baseline_operator'],
+                str(username or 'system'), now, now,
+            ),
+        )
+        row = connection.execute(f'SELECT * FROM {SAVED_FILTERS_TABLE} WHERE id = ?',
+                                 (int(cursor.lastrowid),)).fetchone()
+    return _row_to_saved_filter(row)
+
+
 def _replace_selection(repository: Repository, filter_id: int, prepared: dict[str, Any],
                        username: str) -> tuple[dict[str, Any] | None, int | None]:
     """Give a Saved Filter the prepared selection and queue its calculation, keeping its name, star and place.

@@ -46,6 +46,7 @@ def _ready_cdr(tmp_path):
     ('post', '/api/query-builder/save', {'json': {'name': 'q', 'query': 'SELECT 1'}}),
     ('delete', '/api/query-builder/saved/1', {}),
     ('delete', '/api/scoring/saved-filters/1', {}),
+    ('post', '/api/scoring/saved-filters/1/duplicate', {'json': {'dataset_ids': [1]}}),
     ('put', '/api/ppt-dashboards/d1', {'json': {'name': 'D'}}),
     ('delete', '/api/ppt-dashboards/d1', {}),
     ('patch', '/api/ppt-dashboards/d1/name', {'json': {'name': 'D'}}),

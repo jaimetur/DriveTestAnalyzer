@@ -169,7 +169,7 @@
   .saved-filter-row .saved-filter-item { box-sizing: border-box; display: grid; grid-template-columns: minmax(0,1fr); min-width: 0; width: 100%; padding-bottom: 2.7rem; }
   .saved-filter-actions { position: absolute; right: .65rem; bottom: .65rem; left: .8rem; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: .3rem; pointer-events: none; }
   .saved-filter-actions > * { pointer-events: auto; }
-  .saved-filter-delete, .saved-filter-pin, .saved-filter-rename { display: inline-flex; align-items: center; justify-content: center; width: 1.55rem; min-width: 1.55rem; height: 1.55rem; min-height: 1.55rem; padding: 0; border: 1px solid rgba(164,61,47,.28); border-radius: 50%; background: #fff3f1; color: #a43d2f; font-size: 1rem; font-weight: 800; line-height: 1; box-shadow: none; }
+  .saved-filter-delete, .saved-filter-pin, .saved-filter-rename, .saved-filter-duplicate { display: inline-flex; align-items: center; justify-content: center; width: 1.55rem; min-width: 1.55rem; height: 1.55rem; min-height: 1.55rem; padding: 0; border: 1px solid rgba(164,61,47,.28); border-radius: 50%; background: #fff3f1; color: #a43d2f; font-size: 1rem; font-weight: 800; line-height: 1; box-shadow: none; }
   .saved-filter-id { display: inline-flex; align-items: center; min-height: 1.55rem; padding: .18rem .52rem; border: 1px solid #c9d6de; border-radius: 999px; background: #f4f8fa; color: #46606d; font-size: .72rem; font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
   .saved-filter-cdrs { display: inline-flex; align-items: center; width: auto; min-height: 1.55rem; padding: .18rem .48rem; border: 1px solid #a9c5dc; border-radius: 999px; background: #eaf3fa; color: #244e70; font-size: .72rem; font-weight: 750; box-shadow: none; }
   .selected-saved-filter .saved-filter-actions { position: static; justify-content: flex-start; }
@@ -177,9 +177,9 @@
   .saved-filter-actions .saved-filter-cdrs { margin-right: auto; }
   .saved-filter-delete:hover:not(:disabled) { border-color: rgba(164,61,47,.52); background: #fde4e0; color: #842d23; box-shadow: none; transform: none; }
   .saved-filter-delete:focus-visible { outline: 3px solid rgba(164,61,47,.25); outline-offset: 2px; }
-  .saved-filter-pin, .saved-filter-rename { border-color: #c9d6de; background: #f4f8fa; color: #46606d; }
+  .saved-filter-pin, .saved-filter-rename, .saved-filter-duplicate { border-color: #c9d6de; background: #f4f8fa; color: #46606d; }
   .saved-filter-pin[aria-pressed="true"] { border-color: #e2b23a; background: #fff6d8; color: #a26b00; }
-  .saved-filter-pin:hover, .saved-filter-rename:hover { border-color: #8fa9b8; background: #e8f0f4; color: #23404f; box-shadow: none; transform: none; }
+  .saved-filter-pin:hover, .saved-filter-rename:hover, .saved-filter-duplicate:hover { border-color: #8fa9b8; background: #e8f0f4; color: #23404f; box-shadow: none; transform: none; }
   .saved-filter-use-newer { min-height: 1.55rem; padding: .18rem .55rem; border: 1px solid #e0a23a; border-radius: 999px; background: #fff3d6; color: #8a5300; font-size: .72rem; font-weight: 800; box-shadow: none; }
   .saved-filter-use-newer:hover { background: #ffe7b0; box-shadow: none; transform: none; }
   .saved-filter-use-newer:disabled { border-color: #d8dee3; background: #f1f4f6; color: #8796a1; cursor: not-allowed; }
@@ -1256,9 +1256,10 @@
       <div><p class="eyebrow">Scoring Calculation</p><h3 id="scoring-run-title">Select NR Mode, Campaign, filters, Split by &amp; GAP reference</h3></div>
       <div class="scoring-controls-meta"><span class="scoring-hero-badge"><span aria-hidden="true">◉</span> CDR benchmark workspace</span><span class="pill" data-selected-count>0 CDRs used</span></div>
     </div>
-    {# A Saved Filter edited from its pencil: Save Changes gives it the selection of the panel. #}
+    {# A Saved Filter edited from its pencil: Save Changes gives it the selection of the panel (from its ⧉, Save as New
+       Filter saves the selection as a copy). #}
     <div class="scoring-edit-banner" data-saved-filter-editing role="status" hidden>
-      <div><strong data-saved-filter-editing-title>Editing a Saved Filter</strong><span>Change its NR Mode, Campaign, filters, Split by, GAP reference, Scoring Trends or methodology: its CDRs follow the NR Mode and Campaign. Save Changes calculates it again, with the same name and star; Cancel Editing (or Escape) leaves it as it was.</span></div>
+      <div><strong data-saved-filter-editing-title>Editing a Saved Filter</strong><span data-saved-filter-editing-text>Change its NR Mode, Campaign, filters, Split by, GAP reference, Scoring Trends or methodology: its CDRs follow the NR Mode and Campaign. Save Changes calculates it again, with the same name and star; Cancel Editing (or Escape) leaves it as it was.</span></div>
     </div>
     <div class="scoring-picker scoring-scope-picker">
       <div class="scoring-picker-head"><strong>NR Mode, Campaign, GAP reference &amp; Methodology</strong><span>The CDRs are chosen from the NR Mode and Campaign</span></div>

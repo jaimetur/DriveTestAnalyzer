@@ -2004,7 +2004,12 @@ def test_saved_filters_are_edited_in_a_dialog_with_the_calculation_panel():
     assert '<span>Cancel Editing</span>' in actions and '<span>Save Changes</span>' in actions
     sync = _function_source(script, 'syncSavedFilterEditing')
     assert 'calculateButton.hidden = editing;' in sync and 'if (editCancelButton) editCancelButton.hidden = !editing;' in sync
-    assert "createSavedFilter(false, {url: `${savedFiltersUrl}/${encodeURIComponent(savedFilterIdOf(savedFilter))}/edit`})" in script
+    assert "createSavedFilter(false, {url: `${savedFiltersUrl}/${id}/edit`})" in script
+    # ⧉ edits a copy in the same dialog: Save as New Filter saves it as a new Saved Filter with the name given.
+    assert "createSavedFilter(false, {url: `${savedFiltersUrl}/${id}/duplicate`, extra: {name: duplicateName}})" in script
+    assert "duplicating ? 'Save as New Filter' : 'Save Changes'" in sync and 'Duplicating Saved Filter' in sync
+    assert "confirmLabel: 'Edit Filters of the Copy'," in script
+    assert 'startSavedFilterEdit(savedFilter, {duplicateName: String(name)});' in script
 
 
 def test_chart_and_table_titles_name_their_area_operators_and_vendors():

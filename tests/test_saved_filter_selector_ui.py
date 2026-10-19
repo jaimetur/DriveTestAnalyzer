@@ -68,7 +68,8 @@ const isActive = savedFilter => savedFilter.status === 'processing';
 const progressValue = () => 40;
 const deletingSavedFilterIds = new Set();
 const syncSavedFiltersBulk = () => {};
-''' + _function_source(script, 'savedFilterTrendCampaigns') + _function_source(script, 'savedFilterAreaSummaryParts') + _function_source(script, 'savedFilterTimeSplit') + _function_source(script, 'savedFilterDurationText') + _function_source(script, 'syncSavedFilterLists') + _function_source(script, 'renderSavedFilters') + r'''
+let selectionUnmatched = false;
+''' + _function_source(script, 'savedFilterTrendCampaigns') + _function_source(script, 'savedFilterAreaSummaryParts') + _function_source(script, 'savedFilterTimeSplit') + _function_source(script, 'savedFilterDurationText') + _function_source(script, 'syncSavedFilterLists') + _function_source(script, 'renderSavedFilters') + _function_source(script, 'unmatchedSelectionNotice') + r'''
 renderSavedFilters();
 const latest = selectedSavedFilterCard.textContent;
 const cards = savedFilterList.children.map(row => ({id: row.children[0].dataset.savedFilterId,
@@ -90,9 +91,15 @@ savedFilters[1].pinned = false;
 renderSavedFilters();
 const unstarred = {listed: savedFilterList.children.map(row => row.children[0].dataset.savedFilterId),
   card: selectedSavedFilterCard.textContent, counts: [countBadge.textContent, historyCountBadge.textContent]};
+// A selection that is no Saved Filter: the card asks to choose a Favourites Filter or to calculate it.
+selectionUnmatched = true;
+renderSavedFilters();
+const unmatchedCard = selectedSavedFilterCard.textContent;
+selectionUnmatched = false;
 savedFilters.length = 0;
 renderSavedFilters();
-process.stdout.write(JSON.stringify({latest, earlier, cards, separateCopy, historyMatches, historyCounts, unstarred, emptyHistory: historyList.textContent, empty: selectedSavedFilterCard.textContent}));
+process.stdout.write(JSON.stringify({latest, earlier, cards, separateCopy, historyMatches, historyCounts, unstarred, unmatchedCard,
+  emptyHistory: historyList.textContent, empty: selectedSavedFilterCard.textContent}));
 '''
     result = _run_node_json(program, {})
     assert 'Latest savedFilter' in result['latest'] and 'Profile A' in result['latest']
@@ -108,6 +115,8 @@ process.stdout.write(JSON.stringify({latest, earlier, cards, separateCopy, histo
     assert result['historyCounts'] == ['2 filters', '2 filters']
     assert result['unstarred']['listed'] == ['20'] and 'Earlier savedFilter' in result['unstarred']['card']
     assert result['unstarred']['counts'] == ['1 filter', '1 filter']
+    assert "No Saved Filter matches the Calculation panel's filters" in result['unmatchedCard']
+    assert 'Calculate Scoring' in result['unmatchedCard'] and 'Earlier savedFilter' not in result['unmatchedCard']
     assert 'No Favourites Filters yet' in result['emptyHistory']
     assert result['empty'] == 'No Saved Filters yet'
 
@@ -128,6 +137,8 @@ const root = {querySelector: () => ({scrollIntoView: () => {focused = true;}})};
 const savedFilterSelector = {open: true, contains: () => LIST_INDEX === 0, querySelector: () => ({focus: () => {focused = true;}})};
 const persistScoringViewState = () => {persisted = true;};
 const restoreCalculationSelectionFromSavedFilter = savedFilter => {restored = savedFilter.id;};
+let unmatched = true;
+const showUnmatchedSelection = value => {unmatched = value;};
 let editingSavedFilter = null;
 const stopSavedFilterEdit = () => { editingSavedFilter = null; };
 const loadSavedFilter = async (savedFilter, force) => {loaded = {id: savedFilter.id, force};};
@@ -140,7 +151,8 @@ const refreshSavedFilters = async () => { refreshed += 1; };
 ''' + f'\nconst LIST_INDEX = {list_index};\n' + script[start:end] + f'\nconst handler = handlers[{list_index}];\n' + r'''
 (async () => {
   await handler({target: {closest: selector => selector === '[data-saved-filter-id]' ? {dataset: {savedFilterId: '15'}} : null}});
-  const selection = {loaded, persisted, focused, open: savedFilterSelector.open, selectedSavedFilterId, userSelectedSavedFilter, restored};
+  const selection = {loaded, persisted, focused, open: savedFilterSelector.open, selectedSavedFilterId, userSelectedSavedFilter, restored,
+    unmatched};
   loaded = null;
   await handler({target: {closest: selector => selector === '[data-delete-saved-filter-id]' ? {dataset: {deleteSavedFilterId: '20'}} : null}});
   await new Promise(resolve => setTimeout(resolve));
@@ -151,6 +163,8 @@ const refreshSavedFilters = async () => { refreshed += 1; };
     assert result['selection'] == {
         'loaded': {'id': '15', 'force': True}, 'persisted': True, 'focused': True,
         'open': False, 'selectedSavedFilterId': '15', 'userSelectedSavedFilter': True, 'restored': '15',
+        # Opened, its selection is a Saved Filter again: its card and results show.
+        'unmatched': False,
     }
     assert result['deleted'] == '20' and result['loaded'] is None
     # Opening it from its card counts as a use.
@@ -173,6 +187,7 @@ const selectedTableMode = () => 'expanded';
 const selectedGapLayout = () => 'end';
 const selectedEnvironment = 'all';
 const showGapValues = () => false;
+let selectionUnmatched = false;
 ''' + _function_source(script, 'setExportLinks') + r'''
 setExportLinks('21', false);
 const unavailable = links.map(link => ({hidden: link.hidden, disabled: link.attributes['aria-disabled'], tabIndex: link.tabIndex, href: link.href}));
@@ -180,7 +195,11 @@ setExportLinks('21', true);
 const available = links.map(link => ({hidden: link.hidden, disabled: link.attributes['aria-disabled'], tabIndex: link.tabIndex, href: link.href}));
 setExportLinks('', false);
 const reset = links.map(link => link.attributes['aria-disabled']);
-process.stdout.write(JSON.stringify({unavailable, available, reset}));
+// The results hidden by a selection that is no Saved Filter are not exported either.
+selectionUnmatched = true;
+setExportLinks('21', true);
+const unmatched = links.map(link => link.attributes['aria-disabled']);
+process.stdout.write(JSON.stringify({unavailable, available, reset, unmatched}));
 '''
     result = _run_node_json(program, {})
     assert all(link == {'hidden': False, 'disabled': 'true', 'tabIndex': -1, 'href': '#'}
@@ -188,3 +207,4 @@ process.stdout.write(JSON.stringify({unavailable, available, reset}));
     assert all(link['hidden'] is False and link['disabled'] == 'false' and link['tabIndex'] == 0
                and link['href'].startswith('/scoring/saved-filters/21/export/') for link in result['available'])
     assert result['reset'] == ['true', 'true', 'true']
+    assert result['unmatched'] == ['true', 'true', 'true']

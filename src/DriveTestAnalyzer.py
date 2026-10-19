@@ -102,6 +102,7 @@ from src.modules.cdr_auto_selection import campaign_presets
 from src.modules.saved_filters import (
     calculate_saved_filter,
     delete_saved_filter,
+    duplicate_saved_filter,
     edit_saved_filter,
     find_saved_filter,
     get_saved_filter,
@@ -18386,6 +18387,46 @@ def scoring_saved_filters_edit(filter_id: int, payload: SavedFilterRequest,
     _prioritize_saved_filter(task_repository, saved_filter['id'])
     prune_unpinned_saved_filters(task_repository, saved_filter['id'], user.username)
     return {'saved_filter': saved_filter, 'cached': not edited['changed'], 'changed': edited['changed']}
+
+
+class SavedFilterDuplicateRequest(SavedFilterRequest):
+    name: str = ''
+
+
+@app.post('/api/scoring/saved-filters/{filter_id}/duplicate')
+def scoring_saved_filters_duplicate(filter_id: int, payload: SavedFilterDuplicateRequest,
+                                    user: SessionUser = Depends(workspace_editor_user)) -> dict[str, Any]:
+    """Save a copy of a Saved Filter with the selection it was given as a new starred Saved Filter, calculated in the
+    background; the copied one stays as it was."""
+    task_repository = scoring_repository(user)
+    # An automatic Campaign choice (Latest campaign…) is kept as such; it is checked with the campaigns it stands for now.
+    try:
+        selected_ids = validate_complete_scoring_cdr_selection(
+            task_repository, payload.dataset_ids, payload.nr_mode,
+            context_filters=expand_scoring_context_filters(task_repository, payload.nr_mode, payload.context_filters),
+        )
+        saved_filter = duplicate_saved_filter(
+            task_repository, filter_id, selected_ids, payload.aggregation_levels, payload.nr_mode,
+            name=payload.name, baseline_operator=payload.baseline_operator, username=user.username,
+            context_filters=payload.context_filters, scoring_profile_id=payload.scoring_profile_id,
+            area_summary=payload.area_summary,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if saved_filter is None:
+        raise HTTPException(status_code=404, detail='Saved Filter not found.')
+    _queue_saved_filter_calculation(task_repository, saved_filter['id'])
+    task_repository.try_add_log(user.username, 'duplicate_saved_filter', json.dumps({
+        'saved_filter_id': saved_filter['id'], 'source_filter_id': filter_id, 'name': saved_filter.get('name') or '',
+        'selection': {
+            'nr_mode': payload.nr_mode, 'dataset_ids': selected_ids, 'levels': payload.aggregation_levels,
+            'baseline_operator': payload.baseline_operator, 'context_filters': payload.context_filters,
+            'scoring_profile_id': payload.scoring_profile_id, 'area_summary': payload.area_summary,
+        },
+    }, ensure_ascii=False))
+    _prioritize_saved_filter(task_repository, saved_filter['id'])
+    prune_unpinned_saved_filters(task_repository, saved_filter['id'], user.username)
+    return {'saved_filter': saved_filter, 'cached': False}
 
 
 class SavedFilterOrder(BaseModel):

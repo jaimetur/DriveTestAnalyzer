@@ -204,6 +204,70 @@ def test_edit_saved_filter_endpoint_is_recorded_and_calculates_only_a_changed_se
     assert queued == [7]
 
 
+def test_duplicate_saved_filter_saves_a_copy_with_another_selection_after_the_original(tmp_path):
+    repository = _workspace(tmp_path, 'workspace')
+    ids = _three_cdrs(repository, tmp_path / 'workspace')
+    first, _ = saved_filters.save_saved_filter(repository, ids, ['Operator'], 'NSA')
+    saved_filters.calculate_saved_filter(repository, first['id'])
+    saved_filters.update_saved_filter(repository, first['id'], name='2026-Q3', pinned=True)
+    second, _ = saved_filters.save_saved_filter(repository, ids, ['Operator', 'Campaign'], 'NSA')
+    saved_filters.update_saved_filter(repository, second['id'], pinned=True)
+    # Starred last, the second one goes first: 2026-Q3 is second.
+    assert [item['id'] for item in saved_filters.list_saved_filters(repository)] == [second['id'], first['id']]
+
+    copy = saved_filters.duplicate_saved_filter(repository, first['id'], ids, ['Operator', 'Region'], 'NSA',
+                                                name='  2026-Q3   North ', username='super',
+                                                context_filters={'Region': ['North']})
+
+    assert copy['id'] not in (first['id'], second['id'])
+    assert copy['name'] == '2026-Q3 North' and copy['pinned'] and copy['status'] == 'queued'
+    assert copy['levels'] == ['Operator', 'Region'] and copy['context_filters']['Region'] == ['North']
+    assert [item['id'] for item in saved_filters.list_saved_filters(repository)] == [second['id'], first['id'], copy['id']]
+    original = saved_filters.get_saved_filter(repository, first['id'])
+    assert original['name'] == '2026-Q3' and original['status'] == 'completed' and original['levels'] == ['Operator']
+    # The selection of the copied Saved Filter, or of another one, is not saved again.
+    for levels, message in ((['Operator'], 'still has the filters'), (['Operator', 'Campaign'], f'Saved Filter {second["id"]} already')):
+        with pytest.raises(ValueError, match=message):
+            saved_filters.duplicate_saved_filter(repository, first['id'], ids, levels, 'NSA', name='Again')
+    assert len(saved_filters.list_saved_filters(repository)) == 3
+    assert saved_filters.duplicate_saved_filter(repository, 999, ids, ['Operator', 'City'], 'NSA') is None
+
+
+def test_duplicate_saved_filter_endpoint_is_recorded_and_calculates_the_copy(client, monkeypatch):
+    client.post('/login', data={'username': 'super', 'password': 'super123'}, follow_redirects=False)
+    repository = app_module.repository
+    calls = []
+
+    def duplicate(_repository, filter_id, dataset_ids, levels, nr_mode, **options):
+        calls.append({'filter_id': filter_id, 'dataset_ids': dataset_ids, 'levels': levels, 'nr_mode': nr_mode, **options})
+        if options['name'] == 'Taken':
+            raise ValueError('Saved Filter 3 already has these filters: change them to save the copy.')
+        return {'id': 12, 'name': options['name'], 'pinned': True}
+
+    monkeypatch.setattr(app_module, 'duplicate_saved_filter', duplicate)
+    monkeypatch.setattr(app_module, 'validate_complete_scoring_cdr_selection', lambda _repository, ids, *_args, **_kwargs: ids)
+    queued = []
+    monkeypatch.setattr(app_module, '_queue_saved_filter_calculation', lambda _repository, filter_id: queued.append(filter_id))
+    monkeypatch.setattr(app_module, 'prune_unpinned_saved_filters', lambda *_args: None)
+    payload = {'dataset_ids': [4, 5, 6], 'aggregation_levels': ['Operator', 'Campaign'], 'nr_mode': 'NSA',
+               'baseline_operator': 'EE', 'context_filters': {'Campaign': ['@latest-3-campaigns']}, 'name': 'Latest 3'}
+
+    response = client.post('/api/scoring/saved-filters/7/duplicate', json=payload)
+
+    assert response.status_code == 200
+    assert response.json() == {'saved_filter': {'id': 12, 'name': 'Latest 3', 'pinned': True}, 'cached': False}
+    assert calls[0]['filter_id'] == 7 and calls[0]['username'] == 'super' and calls[0]['name'] == 'Latest 3'
+    assert calls[0]['context_filters']['Campaign'] == ['@latest-3-campaigns']
+    assert queued == [12]
+    [event] = [row for row in repository.list_logs(limit=20) if row['action'] == 'duplicate_saved_filter']
+    assert '"saved_filter_id": 12' in event['details'] and '"source_filter_id": 7' in event['details']
+    assert '"name": "Latest 3"' in event['details'] and '"@latest-3-campaigns"' in event['details']
+    # A selection that is already a Saved Filter: nothing is saved or calculated.
+    refused = client.post('/api/scoring/saved-filters/7/duplicate', json={**payload, 'name': 'Taken'})
+    assert refused.status_code == 400 and 'already has these filters' in refused.json()['detail']
+    assert queued == [12]
+
+
 def test_favourites_filters_travel_with_their_own_backup_element(client, tmp_path: Path) -> None:
     response = client.post('/login', data={'username': 'admin', 'password': 'admin123'}, follow_redirects=False)
     assert response.status_code == 303

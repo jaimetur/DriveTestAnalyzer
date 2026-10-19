@@ -4347,7 +4347,7 @@ body:has(.release-navigator) .help-navigator{top:37%}
 
 /* user-viewer explores the workspace and generates jobs, but cannot change
    datasets, mappings, saved Dashboards, saved queries or other stored data. */
-body[data-authenticated-role="user-viewer"] :is(.upload-dropzone, .queue-bulk-actions, .action-link-map-vendors, .action-link-clear-vendors, .action-link-stop, .action-link-reprocess, form[action^="/datasets-analysis/delete"], .combined-dataset-recreate-button, .auto-calculated-field-rematerialize-button, [data-ds-manage-only], .saved-filter-delete, .saved-filter-pin, .saved-filter-rename, .query-builder-save-subpanel, [data-sql-edit], [data-sql-delete]) { display: none !important; }
+body[data-authenticated-role="user-viewer"] :is(.upload-dropzone, .queue-bulk-actions, .action-link-map-vendors, .action-link-clear-vendors, .action-link-stop, .action-link-reprocess, form[action^="/datasets-analysis/delete"], .combined-dataset-recreate-button, .auto-calculated-field-rematerialize-button, [data-ds-manage-only], .saved-filter-delete, .saved-filter-pin, .saved-filter-rename, .saved-filter-duplicate, .query-builder-save-subpanel, [data-sql-edit], [data-sql-delete]) { display: none !important; }
 body[data-authenticated-role="user-viewer"] :is(.queue-nr-mode-select, .queue-cdr-type-select) { pointer-events: none; appearance: none; background-image: none; }
 
 /* Map CDR fields: CDRs, rules and mapping selectors side by side so the dialog fits without scrolling. */

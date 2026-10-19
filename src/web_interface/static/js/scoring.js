@@ -356,7 +356,10 @@
   const editDialog = root.querySelector('[data-saved-filter-edit-dialog]');
   const editBanner = root.querySelector('[data-saved-filter-editing]');
   const editTitle = root.querySelector('[data-saved-filter-editing-title]');
+  const editText = root.querySelector('[data-saved-filter-editing-text]');
+  const editTextDefault = editText?.textContent || '';
   const editSaveButton = root.querySelector('[data-saved-filter-edit-save]');
+  const editSaveLabel = editSaveButton?.querySelector('span') || null;
   const editCancelButton = root.querySelector('[data-saved-filter-edit-cancel]');
   let editingSavedFilter = null;
   // The selection of the panel before the editing (given back when it is cancelled) and the place of the panel.
@@ -426,6 +429,8 @@
   let calculationMatchRecheck = false;
   // The selection of the Calculation panel is no Saved Filter: the results of the opened one are not shown with it.
   let selectionUnmatched = false;
+  // The name of the copy while a Saved Filter is duplicated (null while it is edited, or neither).
+  let duplicateName = null;
   // The status of the selected CDRs and filters (calculating, recalculating, already calculated or ready) stays
   // while the Saved Filter list refreshes every few seconds; Saved Filters submitted with Recalculate say so.
   let selectionStatus = {key: '', text: '', kind: ''};
@@ -1446,7 +1451,15 @@
         } else if (existing) {
           text = 'This selection is a Saved Filter: Calculate updates its result with the current CDRs and methodology.';
         }
-        if (editingSavedFilter) {
+        if (editingSavedFilter && duplicateName !== null) {
+          // Save as New Filter saves a selection that is no Saved Filter yet.
+          const copiedId = String(savedFilterIdOf(editingSavedFilter));
+          text = !existing ? 'Save as New Filter saves this selection as a new Favourites Filter and calculates it.'
+            : String(savedFilterIdOf(existing)) === copiedId ? 'This is still the selection of the Saved Filter being duplicated: change it to save the copy.'
+            : `Saved Filter ${savedFilterIdOf(existing)} already has this selection: change it to save the copy.`;
+          kind = '';
+          if (editSaveButton) editSaveButton.disabled = Boolean(existing);
+        } else if (editingSavedFilter) {
           // Save Changes gives the selection to the Saved Filter being edited.
           const editedId = String(savedFilterIdOf(editingSavedFilter));
           text = !existing ? 'Save Changes gives this selection to the Saved Filter and calculates it again.'
@@ -2300,6 +2313,13 @@
       rename.textContent = '✎';
       rename.title = 'Edit this Saved Filter: its name or its filters';
       rename.setAttribute('aria-label', `Edit Saved Filter ${id}`);
+      const duplicate = document.createElement('button');
+      duplicate.type = 'button';
+      duplicate.className = 'saved-filter-duplicate';
+      duplicate.dataset.savedFilterDuplicate = id;
+      duplicate.textContent = '⧉';
+      duplicate.title = 'Duplicate this Saved Filter: change the filters of a copy and save it as a new Favourites Filter';
+      duplicate.setAttribute('aria-label', `Duplicate Saved Filter ${id}`);
       const remove = document.createElement('button');
       remove.type = 'button';
       remove.className = 'saved-filter-delete';
@@ -2308,7 +2328,7 @@
       remove.title = 'Delete this Saved Filter and its result';
       remove.setAttribute('aria-label', `Delete Saved Filter ${id}`);
       remove.disabled = deletingSavedFilterIds.has(id);
-      actions.append(cdrButton, idBadge, rename, pin, remove);
+      actions.append(cdrButton, idBadge, rename, duplicate, pin, remove);
       row.append(button, actions);
       row.dataset.savedFilterRow = id;
       if (savedFilter.pinned) savedFilterList.append(row);
@@ -9391,9 +9411,10 @@
     }
   }
 
-  // ``url`` updates an existing Saved Filter instead (its Use newer CDRs button, or Save Changes when it is edited).
+  // ``url`` updates an existing Saved Filter instead (its Use newer CDRs button, or Save Changes when it is edited) or
+  // saves a copy of one (Save as New Filter, with the name of the copy in ``extra``).
   // Returns whether the Saved Filter was saved.
-  async function createSavedFilter(force, {url = savedFiltersUrl} = {}) {
+  async function createSavedFilter(force, {url = savedFiltersUrl, extra = {}} = {}) {
     const datasetIds = selectedDatasetIds();
     if (!datasetIds.length) {
       setMessage('Select one or more CDR datasets first.', 'error');
@@ -9413,7 +9434,7 @@
       baselineInput.focus();
       return false;
     }
-    const payload = {...calculationPayload(), force};
+    const payload = {...calculationPayload(), force, ...extra};
     // A new scoring always opens on Summary.
     showResultTab('summary');
     syncResultTableControls();
@@ -9621,11 +9642,22 @@
   // gives the panel back its selection before the editing.
   function syncSavedFilterEditing() {
     const editing = Boolean(editingSavedFilter);
+    const duplicating = editing && duplicateName !== null;
     if (editBanner) editBanner.hidden = !editing;
     if (editTitle && editing) {
       const id = savedFilterIdOf(editingSavedFilter);
-      editTitle.textContent = `Editing Saved Filter ${editingSavedFilter.name ? `“${editingSavedFilter.name}” · ` : ''}Filter ID ${id}`;
+      const named = `${editingSavedFilter.name ? `“${editingSavedFilter.name}” · ` : ''}Filter ID ${id}`;
+      editTitle.textContent = duplicating ? `Duplicating Saved Filter ${named}` : `Editing Saved Filter ${named}`;
     }
+    if (editText && editing) {
+      editText.textContent = duplicating
+        ? 'Change the NR Mode, Campaign, filters, Split by, GAP reference, Scoring Trends or methodology of the copy: its CDRs '
+          + `follow the NR Mode and Campaign. Save as New Filter calculates it as a new Favourites Filter${duplicateName.trim() ? ` named “${duplicateName.trim()}”` : ''}; `
+          + 'the Saved Filter copied stays as it was. Cancel Editing (or Escape) leaves without a copy.'
+        : editTextDefault;
+    }
+    if (editSaveLabel) editSaveLabel.textContent = duplicating ? 'Save as New Filter' : 'Save Changes';
+    if (editSaveButton && !duplicating) editSaveButton.disabled = false;
     calculationPanel?.classList.toggle('is-editing-saved-filter', editing);
     calculateButton.hidden = editing;
     recalculateButton.hidden = editing;
@@ -9633,9 +9665,11 @@
     if (editCancelButton) editCancelButton.hidden = !editing;
   }
 
-  function startSavedFilterEdit(savedFilter) {
+  // ``duplicateName`` edits a copy of the Saved Filter instead, saved as a new one with that name.
+  function startSavedFilterEdit(savedFilter, {duplicateName: copyName = null} = {}) {
     if (!editingSavedFilter) selectionBeforeEdit = {selection: calculationSelectionFromControls(), pinned: pinnedCdrs};
     editingSavedFilter = savedFilter;
+    duplicateName = copyName;
     savedFilterSelector.open = false;
     calculationMatchKey = '';
     restoreCalculationSelectionFromSavedFilter(savedFilter, {automaticCdrs: true});
@@ -9654,6 +9688,7 @@
   function stopSavedFilterEdit({restore = false} = {}) {
     const before = selectionBeforeEdit;
     editingSavedFilter = null;
+    duplicateName = null;
     selectionBeforeEdit = null;
     calculationMatchKey = '';
     if (editPanelPlaceholder && calculationPanel) {
@@ -9675,7 +9710,10 @@
   editSaveButton?.addEventListener('click', async () => {
     const savedFilter = editingSavedFilter;
     if (!savedFilter) return;
-    const saved = await createSavedFilter(false, {url: `${savedFiltersUrl}/${encodeURIComponent(savedFilterIdOf(savedFilter))}/edit`});
+    const id = encodeURIComponent(savedFilterIdOf(savedFilter));
+    const saved = duplicateName !== null
+      ? await createSavedFilter(false, {url: `${savedFiltersUrl}/${id}/duplicate`, extra: {name: duplicateName}})
+      : await createSavedFilter(false, {url: `${savedFiltersUrl}/${id}/edit`});
     if (saved && editingSavedFilter === savedFilter) stopSavedFilterEdit();
   });
   editCancelButton?.addEventListener('click', () => stopSavedFilterEdit({restore: true}));
@@ -9697,17 +9735,44 @@
     stopSavedFilterEdit({restore: true});
   });
 
-  // The name, pin and Use newer CDRs buttons of a Saved Filter, in the lists and in the selected card of the
-  // Scoring Results dropdown. Returns whether the click was one of them.
+  // The filters of the Saved Filter stay in sight while it is named: a copy of its card, without its name badge.
+  function savedFilterCardReference(event, id) {
+    const card = event.target.closest('.saved-filter-row')?.querySelector('.saved-filter-item')
+      || root.querySelector(`.saved-filter-item[data-saved-filter-id="${CSS.escape(id)}"]`);
+    if (!card) return null;
+    const reference = document.createElement('div');
+    reference.className = 'saved-filter-item saved-filter-reference';
+    reference.append(...Array.from(card.children, child => child.cloneNode(true))
+      .filter(child => !child.classList?.contains('saved-filter-name')));
+    return reference;
+  }
+
+  // The name, pin, duplicate and Use newer CDRs buttons of a Saved Filter, in the lists and in the selected card of
+  // the Scoring Results dropdown. Returns whether the click was one of them.
   async function savedFilterAction(event) {
     const pin = event.target.closest('[data-saved-filter-pin]');
     const rename = event.target.closest('[data-saved-filter-rename]');
     const useNewer = event.target.closest('[data-saved-filter-newer]');
-    if (pin || rename || useNewer) {
+    const duplicate = event.target.closest('[data-saved-filter-duplicate]');
+    if (pin || rename || useNewer || duplicate) {
       event.preventDefault();
-      const id = pin?.dataset.savedFilterPin || rename?.dataset.savedFilterRename || useNewer?.dataset.savedFilterNewer;
+      const id = pin?.dataset.savedFilterPin || rename?.dataset.savedFilterRename || useNewer?.dataset.savedFilterNewer
+        || duplicate?.dataset.savedFilterDuplicate;
       const savedFilter = savedFilters.find(record => savedFilterIdOf(record) === id);
       if (!savedFilter) return true;
+      if (duplicate) {
+        // A copy of its selection opens in the edit dialog, to change it and save it as a new Saved Filter.
+        const name = await showTextInputDialog('Name of the copy', {
+          reference: savedFilterCardReference(event, id),
+          eyebrow: 'Saved Filter', title: 'Duplicate Saved Filter', value: savedFilter.name ? `${savedFilter.name} (copy)` : '',
+          placeholder: 'For example 2026-Q3 London', maxLength: 120, confirmLabel: 'Edit Filters of the Copy',
+          note: 'The copy opens with the filters of this Saved Filter in a dialog: change them (for example its Campaign) and '
+            + 'Save as New Filter saves it as a new Favourites Filter, right after this one, which stays as it is.',
+        });
+        if (name === null || name === undefined) return true;
+        startSavedFilterEdit(savedFilter, {duplicateName: String(name)});
+        return true;
+      }
       if (useNewer) {
         // The same Saved Filter, updated with the CDRs that replace the older ones and calculated again.
         const replacements = new Map((savedFilter.newer_cdrs || []).map(item => [String(item.id), String(item.replaced_by)]));
@@ -9722,18 +9787,8 @@
       // Edit Filters opens its selection in a dialog to change it (a changed name is saved first).
       let edit = false;
       const changes = pin ? {pinned: !savedFilter.pinned} : await (async () => {
-        // The filters of the Saved Filter stay in sight while it is edited: a copy of its card, without its name badge.
-        const card = event.target.closest('.saved-filter-row')?.querySelector('.saved-filter-item')
-          || root.querySelector(`.saved-filter-item[data-saved-filter-id="${CSS.escape(id)}"]`);
-        let reference = null;
-        if (card) {
-          reference = document.createElement('div');
-          reference.className = 'saved-filter-item saved-filter-reference';
-          reference.append(...Array.from(card.children, child => child.cloneNode(true))
-            .filter(child => !child.classList?.contains('saved-filter-name')));
-        }
         const answer = await showTextInputDialog('Name', {
-          reference,
+          reference: savedFilterCardReference(event, id),
           eyebrow: 'Saved Filter', title: 'Edit Saved Filter', value: savedFilter.name || '',
           placeholder: 'For example 2026-Q3 London', maxLength: 120, confirmLabel: 'Save Name',
           secondaryLabel: 'Edit Filters',
@@ -9798,7 +9853,7 @@
   });
   root.addEventListener('click', event => {
     // In the selected card of the dropdown, the buttons do not open it.
-    if (event.target.closest('summary') && event.target.closest('[data-saved-filter-pin], [data-saved-filter-rename], [data-saved-filter-newer]')) {
+    if (event.target.closest('summary') && event.target.closest('[data-saved-filter-pin], [data-saved-filter-rename], [data-saved-filter-duplicate], [data-saved-filter-newer]')) {
       savedFilterAction(event);
       return;
     }
