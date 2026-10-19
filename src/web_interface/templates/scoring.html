@@ -183,6 +183,10 @@
   .saved-filter-use-newer { min-height: 1.55rem; padding: .18rem .55rem; border: 1px solid #e0a23a; border-radius: 999px; background: #fff3d6; color: #8a5300; font-size: .72rem; font-weight: 800; box-shadow: none; }
   .saved-filter-use-newer:hover { background: #ffe7b0; box-shadow: none; transform: none; }
   .saved-filter-use-newer:disabled { border-color: #d8dee3; background: #f1f4f6; color: #8796a1; cursor: not-allowed; }
+  /* Delete the checked Saved Filters, in red beside Use newer CDRs. */
+  .saved-filters-delete-selected { min-height: 1.55rem; padding: .18rem .55rem; border: 1px solid #e4a1a1; border-radius: 999px; background: #fdecec; color: #a42828; font-size: .72rem; font-weight: 800; box-shadow: none; }
+  .saved-filters-delete-selected:hover { background: #f9d6d6; box-shadow: none; transform: none; }
+  .saved-filters-delete-selected:disabled { border-color: #d8dee3; background: #f1f4f6; color: #8796a1; cursor: not-allowed; }
   /* The selection of Saved Filters in the Saved Filters panel, to update them together. */
   .saved-filters-bulk { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; margin: -.35rem 0 .6rem; }
   .saved-filters-select-all { display: inline-flex; align-items: center; gap: .35rem; color: #46606d; font-size: .78rem; font-weight: 800; cursor: pointer; }
@@ -1491,6 +1495,7 @@
       <div class="saved-filters-bulk" data-saved-filters-bulk hidden>
         <label class="saved-filters-select-all"><input type="checkbox" data-saved-filters-select-all> Select all</label>
         <button type="button" class="saved-filter-use-newer" data-saved-filters-use-newer disabled title="Update the selected Saved Filters that have newer CDRs and calculate them again">Use newer CDRs</button>
+        <button type="button" class="saved-filters-delete-selected" data-saved-filters-delete disabled title="Delete the selected Saved Filters and their results (their CDRs and the Scoring History stay)">Delete</button>
       </div>
       <div class="saved-filter-list" data-saved-filter-list aria-label="Saved Filters" aria-live="polite"><div class="scoring-empty">Loading Saved Filters…</div></div>
     </article>

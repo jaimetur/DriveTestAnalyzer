@@ -100,3 +100,38 @@ def test_deleted_during_loading_stops_before_calculation(deletion_context, monke
     assert loads == [dataset_id]
     assert calls == []
     assert saved_filters.get_saved_filter(repository, job['id']) is None
+
+
+def test_the_checked_saved_filters_are_deleted_together(client):
+    import json
+    from pathlib import Path
+
+    import src.DriveTestAnalyzer as core
+
+    client.cookies.clear()
+    assert client.post('/login', data={'username': 'super', 'password': 'super123'}, follow_redirects=False).status_code == 303
+    repository = core.repository
+    repository.replace_scoring_configuration(scoring_configuration())
+    source = Path(repository.db_path).parent / 'Data_NSA.csv'
+    source.write_text('source', encoding='utf-8')
+    dataset_id, _ = repository.add_dataset(source.name, str(source), 'tester')
+    repository.replace_dataset_rows(dataset_id, pd.DataFrame({'Operator': ['EE'], 'score': [4]}))
+    repository.update_dataset_profile(dataset_id, status='ready', progress=100, dataset_kind='data',
+                                      nr_mode='NSA', row_count=1, column_count=2, processed_at=local_now_iso())
+    first, _ = saved_filters.save_saved_filter(repository, [dataset_id], [], 'NSA', baseline_operator='EE')
+    second, _ = saved_filters.save_saved_filter(repository, [dataset_id], [], 'NSA', baseline_operator='O2')
+    saved_filters.update_saved_filter(repository, first['id'], name='First', pinned=True)
+    kept, _ = saved_filters.save_saved_filter(repository, [dataset_id], [], 'NSA', baseline_operator='VF')
+
+    response = client.post('/api/scoring/saved-filters/delete', json={'ids': [first['id'], second['id'], first['id'], 999999]})
+    assert response.status_code == 200
+    assert response.json() == {'deleted': [first['id'], second['id']], 'missing': [999999]}
+    # Only the Saved Filters checked are deleted; their CDRs stay.
+    assert [item['id'] for item in saved_filters.list_saved_filters(repository)] == [kept['id']]
+    assert repository.get_dataset(dataset_id) is not None
+    details = next(json.loads(row['details']) for row in repository.list_logs() if row['action'] == 'delete_saved_filters')
+    assert [item['name'] for item in details['deleted']] == ['First', second['name']] and details['missing'] == [999999]
+
+    # The Favourites Filters panel offers the Delete button beside Use newer CDRs.
+    page = client.get('/scoring').text
+    assert 'data-saved-filters-delete' in page

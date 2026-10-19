@@ -378,12 +378,14 @@
   const savedFilterPanelList = savedFilterLists.find(list => list.closest('.saved-filters-panel')) || null;
   const canReorderSavedFilters = document.body.dataset.authenticatedRole !== 'user-viewer';
   let draggedSavedFilterRow = null;
-  // The Saved Filters checked in the Saved Filters panel, to update them together with Use newer CDRs.
+  // The Saved Filters checked in the Saved Filters panel, to update them together with Use newer CDRs or delete them.
   const checkedSavedFilterIds = new Set();
   const savedFiltersBulk = root.querySelector('[data-saved-filters-bulk]');
   const savedFiltersSelectAll = root.querySelector('[data-saved-filters-select-all]');
   const savedFiltersUseNewer = root.querySelector('[data-saved-filters-use-newer]');
+  const savedFiltersDelete = root.querySelector('[data-saved-filters-delete]');
   let updatingSavedFiltersCdrs = false;
+  let deletingCheckedSavedFilters = false;
   let savedFiltersRenderPending = false;
   const savedFilterList = savedFilterLists[0];
   const savedFilterSelector = root.querySelector('[data-saved-filter-selector]');
@@ -1784,6 +1786,12 @@
     const withNewer = savedFiltersWithNewerCdrs();
     savedFiltersUseNewer.textContent = withNewer.length ? `Use newer CDRs (${withNewer.length})` : 'Use newer CDRs';
     savedFiltersUseNewer.disabled = updatingSavedFiltersCdrs || !withNewer.length;
+    if (savedFiltersDelete) {
+      // Readers cannot delete Saved Filters.
+      savedFiltersDelete.hidden = !canReorderSavedFilters;
+      savedFiltersDelete.textContent = checkedSavedFilterIds.size ? `Delete (${checkedSavedFilterIds.size})` : 'Delete';
+      savedFiltersDelete.disabled = deletingCheckedSavedFilters || updatingSavedFiltersCdrs || !checkedSavedFilterIds.size;
+    }
   }
 
   function savedFiltersWithNewerCdrs() {
@@ -1833,6 +1841,50 @@
       const updated = targets.length - failures.length;
       if (failures.length) setMessage(`Updated ${updated} of ${targets.length} Saved Filters. ${failures.join(' ')}`, 'error');
       else setMessage(`${updated} Saved Filter${updated === 1 ? '' : 's'} updated with the newer CDRs and queued to calculate again.`, 'success');
+      await refreshSavedFilters();
+    });
+    // The checked Saved Filters are deleted together, after one confirmation, with their results.
+    savedFiltersDelete?.addEventListener('click', async () => {
+      const targets = savedFilters.filter(savedFilter => checkedSavedFilterIds.has(savedFilterIdOf(savedFilter)));
+      if (!targets.length || deletingCheckedSavedFilters) return;
+      const count = targets.length;
+      const active = targets.filter(isActive).length;
+      const copy = `Delete ${count} Saved Filter${count === 1 ? '' : 's'} and ${count === 1 ? 'its result' : 'their results'}?`
+        + `${active ? ` The pending result of ${active} of them will be discarded.` : ''} The CDRs and the Scoring History stay.`;
+      const accepted = typeof showConfirmDialog === 'function'
+        ? await showConfirmDialog(copy, {title: `Delete ${count} Saved Filter${count === 1 ? '' : 's'}`, confirmLabel: 'Delete'})
+        : window.confirm(copy);
+      if (!accepted) return;
+      deletingCheckedSavedFilters = true;
+      syncSavedFiltersBulk();
+      setMessage(`Deleting ${count} Saved Filter${count === 1 ? '' : 's'}…`, 'busy');
+      try {
+        const body = await requestJson(`${savedFiltersUrl}/delete`, {
+          method: 'POST', body: JSON.stringify({ids: targets.map(savedFilter => Number(savedFilterIdOf(savedFilter)))}),
+        });
+        const deleted = new Set((body?.deleted || []).map(String));
+        deleted.forEach(id => { deletedSavedFilterIds.add(id); resultCache.delete(id); checkedSavedFilterIds.delete(id); });
+        savedFilters = savedFilters.filter(record => !deleted.has(savedFilterIdOf(record)));
+        calculationMatchKey = '';
+        if (editingSavedFilter && deleted.has(savedFilterIdOf(editingSavedFilter))) stopSavedFilterEdit();
+        updateSelection();
+        if (deleted.has(selectedSavedFilterId)) {
+          selectedSavedFilterId = null;
+          selectedSavedFilter = null;
+          currentResults = null;
+          currentResultsSavedFilterId = null;
+          userSelectedSavedFilter = false;
+          renderNoResult('Calculate a scoring or choose Saved Filters to see their results.');
+        }
+        const missing = (body?.missing || []).length;
+        setMessage(`${deleted.size} Saved Filter${deleted.size === 1 ? '' : 's'} and ${deleted.size === 1 ? 'its result' : 'their results'} deleted.`
+          + (missing ? ` ${missing} no longer existed.` : ''), 'success');
+      } catch (error) {
+        setMessage(error.message || 'The Saved Filters could not be deleted.', 'error');
+      } finally {
+        deletingCheckedSavedFilters = false;
+        renderSavedFilters();
+      }
       await refreshSavedFilters();
     });
   }

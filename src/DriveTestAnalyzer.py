@@ -18552,6 +18552,29 @@ def saved_filters_delete(filter_id: int, user: SessionUser = Depends(workspace_e
     return {'deleted': filter_id}
 
 
+class SavedFiltersDeleteRequest(BaseModel):
+    ids: list[int] = Field(default_factory=list)
+
+
+@app.post('/api/scoring/saved-filters/delete')
+def saved_filters_delete_many(payload: SavedFiltersDeleteRequest,
+                              user: SessionUser = Depends(workspace_editor_user)) -> dict[str, Any]:
+    """Delete the Saved Filters checked in the Favourites Filters panel, with their results; their CDRs and the
+    Scoring History stay."""
+    task_repository = scoring_repository(user)
+    deleted: list[dict[str, Any]] = []
+    missing: list[int] = []
+    for filter_id in dict.fromkeys(int(value) for value in payload.ids):
+        saved_filter = get_saved_filter(task_repository, filter_id)
+        if saved_filter is not None and delete_saved_filter(task_repository, filter_id):
+            deleted.append({'filter_id': filter_id, 'name': saved_filter.get('name') or '', 'status': saved_filter.get('status') or ''})
+        else:
+            missing.append(filter_id)
+    task_repository.try_add_log(user.username, 'delete_saved_filters', json.dumps(
+        {'deleted': deleted, 'missing': missing}, ensure_ascii=False))
+    return {'deleted': [item['filter_id'] for item in deleted], 'missing': missing}
+
+
 def build_saved_filter_powerpoint(task_repository: Repository, filter_id: int) -> tuple[bytes, str, dict[str, Any]]:
     """PowerPoint of the result of a Saved Filter with the default export options (all environments)."""
     from src.modules.scoring_exports import export_scoring_powerpoint, prepare_scoring_display_selections
