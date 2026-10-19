@@ -1,11 +1,11 @@
 """Admin notices: what a super-admin is told about after signing in and while signed in.
 
-A dialog lists the access requests waiting for activation and the new bug reports (status New, reported by someone
-else) the super-admin has not been told about yet; the pages ask for them with the poll of incoming transfer offers
-(:func:`unseen_notice_ids`). Each super-admin is told about each one once: the items closed in the dialog, and the bug
-reports the super-admin opens, are kept in ``admin_notices_seen`` of the application database. An access request is
-identified by its user and the time of the request, so a later request of the same user is told again; a bug report by
-its ``uid``.
+A dialog lists the access requests waiting for activation and the new tickets of Ticket Center (status New, reported
+by someone else) the super-admin has not been told about yet; the pages ask for them with the poll of incoming transfer
+offers (:func:`unseen_notice_ids`). Each super-admin is told about each one once: the items closed in the dialog, and
+the tickets the super-admin opens, are kept in ``admin_notices_seen`` of the application database. An access request is
+identified by its user and the time of the request, so a later request of the same user is told again; a ticket by its
+``uid`` (its kind keeps the name ``bug_report`` of Bugs Report, as Ticket Center was called).
 """
 from __future__ import annotations
 
@@ -34,10 +34,11 @@ def pending_access_requests(repository: Repository) -> list[dict[str, Any]]:
 
 
 def new_bug_reports(repository: Repository, username: str) -> list[dict[str, Any]]:
-    """The bug reports still New that someone other than ``username`` reported, the oldest first."""
+    """The tickets still New that someone other than ``username`` reported, the oldest first."""
     with repository.global_connection() as conn:
         rows = conn.execute(
-            "SELECT id, uid, title, module, priority, created_by, created_at FROM bug_reports WHERE status = 'new' ORDER BY created_at, id"
+            "SELECT id, uid, ticket_type, title, module, priority, created_by, created_at FROM bug_reports WHERE status = 'new' "
+            'ORDER BY created_at, id'
         ).fetchall()
     return [{**dict(row), 'key': str(row['uid'])} for row in rows if str(row['created_by']).casefold() != username.strip().casefold()]
 
@@ -50,7 +51,7 @@ def _seen_keys(conn: Any, user_id: int) -> dict[str, set[str]]:
 
 
 def unseen_notices(repository: Repository, username: str, *, include_bug_reports: bool = True) -> dict[str, list[dict[str, Any]]]:
-    """The pending access requests and new bug reports ``username`` has not been told about yet."""
+    """The pending access requests and new tickets ``username`` has not been told about yet."""
     requests = pending_access_requests(repository)
     bugs = new_bug_reports(repository, username) if include_bug_reports else []
     with repository.global_connection() as conn:
@@ -63,7 +64,7 @@ def unseen_notices(repository: Repository, username: str, *, include_bug_reports
 
 
 def unseen_notice_ids(repository: Repository, username: str, *, include_bug_reports: bool = True) -> dict[str, list[int]]:
-    """The ids of the users with a pending access request and of the new bug reports ``username`` has not been told
+    """The ids of the users with a pending access request and of the new tickets ``username`` has not been told
     about yet: one light query, for the pages that poll for them."""
     query = """
         SELECT 'access_requests' AS kind, u.id FROM users u
@@ -89,7 +90,7 @@ def unseen_notice_ids(repository: Repository, username: str, *, include_bug_repo
 
 def mark_seen(repository: Repository, username: str, *, access_requests: Iterable[str] = (),
               bug_reports: Iterable[str] = ()) -> dict[str, list[dict[str, Any]]]:
-    """Record that ``username`` has been told about these access requests and bug reports (by their keys), and forget
+    """Record that ``username`` has been told about these access requests and tickets (by their keys), and forget
     those no longer pending or deleted. Returns the items recorded, among those that still exist."""
     pending = {item['key']: item for item in pending_access_requests(repository)}
     now = local_now_iso()

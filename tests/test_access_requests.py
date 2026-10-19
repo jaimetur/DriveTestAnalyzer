@@ -38,7 +38,7 @@ def test_access_request_creates_an_inactive_editor_with_the_chosen_access(client
     assert options['workspace_groups'][0]['description'] == ''
     assert [profile['name'] for profile in options['modules_profiles']] == ['All Modules', 'Benchmarking', 'Non-Qualified Calls']
     nq_calls = options['modules_profiles'][2]
-    assert nq_calls['modules'] == ['Workspace', 'Non-Qualified Calls', 'Reporting', 'Builders', 'Bugs Report']
+    assert nq_calls['modules'] == ['Workspace', 'Non-Qualified Calls', 'Reporting', 'Builders', 'Ticket Center']
     assert nq_calls['module_tabs'][0]['title'] == 'Workspace' and nq_calls['module_tabs'][0]['color'] and nq_calls['module_tabs'][0]['icon']
     request = {'username': 'eabcdef', 'first_name': ' Ana ', 'last_name': 'García', 'password': 'secret1', 'password_confirmation': 'secret1',
                'workspace_group_ids': [uk], 'modules_profile_id': nq_calls['id']}
@@ -54,7 +54,7 @@ def test_access_request_creates_an_inactive_editor_with_the_chosen_access(client
     assert response.status_code == 201, response.text
     result = response.json()
     assert (result['username'], result['name']) == ('EABCDEF', 'Ana García')
-    assert result['modules_profile'] == 'Non-Qualified Calls (Workspace, Non-Qualified Calls, Reporting, Builders, Bugs Report)'
+    assert result['modules_profile'] == 'Non-Qualified Calls (Workspace, Non-Qualified Calls, Reporting, Builders, Ticket Center)'
     assert result['email']['to'] == 'jaime.tur@ericsson.com' and result['email']['subject'].endswith('access request: EABCDEF')
     body = result['email']['body']
     assert 'User: EABCDEF' in body and 'Name: Ana García' in body and f'Workspaces: UK ({core.active_workspace.name})' in body

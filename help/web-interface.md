@@ -40,7 +40,7 @@ Primary tabs, in their default order (super-admins change their order, titles, i
 - Non-Qualified Calls (in development, hidden until activated)
 - **Reporting**
 - **Builders** (dropdown with Chart Builder and Query Builder)
-- Bugs Report (opens without a workspace)
+- Ticket Center (opens without a workspace)
 
 Each main tab is a module. An account sees the modules of its Modules Profile (**Admin → Modules Profiles**), and a super-admin every module until it is given one; a module an account does not see disappears from its tabs and Modules menu, and its pages and API answer 403. When the tabs do not fit on one line they wrap onto further lines, and main module tabs never share a line with the administrative tabs.
 
@@ -51,7 +51,7 @@ Other tabs:
 - Config (dropdown with Application Config and Workspace Config, each with the list of its sections on hover), for `user-editor`, `admin` and `super-admin` roles
 - Admin, for `admin` and `super-admin` roles
 
-Help Home opens by default after login. The login page also offers **Request Access** to new users (see [Administrator Config › Access Requests](administrator-config.md#access-requests)). Help, the Readme, the Changelog and the bug reports of Bugs Report are also available without signing in, with a prominent **Sign in** button at the top right that returns to the page after signing in. Every module except Workspace requires an open workspace.
+Help Home opens by default after login. The login page also offers **Request Access** to new users (see [Administrator Config › Access Requests](administrator-config.md#access-requests)). Help, the Readme, the Changelog and the tickets of Ticket Center are also available without signing in, with a prominent **Sign in** button at the top right that returns to the page after signing in. Every module except Workspace requires an open workspace.
 
 Hovering a tab, or focusing it with the keyboard, opens below it the list of its sections, each with an icon and in the colour of the module: the panels of each main module (for example Scoring Calculation, Scoring & GAP Results and Favourites Filters in Scoring & GAP Analysis, where Scoring & GAP Results lists beside it Summary, Scoring Charts, Scoring Tables, Geographical Areas, Scoring Trends, GAP Analysis and Points Lost to open that results tab; on small screens these lists appear below their page, indented), App Events and Execution Log in App Logs, the panels of Admin, the chapters of the Readme and the latest releases of the Changelog. Help lists Help Home and, beside each group, the chapters of General, Main Modules, Administrative Modules and Reference (with the Readme and the Changelog), and ends with **About**, the credits of the application: its logo, name, version, release date and author. Choosing one opens that page with that section at its top (the Scoring & GAP Results entries bring the results tabs there), unfolding it when it was folded, and keeps it there while the page fills its panels (a reload then returns to where the page was being read, with its results tab); clicking the tab itself still opens the module, at its top when it is the page being shown. **Builders** and **Config** open their menu on hover too, and so does the **User** badge, with **Change password**.
 
@@ -137,7 +137,7 @@ Long operations use progress dialogs for stages such as:
 
 Server-transfer dialogs can be hidden with **Hide** while the transfer continues as a background task, and are restored after a browser reload while the transfer remains active. On the destination, once the package has arrived, a dialog without **Hide** keeps every open page out of use until the import ends; on the source, the dialog comes back once when that import starts and can be hidden again.
 
-After signing in and while signed in, a super-admin is told in the same style as an incoming server transfer of the [access requests](administrator-config.md#access-requests) waiting for activation and of the new [bug reports](bugs-report.md#who-can-do-what) it has not been told of, once each, on any page: the poll of incoming transfers checks for them every few seconds (every 30 seconds in a hidden tab), and an open dialog takes in what arrives meanwhile. The dialog waits for any other dialog or running operation of the page to close first, and a dialog that opens while it is shown goes over it.
+After signing in and while signed in, a super-admin is told in the same style as an incoming server transfer of the [access requests](administrator-config.md#access-requests) waiting for activation and of the new [tickets](bugs-report.md#who-can-do-what) it has not been told of, once each, on any page: the poll of incoming transfers checks for them every few seconds (every 30 seconds in a hidden tab), and an open dialog takes in what arrives meanwhile. The dialog waits for any other dialog or running operation of the page to close first, and a dialog that opens while it is shown goes over it.
 
 ## Floating background-task cards
 

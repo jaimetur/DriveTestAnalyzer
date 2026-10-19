@@ -59,7 +59,7 @@ def test_former_user_groups_become_modules_profiles_and_workspace_groups(client)
     core.invalidate_module_access_cache()
 
     profiles = {profile['name']: profile for profile in core.repository.list_modules_profiles()}
-    # Bugs Report, added to the tool after those groups, joins every profile.
+    # Ticket Center (then Bugs Report), added to the tool after those groups, joins every profile.
     assert profiles['NQ Calls']['modules'] == ['workspace', 'non-qualified-calls', 'bugs-report']
     assert profiles['Benchmarking']['modules'] == [*benchmarking, 'bugs-report']
     assert profiles['All Modules']['is_default'] and 'ppt-reporting-old' not in profiles['All Modules']['modules']

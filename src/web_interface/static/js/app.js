@@ -7190,8 +7190,8 @@ function importWarningDetails(payload) {
   }
   if (kind === 'bugs-report') {
     return {
-      title: 'Import Bugs Report?',
-      message: 'The bug reports, comments and screenshots this server does not have are added, and a bug report changed later in the package takes its newer content. Nothing is deleted.',
+      title: 'Import Ticket Center?',
+      message: 'The tickets, comments and screenshots this server does not have are added, and a ticket changed later in the package takes its newer content. Nothing is deleted.',
     };
   }
   if (kind === 'ppt-templates') {
@@ -8110,7 +8110,7 @@ document.querySelectorAll('[data-export-package-form]').forEach((form) => {
       }
       if (!response.ok) return;
       const payload = await response.json().catch(() => ({}));
-      // The access requests and bug reports the super-admin has not been told about ride on this poll.
+      // The access requests and tickets the super-admin has not been told about ride on this poll.
       window.dispatchEvent(new CustomEvent('drivetest-analyzer:admin-notices', {detail: payload.admin_notices || null}));
       // A running import keeps every open page out of use, not only the page that accepted it.
       const activeImport = (Array.isArray(payload.active_imports) ? payload.active_imports : [])
@@ -8304,10 +8304,10 @@ document.querySelectorAll('[data-export-package-form]').forEach((form) => {
   scheduleIncomingOfferPoll(0);
 })();
 
-// Super-admins are told of the access requests waiting for activation and of the new bug reports they have not been
-// told about, after signing in and while signed in: the poll of incoming transfer offers reports their ids, and the
-// page shows them in a dialog like that of an incoming transfer. Each item is told once: closing the dialog, or opening
-// Access Requests or Bugs Report from it, records them as seen on the server. The dialog is updated in place, and waits
+// Super-admins are told of the access requests waiting for activation and of the new tickets of Ticket Center they have
+// not been told about, after signing in and while signed in: the poll of incoming transfer offers reports their ids, and
+// the page shows them in a dialog like that of an incoming transfer. Each item is told once: closing the dialog, or
+// opening Access Requests or Ticket Center from it, records them as seen on the server. The dialog is updated in place, and waits
 // while another dialog or a running operation is shown.
 (() => {
   if (document.body.dataset.authenticatedRole !== 'super-admin') return;
@@ -8347,7 +8347,7 @@ document.querySelectorAll('[data-export-package-form]').forEach((form) => {
       });
     } catch (_error) { /* Told again by the next poll. */ }
     if (choice === 'access-requests') window.location.href = told?.access_requests_url || '/admin#users';
-    else if (choice === 'bugs-report') window.location.href = told?.bugs_report_url || '/bugs-report';
+    else if (choice === 'bugs-report') window.location.href = told?.bugs_report_url || '/tickets';
   };
   const render = () => {
     const requests = notices.access_requests || [];
@@ -8359,7 +8359,7 @@ document.querySelectorAll('[data-export-package-form]').forEach((form) => {
         + '<div class="confirm-icon" aria-hidden="true">!</div><p class="eyebrow">Administrator notice</p>'
         + '<h3 id="admin-notices-title"></h3><div class="admin-notices-copy"></div><div class="confirm-actions">'
         + '<button type="button" class="ghost-link confirm-cancel" data-admin-notices-choice="close">Close</button>'
-        + '<button type="button" class="warning-button" data-admin-notices-choice="bugs-report">Open Bugs Report</button>'
+        + '<button type="button" class="warning-button" data-admin-notices-choice="bugs-report"></button>'
         + '<button type="button" class="danger-button" data-admin-notices-choice="access-requests">Open Access Requests</button>'
         + '</div></section>';
       overlay.addEventListener('click', (event) => {
@@ -8375,18 +8375,20 @@ document.querySelectorAll('[data-export-package-form]').forEach((form) => {
       dialog = {overlay, onKeydown, title: overlay.querySelector('h3'), copy: overlay.querySelector('.admin-notices-copy')};
     }
     const listHtml = (items) => `<ul class="incoming-transfer-contents">${items.join('')}</ul>`;
-    dialog.title.textContent = requests.length && bugs.length ? 'New access requests and bug reports'
-      : requests.length ? 'New access requests' : 'New bug reports';
+    dialog.title.textContent = requests.length && bugs.length ? 'New access requests and tickets'
+      : requests.length ? 'New access requests' : 'New tickets';
     dialog.copy.innerHTML = [
       requests.length ? `<p><strong>${escapeHtml(counted(requests.length, 'access request'))} pending activation</strong></p>${listHtml(requests.map((item) => (
         `<li><strong>${escapeHtml(item.name)}</strong> · ${escapeHtml(item.username)} · ${escapeHtml(item.requested_at)}</li>`)))}` : '',
-      bugs.length ? `<p><strong>${escapeHtml(counted(bugs.length, 'new bug report'))}</strong></p>${listHtml(bugs.map((bug) => (
-        `<li><strong>#${escapeHtml(bug.id)} ${escapeHtml(bug.title)}</strong> · ${escapeHtml(bug.priority)} · ${escapeHtml(bug.reported_by)}</li>`)))}` : '',
+      bugs.length ? `<p><strong>${escapeHtml(counted(bugs.length, 'new ticket'))}</strong></p>${listHtml(bugs.map((bug) => (
+        `<li><strong>#${escapeHtml(bug.id)} ${escapeHtml(bug.title)}</strong> · ${escapeHtml(bug.type || 'Bug')} · ${escapeHtml(bug.priority)} · ${escapeHtml(bug.reported_by)}</li>`)))}` : '',
       `<p class="incoming-transfer-effect">${requests.length ? 'Activate the users in Admin → Users. ' : ''}You will not be told about these again.</p>`,
     ].join('');
-    // The first button opens what is listed first; Open Bugs Report is the second one when both are listed.
+    // The first button opens what is listed first; Open Ticket Center (by its title in Interface Settings) is the second
+    // one when both are listed.
     const access = dialog.overlay.querySelector('[data-admin-notices-choice="access-requests"]');
     const bugsButton = dialog.overlay.querySelector('[data-admin-notices-choice="bugs-report"]');
+    bugsButton.textContent = `Open ${notices.bugs_report_title || 'Ticket Center'}`;
     access.hidden = !requests.length;
     bugsButton.hidden = !bugs.length;
     bugsButton.className = requests.length ? 'warning-button' : 'danger-button';

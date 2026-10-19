@@ -443,10 +443,12 @@ CREATE TABLE IF NOT EXISTS workspace_group_members (
     PRIMARY KEY (group_id, user_id)
 );
 
--- Bugs Report: the tickets of the bugs found in the tool, with their history and screenshots (src/modules/bugs_report.py).
+-- Ticket Center (formerly Bugs Report): the tickets of the bugs, improvements and new features of the tool, with their
+-- history and screenshots (src/modules/bugs_report.py).
 CREATE TABLE IF NOT EXISTS bug_reports (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     uid TEXT NOT NULL UNIQUE,
+    ticket_type TEXT NOT NULL DEFAULT 'bug',
     title TEXT NOT NULL,
     description TEXT NOT NULL DEFAULT '',
     module TEXT NOT NULL DEFAULT '',
@@ -491,7 +493,7 @@ CREATE TABLE IF NOT EXISTS bug_report_attachments (
 
 CREATE INDEX IF NOT EXISTS idx_bug_report_attachments_bug ON bug_report_attachments(bug_id, id);
 
--- Admin notices: the access requests and bug reports each super-admin has been told about (src/modules/admin_notices.py).
+-- Admin notices: the access requests and tickets each super-admin has been told about (src/modules/admin_notices.py).
 CREATE TABLE IF NOT EXISTS admin_notices_seen (
     user_id INTEGER NOT NULL,
     kind TEXT NOT NULL,
@@ -509,7 +511,7 @@ PROFILE_COLOR_ALL_MODULES, PROFILE_COLOR_BENCHMARKING, PROFILE_COLOR_NON_QUALIFI
 # The Modules Profiles of a new deployment: (name, description, modules, colour, default).
 # PPT Reporting (old) is in none of them, so only super-admins without a profile see it.
 DEFAULT_MODULES_PROFILES: tuple[tuple[str, str, tuple[str, ...], str, bool], ...] = (
-    ('Non-Qualified Calls', 'Workspace, Non-Qualified Calls, Reporting, Builders & Bugs Report.',
+    ('Non-Qualified Calls', 'Workspace, Non-Qualified Calls, Reporting, Builders & Ticket Center.',
      ('workspace', 'non-qualified-calls', 'reporting', 'builders', 'bugs-report'), PROFILE_COLOR_NON_QUALIFIED_CALLS, False),
     ('Benchmarking', 'Every main module except Non-Qualified Calls.',
      tuple(key for key, _name in MAIN_MODULES if key not in {'non-qualified-calls', 'ppt-reporting-old'}), PROFILE_COLOR_BENCHMARKING, False),
@@ -872,6 +874,7 @@ class Repository:
             conn.executescript(GLOBAL_SCHEMA)
             self._migrate_user_roles(conn)
             self._ensure_user_access_schema(conn)
+            self._ensure_ticket_columns(conn)
             # Seed the three local accounts exactly once, for a brand-new
             # empty application database.  Later starts must never recreate
             # deleted or renamed accounts, nor reset roles or passwords.
@@ -910,6 +913,12 @@ class Repository:
                         'UPDATE users SET workspace_ids_json = ? WHERE id = ?',
                         (self._workspace_ids_json(workspace_ids), int(row['id'])),
                     )
+
+    @staticmethod
+    def _ensure_ticket_columns(conn: sqlite3.Connection) -> None:
+        """The type of each ticket of Ticket Center: the tickets of the Bugs Report of earlier versions are bugs."""
+        if 'ticket_type' not in {str(row[1]) for row in conn.execute('PRAGMA table_info(bug_reports)').fetchall()}:
+            conn.execute("ALTER TABLE bug_reports ADD COLUMN ticket_type TEXT NOT NULL DEFAULT 'bug'")
 
     @staticmethod
     def _migrate_user_roles(conn: sqlite3.Connection) -> None:

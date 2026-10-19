@@ -1,16 +1,18 @@
-"""Bugs Report: the tickets of the bugs users find in the tool.
+"""Ticket Center: the tickets of the bugs, improvements and new features users ask for in the tool.
 
-Every ticket keeps the version of the tool it was opened with, its date, a priority from P1 (most urgent) to P5 and
-a status, with its screenshots and a timeline of comments and changes. The tables live in the application database
-(``bug_reports``, ``bug_report_comments`` and ``bug_report_attachments``), so the tickets are shared by every
-workspace. Each ticket, comment and screenshot has a ``uid`` that identifies it on any server, so a Bugs Report
-package merges into another server without duplicating anything.
+Every ticket has a type (Bug, Improvement or New Feature) and keeps the version of the tool it was opened with, its
+date, a priority from P1 (most urgent) to P5 and a status, with its screenshots and a timeline of comments and changes.
+The tables live in the application database (``bug_reports``, ``bug_report_comments`` and ``bug_report_attachments``,
+named after the module's former name, Bugs Report), so the tickets are shared by every workspace. Each ticket, comment
+and screenshot has a ``uid`` that identifies it on any server, so a Ticket Center package merges into another server
+without duplicating anything.
 """
 from __future__ import annotations
 
 import json
 import re
 import uuid
+from datetime import date, timedelta
 from pathlib import PurePosixPath
 from typing import Any, Iterable
 
@@ -18,6 +20,15 @@ from markupsafe import Markup, escape
 
 from src.modules.repository import Repository, local_now_iso
 
+# The kinds of ticket, chosen when it is opened; the tickets of earlier versions are bugs.
+TICKET_TYPES: dict[str, str] = {'bug': 'Bug', 'improvement': 'Improvement', 'new_feature': 'New Feature'}
+DEFAULT_TICKET_TYPE = 'bug'
+# What each type is for, under its name in the New Ticket form.
+TICKET_TYPE_HINTS: dict[str, str] = {
+    'bug': 'Something does not work as it should',
+    'improvement': 'Something that works could work better',
+    'new_feature': 'Something the tool cannot do yet',
+}
 PRIORITIES: dict[str, str] = {'P1': 'Critical', 'P2': 'High', 'P3': 'Medium', 'P4': 'Low', 'P5': 'Trivial'}
 DEFAULT_PRIORITY = 'P3'
 STATUSES: dict[str, str] = {
@@ -25,6 +36,8 @@ STATUSES: dict[str, str] = {
     'resolved': 'Resolved', 'closed': 'Closed', 'rejected': 'Rejected',
 }
 OPEN_STATUSES = frozenset({'new', 'in_progress', 'waiting_info'})
+# The statuses of a ticket that was done (fixed, or finished): the dashboard counts them as resolved.
+DONE_STATUSES = frozenset({'resolved', 'closed'})
 MAX_TITLE_LENGTH = 160
 MAX_TEXT_LENGTH = 20_000
 MAX_VERSION_LENGTH = 40
@@ -35,23 +48,37 @@ MAX_ATTACHMENTS_PER_UPLOAD = 10
 IMAGE_EXTENSIONS = {'image/png': '.png', 'image/jpeg': '.jpg', 'image/gif': '.gif', 'image/webp': '.webp'}
 # What the timeline names each field of a ticket after.
 FIELD_LABELS = {
-    'title': 'Title', 'description': 'Description', 'module': 'Module', 'priority': 'Priority', 'status': 'Status',
-    'assigned_to': 'Assigned to', 'created_by': 'Reported by', 'app_version': 'Opened with', 'fixed_version': 'Fixed in version',
+    'title': 'Title', 'description': 'Description', 'ticket_type': 'Type', 'module': 'Module', 'priority': 'Priority',
+    'status': 'Status', 'assigned_to': 'Assigned to', 'created_by': 'Reported by', 'app_version': 'Opened with',
+    'fixed_version': 'Fixed in version',
 }
 REPORTER_FIELDS = frozenset({'title', 'description', 'module', 'priority'})
-# Super-admins also change who reported a ticket, its module and the version it was opened with.
-MANAGER_FIELDS = frozenset({'status', 'assigned_to', 'created_by', 'module', 'app_version', 'fixed_version'})
+# Super-admins also change the type of a ticket, who reported it, its module and the version it was opened with.
+MANAGER_FIELDS = frozenset({'status', 'ticket_type', 'assigned_to', 'created_by', 'module', 'app_version', 'fixed_version'})
+# The package keeps the format of the Bugs Report packages, so the packages and backups of earlier versions import;
+# version 2 adds the type of each ticket (those without one import as bugs).
 EXPORT_FORMAT = 'drivetest-analyzer-bugs-report'
-EXPORT_VERSION = 1
+EXPORT_VERSION = 2
 ATTACHMENTS_ARCHIVE_DIR = 'bugs-report/attachments'
+# The dashboard: tickets resolved in these last days, and created and resolved per week in these last weeks.
+RECENT_RESOLVED_DAYS = 30
+DASHBOARD_WEEKS = 12
 
 
 _BULLET = re.compile(r'^[-*·•]\s+')
 _DIVIDER = re.compile(r'^[-=_*]{3,}\s*(.*?)\s*[-=_*]{3,}$|^[-=_*]{3,}$')
 MAX_HEADING_LENGTH = 80
-# How to write a description or a comment, shown in grey while it is empty.
+# How to write a description or a comment, shown in grey while it is empty; a new ticket shows the guide of its type.
+_TEXT_RULES = 'Lines starting with -, * or · are bullets; a line ending with : is a title; other lines are paragraphs.'
 TEXT_GUIDE = ('Problem:\n- What you did and what happened\n  - A detail, indented under it\nExpected:\n- What should have happened\n\n'
-              'Lines starting with -, * or · are bullets; a line ending with : is a title; other lines are paragraphs.')
+              + _TEXT_RULES)
+TEXT_GUIDES: dict[str, str] = {
+    'bug': TEXT_GUIDE,
+    'improvement': ('Today:\n- How it works now\n  - A detail, indented under it\nProposal:\n- How it could work better, and why\n\n'
+                    + _TEXT_RULES),
+    'new_feature': ('Need:\n- What you want to do and why\n  - A detail, indented under it\nProposal:\n- How the tool could do it\n\n'
+                    + _TEXT_RULES),
+}
 
 
 def rich_text_html(text: object) -> Markup:
@@ -172,19 +199,21 @@ def _insert_attachments(conn: Any, bug_id: int, comment_id: int | None, username
 
 
 def create_bug(repository: Repository, *, title: str, description: str, module: str, priority: str, username: str,
-               app_version: str, browser: str = '', screenshots: Iterable[dict[str, Any]] = ()) -> int:
-    """Open a ticket with the version of the tool and the date; returns its id."""
+               app_version: str, ticket_type: str, browser: str = '', screenshots: Iterable[dict[str, Any]] = ()) -> int:
+    """Open a ticket of a type with the version of the tool and the date; returns its id."""
     title = _text(title, MAX_TITLE_LENGTH)
     if not title:
-        raise ValueError('Give the bug a title.')
+        raise ValueError('Give the ticket a title.')
+    if ticket_type not in TICKET_TYPES:
+        raise ValueError('Choose the type of the ticket: Bug, Improvement or New Feature.')
     if priority not in PRIORITIES:
         raise ValueError('Choose a priority from P1 to P5.')
     now = local_now_iso()
     with repository.global_connection() as conn:
         cursor = conn.execute(
-            'INSERT INTO bug_reports (uid, title, description, module, priority, status, app_version, browser, created_by, created_at, updated_at) '
-            "VALUES (?, ?, ?, ?, ?, 'new', ?, ?, ?, ?, ?)",
-            (_new_uid(), title, _text(description, MAX_TEXT_LENGTH), _text(module, 60), priority,
+            'INSERT INTO bug_reports (uid, ticket_type, title, description, module, priority, status, app_version, browser, created_by, '
+            "created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'new', ?, ?, ?, ?, ?)",
+            (_new_uid(), ticket_type, title, _text(description, MAX_TEXT_LENGTH), _text(module, 60), priority,
              _text(app_version, MAX_VERSION_LENGTH), _text(browser, 400), username, now, now),
         )
         bug_id = int(cursor.lastrowid)
@@ -202,6 +231,87 @@ def list_bugs(repository: Repository) -> list[dict[str, Any]]:
             'FROM bug_reports b ORDER BY b.updated_at DESC, b.id DESC'
         ).fetchall()
     return [dict(row) for row in rows]
+
+
+def local_today() -> date:
+    """Today, in the server's local timezone (that of the dates of the tickets)."""
+    return date.fromisoformat(local_now_iso()[:10])
+
+
+def _day(value: object) -> date | None:
+    try:
+        return date.fromisoformat(str(value or '')[:10])
+    except ValueError:
+        return None
+
+
+def recently_resolved(ticket: dict[str, Any], today: date) -> bool:
+    """Whether a ticket was resolved (or closed) in the last ``RECENT_RESOLVED_DAYS`` days, today included."""
+    resolved = _day(ticket.get('resolved_at'))
+    return str(ticket.get('status')) in DONE_STATUSES and resolved is not None and (today - resolved).days < RECENT_RESOLVED_DAYS
+
+
+def ticket_dashboard(tickets: list[dict[str, Any]], *, username: str | None = None, today: date | None = None) -> dict[str, Any]:
+    """What the dashboard of Ticket Center counts from the tickets of the list (with their ``module_title`` and
+    ``module_color``): the open ones by status, those resolved lately and those of ``username``; every ticket by type
+    and status; the open ones of each type by priority and of each module; the tickets created and resolved in each of
+    the last weeks (from Monday); and the oldest open ticket."""
+    today = today or local_today()
+    open_tickets = [ticket for ticket in tickets if ticket['status'] in OPEN_STATUSES]
+    mine = (username or '').casefold()
+    kpis = {
+        'open': len(open_tickets),
+        **{status: sum(1 for ticket in open_tickets if ticket['status'] == status) for status in ('new', 'in_progress', 'waiting_info')},
+        'resolved_recent': sum(1 for ticket in tickets if recently_resolved(ticket, today)),
+        'mine_open': sum(1 for ticket in open_tickets if mine and str(ticket['created_by']).casefold() == mine),
+    }
+    by_type: dict[str, list[dict[str, Any]]] = {ticket_type: [] for ticket_type in TICKET_TYPES}
+    for ticket in tickets:
+        by_type.setdefault(str(ticket.get('ticket_type') or DEFAULT_TICKET_TYPE), []).append(ticket)
+    types = []
+    for ticket_type, label in TICKET_TYPES.items():
+        rows = by_type.get(ticket_type, [])
+        counts = {status: sum(1 for ticket in rows if ticket['status'] == status) for status in STATUSES}
+        opened = [ticket for ticket in rows if ticket['status'] in OPEN_STATUSES]
+        priorities = {priority: sum(1 for ticket in opened if ticket['priority'] == priority) for priority in PRIORITIES}
+        types.append({
+            'type': ticket_type, 'label': label, 'counts': counts, 'total': len(rows), 'open': len(opened),
+            'segments': [{'status': status, 'label': STATUSES[status], 'count': count, 'share': round(100 * count / len(rows), 2)}
+                         for status, count in counts.items() if count],
+            'priorities': [{'priority': priority, 'label': PRIORITIES[priority], 'count': count} for priority, count in priorities.items()],
+            'max_priority': max(priorities.values()),
+        })
+    modules: dict[str, dict[str, Any]] = {}
+    for ticket in open_tickets:
+        key = str(ticket.get('module') or '')
+        entry = modules.setdefault(key, {'key': key, 'title': ticket.get('module_title') or 'General',
+                                         'color': ticket.get('module_color') or '#5A6773', 'count': 0})
+        entry['count'] += 1
+    module_rows = sorted(modules.values(), key=lambda entry: (-entry['count'], str(entry['title']).casefold()))
+    first_week = today - timedelta(days=today.weekday() + 7 * (DASHBOARD_WEEKS - 1))
+    weeks = [{'start': first_week + timedelta(days=7 * index), 'created': 0, 'resolved': 0} for index in range(DASHBOARD_WEEKS)]
+    for ticket in tickets:
+        for key, day in (('created', _day(ticket.get('created_at'))),
+                         ('resolved', _day(ticket.get('resolved_at')) if ticket['status'] in DONE_STATUSES else None)):
+            if day is not None and first_week <= day <= today:
+                weeks[(day - first_week).days // 7][key] += 1
+    peak = max([1, *(max(week['created'], week['resolved']) for week in weeks)])
+    for week in weeks:
+        week['label'] = f"{week['start'].day} {week['start'].strftime('%b')}"
+        week['created_height'] = round(100 * week['created'] / peak, 2)
+        week['resolved_height'] = round(100 * week['resolved'] / peak, 2)
+    oldest = min(open_tickets, key=lambda ticket: (str(ticket['created_at']), int(ticket['id'])), default=None)
+    oldest_day = _day(oldest['created_at']) if oldest else None
+    return {
+        'kpis': kpis, 'types': types,
+        'status_totals': {status: sum(entry['counts'][status] for entry in types) for status in STATUSES},
+        'total': len(tickets), 'modules': module_rows, 'max_module': max([1, *(entry['count'] for entry in module_rows)]),
+        'weeks': weeks, 'week_peak': peak,
+        'weeks_created': sum(week['created'] for week in weeks), 'weeks_resolved': sum(week['resolved'] for week in weeks),
+        'oldest_open': {'id': oldest['id'], 'title': oldest['title'], 'ticket_type': oldest.get('ticket_type') or DEFAULT_TICKET_TYPE,
+                        'days': (today - oldest_day).days if oldest_day else 0,
+                        'created_date': str(oldest['created_at'])[:10]} if oldest else None,
+    }
 
 
 def get_bug(repository: Repository, bug_id: int) -> dict[str, Any] | None:
@@ -236,7 +346,7 @@ def update_bug(repository: Repository, bug_id: int, username: str, values: dict[
     with repository.global_connection() as conn:
         row = conn.execute('SELECT * FROM bug_reports WHERE id = ?', (int(bug_id),)).fetchone()
         if row is None:
-            raise LookupError('The bug report does not exist.')
+            raise LookupError('The ticket does not exist.')
         changes: dict[str, list[str]] = {}
         for field, value in values.items():
             if field not in FIELD_LABELS:
@@ -245,11 +355,13 @@ def update_bug(repository: Repository, bug_id: int, username: str, values: dict[
                        'fixed_version': MAX_VERSION_LENGTH}.get(field, 120)
             value = _text(value, maximum)
             if field == 'title' and not value:
-                raise ValueError('Give the bug a title.')
+                raise ValueError('Give the ticket a title.')
             if field == 'created_by' and not value:
-                raise ValueError('Choose who reported the bug.')
+                raise ValueError('Choose who reported the ticket.')
             if field == 'app_version' and not value:
-                raise ValueError('Give the version the bug was opened with.')
+                raise ValueError('Give the version the ticket was opened with.')
+            if field == 'ticket_type' and value not in TICKET_TYPES:
+                raise ValueError('Choose the type of the ticket: Bug, Improvement or New Feature.')
             if field == 'priority' and value not in PRIORITIES:
                 raise ValueError('Choose a priority from P1 to P5.')
             if field == 'status' and value not in STATUSES:
@@ -285,7 +397,7 @@ def add_comment(repository: Repository, bug_id: int, username: str, body: str,
     now = local_now_iso()
     with repository.global_connection() as conn:
         if conn.execute('SELECT 1 FROM bug_reports WHERE id = ?', (int(bug_id),)).fetchone() is None:
-            raise LookupError('The bug report does not exist.')
+            raise LookupError('The ticket does not exist.')
         cursor = conn.execute(
             "INSERT INTO bug_report_comments (uid, bug_id, username, kind, body, created_at) VALUES (?, ?, ?, 'comment', ?, ?)",
             (_new_uid(), int(bug_id), username, body, now),
@@ -323,7 +435,7 @@ def add_attachments(repository: Repository, bug_id: int, username: str, screensh
     now = local_now_iso()
     with repository.global_connection() as conn:
         if conn.execute('SELECT 1 FROM bug_reports WHERE id = ?', (int(bug_id),)).fetchone() is None:
-            raise LookupError('The bug report does not exist.')
+            raise LookupError('The ticket does not exist.')
         count = _insert_attachments(conn, int(bug_id), None, username, screenshots, now)
         if count:
             conn.execute('UPDATE bug_reports SET updated_at = ? WHERE id = ?', (now, int(bug_id)))
@@ -355,8 +467,8 @@ def _attachment_archive_path(attachment: dict[str, Any]) -> str:
 
 
 def bugs_report_payload(repository: Repository) -> tuple[dict[str, Any], dict[str, bytes]]:
-    """The Bugs Report package: every ticket with its timeline in one JSON document, and each screenshot as a file
-    (its archive path → its content)."""
+    """The Ticket Center package: every ticket with its type and timeline in one JSON document, and each screenshot as
+    a file (its archive path → its content)."""
     files: dict[str, bytes] = {}
     with repository.global_connection() as conn:
         bugs = [dict(row) for row in conn.execute('SELECT * FROM bug_reports ORDER BY id').fetchall()]
@@ -392,18 +504,21 @@ def bugs_report_payload(repository: Repository) -> tuple[dict[str, Any], dict[st
 
 
 def merge_bugs_report(repository: Repository, payload: object, files: dict[str, bytes]) -> dict[str, int]:
-    """Merge a Bugs Report package: the tickets, comments and screenshots this server does not have are added, and a
-    ticket or comment changed later on the other server takes its newer content. Nothing here is deleted."""
+    """Merge a Ticket Center package (or a Bugs Report one of an earlier version): the tickets, comments and screenshots
+    this server does not have are added, and a ticket or comment changed later on the other server takes its newer
+    content. Nothing here is deleted; a ticket without a type is a bug."""
     if not isinstance(payload, dict) or payload.get('format') != EXPORT_FORMAT or not isinstance(payload.get('bug_reports'), list):
-        raise ValueError('The Bugs Report file is not valid.')
+        raise ValueError('The Ticket Center file is not valid.')
     summary = {'created': 0, 'updated': 0, 'comments': 0, 'screenshots': 0}
-    fields = ('title', 'description', 'module', 'priority', 'status', 'app_version', 'fixed_version', 'browser',
+    fields = ('ticket_type', 'title', 'description', 'module', 'priority', 'status', 'app_version', 'fixed_version', 'browser',
               'created_by', 'assigned_to', 'created_at', 'updated_at', 'resolved_at')
     with repository.global_connection() as conn:
         for ticket in payload['bug_reports']:
             if not isinstance(ticket, dict) or not str(ticket.get('uid') or '').strip() or not str(ticket.get('title') or '').strip():
                 continue
             values = {field: str(ticket.get(field) or '') for field in fields}
+            if values['ticket_type'] not in TICKET_TYPES:
+                values['ticket_type'] = DEFAULT_TICKET_TYPE
             if values['priority'] not in PRIORITIES:
                 values['priority'] = DEFAULT_PRIORITY
             if values['status'] not in STATUSES:

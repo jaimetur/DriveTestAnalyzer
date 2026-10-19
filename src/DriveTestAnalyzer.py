@@ -484,7 +484,7 @@ HELP_DOCUMENT_LABELS = {
     'non-qualified-calls.md': 'Non-Qualified Calls',
     'chart-builder.md': 'Chart Builder',
     'query-builder.md': 'Query Builder',
-    'bugs-report.md': 'Bugs Report',
+    'bugs-report.md': 'Ticket Center',
     'workspace-management.md': 'Workspace Management',
     'configuration.md': 'Deployment Configuration',
     'web-interface.md': 'Web Interfaces',
@@ -516,7 +516,7 @@ FEATURES: tuple[dict[str, Any], ...] = (
     {'key': 'non-qualified-calls', 'label': 'Non-Qualified Calls', 'paths': ('/non-qualified-calls', '/api/non-qualified-calls')},
     {'key': 'reporting', 'label': 'Reporting', 'paths': ('/reporting', '/api/reporting')},
     {'key': 'builders', 'label': 'Builders', 'paths': ('/chart-builder', '/query-builder', '/api/chart-builder', '/api/query-builder')},
-    {'key': 'bugs-report', 'label': 'Bugs Report', 'paths': ('/bugs-report', '/api/bugs-report')},
+    {'key': 'bugs-report', 'label': 'Ticket Center', 'paths': ('/tickets', '/api/tickets', '/bugs-report', '/api/bugs-report')},
 )
 FEATURE_KEYS = tuple(feature['key'] for feature in FEATURES)
 MODULE_ACCESS_CACHE_SECONDS = 5.0
@@ -562,7 +562,7 @@ def app_event_origin_for_request(request: Request) -> str:
         return 'public:sign-in'
     if not session_user(request.cookies.get(SESSION_COOKIE)):
         return 'public:' + ('access-request' if path.startswith('/api/access-requests') else
-                            'bug-report' if 'bugs-report' in path else 'page')
+                            'bug-report' if feature_for_path(path) == 'bugs-report' else 'page')
     module = module_for_path(path) or module_for_path(urlsplit(request.headers.get('referer') or '').path)
     return f'module:{module}' if module else ''
 
@@ -3032,8 +3032,9 @@ async def lifespan(_: FastAPI):
         apply_runtime_configuration(stored_runtime_configuration)
     migrate_workspace_template_registries()
     migrate_ppt_module_names()
-    from src.modules.module_labels import migrate_reporting_title
+    from src.modules.module_labels import migrate_reporting_title, migrate_ticket_center_title
     migrate_reporting_title(repository)
+    migrate_ticket_center_title(repository)
     submit_background_task(empty_workspace_trash)
     # Workspace schema cleanup and interrupted-job recovery happen when a
     # workspace becomes active.  Scanning every workspace here opens and
@@ -6311,7 +6312,8 @@ ARCHIVE_COMPONENTS = frozenset({
 })
 # Users & Access: every account with its Modules Profile and workspaces, plus the Modules Profiles and Workspace Groups.
 USERS_ACCESS_ARCHIVE_PATH = 'users-access/users-access.json'
-# Bugs Report: every ticket with its timeline in one JSON document, and each screenshot in bugs-report/attachments.
+# Ticket Center: every ticket with its type and timeline in one JSON document, and each screenshot in
+# bugs-report/attachments (the paths of the Bugs Report packages of before, so they import as they are).
 BUGS_REPORT_ARCHIVE_PATH = 'bugs-report/bugs-report.json'
 # The application content of a backup, besides the workspaces.
 APPLICATION_BACKUP_COMPONENTS = ('app_database', 'users_access', 'bugs_report')
@@ -6923,7 +6925,7 @@ def create_recurring_database_backup(
                 archive.writestr(USERS_ACCESS_ARCHIVE_PATH, users_access)
                 archived_bytes(len(users_access))
             if 'bugs_report' in components:
-                report_progress('Exporting Bugs Report', 5.0)
+                report_progress('Exporting Ticket Center', 5.0)
                 for path, content in bugs_report_files.items():
                     archive.writestr(path, content)
                     archived_bytes(len(content))
@@ -7450,9 +7452,9 @@ def restore_database_backup(
             advance('Users & Access restored')
         if 'bugs_report' in selected:
             if progress_callback:
-                progress_callback('Restoring Bugs Report', completed_steps, total_steps)
+                progress_callback('Restoring Ticket Center', completed_steps, total_steps)
             import_bugs_report(archive)
-            advance('Bugs Report restored')
+            advance('Ticket Center restored')
         for workspace_name, workspace in workspaces_by_name.items():
             prefix = f'workspaces/{workspace_name}/'
             if 'workspace_database' in selected:
@@ -8536,7 +8538,7 @@ def export_archive_filename(target: str | Iterable[str]) -> str:
     if target == 'users-access':
         return f'drivetest-analyzer-users-access_{generated_at}.zip'
     if target == 'bugs-report':
-        return f'drivetest-analyzer-bugs-report_{generated_at}.zip'
+        return f'drivetest-analyzer-ticket-center_{generated_at}.zip'
     if target == 'ppt-templates':
         workspace_name = active_workspace.name if active_workspace else 'workspace'
         return f'{workspace_name}_ppt-templates_{generated_at}.zip'
@@ -9157,7 +9159,7 @@ def _recovered_transfer_details(manifest: dict[str, Any]) -> tuple[str, list[str
     if kind == 'users-access':
         return ('Users & Access', [])
     if kind == 'bugs-report':
-        return ('Bugs Report', [])
+        return ('Ticket Center', [])
     if kind == 'ppt-templates':
         source = manifest.get('source_workspace') or {}
         return ('PPT Templates', [str(source['name'])] if isinstance(source, dict) and source.get('name') else [])
@@ -9880,7 +9882,7 @@ def import_users_access(content: bytes, manifest: dict[str, Any], importing_user
 
 
 def _bugs_report_archive_files() -> dict[str, bytes]:
-    """The Bugs Report files of a package (archive path → content): the tickets in one JSON document and each screenshot."""
+    """The Ticket Center files of a package (archive path → content): the tickets in one JSON document and each screenshot."""
     from src.modules.bugs_report import bugs_report_payload
 
     payload, files = bugs_report_payload(repository)
@@ -9888,16 +9890,16 @@ def _bugs_report_archive_files() -> dict[str, bytes]:
 
 
 def import_bugs_report(archive: zipfile.ZipFile) -> str:
-    """Merge the Bugs Report of a package into this server; returns its completion message."""
+    """Merge the Ticket Center (or Bugs Report) of a package into this server; returns its completion message."""
     from src.modules.bugs_report import ATTACHMENTS_ARCHIVE_DIR, merge_bugs_report
 
     try:
         payload = json.loads(archive.read(BUGS_REPORT_ARCHIVE_PATH).decode('utf-8'))
     except (KeyError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ValueError('The Bugs Report file is not valid.') from exc
+        raise ValueError('The Ticket Center file is not valid.') from exc
     files = {name: archive.read(name) for name in archive.namelist() if name.startswith(f'{ATTACHMENTS_ARCHIVE_DIR}/') and not name.endswith('/')}
     summary = merge_bugs_report(repository, payload, files)
-    return (f"Bugs Report imported: {summary['created']} new and {summary['updated']} updated bug reports, "
+    return (f"Ticket Center imported: {summary['created']} new and {summary['updated']} updated tickets, "
             f"{summary['comments']} comments and {summary['screenshots']} screenshots.")
 
 
@@ -10168,9 +10170,9 @@ def _apply_import_archive(
             return notice
         if kind == 'bugs-report':
             if BUGS_REPORT_ARCHIVE_PATH not in archive.namelist():
-                raise ValueError('The package does not contain Bugs Report.')
+                raise ValueError('The package does not contain Ticket Center.')
             if progress_callback:
-                progress_callback('importing Bugs Report', 90.0)
+                progress_callback('importing Ticket Center', 90.0)
             notice = import_bugs_report(archive)
             if progress_callback:
                 progress_callback('finalising', 100.0)
@@ -10667,7 +10669,7 @@ def _transfer_content_label(target: str | Iterable[str]) -> str:
     labels = {
         'config': 'Config',
         'users-access': 'Users & Access',
-        'bugs-report': 'Bugs Report',
+        'bugs-report': 'Ticket Center',
         'ppt-templates': 'PPT Templates',
         'config-with-templates': 'Config + PPT Templates',
         'full-environment': 'Full Environment',
@@ -11418,9 +11420,9 @@ def render_admin_template(
         'workspace_groups': 'Workspace Groups',
         'workspace_group_members': 'Workspace Group Members',
         'application_sessions': 'Application Sessions',
-        'bug_reports': 'Bug Reports',
-        'bug_report_comments': 'Bug Report Comments',
-        'bug_report_attachments': 'Bug Report Attachments',
+        'bug_reports': 'Tickets',
+        'bug_report_comments': 'Ticket Comments',
+        'bug_report_attachments': 'Ticket Attachments',
         'admin_notices_seen': 'Admin Notices Seen',
         'report_tasks': 'Report Tasks',
         'bundle_report_templates': 'Bundle Report Templates',
@@ -11464,7 +11466,7 @@ def render_admin_template(
     export_options = [
         {'value': 'config', 'label': 'Application Config'},
         {'value': 'users-access', 'label': 'Users & Access'},
-        {'value': 'bugs-report', 'label': 'Bugs Report'},
+        {'value': 'bugs-report', 'label': 'Ticket Center'},
         {'value': 'dashboards', 'label': 'Dashboards (from active workspace)', 'disabled': not active_workspace},
         {'value': 'ppt-templates', 'label': 'PPT Templates (from active workspace)', 'disabled': not active_workspace},
         {'value': 'main-cities', 'label': 'Main Cities (from active workspace)', 'disabled': not active_workspace},
@@ -13696,7 +13698,7 @@ def workspace_access_map(user: SessionUser, workspaces: list[Workspace]) -> dict
 DATABASE_TABLE_TYPES: tuple[tuple[str, str], ...] = (
     ('Users & Access', '#6B46C1'), ('Application', '#48606F'), ('Datasets', '#1F6FBF'), ('Dashboards & Templates', '#7751B9'),
     ('Scoring & GAP Analysis', '#176E77'), ('Non-Qualified Calls', '#B0234F'), ('Reporting', '#2E8C58'),
-    ('Mappings & Maps', '#B85B20'), ('Query Builder', '#8A6D0B'), ('Bugs Report', '#DC2626'), ('Workspace', '#5A6773'),
+    ('Mappings & Maps', '#B85B20'), ('Query Builder', '#8A6D0B'), ('Ticket Center', '#DC2626'), ('Workspace', '#5A6773'),
     ('Voice CDRs', '#1F6FBF'), ('Data CDRs', '#2E8C58'), ('Speech CDRs', '#7751B9'), ('Other datasets', '#5A6773'),
 )
 
@@ -13714,7 +13716,7 @@ def database_table_type(table_name: str, dataset_kind: str = '') -> tuple[str, s
     elif name in {'application_state', 'transfer_offers', 'admin_notices_seen', WORKSPACE_REGISTRY_TABLE.casefold()}:
         kind_type = 'Application'
     elif name.startswith('bug_report'):
-        kind_type = 'Bugs Report'
+        kind_type = 'Ticket Center'
     elif name.startswith('nq_'):
         kind_type = 'Non-Qualified Calls'
     elif name.startswith(('scoring_', 'saved_filters')):
@@ -16310,9 +16312,10 @@ def reporting(request: Request, user: SessionUser = Depends(current_user)) -> HT
 
 
 # ---------------------------------------------------------------------------
-# Bugs Report: the tickets of the bugs found in the tool (src/modules/bugs_report.py). Anyone with a link reads the
-# list, a ticket and its screenshots without signing in; every signed-in user with the module opens tickets and
-# comments on them; the reporter edits the ticket and its priority, and only super-admins attend it (status,
+# Ticket Center (formerly Bugs Report): the tickets of the bugs, improvements and new features of the tool
+# (src/modules/bugs_report.py), under /tickets (the /bugs-report addresses of before redirect there). Anyone with a link
+# reads the list, a ticket and its screenshots without signing in; every signed-in user with the module opens tickets
+# and comments on them; the reporter edits the ticket and its priority, and only super-admins attend it (status, type,
 # assignment, fixed version) or delete it.
 # ---------------------------------------------------------------------------
 DEFAULT_USER_TAG = 'default user'
@@ -16369,7 +16372,7 @@ def bug_report_people() -> dict[str, dict[str, str]]:
 
 
 def bug_report_modules() -> list[dict[str, str]]:
-    """The modules a bug can be found in: General and every main module, with its title and colour."""
+    """The modules a ticket can be about: General and every main module, with its title and colour."""
     labels = load_module_labels(repository)
     return [{'key': '', 'title': 'General', 'color': '#5A6773'}] + [
         {'key': module, 'title': label['title'], 'color': label['tab_color']} for module, label in labels.items()
@@ -16377,11 +16380,13 @@ def bug_report_modules() -> list[dict[str, str]]:
 
 
 def serialize_bug_report(row: dict[str, Any], modules: dict[str, dict[str, str]], people: dict[str, dict[str, str]]) -> dict[str, Any]:
-    from src.modules.bugs_report import OPEN_STATUSES, PRIORITIES, STATUSES
+    from src.modules.bugs_report import DEFAULT_TICKET_TYPE, OPEN_STATUSES, PRIORITIES, STATUSES, TICKET_TYPES
 
     module = modules.get(str(row.get('module') or ''), {'title': str(row.get('module') or '') or 'General', 'color': '#5A6773'})
+    ticket_type = str(row.get('ticket_type') or '') if str(row.get('ticket_type') or '') in TICKET_TYPES else DEFAULT_TICKET_TYPE
     return {
         **row,
+        'ticket_type': ticket_type, 'type_label': TICKET_TYPES[ticket_type],
         'priority_label': PRIORITIES.get(str(row['priority']), ''),
         'status_label': STATUSES.get(str(row['status']), str(row['status'])),
         'is_open': str(row['status']) in OPEN_STATUSES,
@@ -16404,7 +16409,7 @@ def require_bug_report(bug_id: int) -> dict[str, Any]:
 
     bug = get_bug(repository, bug_id)
     if bug is None:
-        raise HTTPException(status_code=404, detail='The bug report does not exist.')
+        raise HTTPException(status_code=404, detail='The ticket does not exist.')
     return bug
 
 
@@ -16425,31 +16430,47 @@ async def read_bug_report_screenshots(files: list[UploadFile]) -> list[dict[str,
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@app.get('/bugs-report', response_class=HTMLResponse)
+def ticket_center_title() -> str:
+    """The title of Ticket Center, as Admin → Interface Settings names its tab."""
+    return str(load_module_labels(repository)['bugs-report']['title'])
+
+
+@app.get('/tickets', response_class=HTMLResponse)
 def bugs_report_page(request: Request, user: SessionUser | None = Depends(optional_user)) -> HTMLResponse:
     from src.modules.bugs_report import (
-        DEFAULT_PRIORITY, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_PER_UPLOAD, PRIORITIES, STATUSES, TEXT_GUIDE, list_bugs,
+        DEFAULT_PRIORITY, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_PER_UPLOAD, OPEN_STATUSES, PRIORITIES, STATUSES, TEXT_GUIDE,
+        TEXT_GUIDES, TICKET_TYPE_HINTS, TICKET_TYPES, list_bugs, local_today, recently_resolved, ticket_dashboard,
     )
 
     modules = bug_report_modules()
     people = bug_report_people()
     by_key = {module['key']: module for module in modules}
     bugs = [serialize_bug_report(row, by_key, people) for row in list_bugs(repository)]
+    today = local_today()
+    dashboard = ticket_dashboard(bugs, username=user.username if user else None, today=today)
+    for bug in bugs:
+        bug['recently_resolved'] = recently_resolved(bug, today)
+    used_modules = {bug['module'] for bug in bugs}
     return render_template(request, 'bugs_report.html', {
         'user': user, 'bugs': bugs, 'bug_modules': modules, 'bug_priorities': PRIORITIES, 'bug_statuses': STATUSES,
+        'bug_open_statuses': [status for status in STATUSES if status in OPEN_STATUSES],
+        'ticket_types': TICKET_TYPES, 'ticket_type_hints': TICKET_TYPE_HINTS, 'ticket_text_guides': TEXT_GUIDES,
+        'ticket_center_title': ticket_center_title(), 'ticket_dashboard': dashboard,
         'bug_default_priority': DEFAULT_PRIORITY, 'bug_text_guide': TEXT_GUIDE,
-        # Who reported the bugs, by name and the default users first, for the Reporter filter.
+        # Who reported the tickets, by name and the default users first, for the Reporter filter; who attends them and
+        # the modules they are about, for the chips of the list.
         'bug_reporters': user_choices(bug['created_by'] for bug in bugs),
-        'bug_status_counts': {status: sum(1 for bug in bugs if bug['status'] == status) for status in STATUSES},
-        'bug_mine_open': sum(1 for bug in bugs if user and bug['is_open'] and str(bug['created_by']).casefold() == user.username.casefold()),
+        'ticket_assignees': user_choices(bug['assigned_to'] for bug in bugs if bug['assigned_to']),
+        'ticket_modules': [module for module in modules if module['key'] in used_modules],
+        'ticket_unassigned': any(not bug['assigned_to'] for bug in bugs),
         'bug_max_screenshots': MAX_ATTACHMENTS_PER_UPLOAD, 'bug_max_screenshot_mb': MAX_ATTACHMENT_BYTES // (1024 * 1024),
     })
 
 
-@app.get('/bugs-report/{bug_id:int}', response_class=HTMLResponse)
+@app.get('/tickets/{bug_id:int}', response_class=HTMLResponse)
 def bug_report_page(request: Request, bug_id: int, user: SessionUser | None = Depends(optional_user)) -> HTMLResponse:
     from src.modules.bugs_report import (
-        FIELD_LABELS, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_PER_UPLOAD, PRIORITIES, STATUSES, TEXT_GUIDE, rich_text_html,
+        FIELD_LABELS, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_PER_UPLOAD, PRIORITIES, STATUSES, TEXT_GUIDES, TICKET_TYPES, rich_text_html,
     )
 
     modules = bug_report_modules()
@@ -16459,7 +16480,7 @@ def bug_report_page(request: Request, bug_id: int, user: SessionUser | None = De
     if user and user.role == 'super-admin':
         from src.modules.admin_notices import mark_seen
 
-        # A super-admin who has opened the report is not told of it after signing in.
+        # A super-admin who has opened the ticket is not told of it after signing in.
         mark_seen(repository, user.username, bug_reports=[bug['uid']])
     # The description and the comments read with their bullets, nested, and their headings.
     bug['description_html'] = rich_text_html(bug['description'])
@@ -16467,6 +16488,8 @@ def bug_report_page(request: Request, bug_id: int, user: SessionUser | None = De
     def change_value(field: str, value: str) -> str:
         if field == 'status':
             return STATUSES.get(value, value)
+        if field == 'ticket_type':
+            return TICKET_TYPES.get(value, value)
         if field == 'priority':
             return f'{value} · {PRIORITIES.get(value, "")}' if value else ''
         if field == 'module':
@@ -16487,7 +16510,8 @@ def bug_report_page(request: Request, bug_id: int, user: SessionUser | None = De
         ]
     return render_template(request, 'bug_report.html', {
         'user': user, 'bug': bug, 'bug_modules': modules, 'bug_priorities': PRIORITIES, 'bug_statuses': STATUSES,
-        'bug_can_edit': can_edit_bug_report(user, bug), 'bug_can_manage': bool(user and user.role == 'super-admin'), 'bug_text_guide': TEXT_GUIDE,
+        'ticket_types': TICKET_TYPES, 'ticket_center_title': ticket_center_title(),
+        'bug_can_edit': can_edit_bug_report(user, bug), 'bug_can_manage': bool(user and user.role == 'super-admin'), 'bug_text_guide': TEXT_GUIDES[bug['ticket_type']],
         # The users by name, the default ones first (user_choices): who can attend it (the super-admins) and who can be
         # its reporter (every account, and its current reporter even without an account here).
         'bug_super_admins': user_choices(username for username, person in people.items() if person['role'] == 'super-admin'),
@@ -16496,7 +16520,7 @@ def bug_report_page(request: Request, bug_id: int, user: SessionUser | None = De
     })
 
 
-@app.get('/bugs-report/attachments/{attachment_id:int}')
+@app.get('/tickets/attachments/{attachment_id:int}')
 def bug_report_attachment(attachment_id: int, user: SessionUser | None = Depends(optional_user)) -> Response:
     from src.modules.bugs_report import get_attachment
 
@@ -16509,13 +16533,14 @@ def bug_report_attachment(attachment_id: int, user: SessionUser | None = Depends
     })
 
 
-@app.post('/api/bugs-report')
+@app.post('/api/tickets')
 async def create_bug_report(
     request: Request,
     title: str = Form(...),
     description: str = Form(''),
     module: str = Form(''),
     priority: str = Form('P3'),
+    ticket_type: str = Form(''),
     screenshots: list[UploadFile] = File(default=[]),
     user: SessionUser = Depends(current_user),
 ) -> JSONResponse:
@@ -16526,18 +16551,19 @@ async def create_bug_report(
     files = await read_bug_report_screenshots(screenshots)
     try:
         bug_id = create_bug(repository, title=title, description=description, module=module, priority=priority,
-                            username=user.username, app_version=__version__, browser=request.headers.get('user-agent', ''),
-                            screenshots=files)
+                            ticket_type=ticket_type, username=user.username, app_version=__version__,
+                            browser=request.headers.get('user-agent', ''), screenshots=files)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    # The App Events keep the action names of Bugs Report, so the events of before and after the rename read together.
     repository.try_add_log(user.username, 'bug_report_created', json.dumps({
-        'bug_id': bug_id, 'title': title.strip()[:160], 'module': module, 'priority': priority, 'app_version': __version__,
-        'screenshots': [file['file_name'] for file in files],
+        'bug_id': bug_id, 'type': ticket_type, 'title': title.strip()[:160], 'module': module, 'priority': priority,
+        'app_version': __version__, 'screenshots': [file['file_name'] for file in files],
     }, ensure_ascii=False))
-    return JSONResponse({'id': bug_id, 'url': f'/bugs-report/{bug_id}', 'message': f'Bug report #{bug_id} opened.'})
+    return JSONResponse({'id': bug_id, 'url': f'/tickets/{bug_id}', 'message': f'Ticket #{bug_id} opened.'})
 
 
-@app.post('/api/bugs-report/{bug_id:int}/update')
+@app.post('/api/tickets/{bug_id:int}/update')
 def update_bug_report(
     bug_id: int,
     title: str | None = Form(None),
@@ -16551,7 +16577,7 @@ def update_bug_report(
 
     bug = require_bug_report(bug_id)
     if not can_edit_bug_report(user, bug):
-        raise HTTPException(status_code=403, detail='Only the reporter of this bug and the super-admins can edit it.')
+        raise HTTPException(status_code=403, detail='Only the reporter of this ticket and the super-admins can edit it.')
     if module is not None and module and module not in {item['key'] for item in bug_report_modules()}:
         raise HTTPException(status_code=400, detail='Choose a module of the tool.')
     values = {field: value for field, value in (('title', title), ('description', description), ('module', module), ('priority', priority)) if value is not None}
@@ -16567,10 +16593,11 @@ def update_bug_report(
     return JSONResponse({'changes': changes})
 
 
-@app.post('/api/bugs-report/{bug_id:int}/manage')
+@app.post('/api/tickets/{bug_id:int}/manage')
 def manage_bug_report(
     bug_id: int,
     status_value: str | None = Form(None, alias='status'),
+    ticket_type: str | None = Form(None),
     assigned_to: str | None = Form(None),
     fixed_version: str | None = Form(None),
     created_by: str | None = Form(None),
@@ -16578,16 +16605,18 @@ def manage_bug_report(
     app_version: str | None = Form(None),
     user: SessionUser = Depends(super_admin_user),
 ) -> JSONResponse:
-    """Super-admins manage a ticket: its status, who handles it and the version that fixes it, and also who reported
-    it, its module and the version it was opened with, whoever opened it."""
+    """Super-admins manage a ticket: its status, its type, who handles it and the version that fixes it, and also who
+    reported it, its module and the version it was opened with, whoever opened it."""
     from src.modules.bugs_report import OPEN_STATUSES, update_bug
 
     bug = require_bug_report(bug_id)
     values: dict[str, Any] = {}
     if created_by is not None:
         if created_by != bug['created_by'] and created_by not in bug_report_people():
-            raise HTTPException(status_code=400, detail='Choose a user of the tool as the reporter of the bug.')
+            raise HTTPException(status_code=400, detail='Choose a user of the tool as the reporter of the ticket.')
         values['created_by'] = created_by
+    if ticket_type is not None:
+        values['ticket_type'] = ticket_type
     if module is not None:
         if module and module not in {item['key'] for item in bug_report_modules()}:
             raise HTTPException(status_code=400, detail='Choose a module of the tool.')
@@ -16603,7 +16632,7 @@ def manage_bug_report(
             values['assigned_to'] = user.username
     if assigned_to is not None:
         if assigned_to and assigned_to not in {username for username, person in bug_report_people().items() if person['role'] == 'super-admin'}:
-            raise HTTPException(status_code=400, detail='Assign the bug to a super-admin.')
+            raise HTTPException(status_code=400, detail='Assign the ticket to a super-admin.')
         values['assigned_to'] = assigned_to
     if fixed_version is not None:
         values['fixed_version'] = fixed_version
@@ -16616,7 +16645,7 @@ def manage_bug_report(
     return JSONResponse({'changes': changes})
 
 
-@app.post('/api/bugs-report/{bug_id:int}/comments')
+@app.post('/api/tickets/{bug_id:int}/comments')
 async def comment_bug_report(
     bug_id: int,
     body: str = Form(''),
@@ -16637,7 +16666,7 @@ async def comment_bug_report(
     return JSONResponse({'id': comment_id})
 
 
-@app.post('/api/bugs-report/{bug_id:int}/screenshots')
+@app.post('/api/tickets/{bug_id:int}/screenshots')
 async def add_bug_report_screenshots(
     bug_id: int,
     screenshots: list[UploadFile] = File(default=[]),
@@ -16647,7 +16676,7 @@ async def add_bug_report_screenshots(
 
     bug = require_bug_report(bug_id)
     if not can_edit_bug_report(user, bug):
-        raise HTTPException(status_code=403, detail='Only the reporter of this bug and the super-admins can add screenshots to it.')
+        raise HTTPException(status_code=403, detail='Only the reporter of this ticket and the super-admins can add screenshots to it.')
     files = await read_bug_report_screenshots(screenshots)
     if not files:
         raise HTTPException(status_code=400, detail='Choose or paste a screenshot.')
@@ -16658,7 +16687,7 @@ async def add_bug_report_screenshots(
     return JSONResponse({'added': added})
 
 
-@app.post('/api/bugs-report/comments/{comment_id:int}/update')
+@app.post('/api/tickets/comments/{comment_id:int}/update')
 def edit_bug_report_comment(comment_id: int, body: str = Form(''), user: SessionUser = Depends(current_user)) -> JSONResponse:
     from src.modules.bugs_report import edit_comment, get_comment
 
@@ -16675,7 +16704,7 @@ def edit_bug_report_comment(comment_id: int, body: str = Form(''), user: Session
     return JSONResponse({'edited': True})
 
 
-@app.post('/api/bugs-report/comments/{comment_id:int}/delete')
+@app.post('/api/tickets/comments/{comment_id:int}/delete')
 def delete_bug_report_comment(comment_id: int, user: SessionUser = Depends(current_user)) -> JSONResponse:
     from src.modules.bugs_report import delete_comment, get_comment
 
@@ -16691,7 +16720,7 @@ def delete_bug_report_comment(comment_id: int, user: SessionUser = Depends(curre
     return JSONResponse({'deleted': True})
 
 
-@app.post('/api/bugs-report/screenshots/{attachment_id:int}/delete')
+@app.post('/api/tickets/screenshots/{attachment_id:int}/delete')
 def delete_bug_report_screenshot(attachment_id: int, user: SessionUser = Depends(current_user)) -> JSONResponse:
     from src.modules.bugs_report import delete_attachment, get_attachment
 
@@ -16707,16 +16736,38 @@ def delete_bug_report_screenshot(attachment_id: int, user: SessionUser = Depends
     return JSONResponse({'deleted': True})
 
 
-@app.post('/api/bugs-report/{bug_id:int}/delete')
+@app.post('/api/tickets/{bug_id:int}/delete')
 def delete_bug_report(bug_id: int, user: SessionUser = Depends(super_admin_user)) -> JSONResponse:
     from src.modules.bugs_report import delete_bug
 
     bug = require_bug_report(bug_id)
     delete_bug(repository, bug_id)
     repository.try_add_log(user.username, 'bug_report_deleted', json.dumps({
-        'bug_id': bug_id, 'title': bug['title'], 'created_by': bug['created_by'], 'status': bug['status'],
+        'bug_id': bug_id, 'type': bug.get('ticket_type') or 'bug', 'title': bug['title'], 'created_by': bug['created_by'],
+        'status': bug['status'],
     }, ensure_ascii=False))
-    return JSONResponse({'deleted': True, 'url': '/bugs-report'})
+    return JSONResponse({'deleted': True, 'url': '/tickets'})
+
+
+def _former_bugs_report_address(request: Request, base: str, rest: str) -> str:
+    """The Ticket Center address of a former Bugs Report one, with its query (?status=new…)."""
+    address = f"{base}/{rest.strip('/')}" if rest.strip('/') else base
+    return f'{address}?{request.url.query}' if request.url.query else address
+
+
+@app.get('/bugs-report', include_in_schema=False)
+@app.get('/bugs-report/{rest:path}', include_in_schema=False)
+def redirect_former_bugs_report_page(request: Request, rest: str = '') -> RedirectResponse:
+    """The links, bookmarks and screenshots of Bugs Report, as Ticket Center was called, open its pages. The redirect is
+    temporary (307), so browsers do not keep it for a server running an earlier version."""
+    return RedirectResponse(_former_bugs_report_address(request, '/tickets', rest), status_code=status.HTTP_307_TEMPORARY_REDIRECT)
+
+
+@app.post('/api/bugs-report', include_in_schema=False)
+@app.post('/api/bugs-report/{rest:path}', include_in_schema=False)
+def redirect_former_bugs_report_api(request: Request, rest: str = '') -> RedirectResponse:
+    """A page of Bugs Report left open before the rename keeps working: its requests go to Ticket Center with their form."""
+    return RedirectResponse(_former_bugs_report_address(request, '/api/tickets', rest), status_code=status.HTTP_307_TEMPORARY_REDIRECT)
 
 
 def _chart_builder_context(payload: dict[str, Any]) -> tuple[pd.DataFrame, CatalogEntry]:
@@ -22456,10 +22507,11 @@ async def receive_transfer_package(offer_id: str, request: Request) -> JSONRespo
 # Under /api, outside Admin: the App Events of the dialog run in the module of the page it is shown on.
 @app.get('/api/admin-notices')
 def list_admin_notices(user: SessionUser = Depends(super_admin_user)) -> JSONResponse:
-    """The access requests waiting for activation and the new bug reports the super-admin has not been told about yet,
-    for the dialog the pages show when the poll of transfer offers reports them (src/modules/admin_notices.py)."""
+    """The access requests waiting for activation and the new tickets the super-admin has not been told about yet, for
+    the dialog the pages show when the poll of transfer offers reports them (src/modules/admin_notices.py). The keys
+    keep the names of Bugs Report, as Ticket Center was called, for the pages opened before the rename."""
     from src.modules.admin_notices import unseen_notices
-    from src.modules.bugs_report import PRIORITIES
+    from src.modules.bugs_report import DEFAULT_TICKET_TYPE, PRIORITIES, TICKET_TYPES
 
     notices = unseen_notices(repository, user.username, include_bug_reports=user_has_feature(user, 'bugs-report'))
     people = bug_report_people()
@@ -22471,12 +22523,13 @@ def list_admin_notices(user: SessionUser = Depends(super_admin_user)) -> JSONRes
         } for item in notices['access_requests']],
         'bug_reports': [{
             'key': item['key'], 'id': int(item['id']), 'title': item['title'], 'priority': item['priority'],
+            'type': TICKET_TYPES.get(item['ticket_type'], TICKET_TYPES[DEFAULT_TICKET_TYPE]),
             'priority_label': PRIORITIES.get(item['priority'], ''), 'module': modules.get(item['module'], item['module'] or 'General'),
             'reported_by': people.get(item['created_by'], {}).get('name', item['created_by']),
             'reported_at': format_local_timestamp(item['created_at'])[:16],
         } for item in notices['bug_reports']],
         'access_requests_url': '/admin?users=access-requests#users',
-        'bugs_report_url': '/bugs-report?status=new#section-bug-reports',
+        'bugs_report_url': '/tickets?status=new#section-tickets', 'bugs_report_title': ticket_center_title(),
     }, headers={'Cache-Control': 'no-store'})
 
 
@@ -22486,8 +22539,8 @@ class AdminNoticesSeenPayload(BaseModel):
     choice: str = 'close'
 
 
-# The buttons of the admin notices dialog, as App Events name them.
-ADMIN_NOTICE_CHOICES = {'access-requests': 'Open Access Requests', 'bugs-report': 'Open Bugs Report', 'close': 'Close'}
+# The buttons of the admin notices dialog, as App Events name them (Ticket Center by its title in Interface Settings).
+ADMIN_NOTICE_CHOICES = {'access-requests': 'Open Access Requests', 'bugs-report': 'Open Ticket Center', 'close': 'Close'}
 
 
 @app.post('/api/admin-notices/seen')
@@ -22497,7 +22550,8 @@ def mark_admin_notices_seen(payload: AdminNoticesSeenPayload, user: SessionUser 
 
     recorded = mark_seen(repository, user.username, access_requests=payload.access_requests, bug_reports=payload.bug_reports)
     repository.try_add_log(user.username, 'admin_notices_seen', json.dumps({
-        'choice': ADMIN_NOTICE_CHOICES.get(payload.choice, ADMIN_NOTICE_CHOICES['close']),
+        'choice': f'Open {ticket_center_title()}' if payload.choice == 'bugs-report'
+        else ADMIN_NOTICE_CHOICES.get(payload.choice, ADMIN_NOTICE_CHOICES['close']),
         'access_requests': [item['username'] for item in recorded['access_requests']],
         'bug_reports': [f"#{bug['id']} {bug['title']}" for bug in recorded['bug_reports']],
     }, ensure_ascii=False))
@@ -22526,7 +22580,7 @@ def list_pending_transfer_offers(user: SessionUser = Depends(super_admin_user)) 
     return JSONResponse({
         'offers': sorted(offers, key=lambda offer: float(offer.get('created_at') or 0)),
         'active_imports': active_imports,
-        # The access requests and bug reports the super-admin has not been told about ride on this poll.
+        # The access requests and tickets the super-admin has not been told about ride on this poll.
         'admin_notices': unseen_notice_ids(repository, user.username, include_bug_reports=user_has_feature(user, 'bugs-report')),
         'destination_workspaces': [
             {'id': workspace.id, 'name': workspace.name} for workspace in workspace_registry.list()

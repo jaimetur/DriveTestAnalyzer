@@ -49,7 +49,7 @@ def test_events_read_as_one_sentence_old_and_new() -> None:
     assert describe_app_event('scoring_calculation_requested', {'saved_filter_id': 57, 'starred': True, 'name': 'UK'}) == (
         'Scoring calculation requested: saved filter ID 57 (favourite), name UK.')
     assert describe_app_event('bug_report_managed', {'bug_id': 1, 'changes': {'status': ['new', 'resolved']}}) == (
-        'Bug report managed: bug ID 1, status new → resolved.')
+        'Ticket managed: ticket ID 1, status new → resolved.')
     assert describe_app_event('nq_call_options', 'Non-Qualified Calls statuses and teams updated.') == (
         'Non-Qualified Calls statuses and teams updated.')
 

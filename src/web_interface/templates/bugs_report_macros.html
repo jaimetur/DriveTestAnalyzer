@@ -1,4 +1,13 @@
-{# Pieces shared by the Bugs Report pages (bugs_report.html and bug_report.html). #}
+{# Pieces shared by the Ticket Center pages (bugs_report.html and bug_report.html). #}
+{# The icon of a type of ticket (24 x 24, drawn with lines): a bug, a rising line or a sparkle. #}
+{% macro type_icon(ticket_type) -%}
+<svg class="ticket-type-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">{% if ticket_type == 'improvement' %}<path d="m4 17 6-6 4 4 6-7"/><path d="M15 8h5v5"/>{% elif ticket_type == 'new_feature' %}<path d="M11 3.5c.6 4.4 2.6 6.4 7 7-4.4.6-6.4 2.6-7 7-.6-4.4-2.6-6.4-7-7 4.4-.6 6.4-2.6 7-7z"/><path d="M19 3v4M17 5h4"/>{% else %}<path d="M9 7.5a3 3 0 0 1 6 0z"/><rect x="7" y="7.5" width="10" height="12" rx="5"/><path d="M12 11v8.5M7 12H3.5M20.5 12H17M7.6 16.5 4.5 18.5M16.4 16.5l3.1 2"/>{% endif %}</svg>
+{%- endmacro %}
+
+{% macro type_badge(ticket_type, label) -%}
+<span class="ticket-type" data-type="{{ ticket_type }}">{{ type_icon(ticket_type) }}{{ label }}</span>
+{%- endmacro %}
+
 {% macro priority_pill(priority, label='') -%}
 <span class="bug-priority" data-priority="{{ priority }}" title="{{ priority }}{% if label %} · {{ label }}{% endif %}">{{ priority }}{% if label %}<small>{{ label }}</small>{% endif %}</span>
 {%- endmacro %}
@@ -28,7 +37,7 @@
 <div class="bug-gallery">
   {% for attachment in attachments %}
   <figure class="bug-shot">
-    <button type="button" class="bug-shot-open" data-bug-shot="/bugs-report/attachments/{{ attachment.id }}" data-bug-shot-name="{{ attachment.file_name }}" title="{{ attachment.file_name }}"><img src="/bugs-report/attachments/{{ attachment.id }}" alt="{{ attachment.file_name }}" loading="lazy"></button>
+    <button type="button" class="bug-shot-open" data-bug-shot="/tickets/attachments/{{ attachment.id }}" data-bug-shot-name="{{ attachment.file_name }}" title="{{ attachment.file_name }}"><img src="/tickets/attachments/{{ attachment.id }}" alt="{{ attachment.file_name }}" loading="lazy"></button>
     <figcaption>{{ attachment.file_name }}</figcaption>
     {% if removable and (user.role == 'super-admin' or attachment.uploaded_by | lower == user.username | lower) %}<button type="button" class="bug-shot-remove" data-bug-shot-delete="{{ attachment.id }}" title="Delete this screenshot" aria-label="Delete {{ attachment.file_name }}">×</button>{% endif %}
   </figure>

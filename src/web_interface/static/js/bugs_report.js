@@ -1,7 +1,13 @@
-// Bugs Report: the list of bug reports with its filters, the New Bug Report form, and the page of each report
+// Ticket Center: its dashboard, the list of tickets with its filters, the New Ticket form, and the page of each ticket
 // (its edition, comments, screenshots and the super-admin attention).
 (() => {
-  const info = (message, title = 'Bugs Report', tone = 'error') => (typeof showInfoDialog === 'function'
+  // The sections of Bugs Report, as Ticket Center was called, in the links of before.
+  const formerSections = {'#section-bug-reports': '#section-tickets', '#section-new-bug-report': '#section-new-ticket'};
+  if (formerSections[window.location.hash]) {
+    window.history.replaceState(window.history.state, '', `${window.location.pathname}${window.location.search}${formerSections[window.location.hash]}`);
+  }
+  const moduleTitle = document.querySelector('[data-ticket-center-title]')?.dataset.ticketCenterTitle || 'Ticket Center';
+  const info = (message, title = moduleTitle, tone = 'error') => (typeof showInfoDialog === 'function'
     ? showInfoDialog(message, {title, tone})
     : window.alert(message));
   const confirmAction = (message, options) => (typeof showConfirmDialog === 'function'
@@ -76,7 +82,8 @@
     dropzones.set(zone, {reset: () => { files = []; sync(); }, count: () => files.length});
   });
 
-  // The list: filters, search and order of the bug reports, remembered by this browser.
+  // The list: the chips (type, status, priority, module and assignee), search, reporter and order of the tickets,
+  // remembered by this browser. No chip pressed in a group lists every value of it, and the groups add up.
   const table = document.querySelector('[data-bugs-table]');
   if (table) {
     const rows = [...table.querySelectorAll('[data-bug-row]')];
@@ -85,39 +92,60 @@
     const sort = document.querySelector('[data-bugs-sort]');
     const count = document.querySelector('[data-bugs-count]');
     const empty = document.querySelector('[data-bugs-empty]');
+    const chips = [...document.querySelectorAll('[data-chip]')];
+    const recentChip = document.querySelector('[data-chip-recent]');
+    const groups = ['types', 'statuses', 'priorities', 'modules', 'assignees'];
+    const openStatuses = ['new', 'in_progress', 'waiting_info'];
+    const allowed = Object.fromEntries(groups.map((group) => [group, new Set(chips.filter((chip) => chip.dataset.chip === group).map((chip) => chip.dataset.value))]));
+    const state = {types: [], statuses: [...openStatuses], priorities: [], modules: [], assignees: [], recent: false};
+    const sameSet = (values, expected) => values.length === expected.length && expected.every((value) => values.includes(value));
+    const clear = () => {
+      groups.forEach((group) => { state[group] = []; });
+      state.recent = false;
+      filters.search.value = '';
+      filters.reporter.value = '*';
+      if (filters.mine) filters.mine.checked = false;
+    };
+    // The key of Bugs Report, as Ticket Center was called: the filters chosen before stay.
     const storageKey = 'bugs-report:filters';
     try {
       const saved = JSON.parse(window.localStorage.getItem(storageKey) || '{}');
-      Object.entries(saved).forEach(([key, value]) => {
-        const control = key === 'sort' ? sort : filters[key];
-        if (!control) return;
-        if (control.type === 'checkbox') control.checked = Boolean(value);
-        else if ([...(control.options || [{value}])].some((option) => option.value === value)) control.value = value;
-      });
+      // Chips remembered as lists; the filters of earlier versions were one value each (status 'open' or '' for all).
+      const list = (value, every) => (Array.isArray(value) ? value : value === undefined || value === every ? null : [value]);
+      const restored = {
+        types: list(saved.types), statuses: Array.isArray(saved.statuses) ? saved.statuses
+          : saved.status === 'open' ? openStatuses : saved.status === '' ? [] : list(saved.status),
+        priorities: list(saved.priorities ?? saved.priority, ''), modules: list(saved.modules ?? saved.module, '*'), assignees: list(saved.assignees),
+      };
+      groups.forEach((group) => { if (restored[group]) state[group] = restored[group].filter((value) => allowed[group].has(value)); });
+      state.recent = Boolean(saved.recent);
+      if (saved.reporter && [...filters.reporter.options].some((option) => option.value === saved.reporter)) filters.reporter.value = saved.reporter;
+      if (filters.mine) filters.mine.checked = Boolean(saved.mine);
+      if (saved.sort && [...sort.options].some((option) => option.value === saved.sort)) sort.value = saved.sort;
     } catch (_) { /* Filters start at their defaults. */ }
-    // A link to the reports of one status (?status=new, from the admin notices of the super-admins) lists only them.
-    const linkedStatus = new URLSearchParams(window.location.search).get('status');
-    if (linkedStatus && [...filters.status.options].some((option) => option.value === linkedStatus)) {
-      filters.search.value = '';
-      filters.priority.value = '';
-      filters.module.value = '*';
-      filters.reporter.value = '*';
-      if (filters.mine) filters.mine.checked = false;
-      filters.status.value = linkedStatus;
+    // A link to the tickets of a status or type (?status=new, from the admin notices of the super-admins) lists only them.
+    const params = new URLSearchParams(window.location.search);
+    const linkedStatus = params.get('status');
+    const linkedType = params.get('type');
+    if ((linkedStatus && (linkedStatus === 'open' || allowed.statuses.has(linkedStatus))) || (linkedType && allowed.types.has(linkedType))) {
+      clear();
+      state.statuses = linkedStatus === 'open' ? [...openStatuses] : linkedStatus && allowed.statuses.has(linkedStatus) ? [linkedStatus] : [];
+      state.types = linkedType && allowed.types.has(linkedType) ? [linkedType] : [];
       const url = new URL(window.location.href);
       url.searchParams.delete('status');
-      window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+      url.searchParams.delete('type');
+      window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
     }
     const priorityRank = {P1: 1, P2: 2, P3: 3, P4: 4, P5: 5};
+    const matches = (group, value) => !state[group].length || state[group].includes(value);
     const apply = () => {
       const query = filters.search.value.trim().toLowerCase();
-      const statusValue = filters.status.value;
       let shown = 0;
       rows.forEach((row) => {
         const visible = (!query || row.dataset.search.includes(query))
-          && (statusValue === '' || (statusValue === 'open' ? row.dataset.open === 'true' : row.dataset.status === statusValue))
-          && (!filters.priority.value || row.dataset.priority === filters.priority.value)
-          && (filters.module.value === '*' || row.dataset.module === filters.module.value)
+          && matches('types', row.dataset.type) && matches('statuses', row.dataset.status) && matches('priorities', row.dataset.priority)
+          && matches('modules', row.dataset.module) && matches('assignees', row.dataset.assignee)
+          && (!state.recent || row.dataset.recent === 'true')
           && (filters.reporter.value === '*' || row.dataset.reporter === filters.reporter.value)
           && (!filters.mine?.checked || row.dataset.mine === 'true');
         row.hidden = !visible;
@@ -130,72 +158,138 @@
         priority: (a, b) => priorityRank[a.dataset.priority] - priorityRank[b.dataset.priority] || b.dataset.updated.localeCompare(a.dataset.updated),
       }[sort.value];
       body.append(...rows.sort(order));
-      if (count) count.textContent = `${shown} of ${rows.length} bug report${rows.length === 1 ? '' : 's'}`;
+      chips.forEach((chip) => chip.setAttribute('aria-pressed', String(state[chip.dataset.chip].includes(chip.dataset.value))));
+      if (recentChip) recentChip.hidden = !state.recent;
+      if (count) count.textContent = `${shown} of ${rows.length} ticket${rows.length === 1 ? '' : 's'}`;
       if (empty && rows.length) empty.hidden = shown > 0;
+      syncStats();
       try {
         window.localStorage.setItem(storageKey, JSON.stringify({
-          status: statusValue, priority: filters.priority.value, module: filters.module.value, reporter: filters.reporter.value,
-          mine: Boolean(filters.mine?.checked), sort: sort.value,
+          ...Object.fromEntries(groups.map((group) => [group, state[group]])), recent: state.recent,
+          reporter: filters.reporter.value, mine: Boolean(filters.mine?.checked), sort: sort.value,
         }));
       } catch (_) { /* Not remembered. */ }
     };
+    chips.forEach((chip) => chip.addEventListener('click', () => {
+      const values = state[chip.dataset.chip];
+      state[chip.dataset.chip] = values.includes(chip.dataset.value) ? values.filter((value) => value !== chip.dataset.value) : [...values, chip.dataset.value];
+      apply();
+    }));
+    recentChip?.addEventListener('click', () => { state.recent = false; apply(); });
     Object.values(filters).forEach((control) => control.addEventListener(control.type === 'search' ? 'input' : 'change', apply));
     sort.addEventListener('change', apply);
-    // The counts of the header list their bug reports (every other filter cleared); the count pressed again lists the
-    // open ones. The count of the shown status stays pressed.
-    const stats = [...document.querySelectorAll('[data-bugs-stat]')];
-    const pressedStat = () => {
-      if (filters.search.value || filters.priority.value || filters.module.value !== '*' || filters.reporter.value !== '*') return '';
-      if (filters.mine?.checked) return filters.status.value === 'open' ? 'mine' : '';
-      return filters.status.value;
-    };
-    const syncStats = () => stats.forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.bugsStat === pressedStat())));
-    stats.forEach((button) => button.addEventListener('click', () => {
-      const chosen = button.dataset.bugsStat === pressedStat() ? '' : button.dataset.bugsStat;
-      filters.search.value = '';
-      filters.priority.value = '';
-      filters.module.value = '*';
-      filters.reporter.value = '*';
-      if (filters.mine) filters.mine.checked = chosen === 'mine';
-      filters.status.value = !chosen || chosen === 'mine' ? 'open' : chosen;
+    document.querySelector('[data-bugs-reset]')?.addEventListener('click', () => {
+      clear();
+      state.statuses = [...openStatuses];
       apply();
-      const panel = document.getElementById('section-bug-reports');
+    });
+    // Lists the tickets the dashboard counted (every other filter cleared) and shows the list.
+    const show = ({mine = false, ...chosen}) => {
+      clear();
+      Object.assign(state, {statuses: [...openStatuses]}, chosen);
+      if (filters.mine) filters.mine.checked = mine;
+      apply();
+      const panel = document.getElementById('section-tickets');
       if (panel) {
         panel.open = true;
         panel.scrollIntoView({behavior: 'smooth', block: 'start'});
       }
+    };
+    // The tiles of the header list their tickets; the tile pressed again lists the open ones. The tile of the tickets
+    // shown stays pressed.
+    const stats = [...document.querySelectorAll('[data-bugs-stat]')];
+    const tileState = {
+      open: {}, new: {statuses: ['new']}, in_progress: {statuses: ['in_progress']}, waiting_info: {statuses: ['waiting_info']},
+      recent: {statuses: ['resolved', 'closed'], recent: true}, mine: {mine: true},
+    };
+    const pressedStat = () => {
+      const plain = groups.every((group) => group === 'statuses' || !state[group].length) && !filters.search.value && filters.reporter.value === '*';
+      if (!plain) return '';
+      if (filters.mine?.checked) return !state.recent && sameSet(state.statuses, openStatuses) ? 'mine' : '';
+      if (state.recent) return sameSet(state.statuses, ['resolved', 'closed']) ? 'recent' : '';
+      if (sameSet(state.statuses, openStatuses)) return 'open';
+      return state.statuses.length === 1 && openStatuses.includes(state.statuses[0]) ? state.statuses[0] : '';
+    };
+    function syncStats() {
+      const pressed = pressedStat();
+      stats.forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.bugsStat === pressed)));
+    }
+    stats.forEach((button) => button.addEventListener('click', () => {
+      const key = button.dataset.bugsStat;
+      show(key === pressedStat() ? {} : tileState[key]);
     }));
-    [...Object.values(filters), sort].forEach((control) => control.addEventListener(control.type === 'search' ? 'input' : 'change', syncStats));
-    stats.forEach((button) => button.addEventListener('click', syncStats));
-    // A click anywhere on a row opens its bug report.
+    // The counts of the matrix and the bars of each type list their tickets: a type and a status (the totals, every
+    // value of the other one); a priority of a type, its open tickets; a module, its open tickets.
+    document.querySelectorAll('[data-ticket-cell]').forEach((cell) => cell.addEventListener('click', () => show({
+      types: cell.dataset.type ? [cell.dataset.type] : [], statuses: cell.dataset.status ? [cell.dataset.status] : [],
+    })));
+    document.querySelectorAll('[data-ticket-priority]').forEach((cell) => cell.addEventListener('click', () => show({
+      types: [cell.dataset.type], priorities: [cell.dataset.priority],
+    })));
+    document.querySelectorAll('[data-ticket-module]').forEach((cell) => cell.addEventListener('click', () => show({
+      modules: allowed.modules.has(cell.dataset.ticketModule) ? [cell.dataset.ticketModule] : [],
+    })));
+    // A click anywhere on a row opens its ticket.
     table.addEventListener('click', (event) => {
       const row = event.target.closest('[data-bug-row]');
       if (!row || event.target.closest('a, button, input, select')) return;
       window.location.href = row.dataset.href;
     });
     apply();
-    syncStats();
   }
 
-  // The New Bug Report link opens and shows its panel.
+  // The dashboard tells what each count, bar and week is, over it (data-tip), with the mouse or the keyboard.
+  const tip = document.querySelector('[data-ticket-tip]');
+  if (tip) {
+    const board = tip.parentElement;
+    const place = (target) => {
+      tip.textContent = target.dataset.tip;
+      tip.hidden = false;
+      const box = target.getBoundingClientRect();
+      const frame = board.getBoundingClientRect();
+      const left = Math.min(Math.max(box.left + box.width / 2 - frame.left - tip.offsetWidth / 2, 4), frame.width - tip.offsetWidth - 4);
+      tip.style.left = `${left}px`;
+      tip.style.top = `${box.top - frame.top - tip.offsetHeight - 8}px`;
+    };
+    const hide = () => { tip.hidden = true; };
+    board.addEventListener('pointerover', (event) => {
+      const target = event.target.closest('[data-tip]');
+      if (target && board.contains(target)) place(target);
+      else hide();
+    });
+    board.addEventListener('pointerleave', hide);
+    board.addEventListener('focusin', (event) => { const target = event.target.closest('[data-tip]'); if (target) place(target); });
+    board.addEventListener('focusout', hide);
+  }
+
+  // The New Ticket link opens and shows its panel.
   document.querySelector('[data-bugs-new]')?.addEventListener('click', () => {
-    const panel = document.getElementById('section-new-bug-report');
+    const panel = document.getElementById('section-new-ticket');
     if (panel) {
       panel.open = true;
-      window.setTimeout(() => panel.querySelector('input[name="title"]')?.focus(), 50);
+      window.setTimeout(() => panel.querySelector('input[name="ticket_type"]')?.focus(), 50);
     }
   });
 
   const createForm = document.querySelector('[data-bugs-create-form]');
+  // The description shows the guide of the type chosen.
+  createForm?.querySelectorAll('input[name="ticket_type"]').forEach((radio) => radio.addEventListener('change', () => {
+    const description = createForm.querySelector('[data-ticket-description]');
+    if (description && radio.checked) description.placeholder = radio.dataset.guide;
+  }));
   createForm?.addEventListener('submit', async (event) => {
     event.preventDefault();
+    if (!createForm.querySelector('input[name="ticket_type"]:checked')) {
+      createForm.querySelector('input[name="ticket_type"]')?.focus();
+      return info('Choose the type of the ticket: Bug, Improvement or New Feature.');
+    }
     if (!createForm.title.value.trim()) {
       createForm.title.focus();
-      return info('Give the bug a title.');
+      return info('Give the ticket a title.');
     }
     busy(createForm, true);
     try {
-      const payload = await send('/api/bugs-report', new FormData(createForm));
+      const payload = await send('/api/tickets', new FormData(createForm));
       window.location.href = payload.url;
     } catch (error) {
       info(error.message);
@@ -203,7 +297,7 @@
     }
   });
 
-  // The page of a bug report.
+  // The page of a ticket.
   const page = document.querySelector('[data-bug-report]');
   if (!page) return;
   const bugId = page.dataset.bugReport;
@@ -223,7 +317,7 @@
     event.preventDefault();
     busy(editForm, true);
     try {
-      await send(`/api/bugs-report/${bugId}/update`, new FormData(editForm));
+      await send(`/api/tickets/${bugId}/update`, new FormData(editForm));
       reload();
     } catch (error) {
       info(error.message);
@@ -235,7 +329,7 @@
     const body = new FormData();
     body.append('priority', event.target.value);
     try {
-      await send(`/api/bugs-report/${bugId}/update`, body);
+      await send(`/api/tickets/${bugId}/update`, body);
       reload();
     } catch (error) { info(error.message); }
   });
@@ -248,7 +342,7 @@
     event.preventDefault();
     busy(shotsForm, true);
     try {
-      await send(`/api/bugs-report/${bugId}/screenshots`, new FormData(shotsForm));
+      await send(`/api/tickets/${bugId}/screenshots`, new FormData(shotsForm));
       reload();
     } catch (error) {
       info(error.message);
@@ -266,7 +360,7 @@
     }
     busy(commentForm, true);
     try {
-      await send(`/api/bugs-report/${bugId}/comments`, new FormData(commentForm));
+      await send(`/api/tickets/${bugId}/comments`, new FormData(commentForm));
       reload();
     } catch (error) {
       info(error.message);
@@ -290,7 +384,7 @@
         event.preventDefault();
         busy(editor, true);
         try {
-          await send(`/api/bugs-report/comments/${commentId}/update`, new FormData(editor));
+          await send(`/api/tickets/comments/${commentId}/update`, new FormData(editor));
           reload();
         } catch (error) {
           info(error.message);
@@ -304,7 +398,7 @@
       const accepted = await confirmAction('Delete this comment and its screenshots?', {title: 'Delete comment', confirmLabel: 'Delete comment', tone: 'warning'});
       if (!accepted) return;
       try {
-        await send(`/api/bugs-report/comments/${commentId}/delete`, new FormData());
+        await send(`/api/tickets/comments/${commentId}/delete`, new FormData());
         reload();
       } catch (error) { info(error.message); }
     });
@@ -314,18 +408,19 @@
     const accepted = await confirmAction('Delete this screenshot?', {title: 'Delete screenshot', confirmLabel: 'Delete screenshot', tone: 'warning'});
     if (!accepted) return;
     try {
-      await send(`/api/bugs-report/screenshots/${button.dataset.bugShotDelete}/delete`, new FormData());
+      await send(`/api/tickets/screenshots/${button.dataset.bugShotDelete}/delete`, new FormData());
       reload();
     } catch (error) { info(error.message); }
   }));
 
-  // Super-admins: attend the bug (In Progress, assigned to them), or change its status, assignment and fixed version.
+  // Super-admins: attend the ticket (In Progress, assigned to them), or change its status, type, assignment and fixed
+  // version.
   const manageForm = page.querySelector('[data-bug-manage-form]');
   manageForm?.addEventListener('submit', async (event) => {
     event.preventDefault();
     busy(manageForm, true);
     try {
-      await send(`/api/bugs-report/${bugId}/manage`, new FormData(manageForm));
+      await send(`/api/tickets/${bugId}/manage`, new FormData(manageForm));
       reload();
     } catch (error) {
       info(error.message);
@@ -337,15 +432,15 @@
     body.append('status', 'in_progress');
     body.append('assigned_to', event.currentTarget.dataset.username);
     try {
-      await send(`/api/bugs-report/${bugId}/manage`, body);
+      await send(`/api/tickets/${bugId}/manage`, body);
       reload();
     } catch (error) { info(error.message); }
   });
   page.querySelector('[data-bug-delete]')?.addEventListener('click', async () => {
-    const accepted = await confirmAction('Delete this bug report with its timeline and screenshots? This cannot be undone.', {title: 'Delete bug report', confirmLabel: 'Delete bug report', tone: 'warning'});
+    const accepted = await confirmAction('Delete this ticket with its timeline and screenshots? This cannot be undone.', {title: 'Delete ticket', confirmLabel: 'Delete ticket', tone: 'warning'});
     if (!accepted) return;
     try {
-      const payload = await send(`/api/bugs-report/${bugId}/delete`, new FormData());
+      const payload = await send(`/api/tickets/${bugId}/delete`, new FormData());
       window.location.href = payload.url;
     } catch (error) { info(error.message); }
   });

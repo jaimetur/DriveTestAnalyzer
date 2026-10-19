@@ -25,7 +25,7 @@ DriveTest Analyzer turns processed CDR datasets into interactive KPI analysis, r
 | PPT Reporting (old) | [Open section](#ppt-reporting-old) |
 | Chart Builder | [Open section](#chart-builder) |
 | Query Builder | [Open section](#query-builder) |
-| Bugs Report | [Open section](#bugs-report) |
+| Ticket Center | [Open section](#ticket-center) |
 | App Logs | [Open section](#app-logs) |
 | Administrator Config | [Open section](#administrator-config) |
 | Roles at a glance | [Open section](#roles-at-a-glance) |
@@ -41,7 +41,7 @@ DriveTest Analyzer turns processed CDR datasets into interactive KPI analysis, r
 7. Use **Scoring & GAP Analysis** for saved NetCheck scores and GAP reference operator comparisons across selected CDRs and Split by levels; CDR processing also queues default Operator scoring when compatible companion CDRs are available. See [Scoring & GAP Analysis](scoring-gap-analysis.md).
 8. Use **Network Insights** to compare RSRP and SINR, map weak-coverage and high-interference areas and review sites, spectrum and network deployment. See [Network Insights](network-insights.md).
 9. Use **Non-Qualified Calls** to review every call and test that did not complete in the ready CDRs: summarise them, compare the NQ rate of each campaign and operator, find their root causes and follow each one up in the NQ Analysis Center (status, team, assignee, root cause and comments) until it is closed. See [Non-Qualified Calls](non-qualified-calls.md).
-10. Report the bugs you find in the tool, with their screenshots, in [Bugs Report](bugs-report.md), and follow them until they are fixed.
+10. Report the bugs you find in the tool, suggest improvements and ask for new features, with their screenshots, in [Ticket Center](bugs-report.md), and follow them until they are resolved.
 11. Use **App Logs** for traceability and **Admin** for shared configuration.
 
 ## Header and navigation
@@ -280,9 +280,9 @@ Query Builder runs read-only SQL against selected, processed Data, Voice and Spe
 
 For the full workflow and SQL rules, see [Query Builder](query-builder.md).
 
-## Bugs Report
+## Ticket Center
 
-Bugs Report collects the bugs users find in the tool. Each bug report has a title, the module it happens in, a priority from P1 (Critical) to P5 (Trivial), a description and screenshots pasted, dropped or chosen, and keeps the version of the tool and the date it was opened with. Its page shows a timeline of comments and changes; its reporter edits it and changes its priority, and only super-admins attend it: its status (New, In Progress, Waiting for Info, Resolved, Closed or Rejected), who handles it and the version that fixes it. It opens without a workspace and is in every Modules Profile. See [Bugs Report](bugs-report.md).
+Ticket Center collects the bugs, improvements and new features users ask for in the tool. Each ticket has a type (Bug, Improvement or New Feature), a title, the module it is about, a priority from P1 (Critical) to P5 (Trivial), a description and screenshots pasted, dropped or chosen, and keeps the version of the tool and the date it was opened with. Its page shows a timeline of comments and changes; its reporter edits it and changes its priority, and only super-admins attend it: its status (New, In Progress, Waiting for Info, Resolved, Closed or Rejected), who handles it and the version that fixes it. Its dashboard counts the tickets by type and status, the open ones by priority and module, and those created and resolved each week. It opens without a workspace and is in every Modules Profile. See [Ticket Center](bugs-report.md).
 
 ## App Logs
 
