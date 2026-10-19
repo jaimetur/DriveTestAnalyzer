@@ -9857,9 +9857,10 @@ document.addEventListener('click', (event) => {
   });
   bar.prepend(toTop);
 
-  // The colour theme of a themed module (Scoring & GAP Analysis, Network Insights, CDR Analysis, PPT Dashboards) stays
-  // at hand at the start of the bar (always in sight, however many sections follow) while reading the page: a copy of the module's own Theme selector, kept in step with
-  // it both ways, that changes the theme exactly as that selector does.
+  // The colour theme of a themed module (Scoring & GAP Analysis, Network Insights, CDR Analysis, PPT Dashboards) is chosen
+  // at the start of the bar (always in sight, however many sections follow): a copy of the module's own Theme selector,
+  // kept in step with it both ways, that changes the theme exactly as that selector does. The selector of the page
+  // stays, hidden, as the one the module reads; a page without the bar keeps it in sight.
   const themeSelect = document.querySelector('select[data-section-bar-theme], select[data-scoring-theme-select], select#ni-theme');
   if (themeSelect instanceof HTMLSelectElement && !bar.querySelector('.section-bar-theme')) {
     const field = document.createElement('label');
@@ -9883,6 +9884,7 @@ document.addEventListener('click', (event) => {
     copy.addEventListener('focus', sync);
     field.append(copy);
     toTop.after(field);
+    (themeSelect.closest('label') || themeSelect).classList.add('section-bar-theme-source');
   }
 
   // The list of parts opens below its entry on hover, focus or a click on its arrow, and closes on leaving it.

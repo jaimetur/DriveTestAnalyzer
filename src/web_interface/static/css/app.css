@@ -511,6 +511,8 @@ body.has-section-bar { --section-top-offset: 68px; }
 .section-bar svg { display: block; flex: 0 0 auto; width: 1.05rem; height: 1.05rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 /* The colour theme of the module at the start of the bar (a copy of the module's Theme selector), in the colours of
    the bar whatever the selects of the module look like. */
+/* The Theme selector of a themed page, given way to its copy at the start of the section bar. */
+.section-bar-theme-source { display: none !important; }
 .section-bar .section-bar-theme { display: inline-flex; flex: 0 0 auto; align-items: center; gap: .35rem; margin-right: .2rem; padding: 0 .55rem 0 .35rem; border-right: 1px solid rgba(255, 255, 255, .28); color: rgba(255, 255, 255, .92); }
 .section-bar .section-bar-theme select { -webkit-appearance: none; appearance: none; width: auto; min-width: 0; height: 2.1rem; min-height: 0; padding: .2rem 1.9rem .2rem .85rem; border: 1px solid rgba(255, 255, 255, .35); border-radius: 999px; box-shadow: none;
   background: rgba(255, 255, 255, .16) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right .7rem center / .75rem;

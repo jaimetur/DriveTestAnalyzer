@@ -54,3 +54,14 @@ def test_the_page_variables_follow_each_theme() -> None:
     assert viewer['--ds-title-focus-color'] == THEMES['ericsson']['titles']['focus_color'] and viewer['--ds-title-focus-weight'] == '700'
     assert viewer['--ds-title-font'].startswith('"Ericsson Hilda Light"')
     assert dashboard_viewer_tokens('netcheck')['--ds-title-transform'] == 'uppercase'
+
+
+def test_the_theme_is_chosen_only_in_the_floating_bar() -> None:
+    root = core.PROJECT_ROOT / 'src' / 'web_interface' / 'static'
+    script = (root / 'js' / 'app.js').read_text(encoding='utf-8')
+    css = (root / 'css' / 'app.css').read_text(encoding='utf-8')
+    # The bar copies the Theme selector of Scoring & GAP Analysis, Network Insights, CDR Analysis and PPT Dashboards and
+    # hides the one of the page, which stays as the one the module reads.
+    assert "document.querySelector('select[data-section-bar-theme], select[data-scoring-theme-select], select#ni-theme')" in script
+    assert "(themeSelect.closest('label') || themeSelect).classList.add('section-bar-theme-source');" in script
+    assert '.section-bar-theme-source { display: none !important; }' in css
