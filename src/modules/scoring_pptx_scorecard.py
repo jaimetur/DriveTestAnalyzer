@@ -279,6 +279,31 @@ def _band_fill(value: dict) -> str | None:
     return active_theme().get('bands', {}).get(str(value.get('threshold_band') or ''))
 
 
+def style_legend_band(cell, band: str, size: float, font: str | None = None) -> None:
+    """A band of the legend of a Scoring table drawn as the cells of the band in the active theme: the data bar of
+    NetCheck, the bar of Umlaut and Midnight, the heat tint of Heatmap or the coloured, underlined text of Paper (the
+    themes whose cells take the colour of the legend keep it; Unavailable keeps its colour)."""
+    current = style()
+    strong = active_theme().get('band_strong', {}).get(band)
+    if strong is None or current.get('legend_fill'):
+        return
+    mode = current['score']
+    run = {'size': size, 'color': current['ink'], 'bold': False}
+    if mode == 'excel':
+        fading_bar(cell, strong, 1.0, current['card'])
+    elif mode == 'bar':
+        solid(cell, blend(current['card'], strong, current['bar_mix']))
+    elif mode == 'solid':
+        solid(cell, blend('#FFFFFF', strong, current['bar_mix']))
+    elif mode == 'heat':
+        # The tint of a score at half its maximum.
+        solid(cell, blend('#FFFFFF', strong, .29))
+    else:
+        solid(cell, current['card'])
+        run.update(color=strong, bold=True, underline=True)
+    write(cell, [(cell.text_frame.text, run)], font=font)
+
+
 def _score_share(value: dict, maximum: Any) -> float | None:
     try:
         points, top = float(value.get('points')), float(maximum)

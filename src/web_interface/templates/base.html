@@ -166,7 +166,7 @@
             <nav aria-label="Administrative modules">
               {{ tree_module('/app-logs', 'Application Logs', tab_icon('app-logs', 'module-navigator-icon', administrative_icons['app-logs'].color), tab_sections['app-logs'], request.url.path == '/app-logs') }}
               {% if user.role in ['user-editor', 'admin', 'super-admin'] %}{% for page_href, page_title, sections in config_pages %}
-              {{ tree_module(page_href ~ '#top', page_title, tab_icon('config', 'module-navigator-icon', administrative_icons['config'].color), sections, request.url.path == page_href, page_href) }}{% endfor %}{% endif %}
+              {{ tree_module(page_href, page_title, tab_icon('config', 'module-navigator-icon', administrative_icons['config'].color), sections, request.url.path == page_href, page_href) }}{% endfor %}{% endif %}
               {% if user.role in ['admin', 'super-admin'] %}{{ tree_module('/admin', 'Administrator Config', tab_icon('admin', 'module-navigator-icon', administrative_icons['admin'].color), tab_sections.admin, request.url.path == '/admin') }}{% endif %}
             </nav>
           </section>

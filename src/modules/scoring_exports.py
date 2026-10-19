@@ -39,7 +39,7 @@ from src.modules.scoring_summary_slides import (
 from src.modules.scoring_area_summary import build_area_summary
 from src.modules.scoring_config import BEST_NETWORK_SCORING, MOST_RELIABLE_SCORING, SCORING_LABELS
 from src.modules.scoring_insights import operator_styles
-from src.modules.scoring_pptx_scorecard import apply_scorecard
+from src.modules.scoring_pptx_scorecard import apply_scorecard, style_legend_band
 from src.modules.scoring_themes import DEFAULT_THEME, active_theme, themed, use_theme
 from src.modules.theme_titles import style_title
 from src.modules.scoring_act_slides import (
@@ -1028,6 +1028,7 @@ def _score_tables(presentation, matrices: list[dict], legend: list[dict], *, gap
                     for index, item in enumerate(legend):
                         legend_table = slide.shapes.add_table(1, 1, Inches(.55 + index * 1.15), Inches(7.02), Inches(1.1), Inches(.18)).table
                         _cell(legend_table.cell(0, 0), item.get('band', ''), color=item['color'], size=8)
+                        style_legend_band(legend_table.cell(0, 0), item.get('band', ''), 8, _FONT)
                 _text(slide, f'GAP = operator − reference; ±{matrix.get("gap_scale_max", 0):.2f} points; '
                       f'{active_theme()["gap_names"][0].lower()} + / {active_theme()["gap_names"][1].lower()} −',
                       7.03, left=6.5, width=6.2, size=8.5, height=.18)
@@ -2037,6 +2038,8 @@ def _hierarchy_score_tables(presentation, matrices: list[dict], legend: list[dic
                     Inches(1.25), Inches(1.1), Inches(.18),
                 ).table
                 _cell(legend_table.cell(0, 0), item.get('band', ''), color=item['color'], size=8)
+                # As the cells of the band look in the theme.
+                style_legend_band(legend_table.cell(0, 0), item.get('band', ''), 8, _FONT)
         _text(slide, matrix['coverage_note'], 7.27, size=8, height=.18)
 
 

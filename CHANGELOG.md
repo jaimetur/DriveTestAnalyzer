@@ -48,14 +48,14 @@
 - **Operator order in the Scoring results:** every Operator selector and list of operators of the results (Where to act, Connecting Roads, Campaign Comparison…) follows the order of the Operator Maps.
 - **Performance owner cards of older Saved Filters:** a card whose Saved Filter was calculated before its points were kept per City or route asks to recalculate it instead of showing 0.0 for Cities, Towns, Roads and railways; Vendor A and Vendor B swap their colours, the same on every view and slide.
 - **Scoring Calculation after a reload:** reloading Scoring & GAP Analysis with a Saved Filter open that includes the National & Geographical Areas Trends keeps **Include National & Geographical Areas Trends** checked when the panel still holds its selection, so the panel matches the Saved Filter and **Recalculate** stays available; a new selection still starts without them.
-- **Score colours of the Ericsson and Vodafone tables:** the score cells of the Scoring tables (page, PowerPoint and Word) take the colour of their band in the legend.
+- **Legend of the KPI score bands:** the legend of the Scoring tables matches their cells in every theme, on the page and in PowerPoint and Word: the Ericsson and Vodafone cells take the colours of the legend, and the other themes draw the legend as their cells (NetCheck and Umlaut data bars, Heatmap tints, Paper underlined text, Midnight glowing bars).
 
 #### 📚 Documentation:
 
 ---
 
 ## Release: v0.7.3
-### Release Date: 2026-10-19
+### Release Date: 2026-10-17
 #### ⚠️ Breaking Changes:
 
 #### 🌟 New Features:

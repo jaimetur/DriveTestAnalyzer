@@ -783,6 +783,20 @@
   [data-scoring-workspace] .scoring-comparison-table td[data-band="High"] { --band-dot: var(--st-band-high); }
   [data-scoring-workspace] .scoring-comparison-table td[data-band="UltraHigh"] { --band-dot: var(--st-band-ultrahigh); }
   [data-scoring-workspace] .scoring-comparison-table td[data-band="Unavailable"] { --band-dot: var(--st-muted); }
+  /* The swatches of the KPI score bands look as the cells of their band: Ericsson and Vodafone fill their cells with the
+     colours of the legend; NetCheck and Umlaut draw a data bar, Heatmap a tint, Paper an underline and Midnight a glowing bar. */
+  [data-scoring-workspace] .scoring-legend-swatch[data-band="Low"] { --band-dot: var(--st-band-low); }
+  [data-scoring-workspace] .scoring-legend-swatch[data-band="Medium"] { --band-dot: var(--st-band-medium); }
+  [data-scoring-workspace] .scoring-legend-swatch[data-band="High"] { --band-dot: var(--st-band-high); }
+  [data-scoring-workspace] .scoring-legend-swatch[data-band="UltraHigh"] { --band-dot: var(--st-band-ultrahigh); }
+  [data-scoring-workspace]:is([data-scoring-theme="netcheck"], [data-scoring-theme="umlaut"]) .scoring-legend-swatch:is([data-band="Low"], [data-band="Medium"], [data-band="High"], [data-band="UltraHigh"]) {
+    background: linear-gradient(90deg, var(--band-dot), color-mix(in srgb, var(--band-dot) 14%, #fff)) !important; }
+  [data-scoring-workspace][data-scoring-theme="heatmap"] .scoring-legend-swatch:is([data-band="Low"], [data-band="Medium"], [data-band="High"], [data-band="UltraHigh"]) {
+    background: color-mix(in srgb, var(--band-dot) 29%, #fff) !important; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--band-dot) 38%, #fff); }
+  [data-scoring-workspace][data-scoring-theme="paper"] .scoring-legend-swatch:is([data-band="Low"], [data-band="Medium"], [data-band="High"], [data-band="UltraHigh"]) {
+    background: transparent !important; box-shadow: inset 0 -3px 0 var(--band-dot); }
+  [data-scoring-workspace][data-scoring-theme="midnight"] .scoring-legend-swatch:is([data-band="Low"], [data-band="Medium"], [data-band="High"], [data-band="UltraHigh"]) {
+    background: var(--band-dot) !important; box-shadow: 0 0 6px color-mix(in srgb, var(--band-dot) 55%, transparent); }
 
   /* Ericsson: white panels under a dark grey rule. */
   [data-scoring-workspace][data-scoring-theme="ericsson"] [data-result-pane] > :is(.scoring-table-mode-section, .scoring-best-network-layout, .scoring-chart-card, .scoring-insight-section, .scoring-result-card) {

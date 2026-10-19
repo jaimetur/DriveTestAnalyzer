@@ -2771,6 +2771,8 @@
       item.className = 'scoring-legend-item';
       const swatch = document.createElement('span');
       swatch.className = 'scoring-legend-swatch';
+      // The themes draw the swatch of a band as its cells (scoring.html).
+      swatch.dataset.band = label;
       if (color) swatch.style.backgroundColor = themedColor(color);
       swatch.setAttribute('aria-hidden', 'true');
       const copy = document.createElement('span');

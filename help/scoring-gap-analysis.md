@@ -249,7 +249,7 @@ The Scoring and GAP tables read as a scorecard: the header starts with the opera
 
 Summary highlights the highest and lowest valid scores **across the whole displayed row**, each inside the box of its cell. Tied extremes can highlight several cells. Equal scores, or fewer than two valid scores, remain neutral.
 
-Breakdown scores take the colour of their **Low**, **Medium**, **High** and **UltraHigh** bands and show their share of the maximum points as the theme draws it (see [Choose a theme](#choose-a-theme)). Category totals remain neutral. Raw measurements are not summed across different KPIs because their units differ. The bar of each GAP is as long as the GAP against the largest GAP of its table, so small GAPs stay quiet and only the large ones stand out.
+Breakdown scores take the colour of their **Low**, **Medium**, **High** and **UltraHigh** bands and show their share of the maximum points as the theme draws it (see [Choose a theme](#choose-a-theme)). The legend of the bands shows each band as its cells look in the theme, on the page and in PowerPoint and Word: Ericsson and Vodafone fill their cells with the colours of the legend, NetCheck and Umlaut draw it as their data bars, Heatmap as its tints, Paper as its underlined text and Midnight as its glowing bars. Category totals remain neutral. Raw measurements are not summed across different KPIs because their units differ. The bar of each GAP is as long as the GAP against the largest GAP of its table, so small GAPs stay quiet and only the large ones stand out.
 
 GAP visibility starts unchecked. It affects Scoring Tables and its PowerPoint tables; dedicated GAP Analysis views remain available.
 

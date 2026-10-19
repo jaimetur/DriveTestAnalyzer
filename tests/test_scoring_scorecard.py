@@ -573,3 +573,29 @@ def test_ericsson_and_vodafone_score_cells_take_the_colours_of_the_legend():
     # On the page, the cell keeps the colour of its band in the legend (--cell-tint) in both themes.
     assert 'background: linear-gradient(90deg, var(--cell-tint, color-mix(in srgb, var(--band-dot, #0068bf) 34%, #fff))' in css
     assert 'background: var(--cell-tint, color-mix(in srgb, var(--band-dot, #bdbdbd) 24%, #fff)) !important;' in css
+
+
+def test_the_legend_of_the_bands_looks_as_their_cells_in_every_theme():
+    from pptx.util import Inches
+
+    from src.modules.scoring_pptx_scorecard import style_legend_band
+    from src.modules.scoring_themes import use_theme
+
+    def legend_cell(theme):
+        table = Presentation().slides.add_slide(Presentation().slide_layouts[6]).shapes.add_table(1, 1, 0, 0, Inches(1), Inches(.2)).table
+        cell = table.cell(0, 0)
+        cell.text = 'Medium'
+        with use_theme(theme):
+            style_legend_band(cell, 'Medium', 8)
+        return cell
+    # NetCheck: the data bar of its cells; Paper: the band in the coloured, underlined text of its cells.
+    assert legend_cell('netcheck')._tc.find('.//' + qn('a:gradFill')) is not None
+    run = legend_cell('paper').text_frame.paragraphs[0].runs[0]
+    assert str(run.font.color.rgb) == THEMES['paper']['band_strong']['Medium'].lstrip('#') and run.font.underline
+    # Ericsson keeps the colour of the legend, which its cells take.
+    assert legend_cell('ericsson')._tc.find('.//' + qn('a:gradFill')) is None
+    script = SCORING_SCRIPT.read_text(encoding='utf-8')
+    css = SCORING_TEMPLATE.read_text(encoding='utf-8')
+    assert 'swatch.dataset.band = label;' in script
+    assert '[data-scoring-workspace] .scoring-legend-swatch[data-band="Medium"] { --band-dot: var(--st-band-medium); }' in css
+    assert 'background: linear-gradient(90deg, var(--band-dot), color-mix(in srgb, var(--band-dot) 14%, #fff)) !important; }' in css
