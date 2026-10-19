@@ -75,3 +75,37 @@ def test_explicit_commit_releases_writer_without_closing_connection(tmp_path) ->
         worker.join(2)
 
     assert repository.get_workspace_state('commit-release') == 'second'
+
+
+def test_shared_connection_lends_one_connection_to_the_reads_of_its_block(tmp_path, monkeypatch) -> None:
+    import sqlite3
+
+    repository = Repository(tmp_path / 'workspace.db')
+    repository.initialize()
+    repository.set_workspace_state('shared-test', 'value')
+    opened: list[str] = []
+    connect = sqlite3.connect
+
+    def counting_connect(database, *args, **kwargs):
+        opened.append(str(database))
+        return connect(database, *args, **kwargs)
+
+    monkeypatch.setattr(sqlite3, 'connect', counting_connect)
+    in_thread: list[int] = []
+    with repository.shared_connection():
+        with repository.shared_connection():
+            # Another Repository of the same workspace shares it too.
+            other = Repository(tmp_path / 'workspace.db')
+            assert [repository.get_workspace_state('shared-test') for _ in range(5)] == ['value'] * 5
+            assert other.get_workspace_state('shared-test') == 'value'
+            with repository.connection() as first, other.connection() as second:
+                assert first is second
+        # Another thread opens its own connection.
+        thread = Thread(target=lambda: in_thread.append(len(repository.get_workspace_state('shared-test') or '')))
+        thread.start()
+        thread.join(5)
+    assert in_thread == [5]
+    assert opened.count(str(tmp_path / 'workspace.db')) == 2
+    # After the block every read opens its own connection again.
+    repository.get_workspace_state('shared-test')
+    assert opened.count(str(tmp_path / 'workspace.db')) == 3

@@ -18189,16 +18189,18 @@ def saved_filters_match(payload: SavedFilterRequest, user: SessionUser = Depends
     """The Saved Filter of the selection being made, if it was used before, and whether its result is up to date."""
     task_repository = scoring_repository(user)
     # An automatic Campaign choice (Latest campaign…) is kept as such; it is checked with the campaigns it stands for now.
+    # The page asks again while any Saved Filter calculates: its many reads share one connection to answer at once.
     try:
-        selected_ids = validate_complete_scoring_cdr_selection(
-            task_repository, payload.dataset_ids, payload.nr_mode,
-            context_filters=expand_scoring_context_filters(task_repository, payload.nr_mode, payload.context_filters),
-        )
-        saved_filter = find_saved_filter(
-            task_repository, selected_ids, payload.aggregation_levels, payload.nr_mode,
-            baseline_operator=payload.baseline_operator, context_filters=payload.context_filters,
-            scoring_profile_id=payload.scoring_profile_id, area_summary=payload.area_summary,
-        )
+        with task_repository.shared_connection():
+            selected_ids = validate_complete_scoring_cdr_selection(
+                task_repository, payload.dataset_ids, payload.nr_mode,
+                context_filters=expand_scoring_context_filters(task_repository, payload.nr_mode, payload.context_filters),
+            )
+            saved_filter = find_saved_filter(
+                task_repository, selected_ids, payload.aggregation_levels, payload.nr_mode,
+                baseline_operator=payload.baseline_operator, context_filters=payload.context_filters,
+                scoring_profile_id=payload.scoring_profile_id, area_summary=payload.area_summary,
+            )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {'saved_filter': saved_filter}

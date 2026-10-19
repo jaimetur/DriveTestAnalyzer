@@ -42,6 +42,8 @@ SCORING_CONFIGURATION_STATE_KEY = 'scoring_configuration'
 APP_EVENTS_LIMIT = 10_000
 # Where the App Events written now run (their origin): a request sets how to tell its page (see app_event_details).
 APP_EVENT_ORIGIN: ContextVar[Callable[[], str] | None] = ContextVar('app_event_origin', default=None)
+# The workspace connections that Repository.shared_connection() lends to every connection() of its block, by database.
+_SHARED_CONNECTIONS: ContextVar[dict[str, sqlite3.Connection] | None] = ContextVar('shared_connections', default=None)
 
 
 def current_app_event_origin() -> str:
@@ -611,6 +613,10 @@ class Repository:
 
     @contextmanager
     def connection(self) -> Iterator[sqlite3.Connection]:
+        shared = (_SHARED_CONNECTIONS.get() or {}).get(str(self.db_path))
+        if shared is not None:
+            yield shared
+            return
         conn = sqlite3.connect(self.db_path, timeout=self.busy_timeout_seconds, factory=_CoordinatedConnection)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys = ON")
@@ -621,6 +627,25 @@ class Repository:
             conn.commit()
         finally:
             conn.close()
+
+    @contextmanager
+    def shared_connection(self) -> Iterator[None]:
+        """Let every connection() of this workspace in the block (this request's thread) reuse one connection.
+
+        Opening a connection parses the whole schema of the workspace, a few milliseconds with hundreds of CDR tables,
+        so reads that open many in a row (checking whether a selection is a Saved Filter opens over a hundred) share
+        one. Meant for reads: the block's writes are committed together when it ends.
+        """
+        shared = _SHARED_CONNECTIONS.get() or {}
+        if str(self.db_path) in shared:
+            yield
+            return
+        with self.connection() as conn:
+            token = _SHARED_CONNECTIONS.set({**shared, str(self.db_path): conn})
+            try:
+                yield
+            finally:
+                _SHARED_CONNECTIONS.reset(token)
 
     @contextmanager
     def global_connection(self) -> Iterator[sqlite3.Connection]:
