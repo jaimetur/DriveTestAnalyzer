@@ -459,9 +459,13 @@
   .scoring-loss-controls .scoring-insight-select select { min-width: 11rem; }
   .scoring-loss-operators { flex-wrap: wrap; }
   /* The Focus operators first, beside their tag, and a line before the others. */
-  .scoring-loss-operators.has-focus-operators { flex-direction: column; align-items: flex-start; }
-  .scoring-focus-operators, .scoring-other-operators { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; }
-  .scoring-other-operators { align-self: stretch; padding-top: .45rem; border-top: 1px solid #dbe3e7; }
+  /* With Focus operators, two subpanels: the Focus operators above, the other operators below, each under its label. */
+  .scoring-loss-operators.has-focus-operators { flex-direction: column; align-items: stretch; gap: .45rem; }
+  .scoring-focus-operators, .scoring-other-operators { display: flex; flex-direction: column; align-items: flex-start; gap: .4rem; padding: .5rem .6rem; border-radius: 10px; }
+  .scoring-focus-operators { border: 1px solid #cfe6dd; background: #f4faf7; }
+  .scoring-other-operators { border: 1px solid #dbe2ea; background: #f7f9fb; }
+  .scoring-operator-chips { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; }
+  .scoring-other-tag { padding: .12rem .5rem; border-radius: 999px; background: #e6ebf3; color: #3f5373; font-size: .66rem; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
   .scoring-focus-tag { padding: .12rem .5rem; border-radius: 999px; background: #e8f3ef; color: #1f6b5c; font-size: .66rem; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
   .scoring-loss-operator { --operator-color: #455b65; min-height: 0; padding: .3rem .8rem; border: 1.5px solid color-mix(in srgb, var(--operator-color) 45%, transparent); border-radius: 999px; background: #fff; color: var(--operator-color); font-size: .76rem; font-weight: 800; box-shadow: none; cursor: pointer; }
   .scoring-loss-operator:hover:not(:disabled) { background: color-mix(in srgb, var(--operator-color) 10%, white); color: var(--operator-color); box-shadow: none; transform: none; }
@@ -869,6 +873,10 @@
   /* The operator choices keep their blue (as specific as the rule above, which reaches the operator chips too). */
   [data-scoring-workspace][data-scoring-theme="midnight"] [data-result-pane] :is(select[data-hierarchy-gap-operator], select[data-gap-summary-operator], select[data-insight-select="act-operator"], select[data-insight-select="stretches-operator"], select[data-insight-select="campaign-comparison"]):not(.scoring-loss-operator) {
     background-color: #17305a !important; color: #e3eeff !important; border-color: #5b8fe0 !important; }
+  [data-scoring-workspace][data-scoring-theme="midnight"] [data-result-pane] :is(.scoring-focus-operators, .scoring-other-operators) {
+    background: rgba(255, 255, 255, .03) !important; border-color: #2a3b58 !important; }
+  [data-scoring-workspace][data-scoring-theme="midnight"] [data-result-pane] .scoring-focus-tag { background: rgba(70, 190, 150, .18) !important; color: #8fe0c4 !important; }
+  [data-scoring-workspace][data-scoring-theme="midnight"] [data-result-pane] .scoring-other-tag { background: rgba(120, 150, 205, .2) !important; color: #c3d2ec !important; }
   [data-scoring-workspace][data-scoring-theme="midnight"] [data-result-pane] .scoring-map-zoom { background: rgba(15, 23, 38, .94) !important; border-color: #2a3b58 !important; }
 
   /* Paper: panels between a double and a single black rule. */

@@ -2115,13 +2115,29 @@ def test_focus_operators_come_first_in_the_operator_choices_of_their_sections():
     helper = app[app.index('const VALUE_EXCLUSION'):app.index('function setupCustomMultiSelects() {')]
     program = helper + r"""
 class Element {
-  constructor(tag) { this.tag = tag; this.children = []; this.dataset = {}; this.classList = {add: name => { this.className = name; }}; }
-  append(...children) { this.children.push(...children); }
+  constructor(tag) { this.tag = tag; this.nodeType = 1; this.children = []; this.dataset = {}; this.classList = {add: name => { this.className = name; }}; }
+  get childNodes() { return this.children; }
+  // As in the DOM, a node appended elsewhere leaves its parent.
+  append(...children) {
+    for (const child of children) {
+      if (child.parent) child.parent.children = child.parent.children.filter(node => node !== child);
+      child.parent = this;
+    }
+    this.children.push(...children);
+  }
 }
 const document = {createElement: tag => new Element(tag)};
 // The Focus operators of the Operator Maps: their labels and the names of the CDRs they stand for.
 let focusOperatorNames = ['VF SA', 'Vodafone SA', 'Three', '3'];
-""" + ''.join(_function_source(script, name) for name in ('focusMatcher', 'focusSplit', 'appendFocusOptions', 'focusDefault')) + r"""
+""" + ''.join(_function_source(script, name) for name in ('focusMatcher', 'focusSplit', 'appendFocusOptions', 'appendFocusChips', 'focusDefault')) + r"""
+// The chips: below the label of the group, a subpanel of the Focus operators and one of the others, each under its label.
+const chipGroup = new Element('div');
+chipGroup.append({nodeType: 3, textContent: 'Operators: '});
+appendFocusChips(chipGroup, [{operator: 'EE', label: 'EE'}, {operator: 'Three', label: 'Three'}],
+  item => Object.assign(new Element('button'), {textContent: item.label}));
+const chips = chipGroup.children.map(node => node.nodeType === 3 ? node.textContent
+  : [node.className, ...node.children.map(child => child.children.length
+    ? [child.className, child.children.map(chip => chip.textContent)] : [child.className, child.textContent])]);
 const operators = [{operator: 'EE', label: 'EE', is_reference: true}, {operator: 'VMO2', label: 'VMO2'},
   {operator: 'VF SA', label: 'VF SA'}, {operator: 'Three', label: 'Three'}];
 const select = new Element('select');
@@ -2135,9 +2151,14 @@ const all = focusDefault(operators);
 // Whatever the case.
 focusOperatorNames = ['three'];
 const anyCase = focusDefault(operators);
-console.log(JSON.stringify({groups, chosen, none, all, anyCase}));
+console.log(JSON.stringify({groups, chosen, none, all, anyCase, chips}));
 """
     result = _run_node_json(program, {})
+    assert result['chips'] == ['Operators: ',
+                               ['scoring-focus-operators', ['scoring-focus-tag', 'Focus operators'],
+                                ['scoring-operator-chips', ['Three']]],
+                               ['scoring-other-operators', ['scoring-other-tag', 'Other operators'],
+                                ['scoring-operator-chips', ['EE']]]]
     # The Focus operators first, under Focus operators, then a line before the other operators.
     assert result['groups'] == [['Focus operators', '', ['operator:VF SA', 'operator:Three']],
                                 ['Other operators', 'true', ['operator:EE', 'operator:VMO2']]]

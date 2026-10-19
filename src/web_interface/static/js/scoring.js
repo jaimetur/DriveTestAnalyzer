@@ -947,7 +947,8 @@
     select.append(focusGroup, otherGroup);
   }
 
-  // The chips of a choice of operators, the Focus operators first beside a Focus operators tag, with a line before the others.
+  // The chips of a choice of operators in two subpanels: the Focus operators above, under their Focus operators label,
+  // and the others below, under an Other operators label of another colour.
   function appendFocusChips(group, operators, makeChip) {
     const {focused, others} = focusSplit(operators);
     if (!focused.length) {
@@ -955,14 +956,16 @@
       return;
     }
     group.classList.add('has-focus-operators');
-    const focusRow = document.createElement('span');
-    focusRow.className = 'scoring-focus-operators';
-    focusRow.append(Object.assign(document.createElement('span'), {className: 'scoring-focus-tag', textContent: 'Focus operators'}),
-      ...focused.map(makeChip));
-    const otherRow = document.createElement('span');
-    otherRow.className = 'scoring-other-operators';
-    otherRow.append(...others.map(makeChip));
-    group.append(focusRow, otherRow);
+    const subpanel = (kind, label, items) => {
+      const panel = document.createElement('div');
+      panel.className = `scoring-${kind}-operators`;
+      const chips = document.createElement('span');
+      chips.className = 'scoring-operator-chips';
+      chips.append(...items.map(makeChip));
+      panel.append(Object.assign(document.createElement('span'), {className: `scoring-${kind}-tag`, textContent: label}), chips);
+      return panel;
+    };
+    group.append(subpanel('focus', 'Focus operators', focused), subpanel('other', 'Other operators', others));
   }
 
   // The operators a choice of the sections the Focus operators choose starts with: the Focus operators (else every
