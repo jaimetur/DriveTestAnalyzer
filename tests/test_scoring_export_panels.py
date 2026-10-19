@@ -149,8 +149,11 @@ def test_workspace_config_saves_the_scoring_export_panels(client):
     repository.initialize()
     repository.replace_scoring_configuration(scoring_configuration())
     page = client.get('/workspace-config').text
-    assert 'id="scoring-export-panels"' in page and '<th scope="col">What to Export</th>' in page
-    assert 'name="operators:summary:act"' in page and '>Focus Operators (default)</option>' in page
+    # A card per results tab with an Exportable switch and the operators to export, the default marked.
+    assert 'id="scoring-export-panels"' in page and '<span>What to Export</span>' in page
+    assert 'id="scoring-export-group-points"' in page and 'role="switch" name="exportable:summary:act"' in page
+    assert 'name="operators:summary:act" value="focus" checked' in page
+    assert '<label class="scoring-export-mode is-focus" title="Focus Operators (default)">' in page
     form = {f'exportable:{group}:{key}': 'on' for group, _title, items in EXPORT_PANELS for key, _label, _mode in items
             if (group, key) != ('summary', 'route')}
     form.update({f'operators:{group}:{key}': mode for group, _title, items in EXPORT_PANELS for key, _label, mode in items})
