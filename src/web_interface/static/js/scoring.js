@@ -419,6 +419,9 @@
   let calculationMatchKey = '';
   // Set by the Saved Filter polling: check the same selection again without disabling the buttons meanwhile.
   let calculationMatchRefresh = false;
+  // A check of the selection is on its way; a refresh meanwhile waits for its answer and checks again after it.
+  let calculationMatchPending = false;
+  let calculationMatchRecheck = false;
   // The status of the selected CDRs and filters (calculating, recalculating, already calculated or ready) stays
   // while the Saved Filter list refreshes every few seconds; Saved Filters submitted with Recalculate say so.
   let selectionStatus = {key: '', text: '', kind: ''};
@@ -1398,10 +1401,17 @@
     const key = ready ? JSON.stringify(payload) : '';
     const refresh = calculationMatchRefresh && key === calculationMatchKey;
     calculationMatchRefresh = false;
+    // Discarding the pending answer would leave both buttons disabled whenever the check is slower than the polling.
+    if (refresh && calculationMatchPending) {
+      calculationMatchRecheck = true;
+      return;
+    }
     if (key && key === calculationMatchKey && !refresh) return;
     calculationMatchKey = key;
     const revision = ++calculationMatchRevision;
     window.clearTimeout(calculationMatchTimer);
+    calculationMatchPending = false;
+    calculationMatchRecheck = false;
     // A new selection waits for its answer with both buttons disabled; a refresh keeps them as they are.
     if (!refresh) {
       calculateButton.disabled = true;
@@ -1411,6 +1421,7 @@
       showCalculateAction(false);
       return;
     }
+    calculationMatchPending = true;
     calculationMatchTimer = window.setTimeout(async () => {
       try {
         const response = await requestJson(`${savedFiltersUrl}/match`, {method: 'POST', body: JSON.stringify(payload)});
@@ -1445,6 +1456,15 @@
       } catch (error) {
         if (revision === calculationMatchRevision && !submittingCalculation) {
           setMessage(error.message || 'Unable to check the Saved Filters.', 'error');
+        }
+      } finally {
+        if (revision === calculationMatchRevision) {
+          calculationMatchPending = false;
+          if (calculationMatchRecheck) {
+            calculationMatchRecheck = false;
+            calculationMatchRefresh = true;
+            updateCalculationMatch(true);
+          }
         }
       }
     }, 180);

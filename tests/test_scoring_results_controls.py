@@ -1572,6 +1572,7 @@ const requests = [];
 const shown = [];
 const context = {
   calculationMatchKey: '', calculationMatchRevision: 0, calculationMatchTimer: null, calculationMatchRefresh: false,
+  calculationMatchPending: false, calculationMatchRecheck: false,
   submittingCalculation: false, savedFiltersUrl: '/api/scoring/saved-filters', editingSavedFilter: null,
   calculateButton: {disabled: false}, recalculateButton: {disabled: false},
   selectedLevels: () => ['City'], selectedDatasetIds: () => [12, 14],
@@ -1639,7 +1640,29 @@ async function main() {
   const staleResponseIgnored = context.calculationMatchRevision > staleRevision
     && context.calculateButton.disabled === false && context.recalculateButton.disabled === true
     && messages.at(-1)?.text === latestMessage;
+
+  // A check slower than the Saved Filter polling: the refreshes wait for its answer instead of discarding it,
+  // and the selection is checked once more after that answer.
+  context.baselineInput.value = 'Operator C';
+  context.updateCalculationMatch(true);
+  timers.at(-1)();
+  const slowRequests = requests.length;
+  const slowTimers = timers.length;
+  for (let poll = 0; poll < 2; poll += 1) {
+    context.calculationMatchRefresh = true;
+    context.updateCalculationMatch(true);
+  }
+  const waiting = [requests.length - slowRequests, timers.length - slowTimers];
+  requests.at(-1).resolve({saved_filter: {id: 11, status: 'completed', up_to_date: true}});
+  await flush();
+  const answered = [context.calculateButton.disabled, context.recalculateButton.disabled, timers.length - slowTimers];
+  timers.at(-1)();
+  requests.at(-1).resolve({saved_filter: {id: 11, status: 'completed', up_to_date: true}});
+  await flush();
+  const rechecked = [requests.length - slowRequests, timers.length - slowTimers,
+    context.calculateButton.disabled, context.recalculateButton.disabled];
   process.stdout.write(JSON.stringify({pending, noMatch, completed, active, refreshing, refreshed, staleResponseIgnored, shown,
+    waiting, answered, rechecked,
     matchUrl: requests[0].args[0], matchPayload: JSON.parse(requests[0].args[1].body)}));
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });
@@ -1655,6 +1678,9 @@ main().catch(error => { console.error(error); process.exitCode = 1; });
     assert result['active'] == [True, True]
     assert result['refreshing'] == [False, True, 3] and result['refreshed'] == [True, True]
     assert result['staleResponseIgnored'] is True
+    assert result['waiting'] == [0, 0]
+    assert result['answered'] == [False, False, 1]
+    assert result['rechecked'] == [1, 1, False, False]
     assert result['matchUrl'] == '/api/scoring/saved-filters/match'
     assert result['matchPayload'] == {
         'dataset_ids': [12, 14], 'aggregation_levels': ['Operator', 'City'],

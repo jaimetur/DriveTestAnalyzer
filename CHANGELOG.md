@@ -17,6 +17,7 @@
 #### 🐛 Bug fixes:
 - **Wide Scoring charts:** a chart with more bars than fit its card (such as three campaigns of four operators) is fitted to the card when its bars and labels stay legible, and otherwise scrolls horizontally with a zoom out that narrows it down to the width of the card (the whole chart, more compressed) and a zoom in that widens it back; the larger view (double-click) always shows the whole chart ([Bug report #2](https://108.132.147.165:8443/bugs-report/2)).
 - **Campaigns in the Scoring Summary:** the Campaigns card of how the measurements ran (on the page, in PowerPoint and in Word) names the campaigns scored also when Campaign is not in the Split by, instead of a dash and One campaign, and the tests of each operator name their campaign only when they are those of one campaign.
+- **Calculate, Open and Recalculate stay disabled:** after changing the selection of the Calculation panel while a Saved Filter is calculating (for example the Campaign of an opened Saved Filter), the buttons are enabled again even when checking whether the selection is already a Saved Filter takes longer than the refresh of the Favourites Filters list, which used to discard that check every few seconds.
 
 #### 📚 Documentation:
 
