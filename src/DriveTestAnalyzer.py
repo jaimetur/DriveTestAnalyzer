@@ -11712,7 +11712,8 @@ def cached_app_logs() -> tuple[str, list[dict[str, Any]]]:
 
 def app_events_view(filters: dict[str, Iterable[str]] | None = None, page: int = 1) -> dict[str, Any]:
     """One page of the App Events that match the filters (each a list of values; none chosen matches every event),
-    with the values each filter offers among the events the other filters leave (its facet)."""
+    with the values each filter offers among the events the other filters leave (its facet); the Date filter offers
+    every date, whatever the other filters."""
     signature, logs = cached_app_logs()
     chosen = {name: {str(value).casefold() if name == 'user' else str(value)
                      for value in (filters or {}).get(name) or [] if str(value).strip() and value != 'all'}
@@ -11722,7 +11723,7 @@ def app_events_view(filters: dict[str, Iterable[str]] | None = None, page: int =
         return all(not values or APP_EVENT_FILTER_FIELDS[name](log) in values for name, values in chosen.items() if name != skipped)
 
     matching = [log for log in logs if matches(log)]
-    facets = {name: sorted({field(log) for log in logs if matches(log, name)} - {''}, key=str.casefold,
+    facets = {name: sorted({field(log) for log in logs if name == 'date' or matches(log, name)} - {''}, key=str.casefold,
                            reverse=name == 'date') for name, field in APP_EVENT_FILTER_FIELDS.items()}
     pages = max(1, math.ceil(len(matching) / APP_EVENTS_PAGE_SIZE))
     page = min(max(1, int(page or 1)), pages)

@@ -10586,7 +10586,8 @@ if (appLogsPanel) {
       return option;
     }));
   };
-  // Each filter offers the values of the events that the other filters leave (its facet, from the server).
+  // Each filter offers the values of the events that the other filters leave (its facet, from the server); Date offers
+  // every date.
   // The places of Executed by (as the server lists them): the server, other servers, public pages and the modules.
   const placeGroups = ['server', 'remote', 'public', 'module'];
   const replacePlaceOptions = (control, choices) => setFilterOptions(control, choices.map((entry) => {

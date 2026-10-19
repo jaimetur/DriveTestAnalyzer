@@ -350,6 +350,10 @@ def test_app_events_are_filtered_and_paged_on_the_server(client) -> None:
     core.repository.add_log('admin', 'change_password', 'Password changed from the account badge.')
     refreshed = client.get(f"/api/app-logs?known={first['signature']}").json()
     assert 'unchanged' not in refreshed and refreshed['total'] == 251
+    # The Date filter offers every date, whatever the other filters (here, an action of a single day).
+    one_day = client.get('/api/app-logs?action=change_password').json()
+    assert one_day['matching'] == 1 and one_day['facets']['date'] == refreshed['facets']['date']
+    assert {'2026-10-10', '2026-10-14'} <= set(one_day['facets']['date']) and one_day['facets']['user'] == ['admin']
     # The page shows the first page, the total and a pager.
     page = client.get('/app-logs').text
     assert '>251 entries</span>' in page and 'data-app-log-pager' in page and 'Page 1 of 3' in page

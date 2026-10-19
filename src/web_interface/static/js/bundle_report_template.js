@@ -649,14 +649,9 @@
   // -- export dialog --------------------------------------------------------------------------------
   const dialog = $('brt-dialog');
   const formatLabel = (format) => (format === 'word' ? 'Word' : 'PowerPoint');
-  // The format shown in the preview (remembered in this browser): both are generated before the preview opens, so
-  // switching between them is immediate.
-  const FORMAT_KEY = 'drivetest.bundleReportTemplate.previewFormat';
+  // The format shown in the preview: each report generated opens in PowerPoint. Both are generated before the preview
+  // opens, so switching between them is immediate.
   let previewFormat = 'powerpoint';
-  // The browsers that chose it when Bundle Report Templates had a former name keep it.
-  const FORMER_FORMAT_KEYS = ['drivetest.bundleReportsTemplate.previewFormat', 'drivetest.reportingJobsTemplate.previewFormat',
-    'drivetest.completeReport.previewFormat'];
-  try { if ([FORMAT_KEY, ...FORMER_FORMAT_KEYS].map((key) => localStorage.getItem(key)).find(Boolean) === 'word') previewFormat = 'word'; } catch {}
   const shownFormat = (job) => job.formats?.[previewFormat] || {previews: 0, navigation: [], file_name: ''};
 
   function stopPolling() {
@@ -733,7 +728,6 @@
     if (format === previewFormat || currentJob?.status !== 'ready') return;
     const group = (shownFormat(currentJob).navigation || []).find((item) => item.pages.some((page) => page.index === viewerIndex));
     previewFormat = format;
-    try { localStorage.setItem(FORMAT_KEY, format); } catch {}
     const target = group && (shownFormat(currentJob).navigation || []).find((item) => item.title === group.title);
     showFormat(target?.pages[0]?.index || 0);
   }
@@ -1009,6 +1003,7 @@
   async function exportReport() {
     if (isPending(currentJob) && currentJob.id) { openPreview(); return; }
     stopPolling();
+    previewFormat = 'powerpoint';
     $('brt-preview').hidden = true;
     $('brt-preview-nav').replaceChildren();
     viewerImage.removeAttribute('src');
