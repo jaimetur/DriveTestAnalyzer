@@ -26,7 +26,7 @@ from src.modules.column_names import (
     MAIN_CDR_FIELDS, OPERATOR_VENDOR_FIELD, VENDOR_FIELD, clean_column_name, column_identity, mapped_vendor_only_value,
     operator_vendor_value, vendor_filter_column, vendor_filter_value, vendor_filter_values, vendor_match_values,
 )
-from src.modules.nr_mode import NR_MODE_DATASET_KINDS, infer_nr_mode, normalize_nr_mode
+from src.modules.nr_mode import NR_MODE_DATASET_KINDS, dataset_nr_mode, infer_nr_mode, normalize_nr_mode
 from src.modules.operator_roles import normalize_mapping_role
 from src.modules.cdr_stage import CDR_STAGE_KINDS, infer_cdr_stage, normalize_cdr_stage, normalize_in_combined
 from src.modules.module_labels import MAIN_MODULES, MODULE_LABELS_STATE_KEY
@@ -3609,6 +3609,15 @@ class Repository:
                 "WHERE p.status = 'ready' AND LOWER(COALESCE(p.dataset_kind, '')) IN ('data', 'voice', 'speech')"
             ).fetchall()
         return {int(row['id']): str(row['file_name'] or '') for row in rows}
+
+    def ready_cdr_nr_modes(self) -> dict[int, str | None]:
+        """The NR Mode (NSA or SA) of the ready CDRs of the workspace."""
+        with self.connection() as conn:
+            rows = conn.execute(
+                "SELECT d.id, d.file_name, p.dataset_kind, p.nr_mode FROM datasets d JOIN dataset_profiles p ON p.dataset_id = d.id "
+                "WHERE p.status = 'ready' AND LOWER(COALESCE(p.dataset_kind, '')) IN ('data', 'voice', 'speech')"
+            ).fetchall()
+        return {int(row['id']): dataset_nr_mode(row['dataset_kind'], row['nr_mode'], row['file_name']) for row in rows}
 
     def delete_operator_mapping_group(self, canonical_value: str) -> None:
         self._delete_chart_mapping_group('operator', canonical_value)

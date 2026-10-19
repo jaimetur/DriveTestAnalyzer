@@ -247,8 +247,18 @@ def _mapping_assign(kind: str) -> Callable[[Any], str]:
     return describe
 
 
+def _name_comments(details: Any) -> str:
+    changes = details.get('changes') if isinstance(details, dict) else None
+    if not isinstance(changes, dict):
+        return 'Comments of the Operator names saved.'
+    return _sentence('Comments of the Operator names', [', '.join(
+        f'{name} {value_text(values[0])} → {value_text(values[1])}' for name, values in changes.items()
+        if isinstance(values, (list, tuple)) and len(values) == 2)])
+
+
 _DESCRIBERS: dict[str, Callable[[Any], str]] = {
     'operator_mapping_assign': _mapping_assign('Operator'),
+    'operator_name_comments': _name_comments,
     'vendor_mapping_assign': _mapping_assign('Vendor'),
     'login': _login,
     'logout': lambda details: 'Signed out.',

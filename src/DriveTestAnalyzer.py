@@ -7792,9 +7792,10 @@ DASHBOARD_STATE_KEY = 'ppt_dashboards_v2'
 
 
 def _mappings_reference_data_archive_payload(workspace: Workspace) -> bytes:
-    """Serialize complete Operator and Vendor chart mappings, Spectrum Holdings, Serving Networks, the Campaign Map and the Map Areas."""
+    """Serialize complete Operator and Vendor chart mappings (with the comments of the Operator names), Spectrum Holdings, Serving Networks, the Campaign Map and the Map Areas."""
     from src.modules.campaign_maps import load_campaign_map
     from src.modules.map_areas import layers_document
+    from src.modules.mapping_assignments import load_name_comments
     from src.modules.network_insights import load_spectrum_holdings
     from src.modules.serving_cells import load_serving_networks
 
@@ -7806,6 +7807,7 @@ def _mappings_reference_data_archive_payload(workspace: Workspace) -> bytes:
         'format': 'drivetest-analyzer-mappings-reference-data',
         'version': 1,
         'operator_mappings': task_repository.list_operator_mapping_groups(),
+        'operator_name_comments': load_name_comments(task_repository),
         'vendor_mappings': task_repository.list_vendor_mapping_groups(),
         'spectrum_holdings': load_spectrum_holdings(task_repository),
         'serving_networks': load_serving_networks(task_repository),
@@ -7831,7 +7833,7 @@ def _archive_workspace_mappings_reference_data(
 
 
 def _restore_workspace_mappings_reference_data(workspace: Workspace, payload: bytes) -> None:
-    """Replace the Operator and Vendor Maps, Spectrum Holdings, Serving Networks, the Campaign Map and the Map Areas of the workspace."""
+    """Replace the Operator and Vendor Maps (with the comments of the Operator names), Spectrum Holdings, Serving Networks, the Campaign Map and the Map Areas of the workspace."""
     try:
         document = json.loads(payload.decode('utf-8'))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -7861,6 +7863,10 @@ def _restore_workspace_mappings_reference_data(workspace: Workspace, payload: by
         workspace.database_path, repository.global_db_path, workspace_registry.registry_path,
     )
     task_repository.replace_operator_mapping_groups(document['operator_mappings'])
+    if isinstance(document.get('operator_name_comments'), dict):
+        # Packages exported before the comments of the Operator names keep the workspace's own.
+        from src.modules.mapping_assignments import save_name_comments
+        save_name_comments(task_repository, document['operator_name_comments'])
     task_repository.replace_vendor_mapping_groups(document['vendor_mappings'])
     save_spectrum_holdings(task_repository, spectrum_holdings)
     if isinstance(document.get('serving_networks'), dict):
@@ -23398,16 +23404,24 @@ def save_admin_operator_mapping_group(
 def mapping_assignment_rows() -> dict[str, list[dict[str, Any]]]:
     """The Operators, Vendors and Campaigns of the ready CDRs with the label the workspace maps give them."""
     from src.modules.campaign_maps import load_campaign_map
-    from src.modules.mapping_assignments import assignment_rows, detected_values
+    from src.modules.mapping_assignments import assignment_rows, detected_values, load_name_comments, value_campaigns
 
     names = repository.ready_cdr_dataset_names()
     catalogues = repository.cdr_catalogues_by_dataset(names) if names else {}
     operator_mappings = repository.list_operator_mappings()
+    campaign_map = load_campaign_map(repository)
     detected = detected_values(catalogues, names, operator_mappings)
+    # Two Operator names of one label are only added up where they coincide in a campaign and NR Mode.
+    operator_campaigns = value_campaigns(catalogues, repository.ready_cdr_nr_modes() if names else {}, campaign_map)
+    operator_rows = assignment_rows('operator', detected['operator'], operator_mappings, campaigns=operator_campaigns)
+    # The comment of each Operator name, a reminder of what it holds.
+    comments = {name.casefold(): comment for name, comment in load_name_comments(repository).items()}
+    for row in operator_rows:
+        row['comment'] = comments.get(str(row['value']).casefold(), '')
     return {
-        'operator': assignment_rows('operator', detected['operator'], operator_mappings),
+        'operator': operator_rows,
         'vendor': assignment_rows('vendor', detected['vendor'], repository.list_vendor_mappings()),
-        'campaign': assignment_rows('campaign', detected['campaign'], {}, load_campaign_map(repository)),
+        'campaign': assignment_rows('campaign', detected['campaign'], {}, campaign_map),
     }
 
 
@@ -23451,11 +23465,14 @@ def preview_mapping_assignments(
     old_name, new_name = str(rename.get('from') or '').strip(), str(rename.get('to') or '').strip()
     assignments = [(str(item.get('value') or ''), None if item.get('label') is None else str(item.get('label')))
                    for item in payload.assignments if isinstance(item, dict)]
+    # Operator names only merge where they coincide in a campaign and NR Mode.
+    campaigns = {str(row['value']).casefold(): row['campaigns'] for row in rows if 'campaigns' in row} or None
     return assignment_effects(
         mapping_type, assignments, [row['value'] for row in rows], settings[f'{mapping_type}_mappings'],
         [group['canonical'] for group in settings[f'{mapping_type}_mapping_groups']],
         rename=(old_name, new_name) if old_name and new_name and old_name != new_name else None,
         saved_filters=lambda label: count_saved_filters(repository, mapping_type, label, settings),
+        campaigns=campaigns,
     )
 
 
@@ -23464,9 +23481,11 @@ def assign_admin_mapping_values(
     mapping_type: str,
     source: list[str] = Form(default=[]),
     label: list[str] = Form(default=[]),
+    comment: list[str] = Form(default=[]),
     user: SessionUser = Depends(config_editor_user),
 ) -> Response:
-    """Assign the values detected in the CDRs to Operator or Vendor labels (an empty label leaves one as it is)."""
+    """Assign the values detected in the CDRs to Operator or Vendor labels (an empty label leaves one as it is) and save
+    the comments of the Operator names."""
     if mapping_type not in {'operator', 'vendor'}:
         raise HTTPException(status_code=404, detail='Unknown mapping type.')
     error_parameter, notice_parameter = f'{mapping_type}_mapping_error', f'{mapping_type}_mapping_notice'
@@ -23492,6 +23511,17 @@ def assign_admin_mapping_values(
                         if str(previous.get(value.casefold()) or '').casefold() != name.casefold()},
         }, ensure_ascii=False))
     notice = f'{changed} {"name" if changed == 1 else "names"} assigned.' if changed else 'No assignment changed.'
+    if mapping_type == 'operator' and comment and len(comment) == len(source):
+        from src.modules.mapping_assignments import comment_changes, load_name_comments, save_name_comments
+
+        comments, comment_edits = comment_changes(load_name_comments(repository), zip(source, comment))
+        if comment_edits:
+            save_name_comments(repository, comments)
+            repository.add_log(user.username, 'operator_name_comments', json.dumps(
+                {'changes': comment_edits}, ensure_ascii=False))
+            count = len(comment_edits)
+            notice = (f'{notice} Comments of {count} {"name" if count == 1 else "names"} saved.' if changed
+                      else f'Comments of {count} {"name" if count == 1 else "names"} saved.')
     return RedirectResponse(f'/workspace-config?{urlencode({notice_parameter: notice})}',
                             status_code=status.HTTP_303_SEE_OTHER)
 

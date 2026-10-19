@@ -8904,9 +8904,12 @@ function chartMappingFieldChanged(field) {
 // Unsaved edits of the other rows (and of the new-group form) survive the refresh
 // of a mapping table after one row is saved, moved or deleted.
 function unsavedChartMappingEdits(body, submittedForm = null) {
-  const edits = {rows: {}, create: null, assignments: {}};
+  const edits = {rows: {}, create: null, assignments: {}, comments: {}};
   body.querySelectorAll('[data-mapping-assignment-label]').forEach((field) => {
     if (field.form !== submittedForm && chartMappingFieldChanged(field)) edits.assignments[field.dataset.value] = field.value;
+  });
+  body.querySelectorAll('[data-mapping-name-comment]').forEach((field) => {
+    if (field.form !== submittedForm && chartMappingFieldChanged(field)) edits.comments[field.dataset.value] = field.value;
   });
   body.querySelectorAll('input[name="original_canonical"]').forEach((original) => {
     const row = original.closest('tr');
@@ -8932,6 +8935,9 @@ function unsavedChartMappingEdits(body, submittedForm = null) {
 function restoreChartMappingEdits(body, edits) {
   body.querySelectorAll('[data-mapping-assignment-label]').forEach((field) => {
     if (Object.hasOwn(edits.assignments || {}, field.dataset.value) && !field.readOnly) setMappingLabelChoice(field, edits.assignments[field.dataset.value]);
+  });
+  body.querySelectorAll('[data-mapping-name-comment]').forEach((field) => {
+    if (Object.hasOwn(edits.comments || {}, field.dataset.value)) field.value = edits.comments[field.dataset.value];
   });
   body.querySelectorAll('input[name="original_canonical"]').forEach((original) => {
     const fields = edits.rows[original.value];
@@ -9308,8 +9314,8 @@ async function confirmChartMappingEffects(forms) {
     }
   }
   const items = [];
-  effects.merges.forEach(({label, values}) => items.push(
-    `<strong>${escapeChartText(label)}</strong> merges ${values.length} names of the CDRs (${values.map(escapeChartText).join(', ')}): every filter, table, chart and report adds them up as one.`,
+  effects.merges.forEach(({label, values, campaigns}) => items.push(
+    `<strong>${escapeChartText(label)}</strong> merges ${values.length} names of the CDRs (${values.map(escapeChartText).join(', ')})${campaigns?.length ? ` in ${campaigns.map(escapeChartText).join(', ')}` : ''}: every filter, table, chart and report adds them up as one.`,
   ));
   effects.moved.filter((item) => item.filters).forEach(({value, from, to, filters}) => items.push(
     `<strong>${escapeChartText(value)}</strong> leaves ${escapeChartText(from)}${to ? ` for ${escapeChartText(to)}` : ''}: ${filters} saved ${filters === 1 ? 'filter or Reporting Job uses' : 'filters or Reporting Jobs use'} ${escapeChartText(from)} and will no longer include it.`,
@@ -9406,6 +9412,18 @@ function mappingFoundNames(panel) {
   }
 }
 
+// The campaigns (with the NR Mode of their CDR) of each Operator name of the CDRs, or null for the Vendors.
+function mappingFoundCampaigns(panel) {
+  const source = panel?.querySelector('[data-mapping-found-campaigns]');
+  if (!source) return null;
+  try {
+    const found = JSON.parse(source.textContent || '{}');
+    return new Map(Object.entries(found).map(([name, campaigns]) => [name.toLocaleLowerCase(), new Set(campaigns)]));
+  } catch (_error) {
+    return null;
+  }
+}
+
 function renderMappingNameChipsOfRow(row) {
   const source = row.querySelector('[data-mapping-names-source]');
   const host = row.querySelector('[data-mapping-name-chips]');
@@ -9479,16 +9497,30 @@ function renderMappingNameChipsOfRow(row) {
   });
   add.append(input, button);
   host.replaceChildren(...nodes, add);
-  // A label that stands for several names of the current CDRs adds them up.
+  // A label that stands for several names of the current CDRs adds them up (Operator names only where they
+  // coincide in a campaign and NR Mode).
   const badge = row.querySelector('[data-mapping-merge-badge]');
-  const merged = chips.filter(({name}) => found.has(name.toLocaleLowerCase())).length;
+  let mergedNames = chips.map(({name}) => name).filter((name) => found.has(name.toLocaleLowerCase()));
+  let shared = [];
+  const campaigns = mappingFoundCampaigns(panel);
+  if (campaigns) {
+    const campaignsOf = (name) => campaigns.get(name.toLocaleLowerCase()) || new Set();
+    const counts = new Map();
+    mergedNames.forEach((name) => campaignsOf(name).forEach((campaign) => counts.set(campaign, (counts.get(campaign) || 0) + 1)));
+    shared = [...counts.keys()].filter((campaign) => counts.get(campaign) > 1)
+      .sort((first, second) => first.localeCompare(second, undefined, {sensitivity: 'base', numeric: true}));
+    mergedNames = mergedNames.filter((name) => shared.some((campaign) => campaignsOf(name).has(campaign)));
+  }
+  const merged = mergedNames.length;
   if (badge) {
     badge.hidden = merged < 2;
     badge.textContent = `Merges ${merged}`;
     badge.dataset.mappingTip = JSON.stringify({
       title: `${label} merges ${merged} names of the CDRs`,
-      lines: chips.map(({name}) => name).filter((name) => found.has(name.toLocaleLowerCase())),
-      note: 'Every filter, table, chart and report adds them up as one.',
+      lines: mergedNames,
+      note: shared.length
+        ? `They coincide in ${shared.join(', ')}, where every filter, table, chart and report adds them up as one.`
+        : 'Every filter, table, chart and report adds them up as one.',
     });
   }
 }

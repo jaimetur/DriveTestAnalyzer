@@ -218,8 +218,9 @@ def test_the_names_of_the_cdrs_show_the_role_of_their_label_read_only(client, mo
     monkeypatch.setattr(core, 'mapping_assignment_rows', lambda: {'operator': rows, 'vendor': rows})
     page = html.fromstring(client.get('/workspace-config').text)
     table = page.xpath('//*[@id="operator-assignments"]//table')[0]
-    # After the Status, the Role of the label of each name (read only).
-    assert [th.text_content().strip() for th in table.xpath('.//th')][3:] == ['Status', 'RoleOf its label, below']
+    # After the Status, the Role of the label of each name (read only), then its comments.
+    assert [th.text_content().strip() for th in table.xpath('.//th')][3:] == [
+        'Status', 'RoleOf its label, below', 'CommentsWhat this name holds, as a reminder']
     badges = {row.xpath('.//input[@name="source"]/@value')[0]: row.xpath('.//*[@data-mapping-role-badge]')[0]
               for row in table.xpath('.//tbody/tr')}
     assert {name: (badge.text_content(), badge.get('class'), badge.get('hidden') is not None) for name, badge in badges.items()} == {

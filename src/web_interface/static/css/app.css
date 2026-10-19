@@ -4969,6 +4969,18 @@ body:has(dialog.vendor-mapping-dialog[open]) { overflow: hidden; }
 .mapping-assignments-table th:nth-child(2), .mapping-assignments-table td.mapping-assignment-cdrs { width: 5rem; text-align: center; }
 .mapping-assignments-table .mapping-status-column { width: 9rem; }
 .mapping-assignments-table .mapping-role-column { width: 9rem; }
+/* The comment of each Operator name: what it holds, as a reminder. */
+@media (min-width: 641px) { .mapping-assignments-table.has-comments { min-width: 60rem; } }
+/* Name and Label give their width to the Comments, which take the rest of the row. */
+.mapping-assignments-table.has-comments .mapping-name-column { width: 14%; }
+.mapping-assignments-table.has-comments .mapping-label-column { width: 17%; }
+/* The Operator labels keep their Label as wide as in the names of the CDRs above; the possible names take the rest. */
+.operator-mappings-table.mapping-labels-table-operator .mapping-canonical-column { width: 17%; }
+.operator-mappings-table.mapping-labels-table-operator .mapping-aliases-column { width: auto; }
+.mapping-assignments-table .mapping-name-comment { display: block; min-height: 2.75rem; resize: vertical; font: inherit; line-height: 1.35; }
+/* The fields edited in the table (the Label of a name that is not a label itself, and its Comments) in pastel yellow. */
+.mapping-assignments-table.has-comments select[data-mapping-assignment-label]:not([data-locked]),
+.mapping-assignments-table .mapping-name-comment { border-color: #e6d38a; background-color: #fff8d6; }
 /* The Role of the label of each name of the CDRs (read only), in the colours of the Role of subpanel 2. */
 .mapping-role-badge { display: inline-block; padding: .15rem .55rem; border: 1px solid; border-radius: 999px; font-size: .8rem; font-weight: 800; white-space: nowrap; }
 .mapping-role-badge[hidden] { display: none; }

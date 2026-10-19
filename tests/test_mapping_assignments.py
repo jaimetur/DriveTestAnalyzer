@@ -5,7 +5,8 @@ import pandas as pd
 import pytest
 
 import src.DriveTestAnalyzer as core
-from src.modules.mapping_assignments import assignment_effects, assignment_rows, detected_values, unassigned_values
+from src.modules.mapping_assignments import (assignment_effects, assignment_rows, comment_changes, detected_values,
+                                            load_name_comments, unassigned_values, value_campaigns)
 from src.modules.mapping_renames import count_saved_filters
 from tests.test_non_qualified_calls import add_cdr, login, voice_rows, workspace_user
 
@@ -53,6 +54,45 @@ def test_effects_list_merges_moved_values_and_labels_with_underscores():
     assert removed['moved'] == [{'value': 'Vodafone VoNR', 'from': 'VF_SA', 'to': None, 'filters': 0}]
 
 
+
+def test_names_of_a_label_only_merge_where_they_coincide_in_a_campaign_and_nr_mode():
+    campaign_map = {'format': '{yy}-Q{quarter}{-mode}', 'mode_order': ['', 'NSA', 'SA'], 'modes_in_label': ['SA'], 'exceptions': []}
+    catalogues = {
+        1: {'operators': ['Vodafone UK', 'EE'], 'campaigns': ['UK_Q3_NSA_2026']},
+        2: {'operators': ['Vodafone SM', 'EE'], 'campaigns': ['UK_Q3_SA_2026']},
+        3: {'operators': ['Vodafone UK', 'Vodafone SA', 'EE'], 'campaigns': ['UK_Q2_2026']},
+        4: {'operators': ['Vodafone UK', 'Vodafone VoNR'], 'campaigns': ['UK_Q2_SA_2026']},
+    }
+    campaigns = value_campaigns(catalogues, {1: 'NSA', 2: 'SA', 3: 'NSA', 4: 'SA'}, campaign_map)
+    # The campaigns as the Campaign Maps show them, in their order, with the NR Mode of their CDR.
+    assert campaigns['vodafone uk'] == ['26-Q2 (NSA)', '26-Q2-SA (SA)', '26-Q3 (NSA)']
+    assert campaigns['vodafone sm'] == ['26-Q3-SA (SA)']
+    detected = {name: ['CDR'] for name in ('Vodafone UK', 'Vodafone SM', 'Vodafone SA', 'Vodafone VoNR', 'EE')}
+    mappings = {'vodafone uk': 'VF', 'vodafone sm': 'VF', 'vodafone sa': 'VF', 'vodafone vonr': 'VF VoNR', 'vf': 'VF',
+                'vf vonr': 'VF VoNR'}
+    rows = {row['value']: row for row in assignment_rows('operator', detected, mappings, campaigns=campaigns)}
+    # Vodafone UK and Vodafone SA are in the same NSA CDR of 26-Q2: added up there.
+    assert rows['Vodafone UK']['merged_with'] == ['Vodafone SA'] and rows['Vodafone UK']['merged_in'] == ['26-Q2 (NSA)']
+    assert rows['Vodafone SA']['merged_with'] == ['Vodafone UK'] and rows['Vodafone SA']['shares_label_with'] == ['Vodafone SM']
+    # Vodafone SM is never in a campaign and NR Mode of the others: it only shares the label.
+    assert rows['Vodafone SM']['merged_with'] == [] and rows['Vodafone SM']['shares_label_with'] == ['Vodafone SA', 'Vodafone UK']
+    assert rows['Vodafone SM']['campaigns'] == ['26-Q3-SA (SA)']
+    # Without campaigns (the Vendors) every name of a label merges, as before.
+    assert assignment_rows('operator', detected, mappings)[0].get('merged_in') is None
+
+    # Saving: a name that never coincides with the others of its new label merges nothing.
+    only_uk = {'vodafone uk': 'VF', 'vf': 'VF'}
+    effects = assignment_effects('operator', [('Vodafone SM', 'VF')], list(detected), only_uk, ['VF'], campaigns=campaigns)
+    assert effects['merges'] == []
+    effects = assignment_effects('operator', [('Vodafone SA', 'VF'), ('Vodafone VoNR', 'VF')], list(detected),
+                                 {**only_uk, 'vodafone sm': 'VF'}, ['VF'], campaigns=campaigns)
+    assert effects['merges'] == [{'label': 'VF', 'values': ['Vodafone SA', 'Vodafone UK', 'Vodafone VoNR'],
+                                  'campaigns': ['26-Q2 (NSA)', '26-Q2-SA (SA)']}]
+    # The NSA and SA CDRs of one campaign never coincide.
+    split = value_campaigns({1: {'operators': ['A'], 'campaigns': ['UK_Q2_2026']},
+                             2: {'operators': ['B'], 'campaigns': ['UK_Q2_2026']}}, {1: 'NSA', 2: 'SA'}, campaign_map)
+    assert assignment_effects('operator', [('A', 'X'), ('B', 'X')], ['A', 'B'], {}, [], campaigns=split)['merges'] == []
+
 def test_repository_assigns_values_to_existing_and_new_labels(client):
     repository = core.repository
     repository.replace_operator_mapping_group(None, 'VF_SA', ['Vodafone Lab SA', 'Vodafone Lab VoNR'])
@@ -93,7 +133,9 @@ def test_unassigned_values_show_a_card_until_they_are_assigned(client, tmp_path)
 
     preview = client.post('/api/workspace-config/operator-mappings/preview', json={'assignments': [
         {'value': 'Vodafone Lab SA', 'label': 'VF_SA'}, {'value': 'Vodafone Lab VoNR', 'label': 'VF_SA'}]}).json()
-    assert preview['merges'] == [{'label': 'VF_SA', 'values': ['Vodafone Lab SA', 'Vodafone Lab VoNR']}]
+    # Both names are in the same NSA CDR, with both campaigns.
+    assert preview['merges'] == [{'label': 'VF_SA', 'values': ['Vodafone Lab SA', 'Vodafone Lab VoNR'],
+                                  'campaigns': ['Xmas drive (NSA)', '2026-Q1 (NSA)']}]
     assert preview['underscores'] == ['VF_SA']
 
     response = client.post('/workspace-config/operator-mappings/assign', data={
@@ -113,6 +155,36 @@ def test_unassigned_values_show_a_card_until_they_are_assigned(client, tmp_path)
     settings = core.repository.chart_mapping_settings()
     assert settings['operator_mappings']['vodafone lab sa'] == 'VF_SA' and settings['operator_mappings']['vodafone lab vonr'] == 'VF_LabVoNR'
 
+
+
+def test_comments_of_the_operator_names_are_saved_logged_and_exported(client, tmp_path):
+    _cdr_with_unassigned_values(tmp_path)
+    login(client)
+    response = client.post('/workspace-config/operator-mappings/assign', data={
+        'source': ['Vodafone Lab SA', 'Vodafone Lab VoNR', 'EE'], 'label': ['', '', ''],
+        'comment': ['  SA terminal of the NSA drive ', '', '']}, follow_redirects=False)
+    assert response.status_code == 303 and 'Comments+of+1+name+saved.' in response.headers['location']
+    repository = core.repository
+    assert load_name_comments(repository) == {'Vodafone Lab SA': 'SA terminal of the NSA drive'}
+    page = client.get('/workspace-config').text
+    assert '<th class="mapping-comment-column">Comments' in page
+    assert 'data-value="Vodafone Lab SA" aria-label="Comments of Vodafone Lab SA" placeholder="For example: SA terminal of the NSA drive">SA terminal of the NSA drive</textarea>' in page
+    event = next(row for row in repository.list_logs() if row['action'] == 'operator_name_comments')
+    assert json.loads(event['details']) == {'changes': {'Vodafone Lab SA': ['', 'SA terminal of the NSA drive']}}
+    # The comments travel with the Operator Maps; packages without them keep the workspace's own.
+    document = json.loads(core._mappings_reference_data_archive_payload(core.active_workspace))
+    assert document['operator_name_comments'] == {'Vodafone Lab SA': 'SA terminal of the NSA drive'}
+    core._restore_workspace_mappings_reference_data(core.active_workspace, json.dumps(
+        {**document, 'operator_name_comments': {'EE': 'Benchmark'}}).encode())
+    assert load_name_comments(repository) == {'EE': 'Benchmark'}
+    core._restore_workspace_mappings_reference_data(core.active_workspace, json.dumps(
+        {key: value for key, value in document.items() if key != 'operator_name_comments'}).encode())
+    assert load_name_comments(repository) == {'EE': 'Benchmark'}
+    # A blank comment removes it; the comments of names not in the form are kept.
+    assert comment_changes({'EE': 'Benchmark', 'Gone': 'Old CDRs'}, [('ee', ' '), ('Three', 'New')]) == (
+        {'Gone': 'Old CDRs', 'Three': 'New'}, {'EE': ['Benchmark', ''], 'Three': ['', 'New']})
+    # The Vendors have no comments.
+    assert 'mapping-name-comment' not in page.split('id="vendor-assignments"')[1].split('</details>')[0]
 
 def test_viewers_see_the_card_without_the_assignment_links(client, tmp_path):
     _cdr_with_unassigned_values(tmp_path)

@@ -15,18 +15,20 @@
 {% set title = 'Operator' if kind == 'operator' else 'Vendor' %}
 {% set unassigned = rows | rejectattr('assigned') | list %}
 {% set found = {} %}{% for row in rows %}{% set _ = found.update({row.value: row.cdrs}) %}{% endfor %}
+{% set found_campaigns = {} %}{% for row in rows if row.campaigns is defined %}{% set _ = found_campaigns.update({row.value: row.campaigns}) %}{% endfor %}
 {% set roles = {} %}{% for group in groups %}{% set _ = roles.update({group.canonical | lower: group.role or ''}) %}{% endfor %}
 <script type="application/json" data-mapping-found-names>{{ found | tojson }}</script>
+{% if found_campaigns %}<script type="application/json" data-mapping-found-campaigns>{{ found_campaigns | tojson }}</script>{% endif %}
 <div class="mapping-subpanels">
 <details class="mapping-subpanel mapping-found-names{{ ' has-unassigned' if unassigned else '' }}" id="{{ kind }}-assignments" data-mapping-assignments="{{ kind }}" open data-panel-state-key="workspace-config:{{ kind }}-assignments">
   {{ mapping_subpanel_summary(1, title ~ ' names found in the CDRs', 'Each ' ~ title ~ ' name that appears in the CDRs of this workspace and the label it is shown with in every filter, table, chart and report.') }}
   <div class="mapping-subpanel-body">
   {% if rows %}
-  <p class="form-note">Choose the label of each name in the list, or <strong>+ New label…</strong> when none fits: the new label is added to the {{ title }} labels of subpanel 2. Give two names the same label only when they are the same {{ title }}, because they are then added up as one. A name without a label is shown as it is and reported as unassigned.</p>
+  <p class="form-note">Choose the label of each name in the list, or <strong>+ New label…</strong> when none fits: the new label is added to the {{ title }} labels of subpanel 2. Give two names the same label only when they are the same {{ title }}, because they are then added up as one{% if kind == 'operator' %} wherever they coincide in the same campaign and NR Mode{% endif %}. A name without a label is shown as it is and reported as unassigned.</p>
   <form action="/workspace-config/{{ kind }}-mappings/assign" method="post" data-mapping-assign-form="{{ kind }}">
     <div class="table-wrap operator-mappings-table-wrap">
-      <table class="operator-mappings-table mapping-assignments-table">
-        <thead><tr><th>Name in the CDRs</th><th>CDRs</th><th>Label</th><th class="mapping-status-column">Status</th>{% if kind == 'operator' %}<th class="mapping-role-column">Role<span class="mapping-column-note">Of its label, below</span></th>{% endif %}</tr></thead>
+      <table class="operator-mappings-table mapping-assignments-table{{ ' has-comments' if kind == 'operator' else '' }}">
+        <thead><tr><th class="mapping-name-column">Name in the CDRs</th><th>CDRs</th><th class="mapping-label-column">Label</th><th class="mapping-status-column">Status</th>{% if kind == 'operator' %}<th class="mapping-role-column">Role<span class="mapping-column-note">Of its label, below</span></th><th class="mapping-comment-column">Comments<span class="mapping-column-note">What this name holds, as a reminder</span></th>{% endif %}</tr></thead>
         <tbody>
           {% for row in rows %}
           <tr class="{{ 'mapping-assignment-unassigned' if not row.assigned else '' }}">
@@ -40,8 +42,9 @@
                 <option value="__new__">+ New label…</option>{% endif %}
               </select>
             </td>
-            <td data-label="Status">{% if not row.assigned %}<span class="mapping-status mapping-status-unassigned">Unassigned</span>{% elif row.merged_with %}<span class="mapping-status mapping-status-merged" data-mapping-tip='{{ {"title": row.label ~ " merges " ~ (row.merged_with | length + 1) ~ " names of the CDRs", "lines": ([row.value] + row.merged_with) | sort, "note": "Every filter, table, chart and report adds them up as one."} | tojson }}'>Merges {{ row.merged_with | length + 1 }}</span>{% else %}<span class="mapping-status mapping-status-assigned">Assigned</span>{% endif %}</td>
-            {% if kind == 'operator' %}<td data-label="Role">{{ mapping_role_badge(roles.get(row.label | lower, '') if row.assigned else none) }}</td>{% endif %}
+            <td data-label="Status">{% if not row.assigned %}<span class="mapping-status mapping-status-unassigned">Unassigned</span>{% elif row.merged_with %}<span class="mapping-status mapping-status-merged" data-mapping-tip='{{ {"title": row.label ~ " merges " ~ (row.merged_with | length + 1) ~ " names of the CDRs", "lines": ([row.value] + row.merged_with) | sort, "note": ("They coincide in " ~ (row.merged_in | join(", ")) ~ ", where every filter, table, chart and report adds them up as one." if row.merged_in else "Every filter, table, chart and report adds them up as one.")} | tojson }}'>Merges {{ row.merged_with | length + 1 }}</span>{% elif row.shares_label_with %}<span class="mapping-status mapping-status-assigned" data-mapping-tip='{{ {"title": row.label ~ " also stands for", "lines": row.shares_label_with, "note": "Never in the same campaign and NR Mode as " ~ row.value ~ ", so they are not added up."} | tojson }}'>Assigned</span>{% else %}<span class="mapping-status mapping-status-assigned">Assigned</span>{% endif %}</td>
+            {% if kind == 'operator' %}<td data-label="Role">{{ mapping_role_badge(roles.get(row.label | lower, '') if row.assigned else none) }}</td>
+            <td data-label="Comments"><textarea class="table-input mapping-name-comment" name="comment" rows="2" maxlength="1000" data-no-persist data-mapping-name-comment data-value="{{ row.value }}" aria-label="Comments of {{ row.value }}" placeholder="For example: SA terminal of the NSA drive">{{ row.comment or '' }}</textarea></td>{% endif %}
           </tr>
           {% endfor %}
         </tbody>
@@ -70,7 +73,7 @@
   {% endif %}
   <p class="form-note">Highlighted names appear in the current CDRs (with how many); grey ones are names of other campaigns. Remove a name with ×, or add one with +: a name of another label moves to this one.</p>
   <div class="table-wrap operator-mappings-table-wrap">
-    <table class="operator-mappings-table">
+    <table class="operator-mappings-table{{ ' mapping-labels-table-operator' if kind == 'operator' else '' }}">
       <thead><tr><th class="mapping-order-column">Order</th><th class="mapping-colour-column">Colour</th><th class="mapping-canonical-column">Label</th>{% if kind == 'operator' %}<th class="mapping-role-column">Role<span class="mapping-column-note">Include, Focus or Exclude</span></th>{% endif %}<th class="mapping-aliases-column">Possible names in the CDRs<span class="mapping-column-note">How this label can be written in the CDRs of the different campaigns</span></th><th class="mapping-actions-column">Actions</th></tr></thead>
       <tbody>
         {% for mapping in groups %}
