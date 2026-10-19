@@ -7288,7 +7288,7 @@
         const head = document.createElement('header');
         const points = document.createElement('b');
         points.textContent = insightNumber(card.points, 1);
-        head.append(insightStrong(card.owner), document.createElement('br'), points, document.createTextNode(' points lost'));
+        head.append(insightStrong(card.owner), document.createElement('br'), points, document.createTextNode(' National points lost'));
         const facts = document.createElement('div');
         facts.className = 'scoring-owner-facts';
         const fact = (label, text) => { if (text) facts.append(insightParagraph('', insightStrong(`${label}: `), text)); };
@@ -7313,7 +7313,7 @@
         grid.append(box);
       }
       section.append(grid, insightParagraph('scoring-insight-note', 'Performance owner: the Region of the tests (such as Vendor A, Vendor B, VMO2 North or VMO2 South). ',
-        'Points lost: the points of the scoring lost against the maximum in its tests (each place by its share of the tests). ',
+        'Points lost: the National points of the scoring lost against the maximum in its tests (each place by its share of the tests), not the own score of its Region (see the National & Geographical Areas Trends in Scoring Trends). ',
         `High site: ${insightNumber(1, 0)}+ point lost and losses on the same site in an earlier campaign.${ownerItem.unidentified > .05 ? ` ${insightNumber(ownerItem.unidentified, 1)} points have no Region.` : ''}`));
     }
     // The Cities, Towns, Roads and Railways ranked, for every operator chosen with operator buttons of their own (as the
@@ -8462,19 +8462,23 @@
       element.textContent = text;
       return element;
     };
-    const total = () => ['(', bold(`${insightNumber(ranking.total, 1)} ${scoringLabel()} points`), ' lost in total; hover an area to see them). '];
+    const total = () => ['(', bold(`${insightNumber(ranking.total, 1)} ${scoringLabel()} points`),
+      ' of its National score lost in total; hover an area to see them). '];
+    // The points of the operator's National score lost in the tests of each place (they add up to its National loss), not
+    // the score of each place on its own tests, which the National & Geographical Areas Trends show.
     const writeNote = colourMode => {
       note.replaceChildren();
       if (byRows && colourMode === 'losses' && realData) {
-        note.append(`The map colours each ${areaLabel} by the points lost in it by the city or route of `, operator,
+        note.append(`The map colours each ${areaLabel} by the National points lost in it by the city or route of `, operator,
           ' that loses most there ', ...total());
       } else if (byRows) {
-        note.append(`The map colours each ${areaLabel} by the points `, operator,
+        note.append(`The map colours each ${areaLabel} by the National points `, operator,
           ' loses in the city or route that loses most among those measured in it ', ...total());
       } else {
-        note.append('The map shows where ', operator, ` loses its ${scoringLabel()} points (`, bold(insightNumber(ranking.total, 1)), ' in total). ');
+        note.append('The map shows where ', operator, ` loses its National ${scoringLabel()} points (`, bold(insightNumber(ranking.total, 1)), ' in total). ');
       }
-      note.append(listedText, ' account for ', bold(`${ranking.total ? Math.round(listed / ranking.total * 100) : 0}%`), ' of the points lost.');
+      note.append(listedText, ' account for ', bold(`${ranking.total ? Math.round(listed / ranking.total * 100) : 0}%`), ' of them. ',
+        bold('National points'), ': the part of the National loss in the tests of each place, not its own score (see the National & Geographical Areas Trends in Scoring Trends).');
     };
     writeNote(mode);
     const content = document.createElement('div');
@@ -8486,7 +8490,7 @@
     // All environments: beside each city or route, the environments where it loses points (most first).
     // Regions and Clusters hold tests of every environment, so they leave the column out.
     const withEnvironments = entry.title === 'City' && bars.some(area => area.environments?.length);
-    const table = insightTable(['Area', ...(withEnvironments ? ['Type'] : []), 'Points lost', 'Share'], bars.map(area => [area.name,
+    const table = insightTable(['Area', ...(withEnvironments ? ['Type'] : []), 'National points lost', 'Share'], bars.map(area => [area.name,
       ...(withEnvironments ? [{text: (area.environments || []).map(name => shortEnvironmentLabel(name)).join(', '),
         title: (area.environments || []).map(name => environmentLabel(name)).join(', '),
         className: 'scoring-loss-environment'}] : []),

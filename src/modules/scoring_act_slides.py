@@ -136,7 +136,7 @@ def add_owner_card_slides(presentation, items: list[dict[str, Any]], *, subtitle
             _box(slide, left, top, width, 1.05, color).name = 'Scoring Owner Header'
             _text(slide, card['owner'], left + .15, top + .08, width - .3, .3, size=12, bold=True, color='#FFFFFF')
             box = slide.shapes.add_textbox(Inches(left + .15), Inches(top + .38), Inches(width - .3), Inches(.6))
-            _write_runs(box.text_frame, [(f"{card['points']:,.1f}", True, '#FFFFFF'), ('  points lost', False, '#FFFFFF')],
+            _write_runs(box.text_frame, [(f"{card['points']:,.1f}", True, '#FFFFFF'), ('  National points lost', False, '#FFFFFF')],
                         size=11, color='#FFFFFF')
             box.text_frame.paragraphs[0].runs[0].font.size = Pt(26)
             facts = []
@@ -174,8 +174,9 @@ def add_owner_card_slides(presentation, items: list[dict[str, Any]], *, subtitle
                     _box(slide, left + 1.5, y + .04, max(.03, span), .14, color).name = 'Scoring Owner Bar'
                 _text(slide, f'{value:,.1f}', left + width - .6, y, .45, .22, size=8.5, bold=True, color=INK,
                       align=PP_ALIGN.RIGHT, anchor=MSO_ANCHOR.MIDDLE)
-        note = ('Performance owner: the Region of the tests. Points lost: the points of the scoring lost against the maximum '
-                'in its tests. High site: 1+ point lost and losses on the same site in an earlier campaign.')
+        note = ('Performance owner: the Region of the tests. Points lost: the National points of the scoring lost against the '
+                'maximum in its tests, not the own score of its Region (see the National & Geographical Areas Trends). '
+                'High site: 1+ point lost and losses on the same site in an earlier campaign.')
         if item.get('unidentified', 0) > .05:
             note += f" {item['unidentified']:,.1f} points have no Region."
         _footnote(slide, note)

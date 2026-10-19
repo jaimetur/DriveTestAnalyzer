@@ -1208,7 +1208,7 @@ def add_points_loss_slides(presentation, maps: list[dict[str, Any]], background:
         plural = {'City': 'cities and routes', 'Cluster': 'clusters', 'Region': 'regions'}.get(field, 'areas')
         by_rows = layer is not None and layer['field'] == 'Area' and field == 'City'
         area_label = (layer or {}).get('area_label') or LOSS_FIELD_TITLES.get((layer or {}).get('field'), 'area')
-        map_text = f"The map colours each {area_label} by the points " if layer is not None else 'The map shows where '
+        map_text = f"The map colours each {area_label} by the National points " if layer is not None else 'The map shows where '
         # The operator, large and in its colour, above the map and the ranking.
         heading = slide.shapes.add_textbox(Inches(.45), Inches(1.35), Inches(12.4), Inches(.5))
         heading.name = 'Scoring Points Lost Operator'
@@ -1219,15 +1219,26 @@ def add_points_loss_slides(presentation, maps: list[dict[str, Any]], background:
             (map_text, False, None), (ranking['label'], True, ranking.get('color') or None),
             # The points lost and the share of the listed rows are bold, as on the web page.
             *([(' loses in the city or route that loses most among those measured in it (', False, None),
-               (f"{_points(ranking['total'], 1)} {scoring_label} points", True, None), (' lost in total). ', False, None)]
+               (f"{_points(ranking['total'], 1)} {scoring_label} points", True, None),
+               (' of its National score lost in total). ', False, None)]
               if by_rows else
               [(' loses in it (', False, None), (f"{_points(ranking['total'], 1)} {scoring_label} points", True, None),
-               (' lost in total). ', False, None)] if layer is not None
-              else [(f' loses its {scoring_label} points (', False, None), (_points(ranking['total'], 1), True, None),
+               (' of its National score lost in total). ', False, None)] if layer is not None
+              else [(f' loses its National {scoring_label} points (', False, None), (_points(ranking['total'], 1), True, None),
                     (' in total). ', False, None)]),
             (f'The {len(bars)} {plural} listed', True, None),
-            (' account for ', False, None), (f'{share * 100:.0f}%', True, None), (' of the points lost.', False, None),
+            (' account for ', False, None), (f'{share * 100:.0f}%', True, None), (' of them.', False, None),
         ], size=11, color='#17232D')
+        # The points of the operator's National score lost in the tests of each place (they add up to its National loss),
+        # not the score of each place on its own tests, which the National & Geographical Areas Trends show.
+        national = slide.shapes.add_textbox(Inches(6.55), Inches(6.98), Inches(6.35), Inches(.4))
+        national.name = 'Scoring Points Lost National Note'
+        national.text_frame.word_wrap = True
+        _write_runs(national.text_frame, [
+            ('National points', True, None),
+            (f": the part of {ranking['label']}'s National loss in the tests of each place (they add up to it), not the "
+             "place's own score, which the National & Geographical Areas Trends show.", False, None),
+        ], size=8.5, color='#4A5B65')
         map_top, map_height, map_width = 2.35, 4.5, 6.0
         if layer is not None:
             # As the web map does by default: the points of the city or route that loses most among those

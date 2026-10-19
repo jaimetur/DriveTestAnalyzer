@@ -132,6 +132,11 @@ def test_powerpoint_maps_the_points_lost_of_the_compared_operators():
     # The operator, large, above the map and the ranking.
     heading = next(shape for shape in slide.shapes if shape.name == 'Scoring Points Lost Operator')
     assert heading.text_frame.text == 'Vodafone UK' and heading.text_frame.paragraphs[0].runs[0].font.size.pt == 24
+    # Its figures are National points: the part of the National loss in each place, not the score of the place on its own.
+    texts = [shape.text_frame.text for shape in slide.shapes if shape.has_text_frame]
+    assert any('by the National points Vodafone UK loses' in text and 'of its National score lost in total' in text for text in texts)
+    national = next(shape for shape in slide.shapes if shape.name == 'Scoring Points Lost National Note')
+    assert national.text_frame.text.startswith("National points: the part of Vodafone UK's National loss in the tests of each place")
     scenario = default_scenario()
     for options in scenario['scorings'].values():
         options['points']['map'] = False
@@ -179,6 +184,9 @@ def test_the_web_map_links_the_ranking_and_the_areas():
     script = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/scoring.js').read_text(encoding='utf-8')
     # Each column is headed by its operator; rows and areas choose each other, and chosen rows centre the map.
     assert "title.className = 'scoring-loss-map-operator';" in script
+    # Its figures are National points (the part of the National loss in each place), as those of the performance owners.
+    assert "bold('National points'), ': the part of the National loss in the tests of each place, not its own score" in script
+    assert "'National points lost', 'Share']" in script and "document.createTextNode(' National points lost')" in script
     assert 'function lossMapSelection(card, svg, rows, initialLinks)' in script and 'selection.zoom.fit({x, y, width, height});' in script
     # Every area keeps its colour: choosing rows or areas only dims the others.
     assert "marks.forEach(mark => mark.classList.toggle('is-dimmed', !lit.has(mark.dataset.area)));" in script
