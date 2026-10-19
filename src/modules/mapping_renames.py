@@ -1,4 +1,6 @@
-"""Renaming an Operator or a Vendor in the Operator Maps or Vendor Maps renames it in every saved filter.
+"""Renaming an Operator or a Vendor in the Operator Maps or Vendor Maps renames it in every saved filter: the Reporting
+Jobs, the workspace settings that keep filters, the Saved Filters of Scoring & GAP Analysis (their GAP reference and
+filters) and the favourites of the Bundle Report Templates and Network Insights.
 
 Saved filters keep the mapped labels (see ``value_maps``), so a renamed label would no longer match
 and the filters would silently drop it. Only values of Operator, Operator_Vendor, Vendor_Operator and
@@ -10,12 +12,13 @@ from __future__ import annotations
 
 import json
 import re
+import sqlite3
 from typing import Any, Callable
 from urllib.parse import parse_qsl, urlencode
 
 # Filter keys and the kind of value they hold.
 KEY_KINDS = {
-    'operator': 'operator', 'operators': 'operator', 'baseline_operator': 'operator',
+    'operator': 'operator', 'operators': 'operator', 'baseline_operator': 'operator', 'map_operator': 'operator',
     'operator_vendor': 'operator_vendor', 'operator_vendors': 'operator_vendor',
     'vendor_operator': 'vendor_operator', 'vendor_operators': 'vendor_operator',
     'vendor': 'vendor', 'vendors': 'vendor', 'vendors_only': 'vendor',
@@ -113,6 +116,8 @@ def rename_saved_filters(repository: Any, mapping_type: str, old_name: str, new_
 
     rename = value_renamer(mapping_type, old_name, new_name, mapping_settings)
     changed = rename_definition_values(repository, lambda definition: rename_in_document(definition, rename), write)
+    changed += rename_scoring_saved_filters(repository, rename, write)
+    changed += rename_favourites(repository, rename, write)
     for state_key in FILTER_STATE_KEYS:
         stored = repository.get_workspace_state(state_key)
         if not stored:
@@ -137,6 +142,95 @@ def rename_saved_filters(repository: Any, mapping_type: str, old_name: str, new_
             if write:
                 repository.set_workspace_state(CDR_ANALYSIS_STATE_KEY, json.dumps({**selection, 'queries': renamed_queries}))
             changed += 1
+    return changed
+
+
+def rename_scoring_saved_filters(repository: Any, rename: Callable[[str, str], str], write: bool = True) -> int:
+    """The Saved Filters of Scoring & GAP Analysis with the renamed label in their GAP reference and filters, and the
+    selection they are found by again; returns how many changed. A Saved Filter whose renamed selection is that of
+    another one keeps its own. Their results are calculated again when opened (the Operator Maps changed)."""
+    from src.modules.cdr_auto_selection import campaign_presets
+    from src.modules.saved_filters import SAVED_FILTERS_TABLE, saved_filter_key
+
+    def selection_key(row: Any, baseline: str, snapshot: dict[str, Any]) -> str:
+        filters = snapshot.get('context_filters') or {}
+        ids = [] if campaign_presets(filters.get('Campaign') or []) else json.loads(row['dataset_ids_json'] or '[]')
+        return saved_filter_key(ids, json.loads(row['levels_json'] or '[]'), row['nr_mode'], baseline, filters,
+                                str(snapshot.get('scoring_profile_id') or ''), snapshot.get('area_summary'))
+
+    changed = 0
+    with repository.connection() as connection:
+        try:
+            rows = connection.execute(f'SELECT id, selection_key, baseline_operator, source_metadata_json, levels_json, nr_mode, '
+                                      f'dataset_ids_json FROM {SAVED_FILTERS_TABLE}').fetchall()
+        except sqlite3.OperationalError:
+            return 0
+        keys = {row['selection_key'] for row in rows}
+        for row in rows:
+            try:
+                snapshot = json.loads(row['source_metadata_json'] or '{}')
+            except (TypeError, ValueError):
+                continue
+            if not isinstance(snapshot, dict):
+                continue
+            # Only their filters: the metadata of their CDRs keeps the names of the CDRs.
+            renamed = {**snapshot, **{name: rename_in_document(snapshot[name], rename)
+                                      for name in ('context_filters', 'resolved_context_filters') if name in snapshot}}
+            baseline = rename('operator', str(row['baseline_operator'] or ''))
+            if renamed == snapshot and baseline == row['baseline_operator']:
+                continue
+            key = row['selection_key']
+            # (A Saved Filter saved with another form of selection keeps the one it has.)
+            if selection_key(row, str(row['baseline_operator'] or ''), snapshot) == key:
+                key = selection_key(row, baseline, renamed)
+                if key != row['selection_key'] and key in keys:
+                    continue
+            changed += 1
+            if write:
+                connection.execute(f'UPDATE {SAVED_FILTERS_TABLE} SET selection_key = ?, baseline_operator = ?, '
+                                   'source_metadata_json = ? WHERE id = ?',
+                                   (key, baseline, json.dumps(renamed, ensure_ascii=False, separators=(',', ':')), row['id']))
+                keys.discard(row['selection_key'])
+                keys.add(key)
+    return changed
+
+
+def rename_favourites(repository: Any, rename: Callable[[str, str], str], write: bool = True) -> int:
+    """The favourite Bundle Report Templates and Network Insights Analysis Selections with the renamed label in their
+    filters (and GAP reference); returns how many changed."""
+    from src.modules import bundle_report_templates, network_insights_favourites
+
+    def page_selection(document: Any) -> Any:
+        """A Network Insights selection keeps the controls of the page by their ID (ni-operators, ni-map-operator…)."""
+        if not isinstance(document, dict):
+            return document
+        return {**document, **{section: {key: rename_in_document(value, rename, key_kind(str(key).removeprefix('ni-')))
+                                         for key, value in document[section].items()}
+                               for section in ('controls', 'filters') if isinstance(document.get(section), dict)}}
+
+    changed = 0
+    for ensure, table, column, transform in (
+            (bundle_report_templates.ensure_tables, bundle_report_templates.BUNDLE_REPORT_TEMPLATES_TABLE, 'definition_json',
+             lambda document: rename_in_document(document, rename)),
+            (network_insights_favourites.ensure_tables, network_insights_favourites.FAVOURITES_TABLE, 'selection_json',
+             page_selection)):
+        try:
+            ensure(repository)
+        except (AttributeError, sqlite3.Error):
+            continue
+        with repository.connection() as connection:
+            for row in connection.execute(f'SELECT id, {column} FROM {table}').fetchall():
+                try:
+                    document = json.loads(row[column] or '{}')
+                except (TypeError, ValueError):
+                    continue
+                renamed = transform(document)
+                if renamed == document:
+                    continue
+                changed += 1
+                if write:
+                    connection.execute(f'UPDATE {table} SET {column} = ? WHERE id = ?',
+                                       (json.dumps(renamed, ensure_ascii=False), row['id']))
     return changed
 
 

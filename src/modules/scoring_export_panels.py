@@ -4,7 +4,8 @@ exports: every operator, or the Focus operators of the Operator Maps (see operat
 Each workspace chooses them in Workspace Config (Scoring Export Panels): a panel that is not Exportable is left out of
 every Scoring document (the Saved Filter exports, the scoring reports, Reporting Jobs and Bundle Report Templates) and
 of the editors of their content. A document can still show every operator in the Focus Operators panels (``Export All
-Operators in Focus panels``). The settings travel with the Scoring & GAP Analysis Methodologies.
+Operators in Focus panels``). The settings travel as the Scoring Export Panels element of Import / Export, transfers and
+backups.
 """
 from __future__ import annotations
 
@@ -13,6 +14,8 @@ import json
 from typing import Any
 
 EXPORT_PANELS_STATE_KEY = 'scoring_export_panels'
+EXPORT_PANELS_FORMAT = 'drivetest-analyzer-scoring-export-panels'
+EXPORT_PANELS_VERSION = 1
 ALL_OPERATORS = 'all'
 FOCUS_OPERATORS = 'focus'
 OPERATOR_MODES = ((ALL_OPERATORS, 'All Operators'), (FOCUS_OPERATORS, 'Focus Operators'))
@@ -80,8 +83,18 @@ def normalize_export_panels(raw: Any) -> dict[str, dict[str, dict[str, Any]]]:
 
 
 def export_panels_document(panels: Any) -> dict[str, Any]:
-    """The portable form of the settings (as the Scoring & GAP Analysis Methodologies carry them)."""
-    return {'panels': normalize_export_panels(panels)}
+    """The portable form of the settings: the Scoring Export Panels element of Import / Export, transfers and backups."""
+    return {'format': EXPORT_PANELS_FORMAT, 'version': EXPORT_PANELS_VERSION, 'panels': normalize_export_panels(panels)}
+
+
+def unwrap_export_panels_document(document: Any) -> dict[str, dict[str, dict[str, Any]]]:
+    if not isinstance(document, dict) or document.get('format') != EXPORT_PANELS_FORMAT:
+        raise ValueError('This file is not a Scoring Export Panels document.')
+    if document.get('version') != EXPORT_PANELS_VERSION:
+        raise ValueError('Unsupported Scoring Export Panels version.')
+    if not isinstance(document.get('panels'), dict):
+        raise ValueError('The Scoring Export Panels document has no panels.')
+    return normalize_export_panels(document['panels'])
 
 
 def load_export_panels(repository) -> dict[str, dict[str, dict[str, Any]]]:

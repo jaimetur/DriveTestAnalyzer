@@ -5475,6 +5475,7 @@ const workspaceElementExportTargets = new Set([
   'dashboards', 'ppt-templates', 'main-cities', 'mappings-reference-data', 'scoring-configuration',
   'auto-calculated-fields', 'query-builder-queries', 'reporting-jobs', 'nq-call-tracking', 'nq-calls-configuration', 'app-events',
   'network-insights-favourites', 'bundle-report-template-favourites', 'scoring-favourites-filters', 'scoring-report-templates',
+  'scoring-export-panels',
 ]);
 
 // The Input and Output folders of a backup only make sense with the workspace database they belong to.
@@ -7220,7 +7221,13 @@ function importWarningDetails(payload) {
   if (kind === 'scoring-configuration') {
     return {
       title: 'Overwrite Scoring & GAP Analysis Methodologies?',
-      message: 'Choose the destination workspaces next. The package data will replace their Scoring & GAP Analysis Methodologies, including its available KPI methodology profiles, GAP KPI priorities and Scoring Export Panels.',
+      message: 'Choose the destination workspaces next. The package data will replace their Scoring & GAP Analysis Methodologies, including its available KPI methodology profiles and GAP KPI priorities.',
+    };
+  }
+  if (kind === 'scoring-export-panels') {
+    return {
+      title: 'Overwrite Scoring Export Panels?',
+      message: 'Choose the destination workspaces next. Their Scoring Export Panels (the panels the Scoring PowerPoint and Word include and the operators of each one) will be replaced by the package.',
     };
   }
   if (kind === 'app-events') {
@@ -7265,7 +7272,7 @@ function importPackageContents(payload) {
     'auto-calculated-fields': 'Auto-calculated Fields',
     'query-builder-queries': 'Query Builder Queries', 'network-insights-favourites': 'Network Insights Favourites',
     'bundle-report-template-favourites': 'Bundle Report Template Favourites', 'scoring-favourites-filters': 'Scoring & GAP Favourites Filters',
-    'scoring-report-templates': 'Scoring & GAP Report Templates',
+    'scoring-report-templates': 'Scoring & GAP Report Templates', 'scoring-export-panels': 'Scoring Export Panels',
     'reporting-jobs': 'Reporting Jobs',
     'nq-call-tracking': 'NQ Call Tracking', 'nq-calls-configuration': 'NQ Calls Configuration', 'app-events': 'App Events',
   };
@@ -8145,6 +8152,8 @@ document.querySelectorAll('[data-export-package-form]').forEach((form) => {
         scoring_favourites_filters: 'Scoring & GAP Favourites Filters',
         'scoring-report-templates': 'Scoring & GAP Report Templates',
         scoring_report_templates: 'Scoring & GAP Report Templates',
+        'scoring-export-panels': 'Scoring Export Panels',
+        scoring_export_panels: 'Scoring Export Panels',
         'reporting-jobs': 'Reporting Jobs',
         reporting_jobs: 'Reporting Jobs',
         'nq-call-tracking': 'NQ Call Tracking',

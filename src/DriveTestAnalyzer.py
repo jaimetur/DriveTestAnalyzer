@@ -6319,7 +6319,7 @@ WORKSPACE_ARCHIVE_COMPONENTS = frozenset({
     'workspace_database', 'input', 'output', 'dashboards', 'report_templates', 'mappings_reference_data',
     'auto_calculated_fields', 'query_builder_queries', 'reporting_jobs', 'nq_call_tracking', 'nq_calls_configuration', 'main_cities',
     'scoring_configuration', 'app_events', 'network_insights_favourites', 'bundle_report_template_favourites', 'scoring_favourites_filters',
-    'scoring_report_templates',
+    'scoring_report_templates', 'scoring_export_panels',
 })
 # The components and elements of packages, backups and saved selections made when Bundle Report Templates had a former
 # name (Complete Reports, then briefly Reporting Jobs Templates and Bundle Reports Templates), and their current names.
@@ -6368,7 +6368,7 @@ ARCHIVE_KIND_COMPONENTS = {
 WORKSPACE_ELEMENT_EXPORT_TARGETS = frozenset({
     'ppt-templates', 'auto-calculated-fields', 'dashboards', 'mappings-reference-data', 'query-builder-queries',
     'reporting-jobs', 'nq-call-tracking', 'nq-calls-configuration', 'app-events', 'main-cities', 'scoring-configuration',
-    'network-insights-favourites', 'bundle-report-template-favourites', 'scoring-favourites-filters', 'scoring-report-templates',
+    'network-insights-favourites', 'bundle-report-template-favourites', 'scoring-favourites-filters', 'scoring-report-templates', 'scoring-export-panels',
 })
 # The module of each Workspace Content element (Export / Transfer and backups), where the content is managed: the
 # subgroups of Workspace Content start with Workspace Config (the Config pages and the Workspace module together) and
@@ -6379,6 +6379,7 @@ WORKSPACE_ELEMENT_MODULES = {
     'mappings-reference-data': 'workspace-config', 'ppt-templates': 'workspace-config',
     'dashboards': 'ppt-dashboards',
     'scoring-configuration': 'scoring', 'scoring-report-templates': 'scoring', 'scoring-favourites-filters': 'scoring',
+    'scoring-export-panels': 'scoring',
     'network-insights-favourites': 'network-insights',
     'nq-call-tracking': 'non-qualified-calls', 'nq-calls-configuration': 'non-qualified-calls',
     'bundle-report-template-favourites': 'reporting', 'reporting-jobs': 'reporting',
@@ -6395,7 +6396,7 @@ BACKUP_WORKSPACE_CONTENT: tuple[tuple[str, str, str], ...] = (
     ('main_cities', 'Main Cities (workspace city selection)', 'main-cities'),
     ('mappings_reference_data', 'Mappings & Reference Data (Operator and Vendor aliases, order and theme colors, Campaign Maps, '
                                 'Map Areas and Spectrum Holdings)', 'mappings-reference-data'),
-    ('scoring_configuration', 'Scoring & GAP Analysis Methodologies (KPI methodology profiles, GAP KPI priorities and Scoring Export Panels)',
+    ('scoring_configuration', 'Scoring & GAP Analysis Methodologies (KPI methodology profiles and GAP KPI priorities)',
      'scoring-configuration'),
     ('auto_calculated_fields', 'Auto-calculated Fields (one JSON file with all definitions)', 'auto-calculated-fields'),
     ('query_builder_queries', 'Query Builder Queries (one JSON file with all saved queries)', 'query-builder-queries'),
@@ -6407,6 +6408,8 @@ BACKUP_WORKSPACE_CONTENT: tuple[tuple[str, str, str], ...] = (
      'scoring-favourites-filters'),
     ('scoring_report_templates', 'Scoring & GAP Report Templates (one JSON file with the saved configurations of '
                                       'the Scoring report editor)', 'scoring-report-templates'),
+    ('scoring_export_panels', 'Scoring Export Panels (one JSON file with the exportable Scoring panels and the operators of '
+                              'each one)', 'scoring-export-panels'),
     ('reporting_jobs', 'Reporting Jobs (one JSON file with all Reporting Job definitions)', 'reporting-jobs'),
     ('nq_call_tracking', 'NQ Call Tracking (one JSON file with the Non-Qualified Calls statuses, teams, follow-up, comments '
                          'and history)', 'nq-call-tracking'),
@@ -6471,6 +6474,7 @@ def archive_workspace_components(manifest: dict[str, Any]) -> list[str]:
         'bundle-report-template-favourites': ('bundle_report_template_favourites',),
         'scoring-favourites-filters': ('scoring_favourites_filters',),
         'scoring-report-templates': ('scoring_report_templates',),
+        'scoring-export-panels': ('scoring_export_panels',),
         'reporting-jobs': ('reporting_jobs',),
         'nq-call-tracking': ('nq_call_tracking',),
         'nq-calls-configuration': ('nq_calls_configuration',),
@@ -6541,7 +6545,7 @@ def full_workspace_archive_components(*, include_input_files: bool = True, inclu
         components.append('input')
     if include_generated_outputs:
         components.append('output')
-    return [*components, 'dashboards', 'report_templates', 'main_cities', 'mappings_reference_data', 'scoring_configuration', 'auto_calculated_fields', 'query_builder_queries', 'network_insights_favourites', 'bundle_report_template_favourites', 'scoring_favourites_filters', 'scoring_report_templates', 'reporting_jobs', 'nq_call_tracking']
+    return [*components, 'dashboards', 'report_templates', 'main_cities', 'mappings_reference_data', 'scoring_configuration', 'auto_calculated_fields', 'query_builder_queries', 'network_insights_favourites', 'bundle_report_template_favourites', 'scoring_favourites_filters', 'scoring_report_templates', 'scoring_export_panels', 'reporting_jobs', 'nq_call_tracking']
 
 
 def archive_workspace_components_for_target(
@@ -6570,6 +6574,8 @@ def archive_workspace_components_for_target(
         return ['scoring_favourites_filters']
     if target == 'scoring-report-templates':
         return ['scoring_report_templates']
+    if target == 'scoring-export-panels':
+        return ['scoring_export_panels']
     if target == 'reporting-jobs':
         return ['reporting_jobs']
     if target == 'nq-call-tracking':
@@ -6686,7 +6692,7 @@ def recurring_backup_settings() -> dict[str, Any]:
         'enabled': False,
         'components': [
             'app_database', 'workspace_database', 'dashboards', 'report_templates',
-            'mappings_reference_data', 'main_cities', 'auto_calculated_fields', 'scoring_configuration',
+            'mappings_reference_data', 'main_cities', 'auto_calculated_fields', 'scoring_configuration', 'scoring_export_panels',
         ],
         'workspace_ids': [],
         'recurrence': 'daily', 'execution_time': '02:00', 'weekly_day': 0, 'monthly_day': 1, 'max_backups': 30,
@@ -6826,7 +6832,7 @@ def create_recurring_database_backup(
         component for component in (
             'workspace_database', 'dashboards', 'input', 'output', 'report_templates',
             'mappings_reference_data', 'main_cities', 'auto_calculated_fields', 'query_builder_queries',
-            'network_insights_favourites', 'bundle_report_template_favourites', 'scoring_favourites_filters', 'scoring_report_templates', 'reporting_jobs',
+            'network_insights_favourites', 'bundle_report_template_favourites', 'scoring_favourites_filters', 'scoring_report_templates', 'scoring_export_panels', 'reporting_jobs',
             'nq_call_tracking', 'nq_calls_configuration', 'scoring_configuration', 'app_events',
         )
         if component in components
@@ -6879,6 +6885,8 @@ def create_recurring_database_backup(
             total_bytes += len(_favourites_filters_payload(workspace))
         if 'scoring_report_templates' in components:
             total_bytes += len(_scoring_report_templates_archive_payload(workspace))
+        if 'scoring_export_panels' in components:
+            total_bytes += len(_scoring_export_panels_archive_payload(workspace))
         if 'reporting_jobs' in components:
             total_bytes += len(_reporting_jobs_payload(workspace))
         if 'nq_call_tracking' in components:
@@ -6967,6 +6975,9 @@ def create_recurring_database_backup(
                 if 'scoring_report_templates' in components:
                     report_progress(f'Exporting Scoring & GAP Report Templates for {workspace.name}', max(5.0, completed_bytes * 96.0 / max(total_bytes, 1)))
                     _archive_workspace_scoring_report_templates(archive, workspace, archive_workspace_root, archived_bytes)
+                if 'scoring_export_panels' in components:
+                    report_progress(f'Exporting Scoring Export Panels for {workspace.name}', max(5.0, completed_bytes * 96.0 / max(total_bytes, 1)))
+                    _archive_workspace_scoring_export_panels(archive, workspace, archive_workspace_root, archived_bytes)
                 if 'reporting_jobs' in components:
                     report_progress(f'Exporting Reporting Jobs for {workspace.name}', max(5.0, completed_bytes * 96.0 / max(total_bytes, 1)))
                     _archive_workspace_reporting_jobs(archive, workspace, archive_workspace_root, archived_bytes)
@@ -7302,6 +7313,8 @@ def _backup_archive_components(archive_path: Path) -> list[str]:
         components.append('scoring_favourites_filters')
     if any(name.startswith('workspaces/') and f'/{SCORING_REPORT_TEMPLATES_ARCHIVE_NAME}' in name for name in names):
         components.append('scoring_report_templates')
+    if any(name.startswith('workspaces/') and f'/{SCORING_EXPORT_PANELS_ARCHIVE_NAME}' in name for name in names):
+        components.append('scoring_export_panels')
     if any(name.startswith('workspaces/') and '/reporting-jobs/reporting-jobs.json' in name for name in names):
         components.append('reporting_jobs')
     if any(name.startswith('workspaces/') and '/nq-call-tracking/nq-call-tracking.json' in name for name in names):
@@ -7400,6 +7413,8 @@ def restore_database_backup(
                 total_steps += int(f'{prefix}{FAVOURITES_FILTERS_ARCHIVE_NAME}' in name_set)
             if 'scoring_report_templates' in selected:
                 total_steps += int(f'{prefix}{SCORING_REPORT_TEMPLATES_ARCHIVE_NAME}' in name_set)
+            if 'scoring_export_panels' in selected:
+                total_steps += int(f'{prefix}{SCORING_EXPORT_PANELS_ARCHIVE_NAME}' in name_set)
             if 'reporting_jobs' in selected:
                 total_steps += int(f'{prefix}reporting-jobs/reporting-jobs.json' in name_set)
             if 'nq_call_tracking' in selected:
@@ -7562,6 +7577,13 @@ def restore_database_backup(
                         progress_callback(f'Restoring Scoring & GAP Report Templates for {workspace_name}', completed_steps, total_steps)
                     _import_workspace_scoring_report_templates(workspace, archive.read(member))
                     advance(f'Scoring & GAP Report Templates restored for {workspace_name}')
+            if 'scoring_export_panels' in selected:
+                member = f'{prefix}{SCORING_EXPORT_PANELS_ARCHIVE_NAME}'
+                if member in names:
+                    if progress_callback:
+                        progress_callback(f'Restoring Scoring Export Panels for {workspace_name}', completed_steps, total_steps)
+                    _restore_workspace_scoring_export_panels(workspace, archive.read(member))
+                    advance(f'Scoring Export Panels restored for {workspace_name}')
             if 'reporting_jobs' in selected:
                 member = f'{prefix}reporting-jobs/reporting-jobs.json'
                 if member in names:
@@ -7885,10 +7907,7 @@ def _scoring_configuration_archive_payload(workspace: Workspace) -> bytes:
     profiles = (task_repository.get_scoring_profiles()
                 if task_repository.get_workspace_state(SCORING_CONFIGURATION_STATE_KEY) else None)
     from src.modules.scoring_config import scoring_profiles_document
-    from src.modules.scoring_export_panels import export_panels_document
-    # The Scoring Export Panels of Workspace Config travel with the methodologies.
-    document = {**scoring_profiles_document(profiles), 'export_panels': export_panels_document(load_export_panels(task_repository))}
-    return json.dumps(document, ensure_ascii=False, indent=2).encode('utf-8')
+    return json.dumps(scoring_profiles_document(profiles), ensure_ascii=False, indent=2).encode('utf-8')
 
 
 def _archive_workspace_scoring_configuration(
@@ -7945,6 +7964,38 @@ def _import_workspace_scoring_report_templates(workspace: Workspace, payload: by
         raise ValueError(f'Scoring & GAP Report Templates for "{workspace.name}" are invalid: {exc}') from exc
 
 
+# The Scoring Export Panels of Workspace Config: the exportable Scoring panels and the operators of each one.
+SCORING_EXPORT_PANELS_ARCHIVE_NAME = 'scoring-export-panels/scoring-export-panels.json'
+
+
+def _scoring_export_panels_archive_payload(workspace: Workspace) -> bytes:
+    from src.modules.scoring_export_panels import export_panels_document
+    task_repository = Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path)
+    return json.dumps(export_panels_document(load_export_panels(task_repository)), ensure_ascii=False, indent=2).encode('utf-8')
+
+
+def _archive_workspace_scoring_export_panels(
+    archive: zipfile.ZipFile, workspace: Workspace, archive_prefix: str,
+    progress_callback: Callable[[int], None] | None = None,
+) -> None:
+    payload = _scoring_export_panels_archive_payload(workspace)
+    archive.writestr(f'{archive_prefix}/{SCORING_EXPORT_PANELS_ARCHIVE_NAME}', payload)
+    if progress_callback:
+        progress_callback(len(payload))
+
+
+def _restore_workspace_scoring_export_panels(workspace: Workspace, payload: bytes) -> int:
+    """Replace the Scoring Export Panels of a workspace with those of a package; returns how many panels it has."""
+    from src.modules.scoring_export_panels import save_export_panels, unwrap_export_panels_document
+
+    task_repository = Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path)
+    try:
+        panels = save_export_panels(task_repository, unwrap_export_panels_document(json.loads(payload.decode('utf-8'))))
+    except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
+        raise ValueError(f'Scoring Export Panels for "{workspace.name}" are invalid: {exc}') from exc
+    return sum(len(values) for values in panels.values())
+
+
 def _scoring_report_configurations_member(member: str) -> str:
     return member.rsplit('/', 1)[0] + '/' + SCORING_REPORT_CONFIGURATIONS_MEMBER
 
@@ -7999,10 +8050,6 @@ def _restore_workspace_scoring_configuration(workspace: Workspace, payload: byte
             task_repository.set_workspace_state(SCORING_CONFIGURATION_STATE_KEY, '')
         else:
             task_repository.replace_scoring_profiles(profiles)
-        # (Packages made before the Scoring Export Panels keep those of the workspace.)
-        if isinstance(document, dict) and isinstance(document.get('export_panels'), dict):
-            from src.modules.scoring_export_panels import save_export_panels
-            save_export_panels(task_repository, document['export_panels'])
     except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
         raise ValueError(f'Scoring & GAP Analysis Methodologies for "{workspace.name}" are invalid.') from exc
 
@@ -8466,6 +8513,7 @@ def _archive_workspace(
     _archive_workspace_bundle_report_template_favourites(archive, workspace, archive_prefix, progress_callback)
     _archive_workspace_favourites_filters(archive, workspace, archive_prefix, progress_callback)
     _archive_workspace_scoring_report_templates(archive, workspace, archive_prefix, progress_callback)
+    _archive_workspace_scoring_export_panels(archive, workspace, archive_prefix, progress_callback)
     _archive_workspace_reporting_jobs(archive, workspace, archive_prefix, progress_callback)
     _archive_workspace_nq_call_tracking(archive, workspace, archive_prefix, progress_callback)
     if include_input_files:
@@ -8522,6 +8570,9 @@ def export_archive_filename(target: str | Iterable[str]) -> str:
     if target == 'scoring-report-templates':
         workspace_name = active_workspace.name if active_workspace else 'workspace'
         return f'{workspace_name}_scoring-report-templates_{generated_at}.zip'
+    if target == 'scoring-export-panels':
+        workspace_name = active_workspace.name if active_workspace else 'workspace'
+        return f'{workspace_name}_scoring-export-panels_{generated_at}.zip'
     if target == 'reporting-jobs':
         workspace_name = active_workspace.name if active_workspace else 'workspace'
         return f'{workspace_name}_reporting-jobs_{generated_at}.zip'
@@ -8736,7 +8787,7 @@ def _build_single_export_archive_file(
             )
             archive.writestr('manifest.json', json.dumps(manifest, indent=2, sort_keys=True))
             _archive_workspace_network_insights_favourites(archive, source_workspace, f'workspaces/{source_workspace.name}', progress_callback)
-        elif target in {'bundle-report-template-favourites', 'scoring-favourites-filters', 'scoring-report-templates'}:
+        elif target in {'bundle-report-template-favourites', 'scoring-favourites-filters', 'scoring-report-templates', 'scoring-export-panels'}:
             source_workspace_id = next(iter(workspace_ids or ()), active_workspace.id if active_workspace else '')
             source_workspace = workspace_registry.get(source_workspace_id) if source_workspace_id else None
             label, archive_name, write = {
@@ -8745,6 +8796,8 @@ def _build_single_export_archive_file(
                 'scoring-favourites-filters': ('Scoring & GAP Favourites Filters', FAVOURITES_FILTERS_ARCHIVE_NAME, _archive_workspace_favourites_filters),
                 'scoring-report-templates': ('Scoring & GAP Report Templates', SCORING_REPORT_TEMPLATES_ARCHIVE_NAME,
                                                   _archive_workspace_scoring_report_templates),
+                'scoring-export-panels': ('Scoring Export Panels', SCORING_EXPORT_PANELS_ARCHIVE_NAME,
+                                          _archive_workspace_scoring_export_panels),
             }[target]
             if not source_workspace:
                 raise ValueError(f'Open a workspace before exporting {label}.')
@@ -8999,6 +9052,10 @@ def estimate_export_bytes(
         source_workspace = workspace_registry.get(source_workspace_id) if source_workspace_id else None
         total = (len(_scoring_configuration_archive_payload(source_workspace))
                  + len(_scoring_report_templates_archive_payload(source_workspace))) if source_workspace else 0
+    elif target == 'scoring-export-panels':
+        source_workspace_id = next(iter(workspace_ids or ()), active_workspace.id if active_workspace else '')
+        source_workspace = workspace_registry.get(source_workspace_id) if source_workspace_id else None
+        total = len(_scoring_export_panels_archive_payload(source_workspace)) if source_workspace else 0
     elif target.startswith('workspace:'):
         workspace = workspace_registry.get(target.removeprefix('workspace:'))
         if workspace:
@@ -9128,11 +9185,12 @@ def _recovered_transfer_details(manifest: dict[str, Any]) -> tuple[str, list[str
         source = manifest.get('source_workspace')
         name = str(source.get('name') or '') if isinstance(source, dict) else ''
         return ('Network Insights Favourites', [name] if name else [])
-    if kind in {'bundle-report-template-favourites', 'scoring-favourites-filters', 'scoring-report-templates'}:
+    if kind in {'bundle-report-template-favourites', 'scoring-favourites-filters', 'scoring-report-templates', 'scoring-export-panels'}:
         source = manifest.get('source_workspace')
         name = str(source.get('name') or '') if isinstance(source, dict) else ''
         return ({'bundle-report-template-favourites': 'Bundle Report Template Favourites', 'scoring-favourites-filters': 'Scoring & GAP Favourites Filters',
-                 'scoring-report-templates': 'Scoring & GAP Report Templates'}[kind], [name] if name else [])
+                 'scoring-report-templates': 'Scoring & GAP Report Templates', 'scoring-export-panels': 'Scoring Export Panels'}[kind],
+                [name] if name else [])
     if kind == 'reporting-jobs':
         source = manifest.get('source_workspace')
         name = str(source.get('name') or '') if isinstance(source, dict) else ''
@@ -9188,7 +9246,7 @@ def _recover_unimported_transfer_packages() -> None:
                 'config', 'users-access', 'bugs-report', 'workspace', 'full-environment', 'ppt-templates',
                 'auto-calculated-fields', 'dashboards', 'mappings-reference-data', 'main-cities',
                 'scoring-configuration', 'query-builder-queries', 'reporting-jobs', 'nq-call-tracking', 'nq-calls-configuration', 'app-events',
-                'network-insights-favourites', 'bundle-report-template-favourites', 'scoring-favourites-filters', 'scoring-report-templates',
+                'network-insights-favourites', 'bundle-report-template-favourites', 'scoring-favourites-filters', 'scoring-report-templates', 'scoring-export-panels',
                 'database-backup', 'bundle',
             }:
                 raise ValueError('Unsupported transfer package.')
@@ -10276,12 +10334,13 @@ def _apply_import_archive(
             imported_count = sum(_restore_workspace_network_insights_favourites(workspace, payload, importing_user)
                                  for workspace in destinations)
             return f'Imported {imported_count} Network Insights Favourites into {len(destinations)} workspaces.'
-        if kind in {'bundle-report-template-favourites', 'scoring-favourites-filters', 'scoring-report-templates'}:
+        if kind in {'bundle-report-template-favourites', 'scoring-favourites-filters', 'scoring-report-templates', 'scoring-export-panels'}:
             favourites = kind == 'bundle-report-template-favourites'
             label, archive_name = {
                 'bundle-report-template-favourites': ('Bundle Report Template Favourites', BRT_FAVOURITES_ARCHIVE_NAME),
                 'scoring-favourites-filters': ('Scoring & GAP Favourites Filters', FAVOURITES_FILTERS_ARCHIVE_NAME),
                 'scoring-report-templates': ('Scoring & GAP Report Templates', SCORING_REPORT_TEMPLATES_ARCHIVE_NAME),
+                'scoring-export-panels': ('Scoring Export Panels', SCORING_EXPORT_PANELS_ARCHIVE_NAME),
             }[kind]
             member = str(manifest.get('archive_path') or '')
             archive_names = BRT_FAVOURITES_ARCHIVE_NAMES if favourites else (archive_name,)
@@ -10301,7 +10360,10 @@ def _apply_import_archive(
             imported_count = sum(
                 _restore_workspace_bundle_report_template_favourites(workspace, payload, importing_user) if favourites
                 else _restore_workspace_favourites_filters(workspace, payload) if kind == 'scoring-favourites-filters'
+                else _restore_workspace_scoring_export_panels(workspace, payload) if kind == 'scoring-export-panels'
                 else _import_workspace_scoring_report_templates(workspace, payload) for workspace in destinations)
+            if kind == 'scoring-export-panels':
+                return f'Imported the {label} into {len(destinations)} workspaces.'
             return f'Imported {imported_count} {label} into {len(destinations)} workspaces.'
         if kind == 'reporting-jobs':
             member = str(manifest.get('archive_path') or '')
@@ -10619,6 +10681,7 @@ def _transfer_content_label(target: str | Iterable[str]) -> str:
         'bundle-report-template-favourites': 'Bundle Report Template Favourites',
         'scoring-favourites-filters': 'Scoring & GAP Favourites Filters',
         'scoring-report-templates': 'Scoring & GAP Report Templates',
+        'scoring-export-panels': 'Scoring Export Panels',
         'reporting-jobs': 'Reporting Jobs',
         'nq-call-tracking': 'NQ Call Tracking',
         'nq-calls-configuration': 'NQ Calls Configuration',
@@ -11182,7 +11245,7 @@ def require_import_export_permission(user: SessionUser, target: str) -> None:
     if user.role == 'super-admin' or target in {
         'ppt-templates', 'auto-calculated-fields', 'dashboards', 'mappings-reference-data', 'main-cities',
         'scoring-configuration', 'query-builder-queries', 'reporting-jobs', 'nq-call-tracking', 'nq-calls-configuration', 'app-events',
-        'network-insights-favourites', 'bundle-report-template-favourites', 'scoring-favourites-filters', 'scoring-report-templates',
+        'network-insights-favourites', 'bundle-report-template-favourites', 'scoring-favourites-filters', 'scoring-report-templates', 'scoring-export-panels',
     }:
         return
     raise HTTPException(
@@ -11216,7 +11279,7 @@ def require_export_permission(user: SessionUser, target: str) -> None:
     """Authorize exports and transfers without exposing other workspaces."""
     if user.role == 'super-admin':
         return
-    if target in {'auto-calculated-fields', 'ppt-templates', 'dashboards', 'mappings-reference-data', 'main-cities', 'scoring-configuration', 'query-builder-queries', 'reporting-jobs', 'nq-call-tracking', 'nq-calls-configuration', 'app-events', 'network-insights-favourites', 'bundle-report-template-favourites', 'scoring-favourites-filters', 'scoring-report-templates'}:
+    if target in {'auto-calculated-fields', 'ppt-templates', 'dashboards', 'mappings-reference-data', 'main-cities', 'scoring-configuration', 'query-builder-queries', 'reporting-jobs', 'nq-call-tracking', 'nq-calls-configuration', 'app-events', 'network-insights-favourites', 'bundle-report-template-favourites', 'scoring-favourites-filters', 'scoring-report-templates', 'scoring-export-panels'}:
         if active_workspace and repository.user_has_workspace_access(user.username, active_workspace.id):
             return
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Open a workspace you can access first.')
@@ -11413,11 +11476,12 @@ def render_admin_template(
         {'value': 'bundle-report-template-favourites', 'label': 'Bundle Report Template Favourites (from active workspace)', 'disabled': not active_workspace},
         {'value': 'scoring-favourites-filters', 'label': 'Scoring & GAP Favourites Filters (from active workspace)', 'disabled': not active_workspace},
         {'value': 'scoring-report-templates', 'label': 'Scoring & GAP Report Templates (from active workspace)', 'disabled': not active_workspace},
+        {'value': 'scoring-export-panels', 'label': 'Scoring Export Panels (from active workspace)', 'disabled': not active_workspace},
         {'value': 'reporting-jobs', 'label': 'Reporting Jobs (from active workspace)', 'disabled': not active_workspace},
         {'value': 'nq-call-tracking', 'label': 'NQ Call Tracking (from active workspace)', 'disabled': not active_workspace},
         {'value': 'nq-calls-configuration', 'label': 'NQ Calls Configuration (from active workspace)', 'disabled': not active_workspace},
         {'value': 'app-events', 'label': 'App Events (from active workspace)', 'disabled': not active_workspace},
-        {'value': 'full-environment', 'label': 'Full Environment (Application Config + Dashboards + PPT Templates + Main Cities + Mappings & Reference Data + Scoring & GAP Analysis Methodologies + Auto-calculated Fields + Query Builder Queries + Network Insights Favourites + Bundle Report Template Favourites + Scoring & GAP Favourites Filters + Scoring & GAP Report Templates + Reporting Jobs + NQ Call Tracking + Selected Workspaces)'},
+        {'value': 'full-environment', 'label': 'Full Environment (Application Config + Dashboards + PPT Templates + Main Cities + Mappings & Reference Data + Scoring & GAP Analysis Methodologies + Auto-calculated Fields + Query Builder Queries + Network Insights Favourites + Bundle Report Template Favourites + Scoring & GAP Favourites Filters + Scoring & GAP Report Templates + Scoring Export Panels + Reporting Jobs + NQ Call Tracking + Selected Workspaces)'},
         *[
             {'value': f'workspace:{workspace.id}', 'label': f'Full Workspace: {workspace.name}'}
             for workspace in accessible_workspaces(user)
@@ -11431,7 +11495,7 @@ def render_admin_template(
             option for option in export_options
             if option['value'] in {
                 'ppt-templates', 'auto-calculated-fields', 'dashboards', 'mappings-reference-data', 'main-cities', 'scoring-configuration',
-                'network-insights-favourites', 'bundle-report-template-favourites', 'scoring-favourites-filters', 'scoring-report-templates',
+                'network-insights-favourites', 'bundle-report-template-favourites', 'scoring-favourites-filters', 'scoring-report-templates', 'scoring-export-panels',
             } or option['value'].startswith('workspace:')
         ]
     export_option_groups = [
@@ -21716,12 +21780,7 @@ def export_workspace_scoring_configuration(
             raise HTTPException(status_code=404, detail='The selected scoring methodology no longer exists.')
         profiles = {'active_profile_id': profile_id, 'profiles': [profile]}
     from src.modules.scoring_config import scoring_profiles_document
-    from src.modules.scoring_export_panels import export_panels_document
-    document = scoring_profiles_document(profiles)
-    if profile_id is None:
-        # Every methodology carries the Scoring Export Panels of Workspace Config too.
-        document['export_panels'] = export_panels_document(load_export_panels(task_repository))
-    content = json.dumps(document, ensure_ascii=False, indent=2)
+    content = json.dumps(scoring_profiles_document(profiles), ensure_ascii=False, indent=2)
     task_repository.try_add_log(user.username, 'export_scoring_configuration', json.dumps({
         'methodologies': [profile['name'] for profile in profiles['profiles']],
     }))
@@ -21760,11 +21819,6 @@ async def import_workspace_scoring_configuration(
             result: dict[str, Any] = {'active_profile_id': None, 'profiles': []}
         else:
             result = task_repository.replace_scoring_profiles(profiles)
-        # The Scoring Export Panels the file carries (files of every methodology).
-        export_panels = document.get('export_panels') if isinstance(document, dict) else None
-        if isinstance(export_panels, dict):
-            from src.modules.scoring_export_panels import save_export_panels
-            save_export_panels(task_repository, export_panels)
     except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     finally:
@@ -21772,7 +21826,6 @@ async def import_workspace_scoring_configuration(
     task_repository.try_add_log(user.username, 'import_scoring_configuration', json.dumps({
         'profile_count': len(result['profiles']),
         'active_profile_id': result['active_profile_id'],
-        'export_panels': isinstance(export_panels, dict),
     }))
     return JSONResponse(result, headers={'Cache-Control': 'no-store'})
 
@@ -22082,7 +22135,7 @@ async def receive_transfer_offer(request: Request) -> JSONResponse:
             'config', 'users-access', 'bugs-report', 'workspace', 'full-environment', 'ppt-templates',
             'auto-calculated-fields', 'dashboards', 'mappings-reference-data', 'main-cities',
             'scoring-configuration', 'query-builder-queries', 'reporting-jobs', 'nq-call-tracking', 'nq-calls-configuration', 'app-events',
-            'network-insights-favourites', 'bundle-report-template-favourites', 'scoring-favourites-filters', 'scoring-report-templates',
+            'network-insights-favourites', 'bundle-report-template-favourites', 'scoring-favourites-filters', 'scoring-report-templates', 'scoring-export-panels',
                 'database-backup', 'bundle',
     }:
         raise HTTPException(status_code=400, detail='The offered export type is not supported.')
@@ -22830,7 +22883,7 @@ def _retain_import_upload(upload_id: str, package_path: Path, user: SessionUser,
         'config', 'users-access', 'bugs-report', 'workspace', 'full-environment', 'ppt-templates',
         'auto-calculated-fields', 'dashboards', 'mappings-reference-data', 'main-cities',
         'scoring-configuration', 'query-builder-queries', 'reporting-jobs', 'nq-call-tracking', 'nq-calls-configuration', 'app-events',
-        'network-insights-favourites', 'bundle-report-template-favourites', 'scoring-favourites-filters', 'scoring-report-templates',
+        'network-insights-favourites', 'bundle-report-template-favourites', 'scoring-favourites-filters', 'scoring-report-templates', 'scoring-export-panels',
                 'database-backup', 'bundle',
     }:
         raise ValueError('The export package type is not supported.')

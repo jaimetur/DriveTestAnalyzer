@@ -3,6 +3,7 @@ operators each one exports (every operator or the Focus operators), and Export A
 from __future__ import annotations
 
 import json
+import zipfile
 from io import BytesIO
 
 from pptx import Presentation
@@ -140,7 +141,7 @@ def test_reports_and_bundle_report_templates_carry_export_all_operators():
     assert summary['act']['operators'] == 'focus' and summary['scope']['operators'] == 'all'
 
 
-def test_workspace_config_saves_the_scoring_export_panels(client):
+def test_workspace_config_saves_the_scoring_export_panels(client, tmp_path):
     response = client.post('/login', data={'username': 'admin', 'password': 'admin123'}, follow_redirects=False)
     assert response.status_code == 303
     workspace = app_module.active_workspace
@@ -168,13 +169,32 @@ def test_workspace_config_saves_the_scoring_export_panels(client):
                  if row['action'] == 'save_scoring_export_panels')
     assert sorted(event['changes']) == ['Scoring Charts > Scoring per Service: Focus Operators',
                                         'Summary > The route that loses most: where the points are: not exportable']
-    # They travel with the Scoring & GAP Analysis Methodologies (backups, transfers and packages).
-    payload = app_module._scoring_configuration_archive_payload(workspace)
-    assert json.loads(payload)['export_panels'] == {'panels': saved}
-    response = client.post('/workspace-config/scoring-export-panels/save', data={'action': 'reset'}, follow_redirects=False)
-    assert response.status_code == 303 and load_export_panels(repository) == default_export_panels()
-    app_module._restore_workspace_scoring_configuration(workspace, payload)
+    # They travel as an element of their own: exported, imported and transferred, and in backups.
+    assert 'scoring-export-panels' in app_module.WORKSPACE_ELEMENT_EXPORT_TARGETS
+    assert app_module.archive_workspace_components_for_target('scoring-export-panels') == ['scoring_export_panels']
+    assert 'scoring_export_panels' in app_module.full_workspace_archive_components()
+    assert 'Scoring Export Panels (from active workspace)' in client.get('/admin').text
+    exported = client.get('/admin/import-export/export?export_target=scoring-export-panels')
+    assert exported.status_code == 200, exported.text
+    with zipfile.ZipFile(BytesIO(exported.content)) as archive:
+        manifest = json.loads(archive.read('manifest.json'))
+        document = json.loads(archive.read(manifest['archive_path']))
+    assert manifest['kind'] == 'scoring-export-panels'
+    assert document == {'format': 'drivetest-analyzer-scoring-export-panels', 'version': 1, 'panels': saved}
+
+    def reset() -> None:
+        response = client.post('/workspace-config/scoring-export-panels/save', data={'action': 'reset'}, follow_redirects=False)
+        assert response.status_code == 303 and load_export_panels(repository) == default_export_panels()
+    reset()
+    package = tmp_path / 'scoring-export-panels.zip'
+    package.write_bytes(exported.content)
+    app_module._apply_import_archive(package, app_module.read_import_manifest(package), destination_workspace_ids=[workspace.id])
     assert load_export_panels(repository) == saved
-    # A methodologies file of every methodology carries them too; one of a single methodology does not.
-    exported = client.get('/api/workspace-config/scoring-configuration/export').json()
-    assert exported['export_panels'] == {'panels': saved}
+    backup_path = app_module.create_recurring_database_backup({
+        'components': ['scoring_export_panels'], 'workspace_ids': [workspace.id], 'backup_path': str(tmp_path), 'max_backups': 5})
+    assert app_module._backup_archive_components(backup_path) == ['scoring_export_panels']
+    reset()
+    app_module.restore_database_backup(backup_path, ['scoring_export_panels'])
+    assert load_export_panels(repository) == saved
+    # The Scoring & GAP Analysis Methodologies do not carry them.
+    assert 'export_panels' not in json.loads(app_module._scoring_configuration_archive_payload(workspace))
