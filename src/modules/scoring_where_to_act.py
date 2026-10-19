@@ -28,6 +28,10 @@ SETTING_NOUNS = {'Cities': ('city', 'cities'), 'Towns': ('town', 'towns'), 'Road
 # Where the points of an owner are: the settings of the places, the roads and railways together.
 OWNER_SETTINGS = (('Cities', ('Cities',)), ('Towns', ('Towns',)), ('Roads and railways', ('Roads', 'Railways')))
 MAX_OWNERS = 6
+# The order in which the performance owners take the colours of the categories of the theme, on the page and in the
+# exports: these owners of the UK measurements first, in this order (Vendor B takes the colour before that of Vendor A),
+# the others after them by name.
+OWNER_COLOUR_ORDER = ('VMO2 North', 'VMO2 South', 'Vendor B', 'Vendor A')
 # The location fields of a scoring context: the views add up the places of a calculation split by them.
 LOCATION_FIELDS = ('city', 'cluster', 'region')
 MAX_OWNER_SHARES = 3
@@ -47,6 +51,12 @@ def _join(items: list[str]) -> str:
 
 def _possessive(name: str) -> str:
     return f"{name}'" if name.endswith('s') else f"{name}'s"
+
+
+def owner_order(names: Any) -> list[str]:
+    """The performance owners in the order in which they take the colours of the theme (see OWNER_COLOUR_ORDER)."""
+    known = {name: index for index, name in enumerate(OWNER_COLOUR_ORDER)}
+    return sorted({str(name) for name in names if name}, key=lambda name: (known.get(name, len(known)), name))
 
 
 def place_setting(place: dict[str, Any], kind: str) -> str:
@@ -209,8 +219,10 @@ def owner_cards(maps: list[dict[str, Any]], places: dict[str, Any], sites: list[
                       'setting': place_setting(places.get(city) or {}, (places.get(city) or {}).get('kind', 'place'))}
                      for city, points in sorted(cities.items(), key=lambda pair: -pair[1])[:2] if city != NOT_SPECIFIED]
             owned = [row for row in high_sites.get(operator, []) if row.get('region') == name]
+            # Results calculated before the points of each owner were kept per City or route have none: None, so the
+            # card asks for the Saved Filter recalculated rather than showing zeros.
             cards.append({'owner': name, 'points': area['points'], 'share': area['share'] * 100,
-                          'settings': {label: round(points or 0.0, 3) for label, points in settings.items()},
+                          'settings': {label: round(points or 0.0, 3) for label, points in settings.items()} if city_losses else None,
                           'main': main, 'areas': areas,
                           'high_sites': [{'site': row.get('site'), 'city': row.get('city')} for row in owned]})
         if not cards:
@@ -437,10 +449,15 @@ def build_where_to_act(insights: dict[str, Any], maps: list[dict[str, Any]], res
     # All environments together and each one, as the other insights of the Summary.
     environments = list(dict.fromkeys([COMBINED, *(str(row.get('environment')) for row in (result or {}).get('scoring') or []
                                                    if row.get('environment'))]))
-    views: dict[str, list[dict[str, Any]]] = {'act_plans': [], 'owner_cards': [], 'place_rankings': [], 'route_focus': []}
+    views: dict[str, list[Any]] = {'act_plans': [], 'owner_cards': [], 'place_rankings': [], 'route_focus': []}
     for environment in environments:
         views['act_plans'].extend(act_plans(result, formulas or {}, styles or {}, sites, stretches, weight, environment))
         views['owner_cards'].extend(owner_cards(regions, places, sites, weight, environment_labels, environment))
         views['place_rankings'].extend(place_rankings(insights.get('location_rankings') or [], places, weight, environment))
         views['route_focus'].extend(route_focus(stretches, regions, places, weight, environment))
+    # The owners of every view in the order of their colours, shared by the page and the exports.
+    views['owner_order'] = owner_order(
+        [card['owner'] for item in views['owner_cards'] for card in item['cards']]
+        + [owner['name'] for item in views['place_rankings'] for group in item['groups'] for row in group['rows'] for owner in row['owners']]
+        + [owner['name'] for item in views['route_focus'] for route in item['routes'] for owner in route['owners'] if not owner.get('unidentified')])
     return views

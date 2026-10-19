@@ -2508,7 +2508,8 @@ def _add_insight_slides(presentation, views: dict, environment: str, scoring: st
                                            and (choices.get('act-operator') or not item.get('is_reference'))))[:MAX_ACT_OPERATORS]
         act_items = {name: sorted((item for item in entries if item['operator'] in act_operators),
                                   key=lambda item: act_operators.index(item['operator'])) for name, entries in act_items.items()}
-        owner_color = owner_palette(owner_names(act_items))
+        # The colours of the page: every owner of the results, in the order of their colours.
+        owner_color = owner_palette(insights.get('owner_order') or owner_names(act_items))
         if _option(options, 'summary', 'act'):
             add_act_plan_slides(presentation, act_items['act_plans'], subtitle=subtitle, new_slide=_slide, scope=scope)
         if _option(options, 'summary', 'owners'):

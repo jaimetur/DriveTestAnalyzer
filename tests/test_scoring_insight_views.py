@@ -203,3 +203,24 @@ def test_the_route_of_where_to_act_is_drawn_as_the_routes_of_points_lost(nationa
     assert '.sort((left, right) => position(left?.operator) - position(right?.operator));' in script
     template = (Path(__file__).resolve().parents[1] / 'src/web_interface/templates/scoring.html').read_text(encoding='utf-8')
     assert '[data-scoring-theme="umlaut"] .scoring-insight-table th { background: #fff !important; color: #3f3f4c !important;' in template
+
+
+def test_owners_take_their_colours_in_one_order_and_cards_without_a_breakdown_ask_to_recalculate() -> None:
+    from src.modules.scoring_act_slides import owner_palette
+    from src.modules.scoring_themes import THEMES, use_theme
+    from src.modules.scoring_where_to_act import owner_cards, owner_order
+    # The owners of the UK measurements first, Vendor B before Vendor A (their colours swapped), the others by name.
+    assert owner_order(['Vendor A', 'Region X', 'Vendor B', 'VMO2 South', 'VMO2 North', '']) == [
+        'VMO2 North', 'VMO2 South', 'Vendor B', 'Vendor A', 'Region X']
+    with use_theme('ericsson'):
+        color = owner_palette(['Vendor A', 'Vendor B', 'VMO2 North', 'VMO2 South'])
+        categories = THEMES['ericsson']['categories']
+        assert (color('Vendor B'), color('Vendor A'), color('Nobody')) == (categories[2], categories[3], '#9AA3AD')
+    # Results calculated before the points of each owner were kept per City or route: no zeros, None.
+    region = {'field': 'Region', 'operator': 'VF', 'label': 'VF', 'color': '#E60000', 'is_reference': False, 'environment': 'Combined',
+              'context': {}, 'areas': [{'name': 'Vendor A', 'points': 5.0, 'share': 1.0}], 'total': 5.0}
+    cards = owner_cards([region], {}, [], lambda _context: 1.0)[0]['cards']
+    assert cards[0]['owner'] == 'Vendor A' and cards[0]['settings'] is None
+    cards = owner_cards([{**region, 'city_losses': {'Vendor A': {'Leeds': 5.0}}}], {'Leeds': {'kind': 'place', 'setting': 'Cities'}},
+                        [], lambda _context: 1.0)[0]['cards']
+    assert cards[0]['settings'] == {'Cities': 5.0, 'Towns': 0.0, 'Roads and railways': 0.0}

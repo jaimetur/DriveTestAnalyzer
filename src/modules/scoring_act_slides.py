@@ -33,8 +33,10 @@ def _box(slide, left: float, top: float, width: float, height: float, color: str
 
 
 def owner_palette(names: list[str]) -> Callable[[str], str]:
-    """One colour of the categories of the theme per performance owner (by name, the same on every slide)."""
-    owners = sorted({name for name in names if name})
+    """One colour of the categories of the theme per performance owner (by name, the same on every slide and on the page:
+    in the order of scoring_where_to_act.owner_order)."""
+    from src.modules.scoring_where_to_act import owner_order
+    owners = owner_order(names)
     categories = active_theme().get('categories') or ['#4472C4', '#7030A0', '#C55A11', '#5B9BD5', '#A64D79', '#548235']
     return lambda name: categories[owners.index(name) % len(categories)] if name in owners else '#9AA3AD'
 
@@ -116,7 +118,7 @@ def add_owner_card_slides(presentation, items: list[dict[str, Any]], *, subtitle
         gap = .25
         width = (WIDTH - gap * (len(cards) - 1)) / max(1, len(cards))
         height = CONTENT_BOTTOM - .45 - top
-        peak = max([value for card in cards for value in card['settings'].values()] + [.01])
+        peak = max([value for card in cards for value in (card['settings'] or {}).values()] + [.01])
         for index, card in enumerate(cards):
             left = LEFT + index * (width + gap)
             color = owner_color(card['owner'])
@@ -153,7 +155,10 @@ def add_owner_card_slides(presentation, items: list[dict[str, Any]], *, subtitle
             where_top = top + height - 1.15
             _box(slide, left + .15, where_top - .08, width - .3, .01, '#D9DEE3')
             _text(slide, 'Where its points are', left + .15, where_top, width - .3, .22, size=8.5, bold=True, color=MUTED)
-            for row, (setting, value) in enumerate(card['settings'].items()):
+            if card['settings'] is None:
+                _text(slide, 'Recalculate the Saved Filter (Scoring Calculation) to see them.', left + .15, where_top + .27, width - .3, .22,
+                      size=8.5, color=MUTED, anchor=MSO_ANCHOR.MIDDLE)
+            for row, (setting, value) in enumerate((card['settings'] or {}).items()):
                 y = where_top + .27 + row * .26
                 _text(slide, setting, left + .15, y, 1.35, .22, size=8.5, color=INK, anchor=MSO_ANCHOR.MIDDLE)
                 span = (width - 2.15) * value / peak

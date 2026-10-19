@@ -45,6 +45,7 @@
 - **Reporting keeps its position when reloaded:** reloading the Reporting page, also with the Job Editor reopened with its unsaved changes, keeps its scroll position while the Bundle Report Template, the jobs and their runs fill in.
 - **KPI names in the Scoring tables:** in Points lost per KPI and the KPI GAP Profile, a long KPI name wraps beside its R or D badge with its threshold and unit together (*> 5Mbit/s [%]*), never a unit alone on the second line.
 - **Operator order in the Scoring results:** every Operator selector and list of operators of the results (Where to act, Connecting Roads, Campaign Comparison…) follows the order of the Operator Maps.
+- **Performance owner cards of older Saved Filters:** a card whose Saved Filter was calculated before its points were kept per City or route asks to recalculate it instead of showing 0.0 for Cities, Towns, Roads and railways; Vendor A and Vendor B swap their colours, the same on every view and slide.
 
 #### 📚 Documentation:
 

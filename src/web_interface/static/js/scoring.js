@@ -6807,8 +6807,10 @@
     const operators = [...new Map(all.map(item => [item.operator, item.label || item.operator])).entries()];
     const fallback = (all.find(item => !item.is_reference) || all[0]).operator;
     const {wrapper: operatorControl, value: operator} = insightSelect('act-operator', operators, 'Operator', fallback);
-    // Each performance owner keeps one colour of the categories of the theme on every view.
-    const owners = [...new Set([...cards.flatMap(item => item.cards.map(card => card.owner)),
+    // Each performance owner keeps one colour of the categories of the theme on every view and in the exports, in the
+    // order of the owners of the results (scoring_where_to_act.owner_order).
+    const ownerOrder = payload?.views?.insights?.owner_order;
+    const owners = Array.isArray(ownerOrder) && ownerOrder.length ? ownerOrder.map(String) : [...new Set([...cards.flatMap(item => item.cards.map(card => card.owner)),
       ...places.flatMap(item => item.groups.flatMap(group => group.rows.flatMap(row => row.owners.map(owner => owner.name)))),
       ...routes.flatMap(item => item.routes.flatMap(route => route.owners.filter(owner => !owner.unidentified).map(owner => owner.name)))])].sort();
     const palette = activeTheme?.categories || ['#4472C4', '#7030A0', '#C55A11', '#5B9BD5', '#A64D79', '#548235'];
@@ -6853,7 +6855,7 @@
       section.append(controls(), insightParagraph('scoring-act-headline', "Each performance owner's points at stake, what drives them and where they are"));
       const grid = document.createElement('div');
       grid.className = 'scoring-owner-grid';
-      const peak = Math.max(0.01, ...ownerItem.cards.flatMap(card => Object.values(card.settings)));
+      const peak = Math.max(0.01, ...ownerItem.cards.flatMap(card => Object.values(card.settings || {})));
       for (const card of ownerItem.cards) {
         const box = document.createElement('article');
         box.className = 'scoring-owner';
@@ -6871,7 +6873,9 @@
         const where = document.createElement('div');
         where.className = 'scoring-owner-where';
         where.append(insightParagraph('scoring-owner-where-title', 'Where its points are'));
-        for (const [setting, value] of Object.entries(card.settings)) {
+        // Results calculated before the points of each owner were kept per City or route have none.
+        if (!card.settings) where.append(insightParagraph('scoring-insight-note', 'Recalculate the Saved Filter (Scoring Calculation) to see them.'));
+        for (const [setting, value] of Object.entries(card.settings || {})) {
           const row = document.createElement('div');
           const bar = document.createElement('i');
           bar.style.width = `${Math.max(value > 0 ? 2 : 0, value / peak * 100)}%`;
