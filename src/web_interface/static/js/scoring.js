@@ -1492,7 +1492,7 @@
     const notice = document.createElement('span');
     notice.className = 'saved-filter-unmatched';
     const title = document.createElement('strong');
-    title.textContent = 'No Saved Filter has the filters of the Calculation panel';
+    title.textContent = "No Saved Filter matches the Calculation panel's filters";
     const text = document.createElement('span');
     text.textContent = 'Choose a Favourites Filter saved before, or calculate a new scoring with the filters above (Calculate Scoring).';
     notice.append(title, text);
