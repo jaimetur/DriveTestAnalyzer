@@ -9579,8 +9579,17 @@
         const [nsa, sa] = parts.map(part => [...(bodies.get(part.nr_mode).get(name)?.children || [])]);
         const pairs = new Map();
         const blocks = interleaveNrModeBlocks(nsa, sa, pairs);
-        nsa.forEach(block => tagNrModeBlock(block, parts[0].nr_mode));
-        sa.forEach(block => tagNrModeBlock(block, parts[1].nr_mode));
+        // The headings and notes of the tab (not cards) the same for NSA and SA are shown once, without a pill.
+        const cards = '.scoring-table-mode-section, .scoring-best-network-layout, .scoring-chart-card, .scoring-insight-section, .scoring-result-card';
+        const common = new Set();
+        for (const [nsaBlock, saBlock] of [...pairs]) {
+          if (nsaBlock.matches(cards) || nsaBlock.textContent.trim() !== saBlock.textContent.trim()) continue;
+          common.add(nsaBlock);
+          pairs.delete(nsaBlock);
+          blocks.splice(blocks.indexOf(saBlock), 1);
+        }
+        nsa.filter(block => !common.has(block)).forEach(block => tagNrModeBlock(block, parts[0].nr_mode));
+        sa.filter(block => blocks.includes(block)).forEach(block => tagNrModeBlock(block, parts[1].nr_mode));
         for (const [nsaBlock, saBlock] of pairs) {
           const bar = shareNrModeControls(nsaBlock, saBlock);
           if (bar) blocks.splice(blocks.indexOf(nsaBlock), 0, bar);
