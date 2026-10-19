@@ -44,7 +44,12 @@ def test_scoring_selection_loads_from_server_before_enabling_controls():
     assert 'await persistCalculationSelection({force: true});' in script
     assert "calculationPanel.inert = true;" in script
     assert "calculationPanel.inert = false;" in script
-    assert 'loadCalculationSelection();' in script
+    # A reload that reopens the Saved Filter left in the panel keeps its trends included, as when it is chosen: they
+    # stay only when the selection with them is that of the reopened Saved Filter.
+    assert 'Promise.all([loadCalculationSelection(), refreshSavedFilters()]).then(restoreOpenedSavedFilterTrends)' in script
+    assert 'reloadedTrends = Boolean(savedSummary.enabled);' in script
+    assert ("if (response.saved_filter && savedFilterIdOf(response.saved_filter) === opened && savedFilterIdOf(selectedSavedFilter || {}) === opened) {"
+            in script)
     assert 'localStorage' not in script
 
 

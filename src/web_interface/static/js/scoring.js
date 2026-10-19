@@ -459,6 +459,9 @@
   const calculatingSavedFilters = new Map();
   let selectionLoaded = false;
   let selectionPersisted = false;
+  // The National & Geographical Areas Trends of the selection left in the panel, until the page has reopened its Saved
+  // Filter (see restoreOpenedSavedFilterTrends).
+  let reloadedTrends = false;
   let selectionDirty = false;
   let restoringSelection = false;
   let selectionSaveTimer = null;
@@ -1065,6 +1068,31 @@
     scheduleAutoCdrRefresh({delay: 0});
   }
 
+  // On a reload, the panel shows the Saved Filter the page reopens as it was left: when the selection left in the panel
+  // is that of the Saved Filter with its National & Geographical Areas Trends, they stay included (as when the Saved
+  // Filter is chosen), so the panel matches it and Recalculate is offered; any other selection starts without them.
+  async function restoreOpenedSavedFilterTrends() {
+    const trends = reloadedTrends;
+    reloadedTrends = false;
+    if (!trends || !areaSummaryEnabled || areaSummaryEnabled.checked || !userSelectedSavedFilter || !selectedSavedFilter
+        || editingSavedFilter) return;
+    const opened = savedFilterIdOf(selectedSavedFilter);
+    areaSummaryEnabled.checked = true;
+    try {
+      const response = await requestJson(`${savedFiltersUrl}/match`, {method: 'POST', body: JSON.stringify(calculationPayload())});
+      if (response.saved_filter && savedFilterIdOf(response.saved_filter) === opened && savedFilterIdOf(selectedSavedFilter || {}) === opened) {
+        syncAreaSummary();
+        scheduleSelectionSave();
+        calculationMatchKey = '';
+        updateSelection();
+        return;
+      }
+    } catch (_error) {
+      // Without an answer the panel keeps the trends left out.
+    }
+    areaSummaryEnabled.checked = false;
+  }
+
   function autoCdrFilters() {
     const filters = {};
     for (const [key, select] of contextFilterSelects) {
@@ -1216,6 +1244,7 @@
       // A new scoring starts without the National & Geographical Areas Trends (only a Saved Filter that has them includes them); it
       // keeps the campaigns of the Scoring Trends.
       const savedSummary = body.selection.area_summary && typeof body.selection.area_summary === 'object' ? body.selection.area_summary : {};
+      reloadedTrends = Boolean(savedSummary.enabled);
       applySavedCalculationSelection({...body.selection, area_summary: {...savedSummary, enabled: false}});
       const appliedKey = calculationSelectionKey(calculationSelectionFromControls());
       selectionPersisted = body.persisted !== false && !savedSummary.enabled;
@@ -9663,6 +9692,5 @@
   syncGapValueControls();
   syncResultTableControls();
   applyNrFilter(false);
-  loadCalculationSelection();
-  refreshSavedFilters();
+  Promise.all([loadCalculationSelection(), refreshSavedFilters()]).then(restoreOpenedSavedFilterTrends).catch(() => {});
 })();
