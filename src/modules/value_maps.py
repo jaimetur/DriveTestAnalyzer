@@ -84,12 +84,14 @@ class ValueMapper:
         return sorted(mapped, key=lambda value: dimension_order_key(kind, value, self.operator_groups, self.vendor_groups))
 
     def expand(self, kind: str | None, selected: Iterable[Any], source_values: Iterable[Any]) -> list[Any]:
-        """The source values a mapped selection stands for (the selection itself is kept too)."""
-        wanted = {str(value).strip().casefold() for value in selected if value is not None and str(value).strip()}
+        """The source values a mapped selection stands for (the selection itself is kept too); a pattern (VF*) stands for
+        those whose value or label it takes (-Lebara: every one but Lebara)."""
+        from src.modules.value_patterns import ValueSet
+
+        wanted = ValueSet(value for value in selected if value is not None)
         if kind is None or not wanted:
             return list(selected)
-        expanded = [value for value in source_values
-                    if str(value).strip().casefold() in wanted or str(self.map(kind, value)).strip().casefold() in wanted]
+        expanded = [value for value in source_values if wanted.accepts([value, self.map(kind, value)])]
         return list(dict.fromkeys([*expanded, *selected]))
 
     def _aliases(self, mappings: dict[str, str]) -> dict[str, list[str]]:

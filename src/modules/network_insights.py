@@ -34,6 +34,7 @@ from src.modules.cdr_auto_selection import (
 )
 from src.modules.cdr_environments import ENVIRONMENTS, environment_class, environment_order
 from src.modules.cdr_facets import cascading_options, stored_facets
+from src.modules.value_patterns import ValueSet, is_pattern
 from src.modules.mapping_order import dimension_order_key, operator_order_key, vendor_order_key
 from src.modules.output_layout import NETWORK_INSIGHTS_FOLDER, module_output_dir
 from src.modules import inventory_insights as ii
@@ -1300,9 +1301,10 @@ def filter_samples(samples: pd.DataFrame, request: Any) -> pd.DataFrame:
             values = vendor_filter_values(values, operators)
         elif field in {'operator_vendor', 'vendor_operator'}:
             values = operator_vendor_filter_values(values, operators)
-        wanted = {str(value).casefold() for value in values if str(value).strip()}
+        # Patterns (VF*) take every value they match (see value_patterns).
+        wanted = ValueSet(values)
         if wanted and field in filtered:
-            filtered = filtered.loc[filtered[field].str.casefold().isin(wanted)]
+            filtered = filtered.loc[wanted.mask(filtered[field])]
     return filtered
 
 
@@ -2826,6 +2828,10 @@ def install_network_insights_routes(core: Any) -> None:
         for field, values in (('Operator', request.operators), ('Operator_Vendor', operator_vendors),
                               ('Vendor', request.vendors), ('Region', request.regions),
                               ('Cluster', request.clusters), ('City', request.cities)):
+            if any(is_pattern(value) for value in values):
+                # Patterns (VF*, -Lebara; see value_patterns).
+                mask &= ValueSet(values).mask(frame[field].astype(str))
+                continue
             wanted = {normalise(value, field) for value in values if str(value).strip()}
             if wanted:
                 keys = {value: normalise(value, field) for value in pd.unique(frame[field])}
@@ -2949,10 +2955,12 @@ def install_network_insights_routes(core: Any) -> None:
         if not labels and request.source == 'observed':
             labels = {value: value for value in pd.unique(frame['Operator']) if str(value).strip()}
         mappings = {str(key).casefold(): str(value) for key, value in task_repository.list_operator_mappings().items()}
-        wanted = {mappings.get(value.casefold(), value) for value in request.operators if str(value).strip()}
+        # Patterns (VF*, Not Lebara) are matched as they are (see value_patterns).
+        wanted = ValueSet(value if is_pattern(value) else mappings.get(value.casefold(), value)
+                          for value in request.operators if str(value).strip())
         groups = task_repository.list_operator_mapping_groups()
         return {operator: label for operator, label in sorted(labels.items(), key=lambda item: operator_order_key(item[1], groups))
-                if not wanted or operator in wanted}
+                if not wanted or wanted.accepts([operator, label])}
 
     def text_values(series: pd.Series) -> pd.Series:
         """Values as filters compare them: text, with blanks as ''."""

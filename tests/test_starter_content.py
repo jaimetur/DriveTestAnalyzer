@@ -104,7 +104,8 @@ def test_the_other_starter_content_fits_any_market(client):
     assert weekly['enabled'] is False and weekly['schedule']['mode'] == 'weekly'
     assert sorted(dashboards[entry['dashboard_id']]['name'] for entry in weekly['definition']['dashboards']) == [
         'NetCheck CDR Report', 'NetCheck CDR Report', 'RF Quality (RSRP & SINR)']
-    assert all(entry['filters'] == {'Campaign': ['@latest-campaign']} for entry in weekly['definition']['dashboards'])
+    # Every operator but Lebara (see value_patterns).
+    assert all(entry['filters'] == {'Campaign': ['@latest-campaign'], 'Operator': ['Not Lebara']} for entry in weekly['definition']['dashboards'])
     assert [scenario['name'] for scenario in weekly['definition']['scoring'][0]['report']['scenarios']] == ['National', 'Main Cities']
     every = jobs['All Modules Report (@latest 2 campaigns)']['definition']
     assert sorted((dashboards[entry['dashboard_id']]['name'], dashboards[entry['dashboard_id']]['template_technology'])

@@ -1126,10 +1126,11 @@ def test_jobs_packages_and_folders_with_a_former_name_take_the_current_one(tmp_p
 
 def test_favourites_travel_with_every_option_of_their_scoring_section(client):
     login(client)
-    definition = bundle_report_templates.normalize_definition({'filters': {'main_cities': True}})
+    # Patterns (VF*, Not Lebara) travel as such, in the Operators and the Focus operators.
+    definition = bundle_report_templates.normalize_definition({'filters': {'main_cities': True, 'operators': ['Not Lebara']}})
     scoring = next(section for section in definition['sections'] if section['key'] == 'scoring')
     scoring['options'].update({
-        'campaigns': ['Latest campaign'], 'baseline_operator': 'VF', 'compared_operators': ['EE', 'O2'],
+        'campaigns': ['Latest campaign'], 'baseline_operator': 'VF', 'compared_operators': ['EE', 'O2', 'VF*', '-VF SM'],
         'area_summary': {'enabled': True, 'breakdown': 'Cluster', 'cities': ['Leeds', 'Glasgow'], 'main_cities': True,
                          'time_split': 'Quarterly', 'campaigns': ['Latest 2 campaigns']}})
     saved = bundle_report_templates.save_favourite(core.repository, None, 'Every scoring option', definition, 'super')
@@ -1139,5 +1140,5 @@ def test_favourites_travel_with_every_option_of_their_scoring_section(client):
     [imported] = [item for item in bundle_report_templates.list_favourites(core.repository) if item['name'] == 'Every scoring option']
     assert imported['definition'] == saved['definition']
     options = next(section for section in imported['definition']['sections'] if section['key'] == 'scoring')['options']
-    assert options['compared_operators'] == ['EE', 'O2'] and options['area_summary'] == scoring['options']['area_summary']
-    assert imported['definition']['filters']['main_cities']
+    assert options['compared_operators'] == ['EE', 'O2', 'VF*', '-VF SM'] and options['area_summary'] == scoring['options']['area_summary']
+    assert imported['definition']['filters']['main_cities'] and imported['definition']['filters']['operators'] == ['Not Lebara']

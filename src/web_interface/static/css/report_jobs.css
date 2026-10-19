@@ -52,7 +52,7 @@
 .report-jobs .rj-multi { position: relative; }
 .report-jobs .rj-multi > summary { display: flex; justify-content: space-between; gap: .6rem; padding: .5rem .7rem; border: 1px solid var(--line); border-radius: 10px; background: #fff; cursor: pointer; list-style: none; font-weight: 600; }
 .report-jobs .rj-multi > summary::-webkit-details-marker { display: none; }
-.report-jobs .rj-multi .workspace-user-picker-menu { position: absolute; z-index: 20; min-width: 100%; max-height: 16rem; overflow: auto; padding: .5rem; border: 1px solid var(--line); border-radius: 10px; background: #fff; box-shadow: 0 12px 28px rgba(18, 32, 43, .16); }
+.report-jobs .rj-multi .workspace-user-picker-menu { position: absolute; z-index: 20; min-width: 100%; max-height: min(32rem, 70vh); overflow: auto; padding: .5rem; border: 1px solid var(--line); border-radius: 10px; background: #fff; box-shadow: 0 12px 28px rgba(18, 32, 43, .16); }
 .report-jobs .rj-multi .workspace-user-picker-menu label { display: flex; gap: .45rem; align-items: center; padding: .15rem 0; }
 .report-jobs .rj-secondary { justify-self: start; padding: .5rem 1rem; border: 1px solid rgba(31, 95, 58, .45); border-radius: 999px; background: #fff; color: #1f5f3a; font: inherit; font-weight: 700; cursor: pointer; }
 .report-jobs .rj-secondary:hover { background: #e3f3e9; }
@@ -357,7 +357,7 @@
 .bundle-report-template-panel .brt-theme-field, .report-jobs .rj-job-theme label { color: #5b2fa6; font-weight: 800; }
 .bundle-report-template-panel .brt-theme-field select, .report-jobs .rj-job-theme select { border-color: #9b7ad8 !important; background-color: #f4eeff !important; color: #3d1d78 !important; font-weight: 700; box-shadow: inset 4px 0 0 #9b7ad8; }
 .bundle-report-template-panel .rj-multi-caption { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bundle-report-template-panel .rj-multi .workspace-user-picker-menu { position: absolute; z-index: 30; min-width: 100%; max-height: 16rem; overflow: auto; padding: .5rem; border: 1px solid var(--line); border-radius: 10px; background: #fff; box-shadow: 0 12px 28px rgba(18, 32, 43, .16); }
+.bundle-report-template-panel .rj-multi .workspace-user-picker-menu { position: absolute; z-index: 30; min-width: 100%; max-height: min(32rem, 70vh); overflow: auto; padding: .5rem; border: 1px solid var(--line); border-radius: 10px; background: #fff; box-shadow: 0 12px 28px rgba(18, 32, 43, .16); }
 .bundle-report-template-panel .rj-multi .workspace-user-picker-menu label { display: flex; gap: .45rem; align-items: center; padding: .15rem 0; font-size: .86rem; color: var(--text); }
 .bundle-report-template-panel .rj-multi .workspace-user-picker-menu label.rj-multi-exclusive span { font-style: italic; font-weight: 800; }
 .bundle-report-template-panel .rj-multi .workspace-user-picker-menu label.rj-multi-exclusive-last { margin-bottom: .3rem; border-bottom: 1px solid var(--line); padding-bottom: .5rem; }

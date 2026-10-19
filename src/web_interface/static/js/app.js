@@ -5615,6 +5615,38 @@ function renderAutoCdrList(host, cdrs, {loading = false} = {}) {
 }
 globalThis.renderAutoCdrList = renderAutoCdrList;
 
+// Patterns among the values of a filter (the Operator filters and the Focus operators), as value_patterns.py resolves
+// them: * stands for any characters (VF*), and a value that starts with - or NOT leaves out what it names (-Lebara,
+// NOT Leb*), whatever the case. accepts(...names) tells whether a value known by those names is taken.
+const VALUE_EXCLUSION = /^\s*(?:-|not\s+)(?=\S)/i;
+const valuePatternRegExp = (value) => new RegExp(`^${String(value).trim().split('*')
+  .map((part) => part.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('.*')}$`, 'i');
+globalThis.valuePatterns = {
+  isExclusion: (value) => VALUE_EXCLUSION.test(String(value ?? '')),
+  isPattern: (value) => String(value ?? '').includes('*') || VALUE_EXCLUSION.test(String(value ?? '')),
+  // The tag of a pattern in the lists: what it does.
+  tag: (value) => (VALUE_EXCLUSION.test(String(value ?? '')) ? 'except' : 'pattern'),
+  set(values) {
+    const texts = [...(values || [])].map((value) => String(value ?? '').trim()).filter(Boolean);
+    const included = texts.filter((text) => !VALUE_EXCLUSION.test(text)).map(valuePatternRegExp);
+    const leftOut = texts.filter((text) => VALUE_EXCLUSION.test(text)).map((text) => valuePatternRegExp(text.replace(VALUE_EXCLUSION, '')));
+    return {
+      size: texts.length,
+      accepts: (...names) => {
+        const known = names.filter((name) => name !== null && name !== undefined && String(name).trim()).map((name) => String(name).trim());
+        if (known.some((name) => leftOut.some((pattern) => pattern.test(name)))) return false;
+        return !included.length || known.some((name) => included.some((pattern) => pattern.test(name)));
+      },
+    };
+  },
+};
+
+// How the patterns of a choice are typed, as its list tells it.
+const PATTERN_HELP = 'Type a pattern and press Enter: * stands for any characters (VF* takes VF, VF SA, VF VoNR… and the variants '
+  + 'that appear later), and - or NOT before a value leaves it out (-Lebara, NOT Leb*: every value but those); several '
+  + 'exclusions leave out each one.';
+globalThis.valuePatterns.help = PATTERN_HELP;
+
 function setupCustomMultiSelects() {
   document.querySelectorAll('select[multiple]:not([data-native-multiselect])').forEach((select) => {
     if (select.dataset.multiselectReady === '1') return;
@@ -5684,6 +5716,60 @@ function setupCustomMultiSelects() {
     search.placeholder = 'Filter values…';
     search.setAttribute('aria-label', 'Filter available values');
     menu.appendChild(search);
+    // The Operator filters (and the choices with data-multiselect-patterns) take patterns: a filter with * (such as VF*)
+    // is added as a pattern of its own, where * stands for any characters, so it also takes the values that appear later.
+    const fieldIdentity = String(filterField || '').replace(/[^a-z]/gi, '').toLowerCase();
+    const takesPatterns = 'multiselectPatterns' in select.dataset || ['operator', 'operators', 'filterbyoperator'].includes(fieldIdentity);
+    const patternButton = takesPatterns ? document.createElement('button') : null;
+    if (patternButton) {
+      // The patterns chosen stay when the options are given again (the lists that follow the other filters), until
+      // they are unticked; a value with * always shows as a pattern.
+      const listed = new Set(Array.from(select.options).map((option) => option.value.toLocaleLowerCase()));
+      for (const value of select.multiselectPatterns || []) {
+        if (!listed.has(value.toLocaleLowerCase())) select.add(new Option(value, value, true, true), select.options[0] || null);
+      }
+      Array.from(select.options).filter((option) => valuePatterns.isPattern(option.value) && !option.dataset.tag)
+        .forEach((option) => Object.assign(option.dataset, {tag: valuePatterns.tag(option.value), tagClass: 'user-choice-tag-pattern'}));
+      if (!select.dataset.multiselectPatternsTracked) {
+        select.dataset.multiselectPatternsTracked = '1';
+        const track = () => {
+          select.multiselectPatterns = Array.from(select.selectedOptions).map((option) => option.value).filter(valuePatterns.isPattern);
+        };
+        select.addEventListener('change', track);
+        track();
+      }
+      search.placeholder = 'Filter, or type a pattern such as VF* or -Lebara';
+      if (select.title) trigger.title = select.title;
+      menu.appendChild(Object.assign(document.createElement('p'), {
+        className: 'multiselect-pattern-help',
+        textContent: PATTERN_HELP,
+      }));
+      patternButton.type = 'button';
+      patternButton.className = 'multiselect-pattern-add';
+      patternButton.hidden = true;
+      menu.appendChild(patternButton);
+      const addPattern = () => {
+        const value = search.value.trim();
+        if (!valuePatterns.isPattern(value)) return;
+        let option = Array.from(select.options).find((item) => item.value.toLocaleLowerCase() === value.toLocaleLowerCase());
+        if (!option) {
+          option = new Option(value, value);
+          Object.assign(option.dataset, {tag: valuePatterns.tag(value), tagClass: 'user-choice-tag-pattern'});
+          select.add(option, select.options[0] || null);
+        }
+        option.selected = true;
+        search.value = '';
+        select.dispatchEvent(new Event('change', {bubbles: true}));
+        select.dispatchEvent(new Event('multiselect:options-updated'));
+      };
+      patternButton.addEventListener('click', addPattern);
+      search.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' && valuePatterns.isPattern(search.value.trim())) {
+          event.preventDefault();
+          addPattern();
+        }
+      });
+    }
 
     const actionButton = document.createElement('button');
     actionButton.type = 'button';
@@ -5811,7 +5897,10 @@ function setupCustomMultiSelects() {
       const group = optionGroup(option);
       if (group) groupSizes.set(group, (groupSizes.get(group) || 0) + 1);
     });
-    Array.from(select.options).forEach((option) => {
+    // The patterns (VF*) of a choice that takes them come first, below the filter.
+    const listedOptions = Array.from(select.options);
+    if (patternButton) listedOptions.sort((left, right) => Number(valuePatterns.isPattern(right.value)) - Number(valuePatterns.isPattern(left.value)));
+    listedOptions.forEach((option) => {
       const group = optionGroup(option);
       if (group && group !== previousGroup) {
         const heading = document.createElement('div');
@@ -5929,6 +6018,14 @@ function setupCustomMultiSelects() {
 
     const filterMultiSelect = () => {
       const query = search.value.trim().toLocaleLowerCase();
+      if (patternButton) {
+        // A filter with * (or that starts with - or NOT) offers to add it as a pattern, with the values it takes now.
+        const typed = search.value.trim();
+        const chosen = valuePatterns.set([typed]);
+        const taken = Array.from(select.options).filter((option) => !valuePatterns.isPattern(option.value) && chosen.accepts(option.value)).length;
+        patternButton.hidden = !valuePatterns.isPattern(typed);
+        patternButton.textContent = `＋ Add pattern “${typed}” · takes ${taken} now`;
+      }
       Array.from(menu.querySelectorAll('.multiselect-option')).forEach((optionLabel) => {
         const text = optionLabel.textContent?.toLocaleLowerCase() || '';
         optionLabel.hidden = Boolean(query) && !text.includes(query);
@@ -6877,6 +6974,8 @@ function setupNativeSelectMenus() {
       if (child instanceof HTMLOptGroupElement) {
         const heading = document.createElement('div');
         heading.className = 'native-select-group';
+        // A group with data-divider-before starts below a line (such as the operators after the Focus ones).
+        if (child.dataset.dividerBefore === 'true') heading.classList.add('is-divided');
         heading.textContent = child.label;
         groups.push(heading);
         menu.appendChild(heading);

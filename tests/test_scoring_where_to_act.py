@@ -119,3 +119,38 @@ def test_the_summary_slides_of_where_to_act(owned):
     titles = [slide.shapes.title.text_frame.paragraphs[0].text for slide in without.slides if slide.shapes.title is not None]
     # The operator chosen on the page, the reference included.
     assert 'Where to act — EE' in titles and 'Where to act — Vodafone UK' not in titles
+
+
+def test_where_to_act_of_a_report_follows_its_compared_operators(owned):
+    from src.modules.scoring_exports import export_scoring_report
+    from src.modules.scoring_reports import default_scenario, normalize_report_configuration
+
+    job, result, _insights = owned
+
+    def act_titles(compared):
+        scenario = default_scenario()
+        for options in scenario['scorings'].values():
+            options['gap']['operators'] = compared
+        entry = {'scenario': normalize_report_configuration({'scenarios': [scenario]})['scenarios'][0], 'job': job, 'result': result}
+        deck = Presentation(BytesIO(export_scoring_report([entry], TEMPLATE)))
+        titles = [slide.shapes.title.text_frame.paragraphs[0].text for slide in deck.slides if slide.shapes.title is not None]
+        return sorted({title.split(' — ', 1)[1] for title in titles if title.startswith('Where to act — ')})
+
+    # The Focus operators of the scenario, every one of them: names or patterns (* for any characters, whatever the case).
+    assert act_titles(['Three UK']) == ['Three UK']
+    assert act_titles(['th*', 'Vodafone*']) == ['Three UK', 'Vodafone UK']
+    # Without them, or when none of them has results, every operator but the reference.
+    assert act_titles([]) == act_titles(['Another operator']) == ['O2 UK', 'Three UK', 'Vodafone UK']
+
+
+def test_focus_operators_are_names_or_patterns_and_every_operator_without_a_match():
+    from src.modules.scoring_exports import focus_matcher
+
+    operators = ['EE', 'VF', 'VF SA', 'VF VoNR', 'Three', '3 UK', 'VMO2']
+    focus = focus_matcher(['VF*', 'three*', '3*'], operators)
+    assert [name for name in operators if focus(name)] == ['VF', 'VF SA', 'VF VoNR', 'Three', '3 UK']
+    # A label (the name of the operator in the Operator Maps) matches too; other characters are taken as they are.
+    assert focus('Vodafone', 'VF UK') and not focus('E.E') and focus_matcher(['E.E'], ['E.E'])('E.E')
+    # Without Focus operators, or when none of the operators of the results is one of them, every operator.
+    assert all(focus_matcher([], operators)(name) for name in operators)
+    assert all(focus_matcher(['Orange*'], operators)(name) for name in operators)

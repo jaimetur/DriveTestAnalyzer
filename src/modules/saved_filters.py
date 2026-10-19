@@ -27,6 +27,7 @@ from src.modules.scoring_area_summary import (
 )
 from src.modules.scoring_vendors import scoring_vendor_name, scoring_vendor_operators
 from src.modules.cdr_auto_selection import CAMPAIGN_PRESET_LABELS, campaign_identity, campaign_presets
+from src.modules.value_patterns import ValueSet
 from src.modules.cdr_stage import combined_dataset_ids
 from src.modules.nr_mode import NR_MODES, normalize_nr_mode
 from src.modules.repository import Repository, local_now_iso
@@ -159,9 +160,11 @@ def _normalize_context_filters(context_filters: dict[str, list[str]] | None) -> 
 def _expand_operator_context_filter(
     repository: Repository, context_filters: dict[str, list[str]],
 ) -> dict[str, list[str]]:
-    """Include mapped Operator aliases so canonical selections match raw CDR rows."""
+    """Include mapped Operator aliases so canonical selections match raw CDR rows; a pattern (VF*) takes the aliases of
+    the operators it matches too, an exclusion (-Lebara) leaves out their aliases too, and both stay to match the raw
+    values of no Operator Map."""
     expanded = {field: list(values) for field, values in context_filters.items()}
-    selected = {value.casefold() for value in expanded.get('Operator', [])}
+    selected = ValueSet(expanded.get('Operator', []))
     getter = getattr(repository, 'list_operator_mapping_groups', None)
     groups = getter() if callable(getter) else []
     for group in groups if isinstance(groups, list) else []:
@@ -171,9 +174,13 @@ def _expand_operator_context_filter(
         raw_aliases = group.get('aliases', [])
         aliases = [str(value).strip() for value in raw_aliases if str(value).strip()] if isinstance(raw_aliases, (list, tuple, set)) else []
         labels = [value for value in [canonical, *aliases] if value]
-        if selected.intersection(value.casefold() for value in labels):
+        if selected.excludes(labels):
             for value in labels:
-                selected.add(value.casefold())
+                if not any(existing.casefold() == f'-{value}'.casefold() for existing in expanded['Operator']):
+                    expanded['Operator'].append(f'-{value}')
+            continue
+        if selected.includes and selected.accepts(labels):
+            for value in labels:
                 if not any(existing.casefold() == value.casefold() for existing in expanded['Operator']):
                     expanded['Operator'].append(value)
     expanded['Operator'].sort(key=lambda value: (value.casefold(), value))

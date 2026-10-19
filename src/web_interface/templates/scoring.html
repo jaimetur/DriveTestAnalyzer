@@ -62,6 +62,8 @@
   /* NR Mode and Campaign choose the CDRs, listed read-only below them by type. */
   .scoring-scope-row { display: grid; grid-template-columns: minmax(7rem, 9rem) minmax(0, 18rem) minmax(8rem, 11rem) minmax(9rem, 14rem) minmax(20rem, 1fr); gap: .6rem 1rem; align-items: end; }
   .scoring-scope-control { display: grid; gap: .3rem; color: #245b43; font-size: .82rem; font-weight: 750; }
+  /* The choices of several values are as tall as the single ones beside them. */
+  .scoring-scope-control :is(select, .multiselect-trigger) { min-height: 2.9rem; }
   .scoring-auto-cdrs { margin-top: .75rem; padding: .7rem .75rem; border: 1px solid #c0ddce; border-radius: 12px; background: #f0f8f3; }
   .scoring-auto-cdrs-head { display: flex; align-items: center; flex-wrap: wrap; gap: .45rem; margin-bottom: .5rem; }
   .scoring-auto-cdrs-head strong { color: #245b43; font-size: .82rem; }
@@ -445,6 +447,11 @@
   .scoring-loss-controls .scoring-insight-select { margin: 0; }
   .scoring-loss-controls .scoring-insight-select select { min-width: 11rem; }
   .scoring-loss-operators { flex-wrap: wrap; }
+  /* The Focus operators first, beside their tag, and a line before the others. */
+  .scoring-loss-operators.has-focus-operators { flex-direction: column; align-items: flex-start; }
+  .scoring-focus-operators, .scoring-other-operators { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; }
+  .scoring-other-operators { align-self: stretch; padding-top: .45rem; border-top: 1px solid #dbe3e7; }
+  .scoring-focus-tag { padding: .12rem .5rem; border-radius: 999px; background: #e8f3ef; color: #1f6b5c; font-size: .66rem; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
   .scoring-loss-operator { --operator-color: #455b65; min-height: 0; padding: .3rem .8rem; border: 1.5px solid color-mix(in srgb, var(--operator-color) 45%, transparent); border-radius: 999px; background: #fff; color: var(--operator-color); font-size: .76rem; font-weight: 800; box-shadow: none; cursor: pointer; }
   .scoring-loss-operator:hover:not(:disabled) { background: color-mix(in srgb, var(--operator-color) 10%, white); color: var(--operator-color); box-shadow: none; transform: none; }
   .scoring-loss-operator[aria-pressed="true"], .scoring-loss-operator[aria-pressed="true"]:hover:not(:disabled) { border-color: var(--operator-color); background: var(--operator-color); color: #fff; }
@@ -1268,13 +1275,15 @@
             {% else %}<option value="EE" selected>EE</option>{% endif %}
           </select>
         </label>
-        {# The operators GAP Analysis compares with the GAP reference, on the page and in its exports (all without any). #}
-        <label class="scoring-scope-control">Compared operators
-          <select multiple size="1" data-scoring-compared-operators data-multiselect-auto-close="1000" data-multiselect-empty-label="All operators" aria-label="Compared operators" title="The operators GAP Analysis compares with the GAP reference (all when none is chosen)">
+        {# The Focus operators of the PowerPoint and Word exports (operators or patterns such as VF*; all without any): those of
+           Where to act, the locations ranked, the individual GAP tables, the GAP by part, the KPI GAP Profile and the Points
+           Lost views. On the page they come first in the operator choices of those sections. #}
+        <label class="scoring-scope-control">Focus operators
+          <select multiple size="1" data-scoring-compared-operators data-multiselect-patterns data-multiselect-auto-close="1000" data-multiselect-empty-label="All operators" aria-label="Focus operators" title="The operators the recommendations, the individual GAP tables and the Points Lost views of the exports focus on: operators, or patterns such as VF* (type one with * in the filter to add it); all when none is chosen">
             {% for operator in scoring_options %}<option value="{{ operator.value }}">{{ operator.label }}</option>{% endfor %}
           </select>
         </label>
-        {# The methodology of the calculation, after the Compared operators. #}
+        {# The methodology of the calculation, after the Focus operators. #}
         <label class="scoring-scope-control">Scoring Methodology
           <select data-scoring-profile aria-label="Choose the scoring methodology for this calculation">
             {% set scoring_profile_options = scoring_profiles | default([], true) %}

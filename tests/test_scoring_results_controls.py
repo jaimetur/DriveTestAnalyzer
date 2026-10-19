@@ -1695,8 +1695,9 @@ def test_kpi_gap_profile_and_points_lost_map_share_location_and_operators():
     assert "insightSelect('points-loss-view', allViews.map(item => [item, item]), 'Maps per')" in maps
     assert "option.disabled = !views.includes(option.value);" in maps
     assert ".map(entry => pointsLossMapCard(entry, payload, savedFilterId, chosen.length > 1, mode));" in maps
-    # Every operator is chosen by default.
-    assert "if (!chosen.length) chosen = [...names];" in controls
+    # The Focus operators are chosen by default (every operator without them), first in the choice.
+    assert "if (!chosen.length) chosen = focusDefault(operators, {withReference: true});" in controls
+    assert 'appendFocusChips(group, operators, makeChip);' in controls
     # Maps zoom with a dragged rectangle or the floating buttons, which hide as soon as the pointer leaves.
     zoom = script[script.index('  function addZoomToolbar(box, zoomIn, zoomOut, reset) {'):]
     assert "['+', 'Zoom in'" in zoom and "['−', 'Zoom out'" in zoom and "'Show the whole map'" in zoom
@@ -1999,3 +2000,43 @@ def test_summary_sections_enable_the_reference_operator_by_default():
     # start with the operators compared with it.
     assert len(summary) == 3 and not any('compared: true' in call for call in summary)
     assert {'ranking-operators', 'gap-parts-operators', 'sites-operators'} <= set(calls)
+
+
+def test_focus_operators_come_first_in_the_operator_choices_of_their_sections():
+    script = SCORING_SCRIPT.read_text(encoding='utf-8')
+    app = (SCORING_SCRIPT.parent / 'app.js').read_text(encoding='utf-8')
+    # The patterns of the page (valuePatterns), as app.js defines them.
+    helper = app[app.index('const VALUE_EXCLUSION'):app.index('function setupCustomMultiSelects() {')]
+    program = helper + r"""
+class Element {
+  constructor(tag) { this.tag = tag; this.children = []; this.dataset = {}; this.classList = {add: name => { this.className = name; }}; }
+  append(...children) { this.children.push(...children); }
+}
+const document = {createElement: tag => new Element(tag)};
+let focus = ['VF*', 'three*'];
+const chosenComparedOperators = () => focus;
+""" + ''.join(_function_source(script, name) for name in ('focusMatcher', 'focusSplit', 'appendFocusOptions', 'focusDefault')) + r"""
+const operators = [{operator: 'EE', label: 'EE', is_reference: true}, {operator: 'VMO2', label: 'VMO2'},
+  {operator: 'VF SA', label: 'VF SA'}, {operator: 'Three', label: 'Three'}];
+const select = new Element('select');
+appendFocusOptions(select, operators.map(item => [`operator:${item.operator}`, item.label, item.operator, item.label]));
+const groups = select.children.map(group => [group.label, group.dataset.dividerBefore || '', group.children.map(option => option.value)]);
+const chosen = focusDefault(operators);
+focus = ['Orange*'];
+const none = [focusDefault(operators), appendFocusOptions(select, []) ?? focusSplit(operators).focused.length];
+focus = [];
+const all = focusDefault(operators);
+// Exclusions: every operator but those they name.
+focus = ['NOT vm*'];
+const excluding = focusDefault(operators);
+console.log(JSON.stringify({groups, chosen, none, all, excluding}));
+"""
+    result = _run_node_json(program, {})
+    # The Focus operators first, under Focus, then a line before the other operators.
+    assert result['groups'] == [['Focus', '', ['operator:VF SA', 'operator:Three']],
+                                ['Other operators', 'true', ['operator:EE', 'operator:VMO2']]]
+    # Their sections start with them; without Focus operators (or none of them in the results), every operator but the
+    # reference.
+    assert result['chosen'] == ['VF SA', 'Three']
+    assert result['none'] == [['VMO2', 'VF SA', 'Three'], 0] and result['all'] == ['VMO2', 'VF SA', 'Three']
+    assert result['excluding'] == ['VF SA', 'Three']

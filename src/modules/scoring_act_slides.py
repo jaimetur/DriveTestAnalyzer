@@ -20,7 +20,6 @@ from src.modules.scoring_themes import active_theme, themed
 
 LEFT, WIDTH = .45, 12.45
 PLACE_ROWS_PER_SLIDE = 18
-MAX_OPERATORS = 2
 
 
 def _box(slide, left: float, top: float, width: float, height: float, color: str, **options):

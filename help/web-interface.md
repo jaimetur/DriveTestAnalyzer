@@ -16,6 +16,7 @@ The UI uses a shared header, module tabs, panels, dialogs and tables. Read [Prod
 | Header controls | [Open section](#header-controls) |
 | Panels | [Open section](#panels) |
 | Searchable selectors | [Open section](#searchable-selectors) |
+| Operator patterns (`VF*`, `NOT Lebara`) | [Open section](#operator-patterns) |
 | Filter Builder | [Open section](#filter-builder) |
 | Tables | [Open section](#tables) |
 | Dialogs and progress | [Open section](#dialogs-and-progress) |
@@ -96,6 +97,16 @@ Single-select and multi-select controls share a compact searchable style.
 - Multi-select controls preserve the order in which values are selected when order has meaning.
 - **Select all / none** toggles the currently available options.
 - Open menus are layered above their active dialog and positioned against their field.
+
+### Operator patterns
+
+Every **Operator** filter (Scoring & GAP Analysis, CDR Analysis, PPT Dashboards, Network Insights, Non-Qualified Calls, the common filters of the Bundle Report Templates, the artifacts of the Reporting Jobs and the scenarios of the Scoring report editor and its saved configurations) and the **Focus operators** of Scoring take patterns besides the operators listed: type one in the filter of the list and press Enter (or **＋ Add pattern**, which tells how many operators it takes now). A pattern is saved as such, travels with what keeps it (Saved Filters, favourites, Reporting Jobs, Dashboards, exports, transfers and backups) and is resolved each time the filter is used, so it also takes the operators that appear later:
+
+- `*` stands for any characters, whatever the case: `VF*` takes VF, VF SA, VF VoNR, VF SM… and `*O2*` every operator with O2 in its name;
+- `-` or `NOT` (followed by a space) before a value leaves it out: `-Lebara` or `NOT Lebara` is every operator but Lebara, `NOT Leb*` every operator but those that start with Leb, and several exclusions leave out each one;
+- values and exclusions together take the values but the excluded ones: `VF*` with `-VF SM` is every VF variant but VF SM.
+
+Patterns come first in their list, tagged **pattern** or **except**, and an operator of the Operator Maps is taken or left out with the spellings of the CDRs it stands for.
 
 ## Filter Builder
 

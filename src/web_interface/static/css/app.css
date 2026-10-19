@@ -60,6 +60,7 @@ select[multiple] { min-height: 10rem; border-radius: 18px; padding-right: 0.55re
 .native-select-menu { position: fixed; z-index: 2147483000; box-sizing: border-box; display: grid; align-content: start; gap: .1rem; width: max-content; max-width: min(34rem, calc(100vw - 1rem)); padding: .4rem; overflow: auto; border: 1px solid var(--line); border-radius: 16px; background: rgba(255, 253, 250, .99); box-shadow: 0 24px 56px rgba(18, 32, 43, .18); color: var(--text); font-size: .86rem; font-weight: 600; line-height: 1.35; text-align: left; outline: none; }
 .native-select-search { position: sticky; top: -.4rem; z-index: 1; box-sizing: border-box; width: 100%; min-height: 2.25rem; margin: -.4rem 0 .25rem; padding: .45rem .7rem; border: 1px solid var(--line); border-radius: 12px; background: #fff; box-shadow: 0 0 0 .4rem rgba(255, 253, 250, .99); color: var(--text); font: inherit; font-weight: 500; }
 .native-select-group { padding: .5rem .7rem .15rem 1.85rem; color: var(--muted); font-size: .68rem; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
+.native-select-group.is-divided { margin-top: .3rem; border-top: 1px solid var(--line, #dbe3e7); padding-top: .55rem; }
 .native-select-option { display: flex; align-items: baseline; gap: .45rem; padding: .38rem .8rem .38rem .55rem; border-radius: 10px; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .native-select-option::before { content: ''; flex: 0 0 .9rem; color: var(--brand); font-weight: 900; text-align: center; }
 .native-select-option[aria-selected="true"] { color: var(--brand); font-weight: 800; }
@@ -4612,6 +4613,7 @@ body:has(dialog.vendor-mapping-dialog[open]) { overflow: hidden; }
 .scoring-report-dialog .scoring-report-action:not(:disabled):hover { filter: brightness(.93); }
 .scoring-report-dialog .scoring-report-action:disabled { opacity: .45; cursor: not-allowed; }
 .scoring-report-filters { display: grid; grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr)); gap: .4rem; }
+.scoring-report-page-scope { margin: .1rem 0 .3rem; font-size: .78rem; }
 .scoring-report-picker { position: relative; min-width: 0; max-width: 100%; }
 .scoring-report-picker > summary { overflow: hidden; padding: .35rem .55rem; border: 1px solid #b9c9d6; border-radius: 8px; background: #fff; cursor: pointer; font-size: .78rem; white-space: nowrap; text-overflow: ellipsis; }
 .scoring-report-picker-list { position: absolute; z-index: 5; top: calc(100% + .2rem); left: 0; display: grid; gap: .1rem; min-width: 100%; max-height: 16rem; overflow: auto; padding: .4rem; border: 1px solid #b9c9d6; border-radius: 8px; background: #fff; box-shadow: 0 8px 20px rgba(23, 35, 45, .18); }
@@ -5385,6 +5387,11 @@ body:has(> .unassigned-values-card:not([hidden], .is-collapsed)) { padding-botto
 .app-log-when > .user-choice-tag { margin-left: 0; }
 /* The time of an event in green, like the default user tag. */
 .user-choice-tag.user-choice-tag-time { border-color: #a8dccf; background: #e3f4f0; color: #0b6b66; letter-spacing: .02em; font-variant-numeric: tabular-nums; }
+/* A pattern of a choice of values (VF*), which takes every value it matches. */
+.user-choice-tag.user-choice-tag-pattern { border-color: #c9c3ef; background: #efedfb; color: #4b3fa0; }
+.multiselect-pattern-add, .rj-multi-pattern-add { display: block; width: 100%; margin: .25rem 0; padding: .45rem .7rem; border: 1px dashed #b9b2e6; border-radius: 10px; background: #f6f4fd; color: #4b3fa0; font-size: .78rem; font-weight: 700; text-align: left; box-shadow: none; }
+.multiselect-pattern-add[hidden], .rj-multi-pattern-add[hidden] { display: none; }
+.multiselect-pattern-help { margin: .2rem .15rem .35rem; color: var(--muted); font-size: .72rem; line-height: 1.35; white-space: normal; max-width: 22rem; }
 /* Every badge of the App Events table (the time, the username or application, where it ran) has one size. */
 .app-logs-table { --app-log-badge-size: 0.64rem; }
 .app-logs-table .user-choice-tag.app-log-badge { font-size: var(--app-log-badge-size); padding: 0.06rem 0.45rem; line-height: 1.3; }

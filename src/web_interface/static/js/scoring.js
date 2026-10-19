@@ -888,10 +888,82 @@
     };
   }
 
-  // The Compared operators: those GAP Analysis compares with the GAP reference, on the page and in its exports (all
-  // without any).
+  // The Focus operators of the PowerPoint and Word exports (operators, or patterns such as VF* where * stands for any
+  // characters; every operator without any): those of Where to act, the locations ranked, the individual GAP tables,
+  // the GAP by part, the KPI GAP Profile and the Points Lost views. The page itself shows every operator.
   function chosenComparedOperators() {
     return comparedOperatorsSelect ? [...comparedOperatorsSelect.selectedOptions].map(option => option.value).filter(Boolean) : [];
+  }
+
+  // A Focus operator that is a pattern (VF*, -Lebara), or one the CDRs no longer have, as a choice of its own.
+  function focusPatternOption(value) {
+    const option = new Option(value, value);
+    if (globalThis.valuePatterns?.isPattern(value)) {
+      Object.assign(option.dataset, {tag: globalThis.valuePatterns.tag(value), tagClass: 'user-choice-tag-pattern'});
+    }
+    return option;
+  }
+
+  // Whether an operator (by its name or label) is a Focus operator: one of their names, or a pattern (VF*, -Lebara; see
+  // valuePatterns in app.js), whatever the case (every operator without them, or when none of ``operators`` is one of them).
+  function focusMatcher(operators = []) {
+    const chosen = globalThis.valuePatterns.set(chosenComparedOperators());
+    const matches = (...names) => chosen.accepts(...names);
+    if (!chosen.size || (operators.length && !operators.some(name => matches(name)))) return () => true;
+    return matches;
+  }
+
+  // The Focus operators among ``items`` (each with its ``operator`` and ``label``) and the others; none are Focus
+  // operators when they are every operator or none of them.
+  function focusSplit(items) {
+    const isFocus = focusMatcher(items.map(item => item.operator));
+    const focused = chosenComparedOperators().length ? items.filter(item => isFocus(item.operator, item.label)) : [];
+    return focused.length && focused.length < items.length
+      ? {focused, others: items.filter(item => !focused.includes(item))} : {focused: [], others: items};
+  }
+
+  // The options of a choice of operators ([value, text, operator, label]), the Focus operators first under a Focus heading,
+  // with a line before the others.
+  function appendFocusOptions(select, entries) {
+    const option = ([value, text]) => Object.assign(document.createElement('option'), {value, textContent: text});
+    const {focused, others} = focusSplit(entries.map(entry => ({operator: entry[2], label: entry[3], entry})));
+    if (!focused.length) {
+      select.append(...entries.map(option));
+      return;
+    }
+    const focusGroup = Object.assign(document.createElement('optgroup'), {label: 'Focus'});
+    focusGroup.append(...focused.map(item => option(item.entry)));
+    const otherGroup = Object.assign(document.createElement('optgroup'), {label: 'Other operators'});
+    otherGroup.dataset.dividerBefore = 'true';
+    otherGroup.append(...others.map(item => option(item.entry)));
+    select.append(focusGroup, otherGroup);
+  }
+
+  // The chips of a choice of operators, the Focus operators first beside a Focus tag, with a line before the others.
+  function appendFocusChips(group, operators, makeChip) {
+    const {focused, others} = focusSplit(operators);
+    if (!focused.length) {
+      group.append(...operators.map(makeChip));
+      return;
+    }
+    group.classList.add('has-focus-operators');
+    const focusRow = document.createElement('span');
+    focusRow.className = 'scoring-focus-operators';
+    focusRow.append(Object.assign(document.createElement('span'), {className: 'scoring-focus-tag', textContent: 'Focus'}),
+      ...focused.map(makeChip));
+    const otherRow = document.createElement('span');
+    otherRow.className = 'scoring-other-operators';
+    otherRow.append(...others.map(makeChip));
+    group.append(focusRow, otherRow);
+  }
+
+  // The operators a choice of the sections the Focus operators choose starts with: the Focus operators (else every
+  // operator but the reference, else every operator).
+  function focusDefault(operators, {withReference = false} = {}) {
+    const {focused} = focusSplit(operators);
+    const candidates = withReference ? operators : operators.filter(item => !item.is_reference);
+    const chosen = focused.filter(item => withReference || !item.is_reference);
+    return (chosen.length ? chosen : candidates.length ? candidates : operators).map(item => item.operator);
   }
 
   async function saveComparedOperators(savedFilter) {
@@ -907,12 +979,6 @@
     } catch (_error) {
       // A reader cannot change it: the page keeps its choice.
     }
-  }
-
-  function isComparedOperator(operator, label = '') {
-    const chosen = chosenComparedOperators().map(value => value.toLocaleLowerCase());
-    if (!chosen.length) return true;
-    return [operator, label, canonicalOperatorName(operator)].some(name => name && chosen.includes(String(name).toLocaleLowerCase()));
   }
 
   function calculationSelectionKey(selection) {
@@ -1019,6 +1085,11 @@
       }
       if (comparedOperatorsSelect && Array.isArray(selection?.compared_operators)) {
         const compared = new Set(selection.compared_operators.map(value => String(value).toLocaleLowerCase()));
+        // Patterns (VF*) and operators the CDRs no longer have are kept as choices of their own.
+        const listed = new Set([...comparedOperatorsSelect.options].map(option => option.value.toLocaleLowerCase()));
+        for (const value of selection.compared_operators.map(String).filter(value => value.trim() && !listed.has(value.toLocaleLowerCase()))) {
+          comparedOperatorsSelect.add(focusPatternOption(value));
+        }
         for (const option of comparedOperatorsSelect.options) option.selected = compared.has(option.value.toLocaleLowerCase());
         comparedOperatorsSelect.dispatchEvent(new Event('multiselect:options-updated'));
       }
@@ -2055,13 +2126,13 @@
           profileMeta.append(detail);
         }
       }
-      // The Compared operators of its GAP Analysis (every operator without any), on the line of the GAP reference.
+      // The Focus operators of its exports (every operator without any), on the line of the GAP reference.
       const comparedValue = document.createElement('strong');
       comparedValue.className = 'saved-filter-compared';
       const comparedOperators = Array.isArray(savedFilter.compared_operators) ? savedFilter.compared_operators : [];
       comparedValue.textContent = comparedOperators.length ? comparedOperators.join(', ') : 'All operators';
-      meta.append(' · Compared operators: ', comparedValue);
-      // The Split by, the GAP reference with the Compared operators, the methodology, then the Geographical Areas and
+      meta.append(' · Focus operators: ', comparedValue);
+      // The Split by, the GAP reference with the Focus operators, the methodology, then the Geographical Areas and
       // the Scoring Trends.
       button.append(...[aggregation, meta, profileMeta, areaMeta, trendMeta].filter(Boolean));
       const duration = savedFilterDurationText(savedFilter);
@@ -2309,9 +2380,9 @@
   }
 
   // A progress dialog stays open while the document is generated, then the browser downloads it.
-  // Generate Scoring Report (Calculation panel) opens the report editor: one or more scenarios with
-  // their filters, aggregation and the content of each scoring, from the CDRs, NR Mode, methodology
-  // and GAP reference selected in the Calculation panel.
+  // Generate Scoring Report (Calculation panel) opens the report editor, which only chooses the content of the report
+  // (its scorings, environments and sections): it takes the CDRs, NR Mode, filters, Split by, Geographical Areas &
+  // Scoring Trends, GAP reference, Focus operators, methodology and theme of the page.
   async function generateScoringReport() {
     if (!window.ScoringReportEditor) return;
     const selection = calculationPayload();
@@ -2339,7 +2410,7 @@
       title: 'Scoring & GAP Analysis report',
       configuration: state?.last || window.ScoringReportEditor.defaultConfiguration(defaults),
       context: {filterOptions, operators: filterOptions.Operator || [], mainCities, defaults, operatorGroups,
-        themes: scoringThemes, theme: activeTheme?.id || 'netcheck'},
+        themes: scoringThemes, theme: activeTheme?.id || 'netcheck', pageScope: true},
       actions: [['word', 'Generate Word'], ['ppt', 'Generate PowerPoint']],
     });
     if (!choice) return;
@@ -2348,6 +2419,9 @@
         method: 'POST', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
           configuration: choice.configuration, split_charts: true, dataset_ids: selection.dataset_ids.map(Number),
+          // Every scenario takes the filters, Split by and Geographical Areas & Scoring Trends of the Calculation panel.
+          context_filters: selection.context_filters, aggregation_levels: selection.aggregation_levels,
+          area_summary: selection.area_summary,
           nr_mode: selection.nr_mode, baseline_operator: selection.baseline_operator,
           scoring_profile_id: selection.scoring_profile_id || null, compared_operators: chosenComparedOperators(),
         }),
@@ -4010,8 +4084,7 @@
     const baseline = canonicalOperatorName(baselineRaw) || baselineRaw;
     const allColumns = hierarchyColumnEntries(tableData, styleSource, false)
       .filter(column => !hierarchyColumnIsReference(column)
-        && hierarchyColumnOperator(column).toLocaleLowerCase() !== baseline.toLocaleLowerCase()
-        && isComparedOperator(hierarchyColumnOperator(column)));
+        && hierarchyColumnOperator(column).toLocaleLowerCase() !== baseline.toLocaleLowerCase());
     const operators = [...new Set(allColumns.map(hierarchyColumnOperator).filter(Boolean))];
     const comparisonStateKey = gapComparisonIdentity(tableData, 'hierarchy-gap');
     let comparison = gapComparisonSelections.get(comparisonStateKey) || 'all';
@@ -4045,13 +4118,8 @@
       allOption.textContent = `All vs ${baseline}`;
       allOption.selected = comparison === 'all';
       select.append(allOption);
-      for (const operator of operators) {
-        const option = document.createElement('option');
-        option.value = `operator:${operator}`;
-        option.textContent = `${operator} vs ${baseline}`;
-        option.selected = comparison === option.value;
-        select.append(option);
-      }
+      appendFocusOptions(select, operators.map(operator => [`operator:${operator}`, `${operator} vs ${baseline}`, operator, operator]));
+      select.value = comparison;
       label.append(select);
       controls.append(label);
       pane.append(controls);
@@ -4301,8 +4369,7 @@
     const baseline = operatorPresentation(selected, baselineRaw || 'the reference operator').label;
     const operators = (Array.isArray(selected.operators) ? selected.operators : [])
       .map(String)
-      .filter(operator => operator.toLowerCase() !== baselineRaw.toLowerCase())
-      .filter(operator => isComparedOperator(operator, operatorPresentation(selected, operator).label));
+      .filter(operator => operator.toLowerCase() !== baselineRaw.toLowerCase());
     const comparisonStateKey = gapComparisonIdentity(selected, `gap-summary:${baselineRaw}`);
     let comparison = gapComparisonSelections.get(comparisonStateKey) || 'all';
     const selectedOperator = comparison.startsWith('operator:') ? comparison.slice('operator:'.length) : null;
@@ -4322,14 +4389,11 @@
     allOption.textContent = `All vs ${baseline}`;
     allOption.selected = comparison === 'all';
     select.append(allOption);
-    for (const operator of operators) {
+    appendFocusOptions(select, operators.map(operator => {
       const presentation = operatorPresentation(selected, operator);
-      const option = document.createElement('option');
-      option.value = `operator:${operator}`;
-      option.textContent = `${presentation.label} vs ${baseline}`;
-      option.selected = comparison === option.value;
-      select.append(option);
-    }
+      return [`operator:${operator}`, `${presentation.label} vs ${baseline}`, operator, presentation.label];
+    }));
+    select.value = comparison;
     label.append(select);
     controls.append(label);
     pane.append(controls);
@@ -6075,17 +6139,22 @@
       .join(' · ');
   }
 
-  function insightSelect(key, options, label, fallback = options[0]?.[0]) {
+  // With ``focus`` the options are operators ([operator, label]): the Focus operators come first (see appendFocusOptions).
+  function insightSelect(key, options, label, fallback = options[0]?.[0], {focus = false} = {}) {
     const wrapper = document.createElement('label');
     wrapper.className = 'scoring-environment-filter scoring-insight-select';
     wrapper.append(document.createTextNode(label));
     const select = document.createElement('select');
     select.dataset.insightSelect = key;
-    for (const [value, text] of options) {
-      const option = document.createElement('option');
-      option.value = value;
-      option.textContent = text;
-      select.append(option);
+    if (focus) {
+      appendFocusOptions(select, options.map(([value, text]) => [value, text, value, text]));
+    } else {
+      for (const [value, text] of options) {
+        const option = document.createElement('option');
+        option.value = value;
+        option.textContent = text;
+        select.append(option);
+      }
     }
     const stored = insightSelections.get(key);
     select.value = options.some(([value]) => value === stored) ? stored : fallback ?? '';
@@ -6598,13 +6667,14 @@
     let chosen = Array.isArray(stored)
       ? [...new Set([...stored.filter(operator => names.includes(operator)), ...operators.filter(newlyOffered).map(item => item.operator)])]
       : [];
-    if (!chosen.length) chosen = [...names];
+    // Without a choice, the Focus operators (else every operator).
+    if (!chosen.length) chosen = focusDefault(operators, {withReference: true});
     const group = document.createElement('div');
     group.className = 'scoring-environment-filter scoring-loss-operators';
     group.setAttribute('role', 'group');
     group.setAttribute('aria-label', 'Operators');
     group.append(document.createTextNode('Operators: '));
-    for (const item of operators) {
+    const makeChip = item => {
       const chip = document.createElement('button');
       chip.type = 'button';
       chip.className = 'scoring-loss-operator';
@@ -6618,8 +6688,9 @@
         : chosen.length > 1 ? `Click to disable ${item.label}` : `${item.label} is the only enabled operator: click another one to enable it too`;
       const color = safeHexColor(item.color);
       if (color) chip.style.setProperty('--operator-color', color);
-      group.append(chip);
-    }
+      return chip;
+    };
+    appendFocusChips(group, operators, makeChip);
     controls.append(group);
     return {controls, inScope, chosen};
   }
@@ -6698,7 +6769,8 @@
     try { stored = JSON.parse(insightSelections.get(key) || 'null'); } catch (_error) { stored = null; }
     let chosen = Array.isArray(stored) ? stored.filter(name => names.includes(name)) : [];
     if (!chosen.length) {
-      chosen = compared ? operators.filter(item => !item.is_reference).map(item => item.operator) : [...names];
+      // The sections the Focus operators choose start with them, the others with every operator.
+      chosen = compared ? focusDefault(operators) : [...names];
       if (!chosen.length) chosen = [...names];
     }
     const group = document.createElement('div');
@@ -6706,7 +6778,7 @@
     group.setAttribute('role', 'group');
     group.setAttribute('aria-label', 'Operators');
     group.append(document.createTextNode('Operators: '));
-    for (const item of operators) {
+    const makeChip = item => {
       const chip = document.createElement('button');
       chip.type = 'button';
       chip.className = 'scoring-loss-operator';
@@ -6719,8 +6791,10 @@
         : chosen.length > 1 ? `Click to disable ${item.label}` : `${item.label} is the only enabled operator: click another one to enable it too`;
       const color = safeHexColor(item.color);
       if (color) chip.style.setProperty('--operator-color', color);
-      group.append(chip);
-    }
+      return chip;
+    };
+    if (compared) appendFocusChips(group, operators, makeChip);
+    else group.append(...operators.map(makeChip));
     return {control: group, chosen};
   }
 
@@ -6872,8 +6946,9 @@
     const all = views.flat();
     if (!all.length) return;
     const operators = [...new Map(all.map(item => [item.operator, item.label || item.operator])).entries()];
-    const fallback = (all.find(item => !item.is_reference) || all[0]).operator;
-    const {wrapper: operatorControl, value: operator} = insightSelect('act-operator', operators, 'Operator', fallback);
+    // The first Focus operator by default (else the first operator compared with the reference).
+    const fallback = focusDefault([...new Map(all.map(item => [item.operator, item])).values()])[0];
+    const {wrapper: operatorControl, value: operator} = insightSelect('act-operator', operators, 'Operator', fallback, {focus: true});
     // Each performance owner keeps one colour of the categories of the theme on every view and in the exports, in the
     // order of the owners of the results (scoring_where_to_act.owner_order).
     const ownerOrder = payload?.views?.insights?.owner_order;
@@ -7559,7 +7634,7 @@
     const {control: scopeControl, inScope, context} = insightScopeControl('stretches-scope', items, {withCampaign: true});
     const operators = inScope.map(item => [item.operator, item.label]);
     const {wrapper: operatorControl, value: storedOperator} = insightSelect('stretches-operator', operators, 'Operator',
-      (inScope.find(item => !item.is_reference) || inScope[0])?.operator);
+      focusDefault(inScope)[0], {focus: true});
     const item = inScope.find(entry => entry.operator === storedOperator) || inScope[0];
     const routes = item.routes.map(route => [route.route, `${route.route} (${insightNumber(route.points, 1)})`]);
     const {wrapper: routeControl, value: storedRoute} = insightSelect('stretches-route', routes, 'Route');
@@ -9349,9 +9424,8 @@
       return;
     }
     if (event.target === comparedOperatorsSelect) {
-      // What GAP Analysis compares, without calculating again; the open Saved Filter keeps them.
+      // The Focus operators of the exports, without calculating again; the open Saved Filter keeps them.
       scheduleSelectionSave();
-      if (currentResults) renderResult(currentResults, selectedSavedFilter, ['gap']);
       if (!restoringSelection && !editingSavedFilter && selectedSavedFilter) saveComparedOperators(selectedSavedFilter);
       return;
     }

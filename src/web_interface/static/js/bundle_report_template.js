@@ -191,8 +191,9 @@
     modeRow.append(mode);
     const grid = node('div', undefined, 'brt-filter-grid');
     const fields = FILTERS.map(([key, label, valuesKey]) => {
+      // The Operators take patterns (VF*, -Lebara; see valuePatterns in app.js).
       const extra = key === 'cities' ? {preset: {label: 'Main Cities (workspace list at each export)', values: options.main_cities || [],
-        checked: filters.main_cities, dynamic: true}} : {};
+        checked: filters.main_cities, dynamic: true}} : key === 'operators' ? {patterns: true} : {};
       filterPickers[key] = multiField(label, options.values?.[valuesKey] || [], filters[key], extra);
       return filterPickers[key];
     });
@@ -238,8 +239,8 @@
     const operators = operatorValues();
     const reference = selectField('GAP reference', (operators.includes(saved.baseline_operator) ? operators : [saved.baseline_operator, ...operators])
       .map((value) => [value, value]), saved.baseline_operator);
-    const compared = multiField('Compared operators', operators, saved.compared_operators);
-    compared.title = 'The operators GAP Analysis compares with the GAP reference (all when none is chosen)';
+    const compared = multiField('Focus operators', operators, saved.compared_operators, {patterns: true});
+    compared.title = pickers().FOCUS_OPERATORS_TITLE || '';
     const tables = node('fieldset', undefined, 'brt-choice-group');
     tables.append(node('legend', 'Scoring tables'));
     const kpiValues = check('Show KPI values', saved.kpi_values);
@@ -287,7 +288,7 @@
     const columns = node('div', undefined, 'brt-trends-columns');
     columns.append(area, trendOptions);
     trends.append(columns);
-    // The GAP reference, the Compared operators and the Methodology go beside the Campaigns of the section, as on the
+    // The GAP reference, the Focus operators and the Methodology go beside the Campaigns of the section, as on the
     // Scoring & GAP Analysis page.
     box.scopeFields = [reference, compared, methodology];
     box.append(scorings, environments, tables, trends);

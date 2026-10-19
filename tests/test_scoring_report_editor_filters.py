@@ -242,3 +242,41 @@ console.log(JSON.stringify(result));
     # The campaigns of the Scoring Trends are All available campaigns by default.
     assert result['trends'] == {'choice': '@all-campaigns', 'campaigns': ['@all-campaigns'], 'legend': True,
                                 'preset': ['@latest-2-campaigns']}
+
+
+@pytest.mark.skipif(not shutil.which('node'), reason='Node.js is required')
+def test_operator_patterns_are_kept_and_listed_first_in_the_report_scenarios():
+    app = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/app.js').read_text(encoding='utf-8')
+    # The patterns of the page (valuePatterns), as app.js defines them.
+    helper = app[app.index('const VALUE_EXCLUSION'):app.index('function setupCustomMultiSelects() {')]
+    el_start = SCRIPT.index('  const el = (tag, className, text) => {')
+    el_end = SCRIPT.index('  };\n', el_start) + 5
+    program = DOM + helper + SCRIPT[el_start:el_end] + "const campaignField = () => false;\nconst completeOptions = () => {};\n" \
+        + _function('checkbox') + _function('checklist') + _function('operatorCanonicalizer') + r'''
+// A configuration keeps its patterns (resolved when the report is generated), not the operators the CDRs no longer have.
+const loaded = operatorCanonicalizer([]).configuration({scenarios: [{context_filters: {Operator: ['Not Lebara', 'VF*', 'Gone', 'EE']}, scorings: {}}]},
+  {filterOperators: ['EE', 'VF']});
+const picker = checklist('Operator', ['EE', 'VF', 'Lebara'], ['Not Lebara'], () => {}, {allOption: true, patterns: true});
+const rows = picker.children[1].children.filter(node => node.tagName === 'LABEL');
+console.log(JSON.stringify({kept: loaded.scenarios[0].context_filters.Operator, summary: picker.children[0].textContent,
+  first: rows.slice(0, 2).map(row => [row.text, row.className.trim()])}));
+'''
+    completed = subprocess.run(['node', '-e', program], capture_output=True, text=True, check=True)
+    result = json.loads(completed.stdout)
+    assert result['kept'] == ['Not Lebara', 'VF*', 'EE']
+    assert result['summary'] == 'Operator: Not Lebara'
+    # The pattern comes first, tagged by what it does, before the All row and the operators.
+    assert result['first'][0] == ['Not Lebaraexcept', 'scoring-report-check scoring-report-pattern']
+
+
+def test_the_report_of_the_page_takes_the_filters_of_its_calculation_panel():
+    page = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/scoring.js').read_text(encoding='utf-8')
+    # The scenarios of the page report choose only their content: no filters, Split by or Geographical Areas & Scoring
+    # Trends in the editor, which the request takes from the Calculation panel.
+    assert "themes: scoringThemes, theme: activeTheme?.id || 'netcheck', pageScope: true}," in page
+    assert "context_filters: selection.context_filters, aggregation_levels: selection.aggregation_levels," in page
+    assert "if (context.pageScope) {" in SCRIPT
+    # One report: no saved configurations, theme or JSON files, and no other scenarios.
+    assert "state.scenarios = state.scenarios.slice(0, 1);" in SCRIPT
+    assert "if (!context.pageScope) header.append(toolbar);" in SCRIPT
+    assert "dialog.append(header, list, ...(context.pageScope ? [] : [add]), footer);" in SCRIPT

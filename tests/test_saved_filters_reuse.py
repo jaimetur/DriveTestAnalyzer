@@ -445,3 +445,21 @@ def test_favourites_filters_out_of_date_are_calculated_while_the_application_is_
     assert event['username'] == 'system' and '"idle": true' in event['details'] and 'Weekly view' in event['details']
     assert ('_calculate_favourites_filters_when_idle' in
             [callback.__name__ for _seconds, callback in app_module.IDLE_TASK_CALLBACKS])
+
+
+def test_operator_filters_take_patterns_and_exclusions_when_they_are_calculated(tmp_path):
+    repository = _workspace(tmp_path, 'w')
+    ids = _three_cdrs(repository, tmp_path / 'w')
+
+    def scored(values):
+        saved, _ = saved_filters.save_saved_filter(repository, ids, ['Operator'], 'NSA', context_filters={'Operator': values})
+        result = saved_filters.calculate_saved_filter(repository, saved['id'])['result']
+        return saved, sorted({str(row.get('operator') or row.get('Operator')) for row in result['scoring']})
+
+    excluded, operators = scored(['Not Three*'])
+    assert operators == ['EE', 'Vodafone UK'] and excluded['context_filters']['Operator'] == ['Not Three*']
+    assert scored(['vodafone*', 'EE'])[1] == ['EE', 'Vodafone UK']
+    # Kept as such in the documents of the Saved Filters, which take them to other workspaces.
+    saved_filters.update_saved_filter(repository, excluded['id'], pinned=True)
+    [entry] = saved_filters.saved_filters_document(repository, favourites_only=True)['saved_filters']
+    assert entry['context_filters']['Operator'] == ['Not Three*']

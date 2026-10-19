@@ -68,6 +68,7 @@ from src.modules.repository import Repository
 from src.modules.cdr_report_filenames import build_cdr_report_filename
 from src.modules.runtime_config import ignore_event_time_filtering
 from src.modules.ingestion import apply_operator_mappings
+from src.modules.value_patterns import ValueSet
 
 KINDS = ('data', 'voice', 'speech')
 
@@ -358,8 +359,9 @@ def filter_mask(frame, definition, exclude=None):
             return pd.Series(False, index=frame.index)
         if identity(vendor_filter_column(field)) in {'vendor', 'operatorvendor'}:
             values = vendor_match_values(field, values, frame.attrs.get('operator_mappings', {}))
-        accepted = {str(value).strip().casefold() for value in values}
-        mask &= field_values.astype(str).str.strip().str.casefold().isin(accepted)
+        # Patterns (VF*, Not Lebara) take every value they match (see value_patterns); an explicit empty selection none.
+        chosen = ValueSet(values)
+        mask &= chosen.mask(field_values.astype(str)) if chosen else pd.Series(False, index=frame.index)
     concrete_from = definition.date_from if isinstance(definition.date_from, date) and not ignore_event_time_filtering() else None
     concrete_to = definition.date_to if isinstance(definition.date_to, date) and not ignore_event_time_filtering() else None
     if concrete_from or concrete_to:

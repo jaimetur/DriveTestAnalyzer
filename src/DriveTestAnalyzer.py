@@ -6256,8 +6256,11 @@ def recreate_combined_cdr_table(
 
 
 def choose_filter_values(query_values: list[str], options: dict[str, list[str]], key: str) -> list[str]:
+    from src.modules.value_patterns import is_pattern
+
     values = options.get(key, [])
-    selected = [value for value in query_values if value in values]
+    # Patterns (VF*) are kept: they take every value they match (see value_patterns).
+    selected = [value for value in query_values if value in values or is_pattern(value)]
     if selected:
         return selected
     if query_values:
@@ -18254,8 +18257,9 @@ def _queue_saved_filter_calculation(task_repository: Repository, filter_id: int)
 
 # While nobody uses the application, the Favourites Filters of the open workspace whose result no longer matches their
 # CDRs, methodology or Operator Maps (such as those of Latest campaign once a new campaign arrives), or that have none
-# yet, are calculated one after another with their Points Lost Maps, so they open at once.
-FAVOURITES_FILTERS_IDLE_SECONDS = 2 * 60
+# yet, are calculated one after another with their Points Lost Maps, so they open at once (after the Scoring History
+# indexing of the idle server, which their calculations read).
+FAVOURITES_FILTERS_IDLE_SECONDS = 3 * 60
 
 
 def _calculate_favourites_filters_when_idle() -> None:
@@ -18941,7 +18945,7 @@ def build_scoring_report_document(task_repository: Repository, base: dict[str, A
 
 class ScoringReportRequest(BaseModel):
     configuration: dict[str, Any]
-    # The Compared operators of the page: those GAP Analysis compares with the reference (all without any).
+    # The Focus operators of the page (operators or patterns; all without any).
     compared_operators: list[str] | None = None
     split_charts: bool = True
     # The CDRs, NR Mode, methodology and GAP reference chosen in the Calculation panel.
@@ -18949,6 +18953,11 @@ class ScoringReportRequest(BaseModel):
     nr_mode: str = 'NSA'
     baseline_operator: str = 'EE'
     scoring_profile_id: str | None = None
+    # The filters, Split by and Geographical Areas & Scoring Trends of the Calculation panel, which every scenario
+    # takes (the configuration chooses their content).
+    context_filters: dict[str, list[str]] | None = None
+    aggregation_levels: list[str] | None = None
+    area_summary: dict[str, Any] | None = None
 
 
 class ScoringReportConfigurationRequest(BaseModel):
@@ -18971,11 +18980,21 @@ def scoring_report(export_kind: str, payload: ScoringReportRequest, user: Sessio
             'scoring_profile_id': payload.scoring_profile_id or None,
             **({'compared_operators': [str(name) for name in payload.compared_operators if str(name).strip()]}
                if payload.compared_operators is not None else {})}
+    configuration = payload.configuration
+    if payload.context_filters is not None or payload.aggregation_levels is not None or payload.area_summary is not None:
+        # Every scenario with the filters, Split by and Geographical Areas & Scoring Trends of the Calculation panel.
+        page_scope = {
+            'context_filters': {str(field): list(values) for field, values in (payload.context_filters or {}).items() if values},
+            'main_cities': False, 'aggregation_levels': list(payload.aggregation_levels or ['Operator']),
+            **({'area_summary': payload.area_summary} if payload.area_summary is not None else {}),
+        }
+        configuration = {**configuration, 'scenarios': [{**scenario, **page_scope} for scenario in configuration.get('scenarios') or []
+                                                        if isinstance(scenario, dict)]}
     try:
-        # The configuration in use is remembered when the document is requested, not when it is ready.
+        # The configuration in use (as chosen) is remembered when the document is requested, not when it is ready.
         remember_last_configuration(task_repository, payload.configuration)
         content, filename, _first = build_scoring_report_document(
-            task_repository, base, payload.configuration, user.username, split_charts=payload.split_charts,
+            task_repository, base, configuration, user.username, split_charts=payload.split_charts,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

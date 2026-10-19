@@ -367,3 +367,14 @@ def test_a_points_lost_map_gives_way_to_the_work_waiting_and_goes_on_later(histo
     submitted.pop()()
     result = saved_filters.get_saved_filter(repository, saved['id'], include_result=True)['result']
     assert 'shares' in result['points_loss'] and submitted == [] and saved_filters.points_loss_tasks(repository.db_path) == []
+
+
+def test_the_history_takes_the_operator_patterns_as_the_rows_of_the_cdrs(history_repository):
+    repository, ids, configuration = history_repository
+    scoring_history.sync_history(repository)
+    for filters in ({'Operator': ['Not Three*']}, {'Operator': ['vodafone*', 'EE']}):
+        by_rows = _by_rows(repository, ids, ['Operator'], configuration, filters)
+        from_history = scoring_history.calculate_scoring_from_history(repository, ids, ['Operator'], configuration=configuration,
+                                                                     context_filters=filters)
+        assert {row['operator'] for row in from_history['scoring']} == {'EE', 'Vodafone UK'}
+        _assert_same(by_rows, from_history)

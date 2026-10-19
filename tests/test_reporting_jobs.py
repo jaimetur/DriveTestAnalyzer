@@ -290,8 +290,10 @@ def test_reporting_jobs_travel_with_every_field_of_their_scoring_artifacts(clien
             'main_cities': True, 'campaigns': ['Latest 2 campaigns']}
     report = default_report_configuration()
     report['scenarios'][0]['area_summary'] = area
+    # Patterns (VF*, Not Lebara) travel as such, in the Operator filters and the Focus operators.
+    report['scenarios'][0]['context_filters'] = {'Operator': ['Not Lebara']}
     entry = {**SCORING_ENTRY, 'label': 'Every field', 'auto_cdrs': True, 'campaigns': ['Latest campaign'],
-             'formats': ['powerpoint', 'word'], 'baseline_operator': 'VF', 'compared_operators': ['EE', 'O2'], 'report': report}
+             'formats': ['powerpoint', 'word'], 'baseline_operator': 'VF', 'compared_operators': ['EE', 'O2', 'VF*'], 'report': report}
     created = client.post('/api/reporting/tasks', json={'name': 'Every field', 'definition': {'scoring': [entry]},
                                                          'schedule': {'mode': 'manual'}})
     assert created.status_code == 200, created.text
@@ -302,8 +304,9 @@ def test_reporting_jobs_travel_with_every_field_of_their_scoring_artifacts(clien
     [imported] = [item for item in report_tasks.list_tasks(core.repository) if item['name'] == 'Every field']
     assert imported['definition'] == task['definition']
     [scoring] = imported['definition']['scoring']
-    assert scoring['compared_operators'] == ['EE', 'O2'] and scoring['baseline_operator'] == 'VF'
+    assert scoring['compared_operators'] == ['EE', 'O2', 'VF*'] and scoring['baseline_operator'] == 'VF'
     assert scoring['report']['scenarios'][0]['area_summary'] == area
+    assert scoring['report']['scenarios'][0]['context_filters'] == {'Operator': ['Not Lebara']}
 
 def test_scoring_entries_choose_the_cdrs_of_their_campaigns_at_each_run(client, monkeypatch):
     definition = normalize_definition({'scoring': [

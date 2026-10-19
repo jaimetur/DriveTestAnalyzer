@@ -11,6 +11,9 @@
   "context_filters": {
     "Campaign": [
       "@latest-2-campaigns"
+    ],
+    "Operator": [
+      "Not Lebara"
     ]
   },
   "scoring_profile_id": "by-campaign",
@@ -23,5 +26,10 @@
       "@all-campaigns"
     ]
   },
-  "compared_operators": []
+  "compared_operators": [
+    "VF*",
+    "Vodafone*",
+    "Three*",
+    "3*"
+  ]
 }

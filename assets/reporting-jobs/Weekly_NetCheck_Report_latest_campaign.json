@@ -40,6 +40,9 @@
         "filters": {
           "Campaign": [
             "@latest-campaign"
+          ],
+          "Operator": [
+            "Not Lebara"
           ]
         }
       },
@@ -57,6 +60,9 @@
         "filters": {
           "Campaign": [
             "@latest-campaign"
+          ],
+          "Operator": [
+            "Not Lebara"
           ]
         }
       },
@@ -74,6 +80,9 @@
         "filters": {
           "Campaign": [
             "@latest-campaign"
+          ],
+          "Operator": [
+            "Not Lebara"
           ]
         }
       }
@@ -95,7 +104,11 @@
           "scenarios": [
             {
               "name": "National",
-              "context_filters": {},
+              "context_filters": {
+                "Operator": [
+                  "Not Lebara"
+                ]
+              },
               "main_cities": false,
               "aggregation_levels": [
                 "Operator",
@@ -165,7 +178,11 @@
             },
             {
               "name": "Main Cities",
-              "context_filters": {},
+              "context_filters": {
+                "Operator": [
+                  "Not Lebara"
+                ]
+              },
               "main_cities": true,
               "aggregation_levels": [
                 "Operator",
@@ -236,7 +253,13 @@
             }
           ],
           "name": "National & Main Cities"
-        }
+        },
+        "compared_operators": [
+          "VF*",
+          "Vodafone*",
+          "Three*",
+          "3*"
+        ]
       }
     ],
     "modules": {}

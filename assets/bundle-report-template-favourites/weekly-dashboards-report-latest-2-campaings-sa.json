@@ -5,7 +5,9 @@
     "subtitle": "SA · @Latest 2 campaings",
     "filters": {
       "nr_mode": "SA",
-      "operators": [],
+      "operators": [
+        "Not Lebara"
+      ],
       "operator_vendors": [],
       "vendor_operators": [],
       "vendors": [],
@@ -104,7 +106,12 @@
           "gap_values": false,
           "baseline_operator": "EE",
           "methodology": "by-campaign",
-          "compared_operators": [],
+          "compared_operators": [
+            "VF*",
+            "Vodafone*",
+            "Three*",
+            "3*"
+          ],
           "area_summary": {
             "enabled": true,
             "breakdown": "Region",

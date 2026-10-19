@@ -43,8 +43,8 @@ from src.modules.scoring_pptx_scorecard import apply_scorecard, style_legend_ban
 from src.modules.scoring_themes import DEFAULT_THEME, active_theme, themed, use_theme
 from src.modules.theme_titles import style_title
 from src.modules.scoring_act_slides import (
-    MAX_OPERATORS as MAX_ACT_OPERATORS, add_act_plan_slides, add_owner_card_slides, add_place_ranking_slides,
-    add_route_focus_slides, owner_names, owner_palette,
+    add_act_plan_slides, add_owner_card_slides, add_place_ranking_slides, add_route_focus_slides, owner_names,
+    owner_palette,
 )
 from src.modules.scoring_vendors import normalize_scoring_vendor_result
 from src.modules.scoring_views import (
@@ -2432,10 +2432,24 @@ def _option(options: dict | None, group: str, key: str, default: bool = True) ->
     return bool(supplied.get(key, default))
 
 
-def _compared_operator(options: dict | None, operator: str, label: str | None = None) -> bool:
-    """Whether a scenario compares this operator with the reference; an empty choice compares all."""
-    chosen = {str(name).casefold() for name in ((options or {}).get('gap') or {}).get('operators') or []}
-    return not chosen or str(operator).casefold() in chosen or str(label or '').casefold() in chosen
+def _everyone(_operator: str, _label: str | None = None) -> bool:
+    return True
+
+
+def focus_matcher(focus: Any, operators: Any = ()) -> Callable[..., bool]:
+    """Whether an operator (by its name or label) is one of the Focus operators: their names, or patterns (see
+    value_patterns: ``VF*`` for every VF variant, ``-Lebara`` for every operator but Lebara), whatever the case. Without
+    Focus operators, or when none of ``operators`` (those of the results) is one of them, every operator is."""
+    from src.modules.value_patterns import ValueSet
+
+    chosen = ValueSet(focus or [])
+
+    def matches(operator: str, label: str | None = None) -> bool:
+        return chosen.accepts([operator, label])
+    names = [str(name) for name in operators or [] if str(name).strip()]
+    if not chosen or (names and not any(matches(name) for name in names)):
+        return _everyone
+    return matches
 
 
 def _first_ranking_group(rankings: list[dict]) -> list[dict]:
@@ -2449,7 +2463,7 @@ def _first_ranking_group(rankings: list[dict]) -> list[dict]:
 
 
 def _add_insight_slides(presentation, views: dict, environment: str, scoring: str | None, configuration: dict,
-                        *, stage: str, options: dict | None = None) -> None:
+                        *, stage: str, options: dict | None = None, focus: Callable[..., bool] = _everyone) -> None:
     """Add the insight slides of one stage of an environment block, in the order of the results tabs.
 
     ``summary`` (after the cover): where each operator stands, its position, the biggest levers and how the measurements
@@ -2475,17 +2489,18 @@ def _add_insight_slides(presentation, views: dict, environment: str, scoring: st
     environment_labels = {name: _scoring_environment_title(name, configuration)
                           for name in configuration.get('scope', {}).get('environments', {})}
 
-    def compared(operator: str, operator_label: str | None = None) -> bool:
-        return _compared_operator(options, operator, operator_label)
-
+    # The Focus operators (see focus_matcher): those of Where to act and its performance owners, places and route, the
+    # locations ranked and against the reference, the GAP by part, the KPI GAP Profile and the Points Lost views; the
+    # other slides show every operator.
+    compared = focus
     # The operators each section of the page has enabled (sent with the export of a Saved Filter); without them, the
-    # operators the scenario compares, as the page shows by default (with the reference in the Summary only).
+    # Focus operators (every operator in the sections they do not choose).
     choices = views.get('_operator_choices') or {}
 
-    def chosen(section: str) -> Callable[..., bool]:
+    def chosen(section: str, default: Callable[..., bool] | None = None) -> Callable[..., bool]:
         names = {str(name).casefold() for name in choices.get(section) or []}
         if not names:
-            return compared
+            return default or compared
         return lambda operator, operator_label=None: (str(operator).casefold() in names
                                                       or str(operator_label or '').casefold() in names)
 
@@ -2499,12 +2514,17 @@ def _add_insight_slides(presentation, views: dict, environment: str, scoring: st
         if _option(options, 'summary', 'scope'):
             add_campaign_scope_slides(presentation, items.get('campaign_scope', []), subtitle=subtitle, new_slide=_slide,
                                       environment_labels=environment_labels)
-        # Where to act: for the operator chosen on the page, else the operators compared (two at most).
+        # Where to act: for the operator chosen on the page, else for every Focus operator (every operator but the
+        # reference without them, or when they are only the reference).
         act_items = {name: items.get(name, []) for name in ('act_plans', 'owner_cards', 'place_rankings', 'route_focus')}
-        act_chosen = chosen('act-operator')
-        act_operators = list(dict.fromkeys(item['operator'] for entries in act_items.values() for item in entries
-                                           if act_chosen(item['operator'], item.get('label'))
-                                           and (choices.get('act-operator') or not item.get('is_reference'))))[:MAX_ACT_OPERATORS]
+
+        def act_operators_of(accepted: Callable[..., bool]) -> list[str]:
+            return list(dict.fromkeys(item['operator'] for entries in act_items.values() for item in entries
+                                      if accepted(item['operator'], item.get('label'))
+                                      and (choices.get('act-operator') or not item.get('is_reference'))))
+        act_operators = act_operators_of(chosen('act-operator'))
+        if not act_operators and not choices.get('act-operator'):
+            act_operators = act_operators_of(_everyone)
         act_items = {name: sorted((item for item in entries if item['operator'] in act_operators),
                                   key=lambda item: act_operators.index(item['operator'])) for name, entries in act_items.items()}
         # The colours of the page: every owner of the results, in the order of their colours.
@@ -2516,13 +2536,14 @@ def _add_insight_slides(presentation, views: dict, environment: str, scoring: st
                                   owner_color=owner_color, scope=scope)
         if _option(options, 'summary', 'standings'):
             add_standings_slides(presentation, items.get('standings', []), scoring_label=label, subtitle=subtitle,
-                                 new_slide=_slide, scope=scope, compared=chosen('summary-operators'))
+                                 new_slide=_slide, scope=scope, compared=chosen('summary-operators', _everyone))
         if _option(options, 'summary', 'position'):
             add_position_matrix_slides(presentation, items.get('position_matrices', []), subtitle=subtitle, new_slide=_slide,
-                                       environment_labels=environment_labels, scope=scope, compared=chosen('summary-operators'))
+                                       environment_labels=environment_labels, scope=scope,
+                                       compared=chosen('summary-operators', _everyone))
         if _option(options, 'summary', 'levers'):
             add_levers_slides(presentation, items.get('levers', []), subtitle=subtitle, new_slide=_slide, scope=scope,
-                              compared=chosen('summary-operators'))
+                              compared=chosen('summary-operators', _everyone))
         if _option(options, 'summary', 'places'):
             add_place_ranking_slides(presentation, act_items['place_rankings'], subtitle=subtitle, new_slide=_slide,
                                      owner_color=owner_color, scope=scope)
@@ -2578,8 +2599,7 @@ def _add_insight_slides(presentation, views: dict, environment: str, scoring: st
             )
         if _option(options, 'points', 'map'):
             # The reference operator has its map too when it is one of the operators to compare.
-            maps = [item for item in items.get('points_loss_maps', [])
-                    if _compared_operator(options, item['operator'], item.get('label'))]
+            maps = [item for item in items.get('points_loss_maps', []) if compared(item['operator'], item.get('label'))]
             add_points_loss_slides(presentation, latest_campaign_items(maps), insights.get('points_loss_background') or [],
                                    scoring_label=label, subtitle=subtitle, new_slide=_slide,
                                    boundaries=views.get('_points_loss_boundaries'),
@@ -2605,9 +2625,7 @@ def _add_insight_slides(presentation, views: dict, environment: str, scoring: st
                                boundaries=boundaries('Area') if boundaries else None)
         return
     if stage == 'comparison' and _option(options, 'tables', 'campaign_comparison'):
-        comparisons = [item for item in items.get('campaign_comparisons', [])
-                       if options is None or _compared_operator(options, item['operator'], item.get('label'))]
-        add_campaign_comparison_slides(presentation, comparisons, scoring_label=label,
+        add_campaign_comparison_slides(presentation, items.get('campaign_comparisons', []), scoring_label=label,
                                        subtitle=subtitle, new_slide=_slide, scope=scope)
 
 
@@ -2628,8 +2646,11 @@ def _add_scoring_block(presentation, job: dict[str, Any], result: dict[str, Any]
                               else str(name).casefold() for name in environments} if environments else None)
     # The operators its GAP Analysis compares with the reference: those of the scenario, else the Compared operators of
     # the page (all without any).
-    page_compared = [str(name) for name in job.get('_compared_operators') or [] if str(name).strip()]
-    gap_options = options if options is not None else ({'gap': {'operators': page_compared}} if page_compared else None)
+    # The Focus operators of the scenario, else those of the page (see focus_matcher), with the operators of the results.
+    focus = focus_matcher(((options.get('gap') or {}).get('operators') if options is not None
+                           else job.get('_compared_operators')),
+                          {row.get('operator') or row.get('Operator') for row in result.get('scoring') or []
+                           if isinstance(row, dict)})
     combined_only = (options is not None and options.get('environments') != 'split') or selected_environments == {'combined'}
     if options is not None:
         show_gap_values = _option(options, 'tables', 'gap_values', False)
@@ -2702,7 +2723,6 @@ def _add_scoring_block(presentation, job: dict[str, Any], result: dict[str, Any]
 
     area_summaries = build_area_summary(
         job, result, operator_mapping_groups, vendor_mapping_groups=vendor_mapping_groups,
-        include_operator=lambda operator, label: _compared_operator(options, operator, label),
     )
 
     def environment_cover(environment_name: str) -> None:
@@ -2710,16 +2730,19 @@ def _add_scoring_block(presentation, job: dict[str, Any], result: dict[str, Any]
         if not combined_only:
             _add_scoring_intro_slides(presentation, job, result, environment=environment_name, scoring=scoring,
                                       level=environment_level)
-        _add_insight_slides(presentation, views, environment_name, scoring, configuration, stage='summary', options=options)
+        _add_insight_slides(presentation, views, environment_name, scoring, configuration, stage='summary', options=options,
+                            focus=focus)
         section('summary')
 
     trended: set[str] = set()
 
     def geographical_areas(environment_name: str) -> None:
-        _add_insight_slides(presentation, views, environment_name, scoring, configuration, stage='geographical_areas', options=options)
+        _add_insight_slides(presentation, views, environment_name, scoring, configuration, stage='geographical_areas',
+                            options=options, focus=focus)
         section('geographical_areas')
         # The Scoring Trends follow the Geographical Areas: the scoring trend, then the National & Geographical Areas Trends.
-        _add_insight_slides(presentation, views, environment_name, scoring, configuration, stage='trends', options=options)
+        _add_insight_slides(presentation, views, environment_name, scoring, configuration, stage='trends', options=options,
+                            focus=focus)
         if environment_name not in trended and _option(options, 'trends', 'areas'):
             trended.add(environment_name)
             add_area_summary_slides(
@@ -2731,11 +2754,12 @@ def _add_scoring_block(presentation, job: dict[str, Any], result: dict[str, Any]
         section('trends')
 
     def closing_stages(environment_name: str) -> None:
-        for stage in ('gaps', 'points', 'comparison'):
-            _add_insight_slides(presentation, views, environment_name, scoring, configuration, stage=stage, options=options)
+        for stage in ('gaps', 'points'):
+            _add_insight_slides(presentation, views, environment_name, scoring, configuration, stage=stage, options=options,
+                                focus=focus)
             section('gap' if stage == 'gaps' else stage)
 
-    def score_tables(matrix: dict, render) -> None:
+    def score_tables(matrix: dict, render, environment_name: str) -> None:
         for mode, title, key in (('summary', 'Scoring Tables — Summary', 'summary'),
                                  ('expanded', 'Scoring Tables — Breakdown', 'breakdown')):
             if _option(options, 'tables', key):
@@ -2743,6 +2767,10 @@ def _add_scoring_block(presentation, job: dict[str, Any], result: dict[str, Any]
                        gap_layout=gap_layout, show_gap_values=show_gap_values, title=title,
                        show_kpi_values=show_kpi_values and mode == 'expanded')
         section('tables')
+        # The comparison of the campaigns closes the Scoring Tables, as on the page.
+        _add_insight_slides(presentation, views, environment_name, scoring, configuration, stage='comparison', options=options,
+                            focus=focus)
+        section('comparison')
 
     use_hierarchy = bool(hierarchy_matrices) and len(hierarchy_matrices[0].get('hierarchy_levels', [])) > 1
     if use_hierarchy:
@@ -2765,24 +2793,20 @@ def _add_scoring_block(presentation, job: dict[str, Any], result: dict[str, Any]
                 if _option(options, 'charts', 'breakdown'):
                     _hierarchy_category_comparison_chart(presentation, matrix)
                 section('charts')
-                score_tables(matrix, _hierarchy_score_tables)
+                score_tables(matrix, _hierarchy_score_tables, current_environment)
                 geographical_areas(current_environment)
                 gap_matrix = gap_by_environment.get(matrix['context'].get('environment'))
                 if gap_matrix is not None:
                     # Finish the full comparison block before advancing to the next environment.
                     reference = _operator_label(gap_matrix, gap_matrix['baseline_operator'])
-                    compared_columns = [column for column in gap_matrix['hierarchy_columns']
-                                        if not column.get('is_reference')
-                                        and _compared_operator(gap_options, column['operator'],
-                                                               _operator_label(gap_matrix, column['operator']))]
+                    # Every operator against the reference; one by one, the Focus operators.
+                    compared_columns = [column for column in gap_matrix['hierarchy_columns'] if not column.get('is_reference')]
                     if compared_columns and _option(options, 'gap', 'all_operators'):
                         all_matrix = _hierarchy_gap_projection(_table_for_mode(gap_matrix, 'expanded'), compared_columns)
-                        title = (f'GAP Analysis — All vs {reference}' if gap_options is None
-                                 or not (gap_options.get('gap') or {}).get('operators')
-                                 else f'GAP Analysis — Compared operators vs {reference}')
-                        _hierarchy_gap_tables(presentation, [all_matrix], title=title)
+                        _hierarchy_gap_tables(presentation, [all_matrix], title=f'GAP Analysis — All vs {reference}')
                     if _option(options, 'gap', 'individual'):
-                        for operator in dict.fromkeys(column['operator'] for column in compared_columns):
+                        for operator in dict.fromkeys(column['operator'] for column in compared_columns
+                                                      if focus(column['operator'], _operator_label(gap_matrix, column['operator']))):
                             operator_columns = [column for column in gap_matrix['hierarchy_columns']
                                                 if column['operator'] == operator]
                             operator_matrix = _hierarchy_gap_projection(_table_for_mode(gap_matrix, 'expanded'),
@@ -2809,7 +2833,7 @@ def _add_scoring_block(presentation, job: dict[str, Any], result: dict[str, Any]
                 if _option(options, 'charts', 'breakdown'):
                     _charts(presentation, [matrix])
                 section('charts')
-                score_tables(matrix, _score_tables)
+                score_tables(matrix, _score_tables, current_environment)
                 geographical_areas(current_environment)
                 if _option(options, 'gap', 'all_operators'):
                     _gap_summary_tables(presentation, [_table_for_mode(table, 'expanded') for table in views['gap_summary_tables']
@@ -2817,8 +2841,7 @@ def _add_scoring_block(presentation, job: dict[str, Any], result: dict[str, Any]
                 if _option(options, 'gap', 'individual'):
                     _gap_tables(presentation, [_table_for_mode(table, 'expanded') for table in views['gap_tables']
                                                if table['context'] == matrix['context']
-                                               and _compared_operator(gap_options, table.get('operator', ''),
-                                                                      _operator_label(table, table.get('operator', '')))])
+                                               and focus(table.get('operator', ''), _operator_label(table, table.get('operator', '')))])
                 section('gap')
             closing_stages(current_environment)
     else:

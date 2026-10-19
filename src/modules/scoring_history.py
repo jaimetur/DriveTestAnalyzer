@@ -646,8 +646,10 @@ def _period(day: str, time_split: str) -> str | None:
     return _PERIODS[key]
 
 
-def _matcher(values: Iterable[str]) -> set[str]:
-    return {str(value).strip().lower() for value in values if str(value).strip()}
+def _matcher(values: Iterable[str]) -> Any:
+    """The values a filter keeps, trimmed and in lower case, among which patterns (VF*; see value_patterns)."""
+    from src.modules.value_patterns import ValueSet
+    return ValueSet(values, normalize=str.lower)
 
 
 def calculate_scoring_from_history(

@@ -126,7 +126,9 @@
     });
   });
 
-  function checklist(label, values, selected, onChange, {preset = null, allOption = false, emptyLabel = 'All'} = {}) {
+  // With ``patterns`` (the Operators), a pattern typed in the filter (VF*, Not Lebara; see valuePatterns in app.js) is
+  // added with Enter, listed first; it is resolved when the report is generated.
+  function checklist(label, values, selected, onChange, {preset = null, allOption = false, emptyLabel = 'All', patterns = false} = {}) {
     const wrapper = el('details', 'scoring-report-picker');
     // One picker open at a time; it closes when opening another one or clicking outside.
     wrapper.addEventListener('toggle', () => {
@@ -137,7 +139,8 @@
     });
     const summary = el('summary');
     const display = (value) => (campaignField(label) ? globalThis.campaignLabel(value) || value : value);
-    const known = [...new Set([...(values || []), ...(selected || [])])];
+    const isPattern = (value) => patterns && Boolean(globalThis.valuePatterns?.isPattern(value));
+    const known = [...new Set([...(values || []), ...(selected || [])])].filter((value) => !isPattern(value));
     if (campaignField(label) && typeof globalThis.campaignCompare === 'function') known.sort(globalThis.campaignCompare);
     const selection = new Set(selected || []);
     // All: no restriction, so every value of the CDRs at generation time is included (also new ones).
@@ -159,12 +162,14 @@
     search.setAttribute('aria-label', `Filter ${label} values`);
     const valueRows = [];
     const valueBoxes = new Map();
+    const patternBoxes = new Map();
     let allBox = null;
     let presetBox = null;
     const render = () => {
       if (allBox) allBox.checked = allMode;
       if (presetBox) presetBox.checked = Boolean(preset.checked);
       valueBoxes.forEach((box, value) => { box.checked = isChecked(value); });
+      patternBoxes.forEach((box, value) => { box.checked = selection.has(value); });
       // One value is shown by name, several by their number (as the other filters of the application).
       const chosen = [...known.filter((value) => selection.has(value)), ...[...selection].filter((value) => !known.includes(value))].map(display);
       const total = known.length;
@@ -190,12 +195,55 @@
       const query = search.value.trim().toLocaleLowerCase();
       valueRows.forEach((row) => { row.hidden = Boolean(query) && !row.textContent.toLocaleLowerCase().includes(query); });
     });
+    // A pattern, listed first with its tag; unticked, it is left out of the filter.
+    const patternRow = (value) => {
+      const row = checkbox(value, selection.has(value), (checked) => {
+        if (checked) selection.add(value); else selection.delete(value);
+        commit();
+      });
+      row.classList.add('scoring-report-pattern');
+      row.append(el('span', 'user-choice-tag user-choice-tag-pattern', globalThis.valuePatterns.tag(value)));
+      patternBoxes.set(value, row.querySelector('input'));
+      return row;
+    };
+    const patternAdd = patterns ? el('button', 'multiselect-pattern-add') : null;
+    if (patternAdd) {
+      patternAdd.type = 'button';
+      patternAdd.hidden = true;
+      search.placeholder = 'Filter, or type a pattern such as VF* or -Lebara';
+      const add = () => {
+        const value = search.value.trim();
+        if (!isPattern(value)) return;
+        // A pattern chooses on its own: every value (All) or the preset give way to it.
+        if (allMode || preset?.checked) { selection.clear(); allMode = false; setPreset(false); }
+        selection.add(value);
+        if (!patternBoxes.has(value)) {
+          const row = patternRow(value);
+          const after = [...patternBoxes.values()].at(-2)?.closest('label');
+          if (after) after.after(row); else patternAdd.after(row);
+        }
+        search.value = '';
+        search.dispatchEvent(new Event('input'));
+        commit();
+      };
+      patternAdd.addEventListener('click', add);
+      search.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' && isPattern(search.value.trim())) { event.preventDefault(); add(); }
+      });
+      search.addEventListener('input', () => {
+        const value = search.value.trim();
+        patternAdd.hidden = !isPattern(value);
+        patternAdd.textContent = `＋ Add pattern “${value}” · takes ${isPattern(value) ? known.filter((item) => globalThis.valuePatterns.set([value]).accepts(item)).length : 0} now`;
+      });
+    }
     wrapper.addEventListener('toggle', () => {
       if (!wrapper.open) return;
       search.value = '';
       valueRows.forEach((row) => { row.hidden = false; });
       if (valueRows.length > 1) search.focus();
     });
+    // The patterns come first, below the filter.
+    if (patterns) [...selection].filter(isPattern).forEach((value) => list.append(patternRow(value)));
     if (known.length > 1) {
       // Select All / None acts on the listed values (those matching the search).
       const toggle = el('button', 'scoring-report-picker-toggle', 'Select All / None');
@@ -250,7 +298,11 @@
       valueRows.push(row);
       list.append(row);
     }
-    if (valueRows.length > 1) list.prepend(search);
+    if (patternAdd) {
+      list.prepend(search, el('p', 'multiselect-pattern-help', globalThis.valuePatterns?.help || ''), patternAdd);
+    } else if (valueRows.length > 1) {
+      list.prepend(search);
+    }
     render();
     wrapper.append(summary, list);
     wrapper.knownValues = () => [...known];
@@ -398,7 +450,8 @@
     }, 'duplicate');
     action('Remove', 'Remove this scenario', state.scenarios.length <= 1, () => { state.scenarios.splice(index, 1); rerender(); }, 'remove');
     head.append(actions);
-    card.append(head);
+    // From the page the report is one scenario: no name, order, copies or removal.
+    if (!context.pageScope) card.append(head);
 
     scenario.area_summary = scenario.area_summary || defaultAreaSummary(scenario);
     scenario.area_summary.time_split = scenario.area_summary.time_split || 'Campaign';
@@ -419,7 +472,7 @@
         const mirrored = globalThis.operatorVendorPairs.mirrorValues(values, partner.knownValues());
         if (mirrored.length) scenario.context_filters[partnerField] = mirrored; else delete scenario.context_filters[partnerField];
         partner.setSelection(mirrored);
-      }, {preset, allOption: true});
+      }, {preset, allOption: true, patterns: field === 'Operator'});
       pickers[field].dataset.diffKey = `filter:${field}`;
       filters.append(pickers[field]);
     }
@@ -531,6 +584,14 @@
     trendsPanel.append(columns);
     const scorings = el('div', 'scoring-report-scorings');
     for (const [key, label] of SCORINGS) scorings.append(scoringPanel(scenario, key, label, context.operators || [], rerender));
+    if (context.pageScope) {
+      // From the Scoring & GAP Analysis page every scenario takes the filters, Split by and Geographical Areas & Scoring
+      // Trends of its Calculation panel (as its GAP reference, Focus operators and methodology): here it chooses its content.
+      card.append(el('p', 'scoring-report-muted scoring-report-page-scope',
+        'Filters, Split by, Geographical Areas & Scoring Trends, GAP reference, Focus operators and methodology: those of the Calculation panel.'),
+      scorings);
+      return card;
+    }
     card.append(filters, levels, trendsPanel, scorings);
     return card;
   }
@@ -643,10 +704,11 @@
       const b = order.indexOf(right);
       return (a < 0 ? order.length : a) - (b < 0 ? order.length : b) || left.localeCompare(right);
     });
-    // Saved Operators that the CDRs no longer have (for example a renamed Operator) are left out.
+    // Saved Operators that the CDRs no longer have (for example a renamed Operator) are left out; patterns (VF*,
+    // Not Lebara) stay, as they are resolved when the report is generated.
     const available = (values, known) => {
       const names = list(values);
-      return known.length ? names.filter((name) => known.includes(name)) : names;
+      return known.length ? names.filter((name) => known.includes(name) || globalThis.valuePatterns?.isPattern(name)) : names;
     };
     const configuration = (config, {filterOperators = [], gapOperators = []} = {}) => {
       (config?.scenarios || []).forEach((scenario) => {
@@ -684,6 +746,12 @@
       const themes = Array.isArray(context.themes) ? context.themes : [];
       const knownTheme = (id) => themes.some((theme) => theme.id === id);
       state.theme = knownTheme(state.theme) ? state.theme : knownTheme(context.theme) ? context.theme : 'netcheck';
+      if (context.pageScope) {
+        // From the Scoring & GAP Analysis page the report is one scenario with the Calculation panel and the theme of the
+        // page: the editor only chooses its content.
+        state.scenarios = state.scenarios.slice(0, 1);
+        if (knownTheme(context.theme)) state.theme = context.theme;
+      }
       const dialog = el('dialog', 'scoring-report-dialog');
       const header = el('div', 'scoring-report-header');
       header.append(el('h2', '', title));
@@ -846,7 +914,8 @@
       });
       toolbar.append(importInput);
       button('Import JSON', () => importInput.click(), 'import', 'Add report configurations from a JSON file');
-      header.append(toolbar);
+      // (Without the saved configurations, the theme and the JSON files from the page.)
+      if (!context.pageScope) header.append(toolbar);
 
       const list = el('div', 'scoring-report-scenarios');
       const add = el('button', 'ghost-link scoring-report-add', '+ Add scenario');
@@ -893,7 +962,7 @@
       list.addEventListener('click', refreshDifferences);
       list.addEventListener('input', refreshDifferences);
       render();
-      dialog.append(header, list, add, footer);
+      dialog.append(header, list, ...(context.pageScope ? [] : [add]), footer);
       dialog.addEventListener('cancel', (event) => { event.preventDefault(); close(null); });
       document.body.append(dialog);
       dialog.showModal();

@@ -381,7 +381,7 @@ def _normalize_selection(
         'scoring_profile_id': selected_profile_id,
         'context_filters': context_filters,
         'area_summary': _normalize_area_summary(raw_selection.get('area_summary')),
-        # The operators GAP Analysis compares with the reference (all without any).
+        # The Focus operators of the exports: operators or patterns (VF*, Not Lebara; all without any).
         'compared_operators': list(dict.fromkeys(str(name).strip() for name in raw_selection.get('compared_operators') or []
                                                  if str(name).strip()))[:20],
     }, list(dict.fromkeys(warnings))

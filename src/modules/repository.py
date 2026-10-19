@@ -4449,6 +4449,13 @@ class Repository:
         """Backward-compatible alias for callers before dimension backfill v5."""
         return self.refresh_dataset_row_normalized_dimensions(dataset_id)
 
+    def _values_condition(self, column: str, values: list[str]) -> tuple[str, list[str]]:
+        """The SQL condition that a column holds one of some lower-case values, among which patterns (VF*, -Lebara; see
+        value_patterns)."""
+        from src.modules.value_patterns import sql_condition
+
+        return sql_condition(f"LOWER(TRIM(CAST({self._quote_identifier(column)} AS TEXT)))", values)
+
     def load_dataset_rows(self, dataset_id: int, columns: list[str], filters: dict[str, Any]) -> pd.DataFrame:
         table_name = self.dataset_rows_table_name(dataset_id)
         existing_columns = set(self.list_dataset_row_columns(dataset_id))
@@ -4486,9 +4493,9 @@ class Repository:
             normalized_values = [str(item).strip().lower() for item in values if str(item).strip()]
             if not normalized_values:
                 continue
-            placeholders = ', '.join('?' for _ in normalized_values)
-            where_clauses.append(f"LOWER(TRIM(CAST({self._quote_identifier(resolved_key)} AS TEXT))) IN ({placeholders})")
-            params.extend(normalized_values)
+            clause, clause_params = self._values_condition(resolved_key, normalized_values)
+            where_clauses.append(clause)
+            params.extend(clause_params)
 
         resolved_event_time = self._resolve_dataset_row_column_name(existing_columns, 'event_start_time')
         if resolved_event_time and not ignore_event_time_filtering():
@@ -4509,9 +4516,9 @@ class Repository:
             normalized_values = [str(item).strip().lower() for item in values if str(item).strip()]
             if not normalized_values:
                 continue
-            placeholders = ', '.join('?' for _ in normalized_values)
-            where_clauses.append(f"LOWER(TRIM(CAST({self._quote_identifier(resolved_key)} AS TEXT))) IN ({placeholders})")
-            params.extend(normalized_values)
+            clause, clause_params = self._values_condition(resolved_key, normalized_values)
+            where_clauses.append(clause)
+            params.extend(clause_params)
 
         select_clause = ', '.join(
             f"{self._quote_identifier(actual_column)} AS {self._quote_identifier(requested_column)}"

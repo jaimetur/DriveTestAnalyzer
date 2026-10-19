@@ -52,6 +52,7 @@ from src.modules.cdr_stage import CDR_STAGE_LABELS, combined_inclusion, dataset_
 from src.modules.cell_identity import nr_cell_bits
 from src.modules.column_names import campaign_sort_key, column_identity
 from src.modules.value_maps import ValueMapper, field_kind
+from src.modules.value_patterns import ValueSet, is_pattern, sql_condition
 from src.modules.mapping_order import dimension_order_key, mapping_group
 from src.modules import nq_catalog
 from src.modules.nq_catalog import (
@@ -3427,6 +3428,12 @@ def _filter_sql(filters: dict[str, Any], username: str, closed_statuses: list[st
         if not values:
             continue
         values = ['' if value == UNASSIGNED else value for value in values]
+        if any(is_pattern(value) for value in values):
+            # Patterns (VF*, -Lebara) are resolved whatever the case (see value_patterns).
+            clause, clause_params = sql_condition(f"lower(COALESCE({field}, ''))", values)
+            clauses.append(clause)
+            params.extend(clause_params)
+            continue
         clauses.append(f"{field} IN ({', '.join('?' for _ in values)})")
         params.extend(values)
     # The JOIN_IDs typed in their filter, whatever their case.
@@ -4233,7 +4240,8 @@ def nq_rates(task_repository: Any, filters: dict[str, Any]) -> dict[str, Any]:
     campaigns = set(_strings(filters.get('campaign')))
     nr_modes = {'' if value in {UNASSIGNED, 'Unknown'} else value for value in _strings(filters.get('nr_mode'))}
     mapper = ValueMapper.from_repository(task_repository)
-    operators = {str(mapper.map(field_kind('operator'), value)) for value in _strings(filters.get('operator'))}
+    # (Patterns, such as VF*, take every operator they match; see value_patterns.)
+    operators = ValueSet(str(mapper.map(field_kind('operator'), value)) for value in _strings(filters.get('operator')))
     where, params = [], []
     if services:
         where.append(f"p.service IN ({', '.join('?' for _ in services)})")
@@ -4330,7 +4338,8 @@ def _population_counts(task_repository: Any, filters: dict[str, Any], fields: tu
     campaigns = set(_strings(filters.get('campaign')))
     nr_modes = {'' if value in {UNASSIGNED, 'Unknown'} else value for value in _strings(filters.get('nr_mode'))}
     mapper = ValueMapper.from_repository(task_repository)
-    operators = {str(mapper.map(field_kind('operator'), value)) for value in _strings(filters.get('operator'))}
+    # (Patterns, such as VF*, take every operator they match; see value_patterns.)
+    operators = ValueSet(str(mapper.map(field_kind('operator'), value)) for value in _strings(filters.get('operator')))
     columns = ['service', 'campaign', 'operator', 'nr_mode', *fields]
     where, params = [], []
     if services:

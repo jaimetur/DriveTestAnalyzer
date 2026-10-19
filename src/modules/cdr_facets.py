@@ -26,6 +26,7 @@ from src.modules.cdr_environments import environment_class
 from src.modules.column_names import column_identity
 from src.modules.mapping_order import dimension_order_key
 from src.modules.value_maps import ValueMapper
+from src.modules.value_patterns import ValueSet, is_pattern
 
 FACETS_TABLE = 'cdr_filter_facets'
 FACETS_VERSION = 2
@@ -227,6 +228,14 @@ def normalize_selections(selections: dict[str, Iterable[object]] | None) -> dict
     return normalized
 
 
+def _chosen(candidates: set[str], keys: set[str]) -> bool:
+    """Whether a value (by its keys) is taken by the chosen keys of its filter, among which patterns (VF*, -Lebara; see
+    value_patterns)."""
+    if not any(is_pattern(key) for key in keys):
+        return bool(candidates & keys)
+    return ValueSet(keys).accepts(candidates)
+
+
 def _keys(field: str, value: str, raw: str = '') -> set[str]:
     if field == 'Campaign':
         return {campaign_identity(value), value.casefold()} - {''}
@@ -298,7 +307,7 @@ def cascading_options(repository: Any, dataset_ids: Iterable[int], selections: d
         raw['Vendor_Operator'] = raw['Operator_Vendor']
         mapped = {field: mapping(field, raw[field]) for field in mapped_fields}
         failing = [field for field, keys in chosen.items()
-                   if not (_keys(field, mapped[field], raw[field] if field != 'Vendor_Operator' else '') & keys)]
+                   if not _chosen(_keys(field, mapped[field], raw[field] if field != 'Vendor_Operator' else ''), keys)]
         if len(failing) > 1:
             continue
         for field in wanted:
@@ -315,7 +324,7 @@ def cascading_options(repository: Any, dataset_ids: Iterable[int], selections: d
             mapped_lists = {field: [mapping(field, value) for value in items] for field, items in lists.items()}
             # A catalogue does not list environments: it may hold any of them.
             failing = [field for field, keys in chosen.items() if field in mapped_lists
-                       and not any(_keys(field, mapped, raw) & keys for mapped, raw in zip(mapped_lists[field], lists[field]))]
+                       and not any(_chosen(_keys(field, mapped, raw), keys) for mapped, raw in zip(mapped_lists[field], lists[field]))]
             if len(failing) > 1:
                 continue
             for field in wanted:
@@ -342,7 +351,7 @@ def matching_dataset_ids(repository: Any, dataset_ids: Iterable[int], selections
         for combination in facets[dataset_id]:
             raw = dict(zip(FACET_FIELDS, combination))
             raw['Vendor_Operator'] = raw['Operator_Vendor']
-            if all(_keys(field, mapping(field, raw[field]), raw[field] if field != 'Vendor_Operator' else '') & keys
+            if all(_chosen(_keys(field, mapping(field, raw[field]), raw[field] if field != 'Vendor_Operator' else ''), keys)
                    for field, keys in chosen.items()):
                 kept.append(dataset_id)
                 break

@@ -244,6 +244,15 @@ def test_report_api_generates_scenarios_and_remembers_the_configuration(scoring_
     jobs = saved_filters.list_saved_filters(repository)
     assert any((job.get('context_filters') or {}).get('City') == ['Leeds'] for job in jobs)
 
+    # From the page, every scenario takes the filters and Split by of the Calculation panel (an Operator pattern here);
+    # the configuration is remembered as it was chosen.
+    page = client.post('/api/scoring/report/ppt', json={'configuration': configuration, **selection,
+                                                        'context_filters': {'Operator': ['Not Three*']}, 'aggregation_levels': ['Operator']})
+    assert page.status_code == 200, page.text
+    jobs = saved_filters.list_saved_filters(repository)
+    assert any((job.get('context_filters') or {}).get('Operator') == ['Not Three*'] for job in jobs)
+    assert client.get('/api/scoring/report-configurations').json()['last']['scenarios'][1]['context_filters'] == {'City': ['Leeds']}
+
     exported = client.get('/api/scoring/report-configurations/export').json()
     assert exported['format'] == 'drivetest-analyzer-scoring-report-configurations'
     assert 'Weekly' not in [item['name'] for item in client.delete('/api/scoring/report-configurations?name=Weekly').json()['configurations']]

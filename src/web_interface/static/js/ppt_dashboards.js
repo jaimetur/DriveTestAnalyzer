@@ -877,9 +877,11 @@
     };
     const rememberSelection = key => {
       const control = selectionControls[key];
-      const available = [...control.options].filter(item => !item.disabled && item.value && item.value !== MAIN_CITIES);
+      const available = [...control.options].filter(item => !item.disabled && item.value && item.value !== MAIN_CITIES && !globalThis.valuePatterns?.isPattern(item.value));
       const values = [...control.selectedOptions].map(item => item.value).filter(Boolean);
-      selectionState[key] = values.includes(MAIN_CITIES) ? {values: [MAIN_CITIES], all: false} : {values, all: available.length === values.length};
+      const patterns = values.filter(value => globalThis.valuePatterns?.isPattern(value));
+      selectionState[key] = values.includes(MAIN_CITIES) ? {values: [MAIN_CITIES], all: false}
+        : {values, all: !patterns.length && available.length === values.length};
       rememberDialog();
       updateConfirmState();
     };
@@ -971,10 +973,17 @@
           }
           // Cities offers Main Cities first: exported as such, it is the Main Cities of the workspace.
           const mainCitiesChosen = field === 'City' && previous.values.includes(MAIN_CITIES);
+          // The Operator patterns chosen (VF*) stay, first: they take every value they match (see value_patterns.py).
+          const patterns = field === 'Operator' ? previous.values.filter(value => globalThis.valuePatterns?.isPattern(value)) : [];
           const retained = values.filter(value => previous.values.includes(value));
-          const selected = new Set(mainCitiesChosen ? [] : previous.all || !retained.length ? values : retained);
+          const selected = new Set(mainCitiesChosen ? [] : previous.all || (!retained.length && !patterns.length) ? values : retained);
           control.disabled = false;
           control.replaceChildren();
+          control.append(...patterns.map(value => {
+            const entry = option(value, value); entry.selected = true;
+            Object.assign(entry.dataset, {tag: globalThis.valuePatterns.tag(value), tagClass: 'user-choice-tag-pattern'});
+            return entry;
+          }));
           const withMainCities = field === 'City' && (mainCities.length > 0 || mainCitiesChosen);
           if (withMainCities) control.append(mainCitiesOption(mainCitiesChosen));
           control.append(...values.map((value, index) => {
@@ -983,7 +992,8 @@
             return entry;
           }));
           control.dispatchEvent(new Event('multiselect:options-updated'));
-          selectionState[key] = mainCitiesChosen ? {values: [MAIN_CITIES], all: false} : {values: [...selected], all: selected.size === values.length};
+          selectionState[key] = mainCitiesChosen ? {values: [MAIN_CITIES], all: false}
+            : {values: [...patterns, ...selected], all: !patterns.length && selected.size === values.length};
           copy.textContent = `Select one or more ${field === 'Operator' ? 'Operators' : field === 'Vendor' ? 'Vendors' : field === 'Region' ? 'Regions' : 'Cities'} to include in this PowerPoint export.`;
         }
         rememberDialog();

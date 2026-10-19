@@ -5,7 +5,9 @@
     "subtitle": "NSA · @Latest campaing",
     "filters": {
       "nr_mode": "NSA",
-      "operators": [],
+      "operators": [
+        "Not Lebara"
+      ],
       "operator_vendors": [],
       "vendor_operators": [],
       "vendors": [],
@@ -107,7 +109,12 @@
           "gap_values": false,
           "baseline_operator": "BT",
           "methodology": "by-campaign",
-          "compared_operators": [],
+          "compared_operators": [
+            "VF*",
+            "Vodafone*",
+            "Three*",
+            "3*"
+          ],
           "area_summary": {
             "enabled": true,
             "breakdown": "Region",

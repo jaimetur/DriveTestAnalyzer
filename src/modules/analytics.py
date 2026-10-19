@@ -13,6 +13,7 @@ from src.modules.runtime_config import ignore_event_time_filtering
 
 from src.modules.ingestion import DatasetSummary, infer_dataset_kind
 from src.utils.charts import build_chart_payload, build_multi_series_chart_payload
+from src.modules.value_patterns import ValueSet
 
 
 @dataclass(slots=True)
@@ -119,8 +120,8 @@ def apply_filters(df: pd.DataFrame, filters: dict[str, Any]) -> pd.DataFrame:
         values = _coerce_filter_values(raw_value)
         if not values:
             continue
-        normalized_values = {value.lower() for value in values}
-        filtered = filtered[filtered[column].astype(str).str.strip().str.lower().isin(normalized_values)]
+        # Patterns (VF*) take every value they match (see value_patterns).
+        filtered = filtered[ValueSet(values).mask(filtered[column].astype(str))]
 
     for key, value in (filters.get('extra_filters') or {}).items():
         column = _resolve_column(filtered, key)
@@ -129,8 +130,7 @@ def apply_filters(df: pd.DataFrame, filters: dict[str, Any]) -> pd.DataFrame:
         values = _coerce_filter_values(value)
         if not values:
             continue
-        normalized_values = {entry.lower() for entry in values}
-        filtered = filtered[filtered[column].astype(str).str.strip().str.lower().isin(normalized_values)]
+        filtered = filtered[ValueSet(values).mask(filtered[column].astype(str))]
 
     return filtered
 
