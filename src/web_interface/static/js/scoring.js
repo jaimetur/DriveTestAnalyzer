@@ -2605,6 +2605,12 @@
       try { stored = JSON.parse(insightSelections.get(section) || 'null'); } catch (_error) { stored = null; }
       if (Array.isArray(stored) && stored.length) chosen[section] = stored.map(String);
     }
+    // The operators enabled or disabled in any section, for the sections never drawn.
+    const choices = Object.entries(operatorChoices());
+    if (choices.length) {
+      chosen._enabled = choices.filter(([, enabled]) => enabled === true).map(([name]) => String(name));
+      chosen._disabled = choices.filter(([, enabled]) => enabled === false).map(([name]) => String(name));
+    }
     // The operator of Where to act, its owners, places and route.
     const actOperator = insightSelections.get('act-operator');
     if (actOperator) chosen['act-operator'] = [String(actOperator)];
@@ -6807,8 +6813,9 @@
     let chosen = Array.isArray(stored)
       ? [...new Set([...stored.filter(operator => names.includes(operator)), ...operators.filter(newlyOffered).map(item => item.operator)])]
       : [];
-    // Without a choice, the Focus operators (else every operator).
-    if (!chosen.length) chosen = focusDefault(operators, {withReference: true});
+    // Without a choice, every operator (the PowerPoint and Word take the Focus operators).
+    if (!chosen.length) chosen = [...names];
+    chosen = withOperatorChoices('gap-insight-operators', names, chosen);
     const group = document.createElement('div');
     group.className = 'scoring-environment-filter scoring-loss-operators';
     group.setAttribute('role', 'group');
@@ -6900,19 +6907,48 @@
     pane.append(section);
   }
 
-  // Choosing the operators of a section: every operator offered is chosen by default (with ``compared``, those that are
-  // not the reference); clicking one enables or disables it, and one always stays enabled.
+  // The operators enabled or disabled with the buttons of any section ({operator: true|false}): every section with
+  // operator buttons applies them over its own choice, so after a click in one section every section shows its
+  // operators as that one does (also those drawn later and the PowerPoint and Word).
+  function operatorChoices() {
+    try {
+      const stored = JSON.parse(insightSelections.get('operator-choices') || 'null');
+      return stored && typeof stored === 'object' && !Array.isArray(stored) ? stored : {};
+    } catch (_error) {
+      return {};
+    }
+  }
+
+  function setOperatorChoices(states) {
+    insightSelections.set('operator-choices', JSON.stringify({...operatorChoices(), ...states}));
+    // The KPI GAP Profile and the Points Lost Map stop following the GAP comparison.
+    insightSelections.delete('gap-insight-follows-comparison');
+  }
+
+  // The choice of a section (``key``, its operators ``names``) with the operators enabled or disabled in any section;
+  // one always stays enabled. A changed choice is kept as the section's own, as the export takes it.
+  function withOperatorChoices(key, names, chosen) {
+    if (key === 'gap-insight-operators' && insightSelections.get('gap-insight-follows-comparison') === 'true') return chosen;
+    const choices = operatorChoices();
+    const next = names.filter(name => typeof choices[name] === 'boolean' ? choices[name] : chosen.includes(name));
+    if (!next.length || (next.length === chosen.length && next.every(name => chosen.includes(name)))) return chosen;
+    insightSelections.set(key, JSON.stringify(next));
+    if (key === 'gap-insight-operators') insightSelections.set('gap-insight-operators-offered', JSON.stringify(names));
+    return next;
+  }
+
+  // Choosing the operators of a section: every operator offered is chosen by default (with ``compared``, the Focus
+  // operators and the others in subpanels of their own); clicking one enables or disables it there and in every other
+  // section (see operatorChoices), and one always stays enabled.
   function insightOperatorChips(key, items, {compared = false} = {}) {
     const operators = [...new Map(items.map(item => [item.operator, item])).values()];
     const names = operators.map(item => item.operator);
     let stored = null;
     try { stored = JSON.parse(insightSelections.get(key) || 'null'); } catch (_error) { stored = null; }
     let chosen = Array.isArray(stored) ? stored.filter(name => names.includes(name)) : [];
-    if (!chosen.length) {
-      // The sections the Focus operators choose start with them, the others with every operator.
-      chosen = compared ? focusDefault(operators) : [...names];
-      if (!chosen.length) chosen = [...names];
-    }
+    // Every operator by default (the PowerPoint and Word take the Focus operators of the sections they choose).
+    if (!chosen.length) chosen = [...names];
+    chosen = withOperatorChoices(key, names, chosen);
     const group = document.createElement('div');
     group.className = 'scoring-environment-filter scoring-loss-operators';
     group.setAttribute('role', 'group');
@@ -8164,6 +8200,16 @@
     // Location and operators are shared with the KPI GAP Profile; then the analysis per City, Region or Cluster.
     const {controls, inScope, chosen} = gapInsightControls(pane, entries.map(entry => ({...entry.ranking, entry})));
     appendResultScope(heading, inScope[0]?.context);
+    // Maps per and Colour areas by below the location (such as the Campaign), the operators beside them.
+    const selectors = document.createElement('div');
+    selectors.className = 'scoring-loss-map-selectors';
+    const scopeControl = controls.querySelector(':scope > .scoring-insight-select');
+    if (scopeControl) {
+      scopeControl.replaceWith(selectors);
+      selectors.append(scopeControl);
+    } else {
+      controls.prepend(selectors);
+    }
     const allViews = ['City', 'Region', 'Cluster'];
     const views = allViews.filter(view => inScope.some(item => item.entry.title === view));
     const {wrapper: viewControl, value: storedView} = insightSelect('points-loss-view', allViews.map(item => [item, item]), 'Maps per');
@@ -8174,7 +8220,7 @@
       option.disabled = !views.includes(option.value);
       if (option.disabled) option.title = `These results have no ${option.value} data`;
     }
-    controls.append(viewControl);
+    selectors.append(viewControl);
     const candidates = inScope.filter(item => item.entry.title === view).map(item => item.entry);
     // Per City on map areas, one choice for every map: the points of the city or route that loses most among those
     // measured in each area (the default), or the real points lost there by the city or route that loses most there.
@@ -8202,7 +8248,7 @@
         modeSelect.options[1].title = 'Calculate the scoring again to keep the points each city or route loses in each area';
       }
       modeControl.append(modeSelect);
-      controls.append(modeControl);
+      selectors.append(modeControl);
     }
     const grid = document.createElement('div');
     grid.className = `scoring-loss-map-grid${chosen.length > 1 ? ' is-multiple' : ''}`;
@@ -9635,6 +9681,7 @@
       if (gapSummaryOperator.value.startsWith('operator:')) {
         insightSelections.set('gap-insight-operators', JSON.stringify([gapSummaryOperator.value.slice('operator:'.length)]));
         insightSelections.set('gap-insight-operators-offered', JSON.stringify('*'));
+        insightSelections.set('gap-insight-follows-comparison', 'true');
       }
       persistScoringViewState();
       renderResult(currentResults, selectedSavedFilter);
@@ -9647,6 +9694,7 @@
       if (hierarchyGapOperator.value.startsWith('operator:')) {
         insightSelections.set('gap-insight-operators', JSON.stringify([hierarchyGapOperator.value.slice('operator:'.length)]));
         insightSelections.set('gap-insight-operators-offered', JSON.stringify('*'));
+        insightSelections.set('gap-insight-follows-comparison', 'true');
       }
       persistScoringViewState();
       renderResult(currentResults, selectedSavedFilter);
@@ -9938,6 +9986,10 @@
       if (!chosen.length) return;
       insightSelections.set('gap-insight-operators', JSON.stringify(chosen));
       insightSelections.set('gap-insight-operators-offered', insightOperator.dataset.gapInsightOffered || 'null');
+      // Every other section with operator buttons shows its operators as this one.
+      let offered = [];
+      try { offered = JSON.parse(insightOperator.dataset.gapInsightOffered || '[]'); } catch (_error) { offered = []; }
+      setOperatorChoices(Object.fromEntries((Array.isArray(offered) ? offered : []).map(name => [name, chosen.includes(name)])));
       persistScoringViewState();
       // With one operator, the GAP comparison above follows it.
       const comparison = root.querySelector('[data-result-pane="gap"] [data-hierarchy-gap-operator], [data-result-pane="gap"] [data-gap-summary-operator]');
@@ -9973,6 +10025,10 @@
       chosen = chosen.includes(operator) ? chosen.filter(item => item !== operator) : [...chosen, operator];
       if (!chosen.length) return;
       insightSelections.set(chip.dataset.insightChipKey, JSON.stringify(chosen));
+      // Every other section with operator buttons shows its operators as this one.
+      const offered = [...(chip.closest('.scoring-loss-operators') || chip.parentElement).querySelectorAll('[data-insight-chip]')]
+        .map(item => item.dataset.insightChip);
+      setOperatorChoices(Object.fromEntries(offered.map(name => [name, chosen.includes(name)])));
       persistScoringViewState();
       renderResult(currentResults, selectedSavedFilter);
       return;

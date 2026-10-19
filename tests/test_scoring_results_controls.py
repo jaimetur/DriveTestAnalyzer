@@ -890,7 +890,7 @@ def test_gap_value_choice_is_sent_only_to_powerpoint_export():
 def test_export_selected_scoring_report_asks_for_scorings_environments_and_format():
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
     payload = {'snippets': {name: _function_source(script, name) for name in (
-        'scoringExportChoices', 'scoringExportDialogHtml', 'scoringExportOperators', 'exportSelectedScoringReport')}}
+        'scoringExportChoices', 'scoringExportDialogHtml', 'operatorChoices', 'scoringExportOperators', 'exportSelectedScoringReport')}}
     payload['snippets']['sections'] = re.search(r"const EXPORT_OPERATOR_SECTIONS = \[[^\]]*\];", script).group(0)
     program = r"""
 const vm = require('node:vm');
@@ -1776,8 +1776,9 @@ def test_kpi_gap_profile_and_points_lost_map_share_location_and_operators():
     assert "insightSelect('points-loss-view', allViews.map(item => [item, item]), 'Maps per')" in maps
     assert "option.disabled = !views.includes(option.value);" in maps
     assert ".map(entry => pointsLossMapCard(entry, payload, savedFilterId, chosen.length > 1, mode));" in maps
-    # The Focus operators are chosen by default (every operator without them), first in the choice.
-    assert "if (!chosen.length) chosen = focusDefault(operators, {withReference: true});" in controls
+    # Every operator is chosen by default on the page (the PowerPoint and Word take the Focus operators), the Focus
+    # operators first in the choice.
+    assert "if (!chosen.length) chosen = [...names];" in controls
     assert 'appendFocusChips(group, operators, makeChip);' in controls
     # Maps zoom with a dragged rectangle or the floating buttons, which hide as soon as the pointer leaves.
     zoom = script[script.index('  function addZoomToolbar(box, zoomIn, zoomOut, reset, '):]
@@ -1985,6 +1986,37 @@ process.stdout.write(JSON.stringify(usedDatasetIds()));
     assert _run_node_json(program, {**opened, 'pinned': False}) == ['1', '2', '3', '4']
 
 
+def test_operator_buttons_of_every_section_enable_and_disable_operators_together():
+    script = SCORING_SCRIPT.read_text(encoding='utf-8')
+    program = r"""
+const insightSelections = new Map();
+""" + ''.join(_function_source(script, name) for name in ('operatorChoices', 'setOperatorChoices', 'withOperatorChoices')) + r"""
+// A section of every operator by default and one of the Focus operators (Vodafone) by default.
+const every = () => withOperatorChoices('summary-operators', ['EE', 'O2', 'Three', 'Vodafone'], JSON.parse(insightSelections.get('summary-operators') || '["EE","O2","Three","Vodafone"]'));
+const compared = () => withOperatorChoices('ranking-operators', ['O2', 'Three', 'Vodafone'], JSON.parse(insightSelections.get('ranking-operators') || '["Vodafone"]'));
+const start = [every(), compared()];
+// A click in a section (O2 disabled in the first one) gives every section the operators of that one.
+setOperatorChoices({EE: true, O2: false, Three: true, Vodafone: true});
+const toggled = [every(), compared()];
+// Each section keeps at least one operator enabled.
+setOperatorChoices({O2: false, Three: false, Vodafone: false});
+const last = [every(), compared()];
+// Following the GAP comparison, the KPI GAP Profile and Points Lost Map keep its operator until a button is clicked.
+insightSelections.set('gap-insight-follows-comparison', 'true');
+const follows = withOperatorChoices('gap-insight-operators', ['EE', 'O2', 'Three'], ['O2']);
+setOperatorChoices({EE: true});
+const after = withOperatorChoices('gap-insight-operators', ['EE', 'O2', 'Three'], ['O2']);
+console.log(JSON.stringify({start, toggled, last, follows, after, offered: JSON.parse(insightSelections.get('gap-insight-operators-offered')),
+  stored: JSON.parse(insightSelections.get('ranking-operators'))}));
+"""
+    result = _run_node_json(program, {})
+    assert result['start'] == [['EE', 'O2', 'Three', 'Vodafone'], ['Vodafone']]
+    assert result['toggled'] == [['EE', 'Three', 'Vodafone'], ['Three', 'Vodafone']]
+    assert result['last'] == [['EE'], ['Three', 'Vodafone']]
+    assert result['follows'] == ['O2'] and result['after'] == ['EE']
+    assert result['offered'] == ['EE', 'O2', 'Three'] and result['stored'] == ['Three', 'Vodafone']
+
+
 def test_operator_choices_stand_out_in_the_blue_of_the_operators():
     template = SCORING_TEMPLATE.read_text(encoding='utf-8')
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
@@ -2102,9 +2134,11 @@ def test_summary_sections_enable_the_reference_operator_by_default():
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
     calls = re.findall(r"insightOperatorChips\('([\w-]+)', [^)]*\)", script)
     summary = [call for call in re.findall(r"insightOperatorChips\('summary-operators', [^;]*\);", script)]
-    # The Summary (standings, position and levers) chooses every operator, the reference included; the other sections
-    # start with the operators compared with it.
+    # Every section starts with every operator, the reference included; the sections compared with the reference show
+    # the Focus operators and the others in subpanels of their own.
     assert len(summary) == 3 and not any('compared: true' in call for call in summary)
+    chips = _function_source(script, 'insightOperatorChips')
+    assert "if (!chosen.length) chosen = [...names];" in chips and 'focusDefault' not in chips
     assert {'ranking-operators', 'gap-parts-operators', 'sites-operators'} <= set(calls)
 
 

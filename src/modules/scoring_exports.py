@@ -2496,19 +2496,35 @@ def _add_insight_slides(presentation, views: dict, environment: str, scoring: st
     # other slides show every operator.
     compared = focus
     # The operators each section of the page has enabled (sent with the export of a Saved Filter); without them, the
-    # Focus operators (every operator in the sections they do not choose).
+    # Focus operators (every operator in the sections they do not choose), with the operators enabled or disabled in
+    # any section of the page (_enabled and _disabled), as the page shows them.
     choices = views.get('_operator_choices') or {}
+    enabled = {str(name).casefold() for name in choices.get('_enabled') or []}
+    disabled = {str(name).casefold() for name in choices.get('_disabled') or []}
+
+    def toggled(operator: Any, operator_label: Any = None) -> bool | None:
+        keys = {str(operator).casefold(), str(operator_label or '').casefold()} - {''}
+        return True if keys & enabled else False if keys & disabled else None
 
     def chosen(section: str, default: Callable[..., bool] | None = None) -> Callable[..., bool]:
         names = {str(name).casefold() for name in choices.get(section) or []}
         if not names:
-            return default or compared
+            base = default or compared
+            if not enabled and not disabled:
+                return base
+
+            def with_toggles(operator, operator_label=None):
+                state = toggled(operator, operator_label)
+                return base(operator, operator_label) if state is None else state
+            return with_toggles
         return lambda operator, operator_label=None: (str(operator).casefold() in names
                                                       or str(operator_label or '').casefold() in names)
 
     def compared_items(section: str, entries: list[dict]) -> list[dict]:
-        """The items of a section whose page leaves the reference out by default."""
-        return entries if choices.get(section) else [entry for entry in entries if not entry.get('is_reference')]
+        """The items of a section whose page leaves the reference out by default (unless it was enabled)."""
+        return entries if choices.get(section) else [
+            entry for entry in entries
+            if not entry.get('is_reference') or toggled(entry.get('operator'), entry.get('label'))]
 
     if stage == 'summary':
         # As on the page: how the measurements ran, Where to act and its performance owners first, then the standings, positions

@@ -315,6 +315,8 @@
   [data-result-pane="points"] { --pane-accent: #be123c; }
   [data-result-pane] > * > :is(.scoring-table-section-title, h4):first-child { margin-top: 0; }
   .scoring-insight-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 30rem), 1fr)); gap: 1rem; }
+  /* Four operators: two above and two below (one column when two do not fit). */
+  .scoring-insight-pair:has(> :nth-child(4):last-child) { grid-template-columns: repeat(auto-fit, minmax(max(min(100%, 30rem), calc((100% - 1rem) / 2)), 1fr)); }
   .scoring-insight-table-wrap { overflow-x: auto; }
   /* National & Geographical Areas: the table next to a trend chart per area. */
   .scoring-area-summary-view { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: .8rem 1rem; align-items: start; }
@@ -457,6 +459,9 @@
   .scoring-loss-controls { display: flex; flex-wrap: wrap; align-items: center; gap: .55rem 1.3rem; margin: .2rem 0 .75rem; }
   .scoring-loss-controls .scoring-insight-select { margin: 0; }
   .scoring-loss-controls .scoring-insight-select select { min-width: 11rem; }
+  /* Points Lost Map: the location, Maps per and Colour areas by one below the other, their fields aligned. */
+  .scoring-loss-map-selectors { display: grid; grid-template-columns: max-content minmax(0, 1fr); align-items: center; gap: .45rem .5rem; min-width: 0; }
+  .scoring-loss-map-selectors > .scoring-insight-select { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; align-items: center; }
   .scoring-loss-operators { flex-wrap: wrap; }
   /* The Focus operators first, beside their tag, and a line before the others. */
   /* With Focus operators, two subpanels side by side after the label of the group: the Focus operators and the other

@@ -427,6 +427,10 @@ def test_exports_show_the_operators_each_section_of_the_page_has_enabled():
     job['_operator_choices'] = {'summary-operators': ['O2 UK', 'Vodafone UK']}
     chosen = Presentation(BytesIO(export_scoring_powerpoint(job, result, TEMPLATE, scorings=['best_network'], environments=['Combined'])))
     assert operators_of(chosen, 'Position — per environment') == {'O2 UK', 'Vodafone UK'}
+    # A section without a choice of its own follows the operators enabled or disabled in any section of the page.
+    job['_operator_choices'] = {'_enabled': [], '_disabled': ['Three UK', 'EE']}
+    toggled = Presentation(BytesIO(export_scoring_powerpoint(job, result, TEMPLATE, scorings=['best_network'], environments=['Combined'])))
+    assert operators_of(toggled, 'Position — per environment') == {'O2 UK', 'Vodafone UK'}
 
 
 def test_reliable_and_diff_kpis_carry_badges_of_distinct_colours():
