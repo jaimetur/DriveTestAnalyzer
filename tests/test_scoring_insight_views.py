@@ -199,10 +199,10 @@ def test_the_campaigns_card_lists_the_other_analysed_campaigns_below_the_referen
     texts = [shape.text_frame.text for shape in slide.shapes if shape.has_text_frame]
     # The reference (the latest campaign), then the others, the newest first.
     assert 'CAMPAIGNS' in texts and '2026-Q3' in texts
-    assert 'Other analysed campaigns: 2026-Q2, 2026-Q1' in texts
+    assert '+ 2026-Q2, 2026-Q1' in texts
     script = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/scoring.js').read_text(encoding='utf-8')
     assert "const otherCampaigns = scope.campaigns.filter(campaign => campaign !== scope.latest_campaign).reverse();" in script
-    assert "otherCampaigns.length ? `Other analysed campaigns: ${otherCampaigns.join(', ')}` : 'One campaign'" in script
+    assert "otherCampaigns.length ? `+ ${otherCampaigns.join(', ')}` : 'One campaign'" in script
 
 
 def test_the_route_of_where_to_act_is_drawn_as_the_routes_of_points_lost(national, monkeypatch) -> None:
