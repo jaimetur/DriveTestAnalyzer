@@ -1126,7 +1126,7 @@ def test_jobs_packages_and_folders_with_a_former_name_take_the_current_one(tmp_p
 
 def test_favourites_travel_with_every_option_of_their_scoring_section(client):
     login(client)
-    # Patterns (VF*, Not Lebara) travel as such, in the Operators and the Focus operators.
+    # Patterns (VF*, Not Lebara) travel as such in the Operators; Focus operators saved before are left out.
     definition = bundle_report_templates.normalize_definition({'filters': {'main_cities': True, 'operators': ['Not Lebara']}})
     scoring = next(section for section in definition['sections'] if section['key'] == 'scoring')
     scoring['options'].update({
@@ -1140,5 +1140,5 @@ def test_favourites_travel_with_every_option_of_their_scoring_section(client):
     [imported] = [item for item in bundle_report_templates.list_favourites(core.repository) if item['name'] == 'Every scoring option']
     assert imported['definition'] == saved['definition']
     options = next(section for section in imported['definition']['sections'] if section['key'] == 'scoring')['options']
-    assert options['compared_operators'] == ['EE', 'O2', 'VF*', '-VF SM'] and options['area_summary'] == scoring['options']['area_summary']
+    assert 'compared_operators' not in options and options['area_summary'] == scoring['options']['area_summary']
     assert imported['definition']['filters']['main_cities'] and imported['definition']['filters']['operators'] == ['Not Lebara']

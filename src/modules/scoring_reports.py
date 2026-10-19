@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import copy
 import json
-import re
 from typing import Any
 
 from src.modules.cdr_auto_selection import ALL_CAMPAIGNS
@@ -50,8 +49,7 @@ _OPTION_DEFAULTS = {
     'geographical_areas': {'cards': True, 'ranking': True, 'versus': True},
     # The Scoring Trends: the scoring trend and the National & Geographical Areas Trends.
     'trends': {'trend': True, 'areas': True},
-    # An empty operator list compares every operator with the reference.
-    'gap': {'operators': [], 'all_operators': True, 'individual': True, 'parts': True, 'profile': True},
+    'gap': {'all_operators': True, 'individual': True, 'parts': True, 'profile': True},
     'points': {'stake': True, 'kpis': True, 'map': True, 'vendors': True, 'site_types': True, 'sites': True, 'stretches': True},
 }
 # Options of configurations saved before that are now in another group: the location cards and the scoring trend were
@@ -60,7 +58,6 @@ _MOVED_OPTIONS = {('geographical_areas', 'cards'): ('charts', 'location_cards'),
                   ('points', 'kpis'): ('gap', 'profile'), ('trends', 'trend'): ('charts', 'trend')}
 # Groups of configurations saved before with another name: Geographical Areas was Locations.
 _RENAMED_GROUPS = {'geographical_areas': 'locations'}
-_DEFAULT_COMPARED_OPERATORS = re.compile(r'^(vf|vodafone|3|three|h3g)(?![a-z0-9])', re.IGNORECASE)
 
 
 def _strings(values: Any) -> list[str]:
@@ -71,15 +68,8 @@ def _strings(values: Any) -> list[str]:
     return list(dict.fromkeys(str(value).strip()[:160] for value in values if str(value).strip()))
 
 
-def default_compared_operators(operators: list[str]) -> list[str]:
-    """Vodafone and Three by default; every operator when neither is available."""
-    return [operator for operator in operators if _DEFAULT_COMPARED_OPERATORS.match(str(operator).strip())]
-
-
-def default_scoring_options(*, operators: list[str] | None = None) -> dict[str, Any]:
-    options = copy.deepcopy(_OPTION_DEFAULTS)
-    options['gap']['operators'] = default_compared_operators(operators or [])
-    return options
+def default_scoring_options() -> dict[str, Any]:
+    return copy.deepcopy(_OPTION_DEFAULTS)
 
 
 def _normalize_options(raw: Any) -> dict[str, Any]:
@@ -99,9 +89,7 @@ def _normalize_options(raw: Any) -> dict[str, Any]:
         for key, default in _OPTION_DEFAULTS[group].items():
             moved = _MOVED_OPTIONS.get((group, key))
             earlier = raw.get(moved[0]) if moved and isinstance(raw.get(moved[0]), dict) else {}
-            if key == 'operators':
-                options[group][key] = _strings(supplied.get(key))
-            elif key in supplied:
+            if key in supplied:
                 options[group][key] = bool(supplied[key])
             elif moved and moved[1] in earlier:
                 options[group][key] = bool(earlier[moved[1]])
@@ -138,14 +126,13 @@ def has_geographic_filters(scenario: dict[str, Any]) -> bool:
 
 
 def default_scenario(*, name: str = 'National', context_filters: dict[str, Any] | None = None,
-                     aggregation_levels: list[str] | None = None, main_cities: bool = False,
-                     operators: list[str] | None = None) -> dict[str, Any]:
+                     aggregation_levels: list[str] | None = None, main_cities: bool = False) -> dict[str, Any]:
     # Campaign is always included: a scenario with a single campaign leaves the level out.
     return normalize_scenario({
         'name': name, 'context_filters': context_filters or {},
         'aggregation_levels': [*(aggregation_levels or ['Operator']), 'Campaign'],
         'main_cities': main_cities,
-        'scorings': {kind: default_scoring_options(operators=operators) for kind in SCORING_KINDS},
+        'scorings': {kind: default_scoring_options() for kind in SCORING_KINDS},
     })
 
 
@@ -188,11 +175,10 @@ def normalize_report_configuration(raw: Any) -> dict[str, Any]:
 
 
 def default_report_configuration(*, context_filters: dict[str, Any] | None = None,
-                                 aggregation_levels: list[str] | None = None, main_cities: bool = False,
-                                 operators: list[str] | None = None) -> dict[str, Any]:
+                                 aggregation_levels: list[str] | None = None, main_cities: bool = False) -> dict[str, Any]:
     """One scenario with the calculation's filters and aggregation and the default content, in the default theme."""
     return {'scenarios': [default_scenario(context_filters=context_filters, aggregation_levels=aggregation_levels,
-                                           main_cities=main_cities, operators=operators)],
+                                           main_cities=main_cities)],
             'theme': DEFAULT_THEME}
 
 

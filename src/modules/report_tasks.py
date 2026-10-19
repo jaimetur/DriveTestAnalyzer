@@ -417,9 +417,6 @@ def normalize_definition(raw: Any) -> dict[str, Any]:
             'cdr_selection': '' if auto_cdrs else _cdr_selection(entry, 'newest'),
             'scoring_profile_id': str(entry.get('scoring_profile_id') or '').strip(),
             'baseline_operator': str(entry.get('baseline_operator') or 'EE').strip() or 'EE',
-            # The operators its GAP Analysis compares with the GAP reference, for every scenario of its report (all
-            # without any); entries saved before keep those of each scenario.
-            **({'compared_operators': _strings(entry.get('compared_operators'))} if 'compared_operators' in entry else {}),
             # PowerPoint and/or Word; jobs saved before Word was offered keep PowerPoint.
             'formats': [value for value in _formats(entry.get('formats')) if value in {'powerpoint', 'word'}] or ['powerpoint'],
             # Scenarios (filters and aggregation) and content of the report.
@@ -1420,8 +1417,7 @@ def install_report_task_routes(core: Any) -> None:
             update_run(task_repository, run_id, message=f'Calculating {title}')
             base = {'dataset_ids': dataset_ids, 'nr_mode': entry['nr_mode'],
                     'baseline_operator': entry.get('baseline_operator') or 'EE',
-                    'scoring_profile_id': entry.get('scoring_profile_id') or None,
-                    **({'compared_operators': entry['compared_operators']} if 'compared_operators' in entry else {})}
+                    'scoring_profile_id': entry.get('scoring_profile_id') or None}
             content, filename, export_job = core.build_scoring_report_document(task_repository, base, report, username)
             artifacts = []
             for export_format in entry.get('formats') or ['powerpoint']:

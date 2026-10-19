@@ -135,13 +135,13 @@ def test_reporting_artifacts_choose_their_cdrs_by_campaign():
 def test_settings_that_differ_between_scenarios_are_highlighted_in_every_scenario():
     program = _function('settingValue') + _function('markDifferences') + r'''
 const options = (enabled = true) => ({enabled, environments: 'all', charts: {service: true}, tables: {kpi_values: false},
-  gap: {operators: ['VF', '3'], profile: true}});
+  gap: {profile: true}});
 const scenario = (filters, levels, mostReliable = true) => ({context_filters: filters, main_cities: false, aggregation_levels: levels,
   scorings: {best_network: options(), most_reliable: options(mostReliable)}});
 const scenarios = [scenario({}, ['Operator', 'Campaign']), scenario({City: ['London']}, ['Operator', 'City', 'Campaign']),
   scenario({}, ['Operator', 'Campaign'], false)];
 const keys = ['filter:City', 'filter:Region', 'level:City', 'level:Campaign', 'scoring:best_network:charts:service',
-  'scoring:most_reliable:enabled', 'scoring:most_reliable:environments', 'scoring:best_network:gap:operators'];
+  'scoring:most_reliable:enabled', 'scoring:most_reliable:environments', 'scoring:best_network:gap:profile'];
 const nodes = scenarios.flatMap((_item, index) => keys.map(key => {
   const classes = new Set();
   return {index, dataset: {diffKey: key}, classes, classList: {toggle: (name, on) => (on ? classes.add(name) : classes.delete(name))},

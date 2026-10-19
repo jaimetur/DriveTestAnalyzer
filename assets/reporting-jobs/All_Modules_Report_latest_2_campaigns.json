@@ -222,11 +222,6 @@
                     "campaign_comparison": true
                   },
                   "gap": {
-                    "operators": [
-                      "3",
-                      "VF",
-                      "VF SA"
-                    ],
                     "all_operators": true,
                     "individual": true,
                     "profile": true,
@@ -251,9 +246,6 @@
                     "campaign_comparison": true
                   },
                   "gap": {
-                    "operators": [
-                      "3"
-                    ],
                     "all_operators": true,
                     "individual": true,
                     "profile": true,
@@ -303,11 +295,6 @@
                     "campaign_comparison": true
                   },
                   "gap": {
-                    "operators": [
-                      "3",
-                      "VF",
-                      "VF SA"
-                    ],
                     "all_operators": true,
                     "individual": true,
                     "profile": true,
@@ -332,9 +319,6 @@
                     "campaign_comparison": true
                   },
                   "gap": {
-                    "operators": [
-                      "3"
-                    ],
                     "all_operators": true,
                     "individual": true,
                     "profile": true,
@@ -380,11 +364,6 @@
                     "campaign_comparison": true
                   },
                   "gap": {
-                    "operators": [
-                      "3",
-                      "VF",
-                      "VF SA"
-                    ],
                     "all_operators": true,
                     "individual": true,
                     "profile": true,
@@ -409,9 +388,6 @@
                     "campaign_comparison": true
                   },
                   "gap": {
-                    "operators": [
-                      "3"
-                    ],
                     "all_operators": true,
                     "individual": true,
                     "profile": true,
@@ -475,10 +451,6 @@
                     "campaign_comparison": true
                   },
                   "gap": {
-                    "operators": [
-                      "3",
-                      "VF"
-                    ],
                     "all_operators": true,
                     "individual": true,
                     "profile": true,
@@ -503,9 +475,6 @@
                     "campaign_comparison": true
                   },
                   "gap": {
-                    "operators": [
-                      "3"
-                    ],
                     "all_operators": true,
                     "individual": true,
                     "profile": true,
@@ -555,10 +524,6 @@
                     "campaign_comparison": true
                   },
                   "gap": {
-                    "operators": [
-                      "3",
-                      "VF"
-                    ],
                     "all_operators": true,
                     "individual": true,
                     "profile": true,
@@ -583,9 +548,6 @@
                     "campaign_comparison": true
                   },
                   "gap": {
-                    "operators": [
-                      "3"
-                    ],
                     "all_operators": true,
                     "individual": true,
                     "profile": true,
@@ -631,10 +593,6 @@
                     "campaign_comparison": true
                   },
                   "gap": {
-                    "operators": [
-                      "3",
-                      "VF"
-                    ],
                     "all_operators": true,
                     "individual": true,
                     "profile": true,
@@ -659,9 +617,6 @@
                     "campaign_comparison": true
                   },
                   "gap": {
-                    "operators": [
-                      "3"
-                    ],
                     "all_operators": true,
                     "individual": true,
                     "profile": true,

@@ -29,7 +29,6 @@
               "campaign_comparison": true
             },
             "gap": {
-              "operators": [],
               "all_operators": true,
               "individual": true,
               "profile": true,
@@ -54,7 +53,6 @@
               "campaign_comparison": true
             },
             "gap": {
-              "operators": [],
               "all_operators": true,
               "individual": true,
               "profile": true,

@@ -107,7 +107,6 @@
           "gap_values": false,
           "baseline_operator": "BT",
           "methodology": "by-campaign",
-          "compared_operators": [],
           "area_summary": {
             "enabled": true,
             "breakdown": "Region",

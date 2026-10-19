@@ -211,7 +211,7 @@ def _synthetic_report(campaigns=('2026-Q1', '2026-Q2'), with_summary=True):
     # The job of a scenario without the National & area summary has none.
     if with_summary:
         result['area_summary'] = summary
-    scenario = default_scenario(name='National', operators=['Vodafone UK', 'Three UK'])
+    scenario = default_scenario(name='National')
     scenario['scorings']['most_reliable']['enabled'] = False
     scenario = normalize_report_configuration({'scenarios': [scenario]})['scenarios'][0]
     return Presentation(BytesIO(export_scoring_report([{'scenario': scenario, 'job': job, 'result': result}], TEMPLATE)))

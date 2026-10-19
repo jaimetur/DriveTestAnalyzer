@@ -290,7 +290,7 @@ def test_reporting_jobs_travel_with_every_field_of_their_scoring_artifacts(clien
             'main_cities': True, 'campaigns': ['Latest 2 campaigns']}
     report = default_report_configuration()
     report['scenarios'][0]['area_summary'] = area
-    # Patterns (VF*, Not Lebara) travel as such, in the Operator filters and the Focus operators.
+    # Patterns (VF*, Not Lebara) travel as such in the Operator filters; Focus operators saved before are left out.
     report['scenarios'][0]['context_filters'] = {'Operator': ['Not Lebara']}
     entry = {**SCORING_ENTRY, 'label': 'Every field', 'auto_cdrs': True, 'campaigns': ['Latest campaign'],
              'formats': ['powerpoint', 'word'], 'baseline_operator': 'VF', 'compared_operators': ['EE', 'O2', 'VF*'], 'report': report}
@@ -304,7 +304,7 @@ def test_reporting_jobs_travel_with_every_field_of_their_scoring_artifacts(clien
     [imported] = [item for item in report_tasks.list_tasks(core.repository) if item['name'] == 'Every field']
     assert imported['definition'] == task['definition']
     [scoring] = imported['definition']['scoring']
-    assert scoring['compared_operators'] == ['EE', 'O2', 'VF*'] and scoring['baseline_operator'] == 'VF'
+    assert 'compared_operators' not in scoring and scoring['baseline_operator'] == 'VF'
     assert scoring['report']['scenarios'][0]['area_summary'] == area
     assert scoring['report']['scenarios'][0]['context_filters'] == {'Operator': ['Not Lebara']}
 

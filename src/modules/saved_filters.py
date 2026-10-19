@@ -644,7 +644,6 @@ def _row_to_saved_filter(
     aggregation_contract_version = source_metadata_payload.get('aggregation_contract_version', 1)
     operator_mappings = source_metadata_payload.get('operator_mappings', {})
     area_summary = source_metadata_payload.get('area_summary')
-    compared_operators = source_metadata_payload.get('compared_operators')
     if not isinstance(context_filters, dict):
         context_filters = {}
     if not isinstance(resolved_context_filters, dict):
@@ -703,9 +702,6 @@ def _row_to_saved_filter(
         'aggregation_hierarchy': [str(value) for value in aggregation_hierarchy if str(value).strip()],
         'aggregation_contract_version': aggregation_contract_version,
         'area_summary': area_summary if isinstance(area_summary, dict) else None,
-        # The operators GAP Analysis compares with the reference (all without any): not part of its calculation.
-        'compared_operators': [str(name) for name in compared_operators if str(name).strip()]
-        if isinstance(compared_operators, list) else [],
         'dataset_names': [str(item.get('name') or '') for item in metadata_list if isinstance(item, dict)],
         'campaigns': sorted({
             str(campaign).strip()
@@ -944,18 +940,9 @@ def _prepare_saved_selection(repository: Repository, saved_filter: dict[str, Any
     )
 
 
-def _kept_snapshot(connection: Any, filter_id: int, snapshot: dict[str, Any]) -> dict[str, Any]:
-    """A new snapshot of a Saved Filter with what it keeps outside its calculation (its Compared operators)."""
-    row = connection.execute(f'SELECT source_metadata_json FROM {SAVED_FILTERS_TABLE} WHERE id = ?', (int(filter_id),)).fetchone()
-    previous = _decode_json(row['source_metadata_json'], {}) if row is not None else {}
-    if isinstance(previous, dict) and isinstance(previous.get('compared_operators'), list):
-        return {**snapshot, 'compared_operators': previous['compared_operators']}
-    return snapshot
-
-
 def _queue_calculation(connection: Any, filter_id: int, prepared: dict[str, Any], username: str, now: str) -> None:
     """Queue the calculation of a Saved Filter with today's CDRs and methodology."""
-    snapshot = _kept_snapshot(connection, filter_id, prepared['snapshot'])
+    snapshot = prepared['snapshot']
     connection.execute(
         f"""UPDATE {SAVED_FILTERS_TABLE} SET status = 'queued', progress = 0,
            message = 'Waiting to calculate scoring', result_json = NULL, last_error = NULL, started_at = NULL,
@@ -1455,9 +1442,8 @@ def saved_filters_document(repository: Repository, *, favourites_only: bool = Fa
             'baseline_operator': saved_filter['baseline_operator'],
             'context_filters': saved_filter['context_filters'],
             'scoring_profile_id': saved_filter['scoring_profile_id'],
-            # Its Geographical Areas & Scoring Trends (Main Cities kept as such) and its Compared operators.
+            # Its Geographical Areas & Scoring Trends (Main Cities kept as such).
             'area_summary': saved_filter['area_summary'],
-            'compared_operators': saved_filter['compared_operators'],
         })
     return {'format': SAVED_FILTERS_FORMAT, 'version': SAVED_FILTERS_VERSION, 'saved_filters': entries}
 
@@ -1509,10 +1495,6 @@ def import_saved_filters(repository: Repository, document: Any) -> int:
                     'resolved_context_filters': context_filters}
         if area_summary:
             snapshot['area_summary'] = area_summary
-        # (Documents exported before have none: every operator.)
-        compared = [str(name) for name in entry.get('compared_operators') or [] if str(name).strip()]
-        if compared:
-            snapshot['compared_operators'] = compared
         with repository.connection() as connection:
             if connection.execute(f'SELECT 1 FROM {SAVED_FILTERS_TABLE} WHERE selection_key = ?', (pending_key,)).fetchone():
                 continue
@@ -1590,16 +1572,6 @@ def _resolve_imported_filters(repository: Repository) -> None:
                     (row['name'], row['pinned'], row['use_count'], row['position'] if row['pinned'] else None,
                      existing['id']),
                 )
-                # Without Compared operators of its own, it takes those of the import.
-                imported = _decode_json(row['source_metadata_json'], {})
-                kept = _decode_json(existing['source_metadata_json'], {})
-                if (isinstance(imported, dict) and imported.get('compared_operators') and isinstance(kept, dict)
-                        and not kept.get('compared_operators')):
-                    connection.execute(
-                        f'UPDATE {SAVED_FILTERS_TABLE} SET source_metadata_json = ? WHERE id = ?',
-                        (json.dumps({**kept, 'compared_operators': imported['compared_operators']}, ensure_ascii=False,
-                                    separators=(',', ':')), existing['id']),
-                    )
                 connection.execute(f'DELETE FROM {SAVED_FILTERS_TABLE} WHERE id = ?', (row['id'],))
                 continue
             connection.execute(
@@ -1610,8 +1582,7 @@ def _resolve_imported_filters(repository: Repository) -> None:
                 (prepared['selection_key'], prepared['result_key'], prepared['method_version'],
                  prepared['source_fingerprint'], json.dumps(prepared['dataset_ids']),
                  json.dumps(prepared['levels'], ensure_ascii=False), prepared['nr_mode'], prepared['baseline_operator'],
-                 json.dumps(_kept_snapshot(connection, row['id'], prepared['snapshot']), ensure_ascii=False,
-                            separators=(',', ':')), row['id']),
+                 json.dumps(prepared['snapshot'], ensure_ascii=False, separators=(',', ':')), row['id']),
             )
 
 

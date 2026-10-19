@@ -15,7 +15,7 @@ from urllib.parse import parse_qsl, urlencode
 
 # Filter keys and the kind of value they hold.
 KEY_KINDS = {
-    'operator': 'operator', 'operators': 'operator', 'baseline_operator': 'operator', 'compared_operators': 'operator',
+    'operator': 'operator', 'operators': 'operator', 'baseline_operator': 'operator',
     'operator_vendor': 'operator_vendor', 'operator_vendors': 'operator_vendor',
     'vendor_operator': 'vendor_operator', 'vendor_operators': 'vendor_operator',
     'vendor': 'vendor', 'vendors': 'vendor', 'vendors_only': 'vendor',

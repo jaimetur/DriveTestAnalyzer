@@ -9,7 +9,7 @@ from pptx import Presentation
 
 from src.modules.scoring_exports import export_scoring_report
 from src.modules.scoring_reports import (
-    default_compared_operators, default_report_configuration, default_scenario, delete_named_configuration,
+    default_report_configuration, default_scenario, delete_named_configuration,
     import_report_configurations, load_report_state, normalize_report_configuration, remember_last_configuration,
     report_configurations_document, save_named_configuration,
 )
@@ -38,8 +38,7 @@ def _titles(content):
 
 
 def test_default_scenario_follows_the_requested_defaults():
-    scenario = default_scenario(context_filters={'City': ['London']}, aggregation_levels=['City', 'Operator'],
-                                operators=['VF_UK', '3', 'EE', 'O2'])
+    scenario = default_scenario(context_filters={'City': ['London']}, aggregation_levels=['City', 'Operator'])
     # Campaign is part of every default scenario.
     assert scenario['aggregation_levels'] == ['Operator', 'City', 'Campaign']
     for kind in ('best_network', 'most_reliable'):
@@ -53,8 +52,8 @@ def test_default_scenario_follows_the_requested_defaults():
         assert options['points'] == {'stake': True, 'kpis': True, 'map': True, 'vendors': True, 'site_types': True,
                                      'sites': True, 'stretches': True}
         assert options['tables']['kpi_values'] is False and options['tables']['gap_values'] is False
-        assert options['gap']['operators'] == ['VF_UK', '3']
-    assert default_compared_operators(['Vodafone UK', 'Three UK', 'EE']) == ['Vodafone UK', 'Three UK']
+        # The operators of the GAP Analysis are the Focus operators of the Operator Maps.
+        assert options['gap'] == {'all_operators': True, 'individual': True, 'parts': True, 'profile': True}
 
 
 def test_report_configuration_is_normalized():
@@ -90,7 +89,7 @@ def test_report_configuration_is_normalized():
 
 def test_configurations_are_saved_remembered_and_exported():
     repository = _StateRepository()
-    configuration = default_report_configuration(operators=OPERATORS)
+    configuration = default_report_configuration()
     save_named_configuration(repository, 'National', configuration)
     save_named_configuration(repository, 'national', configuration)  # same name, any case: replaced
     remember_last_configuration(repository, {'scenarios': [default_scenario(name='London')]})
@@ -111,7 +110,7 @@ def test_configurations_are_saved_remembered_and_exported():
 def test_report_configurations_travel_with_their_geographical_areas_and_scoring_trends():
     area = {'enabled': True, 'time_split': 'Quarterly', 'breakdown': 'Cluster', 'cities': ['Leeds', 'Glasgow'],
             'main_cities': True, 'campaigns': ['Latest 2 campaigns']}
-    configuration = {'scenarios': [{**default_scenario(name='National', operators=OPERATORS), 'area_summary': area}]}
+    configuration = {'scenarios': [{**default_scenario(name='National'), 'area_summary': area}]}
     repository, other = _StateRepository(), _StateRepository()
     save_named_configuration(repository, 'Areas', configuration)
     document = json.loads(json.dumps(report_configurations_document(load_report_state(repository))))
@@ -123,8 +122,8 @@ def test_report_configurations_travel_with_their_geographical_areas_and_scoring_
 def test_report_document_has_one_section_per_scenario_and_scoring():
     national_job, national = synthetic_result(levels=('Operator',))
     cities_job, cities = synthetic_result(levels=('Operator', 'City'))
-    national_scenario = default_scenario(name='National', operators=OPERATORS)
-    cities_scenario = default_scenario(name='Main Cities', aggregation_levels=['Operator', 'City'], operators=OPERATORS)
+    national_scenario = default_scenario(name='National')
+    cities_scenario = default_scenario(name='Main Cities', aggregation_levels=['Operator', 'City'])
     cities_scenario['scorings']['most_reliable']['enabled'] = False
     cities_scenario['scorings']['best_network']['charts']['breakdown'] = False
     cities_scenario['scorings']['best_network']['gap']['individual'] = False
@@ -165,7 +164,7 @@ def test_report_document_has_one_section_per_scenario_and_scoring():
 
 def test_split_environments_and_kpi_values():
     job, result = synthetic_result(levels=('Operator',))
-    scenario = default_scenario(name='National', operators=OPERATORS)
+    scenario = default_scenario(name='National')
     options = scenario['scorings']['best_network']
     options['environments'] = 'split'
     options['tables']['kpi_values'] = True
@@ -184,7 +183,7 @@ def test_split_environments_and_kpi_values():
 
 def test_reporting_job_scoring_entry_keeps_its_report():
     from src.modules.report_tasks import normalize_definition
-    report = default_report_configuration(operators=OPERATORS)
+    report = default_report_configuration()
     definition = normalize_definition({'scoring': [{'nr_mode': 'NSA', 'report': report}]})
     assert definition['scoring'][0]['report']['scenarios'][0]['name'] == 'National'
     # The report content is required: there is no implicit default report.
@@ -221,8 +220,8 @@ def test_report_api_generates_scenarios_and_remembers_the_configuration(scoring_
     job_id = created.json()['saved_filter']['id']
     saved_filters.calculate_saved_filter(repository, job_id)
 
-    national = default_scenario(name='National', operators=['Three UK'])
-    leeds = default_scenario(name='Leeds', context_filters={'City': ['Leeds']}, operators=['Three UK'])
+    national = default_scenario(name='National')
+    leeds = default_scenario(name='Leeds', context_filters={'City': ['Leeds']})
     leeds['scorings']['most_reliable']['enabled'] = False
     configuration = {'scenarios': [national, leeds]}
     saved = client.post('/api/scoring/report-configurations', json={'name': 'Weekly', 'configuration': configuration})

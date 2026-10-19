@@ -22,6 +22,5 @@
     "campaigns": [
       "@all-campaigns"
     ]
-  },
-  "compared_operators": []
+  }
 }

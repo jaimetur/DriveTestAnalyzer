@@ -83,13 +83,13 @@ def test_the_other_starter_content_fits_any_market(client):
     from src.modules.scoring_reports import load_report_state
 
     repository = app_module.repository
-    # Scoring report configurations without filters of a market; the GAP compares every operator.
+    # Scoring report configurations without filters of a market (the GAP compares the Focus operators of the Operator Maps).
     saved = {item['name']: item['configuration'] for item in load_report_state(repository)['configurations']}
     assert {'National', 'National & Main Cities', 'National per Vendor'} <= set(saved)
     for configuration in saved.values():
         for scenario in configuration['scenarios']:
             assert scenario['context_filters'] == {}
-            assert all(options['gap']['operators'] == [] for options in scenario['scorings'].values())
+            assert all('operators' not in options['gap'] for options in scenario['scorings'].values())
     # Query Builder queries on the views of the chosen CDRs.
     queries = {row['name']: row for row in repository.list_query_builder_queries()}
     assert len(queries) >= 6 and all(json.loads(row['dataset_ids_json']) == [] for row in queries.values())

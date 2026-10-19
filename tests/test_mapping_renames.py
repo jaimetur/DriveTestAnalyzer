@@ -36,11 +36,11 @@ def test_operator_and_vendor_renames_change_only_the_renamed_label():
     assert vendor('operator', 'Ericsson') == 'Ericsson'
     # Only the filter fields change; other settings that name a field keep their value.
     document = {'context_filters': {'Operator': ['EE', 'VF_UK'], 'Vendor_Operator': ['Ericsson_VF_UK'], 'City': ['VF_UK']},
-                'baseline_operator': 'VF_UK', 'compared_operators': ['EE', 'VF_UK'], 'gap': {'operators': ['VF_UK']},
+                'baseline_operator': 'VF_UK', 'gap': {'operators': ['VF_UK']},
                 'aggregation': 'operator', 'name': 'VF_UK'}
     assert rename_in_document(document, operator) == {
         'context_filters': {'Operator': ['EE', 'VF'], 'Vendor_Operator': ['Ericsson_VF'], 'City': ['VF_UK']},
-        'baseline_operator': 'VF', 'compared_operators': ['EE', 'VF'], 'gap': {'operators': ['VF']}, 'aggregation': 'operator',
+        'baseline_operator': 'VF', 'gap': {'operators': ['VF']}, 'aggregation': 'operator',
         'name': 'VF_UK'}
     assert rename_in_query('dataset_id=3&operator=VF_UK&operator=EE&city=VF_UK', operator) == \
         'dataset_id=3&operator=VF&operator=EE&city=VF_UK'

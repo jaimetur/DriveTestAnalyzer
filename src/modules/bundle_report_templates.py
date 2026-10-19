@@ -176,7 +176,7 @@ def default_options(section: str) -> dict[str, Any]:
 def _module_options(section: str) -> dict[str, Any]:
     if section == 'scoring':
         return {'scorings': ['best_network'], 'environments': [COMBINED_ENVIRONMENT], 'kpi_values': False, 'gap_values': False,
-                'baseline_operator': 'EE', 'methodology': BY_CAMPAIGN, 'compared_operators': [],
+                'baseline_operator': 'EE', 'methodology': BY_CAMPAIGN,
                 # The Geographical Areas & Scoring Trends: the Breakdown and Separate cities of both tabs (London or the
                 # Main Cities at each export), the campaigns of the trends (All available campaigns by default; none: those
                 # of the section) and their time split.
@@ -211,7 +211,6 @@ def _normalize_options(section: str, raw: Any, legacy_campaigns: Any = None) -> 
             'baseline_operator': str(raw.get('baseline_operator') or 'EE').strip()[:80] or 'EE',
             # By campaign (each campaign with its methodology) unless a methodology is chosen.
             'methodology': str(raw.get('methodology') or '').strip()[:120] or BY_CAMPAIGN,
-            'compared_operators': _strings(raw.get('compared_operators')),
             # Always included; reports saved before they had Separate cities keep London.
             'area_summary': {'enabled': True,
                              'breakdown': breakdown if breakdown in AREA_SUMMARY_BREAKDOWNS else 'Region',
@@ -1221,7 +1220,6 @@ class SectionGenerator:
                 item = chosen.get(key)
                 groups[key] = {name: bool(item and item['components'].get(name)) for name, _label in components}
             groups['tables'].update({'kpi_values': options['kpi_values'], 'gap_values': options['gap_values']})
-            groups['gap']['operators'] = list(options['compared_operators'])
             scenario_options = {'enabled': kind in options['scorings'], 'environments': 'split' if environments else 'all', **groups}
             if environments:
                 scenario_options['environment_names'] = names

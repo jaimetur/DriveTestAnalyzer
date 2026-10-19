@@ -62,7 +62,7 @@ def test_export_package_jobs_record_their_request_outcome_and_download(client) -
 
 def test_scoring_report_configuration_changes_are_recorded(client) -> None:
     login(client)
-    configuration = {'scenarios': [default_scenario(name='National', operators=['Three UK'])]}
+    configuration = {'scenarios': [default_scenario(name='National')]}
 
     assert client.post('/api/scoring/report-configurations', json={'name': 'Audited', 'configuration': configuration}).status_code == 200
     exported = client.get('/api/scoring/report-configurations/export')

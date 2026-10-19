@@ -48,7 +48,6 @@
     ['all_operators', 'Table comparing all the chosen operators'], ['individual', 'Individual tables against the reference'],
     ['parts', 'GAP by part over the campaigns'], ['profile', 'KPI GAP Profile'],
   ];
-  const DEFAULT_OPERATORS = /^(vf|vodafone|3|three|h3g)(?![a-z0-9])/i;
 
   const clone = (value) => JSON.parse(JSON.stringify(value));
   const el = (tag, className, text) => {
@@ -58,7 +57,7 @@
     return node;
   };
 
-  function defaultOptions(operators) {
+  function defaultOptions() {
     return {
       enabled: true, environments: 'all',
       summary: {standings: true, position: true, levers: true, act: true, owners: true, places: true, route: true, scope: true},
@@ -66,8 +65,7 @@
       tables: {summary: true, breakdown: true, kpi_values: false, gap_values: false, campaign_comparison: true},
       geographical_areas: {cards: true, ranking: true, versus: true},
       trends: {trend: true, areas: true},
-      gap: {operators: (operators || []).filter((name) => DEFAULT_OPERATORS.test(String(name).trim())),
-        all_operators: true, individual: true, parts: true, profile: true},
+      gap: {all_operators: true, individual: true, parts: true, profile: true},
       points: {stake: true, kpis: true, map: true, vendors: true, site_types: true, sites: true, stretches: true},
     };
   }
@@ -82,7 +80,7 @@
       if (typeof values !== 'object' || Array.isArray(values)) continue;
       options[group] = options[group] && typeof options[group] === 'object' ? options[group] : {};
       for (const [option, value] of Object.entries(values)) {
-        if (option === 'operators' || option in options[group]) continue;
+        if (option in options[group]) continue;
         const moved = MOVED_OPTIONS[`${group}:${option}`];
         options[group][option] = moved && options[moved[0]] && moved[1] in options[moved[0]] ? Boolean(options[moved[0]][moved[1]]) : value;
       }
@@ -90,12 +88,12 @@
     return options;
   }
 
-  function defaultScenario({name = 'National', filters = {}, levels = ['Operator'], mainCities = false, operators = []} = {}) {
+  function defaultScenario({name = 'National', filters = {}, levels = ['Operator'], mainCities = false} = {}) {
     const scenario = {
       name, context_filters: clone(filters), main_cities: mainCities,
       // Campaign is always included: a scenario with a single campaign leaves the level out.
       aggregation_levels: ['Operator', ...LEVELS.filter((level) => level !== 'Operator' && (levels.includes(level) || level === 'Campaign'))],
-      scorings: Object.fromEntries(SCORINGS.map(([key]) => [key, defaultOptions(operators)])),
+      scorings: Object.fromEntries(SCORINGS.map(([key]) => [key, defaultOptions()])),
     };
     scenario.area_summary = defaultAreaSummary(scenario);
     return scenario;
@@ -348,7 +346,6 @@
     if (group === 'enabled') return String(Boolean(options.enabled));
     if (!options.enabled) return undefined;
     if (group === 'environments') return options.environments;
-    if (option === 'operators') return JSON.stringify([...(options.gap.operators || [])].sort());
     return String(Boolean(options[group]?.[option]));
   }
 
@@ -709,7 +706,7 @@
       const names = list(values);
       return known.length ? names.filter((name) => known.includes(name) || globalThis.valuePatterns?.isPattern(name)) : names;
     };
-    const configuration = (config, {filterOperators = [], gapOperators = []} = {}) => {
+    const configuration = (config, {filterOperators = []} = {}) => {
       (config?.scenarios || []).forEach((scenario) => {
         if (scenario.context_filters?.Operator) {
           scenario.context_filters.Operator = available(scenario.context_filters.Operator, filterOperators);
@@ -717,7 +714,8 @@
         }
         Object.values(scenario.scorings || {}).forEach((options) => {
           if (options && typeof options === 'object') completeOptions(options);
-          if (options?.gap?.operators) options.gap.operators = available(options.gap.operators, gapOperators);
+          // (Configurations saved before chose the operators of their GAP Analysis: the Operator Maps choose them now.)
+          if (options?.gap) delete options.gap.operators;
         });
       });
       return config;
@@ -736,7 +734,7 @@
         filterOptions: {...(rawContext.filterOptions || {}),
           ...(rawContext.filterOptions?.Operator ? {Operator: operators.sorted(rawContext.filterOptions.Operator)} : {})},
       };
-      const knownOperators = {filterOperators: context.filterOptions.Operator || [], gapOperators: context.operators};
+      const knownOperators = {filterOperators: context.filterOptions.Operator || []};
       const state = operators.configuration(clone(configuration || defaultConfiguration(context.defaults)), knownOperators);
       // The configuration it was chosen from, shown in the selector when the editor opens.
       const openedName = String(state.name || '');

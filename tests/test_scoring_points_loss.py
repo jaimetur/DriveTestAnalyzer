@@ -132,7 +132,7 @@ def test_powerpoint_maps_the_points_lost_of_the_compared_operators():
     # The operator, large, above the map and the ranking.
     heading = next(shape for shape in slide.shapes if shape.name == 'Scoring Points Lost Operator')
     assert heading.text_frame.text == 'Vodafone UK' and heading.text_frame.paragraphs[0].runs[0].font.size.pt == 24
-    scenario = default_scenario(operators=['Vodafone UK', 'Three UK'])
+    scenario = default_scenario()
     for options in scenario['scorings'].values():
         options['points']['map'] = False
     without = export_scoring_report([{'job': job, 'result': result, 'scenario': scenario}], TEMPLATE)
@@ -241,7 +241,7 @@ def test_exports_include_the_reference_operator_only_when_it_is_a_focus_operator
         # The Focus operators of the Operator Maps.
         groups = [{'canonical': name, 'aliases': [], 'position': index, 'color': '#365F91', 'role': 'focus'}
                   for index, name in enumerate(focus)]
-        return _titles(export_scoring_report([{'job': job, 'result': result, 'scenario': default_scenario(operators=focus)}],
+        return _titles(export_scoring_report([{'job': job, 'result': result, 'scenario': default_scenario()}],
                                              TEMPLATE, groups))
 
     titles = export(['Vodafone UK', 'EE'])
