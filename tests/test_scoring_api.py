@@ -789,7 +789,7 @@ def test_scoring_ppt_export_normalizes_legacy_gap_without_mutating_saved_result(
     from src.modules import bundle_report_templates
     composed = []
     monkeypatch.setattr(bundle_report_templates, 'module_document',
-                        lambda key, content, kind, _title='': composed.append((key, content, kind)) or content)
+                        lambda key, content, kind, _title='', **_options: composed.append((key, content, kind)) or content)
     exported = client.get(f'/scoring/saved-filters/{job_id}/export/ppt')
     assert exported.status_code == 200
     assert exported.content == b'ppt' and composed == [('scoring', b'ppt', 'powerpoint')]

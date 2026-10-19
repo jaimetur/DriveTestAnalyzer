@@ -1730,7 +1730,8 @@ def test_charts_maps_and_tables_open_larger_and_charts_zoom():
     assert "openExpandedView(map.querySelector('svg'), ['Points Lost Map', operator]" in script
     assert "openExpandedView(table, titleWithoutScope(heading) || 'Scoring table', meta, table, 'Table');" in script
     # The larger view keeps the pills of the title of its chart, map or table.
-    assert script.count('appendExpandedScope(') == 4
+    # (Charts, maps, the route maps of Where to act and Points Lost, and tables.)
+    assert script.count('appendExpandedScope(') == 5
     assert "if (copy.matches?.('svg')) enableMapZoom(holder, copy);" in script
     # Content that is not one SVG (such as the location cards) zooms by scaling it inside its box.
     assert "else enableContentZoom(card, scroll);" in script and "else if (!isTable) enableContentZoom(holder, holder);" in script

@@ -717,9 +717,9 @@ def test_powerpoint_exports_one_reference_style_scoring_matrix_with_signed_gaps_
 
     titles = [slide.shapes.title.text.split('\n')[0] for slide in presentation.slides]
     assert titles[:2] == ['Scoring & GAP Analysis', 'Drive - City']
-    # The Summary opens the block, before the scoring charts.
+    # The Summary opens the block with How the measurements ran, before the scoring charts.
     start = titles.index('Best Network Scoring per Service')
-    assert titles[2] == 'Best Network — Standings' and titles[start - 1] == 'How the measurements ran'
+    assert titles[2] == 'How the measurements ran' and 'Best Network — Standings' in titles[3:start]
     assert titles[start:start + 2] == [
         'Best Network Scoring per Service', 'Best Network Scoring per Category',
     ]
