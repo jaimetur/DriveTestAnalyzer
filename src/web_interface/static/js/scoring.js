@@ -4870,8 +4870,9 @@
     return {width, left, right, step, barWidth: Math.min(120, step * .7)};
   }
 
+  // Up to 16 bars (four operators of four campaigns) fit the width of the card; more widen the chart, which scrolls.
   function fitBestNetworkChartWidth(svg, positions, count, width, right) {
-    const visibleWidth = count > 10 ? positions[10] + right : width;
+    const visibleWidth = count > 16 ? positions[16] + right : width;
     svg.style.width = `${100 * width / visibleWidth}%`;
     svg.style.minWidth = '0';
   }
@@ -6203,6 +6204,7 @@
     if (copy.style) copy.style.minWidth = '0';
     if (copy.matches?.('svg')) {
       // A chart takes the whole view, however wide it is on the page (or however it is zoomed there).
+      narrowChart(copy, 1);
       Object.assign(copy.style, {width: '', height: ''});
       delete copy.dataset.zoomFitted;
     }
@@ -8712,10 +8714,51 @@
     viewport.addEventListener('pointercancel', () => { rectangle?.remove(); start = null; rectangle = null; });
   }
 
-  // A chart wider than its card (which then scrolls sideways) starts fitted to the width of the card when its bars and
-  // labels keep at least this share of their size; otherwise it keeps its size and zooms out to the card by steps.
+  // A chart wider than its card (which then scrolls sideways) starts fitted to the width of the card when its bars keep
+  // at least this share of their width; otherwise it keeps its size and zooms out to the card by steps.
   const CHART_MIN_FIT_SCALE = .75;
   const CHART_WIDTH_STEP = .75;
+
+  // A chart narrowed by its zoom keeps its height: only its width shrinks (``factor``: its width over its own; 1 gives
+  // it back its proportions), its texts keep their shape and its lines their thickness.
+  function narrowChart(svg, factor) {
+    const narrowed = factor < .995;
+    if (!narrowed && !('narrowAspect' in svg.dataset)) return;
+    const [, , width, height] = (svg.dataset.zoomOriginal || svg.getAttribute('viewBox') || '').split(/\s+/).map(Number);
+    if (narrowed && !(width > 0 && height > 0)) return;
+    if (!('narrowAspect' in svg.dataset)) svg.dataset.narrowAspect = svg.getAttribute('preserveAspectRatio') || '';
+    for (const text of svg.querySelectorAll('text')) {
+      if (!('narrowTransform' in text.dataset)) text.dataset.narrowTransform = text.getAttribute('transform') || '';
+      const own = text.dataset.narrowTransform;
+      if (!narrowed) {
+        if (own) text.setAttribute('transform', own);
+        else text.removeAttribute('transform');
+        continue;
+      }
+      // Each text widens back around its anchor (its x and y, where its own transform puts them).
+      let x = parseFloat(text.getAttribute('x')) || 0;
+      let y = parseFloat(text.getAttribute('y')) || 0;
+      if (own) {
+        text.setAttribute('transform', own);
+        const matrix = text.transform?.baseVal?.consolidate?.()?.matrix;
+        if (matrix) [x, y] = [matrix.a * x + matrix.c * y + matrix.e, matrix.b * x + matrix.d * y + matrix.f];
+      }
+      text.setAttribute('transform', `translate(${x} ${y}) scale(${(1 / factor).toFixed(4)} 1) translate(${-x} ${-y}) ${own}`.trim());
+    }
+    for (const shape of svg.querySelectorAll('line, path, polyline, rect')) {
+      if (narrowed) shape.setAttribute('vector-effect', 'non-scaling-stroke');
+      else shape.removeAttribute('vector-effect');
+    }
+    if (narrowed) {
+      svg.setAttribute('preserveAspectRatio', 'none');
+      svg.style.aspectRatio = `${(width * factor).toFixed(2)} / ${height}`;
+    } else {
+      if (svg.dataset.narrowAspect) svg.setAttribute('preserveAspectRatio', svg.dataset.narrowAspect);
+      else svg.removeAttribute('preserveAspectRatio');
+      svg.style.aspectRatio = '';
+      delete svg.dataset.narrowAspect;
+    }
+  }
 
   // Map zoom: drag a rectangle with the mouse to zoom into it, or use the floating buttons shown
   // while the pointer is over the map (they hide as soon as it leaves).
@@ -8739,8 +8782,10 @@
       const centre = scroller.scrollWidth ? (scroller.scrollLeft + scroller.clientWidth / 2) / scroller.scrollWidth : 0;
       widthPercent = Math.min(naturalWidth, Math.max(100, percent));
       svg.style.width = `${Number(widthPercent.toFixed(2))}%`;
-      // Narrowed, it keeps its proportions (no minimum height leaves room above and below it).
-      svg.style.minHeight = widthPercent < naturalWidth - .5 ? '0' : '';
+      // Narrowed, it keeps its height: only its width shrinks.
+      const narrowed = widthPercent < naturalWidth - .5;
+      svg.style.minHeight = narrowed ? '0' : '';
+      narrowChart(svg, narrowed ? widthPercent / naturalWidth : 1);
       scroller.scrollLeft = Math.max(0, centre * scroller.scrollWidth - scroller.clientWidth / 2);
     };
     if (widens && 100 / naturalWidth >= CHART_MIN_FIT_SCALE) setWidth(100);
@@ -8760,6 +8805,8 @@
     const apply = next => {
       let [x, y, width, height] = next;
       const whole = width >= original[2] && height >= original[3];
+      // An area of a narrowed chart is zoomed into at its own width.
+      if (!whole && widthPercent < naturalWidth - .5) setWidth(naturalWidth);
       fitToVisibleBox(!whole);
       // The zoomed view takes the proportions of the box the chart or map is shown in (so its size, and what
       // follows it, do not change): the shorter side grows around the centre of the chosen area.
@@ -8858,12 +8905,18 @@
     const heading = document.createElement('h4');
     heading.className = 'scoring-table-section-title';
     heading.textContent = 'Campaign Comparison';
-    // Choose the operator (of each group when there are several), the baseline campaign and the campaign compared
-    // with it: by default the previous and the latest campaigns.
-    const {wrapper, value} = insightSelect('campaign-comparison', comparisons.map((item, index) => [
-      String(index), [item.label, item.title].filter(Boolean).join(' · '),
-    ]), 'Operator');
-    const chosen = comparisons[Number(value)] || comparisons[0];
+    // Choose the operator with its buttons (the first Focus operator by default) and its group when it has several, the
+    // baseline campaign and the campaign compared with it: by default the previous and the latest campaigns.
+    const fallback = focusDefault([...new Map(comparisons.map(item => [item.operator, item])).values()], {withReference: true})[0];
+    const {control: operatorControl, value: operator} = insightOperatorPicker('campaign-comparison-operator', comparisons, fallback);
+    const groups = comparisons.filter(item => item.operator === operator);
+    let groupWrapper = null;
+    let chosen = groups[0] || comparisons[0];
+    if (groups.length > 1) {
+      const {wrapper, value} = insightSelect('campaign-comparison-group', groups.map((item, index) => [String(index), item.title || 'All']), 'Group');
+      groupWrapper = wrapper;
+      chosen = groups[Number(value)] || groups[0];
+    }
     appendResultScope(heading, chosen.context);
     const campaigns = Array.isArray(chosen.campaigns) && chosen.campaigns.length >= 2 ? chosen.campaigns
       : [chosen.previous_campaign, chosen.latest_campaign];
@@ -8902,7 +8955,7 @@
     body.append(table, total);
     const controls = document.createElement('div');
     controls.className = 'scoring-loss-controls';
-    controls.append(wrapper, baselineWrapper, targetWrapper);
+    controls.append(...[operatorControl, groupWrapper, baselineWrapper, targetWrapper].filter(Boolean));
     section.append(heading, controls, body);
     pane.append(section);
   }

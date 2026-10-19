@@ -796,10 +796,8 @@ process.stdout.write(JSON.stringify({
                 legend_rows.setdefault(item['y'], []).append(item)
             row_starts = [entries[0]['x'] - 21 for entries in legend_rows.values()]
             assert row_starts == pytest.approx(comparison['expectedLegendStarts'])
-        if comparison['count'] <= 10:
-            assert category['widthStyle'] == service['widthStyle'] == '100%'
-        else:
-            assert float(category['widthStyle'].removesuffix('%')) > 100
+        # Up to 16 bars (four operators of four campaigns) fit the card.
+        assert comparison['count'] <= 16 and category['widthStyle'] == service['widthStyle'] == '100%'
         for shared_class in ('scoring-chart-axis-label', 'scoring-chart-tick', 'scoring-chart-legend',
                              'scoring-chart-category-legend-title', 'scoring-chart-category-legend-label'):
             assert shared_class in category['sharedText']
@@ -1722,13 +1720,21 @@ const element = () => ({children: [], dataset: {}, style: {}, classList: {add() 
 const document = {createElement: element};
 function chart(width, inCard = true) {
   let viewBox = '0 0 1000 400';
-  const svg = {dataset: {}, style: {width}, getAttribute: () => viewBox, setAttribute: (_name, value) => { viewBox = value; },
+  const attributes = {};
+  const text = {dataset: {}, attributes: {x: '10', y: '20'}, getAttribute(name) { return this.attributes[name] ?? null; },
+    setAttribute(name, value) { this.attributes[name] = value; }, removeAttribute(name) { delete this.attributes[name]; }};
+  const svg = {dataset: {}, style: {width}, text, attributes,
+    getAttribute: name => (name === 'viewBox' ? viewBox : attributes[name] ?? null),
+    setAttribute: (name, value) => { if (name === 'viewBox') viewBox = value; else attributes[name] = value; },
+    removeAttribute: name => { delete attributes[name]; },
+    querySelectorAll: selector => (selector === 'text' ? [text] : []),
     getBoundingClientRect: () => ({width: 1000, height: 400}), addEventListener() {}, closest: () => (inCard ? scroller : null)};
   const scroller = {scrollLeft: 0, clientWidth: 1000, get scrollWidth() { return 10 * (parseFloat(svg.style.width) || 100); }};
   const box = element();
   enableMapZoom(box, svg);
   const buttons = Object.fromEntries(box.children[0].children.map(button => [button.title, button]));
-  const press = title => { buttons[title].click({stopPropagation() {}}); return [svg.style.width, svg.style.minHeight ?? '', viewBox]; };
+  const press = title => { buttons[title].click({stopPropagation() {}}); return [svg.style.width, svg.style.minHeight ?? '', viewBox,
+    svg.style.aspectRatio || '', attributes.preserveAspectRatio || '', svg.text.attributes.transform || '']; };
   return {svg, buttons, press, titles: Object.keys(buttons)};
 }
 const legible = chart('120%');
@@ -1749,11 +1755,16 @@ console.log(JSON.stringify({fitted, widened, zoomed, whole, start, out, back, ma
     assert result['fitted'] == ['100%'] and result['widened'][:2] == ['120%', '']
     assert result['zoomed'][0] == '1000px' and result['zoomed'][2] != '0 0 1000 400'
     assert result['whole'][:2] == ['100%', '0'] and result['whole'][2] == '0.00 0.00 1000.00 400.00'
-    # A much wider one keeps its width (and scrolls); zooming out narrows it down to the card, keeping its proportions.
+    # A much wider one keeps its width (and scrolls); zooming out narrows it down to the card keeping its height: only its
+    # width shrinks, its texts widened back around their anchor.
     assert result['start'] == '300%'
     assert [step[0] for step in result['out']] == ['225%', '168.75%', '126.56%', '100%', '100%']
-    assert all(step[1] == '0' for step in result['out'])
-    assert result['back'][:2] == ['133.33%', '0']
+    assert all(step[1] == '0' and step[4] == 'none' for step in result['out'])
+    assert [step[3] for step in result['out']] == ['750.00 / 400', '562.50 / 400', '421.88 / 400', '333.33 / 400', '333.33 / 400']
+    assert result['out'][-1][5] == 'translate(10 20) scale(3.0000 1) translate(-10 -20)'
+    assert result['back'][:2] == ['133.33%', '0'] and result['back'][3] == '444.44 / 400'
+    # At its own width it has its proportions again.
+    assert result['widened'][3:] == ['', '', '']
     # Maps keep their zoom.
     assert result['mapTitles'] == ['Zoom in', 'Zoom out', 'Show the whole map'] and result['mapOut'][0] == ''
 
@@ -1884,7 +1895,8 @@ process.stdout.write(JSON.stringify([
 def test_campaign_comparison_compares_the_chosen_baseline_and_campaign():
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
     render = _function_source(script, 'renderCampaignComparisons')
-    assert "'Operator'" in render and "'Baseline campaign'" in render and "'Compared campaign'" in render
+    assert "insightOperatorPicker('campaign-comparison-operator'" in render
+    assert "'Baseline campaign'" in render and "'Compared campaign'" in render
     assert "String(campaigns.length - 2)" in render and "String(campaigns.length - 1)" in render
     program = _function_source(script, 'campaignComparisonRows') + r'''
 const comparison = {campaigns: ['25-Q4', '26-Q1', '26-Q2'], kpis: [
@@ -2033,7 +2045,8 @@ def test_operator_sections_show_their_operators_together_and_fit_the_page():
     assert "insightItems(payload, 'sites_unidentified', environment)" in _function_source(script, 'renderSitesToReview')
     # Four operators two by two; many GAP columns narrower; the Points Lost Map selectors one below the other.
     assert '.scoring-insight-pair:has(> :nth-child(4):last-child) {' in template
-    assert '.scoring-scorecard:has(td[data-column="gap"]:nth-child(8)) :is(tbody, tfoot) tr > td[data-column="gap"] { min-width: 3.8rem;' in template
+    assert ('.scoring-scorecard:has(td:is([data-column="score"], [data-column="gap"]):nth-child(8)) :is(tbody, tfoot) tr > '
+            'td:is([data-column="score"], [data-column="gap"]) { min-width: 3.8rem;') in template
     assert '.scoring-stacked-selectors { display: grid;' in template
     assert "selectors.append(...[scopeControl, routeControl].filter(Boolean));" in stretches
     assert "selectors.append(viewControl);" in script and "selectors.append(modeControl);" in script
@@ -2047,16 +2060,15 @@ def test_operator_choices_stand_out_in_the_blue_of_the_operators():
     # The Operator filter of the Calculation panel and the operator choices of the results; not the GAP reference.
     assert 'data-baseline-operator' not in rule
     for selector in ('select[data-scoring-context-filter="Operator"] + .multiselect-shell > .multiselect-trigger',
-                     'select[data-hierarchy-gap-operator]', 'select[data-gap-summary-operator]',
-
-                     '[data-insight-select="campaign-comparison"]'):
+                     'select[data-hierarchy-gap-operator]', 'select[data-gap-summary-operator]'):
         assert selector in rule
     assert 'border: 1.5px solid #2458a6; background-color: #dbe7fb; color: #143b75; font-weight: 800;' in rule
-    for key in ("insightSelect('campaign-comparison'",
-                'select.dataset.hierarchyGapOperator', 'select.dataset.gapSummaryOperator'):
+    for key in ('select.dataset.hierarchyGapOperator', 'select.dataset.gapSummaryOperator'):
         assert key in script
+    # Where to act and the Campaign Comparison choose their operator with buttons instead.
+    assert "insightOperatorPicker('campaign-comparison-operator', comparisons, fallback);" in script
     # With Midnight they keep a blue of their own.
-    assert 'select[data-insight-select="campaign-comparison"]):not(.scoring-loss-operator) {' in template
+    assert 'select[data-gap-summary-operator]):not(.scoring-loss-operator) {' in template
 
 
 def test_saved_filters_are_edited_in_a_dialog_with_the_calculation_panel():

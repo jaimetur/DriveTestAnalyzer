@@ -587,15 +587,12 @@
   /* The choices of operators of Scoring (the Operator filter of the Calculation panel and the operator choices of the
      results; not the GAP reference) in the blue of the Operators, stronger than the other fields. */
   :is([data-scoring-workspace] select[data-scoring-context-filter="Operator"] + .multiselect-shell > .multiselect-trigger,
-      [data-scoring-workspace] :is(select[data-hierarchy-gap-operator], select[data-gap-summary-operator]),
-      [data-scoring-workspace] select:is([data-insight-select="campaign-comparison"])) {
+      [data-scoring-workspace] :is(select[data-hierarchy-gap-operator], select[data-gap-summary-operator])) {
     border: 1.5px solid #2458a6; background-color: #dbe7fb; color: #143b75; font-weight: 800; box-shadow: 0 1px 3px rgba(36,88,166,.2); }
   :is([data-scoring-workspace] select[data-scoring-context-filter="Operator"] + .multiselect-shell > .multiselect-trigger,
-      [data-scoring-workspace] :is(select[data-hierarchy-gap-operator], select[data-gap-summary-operator]),
-      [data-scoring-workspace] select:is([data-insight-select="campaign-comparison"])):hover { background-color: #cddff8; }
+      [data-scoring-workspace] :is(select[data-hierarchy-gap-operator], select[data-gap-summary-operator])):hover { background-color: #cddff8; }
   :is([data-scoring-workspace] select[data-scoring-context-filter="Operator"] + .multiselect-shell > .multiselect-trigger,
-      [data-scoring-workspace] :is(select[data-hierarchy-gap-operator], select[data-gap-summary-operator]),
-      [data-scoring-workspace] select:is([data-insight-select="campaign-comparison"])):focus-visible {
+      [data-scoring-workspace] :is(select[data-hierarchy-gap-operator], select[data-gap-summary-operator])):focus-visible {
     outline: 3px solid rgba(36,88,166,.3); outline-offset: 2px; }
   .scoring-context-heading { display: flex; align-items: center; flex-wrap: wrap; gap: .55rem; margin: .25rem 0 .65rem; padding-bottom: .6rem; border-bottom: 1px solid #d5dedf; color: #9a542e; font-size: .94rem; }
   .scoring-context-chips { display: flex; align-items: center; flex-wrap: wrap; gap: .35rem; margin: 0 0 .55rem; }
@@ -886,7 +883,7 @@
   [data-scoring-workspace][data-scoring-theme="midnight"] [data-result-pane] :is(.scoring-insight-select select, label select, .scoring-map-zoom button, .scoring-loss-operator[aria-pressed="false"]) {
     background-color: #0f1726 !important; color: #dce6f2 !important; border-color: #2a3b58 !important; }
   /* The operator choices keep their blue (as specific as the rule above, which reaches the operator chips too). */
-  [data-scoring-workspace][data-scoring-theme="midnight"] [data-result-pane] :is(select[data-hierarchy-gap-operator], select[data-gap-summary-operator], select[data-insight-select="campaign-comparison"]):not(.scoring-loss-operator) {
+  [data-scoring-workspace][data-scoring-theme="midnight"] [data-result-pane] :is(select[data-hierarchy-gap-operator], select[data-gap-summary-operator]):not(.scoring-loss-operator) {
     background-color: #17305a !important; color: #e3eeff !important; border-color: #5b8fe0 !important; }
   [data-scoring-workspace][data-scoring-theme="midnight"] [data-result-pane] :is(.scoring-focus-operators, .scoring-other-operators) {
     background: rgba(255, 255, 255, .03) !important; border-color: #2a3b58 !important; }
@@ -960,11 +957,11 @@
   [data-scoring-workspace] .scoring-comparison-table.scoring-scorecard td[data-column="score"][data-operator-rank="best"] { background: var(--sc-best) !important; }
   [data-scoring-workspace] .scoring-comparison-table.scoring-scorecard td[data-column="score"][data-operator-rank="worst"] { background: var(--sc-worst) !important; }
   [data-scoring-workspace] .scoring-comparison-table.scoring-scorecard td.scoring-total-partial { color: var(--sc-muted) !important; }
-  /* Many GAP columns (such as three operators of four campaigns): narrower columns and a narrower KPI column, so they
-     fit without scrolling sideways. */
-  [data-scoring-workspace] .scoring-comparison-table.scoring-scorecard:has(td[data-column="gap"]:nth-child(8)) thead th.scoring-gap-header { min-width: 4rem; padding-left: .35rem; padding-right: .35rem; }
-  [data-scoring-workspace] .scoring-comparison-table.scoring-scorecard:has(td[data-column="gap"]:nth-child(8)) :is(tbody, tfoot) tr > td[data-column="gap"] { min-width: 3.8rem; padding-left: .35rem !important; padding-right: .35rem !important; }
-  [data-scoring-workspace] .scoring-comparison-table.scoring-scorecard:has(td[data-column="gap"]:nth-child(8)) :is(thead tr > th.scoring-scorecard-corner, tr > .scoring-kpi-label) { min-width: 12rem; max-width: 17rem; }
+  /* Many score or GAP columns (such as four operators of four campaigns): narrower columns and a narrower KPI or
+     category column, so the Scoring and GAP tables fit without scrolling sideways. */
+  [data-scoring-workspace] .scoring-comparison-table.scoring-scorecard:has(td:is([data-column="score"], [data-column="gap"]):nth-child(8)) thead th:is(.scoring-hierarchy-header, .scoring-gap-header) { min-width: 4rem; padding-left: .35rem; padding-right: .35rem; }
+  [data-scoring-workspace] .scoring-comparison-table.scoring-scorecard:has(td:is([data-column="score"], [data-column="gap"]):nth-child(8)) :is(tbody, tfoot) tr > td:is([data-column="score"], [data-column="gap"]) { min-width: 3.8rem; padding-left: .35rem !important; padding-right: .35rem !important; }
+  [data-scoring-workspace] .scoring-comparison-table.scoring-scorecard:has(td:is([data-column="score"], [data-column="gap"]):nth-child(8)) :is(thead tr > th.scoring-scorecard-corner, tr > .scoring-kpi-label) { min-width: 12rem; max-width: 17rem; }
   /* Every GAP a card with a bar either side of zero as long as the GAP, in the colours and shape of the theme. */
   [data-scoring-workspace] .scoring-comparison-table.scoring-scorecard tbody tr:not(.scoring-section-row) > td[data-column="gap"] {
     border-radius: var(--sc-radius); padding-bottom: .8rem !important;
