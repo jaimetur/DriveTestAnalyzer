@@ -349,11 +349,9 @@
       group('Geographical Areas', GEOGRAPHICAL_AREA_OPTIONS.map(([option, text]) => [option, option === 'cards' ? `${label} ${text}` : text]), 'geographical_areas'),
       group('Scoring Trends', TREND_OPTIONS.map(([option, text]) => [option, `${label} ${text}`]), 'trends'),
     );
+    // (The operators GAP Analysis compares are the Compared operators beside the GAP reference of the page or of the
+    // Scoring artifact.)
     const gap = group('GAP Analysis', GAP_OPTIONS, 'gap');
-    const compared = checklist('Operators to compare', operators, options.gap.operators,
-      (values) => { options.gap.operators = values; });
-    compared.dataset.diffKey = `scoring:${key}:gap:operators`;
-    gap.prepend(compared);
     body.append(gap, group('Points Lost', POINTS_OPTIONS, 'points'));
     panel.append(body);
     return panel;

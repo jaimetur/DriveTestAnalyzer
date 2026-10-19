@@ -287,11 +287,10 @@
     const columns = node('div', undefined, 'brt-trends-columns');
     columns.append(area, trendOptions);
     trends.append(columns);
-    const grid = node('div', undefined, 'brt-option-grid');
-    grid.append(methodology, compared);
-    // The GAP reference goes beside the Campaigns of the section, as on the Scoring & GAP Analysis page.
-    box.reference = reference;
-    box.append(scorings, environments, tables, grid, trends);
+    // The GAP reference, the Compared operators and the Methodology go beside the Campaigns of the section, as on the
+    // Scoring & GAP Analysis page.
+    box.scopeFields = [reference, compared, methodology];
+    box.append(scorings, environments, tables, trends);
     box.collect = () => ({
       scorings: scoringBoxes.filter((item) => item.checked).map((item) => item.value),
       environments: environmentBoxes.filter((item) => item.checked).map((item) => item.value),
@@ -447,7 +446,7 @@
     const optionsBox = saved.key === 'scoring' ? scoringOptions(saved.options)
       : saved.key === 'network_insights' ? networkOptions(saved.options)
         : saved.key === 'non_qualified_calls' ? callsOptions(saved.options) : null;
-    if (optionsBox?.reference) scope.append(optionsBox.reference);
+    if (optionsBox?.scopeFields) scope.append(...optionsBox.scopeFields);
     if (optionsBox) {
       const optionsWrap = node('div', undefined, 'brt-section-options');
       optionsWrap.append(node('h4', 'Options'), optionsBox);

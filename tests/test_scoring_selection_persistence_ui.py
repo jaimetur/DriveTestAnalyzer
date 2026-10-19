@@ -101,6 +101,7 @@ def test_server_chosen_cdrs_are_checked_unless_an_opened_saved_filter_keeps_its_
 let autoCdrs = {options: null, incomplete: []};
 let pinnedCdrs = false;
 const selectedAreaSummary = () => ({enabled: false});
+const chosenComparedOperators = () => [];
 const option = {hidden: false};
 const datasetInputs = [1, 2, 3].map(id => ({value: String(id), checked: id === 3, closest: () => option}));
 const selectedDatasetIds = () => datasetInputs.filter(input => input.checked).map(input => input.value);
@@ -125,7 +126,7 @@ process.stdout.write(JSON.stringify({automatic, pinned: {ids: selectedDatasetIds
         'dataset_ids': [1, 2], 'auto_cdrs': True, 'aggregation_levels': ['Operator'], 'nr_mode': 'SA',
         'baseline_operator': 'EE', 'scoring_profile_id': 'methodology-1',
         'context_filters': {'Region': [], 'City': [], 'Operator': [], 'Vendor': [], 'Campaign': ['UK_Q2_2026']},
-        'area_summary': {'enabled': False},
+        'area_summary': {'enabled': False}, 'compared_operators': [],
     }
     # An opened Saved Filter keeps its own CDRs while its filter lists are refreshed.
     assert result['pinned'] == {'ids': ['1', '2'], 'auto': False}
@@ -291,7 +292,7 @@ def test_job_selection_restoration_clears_filters_on_actual_controls():
     program = r'''
 let restoringSelection = false, message = '', pinnedCdrs = false;
 const scheduleAutoCdrRefresh = () => {};
-const areaSummaryTimeSplit = null, areaSummaryBreakdown = null, areaSummaryCities = null;
+const areaSummaryTimeSplit = null, areaSummaryBreakdown = null, areaSummaryCities = null, comparedOperatorsSelect = null;
 const syncAreaSummary = () => {}, refreshAreaSummaryCities = () => {}, applyTrendCampaigns = () => {};
 const selectionFieldOrder = ['Region', 'City'];
 const nrFilter = {value: 'NSA', options: [{value: 'NSA'}, {value: 'NR'}]};

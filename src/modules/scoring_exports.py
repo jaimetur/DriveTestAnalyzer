@@ -2626,6 +2626,10 @@ def _add_scoring_block(presentation, job: dict[str, Any], result: dict[str, Any]
     """
     selected_environments = ({'combined' if str(name).casefold() in {'all', 'all environments', 'combined'}
                               else str(name).casefold() for name in environments} if environments else None)
+    # The operators its GAP Analysis compares with the reference: those of the scenario, else the Compared operators of
+    # the page (all without any).
+    page_compared = [str(name) for name in job.get('_compared_operators') or [] if str(name).strip()]
+    gap_options = options if options is not None else ({'gap': {'operators': page_compared}} if page_compared else None)
     combined_only = (options is not None and options.get('environments') != 'split') or selected_environments == {'combined'}
     if options is not None:
         show_gap_values = _option(options, 'tables', 'gap_values', False)
@@ -2769,12 +2773,12 @@ def _add_scoring_block(presentation, job: dict[str, Any], result: dict[str, Any]
                     reference = _operator_label(gap_matrix, gap_matrix['baseline_operator'])
                     compared_columns = [column for column in gap_matrix['hierarchy_columns']
                                         if not column.get('is_reference')
-                                        and _compared_operator(options, column['operator'],
+                                        and _compared_operator(gap_options, column['operator'],
                                                                _operator_label(gap_matrix, column['operator']))]
                     if compared_columns and _option(options, 'gap', 'all_operators'):
                         all_matrix = _hierarchy_gap_projection(_table_for_mode(gap_matrix, 'expanded'), compared_columns)
-                        title = (f'GAP Analysis — All vs {reference}' if options is None
-                                 or not (options.get('gap') or {}).get('operators')
+                        title = (f'GAP Analysis — All vs {reference}' if gap_options is None
+                                 or not (gap_options.get('gap') or {}).get('operators')
                                  else f'GAP Analysis — Compared operators vs {reference}')
                         _hierarchy_gap_tables(presentation, [all_matrix], title=title)
                     if _option(options, 'gap', 'individual'):
@@ -2813,7 +2817,7 @@ def _add_scoring_block(presentation, job: dict[str, Any], result: dict[str, Any]
                 if _option(options, 'gap', 'individual'):
                     _gap_tables(presentation, [_table_for_mode(table, 'expanded') for table in views['gap_tables']
                                                if table['context'] == matrix['context']
-                                               and _compared_operator(options, table.get('operator', ''),
+                                               and _compared_operator(gap_options, table.get('operator', ''),
                                                                       _operator_label(table, table.get('operator', '')))])
                 section('gap')
             closing_stages(current_environment)

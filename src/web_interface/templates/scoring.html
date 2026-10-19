@@ -60,7 +60,7 @@
   .scoring-levels-shortcut svg { flex: 0 0 auto; width: 1rem; height: 1rem; margin-right: .3rem; }
   .scoring-picker-note { margin: .5rem .1rem 0; color: var(--muted); font-size: .69rem; }
   /* NR Mode and Campaign choose the CDRs, listed read-only below them by type. */
-  .scoring-scope-row { display: grid; grid-template-columns: minmax(8rem, 11rem) minmax(0, 22rem) minmax(9rem, 13rem); gap: .6rem 1rem; align-items: end; }
+  .scoring-scope-row { display: grid; grid-template-columns: minmax(7rem, 9rem) minmax(0, 18rem) minmax(8rem, 11rem) minmax(9rem, 14rem) minmax(20rem, 1fr); gap: .6rem 1rem; align-items: end; }
   .scoring-scope-control { display: grid; gap: .3rem; color: #245b43; font-size: .82rem; font-weight: 750; }
   .scoring-auto-cdrs { margin-top: .75rem; padding: .7rem .75rem; border: 1px solid #c0ddce; border-radius: 12px; background: #f0f8f3; }
   .scoring-auto-cdrs-head { display: flex; align-items: center; flex-wrap: wrap; gap: .45rem; margin-bottom: .5rem; }
@@ -1244,7 +1244,7 @@
       <div><strong data-saved-filter-editing-title>Editing a Saved Filter</strong><span>Change its NR Mode, Campaign, filters, Split by, GAP reference, Scoring Trends or methodology: its CDRs follow the NR Mode and Campaign. Save Changes calculates it again, with the same name and star; Cancel Editing (or Escape) leaves it as it was.</span></div>
     </div>
     <div class="scoring-picker scoring-scope-picker">
-      <div class="scoring-picker-head"><strong>NR Mode, Campaign &amp; GAP reference</strong><span>The CDRs are chosen from the NR Mode and Campaign</span></div>
+      <div class="scoring-picker-head"><strong>NR Mode, Campaign, GAP reference &amp; Methodology</strong><span>The CDRs are chosen from the NR Mode and Campaign</span></div>
       <div class="scoring-scope-row">
         <label class="scoring-scope-control">NR Mode
           <select data-nr-filter aria-label="NR Mode">
@@ -1265,6 +1265,24 @@
             {% if scoring_options %}
               {% for operator in scoring_options %}<option value="{{ operator.value }}" data-operator-color="{{ operator.color or '' }}" {% if operator.value | lower == 'ee' %}selected{% endif %}>{{ operator.label }}</option>{% endfor %}
             {% else %}<option value="EE" selected>EE</option>{% endif %}
+          </select>
+        </label>
+        {# The operators GAP Analysis compares with the GAP reference, on the page and in its exports (all without any). #}
+        <label class="scoring-scope-control">Compared operators
+          <select multiple size="1" data-scoring-compared-operators data-multiselect-auto-close="1000" data-multiselect-empty-label="All operators" aria-label="Compared operators" title="The operators GAP Analysis compares with the GAP reference (all when none is chosen)">
+            {% for operator in scoring_options %}<option value="{{ operator.value }}">{{ operator.label }}</option>{% endfor %}
+          </select>
+        </label>
+        {# The methodology of the calculation, after the Compared operators. #}
+        <label class="scoring-scope-control">Scoring Methodology
+          <select data-scoring-profile aria-label="Choose the scoring methodology for this calculation">
+            {% set scoring_profile_options = scoring_profiles | default([], true) %}
+            {% if scoring_profile_options %}<option value="by-campaign" selected>By campaign (each campaign with its methodology)</option>{% endif %}
+            {% for profile in scoring_profile_options %}
+            <option value="{{ profile.id }}">{{ profile.name }}</option>
+            {% else %}
+            <option value="{{ scoring_active_profile_id | default('', true) }}" selected>{{ scoring_active_profile_name | default('Default', true) }}</option>
+            {% endfor %}
           </select>
         </label>
       </div>
@@ -1369,17 +1387,6 @@
     </div>
     <div class="scoring-controls-foot scoring-calculation-actions">
       <div class="scoring-methodology-actions">
-      <label class="scoring-profile-choice">Scoring Methodology
-        <select data-scoring-profile aria-label="Choose the scoring methodology for this calculation">
-          {% set scoring_profile_options = scoring_profiles | default([], true) %}
-          {% if scoring_profile_options %}<option value="by-campaign" selected>By campaign (each campaign with its methodology)</option>{% endif %}
-          {% for profile in scoring_profile_options %}
-          <option value="{{ profile.id }}">{{ profile.name }}</option>
-          {% else %}
-          <option value="{{ scoring_active_profile_id | default('', true) }}" selected>{{ scoring_active_profile_name | default('Default', true) }}</option>
-          {% endfor %}
-        </select>
-      </label>
       <div class="scoring-actions">
         <button type="button" data-calculate-scoring disabled><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="4" y="1" width="12" height="18" rx="2"/><path d="M7 4h6v3H7zM7 11h1m4 0h1m-6 4h1m4 0h1"/></svg><span>Calculate Scoring</span></button>
         <button type="button" class="scoring-force-button" data-recalculate-scoring disabled><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M16 7a7 7 0 0 0-12-2L2 7m0-5v5h5M4 13a7 7 0 0 0 12 2l2-2m0 5v-5h-5"/></svg><span>Recalculate</span></button>

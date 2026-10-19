@@ -406,7 +406,7 @@
 .brt-trends-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .7rem; }
 .brt-trends-columns > .brt-area { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: end; }
 .brt-trends-columns > .brt-area .brt-field, .brt-trends-columns .brt-trend-campaigns { min-width: 0; max-width: none; }
-@media (max-width: 900px) { .brt-trends-columns { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 900px) { .brt-trends-columns, .brt-scope { grid-template-columns: minmax(0, 1fr); } }
 .brt-area > legend .brt-check, .brt-area > legend label { color: var(--text); font-weight: 700; }
 .brt-inline { display: flex; flex-wrap: wrap; gap: .4rem 1.2rem; }
 .brt-dialog { width: min(1180px, calc(100vw - 2rem)); max-height: calc(100vh - 2rem); padding: 0; border: 0; border-radius: 18px; box-shadow: 0 30px 70px rgba(10, 25, 18, .35); overflow: hidden; }
@@ -447,7 +447,7 @@
 }
 .brt-badge { padding: .1rem .45rem; border-radius: 6px; background: #eef2f6; color: #3d4b55; font-size: .72rem; font-weight: 800; letter-spacing: .03em; }
 /* The Campaigns of each section, above its sub-modules. */
-.brt-scope { display: grid; grid-template-columns: minmax(0, 24rem) minmax(0, 14rem); gap: .7rem; align-items: end; padding-bottom: .7rem; border-bottom: 1px dashed rgba(31, 95, 58, .3); }
+.brt-scope { display: grid; grid-template-columns: minmax(0, 20rem) minmax(0, 11rem) minmax(0, 14rem) minmax(20rem, 1fr); gap: .7rem; align-items: end; padding-bottom: .7rem; border-bottom: 1px dashed rgba(31, 95, 58, .3); }
 .bundle-report-template-panel .brt-reuse { margin-right: .3rem; font-size: .86rem; color: var(--muted); }
 /* Ready, the preview takes almost the whole screen: the sections and pages on the left, the chosen page on the right
    with its zoom (wheel, rectangle and buttons). */

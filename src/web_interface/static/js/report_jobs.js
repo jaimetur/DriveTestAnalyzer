@@ -619,9 +619,19 @@
     // values of every CDR of the NR Mode. They follow NR Mode in its row; the CDRs they choose are listed below.
     const campaigns = campaignPicker(() => nrMode.value, entry.campaigns || [], {complete: true});
     const head = node('div', undefined, 'rj-grid rj-one-row');
-    // The GAP reference beside the campaigns, as on the Scoring & GAP Analysis page.
-    head.append(field('NR Mode', nrMode), campaigns.field, field('GAP reference operator', baseline), field('Name in the email', label), field('Methodology', methodology), remove);
     const cdrsInUse = () => options.datasets.filter((item) => item.nr_mode === nrMode.value).map((item) => item.id);
+    // The operators its GAP Analysis compares with the GAP reference (all without any), for every scenario of its report;
+    // a Scoring artifact saved before takes those of its first scenario.
+    const legacyCompared = entry.report?.scenarios?.[0]?.scorings?.best_network?.gap?.operators || [];
+    const comparedValues = Array.isArray(entry.compared_operators) ? entry.compared_operators : legacyCompared;
+    const compared = multiPicker('Compared operators', [...new Set([...(valuesForDatasets(cdrsInUse()).Operator || []), ...comparedValues])],
+      comparedValues);
+    compared.title = 'The operators GAP Analysis compares with the GAP reference (all when none is chosen)';
+    // The name in the email on its own row; then, as on the Scoring & GAP Analysis page, the GAP reference and the Compared
+    // operators beside the campaigns.
+    const nameRow = node('div', undefined, 'rj-grid rj-one-row');
+    nameRow.append(field('Name in the email', label));
+    head.append(field('NR Mode', nrMode), campaigns.field, field('GAP reference operator', baseline), compared, field('Methodology', methodology), remove);
     nrMode.addEventListener('change', () => campaigns.refresh());
     const formats = node('div', undefined, 'rj-formats');
     formatChoices(formats, `rj-scoring-${scoringFormatId += 1}`, entry.formats || ['powerpoint'], ['powerpoint', 'word']);
@@ -657,11 +667,11 @@
     reportRow.append(node('span', 'Report content:', 'rj-inline-label'), reportSummary, configure);
     describeReport();
     card.append(entryHead(card, 'Scoring', () => [nrMode.value, label.value.trim()].filter(Boolean).join(' · ')),
-      formats, head, campaigns.preview, reportRow);
+      formats, nameRow, head, campaigns.preview, reportRow);
     card.getValue = () => ({
       label: label.value.trim(), nr_mode: nrMode.value, auto_cdrs: true, campaigns: campaigns.getValue(), formats: formats.getValue(),
       scoring_profile_id: methodology.value, baseline_operator: baseline.value.trim() || 'EE',
-      report,
+      compared_operators: compared.getValue(), report,
     });
     return card;
   }

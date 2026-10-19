@@ -360,6 +360,7 @@
   // The Geographical Areas & Scoring Trends of the calculation, always included: the Breakdown and Separate cities of both
   // tabs, and the time split and campaigns of the trends.
   const areaSummaryPanel = root.querySelector('[data-scoring-area-summary]');
+  const comparedOperatorsSelect = root.querySelector('[data-scoring-compared-operators]');
   // Main Cities among the Separate cities: kept as such and resolved when the scoring is calculated.
   const MAIN_CITIES_TOKEN = '@main-cities';
   const MAIN_CITIES_LABEL = 'Main Cities';
@@ -883,7 +884,20 @@
       scoring_profile_id: String(scoringProfileSelect?.value || activeProfileId),
       context_filters: Object.fromEntries(selectionFieldOrder.map(key => [key, filters[key] || []])),
       area_summary: selectedAreaSummary(),
+      compared_operators: chosenComparedOperators(),
     };
+  }
+
+  // The Compared operators: those GAP Analysis compares with the GAP reference, on the page and in its exports (all
+  // without any).
+  function chosenComparedOperators() {
+    return comparedOperatorsSelect ? [...comparedOperatorsSelect.selectedOptions].map(option => option.value).filter(Boolean) : [];
+  }
+
+  function isComparedOperator(operator, label = '') {
+    const chosen = chosenComparedOperators().map(value => value.toLocaleLowerCase());
+    if (!chosen.length) return true;
+    return [operator, label, canonicalOperatorName(operator)].some(name => name && chosen.includes(String(name).toLocaleLowerCase()));
   }
 
   function calculationSelectionKey(selection) {
@@ -987,6 +1001,11 @@
       const baseline = String(selection?.baseline_operator || '');
       if (baseline && [...(baselineInput?.options || [])].some(option => option.value.toLocaleLowerCase() === baseline.toLocaleLowerCase())) {
         baselineInput.value = [...baselineInput.options].find(option => option.value.toLocaleLowerCase() === baseline.toLocaleLowerCase()).value;
+      }
+      if (comparedOperatorsSelect && Array.isArray(selection?.compared_operators)) {
+        const compared = new Set(selection.compared_operators.map(value => String(value).toLocaleLowerCase()));
+        for (const option of comparedOperatorsSelect.options) option.selected = compared.has(option.value.toLocaleLowerCase());
+        comparedOperatorsSelect.dispatchEvent(new Event('multiselect:options-updated'));
       }
 
       updateSelection();
@@ -1302,13 +1321,12 @@
     };
   }
 
-  // The Scoring Trends of the calculation: the National & Geographical Areas Trends when included, and the campaigns of the trends
-  // when they have some (alone, the scoring trend of those campaigns).
+  // The Geographical Areas & Scoring Trends of the calculation (always included): the Breakdown, the Separate cities and
+  // Main Cities (kept as such), the time split and the campaigns of the trends when they have some.
   function areaSummaryPayload() {
     const summary = selectedAreaSummary();
-    const campaigns = summary.campaigns.length ? {campaigns: summary.campaigns} : {};
-    if (summary.enabled) return {time_split: summary.time_split, breakdown: summary.breakdown, cities: summary.cities, ...campaigns};
-    return summary.campaigns.length ? {time_split: 'Campaign', breakdown: 'None', cities: [], ...campaigns} : null;
+    return {time_split: summary.time_split, breakdown: summary.breakdown, cities: summary.cities,
+      ...(summary.main_cities ? {main_cities: true} : {}), ...(summary.campaigns.length ? {campaigns: summary.campaigns} : {})};
   }
 
   function updateCalculationMatch(ready) {
@@ -2308,7 +2326,7 @@
         body: JSON.stringify({
           configuration: choice.configuration, split_charts: true, dataset_ids: selection.dataset_ids.map(Number),
           nr_mode: selection.nr_mode, baseline_operator: selection.baseline_operator,
-          scoring_profile_id: selection.scoring_profile_id || null,
+          scoring_profile_id: selection.scoring_profile_id || null, compared_operators: chosenComparedOperators(),
         }),
       });
   }
@@ -2388,6 +2406,7 @@
     // The operators enabled in each section of the page: the document shows the same ones.
     const operators = scoringExportOperators();
     if (Object.keys(operators).length) url.searchParams.set('operators', JSON.stringify(operators));
+    for (const operator of chosenComparedOperators()) url.searchParams.append('compared', operator);
     await downloadScoringDocument(url.href, choice === 'secondary' ? 'Word' : 'PowerPoint');
   }
 
@@ -3968,7 +3987,8 @@
     const baseline = canonicalOperatorName(baselineRaw) || baselineRaw;
     const allColumns = hierarchyColumnEntries(tableData, styleSource, false)
       .filter(column => !hierarchyColumnIsReference(column)
-        && hierarchyColumnOperator(column).toLocaleLowerCase() !== baseline.toLocaleLowerCase());
+        && hierarchyColumnOperator(column).toLocaleLowerCase() !== baseline.toLocaleLowerCase()
+        && isComparedOperator(hierarchyColumnOperator(column)));
     const operators = [...new Set(allColumns.map(hierarchyColumnOperator).filter(Boolean))];
     const comparisonStateKey = gapComparisonIdentity(tableData, 'hierarchy-gap');
     let comparison = gapComparisonSelections.get(comparisonStateKey) || 'all';
@@ -4258,7 +4278,8 @@
     const baseline = operatorPresentation(selected, baselineRaw || 'the reference operator').label;
     const operators = (Array.isArray(selected.operators) ? selected.operators : [])
       .map(String)
-      .filter(operator => operator.toLowerCase() !== baselineRaw.toLowerCase());
+      .filter(operator => operator.toLowerCase() !== baselineRaw.toLowerCase())
+      .filter(operator => isComparedOperator(operator, operatorPresentation(selected, operator).label));
     const comparisonStateKey = gapComparisonIdentity(selected, `gap-summary:${baselineRaw}`);
     let comparison = gapComparisonSelections.get(comparisonStateKey) || 'all';
     const selectedOperator = comparison.startsWith('operator:') ? comparison.slice('operator:'.length) : null;
@@ -9302,6 +9323,12 @@
       syncAreaSummary();
       updateSelection();
       scheduleSelectionSave();
+      return;
+    }
+    if (event.target === comparedOperatorsSelect) {
+      // What GAP Analysis compares, without calculating again.
+      scheduleSelectionSave();
+      if (currentResults) renderResult(currentResults, selectedSavedFilter, ['gap']);
       return;
     }
     if (event.target === themeSelect) {

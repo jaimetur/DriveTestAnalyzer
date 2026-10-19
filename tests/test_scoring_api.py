@@ -220,6 +220,8 @@ def test_scoring_selection_defaults_use_catalogue_metadata_without_reading_cdr_r
             # The Geographical Areas & Scoring Trends are always included: each Region and London, All available campaigns.
             'area_summary': {'enabled': True, 'time_split': 'Campaign', 'breakdown': 'Region', 'cities': ['London'],
                              'main_cities': False, 'campaigns': ['@all-campaigns']},
+            # The Compared operators of GAP Analysis: every operator.
+            'compared_operators': [],
         },
         'warnings': [],
         'persisted': False,
@@ -238,6 +240,7 @@ def test_scoring_selection_persists_for_workspace_and_rejects_delayed_tab_update
         'context_filters': {'Region': ['North'], 'City': [], 'Operator': [], 'Vendor': [], 'Campaign': []},
         'area_summary': {'enabled': True, 'time_split': 'Campaign', 'breakdown': 'Region', 'cities': ['London'],
                          'main_cities': False, 'campaigns': ['@all-campaigns']},
+        'compared_operators': [],
     }
     saved = client.put('/api/scoring/selection', json={
         'selection': common_selection, 'client_id': 'tab-a', 'client_revision': 1,

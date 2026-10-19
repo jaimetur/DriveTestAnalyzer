@@ -18546,6 +18546,7 @@ def scoring_saved_filter_export(
     scorings: list[str] | None = Query(default=None),
     environments: list[str] | None = Query(default=None),
     operators: str | None = None,
+    compared: list[str] | None = Query(default=None),
     user: SessionUser = Depends(current_user),
 ) -> Response:
     if table_mode is not None and table_mode not in {'expanded', 'summary'}:
@@ -18592,6 +18593,7 @@ def scoring_saved_filter_export(
             **({'scorings': export_scorings} if export_kind in {'ppt', 'word'} and export_scorings else {}),
             **({'environments': export_environments} if export_kind in {'ppt', 'word'} and export_environments else {}),
             **({'operators': operator_choices} if export_kind in {'ppt', 'word'} and operator_choices else {}),
+            **({'compared_operators': compared} if export_kind in {'ppt', 'word'} and compared else {}),
         }))
         return response
     from src.modules.scoring_views import normalize_result_gaps
@@ -18677,6 +18679,8 @@ def scoring_saved_filter_export(
                 saved_filter['configuration'] = export_configuration or task_repository.get_scoring_configuration()
             export_job = _scoring_export_job_with_catalogue_defaults(task_repository, saved_filter)
             export_job['_operator_choices'] = operator_choices
+            # The Compared operators of the page: those its GAP Analysis compares with the reference (all without any).
+            export_job['_compared_operators'] = [str(name) for name in compared or [] if str(name).strip()]
             export_job['_scoring_display_selections'] = prepare_scoring_display_selections(
                 export_job, result, settings.powerpoint_templates_dir / TEMPLATE_NAMES['nsa'],
             )
@@ -18833,6 +18837,11 @@ def build_scoring_report_document(task_repository: Repository, base: dict[str, A
     from src.modules.cdr_report_filenames import build_scoring_report_filename
 
     report = normalize_report_configuration(configuration)
+    if base.get('compared_operators') is not None:
+        # The Compared operators of the page or of the Scoring artifact, for every scenario and scoring of the report.
+        for scenario in report['scenarios']:
+            for options in scenario['scorings'].values():
+                options['gap']['operators'] = list(base['compared_operators'])
     operator_mapping_groups = task_repository.list_operator_mapping_groups()
     template = settings.powerpoint_templates_dir / TEMPLATE_NAMES['nsa']
     entries = []
@@ -18865,6 +18874,8 @@ def build_scoring_report_document(task_repository: Repository, base: dict[str, A
 
 class ScoringReportRequest(BaseModel):
     configuration: dict[str, Any]
+    # The Compared operators of the page: those GAP Analysis compares with the reference (all without any).
+    compared_operators: list[str] | None = None
     split_charts: bool = True
     # The CDRs, NR Mode, methodology and GAP reference chosen in the Calculation panel.
     dataset_ids: list[int] = []
@@ -18890,7 +18901,9 @@ def scoring_report(export_kind: str, payload: ScoringReportRequest, user: Sessio
     from src.modules.scoring_reports import remember_last_configuration
     base = {'dataset_ids': list(payload.dataset_ids), 'nr_mode': payload.nr_mode,
             'baseline_operator': payload.baseline_operator.strip() or 'EE',
-            'scoring_profile_id': payload.scoring_profile_id or None}
+            'scoring_profile_id': payload.scoring_profile_id or None,
+            **({'compared_operators': [str(name) for name in payload.compared_operators if str(name).strip()]}
+               if payload.compared_operators is not None else {})}
     try:
         # The configuration in use is remembered when the document is requested, not when it is ready.
         remember_last_configuration(task_repository, payload.configuration)

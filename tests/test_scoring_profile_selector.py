@@ -64,7 +64,8 @@ def test_scoring_calculation_selector_lists_profiles_and_defaults_to_by_campaign
 
     page = client.get('/scoring')
     assert page.status_code == 200
-    assert '<label class="scoring-profile-choice">Scoring Methodology' in page.text
+    # Beside the GAP reference and the Compared operators.
+    assert '<label class="scoring-scope-control">Scoring Methodology' in page.text
     parser = _ScoringProfileSelectParser()
     parser.feed(page.text)
     # By campaign first and chosen: each campaign with the methodology that applies to it.
