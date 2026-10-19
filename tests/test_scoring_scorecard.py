@@ -561,3 +561,15 @@ def test_ericsson_heads_its_scorecards_in_white_and_highlights_stay_in_their_box
     assert ('> td[data-column][data-group-edge]:is([data-group-edge="major"], [data-group-edge="minor"]) { background-clip: padding-box !important;'
             in css)
     assert 'tfoot tr > td[data-column="score"][data-operator-rank] { color: var(--sc-ink) !important; }' in css
+
+
+def test_ericsson_and_vodafone_score_cells_take_the_colours_of_the_legend():
+    from src.modules.scoring_pptx_scorecard import _band_fill
+    from src.modules.scoring_themes import use_theme
+    assert STYLES['ericsson'].get('legend_fill') and STYLES['vodafone'].get('legend_fill') and not STYLES['netcheck'].get('legend_fill')
+    with use_theme('ericsson'):
+        assert _band_fill({'threshold_band': 'Medium'}) == THEMES['ericsson']['bands']['Medium']
+    css = SCORING_TEMPLATE.read_text(encoding='utf-8')
+    # On the page, the cell keeps the colour of its band in the legend (--cell-tint) in both themes.
+    assert 'background: linear-gradient(90deg, var(--cell-tint, color-mix(in srgb, var(--band-dot, #0068bf) 34%, #fff))' in css
+    assert 'background: var(--cell-tint, color-mix(in srgb, var(--band-dot, #bdbdbd) 24%, #fff)) !important;' in css

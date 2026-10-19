@@ -35,15 +35,6 @@
       </div>
       <article id="doc-content" class="doc-markdown markdown-viewer"></article>
     </div>
-    <aside class="release-navigator" aria-label="Fixed release navigation" data-release-navigator>
-      <div class="release-navigator-drawer" id="release-navigator-drawer">
-        <header><h3>Releases</h3><button type="button" class="release-navigator-close" data-release-navigator-close aria-label="Close release navigation">&times;</button></header>
-        <p>Jump to a release.</p>
-        <nav><ul id="changelog-fixed-nav-list" class="help-nav-list" data-changelog-nav-list></ul></nav>
-      </div>
-      <button type="button" class="release-navigator-tab" data-release-navigator-toggle aria-expanded="false" aria-controls="release-navigator-drawer" title="Navigate releases"><span>Releases</span></button>
-      <span class="edge-navigator-hover-target" aria-hidden="true"></span>
-    </aside>
     {% else %}
     <div class="doc-layout">
       <aside class="doc-sidebar help-navigator-inline" aria-label="Documentation navigation">
@@ -54,15 +45,6 @@
       <article id="doc-content" class="doc-markdown markdown-viewer"></article>
     </div>
     {% endif %}
-    <aside class="help-navigator" aria-label="Fixed documentation navigation" data-help-navigator>
-      <div class="help-navigator-drawer" id="help-navigator-drawer">
-        <header><h3>Help Navigation</h3><button type="button" class="help-navigator-close" data-help-navigator-close aria-label="Close Help navigation">&times;</button></header>
-        <p>Browse the available documentation.</p>
-        <nav><ul id="help-fixed-nav-list" class="help-nav-list" data-help-nav-list></ul></nav>
-      </div>
-      <button type="button" class="help-navigator-tab" data-help-navigator-toggle aria-expanded="false" aria-controls="help-navigator-drawer" title="Navigate documentation"><span>Navigation</span></button>
-      <span class="edge-navigator-hover-target" aria-hidden="true"></span>
-    </aside>
   </article>
 </section>
 {% endblock %}
@@ -77,60 +59,6 @@
   const changelogNavLists = [...document.querySelectorAll('[data-changelog-nav-list]')];
   let currentDocumentPath = '';
   if (!pathEl || !contentEl || !window.MarkdownRenderer) return;
-
-  const helpNavigator = document.querySelector('[data-help-navigator]');
-  const helpNavigatorToggle = helpNavigator?.querySelector('[data-help-navigator-toggle]');
-  const helpNavigatorClose = helpNavigator?.querySelector('[data-help-navigator-close]');
-  if (helpNavigator && helpNavigator.parentElement !== document.body) document.body.append(helpNavigator);
-  const setHelpNavigatorOpen = (open) => {
-    if (!helpNavigator || !helpNavigatorToggle) return;
-    helpNavigator.classList.toggle('is-open', open);
-    helpNavigatorToggle.setAttribute('aria-expanded', String(open));
-  };
-  helpNavigatorToggle?.addEventListener('click', () => {
-    const opening = !helpNavigator.classList.contains('is-open');
-    if (opening) setReleaseNavigatorOpen(false);
-    setHelpNavigatorOpen(opening);
-  });
-  helpNavigatorClose?.addEventListener('click', () => setHelpNavigatorOpen(false));
-  helpNavigator?.addEventListener('click', (event) => {
-    if (event.target.closest('.help-nav-list a')) setHelpNavigatorOpen(false);
-  });
-  document.addEventListener('pointerdown', (event) => {
-    if (helpNavigator?.classList.contains('is-open') && !helpNavigator.contains(event.target)) setHelpNavigatorOpen(false);
-  });
-  document.addEventListener('keydown', (event) => {
-    if (event.key !== 'Escape' || !helpNavigator?.classList.contains('is-open')) return;
-    setHelpNavigatorOpen(false);
-    helpNavigatorToggle?.focus();
-  });
-
-  const releaseNavigator = document.querySelector('[data-release-navigator]');
-  const releaseNavigatorToggle = releaseNavigator?.querySelector('[data-release-navigator-toggle]');
-  const releaseNavigatorClose = releaseNavigator?.querySelector('[data-release-navigator-close]');
-  if (releaseNavigator && releaseNavigator.parentElement !== document.body) document.body.append(releaseNavigator);
-  const setReleaseNavigatorOpen = (open) => {
-    if (!releaseNavigator || !releaseNavigatorToggle) return;
-    releaseNavigator.classList.toggle('is-open', open);
-    releaseNavigatorToggle.setAttribute('aria-expanded', String(open));
-  };
-  releaseNavigatorToggle?.addEventListener('click', () => {
-    const opening = !releaseNavigator.classList.contains('is-open');
-    if (opening) setHelpNavigatorOpen(false);
-    setReleaseNavigatorOpen(opening);
-  });
-  releaseNavigatorClose?.addEventListener('click', () => setReleaseNavigatorOpen(false));
-  releaseNavigator?.addEventListener('click', (event) => {
-    if (event.target.closest('.help-nav-list a')) setReleaseNavigatorOpen(false);
-  });
-  document.addEventListener('pointerdown', (event) => {
-    if (releaseNavigator?.classList.contains('is-open') && !releaseNavigator.contains(event.target)) setReleaseNavigatorOpen(false);
-  });
-  document.addEventListener('keydown', (event) => {
-    if (event.key !== 'Escape' || !releaseNavigator?.classList.contains('is-open')) return;
-    setReleaseNavigatorOpen(false);
-    releaseNavigatorToggle?.focus();
-  });
 
   function resolveDocUrl(rawUrl, isImage) {
     const raw = String(rawUrl || '').trim();

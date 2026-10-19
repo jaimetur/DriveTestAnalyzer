@@ -9268,7 +9268,8 @@ def test_collapsed_side_navigators_reveal_near_viewport_edges() -> None:
     assert 'max-height:min(96dvh,84rem)' in app_styles
     # One drawer at the left edge, Modules & Sections.
     assert base_template.count('class="edge-navigator-hover-target"') == 1
-    assert doc_template.count('class="edge-navigator-hover-target"') == 2
+    # The documentation pages have no drawers of their own at the right edge: Modules & Sections covers them.
+    assert doc_template.count('class="edge-navigator-hover-target"') == 0 and 'data-help-navigator' not in doc_template
     assert '.page-panel-navigator .edge-navigator-hover-target { left:100%; }' in app_styles
     assert ':is(.help-navigator,.release-navigator) .edge-navigator-hover-target { right:100%; }' in app_styles
     assert 'transform:translate(calc(-100% + .32rem),-50%);' in app_styles

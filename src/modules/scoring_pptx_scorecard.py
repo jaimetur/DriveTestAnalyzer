@@ -41,12 +41,12 @@ STYLES: dict[str, dict[str, Any]] = {
                  'total_rule': '#242424', 'gap_card': '#F2F2F2', 'gain_bar': '#B7EDD6', 'loss_bar': '#FFC1C1',
                  'gain': '#0C9B5B', 'loss': '#CC2828', 'reliable': '#0068BF', 'diff': '#CC7007', 'best': '#B7EDD6',
                  'worst': '#FFC1C1', 'operators': 'underline',
-                 'gap_marker': True},
+                 'gap_marker': True, 'legend_fill': True},
     'vodafone': {'score': 'solid', 'bar_mix': .26, 'card': '#F4F4F4', 'label': '#FFFFFF', 'ink': '#333333', 'muted': '#7E7E7E',
                  'header': '#FFFFFF', 'header_ink': '#4A4D4E', 'section': '#F2F2F2', 'section_ink': '#333333',
                  'total': '#4A4D4E', 'total_ink': '#FFFFFF', 'gap_card': '#F4F4F4', 'gain_bar': '#A3E4ED',
                  'loss_bar': '#F8B8B8', 'gain': '#00697C', 'loss': '#B80000', 'reliable': '#00697C', 'diff': '#B86E00',
-                 'best': '#D6F3F7', 'worst': '#FDD9D9', 'operators': 'fill'},
+                 'best': '#D6F3F7', 'worst': '#FDD9D9', 'operators': 'fill', 'legend_fill': True},
     'midnight': {'score': 'bar', 'bar_mix': .7, 'card': '#131F33', 'label': '#0F1726', 'ink': '#DCE6F2', 'muted': '#7F93B0',
                  'header': '#0F1726', 'header_ink': '#8FB3D9', 'section': '#16233A', 'section_ink': '#8FD3FF',
                  'total': '#0B1220', 'total_ink': '#E6EDF7', 'total_rule': '#3DB9FF', 'gap_card': '#131F33',
@@ -274,6 +274,11 @@ def _band_color(value: dict) -> str | None:
     return strong.get(band)
 
 
+def _band_fill(value: dict) -> str | None:
+    """The colour of the band of a score in the legend of the table (the light colour of the theme)."""
+    return active_theme().get('bands', {}).get(str(value.get('threshold_band') or ''))
+
+
 def _score_share(value: dict, maximum: Any) -> float | None:
     try:
         points, top = float(value.get('points')), float(maximum)
@@ -299,9 +304,12 @@ def _style_score(cell, value: dict, maximum: Any, size: float, font: str | None,
     elif mode == 'excel':
         fading_bar(cell, color, share, current['card'])
     elif mode == 'bar':
-        share_bar(cell, blend(current['card'], color, current['bar_mix']), share, current['card'])
+        # Themes with legend_fill fill the cell with the colour of its band in the legend (Ericsson).
+        fill = _band_fill(value) if current.get('legend_fill') else None
+        share_bar(cell, fill or blend(current['card'], color, current['bar_mix']), share, current['card'])
     elif mode == 'solid':
-        solid(cell, blend('#FFFFFF', color, current['bar_mix']))
+        fill = _band_fill(value) if current.get('legend_fill') else None
+        solid(cell, fill or blend('#FFFFFF', color, current['bar_mix']))
     elif mode == 'heat':
         solid(cell, blend('#FFFFFF', color, .14 + share * .3))
     else:

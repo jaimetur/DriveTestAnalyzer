@@ -62,7 +62,7 @@ A round button at the bottom left, in the colour of the current module, appears 
 
 Open **Builders** to choose **Chart Builder** or **Query Builder**, each with the list of its sections on hover. The **Modules & Sections** drawer lists each builder with its sections. Within its Administrative Modules group, Application Logs is first and Administrator Config is last. The top tab for Administrator Config remains **Admin**.
 
-Move the pointer near a viewport edge to reveal a collapsed Modules & Sections, Navigation or Releases tab. An invisible hover area beside each tab responds even while background tasks are running; task cards leave that edge clear. The tabs recede when the pointer leaves, and keyboard focus also reveals them.
+Move the pointer near the left edge to reveal the collapsed Modules & Sections tab. An invisible hover area beside the tab responds even while background tasks are running; task cards leave that edge clear. The tab recedes when the pointer leaves, and keyboard focus also reveals it.
 
 **Modules & Sections**, the tab at the left edge, opens the whole tree of the modules: Main Modules, Administrative Modules and Documentation, each module with its sections and their parts (as the lists of the tabs; Help with its chapters in their groups and, in a chapter, the headings of the document being read). The module of the page is open and marked; the other modules open with their arrow, and choosing a module or a section goes there and closes the drawer. It uses nearly the full height of the window and scrolls if the window is too short for every entry.
 

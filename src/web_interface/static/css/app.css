@@ -3717,6 +3717,10 @@ body:has(.release-navigator) .help-navigator{top:37%}
 #page-panel-navigator.modules-sections-navigator :is(.page-panel-navigator-tab, .edge-navigator-hover-target) { top: 76%; }
 #page-panel-navigator.modules-sections-navigator .page-panel-navigator-tab { height: 12.5rem; min-height: 12.5rem; }
 .modules-sections-navigator :is(.page-panel-navigator-drawer, .page-panel-navigator-tab, .edge-navigator-hover-target) { pointer-events: auto; }
+/* The module of the page, in green. */
+.module-navigator.modules-sections-navigator .module-navigator-category a.is-active { border-color: #2e8b57; background: #dcf2e5; color: #145c38;
+  box-shadow: inset 3px 0 0 #2e8b57; }
+.module-navigator.modules-sections-navigator .module-tree-module[open]:has(> summary > a.is-active) > summary::after { color: #145c38; }
 .modules-sections-navigator .module-tree-module > summary { display: flex; align-items: center; gap: .25rem; list-style: none; cursor: pointer; }
 .modules-sections-navigator .module-tree-module > summary::-webkit-details-marker { display: none; }
 .modules-sections-navigator .module-tree-module > summary > a { flex: 1 1 auto; min-width: 0; }

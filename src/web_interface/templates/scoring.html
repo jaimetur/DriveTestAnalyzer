@@ -963,7 +963,7 @@
   [data-scoring-workspace][data-scoring-theme="heatmap"] .scoring-comparison-table.scoring-scorecard tfoot tr > td { border-radius: 8px !important; box-shadow: inset 0 0 0 1.5px #c3ccd5 !important; }
 
   /* Ericsson: fill bars. Square cells, every score filling its cell as far as its share of the maximum in the colour of
-     its band, every GAP in dark grey with a small ▲ or ▼ in its colour over a bar either side of zero, headers in the deep
+     its band in the legend, every GAP in dark grey with a small ▲ or ▼ in its colour over a bar either side of zero, headers in the deep
      Ericsson blue with each operator ruled in its colour across all its columns, dark grey rules opening the sections and
      closing the table, the deep Ericsson blue for the reliable KPIs. The header stays white: the operators in dark ink over the
      rule of their colour, the levels below them in grey. */
@@ -972,7 +972,7 @@
     --sc-reliable-bg: #e5f2fe; --sc-reliable-ink: #0068bf; --sc-diff-bg: #ffdbb5; --sc-diff-ink: #cc7007; --sc-best: #b7edd6; --sc-worst: #ffc1c1;
     --sc-track: #e0e0e0; --sc-gap-card: #f2f2f2; --sc-radius: 0px; --sc-gap-bar: 4px; }
   [data-scoring-workspace][data-scoring-theme="ericsson"] .scoring-comparison-table.scoring-scorecard tbody tr:not(.scoring-section-row) > td[data-column="score"] {
-    background: linear-gradient(90deg, color-mix(in srgb, var(--band-dot, #0068bf) 34%, #fff) calc(var(--share, 0) * 100%), #f2f2f2 0) !important; }
+    background: linear-gradient(90deg, var(--cell-tint, color-mix(in srgb, var(--band-dot, #0068bf) 34%, #fff)) calc(var(--share, 0) * 100%), #f2f2f2 0) !important; }
   [data-scoring-workspace][data-scoring-theme="ericsson"] .scoring-comparison-table.scoring-scorecard { border-spacing: 2px 3px; }
   [data-scoring-workspace][data-scoring-theme="ericsson"] .scoring-comparison-table.scoring-scorecard thead tr > th { font-size: .6rem !important; letter-spacing: .12em; text-transform: uppercase; }
   [data-scoring-workspace][data-scoring-theme="ericsson"] .scoring-comparison-table.scoring-scorecard thead tr > th.scoring-scorecard-corner { color: #242424 !important; }
@@ -1005,7 +1005,7 @@
   [data-scoring-workspace][data-scoring-theme="vodafone"] .scoring-scorecard .scoring-operator-chip::before { background: #fff; width: .5rem; height: .5rem; }
   [data-scoring-workspace][data-scoring-theme="vodafone"] .scoring-scorecard .scoring-kpi-badge { border-radius: 999px; }
   [data-scoring-workspace][data-scoring-theme="vodafone"] .scoring-comparison-table.scoring-scorecard tbody tr:not(.scoring-section-row) > td[data-column="score"] {
-    border-radius: 999px; font-weight: 750; background: color-mix(in srgb, var(--band-dot, #bdbdbd) 24%, #fff) !important; }
+    border-radius: 999px; font-weight: 750; background: var(--cell-tint, color-mix(in srgb, var(--band-dot, #bdbdbd) 24%, #fff)) !important; }
   [data-scoring-workspace][data-scoring-theme="vodafone"] .scoring-comparison-table.scoring-scorecard tbody tr.scoring-section-row > :is(th, td) { border-radius: 999px !important; }
   [data-scoring-workspace][data-scoring-theme="vodafone"] .scoring-scorecard tr.scoring-section-row .scoring-kpi-name::before { content: ''; display: inline-block; width: .55rem; height: .55rem;
     margin-right: .5rem; border-radius: 50%; background: #e60000; vertical-align: .05rem; }
