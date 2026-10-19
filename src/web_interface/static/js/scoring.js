@@ -7660,7 +7660,8 @@
     const section = insightSection(pane, 'GAP by part of the scoring over the campaigns', 'scoring-gap-parts-card', context);
     section.append(insightControls(scopeControl, chips));
     const grid = document.createElement('div');
-    grid.className = 'scoring-insight-pair';
+    // Two tables a row at most, so their campaigns and Latest bars fit.
+    grid.className = 'scoring-insight-pair scoring-gap-parts-grid';
     for (const item of inScope.filter(entry => chosen.includes(entry.operator))) {
       const wrapper = document.createElement('div');
       wrapper.className = 'scoring-insight-table-wrap';
