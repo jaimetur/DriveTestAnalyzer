@@ -1815,6 +1815,20 @@ def install_network_insights_routes(core: Any) -> None:
                       {'id': favourite['id'], 'name': favourite['name'], 'created': False, 'selection': favourite['selection']})
         return {'favourite': favourite, 'favourites': ni_favourites.list_favourites(task_repository)}
 
+    @app.post('/api/network-insights/favourites/{favourite_id}/rename')
+    def network_insights_favourite_rename(favourite_id: int, payload: FavouritePayload, user=Depends(editor_user)):
+        """Rename a favourite, keeping the selection it saved (not the changes of the panel)."""
+        task_repository = bound_repository()
+        try:
+            favourite, previous = ni_favourites.rename_favourite(task_repository, favourite_id, payload.name, user.username)
+        except LookupError as exc:
+            raise HTTPException(404, str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        log_favourite(task_repository, user, 'network_insights_favourite_renamed',
+                      {'id': favourite['id'], 'name': favourite['name'], 'previous': previous})
+        return {'favourite': favourite, 'favourites': ni_favourites.list_favourites(task_repository)}
+
     @app.delete('/api/network-insights/favourites/{favourite_id}')
     def network_insights_favourite_delete(favourite_id: int, user=Depends(editor_user)):
         task_repository = bound_repository()

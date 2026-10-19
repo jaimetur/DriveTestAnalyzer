@@ -68,3 +68,50 @@ def test_favourites_travel_with_their_element_and_full_workspaces(client):
     assert names == [f'workspaces/Default/{core.NI_FAVOURITES_ARCHIVE_NAME}']
     page = client.get('/admin')
     assert 'Network Insights Favourites (from active workspace)' in page.text
+
+
+def test_a_reload_keeps_the_favourite_the_page_opens_with():
+    import shutil
+    import subprocess
+
+    import pytest
+    script = (core.PROJECT_ROOT / 'src' / 'web_interface' / 'static' / 'js' / 'network_insights.js').read_text(encoding='utf-8')
+    # The favourite just opened, else one with the same choices and filters as the selection the page opens with.
+    assert 'const shownFavourite = chosenFavourite || favourites.find(item => sameSelection(item.selection, savedSelection));' in script
+    node = shutil.which('node')
+    if not node:
+        pytest.skip('Node.js is required for the selection check.')
+    start = script.index('  const sameSelection = (favourite, selection) => {')
+    function = script[start:script.index('\n  };', start) + len('\n  };')]
+    program = function + """
+const favourite = %s;
+console.log(JSON.stringify([
+  sameSelection(favourite, {...favourite, controls: {...favourite.controls, 'ni-overshoot': '5'}, map_group: 'EE'}),
+  sameSelection(favourite, {...favourite, filters: {...favourite.filters, 'ni-operators': ['EE', 'VF'], 'ni-cities': []}}),
+  sameSelection(favourite, {...favourite, controls: {...favourite.controls, 'ni-coverage-threshold': '-110'}}),
+  sameSelection(favourite, {...favourite, filters: {...favourite.filters, 'ni-cities': ['London']}}),
+]));
+""" % json.dumps(favourites.normalize_selection(SELECTION))
+    completed = subprocess.run([node, '-e', program], capture_output=True, text=True, check=False)
+    assert completed.returncode == 0, completed.stderr
+    # A control added since the favourite was saved, the map operator, the order of values and empty filters do not
+    # matter; another threshold or filter value does.
+    assert json.loads(completed.stdout) == [True, True, False, False]
+
+
+def test_a_favourite_is_renamed_keeping_its_selection(client):
+    login(client)
+    first = client.post('/api/network-insights/favourites', json={'name': 'Morning drive', 'selection': SELECTION}).json()['favourite']
+    client.post('/api/network-insights/favourites', json={'name': 'Night drive', 'selection': SELECTION})
+    # Renaming keeps the selection it saved, whatever the request carries; a name already used, or empty, is refused.
+    renamed = client.post(f"/api/network-insights/favourites/{first['id']}/rename",
+                          json={'name': 'Evening drive', 'selection': {'controls': {'ni-nr-mode': 'NSA'}}})
+    assert renamed.status_code == 200, renamed.text
+    assert renamed.json()['favourite']['name'] == 'Evening drive' and renamed.json()['favourite']['selection'] == first['selection']
+    assert client.post(f"/api/network-insights/favourites/{first['id']}/rename", json={'name': 'night DRIVE'}).status_code == 400
+    assert client.post(f"/api/network-insights/favourites/{first['id']}/rename", json={'name': '  '}).status_code == 400
+    assert client.post('/api/network-insights/favourites/9999/rename', json={'name': 'Gone'}).status_code == 404
+    logged = [json.loads(row['details']) for row in core.repository.list_logs(limit=20) if row['action'] == 'network_insights_favourite_renamed']
+    assert logged[0] == {'id': first['id'], 'name': 'Evening drive', 'previous': 'Morning drive'}
+    page = client.get('/network-insights').text
+    assert 'id="ni-favourite-rename"' in page

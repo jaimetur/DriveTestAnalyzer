@@ -2094,16 +2094,31 @@
     select.replaceChildren(new Option('Current selection', ''), ...favourites.map(item => new Option(item.name, String(item.id))));
     select.value = favourites.some(item => String(item.id) === String(selected)) ? String(selected) : '';
     $('ni-favourite-delete').disabled = !select.value || !config.can_edit;
+    $('ni-favourite-rename').disabled = $('ni-favourite-delete').disabled;
     $('ni-favourite-save').disabled = !config.can_edit;
   };
   let openedFavourite = '';
   try { openedFavourite = sessionStorage.getItem(FAVOURITE_OPENED) || ''; sessionStorage.removeItem(FAVOURITE_OPENED); } catch {}
-  renderFavourites(openedFavourite);
   const chosenFavourite = favourites.find(item => String(item.id) === openedFavourite);
-  if (chosenFavourite) $('ni-favourite-name').value = chosenFavourite.name;
+  // The choices and filters of a selection, to tell whether the page opens with those of a favourite: the controls the
+  // favourite keeps (a control added since it was saved is left out) and every filter, in any order.
+  const sameSelection = (favourite, selection) => {
+    const values = value => (Array.isArray(value) ? value : value === undefined || value === null || value === '' ? [] : [value])
+      .map(String).sort().join('|');
+    const controls = favourite?.controls || {};
+    const filters = new Set([...Object.keys(favourite?.filters || {}), ...Object.keys(selection?.filters || {})]);
+    return Object.keys(controls).every(id => values(controls[id]) === values(selection?.controls?.[id]))
+      && [...filters].every(id => values(favourite?.filters?.[id]) === values(selection?.filters?.[id]));
+  };
+  // A reload keeps the favourite the page opens with: the one just opened, else one with the same choices and filters,
+  // so the selector does not fall back to Current selection.
+  const shownFavourite = chosenFavourite || favourites.find(item => sameSelection(item.selection, savedSelection));
+  renderFavourites(shownFavourite ? String(shownFavourite.id) : '');
+  if (shownFavourite) $('ni-favourite-name').value = shownFavourite.name;
   $('ni-favourite').addEventListener('change', async () => {
     const favourite = favourites.find(item => String(item.id) === $('ni-favourite').value);
     $('ni-favourite-delete').disabled = !favourite || !config.can_edit;
+    $('ni-favourite-rename').disabled = $('ni-favourite-delete').disabled;
     if (!favourite) return;
     try {
       await fetch(`/api/network-insights/favourites/${favourite.id}/open`, {method: 'POST', credentials: 'same-origin'});
@@ -2133,6 +2148,29 @@
       favourites = payload.favourites;
       renderFavourites(payload.favourite.id);
       favouriteStatus(`${payload.favourite.name} saved as a favourite.`, 'done');
+    } catch (error) {
+      favouriteStatus(error.message, 'error');
+    }
+  });
+  // Renaming keeps the selection the favourite saved (not the changes of the panel), as the favourites of Reporting.
+  $('ni-favourite-rename').addEventListener('click', async () => {
+    const selected = favourites.find(item => String(item.id) === $('ni-favourite').value);
+    if (!selected) return;
+    const answer = typeof window.showTextInputDialog === 'function'
+      ? await window.showTextInputDialog('New name', {title: 'Rename Favourite', value: selected.name, maxLength: 120, confirmLabel: 'Rename', cancelLabel: 'Cancel'})
+      : window.prompt('New name of the favourite Analysis Selection', selected.name);
+    const name = String(answer ?? '').trim();
+    if (!name || name === selected.name) return;
+    try {
+      const response = await fetch(`/api/network-insights/favourites/${selected.id}/rename`, {
+        method: 'POST', headers: {'Content-Type': 'application/json'}, credentials: 'same-origin', body: JSON.stringify({name}),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.detail || 'Unable to rename the favourite.');
+      favourites = payload.favourites;
+      renderFavourites(payload.favourite.id);
+      $('ni-favourite-name').value = payload.favourite.name;
+      favouriteStatus(`${selected.name} renamed to ${payload.favourite.name}.`, 'done');
     } catch (error) {
       favouriteStatus(error.message, 'error');
     }

@@ -99,6 +99,14 @@ def save_favourite(repository: Any, favourite_id: int | None, name: str, selecti
     return get_favourite(repository, int(favourite_id))
 
 
+def rename_favourite(repository: Any, favourite_id: int, name: str, username: str) -> tuple[dict[str, Any], str]:
+    """Give a favourite another name, keeping the selection it saved; returns it with its previous name."""
+    favourite = get_favourite(repository, favourite_id)
+    if favourite is None:
+        raise LookupError('The favourite Analysis Selection no longer exists.')
+    return save_favourite(repository, favourite_id, name, favourite['selection'], username), favourite['name']
+
+
 def delete_favourite(repository: Any, favourite_id: int) -> dict[str, Any] | None:
     favourite = get_favourite(repository, favourite_id)
     if favourite is not None:
