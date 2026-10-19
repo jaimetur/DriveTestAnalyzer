@@ -2657,7 +2657,9 @@ def _add_insight_slides(presentation, views: dict, environment: str, scoring: st
                                boundaries=boundaries('Area') if boundaries else None)
         return
     if stage == 'comparison' and _option(options, 'tables', 'campaign_comparison'):
-        add_campaign_comparison_slides(presentation, items.get('campaign_comparisons', []), scoring_label=label,
+        # The Focus operators (the reference too when it is one; every operator without them).
+        comparisons = [item for item in items.get('campaign_comparisons', []) if compared(item['operator'], item.get('label'))]
+        add_campaign_comparison_slides(presentation, comparisons, scoring_label=label,
                                        subtitle=subtitle, new_slide=_slide, scope=scope)
 
 

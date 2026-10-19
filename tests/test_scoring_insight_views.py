@@ -238,6 +238,23 @@ def test_the_campaigns_card_lists_the_other_analysed_campaigns_below_the_referen
     assert "otherCampaigns.length ? `+${otherCampaigns.length} campaign${otherCampaigns.length === 1 ? '' : 's'}: ${otherCampaigns.join(', ')}`" in script
 
 
+def test_the_campaign_comparison_exports_the_focus_operators(national, monkeypatch):
+    import src.modules.scoring_exports as exports
+    job, result, _insights = national
+    shown = []
+    monkeypatch.setattr(exports, 'add_campaign_comparison_slides',
+                        lambda _presentation, comparisons, **_options: shown.append(sorted({item['operator'] for item in comparisons})))
+    groups = [{'canonical': 'Three UK', 'aliases': [], 'position': 0, 'color': '#000000', 'role': 'focus'},
+              {'canonical': 'EE', 'aliases': [], 'position': 1, 'color': '#76B7B2', 'role': 'focus'}]
+    export_scoring_powerpoint(job, result, TEMPLATE, groups, scorings=['best_network'], environments=['Combined'])
+    # The Focus operators only, the reference (EE) included as it is one of them.
+    assert shown and all(operators == ['EE', 'Three UK'] for operators in shown)
+    shown.clear()
+    export_scoring_powerpoint(job, result, TEMPLATE, scorings=['best_network'], environments=['Combined'])
+    # Without Focus operators, every operator.
+    assert shown and all(operators == ['EE', 'O2 UK', 'Three UK', 'Vodafone UK'] for operators in shown)
+
+
 def test_the_route_of_where_to_act_is_drawn_as_the_routes_of_points_lost(national, monkeypatch) -> None:
     import src.modules.scoring_summary_slides as summary_slides
     from src.modules.scoring_act_slides import render_owner_route_map
