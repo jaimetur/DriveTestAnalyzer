@@ -1853,9 +1853,9 @@ def test_the_scoring_trend_comes_before_the_national_and_areas():
     locations = _function_source(script, 'renderGeographicalAreas')
     assert "'area_summaries'" not in locations and "insightItems(payload, 'location_cards', environment)" in locations
     assert 'No Geographical Areas views: calculate the scoring again to see them per Region and for London' in locations
-    # The titles of the area charts: National, the separate cities and the breakdown in their own colours.
+    # The titles of the area charts: National, the breakdown and the cities in their own colours.
     chart = _function_source(SCORING_SCRIPT.read_text(encoding='utf-8'), 'makeAreaTrendChart')
-    assert "area.kind === 'National' ? 'is-national' : area.kind === 'City' ? 'is-city' : 'is-breakdown'" in chart
+    assert "caption.className = `is-${areaCategory(area)}`;" in chart
 
 
 def test_the_area_charts_take_the_height_of_the_table_and_tilt_crowded_labels():

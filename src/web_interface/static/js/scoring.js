@@ -360,6 +360,9 @@
   // The Geographical Areas & Scoring Trends of the calculation, always included: the Breakdown and Separate cities of both
   // tabs, and the time split and campaigns of the trends.
   const areaSummaryPanel = root.querySelector('[data-scoring-area-summary]');
+  // Main Cities among the Separate cities: kept as such and resolved when the scoring is calculated.
+  const MAIN_CITIES_TOKEN = '@main-cities';
+  const MAIN_CITIES_LABEL = 'Main Cities';
   const areaSummaryTimeSplit = root.querySelector('[data-scoring-area-time-split]');
   const areaSummaryBreakdown = root.querySelector('[data-scoring-area-breakdown]');
   const areaSummaryCities = root.querySelector('[data-scoring-area-cities]');
@@ -705,31 +708,36 @@
     trendCampaigns.dispatchEvent(new Event('multiselect:options-updated'));
   }
 
-  // The separate cities are the cities of the selected CDRs, Main Cities first, plus the cities chosen before.
+  // The separate cities: Main Cities first (kept as such, the Main Cities of the workspace when the scoring is
+  // calculated), then the cities of the selected CDRs, plus the cities chosen before.
   function refreshAreaSummaryCities(selectedIds = new Set(selectedDatasetIds())) {
     if (!areaSummaryCities) return;
     const chosen = [...areaSummaryCities.selectedOptions].map(option => option.value).filter(Boolean);
     const catalogueKey = filterCatalogueKeys.get('City');
     const values = [];
     for (const datasetId of selectedIds) values.push(...uniqueCatalogueValues(datasetCatalogues.get(String(datasetId))?.[catalogueKey]));
-    const known = new Set(values.map(value => value.toLocaleLowerCase()));
-    const options = [...contextFilterOptions('City', [...new Set(values)]).map(entry => entry.value),
+    const known = new Set([MAIN_CITIES_TOKEN, ...values].map(value => value.toLocaleLowerCase()));
+    const options = [MAIN_CITIES_TOKEN, ...contextFilterOptions('City', [...new Set(values)]).map(entry => entry.value),
       ...chosen.filter(value => !known.has(value.toLocaleLowerCase()))];
-    const presetCities = options.filter(value => mainCityIdentities.has(value.trim().toLocaleLowerCase()));
-    const signature = JSON.stringify({options, chosen, presetCities, disabled: areaSummaryCities.disabled});
+    const signature = JSON.stringify({options, chosen, disabled: areaSummaryCities.disabled});
     if (areaSummaryCities.dataset.scoringCatalogueSignature === signature) return;
     areaSummaryCities.dataset.scoringCatalogueSignature = signature;
-    areaSummaryCities.dataset.multiselectPresetLabel = 'Main Cities';
-    areaSummaryCities.dataset.multiselectPresetValues = presetCities.join('|');
+    delete areaSummaryCities.dataset.multiselectPresetLabel;
+    delete areaSummaryCities.dataset.multiselectPresetValues;
     const selected = new Set(chosen.map(value => value.toLocaleLowerCase()));
     areaSummaryCities.replaceChildren(...options.map(value => {
       const option = document.createElement('option');
       option.value = value;
-      option.textContent = value;
+      option.textContent = value === MAIN_CITIES_TOKEN ? MAIN_CITIES_LABEL : value;
+      if (value === MAIN_CITIES_TOKEN) option.title = 'The Main Cities of the workspace each time the scoring is calculated';
       option.selected = selected.has(value.toLocaleLowerCase());
       return option;
     }));
     areaSummaryCities.dispatchEvent(new Event('multiselect:options-updated'));
+  }
+
+  function chosenAreaCities() {
+    return areaSummaryCities ? [...areaSummaryCities.selectedOptions].map(option => option.value).filter(Boolean) : [];
   }
 
   function selectedAreaSummary() {
@@ -737,7 +745,8 @@
       enabled: true,
       time_split: String(areaSummaryTimeSplit?.value || 'Campaign'),
       breakdown: String(areaSummaryBreakdown?.value || 'Region'),
-      cities: areaSummaryCities ? [...areaSummaryCities.selectedOptions].map(option => option.value).filter(Boolean) : [],
+      cities: chosenAreaCities().filter(value => value !== MAIN_CITIES_TOKEN),
+      main_cities: chosenAreaCities().includes(MAIN_CITIES_TOKEN),
       campaigns: selectedTrendCampaigns(),
     };
   }
@@ -1015,7 +1024,7 @@
         areaSummaryBreakdown.value = summary.breakdown;
       }
       if (areaSummaryCities && Array.isArray(summary.cities)) {
-        const cities = summary.cities.map(String);
+        const cities = [...(summary.main_cities ? [MAIN_CITIES_TOKEN] : []), ...summary.cities.map(String)];
         const known = new Set([...areaSummaryCities.options].map(option => option.value.toLocaleLowerCase()));
         for (const city of cities) {
           if (known.has(city.toLocaleLowerCase())) continue;
@@ -1055,7 +1064,8 @@
       scoring_profile_id: savedFilter.scoring_profile_id,
       context_filters: savedFilter.context_filters || {},
       // Its Geographical Areas & Scoring Trends (Region and London for one saved without them).
-      area_summary: savedFilter.area_summary && (savedFilter.area_summary.breakdown || (savedFilter.area_summary.cities || []).length)
+      area_summary: savedFilter.area_summary && (savedFilter.area_summary.breakdown || (savedFilter.area_summary.cities || []).length
+        || savedFilter.area_summary.main_cities)
         ? {...savedFilter.area_summary, breakdown: savedFilter.area_summary.breakdown || 'None', campaigns: savedFilter.area_summary.campaigns || [],
           enabled: true}
         : {enabled: true, breakdown: 'Region', cities: ['London'], time_split: savedFilter.area_summary?.time_split || 'Campaign',
@@ -1598,7 +1608,7 @@
   // and London for one saved without them, as it is calculated).
   function savedFilterAreaSummaryParts(savedFilter) {
     const summary = savedFilter?.area_summary && typeof savedFilter.area_summary === 'object' ? savedFilter.area_summary : {};
-    let cities = (Array.isArray(summary.cities) ? summary.cities : []).filter(Boolean);
+    let cities = [...(summary.main_cities ? ['Main Cities'] : []), ...(Array.isArray(summary.cities) ? summary.cities : []).filter(Boolean)];
     let breakdown = summary.breakdown && summary.breakdown !== 'None' ? summary.breakdown : null;
     if (!breakdown && !cities.length) [breakdown, cities] = ['Region', ['London']];
     return [['breakdown', 'Breakdown', breakdown || 'None'], ['cities', 'Separate cities', cities.length ? cities.join(', ') : 'None']];
@@ -6190,15 +6200,20 @@
     // Each area is a band of rows: its first row starts it, and every other area is shaded.
     const rowClasses = [];
     const unmeasured = [];
-    (summary.areas || []).forEach((area, areaIndex) => {
+    // National, the Regions or Clusters, then the cities, a thick rule between them.
+    let previousCategory = null;
+    areaChartOrder(summary.areas || []).forEach((area, areaIndex) => {
       const measured = area.measured !== false;
+      const category = areaCategory(area);
+      const newCategory = previousCategory !== null && category !== previousCategory;
+      previousCategory = category;
       if (!measured) unmeasured.push(area.label);
       area.rows.forEach((item, index) => {
         const color = safeHexColor(item.color);
         const missing = measured ? '' : `Not measured in ${period(summary.latest_campaign)}`;
         const cells = [
           {text: index ? '' : area.label, title: index ? '' : missing,
-            className: `scoring-area-name${area.kind === 'National' ? ' is-national' : ''}${measured ? '' : ' is-unmeasured'}`},
+            className: `scoring-area-name is-${category}${measured ? '' : ' is-unmeasured'}`},
           {text: item.label, style: color ? {color} : {},
             className: `scoring-area-operator${item.is_reference ? ' scoring-area-reference' : ''}`},
           {text: item.points === null || item.points === undefined ? '—' : `${insightNumber(item.points, 1)}${item.complete ? '' : '*'}`,
@@ -6208,7 +6223,7 @@
         if (summary.previous_campaign) cells.push({text: signed(item.delta), className: tone(item.delta)});
         cells.push(item.is_reference ? '' : {text: signed(item.gap), className: tone(item.gap)});
         rows.push(cells);
-        rowClasses.push(`${index ? '' : 'is-area-start'}${areaIndex % 2 ? ' is-area-shaded' : ''}`.trim());
+        rowClasses.push(`${index ? '' : 'is-area-start'}${!index && newCategory ? ' is-category-start' : ''}${areaIndex % 2 ? ' is-area-shaded' : ''}`.trim());
       });
     });
     const tableWrap = document.createElement('div');
@@ -6274,20 +6289,22 @@
     return view;
   }
 
-  // The charts of the areas: National, then a single separate city next to it before the breakdown, or several
-  // separate cities after the breakdown.
+  // National, the Regions or Clusters of the breakdown, then the cities: each its own colour, in this order.
+  function areaCategory(area) {
+    return area.kind === 'National' ? 'national' : area.kind === 'City' ? 'city' : 'breakdown';
+  }
+
   function areaChartOrder(areas) {
-    const cities = areas.filter(area => area.kind === 'City');
-    if (cities.length < 2 || cities.length === areas.filter(area => area.kind !== 'National').length) return areas;
-    return [...areas.filter(area => area.kind !== 'City'), ...cities];
+    const rank = {national: 0, breakdown: 1, city: 2};
+    return [...areas].sort((left, right) => rank[areaCategory(left)] - rank[areaCategory(right)]);
   }
 
   function makeAreaTrendChart(area, campaigns, low, high, step, height = 170) {
     const figure = document.createElement('figure');
     figure.className = 'scoring-area-trend';
     const caption = document.createElement('figcaption');
-    // National, the separate cities and the areas of the breakdown each have their own colour.
-    caption.className = area.kind === 'National' ? 'is-national' : area.kind === 'City' ? 'is-city' : 'is-breakdown';
+    // National, the areas of the breakdown and the cities each have their own colour.
+    caption.className = `is-${areaCategory(area)}`;
     caption.textContent = area.label;
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     const width = 360, right = 34, top = 10;

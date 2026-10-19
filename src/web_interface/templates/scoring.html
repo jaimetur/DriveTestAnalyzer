@@ -1133,6 +1133,16 @@
   [data-scoring-workspace][data-scoring-theme="heatmap"] table.scoring-area-summary-table tbody tr td { border-radius: 8px; background-color: #f6f8fa; }
   [data-scoring-workspace][data-scoring-theme="heatmap"] table.scoring-area-summary-table tbody tr.is-area-start:not(:first-child) td { border-top: 0; }
   [data-scoring-workspace][data-scoring-theme="heatmap"] table.scoring-area-summary-table td.scoring-area-name { background-color: #f3f5f7; }
+  /* In every theme: National, the Regions or Clusters and the cities in the colours of their charts, a thick rule between them. */
+  [data-scoring-workspace] table.scoring-area-summary-table td.scoring-area-name.is-national { color: #b07400; }
+  [data-scoring-workspace] table.scoring-area-summary-table td.scoring-area-name.is-breakdown { color: #1450a8; }
+  [data-scoring-workspace] table.scoring-area-summary-table td.scoring-area-name.is-city { color: #8e3fb5; }
+  [data-scoring-workspace][data-scoring-theme="midnight"] table.scoring-area-summary-table td.scoring-area-name.is-national { color: #ffc145; }
+  [data-scoring-workspace][data-scoring-theme="midnight"] table.scoring-area-summary-table td.scoring-area-name.is-breakdown { color: #8fd3ff; }
+  [data-scoring-workspace][data-scoring-theme="midnight"] table.scoring-area-summary-table td.scoring-area-name.is-city { color: #d7a6ff; }
+  [data-scoring-workspace] table.scoring-area-summary-table td.scoring-area-name.is-unmeasured { color: #7a8a96; }
+  [data-scoring-workspace] table.scoring-area-summary-table tbody tr.is-category-start td { border-top: 4px solid #5b6b78 !important; }
+  [data-scoring-workspace][data-scoring-theme="midnight"] table.scoring-area-summary-table tbody tr.is-category-start td { border-top-color: #8094b4 !important; }
   [data-scoring-workspace][data-scoring-theme="heatmap"] table.scoring-area-summary-table td.scoring-area-gain { background-color: #cde9e6 !important; color: #1f6f66; }
   [data-scoring-workspace][data-scoring-theme="heatmap"] table.scoring-area-summary-table td.scoring-area-loss { background-color: #f9d5d3 !important; color: #a63a33; }
 

@@ -42,6 +42,8 @@ _CITY_COLUMNS = ('City', 'G_Level_4')
 # they could be left out): each Region and London.
 DEFAULT_GEOGRAPHICAL_AREAS = {'breakdown': 'Region', 'cities': ['London']}
 GEOGRAPHICAL_CITIES = tuple(DEFAULT_GEOGRAPHICAL_AREAS['cities'])
+# Among the Separate cities of a request, the Main Cities of the workspace when it is calculated.
+MAIN_CITIES_TOKEN = '@main-cities'
 _AREA_IDENTITIES = {column_identity(field) for field in GEOGRAPHIC_FILTER_FIELDS}
 # Saved per calculation: what the views of the summary read. The points-lost shares stay with the job's own result.
 _PASS_RESULT_KEYS = ('scoring', 'totals', 'global_kpis', 'environment_scaling', 'aggregation_levels',
@@ -69,15 +71,39 @@ def normalize_area_summary_request(area_summary: Any, context_filters: dict[str,
     (see ``whole_country_filters``).
     """
     area_summary = area_summary if isinstance(area_summary, dict) else {}
-    breakdown, cities = geographical_areas(area_summary)
+    # Main Cities (the flag, or its token among the cities) stand for the Main Cities of the workspace when it is calculated.
+    main_cities = bool(area_summary.get('main_cities')) or any(
+        str(city).strip() == MAIN_CITIES_TOKEN for city in area_summary.get('cities') or [])
+    explicit = {**area_summary, 'cities': [city for city in area_summary.get('cities') or [] if str(city).strip() != MAIN_CITIES_TOKEN]}
+    if main_cities:
+        # (They are Separate cities: no breakdown is then a choice, not one saved without areas.)
+        breakdown = geographical_areas({**explicit, 'cities': ['-']})[0]
+        cities = geographical_areas({'breakdown': 'Region', 'cities': explicit['cities']})[1] if explicit['cities'] else []
+    else:
+        breakdown, cities = geographical_areas(explicit)
     split = str(area_summary.get('time_split') or '').strip().casefold()
     time_split = next((name for name in AREA_SUMMARY_TIME_SPLITS if name.casefold() == split), 'Campaign')
     normalized = {'breakdown': breakdown, 'cities': cities, 'time_split': time_split}
+    if main_cities:
+        normalized['main_cities'] = True
     campaigns = normalize_trend_campaigns(area_summary.get('campaigns'))
     # (Without campaigns of its own, the request keeps the form of the summaries saved before they had any.)
     if campaigns:
         normalized['campaigns'] = campaigns
     return normalized
+
+
+def resolve_main_cities(area_summary: Any, main_cities: list[str]) -> Any:
+    """The Geographical Areas & Scoring Trends of a job with its Main Cities as the Main Cities of the workspace now (after
+    its other Separate cities), as they are calculated."""
+    if not isinstance(area_summary, dict) or not area_summary.get('main_cities'):
+        return area_summary
+    cities: dict[str, str] = {}
+    for city in [*(area_summary.get('cities') or []), *(main_cities or [])]:
+        if str(city).strip():
+            cities.setdefault(str(city).strip().casefold(), str(city).strip())
+    resolved = {key: value for key, value in area_summary.items() if key != 'main_cities'}
+    return {**resolved, 'cities': list(cities.values())}
 
 
 def has_area_filters(context_filters: dict[str, list[str]] | None) -> bool:
@@ -375,8 +401,8 @@ def _single_value(rows: list[dict[str, Any]], field: str) -> Any:
 def _summary_areas(job: dict[str, Any], result: dict[str, Any], summary: dict[str, Any],
                    operator_mapping_groups: list[dict] | None, vendor_mapping_groups: list[dict] | None,
                    kinds: set[str] | None = None) -> list[dict[str, Any]]:
-    """The areas of a summary in order (National, chosen cities, breakdown), each with the score tables of every
-    campaign or period; ``kinds`` keeps only the calculations of those kinds."""
+    """The areas of a summary in order (National, the areas of the breakdown, then the cities), each with the score
+    tables of every campaign or period; ``kinds`` keeps only the calculations of those kinds."""
     from src.modules.scoring_insights import _scopes
     from src.modules.scoring_views import build_scoring_views
 
@@ -425,13 +451,20 @@ def _summary_areas(job: dict[str, Any], result: dict[str, Any], summary: dict[st
         elif field is not None:
             found.sort(key=lambda area: area['label'].casefold())
         areas.extend(found)
+    # National first, then the Regions or Clusters of the breakdown, then the cities (the separate ones first).
+    areas.sort(key=area_category)
     return areas
+
+
+def area_category(area: dict[str, Any]) -> int:
+    """The place of an area in a summary: National, the Regions or Clusters, then the cities."""
+    return 0 if area.get('kind') == NATIONAL else 2 if area.get('kind') == 'City' else 1
 
 
 def build_area_summary(job: dict[str, Any], result: dict[str, Any], operator_mapping_groups: list[dict] | None = None,
                        *, vendor_mapping_groups: list[dict] | None = None,
                        include_operator: Callable[[str, str], bool] | None = None) -> list[dict[str, Any]]:
-    """One summary per environment: the areas in order (National, chosen cities, breakdown) and,
+    """One summary per environment: the areas in order (National, the breakdown, the cities) and,
     for each operator, its points in the latest campaign, the GAP to the reference and the change
     from the previous campaign, with its points in every campaign for the trend charts.
     """

@@ -55,6 +55,14 @@ def _kpi_values(result):
 
 
 def test_area_summary_request_is_scored_on_the_whole_country():
+    # Main Cities (the flag or its token among the cities) are kept as such, and resolved when it is calculated.
+    assert normalize_area_summary_request({'breakdown': 'Region', 'cities': [], 'main_cities': True}, {}) == {
+        'breakdown': 'Region', 'cities': [], 'time_split': 'Campaign', 'main_cities': True}
+    assert normalize_area_summary_request({'breakdown': 'None', 'cities': ['@main-cities', 'Leeds', 'leeds']}, {}) == {
+        'breakdown': None, 'cities': ['Leeds'], 'time_split': 'Campaign', 'main_cities': True}
+    from src.modules.scoring_area_summary import resolve_main_cities
+    assert resolve_main_cities({'breakdown': 'Region', 'cities': ['Leeds'], 'main_cities': True}, ['London', 'leeds']) == {
+        'breakdown': 'Region', 'cities': ['Leeds', 'London']}
     # Always included: without a breakdown or separate cities (one saved when they could be left out), each Region and London.
     assert normalize_area_summary_request(None, {}) == normalize_area_summary_request({'breakdown': 'None', 'cities': []}, {}) == {
         'breakdown': 'Region', 'cities': ['London'], 'time_split': 'Campaign'}
@@ -170,7 +178,8 @@ def test_the_summary_lists_national_the_chosen_cities_and_the_breakdown():
                                                     {'breakdown': 'Region', 'cities': ['London']}, kwargs)
     summaries = build_area_summary(job, result)
     combined = next(item for item in summaries if item['environment'] == 'Combined')
-    assert [area['label'] for area in combined['areas']] == ['National', 'London', 'Vendor A', 'VMO2 North']
+    # National, the breakdown, then the cities.
+    assert [area['label'] for area in combined['areas']] == ['National', 'Vendor A', 'VMO2 North', 'London']
     national = {row['operator']: row for row in combined['areas'][0]['rows']}
     # The reference first; the GAP is each operator's points minus the reference's.
     assert combined['areas'][0]['rows'][0]['operator'] == 'EE' and national['EE']['gap'] is None
@@ -249,20 +258,26 @@ def test_an_area_without_an_environment_is_scaled_to_the_full_maximum():
 
 
 @pytest.mark.skipif(not shutil.which('node'), reason='Node.js is required')
-def test_a_single_separate_city_is_charted_next_to_national_and_several_after_the_breakdown():
+def test_the_areas_are_national_then_the_breakdown_then_the_cities():
     script = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/scoring.js').read_text(encoding='utf-8')
-    start = script.index('  function areaChartOrder(')
-    source = script[start:script.index('\n  }\n', start) + 4]
-    program = source + r"""
+    sources = []
+    for name in ('areaCategory', 'areaChartOrder'):
+        start = script.index(f'  function {name}(')
+        sources.append(script[start:script.index('\n  }\n', start) + 4])
+    program = ''.join(sources) + r"""
 const area = (label, kind) => ({label, kind});
 const one = [area('National', 'National'), area('London', 'City'), area('North', 'Region'), area('South', 'Region')];
-const two = [area('National', 'National'), area('London', 'City'), area('Leeds', 'City'), area('North', 'Region')];
+const two = [area('National', 'National'), area('London', 'City'), area('Leeds', 'City'), area('North', 'Cluster')];
 const cities = [area('National', 'National'), area('London', 'City'), area('Leeds', 'City')];
 process.stdout.write(JSON.stringify([one, two, cities].map(areas => areaChartOrder(areas).map(item => item.label))));
 """
     orders = json.loads(subprocess.run(['node', '-e', program], capture_output=True, text=True, check=True).stdout)
-    assert orders == [['National', 'London', 'North', 'South'], ['National', 'North', 'London', 'Leeds'],
+    assert orders == [['National', 'North', 'South', 'London'], ['National', 'North', 'London', 'Leeds'],
                       ['National', 'London', 'Leeds']]
+    # The table: each category in its colour, a thick rule where one starts.
+    assert "className: `scoring-area-name is-${category}${measured ? '' : ' is-unmeasured'}`}," in script
+    assert "tr.is-category-start td { border-top: 4px solid #5b6b78 !important; }" in (
+        Path(__file__).resolve().parents[1] / 'src/web_interface/templates/scoring.html').read_text(encoding='utf-8')
 
 
 def test_report_adds_the_national_and_areas_slide():
@@ -274,7 +289,7 @@ def test_report_adds_the_national_and_areas_slide():
     assert [table.cell(0, column).text for column in range(len(table.columns))] == [
         'Area', 'Operator', 'Score\n2026-Q2', 'Δ vs\n2026-Q1', 'Δ vs\nEE']
     areas = [table.cell(row, 0).text for row in range(1, len(table.rows)) if table.cell(row, 0).text]
-    assert areas == ['National', 'London', 'Vendor A', 'VMO2 North']
+    assert areas == ['National', 'Vendor A', 'VMO2 North', 'London']
     # The reference and the operators to compare (Vodafone and Three), not O2.
     operators = {table.cell(row, 1).text for row in range(1, len(table.rows))}
     assert operators == {'EE', 'Vodafone UK', 'Three UK'}
@@ -302,9 +317,10 @@ def test_scenarios_of_the_whole_country_calculate_their_area_summary(monkeypatch
     # The Scoring Trends take All available campaigns by default.
     assert core._scenario_area_summary(Repository(), scenario) == {'breakdown': 'Region', 'cities': ['London'],
                                                                    'time_split': 'Campaign', 'campaigns': ['@all-campaigns']}
+    # Main Cities stay as such in the Saved Filter of the scenario: the workspace's when it is calculated.
     scenario['area_summary'] = {'enabled': True, 'breakdown': 'None', 'cities': ['London'], 'main_cities': True}
     assert core._scenario_area_summary(Repository(), scenario) == {
-        'breakdown': None, 'cities': ['London', 'Leeds', 'Bristol'], 'time_split': 'Campaign'}
+        'breakdown': None, 'cities': ['London'], 'time_split': 'Campaign', 'main_cities': True}
     # The campaigns of the Scoring Trends join them; alone, they give the scoring trend of those campaigns.
     scenario['area_summary'] = {**scenario['area_summary'], 'campaigns': ['@latest-2-campaigns']}
     assert core._scenario_area_summary(Repository(), scenario)['campaigns'] == ['@latest-2-campaigns']
@@ -318,13 +334,13 @@ def test_scenarios_of_the_whole_country_calculate_their_area_summary(monkeypatch
     for filtered in ({'context_filters': {'Region': ['Vendor A']}}, {'main_cities': True}):
         assert has_geographic_filters({**scenario, **filtered})
         assert core._scenario_area_summary(Repository(), {**scenario, **filtered}) == {
-            'breakdown': None, 'cities': ['London', 'Leeds', 'Bristol'], 'time_split': 'Campaign'}
+            'breakdown': None, 'cities': ['London'], 'time_split': 'Campaign', 'main_cities': True}
     london = normalize_report_configuration({'scenarios': [default_scenario(name='London', context_filters={
         'City': ['London']})]})['scenarios'][0]
     assert london['area_summary']['enabled'] is True
     # Also when it was saved unchecked.
     scenario['area_summary']['enabled'] = False
-    assert core._scenario_area_summary(Repository(), scenario)['cities'] == ['London', 'Leeds', 'Bristol']
+    assert core._scenario_area_summary(Repository(), scenario)['main_cities'] is True
     assert normalize_report_configuration({'scenarios': [{**scenario, 'name': 'Saved'}]})['scenarios'][0]['area_summary']['enabled'] is True
 
     calculated = []
@@ -456,14 +472,16 @@ def test_the_calculation_selection_keeps_the_national_and_area_summary(scoring_a
     client = scoring_api['client']
     # Always included: each Region and London by default.
     assert client.get('/api/scoring/selection').json()['selection']['area_summary'] == {
-        'enabled': True, 'time_split': 'Campaign', 'breakdown': 'Region', 'cities': ['London'], 'campaigns': ['@all-campaigns']}
+        'enabled': True, 'time_split': 'Campaign', 'breakdown': 'Region', 'cities': ['London'], 'main_cities': False,
+        'campaigns': ['@all-campaigns']}
     selection = client.get('/api/scoring/selection').json()['selection']
     summary = {'enabled': True, 'time_split': 'weekly', 'breakdown': 'cluster', 'cities': ['London', 'Leeds'],
                'campaigns': ['@latest-2-campaigns', '2026-Q1']}
     saved = client.put('/api/scoring/selection', json={'selection': {**selection, 'area_summary': summary}}).json()
     # The campaigns of the Scoring Trends are kept with them (an automatic choice alone).
     assert saved['selection']['area_summary'] == {'enabled': True, 'time_split': 'Weekly', 'breakdown': 'Cluster',
-                                                  'cities': ['London', 'Leeds'], 'campaigns': ['@latest-2-campaigns']}
+                                                  'cities': ['London', 'Leeds'], 'main_cities': False,
+                                                  'campaigns': ['@latest-2-campaigns']}
     assert client.get('/api/scoring/selection').json()['selection']['area_summary']['time_split'] == 'Weekly'
     page = client.get('/scoring').text
     # The Geographical Areas & Scoring Trends: the areas of both tabs, then the campaigns and time split of the trends.

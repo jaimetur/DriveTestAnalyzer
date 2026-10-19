@@ -778,10 +778,16 @@ def _signed_color(value: float | None) -> str:
     return WIN_COLOR if value > 0 else LOSS_COLOR
 
 
+# National, the Regions or Clusters of the breakdown and the cities, as on the page.
+AREA_CATEGORY_COLORS = {0: '#B07400', 1: '#1450A8', 2: '#8E3FB5'}
+
+
 def _area_summary_table(slide, summary: dict[str, Any], areas: list[dict[str, Any]], *, left: float,
                         width: float) -> bool:
     """The score of each operator per area, with its GAP to the reference and its change from the previous campaign."""
+    from src.modules.scoring_area_summary import area_category
     from src.modules.scoring_insights import _display
+    from src.modules.scoring_pptx_scorecard import border
     latest, previous = summary['latest_campaign'], summary['previous_campaign']
     reference = summary.get('reference_label') or 'reference'
     headers = ['Area', 'Operator', f"Score\n{_display('Campaign', latest)}" if latest else 'Score']
@@ -804,9 +810,14 @@ def _area_summary_table(slide, summary: dict[str, Any], areas: list[dict[str, An
         table.cell(0, column).text_frame.word_wrap = True
     incomplete = False
     row = 1
+    previous_category = None
     for index, area in enumerate(areas):
         fill = NATIONAL_FILL if area['kind'] == 'National' else AREA_FILLS[index % 2]
         first = row
+        # National, the Regions or Clusters, then the cities, each in its colour with a thick rule between them.
+        category = area_category(area)
+        new_category = previous_category is not None and category != previous_category
+        previous_category = category
         for item in area['rows']:
             color = item.get('color') or '#263746'
             marker = '' if item['complete'] else '*'
@@ -822,7 +833,10 @@ def _area_summary_table(slide, summary: dict[str, Any], areas: list[dict[str, An
             row += 1
         if row - 1 > first:
             table.cell(first, 0).merge(table.cell(row - 1, 0))
-        _cell(table.cell(first, 0), area['label'], size=size + 1, bold=True, fill=fill)
+        _cell(table.cell(first, 0), area['label'], size=size + 1, bold=True, fill=fill, color=AREA_CATEGORY_COLORS[category])
+        if new_category:
+            for column in range(len(headers)):
+                border(table.cell(first, column), 'lnT', '#5B6B78', 2.5)
         table.cell(first, 0).vertical_anchor = MSO_ANCHOR.TOP
         table.cell(first, 0).margin_top = Inches(.04)
     return incomplete

@@ -23,7 +23,7 @@ from src.modules.scoring_area_summary import (
     WARNING_PREFIXES, area_summary_levels, calculate_area_summary, calculate_area_summary_from_history,
     calculate_geographical, calculate_geographical_from_history, geographical_levels, has_area_filters,
     whole_country_filters,
-    detach_area_summary, normalize_area_summary_request,
+    detach_area_summary, normalize_area_summary_request, resolve_main_cities,
 )
 from src.modules.scoring_vendors import scoring_vendor_name, scoring_vendor_operators
 from src.modules.cdr_auto_selection import CAMPAIGN_PRESET_LABELS, campaign_presets
@@ -845,8 +845,10 @@ def _prepare_saved_filter(
         'campaigns': area_trends['campaigns'], 'source_fingerprint': area_trends['source_fingerprint'],
         'methodologies': area_trends.get('configuration_hash', '')}}
     # Results calculated before the Geographical Areas followed the Breakdown and Separate cities on the whole country
-    # are calculated again.
+    # are calculated again; with Main Cities, the result changes with the Main Cities of the workspace.
     key_area_summary = {**key_area_summary, 'geographical_version': GEOGRAPHICAL_AREAS_VERSION}
+    if normalized_area_summary.get('main_cities'):
+        key_area_summary['main_cities'] = _workspace_main_cities(repository)
     result_key, _canonical = _result_key(
         normalized_levels, selected_mode, baseline, version, source_fingerprint, config_hash, baseline_aliases,
         normalized_context_filters, resolved_context_filters, operator_mappings, profile_id, profile_name,
@@ -878,6 +880,12 @@ def _prepare_saved_filter(
         'dataset_ids': normalized_ids, 'snapshot': snapshot, 'nr_mode': selected_mode, 'levels': normalized_levels,
         'baseline_operator': baseline,
     }
+
+
+def _workspace_main_cities(repository: Repository) -> list[str]:
+    """The Main Cities of the workspace now (none in a repository without them)."""
+    getter = getattr(repository, 'list_main_cities', None)
+    return list(getter()) if callable(getter) else []
 
 
 def _area_trends(repository: Repository, nr_mode: str, area_summary: dict[str, Any] | None,
@@ -1724,6 +1732,8 @@ def calculate_saved_filter(repository: Repository, filter_id: int,
         )
 
     try:
+        # Its Main Cities are those of the workspace when it is calculated.
+        saved_filter['area_summary'] = resolve_main_cities(saved_filter.get('area_summary'), _workspace_main_cities(repository))
         configuration = saved_filter.get('configuration')
         if configuration is None:
             raise ValueError(

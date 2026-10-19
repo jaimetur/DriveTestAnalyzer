@@ -216,8 +216,7 @@ def _normalize_area_summary(raw: object) -> dict[str, Any]:
     its Geographical Areas and trends, the time split and the campaigns of its trends."""
     from src.modules.scoring_reports import DEFAULT_AREA_SUMMARY, _normalize_area_summary as normalize
     summary = normalize(raw if isinstance(raw, dict) else DEFAULT_AREA_SUMMARY)
-    # Main Cities are chosen as their cities in this panel.
-    summary.pop('main_cities', None)
+    # (Main Cities stay as such: the Main Cities of the workspace when the scoring is calculated.)
     return summary
 
 

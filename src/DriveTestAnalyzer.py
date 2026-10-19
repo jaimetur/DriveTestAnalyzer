@@ -18777,15 +18777,15 @@ def _matching_saved_filter(task_repository: Repository, base: dict[str, Any], da
 
 def _scenario_area_summary(task_repository: Repository, scenario: dict[str, Any]) -> dict[str, Any]:
     """The Geographical Areas & Scoring Trends of a scenario, always included (scored on the whole country, whatever its
-    area filters): the Breakdown and Separate cities (the Main Cities of the workspace now with Main Cities) of its
-    Geographical Areas and trends, their time split and the campaigns of its trends when they have some of their own."""
+    area filters): the Breakdown and Separate cities (and Main Cities) of its Geographical Areas and trends, their time
+    split and the campaigns of its trends when they have some of their own."""
     summary = scenario.get('area_summary') or {}
-    cities = list(summary.get('cities') or [])
-    if summary.get('main_cities'):
-        cities.extend(task_repository.list_main_cities())
     breakdown = summary.get('breakdown')
-    request = {'breakdown': None if breakdown in (None, '', 'None') else breakdown, 'cities': cities,
+    request = {'breakdown': None if breakdown in (None, '', 'None') else breakdown, 'cities': list(summary.get('cities') or []),
                'time_split': summary.get('time_split') or 'Campaign'}
+    # Main Cities stay as such in its Saved Filter: those of the workspace when it is calculated.
+    if summary.get('main_cities'):
+        request['main_cities'] = True
     campaigns = list(summary.get('campaigns') or [])
     if campaigns:
         request['campaigns'] = campaigns
