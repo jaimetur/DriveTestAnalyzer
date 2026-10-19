@@ -139,6 +139,12 @@ def test_a_job_split_by_no_area_has_its_geographical_areas():
     # Not one split by period, nor of other cities.
     assert len(calculate_geographical(counting, frames, job['levels'], kwargs, summary={**summary, 'time_split': 'Weekly'})['passes']) == 2
     assert len(calls) == 2
+    # The separate cities of the National & Geographical Areas Trends are scored apart instead of London.
+    assert geographical_passes(['Operator', 'Campaign'], ['Leeds', ' '])[1]['cities'] == ['Leeds']
+    chosen = calculate_geographical(scoring_engine.calculate_scoring, frames, job['levels'], kwargs, cities=['Leeds', 'London'])
+    assert {row['city'] for row in chosen['passes'][1]['result']['scoring']} == {'Leeds', 'London'}
+    chosen_cards = geographical_insights(job, {**result, 'geographical': chosen})['location_cards']
+    assert any(item['level'] == 'City' and {card['label'] for card in item['cards']} == {'Leeds', 'London'} for item in chosen_cards)
     # Without measurements of London (or with filters leaving none), only the Regions.
     leeds = {'voice': pd.DataFrame([row for row in ROWS if row['City'] == 'Leeds'])}
     assert [item['kind'] for item in calculate_geographical(scoring_engine.calculate_scoring, leeds, job['levels'], kwargs)['passes']] == ['Region']

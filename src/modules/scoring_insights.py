@@ -28,7 +28,7 @@ def build_scoring_insights(score_tables: list[dict[str, Any]], configuration: di
                            levels: list[str], result: dict[str, Any] | None = None, *,
                            location_minimum: int = 2) -> dict[str, Any]:
     """Insights for every environment of the views; each item names its environment. The location cards need
-    ``location_minimum`` locations in a group (one for the Geographical calculation of London)."""
+    ``location_minimum`` locations in a group (one for the Geographical calculation of the separate cities)."""
     environments = list(dict.fromkeys(str(table['context'].get('environment')) for table in score_tables))
     scopes = _scopes(score_tables)
     insights: dict[str, list[dict[str, Any]]] = {

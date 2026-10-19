@@ -1882,12 +1882,21 @@ def _scoring_result(repository: Repository, saved_filter: dict[str, Any], config
         result['warnings'] = [*(result.get('warnings') or []), *summary.pop('warnings')]
         result['area_summary'] = summary
     if saved_filter.get('geographical', True):
-        # Its calculations per Region and of London are those of the summary of the same rows, when it has them.
+        # Its calculations per Region and of its separate cities (else London) are those of the summary of the same
+        # rows, when it has them.
         geographical = calculate_geographical(calculate, frames, saved_filter['levels'], call_kwargs, update_progress,
-                                              None if job_filtered else result.get('area_summary'))
+                                              None if job_filtered else result.get('area_summary'),
+                                              _separate_cities(saved_filter))
         if geographical:
             result['geographical'] = geographical
     return result, False
+
+
+def _separate_cities(saved_filter: dict[str, Any]) -> list[str]:
+    """The separate cities of the National & Geographical Areas Trends of a Saved Filter (none when it leaves them
+    out): the cities its Geographical views score apart."""
+    summary = saved_filter.get('area_summary')
+    return list(summary.get('cities') or []) if isinstance(summary, dict) else []
 
 
 def _engine_kwargs(repository: Repository, saved_filter: dict[str, Any], configuration: dict[str, Any],
@@ -1948,10 +1957,12 @@ def _history_result(repository: Repository, saved_filter: dict[str, Any], config
             result['warnings'] = [*(result.get('warnings') or []), *summary.pop('warnings')]
             result['area_summary'] = summary
         if saved_filter.get('geographical', True):
-            # Its calculations per Region and of London are those of the summary, when it has them.
+            # Its calculations per Region and of its separate cities (else London) are those of the summary, when it
+            # has them.
             geographical = calculate_geographical_from_history(
                 lambda levels, *, cities=None: calculate_scoring_from_history(repository, dataset_ids, levels, cities=cities, **options),
-                saved_filter['levels'], update_progress, None if job_filtered else result.get('area_summary'))
+                saved_filter['levels'], update_progress, None if job_filtered else result.get('area_summary'),
+                _separate_cities(saved_filter))
             if geographical:
                 result['geographical'] = geographical
     except HistoryUnavailable:

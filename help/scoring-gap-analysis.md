@@ -210,7 +210,7 @@ A list of more than three values keeps the first two and counts the others; hove
 | [**Summary**](#summary) | Where each operator stands, its position in every environment and service, the biggest levers and how the measurements ran |
 | [**Scoring Charts**](#scoring-charts) | The scoring per Service, per Category and per Category (Breakdown) and the maximum score allocation |
 | [**Scoring Tables**](#scoring-tables) | The Summary and Breakdown tables and the Campaign Comparison |
-| [**Geographical Areas**](#geographical-areas) | The scoring per City, Cluster or Region (per Region and of London when the Split by has none of them), the locations ranked and each operator against the reference per location |
+| [**Geographical Areas**](#geographical-areas) | The scoring per City, Cluster or Region (per Region and of the separate cities of the Scoring Trends, else London, when the Split by has none of them), the locations ranked and each operator against the reference per location |
 | [**Scoring Trends**](#scoring-trends) | The Scoring Trend and the National & Geographical Areas Trends, with the campaigns of the Scoring Trends |
 | [**GAP Analysis**](#gap-analysis) | The GAP tables, the GAP by part of the scoring and the KPI GAP Profile |
 | [**Points Lost**](#points-lost) | Where the points go, the points lost per KPI, the Points Lost Map and the points lost per Vendor, per kind of site, per site and along the Connecting Roads |
@@ -369,7 +369,7 @@ A single Split by level uses normal axis labels; multiple levels use separate he
 
 The cards and rankings follow City first, then Cluster, then Region, and group the other levels: with several campaigns, one set of cards per campaign shows the latest one. In All Environments each card adds the environments measured in that location and scales them to the full maximum (1,000 points in NetCheck 2026), so a city measured only in Drive - City is comparable with the others, as the NetCheck per-city rankings do; the note above the cards says so and gives the maximum and its Voice and Data parts. A single environment shows its own points.
 
-With City, Cluster or Region in the Split by, the tab shows those levels. Without them, the calculation also scores, with the same filters, each Region and London (when its CDRs have tests there), so the tab shows the cards and ranking of the Regions and the card of London; results calculated before this show a note to calculate them again. From the Scoring History these two calculations add about a second; from the CDR rows they reuse the rows already read but take about as long as the scoring itself, unless the calculation includes the National & Geographical Areas Trends with the Region breakdown and London of the same campaigns, whose calculations they then reuse.
+With City, Cluster or Region in the Split by, the tab shows those levels. Without them, the calculation also scores, with the same filters, each Region and each of the **Separate cities** of its Scoring Trends panel when **Include National & Geographical Areas Trends** is checked with some chosen (else London), when its CDRs have tests there, so the tab shows the cards and ranking of the Regions and the card of each of those cities (a Saved Filter calculated before shows London until it is calculated again); results calculated before this show a note to calculate them again. From the Scoring History these two calculations add about a second; from the CDR rows they reuse the rows already read but take about as long as the scoring itself, unless the calculation includes the National & Geographical Areas Trends with the Region breakdown and London of the same campaigns, whose calculations they then reuse.
 
 ### Scoring Trends
 
@@ -770,7 +770,7 @@ For each scenario and each scoring (**Best Network** and **Most Reliable Network
 | Summary | How the measurements ran, Where to act, Where to act by performance owner, Standings, Position per environment and service, Biggest levers against the reference, Cities, Towns, Roads and Railways ranked and The route that loses most (all on) |
 | Scoring Charts | Scoring per Service, per Category and per Category (Breakdown) (all on) |
 | Scoring Tables | Category table and Breakdown table (on), Show KPI values and Show GAP values (off), Campaign comparison (on) |
-| Geographical Areas | The per City / Cluster / Region cards (per Region and of London when the Split by has none of them), the locations ranked and each operator against the reference per location (all on) |
+| Geographical Areas | The per City / Cluster / Region cards (per Region and of the separate cities of the Scoring Trends, else London, when the Split by has none of them), the locations ranked and each operator against the reference per location (all on) |
 | Scoring Trends | The Scoring Trend (two campaigns or more) and the National & Geographical Areas Trends (both on) |
 | GAP Analysis | **Operators to compare** (Vodafone and Three when available; none chosen compares every operator), the table of all the chosen operators, the individual tables against the reference, the GAP by part over the campaigns and the KPI GAP Profile (all on) |
 | Points Lost | Where the points go, Points lost per KPI, the Points lost per City map, Points lost per Vendor, per kind of site, Sites to review and Route stretches (all on) |
@@ -801,7 +801,7 @@ Each block follows the order of the results tabs, as chosen in the scenario:
 2. Best Network (or Most Reliable Network) Scoring per Service and per Category, with the maximum score allocation donuts.
 3. Scoring per Category (Breakdown).
 4. Scoring Tables — Summary and Breakdown.
-5. **Geographical Areas**: the scoring per City / Cluster / Region (per Region and of London when the Split by has none of them), *<Cities and routes> ranked* and *Per location — <operator> vs <reference>* for each operator to compare (up to four).
+5. **Geographical Areas**: the scoring per City / Cluster / Region (per Region and of the separate cities of the Scoring Trends, else London, when the Split by has none of them), *<Cities and routes> ranked* and *Per location — <operator> vs <reference>* for each operator to compare (up to four).
 6. **Scoring Trends**: the Scoring Trend and the National & Geographical Areas Trends, with the campaigns of the Scoring Trends of the scenario.
 7. All Operators GAP comparison, then individual operator comparisons, *GAP by part — vs <reference>* and the KPI GAP Profile.
 8. **Points Lost**: *Points Lost — where the points go*, the points lost per KPI, the points-lost maps, *Points Lost — per Vendor* and *per kind of site* (two operators per slide), *Sites to review* (High priority first) and *Route stretches* (the two routes that lose most of each operator to compare).

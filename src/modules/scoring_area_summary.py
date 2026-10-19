@@ -16,7 +16,8 @@ P90...) are not additive and the points come from non-linear thresholds, so they
 derived from the National scoring. A calculation equal to the job's own reuses the job's result.
 
 The Geographical views of a job split by no Region, Cluster or City are calculated the same way, from the job's own
-rows and filters: one scoring per Region and one of London (see ``geographical_passes``).
+rows and filters: one scoring per Region and one of the separate cities of its National & Geographical Areas Trends,
+or of London when they have none (see ``geographical_passes``).
 """
 from __future__ import annotations
 
@@ -37,7 +38,8 @@ NATIONAL = 'National'
 # & Area Summary).
 WARNING_PREFIXES = ('National & Geographical Areas Trends:', 'National & Areas Trends:', 'National & Area Summary:')
 _CITY_COLUMNS = ('City', 'G_Level_4')
-# The Geographical views of a job split by no area: each Region and these cities (those its CDRs have).
+# The Geographical views of a job split by no area: each Region and these cities (those its CDRs have), when its
+# National & Geographical Areas Trends choose no separate cities.
 GEOGRAPHICAL_CITIES = ('London',)
 # Saved per calculation: what the views of the summary read. The points-lost shares stay with the job's own result.
 _PASS_RESULT_KEYS = ('scoring', 'totals', 'global_kpis', 'environment_scaling', 'aggregation_levels',
@@ -200,14 +202,16 @@ def calculate_area_summary_from_history(calculate: Callable[..., dict], levels: 
             'time_split': area_summary.get('time_split') or 'Campaign', 'passes': passes, 'warnings': warnings}
 
 
-def geographical_passes(levels: list[str]) -> list[dict[str, Any]]:
+def geographical_passes(levels: list[str], cities: list[str] | None = None) -> list[dict[str, Any]]:
     """The calculations of the Geographical views of a job split by no Region, Cluster or City: its split by Region,
-    and by City for London alone; none for a job split by an area (its own rows give those views)."""
+    and by City for ``cities`` alone (the separate cities of its National & Geographical Areas Trends), else for
+    London; none for a job split by an area (its own rows give those views)."""
     identities = {column_identity(level) for level in levels}
     if identities & {column_identity(field) for field in GEOGRAPHIC_FILTER_FIELDS}:
         return []
+    chosen = [str(city).strip() for city in cities or [] if str(city).strip()]
     return [{'kind': 'Region', 'field': 'region', 'levels': [*levels, 'Region']},
-            {'kind': 'City', 'field': 'city', 'levels': [*levels, 'City'], 'cities': list(GEOGRAPHICAL_CITIES)}]
+            {'kind': 'City', 'field': 'city', 'levels': [*levels, 'City'], 'cities': chosen or list(GEOGRAPHICAL_CITIES)}]
 
 
 def geographical_levels(levels: list[str]) -> list[str]:
@@ -231,9 +235,10 @@ def _summary_result(item: dict[str, Any], summary: dict[str, Any] | None) -> dic
 
 
 def _geographical(score: Callable[[dict[str, Any]], dict | None], levels: list[str],
-                  progress: Callable[[int, str], None] | None, summary: dict[str, Any] | None = None) -> dict[str, Any] | None:
+                  progress: Callable[[int, str], None] | None, summary: dict[str, Any] | None = None,
+                  cities: list[str] | None = None) -> dict[str, Any] | None:
     passes = []
-    for item in geographical_passes(levels):
+    for item in geographical_passes(levels, cities):
         if _summary_result(item, summary) is not None:
             # The same calculation as one of the area summary: its result is read from there.
             passes.append({**item, 'reuses_job': False, 'reuses_summary': True})
@@ -242,7 +247,7 @@ def _geographical(score: Callable[[dict[str, Any]], dict | None], levels: list[s
             progress(86, f"Calculating the Geographical views per {item['kind']}")
         try:
             result = score(item)
-        except ValueError:  # Filters that leave none of its measurements (no tests in London).
+        except ValueError:  # Filters that leave none of its measurements (no tests in its cities).
             result = None
         rows = result.get('scoring') if isinstance(result, dict) else None
         # A calculation without measurements of its areas is left out, without a warning: the views are optional.
@@ -253,28 +258,30 @@ def _geographical(score: Callable[[dict[str, Any]], dict | None], levels: list[s
 
 def calculate_geographical(calculate: Callable[..., dict], frames: dict[str, pd.DataFrame], levels: list[str],
                            call_kwargs: dict[str, Any], progress: Callable[[int, str], None] | None = None,
-                           summary: dict[str, Any] | None = None) -> dict[str, Any] | None:
+                           summary: dict[str, Any] | None = None, cities: list[str] | None = None) -> dict[str, Any] | None:
     """The Geographical calculations of a job split by no area, from its loaded rows: ``{'passes': [...]}`` in the form
-    of an area summary, or None. Those equal to a calculation of ``summary`` (an area summary of the same rows and
-    filters) take its result."""
+    of an area summary, or None; ``cities`` are those scored apart (see geographical_passes). Those equal to a
+    calculation of ``summary`` (an area summary of the same rows and filters) take its result."""
     def score(item: dict[str, Any]) -> dict | None:
         source = _city_frames(frames, item['cities']) if 'cities' in item else frames
         return calculate(source, item['levels'], **call_kwargs) if source else None
-    return _geographical(score, levels, progress, summary)
+    return _geographical(score, levels, progress, summary, cities)
 
 
 def calculate_geographical_from_history(calculate: Callable[..., dict], levels: list[str],
                                         progress: Callable[[int, str], None] | None = None,
-                                        summary: dict[str, Any] | None = None) -> dict[str, Any] | None:
+                                        summary: dict[str, Any] | None = None,
+                                        cities: list[str] | None = None) -> dict[str, Any] | None:
     """The Geographical calculations of a job split by no area from the Scoring History; ``calculate(levels,
     cities=...)`` scores the job's CDRs and filters."""
-    return _geographical(lambda item: calculate(item['levels'], cities=item.get('cities')), levels, progress, summary)
+    return _geographical(lambda item: calculate(item['levels'], cities=item.get('cities')), levels, progress, summary,
+                         cities)
 
 
 def geographical_insights(job: dict[str, Any], result: dict[str, Any], operator_mapping_groups: list[dict] | None = None,
                           *, vendor_mapping_groups: list[dict] | None = None) -> dict[str, list[dict[str, Any]]]:
     """The location cards and rankings of the Geographical calculations of a job split by no area: the Regions, and
-    London on its own card."""
+    each of its separate cities (else London) on its own card."""
     from src.modules.scoring_views import build_scoring_views
 
     insights: dict[str, list[dict[str, Any]]] = {'location_cards': [], 'location_rankings': []}
