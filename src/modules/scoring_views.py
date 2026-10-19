@@ -10,6 +10,7 @@ from typing import Any
 
 from src.modules.column_names import campaign_sort_key
 from src.modules.mapping_order import vendor_order_key
+from src.modules.nr_mode import SAME_OPERATOR_NSA, SAME_OPERATOR_NSA_LABEL, campaign_nr_mode, campaign_pair_key
 from src.modules.scoring_vendors import normalize_scoring_vendor_result
 from src.modules.scoring_config import validate_scoring_configuration
 from src.modules.scoring_insights import build_scoring_insights
@@ -208,6 +209,11 @@ def build_scoring_views(job: dict[str, Any] | None, result: dict[str, Any] | Non
     baseline_aliases = job.get('baseline_aliases') or result.get('baseline_aliases') or _mapping_aliases(
         requested_baseline, operator_mapping_groups or [],
     )
+    # NSA vs SA with Same operator in NSA: each operator of an SA campaign is compared with itself in the NSA campaign
+    # of the same quarter or period, which is the reference (no operator is).
+    same_operator = requested_baseline == SAME_OPERATOR_NSA
+    if same_operator:
+        requested_baseline, baseline_aliases = SAME_OPERATOR_NSA_LABEL, []
 
     score_records = _records(result.get('scoring', result.get('score_rows', [])))
     total_records = _records(result.get('totals', result.get('charts', [])))
@@ -271,7 +277,12 @@ def build_scoring_views(job: dict[str, Any] | None, result: dict[str, Any] | Non
             )
             table['operator_styles'] = styles
             score_tables.append(table)
+    if same_operator:
+        _apply_same_operator_reference(score_tables, gap_priority_rank)
     for table in score_tables:
+        if table.get('nr_mode_reference'):
+            # (The NSA campaigns are the reference: they have no GAP of their own.)
+            continue
         _apply_all_vendor_reference(table, score_tables, baseline_aliases, gap_priority_rank)
         gap_summary_tables.append(_build_gap_summary_table(table, gap_priority_rank, baseline_aliases))
         gap_tables.extend(_build_gap_tables(table, gap_priority_rank, baseline_aliases))
@@ -281,6 +292,7 @@ def build_scoring_views(job: dict[str, Any] | None, result: dict[str, Any] | Non
         score_tables, hierarchy_levels, requested_baseline, baseline_aliases,
         operator_mapping_groups or [], metrics, gap_priority_rank,
         vendor_mapping_groups=vendor_mapping_groups or [], by_campaign=bool(group_configurations),
+        same_operator=same_operator,
     ) if hierarchy_levels else ([], [])
 
     selected_levels = [level for level in (_HIERARCHY_LEVELS.get(_level_identity(item)) for item in levels) if level]
@@ -401,15 +413,60 @@ def _hierarchy_context_key(path: list[dict[str, Any]]) -> str:
     return _hierarchy_leaf_id([entry for entry in path if entry['level'] != 'Operator'])
 
 
-def _hierarchy_reference_id(path: list[dict[str, Any]], references: dict[str, str]) -> str | None:
+def _same_operator_key(path: list[dict[str, Any]]) -> str:
+    """A column of NSA vs SA with Same operator in NSA: its operator and context, its campaign without its NR Mode."""
+    return _hierarchy_leaf_id([{**entry, 'value': campaign_pair_key(entry.get('value'))} if entry['level'] == 'Campaign'
+                               else entry for entry in path])
+
+
+def _hierarchy_reference_id(path: list[dict[str, Any]], references: dict[str, str],
+                            key=_hierarchy_context_key) -> str | None:
     """Prefer the same vendor, then the reference operator's All vendor context."""
-    exact = references.get(_hierarchy_context_key(path))
+    exact = references.get(key(path))
     if exact is not None:
         return exact
     if not any(entry['level'] == 'Vendor' for entry in path):
         return None
     fallback = [{**entry, 'value': 'All'} if entry['level'] == 'Vendor' else entry for entry in path]
-    return references.get(_hierarchy_context_key(fallback))
+    return references.get(key(fallback))
+
+
+def _same_operator_twin_key(context: dict[str, Any]) -> str:
+    return json.dumps(sorted((key, campaign_pair_key(value) if key == 'campaign' else value)
+                             for key, value in context.items()), default=str)
+
+
+def _apply_same_operator_reference(tables: list[dict[str, Any]], priority: dict[str, int]) -> None:
+    """NSA vs SA with Same operator in NSA: the GAP of each operator of an SA campaign is its points minus its points in
+    the NSA campaign of the same quarter or period (the same vendor first, else its All vendor context); the tables of
+    the NSA campaigns are the reference."""
+    twins = {_same_operator_twin_key(table['context']): table for table in tables
+             if campaign_nr_mode(table['context'].get('campaign')) == 'NSA'}
+    for table in tables:
+        context = table['context']
+        table['baseline_operator'] = SAME_OPERATOR_NSA_LABEL
+        if campaign_nr_mode(context.get('campaign')) == 'NSA':
+            table['nr_mode_reference'] = True
+            continue
+        twin = twins.get(_same_operator_twin_key(context))
+        if twin is None and context.get('vendor') not in {None, 'All'}:
+            twin = twins.get(_same_operator_twin_key({**context, 'vendor': 'All'}))
+        reference_rows = {row['kpi_code']: row for row in (twin or {}).get('rows', [])}
+        for row in [*table['rows'], table['total']]:
+            reference_row = reference_rows.get(row.get('kpi_code')) if 'kpi_code' in row else (twin or {}).get('total')
+            for operator in table['operators']:
+                gap, partial, environments = _gap_with_coverage(
+                    ((reference_row or {}).get('values') or {}).get(operator), row['values'].get(operator), operator,
+                    SAME_OPERATOR_NSA_LABEL, [], context['environment'],
+                )
+                row['gaps'][operator] = gap
+                row['gap_partial'][operator] = partial
+                row['gap_environments'][operator] = environments
+        scale = max((abs(gap) for row in table['rows'] for gap in row['gaps'].values() if gap is not None), default=0.0)
+        table['gap_scale_max'] = scale
+        for row in table['rows']:
+            row['gap_colors'] = {operator: gap_color(row['gaps'].get(operator), scale) for operator in table['operators']}
+        _attach_score_table_modes(table, priority)
 
 
 def _apply_all_vendor_reference(table: dict, tables: list[dict], aliases: list[str], priority: dict) -> None:
@@ -493,12 +550,14 @@ def _build_hierarchy_tables(
     score_tables: list[dict[str, Any]], hierarchy_levels: list[str], requested_baseline: str,
     baseline_aliases: list[str], operator_mapping_groups: list[dict[str, Any]],
     metrics: list[dict[str, Any]], gap_priority_rank: dict[str, int], *,
-    vendor_mapping_groups: list[dict[str, Any]] | None = None, by_campaign: bool = False,
+    vendor_mapping_groups: list[dict[str, Any]] | None = None, by_campaign: bool = False, same_operator: bool = False,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Flatten new-contract per-context views into one complete leaf matrix per Environment.
 
     ``by_campaign``: the campaigns were scored with different methodologies, and a KPI a campaign's table does not
-    have is not one of its methodology (not missing)."""
+    have is not one of its methodology (not missing). ``same_operator`` (NSA vs SA with Same operator in NSA): the
+    reference of each column is its operator in the NSA campaign of the same quarter or period."""
+    reference_key = _same_operator_key if same_operator else _hierarchy_context_key
     levels = [level for level in hierarchy_levels if level == 'Operator' or level in _HIERARCHY_CONTEXT_FIELDS]
     if 'Operator' not in levels:
         return [], []
@@ -538,7 +597,8 @@ def _build_hierarchy_tables(
                     f'{item["level"]}: {_hierarchy_display_value(item)}'
                     for item in path
                 )
-                is_reference = _same_baseline_identity(canonical_operator, requested_baseline, baseline_aliases)
+                is_reference = (campaign_nr_mode(leaf_context.get('campaign')) == 'NSA' if same_operator
+                                else _same_baseline_identity(canonical_operator, requested_baseline, baseline_aliases))
                 column = {
                     'id': leaf_id,
                     'operator': canonical_operator,
@@ -586,7 +646,7 @@ def _build_hierarchy_tables(
             key=lambda code: (metric_order.get(code, len(metric_order)), gap_priority_rank.get(code, len(gap_priority_rank)), code),
         )
         baseline_by_context = {
-            _hierarchy_context_key(column['path']): column['id']
+            reference_key(column['path']): column['id']
             for column in columns if column['is_reference']
         }
 
@@ -608,7 +668,7 @@ def _build_hierarchy_tables(
             row['gap_partial'] = {}
             row['gap_environments'] = {}
             for column in columns:
-                baseline_id = _hierarchy_reference_id(column['path'], baseline_by_context)
+                baseline_id = _hierarchy_reference_id(column['path'], baseline_by_context, reference_key)
                 (row['gaps'][column['id']], row['gap_partial'][column['id']],
                  row['gap_environments'][column['id']]) = _gap_with_coverage(
                     row['values'].get(baseline_id) if baseline_id else None,
@@ -635,7 +695,7 @@ def _build_hierarchy_tables(
         total_gap_partial = {}
         total_gap_environments = {}
         for column in columns:
-            baseline_id = _hierarchy_reference_id(column['path'], baseline_by_context)
+            baseline_id = _hierarchy_reference_id(column['path'], baseline_by_context, reference_key)
             baseline_total = total_values.get(baseline_id) if baseline_id else None
             current_total = total_values.get(column['id'])
             if environment == 'Combined':

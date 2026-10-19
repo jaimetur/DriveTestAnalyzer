@@ -35,7 +35,7 @@ from src.modules.cdr_auto_selection import (
     ALL_CAMPAIGNS, CAMPAIGN_PRESET_LABELS, campaign_presets, complete_campaign_cdrs, resolve_campaign_filter, sort_campaigns,
 )
 from src.modules.column_names import compact_campaign_value, format_campaign
-from src.modules.nr_mode import NSA_VS_SA, nr_mode_label
+from src.modules.nr_mode import NSA_VS_SA, SAME_OPERATOR_NSA, SAME_OPERATOR_NSA_LABEL, nr_mode_label
 from src.modules.output_layout import BUNDLE_REPORTS_FOLDER, module_output_dir
 from src.modules.scoring_area_summary import normalize_trend_campaigns
 from src.modules.scoring_export_panels import EXPORT_PANELS, load_export_panels, normalize_export_panels
@@ -198,7 +198,9 @@ def _normalize_options(section: str, raw: Any, legacy_campaigns: Any = None) -> 
             'all_operators': bool(raw.get('all_operators')),
             # Scored NSA vs SA (the NSA and SA CDRs of its campaigns side by side), whatever the NR Mode of the report.
             'nsa_vs_sa': bool(raw.get('nsa_vs_sa')),
-            'baseline_operator': str(raw.get('baseline_operator') or 'EE').strip()[:80] or 'EE',
+            # (Same operator in NSA is a reference of NSA vs SA only.)
+            'baseline_operator': (str(raw.get('baseline_operator') or 'EE').strip()[:80] or 'EE'
+                                  if raw.get('nsa_vs_sa') or raw.get('baseline_operator') != SAME_OPERATOR_NSA else 'EE'),
             # By campaign (each campaign with its methodology) unless a methodology is chosen.
             'methodology': str(raw.get('methodology') or '').strip()[:120] or BY_CAMPAIGN,
             # Always included; reports saved before they had Separate cities keep London.
@@ -382,7 +384,8 @@ def _option_lines(section: dict[str, Any], dashboard_names: dict[str, str] | Non
         every = ' · All Operators in the Focus Operators panels' if options.get('all_operators') else ''
         every += ' · NSA vs SA' if options.get('nsa_vs_sa') else ''
         return [f"{scorings} · Environments: {environments}{every}",
-                f"Methodology: {methodology} · GAP reference: {options['baseline_operator']}",
+                f"Methodology: {methodology} · GAP reference: "
+                f"{SAME_OPERATOR_NSA_LABEL if options['baseline_operator'] == SAME_OPERATOR_NSA else options['baseline_operator']}",
                 f"Scoring Trends: {trend_campaigns}{areas}"]
     if section['key'] == 'network_insights':
         group = ', '.join(NI_GROUPINGS[key] for key in options['group']) or 'All samples'

@@ -15,6 +15,10 @@ SCORING_NR_MODES = (*NR_MODES, NSA_VS_SA)
 NR_MODE_LABELS = {'NSA': 'NSA', 'SA': 'SA', NSA_VS_SA: 'NSA vs SA'}
 # The loaded CDR rows of an NSA vs SA calculation keep the NR Mode of their CDR in this column.
 NR_MODE_COLUMN = '__nr_mode'
+# The GAP reference of NSA vs SA that compares each operator in SA with itself in NSA (in the NSA campaign of the same
+# quarter or period): the GAP is SA minus NSA.
+SAME_OPERATOR_NSA = '@same-operator-nsa'
+SAME_OPERATOR_NSA_LABEL = 'Same operator in NSA'
 
 _NSA_TOKEN = re.compile(r'(?:5g|g)?nsa')
 _SA_TOKEN = re.compile(r'(?:5g|g)?sa')
@@ -68,6 +72,24 @@ def campaign_with_nr_mode(value: object, nr_mode: object) -> object:
     if named is None:
         return f'{text} {mode}'
     return f'{text[:match.start(1)]}{mode}{text[match.end(1):]}'
+
+
+def campaign_nr_mode(value: object) -> str:
+    """The NR Mode of a campaign of an NSA vs SA calculation: SA when it names SA, else NSA (see campaign_with_nr_mode)."""
+    match = _CAMPAIGN_MODE.search(str(value or '').strip())
+    return 'SA' if match and match.group(1).upper() == 'SA' else 'NSA'
+
+
+def campaign_pair_key(value: object) -> str:
+    """The campaign or period of an NSA vs SA calculation without its NR Mode, as the Campaign Maps read it: the NSA and
+    SA campaigns of a quarter (UK_Q3_NSA_2026 and UK_Q3_SA_2026), or the NSA and SA tests of a period (2026-W07 and
+    2026-W07 SA), share it."""
+    from src.modules.column_names import compact_campaign_value
+    text = str(value or '').strip()
+    match = _CAMPAIGN_MODE.search(text)
+    if match:
+        text = re.sub(r'[_\- ]{2,}', '_', f'{text[:match.start(1)]}{text[match.end(1):]}').strip('_- ')
+    return str(compact_campaign_value(text) or text).casefold()
 
 
 def infer_nr_mode(file_name: object) -> str:

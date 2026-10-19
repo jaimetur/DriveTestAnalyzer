@@ -31,8 +31,8 @@ from src.modules.value_patterns import ValueSet
 from src.modules.operator_roles import EXCLUDE, normalize_mapping_role
 from src.modules.cdr_stage import combined_dataset_ids
 from src.modules.nr_mode import (
-    NR_MODE_COLUMN, NSA_VS_SA, SCORING_NR_MODES, campaign_with_nr_mode, normalize_nr_mode, normalize_scoring_nr_mode,
-    nr_mode_label, nr_modes_of,
+    NR_MODE_COLUMN, NSA_VS_SA, SAME_OPERATOR_NSA, SAME_OPERATOR_NSA_LABEL, SCORING_NR_MODES, campaign_with_nr_mode,
+    normalize_nr_mode, normalize_scoring_nr_mode, nr_mode_label, nr_modes_of,
 )
 from src.modules.repository import Repository, local_now_iso
 from src.modules.scoring_config import (
@@ -856,6 +856,8 @@ def _prepare_saved_filter(
     baseline = str(baseline_operator or '').strip()
     if not baseline:
         raise ValueError('Select a comparison baseline operator.')
+    if baseline == SAME_OPERATOR_NSA and not both_modes:
+        raise ValueError(f'The GAP reference {SAME_OPERATOR_NSA_LABEL} compares NSA vs SA: choose NSA vs SA in NR Mode.')
     baseline_aliases = _baseline_aliases(repository, baseline)
     mapping_getter = getattr(repository, 'list_operator_mappings', None)
     raw_operator_mappings = mapping_getter() if callable(mapping_getter) else {}

@@ -1669,6 +1669,15 @@
       campaignLevel.closest('label')?.classList.toggle('is-required', mode === nsaVsSa);
       campaignLevel.closest('label').title = mode === nsaVsSa ? 'NSA vs SA is always split by Campaign: each campaign with its NR Mode' : '';
     }
+    // Same operator in NSA (each operator in SA compared with itself in NSA) is a GAP reference of NSA vs SA only.
+    const sameOperator = baselineInput?.querySelector('[data-nsa-vs-sa-reference]');
+    if (sameOperator) {
+      sameOperator.hidden = sameOperator.disabled = mode !== nsaVsSa;
+      if (mode !== nsaVsSa && baselineInput.value === sameOperator.value) {
+        baselineInput.value = [...baselineInput.options].find(option => option.value.toLocaleLowerCase() === 'ee')?.value
+          || baselineInput.options[0].value;
+      }
+    }
     const allPeriods = areaSummaryTimeSplit && [...areaSummaryTimeSplit.options].find(option => option.value === 'All');
     if (allPeriods) {
       allPeriods.disabled = mode === nsaVsSa;
@@ -2214,7 +2223,7 @@
       meta.textContent = 'GAP Reference: ';
       const referenceValue = document.createElement('strong');
       referenceValue.className = 'saved-filter-reference';
-      referenceValue.textContent = baseline;
+      referenceValue.textContent = baseline === '@same-operator-nsa' ? 'Same operator in NSA' : baseline;
       meta.append(referenceValue);
       // Its Geographical Areas & Scoring Trends, as in the panel: the Breakdown and Separate cities of both tabs, then the
       // campaigns and time split of the trends, each value in its own colour.

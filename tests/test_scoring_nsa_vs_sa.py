@@ -205,3 +205,76 @@ def test_documents_name_nsa_vs_sa():
     assert ' - NSA-vs-SA - ' in build_scoring_report_filename(datetime(2026, 10, 20), NSA_VS_SA, {})
     assert ' - NSA - ' in build_scoring_report_filename(datetime(2026, 10, 20), 'NSA', {})
     assert _scoring_filter_subtitle({'nr_mode': NSA_VS_SA}).startswith('Non-Standalone vs Standalone')
+
+
+def _same_operator_result(tmp_path):
+    from src.modules.nr_mode import SAME_OPERATOR_NSA
+    repository, ids = _workspace(tmp_path)
+    saved, _ = saved_filters.save_saved_filter(repository, [*ids['NSA'], *ids['SA']], ['Operator'], NSA_VS_SA,
+                                               baseline_operator=SAME_OPERATOR_NSA)
+    calculated = saved_filters.calculate_saved_filter(repository, saved['id'])
+    assert calculated['status'] == 'completed', calculated['error']
+    return repository, ids, calculated
+
+
+def test_same_operator_in_nsa_gives_the_gap_of_each_operator_in_sa_to_itself_in_nsa(tmp_path):
+    from src.modules.nr_mode import SAME_OPERATOR_NSA, SAME_OPERATOR_NSA_LABEL
+    from src.modules.scoring_views import build_scoring_views
+    repository, ids, calculated = _same_operator_result(tmp_path)
+    result = calculated['result']
+    assert not [warning for warning in result['warnings'] if 'unavailable' in warning]
+    totals = {(row['operator'], row['campaign'], row['environment'], row['category']): row['weighted_points']
+              for row in result['totals']}
+    gaps = [row for row in result['gap_totals'] if row.get('gap_points') is not None]
+    # Only the SA campaign has GAPs: each operator minus itself in the NSA campaign of the quarter.
+    assert gaps and {row['campaign'] for row in gaps} == {'UK_Q3_SA_2026'}
+    for row in gaps:
+        nsa = totals[(row['operator'], 'UK_Q3_NSA_2026', row['environment'], row['category'])]
+        assert row['gap_points'] == pytest.approx(row['operator_points'] - nsa)
+        assert row['baseline_actual_operator'] == row['operator']
+
+    views = build_scoring_views(calculated, result, [])
+    sa_tables = [table for table in views['score_tables'] if table['context'].get('campaign') == 'UK_Q3_SA_2026']
+    nsa_tables = {table['context']['environment']: table for table in views['score_tables']
+                  if table['context'].get('campaign') == 'UK_Q3_NSA_2026'}
+    assert sa_tables and all(table['baseline_operator'] == SAME_OPERATOR_NSA_LABEL for table in views['score_tables'])
+    for table in sa_tables:
+        twin = nsa_tables[table['context']['environment']]
+        for operator in table['operators']:
+            sa_points, nsa_points = table['total']['values'][operator]['points'], twin['total']['values'][operator]['points']
+            if table['total']['gaps'][operator] is not None:
+                assert table['total']['gaps'][operator] == pytest.approx(sa_points - nsa_points, abs=1e-6)
+    # The GAP tables are those of the SA campaign (the NSA one is the reference), one per operator.
+    assert {table['context'].get('campaign') for table in views['gap_summary_tables']} == {'UK_Q3_SA_2026'}
+    assert {table['title'].split(' — ')[0] for table in views['gap_tables']} >= {f'GAP Analysis: EE vs {SAME_OPERATOR_NSA_LABEL}'}
+    # In the matrices split by Operator and Campaign, each SA column is compared with its operator's NSA column.
+    [matrix] = [table for table in views['hierarchy_gap_tables'] if table['context']['environment'] == 'Combined']
+    columns = {column['id']: column for column in matrix['hierarchy_columns']}
+    by_path = {(column['operator'], column['context'].get('campaign')): column['id'] for column in columns.values()}
+    [scores] = [table for table in views['hierarchy_score_tables'] if table['context']['environment'] == 'Combined']
+    for (operator, campaign), column_id in by_path.items():
+        assert columns[column_id]['is_reference'] == (campaign == 'UK_Q3_NSA_2026')
+        if campaign == 'UK_Q3_SA_2026' and matrix['total']['gaps'][column_id] is not None:
+            reference_id = by_path[(operator, 'UK_Q3_NSA_2026')]
+            assert matrix['total']['gaps'][column_id] == pytest.approx(
+                scores['total']['values'][column_id]['points'] - scores['total']['values'][reference_id]['points'], abs=1e-6)
+    assert views['insights'] is not None
+
+
+def test_same_operator_in_nsa_needs_nsa_vs_sa_and_exports(tmp_path):
+    from io import BytesIO
+    from pptx import Presentation
+    from src.modules.nr_mode import SAME_OPERATOR_NSA, SAME_OPERATOR_NSA_LABEL
+    from src.modules.scoring_exports import export_scoring_powerpoint
+    repository, ids, calculated = _same_operator_result(tmp_path)
+    with pytest.raises(ValueError, match='choose NSA vs SA'):
+        saved_filters.save_saved_filter(repository, ids['SA'], ['Operator'], 'SA', baseline_operator=SAME_OPERATOR_NSA)
+    selection, warnings = normalize_scoring_selection(repository, {'nr_mode': NSA_VS_SA, 'baseline_operator': SAME_OPERATOR_NSA})
+    assert selection['baseline_operator'] == SAME_OPERATOR_NSA and not warnings
+    selection, warnings = normalize_scoring_selection(repository, {'nr_mode': 'NSA', 'baseline_operator': SAME_OPERATOR_NSA})
+    assert selection['baseline_operator'] != SAME_OPERATOR_NSA and warnings
+    template = Path(__file__).resolve().parents[1] / 'assets/powerpoint-templates/Template_VodafoneThree.pptx'
+    content = export_scoring_powerpoint(calculated, calculated['result'], template, [], theme='netcheck')
+    text = ' '.join(shape.text_frame.text for slide in Presentation(BytesIO(content)).slides for shape in slide.shapes
+                    if shape.has_text_frame)
+    assert SAME_OPERATOR_NSA_LABEL in text

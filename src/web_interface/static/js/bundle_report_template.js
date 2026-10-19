@@ -239,8 +239,11 @@
       ...(options.methodologies || []).filter((item) => item.id !== 'by-campaign').map((item) => [item.id, item.name])];
     const methodology = selectField('Methodology', methodologies, saved.methodology);
     const operators = operatorValues();
-    const reference = selectField('GAP reference', (operators.includes(saved.baseline_operator) ? operators : [saved.baseline_operator, ...operators])
-      .map((value) => [value, value]), saved.baseline_operator);
+    // (Same operator in NSA, each operator in SA compared with itself in NSA, is a reference of NSA vs SA only.)
+    const sameOperator = '@same-operator-nsa';
+    const reference = selectField('GAP reference', [...(operators.includes(saved.baseline_operator) || saved.baseline_operator === sameOperator
+      ? operators : [saved.baseline_operator, ...operators]).map((value) => [value, value]), [sameOperator, 'Same operator in NSA']],
+    saved.baseline_operator);
     const tables = node('fieldset', undefined, 'brt-choice-group');
     tables.append(node('legend', 'Scoring tables'));
     const kpiValues = check('Show KPI values', saved.kpi_values);
@@ -262,6 +265,14 @@
     nrModes.append(nsaVsSa);
     nrModes.hidden = !saved.nsa_vs_sa && !((options.campaigns?.NSA || []).length && (options.campaigns?.SA || []).length);
     box.nrMode = () => (nsaVsSa.box.checked ? 'NSA+SA' : nrMode());
+    const sameOperatorOption = [...reference.input.options].find((option) => option.value === sameOperator);
+    const syncReference = () => {
+      sameOperatorOption.hidden = sameOperatorOption.disabled = !nsaVsSa.box.checked;
+      if (!nsaVsSa.box.checked && reference.input.value === sameOperator) {
+        reference.input.value = operators.find((value) => value.toLowerCase() === 'ee') || operators[0] || 'EE';
+      }
+    };
+    syncReference();
     // The Geographical Areas & Scoring Trends, always included: the areas of both tabs (the Breakdown and the Separate
     // cities) and the campaigns and time split of the Scoring Trends, on the whole country.
     const trends = node('fieldset', undefined, 'brt-choice-group brt-trends');
@@ -282,7 +293,7 @@
       renderTrendCampaigns((trendCampaigns?.getValue?.() || []).filter((value) => presets.some(([key]) => key === value)));
     };
     nrModeHandlers.push(refreshTrendCampaigns);
-    nsaVsSa.box.addEventListener('change', () => { refreshTrendCampaigns(); box.onNrModeChange?.(); });
+    nsaVsSa.box.addEventListener('change', () => { syncReference(); refreshTrendCampaigns(); box.onNrModeChange?.(); });
     trends.title = 'Always the whole country: the Region, Cluster and City filters do not apply to Geographical Areas and Scoring Trends';
     const area = node('fieldset', undefined, 'brt-choice-group brt-area');
     area.append(node('legend', 'Geographical Areas'));

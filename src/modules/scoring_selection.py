@@ -13,7 +13,7 @@ from src.modules.cdr_auto_selection import (
 )
 from src.modules.cdr_facets import cascading_options
 from src.modules.cdr_stage import combined_dataset_ids
-from src.modules.nr_mode import NSA_VS_SA, normalize_nr_mode, normalize_scoring_nr_mode, nr_modes_of
+from src.modules.nr_mode import NSA_VS_SA, SAME_OPERATOR_NSA, normalize_nr_mode, normalize_scoring_nr_mode, nr_modes_of
 from src.modules.repository import Repository
 from src.modules.scoring_vendors import scoring_vendor_name, scoring_vendor_operators
 from src.modules.scoring_config import load_aggregation_hierarchy
@@ -384,7 +384,9 @@ def _normalize_selection(
 
     operator_options = _operator_options(repository)
     raw_baseline = str(raw_selection.get('baseline_operator') or '').strip()
-    baseline = next((value for value in operator_options if value.casefold() == raw_baseline.casefold()), None)
+    # NSA vs SA can compare each operator in SA with itself in NSA (Same operator in NSA).
+    references = [*operator_options, *([SAME_OPERATOR_NSA] if raw_mode == NSA_VS_SA else [])]
+    baseline = next((value for value in references if value.casefold() == raw_baseline.casefold()), None)
     if baseline is None:
         baseline = next((value for value in operator_options if value.casefold() == 'ee'), operator_options[0])
         if raw_baseline and raw_baseline.casefold() != baseline.casefold():

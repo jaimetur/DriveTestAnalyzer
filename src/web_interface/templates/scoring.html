@@ -1353,6 +1353,8 @@
             {% if scoring_options %}
               {% for operator in scoring_options %}<option value="{{ operator.value }}" data-operator-color="{{ operator.color or '' }}" {% if operator.value | lower == 'ee' %}selected{% endif %}>{{ operator.label }}</option>{% endfor %}
             {% else %}<option value="EE" selected>EE</option>{% endif %}
+            {# NSA vs SA only: each operator in SA compared with itself in NSA (SA minus NSA). #}
+            <option value="@same-operator-nsa" data-nsa-vs-sa-reference hidden disabled title="NSA vs SA: the GAP of each operator in SA to itself in the NSA campaign of the same quarter">Same operator in NSA</option>
           </select>
         </label>
         {# The methodology of the calculation, after the GAP reference. #}

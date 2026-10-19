@@ -9,7 +9,9 @@ from typing import Iterable
 import pandas as pd
 
 from src.modules.column_names import campaign_sort_key, column_identity, resolve_column_name
-from src.modules.nr_mode import NR_MODE_COLUMN, campaign_with_nr_mode
+from src.modules.nr_mode import (
+    NR_MODE_COLUMN, SAME_OPERATOR_NSA, SAME_OPERATOR_NSA_LABEL, campaign_nr_mode, campaign_pair_key, campaign_with_nr_mode,
+)
 from src.modules.scoring_vendors import scoring_vendor_group
 from src.modules import scoring_points_loss as points_loss
 from src.modules.scoring_config import (
@@ -674,11 +676,12 @@ def _gap_rows(rows: list[dict], keys: list[str], baseline_operator: str, baselin
     gap = []
     references = _reference_index(rows, 'kpi_code', keys, baseline_operator, baseline_aliases)
     for row in rows:
-        if _is_baseline(str(row['operator']), baseline_operator, baseline_aliases):
+        if _is_reference(row, baseline_operator, baseline_aliases):
             continue
-        baseline = _reference_for(row, references, 'kpi_code', keys)
+        baseline = _reference_for(row, references, 'kpi_code', keys, baseline_operator)
         if baseline is None:
-            warnings.append(f'Baseline {baseline_operator} is unavailable for one or more comparison groups.')
+            reference = SAME_OPERATOR_NSA_LABEL if baseline_operator == SAME_OPERATOR_NSA else baseline_operator
+            warnings.append(f'Baseline {reference} is unavailable for one or more comparison groups.')
         elif baseline['weighted_points'] is not None and row['weighted_points'] is not None:
             gap.append({**{key: row.get(key) for key in keys}, 'dataset_type': row['dataset_type'], 'kpi': row['kpi'],
                         'kpi_code': row['kpi_code'], 'category': row['category'], 'kpi_type': row['kpi_type'],
@@ -763,7 +766,19 @@ def most_reliable_result(result: dict, baseline_operator: str = 'EE', configurat
             'scoring_kind': MOST_RELIABLE_SCORING}
 
 
-def _reference_group(row, identity, keys) -> tuple:
+def _is_reference(row, baseline_operator, baseline_aliases) -> bool:
+    """Whether a row is a reference of the GAP: one of the reference operator or, with Same operator in NSA (NSA vs SA),
+    one of an NSA campaign."""
+    if baseline_operator == SAME_OPERATOR_NSA:
+        return campaign_nr_mode(row.get('campaign')) == 'NSA'
+    return _is_baseline(str(row['operator']), baseline_operator, baseline_aliases)
+
+
+def _reference_group(row, identity, keys, baseline_operator: str = '') -> tuple:
+    if baseline_operator == SAME_OPERATOR_NSA:
+        # The same operator in the NSA campaign of the same quarter or period.
+        return (row[identity], _operator_identity(str(row['operator'])), campaign_pair_key(row.get('campaign')),
+                *(row.get(key) for key in keys if key not in {'operator', 'vendor', 'campaign'}))
     return (row[identity], *(row.get(key) for key in keys if key not in {'operator', 'vendor'}))
 
 
@@ -772,13 +787,13 @@ def _reference_index(records, identity, keys, baseline_operator, baseline_aliase
     vendor), so each row finds its reference without going through every row."""
     index: dict[tuple, list[dict]] = {}
     for other in records:
-        if _is_baseline(str(other['operator']), baseline_operator, baseline_aliases):
-            index.setdefault(_reference_group(other, identity, keys), []).append(other)
+        if _is_reference(other, baseline_operator, baseline_aliases):
+            index.setdefault(_reference_group(other, identity, keys, baseline_operator), []).append(other)
     return index
 
 
-def _reference_for(row, references, identity, keys):
-    candidates = references.get(_reference_group(row, identity, keys), [])
+def _reference_for(row, references, identity, keys, baseline_operator: str = ''):
+    candidates = references.get(_reference_group(row, identity, keys, baseline_operator), [])
     exact = next((other for other in candidates if other.get('vendor') == row.get('vendor')), None)
     return exact if exact is not None else next((other for other in candidates if other.get('vendor') == 'All'), None)
 
@@ -787,9 +802,9 @@ def _gap_totals(totals: list[dict], keys: list[str], baseline_operator: str, bas
     gap_totals = []
     references = _reference_index(totals, 'category', keys, baseline_operator, baseline_aliases)
     for row in totals:
-        if _is_baseline(str(row['operator']), baseline_operator, baseline_aliases):
+        if _is_reference(row, baseline_operator, baseline_aliases):
             continue
-        baseline = _reference_for(row, references, 'category', keys)
+        baseline = _reference_for(row, references, 'category', keys, baseline_operator)
         if baseline is not None:
             complete = baseline['complete_coverage'] and row['complete_coverage']
             gap_totals.append({**{key: row.get(key) for key in keys}, 'category': row['category'],
