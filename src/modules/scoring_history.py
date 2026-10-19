@@ -30,9 +30,13 @@ from src.modules.scoring import (
     _key_name, _numeric, finish_scoring, normalize_time_split, period_labels, required_input_columns, window_of_days,
 )
 from src.modules.scoring_config import validate_scoring_configuration
+from src.modules.scoring_exclusions import ExclusionScope, has_pending as exclusions_pending
+from src.modules.scoring_exclusions import load_scope as load_exclusions, match_pending as match_exclusions
 from src.modules.scoring_vendors import scoring_vendor_group, scoring_vendor_name
 
 HISTORY_TABLE = 'scoring_history'
+# The step of a sync that finds the calls of the Excluded Calls lists in the CDRs, before they are indexed.
+EXCLUSIONS_STEP = 'Finding the Excluded Calls in '
 HISTORY_SOURCES_TABLE = 'scoring_history_sources'
 HISTORY_FILES_TABLE = 'scoring_history_files'
 # Bumped when the components change: every CDR is indexed again.
@@ -378,20 +382,23 @@ def file_sha256(repository: Any, row: Any) -> str:
     return value
 
 
-def source_key(repository: Any, row: Any, datasets: dict[int, Any] | None = None) -> tuple[str, str]:
+def source_key(repository: Any, row: Any, datasets: dict[int, Any] | None = None,
+               exclusions: ExclusionScope | None = None) -> tuple[str, str]:
     """The key of a CDR as processed (the SHA-256 of its file and the signature of its processing) and the file hash.
 
-    Without its source file (an input removed to save space), the CDR is identified by its name and processing.
+    Without its source file (an input removed to save space), the CDR is identified by its name and processing. The
+    Excluded Calls lists that leave calls of it out (``exclusions``, read when not given) are part of its processing.
     """
     dataset_id = int(row['id'])
     sha = file_sha256(repository, row)
     datasets = datasets if datasets is not None else {int(item['id']): item for item in repository.list_datasets()}
+    exclusions = exclusions if exclusions is not None else load_exclusions(repository, datasets.values())
 
     def mapping_file(field: str) -> str:
         mapping = datasets.get(int(row[field])) if row[field] else None
         return file_sha256(repository, mapping) if mapping is not None else ''
 
-    signature = json.dumps({
+    fields = {
         'v': HISTORY_VERSION, 'file': sha or str(row['file_name'] or ''), 'kind': str(row['dataset_kind'] or ''),
         'nr_mode': str(row['nr_mode'] or ''), 'processed_at': str(row['processed_at'] or ''),
         'updated_at': str(row['updated_at'] or ''), 'normalization_version': int(row['normalization_version'] or 1),
@@ -402,7 +409,10 @@ def source_key(repository: Any, row: Any, datasets: dict[int, Any] | None = None
         # The map areas of the tests, kept in the rows in the background, do not change the components.
         'columns': sorted(str(column) for column in repository.list_dataset_row_columns(dataset_id)
                           if column not in {'Map_Area', 'Map_Area_Country'}),
-    }, sort_keys=True, ensure_ascii=False)
+    }
+    if excluded_calls := exclusions.signature(dataset_id):
+        fields['excluded_calls'] = excluded_calls
+    signature = json.dumps(fields, sort_keys=True, ensure_ascii=False)
     return f"{sha[:24] or 'nofile'}:{hashlib.sha1(signature.encode('utf-8')).hexdigest()[:16]}", sha
 
 
@@ -423,9 +433,13 @@ def history_changes(repository: Any) -> tuple[list[tuple[Any, str, str]], dict[s
     with repository.connection() as connection:
         indexed = {str(row['source_key']): set(json.loads(row['metrics_json'] or '{}')) for row in connection.execute(
             f'SELECT source_key, metrics_json FROM {HISTORY_SOURCES_TABLE}').fetchall()}
+    exclusions = load_exclusions(repository, all_datasets.values())
     changed = []
     for row in _ready_cdrs(repository).values():
-        key, sha = source_key(repository, row, all_datasets)
+        # A CDR whose excluded calls are still being looked for is indexed once they are found.
+        if exclusions.pending(int(row['id'])):
+            continue
+        key, sha = source_key(repository, row, all_datasets, exclusions)
         kind = str(row['dataset_kind']).casefold()
         wanted = {signature for signature, metric in metrics.items() if metric['source_kind'] == kind}
         if key not in indexed or not wanted <= indexed[key]:
@@ -433,13 +447,18 @@ def history_changes(repository: Any) -> tuple[list[tuple[Any, str, str]], dict[s
     return changed, metrics
 
 
-def _dataset_frame(repository: Any, dataset_id: int, kind: str) -> tuple[pd.DataFrame, list[str]]:
-    """The rows of a CDR with the scoring columns of its type under their canonical names, and the columns it has."""
+def _dataset_frame(repository: Any, dataset_id: int, kind: str,
+                   excluded_call_lists: Iterable[int] = ()) -> tuple[pd.DataFrame, list[str]]:
+    """The rows of a CDR with the scoring columns of its type under their canonical names, and the columns it has
+    (without the calls of the Excluded Calls lists given)."""
     available = repository.list_dataset_row_columns(dataset_id)
     wanted = [*required_input_columns(kind), *(alias for aliases in DIMENSION_SOURCES.values() for alias in aliases),
               *START_TIME_COLUMNS]
     selected = list(dict.fromkeys(resolved for name in wanted if (resolved := resolve_column_name(available, name))))
-    source = repository.load_dataset_rows(dataset_id, selected, {}) if selected else pd.DataFrame()
+    excluded_call_lists = list(excluded_call_lists)
+    source = (repository.load_dataset_rows(dataset_id, selected, {},
+                                           **({'excluded_call_lists': excluded_call_lists} if excluded_call_lists else {}))
+              if selected else pd.DataFrame())
     frame = pd.DataFrame(index=source.index)
     present = []
     for field in required_input_columns(kind):
@@ -481,10 +500,11 @@ def index_dataset(repository: Any, row: Any, metrics: dict[str, dict[str, Any]],
                   sha: str = '') -> dict[str, Any]:
     """Read a CDR once and store the components of every KPI of its type for each of its day and area groups."""
     dataset_id = int(row['id'])
+    exclusions = load_exclusions(repository)
     if not key:
-        key, sha = source_key(repository, row)
+        key, sha = source_key(repository, row, exclusions=exclusions)
     kind = str(row['dataset_kind']).casefold()
-    frame, present = _dataset_frame(repository, dataset_id, kind)
+    frame, present = _dataset_frame(repository, dataset_id, kind, exclusions.list_ids_for(dataset_id))
     for dimension in DIMENSIONS:
         frame[dimension] = frame[dimension].map(lambda value: None if pd.isna(value) else str(value))
     group_keys = frame[list(DIMENSIONS)]
@@ -538,7 +558,10 @@ def index_dataset(repository: Any, row: Any, metrics: dict[str, dict[str, Any]],
 
 
 def sync_history(repository: Any, progress: Callable[[int, int, str], None] | None = None) -> dict[str, Any]:
-    """Index the new or changed CDRs (the history of the deleted ones is kept)."""
+    """Index the new or changed CDRs (the history of the deleted ones is kept), once the calls of the Excluded Calls
+    lists are found in them."""
+    match_exclusions(repository, (lambda done, total, name: progress(done, total, f'{EXCLUSIONS_STEP}{name}'))
+                     if progress else None)
     changed, metrics = history_changes(repository)
     for index, (row, key, sha) in enumerate(changed):
         if progress:
@@ -581,10 +604,14 @@ def history_gap(repository: Any, dataset_ids: Iterable[int], levels: Iterable[st
     # The CDRs of the workspace are read once for every selected CDR.
     ready = _ready_cdrs(repository)
     all_datasets = {int(row['id']): row for row in repository.list_datasets()}
+    exclusions = load_exclusions(repository, all_datasets.values())
+    waiting = sum(1 for dataset_id in ids if exclusions.pending(dataset_id))
+    if waiting:
+        return f'the Excluded Calls are still being found in {waiting} of its {len(ids)} CDRs'
     missing = 0
     for dataset_id in ids:
         try:
-            _sources(repository, [dataset_id], config, ready=ready, all_datasets=all_datasets)
+            _sources(repository, [dataset_id], config, ready=ready, all_datasets=all_datasets, exclusions=exclusions)
         except HistoryUnavailable:
             missing += 1
     if missing:
@@ -609,17 +636,19 @@ def _dimensions(levels: Iterable[str]) -> list[str]:
 
 
 def _sources(repository: Any, dataset_ids: list[int], config: dict[str, Any], *, ready: dict[int, Any] | None = None,
-             all_datasets: dict[int, Any] | None = None) -> dict[int, Any]:
+             all_datasets: dict[int, Any] | None = None, exclusions: ExclusionScope | None = None) -> dict[int, Any]:
     """The history source of each selected CDR, at its current file and processing, with every KPI of the methodology
-    (``ready`` and ``all_datasets``: the CDRs of the workspace when they are already read)."""
+    (``ready``, ``all_datasets`` and ``exclusions``: the CDRs of the workspace and its Excluded Calls when they are
+    already read)."""
     datasets = ready if ready is not None else _ready_cdrs(repository)
     all_datasets = all_datasets if all_datasets is not None else {int(row['id']): row for row in repository.list_datasets()}
+    exclusions = exclusions if exclusions is not None else load_exclusions(repository, all_datasets.values())
     keys = {}
     for dataset_id in dataset_ids:
         row = datasets.get(int(dataset_id))
         if row is None:
             raise HistoryUnavailable(f'CDR {dataset_id} is not ready.')
-        keys[int(dataset_id)] = source_key(repository, row, all_datasets)[0]
+        keys[int(dataset_id)] = source_key(repository, row, all_datasets, exclusions)[0]
     with repository.connection() as connection:
         indexed = {str(row['source_key']): row for row in connection.execute(
             f'SELECT * FROM {HISTORY_SOURCES_TABLE} WHERE source_key IN ({", ".join("?" for _ in keys) or "NULL"})',
@@ -903,9 +932,9 @@ def start_history_sync(repository: Any, submit: Callable[..., Any]) -> dict[str,
             job.update(status='processing', started_at=time.time())
         try:
             result = sync_history(repository, progress)
-            # CDRs processed while it indexed are indexed too (a few rounds at most).
+            # CDRs processed (or Excluded Calls lists changed) while it indexed are indexed too (a few rounds at most).
             for _round in range(2):
-                if not history_changes(repository)[0]:
+                if not history_changes(repository)[0] and not exclusions_pending(repository):
                     break
                 more = sync_history(repository, progress)
                 result = {'indexed': result['indexed'] + more['indexed']}
@@ -950,7 +979,7 @@ def install_scoring_history(core: Any) -> None:
         if job and job['status'] in {'queued', 'processing'}:
             return
         changed, metrics = history_changes(repository)
-        if metrics and changed:
+        if (metrics and changed) or exclusions_pending(repository):
             start_history_sync(repository, core.submit_background_task)
 
     def history_tasks(workspace: Any) -> list[dict[str, Any]]:
@@ -960,7 +989,8 @@ def install_scoring_history(core: Any) -> None:
         # A check that finds nothing to index is not shown.
         if job['status'] != 'failed' and not job['total']:
             return []
-        detail = job['error'] or (f"Indexing {job['current']} ({job['done'] + 1} of {job['total']})" if job['current']
+        step = '' if str(job['current']).startswith(EXCLUSIONS_STEP) else 'Indexing '
+        detail = job['error'] or (f"{step}{job['current']} ({job['done'] + 1} of {job['total']})" if job['current']
                                   else 'Indexing the KPIs of new or changed CDRs')
         return [{
             'id': f'scoring-history:{workspace.id}', 'label': 'Scoring History indexing', 'detail': detail,

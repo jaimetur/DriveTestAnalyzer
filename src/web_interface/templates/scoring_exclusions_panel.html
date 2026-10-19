@@ -1,0 +1,131 @@
+{# Excluded Calls: lists of calls (by JOIN_ID) left out of every scoring of the workspace (scoring_exclusions.js). #}
+<style>
+  .scoring-exclusions-panel { --sx-ink: #6f3d06; --sx-accent: #b8620f; --sx-strong: #9a4f0a; --sx-soft: #fff6e6; --sx-softer: #fffaf2;
+    --sx-border: #ecd3a5; --sx-line: #f1e2c6; border-color: var(--sx-border); }
+  .scoring-exclusions-panel > .collapsible-summary { background: linear-gradient(120deg, #fff3dc, #fffaf1); }
+  .scoring-exclusions-panel > .collapsible-summary h2 { color: var(--sx-ink); }
+  .scoring-exclusions-panel > .collapsible-summary .eyebrow { color: var(--sx-strong); }
+  .scoring-exclusions-badge { display: inline-flex; align-items: center; gap: .35rem; padding: .4rem .7rem; border: 1px solid var(--sx-border); border-radius: 999px; background: #fff; color: #7b6a55; font-size: .78rem; font-weight: 800; white-space: nowrap; }
+  .scoring-exclusions-badge[data-active="true"] { border-color: var(--sx-accent); background: linear-gradient(135deg, var(--sx-accent), #d98a1f); color: #fff; }
+  .scoring-exclusions-body { display: grid; gap: .85rem; min-width: 0; }
+  .scoring-exclusions-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem 1rem; }
+  .scoring-exclusions-help { flex: 1 1 22rem; margin: 0; color: var(--muted); font-size: .8rem; line-height: 1.45; }
+  .scoring-exclusions-panel .scoring-exclusions-primary, .scoring-exclusions-dialog .scoring-exclusions-primary { display: inline-flex; align-items: center; gap: .4rem; min-height: 2.35rem; padding: .4rem .9rem; border: 1px solid var(--sx-strong); border-radius: 999px; background: linear-gradient(135deg, var(--sx-accent), #d98a1f); color: #fff; font-size: .8rem; font-weight: 800; }
+  .scoring-exclusions-panel .scoring-exclusions-primary:hover:not(:disabled), .scoring-exclusions-dialog .scoring-exclusions-primary:hover:not(:disabled) { background: linear-gradient(135deg, var(--sx-strong), var(--sx-accent)); }
+  .scoring-exclusions-panel .scoring-exclusions-secondary, .scoring-exclusions-dialog .scoring-exclusions-secondary { display: inline-flex; align-items: center; gap: .4rem; min-height: 2.35rem; padding: .4rem .9rem; border: 1px solid var(--sx-border); border-radius: 999px; background: #fff; color: var(--sx-ink); font-size: .8rem; font-weight: 800; text-decoration: none; cursor: pointer; box-shadow: none; }
+  .scoring-exclusions-panel .scoring-exclusions-secondary:hover, .scoring-exclusions-dialog .scoring-exclusions-secondary:hover { border-color: var(--sx-accent); background: var(--sx-soft); }
+  .scoring-exclusions-panel svg, .scoring-exclusions-dialog svg { flex: 0 0 auto; width: 1.05rem; height: 1.05rem; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .scoring-exclusions-status { min-height: 1.1em; margin: 0; color: var(--sx-strong); font-size: .8rem; font-weight: 750; }
+  .scoring-exclusions-status:empty { display: none; }
+  .scoring-exclusions-status[data-tone="error"] { color: #a3263a; }
+  .scoring-exclusions-table-wrap { min-width: 0; overflow-x: auto; border: 1px solid var(--sx-border); border-radius: 12px; }
+  .scoring-exclusions-table-wrap:has(> table[hidden]) { display: none; }
+  .scoring-exclusions-table { width: 100%; border-collapse: collapse; font-size: .8rem; }
+  .scoring-exclusions-table th { padding: .55rem .7rem; background: var(--sx-soft); color: var(--sx-ink); font-size: .74rem; text-align: left; white-space: nowrap; border-bottom: 1px solid var(--sx-border); }
+  .scoring-exclusions-table td { padding: .6rem .7rem; vertical-align: top; border-bottom: 1px solid var(--sx-line); }
+  .scoring-exclusions-table tbody tr:last-child td { border-bottom: 0; }
+  .scoring-exclusions-table tr[data-enabled="false"] td:not(:first-child) { opacity: .55; }
+  .scoring-exclusions-table td.scoring-exclusions-number { font-variant-numeric: tabular-nums; font-weight: 800; white-space: nowrap; }
+  .scoring-exclusions-name { display: block; color: var(--text); font-weight: 800; }
+  .scoring-exclusions-meta { display: block; color: var(--muted); font-size: .74rem; overflow-wrap: anywhere; }
+  .scoring-exclusions-reason { display: block; margin-top: .15rem; color: #6c5a43; font-style: italic; }
+  .scoring-exclusions-cdrs { display: grid; gap: .15rem; margin: 0; padding: 0; list-style: none; overflow-wrap: anywhere; }
+  .scoring-exclusions-cdrs li[data-companion="true"] { color: var(--muted); }
+  .scoring-exclusions-cdrs li[data-missing="true"] { color: #a3263a; }
+  .scoring-exclusions-all { display: inline-block; padding: .15rem .5rem; border-radius: 999px; background: var(--sx-soft); color: var(--sx-ink); font-weight: 800; }
+  .scoring-exclusions-found { display: grid; gap: .2rem; }
+  .scoring-exclusions-found a { color: #a3263a; font-weight: 750; }
+  .scoring-exclusions-pending { display: inline-flex; align-items: center; gap: .35rem; color: var(--sx-strong); font-weight: 750; }
+  .scoring-exclusions-pending::before { content: ''; width: .7rem; height: .7rem; border: 2px solid var(--sx-border); border-top-color: var(--sx-accent); border-radius: 50%; animation: scoring-exclusions-spin 1s linear infinite; }
+  @keyframes scoring-exclusions-spin { to { transform: rotate(360deg); } }
+  .scoring-exclusions-breakdown summary { color: var(--sx-strong); font-size: .74rem; font-weight: 750; cursor: pointer; }
+  .scoring-exclusions-breakdown ul { margin: .25rem 0 0; padding-left: 1rem; color: var(--muted); font-size: .74rem; }
+  .scoring-exclusions-actions { display: flex; justify-content: flex-end; gap: .35rem; }
+  .scoring-exclusions-actions :is(button, a) { display: inline-grid; place-items: center; width: 2rem; height: 2rem; min-height: 0; padding: 0; border: 1px solid var(--sx-border); border-radius: 8px; background: #fff; color: var(--sx-ink); box-shadow: none; }
+  .scoring-exclusions-actions :is(button, a):hover { background: var(--sx-soft); }
+  .scoring-exclusions-actions [data-action="delete"] { border-color: #e5b8bd; color: #a3263a; }
+  .scoring-exclusions-actions [data-action="delete"]:hover { background: #fdecee; }
+  .scoring-exclusions-switch { position: relative; display: inline-flex; width: 2.4rem; height: 1.35rem; cursor: pointer; }
+  .scoring-exclusions-switch input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: inherit; }
+  .scoring-exclusions-switch span { width: 100%; border-radius: 999px; background: #d5d9dc; transition: background .15s; }
+  .scoring-exclusions-switch span::after { content: ''; position: absolute; top: .15rem; left: .15rem; width: 1.05rem; height: 1.05rem; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.25); transition: transform .15s; }
+  .scoring-exclusions-switch input:checked + span { background: var(--sx-accent); }
+  .scoring-exclusions-switch input:checked + span::after { transform: translateX(1.05rem); }
+  .scoring-exclusions-switch input:focus-visible + span { outline: 2px solid var(--sx-strong); outline-offset: 2px; }
+  .scoring-exclusions-switch input:disabled { cursor: not-allowed; }
+  .scoring-exclusions-switch:has(input:disabled) { opacity: .6; cursor: not-allowed; }
+  .scoring-exclusions-empty { margin: 0; padding: 1rem; border: 1px dashed var(--sx-border); border-radius: 12px; background: var(--sx-softer); color: var(--muted); font-size: .85rem; text-align: center; }
+  .scoring-exclusions-empty[hidden] { display: none; }
+  .scoring-exclusions-dialog { box-sizing: border-box; width: min(40rem, calc(100vw - 2rem)); max-height: 90dvh; padding: 0; overflow: visible; border: 1px solid var(--sx-border, #ecd3a5); border-radius: 16px; box-shadow: 0 18px 48px rgba(60, 35, 5, .3); --sx-ink: #6f3d06; --sx-accent: #b8620f; --sx-strong: #9a4f0a; --sx-soft: #fff6e6; --sx-border: #ecd3a5; }
+  .scoring-exclusions-dialog::backdrop { background: rgba(40, 24, 6, .4); }
+  .scoring-exclusions-form { display: grid; gap: .8rem; padding: 0 1.3rem 1.2rem; }
+  .scoring-exclusions-form > header { margin: 0 -1.3rem; padding: 1rem 1.3rem; border-bottom: 1px solid var(--sx-border); border-radius: 16px 16px 0 0; background: linear-gradient(120deg, #fff3dc, #fffaf1); }
+  .scoring-exclusions-form > header h3 { margin: .15rem 0 0; color: var(--sx-ink); }
+  .scoring-exclusions-form > header .eyebrow { margin: 0; color: var(--sx-strong); }
+  .scoring-exclusions-form > label { display: grid; gap: .3rem; color: var(--sx-ink); font-size: .8rem; font-weight: 800; }
+  .scoring-exclusions-form > label > :is(input, select) { width: 100%; min-height: 2.35rem; }
+  .scoring-exclusions-dialog .multiselect-menu { max-height: min(18rem, 45vh); }
+  .scoring-exclusions-dialog .multiselect-menu.scoring-exclusions-menu-above { top: auto; bottom: calc(100% + .45rem); }
+  .scoring-exclusions-file { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; }
+  .scoring-exclusions-file[hidden] { display: none; }
+  .scoring-exclusions-file [data-exclusions-file-name] { min-width: 0; color: var(--muted); font-size: .8rem; overflow-wrap: anywhere; }
+  .scoring-exclusions-format, .scoring-exclusions-note { margin: 0; color: var(--muted); font-size: .76rem; line-height: 1.4; }
+  .scoring-exclusions-check { margin: 0; padding: .55rem .7rem; border: 1px solid #b9dcc4; border-radius: 10px; background: #edf8f0; color: #245b43; font-size: .8rem; font-weight: 700; }
+  .scoring-exclusions-check[hidden] { display: none; }
+  .scoring-exclusions-error { min-height: 1.1em; margin: 0; color: #a3263a; font-size: .8rem; font-weight: 750; }
+  .scoring-exclusions-error:empty { display: none; }
+  .scoring-exclusions-form > footer { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .5rem; }
+  .scoring-exclusions-form > footer button:disabled { opacity: .5; cursor: not-allowed; }
+  @media (max-width: 760px) {
+    .scoring-exclusions-table thead { display: none; }
+    .scoring-exclusions-table, .scoring-exclusions-table tbody, .scoring-exclusions-table tr { display: block; width: 100%; min-width: 0; }
+    .scoring-exclusions-table tr { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: .35rem .75rem; padding: .75rem; border-bottom: 1px solid var(--sx-line); }
+    .scoring-exclusions-table tbody tr:last-child { border-bottom: 0; }
+    .scoring-exclusions-table td { display: block; padding: 0; border: 0; }
+    .scoring-exclusions-table td[data-label]:not([data-label=""])::before { display: block; content: attr(data-label); color: var(--sx-strong); font-size: .7rem; font-weight: 800; }
+    .scoring-exclusions-table td:nth-child(n+3) { grid-column: 1 / -1; }
+    .scoring-exclusions-actions { justify-content: flex-start; }
+  }
+</style>
+<details class="panel collapsible-panel scoring-exclusions-panel" id="scoring-excluded-calls" data-scoring-exclusions data-panel-state-key="scoring:excluded-calls">
+  <summary class="collapsible-summary">
+    <div>
+      <p class="eyebrow">Scoring Calculation</p>
+      <h2>Excluded Calls</h2>
+      <p class="summary-description">Calls left out of every scoring of this workspace, imported by their JOIN_ID from CSV or Excel files.</p>
+    </div>
+    <span class="summary-inline-actions"><span class="scoring-exclusions-badge" data-exclusions-badge>No calls excluded</span><span class="collapse-chip">Collapse</span></span>
+  </summary>
+  <div class="collapsible-panel-body scoring-exclusions-body">
+    <div class="scoring-exclusions-toolbar">
+      <button type="button" class="scoring-exclusions-primary" data-exclusions-import hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5"/></svg><span>Import Excluded Calls (CSV/Excel)</span></button>
+      <a class="scoring-exclusions-secondary" href="/api/scoring/excluded-calls/template" download><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l4 4v14H6zM14 3v5h5M9 13h7M9 17h7"/></svg><span>Download Template</span></a>
+      <p class="scoring-exclusions-help">The calls of every list switched on are left out of all the scorings: the Voice call with its Speech samples, or the Data test, in the CDRs the list applies to. Switch a list off to score its calls again; the scorings of its CDRs are calculated again when they are opened.</p>
+    </div>
+    <p class="scoring-exclusions-status" data-exclusions-status role="status" aria-live="polite"></p>
+    <div class="scoring-exclusions-table-wrap">
+      <table class="scoring-exclusions-table" data-exclusions-table hidden>
+        <thead><tr><th>On</th><th>List</th><th>CDRs</th><th>Calls</th><th>Found in the CDRs</th><th>Imported</th><th><span class="sr-only">Actions</span></th></tr></thead>
+        <tbody data-exclusions-rows></tbody>
+      </table>
+    </div>
+    <p class="scoring-exclusions-empty" data-exclusions-empty>No calls are excluded from the scorings of this workspace.</p>
+  </div>
+</details>
+<dialog class="scoring-exclusions-dialog" data-exclusions-dialog aria-labelledby="scoring-exclusions-dialog-title">
+  <form method="dialog" class="scoring-exclusions-form" data-exclusions-form novalidate>
+    <header><p class="eyebrow">Excluded Calls</p><h3 id="scoring-exclusions-dialog-title" data-exclusions-dialog-title>Import Excluded Calls</h3></header>
+    <div class="scoring-exclusions-file" data-exclusions-file-row>
+      <label class="scoring-exclusions-secondary"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h6l2 2h8v10H4z"/></svg><span>Choose File</span><input type="file" accept=".csv,.txt,.tsv,.xlsx,.xlsm" data-exclusions-file hidden></label>
+      <span data-exclusions-file-name>No file chosen</span>
+    </div>
+    <p class="scoring-exclusions-format" data-exclusions-format></p>
+    <p class="scoring-exclusions-check" data-exclusions-check role="status" hidden></p>
+    <label>Name<input type="text" maxlength="120" data-exclusions-name autocomplete="off"></label>
+    <label>Reason<input type="text" maxlength="300" data-exclusions-reason autocomplete="off" placeholder="Why these calls are left out"></label>
+    <label>CDRs<select multiple size="1" data-exclusions-cdrs data-multiselect-groups="true" data-multiselect-empty-label="All CDRs" aria-label="CDRs of the list"></select></label>
+    <p class="scoring-exclusions-note">Without CDRs the list applies to every CDR. A list assigned to a Voice or Speech CDR also applies to the Speech or Voice CDR of the same campaign and NR Mode, whose samples carry the JOIN_IDs of the same calls.</p>
+    <p class="scoring-exclusions-error" data-exclusions-error role="alert"></p>
+    <footer><button type="button" class="scoring-exclusions-secondary" data-exclusions-cancel>Cancel</button><button type="submit" class="scoring-exclusions-primary" data-exclusions-submit>Import</button></footer>
+  </form>
+</dialog>

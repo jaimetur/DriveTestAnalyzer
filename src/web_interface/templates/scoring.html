@@ -1490,6 +1490,8 @@
     </div>
   </article>
 
+  {% include 'scoring_exclusions_panel.html' %}
+
   <section class="saved-filters-layout" aria-label="Saved Filters and results">
     <article class="panel scoring-results-panel" aria-labelledby="scoring-results-title">
       <div class="scoring-results-head">
@@ -1608,4 +1610,5 @@
 {% block extra_scripts %}
 <script src="{{ static_path('js/scoring_report_editor.js') }}?v={{ asset_version('js/scoring_report_editor.js') }}"></script>
 <script src="{{ static_path('js/scoring.js') }}?v={{ asset_version('js/scoring.js') }}"></script>
+<script src="{{ static_path('js/scoring_exclusions.js') }}?v={{ asset_version('js/scoring_exclusions.js') }}"></script>
 {% endblock %}

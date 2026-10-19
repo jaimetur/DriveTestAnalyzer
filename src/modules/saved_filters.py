@@ -292,10 +292,13 @@ def _source_snapshot(
     if not requested_ids:
         raise ValueError('Select at least one processed CDR dataset.')
     requested_id_set = set(requested_ids)
+    all_datasets = repository.list_datasets()
     datasets_by_id = {
-        int(row['id']): row for row in repository.list_datasets()
+        int(row['id']): row for row in all_datasets
         if int(row['id']) in requested_id_set
     }
+    from src.modules.scoring_exclusions import load_scope
+    exclusions = load_scope(repository, all_datasets)
     missing = [dataset_id for dataset_id in requested_ids if dataset_id not in datasets_by_id]
     if missing:
         raise ValueError(f"Selected CDR dataset(s) no longer exist: {', '.join(map(str, missing))}.")
@@ -351,6 +354,9 @@ def _source_snapshot(
             'columns': [column for column in columns if column not in DERIVED_ROW_COLUMNS],
             'campaigns': campaigns,
         }
+        # The Excluded Calls lists that leave calls of it out (a CDR they do not touch keeps its scorings).
+        if excluded_calls := exclusions.signature(dataset_id):
+            signature['excluded_calls'] = excluded_calls
         sources.append({'metadata': metadata, 'signature': signature, 'columns': columns, 'table_name': table_name})
 
     modes = {str(source['metadata']['nr_mode']) for source in sources}
@@ -1777,6 +1783,8 @@ def _load_source_frames(
     placed = current_datasets(repository, [int(source['metadata']['dataset_id']) for source in sources])
     total = max(1, len(sources))
     with_rows = {id(source) for source in _campaign_sources(sources, normalized_filters)}
+    from src.modules.scoring_exclusions import load_scope
+    exclusions = load_scope(repository)
     for index, source in enumerate(sources, start=1):
         dataset_id = int(source['metadata']['dataset_id'])
         if id(source) not in with_rows:
@@ -1813,14 +1821,17 @@ def _load_source_frames(
                 if field == 'Vendor':
                     values = [scoring_vendor_name(value, vendor_operators) for value in values]
                 dataset_filters[resolved_filter_column] = values
+        # The calls of the Excluded Calls lists switched on for the CDR are left out.
+        excluded_call_lists = exclusions.list_ids_for(dataset_id)
         if missing_filter_fields:
             frame = pd.DataFrame()
         else:
             frame = repository.load_dataset_rows(
                 dataset_id, list(dict.fromkeys(selected_columns)), dataset_filters,
+                **({'excluded_call_lists': excluded_call_lists} if excluded_call_lists else {}),
             )
         if frame.empty:
-            if not active_filters:
+            if not active_filters and not excluded_call_lists:
                 raise ValueError(f"Dataset '{source['metadata']['name']}' has no rows available for scoring.")
             progress_callback(10 + round(index * 45 / total), f"Skipped {source['metadata']['name']} with no matching rows")
             continue
@@ -1961,6 +1972,13 @@ def calculate_saved_filter(repository: Repository, filter_id: int,
                                           update_progress)
             result['warnings'] = [*(result.get('warnings') or []), *summary.pop('warnings', [])]
             result['area_summary'] = summary
+        # The calls the Excluded Calls lists leave out of its CDRs.
+        from src.modules.scoring_exclusions import load_scope, summary_warning
+        excluded_calls = load_scope(repository).summary(dataset_ids)
+        if excluded_calls:
+            result['excluded_calls'] = excluded_calls
+            if warning := summary_warning(excluded_calls):
+                result['warnings'] = [*(result.get('warnings') or []), warning]
         _save_scoring_result(repository, saved_filter, filter_id, dataset_ids, configuration, result,
                              points_loss_pending=map_pending)
         if map_pending and _complete_points_loss(

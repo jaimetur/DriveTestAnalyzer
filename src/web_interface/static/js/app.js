@@ -5475,7 +5475,7 @@ const workspaceElementExportTargets = new Set([
   'dashboards', 'ppt-templates', 'main-cities', 'mappings-reference-data', 'scoring-configuration',
   'auto-calculated-fields', 'query-builder-queries', 'reporting-jobs', 'nq-call-tracking', 'nq-calls-configuration', 'app-events',
   'network-insights-favourites', 'bundle-report-template-favourites', 'scoring-favourites-filters', 'scoring-report-templates',
-  'scoring-export-panels',
+  'scoring-export-panels', 'scoring-excluded-calls',
 ]);
 
 // The Input and Output folders of a backup only make sense with the workspace database they belong to.
@@ -7230,6 +7230,12 @@ function importWarningDetails(payload) {
       message: 'Choose the destination workspaces next. Their Scoring Export Panels (the panels the Scoring PowerPoint and Word include and the operators of each one) will be replaced by the package.',
     };
   }
+  if (kind === 'scoring-excluded-calls') {
+    return {
+      title: 'Import Scoring Excluded Calls?',
+      message: 'Choose the destination workspaces next. The lists of calls of the package are added to their Scoring Excluded Calls, replacing the lists of the same name, and their calls are left out of every scoring.',
+    };
+  }
   if (kind === 'app-events') {
     return {
       title: 'Import App Events?',
@@ -7273,6 +7279,7 @@ function importPackageContents(payload) {
     'query-builder-queries': 'Query Builder Queries', 'network-insights-favourites': 'Network Insights Favourites',
     'bundle-report-template-favourites': 'Bundle Report Template Favourites', 'scoring-favourites-filters': 'Scoring & GAP Favourites Filters',
     'scoring-report-templates': 'Scoring & GAP Report Templates', 'scoring-export-panels': 'Scoring Export Panels',
+    'scoring-excluded-calls': 'Scoring Excluded Calls',
     'reporting-jobs': 'Reporting Jobs',
     'nq-call-tracking': 'NQ Call Tracking', 'nq-calls-configuration': 'NQ Calls Configuration', 'app-events': 'App Events',
   };
@@ -8154,6 +8161,8 @@ document.querySelectorAll('[data-export-package-form]').forEach((form) => {
         scoring_report_templates: 'Scoring & GAP Report Templates',
         'scoring-export-panels': 'Scoring Export Panels',
         scoring_export_panels: 'Scoring Export Panels',
+        'scoring-excluded-calls': 'Scoring Excluded Calls',
+        scoring_excluded_calls: 'Scoring Excluded Calls',
         'reporting-jobs': 'Reporting Jobs',
         reporting_jobs: 'Reporting Jobs',
         'nq-call-tracking': 'NQ Call Tracking',

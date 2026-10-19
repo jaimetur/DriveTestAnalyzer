@@ -4587,7 +4587,9 @@ class Repository:
 
         return sql_condition(f"LOWER(TRIM(CAST({self._quote_identifier(column)} AS TEXT)))", values)
 
-    def load_dataset_rows(self, dataset_id: int, columns: list[str], filters: dict[str, Any]) -> pd.DataFrame:
+    def load_dataset_rows(self, dataset_id: int, columns: list[str], filters: dict[str, Any], *,
+                          excluded_call_lists: Iterable[int] = ()) -> pd.DataFrame:
+        """The rows of a dataset with the filters, without the calls of the Scoring Excluded Calls lists given."""
         table_name = self.dataset_rows_table_name(dataset_id)
         existing_columns = set(self.list_dataset_row_columns(dataset_id))
         selected_columns: list[tuple[str, str]] = []
@@ -4648,6 +4650,15 @@ class Repository:
             if not normalized_values:
                 continue
             clause, clause_params = self._values_condition(resolved_key, normalized_values)
+            where_clauses.append(clause)
+            params.extend(clause_params)
+
+        excluded_call_lists = list(excluded_call_lists)
+        resolved_join_id = self._resolve_dataset_row_column_name(existing_columns, 'JOIN_ID') if excluded_call_lists else None
+        if resolved_join_id:
+            from src.modules.scoring_exclusions import row_condition
+
+            clause, clause_params = row_condition(self._quote_identifier(resolved_join_id), excluded_call_lists)
             where_clauses.append(clause)
             params.extend(clause_params)
 
