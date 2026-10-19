@@ -1681,6 +1681,51 @@ def test_result_tabs_have_their_own_colours_on_a_panel_holding_every_result():
         assert f'.scoring-results-tabbed:has([data-result-tab="{tab}"][aria-selected="true"]) {{ --result-accent: {colour}; }}' in template
 
 
+def test_charts_wider_than_their_card_fit_it_and_zoom_out_and_in():
+    script = SCORING_SCRIPT.read_text(encoding='utf-8')
+    constants = script[script.index('  const CHART_MIN_FIT_SCALE'):script.index('  // Map zoom: drag a rectangle')]
+    program = constants + _function_source(script, 'addZoomToolbar') + _function_source(script, 'enableMapZoom') + r"""
+const element = () => ({children: [], dataset: {}, style: {}, classList: {add() {}, remove() {}, toggle() {}},
+  append(...items) { this.children.push(...items); }, setAttribute() {}, addEventListener(type, handler) { if (type === 'click') this.click = handler; }});
+const document = {createElement: element};
+function chart(width, inCard = true) {
+  let viewBox = '0 0 1000 400';
+  const svg = {dataset: {}, style: {width}, getAttribute: () => viewBox, setAttribute: (_name, value) => { viewBox = value; },
+    getBoundingClientRect: () => ({width: 1000, height: 400}), addEventListener() {}, closest: () => (inCard ? scroller : null)};
+  const scroller = {scrollLeft: 0, clientWidth: 1000, get scrollWidth() { return 10 * (parseFloat(svg.style.width) || 100); }};
+  const box = element();
+  enableMapZoom(box, svg);
+  const buttons = Object.fromEntries(box.children[0].children.map(button => [button.title, button]));
+  const press = title => { buttons[title].click({stopPropagation() {}}); return [svg.style.width, svg.style.minHeight ?? '', viewBox]; };
+  return {svg, buttons, press, titles: Object.keys(buttons)};
+}
+const legible = chart('120%');
+const fitted = [legible.svg.style.width];
+const widened = legible.press('Zoom in');
+const zoomed = legible.press('Zoom in');
+const whole = legible.press('Show the whole chart');
+const wide = chart('300%');
+const start = wide.svg.style.width;
+const out = [1, 2, 3, 4, 5].map(() => wide.press('Zoom out'));
+const back = wide.press('Zoom in');
+const map = chart('', false);
+console.log(JSON.stringify({fitted, widened, zoomed, whole, start, out, back, mapTitles: map.titles,
+  mapOut: map.press('Zoom out')}));
+"""
+    result = _run_node_json(program, {})
+    # A chart a little wider than its card starts fitted to it; zooming in gives it its width, then zooms into it.
+    assert result['fitted'] == ['100%'] and result['widened'][:2] == ['120%', '']
+    assert result['zoomed'][0] == '1000px' and result['zoomed'][2] != '0 0 1000 400'
+    assert result['whole'][:2] == ['100%', '0'] and result['whole'][2] == '0.00 0.00 1000.00 400.00'
+    # A much wider one keeps its width (and scrolls); zooming out narrows it down to the card, keeping its proportions.
+    assert result['start'] == '300%'
+    assert [step[0] for step in result['out']] == ['225%', '168.75%', '126.56%', '100%', '100%']
+    assert all(step[1] == '0' for step in result['out'])
+    assert result['back'][:2] == ['133.33%', '0']
+    # Maps keep their zoom.
+    assert result['mapTitles'] == ['Zoom in', 'Zoom out', 'Show the whole map'] and result['mapOut'][0] == ''
+
+
 def test_kpi_gap_profile_and_points_lost_map_share_location_and_operators():
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
     controls = script[script.index('  function gapInsightControls(pane, items) {'):script.index('  function renderKpiGapProfiles(')]
@@ -1703,7 +1748,7 @@ def test_kpi_gap_profile_and_points_lost_map_share_location_and_operators():
     assert "if (!chosen.length) chosen = focusDefault(operators, {withReference: true});" in controls
     assert 'appendFocusChips(group, operators, makeChip);' in controls
     # Maps zoom with a dragged rectangle or the floating buttons, which hide as soon as the pointer leaves.
-    zoom = script[script.index('  function addZoomToolbar(box, zoomIn, zoomOut, reset) {'):]
+    zoom = script[script.index('  function addZoomToolbar(box, zoomIn, zoomOut, reset, '):]
     assert "['+', 'Zoom in'" in zoom and "['−', 'Zoom out'" in zoom and "'Show the whole map'" in zoom
     assert "box.addEventListener('pointerleave', event => { if (event.pointerType === 'mouse') hide(); });" in zoom
     assert "svg.addEventListener('pointerdown'" in zoom and "svg.addEventListener('pointerup', finish)" in zoom

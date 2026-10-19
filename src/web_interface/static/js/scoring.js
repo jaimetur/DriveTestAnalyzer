@@ -6021,6 +6021,11 @@
     const copy = source.cloneNode(true);
     copy.querySelectorAll?.('.scoring-map-zoom, .scoring-map-zoom-rect').forEach(node => node.remove());
     if (copy.style) copy.style.minWidth = '0';
+    if (copy.matches?.('svg')) {
+      // A chart takes the whole view, however wide it is on the page (or however it is zoomed there).
+      Object.assign(copy.style, {width: '', height: ''});
+      delete copy.dataset.zoomFitted;
+    }
     const isTable = copy.matches?.('table, .scoring-insight-table-wrap, .table-wrap') || false;
     expandedChart.classList.toggle('is-table', isTable);
     // A new holder each time, so the zoom of an earlier view does not stay attached.
@@ -8313,10 +8318,10 @@
   }
 
   // The floating zoom buttons (zoom in, zoom out, whole view), shown while the pointer is over the box.
-  function addZoomToolbar(box, zoomIn, zoomOut, reset) {
+  function addZoomToolbar(box, zoomIn, zoomOut, reset, wholeTitle = 'Show the whole map') {
     const toolbar = document.createElement('div');
     toolbar.className = 'scoring-map-zoom';
-    for (const [text, title, action] of [['+', 'Zoom in', zoomIn], ['−', 'Zoom out', zoomOut], ['⤢', 'Show the whole map', reset]]) {
+    for (const [text, title, action] of [['+', 'Zoom in', zoomIn], ['−', 'Zoom out', zoomOut], ['⤢', wholeTitle, reset]]) {
       const button = document.createElement('button');
       button.type = 'button';
       button.textContent = text;
@@ -8417,6 +8422,11 @@
     viewport.addEventListener('pointercancel', () => { rectangle?.remove(); start = null; rectangle = null; });
   }
 
+  // A chart wider than its card (which then scrolls sideways) starts fitted to the width of the card when its bars and
+  // labels keep at least this share of their size; otherwise it keeps its size and zooms out to the card by steps.
+  const CHART_MIN_FIT_SCALE = .75;
+  const CHART_WIDTH_STEP = .75;
+
   // Map zoom: drag a rectangle with the mouse to zoom into it, or use the floating buttons shown
   // while the pointer is over the map (they hide as soon as it leaves).
   function enableMapZoom(box, svg, {onClick = null, onSelect = null} = {}) {
@@ -8429,6 +8439,21 @@
     // A wide chart that scrolls sideways is fitted to the visible width (keeping its height) while zoomed,
     // so the chosen area is centred in what is visible; the whole view gives it back its size.
     const scroller = svg.closest('.scoring-chart-scroll');
+    // Its width (a share of the card's): zooming out narrows it down to the card's, zooming in widens it back to its
+    // own size and then zooms into it.
+    const naturalWidth = scroller && String(svg.style.width || '').endsWith('%') ? parseFloat(svg.style.width) : 100;
+    const widens = Number.isFinite(naturalWidth) && naturalWidth > 100.5;
+    let widthPercent = widens ? naturalWidth : 100;
+    const setWidth = percent => {
+      if (!widens) return;
+      const centre = scroller.scrollWidth ? (scroller.scrollLeft + scroller.clientWidth / 2) / scroller.scrollWidth : 0;
+      widthPercent = Math.min(naturalWidth, Math.max(100, percent));
+      svg.style.width = `${Number(widthPercent.toFixed(2))}%`;
+      // Narrowed, it keeps its proportions (no minimum height leaves room above and below it).
+      svg.style.minHeight = widthPercent < naturalWidth - .5 ? '0' : '';
+      scroller.scrollLeft = Math.max(0, centre * scroller.scrollWidth - scroller.clientWidth / 2);
+    };
+    if (widens && 100 / naturalWidth >= CHART_MIN_FIT_SCALE) setWidth(100);
     const fitToVisibleBox = zoomed => {
       if (!scroller) return;
       if (zoomed && !svg.dataset.zoomFitted) {
@@ -8475,7 +8500,12 @@
       const centerX = x + width / 2, centerY = y + height / 2;
       apply([centerX - width * factor / 2, centerY - height * factor / 2, width * factor, height * factor]);
     };
-    addZoomToolbar(box, () => scaleAround(.6), () => scaleAround(1 / .6), () => apply([...original]));
+    const whole = () => view[2] >= original[2] && view[3] >= original[3];
+    addZoomToolbar(box,
+      () => (whole() && widthPercent < naturalWidth - .5 ? setWidth(widthPercent / CHART_WIDTH_STEP) : scaleAround(.6)),
+      () => (whole() ? setWidth(widthPercent * CHART_WIDTH_STEP) : scaleAround(1 / .6)),
+      () => { apply([...original]); setWidth(100); },
+      widens ? 'Show the whole chart' : 'Show the whole map');
     const toSvg = event => {
       const point = svg.createSVGPoint();
       point.x = event.clientX;
