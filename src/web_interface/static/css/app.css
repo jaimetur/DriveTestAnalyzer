@@ -4911,7 +4911,14 @@ body:has(dialog.vendor-mapping-dialog[open]) { overflow: hidden; }
 /* Values detected in the CDRs: the label each Operator, Vendor or Campaign of the CDRs is shown with. */
 .mapping-assignments-table { min-width: 640px; }
 .mapping-assignments-table th:nth-child(2), .mapping-assignments-table td.mapping-assignment-cdrs { width: 5rem; text-align: center; }
-.mapping-assignments-table th:nth-child(4) { width: 9rem; }
+.mapping-assignments-table .mapping-status-column { width: 9rem; }
+.mapping-assignments-table .mapping-role-column { width: 9rem; }
+/* The Role of the label of each name of the CDRs (read only), in the colours of the Role of subpanel 2. */
+.mapping-role-badge { display: inline-block; padding: .15rem .55rem; border: 1px solid; border-radius: 999px; font-size: .8rem; font-weight: 800; white-space: nowrap; }
+.mapping-role-badge[hidden] { display: none; }
+.mapping-role-badge.is-include { border-color: #c79a1e; background: #fffbea; color: #7a5a00; }
+.mapping-role-badge.is-focus { border-color: #2f855a; background: #f0fff4; color: #22543d; }
+.mapping-role-badge.is-exclude { border-color: #c53030; background: #fff5f5; color: #9b2c2c; }
 .mapping-assignments-table .table-input { width: 100%; box-sizing: border-box; }
 .mapping-assignments-table select[data-locked] { background: #f1f4f6; color: #51616c; }
 .mapping-assignment-cdrs { cursor: help; }

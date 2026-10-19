@@ -410,7 +410,7 @@ The Mappings & Reference Data panel contains Operator Maps, Vendor Maps, Campaig
 
 Operator Maps set how the Operators are named, ordered and coloured in every filter, table, chart, legend and report. They have two numbered subpanels, each of which can be collapsed (the browser remembers it):
 
-**1 · Operator names found in the CDRs** lists every Operator name of the ready CDRs of the workspace, with the number of CDRs that contain it (hover it to see their names), its **Label** and its **Status**:
+**1 · Operator names found in the CDRs** lists every Operator name of the ready CDRs of the workspace, with the number of CDRs that contain it (hover it to see their names), its **Label**, its **Status** and, read only, the **Role** of its label (Include, Focus or Exclude, set in subpanel 2; it follows a label chosen in the list at once):
 
 - **Unassigned** (red, and the number of the subpanel turns red): the name has no label yet, so it is shown as it is and never added up with other names. **Use own names** gives every unassigned name a new label with its own name.
 - **Merges N**: the label stands for N names of the CDRs, which are added up as one Operator (hover it to see the others).

@@ -107,7 +107,7 @@ def test_unassigned_values_show_a_card_until_they_are_assigned(client, tmp_path)
     assert 'data-unassigned-values-card data-can-edit="1" role="alert" aria-label="Unassigned values in the CDRs" hidden' in page
     # The names of the CDRs stay listed with their label, chosen in a list of the labels.
     assert 'id="operator-assignments"' in page and 'Choose a label…' not in page
-    assert '<option value="VF_LabVoNR" selected>VF_LabVoNR</option>' in page
+    assert '<option value="VF_LabVoNR" data-role="" selected>VF_LabVoNR</option>' in page
     assert '"EE": ["NetCheck_UK_CDR_Voice_2026_Q1.xlsx"]' in page
     # Every module shows the values with their labels: the two Vodafone Operators stay apart.
     settings = core.repository.chart_mapping_settings()

@@ -10,10 +10,12 @@
   <option value="focus"{% if role == 'focus' %} selected{% endif %}>Focus</option>
   <option value="exclude"{% if role == 'exclude' %} selected{% endif %}>Exclude</option>
 </select>{% endmacro %}
+{% macro mapping_role_badge(role) %}<span class="mapping-role-badge{% if role is not none %} is-{{ role or 'include' }}{% endif %}" data-mapping-role-badge title="The Role of its label in subpanel 2 (read only)"{% if role is none %} hidden{% endif %}>{% if role is not none %}{{ {'focus': 'Focus', 'exclude': 'Exclude'}.get(role, 'Include') }}{% endif %}</span>{% endmacro %}
 {% macro mapping_labels_view(kind, groups, rows) %}
 {% set title = 'Operator' if kind == 'operator' else 'Vendor' %}
 {% set unassigned = rows | rejectattr('assigned') | list %}
 {% set found = {} %}{% for row in rows %}{% set _ = found.update({row.value: row.cdrs}) %}{% endfor %}
+{% set roles = {} %}{% for group in groups %}{% set _ = roles.update({group.canonical | lower: group.role or ''}) %}{% endfor %}
 <script type="application/json" data-mapping-found-names>{{ found | tojson }}</script>
 <div class="mapping-subpanels">
 <details class="mapping-subpanel mapping-found-names{{ ' has-unassigned' if unassigned else '' }}" id="{{ kind }}-assignments" data-mapping-assignments="{{ kind }}" open data-panel-state-key="workspace-config:{{ kind }}-assignments">
@@ -24,7 +26,7 @@
   <form action="/workspace-config/{{ kind }}-mappings/assign" method="post" data-mapping-assign-form="{{ kind }}">
     <div class="table-wrap operator-mappings-table-wrap">
       <table class="operator-mappings-table mapping-assignments-table">
-        <thead><tr><th>Name in the CDRs</th><th>CDRs</th><th>Label</th><th>Status</th></tr></thead>
+        <thead><tr><th>Name in the CDRs</th><th>CDRs</th><th>Label</th><th class="mapping-status-column">Status</th>{% if kind == 'operator' %}<th class="mapping-role-column">Role<span class="mapping-column-note">Of its label, below</span></th>{% endif %}</tr></thead>
         <tbody>
           {% for row in rows %}
           <tr class="{{ 'mapping-assignment-unassigned' if not row.assigned else '' }}">
@@ -32,13 +34,14 @@
             <td data-label="CDRs" class="mapping-assignment-cdrs" data-mapping-tip='{{ {"title": row.value ~ " · " ~ (row.cdrs | length) ~ (" CDR" if row.cdrs | length == 1 else " CDRs"), "lines": row.cdrs} | tojson }}'>{{ row.cdrs | length }}</td>
             <td data-label="Label">
               <select class="table-select mapping-assignment-select" name="label" data-no-persist data-mapping-assignment-label data-value="{{ row.value }}" aria-label="Label of {{ row.value }}"{% if row.canonical %} data-locked title="{{ row.value }} is itself one of the {{ title }} labels below: rename that label there to change it."{% endif %}>
-                {% if row.canonical %}<option value="{{ row.label }}" selected>{{ row.label }}</option>{% else %}
+                {% if row.canonical %}<option value="{{ row.label }}" data-role="{{ roles.get(row.label | lower, '') }}" selected>{{ row.label }}</option>{% else %}
                 {% if not row.assigned %}<option value="" selected>Choose a label…</option>{% endif %}
-                {% for group in groups %}<option value="{{ group.canonical }}"{% if row.assigned and group.canonical | lower == row.label | lower %} selected{% endif %}>{{ group.canonical }}</option>{% endfor %}
+                {% for group in groups %}<option value="{{ group.canonical }}" data-role="{{ group.role or '' }}"{% if row.assigned and group.canonical | lower == row.label | lower %} selected{% endif %}>{{ group.canonical }}</option>{% endfor %}
                 <option value="__new__">+ New label…</option>{% endif %}
               </select>
             </td>
             <td data-label="Status">{% if not row.assigned %}<span class="mapping-status mapping-status-unassigned">Unassigned</span>{% elif row.merged_with %}<span class="mapping-status mapping-status-merged" data-mapping-tip='{{ {"title": row.label ~ " merges " ~ (row.merged_with | length + 1) ~ " names of the CDRs", "lines": ([row.value] + row.merged_with) | sort, "note": "Every filter, table, chart and report adds them up as one."} | tojson }}'>Merges {{ row.merged_with | length + 1 }}</span>{% else %}<span class="mapping-status mapping-status-assigned">Assigned</span>{% endif %}</td>
+            {% if kind == 'operator' %}<td data-label="Role">{{ mapping_role_badge(roles.get(row.label | lower, '') if row.assigned else none) }}</td>{% endif %}
           </tr>
           {% endfor %}
         </tbody>

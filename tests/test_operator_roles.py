@@ -197,3 +197,56 @@ console.log(JSON.stringify({refused, after, accepted, dialogs: dialogs.length, n
     assert completed.returncode == 0, completed.stderr
     assert json.loads(completed.stdout) == {'refused': False, 'after': ['', 'exclude'], 'accepted': True, 'dialogs': 1,
                                             'none': False, 'newOnly': True}
+
+
+def test_the_names_of_the_cdrs_show_the_role_of_their_label_read_only(client, monkeypatch):
+    import shutil
+    import subprocess
+    from pathlib import Path
+
+    import pytest
+    from lxml import html
+
+    login(client)
+    core.repository.replace_operator_mapping_groups(GROUPS)
+    rows = [{'value': 'Vodafone UK', 'cdrs': ['a.csv'], 'label': 'VF', 'assigned': True, 'canonical': False, 'merged_with': []},
+            {'value': 'LEB', 'cdrs': ['a.csv'], 'label': 'Lebara', 'assigned': True, 'canonical': False, 'merged_with': []},
+            {'value': 'EE', 'cdrs': ['a.csv'], 'label': 'EE', 'assigned': True, 'canonical': True, 'merged_with': []},
+            {'value': 'Sky', 'cdrs': ['a.csv'], 'label': 'Sky', 'assigned': False, 'canonical': False, 'merged_with': []}]
+    monkeypatch.setattr(core, 'mapping_assignment_rows', lambda: {'operator': rows, 'vendor': rows})
+    page = html.fromstring(client.get('/workspace-config').text)
+    table = page.xpath('//*[@id="operator-assignments"]//table')[0]
+    # After the Status, the Role of the label of each name (read only).
+    assert [th.text_content().strip() for th in table.xpath('.//th')][3:] == ['Status', 'RoleOf its label, below']
+    badges = {row.xpath('.//input[@name="source"]/@value')[0]: row.xpath('.//*[@data-mapping-role-badge]')[0]
+              for row in table.xpath('.//tbody/tr')}
+    assert {name: (badge.text_content(), badge.get('class'), badge.get('hidden') is not None) for name, badge in badges.items()} == {
+        'Vodafone UK': ('Focus', 'mapping-role-badge is-focus', False),
+        'LEB': ('Exclude', 'mapping-role-badge is-exclude', False),
+        'EE': ('Include', 'mapping-role-badge is-include', False),
+        # A name without a label has no Role.
+        'Sky': ('', 'mapping-role-badge', True)}
+    # The Vendor Maps have no Role.
+    assert not page.xpath('//*[@id="vendor-assignments"]//*[@data-mapping-role-badge]')
+
+    # The Role follows the label chosen for a name, before it is saved.
+    script = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/app.js').read_text(encoding='utf-8')
+    start = script.index('function refreshMappingRoleBadge(select) {')
+    helper = script[start:script.index('\n}\n', start) + 3]
+    node = shutil.which('node')
+    if not node:
+        pytest.skip('Node.js is required for the Operator Maps editor checks.')
+    program = helper + r"""
+const badge = {hidden: false, className: '', textContent: ''};
+const choose = (value, role) => {
+  refreshMappingRoleBadge({value, selectedOptions: [{dataset: role === undefined ? {} : {role}}], closest: () => ({querySelector: () => badge})});
+  return [badge.hidden, badge.className, badge.textContent];
+};
+console.log(JSON.stringify([choose('VF', 'focus'), choose('Lebara', 'exclude'), choose('BT', ''), choose('__new__'), choose('')]));
+"""
+    completed = subprocess.run([node, '-e', program], capture_output=True, text=True, check=False)
+    assert completed.returncode == 0, completed.stderr
+    assert json.loads(completed.stdout) == [
+        [False, 'mapping-role-badge is-focus', 'Focus'], [False, 'mapping-role-badge is-exclude', 'Exclude'],
+        [False, 'mapping-role-badge is-include', 'Include'], [False, 'mapping-role-badge is-include', 'Include'],
+        [True, 'mapping-role-badge', '']]

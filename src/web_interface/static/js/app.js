@@ -9204,6 +9204,33 @@ document.addEventListener('submit', (event) => {
   event.stopImmediatePropagation();
   showInfoDialog(OPERATOR_ROLE_LAST_INCLUDED, {title: 'One operator must stay included', tone: 'error'});
 }, true);
+
+// The names of the CDRs show, read only, the Role of the label chosen for them (Include for a new label), also while
+// a label or a Role is changed and not saved yet.
+function refreshMappingRoleBadge(select) {
+  const badge = select.closest('tr')?.querySelector('[data-mapping-role-badge]');
+  if (!badge) return;
+  const role = !select.value ? null : select.value === '__new__' ? '' : (select.selectedOptions[0]?.dataset.role || '');
+  badge.hidden = role === null;
+  badge.className = `mapping-role-badge${role === null ? '' : ` is-${role || 'include'}`}`;
+  badge.textContent = role === null ? '' : ({focus: 'Focus', exclude: 'Exclude'}[role] || 'Include');
+}
+
+document.addEventListener('change', (event) => {
+  const target = event.target instanceof HTMLSelectElement ? event.target : null;
+  if (!target) return;
+  if (target.matches('[data-mapping-assignment-label]')) {
+    refreshMappingRoleBadge(target);
+    return;
+  }
+  const panel = target.matches('.mapping-role-select') ? target.closest('[data-panel-state-key="admin:operator-mappings"]') : null;
+  const label = target.closest('tr')?.querySelector('input[name="original_canonical"]')?.value;
+  if (!panel || !label) return;
+  panel.querySelectorAll('[data-mapping-assignment-label]').forEach((select) => {
+    Array.from(select.options).filter((option) => option.value === label).forEach((option) => { option.dataset.role = target.value; });
+    refreshMappingRoleBadge(select);
+  });
+});
 document.addEventListener('click', (event) => {
   const button = event.target instanceof Element ? event.target.closest('[data-mapping-save-all]') : null;
   const panel = button?.closest(CHART_MAPPING_PANEL_SELECTOR);
