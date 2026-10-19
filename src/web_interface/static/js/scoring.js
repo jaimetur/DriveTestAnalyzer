@@ -7418,7 +7418,7 @@
     const window_ = scope.window;
     // Below the reference (the latest campaign), the other campaigns analysed, the newest first.
     const otherCampaigns = scope.campaigns.filter(campaign => campaign !== scope.latest_campaign).reverse();
-    tiles.append(tile('Campaigns', scope.latest_campaign || '—', otherCampaigns.length ? `+ ${otherCampaigns.join(', ')}` : 'One campaign'));
+    tiles.append(tile('Campaigns', scope.latest_campaign || '—', otherCampaigns.length ? `+${otherCampaigns.length} campaign${otherCampaigns.length === 1 ? '' : 's'}: ${otherCampaigns.join(', ')}` : 'One campaign'));
     if (window_) tiles.append(tile('Measurements', `${window_.first} → ${window_.last}`, `${window_.days} days with tests`));
     if (scope.places) tiles.append(tile('Places', `${scope.places.cities} cities`, `${scope.places.routes} Connecting Roads routes`));
     const environments = scope.environments.filter(item => item.max_points > 0);
