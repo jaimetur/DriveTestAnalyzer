@@ -565,6 +565,22 @@
   .scoring-comparison-controls select { width: auto; min-width: 12rem; max-width: min(100%, 30rem); min-height: 2.15rem; padding: .35rem 2rem .35rem .6rem; font-size: .78rem; }
   .scoring-gap-comparison-controls select { border: 1px solid #c8842f; background-color: #fff2c9; color: #49300c; font-weight: 800; box-shadow: 0 1px 2px rgba(119,74,16,.12); }
   .scoring-gap-comparison-controls select:focus-visible { outline: 3px solid rgba(200,132,47,.28); outline-offset: 2px; }
+  /* Every choice of operators of Scoring (the GAP reference and the Operator filter of the Calculation panel, and the
+     operator choices of the results) in the blue of the Operators, stronger than the other fields. */
+  :is([data-scoring-workspace] select[data-baseline-operator],
+      [data-scoring-workspace] select[data-scoring-context-filter="Operator"] + .multiselect-shell > .multiselect-trigger,
+      [data-scoring-workspace] :is(select[data-hierarchy-gap-operator], select[data-gap-summary-operator]),
+      [data-scoring-workspace] select:is([data-insight-select="act-operator"], [data-insight-select="stretches-operator"], [data-insight-select="campaign-comparison"])) {
+    border: 1.5px solid #2458a6; background-color: #dbe7fb; color: #143b75; font-weight: 800; box-shadow: 0 1px 3px rgba(36,88,166,.2); }
+  :is([data-scoring-workspace] select[data-baseline-operator],
+      [data-scoring-workspace] select[data-scoring-context-filter="Operator"] + .multiselect-shell > .multiselect-trigger,
+      [data-scoring-workspace] :is(select[data-hierarchy-gap-operator], select[data-gap-summary-operator]),
+      [data-scoring-workspace] select:is([data-insight-select="act-operator"], [data-insight-select="stretches-operator"], [data-insight-select="campaign-comparison"])):hover { background-color: #cddff8; }
+  :is([data-scoring-workspace] select[data-baseline-operator],
+      [data-scoring-workspace] select[data-scoring-context-filter="Operator"] + .multiselect-shell > .multiselect-trigger,
+      [data-scoring-workspace] :is(select[data-hierarchy-gap-operator], select[data-gap-summary-operator]),
+      [data-scoring-workspace] select:is([data-insight-select="act-operator"], [data-insight-select="stretches-operator"], [data-insight-select="campaign-comparison"])):focus-visible {
+    outline: 3px solid rgba(36,88,166,.3); outline-offset: 2px; }
   .scoring-context-heading { display: flex; align-items: center; flex-wrap: wrap; gap: .55rem; margin: .25rem 0 .65rem; padding-bottom: .6rem; border-bottom: 1px solid #d5dedf; color: #9a542e; font-size: .94rem; }
   .scoring-context-chips { display: flex; align-items: center; flex-wrap: wrap; gap: .35rem; margin: 0 0 .55rem; }
   .scoring-context-chip { display: inline-flex; align-items: center; min-height: 1.45rem; padding: .18rem .5rem; border: 1px solid rgba(25,42,53,.1); border-radius: 999px; background: #f3f6f6; color: #465c68; font-size: .68rem; font-weight: 700; }
@@ -853,6 +869,9 @@
     background: #16233a !important; color: #cfe0f5 !important; border-color: #2a3b58 !important; }
   [data-scoring-workspace][data-scoring-theme="midnight"] [data-result-pane] :is(.scoring-insight-select select, label select, .scoring-map-zoom button, .scoring-loss-operator[aria-pressed="false"]) {
     background-color: #0f1726 !important; color: #dce6f2 !important; border-color: #2a3b58 !important; }
+  /* The operator choices keep their blue (as specific as the rule above, which reaches the operator chips too). */
+  [data-scoring-workspace][data-scoring-theme="midnight"] [data-result-pane] :is(select[data-hierarchy-gap-operator], select[data-gap-summary-operator], select[data-insight-select="act-operator"], select[data-insight-select="stretches-operator"], select[data-insight-select="campaign-comparison"]):not(.scoring-loss-operator) {
+    background-color: #17305a !important; color: #e3eeff !important; border-color: #5b8fe0 !important; }
   [data-scoring-workspace][data-scoring-theme="midnight"] [data-result-pane] .scoring-map-zoom { background: rgba(15, 23, 38, .94) !important; border-color: #2a3b58 !important; }
 
   /* Paper: panels between a double and a single black rule. */

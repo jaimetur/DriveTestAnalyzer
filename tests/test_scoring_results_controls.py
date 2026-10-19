@@ -1985,6 +1985,26 @@ process.stdout.write(JSON.stringify(usedDatasetIds()));
     assert _run_node_json(program, {**opened, 'pinned': False}) == ['1', '2', '3', '4']
 
 
+def test_operator_choices_stand_out_in_the_blue_of_the_operators():
+    template = SCORING_TEMPLATE.read_text(encoding='utf-8')
+    script = SCORING_SCRIPT.read_text(encoding='utf-8')
+    rule = template[template.index('/* Every choice of operators of Scoring'):]
+    rule = rule[:rule.index('}')]
+    # The GAP reference and the Operator filter of the Calculation panel, and the operator choices of the results.
+    for selector in ('select[data-baseline-operator]',
+                     'select[data-scoring-context-filter="Operator"] + .multiselect-shell > .multiselect-trigger',
+                     'select[data-hierarchy-gap-operator]', 'select[data-gap-summary-operator]',
+                     '[data-insight-select="act-operator"]', '[data-insight-select="stretches-operator"]',
+                     '[data-insight-select="campaign-comparison"]'):
+        assert selector in rule
+    assert 'border: 1.5px solid #2458a6; background-color: #dbe7fb; color: #143b75; font-weight: 800;' in rule
+    for key in ("insightSelect('act-operator'", "insightSelect('stretches-operator'", "insightSelect('campaign-comparison'",
+                'select.dataset.hierarchyGapOperator', 'select.dataset.gapSummaryOperator'):
+        assert key in script
+    # With Midnight they keep a blue of their own.
+    assert 'select[data-insight-select="campaign-comparison"]):not(.scoring-loss-operator) {' in template
+
+
 def test_saved_filters_are_edited_in_a_dialog_with_the_calculation_panel():
     template = SCORING_TEMPLATE.read_text(encoding='utf-8')
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
