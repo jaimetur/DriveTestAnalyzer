@@ -107,6 +107,19 @@ def test_configurations_are_saved_remembered_and_exported():
         import_report_configurations(other, {'format': 'something-else'})
 
 
+
+def test_report_configurations_travel_with_their_geographical_areas_and_scoring_trends():
+    area = {'enabled': True, 'time_split': 'Quarterly', 'breakdown': 'Cluster', 'cities': ['Leeds', 'Glasgow'],
+            'main_cities': True, 'campaigns': ['Latest 2 campaigns']}
+    configuration = {'scenarios': [{**default_scenario(name='National', operators=OPERATORS), 'area_summary': area}]}
+    repository, other = _StateRepository(), _StateRepository()
+    save_named_configuration(repository, 'Areas', configuration)
+    document = json.loads(json.dumps(report_configurations_document(load_report_state(repository))))
+    import_report_configurations(other, document)
+    [saved] = load_report_state(other)['configurations']
+    assert saved['configuration'] == load_report_state(repository)['configurations'][0]['configuration']
+    assert saved['configuration']['scenarios'][0]['area_summary'] == area
+
 def test_report_document_has_one_section_per_scenario_and_scoring():
     national_job, national = synthetic_result(levels=('Operator',))
     cities_job, cities = synthetic_result(levels=('Operator', 'City'))

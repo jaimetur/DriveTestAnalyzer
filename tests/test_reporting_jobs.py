@@ -283,6 +283,28 @@ def test_reporting_job_runs_emails_and_travels_with_exports(client, monkeypatch,
         report_tasks.ARTIFACT_PROVIDERS.pop('fake', None)
 
 
+
+def test_reporting_jobs_travel_with_every_field_of_their_scoring_artifacts(client):
+    login(client)
+    area = {'enabled': True, 'time_split': 'Quarterly', 'breakdown': 'Cluster', 'cities': ['Leeds', 'Glasgow'],
+            'main_cities': True, 'campaigns': ['Latest 2 campaigns']}
+    report = default_report_configuration()
+    report['scenarios'][0]['area_summary'] = area
+    entry = {**SCORING_ENTRY, 'label': 'Every field', 'auto_cdrs': True, 'campaigns': ['Latest campaign'],
+             'formats': ['powerpoint', 'word'], 'baseline_operator': 'VF', 'compared_operators': ['EE', 'O2'], 'report': report}
+    created = client.post('/api/reporting/tasks', json={'name': 'Every field', 'definition': {'scoring': [entry]},
+                                                         'schedule': {'mode': 'manual'}})
+    assert created.status_code == 200, created.text
+    task = created.json()['task']
+    document = report_tasks.export_tasks_document(core.repository)
+    assert client.delete(f"/api/reporting/tasks/{task['id']}").status_code == 200
+    core._restore_workspace_reporting_jobs(core.active_workspace, document, 'super')
+    [imported] = [item for item in report_tasks.list_tasks(core.repository) if item['name'] == 'Every field']
+    assert imported['definition'] == task['definition']
+    [scoring] = imported['definition']['scoring']
+    assert scoring['compared_operators'] == ['EE', 'O2'] and scoring['baseline_operator'] == 'VF'
+    assert scoring['report']['scenarios'][0]['area_summary'] == area
+
 def test_scoring_entries_choose_the_cdrs_of_their_campaigns_at_each_run(client, monkeypatch):
     definition = normalize_definition({'scoring': [
         {**SCORING_ENTRY, 'cdr_selection': 'all_complete'}, SCORING_ENTRY, {**SCORING_ENTRY, 'cdr_selection': 'other'}]})

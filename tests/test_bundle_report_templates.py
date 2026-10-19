@@ -1122,3 +1122,22 @@ def test_jobs_packages_and_folders_with_a_former_name_take_the_current_one(tmp_p
         (tmp_path / 'output' / 'reports' / former / f'run-{index}').mkdir(parents=True)
     assert migrate_output_layout(tmp_path / 'output', tmp_path / 'workspace.db')
     assert sorted(path.name for path in (tmp_path / 'output' / 'reports' / 'bundle-reports').iterdir()) == ['run-0', 'run-1']
+
+
+def test_favourites_travel_with_every_option_of_their_scoring_section(client):
+    login(client)
+    definition = bundle_report_templates.normalize_definition({'filters': {'main_cities': True}})
+    scoring = next(section for section in definition['sections'] if section['key'] == 'scoring')
+    scoring['options'].update({
+        'campaigns': ['Latest campaign'], 'baseline_operator': 'VF', 'compared_operators': ['EE', 'O2'],
+        'area_summary': {'enabled': True, 'breakdown': 'Cluster', 'cities': ['Leeds', 'Glasgow'], 'main_cities': True,
+                         'time_split': 'Quarterly', 'campaigns': ['Latest 2 campaigns']}})
+    saved = bundle_report_templates.save_favourite(core.repository, None, 'Every scoring option', definition, 'super')
+    document = bundle_report_templates.export_favourites_document(core.repository)
+    bundle_report_templates.delete_favourite(core.repository, saved['id'])
+    assert bundle_report_templates.import_favourites_document(core.repository, document, 'super') >= 1
+    [imported] = [item for item in bundle_report_templates.list_favourites(core.repository) if item['name'] == 'Every scoring option']
+    assert imported['definition'] == saved['definition']
+    options = next(section for section in imported['definition']['sections'] if section['key'] == 'scoring')['options']
+    assert options['compared_operators'] == ['EE', 'O2'] and options['area_summary'] == scoring['options']['area_summary']
+    assert imported['definition']['filters']['main_cities']
