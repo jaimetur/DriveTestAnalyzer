@@ -4647,6 +4647,13 @@ body:has(dialog.vendor-mapping-dialog[open]) { overflow: hidden; }
 .scoring-export-legend .scoring-export-default { background: #5b6b76; }
 .scoring-export-row:has(input[role="switch"]:not(:checked)) .scoring-export-name { color: #9aa7b0; text-decoration: line-through; text-decoration-color: rgba(154, 167, 176, .7); }
 .scoring-export-row:has(input[role="switch"]:not(:checked)) .scoring-export-modes { opacity: .45; filter: grayscale(1); }
+.scoring-export-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .75rem; margin-top: .35rem; padding-top: 1rem; border-top: 1px solid #e6ecf0; }
+.scoring-export-actions button { display: inline-flex; align-items: center; gap: .5rem; padding: .7rem 1.3rem; transition: background .15s ease, border-color .15s ease, color .15s ease, box-shadow .15s ease; }
+.scoring-export-actions svg { width: 1.1rem; height: 1.1rem; flex: none; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.scoring-export-actions .scoring-export-reset { border: 1px solid #cbd5dc; background: #fff; color: #334155; box-shadow: 0 1px 2px rgba(15, 23, 42, .06); }
+.scoring-export-actions .scoring-export-reset:hover { border-color: #94a3b8; background: #f1f5f9; color: #1e293b; }
+.scoring-export-actions .scoring-export-save { background: linear-gradient(135deg, var(--brand), #149d94); color: #fff; box-shadow: 0 8px 18px -10px rgba(20, 157, 148, .9); }
+.scoring-export-actions .scoring-export-save:hover { box-shadow: 0 10px 22px -10px rgba(20, 157, 148, 1); }
 @media (max-width: 560px) {
   .scoring-export-columns { display: none; }
   .scoring-export-row { grid-template-columns: minmax(0, 1fr) auto; }
