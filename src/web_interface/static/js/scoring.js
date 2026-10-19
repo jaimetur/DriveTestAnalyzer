@@ -2055,17 +2055,15 @@
           profileMeta.append(detail);
         }
       }
-      // The Compared operators of its GAP Analysis (every operator without any).
-      const comparedMeta = document.createElement('span');
-      comparedMeta.className = 'saved-filter-meta';
+      // The Compared operators of its GAP Analysis (every operator without any), on the line of the GAP reference.
       const comparedValue = document.createElement('strong');
       comparedValue.className = 'saved-filter-compared';
       const comparedOperators = Array.isArray(savedFilter.compared_operators) ? savedFilter.compared_operators : [];
       comparedValue.textContent = comparedOperators.length ? comparedOperators.join(', ') : 'All operators';
-      comparedMeta.append('Compared operators: ', comparedValue);
-      // In the order of the calculation panel: the GAP reference, the Compared operators and the methodology, then the
-      // Split by, the Geographical Areas and the Scoring Trends.
-      button.append(...[meta, comparedMeta, profileMeta, aggregation, areaMeta, trendMeta].filter(Boolean));
+      meta.append(' · Compared operators: ', comparedValue);
+      // The Split by, the GAP reference with the Compared operators, the methodology, then the Geographical Areas and
+      // the Scoring Trends.
+      button.append(...[aggregation, meta, profileMeta, areaMeta, trendMeta].filter(Boolean));
       const duration = savedFilterDurationText(savedFilter);
       if (duration) {
         // How long the calculation took, or has taken so far while it runs.
