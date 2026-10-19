@@ -190,6 +190,19 @@ def test_powerpoint_follows_the_order_of_the_results_tabs(national):
     assert positions == sorted(positions)
 
 
+def test_the_campaigns_card_names_the_reference_and_other_campaigns(national):
+    job, result, _insights = national
+    presentation = Presentation(BytesIO(export_scoring_powerpoint(job, result, TEMPLATE)))
+    slide = next(slide for slide in presentation.slides if any(
+        shape.has_text_frame and shape.text_frame.text.replace('\n', ' ').startswith('How the measurements ran')
+        for shape in slide.shapes))
+    texts = [shape.text_frame.text for shape in slide.shapes if shape.has_text_frame]
+    # Its label in capitals, as the other tiles.
+    assert 'REFERENCE & OTHER CAMPAIGNS' in texts and 'CAMPAIGNS' not in texts
+    script = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/scoring.js').read_text(encoding='utf-8')
+    assert "tiles.append(tile('Reference & Other Campaigns', scope.latest_campaign || '—'," in script
+
+
 def test_the_route_of_where_to_act_is_drawn_as_the_routes_of_points_lost(national, monkeypatch) -> None:
     import src.modules.scoring_summary_slides as summary_slides
     from src.modules.scoring_act_slides import render_owner_route_map
