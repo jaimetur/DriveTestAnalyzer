@@ -2499,13 +2499,11 @@ def focus_matcher(focus: Any, operators: Any = ()) -> Callable[..., bool]:
 
 
 def _ranking_groups(rankings: list[dict]) -> list[list[dict]]:
-    """The location rankings of every level (City, Cluster and Region, as the page lists them) and of every group of
-    each level, in their order."""
+    """The location rankings of every level and of every group of each level, in the order the page lists them (that
+    of the Geographical Areas cards: the Breakdown, such as Region, then the cities)."""
     groups: dict[tuple[str, str], list[dict]] = {}
-    for level in ('City', 'Cluster', 'Region'):
-        for item in rankings:
-            if item['level'] == level:
-                groups.setdefault((level, item.get('title') or ''), []).append(item)
+    for item in rankings:
+        groups.setdefault((item['level'], item.get('title') or ''), []).append(item)
     return list(groups.values())
 
 

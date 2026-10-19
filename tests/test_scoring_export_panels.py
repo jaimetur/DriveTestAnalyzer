@@ -117,9 +117,10 @@ def test_every_level_and_group_of_the_geographical_areas_is_exported():
     items = [{'level': 'Region', 'title': '', 'operator': 'A'}, {'level': 'City', 'title': 'Vendor: X', 'operator': 'A'},
              {'level': 'City', 'title': 'Vendor: Y', 'operator': 'A'}, {'level': 'City', 'title': 'Vendor: X', 'operator': 'B'},
              {'level': 'Cluster', 'title': '', 'operator': 'A'}]
+    # In the order the page lists them (that of the Geographical Areas cards).
     assert [[(item['level'], item['title'], item['operator']) for item in group] for group in _ranking_groups(items)] == [
-        [('City', 'Vendor: X', 'A'), ('City', 'Vendor: X', 'B')], [('City', 'Vendor: Y', 'A')], [('Cluster', '', 'A')],
-        [('Region', '', 'A')]]
+        [('Region', '', 'A')], [('City', 'Vendor: X', 'A'), ('City', 'Vendor: X', 'B')], [('City', 'Vendor: Y', 'A')],
+        [('Cluster', '', 'A')]]
 
 
 def test_reports_and_bundle_report_templates_carry_export_all_operators():
