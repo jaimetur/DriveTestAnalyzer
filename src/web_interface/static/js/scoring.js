@@ -968,6 +968,12 @@
     group.append(subpanel('focus', 'Focus operators', focused), subpanel('other', 'Other operators', others));
   }
 
+  // The operators the buttons of a section start with: its Focus operators, else every operator.
+  function focusChosen(operators) {
+    const {focused} = focusSplit(operators);
+    return (focused.length ? focused : operators).map(item => item.operator);
+  }
+
   // The operators a choice of the sections the Focus operators choose starts with: the Focus operators (else every
   // operator but the reference, else every operator).
   function focusDefault(operators, {withReference = false} = {}) {
@@ -2594,7 +2600,7 @@
 
   // The sections whose operators the page chooses with its chips, as the export names them.
   const EXPORT_OPERATOR_SECTIONS = ['summary-operators', 'ranking-operators', 'gap-parts-operators', 'gap-insight-operators',
-    'vendor_losses-operators', 'site_type_losses-operators', 'sites-operators'];
+    'vendor_losses-operators', 'site_type_losses-operators', 'sites-operators', 'stretches-operators'];
 
   // The operators chosen in each section ({section: [operators]}); a section never changed is left out, so the export
   // uses its default (as the page does).
@@ -6813,8 +6819,8 @@
     let chosen = Array.isArray(stored)
       ? [...new Set([...stored.filter(operator => names.includes(operator)), ...operators.filter(newlyOffered).map(item => item.operator)])]
       : [];
-    // Without a choice, every operator (the PowerPoint and Word take the Focus operators).
-    if (!chosen.length) chosen = [...names];
+    // Without a choice, the Focus operators (every operator without them), as the PowerPoint and Word.
+    if (!chosen.length) chosen = focusChosen(operators);
     chosen = withOperatorChoices('gap-insight-operators', names, chosen);
     const group = document.createElement('div');
     group.className = 'scoring-environment-filter scoring-loss-operators';
@@ -6937,17 +6943,17 @@
     return next;
   }
 
-  // Choosing the operators of a section: every operator offered is chosen by default (with ``compared``, the Focus
-  // operators and the others in subpanels of their own); clicking one enables or disables it there and in every other
-  // section (see operatorChoices), and one always stays enabled.
-  function insightOperatorChips(key, items, {compared = false} = {}) {
+  // Choosing the operators of a section: its Focus operators are chosen by default (every operator without them), the
+  // Focus operators and the others in subpanels of their own; clicking one enables or disables it there and in every other section (see
+  // operatorChoices), and one always stays enabled.
+  function insightOperatorChips(key, items) {
     const operators = [...new Map(items.map(item => [item.operator, item])).values()];
     const names = operators.map(item => item.operator);
     let stored = null;
     try { stored = JSON.parse(insightSelections.get(key) || 'null'); } catch (_error) { stored = null; }
     let chosen = Array.isArray(stored) ? stored.filter(name => names.includes(name)) : [];
-    // Every operator by default (the PowerPoint and Word take the Focus operators of the sections they choose).
-    if (!chosen.length) chosen = [...names];
+    // The Focus operators by default (every operator without them), as the PowerPoint and Word.
+    if (!chosen.length) chosen = focusChosen(operators);
     chosen = withOperatorChoices(key, names, chosen);
     const group = document.createElement('div');
     group.className = 'scoring-environment-filter scoring-loss-operators';
@@ -6969,8 +6975,7 @@
       if (color) chip.style.setProperty('--operator-color', color);
       return chip;
     };
-    if (compared) appendFocusChips(group, operators, makeChip);
-    else group.append(...operators.map(makeChip));
+    appendFocusChips(group, operators, makeChip);
     return {control: group, chosen};
   }
 
@@ -7112,6 +7117,37 @@
     pane.append(later);
   }
 
+  // One operator chosen with buttons, the Focus operators and the others in subpanels of their own (as the operator
+  // buttons of the other sections): clicking one shows it.
+  function insightOperatorPicker(key, items, fallback) {
+    const operators = [...new Map(items.map(item => [item.operator, item])).values()];
+    const stored = insightSelections.get(key);
+    const value = operators.some(item => item.operator === stored) ? stored : (fallback ?? operators[0]?.operator);
+    const group = document.createElement('div');
+    group.className = 'scoring-environment-filter scoring-loss-operators';
+    group.setAttribute('role', 'radiogroup');
+    group.setAttribute('aria-label', 'Operator');
+    group.append(document.createTextNode('Operator: '));
+    const makeChip = item => {
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'scoring-loss-operator';
+      chip.dataset.insightPick = key;
+      chip.dataset.insightPickOperator = item.operator;
+      const label = item.label || item.operator;
+      chip.setAttribute('role', 'radio');
+      chip.setAttribute('aria-checked', String(item.operator === value));
+      chip.setAttribute('aria-pressed', String(item.operator === value));
+      chip.textContent = label;
+      chip.title = item.operator === value ? `${label} is shown` : `Click to show ${label}`;
+      const color = safeHexColor(item.color);
+      if (color) chip.style.setProperty('--operator-color', color);
+      return chip;
+    };
+    appendFocusChips(group, operators, makeChip);
+    return {control: group, value};
+  }
+
   // ---- Summary: where to act (see scoring_where_to_act.py) --------------------------------------------------------
   // The plan of an operator, its performance owners, its Cities, Towns, Roads and Railways ranked and the route that
   // loses most, for the operator chosen (the first compared operator by default); the places ranked and the route go
@@ -7121,10 +7157,9 @@
     const [plans, cards, places, routes] = views;
     const all = views.flat();
     if (!all.length) return;
-    const operators = [...new Map(all.map(item => [item.operator, item.label || item.operator])).entries()];
     // The first Focus operator by default (else the first operator compared with the reference).
     const fallback = focusDefault([...new Map(all.map(item => [item.operator, item])).values()])[0];
-    const {wrapper: operatorControl, value: operator} = insightSelect('act-operator', operators, 'Operator', fallback, {focus: true});
+    const {control: operatorControl, value: operator} = insightOperatorPicker('act-operator', all, fallback);
     // Each performance owner keeps one colour of the categories of the theme on every view and in the exports, in the
     // order of the owners of the results (scoring_where_to_act.owner_order).
     const ownerOrder = payload?.views?.insights?.owner_order;
@@ -7544,7 +7579,7 @@
       const {wrapper: groupControl, value: storedGroup} = insightSelect('ranking-group', titles.map(title => [title, title || 'All']), 'Group');
       const title = titles.includes(storedGroup) ? storedGroup : titles[0];
       const inGroup = ofLevel.filter(item => (item.title || '') === title);
-      const {control: chips, chosen} = insightOperatorChips('ranking-operators', inGroup, {compared: true});
+      const {control: chips, chosen} = insightOperatorChips('ranking-operators', inGroup);
       const plural = {City: 'Cities and routes', Cluster: 'Clusters', Region: 'Regions'}[level] || 'Locations';
       const section = insightSection(pane, `${plural} ranked${inGroup[0]?.campaign ? ` — ${inGroup[0].campaign}` : ''}`, 'scoring-ranking-card', inGroup[0]?.context);
       section.append(insightControls(levels.length > 1 ? levelControl : null, titles.length > 1 ? groupControl : null, chips));
@@ -7620,7 +7655,7 @@
     const items = insightItems(payload, 'gap_parts', environment);
     if (!items.length) return;
     const {control: scopeControl, inScope, context} = insightScopeControl('gap-parts-scope', items);
-    const {control: chips, chosen} = insightOperatorChips('gap-parts-operators', inScope, {compared: true});
+    const {control: chips, chosen} = insightOperatorChips('gap-parts-operators', inScope);
     const byReliability = inScope[0]?.by_reliability;
     const section = insightSection(pane, 'GAP by part of the scoring over the campaigns', 'scoring-gap-parts-card', context);
     section.append(insightControls(scopeControl, chips));
@@ -7740,7 +7775,7 @@
       return;
     }
     const {control: scopeControl, inScope, context} = insightScopeControl(`${kind}-scope`, items, {withCampaign: true});
-    const {control: chips, chosen} = insightOperatorChips(`${kind}-operators`, inScope, {compared: true});
+    const {control: chips, chosen} = insightOperatorChips(`${kind}-operators`, inScope);
     const section = insightSection(pane, title, 'scoring-serving-card', context);
     section.append(insightControls(scopeControl, chips));
     const grid = document.createElement('div');
@@ -7777,12 +7812,23 @@
 
   function renderSitesToReview(pane, payload, environment, pending) {
     const items = insightItems(payload, 'sites_to_review', environment);
-    if (!items.length) return;
-    const {control: scopeControl, inScope, context} = insightScopeControl('sites-scope', items);
-    const {control: chips, chosen} = insightOperatorChips('sites-operators', inScope, {compared: true});
-    const section = insightSection(pane, `Sites to review${inScope[0]?.campaign ? ` — ${inScope[0].campaign}` : ''}`, 'scoring-sites-card', context);
+    // The operators none of whose serving cells is in the cell inventories have no site to review: a note says so.
+    const unidentified = insightItems(payload, 'sites_unidentified', environment);
+    if (!items.length && !unidentified.length) return;
+    const {control: scopeControl, inScope, context} = insightScopeControl('sites-scope', items.length ? items : unidentified);
+    const scopeKey = value => JSON.stringify(Object.fromEntries(Object.entries(value || {}).filter(([field]) => field !== 'campaign').sort()));
+    const without = unidentified.filter(item => scopeKey(item.context) === scopeKey(context));
+    const listed = items.length ? inScope : [];
+    const {control: chips, chosen} = listed.length ? insightOperatorChips('sites-operators', listed) : {control: null, chosen: []};
+    const campaign = (listed[0] || without[0])?.campaign;
+    const section = insightSection(pane, `Sites to review${campaign ? ` — ${campaign}` : ''}`, 'scoring-sites-card', context);
     section.append(insightControls(scopeControl, chips));
-    for (const item of inScope.filter(entry => chosen.includes(entry.operator))) {
+    if (without.length) {
+      section.append(insightParagraph('scoring-insight-note scoring-sites-unidentified', without.map(item => `${item.label}: none of the cells `
+        + `that served its tests is in the cell inventories, so its ${insightNumber(item.unidentified, 1)} points lost cannot be `
+        + 'assigned to sites (add its cells to the inventories of Workspace Config and process its CDRs again).').join(' ')));
+    }
+    for (const item of listed.filter(entry => chosen.includes(entry.operator))) {
       const wrapper = document.createElement('div');
       wrapper.className = 'scoring-insight-table-wrap';
       const banner = document.createElement('div');
@@ -7802,7 +7848,8 @@
       ])));
       section.append(wrapper);
     }
-    section.append(insightParagraph('scoring-insight-note', `High: ${insightNumber(inScope[0].priority_points, 0)}+ points lost and losses on the same site in an earlier campaign; Medium: one of the two; Low: neither. `,
+    if (!listed.length) return;
+    section.append(insightParagraph('scoring-insight-note', `High: ${insightNumber(listed[0].priority_points, 0)}+ points lost and losses on the same site in an earlier campaign; Medium: one of the two; Low: neither. `,
       'Failed tests: the calls and tests that missed the Reliable KPIs. Please review their cells: configuration, alarms and changes on the days of the measurements.'));
   }
 
@@ -7810,28 +7857,54 @@
     const items = insightItems(payload, 'route_stretches', environment);
     if (!items.length) return;
     const {control: scopeControl, inScope, context} = insightScopeControl('stretches-scope', items, {withCampaign: true});
-    const operators = inScope.map(item => [item.operator, item.label]);
-    const {wrapper: operatorControl, value: storedOperator} = insightSelect('stretches-operator', operators, 'Operator',
-      focusDefault(inScope)[0], {focus: true});
-    const item = inScope.find(entry => entry.operator === storedOperator) || inScope[0];
-    const routes = item.routes.map(route => [route.route, `${route.route} (${insightNumber(route.points, 1)})`]);
+    // Every chosen operator at once, as the sections above: the stretches of each one on the route chosen.
+    const {control: chips, chosen} = insightOperatorChips('stretches-operators', inScope);
+    const shown = inScope.filter(item => chosen.includes(item.operator));
+    // The routes of those operators, the route where they lose most first.
+    const totals = new Map();
+    for (const item of shown) for (const route of item.routes) totals.set(route.route, (totals.get(route.route) || 0) + route.points);
+    const routes = [...totals].sort((left, right) => right[1] - left[1]).map(([name, points]) => [name, `${name} (${insightNumber(points, 1)})`]);
     const {wrapper: routeControl, value: storedRoute} = insightSelect('stretches-route', routes, 'Route');
-    const route = item.routes.find(entry => entry.route === storedRoute) || item.routes[0];
+    const routeName = totals.has(storedRoute) ? storedRoute : routes[0]?.[0];
     const section = insightSection(pane, 'Connecting Roads: where along each route the points are', 'scoring-stretches-card', context);
-    section.append(insightControls(scopeControl, operatorControl, routeControl));
-    const color = safeHexColor(item.color) || '#7c3aed';
-    const body = document.createElement('div');
-    body.className = 'scoring-stretches';
-    const peak = Math.max(...route.stretches.map(row => row.points), 0);
-    const table = insightTable(['#', 'Stretch', 'Points lost', 'Main Vendor'], route.stretches.map((row, index) => [
-      {text: String(index + 1), className: 'scoring-insight-number'}, row.label, gapBarCell(row.points, peak, {loss: true, total: true}), row.vendor || '—']));
-    body.append(linkStretchTable(makeStretchMap(route, color, payload?.views?.insights?.points_loss_background || []), table, route.stretches));
-    const wrap = document.createElement('div');
-    wrap.className = 'scoring-insight-table-wrap';
-    wrap.append(insightParagraph('scoring-insight-note', insightStrong(item.label, color), ` loses ${insightNumber(route.points, 1)} points on ${route.route}; the stretches with most of them:`), table);
-    body.append(wrap);
-    section.append(body, insightParagraph('scoring-insight-note', 'A stretch gathers the tests of the route within about 20 km, named after the nearest city of the measurements; circle area and colour (yellow to red): points lost.'));
+    // The Route below the Campaign, the operators beside them.
+    const selectors = document.createElement('div');
+    selectors.className = 'scoring-stacked-selectors';
+    selectors.append(...[scopeControl, routeControl].filter(Boolean));
+    section.append(insightControls(selectors, chips));
+    const grid = document.createElement('div');
+    grid.className = `scoring-insight-pair scoring-stretches-grid${shown.length > 1 ? ' is-multiple' : ''}`;
+    for (const item of shown) {
+      const color = safeHexColor(item.color) || '#7c3aed';
+      const card = document.createElement('div');
+      card.className = 'scoring-stretches-operator';
+      const banner = document.createElement('div');
+      banner.className = 'scoring-insight-banner';
+      banner.style.setProperty('--banner-color', color);
+      const route = item.routes.find(entry => entry.route === routeName);
+      if (!route) {
+        banner.append(insightStrong(item.label));
+        card.append(banner, insightParagraph('scoring-insight-note', `${routeName} is not among the routes where ${item.label} loses most points.`));
+        grid.append(card);
+        continue;
+      }
+      banner.append(insightStrong(item.label), ` · ${insightNumber(route.points, 1)} points lost on ${route.route}`);
+      const body = document.createElement('div');
+      body.className = 'scoring-stretches';
+      const peak = Math.max(...route.stretches.map(row => row.points), 0);
+      const table = insightTable(['#', 'Stretch', 'Points lost', 'Main Vendor'], route.stretches.map((row, index) => [
+        {text: String(index + 1), className: 'scoring-insight-number'}, row.label, gapBarCell(row.points, peak, {loss: true, total: true}), row.vendor || '—']));
+      body.append(linkStretchTable(makeStretchMap(route, color, payload?.views?.insights?.points_loss_background || []), table, route.stretches));
+      const wrap = document.createElement('div');
+      wrap.className = 'scoring-insight-table-wrap';
+      wrap.append(insightParagraph('scoring-insight-note', 'The stretches with most of them:'), table);
+      body.append(wrap);
+      card.append(banner, body);
+      grid.append(card);
+    }
+    section.append(grid, insightParagraph('scoring-insight-note', 'A stretch gathers the tests of the route within about 20 km, named after the nearest city of the measurements; circle area and colour (yellow to red): points lost.'));
   }
+
 
   // The colour of a stretch by its share of the points of the stretch that loses most: from the third colour of the
   // quality scale of the theme (yellow, little lost) through its second (orange) to its first (red, the most lost), as
@@ -8202,7 +8275,7 @@
     appendResultScope(heading, inScope[0]?.context);
     // Maps per and Colour areas by below the location (such as the Campaign), the operators beside them.
     const selectors = document.createElement('div');
-    selectors.className = 'scoring-loss-map-selectors';
+    selectors.className = 'scoring-stacked-selectors';
     const scopeControl = controls.querySelector(':scope > .scoring-insight-select');
     if (scopeControl) {
       scopeControl.replaceWith(selectors);
@@ -10015,6 +10088,13 @@
     if (exportLink?.matches('[data-export-ppt]')) {
       event.preventDefault();
       void exportSelectedScoringReport(exportLink);
+      return;
+    }
+    const pick = event.target.closest('[data-insight-pick]');
+    if (pick && currentResults) {
+      insightSelections.set(pick.dataset.insightPick, pick.dataset.insightPickOperator);
+      persistScoringViewState();
+      renderResult(currentResults, selectedSavedFilter);
       return;
     }
     const chip = event.target.closest('[data-insight-chip]');

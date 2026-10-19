@@ -1776,9 +1776,9 @@ def test_kpi_gap_profile_and_points_lost_map_share_location_and_operators():
     assert "insightSelect('points-loss-view', allViews.map(item => [item, item]), 'Maps per')" in maps
     assert "option.disabled = !views.includes(option.value);" in maps
     assert ".map(entry => pointsLossMapCard(entry, payload, savedFilterId, chosen.length > 1, mode));" in maps
-    # Every operator is chosen by default on the page (the PowerPoint and Word take the Focus operators), the Focus
-    # operators first in the choice.
-    assert "if (!chosen.length) chosen = [...names];" in controls
+    # The Focus operators are chosen by default (every operator without them), as in the PowerPoint and Word, first in
+    # the choice.
+    assert "if (!chosen.length) chosen = focusChosen(operators);" in controls
     assert 'appendFocusChips(group, operators, makeChip);' in controls
     # Maps zoom with a dragged rectangle or the floating buttons, which hide as soon as the pointer leaves.
     zoom = script[script.index('  function addZoomToolbar(box, zoomIn, zoomOut, reset, '):]
@@ -2017,6 +2017,28 @@ console.log(JSON.stringify({start, toggled, last, follows, after, offered: JSON.
     assert result['offered'] == ['EE', 'O2', 'Three'] and result['stored'] == ['Three', 'Vodafone']
 
 
+def test_operator_sections_show_their_operators_together_and_fit_the_page():
+    script = SCORING_SCRIPT.read_text(encoding='utf-8')
+    template = SCORING_TEMPLATE.read_text(encoding='utf-8')
+    # Route stretches: every chosen operator at once, with the operator buttons of the other sections.
+    stretches = _function_source(script, 'renderRouteStretches')
+    assert "insightOperatorChips('stretches-operators', inScope);" in stretches
+    assert "grid.className = `scoring-insight-pair scoring-stretches-grid${shown.length > 1 ? ' is-multiple' : ''}`;" in stretches
+    assert "'stretches-operators'];" in script
+    # Where to act: one operator chosen with buttons in the Focus and Other operators subpanels.
+    assert "insightOperatorPicker('act-operator', all, fallback);" in _function_source(script, 'renderWhereToAct')
+    assert 'appendFocusChips(group, operators, makeChip);' in _function_source(script, 'insightOperatorPicker')
+    assert 'appendFocusChips(group, operators, makeChip);' in _function_source(script, 'insightOperatorChips')
+    # Sites to review: the operators without any identified site are named in a note.
+    assert "insightItems(payload, 'sites_unidentified', environment)" in _function_source(script, 'renderSitesToReview')
+    # Four operators two by two; many GAP columns narrower; the Points Lost Map selectors one below the other.
+    assert '.scoring-insight-pair:has(> :nth-child(4):last-child) {' in template
+    assert '.scoring-scorecard:has(td[data-column="gap"]:nth-child(8)) :is(tbody, tfoot) tr > td[data-column="gap"] { min-width: 3.8rem;' in template
+    assert '.scoring-stacked-selectors { display: grid;' in template
+    assert "selectors.append(...[scopeControl, routeControl].filter(Boolean));" in stretches
+    assert "selectors.append(viewControl);" in script and "selectors.append(modeControl);" in script
+
+
 def test_operator_choices_stand_out_in_the_blue_of_the_operators():
     template = SCORING_TEMPLATE.read_text(encoding='utf-8')
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
@@ -2026,11 +2048,11 @@ def test_operator_choices_stand_out_in_the_blue_of_the_operators():
     assert 'data-baseline-operator' not in rule
     for selector in ('select[data-scoring-context-filter="Operator"] + .multiselect-shell > .multiselect-trigger',
                      'select[data-hierarchy-gap-operator]', 'select[data-gap-summary-operator]',
-                     '[data-insight-select="act-operator"]', '[data-insight-select="stretches-operator"]',
+
                      '[data-insight-select="campaign-comparison"]'):
         assert selector in rule
     assert 'border: 1.5px solid #2458a6; background-color: #dbe7fb; color: #143b75; font-weight: 800;' in rule
-    for key in ("insightSelect('act-operator'", "insightSelect('stretches-operator'", "insightSelect('campaign-comparison'",
+    for key in ("insightSelect('campaign-comparison'",
                 'select.dataset.hierarchyGapOperator', 'select.dataset.gapSummaryOperator'):
         assert key in script
     # With Midnight they keep a blue of their own.
@@ -2134,11 +2156,11 @@ def test_summary_sections_enable_the_reference_operator_by_default():
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
     calls = re.findall(r"insightOperatorChips\('([\w-]+)', [^)]*\)", script)
     summary = [call for call in re.findall(r"insightOperatorChips\('summary-operators', [^;]*\);", script)]
-    # Every section starts with every operator, the reference included; the sections compared with the reference show
-    # the Focus operators and the others in subpanels of their own.
+    # Every section starts with its Focus operators (every operator without them), the Focus operators and the others
+    # in subpanels of their own.
     assert len(summary) == 3 and not any('compared: true' in call for call in summary)
     chips = _function_source(script, 'insightOperatorChips')
-    assert "if (!chosen.length) chosen = [...names];" in chips and 'focusDefault' not in chips
+    assert "if (!chosen.length) chosen = focusChosen(operators);" in chips and 'appendFocusChips(group, operators, makeChip);' in chips
     assert {'ranking-operators', 'gap-parts-operators', 'sites-operators'} <= set(calls)
 
 
@@ -2163,7 +2185,7 @@ class Element {
 const document = {createElement: tag => new Element(tag)};
 // The Focus operators of the Operator Maps: their labels and the names of the CDRs they stand for.
 let focusOperatorNames = ['VF SA', 'Vodafone SA', 'Three', '3'];
-""" + ''.join(_function_source(script, name) for name in ('focusMatcher', 'focusSplit', 'appendFocusOptions', 'appendFocusChips', 'focusDefault')) + r"""
+""" + ''.join(_function_source(script, name) for name in ('focusMatcher', 'focusSplit', 'appendFocusOptions', 'appendFocusChips', 'focusChosen', 'focusDefault')) + r"""
 // The chips: below the label of the group, a subpanel of the Focus operators and one of the others, each under its label.
 const chipGroup = new Element('div');
 chipGroup.append({nodeType: 3, textContent: 'Operators: '});
@@ -2178,14 +2200,17 @@ const select = new Element('select');
 appendFocusOptions(select, operators.map(item => [`operator:${item.operator}`, item.label, item.operator, item.label]));
 const groups = select.children.map(group => [group.label, group.dataset.dividerBefore || '', group.children.map(option => option.value)]);
 const chosen = focusDefault(operators);
+// The buttons start with the Focus operators, the reference too when it is one (every operator without them).
+const buttons = focusChosen(operators);
 focusOperatorNames = ['Orange'];
+const buttonsWithout = focusChosen(operators);
 const none = [focusDefault(operators), appendFocusOptions(select, []) ?? focusSplit(operators).focused.length];
 focusOperatorNames = [];
 const all = focusDefault(operators);
 // Whatever the case.
 focusOperatorNames = ['three'];
 const anyCase = focusDefault(operators);
-console.log(JSON.stringify({groups, chosen, none, all, anyCase, chips}));
+console.log(JSON.stringify({groups, chosen, none, all, anyCase, chips, buttons, buttonsWithout}));
 """
     result = _run_node_json(program, {})
     assert result['chips'] == ['Operators: ',
@@ -2201,3 +2226,4 @@ console.log(JSON.stringify({groups, chosen, none, all, anyCase, chips}));
     assert result['chosen'] == ['VF SA', 'Three']
     assert result['none'] == [['VMO2', 'VF SA', 'Three'], 0] and result['all'] == ['VMO2', 'VF SA', 'Three']
     assert result['anyCase'] == ['Three']
+    assert result['buttons'] == ['VF SA', 'Three'] and result['buttonsWithout'] == ['EE', 'VMO2', 'VF SA', 'Three']

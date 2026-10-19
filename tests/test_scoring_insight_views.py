@@ -105,6 +105,27 @@ def test_gap_parts_add_up_to_the_total_gap_of_each_campaign(national):
         assert sum(part['values'][index] for part in item['parts']) == pytest.approx(total)
 
 
+def test_operators_without_identified_sites_are_listed_apart_from_the_sites_to_review():
+    from src.modules.scoring_insights import _serving_views
+    from src.modules.scoring_points_loss import NOT_SPECIFIED, SITE
+
+    def site_map(operator, areas):
+        return {'field': SITE, 'operator': operator, 'label': operator, 'color': '#123456', 'is_reference': operator == 'BT',
+                'environment': 'Combined', 'context': {'campaign': '2026-Q3'}, 'total': sum(area['points'] for area in areas),
+                'areas': areas}
+    views = _serving_views([
+        site_map('VF', [{'name': 'S1', 'site': 'S1', 'points': 12.0, 'share': .8}, {'name': NOT_SPECIFIED, 'points': 3.0, 'share': .2}]),
+        # Every serving cell of BT is missing from the inventories: no site of it can be reviewed.
+        site_map('BT', [{'name': NOT_SPECIFIED, 'points': 61.5, 'share': 1.0}]),
+    ], {})
+    assert [item['operator'] for item in views['sites_to_review']] == ['VF']
+    [missing] = views['sites_unidentified']
+    assert (missing['operator'], missing['unidentified'], missing['campaign']) == ('BT', 61.5, '2026-Q3')
+    script = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/scoring.js').read_text(encoding='utf-8')
+    assert "const unidentified = insightItems(payload, 'sites_unidentified', environment);" in script
+    assert 'none of the cells `' in script and 'cannot be `' in script
+
+
 def test_points_at_stake_share_every_point_lost(national):
     _job, _result, insights = national
     stake = _combined(insights['points_at_stake'])[0]

@@ -983,8 +983,10 @@ def _serving_views(maps: list[dict[str, Any]], result: dict[str, Any] | None) ->
                 into = target.setdefault(field, {})
                 for name, count in counts.items():
                     into[name] = into.get(name, 0) + int(count)
+    # sites_unidentified: the operators none of whose serving cells is in the cell inventories, so no site of theirs can
+    # be reviewed.
     views: dict[str, list[dict[str, Any]]] = {'vendor_losses': [], 'site_type_losses': [], 'sites_to_review': [],
-                                              'route_stretches': []}
+                                              'sites_unidentified': [], 'route_stretches': []}
     sites_by_series: dict[tuple, dict[str, dict[str, Any]]] = {}
     for item in maps:
         field = item['field']
@@ -1072,5 +1074,10 @@ def _serving_views(maps: list[dict[str, Any]], result: dict[str, Any] | None) ->
                 'earlier_campaigns': [_display('Campaign', campaign) for campaign in earlier if campaign],
                 'rows': rows, 'listed_points': sum(row['points'] for row in rows),
                 'unidentified': latest['unidentified'], 'priority_points': SITE_PRIORITY_POINTS,
+            })
+        elif latest['unidentified'] > 0:
+            views['sites_unidentified'].append({
+                **latest['base'], 'campaign': _display('Campaign', campaigns[-1]) if campaigns[-1] else None,
+                'unidentified': latest['unidentified'],
             })
     return views

@@ -2639,7 +2639,7 @@ def _add_insight_slides(presentation, views: dict, environment: str, scoring: st
             boundaries = views.get('_points_loss_boundaries')
             add_stretch_slides(presentation, latest_campaign_items(items.get('route_stretches', [])),
                                insights.get('points_loss_background') or [],
-                               subtitle=subtitle, new_slide=_slide, scope=scope, compared=compared,
+                               subtitle=subtitle, new_slide=_slide, scope=scope, compared=chosen('stretches-operators'),
                                boundaries=boundaries('Area') if boundaries else None)
         return
     if stage == 'comparison' and _option(options, 'tables', 'campaign_comparison'):
