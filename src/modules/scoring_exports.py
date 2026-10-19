@@ -2567,10 +2567,11 @@ def _add_insight_slides(presentation, views: dict, environment: str, scoring: st
                                      owner_color=owner_color, scope=scope)
         if _option(options, 'summary', 'route'):
             boundaries = views.get('_points_loss_boundaries')
-            # The route of the operator chosen in its own section of the page, else those of Where to act.
+            # The routes of the operators chosen on the page (in their own section, or in any section), else those of the
+            # operators of Where to act.
             route_items = act_items['route_focus']
-            if choices.get('route-operator'):
-                wanted = chosen('route-operator')
+            if choices.get('route-operators') or enabled or disabled:
+                wanted = chosen('route-operators')
                 route_items = [item for item in items.get('route_focus', []) if wanted(item['operator'], item.get('label'))]
             add_route_focus_slides(presentation, route_items, subtitle=subtitle, new_slide=_slide,
                                    owner_color=owner_color, boundaries=boundaries('Area') if boundaries else None, scope=scope)

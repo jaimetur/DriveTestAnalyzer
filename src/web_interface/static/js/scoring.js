@@ -2600,7 +2600,7 @@
 
   // The sections whose operators the page chooses with its chips, as the export names them.
   const EXPORT_OPERATOR_SECTIONS = ['summary-operators', 'ranking-operators', 'gap-parts-operators', 'gap-insight-operators',
-    'vendor_losses-operators', 'site_type_losses-operators', 'sites-operators', 'stretches-operators'];
+    'vendor_losses-operators', 'site_type_losses-operators', 'sites-operators', 'stretches-operators', 'route-operators'];
 
   // The operators chosen in each section ({section: [operators]}); a section never changed is left out, so the export
   // uses its default (as the page does).
@@ -2617,11 +2617,9 @@
       chosen._enabled = choices.filter(([, enabled]) => enabled === true).map(([name]) => String(name));
       chosen._disabled = choices.filter(([, enabled]) => enabled === false).map(([name]) => String(name));
     }
-    // The operator of Where to act, its owners and places, and that of the route that loses most.
+    // The operator of Where to act, its owners and places.
     const actOperator = insightSelections.get('act-operator');
     if (actOperator) chosen['act-operator'] = [String(actOperator)];
-    const routeOperator = insightSelections.get('route-operator');
-    if (routeOperator) chosen['route-operator'] = [String(routeOperator)];
     return chosen;
   }
 
@@ -7314,35 +7312,53 @@
           `vs ${ranking.previous_campaign || 'previous'}: change in Points % (–: not measured then). Points lost: one bar scale on every ranking.`));
       }
     }
-    // The route that loses most has operator buttons of its own (the first Focus operator by default), whatever the
-    // operator of Where to act.
-    const routeFallback = focusDefault([...new Map(routes.map(item => [item.operator, item])).values()])[0];
-    const {control: routeOperatorControl, value: routeOperator} = routes.length
-      ? insightOperatorPicker('route-operator', routes, routeFallback) : {control: null, value: null};
-    const focus = routes.find(item => item.operator === routeOperator);
-    if (focus) {
-      const {wrapper: routeControl, value: chosen} = insightSelect('act-route', focus.routes.map(route => [route.route, `${route.route} (${insightNumber(route.points, 1)})`]), 'Route');
-      const route = focus.routes.find(item => item.route === chosen) || focus.routes[0];
-      const section = insightSection(later, `${route.route}: where the points are — ${focus.label}`, 'scoring-route-card', focus.context);
-      section.append(insightControls(routeOperatorControl, routeControl), insightParagraph('scoring-act-headline', route.headline));
-      const body = document.createElement('div');
-      body.className = 'scoring-route-focus';
-      const map = makeOwnerRouteMap(route, ownerColor);
-      const side = document.createElement('div');
-      side.className = 'scoring-route-side';
-      const ownerPeak = Math.max(0.01, ...route.owners.map(item => item.points));
-      side.append(insightParagraph('scoring-route-table-title', 'Points lost by owner'),
-        insightTable(['Owner', 'Share of tests', 'Points'], route.owners.map(item => [
-          pill(item.name), item.tests_share === null || item.tests_share === undefined ? '–' : {text: `${insightNumber(item.tests_share, 0)}%`, className: 'scoring-insight-number'},
-          gapBarCell(item.points, ownerPeak, {loss: true, total: true})])),
-        insightParagraph('scoring-route-table-title', `The ${route.top.length} stretches with the most points`));
-      const stretchTable = insightTable(['#', 'Stretch', 'Points', 'Main owner'], route.top.map((row, index) => [
-        {text: String(index + 1), className: 'scoring-insight-number'}, row.label, gapBarCell(row.points, route.top[0]?.points || 1, {loss: true, total: true}),
-        row.region ? pill(row.region) : '—']));
-      side.append(stretchTable);
-      body.append(linkStretchTable(map, stretchTable, route.top), side);
-      section.append(body);
-      if (route.review) section.append(insightParagraph('scoring-act-review', insightStrong('Please review: '), route.review));
+    // The route that loses most, for every operator chosen with operator buttons of its own (as the other sections, the
+    // Focus operators by default), whatever the operator of Where to act; the Route among those of the chosen operators.
+    if (routes.length) {
+      const {control: routeChips, chosen: routeChosen} = insightOperatorChips('route-operators', routes);
+      const shown = routes.filter(item => routeChosen.includes(item.operator));
+      const totals = new Map();
+      for (const item of shown) for (const entry of item.routes) totals.set(entry.route, (totals.get(entry.route) || 0) + entry.points);
+      const routeOptions = [...totals].sort((left, right) => right[1] - left[1]).map(([name, points]) => [name, `${name} (${insightNumber(points, 1)})`]);
+      const {wrapper: routeControl, value: chosenRoute} = insightSelect('act-route', routeOptions, 'Route');
+      const routeName = totals.has(chosenRoute) ? chosenRoute : routeOptions[0]?.[0];
+      const section = insightSection(later, `${routeName}: where the points are`, 'scoring-route-card', (shown[0] || routes[0]).context);
+      section.append(insightControls(routeChips, routeControl));
+      for (const focus of shown) {
+        const card = document.createElement('div');
+        card.className = 'scoring-route-operator';
+        const banner = document.createElement('div');
+        banner.className = 'scoring-insight-banner';
+        const color = safeHexColor(focus.color);
+        if (color) banner.style.setProperty('--banner-color', color);
+        const route = focus.routes.find(item => item.route === routeName);
+        banner.append(insightStrong(focus.label), route ? ` · ${insightNumber(route.points, 1)} points lost on ${route.route}` : '');
+        card.append(banner);
+        section.append(card);
+        if (!route) {
+          card.append(insightParagraph('scoring-insight-note', `${routeName} is not among the routes where ${focus.label} loses most points.`));
+          continue;
+        }
+        card.append(insightParagraph('scoring-act-headline', route.headline));
+        const body = document.createElement('div');
+        body.className = 'scoring-route-focus';
+        const map = makeOwnerRouteMap(route, ownerColor);
+        const side = document.createElement('div');
+        side.className = 'scoring-route-side';
+        const ownerPeak = Math.max(0.01, ...route.owners.map(item => item.points));
+        side.append(insightParagraph('scoring-route-table-title', 'Points lost by owner'),
+          insightTable(['Owner', 'Share of tests', 'Points'], route.owners.map(item => [
+            pill(item.name), item.tests_share === null || item.tests_share === undefined ? '–' : {text: `${insightNumber(item.tests_share, 0)}%`, className: 'scoring-insight-number'},
+            gapBarCell(item.points, ownerPeak, {loss: true, total: true})])),
+          insightParagraph('scoring-route-table-title', `The ${route.top.length} stretches with the most points`));
+        const stretchTable = insightTable(['#', 'Stretch', 'Points', 'Main owner'], route.top.map((row, index) => [
+          {text: String(index + 1), className: 'scoring-insight-number'}, row.label, gapBarCell(row.points, route.top[0]?.points || 1, {loss: true, total: true}),
+          row.region ? pill(row.region) : '—']));
+        side.append(stretchTable);
+        body.append(linkStretchTable(map, stretchTable, route.top), side);
+        card.append(body);
+        if (route.review) card.append(insightParagraph('scoring-act-review', insightStrong('Please review: '), route.review));
+      }
       section.append(insightParagraph('scoring-insight-note', 'A stretch gathers the tests of the route within about 20 km, named after the nearest city of the measurements; ',
         'circle area and colour (yellow to red): points lost; its ring: the colour of its owner.'));
     }

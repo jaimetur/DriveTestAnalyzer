@@ -423,6 +423,8 @@
   .scoring-priority.is-low { color: #6b7a85; }
   /* Operators without any site in the cell inventories: a warning, not a plain note. */
   .scoring-insight-note.scoring-sites-unidentified { margin: .2rem 0 .7rem; padding: .55rem .75rem; border: 1px solid #f2c48d; border-left: 4px solid #c2410c; border-radius: 8px; background: #fff4e5; color: #7c2d12; font-weight: 650; }
+  /* The route that loses most: one card per chosen operator. */
+  .scoring-route-operator { display: grid; gap: .5rem; margin-top: .7rem; min-width: 0; }
   .scoring-stretches { display: grid; grid-template-columns: minmax(16rem, 32rem) minmax(0, 1fr); gap: 1rem; align-items: start; }
   /* Several operators: two cards a row at most, each with a smaller map beside its stretches. */
   .scoring-stretches-grid.is-multiple { grid-template-columns: repeat(auto-fit, minmax(max(min(100%, 36rem), calc((100% - 1rem) / 2)), 1fr)); }

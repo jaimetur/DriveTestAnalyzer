@@ -119,9 +119,9 @@ def test_the_summary_slides_of_where_to_act(owned):
     titles = [slide.shapes.title.text_frame.paragraphs[0].text for slide in without.slides if slide.shapes.title is not None]
     # The operator chosen on the page, the reference included.
     assert 'Where to act — EE' in titles and 'Where to act — Vodafone UK' not in titles
-    # The route that loses most follows the operator chosen in its own section, whatever that of Where to act.
+    # The route that loses most follows the operators chosen in its own section, whatever that of Where to act.
     own = Presentation(BytesIO(export_scoring_powerpoint(
-        {**job, '_operator_choices': {'act-operator': ['EE'], 'route-operator': ['Three UK']}}, result, TEMPLATE)))
+        {**job, '_operator_choices': {'act-operator': ['EE'], 'route-operators': ['Three UK']}}, result, TEMPLATE)))
     titles = [slide.shapes.title.text_frame.paragraphs[0].text for slide in own.slides if slide.shapes.title is not None]
     assert 'Where to act — EE' in titles
     assert [title for title in titles if ': where the points are — ' in title and title.endswith('Three UK')]
