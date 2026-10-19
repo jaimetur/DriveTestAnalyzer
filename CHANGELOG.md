@@ -14,7 +14,7 @@
 - **Latest 3 and Latest 4 campaigns:** every Campaign list that offers the automatic choices (Scoring & GAP Analysis and its Scoring Trends, PPT Dashboards, Network Insights, the report scenarios, the Bundle Report Templates and the Reporting Jobs) offers them in this order: Latest campaign, Latest 2 campaigns, Latest 3 campaigns, Latest 4 campaigns, Previous campaign and All available campaigns; like the others, they follow the newest campaigns each time they are used.
 
 #### 🐛 Bug fixes:
-- **Wide Scoring charts:** a chart with more bars than fit its card (such as three campaigns of four operators) is fitted to the card when its bars and labels stay legible, and otherwise scrolls horizontally with a zoom out that narrows it down to the width of the card (the whole chart, more compressed) and a zoom in that widens it back; the larger view (double-click) always shows the whole chart.
+- **Wide Scoring charts:** a chart with more bars than fit its card (such as three campaigns of four operators) is fitted to the card when its bars and labels stay legible, and otherwise scrolls horizontally with a zoom out that narrows it down to the width of the card (the whole chart, more compressed) and a zoom in that widens it back; the larger view (double-click) always shows the whole chart ([Bug report #2](https://108.132.147.165:8443/bugs-report/2)).
 - **Campaigns in the Scoring Summary:** the Campaigns card of how the measurements ran (on the page, in PowerPoint and in Word) names the campaigns scored also when Campaign is not in the Split by, instead of a dash and One campaign, and the tests of each operator name their campaign only when they are those of one campaign.
 
 #### 📚 Documentation:
