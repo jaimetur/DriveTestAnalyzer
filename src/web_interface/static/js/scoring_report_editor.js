@@ -18,7 +18,7 @@
     ['breakdown', 'Scoring per Category (Breakdown)'],
   ];
   const GEOGRAPHICAL_AREA_OPTIONS = [
-    ['cards', 'Scoring per City / Cluster / Region cards'], ['ranking', 'Geographical Areas ranked'],
+    ['cards', 'Scoring Nationwide and per City / Cluster / Region cards'], ['ranking', 'Geographical Areas ranked'],
     ['versus', 'Each operator against the reference per geographical area'],
   ];
   // The Scoring Trends, of the campaigns of the Scoring Trends of the scenario.

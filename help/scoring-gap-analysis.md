@@ -775,7 +775,7 @@ For each scenario and each scoring (**Best Network** and **Most Reliable Network
 | Summary | How the measurements ran, Where to act, Where to act by performance owner, Standings, Position per environment and service, Biggest levers against the reference, Cities, Towns, Roads and Railways ranked and The route that loses most (all on) |
 | Scoring Charts | Scoring per Service, per Category and per Category (Breakdown) (all on) |
 | Scoring Tables | Category table and Breakdown table (on), Show KPI values and Show GAP values (off), Campaign comparison (on) |
-| Geographical Areas | The per City / Cluster / Region cards (of the Breakdown and Separate cities of the Geographical Areas & Scoring Trends, on the whole country), the locations ranked and each operator against the reference per location (all on) |
+| Geographical Areas | The Scoring Nationwide and per City / Cluster / Region cards (of the whole country, then of the Breakdown and Separate cities of the Geographical Areas & Scoring Trends, on the whole country), the locations ranked and each operator against the reference per location (all on) |
 | Scoring Trends | The Scoring Trend (two campaigns or more) and the National & Geographical Areas Trends (both on) |
 | GAP Analysis | The table of all the operators, the individual tables against the reference, the GAP by part over the campaigns and the KPI GAP Profile (all on) |
 | Points Lost | Where the points go, Points lost per KPI, the Points lost per City map, Points lost per Vendor, per kind of site, Sites to review and Route stretches (all on) |
