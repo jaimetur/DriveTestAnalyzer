@@ -240,11 +240,11 @@ def geographical_areas(areas: Any) -> tuple[str | None, list[str]]:
 
 def geographical_passes(levels: list[str], areas: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     """The calculations of the Geographical views of a job, whatever its Split by: its levels without Region, Cluster
-    and City, split by the Breakdown of its Geographical Areas & Scoring Trends (``areas``), and by City for its
-    Separate cities alone (not with a City breakdown, which scores them too)."""
+    and City, first on their own (the scoring Nationwide), then split by the Breakdown of its Geographical Areas & Scoring
+    Trends (``areas``), and by City for its Separate cities alone (not with a City breakdown, which scores them too)."""
     breakdown, cities = geographical_areas(areas)
     base = [level for level in levels if column_identity(level) not in _AREA_IDENTITIES]
-    passes = []
+    passes = [{'kind': NATIONAL, 'field': None, 'levels': list(base)}]
     if breakdown:
         passes.append({'kind': breakdown, 'field': breakdown.lower(), 'levels': [*base, breakdown]})
     if cities and breakdown != 'City':
@@ -255,7 +255,7 @@ def geographical_passes(levels: list[str], areas: dict[str, Any] | None = None) 
 def geographical_levels(levels: list[str], areas: dict[str, Any] | None = None) -> list[str]:
     """The columns the job reads for its Geographical views, besides its own levels."""
     identities = {column_identity(level) for level in levels}
-    extra = [item['levels'][-1] for item in geographical_passes(levels, areas)]
+    extra = [item['levels'][-1] for item in geographical_passes(levels, areas) if item['field']]
     return [level for level in dict.fromkeys(extra) if column_identity(level) not in identities]
 
 
@@ -274,6 +274,16 @@ def _summary_result(item: dict[str, Any], summary: dict[str, Any] | None) -> dic
     return None
 
 
+def _summary_reuses_job(item: dict[str, Any], summary: dict[str, Any] | None) -> bool:
+    """Whether the area summary has the same calculation as ``item`` and took it from the job's own."""
+    if not isinstance(summary, dict) or normalize_time_split(summary.get('time_split')) or 'cities' in item:
+        return False
+    identities = {column_identity(level) for level in item['levels']}
+    return any(isinstance(saved, dict) and saved.get('kind') == item['kind'] and saved.get('reuses_job')
+               and {column_identity(level) for level in saved.get('levels') or []} == identities
+               for saved in summary.get('passes') or [])
+
+
 def _geographical(score: Callable[[dict[str, Any]], dict | None], levels: list[str],
                   progress: Callable[[int, str], None] | None, summary: dict[str, Any] | None = None,
                   areas: dict[str, Any] | None = None, reuse_job: bool = False) -> dict[str, Any] | None:
@@ -288,6 +298,10 @@ def _geographical(score: Callable[[dict[str, Any]], dict | None], levels: list[s
             # The same calculation as one of the area summary: its result is read from there.
             passes.append({**item, 'reuses_job': False, 'reuses_summary': True})
             continue
+        if _summary_reuses_job(item, summary):
+            # (The National calculation of a summary that is the job's own: the job's.)
+            passes.append({**item, 'reuses_job': True})
+            continue
         if progress is not None:
             progress(86, f"Calculating the Geographical views per {item['kind']}")
         try:
@@ -296,7 +310,7 @@ def _geographical(score: Callable[[dict[str, Any]], dict | None], levels: list[s
             result = None
         rows = result.get('scoring') if isinstance(result, dict) else None
         # A calculation without measurements of its areas is left out, without a warning: the views are optional.
-        if rows and any(row.get(item['field']) not in (None, '') for row in rows):
+        if rows and (item['field'] is None or any(row.get(item['field']) not in (None, '') for row in rows)):
             passes.append({**item, 'reuses_job': False, 'result': {key: result[key] for key in _PASS_RESULT_KEYS if key in result}})
     return {'passes': passes} if passes else None
 
@@ -337,9 +351,18 @@ def geographical_insights(job: dict[str, Any], result: dict[str, Any], operator_
     if not isinstance(geographical, dict):
         return insights
     configuration = result.get('configuration') or job.get('configuration')
-    for item in geographical.get('passes') or []:
-        if not isinstance(item, dict):
-            continue
+    passes = [item for item in geographical.get('passes') or [] if isinstance(item, dict)]
+    if not any(item.get('kind') == NATIONAL for item in passes):
+        # Results calculated before the scoring Nationwide was one of them: the job's own calculation when it is of the
+        # whole country with the same levels, else the National calculation of its area summary.
+        levels = list(job.get('levels') or job.get('aggregation_levels') or [])
+        base = [level for level in levels if column_identity(level) not in _AREA_IDENTITIES]
+        national = {'kind': NATIONAL, 'field': None, 'levels': base}
+        if base and len(base) == len(levels) and not has_area_filters(job.get('context_filters')):
+            passes.insert(0, {**national, 'reuses_job': True})
+        elif base and _summary_result(national, result.get('area_summary')) is not None:
+            passes.insert(0, {**national, 'reuses_job': False, 'reuses_summary': True})
+    for item in passes:
         if item.get('reuses_job'):
             source = {key: result[key] for key in _PASS_RESULT_KEYS if key in result}
         elif item.get('reuses_summary'):
@@ -352,7 +375,9 @@ def geographical_insights(job: dict[str, Any], result: dict[str, Any], operator_
                       'aggregation_contract_version': job.get('aggregation_contract_version') or 2,
                       'baseline_operator': job.get('baseline_operator') or 'EE',
                       'baseline_aliases': job.get('baseline_aliases') or source.get('baseline_aliases'),
-                      'configuration': configuration, 'keep_levels': [item['kind']], 'location_minimum': 1}
+                      'configuration': configuration, 'keep_levels': [item['kind']], 'location_minimum': 1,
+                      # The scoring Nationwide: a card of the whole country before the cards of the areas.
+                      'national_cards': item['kind'] == NATIONAL}
         payload = {**source, 'configuration': source.get('configuration') or configuration}
         # By campaign, the rows of each methodology are scored with it.
         if result.get('methodology_groups') and not source.get('methodology_groups'):

@@ -285,7 +285,16 @@
   .scoring-results-value-row select[data-scoring-gap-layout] { width: 12rem; min-width: 12rem; }
   .scoring-environment-filter[hidden] { display: none; }
   .scoring-location-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 17rem), 1fr)); gap: .7rem; align-items: stretch; }
-  .scoring-location-note { margin: 0 0 .6rem; }
+  /* (Above the cards: the rule of the notes below the charts would leave it no room.) */
+  .scoring-insight-note.scoring-location-note { margin: 0 0 .75rem; line-height: 1.45; }
+  /* The card of the whole country (Nationwide): across the panel, its title, legend and note larger. */
+  .scoring-location-cards.is-national { grid-template-columns: 1fr; }
+  .scoring-insight-note.scoring-location-note.is-national { font-size: .92rem; }
+  .scoring-location-card.is-national { padding: .85rem 1.2rem .7rem; }
+  .scoring-location-card.is-national h5 { margin-bottom: .55rem; font-size: 1.2rem; }
+  .scoring-location-legend.is-national { gap: .5rem 2.2rem; margin-top: .8rem; font-size: .92rem; }
+  .scoring-location-legend.is-national i { width: 1rem; height: 1rem; }
+  .scoring-location-legend.is-national b { width: 1.3rem; height: 1.3rem; font-size: .75rem; }
   .scoring-location-card { padding: .6rem .7rem .45rem; border-radius: 4px; background: color-mix(in srgb, var(--st-soft-header) 70%, #fff); box-shadow: 0 1px 3px rgba(23,35,45,.12); }
   .scoring-location-card h5 { margin: 0 0 .35rem; color: var(--st-title); font-size: .9rem; font-weight: 800; letter-spacing: .02em; }
   .scoring-location-card-chart { display: block; width: 100%; height: auto; }

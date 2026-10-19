@@ -26,9 +26,10 @@ COMBINED = 'Combined'
 
 def build_scoring_insights(score_tables: list[dict[str, Any]], configuration: dict[str, Any],
                            levels: list[str], result: dict[str, Any] | None = None, *,
-                           location_minimum: int = 2) -> dict[str, Any]:
+                           location_minimum: int = 2, national_cards: bool = False) -> dict[str, Any]:
     """Insights for every environment of the views; each item names its environment. The location cards need
-    ``location_minimum`` locations in a group (one for the Geographical calculation of the separate cities)."""
+    ``location_minimum`` locations in a group (one for the Geographical calculation of the separate cities); with
+    ``national_cards`` (the National calculation of the Geographical Areas) they are the cards of the whole country."""
     environments = list(dict.fromkeys(str(table['context'].get('environment')) for table in score_tables))
     scopes = _scopes(score_tables)
     insights: dict[str, list[dict[str, Any]]] = {
@@ -42,7 +43,8 @@ def build_scoring_insights(score_tables: list[dict[str, Any]], configuration: di
     for environment in environments:
         summaries = {scope: _scope_summary(tables, environment) for scope, tables in scopes.items()}
         summaries = {scope: summary for scope, summary in summaries.items() if summary is not None}
-        insights['location_cards'].extend(_location_cards(summaries, levels, environment, location_minimum))
+        insights['location_cards'].extend(_national_cards(summaries, levels, environment) if national_cards
+                                          else _location_cards(summaries, levels, environment, location_minimum))
         insights['campaign_trends'].extend(_campaign_trends(summaries, levels, environment))
         insights['campaign_comparisons'].extend(_campaign_comparisons(scopes, levels, environment))
         insights['kpi_gap_profiles'].extend(_kpi_gap_profiles(scopes, environment))
@@ -239,6 +241,27 @@ def _group_label(context: dict[str, Any], levels: list[str], excluded: set[str])
     parts = [f'{level}: {_display(level, context.get(field))}' for level, field in _LEVEL_FIELDS.items()
              if level in levels and level not in excluded and context.get(field) not in (None, '')]
     return ' · '.join(parts)
+
+
+# The level of the card of the whole country among the location cards (Best Network Scoring Nationwide).
+NATIONAL_CARDS = 'National'
+
+
+def _national_cards(summaries: dict[tuple, dict[str, Any]], levels: list[str], environment: str) -> list[dict[str, Any]]:
+    """The scoring of the whole country, in the form of the location cards: a card per campaign (and combination of the
+    other levels), of which the page and the slides show the latest campaign, as they do the cards of the areas."""
+    groups = []
+    for summary in summaries.values():
+        context = summary['context']
+        if any(context.get(field) not in (None, '') for field in ('region', 'cluster', 'city')):
+            continue
+        groups.append({
+            'environment': environment, 'level': NATIONAL_CARDS, 'title': _group_label(context, levels, {'Campaign'}),
+            'maximum': summary['maximum'], 'scaled': summary['scaled'],
+            'max_voice': summary['max_voice'], 'max_data': summary['max_data'], 'campaign': context.get('campaign'),
+            'cards': [{'label': 'National', 'operators': summary['operators']}],
+        })
+    return groups
 
 
 def _location_cards(summaries: dict[tuple, dict[str, Any]], levels: list[str], environment: str,

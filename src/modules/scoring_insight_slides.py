@@ -235,15 +235,16 @@ def _latest_campaign_groups(groups: list[dict[str, Any]]) -> list[dict[str, Any]
 def add_location_card_slides(presentation, groups: list[dict[str, Any]], *, scoring_label: str, subtitle: str,
                              new_slide: Callable, scope: ScopeLabels | None = None) -> None:
     """One slide per group: a card per City, Cluster or Region with each operator's Data and Voice points as a bar,
-    from the highest score.
+    from the highest score; the scoring Nationwide (level National) comes first, with the card of the whole country.
 
     With several campaigns only the latest one gets cards; the scoring trend shows the others.
     """
     groups = _latest_campaign_groups(groups)
     for group in groups[:MAX_GROUP_SLIDES]:
         level = group['level']
-        plural = {'City': 'cities', 'Cluster': 'clusters', 'Region': 'regions'}[level]
-        slide = new_slide(presentation, f'{scoring_label} Scoring per {level}',
+        national = level == 'National'
+        plural = {'City': 'cities', 'Cluster': 'clusters', 'Region': 'regions'}.get(level, 'areas')
+        slide = new_slide(presentation, f'{scoring_label} Scoring Nationwide' if national else f'{scoring_label} Scoring per {level}',
                           ' · '.join(part for part in (_with_scope(subtitle, scope), group['title']) if part))
         cards = group['cards']
         maximum = group['maximum']
@@ -251,7 +252,8 @@ def add_location_card_slides(presentation, groups: list[dict[str, Any]], *, scor
         note = slide.shapes.add_textbox(Inches(.45), Inches(1.45), Inches(12.4), Inches(.3))
         note.name = 'Scoring Location Cards Note'
         _write_runs(note.text_frame, [
-            (f'The {scoring_label} scoring of the selected {plural}, each from its highest score: ', False, None),
+            (f'The {scoring_label} scoring of the whole country, from its highest score: ' if national
+             else f'The {scoring_label} scoring of the selected {plural}, each from its highest score: ', False, None),
             (f'{_points(maximum)} points', True, None),
             (f' at most (Voice {_points(voice_max)} · Data {_points(data_max)})', False, None),
             (', the environments measured in each one scaled to them.' if group['scaled'] else '.', False, None)],
@@ -263,14 +265,15 @@ def add_location_card_slides(presentation, groups: list[dict[str, Any]], *, scor
         area_left, area_top, area_width, area_height = .45, 1.85, 12.45, 4.95
         width = (area_width - gap * (columns - 1)) / columns
         height = (area_height - gap * (rows - 1)) / rows
-        label_size = 8 if rows <= 2 else 7
+        # The card of the whole country fills the slide, its labels larger.
+        label_size = 12 if national else 8 if rows <= 2 else 7
         for index, card in enumerate(cards):
             left = area_left + (index % columns) * (width + gap)
             top = area_top + (index // columns) * (height + gap)
             background = _box(slide, left, top, width, height, CARD_COLOR)
             background.name = f'Scoring Location Card {card["label"]}'
             heading = slide.shapes.add_textbox(Inches(left + .08), Inches(top + .04), Inches(width - .16), Inches(.3))
-            _write(heading.text_frame, [(str(card['label']), 11 if rows <= 2 else 9.5, True, TITLE_BLUE)])
+            _write(heading.text_frame, [(str(card['label']), 15 if national else 11 if rows <= 2 else 9.5, True, TITLE_BLUE)])
             operators = sorted(card['operators'], key=lambda item: item['total'])
             data = CategoryChartData()
             data.categories = [str(item['label']) for item in operators]

@@ -285,7 +285,8 @@ def build_scoring_views(job: dict[str, Any] | None, result: dict[str, Any] | Non
 
     selected_levels = [level for level in (_HIERARCHY_LEVELS.get(_level_identity(item)) for item in levels) if level]
     insights = build_scoring_insights(score_tables, configuration, selected_levels, result,
-                                      location_minimum=int(job.get('location_minimum') or 2))
+                                      location_minimum=int(job.get('location_minimum') or 2),
+                                      national_cards=bool(job.get('national_cards')))
     if result.get('geographical'):
         # The Geographical Areas come from the calculations of the Breakdown and Separate cities of its Geographical
         # Areas & Scoring Trends on the whole country, whatever its Split by (results calculated before them by a job

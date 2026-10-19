@@ -116,60 +116,74 @@ def test_a_job_with_area_filters_never_reuses_its_rows_for_the_summary():
 def test_a_job_split_by_no_area_has_its_geographical_areas():
     from src.modules.scoring_views import build_scoring_views
     job, result, frames, kwargs = _calculation()
-    assert [item['kind'] for item in geographical_passes(['Operator', 'Campaign'])] == ['Region', 'City']
-    # Whatever the Split by: its levels without the areas, split by the Breakdown, and the Separate cities alone.
+    assert [item['kind'] for item in geographical_passes(['Operator', 'Campaign'])] == ['National', 'Region', 'City']
+    # Whatever the Split by: its levels without the areas (the scoring Nationwide), split by the Breakdown, and the
+    # Separate cities alone.
     assert [item['levels'] for item in geographical_passes(['Operator', 'City', 'Campaign'])] == [
-        ['Operator', 'Campaign', 'Region'], ['Operator', 'Campaign', 'City']]
-    assert [item['kind'] for item in geographical_passes(['Operator'], {'breakdown': 'City', 'cities': ['Leeds']})] == ['City']
+        ['Operator', 'Campaign'], ['Operator', 'Campaign', 'Region'], ['Operator', 'Campaign', 'City']]
+    assert [item['kind'] for item in geographical_passes(['Operator'], {'breakdown': 'City', 'cities': ['Leeds']})] == ['National', 'City']
     assert geographical_passes(['Operator'], {'breakdown': 'None', 'cities': ['Leeds']}) == [
+        {'kind': 'National', 'field': None, 'levels': ['Operator']},
         {'kind': 'City', 'field': 'city', 'levels': ['Operator', 'City'], 'cities': ['Leeds']}]
     assert geographical_levels(['Operator']) == ['Region', 'City'] and geographical_levels(['Operator', 'Region']) == ['City']
     assert geographical_levels(['Operator'], {'breakdown': 'Cluster', 'cities': []}) == ['Cluster']
     geographical = calculate_geographical(scoring_engine.calculate_scoring, frames, job['levels'], kwargs)
-    regions, london = geographical['passes']
+    national, regions, london = geographical['passes']
+    assert _kpi_values(national['result']) == _kpi_values(result)
     assert {row['region'] for row in regions['result']['scoring']} == {'Vendor A', 'VMO2 North'}
     # London is scored with its own calls only.
     assert {row['city'] for row in london['result']['scoring']} == {'London'} and london['cities'] == ['London']
     result['geographical'] = geographical
-    # The Geographical Areas views: a card per Region and one of London.
+    # The Geographical Areas views: the card of the whole country first, then a card per Region and one of London.
     cards = geographical_insights(job, result)['location_cards']
     assert {(item['level'], tuple(card['label'] for card in item['cards'])) for item in cards} >= {
-        ('Region', ('Vendor A', 'VMO2 North')), ('City', ('London',))}
+        ('National', ('National',)), ('Region', ('Vendor A', 'VMO2 North')), ('City', ('London',))}
+    assert cards[0]['level'] == 'National'
+    nationwide = {item['operator']: item['total'] for item in cards[0]['cards'][0]['operators']}
+    assert set(nationwide) == {row['operator'] for row in result['scoring']}
     views = build_scoring_views(job, result)
-    assert {item['level'] for item in views['insights']['location_cards']} >= {'Region', 'City'}
+    assert {item['level'] for item in views['insights']['location_cards']} >= {'National', 'Region', 'City'}
+    # Results calculated before the scoring Nationwide: the job's own calculation of the whole country gives it.
+    earlier = {'passes': [item for item in geographical['passes'] if item['kind'] != 'National']}
+    earlier_cards = geographical_insights(job, {**result, 'geographical': earlier})['location_cards']
+    assert earlier_cards[0]['level'] == 'National'
+    assert {item['operator']: item['total'] for item in earlier_cards[0]['cards'][0]['operators']} == nationwide
     # A job split by an area shows them too, instead of its own rows; one calculated before them keeps its own.
     split = {**job, 'levels': ['Operator', 'Region'], 'aggregation_levels': ['Operator', 'Region']}
     by_region = scoring_engine.calculate_scoring(frames, ['Operator', 'Region'], **kwargs)
     split_views = build_scoring_views(split, {**by_region, 'geographical': geographical})
-    assert {item['level'] for item in split_views['insights']['location_cards']} == {'Region', 'City'}
+    assert {item['level'] for item in split_views['insights']['location_cards']} == {'National', 'Region', 'City'}
     assert {item['level'] for item in build_scoring_views(split, by_region)['insights']['location_cards']} == {'Region'}
     # Without area filters, the calculation equal to the job's own is read from it.
     own = calculate_geographical(scoring_engine.calculate_scoring, frames, ['Operator', 'Region'], kwargs, reuse_job=True)
-    assert [(item['kind'], bool(item.get('reuses_job'))) for item in own['passes']] == [('Region', True), ('City', False)]
+    assert [(item['kind'], bool(item.get('reuses_job'))) for item in own['passes']] == [
+        ('National', False), ('Region', True), ('City', False)]
     reused_cards = build_scoring_views(split, {**by_region, 'geographical': own})['insights']['location_cards']
-    assert {item['level'] for item in reused_cards} == {'Region', 'City'}
+    assert {item['level'] for item in reused_cards} == {'National', 'Region', 'City'}
     # With an area summary of the same rows, its calculations per Region and of London are read from it.
     summary = calculate_area_summary(scoring_engine.calculate_scoring, frames, job['levels'],
                                      {'breakdown': 'Region', 'cities': ['London'], 'time_split': 'All'}, kwargs)
     calls = []
     counting = lambda source, levels, **options: calls.append(levels) or scoring_engine.calculate_scoring(source, levels, **options)
     reused = calculate_geographical(counting, frames, job['levels'], kwargs, summary=summary)
-    assert calls == [] and all(item['reuses_summary'] and 'result' not in item for item in reused['passes'])
+    assert calls == [] and all(item['reuses_summary'] and 'result' not in item for item in reused['passes'][1:])
+    # (Its National calculation is the job's own: so is the scoring Nationwide.)
+    assert reused['passes'][0]['kind'] == 'National' and reused['passes'][0]['reuses_job']
     reused_views = build_scoring_views(job, {**result, 'geographical': reused, 'area_summary': summary})
-    assert {item['level'] for item in reused_views['insights']['location_cards']} >= {'Region', 'City'}
+    assert {item['level'] for item in reused_views['insights']['location_cards']} >= {'National', 'Region', 'City'}
     # Not one split by period, nor of other cities.
-    assert len(calculate_geographical(counting, frames, job['levels'], kwargs, summary={**summary, 'time_split': 'Weekly'})['passes']) == 2
-    assert len(calls) == 2
+    assert len(calculate_geographical(counting, frames, job['levels'], kwargs, summary={**summary, 'time_split': 'Weekly'})['passes']) == 3
+    assert len(calls) == 3
     # The separate cities of the National & Geographical Areas Trends are scored apart instead of London.
-    assert geographical_passes(['Operator', 'Campaign'], {'breakdown': 'Region', 'cities': ['Leeds', ' ']})[1]['cities'] == ['Leeds']
+    assert geographical_passes(['Operator', 'Campaign'], {'breakdown': 'Region', 'cities': ['Leeds', ' ']})[2]['cities'] == ['Leeds']
     chosen = calculate_geographical(scoring_engine.calculate_scoring, frames, job['levels'], kwargs,
                                     areas={'breakdown': 'Region', 'cities': ['Leeds', 'London']})
-    assert {row['city'] for row in chosen['passes'][1]['result']['scoring']} == {'Leeds', 'London'}
+    assert {row['city'] for row in chosen['passes'][2]['result']['scoring']} == {'Leeds', 'London'}
     chosen_cards = geographical_insights(job, {**result, 'geographical': chosen})['location_cards']
     assert any(item['level'] == 'City' and {card['label'] for card in item['cards']} == {'Leeds', 'London'} for item in chosen_cards)
     # Without measurements of London (or with filters leaving none), only the Regions.
     leeds = {'voice': pd.DataFrame([row for row in ROWS if row['City'] == 'Leeds'])}
-    assert [item['kind'] for item in calculate_geographical(scoring_engine.calculate_scoring, leeds, job['levels'], kwargs)['passes']] == ['Region']
+    assert [item['kind'] for item in calculate_geographical(scoring_engine.calculate_scoring, leeds, job['levels'], kwargs)['passes']] == ['National', 'Region']
 
 
 def test_the_summary_lists_national_the_chosen_cities_and_the_breakdown():
@@ -546,3 +560,30 @@ def test_national_and_areas_trends_score_campaigns_of_their_own(scoring_api, mon
     assert normalize_area_summary_request({'breakdown': 'None', 'campaigns': ['2026-Q1', '@latest-2-campaigns']},
                                           {'City': ['London']}) == {
         'breakdown': 'Region', 'cities': ['London'], 'time_split': 'Campaign', 'campaigns': ['@latest-2-campaigns']}
+
+
+def test_the_scoring_nationwide_comes_first_on_the_page_and_in_the_slides():
+    from io import BytesIO
+    from pathlib import Path
+
+    from pptx import Presentation
+
+    from src.modules.scoring_exports import export_scoring_powerpoint
+    from tests.test_scoring_exports import TEMPLATE
+
+    job, result, frames, kwargs = _calculation()
+    result['geographical'] = calculate_geographical(scoring_engine.calculate_scoring, frames, job['levels'], kwargs)
+    deck = Presentation(BytesIO(export_scoring_powerpoint(job, result, TEMPLATE)))
+    titles = [slide.shapes.title.text_frame.paragraphs[0].text if slide.shapes.title is not None else '' for slide in deck.slides]
+    assert titles.index('Best Network Scoring Nationwide') < titles.index('Best Network Scoring per Region')
+    slide = deck.slides[titles.index('Best Network Scoring Nationwide')]
+    texts = [shape.text_frame.text for shape in slide.shapes if shape.has_text_frame]
+    assert any(text.startswith('The Best Network scoring of the whole country') for text in texts)
+    # On the page: first, across the panel and drawn at its width; the notes above the cards keep their room.
+    root = Path(__file__).resolve().parents[1] / 'src/web_interface'
+    script = (root / 'static/js/scoring.js').read_text(encoding='utf-8')
+    template = (root / 'templates/scoring.html').read_text(encoding='utf-8')
+    assert "group.level === 'National' ? `${scoringLabel()} Scoring Nationwide`" in script
+    assert 'makeLocationCardChart(card, group.maximum, {wide: true, width: available})' in script
+    assert '.scoring-location-cards.is-national { grid-template-columns: 1fr; }' in template
+    assert '.scoring-insight-note.scoring-location-note { margin: 0 0 .75rem;' in template

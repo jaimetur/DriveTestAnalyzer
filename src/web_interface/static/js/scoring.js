@@ -6358,12 +6358,15 @@
 
   // A card per City, Cluster or Region: its operators from the highest score, each a bar of its Data points followed by
   // its Voice points (in the Data and Voice colours of the theme), with its total and, behind the first, its distance to it.
-  function makeLocationCardChart(card, maximum) {
+  // ``wide``: the card of the whole country (Nationwide), across the panel (``width``, its width in pixels) with larger
+  // bars and text.
+  function makeLocationCardChart(card, maximum, {wide = false, width: wideWidth = 1000} = {}) {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     const operators = [...(card.operators || [])].sort((left, right) => right.total - left.total);
     const ranks = insightRanks(operators.map(item => item.total));
-    const width = 320, rowHeight = 30, top = 4, labelWidth = 96, valueWidth = 78;
-    const height = top + operators.length * rowHeight + 4;
+    const k = wide ? 1.45 : 1;
+    const width = wide ? Math.max(480, wideWidth) : 320, rowHeight = 30 * k, top = 4 * k, labelWidth = 96 * k, valueWidth = 78 * k;
+    const height = top + operators.length * rowHeight + 4 * k;
     const plot = width - labelWidth - valueWidth;
     const scale = value => Math.max(0, Number(value) || 0) / (Number(maximum) || 1) * plot;
     svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
@@ -6376,21 +6379,21 @@
       const color = safeHexColor(item.color) || insightFallbackColors[index % insightFallbackColors.length];
       const group = svgElement(svg, 'g');
       setChartTooltip(group, `${item.label}: ${insightNumber(item.total, 1)} points (Data ${insightNumber(item.data, 1)}, Voice ${insightNumber(item.voice, 1)})${item.complete ? '' : ' — incomplete coverage'}`, true);
-      const badge = svgElement(svg, 'circle', {cx: 9, cy: y + 15, r: 8, fill: ranks[index] === 1 ? color : '#ffffff', stroke: color, 'stroke-width': 1.5});
-      const rank = svgElement(svg, 'text', {x: 9, y: y + 18.5, 'text-anchor': 'middle', 'font-size': 9.5, 'font-weight': 800,
+      const badge = svgElement(svg, 'circle', {cx: 9 * k, cy: y + 15 * k, r: 8 * k, fill: ranks[index] === 1 ? color : '#ffffff', stroke: color, 'stroke-width': 1.5 * k});
+      const rank = svgElement(svg, 'text', {x: 9 * k, y: y + 18.5 * k, 'text-anchor': 'middle', 'font-size': 9.5 * k, 'font-weight': 800,
         fill: ranks[index] === 1 ? readableTextColor(color) : color});
       rank.textContent = String(ranks[index]);
-      const label = svgElement(svg, 'text', {x: 22, y: y + 19, 'font-size': 11.5, 'font-weight': 700, fill: '#263746'});
+      const label = svgElement(svg, 'text', {x: 22 * k, y: y + 19 * k, 'font-size': 11.5 * k, 'font-weight': 700, fill: '#263746'});
       label.textContent = String(item.label ?? '').length > 13 ? `${String(item.label).slice(0, 12)}…` : String(item.label ?? '');
       const dataWidth = scale(item.data), voiceWidth = scale(item.voice);
       group.append(badge, rank, label,
-        svgElement(svg, 'rect', {x: labelWidth, y: y + 7, width: Math.max(0, dataWidth), height: 16, fill: insightDataColor}),
-        svgElement(svg, 'rect', {x: labelWidth + dataWidth, y: y + 7, width: Math.max(0, voiceWidth), height: 16, fill: insightVoiceColor}));
-      const total = svgElement(svg, 'text', {x: labelWidth + dataWidth + voiceWidth + 5, y: y + 19, 'font-size': 11.5, 'font-weight': 800, fill: '#17232d'});
+        svgElement(svg, 'rect', {x: labelWidth, y: y + 7 * k, width: Math.max(0, dataWidth), height: 16 * k, fill: insightDataColor}),
+        svgElement(svg, 'rect', {x: labelWidth + dataWidth, y: y + 7 * k, width: Math.max(0, voiceWidth), height: 16 * k, fill: insightVoiceColor}));
+      const total = svgElement(svg, 'text', {x: labelWidth + dataWidth + voiceWidth + 5 * k, y: y + 19 * k, 'font-size': 11.5 * k, 'font-weight': 800, fill: '#17232d'});
       total.textContent = `${insightNumber(item.total)}${item.complete ? '' : '*'}`;
       group.append(total);
       if (index) {
-        const behind = svgElement(svg, 'tspan', {dx: 4, 'font-size': 9.5, 'font-weight': 600, fill: '#7a8a96'});
+        const behind = svgElement(svg, 'tspan', {dx: 4 * k, 'font-size': 9.5 * k, 'font-weight': 600, fill: '#7a8a96'});
         behind.textContent = insightNumber(item.total - leader, 1).replace('-', '−');
         total.append(behind);
       }
@@ -6402,25 +6405,44 @@
   function makeLocationCardsView(group) {
     const wrapper = document.createElement('div');
     const plural = {City: 'cities', Cluster: 'clusters', Region: 'regions'}[group.level] || 'locations';
+    const national = group.level === 'National';
     const note = document.createElement('p');
-    note.className = 'scoring-insight-note scoring-location-note';
-    note.append(`The ${scoringLabel()} scoring of the selected ${plural}, each from its highest score: `);
+    note.className = `scoring-insight-note scoring-location-note${national ? ' is-national' : ''}`;
+    note.append(national ? `The ${scoringLabel()} scoring of the whole country, from its highest score: `
+      : `The ${scoringLabel()} scoring of the selected ${plural}, each from its highest score: `);
     const maximum = document.createElement('strong');
     maximum.textContent = `${insightNumber(group.maximum)} points`;
     note.append(maximum, ` at most (Voice ${insightNumber(group.max_voice)} · Data ${insightNumber(group.max_data)})`,
       group.scaled ? ', the environments measured in each one scaled to them, so they compare with the overall scoring.' : '.');
+    // The card of the whole country goes across the panel, its bars and text larger.
     const layout = document.createElement('div');
-    layout.className = 'scoring-location-cards';
+    layout.className = `scoring-location-cards${national ? ' is-national' : ''}`;
     for (const card of group.cards || []) {
       const article = document.createElement('article');
-      article.className = 'scoring-location-card';
+      article.className = `scoring-location-card${national ? ' is-national' : ''}`;
       const heading = document.createElement('h5');
       heading.textContent = String(card.label);
-      article.append(heading, makeLocationCardChart(card, group.maximum));
+      if (!national) {
+        article.append(heading, makeLocationCardChart(card, group.maximum));
+      } else {
+        // Drawn at the width of the panel, so its bars fill it and its text keeps its size; again when it changes.
+        const chartBox = document.createElement('div');
+        let drawnWidth = 0;
+        const draw = () => {
+          const available = Math.round(chartBox.clientWidth);
+          if (!available || Math.abs(available - drawnWidth) < 3) return;
+          drawnWidth = available;
+          chartBox.replaceChildren(makeLocationCardChart(card, group.maximum, {wide: true, width: available}));
+        };
+        chartBox.append(makeLocationCardChart(card, group.maximum, {wide: true}));
+        article.append(heading, chartBox);
+        requestAnimationFrame(draw);
+        if (typeof ResizeObserver === 'function') new ResizeObserver(draw).observe(chartBox);
+      }
       layout.append(article);
     }
     const legend = document.createElement('div');
-    legend.className = 'scoring-location-legend';
+    legend.className = `scoring-location-legend${national ? ' is-national' : ''}`;
     legend.innerHTML = '<span><i class="is-data"></i>Data</span><span><i class="is-voice"></i>Voice</span><span><b>1</b> Position in the location</span>';
     wrapper.append(note, layout, legend);
     return wrapper;
@@ -7638,7 +7660,8 @@
       groups = groups.filter(group => !group.campaign || group.campaign === latest);
     }
     for (const group of groups) {
-      pane.append(makeExpandableChartCard(`${scoringLabel()} Scoring per ${group.level}`,
+      // The scoring Nationwide (the card of the whole country) comes first, then each area of the Breakdown and the cities.
+      pane.append(makeExpandableChartCard(group.level === 'National' ? `${scoringLabel()} Scoring Nationwide` : `${scoringLabel()} Scoring per ${group.level}`,
         [environmentLabel(environment), group.title].filter(Boolean).join(' · '), makeLocationCardsView(group)));
     }
     const rankings = insightItems(payload, 'location_rankings', environment);
