@@ -147,6 +147,8 @@ def test_where_to_act_of_a_report_follows_the_focus_operators_of_the_operator_ma
     assert act_titles({'Three': (['Three UK'], 'focus'), 'Vodafone UK': ([], 'focus'), 'O2 UK': ([], 'exclude')}) == ['Three', 'Vodafone UK']
     # Without them, or when none of them has results, every operator but the reference.
     assert act_titles({}) == act_titles({'Another operator': ([], 'focus')}) == ['O2 UK', 'Three UK', 'Vodafone UK']
+    # A reference that is a Focus operator is shown too.
+    assert act_titles({'EE': ([], 'focus'), 'Three UK': ([], 'focus')}) == ['EE', 'Three UK']
 
 
 def test_focus_operators_are_names_or_patterns_and_every_operator_without_a_match():

@@ -2520,11 +2520,19 @@ def _add_insight_slides(presentation, views: dict, environment: str, scoring: st
         return lambda operator, operator_label=None: (str(operator).casefold() in names
                                                       or str(operator_label or '').casefold() in names)
 
+    def reference_shown(entry: dict) -> bool:
+        """Whether the reference has its slides in the sections of the operators compared with it: when it is enabled on
+        the page, else when it is a Focus operator (``compared`` matches every operator without them)."""
+        state = toggled(entry.get('operator'), entry.get('label'))
+        if state is not None:
+            return state
+        return compared is not _everyone and compared(entry.get('operator'), entry.get('label'))
+
     def compared_items(section: str, entries: list[dict]) -> list[dict]:
-        """The items of a section whose page leaves the reference out by default (unless it was enabled)."""
+        """The items of a section of the operators compared with the reference: the reference only when the page chose
+        it, or it is enabled on the page or a Focus operator."""
         return entries if choices.get(section) else [
-            entry for entry in entries
-            if not entry.get('is_reference') or toggled(entry.get('operator'), entry.get('label'))]
+            entry for entry in entries if not entry.get('is_reference') or reference_shown(entry)]
 
     if stage == 'summary':
         # As on the page: how the measurements ran, Where to act and its performance owners first, then the standings, positions
@@ -2532,14 +2540,14 @@ def _add_insight_slides(presentation, views: dict, environment: str, scoring: st
         if _option(options, 'summary', 'scope'):
             add_campaign_scope_slides(presentation, items.get('campaign_scope', []), subtitle=subtitle, new_slide=_slide,
                                       environment_labels=environment_labels)
-        # Where to act: for the operator chosen on the page, else for every Focus operator (every operator but the
-        # reference without them, or when they are only the reference).
+        # Where to act: for the operator chosen on the page, else for every Focus operator, the reference included when it is
+        # one (every operator but the reference without them).
         act_items = {name: items.get(name, []) for name in ('act_plans', 'owner_cards', 'place_rankings', 'route_focus')}
 
         def act_operators_of(accepted: Callable[..., bool]) -> list[str]:
             return list(dict.fromkeys(item['operator'] for entries in act_items.values() for item in entries
                                       if accepted(item['operator'], item.get('label'))
-                                      and (choices.get('act-operator') or not item.get('is_reference'))))
+                                      and (choices.get('act-operator') or not item.get('is_reference') or reference_shown(item))))
         act_operators = act_operators_of(chosen('act-operator'))
         if not act_operators and not choices.get('act-operator'):
             act_operators = act_operators_of(_everyone)
