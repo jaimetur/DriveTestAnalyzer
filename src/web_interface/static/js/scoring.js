@@ -7699,23 +7699,30 @@
 
   // ---- Geographical Areas ------------------------------------------------------------------------------------------
   // A calculation split by no Region, Cluster or City shows each Region and London (calculated with it).
+  // The levels of the Geographical Areas from the largest to the smallest: the whole country, then Region, Cluster and City.
+  const GEOGRAPHICAL_LEVEL_ORDER = {National: 0, Region: 1, Cluster: 2, City: 3};
+  const geographicalLevelRank = level => GEOGRAPHICAL_LEVEL_ORDER[level] ?? 4;
+
   function renderGeographicalAreas(pane, payload, environment) {
     pane.replaceChildren();
     if (!environment) return;
-    let groups = insightItems(payload, 'location_cards', environment);
+    let groups = [...insightItems(payload, 'location_cards', environment)]
+      .sort((left, right) => geographicalLevelRank(left.level) - geographicalLevelRank(right.level));
     const campaigns = [...new Set(groups.map(group => group.campaign).filter(Boolean))];
     if (campaigns.length > 1) {
       const latest = campaigns.sort((left, right) => insightCampaignKey(left) - insightCampaignKey(right)).at(-1);
       groups = groups.filter(group => !group.campaign || group.campaign === latest);
     }
     for (const group of groups) {
-      // The scoring Nationwide (the card of the whole country) comes first, then each area of the Breakdown and the cities.
+      // The scoring Nationwide (the card of the whole country) comes first, then each Region, Cluster and City.
       pane.append(makeExpandableChartCard(group.level === 'National' ? `${scoringLabel()} Scoring Nationwide` : `${scoringLabel()} Scoring per ${group.level}`,
         [environmentLabel(environment), group.title].filter(Boolean).join(' · '), makeLocationCardsView(group)));
     }
     const rankings = insightItems(payload, 'location_rankings', environment);
     if (rankings.length) {
-      const levels = [...new Set(rankings.map(item => item.level))];
+      // From the largest level to the smallest (Region, Cluster, City), the largest chosen by default.
+      const levels = [...new Set(rankings.map(item => item.level))]
+        .sort((left, right) => geographicalLevelRank(left) - geographicalLevelRank(right));
       const {wrapper: levelControl, value: storedLevel} = insightSelect('ranking-level', levels.map(level => [level, level]), 'Geographical Areas');
       const level = levels.includes(storedLevel) ? storedLevel : levels[0];
       const ofLevel = rankings.filter(item => item.level === level);

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import zipfile
 from io import BytesIO
+from pathlib import Path
 
 from pptx import Presentation
 from pptx.enum.shapes import MSO_SHAPE_TYPE
@@ -117,10 +118,13 @@ def test_every_level_and_group_of_the_geographical_areas_is_exported():
     items = [{'level': 'Region', 'title': '', 'operator': 'A'}, {'level': 'City', 'title': 'Vendor: X', 'operator': 'A'},
              {'level': 'City', 'title': 'Vendor: Y', 'operator': 'A'}, {'level': 'City', 'title': 'Vendor: X', 'operator': 'B'},
              {'level': 'Cluster', 'title': '', 'operator': 'A'}]
-    # In the order the page lists them (that of the Geographical Areas cards).
+    # From the largest level to the smallest (Region, Cluster, City), as the page lists them.
     assert [[(item['level'], item['title'], item['operator']) for item in group] for group in _ranking_groups(items)] == [
-        [('Region', '', 'A')], [('City', 'Vendor: X', 'A'), ('City', 'Vendor: X', 'B')], [('City', 'Vendor: Y', 'A')],
-        [('Cluster', '', 'A')]]
+        [('Region', '', 'A')], [('Cluster', '', 'A')], [('City', 'Vendor: X', 'A'), ('City', 'Vendor: X', 'B')],
+        [('City', 'Vendor: Y', 'A')]]
+    script = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/scoring.js').read_text(encoding='utf-8')
+    assert "const GEOGRAPHICAL_LEVEL_ORDER = {National: 0, Region: 1, Cluster: 2, City: 3};" in script
+    assert '.sort((left, right) => geographicalLevelRank(left) - geographicalLevelRank(right));' in script
 
 
 def test_reports_and_bundle_report_templates_carry_export_all_operators():

@@ -2498,13 +2498,21 @@ def focus_matcher(focus: Any, operators: Any = ()) -> Callable[..., bool]:
     return matches
 
 
+# The levels of the Geographical Areas from the largest to the smallest, as the page lists them.
+GEOGRAPHICAL_LEVEL_ORDER = {'National': 0, 'Region': 1, 'Cluster': 2, 'City': 3}
+
+
+def _geographical_level_rank(level: Any) -> int:
+    return GEOGRAPHICAL_LEVEL_ORDER.get(str(level), len(GEOGRAPHICAL_LEVEL_ORDER))
+
+
 def _ranking_groups(rankings: list[dict]) -> list[list[dict]]:
-    """The location rankings of every level and of every group of each level, in the order the page lists them (that
-    of the Geographical Areas cards: the Breakdown, such as Region, then the cities)."""
+    """The location rankings of every level, from the largest to the smallest (Region, Cluster, City) as the page lists
+    them, and of every group of each level in its order."""
     groups: dict[tuple[str, str], list[dict]] = {}
     for item in rankings:
         groups.setdefault((item['level'], item.get('title') or ''), []).append(item)
-    return list(groups.values())
+    return sorted(groups.values(), key=lambda group: _geographical_level_rank(group[0]['level']))
 
 
 def _add_insight_slides(presentation, views: dict, environment: str, scoring: str | None, configuration: dict,
@@ -2652,8 +2660,9 @@ def _add_insight_slides(presentation, views: dict, environment: str, scoring: st
     if stage == 'geographical_areas':
         if _option(options, 'geographical_areas', 'cards'):
             cards_base = panel_operators('geographical_areas', 'cards')
+            # The whole country first, then Region, Cluster and City, as the page shows them.
             groups = [{**group, 'cards': _with_operators(group.get('cards') or [], cards_base)}
-                      for group in items.get('location_cards', [])]
+                      for group in sorted(items.get('location_cards', []), key=lambda group: _geographical_level_rank(group['level']))]
             add_location_card_slides(presentation, [group for group in groups if group['cards']], scoring_label=label,
                                      subtitle=subtitle, new_slide=_slide, scope=scope)
         # Every level (City, Cluster and Region) and group: its ranking, then each operator against the reference.
