@@ -390,6 +390,8 @@
   const savedFilterList = savedFilterLists[0];
   const savedFilterSelector = root.querySelector('[data-saved-filter-selector]');
   const selectedSavedFilterCard = root.querySelector('[data-selected-saved-filter-card]');
+  const resultsTabbed = root.querySelector('.scoring-results-tabbed');
+  const resultNotesStack = root.querySelector('.scoring-notes-stack');
   const environmentControl = root.querySelector('[data-result-environment-control]');
   const environmentSelect = root.querySelector('[data-result-environment]');
   const scoringKindControl = root.querySelector('[data-result-scoring-control]');
@@ -422,6 +424,8 @@
   // A check of the selection is on its way; a refresh meanwhile waits for its answer and checks again after it.
   let calculationMatchPending = false;
   let calculationMatchRecheck = false;
+  // The selection of the Calculation panel is no Saved Filter: the results of the opened one are not shown with it.
+  let selectionUnmatched = false;
   // The status of the selected CDRs and filters (calculating, recalculating, already calculated or ready) stays
   // while the Saved Filter list refreshes every few seconds; Saved Filters submitted with Recalculate say so.
   let selectionStatus = {key: '', text: '', kind: ''};
@@ -1451,6 +1455,7 @@
           kind = '';
         }
         showCalculateAction(Boolean(existing?.up_to_date) && !isActive(existing) && !editingSavedFilter);
+        showUnmatchedSelection(!existing && !editingSavedFilter);
         selectionStatus = {key, text, kind};
         setMessage(text, kind);
       } catch (error) {
@@ -1468,6 +1473,30 @@
         }
       }
     }, 180);
+  }
+
+  // A selection that is no Saved Filter hides the results of the opened one (they belong to other filters) and its
+  // card, which asks instead to choose a Favourites Filter or to calculate the selection; they come back with a
+  // selection that is a Saved Filter, or when one is opened or calculated.
+  function showUnmatchedSelection(unmatched) {
+    if (selectionUnmatched === unmatched) return;
+    selectionUnmatched = unmatched;
+    if (resultsTabbed) resultsTabbed.hidden = unmatched;
+    if (resultNotesStack) resultNotesStack.hidden = unmatched;
+    savedFilterSelector?.classList.toggle('is-unmatched', unmatched);
+    setExportLinks(currentResultsSavedFilterId || '', Boolean(currentResultsSavedFilterId));
+    renderSavedFilters();
+  }
+
+  function unmatchedSelectionNotice() {
+    const notice = document.createElement('span');
+    notice.className = 'saved-filter-unmatched';
+    const title = document.createElement('strong');
+    title.textContent = 'No Saved Filter has the filters of the Calculation panel';
+    const text = document.createElement('span');
+    text.textContent = 'Choose a Favourites Filter saved before, or calculate a new scoring with the filters above (Calculate Scoring).';
+    notice.append(title, text);
+    return notice;
   }
 
   function updateSelection() {
@@ -2293,6 +2322,7 @@
         selectedSavedFilterCard.replaceChildren(...Array.from(button.children, child => child.cloneNode(true)), selectedActions);
       }
     }
+    if (selectionUnmatched) selectedSavedFilterCard.replaceChildren(unmatchedSelectionNotice());
     syncSavedFilterLists();
   }
 
@@ -2406,6 +2436,8 @@
   }
 
   function setExportLinks(savedFilterId, enabled) {
+    // The results hidden by a selection that is no Saved Filter are not exported either.
+    enabled = enabled && !selectionUnmatched;
     for (const [kind, link] of Object.entries(exportLinks).flatMap(([name, links]) => [links].flat().map(item => [name, item]))) {
       if (!link) continue;
       link.hidden = false;
@@ -9407,6 +9439,7 @@
       selectedSavedFilterId = id;
       selectedSavedFilter = savedFilter;
       userSelectedSavedFilter = true;
+      showUnmatchedSelection(false);
       if (force) resultCache.delete(id);
       const cached = Boolean(body.cached);
       if (cached && (body.scoring || body.gap)) {
@@ -9743,6 +9776,7 @@
     selectedSavedFilterId = savedFilterIdOf(savedFilter);
     selectedSavedFilter = savedFilter;
     restoreCalculationSelectionFromSavedFilter(savedFilter);
+    showUnmatchedSelection(false);
     // Opening it from its card counts as a use.
     requestJson(`${savedFiltersUrl}/${encodeURIComponent(selectedSavedFilterId)}/use`, {method: 'POST'})
       .then(() => refreshSavedFilters())

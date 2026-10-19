@@ -1570,6 +1570,7 @@ const timers = [];
 const messages = [];
 const requests = [];
 const shown = [];
+const unmatched = [];
 const context = {
   calculationMatchKey: '', calculationMatchRevision: 0, calculationMatchTimer: null, calculationMatchRefresh: false,
   calculationMatchPending: false, calculationMatchRecheck: false,
@@ -1581,6 +1582,9 @@ const context = {
   areaSummaryPayload: () => null,
   // Calculate Scoring or Open Scoring, as each answer tells it.
   showCalculateAction: open => shown.push(open),
+  // Whether the selection is no Saved Filter (its card and the results of the opened one hide).
+  showUnmatchedSelection: value => unmatched.push(value),
+  recalculatingSavedFilters: new Set(), savedFilterIdOf: record => String(record?.id ?? ''),
   normalizeStatus: savedFilter => savedFilter?.status || '', isActive: savedFilter => ['queued', 'processing'].includes(savedFilter?.status),
   setMessage: (text, kind = '') => messages.push({text, kind}),
   requestJson: (...args) => new Promise((resolve, reject) => requests.push({args, resolve, reject})),
@@ -1662,7 +1666,7 @@ async function main() {
   const rechecked = [requests.length - slowRequests, timers.length - slowTimers,
     context.calculateButton.disabled, context.recalculateButton.disabled];
   process.stdout.write(JSON.stringify({pending, noMatch, completed, active, refreshing, refreshed, staleResponseIgnored, shown,
-    waiting, answered, rechecked,
+    waiting, answered, rechecked, unmatched,
     matchUrl: requests[0].args[0], matchPayload: JSON.parse(requests[0].args[1].body)}));
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });
@@ -1681,6 +1685,8 @@ main().catch(error => { console.error(error); process.exitCode = 1; });
     assert result['waiting'] == [0, 0]
     assert result['answered'] == [False, False, 1]
     assert result['rechecked'] == [1, 1, False, False]
+    # Only the selection without a Saved Filter (the first and the stale-check answers) is unmatched.
+    assert result['unmatched'] == [True, False, False, False, True, False, False]
     assert result['matchUrl'] == '/api/scoring/saved-filters/match'
     assert result['matchPayload'] == {
         'dataset_ids': [12, 14], 'aggregation_levels': ['Operator', 'City'],

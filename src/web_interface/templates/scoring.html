@@ -255,6 +255,12 @@
   .saved-filter-selector[open] > summary::after { content: '▴'; }
   .saved-filter-selector > summary:focus-visible { outline: 3px solid rgba(11,122,117,.3); outline-offset: 3px; }
   .selected-saved-filter { display: grid; gap: .35rem; min-width: 0; }
+  /* A selection that is no Saved Filter: the card asks to choose a Favourites Filter or to calculate it. */
+  .saved-filter-selector.is-unmatched > summary { border-style: dashed; border-color: #c79a1e; background: #fffbea; box-shadow: none; }
+  .saved-filter-selector.is-unmatched > summary::after { color: #9a7412; }
+  .saved-filter-unmatched { display: grid; gap: .2rem; min-width: 0; color: #5c4a12; line-height: 1.35; }
+  .saved-filter-unmatched strong { color: #3d3108; }
+  .scoring-results-tabbed[hidden], .scoring-notes-stack[hidden] { display: none; }
   .saved-filter-picker { position: absolute; top: calc(100% + .4rem); left: 0; right: 0; z-index: 30; padding: .65rem; border: 1px solid var(--line); border-radius: 13px; background: #fff; box-shadow: 0 8px 24px rgba(25,42,53,.18); }
   .saved-filter-picker .section-head { margin-bottom: .65rem; }
   .saved-filter-picker .saved-filter-list { max-height: min(28rem,55vh); }
