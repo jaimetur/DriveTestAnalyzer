@@ -1089,3 +1089,15 @@ def test_only_starred_saved_filters_are_kept_when_another_one_is_used(repository
     assert removed == [unstarred]
     assert {item['id'] for item in saved_filters.list_saved_filters(repository)} == {
         starred, drawing, someone_else, queued['id'], current}
+
+
+def test_saved_filters_keep_their_compared_operators_outside_their_calculation(repository, scoring_engine):
+    dataset_id = add_dataset(repository)
+    job, _reused = saved_filters.save_saved_filter(repository, [dataset_id], ['Region'], 'NSA', username='tester')
+    assert saved_filters.get_saved_filter(repository, job['id'])['compared_operators'] == []
+    selection_key, result_key = job['selection_key'], job['result_key']
+    saved_filters.set_compared_operators(repository, job['id'], ['VF', ' Three ', 'VF', ''])
+    kept = saved_filters.get_saved_filter(repository, job['id'])
+    # The operators GAP Analysis compares are kept as such; the calculation and its identity do not change.
+    assert kept['compared_operators'] == ['VF', 'Three']
+    assert (kept['selection_key'], kept['result_key'], kept['status']) == (selection_key, result_key, 'queued')

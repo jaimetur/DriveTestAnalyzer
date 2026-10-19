@@ -894,6 +894,21 @@
     return comparedOperatorsSelect ? [...comparedOperatorsSelect.selectedOptions].map(option => option.value).filter(Boolean) : [];
   }
 
+  async function saveComparedOperators(savedFilter) {
+    const id = savedFilterIdOf(savedFilter);
+    if (!id) return;
+    try {
+      const body = await requestJson(`${savedFiltersUrl}/${id}/compared-operators`, {
+        method: 'PUT', body: JSON.stringify({compared_operators: chosenComparedOperators()})});
+      if (body?.saved_filter && savedFilterIdOf(selectedSavedFilter || {}) === id) {
+        selectedSavedFilter = {...selectedSavedFilter, compared_operators: body.saved_filter.compared_operators};
+        refreshSavedFilters().catch(() => {});
+      }
+    } catch (_error) {
+      // A reader cannot change it: the page keeps its choice.
+    }
+  }
+
   function isComparedOperator(operator, label = '') {
     const chosen = chosenComparedOperators().map(value => value.toLocaleLowerCase());
     if (!chosen.length) return true;
@@ -1089,6 +1104,7 @@
           enabled: true}
         : {enabled: true, breakdown: 'Region', cities: ['London'], time_split: savedFilter.area_summary?.time_split || 'Campaign',
           campaigns: savedFilter.area_summary?.campaigns || []},
+      compared_operators: Array.isArray(savedFilter.compared_operators) ? savedFilter.compared_operators : [],
     });
     scheduleSelectionSave();
     scheduleAutoCdrRefresh({delay: 0});
@@ -1318,6 +1334,8 @@
       // it is calculated.
       context_filters: selectedContextFilters({keepPresets: true}),
       area_summary: areaSummaryPayload(),
+      // Kept with the Saved Filter, outside its calculation.
+      compared_operators: chosenComparedOperators(),
     };
   }
 
@@ -1965,7 +1983,6 @@
       const aggregationLevels = document.createElement('strong');
       aggregationLevels.textContent = savedFilterLevels(savedFilter);
       aggregation.append(aggregationLabel, aggregationLevels);
-      button.append(aggregation);
       const meta = document.createElement('span');
       meta.className = 'saved-filter-meta';
       const baseline = valueOf(savedFilter, ['baseline_operator'], 'EE');
@@ -1974,7 +1991,6 @@
       referenceValue.className = 'saved-filter-reference';
       referenceValue.textContent = baseline;
       meta.append(referenceValue);
-      button.append(meta);
       // Its Geographical Areas & Scoring Trends, as in the panel: the Breakdown and Separate cities of both tabs, then the
       // campaigns and time split of the trends, each value in its own colour.
       const areaMeta = document.createElement('span');
@@ -1986,7 +2002,6 @@
         areaValue.textContent = value;
         areaMeta.append(`${index ? ' · ' : ''}${label}: `, areaValue);
       });
-      button.append(areaMeta);
       const trendMeta = document.createElement('span');
       trendMeta.className = 'saved-filter-meta';
       const trendValue = document.createElement('strong');
@@ -1996,7 +2011,6 @@
       timeValue.className = 'saved-filter-area-summary saved-filter-area-summary-time';
       timeValue.textContent = savedFilterTimeSplit(savedFilter);
       trendMeta.append('Scoring Trends: Campaigns: ', trendValue, ' · Time split: ', timeValue);
-      button.append(trendMeta);
       const cdrNames = savedFilterCdrNames(savedFilter);
       const cdrButton = document.createElement('button');
       cdrButton.type = 'button';
@@ -2007,8 +2021,9 @@
       cdrButton.title = cdrNames.length ? cdrNames.join('\n') : savedFilterCdrSummary(savedFilter);
       cdrButton.setAttribute('aria-label', `Show the CDRs of Saved Filter ${id}`);
       const profileName = valueOf(savedFilter, ['scoring_profile_name', 'profile_name'], '');
+      let profileMeta = null;
       if (profileName) {
-        const profileMeta = document.createElement('span');
+        profileMeta = document.createElement('span');
         profileMeta.className = 'saved-filter-meta';
         profileMeta.textContent = 'Scoring Methodology: ';
         const profileValue = document.createElement('strong');
@@ -2039,8 +2054,18 @@
           detail.append(')');
           profileMeta.append(detail);
         }
-        button.append(profileMeta);
       }
+      // The Compared operators of its GAP Analysis (every operator without any).
+      const comparedMeta = document.createElement('span');
+      comparedMeta.className = 'saved-filter-meta';
+      const comparedValue = document.createElement('strong');
+      comparedValue.className = 'saved-filter-compared';
+      const comparedOperators = Array.isArray(savedFilter.compared_operators) ? savedFilter.compared_operators : [];
+      comparedValue.textContent = comparedOperators.length ? comparedOperators.join(', ') : 'All operators';
+      comparedMeta.append('Compared operators: ', comparedValue);
+      // In the order of the calculation panel: the GAP reference, the Compared operators and the methodology, then the
+      // Split by, the Geographical Areas and the Scoring Trends.
+      button.append(...[meta, comparedMeta, profileMeta, aggregation, areaMeta, trendMeta].filter(Boolean));
       const duration = savedFilterDurationText(savedFilter);
       if (duration) {
         // How long the calculation took, or has taken so far while it runs.
@@ -9326,9 +9351,10 @@
       return;
     }
     if (event.target === comparedOperatorsSelect) {
-      // What GAP Analysis compares, without calculating again.
+      // What GAP Analysis compares, without calculating again; the open Saved Filter keeps them.
       scheduleSelectionSave();
       if (currentResults) renderResult(currentResults, selectedSavedFilter, ['gap']);
+      if (!restoringSelection && !editingSavedFilter && selectedSavedFilter) saveComparedOperators(selectedSavedFilter);
       return;
     }
     if (event.target === themeSelect) {

@@ -113,6 +113,7 @@ from src.modules.saved_filters import (
     save_saved_filter,
     select_all_complete_cdrs,
     select_latest_companion_cdrs,
+    set_compared_operators,
     update_saved_filter,
     use_newer_cdrs,
     validate_complete_scoring_cdr_selection,
@@ -17907,6 +17908,8 @@ class SavedFilterRequest(BaseModel):
     context_filters: dict[str, list[str]] = Field(default_factory=dict)
     # The Scoring Trends: their campaigns and the breakdown, separate cities and time split of the National & Geographical Areas Trends.
     area_summary: dict[str, Any] | None = None
+    # The operators GAP Analysis compares with the reference, kept with the Saved Filter (not part of its calculation).
+    compared_operators: list[str] | None = None
 
 
 class ScoringThemeRequest(BaseModel):
@@ -18211,6 +18214,9 @@ def saved_filters_save(payload: SavedFilterRequest, user: SessionUser = Depends(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if payload.compared_operators is not None:
+        set_compared_operators(task_repository, saved_filter['id'], payload.compared_operators)
+        saved_filter = {**saved_filter, 'compared_operators': [str(name) for name in payload.compared_operators if str(name).strip()]}
     if not cached:
         _queue_saved_filter_calculation(task_repository, saved_filter['id'])
     task_repository.try_add_log(user.username, 'scoring_calculation_requested', json.dumps({
@@ -18297,6 +18303,26 @@ def scoring_saved_filters_use_newer_cdrs(filter_id: int, payload: UseNewerCdrsRe
     return {'saved_filter': saved_filter, 'cached': False, 'replaced': updated['replaced']}
 
 
+class ComparedOperatorsRequest(BaseModel):
+    compared_operators: list[str] = Field(default_factory=list)
+
+
+@app.put('/api/scoring/saved-filters/{filter_id}/compared-operators')
+def scoring_saved_filters_compared_operators(filter_id: int, payload: ComparedOperatorsRequest,
+                                             user: SessionUser = Depends(workspace_editor_user)) -> dict[str, Any]:
+    """Keep with a Saved Filter the operators its GAP Analysis compares with the reference: they change no calculation."""
+    task_repository = scoring_repository(user)
+    if get_saved_filter(task_repository, filter_id) is None:
+        raise HTTPException(status_code=404, detail='Saved Filter not found.')
+    set_compared_operators(task_repository, filter_id, payload.compared_operators)
+    saved_filter = get_saved_filter(task_repository, filter_id)
+    task_repository.try_add_log(user.username, 'saved_filter_compared_operators', json.dumps({
+        'saved_filter_id': filter_id, 'name': saved_filter.get('name') or '',
+        'compared_operators': saved_filter.get('compared_operators') or [],
+    }))
+    return {'saved_filter': saved_filter}
+
+
 @app.post('/api/scoring/saved-filters/{filter_id}/edit')
 def scoring_saved_filters_edit(filter_id: int, payload: SavedFilterRequest,
                                user: SessionUser = Depends(workspace_editor_user)) -> dict[str, Any]:
@@ -18320,6 +18346,9 @@ def scoring_saved_filters_edit(filter_id: int, payload: SavedFilterRequest,
     if edited is None:
         raise HTTPException(status_code=404, detail='Saved Filter not found.')
     saved_filter = edited['saved_filter']
+    if payload.compared_operators is not None:
+        set_compared_operators(task_repository, saved_filter['id'], payload.compared_operators)
+        saved_filter = {**saved_filter, 'compared_operators': [str(name) for name in payload.compared_operators if str(name).strip()]}
     if edited['changed']:
         _queue_saved_filter_calculation(task_repository, saved_filter['id'])
     task_repository.try_add_log(user.username, 'edit_saved_filter', json.dumps({

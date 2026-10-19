@@ -257,6 +257,7 @@ process.stdout.write(JSON.stringify({queued, persisted}));
         },
         # One saved without Geographical Areas & Scoring Trends takes those it is calculated with: each Region and London.
         'area_summary': {'enabled': True, 'breakdown': 'Region', 'cities': ['London'], 'time_split': 'Campaign', 'campaigns': []},
+        'compared_operators': [],
     }
     assert result['queued']['selectionDirty'] is True
     assert result['queued']['selectionSaveTimer'] == 42

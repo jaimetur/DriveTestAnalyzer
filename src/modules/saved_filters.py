@@ -634,6 +634,7 @@ def _row_to_saved_filter(
     aggregation_contract_version = source_metadata_payload.get('aggregation_contract_version', 1)
     operator_mappings = source_metadata_payload.get('operator_mappings', {})
     area_summary = source_metadata_payload.get('area_summary')
+    compared_operators = source_metadata_payload.get('compared_operators')
     if not isinstance(context_filters, dict):
         context_filters = {}
     if not isinstance(resolved_context_filters, dict):
@@ -692,6 +693,9 @@ def _row_to_saved_filter(
         'aggregation_hierarchy': [str(value) for value in aggregation_hierarchy if str(value).strip()],
         'aggregation_contract_version': aggregation_contract_version,
         'area_summary': area_summary if isinstance(area_summary, dict) else None,
+        # The operators GAP Analysis compares with the reference (all without any): not part of its calculation.
+        'compared_operators': [str(name) for name in compared_operators if str(name).strip()]
+        if isinstance(compared_operators, list) else [],
         'dataset_names': [str(item.get('name') or '') for item in metadata_list if isinstance(item, dict)],
         'campaigns': sorted({
             str(campaign).strip()
@@ -880,6 +884,23 @@ def _prepare_saved_filter(
         'dataset_ids': normalized_ids, 'snapshot': snapshot, 'nr_mode': selected_mode, 'levels': normalized_levels,
         'baseline_operator': baseline,
     }
+
+
+def set_compared_operators(repository: Repository, filter_id: int, operators: list[str] | None) -> None:
+    """Keep with a Saved Filter the operators its GAP Analysis compares with the reference (all without any), as the
+    panel had them when it was calculated or edited: they change no calculation, nor its identity."""
+    chosen = list(dict.fromkeys(str(name).strip() for name in operators or [] if str(name).strip()))[:20]
+    with repository.connection() as connection:
+        row = connection.execute(f'SELECT source_metadata_json FROM {SAVED_FILTERS_TABLE} WHERE id = ?', (int(filter_id),)).fetchone()
+        if row is None:
+            return
+        snapshot = _decode_json(row['source_metadata_json'], {})
+        snapshot = snapshot if isinstance(snapshot, dict) else {}
+        if snapshot.get('compared_operators', []) == chosen:
+            return
+        snapshot['compared_operators'] = chosen
+        connection.execute(f'UPDATE {SAVED_FILTERS_TABLE} SET source_metadata_json = ? WHERE id = ?',
+                           (json.dumps(snapshot, ensure_ascii=False, separators=(',', ':')), int(filter_id)))
 
 
 def _workspace_main_cities(repository: Repository) -> list[str]:

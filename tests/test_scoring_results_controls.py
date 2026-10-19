@@ -911,7 +911,7 @@ const results = [];
     let warning = null;
     let inputs = [];
     const context = {
-      URL, window: {location: {href: 'https://example.test/scoring'}}, insightSelections: new Map(item.selections || []),
+      URL, chosenComparedOperators: () => [], window: {location: {href: 'https://example.test/scoring'}}, insightSelections: new Map(item.selections || []),
       environmentSelect: {options: [{value: 'all', textContent: 'All Environments'},
                                     {value: 'Drive - City', textContent: 'Drive - City'},
                                     {value: 'Drive - Roads', textContent: 'Drive - Roads'}]},
@@ -971,6 +971,7 @@ const results = [];
       window: {ScoringReportEditor: {open: async () => ({action: 'word', configuration: {scenarios: [{name: 'National'}]}}),
                                      defaultConfiguration: defaults => ({scenarios: [], defaults})}},
       fetch: async () => ({ok: false}),
+      chosenComparedOperators: () => ['VF'],
       calculationPayload: () => ({dataset_ids: datasetIds, nr_mode: 'SA', baseline_operator: 'EE', scoring_profile_id: 'netcheck',
                                   aggregation_levels: ['Operator', 'City'], context_filters: {City: ['Leeds']}}),
       selectedContextFilters: () => ({City: ['Leeds']}),
@@ -1577,6 +1578,7 @@ const context = {
   scoringProfileSelect: {value: 'profile-a'}, nrFilter: {value: 'NSA'},
   baselineInput: {value: 'Operator A'}, selectedContextFilters: () => ({Region: ['North']}),
   areaSummaryPayload: () => null,
+  chosenComparedOperators: () => [],
   normalizeStatus: savedFilter => savedFilter?.status || '', isActive: savedFilter => ['queued', 'processing'].includes(savedFilter?.status),
   setMessage: (text, kind = '') => messages.push({text, kind}),
   requestJson: (...args) => new Promise((resolve, reject) => requests.push({args, resolve, reject})),
@@ -1653,7 +1655,7 @@ main().catch(error => { console.error(error); process.exitCode = 1; });
     assert result['matchPayload'] == {
         'dataset_ids': [12, 14], 'aggregation_levels': ['Operator', 'City'],
         'scoring_profile_id': 'profile-a', 'nr_mode': 'NSA', 'baseline_operator': 'Operator A',
-        'context_filters': {'Region': ['North']}, 'area_summary': None,
+        'context_filters': {'Region': ['North']}, 'area_summary': None, 'compared_operators': [],
     }
 
 
