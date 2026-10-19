@@ -113,7 +113,7 @@ def test_reports_saved_before_the_scoring_trends_keep_their_trend_after_the_loca
     # The campaigns of the Scoring Trends: an automatic choice stands alone.
     assert scoring['options']['area_summary']['campaigns'] == ['@all-campaigns']
     lines = bundle_report_templates._option_lines(scoring, None, None)
-    assert lines[-1] == 'Scoring Trends: All available campaigns · National & Geographical Areas Trends: each Region, time split Campaign'
+    assert lines[-1] == 'Scoring Trends: All available campaigns · Geographical Areas: each Region and London · time split Campaign'
 
 
 def test_section_lines_and_filters_describe_the_report():

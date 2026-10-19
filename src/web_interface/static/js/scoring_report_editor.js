@@ -437,12 +437,54 @@
       levels.append(box);
     }
 
-    // The Scoring Trends: their campaigns, whatever the Campaign filter of the scenario, and inside them the National &
-    // Areas Trends, whose checkbox heads their panel and enables their settings.
-    // (Saved before the Scoring Trends had campaigns: the default.)
+    // The Geographical Areas & Scoring Trends, always included and scored on the whole country: the Breakdown and Separate
+    // cities of the Geographical Areas and of the trends, then the campaigns (whatever the Campaign filter of the
+    // scenario) and time split of the trends.
+    // (Saved before the Scoring Trends had campaigns: the default; saved unchecked: included now.)
     scenario.area_summary.campaigns = Array.isArray(scenario.area_summary.campaigns) ? scenario.area_summary.campaigns : ['@all-campaigns'];
+    scenario.area_summary.enabled = true;
     const trendsPanel = el('fieldset', 'scoring-report-subpanel scoring-report-trends');
-    trendsPanel.append(el('legend', 'scoring-report-label', 'Scoring Trends'));
+    trendsPanel.append(el('legend', 'scoring-report-label', 'Geographical Areas & Scoring Trends'));
+    const areaPanel = el('fieldset', 'scoring-report-subpanel');
+    areaPanel.append(el('legend', 'scoring-report-label', 'Geographical Areas'));
+    const areaRow = el('div', 'scoring-report-subpanel-row');
+    const breakdown = el('select');
+    breakdown.setAttribute('aria-label', 'Breakdown of the Geographical Areas and the National & Geographical Areas Trends');
+    for (const value of AREA_BREAKDOWNS) {
+      const option = el('option', '', value === 'None' ? 'Breakdown: None' : `Breakdown: ${value}`);
+      option.value = value;
+      option.title = value === 'None' ? 'Only the Separate cities' : '';
+      breakdown.append(option);
+    }
+    breakdown.value = scenario.area_summary.breakdown;
+    breakdown.addEventListener('change', () => { scenario.area_summary.breakdown = breakdown.value; });
+    breakdown.dataset.diffKey = 'area:breakdown';
+    const cities = checklist('Separate cities', context.filterOptions?.City || [], scenario.area_summary.cities, (values) => {
+      scenario.area_summary.cities = values;
+      syncBreakdown();
+    }, {
+      emptyLabel: 'None',
+      preset: (context.mainCities || []).length ? {
+        label: 'Main Cities', checked: scenario.area_summary.main_cities, values: context.mainCities,
+        onChange: (checked) => { scenario.area_summary.main_cities = checked; syncBreakdown(); },
+      } : null,
+    });
+    cities.dataset.diffKey = 'area:cities';
+    // Without a Breakdown the Separate cities (or Main Cities) are the only areas: None needs some of them.
+    function syncBreakdown() {
+      const some = (scenario.area_summary.cities || []).length || scenario.area_summary.main_cities;
+      const none = [...breakdown.children].find((option) => option.value === 'None');
+      if (none) none.disabled = !some;
+      if (!some && breakdown.value === 'None') {
+        breakdown.value = 'Region';
+        scenario.area_summary.breakdown = 'Region';
+      }
+    }
+    syncBreakdown();
+    areaRow.append(breakdown, cities);
+    areaPanel.append(areaRow);
+    const trendPanel = el('fieldset', 'scoring-report-subpanel');
+    trendPanel.append(el('legend', 'scoring-report-label', 'Scoring Trends'));
     const trendRow = el('div', 'scoring-report-subpanel-row');
     const trendChoice = el('select');
     trendChoice.setAttribute('aria-label', 'Campaigns of the Scoring Trends');
@@ -468,17 +510,6 @@
     });
     syncTrendCampaigns();
     trendRow.append(trendChoice, trendCampaigns);
-    trendsPanel.append(trendRow);
-    const subpanel = el('fieldset', 'scoring-report-subpanel');
-    const legend = el('legend');
-    const enabled = checkbox('Include National & Geographical Areas Trends', scenario.area_summary.enabled, (checked) => {
-      scenario.area_summary.enabled = checked;
-      updateAreaSummary();
-    }, 'The National scoring next to the separate cities and each area of the breakdown, each scored with its own measurements');
-    enabled.dataset.diffKey = 'area:enabled';
-    legend.append(enabled);
-    subpanel.append(legend);
-    const row = el('div', 'scoring-report-subpanel-row');
     const time = el('select');
     time.setAttribute('aria-label', 'Time split of the National & Geographical Areas Trends');
     time.title = 'Only for the National & Geographical Areas Trends. All selected CDRs aggregates every selected CDR into one value; '
@@ -492,50 +523,11 @@
     time.value = scenario.area_summary.time_split;
     time.addEventListener('change', () => { scenario.area_summary.time_split = time.value; });
     time.dataset.diffKey = 'area:time_split';
-    const breakdown = el('select');
-    breakdown.setAttribute('aria-label', 'Breakdown of the National & Geographical Areas Trends');
-    for (const value of AREA_BREAKDOWNS) {
-      const option = el('option', '', value === 'None' ? 'Breakdown: None' : `Breakdown: ${value}`);
-      option.value = value;
-      breakdown.append(option);
-    }
-    breakdown.value = scenario.area_summary.breakdown;
-    breakdown.addEventListener('change', () => { scenario.area_summary.breakdown = breakdown.value; });
-    breakdown.dataset.diffKey = 'area:breakdown';
-    const cities = checklist('Separate cities', context.filterOptions?.City || [], scenario.area_summary.cities, (values) => {
-      scenario.area_summary.cities = values;
-    }, {
-      emptyLabel: 'None',
-      preset: (context.mainCities || []).length ? {
-        label: 'Main Cities', checked: scenario.area_summary.main_cities, values: context.mainCities,
-        onChange: (checked) => { scenario.area_summary.main_cities = checked; },
-      } : null,
-    });
-    cities.dataset.diffKey = 'area:cities';
-    row.append(time, breakdown, cities);
-    const note = el('p', 'scoring-report-note', 'The National & Geographical Areas Trends are always scored on the whole country, '
-      + 'also when the Region, Cluster, City or Main Cities filters choose part of it. Their time split applies to their slides only.');
-    subpanel.append(row, note);
-    trendsPanel.append(subpanel);
-    // A disabled picker cannot be opened.
-    const setPickerDisabled = (picker, disabled, title = '') => {
-      picker.dataset.disabled = disabled ? 'true' : '';
-      picker.title = disabled ? title : '';
-      if (disabled) picker.open = false;
-    };
-    for (const picker of [cities]) {
-      picker.querySelector('summary').addEventListener('click', (event) => {
-        if (picker.dataset.disabled === 'true') event.preventDefault();
-      });
-    }
-    function updateAreaSummary() {
-      const active = Boolean(scenario.area_summary.enabled);
-      time.disabled = !active;
-      breakdown.disabled = !active;
-      setPickerDisabled(cities, !active, 'Include the National & Geographical Areas Trends to choose the separate cities');
-      subpanel.dataset.disabled = active ? '' : 'true';
-    }
-    updateAreaSummary();
+    trendRow.append(time);
+    trendPanel.append(trendRow);
+    const note = el('p', 'scoring-report-note', 'Always the whole country: the Region, Cluster, City and Main Cities filters of the '
+      + 'scenario do not apply to Geographical Areas and Scoring Trends. Their time split applies to the trends only.');
+    trendsPanel.append(areaPanel, trendPanel, note);
     const scorings = el('div', 'scoring-report-scorings');
     for (const [key, label] of SCORINGS) scorings.append(scoringPanel(scenario, key, label, context.operators || [], rerender));
     card.append(filters, levels, trendsPanel, scorings);

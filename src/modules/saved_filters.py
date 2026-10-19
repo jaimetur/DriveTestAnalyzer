@@ -46,6 +46,9 @@ DEFAULT_LEVELS = ('Operator',)
 SAVED_FILTERS_TABLE = 'saved_filters'
 INTERRUPTED_CALCULATION_MESSAGE = 'Interrupted because the application restarted. Calculate it again.'
 AGGREGATION_CONTRACT_VERSION = 2
+# The Geographical Areas of a result: those of the Breakdown and Separate cities of its Geographical Areas & Scoring
+# Trends, on the whole country.
+GEOGRAPHICAL_AREAS_VERSION = 2
 SCORING_CONTEXT_FILTER_FIELDS = ('Region', 'Cluster', 'City', 'Operator', 'Operator_Vendor', 'Vendor_Operator', 'Vendor', 'Campaign')
 SCORING_CONTEXT_FILTER_COLUMNS = {
     'Region': ('Region', 'g_level_2'),
@@ -841,6 +844,9 @@ def _prepare_saved_filter(
     key_area_summary = normalized_area_summary if area_trends is None else {**normalized_area_summary, 'trends': {
         'campaigns': area_trends['campaigns'], 'source_fingerprint': area_trends['source_fingerprint'],
         'methodologies': area_trends.get('configuration_hash', '')}}
+    # Results calculated before the Geographical Areas followed the Breakdown and Separate cities on the whole country
+    # are calculated again.
+    key_area_summary = {**key_area_summary, 'geographical_version': GEOGRAPHICAL_AREAS_VERSION}
     result_key, _canonical = _result_key(
         normalized_levels, selected_mode, baseline, version, source_fingerprint, config_hash, baseline_aliases,
         normalized_context_filters, resolved_context_filters, operator_mappings, profile_id, profile_name,
@@ -1738,8 +1744,10 @@ def calculate_saved_filter(repository: Repository, filter_id: int,
         context_filters = saved_filter.get('resolved_context_filters', saved_filter.get('context_filters', {}))
         groups = saved_filter.get('methodology_groups') or []
         trends = saved_filter.get('area_trends') if saved_filter.get('area_summary') else None
-        # National & Geographical Areas Trends with campaigns of their own are scored apart, from the CDRs of those campaigns.
-        job_filter = {**saved_filter, 'area_summary': None} if trends else saved_filter
+        # National & Geographical Areas Trends with campaigns of their own are scored apart, from the CDRs of those
+        # campaigns; the Geographical Areas of the job keep their Breakdown and Separate cities.
+        job_filter = ({**saved_filter, 'area_summary': None, 'geographical_areas': saved_filter.get('area_summary')}
+                      if trends else saved_filter)
         if len(groups) > 1:
             # By campaign: the campaigns of each methodology are scored with it, then put together.
             from src.modules.scoring_methodologies import merge_results
@@ -1850,10 +1858,11 @@ def _scoring_result(repository: Repository, saved_filter: dict[str, Any], config
     # The points-lost map also reads the area and coordinate columns.
     required_columns = getattr(engine, 'load_input_columns', None) or getattr(engine, 'required_input_columns')
     # The area summary also reads its breakdown and City columns, and the test start time for its time split; the
-    # Geographical views of a job split by no area read Region and City.
+    # Geographical views read those of their Breakdown and Separate cities.
     extra = area_summary_levels(saved_filter['levels'], saved_filter.get('area_summary'))
     if saved_filter.get('geographical', True):
-        extra = [*extra, *(level for level in geographical_levels(saved_filter['levels']) if level not in extra)]
+        extra = [*extra, *(level for level in geographical_levels(saved_filter['levels'], _geographical_areas(saved_filter))
+                           if level not in extra)]
     for source in sources:
         source['levels'] = [*saved_filter['levels'], *extra]
     frames = _load_source_frames(repository, sources, update_progress, required_columns, context_filters)
@@ -1869,34 +1878,33 @@ def _scoring_result(repository: Repository, saved_filter: dict[str, Any], config
     if not isinstance(result, dict):
         raise TypeError('The scoring engine must return a result object.')
     job_filtered = has_area_filters(context_filters)
+    # The Geographical Areas & Scoring Trends are scored on the whole country: a job with area filters reads its rows apart.
+    country_frames = frames
+    if job_filtered and (saved_filter.get('area_summary') or saved_filter.get('geographical', True)):
+        update_progress(87, 'Reading the CDR rows of the whole country for the Geographical Areas & Scoring Trends')
+        country_frames = _load_source_frames(repository, [dict(source) for source in sources], lambda *_args: None,
+                                             required_columns, whole_country_filters(context_filters))
     if saved_filter.get('area_summary'):
-        # The summary is scored on the whole country: a job with area filters reads its rows apart.
-        summary_frames = frames
-        if job_filtered:
-            update_progress(87, 'Reading the CDR rows of the whole country for the National & Geographical Areas Trends')
-            summary_frames = _load_source_frames(repository, [dict(source) for source in sources], lambda *_args: None,
-                                                 required_columns, whole_country_filters(context_filters))
-        summary = calculate_area_summary(calculate, summary_frames, saved_filter['levels'],
+        summary = calculate_area_summary(calculate, country_frames, saved_filter['levels'],
                                          saved_filter['area_summary'], call_kwargs, update_progress, job_filtered=job_filtered)
-        del summary_frames
         result['warnings'] = [*(result.get('warnings') or []), *summary.pop('warnings')]
         result['area_summary'] = summary
     if saved_filter.get('geographical', True):
-        # Its calculations per Region and of its separate cities (else London) are those of the summary of the same
-        # rows, when it has them.
-        geographical = calculate_geographical(calculate, frames, saved_filter['levels'], call_kwargs, update_progress,
-                                              None if job_filtered else result.get('area_summary'),
-                                              _separate_cities(saved_filter))
+        # Its Breakdown and Separate cities on the whole country: those equal to the job's own calculation or to one of
+        # the summary (the same rows) are read from them.
+        geographical = calculate_geographical(calculate, country_frames, saved_filter['levels'], call_kwargs, update_progress,
+                                              result.get('area_summary'), _geographical_areas(saved_filter),
+                                              reuse_job=not job_filtered)
         if geographical:
             result['geographical'] = geographical
     return result, False
 
 
-def _separate_cities(saved_filter: dict[str, Any]) -> list[str]:
-    """The separate cities of the National & Geographical Areas Trends of a Saved Filter (none when it leaves them
-    out): the cities its Geographical views score apart."""
-    summary = saved_filter.get('area_summary')
-    return list(summary.get('cities') or []) if isinstance(summary, dict) else []
+def _geographical_areas(saved_filter: dict[str, Any]) -> dict[str, Any] | None:
+    """The Breakdown and Separate cities of the Geographical Areas & Scoring Trends of a Saved Filter (those of the job
+    when its trends, with campaigns of their own, are scored apart)."""
+    areas = saved_filter.get('geographical_areas') or saved_filter.get('area_summary')
+    return areas if isinstance(areas, dict) else None
 
 
 def _engine_kwargs(repository: Repository, saved_filter: dict[str, Any], configuration: dict[str, Any],
@@ -1957,12 +1965,14 @@ def _history_result(repository: Repository, saved_filter: dict[str, Any], config
             result['warnings'] = [*(result.get('warnings') or []), *summary.pop('warnings')]
             result['area_summary'] = summary
         if saved_filter.get('geographical', True):
-            # Its calculations per Region and of its separate cities (else London) are those of the summary, when it
-            # has them.
+            # Its Breakdown and Separate cities on the whole country: those equal to the job's own calculation or to one
+            # of the summary are read from them.
+            country_options = {**options, 'context_filters': whole_country_filters(context_filters)}
             geographical = calculate_geographical_from_history(
-                lambda levels, *, cities=None: calculate_scoring_from_history(repository, dataset_ids, levels, cities=cities, **options),
-                saved_filter['levels'], update_progress, None if job_filtered else result.get('area_summary'),
-                _separate_cities(saved_filter))
+                lambda levels, *, cities=None: calculate_scoring_from_history(repository, dataset_ids, levels, cities=cities,
+                                                                              **country_options),
+                saved_filter['levels'], update_progress, result.get('area_summary'), _geographical_areas(saved_filter),
+                reuse_job=not job_filtered)
             if geographical:
                 result['geographical'] = geographical
     except HistoryUnavailable:

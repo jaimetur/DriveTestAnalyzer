@@ -242,9 +242,10 @@
     const kpiValues = check('Show KPI values', saved.kpi_values);
     const gapValues = check('Show GAP values', saved.gap_values);
     tables.append(kpiValues, gapValues);
-    // The Scoring Trends: their campaigns (none: those of the section) and, inside them, the National & Geographical Areas Trends.
+    // The Geographical Areas & Scoring Trends, always included: the areas of both tabs (the Breakdown and the Separate
+    // cities) and the campaigns and time split of the Scoring Trends, on the whole country.
     const trends = node('fieldset', undefined, 'brt-choice-group brt-trends');
-    trends.append(node('legend', 'Scoring Trends'));
+    trends.append(node('legend', 'Geographical Areas & Scoring Trends'));
     const presets = Object.entries(options.campaign_presets || {});
     const campaignValues = () => [...(options.campaigns?.[nrMode()] || [])]
       .sort((left, right) => (pickers().campaignCompare ? pickers().campaignCompare(left, right) : 0));
@@ -261,17 +262,22 @@
       renderTrendCampaigns((trendCampaigns?.getValue?.() || []).filter((value) => presets.some(([key]) => key === value)));
     });
     const area = node('fieldset', undefined, 'brt-choice-group brt-area');
-    const areaEnabled = check('Include National & Geographical Areas Trends', saved.area_summary.enabled);
-    areaEnabled.title = 'When the common filters choose no Region, Cluster or City: the National scoring next to each area, with the campaigns of the Scoring Trends';
-    const areaLegend = node('legend');
-    areaLegend.append(areaEnabled);
-    area.append(areaLegend);
-    const breakdown = selectField('Rows', brtOptions.area_summary_breakdowns.map((value) => [value, value === 'None' ? 'National only' : `Each ${value}`]),
+    area.append(node('legend', 'Geographical Areas'));
+    area.title = 'The areas of the Geographical Areas and of the National & Geographical Areas Trends';
+    const breakdown = selectField('Breakdown', brtOptions.area_summary_breakdowns.map((value) => [value, value === 'None' ? 'None (Separate cities only)' : value]),
       saved.area_summary.breakdown);
+    const cities = multiField('Separate cities', options.values?.City || [], saved.area_summary.cities || [], {
+      preset: {label: 'Main Cities (workspace list at each export)', values: options.main_cities || [], checked: saved.area_summary.main_cities, dynamic: true},
+    });
+    cities.title = 'Each one scored apart with its own tests (with Breakdown None, the only areas)';
+    area.append(breakdown, cities);
+    const trendOptions = node('fieldset', undefined, 'brt-choice-group brt-area');
+    trendOptions.append(node('legend', 'Scoring Trends'));
     const timeSplit = selectField('Time split', brtOptions.area_summary_time_splits.map((value) => [value, value === 'All' ? 'All selected CDRs' : value]),
       saved.area_summary.time_split);
-    area.append(breakdown, timeSplit);
-    trends.append(trendHost, area);
+    trendOptions.append(trendHost, timeSplit);
+    const areaNote = node('p', 'Always the whole country: the Region, Cluster and City filters do not apply to Geographical Areas and Scoring Trends.', 'form-note');
+    trends.append(area, trendOptions, areaNote);
     const grid = node('div', undefined, 'brt-option-grid');
     grid.append(methodology, reference, compared);
     box.append(scorings, environments, tables, grid, trends);
@@ -281,8 +287,8 @@
       kpi_values: kpiValues.box.checked, gap_values: gapValues.box.checked,
       baseline_operator: reference.input.value, methodology: methodology.input.value,
       compared_operators: compared.getValue?.() || [],
-      area_summary: {enabled: areaEnabled.box.checked, breakdown: breakdown.input.value, time_split: timeSplit.input.value,
-        campaigns: trendCampaigns?.getValue?.() || []},
+      area_summary: {enabled: true, breakdown: breakdown.input.value, time_split: timeSplit.input.value,
+        cities: cities.getValue?.() || [], main_cities: Boolean(cities.getPreset?.()), campaigns: trendCampaigns?.getValue?.() || []},
     });
     return box;
   }

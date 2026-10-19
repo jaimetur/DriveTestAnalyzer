@@ -286,13 +286,14 @@ def build_scoring_views(job: dict[str, Any] | None, result: dict[str, Any] | Non
     selected_levels = [level for level in (_HIERARCHY_LEVELS.get(_level_identity(item)) for item in levels) if level]
     insights = build_scoring_insights(score_tables, configuration, selected_levels, result,
                                       location_minimum=int(job.get('location_minimum') or 2))
-    from src.modules.scoring_insights import LOCATION_LEVELS
-    if not any(level in LOCATION_LEVELS for level in selected_levels) and result.get('geographical'):
-        # A job split by no area: its Geographical views come from its calculations per Region and of London.
+    if result.get('geographical'):
+        # The Geographical Areas come from the calculations of the Breakdown and Separate cities of its Geographical
+        # Areas & Scoring Trends on the whole country, whatever its Split by (results calculated before them by a job
+        # split by an area have none and keep their own); the Summary's places ranked were built from its own rows above.
         from src.modules.scoring_area_summary import geographical_insights
         extra = geographical_insights(job, result, operator_mapping_groups, vendor_mapping_groups=vendor_mapping_groups)
-        insights['location_cards'].extend(extra['location_cards'])
-        insights['location_rankings'].extend(extra['location_rankings'])
+        insights['location_cards'] = extra['location_cards']
+        insights['location_rankings'] = extra['location_rankings']
     # National & Geographical Areas Trends with campaigns of their own give the scoring trend of their campaigns.
     from src.modules.scoring_area_summary import build_national_trends
     national_trends = build_national_trends(job, result, operator_mapping_groups, vendor_mapping_groups=vendor_mapping_groups)

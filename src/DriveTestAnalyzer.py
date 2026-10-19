@@ -18775,24 +18775,20 @@ def _matching_saved_filter(task_repository: Repository, base: dict[str, Any], da
     return None
 
 
-def _scenario_area_summary(task_repository: Repository, scenario: dict[str, Any]) -> dict[str, Any] | None:
-    """The Scoring Trends of a scenario: the National & Geographical Areas Trends of a scenario that includes them (scored on the
-    whole country, whatever its area filters) and the campaigns of its trends when they have some of their own; None
-    with neither."""
+def _scenario_area_summary(task_repository: Repository, scenario: dict[str, Any]) -> dict[str, Any]:
+    """The Geographical Areas & Scoring Trends of a scenario, always included (scored on the whole country, whatever its
+    area filters): the Breakdown and Separate cities (the Main Cities of the workspace now with Main Cities) of its
+    Geographical Areas and trends, their time split and the campaigns of its trends when they have some of their own."""
     summary = scenario.get('area_summary') or {}
+    cities = list(summary.get('cities') or [])
+    if summary.get('main_cities'):
+        cities.extend(task_repository.list_main_cities())
+    breakdown = summary.get('breakdown')
+    request = {'breakdown': None if breakdown in (None, '', 'None') else breakdown, 'cities': cities,
+               'time_split': summary.get('time_split') or 'Campaign'}
     campaigns = list(summary.get('campaigns') or [])
-    request = None
-    if summary.get('enabled'):
-        cities = list(summary.get('cities') or [])
-        if summary.get('main_cities'):
-            cities.extend(task_repository.list_main_cities())
-        breakdown = summary.get('breakdown')
-        if (breakdown and breakdown != 'None') or cities:
-            request = {'breakdown': None if breakdown == 'None' else breakdown, 'cities': cities,
-                       'time_split': summary.get('time_split') or 'Campaign'}
     if campaigns:
-        # Alone, the campaigns give the scoring trend of those campaigns.
-        request = {**(request or {'breakdown': None, 'cities': [], 'time_split': 'Campaign'}), 'campaigns': campaigns}
+        request['campaigns'] = campaigns
     return request
 
 

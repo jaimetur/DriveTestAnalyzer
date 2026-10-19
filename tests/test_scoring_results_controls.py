@@ -1819,26 +1819,26 @@ process.stdout.write(JSON.stringify([campaignComparisonRows(comparison, 0, 2), c
 def test_scoring_jobs_show_their_scoring_trends():
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
     cards = _function_source(script, 'renderSavedFilters')
-    # The campaigns of the Scoring Trends, then the National & Areas Trends indented under them.
-    assert "trendMeta.append('Scoring Trends: Campaigns: ', trendValue);" in cards
-    assert "areaMeta.className = 'saved-filter-meta saved-filter-meta-nested';" in cards
-    assert "areaMeta.textContent = '↳ National & Geographical Areas Trends: ';" in cards
-    assert cards.index('trendMeta') < cards.index('areaMeta')
+    # As the panel: the Geographical Areas (Breakdown and Separate cities), then the campaigns and time split of the Scoring Trends.
+    assert "areaMeta.textContent = 'Geographical Areas: ';" in cards
+    assert "trendMeta.append('Scoring Trends: Campaigns: ', trendValue, ' · Time split: ', timeValue);" in cards
+    assert cards.index('areaMeta') < cards.index('trendMeta')
     # Each value in its own colour, after its label.
     assert "areaValue.className = `saved-filter-area-summary saved-filter-area-summary-${kind}`;" in cards
-    program = _function_source(script, 'savedFilterAreaSummaryParts') + r'''
+    program = _function_source(script, 'savedFilterAreaSummaryParts') + _function_source(script, 'savedFilterTimeSplit') + r'''
 process.stdout.write(JSON.stringify([
   savedFilterAreaSummaryParts({area_summary: {time_split: 'Campaign', breakdown: 'Region', cities: ['London']}}),
   savedFilterAreaSummaryParts({area_summary: {time_split: 'All', breakdown: null, cities: ['London', 'Leeds']}}),
   savedFilterAreaSummaryParts({area_summary: {time_split: 'Campaign', breakdown: null, cities: [], campaigns: ['@all-campaigns']}}),
   savedFilterAreaSummaryParts({area_summary: null}),
+  savedFilterTimeSplit({area_summary: {time_split: 'All'}}), savedFilterTimeSplit({}),
 ]));
 '''
     shown = json.loads(subprocess.run(['node', '-e', program], capture_output=True, text=True, check=True).stdout)
-    assert shown == [[['time', 'Time split', 'Campaign'], ['breakdown', 'Breakdown', 'Region'], ['cities', 'Separate cities', 'London']],
-                     [['time', 'Time split', 'All selected CDRs'], ['breakdown', 'Breakdown', 'None'],
-                      ['cities', 'Separate cities', 'London, Leeds']],
-                     [], []]
+    # One saved without areas shows those it is calculated with: each Region and London.
+    default = [['breakdown', 'Breakdown', 'Region'], ['cities', 'Separate cities', 'London']]
+    assert shown == [default, [['breakdown', 'Breakdown', 'None'], ['cities', 'Separate cities', 'London, Leeds']], default, default,
+                     'All selected CDRs', 'Campaign']
 
 
 def test_the_scoring_trend_comes_before_the_national_and_areas():

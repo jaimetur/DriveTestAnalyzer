@@ -42,6 +42,12 @@ def scoring_engine(monkeypatch):
 
     engine.calculate_scoring = calculate_scoring
     monkeypatch.setattr(saved_filters, '_scoring_engine', lambda: engine)
+    # These tests count the calculations of the Saved Filters themselves: their Geographical Areas & Scoring Trends (always
+    # included, see test_scoring_area_summary) are left out.
+    monkeypatch.setattr(saved_filters, 'calculate_area_summary',
+                        lambda *_args, **_kwargs: {'breakdown': 'Region', 'cities': ['London'], 'time_split': 'Campaign',
+                                                   'passes': [], 'warnings': []})
+    monkeypatch.setattr(saved_filters, 'calculate_geographical', lambda *_args, **_kwargs: None)
     return engine, calls
 
 
@@ -601,13 +607,17 @@ def test_scoring_context_filters_are_pushed_down_and_persisted(repository, scori
         assert frame.iloc[0]['Operator'] == 'VF_UK'
         assert frame.iloc[0]['Region'] == 'North'
         assert frame.iloc[0]['score'] == 3.0
-    assert len(load_filters) == 3
-    for dataset_filters in load_filters:
+    # The rows of each CDR with the filters, then those of the whole country (without the Region and City filters) for
+    # the Geographical Areas & Scoring Trends.
+    assert len(load_filters) == 6
+    for dataset_filters in load_filters[:3]:
         assert dataset_filters['Region'] == ['North']
         assert dataset_filters['City'] == ['Leeds']
+    for dataset_filters in load_filters:
         assert dataset_filters['Operator'] == ['VF_UK', 'Vodafone UK']
         assert dataset_filters['Vendor'] == ['Nokia']
         assert dataset_filters['Campaign'] == ['2026-Q2']
+    assert not any(dataset_filters.get('Region') or dataset_filters.get('City') for dataset_filters in load_filters[3:])
 
 
 def test_scoring_context_filter_cache_is_order_independent_and_scope_specific(repository, scoring_engine):

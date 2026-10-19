@@ -177,9 +177,11 @@ def _module_options(section: str) -> dict[str, Any]:
     if section == 'scoring':
         return {'scorings': ['best_network'], 'environments': [COMBINED_ENVIRONMENT], 'kpi_values': False, 'gap_values': False,
                 'baseline_operator': 'EE', 'methodology': BY_CAMPAIGN, 'compared_operators': [],
-                # The Scoring Trends: their campaigns (All available campaigns by default; none: those of the section)
-                # and the National & Geographical Areas Trends.
-                'area_summary': {'enabled': True, 'breakdown': 'Region', 'time_split': 'Campaign', 'campaigns': [ALL_CAMPAIGNS]}}
+                # The Geographical Areas & Scoring Trends: the Breakdown and Separate cities of both tabs (London or the
+                # Main Cities at each export), the campaigns of the trends (All available campaigns by default; none: those
+                # of the section) and their time split.
+                'area_summary': {'enabled': True, 'breakdown': 'Region', 'cities': ['London'], 'main_cities': False,
+                                 'time_split': 'Campaign', 'campaigns': [ALL_CAMPAIGNS]}}
     if section == 'network_insights':
         return {'technology': 'lte', 'group': ['operator', 'campaign'], 'coverage_threshold': -110.0, 'interference_threshold': 0.0,
                 'nr_coverage_threshold': -115.0, 'nr_interference_threshold': -3.0, 'overshoot_km': 5.0, 'grid_metres': 250.0,
@@ -210,8 +212,11 @@ def _normalize_options(section: str, raw: Any, legacy_campaigns: Any = None) -> 
             # By campaign (each campaign with its methodology) unless a methodology is chosen.
             'methodology': str(raw.get('methodology') or '').strip()[:120] or BY_CAMPAIGN,
             'compared_operators': _strings(raw.get('compared_operators')),
-            'area_summary': {'enabled': bool(area.get('enabled', True)),
+            # Always included; reports saved before they had Separate cities keep London.
+            'area_summary': {'enabled': True,
                              'breakdown': breakdown if breakdown in AREA_SUMMARY_BREAKDOWNS else 'Region',
+                             'cities': _strings(area['cities']) if 'cities' in area else ['London'],
+                             'main_cities': bool(area.get('main_cities')),
                              'time_split': time_split if time_split in AREA_SUMMARY_TIME_SPLITS else 'Campaign',
                              'campaigns': (normalize_trend_campaigns(area['campaigns']) if 'campaigns' in area
                                            else [ALL_CAMPAIGNS])},
@@ -381,9 +386,10 @@ def _option_lines(section: dict[str, Any], dashboard_names: dict[str, str] | Non
         area = options['area_summary']
         trend_campaigns = ', '.join(CAMPAIGN_PRESET_LABELS.get(value) or format_campaign(value) or value
                                     for value in area.get('campaigns') or []) or 'the campaigns of the section'
-        areas = (f" · National & Geographical Areas Trends: {'National only' if area['breakdown'] == 'None' else 'each ' + area['breakdown']}"
-                 f", time split {'All selected CDRs' if area['time_split'] == 'All' else area['time_split']}"
-                 if area.get('enabled') else '')
+        cities = ', '.join([*(['Main Cities'] if area.get('main_cities') else []), *(area.get('cities') or [])])
+        rows = ' and '.join(part for part in ('' if area['breakdown'] == 'None' else 'each ' + area['breakdown'], cities) if part)
+        areas = (f" · Geographical Areas: {rows or 'each Region and London'}"
+                 f" · time split {'All selected CDRs' if area['time_split'] == 'All' else area['time_split']}")
         return [f"{scorings} · Environments: {environments}",
                 f"Methodology: {methodology} · GAP reference: {options['baseline_operator']}",
                 f"Scoring Trends: {trend_campaigns}{areas}"]
@@ -1226,7 +1232,7 @@ class SectionGenerator:
             'name': report_title(self.definition), 'context_filters': context_filters,
             'main_cities': self.filters['main_cities'], 'aggregation_levels': ['Operator', 'Campaign'],
             'scorings': {kind: content(kind) for kind, _label in SCORINGS},
-            'area_summary': {**options['area_summary'], 'cities': [], 'main_cities': False},
+            'area_summary': {**options['area_summary'], 'enabled': True},
         }]}
         base = {'dataset_ids': dataset_ids, 'nr_mode': nr_mode, 'baseline_operator': options['baseline_operator'],
                 'scoring_profile_id': options['methodology'] or None,

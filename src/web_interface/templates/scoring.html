@@ -94,12 +94,9 @@
   .scoring-dataset-option { display: flex; align-items: flex-start; gap: .65rem; min-width: 0; padding: .62rem .7rem; border: 1px solid rgba(25,42,53,.09); border-radius: 11px; background: rgba(255,255,255,.76); cursor: pointer; }
   .scoring-dataset-option[hidden] { display: none; }
   /* The National & Geographical Areas Trends: their settings are enabled while they are included. */
-  .scoring-area-toggle { display: inline-flex; align-items: center; gap: .5rem; cursor: pointer; }
-  .scoring-area-toggle input { width: 1rem; height: 1rem; margin: 0; accent-color: var(--brand); }
   .scoring-area-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(13rem, 16rem)); gap: .6rem 1rem; }
   .scoring-area-grid > label { display: grid; gap: .3rem; font-size: .82rem; font-weight: 700; color: #31545a; }
-  .scoring-area-summary:not(.is-included) .scoring-area-grid { opacity: .55; }
-  /* Scoring Trends holds its campaigns and, inside it, the National & Geographical Areas Trends. */
+  /* Geographical Areas & Scoring Trends holds the areas of both tabs and the campaigns and time split of the trends. */
   .scoring-trends-picker > .scoring-area-summary { margin-top: .7rem; border-color: #c9e0d4; background: rgba(255,255,255,.55); }
   .scoring-trends-grid { margin-bottom: .1rem; }
   /* Included, the summary locks the area filters of the Context filters, and says why. */
@@ -1314,36 +1311,39 @@
       <p class="scoring-context-filter-note scoring-levels-note">Operator is required.</p>
     </div>
     <div class="scoring-picker scoring-trends-picker" data-scoring-trends aria-labelledby="scoring-trends-title">
-      <div class="scoring-picker-head"><strong id="scoring-trends-title">Scoring Trends</strong><span>The campaigns of every chart of the Scoring Trends tab</span></div>
-      <div class="scoring-area-grid scoring-trends-grid">
-        <label>Campaigns
-          <select multiple size="1" data-scoring-trend-campaigns data-multiselect-auto-close="1000" data-multiselect-empty-label="Same as the Campaign filter" aria-label="Campaigns of the Scoring Trends">
-            <option value="" disabled>No values</option>
-          </select>
-        </label>
-      </div>
-      <p class="scoring-context-filter-note">The Scoring Trend and the National &amp; Geographical Areas Trends are calculated with these campaigns, whatever the Campaign filter of the rest of the scoring, with the same filters, methodology and GAP reference. Without campaigns they follow the Campaign filter.</p>
+      <div class="scoring-picker-head"><strong id="scoring-trends-title">Geographical Areas &amp; Scoring Trends</strong><span>The areas of the Geographical Areas and Scoring Trends tabs, and the campaigns and time split of the trends</span></div>
       <div class="scoring-picker scoring-area-summary" data-scoring-area-summary>
-        <div class="scoring-picker-head"><label class="scoring-area-toggle"><input type="checkbox" data-scoring-area-enabled><strong>Include National &amp; Geographical Areas Trends</strong></label></div>
+        <div class="scoring-picker-head"><strong>Geographical Areas</strong><span>Both tabs: the Geographical Areas and the National &amp; Geographical Areas Trends</span></div>
         <div class="scoring-area-grid">
+          <label>Breakdown
+            <select data-scoring-area-breakdown aria-label="Breakdown of the Geographical Areas and the National &amp; Geographical Areas Trends" title="Each Region, Cluster or City of the Geographical Areas and the trends; None: the Separate cities only">
+              {% for value in ['None', 'Region', 'Cluster', 'City'] %}<option value="{{ value }}"{% if value == 'Region' %} selected{% endif %}>{{ 'None (Separate cities only)' if value == 'None' else value }}</option>{% endfor %}
+            </select>
+          </label>
+          <label>Separate cities
+            <select multiple size="1" data-scoring-area-cities data-multiselect-auto-close="1000" data-multiselect-empty-label="None" aria-label="Separate cities of the Geographical Areas and the National &amp; Geographical Areas Trends">
+              <option value="London" selected>London</option>
+            </select>
+          </label>
+        </div>
+      </div>
+      <div class="scoring-picker scoring-area-summary scoring-trends-options">
+        <div class="scoring-picker-head"><strong>Scoring Trends</strong><span>The Scoring Trends tab only</span></div>
+        <div class="scoring-area-grid scoring-trends-grid">
+          <label>Campaigns
+            <select multiple size="1" data-scoring-trend-campaigns data-multiselect-auto-close="1000" data-multiselect-empty-label="Same as the Campaign filter" aria-label="Campaigns of the Scoring Trends">
+              <option value="" disabled>No values</option>
+            </select>
+          </label>
           <label>Time split
             <select data-scoring-area-time-split aria-label="Time split of the National &amp; Geographical Areas Trends" title="All selected CDRs aggregates every selected CDR into one value; Campaign splits by campaign; Daily to Yearly split by the period of the start time of each test">
               {% for value, label in [('All', 'All selected CDRs'), ('Campaign', 'Campaign'), ('Daily', 'Daily'), ('Weekly', 'Weekly'), ('Monthly', 'Monthly'), ('Quarterly', 'Quarterly'), ('Yearly', 'Yearly')] %}<option value="{{ value }}"{% if value == 'Campaign' %} selected{% endif %}>{{ label }}</option>{% endfor %}
             </select>
           </label>
-          <label>Breakdown
-            <select data-scoring-area-breakdown aria-label="Breakdown of the National &amp; Geographical Areas Trends">
-              {% for value in ['None', 'Region', 'Cluster', 'City'] %}<option value="{{ value }}"{% if value == 'Region' %} selected{% endif %}>{{ value }}</option>{% endfor %}
-            </select>
-          </label>
-          <label>Separate cities
-            <select multiple size="1" data-scoring-area-cities data-multiselect-auto-close="1000" data-multiselect-empty-label="None" aria-label="Separate cities of the National &amp; Geographical Areas Trends">
-              <option value="London" selected>London</option>
-            </select>
-          </label>
         </div>
-        <p class="scoring-context-filter-note">The National scoring next to the separate cities and each area of the breakdown, each scored with its own measurements, in the National &amp; Geographical Areas Trends of the Scoring Trends tab and slides of the reports. It is always scored on the whole country, also when the Region, Cluster or City filters choose part of it. Its time split applies to it only.</p>
+        <p class="scoring-context-filter-note">The Scoring Trend and the National &amp; Geographical Areas Trends are calculated with these campaigns, whatever the Campaign filter of the rest of the scoring, with the same filters, methodology and GAP reference. Without campaigns they follow the Campaign filter.</p>
       </div>
+      <p class="scoring-context-filter-note">Always the whole country: the Region, Cluster and City filters of the calculation do not apply to Geographical Areas and Scoring Trends.</p>
     </div>
     <div class="scoring-picker" aria-labelledby="scoring-gap-reference-title">
       <div class="scoring-picker-head"><strong id="scoring-gap-reference-title">GAP reference operator</strong></div>

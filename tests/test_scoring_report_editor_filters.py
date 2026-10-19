@@ -203,16 +203,15 @@ const picker = label => nodes.find(node => node.tagName === 'SUMMARY' && node.te
 const details = label => nodes.find(node => node.tagName === 'DETAILS' && node.children[0] === picker(label));
 const labelled = text => nodes.find(node => node.tagName === 'LABEL' && node.text === text).querySelector('input');
 const selects = nodes.filter(node => node.tagName === 'SELECT');
-const [trendChoice, time, breakdown] = selects;
+const [breakdown, trendChoice, time] = selects;
 const result = {defaults: defaultScenario().area_summary, scenarioTime: 'time_split' in defaultScenario(),
-  cities: picker('Separate cities:').textContent, tables: scenario.scorings.best_network.tables.area_summary,
-  before: {region: details('Region:').dataset.disabled, cities: details('Separate cities:').dataset.disabled,
-    breakdown: breakdown.disabled, time: time.disabled}, time: time.value};
-// Including the summary keeps the area filters (it is scored on the whole country) and enables its settings.
-labelled('Include National & Geographical Areas Trends').click();
-result.after = {region: details('Region:').dataset.disabled, cities: details('Separate cities:').dataset.disabled,
-  breakdown: breakdown.disabled, time: time.disabled, filters: scenario.context_filters, enabled: scenario.area_summary.enabled,
-  summary: picker('Region:').textContent};
+  cities: picker('Separate cities:').textContent, tables: scenario.scorings.best_network.tables.area_summary, time: time.value,
+  // Saved unchecked: included now, with the area filters as they are (it is scored on the whole country).
+  after: {region: details('Region:').dataset.disabled, cities: details('Separate cities:').dataset.disabled,
+    breakdown: breakdown.disabled, time: time.disabled, filters: scenario.context_filters, enabled: scenario.area_summary.enabled,
+    summary: picker('Region:').textContent},
+  legends: nodes.filter(node => node.tagName === 'LEGEND').map(node => node.textContent),
+  none: [...breakdown.children].find(option => option.value === 'None').disabled};
 // The time split belongs to the summary: Split by keeps Campaign.
 time.value = 'Weekly'; time.dispatch('change');
 result.weekly = {levels: scenario.aggregation_levels, split: scenario.area_summary.time_split,
@@ -232,14 +231,14 @@ console.log(JSON.stringify(result));
                                   'main_cities': False, 'campaigns': ['@all-campaigns']}
     assert result['scenarioTime'] is False and result['time'] == 'Campaign'
     assert result['cities'] == 'Separate cities: London' and 'tables' not in result
-    # Not included, its settings are disabled and the geographic filters can be used.
-    assert result['before'] == {'cities': 'true', 'breakdown': True, 'time': True}
-    # Included, the area filters stay as they are.
-    # (The area pickers are never disabled.)
-    assert result['after'] == {'cities': '', 'breakdown': False, 'time': False, 'filters': {'Region': ['Vendor A']},
+    # Always included, in two subpanels; the area filters stay as they are. None needs Separate cities (London here).
+    assert result['after'] == {'breakdown': False, 'time': False, 'filters': {'Region': ['Vendor A']},
                                'enabled': True, 'summary': 'Region: Vendor A'}
+    start = result['legends'].index('Geographical Areas & Scoring Trends')
+    assert result['legends'][start:start + 3] == ['Geographical Areas & Scoring Trends', 'Geographical Areas', 'Scoring Trends']
+    assert result['none'] is False
     assert result['weekly'] == {'levels': ['Operator', 'Campaign'], 'split': 'Weekly', 'value': 'Weekly'}
     assert 'disabledValue' not in result
-    # The National & Geographical Areas Trends are inside the Scoring Trends, whose campaigns are All available campaigns by default.
+    # The campaigns of the Scoring Trends are All available campaigns by default.
     assert result['trends'] == {'choice': '@all-campaigns', 'campaigns': ['@all-campaigns'], 'legend': True,
                                 'preset': ['@latest-2-campaigns']}

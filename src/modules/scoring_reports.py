@@ -111,16 +111,17 @@ def _normalize_options(raw: Any) -> dict[str, Any]:
 
 
 def _normalize_area_summary(raw: Any) -> dict[str, Any]:
-    """The Scoring Trends of the scenario: the campaigns of its trends (none: those of the scenario) and whether it has
-    the National & Geographical Areas Trends, with their rows besides National: the chosen cities, then each Region, Cluster or City.
-    Every scenario has them by default: they are scored on the whole country, whatever its area filters.
+    """The Geographical Areas & Scoring Trends of the scenario, always included and scored on the whole country, whatever
+    its area filters: the Breakdown and Separate cities (and Main Cities) of its Geographical Areas and of the National &
+    Geographical Areas Trends, their time split and the campaigns of its trends (none: those of the scenario).
     """
     if not isinstance(raw, dict):
         return copy.deepcopy(DEFAULT_AREA_SUMMARY)
     breakdown = str(raw.get('breakdown') or '').strip().casefold()
     time_split = str(raw.get('time_split') or '').strip().casefold()
     return {
-        'enabled': bool(raw['enabled']) if 'enabled' in raw else True,
+        # (Saved when they could be left out: included now.)
+        'enabled': True,
         'time_split': next((name for name in AREA_SUMMARY_TIME_SPLITS if name.casefold() == time_split), 'Campaign'),
         'breakdown': next((name for name in AREA_SUMMARY_BREAKDOWNS if name.casefold() == breakdown), 'None'),
         'cities': _strings(raw.get('cities')),

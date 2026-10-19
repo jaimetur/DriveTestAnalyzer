@@ -55,8 +55,9 @@ def _kpi_values(result):
 
 
 def test_area_summary_request_is_scored_on_the_whole_country():
-    assert normalize_area_summary_request(None, {}) is None
-    assert normalize_area_summary_request({'breakdown': 'None', 'cities': []}, {}) is None
+    # Always included: without a breakdown or separate cities (one saved when they could be left out), each Region and London.
+    assert normalize_area_summary_request(None, {}) == normalize_area_summary_request({'breakdown': 'None', 'cities': []}, {}) == {
+        'breakdown': 'Region', 'cities': ['London'], 'time_split': 'Campaign'}
     assert normalize_area_summary_request({'breakdown': 'region', 'cities': ['London', 'london', ' ']}, {}) == {
         'breakdown': 'Region', 'cities': ['London'], 'time_split': 'Campaign'}
     # Area filters are allowed: the summary is scored without them.
@@ -108,8 +109,14 @@ def test_a_job_split_by_no_area_has_its_geographical_areas():
     from src.modules.scoring_views import build_scoring_views
     job, result, frames, kwargs = _calculation()
     assert [item['kind'] for item in geographical_passes(['Operator', 'Campaign'])] == ['Region', 'City']
-    assert geographical_passes(['Operator', 'Region']) == geographical_passes(['Operator', 'City']) == []
-    assert geographical_levels(['Operator']) == ['Region', 'City'] and geographical_levels(['Operator', 'Cluster']) == []
+    # Whatever the Split by: its levels without the areas, split by the Breakdown, and the Separate cities alone.
+    assert [item['levels'] for item in geographical_passes(['Operator', 'City', 'Campaign'])] == [
+        ['Operator', 'Campaign', 'Region'], ['Operator', 'Campaign', 'City']]
+    assert [item['kind'] for item in geographical_passes(['Operator'], {'breakdown': 'City', 'cities': ['Leeds']})] == ['City']
+    assert geographical_passes(['Operator'], {'breakdown': 'None', 'cities': ['Leeds']}) == [
+        {'kind': 'City', 'field': 'city', 'levels': ['Operator', 'City'], 'cities': ['Leeds']}]
+    assert geographical_levels(['Operator']) == ['Region', 'City'] and geographical_levels(['Operator', 'Region']) == ['City']
+    assert geographical_levels(['Operator'], {'breakdown': 'Cluster', 'cities': []}) == ['Cluster']
     geographical = calculate_geographical(scoring_engine.calculate_scoring, frames, job['levels'], kwargs)
     regions, london = geographical['passes']
     assert {row['region'] for row in regions['result']['scoring']} == {'Vendor A', 'VMO2 North'}
@@ -122,11 +129,17 @@ def test_a_job_split_by_no_area_has_its_geographical_areas():
         ('Region', ('Vendor A', 'VMO2 North')), ('City', ('London',))}
     views = build_scoring_views(job, result)
     assert {item['level'] for item in views['insights']['location_cards']} >= {'Region', 'City'}
-    # A job split by an area has its own views: the calculations are not used.
+    # A job split by an area shows them too, instead of its own rows; one calculated before them keeps its own.
     split = {**job, 'levels': ['Operator', 'Region'], 'aggregation_levels': ['Operator', 'Region']}
     by_region = scoring_engine.calculate_scoring(frames, ['Operator', 'Region'], **kwargs)
     split_views = build_scoring_views(split, {**by_region, 'geographical': geographical})
-    assert {item['level'] for item in split_views['insights']['location_cards']} == {'Region'}
+    assert {item['level'] for item in split_views['insights']['location_cards']} == {'Region', 'City'}
+    assert {item['level'] for item in build_scoring_views(split, by_region)['insights']['location_cards']} == {'Region'}
+    # Without area filters, the calculation equal to the job's own is read from it.
+    own = calculate_geographical(scoring_engine.calculate_scoring, frames, ['Operator', 'Region'], kwargs, reuse_job=True)
+    assert [(item['kind'], bool(item.get('reuses_job'))) for item in own['passes']] == [('Region', True), ('City', False)]
+    reused_cards = build_scoring_views(split, {**by_region, 'geographical': own})['insights']['location_cards']
+    assert {item['level'] for item in reused_cards} == {'Region', 'City'}
     # With an area summary of the same rows, its calculations per Region and of London are read from it.
     summary = calculate_area_summary(scoring_engine.calculate_scoring, frames, job['levels'],
                                      {'breakdown': 'Region', 'cities': ['London'], 'time_split': 'All'}, kwargs)
@@ -140,8 +153,9 @@ def test_a_job_split_by_no_area_has_its_geographical_areas():
     assert len(calculate_geographical(counting, frames, job['levels'], kwargs, summary={**summary, 'time_split': 'Weekly'})['passes']) == 2
     assert len(calls) == 2
     # The separate cities of the National & Geographical Areas Trends are scored apart instead of London.
-    assert geographical_passes(['Operator', 'Campaign'], ['Leeds', ' '])[1]['cities'] == ['Leeds']
-    chosen = calculate_geographical(scoring_engine.calculate_scoring, frames, job['levels'], kwargs, cities=['Leeds', 'London'])
+    assert geographical_passes(['Operator', 'Campaign'], {'breakdown': 'Region', 'cities': ['Leeds', ' ']})[1]['cities'] == ['Leeds']
+    chosen = calculate_geographical(scoring_engine.calculate_scoring, frames, job['levels'], kwargs,
+                                    areas={'breakdown': 'Region', 'cities': ['Leeds', 'London']})
     assert {row['city'] for row in chosen['passes'][1]['result']['scoring']} == {'Leeds', 'London'}
     chosen_cards = geographical_insights(job, {**result, 'geographical': chosen})['location_cards']
     assert any(item['level'] == 'City' and {card['label'] for card in item['cards']} == {'Leeds', 'London'} for item in chosen_cards)
@@ -294,6 +308,7 @@ def test_scenarios_of_the_whole_country_calculate_their_area_summary(monkeypatch
     # The campaigns of the Scoring Trends join them; alone, they give the scoring trend of those campaigns.
     scenario['area_summary'] = {**scenario['area_summary'], 'campaigns': ['@latest-2-campaigns']}
     assert core._scenario_area_summary(Repository(), scenario)['campaigns'] == ['@latest-2-campaigns']
+    # Always included: one saved without areas takes them from the normalization of the Saved Filter (Region and London).
     trends_only = {**scenario, 'area_summary': {'enabled': False, 'campaigns': ['2026-Q1', '2026-Q2']}}
     assert core._scenario_area_summary(Repository(), trends_only) == core._scenario_area_summary(
         Repository(), {**trends_only, 'context_filters': {'Region': ['Vendor A']}}) == {
@@ -307,9 +322,10 @@ def test_scenarios_of_the_whole_country_calculate_their_area_summary(monkeypatch
     london = normalize_report_configuration({'scenarios': [default_scenario(name='London', context_filters={
         'City': ['London']})]})['scenarios'][0]
     assert london['area_summary']['enabled'] is True
-    # Nor when it is not checked.
+    # Also when it was saved unchecked.
     scenario['area_summary']['enabled'] = False
-    assert core._scenario_area_summary(Repository(), scenario) is None
+    assert core._scenario_area_summary(Repository(), scenario)['cities'] == ['London', 'Leeds', 'Bristol']
+    assert normalize_report_configuration({'scenarios': [{**scenario, 'name': 'Saved'}]})['scenarios'][0]['area_summary']['enabled'] is True
 
     calculated = []
 
@@ -438,8 +454,9 @@ def test_the_scoring_page_calculates_and_shows_the_national_and_areas(scoring_ap
 
 def test_the_calculation_selection_keeps_the_national_and_area_summary(scoring_api):
     client = scoring_api['client']
+    # Always included: each Region and London by default.
     assert client.get('/api/scoring/selection').json()['selection']['area_summary'] == {
-        'enabled': False, 'time_split': 'Campaign', 'breakdown': 'Region', 'cities': ['London'], 'campaigns': ['@all-campaigns']}
+        'enabled': True, 'time_split': 'Campaign', 'breakdown': 'Region', 'cities': ['London'], 'campaigns': ['@all-campaigns']}
     selection = client.get('/api/scoring/selection').json()['selection']
     summary = {'enabled': True, 'time_split': 'weekly', 'breakdown': 'cluster', 'cities': ['London', 'Leeds'],
                'campaigns': ['@latest-2-campaigns', '2026-Q1']}
@@ -449,12 +466,13 @@ def test_the_calculation_selection_keeps_the_national_and_area_summary(scoring_a
                                                   'cities': ['London', 'Leeds'], 'campaigns': ['@latest-2-campaigns']}
     assert client.get('/api/scoring/selection').json()['selection']['area_summary']['time_split'] == 'Weekly'
     page = client.get('/scoring').text
-    # The National & Geographical Areas Trends inside the Scoring Trends with their campaigns, and the Scoring Trends results tab.
-    for marker in ('data-scoring-trends', 'data-scoring-trend-campaigns', 'data-scoring-area-enabled',
-                   'Include National &amp; Geographical Areas Trends', 'data-scoring-area-time-split', 'data-scoring-area-breakdown',
-                   'data-scoring-area-cities', 'data-result-tab="trends"', 'data-result-pane="trends"'):
+    # The Geographical Areas & Scoring Trends: the areas of both tabs, then the campaigns and time split of the trends.
+    for marker in ('data-scoring-trends', 'Geographical Areas &amp; Scoring Trends', 'data-scoring-area-breakdown',
+                   'data-scoring-area-cities', 'data-scoring-trend-campaigns', 'data-scoring-area-time-split',
+                   'data-result-tab="trends"', 'data-result-pane="trends"'):
         assert marker in page
-    assert page.index('data-scoring-trend-campaigns') < page.index('data-scoring-area-enabled')
+    assert 'data-scoring-area-enabled' not in page and 'Include National' not in page
+    assert page.index('data-scoring-area-cities') < page.index('data-scoring-trend-campaigns') < page.index('data-scoring-area-time-split')
 
 
 def test_national_and_areas_trends_score_campaigns_of_their_own(scoring_api, monkeypatch):
@@ -506,7 +524,7 @@ def test_national_and_areas_trends_score_campaigns_of_their_own(scoring_api, mon
     # Without campaigns of its own a summary keeps the form (and the Saved Filter) of the summaries saved before.
     assert normalize_area_summary_request({'breakdown': 'Region', 'campaigns': []}, {}) == {
         'breakdown': 'Region', 'cities': [], 'time_split': 'Campaign'}
-    # Campaigns alone give the scoring trend of the selection (filtered by area too); an automatic choice stands alone.
+    # Campaigns saved alone (when the areas could be left out) take each Region and London; an automatic choice stands alone.
     assert normalize_area_summary_request({'breakdown': 'None', 'campaigns': ['2026-Q1', '@latest-2-campaigns']},
                                           {'City': ['London']}) == {
-        'breakdown': None, 'cities': [], 'time_split': 'Campaign', 'campaigns': ['@latest-2-campaigns']}
+        'breakdown': 'Region', 'cities': ['London'], 'time_split': 'Campaign', 'campaigns': ['@latest-2-campaigns']}

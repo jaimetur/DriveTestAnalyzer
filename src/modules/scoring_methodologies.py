@@ -237,7 +237,7 @@ def split_result(result: dict[str, Any], group: dict[str, Any]) -> dict[str, Any
         summary = result.get(key)
         if isinstance(summary, dict):
             part[key] = {**summary, 'passes': [
-                item if item.get('reuses_summary') else
+                item if item.get('reuses_summary') or item.get('reuses_job') else
                 {**item, 'result': {field: (rows_of(value, group['profile_id']) if isinstance(value, list) else value)
                                     for field, value in (item.get('result') or {}).items()}}
                 for item in summary.get('passes') or []]}

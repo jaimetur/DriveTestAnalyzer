@@ -357,9 +357,9 @@
   // The selection of the panel before the editing (given back when it is cancelled) and the place of the panel.
   let selectionBeforeEdit = null;
   let editPanelPlaceholder = null;
-  // The National & Geographical Areas Trends of the calculation: included or not, its time split, breakdown and separate cities.
+  // The Geographical Areas & Scoring Trends of the calculation, always included: the Breakdown and Separate cities of both
+  // tabs, and the time split and campaigns of the trends.
   const areaSummaryPanel = root.querySelector('[data-scoring-area-summary]');
-  const areaSummaryEnabled = root.querySelector('[data-scoring-area-enabled]');
   const areaSummaryTimeSplit = root.querySelector('[data-scoring-area-time-split]');
   const areaSummaryBreakdown = root.querySelector('[data-scoring-area-breakdown]');
   const areaSummaryCities = root.querySelector('[data-scoring-area-cities]');
@@ -459,9 +459,6 @@
   const calculatingSavedFilters = new Map();
   let selectionLoaded = false;
   let selectionPersisted = false;
-  // The National & Geographical Areas Trends of the selection left in the panel, until the page has reopened its Saved
-  // Filter (see restoreOpenedSavedFilterTrends).
-  let reloadedTrends = false;
   let selectionDirty = false;
   let restoringSelection = false;
   let selectionSaveTimer = null;
@@ -737,7 +734,7 @@
 
   function selectedAreaSummary() {
     return {
-      enabled: Boolean(areaSummaryEnabled?.checked),
+      enabled: true,
       time_split: String(areaSummaryTimeSplit?.value || 'Campaign'),
       breakdown: String(areaSummaryBreakdown?.value || 'Region'),
       cities: areaSummaryCities ? [...areaSummaryCities.selectedOptions].map(option => option.value).filter(Boolean) : [],
@@ -745,16 +742,17 @@
     };
   }
 
-  // Included, the summary is scored on the whole country, also when the Region, Cluster or City filters choose part of it.
+  // Without a Breakdown the Separate cities are the only areas: None is offered only with some of them, and the Breakdown
+  // goes back to Region when the last one is left out.
   function syncAreaSummary() {
-    if (!areaSummaryPanel) return;
-    const included = Boolean(areaSummaryEnabled?.checked);
-    areaSummaryPanel.classList.toggle('is-included', included);
-    for (const control of [areaSummaryTimeSplit, areaSummaryBreakdown]) if (control) control.disabled = !included;
-    if (areaSummaryCities && areaSummaryCities.disabled !== !included) {
-      areaSummaryCities.disabled = !included;
-      areaSummaryCities.dispatchEvent(new Event('multiselect:options-updated'));
+    if (!areaSummaryPanel || !areaSummaryBreakdown) return;
+    const cities = areaSummaryCities ? [...areaSummaryCities.selectedOptions].filter(option => option.value).length : 0;
+    const none = [...areaSummaryBreakdown.options].find(option => option.value === 'None');
+    if (none) {
+      none.disabled = !cities;
+      none.title = cities ? '' : 'Choose a Separate city first';
     }
+    if (!cities && areaSummaryBreakdown.value === 'None') areaSummaryBreakdown.value = 'Region';
   }
 
   function applyHierarchy(hierarchy) {
@@ -1010,7 +1008,6 @@
         select.dispatchEvent(new Event('change', {bubbles: true}));
       }
       const summary = selection?.area_summary && typeof selection.area_summary === 'object' ? selection.area_summary : {};
-      if (areaSummaryEnabled) areaSummaryEnabled.checked = Boolean(summary.enabled);
       if (areaSummaryTimeSplit && [...areaSummaryTimeSplit.options].some(option => option.value === summary.time_split)) {
         areaSummaryTimeSplit.value = summary.time_split;
       }
@@ -1057,40 +1054,15 @@
       baseline_operator: savedFilter.baseline_operator,
       scoring_profile_id: savedFilter.scoring_profile_id,
       context_filters: savedFilter.context_filters || {},
-      // A Saved Filter without the National & Geographical Areas Trends leaves them out and keeps their settings; the campaigns of
-      // its Scoring Trends come with it.
-      area_summary: savedFilter.area_summary ? {...savedFilter.area_summary, breakdown: savedFilter.area_summary.breakdown || 'None',
-        campaigns: savedFilter.area_summary.campaigns || [],
-        enabled: Boolean(savedFilter.area_summary.breakdown || (savedFilter.area_summary.cities || []).length)}
-        : {enabled: false, campaigns: []},
+      // Its Geographical Areas & Scoring Trends (Region and London for one saved without them).
+      area_summary: savedFilter.area_summary && (savedFilter.area_summary.breakdown || (savedFilter.area_summary.cities || []).length)
+        ? {...savedFilter.area_summary, breakdown: savedFilter.area_summary.breakdown || 'None', campaigns: savedFilter.area_summary.campaigns || [],
+          enabled: true}
+        : {enabled: true, breakdown: 'Region', cities: ['London'], time_split: savedFilter.area_summary?.time_split || 'Campaign',
+          campaigns: savedFilter.area_summary?.campaigns || []},
     });
     scheduleSelectionSave();
     scheduleAutoCdrRefresh({delay: 0});
-  }
-
-  // On a reload, the panel shows the Saved Filter the page reopens as it was left: when the selection left in the panel
-  // is that of the Saved Filter with its National & Geographical Areas Trends, they stay included (as when the Saved
-  // Filter is chosen), so the panel matches it and Recalculate is offered; any other selection starts without them.
-  async function restoreOpenedSavedFilterTrends() {
-    const trends = reloadedTrends;
-    reloadedTrends = false;
-    if (!trends || !areaSummaryEnabled || areaSummaryEnabled.checked || !userSelectedSavedFilter || !selectedSavedFilter
-        || editingSavedFilter) return;
-    const opened = savedFilterIdOf(selectedSavedFilter);
-    areaSummaryEnabled.checked = true;
-    try {
-      const response = await requestJson(`${savedFiltersUrl}/match`, {method: 'POST', body: JSON.stringify(calculationPayload())});
-      if (response.saved_filter && savedFilterIdOf(response.saved_filter) === opened && savedFilterIdOf(selectedSavedFilter || {}) === opened) {
-        syncAreaSummary();
-        scheduleSelectionSave();
-        calculationMatchKey = '';
-        updateSelection();
-        return;
-      }
-    } catch (_error) {
-      // Without an answer the panel keeps the trends left out.
-    }
-    areaSummaryEnabled.checked = false;
   }
 
   function autoCdrFilters() {
@@ -1241,13 +1213,9 @@
       } catch (_error) {
         autoCdrs = {options: null, incomplete: []};
       }
-      // A new scoring starts without the National & Geographical Areas Trends (only a Saved Filter that has them includes them); it
-      // keeps the campaigns of the Scoring Trends.
-      const savedSummary = body.selection.area_summary && typeof body.selection.area_summary === 'object' ? body.selection.area_summary : {};
-      reloadedTrends = Boolean(savedSummary.enabled);
-      applySavedCalculationSelection({...body.selection, area_summary: {...savedSummary, enabled: false}});
+      applySavedCalculationSelection(body.selection);
       const appliedKey = calculationSelectionKey(calculationSelectionFromControls());
-      selectionPersisted = body.persisted !== false && !savedSummary.enabled;
+      selectionPersisted = body.persisted !== false;
       lastSavedSelectionKey = selectionPersisted ? appliedKey : '';
       lastQueuedSelectionKey = selectionPersisted ? appliedKey : '';
       selectionLoaded = true;
@@ -1626,16 +1594,20 @@
     return display(own).join(', ');
   }
 
-  // The settings of the National & Geographical Areas Trends of a Saved Filter as [kind, label, value] triples, or [] when it has
-  // none: their time split, breakdown and separate cities.
+  // The Geographical Areas of a Saved Filter as [kind, label, value] triples: its Breakdown and Separate cities (each Region
+  // and London for one saved without them, as it is calculated).
   function savedFilterAreaSummaryParts(savedFilter) {
-    const summary = savedFilter?.area_summary;
-    if (!summary || typeof summary !== 'object') return [];
-    const cities = (Array.isArray(summary.cities) ? summary.cities : []).filter(Boolean);
-    if (!summary.breakdown && !cities.length) return [];
-    const split = {All: 'All selected CDRs'}[summary.time_split] || summary.time_split || 'Campaign';
-    return [['time', 'Time split', split], ['breakdown', 'Breakdown', summary.breakdown || 'None'],
-      ['cities', 'Separate cities', cities.length ? cities.join(', ') : 'None']];
+    const summary = savedFilter?.area_summary && typeof savedFilter.area_summary === 'object' ? savedFilter.area_summary : {};
+    let cities = (Array.isArray(summary.cities) ? summary.cities : []).filter(Boolean);
+    let breakdown = summary.breakdown && summary.breakdown !== 'None' ? summary.breakdown : null;
+    if (!breakdown && !cities.length) [breakdown, cities] = ['Region', ['London']];
+    return [['breakdown', 'Breakdown', breakdown || 'None'], ['cities', 'Separate cities', cities.length ? cities.join(', ') : 'None']];
+  }
+
+  // The time split of the National & Geographical Areas Trends of a Saved Filter.
+  function savedFilterTimeSplit(savedFilter) {
+    const split = savedFilter?.area_summary?.time_split;
+    return {All: 'All selected CDRs'}[split] || split || 'Campaign';
   }
 
   // The calculation time of a Saved Filter (start to finish), or its elapsed time while it runs.
@@ -1975,30 +1947,28 @@
       referenceValue.textContent = baseline;
       meta.append(referenceValue);
       button.append(meta);
-      // The campaigns of its Scoring Trends.
+      // Its Geographical Areas & Scoring Trends, as in the panel: the Breakdown and Separate cities of both tabs, then the
+      // campaigns and time split of the trends, each value in its own colour.
+      const areaMeta = document.createElement('span');
+      areaMeta.className = 'saved-filter-meta';
+      areaMeta.textContent = 'Geographical Areas: ';
+      savedFilterAreaSummaryParts(savedFilter).forEach(([kind, label, value], index) => {
+        const areaValue = document.createElement('strong');
+        areaValue.className = `saved-filter-area-summary saved-filter-area-summary-${kind}`;
+        areaValue.textContent = value;
+        areaMeta.append(`${index ? ' · ' : ''}${label}: `, areaValue);
+      });
+      button.append(areaMeta);
       const trendMeta = document.createElement('span');
       trendMeta.className = 'saved-filter-meta';
       const trendValue = document.createElement('strong');
       trendValue.className = 'saved-filter-area-summary saved-filter-area-summary-campaigns';
       trendValue.textContent = savedFilterTrendCampaigns(savedFilter);
-      trendMeta.append('Scoring Trends: Campaigns: ', trendValue);
+      const timeValue = document.createElement('strong');
+      timeValue.className = 'saved-filter-area-summary saved-filter-area-summary-time';
+      timeValue.textContent = savedFilterTimeSplit(savedFilter);
+      trendMeta.append('Scoring Trends: Campaigns: ', trendValue, ' · Time split: ', timeValue);
       button.append(trendMeta);
-      const areaSummary = savedFilterAreaSummaryParts(savedFilter);
-      if (areaSummary.length) {
-        // The National & Geographical Areas Trends of the Saved Filter, when it includes them: their time split, breakdown and
-        // cities, each value in its own colour.
-        // (Inside the Scoring Trends, whose campaigns they share.)
-        const areaMeta = document.createElement('span');
-        areaMeta.className = 'saved-filter-meta saved-filter-meta-nested';
-        areaMeta.textContent = '↳ National & Geographical Areas Trends: ';
-        areaSummary.forEach(([kind, label, value], index) => {
-          const areaValue = document.createElement('strong');
-          areaValue.className = `saved-filter-area-summary saved-filter-area-summary-${kind}`;
-          areaValue.textContent = value;
-          areaMeta.append(`${index ? ' · ' : ''}${label}: `, areaValue);
-        });
-        button.append(areaMeta);
-      }
       const cdrNames = savedFilterCdrNames(savedFilter);
       const cdrButton = document.createElement('button');
       cdrButton.type = 'button';
@@ -9311,9 +9281,8 @@
       scheduleSelectionSave();
       return;
     }
-    if (event.target.matches?.('[data-scoring-area-enabled], [data-scoring-area-summary] select, [data-scoring-trend-campaigns]')) {
+    if (event.target.matches?.('[data-scoring-area-summary] select, [data-scoring-area-time-split], [data-scoring-trend-campaigns]')) {
       syncAreaSummary();
-      if (event.target === areaSummaryEnabled && !restoringSelection) scheduleAutoCdrRefresh();
       updateSelection();
       scheduleSelectionSave();
       return;
@@ -9757,5 +9726,5 @@
   syncGapValueControls();
   syncResultTableControls();
   applyNrFilter(false);
-  Promise.all([loadCalculationSelection(), refreshSavedFilters()]).then(restoreOpenedSavedFilterTrends).catch(() => {});
+  Promise.all([loadCalculationSelection(), refreshSavedFilters()]).catch(() => {});
 })();

@@ -37,19 +37,15 @@ def test_scoring_selection_loads_from_server_before_enabling_controls():
     assert "root.dataset.selectionUrl || '/api/scoring/selection'" in script
     assert 'data-selection-url="/api/scoring/selection"' in template
     assert "const body = await requestJson(selectionUrl);" in script
-    # A new scoring starts without the National & area summary, also when the saved selection had it.
-    assert 'applySavedCalculationSelection({...body.selection, area_summary: {...savedSummary, enabled: false}});' in script
-    assert 'selectionPersisted = body.persisted !== false && !savedSummary.enabled;' in script
+    # The selection comes back as it was left, with its Geographical Areas & Scoring Trends (always included).
+    assert 'applySavedCalculationSelection(body.selection);' in script
+    assert 'selectionPersisted = body.persisted !== false;' in script
     assert 'if (!selectionPersisted) {' in script
     assert 'await persistCalculationSelection({force: true});' in script
     assert "calculationPanel.inert = true;" in script
     assert "calculationPanel.inert = false;" in script
-    # A reload that reopens the Saved Filter left in the panel keeps its trends included, as when it is chosen: they
-    # stay only when the selection with them is that of the reopened Saved Filter.
-    assert 'Promise.all([loadCalculationSelection(), refreshSavedFilters()]).then(restoreOpenedSavedFilterTrends)' in script
-    assert 'reloadedTrends = Boolean(savedSummary.enabled);' in script
-    assert ("if (response.saved_filter && savedFilterIdOf(response.saved_filter) === opened && savedFilterIdOf(selectedSavedFilter || {}) === opened) {"
-            in script)
+    assert 'Promise.all([loadCalculationSelection(), refreshSavedFilters()]).catch(() => {});' in script
+    assert 'restoreOpenedSavedFilterTrends' not in script and 'data-scoring-area-enabled' not in script
     assert 'localStorage' not in script
 
 
@@ -256,8 +252,8 @@ process.stdout.write(JSON.stringify({queued, persisted}));
         'context_filters': {
             'Region': ['North'], 'City': [], 'Operator': ['EE'], 'Vendor': [], 'Campaign': ['Spring'],
         },
-        # A job without the National & area summary leaves it out.
-        'area_summary': {'enabled': False, 'campaigns': []},
+        # One saved without Geographical Areas & Scoring Trends takes those it is calculated with: each Region and London.
+        'area_summary': {'enabled': True, 'breakdown': 'Region', 'cities': ['London'], 'time_split': 'Campaign', 'campaigns': []},
     }
     assert result['queued']['selectionDirty'] is True
     assert result['queued']['selectionSaveTimer'] == 42
@@ -293,7 +289,7 @@ def test_job_selection_restoration_clears_filters_on_actual_controls():
     program = r'''
 let restoringSelection = false, message = '', pinnedCdrs = false;
 const scheduleAutoCdrRefresh = () => {};
-const areaSummaryEnabled = null, areaSummaryTimeSplit = null, areaSummaryBreakdown = null, areaSummaryCities = null;
+const areaSummaryTimeSplit = null, areaSummaryBreakdown = null, areaSummaryCities = null;
 const syncAreaSummary = () => {}, refreshAreaSummaryCities = () => {}, applyTrendCampaigns = () => {};
 const selectionFieldOrder = ['Region', 'City'];
 const nrFilter = {value: 'NSA', options: [{value: 'NSA'}, {value: 'NR'}]};
@@ -402,7 +398,7 @@ def test_included_area_summary_keeps_the_area_filters():
 
     # The summary is scored on the whole country: the Region, Cluster and City filters stay usable.
     assert 'data-scoring-area-filter-lock' not in template and 'is-area-locked' not in script
-    assert 'It is always scored on the whole country, also when the Region, Cluster or City filters choose part of it.' in template
+    assert 'Always the whole country: the Region, Cluster and City filters of the calculation do not apply to Geographical Areas and Scoring Trends.' in template
 
 
 def test_an_opened_saved_filter_queued_again_keeps_its_progress_over_an_earlier_list():
