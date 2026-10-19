@@ -183,6 +183,7 @@
         showGapValues: stored.show_gap_values === true,
         gapLayout: ['end', 'adjacent'].includes(stored.gap_layout) ? stored.gap_layout : 'end',
         nrLayout: stored.nr_layout === 'grouped' ? 'grouped' : 'interleaved',
+        nrCharts: stored.nr_charts === 'same' ? 'same' : 'separate',
         gapComparisons: stored.gap_comparisons && typeof stored.gap_comparisons === 'object'
           && !Array.isArray(stored.gap_comparisons)
           ? Object.fromEntries(Object.entries(stored.gap_comparisons).filter(([, value]) => (
@@ -220,6 +221,7 @@
         show_gap_values: showGapValues(),
         gap_layout: selectedGapLayout(),
         nr_layout: typeof selectedNrLayout === 'undefined' ? 'interleaved' : selectedNrLayout,
+        nr_charts: typeof selectedNrCharts === 'undefined' ? 'separate' : selectedNrCharts,
         gap_comparisons: typeof gapComparisonSelections === 'undefined'
           ? {} : Object.fromEntries(gapComparisonSelections),
         // Location, operators and analysis of the KPI GAP Profile and Points Lost Map, and the other insight selectors.
@@ -409,6 +411,9 @@
   // NSA vs SA: each panel of NSA then the same panel of SA (interleaved), or every panel of NSA then every one of SA.
   const nrLayoutControl = root.querySelector('[data-result-nr-layout-control]');
   const nrLayoutSelect = root.querySelector('[data-result-nr-layout]');
+  // NSA vs SA: the Scoring Charts and Scoring Trends of each NR Mode apart (separate charts) or together (the same chart).
+  const nrChartsControl = root.querySelector('[data-result-nr-charts-control]');
+  const nrChartsSelect = root.querySelector('[data-result-nr-charts]');
   const scoringKindSelect = root.querySelector('[data-result-scoring]');
   const chartPane = root.querySelector('[data-result-pane="charts"]');
   const chartOverlay = root.querySelector('[data-scoring-chart-overlay]');
@@ -458,6 +463,8 @@
   let selectedScoring = restoredScoringViewState.scoring || 'best_network';
   let selectedNrLayout = restoredScoringViewState.nrLayout || 'interleaved';
   if (nrLayoutSelect) nrLayoutSelect.value = selectedNrLayout;
+  let selectedNrCharts = restoredScoringViewState.nrCharts || 'separate';
+  if (nrChartsSelect) nrChartsSelect.value = selectedNrCharts;
   let currentEffectiveEnvironment = null;
   let environmentDefaultSavedFilterId = null;
   let currentResults = null;
@@ -6516,8 +6523,9 @@
       const color = safeHexColor(series.color) || insightFallbackColors[seriesIndex % insightFallbackColors.length];
       const points = series.points.map((value, index) => (value === null || value === undefined ? null : [x(index), y(value), value]));
       const path = points.filter(Boolean).map(([px, py], index) => `${index ? 'L' : 'M'}${px},${py}`).join(' ');
+      // (NSA & SA in the same chart: the SA line of each operator is dashed.)
       svg.append(svgElement(svg, 'path', {d: path, fill: 'none', stroke: color, 'stroke-width': series.is_reference ? 3 : 2.25,
-        'stroke-linejoin': 'round', 'stroke-linecap': 'round'}));
+        'stroke-linejoin': 'round', 'stroke-linecap': 'round', ...(series.dashed ? {'stroke-dasharray': '7 5'} : {})}));
       const last = points.reduce((found, point, index) => (point ? index : found), -1);
       points.forEach((point, index) => {
         if (!point) return;
@@ -6696,10 +6704,12 @@
       const color = safeHexColor(item.color) || insightFallbackColors[seriesIndex % insightFallbackColors.length];
       const points = item.trend.map((value, index) => (value === null || value === undefined ? null : [x(index), y(Number(value)), value]));
       const path = points.filter(Boolean).map(([px, py], index) => `${index ? 'L' : 'M'}${px},${py}`).join(' ');
-      svg.append(svgElement(svg, 'path', {d: path, fill: 'none', stroke: color, 'stroke-width': 2}));
+      svg.append(svgElement(svg, 'path', {d: path, fill: 'none', stroke: color, 'stroke-width': 2,
+        ...(item.dashed ? {'stroke-dasharray': '5 4'} : {})}));
       points.forEach((point, index) => {
         if (!point) return;
-        const marker = svgElement(svg, 'circle', {cx: point[0], cy: point[1], r: 3.2, fill: color});
+        const marker = svgElement(svg, 'circle', {cx: point[0], cy: point[1], r: 3.2, fill: item.dashed ? '#ffffff' : color,
+          stroke: color, 'stroke-width': item.dashed ? 1.5 : 0});
         setChartTooltip(marker, `${item.label} · ${campaigns[index]}: ${insightNumber(point[2], 1)} points`, true);
         svg.append(marker);
       });
@@ -6734,13 +6744,16 @@
       const card = makeExpandableChartCard(`${scoringLabel()} Scoring Trend`,
         [environmentLabel(environment), trend.title].filter(Boolean).join(' · '), makeTrendChart(trend));
       if (trends.length > 1) card.insertBefore(wrapper, card.children[1]);
+      if (trend.series.some(series => series.nr_mode)) card.append(nrModeLinesNote());
       pane.append(card);
     }
     for (const summary of insightItems(payload, 'area_summaries', environment)) {
       const split = summary.time_split === 'All' ? 'All selected CDRs' : summary.time_split === 'Campaign' ? 'Per campaign'
         : `${summary.time_split} periods`;
-      pane.append(makeExpandableChartCard(`${scoringLabel()} Trends — National & Geographical Areas`,
-        [environmentLabel(environment), `Time split: ${split}`].filter(Boolean).join(' · '), makeAreaSummaryView(summary), false));
+      const card = makeExpandableChartCard(`${scoringLabel()} Trends — National & Geographical Areas`,
+        [environmentLabel(environment), `Time split: ${split}`].filter(Boolean).join(' · '), makeAreaSummaryView(summary), false);
+      if ((summary.areas || []).some(area => area.rows.some(item => item.nr_mode))) card.append(nrModeLinesNote(true));
+      pane.append(card);
     }
     if (!pane.children.length) {
       const empty = document.createElement('div');
@@ -6749,6 +6762,12 @@
         + 'Scoring Trends (and include the National & Geographical Areas Trends) in the Scoring Calculation panel.';
       pane.append(empty);
     }
+  }
+
+  // NSA & SA in the same chart: how the lines of each NR Mode read.
+  function nrModeLinesNote(areas = false) {
+    return insightParagraph('scoring-insight-note', nrModeTag('NSA'), 'solid lines · ', nrModeTag('SA'),
+      `dashed lines: each quarter is one point for both NR Modes${areas ? '; each row scores the latest campaign of its NR Mode and its change from the previous one of that NR Mode' : ''}.`);
   }
 
   // A KPI name whose comparison, threshold and unit stay together when it wraps: FDTT DL THROUGHPUT / > 5Mbit/s [%].
@@ -7216,8 +7235,12 @@
     pane.replaceChildren();
     const scope = environment ? insightItems(payload, 'campaign_scope', environment)[0] : null;
     if (!scope) return;
+    // The tests of the latest campaign of each NR Mode.
+    const testScopes = (Array.isArray(payload.nr_mode_parts) ? payload.nr_mode_parts : [])
+      .map(part => ({mode: part.nr_mode, scope: insightItems(activeScoringPayload(part), 'campaign_scope', environment)[0]}))
+      .filter(item => item.scope);
     const section = insightSection(pane, 'How the measurements ran', 'scoring-scope-card', false);
-    section.append(makeCampaignScope(scope, {nrModes: true}));
+    section.append(makeCampaignScope(scope, {nrModes: true, testScopes}));
   }
 
   // One operator chosen with buttons, the Focus operators and the others in subpanels of their own (as the operator
@@ -7653,7 +7676,7 @@
     return wrapper;
   }
 
-  function makeCampaignScope(scope, {nrModes = false} = {}) {
+  function makeCampaignScope(scope, {nrModes = false, testScopes = []} = {}) {
     const box = document.createElement('div');
     box.className = 'scoring-scope';
     // A detail given as a list has a line per item (each environment with its points).
@@ -7680,19 +7703,21 @@
     if (scope.places) tiles.append(tile('Places', `${scope.places.cities} cities`, `${scope.places.routes} Connecting Roads routes`));
     const environments = scope.environments.filter(item => item.max_points > 0);
     tiles.append(tile('Environments', `${environments.length}`, environments.map(item => `${item.label} ${insightNumber(item.max_points)} pts`)));
-    const kinds = ['data', 'voice', 'speech'];
-    const names = [...new Set(Object.values(scope.tests || {}).flatMap(byKind => Object.values(byKind).flatMap(byEnvironment => Object.keys(byEnvironment))))];
-    const rows = scope.operators.filter(style => scope.tests?.[style.operator]).map(style => [
-      {text: style.label, style: {color: safeHexColor(style.color) || '#263746', fontWeight: 800}},
-      ...kinds.flatMap(kind => names.map(name => ({text: insightNumber(scope.tests[style.operator]?.[kind]?.[name] || 0), className: 'scoring-insight-number'}))),
-    ]);
-    const table = insightTable(['Operator', ...kinds.flatMap(kind => names.map(name => `${{data: 'Data tests', voice: 'Calls', speech: 'Speech samples'}[kind]} · ${shortEnvironmentLabel(name)}`))], rows);
     box.append(tiles);
-    if (rows.length) {
+    // The tests of the latest campaign (with NSA vs SA, of the latest campaign of each NR Mode, each tagged).
+    for (const {mode, scope: source} of testScopes.length ? testScopes : [{mode: null, scope}]) {
+      const kinds = ['data', 'voice', 'speech'];
+      const names = [...new Set(Object.values(source.tests || {}).flatMap(byKind => Object.values(byKind).flatMap(byEnvironment => Object.keys(byEnvironment))))];
+      const rows = source.operators.filter(style => source.tests?.[style.operator]).map(style => [
+        {text: style.label, style: {color: safeHexColor(style.color) || '#263746', fontWeight: 800}},
+        ...kinds.flatMap(kind => names.map(name => ({text: insightNumber(source.tests[style.operator]?.[kind]?.[name] || 0), className: 'scoring-insight-number'}))),
+      ]);
+      if (!rows.length) continue;
+      const table = insightTable(['Operator', ...kinds.flatMap(kind => names.map(name => `${{data: 'Data tests', voice: 'Calls', speech: 'Speech samples'}[kind]} · ${shortEnvironmentLabel(name)}`))], rows);
       const wrap = document.createElement('div');
       wrap.className = 'scoring-insight-table-wrap';
       wrap.append(table);
-      box.append(insightParagraph('scoring-insight-note', `Tests of each operator in ${(scope.tests_campaign !== undefined ? scope.tests_campaign : scope.latest_campaign) || 'the measurements'}: the CDR Data tests, the Voice calls and the Speech samples scored in each environment.`), wrap);
+      box.append(insightParagraph('scoring-insight-note', ...(mode ? [nrModeTag(mode)] : []), `Tests of each operator in ${(source.tests_campaign !== undefined ? source.tests_campaign : source.latest_campaign) || 'the measurements'}: the CDR Data tests, the Voice calls and the Speech samples scored in each environment.`), wrap);
     }
     return box;
   }
@@ -9506,13 +9531,18 @@
   function renderResultParts(savedPayload, savedFilter, panesToRender) {
     const parts = Array.isArray(savedPayload?.nr_mode_parts) ? savedPayload.nr_mode_parts : [];
     if (nrLayoutControl) nrLayoutControl.hidden = parts.length < 2;
+    if (nrChartsControl) nrChartsControl.hidden = parts.length < 2;
     if (parts.length < 2) {
       renderResultContent(savedPayload, savedFilter, panesToRender);
       return;
     }
     const sameOperator = String((savedFilter || savedPayload.saved_filter || {}).baseline_operator || '') === '@same-operator-nsa';
-    const whole = panesToRender.filter(name => sameOperator && name === 'gap');
-    const split = panesToRender.filter(name => !whole.includes(name));
+    // NSA & SA in the same chart: the Scoring Charts of the whole result (each operator with its NSA and SA bars) and the
+    // Scoring Trends with the NSA and SA lines on one axis of quarters.
+    const together = selectedNrCharts === 'same';
+    const whole = panesToRender.filter(name => (sameOperator && name === 'gap') || (together && name === 'charts'));
+    const merged = together ? panesToRender.filter(name => name === 'trends') : [];
+    const split = panesToRender.filter(name => !whole.includes(name) && !merged.includes(name));
     const bodies = new Map(parts.map(part => [part.nr_mode, new Map()]));
     let scopeHost = null;
     for (const name of split) {
@@ -9530,7 +9560,11 @@
         bodies.get(part.nr_mode).set(name, body);
         return section;
       });
-      if (name === 'summary') scopeHost = document.createElement('div');
+      if (name === 'summary') {
+        // (Its cards are styled as those of the panes.)
+        scopeHost = document.createElement('div');
+        scopeHost.className = 'scoring-nr-mode-body scoring-nr-mode-scope';
+      }
       pane.replaceChildren(...(scopeHost && name === 'summary' ? [scopeHost] : []), ...sections);
     }
     for (const part of parts) {
@@ -9538,17 +9572,23 @@
       renderResultContent({...part, nr_mode_part: part.nr_mode}, savedFilter, split, name => partBodies.get(name));
     }
     if (selectedNrLayout !== 'grouped') {
-      // Each panel of NSA then the same panel of SA, each tagged with its NR Mode.
+      // Each panel of NSA then the same panel of SA, each tagged with its NR Mode, their filters once above them.
       for (const name of split) {
         const pane = root.querySelector(`[data-result-pane="${name}"]`);
         if (!pane) continue;
         const [nsa, sa] = parts.map(part => [...(bodies.get(part.nr_mode).get(name)?.children || [])]);
-        const blocks = interleaveNrModeBlocks(nsa, sa);
+        const pairs = new Map();
+        const blocks = interleaveNrModeBlocks(nsa, sa, pairs);
         nsa.forEach(block => tagNrModeBlock(block, parts[0].nr_mode));
         sa.forEach(block => tagNrModeBlock(block, parts[1].nr_mode));
+        for (const [nsaBlock, saBlock] of pairs) {
+          const bar = shareNrModeControls(nsaBlock, saBlock);
+          if (bar) blocks.splice(blocks.indexOf(nsaBlock), 0, bar);
+        }
         pane.replaceChildren(...(scopeHost && name === 'summary' ? [scopeHost] : []), ...blocks);
       }
     }
+    if (merged.length) renderResultContent(nrModeTrendsPayload(savedPayload, parts), savedFilter, merged);
     // Then the whole result: the measurements of both NR Modes, the GAP of Same operator in NSA, the warnings and exports.
     renderResultContent(savedPayload, savedFilter, [...whole, ...(scopeHost ? ['summary-scope'] : [])],
       name => (name === 'summary-scope' ? scopeHost : root.querySelector(`[data-result-pane="${name}"]`)));
@@ -9558,9 +9598,79 @@
     }
   }
 
+  // NSA & SA in the same chart: the Scoring Trends of both NR Modes on one axis of quarters (or periods), where a campaign
+  // of NSA and the SA one of the same quarter (2026-Q2 and 2026-Q2-SA) are one point; each operator has an NSA line and
+  // a dashed SA line.
+  function nrModeQuarter(label) {
+    return String(label ?? '').replace(/(^|[_\- ])(NSA|SA)(?=$|[_\- ])/i, '').replace(/[_\- ]+$/, '').trim();
+  }
+
+  function nrModeQuarters(...lists) {
+    const quarters = [...new Set(lists.flat().map(nrModeQuarter))];
+    return typeof globalThis.campaignCompare === 'function' ? quarters.sort((left, right) => globalThis.campaignCompare(left, right) || 0) : quarters;
+  }
+
+  // The items of both NR Modes (one per series of each mode), NSA then SA of each operator, on the given quarters.
+  function nrModeSeries(nsaItems, saItems, campaignsOf, quarters, pointsKey) {
+    const remap = (item, campaigns, mode) => {
+      const at = new Map(campaigns.map((campaign, index) => [nrModeQuarter(campaign), index]));
+      return {...item, label: `${item.label} ${mode}`, nr_mode: mode, dashed: mode === 'SA',
+        [pointsKey]: quarters.map(quarter => (at.has(quarter) ? item[pointsKey]?.[at.get(quarter)] ?? null : null))};
+    };
+    const series = [];
+    const sa = [...saItems];
+    for (const item of nsaItems) {
+      series.push(remap(item, campaignsOf.NSA, 'NSA'));
+      const index = sa.findIndex(other => other.label === item.label);
+      if (index >= 0) series.push(remap(sa.splice(index, 1)[0], campaignsOf.SA, 'SA'));
+    }
+    return [...series, ...sa.map(item => remap(item, campaignsOf.SA, 'SA'))];
+  }
+
+  function nrModeTrendsPayload(savedPayload, parts) {
+    const active = parts.map(part => activeScoringPayload(part));
+    const insights = active.map(part => part?.views?.insights || {});
+    const byKey = (items, key) => new Map((Array.isArray(items) ? items : []).map(item => [key(item), item]));
+    const trendKey = item => `${item.environment}|${item.title || ''}`;
+    const trends = [];
+    const nsaTrends = byKey(insights[0].campaign_trends, trendKey), saTrends = byKey(insights[1].campaign_trends, trendKey);
+    for (const key of new Set([...nsaTrends.keys(), ...saTrends.keys()])) {
+      const nsa = nsaTrends.get(key), sa = saTrends.get(key);
+      const quarters = nrModeQuarters(nsa?.campaigns || [], sa?.campaigns || []);
+      trends.push({...(nsa || sa), campaigns: quarters,
+        series: nrModeSeries(nsa?.series || [], sa?.series || [], {NSA: nsa?.campaigns || [], SA: sa?.campaigns || []}, quarters, 'points'),
+        maximum: Math.max(Number(nsa?.maximum) || 0, Number(sa?.maximum) || 0) || (nsa || sa).maximum});
+    }
+    const summaryKey = item => String(item.environment);
+    const summaries = [];
+    const nsaSummaries = byKey(insights[0].area_summaries, summaryKey), saSummaries = byKey(insights[1].area_summaries, summaryKey);
+    for (const key of new Set([...nsaSummaries.keys(), ...saSummaries.keys()])) {
+      const nsa = nsaSummaries.get(key), sa = saSummaries.get(key);
+      const quarters = nrModeQuarters(nsa?.campaigns || [], sa?.campaigns || []);
+      const campaignsOf = {NSA: nsa?.campaigns || [], SA: sa?.campaigns || []};
+      const saAreas = new Map((sa?.areas || []).map(area => [area.label, area]));
+      const areas = (nsa?.areas || []).map(area => ({...area,
+        rows: nrModeSeries(area.rows || [], saAreas.get(area.label)?.rows || [], campaignsOf, quarters, 'trend')}));
+      for (const area of sa?.areas || []) {
+        if (!areas.some(other => other.label === area.label)) areas.push({...area, rows: nrModeSeries([], area.rows || [], campaignsOf, quarters, 'trend')});
+      }
+      // (Each row scores the latest campaign of its NR Mode, with its change from the previous one of that NR Mode.)
+      summaries.push({...(nsa || sa), campaigns: quarters, areas, latest_campaign: 'latest campaign',
+        previous_campaign: nsa?.previous_campaign || sa?.previous_campaign ? 'previous campaign' : null});
+    }
+    // The trends replace those of the scoring shown (Best Network or Most Reliable).
+    const withTrends = views => ({...(views || {}),
+      insights: {...(views?.insights || {}), campaign_trends: trends, area_summaries: summaries}});
+    if (effectiveScoring(savedPayload) === 'most_reliable') {
+      const reliable = savedPayload.scorings.most_reliable;
+      return {...savedPayload, scorings: {...savedPayload.scorings, most_reliable: {...reliable, views: withTrends(reliable.views)}}};
+    }
+    return {...savedPayload, views: withTrends(savedPayload.views)};
+  }
+
   // The panels of NSA and SA paired by their kind and place (the second Scoring Table of NSA with the second of SA); a
   // panel of SA without one of NSA goes after the SA panel before it.
-  function interleaveNrModeBlocks(nsa, sa) {
+  function interleaveNrModeBlocks(nsa, sa, pairs = null) {
     const keyOf = seen => block => {
       const name = `${block.tagName}.${block.className}`;
       const count = seen.get(name) || 0;
@@ -9578,6 +9688,7 @@
       if (match) {
         merged.push(match);
         placed.add(match);
+        pairs?.set(block, match);
       }
     }
     sa.forEach((block, index) => {
@@ -9588,13 +9699,60 @@
     return merged;
   }
 
-  function tagNrModeBlock(block, mode) {
-    block.classList.add('scoring-nr-mode-block', `scoring-nr-mode-block-${String(mode).toLowerCase()}`);
+  // The pill of an NR Mode, in the colour of NSA or SA in every tab and theme.
+  function nrModeTag(mode) {
     const tag = document.createElement('span');
     tag.className = `scoring-nr-mode-tag scoring-nr-mode-tag-${String(mode).toLowerCase()}`;
     tag.textContent = mode;
     tag.title = mode === 'SA' ? 'Standalone' : 'Non-Standalone';
-    (block.querySelector('h4, h3, .scoring-table-section-title') || block).prepend(tag);
+    return tag;
+  }
+
+  function tagNrModeBlock(block, mode) {
+    block.classList.add('scoring-nr-mode-block', `scoring-nr-mode-block-${String(mode).toLowerCase()}`);
+    (block.querySelector('h4, h3, .scoring-table-section-title') || block).prepend(nrModeTag(mode));
+  }
+
+  // Each panel: NSA then SA. The filters of a pair of panels (the operator buttons and the choices whose selection both
+  // share) are shown once above them and apply to both; the operators of SA that NSA lacks join its buttons.
+  function shareNrModeControls(nsaBlock, saBlock) {
+    const selector = '.scoring-loss-controls, .scoring-loss-operators, .scoring-insight-select';
+    const controlsOf = (block, within = block) => [...within.querySelectorAll(selector)]
+      .filter(element => element.parentElement.closest(selector) === (within === block ? null : within));
+    const signature = element => element.textContent.replace(/\s+/g, ' ').trim();
+    const share = (control, twins) => {
+      const twin = twins.find(other => other.className === control.className && signature(other) === signature(control));
+      if (twin) {
+        twin.remove();
+        return;
+      }
+      const chips = control.matches('.scoring-loss-operators') && twins.find(other => other.matches('.scoring-loss-operators'));
+      if (chips) {
+        const shown = new Set([...control.querySelectorAll('button')].map(chip => chip.textContent.trim()));
+        const target = [...control.querySelectorAll('.scoring-operator-chips')].at(-1) || control;
+        for (const chip of chips.querySelectorAll('button')) if (!shown.has(chip.textContent.trim())) target.append(chip);
+        chips.remove();
+        return;
+      }
+      if (control.matches('.scoring-loss-controls')) {
+        const box = twins.find(other => other.matches('.scoring-loss-controls'));
+        if (!box) return;
+        const inner = controlsOf(saBlock, box);
+        for (const child of controlsOf(nsaBlock, control)) share(child, inner);
+        if (!box.querySelector(selector)) box.remove();
+      }
+    };
+    const controls = controlsOf(nsaBlock);
+    if (!controls.length) return null;
+    const twins = controlsOf(saBlock);
+    const bar = document.createElement('div');
+    bar.className = 'scoring-nr-mode-shared-controls';
+    bar.append(Object.assign(document.createElement('span'), {className: 'scoring-nr-mode-shared-label', textContent: 'NSA & SA'}));
+    for (const control of controls) {
+      share(control, twins);
+      bar.append(control);
+    }
+    return bar;
   }
 
   function renderResultContent(savedPayload, savedFilter, panesToRender,
@@ -10081,9 +10239,10 @@
     campaignChoice = [...campaignFilterSelect.selectedOptions].map(option => option.value);
   });
   root.addEventListener('change', event => {
-    if ([environmentSelect, scoringKindSelect, showKpiValuesToggle, showGapValuesToggle, gapLayoutSelect, nrLayoutSelect].includes(event.target)) {
+    if ([environmentSelect, scoringKindSelect, showKpiValuesToggle, showGapValuesToggle, gapLayoutSelect, nrLayoutSelect, nrChartsSelect].includes(event.target)) {
       if (event.target === environmentSelect) selectedEnvironment = environmentSelect.value;
       if (event.target === nrLayoutSelect) selectedNrLayout = nrLayoutSelect.value === 'grouped' ? 'grouped' : 'interleaved';
+      if (event.target === nrChartsSelect) selectedNrCharts = nrChartsSelect.value === 'same' ? 'same' : 'separate';
       if (event.target === scoringKindSelect) selectedScoring = scoringKindSelect.value === 'most_reliable' ? 'most_reliable' : 'best_network';
       persistScoringViewState();
     }
@@ -10120,7 +10279,7 @@
       renderResult(currentResults, selectedSavedFilter);
       return;
     }
-    if (event.target === nrLayoutSelect && currentResults) {
+    if ((event.target === nrLayoutSelect || event.target === nrChartsSelect) && currentResults) {
       renderResult(currentResults, selectedSavedFilter);
       return;
     }

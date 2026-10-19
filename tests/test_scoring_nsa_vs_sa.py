@@ -324,3 +324,30 @@ def test_each_panel_of_nsa_goes_before_the_same_panel_of_sa():
     # Each NSA panel with the SA panel of its kind and place; an SA panel without one of NSA after the SA panel before it.
     assert json.loads(completed.stdout) == ['nsa table 1', 'sa table 1', 'sa comparison', 'nsa table 2', 'sa table 2',
                                             'nsa chart', 'sa chart']
+
+
+def test_nsa_and_sa_trends_share_one_axis_of_quarters_in_the_same_chart():
+    import json
+    import shutil
+    import subprocess
+    script = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/scoring.js').read_text(encoding='utf-8')
+
+    def function(name):
+        start = script.index(f'  function {name}(')
+        return script[start:script.index('\n  }', start) + len('\n  }')]
+    node = shutil.which('node')
+    if not node:
+        pytest.skip('Node.js is required to check the NSA vs SA trends.')
+    program = '\n'.join(function(name) for name in ('nrModeQuarter', 'nrModeQuarters', 'nrModeSeries')) + '''
+const quarters = nrModeQuarters(['26-Q2', '26-Q3'], ['26-Q2-SA', '26-Q3-SA']);
+const series = nrModeSeries([{label: 'EE', points: [930, 915]}, {label: 'VF', points: [860, 830]}],
+  [{label: 'VF', points: [820]}, {label: 'EE', points: [910, 905]}, {label: 'VF SM', points: [null, 800]}],
+  {NSA: ['26-Q2', '26-Q3'], SA: ['26-Q3-SA', '26-Q2-SA']}, quarters, 'points');
+process.stdout.write(JSON.stringify({quarters, series: series.map(item => [item.label, item.points, item.dashed])}));'''
+    completed = subprocess.run([node, '-e', program], capture_output=True, text=True, check=False)
+    assert completed.returncode == 0, completed.stderr
+    result = json.loads(completed.stdout)
+    # 26-Q2 and 26-Q2-SA are one point of the axis; each operator has its NSA line and then its dashed SA line.
+    assert result['quarters'] == ['26-Q2', '26-Q3']
+    assert result['series'] == [['EE NSA', [930, 915], False], ['EE SA', [905, 910], True], ['VF NSA', [860, 830], False],
+                                ['VF SA', [None, 820], True], ['VF SM SA', [800, None], True]]

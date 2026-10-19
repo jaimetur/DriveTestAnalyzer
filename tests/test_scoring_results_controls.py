@@ -2208,7 +2208,7 @@ process.stdout.write(JSON.stringify({scopes: context.scopes, tooltip: context.to
     # Every chart and table title ends with its pills; the National & Areas card shows every area and has none.
     card = _function_source(script, 'makeExpandableChartCard')
     assert "const scope = context === false ? null : appendResultScope(heading, context);" in card
-    assert "makeAreaSummaryView(summary), false));" in script
+    assert "makeAreaSummaryView(summary), false);" in script
     assert "if (kind === 'gap' || kind === 'gap-summary') appendResultScope(heading, context);" in script
     for line in (
         'appendResultScope(summaryHeading, tableData.context);', 'appendResultScope(expandedHeading, tableData.context);',
