@@ -190,6 +190,18 @@ def test_locations_are_ranked_and_compared_with_the_reference(cities):
         assert row['gap'] == pytest.approx(row['percent'] - row['reference_percent'])
         assert row['delta'] is not None and row['vendors']
     assert {row['kind'] for row in ranking['rows']} == {'place', 'route'}
+    # Their slides name the level instead of Location, as the page does.
+    from src.modules.scoring_summary_slides import add_location_ranking_slides, add_location_versus_slides
+    from src.modules.scoring_exports import _slide
+    deck = Presentation(TEMPLATE)
+    add_location_ranking_slides(deck, [ranking], subtitle='', new_slide=_slide)
+    add_location_versus_slides(deck, [ranking], subtitle='', new_slide=_slide)
+    texts = [shape.text_frame.text for slide in deck.slides for shape in slide.shapes if shape.has_text_frame]
+    headers = [shape.table.cell(0, column).text for slide in deck.slides for shape in slide.shapes if shape.has_table
+               for column in range(2)]
+    assert 'City' in headers and 'Location' not in headers
+    assert any(text.startswith('Per city or route — Three UK vs') for text in texts)
+    assert any('available in each city or route' in text for text in texts)
 
 
 def test_powerpoint_follows_the_order_of_the_results_tabs(national):

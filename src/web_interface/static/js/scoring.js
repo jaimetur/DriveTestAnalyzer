@@ -7593,11 +7593,12 @@
       const section = insightSection(pane, `${plural} ranked${inGroup[0]?.campaign ? ` — ${inGroup[0].campaign}` : ''}`, 'scoring-ranking-card', inGroup[0]?.context);
       section.append(insightControls(levels.length > 1 ? levelControl : null, titles.length > 1 ? groupControl : null, chips));
       for (const item of inGroup.filter(entry => chosen.includes(entry.operator))) section.append(makeRankingTable(item));
-      section.append(insightParagraph('scoring-insight-note', 'Points %: the share of the points available in each location (its environments scaled to the full maximum); ',
+      const words = locationWords(level);
+      section.append(insightParagraph('scoring-insight-note', `Points %: the share of the points available in each ${words.one} (its environments scaled to the full maximum); `,
         'Δ: the change since the previous campaign in points of percentage; the bar of Points lost shares one scale per table.'));
       const versus = inGroup.filter(entry => chosen.includes(entry.operator) && !entry.is_reference && entry.rows.some(row => row.gap !== null));
       if (versus.length) {
-        const compare = insightSection(pane, `Each operator against ${versus[0].reference_label} per location`, 'scoring-versus-card', versus[0].context);
+        const compare = insightSection(pane, `Each operator against ${versus[0].reference_label} per ${words.one}`, 'scoring-versus-card', versus[0].context);
         for (const item of versus) compare.append(makeVersusTable(item));
         compare.append(insightParagraph('scoring-insight-note', `The GAP in points of percentage of the points available: to the left the operator trails ${versus[0].reference_label}, to the right it is ahead.`));
       }
@@ -7611,6 +7612,14 @@
         + 'The National & Geographical Areas Trends are in the Scoring Trends tab.';
       pane.append(empty);
     }
+  }
+
+  // The words of a level of the Geographical Areas (Region, Cluster or City), for the headers and notes of its tables.
+  function locationWords(level) {
+    return {
+      Region: {name: 'Region', one: 'region', many: 'regions'}, Cluster: {name: 'Cluster', one: 'cluster', many: 'clusters'},
+      City: {name: 'City', one: 'city or route', many: 'cities and routes'},
+    }[level] || {name: 'Location', one: 'location', many: 'locations'};
   }
 
   function makeRankingTable(item) {
@@ -7635,10 +7644,11 @@
       {text: row.data_percent === null ? '—' : `${insightNumber(row.data_percent, 1)}%`, className: 'scoring-insight-number'},
       gapBarCell(row.lost, peak, {loss: true}),
     ]);
-    const table = insightTable(['#', 'Location', ...(hasVendors ? ['Vendors (share of tests)'] : []), 'Points %',
+    const words = locationWords(item.level);
+    const table = insightTable(['#', words.name, ...(hasVendors ? ['Vendors (share of tests)'] : []), 'Points %',
       item.previous_campaign ? `Δ vs ${item.previous_campaign}` : 'Δ', 'Voice %', 'Data %', 'Points lost'], rows, {className: 'scoring-ranking-table'});
     table.querySelectorAll('td.scoring-insight-total').forEach(cell => cell.classList.add('scoring-insight-bar-cell'));
-    wrapper.append(banner, table, insightParagraph('scoring-insight-note', `${item.label} loses ${insightNumber(lost, 1)} points in these locations, scaled to ${insightNumber(item.rows[0]?.maximum || 0)} each.`));
+    wrapper.append(banner, table, insightParagraph('scoring-insight-note', `${item.label} loses ${insightNumber(lost, 1)} points in these ${words.many}, scaled to ${insightNumber(item.rows[0]?.maximum || 0)} each.`));
     return wrapper;
   }
 
@@ -7652,7 +7662,7 @@
     banner.append(insightStrong(item.label), ` minus ${item.reference_label}`);
     const rows = item.rows.filter(row => row.gap !== null).sort((left, right) => left.gap - right.gap);
     const scale = Math.max(...rows.flatMap(row => [row.gap, row.voice_gap, row.data_gap].map(value => Math.abs(Number(value) || 0))), 1);
-    wrapper.append(banner, insightTable(['Location', 'Points %', 'Voice %', 'Data %', item.label, item.reference_label],
+    wrapper.append(banner, insightTable([locationWords(item.level).name, 'Points %', 'Voice %', 'Data %', item.label, item.reference_label],
       rows.map(row => [row.location, divergingBar(row.gap, scale), divergingBar(row.voice_gap, scale), divergingBar(row.data_gap, scale),
         {text: `${insightNumber(row.percent, 1)}%`, className: 'scoring-insight-number'},
         {text: `${insightNumber(row.reference_percent, 1)}%`, className: 'scoring-insight-number'}]), {className: 'scoring-versus-table'}));
