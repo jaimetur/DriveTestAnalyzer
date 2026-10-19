@@ -24,6 +24,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
+from functools import lru_cache
 from io import BytesIO
 from pathlib import Path
 from threading import Lock, Thread
@@ -1330,13 +1331,41 @@ def _calls_signature(repository: Any) -> list[Any]:
     return signature
 
 
+@lru_cache(maxsize=1)
+def code_signature() -> str:
+    """The identity of the code that generates and composes the sections: every module and asset of the application as
+    installed (their names, sizes and times), so that an update of the application generates every section again."""
+    project = Path(__file__).resolve().parents[2]
+    entries = []
+    for folder, pattern in (('src', '**/*.py'), ('src/web_interface/templates', '**/*'), ('assets', '**/*')):
+        for path in sorted((project / folder).glob(pattern)):
+            try:
+                if path.is_file():
+                    stat = path.stat()
+                    entries.append([str(path.relative_to(project)), stat.st_size, stat.st_mtime_ns])
+            except OSError:
+                continue
+    return _json_hash(entries)
+
+
+def _saved_filters_signature(repository: Any) -> list[Any]:
+    """What changes when a Saved Filter is calculated again (the Scoring section uses their results)."""
+    try:
+        with repository.connection() as connection:
+            return list(connection.execute(
+                'SELECT COUNT(*), MAX(updated_at), MAX(finished_at), SUM(calculation_count) FROM saved_filters').fetchone())
+    except sqlite3.Error:
+        return []
+
+
 def section_fingerprint(core: Any, repository: Any, definition: dict[str, Any], section: dict[str, Any],
                         generator: 'SectionGenerator') -> str:
-    """Identity of a generated section: its options and the common filters, and every input its module reads (the
-    CDRs, the Operator and Vendor Maps, the Main Cities and, per module, the Dashboards, the methodologies, the
-    inventory of the analysis or the follow-up of the calls). The same identity means the same document."""
+    """Identity of a generated section: its options and the common filters, the code of the application that generates
+    it, and every input its module reads (the CDRs, the Operator and Vendor Maps, the Main Cities and, per module, the
+    Dashboards, the methodologies and the Saved Filters calculated, the inventory of the analysis or the follow-up of the
+    calls). The same identity means the same document; an update of the application or of any input generates it again."""
     inputs: dict[str, Any] = {
-        'version': SECTION_CACHE_VERSION, 'section': section, 'filters': definition['filters'],
+        'version': SECTION_CACHE_VERSION, 'code': code_signature(), 'section': section, 'filters': definition['filters'],
         # The theme of the report colours every section that supports themes.
         'theme': definition.get('theme'),
         'datasets': [dict(row) for row in repository.list_datasets()],
@@ -1348,6 +1377,8 @@ def section_fingerprint(core: Any, repository: Any, definition: dict[str, Any], 
         inputs['dashboards'] = {item['key']: stored.get(item['key']) for item in section['items']}
     elif section['key'] == 'scoring':
         inputs['methodologies'] = repository.get_scoring_profiles()
+        # A Saved Filter of the same selection is used as it is: calculating one again generates the section again.
+        inputs['saved_filters'] = _saved_filters_signature(repository)
     elif section['key'] == 'network_insights':
         inputs['analysis'] = core.network_insights_summary_key(generator.network_selection(section))
     elif section['key'] == 'non_qualified_calls':

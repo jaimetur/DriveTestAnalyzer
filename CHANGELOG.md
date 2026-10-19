@@ -49,6 +49,7 @@
 - **Performance owner cards of older Saved Filters:** a card whose Saved Filter was calculated before its points were kept per City or route asks to recalculate it instead of showing 0.0 for Cities, Towns, Roads and railways; Vendor A and Vendor B swap their colours, the same on every view and slide.
 - **Scoring Calculation after a reload:** reloading Scoring & GAP Analysis with a Saved Filter open that includes the National & Geographical Areas Trends keeps **Include National & Geographical Areas Trends** checked when the panel still holds its selection, so the panel matches the Saved Filter and **Recalculate** stays available; a new selection still starts without them.
 - **Legend of the KPI score bands:** the legend of the Scoring tables matches their cells in every theme, on the page and in PowerPoint and Word: the Ericsson and Vodafone cells take the colours of the legend, and the other themes draw the legend as their cells (NetCheck and Umlaut data bars, Heatmap tints, Paper underlined text, Midnight glowing bars).
+- **Sections of reports kept after an update:** a Bundle Report Template or a Reporting Job reuses a section generated earlier only while the application and every input it reads are the same: an update of the application, or a Saved Filter calculated again, generates the sections again by itself, so a scheduled job always sends documents of the current data and design.
 
 #### 📚 Documentation:
 
