@@ -459,8 +459,9 @@
   .scoring-loss-controls .scoring-insight-select select { min-width: 11rem; }
   .scoring-loss-operators { flex-wrap: wrap; }
   /* The Focus operators first, beside their tag, and a line before the others. */
-  /* With Focus operators, two subpanels: the Focus operators above, the other operators below, each under its label. */
-  .scoring-loss-operators.has-focus-operators { flex-direction: column; align-items: stretch; gap: .45rem; }
+  /* With Focus operators, two subpanels side by side after the label of the group: the Focus operators and the other
+     operators, each under its label (one below the other when they do not fit). */
+  .scoring-loss-operators.has-focus-operators { flex-direction: row; flex-wrap: wrap; align-items: center; gap: .5rem; }
   .scoring-focus-operators, .scoring-other-operators { display: flex; flex-direction: column; align-items: flex-start; gap: .4rem; padding: .5rem .6rem; border-radius: 10px; }
   .scoring-focus-operators { border: 1px solid #cfe6dd; background: #f4faf7; }
   .scoring-other-operators { border: 1px solid #dbe2ea; background: #f7f9fb; }
