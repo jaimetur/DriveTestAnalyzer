@@ -9164,8 +9164,46 @@ document.addEventListener('input', (event) => {
 });
 document.addEventListener('change', (event) => {
   const panel = event.target instanceof Element ? event.target.closest(CHART_MAPPING_PANEL_SELECTOR) : null;
+  if (panel && event.target.matches('.mapping-role-select')) keepOneOperatorIncluded(event.target);
   if (panel) refreshChartMappingUnsavedState(panel);
 });
+
+// At least one Operator label is not excluded (saving refuses it too): a Role that would exclude every label goes back
+// to the one it had, and a new label is not added as excluded when every label is.
+const OPERATOR_ROLE_LAST_INCLUDED = 'At least one Operator label must not be excluded: every analysis, filter and report would be left without operators.';
+const operatorRolePrevious = new WeakMap();
+
+function everyOperatorExcluded(roles) {
+  return roles.length > 0 && roles.every((role) => role === 'exclude');
+}
+
+function operatorLabelRoles(panel) {
+  return Array.from(panel.querySelectorAll('.mapping-labels-view tbody .mapping-role-select')).map((select) => select.value);
+}
+
+function keepOneOperatorIncluded(select) {
+  const panel = select.closest('[data-panel-state-key="admin:operator-mappings"]');
+  if (!panel || select.closest('form.operator-mapping-create')) return true;
+  const previous = operatorRolePrevious.has(select) ? operatorRolePrevious.get(select)
+    : (Array.from(select.options).find((option) => option.defaultSelected)?.value ?? '');
+  if (select.value === 'exclude' && everyOperatorExcluded(operatorLabelRoles(panel))) {
+    select.value = previous === 'exclude' ? '' : previous;
+    showInfoDialog(OPERATOR_ROLE_LAST_INCLUDED, {title: 'One operator must stay included', tone: 'error'});
+    return false;
+  }
+  operatorRolePrevious.set(select, select.value);
+  return true;
+}
+
+document.addEventListener('submit', (event) => {
+  const form = event.target instanceof HTMLFormElement ? event.target : null;
+  const panel = form?.matches('form.operator-mapping-create') ? form.closest('[data-panel-state-key="admin:operator-mappings"]') : null;
+  if (!panel || form.querySelector('.mapping-role-select')?.value !== 'exclude') return;
+  if (!everyOperatorExcluded([...operatorLabelRoles(panel), 'exclude'])) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  showInfoDialog(OPERATOR_ROLE_LAST_INCLUDED, {title: 'One operator must stay included', tone: 'error'});
+}, true);
 document.addEventListener('click', (event) => {
   const button = event.target instanceof Element ? event.target.closest('[data-mapping-save-all]') : null;
   const panel = button?.closest(CHART_MAPPING_PANEL_SELECTOR);

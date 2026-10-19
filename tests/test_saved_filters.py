@@ -1095,6 +1095,8 @@ def test_saved_filters_leave_out_the_operators_the_operator_maps_exclude(reposit
     from src.modules.value_patterns import ValueSet
 
     dataset_id = add_dataset(repository)
+    # (At least one Operator label is not excluded.)
+    repository.replace_operator_mapping_group(None, 'EE', [], '#76B7B2')
     repository.replace_operator_mapping_group(None, 'Lebara', ['LEB'], '#6F42C1')
     before = saved_filters._prepare_saved_filter(repository, [dataset_id], ['Region'], 'NSA')
     repository.replace_operator_mapping_group('Lebara', 'Lebara', ['LEB'], '#6F42C1', 'exclude')

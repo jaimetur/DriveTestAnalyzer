@@ -118,3 +118,80 @@ def test_non_qualified_calls_leave_out_the_excluded_operators():
 
     where, params = _filter_sql({'_excluded_operators': ['Lebara', 'LEB']}, 'tester', [])
     assert "lower(COALESCE(operator, '')) NOT IN (?, ?)" in where and params[-2:] == ['lebara', 'leb']
+
+
+def test_at_least_one_operator_label_stays_included(tmp_path):
+    import pytest
+
+    repository = Repository(tmp_path / 'workspace.db', global_db_path=tmp_path / 'application.db')
+    repository.initialize()
+    with pytest.raises(ValueError, match='At least one Operator label must not be excluded'):
+        repository.replace_operator_mapping_group(None, 'Lebara', ['LEB'], '#6F42C1', 'exclude')
+    assert repository.list_operator_mapping_groups() == []
+    repository.replace_operator_mapping_group(None, 'VF', [], '#E60000')
+    repository.replace_operator_mapping_group(None, 'Lebara', ['LEB'], '#6F42C1', 'exclude')
+    # Excluding, deleting or replacing the last label not excluded is refused, and nothing changes.
+    for change in (lambda: repository.replace_operator_mapping_group('VF', 'VF', [], '#E60000', 'exclude'),
+                   lambda: repository.delete_operator_mapping_group('VF'),
+                   lambda: repository.replace_operator_mapping_groups(
+                       [{**group, 'role': 'exclude'} for group in repository.list_operator_mapping_groups()])):
+        with pytest.raises(ValueError, match='At least one Operator label must not be excluded'):
+            change()
+        assert [(group['canonical'], group.get('role')) for group in repository.list_operator_mapping_groups()] == [
+            ('VF', None), ('Lebara', 'exclude')]
+    # The Vendor Maps have no roles, and a workspace without labels is fine.
+    repository.delete_operator_mapping_group('Lebara')
+    repository.delete_operator_mapping_group('VF')
+    assert repository.list_operator_mapping_groups() == []
+
+
+def test_the_operator_maps_editor_keeps_one_operator_included(client):
+    import shutil
+    import subprocess
+    from pathlib import Path
+    from urllib.parse import parse_qs, urlparse
+
+    import pytest
+
+    login(client)
+    repository = core.repository
+    if not repository.list_operator_mapping_groups():
+        repository.replace_operator_mapping_group(None, 'VF', [], '#E60000')
+    groups = repository.list_operator_mapping_groups()
+    last = next(group for group in groups if group.get('role') != 'exclude')
+    for group in (group for group in groups if group is not last and group.get('role') != 'exclude'):
+        repository.replace_operator_mapping_group(group['canonical'], group['canonical'], group['aliases'], group['color'], 'exclude')
+    response = client.post('/workspace-config/operator-mappings/save', data={
+        'original_canonical': last['canonical'], 'canonical_value': last['canonical'], 'aliases': '\n'.join(last['aliases']),
+        'color': last['color'], 'role': 'exclude'}, follow_redirects=False)
+    error = parse_qs(urlparse(response.headers['location']).query)['operator_mapping_error'][0]
+    assert error.startswith('At least one Operator label must not be excluded')
+    assert next(group for group in repository.list_operator_mapping_groups()
+                if group['canonical'] == last['canonical']).get('role') == last.get('role')
+
+    # The page puts the Role back at once, and adds no label as excluded when every label is.
+    script = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/app.js').read_text(encoding='utf-8')
+    helpers = script[script.index('const OPERATOR_ROLE_LAST_INCLUDED'):script.index("document.addEventListener('submit', (event) => {\n  const form")]
+    node = shutil.which('node')
+    if not node:
+        pytest.skip('Node.js is required for the Operator Maps editor checks.')
+    program = helpers + r"""
+const dialogs = [];
+const showInfoDialog = (message) => dialogs.push(message);
+const option = (value, selected) => ({value, defaultSelected: selected});
+const select = (value) => ({value, options: [option('', value === ''), option('focus', value === 'focus'), option('exclude', value === 'exclude')],
+  closest: (selector) => selector.startsWith('form') ? null : panel});
+const selects = [select(''), select('exclude')];
+const panel = {querySelectorAll: () => selects};
+selects[0].value = 'exclude';
+const refused = keepOneOperatorIncluded(selects[0]);
+const after = selects.map(item => item.value);
+selects[0].value = 'focus';
+const accepted = keepOneOperatorIncluded(selects[0]);
+console.log(JSON.stringify({refused, after, accepted, dialogs: dialogs.length, none: everyOperatorExcluded([]),
+  newOnly: everyOperatorExcluded(['exclude'])}));
+"""
+    completed = subprocess.run([node, '-e', program], capture_output=True, text=True, check=False)
+    assert completed.returncode == 0, completed.stderr
+    assert json.loads(completed.stdout) == {'refused': False, 'after': ['', 'exclude'], 'accepted': True, 'dialogs': 1,
+                                            'none': False, 'newOnly': True}

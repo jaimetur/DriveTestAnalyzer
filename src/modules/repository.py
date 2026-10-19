@@ -901,6 +901,22 @@ class Repository:
             conn.execute("ALTER TABLE chart_mapping_groups ADD COLUMN role TEXT NOT NULL DEFAULT ''")
 
     @staticmethod
+    def _check_operator_roles(conn: sqlite3.Connection, mapping_type: str) -> None:
+        """At least one Operator label is not excluded: every analysis would have no operator otherwise (the change is
+        then undone)."""
+        if mapping_type != 'operator':
+            return
+        try:
+            roles = [normalize_mapping_role(row[0]) for row in conn.execute(
+                "SELECT role FROM chart_mapping_groups WHERE mapping_type = 'operator'").fetchall()]
+        except sqlite3.OperationalError:
+            # A workspace database written before the Roles: no label is excluded.
+            return
+        if roles and all(role == 'exclude' for role in roles):
+            raise ValueError('At least one Operator label must not be excluded: every analysis, filter and report '
+                             'would be left without operators.')
+
+    @staticmethod
     def _ensure_chart_mapping_groups(conn: sqlite3.Connection) -> None:
         """Migrate the former hardcoded chart order and colours into workspace data."""
         Repository._ensure_chart_mapping_role_column(conn)
@@ -3452,6 +3468,7 @@ class Repository:
                 f'INSERT INTO {table} (source_value, canonical_value) VALUES (?, ?)',
                 [(source, canonical) for source in desired_sources.values()],
             )
+            self._check_operator_roles(conn, mapping_type)
 
     @_invalidates_chart_mappings
     def assign_chart_mapping_sources(self, mapping_type: str, assignments: Iterable[tuple[str, str]]) -> int:
@@ -3529,6 +3546,7 @@ class Repository:
                 'DELETE FROM chart_mapping_groups WHERE mapping_type = ? AND canonical_value = ? COLLATE NOCASE',
                 (mapping_type, canonical),
             )
+            self._check_operator_roles(conn, mapping_type)
             self._compact_chart_mapping_positions(conn, mapping_type)
 
     @_invalidates_chart_mappings
@@ -3630,6 +3648,7 @@ class Repository:
             conn.executemany(
                 f'INSERT INTO {table} (source_value, canonical_value) VALUES (?, ?)', rows,
             )
+            self._check_operator_roles(conn, mapping_type)
 
     def invalidate_cdr_normalization(self) -> None:
         with self.connection() as conn:

@@ -7,6 +7,5 @@ Each operator has:
 - `canonical`: the label shown in every filter, table, chart, legend and report;
 - `color`: the main colour of its brand, as `#RRGGBB` (an approximation of the corporate colour, to be adjusted in Workspace Config → Operator Maps when needed);
 - `aliases`: the ways the CDRs write it, also followed by the country (`O2 DE`, or `O2 - de` as NetCheck writes it).
-- `role` (optional): `focus` for the Focus operators of the Scoring exports, or `exclude` for an operator left out of every analysis, filter, chart and report (see Workspace Config → Operator Maps).
 
-The United Kingdom keeps the labels and spellings of the NetCheck UK CDRs (EE, 3, VF, VF SA, VF VoNR, O2 and Lebara), with 3, VF, VF SA and VF VoNR as Focus operators and Lebara excluded.
+The United Kingdom keeps the labels and spellings of the NetCheck UK CDRs (EE, 3, VF, VF SA, VF VoNR, O2 and Lebara).
