@@ -18698,7 +18698,8 @@ def scoring_saved_filter_export(
         media_type = 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
         # Composed as the Scoring section of a Bundle Report Template (PowerPoint and Word alike).
         from src.modules.bundle_report_templates import module_document
-        content = module_document('scoring', content, 'word' if export_kind == 'word' else 'powerpoint', 'Scoring & GAP Analysis')
+        content = module_document('scoring', content, 'word' if export_kind == 'word' else 'powerpoint', 'Scoring & GAP Analysis',
+                                  theme=export_theme)
         if export_kind == 'word':
             filename = str(Path(filename).with_suffix('.docx'))
             media_type = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
@@ -18905,7 +18906,9 @@ def scoring_report(export_kind: str, payload: ScoringReportRequest, user: Sessio
     media_type = 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
     # Composed as the Scoring section of a Bundle Report Template (PowerPoint and Word alike).
     from src.modules.bundle_report_templates import module_document
-    content = module_document('scoring', content, 'word' if export_kind == 'word' else 'powerpoint', 'Scoring & GAP Analysis')
+    from src.modules.scoring_reports import normalize_report_configuration
+    content = module_document('scoring', content, 'word' if export_kind == 'word' else 'powerpoint', 'Scoring & GAP Analysis',
+                              theme=normalize_report_configuration(payload.configuration)['theme'])
     if export_kind == 'word':
         filename = str(Path(filename).with_suffix('.docx'))
         media_type = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'

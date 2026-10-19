@@ -840,6 +840,65 @@ def test_covers_fill_word_pages_of_their_own():
     assert all(paragraph.runs for paragraph in document.paragraphs)
 
 
+def test_word_pages_start_what_does_not_fit_whole_on_the_next_page():
+    def image(caption, height, group=''):
+        return PackItem('image', caption, image=PNG, width=7, height=height, group=group or caption)
+
+    items = [PackItem('heading1', 'Scoring'), image('Standings', 4), image('Where to act — VF', 3.5), image('Where to act — 3', 3.5),
+             image('Route stretches — VF', 3.4, 'VF 1'), image('Route stretches — VF', 3.4, 'VF 2'),
+             image('Route stretches — 3', 3.4, '3 1'), image('Route stretches — 3', 3.4, '3 2')]
+    pages = pack_pages(items, 7.37, 10.4)
+    # The two Where to act fit together only on a page of their own; Route stretches, larger than a page, keeps each
+    # operator on one page (the second would have started under the first).
+    assert [[item.text for row in rows for item in row] for rows, _scale in pages] == [
+        ['Scoring', 'Standings'], ['Where to act — VF', 'Where to act — 3'], ['Route stretches — VF', 'Route stretches — VF'],
+        ['Route stretches — 3', 'Route stretches — 3']]
+
+
+def test_word_contents_follow_the_cover_in_the_theme_of_the_report():
+    from docx import Document
+    from src.modules.bundle_report_templates import word_navigation
+    from src.modules.pptx_to_docx import CONTENTS_TITLE, contents_entries
+    from src.modules.scoring_themes import get_theme
+
+    def image(caption, height=3.0):
+        return PackItem('image', caption, image=PNG, width=7, height=height, group=caption)
+
+    items = [PackItem('cover', 'Cover', image=PNG), PackItem('cover', 'Scoring', image=PNG, level=1, contents='01  Scoring'),
+             PackItem('heading2', '1.1  Best Network', level=2, contents='1.1  Best Network'), image('Where to act — VF'),
+             image('Where to act — 3'), image('Biggest levers — vs EE'), PackItem('cover', 'Insights', image=PNG, level=1,
+                                                                                  contents='02  Insights'), image('Overview', 8)]
+    # The sections, their parts and the topics of their components (one entry for the components of every operator).
+    assert [(level, text) for _item, level, text in contents_entries(items)] == [
+        (1, '01  Scoring'), (2, '1.1  Best Network'), (3, 'Where to act'), (3, 'Biggest levers — vs EE'), (1, '02  Insights'),
+        (2, 'Overview')]
+    page_items = []
+    document = Document(BytesIO(packed_component_document(items, page_items=page_items, contents=get_theme('ericsson'))))
+    # The cover, the contents, then the pages they number (the cover of each section on its own page).
+    assert [[item.kind for item in page] for page in page_items] == [
+        ['cover'], ['contents'], ['cover'], ['heading2', 'image', 'image', 'image'], ['cover'], ['image']]
+    assert [page['title'] for group in word_navigation(page_items) for page in group['pages']][:2] == ['Cover', CONTENTS_TITLE]
+    body = document.element.body
+    xml = body.xml
+    assert CONTENTS_TITLE in xml and 'Ericsson Hilda' in xml and '0068BF' in xml
+    # Each entry links to its bookmark and shows its page, which Word and LibreOffice update with the document.
+    anchors = [link.get('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}anchor')
+               for link in body.iter('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}hyperlink')]
+    bookmarks = {mark.get('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}name')
+                 for mark in body.iter('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}bookmarkStart')}
+    assert len(anchors) == 6 and set(anchors) == bookmarks
+    instructions = [text.text for text in body.iter('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}instrText')]
+    assert instructions[0] == f' PAGEREF {anchors[0]} \\h '
+    results = [run.text for paragraph in body.iter('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}hyperlink')
+               for run in paragraph.iter('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}t')]
+    assert [results[index] for index in (2, 5, 7, 9, 12, 14)] == ['3', '4', '4', '4', '5', '6']
+    # A dark theme shows the contents on its slide colour; the fonts of the theme are declared with their kind.
+    dark = Document(BytesIO(packed_component_document(items, contents=get_theme('midnight'))))
+    assert dark.tables and '080D18' in dark.tables[0]._tbl.xml
+    from docx.opc.constants import RELATIONSHIP_TYPE
+    assert b'w:name="Segoe UI"' in dark.part.part_related_by(RELATIONSHIP_TYPE.FONT_TABLE).blob
+
+
 def test_long_titles_fit_one_line_and_short_ones_keep_their_size():
     from src.modules.slide_titles import fit_slide_title
 

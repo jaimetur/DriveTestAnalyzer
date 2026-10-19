@@ -4,7 +4,8 @@ Slide titles become headings, tables become Word tables with their colours, nati
 images from their data, and pictures and text boxes are copied in reading order.
 
 The Bundle Report Template and the exports of Scoring & GAP Analysis, Network Insights and Non-Qualified Calls pack their
-components on portrait pages instead (see bundle_report_templates.compose_word), with the helpers here.
+components on portrait pages instead, after the cover and a table of contents in the theme of the report (see
+bundle_report_templates.compose_word), with the helpers here.
 """
 
 from __future__ import annotations
@@ -521,6 +522,10 @@ class PackItem:
     untitled: bytes = b''
     untitled_width: float = 0.0
     untitled_height: float = 0.0
+    # A section (a cover or heading1) or a part of it (heading2) listed in the table of contents: its ``level`` (1 for a
+    # section, 2 for its parts…) and its entry there (``contents``; not listed without one).
+    level: int = 0
+    contents: str = ''
 
     def without_title(self) -> 'PackItem':
         return PackItem('image', self.text, image=self.untitled, width=self.untitled_width, height=self.untitled_height,
@@ -580,11 +585,60 @@ def page_layout(items: list[PackItem], width: float, height: float) -> tuple[lis
     return best or ([], 1.0)
 
 
+def topic(text: str) -> str:
+    """What a component shows without its focus (the operator or view after " — "): consecutive components of one
+    topic, such as the Points Lost per City of each operator, go together."""
+    return text.split(' — ')[0].strip()
+
+
+@dataclass
+class _Unit:
+    """Items pack_pages keeps on one page when they fit there: a part (a heading and what follows it up to the next
+    heading of its level or above), a topic (consecutive components of one topic), a component (the images of one
+    caption) or a group (its images of the same title and context)."""
+    key: str = ''
+    heading: PackItem | None = None
+    children: list[Any] = field(default_factory=list)
+
+    def items(self) -> list[PackItem]:
+        items = [] if self.heading is None else [self.heading]
+        for child in self.children:
+            items.extend(child.items() if isinstance(child, _Unit) else [child])
+        return items
+
+
+def _units(items: list[PackItem]) -> list[Any]:
+    """The parts, topics, components and groups of the items of a section (the headings of its parts and its images),
+    in order."""
+    root = _Unit()
+    parts: list[tuple[int, _Unit]] = [(0, root)]
+    for item in items:
+        if item.kind != 'image':
+            level = item.level or 2
+            while len(parts) > 1 and parts[-1][0] >= level:
+                parts.pop()
+            part = _Unit(heading=item)
+            parts[-1][1].children.append(part)
+            parts.append((level, part))
+            continue
+        container = parts[-1][1]
+        for key in (topic(item.text), item.text, item.group):
+            last = container.children[-1] if container.children else None
+            if not (key and isinstance(last, _Unit) and last.heading is None and last.key == key):
+                last = _Unit(key)
+                container.children.append(last)
+            container = last
+        container.children.append(item)
+    return root.children
+
+
 def pack_pages(items: list[PackItem], width: float, height: float, minimum_scale: float = 0.88) -> list[tuple[list[list[PackItem]], float]]:
     """Pages of consecutive items: each page takes the next items while they fit (a little smaller, down to
-    ``minimum_scale``), so an item never goes after one that follows it; a section heading starts a new page, a
-    heading never ends a page, and an item larger than a page fills one page on its own, made smaller. An image that
-    follows on the same page one of its group goes without its title, which that one already shows."""
+    ``minimum_scale``), so an item never goes after one that follows it. A part of a section, a topic, a component or a
+    group of its images (see _units) that does not fit whole in what is left of a page starts the next one, and is
+    split over pages only when it is larger than a page. A section heading starts a new page, a heading never ends a
+    page, and an item larger than a page fills one page on its own, made smaller. An image that follows on the same
+    page one of its group goes without its title, which that one already shows."""
     pages: list[list[PackItem]] = []
     current: list[PackItem] = []
 
@@ -597,29 +651,71 @@ def pack_pages(items: list[PackItem], width: float, height: float, minimum_scale
             pages.append(list(current))
         return trailing
 
+    def shown(entries: list[PackItem]) -> list[PackItem]:
+        # An image after one of its group on the same page goes without its title.
+        result: list[PackItem] = []
+        previous = current[-1] if current else None
+        for entry in entries:
+            if entry.kind == 'image' and entry.untitled and entry.group and previous is not None \
+                    and previous.kind == 'image' and previous.group == entry.group:
+                entry = entry.without_title()
+            result.append(entry)
+            previous = entry
+        return result
+
+    def fits(entries: list[PackItem]) -> bool:
+        return page_layout([*current, *entries], width, height)[1] >= minimum_scale
+
+    def place(unit: Any) -> None:
+        nonlocal current
+        entries = unit.items() if isinstance(unit, _Unit) else [unit]
+        if fits(shown(entries)):
+            current = [*current, *shown(entries)]
+            return
+        if any(entry.kind == 'image' for entry in current):
+            # What does not fit whole in what is left of the page starts the next one.
+            current = close()
+            if fits(shown(entries)):
+                current = [*current, *shown(entries)]
+                return
+        if not isinstance(unit, _Unit):
+            # Larger than a page: on a page of its own, smaller.
+            current = [*current, unit]
+            return
+        # Larger than a page: its parts, topics, components or groups go on as many pages as they need.
+        if unit.heading is not None:
+            current = [*current, unit.heading]
+        for child in unit.children:
+            place(child)
+
+    run: list[PackItem] = []
+
+    def flush() -> None:
+        for unit in _units(run):
+            place(unit)
+        run.clear()
+
     for item in items:
         if item.kind == 'cover':
             # A cover fills a page of its own; what follows it starts the next page.
+            flush()
             trailing = close()
             if trailing:
                 pages.append(trailing)
             pages.append([item])
             current = []
             continue
-        if item.kind == 'heading1' and current:
-            current = close()
+        if item.kind == 'heading1':
+            flush()
             if current:
-                pages.append(current)
-                current = []
-        shown = item
-        if item.kind == 'image' and item.untitled and item.group and current and current[-1].kind == 'image' \
-                and current[-1].group == item.group:
-            shown = item.without_title()
-        candidate = [*current, shown]
-        if not any(entry.kind == 'image' for entry in current) or page_layout(candidate, width, height)[1] >= minimum_scale:
-            current = candidate
+                current = close()
+                if current:
+                    pages.append(current)
+                    current = []
+            current = [*current, item]
             continue
-        current = [*close(), item]
+        run.append(item)
+    flush()
     trailing = close()
     if trailing:
         pages.append(trailing)
@@ -664,14 +760,276 @@ def _next_section(document: Any, inches: float) -> Any:
     return section
 
 
+# -- the table of contents of a packed document ------------------------------------------------------------------
+CONTENTS_TITLE = 'Contents'
+_COUNTER = re.compile(r'^(\d+(?:\.\d+)*)\s+(.+)$')
+_CONTENTS_INDENT = 0.28
+_CONTENTS_NUMBER = 0.5
+_CONTENTS_PAD = 0.35
+# The properties of a paragraph that follow its borders (the order WordprocessingML requires).
+_AFTER_BORDERS = ('w:shd', 'w:tabs', 'w:suppressAutoHyphens', 'w:kinsoku', 'w:wordWrap', 'w:overflowPunct', 'w:topLinePunct',
+                  'w:autoSpaceDE', 'w:autoSpaceDN', 'w:bidi', 'w:adjustRightInd', 'w:snapToGrid', 'w:spacing', 'w:ind',
+                  'w:contextualSpacing', 'w:mirrorIndents', 'w:suppressOverlap', 'w:jc', 'w:textDirection', 'w:textAlignment',
+                  'w:textboxTightWrap', 'w:outlineLvl', 'w:divId', 'w:cnfStyle', 'w:rPr', 'w:sectPr', 'w:pPrChange')
+
+
+def contents_entries(items: list[PackItem]) -> list[tuple[PackItem, int, str]]:
+    """The entries of the table of contents, in order, as (item, level, text): the sections and their parts (the items
+    with ``contents``) and, a level below the heading before them, each topic of their components (see topic), named
+    after its caption when it has one component, else after the topic."""
+    entries: list[tuple[PackItem, int, str]] = []
+    level = 0
+    run: list[PackItem] = []
+
+    def close_topic() -> None:
+        if run:
+            captions = list(dict.fromkeys(item.text for item in run))
+            entries.append((run[0], level + 1, captions[0] if len(captions) == 1 else topic(run[0].text)))
+            run.clear()
+
+    for item in items:
+        if item.kind == 'image':
+            if run and topic(item.text) != topic(run[0].text):
+                close_topic()
+            if item.text:
+                run.append(item)
+            continue
+        close_topic()
+        if item.level and item.contents:
+            entries.append((item, item.level, item.contents))
+            level = item.level
+    close_topic()
+    return entries
+
+
+def _hex(colour: Any, fallback: str) -> str:
+    text = str(colour or '').strip().lstrip('#').upper()
+    return text if re.fullmatch(r'[0-9A-F]{6}', text) else fallback
+
+
+def contents_style(theme: dict[str, Any]) -> dict[str, Any]:
+    """The fonts and colours of the table of contents from the tokens of a theme (see scoring_themes): its title as the
+    titles of the theme over a rule in its accent, the numbers in its accent and, for a dark theme, on its slide
+    colour."""
+    titles = theme.get('titles') or {}
+    slide = _hex(theme.get('slide'), 'FFFFFF')
+    red, green, blue = (int(slide[index:index + 2], 16) for index in (0, 2, 4))
+    dark = red * 0.299 + green * 0.587 + blue * 0.114 < 128
+    font = titles.get('font') or 'Calibri'
+    stack = str(theme.get('font') or '').casefold()
+    return {
+        'background': slide if dark else None,
+        # The kind of font of the theme, for the reader without its fonts (see _declare_fonts).
+        'family': 'roman' if 'serif' in stack.replace('sans-serif', '') else 'swiss',
+        'title_font': font, 'title_bold': bool(titles.get('bold')), 'caps': bool(titles.get('caps')),
+        'title': _hex(titles.get('heading_color') or theme.get('title'), '1F2A37'),
+        'accent': _hex(theme.get('title_accent') or theme.get('accent'), '1450A8'),
+        'font': titles.get('subtitle_font') or font,
+        'strong_font': titles.get('focus_font') or titles.get('subtitle_font') or font,
+        'ink': _hex(theme.get('ink'), '1F2A37'),
+        'muted': _hex(theme.get('muted'), '8A96A0'),
+    }
+
+
+def _entry_format(item: PackItem, level: int) -> tuple[float, bool, float, float]:
+    """(size, bold, space before, space after) in points: a section, a part or a topic."""
+    if item.kind == 'image':
+        return 10.0, False, 1.0, 1.0
+    return (12.0, True, 10.0, 2.0) if level <= 1 else (10.5, False, 5.0, 1.0)
+
+
+def _contents_chunks(entries: list[tuple[PackItem, int, str]], width: float, height: float) -> list[list[tuple[PackItem, int, str]]]:
+    """The entries of each page of the table of contents: as many as its page holds (their lines estimated from their
+    length)."""
+    available = height - 1.2 - 2 * _CONTENTS_PAD
+    chunks: list[list[tuple[PackItem, int, str]]] = [[]]
+    used = 0.0
+    for entry in entries:
+        item, level, text = entry
+        size, _bold, before, after = _entry_format(item, level)
+        line_width = width - 2 * _CONTENTS_PAD - (level - 1) * _CONTENTS_INDENT - _CONTENTS_NUMBER - 0.6
+        lines = max(1, math.ceil(len(text) / max(10.0, line_width * 72 / (size * 0.52))))
+        needed = (lines * size * 1.25 + before + after) / 72
+        if chunks[-1] and used + needed > available:
+            chunks.append([])
+            used = 0.0
+        chunks[-1].append(entry)
+        used += needed
+    return chunks
+
+
+def _declare_fonts(document: Any, style: dict[str, Any]) -> None:
+    """The fonts of the table of contents in the font table of ``document`` with their kind (sans serif or serif): Word
+    and LibreOffice stand in a font of the same kind for one that is not installed."""
+    from docx.opc.constants import RELATIONSHIP_TYPE
+    from lxml import etree
+
+    part = document.part.part_related_by(RELATIONSHIP_TYPE.FONT_TABLE)
+    fonts = etree.fromstring(part.blob)
+    declared = {font.get(qn('w:name')) for font in fonts.findall(qn('w:font'))}
+    for name in dict.fromkeys((style['title_font'], style['font'], style['strong_font'])):
+        if name in declared:
+            continue
+        font = etree.SubElement(fonts, qn('w:font'))
+        font.set(qn('w:name'), name)
+        etree.SubElement(font, qn('w:family')).set(qn('w:val'), style['family'])
+        etree.SubElement(font, qn('w:pitch')).set(qn('w:val'), 'variable')
+    part._blob = etree.tostring(fonts, xml_declaration=True, encoding='UTF-8', standalone=True)
+
+
+def _font(run: Any, name: str, size: float, colour: str, *, bold: bool = False, caps: bool = False) -> None:
+    run.font.name = name
+    run._element.get_or_add_rPr().get_or_add_rFonts().set(qn('w:eastAsia'), name)
+    run.font.size = Pt(size)
+    run.font.bold = bold
+    run.font.all_caps = caps
+    run.font.color.rgb = RGBColor.from_string(colour)
+
+
+def bookmark(paragraph: Any, name: str, number: int) -> None:
+    """``name`` marks ``paragraph`` (what an entry of the table of contents links to)."""
+    start = OxmlElement('w:bookmarkStart')
+    start.set(qn('w:id'), str(number))
+    start.set(qn('w:name'), name)
+    end = OxmlElement('w:bookmarkEnd')
+    end.set(qn('w:id'), str(number))
+    element = paragraph._p
+    element.insert(1 if element.pPr is not None else 0, start)
+    element.append(end)
+
+
+def _field_runs(paragraph: Any, instruction: str, result: str) -> list[Any]:
+    """The runs of a field (such as PAGEREF) showing ``result`` until it is updated."""
+    runs = []
+    for kind, value in (('begin', None), ('instr', instruction), ('separate', None), ('text', result), ('end', None)):
+        run = paragraph.add_run(value if kind == 'text' else '')
+        if kind == 'instr':
+            text = OxmlElement('w:instrText')
+            text.set(qn('xml:space'), 'preserve')
+            text.text = value
+            run._r.append(text)
+        elif kind != 'text':
+            character = OxmlElement('w:fldChar')
+            character.set(qn('w:fldCharType'), kind)
+            run._r.append(character)
+        runs.append(run)
+    return runs
+
+
+def _contents_entry(paragraph: Any, entry: tuple[PackItem, int, str], target: str, page: int, style: dict[str, Any],
+                    width: float) -> None:
+    """An entry: its counter in the accent of the theme, its text, a dotted leader and its page, all a link to it."""
+    from docx.enum.text import WD_TAB_ALIGNMENT, WD_TAB_LEADER
+
+    item, level, text = entry
+    size, bold, before, after = _entry_format(item, level)
+    matched = _COUNTER.match(text) if item.kind != 'image' else None
+    number, text = (matched.group(1), matched.group(2)) if matched else ('', text)
+    # A section or part has its counter before it; a topic starts under the text of the heading it follows.
+    indent = (level - 1) * _CONTENTS_INDENT if item.kind != 'image' else max(0, level - 2) * _CONTENTS_INDENT + _CONTENTS_NUMBER * (level > 1)
+    layout = paragraph.paragraph_format
+    layout.space_before, layout.space_after, layout.line_spacing = Pt(before), Pt(after), 1.0
+    layout.left_indent = Inches(indent + (_CONTENTS_NUMBER if number else 0))
+    layout.first_line_indent = Inches(-_CONTENTS_NUMBER) if number else None
+    if number:
+        layout.tab_stops.add_tab_stop(Inches(indent + _CONTENTS_NUMBER), WD_TAB_ALIGNMENT.LEFT)
+    layout.tab_stops.add_tab_stop(Inches(width), WD_TAB_ALIGNMENT.RIGHT, WD_TAB_LEADER.DOTS)
+    layout.keep_together = True
+    font = style['strong_font'] if bold else style['font']
+    colour = style['title'] if level <= 1 and item.kind != 'image' else style['ink']
+    runs = []
+    if number:
+        runs.append(paragraph.add_run(number))
+        _font(runs[-1], style['strong_font'], size, style['accent'], bold=True)
+        runs.append(paragraph.add_run('\t'))
+        _font(runs[-1], font, size, colour)
+    runs.append(paragraph.add_run(text))
+    _font(runs[-1], font, size, colour, bold=bold)
+    runs.append(paragraph.add_run('\t'))
+    _font(runs[-1], font, size, style['muted'])
+    for run in _field_runs(paragraph, f' PAGEREF {target} \\h ', str(page)):
+        _font(run, font, size, colour if bold else style['muted'], bold=bold)
+        runs.append(run)
+    link = OxmlElement('w:hyperlink')
+    link.set(qn('w:anchor'), target)
+    link.set(qn('w:history'), '1')
+    for run in runs:
+        link.append(run._r)
+    paragraph._p.append(link)
+
+
+def _shade_cell(cell: Any, colour: str, padding: float) -> None:
+    properties = cell._tc.get_or_add_tcPr()
+    shading = OxmlElement('w:shd')
+    shading.set(qn('w:val'), 'clear')
+    shading.set(qn('w:color'), 'auto')
+    shading.set(qn('w:fill'), colour)
+    properties.append(shading)
+    margins = OxmlElement('w:tcMar')
+    for side in ('top', 'left', 'bottom', 'right'):
+        margin = OxmlElement(f'w:{side}')
+        margin.set(qn('w:w'), str(int(padding * 1440)))
+        margin.set(qn('w:type'), 'dxa')
+        margins.append(margin)
+    properties.append(margins)
+
+
+def write_contents(document: Any, chunks: list[list[tuple[PackItem, int, str]]], style: dict[str, Any], width: float,
+                   height: float, targets: dict[int, str], pages: dict[int, int]) -> None:
+    """The pages of the table of contents (``chunks``: the entries of each page) in the theme of ``style`` (see
+    contents_style): each page under the title, the entries linked to the bookmark of their item (``targets``) with
+    its page (``pages``). A dark theme shows each page as a panel of its slide colour."""
+    _declare_fonts(document, style)
+    background = style.get('background')
+    table = None
+    if background:
+        table = document.add_table(rows=len(chunks), cols=1)
+        table.autofit = False
+        for row in table.rows:
+            # Each page a row as tall as the page, which never splits: the next one starts the next page.
+            properties = row._tr.get_or_add_trPr()
+            properties.append(OxmlElement('w:cantSplit'))
+            row_height = OxmlElement('w:trHeight')
+            row_height.set(qn('w:val'), str(int((height - 0.15) * 1440)))
+            row_height.set(qn('w:hRule'), 'atLeast')
+            properties.append(row_height)
+            row.cells[0].width = Inches(width)
+            _shade_cell(row.cells[0], background, _CONTENTS_PAD)
+    text_width = width - (2 * _CONTENTS_PAD if background else 0)
+    for page, chunk in enumerate(chunks):
+        if table is not None:
+            cell = table.rows[page].cells[0]
+            title = cell.paragraphs[0]
+            add = cell.add_paragraph
+        else:
+            title = document.add_paragraph()
+            title.paragraph_format.page_break_before = page > 0
+            add = document.add_paragraph
+        layout = title.paragraph_format
+        layout.space_before, layout.space_after = Pt(0), Pt(14)
+        _font(title.add_run(CONTENTS_TITLE), style['title_font'], 24, style['title'], bold=style['title_bold'],
+              caps=style['caps'])
+        # The rule under the title, in the accent of the theme.
+        borders = OxmlElement('w:pBdr')
+        bottom = OxmlElement('w:bottom')
+        for name, value in (('val', 'single'), ('sz', '12'), ('space', '6'), ('color', style['accent'])):
+            bottom.set(qn(f'w:{name}'), value)
+        borders.append(bottom)
+        title._p.get_or_add_pPr().insert_element_before(borders, *_AFTER_BORDERS)
+        for entry in chunk:
+            _contents_entry(add(), entry, targets[id(entry[0])], pages[id(entry[0])], style, text_width)
+
+
 _CONTENT_MARGIN = 0.45
 
 
 def packed_component_document(items: list[PackItem], cover: bytes | None = None,
-                              page_items: list[list[PackItem]] | None = None) -> bytes:
+                              page_items: list[list[PackItem]] | None = None, contents: dict[str, Any] | None = None) -> bytes:
     """Portrait pages of covers, headings and component images packed by ``pack_pages``, after a full-page ``cover``.
-    Every cover fills a page without margins (the report cover and the cover of each section). ``page_items`` receives
-    the items of each page, in order (to name the pages of the document)."""
+    Every cover fills a page without margins (the report cover and the cover of each section). With ``contents`` (the
+    tokens of a theme, see scoring_themes), the first cover is followed by a table of contents in that theme (see
+    contents_entries and write_contents). ``page_items`` receives the items of each page, in order (to name the pages
+    of the document; a page of the table of contents holds a ``contents`` item)."""
     if cover is not None:
         items = [PackItem('cover', image=cover), *items]
     document = Document()
@@ -682,16 +1040,39 @@ def packed_component_document(items: list[PackItem], cover: bytes | None = None,
     height = _PAGE_HEIGHT - 2 * _CONTENT_MARGIN - 0.3
     previous_cover = None
     pages = pack_pages(items, width, height)
+    page_of = {id(item): number for number, (rows, _scale) in enumerate(pages) for row in rows for item in row}
+    entries = [entry for entry in contents_entries(items) if id(entry[0]) in page_of] if contents is not None else []
+    chunks = _contents_chunks(entries, width, height) if entries else []
+    # The table of contents follows the first cover (else it opens the document): the pages after it count its pages.
+    contents_at = 1 if pages and pages[0][0][0][0].kind == 'cover' else 0
+    targets = {id(item): f'_TocEntry{number}' for number, (item, _level, _text) in enumerate(entries)}
+    numbers = {key: page + 1 + (len(chunks) if page >= contents_at else 0) for key, page in page_of.items() if key in targets}
     if page_items is not None:
-        page_items.extend([item for row in rows for item in row] for rows, _scale in pages)
+        listed = [[item for row in rows for item in row] for rows, _scale in pages]
+        page_items.extend([*listed[:contents_at], *([PackItem('contents', CONTENTS_TITLE)] for _chunk in chunks),
+                           *listed[contents_at:]])
+
+    def mark(paragraph: Any, *marked: PackItem) -> None:
+        for item in marked:
+            if id(item) in targets:
+                bookmark(paragraph, targets[id(item)], list(targets).index(id(item)))
+
+    after_contents = False
     for page_number, (rows, scale) in enumerate(pages):
+        if chunks and page_number == contents_at:
+            if page_number == 0:
+                _margins(section, _CONTENT_MARGIN)
+            else:
+                section = _next_section(document, _CONTENT_MARGIN)
+            write_contents(document, chunks, contents_style(contents), width, height, targets, numbers)
+            previous_cover, after_contents = False, True
         is_cover = rows[0][0].kind == 'cover'
-        if page_number == 0:
+        if page_number == 0 and not after_contents:
             _margins(section, 0 if is_cover else _CONTENT_MARGIN)
         elif is_cover or previous_cover:
             # A cover has a section of its own without margins; the pages after it, one with margins.
             section = _next_section(document, 0 if is_cover else _CONTENT_MARGIN)
-        new_section = page_number == 0 or is_cover or previous_cover
+        new_section = (page_number == 0 and not after_contents) or is_cover or previous_cover
         previous_cover = is_cover
         if is_cover:
             paragraph = document.add_paragraph()
@@ -699,6 +1080,7 @@ def packed_component_document(items: list[PackItem], cover: bytes | None = None,
             paragraph.paragraph_format.line_spacing = 1.0
             paragraph.add_run().add_picture(BytesIO(rows[0][0].image), width=Inches(_PAGE_WIDTH - 0.01),
                                             height=Inches(_PAGE_HEIGHT - 0.05))
+            mark(paragraph, rows[0][0])
             continue
         for row_number, row in enumerate(rows):
             paragraph = document.add_paragraph()
@@ -710,6 +1092,7 @@ def packed_component_document(items: list[PackItem], cover: bytes | None = None,
                 paragraph.paragraph_format.space_after = Pt(4)
                 paragraph.paragraph_format.keep_with_next = True
                 paragraph.add_run(item.text)
+                mark(paragraph, item)
                 for line in item.subtitle:
                     note = document.add_paragraph()
                     note.paragraph_format.space_before = note.paragraph_format.space_after = Pt(0)
@@ -725,6 +1108,7 @@ def packed_component_document(items: list[PackItem], cover: bytes | None = None,
                     paragraph.add_run('\u2002')
                 paragraph.add_run().add_picture(BytesIO(image.image), width=Inches(image.width * scale),
                                                 height=Inches(image.height * scale))
+            mark(paragraph, *row)
     output = BytesIO()
     document.save(output)
     return output.getvalue()

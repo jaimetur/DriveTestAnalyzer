@@ -1425,7 +1425,8 @@ def install_report_task_routes(core: Any) -> None:
                 destination = artifact_path(folder, stamp, 'Scoring & GAP Analysis', entry.get('label') or Path(filename).stem, suffix)
                 # Composed as the Scoring section of a Bundle Report Template (PowerPoint and Word alike).
                 from src.modules.bundle_report_templates import module_document
-                destination.write_bytes(module_document('scoring', content, export_format, 'Scoring & GAP Analysis'))
+                destination.write_bytes(module_document('scoring', content, export_format, 'Scoring & GAP Analysis',
+                                                        theme=report.get('theme')))
                 artifacts.append(ready_artifact('scoring', f"{title} ({FORMAT_LABELS[export_format]})", destination,
                                                 scoring_details(export_job, entry, names)))
             return artifacts
