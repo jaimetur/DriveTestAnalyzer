@@ -12,6 +12,7 @@
 #### 🚀 Enhancements:
 
 #### 🐛 Bug fixes:
+- **Campaigns in the Scoring Summary:** the Campaigns card of how the measurements ran (on the page, in PowerPoint and in Word) names the campaigns scored also when Campaign is not in the Split by, instead of a dash and One campaign, and the tests of each operator name their campaign only when they are those of one campaign.
 
 #### 📚 Documentation:
 

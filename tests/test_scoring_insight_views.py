@@ -88,6 +88,14 @@ def test_campaign_scope_counts_the_tests_of_the_latest_campaign(national):
     assert scope['places'] == {'cities': 8, 'routes': 4}
 
 
+def test_campaign_scope_names_the_campaign_scored_without_campaign_in_the_split_by():
+    job, result = synthetic_cdr_result(levels=('Operator',), campaigns=('2026-Q2',))
+    scope = next(item for item in build_scoring_views(job, result)['insights']['campaign_scope']
+                 if item['environment'] == 'Combined')
+    assert scope['campaigns'] == ['2026-Q2'] and scope['latest_campaign'] == '2026-Q2'
+    assert scope['tests_campaign'] == '2026-Q2' and scope['tests']['Vodafone UK']['data']
+
+
 def test_gap_parts_add_up_to_the_total_gap_of_each_campaign(national):
     _job, _result, insights = national
     item = _combined(insights['gap_parts'], 'O2 UK')[0]

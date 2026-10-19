@@ -888,7 +888,12 @@ def _campaign_scope(score_tables: list[dict[str, Any]], configuration: dict[str,
     the tests of each operator in each environment (the latest campaign)."""
     campaigns = sorted({table['context'].get('campaign') for table in score_tables if table['context'].get('campaign')},
                        key=campaign_sort_key)
+    # Split by Campaign, the tests are those of the latest campaign; otherwise those of every campaign scored.
     latest = campaigns[-1] if campaigns else None
+    if not campaigns:
+        # Without Campaign in the Split by, the campaigns of the CDRs scored (those of the Campaign filter).
+        campaigns = sorted({str(campaign).strip() for campaign in (result or {}).get('campaigns') or []
+                            if str(campaign or '').strip()}, key=campaign_sort_key)
     tests: dict[str, dict[str, dict[str, int]]] = {}
     counts = (result or {}).get('test_counts')
     if isinstance(counts, list):
@@ -924,7 +929,9 @@ def _campaign_scope(score_tables: list[dict[str, Any]], configuration: dict[str,
     places = (((result or {}).get('points_loss') or {}).get('areas') or {}).get('City') or {}
     item = {
         'campaigns': [_display('Campaign', campaign) for campaign in campaigns],
-        'latest_campaign': _display('Campaign', latest) if latest else None,
+        'latest_campaign': _display('Campaign', campaigns[-1]) if campaigns else None,
+        # The campaign whose tests are counted (None for those of several campaigns together).
+        'tests_campaign': _display('Campaign', latest or campaigns[0]) if latest or len(campaigns) == 1 else None,
         'window': (result or {}).get('test_window'),
         'environments': [{'name': name, 'label': str((scope.get(name) or {}).get('display_name') or name),
                           'max_points': maxima.get(name, 0.0)} for name in scope],

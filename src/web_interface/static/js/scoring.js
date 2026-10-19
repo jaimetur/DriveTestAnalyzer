@@ -7353,7 +7353,7 @@
       const wrap = document.createElement('div');
       wrap.className = 'scoring-insight-table-wrap';
       wrap.append(table);
-      box.append(insightParagraph('scoring-insight-note', `Tests of each operator in ${scope.latest_campaign || 'the measurements'}: the CDR Data tests, the Voice calls and the Speech samples scored in each environment.`), wrap);
+      box.append(insightParagraph('scoring-insight-note', `Tests of each operator in ${(scope.tests_campaign !== undefined ? scope.tests_campaign : scope.latest_campaign) || 'the measurements'}: the CDR Data tests, the Voice calls and the Speech samples scored in each environment.`), wrap);
     }
     return box;
   }

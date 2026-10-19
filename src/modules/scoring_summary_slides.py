@@ -419,7 +419,7 @@ def add_campaign_scope_slides(presentation, scopes: list[dict[str, Any]], *, sub
         labels = {'data': 'Data tests', 'voice': 'Calls', 'speech': 'Speech samples'}
         headers = ['Operator', *[f"{labels[kind]} · {environment_labels.get(name, name).split(' - ')[-1]}" for kind in kinds for name in names]]
         top = CONTENT_TOP + tile_height + .4
-        _text(slide, f"Tests of each operator in {item.get('latest_campaign') or 'the measurements'}, as scored in each environment.",
+        _text(slide, f"Tests of each operator in {item.get('tests_campaign', item.get('latest_campaign')) or 'the measurements'}, as scored in each environment.",
               .45, top - .35, 12.4, .3, size=9, color=MUTED)
         widths = [1.8, *([(12.45 - 1.8) / (len(headers) - 1)] * (len(headers) - 1))]
         shape, table = _table(slide, len(operators) + 1, len(headers), .45, top, 12.45, .36, widths)
