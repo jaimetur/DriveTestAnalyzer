@@ -4820,9 +4820,28 @@
     return darkContrast >= whiteContrast ? '#203744' : '#ffffff';
   }
 
-  function stackedSegmentLabelSize(label, width, height) {
-    const size = Math.floor(Math.min(22, (width - 8) / (label.length * .68), (height - 5) / 1.2));
-    return size >= 10 ? size : 0;
+  // The label of a segment of a stacked bar: across it (down to 9px), else turned 90° when the segment is tall enough,
+  // else across it at 8px; none when it fits neither way ({size: 0}).
+  function stackedSegmentLabelLayout(label, width, height) {
+    const across = Math.floor(Math.min(22, (width - 8) / (label.length * .68), (height - 5) / 1.2));
+    if (across >= 9) return {size: across, rotated: false};
+    const turned = Math.floor(Math.min(22, (height - 8) / (label.length * .68), (width - 5) / 1.2));
+    if (turned >= 9) return {size: turned, rotated: true};
+    return across >= 8 ? {size: across, rotated: false} : {size: 0, rotated: false};
+  }
+
+  // Places a segment label at the centre of its segment, turned 90° when the layout says so.
+  function placeSegmentLabel(label, centerX, centerY, layout) {
+    label.setAttribute('x', String(centerX));
+    label.setAttribute('text-anchor', 'middle');
+    if (layout.rotated) {
+      label.setAttribute('y', String(centerY));
+      label.setAttribute('dominant-baseline', 'central');
+      label.setAttribute('transform', `rotate(-90 ${centerX} ${centerY})`);
+    } else {
+      label.setAttribute('y', String(centerY + layout.size * .34));
+    }
+    label.style.fontSize = `${layout.size}px`;
   }
 
   function scoringChartScale(configuredMax, actualMax) {
@@ -4863,19 +4882,27 @@
     }, 0);
   }
 
+  // Up to 16 bars (four operators of four campaigns) are drawn, narrower, in the width of ten, so the chart fits its card
+  // at the height it has with ten; more keep their width and widen the chart (see fitBestNetworkChartWidth).
   function bestNetworkHorizontalGeometry(count, groupTransitions = 0, groupGap = 0) {
     const left = 110, right = 36;
-    const width = Math.max(980, count * 85 + 128 + groupTransitions * groupGap);
+    const bars = count > 10 && count <= 16 ? 10 : count;
+    const width = Math.max(980, bars * 85 + 128 + groupTransitions * groupGap);
     const step = Math.max(1, (width - left - right - groupTransitions * groupGap) / Math.max(count, 1));
     return {width, left, right, step, barWidth: Math.min(120, step * .7)};
   }
 
-  // Ten bars at their own size fill the width of the card; more widen the chart (narrowed back to the card, keeping its
-  // height, when its bars keep enough of their width: see CHART_MIN_FIT_SCALE).
+  // Up to 16 bars fill the width of the card (see bestNetworkHorizontalGeometry); more widen the chart, ten bars a card.
   function fitBestNetworkChartWidth(svg, positions, count, width, right) {
-    const visibleWidth = count > 10 ? positions[10] + right : width;
+    const visibleWidth = count > 16 ? positions[10] + right : width;
     svg.style.width = `${100 * width / visibleWidth}%`;
     svg.style.minWidth = '0';
+  }
+
+  // The size of the total over a bar, smaller than its 26px when the bar is too narrow for it (``step``: the width of a
+  // bar and its gap).
+  function bestNetworkTotalSize(text, step) {
+    return Math.max(11, Math.min(26, Math.floor(step * .94 / Math.max(1, String(text).length * .6))));
   }
 
   function makeSvgChart(title, rows, operatorTable, options = {}) {
@@ -5048,14 +5075,11 @@
           setChartTooltip(rect, tooltipParts.join('\n'), true);
           svg.append(rect);
           const segmentText = formatChartNumber(numeric, {minimumFractionDigits: 1, maximumFractionDigits: 1});
-          const fontSize = stackedSegmentLabelSize(segmentText, barWidth, segmentHeight);
-          if (fontSize) {
+          const layout = stackedSegmentLabelLayout(segmentText, barWidth, segmentHeight);
+          if (layout.size) {
             const segmentLabel = document.createElementNS(svg.namespaceURI, 'text');
-            segmentLabel.setAttribute('x', String(x + barWidth / 2));
-            segmentLabel.setAttribute('y', String(segmentY + segmentHeight / 2 + fontSize * .34));
-            segmentLabel.setAttribute('text-anchor', 'middle');
             segmentLabel.setAttribute('class', 'scoring-best-network-segment');
-            segmentLabel.style.fontSize = `${fontSize}px`;
+            placeSegmentLabel(segmentLabel, x + barWidth / 2, segmentY + segmentHeight / 2, layout);
             segmentLabel.style.fill = categoryLegendTextColor(color);
           styleIncompleteValue(segmentLabel);
             segmentLabel.textContent = segmentText;
@@ -5088,6 +5112,8 @@
           totalLabel.setAttribute('text-anchor', 'middle');
           totalLabel.setAttribute('class', 'scoring-chart-value scoring-best-network-total');
           totalLabel.textContent = `${formatChartNumber(total, {minimumFractionDigits: 1, maximumFractionDigits: 1})}${complete ? '' : '*'}`;
+          const totalSize = bestNetworkTotalSize(totalLabel.textContent, step);
+          if (totalSize < 26) totalLabel.style.fontSize = `${totalSize}px`;
           styleIncompleteValue(totalLabel);
           const hierarchyColumn = hierarchyColumnsById.get(String(category));
           const operatorName = hierarchyColumn
@@ -5800,11 +5826,11 @@
         setChartTooltip(rect, segmentTooltip, true);
         svg.append(rect);
         const segmentText = `${formatChartNumber(cell.value, {minimumFractionDigits: 1, maximumFractionDigits: 1})}${cell.complete ? '' : '*'}`;
-        const fontSize = stackedSegmentLabelSize(segmentText, barWidth, segmentHeight);
-        if (fontSize) {
-          const segmentLabel = svgElement(svg, 'text', {x: x + barWidth / 2, y: segmentY + segmentHeight / 2 + fontSize * .34, 'text-anchor': 'middle', class: 'scoring-best-network-segment'});
+        const layout = stackedSegmentLabelLayout(segmentText, barWidth, segmentHeight);
+        if (layout.size) {
+          const segmentLabel = svgElement(svg, 'text', {class: 'scoring-best-network-segment'});
+          placeSegmentLabel(segmentLabel, x + barWidth / 2, segmentY + segmentHeight / 2, layout);
           segmentLabel.textContent = segmentText;
-          segmentLabel.style.fontSize = `${fontSize}px`;
           segmentLabel.style.fill = categoryLegendTextColor(color);
           styleIncompleteValue(segmentLabel);
           setChartTooltip(segmentLabel, segmentTooltip);
@@ -5814,6 +5840,8 @@
       }
       const totalLabel = svgElement(svg, 'text', {x: x + barWidth / 2, y: stackY - 12, 'text-anchor': 'middle', class: 'scoring-chart-value scoring-best-network-total'});
       totalLabel.textContent = hasPoints ? `${formatChartNumber(totalPoints, {minimumFractionDigits: 1, maximumFractionDigits: 1})}${complete ? '' : '*'}` : 'N/A';
+      const totalSize = bestNetworkTotalSize(totalLabel.textContent, geometry.step);
+      if (totalSize < 26) totalLabel.style.fontSize = `${totalSize}px`;
       styleIncompleteValue(totalLabel);
       setChartTooltip(totalLabel, [
         hasHierarchyAxis ? `Hierarchy: ${presentation.fullLabel}` : `Operator: ${presentation.fullLabel}`,
@@ -8749,9 +8777,8 @@
   }
 
   // A chart wider than its card (which then scrolls sideways) starts fitted to the width of the card, keeping its height,
-  // when its bars keep at least this share of their width (16 bars, such as four operators of four campaigns, do);
-  // otherwise it keeps its size and zooms out to the card by steps.
-  const CHART_MIN_FIT_SCALE = .6;
+  // when its bars keep at least this share of their width; otherwise it keeps its size and zooms out to the card by steps.
+  const CHART_MIN_FIT_SCALE = .75;
   const CHART_WIDTH_STEP = .75;
 
   // A chart narrowed by its zoom keeps its height: only its width shrinks (``factor``: its width over its own; 1 gives

@@ -145,14 +145,16 @@ def test_stacked_chart_labels_fit_segments_and_service_chart_explains_grayscale(
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
     template = SCORING_TEMPLATE.read_text(encoding='utf-8')
 
-    assert re.search(
-        r'function stackedSegmentLabelSize\(label, width, height\) \{\s*'
-        r'const size = Math\.floor\(Math\.min\(22, \(width - 8\) / \(label\.length \* \.68\), '
-        r'\(height - 5\) / 1\.2\)\);\s*return size >= 10 \? size : 0;\s*\}',
-        script,
-    )
-    assert 'stackedSegmentLabelSize(segmentText, barWidth, segmentHeight)' in script
-    assert script.count('stackedSegmentLabelSize(segmentText, barWidth, segmentHeight)') == 2
+    # A segment label goes across its segment (down to 9px), else turned 90° when the segment is tall enough.
+    start = script.index('  function stackedSegmentLabelLayout(')
+    program = script[start:script.index('\n  }\n', start) + 4] + r"""
+console.log(JSON.stringify([stackedSegmentLabelLayout('540.9', 80, 120), stackedSegmentLabelLayout('540.9', 40, 20),
+  stackedSegmentLabelLayout('540.9', 30, 120), stackedSegmentLabelLayout('540.9', 12, 12)]));
+"""
+    across, smaller, turned, none = json.loads(subprocess.run(['node', '-e', program], capture_output=True, text=True, check=True).stdout)
+    assert across == {'size': 21, 'rotated': False} and smaller == {'size': 9, 'rotated': False}
+    assert turned == {'size': 20, 'rotated': True} and none == {'size': 0, 'rotated': False}
+    assert script.count('stackedSegmentLabelLayout(segmentText, barWidth, segmentHeight)') == 2
     service_chart = script[script.index('function makeBestNetworkBars('):script.index('function maximumAllocationEnvironments(')]
     assert "segmentLabel.textContent = segmentText;" in service_chart
     assert "`${kind}: ${cell.value" not in service_chart

@@ -876,7 +876,12 @@
   [data-scoring-workspace][data-scoring-theme="midnight"] .scoring-insight-table th { background: #16233a !important; color: #8fb3d9 !important;
     border-color: #22314a !important; box-shadow: none !important; text-transform: uppercase; font-size: .66rem !important; letter-spacing: .06em; }
   [data-scoring-workspace][data-scoring-theme="midnight"] .scoring-insight-table td { background: #0f1726 !important; color: #dce6f2 !important; border-color: #1b2840 !important; }
-  [data-scoring-workspace][data-scoring-theme="midnight"] [data-result-pane] svg text { fill: #c8d6e8 !important; }
+  /* The heading of each tab stays on the light page: it keeps its own colour. */
+  [data-scoring-workspace][data-scoring-theme="midnight"] [data-result-pane] h4.scoring-context-heading { color: #9a542e !important; }
+  /* Light texts on the dark panels; the labels on bars and bands keep the colour chosen against their own fill, and the
+     values over the bars a dark outline instead of the white one of the light themes. */
+  [data-scoring-workspace][data-scoring-theme="midnight"] [data-result-pane] svg text:not([style*="fill"]) { fill: #c8d6e8 !important; }
+  [data-scoring-workspace][data-scoring-theme="midnight"] [data-result-pane] svg .scoring-chart-value:not([style*="fill"]) { fill: #e6edf7 !important; stroke: #0b1220; }
   [data-scoring-workspace][data-scoring-theme="midnight"] [data-result-pane] svg line { stroke: #22314a; }
   /* Midnight: the position tables, scope pills, chips, selectors and map controls of the results in its night blue too. */
   [data-scoring-workspace][data-scoring-theme="midnight"] .scoring-position-table th { background: #16233a !important; color: #8fb3d9 !important; }
