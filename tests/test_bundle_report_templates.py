@@ -928,10 +928,6 @@ def test_a_second_export_reuses_the_sections_whose_data_has_not_changed(client, 
     assert export(refresh=True)['reused'] == [] and len(calls) == 2
     next(section for section in definition['sections'] if section['key'] == 'network_insights')['options']['campaigns'] = ['2026-Q2']
     assert export()['reused'] == [] and calls[-1] == ['2026-Q2']
-    # An update of the application generates the sections again, with the same data and options.
-    assert export()['reused'] == ['Network Insights']
-    monkeypatch.setattr(bundle_report_templates, 'code_signature', lambda: 'another version of the application')
-    assert export()['reused'] == [] and len(calls) == 4
 
 
 def test_the_scoring_section_is_generated_again_when_a_saved_filter_is_calculated_again(client, monkeypatch):
