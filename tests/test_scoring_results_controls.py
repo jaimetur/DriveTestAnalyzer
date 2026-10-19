@@ -2038,7 +2038,11 @@ def test_operator_sections_show_their_operators_together_and_fit_the_page():
     assert "grid.className = `scoring-insight-pair scoring-stretches-grid${shown.length > 1 ? ' is-multiple' : ''}`;" in stretches
     assert "'stretches-operators'];" in script
     # Where to act: one operator chosen with buttons in the Focus and Other operators subpanels.
-    assert "insightOperatorPicker('act-operator', all, fallback);" in _function_source(script, 'renderWhereToAct')
+    act = _function_source(script, 'renderWhereToAct')
+    assert "insightOperatorPicker('act-operator', all, fallback);" in act
+    # The route that loses most has operator buttons of its own, whatever the operator of Where to act.
+    assert "insightOperatorPicker('route-operator', routes, routeFallback)" in act and 'const focus = routes.find(item => item.operator === routeOperator);' in act
+    assert "chosen['route-operator'] = [String(routeOperator)];" in script
     assert 'appendFocusChips(group, operators, makeChip);' in _function_source(script, 'insightOperatorPicker')
     assert 'appendFocusChips(group, operators, makeChip);' in _function_source(script, 'insightOperatorChips')
     # Sites to review: the operators without any identified site are named in a note.

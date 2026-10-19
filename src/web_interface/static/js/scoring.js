@@ -2617,9 +2617,11 @@
       chosen._enabled = choices.filter(([, enabled]) => enabled === true).map(([name]) => String(name));
       chosen._disabled = choices.filter(([, enabled]) => enabled === false).map(([name]) => String(name));
     }
-    // The operator of Where to act, its owners, places and route.
+    // The operator of Where to act, its owners and places, and that of the route that loses most.
     const actOperator = insightSelections.get('act-operator');
     if (actOperator) chosen['act-operator'] = [String(actOperator)];
+    const routeOperator = insightSelections.get('route-operator');
+    if (routeOperator) chosen['route-operator'] = [String(routeOperator)];
     return chosen;
   }
 
@@ -7311,12 +7313,17 @@
           `vs ${ranking.previous_campaign || 'previous'}: change in Points % (–: not measured then). Points lost: one bar scale on every ranking.`));
       }
     }
-    const focus = routes.find(item => item.operator === operator);
+    // The route that loses most has operator buttons of its own (the first Focus operator by default), whatever the
+    // operator of Where to act.
+    const routeFallback = focusDefault([...new Map(routes.map(item => [item.operator, item])).values()])[0];
+    const {control: routeOperatorControl, value: routeOperator} = routes.length
+      ? insightOperatorPicker('route-operator', routes, routeFallback) : {control: null, value: null};
+    const focus = routes.find(item => item.operator === routeOperator);
     if (focus) {
       const {wrapper: routeControl, value: chosen} = insightSelect('act-route', focus.routes.map(route => [route.route, `${route.route} (${insightNumber(route.points, 1)})`]), 'Route');
       const route = focus.routes.find(item => item.route === chosen) || focus.routes[0];
       const section = insightSection(later, `${route.route}: where the points are — ${focus.label}`, 'scoring-route-card', focus.context);
-      section.append(controls(routeControl), insightParagraph('scoring-act-headline', route.headline));
+      section.append(insightControls(routeOperatorControl, routeControl), insightParagraph('scoring-act-headline', route.headline));
       const body = document.createElement('div');
       body.className = 'scoring-route-focus';
       const map = makeOwnerRouteMap(route, ownerColor);
