@@ -387,8 +387,10 @@ def add_campaign_scope_slides(presentation, scopes: list[dict[str, Any]], *, sub
     """How the measurements ran: campaigns and dates, places, environments and the tests of every operator."""
     for item in scopes[:1]:
         slide = new_slide(presentation, 'How the measurements ran', subtitle)
-        tiles = [('Reference & Other Campaigns', item.get('latest_campaign') or '—',
-                  f"{len(item['campaigns'])} campaigns: {', '.join(item['campaigns'])}" if len(item['campaigns']) > 1 else 'One campaign')]
+        # Below the reference (the latest campaign), the other campaigns analysed, the newest first.
+        others = [campaign for campaign in reversed(item['campaigns']) if campaign != item.get('latest_campaign')]
+        tiles = [('Campaigns', item.get('latest_campaign') or '—',
+                  f"Other analysed campaigns: {', '.join(others)}" if others else 'One campaign')]
         window = item.get('window')
         if window:
             tiles.append(('Measurements', f"{window['first']} → {window['last']}", f"{window['days']} days with tests"))

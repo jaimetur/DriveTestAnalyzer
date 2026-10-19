@@ -7416,7 +7416,9 @@
     const tiles = document.createElement('div');
     tiles.className = 'scoring-scope-tiles';
     const window_ = scope.window;
-    tiles.append(tile('Reference & Other Campaigns', scope.latest_campaign || '—', scope.campaigns.length > 1 ? `${scope.campaigns.length} campaigns: ${scope.campaigns.join(', ')}` : 'One campaign'));
+    // Below the reference (the latest campaign), the other campaigns analysed, the newest first.
+    const otherCampaigns = scope.campaigns.filter(campaign => campaign !== scope.latest_campaign).reverse();
+    tiles.append(tile('Campaigns', scope.latest_campaign || '—', otherCampaigns.length ? `Other analysed campaigns: ${otherCampaigns.join(', ')}` : 'One campaign'));
     if (window_) tiles.append(tile('Measurements', `${window_.first} → ${window_.last}`, `${window_.days} days with tests`));
     if (scope.places) tiles.append(tile('Places', `${scope.places.cities} cities`, `${scope.places.routes} Connecting Roads routes`));
     const environments = scope.environments.filter(item => item.max_points > 0);
