@@ -897,6 +897,13 @@
   [data-scoring-workspace][data-scoring-theme="midnight"] [data-result-pane] .scoring-focus-tag { background: rgba(70, 190, 150, .18) !important; color: #8fe0c4 !important; }
   [data-scoring-workspace][data-scoring-theme="midnight"] [data-result-pane] .scoring-other-tag { background: rgba(120, 150, 205, .2) !important; color: #c3d2ec !important; }
   [data-scoring-workspace][data-scoring-theme="midnight"] [data-result-pane] .scoring-sites-unidentified { background: rgba(194, 65, 12, .18) !important; border-color: #9a3412 !important; color: #fed7aa !important; }
+  /* Operator buttons keep their colours with Midnight: an outline lighter than their colour (so a black operator stays
+     visible) and, not chosen, a faint fill with their name in their colour, lightened. */
+  [data-scoring-workspace][data-scoring-theme="midnight"] [data-result-pane] .scoring-loss-operator[aria-pressed="true"] {
+    border-color: color-mix(in srgb, var(--operator-color) 55%, #ffffff) !important; }
+  [data-scoring-workspace][data-scoring-theme="midnight"] [data-result-pane] .scoring-loss-operator[aria-pressed="false"] {
+    background-color: color-mix(in srgb, var(--operator-color) 18%, #0f1726) !important; color: color-mix(in srgb, var(--operator-color) 45%, #ffffff) !important;
+    border-color: color-mix(in srgb, var(--operator-color) 60%, #ffffff) !important; }
   [data-scoring-workspace][data-scoring-theme="midnight"] [data-result-pane] .scoring-map-zoom { background: rgba(15, 23, 38, .94) !important; border-color: #2a3b58 !important; }
 
   /* Paper: panels between a double and a single black rule. */
