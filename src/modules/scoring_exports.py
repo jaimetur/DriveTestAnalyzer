@@ -2494,15 +2494,11 @@ def _add_insight_slides(presentation, views: dict, environment: str, scoring: st
         return entries if choices.get(section) else [entry for entry in entries if not entry.get('is_reference')]
 
     if stage == 'summary':
-        if _option(options, 'summary', 'standings'):
-            add_standings_slides(presentation, items.get('standings', []), scoring_label=label, subtitle=subtitle,
-                                 new_slide=_slide, scope=scope, compared=chosen('summary-operators'))
-        if _option(options, 'summary', 'position'):
-            add_position_matrix_slides(presentation, items.get('position_matrices', []), subtitle=subtitle, new_slide=_slide,
-                                       environment_labels=environment_labels, scope=scope, compared=chosen('summary-operators'))
-        if _option(options, 'summary', 'levers'):
-            add_levers_slides(presentation, items.get('levers', []), subtitle=subtitle, new_slide=_slide, scope=scope,
-                              compared=chosen('summary-operators'))
+        # As on the page: how the measurements ran, Where to act and its performance owners first, then the standings, positions
+        # and levers, and the places ranked and the route that loses most.
+        if _option(options, 'summary', 'scope'):
+            add_campaign_scope_slides(presentation, items.get('campaign_scope', []), subtitle=subtitle, new_slide=_slide,
+                                      environment_labels=environment_labels)
         # Where to act: for the operator chosen on the page, else the operators compared (two at most).
         act_items = {name: items.get(name, []) for name in ('act_plans', 'owner_cards', 'place_rankings', 'route_focus')}
         act_chosen = chosen('act-operator')
@@ -2518,6 +2514,15 @@ def _add_insight_slides(presentation, views: dict, environment: str, scoring: st
         if _option(options, 'summary', 'owners'):
             add_owner_card_slides(presentation, act_items['owner_cards'], subtitle=subtitle, new_slide=_slide,
                                   owner_color=owner_color, scope=scope)
+        if _option(options, 'summary', 'standings'):
+            add_standings_slides(presentation, items.get('standings', []), scoring_label=label, subtitle=subtitle,
+                                 new_slide=_slide, scope=scope, compared=chosen('summary-operators'))
+        if _option(options, 'summary', 'position'):
+            add_position_matrix_slides(presentation, items.get('position_matrices', []), subtitle=subtitle, new_slide=_slide,
+                                       environment_labels=environment_labels, scope=scope, compared=chosen('summary-operators'))
+        if _option(options, 'summary', 'levers'):
+            add_levers_slides(presentation, items.get('levers', []), subtitle=subtitle, new_slide=_slide, scope=scope,
+                              compared=chosen('summary-operators'))
         if _option(options, 'summary', 'places'):
             add_place_ranking_slides(presentation, act_items['place_rankings'], subtitle=subtitle, new_slide=_slide,
                                      owner_color=owner_color, scope=scope)
@@ -2525,9 +2530,6 @@ def _add_insight_slides(presentation, views: dict, environment: str, scoring: st
             boundaries = views.get('_points_loss_boundaries')
             add_route_focus_slides(presentation, act_items['route_focus'], subtitle=subtitle, new_slide=_slide,
                                    owner_color=owner_color, boundaries=boundaries('Area') if boundaries else None, scope=scope)
-        if _option(options, 'summary', 'scope'):
-            add_campaign_scope_slides(presentation, items.get('campaign_scope', []), subtitle=subtitle, new_slide=_slide,
-                                      environment_labels=environment_labels)
         return
     if stage == 'trends':
         if _option(options, 'trends', 'trend'):

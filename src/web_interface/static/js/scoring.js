@@ -6782,6 +6782,15 @@
       empty.textContent = 'No summary is available for this environment.';
       pane.append(empty);
     }
+    // How the measurements ran, Where to act and Where to act by performance owner come first; the places ranked and the
+    // route that loses most follow the standings, positions and levers.
+    const scope = insightItems(payload, 'campaign_scope', environment)[0];
+    if (scope) {
+      const section = insightSection(pane, 'How the measurements ran', 'scoring-scope-card', false);
+      section.append(makeCampaignScope(scope));
+    }
+    const later = document.createDocumentFragment();
+    renderWhereToAct(pane, payload, environment, later);
     const {control: scopeControl, inScope, context} = insightScopeControl('summary-scope', standings);
     const standing = inScope[0];
     if (standing) {
@@ -6819,18 +6828,14 @@
       for (const item of levers.filter(entry => chosen.includes(entry.operator))) grid.append(makeLeversTable(item));
       section.append(grid);
     }
-    renderWhereToAct(pane, payload, environment);
-    const scope = insightItems(payload, 'campaign_scope', environment)[0];
-    if (scope) {
-      const section = insightSection(pane, 'How the measurements ran', 'scoring-scope-card', false);
-      section.append(makeCampaignScope(scope));
-    }
+    pane.append(later);
   }
 
   // ---- Summary: where to act (see scoring_where_to_act.py) --------------------------------------------------------
   // The plan of an operator, its performance owners, its Cities, Towns, Roads and Railways ranked and the route that
-  // loses most, for the operator chosen (the first compared operator by default).
-  function renderWhereToAct(pane, payload, environment) {
+  // loses most, for the operator chosen (the first compared operator by default); the places ranked and the route go
+  // to ``later`` (after the standings, positions and levers of the Summary).
+  function renderWhereToAct(pane, payload, environment, later = pane) {
     const views = ['act_plans', 'owner_cards', 'place_rankings', 'route_focus'].map(key => insightItems(payload, key, environment));
     const [plans, cards, places, routes] = views;
     const all = views.flat();
@@ -6927,7 +6932,7 @@
       const band = value => (value >= 85 ? activeTheme?.band_strong?.High || '#6AA84F' : value >= 75 ? activeTheme?.band_strong?.Medium || '#E8A33D'
         : activeTheme?.band_strong?.Low || '#E06666');
       for (const group of ranking.groups) {
-        const section = insightSection(pane, `${group.title} — ${ranking.label}`, 'scoring-places-card', ranking.context);
+        const section = insightSection(later, `${group.title} — ${ranking.label}`, 'scoring-places-card', ranking.context);
         section.append(controls(), insightParagraph('scoring-act-headline', group.headline));
         const owner = row => {
           const box = document.createElement('span');
@@ -6955,7 +6960,7 @@
     if (focus) {
       const {wrapper: routeControl, value: chosen} = insightSelect('act-route', focus.routes.map(route => [route.route, `${route.route} (${insightNumber(route.points, 1)})`]), 'Route');
       const route = focus.routes.find(item => item.route === chosen) || focus.routes[0];
-      const section = insightSection(pane, `${route.route}: where the points are — ${focus.label}`, 'scoring-route-card', focus.context);
+      const section = insightSection(later, `${route.route}: where the points are — ${focus.label}`, 'scoring-route-card', focus.context);
       section.append(controls(routeControl), insightParagraph('scoring-act-headline', route.headline));
       const body = document.createElement('div');
       body.className = 'scoring-route-focus';

@@ -172,8 +172,8 @@ def test_powerpoint_follows_the_order_of_the_results_tabs(national):
     def first(prefix):
         return next(index for index, title in enumerate(titles) if title.startswith(prefix))
 
-    order = ['Best Network — Standings', 'Position — per environment', 'Biggest levers — vs EE', 'How the measurements ran',
-             'Best Network Scoring per Service', 'Scoring Tables — Summary', 'GAP Analysis — ', 'GAP by part — vs EE',
+    order = ['How the measurements ran', 'Where to act — ', 'Best Network — Standings', 'Position — per environment',
+             'Biggest levers — vs EE', 'Best Network Scoring per Service', 'Scoring Tables — Summary', 'GAP Analysis — ', 'GAP by part — vs EE',
              'KPI GAP Profile — ', 'Points Lost — where the points go', 'Points lost per KPI — ', 'Points Lost per City — ',
              'Points Lost — per Vendor', 'Points Lost — per kind of site', 'Sites to review — ', 'Route stretches — ',
              'Best Network Campaign Comparison']

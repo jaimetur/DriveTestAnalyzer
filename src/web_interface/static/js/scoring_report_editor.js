@@ -7,10 +7,10 @@
   const SCORINGS = [['best_network', 'Best Network'], ['most_reliable', 'Most Reliable Network']];
   // The slides of each scoring, in the groups (and order) of the results tabs.
   const SUMMARY_OPTIONS = [
+    ['scope', 'How the measurements ran'], ['act', 'Where to act'], ['owners', 'Where to act, by performance owner'],
     ['standings', 'Standings: where each operator stands'], ['position', 'Position per environment and service'],
-    ['levers', 'Biggest levers against the reference'], ['act', 'Where to act'],
-    ['owners', 'Where to act, by performance owner'], ['places', 'Cities, Towns, Roads and Railways ranked'],
-    ['route', 'The route that loses most: where the points are'], ['scope', 'How the measurements ran'],
+    ['levers', 'Biggest levers against the reference'], ['places', 'Cities, Towns, Roads and Railways ranked'],
+    ['route', 'The route that loses most: where the points are'],
   ];
   const CHART_OPTIONS = [
     ['service', 'Scoring per Service'], ['category', 'Scoring per Category'],
