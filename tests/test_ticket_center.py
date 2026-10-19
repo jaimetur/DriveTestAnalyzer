@@ -336,6 +336,9 @@ def test_the_dashboard_counts_tickets_by_type_status_priority_module_and_week():
     assert (rows['bug']['total'], rows['bug']['open'], rows['new_feature']['total'], rows['new_feature']['open']) == (3, 2, 1, 0)
     assert [(item['priority'], item['count']) for item in rows['bug']['priorities']] == [('P1', 2), ('P2', 0), ('P3', 0), ('P4', 0), ('P5', 0)]
     assert [(segment['status'], segment['count']) for segment in rows['improvement']['segments']] == [('waiting_info', 1), ('closed', 1)]
+    # Resolved is the last status before the totals, after Rejected and Closed; the bars of each type follow that order.
+    assert [status for status, _label in board['statuses']] == ['new', 'in_progress', 'waiting_info', 'rejected', 'closed', 'resolved']
+    assert [segment['status'] for segment in rows['bug']['segments']] == ['new', 'in_progress', 'resolved']
     assert board['status_totals'] == {'new': 1, 'in_progress': 1, 'waiting_info': 1, 'resolved': 1, 'closed': 1, 'rejected': 1}
     assert [(module['key'], module['count']) for module in board['modules']] == [('scoring', 2), ('reporting', 1)]
     # Twelve weeks from Monday, the current one last: what was created and resolved (not rejected) in each.

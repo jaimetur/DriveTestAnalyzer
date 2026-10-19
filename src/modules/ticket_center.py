@@ -37,6 +37,8 @@ STATUSES: dict[str, str] = {
 OPEN_STATUSES = frozenset({'new', 'in_progress', 'waiting_info'})
 # The statuses of a ticket that was done (fixed, or finished): the dashboard counts them as resolved.
 DONE_STATUSES = frozenset({'resolved', 'closed'})
+# The order of the statuses in the dashboard: the open ones, then Rejected, Closed and Resolved, last before the totals.
+DASHBOARD_STATUSES = ('new', 'in_progress', 'waiting_info', 'rejected', 'closed', 'resolved')
 MAX_TITLE_LENGTH = 160
 MAX_TEXT_LENGTH = 20_000
 MAX_VERSION_LENGTH = 40
@@ -268,7 +270,7 @@ def ticket_dashboard(tickets: list[dict[str, Any]], *, username: str | None = No
     types = []
     for ticket_type, label in TICKET_TYPES.items():
         rows = by_type.get(ticket_type, [])
-        counts = {status: sum(1 for ticket in rows if ticket['status'] == status) for status in STATUSES}
+        counts = {status: sum(1 for ticket in rows if ticket['status'] == status) for status in DASHBOARD_STATUSES}
         opened = [ticket for ticket in rows if ticket['status'] in OPEN_STATUSES]
         priorities = {priority: sum(1 for ticket in opened if ticket['priority'] == priority) for priority in PRIORITIES}
         types.append({
@@ -301,7 +303,8 @@ def ticket_dashboard(tickets: list[dict[str, Any]], *, username: str | None = No
     oldest_day = _day(oldest['created_at']) if oldest else None
     return {
         'kpis': kpis, 'types': types,
-        'status_totals': {status: sum(entry['counts'][status] for entry in types) for status in STATUSES},
+        'statuses': [(status, STATUSES[status]) for status in DASHBOARD_STATUSES],
+        'status_totals': {status: sum(entry['counts'][status] for entry in types) for status in DASHBOARD_STATUSES},
         'total': len(tickets), 'modules': module_rows, 'max_module': max([1, *(entry['count'] for entry in module_rows)]),
         'weeks': weeks, 'week_peak': peak,
         'weeks_created': sum(week['created'] for week in weeks), 'weeks_resolved': sum(week['resolved'] for week in weeks),

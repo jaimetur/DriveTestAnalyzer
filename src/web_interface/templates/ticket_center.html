@@ -30,19 +30,19 @@
         <header class="tickets-card-head"><h3 id="tickets-matrix-title">Tickets by type and status</h3><span class="tickets-card-note">Click a count to list its tickets</span></header>
         <div class="tickets-matrix-wrap">
           <table class="tickets-matrix">
-            <thead><tr><th scope="col">Type</th>{% for key, label in ticket_statuses.items() %}<th scope="col" data-status="{{ key }}">{{ label }}</th>{% endfor %}<th scope="col">Total</th></tr></thead>
+            <thead><tr><th scope="col">Type</th>{% for key, label in board.statuses %}<th scope="col" data-status="{{ key }}">{{ label }}</th>{% endfor %}<th scope="col">Total</th></tr></thead>
             <tbody>
               {% for row in board.types %}
               <tr>
                 <th scope="row">{{ type_badge(row.type, row.label) }}</th>
-                {% for key, label in ticket_statuses.items() %}
+                {% for key, label in board.statuses %}
                 <td><button type="button" class="tickets-cell{% if not row.counts[key] %} is-empty{% endif %}" data-board-cell data-type="{{ row.type }}" data-status="{{ key }}" data-tip="{{ row.counts[key] }} {{ row.label }} ticket{{ '' if row.counts[key] == 1 else 's' }} {{ label }}">{{ row.counts[key] }}</button></td>
                 {% endfor %}
                 <td><button type="button" class="tickets-cell tickets-cell-total" data-board-cell data-type="{{ row.type }}" data-status="" data-tip="{{ row.total }} {{ row.label }} ticket{{ '' if row.total == 1 else 's' }} in every status">{{ row.total }}</button></td>
               </tr>
               {% endfor %}
             </tbody>
-            <tfoot><tr><th scope="row">Total</th>{% for key, label in ticket_statuses.items() %}<td><button type="button" class="tickets-cell tickets-cell-total" data-board-cell data-type="" data-status="{{ key }}" data-tip="{{ board.status_totals[key] }} ticket{{ '' if board.status_totals[key] == 1 else 's' }} {{ label }}">{{ board.status_totals[key] }}</button></td>{% endfor %}<td><button type="button" class="tickets-cell tickets-cell-total" data-board-cell data-type="" data-status="" data-tip="Every ticket">{{ board.total }}</button></td></tr></tfoot>
+            <tfoot><tr><th scope="row">Total</th>{% for key, label in board.statuses %}<td><button type="button" class="tickets-cell tickets-cell-total" data-board-cell data-type="" data-status="{{ key }}" data-tip="{{ board.status_totals[key] }} ticket{{ '' if board.status_totals[key] == 1 else 's' }} {{ label }}">{{ board.status_totals[key] }}</button></td>{% endfor %}<td><button type="button" class="tickets-cell tickets-cell-total" data-board-cell data-type="" data-status="" data-tip="Every ticket">{{ board.total }}</button></td></tr></tfoot>
           </table>
         </div>
       </section>
