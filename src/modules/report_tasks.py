@@ -34,6 +34,7 @@ from src.modules.cdr_auto_selection import (
     resolve_campaign_filter, resolve_cdrs, sort_campaigns,
 )
 from src.modules.column_names import compact_campaign_value
+from src.modules.nr_mode import NSA_VS_SA, normalize_scoring_nr_mode, nr_mode_label
 from src.modules.output_layout import REPORTING_JOBS_FOLDER, module_output_dir
 from src.modules.scoring_themes import DEFAULT_THEME, normalize_theme, themes_payload
 
@@ -304,7 +305,7 @@ def _scoring_report(value: Any) -> dict[str, Any]:
 def scoring_entry_name(entry: dict[str, Any]) -> str:
     """The artifact name: its label, or the NR Mode and the report scenarios."""
     scenarios = ', '.join(scenario['name'] for scenario in (entry.get('report') or {}).get('scenarios') or [])
-    return entry.get('label') or ' '.join(part for part in (entry.get('nr_mode', 'NSA'), scenarios) if part)
+    return entry.get('label') or ' '.join(part for part in (nr_mode_label(entry.get('nr_mode', 'NSA')), scenarios) if part)
 
 
 def _date_text(value: Any) -> str:
@@ -403,11 +404,12 @@ def normalize_definition(raw: Any) -> dict[str, Any]:
     for entry in raw.get('scoring') or []:
         if not isinstance(entry, dict):
             continue
-        nr_mode = str(entry.get('nr_mode') or 'NSA').upper()
+        # NSA vs SA scores the NSA and SA CDRs of the campaigns side by side.
+        nr_mode = normalize_scoring_nr_mode(entry.get('nr_mode')) or 'NSA'
         auto_cdrs = bool(entry.get('auto_cdrs'))
         definition['scoring'].append({
             'label': str(entry.get('label') or '').strip()[:120],
-            'nr_mode': nr_mode if nr_mode in {'NSA', 'SA'} else 'NSA',
+            'nr_mode': nr_mode,
             # The campaigns of the calculation (Latest campaign, Latest 2 campaigns or chosen ones; none is every
             # campaign with Data, Voice and Speech CDRs), whose CDRs are chosen at each run (auto_cdrs). Entries
             # saved before chose CDRs by hand or with an automatic choice (see migrate_auto_cdrs).
@@ -1274,7 +1276,7 @@ def install_report_task_routes(core: Any) -> None:
 
     def scoring_details(job: dict[str, Any], entry: dict[str, Any], names: dict[int, str]) -> list[str]:
         scenarios = [scenario['name'] for scenario in (entry.get('report') or {}).get('scenarios') or []]
-        return [f"NR Mode: {job.get('nr_mode') or '—'}",
+        return [f"NR Mode: {nr_mode_label(job.get('nr_mode')) or '—'}",
                 f"CDRs: {', '.join(names.get(int(value), str(value)) for value in job.get('dataset_ids') or []) or '—'}",
                 f"GAP reference: {job.get('baseline_operator') or entry.get('baseline_operator') or 'EE'}",
                 f"Report scenarios: {', '.join(scenarios) or '—'}"]
@@ -1354,12 +1356,20 @@ def install_report_task_routes(core: Any) -> None:
     def scoring_cdrs(task_repository, entry: dict[str, Any]) -> list[int]:
         """The CDRs of a Scoring artifact now: those of its campaigns, each campaign with Data, Voice and Speech CDRs."""
         nr_mode = entry.get('nr_mode') or 'NSA'
-        campaigns = resolve_campaign_filter(task_repository, nr_mode, entry.get('campaigns') or [])
+        campaigns = scoring_campaigns(task_repository, nr_mode, entry.get('campaigns') or [])
         dataset_ids, incomplete = complete_campaign_cdrs(task_repository, nr_mode, campaigns)
         if not dataset_ids:
             missing = f" ({', '.join(incomplete)} lack a CDR type)" if incomplete else ''
-            raise RuntimeError(f'There is no campaign with Data, Voice and Speech {nr_mode} CDRs to score{missing}.')
+            raise RuntimeError(f'There is no campaign with Data, Voice and Speech {nr_mode_label(nr_mode)} CDRs to score{missing}.')
         return dataset_ids
+
+    def scoring_campaigns(task_repository, nr_mode: str, campaigns: list[str]) -> list[str]:
+        """The campaigns a Scoring Campaign filter chooses now: with NSA vs SA a Latest choice stands for quarters, each
+        with its NSA and SA campaigns, as in Scoring & GAP Analysis."""
+        if normalize_scoring_nr_mode(nr_mode) == NSA_VS_SA:
+            from src.modules.scoring_selection import expand_scoring_campaigns
+            return expand_scoring_campaigns(task_repository, nr_mode, campaigns)
+        return resolve_campaign_filter(task_repository, nr_mode, campaigns)
 
     def automatic_cdrs(task_repository, nr_mode: str, selection: str) -> list[int]:
         """The CDRs an automatic choice selects now: the newest complete set or every complete set of the NR Mode."""
@@ -1708,7 +1718,7 @@ def install_report_task_routes(core: Any) -> None:
             # The CDRs the automatic choices of CDR Analysis select now, per NR Mode (they choose again at each run).
             'automatic_cdrs': automatic_cdr_preview(task_repository),
             # The campaigns of the CDRs of each NR Mode, and the choices that follow the newest ones.
-            'campaigns': {nr_mode: campaign_values(task_repository, nr_mode) for nr_mode in ('NSA', 'SA')},
+            'campaigns': {nr_mode: campaign_values(task_repository, nr_mode) for nr_mode in ('NSA', 'SA', NSA_VS_SA)},
             'campaign_presets': CAMPAIGN_PRESET_LABELS,
             'values': mapped(catalogue),
             # The filter values of each CDR, so every entry lists only the values of the CDRs it uses.
@@ -1804,8 +1814,11 @@ def install_report_task_routes(core: Any) -> None:
     def reporting_auto_cdrs(payload: dict[str, Any], user=Depends(reporting_user)):
         """The CDRs an entry uses now for its NR Mode and campaigns (``complete``: each campaign with every CDR type)."""
         task_repository = reporting_repository(user)
-        nr_mode = 'SA' if str(payload.get('nr_mode') or '').upper() == 'SA' else 'NSA'
-        campaigns = resolve_campaign_filter(task_repository, nr_mode, _strings(payload.get('campaigns')))
+        nr_mode = normalize_scoring_nr_mode(payload.get('nr_mode')) or 'NSA'
+        if nr_mode == NSA_VS_SA and not payload.get('complete'):
+            nr_mode = 'NSA'
+        campaigns = (scoring_campaigns(task_repository, nr_mode, _strings(payload.get('campaigns'))) if payload.get('complete')
+                     else resolve_campaign_filter(task_repository, nr_mode, _strings(payload.get('campaigns'))))
         if payload.get('complete'):
             ids, incomplete = complete_campaign_cdrs(task_repository, nr_mode, campaigns)
             kinds = {int(row['id']): str(row['dataset_kind']) for row in task_repository.list_datasets()}

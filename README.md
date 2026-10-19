@@ -99,7 +99,7 @@ PPT Reporting (old) combines ready CDRs with a Report Template from the active w
 
 ### Scoring & GAP Analysis
 
-Calculate scoring from ready Data, Voice and Speech CDRs of one NR Mode, grouped by Operator and optional Vendor, Region, City or Campaign in a configurable hierarchy. The latest CDR of each type is preselected; automatic and dataset recalculations include compatible companions.
+Calculate scoring from ready Data, Voice and Speech CDRs of one NR Mode, or of both side by side with **NSA vs SA** (each campaign with its NR Mode), grouped by Operator and optional Vendor, Region, City or Campaign in a configurable hierarchy. The latest CDR of each type is preselected; automatic and dataset recalculations include compatible companions.
 
 Filter the selected CDRs by Operator, Vendor, Region, City (including Main Cities) and Campaign using cached values, in the configured hierarchy order. Persisted jobs retain their filters, scoring configuration, coverage and GAP reference comparisons. Results offer reference-style KPI matrices, optional measured values, environment filtering, threshold/GAP colors and labeled charts with an enlarged view, in six tabs: Summary, Scoring Charts, Scoring Tables, Locations, GAP Analysis and Points Lost (where the points go, per KPI, per area and per Vendor, kind of site, site and route stretch of the serving cells), in the colour theme each user chooses (NetCheck by default, Ericsson, Vodafone, Ocean, Graphite or Colour-blind safe), also in the exports. Operator Mapping controls operator order and colors.
 

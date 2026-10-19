@@ -4,6 +4,8 @@ from __future__ import annotations
 from datetime import datetime
 import re
 
+from src.modules.nr_mode import nr_mode_label as nr_mode_label_of
+
 
 def _filename_part(value: str, max_bytes: int) -> str:
     safe = re.sub(r'[<>:"/\\|?*\x00-\x1f]+', '_', str(value)).strip(' .')
@@ -90,7 +92,8 @@ def scoring_display_selections(context_filters, *, max_characters: int = SCORING
 
 
 def _scoring_filename(export_time: datetime, nr_mode_label: str, selections: dict[str, list[str]]) -> str:
-    safe_mode = re.sub(r'[^A-Za-z0-9_-]', '', str(nr_mode_label or 'NSA'))[:10] or 'NSA'
+    # (NSA vs SA reads NSA-vs-SA.)
+    safe_mode = re.sub(r'[^A-Za-z0-9_-]', '', nr_mode_label_of(nr_mode_label or 'NSA').replace(' ', '-'))[:10] or 'NSA'
     fixed = [f'{export_time:%Y%m%d_%H%M%S}', 'Scoring & GAP Analysis', safe_mode]
     parts = [re.sub(r'[<>:"/\\|?*\x00-\x1f]+', '_', ' + '.join(selections[key])).strip(' .')
              for key in _SCORING_FIELDS]

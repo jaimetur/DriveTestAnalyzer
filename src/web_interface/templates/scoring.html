@@ -1333,9 +1333,12 @@
       <div class="scoring-scope-row">
         <label class="scoring-scope-control">NR Mode
           <select data-nr-filter aria-label="NR Mode">
-            {% for mode in scoring_datasets | map(attribute='nr_mode') | reject('equalto', none) | reject('equalto', '') | unique | sort %}
+            {% set scoring_nr_modes = scoring_datasets | map(attribute='nr_mode') | reject('equalto', none) | reject('equalto', '') | unique | sort | list %}
+            {% for mode in scoring_nr_modes %}
             <option value="{{ mode }}" {% if mode == 'NSA' %}selected{% endif %}>{{ mode }}</option>
             {% endfor %}
+            {# NSA vs SA scores the NSA and SA CDRs of the campaigns, each campaign with its NR Mode, side by side. #}
+            {% if scoring_nr_modes | length > 1 %}<option value="NSA+SA" title="The NSA and SA CDRs of the chosen campaigns, side by side: each campaign with its NR Mode (always split by Campaign)">NSA vs SA</option>{% endif %}
           </select>
         </label>
         <label class="scoring-scope-control scoring-scope-campaign">Campaign

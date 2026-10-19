@@ -24,6 +24,7 @@ import pandas as pd
 
 from src.modules.cdr_stage import dataset_cdr_stage
 from src.modules.column_names import column_identity, resolve_column_name, vendor_match_values
+from src.modules.nr_mode import NR_MODE_COLUMN, campaign_with_nr_mode, dataset_nr_mode
 from src.modules.scoring import (
     START_TIME_COLUMNS, _FIELDS, _LEVEL_SOURCE_ALIASES, _SHARED, _condition, _filter, _is_condition_expression,
     _key_name, _numeric, finish_scoring, normalize_time_split, period_labels, required_input_columns, window_of_days,
@@ -657,12 +658,14 @@ def calculate_scoring_from_history(
     baseline_operator: str = 'EE', configuration: dict | None = None, baseline_aliases: Iterable[str] = (),
     operator_mappings: dict[str, str] | None = None, context_filters: dict[str, list[str]] | None = None,
     time_split: str | None = None, cities: Iterable[str] | None = None, vendor_operators: Iterable[str] = (),
+    nr_mode_campaigns: bool = False,
 ) -> dict[str, Any]:
     """The scoring of the CDRs at the split and filters, as ``scoring.calculate_scoring`` calculates it from their rows,
     from the Scoring History (without the points-lost map, which needs the rows of the tests).
 
     ``cities`` keeps the tests of those cities (the separate cities of a National & area summary); ``vendor_operators``
-    are the operator names the Vendor filter removes from vendor names, as when the CDR rows are loaded.
+    are the operator names the Vendor filter removes from vendor names, as when the CDR rows are loaded. With
+    ``nr_mode_campaigns`` (NSA vs SA) each campaign and period names the NR Mode of its CDR, as the rows are loaded then.
     """
     config = validate_scoring_configuration(configuration)
     dataset_ids = [int(value) for value in dataset_ids]
@@ -701,6 +704,10 @@ def calculate_scoring_from_history(
     missing_by_kind: dict[str, dict[str, set[str]]] = {}
     campaign_values: dict[str, str] = {}
     warnings: list[str] = []
+    # NSA vs SA: the NR Mode of each CDR now (Workspace can change it after the CDR was indexed).
+    nr_modes = ({int(row['id']): dataset_nr_mode(row['dataset_kind'], row['nr_mode'], row['file_name'])
+                 for row in repository.list_datasets() if int(row['id']) in set(dataset_ids)}
+                if nr_mode_campaigns else {})
     for dataset_id in dataset_ids:
         source = sources[dataset_id]
         kind = str(source['kind'])
@@ -726,6 +733,9 @@ def calculate_scoring_from_history(
                 continue
             if city_filter is not None and (values['city'] or '').strip().lower() not in city_filter:
                 continue
+            if nr_mode_campaigns:
+                values[NR_MODE_COLUMN] = nr_modes.get(dataset_id)
+                values['campaign'] = campaign_with_nr_mode(values['campaign'], values[NR_MODE_COLUMN])
             kept.append((values, {'rows': int(record['row_count']), 'metrics': json.loads(record['components_json'])}))
         if not kept:
             continue
@@ -773,6 +783,8 @@ def calculate_scoring_from_history(
                 campaign = None
             elif time_split:
                 campaign = _period(values['day'], time_split) if values['day'] else None
+                if nr_mode_campaigns:
+                    campaign = campaign_with_nr_mode(campaign, values[NR_MODE_COLUMN])
             else:
                 campaign = values['campaign']
             matched = [name for name, context in environments.items()

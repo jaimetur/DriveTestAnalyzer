@@ -31,7 +31,7 @@ Each calculation gives the NetCheck **Best Network** scoring, which rates every 
 1. Open the correct workspace and finish processing the required CDRs.
 2. If no methodology is configured, import one under **Workspace Config → Scoring & GAP Analysis Setup**.
 3. Open **Scoring & GAP Analysis** and expand **Select NR Mode, Campaign, filters, Split by & GAP reference**.
-4. Choose **NSA** or **SA** in **NR Mode**. A calculation cannot mix both modes.
+4. Choose **NSA**, **SA** or **NSA vs SA** in **NR Mode**: NSA vs SA compares the NSA and SA CDRs side by side (see [NSA vs SA](#nsa-vs-sa)).
 
 > [!IMPORTANT]
 > Every campaign of the calculation needs at least one ready **Data**, **Voice** and **Speech** CDR. Complete CDRs do not guarantee complete KPI measurements: inspect Calculation notes after processing.
@@ -46,6 +46,19 @@ There is no CDR selector: the **NR Mode** and the **Campaign** filter beside it 
 The Campaign filter offers first **Latest campaign**, **Latest 2 campaigns**, **Latest 3 campaigns**, **Latest 4 campaigns**, **Previous campaign** (the one before the latest) and **All available campaigns**: the newest one to four campaigns of the NR Mode with Data, Voice and Speech CDRs, the one before the newest, or every one of them, whenever it is used (also those that arrive later). Each one stands alone (checking it clears the other one and the campaigns, checking a campaign clears it; **Select All / None** checks or clears the campaigns only). The panel keeps the choice, so it follows the newest campaigns the next time it opens, and a calculation or Saved Filter uses the campaigns it stands for then. Without a Campaign (**All complete campaigns**), every campaign with Data, Voice and Speech CDRs is scored; the campaigns that lack a type are named in a note below the CDRs and left out. **CDRs used** lists the CDRs of the calculation by type, with their stage and campaigns (Weekly and Daily CDRs outlined), follows every change of the NR Mode or a filter at once, and the badge above the panel counts them.
 
 On first use, and when another NR Mode is chosen, the Campaign is **Latest campaign**: the newest campaign of the NR Mode with Data, Voice and Speech CDRs, also when newer ones arrive. A selection saved before (when CDRs were chosen by hand) opens with the campaigns of its CDRs. Opening a Saved Filter shows its own CDRs (**CDRs of the opened Saved Filter**, with **Use automatic CDRs** to choose them again) until the NR Mode or a filter changes: only those with its campaigns, since the rows of its CDRs of other campaigns are left out by its Campaign filter.
+
+#### NSA vs SA
+
+When the workspace has NSA and SA CDRs, **NR Mode** also offers **NSA vs SA**: the NSA and SA CDRs of the chosen campaigns scored together, so the scorings, KPI tables, GAP analysis and Scoring Trends show the NSA and SA results of each operator side by side.
+
+- **Each campaign keeps its NR Mode.** The NSA and SA campaigns are different campaigns (with the default [Campaign Maps](workspace-config.md#campaign-maps), `UK_Q3_NSA_2026` reads 2026-Q3 and `UK_Q3_SA_2026` reads 2026-Q3-SA), so the NSA and SA tests of an operator are never added together, even when the CDRs give both the same operator names (3, EE, O2 (UK)…). The campaign of an SA CDR that does not name SA gets it (`UK_Q2_2026` of an SA CDR is scored as `UK_Q2_2026 SA`), and so does each period of a Daily to Yearly time split (`2026-W07 SA`).
+- **Always split by Campaign.** Campaign stays checked in **Split by** and cannot be cleared, and the Scoring Trends time split **All selected CDRs** is not offered.
+- **Latest campaign is a quarter.** Latest campaign, Latest 2 to 4 campaigns and Previous campaign count quarters, each with its NSA and SA campaigns: Latest campaign compares 2026-Q3 NSA with 2026-Q3 SA. Each campaign of each NR Mode needs Data, Voice and Speech CDRs; a quarter without SA CDRs shows NSA only.
+- **Each NR Mode is scored on its own.** The KPIs scored against the best operator of their group, and the GAP against the **GAP reference operator**, compare each operator with the operators of its own NR Mode and campaign, so the NSA figures are those of an NSA calculation and the SA figures those of an SA one. **By campaign** scores the NSA and SA campaigns of a quarter with the methodology of that quarter.
+- **Operator names.** An operator lines up in the same row for NSA and SA only when both of its names have the same label in the [Operator Maps](workspace-config.md#operator-maps) (for example a Vodafone named *Vodafone UK* in the NSA CDRs and *Vodafone SM* in the SA ones).
+- The Campaign Map must show NSA and SA campaigns apart: when its label leaves SA out, NSA vs SA asks to show it.
+
+Saved Filters, their export, import, transfers and backups keep **NSA vs SA**, as do the Scoring artifacts of [Reporting Jobs](reporting.md#reporting-jobs) (**NR Mode** NSA vs SA) and the Scoring section of the [Bundle Report Templates](reporting.md#bundle-report-templates) (**Compare NSA vs SA**, whatever the NR Mode of the report). The documents and their file names read **NSA vs SA** (`NSA-vs-SA` in the file name).
 
 ### 3. Set filters, Split by and reference
 
@@ -85,7 +98,7 @@ The lists show the Favourites Filters in a fixed order: a newly starred one goes
 - **Waiting for its CDRs** for a Saved Filter imported from another workspace whose CDRs are not processed here yet (it finds them by file, whatever their name; one with a Campaign choice such as Latest campaign, like the Favourites Filters a new workspace starts with, takes the CDRs that choice stands for here);
 - the **CDRs** button (hover or click it to inspect the source files) and, in the bottom right corner, its **Filter ID** (the identifier App Events give it, also on the selected card of the Scoring Results dropdown) before **✎**, **⧉** to duplicate it (described below), **☆** to keep it (starred, it joins the list first) and **×** to delete it.
 
-The generated PowerPoint is named `yyyymmdd_hhmmss - Scoring & GAP Analysis - <NR Mode> - <Regions> - <Clusters> - <Cities> - <Operators> - <Vendors> - <Campaigns>.pptx`. A complete vendor selection appears as **All Vendors**.
+The generated PowerPoint is named `yyyymmdd_hhmmss - Scoring & GAP Analysis - <NR Mode> - <Regions> - <Clusters> - <Cities> - <Operators> - <Vendors> - <Campaigns>.pptx` (NSA vs SA reads `NSA-vs-SA`). A complete vendor selection appears as **All Vendors**.
 
 A Saved Filter calculated with **Latest campaign**, **Latest 2 campaigns**, **Latest 3 campaigns**, **Latest 4 campaigns**, **Previous campaign** or **All available campaigns** keeps that choice instead of the campaigns of that moment: its card shows the choice with the campaigns it stood for last time, and whenever it is opened it takes the campaigns and CDRs the choice stands for then, and is calculated again when they changed.
 

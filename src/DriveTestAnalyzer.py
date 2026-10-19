@@ -90,7 +90,7 @@ from src.modules.network_inventory import INVENTORY_DATASET_KINDS, build_invento
 from src.modules.serving_cells import vendor_mapping_signature
 from src.modules.ingestion import CDR_IGNORED_SHEET_KEYS, add_three_gcid_column, add_vfuk_gcid_column, apply_operator_mappings, ensure_fixed_cdr_fields, get_dataset_source_columns, get_excel_sheet_columns, infer_dataset_kind, load_dataset, summarise_dataset
 from src.modules.geospatial import assign_clusters, assign_regions, polygon_vendor_endpoints, validate_cluster_mapping, validate_region_mapping, validate_vendor_polygons, vendor_polygon_operators
-from src.modules.nr_mode import NR_MODES, dataset_nr_mode, infer_nr_mode, normalize_nr_mode
+from src.modules.nr_mode import NR_MODES, dataset_nr_mode, infer_nr_mode, normalize_nr_mode, nr_mode_label
 from src.modules.cdr_campaign import dataset_campaign, normalize_campaign
 from src.modules.cdr_stage import (
     CDR_STAGE_LABELS, CDR_STAGES, IN_COMBINED_LABELS, IN_COMBINED_VALUES, combined_dataset_ids, combined_inclusion,
@@ -13075,7 +13075,7 @@ def _workspace_background_tasks(workspace: Workspace) -> list[dict[str, Any]]:
                     status = str(row['status'] or 'queued')
                     tasks.append({
                         'id': f'saved-filter:{workspace.id}:{row["id"]}',
-                        'label': f'Scoring calculation #{row["id"]} ({row["nr_mode"]})',
+                        'label': f'Scoring calculation #{row["id"]} ({nr_mode_label(row["nr_mode"])})',
                         'detail': str(row['message'] or '').strip() or ('Waiting to calculate scoring' if status == 'queued' else 'Calculating'),
                         'status': {'completed': 'ready', 'failed': 'failed', 'stopped': 'failed'}.get(status, status),
                         'progress': max(0, min(100, int(row['progress'] or 0))),
@@ -19128,7 +19128,7 @@ def build_scoring_report_document(task_repository: Repository, base: dict[str, A
     else:
         names = ', '.join(entry['scenario']['name'] for entry in entries)
         stem = re.sub(r'[\\/:*?"<>|]+', '-', f"{datetime.now():%Y%m%d_%H%M%S} - Scoring & GAP Analysis - "
-                                             f"{first.get('nr_mode') or 'NSA'} - {names}")[:200].rstrip(' .-')
+                                             f"{nr_mode_label(first.get('nr_mode') or 'NSA')} - {names}")[:200].rstrip(' .-')
         filename = f'{stem}.pptx'
     return content, filename, first
 

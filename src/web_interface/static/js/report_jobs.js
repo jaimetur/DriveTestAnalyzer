@@ -668,7 +668,11 @@
   function scoringEntry(entry = {}) {
     const card = node('div', undefined, 'rj-entry');
     const label = node('input'); label.type = 'text'; label.placeholder = 'Optional artifact name'; label.value = entry.label || '';
-    const nrMode = select([['NSA', 'NSA'], ['SA', 'SA']], entry.nr_mode || 'NSA');
+    // As in Scoring & GAP Analysis, NSA vs SA (with CDRs of both NR Modes) scores the NSA and SA CDRs of the campaigns
+    // side by side, each campaign with its NR Mode.
+    const bothModes = ['NSA', 'SA'].every((mode) => options.datasets.some((item) => item.nr_mode === mode));
+    const nrMode = select([['NSA', 'NSA'], ['SA', 'SA'], ...(bothModes || entry.nr_mode === 'NSA+SA' ? [['NSA+SA', 'NSA vs SA']] : [])],
+      entry.nr_mode || 'NSA');
     // As in Scoring & GAP Analysis, each campaign can be scored with its own methodology: the default of a new entry.
     const byCampaign = options.methodologies.length ? [['by-campaign', 'By campaign (each campaign with its methodology)']] : [];
     const savedMethodology = Object.prototype.hasOwnProperty.call(entry, 'scoring_profile_id') ? entry.scoring_profile_id || '' : byCampaign.length ? 'by-campaign' : '';
@@ -680,7 +684,8 @@
     // values of every CDR of the NR Mode. They follow NR Mode in its row; the CDRs they choose are listed below.
     const campaigns = campaignPicker(() => nrMode.value, entry.campaigns || [], {complete: true});
     const head = node('div', undefined, 'rj-grid rj-one-row');
-    const cdrsInUse = () => options.datasets.filter((item) => item.nr_mode === nrMode.value).map((item) => item.id);
+    const cdrsInUse = () => options.datasets.filter((item) => (nrMode.value === 'NSA+SA' ? ['NSA', 'SA'] : [nrMode.value])
+      .includes(item.nr_mode)).map((item) => item.id);
     // The name in the email on its own row; then, as on the Scoring & GAP Analysis page, the GAP reference and the
     // methodology beside the campaigns (the Focus operators of its PowerPoint and Word are those of the Operator Maps).
     const nameRow = node('div', undefined, 'rj-grid rj-one-row');
@@ -720,7 +725,7 @@
     });
     reportRow.append(node('span', 'Report content:', 'rj-inline-label'), reportSummary, configure);
     describeReport();
-    card.append(entryHead(card, 'Scoring', () => [nrMode.value, label.value.trim()].filter(Boolean).join(' · ')),
+    card.append(entryHead(card, 'Scoring', () => [nrMode.selectedOptions[0]?.textContent, label.value.trim()].filter(Boolean).join(' · ')),
       formats, nameRow, head, campaigns.preview, reportRow);
     card.getValue = () => ({
       label: label.value.trim(), nr_mode: nrMode.value, auto_cdrs: true, campaigns: campaigns.getValue(), formats: formats.getValue(),

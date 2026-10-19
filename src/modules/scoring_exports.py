@@ -629,7 +629,8 @@ def _context_filter_labels(job: dict[str, Any]) -> list[str]:
 
 def _scoring_filter_subtitle(job: dict[str, Any], environment: str | None = None) -> str:
     nr_mode = str(job.get('nr_mode') or 'NSA').strip()
-    mode_label = {'nsa': 'Non-Standalone', 'sa': 'Standalone'}.get(nr_mode.casefold(), nr_mode)
+    mode_label = {'nsa': 'Non-Standalone', 'sa': 'Standalone',
+                  'nsa+sa': 'Non-Standalone vs Standalone'}.get(nr_mode.casefold(), nr_mode)
     levels = job.get('aggregation_levels') or job.get('levels') or []
     if isinstance(levels, str):
         levels = [levels]

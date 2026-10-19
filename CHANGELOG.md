@@ -8,6 +8,7 @@
 #### ⚠️ Breaking Changes:
 
 #### 🌟 New Features:
+- **NSA vs SA in Scoring & GAP Analysis:** with NSA and SA CDRs in the workspace, **NR Mode** also offers **NSA vs SA**, which scores the NSA and SA CDRs of the chosen campaigns together so the scorings, KPI tables, GAP analysis and Scoring Trends show the NSA and SA results of each operator side by side. Each campaign keeps the NR Mode of its CDRs (an SA campaign that does not name SA gets it, also in the Daily to Yearly periods), so the NSA and SA tests of an operator are never added together even when both CDRs use the same operator names; the calculation is always split by Campaign, Latest campaign and the other automatic choices count quarters (Latest campaign compares 2026-Q3 NSA with 2026-Q3 SA), and each NR Mode is scored and compared with the GAP reference on its own, so the NSA and SA figures are those of an NSA and an SA calculation. Saved Filters, their export, import, transfers and backups keep it, the Scoring artifacts of the Reporting Jobs offer it in their NR Mode and the Scoring section of the Bundle Report Templates as **Compare NSA vs SA**, and the documents and file names read NSA vs SA.
 
 #### 🚀 Enhancements:
 

@@ -157,10 +157,10 @@
   // The Campaigns of a section, which choose its CDRs: first Latest campaign, Latest 2, 3 and 4 campaigns, Previous campaign and All available campaigns,
   // which follow the newest campaigns at each export and stand alone, then the campaigns of
   // the NR Mode of the common filters (listed again when it changes, keeping a Latest choice).
-  function scopeFields(saved) {
+  function scopeFields(saved, modeOf = nrMode) {
     const row = node('div', undefined, 'brt-scope');
     const presets = Object.entries(options.campaign_presets || {});
-    const campaignValues = () => [...(options.campaigns?.[nrMode()] || [])]
+    const campaignValues = () => [...(options.campaigns?.[modeOf()] || [])]
       .sort((left, right) => (pickers().campaignCompare ? pickers().campaignCompare(left, right) : 0));
     let campaigns = null;
     // (Beside the Campaigns, the GAP reference of Scoring & GAP Analysis.)
@@ -172,9 +172,11 @@
       campaigns = field;
     };
     renderCampaigns(saved.campaigns || []);
-    nrModeHandlers.push(() => {
-      renderCampaigns((campaigns?.getValue?.() || []).filter((value) => presets.some(([key]) => key === value)));
-    });
+    // Another NR Mode lists its own campaigns, keeping a Latest choice (every choice with ``keep``).
+    row.refresh = (keep = false) => {
+      renderCampaigns((campaigns?.getValue?.() || []).filter((value) => keep || presets.some(([key]) => key === value)));
+    };
+    nrModeHandlers.push(() => row.refresh());
     row.collect = () => ({campaigns: campaigns?.getValue?.() || []});
     return row;
   }
@@ -250,12 +252,22 @@
     const allOperators = check('Export All Operators in Focus panels', saved.all_operators);
     allOperators.title = 'Show every operator in the panels that export the Focus operators of the Operator Maps';
     operatorChoices.append(allOperators);
+    // NSA vs SA: the NSA and SA CDRs of the campaigns of the section side by side, each campaign with its NR Mode,
+    // whatever the NR Mode of the report (offered when the workspace has CDRs of both NR Modes).
+    const nrModes = node('fieldset', undefined, 'brt-choice-group');
+    nrModes.append(node('legend', 'NR Mode'));
+    const nsaVsSa = check('Compare NSA vs SA', saved.nsa_vs_sa);
+    nsaVsSa.title = 'Score the NSA and SA CDRs of the campaigns of this section side by side (always split by Campaign); '
+      + 'the other sections keep the NR Mode of the report';
+    nrModes.append(nsaVsSa);
+    nrModes.hidden = !saved.nsa_vs_sa && !((options.campaigns?.NSA || []).length && (options.campaigns?.SA || []).length);
+    box.nrMode = () => (nsaVsSa.box.checked ? 'NSA+SA' : nrMode());
     // The Geographical Areas & Scoring Trends, always included: the areas of both tabs (the Breakdown and the Separate
     // cities) and the campaigns and time split of the Scoring Trends, on the whole country.
     const trends = node('fieldset', undefined, 'brt-choice-group brt-trends');
     trends.append(node('legend', 'Geographical Areas & Scoring Trends'));
     const presets = Object.entries(options.campaign_presets || {});
-    const campaignValues = () => [...(options.campaigns?.[nrMode()] || [])]
+    const campaignValues = () => [...(options.campaigns?.[box.nrMode()] || [])]
       .sort((left, right) => (pickers().campaignCompare ? pickers().campaignCompare(left, right) : 0));
     const trendHost = node('div', undefined, 'brt-trend-campaigns');
     let trendCampaigns = null;
@@ -266,9 +278,11 @@
       trendHost.replaceChildren(trendCampaigns);
     };
     renderTrendCampaigns(saved.area_summary.campaigns || []);
-    nrModeHandlers.push(() => {
+    const refreshTrendCampaigns = () => {
       renderTrendCampaigns((trendCampaigns?.getValue?.() || []).filter((value) => presets.some(([key]) => key === value)));
-    });
+    };
+    nrModeHandlers.push(refreshTrendCampaigns);
+    nsaVsSa.box.addEventListener('change', () => { refreshTrendCampaigns(); box.onNrModeChange?.(); });
     trends.title = 'Always the whole country: the Region, Cluster and City filters do not apply to Geographical Areas and Scoring Trends';
     const area = node('fieldset', undefined, 'brt-choice-group brt-area');
     area.append(node('legend', 'Geographical Areas'));
@@ -295,8 +309,9 @@
     // The GAP reference and the Methodology go beside the Campaigns of the section, as on the Scoring & GAP Analysis
     // page (the Focus operators of the PowerPoint and Word are those of the Operator Maps).
     box.scopeFields = [reference, methodology];
-    box.append(scorings, environments, tables, operatorChoices, trends);
+    box.append(scorings, environments, tables, operatorChoices, nrModes, trends);
     box.collect = () => ({
+      nsa_vs_sa: nsaVsSa.box.checked,
       scorings: scoringBoxes.filter((item) => item.checked).map((item) => item.value),
       environments: environmentBoxes.filter((item) => item.checked).map((item) => item.value),
       kpi_values: kpiValues.box.checked, gap_values: gapValues.box.checked, all_operators: allOperators.box.checked,
@@ -439,7 +454,9 @@
     head.append(handleButton('brt-section-handle', title), enabled, summary, collapse);
     const body = node('div', undefined, 'brt-section-body');
     if (!allowed) body.append(node('p', 'Your account cannot use this module: the section is left out.', 'form-note'));
-    const scope = scopeFields(saved.options || {});
+    // (The Scoring section can compare NSA vs SA: its campaigns follow its own NR Mode then.)
+    let sectionMode = nrMode;
+    const scope = scopeFields(saved.options || {}, () => sectionMode());
     body.append(scope);
     const list = node('ol', undefined, 'brt-items');
     list.setAttribute('aria-label', `Sub-modules of ${title}`);
@@ -457,6 +474,11 @@
       : saved.key === 'network_insights' ? networkOptions(saved.options)
         : saved.key === 'non_qualified_calls' ? callsOptions(saved.options) : null;
     if (optionsBox?.scopeFields) scope.append(...optionsBox.scopeFields);
+    if (optionsBox?.nrMode) {
+      sectionMode = optionsBox.nrMode;
+      scope.refresh(true);
+      optionsBox.onNrModeChange = () => { scope.refresh(); changed(); };
+    }
     if (optionsBox) {
       const optionsWrap = node('div', undefined, 'brt-section-options');
       optionsWrap.append(node('h4', 'Options'), optionsBox);

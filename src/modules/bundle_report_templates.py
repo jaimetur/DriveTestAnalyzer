@@ -35,6 +35,7 @@ from src.modules.cdr_auto_selection import (
     ALL_CAMPAIGNS, CAMPAIGN_PRESET_LABELS, campaign_presets, complete_campaign_cdrs, resolve_campaign_filter, sort_campaigns,
 )
 from src.modules.column_names import compact_campaign_value, format_campaign
+from src.modules.nr_mode import NSA_VS_SA, nr_mode_label
 from src.modules.output_layout import BUNDLE_REPORTS_FOLDER, module_output_dir
 from src.modules.scoring_area_summary import normalize_trend_campaigns
 from src.modules.scoring_export_panels import EXPORT_PANELS, load_export_panels, normalize_export_panels
@@ -161,7 +162,7 @@ def _module_options(section: str) -> dict[str, Any]:
     if section == 'scoring':
         # all_operators: every operator in the Focus Operators panels (see scoring_export_panels).
         return {'scorings': ['best_network'], 'environments': [COMBINED_ENVIRONMENT], 'kpi_values': False, 'gap_values': False,
-                'all_operators': False,
+                'all_operators': False, 'nsa_vs_sa': False,
                 'baseline_operator': 'EE', 'methodology': BY_CAMPAIGN,
                 # The Geographical Areas & Scoring Trends: the Breakdown and Separate cities of both tabs (London or the
                 # Main Cities at each export), the campaigns of the trends (All available campaigns by default; none: those
@@ -195,6 +196,8 @@ def _normalize_options(section: str, raw: Any, legacy_campaigns: Any = None) -> 
             'environments': environments or [COMBINED_ENVIRONMENT],
             'kpi_values': bool(raw.get('kpi_values')), 'gap_values': bool(raw.get('gap_values')),
             'all_operators': bool(raw.get('all_operators')),
+            # Scored NSA vs SA (the NSA and SA CDRs of its campaigns side by side), whatever the NR Mode of the report.
+            'nsa_vs_sa': bool(raw.get('nsa_vs_sa')),
             'baseline_operator': str(raw.get('baseline_operator') or 'EE').strip()[:80] or 'EE',
             # By campaign (each campaign with its methodology) unless a methodology is chosen.
             'methodology': str(raw.get('methodology') or '').strip()[:120] or BY_CAMPAIGN,
@@ -377,6 +380,7 @@ def _option_lines(section: dict[str, Any], dashboard_names: dict[str, str] | Non
         areas = (f" · Geographical Areas: {rows or 'each Region and London'}"
                  f" · time split {'All selected CDRs' if area['time_split'] == 'All' else area['time_split']}")
         every = ' · All Operators in the Focus Operators panels' if options.get('all_operators') else ''
+        every += ' · NSA vs SA' if options.get('nsa_vs_sa') else ''
         return [f"{scorings} · Environments: {environments}{every}",
                 f"Methodology: {methodology} · GAP reference: {options['baseline_operator']}",
                 f"Scoring Trends: {trend_campaigns}{areas}"]
@@ -1201,12 +1205,19 @@ class SectionGenerator:
 
     def scoring(self, section: dict[str, Any]) -> SectionDeck:
         options = section['options']
-        nr_mode = self.filters['nr_mode']
-        campaigns = resolve_campaign_filter(self.repository, nr_mode, options['campaigns'])
+        if options.get('nsa_vs_sa'):
+            # The NSA and SA CDRs of its campaigns side by side: Latest campaign is the newest quarter with both.
+            from src.modules.scoring_selection import expand_scoring_campaigns
+            nr_mode = NSA_VS_SA
+            campaigns = expand_scoring_campaigns(self.repository, nr_mode, options['campaigns'])
+        else:
+            nr_mode = self.filters['nr_mode']
+            campaigns = resolve_campaign_filter(self.repository, nr_mode, options['campaigns'])
         dataset_ids, incomplete = complete_campaign_cdrs(self.repository, nr_mode, campaigns)
         if not dataset_ids:
             missing = f" ({', '.join(incomplete)} lack a CDR type)" if incomplete else ''
-            raise BundleReportTemplateError(f'There is no campaign with Data, Voice and Speech {nr_mode} CDRs to score{missing}.')
+            raise BundleReportTemplateError(f'There is no campaign with Data, Voice and Speech {nr_mode_label(nr_mode)} CDRs '
+                                            f'to score{missing}.')
         chosen = {item['key']: item for item in section['items']}
         environments = [name for name in options['environments'] if name != COMBINED_ENVIRONMENT]
         names = ['All Environments' if name == COMBINED_ENVIRONMENT else name for name in options['environments']]

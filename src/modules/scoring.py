@@ -9,6 +9,7 @@ from typing import Iterable
 import pandas as pd
 
 from src.modules.column_names import campaign_sort_key, column_identity, resolve_column_name
+from src.modules.nr_mode import NR_MODE_COLUMN, campaign_with_nr_mode
 from src.modules.scoring_vendors import scoring_vendor_group
 from src.modules import scoring_points_loss as points_loss
 from src.modules.scoring_config import (
@@ -369,6 +370,10 @@ def _prepared_frames(frames: dict[str, pd.DataFrame], dimensions: list[str], con
                 frame['Campaign'] = None
             else:
                 frame['Campaign'] = period_labels(source[start], time_split)
+                if NR_MODE_COLUMN in source:
+                    # NSA vs SA: the NSA and SA tests of a period stay apart (2026-W07 and 2026-W07 SA).
+                    frame['Campaign'] = [campaign_with_nr_mode(period, mode) for period, mode
+                                         in zip(frame['Campaign'], source[NR_MODE_COLUMN])]
         if 'Dataset Type' in dimensions:
             frame['Dataset Type'] = kind.title()
         missing_group = [field for field in _SHARED + [d for d in dimensions if d != 'Dataset Type'] if field not in frame]

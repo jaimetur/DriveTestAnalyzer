@@ -6,14 +6,14 @@ import json
 from typing import Any
 
 from src.branding import canonical_format
-from src.modules.column_names import column_identity
+from src.modules.column_names import campaign_sort_key, column_identity
 from src.modules.cdr_auto_selection import (
     CAMPAIGN_PRESETS, CDR_KIND_LABELS, LATEST_CAMPAIGN, NO_PREVIOUS_CAMPAIGN, campaign_groups, campaign_identity, campaign_presets,
     candidate_cdrs, cdr_campaigns, campaign_values, complete_campaign_cdrs, preset_campaign_groups,
 )
 from src.modules.cdr_facets import cascading_options
 from src.modules.cdr_stage import combined_dataset_ids
-from src.modules.nr_mode import normalize_nr_mode
+from src.modules.nr_mode import NSA_VS_SA, normalize_nr_mode, normalize_scoring_nr_mode, nr_modes_of
 from src.modules.repository import Repository
 from src.modules.scoring_vendors import scoring_vendor_name, scoring_vendor_operators
 from src.modules.scoring_config import load_aggregation_hierarchy
@@ -90,6 +90,12 @@ def _default_nr_mode(rows: list[dict[str, Any]]) -> str:
     return 'NSA' if 'NSA' in modes else ('SA' if 'SA' in modes else 'NSA')
 
 
+def _scoring_nr_modes(rows: list[dict[str, Any]]) -> list[str]:
+    """The NR Modes a calculation can choose: those of the CDRs, and NSA vs SA when there are both."""
+    modes = sorted({str(row['nr_mode']) for row in rows})
+    return [*modes, NSA_VS_SA] if len(modes) > 1 else modes
+
+
 def _default_selection(repository: Repository) -> dict[str, Any]:
     rows = _available_cdr_rows(repository)
     nr_mode = _default_nr_mode(rows)
@@ -101,10 +107,20 @@ def _default_selection(repository: Repository) -> dict[str, Any]:
 
 
 def _complete_campaign_groups(repository: Repository, nr_mode: str) -> list[list[str]]:
-    """The campaigns of the NR Mode with Data, Voice and Speech CDRs, newest first (each with its spellings)."""
+    """The campaigns of the NR Mode with Data, Voice and Speech CDRs, newest first (each with its spellings).
+
+    With NSA vs SA a group is a quarter with its NSA and SA campaigns, so Latest campaign compares the NSA and SA
+    campaigns of the newest quarter."""
     _ids, incomplete = complete_campaign_cdrs(repository, nr_mode, [])
     left_out = {campaign_identity(value) for value in incomplete}
-    return [values for values in campaign_groups(campaign_values(repository, nr_mode)) if campaign_identity(values[0]) not in left_out]
+    groups = [values for values in campaign_groups(campaign_values(repository, nr_mode)) if campaign_identity(values[0]) not in left_out]
+    if normalize_scoring_nr_mode(nr_mode) != NSA_VS_SA:
+        return groups
+    quarters: dict[str, list[str]] = {}
+    for values in groups:
+        year, quarter, *_rest = campaign_sort_key(values[0])
+        quarters.setdefault(f'{year}-Q{quarter}' if year > 0 and quarter > 0 else campaign_identity(values[0]), []).extend(values)
+    return list(quarters.values())
 
 
 def _flatten_groups(groups: list[list[str]]) -> list[str]:
@@ -149,7 +165,10 @@ def scoring_auto_cdrs(repository: Repository, nr_mode: object, context_filters: 
     only those the other filters leave.
     """
     rows = _available_cdr_rows(repository)
-    mode = normalize_nr_mode(nr_mode) or _default_nr_mode(rows)
+    modes = _scoring_nr_modes(rows)
+    mode = normalize_scoring_nr_mode(nr_mode)
+    if mode is None or (mode == NSA_VS_SA and mode not in modes):
+        mode = _default_nr_mode(rows)
     filters = dict(context_filters) if isinstance(context_filters, dict) else {}
     if default_campaign:
         # Another NR Mode starts on Latest campaign.
@@ -168,7 +187,7 @@ def scoring_auto_cdrs(repository: Repository, nr_mode: object, context_filters: 
     fields = fields or ['Campaign', 'Operator', 'Operator_Vendor', 'Vendor_Operator', 'Vendor', 'Region', 'Cluster', 'City']
     return {
         'nr_mode': mode,
-        'nr_modes': sorted({str(row['nr_mode']) for row in rows}),
+        'nr_modes': modes,
         'dataset_ids': dataset_ids,
         'cdrs': [{
             'id': dataset_id, 'name': by_id[dataset_id]['file_name'], 'kind': by_id[dataset_id]['kind'],
@@ -285,12 +304,13 @@ def _normalize_selection(
     hierarchy = load_aggregation_hierarchy(repository)
     hierarchy_by_identity = {column_identity(level): level for level in hierarchy}
 
-    raw_mode = normalize_nr_mode(raw_selection.get('nr_mode'))
+    raw_mode = normalize_scoring_nr_mode(raw_selection.get('nr_mode'))
     rows = _available_cdr_rows(repository)
-    if raw_mode not in {'NSA', 'SA'}:
+    if raw_mode is None:
         raw_mode = defaults['nr_mode']
         warnings.append('The saved NR Mode was invalid; the default mode was selected.')
-    if not any(row['nr_mode'] == raw_mode for row in rows):
+    if ((raw_mode == NSA_VS_SA and raw_mode not in _scoring_nr_modes(rows))
+            or not any(row['nr_mode'] in nr_modes_of(raw_mode) for row in rows)):
         available_mode = _default_nr_mode(rows)
         if available_mode != raw_mode:
             raw_mode = available_mode
@@ -325,7 +345,8 @@ def _normalize_selection(
         auto_cdrs = True
         if parsed_ids and not context_filters.get('Campaign'):
             # A selection saved when CDRs were chosen by hand: its campaigns choose the same CDRs.
-            kept = [dataset_id for dataset_id in parsed_ids if dataset_id in rows_by_id and rows_by_id[dataset_id]['nr_mode'] == raw_mode]
+            kept = [dataset_id for dataset_id in parsed_ids
+                    if dataset_id in rows_by_id and rows_by_id[dataset_id]['nr_mode'] in nr_modes_of(raw_mode)]
             campaigns = sorted({value for values in cdr_campaigns(repository, kept).values() for value in values},
                                key=lambda value: (value.casefold(), value))
             if campaigns:
@@ -337,7 +358,7 @@ def _normalize_selection(
         dataset_ids = [
             dataset_id for dataset_id in parsed_ids
             if dataset_id in rows_by_id
-            and rows_by_id[dataset_id]['nr_mode'] == raw_mode
+            and rows_by_id[dataset_id]['nr_mode'] in nr_modes_of(raw_mode)
             and dataset_id in table_ids
         ]
         if invalid_ids or len(dataset_ids) != len(parsed_ids):
@@ -356,6 +377,10 @@ def _normalize_selection(
         warnings.append('Split by levels from the previous methodology were removed.')
     if not aggregation_levels:
         aggregation_levels = ['Operator']
+    if raw_mode == NSA_VS_SA:
+        # NSA vs SA compares the campaigns of each NR Mode: it is always split by Campaign.
+        aggregation_levels = [level for level in hierarchy if column_identity(level) in {
+            column_identity(value) for value in [*aggregation_levels, 'Campaign']}] or aggregation_levels
 
     operator_options = _operator_options(repository)
     raw_baseline = str(raw_selection.get('baseline_operator') or '').strip()

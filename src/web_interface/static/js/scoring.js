@@ -274,6 +274,8 @@
   }, {passive: true});
   window.addEventListener('pagehide', persistScoringViewState);
   const nrFilter = root.querySelector('[data-nr-filter]');
+  // The NR Mode that scores the NSA and SA CDRs side by side.
+  const nsaVsSa = 'NSA+SA';
   const datasetOptions = [...root.querySelectorAll('[data-dataset-option]')];
   const datasetInputs = [...root.querySelectorAll('[data-dataset-id]')];
   const datasetKindOrder = ['data', 'voice', 'speech'];
@@ -1658,8 +1660,22 @@
 
   function applyNrFilter(selectLatest = false) {
     const mode = nrFilter.value;
+    // NSA vs SA uses the CDRs of both NR Modes and is always split by Campaign (each campaign with its NR Mode).
+    const modes = mode === nsaVsSa ? ['NSA', 'SA'] : [mode];
+    const campaignLevel = aggregationInputByLevel.get('Campaign');
+    if (campaignLevel) {
+      if (mode === nsaVsSa) campaignLevel.checked = true;
+      campaignLevel.disabled = mode === nsaVsSa;
+      campaignLevel.closest('label')?.classList.toggle('is-required', mode === nsaVsSa);
+      campaignLevel.closest('label').title = mode === nsaVsSa ? 'NSA vs SA is always split by Campaign: each campaign with its NR Mode' : '';
+    }
+    const allPeriods = areaSummaryTimeSplit && [...areaSummaryTimeSplit.options].find(option => option.value === 'All');
+    if (allPeriods) {
+      allPeriods.disabled = mode === nsaVsSa;
+      if (mode === nsaVsSa && areaSummaryTimeSplit.value === 'All') areaSummaryTimeSplit.value = 'Campaign';
+    }
     for (const option of datasetOptions) {
-      const matches = !mode || option.dataset.nrMode === mode;
+      const matches = !mode || modes.includes(option.dataset.nrMode);
       option.hidden = !matches;
       if (!matches) {
         const checkbox = option.querySelector('[data-dataset-id]');
@@ -1743,7 +1759,8 @@
     }
     return [
       {dimension: 'neutral', value: formatDate(valueOf(savedFilter, ['last_used_at', 'created_at'], ''))},
-      {dimension: 'nr-mode', value: valueOf(savedFilter, ['nr_mode'], 'All NR Modes')},
+      // (NSA vs SA reads so.)
+      {dimension: 'nr-mode', value: (mode => (mode === 'NSA+SA' ? 'NSA vs SA' : mode))(valueOf(savedFilter, ['nr_mode'], 'All NR Modes'))},
       {dimension: 'region', value: filterValue('Region', 'All Regions')},
       {dimension: 'cluster', value: filterValue('Cluster', 'All Clusters')},
       {dimension: 'city', value: filterValue('City', 'All Cities')},

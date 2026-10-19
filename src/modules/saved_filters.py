@@ -30,7 +30,10 @@ from src.modules.cdr_auto_selection import CAMPAIGN_PRESET_LABELS, campaign_iden
 from src.modules.value_patterns import ValueSet
 from src.modules.operator_roles import EXCLUDE, normalize_mapping_role
 from src.modules.cdr_stage import combined_dataset_ids
-from src.modules.nr_mode import NR_MODES, normalize_nr_mode
+from src.modules.nr_mode import (
+    NR_MODE_COLUMN, NSA_VS_SA, SCORING_NR_MODES, campaign_with_nr_mode, normalize_nr_mode, normalize_scoring_nr_mode,
+    nr_mode_label, nr_modes_of,
+)
 from src.modules.repository import Repository, local_now_iso
 from src.modules.scoring_config import (
     DEFAULT_AGGREGATION_HIERARCHY,
@@ -297,9 +300,9 @@ def _source_snapshot(
     if missing:
         raise ValueError(f"Selected CDR dataset(s) no longer exist: {', '.join(map(str, missing))}.")
 
-    expected_mode = normalize_nr_mode(expected_nr_mode) if expected_nr_mode else None
+    expected_mode = normalize_scoring_nr_mode(expected_nr_mode) if expected_nr_mode else None
     if expected_nr_mode and expected_mode is None:
-        raise ValueError('NR Mode must be NSA or SA.')
+        raise ValueError('NR Mode must be NSA, SA or NSA vs SA.')
     campaigns_by_id = _read_campaigns(repository, requested_ids)
     sources: list[dict[str, Any]] = []
     for dataset_id in sorted(requested_ids):
@@ -312,8 +315,8 @@ def _source_snapshot(
         nr_mode = normalize_nr_mode(row['nr_mode'])
         if nr_mode is None:
             raise ValueError(f"Dataset '{row['file_name']}' has no valid NR Mode.")
-        if expected_mode and nr_mode != expected_mode:
-            raise ValueError(f"Dataset '{row['file_name']}' does not match the selected {expected_mode} NR Mode.")
+        if expected_mode and nr_mode not in nr_modes_of(expected_mode):
+            raise ValueError(f"Dataset '{row['file_name']}' does not match the selected {nr_mode_label(expected_mode)} NR Mode.")
         table_name = repository.dataset_rows_table_name(dataset_id)
         if not repository.dataset_rows_table_exists(dataset_id):
             raise ValueError(f"Dataset '{row['file_name']}' has no processed row table.")
@@ -351,10 +354,11 @@ def _source_snapshot(
         sources.append({'metadata': metadata, 'signature': signature, 'columns': columns, 'table_name': table_name})
 
     modes = {str(source['metadata']['nr_mode']) for source in sources}
-    if len(modes) != 1:
+    # NSA vs SA scores the CDRs of both NR Modes, each campaign with its NR Mode.
+    if len(modes) != 1 and expected_mode != NSA_VS_SA:
         raise ValueError('Select CDR datasets with the same NR Mode.')
-    if expected_mode and modes != {expected_mode}:
-        raise ValueError(f'Selected CDR datasets do not all match {expected_mode}.')
+    if expected_mode and not modes <= set(nr_modes_of(expected_mode)):
+        raise ValueError(f'Selected CDR datasets do not all match {nr_mode_label(expected_mode)}.')
     source_fingerprint_payload = sorted(
         (source['signature'] for source in sources),
         key=lambda signature: json.dumps(signature, ensure_ascii=False, sort_keys=True, separators=(',', ':')),
@@ -389,13 +393,22 @@ def validate_complete_scoring_cdr_selection(
 
     campaigns_by_kind: dict[str, set[str]] = {kind: set() for kind in CDR_DATASET_KINDS}
     labels = {'data': 'Data', 'voice': 'Voice', 'speech': 'Speech'}
+    # NSA vs SA: each campaign of each NR Mode needs the three types.
+    both_modes = normalize_scoring_nr_mode(nr_mode) == NSA_VS_SA
+    scored: dict[str, set[str]] = {}
     for source in sources:
         metadata = source['metadata']
-        campaigns_by_kind[str(metadata['kind'])].update(
-            str(campaign).strip() for campaign in metadata.get('campaigns', []) if str(campaign).strip()
-        )
+        for campaign in metadata.get('campaigns', []):
+            text = str(campaign).strip()
+            if text:
+                key = str(campaign_with_nr_mode(text, metadata['nr_mode'])) if both_modes else text
+                campaigns_by_kind[str(metadata['kind'])].add(key)
+                scored.setdefault(text.casefold(), set()).add(key)
     selected_campaigns = normalized_filters['Campaign']
-    if selected_campaigns:
+    if selected_campaigns and both_modes:
+        campaigns_to_check = list(dict.fromkeys(
+            key for value in selected_campaigns for key in sorted(scored.get(value.casefold()) or {value})))
+    elif selected_campaigns:
         campaigns_to_check = selected_campaigns
     else:
         campaigns_to_check = sorted(
@@ -774,13 +787,13 @@ def _prepare_saved_filter(
     calculation_filters = dict(normalized_context_filters)
     if campaign_choice:
         from src.modules.scoring_selection import auto_scoring_cdr_ids, expand_scoring_campaigns
-        mode = normalize_nr_mode(nr_mode) or 'NSA'
+        mode = normalize_scoring_nr_mode(nr_mode) or 'NSA'
         normalized_context_filters['Campaign'] = [campaign_choice]
         calculation_filters['Campaign'] = expand_scoring_campaigns(repository, mode, [campaign_choice])
         dataset_ids = auto_scoring_cdr_ids(repository, mode, [campaign_choice])
         if not dataset_ids:
             raise ValueError(f'{CAMPAIGN_PRESET_LABELS[campaign_choice]} stands for no campaign with Data, Voice and Speech '
-                             f'CDRs of {mode} now.')
+                             f'CDRs of {nr_mode_label(mode)} now.')
     normalized_ids = list(dict.fromkeys(int(dataset_id) for dataset_id in dataset_ids))
     normalized_area_summary = normalize_area_summary_request(area_summary, normalized_context_filters)
     vendor_catalogues = repository.cdr_catalogues_by_dataset(normalized_ids)
@@ -797,6 +810,11 @@ def _prepare_saved_filter(
         repository, normalized_ids, expected_nr_mode=nr_mode,
     )
     aggregation_hierarchy = load_aggregation_hierarchy(repository)
+    both_modes = normalize_scoring_nr_mode(nr_mode) == NSA_VS_SA
+    if both_modes:
+        # NSA vs SA compares the campaigns of each NR Mode: it is always split by Campaign.
+        levels = [*levels, *([] if any(column_identity(level) == 'campaign' for level in levels) else ['Campaign'])]
+        _check_nsa_vs_sa(sources, normalized_area_summary)
     normalized_levels = _normalize_levels(levels, sources, aggregation_hierarchy)
     groups: list[dict[str, Any]] = []
     profile_getter = getattr(repository, 'get_scoring_profile', None)
@@ -826,9 +844,9 @@ def _prepare_saved_filter(
             raise ValueError('This workspace does not support selecting scoring methodologies.')
         configuration = _workspace_scoring_configuration(repository)
         scoring_profile = {'id': '', 'name': ''}
-    selected_mode = normalize_nr_mode(nr_mode) if nr_mode else str(sources[0]['metadata']['nr_mode'])
-    if selected_mode not in NR_MODES:
-        raise ValueError('NR Mode must be NSA or SA.')
+    selected_mode = normalize_scoring_nr_mode(nr_mode) if nr_mode else str(sources[0]['metadata']['nr_mode'])
+    if selected_mode not in SCORING_NR_MODES:
+        raise ValueError('NR Mode must be NSA, SA or NSA vs SA.')
     baseline = str(baseline_operator or '').strip()
     if not baseline:
         raise ValueError('Select a comparison baseline operator.')
@@ -892,6 +910,27 @@ def _prepare_saved_filter(
     }
 
 
+def _check_nsa_vs_sa(sources: list[dict[str, Any]], area_summary: dict[str, Any] | None) -> None:
+    """An NSA vs SA calculation keeps the NSA and SA campaigns apart: the Campaign Maps must show them apart, and its
+    Scoring Trends cannot aggregate every campaign (time split All)."""
+    from src.modules.cdr_auto_selection import campaign_identity
+    modes_of: dict[str, set[str]] = {}
+    labels: dict[str, str] = {}
+    for source in sources:
+        mode = str(source['metadata']['nr_mode'])
+        for campaign in source['metadata'].get('campaigns') or []:
+            scored = campaign_with_nr_mode(campaign, mode)
+            identity = campaign_identity(scored)
+            modes_of.setdefault(identity, set()).add(mode)
+            labels.setdefault(identity, str(campaign))
+    shared = [labels[identity] for identity, modes in modes_of.items() if len(modes) > 1]
+    if shared:
+        raise ValueError(f'NSA vs SA: the Campaign Map shows the NSA and SA campaigns alike ({", ".join(sorted(shared))}). '
+                         'Show SA in the campaign labels (Workspace Config → Campaign Maps) to compare them.')
+    if (area_summary or {}).get('time_split') == 'All':
+        raise ValueError('NSA vs SA compares the campaigns of each NR Mode: choose a Scoring Trends time split other than All.')
+
+
 def _workspace_main_cities(repository: Repository) -> list[str]:
     """The Main Cities of the workspace now (none in a repository without them)."""
     getter = getattr(repository, 'list_main_cities', None)
@@ -909,7 +948,8 @@ def _area_trends(repository: Repository, nr_mode: str, area_summary: dict[str, A
     campaigns = expand_scoring_campaigns(repository, nr_mode, area_summary['campaigns'])
     dataset_ids = auto_scoring_cdr_ids(repository, nr_mode, area_summary['campaigns'])
     if not dataset_ids:
-        raise ValueError(f'National & Geographical Areas Trends: the chosen campaigns have no Data, Voice and Speech CDRs of {nr_mode} now.')
+        raise ValueError('National & Geographical Areas Trends: the chosen campaigns have no Data, Voice and Speech CDRs of '
+                         f'{nr_mode_label(nr_mode)} now.')
     sources, _campaigns, fingerprint = _source_snapshot(repository, dataset_ids, expected_nr_mode=nr_mode)
     trends: dict[str, Any] = {'campaigns': list(campaigns), 'dataset_ids': list(dataset_ids), 'source_fingerprint': fingerprint}
     if scoring_profile_id == BY_CAMPAIGN:
@@ -1546,7 +1586,7 @@ def import_saved_filters(repository: Repository, document: Any) -> int:
             for item in entry.get('cdrs') or [] if isinstance(item, dict) and item.get('sha256')
         ]
         levels = [str(level) for level in entry.get('levels') or [] if str(level).strip()]
-        nr_mode = normalize_nr_mode(entry.get('nr_mode'))
+        nr_mode = normalize_scoring_nr_mode(entry.get('nr_mode'))
         context_filters = _normalize_context_filters(entry.get('context_filters') or {})
         campaign_choice = (campaign_presets(context_filters['Campaign']) or [''])[0]
         if not refs and campaign_choice:
@@ -1723,8 +1763,10 @@ def _filters_key(context_filters: dict[str, list[str]] | None) -> dict[str, list
 
 def _load_source_frames(
     repository: Repository, sources: list[dict[str, Any]], progress_callback, required_columns,
-    context_filters: dict[str, list[str]] | None = None,
+    context_filters: dict[str, list[str]] | None = None, *, nr_mode_campaigns: bool = False,
 ) -> dict[str, pd.DataFrame]:
+    """The rows of the CDRs by type, with the context filters. With ``nr_mode_campaigns`` (NSA vs SA) each campaign
+    names the NR Mode of its CDR and each row keeps it (``NR_MODE_COLUMN``), so the NSA and SA tests stay apart."""
     frames_by_kind: dict[str, list[pd.DataFrame]] = {}
     normalized_filters = _normalize_context_filters(context_filters)
     active_filters = {field: values for field, values in normalized_filters.items() if values}
@@ -1783,6 +1825,14 @@ def _load_source_frames(
             progress_callback(10 + round(index * 45 / total), f"Skipped {source['metadata']['name']} with no matching rows")
             continue
         kind = str(source['metadata']['kind'])
+        if nr_mode_campaigns:
+            mode = str(source['metadata']['nr_mode'])
+            campaign_column = resolve_column_name(frame.columns, 'Campaign')
+            if campaign_column is not None:
+                frame[campaign_column] = frame[campaign_column].map(
+                    {value: campaign_with_nr_mode(value, mode) for value in frame[campaign_column].dropna().unique()}
+                ).where(frame[campaign_column].notna(), frame[campaign_column])
+            frame[NR_MODE_COLUMN] = mode
         frames_by_kind.setdefault(kind, []).append(frame)
         progress_callback(10 + round(index * 45 / total), f"Loaded {source['metadata']['name']}")
 
@@ -1958,6 +2008,7 @@ def _trend_area_summary(repository: Repository, saved_filter: dict[str, Any], tr
             'baseline_operator': saved_filter['baseline_operator'], 'baseline_aliases': saved_filter.get('baseline_aliases', []),
             'operator_mappings': saved_filter.get('operator_mappings', {}),
             'operator_groups': repository.list_operator_mapping_groups(),
+            **({'nr_mode_campaigns': True} if _compares_nr_modes(saved_filter) else {}),
         })
         cached = scoring_cache.read(repository, 'trends', key)
         if cached is not None:
@@ -2027,7 +2078,9 @@ def _scoring_result(repository: Repository, saved_filter: dict[str, Any], config
                            if level not in extra)]
     for source in sources:
         source['levels'] = [*saved_filter['levels'], *extra]
-    frames = _load_source_frames(repository, sources, update_progress, required_columns, context_filters)
+    nr_mode_campaigns = _compares_nr_modes(saved_filter)
+    frames = _load_source_frames(repository, sources, update_progress, required_columns, context_filters,
+                                 nr_mode_campaigns=nr_mode_campaigns)
     _current_sources, _campaigns, post_load_fingerprint = _source_snapshot(
         repository, dataset_ids, expected_nr_mode=saved_filter['nr_mode'],
     )
@@ -2045,7 +2098,8 @@ def _scoring_result(repository: Repository, saved_filter: dict[str, Any], config
     if job_filtered and (saved_filter.get('area_summary') or saved_filter.get('geographical', True)):
         update_progress(87, 'Reading the CDR rows of the whole country for the Geographical Areas & Scoring Trends')
         country_frames = _load_source_frames(repository, [dict(source) for source in sources], lambda *_args: None,
-                                             required_columns, whole_country_filters(context_filters))
+                                             required_columns, whole_country_filters(context_filters),
+                                             nr_mode_campaigns=nr_mode_campaigns)
     if saved_filter.get('area_summary'):
         summary = calculate_area_summary(calculate, country_frames, saved_filter['levels'],
                                          saved_filter['area_summary'], call_kwargs, update_progress, job_filtered=job_filtered)
@@ -2060,6 +2114,11 @@ def _scoring_result(repository: Repository, saved_filter: dict[str, Any], config
         if geographical:
             result['geographical'] = geographical
     return result, False
+
+
+def _compares_nr_modes(saved_filter: dict[str, Any]) -> bool:
+    """Whether a Saved Filter scores NSA vs SA (each campaign with the NR Mode of its CDRs)."""
+    return normalize_scoring_nr_mode(saved_filter.get('nr_mode')) == NSA_VS_SA
 
 
 def _geographical_areas(saved_filter: dict[str, Any]) -> dict[str, Any] | None:
@@ -2111,6 +2170,7 @@ def _history_result(repository: Repository, saved_filter: dict[str, Any], config
         'baseline_aliases': saved_filter.get('baseline_aliases', []), 'operator_mappings': saved_filter.get('operator_mappings', {}),
         'context_filters': context_filters,
         'vendor_operators': scoring_vendor_operators(catalogues, repository.list_operator_mapping_groups()),
+        **({'nr_mode_campaigns': True} if _compares_nr_modes(saved_filter) else {}),
     }
     try:
         result = calculate_scoring_from_history(repository, dataset_ids, saved_filter['levels'], **options)
@@ -2276,7 +2336,8 @@ def _points_loss_of(repository: Repository, saved_filter: dict[str, Any], source
                  if read < total else 'Mapping the tests')
 
     progress(0, f'Reading the rows of the tests: CDR 1 of {total}')
-    frames = _load_source_frames(repository, sources, cdr_read, required_columns, context_filters)
+    frames = _load_source_frames(repository, sources, cdr_read, required_columns, context_filters,
+                                 nr_mode_campaigns=_compares_nr_modes(saved_filter))
     calculate = engine.calculate_scoring
     options = _engine_kwargs(repository, saved_filter, configuration, calculate)
     if hasattr(engine, 'calculate_points_loss'):
@@ -2309,6 +2370,7 @@ def _points_loss_inputs(repository: Repository, saved_filter: dict[str, Any], so
         'levels': list(saved_filter['levels']), 'configuration': configuration_hash(configuration),
         'filters': _filters_key(context_filters), 'operator_mappings': saved_filter.get('operator_mappings', {}),
         'map_areas': areas_version(repository),
+        **({'nr_mode_campaigns': True} if _compares_nr_modes(saved_filter) else {}),
     }
 
 

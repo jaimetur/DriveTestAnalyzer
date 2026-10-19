@@ -20,7 +20,9 @@ from typing import Any, Iterable
 
 from src.modules.cdr_stage import _facts as cdr_stage_facts, combined_inclusion
 from src.modules.column_names import campaign_sort_key, compact_campaign_value
-from src.modules.nr_mode import dataset_nr_mode, normalize_nr_mode
+from src.modules.nr_mode import (
+    NSA_VS_SA, campaign_with_nr_mode, dataset_nr_mode, normalize_nr_mode, normalize_scoring_nr_mode,
+)
 
 CDR_KINDS = ('data', 'voice', 'speech')
 CDR_KIND_LABELS = {'data': 'Data', 'voice': 'Voice', 'speech': 'Speech'}
@@ -241,11 +243,16 @@ def complete_campaign_cdrs(repository: Any, nr_mode: object, campaigns: Iterable
     """The CDRs of the campaigns with Data, Voice and Speech CDRs, and the campaigns left out for lacking a type.
 
     Scoring needs every campaign it scores in the three types: without a Campaign filter, the
-    campaigns missing a type are left out instead of failing the calculation.
+    campaigns missing a type are left out instead of failing the calculation. With NSA vs SA, each
+    campaign of each NR Mode needs them (see ``nr_mode.campaign_with_nr_mode``).
     """
     chosen = resolve_cdrs(repository, nr_mode, campaigns)
     ids = [dataset_id for values in chosen.values() for dataset_id in values]
     index = cdr_campaigns(repository, ids)
+    if normalize_scoring_nr_mode(nr_mode) == NSA_VS_SA:
+        modes = {row['id']: row['nr_mode'] for row in candidate_cdrs(repository, None)}
+        index = {dataset_id: [campaign_with_nr_mode(value, modes.get(dataset_id)) for value in values]
+                 for dataset_id, values in index.items()}
     kinds_by_campaign: dict[str, set[str]] = {}
     labels: dict[str, str] = {}
     kind_of = {dataset_id: kind for kind, values in chosen.items() for dataset_id in values}
