@@ -200,15 +200,16 @@ def test_locations_are_ranked_and_compared_with_the_reference(cities):
     headers = [shape.table.cell(0, column).text for slide in deck.slides for shape in slide.shapes if shape.has_table
                for column in range(2)]
     assert 'City' in headers and 'Location' not in headers
-    assert any(text.startswith('Three UK against') and text.endswith(' per city or route') for text in texts)
-    assert any(text.startswith('Cities and routes ranked — Three UK') for text in texts)
+    titles = [slide.shapes.title.text_frame.paragraphs[0].text for slide in deck.slides]
+    assert any(title.startswith('Three UK against') and title.endswith(' per city or route') for title in titles)
+    assert any(title == 'Cities and routes ranked — Three UK' for title in titles)
     # Without routes, the City level is named as cities only.
     cities_only = {**ranking, 'rows': [row for row in ranking['rows'] if row['kind'] != 'route']}
     deck = Presentation(TEMPLATE)
     add_location_ranking_slides(deck, [cities_only], subtitle='', new_slide=_slide)
     add_location_versus_slides(deck, [cities_only], subtitle='', new_slide=_slide)
-    titles = [slide.shapes.title.text_frame.text for slide in deck.slides]
-    assert titles[0].startswith('Cities ranked — Three UK') and titles[-1].endswith(' per city')
+    titles = [slide.shapes.title.text_frame.paragraphs[0].text for slide in deck.slides]
+    assert titles[0] == 'Cities ranked — Three UK' and titles[-1].endswith(' per city')
     assert any('available in each city or route' in text for text in texts)
 
 
