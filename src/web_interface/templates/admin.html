@@ -97,7 +97,7 @@
         <h2>Users</h2>
         <p class="summary-description">Every account with its role, <strong>Modules Profile</strong> (the modules it sees), active status and <strong>workspaces</strong> (its Workspace Groups plus individual workspaces). Change any of them in place, or select several users to change them at once. The last row creates a user.</p>
       </div>
-      <span class="collapse-chip">Collapse</span>
+      <div class="summary-inline-actions"><span class="pill users-count" data-users-count role="status">{{ users | length }} users</span><span class="collapse-chip">Collapse</span></div>
     </summary>
     <div class="users-toolbar" role="search">
       <label class="users-search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg><input type="search" placeholder="Search users by name or username" aria-label="Filter users by name or username" data-users-filter-text></label>
@@ -105,7 +105,6 @@
       <select aria-label="Filter users by Modules Profile" data-users-filter="profile"><option value="">All Modules Profiles</option>{% for profile in modules_profiles %}<option value="{{ profile.id }}">{{ profile.name }}</option>{% endfor %}</select>
       <select aria-label="Filter users by Workspace Group" data-users-filter="group"><option value="">All Workspace Groups</option>{% for group in workspace_groups %}<option value="{{ group.id }}">{{ group.name }}</option>{% endfor %}<option value="none">No Workspace Group</option></select>
       <select aria-label="Filter users by status" data-users-filter="active"><option value="">Active and inactive</option><option value="1">Active</option><option value="0">Inactive</option><option value="access-request">Pending access requests</option></select>
-      <span class="users-count" data-users-count role="status"></span>
     </div>
     <div class="users-bulk-bar" data-users-bulk hidden>
       <strong data-users-bulk-count>0 selected</strong>

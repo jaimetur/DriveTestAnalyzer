@@ -14,6 +14,7 @@
 
 #### 🚀 Enhancements:
 - **Merges in the Operator Maps:** the **Merges N** status of an Operator name, the **Merges N** badge of a label and the confirmation when saving count only the names of a label that coincide in the same campaign and NR Mode, which are the ones added up as one, and say where they coincide (for example `26-Q2 (NSA)`); names that share a label but are never in the same campaign and NR Mode (such as `Vodafone UK` in NSA and `Vodafone SM` in an SA campaign) stay **Assigned**, and hovering it lists them.
+- **Users count:** the count of the users of Admin → Users, or of those listed by its search and filters out of them, is a badge beside **Collapse** instead of text after the filters.
 
 #### 🐛 Bug fixes:
 - **Campaign Comparison across methodologies:** when the two campaigns compared were scored with different methodologies, a category whose KPIs changed between them (a KPI added or removed, or other maximum points, such as VIDEO STREAM when 2026-Q3 shares the YouTube points with TikTok) is compared as a whole, on the page and in PowerPoint and Word: one row with the points of all its KPIs in each campaign and their Δ Points, its KPIs below it without a Δ of their own, and a note naming the category and the methodology of each campaign. The KPIs whose maximum points shrank no longer show losses that are not there, the new KPIs count in the Scoring Points Gap, which adds up the Δ Points shown, and the other categories are still compared KPI by KPI.
