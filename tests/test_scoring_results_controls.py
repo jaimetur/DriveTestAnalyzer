@@ -2118,8 +2118,8 @@ const anyCase = focusDefault(operators);
 console.log(JSON.stringify({groups, chosen, none, all, anyCase}));
 """
     result = _run_node_json(program, {})
-    # The Focus operators first, under Focus, then a line before the other operators.
-    assert result['groups'] == [['Focus', '', ['operator:VF SA', 'operator:Three']],
+    # The Focus operators first, under Focus operators, then a line before the other operators.
+    assert result['groups'] == [['Focus operators', '', ['operator:VF SA', 'operator:Three']],
                                 ['Other operators', 'true', ['operator:EE', 'operator:VMO2']]]
     # Their sections start with them; without Focus operators (or none of them in the results), every operator but the
     # reference.

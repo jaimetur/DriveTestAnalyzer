@@ -930,7 +930,7 @@
       ? {focused, others: items.filter(item => !focused.includes(item))} : {focused: [], others: items};
   }
 
-  // The options of a choice of operators ([value, text, operator, label]), the Focus operators first under a Focus heading,
+  // The options of a choice of operators ([value, text, operator, label]), the Focus operators first under a Focus operators heading,
   // with a line before the others.
   function appendFocusOptions(select, entries) {
     const option = ([value, text]) => Object.assign(document.createElement('option'), {value, textContent: text});
@@ -939,7 +939,7 @@
       select.append(...entries.map(option));
       return;
     }
-    const focusGroup = Object.assign(document.createElement('optgroup'), {label: 'Focus'});
+    const focusGroup = Object.assign(document.createElement('optgroup'), {label: 'Focus operators'});
     focusGroup.append(...focused.map(item => option(item.entry)));
     const otherGroup = Object.assign(document.createElement('optgroup'), {label: 'Other operators'});
     otherGroup.dataset.dividerBefore = 'true';
@@ -947,7 +947,7 @@
     select.append(focusGroup, otherGroup);
   }
 
-  // The chips of a choice of operators, the Focus operators first beside a Focus tag, with a line before the others.
+  // The chips of a choice of operators, the Focus operators first beside a Focus operators tag, with a line before the others.
   function appendFocusChips(group, operators, makeChip) {
     const {focused, others} = focusSplit(operators);
     if (!focused.length) {
@@ -957,7 +957,7 @@
     group.classList.add('has-focus-operators');
     const focusRow = document.createElement('span');
     focusRow.className = 'scoring-focus-operators';
-    focusRow.append(Object.assign(document.createElement('span'), {className: 'scoring-focus-tag', textContent: 'Focus'}),
+    focusRow.append(Object.assign(document.createElement('span'), {className: 'scoring-focus-tag', textContent: 'Focus operators'}),
       ...focused.map(makeChip));
     const otherRow = document.createElement('span');
     otherRow.className = 'scoring-other-operators';
