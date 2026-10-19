@@ -266,6 +266,12 @@ def test_results_controls_are_grouped_with_icons_and_unique_environment_heading(
     assert '.scoring-results-config-shortcuts svg, .scoring-export-actions svg {' in template
     assert 'fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round;' in template
     assert '.scoring-results-config-shortcuts, .scoring-results-tools > .scoring-export-actions { justify-content: flex-end; }' in template
+    # The buttons of the Calculation panel and of Scoring & GAP Results have one height, and no other page's style for
+    # buttons in a .scoring-export-actions box (such as Workspace Config's) moves them.
+    assert ('.scoring-results-tools :is(.scoring-results-config-shortcuts, .scoring-export-actions) a { box-sizing: border-box; '
+            'min-height: 2.45rem; }') in template
+    stylesheet = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/css/app.css').read_text(encoding='utf-8')
+    assert '\n.scoring-export-actions' not in stylesheet and '.scoring-export-panels-actions {' in stylesheet
 
     payload = {
         'snippets': {

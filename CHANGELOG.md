@@ -16,6 +16,7 @@
 #### 🐛 Bug fixes:
 - **Campaign Comparison across methodologies:** when the two campaigns compared were scored with different methodologies, a category whose KPIs changed between them (a KPI added or removed, or other maximum points, such as VIDEO STREAM when 2026-Q3 shares the YouTube points with TikTok) is compared as a whole, on the page and in PowerPoint and Word: one row with the points of all its KPIs in each campaign and their Δ Points, its KPIs below it without a Δ of their own, and a note naming the category and the methodology of each campaign. The KPIs whose maximum points shrank no longer show losses that are not there, the new KPIs count in the Scoring Points Gap, which adds up the Δ Points shown, and the other categories are still compared KPI by KPI.
 - **Order of the Geographical Areas levels:** the cards and the rankings with their comparisons with the reference go from the largest level to the smallest (Region, Cluster, City, after the scoring Nationwide), on the page, whose rankings open on the largest level, and in PowerPoint and Word, which export every level instead of the Regions coming after every slide of the cities.
+- **Buttons of Scoring & GAP Analysis:** Generate Scoring Report and Export Selected Scoring Report are as tall as the buttons beside them and aligned with them, without the rule above them that a style of Workspace Config added, and the buttons of Scoring & GAP Results are as tall as those of the Calculation panel.
 
 #### 📚 Documentation:
 

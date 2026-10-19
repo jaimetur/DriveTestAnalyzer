@@ -799,7 +799,9 @@
   .scoring-calculation-actions { display: flex; align-items: stretch; justify-content: space-between; flex-wrap: wrap; gap: 1rem; }
   .scoring-calculation-actions > .scoring-calculation-shortcuts { align-items: stretch; grid-column: auto; grid-row: auto; justify-content: flex-end; width: auto; max-width: 100%; margin-left: auto; padding: 0; overflow: visible; }
   .scoring-calculation-shortcuts > .scoring-results-config-shortcuts { flex-wrap: wrap; align-items: stretch; justify-content: flex-end; }
-  .scoring-calculation-actions .scoring-profile-choice, .scoring-calculation-actions .scoring-actions button, .scoring-calculation-shortcuts a { box-sizing: border-box; min-height: 2.45rem; }
+  /* The buttons of the Calculation panel and of Scoring & GAP Results, one height. */
+  .scoring-calculation-actions .scoring-profile-choice, .scoring-calculation-actions .scoring-actions button, .scoring-calculation-shortcuts a,
+  .scoring-results-tools :is(.scoring-results-config-shortcuts, .scoring-export-actions) a { box-sizing: border-box; min-height: 2.45rem; }
   .scoring-calculation-shortcuts a { align-self: stretch; }
   /* Phones: the configuration shortcuts and the report actions wrap, under the calculation buttons and above the results. */
   @media(max-width:640px) {
