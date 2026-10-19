@@ -4820,12 +4820,13 @@
     return darkContrast >= whiteContrast ? '#203744' : '#ffffff';
   }
 
-  // The label of a segment of a stacked bar: across it (down to 9px), else turned 90° when the segment is tall enough,
-  // else across it at 8px; none when it fits neither way ({size: 0}).
-  function stackedSegmentLabelLayout(label, width, height) {
-    const across = Math.floor(Math.min(22, (width - 8) / (label.length * .68), (height - 5) / 1.2));
+  // The label of a segment of a stacked bar, never larger than ``maximum`` (below the total over the bar): across it
+  // (down to 9px), else turned 90° when the segment is tall enough, else across it at 8px; none when it fits neither
+  // way ({size: 0}).
+  function stackedSegmentLabelLayout(label, width, height, maximum = 22) {
+    const across = Math.floor(Math.min(maximum, (width - 8) / (label.length * .68), (height - 5) / 1.2));
     if (across >= 9) return {size: across, rotated: false};
-    const turned = Math.floor(Math.min(22, (height - 8) / (label.length * .68), (width - 5) / 1.2));
+    const turned = Math.floor(Math.min(maximum, (height - 8) / (label.length * .68), (width - 5) / 1.2));
     if (turned >= 9) return {size: turned, rotated: true};
     return across >= 8 ? {size: across, rotated: false} : {size: 0, rotated: false};
   }
@@ -5075,7 +5076,7 @@
           setChartTooltip(rect, tooltipParts.join('\n'), true);
           svg.append(rect);
           const segmentText = formatChartNumber(numeric, {minimumFractionDigits: 1, maximumFractionDigits: 1});
-          const layout = stackedSegmentLabelLayout(segmentText, barWidth, segmentHeight);
+          const layout = stackedSegmentLabelLayout(segmentText, barWidth, segmentHeight, Math.floor(bestNetworkTotalSize('000.0', step) * .7));
           if (layout.size) {
             const segmentLabel = document.createElementNS(svg.namespaceURI, 'text');
             segmentLabel.setAttribute('class', 'scoring-best-network-segment');
@@ -5826,7 +5827,7 @@
         setChartTooltip(rect, segmentTooltip, true);
         svg.append(rect);
         const segmentText = `${formatChartNumber(cell.value, {minimumFractionDigits: 1, maximumFractionDigits: 1})}${cell.complete ? '' : '*'}`;
-        const layout = stackedSegmentLabelLayout(segmentText, barWidth, segmentHeight);
+        const layout = stackedSegmentLabelLayout(segmentText, barWidth, segmentHeight, Math.floor(bestNetworkTotalSize('000.0', geometry.step) * .7));
         if (layout.size) {
           const segmentLabel = svgElement(svg, 'text', {class: 'scoring-best-network-segment'});
           placeSegmentLabel(segmentLabel, x + barWidth / 2, segmentY + segmentHeight / 2, layout);

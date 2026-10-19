@@ -149,12 +149,14 @@ def test_stacked_chart_labels_fit_segments_and_service_chart_explains_grayscale(
     start = script.index('  function stackedSegmentLabelLayout(')
     program = script[start:script.index('\n  }\n', start) + 4] + r"""
 console.log(JSON.stringify([stackedSegmentLabelLayout('540.9', 80, 120), stackedSegmentLabelLayout('540.9', 40, 20),
-  stackedSegmentLabelLayout('540.9', 30, 120), stackedSegmentLabelLayout('540.9', 12, 12)]));
+  stackedSegmentLabelLayout('540.9', 30, 120), stackedSegmentLabelLayout('540.9', 12, 12), stackedSegmentLabelLayout('540.9', 30, 120, 14)]));
 """
-    across, smaller, turned, none = json.loads(subprocess.run(['node', '-e', program], capture_output=True, text=True, check=True).stdout)
+    across, smaller, turned, none, capped = json.loads(subprocess.run(['node', '-e', program], capture_output=True, text=True, check=True).stdout)
     assert across == {'size': 21, 'rotated': False} and smaller == {'size': 9, 'rotated': False}
     assert turned == {'size': 20, 'rotated': True} and none == {'size': 0, 'rotated': False}
-    assert script.count('stackedSegmentLabelLayout(segmentText, barWidth, segmentHeight)') == 2
+    # Never larger than 70% of the total over the bar.
+    assert capped == {'size': 14, 'rotated': True}
+    assert script.count("stackedSegmentLabelLayout(segmentText, barWidth, segmentHeight, Math.floor(bestNetworkTotalSize('000.0', ") == 2
     service_chart = script[script.index('function makeBestNetworkBars('):script.index('function maximumAllocationEnvironments(')]
     assert "segmentLabel.textContent = segmentText;" in service_chart
     assert "`${kind}: ${cell.value" not in service_chart
