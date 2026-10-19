@@ -20,6 +20,11 @@ def page_hierarchy(client) -> list[str]:
     return json.loads(config.group(1))['aggregation_hierarchy']
 
 
+def context_filter_position(text: str, level: str) -> int:
+    # The <select> of the filter, not the CSS rules of the page that name it.
+    return re.search(rf'<select\b[^>]*\bdata-scoring-context-filter="{level}"', text).start()
+
+
 def test_scoring_hierarchy_controls_and_saved_job_order(scoring_api):
     client = scoring_api['client']
     page = client.get('/scoring')
@@ -28,14 +33,14 @@ def test_scoring_hierarchy_controls_and_saved_job_order(scoring_api):
     for selector in ('data-aggregation-level', 'data-scoring-context-filter'):
         # The Campaign filter sits with NR Mode (they choose the CDRs), before the filters of the hierarchy.
         levels = ['Campaign', *(level for level in DEFAULT_HIERARCHY if level != 'Campaign')] if selector.endswith('filter') else DEFAULT_HIERARCHY
-        positions = [page.text.index(f'{selector}="{level}"') if selector.endswith('filter')
+        positions = [context_filter_position(page.text, level) if selector.endswith('filter')
                      else page.text.index(f'value="{level}" data-aggregation-level') for level in levels]
         assert positions == sorted(positions)
     saved = client.put('/api/scoring/aggregation-hierarchy', json={'levels': CUSTOM_HIERARCHY})
     assert saved.status_code == 200, saved.text
     assert saved.json()['aggregation_hierarchy'] == SAVED_HIERARCHY
     page = client.get('/scoring')
-    positions = [page.text.index(f'data-scoring-context-filter="{level}"') for level in CUSTOM_HIERARCHY]
+    positions = [context_filter_position(page.text, level) for level in CUSTOM_HIERARCHY]
     assert positions == sorted(positions)
     payload = {'dataset_ids': scoring_api['complete_dataset_ids'], 'nr_mode': 'NSA',
                'aggregation_levels': ['Region', 'Operator', 'Campaign']}
