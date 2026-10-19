@@ -5615,7 +5615,7 @@ function renderAutoCdrList(host, cdrs, {loading = false} = {}) {
 }
 globalThis.renderAutoCdrList = renderAutoCdrList;
 
-// Patterns among the values of a filter (the Operator filters and the Focus operators), as value_patterns.py resolves
+// Patterns among the values of a filter (such as the Operator filters), as value_patterns.py resolves
 // them: * stands for any characters (VF*), and a value that starts with - or NOT leaves out what it names (-Lebara,
 // NOT Leb*), whatever the case. accepts(...names) tells whether a value known by those names is taken.
 const VALUE_EXCLUSION = /^\s*(?:-|not\s+)(?=\S)/i;
@@ -8893,7 +8893,7 @@ function unsavedChartMappingEdits(body, submittedForm = null) {
     const formId = original.getAttribute('form');
     if (!row || (submittedForm?.id && formId === submittedForm.id)) return;
     const fields = {};
-    row.querySelectorAll(`[form="${CSS.escape(formId || '')}"]:is([name="color"], [name="canonical_value"], [name="aliases"])`).forEach((field) => {
+    row.querySelectorAll(`[form="${CSS.escape(formId || '')}"]:is([name="color"], [name="canonical_value"], [name="aliases"], [name="role"])`).forEach((field) => {
       if (chartMappingFieldChanged(field)) fields[field.name] = field.value;
     });
     if (Object.keys(fields).length) edits.rows[original.value] = fields;
@@ -8901,7 +8901,7 @@ function unsavedChartMappingEdits(body, submittedForm = null) {
   const createForm = body.querySelector('form[class$="-mapping-create"]');
   if (createForm && createForm !== submittedForm) {
     const fields = {};
-    createForm.querySelectorAll('[name="color"], [name="canonical_value"], [name="aliases"]').forEach((field) => {
+    createForm.querySelectorAll('[name="color"], [name="canonical_value"], [name="aliases"], [name="role"]').forEach((field) => {
       if (chartMappingFieldChanged(field)) fields[field.name] = field.value;
     });
     if (Object.keys(fields).length) edits.create = fields;
@@ -9070,14 +9070,14 @@ function fitModuleTabs() {
   else window.addEventListener('resize', refit);
 })();
 
-// Rows whose colour, label or source labels differ from the saved values are
+// Rows whose colour, label, role or source labels differ from the saved values are
 // marked, counted, and saved together with Save Labels.
 const CHART_MAPPING_PANEL_SELECTOR = '[data-panel-state-key="admin:operator-mappings"], [data-panel-state-key="admin:vendor-mappings"]';
 
 function chartMappingRows(panel) {
   return Array.from(panel.querySelectorAll('input[name="original_canonical"]')).map((original) => {
     const formId = original.getAttribute('form') || '';
-    const fields = Array.from(panel.querySelectorAll(`[form="${CSS.escape(formId)}"]:is([name="color"], [name="canonical_value"], [name="aliases"])`));
+    const fields = Array.from(panel.querySelectorAll(`[form="${CSS.escape(formId)}"]:is([name="color"], [name="canonical_value"], [name="aliases"], [name="role"])`));
     return {
       original: original.value, form: document.getElementById(formId), row: original.closest('tr'),
       unsaved: fields.some(chartMappingFieldChanged),

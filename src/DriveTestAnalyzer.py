@@ -75,6 +75,7 @@ from src.modules.app_event_details import app_event_origin, app_event_origin_par
 from src.modules.background_scheduler import BackgroundTaskScheduler
 from src.modules.auth import SessionUser, verify_password
 from src.modules.workspace_countries import country_options
+from src.modules.operator_roles import drop_excluded_operators, excluded_operators, normalize_mapping_role
 from src.modules.cdr_types import (
     CDR_TYPES, DEFAULT_CDR_TYPE, cdr_type_options, normalize_cdr_type, set_workspace_cdr_type, workspace_cdr_type,
 )
@@ -113,7 +114,6 @@ from src.modules.saved_filters import (
     save_saved_filter,
     select_all_complete_cdrs,
     select_latest_companion_cdrs,
-    set_compared_operators,
     update_saved_filter,
     use_newer_cdrs,
     validate_complete_scoring_cdr_selection,
@@ -11941,6 +11941,8 @@ def build_datasets_analysis_payload(
             # the analysis/chart frame shows the canonical Operator/Vendor labels and theme.
             mapping_settings = repository.chart_mapping_settings()
             df = apply_operator_mappings(df, mapping_settings['operator_mappings'])
+            # The operators the Operator Maps exclude are left out of every analysis.
+            df = drop_excluded_operators(df, excluded_operators(mapping_settings))
             df.attrs.update(shared_frame_attrs(mapping_settings))
             df = normalise_operator_aliases(df)
         if shares_frame:
@@ -15298,6 +15300,8 @@ def _combined_reporting_frame(
         mapping_settings = {}
         operator_mappings = {}
     combined = apply_operator_mappings(combined, operator_mappings)
+    # The operators the Operator Maps exclude are left out of every report.
+    combined = drop_excluded_operators(combined, excluded_operators(mapping_settings))
     combined.attrs.update(shared_frame_attrs(mapping_settings))
     combined = normalise_operator_aliases(combined)
     # Data tests may legitimately fall back to LTE or report NR SA at the
@@ -16691,6 +16695,8 @@ def _chart_builder_context(payload: dict[str, Any]) -> tuple[pd.DataFrame, Catal
         result = apply_operator_mappings(
             pd.concat(frames, ignore_index=True, sort=False), operator_mappings,
         )
+        # The operators the Operator Maps exclude are left out of every chart.
+        result = drop_excluded_operators(result, excluded_operators(mapping_settings))
         result.attrs.update(shared_frame_attrs(mapping_settings))
         return normalise_operator_aliases(result)
     return _bounded_preview_frame(CHART_PREVIEW_FRAME_CACHE, frame_key, load_frame, 4), entry
@@ -17912,8 +17918,6 @@ class SavedFilterRequest(BaseModel):
     context_filters: dict[str, list[str]] = Field(default_factory=dict)
     # The Scoring Trends: their campaigns and the breakdown, separate cities and time split of the National & Geographical Areas Trends.
     area_summary: dict[str, Any] | None = None
-    # The operators GAP Analysis compares with the reference, kept with the Saved Filter (not part of its calculation).
-    compared_operators: list[str] | None = None
 
 
 class ScoringThemeRequest(BaseModel):
@@ -17944,14 +17948,14 @@ def scoring_repository(user: SessionUser) -> Repository:
 
 
 def scoring_operator_options(task_repository: Repository) -> list[dict[str, str]]:
-    """Build baseline choices from the workspace's ordered operator mappings."""
+    """Build baseline choices from the workspace's ordered operator mappings (without the operators they exclude)."""
     mapping_groups = task_repository.list_operator_mapping_groups()
     options: list[dict[str, str]] = []
     included: set[str] = set()
     for group in mapping_groups:
         canonical = str(group.get('canonical') or '').strip()
         identity = canonical.casefold()
-        if not canonical or identity in included:
+        if not canonical or identity in included or normalize_mapping_role(group.get('role')) == 'exclude':
             continue
         options.append({
             'value': canonical,
@@ -18218,9 +18222,6 @@ def saved_filters_save(payload: SavedFilterRequest, user: SessionUser = Depends(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    if payload.compared_operators is not None:
-        set_compared_operators(task_repository, saved_filter['id'], payload.compared_operators)
-        saved_filter = {**saved_filter, 'compared_operators': [str(name) for name in payload.compared_operators if str(name).strip()]}
     if not cached:
         _queue_saved_filter_calculation(task_repository, saved_filter['id'])
     task_repository.try_add_log(user.username, 'scoring_calculation_requested', json.dumps({
@@ -18345,26 +18346,6 @@ def scoring_saved_filters_use_newer_cdrs(filter_id: int, payload: UseNewerCdrsRe
     return {'saved_filter': saved_filter, 'cached': False, 'replaced': updated['replaced']}
 
 
-class ComparedOperatorsRequest(BaseModel):
-    compared_operators: list[str] = Field(default_factory=list)
-
-
-@app.put('/api/scoring/saved-filters/{filter_id}/compared-operators')
-def scoring_saved_filters_compared_operators(filter_id: int, payload: ComparedOperatorsRequest,
-                                             user: SessionUser = Depends(workspace_editor_user)) -> dict[str, Any]:
-    """Keep with a Saved Filter the operators its GAP Analysis compares with the reference: they change no calculation."""
-    task_repository = scoring_repository(user)
-    if get_saved_filter(task_repository, filter_id) is None:
-        raise HTTPException(status_code=404, detail='Saved Filter not found.')
-    set_compared_operators(task_repository, filter_id, payload.compared_operators)
-    saved_filter = get_saved_filter(task_repository, filter_id)
-    task_repository.try_add_log(user.username, 'saved_filter_compared_operators', json.dumps({
-        'saved_filter_id': filter_id, 'name': saved_filter.get('name') or '',
-        'compared_operators': saved_filter.get('compared_operators') or [],
-    }))
-    return {'saved_filter': saved_filter}
-
-
 @app.post('/api/scoring/saved-filters/{filter_id}/edit')
 def scoring_saved_filters_edit(filter_id: int, payload: SavedFilterRequest,
                                user: SessionUser = Depends(workspace_editor_user)) -> dict[str, Any]:
@@ -18388,9 +18369,6 @@ def scoring_saved_filters_edit(filter_id: int, payload: SavedFilterRequest,
     if edited is None:
         raise HTTPException(status_code=404, detail='Saved Filter not found.')
     saved_filter = edited['saved_filter']
-    if payload.compared_operators is not None:
-        set_compared_operators(task_repository, saved_filter['id'], payload.compared_operators)
-        saved_filter = {**saved_filter, 'compared_operators': [str(name) for name in payload.compared_operators if str(name).strip()]}
     if edited['changed']:
         _queue_saved_filter_calculation(task_repository, saved_filter['id'])
     task_repository.try_add_log(user.username, 'edit_saved_filter', json.dumps({
@@ -18617,7 +18595,6 @@ def scoring_saved_filter_export(
     scorings: list[str] | None = Query(default=None),
     environments: list[str] | None = Query(default=None),
     operators: str | None = None,
-    compared: list[str] | None = Query(default=None),
     user: SessionUser = Depends(current_user),
 ) -> Response:
     if table_mode is not None and table_mode not in {'expanded', 'summary'}:
@@ -18664,7 +18641,6 @@ def scoring_saved_filter_export(
             **({'scorings': export_scorings} if export_kind in {'ppt', 'word'} and export_scorings else {}),
             **({'environments': export_environments} if export_kind in {'ppt', 'word'} and export_environments else {}),
             **({'operators': operator_choices} if export_kind in {'ppt', 'word'} and operator_choices else {}),
-            **({'compared_operators': compared} if export_kind in {'ppt', 'word'} and compared else {}),
         }))
         return response
     from src.modules.scoring_views import normalize_result_gaps
@@ -18750,8 +18726,6 @@ def scoring_saved_filter_export(
                 saved_filter['configuration'] = export_configuration or task_repository.get_scoring_configuration()
             export_job = _scoring_export_job_with_catalogue_defaults(task_repository, saved_filter)
             export_job['_operator_choices'] = operator_choices
-            # The Compared operators of the page: those its GAP Analysis compares with the reference (all without any).
-            export_job['_compared_operators'] = [str(name) for name in compared or [] if str(name).strip()]
             export_job['_scoring_display_selections'] = prepare_scoring_display_selections(
                 export_job, result, settings.powerpoint_templates_dir / TEMPLATE_NAMES['nsa'],
             )
@@ -18908,11 +18882,6 @@ def build_scoring_report_document(task_repository: Repository, base: dict[str, A
     from src.modules.cdr_report_filenames import build_scoring_report_filename
 
     report = normalize_report_configuration(configuration)
-    if base.get('compared_operators') is not None:
-        # The Compared operators of the page or of the Scoring artifact, for every scenario and scoring of the report.
-        for scenario in report['scenarios']:
-            for options in scenario['scorings'].values():
-                options['gap']['operators'] = list(base['compared_operators'])
     operator_mapping_groups = task_repository.list_operator_mapping_groups()
     template = settings.powerpoint_templates_dir / TEMPLATE_NAMES['nsa']
     entries = []
@@ -18945,8 +18914,6 @@ def build_scoring_report_document(task_repository: Repository, base: dict[str, A
 
 class ScoringReportRequest(BaseModel):
     configuration: dict[str, Any]
-    # The Focus operators of the page (operators or patterns; all without any).
-    compared_operators: list[str] | None = None
     split_charts: bool = True
     # The CDRs, NR Mode, methodology and GAP reference chosen in the Calculation panel.
     dataset_ids: list[int] = []
@@ -18977,9 +18944,7 @@ def scoring_report(export_kind: str, payload: ScoringReportRequest, user: Sessio
     from src.modules.scoring_reports import remember_last_configuration
     base = {'dataset_ids': list(payload.dataset_ids), 'nr_mode': payload.nr_mode,
             'baseline_operator': payload.baseline_operator.strip() or 'EE',
-            'scoring_profile_id': payload.scoring_profile_id or None,
-            **({'compared_operators': [str(name) for name in payload.compared_operators if str(name).strip()]}
-               if payload.compared_operators is not None else {})}
+            'scoring_profile_id': payload.scoring_profile_id or None}
     configuration = payload.configuration
     if payload.context_filters is not None or payload.aggregation_levels is not None or payload.area_summary is not None:
         # Every scenario with the filters, Split by and Geographical Areas & Scoring Trends of the Calculation panel.
@@ -22994,6 +22959,7 @@ def save_admin_operator_mapping_group(
     canonical_value: str = Form(...),
     aliases: str = Form(''),
     color: str = Form(''),
+    role: str | None = Form(None),
     user: SessionUser = Depends(config_editor_user),
 ) -> Response:
     if not active_workspace:
@@ -23007,6 +22973,10 @@ def save_admin_operator_mapping_group(
     original = original_canonical.strip()
     canonical = canonical_value.strip()
     mapping_settings = repository.chart_mapping_settings()
+    previous_role = next((normalize_mapping_role(group.get('role')) for group in mapping_settings['operator_mapping_groups']
+                          if str(group.get('canonical') or '').strip().casefold() == (original or canonical).casefold()), '')
+    # Without the field (an earlier page) the label keeps its role.
+    chosen_role = previous_role if role is None else normalize_mapping_role(role)
     renamed_templates = 0
     renamed_dashboards = 0
     renamed_filters = 0
@@ -23018,7 +22988,7 @@ def save_admin_operator_mapping_group(
         ):
             raise ValueError('Another Operator Mapping already uses this canonical label.')
         repository.replace_operator_mapping_group(
-            original_canonical or None, canonical_value, parsed_aliases, color,
+            original_canonical or None, canonical_value, parsed_aliases, color, chosen_role,
         )
         if original and original != canonical:
             renamed_templates = rename_chart_mapping_template_references(
@@ -23042,6 +23012,8 @@ def save_admin_operator_mapping_group(
         'original_canonical': original_canonical,
         'canonical': canonical,
         'aliases': parsed_aliases,
+        'role': chosen_role,
+        'previous_role': previous_role,
         'renamed_templates': renamed_templates,
         'renamed_dashboards': renamed_dashboards,
         'renamed_filters': renamed_filters,

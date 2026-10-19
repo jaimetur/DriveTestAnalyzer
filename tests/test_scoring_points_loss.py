@@ -234,18 +234,19 @@ def test_the_reference_operator_has_its_map_and_its_gap_to_maximum():
     assert reference and all(item['to_maximum'] and not item['to_reference'] for item in reference)
 
 
-def test_exports_include_the_reference_operator_only_when_it_is_compared():
+def test_exports_include_the_reference_operator_only_when_it_is_a_focus_operator():
     job, result = _result()
 
-    def scenario(operators):
-        chosen = default_scenario(operators=operators)
-        for options in chosen['scorings'].values():
-            options['gap']['operators'] = list(operators)
-        return chosen
+    def export(focus):
+        # The Focus operators of the Operator Maps.
+        groups = [{'canonical': name, 'aliases': [], 'position': index, 'color': '#365F91', 'role': 'focus'}
+                  for index, name in enumerate(focus)]
+        return _titles(export_scoring_report([{'job': job, 'result': result, 'scenario': default_scenario(operators=focus)}],
+                                             TEMPLATE, groups))
 
-    titles = _titles(export_scoring_report([{'job': job, 'result': result, 'scenario': scenario(['Vodafone UK', 'EE'])}], TEMPLATE))
+    titles = export(['Vodafone UK', 'EE'])
     # The reference has its points lost per KPI, and no GAP to itself.
     assert any(title.startswith('Points lost per KPI — ') and 'EE' in title.split(' | ')[0] for title in titles)
     assert any(title.startswith('KPI GAP Profile — Vodafone UK vs EE') for title in titles)
-    titles = _titles(export_scoring_report([{'job': job, 'result': result, 'scenario': scenario(['Vodafone UK'])}], TEMPLATE))
+    titles = export(['Vodafone UK'])
     assert not any(title.startswith('Points lost per KPI — ') and 'EE' in title.split(' | ')[0] for title in titles)

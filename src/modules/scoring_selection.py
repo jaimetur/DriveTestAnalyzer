@@ -208,7 +208,6 @@ def _fallback_selection(
         'scoring_profile_id': 'by-campaign' if profiles else '',
         'context_filters': {field: [] for field in SCORING_CONTEXT_FILTER_FIELDS if field not in SCORING_OPTIONAL_CONTEXT_FILTERS},
         'area_summary': _normalize_area_summary(None),
-        'compared_operators': [],
     }
 
 
@@ -381,9 +380,6 @@ def _normalize_selection(
         'scoring_profile_id': selected_profile_id,
         'context_filters': context_filters,
         'area_summary': _normalize_area_summary(raw_selection.get('area_summary')),
-        # The Focus operators of the exports: operators or patterns (VF*, Not Lebara; all without any).
-        'compared_operators': list(dict.fromkeys(str(name).strip() for name in raw_selection.get('compared_operators') or []
-                                                 if str(name).strip()))[:20],
     }, list(dict.fromkeys(warnings))
 
 

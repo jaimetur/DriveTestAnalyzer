@@ -1,4 +1,4 @@
-"""Patterns among the values of a filter (the Operator filters and the Focus operators), resolved each time the filter is
+"""Patterns among the values of a filter (such as the Operator filters), resolved each time the filter is
 used, so they also take the values that appear later:
 
 - ``*`` stands for any characters, whatever the case: ``VF*`` takes VF, VF SA, VF VoNR…;

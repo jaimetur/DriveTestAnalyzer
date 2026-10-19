@@ -100,13 +100,13 @@ Single-select and multi-select controls share a compact searchable style.
 
 ### Operator patterns
 
-Every **Operator** filter (Scoring & GAP Analysis, CDR Analysis, PPT Dashboards, Network Insights, Non-Qualified Calls, the common filters of the Bundle Report Templates, the artifacts of the Reporting Jobs and the scenarios of the Scoring report editor and its saved configurations) and the **Focus operators** of Scoring take patterns besides the operators listed: type one in the filter of the list and press Enter (or **＋ Add pattern**, which tells how many operators it takes now). A pattern is saved as such, travels with what keeps it (Saved Filters, favourites, Reporting Jobs, Dashboards, exports, transfers and backups) and is resolved each time the filter is used, so it also takes the operators that appear later:
+Every **Operator** filter (Scoring & GAP Analysis, CDR Analysis, PPT Dashboards, Network Insights, Non-Qualified Calls, the common filters of the Bundle Report Templates, the artifacts of the Reporting Jobs and the scenarios of the Scoring report editor and its saved configurations) takes patterns besides the operators listed: type one in the filter of the list and press Enter (or **＋ Add pattern**, which tells how many operators it takes now). A pattern is saved as such, travels with what keeps it (Saved Filters, favourites, Reporting Jobs, Dashboards, exports, transfers and backups) and is resolved each time the filter is used, so it also takes the operators that appear later:
 
 - `*` stands for any characters, whatever the case: `VF*` takes VF, VF SA, VF VoNR, VF SM… and `*O2*` every operator with O2 in its name;
 - `-` or `NOT` (followed by a space) before a value leaves it out: `-Lebara` or `NOT Lebara` is every operator but Lebara, `NOT Leb*` every operator but those that start with Leb, and several exclusions leave out each one;
 - values and exclusions together take the values but the excluded ones: `VF*` with `-VF SM` is every VF variant but VF SM.
 
-Patterns come first in their list, tagged **pattern** or **except**, and an operator of the Operator Maps is taken or left out with the spellings of the CDRs it stands for.
+Patterns come first in their list, tagged **pattern** or **except**, and an operator of the Operator Maps is taken or left out with the spellings of the CDRs it stands for. An operator that every filter must leave out needs no pattern: give it the **Exclude** role in [Operator Maps](workspace-config.md#operator-maps).
 
 ## Filter Builder
 

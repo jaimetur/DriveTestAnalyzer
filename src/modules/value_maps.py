@@ -38,6 +38,9 @@ class ValueMapper:
         self.vendor_mappings = {str(key).strip().casefold(): str(value) for key, value in (vendor_mappings or {}).items()}
         self.operator_groups = list(operator_groups or [])
         self.vendor_groups = list(vendor_groups or [])
+        # The operators the Operator Maps exclude (their labels and the names of the CDRs they stand for): no list offers them.
+        from src.modules.operator_roles import excluded_operators
+        self.excluded_operators = {name.casefold() for name in excluded_operators(self.operator_groups)}
 
     @classmethod
     def from_settings(cls, settings: dict[str, Any]) -> 'ValueMapper':
@@ -76,11 +79,32 @@ class ValueMapper:
         return [swap_vendor_operator(value, self.operator_groups) for value in vendor_operators
                 if value is not None and str(value).strip()]
 
+    def excludes_operator(self, *names: Any) -> bool:
+        """Whether one of the names of an Operator (its label or a name of the CDRs) is an operator the Operator Maps
+        exclude."""
+        return bool(self.excluded_operators) and any(
+            str(name).strip().casefold() in self.excluded_operators for name in names if name is not None)
+
+    def excluded_value(self, kind: str | None, value: Any) -> bool:
+        """Whether a mapped Operator, Operator_Vendor or Vendor_Operator value is (or belongs to) an excluded operator."""
+        if not self.excluded_operators or value is None:
+            return False
+        text = str(value).strip().casefold()
+        if kind == 'operator':
+            return text in self.excluded_operators
+        if kind == 'operator_vendor':
+            return any(text == name or text.startswith(f'{name} - all') or text.startswith(f'{name}_') for name in self.excluded_operators)
+        if kind == 'vendor_operator':
+            return any(text == name or text.startswith(f'{name} - all') or text.endswith(f'_{name}') for name in self.excluded_operators)
+        return False
+
     def values(self, kind: str | None, values: Iterable[Any]) -> list[Any]:
-        """The distinct mapped values in the order of the Operator and Vendor Maps (see ``mapping_order``)."""
+        """The distinct mapped values in the order of the Operator and Vendor Maps (see ``mapping_order``), without the
+        operators the Operator Maps exclude."""
         mapped = list(dict.fromkeys(self.map(kind, value) for value in values if value is not None and str(value).strip()))
         if kind is None:
             return mapped
+        mapped = [value for value in mapped if not self.excluded_value(kind, value)]
         return sorted(mapped, key=lambda value: dimension_order_key(kind, value, self.operator_groups, self.vendor_groups))
 
     def expand(self, kind: str | None, selected: Iterable[Any], source_values: Iterable[Any]) -> list[Any]:

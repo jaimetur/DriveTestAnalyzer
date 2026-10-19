@@ -90,12 +90,15 @@ class SelectionTerms:
     ``values`` holds ``(expression, allowed)`` pairs: the expression's text value
     must be one of ``allowed``; a ``None`` expression selects no row. ``date``
     holds ``(expression, low, high)`` ISO date bounds. ``excluded_sheets`` keeps
-    rows whose sheet is NULL or not excluded.
+    rows whose sheet is NULL or not excluded, and each ``(expression, excluded)``
+    pair of ``excluded_values`` rows whose value is NULL or not excluded (such as
+    the operators the Operator Maps exclude).
     """
 
     values: tuple[tuple[str | None, frozenset[str]], ...] = ()
     date: tuple[str | None, str | None, str | None] | None = None
     excluded_sheets: tuple[str, frozenset[str]] | None = None
+    excluded_values: tuple[tuple[str, frozenset[str]], ...] = ()
 
     def expressions(self) -> list[str]:
         result = [expression for expression, _allowed in self.values if expression]
@@ -103,6 +106,7 @@ class SelectionTerms:
             result.append(self.date[0])
         if self.excluded_sheets:
             result.append(self.excluded_sheets[0])
+        result.extend(expression for expression, _excluded in self.excluded_values)
         return result
 
 
@@ -623,6 +627,8 @@ def selection_mask(parts: dict[str, tuple], source: CacheSource, terms: Selectio
             mask &= match_range(parts[source.physical(expression)], low, high)
     if terms.excluded_sheets:
         expression, excluded = terms.excluded_sheets
+        mask &= keep_sheets(parts[source.physical(expression)], excluded)
+    for expression, excluded in terms.excluded_values:
         mask &= keep_sheets(parts[source.physical(expression)], excluded)
     return mask
 

@@ -37,9 +37,7 @@
             "operator",
             "campaign"
           ],
-          "operators": [
-            "Not Lebara"
-          ],
+          "operators": [],
           "operator_vendors": [],
           "vendor_operators": [],
           "vendors": [],
@@ -70,9 +68,7 @@
             "operator",
             "campaign"
           ],
-          "operators": [
-            "Not Lebara"
-          ],
+          "operators": [],
           "operator_vendors": [],
           "vendor_operators": [],
           "vendors": [],
@@ -105,9 +101,6 @@
         "filters": {
           "Campaign": [
             "@latest-2-campaigns"
-          ],
-          "Operator": [
-            "Not Lebara"
           ]
         }
       },
@@ -128,9 +121,6 @@
           ],
           "City": [
             "@main-cities"
-          ],
-          "Operator": [
-            "Not Lebara"
           ]
         }
       },
@@ -148,9 +138,6 @@
         "filters": {
           "Campaign": [
             "@latest-2-campaigns"
-          ],
-          "Operator": [
-            "Not Lebara"
           ]
         }
       },
@@ -168,9 +155,6 @@
         "filters": {
           "Campaign": [
             "@latest-2-campaigns"
-          ],
-          "Operator": [
-            "Not Lebara"
           ]
         }
       },
@@ -191,9 +175,6 @@
           ],
           "City": [
             "@main-cities"
-          ],
-          "Operator": [
-            "Not Lebara"
           ]
         }
       }
@@ -216,11 +197,7 @@
           "scenarios": [
             {
               "name": "National",
-              "context_filters": {
-                "Operator": [
-                  "Not Lebara"
-                ]
-              },
+              "context_filters": {},
               "main_cities": false,
               "aggregation_levels": [
                 "Operator",
@@ -299,9 +276,6 @@
               "context_filters": {
                 "City": [
                   "London"
-                ],
-                "Operator": [
-                  "Not Lebara"
                 ]
               },
               "main_cities": false,
@@ -380,11 +354,7 @@
             },
             {
               "name": "Main Cities",
-              "context_filters": {
-                "Operator": [
-                  "Not Lebara"
-                ]
-              },
+              "context_filters": {},
               "main_cities": true,
               "aggregation_levels": [
                 "Operator",
@@ -461,13 +431,7 @@
             }
           ],
           "name": "National, London & Main Cities (All Environments only)"
-        },
-        "compared_operators": [
-          "VF*",
-          "Vodafone*",
-          "Three*",
-          "3*"
-        ]
+        }
       },
       {
         "label": "",
@@ -486,11 +450,7 @@
           "scenarios": [
             {
               "name": "National",
-              "context_filters": {
-                "Operator": [
-                  "Not Lebara"
-                ]
-              },
+              "context_filters": {},
               "main_cities": false,
               "aggregation_levels": [
                 "Operator",
@@ -568,9 +528,6 @@
               "context_filters": {
                 "City": [
                   "London"
-                ],
-                "Operator": [
-                  "Not Lebara"
                 ]
               },
               "main_cities": false,
@@ -648,11 +605,7 @@
             },
             {
               "name": "Main Cities",
-              "context_filters": {
-                "Operator": [
-                  "Not Lebara"
-                ]
-              },
+              "context_filters": {},
               "main_cities": true,
               "aggregation_levels": [
                 "Operator",
@@ -728,13 +681,7 @@
             }
           ],
           "name": "National, London & Main Cities (All Environments only)"
-        },
-        "compared_operators": [
-          "VF*",
-          "Vodafone*",
-          "Three*",
-          "3*"
-        ]
+        }
       }
     ],
     "modules": {
@@ -749,11 +696,7 @@
           "granularity": "month",
           "open_only": "",
           "include_suggestions": "1",
-          "filters": {
-            "operator": [
-              "Not Lebara"
-            ]
-          }
+          "filters": {}
         }
       }
     }

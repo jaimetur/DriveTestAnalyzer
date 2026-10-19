@@ -329,6 +329,11 @@
   const mainCityIdentities = new Set(mainCities.map(city => city.toLocaleLowerCase()));
   const operatorGroups = (Array.isArray(scoringConfig.operator_groups) ? scoringConfig.operator_groups : [])
     .filter(group => group && typeof group === 'object' && String(group.canonical || '').trim());
+  // The Focus operators of the workspace: the labels with the Focus role in the Operator Maps and the names of the CDRs
+  // they stand for. The PowerPoint and Word focus on them in Where to act, the locations ranked, the individual GAP
+  // tables, the GAP by part, the KPI GAP Profile and the Points Lost views; the page shows every operator, them first.
+  const focusOperatorNames = operatorGroups.filter(group => String(group.role || '').toLocaleLowerCase() === 'focus')
+    .flatMap(operatorGroupLabels);
   const datasetCatalogues = new Map(datasetOptions.map(option => {
     let catalogue = {};
     try {
@@ -360,7 +365,6 @@
   // The Geographical Areas & Scoring Trends of the calculation, always included: the Breakdown and Separate cities of both
   // tabs, and the time split and campaigns of the trends.
   const areaSummaryPanel = root.querySelector('[data-scoring-area-summary]');
-  const comparedOperatorsSelect = root.querySelector('[data-scoring-compared-operators]');
   // Main Cities among the Separate cities: kept as such and resolved when the scoring is calculated.
   const MAIN_CITIES_TOKEN = '@main-cities';
   const MAIN_CITIES_LABEL = 'Main Cities';
@@ -884,30 +888,13 @@
       scoring_profile_id: String(scoringProfileSelect?.value || activeProfileId),
       context_filters: Object.fromEntries(selectionFieldOrder.map(key => [key, filters[key] || []])),
       area_summary: selectedAreaSummary(),
-      compared_operators: chosenComparedOperators(),
     };
   }
 
-  // The Focus operators of the PowerPoint and Word exports (operators, or patterns such as VF* where * stands for any
-  // characters; every operator without any): those of Where to act, the locations ranked, the individual GAP tables,
-  // the GAP by part, the KPI GAP Profile and the Points Lost views. The page itself shows every operator.
-  function chosenComparedOperators() {
-    return comparedOperatorsSelect ? [...comparedOperatorsSelect.selectedOptions].map(option => option.value).filter(Boolean) : [];
-  }
-
-  // A Focus operator that is a pattern (VF*, -Lebara), or one the CDRs no longer have, as a choice of its own.
-  function focusPatternOption(value) {
-    const option = new Option(value, value);
-    if (globalThis.valuePatterns?.isPattern(value)) {
-      Object.assign(option.dataset, {tag: globalThis.valuePatterns.tag(value), tagClass: 'user-choice-tag-pattern'});
-    }
-    return option;
-  }
-
-  // Whether an operator (by its name or label) is a Focus operator: one of their names, or a pattern (VF*, -Lebara; see
-  // valuePatterns in app.js), whatever the case (every operator without them, or when none of ``operators`` is one of them).
+  // Whether an operator (by its name or label) is a Focus operator, whatever the case (every operator without them, or
+  // when none of ``operators`` is one of them).
   function focusMatcher(operators = []) {
-    const chosen = globalThis.valuePatterns.set(chosenComparedOperators());
+    const chosen = globalThis.valuePatterns.set(focusOperatorNames);
     const matches = (...names) => chosen.accepts(...names);
     if (!chosen.size || (operators.length && !operators.some(name => matches(name)))) return () => true;
     return matches;
@@ -917,7 +904,7 @@
   // operators when they are every operator or none of them.
   function focusSplit(items) {
     const isFocus = focusMatcher(items.map(item => item.operator));
-    const focused = chosenComparedOperators().length ? items.filter(item => isFocus(item.operator, item.label)) : [];
+    const focused = focusOperatorNames.length ? items.filter(item => isFocus(item.operator, item.label)) : [];
     return focused.length && focused.length < items.length
       ? {focused, others: items.filter(item => !focused.includes(item))} : {focused: [], others: items};
   }
@@ -964,21 +951,6 @@
     const candidates = withReference ? operators : operators.filter(item => !item.is_reference);
     const chosen = focused.filter(item => withReference || !item.is_reference);
     return (chosen.length ? chosen : candidates.length ? candidates : operators).map(item => item.operator);
-  }
-
-  async function saveComparedOperators(savedFilter) {
-    const id = savedFilterIdOf(savedFilter);
-    if (!id) return;
-    try {
-      const body = await requestJson(`${savedFiltersUrl}/${id}/compared-operators`, {
-        method: 'PUT', body: JSON.stringify({compared_operators: chosenComparedOperators()})});
-      if (body?.saved_filter && savedFilterIdOf(selectedSavedFilter || {}) === id) {
-        selectedSavedFilter = {...selectedSavedFilter, compared_operators: body.saved_filter.compared_operators};
-        refreshSavedFilters().catch(() => {});
-      }
-    } catch (_error) {
-      // A reader cannot change it: the page keeps its choice.
-    }
   }
 
   function calculationSelectionKey(selection) {
@@ -1083,17 +1055,6 @@
       if (baseline && [...(baselineInput?.options || [])].some(option => option.value.toLocaleLowerCase() === baseline.toLocaleLowerCase())) {
         baselineInput.value = [...baselineInput.options].find(option => option.value.toLocaleLowerCase() === baseline.toLocaleLowerCase()).value;
       }
-      if (comparedOperatorsSelect && Array.isArray(selection?.compared_operators)) {
-        const compared = new Set(selection.compared_operators.map(value => String(value).toLocaleLowerCase()));
-        // Patterns (VF*) and operators the CDRs no longer have are kept as choices of their own.
-        const listed = new Set([...comparedOperatorsSelect.options].map(option => option.value.toLocaleLowerCase()));
-        for (const value of selection.compared_operators.map(String).filter(value => value.trim() && !listed.has(value.toLocaleLowerCase()))) {
-          comparedOperatorsSelect.add(focusPatternOption(value));
-        }
-        for (const option of comparedOperatorsSelect.options) option.selected = compared.has(option.value.toLocaleLowerCase());
-        comparedOperatorsSelect.dispatchEvent(new Event('multiselect:options-updated'));
-      }
-
       updateSelection();
       const filters = selection?.context_filters && typeof selection.context_filters === 'object' ? selection.context_filters : {};
       const unavailableFilters = [];
@@ -1175,7 +1136,6 @@
           enabled: true}
         : {enabled: true, breakdown: 'Region', cities: ['London'], time_split: savedFilter.area_summary?.time_split || 'Campaign',
           campaigns: savedFilter.area_summary?.campaigns || []},
-      compared_operators: Array.isArray(savedFilter.compared_operators) ? savedFilter.compared_operators : [],
     });
     scheduleSelectionSave();
     scheduleAutoCdrRefresh({delay: 0});
@@ -1405,8 +1365,6 @@
       // it is calculated.
       context_filters: selectedContextFilters({keepPresets: true}),
       area_summary: areaSummaryPayload(),
-      // Kept with the Saved Filter, outside its calculation.
-      compared_operators: chosenComparedOperators(),
     };
   }
 
@@ -2143,14 +2101,7 @@
           profileMeta.append(detail);
         }
       }
-      // The Focus operators of its exports (every operator without any), on the line of the GAP reference.
-      const comparedValue = document.createElement('strong');
-      comparedValue.className = 'saved-filter-compared';
-      const comparedOperators = Array.isArray(savedFilter.compared_operators) ? savedFilter.compared_operators : [];
-      comparedValue.textContent = comparedOperators.length ? comparedOperators.join(', ') : 'All operators';
-      meta.append(' · Focus operators: ', comparedValue);
-      // The Split by, the GAP reference with the Focus operators, the methodology, then the Geographical Areas and
-      // the Scoring Trends.
+      // The Split by, the GAP reference, the methodology, then the Geographical Areas and the Scoring Trends.
       button.append(...[aggregation, meta, profileMeta, areaMeta, trendMeta].filter(Boolean));
       const duration = savedFilterDurationText(savedFilter);
       if (duration) {
@@ -2399,7 +2350,7 @@
   // A progress dialog stays open while the document is generated, then the browser downloads it.
   // Generate Scoring Report (Calculation panel) opens the report editor, which only chooses the content of the report
   // (its scorings, environments and sections): it takes the CDRs, NR Mode, filters, Split by, Geographical Areas &
-  // Scoring Trends, GAP reference, Focus operators, methodology and theme of the page.
+  // Scoring Trends, GAP reference, methodology and theme of the page.
   async function generateScoringReport() {
     if (!window.ScoringReportEditor) return;
     const selection = calculationPayload();
@@ -2440,7 +2391,7 @@
           context_filters: selection.context_filters, aggregation_levels: selection.aggregation_levels,
           area_summary: selection.area_summary,
           nr_mode: selection.nr_mode, baseline_operator: selection.baseline_operator,
-          scoring_profile_id: selection.scoring_profile_id || null, compared_operators: chosenComparedOperators(),
+          scoring_profile_id: selection.scoring_profile_id || null,
         }),
       });
   }
@@ -2520,7 +2471,6 @@
     // The operators enabled in each section of the page: the document shows the same ones.
     const operators = scoringExportOperators();
     if (Object.keys(operators).length) url.searchParams.set('operators', JSON.stringify(operators));
-    for (const operator of chosenComparedOperators()) url.searchParams.append('compared', operator);
     await downloadScoringDocument(url.href, choice === 'secondary' ? 'Word' : 'PowerPoint');
   }
 
@@ -9438,12 +9388,6 @@
       syncAreaSummary();
       updateSelection();
       scheduleSelectionSave();
-      return;
-    }
-    if (event.target === comparedOperatorsSelect) {
-      // The Focus operators of the exports, without calculating again; the open Saved Filter keeps them.
-      scheduleSelectionSave();
-      if (!restoringSelection && !editingSavedFilter && selectedSavedFilter) saveComparedOperators(selectedSavedFilter);
       return;
     }
     if (event.target === themeSelect) {

@@ -35,6 +35,7 @@ from src.modules.cdr_auto_selection import (
 from src.modules.cdr_environments import ENVIRONMENTS, environment_class, environment_order
 from src.modules.cdr_facets import cascading_options, stored_facets
 from src.modules.value_patterns import ValueSet, is_pattern
+from src.modules.operator_roles import drop_excluded_operators, excluded_operators
 from src.modules.mapping_order import dimension_order_key, operator_order_key, vendor_order_key
 from src.modules.output_layout import NETWORK_INSIGHTS_FOLDER, module_output_dir
 from src.modules import inventory_insights as ii
@@ -1690,6 +1691,7 @@ def install_network_insights_routes(core: Any) -> None:
             'datasets': {kind: [(dataset_id, available[dataset_id]['updated_at']) for dataset_id in ids] for kind, ids in selected.items()},
             'mappings': {key: value for key, value in task_repository.chart_mapping_settings().items()
                          if key in {'operator_mappings', 'vendor_mappings'}},
+            'excluded_operators': excluded_operators(task_repository),
         }, sort_keys=True, default=str)
         return hashlib.sha256(fingerprint.encode()).hexdigest(), selected
 
@@ -1713,6 +1715,9 @@ def install_network_insights_routes(core: Any) -> None:
                 lambda pair: dataset_samples(task_repository, pair[0], pair[1], revisions.get(pair[1]), mappings), pairs))
         frames = [frame for frame in frames if not frame.empty]
         samples = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+        if 'operator' in samples.columns:
+            # The operators the Operator Maps exclude are left out of every analysis (the samples of each CDR keep them).
+            samples = drop_excluded_operators(samples, excluded_operators(settings), columns=['operator']).reset_index(drop=True)
         with sample_cache_lock:
             sample_cache[key] = samples
             while len(sample_cache) > 3:
@@ -2836,6 +2841,13 @@ def install_network_insights_routes(core: Any) -> None:
             if wanted:
                 keys = {value: normalise(value, field) for value in pd.unique(frame[field])}
                 mask &= frame[field].map(keys).isin(wanted)
+        excluded = excluded_operators(task_repository)
+        if excluded and 'Operator' in frame:
+            # The operators the Operator Maps exclude are left out whatever the selection.
+            left_out = {normalise(name, 'Operator') for name in excluded} | {name.casefold() for name in excluded}
+            keys = {value: normalise(value, 'Operator') for value in pd.unique(frame['Operator'])}
+            mask &= ~(frame['Operator'].map(keys).isin(left_out)
+                      | frame['Operator'].astype(str).str.strip().str.casefold().isin(left_out))
         technologies = ['LTE', 'NR'] if request.technology == 'lte_nr' else ['NR'] if request.technology == 'nr' else ['LTE']
         mask &= frame['Technology'].isin(technologies)
         return index, frame.loc[mask]

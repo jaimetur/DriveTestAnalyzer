@@ -705,7 +705,8 @@ def calculate_scoring_from_history(
         source = sources[dataset_id]
         kind = str(source['kind'])
         present = set(json.loads(source['columns_json'] or '[]'))
-        if any(dimension not in present for dimension in filters):
+        # A filter that only leaves values out (every operator but Lebara) keeps a CDR without its column.
+        if any(dimension not in present and allowed.includes for dimension, allowed in filters.items()):
             if {'vendor', 'operator_vendor'} & (set(filters) - present):
                 # Loading the rows adds the Vendor column a vendor filter needs: they are read instead.
                 raise HistoryUnavailable(f'CDR {dataset_id} has no Vendor column in the Scoring History.')
@@ -733,8 +734,9 @@ def calculate_scoring_from_history(
         for values, _group in kept:
             if values['campaign'] and values['campaign'].strip():
                 campaign_values.setdefault(values['campaign'].strip().casefold(), values['campaign'].strip())
-    if filters and city_filter is None:
-        # (A city of the National & area summary without measurements is left out of it, with a warning.)
+    if any(allowed.includes for allowed in filters.values()) and city_filter is None:
+        # (A city of the National & area summary without measurements is left out of it, with a warning; filters that
+        # only leave values out, such as the operators the Operator Maps exclude, choose no CDR type.)
         labels = {'data': 'Data', 'voice': 'Voice', 'speech': 'Speech'}
         missing_kinds = [kind for kind in CDR_KINDS if not rows_by_kind.get(kind)]
         if missing_kinds:

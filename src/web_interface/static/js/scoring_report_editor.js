@@ -401,8 +401,7 @@
       group('Geographical Areas', GEOGRAPHICAL_AREA_OPTIONS.map(([option, text]) => [option, option === 'cards' ? `${label} ${text}` : text]), 'geographical_areas'),
       group('Scoring Trends', TREND_OPTIONS.map(([option, text]) => [option, `${label} ${text}`]), 'trends'),
     );
-    // (The operators GAP Analysis compares are the Compared operators beside the GAP reference of the page or of the
-    // Scoring artifact.)
+    // (The individual GAP comparisons of the PowerPoint and Word are those of the Focus operators of the Operator Maps.)
     const gap = group('GAP Analysis', GAP_OPTIONS, 'gap');
     body.append(gap, group('Points Lost', POINTS_OPTIONS, 'points'));
     panel.append(body);
@@ -586,9 +585,9 @@
     for (const [key, label] of SCORINGS) scorings.append(scoringPanel(scenario, key, label, context.operators || [], rerender));
     if (context.pageScope) {
       // From the Scoring & GAP Analysis page every scenario takes the filters, Split by and Geographical Areas & Scoring
-      // Trends of its Calculation panel (as its GAP reference, Focus operators and methodology): here it chooses its content.
+      // Trends of its Calculation panel (as its GAP reference and methodology): here it chooses its content.
       card.append(el('p', 'scoring-report-muted scoring-report-page-scope',
-        'Filters, Split by, Geographical Areas & Scoring Trends, GAP reference, Focus operators and methodology: those of the Calculation panel.'),
+        'Filters, Split by, Geographical Areas & Scoring Trends, GAP reference and methodology: those of the Calculation panel.'),
       scorings);
       return card;
     }

@@ -69,6 +69,7 @@ from src.modules.cdr_report_filenames import build_cdr_report_filename
 from src.modules.runtime_config import ignore_event_time_filtering
 from src.modules.ingestion import apply_operator_mappings
 from src.modules.value_patterns import ValueSet
+from src.modules.operator_roles import drop_excluded_operators, excluded_operators
 
 KINDS = ('data', 'voice', 'speech')
 
@@ -2873,6 +2874,10 @@ def install_dashboard_routes(core):
         if filter_where != '1':
             clauses.append(filter_where)
             params.extend(filter_params)
+        for operator_expression, excluded_names in selection_excluded_operators(task_repository, columns):
+            # The operators the Operator Maps exclude are left out of every Dashboard.
+            clauses.append(f"NOT COALESCE({operator_expression} IN ({', '.join('?' for _ in excluded_names)}), 0)")
+            params.extend(sorted(excluded_names))
         date_term = selection_date_term(task_repository, columns, definition)
         if date_term is not None:
             date_expression, low, high = date_term
@@ -2905,7 +2910,14 @@ def install_dashboard_routes(core):
             excluded_sheets=(
                 (f'LOWER(TRIM(CAST({sheet_term[0]} AS TEXT)))', frozenset(sheet_term[1])) if sheet_term else None
             ),
+            excluded_values=selection_excluded_operators(task_repository, columns),
         )
+
+    def selection_excluded_operators(task_repository, columns):
+        """The (normalized Operator SQL, excluded names) term of the operators the Operator Maps exclude, if any."""
+        names = excluded_operators(task_repository)
+        expression = filter_sql_normalized_expression(task_repository, columns, 'Operator') if names else None
+        return ((expression, frozenset(name.lower() for name in names)),) if expression is not None else ()
 
     def dashboard_combined_requested_columns(definition, dimensions, kind):
         default_filter_keys = {identity(field) for field in ADAPTATIVE_FILTER_FIELDS}
@@ -5182,6 +5194,7 @@ def install_dashboard_routes(core):
         mapping_settings = task_repository.chart_mapping_settings()
         operator_mappings = mapping_settings['operator_mappings']
         visible = apply_operator_mappings(visible, operator_mappings)
+        visible = drop_excluded_operators(visible, excluded_operators(mapping_settings))
         visible.attrs.update(mapping_settings)
         visible = normalise_operator_aliases(visible)
         return visible, total, chart_total, filter_values
@@ -5322,6 +5335,7 @@ def install_dashboard_routes(core):
                     'values': [[expression, sorted(values)] for expression, values in cache_terms.values],
                     'date': cache_terms.date,
                     'sheets': [cache_terms.excluded_sheets[0], sorted(cache_terms.excluded_sheets[1])] if cache_terms.excluded_sheets else None,
+                    'excluded': [[expression, sorted(values)] for expression, values in cache_terms.excluded_values],
                     'order': cache_order,
                 }
             else:
@@ -5367,6 +5381,8 @@ def install_dashboard_routes(core):
                         mapping_settings = task_repository.chart_mapping_settings()
                         operator_mappings = mapping_settings['operator_mappings']
                         raw_frame = apply_operator_mappings(raw_frame, operator_mappings)
+                        # The operators the Operator Maps exclude are left out of every Dashboard.
+                        raw_frame = drop_excluded_operators(raw_frame, excluded_operators(mapping_settings))
                         raw_frame.attrs.update(mapping_settings)
                         raw_frame = normalise_operator_aliases(raw_frame)
                         raw_frame.attrs['operator_aliases_normalized'] = True
@@ -5742,6 +5758,7 @@ def install_dashboard_routes(core):
         mapping_settings = task_repository.chart_mapping_settings()
         operator_mappings = mapping_settings['operator_mappings']
         raw_frame = apply_operator_mappings(raw_frame, operator_mappings)
+        raw_frame = drop_excluded_operators(raw_frame, excluded_operators(mapping_settings))
         raw_frame.attrs.update(mapping_settings)
         raw_frame = normalise_operator_aliases(raw_frame)
         raw_frame.attrs['operator_aliases_normalized'] = True

@@ -62,7 +62,7 @@ def add_country_operators(repository: Any, code: str) -> int:
             continue
         aliases = [alias for alias in operator.get('aliases') or [] if str(alias).casefold() not in mapped]
         try:
-            repository.replace_operator_mapping_group(None, label, aliases, operator.get('color'))
+            repository.replace_operator_mapping_group(None, label, aliases, operator.get('color'), operator.get('role'))
         except ValueError:
             # A spelling the workspace already gives to another label keeps it.
             continue

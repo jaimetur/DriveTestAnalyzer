@@ -1091,13 +1091,20 @@ def test_only_starred_saved_filters_are_kept_when_another_one_is_used(repository
         starred, drawing, someone_else, queued['id'], current}
 
 
-def test_saved_filters_keep_their_compared_operators_outside_their_calculation(repository, scoring_engine):
+def test_saved_filters_leave_out_the_operators_the_operator_maps_exclude(repository, scoring_engine):
+    from src.modules.value_patterns import ValueSet
+
     dataset_id = add_dataset(repository)
-    job, _reused = saved_filters.save_saved_filter(repository, [dataset_id], ['Region'], 'NSA', username='tester')
-    assert saved_filters.get_saved_filter(repository, job['id'])['compared_operators'] == []
-    selection_key, result_key = job['selection_key'], job['result_key']
-    saved_filters.set_compared_operators(repository, job['id'], ['VF', ' Three ', 'VF', ''])
-    kept = saved_filters.get_saved_filter(repository, job['id'])
-    # The operators GAP Analysis compares are kept as such; the calculation and its identity do not change.
-    assert kept['compared_operators'] == ['VF', 'Three']
-    assert (kept['selection_key'], kept['result_key'], kept['status']) == (selection_key, result_key, 'queued')
+    repository.replace_operator_mapping_group(None, 'Lebara', ['LEB'], '#6F42C1')
+    before = saved_filters._prepare_saved_filter(repository, [dataset_id], ['Region'], 'NSA')
+    repository.replace_operator_mapping_group('Lebara', 'Lebara', ['LEB'], '#6F42C1', 'exclude')
+    after = saved_filters._prepare_saved_filter(repository, [dataset_id], ['Region'], 'NSA')
+    # Every operator but Lebara and the names of the CDRs it stands for: the same selection, calculated again.
+    assert after['snapshot']['context_filters']['Operator'] == []
+    assert after['snapshot']['resolved_context_filters']['Operator'] == ['-LEB', '-Lebara']
+    assert after['selection_key'] == before['selection_key'] and after['result_key'] != before['result_key']
+    # Chosen as such, it is still left out.
+    chosen = saved_filters._prepare_saved_filter(repository, [dataset_id], ['Region'], 'NSA',
+                                                 context_filters={'Operator': ['Lebara', 'EE']})
+    operators = ValueSet(chosen['snapshot']['resolved_context_filters']['Operator'])
+    assert operators.accepts(['EE']) and not operators.accepts(['Lebara']) and not operators.accepts(['LEB'])

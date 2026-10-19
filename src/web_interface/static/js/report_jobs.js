@@ -249,11 +249,8 @@
     };
     return field;
   }
-  // What the Focus operators choose, as their fields tell it.
-  const FOCUS_OPERATORS_TITLE = 'The operators the recommendations, the individual GAP tables and the Points Lost views of the '
-    + 'PowerPoint and Word focus on: operators, or patterns such as VF* (type one with * in the filter to add it); all when none is chosen';
   // The Bundle Report Templates panel of the page builds its filters with the same pickers.
-  window.reportingPickers = {multiPicker, campaignLabel, campaignCompare, FOCUS_OPERATORS_TITLE};
+  window.reportingPickers = {multiPicker, campaignLabel, campaignCompare};
   document.addEventListener('click', (event) => {
     document.querySelectorAll('details.rj-multi[open]').forEach((picker) => { if (!picker.contains(event.target)) picker.open = false; });
   });
@@ -684,18 +681,11 @@
     const campaigns = campaignPicker(() => nrMode.value, entry.campaigns || [], {complete: true});
     const head = node('div', undefined, 'rj-grid rj-one-row');
     const cdrsInUse = () => options.datasets.filter((item) => item.nr_mode === nrMode.value).map((item) => item.id);
-    // The Focus operators of its PowerPoint and Word (operators or patterns such as VF*; all without any), for every
-    // scenario of its report; a Scoring artifact saved before takes the operators compared in its first scenario.
-    const legacyCompared = entry.report?.scenarios?.[0]?.scorings?.best_network?.gap?.operators || [];
-    const comparedValues = Array.isArray(entry.compared_operators) ? entry.compared_operators : legacyCompared;
-    const compared = multiPicker('Focus operators', [...new Set([...(valuesForDatasets(cdrsInUse()).Operator || []), ...comparedValues])],
-      comparedValues, {patterns: true});
-    compared.title = FOCUS_OPERATORS_TITLE;
-    // The name in the email on its own row; then, as on the Scoring & GAP Analysis page, the GAP reference and the Focus
-    // operators beside the campaigns.
+    // The name in the email on its own row; then, as on the Scoring & GAP Analysis page, the GAP reference and the
+    // methodology beside the campaigns (the Focus operators of its PowerPoint and Word are those of the Operator Maps).
     const nameRow = node('div', undefined, 'rj-grid rj-one-row');
     nameRow.append(field('Name in the email', label));
-    head.append(field('NR Mode', nrMode), campaigns.field, field('GAP reference operator', baseline), compared, field('Methodology', methodology), remove);
+    head.append(field('NR Mode', nrMode), campaigns.field, field('GAP reference operator', baseline), field('Methodology', methodology), remove);
     nrMode.addEventListener('change', () => campaigns.refresh());
     const formats = node('div', undefined, 'rj-formats');
     formatChoices(formats, `rj-scoring-${scoringFormatId += 1}`, entry.formats || ['powerpoint'], ['powerpoint', 'word']);
@@ -734,8 +724,7 @@
       formats, nameRow, head, campaigns.preview, reportRow);
     card.getValue = () => ({
       label: label.value.trim(), nr_mode: nrMode.value, auto_cdrs: true, campaigns: campaigns.getValue(), formats: formats.getValue(),
-      scoring_profile_id: methodology.value, baseline_operator: baseline.value.trim() || 'EE',
-      compared_operators: compared.getValue(), report,
+      scoring_profile_id: methodology.value, baseline_operator: baseline.value.trim() || 'EE', report,
     });
     return card;
   }

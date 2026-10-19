@@ -26,6 +26,7 @@ from src.modules.cdr_reporting import (
 from src.modules.column_names import campaign_sort_key, compact_campaign_value
 from src.modules import report_structure
 from src.modules.scoring import most_reliable_result
+from src.modules.operator_roles import focus_operators
 from src.modules.scoring_points_loss import map_background, map_boundaries
 from src.modules.scoring_insight_slides import (
     TITLE_BLUE, add_area_summary_slides, add_campaign_comparison_slides, add_kpi_gap_profile_slides,
@@ -2437,9 +2438,10 @@ def _everyone(_operator: str, _label: str | None = None) -> bool:
 
 
 def focus_matcher(focus: Any, operators: Any = ()) -> Callable[..., bool]:
-    """Whether an operator (by its name or label) is one of the Focus operators: their names, or patterns (see
-    value_patterns: ``VF*`` for every VF variant, ``-Lebara`` for every operator but Lebara), whatever the case. Without
-    Focus operators, or when none of ``operators`` (those of the results) is one of them, every operator is."""
+    """Whether an operator (by its name or label) is one of the Focus operators: the labels with the Focus role in the
+    Operator Maps and the names of the CDRs they stand for (see operator_roles.focus_operators), or patterns (see
+    value_patterns), whatever the case. Without Focus operators, or when none of ``operators`` (those of the results) is
+    one of them, every operator is."""
     from src.modules.value_patterns import ValueSet
 
     chosen = ValueSet(focus or [])
@@ -2644,11 +2646,8 @@ def _add_scoring_block(presentation, job: dict[str, Any], result: dict[str, Any]
     """
     selected_environments = ({'combined' if str(name).casefold() in {'all', 'all environments', 'combined'}
                               else str(name).casefold() for name in environments} if environments else None)
-    # The operators its GAP Analysis compares with the reference: those of the scenario, else the Compared operators of
-    # the page (all without any).
-    # The Focus operators of the scenario, else those of the page (see focus_matcher), with the operators of the results.
-    focus = focus_matcher(((options.get('gap') or {}).get('operators') if options is not None
-                           else job.get('_compared_operators')),
+    # The Focus operators of the Operator Maps (see focus_matcher), among the operators of the results.
+    focus = focus_matcher(focus_operators(operator_mapping_groups),
                           {row.get('operator') or row.get('Operator') for row in result.get('scoring') or []
                            if isinstance(row, dict)})
     combined_only = (options is not None and options.get('environments') != 'split') or selected_environments == {'combined'}

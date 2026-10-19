@@ -306,6 +306,9 @@ def cascading_options(repository: Any, dataset_ids: Iterable[int], selections: d
         raw = dict(zip(FACET_FIELDS, combination))
         raw['Vendor_Operator'] = raw['Operator_Vendor']
         mapped = {field: mapping(field, raw[field]) for field in mapped_fields}
+        if mapper.excludes_operator(mapped.get('Operator'), raw.get('Operator')):
+            # The operators the Operator Maps exclude are left out of every list.
+            continue
         failing = [field for field, keys in chosen.items()
                    if not _chosen(_keys(field, mapped[field], raw[field] if field != 'Vendor_Operator' else ''), keys)]
         if len(failing) > 1:
@@ -322,6 +325,12 @@ def cascading_options(repository: Any, dataset_ids: Iterable[int], selections: d
             lists = {field: [str(value) for value in catalogue.get(key) or []] for field, key in CATALOGUE_KEYS.items()}
             lists['Vendor_Operator'] = lists['Operator_Vendor']
             mapped_lists = {field: [mapping(field, value) for value in items] for field, items in lists.items()}
+            for field, kind in MAPPED_KINDS.items():
+                # The operators the Operator Maps exclude are left out of every list.
+                if field in mapped_lists:
+                    kept = [index for index, value in enumerate(mapped_lists[field]) if not mapper.excluded_value(kind, value)]
+                    mapped_lists[field] = [mapped_lists[field][index] for index in kept]
+                    lists[field] = [lists[field][index] for index in kept]
             # A catalogue does not list environments: it may hold any of them.
             failing = [field for field, keys in chosen.items() if field in mapped_lists
                        and not any(_chosen(_keys(field, mapped, raw), keys) for mapped, raw in zip(mapped_lists[field], lists[field]))]

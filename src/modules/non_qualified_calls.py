@@ -53,6 +53,7 @@ from src.modules.cell_identity import nr_cell_bits
 from src.modules.column_names import campaign_sort_key, column_identity
 from src.modules.value_maps import ValueMapper, field_kind
 from src.modules.value_patterns import ValueSet, is_pattern, sql_condition
+from src.modules.operator_roles import excluded_operators
 from src.modules.mapping_order import dimension_order_key, mapping_group
 from src.modules import nq_catalog
 from src.modules.nq_catalog import (
@@ -3325,6 +3326,10 @@ def _resolve_key_filters(task_repository: Any, filters: dict[str, Any]) -> dict[
     """Turn the filters computed per call (root cause counting suggestions, eNB/gNB, the stalled calls) into call keys,
     with the Operator, Vendor and NetCheck RCA values as they are shown."""
     filters = _call_key_filters(task_repository, _mapped_filters(task_repository, filters))
+    excluded = excluded_operators(task_repository)
+    if excluded:
+        # The operators the Operator Maps exclude are left out of every list, count and export.
+        filters = {**filters, '_excluded_operators': excluded}
     states = _strings(filters.get('state'))
     if 'open' in states:
         # Open: the attended calls not closed, in neither the first status nor a closed one.
@@ -3436,6 +3441,10 @@ def _filter_sql(filters: dict[str, Any], username: str, closed_statuses: list[st
             continue
         clauses.append(f"{field} IN ({', '.join('?' for _ in values)})")
         params.extend(values)
+    excluded = [str(name).strip().lower() for name in filters.get('_excluded_operators') or [] if str(name).strip()]
+    if excluded:
+        clauses.append(f"lower(COALESCE(operator, '')) NOT IN ({', '.join('?' for _ in excluded)})")
+        params.extend(excluded)
     # The JOIN_IDs typed in their filter, whatever their case.
     join_ids = [value.casefold() for value in _strings(filters.get('join_id'))]
     if join_ids:
@@ -4240,8 +4249,10 @@ def nq_rates(task_repository: Any, filters: dict[str, Any]) -> dict[str, Any]:
     campaigns = set(_strings(filters.get('campaign')))
     nr_modes = {'' if value in {UNASSIGNED, 'Unknown'} else value for value in _strings(filters.get('nr_mode'))}
     mapper = ValueMapper.from_repository(task_repository)
-    # (Patterns, such as VF*, take every operator they match; see value_patterns.)
-    operators = ValueSet(str(mapper.map(field_kind('operator'), value)) for value in _strings(filters.get('operator')))
+    # (Patterns, such as VF*, take every operator they match; see value_patterns. The operators the Operator Maps exclude
+    # are left out.)
+    operators = ValueSet([*(str(mapper.map(field_kind('operator'), value)) for value in _strings(filters.get('operator'))),
+                          *(f'-{name}' for name in sorted(mapper.excluded_operators))])
     where, params = [], []
     if services:
         where.append(f"p.service IN ({', '.join('?' for _ in services)})")
@@ -4338,8 +4349,10 @@ def _population_counts(task_repository: Any, filters: dict[str, Any], fields: tu
     campaigns = set(_strings(filters.get('campaign')))
     nr_modes = {'' if value in {UNASSIGNED, 'Unknown'} else value for value in _strings(filters.get('nr_mode'))}
     mapper = ValueMapper.from_repository(task_repository)
-    # (Patterns, such as VF*, take every operator they match; see value_patterns.)
-    operators = ValueSet(str(mapper.map(field_kind('operator'), value)) for value in _strings(filters.get('operator')))
+    # (Patterns, such as VF*, take every operator they match; see value_patterns. The operators the Operator Maps exclude
+    # are left out.)
+    operators = ValueSet([*(str(mapper.map(field_kind('operator'), value)) for value in _strings(filters.get('operator'))),
+                          *(f'-{name}' for name in sorted(mapper.excluded_operators))])
     columns = ['service', 'campaign', 'operator', 'nr_mode', *fields]
     where, params = [], []
     if services:

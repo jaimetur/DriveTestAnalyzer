@@ -680,6 +680,12 @@ body [data-section-bar].is-compact > a.section-bar-top { padding: .45rem .55rem;
 .operator-mappings-table .table-actions { justify-content: flex-end; }
 .operator-mapping-create { display: grid; grid-template-columns: 6rem minmax(180px, 0.7fr) minmax(280px, 1.3fr) auto; gap: 0.8rem; align-items: start; padding: 1rem; border: 1px solid rgba(139, 29, 36, 0.18); border-radius: 0.9rem; background: rgba(255, 255, 255, 0.72); }
 .operator-mapping-create label { display: grid; align-content: start; gap: 0.35rem; }
+/* The Role of each Operator label: Focus (green) or Exclude (red) stand out. */
+.operator-mapping-create:has(.mapping-role-select) { grid-template-columns: 6rem minmax(180px, 0.7fr) 9rem minmax(280px, 1.3fr) auto; }
+.operator-mappings-table .mapping-role-column { width: 9rem; }
+.mapping-role-select { min-width: 7.5rem; }
+.mapping-role-select:has(option[value="focus"]:checked) { border-color: #2f855a; background-color: #f0fff4; color: #22543d; font-weight: 700; }
+.mapping-role-select:has(option[value="exclude"]:checked) { border-color: #c53030; background-color: #fff5f5; color: #9b2c2c; font-weight: 700; }
 .operator-mapping-create input, .operator-mapping-create textarea { width: 100%; box-sizing: border-box; }
 .operator-mapping-create input:not([type="color"]) { height: 3rem; padding-block: 0.55rem; }
 .operator-mapping-create input[type="color"] { height: 3rem; padding: 0.15rem; }
@@ -688,7 +694,11 @@ body [data-section-bar].is-compact > a.section-bar-top { padding: .45rem .55rem;
 .mapping-order-actions { display: flex; gap: 0.3rem; }
 .mapping-order-actions form { margin: 0; }
 .mapping-color { width: 3.2rem; height: 2.4rem; padding: 0.15rem; border-radius: 0.45rem; cursor: pointer; }
-@media (max-width: 760px) { .operator-mapping-create { grid-template-columns: 1fr; } }
+@media (max-width: 1100px) {
+  .operator-mapping-create:has(.mapping-role-select) { grid-template-columns: 6rem minmax(0, 1fr) 9rem; }
+  .operator-mapping-create:has(.mapping-role-select) > label:has(textarea) { grid-column: 1 / 3; }
+}
+@media (max-width: 760px) { .operator-mapping-create, .operator-mapping-create:has(.mapping-role-select) { grid-template-columns: 1fr; } .operator-mapping-create:has(.mapping-role-select) > label:has(textarea) { grid-column: auto; } }
 .spectrum-holdings-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.8rem; align-items: end; margin-top: 1rem; padding: 1rem; border: 1px solid rgba(11, 79, 92, 0.22); border-radius: 0.9rem; background: rgba(255, 255, 255, 0.72); }
 .spectrum-holdings-form label { display: grid; gap: 0.35rem; }
 .spectrum-holdings-form textarea { width: 100%; box-sizing: border-box; min-height: 12rem; padding: 0.6rem 0.8rem; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.84rem; }

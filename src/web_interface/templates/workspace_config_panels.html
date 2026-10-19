@@ -5,6 +5,11 @@
       <span class="mapping-subpanel-chip">Collapse</span>
     </summary>
 {% endmacro %}
+{% macro mapping_role_select(role, form_id, name) %}<select class="table-select mapping-role-select" name="role" data-no-persist{% if form_id %} form="{{ form_id }}"{% endif %} aria-label="Role of {{ name }}" title="Focus: one of the Focus operators of the Scoring exports. Exclude: left out of every analysis, filter, chart and report of the workspace.">
+  <option value=""{% if not role %} selected{% endif %}>None</option>
+  <option value="focus"{% if role == 'focus' %} selected{% endif %}>Focus</option>
+  <option value="exclude"{% if role == 'exclude' %} selected{% endif %}>Exclude</option>
+</select>{% endmacro %}
 {% macro mapping_labels_view(kind, groups, rows) %}
 {% set title = 'Operator' if kind == 'operator' else 'Vendor' %}
 {% set unassigned = rows | rejectattr('assigned') | list %}
@@ -53,7 +58,7 @@
   <p class="form-note">Highlighted names appear in the current CDRs (with how many); grey ones are names of other campaigns. Remove a name with ×, or add one with +: a name of another label moves to this one.</p>
   <div class="table-wrap operator-mappings-table-wrap">
     <table class="operator-mappings-table">
-      <thead><tr><th class="mapping-order-column">Order</th><th class="mapping-colour-column">Colour</th><th class="mapping-canonical-column">Label</th><th class="mapping-aliases-column">Possible names in the CDRs<span class="mapping-column-note">How this label can be written in the CDRs of the different campaigns</span></th><th class="mapping-actions-column">Actions</th></tr></thead>
+      <thead><tr><th class="mapping-order-column">Order</th><th class="mapping-colour-column">Colour</th><th class="mapping-canonical-column">Label</th>{% if kind == 'operator' %}<th class="mapping-role-column">Role<span class="mapping-column-note">Focus or Exclude</span></th>{% endif %}<th class="mapping-aliases-column">Possible names in the CDRs<span class="mapping-column-note">How this label can be written in the CDRs of the different campaigns</span></th><th class="mapping-actions-column">Actions</th></tr></thead>
       <tbody>
         {% for mapping in groups %}
         <tr>
@@ -65,11 +70,12 @@
             <input class="table-input operator-mapping-canonical" type="text" name="canonical_value" value="{{ mapping.canonical }}" form="{{ kind }}-mapping-{{ loop.index }}" required>
             <span class="mapping-status mapping-status-merged" data-mapping-merge-badge hidden></span>
           </td>
+          {% if kind == 'operator' %}<td data-label="Role">{{ mapping_role_select(mapping.role, kind ~ '-mapping-' ~ loop.index, mapping.canonical) }}</td>{% endif %}
           <td data-label="Possible names in the CDRs"><textarea class="operator-mapping-aliases" name="aliases" form="{{ kind }}-mapping-{{ loop.index }}" rows="3" hidden data-mapping-names-source aria-label="Possible names of {{ mapping.canonical }}">{{ mapping.aliases | join('\n') }}</textarea><div class="mapping-name-chips" data-mapping-name-chips></div></td>
           <td data-label="Actions"><div class="table-actions"><form action="/workspace-config/{{ kind }}-mappings/delete" method="post" data-confirm="Delete the {{ mapping.canonical }} {{ title }} label? The names it stands for are shown as they are until they get another label."><input type="hidden" name="canonical_value" value="{{ mapping.canonical }}"><button type="submit" class="danger-button icon-action" aria-label="Delete the {{ mapping.canonical }} label" title="Delete label">×</button></form></div></td>
         </tr>
         {% endfor %}
-        {% if not groups %}<tr><td colspan="5">No {{ title }} labels yet.</td></tr>{% endif %}
+        {% if not groups %}<tr><td colspan="{{ 6 if kind == 'operator' else 5 }}">No {{ title }} labels yet.</td></tr>{% endif %}
       </tbody>
     </table>
   </div>
@@ -80,6 +86,7 @@
   <form class="operator-mapping-create" action="/workspace-config/{{ kind }}-mappings/save" method="post">
     <label>Colour<input type="color" name="color" value="#6F42C1"></label>
     <label>Label<input type="text" name="canonical_value" placeholder="New {{ title }} label" required></label>
+    {% if kind == 'operator' %}<label>Role{{ mapping_role_select('', '', 'the new label') }}</label>{% endif %}
     <label>Possible names in the CDRs<textarea name="aliases" rows="3" placeholder="How it can be written in the CDRs of the different campaigns, one per line"></textarea></label>
     <button type="submit">Add label</button>
   </form>

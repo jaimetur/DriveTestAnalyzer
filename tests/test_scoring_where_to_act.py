@@ -121,26 +121,25 @@ def test_the_summary_slides_of_where_to_act(owned):
     assert 'Where to act — EE' in titles and 'Where to act — Vodafone UK' not in titles
 
 
-def test_where_to_act_of_a_report_follows_its_compared_operators(owned):
+def test_where_to_act_of_a_report_follows_the_focus_operators_of_the_operator_maps(owned):
     from src.modules.scoring_exports import export_scoring_report
     from src.modules.scoring_reports import default_scenario, normalize_report_configuration
 
     job, result, _insights = owned
 
-    def act_titles(compared):
-        scenario = default_scenario()
-        for options in scenario['scorings'].values():
-            options['gap']['operators'] = compared
-        entry = {'scenario': normalize_report_configuration({'scenarios': [scenario]})['scenarios'][0], 'job': job, 'result': result}
-        deck = Presentation(BytesIO(export_scoring_report([entry], TEMPLATE)))
+    def act_titles(roles):
+        groups = [{'canonical': name, 'aliases': aliases, 'position': index, 'color': '#365F91', **({'role': role} if role else {})}
+                  for index, (name, (aliases, role)) in enumerate(roles.items())]
+        entry = {'scenario': normalize_report_configuration({'scenarios': [default_scenario()]})['scenarios'][0], 'job': job, 'result': result}
+        deck = Presentation(BytesIO(export_scoring_report([entry], TEMPLATE, groups)))
         titles = [slide.shapes.title.text_frame.paragraphs[0].text for slide in deck.slides if slide.shapes.title is not None]
         return sorted({title.split(' — ', 1)[1] for title in titles if title.startswith('Where to act — ')})
 
-    # The Focus operators of the scenario, every one of them: names or patterns (* for any characters, whatever the case).
-    assert act_titles(['Three UK']) == ['Three UK']
-    assert act_titles(['th*', 'Vodafone*']) == ['Three UK', 'Vodafone UK']
+    # The labels with the Focus role, every one of them (also by a name of the CDRs they stand for, shown with its label).
+    assert act_titles({'Three UK': ([], 'focus'), 'O2 UK': ([], '')}) == ['Three UK']
+    assert act_titles({'Three': (['Three UK'], 'focus'), 'Vodafone UK': ([], 'focus'), 'O2 UK': ([], 'exclude')}) == ['Three', 'Vodafone UK']
     # Without them, or when none of them has results, every operator but the reference.
-    assert act_titles([]) == act_titles(['Another operator']) == ['O2 UK', 'Three UK', 'Vodafone UK']
+    assert act_titles({}) == act_titles({'Another operator': ([], 'focus')}) == ['O2 UK', 'Three UK', 'Vodafone UK']
 
 
 def test_focus_operators_are_names_or_patterns_and_every_operator_without_a_match():

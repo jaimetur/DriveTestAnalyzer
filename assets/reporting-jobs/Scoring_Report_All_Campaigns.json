@@ -42,11 +42,7 @@
           "scenarios": [
             {
               "name": "National",
-              "context_filters": {
-                "Operator": [
-                  "Not Lebara"
-                ]
-              },
+              "context_filters": {},
               "main_cities": false,
               "aggregation_levels": [
                 "Operator",
@@ -125,9 +121,6 @@
               "context_filters": {
                 "City": [
                   "London"
-                ],
-                "Operator": [
-                  "Not Lebara"
                 ]
               },
               "main_cities": false,
@@ -206,11 +199,7 @@
             },
             {
               "name": "Main Cities",
-              "context_filters": {
-                "Operator": [
-                  "Not Lebara"
-                ]
-              },
+              "context_filters": {},
               "main_cities": true,
               "aggregation_levels": [
                 "Operator",
@@ -287,13 +276,7 @@
             }
           ],
           "name": "National, London & Main Cities (All Environments only)"
-        },
-        "compared_operators": [
-          "VF*",
-          "Vodafone*",
-          "Three*",
-          "3*"
-        ]
+        }
       },
       {
         "label": "",
@@ -312,11 +295,7 @@
           "scenarios": [
             {
               "name": "National",
-              "context_filters": {
-                "Operator": [
-                  "Not Lebara"
-                ]
-              },
+              "context_filters": {},
               "main_cities": false,
               "aggregation_levels": [
                 "Operator",
@@ -394,9 +373,6 @@
               "context_filters": {
                 "City": [
                   "London"
-                ],
-                "Operator": [
-                  "Not Lebara"
                 ]
               },
               "main_cities": false,
@@ -474,11 +450,7 @@
             },
             {
               "name": "Main Cities",
-              "context_filters": {
-                "Operator": [
-                  "Not Lebara"
-                ]
-              },
+              "context_filters": {},
               "main_cities": true,
               "aggregation_levels": [
                 "Operator",
@@ -554,13 +526,7 @@
             }
           ],
           "name": "National, London & Main Cities (All Environments only)"
-        },
-        "compared_operators": [
-          "VF*",
-          "Vodafone*",
-          "Three*",
-          "3*"
-        ]
+        }
       }
     ],
     "modules": {}

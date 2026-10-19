@@ -2102,6 +2102,7 @@
       {
         "canonical": "3",
         "color": "#000000",
+        "role": "focus",
         "aliases": [
           "3 UK",
           "3_UK",
@@ -2114,6 +2115,7 @@
       {
         "canonical": "VF",
         "color": "#F34851",
+        "role": "focus",
         "aliases": [
           "Vodafone UK",
           "VF UK",
@@ -2124,6 +2126,7 @@
       {
         "canonical": "VF SA",
         "color": "#801A21",
+        "role": "focus",
         "aliases": [
           "Vodafone SA",
           "VF SA UK",
@@ -2138,6 +2141,7 @@
       {
         "canonical": "VF VoNR",
         "color": "#801A21",
+        "role": "focus",
         "aliases": [
           "Vodafone VoNR",
           "VF_VoNR"
@@ -2159,6 +2163,7 @@
       {
         "canonical": "Lebara",
         "color": "#6F42C1",
+        "role": "exclude",
         "aliases": [
           "LEB",
           "Lebara_UK",

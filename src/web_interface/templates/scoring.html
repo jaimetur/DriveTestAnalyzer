@@ -60,7 +60,7 @@
   .scoring-levels-shortcut svg { flex: 0 0 auto; width: 1rem; height: 1rem; margin-right: .3rem; }
   .scoring-picker-note { margin: .5rem .1rem 0; color: var(--muted); font-size: .69rem; }
   /* NR Mode and Campaign choose the CDRs, listed read-only below them by type. */
-  .scoring-scope-row { display: grid; grid-template-columns: minmax(7rem, 9rem) minmax(0, 18rem) minmax(8rem, 11rem) minmax(9rem, 14rem) minmax(20rem, 1fr); gap: .6rem 1rem; align-items: end; }
+  .scoring-scope-row { display: grid; grid-template-columns: minmax(7rem, 9rem) minmax(0, 18rem) minmax(8rem, 11rem) minmax(20rem, 1fr); gap: .6rem 1rem; align-items: end; }
   .scoring-scope-control { display: grid; gap: .3rem; color: #245b43; font-size: .82rem; font-weight: 750; }
   /* The choices of several values are as tall as the single ones beside them. */
   .scoring-scope-control :is(select, .multiselect-trigger) { min-height: 2.9rem; }
@@ -222,9 +222,8 @@
   .saved-filter-aggregation strong { display: inline-block; padding: 0 .45rem; border: 1px solid #94cde3; border-radius: .65rem; background: #e2f3fa; color: #0a6688; font-weight: 800; line-height: 1.45; }
   .saved-filter-meta { min-width: 0; color: var(--muted); font-size: .75rem; line-height: 1.5; white-space: normal; overflow-wrap: anywhere; }
   /* The GAP reference, methodology and Scoring Trends values as pills (and the Split by value), each in its own colour. */
-  .saved-filter-meta .saved-filter-reference, .saved-filter-meta .saved-filter-compared, .saved-filter-meta .saved-filter-profile, .saved-filter-meta .saved-filter-area-summary { display: inline-block; padding: 0 .45rem; border: 1px solid; border-radius: .65rem; font-weight: 800; line-height: 1.45; }
+  .saved-filter-meta .saved-filter-reference, .saved-filter-meta .saved-filter-profile, .saved-filter-meta .saved-filter-area-summary { display: inline-block; padding: 0 .45rem; border: 1px solid; border-radius: .65rem; font-weight: 800; line-height: 1.45; }
   .saved-filter-meta .saved-filter-reference { border-color: #eaa6d4; background: #fce7f4; color: #a0136f; }
-  .saved-filter-meta .saved-filter-compared { border-color: #f0b98a; background: #fdf0e3; color: #a24d0c; }
   .saved-filter-meta .saved-filter-profile { border-color: #cbb8ea; background: #f3eefc; color: #5b3699; }
   .saved-filter-meta .saved-filter-profile-detail { color: #5b3699; font-weight: 700; }
   .saved-filter-meta .saved-filter-profile-campaigns { color: #b4234d; }
@@ -1275,15 +1274,7 @@
             {% else %}<option value="EE" selected>EE</option>{% endif %}
           </select>
         </label>
-        {# The Focus operators of the PowerPoint and Word exports (operators or patterns such as VF*; all without any): those of
-           Where to act, the locations ranked, the individual GAP tables, the GAP by part, the KPI GAP Profile and the Points
-           Lost views. On the page they come first in the operator choices of those sections. #}
-        <label class="scoring-scope-control">Focus operators
-          <select multiple size="1" data-scoring-compared-operators data-multiselect-patterns data-multiselect-auto-close="1000" data-multiselect-empty-label="All operators" aria-label="Focus operators" title="The operators the recommendations, the individual GAP tables and the Points Lost views of the exports focus on: operators, or patterns such as VF* (type one with * in the filter to add it); all when none is chosen">
-            {% for operator in scoring_options %}<option value="{{ operator.value }}">{{ operator.label }}</option>{% endfor %}
-          </select>
-        </label>
-        {# The methodology of the calculation, after the Focus operators. #}
+        {# The methodology of the calculation, after the GAP reference. #}
         <label class="scoring-scope-control">Scoring Methodology
           <select data-scoring-profile aria-label="Choose the scoring methodology for this calculation">
             {% set scoring_profile_options = scoring_profiles | default([], true) %}

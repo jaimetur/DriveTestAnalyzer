@@ -239,8 +239,6 @@
     const operators = operatorValues();
     const reference = selectField('GAP reference', (operators.includes(saved.baseline_operator) ? operators : [saved.baseline_operator, ...operators])
       .map((value) => [value, value]), saved.baseline_operator);
-    const compared = multiField('Focus operators', operators, saved.compared_operators, {patterns: true});
-    compared.title = pickers().FOCUS_OPERATORS_TITLE || '';
     const tables = node('fieldset', undefined, 'brt-choice-group');
     tables.append(node('legend', 'Scoring tables'));
     const kpiValues = check('Show KPI values', saved.kpi_values);
@@ -288,16 +286,15 @@
     const columns = node('div', undefined, 'brt-trends-columns');
     columns.append(area, trendOptions);
     trends.append(columns);
-    // The GAP reference, the Focus operators and the Methodology go beside the Campaigns of the section, as on the
-    // Scoring & GAP Analysis page.
-    box.scopeFields = [reference, compared, methodology];
+    // The GAP reference and the Methodology go beside the Campaigns of the section, as on the Scoring & GAP Analysis
+    // page (the Focus operators of the PowerPoint and Word are those of the Operator Maps).
+    box.scopeFields = [reference, methodology];
     box.append(scorings, environments, tables, trends);
     box.collect = () => ({
       scorings: scoringBoxes.filter((item) => item.checked).map((item) => item.value),
       environments: environmentBoxes.filter((item) => item.checked).map((item) => item.value),
       kpi_values: kpiValues.box.checked, gap_values: gapValues.box.checked,
       baseline_operator: reference.input.value, methodology: methodology.input.value,
-      compared_operators: compared.getValue?.() || [],
       area_summary: {enabled: true, breakdown: breakdown.input.value, time_split: timeSplit.input.value,
         cities: cities.getValue?.() || [], main_cities: Boolean(cities.getPreset?.()), campaigns: trendCampaigns?.getValue?.() || []},
     });

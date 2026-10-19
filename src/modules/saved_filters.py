@@ -28,6 +28,7 @@ from src.modules.scoring_area_summary import (
 from src.modules.scoring_vendors import scoring_vendor_name, scoring_vendor_operators
 from src.modules.cdr_auto_selection import CAMPAIGN_PRESET_LABELS, campaign_identity, campaign_presets
 from src.modules.value_patterns import ValueSet
+from src.modules.operator_roles import EXCLUDE, normalize_mapping_role
 from src.modules.cdr_stage import combined_dataset_ids
 from src.modules.nr_mode import NR_MODES, normalize_nr_mode
 from src.modules.repository import Repository, local_now_iso
@@ -162,8 +163,9 @@ def _expand_operator_context_filter(
 ) -> dict[str, list[str]]:
     """Include mapped Operator aliases so canonical selections match raw CDR rows; a pattern (VF*) takes the aliases of
     the operators it matches too, an exclusion (-Lebara) leaves out their aliases too, and both stay to match the raw
-    values of no Operator Map."""
+    values of no Operator Map. The operators the Operator Maps exclude are left out whatever the selection."""
     expanded = {field: list(values) for field, values in context_filters.items()}
+    expanded.setdefault('Operator', [])
     selected = ValueSet(expanded.get('Operator', []))
     getter = getattr(repository, 'list_operator_mapping_groups', None)
     groups = getter() if callable(getter) else []
@@ -174,7 +176,7 @@ def _expand_operator_context_filter(
         raw_aliases = group.get('aliases', [])
         aliases = [str(value).strip() for value in raw_aliases if str(value).strip()] if isinstance(raw_aliases, (list, tuple, set)) else []
         labels = [value for value in [canonical, *aliases] if value]
-        if selected.excludes(labels):
+        if selected.excludes(labels) or normalize_mapping_role(group.get('role')) == EXCLUDE:
             for value in labels:
                 if not any(existing.casefold() == f'-{value}'.casefold() for existing in expanded['Operator']):
                     expanded['Operator'].append(f'-{value}')
@@ -610,7 +612,8 @@ def _result_key(
         key_payload['area_summary'] = area_summary
     normalized_filters = _normalize_context_filters(context_filters)
     resolved_filters = _normalize_context_filters(resolved_context_filters or context_filters)
-    if any(normalized_filters.values()):
+    # Without filters, the operators the Operator Maps exclude still change what is scored.
+    if any(normalized_filters.values()) or any(resolved_filters.values()):
         key_payload['context_filters'] = _context_filter_cache_values(normalized_filters)
         key_payload['resolved_context_filters'] = _context_filter_cache_values(resolved_filters)
     canonical = json.dumps(key_payload, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
@@ -891,23 +894,6 @@ def _prepare_saved_filter(
         'dataset_ids': normalized_ids, 'snapshot': snapshot, 'nr_mode': selected_mode, 'levels': normalized_levels,
         'baseline_operator': baseline,
     }
-
-
-def set_compared_operators(repository: Repository, filter_id: int, operators: list[str] | None) -> None:
-    """Keep with a Saved Filter the operators its GAP Analysis compares with the reference (all without any), as the
-    panel had them when it was calculated or edited: they change no calculation, nor its identity."""
-    chosen = list(dict.fromkeys(str(name).strip() for name in operators or [] if str(name).strip()))[:20]
-    with repository.connection() as connection:
-        row = connection.execute(f'SELECT source_metadata_json FROM {SAVED_FILTERS_TABLE} WHERE id = ?', (int(filter_id),)).fetchone()
-        if row is None:
-            return
-        snapshot = _decode_json(row['source_metadata_json'], {})
-        snapshot = snapshot if isinstance(snapshot, dict) else {}
-        if snapshot.get('compared_operators', []) == chosen:
-            return
-        snapshot['compared_operators'] = chosen
-        connection.execute(f'UPDATE {SAVED_FILTERS_TABLE} SET source_metadata_json = ? WHERE id = ?',
-                           (json.dumps(snapshot, ensure_ascii=False, separators=(',', ':')), int(filter_id)))
 
 
 def _workspace_main_cities(repository: Repository) -> list[str]:
@@ -1736,7 +1722,9 @@ def _load_source_frames(
                 if (resolved := resolve_column_name(columns, candidate)) is not None
             ), None)
             if resolved_filter_column is None:
-                missing_filter_fields.append(field)
+                if ValueSet(values).includes:
+                    missing_filter_fields.append(field)
+                # A filter that only leaves values out (every operator but Lebara) keeps a CDR without its column.
             else:
                 if field == 'Vendor':
                     values = [scoring_vendor_name(value, vendor_operators) for value in values]
@@ -1756,7 +1744,8 @@ def _load_source_frames(
         frames_by_kind.setdefault(kind, []).append(frame)
         progress_callback(10 + round(index * 45 / total), f"Loaded {source['metadata']['name']}")
 
-    if active_filters:
+    # (Filters that only leave values out, such as the operators the Operator Maps exclude, choose no CDR type.)
+    if any(ValueSet(values).includes for values in active_filters.values()):
         labels = {'data': 'Data', 'voice': 'Voice', 'speech': 'Speech'}
         missing_kinds = [kind for kind in ('data', 'voice', 'speech') if not frames_by_kind.get(kind)]
         if missing_kinds:

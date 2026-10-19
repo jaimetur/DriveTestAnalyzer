@@ -101,7 +101,6 @@ def test_server_chosen_cdrs_are_checked_unless_an_opened_saved_filter_keeps_its_
 let autoCdrs = {options: null, incomplete: []};
 let pinnedCdrs = false;
 const selectedAreaSummary = () => ({enabled: false});
-const chosenComparedOperators = () => [];
 const option = {hidden: false};
 const datasetInputs = [1, 2, 3].map(id => ({value: String(id), checked: id === 3, closest: () => option}));
 const selectedDatasetIds = () => datasetInputs.filter(input => input.checked).map(input => input.value);
@@ -126,7 +125,7 @@ process.stdout.write(JSON.stringify({automatic, pinned: {ids: selectedDatasetIds
         'dataset_ids': [1, 2], 'auto_cdrs': True, 'aggregation_levels': ['Operator'], 'nr_mode': 'SA',
         'baseline_operator': 'EE', 'scoring_profile_id': 'methodology-1',
         'context_filters': {'Region': [], 'City': [], 'Operator': [], 'Vendor': [], 'Campaign': ['UK_Q2_2026']},
-        'area_summary': {'enabled': False}, 'compared_operators': [],
+        'area_summary': {'enabled': False},
     }
     # An opened Saved Filter keeps its own CDRs while its filter lists are refreshed.
     assert result['pinned'] == {'ids': ['1', '2'], 'auto': False}
@@ -257,7 +256,6 @@ process.stdout.write(JSON.stringify({queued, persisted}));
         },
         # One saved without Geographical Areas & Scoring Trends takes those it is calculated with: each Region and London.
         'area_summary': {'enabled': True, 'breakdown': 'Region', 'cities': ['London'], 'time_split': 'Campaign', 'campaigns': []},
-        'compared_operators': [],
     }
     assert result['queued']['selectionDirty'] is True
     assert result['queued']['selectionSaveTimer'] == 42

@@ -27,6 +27,7 @@ from src.modules.column_names import (
     operator_vendor_value, vendor_filter_column, vendor_filter_value, vendor_filter_values, vendor_match_values,
 )
 from src.modules.nr_mode import NR_MODE_DATASET_KINDS, infer_nr_mode, normalize_nr_mode
+from src.modules.operator_roles import normalize_mapping_role
 from src.modules.cdr_stage import CDR_STAGE_KINDS, infer_cdr_stage, normalize_cdr_stage, normalize_in_combined
 from src.modules.module_labels import MAIN_MODULES
 from src.modules.report_layouts import normalize_catalog_layouts, rename_template_vendor_fields
@@ -307,6 +308,9 @@ CREATE TABLE IF NOT EXISTS chart_mapping_groups (
     canonical_value TEXT NOT NULL COLLATE NOCASE,
     position INTEGER NOT NULL DEFAULT 0,
     color TEXT NOT NULL,
+    -- The part an Operator plays everywhere: focus (the Focus operators of the Scoring exports), exclude (left out of
+    -- every analysis, filter and report) or none.
+    role TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (mapping_type, canonical_value)
 );
 
@@ -890,8 +894,16 @@ class Repository:
             conn.execute("UPDATE users SET role = 'user-viewer' WHERE role = 'user'")
 
     @staticmethod
+    def _ensure_chart_mapping_role_column(conn: sqlite3.Connection) -> None:
+        """The Role (Focus or Exclude) of each label, also in a workspace database written before it (another workspace
+        than the open one, such as one exported or transferred)."""
+        if 'role' not in {str(row[1]) for row in conn.execute('PRAGMA table_info(chart_mapping_groups)').fetchall()}:
+            conn.execute("ALTER TABLE chart_mapping_groups ADD COLUMN role TEXT NOT NULL DEFAULT ''")
+
+    @staticmethod
     def _ensure_chart_mapping_groups(conn: sqlite3.Connection) -> None:
         """Migrate the former hardcoded chart order and colours into workspace data."""
+        Repository._ensure_chart_mapping_role_column(conn)
         defaults = {
             # A new workspace has no Operator Maps: those of the country chosen for it are added when
             # it is created (assets/labels-operators, see workspace_countries).
@@ -3307,14 +3319,18 @@ class Repository:
 
     def _read_chart_mapping_groups(self, mapping_type: str) -> list[dict[str, Any]]:
         table = self._chart_mapping_table(mapping_type)
+        query = (f'SELECT m.source_value, m.canonical_value, g.position, g.color, {{role}} FROM {table} m '
+                 'JOIN chart_mapping_groups g ON g.mapping_type = ? '
+                 'AND g.canonical_value = m.canonical_value COLLATE NOCASE '
+                 'ORDER BY g.position, g.canonical_value COLLATE NOCASE, m.source_value COLLATE NOCASE')
         with self.connection() as conn:
-            rows = conn.execute(
-                f'SELECT m.source_value, m.canonical_value, g.position, g.color FROM {table} m '
-                'JOIN chart_mapping_groups g ON g.mapping_type = ? '
-                'AND g.canonical_value = m.canonical_value COLLATE NOCASE '
-                'ORDER BY g.position, g.canonical_value COLLATE NOCASE, m.source_value COLLATE NOCASE',
-                (mapping_type,),
-            ).fetchall()
+            try:
+                rows = conn.execute(query.format(role='g.role'), (mapping_type,)).fetchall()
+            except sqlite3.OperationalError as error:
+                if 'role' not in str(error):
+                    raise
+                # A workspace database written before the Roles (not opened since): its labels have none.
+                rows = conn.execute(query.format(role="'' AS role"), (mapping_type,)).fetchall()
         grouped: dict[str, dict[str, Any]] = {}
         for row in rows:
             canonical = str(row['canonical_value']).strip()
@@ -3323,6 +3339,11 @@ class Repository:
                 'canonical': canonical, 'aliases': [], 'position': int(row['position']),
                 'color': str(row['color']),
             })
+            # Only a label with a part (Focus or Exclude) carries it, so the labels of the workspaces that give none
+            # (and the caches keyed by them) stay as they were.
+            role = normalize_mapping_role(row['role'])
+            if role:
+                group['role'] = role
             source = str(row['source_value']).strip()
             if source.casefold() != key:
                 group['aliases'].append(source)
@@ -3342,9 +3363,9 @@ class Repository:
 
     def replace_operator_mapping_group(
         self, original_canonical: str | None, canonical_value: str, aliases: Iterable[object],
-        color: str | None = None,
+        color: str | None = None, role: str | None = None,
     ) -> None:
-        self._replace_chart_mapping_group('operator', original_canonical, canonical_value, aliases, color)
+        self._replace_chart_mapping_group('operator', original_canonical, canonical_value, aliases, color, role)
 
     def replace_vendor_mapping_group(
         self, original_canonical: str | None, canonical_value: str, aliases: Iterable[object],
@@ -3355,9 +3376,10 @@ class Repository:
     @_invalidates_chart_mappings
     def _replace_chart_mapping_group(
         self, mapping_type: str, original_canonical: str | None, canonical_value: str,
-        aliases: Iterable[object], color: str | None,
+        aliases: Iterable[object], color: str | None, role: str | None = None,
     ) -> None:
-        """Create or replace one canonical chart identity and its aliases."""
+        """Create or replace one canonical chart identity and its aliases; ``role`` None keeps its part (Focus or
+        Exclude)."""
         table = self._chart_mapping_table(mapping_type)
         label = mapping_type.title()
         canonical = str(canonical_value).strip()
@@ -3374,6 +3396,7 @@ class Repository:
                 desired_sources.setdefault(alias.casefold(), alias)
 
         with self.connection() as conn:
+            self._ensure_chart_mapping_role_column(conn)
             rows = conn.execute(
                 f'SELECT source_value, canonical_value FROM {table}'
             ).fetchall()
@@ -3402,7 +3425,7 @@ class Repository:
                     f"These aliases already belong to another canonical {label}: {', '.join(conflicts)}."
                 )
             previous = conn.execute(
-                'SELECT position, color FROM chart_mapping_groups '
+                'SELECT position, color, role FROM chart_mapping_groups '
                 'WHERE mapping_type = ? AND canonical_value = ? COLLATE NOCASE',
                 (mapping_type, original or canonical),
             ).fetchone()
@@ -3411,6 +3434,7 @@ class Repository:
                 (mapping_type,),
             ).fetchone()[0])
             selected_color = normalized_color or (str(previous['color']) if previous else '#6F42C1')
+            selected_role = normalize_mapping_role(previous['role'] if previous else '') if role is None else normalize_mapping_role(role)
             if original:
                 conn.execute(
                     f'DELETE FROM {table} WHERE canonical_value = ? COLLATE NOCASE',
@@ -3421,8 +3445,8 @@ class Repository:
                     (mapping_type, original),
                 )
             conn.execute(
-                'INSERT INTO chart_mapping_groups (mapping_type, canonical_value, position, color) VALUES (?, ?, ?, ?)',
-                (mapping_type, canonical, position, selected_color),
+                'INSERT INTO chart_mapping_groups (mapping_type, canonical_value, position, color, role) VALUES (?, ?, ?, ?, ?)',
+                (mapping_type, canonical, position, selected_color, selected_role),
             )
             conn.executemany(
                 f'INSERT INTO {table} (source_value, canonical_value) VALUES (?, ?)',
@@ -3564,7 +3588,7 @@ class Repository:
         table = self._chart_mapping_table(mapping_type)
         label = mapping_type.title()
         rows: list[tuple[str, str]] = []
-        group_rows: list[tuple[str, str, int, str]] = []
+        group_rows: list[tuple[str, str, int, str, str]] = []
         assigned_sources: dict[str, str] = {}
         canonical_labels: set[str] = set()
         for position, group in enumerate(groups):
@@ -3583,7 +3607,7 @@ class Repository:
             color = str(group.get('color') or '#6F42C1').strip().upper()
             if not re.fullmatch(r'#[0-9A-F]{6}', color):
                 raise ValueError(f'Colour for {canonical} must use the #RRGGBB format.')
-            group_rows.append((mapping_type, canonical, position, color))
+            group_rows.append((mapping_type, canonical, position, color, normalize_mapping_role(group.get('role'))))
             for source in [canonical, *(str(value).strip() for value in aliases)]:
                 if not source:
                     continue
@@ -3596,11 +3620,12 @@ class Repository:
                 assigned_sources[source_key] = canonical
                 rows.append((source, canonical))
         with self.connection() as conn:
+            self._ensure_chart_mapping_role_column(conn)
             conn.execute(f'DELETE FROM {table}')
             conn.execute('DELETE FROM chart_mapping_groups WHERE mapping_type = ?', (mapping_type,))
             conn.executemany(
-                'INSERT INTO chart_mapping_groups (mapping_type, canonical_value, position, color) '
-                'VALUES (?, ?, ?, ?)', group_rows,
+                'INSERT INTO chart_mapping_groups (mapping_type, canonical_value, position, color, role) '
+                'VALUES (?, ?, ?, ?, ?)', group_rows,
             )
             conn.executemany(
                 f'INSERT INTO {table} (source_value, canonical_value) VALUES (?, ?)', rows,

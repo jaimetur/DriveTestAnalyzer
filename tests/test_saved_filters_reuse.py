@@ -355,37 +355,28 @@ def test_scoring_report_templates_travel_with_their_own_backup_element(client, t
     assert 'Scoring &amp; GAP Report Templates (from active workspace)' in page
 
 
-def test_saved_filters_travel_with_their_geographical_areas_and_compared_operators(tmp_path):
+def test_saved_filters_travel_with_their_geographical_areas(tmp_path):
     source = _workspace(tmp_path, 'source')
     ids = _three_cdrs(source, tmp_path / 'source')
     area = {'breakdown': 'Cluster', 'cities': ['Leeds', 'Glasgow'], 'main_cities': True, 'time_split': 'Quarterly'}
     used, _ = saved_filters.save_saved_filter(source, ids, ['Operator', 'Region'], 'NSA', baseline_operator='VF',
                                               area_summary=area)
-    saved_filters.set_compared_operators(source, used['id'], ['EE', 'O2'])
     saved_filters.update_saved_filter(source, used['id'], pinned=True)
     [before] = saved_filters.list_saved_filters(source)
     document = json.loads(json.dumps(saved_filters.saved_filters_document(source, favourites_only=True)))
     # Main Cities travel as such: the workspace that calculates the Saved Filter resolves them with its own.
     [entry] = document['saved_filters']
-    assert entry['area_summary'] == before['area_summary'] == area and entry['compared_operators'] == ['EE', 'O2']
+    assert entry['area_summary'] == before['area_summary'] == area
+    # Packages made before the Focus operators came from the Operator Maps still import.
+    entry['compared_operators'] = ['EE', 'O2']
 
     target = _workspace(tmp_path, 'target')
     saved_filters.import_saved_filters(target, document)
     _three_cdrs(target, tmp_path / 'target', prefix='Renamed ')
-    fields = ('nr_mode', 'levels', 'baseline_operator', 'context_filters', 'area_summary', 'compared_operators', 'pinned')
+    fields = ('nr_mode', 'levels', 'baseline_operator', 'context_filters', 'area_summary', 'pinned')
     [after] = saved_filters.list_saved_filters(target)
     assert {key: after[key] for key in fields} == {key: before[key] for key in fields}
-    # Calculated again, it keeps its Compared operators.
     assert saved_filters.refresh_saved_filter(target, after['id']) == (True, '')
-    assert saved_filters.list_saved_filters(target)[0]['compared_operators'] == ['EE', 'O2']
-    # Imported again, the Saved Filter it already is takes the Compared operators only when it has none.
-    saved_filters.set_compared_operators(target, after['id'], [])
-    saved_filters.import_saved_filters(target, document)
-    [joined] = saved_filters.list_saved_filters(target)
-    assert joined['id'] == after['id'] and joined['compared_operators'] == ['EE', 'O2']
-    saved_filters.set_compared_operators(target, after['id'], ['3'])
-    saved_filters.import_saved_filters(target, document)
-    assert saved_filters.list_saved_filters(target)[0]['compared_operators'] == ['3']
 
 
 def test_favourites_filters_with_a_campaign_choice_take_the_cdrs_it_stands_for_in_each_workspace(tmp_path):

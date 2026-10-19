@@ -133,7 +133,9 @@ def test_report_document_has_one_section_per_scenario_and_scoring():
          'job': national_job, 'result': national},
         {'scenario': normalize_report_configuration({'scenarios': [cities_scenario]})['scenarios'][0],
          'job': cities_job, 'result': cities},
-    ], TEMPLATE)
+    ], TEMPLATE, [{'canonical': name, 'aliases': [], 'position': index, 'color': '#365F91',
+                   **({'role': 'focus'} if name in {'Three UK', 'Vodafone UK'} else {})}
+                  for index, name in enumerate(OPERATORS)])
     titles = _titles(content)
     first = [title.split(' | ')[0] for title in titles]
     assert first[0] == 'Scoring & GAP Analysis'
@@ -156,7 +158,7 @@ def test_report_document_has_one_section_per_scenario_and_scoring():
     # All Environments only: no environment blocks, and no "All Environments" in the subtitles.
     assert not any('Drive - City' in title for title in titles)
     assert not any('All Environments' in title for title in titles)
-    # Only Vodafone and Three are compared with EE.
+    # Only the Focus operators of the Operator Maps (Vodafone and Three) are compared with EE.
     assert not any('O2 UK vs EE' in title for title in titles)
     assert any('Three UK vs EE' in title for title in titles)
 
