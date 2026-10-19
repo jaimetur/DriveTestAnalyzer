@@ -290,9 +290,9 @@ def test_report_adds_the_national_and_areas_slide():
         'Area', 'Operator', 'Score\n2026-Q2', 'Δ vs\n2026-Q1', 'Δ vs\nEE']
     areas = [table.cell(row, 0).text for row in range(1, len(table.rows)) if table.cell(row, 0).text]
     assert areas == ['National', 'Vendor A', 'VMO2 North', 'London']
-    # The reference and the operators to compare (Vodafone and Three), not O2.
+    # Every operator: the Focus operators choose none of the trends.
     operators = {table.cell(row, 1).text for row in range(1, len(table.rows))}
-    assert operators == {'EE', 'Vodafone UK', 'Three UK'}
+    assert operators == {'EE', 'O2 UK', 'Vodafone UK', 'Three UK'}
     charts = [shape.name for shape in slides[0].shapes if shape.has_chart]
     assert charts == [f'Scoring Area Summary Chart {area}' for area in areas]
 
