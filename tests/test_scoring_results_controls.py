@@ -1988,11 +1988,11 @@ process.stdout.write(JSON.stringify(usedDatasetIds()));
 def test_operator_choices_stand_out_in_the_blue_of_the_operators():
     template = SCORING_TEMPLATE.read_text(encoding='utf-8')
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
-    rule = template[template.index('/* Every choice of operators of Scoring'):]
+    rule = template[template.index('/* The choices of operators of Scoring'):]
     rule = rule[:rule.index('}')]
-    # The GAP reference and the Operator filter of the Calculation panel, and the operator choices of the results.
-    for selector in ('select[data-baseline-operator]',
-                     'select[data-scoring-context-filter="Operator"] + .multiselect-shell > .multiselect-trigger',
+    # The Operator filter of the Calculation panel and the operator choices of the results; not the GAP reference.
+    assert 'data-baseline-operator' not in rule
+    for selector in ('select[data-scoring-context-filter="Operator"] + .multiselect-shell > .multiselect-trigger',
                      'select[data-hierarchy-gap-operator]', 'select[data-gap-summary-operator]',
                      '[data-insight-select="act-operator"]', '[data-insight-select="stretches-operator"]',
                      '[data-insight-select="campaign-comparison"]'):
