@@ -163,10 +163,13 @@
     const campaignValues = () => [...(options.campaigns?.[nrMode()] || [])]
       .sort((left, right) => (pickers().campaignCompare ? pickers().campaignCompare(left, right) : 0));
     let campaigns = null;
+    // (Beside the Campaigns, the GAP reference of Scoring & GAP Analysis.)
     const renderCampaigns = (selected) => {
-      campaigns = multiField('Campaigns', campaignValues(), selected, {exclusive: presets});
-      campaigns.classList.add('brt-campaigns-field');
-      row.replaceChildren(campaigns);
+      const field = multiField('Campaigns', campaignValues(), selected, {exclusive: presets});
+      field.classList.add('brt-campaigns-field');
+      if (campaigns?.isConnected) campaigns.replaceWith(field);
+      else row.prepend(field);
+      campaigns = field;
     };
     renderCampaigns(saved.campaigns || []);
     nrModeHandlers.push(() => {
@@ -261,25 +264,33 @@
     nrModeHandlers.push(() => {
       renderTrendCampaigns((trendCampaigns?.getValue?.() || []).filter((value) => presets.some(([key]) => key === value)));
     });
+    trends.title = 'Always the whole country: the Region, Cluster and City filters do not apply to Geographical Areas and Scoring Trends';
     const area = node('fieldset', undefined, 'brt-choice-group brt-area');
     area.append(node('legend', 'Geographical Areas'));
-    area.title = 'The areas of the Geographical Areas and of the National & Geographical Areas Trends';
+    area.title = 'The areas of the Geographical Areas and Scoring Trends tabs';
     const breakdown = selectField('Breakdown', brtOptions.area_summary_breakdowns.map((value) => [value, value === 'None' ? 'None (Separate cities only)' : value]),
       saved.area_summary.breakdown);
-    const cities = multiField('Separate cities', options.values?.City || [], saved.area_summary.cities || [], {
+    const savedCities = saved.area_summary.cities || [];
+    const cities = multiField('Separate cities', [...new Set([...(options.values?.City || []), ...savedCities])], savedCities, {
+      allLabel: 'None', list: true,
       preset: {label: 'Main Cities (workspace list at each export)', values: options.main_cities || [], checked: saved.area_summary.main_cities, dynamic: true},
     });
     cities.title = 'Each one scored apart with its own tests (with Breakdown None, the only areas)';
     area.append(breakdown, cities);
     const trendOptions = node('fieldset', undefined, 'brt-choice-group brt-area');
     trendOptions.append(node('legend', 'Scoring Trends'));
+    trendOptions.title = 'The Scoring Trends tab only';
     const timeSplit = selectField('Time split', brtOptions.area_summary_time_splits.map((value) => [value, value === 'All' ? 'All selected CDRs' : value]),
       saved.area_summary.time_split);
     trendOptions.append(trendHost, timeSplit);
-    const areaNote = node('p', 'Always the whole country: the Region, Cluster and City filters do not apply to Geographical Areas and Scoring Trends.', 'form-note');
-    trends.append(area, trendOptions, areaNote);
+    // The two subpanels side by side, as on the Scoring & GAP Analysis page.
+    const columns = node('div', undefined, 'brt-trends-columns');
+    columns.append(area, trendOptions);
+    trends.append(columns);
     const grid = node('div', undefined, 'brt-option-grid');
-    grid.append(methodology, reference, compared);
+    grid.append(methodology, compared);
+    // The GAP reference goes beside the Campaigns of the section, as on the Scoring & GAP Analysis page.
+    box.reference = reference;
     box.append(scorings, environments, tables, grid, trends);
     box.collect = () => ({
       scorings: scoringBoxes.filter((item) => item.checked).map((item) => item.value),
@@ -436,6 +447,7 @@
     const optionsBox = saved.key === 'scoring' ? scoringOptions(saved.options)
       : saved.key === 'network_insights' ? networkOptions(saved.options)
         : saved.key === 'non_qualified_calls' ? callsOptions(saved.options) : null;
+    if (optionsBox?.reference) scope.append(optionsBox.reference);
     if (optionsBox) {
       const optionsWrap = node('div', undefined, 'brt-section-options');
       optionsWrap.append(node('h4', 'Options'), optionsBox);

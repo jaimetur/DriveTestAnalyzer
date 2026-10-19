@@ -73,7 +73,9 @@ def test_scoring_calculation_panel_orders_nr_mode_campaign_cdrs_filters_and_gap_
     assert template.index('data-scoring-context-filter="Campaign"') < template.index('data-scoring-auto-cdrs')
     assert template.index('data-scoring-auto-cdrs') < template.index('id="scoring-context-filters-title"')
     assert template.index('id="scoring-context-filters-title"') < template.index('<strong>Split by</strong>')
-    assert template.index('<strong>Split by</strong>') < template.index('id="scoring-gap-reference-title"')
+    # The GAP reference beside the Campaign.
+    assert template.index('data-scoring-context-filter="Campaign"') < template.index('id="scoring-gap-reference-title"') < template.index(
+        'data-scoring-auto-cdrs')
     assert 'data-scoring-select-datasets' not in template
     dataset_list = next(attrs for tag, attrs, _ancestors in elements if 'data-dataset-list' in attrs)
     assert 'hidden' in dataset_list

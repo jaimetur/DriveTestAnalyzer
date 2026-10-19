@@ -18,7 +18,6 @@
   .scoring-hero-badge { display: inline-flex; align-items: center; gap: .45rem; padding: .5rem .85rem; border: 0; border-radius: 999px; background: linear-gradient(128deg, #143653, #176e77); color: #fff; font-size: .78rem; font-weight: 800; white-space: nowrap; box-shadow: 0 6px 14px rgba(20, 54, 83, .22); }
   .scoring-controls { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; }
   .scoring-filter-grid { display: grid; grid-template-columns: minmax(12rem,15rem) minmax(0,1fr); gap: 1rem; align-items: start; }
-  .scoring-gap-reference-grid { align-items: center; }
   .scoring-context-filter-grid { display: grid; grid-template-columns: repeat(7,minmax(0,1fr)); gap: .65rem; }
   @media(max-width:1500px) { .scoring-context-filter-grid { grid-template-columns: repeat(4,minmax(0,1fr)); } }
   .scoring-context-filter-grid > label { display: grid; min-width: 0; gap: .3rem; color: var(--muted); font-size: .76rem; font-weight: 750; }
@@ -61,7 +60,7 @@
   .scoring-levels-shortcut svg { flex: 0 0 auto; width: 1rem; height: 1rem; margin-right: .3rem; }
   .scoring-picker-note { margin: .5rem .1rem 0; color: var(--muted); font-size: .69rem; }
   /* NR Mode and Campaign choose the CDRs, listed read-only below them by type. */
-  .scoring-scope-row { display: grid; grid-template-columns: minmax(8rem, 11rem) minmax(0, 22rem); gap: .6rem 1rem; align-items: end; }
+  .scoring-scope-row { display: grid; grid-template-columns: minmax(8rem, 11rem) minmax(0, 22rem) minmax(9rem, 13rem); gap: .6rem 1rem; align-items: end; }
   .scoring-scope-control { display: grid; gap: .3rem; color: #245b43; font-size: .82rem; font-weight: 750; }
   .scoring-auto-cdrs { margin-top: .75rem; padding: .7rem .75rem; border: 1px solid #c0ddce; border-radius: 12px; background: #f0f8f3; }
   .scoring-auto-cdrs-head { display: flex; align-items: center; flex-wrap: wrap; gap: .45rem; margin-bottom: .5rem; }
@@ -97,7 +96,11 @@
   .scoring-area-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(13rem, 16rem)); gap: .6rem 1rem; }
   .scoring-area-grid > label { display: grid; gap: .3rem; font-size: .82rem; font-weight: 700; color: #31545a; }
   /* Geographical Areas & Scoring Trends holds the areas of both tabs and the campaigns and time split of the trends. */
-  .scoring-trends-picker > .scoring-area-summary { margin-top: .7rem; border-color: #c9e0d4; background: rgba(255,255,255,.55); }
+  .scoring-trends-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .7rem; margin-top: .6rem; }
+  .scoring-trends-columns > .scoring-area-summary { margin: 0; border-color: #c9e0d4; background: rgba(255,255,255,.55); }
+  /* Each field takes half of its subpanel: no room left beside them. */
+  .scoring-trends-columns .scoring-area-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  @media (max-width: 900px) { .scoring-trends-columns { grid-template-columns: minmax(0, 1fr); } }
   .scoring-trends-grid { margin-bottom: .1rem; }
   /* Included, the summary locks the area filters of the Context filters, and says why. */
   /* Weekly and Daily CDRs stand out from the Final CDRs, as when they are uploaded. */
@@ -1241,7 +1244,7 @@
       <div><strong data-saved-filter-editing-title>Editing a Saved Filter</strong><span>Change its NR Mode, Campaign, filters, Split by, GAP reference, Scoring Trends or methodology: its CDRs follow the NR Mode and Campaign. Save Changes calculates it again, with the same name and star; Cancel Editing (or Escape) leaves it as it was.</span></div>
     </div>
     <div class="scoring-picker scoring-scope-picker">
-      <div class="scoring-picker-head"><strong>NR Mode &amp; Campaign</strong><span>The CDRs are chosen from them</span></div>
+      <div class="scoring-picker-head"><strong>NR Mode, Campaign &amp; GAP reference</strong><span>The CDRs are chosen from the NR Mode and Campaign</span></div>
       <div class="scoring-scope-row">
         <label class="scoring-scope-control">NR Mode
           <select data-nr-filter aria-label="NR Mode">
@@ -1253,6 +1256,15 @@
         <label class="scoring-scope-control scoring-scope-campaign">Campaign
           <select multiple size="1" data-scoring-context-filter="Campaign" data-multiselect-auto-close="1000" data-multiselect-empty-label="All complete campaigns" aria-label="Filter by Campaign">
             <option value="" disabled>No values</option>
+          </select>
+        </label>
+        {# The GAP reference of the calculation, beside the Campaign. #}
+        <label class="scoring-scope-control" aria-labelledby="scoring-gap-reference-title"><span id="scoring-gap-reference-title">GAP reference operator</span>
+          <select data-baseline-operator aria-labelledby="scoring-gap-reference-title" title="KPI GAP = compared operator weighted points minus reference weighted points for each KPI. Category and final GAP rows show the arithmetic mean of valid KPI GAPs.">
+            {% set scoring_options = scoring_operator_options | default([], true) %}
+            {% if scoring_options %}
+              {% for operator in scoring_options %}<option value="{{ operator.value }}" data-operator-color="{{ operator.color or '' }}" {% if operator.value | lower == 'ee' %}selected{% endif %}>{{ operator.label }}</option>{% endfor %}
+            {% else %}<option value="EE" selected>EE</option>{% endif %}
           </select>
         </label>
       </div>
@@ -1321,51 +1333,39 @@
       <p class="scoring-context-filter-note scoring-levels-note">Operator is required.</p>
     </div>
     <div class="scoring-picker scoring-trends-picker" data-scoring-trends aria-labelledby="scoring-trends-title">
-      <div class="scoring-picker-head"><strong id="scoring-trends-title">Geographical Areas &amp; Scoring Trends</strong><span>The areas of the Geographical Areas and Scoring Trends tabs, and the campaigns and time split of the trends</span></div>
-      <div class="scoring-picker scoring-area-summary" data-scoring-area-summary>
-        <div class="scoring-picker-head"><strong>Geographical Areas</strong><span>Both tabs: the Geographical Areas and the National &amp; Geographical Areas Trends</span></div>
-        <div class="scoring-area-grid">
-          <label>Breakdown
-            <select data-scoring-area-breakdown aria-label="Breakdown of the Geographical Areas and the National &amp; Geographical Areas Trends" title="Each Region, Cluster or City of the Geographical Areas and the trends; None: the Separate cities only">
-              {% for value in ['None', 'Region', 'Cluster', 'City'] %}<option value="{{ value }}"{% if value == 'Region' %} selected{% endif %}>{{ 'None (Separate cities only)' if value == 'None' else value }}</option>{% endfor %}
-            </select>
-          </label>
-          <label>Separate cities
-            <select multiple size="1" data-scoring-area-cities data-multiselect-auto-close="1000" data-multiselect-empty-label="None" aria-label="Separate cities of the Geographical Areas and the National &amp; Geographical Areas Trends">
-              <option value="London" selected>London</option>
-            </select>
-          </label>
+      <div class="scoring-picker-head" title="Always the whole country: the Region, Cluster and City filters of the calculation do not apply to Geographical Areas and Scoring Trends."><strong id="scoring-trends-title">Geographical Areas &amp; Scoring Trends</strong></div>
+      <div class="scoring-trends-columns">
+        <div class="scoring-picker scoring-area-summary" data-scoring-area-summary>
+          <div class="scoring-picker-head" title="The areas of the Geographical Areas and Scoring Trends tabs"><strong>Geographical Areas</strong></div>
+          <div class="scoring-area-grid">
+            <label>Breakdown
+              <select data-scoring-area-breakdown aria-label="Breakdown of the Geographical Areas and the National &amp; Geographical Areas Trends" title="Each Region, Cluster or City of the Geographical Areas and the trends; None: the Separate cities only">
+                {% for value in ['None', 'Region', 'Cluster', 'City'] %}<option value="{{ value }}"{% if value == 'Region' %} selected{% endif %}>{{ 'None (Separate cities only)' if value == 'None' else value }}</option>{% endfor %}
+              </select>
+            </label>
+            <label>Separate cities
+              <select multiple size="1" data-scoring-area-cities data-multiselect-auto-close="1000" data-multiselect-empty-label="None" aria-label="Separate cities of the Geographical Areas and the National &amp; Geographical Areas Trends">
+                <option value="London" selected>London</option>
+              </select>
+            </label>
+          </div>
+        </div>
+        <div class="scoring-picker scoring-area-summary scoring-trends-options">
+          <div class="scoring-picker-head" title="The Scoring Trends tab only: with these campaigns, whatever the Campaign filter (without campaigns, those of the Campaign filter)"><strong>Scoring Trends</strong></div>
+          <div class="scoring-area-grid scoring-trends-grid">
+            <label>Campaigns
+              <select multiple size="1" data-scoring-trend-campaigns data-multiselect-auto-close="1000" data-multiselect-empty-label="Same as the Campaign filter" aria-label="Campaigns of the Scoring Trends">
+                <option value="" disabled>No values</option>
+              </select>
+            </label>
+            <label>Time split
+              <select data-scoring-area-time-split aria-label="Time split of the National &amp; Geographical Areas Trends" title="All selected CDRs aggregates every selected CDR into one value; Campaign splits by campaign; Daily to Yearly split by the period of the start time of each test">
+                {% for value, label in [('All', 'All selected CDRs'), ('Campaign', 'Campaign'), ('Daily', 'Daily'), ('Weekly', 'Weekly'), ('Monthly', 'Monthly'), ('Quarterly', 'Quarterly'), ('Yearly', 'Yearly')] %}<option value="{{ value }}"{% if value == 'Campaign' %} selected{% endif %}>{{ label }}</option>{% endfor %}
+              </select>
+            </label>
+          </div>
         </div>
       </div>
-      <div class="scoring-picker scoring-area-summary scoring-trends-options">
-        <div class="scoring-picker-head"><strong>Scoring Trends</strong><span>The Scoring Trends tab only</span></div>
-        <div class="scoring-area-grid scoring-trends-grid">
-          <label>Campaigns
-            <select multiple size="1" data-scoring-trend-campaigns data-multiselect-auto-close="1000" data-multiselect-empty-label="Same as the Campaign filter" aria-label="Campaigns of the Scoring Trends">
-              <option value="" disabled>No values</option>
-            </select>
-          </label>
-          <label>Time split
-            <select data-scoring-area-time-split aria-label="Time split of the National &amp; Geographical Areas Trends" title="All selected CDRs aggregates every selected CDR into one value; Campaign splits by campaign; Daily to Yearly split by the period of the start time of each test">
-              {% for value, label in [('All', 'All selected CDRs'), ('Campaign', 'Campaign'), ('Daily', 'Daily'), ('Weekly', 'Weekly'), ('Monthly', 'Monthly'), ('Quarterly', 'Quarterly'), ('Yearly', 'Yearly')] %}<option value="{{ value }}"{% if value == 'Campaign' %} selected{% endif %}>{{ label }}</option>{% endfor %}
-            </select>
-          </label>
-        </div>
-        <p class="scoring-context-filter-note">The Scoring Trend and the National &amp; Geographical Areas Trends are calculated with these campaigns, whatever the Campaign filter of the rest of the scoring, with the same filters, methodology and GAP reference. Without campaigns they follow the Campaign filter.</p>
-      </div>
-      <p class="scoring-context-filter-note">Always the whole country: the Region, Cluster and City filters of the calculation do not apply to Geographical Areas and Scoring Trends.</p>
-    </div>
-    <div class="scoring-picker" aria-labelledby="scoring-gap-reference-title">
-      <div class="scoring-picker-head"><strong id="scoring-gap-reference-title">GAP reference operator</strong></div>
-    <div class="scoring-filter-grid scoring-gap-reference-grid">
-        <select data-baseline-operator aria-labelledby="scoring-gap-reference-title" aria-describedby="scoring-gap-baseline-note">
-          {% set scoring_options = scoring_operator_options | default([], true) %}
-          {% if scoring_options %}
-            {% for operator in scoring_options %}<option value="{{ operator.value }}" data-operator-color="{{ operator.color or '' }}" {% if operator.value | lower == 'ee' %}selected{% endif %}>{{ operator.label }}</option>{% endfor %}
-          {% else %}<option value="EE" selected>EE</option>{% endif %}
-        </select>
-      <p class="scoring-note" id="scoring-gap-baseline-note">KPI GAP = compared operator weighted points minus reference weighted points for each KPI. Category and final GAP rows show the arithmetic mean of valid KPI GAPs.</p>
-    </div>
     </div>
     <div class="scoring-controls-foot scoring-calculation-actions">
       <div class="scoring-methodology-actions">

@@ -444,6 +444,8 @@
     scenario.area_summary.campaigns = Array.isArray(scenario.area_summary.campaigns) ? scenario.area_summary.campaigns : ['@all-campaigns'];
     scenario.area_summary.enabled = true;
     const trendsPanel = el('fieldset', 'scoring-report-subpanel scoring-report-trends');
+    trendsPanel.title = 'Always the whole country: the Region, Cluster, City and Main Cities filters of the scenario do not apply to '
+      + 'Geographical Areas and Scoring Trends';
     trendsPanel.append(el('legend', 'scoring-report-label', 'Geographical Areas & Scoring Trends'));
     const areaPanel = el('fieldset', 'scoring-report-subpanel');
     areaPanel.append(el('legend', 'scoring-report-label', 'Geographical Areas'));
@@ -525,9 +527,10 @@
     time.dataset.diffKey = 'area:time_split';
     trendRow.append(time);
     trendPanel.append(trendRow);
-    const note = el('p', 'scoring-report-note', 'Always the whole country: the Region, Cluster, City and Main Cities filters of the '
-      + 'scenario do not apply to Geographical Areas and Scoring Trends. Their time split applies to the trends only.');
-    trendsPanel.append(areaPanel, trendPanel, note);
+    // The two subpanels side by side, as on the Scoring & GAP Analysis page.
+    const columns = el('div', 'scoring-report-columns');
+    columns.append(areaPanel, trendPanel);
+    trendsPanel.append(columns);
     const scorings = el('div', 'scoring-report-scorings');
     for (const [key, label] of SCORINGS) scorings.append(scoringPanel(scenario, key, label, context.operators || [], rerender));
     card.append(filters, levels, trendsPanel, scorings);

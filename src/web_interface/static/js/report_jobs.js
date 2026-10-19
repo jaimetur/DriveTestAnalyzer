@@ -78,8 +78,9 @@
 
   // ``exclusive`` lists [value, label] choices shown first that stand alone (Latest campaign, Latest 2 campaigns):
   // checking one clears the others and every value, checking a value clears them.
-  // `allLabel` names every value selected (or none), which saves no restriction.
-  function multiPicker(label, values, selected = [], {preset = null, onChange = null, exclusive = [], allLabel = 'All'} = {}) {
+  // `allLabel` names every value selected (or none), which saves no restriction. With ``list`` the values are a plain
+  // list instead (such as Separate cities): none means none, and every value is every value.
+  function multiPicker(label, values, selected = [], {preset = null, onChange = null, exclusive = [], allLabel = 'All', list = false} = {}) {
     const wrapper = node('details', undefined, 'workspace-user-picker rj-multi');
     const summary = node('summary');
     const caption = node('span', '', 'rj-multi-caption');
@@ -106,7 +107,7 @@
     });
     const exclusiveChosen = exclusiveBoxes.some((box) => box.checked);
     // An empty saved selection means every value: they all start checked.
-    const chosen = new Set(exclusiveChosen ? [] : (selected.length ? selected : values).map(String));
+    const chosen = new Set(exclusiveChosen ? [] : (selected.length || list ? selected : values).map(String));
     const boxes = values.map((value) => {
       const row = node('label', undefined, 'rj-multi-option');
       const box = node('input'); box.type = 'checkbox'; box.value = String(value); box.checked = chosen.has(String(value));
@@ -135,7 +136,7 @@
       const count = boxes.filter((box) => box.checked && !box.disabled).length;
       const enabled = boxes.filter((box) => !box.disabled).length;
       // All: every value selected, or none (no restriction either way).
-      const state = count === 0 || count === enabled ? allLabel : `${count} of ${enabled}`;
+      const state = count === 0 || (count === enabled && !list) ? allLabel : `${count} of ${enabled}`;
       const exclusiveChoice = exclusiveBoxes.find((box) => box.checked);
       caption.textContent = exclusiveChoice ? exclusiveChoice.nextElementSibling.textContent
         : presetBox?.checked && preset.dynamic ? preset.label : state;
@@ -178,7 +179,7 @@
       const exclusiveChoice = exclusiveBoxes.find((box) => box.checked);
       if (exclusiveChoice) return [exclusiveChoice.value];
       const checked = boxes.filter((box) => box.checked && !box.disabled).map((box) => box.value);
-      return checked.length === boxes.filter((box) => !box.disabled).length ? [] : checked;
+      return !list && checked.length === boxes.filter((box) => !box.disabled).length ? [] : checked;
     };
     field.getPreset = () => Boolean(presetBox?.checked);
     field.checkedValues = () => boxes.filter((box) => box.checked && !box.disabled).map((box) => box.value);
@@ -618,7 +619,8 @@
     // values of every CDR of the NR Mode. They follow NR Mode in its row; the CDRs they choose are listed below.
     const campaigns = campaignPicker(() => nrMode.value, entry.campaigns || [], {complete: true});
     const head = node('div', undefined, 'rj-grid rj-one-row');
-    head.append(field('NR Mode', nrMode), campaigns.field, field('Name in the email', label), field('Methodology', methodology), field('GAP reference operator', baseline), remove);
+    // The GAP reference beside the campaigns, as on the Scoring & GAP Analysis page.
+    head.append(field('NR Mode', nrMode), campaigns.field, field('GAP reference operator', baseline), field('Name in the email', label), field('Methodology', methodology), remove);
     const cdrsInUse = () => options.datasets.filter((item) => item.nr_mode === nrMode.value).map((item) => item.id);
     nrMode.addEventListener('change', () => campaigns.refresh());
     const formats = node('div', undefined, 'rj-formats');

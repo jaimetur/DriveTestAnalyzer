@@ -121,7 +121,7 @@ def test_reporting_artifacts_choose_their_cdrs_by_campaign():
     # in one list right after NR Mode, with the CDRs they choose below that row.
     assert "campaigns = name ? campaignPicker(() => nrMode.value, saved || [], {onChange: () => scheduleLoad()}) : null;" in script
     assert "head.append(field('NR Mode', nrMode), campaignSlot, field('Dashboard', dashboard)" in script
-    assert "head.append(field('NR Mode', nrMode), campaigns.field, field('Name in the email', label)" in script
+    assert "head.append(field('NR Mode', nrMode), campaigns.field, field('GAP reference operator', baseline)" in script
     assert "head.append(field('NR Mode', nrMode), campaigns.field, field('Technology', technology)" in script
     assert "picker = multiPicker('Campaigns', listed(), chosen, {exclusive: presets," in script
     assert "const campaigns = campaignPicker(() => nrMode.value, entry.campaigns || [], {complete: true});" in script
