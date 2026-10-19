@@ -2568,8 +2568,9 @@ def _add_insight_slides(presentation, views: dict, environment: str, scoring: st
                                        environment_labels=environment_labels, scope=scope,
                                        compared=chosen('summary-operators', _everyone))
         if _option(options, 'summary', 'levers'):
+            # The Focus operators (those chosen on the page when it chose them).
             add_levers_slides(presentation, items.get('levers', []), subtitle=subtitle, new_slide=_slide, scope=scope,
-                              compared=chosen('summary-operators', _everyone))
+                              compared=chosen('summary-operators'))
         if _option(options, 'summary', 'places'):
             add_place_ranking_slides(presentation, act_items['place_rankings'], subtitle=subtitle, new_slide=_slide,
                                      owner_color=owner_color, scope=scope)

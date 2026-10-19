@@ -255,6 +255,22 @@ def test_the_campaign_comparison_exports_the_focus_operators(national, monkeypat
     assert shown and all(operators == ['EE', 'O2 UK', 'Three UK', 'Vodafone UK'] for operators in shown)
 
 
+def test_the_biggest_levers_export_the_focus_operators(national, monkeypatch):
+    import src.modules.scoring_exports as exports
+    job, result, _insights = national
+    shown = []
+    monkeypatch.setattr(exports, 'add_levers_slides', lambda _presentation, levers, compared, **_options: shown.append(
+        sorted({item['operator'] for item in levers if compared(item['operator'], item.get('label'))})))
+    groups = [{'canonical': 'Three UK', 'aliases': [], 'position': 0, 'color': '#000000', 'role': 'focus'}]
+    export_scoring_powerpoint(job, result, TEMPLATE, groups, scorings=['best_network'], environments=['Combined'])
+    assert shown and all(operators == ['Three UK'] for operators in shown)
+    # The operators chosen on the page in the Summary.
+    shown.clear()
+    export_scoring_powerpoint({**job, '_operator_choices': {'summary-operators': ['O2 UK', 'Vodafone UK']}}, result, TEMPLATE, groups,
+                              scorings=['best_network'], environments=['Combined'])
+    assert shown and all(operators == ['O2 UK', 'Vodafone UK'] for operators in shown)
+
+
 def test_the_route_of_where_to_act_is_drawn_as_the_routes_of_points_lost(national, monkeypatch) -> None:
     import src.modules.scoring_summary_slides as summary_slides
     from src.modules.scoring_act_slides import render_owner_route_map
