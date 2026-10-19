@@ -1277,7 +1277,7 @@ def test_dashboards_lifecycle_and_layout(client, ppt_reporting_old):
     assert page.status_code == 200
     assert re.search(r'data-authenticated-session="[^"]+"', page.text)
     assert 'id="page-panel-navigator"' in page.text
-    assert 'data-page-panel-navigator-list' in page.text
+    assert 'Modules &amp; Sections' in page.text and 'class="module-tree-sections"' in page.text
     assert page.text.index('>CDR Analysis<') < page.text.index('>PPT Dashboards<') < page.text.index('>PPT Reporting (old)<') < page.text.index('>Network Insights<')
     assert client.get('/ppt-reporting-old').status_code == 200
     # Bookmarks from earlier versions keep opening the module now called PPT Reporting (old).
@@ -1465,22 +1465,11 @@ def test_dashboards_lifecycle_and_layout(client, ppt_reporting_old):
     assert "The template owns these required chart attributes." in (Path(__file__).parents[1] / 'src/modules/ppt_dashboards.py').read_text(encoding='utf-8')
     app_script = (Path(__file__).parents[1] / 'src/web_interface/static/js/app.js').read_text(encoding='utf-8')
     assert 'function setupPagePanelNavigator()' in app_script
-    assert "mainMenuLabel.textContent = 'Main Menu';" in app_script
-    assert "mainMenuPath.setAttribute('d', 'M3 11.5 12 4l9 7.5M5.5 10v10h13V10M9.5 20v-6h5v6');" in app_script
-    assert "window.scrollTo({top: 0, left: 0, behavior: 'smooth'});" in app_script
+    # Modules & Sections: the drawer of every module with its sections (rendered by the page) in the colour of the module
+    # of the page; choosing a module or a section closes it.
     assert "'module-tab-ppt-dashboards': 'dashboards'" in app_script
-    assert "panel.scrollIntoView({behavior: 'smooth', block: 'start'});" in app_script
-    assert "const topLevelPanels = Array.from(main.querySelectorAll('article.panel, details.panel, section.panel'))" in app_script
-    assert 'const visiblePanels = topLevelPanels.filter((panel) => (' in app_script
-    assert "index === 0 ? eyebrow?.textContent || heading?.textContent" in app_script
-    assert 'const explicitLabel = panel.dataset.pagePanelLabel;' in app_script
-    assert 'panel.getClientRects().length > 0' in app_script
-    assert "attributeFilter: ['hidden', 'class', 'style']" in app_script
-    assert 'childList: true' in app_script
-    assert "window.addEventListener('resize', scheduleRebuild, {passive: true});" in app_script
-    assert "if (opening) rebuild();" in app_script
-    assert "document.addEventListener('page-panel-navigation:update', scheduleRebuild);" in app_script
-    assert "panel.dataset.pagePanelNavigation !== 'exclude'" in app_script
+    assert "navigator.querySelectorAll('a[href]').forEach((link) => link.addEventListener('click', () => setOpen(false)));" in app_script
+    assert 'setupModuleNavigator' not in app_script
     assert 'setupPagePanelNavigator();' in app_script
     reporting_template = (Path(__file__).parents[1] / 'src/web_interface/templates/reporting.html').read_text(encoding='utf-8')
     assert 'id="report-charts-panel"' in reporting_template

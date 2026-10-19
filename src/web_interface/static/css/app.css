@@ -3708,6 +3708,36 @@ body:has(.release-navigator) .help-navigator{top:37%}
   transform:translateY(-50%);
 }
 
+/* Modules & Sections: one drawer as tall as the window, its tab where the page sections were, every module with its
+   sections and their parts; the module of the page open. The window outside the drawer stays clickable. */
+#page-panel-navigator.modules-sections-navigator { top: 1.5vh; bottom: 1.5vh; top: 1.5dvh; bottom: 1.5dvh; display: flex; align-items: center;
+  transform: translateX(calc(-100% + 1px)); pointer-events: none; }
+#page-panel-navigator.modules-sections-navigator.is-open { transform: translateX(0); }
+#page-panel-navigator.modules-sections-navigator .page-panel-navigator-drawer { width: 100%; max-height: 100%; }
+#page-panel-navigator.modules-sections-navigator :is(.page-panel-navigator-tab, .edge-navigator-hover-target) { top: 76%; }
+#page-panel-navigator.modules-sections-navigator .page-panel-navigator-tab { height: 12.5rem; min-height: 12.5rem; }
+.modules-sections-navigator :is(.page-panel-navigator-drawer, .page-panel-navigator-tab, .edge-navigator-hover-target) { pointer-events: auto; }
+.modules-sections-navigator .module-tree-module > summary { display: flex; align-items: center; gap: .25rem; list-style: none; cursor: pointer; }
+.modules-sections-navigator .module-tree-module > summary::-webkit-details-marker { display: none; }
+.modules-sections-navigator .module-tree-module > summary > a { flex: 1 1 auto; min-width: 0; }
+.modules-sections-navigator .module-tree-module > summary::after { content: '\203A'; flex: 0 0 1.5rem; color: var(--panel-nav-text); font-size: 1.15rem; font-weight: 800;
+  line-height: 1; text-align: center; transition: transform .15s ease; }
+.modules-sections-navigator .module-tree-module[open] > summary::after { transform: rotate(90deg); }
+.modules-sections-navigator .module-tree-sections { display: grid; gap: .1rem; margin: .3rem 1.4rem .4rem .85rem; padding: 0 0 0 .5rem;
+  border-left: 2px solid color-mix(in srgb, var(--panel-nav-border) 25%, #fff); list-style: none; }
+.modules-sections-navigator .module-tree-sections ul { display: grid; gap: .05rem; margin: .05rem 0 .2rem .75rem; padding: 0; list-style: none; }
+.module-navigator.modules-sections-navigator .module-navigator-category .module-tree-sections a { display: flex; align-items: center; gap: .45rem; padding: .32rem .5rem;
+  border: 0; border-radius: .45rem; background: transparent; font-size: .78rem; font-weight: 650; line-height: 1.25; }
+.module-navigator.modules-sections-navigator .module-navigator-category .module-tree-sections a:is(:hover, :focus-visible) { background: var(--panel-nav-hover); }
+.modules-sections-navigator .module-tree-sections .menu-item-icon { flex: 0 0 auto; width: .95em; height: .95em; fill: none; stroke: currentColor; stroke-width: 2;
+  stroke-linecap: round; stroke-linejoin: round; }
+.modules-sections-navigator .module-tree-sections li.is-nested { margin-left: .75rem; }
+.modules-sections-navigator .module-tree-group { display: block; margin: .4rem 0 .1rem .5rem; color: var(--panel-nav-text); font-size: .64rem; font-weight: 850;
+  letter-spacing: .07em; text-transform: uppercase; opacity: .7; }
+@media (max-width: 700px) {
+  #page-panel-navigator.modules-sections-navigator .page-panel-navigator-tab { height: 9.5rem; min-height: 9.5rem; }
+}
+
 /* Final narrow-viewport guard. Keep this block last so component-specific
    desktop rules cannot reintroduce overflow or iOS focus zoom. */
 @media (max-width: 640px) {

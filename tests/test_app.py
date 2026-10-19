@@ -9184,7 +9184,12 @@ def test_top_navigation_shows_document_links(client) -> None:
     assert 'href="/datasets-analysis"' in response.text
     assert 'class="module-tabs"' in response.text
     assert 'class="module-tabs-secondary"' in response.text
-    assert 'data-module-navigator' in response.text
+    assert 'data-page-panel-navigator' in response.text and '<span>Modules &amp; Sections</span>' in response.text
+    # One drawer, Modules & Sections, with every module and its sections and their parts (the Help chapters in their groups).
+    drawer = response.text.split('id="page-panel-navigator"', 1)[1].split('</aside>', 1)[0]
+    assert 'data-module-navigator' not in response.text and drawer.count('class="module-tree-module"') >= 10
+    assert 'href="/network-insights#section-rf-quality"' in drawer and 'href="/scoring#scoring-results-points-lost"' in drawer
+    assert '<b class="module-tree-group">Main Modules</b>' in drawer
     assert '>Main Modules</h4>' in response.text
     assert '>Administrative Modules</h4>' in response.text
     assert '>Documentation</h4>' in response.text
@@ -9261,7 +9266,8 @@ def test_collapsed_side_navigators_reveal_near_viewport_edges() -> None:
     assert 'setupEdgeNavigatorReveal();' in app_script
     assert ':not(.is-edge-revealed):not(:has(:focus-visible)):not(:hover) .page-panel-navigator-tab {' in app_styles
     assert 'max-height:min(96dvh,84rem)' in app_styles
-    assert base_template.count('class="edge-navigator-hover-target"') == 2
+    # One drawer at the left edge, Modules & Sections.
+    assert base_template.count('class="edge-navigator-hover-target"') == 1
     assert doc_template.count('class="edge-navigator-hover-target"') == 2
     assert '.page-panel-navigator .edge-navigator-hover-target { left:100%; }' in app_styles
     assert ':is(.help-navigator,.release-navigator) .edge-navigator-hover-target { right:100%; }' in app_styles
@@ -9283,7 +9289,7 @@ def test_non_admin_navigation_hides_admin_tab(client) -> None:
     assert 'href="/documents/view/changelog"' in workspace.text
     assert 'href="/documents/view/help"' in workspace.text
     assert 'href="/admin"' not in workspace.text
-    assert 'data-module-navigator' in workspace.text
+    assert 'data-page-panel-navigator' in workspace.text
     assert 'href="/application-config"' not in workspace.text
     assert 'href="/workspace-config"' not in workspace.text
     assert 'User: demo' in workspace.text

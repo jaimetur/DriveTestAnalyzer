@@ -5,6 +5,17 @@
 {#- The menu of a tab: its sections, each with its icon, in the colour of the module. -#}
 {#- The tabs are hidden in the embedded PPT Templates Editor, so it has no menus. -#}
 {%- macro sections_menu(key, title, links, accent) -%}{% if links and not embedded_template_editor %}<nav class="module-sections-menu{% if links | select | selectattr(3) | list %} module-sections-menu-grouped{% endif %}" popover="manual" data-module-sections-for="{{ key }}" aria-label="{{ title }} sections" style="--menu-accent: {{ accent }}">{% for link in links %}{% if not link %}<div class="module-sections-separator" role="separator"></div>{% else %}{% set href, label, icon, parts = link %}{% if parts %}<div class="module-config-group"><a href="{{ href }}">{{ menu_icon(icon) }}<span>{{ label }}</span><span class="module-config-chevron" aria-hidden="true">›</span></a><div class="module-config-sections" role="group" aria-label="{{ label }}">{% for part in parts %}{% if part %}<a href="{{ part[0] }}">{{ menu_icon(part[2]) }}<span>{{ part[1] }}</span></a>{% else %}<div class="module-sections-separator" role="separator"></div>{% endif %}{% endfor %}</div></div>{% else %}<a href="{{ href }}">{{ menu_icon(icon) }}<span>{{ label }}</span></a>{% endif %}{% endif %}{% endfor %}</nav>{% endif %}{%- endmacro -%}
+{%- macro tree_links(links, page='') -%}{% set shown = links | select | list %}{% if shown %}<ul class="module-tree-sections">{% for link in shown %}{% if link | length == 4 and link[3] is not string %}{% set href, label, icon, parts = link %}{% set kept = (parts or []) | select | list %}<li><a href="{{ href }}">{{ menu_icon(icon) }}{{ label }}</a>{% if kept %}<ul>{% for part in kept %}<li><a href="{{ part[0] }}">{{ menu_icon(part[2]) }}{{ part[1] }}</a></li>{% endfor %}</ul>{% endif %}</li>{% else %}{% set anchor, label, nested, icon = link %}<li{% if nested %} class="is-nested"{% endif %}><a href="{{ page }}#{{ anchor }}">{{ menu_icon(section_icons[icon]) }}{{ label }}</a></li>{% endif %}{% endfor %}</ul>{% endif %}{%- endmacro -%}
+{%- macro tree_module(href, label, icon, links, active, page='') -%}{% if links | select | list %}<details class="module-tree-module"{% if active %} open{% endif %}><summary><a href="{{ href }}"{% if active %} class="is-active" aria-current="page"{% endif %}>{{ icon }}{{ label }}</a></summary>{{ tree_links(links, page) }}</details>{% else %}<a href="{{ href }}"{% if active %} class="is-active" aria-current="page"{% endif %}>{{ icon }}{{ label }}</a>{% endif %}{%- endmacro -%}
+{# The configuration pages and their sections (an anchor, its name, whether it is nested in the one before and its icon). #}
+{%- set config_pages = [
+  ('/application-config', 'Application Config', [('application-runtime', 'Application Runtime', false, 'sliders'), ('email-delivery', 'Email Delivery', false, 'mail')]),
+  ('/workspace-config', 'Workspace Config', [
+    ('ppt-templates-management', 'PPT Templates Management', false, 'presentation'), ('main-cities', 'Main Cities', false, 'cities'),
+    ('mappings-reference-data', 'Mappings & Reference Data', false, 'link'), ('operator-maps', 'Operator Maps', true, 'link'),
+    ('vendor-maps', 'Vendor Maps', true, 'link'), ('campaign-maps', 'Campaign Maps', true, 'tag'), ('map-areas', 'Map Areas', true, 'map'),
+    ('spectrum-holdings', 'Spectrum Holdings', true, 'spectrum'), ('serving-networks', 'Serving Networks', true, 'link'), ('scoring-gap-analysis-setup', 'Scoring & GAP Analysis Setup', false, 'sliders')]),
+] -%}
 {%- macro new_badge(module) -%}{%- set badge = (module_tab_badges | default({})).get(module) -%}{%- if badge -%}<svg class="module-tab-new module-tab-new-{{ module }}" viewBox="0 0 {{ badge.width }} 14" style="width: {{ '%.2f' | format(badge.width * 1.06 / 14) }}rem" role="img" aria-label="{{ badge.text }}"><title>{{ badge.text }}</title><rect width="{{ badge.width }}" height="14" rx="4" style="fill: {{ badge.color }}"/>{%- if badge.icon_path -%}<path class="module-tab-new-icon" d="{{ badge.icon_path }}" style="{{ 'fill: ' ~ badge.icon_color ~ '; stroke: none' if badge.icon_mode == 'fill' else 'fill: none; stroke: ' ~ badge.icon_color }}"/>{%- endif -%}<text x="{{ badge.text_x }}" y="10.2" text-anchor="middle" style="fill: {{ badge.ink }}">{{ badge.text }}</text></svg>{%- endif -%}{%- endmacro -%}
 <!DOCTYPE html>
 <html lang="en">
@@ -95,14 +106,7 @@
           <button type="button" class="module-tab module-tab-config{% if request.url.path in ['/application-config', '/workspace-config'] %} active{% endif %}" popovertarget="module-config-options" aria-haspopup="true" aria-expanded="false" aria-label="Choose configuration page" data-module-config-trigger>{{ tab_icon('config') }}<span>Config</span> <span aria-hidden="true">▾</span></button>
           <nav id="module-config-options" class="module-config-options" aria-label="Configuration pages" popover data-module-config-options style="--menu-accent: {{ administrative_icons['config'].color }}">
             {# Each page opens, on hover or focus, the list of its sections: a click goes straight to one. #}
-            {% for page_href, page_title, sections in [
-              ('/application-config', 'Application Config', [('application-runtime', 'Application Runtime', false, 'sliders'), ('email-delivery', 'Email Delivery', false, 'mail')]),
-              ('/workspace-config', 'Workspace Config', [
-                ('ppt-templates-management', 'PPT Templates Management', false, 'presentation'), ('main-cities', 'Main Cities', false, 'cities'),
-                ('mappings-reference-data', 'Mappings & Reference Data', false, 'link'), ('operator-maps', 'Operator Maps', true, 'link'),
-                ('vendor-maps', 'Vendor Maps', true, 'link'), ('campaign-maps', 'Campaign Maps', true, 'tag'), ('map-areas', 'Map Areas', true, 'map'),
-                ('spectrum-holdings', 'Spectrum Holdings', true, 'spectrum'), ('serving-networks', 'Serving Networks', true, 'link'), ('scoring-gap-analysis-setup', 'Scoring & GAP Analysis Setup', false, 'sliders')]),
-            ] %}
+            {% for page_href, page_title, sections in config_pages %}
             <div class="module-config-group">
               {# #top opens the page at its top, also when it is the page being shown (otherwise a reload keeps its scroll). #}
               <a href="{{ page_href }}#top"{% if request.url.path == page_href %} class="is-active" aria-current="page"{% endif %}>{{ tab_icon('config', 'menu-item-icon') }}<span>{{ page_title }}</span><span class="module-config-chevron" aria-hidden="true">›</span></a>
@@ -141,25 +145,18 @@
       {% block content %}{% endblock %}
     </main>
     {% if user and not embedded_template_editor and not embedded_preview %}
-    <aside class="page-panel-navigator" id="page-panel-navigator" aria-label="Page sections" data-page-panel-navigator>
+    {# Modules & Sections: every module of the application with its sections and their parts, the module of the page open. #}
+    <aside class="page-panel-navigator module-navigator modules-sections-navigator" id="page-panel-navigator" aria-label="Modules and sections" data-page-panel-navigator>
       <div class="page-panel-navigator-drawer">
-        <header><strong>Page sections</strong><button type="button" data-page-panel-navigator-close aria-label="Close page sections">&times;</button></header>
-        <nav data-page-panel-navigator-list aria-label="Panels in this page"></nav>
-        <p data-page-panel-navigator-empty hidden>No panels available.</p>
-      </div>
-      <button type="button" class="page-panel-navigator-tab" data-page-panel-navigator-toggle aria-expanded="false" aria-controls="page-panel-navigator" title="Navigate page sections"><span>Sections</span></button>
-      <span class="edge-navigator-hover-target" aria-hidden="true"></span>
-    </aside>
-    <aside class="page-panel-navigator module-navigator" id="module-navigator" aria-label="Application modules" data-module-navigator>
-      <div class="page-panel-navigator-drawer">
-        <header><strong>Modules</strong><button type="button" data-module-navigator-close aria-label="Close modules">&times;</button></header>
+        <header><strong>Modules &amp; Sections</strong><button type="button" data-page-panel-navigator-close aria-label="Close modules and sections">&times;</button></header>
         <div class="module-navigator-list">
           <section class="module-navigator-category" aria-labelledby="module-navigator-main-title">
             <h4 id="module-navigator-main-title">Main Modules</h4>
             <nav aria-label="Main modules">
               {% for tab in module_tabs %}{% if features[tab.key] %}
-              {% if not tab.needs_workspace or active_workspace %}{% if tab.key == 'builders' %}<a href="/chart-builder"{% if request.url.path == '/chart-builder' %} class="is-active" aria-current="page"{% endif %}>{{ module_nav_icon(tab) }}Chart Builder</a>
-              <a href="/query-builder"{% if request.url.path == '/query-builder' %} class="is-active" aria-current="page"{% endif %}>{{ module_nav_icon(tab) }}Query Builder</a>{% else %}<a href="{{ tab.href }}"{% if request.url.path == tab.href %} class="is-active" aria-current="page"{% endif %}>{{ module_nav_icon(tab) }}{{ tab.nav_title }}</a>{% endif %}
+              {% if not tab.needs_workspace or active_workspace %}{% if tab.key == 'builders' %}{% for builder_href, builder_title, builder_key in [('/chart-builder', 'Chart Builder', 'chart-builder'), ('/query-builder', 'Query Builder', 'query-builder')] %}
+              {{ tree_module(builder_href, builder_title, module_nav_icon(tab), tab_sections[builder_key], request.url.path == builder_href) }}{% endfor %}
+              {% else %}{{ tree_module(tab.href, tab.nav_title, module_nav_icon(tab), tab.sections if active_workspace or tab.key != 'workspace' else tab.sections[:1], request.url.path == tab.href or request.url.path.startswith(tab.href ~ '/')) }}{% endif %}
               {% else %}<span class="is-disabled" aria-disabled="true">{{ module_nav_icon(tab) }}{{ 'Chart Builder' if tab.key == 'builders' else tab.nav_title }}</span>
               {% endif %}{% endif %}{% endfor %}
             </nav>
@@ -167,25 +164,27 @@
           <section class="module-navigator-category" aria-labelledby="module-navigator-administration-title">
             <h4 id="module-navigator-administration-title">Administrative Modules</h4>
             <nav aria-label="Administrative modules">
-              <a href="/app-logs"{% if request.url.path == '/app-logs' %} class="is-active" aria-current="page"{% endif %}>{{ tab_icon('app-logs', 'module-navigator-icon', administrative_icons['app-logs'].color) }}Application Logs</a>
-              {% if user.role in ['user-editor', 'admin', 'super-admin'] %}
-              <a href="/application-config"{% if request.url.path == '/application-config' %} class="is-active" aria-current="page"{% endif %}>{{ tab_icon('config', 'module-navigator-icon', administrative_icons['config'].color) }}Application Config</a>
-              <a href="/workspace-config"{% if request.url.path == '/workspace-config' %} class="is-active" aria-current="page"{% endif %}>{{ tab_icon('config', 'module-navigator-icon', administrative_icons['config'].color) }}Workspace Config</a>
-              {% endif %}
-              {% if user.role in ['admin', 'super-admin'] %}<a href="/admin"{% if request.url.path == '/admin' %} class="is-active" aria-current="page"{% endif %}>{{ tab_icon('admin', 'module-navigator-icon', administrative_icons['admin'].color) }}Administrator Config</a>{% endif %}
+              {{ tree_module('/app-logs', 'Application Logs', tab_icon('app-logs', 'module-navigator-icon', administrative_icons['app-logs'].color), tab_sections['app-logs'], request.url.path == '/app-logs') }}
+              {% if user.role in ['user-editor', 'admin', 'super-admin'] %}{% for page_href, page_title, sections in config_pages %}
+              {{ tree_module(page_href ~ '#top', page_title, tab_icon('config', 'module-navigator-icon', administrative_icons['config'].color), sections, request.url.path == page_href, page_href) }}{% endfor %}{% endif %}
+              {% if user.role in ['admin', 'super-admin'] %}{{ tree_module('/admin', 'Administrator Config', tab_icon('admin', 'module-navigator-icon', administrative_icons['admin'].color), tab_sections.admin, request.url.path == '/admin') }}{% endif %}
             </nav>
           </section>
           <section class="module-navigator-category" aria-labelledby="module-navigator-documentation-title">
             <h4 id="module-navigator-documentation-title">Documentation</h4>
             <nav aria-label="Documentation modules">
-              <a href="/documents/view/help"{% if request.url.path.startswith('/documents/view/help') %} class="is-active" aria-current="page"{% endif %}>{{ tab_icon('help', 'module-navigator-icon', administrative_icons['help'].color) }}Help</a>
-              <a href="/documents/view/readme"{% if request.url.path == '/documents/view/readme' %} class="is-active" aria-current="page"{% endif %}>{{ tab_icon('readme', 'module-navigator-icon', administrative_icons['readme'].color) }}Readme</a>
-              <a href="/documents/view/changelog"{% if request.url.path == '/documents/view/changelog' %} class="is-active" aria-current="page"{% endif %}>{{ tab_icon('changelog', 'module-navigator-icon', administrative_icons['changelog'].color) }}Changelog</a>
+              {% set help_open = request.url.path.startswith('/documents/view/help') %}
+              <details class="module-tree-module"{% if help_open %} open{% endif %}><summary><a href="/documents/view/help"{% if help_open %} class="is-active" aria-current="page"{% endif %}>{{ tab_icon('help', 'module-navigator-icon', administrative_icons['help'].color) }}Help</a></summary>
+                <ul class="module-tree-sections">{% for group, links in tab_sections.help %}{% if not group %}{% for href, label, icon, colour in links %}<li><a href="{{ href }}">{{ menu_icon(icon, colour) }}{{ label }}</a></li>{% endfor %}{% elif links %}
+                  <li><b class="module-tree-group">{{ group }}</b><ul>{% for href, label, icon, colour in links %}<li><a href="{{ href }}">{{ menu_icon(icon, colour) }}{{ label }}</a></li>{% endfor %}</ul></li>{% endif %}{% endfor %}</ul>
+              </details>
+              {{ tree_module('/documents/view/readme', 'Readme', tab_icon('readme', 'module-navigator-icon', administrative_icons['readme'].color), tab_sections.readme, request.url.path == '/documents/view/readme') }}
+              {{ tree_module('/documents/view/changelog', 'Changelog', tab_icon('changelog', 'module-navigator-icon', administrative_icons['changelog'].color), tab_sections.changelog, request.url.path == '/documents/view/changelog') }}
             </nav>
           </section>
         </div>
       </div>
-      <button type="button" class="page-panel-navigator-tab" data-module-navigator-toggle aria-expanded="false" aria-controls="module-navigator" title="Navigate application modules"><span>Modules</span></button>
+      <button type="button" class="page-panel-navigator-tab" data-page-panel-navigator-toggle aria-expanded="false" aria-controls="page-panel-navigator" title="Navigate the modules and their sections"><span>Modules &amp; Sections</span></button>
       <span class="edge-navigator-hover-target" aria-hidden="true"></span>
     </aside>
     {% endif %}

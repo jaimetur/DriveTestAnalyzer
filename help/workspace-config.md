@@ -8,7 +8,7 @@ Workspace Config is a dedicated page for settings owned by the active workspace:
 > [!TIP]
 > **Save versus export.** Save persists edits in the workspace. Export downloads a portable copy; it does not replace the Save action.
 
-Open **Config → Workspace Config** from the main navigation at `/workspace-config`. Template, mapping and Main Cities actions use routes below `/workspace-config/`. The page uses the same teal/navy palette as Application Config and its Page Sections navigator links to the panels.
+Open **Config → Workspace Config** from the main navigation at `/workspace-config`. Template, mapping and Main Cities actions use routes below `/workspace-config/`. The page uses the same teal/navy palette as Application Config, and the **Modules & Sections** tab at the left edge links to its panels.
 
 ## In this guide
 

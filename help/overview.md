@@ -302,7 +302,7 @@ The **Admin** tab opens Administrator Config for `admin` and `super-admin` roles
 ### Workspace Config
 
 - Manage workspace Report Templates, Main Cities, Mappings & Reference Data and scoring methodologies on the dedicated Workspace Config page.
-- Use its Page Sections navigator to reach the required configuration panel.
+- Use the **Modules & Sections** tab at the left edge (or the floating section bar) to reach the required configuration panel.
 - Open a workspace to manage its templates and chart mappings.
 
 See [Workspace Config](workspace-config.md) for panel operations and portability.
