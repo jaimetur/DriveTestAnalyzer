@@ -1,7 +1,7 @@
 """Scoring insights derived from the saved scoring views.
 
 Where each operator stands (standings, position matrices, GAP parts and levers), the location cards and rankings,
-the KPI GAP profiles, campaign trends and comparisons and the points at stake are built from the per-environment score
+the KPI GAP profiles, campaign trends and comparisons and the points lost are built from the per-environment score
 tables, and the Points Lost views from the points-lost shares of the result, so the web page and the PowerPoint/Word
 exports show the same numbers.
 """

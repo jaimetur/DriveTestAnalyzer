@@ -76,8 +76,9 @@ def _pill(slide, text: str, left: float, top: float, color: str, height: float =
 
 def add_act_plan_slides(presentation, items: list[dict[str, Any]], *, subtitle: str, new_slide: Callable,
                         scope: ScopeLabels | None = None) -> None:
-    """Where to act: the themes that hold the points at stake, what to do and the view to open."""
+    """Where to act: the themes that hold the points lost, what to do and the view to open."""
     stripes = active_theme().get('categories') or ['#5B7A99']
+    loss = active_theme().get('loss_text') or LOSS_COLOR
     for item in items:
         slide = new_slide(presentation, f"Where to act — {item['label']}", _subtitle(subtitle, scope, item.get('context'),
                                                                                    item.get('campaign') or ''))
@@ -93,27 +94,35 @@ def add_act_plan_slides(presentation, items: list[dict[str, Any]], *, subtitle: 
             card.line.color.rgb = _rgb('#E3E8EC')
             card.name = 'Scoring Act Row'
             _box(slide, LEFT, y, .07, height, stripes[index % len(stripes)]).name = 'Scoring Act Stripe'
-            points = 'Within the points above' if row.get('points') is None else f"{row['points']:,.1f} points at stake"
+            # The points of the scoring stand out in the loss colour of the theme, as on the page.
+            points = [('Within the points above', False)] if row.get('points') is None else [
+                (f"{row['points']:,.1f} points", True), (' lost', False)]
             box = slide.shapes.add_textbox(Inches(LEFT + .25), Inches(y + .08), Inches(2.9), Inches(height - .12))
             _write_runs(box.text_frame, [(row['theme'], True, INK)], size=12, color=INK)
             paragraph = box.text_frame.add_paragraph()
-            run = paragraph.add_run()
-            run.text = points
-            run.font.size = Pt(9)
-            run.font.color.rgb = _rgb(MUTED)
-            _text(slide, row['action'], LEFT + 3.35, y + .06, 6.4, height - .1, size=10, color=INK, anchor=MSO_ANCHOR.MIDDLE)
+            for text, highlighted in points:
+                run = paragraph.add_run()
+                run.text = text
+                run.font.size = Pt(9)
+                run.font.bold = highlighted
+                run.font.color.rgb = _rgb(loss if highlighted else MUTED)
+            parts = row.get('action_parts') or [{'text': row['action'], 'points': False}]
+            action = slide.shapes.add_textbox(Inches(LEFT + 3.35), Inches(y + .06), Inches(6.4), Inches(height - .1))
+            _write_runs(action.text_frame, [(part['text'], bool(part['points']), loss if part['points'] else None) for part in parts],
+                        size=10, color=INK)
+            action.text_frame.vertical_anchor = MSO_ANCHOR.MIDDLE
             _text(slide, row['deep_dive'], LEFT + 10.0, y + .06, 2.35, height - .1, size=9, color=MUTED, anchor=MSO_ANCHOR.MIDDLE)
-        _footnote(slide, 'Points at stake: the points lost, each place counting by its share of the tests (national estimates); '
-                         'the sites to review and the route stretches are within the points above.')
+        _footnote(slide, 'Points lost: the points of the scoring lost against the maximum of each KPI (not the GAP to the reference), '
+                         'each place counting by its share of the tests; the sites to review and the route stretches are within them.')
 
 
 def add_owner_card_slides(presentation, items: list[dict[str, Any]], *, subtitle: str, new_slide: Callable,
                           owner_color: Callable[[str], str], scope: ScopeLabels | None = None) -> None:
-    """Where to act, by performance owner: a card per owner with its points at stake, what drives them and where."""
+    """Where to act, by performance owner: a card per owner with its points lost, what drives them and where."""
     for item in items:
         slide = new_slide(presentation, f"Where to act, by performance owner — {item['label']}",
                           _subtitle(subtitle, scope, item.get('context'), item.get('campaign') or ''))
-        top = _headline(slide, "Each performance owner's points at stake, what drives them and where they are")
+        top = _headline(slide, "Each performance owner's points lost, what drives them and where they are")
         cards = item['cards'][:6]
         gap = .25
         width = (WIDTH - gap * (len(cards) - 1)) / max(1, len(cards))
@@ -128,7 +137,7 @@ def add_owner_card_slides(presentation, items: list[dict[str, Any]], *, subtitle
             _box(slide, left, top, width, 1.05, color).name = 'Scoring Owner Header'
             _text(slide, card['owner'], left + .15, top + .08, width - .3, .3, size=12, bold=True, color='#FFFFFF')
             box = slide.shapes.add_textbox(Inches(left + .15), Inches(top + .38), Inches(width - .3), Inches(.6))
-            _write_runs(box.text_frame, [(f"{card['points']:,.1f}", True, '#FFFFFF'), ('  points at stake', False, '#FFFFFF')],
+            _write_runs(box.text_frame, [(f"{card['points']:,.1f}", True, '#FFFFFF'), ('  points lost', False, '#FFFFFF')],
                         size=11, color='#FFFFFF')
             box.text_frame.paragraphs[0].runs[0].font.size = Pt(26)
             facts = []
@@ -166,8 +175,8 @@ def add_owner_card_slides(presentation, items: list[dict[str, Any]], *, subtitle
                     _box(slide, left + 1.5, y + .04, max(.03, span), .14, color).name = 'Scoring Owner Bar'
                 _text(slide, f'{value:,.1f}', left + width - .6, y, .45, .22, size=8.5, bold=True, color=INK,
                       align=PP_ALIGN.RIGHT, anchor=MSO_ANCHOR.MIDDLE)
-        note = ('Performance owner: the Region of the tests. High site: 1+ point lost and losses on the same site in an earlier '
-                'campaign.')
+        note = ('Performance owner: the Region of the tests. Points lost: the points of the scoring lost against the maximum '
+                'in its tests. High site: 1+ point lost and losses on the same site in an earlier campaign.')
         if item.get('unidentified', 0) > .05:
             note += f" {item['unidentified']:,.1f} points have no Region."
         _footnote(slide, note)
@@ -183,7 +192,7 @@ def _band(value: float | None) -> str:
 def add_place_ranking_slides(presentation, items: list[dict[str, Any]], *, subtitle: str, new_slide: Callable,
                              owner_color: Callable[[str], str], scope: ScopeLabels | None = None) -> None:
     """The Cities, Towns, Roads and Railways of an operator ranked: their owners, points, change, Voice and Data shares
-    and points at stake (one bar scale on every ranking)."""
+    and points lost (one bar scale on every ranking)."""
     for item in items:
         peak = max([row['lost'] for group in item['groups'] for row in group['rows']] + [.01])
         previous = item.get('previous_campaign') or 'previous'
@@ -196,10 +205,10 @@ def add_place_ranking_slides(presentation, items: list[dict[str, Any]], *, subti
                 legend = slide.shapes.add_textbox(Inches(LEFT), Inches(top - .08), Inches(WIDTH), Inches(.25))
                 _write_runs(legend.text_frame, [('Colour: ', True, INK), ('85% or more High, 75–85% Medium, under 75% Low. ', False, MUTED),
                                                 (f'vs {previous}: ', True, INK), ('change in Points % (–: not measured). ', False, MUTED),
-                                                ('Points at stake: ', True, INK), ('one bar scale on every ranking.', False, MUTED)],
+                                                ('Points lost: ', True, INK), ('one bar scale on every ranking.', False, MUTED)],
                             size=8.5, color=MUTED)
                 columns = (('Place', LEFT, 2.75), ('Owner', LEFT + 2.8, 2.9), ('Points %', LEFT + 5.75, 1.6), (f'vs {previous}', LEFT + 7.4, .8),
-                           ('Voice %', LEFT + 8.25, 1.45), ('Data %', LEFT + 9.75, 1.45), ('Points at stake', LEFT + 11.25, 1.2))
+                           ('Voice %', LEFT + 8.25, 1.45), ('Data %', LEFT + 9.75, 1.45), ('Points lost', LEFT + 11.25, 1.2))
                 header_top = top + .25
                 for text, left, width in columns:
                     _text(slide, text, left, header_top, width, .22, size=8.5, bold=True, color=MUTED)
@@ -236,18 +245,18 @@ def add_place_ranking_slides(presentation, items: list[dict[str, Any]], *, subti
                         _box(slide, LEFT + 11.25, y + row_height * .22, max(.02, span), row_height * .56, themed(INK)).name = 'Scoring Stake Bar'
                     _text(slide, f"{row['lost']:,.1f}", LEFT + 11.25 + max(.02, span) + .05, y, .5, row_height, size=size,
                           color=INK, anchor=MSO_ANCHOR.MIDDLE)
-                _footnote(slide, 'Points %: the share of the points of the place; Points at stake: the points it loses, by its '
+                _footnote(slide, 'Points %: the share of the points of the place; Points lost: the points it loses, by its '
                                  'share of the tests (national estimates).')
 
 
 def render_owner_route_map(route: dict[str, Any], owner_color: Callable[[str], str], boundaries: dict[str, list] | None, *,
                            width: int = 1100, height: int = 1100) -> bytes:
     """PNG map of a route of Where to act, drawn as the map of the Route stretches (render_stretch_map): the stretches
-    with the most points at stake numbered and named after their nearest city, and the owner of each stretch as the
+    with the most points lost numbered and named after their nearest city, and the owner of each stretch as the
     ring of its circle."""
     from src.modules.scoring_summary_slides import render_stretch_map
     return render_stretch_map(route, '#64748B', [], boundaries=boundaries, width=width, height=height,
-                              ranked=route['top'], ring_color=owner_color, measure='Points at stake')
+                              ranked=route['top'], ring_color=owner_color, measure='Points lost')
 
 
 def add_route_focus_slides(presentation, items: list[dict[str, Any]], *, subtitle: str, new_slide: Callable,
@@ -274,7 +283,7 @@ def add_route_focus_slides(presentation, items: list[dict[str, Any]], *, subtitl
             x += .35 + len(owner['name']) * .075
         right = LEFT + map_size + .35
         side = LEFT + WIDTH - right
-        _text(slide, 'Points at stake by owner', right, top, side, .3, size=11, bold=True, color=INK)
+        _text(slide, 'Points lost by owner', right, top, side, .3, size=11, bold=True, color=INK)
         widths = [side * .4, side * .3, side * .3]
         rows = route['owners']
         shape, table = _table(slide, len(rows) + 1, 3, right, top + .32, side, .3, widths)
@@ -314,4 +323,4 @@ def add_route_focus_slides(presentation, items: list[dict[str, Any]], *, subtitl
             _write_runs(box.text_frame, [('Please review: ', True, active_theme()['loss']), (route['review'], False, INK)],
                         size=11, color=INK)
         _footnote(slide, 'A stretch gathers the tests of the route within about 20 km, named after the nearest city of the '
-                         'measurements; circle area: points at stake, in the colour of its owner.')
+                         'measurements; circle area: points lost, in the colour of its owner.')

@@ -6870,6 +6870,17 @@
       section.append(controls(), insightParagraph('scoring-act-headline', plan.headline));
       const list = document.createElement('div');
       list.className = 'scoring-act-list';
+      // The columns, as on the slides: the theme and its points, what to do and the view of the results to open.
+      const header = document.createElement('div');
+      header.className = 'scoring-act-row scoring-act-header';
+      for (const [text, title] of [['Theme', 'Where the points lost are'], ['What to do', 'The KPIs or places that lose most, with their points of the scoring'],
+        ['Deep-dive', 'The view of the results that shows it in detail']]) {
+        const cell = document.createElement('span');
+        cell.textContent = text;
+        cell.title = title;
+        header.append(cell);
+      }
+      list.append(header);
       const stripes = activeTheme?.categories || palette;
       plan.rows.forEach((row, index) => {
         const item = document.createElement('div');
@@ -6877,18 +6888,42 @@
         item.style.setProperty('--act-color', stripes[index % stripes.length]);
         const theme = document.createElement('div');
         theme.className = 'scoring-act-theme';
-        theme.append(insightStrong(row.theme), insightParagraph('scoring-act-points',
-          row.points === null || row.points === undefined ? 'Within the points above' : `${insightNumber(row.points, 1)} points at stake`));
-        item.append(theme, insightParagraph('scoring-act-action', row.action), insightParagraph('scoring-act-deep-dive', row.deep_dive));
+        // The points of the scoring stand out in the loss colour of the theme.
+        const figure = value => {
+          const element = document.createElement('strong');
+          element.className = 'scoring-act-figure';
+          element.textContent = value;
+          return element;
+        };
+        theme.append(insightStrong(row.theme), row.points === null || row.points === undefined
+          ? insightParagraph('scoring-act-points', 'Within the points above')
+          : insightParagraph('scoring-act-points', figure(`${insightNumber(row.points, 1)} points`), ' lost'));
+        const action = row.action_parts?.length ? row.action_parts.map(part => (part.points ? figure(part.text) : part.text)) : [row.action];
+        // Each view of the Deep-dive opens its section of the Points Lost tab.
+        const deepDive = insightParagraph('scoring-act-deep-dive');
+        if (row.deep_dive_links?.length) {
+          deepDive.append('Points Lost: ');
+          row.deep_dive_links.forEach((link, linkIndex) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'scoring-act-link';
+            button.textContent = link.label;
+            button.title = `Open ${link.label} in Points Lost`;
+            button.addEventListener('click', () => openPointsLostSection(link.section));
+            deepDive.append(linkIndex ? '; ' : '', button);
+          });
+        } else deepDive.append(row.deep_dive);
+        item.append(theme, insightParagraph('scoring-act-action', ...action), deepDive);
         list.append(item);
       });
-      section.append(list, insightParagraph('scoring-insight-note', 'Points at stake: the points lost, each place counting by its share of the tests (national estimates). ',
+      section.append(list, insightParagraph('scoring-insight-note', 'Points lost: the points of the scoring lost against the maximum of each KPI ',
+        '(GAP Analysis compares with the reference instead), each place counting by its share of the tests (national estimates). ',
         'Sites to review and route stretches are within the points above.'));
     }
     const ownerItem = cards.find(item => item.operator === operator);
     if (ownerItem) {
       const section = insightSection(pane, `Where to act, by performance owner — ${ownerItem.label}`, 'scoring-owner-card', ownerItem.context);
-      section.append(controls(), insightParagraph('scoring-act-headline', "Each performance owner's points at stake, what drives them and where they are"));
+      section.append(controls(), insightParagraph('scoring-act-headline', "Each performance owner's points lost, what drives them and where they are"));
       const grid = document.createElement('div');
       grid.className = 'scoring-owner-grid';
       const peak = Math.max(0.01, ...ownerItem.cards.flatMap(card => Object.values(card.settings || {})));
@@ -6899,7 +6934,7 @@
         const head = document.createElement('header');
         const points = document.createElement('b');
         points.textContent = insightNumber(card.points, 1);
-        head.append(insightStrong(card.owner), document.createElement('br'), points, document.createTextNode(' points at stake'));
+        head.append(insightStrong(card.owner), document.createElement('br'), points, document.createTextNode(' points lost'));
         const facts = document.createElement('div');
         facts.className = 'scoring-owner-facts';
         const fact = (label, text) => { if (text) facts.append(insightParagraph('', insightStrong(`${label}: `), text)); };
@@ -6924,6 +6959,7 @@
         grid.append(box);
       }
       section.append(grid, insightParagraph('scoring-insight-note', 'Performance owner: the Region of the tests (such as Vendor A, Vendor B, VMO2 North or VMO2 South). ',
+        'Points lost: the points of the scoring lost against the maximum in its tests (each place by its share of the tests). ',
         `High site: ${insightNumber(1, 0)}+ point lost and losses on the same site in an earlier campaign.${ownerItem.unidentified > .05 ? ` ${insightNumber(ownerItem.unidentified, 1)} points have no Region.` : ''}`));
     }
     const ranking = places.find(item => item.operator === operator);
@@ -6942,7 +6978,7 @@
         };
         const share = value => (value === null || value === undefined ? '—'
           : {text: `${insightNumber(value, 0)}%`, className: 'scoring-insight-bar-cell', bar: {ratio: Math.min(1, value / 100), color: band(value)}});
-        const table = insightTable(['Place', 'Owner', 'Points %', `vs ${ranking.previous_campaign || 'previous'}`, 'Voice %', 'Data %', 'Points at stake'],
+        const table = insightTable(['Place', 'Owner', 'Points %', `vs ${ranking.previous_campaign || 'previous'}`, 'Voice %', 'Data %', 'Points lost'],
           group.rows.map(row => [
             `${row.location}${row.note ? ` ${row.note}` : ''}`, owner(row), share(row.percent),
             {text: row.delta === null || row.delta === undefined ? '–' : signedPoints(row.delta, 0), className: `scoring-insight-number ${toneClass(row.delta)}`},
@@ -6953,7 +6989,7 @@
         wrap.className = 'scoring-insight-table-wrap';
         wrap.append(table);
         section.append(wrap, insightParagraph('scoring-insight-note', 'Colour: 85% or more in the High colour, 75–85% Medium, under 75% Low. ',
-          `vs ${ranking.previous_campaign || 'previous'}: change in Points % (–: not measured then). Points at stake: one bar scale on every ranking.`));
+          `vs ${ranking.previous_campaign || 'previous'}: change in Points % (–: not measured then). Points lost: one bar scale on every ranking.`));
       }
     }
     const focus = routes.find(item => item.operator === operator);
@@ -6968,7 +7004,7 @@
       const side = document.createElement('div');
       side.className = 'scoring-route-side';
       const ownerPeak = Math.max(0.01, ...route.owners.map(item => item.points));
-      side.append(insightParagraph('scoring-route-table-title', 'Points at stake by owner'),
+      side.append(insightParagraph('scoring-route-table-title', 'Points lost by owner'),
         insightTable(['Owner', 'Share of tests', 'Points'], route.owners.map(item => [
           pill(item.name), item.tests_share === null || item.tests_share === undefined ? '–' : {text: `${insightNumber(item.tests_share, 0)}%`, className: 'scoring-insight-number'},
           gapBarCell(item.points, ownerPeak, {loss: true, total: true})])),
@@ -6981,15 +7017,37 @@
       section.append(body);
       if (route.review) section.append(insightParagraph('scoring-act-review', insightStrong('Please review: '), route.review));
       section.append(insightParagraph('scoring-insight-note', 'A stretch gathers the tests of the route within about 20 km, named after the nearest city of the measurements; ',
-        'circle area and colour (yellow to red): points at stake; its ring: the colour of its owner.'));
+        'circle area and colour (yellow to red): points lost; its ring: the colour of its owner.'));
     }
   }
 
+  // The Points Lost tab at one of its sections (a Deep-dive of Where to act): Points lost per KPI, Sites to review or the
+  // Connecting Roads stretches, kept at the top while the tab is drawn.
+  const pointsLostSections = {'points-kpi': '.scoring-points-kpi-card', sites: '.scoring-sites-card', stretches: '.scoring-stretches-card'};
+  function openPointsLostSection(section) {
+    root.querySelector('[data-result-tab="points"]')?.click();
+    const find = () => root.querySelector(`[data-result-pane="points"] ${pointsLostSections[section] || ''}`);
+    let tries = 0;
+    const show = () => {
+      const target = find();
+      // A section drawn once its data arrives (the sites and the stretches) is waited for a few seconds.
+      if (!target) {
+        if ((tries += 1) < 50) window.setTimeout(show, 100);
+        return;
+      }
+      if (typeof showSectionAtTop === 'function') {
+        showSectionAtTop(target);
+        keepSectionInView(target, find);
+      } else target.scrollIntoView({block: 'start'});
+    };
+    window.setTimeout(show, 0);
+  }
+
   // The map of a route of Where to act, drawn as the map of the Points Lost routes (makeStretchMap): its stretches with the
-  // most points at stake numbered, and the owner of each stretch as the ring of its circle.
+  // most points lost numbered, and the owner of each stretch as the ring of its circle.
   function makeOwnerRouteMap(route, ownerColor) {
     if (![...(route.path || []), ...route.all_stretches].length) return document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    return makeStretchMap(route, '#64748b', [], {ranked: route.top, ringColor: ownerColor, measure: 'points at stake',
+    return makeStretchMap(route, '#64748b', [], {ranked: route.top, ringColor: ownerColor, measure: 'points lost',
       className: 'scoring-stretch-map scoring-owner-route-map'});
   }
 

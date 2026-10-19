@@ -1,17 +1,19 @@
-"""Where to act, from the Points Lost of each operator: the views the Summary of Scoring & GAP Analysis adds after its
-biggest levers, as benchmark reports present them.
+"""Where to act, from the Points Lost of each operator: the views the Summary of Scoring & GAP Analysis opens with (Where
+to act and its performance owners, after how the measurements ran) and adds after its biggest levers (the places ranked
+and the route focus), as benchmark reports present them.
 
-- **Where to act**: the themes that hold the points at stake (voice calls, failed and below-par data tests), then the
-  sites to review and the route stretches, each with what to do and the view of the results to open.
+- **Where to act**: the themes that hold the points lost (voice calls, failed and below-par data tests), then the
+  sites to review and the route stretches, each with what to do (the KPIs and stretches with the points of the scoring
+  they lose, which the page and the slides highlight) and the view of the results to open.
 - **Where to act, by performance owner**: a card per performance owner (the Regions of the CDRs, such as Vendor A,
-  Vendor B, VMO2 North and VMO2 South) with its points at stake, what drives them, its biggest areas, its high priority
+  Vendor B, VMO2 North and VMO2 South) with its points lost, what drives them, its biggest areas, its high priority
   sites and where its points are (Cities, Towns, Roads and railways).
 - **Places ranked**: the Cities, Towns, Roads and Railways of the latest campaign ranked by their share of the points,
-  with their performance owners, their change, their Voice and Data shares and the points at stake.
+  with their performance owners, their change, their Voice and Data shares and the points lost.
 - **Route focus**: the route that loses most, its stretches on the map with their owner, the points of each owner and
   the five stretches with the most points.
 
-The points at stake of a place, owner or stretch are the points it loses (see scoring_points_loss). A calculation split
+The points lost of a place, owner or stretch are the points of the scoring it loses against the maximum (see scoring_points_loss). A calculation split
 by City, Cluster or Region scores each place on the whole maximum: its points count by its share of the tests, so the
 points of every place add up to national points (estimates).
 """
@@ -107,8 +109,8 @@ def place_rankings(rankings: list[dict[str, Any]], places: dict[str, Any], weigh
             under = [row for row in rows if row['percent'] < FAIR_PERCENT]
             most = max(rows, key=lambda row: row['lost'])
             count = f"{len(rows)} {plural if len(rows) > 1 else singular}"
-            headline = (f"{most['location']} holds the most points at stake ({most['lost']:.1f}); none of the {count} is under 75%"
-                        if not under else f"Under 75% on {len(under)} of {count}; {most['location']} holds the most points at stake")
+            headline = (f"{most['location']} loses the most points ({most['lost']:.1f}); none of the {count} is under 75%"
+                        if not under else f"Under 75% on {len(under)} of {count}; {most['location']} loses the most points")
             sections.append({'setting': setting, 'title': SETTING_TITLES[setting], 'headline': headline, 'rows': rows,
                              'peak_lost': max(row['lost'] for row in rows)})
         if sections:
@@ -175,7 +177,7 @@ def _region_maps(maps: list[dict[str, Any]], weight: Weights) -> dict[tuple, dic
 
 def owner_cards(maps: list[dict[str, Any]], places: dict[str, Any], sites: list[dict[str, Any]], weight: Weights,
                 environment_labels: dict[str, str] | None = None, environment: str = COMBINED) -> list[dict[str, Any]]:
-    """A card per performance owner of each operator: its points at stake, where they are and what drives them."""
+    """A card per performance owner of each operator: its points lost, where they are and what drives them."""
     environment_labels = environment_labels or {}
     items = []
     high_sites: dict[str, list[dict[str, Any]]] = {}
@@ -235,8 +237,31 @@ def owner_cards(maps: list[dict[str, Any]], places: dict[str, Any], sites: list[
     return items
 
 
-def _kpi_text(kpis: list[dict[str, Any]], count: int = 2) -> str:
-    return _join([f"{row['kpi']} ({row['lost']:.1f})" for row in kpis[:count] if row.get('kpi')])
+def _kpi_parts(kpis: list[dict[str, Any]], count: int = 2) -> list[tuple[str, bool]]:
+    """The KPIs that lose most, each with the points of the scoring it loses: CALL SUCCESS RATIO [%] (18.2 points) and
+    POLQA < 1.6 [%] (14.1 points), as (text, whether it is points) parts."""
+    rows = [row for row in kpis[:count] if row.get('kpi')]
+    parts: list[tuple[str, bool]] = []
+    for index, row in enumerate(rows):
+        if index:
+            parts.append((' and ' if index == len(rows) - 1 else ', ', False))
+        parts += [(f"{row['kpi']} (", False), (f"{row['lost']:.1f} points", True), (')', False)]
+    return parts
+
+
+def _deep_dive(*links: tuple[str, str]) -> dict[str, Any]:
+    """The views of Points Lost that show a theme in detail: their names and the sections of the page they open
+    (points-kpi, sites or stretches)."""
+    return {'deep_dive': 'Points Lost: ' + '; '.join(label for label, _section in links),
+            'deep_dive_links': [{'label': label, 'section': section} for label, section in links]}
+
+
+def _action(parts: list[tuple[str, bool]]) -> dict[str, Any]:
+    """What to do as its text and its parts, those with points of the scoring marked (the page and the slides
+    highlight them)."""
+    parts = [(text, points) for text, points in parts if text]
+    return {'action': ''.join(text for text, _points in parts),
+            'action_parts': [{'text': text, 'points': points} for text, points in parts]}
 
 
 def _losses_by_scope(result: dict[str, Any] | None, formulas: dict[str, str], weight: Weights,
@@ -306,7 +331,7 @@ def _routes(stretches: list[dict[str, Any]], weight: Weights, environment: str =
 def act_plans(result: dict[str, Any] | None, formulas: dict[str, str], styles: dict[str, dict[str, Any]],
               sites: list[dict[str, Any]], stretches: list[dict[str, Any]], weight: Weights,
               environment: str = COMBINED) -> list[dict[str, Any]]:
-    """The themes that hold the points at stake of each operator, with what to do and where to look further."""
+    """The themes that hold the points lost of each operator, with what to do and where to look further."""
     from src.modules.scoring_insights import campaign_sort_key
 
     items = []
@@ -332,39 +357,43 @@ def act_plans(result: dict[str, Any] | None, formulas: dict[str, str], styles: d
             if voice_points > 0:
                 failed = _number(voice.get('failed'))
                 kpis = voice.get('kpis') or []
-                action = (f"Cut voice failures: failed calls cost {failed:.1f} of the {voice_points:.1f} points" if failed >= voice_points / 2
-                          else f"Lift the voice quality: {voice_points - failed:.1f} of the {voice_points:.1f} points")
-                rows.append({'theme': 'Voice calls', 'points': voice_points,
-                             'action': action + (f"; first {_kpi_text(kpis)}." if kpis else '.'),
-                             'deep_dive': 'Points Lost: Points lost per KPI (Voice)'})
+                parts = ([('Cut voice failures: failed calls cost ', False), (f"{failed:.1f} of the {voice_points:.1f} points", True)]
+                         if failed >= voice_points / 2 else
+                         [('Lift the voice quality: ', False), (f"{voice_points - failed:.1f} of the {voice_points:.1f} points", True)])
+                parts += [('; first ', False), *_kpi_parts(kpis), ('.', False)] if kpis else [('.', False)]
+                rows.append({'theme': 'Voice calls', 'points': voice_points, **_action(parts),
+                             **_deep_dive(('Points lost per KPI (Voice)', 'points-kpi'))})
             failed_data = _number(data.get('failed'))
             if failed_data > 0:
                 kpis = data.get('failed_kpis') or []
                 rows.append({'theme': 'Failed data tests', 'points': failed_data,
-                             'action': f"Bring down the data failures: {_kpi_text(kpis) or 'every failed test'}.",
-                             'deep_dive': 'Points Lost: Points lost per KPI; Sites to review'})
+                             **_action([('Bring down the data failures: ', False),
+                                        *(_kpi_parts(kpis) or [('every failed test', False)]), ('.', False)]),
+                             **_deep_dive(('Points lost per KPI (Data)', 'points-kpi'), ('Sites to review', 'sites'))})
             below_data = _number(data.get('below_par')) + _number(data.get('quality'))
             if below_data > 0:
                 kpis = data.get('below_kpis') or []
                 rows.append({'theme': 'Below-par data tests', 'points': below_data,
-                             'action': f"Lift the slowest data tests: {_kpi_text(kpis) or 'the KPIs below their threshold'}.",
-                             'deep_dive': 'GAP Analysis: KPI GAP Profile'})
+                             **_action([('Lift the slowest data tests: ', False),
+                                        *(_kpi_parts(kpis) or [('the KPIs below their threshold', False)]), ('.', False)]),
+                             **_deep_dive(('Points lost per KPI (Data)', 'points-kpi'))})
             rows.sort(key=lambda row: -row['points'])
             review = sites_of.get(operator['operator']) or []
             if review:
                 first = sorted(review, key=lambda row: (['High', 'Medium', 'Low'].index(row['priority']), -row['points']))[0]
                 place = f" ({first['city']})" if first.get('city') else ''
                 rows.append({'theme': 'Sites to review', 'points': None, 'within': True,
-                             'action': f"Review {len(review)} sites, {first['site']}{place} first ({first['priority']} priority).",
-                             'deep_dive': 'Points Lost: Sites to review'})
+                             **_action([(f"Review {len(review)} sites, {first['site']}{place} first ({first['priority']} priority).", False)]),
+                             **_deep_dive(('Sites to review', 'sites'))})
             routes = routes_of.get((operator['operator'], _scope(stake.get('context'))), {}).get('routes') or []
             if routes:
                 route = routes[0]
                 stretch = route['stretches'][0] if route['stretches'] else None
-                rows.append({'theme': 'Route stretches', 'points': None, 'within': True,
-                             'action': f"Check {route['route']}: {route['points']:.1f} points"
-                                       + (f", {stretch['label']} first ({stretch['points']:.1f})." if stretch else '.'),
-                             'deep_dive': 'Points Lost: Route stretches'})
+                parts = [(f"Check {route['route']}: ", False), (f"{route['points']:.1f} points", True)]
+                parts += ([(f", {stretch['label']} first (", False), (f"{stretch['points']:.1f} points", True), (').', False)]
+                          if stretch else [('.', False)])
+                rows.append({'theme': 'Route stretches', 'points': None, 'within': True, **_action(parts),
+                             **_deep_dive(('Route stretches', 'stretches'))})
             if not rows:
                 continue
             ranked = [row['theme'].lower() for row in rows if row.get('points')]

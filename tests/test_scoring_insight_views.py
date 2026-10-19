@@ -193,7 +193,7 @@ def test_the_route_of_where_to_act_is_drawn_as_the_routes_of_points_lost(nationa
     image = Image.open(BytesIO(render_owner_route_map(route, lambda _owner: '#4472C4', None)))
     # One map for both: its top stretches numbered, each owner as the ring of its circles, on a square for the slide.
     assert image.size == (1100, 1100)
-    assert calls and calls[0]['ranked'] == route['top'] and calls[0]['measure'] == 'Points at stake' and calls[0]['ring_color']
+    assert calls and calls[0]['ranked'] == route['top'] and calls[0]['measure'] == 'Points lost' and calls[0]['ring_color']
     script = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/scoring.js').read_text(encoding='utf-8')
     # On the page: the same map, opened larger on a double-click, its stretches chosen in the table beside it, and the
     # operators of every view of the results in the order of the Operator Maps.

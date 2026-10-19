@@ -85,7 +85,7 @@ def test_the_places_are_ranked_per_setting_with_their_owners(owned):
     london = next(row for row in groups['Cities']['rows'] if row['location'] == 'London')
     assert london['note'] == '(drive + walk)' and london['owners'] == [{'name': 'Vendor A', 'share': 100.0}]
     assert [row['percent'] for row in groups['Towns']['rows']] == sorted((row['percent'] for row in groups['Towns']['rows']), reverse=True)
-    assert groups['Roads']['headline'].endswith('holds the most points at stake') or 'none of the' in groups['Roads']['headline']
+    assert groups['Roads']['headline'].endswith('loses the most points') or 'none of the' in groups['Roads']['headline']
 
 
 def test_the_route_that_loses_most_with_its_owners(owned):
