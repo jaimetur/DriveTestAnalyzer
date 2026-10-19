@@ -18740,9 +18740,33 @@ def saved_filters_result(filter_id: int, request: Request, user: SessionUser = D
 
 def _saved_filter_payload(saved_filter: dict[str, Any], operator_groups: list[dict], vendor_groups: list[dict],
                              fallback: dict[str, Any] | None) -> dict[str, Any]:
-    """The saved result of a Saved Filter with the views of both scorings and their National & area summaries."""
-    from src.modules.scoring_views import build_scoring_views, normalize_result_gaps, refresh_baseline_warning, scoring_coverage_notes
+    """The saved result of a Saved Filter with the views of both scorings and their National & area summaries.
+
+    NSA vs SA also gives the results of each NR Mode on their own (``nr_mode_parts``, NSA then SA), which the page shows
+    one below the other in every tab."""
+    from src.modules.scoring_views import normalize_result_gaps, nr_mode_result
+    from src.modules.nr_mode import NR_MODES, NSA_VS_SA, normalize_scoring_nr_mode
     result = normalize_scoring_vendor_result(normalize_result_gaps(saved_filter.get('result') or {}), operator_groups)
+    payload = _scoring_result_payload(saved_filter, result, operator_groups, vendor_groups, fallback)
+    if normalize_scoring_nr_mode(saved_filter.get('nr_mode')) == NSA_VS_SA and payload['views']:
+        parts = []
+        for mode in NR_MODES:
+            part_result = nr_mode_result(result, mode)
+            if not part_result.get('totals'):
+                continue
+            part_filter = {**nr_mode_result({key: value for key, value in saved_filter.items() if key != 'result'}, mode),
+                           'nr_mode': mode}
+            parts.append({'nr_mode': mode, **_scoring_result_payload(part_filter, part_result, operator_groups,
+                                                                      vendor_groups, fallback)})
+        if len(parts) > 1:
+            payload['nr_mode_parts'] = parts
+    return payload
+
+
+def _scoring_result_payload(saved_filter: dict[str, Any], result: dict[str, Any], operator_groups: list[dict],
+                            vendor_groups: list[dict], fallback: dict[str, Any] | None) -> dict[str, Any]:
+    """A result with the views of both scorings and their National & area summaries."""
+    from src.modules.scoring_views import build_scoring_views, refresh_baseline_warning, scoring_coverage_notes
     views = {}
     scorings = {}
     if result.get('scoring') or result.get('score_rows'):

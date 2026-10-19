@@ -310,7 +310,7 @@
   /* Scoring Tables, Scoring Charts and GAP Analysis: each block of results in its own card (the Summary and
      Breakdown tables, each chart with its table, the location cards and trends, the GAP tables, the KPI GAP
      Profile and the Points Lost Map). */
-  [data-result-pane] > :is(.scoring-table-mode-section, .scoring-best-network-layout, .scoring-chart-card, .scoring-insight-section, .scoring-result-card) {
+  :is([data-result-pane], .scoring-nr-mode-body) > :is(.scoring-table-mode-section, .scoring-best-network-layout, .scoring-chart-card, .scoring-insight-section, .scoring-result-card) {
     box-sizing: border-box; margin-top: 1.2rem; padding: calc(1rem + 5px) 1.15rem 1.15rem; border: 1px solid var(--line); border-radius: 13px;
     /* Its top bar is a gradient of the colour of its results tab. */
     background: linear-gradient(90deg, color-mix(in srgb, var(--pane-accent) 70%, #000), var(--pane-accent) 55%, color-mix(in srgb, var(--pane-accent) 55%, #fff)) top / 100% 5px no-repeat, rgba(255,255,255,.86);
@@ -322,7 +322,20 @@
   [data-result-pane="geographical-areas"] { --pane-accent: #7c3aed; }
   [data-result-pane="trends"] { --pane-accent: #4d7c0f; }
   [data-result-pane="points"] { --pane-accent: #be123c; }
-  [data-result-pane] > * > :is(.scoring-table-section-title, h4):first-child { margin-top: 0; }
+  :is([data-result-pane], .scoring-nr-mode-body) > * > :is(.scoring-table-section-title, h4):first-child { margin-top: 0; }
+  /* NSA vs SA: the results of each NR Mode one below the other, each under its title in the colour of its tab. */
+  .scoring-nr-mode-part { margin-top: 1.6rem; }
+  .scoring-nr-mode-part + .scoring-nr-mode-part { margin-top: 2.4rem; padding-top: 1.4rem; border-top: 2px dashed color-mix(in srgb, var(--pane-accent) 45%, transparent); }
+  .scoring-nr-mode-title { display: inline-flex; align-items: center; gap: .45rem; margin: 0; padding: .35rem .85rem; border-radius: 999px;
+    background: color-mix(in srgb, var(--pane-accent) 14%, #fff); color: color-mix(in srgb, var(--pane-accent) 80%, #000);
+    font-size: 1rem; font-weight: 800; letter-spacing: .02em; }
+  .scoring-nr-mode-body > :first-child { margin-top: .8rem; }
+  /* Each panel: NSA then SA, each card tagged with its NR Mode. */
+  .scoring-nr-mode-tag { display: inline-block; margin-right: .5rem; padding: .08rem .5rem; border-radius: 999px; vertical-align: middle;
+    background: color-mix(in srgb, var(--pane-accent) 16%, #fff); color: color-mix(in srgb, var(--pane-accent) 85%, #000);
+    font-size: .72rem; font-weight: 800; letter-spacing: .04em; }
+  .scoring-nr-mode-tag-sa { background: color-mix(in srgb, var(--pane-accent) 80%, #000); color: #fff; }
+  [data-result-pane] > .scoring-nr-mode-block-sa { margin-top: .6rem; }
   .scoring-insight-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 30rem), 1fr)); gap: 1rem; }
   /* Four operators: two above and two below (one column when two do not fit). */
   .scoring-insight-pair.scoring-gap-parts-grid { grid-template-columns: repeat(auto-fit, minmax(max(min(100%, 34rem), calc((100% - 1rem) / 2)), 1fr)); }
@@ -864,22 +877,23 @@
     background: var(--band-dot) !important; box-shadow: 0 0 6px color-mix(in srgb, var(--band-dot) 55%, transparent); }
 
   /* Ericsson: white panels under a dark grey rule. */
-  [data-scoring-workspace][data-scoring-theme="ericsson"] [data-result-pane] > :is(.scoring-table-mode-section, .scoring-best-network-layout, .scoring-chart-card, .scoring-insight-section, .scoring-result-card) {
+  [data-scoring-workspace][data-scoring-theme="ericsson"] :is([data-result-pane], .scoring-nr-mode-body) > :is(.scoring-table-mode-section, .scoring-best-network-layout, .scoring-chart-card, .scoring-insight-section, .scoring-result-card) {
     border: 0; border-top: 3px solid #242424; border-radius: 0; background: #fff; box-shadow: 0 1px 0 #e0e0e0; padding-top: 1.25rem; }
   [data-scoring-workspace][data-scoring-theme="ericsson"] :is(.scoring-table-section-title, .scoring-chart-card h4, .scoring-insight-section h4) { color: #242424 !important; font-weight: 700; letter-spacing: .01em; }
   [data-scoring-workspace][data-scoring-theme="ericsson"] :is(.scoring-matrix-wrap, .scoring-table-wrap) { border: 0; border-radius: 0; background: #fff; }
 
   /* Vodafone: rounded white panels under a red band. */
-  [data-scoring-workspace][data-scoring-theme="vodafone"] [data-result-pane] > :is(.scoring-table-mode-section, .scoring-best-network-layout, .scoring-chart-card, .scoring-insight-section, .scoring-result-card) {
+  [data-scoring-workspace][data-scoring-theme="vodafone"] :is([data-result-pane], .scoring-nr-mode-body) > :is(.scoring-table-mode-section, .scoring-best-network-layout, .scoring-chart-card, .scoring-insight-section, .scoring-result-card) {
     border: 0; border-top: 6px solid #e60000; border-radius: 22px; background: #fff; box-shadow: 0 10px 28px rgba(0,0,0,.08); }
   [data-scoring-workspace][data-scoring-theme="vodafone"] :is(.scoring-table-section-title, .scoring-chart-card h4, .scoring-insight-section h4) { color: #333 !important; font-weight: 800; }
   [data-scoring-workspace][data-scoring-theme="vodafone"] :is(.scoring-matrix-wrap, .scoring-table-wrap) { border: 0; background: #fff; }
 
   /* Midnight: navy panels with light text under a neon line. */
-  [data-scoring-workspace][data-scoring-theme="midnight"] [data-result-pane] > :is(.scoring-table-mode-section, .scoring-best-network-layout, .scoring-chart-card, .scoring-insight-section, .scoring-result-card) {
+  [data-scoring-workspace][data-scoring-theme="midnight"] :is([data-result-pane], .scoring-nr-mode-body) > :is(.scoring-table-mode-section, .scoring-best-network-layout, .scoring-chart-card, .scoring-insight-section, .scoring-result-card) {
     border: 1px solid #22314a; border-radius: 14px; color: #dce6f2; box-shadow: 0 14px 34px rgba(5,10,20,.35);
     background: linear-gradient(90deg, #00e0ff, #b47cff 55%, #ff4d6d) top / 100% 3px no-repeat, #0f1726; }
   [data-scoring-workspace][data-scoring-theme="midnight"] [data-result-pane] :is(h3, h4, h5, strong, .scoring-table-section-title) { color: #e6edf7 !important; }
+  [data-scoring-workspace][data-scoring-theme="midnight"] .scoring-nr-mode-title { background: color-mix(in srgb, var(--pane-accent) 35%, #0f1726); }
   [data-scoring-workspace][data-scoring-theme="midnight"] [data-result-pane] :is(p, small, label, .scoring-insight-note, .form-note) { color: #9fb1cc !important; }
   [data-scoring-workspace][data-scoring-theme="midnight"] [data-result-pane] :is(.scoring-matrix-wrap, .scoring-table-wrap, .scoring-chart-card, .scoring-threshold-legend, .scoring-insight-table-wrap) { background: #0f1726 !important; border-color: #22314a !important; }
   [data-scoring-workspace][data-scoring-theme="midnight"] .scoring-insight-table th { background: #16233a !important; color: #8fb3d9 !important;
@@ -916,13 +930,13 @@
   [data-scoring-workspace][data-scoring-theme="midnight"] [data-result-pane] .scoring-map-zoom { background: rgba(15, 23, 38, .94) !important; border-color: #2a3b58 !important; }
 
   /* Paper: panels between a double and a single black rule. */
-  [data-scoring-workspace][data-scoring-theme="paper"] [data-result-pane] > :is(.scoring-table-mode-section, .scoring-best-network-layout, .scoring-chart-card, .scoring-insight-section, .scoring-result-card) {
+  [data-scoring-workspace][data-scoring-theme="paper"] :is([data-result-pane], .scoring-nr-mode-body) > :is(.scoring-table-mode-section, .scoring-best-network-layout, .scoring-chart-card, .scoring-insight-section, .scoring-result-card) {
     border: 0; border-top: 3px double #1a1a1a; border-bottom: 1px solid #1a1a1a; border-radius: 0; background: #fffefb; box-shadow: none; }
   [data-scoring-workspace][data-scoring-theme="paper"] :is(.scoring-table-section-title, .scoring-chart-card h4, .scoring-insight-section h4) { color: #1a1a1a !important; font-style: italic; font-weight: 700; }
   [data-scoring-workspace][data-scoring-theme="paper"] :is(.scoring-matrix-wrap, .scoring-table-wrap) { border: 0; border-radius: 0; background: transparent; }
 
   /* Heatmap: light panels under the colours of its heat scale. */
-  [data-scoring-workspace][data-scoring-theme="heatmap"] [data-result-pane] > :is(.scoring-table-mode-section, .scoring-best-network-layout, .scoring-chart-card, .scoring-insight-section, .scoring-result-card) {
+  [data-scoring-workspace][data-scoring-theme="heatmap"] :is([data-result-pane], .scoring-nr-mode-body) > :is(.scoring-table-mode-section, .scoring-best-network-layout, .scoring-chart-card, .scoring-insight-section, .scoring-result-card) {
     border: 1px solid #e6eaee; border-radius: 10px; box-shadow: none;
     background: linear-gradient(90deg, #e05a4f, #e89b2e 35%, #6aa84f 65%, #2a9d8f) top / 100% 4px no-repeat, #fff; }
   [data-scoring-workspace][data-scoring-theme="heatmap"] :is(.scoring-table-section-title, .scoring-chart-card h4, .scoring-insight-section h4) { color: #1f2a37 !important; font-weight: 900; text-transform: uppercase; letter-spacing: .03em; }
@@ -1514,6 +1528,13 @@
               </label>
               <label class="scoring-environment-filter" data-result-environment-control>Environment
                 <select data-result-environment aria-label="Filter scoring tables, charts and GAP analysis by environment; defaults to the first complete environment when all environments are incomplete" disabled><option value="all">All Environments</option></select>
+              </label>
+              {# NSA vs SA: each panel of NSA followed by the same panel of SA, or every panel of NSA and then every panel of SA. #}
+              <label class="scoring-environment-filter" data-result-nr-layout-control hidden title="NSA vs SA: each panel of NSA followed by the same panel of SA, or every panel of NSA and then every panel of SA">NSA vs SA
+                <select data-result-nr-layout aria-label="How NSA vs SA shows the results of each NR Mode">
+                  <option value="interleaved">Each panel: NSA then SA</option>
+                  <option value="grouped">All NSA, then all SA</option>
+                </select>
               </label>
             </div>
             <div class="scoring-results-value-row" data-scoring-results-value-row>

@@ -182,6 +182,7 @@
         showKpiValues: stored.show_kpi_values === true,
         showGapValues: stored.show_gap_values === true,
         gapLayout: ['end', 'adjacent'].includes(stored.gap_layout) ? stored.gap_layout : 'end',
+        nrLayout: stored.nr_layout === 'grouped' ? 'grouped' : 'interleaved',
         gapComparisons: stored.gap_comparisons && typeof stored.gap_comparisons === 'object'
           && !Array.isArray(stored.gap_comparisons)
           ? Object.fromEntries(Object.entries(stored.gap_comparisons).filter(([, value]) => (
@@ -218,6 +219,7 @@
         show_kpi_values: Boolean(showKpiValuesToggle?.checked),
         show_gap_values: showGapValues(),
         gap_layout: selectedGapLayout(),
+        nr_layout: typeof selectedNrLayout === 'undefined' ? 'interleaved' : selectedNrLayout,
         gap_comparisons: typeof gapComparisonSelections === 'undefined'
           ? {} : Object.fromEntries(gapComparisonSelections),
         // Location, operators and analysis of the KPI GAP Profile and Points Lost Map, and the other insight selectors.
@@ -404,6 +406,9 @@
   const environmentControl = root.querySelector('[data-result-environment-control]');
   const environmentSelect = root.querySelector('[data-result-environment]');
   const scoringKindControl = root.querySelector('[data-result-scoring-control]');
+  // NSA vs SA: each panel of NSA then the same panel of SA (interleaved), or every panel of NSA then every one of SA.
+  const nrLayoutControl = root.querySelector('[data-result-nr-layout-control]');
+  const nrLayoutSelect = root.querySelector('[data-result-nr-layout]');
   const scoringKindSelect = root.querySelector('[data-result-scoring]');
   const chartPane = root.querySelector('[data-result-pane="charts"]');
   const chartOverlay = root.querySelector('[data-scoring-chart-overlay]');
@@ -451,6 +456,8 @@
   let selectedEnvironment = restoredScoringViewState.environment || 'all';
   // Best Network or Most Reliable: both scorings share the Saved Filter, its filters and its aggregation.
   let selectedScoring = restoredScoringViewState.scoring || 'best_network';
+  let selectedNrLayout = restoredScoringViewState.nrLayout || 'interleaved';
+  if (nrLayoutSelect) nrLayoutSelect.value = selectedNrLayout;
   let currentEffectiveEnvironment = null;
   let environmentDefaultSavedFilterId = null;
   let currentResults = null;
@@ -7155,7 +7162,8 @@
     }
     // How the measurements ran, Where to act and Where to act by performance owner come first; the places ranked and the
     // route that loses most follow the standings, positions and levers.
-    const scope = insightItems(payload, 'campaign_scope', environment)[0];
+    // (The parts of NSA vs SA leave How the measurements ran to the whole result, above them.)
+    const scope = payload.nr_mode_part ? null : insightItems(payload, 'campaign_scope', environment)[0];
     if (scope) {
       const section = insightSection(pane, 'How the measurements ran', 'scoring-scope-card', false);
       section.append(makeCampaignScope(scope));
@@ -7200,6 +7208,16 @@
       section.append(grid);
     }
     pane.append(later);
+  }
+
+  // How the measurements of both NR Modes of NSA vs SA ran, above the Summary of each NR Mode: the latest NSA and SA
+  // campaigns stand out among the campaigns.
+  function renderSummaryScope(pane, payload, environment) {
+    pane.replaceChildren();
+    const scope = environment ? insightItems(payload, 'campaign_scope', environment)[0] : null;
+    if (!scope) return;
+    const section = insightSection(pane, 'How the measurements ran', 'scoring-scope-card', false);
+    section.append(makeCampaignScope(scope, {nrModes: true}));
   }
 
   // One operator chosen with buttons, the Focus operators and the others in subpanels of their own (as the operator
@@ -7635,7 +7653,7 @@
     return wrapper;
   }
 
-  function makeCampaignScope(scope) {
+  function makeCampaignScope(scope, {nrModes = false} = {}) {
     const box = document.createElement('div');
     box.className = 'scoring-scope';
     // A detail given as a list has a line per item (each environment with its points).
@@ -7650,9 +7668,14 @@
     const tiles = document.createElement('div');
     tiles.className = 'scoring-scope-tiles';
     const window_ = scope.window;
-    // Below the reference (the latest campaign), the other campaigns analysed, the newest first.
-    const otherCampaigns = scope.campaigns.filter(campaign => campaign !== scope.latest_campaign).reverse();
-    tiles.append(tile('Campaigns', scope.latest_campaign || '—', otherCampaigns.length ? `+${otherCampaigns.length} campaign${otherCampaigns.length === 1 ? '' : 's'}: ${otherCampaigns.join(', ')}` : 'One campaign'));
+    // Below the reference (the latest campaign; with NSA vs SA, the latest NSA and SA campaigns), the other campaigns
+    // analysed, the newest first.
+    const isSa = campaign => /(^|[_\- ])SA($|[_\- ])/i.test(String(campaign || ''));
+    const latest = nrModes
+      ? [scope.campaigns.filter(campaign => !isSa(campaign)).at(-1), scope.campaigns.filter(isSa).at(-1)].filter(Boolean)
+      : [scope.latest_campaign].filter(Boolean);
+    const otherCampaigns = scope.campaigns.filter(campaign => !latest.includes(campaign)).reverse();
+    tiles.append(tile('Campaigns', latest.join(' · ') || '—', otherCampaigns.length ? `+${otherCampaigns.length} campaign${otherCampaigns.length === 1 ? '' : 's'}: ${otherCampaigns.join(', ')}` : (latest.length > 1 ? 'One campaign each' : 'One campaign')));
     if (window_) tiles.append(tile('Measurements', `${window_.first} → ${window_.last}`, `${window_.days} days with tests`));
     if (scope.places) tiles.append(tile('Places', `${scope.places.cities} cities`, `${scope.places.routes} Connecting Roads routes`));
     const environments = scope.environments.filter(item => item.max_points > 0);
@@ -9456,7 +9479,7 @@
     held.forEach(([pane, height]) => { pane.style.minHeight = `${height}px`; });
     renderLoads = [];
     try {
-      renderResultContent(savedPayload, savedFilter, panesToRender);
+      renderResultParts(savedPayload, savedFilter, panesToRender);
     } finally {
       if (held.length) {
         keepAnchor();
@@ -9470,7 +9493,105 @@
     }
   }
 
-  function renderResultContent(savedPayload, savedFilter, panesToRender) {
+  // NSA vs SA: every tab shows the results of each NR Mode on its own, NSA then SA, as an NSA and an SA calculation
+  // show them; How the measurements ran (both NR Modes) comes first in the Summary, and the GAP of Same operator in NSA
+  // (SA minus NSA) stays one comparison of both. The page keeps the whole result (its warnings, exports and choices).
+  function renderResultParts(savedPayload, savedFilter, panesToRender) {
+    const parts = Array.isArray(savedPayload?.nr_mode_parts) ? savedPayload.nr_mode_parts : [];
+    if (nrLayoutControl) nrLayoutControl.hidden = parts.length < 2;
+    if (parts.length < 2) {
+      renderResultContent(savedPayload, savedFilter, panesToRender);
+      return;
+    }
+    const sameOperator = String((savedFilter || savedPayload.saved_filter || {}).baseline_operator || '') === '@same-operator-nsa';
+    const whole = panesToRender.filter(name => sameOperator && name === 'gap');
+    const split = panesToRender.filter(name => !whole.includes(name));
+    const bodies = new Map(parts.map(part => [part.nr_mode, new Map()]));
+    let scopeHost = null;
+    for (const name of split) {
+      const pane = root.querySelector(`[data-result-pane="${name}"]`);
+      if (!pane) continue;
+      const sections = parts.map(part => {
+        const section = document.createElement('section');
+        section.className = `scoring-nr-mode-part scoring-nr-mode-${String(part.nr_mode).toLowerCase()}`;
+        const heading = document.createElement('h3');
+        heading.className = 'scoring-nr-mode-title';
+        heading.textContent = part.nr_mode === 'SA' ? 'SA · Standalone' : 'NSA · Non-Standalone';
+        const body = document.createElement('div');
+        body.className = 'scoring-nr-mode-body';
+        section.append(heading, body);
+        bodies.get(part.nr_mode).set(name, body);
+        return section;
+      });
+      if (name === 'summary') scopeHost = document.createElement('div');
+      pane.replaceChildren(...(scopeHost && name === 'summary' ? [scopeHost] : []), ...sections);
+    }
+    for (const part of parts) {
+      const partBodies = bodies.get(part.nr_mode);
+      renderResultContent({...part, nr_mode_part: part.nr_mode}, savedFilter, split, name => partBodies.get(name));
+    }
+    if (selectedNrLayout !== 'grouped') {
+      // Each panel of NSA then the same panel of SA, each tagged with its NR Mode.
+      for (const name of split) {
+        const pane = root.querySelector(`[data-result-pane="${name}"]`);
+        if (!pane) continue;
+        const [nsa, sa] = parts.map(part => [...(bodies.get(part.nr_mode).get(name)?.children || [])]);
+        const blocks = interleaveNrModeBlocks(nsa, sa);
+        nsa.forEach(block => tagNrModeBlock(block, parts[0].nr_mode));
+        sa.forEach(block => tagNrModeBlock(block, parts[1].nr_mode));
+        pane.replaceChildren(...(scopeHost && name === 'summary' ? [scopeHost] : []), ...blocks);
+      }
+    }
+    // Then the whole result: the measurements of both NR Modes, the GAP of Same operator in NSA, the warnings and exports.
+    renderResultContent(savedPayload, savedFilter, [...whole, ...(scopeHost ? ['summary-scope'] : [])],
+      name => (name === 'summary-scope' ? scopeHost : root.querySelector(`[data-result-pane="${name}"]`)));
+    for (const name of split) {
+      const pane = root.querySelector(`[data-result-pane="${name}"]`);
+      if (pane && tableExports[name]) pane.prepend(tableExports[name]);
+    }
+  }
+
+  // The panels of NSA and SA paired by their kind and place (the second Scoring Table of NSA with the second of SA); a
+  // panel of SA without one of NSA goes after the SA panel before it.
+  function interleaveNrModeBlocks(nsa, sa) {
+    const keyOf = seen => block => {
+      const name = `${block.tagName}.${block.className}`;
+      const count = seen.get(name) || 0;
+      seen.set(name, count + 1);
+      return `${name}#${count}`;
+    };
+    const nsaKey = keyOf(new Map());
+    const saKey = keyOf(new Map());
+    const saByKey = new Map(sa.map(block => [saKey(block), block]));
+    const merged = [];
+    const placed = new Set();
+    for (const block of nsa) {
+      merged.push(block);
+      const match = saByKey.get(nsaKey(block));
+      if (match) {
+        merged.push(match);
+        placed.add(match);
+      }
+    }
+    sa.forEach((block, index) => {
+      if (placed.has(block)) return;
+      const previous = sa.slice(0, index).reverse().find(item => merged.includes(item));
+      merged.splice(previous ? merged.indexOf(previous) + 1 : 0, 0, block);
+    });
+    return merged;
+  }
+
+  function tagNrModeBlock(block, mode) {
+    block.classList.add('scoring-nr-mode-block', `scoring-nr-mode-block-${String(mode).toLowerCase()}`);
+    const tag = document.createElement('span');
+    tag.className = `scoring-nr-mode-tag scoring-nr-mode-tag-${String(mode).toLowerCase()}`;
+    tag.textContent = mode;
+    tag.title = mode === 'SA' ? 'Standalone' : 'Non-Standalone';
+    (block.querySelector('h4, h3, .scoring-table-section-title') || block).prepend(tag);
+  }
+
+  function renderResultContent(savedPayload, savedFilter, panesToRender,
+    paneOf = name => root.querySelector(`[data-result-pane="${name}"]`)) {
     currentResults = savedPayload;
     currentResultsSavedFilterId = savedFilterIdOf(savedFilter || savedPayload.saved_filter || {}) || null;
     const resultFilters = (savedFilter || savedPayload.saved_filter || {}).context_filters;
@@ -9480,9 +9601,11 @@
     const shouldRenderPane = name => panesToRender.includes(name);
     const scoringRows = payload.scoring ?? payload.scoring_rows ?? [];
     const gapRows = payload.gap ?? payload.gap_rows ?? [];
-    const scoringPane = root.querySelector('[data-result-pane="scoring"]');
-    const chartPane = root.querySelector('[data-result-pane="charts"]');
-    const gapPane = root.querySelector('[data-result-pane="gap"]');
+    const scoringPane = paneOf('scoring');
+    const chartPane = paneOf('charts');
+    const gapPane = paneOf('gap');
+    // (The parts of NSA vs SA leave the export buttons to their tab.)
+    const ownExports = !savedPayload.nr_mode_part;
     const views = payload.views && typeof payload.views === 'object' ? payload.views : {};
     const allScoreTables = normalizeRows(views.score_tables ?? payload.score_tables ?? payload.scoring_views?.score_tables ?? []);
     const allGapTables = normalizeRows(views.gap_tables ?? payload.gap_tables ?? payload.scoring_views?.gap_tables ?? []);
@@ -9539,7 +9662,7 @@
         renderTable(scoringPane, detailRows, 'This Saved Filter has no scoring table rows.', {hideGapColumns: true});
       }
       renderCampaignComparisons(scoringPane, payload, effectiveEnvironment);
-      if (tableExports.scoring) scoringPane.prepend(tableExports.scoring);
+      if (tableExports.scoring && ownExports) scoringPane.prepend(tableExports.scoring);
     }
     if (shouldRenderPane('charts')) {
       chartPane.classList.remove('scoring-chart-grid');
@@ -9548,11 +9671,12 @@
       renderCategoryAllocation(chartPane, scoreTables, hierarchyScoreTable, allScoreTables);
       renderBestNetworkChart(chartPane, scoreTables, hierarchyScoreTable, allScoreTables);
     }
-    if (shouldRenderPane('summary')) renderSummary(root.querySelector('[data-result-pane="summary"]'), payload, effectiveEnvironment);
-    if (shouldRenderPane('geographical-areas')) renderGeographicalAreas(root.querySelector('[data-result-pane="geographical-areas"]'), payload, effectiveEnvironment);
-    if (shouldRenderPane('trends')) renderTrends(root.querySelector('[data-result-pane="trends"]'), payload, effectiveEnvironment);
+    if (shouldRenderPane('summary')) renderSummary(paneOf('summary'), payload, effectiveEnvironment);
+    if (shouldRenderPane('summary-scope')) renderSummaryScope(paneOf('summary-scope'), payload, effectiveEnvironment);
+    if (shouldRenderPane('geographical-areas')) renderGeographicalAreas(paneOf('geographical-areas'), payload, effectiveEnvironment);
+    if (shouldRenderPane('trends')) renderTrends(paneOf('trends'), payload, effectiveEnvironment);
     if (shouldRenderPane('points')) {
-      renderPointsLost(root.querySelector('[data-result-pane="points"]'), payload, effectiveEnvironment,
+      renderPointsLost(paneOf('points'), payload, effectiveEnvironment,
         savedFilterIdOf(savedFilter || payload.saved_filter || {}));
     }
     if (shouldRenderPane('gap')) {
@@ -9585,7 +9709,7 @@
       if (gapTablesCard.childNodes.length) gapPane.append(gapTablesCard);
       renderGapParts(gapPane, payload, effectiveEnvironment);
       renderKpiGapProfiles(gapPane, payload, effectiveEnvironment);
-      if (tableExports.gap) gapPane.prepend(tableExports.gap);
+      if (tableExports.gap && ownExports) gapPane.prepend(tableExports.gap);
     }
     const warnings = payload.warnings ?? savedFilter?.warnings ?? [];
     renderWarnings(scoringCoverageWarnings({...payload, warnings}, savedFilter, effectiveEnvironment));
@@ -9950,8 +10074,9 @@
     campaignChoice = [...campaignFilterSelect.selectedOptions].map(option => option.value);
   });
   root.addEventListener('change', event => {
-    if ([environmentSelect, scoringKindSelect, showKpiValuesToggle, showGapValuesToggle, gapLayoutSelect].includes(event.target)) {
+    if ([environmentSelect, scoringKindSelect, showKpiValuesToggle, showGapValuesToggle, gapLayoutSelect, nrLayoutSelect].includes(event.target)) {
       if (event.target === environmentSelect) selectedEnvironment = environmentSelect.value;
+      if (event.target === nrLayoutSelect) selectedNrLayout = nrLayoutSelect.value === 'grouped' ? 'grouped' : 'interleaved';
       if (event.target === scoringKindSelect) selectedScoring = scoringKindSelect.value === 'most_reliable' ? 'most_reliable' : 'best_network';
       persistScoringViewState();
     }
@@ -9985,6 +10110,10 @@
     }
     if (event.target === environmentSelect && currentResults) {
       selectedEnvironment = environmentSelect.value;
+      renderResult(currentResults, selectedSavedFilter);
+      return;
+    }
+    if (event.target === nrLayoutSelect && currentResults) {
       renderResult(currentResults, selectedSavedFilter);
       return;
     }

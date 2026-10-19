@@ -431,6 +431,23 @@ def _hierarchy_reference_id(path: list[dict[str, Any]], references: dict[str, st
     return references.get(key(fallback))
 
 
+def nr_mode_result(value: Any, nr_mode: str) -> Any:
+    """The part of an NSA vs SA result of one NR Mode, as an NSA or an SA calculation gives it: its records (scores,
+    totals, GAPs, tests, points lost, the calculations of its Geographical Areas & Scoring Trends…) of the campaigns of
+    that NR Mode, and its lists of campaigns."""
+    if isinstance(value, dict):
+        return {key: ([campaign for campaign in item if campaign_nr_mode(campaign) == nr_mode]
+                      if key in {'campaigns', 'resolved_campaigns', 'trend_campaigns'} and isinstance(item, list)
+                      and all(isinstance(campaign, str) for campaign in item)
+                      else nr_mode_result(item, nr_mode))
+                for key, item in value.items()}
+    if isinstance(value, list):
+        return [nr_mode_result(item, nr_mode) for item in value
+                if not (isinstance(item, dict) and item.get('campaign') not in (None, '')
+                        and campaign_nr_mode(item['campaign']) != nr_mode)]
+    return value
+
+
 def _same_operator_twin_key(context: dict[str, Any]) -> str:
     return json.dumps(sorted((key, campaign_pair_key(value) if key == 'campaign' else value)
                              for key, value in context.items()), default=str)

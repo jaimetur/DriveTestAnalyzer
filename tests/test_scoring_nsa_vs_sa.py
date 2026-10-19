@@ -278,3 +278,49 @@ def test_same_operator_in_nsa_needs_nsa_vs_sa_and_exports(tmp_path):
     text = ' '.join(shape.text_frame.text for slide in Presentation(BytesIO(content)).slides for shape in slide.shapes
                     if shape.has_text_frame)
     assert SAME_OPERATOR_NSA_LABEL in text
+
+
+def test_the_page_gets_the_results_of_each_nr_mode_on_their_own(tmp_path):
+    import src.DriveTestAnalyzer as core
+    repository, ids = _workspace(tmp_path)
+    saved, _ = saved_filters.save_saved_filter(repository, [*ids['NSA'], *ids['SA']], ['Operator'], NSA_VS_SA,
+                                               area_summary={'time_split': 'Campaign', 'breakdown': 'Region', 'cities': []})
+    calculated = saved_filters.calculate_saved_filter(repository, saved['id'])
+    payload = core._saved_filter_payload(calculated, [], [], None)
+    nsa, sa = payload['nr_mode_parts']
+    assert (nsa['nr_mode'], sa['nr_mode']) == ('NSA', 'SA')
+    # Each part is the result of its NR Mode: its campaign only, in every view.
+    assert {row['campaign'] for row in nsa['totals']} == {'UK_Q3_NSA_2026'}
+    assert {row['campaign'] for row in sa['totals']} == {'UK_Q3_SA_2026'}
+    assert {table['context'].get('campaign') for table in sa['views']['score_tables']} <= {'UK_Q3_SA_2026', None}
+    assert sa['campaigns'] == ['UK_Q3_SA_2026'] and sa['saved_filter']['nr_mode'] == 'SA'
+    assert sa['views']['insights']['area_summaries'] is not None
+    # The whole result stays for the rest of the page.
+    assert {row['campaign'] for row in payload['totals']} == {'UK_Q3_NSA_2026', 'UK_Q3_SA_2026'}
+    single, _ = saved_filters.save_saved_filter(repository, ids['NSA'], ['Operator'], 'NSA')
+    assert 'nr_mode_parts' not in core._saved_filter_payload(
+        saved_filters.calculate_saved_filter(repository, single['id']), [], [], None)
+
+
+def test_each_panel_of_nsa_goes_before_the_same_panel_of_sa():
+    import json
+    import shutil
+    import subprocess
+    script = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/scoring.js').read_text(encoding='utf-8')
+    start = script.index('  function interleaveNrModeBlocks(')
+    source = script[start:script.index('\n  }', start) + len('\n  }')]
+    node = shutil.which('node')
+    if not node:
+        pytest.skip('Node.js is required to check the NSA vs SA layout.')
+    block = lambda name, cls: {'tagName': 'SECTION', 'className': cls, 'name': name}  # noqa: E731
+    nsa = [block('nsa table 1', 'table'), block('nsa table 2', 'table'), block('nsa chart', 'chart')]
+    sa = [block('sa table 1', 'table'), block('sa comparison', 'comparison'), block('sa table 2', 'table'),
+          block('sa chart', 'chart')]
+    program = source + '\nconst {nsa, sa} = JSON.parse(require("fs").readFileSync(0, "utf8"));\n' \
+        'process.stdout.write(JSON.stringify(interleaveNrModeBlocks(nsa, sa).map(item => item.name)));'
+    completed = subprocess.run([node, '-e', program], input=json.dumps({'nsa': nsa, 'sa': sa}), capture_output=True,
+                               text=True, check=False)
+    assert completed.returncode == 0, completed.stderr
+    # Each NSA panel with the SA panel of its kind and place; an SA panel without one of NSA after the SA panel before it.
+    assert json.loads(completed.stdout) == ['nsa table 1', 'sa table 1', 'sa comparison', 'nsa table 2', 'sa table 2',
+                                            'nsa chart', 'sa chart']
