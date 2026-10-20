@@ -676,6 +676,11 @@
   .scoring-map-zoom button:hover { background: #eef4f9; transform: none; box-shadow: none; }
   .scoring-map-zoom-rect { fill: rgba(31, 111, 209, .12); stroke: #1f6fd1; stroke-width: 1.5; stroke-dasharray: 5 4; vector-effect: non-scaling-stroke; }
   .scoring-map-zoom-rect.is-selecting { fill: rgba(232, 65, 79, .1); stroke: #c8102e; }
+  .scoring-image-download { position: fixed; z-index: 25; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; width: 2.6rem; height: 2.6rem; min-height: 0; padding: 0; border: 1px solid #d7e0e7; border-radius: 10px; background: rgba(255, 255, 255, .94); color: #244e70; box-shadow: 0 6px 16px rgba(18, 31, 43, .18); cursor: pointer; }
+  .scoring-image-download[hidden] { display: none; }
+  .scoring-image-download:hover { background: #eef4f9; transform: none; box-shadow: 0 6px 16px rgba(18, 31, 43, .18); }
+  .scoring-image-download svg { width: 1.2rem; height: 1.2rem; }
+  .scoring-image-download.is-busy { cursor: progress; opacity: .55; }
   /* The operator of each Points Lost column, and the rows or areas chosen to show alone. */
   .scoring-loss-map-operator { margin: 0 0 .35rem; font-size: 1.45rem; font-weight: 800; line-height: 1.2; color: #17232d; }
   .scoring-loss-environment { color: #4a5b65; font-size: .78rem; }
@@ -1084,6 +1089,8 @@
     background-color: color-mix(in srgb, var(--operator-color) 18%, #0f1726) !important; color: color-mix(in srgb, var(--operator-color) 45%, #ffffff) !important;
     border-color: color-mix(in srgb, var(--operator-color) 60%, #ffffff) !important; }
   [data-scoring-workspace][data-scoring-theme="midnight"] [data-result-pane] .scoring-map-zoom { background: rgba(15, 23, 38, .94) !important; border-color: #2a3b58 !important; }
+  [data-scoring-workspace][data-scoring-theme="midnight"] .scoring-image-download { background: rgba(15, 23, 38, .94); border-color: #2a3b58; color: #cfe0f3; }
+  [data-scoring-workspace][data-scoring-theme="midnight"] .scoring-image-download:hover { background: #16233a; }
 
   /* Paper: panels between a double and a single black rule. */
   [data-scoring-workspace][data-scoring-theme="paper"] :is([data-result-pane], .scoring-nr-mode-body) > :is(.scoring-table-mode-section, .scoring-best-network-layout, .scoring-chart-card, .scoring-insight-section, .scoring-result-card) {
@@ -1808,6 +1815,7 @@
 </section>
 {% endblock %}
 {% block extra_scripts %}
+<script src="{{ static_path('js/element_image.js') }}?v={{ asset_version('js/element_image.js') }}"></script>
 <script src="{{ static_path('js/scoring_report_editor.js') }}?v={{ asset_version('js/scoring_report_editor.js') }}"></script>
 <script src="{{ static_path('js/scoring.js') }}?v={{ asset_version('js/scoring.js') }}"></script>
 <script src="{{ static_path('js/scoring_exclusions.js') }}?v={{ asset_version('js/scoring_exclusions.js') }}"></script>

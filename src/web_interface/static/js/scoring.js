@@ -9187,6 +9187,162 @@
     }
   });
 
+  // A floating button at the top right corner of the chart, map, table or panel of the results under the pointer (on
+  // touch screens, of the one tapped) downloads it as a PNG image, as it is shown; App Events records each download.
+  // One button for the page, placed over the innermost of them, so the results drawn again need nothing of their own.
+  const IMAGE_TABLES = '.scoring-insight-table-wrap, .scoring-matrix-wrap, .scoring-table-wrap, .scoring-position';
+  const IMAGE_CHARTS = '.scoring-chart-card, .scoring-loss-map-card, .scoring-expandable-part';
+  const IMAGE_TARGETS = `${IMAGE_TABLES}, ${IMAGE_CHARTS}, .scoring-result-card, .scoring-table-mode-section`;
+  const IMAGE_TITLES = ':scope > :is(h4, h5, .scoring-insight-banner, .scoring-position-title, figcaption)';
+  // The zoom buttons are left out of the image.
+  const IMAGE_EXCLUDED = '.scoring-map-zoom, .scoring-map-zoom-rect, .scoring-content-zoom-rect';
+  const imageButton = document.createElement('button');
+  imageButton.type = 'button';
+  imageButton.className = 'scoring-image-download';
+  imageButton.hidden = true;
+  imageButton.innerHTML = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" '
+    + 'stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10 3v9"/><path d="m6.5 8.5 3.5 3.5 3.5-3.5"/>'
+    + '<path d="M3.5 13v2.5A1.5 1.5 0 0 0 5 17h10a1.5 1.5 0 0 0 1.5-1.5V13"/></svg>';
+  root.append(imageButton);
+  let imageTarget = null;
+  let imageHideTimer = 0;
+  let imagePlaceFrame = 0;
+
+  function imageTargetAt(node) {
+    const target = node?.closest?.(IMAGE_TARGETS);
+    return target?.closest('[data-result-pane]') && root.contains(target) ? target : null;
+  }
+
+  function imageKind(target) {
+    return target.matches(IMAGE_TABLES) ? 'table' : target.matches(IMAGE_CHARTS) ? 'chart' : 'panel';
+  }
+
+  // Its own title, after the title of the card it is part of (``Points Lost Map — EE``).
+  function imageTitle(target) {
+    const titleOf = element => titleWithoutScope(element?.querySelector(IMAGE_TITLES));
+    const card = target.parentElement?.closest('.scoring-chart-card, .scoring-result-card, .scoring-table-mode-section');
+    return [...new Set([card ? titleOf(card) : '', titleOf(target)].filter(Boolean))].join(' — ') || 'Scoring';
+  }
+
+  function imageFileName(parts) {
+    const name = parts.filter(Boolean).join(' - ').replace(/[\\/:*?"<>|\u0000-\u001f]+/g, ' ').replace(/\s+/g, ' ')
+      .trim().slice(0, 150).trim();
+    return `${name || 'Scoring'}.png`;
+  }
+
+  // At the top right corner of the part shown (below the floating section bar), beside the zoom buttons of a chart or map.
+  function placeImageButton() {
+    if (!imageTarget?.isConnected || imageTarget.closest('[hidden]')) {
+      hideImageButton();
+      return;
+    }
+    imageButton.hidden = false;
+    const bounds = imageTarget.getBoundingClientRect();
+    const size = imageButton.getBoundingClientRect();
+    const barBottom = Math.max(0, document.querySelector('.section-bar')?.getBoundingClientRect().bottom || 0);
+    const top = Math.min(Math.max(bounds.top + 8, barBottom + 8), bounds.bottom - size.height - 8);
+    let right = bounds.right - 8;
+    for (const toolbar of imageTarget.querySelectorAll('.scoring-map-zoom')) {
+      const box = toolbar.getBoundingClientRect();
+      if (box.width && box.left < right && box.right > right - size.width && box.top < top + size.height && box.bottom > top) {
+        right = box.left - 6;
+      }
+    }
+    imageButton.style.left = `${Math.round(right - size.width)}px`;
+    imageButton.style.top = `${Math.round(top)}px`;
+  }
+
+  function showImageButton(target) {
+    if (imageButton.classList.contains('is-busy')) return;
+    window.clearTimeout(imageHideTimer);
+    if (target !== imageTarget) {
+      imageTarget = target;
+      const label = `Download this ${imageKind(target)} as an image (PNG)`;
+      imageButton.title = label;
+      imageButton.setAttribute('aria-label', label);
+    }
+    placeImageButton();
+  }
+
+  function hideImageButton() {
+    if (imageButton.classList.contains('is-busy')) return;
+    window.clearTimeout(imageHideTimer);
+    imageTarget = null;
+    imageButton.hidden = true;
+  }
+
+  // With a mouse the button shows while the pointer is over a chart or table (or over the button).
+  root.addEventListener('pointerover', event => {
+    if (event.pointerType !== 'mouse' || imageButton.contains(event.target)) return;
+    const target = imageTargetAt(event.target);
+    if (target) showImageButton(target);
+    else hideImageButton();
+  });
+  root.addEventListener('pointerout', event => {
+    if (event.pointerType !== 'mouse') return;
+    const next = event.relatedTarget;
+    if (!(next && (imageButton.contains(next) || imageTargetAt(next)))) hideImageButton();
+  });
+  // On touch screens a tap shows it for a few seconds, until a tap elsewhere.
+  root.addEventListener('pointerup', event => {
+    if (event.pointerType === 'mouse' || imageButton.contains(event.target)) return;
+    const target = imageTargetAt(event.target);
+    if (!target) return;
+    showImageButton(target);
+    imageHideTimer = window.setTimeout(hideImageButton, 5000);
+  });
+  document.addEventListener('pointerdown', event => {
+    if (event.pointerType === 'mouse' || imageButton.hidden) return;
+    if (!imageButton.contains(event.target) && !imageTarget?.contains(event.target)) hideImageButton();
+  });
+  const followImageTarget = () => {
+    if (imageButton.hidden || imagePlaceFrame) return;
+    imagePlaceFrame = window.requestAnimationFrame(() => {
+      imagePlaceFrame = 0;
+      placeImageButton();
+    });
+  };
+  window.addEventListener('scroll', followImageTarget, {passive: true, capture: true});
+  window.addEventListener('resize', followImageTarget);
+
+  function recordImageDownload(details) {
+    fetch('/api/scoring/image-export', {
+      method: 'POST', credentials: 'same-origin', keepalive: true,
+      headers: {Accept: 'application/json', 'Content-Type': 'application/json'}, body: JSON.stringify(details),
+    }).catch(() => {});
+  }
+
+  imageButton.addEventListener('click', async event => {
+    event.stopPropagation();
+    const target = imageTarget;
+    if (!target?.isConnected || imageButton.classList.contains('is-busy') || typeof window.downloadElementImage !== 'function') return;
+    const title = imageTitle(target);
+    const environment = selectedEnvironment ? environmentLabel(selectedEnvironment) : '';
+    const fileName = imageFileName([title, environment]);
+    const details = {
+      saved_filter_id: Number(currentResultsSavedFilterId) || null,
+      tab: root.querySelector(`[data-result-tab="${activeResultTab}"]`)?.textContent.trim() || activeResultTab || '',
+      kind: imageKind(target), title, environment, theme: activeTheme?.id || '',
+    };
+    imageButton.classList.add('is-busy');
+    imageButton.setAttribute('aria-busy', 'true');
+    try {
+      const image = await window.downloadElementImage(target, fileName, {exclude: IMAGE_EXCLUDED});
+      recordImageDownload({...details, file_name: image.fileName, format: image.format, width: image.width, height: image.height});
+    } catch (error) {
+      const reason = error?.message || String(error);
+      recordImageDownload({...details, file_name: fileName, error: reason});
+      const message = `The ${details.kind} could not be downloaded as an image: ${reason}`;
+      if (typeof showInfoDialog === 'function') showInfoDialog(message, {tone: 'error', title: 'Image not downloaded'});
+      else window.alert(message);
+    } finally {
+      imageButton.classList.remove('is-busy');
+      imageButton.removeAttribute('aria-busy');
+      // The pointer may have left while the image was drawn.
+      if (!imageButton.matches(':hover') && !target.matches(':hover')) hideImageButton();
+    }
+  });
+
   // Zoom for content that is not one SVG (such as the location cards): the content is scaled inside
   // its box, which keeps its size; a dragged rectangle or the floating buttons zoom it.
   function enableContentZoom(box, viewport) {

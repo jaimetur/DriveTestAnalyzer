@@ -18899,6 +18899,38 @@ def build_saved_filter_powerpoint(task_repository: Repository, filter_id: int) -
     return content, filename, export_job
 
 
+class ScoringImageExportRequest(BaseModel):
+    saved_filter_id: int | None = None
+    tab: str = ''
+    kind: str = ''
+    title: str = ''
+    environment: str = ''
+    theme: str = ''
+    file_name: str = ''
+    format: str = ''
+    width: int | None = None
+    height: int | None = None
+    error: str = ''
+
+
+@app.post('/api/scoring/image-export')
+def scoring_image_export(payload: ScoringImageExportRequest, user: SessionUser = Depends(current_user)) -> dict[str, Any]:
+    """Record a chart, table or panel of Scoring & GAP Results downloaded as an image (the browser draws it), or why it
+    could not be."""
+    task_repository = scoring_repository(user)
+    saved_filter = get_saved_filter(task_repository, payload.saved_filter_id) if payload.saved_filter_id else None
+    task_repository.try_add_log(
+        user.username, 'export_scoring_image_failed' if payload.error else 'export_scoring_image', json.dumps({
+            'saved_filter_id': payload.saved_filter_id, 'name': (saved_filter or {}).get('name') or '',
+            'starred': bool((saved_filter or {}).get('pinned')), 'tab': payload.tab[:80], 'kind': payload.kind[:20],
+            'title': payload.title[:300], 'environment': payload.environment[:120], 'theme': payload.theme[:40],
+            'file_name': payload.file_name[:200], 'format': payload.format[:10], 'width': payload.width,
+            'height': payload.height, **({'error': payload.error[:500]} if payload.error else {}),
+        }, ensure_ascii=False),
+    )
+    return {'recorded': True}
+
+
 @app.get('/scoring/saved-filters/{filter_id}/export/{export_kind}')
 def scoring_saved_filter_export(
     filter_id: int,
