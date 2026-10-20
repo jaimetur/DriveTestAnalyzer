@@ -26,6 +26,7 @@
 - **Buttons of Scoring & GAP Analysis:** Generate Scoring Report and Export Selected Scoring Report are as tall as the buttons beside them and aligned with them, without the rule above them that a style of Workspace Config added, and the buttons of Scoring & GAP Results are as tall as those of the Calculation panel.
 - **Campaigns of the Bundle Report Templates sections:** on narrow screens, such as a phone, the Campaigns of each section and, in Scoring & GAP Analysis, the GAP reference and Methodology beside them are shown one below the other instead of being squeezed out of sight.
 - **Scoring charts per City:** with City (or Region or Cluster) above Operator in the aggregation hierarchy, the Scoring per Service and per Category charts leave their gap between the cities instead of between the operators, and their PowerPoint and Word slides, when split, keep every operator and campaign of each city together instead of each operator across all the cities; the Split by note and the Aggregation hierarchy dialog say that the levels above Operator group the operators.
+- **Open lists above the next panel:** the lists of the multiple choices, such as the Campaigns of the Scoring Trends, and those of the Reporting pickers open above the panel that follows theirs instead of under it.
 
 #### 📚 Documentation:
 

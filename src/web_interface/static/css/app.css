@@ -485,6 +485,9 @@ a.topnav-link-logout { background: linear-gradient(135deg, #ffd8d8, #ffc6c6); bo
 .hero-copy, .panel { background: var(--panel); border: 1px solid rgba(255,255,255,0.55); box-shadow: var(--shadow); border-radius: var(--radius); backdrop-filter: blur(14px); }
 .lede { width: 100%; max-width: none; color: var(--muted); }
 .panel { padding: 1.55rem; }
+/* Each panel is a stacking context of its own (backdrop-filter): one with an open list goes above the panels after it, so
+   the list is never hidden under them (below the floating section bar). */
+.panel:has(.multiselect-menu:not([hidden]), .searchable-select-menu:not([hidden]), details[open] > .workspace-user-picker-menu) { position: relative; z-index: 25; }
 .narrow-form button { margin-top: 0.55rem; }
 .form-note { color: var(--muted); font-size: 0.92rem; }
 .alert { background: rgba(225, 95, 58, 0.13); color: #9d3417; padding: 0.9rem 1rem; border-radius: 14px; margin-top: 1rem; }

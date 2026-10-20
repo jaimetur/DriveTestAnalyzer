@@ -11197,6 +11197,10 @@ def test_every_single_select_opens_the_application_list_below_its_field():
     assert 'setupCustomMultiSelects();\nsetupNativeSelectMenus();' in script
     assert '.native-select-menu { position: fixed; z-index: 2147483000;' in stylesheet
     assert 'text-overflow: ellipsis; white-space: nowrap; }' in stylesheet
+    # A panel with an open list goes above the panels after it (each one is a stacking context: backdrop-filter).
+    assert ('.panel:has(.multiselect-menu:not([hidden]), .searchable-select-menu:not([hidden]), '
+            'details[open] > .workspace-user-picker-menu) { position: relative; z-index: 25; }') in stylesheet
+    assert 'position: sticky; top: calc(var(--module-tabs-offset, 0px) + 8px); z-index: 26;' in stylesheet
     # data-menu-fit opens a list as wide as its longest option (the Favourite Bundle Report Templates).
     assert "if (select.closest('[data-menu-fit]')) menu.classList.add('is-fit');" in component
     assert '.native-select-menu.is-fit { max-width: calc(100vw - 1rem); }' in stylesheet
