@@ -1381,6 +1381,33 @@
     void saveOrder();
   });
 
+  // On top of the name of a job, as on the cards of the Favourites Filters of Scoring & GAP Analysis: the only Region,
+  // Cluster, City, Operator or Vendor each of its artifacts filters (All when none), once each, in the colour of the
+  // field, and its NR Modes outlined (see job_scope).
+  function scopeTabs(task) {
+    const tabs = node('div', undefined, 'rj-task-tabs');
+    (task.scopes || []).forEach((scope) => {
+      const label = node('span', scope.text, 'rj-task-scope');
+      label.dataset.dimension = scope.dimension;
+      label.title = scope.title;
+      tabs.append(label);
+    });
+    (task.nr_modes || []).forEach((mode) => {
+      const label = node('span', mode === 'NSA+SA' ? undefined : mode, 'rj-task-mode');
+      label.dataset.nrMode = mode === 'NSA+SA' ? 'nsa-vs-sa' : mode.toLowerCase();
+      label.title = `NR Mode: ${mode === 'NSA+SA' ? 'NSA vs SA' : mode}`;
+      if (mode === 'NSA+SA') {
+        for (const [part, partMode] of [['NSA', 'nsa'], [' vs ', ''], ['SA', 'sa']]) {
+          const piece = node('span', part);
+          if (partMode) piece.dataset.nrMode = partMode;
+          label.append(piece);
+        }
+      }
+      tabs.append(label);
+    });
+    return tabs.childElementCount ? tabs : null;
+  }
+
   function renderTasks() {
     renderTaskCounts();
     // A job being dragged keeps its row until it is dropped (the next refresh shows the rest).
@@ -1461,6 +1488,8 @@
         await refresh();
       });
       const nameCell = node('td', undefined, 'rj-task-name-cell');
+      const tabs = scopeTabs(task);
+      if (tabs) nameCell.append(tabs);
       if (state.can_edit) nameCell.append(dragHandle());
       nameCell.append(node('span', task.name, 'rj-task-name'));
       row.append(

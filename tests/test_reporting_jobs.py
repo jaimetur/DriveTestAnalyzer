@@ -652,6 +652,42 @@ def test_a_job_can_start_from_a_favourite_bundle_report_template():
     assert "$('rj-count-manual').textContent = `Manual Artifacts: ${state.tasks.length - favourites}`;" in script
 
 
+def test_jobs_are_labelled_with_the_area_and_nr_modes_of_their_artifacts(client):
+    # As the Favourites Filters of Scoring & GAP Analysis: a job of a favourite takes its common filters (every favourite
+    # when it chooses none), with the only Region, Cluster, City, Operator or Vendor filtered, or All.
+    favourites = {'7': {'nr_mode': 'NSA', 'regions': [], 'cities': ['London'], 'main_cities': False},
+                  '8': {'nr_mode': 'SA', 'regions': ['Vendor A', 'VMO2 North'], 'cities': [], 'main_cities': False},
+                  '9': {'nr_mode': 'NSA', 'regions': [], 'cities': [], 'main_cities': False}}
+    london = {'modules': {'bundle_report_template': {'enabled': True, 'options': {'filters': {'favourites': ['7']}}}}}
+    assert report_tasks.job_scope(london, favourites) == {
+        'scopes': [{'dimension': 'city', 'text': 'London', 'title': 'City: London'}], 'nr_modes': ['NSA']}
+    every = report_tasks.job_scope({'modules': {'bundle_report_template': {'enabled': True, 'options': {}}}}, favourites)
+    assert [scope['text'] for scope in every['scopes']] == ['London', 'Vendor A, VMO2 North', 'All']
+    assert every['nr_modes'] == ['NSA', 'SA']
+    # Manual artifacts: each Network Insights entry, Dashboard, Scoring scenario (Main Cities a City) and module gives its
+    # area once (whatever the case), none when it filters several fields, and the NR Modes of the job (NSA vs SA too).
+    manual = {'network_insights': [{'selection': {'nr_mode': 'SA', 'cities': ['London']}}],
+              'dashboards': [{'filters': {'Campaign': ['@latest-campaign']}}],
+              'scoring': [{'nr_mode': 'NSA+SA', 'report': {'scenarios': [
+                  {'context_filters': {}}, {'context_filters': {'City': ['LONDON']}}, {'context_filters': {}, 'main_cities': True},
+                  {'context_filters': {'City': ['Leeds'], 'Operator': ['EE']}}]}}],
+              'modules': {'non_qualified_calls': {'enabled': True, 'options': {'filters': {'nr_mode': ['NSA'], 'region': ['Vendor B']}}}}}
+    result = report_tasks.job_scope(manual)
+    assert [(scope['dimension'], scope['text']) for scope in result['scopes']] == [
+        ('city', 'London'), ('all', 'All'), ('city', 'Main Cities'), ('region', 'Vendor B')]
+    assert result['nr_modes'] == ['NSA', 'SA', 'NSA+SA']
+    # The jobs table receives them with each job and shows them on top of its name.
+    login(client)
+    client.post('/api/reporting/tasks', json={'name': 'Labelled', 'schedule': {'mode': 'manual'},
+                                              'definition': {'scoring': [SCORING_ENTRY]}}).raise_for_status()
+    task = next(item for item in client.get('/api/reporting/state').json()['tasks'] if item['name'] == 'Labelled')
+    assert task['nr_modes'] == ['NSA'] and task['scopes'][0]['dimension'] == 'all'
+    script = (core.PROJECT_ROOT / 'src/web_interface/static/js/report_jobs.js').read_text(encoding='utf-8')
+    styles = (core.PROJECT_ROOT / 'src/web_interface/static/css/report_jobs.css').read_text(encoding='utf-8')
+    assert 'const tabs = scopeTabs(task);' in script and "label.dataset.nrMode = mode === 'NSA+SA' ? 'nsa-vs-sa' : mode.toLowerCase();" in script
+    assert '.report-jobs .rj-task-scope[data-dimension="city"] { border-color: #b06d00; background: #b06d00; }' in styles
+
+
 def test_reporting_page_keeps_its_scroll_position_when_reloaded():
     script = (core.PROJECT_ROOT / 'src/web_interface/static/js/report_jobs.js').read_text(encoding='utf-8')
     assert "const SCROLL_KEY = 'drivetest-analyzer:/reporting:scroll';" in script

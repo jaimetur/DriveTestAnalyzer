@@ -290,6 +290,22 @@
 .report-jobs .rj-drag-handle { display: inline-block; width: auto; min-width: 0; margin: 0 .35rem 0 0; padding: 0 .2rem; border: 0; border-radius: 4px; background: none; box-shadow: none; color: #7a8794; font: inherit; font-size: 1rem; line-height: 1.2; cursor: grab; user-select: none; touch-action: none; }
 .report-jobs .rj-drag-handle:hover, .report-jobs .rj-drag-handle:focus-visible { color: #1f5f3a; background: #e3f3e9; outline: none; }
 .report-jobs #rj-tasks tr.rj-dragging { opacity: .45; outline: 2px dashed #2f8a57; outline-offset: -2px; }
+/* The labels on top of the name of a job (scopeTabs in report_jobs.js), in the colours of those of the Favourites Filters of
+   Scoring & GAP Analysis: the area of each artifact in the colour of its field, and the NR Modes outlined. */
+.report-jobs .rj-task-tabs { display: flex; flex-wrap: wrap; gap: .25rem; margin: 0 0 .35rem; }
+.report-jobs .rj-task-scope, .report-jobs .rj-task-mode { box-sizing: border-box; max-width: 100%; padding: .1rem .5rem; border: 1px solid; border-radius: 6px; font-size: .72rem; font-weight: 850; line-height: 1.25; letter-spacing: .01em; overflow-wrap: anywhere; }
+.report-jobs .rj-task-scope { color: #fff; }
+.report-jobs .rj-task-scope[data-dimension="all"] { border-color: #34495e; background: #34495e; }
+.report-jobs .rj-task-scope[data-dimension="region"] { border-color: #c2185b; background: #c2185b; }
+.report-jobs .rj-task-scope[data-dimension="cluster"] { border-color: #4d7c0f; background: #4d7c0f; }
+.report-jobs .rj-task-scope[data-dimension="city"] { border-color: #b06d00; background: #b06d00; }
+.report-jobs .rj-task-scope[data-dimension="operator"] { border-color: #2458a6; background: #2458a6; }
+.report-jobs .rj-task-scope[data-dimension="vendor"] { border-color: #6941a5; background: #6941a5; }
+.report-jobs .rj-task-mode { flex: 0 0 auto; border-color: #1d4ed8; background: #fff; color: #1d4ed8; letter-spacing: .02em; white-space: nowrap; }
+.report-jobs .rj-task-mode[data-nr-mode="sa"] { border-color: #be185d; color: #be185d; }
+.report-jobs .rj-task-mode[data-nr-mode="nsa-vs-sa"] { border-color: #6d3fb0; color: #4b5563; }
+.report-jobs .rj-task-mode [data-nr-mode="nsa"] { color: #1d4ed8; }
+.report-jobs .rj-task-mode [data-nr-mode="sa"] { color: #be185d; }
 .report-jobs .rj-based-on { display: inline-block; padding: .12rem .5rem; border-radius: 999px; font-size: .78rem; font-weight: 700; background: #e3edf9; color: #1f4f8a; white-space: nowrap; }
 .report-jobs .rj-based-on-favourite { background: #e3f3e9; color: #1f6b44; }
 /* Jobs counted in the header of their panel, Bundle Report Template and Manual Artifacts in the colours of Based On. */
