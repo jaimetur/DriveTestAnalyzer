@@ -152,7 +152,7 @@
   .saved-filter-list { display: grid; gap: .55rem; max-height: 32rem; overflow: auto; }
   .saved-filter-row { position: relative; box-sizing: border-box; min-width: 0; }
   /* The starred Saved Filters of the Saved Filters panel are moved by dragging the tab on the left of their card, with
-     the hand cursor; the card itself keeps the pointer and opens the Saved Filter. */
+     the hand cursor; the card itself keeps the pointer and folds or unfolds its details. */
   .saved-filters-panel .saved-filter-row.is-reorderable { padding-left: 1.35rem; }
   .saved-filter-drag-handle { position: absolute; top: .55rem; bottom: .55rem; left: 0; width: 1.35rem; border: 1px solid #a9bccb; border-right: 0; border-radius: 10px 0 0 10px; background: #d7e3ec url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 6 14'%3E%3Cg fill='%233f5466'%3E%3Ccircle cx='1.5' cy='2' r='1'/%3E%3Ccircle cx='4.5' cy='2' r='1'/%3E%3Ccircle cx='1.5' cy='7' r='1'/%3E%3Ccircle cx='4.5' cy='7' r='1'/%3E%3Ccircle cx='1.5' cy='12' r='1'/%3E%3Ccircle cx='4.5' cy='12' r='1'/%3E%3C/g%3E%3C/svg%3E") center / .45rem auto no-repeat; box-sizing: border-box; cursor: grab; touch-action: none; }
   .saved-filter-drag-handle:hover { background-color: #c4d5e2; border-color: #7f98ab; }
@@ -204,6 +204,21 @@
   /* The name given to a Saved Filter, above its filters. */
   /* The name of a Saved Filter: a badge on top of its card. */
   .saved-filter-name { justify-self: start; max-width: 100%; box-sizing: border-box; margin-bottom: .35rem; padding: .22rem .75rem; border-radius: 999px; background: var(--brand); color: #fff; font-size: .82rem; font-weight: 850; line-height: 1.3; overflow-wrap: anywhere; box-shadow: 0 2px 6px rgba(16, 49, 74, .18); }
+  /* The Saved Filters of the lists are folded: the fold arrow and the name (its ID when it has none), with Use Filter on
+     their right, and the line of its filters. A click on the card unfolds the rest of its details and its buttons. */
+  .saved-filter-head { display: flex; align-items: center; gap: .35rem; min-width: 0; margin-bottom: .35rem; }
+  .saved-filter-row .saved-filter-head { padding-right: 6.2rem; }
+  .saved-filter-head .saved-filter-name { min-width: 0; margin-bottom: 0; }
+  .saved-filter-name.is-unnamed { background: #e9eff1; color: #46606d; box-shadow: none; }
+  .saved-filter-chevron { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 1rem; color: var(--brand); font-size: .8rem; line-height: 1; transition: transform .15s ease; }
+  .saved-filter-chevron::before { content: '▶'; }
+  .saved-filter-row.is-expanded .saved-filter-chevron { transform: rotate(90deg); }
+  .saved-filter-row:not(.is-expanded) .saved-filter-item { padding-bottom: .75rem; }
+  .saved-filter-row:not(.is-expanded) .saved-filter-item > :not(.saved-filter-head):not(.saved-filter-item-top),
+  .saved-filter-row:not(.is-expanded) .saved-filter-actions { display: none; }
+  .saved-filter-use { position: absolute; z-index: 1; top: .75rem; right: .8rem; min-height: 1.6rem; padding: .18rem .7rem; border: 1px solid var(--brand); border-radius: 999px; background: var(--brand); color: #fff; font-size: .74rem; font-weight: 800; line-height: 1.2; white-space: nowrap; box-shadow: 0 2px 6px rgba(16, 49, 74, .18); }
+  .saved-filter-use:hover { background: #086661; border-color: #086661; box-shadow: 0 2px 6px rgba(16, 49, 74, .24); transform: none; }
+  .saved-filter-use:focus-visible { outline: 3px solid rgba(11,122,117,.3); outline-offset: 2px; }
   .saved-filter-meta.saved-filter-newer { color: #8a5300; font-weight: 700; }
   .saved-filter-meta.saved-filter-waiting { color: #8b5c08; font-weight: 700; }
   .saved-filter-item { display: grid; gap: .4rem; width: 100%; padding: .75rem .8rem; border: 1px solid var(--line); border-radius: 13px; background: rgba(255,255,255,.68); color: var(--text); text-align: left; box-shadow: none; }

@@ -29,15 +29,31 @@ def test_job_dropdown_selected_card_tracks_selection_and_retains_job_actions():
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
     program = r'''
 class Element {
-  constructor(tag) { this.tag = tag; this.children = []; this.dataset = {}; this.attributes = {}; this.style = {}; }
+  constructor(tag) {
+    this.tag = tag; this.children = []; this.dataset = {}; this.attributes = {}; this.style = {}; this.className = '';
+    const element = this;
+    this.classList = {
+      contains: name => element.className.split(' ').includes(name),
+      toggle: (name, force) => {
+        const names = element.className.split(' ').filter(item => item && item !== name);
+        element.className = [...names, ...(force ? [name] : [])].join(' ');
+      },
+    };
+  }
   set textContent(value) { this.text = value; this.children = []; }
   get textContent() { return (this.text || '') + this.children.map(child => child.textContent).join(''); }
   append(...children) { this.children.push(...children); }
   replaceChildren(...children) { this.text = ''; this.children = children; }
   setAttribute(key, value) { this.attributes[key] = value; }
+  querySelectorAll(selector) {
+    const name = selector.slice(1);
+    return this.children.flatMap(child => (typeof child === 'string' ? [] : [
+      ...(child.classList.contains(name) ? [child] : []), ...child.querySelectorAll(selector)]));
+  }
+  querySelector(selector) { return this.querySelectorAll(selector)[0] || null; }
   cloneNode() {
     const copy = new Element(this.tag);
-    copy.text = this.text; copy.dataset = {...this.dataset}; copy.attributes = {...this.attributes};
+    copy.text = this.text; copy.dataset = {...this.dataset}; copy.attributes = {...this.attributes}; copy.className = this.className;
     copy.children = this.children.map(child => (typeof child === 'string' ? child : child.cloneNode(true)));
     return copy;
   }
@@ -70,21 +86,34 @@ const deletingSavedFilterIds = new Set();
 const syncSavedFiltersBulk = () => {};
 let selectionUnmatched = false, scoringClosed = false;
 const closeScoringButton = {disabled: true};
-''' + _function_source(script, 'savedFilterTrendCampaigns') + _function_source(script, 'savedFilterAreaSummaryParts') + _function_source(script, 'savedFilterTimeSplit') + _function_source(script, 'savedFilterDurationText') + _function_source(script, 'syncSavedFilterLists') + _function_source(script, 'renderSavedFilters') + _function_source(script, 'unmatchedSelectionNotice') + r'''
+const unfoldedSavedFilters = new Map();
+''' + _function_source(script, 'unfoldedSavedFilterIds') + _function_source(script, 'savedFilterTrendCampaigns') + _function_source(script, 'savedFilterAreaSummaryParts') + _function_source(script, 'savedFilterTimeSplit') + _function_source(script, 'savedFilterDurationText') + _function_source(script, 'syncSavedFilterLists') + _function_source(script, 'renderSavedFilters') + _function_source(script, 'unmatchedSelectionNotice') + r'''
 renderSavedFilters();
 const latest = selectedSavedFilterCard.textContent;
 // Close Scoring closes the Saved Filter shown.
 const closeEnabled = !closeScoringButton.disabled;
+// Each card is folded, with its name (its ID without one) and Use Filter on its right.
 const cards = savedFilterList.children.map(row => ({id: row.children[0].dataset.savedFilterId,
-  selected: row.children[0].attributes['aria-current'], deleteId: row.children[1].children.at(-1).dataset.deleteSavedFilterId}));
+  selected: row.children[0].attributes['aria-current'], expanded: row.children[0].attributes['aria-expanded'],
+  name: row.children[0].children[0].textContent, use: row.children[1].dataset.savedFilterUse, useLabel: row.children[1].textContent,
+  deleteId: row.children[2].children.at(-1).dataset.deleteSavedFilterId}));
 const separateCopy = selectedSavedFilterCard.children[0] !== savedFilterList.children[0].children[0].children[0];
+// The selected card has no fold arrow, and no name when the Saved Filter has none.
+const selectedHasHead = selectedSavedFilterCard.children.some(child => child.className === 'saved-filter-head');
 const historyMatches = historyList.children.every((row, index) => {
   const original = savedFilterList.children[index];
   return row.textContent === original.textContent
     && row.children[0].dataset.savedFilterId === original.children[0].dataset.savedFilterId
     && row.children[0].attributes['aria-current'] === original.children[0].attributes['aria-current']
-    && row.children[1].children.at(-1).dataset.deleteSavedFilterId === original.children[1].children.at(-1).dataset.deleteSavedFilterId;
+    && row.children[1].dataset.savedFilterUse === original.children[1].dataset.savedFilterUse
+    && row.children[2].children.at(-1).dataset.deleteSavedFilterId === original.children[2].children.at(-1).dataset.deleteSavedFilterId;
 });
+// A card unfolded in one list stays unfolded there when the lists are drawn again, and folded in the other.
+unfoldedSavedFilterIds(historyList).add('15');
+renderSavedFilters();
+const unfolded = [savedFilterList, historyList].map(list => list.children.map(row => [
+  row.classList.contains('is-expanded'), row.children[0].attributes['aria-expanded']]));
+unfoldedSavedFilterIds(historyList).clear();
 const historyCounts = [countBadge.textContent, historyCountBadge.textContent];
 selectedSavedFilterId = '15';
 renderSavedFilters();
@@ -106,8 +135,8 @@ const closed = {card: selectedSavedFilterCard.textContent, closeDisabled: closeS
 scoringClosed = false;
 savedFilters.length = 0;
 renderSavedFilters();
-process.stdout.write(JSON.stringify({latest, earlier, cards, separateCopy, historyMatches, historyCounts, unstarred, unmatchedCard, closeEnabled, closed,
-  emptyHistory: historyList.textContent, empty: selectedSavedFilterCard.textContent}));
+process.stdout.write(JSON.stringify({latest, earlier, cards, separateCopy, selectedHasHead, historyMatches, unfolded, historyCounts, unstarred,
+  unmatchedCard, closeEnabled, closed, emptyHistory: historyList.textContent, empty: selectedSavedFilterCard.textContent}));
 '''
     result = _run_node_json(program, {})
     assert 'Latest savedFilter' in result['latest'] and 'Profile A' in result['latest']
@@ -116,10 +145,14 @@ process.stdout.write(JSON.stringify({latest, earlier, cards, separateCopy, histo
     assert 'Example CDR.xlsx' not in result['earlier']
     assert '1 CDR' in result['earlier']
     assert result['cards'] == [
-        {'id': '20', 'selected': 'true', 'deleteId': '20'},
-        {'id': '15', 'selected': 'false', 'deleteId': '15'},
+        {'id': '20', 'selected': 'true', 'expanded': 'false', 'name': 'Filter ID: 20', 'use': '20', 'useLabel': 'Use Filter',
+         'deleteId': '20'},
+        {'id': '15', 'selected': 'false', 'expanded': 'false', 'name': 'Filter ID: 15', 'use': '15', 'useLabel': 'Use Filter',
+         'deleteId': '15'},
     ]
-    assert result['separateCopy'] and result['historyMatches']
+    assert result['separateCopy'] and result['historyMatches'] and not result['selectedHasHead']
+    assert 'Filter ID: 20Latest' not in result['latest']
+    assert result['unfolded'] == [[[False, 'false'], [False, 'false']], [[False, 'false'], [True, 'true']]]
     assert result['historyCounts'] == ['2 filters', '2 filters']
     assert result['unstarred']['listed'] == ['20'] and 'Earlier savedFilter' in result['unstarred']['card']
     assert result['unstarred']['counts'] == ['1 filter', '1 filter']
@@ -159,18 +192,29 @@ const used = [];
 const requestJson = (url, options) => { used.push([url, options.method]); return Promise.resolve({}); };
 let refreshed = 0;
 const refreshSavedFilters = async () => { refreshed += 1; };
-''' + f'\nconst LIST_INDEX = {list_index};\n' + script[start:end] + f'\nconst handler = handlers[{list_index}];\n' + r'''
+const unfoldedSavedFilters = new Map();
+''' + _function_source(script, 'unfoldedSavedFilterIds') + f'\nconst LIST_INDEX = {list_index};\n' + script[start:end] + f'\nconst handler = handlers[{list_index}];\n' + r'''
 (async () => {
-  await handler({target: {closest: selector => selector === '[data-saved-filter-id]' ? {dataset: {savedFilterId: '15'}} : null}});
+  // A click on the card folds or unfolds it, without opening it.
+  const row = {classes: new Set(), classList: {toggle(name, force) { if (force) row.classes.add(name); else row.classes.delete(name); }}};
+  const card = {dataset: {savedFilterId: '15'}, attributes: {}, closest: () => row, setAttribute(key, value) { card.attributes[key] = value; }};
+  const cardClick = {target: {closest: selector => (selector === '[data-saved-filter-id]' ? card : null)}};
+  await handler(cardClick);
+  const unfoldedOnce = [row.classes.has('is-expanded'), card.attributes['aria-expanded'], loaded === undefined];
+  await handler(cardClick);
+  const foldedAgain = [row.classes.has('is-expanded'), card.attributes['aria-expanded']];
+  // Use Filter opens it.
+  await handler({target: {closest: selector => selector === '[data-saved-filter-use]' ? {dataset: {savedFilterUse: '15'}} : null}});
   const selection = {loaded, persisted, focused, open: savedFilterSelector.open, selectedSavedFilterId, userSelectedSavedFilter, restored,
     unmatched, reopened};
   loaded = null;
   await handler({target: {closest: selector => selector === '[data-delete-saved-filter-id]' ? {dataset: {deleteSavedFilterId: '20'}} : null}});
   await new Promise(resolve => setTimeout(resolve));
-  process.stdout.write(JSON.stringify({selection, deleted, loaded, used, refreshed}));
+  process.stdout.write(JSON.stringify({unfoldedOnce, foldedAgain, selection, deleted, loaded, used, refreshed}));
 })();
 '''
     result = _run_node_json(program, {})
+    assert result['unfoldedOnce'] == [True, 'true', True] and result['foldedAgain'] == [False, 'false']
     assert result['selection'] == {
         'loaded': {'id': '15', 'force': True}, 'persisted': True, 'focused': True,
         'open': False, 'selectedSavedFilterId': '15', 'userSelectedSavedFilter': True, 'restored': '15',
@@ -178,7 +222,7 @@ const refreshSavedFilters = async () => { refreshed += 1; };
         'unmatched': False, 'reopened': True,
     }
     assert result['deleted'] == '20' and result['loaded'] is None
-    # Opening it from its card counts as a use.
+    # Opening it with Use Filter counts as a use.
     assert result['used'] == [['/api/scoring/saved-filters/15/use', 'POST']] and result['refreshed'] == 1
 
 

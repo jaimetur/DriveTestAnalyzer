@@ -1889,6 +1889,13 @@
     });
   }
 
+  // The Saved Filters unfolded in a list (the Saved Filters panel or the dropdown of the Scoring Results); folded at first.
+  const unfoldedSavedFilters = new Map();
+  function unfoldedSavedFilterIds(list) {
+    if (!unfoldedSavedFilters.has(list)) unfoldedSavedFilters.set(list, new Set());
+    return unfoldedSavedFilters.get(list);
+  }
+
   function syncSavedFilterLists() {
     for (const list of savedFilterLists.slice(1)) {
       list.replaceChildren(...Array.from(savedFilterList.children, row => row.cloneNode(true)));
@@ -1920,6 +1927,15 @@
         // On top of the tab on the left of the card (the drag tab, when the card can be moved).
         row.classList.add('is-checkable');
         row.prepend(check);
+      }
+    }
+    // Each list keeps the Saved Filters unfolded in it.
+    for (const list of savedFilterLists) {
+      const unfolded = unfoldedSavedFilterIds(list);
+      for (const row of list.querySelectorAll('.saved-filter-row')) {
+        const open = unfolded.has(row.dataset.savedFilterRow);
+        row.classList.toggle('is-expanded', open);
+        row.querySelector('.saved-filter-item')?.setAttribute('aria-expanded', String(open));
       }
     }
     syncSavedFiltersBulk();
@@ -2191,13 +2207,20 @@
       button.className = 'saved-filter-item';
       button.dataset.savedFilterId = id;
       button.setAttribute('aria-current', String(id === selectedSavedFilterId));
-      if (savedFilter.name) {
-        // The name given to the Saved Filter, above its filters.
-        const name = document.createElement('span');
-        name.className = 'saved-filter-name';
-        name.textContent = savedFilter.name;
-        button.append(name);
-      }
+      // The card folds and unfolds the details of the Saved Filter; Use Filter, on the right of its name, opens it.
+      button.setAttribute('aria-expanded', 'false');
+      button.title = 'Show or hide the details of this Saved Filter';
+      // The name given to the Saved Filter, above its filters (its ID when it has none), after the fold arrow.
+      const head = document.createElement('span');
+      head.className = 'saved-filter-head';
+      const chevron = document.createElement('span');
+      chevron.className = 'saved-filter-chevron';
+      chevron.setAttribute('aria-hidden', 'true');
+      const name = document.createElement('span');
+      name.className = savedFilter.name ? 'saved-filter-name' : 'saved-filter-name is-unnamed';
+      name.textContent = savedFilter.name || `Filter ID: ${id}`;
+      head.append(chevron, name);
+      button.append(head);
       const top = document.createElement('span');
       top.className = 'saved-filter-item-top';
       const title = document.createElement('strong');
@@ -2417,17 +2440,26 @@
       remove.setAttribute('aria-label', `Delete Saved Filter ${id}`);
       remove.disabled = deletingSavedFilterIds.has(id);
       actions.append(cdrButton, idBadge, rename, duplicate, pin, remove);
-      row.append(button, actions);
+      // Use Filter makes it the Saved Filter of the module and opens its Scoring.
+      const use = document.createElement('button');
+      use.type = 'button';
+      use.className = 'saved-filter-use';
+      use.dataset.savedFilterUse = id;
+      use.textContent = 'Use Filter';
+      use.title = 'Open the Scoring of this Saved Filter: it becomes the Saved Filter selected at the top of the module';
+      use.setAttribute('aria-label', `Use Saved Filter ${id}`);
+      row.append(button, use, actions);
       row.dataset.savedFilterRow = id;
       if (savedFilter.pinned) savedFilterList.append(row);
       if (id === selectedSavedFilterId) {
-        // The selected card of the Scoring Results dropdown, with its CDRs, name and pin buttons (deleting is done in
-        // the lists).
+        // The selected card of the Scoring Results dropdown, unfolded, with its CDRs, name and pin buttons (deleting is
+        // done in the lists): its name without the fold arrow, and none when it has no name.
         const selectedActions = document.createElement('span');
         selectedActions.className = 'saved-filter-actions';
         selectedActions.append(...Array.from(actions.children, child => child.cloneNode(true))
           .filter(child => !child.dataset?.deleteSavedFilterId));
-        selectedSavedFilterCard.replaceChildren(...Array.from(button.children, child => child.cloneNode(true)), selectedActions);
+        const cardParts = Array.from(button.children, child => (child === head ? (savedFilter.name ? name : null) : child));
+        selectedSavedFilterCard.replaceChildren(...cardParts.filter(Boolean).map(child => child.cloneNode(true)), selectedActions);
       }
     }
     if (selectionUnmatched || scoringClosed) selectedSavedFilterCard.replaceChildren(unmatchedSelectionNotice());
@@ -10610,7 +10642,7 @@
     const reference = document.createElement('div');
     reference.className = 'saved-filter-item saved-filter-reference';
     reference.append(...Array.from(card.children, child => child.cloneNode(true))
-      .filter(child => !child.classList?.contains('saved-filter-name')));
+      .filter(child => !child.classList?.contains('saved-filter-head') && !child.classList?.contains('saved-filter-name')));
     return reference;
   }
 
@@ -10689,9 +10721,21 @@
       deleteSavedFilter(remove.dataset.deleteSavedFilterId);
       return;
     }
-    const button = event.target.closest('[data-saved-filter-id]');
+    const card = event.target.closest('[data-saved-filter-id]');
+    if (card) {
+      // A click on the card folds or unfolds the rest of its details.
+      const row = card.closest('.saved-filter-row');
+      const unfolded = unfoldedSavedFilterIds(list);
+      const open = !unfolded.has(card.dataset.savedFilterId);
+      if (open) unfolded.add(card.dataset.savedFilterId);
+      else unfolded.delete(card.dataset.savedFilterId);
+      row?.classList.toggle('is-expanded', open);
+      card.setAttribute('aria-expanded', String(open));
+      return;
+    }
+    const button = event.target.closest('[data-saved-filter-use]');
     if (!button) return;
-    const savedFilter = savedFilters.find(record => savedFilterIdOf(record) === button.dataset.savedFilterId);
+    const savedFilter = savedFilters.find(record => savedFilterIdOf(record) === button.dataset.savedFilterUse);
     if (!savedFilter) return;
     if (editingSavedFilter) stopSavedFilterEdit();
     userSelectedSavedFilter = true;
@@ -10700,7 +10744,7 @@
     restoreCalculationSelectionFromSavedFilter(savedFilter);
     showUnmatchedSelection(false);
     reopenScoring();
-    // Opening it from its card counts as a use.
+    // Opening it with Use Filter counts as a use.
     requestJson(`${savedFiltersUrl}/${encodeURIComponent(selectedSavedFilterId)}/use`, {method: 'POST'})
       .then(() => refreshSavedFilters())
       .catch(() => { /* The count is not essential to open it. */ });

@@ -1049,7 +1049,7 @@ def test_saved_filters_count_their_uses_and_their_calculations(repository, scori
     saved_filters.save_saved_filter(repository, [dataset_id], [], 'NSA', force=True)
     recalculated = saved_filters.calculate_saved_filter(repository, saved['id'])
     assert (recalculated['use_count'], recalculated['calculation_count']) == (3, 2)
-    # Opening it from its card is a use.
+    # Opening it with Use Filter is a use.
     assert saved_filters.mark_saved_filter_used(repository, saved['id'])['use_count'] == 4
 
 
