@@ -85,10 +85,11 @@ def test_definitions_keep_the_order_and_options_of_every_section():
     assert 'campaigns' not in definition['filters']
     campaigns = {section['key']: section['options']['campaigns'] for section in definition['sections']}
     assert campaigns == {'network_insights': ['2026-Q2'], 'dashboards': ['@latest-campaign'], 'scoring': ['@latest-campaign'],
-                         'non_qualified_calls': ['@latest-campaign']}
+                         'non_qualified_calls': ['@latest-campaign'], 'dataset_analysis': ['@latest-campaign']}
     # A report saved when the NR Mode was an option of each section takes that of the first one.
     assert bundle_report_templates.normalize_definition({'sections': [{'key': 'scoring', 'options': {'nr_mode': 'SA'}}]})['filters']['nr_mode'] == 'SA'
-    assert [section['key'] for section in definition['sections']] == ['network_insights', 'dashboards', 'scoring', 'non_qualified_calls']
+    assert [section['key'] for section in definition['sections']] == ['network_insights', 'dashboards', 'scoring', 'non_qualified_calls',
+                                                                      'dataset_analysis']
     network = definition['sections'][0]
     assert network['items'][0]['key'] == 'spectrum' and network['items'][0]['components']['licensed'] is False
     assert network['items'][0]['components']['observed'] is True
@@ -97,8 +98,79 @@ def test_definitions_keep_the_order_and_options_of_every_section():
     assert network['options']['overshoot_km'] == 100
     assert definition['sections'][1]['items'] == [{'key': 'd1', 'label': 'Weekly', 'enabled': True, 'nr_mode': ''}]
     chosen = [section['key'] for section in bundle_report_templates.enabled_sections(definition)]
-    # Dashboards is unchecked; Scoring, Network Insights and Non-Qualified Calls have checked sub-modules.
+    # Dashboards is unchecked; Scoring, Network Insights and Non-Qualified Calls have checked sub-modules; CDR Analysis,
+    # added after the report was saved, is unchecked.
     assert chosen == ['network_insights', 'scoring', 'non_qualified_calls']
+
+
+def test_the_cdr_analysis_section_chooses_cdr_types_parts_metrics_and_comparisons():
+    defaults = bundle_report_templates.normalize_definition({})
+    cdr = next(section for section in defaults['sections'] if section['key'] == 'dataset_analysis')
+    # A new report includes it, last: each CDR type with every part of its analysis, every metric, Global Comparison Auto.
+    assert defaults['sections'][-1] is cdr and cdr['enabled']
+    assert [item['key'] for item in cdr['items']] == ['data', 'voice', 'speech']
+    assert all(item['components'] == {'summary': True, 'cards': True, 'visuals': True, 'table': True} for item in cdr['items'])
+    assert cdr['options'] == {'campaigns': [], 'metrics': {}, 'aggregation': 'all', 'cdf_grouping': 'operator'}
+    saved = bundle_report_templates.normalize_definition({'sections': [{'key': 'dataset_analysis', 'items': [
+        {'key': 'voice', 'components': {'cards': False}}, {'key': 'data', 'enabled': False}],
+        'options': {'metrics': {'voice': ['MOS', 'MOS', ''], 'unknown': ['x']}, 'aggregation': 'vendor', 'cdf_grouping': 'bogus'}}]})
+    cdr = saved['sections'][0]
+    assert cdr['enabled'] and [item['key'] for item in cdr['items']] == ['voice', 'data', 'speech']
+    assert cdr['items'][0]['components']['cards'] is False and not cdr['items'][1]['enabled']
+    assert cdr['options'] == {'campaigns': [], 'metrics': {'voice': ['MOS']}, 'aggregation': 'vendor', 'cdf_grouping': 'operator'}
+    [chosen] = [section for section in bundle_report_templates.enabled_sections(saved) if section['key'] == 'dataset_analysis']
+    assert bundle_report_templates.section_lines(chosen) == [
+        'Campaigns: All campaigns', 'Global comparison: Vendor · Global CDF comparison: Operator',
+        'Metrics · CDR Voice: MOS · CDR Speech: All']
+    catalogue = bundle_report_templates.catalogue_payload([])['sections'][-1]
+    assert catalogue['key'] == 'dataset_analysis' and catalogue['feature'] == 'datasets-analysis'
+    assert [component['title'] for component in catalogue['items'][0]['components']] == [
+        'CDR Summary', 'Selected Metric Cards', 'Visual Analytics of each metric', 'Processed Metrics']
+
+
+def test_the_cdr_analysis_section_analyses_the_cdrs_of_each_chosen_type(client, monkeypatch):
+    login(client)
+    content = b"market,period,operator,score\nES,2026-Q1,EE,91\nES,2026-Q1,O2,87\nES,2026-Q1,EE,85\n"
+    client.post('/datasets-analysis/upload', data={'dataset_kinds': 'data'},
+                files={'dataset_files': ('cdr_data.csv', BytesIO(content), 'text/csv')}, follow_redirects=False)
+    dataset_id = max(int(row['id']) for row in core.repository.list_datasets())
+    chosen, analysed = [], []
+
+    def cdrs(generator, section):
+        chosen.append((generator.filters['nr_mode'], section['options']['campaigns'], [item['key'] for item in section['items']]))
+        return {'data': [dataset_id], 'voice': []}
+
+    original = core.build_dataset_summary_reports
+    monkeypatch.setattr(bundle_report_templates.SectionGenerator, 'cdr_analysis_cdrs', cdrs)
+    monkeypatch.setattr(core, 'build_dataset_summary_reports',
+                        lambda ids, username, **options: analysed.append((ids, options)) or original(ids, username, **options))
+    monkeypatch.setattr('src.modules.pptx_to_docx.document_pdf', lambda content, suffix: None)
+    definition = bundle_report_templates.normalize_definition({'filters': {'nr_mode': 'SA', 'operators': ['EE']}})
+    for section in definition['sections']:
+        section['enabled'] = section['key'] == 'dataset_analysis'
+    cdr = next(section for section in definition['sections'] if section['key'] == 'dataset_analysis')
+    cdr['options'].update(campaigns=['@latest-campaign'], metrics={'data': ['score']}, aggregation='operator')
+    for item in cdr['items']:
+        item['enabled'] = item['key'] != 'speech'
+        item['components'] = {key: key in {'summary', 'visuals'} for key in item['components']}
+    job_id = client.post('/api/reporting/bundle-report-template/jobs', json={'definition': definition, 'name': 'CDRs'}).json()['job']['id']
+    for _attempt in range(100):
+        job = client.get(f'/api/reporting/bundle-report-template/jobs/{job_id}').json()['job']
+        if job['status'] in {'ready', 'failed'}:
+            break
+        time.sleep(0.1)
+    assert job['status'] == 'ready', job
+    # The CDRs of the NR Mode of the report and the Campaigns of the section, of the checked CDR types (Voice has none),
+    # analysed with the common filters and the options of the section.
+    assert chosen[-1] == ('SA', ['@latest-campaign'], ['data', 'voice'])
+    assert analysed == [([dataset_id], {'filters': {'operator': ['EE']}, 'metrics': {'data': ['score']}, 'aggregation': 'operator',
+                                        'cdf_grouping': 'operator'})]
+    titles = [item['title'] for item in job['outline']]
+    # The cover of each CDR is named after it, and only the checked parts of its analysis follow it.
+    assert titles[1:3] == ['CDR Analysis', 'cdr_data']
+    assert 'CDR Summary' in titles and 'Visual Analytics · score' in titles
+    assert 'Selected Metric Cards' not in titles and 'Processed Metrics' not in titles
+    assert {item['section'] for item in job['outline'][1:-1]} == {'dataset_analysis'}
 
 
 def test_reports_saved_before_the_scoring_trends_keep_their_trend_after_the_locations():
@@ -454,8 +526,8 @@ def test_favourites_are_saved_listed_and_travel_as_their_own_element(client):
     assert payload['favourites'] == [] and payload['can_edit'] is True
     assert [section['key'] for section in payload['catalogue']['sections']] == list(bundle_report_templates.SECTION_KEYS)
     definition = payload['defaults']
-    # PPT Dashboards is the last section by default.
-    assert [section['key'] for section in definition['sections']][-1] == 'dashboards'
+    # PPT Dashboards and then CDR Analysis are the last sections by default.
+    assert [section['key'] for section in definition['sections']][-2:] == ['dashboards', 'dataset_analysis']
     next(section for section in definition['sections'] if section['key'] == 'dashboards')['items'] = [
         {'key': 'd1', 'label': 'Weekly Dashboard', 'enabled': True}]
     created = client.post('/api/reporting/bundle-report-template/favourites', json={'name': 'Monthly', 'definition': definition})

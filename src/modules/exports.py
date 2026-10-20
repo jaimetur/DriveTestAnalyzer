@@ -835,15 +835,34 @@ def export_powerpoint_report(destination: Path, report: dict[str, Any]) -> Path:
     return destination
 
 
-def _append_dataset_report_slides(presentation: Presentation, payload: dict[str, Any]) -> None:
-    """Cover, summary, metric cards, one visual slide per metric and the processed metrics table."""
+# The CDR types of a Summary CDR Analysis and the parts of the analysis of each CDR, as a Bundle Report Template
+# chooses them (its sub-modules and their components); every slide of a CDR is named after its type.
+REPORT_PARTS: tuple[tuple[str, str], ...] = (
+    ("summary", "CDR Summary"), ("cards", "Selected Metric Cards"), ("visuals", "Visual Analytics of each metric"),
+    ("table", "Processed Metrics"),
+)
+REPORT_PANELS: tuple[tuple[str, str, tuple[tuple[str, str], ...]], ...] = (
+    ("data", "CDR Data", REPORT_PARTS), ("voice", "CDR Voice", REPORT_PARTS), ("speech", "CDR Speech", REPORT_PARTS),
+)
+REPORT_SECTION_PREFIX = "section:"
+
+
+def _append_dataset_report_slides(presentation: Presentation, payload: dict[str, Any], parts: Any = None,
+                                  named_cover: bool = False) -> None:
+    """Cover, summary, metric cards, one visual slide per metric and the processed metrics table; with ``parts`` (keys
+    of REPORT_PARTS), only those after the cover. With ``named_cover`` the cover is named after the CDR (the CDRs of a
+    Bundle Report Template are told apart by their covers)."""
+    included = lambda part: parts is None or part in parts  # noqa: E731
     filter_lines = _filters_lines(payload["filters_text"])
     if getattr(presentation, "cdr_template", False):
         metrics = payload["selected_metrics"]
         available = int(payload.get("available_metric_count") or 0)
         metric_line = (f"Metrics: All Metrics ({len(metrics)})" if available and len(metrics) >= available
                        else f"Metrics ({len(metrics)}): {', '.join(metrics[:8])}{', …' if len(metrics) > 8 else ''}")
-        _title_slide(presentation, "CDR Analysis", [payload["dataset_name"], f"{payload['dataset_type']} · {metric_line}"], filter_lines)
+        if named_cover:
+            _title_slide(presentation, Path(payload["dataset_name"]).stem, [payload["dataset_type"], metric_line], filter_lines)
+        else:
+            _title_slide(presentation, "CDR Analysis", [payload["dataset_name"], f"{payload['dataset_type']} · {metric_line}"], filter_lines)
     else:
         cover = presentation.slides.add_slide(presentation.slide_layouts[6])
         _add_full_bg(cover, DARK_BG)
@@ -866,20 +885,21 @@ def _append_dataset_report_slides(presentation: Presentation, payload: dict[str,
     summary_lines = _structured_filters_summary_lines(payload["filters_text"])
 
     dataset_name = payload["dataset_name"]
-    global_slide, shift = _content_slide(presentation, "CDR Summary", dataset_name)
-    _add_multiline_textbox(global_slide, 0.55, 0.72 + shift, 12.1, 0.18, summary_lines, size=9, color=_palette()["muted"])
-    global_items = [(key, value) for key, value in payload["global_kpis"].items() if key not in {"date_from", "date_to"}]
-    _add_kpi_grid(global_slide, global_items[:16], left=0.55, top=1.58 + shift, width=12.2, columns=4,
-                  card_height=1.0 if not shift else 0.9)
+    if included("summary"):
+        global_slide, shift = _content_slide(presentation, "CDR Summary", dataset_name)
+        _add_multiline_textbox(global_slide, 0.55, 0.72 + shift, 12.1, 0.18, summary_lines, size=9, color=_palette()["muted"])
+        global_items = [(key, value) for key, value in payload["global_kpis"].items() if key not in {"date_from", "date_to"}]
+        _add_kpi_grid(global_slide, global_items[:16], left=0.55, top=1.58 + shift, width=12.2, columns=4,
+                      card_height=1.0 if not shift else 0.9)
 
     metric_card_pages = [payload["analyses"][index:index + 6] for index in range(0, len(payload["analyses"]), 6)] or [[]]
-    for page_index, metric_page in enumerate(metric_card_pages, start=1):
+    for page_index, metric_page in enumerate(metric_card_pages if included("cards") else [], start=1):
         title = "Selected Metric Cards" if len(metric_card_pages) == 1 else f"Selected Metric Cards · {page_index}/{len(metric_card_pages)}"
         metric_slide, shift = _content_slide(presentation, title, dataset_name)
         _add_multiline_textbox(metric_slide, 0.55, 0.72 + shift, 12.1, 0.18, summary_lines, size=9, color=_palette()["muted"])
         _add_metric_cards(metric_slide, metric_page, start_y=1.4 + shift, card_h=2.45 if not shift else 1.95)
 
-    for analysis_item in payload["analyses"]:
+    for analysis_item in payload["analyses"] if included("visuals") else []:
         result = analysis_item["result"]
         metric_name = result.get("selected_metric") or analysis_item.get("metric") or "Metric"
         visual, shift = _content_slide(presentation, f"Visual Analytics · {metric_name}", dataset_name)
@@ -894,10 +914,11 @@ def _append_dataset_report_slides(presentation: Presentation, payload: dict[str,
         _add_textbox(visual, 0.55, below + 0.54, 3.4, 0.18, f"Grouped Percentiles · { _format_label(result.get('filters', {}).get('aggregation') or 'all') }", size=9, bold=True, color=_palette()["title"])
         _add_grouped_scorecard_table(visual, (result.get("scorecard_groups") or [])[:8], left=0.55, top=below + 0.76, width=12.2, height=0.84)
 
-    primary_result = payload["analyses"][0]["result"] if payload["analyses"] else {}
-    table_slide, shift = _content_slide(presentation, "Processed Metrics", dataset_name)
-    _add_multiline_textbox(table_slide, 0.55, 0.72 + shift, 12.1, 0.18, summary_lines, size=9, color=_palette()["muted"])
-    _add_data_table(table_slide, primary_result.get("table_rows") or [], left=0.55, top=1.56 + shift, width=12.2, height=5.28 - shift)
+    if included("table"):
+        primary_result = payload["analyses"][0]["result"] if payload["analyses"] else {}
+        table_slide, shift = _content_slide(presentation, "Processed Metrics", dataset_name)
+        _add_multiline_textbox(table_slide, 0.55, 0.72 + shift, 12.1, 0.18, summary_lines, size=9, color=_palette()["muted"])
+        _add_data_table(table_slide, primary_result.get("table_rows") or [], left=0.55, top=1.56 + shift, width=12.2, height=5.28 - shift)
 
 
 def _dataset_summary_cover(presentation: Presentation, title: str, reports: list[dict[str, Any]]) -> None:
@@ -913,8 +934,11 @@ def _dataset_summary_cover(presentation: Presentation, title: str, reports: list
         _add_textbox(cover, 0.9, 2.6 + 14 * 0.31, 11.2, 0.26, f"… and {len(reports) - 14} more", size=12, color="#E4EEF1")
 
 
-def export_dataset_summary_powerpoint(destination: Path, reports: list[dict[str, Any]], title: str = "Summary CDR Analysis") -> Path:
-    """One PowerPoint with the CDR Analysis export of every selected dataset."""
+def export_dataset_summary_powerpoint(destination: Path, reports: list[dict[str, Any]], title: str = "Summary CDR Analysis",
+                                      parts: dict[str, Any] | None = None, named_covers: bool = False) -> Path:
+    """One PowerPoint with the CDR Analysis export of every selected dataset. ``parts`` keeps, for the CDRs of each
+    type (the ``dataset_kind`` of a report, see REPORT_PANELS), only those parts of the analysis; ``named_covers`` names
+    the cover of each CDR after it."""
     presentation = _init_presentation()
     if getattr(presentation, "cdr_template", False):
         names = [f"{report.get('dataset_name') or 'Dataset'} ({report.get('dataset_type') or 'Other'})" for report in reports]
@@ -925,10 +949,13 @@ def export_dataset_summary_powerpoint(destination: Path, reports: list[dict[str,
     from src.modules import report_structure
     for report in reports:
         first = len(presentation.slides)
-        _append_dataset_report_slides(presentation, _build_powerpoint_payload(report))
+        kind = str(report.get("dataset_kind") or "")
+        _append_dataset_report_slides(presentation, _build_powerpoint_payload(report), (parts or {}).get(kind), named_covers)
         # The title page of each CDR opens its part of the export: 01, 02…
         if getattr(presentation, "cdr_template", False) and len(presentation.slides) > first:
             report_structure.mark(presentation.slides[first], 1)
+        for slide in list(presentation.slides)[first:] if kind else []:
+            slide._element.cSld.set("name", f"{REPORT_SECTION_PREFIX}{kind}")
     _closing_slide(presentation)
     report_structure.finish(presentation)
     presentation.save(destination)

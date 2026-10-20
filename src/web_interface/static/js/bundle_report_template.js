@@ -1,4 +1,4 @@
-/* Reporting: the Bundle Report Templates panel. Its common filters, its four sections with their sub-modules, charts and
+/* Reporting: the Bundle Report Templates panel. Its common filters, its five sections with their sub-modules, charts and
    tables (checked and ordered by dragging), the options of each section, the favourites and the export dialog that
    previews every page before the download. */
 (() => {
@@ -398,6 +398,28 @@
     return box;
   }
 
+  // CDR Analysis: the Global Comparison and Global CDF Comparison of its charts and the metrics of each CDR type (All, the
+  // default, includes every metric, also future ones), as a CDR Analysis artifact of a Reporting Job.
+  function cdrOptions(saved) {
+    const box = node('div', undefined, 'brt-options');
+    const aggregation = selectField('Global Comparison', Object.entries(options.cdr_aggregations || {}), saved.aggregation);
+    const cdf = selectField('Global CDF Comparison', Object.entries(options.cdr_cdf_groupings || {}), saved.cdf_grouping);
+    const metrics = Object.entries(options.cdr_kinds || {}).map(([kind, label]) => {
+      const chosen = saved.metrics?.[kind] || [];
+      const field = multiField(`${label} metrics`, [...new Set([...((options.cdr_metrics || {})[kind] || []), ...chosen])], chosen);
+      field.dataset.kind = kind;
+      return field;
+    });
+    const grid = node('div', undefined, 'brt-option-grid');
+    grid.append(aggregation, cdf, ...metrics);
+    box.append(grid);
+    box.collect = () => ({
+      aggregation: aggregation.input.value, cdf_grouping: cdf.input.value,
+      metrics: Object.fromEntries(metrics.map((field) => [field.dataset.kind, field.getValue?.() || []]).filter(([, values]) => values.length)),
+    });
+    return box;
+  }
+
   function itemRow(sectionKey, catalogueItem, saved) {
     const row = node('li', undefined, 'brt-item');
     row.dataset.key = catalogueItem.key;
@@ -493,7 +515,8 @@
     sortable(list, '.brt-item', '.brt-item-handle', changed);
     const optionsBox = saved.key === 'scoring' ? scoringOptions(saved.options)
       : saved.key === 'network_insights' ? networkOptions(saved.options)
-        : saved.key === 'non_qualified_calls' ? callsOptions(saved.options) : null;
+        : saved.key === 'non_qualified_calls' ? callsOptions(saved.options)
+          : saved.key === 'dataset_analysis' ? cdrOptions(saved.options) : null;
     if (optionsBox?.scopeFields) scope.append(...optionsBox.scopeFields);
     if (optionsBox?.nrMode) {
       sectionMode = optionsBox.nrMode;
@@ -1196,15 +1219,16 @@
     if (options.catalogues_pending) status('The filter values of some CDRs are being prepared in the background; reload the page in a few minutes to see all of them.', 'info');
   }
 
-  // A draft saved by an earlier version gets the sections and options it lacks; the Campaigns it had as a common filter
-  // go to every section.
+  // A draft saved by an earlier version gets the sections and options it lacks (a section added later, such as CDR
+  // Analysis, unchecked, as in the favourites saved before it); the Campaigns it had as a common filter go to every section.
+  const LATER_SECTIONS = ['dataset_analysis'];
   function mergeDefaults(saved) {
     const defaults = clone(brtOptions.defaults);
     const legacy = saved.filters?.campaigns !== undefined ? {campaigns: saved.filters.campaigns} : {};
     const sections = (saved.sections || []).filter((section) => defaults.sections.some((item) => item.key === section.key));
     defaults.sections.forEach((section) => {
       const found = sections.find((item) => item.key === section.key);
-      if (!found) sections.push({...section, options: {...section.options, ...legacy}});
+      if (!found) sections.push({...section, enabled: section.enabled && !LATER_SECTIONS.includes(section.key), options: {...section.options, ...legacy}});
       else found.options = {...section.options, ...legacy, ...(found.options || {})};
     });
     return {...defaults, ...saved, filters: {...defaults.filters, ...(saved.filters || {})}, sections};
