@@ -1659,6 +1659,12 @@
   deleteCheckedTasks.addEventListener('click', async () => {
     const targets = state.tasks.filter((task) => checkedTaskIds.has(task.id));
     if (!targets.length || deletingCheckedTasks) return;
+    // None of them is deleted while one belongs to another user (only admins, super-admins and its creator delete it).
+    const refused = targets.filter((task) => !(window.canDeleteShared?.(task.created_by) ?? true));
+    if (refused.length) {
+      status(`${window.sharedDeleteRefusal('Reporting Job')} (${refused.map((task) => task.name).join(', ')}). No job was deleted.`, 'error');
+      return;
+    }
     const count = targets.length;
     const plural = count === 1 ? '' : 's';
     const runs = state.runs.filter((run) => targets.some((task) => task.id === run.task_id)).length;
@@ -1671,20 +1677,16 @@
     deletingCheckedTasks = true;
     syncBulk();
     status(`Deleting ${count} Reporting Job${plural}…`);
-    const failures = [];
-    for (const task of targets) {
-      try {
-        await api(`/api/reporting/tasks/${task.id}`, {method: 'DELETE'});
-        checkedTaskIds.delete(task.id);
-        if (editingId === task.id) closeEditor();
-      } catch (error) {
-        failures.push(`${task.name}: ${error.message}`);
-      }
+    try {
+      const result = await api('/api/reporting/tasks/delete', {method: 'POST', body: JSON.stringify({ids: targets.map((task) => task.id)})});
+      const deleted = new Set(result.deleted || []);
+      deleted.forEach((id) => checkedTaskIds.delete(id));
+      if (deleted.has(editingId)) closeEditor();
+      status(`${deleted.size} Reporting Job${deleted.size === 1 ? '' : 's'} deleted.`, 'done');
+    } catch (error) {
+      status(error.message, 'error');
     }
     deletingCheckedTasks = false;
-    const deleted = count - failures.length;
-    if (failures.length) status(`Deleted ${deleted} of ${count} Reporting Jobs. ${failures.join(' ')}`, 'error');
-    else status(`${deleted} Reporting Job${plural} deleted.`, 'done');
     await refresh();
   });
 

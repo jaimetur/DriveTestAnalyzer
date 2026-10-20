@@ -3,21 +3,24 @@ what they created (PPT Dashboards, PPT Templates, Scoring Saved Filters and Meth
 Scoring report editor, Reporting Jobs and Bundle Report Template favourites).
 
 The items whose table has no creator of their own keep it in the workspace settings, by kind. Those created before it
-was kept, or by the application (``system``), belong to the UNKNOWN_CREATOR_OWNER account once it exists (see
-assign_unknown_creators); until then only admins and super-admins delete them.
+was kept, or by the application (``system``), belong to the super-admin every deployment starts with
+(UNKNOWN_CREATOR_OWNER, see assign_unknown_creators), so only admins and super-admins delete them.
 """
 from __future__ import annotations
 
 import json
 from typing import Any
 
+from src.modules.repository import DEFAULT_ACCOUNT_USERNAMES
+
 DELETION_ROLES = frozenset({'admin', 'super-admin'})
 CREATORS_STATE_PREFIX = 'creators:'
 PPT_DASHBOARDS = 'ppt-dashboards'
 SCORING_REPORT_CONFIGURATIONS = 'scoring-report-configurations'
 SCORING_METHODOLOGIES = 'scoring-methodologies'
-# The account that the items without a known creator, or created by the application, are assigned to.
-UNKNOWN_CREATOR_OWNER = 'EJAITUR'
+# The items without a known creator, or created by the application, belong to the super-admin every deployment starts
+# with (``super``), whether or not the account still exists.
+UNKNOWN_CREATOR_OWNER = DEFAULT_ACCOUNT_USERNAMES[0]
 UNKNOWN_CREATORS = frozenset({'', 'system'})
 
 
@@ -85,7 +88,7 @@ def _assign_kept_creators(repository: Any, kind: str, item_ids: list[Any], owner
 
 def assign_unknown_creators(repository: Any) -> dict[str, int]:
     """Give the items of the open workspace without a known creator, or created by the application, to the
-    UNKNOWN_CREATOR_OWNER account, when it exists; returns how many of each kind changed."""
+    UNKNOWN_CREATOR_OWNER account; returns how many of each kind changed."""
     from src.modules.bundle_report_templates import BUNDLE_REPORT_TEMPLATES_TABLE, ensure_tables
     from src.modules.ppt_dashboards import LEGACY_STATE_KEY, STATE_KEY
     from src.modules.report_tasks import REPORT_TASKS_TABLE, ensure_report_task_tables
@@ -93,10 +96,7 @@ def assign_unknown_creators(repository: Any) -> dict[str, int]:
     from src.modules.saved_filters import SAVED_FILTERS_TABLE
     from src.modules.scoring_reports import load_report_state
 
-    account = repository.get_user(UNKNOWN_CREATOR_OWNER)
-    if account is None:
-        return {}
-    owner = account.username
+    owner = UNKNOWN_CREATOR_OWNER
     changed: dict[str, int] = {}
     ensure_report_task_tables(repository)
     ensure_tables(repository)

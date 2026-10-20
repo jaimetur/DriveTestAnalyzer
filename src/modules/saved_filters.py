@@ -989,13 +989,13 @@ def _prepare_saved_selection(repository: Repository, saved_filter: dict[str, Any
 
 
 def _queue_calculation(connection: Any, filter_id: int, prepared: dict[str, Any], username: str, now: str) -> None:
-    """Queue the calculation of a Saved Filter with today's CDRs and methodology; it belongs to the user who calculates
-    it (the application, ``system``, keeps its owner)."""
+    """Queue the calculation of a Saved Filter with today's CDRs and methodology. A starred one keeps the user who
+    starred it; the others belong to the user who calculates them (the application, ``system``, keeps their owner)."""
     snapshot = prepared['snapshot']
     connection.execute(
         f"""UPDATE {SAVED_FILTERS_TABLE} SET status = 'queued', progress = 0,
            message = 'Waiting to calculate scoring', result_json = NULL, last_error = NULL, started_at = NULL,
-           finished_at = NULL, updated_at = ?, created_by = CASE WHEN ? = 'system' THEN created_by ELSE ? END,
+           finished_at = NULL, updated_at = ?, created_by = CASE WHEN pinned = 1 OR ? = 'system' THEN created_by ELSE ? END,
            source_metadata_json = ?, result_key = ?,
            method_version = ?, source_fingerprint = ?, dataset_ids_json = ?, levels_json = ?, nr_mode = ?,
            baseline_operator = ?, cdr_refs_json = '[]'
@@ -1353,9 +1353,9 @@ def mark_saved_filter_used(repository: Repository, filter_id: int) -> dict[str, 
 
 
 def update_saved_filter(repository: Repository, filter_id: int, *, name: str | None = None,
-                           pinned: bool | None = None) -> dict[str, Any] | None:
+                           pinned: bool | None = None, username: str | None = None) -> dict[str, Any] | None:
     """Rename a Saved Filter (an empty name shows its filters) or star it, which keeps it at the top of the list of starred
-    ones (unstarring it takes it out of the list)."""
+    ones (unstarring it takes it out of the list); the user who stars it (``username``) is its creator."""
     updates: dict[str, Any] = {}
     if name is not None:
         text = ' '.join(str(name).split())
@@ -1376,6 +1376,8 @@ def update_saved_filter(repository: Repository, filter_id: int, *, name: str | N
                     updates['position'] = (int(first) - 1) if first is not None else 1
                 elif not pinned:
                     updates['position'] = None
+                if pinned and row is not None and not row['pinned'] and str(username or '').strip():
+                    updates['created_by'] = str(username).strip()
             assignments = ', '.join(f'{column} = ?' for column in updates)
             connection.execute(f'UPDATE {SAVED_FILTERS_TABLE} SET {assignments} WHERE id = ?',
                                (*updates.values(), int(filter_id)))
@@ -1687,11 +1689,13 @@ def _resolve_imported_filters(repository: Repository) -> None:
             if existing is not None:
                 connection.execute(
                     f"UPDATE {SAVED_FILTERS_TABLE} SET name = CASE WHEN name = '' THEN ? ELSE name END, "
+                    # Starred by the import, it belongs to the user who starred it in the package.
+                    "created_by = CASE WHEN pinned = 0 AND ? = 1 AND ? <> '' THEN ? ELSE created_by END, "
                     'pinned = MAX(pinned, ?), use_count = MAX(use_count, ?), '
                     # A Saved Filter of the workspace starred by the import takes the place the import gave it.
                     'position = CASE WHEN pinned = 1 AND position IS NOT NULL THEN position ELSE ? END WHERE id = ?',
-                    (row['name'], row['pinned'], row['use_count'], row['position'] if row['pinned'] else None,
-                     existing['id']),
+                    (row['name'], row['pinned'], row['created_by'] or '', row['created_by'] or '', row['pinned'],
+                     row['use_count'], row['position'] if row['pinned'] else None, existing['id']),
                 )
                 connection.execute(f'DELETE FROM {SAVED_FILTERS_TABLE} WHERE id = ?', (row['id'],))
                 continue

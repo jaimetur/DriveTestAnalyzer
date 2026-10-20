@@ -73,23 +73,38 @@ def test_saved_filters_are_deleted_by_their_creator_or_an_admin(client):
     assert not {mine, theirs, unknown} & saved_filter_ids(repository)
 
 
-def test_recalculations_of_the_application_keep_the_owner_of_a_saved_filter(client):
+def test_a_saved_filter_belongs_to_the_user_who_starred_it(client):
+    team()
     repository = workspace_repository()
-    filter_id = add_saved_filter(repository, 'owned', 'alice')
+    starred = add_saved_filter(repository, 'starred', 'bob')
+    loose = add_saved_filter(repository, 'loose', 'bob')
     prepared = {'snapshot': {}, 'result_key': 'r', 'method_version': 'm', 'source_fingerprint': 'f', 'dataset_ids': [],
                 'levels': ['Operator'], 'nr_mode': 'NSA', 'baseline_operator': 'EE'}
 
-    def owner():
+    def owner(filter_id):
         with repository.connection() as connection:
             return connection.execute(
                 f'SELECT created_by FROM {saved_filters.SAVED_FILTERS_TABLE} WHERE id = ?', (filter_id,)).fetchone()[0]
 
+    # Calculated last by bob, starred by alice: it is hers.
+    login(client, 'alice', 'alice123')
+    assert client.patch(f'/api/scoring/saved-filters/{starred}', json={'pinned': True}).status_code == 200
+    assert owner(starred) == 'alice'
+    # Recalculating a starred one keeps who starred it; one not starred belongs to whoever calculates it, but not to the
+    # application.
     with repository.connection() as connection:
-        saved_filters._queue_calculation(connection, filter_id, prepared, 'system', 'now')
-    assert owner() == 'alice'
+        saved_filters._queue_calculation(connection, starred, prepared, 'bob', 'now')
+        saved_filters._queue_calculation(connection, loose, prepared, 'system', 'now')
+    assert owner(starred) == 'alice' and owner(loose) == 'bob'
     with repository.connection() as connection:
-        saved_filters._queue_calculation(connection, filter_id, prepared, 'bob', 'now')
-    assert owner() == 'bob'
+        saved_filters._queue_calculation(connection, loose, prepared, 'boss', 'now')
+    assert owner(loose) == 'boss'
+    # Starring it again (once unstarred) gives it to who stars it; renaming does not.
+    login(client, 'bob', 'bob123')
+    assert client.patch(f'/api/scoring/saved-filters/{starred}', json={'name': 'Renamed'}).status_code == 200
+    assert client.patch(f'/api/scoring/saved-filters/{starred}', json={'pinned': True}).status_code == 200
+    assert owner(starred) == 'alice'
+    assert client.delete(f'/api/scoring/saved-filters/{starred}').status_code == 403
 
 
 def test_report_configurations_are_deleted_by_whoever_saved_or_imported_them(client):
@@ -130,7 +145,9 @@ def test_scoring_methodologies_are_deleted_by_their_creator_or_an_admin(client):
                                  'configuration': profiles['profiles'][0]['configuration']})
     saved = client.put('/api/workspace-config/scoring-profiles', json=profiles)
     assert saved.status_code == 200, saved.text
-    assert client.get('/api/workspace-config/scoring-methodology-creators').json() == {'alice-method': 'alice'}
+    # The shipped ones belong to the default super-admin since the workspace opened.
+    assert client.get('/api/workspace-config/scoring-methodology-creators').json() == {
+        **dict.fromkeys(shipped, UNKNOWN_CREATOR_OWNER), 'alice-method': 'alice'}
 
     login(client, 'bob', 'bob123')
     without = {**saved.json(), 'profiles': [profile for profile in saved.json()['profiles'] if profile['id'] != 'alice-method']}
@@ -139,8 +156,8 @@ def test_scoring_methodologies_are_deleted_by_their_creator_or_an_admin(client):
 
     login(client, 'alice', 'alice123')
     assert client.put('/api/workspace-config/scoring-profiles', json=without).status_code == 200
-    assert creators(workspace_repository(), SCORING_METHODOLOGIES) == {}
-    # The shipped methodologies have no creator: only admins remove them.
+    assert creators(workspace_repository(), SCORING_METHODOLOGIES) == dict.fromkeys(shipped, UNKNOWN_CREATOR_OWNER)
+    # Only admins remove the shipped ones.
     profiles = client.get('/api/workspace-config/scoring-profiles').json()
     assert len(shipped) > 1
     others = [profile for profile in profiles['profiles'] if profile['id'] != profiles['active_profile_id']]
@@ -169,10 +186,21 @@ def test_favourites_and_reporting_jobs_are_deleted_by_their_creator_or_an_admin(
     refused = client.delete(f'/api/reporting/tasks/{job_id}')
     assert refused.status_code == 403 and REFUSAL in refused.json()['detail']
 
+    # Deleting several at once deletes none of them while one belongs to another user.
+    own = client.post('/api/reporting/tasks', json={
+        'name': 'Bob job', 'schedule': {'mode': 'manual'},
+        'definition': {'scoring': [{'nr_mode': 'NSA', 'report': default_report_configuration()}]}}).json()['task']['id']
+    refused = client.post('/api/reporting/tasks/delete', json={'ids': [own, job_id]})
+    assert refused.status_code == 403 and 'Alice job' in refused.json()['detail']
+    names = lambda: {task['name'] for task in client.get('/api/reporting/state').json()['tasks']}
+    assert {'Alice job', 'Bob job'} <= names()
+    assert client.post('/api/reporting/tasks/delete', json={'ids': [own]}).json() == {'deleted': [own]}
+
     login(client, 'alice', 'alice123')
     assert client.delete(f'/api/reporting/bundle-report-template/favourites/{favourite_id}').status_code == 200
     login(client, 'boss', 'boss123')
-    assert client.delete(f'/api/reporting/tasks/{job_id}').status_code == 200
+    assert client.post('/api/reporting/tasks/delete', json={'ids': [job_id]}).json() == {'deleted': [job_id]}
+    assert not {'Alice job', 'Bob job'} & names()
 
 
 def test_dashboards_are_deleted_by_their_creator_or_an_admin(client):
@@ -219,17 +247,15 @@ def test_ppt_templates_are_deleted_by_their_creator_or_an_admin(client):
     assert not any(item['name'] == 'New Template' for item in core.report_catalogue_options('nsa'))
 
 
-def test_items_without_a_known_creator_are_assigned_to_the_unknown_creator_owner(client):
+def test_items_without_a_known_creator_are_assigned_to_the_default_super_admin(client):
     repository = workspace_repository()
     system_filter = add_saved_filter(repository, 'system-filter', 'system')
     owned_filter = add_saved_filter(repository, 'owned-filter', 'alice')
     repository.set_workspace_state(DASHBOARDS_STATE_KEY, json.dumps({'old-dashboard': {'name': 'Old', 'template': 'T'}}))
-    # Without the account nothing changes.
-    assert assign_unknown_creators(repository) == {}
-
-    core.repository.create_user(UNKNOWN_CREATOR_OWNER.lower(), 'owner123', 'user-editor')
+    # They go to the super-admin every deployment starts with (whether or not the account still exists).
+    assert UNKNOWN_CREATOR_OWNER == 'super'
     assigned = assign_unknown_creators(repository)
-    owner = UNKNOWN_CREATOR_OWNER.lower()
+    owner = UNKNOWN_CREATOR_OWNER
     assert assigned['saved_filters'] == 1 and assigned['ppt_dashboards'] == 1
     with repository.connection() as connection:
         owners = dict(connection.execute(f'SELECT id, created_by FROM {saved_filters.SAVED_FILTERS_TABLE}').fetchall())

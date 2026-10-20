@@ -404,8 +404,9 @@ def test_imported_reporting_jobs_keep_an_owner_that_exists_here(client):
     assert core._restore_workspace_reporting_jobs(core.active_workspace, json.dumps(document).encode(), 'super') == 3
 
     owners = {task['name']: task['created_by'] for task in report_tasks.list_tasks(core.repository)}
+    # The starter jobs, created by the application, belong to the default super-admin once the workspace opens.
     assert owners == {'Owned by editor': 'editor', 'Owner from elsewhere': 'super', 'Older export': 'super',
-                      **{name: 'system' for name in STARTER_JOBS}}
+                      **{name: 'super' for name in STARTER_JOBS}}
     exported = json.loads(report_tasks.export_tasks_document(core.repository))
     assert {item['name']: item['created_by'] for item in exported['reporting_jobs']} == owners
 
@@ -747,8 +748,10 @@ def test_jobs_name_their_modules_abbreviated_and_move_or_delete_several_at_once(
     assert 'function movedTaskOrder(order, step) {' in script and 'void saveOrder();' in script
     assert '.report-jobs .rj-bulk { position: sticky;' in styles and '.report-jobs .rj-bulk.is-stuck::before {' in styles
     assert '.report-jobs details.collapsible-panel:has(> .collapsible-panel-body > .rj-bulk) { overflow: clip; }' in styles
-    # Each checked job is deleted as its own Delete would, after one confirmation that names them.
-    assert "await api(`/api/reporting/tasks/${task.id}`, {method: 'DELETE'});" in script
+    # The checked jobs are deleted together after one confirmation that names them, none of them while one belongs to
+    # another user.
+    assert "await api('/api/reporting/tasks/delete', {method: 'POST', body: JSON.stringify({ids: targets.map((task) => task.id)})});" in script
+    assert "const refused = targets.filter((task) => !(window.canDeleteShared?.(task.created_by) ?? true));" in script
     assert "deleteCheckedTasks.textContent = checkedTaskIds.size ? `Delete (${checkedTaskIds.size})` : 'Delete';" in script
 
 

@@ -18767,7 +18767,8 @@ def saved_filters_update(filter_id: int, payload: SavedFilterUpdate,
     """Rename a Saved Filter or pin it at the top of the list."""
     task_repository = scoring_repository(user)
     try:
-        saved_filter = update_saved_filter(task_repository, filter_id, name=payload.name, pinned=payload.pinned)
+        saved_filter = update_saved_filter(task_repository, filter_id, name=payload.name, pinned=payload.pinned,
+                                           username=user.username)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if saved_filter is None:

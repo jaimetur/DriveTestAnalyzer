@@ -2030,6 +2030,13 @@ def install_report_task_routes(core: Any) -> None:
         task_repository.try_add_log(user.username, 'reorder_reporting_jobs', json.dumps({'order': [task['name'] for task in tasks]}, ensure_ascii=False))
         return {'order': [task['id'] for task in tasks]}
 
+    def remove_run_folders(folders: list[str]) -> None:
+        root = output_root().resolve()
+        for folder in folders:
+            path = Path(folder).resolve()
+            if root in path.parents:
+                shutil.rmtree(path, ignore_errors=True)
+
     @app.delete('/api/reporting/tasks/{task_id}')
     def reporting_jobs_delete(task_id: int, user=Depends(editor_user)):
         from src.modules.deletion_rights import can_delete, deletion_refusal
@@ -2041,13 +2048,31 @@ def install_report_task_routes(core: Any) -> None:
             folders = delete_task(task_repository, task_id)
         except ValueError as exc:
             raise HTTPException(404, str(exc)) from exc
-        root = output_root().resolve()
-        for folder in folders:
-            path = Path(folder).resolve()
-            if root in path.parents:
-                shutil.rmtree(path, ignore_errors=True)
+        remove_run_folders(folders)
         task_repository.try_add_log(user.username, 'delete_reporting_job', json.dumps({'task_id': task_id}))
         return {'deleted': task_id}
+
+    @app.post('/api/reporting/tasks/delete')
+    def reporting_jobs_delete_many(payload: OrderPayload, user=Depends(editor_user)):
+        """Delete the checked Reporting Jobs with their runs and artifacts; none of them while one belongs to another
+        user (for the roles below admin)."""
+        from src.modules.deletion_rights import can_delete, deletion_refusal
+        task_repository = reporting_repository(user)
+        tasks = [task for task in (get_task(task_repository, int(task_id)) for task_id in dict.fromkeys(payload.ids))
+                 if task is not None]
+        refused = [task['name'] for task in tasks if not can_delete(user, task.get('created_by'))]
+        if refused:
+            raise HTTPException(403, deletion_refusal('Reporting Job', refused))
+        deleted: list[int] = []
+        for task in tasks:
+            try:
+                remove_run_folders(delete_task(task_repository, task['id']))
+            except ValueError:
+                continue
+            deleted.append(task['id'])
+            task_repository.try_add_log(user.username, 'delete_reporting_job', json.dumps(
+                {'task_id': task['id'], 'name': task['name']}, ensure_ascii=False))
+        return {'deleted': deleted}
 
     @app.post('/api/reporting/tasks/{task_id}/run')
     def reporting_jobs_run_now(task_id: int, user=Depends(editor_user)):
