@@ -1262,25 +1262,50 @@ def _stacked_category_chart(presentation, matrix: dict) -> None:
     _text(slide, matrix['coverage_note'], 6.95, size=9)
 
 
+def _hierarchy_page_groups(columns: list[dict], limit: int, depth: int = 0) -> list[list[dict]]:
+    """The consecutive columns with the same value at ``depth`` of their path (every column of a City); a group with
+    more than ``limit`` columns is divided by the next level of the hierarchy."""
+    groups: list[tuple[str, list[dict]]] = []
+    for column in columns:
+        path = column.get('path') or []
+        key = json.dumps(path[depth].get('value') if depth < len(path) else None, default=str)
+        if groups and groups[-1][0] == key:
+            groups[-1][1].append(column)
+        else:
+            groups.append((key, [column]))
+    result: list[list[dict]] = []
+    for _key, group in groups:
+        if len(group) > limit and any(len(column.get('path') or []) > depth + 1 for column in group):
+            result.extend(_hierarchy_page_groups(group, limit, depth + 1))
+        else:
+            result.append(group)
+    return result
+
+
 def _stacked_chart_pages(matrix: dict, *, limit: int = 20) -> list[dict]:
-    """Keep preferred operators together and preserve hierarchy order within each page."""
+    """Keep the columns of each value of the first hierarchy level together (each operator, preferred operators first,
+    or each City when City comes before Operator) and preserve hierarchy order within each page."""
     columns = matrix.get('hierarchy_columns') or [
         {'id': operator, 'operator': operator} for operator in matrix['operators']
     ]
     if matrix.get('_split_charts') is False or len(columns) <= limit:
         return [matrix]
-    grouped = {}
-    for column in columns:
-        grouped.setdefault(column['operator'], []).append(column)
-    preferred = {'3', 'three', 'threeuk', 'ee', 'vfuk', 'vodafoneuk'}
-    groups = sorted(grouped.items(), key=lambda group: (
-        ''.join(character for character in _operator_label(matrix, group[0]).lower() if character.isalnum()) not in preferred
-        and ''.join(character for character in str(group[0]).lower() if character.isalnum()) not in preferred,
-        list(grouped).index(group[0]),
-    ))
+    first_level = str(((columns[0].get('path') or [{}])[0]).get('level') or 'Operator')
+    if first_level == 'Operator':
+        grouped = {}
+        for column in columns:
+            grouped.setdefault(column['operator'], []).append(column)
+        preferred = {'3', 'three', 'threeuk', 'ee', 'vfuk', 'vodafoneuk'}
+        groups = [group for _, group in sorted(grouped.items(), key=lambda group: (
+            ''.join(character for character in _operator_label(matrix, group[0]).lower() if character.isalnum()) not in preferred
+            and ''.join(character for character in str(group[0]).lower() if character.isalnum()) not in preferred,
+            list(grouped).index(group[0]),
+        ))]
+    else:
+        groups = _hierarchy_page_groups(columns, limit)
     pages = []
     current = []
-    for _, group in groups:
+    for group in groups:
         for start in range(0, len(group), limit):
             chunk = group[start:start + limit]
             if current and len(current) + len(chunk) > limit:

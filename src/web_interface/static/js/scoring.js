@@ -3990,6 +3990,16 @@
     }));
   }
 
+  // The group of a chart bar, with a gap between groups: the first level before Operator in the hierarchy whose value
+  // changes between the bars (each City when City comes before Operator), otherwise its operator.
+  function hierarchyChartGroupKey(columns, levels) {
+    const operatorDepth = levels.indexOf('Operator');
+    const depth = levels.slice(0, Math.max(0, operatorDepth)).findIndex((_level, index) => new Set(
+      columns.map(column => hierarchyPathEntry(column, index, levels).rawValue),
+    ).size > 1);
+    return column => (column && depth >= 0 ? hierarchyPrefixKey(column, depth, levels) : hierarchyColumnOperator(column));
+  }
+
   function appendHierarchyHeaders(thead, tableData, columns, fixedHeadings, blocks, gapBaseline = null) {
     const levels = hierarchyLevelNames(tableData, columns);
     const depth = Math.max(levels.length, ...columns.map(column => Array.isArray(column.path) ? column.path.length : 0));
@@ -5621,6 +5631,7 @@
     }));
     const seriesStyles = Object.fromEntries(kpiCategories.map(category => [category, {label: category}]));
     appendContextHeader(pane, tableData, 'score', 'Scoring Charts');
+    const chartGroupKey = hierarchyChartGroupKey(columns, hierarchyLevelNames(tableData, columns));
     const chart = makeSvgChart(`${scoringLabel()} Scoring per Category`, rows, tableData, {
       stacked: true,
       categoryOrder: columns.map(column => column.id),
@@ -5628,7 +5639,7 @@
       categoryTooltips,
       hierarchyLevels: tableData.hierarchy_levels,
       hierarchyColumns: columns,
-      groupKeyForCategory: leafId => hierarchyColumnOperator(columns.find(column => column.id === leafId)),
+      groupKeyForCategory: leafId => chartGroupKey(columns.find(column => column.id === leafId)),
       categoryGroupGap: 14,
       seriesOrder: kpiCategories,
       seriesStyles,
@@ -5754,7 +5765,8 @@
     const hierarchyColumns = Array.isArray(tableData?.hierarchy_columns) ? tableData.hierarchy_columns : [];
     const hierarchyColumnsById = new Map(hierarchyColumns.map(column => [String(column?.id ?? ''), column]));
     const hasHierarchyAxis = hierarchyLevels.length > 0 && hierarchyColumnsById.size > 0;
-    const groupKeys = data.operators.map(operator => hierarchyColumnOperator(hierarchyColumnsById.get(operator)));
+    const groupKey = hierarchyChartGroupKey(hierarchyColumns, hierarchyLevels);
+    const groupKeys = data.operators.map(operator => groupKey(hierarchyColumnsById.get(operator)));
     const groupTransitions = hasHierarchyAxis
       ? groupKeys.slice(1).filter((key, index) => key && groupKeys[index] && key !== groupKeys[index]).length : 0;
     const categoryGroupGap = hasHierarchyAxis ? 14 : 0;

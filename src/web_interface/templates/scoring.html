@@ -1457,7 +1457,7 @@
         </div>
         <span class="scoring-config-shortcuts scoring-levels-shortcut"><a data-config-shortcut="hierarchy" href="#" role="button" data-scoring-hierarchy-open title="Order the aggregation hierarchy of the application"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="7" y="2" width="6" height="4" rx="1"/><path d="M10 6v4M4 14v-4h12v4"/><rect x="1" y="14" width="6" height="4" rx="1"/><rect x="13" y="14" width="6" height="4" rx="1"/></svg><span>Aggregation hierarchy</span></a></span>
       </div>
-      <p class="scoring-context-filter-note scoring-levels-note">Operator is required.</p>
+      <p class="scoring-context-filter-note scoring-levels-note">Operator is required. To compare the operators of each City (or Region or Cluster) side by side, move that level above Operator in the Aggregation hierarchy.</p>
     </div>
     <div class="scoring-picker scoring-trends-picker" data-scoring-trends aria-labelledby="scoring-trends-title">
       <div class="scoring-picker-head" title="Always the whole country: the Region, Cluster and City filters of the calculation do not apply to Geographical Areas and Scoring Trends."><strong id="scoring-trends-title">Geographical Areas &amp; Scoring Trends</strong></div>
@@ -1635,7 +1635,7 @@
   <dialog class="scoring-hierarchy-dialog" data-scoring-hierarchy-dialog data-can-edit="{{ 'true' if can_edit_hierarchy else 'false' }}" aria-labelledby="scoring-hierarchy-title">
     <form method="dialog" class="scoring-hierarchy-form" data-scoring-hierarchy-form>
       <h3 id="scoring-hierarchy-title">Aggregation hierarchy</h3>
-      <p class="scoring-hierarchy-copy">Order used to group the scoring results and to list the filters. It is an application setting shared by every workspace and methodology. Operator is always one of the Split by levels.{% if not can_edit_hierarchy %} Only editors can change it.{% endif %}</p>
+      <p class="scoring-hierarchy-copy">Order used to group the scoring results and to list the filters. It is an application setting shared by every workspace and methodology. Operator is always one of the Split by levels; the levels above it group the operators, so City above Operator shows every operator of each city together.{% if not can_edit_hierarchy %} Only editors can change it.{% endif %}</p>
       <ol class="scoring-hierarchy-list" data-scoring-hierarchy-list></ol>
       <p class="scoring-hierarchy-status" data-scoring-hierarchy-status role="status" aria-live="polite"></p>
       <div class="scoring-hierarchy-actions">

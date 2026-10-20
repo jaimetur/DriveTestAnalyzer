@@ -340,6 +340,38 @@ def test_stacked_chart_pagination_preserves_root_groups_and_leaf_values():
     assert {page['_stacked_chart_maximum'] for page in pages} == {200.0}
 
 
+def test_stacked_chart_pagination_keeps_each_city_together_when_city_comes_before_operator():
+    def columns_of(cities, operators, campaigns):
+        return [
+            {'id': f'{city}-{operator}-{campaign}', 'operator': operator,
+             'path': [{'level': 'City', 'value': city}, {'level': 'Operator', 'value': operator},
+                      {'level': 'Campaign', 'value': campaign}]}
+            for city in cities for operator in operators for campaign in campaigns
+        ]
+
+    def matrix_of(columns):
+        values = {column['id']: {'points': float(index)} for index, column in enumerate(columns, 1)}
+        return {'operators': list(dict.fromkeys(column['operator'] for column in columns)), 'hierarchy_columns': columns,
+                'total': {'values': values, 'max_points': 999.0}}
+
+    operators = ['O2 UK', 'Three UK', 'EE', 'Vodafone UK']
+    columns = columns_of(['London', 'Manchester', 'Leeds'], operators, ['2026Q1', '2026Q2'])
+    pages = _stacked_chart_pages(matrix_of(columns))
+
+    # Whole cities on each slide, in the order of the hierarchy: never one operator across every city.
+    assert [[column['id'] for column in page['hierarchy_columns']] for page in pages] == [
+        [column['id'] for column in columns[:16]], [column['id'] for column in columns[16:]],
+    ]
+    assert all(set(page['operators']) == set(operators) for page in pages)
+    assert [page['_stacked_chart_page'] for page in pages] == ['Page 1 of 2', 'Page 2 of 2']
+
+    # A city with more columns than a slide holds is divided by its operators.
+    columns = columns_of(['London'], operators, ['2026Q1', '2026Q2', '2026Q3', '2026Q4', '2027Q1', '2027Q2'])
+    pages = _stacked_chart_pages(matrix_of(columns))
+    assert [page['operators'] for page in pages] == [operators[:3], operators[3:]]
+    assert [column['id'] for page in pages for column in page['hierarchy_columns']] == [column['id'] for column in columns]
+
+
 def test_dense_hierarchy_powerpoint_can_keep_all_chart_leaves_on_one_slide():
     campaigns = [f'UK_Q{index}_2026' for index in range(1, 7)]
     base = _result()

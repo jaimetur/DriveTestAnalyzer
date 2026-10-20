@@ -237,7 +237,7 @@ def test_results_controls_are_grouped_with_icons_and_unique_environment_heading(
     # On the line of the Split by levels, at its right, with the note below the levels.
     panel = hierarchy[0].xpath('ancestor::div[@class="scoring-levels-row"]/parent::div')[0]
     assert panel.xpath('./div[@class="scoring-picker-head"]/strong')[0].text == 'Split by'
-    assert panel.xpath('./p[contains(@class, "scoring-levels-note")]')[0].text == 'Operator is required.'
+    assert panel.xpath('./p[contains(@class, "scoring-levels-note")]')[0].text.startswith('Operator is required. To compare the operators of each City')
     header = re.search(r'<div class="scoring-results-head">(.*?)<div class="scoring-results-tabbed">', template, re.S)
     assert header
     markup = header.group(1)
@@ -531,8 +531,8 @@ def test_scoring_chart_pairs_render_five_operator_two_category_views():
         'hierarchyColumnOperator', 'hierarchyColumnIsReference', 'chartOperatorLegend',
         'makeExpandableChartCard', 'effectiveScoring', 'scoringLabel',
         'renderCharts', 'renderHierarchyCharts', 'svgElement', 'hierarchyChartColor',
-        'hierarchyDisplayValue', 'hierarchyPathEntry', 'hierarchyPrefixKey', 'appendHierarchyAxisBands',
-        'hierarchyPathValueLabel', 'hierarchyPathFullLabel', 'chartFitWidth', 'styleIncompleteValue',
+        'hierarchyDisplayValue', 'hierarchyPathEntry', 'hierarchyPrefixKey', 'hierarchyChartGroupKey', 'hierarchyLevelNames',
+        'appendHierarchyAxisBands', 'hierarchyPathValueLabel', 'hierarchyPathFullLabel', 'chartFitWidth', 'styleIncompleteValue',
         'resultScope', 'appendResultScope',
     )
     payload = {'snippets': {name: _function_source(script, name) for name in names}}
@@ -809,6 +809,44 @@ process.stdout.write(JSON.stringify({
                              'scoring-chart-category-legend-title', 'scoring-chart-category-legend-label'):
             assert shared_class in category['sharedText']
             assert shared_class in service['sharedText']
+
+
+def test_chart_bar_groups_follow_the_levels_above_operator():
+    script = SCORING_SCRIPT.read_text(encoding='utf-8')
+    names = ('hierarchyDisplayValue', 'hierarchyPathEntry', 'hierarchyPrefixKey', 'hierarchyColumnOperator',
+             'firstValue', 'hierarchyChartGroupKey')
+    payload = {'snippets': [_function_source(script, name) for name in names]}
+    program = r"""
+const vm = require('node:vm');
+const payload = JSON.parse(require('node:fs').readFileSync(0, 'utf8'));
+const context = {};
+vm.createContext(context);
+vm.runInContext(payload.snippets.join('\n') + '\nglobalThis.groupKey = hierarchyChartGroupKey;', context);
+const columns = (levels, cities) => cities.flatMap(city => ['EE', 'O2 UK'].flatMap(operator => ['2026Q1', '2026Q2'].map(
+  campaign => ({id: `${city}-${operator}-${campaign}`, operator, path: levels.map(level => ({
+    level, value: level === 'City' ? city : level === 'Operator' ? operator : campaign,
+  }))}))));
+const groups = (levels, cities) => {
+  const items = columns(levels, cities);
+  const key = context.groupKey(items, levels);
+  return items.map(column => key(column));
+};
+const distinct = values => values.filter((value, index) => !index || value !== values[index - 1]).length;
+process.stdout.write(JSON.stringify({
+  cityFirst: distinct(groups(['City', 'Operator', 'Campaign'], ['London', 'Leeds'])),
+  oneCity: distinct(groups(['City', 'Operator', 'Campaign'], ['London'])),
+  operatorFirst: groups(['Operator', 'City', 'Campaign'], ['London', 'Leeds']),
+  missing: context.groupKey(columns(['City', 'Operator'], ['London', 'Leeds']), ['City', 'Operator'])(undefined),
+}));
+"""
+    result = _run_node_json(program, payload)
+
+    # City above Operator: one group per city (every operator and campaign of the city together).
+    assert result['cityFirst'] == 2
+    # A single city leaves the operators as the groups, as with Operator first.
+    assert result['oneCity'] == 2
+    assert result['operatorFirst'] == ['EE'] * 2 + ['O2 UK'] * 2 + ['EE'] * 2 + ['O2 UK'] * 2
+    assert result['missing'] == ''
 
 
 def test_reference_header_uses_operator_mapping_accent_without_yellow_marker():
