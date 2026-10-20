@@ -11,6 +11,7 @@
   // In the copy the HTML parts start from the initial value of each property (not from the browser's own styles, such as
   // the margins of a heading), so a part is given only the values that differ from it or from those of its parent.
   const RESET = '[data-element-image] :where(:not(style, [data-element-image-svg] *)) { all: unset; }';
+  const FIXED_PARTS = 'img, canvas, video, iframe, embed, object, input, select, textarea, button';
   const knownStyles = new Map();
   let sandbox = null;
 
@@ -93,6 +94,23 @@
     })).catch(() => {}));
   }
 
+  // A part whose content fits in it on the page grows in the copy with what it holds: its text can take a little more room
+  // in the image than on the page (a few pixels per row of a table), and a height of its own would leave the last rows
+  // out of the image. The height of the page is kept as the least it has, and the rows of a grid grow the same way.
+  function growWithContent(copy) {
+    const height = copy.style.getPropertyValue('height');
+    if (height.endsWith('px')) {
+      const least = Math.max(Number.parseFloat(height), Number.parseFloat(copy.style.getPropertyValue('min-height')) || 0);
+      for (const [name, value] of [['min-height', `${least}px`], ['height', 'auto'], ['max-height', 'none']]) {
+        copy.style.setProperty(name, value);
+      }
+    }
+    for (const name of ['grid-template-rows', 'grid-auto-rows']) {
+      const rows = copy.style.getPropertyValue(name);
+      if (/\dpx/.test(rows)) copy.style.setProperty(name, rows.replace(/(\d*\.?\d+)px/g, 'minmax($1px, auto)'));
+    }
+  }
+
   function copyNode(source, parentStyle, context) {
     if (source.nodeType === Node.TEXT_NODE) {
       // Characters XML does not allow would stop the image from loading.
@@ -112,6 +130,9 @@
     const svgPart = source instanceof SVGElement && source.localName !== 'svg';
     const skipped = svgPart ? SVG_GEOMETRY.filter(name => source.hasAttribute(name)) : [];
     for (const [name, value] of declarations(style, baseStyle(source), parentStyle, skipped)) copy.style.setProperty(name, value);
+    // (Not the parts of a table, whose height is already the least they have, nor what shows an image or a field.)
+    if (source instanceof HTMLElement && !/table/.test(style.display) && !source.matches(FIXED_PARTS)
+      && source.scrollHeight <= source.clientHeight + 1) growWithContent(copy);
     if (source instanceof SVGSVGElement && !source.ownerSVGElement) copy.setAttribute('data-element-image-svg', '');
     if (!(source instanceof SVGElement)) copyPseudoElements(source, copy, style, context);
     // What the page has typed or chosen in its fields.
@@ -138,15 +159,30 @@
   // narrower column grows with it). It happens between two drawings of the page, so the page is never shown so; the
   // function returned puts the element and the scroll positions back.
   function showScrolledContent(element) {
-    const scrollers = [element, ...element.querySelectorAll('*')].filter(node => node instanceof HTMLElement
-      && /^(auto|scroll)$/.test(getComputedStyle(node).overflowX));
+    const nodes = [element, ...element.querySelectorAll('*')].filter(node => node instanceof HTMLElement);
+    const scrollers = nodes.filter(node => /^(auto|scroll)$/.test(getComputedStyle(node).overflowX));
+    // What scrolls downwards is as tall as its content while the copy is made, so every row is in the image.
+    const tall = nodes.filter(node => /^(auto|scroll)$/.test(getComputedStyle(node).overflowY)
+      && node.scrollHeight > node.clientHeight + 1).map(node => [node, node.getAttribute('style'), node.scrollLeft, node.scrollTop]);
+    const page = [window.scrollX, window.scrollY];
+    for (const [node] of tall) {
+      for (const [name, value] of [['max-height', 'none'], ['height', 'auto']]) node.style.setProperty(name, value, 'important');
+    }
+    const restoreTall = () => {
+      for (const [node, nodeStyle, left, top] of tall) {
+        if (nodeStyle === null) node.removeAttribute('style');
+        else node.setAttribute('style', nodeStyle);
+        node.scrollLeft = left;
+        node.scrollTop = top;
+      }
+      if (window.scrollX !== page[0] || window.scrollY !== page[1]) window.scrollTo(page[0], page[1]);
+    };
     const overflow = () => Math.max(0, ...scrollers.filter(node => node.clientWidth > 0)
       .map(node => (node.scrollWidth - node.clientWidth) * element.clientWidth / node.clientWidth));
     let extra = overflow();
-    if (extra < 1) return () => {};
+    if (extra < 1) return restoreTall;
     const style = element.getAttribute('style');
     const scrolled = scrollers.map(node => [node, node.scrollLeft, node.scrollTop]);
-    const page = [window.scrollX, window.scrollY];
     const width = element.offsetWidth;
     let added = 0;
     for (let step = 0; step < 4 && extra >= 1; step += 1) {
@@ -165,7 +201,7 @@
         node.scrollLeft = left;
         node.scrollTop = top;
       }
-      if (window.scrollX !== page[0] || window.scrollY !== page[1]) window.scrollTo(page[0], page[1]);
+      restoreTall();
     };
   }
 
@@ -207,9 +243,10 @@
     });
   }
 
-  // Saves ``element`` as ``fileName`` (a PNG, or an SVG where the browser does not let a page save what it drew), leaving
-  // out its parts that match ``exclude``. Resolves to the file saved and its size in pixels of the page.
-  async function downloadElementImage(element, fileName, {exclude = ''} = {}) {
+  // Draws ``element``, leaving out its parts that match ``exclude``: resolves to its PNG (``null`` where the browser does not
+  // let a page save what it drew), its SVG and its size in pixels of the page. The element is copied before the first
+  // wait, so a caller can start it within a click.
+  async function drawElementImage(element, {exclude = ''} = {}) {
     const context = {exclude, rules: [], images: []};
     let copy, width, height;
     const restore = showScrolledContent(element);
@@ -229,11 +266,19 @@
     if (!['static', 'relative'].includes(copy.style.getPropertyValue('position'))) copy.style.setProperty('position', 'relative');
     const holder = document.createElement('div');
     holder.setAttribute('data-element-image', '');
-    holder.style.cssText = `display:block;width:${width}px;height:${height}px;overflow:hidden`;
+    holder.style.cssText = `display:block;width:${width}px`;
     const sheet = document.createElement('style');
     sheet.textContent = [RESET, ...context.rules].join('\n');
     holder.append(sheet, copy);
     await Promise.all(context.images);
+    // The image is as tall as the copy laid out (in the sandbox, without the styles of the page).
+    const view = sandboxWindow();
+    view.document.body.append(holder);
+    height = Math.max(height, Math.ceil(copy.getBoundingClientRect().height));
+    holder.remove();
+    sandbox?.remove();
+    sandbox = null;
+    holder.style.cssText = `display:block;width:${width}px;height:${height}px;overflow:hidden`;
     const scale = Math.max(.1, Math.min(Math.max(2, window.devicePixelRatio || 1), Math.sqrt(MAX_PIXELS / (width * height)),
       MAX_SIDE / width, MAX_SIDE / height));
     const [imageWidth, imageHeight] = [Math.round(width * scale), Math.round(height * scale)];
@@ -254,11 +299,38 @@
       // A browser that does not let a page save what it drew from an SVG saves the SVG itself.
       blob = null;
     }
+    return {blob, svg, width, height};
+  }
+
+  // Saves ``element`` as ``fileName`` (a PNG, or an SVG where the browser does not let a page save what it drew), leaving
+  // out its parts that match ``exclude``. Resolves to the file saved and its size in pixels of the page.
+  async function downloadElementImage(element, fileName, {exclude = ''} = {}) {
+    const {blob, svg, width, height} = await drawElementImage(element, {exclude});
     const png = Boolean(blob);
     const name = fileName.replace(/\.(png|svg)$/i, '') + (png ? '.png' : '.svg');
     saveFile(blob || new Blob([svg], {type: 'image/svg+xml'}), name);
     return {fileName: name, format: png ? 'png' : 'svg', width, height};
   }
 
+  // Copies ``element`` to the clipboard as a PNG image (a screenshot of it, to paste elsewhere), leaving out its parts that
+  // match ``exclude``. The clipboard is given the image while it is still being drawn, within the click (as Safari
+  // requires). Resolves to its size in pixels of the page.
+  async function copyElementImage(element, {exclude = ''} = {}) {
+    if (!navigator.clipboard?.write || typeof ClipboardItem !== 'function') {
+      throw new Error('This browser does not let the page copy images (it needs a secure address: https or this computer).');
+    }
+    const drawing = drawElementImage(element, {exclude});
+    const png = drawing.then(({blob}) => {
+      if (!blob) throw new Error('The browser does not let the page copy what it drew.');
+      return blob;
+    });
+    await navigator.clipboard.write([new ClipboardItem({'image/png': png})]);
+    const {width, height} = await drawing;
+    return {format: 'png', width, height};
+  }
+
+
+  window.drawElementImage = drawElementImage;
   window.downloadElementImage = downloadElementImage;
+  window.copyElementImage = copyElementImage;
 })();
