@@ -11,6 +11,7 @@ import errno
 import html
 import fcntl
 import gc
+import platform
 import sys
 try:
     import resource
@@ -2962,14 +2963,51 @@ DEPLOYMENT_STORAGE_PATHS: dict[str, Path] = {}
 STARTUP_STATUS: dict[str, str] = {'message': 'Starting DriveTest Analyzer…', 'error': ''}
 
 
-def _prepare_active_workspace() -> None:
-    """Open the active workspace, upgrading its database if needed, and recover interrupted jobs."""
+def _application_start_details(started_at: float, workspace_name: str = '', workspace_id: str = '') -> dict[str, Any]:
+    """What tells one start of the application from another in App Events."""
+    return {
+        'version': __version__,
+        'active_workspace': workspace_name,
+        'active_workspace_id': workspace_id,
+        'ready_in_seconds': round(monotonic() - started_at, 1),
+        'host': settings.app_host,
+        'port': settings.app_port,
+        'python': platform.python_version(),
+        'platform': platform.platform(),
+        'pid': os.getpid(),
+        'error': STARTUP_STATUS['error'],
+    }
+
+
+def _record_application_start(details: dict[str, Any], *, skip_workspace_id: str = '') -> None:
+    """Add the start of the application to the App Events of every workspace but the one that already has it. Each
+    database only gets the event (it is upgraded when opened), and one that is busy or being duplicated is skipped."""
+    payload = json.dumps(details)
+    for workspace in workspace_registry.list():
+        if workspace.id == skip_workspace_id or workspace.status != 'ready' or not workspace.database_path.is_file():
+            continue
+        try:
+            Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path).try_add_log(
+                'system', 'application_started', payload, timeout_seconds=5)
+        except Exception as exc:  # One workspace that cannot take it never stops the others.
+            print(f'Unable to record the application start in workspace "{workspace.name}": {exc}', file=sys.stderr, flush=True)
+
+
+def _prepare_active_workspace(started_at: float) -> None:
+    """Open the active workspace, upgrading its database if needed, recover interrupted jobs and record the start in
+    every workspace."""
+    start_details: dict[str, Any] | None = None
+    active_name = active_id = ''
     try:
         if (workspace_id := workspace_registry.active_id()):
             workspace = workspace_registry.get(workspace_id)
             name = workspace.name if workspace else workspace_id
+            active_name, active_id = name, workspace_id
             STARTUP_STATUS['message'] = f'Opening workspace "{name}"…'
             activate_workspace(workspace_id)
+            # The workspace opened has the start before what its opening recovers; the others once the application is ready.
+            start_details = _application_start_details(started_at, name, workspace_id)
+            repository.try_add_log('system', 'application_started', json.dumps(start_details), timeout_seconds=5)
             interrupted_datasets, interrupted_reports = repository.fail_interrupted_background_jobs(fail_datasets=False)
             interrupted_chart_jobs = repository.fail_interrupted_report_chart_jobs()
             if interrupted_datasets or interrupted_reports or interrupted_chart_jobs:
@@ -2988,10 +3026,18 @@ def _prepare_active_workspace() -> None:
     finally:
         STARTUP_STATUS['message'] = 'Ready.'
         STARTUP_READY.set()
+    # In a thread of its own: the server waits for this one at startup, and never for the other workspaces.
+    Thread(
+        target=_record_application_start,
+        args=(start_details or _application_start_details(started_at, active_name, active_id),),
+        kwargs={'skip_workspace_id': active_id if start_details else ''},
+        name='application-start-events', daemon=True,
+    ).start()
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    startup_started_at = monotonic()
     APP_SHUTTING_DOWN.clear()
     # The storage paths of the deployment, before a workspace points them at its own folders.
     DEPLOYMENT_STORAGE_PATHS.update({name: getattr(settings, name) for name in DEPLOYMENT_STORAGE_PATH_NAMES})
@@ -3069,7 +3115,7 @@ async def lifespan(_: FastAPI):
     # The server starts answering after a short grace period and shows a preparing page
     # until the workspace is ready, instead of leaving the browser on a blank screen.
     STARTUP_READY.clear()
-    preparation_thread = Thread(target=_prepare_active_workspace, name='workspace-startup', daemon=True)
+    preparation_thread = Thread(target=_prepare_active_workspace, args=(startup_started_at,), name='workspace-startup', daemon=True)
     preparation_thread.start()
     preparation_thread.join(timeout=STARTUP_GRACE_SECONDS)
     yield
@@ -11792,6 +11838,8 @@ def classify_workspace_log_entry(log: dict[str, Any]) -> str:
     if log.get('action') == 'recover_interrupted_background_jobs' and isinstance(log.get('details'), dict):
         if log['details'].get('reports') or log['details'].get('chart_jobs'):
             return 'Error'
+    if log.get('action') == 'application_started' and isinstance(log.get('details'), dict) and log['details'].get('error'):
+        return 'Error'
     return 'Info'
 
 

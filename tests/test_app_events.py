@@ -410,6 +410,31 @@ def test_public_pages_and_sign_in_are_where_their_events_ran(client) -> None:
     assert (log['executor_name'], log['executor_tag']) == ('Public', 'Sign-in')
 
 
+def test_every_application_start_is_recorded_in_every_workspace(client) -> None:
+    from src.modules.repository import Repository
+
+    assert core.STARTUP_READY.wait(timeout=30)
+    started = events('application_started')
+    assert len(started) == 1
+    assert started[0]['version'] == core.__version__ and started[0]['active_workspace_id'] == core.active_workspace.id
+    assert started[0]['ready_in_seconds'] >= 0 and started[0]['pid'] > 0 and started[0]['python'] and started[0]['platform']
+    login(client)
+    log = next(log for log in client.get('/api/app-logs').json()['logs'] if log['action'] == 'application_started')
+    assert (log['username'], log['executor_name'], log['executor_tag'], log['log_type']) == ('system', 'Server', 'Startup', 'Info')
+    assert log['description'].startswith(f'Application started (version {core.__version__}): active workspace ')
+    # The other workspaces get the same event, an Error when the active one could not be opened; one never opened, without
+    # a database yet, is left without one.
+    other = core.workspace_registry.create('Other workspace')
+    other_repository = Repository(other.database_path, core.repository.global_db_path, core.workspace_registry.registry_path)
+    other_repository.initialize()
+    unopened = core.workspace_registry.create('Unopened workspace')
+    failed = {**started[0], 'error': 'The active workspace could not be opened: database is locked'}
+    core._record_application_start(failed, skip_workspace_id=core.active_workspace.id)
+    assert [json.loads(row['details']) for row in other_repository.list_logs() if row['action'] == 'application_started'] == [failed]
+    assert len(events('application_started')) == 1 and not unopened.database_path.exists()
+    assert core.classify_workspace_log_entry({'action': 'application_started', 'details': failed}) == 'Error'
+
+
 def test_app_events_filter_lists_are_tall_and_compact() -> None:
     from pathlib import Path
 

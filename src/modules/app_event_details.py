@@ -233,6 +233,21 @@ def _login(details: dict[str, Any]) -> str:
         f" to workspace {details.get('workspace') or details.get('workspace_id')}." if details.get('workspace') or details.get('workspace_id') else '.')
 
 
+def _application_started(details: dict[str, Any]) -> str:
+    workspace = details.get('active_workspace') or details.get('active_workspace_id')
+    parts = [
+        f'active workspace {workspace}' if workspace else 'no active workspace',
+        f"ready in {details['ready_in_seconds']} s" if details.get('ready_in_seconds') is not None else '',
+        f"address {details['host']}:{details['port']}" if details.get('host') and details.get('port') else '',
+        f"Python {details['python']}" if details.get('python') else '',
+        f"platform {details['platform']}" if details.get('platform') else '',
+        f"PID {details['pid']}" if details.get('pid') else '',
+    ]
+    error = str(details.get('error') or '').strip().rstrip('.')
+    return ('Application started' + (f" (version {details['version']})" if details.get('version') else '')
+            + f": {', '.join(part for part in parts if part)}." + (f' {error}.' if error else ''))
+
+
 def _mapping_assign(kind: str) -> Callable[[Any], str]:
     def describe(details: Any) -> str:
         if isinstance(details, dict) and isinstance(details.get('changes'), dict):
@@ -260,6 +275,7 @@ _DESCRIBERS: dict[str, Callable[[Any], str]] = {
     'operator_mapping_assign': _mapping_assign('Operator'),
     'operator_name_comments': _name_comments,
     'vendor_mapping_assign': _mapping_assign('Vendor'),
+    'application_started': _application_started,
     'login': _login,
     'logout': lambda details: 'Signed out.',
     'create_user': _create_user,
@@ -311,8 +327,8 @@ _SERVER_ACTIONS = {
     'scheduler': {'reporting_scheduler_error'},
     'idle': {'precompute_dashboard_charts', 'prewarm_dashboard_cache', 'prewarm_dashboard_cache_failed', 'nq_calls_reindexed',
              'map_area_fill_failed'},
-    'startup': {'recover_interrupted_background_jobs', 'recover_interrupted_saved_filters', 'recover_inconsistent_datasets',
-                'resume_interrupted_dataset', 'migrate_app_event_users', 'nq_call_keys_upgraded'},
+    'startup': {'application_started', 'recover_interrupted_background_jobs', 'recover_interrupted_saved_filters',
+                'recover_inconsistent_datasets', 'resume_interrupted_dataset', 'migrate_app_event_users', 'nq_call_keys_upgraded'},
     'background': {'process_dataset', 'process_dataset_failed', 'analyze_dataset_failed', 'analyze_dataset_warning',
                    'map_dataset_vendors', 'map_dataset_vendors_failed', 'map_dataset_regions', 'map_dataset_regions_failed',
                    'vendor_mapping_skipped', 'clear_dataset_vendors', 'clear_dataset_vendors_failed', 'chart_set_rendering_completed',
