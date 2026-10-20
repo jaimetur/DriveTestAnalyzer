@@ -111,16 +111,16 @@ const copied = [otherSelectedCard.textContent === latest, otherSelectedCard.clas
 // Close Scoring closes the Saved Filter shown.
 const closeEnabled = !closeScoringButton.disabled;
 const cardOf = row => row.children.find(child => child.dataset.savedFilterId);
-const useOf = row => row.children.find(child => child.dataset.savedFilterUse);
+const useOf = row => row.children.find(child => child.className.split(' ').includes('saved-filter-use'));
 const deleteOf = row => row.children.find(child => child.className === 'saved-filter-actions').children.at(-1);
 const tabsOf = row => row.children.find(child => child.className === 'saved-filter-tabs');
 const scopeOf = row => tabsOf(row)?.children.find(child => child.className === 'saved-filter-scope');
 const modeOf = row => tabsOf(row)?.children.find(child => child.className === 'saved-filter-mode');
-// Each card is folded, with its name (its ID without one) and Use Filter on its right, and the label of the only field it
-// filters on top of it, before the card.
+// Each card is folded, with its name (its ID without one) and Use Filter on its right (In Use on the one in use), and the
+// label of the only field it filters on top of it, before the card.
 const cards = savedFilterList.children.map(row => ({id: cardOf(row).dataset.savedFilterId,
   selected: cardOf(row).attributes['aria-current'], expanded: cardOf(row).attributes['aria-expanded'],
-  name: cardOf(row).children[0].textContent, use: useOf(row).dataset.savedFilterUse, useLabel: useOf(row).textContent,
+  name: cardOf(row).children[0].textContent, use: useOf(row).dataset.savedFilterUse ?? null, useLabel: useOf(row).textContent,
   deleteId: deleteOf(row).dataset.deleteSavedFilterId,
   scope: scopeOf(row) ? [scopeOf(row).dataset.dimension, scopeOf(row).textContent, scopeOf(row).title, row.children.indexOf(tabsOf(row)),
     row.classList.contains('has-scope')] : null,
@@ -152,6 +152,8 @@ const historyCounts = [countBadge.textContent, historyCountBadge.textContent];
 selectedSavedFilterId = '15';
 renderSavedFilters();
 const earlier = selectedSavedFilterCard.textContent;
+// In Use follows the Saved Filter in use.
+const earlierUse = savedFilterList.children.map(row => useOf(row).textContent);
 // Unstarred, the opened Saved Filter leaves the lists but stays in the selected card.
 savedFilters[1].pinned = false;
 renderSavedFilters();
@@ -170,7 +172,7 @@ const closed = {card: selectedSavedFilterCard.textContent, closeDisabled: closeS
 scoringClosed = false;
 savedFilters.length = 0;
 renderSavedFilters();
-process.stdout.write(JSON.stringify({latest, copied, earlier, cards, separateCopy, selectedHasHead, selectedScope, selectedFolded, historyMatches, unfolded, historyCounts,
+process.stdout.write(JSON.stringify({latest, copied, earlier, earlierUse, cards, separateCopy, selectedHasHead, selectedScope, selectedFolded, historyMatches, unfolded, historyCounts,
   unstarred, unmatchedCard, unmatchedFolded, closeEnabled, closed, emptyHistory: historyList.textContent, empty: selectedSavedFilterCard.textContent}));
 '''
     result = _run_node_json(program, {})
@@ -181,11 +183,12 @@ process.stdout.write(JSON.stringify({latest, copied, earlier, cards, separateCop
     assert 'Example CDR.xlsx' not in result['earlier']
     assert '1 CDR' in result['earlier']
     assert result['cards'] == [
-        {'id': '20', 'selected': 'true', 'expanded': 'false', 'name': 'Filter ID: 20', 'use': '20', 'useLabel': 'Use Filter',
+        {'id': '20', 'selected': 'true', 'expanded': 'false', 'name': 'Filter ID: 20', 'use': None, 'useLabel': 'In Use',
          'deleteId': '20', 'scope': ['city', 'London', 'City: London', 0, True], 'mode': None},
         {'id': '15', 'selected': 'false', 'expanded': 'false', 'name': 'Filter ID: 15', 'use': '15', 'useLabel': 'Use Filter',
          'deleteId': '15', 'scope': None, 'mode': ['nsa-vs-sa', 'NSA vs SA', 'NR Mode: NSA vs SA']},
     ]
+    assert result['earlierUse'] == ['Use Filter', 'In Use']
     # The label is on top of the selected card too.
     assert result['selectedScope'] is True
     assert result['separateCopy'] and result['historyMatches'] and not result['selectedHasHead']

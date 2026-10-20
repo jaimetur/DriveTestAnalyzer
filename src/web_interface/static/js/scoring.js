@@ -2631,14 +2631,22 @@
       remove.setAttribute('aria-label', `Delete Saved Filter ${id}`);
       remove.disabled = deletingSavedFilterIds.has(id);
       actions.append(cdrButton, idBadge, rename, duplicate, pin, remove);
-      // Use Filter makes it the Saved Filter of the module and opens its Scoring.
-      const use = document.createElement('button');
-      use.type = 'button';
-      use.className = 'saved-filter-use';
-      use.dataset.savedFilterUse = id;
-      use.textContent = 'Use Filter';
-      use.title = 'Open the Scoring of this Saved Filter: it becomes the Saved Filter selected at the top of the module';
-      use.setAttribute('aria-label', `Use Saved Filter ${id}`);
+      // Use Filter makes it the Saved Filter of the module and opens its Scoring; the one in use (selected at the top of
+      // the module, with its results shown) has the In Use label instead.
+      const inUse = id === selectedSavedFilterId && !selectionUnmatched && !scoringClosed;
+      const use = document.createElement(inUse ? 'span' : 'button');
+      if (inUse) {
+        use.className = 'saved-filter-use saved-filter-in-use';
+        use.textContent = 'In Use';
+        use.title = 'This Saved Filter is the one selected at the top of the module';
+      } else {
+        use.type = 'button';
+        use.className = 'saved-filter-use';
+        use.dataset.savedFilterUse = id;
+        use.textContent = 'Use Filter';
+        use.title = 'Open the Scoring of this Saved Filter: it becomes the Saved Filter selected at the top of the module';
+        use.setAttribute('aria-label', `Use Saved Filter ${id}`);
+      }
       // On top of its card: the only field it filters (or All) and its NR Mode.
       const tabs = document.createElement('span');
       tabs.className = 'saved-filter-tabs';
