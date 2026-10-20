@@ -364,6 +364,9 @@ The **NQ Call Status** of each call is semi-automatic: it follows the **Status R
 > [!IMPORTANT]
 > **The first rule that matches gives the status of the call.** The order of the rules is the order they are tried in, so a call that meets several rules gets the status of the first one.
 
+> [!WARNING]
+> **Change these rules with care.** Modifying them without the necessary knowledge of the fields and statuses of the calls can completely change how the calls are classified: on **Save**, every call with an automatic status takes the status the new rules give it. The dialog shows this warning above the rules.
+
 A condition reads a list or Yes / No field entered by the analysts or derived from the call, the team, the assignee, the root category or cause, or **Attended** (the call has a follow-up change or a comment), and is **is one of** or **is not one of** some values, **is empty** or **is not empty**. The rules do not name fixed values: they choose among the values of each list, so renaming a list value or a status renames it in the rules, and a removed value or field is taken out of their conditions (a rule left without conditions is removed).
 
 The default rules, for the default fields and statuses, go from the end of the pipeline to its start, so the most advanced phase of a call wins and the rules of each pipeline card follow one another:

@@ -959,6 +959,10 @@ def test_admins_import_the_analyses_of_the_previous_tool_by_join_id(client, tmp_
     assert "const showUnclassified = $('nq-root-show-unclassified').checked;" in script
     # The Progress View shows the calls per month by default.
     assert '<option value="month" selected>Month</option>' in page
+    # The Status Rules warn, above the rules, that changing them reclassifies the calls.
+    rules_dialog = page.split('id="nq-status-rules-dialog"', 1)[1].split('</dialog>', 1)[0]
+    assert rules_dialog.index('class="nq-rules-warning"') < rules_dialog.index('id="nq-status-rules"')
+    assert 'can completely change how the calls are classified' in rules_dialog
     token = 'analyses-editor'
     core.SESSIONS[token] = core.SessionUser(username='editor', role='user-editor')
     client.cookies.set(core.SESSION_COOKIE, token)

@@ -846,7 +846,12 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 .nq-field-values .nq-root-keywords { flex: 1.4 1 auto; }
 /* Status Rules. */
 .nq-status-rules-dialog { width: min(980px, calc(100vw - 32px)); }
-.nq-status-rules { display: grid; gap: .7rem; max-height: min(62vh, 660px); margin: 0; padding: 0 .2rem 0 0; overflow-y: auto; list-style: none; counter-reset: rule; }
+/* The warning above the rules: changing them reclassifies every automatic call. The rules give it their height (5rem). */
+.nq-rules-warning { display: flex; align-items: flex-start; gap: .6rem; padding: .65rem .85rem; border: 1px solid #f2cf95; border-left: 5px solid #e59a2b; border-radius: 12px; background: #fff4e0; color: #7a4a00; font-size: .84rem; }
+.nq-rules-warning-icon { flex: 0 0 auto; width: 1.3rem; height: 1.3rem; color: #c77700; }
+.nq-rules-warning p { margin: 0; line-height: 1.45; }
+.nq-rules-warning strong { color: #5c3700; }
+.nq-status-rules { display: grid; gap: .7rem; max-height: min(calc(62vh - 5rem), 580px); margin: 0; padding: 0 .2rem 0 0; overflow-y: auto; list-style: none; counter-reset: rule; }
 .nq-status-rule { counter-increment: rule; }
 .nq-status-rule > .nq-option-row::before { content: counter(rule); display: inline-grid; flex: 0 0 auto; place-items: center; width: 1.6rem; height: 1.6rem; border-radius: 50%; background: var(--nq-dark); color: #fff; font-size: .78rem; font-weight: 850; }
 .nq-rule-word { color: var(--nq-muted); font-size: .8rem; font-weight: 800; white-space: nowrap; }
