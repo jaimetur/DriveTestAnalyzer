@@ -256,7 +256,8 @@ def test_users_access_exports_and_imports_users_profiles_and_groups(client):
     core.repository.set_user_workspace_groups(user_id('ana'), [group])
     content, manifest, payload = users_access_package(client)
     assert manifest['kind'] == 'users-access' and manifest['components'] == ['users_access']
-    assert {'id': core.active_workspace.id, 'name': core.active_workspace.name} in manifest['source_workspaces']
+    # Each workspace with its identity, which finds it on the other server also after a rename.
+    assert {'id': core.active_workspace.id, 'name': core.active_workspace.name, 'uid': core.active_workspace.uid} in manifest['source_workspaces']
     ana = next(item for item in payload['users'] if item['username'] == 'ana')
     assert (ana['first_name'], ana['modules_profile'], ana['workspace_groups']) == ('Ana', 'Non-Qualified Calls', ['UK'])
     assert next(item for item in payload['workspace_groups'] if item['name'] == 'UK')['workspaces'] == [core.active_workspace.name]

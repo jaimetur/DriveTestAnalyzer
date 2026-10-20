@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Callable
+from uuid import uuid4
 
 
 @dataclass(frozen=True, slots=True)
@@ -21,6 +22,8 @@ class Workspace:
     created_at: str
     last_opened_at: str
     status: str = 'ready'
+    # The identity of the workspace, which never changes: Import / Export and Transfer find it again by it after a rename.
+    uid: str = ''
 
 
 class WorkspaceRegistry:
@@ -87,6 +90,10 @@ class WorkspaceRegistry:
             elif not conn.execute("SELECT 1 FROM workspace_state WHERE key = 'active_workspace_id'").fetchone():
                 latest = conn.execute('SELECT id FROM workspaces ORDER BY last_opened_at DESC LIMIT 1').fetchone()
                 conn.execute("INSERT INTO workspace_state (key, value) VALUES ('active_workspace_id', ?)", (latest['id'] if latest else None,))
+            if 'uid' not in {row['name'] for row in conn.execute('PRAGMA table_info(workspaces)')}:
+                conn.execute("ALTER TABLE workspaces ADD COLUMN uid TEXT NOT NULL DEFAULT ''")
+            for row in conn.execute("SELECT id FROM workspaces WHERE uid = ''").fetchall():
+                conn.execute('UPDATE workspaces SET uid = ? WHERE id = ?', (uuid4().hex, row['id']))
         self._migrate_default_workspace_name()
         self._migrate_workspace_directories()
         self._migrate_workspace_exports()
@@ -294,7 +301,14 @@ class WorkspaceRegistry:
             export_dir=Path(row['export_dir']), slides_templates_dir=Path(row['slides_templates_dir']),
             created_at=str(row['created_at']), last_opened_at=str(row['last_opened_at']),
             status=str(row['status']) if 'status' in row.keys() else 'ready',
+            uid=str(row['uid'] or '') if 'uid' in row.keys() else '',
         )
+
+    def set_uid(self, workspace_id: str, uid: str) -> None:
+        """Give a workspace the identity of the one it replaced on another server (see import_workspace_archive)."""
+        if str(uid or '').strip():
+            with self._connection() as conn:
+                conn.execute('UPDATE workspaces SET uid = ? WHERE id = ?', (str(uid).strip(), workspace_id))
 
     def set_status(self, workspace_id: str, status: str) -> None:
         with self._connection() as conn:
@@ -343,10 +357,10 @@ class WorkspaceRegistry:
                 conn.execute(
                     """INSERT INTO workspaces (
                         id, name, database_path, input_dir, output_dir, export_dir,
-                        slides_templates_dir, created_at, last_opened_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        slides_templates_dir, created_at, last_opened_at, uid
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (workspace_id, normalized_name, str(db_path), str(data_root / 'input'), str(data_root / 'output'),
-                     str(data_root / 'output' / 'reports'), str(slides_templates_dir), now, now),
+                     str(data_root / 'output' / 'reports'), str(slides_templates_dir), now, now, uuid4().hex),
                 )
             except sqlite3.IntegrityError as exc:
                 raise ValueError(f'A workspace named "{normalized_name}" already exists.') from exc

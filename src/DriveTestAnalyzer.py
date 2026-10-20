@@ -7903,6 +7903,8 @@ def _workspace_archive_metadata(workspace: Workspace, unsent_files: dict[str, di
     metadata = {
         'id': workspace.id,
         'name': workspace.name,
+        # Its identity finds it again on another server after a rename.
+        'uid': workspace.uid,
         'source_input_dir': str(workspace.input_dir),
         'source_output_dir': str(workspace.output_dir),
         'access_usernames': access_usernames,
@@ -8248,18 +8250,24 @@ def _archive_workspace_scoring_excluded_calls(
         progress_callback(len(payload))
 
 
-def _restore_workspace_scoring_excluded_calls(workspace: Workspace, payload: bytes, importing_user: str) -> int:
-    """Add the Scoring Excluded Calls lists of a package to a workspace, replacing those of the same name; returns how
-    many lists it has (their calls are found in the CDRs of the workspace in the background)."""
+def _restore_workspace_scoring_excluded_calls(
+    workspace: Workspace, payload: bytes, importing_user: str, summary: list[str] | None = None,
+) -> int:
+    """Replace the Scoring Excluded Calls lists of a workspace that a package brings (found by their identity, then by
+    their name) and add the others; returns how many lists it has (their calls are found in the CDRs of the workspace
+    in the background), and ``summary`` receives the renamed ones."""
     from src.modules.scoring_exclusions import import_document
 
     task_repository = Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path)
     try:
         # Each list belongs to its creator when that user is active here, otherwise to the user who imports it.
-        count = import_document(task_repository, payload, importing_user,
+        renamed: list[str] = []
+        count = import_document(task_repository, payload, importing_user, summary=renamed,
                                 creator=lambda package, local: transfer_creator(package, local, importing_user))
     except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
         raise ValueError(f'Scoring Excluded Calls for "{workspace.name}" are invalid: {exc}') from exc
+    if summary is not None and renamed:
+        summary.append(f'Scoring Excluded Calls of "{workspace.name}": ' + '; '.join(renamed) + '.')
     if count:
         queue_scoring_history(task_repository)
     return count
@@ -8714,15 +8722,22 @@ def _archive_workspace_reporting_jobs(
         progress_callback(len(payload))
 
 
-def _restore_workspace_reporting_jobs(workspace: Workspace, payload: bytes, importing_user: str) -> int:
-    """Add or replace (by name) the Reporting Jobs of a package in a workspace."""
+def _restore_workspace_reporting_jobs(
+    workspace: Workspace, payload: bytes, importing_user: str, summary: list[str] | None = None,
+) -> int:
+    """Replace (found by their identity, then by their name) or add the Reporting Jobs of a package in a workspace;
+    ``summary`` receives the renamed ones."""
     from src.modules.report_tasks import import_tasks_document
 
     task_repository = Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path)
+    renamed: list[str] = []
     try:
-        return import_tasks_document(task_repository, payload, importing_user,
-                                     parse_recipients=parse_recipients, invalid_recipients=invalid_recipients,
-                                     user_exists=lambda username: bool((record := repository.get_user(username)) and record.active))
+        count = import_tasks_document(task_repository, payload, importing_user, summary=renamed,
+                                      parse_recipients=parse_recipients, invalid_recipients=invalid_recipients,
+                                      user_exists=active_user_exists)
+        if summary is not None and renamed:
+            summary.append(f'Reporting Jobs of "{workspace.name}": ' + '; '.join(renamed) + '.')
+        return count
     except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
         raise ValueError(f'Reporting Jobs for "{workspace.name}" are invalid: {exc}') from exc
 
@@ -9964,9 +9979,10 @@ def _replace_workspace_from_staging(
 
 def import_workspace_archive(
     payload: Path, workspace_info: dict[str, Any] | None, *, replace_existing: bool = False,
-    missing_folders: dict[str, list[str]] | None = None,
+    missing_folders: dict[str, list[str]] | None = None, summary: list[str] | None = None,
 ) -> Workspace:
-    """Import a workspace package, replacing the workspace with the same name when asked.
+    """Import a workspace package, replacing the workspace with its identity (or else its name) when asked; a replaced
+    workspace renamed on the other server takes its new name here, and ``summary`` receives the renamed ones.
 
     A package without its Input or Output files lists them: the replaced workspace keeps
     its own folder when it holds the same files, and otherwise the folder is empty and
@@ -9977,7 +9993,11 @@ def import_workspace_archive(
         raise ValueError('The workspace archive does not contain its database.')
     source_name = workspace_info.get('name') if workspace_info else None
     requested_name = str(source_name or 'Imported Workspace')
-    existing_workspace = next((workspace for workspace in workspace_registry.list() if workspace.name.casefold() == requested_name.casefold()), None)
+    source_uid = str((workspace_info or {}).get('uid') or '').strip()
+    workspaces_here = workspace_registry.list()
+    # The workspace it came from is found by its identity (also after a rename), then by its name.
+    existing_workspace = next((workspace for workspace in workspaces_here if source_uid and workspace.uid == source_uid), None) or next(
+        (workspace for workspace in workspaces_here if workspace.name.casefold() == requested_name.casefold()), None)
     replacing_workspace = existing_workspace if existing_workspace and replace_existing else None
     unsent_files = (workspace_info or {}).get('unsent_files')
     unsent_files = unsent_files if isinstance(unsent_files, dict) else {}
@@ -10085,13 +10105,39 @@ def import_workspace_archive(
         raise
     if replacing_workspace:
         try:
-            return _replace_workspace_from_staging(replacing_workspace, workspace, [f'{folder}_dir' for folder in kept_folders])
+            workspace = _replace_workspace_from_staging(replacing_workspace, workspace, [f'{folder}_dir' for folder in kept_folders])
         except Exception:
             if workspace_registry.get(workspace.id):
                 workspace_registry.remove(workspace.id)
                 repository.remove_workspace_access(workspace.id)
             raise
-    return workspace
+        workspace = _rename_replaced_workspace(workspace, requested_name, summary)
+    # It keeps the identity it came with, so a later import finds it again after a rename.
+    workspace_registry.set_uid(workspace.id, source_uid)
+    return workspace_registry.get(workspace.id) or workspace
+
+
+def _rename_replaced_workspace(workspace: Workspace, requested_name: str, summary: list[str] | None) -> Workspace:
+    """A replaced workspace takes the name it has on the other server, unless another workspace here has it."""
+    if workspace.name.casefold() == requested_name.casefold():
+        return workspace
+    if any(other.id != workspace.id and other.name.casefold() == requested_name.casefold() for other in workspace_registry.list()):
+        if summary is not None:
+            summary.append(f'Workspace "{workspace.name}" keeps its name because another workspace is named "{requested_name}".')
+        return workspace
+    previous = workspace.name
+    try:
+        renamed = workspace_registry.rename(workspace.id, requested_name)
+    except ValueError as exc:
+        # The import is done: only the name stays as it was.
+        if summary is not None:
+            summary.append(f'Workspace "{workspace.name}" keeps its name: {exc}')
+        return workspace
+    if active_workspace and active_workspace.id == renamed.id:
+        activate_workspace(renamed.id)
+    if summary is not None:
+        summary.append(f'Workspace "{previous}" renamed "{renamed.name}".')
+    return renamed
 
 
 def register_workspace_template_files(workspace: Workspace) -> None:
@@ -10321,13 +10367,15 @@ SERVER_APPLICATION_STATE_KEYS = (RECURRING_BACKUP_STATE_KEY, RUNTIME_CONFIGURATI
 
 def source_workspaces_manifest() -> list[dict[str, str]]:
     """The id and name of every workspace, so another server can translate the ids of an application database."""
-    return [{'id': workspace.id, 'name': workspace.name} for workspace in workspace_registry.list()]
+    return [{'id': workspace.id, 'name': workspace.name, 'uid': workspace.uid} for workspace in workspace_registry.list()]
 
 
 def _users_access_archive_payload() -> bytes:
     """The Users & Access file: accounts, Modules Profiles and Workspace Groups, naming workspaces by name."""
-    names = {workspace.id: workspace.name for workspace in workspace_registry.list()}
-    return json.dumps(repository.users_access_payload(names), ensure_ascii=False, indent=2).encode('utf-8')
+    workspaces = workspace_registry.list()
+    names = {workspace.id: workspace.name for workspace in workspaces}
+    uids = {workspace.id: workspace.uid for workspace in workspaces}
+    return json.dumps(repository.users_access_payload(names, uids), ensure_ascii=False, indent=2).encode('utf-8')
 
 
 def import_users_access(content: bytes, manifest: dict[str, Any], importing_user: str) -> str:
@@ -10338,13 +10386,19 @@ def import_users_access(content: bytes, manifest: dict[str, Any], importing_user
         raise ValueError('The Users & Access file is not valid.') from exc
     source = manifest.get('source_workspaces')
     source_names = [str(entry.get('name') or '') for entry in source if isinstance(entry, dict)] if isinstance(source, list) else None
+    source_uids = [str(entry.get('uid') or '') for entry in source if isinstance(entry, dict)] if isinstance(source, list) else None
+    workspaces = workspace_registry.list()
     summary = repository.merge_users_access(
-        payload, {workspace.name: workspace.id for workspace in workspace_registry.list()},
+        payload, {workspace.name: workspace.id for workspace in workspaces},
         source_workspace_names=source_names, protected_username=importing_user,
+        workspace_ids_by_uid={workspace.uid: workspace.id for workspace in workspaces if workspace.uid},
+        source_workspace_uids=source_uids,
     )
     invalidate_module_access_cache()
     message = (f"Users & Access imported: {summary['users_created']} new and {summary['users_updated']} updated users, "
                f"{summary['modules_profiles']} Modules Profiles and {summary['workspace_groups']} Workspace Groups.")
+    if summary['renamed']:
+        message += ' ' + '; '.join(summary['renamed']) + '.'
     if summary['missing_workspaces']:
         message += f" Workspaces this server does not have were left out: {', '.join(summary['missing_workspaces'])}."
     return message
@@ -10372,23 +10426,33 @@ def import_ticket_center(archive: zipfile.ZipFile) -> str:
             f"{summary['comments']} comments and {summary['screenshots']} screenshots.")
 
 
+def _source_workspace_ids(source_workspaces: object) -> dict[str, str | None]:
+    """The workspace here of each workspace of another server (by its id there): the one with its identity, or else
+    its name; ``None`` for those this server does not have."""
+    workspaces_here = workspace_registry.list()
+    by_uid = {workspace.uid: workspace.id for workspace in workspaces_here if workspace.uid}
+    by_name = {workspace.name.casefold(): workspace.id for workspace in workspaces_here}
+    mapping: dict[str, str | None] = {}
+    for entry in source_workspaces if isinstance(source_workspaces, list) else []:
+        if not isinstance(entry, dict) or not str(entry.get('id') or '').strip() or not str(entry.get('name') or '').strip():
+            continue
+        mapping[str(entry['id']).strip()] = (by_uid.get(str(entry.get('uid') or '').strip())
+                                             or by_name.get(str(entry['name']).strip().casefold()))
+    return mapping
+
+
 def replace_application_database_from_server(snapshot: Path, source_workspaces: object) -> None:
     """Replace application.db with one written by this or another server.
 
     Workspace ids differ between servers, so grants and access rules are translated
-    by workspace name when the package lists its workspaces, those of workspaces
-    unknown here are dropped, and those of workspaces only this server has are kept.
+    by workspace identity (or else name) when the package lists its workspaces, those of
+    workspaces unknown here are dropped, and those of workspaces only this server has are kept.
     The backup and runtime settings of this server are kept as well.
     """
-    local_names = {workspace.id: workspace.name.casefold() for workspace in workspace_registry.list()}
-    source_names = {
-        str(entry['id']).strip(): str(entry['name']).strip().casefold()
-        for entry in (source_workspaces if isinstance(source_workspaces, list) else [])
-        if isinstance(entry, dict) and str(entry.get('id') or '').strip() and str(entry.get('name') or '').strip()
-    }
+    source_ids = _source_workspace_ids(source_workspaces)
     server_state = {key: repository.get_application_state(key) for key in SERVER_APPLICATION_STATE_KEYS}
-    local_only_ids = [workspace_id for workspace_id, name in local_names.items() if name not in set(source_names.values())]
-    local_only_access = repository.workspace_access_snapshot(local_only_ids) if source_names else {}
+    local_only_ids = [workspace.id for workspace in workspace_registry.list() if workspace.id not in set(source_ids.values())]
+    local_only_access = repository.workspace_access_snapshot(local_only_ids) if source_ids else {}
 
     repository.replace_global_database_snapshot(snapshot)
 
@@ -10397,11 +10461,10 @@ def replace_application_database_from_server(snapshot: Path, source_workspaces: 
             repository.delete_application_state(key)
         else:
             repository.set_application_state(key, value)
-    if source_names:
-        local_ids_by_name = {name: workspace_id for workspace_id, name in local_names.items()}
+    if source_ids:
         repository.remap_workspace_access(
-            {source_id: local_ids_by_name[name] for source_id, name in source_names.items() if name in local_ids_by_name},
-            drop=[source_id for source_id, name in source_names.items() if name not in local_ids_by_name],
+            {source_id: local_id for source_id, local_id in source_ids.items() if local_id},
+            drop=[source_id for source_id, local_id in source_ids.items() if not local_id],
         )
         repository.restore_workspace_access(local_only_access)
 
@@ -10466,8 +10529,13 @@ def import_workspace_collisions(manifest: dict[str, Any]) -> list[str]:
     entries = [manifest.get('workspace')] if kind == 'workspace' else manifest.get('workspaces') if kind in {'full-environment', 'bundle'} else []
     if not isinstance(entries, list):
         entries = [entries]
-    existing_names = {workspace.name.casefold(): workspace.name for workspace in workspace_registry.list()}
-    return [existing_names[str(entry.get('name')).casefold()] for entry in entries if isinstance(entry, dict) and str(entry.get('name') or '').casefold() in existing_names]
+    workspaces_here = workspace_registry.list()
+    existing_names = {workspace.name.casefold(): workspace.name for workspace in workspaces_here}
+    existing_uids = {workspace.uid: workspace.name for workspace in workspaces_here if workspace.uid}
+    # The workspace an entry replaces: the one with its identity, or else its name.
+    return [existing_uids.get(str(entry.get('uid') or '')) or existing_names[str(entry.get('name')).casefold()]
+            for entry in entries if isinstance(entry, dict) and (
+                str(entry.get('uid') or '') in existing_uids or str(entry.get('name') or '').casefold() in existing_names)]
 
 
 def import_auto_calculated_fields(
@@ -10671,14 +10739,15 @@ def _apply_import_archive(
             if progress_callback:
                 progress_callback('importing workspace', 90.0)
             missing_folders: dict[str, list[str]] = {}
+            renamed: list[str] = []
             workspace = import_workspace_archive(
                 staging_root / archive_path,
                 workspace_info if isinstance(workspace_info, dict) else None,
-                replace_existing=True, missing_folders=missing_folders,
+                replace_existing=True, missing_folders=missing_folders, summary=renamed,
             )
             if progress_callback:
                 progress_callback('finalising', 100.0)
-            return ' '.join([f'Workspace "{workspace.name}" imported successfully.', *unsent_folder_warnings(missing_folders)])
+            return told(' '.join([f'Workspace "{workspace.name}" imported successfully.', *unsent_folder_warnings(missing_folders)]), renamed)
         if kind == 'users-access':
             if USERS_ACCESS_ARCHIVE_PATH not in archive.namelist():
                 raise ValueError('The package does not contain Users & Access.')
@@ -10893,13 +10962,13 @@ def _apply_import_archive(
                 _restore_workspace_bundle_report_template_favourites(workspace, payload, importing_user, renamed) if favourites
                 else _restore_workspace_favourites_filters(workspace, payload, importing_user) if kind == 'scoring-favourites-filters'
                 else _restore_workspace_scoring_export_panels(workspace, payload) if kind == 'scoring-export-panels'
-                else _restore_workspace_scoring_excluded_calls(workspace, payload, importing_user) if kind == 'scoring-excluded-calls'
+                else _restore_workspace_scoring_excluded_calls(workspace, payload, importing_user, renamed) if kind == 'scoring-excluded-calls'
                 else _import_workspace_scoring_report_templates(workspace, payload, importing_user, renamed)
                 for workspace in destinations)
             if kind == 'scoring-export-panels':
                 return f'Imported the {label} into {len(destinations)} workspaces.'
             if kind == 'scoring-excluded-calls':
-                return f'Imported {imported_count} lists of {label} into {len(destinations)} workspaces.'
+                return told(f'Imported {imported_count} lists of {label} into {len(destinations)} workspaces.', renamed)
             return told(f'Imported {imported_count} {label} into {len(destinations)} workspaces.', renamed)
         if kind == 'reporting-jobs':
             member = str(manifest.get('archive_path') or '')
@@ -10918,8 +10987,10 @@ def _apply_import_archive(
             if not destinations:
                 raise ValueError('Select at least one destination workspace.')
             payload = archive.read(member)
-            imported_count = sum(_restore_workspace_reporting_jobs(workspace, payload, importing_user) for workspace in destinations)
-            return f'Imported {imported_count} Reporting Jobs into {len(destinations)} workspaces.'
+            renamed: list[str] = []
+            imported_count = sum(_restore_workspace_reporting_jobs(workspace, payload, importing_user, renamed)
+                                 for workspace in destinations)
+            return told(f'Imported {imported_count} Reporting Jobs into {len(destinations)} workspaces.', renamed)
         if kind == 'nq-call-tracking':
             member = str(manifest.get('archive_path') or '')
             if (
@@ -10986,6 +11057,7 @@ def _apply_import_archive(
             imported_workspaces: list[Workspace] = []
             workspace_id_map: dict[str, str] = {}
             missing_folders = {}
+            renamed = []
             for entry in entries:
                 if not isinstance(entry, dict) or not re.fullmatch(r'workspaces/[^/]+', str(entry.get('archive_path') or '')):
                     raise ValueError('The full-environment package contains an invalid workspace entry.')
@@ -10994,6 +11066,7 @@ def _apply_import_archive(
                     progress_callback(f'importing workspace {len(imported_workspaces) + 1} of {len(entries)}', 90.0 + (len(imported_workspaces) * 9.0 / max(len(entries), 1)))
                 imported_workspace = import_workspace_archive(
                     staging_root / str(entry['archive_path']), entry, replace_existing=True, missing_folders=missing_folders,
+                    summary=renamed,
                 )
                 imported_workspaces.append(imported_workspace)
                 source_workspace_id = str(entry.get('id') or '').strip()
@@ -11009,8 +11082,8 @@ def _apply_import_archive(
             repository.remap_workspace_access(workspace_id_map)
             if progress_callback:
                 progress_callback('finalising', 100.0)
-            return ' '.join([f'Full environment imported successfully ({len(imported_workspaces)} workspaces added).',
-                             *unsent_folder_warnings(missing_folders)])
+            return told(' '.join([f'Full environment imported successfully ({len(imported_workspaces)} workspaces added).',
+                                  *unsent_folder_warnings(missing_folders)]), renamed)
         raise ValueError('The export package type is not supported.')
 
 

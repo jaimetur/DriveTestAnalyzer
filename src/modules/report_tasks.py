@@ -1140,13 +1140,16 @@ def export_tasks_document(task_repository: Any) -> bytes:
     from src.modules.bundle_report_templates import list_favourites
     favourite_names = {str(item['id']): item['name'] for item in list_favourites(task_repository)}
     chosen = {value for task in tasks for value in _chosen_favourites(task['definition'])}
+    # Each job with its identity, so the workspace that receives it finds it again after a rename.
+    from src.modules.transfer_identities import REPORTING_JOBS, portable_identities
+    uids = portable_identities(task_repository, REPORTING_JOBS, [str(task['id']) for task in tasks])
     document = {
         'format': 'drivetest-analyzer-reporting-jobs', 'version': 1,
         'dataset_names': {str(dataset_id): names[dataset_id] for dataset_id in sorted(used) if dataset_id in names},
         'favourite_names': {value: favourite_names[value] for value in sorted(chosen) if value in favourite_names},
         # In the order of the jobs table, which ``position`` keeps.
-        'reporting_jobs': [{key: task[key] for key in ('name', 'definition', 'send_email', 'recipients', 'schedule', 'enabled', 'created_by', 'position')}
-                           for task in tasks],
+        'reporting_jobs': [{**{key: task[key] for key in ('name', 'definition', 'send_email', 'recipients', 'schedule', 'enabled', 'created_by', 'position')},
+                            'uid': uids[str(task['id'])]} for task in tasks],
     }
     return json.dumps(document, ensure_ascii=False, indent=2).encode('utf-8')
 
@@ -1171,9 +1174,11 @@ def _remap_favourites(definition: dict[str, Any], source_names: dict[str, str], 
 
 def import_tasks_document(
     task_repository: Any, content: bytes | str, username: str, *, parse_recipients, invalid_recipients,
-    user_exists: Callable[[str], bool] = lambda _name: False,
+    user_exists: Callable[[str], bool] = lambda _name: False, summary: list[str] | None = None,
 ) -> int:
-    """Add or replace (by name) the Reporting Jobs of an exported document.
+    """Replace the Reporting Jobs of an exported document that the workspace has (found by their identity, then by
+    their name) and add the others; a job renamed in the document takes its new name here, and ``summary`` receives
+    the renamed jobs.
 
     Jobs run with the feature access of their owner, so each job keeps the owner
     it had on the source server when that user exists here; otherwise it belongs
@@ -1188,7 +1193,11 @@ def import_tasks_document(
     for row in task_repository.list_datasets():
         destination.setdefault(str(row['file_name']).casefold(), int(row['id']))
     mapping = {source_id: destination[name.casefold()] for source_id, name in source_names.items() if name.casefold() in destination}
-    existing = {task['name'].casefold(): task['id'] for task in list_tasks(task_repository)}
+    from src.modules.transfer_identities import REPORTING_JOBS, ItemMatcher, identities, set_identities
+    local_uids = identities(task_repository, REPORTING_JOBS)
+    matcher = ItemMatcher([(task['id'], task['name'], local_uids.get(str(task['id']), '')) for task in list_tasks(task_repository)],
+                          max_length=160)
+    imported_uids: dict[str, str] = {}
     # Favourite Bundle Report Templates are matched by name too (they are imported before the jobs, as their own element).
     from src.modules.bundle_report_templates import dashboard_aliases, list_favourites, workspace_dashboards
     favourite_names = {str(key): str(value) for key, value in (document.get('favourite_names') or {}).items()}
@@ -1211,9 +1220,10 @@ def import_tasks_document(
                 entry['dashboard_id'] = dashboard_aliases_here[str(entry['dashboard_id'])]
         source_owner = str(item.get('created_by') or '').strip()
         owner = source_owner if source_owner and user_exists(source_owner) else username
-        task = save_task(task_repository, existing.get(str(item.get('name') or '').strip().casefold()),
-                         {**item, 'definition': definition, 'schedule': schedule}, owner,
+        target, name = matcher.match(item.get('uid'), str(item.get('name') or '').strip())
+        task = save_task(task_repository, target, {**item, 'name': name, 'definition': definition, 'schedule': schedule}, owner,
                          parse_recipients=parse_recipients, invalid_recipients=invalid_recipients, reassign_owner=True)
+        imported_uids[str(task['id'])] = str(item.get('uid') or '')
         if isinstance(item.get('position'), int):
             ordered.append((item['position'], index, task['id']))
         imported += 1
@@ -1221,6 +1231,9 @@ def import_tasks_document(
         # The jobs keep the order they had in their workspace, before the jobs only this one has (documents made before
         # the order leave new jobs at the end).
         reorder_tasks(task_repository, [task_id for _position, _index, task_id in sorted(ordered)])
+    set_identities(task_repository, REPORTING_JOBS, imported_uids)
+    if summary is not None:
+        summary.extend(matcher.summary())
     if document.get('complete_reports'):
         # Documents that carried the favourite Bundle Report Templates with the Reporting Jobs: their Dashboards are found here
         # by their name.

@@ -312,3 +312,83 @@ def test_dashboards_follow_their_ppt_template_by_its_identity(client):
     assert _dashboards(repo)['dash-1']['template'] == 'Coverage v2'
     # Its references stay with it: the template used by a Dashboard is protected under its new name.
     assert ('nsa', 'Coverage v2') in core._dashboard_template_references(repo)
+
+
+def test_reporting_jobs_and_excluded_calls_follow_their_renames(client, tmp_path):
+    from src.modules import scoring_exclusions
+    from src.modules.report_tasks import list_tasks, save_task
+
+    source, source_repo = _workspace('Jobs source')
+    destination, destination_repo = _workspace('Jobs destination')
+    job = save_task(source_repo, None, {'name': 'Weekly', 'definition': {'dashboards': [{'dashboard_id': 'd1', 'label': 'X'}]},
+                                        'schedule': {'mode': 'manual'}, 'send_email': False, 'recipients': ''}, 'super',
+                    parse_recipients=core.parse_recipients, invalid_recipients=core.invalid_recipients)
+    excluded = scoring_exclusions.create_list(source_repo, name='Retests', calls=[{'join_id': 'J1'}], username='super')
+    for target in ('reporting-jobs', 'scoring-excluded-calls'):
+        _transfer(target, source, destination, tmp_path)
+
+    # Renamed on the source, each one is renamed in the destination instead of being added again.
+    with source_repo.connection() as connection:
+        connection.execute('UPDATE report_tasks SET name = ? WHERE id = ?', ('Weekly v2', job['id']))
+        connection.execute(f'UPDATE {scoring_exclusions.LISTS_TABLE} SET name = ? WHERE id = ?', ('Retests Q3', excluded['id']))
+    jobs_notice = _transfer('reporting-jobs', source, destination, tmp_path)
+    lists_notice = _transfer('scoring-excluded-calls', source, destination, tmp_path)
+    assert [task['name'] for task in list_tasks(destination_repo)] == ['Weekly v2']
+    [stored] = scoring_exclusions.list_lists(destination_repo)
+    assert stored['name'] == 'Retests Q3' and stored['uid'] == excluded['uid']
+    assert '"Weekly" renamed "Weekly v2"' in jobs_notice and '"Retests" renamed "Retests Q3"' in lists_notice
+
+
+def test_workspaces_are_found_by_their_identity(client, tmp_path):
+    workspace = core.workspace_registry.create('Alpha')
+    other = core.workspace_registry.create('Other')
+    assert workspace.uid and workspace.uid != other.uid
+    package = tmp_path / 'workspace.zip'
+    core.build_export_archive_file(f'workspace:{workspace.id}', package)
+    manifest = core.read_import_manifest(package)
+    assert manifest['workspace']['uid'] == workspace.uid
+    # Renamed since (as if on the other server), the workspace is still found by its identity: it is replaced and
+    # takes the name of the package instead of a second workspace being added.
+    core.workspace_registry.rename(workspace.id, 'Beta')
+    assert core.import_workspace_collisions(manifest) == ['Beta']
+    notice = core._apply_import_archive(package, manifest, importing_user='super')
+    matching = [item for item in core.workspace_registry.list() if item.uid == workspace.uid]
+    assert [(item.id, item.name) for item in matching] == [(workspace.id, 'Alpha')]
+    assert '"Beta" renamed "Alpha"' in notice
+    # Application Config translates the access of the other server's workspaces by identity, then by name.
+    assert core._source_workspace_ids([{'id': 'remote-1', 'name': 'Old name', 'uid': workspace.uid},
+                                       {'id': 'remote-2', 'name': 'other'}, {'id': 'remote-3', 'name': 'Gone'}]) == {
+        'remote-1': workspace.id, 'remote-2': other.id, 'remote-3': None}
+
+
+def test_users_profiles_and_groups_are_found_by_their_identity(client):
+    repo = core.repository
+    workspace = core.workspace_registry.create('Shared')
+    repo.create_user('analyst', 'analyst123', 'user-editor')
+    profile_id = repo.save_modules_profile(None, 'Analysts', '', ['scoring'])
+    group_id = repo.save_workspace_group(None, 'Field team', '', [workspace.id])
+    payload = repo.users_access_payload({workspace.id: workspace.name}, {workspace.id: workspace.uid})
+    assert payload['workspace_identities'] == {'Shared': workspace.uid}
+    assert all(item['uid'] for key in ('users', 'modules_profiles', 'workspace_groups') for item in payload[key])
+
+    # Renamed on the other server: each one is renamed here, and the renamed workspace is still found by its identity.
+    for item in payload['users']:
+        item['username'] = 'analyst2' if item['username'] == 'analyst' else item['username']
+    next(item for item in payload['modules_profiles'] if item['name'] == 'Analysts')['name'] = 'Analysts v2'
+    group = next(item for item in payload['workspace_groups'] if item['name'] == 'Field team')
+    group.update(name='Field team v2', workspaces=['Shared (old name)'])
+    payload['workspace_identities'] = {'Shared (old name)': workspace.uid}
+    summary = repo.merge_users_access(payload, {workspace.name: workspace.id}, protected_username='super',
+                                      workspace_ids_by_uid={workspace.uid: workspace.id})
+    usernames = [row['username'] for row in repo.list_users()]
+    assert 'analyst2' in usernames and 'analyst' not in usernames
+    profiles = {item['id']: item['name'] for item in repo.list_modules_profiles()}
+    groups = {item['id']: item for item in repo.list_workspace_groups()}
+    assert profiles[profile_id] == 'Analysts v2' and groups[group_id]['name'] == 'Field team v2'
+    assert groups[group_id]['workspace_ids'] == [workspace.id] and summary['missing_workspaces'] == []
+    assert any('renamed "analyst2"' in line for line in summary['renamed'])
+    # The account that imports keeps its username.
+    for item in payload['users']:
+        item['username'] = 'super-renamed' if item['username'] == 'super' else item['username']
+    repo.merge_users_access(payload, {workspace.name: workspace.id}, protected_username='super')
+    assert 'super' in [row['username'] for row in repo.list_users()]

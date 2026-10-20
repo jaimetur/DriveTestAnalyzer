@@ -21,6 +21,7 @@ BUNDLE_REPORT_TEMPLATE_FAVOURITES = 'bundle-report-template-favourites'
 SCORING_REPORT_CONFIGURATIONS = 'scoring-report-configurations'
 AUTO_CALCULATED_FIELDS = 'auto-calculated-fields'
 SCORING_METHODOLOGIES = 'scoring-methodologies'
+REPORTING_JOBS = 'reporting-jobs'
 
 
 def _key(item_key: Any) -> str:

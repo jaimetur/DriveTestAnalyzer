@@ -1134,6 +1134,12 @@ class Repository:
             # Inactive editors and viewers of earlier versions are taken as access requests waiting since they were created.
             conn.execute("ALTER TABLE users ADD COLUMN access_requested_at TEXT NOT NULL DEFAULT ''")
             conn.execute("UPDATE users SET access_requested_at = created_at WHERE active = 0 AND role IN ('user-viewer', 'user-editor')")
+        # The identity of each account, Modules Profile and Workspace Group, which never changes: a Users & Access import
+        # finds them again by it after a rename.
+        for table in ('users', 'modules_profiles', 'workspace_groups'):
+            if 'uid' not in {str(row['name']) for row in conn.execute(f'PRAGMA table_info({table})').fetchall()}:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN uid TEXT NOT NULL DEFAULT ''")
+            conn.execute(f"UPDATE {table} SET uid = lower(hex(randomblob(16))) WHERE uid = ''")
         old_table = conn.execute(
             "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'user_workspace_access'"
         ).fetchone()
@@ -2985,9 +2991,10 @@ class Repository:
                             (self._workspace_ids_json(self._workspace_ids_from_json(row['workspace_ids_json']) + list(granted)), int(row['id'])),
                         )
 
-    def users_access_payload(self, workspace_names: dict[str, str]) -> dict[str, Any]:
+    def users_access_payload(self, workspace_names: dict[str, str], workspace_uids: dict[str, str] | None = None) -> dict[str, Any]:
         """Every account with its password, role, Modules Profile and workspaces, plus the Modules Profiles and
-        Workspace Groups. Workspaces are named, not identified, so another server can apply them."""
+        Workspace Groups, each with its identity. Workspaces are named, with the identity of each one
+        (``workspace_identities``), so another server finds them also after a rename."""
         def names(workspace_ids: Iterable[str]) -> list[str]:
             return sorted({workspace_names[item] for item in workspace_ids if item in workspace_names}, key=str.casefold)
 
@@ -3001,15 +3008,21 @@ class Repository:
         with self.global_connection() as conn:
             self._ensure_user_access_schema(conn)
             users = conn.execute(
-                'SELECT id, username, password_hash, role, active, created_at, workspace_ids_json, first_name, last_name, access_requested_at '
+                'SELECT id, uid, username, password_hash, role, active, created_at, workspace_ids_json, first_name, last_name, access_requested_at '
                 'FROM users ORDER BY id'
             ).fetchall()
+            profile_uids = {int(row['id']): str(row['uid']) for row in conn.execute('SELECT id, uid FROM modules_profiles').fetchall()}
+            group_uids = {int(row['id']): str(row['uid']) for row in conn.execute('SELECT id, uid FROM workspace_groups').fetchall()}
         return {
-            'modules_profiles': [{'name': profile['name'], 'description': profile['description'], 'modules': profile['modules'],
+            'workspace_identities': {workspace_names[workspace_id]: uid for workspace_id, uid in (workspace_uids or {}).items()
+                                     if workspace_id in workspace_names and uid},
+            'modules_profiles': [{'uid': profile_uids.get(int(profile['id']), ''), 'name': profile['name'],
+                                  'description': profile['description'], 'modules': profile['modules'],
                                   'color': profile['color'], 'default': profile['is_default']} for profile in profiles],
-            'workspace_groups': [{'name': group['name'], 'description': group['description'],
+            'workspace_groups': [{'uid': group_uids.get(int(group['id']), ''), 'name': group['name'], 'description': group['description'],
                                   'workspaces': names(group['workspace_ids'])} for group in groups],
-            'users': [{'username': str(row['username']), 'first_name': str(row['first_name'] or ''), 'last_name': str(row['last_name'] or ''),
+            'users': [{'uid': str(row['uid']), 'username': str(row['username']), 'first_name': str(row['first_name'] or ''),
+                       'last_name': str(row['last_name'] or ''),
                        'password_hash': str(row['password_hash']), 'role': str(row['role']),
                        'active': bool(row['active']), 'created_at': str(row['created_at'] or ''),
                        'access_requested_at': str(row['access_requested_at'] or '') if not row['active'] else '',
@@ -3021,35 +3034,50 @@ class Repository:
     def merge_users_access(
         self, payload: object, workspace_ids_by_name: dict[str, str], *,
         source_workspace_names: Iterable[str] | None = None, protected_username: str = '',
+        workspace_ids_by_uid: dict[str, str] | None = None, source_workspace_uids: Iterable[str] | None = None,
     ) -> dict[str, Any]:
         """Add or update the accounts, Modules Profiles and Workspace Groups of a ``users_access_payload``.
 
-        Accounts are matched by username and profiles and groups by name, without case differences; those the
-        payload does not have are kept, and so are the memberships of groups it does not have. Workspaces are matched
-        by name: those missing here are left out and reported, and a group or account keeps the workspaces only this
-        server has when the payload names the workspaces of its server. The importing account keeps its role, active
-        status and password, and at least one active super-admin must remain.
+        Accounts, profiles and groups are found by their identity, then by their username or name, without case
+        differences; one renamed on the other server takes its new name here (an account whose new username another
+        account has keeps its own; a new one with a taken username is left out). Those the payload does not have are
+        kept, and so are the memberships of groups it does not have. Workspaces are found by their identity, then by
+        their name: those missing here are left out and reported, and a group or account keeps the workspaces only this
+        server has when the payload names the workspaces of its server. The importing account keeps its username, role,
+        active status and password, and at least one active super-admin must remain.
         """
+        from src.modules.transfer_identities import ItemMatcher
+
         if not isinstance(payload, dict) or not all(isinstance(payload.get(key), list) for key in ('modules_profiles', 'workspace_groups', 'users')):
             raise ValueError('The Users & Access file is not valid.')
         local_ids = {str(name).casefold(): str(workspace_id) for name, workspace_id in workspace_ids_by_name.items()}
         local_names = {workspace_id: name for name, workspace_id in local_ids.items()}
+        by_uid = {str(uid): str(workspace_id) for uid, workspace_id in (workspace_ids_by_uid or {}).items() if str(uid)}
+        local_uids = {workspace_id: uid for uid, workspace_id in by_uid.items()}
+        identities = payload.get('workspace_identities') if isinstance(payload.get('workspace_identities'), dict) else {}
         source = {str(name).casefold() for name in source_workspace_names} if source_workspace_names is not None else None
+        source_uids = {str(uid) for uid in source_workspace_uids or () if str(uid)}
         missing: set[str] = set()
 
         def resolve(names: object, current: Iterable[str] = ()) -> list[str]:
             resolved = []
             for name in names if isinstance(names, list) else []:
-                if str(name).casefold() in local_ids:
-                    resolved.append(local_ids[str(name).casefold()])
+                local = by_uid.get(str(identities.get(str(name)) or '')) or local_ids.get(str(name).casefold())
+                if local:
+                    resolved.append(local)
                 else:
                     missing.add(str(name))
-            local_only = [item for item in current if source is not None and local_names.get(item, '') not in source]
-            return [*resolved, *local_only]
+            # The workspaces only this server has: neither their identity nor their name is one of the other server.
+            local_only = [item for item in current if source is not None and local_names.get(item, '') not in source
+                          and local_uids.get(item, '') not in source_uids]
+            return list(dict.fromkeys([*resolved, *local_only]))
 
-        summary = {'users_created': 0, 'users_updated': 0, 'modules_profiles': 0, 'workspace_groups': 0}
+        summary: dict[str, Any] = {'users_created': 0, 'users_updated': 0, 'modules_profiles': 0, 'workspace_groups': 0,
+                                   'renamed': []}
         with self.global_connection() as conn:
             self._ensure_user_access_schema(conn)
+            profile_matcher = ItemMatcher([(int(row['id']), str(row['name']), str(row['uid'])) for row in
+                                           conn.execute('SELECT id, name, uid FROM modules_profiles').fetchall()])
             profile_ids: dict[str, int] = {}
             default_name = ''
             for profile in payload['modules_profiles']:
@@ -3059,37 +3087,51 @@ class Repository:
                 chosen = {str(module) for module in profile.get('modules') or []} if isinstance(profile.get('modules'), list) else set()
                 selected = [key for key, _name in MAIN_MODULES if key in chosen]
                 modules, color = json.dumps(selected), profile_color(profile.get('color'), selected)
-                row = conn.execute('SELECT id FROM modules_profiles WHERE name = ? COLLATE NOCASE', (name,)).fetchone()
-                if row:
-                    conn.execute('UPDATE modules_profiles SET name = ?, description = ?, modules_json = ?, color = ? WHERE id = ?',
-                                 (name, str(profile.get('description') or ''), modules, color, int(row['id'])))
-                    profile_ids[name.casefold()] = int(row['id'])
+                uid = str(profile.get('uid') or '').strip()
+                target, final = profile_matcher.match(uid, name)
+                if target is not None:
+                    conn.execute('UPDATE modules_profiles SET name = ?, description = ?, modules_json = ?, color = ?, '
+                                 "uid = CASE WHEN ? <> '' THEN ? ELSE uid END WHERE id = ?",
+                                 (final, str(profile.get('description') or ''), modules, color, uid, uid, int(target)))
+                    profile_ids[name.casefold()] = int(target)
                 else:
                     profile_ids[name.casefold()] = int(conn.execute(
-                        'INSERT INTO modules_profiles (name, description, modules_json, color, is_default, created_at) VALUES (?, ?, ?, ?, 0, ?)',
-                        (name, str(profile.get('description') or ''), modules, color, local_now_iso()),
+                        'INSERT INTO modules_profiles (name, description, modules_json, color, is_default, created_at, uid) '
+                        "VALUES (?, ?, ?, ?, 0, ?, CASE WHEN ? <> '' THEN ? ELSE lower(hex(randomblob(16))) END)",
+                        (final, str(profile.get('description') or ''), modules, color, local_now_iso(), uid, uid),
                     ).lastrowid)
                 default_name = name.casefold() if profile.get('default') else default_name
                 summary['modules_profiles'] += 1
             if default_name:
                 conn.execute('UPDATE modules_profiles SET is_default = CASE WHEN id = ? THEN 1 ELSE 0 END', (profile_ids[default_name],))
+            summary['renamed'] += [f'Modules Profile {line}' for line in profile_matcher.summary()]
+            group_rows = {int(row['id']): row for row in conn.execute('SELECT id, name, uid, workspace_ids_json FROM workspace_groups').fetchall()}
+            group_matcher = ItemMatcher([(group_id, str(row['name']), str(row['uid'])) for group_id, row in group_rows.items()])
             group_ids: dict[str, int] = {}
             for group in payload['workspace_groups']:
                 name = str(group.get('name') or '').strip() if isinstance(group, dict) else ''
                 if not name:
                     continue
-                row = conn.execute('SELECT id, workspace_ids_json FROM workspace_groups WHERE name = ? COLLATE NOCASE', (name,)).fetchone()
+                uid = str(group.get('uid') or '').strip()
+                target, final = group_matcher.match(uid, name)
+                row = group_rows.get(int(target)) if target is not None else None
                 workspaces = self._workspace_ids_json(resolve(group.get('workspaces'), self._workspace_ids_from_json(row['workspace_ids_json']) if row else []))
                 if row:
-                    conn.execute('UPDATE workspace_groups SET name = ?, description = ?, workspace_ids_json = ? WHERE id = ?',
-                                 (name, str(group.get('description') or ''), workspaces, int(row['id'])))
+                    conn.execute('UPDATE workspace_groups SET name = ?, description = ?, workspace_ids_json = ?, '
+                                 "uid = CASE WHEN ? <> '' THEN ? ELSE uid END WHERE id = ?",
+                                 (final, str(group.get('description') or ''), workspaces, uid, uid, int(row['id'])))
                     group_ids[name.casefold()] = int(row['id'])
                 else:
                     group_ids[name.casefold()] = int(conn.execute(
-                        'INSERT INTO workspace_groups (name, description, workspace_ids_json, created_at) VALUES (?, ?, ?, ?)',
-                        (name, str(group.get('description') or ''), workspaces, local_now_iso()),
+                        'INSERT INTO workspace_groups (name, description, workspace_ids_json, created_at, uid) '
+                        "VALUES (?, ?, ?, ?, CASE WHEN ? <> '' THEN ? ELSE lower(hex(randomblob(16))) END)",
+                        (final, str(group.get('description') or ''), workspaces, local_now_iso(), uid, uid),
                     ).lastrowid)
                 summary['workspace_groups'] += 1
+            summary['renamed'] += [f'Workspace Group {line}' for line in group_matcher.summary()]
+            user_rows = {int(row['id']): row for row in conn.execute(
+                'SELECT id, uid, username, role, active, password_hash, workspace_ids_json, access_requested_at FROM users').fetchall()}
+            user_matcher = ItemMatcher([(user_id, str(row['username']), str(row['uid'])) for user_id, row in user_rows.items()])
             for account in payload['users']:
                 if not isinstance(account, dict):
                     continue
@@ -3102,10 +3144,13 @@ class Repository:
                 if profile_id is None and profile_name:
                     local_profile = conn.execute('SELECT id FROM modules_profiles WHERE name = ? COLLATE NOCASE', (profile_name,)).fetchone()
                     profile_id = int(local_profile['id']) if local_profile else None
-                row = conn.execute(
-                    'SELECT id, role, active, password_hash, workspace_ids_json, access_requested_at FROM users WHERE username = ? COLLATE NOCASE',
-                    (username,),
-                ).fetchone()
+                uid = str(account.get('uid') or '').strip()
+                target, final = user_matcher.match(uid, username)
+                row = user_rows.get(int(target)) if target is not None else None
+                if final != username and row is None:
+                    # A username is how its user signs in: a new account whose username another account has is left out.
+                    summary['renamed'].append(f'user "{username}" left out because another user has that username')
+                    continue
                 active = bool(account.get('active', True))
                 first_name, last_name = str(account.get('first_name') or '').strip(), str(account.get('last_name') or '').strip()
                 # The pending access request of an inactive account (packages of earlier versions keep the local one).
@@ -3113,23 +3158,31 @@ class Repository:
                     str(row['access_requested_at'] or '') if row else '')
                 if row:
                     user_id = int(row['id'])
-                    if username.casefold() == protected_username.strip().casefold():
+                    new_username = final
+                    protected = str(row['username']).casefold() == protected_username.strip().casefold()
+                    if protected or final != username:
+                        # The importing account, and one whose new username another account has, keep their username.
+                        new_username = str(row['username'])
+                    if protected:
                         role, active, password_hash = str(row['role']), bool(row['active']), str(row['password_hash'])
+                    if new_username != str(row['username']):
+                        summary['renamed'].append(f'user "{row["username"]}" renamed "{new_username}"')
                     conn.execute(
-                        'UPDATE users SET role = ?, active = ?, password_hash = ?, workspace_ids_json = ?, modules_profile_id = ?, '
-                        'first_name = ?, last_name = ?, access_requested_at = ? WHERE id = ?',
-                        (role, int(active), password_hash,
+                        'UPDATE users SET username = ?, role = ?, active = ?, password_hash = ?, workspace_ids_json = ?, modules_profile_id = ?, '
+                        "first_name = ?, last_name = ?, access_requested_at = ?, uid = CASE WHEN ? <> '' THEN ? ELSE uid END WHERE id = ?",
+                        (new_username, role, int(active), password_hash,
                          self._workspace_ids_json(resolve(account.get('workspaces'), self._workspace_ids_from_json(row['workspace_ids_json']))),
-                         profile_id, first_name, last_name, '' if active else requested_at, user_id),
+                         profile_id, first_name, last_name, '' if active else requested_at, uid, uid, user_id),
                     )
                     summary['users_updated'] += 1
                 else:
                     user_id = int(conn.execute(
                         'INSERT INTO users (username, password_hash, role, active, created_at, workspace_ids_json, modules_profile_id, '
-                        'first_name, last_name, access_requested_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                        "first_name, last_name, access_requested_at, uid) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
+                        "CASE WHEN ? <> '' THEN ? ELSE lower(hex(randomblob(16))) END)",
                         (username, password_hash, role, int(active), str(account.get('created_at') or '') or local_now_iso(),
                          self._workspace_ids_json(resolve(account.get('workspaces'))), profile_id, first_name, last_name,
-                         '' if active else requested_at),
+                         '' if active else requested_at, uid, uid),
                     ).lastrowid)
                     summary['users_created'] += 1
                 conn.executemany('DELETE FROM workspace_group_members WHERE group_id = ? AND user_id = ?',

@@ -594,7 +594,7 @@ def export_document(repository: Any) -> bytes:
     """Every list with its calls, as a portable document (its CDRs by file name)."""
     lists = []
     for item in list_lists(repository):
-        lists.append({'name': item['name'], 'file_name': item['file_name'], 'reason': item['reason'],
+        lists.append({'uid': item['uid'], 'name': item['name'], 'file_name': item['file_name'], 'reason': item['reason'],
                       'cdrs': item['cdrs'], 'enabled': item['enabled'], 'created_by': item['created_by'],
                       'created_at': item['created_at'],
                       'calls': [[call['join_id'], call['reason']] for call in list_calls(repository, item['id'])]})
@@ -603,10 +603,13 @@ def export_document(repository: Any) -> bytes:
 
 
 def import_document(repository: Any, content: bytes | str, username: str,
-                    creator: Callable[[Any, str], str] | None = None) -> int:
-    """Add the lists of a portable document, replacing those of the same name; returns how many it had.
-    ``creator(creator in the document, creator here)`` decides who each list belongs to (without it, the creator in
-    the document)."""
+                    creator: Callable[[Any, str], str] | None = None, summary: list[str] | None = None) -> int:
+    """Replace the lists of a portable document that the workspace has (found by their identity, then by their name)
+    and add the others; returns how many it had. A list renamed in the document takes its new name here and keeps the
+    identity it came with. ``creator(creator in the document, creator here)`` decides who each list belongs to
+    (without it, the creator in the document); ``summary`` receives the renamed lists."""
+    from src.modules.transfer_identities import ItemMatcher
+
     document = json.loads(content)
     if not isinstance(document, dict) or document.get('format') != EXCLUSIONS_FORMAT:
         raise ValueError('The file is not a DriveTest Analyzer Scoring Excluded Calls export.')
@@ -614,19 +617,32 @@ def import_document(repository: Any, content: bytes | str, username: str,
         raise ValueError('Unsupported Scoring Excluded Calls version.')
     entries = [entry for entry in document.get('lists') or [] if isinstance(entry, dict) and _name(entry.get('name'))]
     ensure_tables(repository)
+    with repository.connection() as connection:
+        rows = {int(row['id']): row for row in connection.execute(f'SELECT id, uid, name, created_by FROM {LISTS_TABLE}').fetchall()}
+    matcher = ItemMatcher([(list_id, str(row['name']), str(row['uid'])) for list_id, row in rows.items()], max_length=MAX_NAME_LENGTH)
     for entry in entries:
         calls = [{'join_id': str(call[0]), 'reason': str(call[1]) if len(call) > 1 else ''}
                  for call in entry.get('calls') or [] if isinstance(call, list) and call]
-        name = _name(entry['name'])
-        with repository.connection() as connection:
-            local = connection.execute(f'SELECT created_by FROM {LISTS_TABLE} WHERE name = ? COLLATE NOCASE', (name,)).fetchone()
-            connection.execute(f'DELETE FROM {LISTS_TABLE} WHERE name = ? COLLATE NOCASE', (name,))
-        created_by = (creator(entry.get('created_by'), str(local['created_by'] or '') if local else '') if creator
-                      else str(entry.get('created_by') or ''))
-        create_list(repository, name=name, calls=calls, username=username, file_name=str(entry.get('file_name') or ''),
-                    reason=str(entry.get('reason') or ''), cdrs=entry.get('cdrs') or [],
-                    enabled=bool(entry.get('enabled', True)), created_by=created_by,
-                    created_at=str(entry.get('created_at') or ''))
+        target, name = matcher.match(entry.get('uid'), _name(entry['name']))
+        local_creator = str(rows[target]['created_by'] or '') if target is not None else ''
+        if target is not None:
+            with repository.connection() as connection:
+                connection.execute(f'DELETE FROM {LISTS_TABLE} WHERE id = ?', (target,))
+        created_by = creator(entry.get('created_by'), local_creator) if creator else str(entry.get('created_by') or '')
+        created = create_list(repository, name=name, calls=calls, username=username, file_name=str(entry.get('file_name') or ''),
+                              reason=str(entry.get('reason') or ''), cdrs=entry.get('cdrs') or [],
+                              enabled=bool(entry.get('enabled', True)), created_by=created_by,
+                              created_at=str(entry.get('created_at') or ''))
+        uid = str(entry.get('uid') or '').strip()
+        if uid and uid != created['uid']:
+            # It keeps the identity it came with, so a later import finds it again after a rename.
+            try:
+                with repository.connection() as connection:
+                    connection.execute(f'UPDATE {LISTS_TABLE} SET uid = ? WHERE id = ?', (uid, created['id']))
+            except sqlite3.IntegrityError:
+                pass
+    if summary is not None:
+        summary.extend(matcher.summary())
     return len(entries)
 
 

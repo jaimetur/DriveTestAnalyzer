@@ -2575,7 +2575,7 @@ def test_admin_import_export_packages_detect_configuration_and_workspaces(client
         'includes_slides_templates': False,
         'kind': 'config',
         'source_workspaces': [
-            {'id': workspace.id, 'name': workspace.name} for workspace in app_module.workspace_registry.list()
+            {'id': workspace.id, 'name': workspace.name, 'uid': workspace.uid} for workspace in app_module.workspace_registry.list()
         ],
         'version': 1,
     }
@@ -3046,7 +3046,8 @@ def test_config_import_from_another_server_translates_workspace_ids_and_keeps_se
     with zipfile.ZipFile(BytesIO(exported.content)) as archive:
         files = {name: archive.read(name) for name in archive.namelist()}
     manifest = json.loads(files['manifest.json'])
-    assert {'id': shared.id, 'name': shared.name} in manifest['source_workspaces']
+    # Each workspace with its identity, which finds it on the other server also after a rename.
+    assert {'id': shared.id, 'name': shared.name, 'uid': shared.uid} in manifest['source_workspaces']
 
     # Rewrite the package as if another server wrote it: the shared workspace has
     # another id there, one workspace exists only there, and its backups differ.
