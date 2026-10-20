@@ -806,6 +806,9 @@ const currentProfile = () => profileCollection.profiles.find(profile => profile.
 const kpiStatus = {};
 const setStatus = () => {};
 const renderProfileControls = () => {};
+// Only admins, super-admins and its creator delete a methodology.
+let deletable = true;
+const deletableProfile = () => deletable;
 const confirmProfileChange = async () => {throw new Error('Delete must be rejected before confirmation');};
 const enqueueProfileUpdate = async () => {throw new Error('Default profile must not be deleted');};
 '''
@@ -819,6 +822,9 @@ const enqueueProfileUpdate = async () => {throw new Error('Default profile must 
   activeProfileId = 'other';
   setProfileControlsDisabled(false);
   assert.equal(deleteButton.disabled, false);
+  deletable = false;
+  setProfileControlsDisabled(false);
+  assert.equal(deleteButton.disabled, true);
 })();
 '''
     subprocess.run(['node', '-e', fixture], check=True, capture_output=True, text=True)

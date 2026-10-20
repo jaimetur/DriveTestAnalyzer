@@ -68,6 +68,8 @@ class Element {
   }
 }
 const document = {createElement: tag => new Element(tag)};
+// Without app.js every user deletes the Saved Filters (the server still checks it).
+const window = {};
 const countBadge = new Element('span');
 const historyCountBadge = new Element('span');
 const root = {querySelectorAll: () => [countBadge, historyCountBadge]};
