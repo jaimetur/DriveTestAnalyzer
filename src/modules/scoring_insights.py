@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any
+from typing import Any, Callable
 
 from src.modules.column_names import campaign_sort_key as shared_campaign_sort_key, compact_campaign_value
 
@@ -56,7 +56,10 @@ def build_scoring_insights(score_tables: list[dict[str, Any]], configuration: di
         insights['points_at_stake'].extend(_points_at_stake(scopes, levels, environment, formulas))
         insights['location_rankings'].extend(_location_rankings(summaries, levels, environment, cities))
     insights['campaign_scope'] = _campaign_scope(score_tables, configuration, result, environments)
-    maps, insights['points_loss_background'] = _points_loss_maps(result, score_tables)
+    # What one point of an environment is worth in All Environments, so every Points Lost view and Where to act count
+    # in its points, as Where the points go and the points lost per KPI.
+    combined_weight = _combined_weight_of(_combined_weights(scopes))
+    maps, insights['points_loss_background'] = _points_loss_maps(result, score_tables, combined_weight)
     # The maps of the areas; the Vendors, kinds of site, sites and stretches have their own views.
     insights['points_loss_maps'] = [item for item in maps if item['field'] in {'City', 'Area', 'Region', 'Cluster'}]
     insights.update(_serving_views(maps, result))
@@ -66,7 +69,7 @@ def build_scoring_insights(score_tables: list[dict[str, Any]], configuration: di
               for name, scope in (configuration.get('scope') or {}).get('environments', {}).items()}
     styles = {name: {**style, 'is_reference': name in {table.get('baseline_operator') for table in score_tables}}
               for name, style in operator_styles(score_tables).items()}
-    insights.update(build_where_to_act(insights, maps, result, labels, formulas, styles))
+    insights.update(build_where_to_act(insights, maps, result, labels, formulas, styles, combined_weight=combined_weight))
     return insights
 
 
@@ -83,7 +86,8 @@ def operator_styles(score_tables: list[dict[str, Any]]) -> dict[str, Any]:
     return styles
 
 
-def _points_loss_maps(result: dict[str, Any] | None, score_tables: list[dict[str, Any]]) -> tuple[list, list]:
+def _points_loss_maps(result: dict[str, Any] | None, score_tables: list[dict[str, Any]],
+                      combined_weight: Callable[[Any, Any, Any], float] | None = None) -> tuple[list, list]:
     """Points lost per area of each operator series, with the area locations to draw them."""
     from src.modules.scoring_points_loss import ENTRY_FIELDS, points_loss_maps
     document = (result or {}).get('points_loss')
@@ -99,7 +103,9 @@ def _points_loss_maps(result: dict[str, Any] | None, score_tables: list[dict[str
     area_label = labels[0] if len(labels) == 1 else 'map area'
     unmapped = (document.get('map_areas') or {}).get('unmapped_countries') or []
     maps = []
-    for item in points_loss_maps(result, keys):
+    weight = (lambda context, environment, kpi_code: combined_weight(context.get('campaign'), kpi_code, environment)
+              ) if combined_weight else None
+    for item in points_loss_maps(result, keys, weight):
         context = item['context']
         operator = context.get('operator')
         style = styles.get(operator) or {}
@@ -504,9 +510,12 @@ def _kpi_gap_profiles(scopes: dict[tuple, dict[str, dict[str, Any]]], environmen
                     source = next((item for item in _kpi_rows(tables[name]) if item['kpi_code'] == row['kpi_code']), None)
                     maximum = _number((source or {}).get('max_points')) or 0.0
                     points = _number((((source or {}).get('values') or {}).get(operator) or {}).get('points'))
-                    to_maximum[name] = maximum - points if points is not None and maximum > 0 else None
-                    gap = ((source or {}).get('gaps') or {}).get(operator)
-                    to_reference[name] = _number(gap) if operator != reference else None
+                    # All Environments counts in its own points, as Where the points go: when an environment without
+                    # results in any series is scaled out of it, the others weigh up to the full maximum of the KPI.
+                    factor = _combined_weight(row, operator, name, maximum) if environment == COMBINED else 1.0
+                    to_maximum[name] = (maximum - points) * factor if points is not None and maximum > 0 else None
+                    gap = _number(((source or {}).get('gaps') or {}).get(operator))
+                    to_reference[name] = gap * factor if gap is not None and operator != reference else None
                 if all(value is None for value in to_maximum.values()):
                     continue
                 rows.append({
@@ -532,6 +541,47 @@ def _kpi_gap_profiles(scopes: dict[tuple, dict[str, dict[str, Any]]], environmen
                     key=lambda item: item['total_gap_to_reference']),
             })
     return profiles
+
+
+def _combined_weight(row: dict[str, Any], operator: str, environment: str, maximum: float) -> float:
+    """How many All Environments points one point of ``environment`` is worth in a KPI row of the Combined table: more
+    than one when environments without results in any series are scaled out of the Combined scores."""
+    values = ((row.get('values') or {}).get(operator) or {}).get('environment_values') or {}
+    scaled = _number((values.get(environment) or {}).get('max_points'))
+    return scaled / maximum if scaled and maximum > 0 else 1.0
+
+
+def _environment_identity(name: Any) -> str:
+    return re.sub(r'[^a-z0-9]+', '', str(name or '').casefold())
+
+
+def _combined_weights(scopes: dict[tuple, dict[str, dict[str, Any]]]) -> dict[tuple, float]:
+    """The weight of each environment in All Environments (see _combined_weight) per campaign and KPI, where it is
+    not one."""
+    weights: dict[tuple, float] = {}
+    for tables in scopes.values():
+        combined = tables.get(COMBINED)
+        if combined is None:
+            continue
+        campaign = (combined.get('context') or {}).get('campaign')
+        for name, source in tables.items():
+            if name == COMBINED:
+                continue
+            maxima = {row['kpi_code']: _number(row.get('max_points')) or 0.0 for row in _kpi_rows(source)}
+            for row in _kpi_rows(combined):
+                operator = next((operator for operator in combined.get('operators', [])
+                                 if name in ((((row.get('values') or {}).get(operator) or {}).get('environment_values')) or {})), None)
+                weight = _combined_weight(row, operator, name, maxima.get(row['kpi_code']) or 0.0) if operator else 1.0
+                if abs(weight - 1) > 1e-9:
+                    weights[(campaign, row['kpi_code'], _environment_identity(name))] = weight
+    return weights
+
+
+def _combined_weight_of(weights: dict[tuple, float]) -> Callable[[Any, Any, Any], float] | None:
+    """``weight(campaign, KPI code, environment)`` of _combined_weights, None when every weight is one."""
+    if not weights:
+        return None
+    return lambda campaign, kpi_code, environment: weights.get((campaign, kpi_code, _environment_identity(environment)), 1.0)
 
 
 # ---------------------------------------------------------------------------------------------------------------------

@@ -230,6 +230,18 @@ def test_powerpoint_follows_the_order_of_the_results_tabs(national):
              'Points Lost — per Vendor', 'Points Lost — per kind of site', 'Sites to review — ', 'Route stretches — ']
     positions = [first(prefix) for prefix in order]
     assert positions == sorted(positions)
+    # The tables of the points lost close with their total row.
+    closing = {}
+    for slide in presentation.slides:
+        for shape in slide.shapes:
+            if shape.has_table and shape.name in ('Scoring KPI GAP Maximum Table', 'Scoring KPI GAP Reference Table',
+                                                  'Scoring Serving Loss Table', 'Scoring Sites Table', 'Scoring Route Stretch Table'):
+                closing.setdefault(shape.name, [cell.text for cell in shape.table.rows[len(shape.table.rows) - 1].cells])
+    assert len(closing) == 5
+    assert closing['Scoring KPI GAP Maximum Table'][0] == 'Total points lost'
+    assert closing['Scoring KPI GAP Reference Table'][0] == 'Total KPI GAP'
+    assert closing['Scoring Serving Loss Table'][0] == closing['Scoring Sites Table'][0] == 'Total'
+    assert closing['Scoring Route Stretch Table'][1].startswith('Total of the ')
 
 
 def test_the_campaigns_card_lists_the_other_analysed_campaigns_below_the_reference(national):

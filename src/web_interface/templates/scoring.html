@@ -1323,6 +1323,14 @@
   [data-scoring-workspace][data-scoring-theme="vodafone"] .scoring-scorecard tr.scoring-section-row .scoring-kpi-name::before { content: ''; display: inline-block; width: .55rem; height: .55rem;
     margin-right: .5rem; border-radius: 50%; background: #e60000; vertical-align: .05rem; }
   [data-scoring-workspace][data-scoring-theme="vodafone"] .scoring-comparison-table.scoring-scorecard tfoot tr > td { border-radius: 999px !important; }
+  /* The label of the total stays on its dark grey pill and each figure goes on a white pill ringed in that grey, so the
+     red and teal of the GAPs read clearly (the best and worst totals keep their tint). */
+  [data-scoring-workspace][data-scoring-theme="vodafone"] .scoring-comparison-table.scoring-scorecard tfoot tr > td:is([data-column="score"], [data-column="gap"]) {
+    box-shadow: inset 0 0 0 2px var(--sc-total) !important; }
+  [data-scoring-workspace][data-scoring-theme="vodafone"] .scoring-comparison-table.scoring-scorecard tfoot tr > td:is([data-column="score"], [data-column="gap"]):not([data-operator-rank]) {
+    background: #ffffff !important; }
+  [data-scoring-workspace][data-scoring-theme="vodafone"] .scoring-comparison-table.scoring-scorecard tfoot tr > td:is([data-column="score"], [data-column="gap"]):not([data-gap="gain"], [data-gap="loss"]) {
+    color: var(--sc-ink) !important; }
 
   /* Midnight: glowing cards on navy. Every score a dark card with a glowing bar of its share of the maximum, neon mint
      and pink GAP bars, sections in deep blue and a total under a neon line. */
@@ -1463,6 +1471,26 @@
   [data-scoring-workspace][data-scoring-theme="heatmap"] .scoring-insight-table th { background: #fff !important; color: #1f2a37 !important; box-shadow: inset 0 -3px 0 #2a9d8f; }
   [data-scoring-workspace][data-scoring-theme="heatmap"] .scoring-insight-table td { background: #f6f8fa; border-bottom: 0; border-radius: 6px; }
   [data-scoring-workspace][data-scoring-theme="heatmap"] .scoring-insight-banner { text-transform: uppercase; letter-spacing: .04em; font-weight: 900; text-align: left; }
+  /* The total row that closes an insight table (Points lost per KPI, KPI GAP Profile, GAP by part, Points Lost), as the
+     total of the Score and GAP tables of each theme: bold figures under a rule, a GAP in the colour of its sign. */
+  .scoring-insight-table tfoot td { padding-top: .34rem; padding-bottom: .34rem; border-top: 2px solid var(--st-header); border-bottom: 0;
+    background-color: color-mix(in srgb, var(--st-total) 70%, #fff); color: var(--st-soft-header-text); font-weight: 800; }
+  .scoring-insight-table tfoot td.scoring-insight-total-label { text-align: left; }
+  [data-scoring-workspace]:is([data-scoring-theme="netcheck"], [data-scoring-theme="umlaut"]) .scoring-insight-table tfoot td { background-color: #fff; color: #17232d; border-top: 1.5px solid #17232d; }
+  [data-scoring-workspace][data-scoring-theme="umlaut"] .scoring-insight-table tfoot td { color: #1c1c28; border-top-color: #1c1c28; }
+  [data-scoring-workspace][data-scoring-theme="ericsson"] .scoring-insight-table tfoot td { background-color: #fff; color: #242424; border-top: 2px solid #242424; border-bottom: 2px solid #242424; }
+  /* Vodafone: the label on a dark grey pill, as the headers, and each figure on a white pill ringed in that grey. */
+  [data-scoring-workspace][data-scoring-theme="vodafone"] .scoring-insight-table tfoot td { border-top: 0; background-color: #fff; color: #333;
+    box-shadow: inset 0 0 0 2px #4a4d4e; }
+  [data-scoring-workspace][data-scoring-theme="vodafone"] .scoring-insight-table tfoot td.scoring-insight-total-label { background-color: #4a4d4e; color: #fff; box-shadow: none; }
+  [data-scoring-workspace][data-scoring-theme="midnight"] .scoring-insight-table tfoot td { background: #0b1220 !important; color: #e6edf7 !important; border-top: 0;
+    box-shadow: inset 0 2px 0 #3db9ff; }
+  [data-scoring-workspace][data-scoring-theme="midnight"] .scoring-insight-table tfoot td.is-loss { color: #ff4d6d !important; }
+  [data-scoring-workspace][data-scoring-theme="midnight"] .scoring-insight-table tfoot td.is-gain { color: #2ee6a6 !important; }
+  [data-scoring-workspace][data-scoring-theme="paper"] .scoring-insight-table tfoot td { background-color: transparent; color: #1a1a1a; border-top: 3px double #1a1a1a; }
+  [data-scoring-workspace][data-scoring-theme="heatmap"] .scoring-insight-table tfoot td { border-top: 0; background-color: #eef1f4; color: #1f2a37; box-shadow: inset 0 0 0 1.5px #c3ccd5; }
+  [data-scoring-workspace][data-scoring-theme] .scoring-insight-table tfoot td.is-loss { color: var(--st-loss-text); }
+  [data-scoring-workspace][data-scoring-theme] .scoring-insight-table tfoot td.is-gain { color: var(--st-gain-text); }
 
   /* The insight panels, tiles and bars of each theme. */
   [data-scoring-workspace][data-scoring-theme="ericsson"] :is(.scoring-standing, .scoring-location-card) { border: 0; border-top: 1px solid #242424; border-left: 0; border-radius: 0; background: #fff; box-shadow: none; }

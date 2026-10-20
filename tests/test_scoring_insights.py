@@ -263,6 +263,31 @@ def test_kpi_gap_profiles_rank_points_lost_and_reference_gaps():
     assert 'underline_most_reliable' not in profile
 
 
+def test_kpi_gap_profiles_count_in_the_points_of_a_scaled_combined():
+    from src.modules.scoring import apply_environment_scaling
+
+    job, result = synthetic_result(levels=('Operator',))
+    # Without Connecting Roads results in any series, All Environments scales Drive - City up to the full maximum.
+    result['scoring'] = [row for row in result['scoring'] if row['environment'] != 'DriveConnectionroad']
+    result.pop('environment_scaling')
+    apply_environment_scaling(result, 'EE')
+    assert result['environment_scaling']['scaled_environments'] == ['DriveConnectionroad']
+    insights = build_scoring_views(job, result)['insights']
+    stake = {item['operator']: item for item in _combined(insights['points_at_stake'])[0]['operators']}
+    for profile in _combined(insights['kpi_gap_profiles']):
+        assert profile['columns'] == ['DriveCity']
+        # The points lost per KPI add up to those of Where the points go, the GAP to the reference to its points.
+        lost = sum(row['total_gap_to_maximum'] for row in profile['to_maximum'])
+        assert lost == pytest.approx(stake[profile['operator']]['lost'])
+        if profile['operator'] != profile['reference']:
+            gap = sum(row['total_gap_to_reference'] for row in profile['to_reference'])
+            assert gap == pytest.approx(stake[profile['operator']]['points'] - stake[profile['reference']]['points'])
+    # Drive - City alone keeps its own points.
+    city = next(item for item in insights['kpi_gap_profiles'] if item['environment'] == 'DriveCity')
+    assert sum(row['total_gap_to_maximum'] for row in city['to_maximum']) == pytest.approx(
+        stake[city['operator']]['lost'] * 650 / 1000)
+
+
 def test_most_reliable_insights_use_its_points():
     job, result = synthetic_result(levels=('Operator', 'City'))
     reliable = most_reliable_result(result, 'EE')

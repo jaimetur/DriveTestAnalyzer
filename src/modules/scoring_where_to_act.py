@@ -19,7 +19,7 @@ points of every place add up to national points (estimates).
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Callable
 
 COMBINED = 'Combined'
 # The colours of the share of the points of a place: green from 85%, yellow from 75%, red under it.
@@ -265,10 +265,13 @@ def _action(parts: list[tuple[str, bool]]) -> dict[str, Any]:
 
 
 def _losses_by_scope(result: dict[str, Any] | None, formulas: dict[str, str], weight: Weights,
-                     environment: str = COMBINED) -> dict[tuple, dict[str, dict[str, Any]]]:
+                     environment: str = COMBINED, combined_weight: Callable[[Any, Any, Any], float] | None = None,
+                     ) -> dict[tuple, dict[str, dict[str, Any]]]:
     """The points each operator loses in the latest campaign on Voice and Data, by kind (see scoring_insights.loss_kind),
     from the KPI rows of every environment measured, its places added up by their share of the tests: per scope, per
-    operator, ``{service: {kind: points, kpis, failed_kpis, below_kpis}}``."""
+    operator, ``{service: {kind: points, kpis, failed_kpis, below_kpis}}``. All environments count in the points of All
+    Environments: ``combined_weight(campaign, KPI code, environment)`` gives what one point of an environment is worth
+    there."""
     from src.modules.scoring_insights import campaign_sort_key, loss_kind
 
     rows = [row for row in (result or {}).get('scoring') or [] if row.get('kpi_code')]
@@ -287,6 +290,8 @@ def _losses_by_scope(result: dict[str, Any] | None, formulas: dict[str, str], we
         if not isinstance(maximum, (int, float)) or not isinstance(points, (int, float)) or maximum - points <= 0:
             continue
         lost = (maximum - points) * weight({field: row.get(field) for field in LOCATION_FIELDS})
+        if environment == COMBINED and combined_weight:
+            lost *= combined_weight(row.get('campaign'), row.get('kpi_code'), row.get('environment'))
         scope = tuple(sorted((field, row.get(field)) for field in fields))
         service = 'Data' if str(row.get('dataset_type') or row.get('source_kind') or '').casefold() == 'data' else 'Voice'
         kind = loss_kind(row, formulas)
@@ -330,7 +335,8 @@ def _routes(stretches: list[dict[str, Any]], weight: Weights, environment: str =
 
 def act_plans(result: dict[str, Any] | None, formulas: dict[str, str], styles: dict[str, dict[str, Any]],
               sites: list[dict[str, Any]], stretches: list[dict[str, Any]], weight: Weights,
-              environment: str = COMBINED) -> list[dict[str, Any]]:
+              environment: str = COMBINED, combined_weight: Callable[[Any, Any, Any], float] | None = None,
+              ) -> list[dict[str, Any]]:
     """The themes that hold the points lost of each operator, with what to do and where to look further."""
     from src.modules.scoring_insights import campaign_sort_key
 
@@ -342,7 +348,7 @@ def act_plans(result: dict[str, Any] | None, formulas: dict[str, str], styles: d
     routes_of = _routes(stretches, weight, environment)
     campaigns = sorted({row.get('campaign') for row in (result or {}).get('scoring') or [] if row.get('campaign')},
                        key=campaign_sort_key)
-    for scope, by_operator in _losses_by_scope(result, formulas, weight, environment).items():
+    for scope, by_operator in _losses_by_scope(result, formulas, weight, environment, combined_weight).items():
         context = {**dict(scope), **({'campaign': campaigns[-1]} if campaigns else {})}
         stake = {'context': context, 'campaign': campaigns[-1] if campaigns else None, 'title': ''}
         for name, services in by_operator.items():
@@ -466,8 +472,10 @@ def route_focus(stretches: list[dict[str, Any]], maps: list[dict[str, Any]], pla
 
 def build_where_to_act(insights: dict[str, Any], maps: list[dict[str, Any]], result: dict[str, Any] | None,
                        environment_labels: dict[str, str] | None = None, formulas: dict[str, str] | None = None,
-                       styles: dict[str, dict[str, Any]] | None = None) -> dict[str, list[dict[str, Any]]]:
-    """The views of where to act of every operator (see the module docstring), of the latest campaign."""
+                       styles: dict[str, dict[str, Any]] | None = None, *,
+                       combined_weight: Callable[[Any, Any, Any], float] | None = None) -> dict[str, list[dict[str, Any]]]:
+    """The views of where to act of every operator (see the module docstring), of the latest campaign; with
+    ``combined_weight`` (see _losses_by_scope) All Environments counts in its own points."""
     from src.modules.scoring_summary_slides import latest_campaign_items
 
     places = ((((result or {}).get('points_loss') or {}).get('areas') or {}).get('City') or {})
@@ -480,7 +488,8 @@ def build_where_to_act(insights: dict[str, Any], maps: list[dict[str, Any]], res
                                                    if row.get('environment'))]))
     views: dict[str, list[Any]] = {'act_plans': [], 'owner_cards': [], 'place_rankings': [], 'route_focus': []}
     for environment in environments:
-        views['act_plans'].extend(act_plans(result, formulas or {}, styles or {}, sites, stretches, weight, environment))
+        views['act_plans'].extend(act_plans(result, formulas or {}, styles or {}, sites, stretches, weight, environment,
+                                            combined_weight))
         views['owner_cards'].extend(owner_cards(regions, places, sites, weight, environment_labels, environment))
         views['place_rankings'].extend(place_rankings(insights.get('location_rankings') or [], places, weight, environment))
         views['route_focus'].extend(route_focus(stretches, regions, places, weight, environment))

@@ -20,7 +20,7 @@ from pptx.util import Inches, Pt
 
 from src.modules.scoring_insight_slides import (
     DATA_COLOR, FALLBACK_COLORS, VOICE_COLOR, ScopeLabels, _box, _cell, _context_text, _gradient_bar, _points, _rgb, _table,
-    _unsigned_axis_ids, _with_scope, _write, _write_runs,
+    _total_row, _unsigned_axis_ids, _with_scope, _write, _write_runs,
 )
 from src.modules.scoring_themes import themed
 
@@ -676,9 +676,9 @@ def add_serving_loss_slides(presentation, items: list[dict[str, Any]], *, title:
                     widths = [width * share for share in shares]
                 else:
                     widths = [1.45, 1.1, .8, *([.8] if with_tests else []), width - (4.15 if with_tests else 3.35)]
-                row_height = _fitted_rows(height - .38, len(rows) + 1, largest=.34)
+                row_height = _fitted_rows(height - .38, len(rows) + 2, largest=.34)
                 size = _font(row_height, 8, .34)
-                shape, table = _table(slide, len(rows) + 1, len(headers), left, top + .38, width, row_height, widths)
+                shape, table = _table(slide, len(rows) + 2, len(headers), left, top + .38, width, row_height, widths)
                 shape.name = 'Scoring Serving Loss Table'
                 _header(table, headers, size=size)
                 for row_index, row in enumerate(rows, start=1):
@@ -694,6 +694,12 @@ def add_serving_loss_slides(presentation, items: list[dict[str, Any]], *, title:
                     if not narrow:
                         _cell(table.cell(row_index, offset), ' · '.join(f"{city['name']} {city['points']:,.1f}"
                                                                          for city in (row.get('cities') or [])[:2]), size=max(6.0, size - 1))
+                # The total of the Vendors or kinds of site listed.
+                tests = [row['tests_share'] for row in rows if row['tests_share'] is not None]
+                _total_row(table, len(rows) + 1, ['Total', f"{sum(row['points'] for row in rows):,.2f}",
+                                                  f"{sum(row['share'] for row in rows):.1f}%",
+                                                  *([f'{sum(tests):.1f}%' if tests else '—'] if with_tests else []),
+                                                  *([] if narrow else [''])], size=size)
                 _row_bars(slide, [row['points'] for row in rows], left=left + widths[0], top=top + .38 + row_height,
                           width=widths[1], row_height=row_height, color=LOSS_COLOR)
                 _to_front(slide, shape)
@@ -724,8 +730,8 @@ def add_sites_slides(presentation, items: list[dict[str, Any]], *, subtitle: str
         widths = [.9, 1.1, 1.4, 1.2, 2.4, 1.6, 1.0, *([1.0] * len(item['earlier_campaigns']))]
         scale = 12.45 / sum(widths)
         widths = [width * scale for width in widths]
-        row_height = min(.3, (CONTENT_BOTTOM - CONTENT_TOP - .75) / (len(rows) + 1))
-        shape, table = _table(slide, len(rows) + 1, len(headers), .45, CONTENT_TOP + .38, 12.45, row_height, widths)
+        row_height = min(.3, (CONTENT_BOTTOM - CONTENT_TOP - .75) / (len(rows) + 2))
+        shape, table = _table(slide, len(rows) + 2, len(headers), .45, CONTENT_TOP + .38, 12.45, row_height, widths)
         shape.name = 'Scoring Sites Table'
         _header(table, headers, size=8.5, numeric_from=5)
         for row_index, row in enumerate(rows, start=1):
@@ -737,6 +743,12 @@ def add_sites_slides(presentation, items: list[dict[str, Any]], *, subtitle: str
             for offset, entry in enumerate(row['history'], start=7):
                 _cell(table.cell(row_index, offset), f"{entry['points']:,.1f}" if entry.get('points') else '—', size=8.5,
                       align=PP_ALIGN.RIGHT)
+        # The total of the sites listed (the banner gives the points lost of the operator in all).
+        _total_row(table, len(rows) + 1, [
+            'Total', f'{len(rows)} sites', '', '', '', f"{sum(row['points'] for row in rows):,.2f}",
+            f"{sum(row.get('failures') or 0 for row in rows):,.0f}",
+            *(f"{sum(row['history'][index].get('points') or 0 for row in rows if len(row['history']) > index):,.1f}"
+              for index in range(len(item['earlier_campaigns'])))], size=8.5, labels=5)
         _row_bars(slide, [row['points'] for row in rows], left=.45 + sum(widths[:5]), top=CONTENT_TOP + .38 + row_height,
                   width=widths[5], row_height=row_height, color=LOSS_COLOR)
         _to_front(slide, shape)
@@ -905,7 +917,7 @@ def add_stretch_slides(presentation, items: list[dict[str, Any]], background: li
                         size=11, color=INK)
             rows = route['stretches']
             widths = [.4, 3.4, 1.5, 1.25]
-            shape, table = _table(slide, len(rows) + 1, 4, 6.35, CONTENT_TOP + .6, 6.55, .34, widths)
+            shape, table = _table(slide, len(rows) + 2, 4, 6.35, CONTENT_TOP + .6, 6.55, .34, widths)
             shape.name = 'Scoring Route Stretch Table'
             _header(table, ['#', 'Stretch', 'Points lost', 'Main Vendor'], size=9, numeric_from=2)
             for row_index, row in enumerate(rows, start=1):
@@ -913,6 +925,8 @@ def add_stretch_slides(presentation, items: list[dict[str, Any]], background: li
                 _cell(table.cell(row_index, 1), row['label'], size=9)
                 _cell(table.cell(row_index, 2), f"{row['points']:,.2f}", size=9, bold=True, fill=None, align=PP_ALIGN.RIGHT)
                 _cell(table.cell(row_index, 3), row.get('vendor') or '—', size=9)
+            _total_row(table, len(rows) + 1, ['', f'Total of the {len(rows)} stretches', f"{sum(row['points'] for row in rows):,.2f}", ''],
+                       size=9, labels=2)
             _row_bars(slide, [row['points'] for row in rows], left=6.35 + widths[0] + widths[1], top=CONTENT_TOP + .6 + .34,
                       width=widths[2], row_height=.34, color=LOSS_COLOR)
             _to_front(slide, shape)

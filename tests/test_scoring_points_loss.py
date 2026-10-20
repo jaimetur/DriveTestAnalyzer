@@ -21,8 +21,9 @@ from tests.test_scoring_exports import TEMPLATE
 PLACES = {'Leeds': (53.80, -1.55), 'Manchester': (53.48, -2.24), 'London': (51.51, -0.13)}
 
 
-def _result(levels=('Operator',)):
-    """Three operators; Vodafone and Three fail calls mostly in Leeds and on a road towards it."""
+def _result(levels=('Operator',), roads=True):
+    """Three operators; Vodafone and Three fail calls mostly in Leeds and on a road towards it (without the road, no
+    Connecting Roads results: All Environments scales the City up to the full maximum)."""
     random.seed(7)
     rows = []
     for operator in ('EE', 'Vodafone UK', 'Three UK'):
@@ -33,7 +34,7 @@ def _result(levels=('Operator',)):
                              'City': city, 'Session_Type': 'CALL', 'Call_Status': 'Failed' if failed else 'Completed',
                              'Call_Start_Latitude_A': latitude + random.uniform(-.02, .02),
                              'Call_Start_Longitude_A': longitude + random.uniform(-.02, .02)})
-        for index in range(30):
+        for index in range(30 if roads else 0):
             rows.append({'Campaign': '2026-Q2', 'Operator': operator, 'G_Level_1': 'Drive', 'G_Level_2': 'Connectionroad',
                          'City': 'Sheffield to Leeds', 'Session_Type': 'CALL',
                          'Call_Status': 'Failed' if operator != 'EE' and index % 6 == 0 else 'Completed',
@@ -222,6 +223,30 @@ def test_operators_of_some_tables_only_keep_their_colour():
     styles = operator_styles(tables)
     assert styles['VF SA']['color'] == '#8B1A1A'
     assert styles['VF']['color'] == '#E60000'
+
+
+def test_points_lost_views_count_in_the_points_of_a_scaled_combined():
+    job, result = _result(roads=False)
+    assert result['environment_scaling']['scaled_environments']
+    insights = build_scoring_views(job, result)['insights']
+    stake = {operator['operator']: operator['lost'] for item in insights['points_at_stake'] if item['environment'] == 'Combined'
+             for operator in item['operators']}
+    assert stake['Vodafone UK'] > 0
+    # The maps, Where to act and the points lost per KPI of All Environments lose the points of Where the points go.
+    maps = [item for item in insights['points_loss_maps'] if item['environment'] == 'Combined']
+    plans = [item for item in insights['act_plans'] if item['environment'] == 'Combined']
+    profiles = [item for item in insights['kpi_gap_profiles'] if item['environment'] == 'Combined']
+    assert maps and plans and profiles
+    for item in maps:
+        assert item['total'] == pytest.approx(stake[item['operator']])
+    for item in plans:
+        assert item['lost'] == pytest.approx(stake[item['operator']])
+    for item in profiles:
+        assert sum(row['total_gap_to_maximum'] for row in item['to_maximum']) == pytest.approx(stake[item['operator']])
+    # Each environment keeps its own points.
+    city = next(item for item in insights['points_loss_maps'] if item['environment'] != 'Combined'
+                and item['operator'] == 'Vodafone UK' and item['field'] == 'City')
+    assert city['total'] < stake['Vodafone UK']
 
 
 def test_the_reference_operator_has_its_map_and_its_gap_to_maximum():

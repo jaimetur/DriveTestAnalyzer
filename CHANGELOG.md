@@ -17,9 +17,11 @@
 - **Rows per page in Non-Qualified Calls:** the page size of the Calls table is called **Rows per page** and is as tall as the buttons beside it.
 - **Application starts in App Events:** every start of the application writes an `application_started` event by `system` in every workspace (the active one first, the others once the application is ready), shown as **Server** tagged *Startup*, with the version, the active workspace, how long it took to be ready, the address it listens on, the Python version, the platform and the process ID, and as an Error with the reason when the active workspace could not be opened.
 - **In Use on the Favourites Filters:** the card of the Saved Filter in use (selected at the top of Scoring & GAP Analysis, with its results shown) has an outlined **In Use** label in place of **Use Filter**, in the Favourites Filters panel and in the Scoring Results dropdowns.
+- **Total rows in Points Lost and the KPI GAP Profile:** the tables of Points lost per KPI, the KPI GAP Profile, the Points Lost map, Points lost per Vendor and per kind of serving site, Sites to review and Route stretches close with a total row (the map, the sites and the stretches with the total of the rows listed), as GAP by part, on the page and in PowerPoint and Word; in the Vodafone theme the total rows of the Scoring, GAP and insight tables keep their label on a dark grey pill and put each figure on a white pill ringed in that grey, so the red and teal GAPs read clearly.
 
 #### 🐛 Bug fixes:
 - **Buttons hidden in Non-Qualified Calls:** **Default column order** shows only when the column order differs from the default one, and the other buttons the page hides stay hidden.
+- **Points lost of All Environments with scaled environments:** when environments without results in any series are scaled out of All Environments (for example City: London, measured only in Drive - City), the points lost per KPI, the KPI GAP Profile, the Points Lost maps, Points lost per Vendor and per kind of serving site, Sites to review, Route stretches and Where to act count in the scaled points of All Environments, so every panel gives each operator the points lost of Where the points go and of its score (49.0 instead of 31.8), on the page and in PowerPoint and Word.
 
 #### 📚 Documentation:
 

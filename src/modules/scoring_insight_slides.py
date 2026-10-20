@@ -28,6 +28,9 @@ TEXT_COLOR = '#17232D'
 CARD_COLOR = '#F2F3F5'
 LOSS_COLOR = '#E8414F'
 WIN_COLOR = '#4CA65A'
+# The total row that closes a table, in the total colour of the theme; a GAP in the text colour of its sign.
+TOTAL_FILL = '#D7E0E5'
+LOSS_TEXT, GAIN_TEXT = '#C62835', '#2E8540'
 # KPI GAP profiles for every location the location cards show (one per City, Cluster or Region).
 MAX_PROFILE_SCOPES = 12
 PROFILE_TABLE_BOTTOM = 6.68
@@ -370,6 +373,20 @@ def _cell(cell, text: str, *, size: float, bold: bool = False, color: str = '#26
     run.font.color.rgb = _rgb(color)
 
 
+def _total_row(table, row: int, cells: list[str | tuple[str, str]], *, size: float, labels: int = 1) -> None:
+    """The total that closes a table, in bold on the total colour: its first ``labels`` cells (its label) left-aligned
+    and its figures right-aligned, each a text or a (text, colour) pair."""
+    for column, content in enumerate(cells):
+        text, color = content if isinstance(content, tuple) else (content, '#263746')
+        _cell(table.cell(row, column), text, size=size, bold=True, color=color, fill=TOTAL_FILL,
+              align=PP_ALIGN.LEFT if column < labels else PP_ALIGN.RIGHT)
+
+
+def _signed_total(value: float, digits: int = 2) -> tuple[str, str]:
+    """A total GAP with its sign, in the text colour of its sign."""
+    return f'{value:+,.{digits}f}', LOSS_TEXT if value < 0 else GAIN_TEXT if value > 0 else '#263746'
+
+
 def _environment_label(name: str, labels: dict[str, str]) -> str:
     return labels.get(name) or name
 
@@ -395,7 +412,8 @@ def _profile_table(slide, profile: dict[str, Any], *, kind: str, left: float, wi
     columns = profile['columns']
     title = (f"{profile['label']} · points lost per KPI" if kind == 'maximum'
              else f"{profile['label']} · GAP to {profile['reference_label']} per KPI")
-    count = max(1, len(lines))
+    # The KPI rows and the total row that closes the table.
+    count = len(lines) + 1
     top = 1.62
     # The banner and the column headers have explicit heights, so the bars drawn under the values line up with their
     # rows whatever the KPI count.
@@ -437,7 +455,7 @@ def _profile_table(slide, profile: dict[str, Any], *, kind: str, left: float, wi
                 bar = _gradient_bar(slide, middle - length if value < 0 else middle, bar_top, length, row_height - .04,
                                     color, reverse=value < 0)
             bar.name = 'Scoring GAP Bar'
-    shape, table = _table(slide, len(lines) + 2, len(widths), left, top, width, row_height, widths)
+    shape, table = _table(slide, len(lines) + 3, len(widths), left, top, width, row_height, widths)
     table.rows[0].height = Inches(banner_height)
     table.rows[1].height = Inches(header_height)
     shape.name = f"Scoring KPI GAP {'Maximum' if kind == 'maximum' else 'Reference'} Table"
@@ -466,6 +484,11 @@ def _profile_table(slide, profile: dict[str, Any], *, kind: str, left: float, wi
             _cell(table.cell(row_index, 1 + offset), _points(value, 2), size=size, fill=None, align=PP_ALIGN.RIGHT)
         _cell(table.cell(row_index, len(widths) - 1), _points(row[total_key], 2), size=size, bold=True, fill=None,
               align=PP_ALIGN.RIGHT)
+    # The total of every column: the points lost, or the GAP to the reference, in each environment and in all.
+    totals = [sum(row[gap_key].get(name) or 0 for row in kpis) for name in columns] + [sum(row[total_key] or 0 for row in kpis)]
+    _total_row(table, len(lines) + 2, ['Total points lost' if kind == 'maximum' else 'Total KPI GAP',
+                                        *(_points(value, 2) if kind == 'maximum' else _signed_total(value) for value in totals)],
+               size=size)
 
 
 def _profile_pairs(profiles: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:

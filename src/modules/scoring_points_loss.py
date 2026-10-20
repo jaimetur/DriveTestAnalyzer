@@ -23,7 +23,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import pandas as pd
 
@@ -595,13 +595,17 @@ def row_area_values(areas: list[dict[str, Any]]) -> dict[str, float]:
     return values
 
 
-def points_loss_maps(result: dict[str, Any], keys: list[str]) -> list[dict[str, Any]]:
+def points_loss_maps(result: dict[str, Any], keys: list[str],
+                     weight: Callable[[dict[str, Any], str, Any], float] | None = None) -> list[dict[str, Any]]:
     """Points lost per area for each scoring series, all environments together and in each one.
 
     Each KPI loses its maximum points minus the points scored; the loss is spread over
     the areas by their shares. ``keys`` are the series fields other than the environment.
     The maps of all environments (``environment`` None) give each area the points it loses
-    in each environment, most first (``environments``).
+    in each environment, most first (``environments``), in the points of all environments:
+    ``weight`` (the series fields, the environment and the KPI code) gives what one point of
+    an environment is worth there, more than one when environments without results in any
+    series are scaled out of the Combined scores.
     """
     document = result.get('points_loss') if isinstance(result, dict) else None
     if not isinstance(document, dict) or not document.get('shares'):
@@ -627,15 +631,17 @@ def points_loss_maps(result: dict[str, Any], keys: list[str]) -> list[dict[str, 
             continue
         environment = str(entry.get('environment') or '')
         counted = entry.get('tests') and str(row.get('kpi_type') or '').casefold() == 'reliable'
+        combined = weight(dict(zip(keys, identity)), environment, entry.get('kpi_code')) if weight else 1.0
         for key in ((identity, None), (identity, environment)):
             target = series.setdefault(key, {})
+            points = lost * combined if key[1] is None else lost
             for field, shares in (entry.get('areas') or {}).items():
                 areas = target.setdefault(field, {})
                 for area, share in shares.items():
-                    areas[area] = areas.get(area, 0.0) + lost * float(share)
+                    areas[area] = areas.get(area, 0.0) + points * float(share)
                     if key[1] is None:
                         split = by_environment.setdefault(identity, {}).setdefault(field, {}).setdefault(area, {})
-                        split[environment] = split.get(environment, 0.0) + lost * float(share)
+                        split[environment] = split.get(environment, 0.0) + points * float(share)
                     if counted and field == SITE:
                         failed = failures.setdefault(key, {})
                         failed[area] = failed.get(area, 0.0) + float(entry.get('weight') or 0) * float(share)

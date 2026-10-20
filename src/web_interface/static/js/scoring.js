@@ -7185,7 +7185,9 @@
     return String(text).replace(/([<>≤≥=]+)\s+(?=\S)/g, '$1\u00A0').replace(/\s+(\[[^\]]*\])\s*$/, '\u00A0$1');
   }
 
-  function insightTable(headers, rows, {className = ''} = {}) {
+  // A table of the insights; ``total`` (the cells of a row) closes it in its footer, styled as the total row of the
+  // Score and GAP tables in each theme.
+  function insightTable(headers, rows, {className = '', total = null} = {}) {
     const table = document.createElement('table');
     table.className = `scoring-insight-table ${className}`.trim();
     const head = table.createTHead().insertRow();
@@ -7195,13 +7197,15 @@
       head.append(cell);
     }
     const body = table.createTBody();
-    for (const cells of rows) {
-      const row = body.insertRow();
+    const footer = total ? table.createTFoot() : null;
+    for (const [section, cells] of [...rows.map(cells => [body, cells]), ...(footer ? [[footer, total]] : [])]) {
+      const row = section.insertRow();
       for (const content of cells) {
         const cell = row.insertCell();
         if (content instanceof Node) cell.append(content);
         else if (content && typeof content === 'object') {
           cell.textContent = content.text ?? '';
+          if (content.colSpan) cell.colSpan = content.colSpan;
           if (content.kpiType) {
             // A KPI starts with the R or D badge of its type, as in the Score and GAP tables. Its name wraps beside the
             // badge, and its threshold and unit (> 5Mbit/s [%]) never break apart, so a unit never stands alone on a line.
@@ -7265,6 +7269,19 @@
     return cell;
   }
 
+  // A figure of the total row of an insight table: bold, a GAP (``signed``) in the colour of its sign.
+  function insightTotalCell(value, {digits = 2, signed = false, suffix = ''} = {}) {
+    const number = Number(value);
+    const known = value !== null && value !== undefined && Number.isFinite(number);
+    const sign = known && signed ? (number < 0 ? ' is-loss' : number > 0 ? ' is-gain' : '') : '';
+    return {text: known ? `${signed && number > 0 ? '+' : ''}${insightNumber(number, digits)}${suffix}` : '—',
+      className: `scoring-insight-number scoring-insight-total${sign}`};
+  }
+
+  function insightTotalLabel(text = 'Total', colSpan = 1) {
+    return {text, colSpan, className: 'scoring-insight-total-label'};
+  }
+
   // The KPIs of an operator grouped by their category (the categories that lose most first), each with its points lost
   // against the maximum or its GAP to the reference per environment and in total, with a bar in every column.
   function profileTable(profile, kind) {
@@ -7304,8 +7321,13 @@
           gapBarCell(row[totalKey], scale, {loss: kind === 'maximum', total: true})]);
       }
     }
+    // The total of every column: the points the operator loses, or its GAP to the reference, in each environment and in all.
+    const total = [insightTotalLabel(kind === 'maximum' ? 'Total points lost' : 'Total KPI GAP'),
+      ...profile.columns.map(column => insightTotalCell(rows.reduce((sum, row) => sum + (Number(row[valueKey]?.[column]) || 0), 0),
+        {signed: kind !== 'maximum'})),
+      insightTotalCell(rows.reduce((sum, row) => sum + (Number(row[totalKey]) || 0), 0), {signed: kind !== 'maximum'})];
     wrapper.append(banner, insightTable(['KPI', ...profile.columns.map(column => environmentLabel(column)), 'Total'], tableRows,
-      {className: 'scoring-profile-table'}));
+      {className: 'scoring-profile-table', total}));
     return wrapper;
   }
 
@@ -8282,9 +8304,9 @@
       const headers = ['Part', ...item.campaigns.map(campaign => campaign || 'GAP'), ...(item.campaigns.length > 1 ? ['Latest'] : [])];
       const rows = item.parts.map(part => [part.label, ...part.values.map((value, index) => cell(value, index)),
         ...(item.campaigns.length > 1 ? [divergingBar(part.values[latest], scale)] : [])]);
-      rows.push([{text: 'Total', className: 'scoring-insight-total'}, ...item.totals.map((value, index) => cell(value, index, true)),
-        ...(item.campaigns.length > 1 ? [divergingBar(item.totals[latest], scale)] : [])]);
-      wrapper.append(banner, insightTable(headers, rows, {className: 'scoring-gap-parts-table'}));
+      const total = [insightTotalLabel(), ...item.totals.map((value, index) => cell(value, index, true)),
+        ...(item.campaigns.length > 1 ? [divergingBar(item.totals[latest], scale)] : [])];
+      wrapper.append(banner, insightTable(headers, rows, {className: 'scoring-gap-parts-table', total}));
       grid.append(wrapper);
     }
     section.append(grid, insightParagraph('scoring-insight-note', byReliability
@@ -8393,6 +8415,10 @@
       const withTests = item.has_tests;
       const withCities = kind === 'vendor_losses' && item.rows.some(row => row.cities?.length);
       const withEnvironments = item.rows.some(row => row.environments?.length);
+      const sum = field => item.rows.reduce((total, row) => total + (Number(row[field]) || 0), 0);
+      const total = [insightTotalLabel(), insightTotalCell(sum('points'), {digits: 1}), insightTotalCell(sum('share'), {digits: 1, suffix: '%'}),
+        ...(withTests ? [insightTotalCell(item.rows.some(row => row.tests_share !== null) ? sum('tests_share') : null, {digits: 1, suffix: '%'})] : []),
+        ...(withEnvironments ? [''] : []), ...(withCities ? [''] : [])];
       wrapper.append(banner, insightTable([column, 'Points lost', 'Share of points', ...(withTests ? ['Share of tests'] : []),
         ...(withEnvironments ? ['Where'] : []), ...(withCities ? ['Cities and routes that lose most'] : [])], item.rows.map(row => [
         {text: row.name, className: row.identified ? 'scoring-insight-kpi' : 'scoring-insight-kpi is-muted'},
@@ -8403,7 +8429,7 @@
           title: 'Share of the tests of the operator served by it'}] : []),
         ...(withEnvironments ? [{text: (row.environments || []).map(name => shortEnvironmentLabel(name)).join(', '), className: 'scoring-loss-environment'}] : []),
         ...(withCities ? [(row.cities || []).map(city => `${city.name} ${insightNumber(city.points, 1)}`).join(' · ')] : []),
-      ])));
+      ]), {total}));
       grid.append(wrapper);
     }
     section.append(grid, insightParagraph('scoring-insight-note', kind === 'vendor_losses'
@@ -8439,6 +8465,12 @@
       const high = item.rows.filter(row => row.priority === 'High').length;
       banner.append(insightStrong(item.label), ` · ${item.rows.length} sites hold ${insightNumber(item.listed_points, 1)} of ${insightNumber(item.total, 1)} points lost · ${high} High`);
       const peak = Math.max(...item.rows.map(row => row.points), 0);
+      // The total of the sites listed (the banner gives the points lost of the operator in all).
+      const total = [insightTotalLabel(`Total of the ${item.rows.length} sites`, 5),
+        insightTotalCell(item.rows.reduce((sum, row) => sum + (Number(row.points) || 0), 0), {digits: 1}),
+        insightTotalCell(item.rows.reduce((sum, row) => sum + (Number(row.failures) || 0), 0), {digits: 0}),
+        ...item.earlier_campaigns.map((_campaign, index) => insightTotalCell(
+          item.rows.reduce((sum, row) => sum + (Number(row.history[index]?.points) || 0), 0), {digits: 1}))];
       wrapper.append(banner, insightTable(['Priority', 'Site', 'Network', 'Vendor', 'City or route', 'Points lost', 'Failed tests',
         ...item.earlier_campaigns.map(campaign => `${campaign} points`)], item.rows.map(row => [
         {text: row.priority, className: `scoring-priority is-${row.priority.toLowerCase()}`},
@@ -8446,7 +8478,7 @@
         gapBarCell(row.points, peak, {loss: true, total: true}),
         {text: row.failures ? insightNumber(row.failures, 0) : '—', className: 'scoring-insight-number'},
         ...row.history.map(entry => ({text: entry.points ? insightNumber(entry.points, 1) : '—', className: 'scoring-insight-number'})),
-      ])));
+      ]), {total}));
       section.append(wrapper);
     }
     if (!listed.length) return;
@@ -8494,7 +8526,9 @@
       body.className = 'scoring-stretches';
       const peak = Math.max(...route.stretches.map(row => row.points), 0);
       const table = insightTable(['#', 'Stretch', 'Points lost', 'Main Vendor'], route.stretches.map((row, index) => [
-        {text: String(index + 1), className: 'scoring-insight-number'}, row.label, gapBarCell(row.points, peak, {loss: true, total: true}), row.vendor || '—']));
+        {text: String(index + 1), className: 'scoring-insight-number'}, row.label, gapBarCell(row.points, peak, {loss: true, total: true}), row.vendor || '—']),
+      {total: [insightTotalLabel(`Total of the ${route.stretches.length} stretches`, 2),
+        insightTotalCell(route.stretches.reduce((sum, row) => sum + (Number(row.points) || 0), 0), {digits: 1}), '']});
       body.append(linkStretchTable(makeStretchMap(route, color, payload?.views?.insights?.points_loss_background || []), table, route.stretches));
       const wrap = document.createElement('div');
       wrap.className = 'scoring-insight-table-wrap';
@@ -9009,7 +9043,10 @@
         title: (area.environments || []).map(name => environmentLabel(name)).join(', '),
         className: 'scoring-loss-environment'}] : []),
       gapBarCell(area.points, peak, {loss: true, total: true}),
-      {text: `${insightNumber(area.share * 100, 1)}%`, className: 'scoring-insight-number'}]));
+      {text: `${insightNumber(area.share * 100, 1)}%`, className: 'scoring-insight-number'}]),
+    {total: [insightTotalLabel(`Total of the ${bars.length} listed`, withEnvironments ? 2 : 1),
+      insightTotalCell(bars.reduce((sum, area) => sum + (Number(area.points) || 0), 0), {digits: 2}),
+      insightTotalCell(bars.reduce((sum, area) => sum + (Number(area.share) || 0), 0) * 100, {digits: 1, suffix: '%'})]});
     const tableBox = document.createElement('div');
     tableBox.className = 'scoring-insight-table-wrap';
     tableBox.append(table);
