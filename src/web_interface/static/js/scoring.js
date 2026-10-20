@@ -3928,33 +3928,23 @@
     }).join(' · ') : column?.label || '');
   }
 
-  // The label of a band of the hierarchy axis in ``width``: across, in up to two lines, at the largest size from 14px
-  // down to 9px that shows it whole, else shortened at 9px; turned 90° in the height of its row (``height``) when its
-  // band is too narrow even for three characters across.
-  function hierarchyBandLabelLayout(value, width, height = 32) {
-    const text = String(value);
-    const across = size => Math.min(34, Math.floor((width - 6) / (size * .6)));
-    for (let size = 14; size >= 9; size -= 1) {
-      if (across(size) < Math.min(3, text.length)) break;
-      const lines = fittedSvgLabelLines(text, across(size), 2);
-      if (!lines.some(line => line.endsWith('…'))) return {size, lines, rotated: false};
-    }
-    if (across(9) >= Math.min(3, text.length)) return {size: 9, lines: fittedSvgLabelLines(text, across(9), 2), rotated: false};
-    const size = Math.max(6, Math.min(12, Math.floor(width * .8)));
-    return {size, lines: fittedSvgLabelLines(text, Math.max(1, Math.floor((height - 4) / (size * .6))), 1), rotated: true};
+  // The label of a band of the hierarchy axis across ``width`` at ``size``: up to two lines, shortened when they do not
+  // fit (``whole`` false).
+  function hierarchyBandLabelLayout(value, width, size = 14) {
+    const lines = fittedSvgLabelLines(String(value), Math.max(1, Math.min(34, Math.floor((width - 6) / (size * .6)))), 2);
+    return {size, lines, whole: !lines.some(line => line.endsWith('…'))};
   }
 
-  function appendHierarchyAxisBands(svg, categories, levels, columnsById, categoryStarts, step, baselineY, left, right) {
-    if (!levels.length || !categories.length) return;
-    const rowHeight = 32;
-    const top = baselineY + 16;
-    const width = Math.max(0, right - left);
-    svg.append(svgElement(svg, 'rect', {x: left, y: top, width, height: rowHeight * levels.length, fill: '#ffffff'}));
+  // The rows of the hierarchy axis under the bars, the deepest level first: the bands of the bars with the same values
+  // down to that level, with their labels, all of a row at one size. A row shows them across at the largest size, from
+  // 14px down to 9px, at which every one fits whole, unless turned 90° (as wide as its narrowest band, 6px to 13px)
+  // they are larger or that size does not exist: the row then turns all of them and is as tall as its longest label
+  // (32px to 96px).
+  function hierarchyAxisRows(categories, levels, columnsById, categoryStarts, step, left) {
+    const rows = [];
     for (let rowIndex = 0; rowIndex < levels.length; rowIndex += 1) {
       const depth = levels.length - rowIndex - 1;
-      const y = top + rowIndex * rowHeight;
-      if (rowIndex % 2) svg.append(svgElement(svg, 'rect', {x: left, y, width, height: rowHeight, fill: '#f6f8f8'}));
-      svg.append(svgElement(svg, 'line', {x1: left, x2: right, y1: y + rowHeight, y2: y + rowHeight, stroke: '#cbd6d9', 'stroke-width': 1}));
+      const groups = [];
       let start = 0;
       while (start < categories.length) {
         const firstColumn = columnsById.get(String(categories[start]));
@@ -3972,20 +3962,55 @@
         const x2 = (lastStart ?? left + (end - 1) * step) + step;
         const entry = firstColumn ? hierarchyPathEntry(firstColumn, depth, levels) : {level: levels[depth], value: ''};
         const value = entry.value || 'Not specified';
-        const groupWidth = x2 - x1;
-        const layout = hierarchyBandLabelLayout(value, groupWidth, rowHeight);
-        const centerX = x1 + groupWidth / 2;
+        groups.push({x1, x2, entry, value, firstColumn});
+        start = end;
+      }
+      const size = Math.max(6, Math.min(13, Math.floor(Math.min(...groups.map(group => group.x2 - group.x1)) * .8)));
+      let acrossSize = 14;
+      while (acrossSize >= 9 && !groups.every(group => hierarchyBandLabelLayout(group.value, group.x2 - group.x1, acrossSize).whole)) {
+        acrossSize -= 1;
+      }
+      if (acrossSize >= 9 && acrossSize >= size) {
+        for (const group of groups) group.layout = hierarchyBandLabelLayout(group.value, group.x2 - group.x1, acrossSize);
+        rows.push({groups, height: 32, rotated: false});
+        continue;
+      }
+      const longest = Math.max(...groups.map(group => String(group.value).length));
+      const height = Math.max(32, Math.min(96, Math.ceil(longest * size * .6 + 12)));
+      const characters = Math.max(1, Math.floor((height - 8) / (size * .6)));
+      for (const group of groups) group.layout = {size, lines: fittedSvgLabelLines(group.value, characters, 1), whole: true};
+      rows.push({groups, height, rotated: true});
+    }
+    return {rows, height: rows.reduce((sum, row) => sum + row.height, 0)};
+  }
+
+  function appendHierarchyAxisBands(svg, categories, levels, columnsById, categoryStarts, step, baselineY, left, right) {
+    if (!levels.length || !categories.length) return;
+    const {rows, height} = hierarchyAxisRows(categories, levels, columnsById, categoryStarts, step, left);
+    const top = baselineY + 16;
+    const width = Math.max(0, right - left);
+    svg.append(svgElement(svg, 'rect', {x: left, y: top, width, height, fill: '#ffffff'}));
+    const lastCategoryStart = categoryStarts.get(String(categories[categories.length - 1]));
+    const lastX = (lastCategoryStart ?? left + (categories.length - 1) * step) + step;
+    let y = top;
+    rows.forEach((row, rowIndex) => {
+      const rowHeight = row.height;
+      if (rowIndex % 2) svg.append(svgElement(svg, 'rect', {x: left, y, width, height: rowHeight, fill: '#f6f8f8'}));
+      svg.append(svgElement(svg, 'line', {x1: left, x2: right, y1: y + rowHeight, y2: y + rowHeight, stroke: '#cbd6d9', 'stroke-width': 1}));
+      for (const {x1, x2, entry, value, firstColumn, layout} of row.groups) {
+        const centerX = x1 + (x2 - x1) / 2;
+        const centerY = y + rowHeight / 2;
         const label = svgElement(svg, 'text', {
           x: centerX,
-          y: layout.rotated ? y + rowHeight / 2 : y + rowHeight / 2 + (layout.lines.length > 1 ? -4 : 5) * layout.size / 14,
+          y: row.rotated ? centerY : centerY + (layout.lines.length > 1 ? -4 : 5) * layout.size / 14,
           'text-anchor': 'middle',
           class: 'scoring-chart-hierarchy-label',
           'aria-label': `${entry.level}: ${value}`,
         });
         if (layout.size !== 14) label.style.fontSize = `${layout.size}px`;
-        if (layout.rotated) {
+        if (row.rotated) {
           label.setAttribute('dominant-baseline', 'central');
-          label.setAttribute('transform', `rotate(-90 ${centerX} ${y + rowHeight / 2})`);
+          label.setAttribute('transform', `rotate(-90 ${centerX} ${centerY})`);
         }
         label.setAttribute('fill', '#334b58');
         label.setAttribute('pointer-events', 'auto');
@@ -3997,12 +4022,10 @@
         setChartTooltip(label, firstColumn ? hierarchyPathFullLabel(firstColumn) : `${entry.level}: ${value}`);
         svg.append(label);
         svg.append(svgElement(svg, 'line', {x1, x2: x1, y1: y, y2: y + rowHeight, stroke: '#cbd6d9', 'stroke-width': 1}));
-        start = end;
       }
-      const lastCategoryStart = categoryStarts.get(String(categories[categories.length - 1]));
-      const lastX = (lastCategoryStart ?? left + (categories.length - 1) * step) + step;
       svg.append(svgElement(svg, 'line', {x1: lastX, x2: lastX, y1: y, y2: y + rowHeight, stroke: '#cbd6d9', 'stroke-width': 1}));
-    }
+      y += rowHeight;
+    });
   }
 
   function hierarchyPrefixKey(column, depth, levels) {
@@ -4988,12 +5011,18 @@
 
   // The total over a bar: across (up to its 26px) when the bar is wide enough for it at 11px, else turned 90°, reading
   // upwards from the top of the bar, as wide as the bar, so the totals of narrow bars do not run into each other.
+  function barTotalLayout(text, step) {
+    const fits = Math.floor(step * .94 / Math.max(1, String(text).length * .6)) >= 11;
+    return fits ? {size: bestNetworkTotalSize(text, step), rotated: false}
+      : {size: Math.max(7, Math.min(16, Math.floor(step * .9))), rotated: true};
+  }
+
   function placeBarTotal(label, centerX, barTop, step, offset) {
-    const across = Math.floor(step * .94 / Math.max(1, String(label.textContent).length * .6));
+    const layout = barTotalLayout(label.textContent, step);
     label.setAttribute('x', String(centerX));
-    if (across >= 11) {
+    if (!layout.rotated) {
       label.setAttribute('y', String(barTop - offset));
-      if (across < 26) label.style.fontSize = `${across}px`;
+      if (layout.size < 26) label.style.fontSize = `${layout.size}px`;
       return;
     }
     const y = barTop - 6;
@@ -5001,7 +5030,14 @@
     label.setAttribute('text-anchor', 'start');
     label.setAttribute('dominant-baseline', 'central');
     label.setAttribute('transform', `rotate(-90 ${centerX} ${y})`);
-    label.style.fontSize = `${Math.max(7, Math.min(16, Math.floor(step * .9)))}px`;
+    label.style.fontSize = `${layout.size}px`;
+  }
+
+  // The largest size of the labels inside the bars, a little smaller than the totals over them: 70% of a total across,
+  // 85% of a total turned 90° (the labels then turn too when they do not fit across).
+  function barSegmentLabelMaximum(step) {
+    const total = barTotalLayout('000.0', step);
+    return Math.floor(total.size * (total.rotated ? .85 : .7));
   }
 
   // The size of the total over a bar, smaller than its 26px when the bar is too narrow for it (``step``: the width of a
@@ -5048,7 +5084,6 @@
       : Math.max(1180, categories.length * Math.max(168, series.length * 38 + 22) + 150));
     const baseHeight = 700;
     const left = bestNetworkGeometry?.left ?? 110, right = bestNetworkGeometry?.right ?? 28;
-    const baseBottom = Math.max(150, 80 + (hasHierarchyAxis ? hierarchyLevels.length * 32 : 0));
     const maxValue = stacked
       ? Math.max(0, ...categories.map(category => series.reduce((sum, seriesName) => {
         const row = rows.find(candidate => String(candidate.category) === String(category) && String(candidate.series) === seriesName);
@@ -5067,6 +5102,18 @@
       categoryStarts.set(String(category), categoryCursor);
       categoryCursor += step;
     });
+    // The rows of the hierarchy axis take the room their labels need (turned 90° when they do not fit across); every
+    // category of a Breakdown has the same bands.
+    let axisBandsHeight = 0;
+    if (hasHierarchyAxis && stacked) {
+      axisBandsHeight = hierarchyAxisRows(categories, hierarchyLevels, hierarchyColumnsById, categoryStarts, step, left).height;
+    } else if (hasHierarchyAxis && categories.length) {
+      const slotWidth = step * .86 / Math.max(series.length, 1);
+      const groupStart = left + step * .07;
+      const starts = new Map(series.map((name, index) => [name, groupStart + index * slotWidth]));
+      axisBandsHeight = hierarchyAxisRows(series, hierarchyLevels, hierarchyColumnsById, starts, slotWidth, groupStart).height;
+    }
+    const baseBottom = Math.max(150, 80 + axisBandsHeight);
     const fallbackColors = ['#14867d', '#df7a45', '#5a82aa', '#8b63b1', '#b49a32'];
     const presentations = new Map(series.map((name, index) => {
       const presentation = options.seriesStyles?.[name] || operatorPresentation(operatorTable, name);
@@ -5183,7 +5230,7 @@
           setChartTooltip(rect, tooltipParts.join('\n'), true);
           svg.append(rect);
           const segmentText = formatChartNumber(numeric, {minimumFractionDigits: 1, maximumFractionDigits: 1});
-          const layout = stackedSegmentLabelLayout(segmentText, barWidth, segmentHeight, Math.floor(bestNetworkTotalSize('000.0', step) * .7));
+          const layout = stackedSegmentLabelLayout(segmentText, barWidth, segmentHeight, barSegmentLabelMaximum(step));
           if (layout.size) {
             const segmentLabel = document.createElementNS(svg.namespaceURI, 'text');
             segmentLabel.setAttribute('class', 'scoring-best-network-segment');
@@ -5312,7 +5359,7 @@
         const label = document.createElementNS(svg.namespaceURI, 'text');
         const categoryStart = categoryStarts.get(String(category)) ?? left + step * categoryIndex;
         const labelX = categoryStart + step / 2;
-        label.setAttribute('x', String(labelX)); label.setAttribute('y', String(baselineY + 24 + (hasHierarchyAxis ? hierarchyLevels.length * 32 + 16 : 0)));
+        label.setAttribute('x', String(labelX)); label.setAttribute('y', String(baselineY + 24 + (hasHierarchyAxis ? axisBandsHeight + 16 : 0)));
         label.setAttribute('text-anchor', 'middle'); label.setAttribute('class', 'scoring-chart-category');
         lines.forEach((line, lineIndex) => {
           const span = document.createElementNS(svg.namespaceURI, 'tspan');
@@ -5867,14 +5914,6 @@
     const top = Math.max(72, 45 + operatorLegendRows.length * 20);
     const chartHeight = baseHeight + Math.max(0, top - 72);
     const height = chartHeight + 76;
-    const bottom = Math.max(124, 32 + (hasHierarchyAxis ? hierarchyLevels.length * 32 : 0));
-    const plotHeight = baseHeight - 72 - bottom;
-    const maxAllocation = data.allocation.Voice + data.allocation.Data;
-    const maxActual = Math.max(0, ...data.operators.map(operator => ['Voice', 'Data'].reduce((sum, kind) => sum + (data.totals[operator][kind].value ?? 0), 0)));
-    const scale = scoringChartScale(maxAllocation, maxActual);
-    const scaleMaximum = scale.maximum;
-    const axisTop = top + 36;
-    const axisHeight = plotHeight - 36;
     const categoryStarts = new Map();
     let categoryCursor = left;
     data.operators.forEach((operator, index) => {
@@ -5882,6 +5921,16 @@
       categoryStarts.set(operator, categoryCursor);
       categoryCursor += step;
     });
+    // The rows of the hierarchy axis take the room their labels need (turned 90° when they do not fit across).
+    const bottom = Math.max(124, 32 + (hasHierarchyAxis
+      ? hierarchyAxisRows(data.operators, hierarchyLevels, hierarchyColumnsById, categoryStarts, step, left).height : 0));
+    const plotHeight = baseHeight - 72 - bottom;
+    const maxAllocation = data.allocation.Voice + data.allocation.Data;
+    const maxActual = Math.max(0, ...data.operators.map(operator => ['Voice', 'Data'].reduce((sum, kind) => sum + (data.totals[operator][kind].value ?? 0), 0)));
+    const scale = scoringChartScale(maxAllocation, maxActual);
+    const scaleMaximum = scale.maximum;
+    const axisTop = top + 36;
+    const axisHeight = plotHeight - 36;
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
     svg.setAttribute('class', 'scoring-chart-svg scoring-best-network-bars');
@@ -5951,7 +6000,7 @@
         setChartTooltip(rect, segmentTooltip, true);
         svg.append(rect);
         const segmentText = `${formatChartNumber(cell.value, {minimumFractionDigits: 1, maximumFractionDigits: 1})}${cell.complete ? '' : '*'}`;
-        const layout = stackedSegmentLabelLayout(segmentText, barWidth, segmentHeight, Math.floor(bestNetworkTotalSize('000.0', geometry.step) * .7));
+        const layout = stackedSegmentLabelLayout(segmentText, barWidth, segmentHeight, barSegmentLabelMaximum(geometry.step));
         if (layout.size) {
           const segmentLabel = svgElement(svg, 'text', {class: 'scoring-best-network-segment'});
           placeSegmentLabel(segmentLabel, x + barWidth / 2, segmentY + segmentHeight / 2, layout);

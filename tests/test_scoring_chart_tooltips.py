@@ -156,7 +156,7 @@ console.log(JSON.stringify([stackedSegmentLabelLayout('540.9', 80, 120), stacked
     assert turned == {'size': 20, 'rotated': True} and none == {'size': 0, 'rotated': False}
     # Never larger than 70% of the total over the bar.
     assert capped == {'size': 14, 'rotated': True}
-    assert script.count("stackedSegmentLabelLayout(segmentText, barWidth, segmentHeight, Math.floor(bestNetworkTotalSize('000.0', ") == 2
+    assert script.count('stackedSegmentLabelLayout(segmentText, barWidth, segmentHeight, barSegmentLabelMaximum(') == 2
     service_chart = script[script.index('function makeBestNetworkBars('):script.index('function maximumAllocationEnvironments(')]
     assert "segmentLabel.textContent = segmentText;" in service_chart
     assert "`${kind}: ${cell.value" not in service_chart

@@ -527,7 +527,8 @@ def test_scoring_chart_pairs_render_five_operator_two_category_views():
         'wrappedSvgLabelLines', 'fittedSvgLabelLines', 'setChartTooltip', 'formattedChartPoints',
         'chartEnvironmentName', 'categoryLegendGray', 'chartCategoryLegend', 'chartLegendTextWidth',
         'chartLegendRows', 'categoryLegendTextLines', 'categoryLegendTextColor',
-        'formatChartNumber', 'bestNetworkHorizontalGeometry', 'placeBarTotal', 'hierarchyBandLabelLayout',
+        'formatChartNumber', 'bestNetworkHorizontalGeometry', 'barTotalLayout', 'placeBarTotal', 'barSegmentLabelMaximum',
+        'hierarchyBandLabelLayout', 'hierarchyAxisRows',
         'fitBestNetworkChartWidth', 'makeSvgChart', 'makeBestNetworkBars', 'lightenHexColor',
         'hierarchyColumnOperator', 'hierarchyColumnIsReference', 'chartOperatorLegend',
         'makeExpandableChartCard', 'effectiveScoring', 'scoringLabel',
@@ -850,15 +851,23 @@ process.stdout.write(JSON.stringify({
 
 def test_scoring_charts_fit_their_card_with_every_bar():
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
-    names = ('bestNetworkHorizontalGeometry', 'placeBarTotal', 'fittedSvgLabelLines', 'hierarchyBandLabelLayout')
+    names = ('bestNetworkHorizontalGeometry', 'bestNetworkTotalSize', 'barTotalLayout', 'placeBarTotal', 'barSegmentLabelMaximum',
+             'fittedSvgLabelLines', 'hierarchyBandLabelLayout', 'hierarchyDisplayValue', 'hierarchyPathEntry',
+             'hierarchyPrefixKey', 'hierarchyAxisRows')
     payload = {'snippets': [_function_source(script, name) for name in names]}
     program = r"""
 const vm = require('node:vm');
 const payload = JSON.parse(require('node:fs').readFileSync(0, 'utf8'));
 const context = {};
 vm.createContext(context);
-vm.runInContext(payload.snippets.join('\n') + '\nglobalThis.chart = {bestNetworkHorizontalGeometry, placeBarTotal, hierarchyBandLabelLayout};', context);
-const {bestNetworkHorizontalGeometry, placeBarTotal, hierarchyBandLabelLayout} = context.chart;
+vm.runInContext(payload.snippets.join('\n') + '\nglobalThis.chart = {bestNetworkHorizontalGeometry, placeBarTotal, barSegmentLabelMaximum, hierarchyBandLabelLayout, hierarchyAxisRows};', context);
+const {bestNetworkHorizontalGeometry, placeBarTotal, barSegmentLabelMaximum, hierarchyBandLabelLayout, hierarchyAxisRows} = context.chart;
+// Seven cities of four operators, 34 units a bar: the cities fit across, the operators are turned 90°.
+const levels = ['City', 'Operator'];
+const columns = ['Belfast', 'Bristol', 'Cardiff', 'Edinburgh', 'Leeds', 'London', 'Manchester'].flatMap(city => ['VF', 'Three', 'EE', 'O2'].map(
+  operator => ({id: `${city}-${operator}`, path: [{level: 'City', value: city}, {level: 'Operator', value: operator}]})));
+const starts = new Map(columns.map((column, index) => [column.id, 110 + index * 34]));
+const axis = hierarchyAxisRows(columns.map(column => column.id), levels, new Map(columns.map(column => [column.id, column])), starts, 34, 110);
 const total = (text, step) => {
   const label = {textContent: text, attributes: {}, style: {}, setAttribute(name, value) { this.attributes[name] = String(value); }};
   placeBarTotal(label, 100, 300, step, 12);
@@ -872,8 +881,11 @@ const geometry = [10, 24, 84].map(count => {
 process.stdout.write(JSON.stringify({
   geometry,
   wide: total('955.3', 80), narrow: total('955.3', 20),
-  city: hierarchyBandLabelLayout('London', 200), campaign: hierarchyBandLabelLayout('2026-Q1', 33),
+  city: hierarchyBandLabelLayout('London', 200), campaign: hierarchyBandLabelLayout('2026-Q1', 33, 9),
   operator: hierarchyBandLabelLayout('Vodafone UK', 6),
+  rows: axis.rows.map(row => ({height: row.height, rotated: row.rotated, labels: row.groups.map(group => group.layout.lines.join('|')),
+    sizes: [...new Set(row.groups.map(group => group.layout.size))]})), axisHeight: axis.height,
+  segments: [barSegmentLabelMaximum(80), barSegmentLabelMaximum(34)],
 }));
 """
     result = _run_node_json(program, payload)
@@ -887,10 +899,19 @@ process.stdout.write(JSON.stringify({
     assert 'transform' not in result['wide'] and result['wide']['y'] == '288'
     assert result['narrow']['transform'] == 'rotate(-90 100 294)' and result['narrow']['text-anchor'] == 'start'
     assert result['narrow']['fontSize'] == '16px'
-    # Band labels: whole and large when they fit, smaller in two lines, turned 90° in very narrow bands.
-    assert result['city'] == {'size': 14, 'lines': ['London'], 'rotated': False}
-    assert result['campaign'] == {'size': 9, 'lines': ['2026-', 'Q1'], 'rotated': False}
-    assert result['operator']['rotated'] is True and result['operator']['size'] == 6
+    # Band labels: whole when they fit at their size (in two lines), else shortened.
+    assert result['city'] == {'size': 14, 'lines': ['London'], 'whole': True}
+    assert result['campaign'] == {'size': 9, 'lines': ['2026-', 'Q1'], 'whole': True}
+    assert result['operator']['whole'] is False
+    # When one operator does not fit across (Three), every operator of the row is turned 90°, whole, in a taller row.
+    operators, cities = result['rows']
+    assert operators['rotated'] is True and operators['labels'][:4] == ['VF', 'Three', 'EE', 'O2']
+    assert operators['sizes'] == [13] and operators['height'] == 51
+    assert cities == {'height': 32, 'rotated': False, 'labels': ['Belfast', 'Bristol', 'Cardiff', 'Edinburgh', 'Leeds', 'London',
+                                                                 'Manchester'], 'sizes': [14]}
+    assert result['axisHeight'] == 83
+    # The labels inside the bars are a little smaller than the totals over them, also when these are turned.
+    assert result['segments'] == [17, 13]
 
 
 def test_reference_header_uses_operator_mapping_accent_without_yellow_marker():
