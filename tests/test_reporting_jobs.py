@@ -883,8 +883,14 @@ def test_jobs_name_their_modules_abbreviated_and_move_or_delete_several_at_once(
     assert '.reporting-jobs-table .table-actions.rj-task-actions { display: inline-flex; flex-wrap: nowrap;' in styles
     assert 'width: 1.75rem; min-width: 1.75rem; height: 1.75rem; min-height: 0; padding: 0; border: 0; border-radius: 7px; background: transparent;' in styles
     assert all(f'.report-jobs #rj-tasks .rj-task-actions {selector} {{ --rj-icon: url("data:image/svg+xml,' in styles for selector in (
-        '[aria-label="Run now"]', '.rj-download', '[aria-label="Edit"]', '[aria-label="Duplicate (disabled copy)"]',
+        '[aria-label="Run now"]', '[aria-label="Edit"]', '[aria-label="Duplicate (disabled copy)"]',
         '[aria-label="Delete the job and its runs"]'))
+    # The runs of the Run History share the toolbar and the download of the jobs, with icons of their own for Rerun, Stop and
+    # Delete.
+    assert "const actions = node('div', undefined, 'table-actions rj-task-actions');" in script
+    assert '.report-jobs :is(#rj-tasks, #rj-runs) .rj-task-actions .rj-download { --rj-icon: url("data:image/svg+xml,' in styles
+    assert all(f'.report-jobs #rj-runs .rj-task-actions {selector} {{ --rj-action:' in styles
+               for selector in ('.rj-rerun', '.rj-stop', '.rj-run-delete'))
     assert "const lastCell = timeCell(last ? last.started_at || last.created_at : '');" in script
     assert "task.enabled ? timeCell(task.next_run_at) : node('td', 'Disabled')" in script
     assert '.report-jobs #rj-tasks th:nth-child(2) { width: 38%; }' in styles
