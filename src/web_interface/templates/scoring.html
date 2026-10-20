@@ -1,5 +1,62 @@
 {% extends 'base.html' %}
 {% block content %}
+{# A reload (or Back and Forward) returns to where the page was being read; opening the module starts at its top. Before
+   the page is drawn, it is made as tall as that position needs and opened there, with what was in view when the page was
+   left (kept by scoring.js) shown as it was, dimmed under a gradient with a notice in the middle while the page fills;
+   scoring.js keeps it there (see restoreScoringViewScroll), shows it once its content reaches the position and then gives
+   the page back its height. #}
+<script>
+  (() => {
+    try {
+      const navigation = window.performance.getEntriesByType?.('navigation')?.[0]?.type;
+      if (window.location.hash || !['reload', 'back_forward'].includes(navigation)) return;
+      const key = ['drivetest-analyzer', 'scoring-view', encodeURIComponent(document.body.dataset.authenticatedUser || 'anonymous'),
+        encodeURIComponent({{ (active_workspace.id if active_workspace else '') | tojson }} || 'unknown')].join(':');
+      const stored = JSON.parse(window.sessionStorage.getItem(key) || 'null');
+      const snapshot = JSON.parse(window.sessionStorage.getItem(`${key}:snapshot`) || 'null');
+      window.sessionStorage.removeItem(`${key}:snapshot`);
+      const top = stored && Number.isFinite(stored.scroll_y) && stored.scroll_y > 0 ? stored.scroll_y : 0;
+      if (!top) return;
+      if ('scrollRestoration' in window.history) window.history.scrollRestoration = 'manual';
+      document.documentElement.style.overflowAnchor = 'none';
+      document.documentElement.style.minHeight = `${top + window.innerHeight}px`;
+      window.scrollTo(0, top);
+      const overlay = document.createElement('div');
+      overlay.className = 'scoring-restore-overlay';
+      overlay.dataset.scoringRestoreNotice = '';
+      if (snapshot && typeof snapshot.html === 'string' && snapshot.width === window.innerWidth) {
+        // The copy of what was in view, without scripts, scrolled to where it was.
+        const frame = document.createElement('iframe');
+        frame.className = 'scoring-restore-snapshot';
+        frame.setAttribute('aria-hidden', 'true');
+        frame.setAttribute('sandbox', 'allow-same-origin');
+        frame.tabIndex = -1;
+        frame.addEventListener('load', () => {
+          try {
+            frame.contentWindow.scrollTo(0, snapshot.scroll_y);
+            frame.contentDocument.querySelectorAll('[data-snapshot-scroll-top]').forEach((element) => {
+              element.scrollTop = Number(element.dataset.snapshotScrollTop) || 0;
+            });
+            frame.classList.add('is-ready');
+          } catch (_error) {
+            // Without it, the gradient alone.
+          }
+        }, {once: true});
+        frame.srcdoc = snapshot.html;
+        overlay.append(frame);
+      }
+      const notice = document.createElement('div');
+      notice.className = 'scoring-restore-notice';
+      notice.setAttribute('role', 'status');
+      notice.textContent = 'Loading Scoring & GAP Analysis where you left it…';
+      overlay.append(notice);
+      document.body.append(overlay);
+      window.setTimeout(() => overlay.remove(), 25000);
+    } catch (_error) {
+      // Optional: without the session storage the page opens at its top.
+    }
+  })();
+</script>
 <style>
   /* The colour theme of the charts and tables: NetCheck here, the chosen one set by the page (see scoring_themes.py). */
   [data-scoring-workspace] { --st-title: #1450a8; --st-accent: #245e5a; --st-header: #455b65; --st-header-text: #fff;
@@ -15,6 +72,37 @@
   .scoring-hero h2 { margin: .75rem 0 .25rem; font-size: clamp(1.7rem, 3vw, 2.45rem); }
   .scoring-hero .lede { max-width: 58rem; margin: .5rem 0; }
   .scoring-controls-meta { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: .55rem; }
+  /* The head of the Calculation panel: its title with its badges on the right and, below them, the Saved Filter selector
+     of the module with, on its left, a Help-style blue tip card on where to start that ends where the selector begins
+     (less the gap), both as tall as the taller one. On narrow screens they go one below the other. The panel goes above the panels
+     after it while the list of its selector is open. */
+  .section-head.scoring-controls-head { display: grid; grid-template-columns: minmax(18rem, 1fr) minmax(0, 52rem); grid-template-areas: "title meta" "tip selector"; column-gap: 1rem; row-gap: .6rem; align-items: end; }
+  .scoring-controls-head .scoring-controls-title { grid-area: title; align-self: start; min-width: 0; }
+  .scoring-controls-head .scoring-controls-meta { grid-area: meta; align-self: start; }
+  .scoring-controls-head .scoring-start-tip { grid-area: tip; align-self: stretch; }
+  .scoring-controls-head .saved-filter-selector { grid-area: selector; align-self: stretch; justify-self: stretch; width: 100%; }
+  .scoring-controls-head .saved-filter-selector > summary { box-sizing: border-box; height: 100%; }
+  @media (max-width: 760px) {
+    .section-head.scoring-controls-head { grid-template-columns: minmax(0, 1fr); grid-template-areas: "title" "meta" "tip" "selector"; }
+    .scoring-controls-head .saved-filter-selector:has(.saved-filter-tabs) { margin-top: .75rem; }
+  }
+  .panel.scoring-controls:has(.saved-filter-selector[open]) { position: relative; z-index: 25; }
+  .scoring-start-tip { box-sizing: border-box; min-width: 0; padding: .7rem .95rem; border: 1px solid #bad2ee; border-left: 5px solid #245a96; border-radius: 12px; background: #edf5ff; color: #1d3f63; font-size: .86rem; line-height: 1.45; }
+  .scoring-start-tip-title { display: flex; align-items: center; gap: .45rem; color: #245a96; font-size: .8rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+  .scoring-start-tip-title::before { content: '✓'; display: inline-flex; align-items: center; justify-content: center; width: 1.2rem; height: 1.2rem; border: 2px solid currentColor; border-radius: 50%; font-size: .7rem; }
+  .scoring-start-tip p { margin: .35rem 0 0; }
+  /* While a reload returns to where the page was being read, what was in view shows dimmed under a gradient, with a
+     green notice in the middle of the window. */
+  .scoring-restore-overlay { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; padding: 1rem; }
+  .scoring-restore-snapshot { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; opacity: 0; pointer-events: none; }
+  .scoring-restore-snapshot.is-ready { opacity: 1; }
+  .scoring-restore-overlay::before { content: ''; position: absolute; inset: 0; z-index: 1; background: linear-gradient(180deg, rgba(247, 249, 251, .4), rgba(226, 238, 232, .82)); backdrop-filter: blur(1.5px); }
+  .scoring-restore-notice { position: relative; z-index: 2; display: inline-flex; align-items: center; gap: .65rem; box-sizing: border-box; max-width: calc(100vw - 2rem); padding: .8rem 1.15rem; border: 1px solid #b5d9c3; border-left: 5px solid #226849; border-radius: 12px; background: #edf8f0; color: #1f4d36; font-size: .9rem; font-weight: 750; box-shadow: 0 12px 30px rgba(16, 49, 74, .18); }
+  .scoring-restore-notice::before { content: ''; flex: 0 0 auto; width: 1.1rem; height: 1.1rem; box-sizing: border-box; border: 2.5px solid #b5d9c3; border-top-color: #226849; border-radius: 50%; animation: scoring-restore-spin .8s linear infinite; }
+  @keyframes scoring-restore-spin { to { transform: rotate(360deg); } }
+  /* (Neither while a Saved Filter is edited in the dialog.) */
+  .scoring-controls.is-editing-saved-filter .scoring-controls-head .saved-filter-selector,
+  .scoring-controls.is-editing-saved-filter .scoring-start-tip { display: none; }
   .scoring-hero-badge { display: inline-flex; align-items: center; gap: .45rem; padding: .5rem .85rem; border: 0; border-radius: 999px; background: linear-gradient(128deg, #143653, #176e77); color: #fff; font-size: .78rem; font-weight: 800; white-space: nowrap; box-shadow: 0 6px 14px rgba(20, 54, 83, .22); }
   .scoring-controls { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; }
   .scoring-filter-grid { display: grid; grid-template-columns: minmax(12rem,15rem) minmax(0,1fr); gap: 1rem; align-items: start; }
@@ -216,9 +304,42 @@
   .saved-filter-row:not(.is-expanded) .saved-filter-item { padding-bottom: .75rem; }
   .saved-filter-row:not(.is-expanded) .saved-filter-item > :not(.saved-filter-head):not(.saved-filter-item-top),
   .saved-filter-row:not(.is-expanded) .saved-filter-actions { display: none; }
-  .saved-filter-use { position: absolute; z-index: 1; top: .75rem; right: .8rem; min-height: 1.6rem; padding: .18rem .7rem; border: 1px solid var(--brand); border-radius: 999px; background: var(--brand); color: #fff; font-size: .74rem; font-weight: 800; line-height: 1.2; white-space: nowrap; box-shadow: 0 2px 6px rgba(16, 49, 74, .18); }
-  .saved-filter-use:hover { background: #086661; border-color: #086661; box-shadow: 0 2px 6px rgba(16, 49, 74, .24); transform: none; }
-  .saved-filter-use:focus-visible { outline: 3px solid rgba(11,122,117,.3); outline-offset: 2px; }
+  /* Use Filter in blue, apart from the teal name badge beside it. */
+  .saved-filter-use { position: absolute; z-index: 1; top: .75rem; right: .8rem; min-height: 1.6rem; padding: .18rem .7rem; border: 1px solid #1565c0; border-radius: 999px; background: #1565c0; color: #fff; font-size: .74rem; font-weight: 800; line-height: 1.2; white-space: nowrap; box-shadow: 0 2px 6px rgba(16, 49, 74, .18); }
+  .saved-filter-use:hover { background: #0d47a1; border-color: #0d47a1; box-shadow: 0 2px 6px rgba(16, 49, 74, .24); transform: none; }
+  .saved-filter-use:focus-visible { outline: 3px solid rgba(21,101,192,.3); outline-offset: 2px; }
+  /* The only field a Saved Filter filters (or All), as a tab on top of its card in the colour of the field; the tabs on
+     the left of the card and Use Filter move down with the card. */
+  .saved-filter-scope { display: block; box-sizing: border-box; width: fit-content; max-width: calc(100% - 1.6rem); height: 1.35rem; margin-left: .8rem; padding: 0 .8rem; border: 1px solid; border-bottom: 0; border-radius: 8px 8px 0 0; font-size: .78rem; font-weight: 850; line-height: calc(1.35rem - 1px); letter-spacing: .01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .saved-filter-scope { color: #fff; }
+  .saved-filter-scope[data-dimension="all"] { border-color: #34495e; background: #34495e; }
+  /* (Region in pink: the teal of its filters would look like the name badge of the card.) */
+  .saved-filter-scope[data-dimension="region"] { border-color: #c2185b; background: #c2185b; }
+  .saved-filter-scope[data-dimension="cluster"] { border-color: #4d7c0f; background: #4d7c0f; }
+  .saved-filter-scope[data-dimension="city"] { border-color: #b06d00; background: #b06d00; }
+  .saved-filter-scope[data-dimension="operator"] { border-color: #2458a6; background: #2458a6; }
+  .saved-filter-scope[data-dimension="vendor"] { border-color: #6941a5; background: #6941a5; }
+  /* Beside it, its NR Mode as an outlined tab, in the colours of the NR Modes of the results (NSA vs SA in both). */
+  .saved-filter-tabs { display: flex; align-items: flex-end; gap: .3rem; width: fit-content; max-width: calc(100% - 1.6rem); margin-left: .8rem; }
+  .saved-filter-tabs > .saved-filter-scope { min-width: 0; max-width: none; margin-left: 0; }
+  .saved-filter-mode { flex: 0 0 auto; box-sizing: border-box; height: 1.35rem; padding: 0 .7rem; border: 1px solid #1d4ed8; border-bottom: 0; border-radius: 8px 8px 0 0; background: #fff; color: #1d4ed8; font-size: .78rem; font-weight: 850; line-height: calc(1.35rem - 1px); letter-spacing: .02em; white-space: nowrap; }
+  .saved-filter-mode[data-nr-mode="sa"] { border-color: #be185d; color: #be185d; }
+  .saved-filter-mode[data-nr-mode="nsa-vs-sa"] { border-color: #6d3fb0; color: #4b5563; }
+  .saved-filter-mode [data-nr-mode="nsa"] { color: #1d4ed8; }
+  .saved-filter-mode [data-nr-mode="sa"] { color: #be185d; }
+  .saved-filter-row.has-scope .saved-filter-drag-handle, .saved-filter-row.has-scope .saved-filter-check { top: calc(.55rem + 1.35rem); }
+  .saved-filter-row.has-scope .saved-filter-use { top: calc(.75rem + 1.35rem); }
+  /* The selected card of the Scoring Results dropdown, folded: its name, the line of its filters and its buttons, with
+     Details before them to unfold the rest. */
+  .selected-saved-filter.is-folded > :not(.saved-filter-tabs):not(.saved-filter-name):not(.saved-filter-item-top):not(.saved-filter-actions) { display: none; }
+  /* Its label (the only field it filters, or All) as a tab on top of the selector, as on the cards of the lists, in the
+     room above it: the selector does not move (one below the other on narrow screens, it leaves room for it). */
+  .saved-filter-selector > summary { position: relative; }
+  .selected-saved-filter > .saved-filter-tabs { position: absolute; bottom: 100%; left: .8rem; margin: 0; }
+  .saved-filter-details { display: inline-flex; align-items: center; gap: .3rem; min-height: 1.55rem; padding: .18rem .55rem; border: 1px solid #a9c5dc; border-radius: 999px; background: #fff; color: #244e70; font-size: .72rem; font-weight: 800; box-shadow: none; }
+  .saved-filter-details::before { content: '▶'; color: var(--brand); font-size: .62rem; transition: transform .15s ease; }
+  .saved-filter-details[aria-expanded="true"]::before { transform: rotate(90deg); }
+  .saved-filter-details:hover { border-color: #7fa6c6; background: #eaf3fa; box-shadow: none; transform: none; }
   .saved-filter-meta.saved-filter-newer { color: #8a5300; font-weight: 700; }
   .saved-filter-meta.saved-filter-waiting { color: #8b5c08; font-weight: 700; }
   .saved-filter-item { display: grid; gap: .4rem; width: 100%; padding: .75rem .8rem; border: 1px solid var(--line); border-radius: 13px; background: rgba(255,255,255,.68); color: var(--text); text-align: left; box-shadow: none; }
@@ -280,7 +401,8 @@
   .scoring-results-tabbed[hidden], .scoring-notes-stack[hidden] { display: none; }
   .saved-filter-picker { position: absolute; top: calc(100% + .4rem); left: 0; right: 0; z-index: 30; padding: .65rem; border: 1px solid var(--line); border-radius: 13px; background: #fff; box-shadow: 0 8px 24px rgba(25,42,53,.18); }
   .saved-filter-picker .section-head { margin-bottom: .65rem; }
-  .saved-filter-picker .saved-filter-list { max-height: min(28rem,55vh); }
+  /* The list of a dropdown scrolls on its own: scrolling it never scrolls the page. */
+  .saved-filter-picker .saved-filter-list { max-height: min(28rem,55vh); overscroll-behavior: contain; }
   .scoring-results-selector-row, .scoring-results-value-row { display: flex; align-items: center; justify-content: flex-start; flex-wrap: wrap; gap: .5rem; }
   .scoring-results-selector-row { width: 100%; padding: .48rem .58rem; border: 1px solid #a9c5dc; border-radius: 12px; background: #eaf3fa; }
   .scoring-results-selector-row .scoring-environment-filter { flex: 1 1 auto; width: auto; min-width: 0; color: #244e70; }
@@ -607,6 +729,14 @@
   .scoring-results-tabbed:has([data-result-tab="trends"][aria-selected="true"]) { --result-accent: #4d7c0f; }
   .scoring-results-tabbed:has([data-result-tab="points"][aria-selected="true"]) { --result-accent: #be123c; }
   .scoring-result-tabs { position: relative; z-index: 1; display: flex; flex-wrap: wrap; align-items: flex-end; gap: .3rem; margin: 0; padding: 0; border: 0; }
+  /* While the results are scrolled, their tab bar stays at the top, under the bar of the sections, until their end; held
+     there, a solid band as wide as the panel covers the page from the top of the window (below the tabs of the modules)
+     down to the line of the tab shown, so the results scroll under it and the bar of the sections stays on top. */
+  .scoring-result-tabs { position: sticky; top: calc(var(--module-tabs-offset, 0px) + var(--section-top-offset, 0px)); z-index: 6; }
+  .scoring-result-tabs.is-stuck::before { content: ''; position: absolute; top: calc(-1 * var(--section-top-offset, 0px)); right: -1.6rem; bottom: 0; left: -1.6rem; z-index: -1; background: #faf7f1; box-shadow: 0 3px 0 var(--result-accent), 0 10px 18px rgba(18, 31, 43, .12); pointer-events: none; }
+  @media (max-width: 640px) {
+    .scoring-result-tabs.is-stuck::before { right: -.7rem; left: -.7rem; }
+  }
   .scoring-result-tab { --tab-color: #4f46e5; display: inline-flex; align-items: center; gap: .45rem; margin-bottom: 0; padding: .5rem 1.05rem; border: 1px solid color-mix(in srgb, var(--tab-color) 26%, transparent); border-bottom: 0; border-radius: 12px 12px 0 0; background: color-mix(in srgb, var(--tab-color) 7%, #f6f7f9); color: color-mix(in srgb, var(--tab-color) 82%, #44505c); font-size: .82rem; font-weight: 800; letter-spacing: .01em; box-shadow: none; transition: background .15s ease, color .15s ease; }
   .scoring-result-tab[data-result-tab="scoring"] { --tab-color: #0f766e; }
   .scoring-result-tab[data-result-tab="gap"] { --tab-color: #c2410c; }
@@ -1359,9 +1489,24 @@
   </article>
 
   <article class="panel scoring-controls" aria-labelledby="scoring-run-title">
-    <div class="section-head tight-head">
-      <div><p class="eyebrow">Scoring Calculation</p><h3 id="scoring-run-title">Select NR Mode, Campaign, filters, Split by &amp; GAP reference</h3></div>
+    <div class="section-head tight-head scoring-controls-head">
+      <div class="scoring-controls-title"><p class="eyebrow">Scoring Calculation</p><h3 id="scoring-run-title">Select NR Mode, Campaign, filters, Split by &amp; GAP reference</h3></div>
       <div class="scoring-controls-meta"><span class="scoring-hero-badge"><span aria-hidden="true">◉</span> CDR benchmark workspace</span><span class="pill" data-selected-count>0 CDRs used</span></div>
+      {# Where to start, beside the Saved Filter selector. #}
+      <div class="scoring-start-tip" role="note">
+        <strong class="scoring-start-tip-title">Tip</strong>
+        <p>You can start by choosing one of the <strong>Saved Filters</strong> in the selector (<strong>Use Filter</strong>), or by setting your own filter in the panel below and pressing <strong>Calculate Scoring</strong>.</p>
+      </div>
+      {# The Saved Filter selector of the module, as in Scoring & GAP Results. #}
+      <details class="saved-filter-selector" data-saved-filter-selector>
+        <summary class="saved-filter-item" title="Choose a Saved Filter">
+          <span class="selected-saved-filter" data-selected-saved-filter-card>Loading Saved Filters…</span>
+        </summary>
+        <div class="saved-filter-picker">
+          <div class="section-head tight-head"><strong>Saved Filters</strong><span class="pill" data-saved-filter-count>0 Favourites Filters</span></div>
+          <div class="saved-filter-list" data-saved-filter-list aria-label="Saved Filters" aria-live="polite"><div class="scoring-empty">Loading Saved Filters…</div></div>
+        </div>
+      </details>
     </div>
     {# A Saved Filter edited from its pencil: Save Changes gives it the selection of the panel (from its ⧉, Save as New
        Filter saves the selection as a copy). #}
@@ -1594,7 +1739,7 @@
             <span class="selected-saved-filter" data-selected-saved-filter-card>Loading Saved Filters…</span>
           </summary>
           <div class="saved-filter-picker">
-            <div class="section-head tight-head"><strong>Saved Filters</strong><span class="pill" data-saved-filter-count>0 filters</span></div>
+            <div class="section-head tight-head"><strong>Saved Filters</strong><span class="pill" data-saved-filter-count>0 Favourites Filters</span></div>
             <div class="saved-filter-list" data-saved-filter-list aria-label="Saved Filters" aria-live="polite"><div class="scoring-empty">Loading Saved Filters…</div></div>
           </div>
         </details>
@@ -1626,7 +1771,7 @@
 
     </article>
     <article class="panel saved-filters-panel">
-      <div class="section-head tight-head"><div><p class="eyebrow">Reusable selections</p><h3>Favourites Filters</h3></div><span class="pill" data-saved-filter-count>0 filters</span></div>
+      <div class="section-head tight-head"><div><p class="eyebrow">Reusable selections</p><h3>Favourites Filters</h3></div><span class="pill" data-saved-filter-count>0 Favourites Filters</span></div>
       <div class="saved-filters-bulk" data-saved-filters-bulk hidden>
         <label class="saved-filters-select-all"><input type="checkbox" data-saved-filters-select-all> Select all</label>
         <button type="button" class="saved-filter-use-newer" data-saved-filters-use-newer disabled title="Update the selected Saved Filters that have newer CDRs and calculate them again">Use newer CDRs</button>

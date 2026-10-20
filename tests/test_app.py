@@ -11096,7 +11096,10 @@ def test_every_tab_lists_its_sections_with_icons_in_the_colour_of_its_module(cli
         assert key in menus, key
         assert f'data-module-sections="{key}"' in page, key
     # Each entry has its icon, and the menu the colour of its module.
-    assert menus['scoring'].count('class="menu-item-icon"') == 10
+    assert menus['scoring'].count('class="menu-item-icon"') == 11
+    # Excluded Calls, after Scoring Calculation as on the page.
+    assert menus['scoring'].index('href="/scoring#section-select-nr-mode-campaign-filters-split-by-gap-reference"') \
+        < menus['scoring'].index('href="/scoring#section-excluded-calls"') < menus['scoring'].index('href="/scoring#section-scoring-gap-results"')
     assert 'data-module-sections-for="scoring" aria-label="Scoring &amp; GAP Analysis sections" style="--menu-accent: ' in page
     # Scoring Results lists its result tabs beside it.
     for tab in ('summary', 'charts', 'tables', 'geographical-areas', 'trends', 'gap', 'points-lost'):
@@ -11124,9 +11127,14 @@ def test_every_tab_lists_its_sections_with_icons_in_the_colour_of_its_module(cli
              'non-qualified-calls': 'non_qualified_calls.html', 'reporting': 'report_jobs.html',
              'chart-builder': 'chart_builder.html', 'query-builder': 'query_builder.html', 'app-logs': 'app_logs.html',
              'admin': 'admin.html', 'ticket-center': 'ticket_center.html'}
+    def page_text(name):
+        text = (templates / name).read_text(encoding='utf-8')
+        # The panels of the templates it includes (the Excluded Calls of Scoring) are panels of the page too.
+        return text + ''.join(page_text(include) for include in re.findall(r"{% include '([^']+)' %}", text))
+
     for module, sections in MODULE_SECTIONS.items():
         headings = {section_anchor(re.sub(r'<[^>]+>', '', heading).replace('&amp;', '&'))
-                    for heading in re.findall(r'<h[123][^>]*>(.*?)</h[123]>', (templates / pages[module]).read_text(encoding='utf-8'), re.S)}
+                    for heading in re.findall(r'<h[123][^>]*>(.*?)</h[123]>', page_text(pages[module]), re.S)}
         for heading, *_rest in filter(None, sections):
             # The NQ Analysis Configuration is not a panel: the page opens its menu, and its options their dialogs.
             if (module, heading) != ('non-qualified-calls', 'NQ Analysis Configuration'):
@@ -11154,7 +11162,7 @@ def test_a_section_chosen_in_a_menu_opens_at_the_top_of_its_page():
     assert "document.addEventListener('DOMContentLoaded', openAddressSection, {once: true});" in app_script
     assert 'sibling = sibling.previousElementSibling) observer.observe(sibling);' in app_script
     scoring_script = (root / 'scoring.js').read_text(encoding='utf-8')
-    assert '&& !window.location.hash;' in scoring_script
+    assert "&& !window.location.hash\n    && ['reload', 'back_forward'].includes(" in scoring_script
     assert "|| window.location.hash) return;" in (root / 'ppt_dashboards.js').read_text(encoding='utf-8')
     assert 'top > 0 && !window.location.hash' in app_script
     # A page that opens again with its saved selection (CDR Analysis) keeps the section.

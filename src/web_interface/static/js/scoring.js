@@ -200,8 +200,10 @@
     }
   }
   const restoredScoringViewState = readScoringViewState();
-  // A section chosen in a menu (#section-… or a Scoring Results tab) opens the page there instead.
-  let scoringViewScrollRestorePending = Number.isFinite(restoredScoringViewState.scrollY) && !window.location.hash;
+  // A section chosen in a menu (#section-… or a Scoring Results tab) opens the page there instead, and only a reload (or
+  // Back and Forward) returns to the saved position: opening the module starts at its top.
+  let scoringViewScrollRestorePending = Number.isFinite(restoredScoringViewState.scrollY) && !window.location.hash
+    && ['reload', 'back_forward'].includes(window.performance.getEntriesByType?.('navigation')?.[0]?.type);
   let scoringViewScrollRestoreStarted = false;
   let scoringViewScrollRestoring = false;
   // The page restores its own position, once its results are drawn.
@@ -239,12 +241,12 @@
     const target = restoredScoringViewState.scrollY;
     scoringViewScrollRestoring = true;
     // The maps are drawn a moment after the results: follow the page as it grows, until the saved
-    // position is reached, the user scrolls or ten seconds pass.
+    // position is reached, the user scrolls or twenty seconds pass.
     let interacted = false;
     const stop = () => { interacted = true; };
     const interactions = ['wheel', 'touchstart', 'keydown', 'pointerdown'];
     interactions.forEach(type => window.addEventListener(type, stop, {passive: true}));
-    const deadline = window.performance.now() + 10000;
+    const deadline = window.performance.now() + 20000;
     // The browser would keep the content in view as the page grows above it; the saved position
     // already refers to the complete page, so it is kept until the page stops growing.
     document.documentElement.style.overflowAnchor = 'none';
@@ -252,19 +254,27 @@
     let stableSince = window.performance.now();
     const step = () => {
       const now = window.performance.now();
-      const pageHeight = document.documentElement.scrollHeight;
+      // The height of the content: meanwhile the page keeps the height the saved position needs (scoring.html), so it
+      // stays there instead of going up while it fills.
+      const pageHeight = document.body.scrollHeight;
       if (pageHeight !== height) {
         height = pageHeight;
         stableSince = now;
       }
       const maximum = Math.max(0, pageHeight - window.innerHeight);
-      if (!interacted) window.scrollTo({left: window.scrollX, top: Math.min(target, maximum), behavior: 'auto'});
-      if (!interacted && now < deadline && (maximum < target || now - stableSince < 1200)) {
+      if (!interacted) window.scrollTo({left: window.scrollX, top: target, behavior: 'auto'});
+      // The dimmed page of the reload (scoring.html) shows again once its content reaches the position, or the user
+      // takes over.
+      if (maximum >= target || interacted) document.querySelector('[data-scoring-restore-notice]')?.remove();
+      // Until the content reaches the position and stops growing; content that stays shorter is waited for a while.
+      if (!interacted && now < deadline && now - stableSince < (maximum < target ? 4000 : 1200)) {
         window.setTimeout(step, 120);
         return;
       }
       interactions.forEach(type => window.removeEventListener(type, stop));
       document.documentElement.style.overflowAnchor = '';
+      document.documentElement.style.minHeight = '';
+      document.querySelector('[data-scoring-restore-notice]')?.remove();
       scoringViewScrollRestoring = false;
       persistScoringViewState();
     };
@@ -278,6 +288,97 @@
     }, 120);
   }, {passive: true});
   window.addEventListener('pagehide', persistScoringViewState);
+
+  // The tab bar of the results stays at the top while they are scrolled (scoring.html): marked then, to draw it with the
+  // colour of the panel behind it.
+  const resultTabsBar = root.querySelector('.scoring-result-tabs');
+  let resultTabsFrame = 0;
+  function syncResultTabsStuck() {
+    resultTabsFrame = 0;
+    if (!resultTabsBar) return;
+    const top = parseFloat(getComputedStyle(resultTabsBar).top) || 0;
+    const box = resultTabsBar.getBoundingClientRect();
+    const start = resultTabsBar.parentElement.getBoundingClientRect().top;
+    resultTabsBar.classList.toggle('is-stuck', box.height > 0 && start < top - 1 && box.top <= top + 1);
+  }
+  window.addEventListener('scroll', () => {
+    if (!resultTabsFrame) resultTabsFrame = window.requestAnimationFrame(syncResultTabsStuck);
+  }, {passive: true});
+
+  // What is in view when the page is left, shown dimmed while a reload returns there (scoring.html): a copy of the page
+  // without its scripts, with only the parts in view (the others keep their place, empty), its fields as they are, the
+  // scroll of its lists and its canvases as images.
+  function scoringPageSnapshot() {
+    const viewportHeight = window.innerHeight;
+    const copyOf = (node) => {
+      if (node.nodeType === Node.TEXT_NODE) return node.cloneNode(false);
+      if (node.nodeType !== Node.ELEMENT_NODE) return null;
+      const tag = node.tagName.toUpperCase();
+      if (['SCRIPT', 'NOSCRIPT', 'TEMPLATE', 'IFRAME'].includes(tag) || node.matches('[data-scoring-restore-notice]')) return null;
+      // Styles, drawings and lists of options whole.
+      if (['STYLE', 'LINK', 'SVG', 'SELECT'].includes(tag)) {
+        const copy = node.cloneNode(true);
+        if (tag === 'SELECT') [...node.options].forEach((option, index) => copy.options[index]?.toggleAttribute('selected', option.selected));
+        return copy;
+      }
+      const copy = node.cloneNode(false);
+      const box = node.getBoundingClientRect();
+      if (!box.width && !box.height && getComputedStyle(node).display !== 'contents') return copy;
+      if (box.bottom < 0 || box.top > viewportHeight) {
+        copy.style.height = `${box.height}px`;
+        copy.style.minHeight = '0';
+        copy.style.boxSizing = 'border-box';
+        copy.style.overflow = 'hidden';
+        return copy;
+      }
+      if (tag === 'CANVAS') {
+        try {
+          const image = document.createElement('img');
+          image.src = node.toDataURL();
+          image.className = node.className;
+          image.style.cssText = node.style.cssText;
+          image.style.width = `${box.width}px`;
+          image.style.height = `${box.height}px`;
+          return image;
+        } catch (_error) {
+          return copy;
+        }
+      }
+      if (tag === 'INPUT') {
+        if (['checkbox', 'radio'].includes(node.type)) copy.toggleAttribute('checked', node.checked);
+        else copy.setAttribute('value', node.value);
+      }
+      if (tag === 'TEXTAREA') {
+        copy.textContent = node.value;
+        return copy;
+      }
+      if (node.scrollTop) copy.dataset.snapshotScrollTop = String(Math.round(node.scrollTop));
+      node.childNodes.forEach((child) => {
+        const childCopy = copyOf(child);
+        if (childCopy) copy.append(childCopy);
+      });
+      return copy;
+    };
+    const attributes = (element) => [...element.attributes].filter(attribute => attribute.name !== 'style')
+      .map(attribute => ` ${attribute.name}="${attribute.value.replace(/&/g, '&amp;').replace(/"/g, '&quot;')}"`).join('');
+    const head = [...document.head.children].filter(element => element.matches('meta[charset], link[rel="stylesheet"], style'))
+      .map(element => element.outerHTML).join('');
+    return `<!doctype html><html${attributes(document.documentElement)}><head>${head}</head>${copyOf(document.body).outerHTML}</html>`;
+  }
+  window.addEventListener('pagehide', () => {
+    const key = `${scoringViewStorageKey}:snapshot`;
+    try {
+      window.sessionStorage.removeItem(key);
+      // Not while the page is still returning to a saved position (what is in view is not the page yet).
+      if (scoringViewScrollRestorePending || scoringViewScrollRestoring || !window.scrollY) return;
+      const html = scoringPageSnapshot();
+      if (html.length > 3000000) return;
+      window.sessionStorage.setItem(key, JSON.stringify({scroll_y: Math.round(window.scrollY), width: window.innerWidth, html}));
+    } catch (_error) {
+      // Optional (too large for the session storage…): the reload shows the gradient alone.
+      try { window.sessionStorage.removeItem(key); } catch (_ignored) { /* Nothing to remove. */ }
+    }
+  });
   const nrFilter = root.querySelector('[data-nr-filter]');
   // The NR Mode that scores the NSA and SA CDRs side by side.
   const nsaVsSa = 'NSA+SA';
@@ -293,6 +394,24 @@
   const autoCdrSection = root.querySelector('[data-scoring-auto-cdrs]');
   const autoCdrSource = root.querySelector('[data-auto-cdrs-source]');
   const autoCdrReset = root.querySelector('[data-auto-cdrs-reset]');
+  // Each type of the CDRs used shows four CDRs before it scrolls (three in the other modules), whatever lines their names
+  // take, and is only as tall as fewer ones: measured whenever the CDRs are drawn again or the panel changes width.
+  const autoCdrGroups = root.querySelector('[data-auto-cdr-groups]');
+  function fitAutoCdrLists() {
+    for (const list of autoCdrGroups?.querySelectorAll('.auto-cdr-list') || []) {
+      const items = [...list.children].filter(item => item.getClientRects().length);
+      if (items.length <= 4) {
+        list.style.maxHeight = 'none';
+        continue;
+      }
+      const bottom = items[3].getBoundingClientRect().bottom - list.getBoundingClientRect().top + list.scrollTop;
+      if (bottom > 0) list.style.maxHeight = `${Math.ceil(bottom) + 2}px`;
+    }
+  }
+  if (autoCdrGroups) {
+    if (typeof MutationObserver === 'function') new MutationObserver(fitAutoCdrLists).observe(autoCdrGroups, {childList: true, subtree: true});
+    if (typeof ResizeObserver === 'function') new ResizeObserver(fitAutoCdrLists).observe(autoCdrGroups);
+  }
   let autoCdrs = {options: null, incomplete: []};
   let pinnedCdrs = false;
   let autoCdrRevision = 0;
@@ -402,8 +521,11 @@
   let deletingCheckedSavedFilters = false;
   let savedFiltersRenderPending = false;
   const savedFilterList = savedFilterLists[0];
-  const savedFilterSelector = root.querySelector('[data-saved-filter-selector]');
-  const selectedSavedFilterCard = root.querySelector('[data-selected-saved-filter-card]');
+  // The Saved Filter selectors of the module, on top of the Calculation panel and of Scoring & GAP Results: the selected
+  // card of the first one is drawn and the others are its copies.
+  const savedFilterSelectors = [...root.querySelectorAll('[data-saved-filter-selector]')];
+  const selectedSavedFilterCards = [...root.querySelectorAll('[data-selected-saved-filter-card]')];
+  const selectedSavedFilterCard = selectedSavedFilterCards[0];
   const resultsTabbed = root.querySelector('.scoring-results-tabbed');
   const resultNotesStack = root.querySelector('.scoring-notes-stack');
   const environmentControl = root.querySelector('[data-result-environment-control]');
@@ -459,6 +581,8 @@
   let submittingCalculation = false;
   let selectedSavedFilterId = restoredScoringViewState.savedFilterId;
   let selectedSavedFilter = null;
+  // Whether the selected card of the Scoring Results dropdown shows every detail (Details); folded at first.
+  let selectedSavedFilterUnfolded = false;
   let selectedEnvironment = restoredScoringViewState.environment || 'all';
   // Best Network or Most Reliable: both scorings share the Saved Filter, its filters and its aggregation.
   let selectedScoring = restoredScoringViewState.scoring || 'best_network';
@@ -1534,7 +1658,7 @@
     const hidden = selectionUnmatched || scoringClosed;
     if (resultsTabbed) resultsTabbed.hidden = hidden;
     if (resultNotesStack) resultNotesStack.hidden = hidden;
-    savedFilterSelector?.classList.toggle('is-unmatched', hidden);
+    for (const selector of savedFilterSelectors) selector.classList.toggle('is-unmatched', hidden);
     setExportLinks(currentResultsSavedFilterId || '', Boolean(currentResultsSavedFilterId));
     renderSavedFilters();
   }
@@ -1796,6 +1920,19 @@
 
   function savedFilterCardTitle(savedFilter) {
     return savedFilterCardTitleSegments(savedFilter).map(segment => segment.value).join(' ● ');
+  }
+
+  // The label on top of the card of a Saved Filter that filters a single field (Region, Cluster, City, Operator or
+  // Vendor; its Campaign and NR Mode aside): its values, in the colour of the field, or All when it filters none of them.
+  // A Saved Filter that filters several fields has none.
+  function savedFilterScope(savedFilter) {
+    const filtered = ['Region', 'Cluster', 'City', 'Operator', 'Vendor']
+      .map(level => ({level, values: savedSavedFilterValues(savedFilter, level)}))
+      .filter(item => item.values.length);
+    if (!filtered.length) return {dimension: 'all', text: 'All', title: 'No Region, Cluster, City, Operator or Vendor is filtered'};
+    if (filtered.length > 1) return null;
+    const [{level, values}] = filtered;
+    return {dimension: level.toLowerCase(), text: values.join(', '), title: `${level}: ${values.join(', ')}`};
   }
 
   function campaignLabels(value) {
@@ -2151,7 +2288,7 @@
   // The Saved Filters panel shows ten Saved Filters before it scrolls, and is only as tall as fewer ones.
   function fitSavedFilterPanels() {
     const inView = 10;
-    for (const list of savedFilterLists.slice(1)) {
+    for (const list of [savedFilterPanelList].filter(Boolean)) {
       const items = list.querySelectorAll(':scope > .saved-filter-item');
       if (items.length <= inView) {
         list.style.maxHeight = 'none';
@@ -2165,7 +2302,7 @@
   }
   // The ten are measured whenever the Saved Filters are drawn again and, narrower or wider, change height.
   if (typeof MutationObserver === 'function') {
-    for (const list of savedFilterLists.slice(1)) new MutationObserver(fitSavedFilterPanels).observe(list, {childList: true});
+    for (const list of [savedFilterPanelList].filter(Boolean)) new MutationObserver(fitSavedFilterPanels).observe(list, {childList: true});
   }
   let savedFilterPanelWidth = 0;
   if (typeof ResizeObserver === 'function') {
@@ -2175,7 +2312,7 @@
         savedFilterPanelWidth = width;
         fitSavedFilterPanels();
       }
-    }).observe(savedFilterLists[1] || savedFilterList);
+    }).observe(savedFilterPanelList || savedFilterList);
   }
 
   function renderSavedFilters() {
@@ -2189,10 +2326,11 @@
     // can be starred.
     const starred = ordered.filter(savedFilter => savedFilter.pinned);
     for (const countBadge of root.querySelectorAll('[data-saved-filter-count]')) {
-      countBadge.textContent = `${starred.length} filter${starred.length === 1 ? '' : 's'}`;
+      countBadge.textContent = `${starred.length} Favourites Filter${starred.length === 1 ? '' : 's'}`;
     }
     savedFilterList.replaceChildren();
     selectedSavedFilterCard.textContent = ordered.length ? 'Select a Saved Filter' : 'No Saved Filters yet';
+    let selectedCardShown = false;
     if (!starred.length) {
       const empty = document.createElement('div');
       empty.className = 'scoring-empty';
@@ -2448,21 +2586,73 @@
       use.textContent = 'Use Filter';
       use.title = 'Open the Scoring of this Saved Filter: it becomes the Saved Filter selected at the top of the module';
       use.setAttribute('aria-label', `Use Saved Filter ${id}`);
+      // On top of its card: the only field it filters (or All) and its NR Mode.
+      const tabs = document.createElement('span');
+      tabs.className = 'saved-filter-tabs';
+      const scope = savedFilterScope(savedFilter);
+      if (scope) {
+        const scopeLabel = document.createElement('span');
+        scopeLabel.className = 'saved-filter-scope';
+        scopeLabel.dataset.dimension = scope.dimension;
+        scopeLabel.textContent = scope.text;
+        scopeLabel.title = scope.title;
+        tabs.append(scopeLabel);
+      }
+      const nrMode = String(valueOf(savedFilter, ['nr_mode'], '') || '');
+      if (nrMode) {
+        const modeLabel = document.createElement('span');
+        modeLabel.className = 'saved-filter-mode';
+        modeLabel.dataset.nrMode = nrMode === 'NSA+SA' ? 'nsa-vs-sa' : nrMode.toLowerCase();
+        modeLabel.title = `NR Mode: ${nrMode === 'NSA+SA' ? 'NSA vs SA' : nrMode}`;
+        if (nrMode === 'NSA+SA') {
+          for (const [part, mode] of [['NSA', 'nsa'], [' vs ', ''], ['SA', 'sa']]) {
+            const piece = document.createElement('span');
+            if (mode) piece.dataset.nrMode = mode;
+            piece.textContent = part;
+            modeLabel.append(piece);
+          }
+        } else modeLabel.textContent = nrMode;
+        tabs.append(modeLabel);
+      }
+      if (tabs.childElementCount) {
+        row.classList.add('has-scope');
+        row.append(tabs);
+      }
       row.append(button, use, actions);
       row.dataset.savedFilterRow = id;
       if (savedFilter.pinned) savedFilterList.append(row);
       if (id === selectedSavedFilterId) {
-        // The selected card of the Scoring Results dropdown, unfolded, with its CDRs, name and pin buttons (deleting is
-        // done in the lists): its name without the fold arrow, and none when it has no name.
+        // The selected card of the Scoring Results dropdown, with its CDRs, name and pin buttons (deleting is done in the
+        // lists): its name without the fold arrow, and none when it has no name. Folded, it shows its name, the line of
+        // its filters and its buttons; Details, before them, unfolds the rest without opening the dropdown.
         const selectedActions = document.createElement('span');
         selectedActions.className = 'saved-filter-actions';
-        selectedActions.append(...Array.from(actions.children, child => child.cloneNode(true))
+        const details = document.createElement('button');
+        details.type = 'button';
+        details.className = 'saved-filter-details';
+        details.dataset.savedFilterDetails = id;
+        details.textContent = 'Details';
+        details.title = 'Show or hide the details of this Saved Filter';
+        details.setAttribute('aria-expanded', String(selectedSavedFilterUnfolded));
+        selectedActions.append(details, ...Array.from(actions.children, child => child.cloneNode(true))
           .filter(child => !child.dataset?.deleteSavedFilterId));
-        const cardParts = Array.from(button.children, child => (child === head ? (savedFilter.name ? name : null) : child));
+        // Its label on top, as in the lists.
+        const cardParts = [tabs.childElementCount ? tabs : null,
+          ...Array.from(button.children, child => (child === head ? (savedFilter.name ? name : null) : child))];
         selectedSavedFilterCard.replaceChildren(...cardParts.filter(Boolean).map(child => child.cloneNode(true)), selectedActions);
+        selectedCardShown = true;
       }
     }
-    if (selectionUnmatched || scoringClosed) selectedSavedFilterCard.replaceChildren(unmatchedSelectionNotice());
+    if (selectionUnmatched || scoringClosed) {
+      selectedSavedFilterCard.replaceChildren(unmatchedSelectionNotice());
+      selectedCardShown = false;
+    }
+    selectedSavedFilterCard.classList.toggle('is-folded', selectedCardShown && !selectedSavedFilterUnfolded);
+    // The other selectors show the same card.
+    for (const card of selectedSavedFilterCards.slice(1)) {
+      card.replaceChildren(...Array.from(selectedSavedFilterCard.childNodes, node => node.cloneNode(true)));
+      card.classList.toggle('is-folded', selectedCardShown && !selectedSavedFilterUnfolded);
+    }
     // Close Scoring closes the Saved Filter shown, when there is one.
     if (closeScoringButton) closeScoringButton.disabled = scoringClosed || !selectedSavedFilterId;
     syncSavedFilterLists();
@@ -10528,12 +10718,12 @@
   recalculateButton.addEventListener('click', () => createSavedFilter(true));
   closeScoringButton?.addEventListener('click', closeScoring);
   document.addEventListener('click', event => {
-    if (!savedFilterSelector.contains(event.target)) savedFilterSelector.open = false;
+    for (const selector of savedFilterSelectors) if (!selector.contains(event.target)) selector.open = false;
   });
-  savedFilterSelector.addEventListener('keydown', event => {
+  for (const selector of savedFilterSelectors) selector.addEventListener('keydown', event => {
     if (event.key !== 'Escape') return;
-    savedFilterSelector.open = false;
-    savedFilterSelector.querySelector('summary').focus();
+    selector.open = false;
+    selector.querySelector('summary').focus();
   });
   // Editing a Saved Filter: the Calculation panel, in a dialog, shows its selection with the CDRs of its NR Mode and
   // Campaign until Save Changes gives it the selection of the panel (calculated again) or Cancel Editing (or Escape)
@@ -10569,7 +10759,7 @@
     if (!editingSavedFilter) selectionBeforeEdit = {selection: calculationSelectionFromControls(), pinned: pinnedCdrs};
     editingSavedFilter = savedFilter;
     duplicateName = copyName;
-    savedFilterSelector.open = false;
+    for (const selector of savedFilterSelectors) selector.open = false;
     calculationMatchKey = '';
     restoreCalculationSelectionFromSavedFilter(savedFilter, {automaticCdrs: true});
     syncSavedFilterEditing();
@@ -10679,7 +10869,7 @@
           ...savedFilter,
           dataset_ids: [...new Set((savedFilter.dataset_ids || []).map(value => replacements.get(String(value)) || String(value)))],
         });
-        savedFilterSelector.open = false;
+        for (const selector of savedFilterSelectors) selector.open = false;
         await createSavedFilter(false, {url: `${savedFiltersUrl}/${encodeURIComponent(id)}/use-newer-cdrs`});
         return true;
       }
@@ -10748,8 +10938,8 @@
     requestJson(`${savedFiltersUrl}/${encodeURIComponent(selectedSavedFilterId)}/use`, {method: 'POST'})
       .then(() => refreshSavedFilters())
       .catch(() => { /* The count is not essential to open it. */ });
-    const fromDropdown = savedFilterSelector.contains(button);
-    savedFilterSelector.open = false;
+    const fromDropdown = savedFilterSelectors.find(selector => selector.contains(button));
+    for (const selector of savedFilterSelectors) selector.open = false;
     // A Saved Filter opened from the Saved Filters panel takes the page to its results at once, and again once they are
     // drawn (they change the height of the page).
     const showResults = () => {
@@ -10757,13 +10947,24 @@
       if (resultsPanel && typeof showSectionAtTop === 'function') showSectionAtTop(resultsPanel);
       else resultsPanel?.scrollIntoView({block: 'start'});
     };
-    if (fromDropdown) savedFilterSelector.querySelector('summary').focus();
+    if (fromDropdown) fromDropdown.querySelector('summary').focus();
     else showResults();
     persistScoringViewState();
     await loadSavedFilter(savedFilter, true);
     if (!fromDropdown && selectedSavedFilterId === savedFilterIdOf(savedFilter)) showResults();
   });
   root.addEventListener('click', event => {
+    // Details folds or unfolds the selected card of every selector, without opening the dropdown.
+    const details = event.target.closest('[data-saved-filter-details]');
+    if (details) {
+      event.preventDefault();
+      selectedSavedFilterUnfolded = !selectedSavedFilterUnfolded;
+      for (const card of selectedSavedFilterCards) {
+        card.classList.toggle('is-folded', !selectedSavedFilterUnfolded);
+        card.querySelector('[data-saved-filter-details]')?.setAttribute('aria-expanded', String(selectedSavedFilterUnfolded));
+      }
+      return;
+    }
     // In the selected card of the dropdown, the buttons do not open it.
     if (event.target.closest('summary') && event.target.closest('[data-saved-filter-pin], [data-saved-filter-rename], [data-saved-filter-duplicate], [data-saved-filter-newer]')) {
       savedFilterAction(event);
@@ -10865,6 +11066,12 @@
       other.tabIndex = selected ? 0 : -1;
     }
     for (const pane of root.querySelectorAll('[data-result-pane]')) pane.hidden = pane.dataset.resultPane !== name;
+    // Chosen while the results are scrolled (their tab bar held at the top), the tab opens at its start.
+    if (resultTabsBar) {
+      const top = parseFloat(getComputedStyle(resultTabsBar).top) || 0;
+      const start = resultTabsBar.parentElement.getBoundingClientRect().top;
+      if (start < top) window.scrollBy({top: start - top, behavior: 'auto'});
+    }
     persistScoringViewState();
     if (currentResults) renderResult(currentResults, selectedSavedFilter, [name]);
   });

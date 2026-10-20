@@ -346,6 +346,7 @@ SECTION_ICONS: dict[str, str] = {
     'info': '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5h.01"/>',
     'ticket': '<path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h15A1.5 1.5 0 0 1 21 7.5V10a2 2 0 0 0 0 4v2.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 16.5V14a2 2 0 0 0 0-4z"/><path d="M15 6.5v2M15 11v2M15 15.5v2"/>',
     'bug': '<path d="M9 7.5a3 3 0 0 1 6 0z"/><rect x="7" y="7.5" width="10" height="12" rx="5"/><path d="M12 11v8.5M7 12H3.5M20.5 12H17M7.6 16.5 4.5 18.5M16.4 16.5l3.1 2"/>',
+    'ban': '<circle cx="12" cy="12" r="9"/><path d="m5.6 5.6 12.8 12.8"/>',
 }
 
 # The sections each module lists below its tab: the heading of the panel (its anchor, see section_anchor),
@@ -362,6 +363,7 @@ MODULE_SECTIONS: dict[str, list[tuple[Any, ...] | None]] = {
     'ppt-reporting-old': [('NetCheck CDR Reports', 'NetCheck CDR Reports', 'presentation'), ('Charts Panel', 'Charts Panel', 'chart'),
                           ('Log Report', 'Log Report', 'log'), ('Reports and Charts Jobs', 'Reports and Charts Jobs', 'jobs')],
     'scoring': [('Select NR Mode, Campaign, filters, Split by & GAP reference', 'Scoring Calculation', 'sliders'),
+                ('Excluded Calls', 'Excluded Calls', 'ban'),
                 ('Scoring & GAP Results', 'Scoring & GAP Results', 'chart', [
                     ('scoring-results-summary', 'Summary', 'summary'), ('scoring-results-charts', 'Scoring Charts', 'chart'),
                     ('scoring-results-tables', 'Scoring Tables', 'table'), ('scoring-results-geographical-areas', 'Geographical Areas', 'pin'),
