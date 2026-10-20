@@ -189,7 +189,7 @@ The **Lifecycle & Phases** panel follows the filtered calls through their follow
 > [!TIP]
 > **Show Empty Status**, above the phase cards, is unchecked by default. Check it to add the calls without a value (**Empty**) and give the shares of every call; **Export PPT** and **Export Word** follow it, and the Reporting artifact leaves them out.
 
-**Status Rules** (for `user-editor` accounts and above) opens the rules from the panel.
+**Status Rules** (for `user-editor` accounts and above; only admins and super-admins change them) opens the rules from the panel.
 
 The PowerPoint, Word and Reporting artifact show the Lifecycle & Phases as the page does, each slide saying what it shows in its subtitle: the indicators and the **NQ Call Status Pipeline** (the Open frame around the phase statuses and the rules of each status), the **Phases** in one row (a field with more than 12 values on a slide of its own, its values in columns), the **Time in Each Status and Most Frequent Moves**, and the **Stalled Open Calls** that fit.
 
@@ -232,19 +232,30 @@ List and Yes / No fields entered by the analysts and shown in the table are chos
 
 ### Columns
 
-Every column header is topped with the colour of its group, as in the Excel export: the columns of the call (and the optional and CDR columns) with that of the call, each field with that of its section, and the team and assignee, root category and cause, status and comments with that of the section of their follow-up field. The default columns fit screens of 1440 px and wider without scrolling sideways: long values wrap on two lines or are shortened and shown whole when you hover them; on screens narrower than 1600 px the Comments column shows the number of comments and the latest one when you hover it. Related values share a column, one below the other, so the table fits in the panel. Drag a column header onto another to move that column before or after it; each browser remembers the order for each workspace, columns added later take their default place, and **Default column order** puts every column back. Reloading the page returns to the position it was scrolled to. The table is paginated with 10 (by default), 25, 50 or 100 rows per page, chosen in **Rows**, also with All panels.
+Every column header is topped with the colour of its group, as in the Excel export: the columns of the call (and the optional and CDR columns) with that of the call, each field with that of its section, and the team and assignee, root category and cause, status and comments with that of the section of their follow-up field. The default columns fit screens of 1440 px and wider without scrolling sideways: long values wrap on two lines or are shortened and shown whole when you hover them; on screens narrower than 1600 px the Comments column shows the number of comments and the latest one when you hover it. Related values share a column, one below the other, so the table fits in the panel. Drag a column header onto another to move that column before or after it, in your own [layout](#table-layouts): columns added later take their default place, and **Default column order**, shown while the order differs from the default one, puts every column of your layout back. Reloading the page returns to the position it was scrolled to. The table is paginated with 10 (by default), 25, 50 or 100 rows per page, chosen in **Rows per page**, also with All panels.
 
 Every name of a column header (for example *Service*, *Result*, *Team* or *Assignee*) sorts the table when clicked, and the funnel beside it opens, right below the header, that field's values to filter by them: search them by name, tick them (**Select All / None** ticks or clears the values shown; root categories and causes are grouped under their domain) and **Apply**. A column filter is the same selection as the Filters panel and its chip: the funnel is filled while that field is filtered.
 
-**Columns**, a button of the table before **Default column order** (for `user-editor` accounts and above), chooses, for every user of the workspace, the optional columns shown after Result / Failure (Session Type (CDR) before Test / Technology):
+**Columns**, a button of the table after **Default column order** (for every user), chooses the columns of your own [layout](#table-layouts), only for you: the optional columns shown after Result / Failure (Session Type (CDR) before Test / Technology) and those of your Excel export:
 
 - `JOIN_ID`, NR Mode, Cell ID, Direction, Session Type (CDR) (the CDR's `Session_Type`), End Time and CDR.
-- The fields of the Analysis Center, grouped by section (the same choice as **Table column** in Fields & Sections).
-- The columns of the CDRs (for example `Cellname_A`, `Region_A` or `Auto_RCA_Category_A`), which show the value of the CDR version shown for each call. Each CDR column can go to the **Table** (up to 12), and then also to the Excel export, or to **Excel** only (up to 100 more). Choosing CDR columns indexes the calls again.
+- The fields of the Analysis Center, grouped by section, each one a column of the table (**Table**; the follow-up fields always have theirs) and of your Excel export (**Excel**).
+- The columns of the CDRs (for example `Cellname_A`, `Region_A` or `Auto_RCA_Category_A`), which show the value of the CDR version shown for each call. Each CDR column can go to the **Table** (up to 12), and then also to the Excel export, or to **Excel** only (up to 100 more). A CDR column that no layout showed before indexes the calls again.
 
-**Default Columns** returns to the columns of a new workspace (no optional or CDR columns, and the Analysis Center fields of the [default catalog](#default-catalog) that are table columns: Analysis Status and Implementation Status), and **Save** applies it.
+**Default Columns** returns to the columns of a new workspace (no optional or CDR columns, and the Table and Excel of the fields of the [default catalog](#default-catalog): Analysis Status and Implementation Status in the table, every field in Excel), **Copy Workspace Layout** to the columns, Excel and column order of the workspace layout, and **Save** applies them to your layout.
 
 Every optional column sorts the table and has its filter: Region and Cluster use their filters of the Filters panel, `JOIN_ID`, NR Mode, Cell ID, Direction, Session Type, End Time and CDR (which chooses CDRs) add theirs under **Additional Columns Filters**, and the CDR columns filter from their header only; every one offers **Empty** for the calls without a value. The Filters panel shows the **General Filters**, then the **NQ Analysis Fields Filters** and the **Additional Columns Filters**.
+
+### Table layouts
+
+The columns of the table, those of the Excel export and their order make a **layout**. **Layout**, a switch beside **Columns**, shows one of two: **Mine** with the switch to the left and **Workspace** with it to the right (click the switch or either name):
+
+| Layout | Who sees it | Who changes it |
+| --- | --- | --- |
+| **Mine** | Only you. The first time it is a copy of the workspace layout. | You, whatever your role: dragging a column header, **Columns** and **Default column order**. |
+| **Workspace** | Every user who has not chosen Mine. | Admins and super-admins: **Save for the workspace**, shown with Mine, makes their layout (columns, Excel and column order) that of the workspace once they confirm. |
+
+A change made while the workspace layout is shown makes it your own layout (when you already had one, you confirm that it is replaced). Switching keeps both, and your choice is kept with the workspace, so every browser shows you the same layout. **Export Excel** exports the fields and CDR columns of the layout you see, the fields in the catalog order (the Excel of the Reporting Jobs, those of the workspace layout). A field added to the catalog after you saved your layout follows the workspace layout until you choose it in **Columns**. The column order each browser kept before the layouts becomes your own layout the first time you open the page, so the table looks the same.
 
 ### Bulk changes
 
@@ -288,9 +299,13 @@ Admins and super-admins can delete the history: the **×** of a change deletes t
 
 **NQ Analysis Configuration**, beside the [Sections bar](#sections-bar) (for `user-editor` accounts and above; only its icon on a phone), opens on hover, or with a click, the configuration of the workspace, shared by every user, each option with the icon it has in the sections menu of the tab:
 
+> [!IMPORTANT]
+> **Only admins and super-admins change the NQ Analysis Configuration.** `user-editor` accounts open every option to see it: a card at the top of the menu and of each option says that only admins and super-admins can change it, its controls are locked and there is no Save. They keep following up the calls (status, team, assignee, root category and cause, fields, comments and bulk changes) and their own [table layout](#table-layouts).
+
+
 | Option | What it configures |
 | --- | --- |
-| [Fields & Sections](#fields-and-sections) | The fields every call is followed up with, their lists, columns and Excel order. |
+| [Fields & Sections](#fields-and-sections) | The fields every call is followed up with, their lists and Excel order. |
 | [Statuses & Teams](#statuses-and-teams) | The NQ Call Statuses and the responsible teams with their members. |
 | [Status Rules](#status-rules) | How the status follows the Analysis, Implementation and Planning fields. |
 | [Root Cause Catalog](#root-cause-catalog) | Domains, Root Categories and Root Causes, with their keywords, and the suggestion rule. |
@@ -305,7 +320,7 @@ The imports and Analysts / Reviewers → Asignees come after a line. The section
 
 ## Fields and sections
 
-**Fields & Sections** (for `user-editor` accounts and above, in the NQ Analysis Configuration menu) configures the catalog of fields every call is followed up with, shared by every user, in the order of the Excel export. **Sections** renames and recolours the six sections (their tabs, the colours of the table headers and of the Excel; by default General blue, RCA yellow, Failure Details red, Analysis purple, Implementation green and Planning a darker green); chips above the fields show the fields of one section, and a filter finds them by name.
+**Fields & Sections** (in the NQ Analysis Configuration menu; admins and super-admins change it) configures the catalog of fields every call is followed up with, shared by every user, in the order of the Excel export. **Sections** renames and recolours the six sections (their tabs, the colours of the table headers and of the Excel; by default General blue, RCA yellow, Failure Details red, Analysis purple, Implementation green and Planning a darker green); chips above the fields show the fields of one section, and a filter finds them by name.
 
 Each field has a name, a **section**, a **source** and a **type**:
 
@@ -317,7 +332,7 @@ Each field has a name, a **section**, a **source** and a **type**:
 | **From the Ericsson RCA** | A column of the [Ericsson RCA results](#ericsson-rca-results), read only (Ericsson RCA Category A … Ericsson RCA Evidence). |
 | **Derived from the call** | A list whose values have keywords looked for in some call fields; the first value whose keywords appear is the value of the call (Session Type: WhatsApp, MULTI-RAB, CALL, HTTP Transfer, Browsing & Streaming and Interactivity & Ping from the CDR `Session_Type` and Test Name). |
 
-Each field can be a **Table column**, go to **Excel** (every field by default), be a **Summary breakdown** (lists and Yes / No) and, when the analysts enter it, be **Required to close**: a call cannot be closed, by hand or by a change of its fields, while a required field is empty. A description is shown when hovering the field. The order of the list (↑ ↓) is the order of the fields in their section and in the Excel export.
+Each field can be a **Summary breakdown** (lists and Yes / No) and, when the analysts enter it, be **Required to close**: a call cannot be closed, by hand or by a change of its fields, while a required field is empty. A description is shown when hovering the field. The order of the list (↑ ↓) is the order of the fields in their section and in the Excel export; whether a field is a column of the table and of the Excel is chosen in [Columns](#columns), in the [table layout](#table-layouts) of each user and, with **Save for the workspace**, in that of the workspace (a new field goes to the Excel and not to the table).
 
 > [!WARNING]
 > Renaming a list value updates every call that uses it and the Status Rules; a value or a field still used by a call cannot be removed, and the type and source of a field with values cannot change.
@@ -347,7 +362,7 @@ The default catalog is the 37 fields of the meeting workbook and those of the an
 
 ## Statuses and teams
 
-**Statuses & Teams** (for `user-editor` accounts and above, in the **NQ Analysis Configuration** menu) configures the values shared by the workspace. Each status and team has a name, a colour and a position; statuses marked **Closed** count as closed in the summary and are left out by **Open calls only**. The first status is the one of the calls that no [Status Rule](#status-rules) matches, such as the calls nobody has followed up yet.
+**Statuses & Teams** (in the **NQ Analysis Configuration** menu; admins and super-admins change it) configures the values shared by the workspace. Each status and team has a name, a colour and a position; statuses marked **Closed** count as closed in the summary and are left out by **Open calls only**. The first status is the one of the calls that no [Status Rule](#status-rules) matches, such as the calls nobody has followed up yet.
 
 The defaults are the statuses Not Attended, Under Analysis, Under Implementation, Under Planning and Closed (closed) — an attended call is open, in one of the three phase statuses, until it is closed — and the teams E2E Team, RAN Planning Coverage, RAN Planning Capacity, RF OPT (Hot Spots) WP2a, Operations, Netcheck and PCI Planning Team.
 
@@ -366,7 +381,7 @@ Choosing only the assignee brings the call to their team (the first one in the l
 
 ## Status Rules
 
-The **NQ Call Status** of each call is semi-automatic: it follows the **Status Rules** of the workspace until an analyst chooses it by hand. **Status Rules** (for `user-editor` accounts and above, in the NQ Analysis Configuration menu and the Lifecycle & Phases panel) lists the rules in order; each sets a status when every one of its conditions holds.
+The **NQ Call Status** of each call is semi-automatic: it follows the **Status Rules** of the workspace until an analyst chooses it by hand. **Status Rules** (in the NQ Analysis Configuration menu and the Lifecycle & Phases panel; admins and super-admins change them) lists the rules in order; each sets a status when every one of its conditions holds.
 
 > [!IMPORTANT]
 > **The first rule that matches gives the status of the call.** The order of the rules is the order they are tried in, so a call that meets several rules gets the status of the first one.
@@ -392,7 +407,7 @@ The automatic status changes as soon as a field, a comment, the team, the assign
 
 ## Root Cause Catalog
 
-**Root Cause Catalog** (for `user-editor` accounts and above, in the NQ Analysis Configuration menu) configures the catalog the Root Category and the Root Cause of each call are chosen from, in four tabs with a filter:
+**Root Cause Catalog** (in the NQ Analysis Configuration menu; admins and super-admins change it) configures the catalog the Root Category and the Root Cause of each call are chosen from, in four tabs with a filter:
 
 | Tab | Content |
 | --- | --- |
@@ -437,7 +452,7 @@ The category with most weight wins (NetCheck goes first when it ties with the pr
 
 ## Ericsson RCA results
 
-**Import Ericsson RCA Results**, in the **NQ Analysis Configuration** menu, imports the results of the Ericsson RCA: a CSV (comma, semicolon or tab separated) or Excel file with one row per call and the columns
+**Import Ericsson RCA Results**, in the **NQ Analysis Configuration** menu (admins and super-admins), imports the results of the Ericsson RCA: a CSV (comma, semicolon or tab separated) or Excel file with one row per call and the columns
 
 | Column | Content |
 | --- | --- |
@@ -516,7 +531,7 @@ The workbook tells how each value was decided (a rule of the tool, reviewed in t
 
 ## Analysts / Reviewers → Asignees
 
-**Analysts / Reviewers → Asignees** (for `user-editor` accounts and above, in the **NQ Analysis Configuration** menu) makes the user account of each analyst the **Asignee** of the calls they analysed, and links the **Analyst** and the **Reviewer** of the calls to their accounts, all at once.
+**Analysts / Reviewers → Asignees** (in the **NQ Analysis Configuration** menu; admins and super-admins apply it) makes the user account of each analyst the **Asignee** of the calls they analysed, and links the **Analyst** and the **Reviewer** of the calls to their accounts, all at once.
 
 > [!TIP]
 > **Create the accounts of the analysts and reviewers first**, with their first and last name: the dialog finds each one by the username or by the name of their account.
@@ -543,8 +558,8 @@ The workbook tells how each value was decided (a rule of the tool, reviewed in t
 Its **NQ Calls** sheet has two header rows coloured like the meeting workbook: the first names the section of each column (merged over its columns, in the colour of the section) and the second the field, every field of a section in the same lighter shade of it (also those from the CDR, the Ericsson RCA or derived). The status of each block and the fields read most stand out in a shade darker than their section: NQ Call Status in General, Analysis Status, Implementation Status and Planned Status (the first list of each phase), the Selected Root Category and Root Cause, the Failure Comment, the Comments, the Description, the Findings and the Proposed Measure (these three in wider columns), and the `JOIN_ID` and Call Key of the call. The columns are:
 
 1. **Call**: `JOIN_ID`, the Call Key and the CDR of the call first, to find a call at once, then Service, Start and End Time, Operator, `Operator_Vendor`, `Vendor_Operator`, Vendor, Campaign, NR Mode, Region, Cluster, City, Technology, Test Name, Session Type (CDR), Direction, Result, Failure Phase, Failure Technology, Cell ID, Latitude, Longitude, its CDR Version, the Latest CDR and the Non-Qualified samples of Speech calls.
-2. Every field of the Analysis Center marked **Excel**, in the order of [Fields & Sections](#fields-and-sections), under its section (Failure Comment in Failure Details): NQ Call Status is followed by **Status Set** (Automatic or By hand); the RCA block ends with the **Root Domain**, the **Recommended Root Category** and **Root Cause**, the **Recommendation Sources** and the **Selected Root Category** and **Root Cause**; and **Comments** holds every comment of the call, one per line with its date, time and author.
-3. The CDR columns chosen for the table or for Excel in **Columns**, then **Updated By** and **Updated At** (when the follow-up of the call last changed).
+2. Every field of the Analysis Center marked **Excel** in the [layout](#table-layouts) you see, in the order of [Fields & Sections](#fields-and-sections), under its section (Failure Comment in Failure Details): NQ Call Status is followed by **Status Set** (Automatic or By hand); the RCA block ends with the **Root Domain**, the **Recommended Root Category** and **Root Cause**, the **Recommendation Sources** and the **Selected Root Category** and **Root Cause**; and **Comments** holds every comment of the call, one per line with its date, time and author.
+3. The CDR columns of that layout, for the table or for Excel only, then **Updated By** and **Updated At** (when the follow-up of the call last changed).
 
 The other sheets are **Speech Samples** with the follow-up of each Non-Qualified sample of the Speech calls (when there are any), **Comments** with every comment and its author, edits and deletion, and **History** with every follow-up and field change. Each of their rows starts with the `JOIN_ID` of its call, as the NQ Calls sheet does, and the comments and changes of each call come together, in the order of the NQ Calls sheet (a Speech sample with its call) and then by date.
 
@@ -572,19 +587,20 @@ The module stores its data in the workspace database, visible in [Admin → Data
 | NQ Team Members | The users that belong to each team. |
 | NQ Root Catalog | The domains, root categories and root causes with the domains chosen for them, the root category of each cause, colours and keywords. |
 | NQ RCA Results | The imported Ericsson RCA results, by `JOIN_ID`, with their file, date and user. |
+| NQ User Table Layouts | The [table layout](#table-layouts) of each user: their columns, Excel and column order, and whether they see it or the workspace layout. |
 
-The section names and colours, the Status Rules and the reviewed equivalences of the [Previous NQ Analyses](#previous-nq-analyses) are kept in the workspace settings.
+The section names and colours, the Status Rules, the columns and column order of the workspace [layout](#table-layouts) and the reviewed equivalences of the [Previous NQ Analyses](#previous-nq-analyses) are kept in the workspace settings.
 
 ### NQ Call Tracking
 
-The follow-up — sections, the field catalog with its values, statuses, teams with their members, the root cause catalog with the Require setting and the suggestion rule, the Status Rules, the equivalences of the Previous NQ Analyses, the Ericsson RCA results, the optional table columns, tracking, comments and history — travels as **NQ Call Tracking** with Admin → Import / Export / Transfer, Full Workspace and Full Environment packages, workspace transfers, and backups and restores. Imports merge it into the destination workspace: missing statuses, teams, domains, root categories and causes, fields (and list values) and equivalences are added, the sections and Status Rules of the package are taken, a call's newer follow-up or field value replaces an older one, and comments, history entries and RCA results are added once, so importing the same package again changes nothing. Packages of the first version, with domains and causes only, are imported into the new catalog.
+The follow-up — sections, the field catalog with its values, statuses, teams with their members, the root cause catalog with the Require setting and the suggestion rule, the Status Rules, the equivalences of the Previous NQ Analyses, the Ericsson RCA results, the [table layouts](#table-layouts) (that of the workspace and that of each user), tracking, comments and history — travels as **NQ Call Tracking** with Admin → Import / Export / Transfer, Full Workspace and Full Environment packages, workspace transfers, and backups and restores. Imports merge it into the destination workspace: missing statuses, teams, domains, root categories and causes, fields (and list values) and equivalences are added; the sections, Status Rules, suggestion rule and Require setting of the package are taken, also where the destination had its own, and so are the section, order, Table column, Excel and Summary breakdown of the fields it has (those only the destination has go after them); the workspace layout of the package (its columns, those for Excel only and the column order) replaces that of the destination, and the layout of each user replaces the one of the same username, also of a user the destination does not have yet; a call's newer follow-up or field value replaces an older one, and comments, history entries and RCA results are added once, so importing the same package again changes nothing. Packages of the first version, with domains and causes only, are imported into the new catalog.
 
 > [!NOTE]
 > **The follow-up finds its calls by their identity.** It applies to the destination calls with the same identity, so the destination may load the CDRs later: their calls show their follow-up as soon as they are indexed. Each call travels with its `JOIN_ID` and service, and the import finds the calls that have one by it, even when the package computed their identity otherwise; the calls without a `JOIN_ID`, and the analyses of calls whose CDR was not loaded in the source, keep their identity. Packages exported before calls were identified by their `JOIN_ID` use the former identities.
 
 ### NQ Calls Configuration
 
-To copy only the configuration to another workspace or server, export or transfer **NQ Calls Configuration** (also a Backup component): the sections, the field catalog with its lists, the statuses, the teams with their members, the Status Rules, the root cause catalog with the Require setting and the suggestion rule, the equivalences of the Previous NQ Analyses and the optional table columns, without Ericsson RCA results, follow-up, comments or history. Its import merges it like the configuration part of NQ Call Tracking: missing statuses, teams, fields, list values, domains, root categories, causes and equivalences are added, the sections and Status Rules of the package are taken, and the table columns, suggestion rule and Require setting are taken only where the destination has none. Statuses and teams of the destination that the package does not have stay: remove them in **Statuses & Teams** if no call uses them.
+To copy only the configuration to another workspace or server, export or transfer **NQ Calls Configuration** (also a Backup component): the sections, the field catalog with its lists, the statuses, the teams with their members, the Status Rules, the root cause catalog with the Require setting and the suggestion rule, the equivalences of the Previous NQ Analyses and the [table layouts](#table-layouts), without Ericsson RCA results, follow-up, comments or history. Its import merges it like the configuration part of NQ Call Tracking: missing statuses, teams, fields, list values, domains, root categories, causes and equivalences are added, and the sections, Status Rules, field settings, table layouts, suggestion rule and Require setting of the package are taken, also where the destination had its own. Statuses and teams of the destination that the package does not have stay: remove them in **Statuses & Teams** if no call uses them.
 
 ### Workspaces of earlier versions
 

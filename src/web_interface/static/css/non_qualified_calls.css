@@ -113,6 +113,9 @@
 .nq-toolbar-actions { display: flex; flex-wrap: wrap; align-items: end; gap: .6rem; }
 .nq-page-size { grid-auto-flow: column; align-items: center; gap: .45rem; }
 .nq-page-size select { width: auto; min-height: 2.2rem; }
+/* Rows per page as tall as the buttons beside it. */
+.nq-toolbar-actions .nq-page-size { white-space: nowrap; }
+.nq-toolbar-actions .nq-page-size select { box-sizing: border-box; height: 2.45rem; min-height: 2.45rem; padding-top: 0; padding-bottom: 0; }
 .nq-table-wrap { overflow-x: auto; border: 1px solid var(--nq-border); border-radius: 12px; }
 .non-qualified-calls.is-loading .nq-table-wrap { opacity: .55; transition: opacity .2s; }
 /* While a panel waits for its data: an animated bar below its filters, as in Scoring & GAP Analysis, over its dimmed content. */
@@ -1255,3 +1258,27 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 .nq-failure-table td.nq-failure-above { color: #c62835; font-weight: 850; }
 .nq-failure-drill { padding: 0; border: 0; background: none; color: inherit; font: inherit; font-weight: 750; cursor: pointer; }
 .nq-failure-drill:hover, .nq-failure-drill.is-active { text-decoration: underline; }
+/* The layout of the table: Mine (only for the user) or Workspace (what every user sees). */
+.nq-layout-switch { display: inline-flex; align-items: center; gap: .35rem; min-height: 2.45rem; padding: 0 .75rem; border: 1px solid var(--nq-border); border-radius: 999px; background: #fff; box-sizing: border-box; }
+/* Layout:, Mine and Workspace in the type of the buttons beside them. */
+.nq-layout-label { margin-right: .15rem; color: var(--nq-dark); font-size: 1rem; font-weight: 780; }
+.non-qualified-calls .nq-layout-side { min-height: 0; padding: .2rem .15rem; border: 0; background: none; color: var(--nq-muted); font-size: 1rem; font-weight: 780; box-shadow: none; }
+.non-qualified-calls .nq-layout-side:hover { color: var(--nq-dark); }
+.non-qualified-calls .nq-layout-side.is-active { color: var(--nq-dark); }
+.non-qualified-calls .nq-layout-toggle { position: relative; flex: 0 0 auto; width: 2.7rem; height: 1.5rem; min-height: 0; padding: 0; border: 0; border-radius: 999px; background: linear-gradient(135deg, var(--nq-dark), var(--nq-color)); box-shadow: inset 0 1px 3px rgba(60, 10, 30, .35); cursor: pointer; }
+.nq-layout-knob { position: absolute; top: .2rem; left: .2rem; width: 1.1rem; height: 1.1rem; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(60, 10, 30, .35); transition: transform .18s ease; }
+.nq-layout-toggle[aria-checked="true"] .nq-layout-knob { transform: translateX(1.2rem); }
+.nq-layout-toggle:focus-visible { outline: 2px solid var(--nq-color); outline-offset: 2px; }
+/* The configuration the role cannot change: the card on top and every control of the fieldset locked. */
+.nq-config-fieldset { display: contents; }
+.nq-config-fieldset:disabled .nq-file-action { opacity: .55; cursor: not-allowed; }
+.nq-menu .nq-role-warning { margin: .15rem .15rem .4rem; padding: .5rem .65rem; font-size: .76rem; }
+/* Columns: each field of the Analysis Center as a column of the table and of the Excel. */
+.nq-columns-field-group .nq-columns-field-columns { margin-top: 0; }
+.nq-columns-field-group .nq-columns-field-row { font-size: .8rem; font-weight: 700; }
+.nq-columns-field-row input:disabled { opacity: .55; }
+.nq-columns-scope { color: var(--nq-dark); font-weight: 750; }
+.nq-columns-scope[hidden] { display: none; }
+/* The buttons the page hides (Save of a configuration the role cannot change, Save for the workspace, Default column
+   order…) stay hidden despite their display. */
+:is(.non-qualified-calls, .nq-drawer, .nq-options-dialog) :is(.nq-primary-action, .nq-secondary-action, .nq-link-action)[hidden] { display: none; }

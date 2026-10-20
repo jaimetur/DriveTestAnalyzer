@@ -6,13 +6,17 @@
 ## Release: v0.8.3
 ### Release Date: 2026-10-21
 #### ⚠️ Breaking Changes:
+- **Dataset uploads and the NQ Analysis Configuration only for admins:** only admins and super-admins upload datasets to a workspace (the other roles see a card in **Data Ingestion** that says so, and the server rejects their uploads) and change the NQ Analysis Configuration of Non-Qualified Calls (Fields & Sections, Statuses & Teams, Status Rules, the Root Cause Catalog, the Ericsson RCA results and Analysts / Reviewers → Asignees); `user-editor` accounts open every option to see it, under a card that says that only admins and super-admins can change it, with its controls locked, and keep following up the calls.
 
 #### 🌟 New Features:
+- **Table layouts in Non-Qualified Calls:** the columns of the Calls table, those of the Excel export (each field of the Analysis Center now with **Table** and **Excel** in **Columns**, which Fields & Sections no longer shows) and the column order make a layout, and **Layout**, a switch beside Columns, shows **Mine** (to the left), only for the user, or **Workspace** (to the right), what every user sees. Every role arranges their own (Columns, dragging a header or Default column order, kept with the workspace instead of in each browser, whose order becomes the user's own once), **Copy Workspace Layout** starts it again from the workspace one, and admins and super-admins make theirs that of the workspace with **Save for the workspace**; Export Excel follows the layout shown. The layouts are listed as **NQ User Table Layouts** in Database Management, every change is recorded in App Events, and they travel with NQ Call Tracking and NQ Calls Configuration, whose imports now take the workspace layout of the package (with its CDR columns for Excel only and its column order), the layout of each user by username, the section, order, Table column, Excel and Summary breakdown of its fields, its suggestion rule and its Require setting, also where the destination had its own.
 
 #### 🚀 Enhancements:
 - **Move Up and Move Down in the Favourites Filters:** the **Favourites Filters** panel of Scoring & GAP Analysis has **Move Up** and **Move Down** buttons before **Use newer CDRs** that move every checked Saved Filter one place up or down in the list (those side by side together), keeping the order for every user of the workspace as dragging does and recording it in App Events; readers do not see them. The moved cards light up in amber for a moment where they land, the page follows the one leading the way, and the bar of Select all to Delete stays at the top of the window while the panel is scrolled.
+- **Rows per page in Non-Qualified Calls:** the page size of the Calls table is called **Rows per page** and is as tall as the buttons beside it.
 
 #### 🐛 Bug fixes:
+- **Buttons hidden in Non-Qualified Calls:** **Default column order** shows only when the column order differs from the default one, and the other buttons the page hides stay hidden.
 
 #### 📚 Documentation:
 

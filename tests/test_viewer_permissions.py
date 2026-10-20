@@ -98,3 +98,17 @@ def test_super_admins_see_every_module_and_admins_do_not_change_them(client):
     assert response.status_code == 200
     assert response.json() == {'updated': [], 'skipped': ['boss: only super-admins can change super-admin accounts']}
     assert client.post('/admin/users/bulk', data={'user_ids': [admin_id], 'action': 'role', 'value': 'super-admin'}).status_code == 403
+
+
+def test_only_admins_upload_datasets_and_the_other_roles_see_why(client):
+    _viewer(client, 'editor', 'user-editor')
+    page = client.get('/workspace').text
+    assert 'Only admins and super-admins can upload datasets to the workspace.' in page and '<form class="upload-dropzone"' not in page
+    upload = client.post('/datasets-analysis/upload', files={'dataset_files': ('x.csv', io.BytesIO(b'a\n1\n'), 'text/csv')},
+                         follow_redirects=False)
+    assert upload.status_code == 403 and 'Only admins and super-admins can upload datasets' in upload.text
+    started = client.post('/api/uploads', json={'workspace_id': core.active_workspace.id, 'files': [{'name': 'x.csv', 'size': 4}], 'form': {}})
+    assert started.status_code == 403
+    _viewer(client, 'manager', 'admin')
+    page = client.get('/workspace').text
+    assert '<form class="upload-dropzone"' in page and 'Only admins and super-admins can upload datasets' not in page

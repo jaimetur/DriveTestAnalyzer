@@ -27,8 +27,8 @@ Administrator Config centralises user, portability, database and dataset adminis
 | Role | Available administration |
 | --- | --- |
 | `user-viewer` | Explore the permitted workspace features, datasets and App Logs, and generate jobs (Dashboard PPTs with any filters, Scoring calculations, Network Insights analyses and exports, queries and reports). Cannot change the workspace: no uploading, deleting, reprocessing, stopping, mapping or clearing datasets, editing NR Modes, recreating combined tables, saving, renaming or deleting Dashboards, saved queries or Scoring jobs, and no access to Application Config or Workspace Config. |
-| `user-editor` | edit Application Config and the active workspace's Workspace Config panels; cannot use user-management controls. |
-| `admin` | manage users within policy, edit Application Config and Workspace Config, manage datasets, and export/import/transfer content for accessible workspaces. |
+| `user-editor` | edit Application Config and the active workspace's Workspace Config panels and follow up the Non-Qualified Calls; cannot upload datasets to a workspace, change the NQ Analysis Configuration or use user-management controls. |
+| `admin` | manage users within policy, edit Application Config and Workspace Config, upload and manage datasets, change the NQ Analysis Configuration and the table layout of the workspace in Non-Qualified Calls, and export/import/transfer content for accessible workspaces. |
 | `super-admin` | create or modify super-admin accounts, assign workspace access, edit Application Config and Workspace Config, export Full Environments, and approve incoming server transfers. |
 
 An admin cannot modify a super-admin account or assign the super-admin role. The signed-in account cannot delete itself, and at least one active super-admin must remain.

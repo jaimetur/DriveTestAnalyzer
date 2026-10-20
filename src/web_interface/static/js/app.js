@@ -6882,7 +6882,8 @@ function setupNativeSelectMenus() {
   if (!window.matchMedia?.('(pointer: fine)').matches) return;
   const SEARCH_FROM = 12;
   let current = null;
-  const handled = (select) => select instanceof HTMLSelectElement && !select.multiple && select.size <= 1 && !select.disabled
+  // A select of a disabled fieldset (a configuration the role cannot change) does not open either.
+  const handled = (select) => select instanceof HTMLSelectElement && !select.multiple && select.size <= 1 && !select.matches(':disabled')
     && !select.closest('[data-native-select]');
   const optionText = (option) => (option.label || option.textContent || option.value || '').trim();
 

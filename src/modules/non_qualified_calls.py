@@ -37,6 +37,7 @@ import json
 import math
 import queue
 import re
+import sqlite3
 import tempfile
 import threading
 import time
@@ -77,6 +78,7 @@ NQ_CALL_VERSIONS_TABLE = 'nq_call_versions'
 NQ_CALL_LATEST_TABLE = 'nq_call_latest'
 NQ_FIELDS_TABLE = 'nq_analysis_fields'
 NQ_FIELD_VALUES_TABLE = 'nq_analysis_field_values'
+NQ_USER_LAYOUTS_TABLE = 'nq_user_table_layouts'
 # Database Management titles of the module tables.
 NQ_TABLE_TITLES = {
     NQ_CALLS_TABLE: 'NQ Calls',
@@ -93,6 +95,7 @@ NQ_TABLE_TITLES = {
     NQ_CALL_LATEST_TABLE: 'NQ Call Latest',
     NQ_FIELDS_TABLE: 'NQ Analysis Fields',
     NQ_FIELD_VALUES_TABLE: 'NQ Analysis Field Values',
+    NQ_USER_LAYOUTS_TABLE: 'NQ User Table Layouts',
 }
 SERVICES = ('voice', 'speech', 'data')
 SERVICE_LABELS = {'voice': 'Voice', 'speech': 'Speech', 'data': 'Data'}
@@ -206,7 +209,7 @@ ANALYSIS_CENTER_V22_STATE_KEY = 'nq_analysis_center_v22'
 V22_FORMER_LABELS = (('implementation_proposal', 'Implementation Proposal'),)
 # Set once the tables and columns of this version exist, so the requests check the schema without writing.
 SCHEMA_STATE_KEY = 'nq_calls_schema'
-SCHEMA_VERSION = '2026-10-16.2'
+SCHEMA_VERSION = '2026-10-20.1'
 # Indexed call fields that the suggestion rule can read, with their labels.
 RULE_FIELDS = {
     'failure_classification': 'Failure Classification', 'failure_category': 'Failure Category',
@@ -476,6 +479,12 @@ CREATE TABLE IF NOT EXISTS {NQ_TEAM_MEMBERS_TABLE} (
     team TEXT NOT NULL COLLATE NOCASE,
     username TEXT NOT NULL COLLATE NOCASE,
     PRIMARY KEY (team, username)
+);
+CREATE TABLE IF NOT EXISTS {NQ_USER_LAYOUTS_TABLE} (
+    username TEXT PRIMARY KEY COLLATE NOCASE,
+    layout_json TEXT NOT NULL DEFAULT '',
+    view TEXT NOT NULL DEFAULT 'mine',
+    updated_at TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS {NQ_ROOT_CATALOG_TABLE} (
     kind TEXT NOT NULL CHECK(kind IN ('domain', 'category', 'cause')),
@@ -1485,14 +1494,15 @@ def table_columns(repository: Any) -> dict[str, list[str]]:
 
 
 def indexed_cdr_columns(repository: Any) -> list[str]:
-    """The CDR columns kept with every call: those of the table, those only exported to Excel and those of the catalog."""
+    """The CDR columns kept with every call: those of the table, those only exported to Excel, those of the personal
+    table layouts and those of the catalog."""
     columns = table_columns(repository)
     try:
         catalog = [field['source_ref'][7:] for field in list_fields(repository)
                    if field['source'] == 'cdr' and field['source_ref'].startswith('column:')]
     except Exception:  # noqa: BLE001 - the catalog table may not exist yet while the module tables are created.
         catalog = []
-    return list(dict.fromkeys([*columns['cdr'], *columns['export_cdr'], *catalog]))
+    return list(dict.fromkeys([*columns['cdr'], *columns['export_cdr'], *_user_cdr_columns(repository), *catalog]))
 
 
 def save_table_columns(repository: Any, builtin: Any, cdr: Any, username: str, export_cdr: Any = (), *,
@@ -1510,11 +1520,220 @@ def save_table_columns(repository: Any, builtin: Any, cdr: Any, username: str, e
         raise ValueError(f'Choose at most {MAX_EXPORT_CDR_COLUMNS} CDR columns for Excel only.')
     repository.set_workspace_state(TABLE_COLUMNS_STATE_KEY, json.dumps(
         {'builtin': _strings(builtin), 'cdr': cdr_columns, 'export_cdr': export_columns}))
+    # The calls are indexed again for the new columns: those no personal layout shows any more go too.
+    _remember_user_cdr_columns(repository, prune=True)
     if hasattr(repository, 'try_add_log'):
         repository.try_add_log(username, 'nq_table_columns', 'Non-Qualified Calls table columns taken from an imported '
                                'configuration.' if imported else 'Non-Qualified Calls table columns restored to the default '
                                'columns.' if defaults else 'Non-Qualified Calls table columns updated.')
     return table_columns(repository)
+
+
+# ---------------------------------------------------------------------------
+# Table layouts: the columns of the Calls table and of its Excel export, and their order, of the workspace (what
+# every user sees) or of each user (only for them)
+# ---------------------------------------------------------------------------
+COLUMN_ORDER_STATE_KEY = 'nq_calls_column_order'
+# The CDR columns the personal layouts showed: kept indexed when a user removes one, so the CDRs are not indexed again;
+# the next change of the workspace columns forgets those no personal layout shows.
+USER_CDR_COLUMNS_STATE_KEY = 'nq_calls_user_cdr_columns'
+LAYOUT_VIEWS = ('mine', 'workspace')
+MAX_ORDER_COLUMNS = 400
+
+
+def _column_order(value: Any) -> list[str]:
+    return [item[:160] for item in _strings(value) if item.strip()][:MAX_ORDER_COLUMNS]
+
+
+def _user_cdr_columns(repository: Any) -> list[str]:
+    try:
+        return _strings(json.loads(repository.get_workspace_state(USER_CDR_COLUMNS_STATE_KEY) or '[]'))
+    except (TypeError, ValueError):
+        return []
+
+
+def _stored_user_layouts(repository: Any) -> list[Any]:
+    with repository.connection() as connection:
+        return connection.execute(
+            f'SELECT username, layout_json, view, updated_at FROM {NQ_USER_LAYOUTS_TABLE} ORDER BY username COLLATE NOCASE').fetchall()
+
+
+def _remember_user_cdr_columns(repository: Any, *, prune: bool = False) -> None:
+    """Keep indexed the CDR columns of the personal layouts (``prune``: only those they show now)."""
+    try:
+        rows = _stored_user_layouts(repository)
+    except sqlite3.OperationalError:
+        return
+    current: list[str] = []
+    for row in rows:
+        try:
+            layout = json.loads(row['layout_json'] or '{}')
+        except (TypeError, ValueError):
+            continue
+        if isinstance(layout, dict):
+            current += [name.strip()[:120] for name in [*_strings(layout.get('cdr')), *_strings(layout.get('export_cdr'))] if name.strip()]
+    kept = list(dict.fromkeys(current if prune else [*_user_cdr_columns(repository), *current]))
+    if kept != _user_cdr_columns(repository):
+        repository.set_workspace_state(USER_CDR_COLUMNS_STATE_KEY, json.dumps(kept, ensure_ascii=False))
+
+
+def workspace_layout(task_repository: Any, fields: list[dict[str, Any]] | None = None) -> dict[str, list[str]]:
+    """The layout of the workspace: its Additional Columns, the catalog fields that are table columns and those exported
+    to Excel (Table column and Excel of Fields & Sections), and the column order."""
+    fields = list_fields(task_repository) if fields is None else fields
+    try:
+        order = json.loads(task_repository.get_workspace_state(COLUMN_ORDER_STATE_KEY) or '[]')
+    except (TypeError, ValueError):
+        order = []
+    return {**table_columns(task_repository),
+            'fields': [field['key'] for field in fields if field['in_table'] and field['source'] != 'tracking'],
+            'excel_fields': [field['key'] for field in fields if field.get('in_export', True)],
+            'known_fields': [field['key'] for field in fields], 'order': _column_order(order)}
+
+
+def _normalize_layout(layout: Any, fields: list[dict[str, Any]], *, strict: bool = True) -> dict[str, list[str]]:
+    """A valid layout; ``strict`` refuses too many CDR columns instead of keeping the first ones."""
+    layout = layout if isinstance(layout, dict) else {}
+    keys = [field['key'] for field in fields]
+    columns = [key for key in keys if next(field for field in fields if field['key'] == key)['source'] != 'tracking']
+    cdr = list(dict.fromkeys(name.strip()[:120] for name in _strings(layout.get('cdr')) if name.strip()))
+    export = [name for name in dict.fromkeys(name.strip()[:120] for name in _strings(layout.get('export_cdr')) if name.strip())
+              if name not in cdr]
+    if strict and len(cdr) > MAX_CDR_COLUMNS:
+        raise ValueError(f'Choose at most {MAX_CDR_COLUMNS} CDR columns for the table.')
+    if strict and len(export) > MAX_EXPORT_CDR_COLUMNS:
+        raise ValueError(f'Choose at most {MAX_EXPORT_CDR_COLUMNS} CDR columns for Excel only.')
+    shown, exported = set(_strings(layout.get('fields'))), set(_strings(layout.get('excel_fields')))
+    known = set(_strings(layout.get('known_fields'))) if 'known_fields' in layout else set(keys)
+    return {'builtin': [column for column in _strings(layout.get('builtin')) if column in OPTIONAL_COLUMNS],
+            'cdr': cdr[:MAX_CDR_COLUMNS], 'export_cdr': export[:MAX_EXPORT_CDR_COLUMNS],
+            'fields': [key for key in columns if key in shown], 'excel_fields': [key for key in keys if key in exported],
+            'known_fields': [key for key in keys if key in known], 'order': _column_order(layout.get('order'))}
+
+
+def _resolved_layout(layout: dict[str, list[str]], workspace: dict[str, list[str]], fields: list[dict[str, Any]]) -> dict[str, list[str]]:
+    """A personal layout as it shows: the fields added to the catalog after it was saved follow the workspace."""
+    known = set(layout['known_fields'])
+    pick = lambda key, mine, theirs: key in mine if key in known else key in theirs  # noqa: E731
+    shown, exported = set(layout['fields']), set(layout['excel_fields'])
+    return {**layout,
+            'fields': [field['key'] for field in fields if field['source'] != 'tracking'
+                       and pick(field['key'], shown, set(workspace['fields']))],
+            'excel_fields': [field['key'] for field in fields if pick(field['key'], exported, set(workspace['excel_fields']))]}
+
+
+def table_layouts(task_repository: Any, username: str) -> dict[str, Any]:
+    """The layout of the workspace, that of the user (None while they have none), which one they see (``view``) and the
+    layout they see (``effective``)."""
+    fields = list_fields(task_repository)
+    workspace = workspace_layout(task_repository, fields)
+    with task_repository.connection() as connection:
+        row = connection.execute(f'SELECT layout_json, view FROM {NQ_USER_LAYOUTS_TABLE} WHERE username = ?', (username,)).fetchone()
+    mine = None
+    if row is not None and row['layout_json']:
+        try:
+            mine = _resolved_layout(_normalize_layout(json.loads(row['layout_json']), fields, strict=False), workspace, fields)
+        except (TypeError, ValueError):
+            mine = None
+    view = 'mine' if mine is not None and row['view'] == 'mine' else 'workspace'
+    return {'workspace': workspace, 'mine': mine, 'view': view, 'effective': mine if view == 'mine' else workspace}
+
+
+def _layout_summary(layout: dict[str, list[str]]) -> str:
+    return (f"{len(layout['builtin'])} call columns, {len(layout['cdr'])} CDR columns in the table and {len(layout['export_cdr'])} "
+            f"in Excel only, {len(layout['fields'])} Analysis Center fields in the table and {len(layout['excel_fields'])} in Excel, "
+            f"{'a column order of its own' if layout['order'] else 'the default column order'}")
+
+
+def _store_user_layout(task_repository: Any, username: str, layout: dict[str, list[str]] | None, view: str) -> None:
+    with task_repository.connection() as connection:
+        connection.execute(
+            f'INSERT INTO {NQ_USER_LAYOUTS_TABLE} (username, layout_json, view, updated_at) VALUES (?, ?, ?, ?) '
+            'ON CONFLICT(username) DO UPDATE SET layout_json = excluded.layout_json, view = excluded.view, updated_at = excluded.updated_at',
+            (username, json.dumps(layout, ensure_ascii=False) if layout is not None else '', view, now_iso()))
+
+
+LAYOUT_REASONS = {
+    'changed': 'saved', 'defaults': 'put back to the default columns', 'order': 'saved with a new column order',
+    'default_order': 'put back to the default column order', 'copied': 'copied from the workspace layout',
+}
+
+
+def save_user_layout(task_repository: Any, username: str, changes: dict[str, Any], *, reason: str = 'changed') -> dict[str, Any]:
+    """Save the layout of a user and show it to them: the parts not given keep those of their layout (or, without one,
+    those of the workspace)."""
+    current = table_layouts(task_repository, username)
+    base = current['mine'] or current['workspace']
+    fields = list_fields(task_repository)
+    given = {key: value for key, value in (changes or {}).items() if value is not None}
+    if 'fields' in given or 'excel_fields' in given:
+        given.setdefault('known_fields', [field['key'] for field in fields])
+    layout = _normalize_layout({**base, **given}, fields)
+    _store_user_layout(task_repository, username, layout, 'mine')
+    _remember_user_cdr_columns(task_repository)
+    if hasattr(task_repository, 'try_add_log'):
+        task_repository.try_add_log(username, 'nq_table_layout', f'Non-Qualified Calls table layout of {username} '
+                                    f'{LAYOUT_REASONS.get(reason, "saved")}: {_layout_summary(layout)}.')
+    return table_layouts(task_repository, username)
+
+
+def set_layout_view(task_repository: Any, username: str, view: str) -> dict[str, Any]:
+    """Show the user their own layout (a copy of the workspace one the first time) or that of the workspace."""
+    if view not in LAYOUT_VIEWS:
+        raise ValueError('Choose Mine or Workspace.')
+    current = table_layouts(task_repository, username)
+    if view == 'mine' and current['mine'] is None:
+        return save_user_layout(task_repository, username, {}, reason='copied')
+    _store_user_layout(task_repository, username, current['mine'], view)
+    if hasattr(task_repository, 'try_add_log'):
+        task_repository.try_add_log(username, 'nq_table_layout_view', f'Non-Qualified Calls table layout of {username} switched '
+                                    f'to {"their own layout" if view == "mine" else "the workspace layout"}.')
+    return table_layouts(task_repository, username)
+
+
+def copy_workspace_layout(task_repository: Any, username: str) -> dict[str, Any]:
+    """Start the layout of the user again from that of the workspace."""
+    return save_user_layout(task_repository, username, dict(table_layouts(task_repository, username)['workspace']), reason='copied')
+
+
+def publish_user_layout(task_repository: Any, username: str) -> dict[str, Any]:
+    """Make the layout of the user that of the workspace (Save for the workspace): its columns, the Table column and Excel
+    of the catalog fields and the column order."""
+    layout = table_layouts(task_repository, username)['mine']
+    if layout is None:
+        raise ValueError('Arrange your own layout first: the workspace takes it.')
+    task_repository.set_workspace_state(TABLE_COLUMNS_STATE_KEY, json.dumps(
+        {'builtin': layout['builtin'], 'cdr': layout['cdr'], 'export_cdr': layout['export_cdr']}, ensure_ascii=False))
+    task_repository.set_workspace_state(COLUMN_ORDER_STATE_KEY, json.dumps(layout['order'], ensure_ascii=False))
+    _store_layout_flags(task_repository, layout['fields'], layout['excel_fields'])
+    _remember_user_cdr_columns(task_repository, prune=True)
+    if hasattr(task_repository, 'try_add_log'):
+        task_repository.try_add_log(username, 'nq_table_layout_publish', f'Non-Qualified Calls table layout of {username} saved '
+                                    f'for the workspace: {_layout_summary(layout)}.')
+    return table_layouts(task_repository, username)
+
+
+def _store_layout_flags(task_repository: Any, shown: list[str], exported: list[str]) -> None:
+    """The Table column and Excel of the catalog fields (the follow-up fields always have their column)."""
+    fields = list_fields(task_repository)
+    for field in fields:
+        if field['source'] != 'tracking':
+            field['in_table'] = field['key'] in shown
+        field['in_export'] = field['key'] in exported
+    _store_fields(task_repository, fields)
+
+
+def user_layouts(task_repository: Any) -> list[dict[str, Any]]:
+    """Every personal layout of the workspace, for its exports."""
+    layouts = []
+    for row in _stored_user_layouts(task_repository):
+        try:
+            layout = json.loads(row['layout_json']) if row['layout_json'] else None
+        except (TypeError, ValueError):
+            layout = None
+        layouts.append({'username': str(row['username']), 'layout': layout, 'view': str(row['view']),
+                        'updated_at': str(row['updated_at'])})
+    return layouts
 
 
 def available_cdr_columns(task_repository: Any) -> list[str]:
@@ -3577,7 +3796,7 @@ def _order_sql(sort: str, task_repository: Any) -> str:
             return field_sql(definition)
     if sort.startswith('cdr:'):
         name = sort.split(':', 1)[1]
-        if name in table_columns(task_repository)['cdr']:
+        if name in indexed_cdr_columns(task_repository):
             return f"COALESCE(json_extract(extra_json, '$.\"{name.replace(chr(34), '')}\"'), '')"
     return SORT_COLUMNS.get(sort, 'start_time')
 
@@ -3691,9 +3910,9 @@ def query_calls(task_repository: Any, request: dict[str, Any], username: str) ->
 VALUE_FILTER_FIELDS = ('analyst', 'reviewer')
 
 
-def filter_options(task_repository: Any) -> dict[str, list[str]]:
+def filter_options(task_repository: Any, layout: dict[str, list[str]] | None = None) -> dict[str, list[str]]:
     """Distinct values of every indexed filter; Operators and Vendors with their mapped labels and the NetCheck RCA
-    with the spelling of its values."""
+    with the spelling of its values; the column filters of the table ``layout`` (that of the workspace by default)."""
     values: dict[str, list[str]] = {}
     mapper = ValueMapper.from_repository(task_repository)
     maps = _value_maps(task_repository)
@@ -3718,7 +3937,7 @@ def filter_options(task_repository: Any) -> dict[str, list[str]]:
             f"SELECT DISTINCT assignee FROM {NQ_CALL_TRACKING_TABLE} WHERE assignee <> '' ORDER BY assignee COLLATE NOCASE"
         ).fetchall()
         # The values of every optional and CDR column of the table, for their header filters.
-        chosen = table_columns(task_repository)
+        chosen = layout or table_columns(task_repository)
         for key in [*(column for column in chosen['builtin'] if column in COLUMN_FILTER_SQL), *(f'cdr:{name}' for name in chosen['cdr'])]:
             expression = column_filter_sql(key)
             rows = connection.execute(
@@ -3748,8 +3967,8 @@ def _filter_expressions(task_repository: Any, definitions: list[dict[str, Any]])
     for definition in definitions:
         if definition['source'] in {'user', 'derived'} and (definition['type'] in {'list', 'yes_no'} or definition['key'] in VALUE_FILTER_FIELDS):
             expressions[f"field:{definition['key']}"] = field_sql(definition)
-    chosen = table_columns(task_repository)
-    for key in [*(column for column in chosen['builtin'] if column in COLUMN_FILTER_SQL), *(f'cdr:{name}' for name in chosen['cdr'])]:
+    # Every optional and indexed CDR column, as the table layout of each user may show it.
+    for key in [*COLUMN_FILTER_SQL, *(f'cdr:{name}' for name in indexed_cdr_columns(task_repository))]:
         expressions[f'column:{key}'] = column_filter_sql(key)
     return expressions
 
@@ -6376,14 +6595,18 @@ def _comment_log(rows: list[Any]) -> str:
     return '\n'.join(lines)
 
 
-def export_workbook(task_repository: Any, filters: dict[str, Any], username: str) -> bytes:
-    """Every call that matches the filters with its catalog fields by section, its comments and its change history."""
+def export_workbook(task_repository: Any, filters: dict[str, Any], username: str, *, workspace_layout_only: bool = False) -> bytes:
+    """Every call that matches the filters with its catalog fields by section, its comments and its change history: the
+    fields and CDR columns of the table layout the user sees (``workspace_layout_only``: that of the workspace)."""
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
     from openpyxl.utils import get_column_letter
 
     options = list_options(task_repository)
     definitions = list_fields(task_repository)
+    layouts = table_layouts(task_repository, username)
+    layout = layouts['workspace'] if workspace_layout_only else layouts['effective']
+    excel = set(layout['excel_fields'])
     sections = {section['key']: section for section in list_sections(task_repository)}
     closed = [item['name'] for item in options['statuses'] if item['closed']]
     default = untracked_status(task_repository, options)
@@ -6442,7 +6665,7 @@ def export_workbook(task_repository: Any, filters: dict[str, Any], username: str
     columns: list[tuple[dict[str, str], str, Callable[[dict[str, Any]], Any], float]] = [
         (CALL_SECTION, label, (lambda call, key=key: call.get(key)), KEY_FIELD_TINT if key in EMPHASIS_CALL_COLUMNS else CALL_FIELD_TINT)
         for label, key in EXPORT_COLUMNS]
-    exported = [field for field in definitions if field.get('in_export', True)]
+    exported = [field for field in definitions if field['key'] in excel]
     highlighted = key_fields(definitions)
     # The recommendation goes right before the selected root category (or cause, without the category).
     selected = next((field['key'] for field in exported if field['source'] == 'tracking'
@@ -6468,7 +6691,7 @@ def export_workbook(task_repository: Any, filters: dict[str, Any], username: str
                 columns.append((section, label, lambda call, key=key: call.get(key, ''), FIELD_TINT))
     extra_section = {'key': 'cdr', 'label': 'CDR Columns', 'color': '#5E6B75'}
     columns += [(extra_section, name, (lambda call, name=name: (call.get('extra') or {}).get(name, '')), 0.8)
-                for name in indexed_cdr_columns(task_repository)
+                for name in dict.fromkeys([*layout['cdr'], *layout['export_cdr']])
                 if not any(field['source'] == 'cdr' and field['source_ref'] == f'column:{name}' for field in definitions)]
     columns += [(CALL_SECTION, 'Updated By', lambda call: call.get('updated_by', ''), CALL_FIELD_TINT),
                 (CALL_SECTION, 'Updated At', lambda call: str(call.get('updated_at') or '').replace('T', ' ')[:19], CALL_FIELD_TINT)]
@@ -6536,7 +6759,7 @@ def export_workbook(task_repository: Any, filters: dict[str, Any], username: str
                           ('Sample', lambda sample: sample.get('sample_id')), ('Start Time', lambda sample: sample.get('start_time')),
                           ('Result', lambda sample: sample.get('result')),
                           *((field['label'], lambda sample, key=field['key']: sample['values'].get(key, ''))
-                            for field in definitions if field.get('in_export', True) and field['source_ref'] != 'comments'),
+                            for field in definitions if field['key'] in excel and field['source_ref'] != 'comments'),
                           ('Comments', lambda sample: sample.get('comment_log', '')),
                           ('Call Key', lambda sample: sample.get('parent_key')), ('Sample Key', lambda sample: sample.get('call_key'))]
         write_sheet(workbook.create_sheet('Speech Samples'), [label for label, _getter in sample_columns],
@@ -6670,6 +6893,7 @@ def _configuration(task_repository: Any) -> dict[str, Any]:
         'options': list_options(task_repository), 'root_causes': list_root_causes(task_repository),
         'fields': list_fields(task_repository), 'sections': list_sections(task_repository),
         'status_rules': status_rules(task_repository), 'table_columns': table_columns(task_repository),
+        'column_order': workspace_layout(task_repository)['order'], 'user_layouts': user_layouts(task_repository),
         'analyses_equivalences': workspace_equivalences(task_repository),
     }
 
@@ -6712,7 +6936,8 @@ def _incoming_root_catalog(document: dict[str, Any]) -> dict[str, list[dict[str,
 
 def _merge_configuration(task_repository: Any, document: dict[str, Any]) -> None:
     """Add the missing statuses, teams, fields, list values and root cause catalog entries of a document and take its
-    sections and status rules (the table columns, suggestion rule and Require setting only where the workspace has none)."""
+    sections, status rules, field settings (section, order, Table column, Excel and Summary breakdown), table layouts (that
+    of the workspace and those of the users, by username), suggestion rule and Require setting."""
     options = document.get('options') if isinstance(document.get('options'), dict) else {}
     # Missing fields are added (in their section) and the values of the list fields are merged.
     incoming_fields = [item for item in document.get('fields') or [] if isinstance(item, dict) and item.get('key') and item.get('label')]
@@ -6735,6 +6960,11 @@ def _merge_configuration(task_repository: Any, document: dict[str, Any]) -> None
                 target['options'] = [*target['options'], *(
                     option for option in item.get('options') or []
                     if isinstance(option, dict) and str(option.get('name') or '').casefold() not in names)]
+            # The settings of the package: its section, Table column, Excel and Summary breakdown.
+            target.update({key: item[key] for key in ('section', 'in_table', 'in_export', 'in_summary') if key in item})
+        # The fields of the package in its order, then those only the workspace has, in theirs.
+        order = {str(item['key']): index for index, item in enumerate(incoming_fields)}
+        merged.sort(key=lambda field: order.get(field['key'], len(order)))
         if merged != current_fields:
             _store_fields(task_repository, nq_catalog.normalize_fields(merged, by_key, CATALOG_CALL_FIELDS))
     if isinstance(document.get('sections'), list):
@@ -6748,12 +6978,15 @@ def _merge_configuration(task_repository: Any, document: dict[str, Any]) -> None
                 equivalences.setdefault(target, {}).setdefault(key, item)
         _save_equivalences(task_repository, equivalences)
     columns = document.get('table_columns')
-    if isinstance(columns, dict) and not task_repository.get_workspace_state(TABLE_COLUMNS_STATE_KEY):
+    if isinstance(columns, dict):
         try:
             # The application takes them (system), not a user: the event says they come from the imported configuration.
-            save_table_columns(task_repository, columns.get('builtin') or [], columns.get('cdr') or [], 'system', imported=True)
+            save_table_columns(task_repository, columns.get('builtin') or [], columns.get('cdr') or [], 'system',
+                               columns.get('export_cdr') or [], imported=True)
         except ValueError:
             pass
+    if isinstance(document.get('column_order'), list):
+        task_repository.set_workspace_state(COLUMN_ORDER_STATE_KEY, json.dumps(_column_order(document['column_order']), ensure_ascii=False))
     with task_repository.connection() as connection:
         for kind, key in (('status', 'statuses'), ('team', 'teams')):
             items = options.get(key) if isinstance(options.get(key), list) else []
@@ -6777,13 +7010,14 @@ def _merge_configuration(task_repository: Any, document: dict[str, Any]) -> None
                 current[plural] += [item for item in incoming[plural] if str(item['name']).casefold() not in names]
             _write_root_catalog(connection, nq_catalog.normalize_root_catalog(current))
     root_causes = document.get('root_causes') if isinstance(document.get('root_causes'), dict) else {}
-    if isinstance(root_causes.get('rule'), dict) and not task_repository.get_workspace_state(ROOT_CAUSE_RULE_STATE_KEY):
+    if isinstance(root_causes.get('rule'), dict):
         try:
             task_repository.set_workspace_state(ROOT_CAUSE_RULE_STATE_KEY, json.dumps(normalize_root_cause_rule(root_causes['rule'])))
         except ValueError:
             pass
-    if root_causes.get('require_to_close') and not task_repository.get_workspace_state(ROOT_CAUSE_SETTINGS_STATE_KEY):
-        task_repository.set_workspace_state(ROOT_CAUSE_SETTINGS_STATE_KEY, json.dumps({'require_to_close': True}))
+    if 'require_to_close' in root_causes:
+        task_repository.set_workspace_state(ROOT_CAUSE_SETTINGS_STATE_KEY,
+                                            json.dumps({'require_to_close': bool(root_causes['require_to_close'])}))
     if isinstance(document.get('status_rules'), list):
         try:
             rules = nq_catalog.normalize_status_rules(document['status_rules'], [item['name'] for item in list_options(task_repository)['statuses']],
@@ -6791,6 +7025,19 @@ def _merge_configuration(task_repository: Any, document: dict[str, Any]) -> None
             task_repository.set_workspace_state(STATUS_RULES_STATE_KEY, json.dumps(rules, ensure_ascii=False))
         except ValueError:
             pass
+    # The layout of each user replaces theirs, also of a user the workspace does not have yet.
+    layouts = [item for item in document.get('user_layouts') or []
+               if isinstance(item, dict) and str(item.get('username') or '').strip()]
+    if layouts:
+        fields = list_fields(task_repository)
+        for item in layouts:
+            layout = _normalize_layout(item['layout'], fields, strict=False) if isinstance(item.get('layout'), dict) else None
+            view = str(item.get('view')) if layout is not None and item.get('view') in LAYOUT_VIEWS else 'workspace'
+            _store_user_layout(task_repository, str(item['username']).strip()[:120], layout, view)
+        _remember_user_cdr_columns(task_repository)
+        if hasattr(task_repository, 'try_add_log'):
+            task_repository.try_add_log('system', 'nq_table_layout', f'{len(layouts)} personal Non-Qualified Calls table layouts '
+                                        f'({", ".join(str(item["username"]).strip() for item in layouts)}) taken from an imported configuration.')
 
 
 def import_tracking_document(task_repository: Any, payload: bytes | str) -> int:
@@ -7029,6 +7276,21 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         # Saved after Default Columns: App Events says so.
         defaults: bool = False
 
+    class TableLayoutPayload(BaseModel):
+        # The parts left out keep those of the layout of the user (or of the workspace, while they have none).
+        builtin: list[str] | None = None
+        cdr: list[str] | None = None
+        export_cdr: list[str] | None = None
+        fields: list[str] | None = None
+        excel_fields: list[str] | None = None
+        known_fields: list[str] | None = None
+        order: list[str] | None = None
+        # changed, defaults (Default Columns), order, default_order (Default column order): App Events says which.
+        reason: str = 'changed'
+
+    class LayoutViewPayload(BaseModel):
+        view: str = 'mine'
+
     def workspace_repository(user):
         if not core.active_workspace:
             raise HTTPException(409, 'Open a workspace before using Non-Qualified Calls.')
@@ -7061,6 +7323,15 @@ def install_non_qualified_calls_routes(core: Any) -> None:
     def editor_user(user=Depends(core.current_user)):
         if not can_edit(user):
             raise HTTPException(403, 'The user-viewer role can read Non-Qualified Calls but cannot change them.')
+        return user
+
+    def can_configure(user) -> bool:
+        """The NQ Analysis Configuration and the table layout of the workspace: admins and super-admins."""
+        return user.role in {'admin', 'super-admin'}
+
+    def config_user(user=Depends(core.current_user)):
+        if not can_configure(user):
+            raise HTTPException(403, 'Only admins and super-admins can change the NQ Analysis Configuration.')
         return user
 
     def workspace_users() -> list[str]:
@@ -7228,7 +7499,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
             if export_format in {'powerpoint', 'word'}:
                 write_summary_document(export_format, destination, executive, progress, options, lines, components, compose)
             else:
-                destination.write_bytes(export_workbook(repository, filters, user.username))
+                destination.write_bytes(export_workbook(repository, filters, user.username, workspace_layout_only=True))
             artifacts.append({'module': 'non_qualified_calls', 'title': f'Non-Qualified Calls ({label})',
                               'file_name': destination.name, 'size': destination.stat().st_size,
                               'status': 'ready', 'details': details})
@@ -7249,7 +7520,8 @@ def install_non_qualified_calls_routes(core: Any) -> None:
     @core.app.get('/non-qualified-calls', response_class=HTMLResponse)
     def non_qualified_calls_page(request: Request, user=Depends(core.current_user)):
         return core.render_template(request, 'non_qualified_calls.html', {
-            'user': user, 'nq_can_edit': can_edit(user), 'nq_can_import_analyses': can_moderate(user), 'nq_page_sizes': PAGE_SIZES, 'nq_default_page_size': DEFAULT_PAGE_SIZE,
+            'user': user, 'nq_can_edit': can_edit(user), 'nq_can_configure': can_configure(user),
+            'nq_can_import_analyses': can_moderate(user), 'nq_page_sizes': PAGE_SIZES, 'nq_default_page_size': DEFAULT_PAGE_SIZE,
         })
 
     @core.app.get('/api/non-qualified-calls/state')
@@ -7260,12 +7532,13 @@ def install_non_qualified_calls_routes(core: Any) -> None:
             # Nothing indexed yet (the first time the module opens): it is indexed at once, in the background.
             start_nq_index(repository, core.submit_background_task)
             sync = nq_index_status(repository)
+        layouts = table_layouts(repository, user.username)
         return JSONResponse({
-            'sync': sync, 'options': list_options(repository), 'filter_options': filter_options(repository),
+            'sync': sync, 'options': list_options(repository), 'filter_options': filter_options(repository, layouts['effective']),
             'datasets': indexed_datasets(repository), 'users': workspace_users(), 'user_names': user_names(),
             'default_users': list(DEFAULT_USERS),
             'user': {'username': user.username, 'can_edit': can_edit(user), 'can_moderate': can_moderate(user),
-                     'can_configure_rule': can_configure_rule(user)},
+                     'can_configure_rule': can_configure_rule(user), 'can_configure': can_configure(user)},
             'unassigned': UNASSIGNED, 'page_sizes': list(PAGE_SIZES),
             'main_cities': list(repository.list_main_cities()),
             # The page chooses the saved values in its lists, which hold them as they are shown.
@@ -7282,7 +7555,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
                                 'teams': [{'name': name, 'color': color, 'members': []} for name, color in DEFAULT_TEAMS]},
             'rule_operators': nq_catalog.RULE_OPERATORS, 'condition_fields': nq_catalog.condition_fields(list_fields(repository)),
             'rca_results': rca_results_summary(repository), 'rca_sources': nq_rca.SOURCE_LABELS,
-            'table_columns': table_columns(repository), 'optional_columns': OPTIONAL_COLUMNS,
+            'table_columns': table_columns(repository), 'table_layout': layouts, 'optional_columns': OPTIONAL_COLUMNS,
             'cdr_columns': available_cdr_columns(repository), 'max_cdr_columns': MAX_CDR_COLUMNS,
             'version_labels': VERSION_LABELS,
         })
@@ -7302,7 +7575,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         return JSONResponse({'sync': nq_index_status(workspace_repository(user))})
 
     @core.app.put('/api/non-qualified-calls/fields')
-    def nq_save_fields(payload: FieldsPayload, user=Depends(editor_user)) -> JSONResponse:
+    def nq_save_fields(payload: FieldsPayload, user=Depends(config_user)) -> JSONResponse:
         """The analysis fields of the workspace (user-editor and above)."""
         repository = workspace_repository(user)
         return JSONResponse({'fields': translate(lambda: save_fields(repository, payload.fields, user.username,
@@ -7325,13 +7598,13 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         return content, str(getattr(upload, 'filename', '') or 'upload'), {key: form.get(key) for key in form.keys()}
 
     @core.app.put('/api/non-qualified-calls/sections')
-    def nq_save_sections(payload: SectionsPayload, user=Depends(editor_user)) -> JSONResponse:
+    def nq_save_sections(payload: SectionsPayload, user=Depends(config_user)) -> JSONResponse:
         """The names and colours of the six sections (user-editor and above)."""
         repository = workspace_repository(user)
         return JSONResponse({'sections': save_sections(repository, payload.sections, user.username, defaults=payload.defaults)})
 
     @core.app.put('/api/non-qualified-calls/status-rules')
-    def nq_save_status_rules(payload: StatusRulesPayload, user=Depends(editor_user)) -> JSONResponse:
+    def nq_save_status_rules(payload: StatusRulesPayload, user=Depends(config_user)) -> JSONResponse:
         """The rules that set the automatic NQ Call Status; the calls follow them at once."""
         repository = workspace_repository(user)
         rules = translate(lambda: save_status_rules(repository, payload.rules, user.username))
@@ -7348,7 +7621,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
                         headers={'Content-Disposition': f'attachment; filename="{name}"'})
 
     @core.app.post('/api/non-qualified-calls/catalog/import')
-    async def nq_catalog_import(request: Request, user=Depends(editor_user)) -> JSONResponse:
+    async def nq_catalog_import(request: Request, user=Depends(config_user)) -> JSONResponse:
         """Preview (``preview=1``) or import a catalog workbook: its format, or the layout of the meeting workbook."""
         repository = workspace_repository(user)
         content, name, form = await uploaded_file(request, 'workbook', 10)
@@ -7376,7 +7649,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
                         headers={'Content-Disposition': 'attachment; filename="NQ_RCA_results_template.csv"'})
 
     @core.app.post('/api/non-qualified-calls/rca/import')
-    async def nq_rca_import(request: Request, user=Depends(editor_user)) -> JSONResponse:
+    async def nq_rca_import(request: Request, user=Depends(config_user)) -> JSONResponse:
         """Preview (``preview=1``) or import Ericsson RCA results by JOIN_ID; ``replace=1`` forgets the previous results and
         ``add_to_catalog=1`` adds the script categories and causes missing from the Root Cause Catalog."""
         repository = workspace_repository(user)
@@ -7487,7 +7760,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         return JSONResponse(result)
 
     @core.app.delete('/api/non-qualified-calls/rca')
-    def nq_rca_clear(user=Depends(editor_user)) -> JSONResponse:
+    def nq_rca_clear(user=Depends(config_user)) -> JSONResponse:
         repository = workspace_repository(user)
         return JSONResponse({'deleted': clear_rca_results(repository, user.username), 'rca_results': rca_results_summary(repository)})
 
@@ -7502,7 +7775,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         return JSONResponse(rca_insights(repository, payload.filters, user.username))
 
     @core.app.put('/api/non-qualified-calls/table-columns')
-    def nq_save_table_columns(payload: TableColumnsPayload, user=Depends(editor_user)) -> JSONResponse:
+    def nq_save_table_columns(payload: TableColumnsPayload, user=Depends(config_user)) -> JSONResponse:
         """The optional columns of the Calls table: built-in ones and CDR columns (indexed again)."""
         repository = workspace_repository(user)
         columns = translate(lambda: save_table_columns(repository, payload.builtin, payload.cdr, user.username, payload.export_cdr,
@@ -7510,6 +7783,37 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         # New CDR columns are indexed in the background.
         start_nq_index(repository, core.submit_background_task)
         return JSONResponse({'table_columns': columns, 'sync': nq_index_status(repository)})
+
+    @core.app.put('/api/non-qualified-calls/table-layout/mine')
+    def nq_save_user_layout(payload: TableLayoutPayload, user=Depends(core.current_user)) -> JSONResponse:
+        """The table layout of the user, only for them (every role)."""
+        repository = workspace_repository(user)
+        changes = payload.model_dump(exclude={'reason'})
+        layouts = translate(lambda: save_user_layout(repository, user.username, changes, reason=payload.reason))
+        start_nq_index(repository, core.submit_background_task)
+        return JSONResponse({'table_layout': layouts, 'sync': nq_index_status(repository)})
+
+    @core.app.put('/api/non-qualified-calls/table-layout/view')
+    def nq_layout_view(payload: LayoutViewPayload, user=Depends(core.current_user)) -> JSONResponse:
+        """Whether the user sees their own layout or that of the workspace."""
+        repository = workspace_repository(user)
+        layouts = translate(lambda: set_layout_view(repository, user.username, payload.view))
+        start_nq_index(repository, core.submit_background_task)
+        return JSONResponse({'table_layout': layouts, 'sync': nq_index_status(repository)})
+
+    @core.app.post('/api/non-qualified-calls/table-layout/mine/copy')
+    def nq_copy_workspace_layout(user=Depends(core.current_user)) -> JSONResponse:
+        """Start the layout of the user again from that of the workspace."""
+        repository = workspace_repository(user)
+        return JSONResponse({'table_layout': copy_workspace_layout(repository, user.username)})
+
+    @core.app.post('/api/non-qualified-calls/table-layout/publish')
+    def nq_publish_layout(user=Depends(config_user)) -> JSONResponse:
+        """Save the layout of the user for the workspace (admins and super-admins)."""
+        repository = workspace_repository(user)
+        layouts = translate(lambda: publish_user_layout(repository, user.username))
+        start_nq_index(repository, core.submit_background_task)
+        return JSONResponse({'table_layout': layouts, 'sync': nq_index_status(repository)})
 
     @core.app.post('/api/non-qualified-calls/rates')
     def nq_rates_route(payload: ExportPayload, user=Depends(core.current_user)) -> JSONResponse:
@@ -7604,7 +7908,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         return JSONResponse({'deleted': deleted})
 
     @core.app.put('/api/non-qualified-calls/options')
-    def nq_save_options(payload: OptionsPayload, user=Depends(editor_user)) -> JSONResponse:
+    def nq_save_options(payload: OptionsPayload, user=Depends(config_user)) -> JSONResponse:
         repository = workspace_repository(user)
         options = translate(lambda: save_options(repository, payload.statuses, payload.teams, user.username, set(workspace_users())))
         return JSONResponse({'options': options})
@@ -7614,7 +7918,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         return JSONResponse(list_root_causes(workspace_repository(user)))
 
     @core.app.put('/api/non-qualified-calls/root-causes')
-    def nq_save_root_causes(payload: RootCausesPayload, user=Depends(editor_user)) -> JSONResponse:
+    def nq_save_root_causes(payload: RootCausesPayload, user=Depends(config_user)) -> JSONResponse:
         repository = workspace_repository(user)
         catalog = {'domains': payload.domains, 'categories': payload.categories, 'causes': payload.causes}
         return JSONResponse(translate(lambda: save_root_causes(repository, catalog, payload.require_to_close, user.username,
@@ -7629,7 +7933,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
                              'users': users, 'user_names': names})
 
     @core.app.post('/api/non-qualified-calls/analysts/assign')
-    def nq_assign_analysts(payload: AnalystAssignmentsPayload, user=Depends(editor_user)) -> JSONResponse:
+    def nq_assign_analysts(payload: AnalystAssignmentsPayload, user=Depends(config_user)) -> JSONResponse:
         """The calls of each analyst assigned to the user chosen for them, and the Analyst and Reviewer of the calls
         named as their users (``preview`` counts them)."""
         repository = workspace_repository(user)
@@ -7638,7 +7942,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
             overwrite=payload.overwrite, preview=payload.preview)))
 
     @core.app.post('/api/non-qualified-calls/root-causes/apply-categories')
-    def nq_apply_cause_categories(payload: ApplyCategoriesPayload, user=Depends(editor_user)) -> JSONResponse:
+    def nq_apply_cause_categories(payload: ApplyCategoriesPayload, user=Depends(config_user)) -> JSONResponse:
         """Give the calls with a root cause and no root category the category of their cause (``preview`` counts them)."""
         repository = workspace_repository(user)
         return JSONResponse({'calls': apply_cause_categories(repository, user.username, dry_run=payload.preview)})

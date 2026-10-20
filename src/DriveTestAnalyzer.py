@@ -5507,6 +5507,13 @@ def workspace_editor_user(user: SessionUser = Depends(current_user)) -> SessionU
     return user
 
 
+def dataset_upload_user(user: SessionUser = Depends(current_user)) -> SessionUser:
+    """Uploading datasets to a workspace: admins and super-admins."""
+    if user.role not in {'admin', 'super-admin'}:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Only admins and super-admins can upload datasets to the workspace.')
+    return user
+
+
 def config_editor_user(user: SessionUser = Depends(current_user)) -> SessionUser:
     if user.role not in {'user-editor', 'admin', 'super-admin'}:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Configuration access required')
@@ -19922,7 +19929,7 @@ async def upload_dataset(
     vendor_polygon_selections: Annotated[list[str] | None, Form()] = None,
     dataset_operators: Annotated[list[str] | None, Form()] = None,
     snapshot_dates: Annotated[list[str] | None, Form()] = None,
-    user: SessionUser = Depends(workspace_editor_user),
+    user: SessionUser = Depends(dataset_upload_user),
 ) -> Response:
     if not dataset_files:
         datasets = [serialize_dataset_row(row) for row in repository.list_datasets()]
@@ -20020,7 +20027,7 @@ def _upload_session_of(user: SessionUser, workspace: Workspace, upload_id: str) 
 
 
 @app.post('/api/uploads')
-def start_dataset_upload(payload: DatasetUploadPayload, user: SessionUser = Depends(workspace_editor_user)) -> JSONResponse:
+def start_dataset_upload(payload: DatasetUploadPayload, user: SessionUser = Depends(dataset_upload_user)) -> JSONResponse:
     """Start a resumable upload of datasets to a workspace: their names, sizes and classification."""
     from src.modules.upload_sessions import create_session, sessions_root
 
@@ -20050,7 +20057,7 @@ def dataset_upload_status(workspace_id: str, upload_id: str, user: SessionUser =
 @app.put('/api/uploads/{workspace_id}/{upload_id}/files/{index}')
 async def dataset_upload_chunk(
     request: Request, workspace_id: str, upload_id: str, index: int, offset: int = 0,
-    user: SessionUser = Depends(workspace_editor_user),
+    user: SessionUser = Depends(dataset_upload_user),
 ) -> JSONResponse:
     """Append the bytes of one file that start at ``offset``."""
     from src.modules.upload_sessions import append_chunk, sessions_root
@@ -20121,7 +20128,7 @@ def _register_upload_files(
 @app.post('/api/uploads/{workspace_id}/{upload_id}/files/{index}/complete')
 def complete_dataset_upload_file(
     background_tasks: BackgroundTasks, workspace_id: str, upload_id: str, index: int,
-    user: SessionUser = Depends(workspace_editor_user),
+    user: SessionUser = Depends(dataset_upload_user),
 ) -> JSONResponse:
     """Register one file as soon as it is uploaded, so it is processed while the next ones upload."""
     return _register_upload_files(user, workspace_id, upload_id, [int(index)], background_tasks)
@@ -20130,7 +20137,7 @@ def complete_dataset_upload_file(
 @app.post('/api/uploads/{workspace_id}/{upload_id}/complete')
 def complete_dataset_upload(
     background_tasks: BackgroundTasks, workspace_id: str, upload_id: str,
-    user: SessionUser = Depends(workspace_editor_user),
+    user: SessionUser = Depends(dataset_upload_user),
 ) -> JSONResponse:
     """Register every uploaded file not registered yet; the upload ends once all of them are."""
     return _register_upload_files(user, workspace_id, upload_id, None, background_tasks)

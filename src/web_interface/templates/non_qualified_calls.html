@@ -1,5 +1,9 @@
 {% extends "base.html" %}
 {% block content %}
+{# What only admins and super-admins change: a card at the top of each configuration for the other roles, whose controls
+   are locked by a disabled fieldset (also those the script adds). #}
+{% macro role_warning(what) %}<div class="role-warning nq-role-warning" role="note"><svg class="role-warning-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10.3 4.5a2 2 0 0 1 3.4 0l8 13.5a2 2 0 0 1-1.7 3H4a2 2 0 0 1-1.7-3z"/><path d="M12 9v4m0 4h.01"/></svg><p><strong>Only admins and super-admins can change {{ what }}.</strong> You can see it, but not change it.</p></div>{% endmacro %}
+{% set config_lock = '' if nq_can_configure else ' disabled' %}
 <link rel="stylesheet" href="{{ static_path('css/non_qualified_calls.css') }}?v={{ asset_version('css/non_qualified_calls.css') }}">
 <section class="dashboard-stack spacious-stack non-qualified-calls" id="non-qualified-calls" data-nq-can-edit="{{ 'true' if nq_can_edit else 'false' }}">
   <article class="panel module-hero nq-hero">
@@ -30,7 +34,8 @@
   {% if nq_can_edit %}<div class="nq-menu-wrap nq-center-wrap">
     <button type="button" class="nq-center-toggle nq-menu-toggle" id="nq-config-toggle" aria-haspopup="menu" aria-expanded="false" aria-controls="nq-config-menu" aria-label="NQ Analysis Configuration" title="Configure the analysis of the Non-Qualified Calls of this workspace"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg><span>NQ Analysis Configuration</span></button>
     <div class="nq-menu" id="nq-config-menu" role="menu" hidden>
-      <button type="button" role="menuitem" id="nq-fields-open"><svg class="nq-menu-icon" viewBox="0 0 24 24" aria-hidden="true">{{ section_icons['tag'] | safe }}</svg><strong>Fields &amp; Sections</strong><span>The fields of every section, their lists, columns and Excel order</span></button>
+      {% if not nq_can_configure %}{{ role_warning('the NQ Analysis Configuration') }}{% endif %}
+      <button type="button" role="menuitem" id="nq-fields-open"><svg class="nq-menu-icon" viewBox="0 0 24 24" aria-hidden="true">{{ section_icons['tag'] | safe }}</svg><strong>Fields &amp; Sections</strong><span>The fields of every section, their lists and Excel order</span></button>
       <button type="button" role="menuitem" id="nq-options-open"><svg class="nq-menu-icon" viewBox="0 0 24 24" aria-hidden="true">{{ section_icons['users'] | safe }}</svg><strong>Statuses &amp; Teams</strong><span>The NQ Call Statuses and the responsible teams with their members</span></button>
       <button type="button" role="menuitem" id="nq-status-rules-open" data-nq-status-rules-open><svg class="nq-menu-icon" viewBox="0 0 24 24" aria-hidden="true">{{ section_icons['function'] | safe }}</svg><strong>Status Rules</strong><span>How the status follows the Analysis, Implementation and Planning fields</span></button>
       <button type="button" role="menuitem" id="nq-root-open"><svg class="nq-menu-icon" viewBox="0 0 24 24" aria-hidden="true">{{ section_icons['book'] | safe }}</svg><strong>Root Cause Catalog</strong><span>Domains, Root Categories and Root Causes, with their keywords</span></button>
@@ -117,9 +122,13 @@
       <div class="nq-toolbar">
         <p class="nq-count" id="nq-count" role="status">Loading calls…</p>
         <div class="nq-toolbar-actions">
-          <label class="nq-page-size">Rows<select id="nq-page-size">{% for size in nq_page_sizes %}<option value="{{ size }}"{% if size == nq_default_page_size %} selected{% endif %}>{{ size }}</option>{% endfor %}</select></label>
-          {% if nq_can_edit %}<button type="button" class="nq-secondary-action" id="nq-columns-open" title="The columns of the table and of the Excel export, including CDR columns, for every user of the workspace">Columns</button>{% endif %}
-          <button type="button" class="nq-secondary-action" id="nq-column-order-reset" title="Put the columns of the table back in their default order" hidden>Default column order</button>
+          <label class="nq-page-size">Rows per page<select id="nq-page-size">{% for size in nq_page_sizes %}<option value="{{ size }}"{% if size == nq_default_page_size %} selected{% endif %}>{{ size }}</option>{% endfor %}</select></label>
+          {# A switch between the user's own layout (left) and that of the workspace (right). #}
+          <div class="nq-layout-switch" role="group" aria-label="Table layout" title="Mine: your own columns and order, only for you. Workspace: those every user of the workspace sees">
+            <span class="nq-layout-label">Layout:</span><button type="button" class="nq-layout-side" data-nq-layout-view="mine">Mine</button><button type="button" class="nq-layout-toggle" role="switch" aria-checked="true" aria-label="Workspace layout" data-nq-layout-toggle><span class="nq-layout-knob" aria-hidden="true"></span></button><button type="button" class="nq-layout-side is-active" data-nq-layout-view="workspace">Workspace</button></div>
+          {% if nq_can_configure %}<button type="button" class="nq-secondary-action" id="nq-layout-publish" title="Make your layout (columns, Excel and order) the one of the workspace, which every user without their own sees" hidden>Save for the workspace</button>{% endif %}
+          <button type="button" class="nq-secondary-action" id="nq-column-order-reset" title="Put the columns of your layout back in their default order" hidden>Default column order</button>
+          <button type="button" class="nq-secondary-action" id="nq-columns-open" title="The columns of the table and of your Excel export, in your own layout (only for you)">Columns</button>
           <button type="button" class="nq-primary-action" id="nq-export" title="Every call that matches the filters, with its comments and history">Export Excel</button>
         </div>
       </div>
@@ -345,19 +354,21 @@
 <dialog class="nq-options-dialog" id="nq-options-dialog" aria-labelledby="nq-options-title">
   <form method="dialog" class="nq-options-form" id="nq-options-form">
     <header><h2 id="nq-options-title">Statuses &amp; Teams</h2><p class="form-note">Shared by every user of this workspace. The NQ Call Status of each call follows the Status Rules (the first status when no rule applies) unless it is set by hand; statuses marked Closed count as closed in the summary. Renaming a value updates every call and the Status Rules; a value in use cannot be removed, but a team can be merged into another one (⤳): its calls and members move there.</p></header>
-    <div class="nq-options-columns">
+    {% if not nq_can_configure %}{{ role_warning('the statuses and teams') }}{% endif %}
+    <fieldset class="nq-config-fieldset"{{ config_lock }}><div class="nq-options-columns">
       <section><h3>Statuses</h3><ul class="nq-option-list" data-nq-options="statuses"></ul><div class="nq-option-actions"><button type="button" class="nq-secondary-action" data-nq-option-add="statuses">Add Status</button><button type="button" class="nq-secondary-action" data-nq-option-defaults="statuses" title="Leave only the default statuses, in their order and colours; Save applies it">Default Statuses</button></div></section>
       <section><h3>Teams</h3><ul class="nq-option-list" data-nq-options="teams"></ul><div class="nq-option-actions"><button type="button" class="nq-secondary-action" data-nq-option-add="teams">Add Team</button><button type="button" class="nq-secondary-action" data-nq-option-defaults="teams" title="Leave only the default teams, in their order and colours; Save applies it">Default Teams</button></div></section>
-    </div>
+    </div></fieldset>
     <p class="nq-options-error" id="nq-options-error" role="alert"></p>
-    <footer><button type="button" class="nq-secondary-action" id="nq-options-cancel">Cancel</button><button type="submit" class="nq-primary-action" id="nq-options-save">Save</button></footer>
+    <footer><button type="button" class="nq-secondary-action" id="nq-options-cancel">{{ 'Cancel' if nq_can_configure else 'Close' }}</button><button type="submit" class="nq-primary-action" id="nq-options-save"{% if not nq_can_configure %} hidden{% endif %}>Save</button></footer>
   </form>
 </dialog>
 <dialog class="nq-options-dialog nq-members-dialog" id="nq-members-dialog" aria-labelledby="nq-members-title">
   <form method="dialog" class="nq-options-form" id="nq-members-form">
     <header><h2 id="nq-members-title">Team members</h2><p class="form-note">A call assigned to a team with members can only be assigned to one of them; a team without members accepts every user of the workspace. A user can belong to several teams. The members are saved with Save of Statuses &amp; Teams.</p></header>
-    <div class="nq-members-tools"><input type="search" id="nq-members-search" placeholder="Filter users…" aria-label="Filter users"><button type="button" class="nq-secondary-action" id="nq-members-toggle">Select All / None</button></div>
-    <ul class="nq-members-list" id="nq-members-list"></ul>
+    {% if not nq_can_configure %}{{ role_warning('the members of the teams') }}{% endif %}
+    <div class="nq-members-tools"><input type="search" id="nq-members-search" placeholder="Filter users…" aria-label="Filter users"><fieldset class="nq-config-fieldset"{{ config_lock }}><button type="button" class="nq-secondary-action" id="nq-members-toggle">Select All / None</button></fieldset></div>
+    <fieldset class="nq-config-fieldset"{{ config_lock }}><ul class="nq-members-list" id="nq-members-list"></ul></fieldset>
     <footer><button type="button" class="nq-secondary-action" id="nq-members-cancel">Cancel</button><button type="submit" class="nq-primary-action">Done</button></footer>
   </form>
 </dialog>
@@ -365,6 +376,7 @@
   <form method="dialog" class="nq-options-form" id="nq-root-form">
     <header><h2 id="nq-root-title">Root Cause Catalog</h2><p class="form-note">Shared by every user of this workspace. Each call gets a Root Category and a Root Cause; a cause can be mapped to its root category, which a call without root category takes when the cause is chosen. The technical Domain of each one (chosen by hand, or Auto: for a cause that of its root category, else the domain whose keywords appear in its name or keywords) gives its colour, groups the lists (the causes of the chosen category, then those of its domain, come first) and the domain of the call. The keywords map the NetCheck and Ericsson RCA values and the comments onto the catalog. Renaming a value updates every call; a value in use cannot be removed.</p>
       <div class="nq-rule-summary"><p class="form-note" id="nq-root-rule-text"></p><button type="button" class="nq-secondary-action" id="nq-rule-open" data-nq-rule-open title="See how root causes are suggested; admins and super-admins change it">Suggestion Rule</button></div></header>
+    {% if not nq_can_configure %}{{ role_warning('the root cause catalog') }}{% endif %}
     <div class="nq-catalog-tabs" role="tablist" aria-label="Root cause catalog">
       <button type="button" role="tab" class="is-active" data-nq-catalog-tab="categories" aria-selected="true">Root Categories <small></small></button>
       <button type="button" role="tab" data-nq-catalog-tab="causes" aria-selected="false">Root Causes <small></small></button>
@@ -372,7 +384,7 @@
       <button type="button" role="tab" data-nq-catalog-tab="mapping" aria-selected="false" title="Every root cause with its root category and domain, and every root category with its domain, in one table">Mapping <small></small></button>
       <input type="search" id="nq-root-search" placeholder="Filter values…" aria-label="Filter the values of the catalog">
     </div>
-    <ul class="nq-root-domains nq-catalog-list" id="nq-root-domains" data-nq-catalog-list="domains" hidden></ul>
+    <fieldset class="nq-config-fieldset"{{ config_lock }}><ul class="nq-root-domains nq-catalog-list" id="nq-root-domains" data-nq-catalog-list="domains" hidden></ul>
     <ul class="nq-root-domains nq-catalog-list" id="nq-root-categories" data-nq-catalog-list="categories"></ul>
     <ul class="nq-root-domains nq-catalog-list" id="nq-root-causes" data-nq-catalog-list="causes" hidden></ul>
     <div class="nq-root-mapping nq-catalog-list" id="nq-root-mapping" data-nq-catalog-list="mapping" hidden></div>
@@ -381,9 +393,9 @@
       <button type="button" class="nq-secondary-action" id="nq-root-defaults" title="Add the default domains, root categories and root causes that are missing; existing values and keywords stay">Add missing defaults</button>
       <button type="button" class="nq-secondary-action" id="nq-root-default-catalog" title="Leave only the default domains, root categories and root causes, with their keywords, and do not require a root category to close a call; Save applies it">Default Catalog</button></span>
       <label class="nq-toggle"><input type="checkbox" id="nq-root-require"> Require a root category to close a call</label>
-    </div>
+    </div></fieldset>
     <p class="nq-options-error" id="nq-root-error" role="alert"></p>
-    <footer><button type="button" class="nq-secondary-action" id="nq-root-cancel">Cancel</button><button type="submit" class="nq-primary-action" id="nq-root-save">Save</button></footer>
+    <footer><button type="button" class="nq-secondary-action" id="nq-root-cancel">{{ 'Cancel' if nq_can_configure else 'Close' }}</button><button type="submit" class="nq-primary-action" id="nq-root-save"{% if not nq_can_configure %} hidden{% endif %}>Save</button></footer>
   </form>
 </dialog>
 <dialog class="nq-options-dialog nq-fields-dialog" id="nq-fields-dialog" aria-labelledby="nq-fields-title">
@@ -391,71 +403,76 @@
     <header><h2 id="nq-fields-title">Fields &amp; Sections</h2><p class="form-note">The fields every call is followed up with, shared by every user of this workspace, in the order of the Excel export. Each field belongs to a section (a tab of the call) and takes its value from the analysts, the follow-up of the call, the CDR, the Ericsson RCA or keywords of the call. A list offers its values, each with a colour; text, long text, number, date and Yes / No fields are typed in. Renaming a list value updates every call and the Status Rules; a value or field in use cannot be removed.</p>
       <div class="nq-fields-import">
         <a class="nq-secondary-action" id="nq-catalog-export" href="/api/non-qualified-calls/catalog/export" download title="Sections, fields, lists, root cause catalog, statuses, teams and status rules in one workbook to edit and import again">Export Catalog</a>
-        <label class="nq-secondary-action nq-file-action" title="A catalog workbook exported here, or the field list of the meeting workbook">Import Catalog<input type="file" id="nq-fields-workbook" accept=".xlsx,.xlsm" hidden></label>
+        <fieldset class="nq-config-fieldset"{{ config_lock }}><label class="nq-secondary-action nq-file-action" title="A catalog workbook exported here, or the field list of the meeting workbook">Import Catalog<input type="file" id="nq-fields-workbook" accept=".xlsx,.xlsm" hidden></label></fieldset>
         <span class="form-note">Importing adds the new fields, values, root categories, causes, statuses and teams and takes the sections and Status Rules of the workbook; nothing is removed.</span>
       </div>
       <div class="nq-catalog-preview" id="nq-catalog-preview" hidden></div>
     </header>
-    <section class="nq-sections-editor"><h3>Sections</h3><div class="nq-sections-grid" id="nq-sections-editor"></div></section>
+    {% if not nq_can_configure %}{{ role_warning('the fields and sections') }}{% endif %}
+    <fieldset class="nq-config-fieldset"{{ config_lock }}><section class="nq-sections-editor"><h3>Sections</h3><div class="nq-sections-grid" id="nq-sections-editor"></div></section></fieldset>
     <div class="nq-field-toolbar"><div class="nq-section-chips" id="nq-field-section-chips" role="tablist" aria-label="Show the fields of a section"></div><input type="search" id="nq-field-filter" placeholder="Filter fields…" aria-label="Filter fields"></div>
-    <ul class="nq-field-defs" id="nq-field-defs"></ul>
+    <fieldset class="nq-config-fieldset"{{ config_lock }}><ul class="nq-field-defs" id="nq-field-defs"></ul>
     <div class="nq-root-actions"><span><button type="button" class="nq-secondary-action" id="nq-fields-add">Add Field</button>
-      <button type="button" class="nq-secondary-action" id="nq-fields-default" title="Leave only the sections and fields of a new workspace, with their settings and list values; Save applies it">Default Fields &amp; Sections</button></span></div>
+      <button type="button" class="nq-secondary-action" id="nq-fields-default" title="Leave only the sections and fields of a new workspace, with their settings and list values; Save applies it">Default Fields &amp; Sections</button></span></div></fieldset>
     <p class="nq-options-error" id="nq-fields-error" role="alert"></p>
-    <footer><button type="button" class="nq-secondary-action" id="nq-fields-cancel">Cancel</button><button type="submit" class="nq-primary-action" id="nq-fields-save">Save</button></footer>
-  </form>
-</dialog>
-<dialog class="nq-options-dialog nq-columns-dialog" id="nq-columns-dialog" aria-labelledby="nq-columns-title">
-  <form method="dialog" class="nq-options-form" id="nq-columns-form">
-    <header><h2 id="nq-columns-title">Columns</h2><p class="form-note">The additional columns of the Calls table and of its Excel export, for every user of this workspace. The fields of the Analysis Center are columns of the table when chosen here or in Fields &amp; Sections, and every field marked for Excel is exported in the catalog order. CDR columns show the value of the CDR version shown for each call: those of the table are exported too, and more can be exported to Excel only. Changing the CDR columns indexes the calls again.</p></header>
-    <div class="nq-options-columns">
-      <section><h3>Call columns</h3><div class="nq-rule-fields" id="nq-columns-builtin"></div>
-        <h3 class="nq-columns-fields-title">Analysis Center fields</h3><div class="nq-columns-fields" id="nq-columns-fields"></div></section>
-      <section><h3>CDR columns <small id="nq-columns-count"></small></h3><input type="search" id="nq-columns-search" placeholder="Filter CDR columns…" aria-label="Filter CDR columns"><div class="nq-cdr-column-head" aria-hidden="true"><span>Column</span><span>Table</span><span>Excel</span></div><div class="nq-cdr-columns" id="nq-columns-cdr"></div></section>
-    </div>
-    <p class="nq-options-error" id="nq-columns-error" role="alert"></p>
-    <footer><button type="button" class="nq-secondary-action" id="nq-columns-default" title="The columns of a new workspace: no call or CDR columns, and the Analysis Center fields it shows; Save applies it">Default Columns</button><span class="nq-rule-spacer"></span><button type="button" class="nq-secondary-action" id="nq-columns-cancel">Cancel</button><button type="submit" class="nq-primary-action" id="nq-columns-save">Save</button></footer>
+    <footer><button type="button" class="nq-secondary-action" id="nq-fields-cancel">{{ 'Cancel' if nq_can_configure else 'Close' }}</button><button type="submit" class="nq-primary-action" id="nq-fields-save"{% if not nq_can_configure %} hidden{% endif %}>Save</button></footer>
   </form>
 </dialog>
 <dialog class="nq-options-dialog nq-status-rules-dialog" id="nq-status-rules-dialog" aria-labelledby="nq-status-rules-title">
   <form method="dialog" class="nq-options-form" id="nq-status-rules-form">
     <header><h2 id="nq-status-rules-title">Status Rules</h2><p class="form-note">How the NQ Call Status of every call is set from its fields. The rules are tried from top to bottom and the first one whose conditions all hold gives the status; a call that no rule matches gets the first status. A status chosen by hand stays until the call goes back to automatic. Rules follow renamed list values and statuses; a removed value leaves its conditions. Saving applies the rules to every automatic call at once.</p></header>
+    {% if not nq_can_configure %}{{ role_warning('the Status Rules') }}{% endif %}
     <div class="nq-rules-warning" role="note"><svg class="nq-rules-warning-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10.3 4.5a2 2 0 0 1 3.4 0l8 13.5a2 2 0 0 1-1.7 3H4a2 2 0 0 1-1.7-3z"/><path d="M12 9v4m0 4h.01"/></svg>
       <p><strong>Change these rules with care.</strong> Modifying them without the necessary knowledge of the fields and statuses of the calls can completely change how the calls are classified: on Save, every call with an automatic status takes the status the new rules give it.</p></div>
-    <ol class="nq-status-rules" id="nq-status-rules"></ol>
+    <fieldset class="nq-config-fieldset"{{ config_lock }}><ol class="nq-status-rules" id="nq-status-rules"></ol>
     <div class="nq-root-actions"><span><button type="button" class="nq-secondary-action" id="nq-status-rules-add">Add Rule</button>
-      <button type="button" class="nq-secondary-action" id="nq-status-rules-default" title="The rules of a new workspace, for its default fields and statuses">Default Rules</button></span></div>
+      <button type="button" class="nq-secondary-action" id="nq-status-rules-default" title="The rules of a new workspace, for its default fields and statuses">Default Rules</button></span></div></fieldset>
     <p class="nq-options-error" id="nq-status-rules-error" role="alert"></p>
-    <footer><button type="button" class="nq-secondary-action" id="nq-status-rules-cancel">Cancel</button><button type="submit" class="nq-primary-action" id="nq-status-rules-save">Save</button></footer>
+    <footer><button type="button" class="nq-secondary-action" id="nq-status-rules-cancel">{{ 'Cancel' if nq_can_configure else 'Close' }}</button><button type="submit" class="nq-primary-action" id="nq-status-rules-save"{% if not nq_can_configure %} hidden{% endif %}>Save</button></footer>
   </form>
 </dialog>
 <dialog class="nq-options-dialog nq-rca-dialog" id="nq-rca-dialog" aria-labelledby="nq-rca-title">
   <form method="dialog" class="nq-options-form" id="nq-rca-form">
     <header><h2 id="nq-rca-title">Ericsson RCA Results</h2><p class="form-note" id="nq-rca-format"></p>
       <div class="nq-fields-import"><a class="nq-secondary-action" href="/api/non-qualified-calls/rca/template" download>Download Template</a>
-        <label class="nq-secondary-action nq-file-action">Choose File<input type="file" id="nq-rca-file" accept=".csv,.txt,.tsv,.xlsx,.xlsm" hidden></label>
-        <label class="nq-toggle" title="Forget every result imported before; otherwise the file adds results and replaces those of the same JOIN_ID"><input type="checkbox" id="nq-rca-replace"> Replace the previous results</label></div>
+        <fieldset class="nq-config-fieldset"{{ config_lock }}><label class="nq-secondary-action nq-file-action">Choose File<input type="file" id="nq-rca-file" accept=".csv,.txt,.tsv,.xlsx,.xlsm" hidden></label>
+        <label class="nq-toggle" title="Forget every result imported before; otherwise the file adds results and replaces those of the same JOIN_ID"><input type="checkbox" id="nq-rca-replace"> Replace the previous results</label></fieldset></div>
     </header>
+    {% if not nq_can_configure %}{{ role_warning('the Ericsson RCA results') }}{% endif %}
     <section class="nq-rca-current" id="nq-rca-current"></section>
     <section class="nq-rca-preview" id="nq-rca-preview" hidden></section>
     <p class="nq-options-error" id="nq-rca-error" role="alert"></p>
-    <footer><button type="button" class="nq-link-action is-danger" id="nq-rca-clear">Delete every result</button><span class="nq-rule-spacer"></span><button type="button" class="nq-secondary-action" id="nq-rca-cancel">Close</button><button type="submit" class="nq-primary-action" id="nq-rca-import" disabled>Import</button></footer>
+    <footer><button type="button" class="nq-link-action is-danger" id="nq-rca-clear"{% if not nq_can_configure %} hidden{% endif %}>Delete every result</button><span class="nq-rule-spacer"></span><button type="button" class="nq-secondary-action" id="nq-rca-cancel">Close</button><button type="submit" class="nq-primary-action" id="nq-rca-import" disabled{% if not nq_can_configure %} hidden{% endif %}>Import</button></footer>
   </form>
 </dialog>
 {# The Analyst of every call (as the analysis workbooks name them) given as Asignee (non_qualified_calls.js). #}
 <dialog class="nq-options-dialog nq-assign-analysts-dialog" id="nq-assign-analysts-dialog" aria-labelledby="nq-assign-analysts-title">
   <form method="dialog" class="nq-options-form" id="nq-assign-analysts-form">
     <header><h2 id="nq-assign-analysts-title">Analysts / Reviewers → Asignees</h2><p class="form-note">Choose the user account of each Analyst or Reviewer: it becomes the Asignee of the calls they analysed, and their Analyst and Reviewer take the first and last name of the account (New Analyst / Reviewer). Names written the same way (Raj Kumar and Rajkumar) are one person. Every call keeps its team, and the user joins the teams with members they are not one of. Each change stays in the history of its call.</p>
-      <label class="nq-toggle" title="Otherwise only the calls without an Asignee get one"><input type="checkbox" id="nq-assign-analysts-overwrite"> Replace the Asignee the calls already have</label></header>
-    <div class="nq-table-wrap"><table class="nq-table nq-stats-table nq-assign-analysts-table">
+      <fieldset class="nq-config-fieldset"{{ config_lock }}><label class="nq-toggle" title="Otherwise only the calls without an Asignee get one"><input type="checkbox" id="nq-assign-analysts-overwrite"> Replace the Asignee the calls already have</label></fieldset></header>
+    {% if not nq_can_configure %}{{ role_warning('the Asignees of the Analysts and Reviewers') }}{% endif %}
+    <fieldset class="nq-config-fieldset"{{ config_lock }}><div class="nq-table-wrap"><table class="nq-table nq-stats-table nq-assign-analysts-table">
       <thead><tr><th>Analyst / Reviewer</th><th title="The name they take: the first and last name of the account chosen">New Analyst / Reviewer</th><th title="Calls they analysed">As Analyst</th><th title="Calls they reviewed">As Reviewer</th><th title="Calls they analysed without an Asignee">Without Asignee</th><th>User account</th><th>Calls that change</th></tr></thead>
-      <tbody id="nq-assign-analysts-rows"></tbody></table></div>
+      <tbody id="nq-assign-analysts-rows"></tbody></table></div></fieldset>
     <p class="form-note" id="nq-assign-analysts-summary" aria-live="polite"></p>
     <p class="nq-options-error" id="nq-assign-analysts-error" role="alert"></p>
-    <footer><span class="nq-rule-spacer"></span><button type="button" class="nq-secondary-action" id="nq-assign-analysts-cancel">Close</button><button type="submit" class="nq-primary-action" id="nq-assign-analysts-apply" disabled>Apply</button></footer>
+    <footer><span class="nq-rule-spacer"></span><button type="button" class="nq-secondary-action" id="nq-assign-analysts-cancel">Close</button><button type="submit" class="nq-primary-action" id="nq-assign-analysts-apply" disabled{% if not nq_can_configure %} hidden{% endif %}>Apply</button></footer>
   </form>
 </dialog>
 {% endif %}
+<dialog class="nq-options-dialog nq-columns-dialog" id="nq-columns-dialog" aria-labelledby="nq-columns-title">
+  <form method="dialog" class="nq-options-form" id="nq-columns-form">
+    <header><h2 id="nq-columns-title">Columns</h2><p class="form-note">Your own layout of the Calls table and of your Excel export: only you see it, and <strong>Layout</strong> beside Columns switches between it and the layout of the workspace. Each field of the Analysis Center can be a column of the table (<strong>Table</strong>) and of the Excel (<strong>Excel</strong>), which keeps the catalog order. CDR columns show the value of the CDR version shown for each call: those of the table are exported too, and more can be exported to Excel only. A CDR column no layout showed before indexes the calls again.</p>
+      <p class="form-note nq-columns-scope" id="nq-columns-scope" hidden></p></header>
+    <div class="nq-options-columns">
+      <section><h3>Call columns</h3><div class="nq-rule-fields" id="nq-columns-builtin"></div>
+        <h3 class="nq-columns-fields-title">Analysis Center fields</h3><div class="nq-columns-fields" id="nq-columns-fields"></div></section>
+      <section><h3>CDR columns <small id="nq-columns-count"></small></h3><input type="search" id="nq-columns-search" placeholder="Filter CDR columns…" aria-label="Filter CDR columns"><div class="nq-cdr-column-head" aria-hidden="true"><span>Column</span><span>Table</span><span>Excel</span></div><div class="nq-cdr-columns" id="nq-columns-cdr"></div></section>
+    </div>
+    <p class="nq-options-error" id="nq-columns-error" role="alert"></p>
+    <footer><button type="button" class="nq-secondary-action" id="nq-columns-default" title="The columns of a new workspace: no call or CDR columns, and the Analysis Center fields it shows; Save applies it">Default Columns</button><button type="button" class="nq-secondary-action" id="nq-columns-copy" title="Start your layout again from that of the workspace: its columns, Excel and order; Save applies it">Copy Workspace Layout</button><span class="nq-rule-spacer"></span><button type="button" class="nq-secondary-action" id="nq-columns-cancel">Cancel</button><button type="submit" class="nq-primary-action" id="nq-columns-save">Save</button></footer>
+  </form>
+</dialog>
 {% if nq_can_import_analyses %}
 {# The analyses made with the previous tool, imported into the follow-up of the calls (admins and super-admins). #}
 <dialog class="nq-options-dialog nq-analyses-dialog" id="nq-analyses-dialog" aria-labelledby="nq-analyses-title">
@@ -507,6 +524,7 @@
 <dialog class="nq-options-dialog nq-rule-dialog" id="nq-rule-dialog" aria-labelledby="nq-rule-title">
   <form method="dialog" class="nq-options-form" id="nq-rule-form">
     <header><h2 id="nq-rule-title">Root Cause Suggestion Rule</h2><p class="form-note">How every call of this workspace gets its suggested root cause from the keywords of the domains and causes. Everybody can see it and only admins and super-admins change it; a change applies at once to the suggestions, the Root Cause Analysis and Apply suggestions, and never changes the root causes already set.</p><p class="form-note nq-rule-readonly" id="nq-rule-readonly" hidden>Read only: ask an admin or super-admin to change the rule.</p></header>
+    {% if not nq_can_configure %}{{ role_warning('the root cause suggestion rule') }}{% endif %}
     <div class="nq-options-columns">
       <section><h3>1. Fields that choose the domain</h3><p class="form-note">A domain keyword found in one of these call fields chooses the domain.</p><div class="nq-rule-fields" data-nq-rule-fields="domain_fields"></div></section>
       <section><h3>2. Fields that choose the cause</h3><p class="form-note">A cause keyword found in one of these call fields chooses the cause.</p><div class="nq-rule-fields" data-nq-rule-fields="cause_fields"></div></section>

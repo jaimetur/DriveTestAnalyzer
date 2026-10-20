@@ -25,6 +25,9 @@ Workspace Management is the first operational module. It controls isolated works
 
 ## Data Ingestion
 
+> [!IMPORTANT]
+> **Only admins and super-admins upload datasets.** The other roles see a card in **Data Ingestion** that says so instead of the upload area, and the server rejects their uploads; `user-editor` accounts still manage the datasets of the workspace (see the read-only note of [Combined CDR Tables](#combined-cdr-tables) for `user-viewer`).
+
 Workspace accepts `CSV`, `XLS`, `XLSX` and `XLSM` for tabular datasets, `KMZ` and `KML` files (alone or in a `ZIP` package) for Cell Configuration inventories, and `GeoJSON`, `JSON` or zipped shapefiles for Regions, Clusters and Vendors. Only successfully processed datasets can be used by Dashboard, Chart Builder or Reporting.
 
 ### Supported Input Types
@@ -43,7 +46,7 @@ Workspace accepts `CSV`, `XLS`, `XLSX` and `XLSM` for tabular datasets, `KMZ` an
 
 ### Upload Workflow
 
-1. Open the target workspace.
+1. Open the target workspace (as an admin or super-admin).
 2. Select one or more files in **Data Ingestion**.
 3. Review the proposed type for every file.
 4. For CDRs, review the proposed **NR Mode** (NSA or SA) and **CDR Stage** (Final, Weekly or Daily) and optionally choose the Vendor source and the ready VFUK/3UK, Regions and Clusters mappings. For Vendor polygons and Network Inventories, review their **Operator** (proposed from the file name).

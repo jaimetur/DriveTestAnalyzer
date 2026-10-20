@@ -73,6 +73,8 @@
     unassigned: '__unassigned__', datasets: [], mainCities: [], sort: 'start_time', direction: 'desc', page: 1, pageSize: 10,
     result: null, selected: new Set(), detail: null, requestToken: 0, busy: false, extraFilters: {}, stale: new Set(),
     fields: [], fieldTypes: {}, tableColumns: {builtin: [], cdr: []}, optionalColumns: {}, cdrColumns: [], versionLabels: {},
+    // The table layouts: that of the workspace, that of the user and which one they see; ``layout`` is the one shown.
+    layouts: null, layout: {builtin: [], cdr: [], export_cdr: [], fields: [], excel_fields: [], known_fields: [], order: []},
     rateService: '', failureService: '', sections: [], statusRules: [], conditionFields: {}, ruleOperators: {}, fieldSources: {}, trackingRefs: {},
     rcaRefs: {}, callFields: [], rcaResults: {}, rcaSources: {}, matrixSource: 'netcheck',
     // The values each filter offers among the calls of the other filters (null until known: every value).
@@ -1147,11 +1149,14 @@
   };
   // -- optional columns: built-in call columns, CDR columns and analysis fields ---------------
   const optionalColumns = () => [
-    ...state.tableColumns.builtin.map((key) => ({key, label: state.optionalColumns[key] || key, sort: key})),
-    ...state.tableColumns.cdr.map((name) => ({key: `cdr:${name}`, label: name, sort: `cdr:${name}`})),
+    ...state.layout.builtin.map((key) => ({key, label: state.optionalColumns[key] || key, sort: key})),
+    ...state.layout.cdr.map((name) => ({key: `cdr:${name}`, label: name, sort: `cdr:${name}`})),
   ];
-  // The catalog fields shown as columns; the follow-up ones (status, team, root cause…) have fixed columns.
-  const fieldColumns = () => state.fields.filter((field) => field.in_table && field.source !== 'tracking');
+  // The catalog fields shown as columns in the layout; the follow-up ones (status, team, root cause…) have fixed columns.
+  const fieldColumns = () => {
+    const shown = new Set(state.layout.fields);
+    return state.fields.filter((field) => shown.has(field.key) && field.source !== 'tracking');
+  };
   // The filter of each optional column: CDR filters by the CDRs (the CDR filter of the Additional Columns Filters,
   // shown with the column), the others by their own values. The CDRs of the calls follow NR Mode and Campaign.
   const OWN_COLUMN_FILTERS = {cdr: 'datasets'};
@@ -1188,9 +1193,10 @@
     bindSort(name);
     return cell;
   };
-  // -- column order: a header dragged onto another moves its column; each browser remembers it per workspace --
+  // -- column order: a header dragged onto another moves its column, in the layout of the user ----------------
   const STATIC_HEADERS = [...($('nq-table')?.tHead.rows[0].cells || [])];
-  const COLUMN_ORDER_STORAGE = `nq-column-order:${$('nq-table')?.dataset.workspace || ''}`;
+  // Where each browser kept the order before the layouts: it becomes the order of the user's own layout, once.
+  const LEGACY_ORDER_STORAGE = `nq-column-order:${$('nq-table')?.dataset.workspace || ''}`;
   // Optional columns shown by default before a fixed column instead of after Result / Failure.
   const DEFAULT_COLUMN_PLACES = {session_type: 'test_name'};
   // The column keys in the order the rows are built, and in the order they are shown.
@@ -1198,14 +1204,7 @@
   let shownColumns = [];
   let draggedColumn = '';
   const columnKeyOf = (cell) => cell.querySelector('[data-sort]')?.dataset.sort || '';
-  const storedColumnOrder = () => {
-    try {
-      const order = JSON.parse(localStorage.getItem(COLUMN_ORDER_STORAGE) || '[]');
-      return Array.isArray(order) ? order.map(String) : [];
-    } catch (_error) {
-      return [];
-    }
-  };
+  const storedColumnOrder = () => [...(state.layout.order || [])];
   const defaultColumnOrder = () => {
     const order = [...naturalColumns];
     Object.entries(DEFAULT_COLUMN_PLACES).forEach(([key, before]) => {
@@ -1215,22 +1214,83 @@
     });
     return order;
   };
-  const saveColumnOrder = (order) => {
+  // The Layout switch shows which layout the user sees; Save for the workspace (admins) shares theirs.
+  const paintLayoutSwitch = () => {
+    document.querySelectorAll('[data-nq-layout-view]').forEach((button) => {
+      button.classList.toggle('is-active', button.dataset.nqLayoutView === state.layouts?.view);
+    });
+    // The knob on the left for Mine, on the right for Workspace.
+    const toggle = document.querySelector('[data-nq-layout-toggle]');
+    if (toggle) toggle.setAttribute('aria-checked', String(state.layouts?.view !== 'mine'));
+    const mine = document.querySelector('[data-nq-layout-view="mine"]');
+    if (mine) mine.title = state.layouts?.mine ? 'Your own columns and order, only for you' : 'Start your own layout from that of the workspace';
+    const publish = $('nq-layout-publish');
+    if (publish) publish.hidden = state.layouts?.view !== 'mine';
+  };
+  const applyLayouts = (layouts) => {
+    if (!layouts) return;
+    state.layouts = layouts;
+    state.layout = layouts.effective;
+    paintLayoutSwitch();
+  };
+  // A change made while the workspace layout is shown makes it the user's own, replacing the one they had once they agree.
+  const confirmOwnLayout = async () => {
+    if (state.layouts?.view !== 'workspace' || !state.layouts?.mine) return true;
+    const message = 'You are seeing the workspace layout: this change makes it your own layout and replaces the one you had. Continue?';
+    return typeof window.showConfirmDialog === 'function'
+      ? window.showConfirmDialog(message, {title: 'Your Layout', confirmLabel: 'Replace'}) : window.confirm(message);
+  };
+  // Saves the layout the user sees with these changes as their own (only for them); false when they cancel.
+  const saveLayout = async (changes, reason = 'changed', {reload = false} = {}) => {
+    if (!await confirmOwnLayout()) return false;
+    const base = state.layout;
+    const result = await api('/api/non-qualified-calls/table-layout/mine', {method: 'PUT', body: JSON.stringify({
+      builtin: base.builtin, cdr: base.cdr, export_cdr: base.export_cdr, fields: base.fields, excel_fields: base.excel_fields,
+      known_fields: state.fields.map((field) => field.key), order: base.order, ...changes, reason,
+    })});
+    applyLayouts(result.table_layout);
+    if (reload) await loadState();
+    return true;
+  };
+  const saveColumnOrder = async (order) => {
+    const reset = order.join('|') === defaultColumnOrder().join('|');
     try {
-      if (order.join('|') === defaultColumnOrder().join('|')) localStorage.removeItem(COLUMN_ORDER_STORAGE);
-      else localStorage.setItem(COLUMN_ORDER_STORAGE, JSON.stringify(order));
+      return await saveLayout({order: reset ? [] : order}, reset ? 'default_order' : 'order');
+    } catch (error) {
+      toast(error.message, 'error');
+      return false;
+    }
+  };
+  // The order a browser kept before the layouts becomes that of the user's own layout (unless they have one).
+  let browserOrderMoved = false;
+  const moveBrowserOrder = async () => {
+    browserOrderMoved = true;
+    let order = [];
+    try {
+      order = JSON.parse(localStorage.getItem(LEGACY_ORDER_STORAGE) || '[]');
+      localStorage.removeItem(LEGACY_ORDER_STORAGE);
     } catch (_error) {
-      // Without browser storage the order lasts until the page is reloaded.
+      return;
+    }
+    if (!Array.isArray(order) || !order.length || state.layouts?.mine) return;
+    try {
+      await saveLayout({order: order.map(String)}, 'order');
+    } catch (_error) {
+      // The default order stays.
     }
   };
   const clearDropMarks = () => $('nq-table').tHead.querySelectorAll('.is-drop-before, .is-drop-after')
     .forEach((cell) => cell.classList.remove('is-drop-before', 'is-drop-after'));
-  const moveColumn = (key, target, after) => {
+  const moveColumn = async (key, target, after) => {
     const order = shownColumns.filter((item) => item !== key);
     order.splice(order.indexOf(target) + (after ? 1 : 0), 0, key);
-    saveColumnOrder(order);
     applyColumnOrder(order);
     if (state.result) renderRows(state.result);
+    // Back to the order of the layout when the change is cancelled or fails.
+    if (!await saveColumnOrder(order)) {
+      applyColumnOrder();
+      if (state.result) renderRows(state.result);
+    }
   };
   const bindColumnDrag = (cell) => {
     if (cell.dataset.dragBound) return;
@@ -2766,6 +2826,8 @@
       state.rcaSources = payload.rca_sources || {};
       buildDrawerTabs();
       state.tableColumns = payload.table_columns || {builtin: [], cdr: []};
+      applyLayouts(payload.table_layout);
+      if (!browserOrderMoved) await moveBrowserOrder();
       state.optionalColumns = payload.optional_columns || {};
       state.cdrColumns = payload.cdr_columns || [];
       state.maxCdrColumns = payload.max_cdr_columns || 12;
@@ -4113,10 +4175,42 @@
     window.scrollTo({top: target, behavior: 'auto'});
     window.setTimeout(stop, 10000);
   })();
-  $('nq-column-order-reset').addEventListener('click', () => {
-    saveColumnOrder(defaultColumnOrder());
-    applyColumnOrder([]);
+  $('nq-column-order-reset').addEventListener('click', async () => {
+    if (!await saveColumnOrder(defaultColumnOrder())) return;
+    applyColumnOrder();
     if (state.result) renderRows(state.result);
+  });
+  // Mine or Workspace: the layout the table shows (Mine starts as a copy of the workspace one).
+  const showLayout = async (view) => {
+    if (!state.layouts || view === state.layouts.view) return;
+    try {
+      const result = await api('/api/non-qualified-calls/table-layout/view', {method: 'PUT', body: JSON.stringify({view})});
+      applyLayouts(result.table_layout);
+      toast(view === 'mine' ? 'Your own layout is shown.' : 'The workspace layout is shown.');
+      await loadState();
+    } catch (error) {
+      toast(error.message, 'error');
+    }
+  };
+  document.querySelectorAll('[data-nq-layout-view]').forEach((button) => button.addEventListener('click', () => showLayout(button.dataset.nqLayoutView)));
+  document.querySelector('[data-nq-layout-toggle]')?.addEventListener('click', () => showLayout(state.layouts?.view === 'mine' ? 'workspace' : 'mine'));
+  $('nq-layout-publish')?.addEventListener('click', async (event) => {
+    const button = event.currentTarget;
+    const message = 'Save your layout (columns, Excel and column order) for the workspace? Every user who sees the workspace layout gets it.';
+    const accepted = typeof window.showConfirmDialog === 'function'
+      ? await window.showConfirmDialog(message, {title: 'Save for the Workspace', confirmLabel: 'Save'}) : window.confirm(message);
+    if (!accepted) return;
+    button.disabled = true;
+    try {
+      const result = await api('/api/non-qualified-calls/table-layout/publish', {method: 'POST'});
+      applyLayouts(result.table_layout);
+      toast('Your layout is now the layout of the workspace.');
+      await loadState();
+    } catch (error) {
+      toast(error.message, 'error');
+    } finally {
+      button.disabled = false;
+    }
   });
   $('nq-table').querySelectorAll('[data-sort]').forEach(bindSort);
   $('nq-select-page')?.addEventListener('change', (event) => {
@@ -4869,6 +4963,9 @@
     options: [], in_table: false, in_export: true, in_summary: false, required_to_close: false, suggest_from: '', description: ''}) => {
     const block = node('li', undefined, 'nq-root-domain nq-field-def');
     block.dataset.key = field.key || '';
+    // Whether the field is a column of the table and of the Excel of the workspace layout: chosen in Columns, kept here.
+    block.dataset.inTable = field.in_table ? '1' : '';
+    block.dataset.inExport = field.in_export !== false ? '1' : '';
     const tracking = field.source === 'tracking';
     const row = node('div', undefined, 'nq-option-row');
     const name = textInput(field.label, 'Field name', 'nq-root-name');
@@ -4895,12 +4992,9 @@
     });
     const flags = node('div', undefined, 'nq-field-flags');
     flags.append(
-      flagToggle('in_table', 'Table column', tracking || field.in_table, tracking ? 'Always a column of the table' : 'Show the field as a column of the Calls table'),
-      flagToggle('in_export', 'Excel', field.in_export !== false, 'Export the field to Excel, in the order of this list'),
       flagToggle('in_summary', 'Summary breakdown', field.in_summary, 'Count the calls of each value in the Summary (lists and Yes / No)'),
       flagToggle('required_to_close', 'Required to close', field.required_to_close, 'A call cannot move to a closed status while this field is empty'),
     );
-    flags.querySelector('[data-flag="in_table"]').disabled = tracking;
     const more = node('details', undefined, 'nq-field-more');
     const summary = node('summary', 'Values and settings');
     const ref = node('label', undefined, 'nq-field-setting nq-field-ref');
@@ -4986,8 +5080,8 @@
       return {name: row.querySelector('.nq-root-name').value.trim(), color: color.dataset.chosen ? color.value : '',
         previous: row.dataset.previous, keywords: row.querySelector('.nq-root-keywords')?.value || ''};
     }).filter((option) => option.name),
-    in_table: block.querySelector('[data-flag="in_table"]').checked,
-    in_export: block.querySelector('[data-flag="in_export"]').checked,
+    in_table: Boolean(block.dataset.inTable),
+    in_export: Boolean(block.dataset.inExport),
     in_summary: block.querySelector('[data-flag="in_summary"]').checked,
     required_to_close: block.querySelector('[data-flag="required_to_close"]').checked,
     suggest_from: block.querySelector('.nq-field-suggest').value,
@@ -5115,7 +5209,8 @@
       const fields = state.defaultFields.map((field) => {
         const existing = state.fields.find((item) => (field.source === 'tracking'
           ? item.source === 'tracking' && item.source_ref === field.source_ref : item.key === field.key));
-        return {...field, key: existing?.key || field.key};
+        return {...field, key: existing?.key || field.key,
+          ...(existing ? {in_table: existing.in_table, in_export: existing.in_export} : {})};
       });
       const keys = new Set(fields.map((field) => field.key));
       const shown = new Set(current.map((field) => field.key).filter(Boolean));
@@ -5175,10 +5270,10 @@
       }
     });
   }
-  // -- table columns dialog -------------------------------------------------------------------
+  // -- table columns dialog: the layout of the user (only for them) ----------------------------------
   const columnsDialog = $('nq-columns-dialog');
-  // Whether Default Columns was used since the dialog opened (App Events says so).
-  let columnsDefaults = false;
+  // Why the layout is saved (App Events says so): changed, defaults (Default Columns) or copied (Copy Workspace Layout).
+  let columnsReason = 'changed';
   const syncColumnCount = () => {
     const tableBoxes = [...columnsDialog.querySelectorAll('#nq-columns-cdr input[data-target="table"]')];
     const chosen = tableBoxes.filter((box) => box.checked).length;
@@ -5187,79 +5282,112 @@
       const excel = box.closest('.nq-cdr-column-row').querySelector('input[data-target="excel"]');
       if (box.checked) excel.checked = true;
       excel.disabled = box.checked;
-      if (!box.checked) box.disabled = chosen >= state.maxCdrColumns;
+      box.disabled = !box.checked && chosen >= state.maxCdrColumns;
     });
     const exported = columnsDialog.querySelectorAll('#nq-columns-cdr input[data-target="excel"]:checked').length;
     $('nq-columns-count').textContent = `(${chosen} of at most ${state.maxCdrColumns} in the table · ${exported} in Excel)`;
   };
+  const columnBox = (value, kind, label) => {
+    const box = node('input');
+    box.type = 'checkbox';
+    box.value = value;
+    box.dataset.target = kind;
+    box.setAttribute('aria-label', `${label} in the ${kind === 'table' ? 'table' : 'Excel export'}`);
+    return box;
+  };
+  // Ticks the call columns, the Table and Excel of each field and the CDR columns of a layout.
+  const fillColumnsDialog = (layout) => {
+    $('nq-columns-builtin').querySelectorAll('input').forEach((box) => { box.checked = layout.builtin.includes(box.value); });
+    const table = new Set(layout.fields);
+    const excel = new Set(layout.excel_fields);
+    $('nq-columns-fields').querySelectorAll('input[data-target="table"]:not([data-fixed])').forEach((box) => { box.checked = table.has(box.value); });
+    $('nq-columns-fields').querySelectorAll('input[data-target="excel"]').forEach((box) => { box.checked = excel.has(box.value); });
+    const inTable = new Set(layout.cdr);
+    const inExcel = new Set(layout.export_cdr || []);
+    $('nq-columns-cdr').querySelectorAll('.nq-cdr-column-row').forEach((row) => {
+      row.querySelector('input[data-target="table"]').checked = inTable.has(row.dataset.name);
+      row.querySelector('input[data-target="excel"]').checked = inTable.has(row.dataset.name) || inExcel.has(row.dataset.name);
+    });
+    syncColumnCount();
+  };
   if (columnsDialog) {
     $('nq-columns-open').addEventListener('click', () => {
-      const checkbox = (value, label, checked) => {
+      const layout = state.layout;
+      const workspace = state.layouts?.workspace || layout;
+      $('nq-columns-builtin').replaceChildren(...Object.entries(state.optionalColumns).map(([key, label]) => {
         const wrapper = node('label', undefined, 'nq-toggle');
         const box = node('input');
         box.type = 'checkbox';
-        box.value = value;
-        box.checked = checked;
+        box.value = key;
         wrapper.append(box, ` ${label}`);
         return wrapper;
-      };
-      $('nq-columns-builtin').replaceChildren(...Object.entries(state.optionalColumns).map(([key, label]) => checkbox(key, label,
-        state.tableColumns.builtin.includes(key))));
-      // The catalog fields under their section; the follow-up ones always have their column.
+      }));
+      // The catalog fields under their section, each one as a column of the table and of the Excel; the follow-up
+      // fields always have their column.
       $('nq-columns-fields').replaceChildren(...state.sections.map((section) => {
-        const fields = state.fields.filter((field) => field.section === section.key && field.source !== 'tracking');
+        const fields = state.fields.filter((field) => field.section === section.key);
         if (!fields.length) return null;
-        // The section on its own row, above its fields.
         const group = node('div', undefined, 'nq-columns-field-group');
         group.style.setProperty('--nq-section', section.color);
         const head = node('div', undefined, 'nq-columns-field-head');
         head.append(sectionTag(section.key));
-        const list = node('div', undefined, 'nq-columns-field-list');
-        list.append(...fields.map((field) => {
-          const option = checkbox(field.key, field.label, field.in_table);
-          option.title = `${SOURCE_TAGS[field.source] || field.source} · ${field.description || field.label}`;
-          return option;
+        const columns = node('div', undefined, 'nq-cdr-column-head nq-columns-field-columns');
+        columns.setAttribute('aria-hidden', 'true');
+        columns.append(node('span', 'Field'), node('span', 'Table'), node('span', 'Excel'));
+        group.append(head, columns, ...fields.map((field) => {
+          const row = node('div', undefined, 'nq-cdr-column-row nq-columns-field-row');
+          row.title = `${SOURCE_TAGS[field.source] || field.source} · ${field.description || field.label}`;
+          const table = columnBox(field.key, 'table', field.label);
+          if (field.source === 'tracking') {
+            table.checked = true;
+            table.disabled = true;
+            table.dataset.fixed = '1';
+            table.title = 'Always a column of the table';
+          }
+          row.append(node('span', field.label), table, columnBox(field.key, 'excel', field.label));
+          return row;
         }));
-        group.append(head, list);
         return group;
       }).filter(Boolean));
-      const inTable = new Set(state.tableColumns.cdr);
-      const inExcel = new Set(state.tableColumns.export_cdr || []);
-      const names = [...new Set([...state.tableColumns.cdr, ...(state.tableColumns.export_cdr || []), ...state.cdrColumns])];
-      const target = (name, kind, checked) => {
-        const box = node('input');
-        box.type = 'checkbox';
-        box.value = name;
-        box.dataset.target = kind;
-        box.checked = checked;
-        box.setAttribute('aria-label', `${name} in the ${kind === 'table' ? 'table' : 'Excel export'}`);
-        return box;
-      };
+      const names = [...new Set([...layout.cdr, ...(layout.export_cdr || []), ...workspace.cdr, ...(workspace.export_cdr || []),
+        ...state.cdrColumns])];
       $('nq-columns-cdr').replaceChildren(...names.map((name) => {
         const row = node('div', undefined, 'nq-cdr-column-row');
         row.dataset.name = name;
-        row.append(node('span', name), target(name, 'table', inTable.has(name)), target(name, 'excel', inTable.has(name) || inExcel.has(name)));
+        row.append(node('span', name), columnBox(name, 'table', name), columnBox(name, 'excel', name));
         return row;
       }));
       if (!names.length) $('nq-columns-cdr').append(node('p', 'No CDR is indexed yet.', 'form-note'));
+      fillColumnsDialog(layout);
+      // From the workspace layout, Save makes the columns the user's own.
+      const scope = $('nq-columns-scope');
+      scope.hidden = state.layouts?.view !== 'workspace';
+      scope.textContent = state.layouts?.mine
+        ? 'You are seeing the workspace layout: Save makes these columns your own layout and replaces the one you had.'
+        : 'You are seeing the workspace layout: Save makes these columns your own layout, only for you.';
       $('nq-columns-search').value = '';
       $('nq-columns-error').textContent = '';
-      columnsDefaults = false;
-      syncColumnCount();
+      columnsReason = 'changed';
       columnsDialog.showModal();
     });
     $('nq-columns-cdr').addEventListener('change', syncColumnCount);
-    // The columns of a new workspace: no call or CDR columns, and the Analysis Center fields it shows in the table.
+    // The columns of a new workspace: no call or CDR columns, and the Table and Excel of its fields.
     $('nq-columns-default').addEventListener('click', () => {
-      const inTable = new Set(state.defaultFields.filter((field) => field.in_table).map((field) => field.key));
-      $('nq-columns-builtin').querySelectorAll('input').forEach((box) => { box.checked = false; });
-      $('nq-columns-fields').querySelectorAll('input').forEach((box) => { box.checked = inTable.has(box.value); });
-      $('nq-columns-cdr').querySelectorAll('input').forEach((box) => { box.checked = false; box.disabled = false; });
-      syncColumnCount();
-      columnsDefaults = true;
+      const defaults = new Map(state.defaultFields.map((field) => [field.key, field]));
+      fillColumnsDialog({builtin: [], cdr: [], export_cdr: [],
+        fields: state.fields.filter((field) => defaults.get(field.key)?.in_table).map((field) => field.key),
+        excel_fields: state.fields.filter((field) => defaults.get(field.key)?.in_export ?? true).map((field) => field.key)});
+      columnsReason = 'defaults';
       $('nq-columns-error').style.color = 'var(--nq-muted)';
       $('nq-columns-error').textContent = 'The default columns are back: no call or CDR columns, and the Analysis Center fields '
         + 'of a new workspace. Save to apply.';
+    });
+    // The columns, Excel and order of the workspace layout, to start the user's own again.
+    $('nq-columns-copy').addEventListener('click', () => {
+      fillColumnsDialog(state.layouts?.workspace || state.layout);
+      columnsReason = 'copied';
+      $('nq-columns-error').style.color = 'var(--nq-muted)';
+      $('nq-columns-error').textContent = 'The columns, Excel and column order of the workspace layout are back. Save to make them your own.';
     });
     $('nq-columns-search').addEventListener('input', () => {
       const query = $('nq-columns-search').value.trim().toLowerCase();
@@ -5271,27 +5399,21 @@
     $('nq-columns-form').addEventListener('submit', async (event) => {
       event.preventDefault();
       const save = $('nq-columns-save');
+      const values = (selector) => [...columnsDialog.querySelectorAll(selector)].map((box) => box.value);
       save.disabled = true;
       try {
-        await api('/api/non-qualified-calls/table-columns', {method: 'PUT', body: JSON.stringify({
-          builtin: [...$('nq-columns-builtin').querySelectorAll('input:checked')].map((box) => box.value),
-          cdr: [...$('nq-columns-cdr').querySelectorAll('input[data-target="table"]:checked')].map((box) => box.value),
-          export_cdr: [...$('nq-columns-cdr').querySelectorAll('input[data-target="excel"]:checked')]
+        const saved = await saveLayout({
+          builtin: values('#nq-columns-builtin input:checked'),
+          cdr: values('#nq-columns-cdr input[data-target="table"]:checked'),
+          export_cdr: [...columnsDialog.querySelectorAll('#nq-columns-cdr input[data-target="excel"]:checked')]
             .filter((box) => !box.closest('.nq-cdr-column-row').querySelector('input[data-target="table"]').checked).map((box) => box.value),
-          defaults: columnsDefaults,
-        })});
-        // The catalog fields chosen as columns are saved with the field catalog.
-        const shown = new Set([...$('nq-columns-fields').querySelectorAll('input:checked')].map((box) => box.value));
-        const listed = new Set([...$('nq-columns-fields').querySelectorAll('input')].map((box) => box.value));
-        if (state.fields.some((field) => listed.has(field.key) && field.in_table !== shown.has(field.key))) {
-          await api('/api/non-qualified-calls/fields', {method: 'PUT', body: JSON.stringify({fields: state.fields.map((field) => ({
-            ...field, in_table: listed.has(field.key) ? shown.has(field.key) : field.in_table,
-            options: field.options.map((option) => ({...option, previous: option.name})),
-          }))})});
-        }
+          fields: values('#nq-columns-fields input[data-target="table"]:checked:not([data-fixed])'),
+          excel_fields: values('#nq-columns-fields input[data-target="excel"]:checked'),
+          ...(columnsReason === 'copied' ? {order: state.layouts?.workspace?.order || []} : {}),
+        }, columnsReason, {reload: true});
+        if (!saved) return;
         columnsDialog.close();
-        toast('Additional columns saved.');
-        await loadState();
+        toast('Your layout is saved: only you see it.');
       } catch (error) {
         $('nq-columns-error').style.color = '';
         $('nq-columns-error').textContent = error.message;
@@ -5935,7 +6057,7 @@
     if (files.length) {
       host.append(smallTable(['File', 'Results', 'Imported', 'By'], files.map((file) => [file.name, number(file.rows), exactTime(file.imported_at), file.imported_by])));
     }
-    $('nq-rca-clear').hidden = !summary.total;
+    $('nq-rca-clear').hidden = !summary.total || !state.user.can_configure;
   };
   const renderRcaPreview = (preview) => {
     const host = $('nq-rca-preview');

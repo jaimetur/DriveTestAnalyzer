@@ -11194,7 +11194,8 @@ def test_every_single_select_opens_the_application_list_below_its_field():
     # One delegated handler replaces the browser's list (which macOS opens over the field) of every single select;
     # the select stays the field, and data-native-select keeps the browser's list.
     component = script[script.index('function setupNativeSelectMenus() {'):script.index('\nsetupPersistentControls();')]
-    assert "select instanceof HTMLSelectElement && !select.multiple && select.size <= 1 && !select.disabled" in component
+    # A select of a disabled fieldset (a configuration the role cannot change) does not open either.
+    assert "select instanceof HTMLSelectElement && !select.multiple && select.size <= 1 && !select.matches(':disabled')" in component
     assert "!select.closest('[data-native-select]')" in component
     assert "document.addEventListener('mousedown', (event) => {" in component and 'event.preventDefault();' in component
     assert "[' ', 'Enter', 'ArrowDown', 'ArrowUp', 'F4'].includes(event.key)" in component

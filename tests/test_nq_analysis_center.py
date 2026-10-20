@@ -15,7 +15,7 @@ import src.DriveTestAnalyzer as core
 from src.modules import non_qualified_calls as nq
 from src.modules import non_qualified_calls_visuals as visuals
 from src.modules import nq_analyses_rules, nq_catalog, nq_rca
-from tests.test_non_qualified_calls import add_cdr, enable_module, login, query
+from tests.test_non_qualified_calls import add_cdr, enable_module, login, query, workspace_user
 
 
 @pytest.fixture(autouse=True)
@@ -226,6 +226,144 @@ def test_each_configuration_goes_back_to_the_values_of_a_new_workspace(client, t
     core.SESSIONS[token] = core.SessionUser(username='editor', role='user-editor')
     client.cookies.set(core.SESSION_COOKIE, token)
     assert client.delete('/api/non-qualified-calls/analyses/equivalences').status_code == 403
+
+
+def excel_headers(client) -> list[str]:
+    exported = client.post('/api/non-qualified-calls/export', json={'filters': {}})
+    assert exported.status_code == 200, exported.text
+    return [cell.value for cell in load_workbook(io.BytesIO(exported.content))['NQ Calls'][2]]
+
+
+def test_only_admins_change_the_configuration_and_every_user_has_a_table_layout(client, tmp_path):
+    setup_calls(client, tmp_path)
+    repository = core.repository
+    workspace_user('editor', 'user-editor')
+    workspace_user('viewer', 'user-viewer')
+    events = lambda action: [row['details'] for row in repository.list_logs() if row['action'] == action]
+    state = client.get('/api/non-qualified-calls/state').json()
+    assert state['user']['can_configure'] is True and state['table_layout']['view'] == 'workspace'
+    assert state['table_layout']['mine'] is None and state['table_layout']['effective'] == state['table_layout']['workspace']
+    # The NQ Analysis Configuration: admins and super-admins only.
+    login(client, 'editor', 'editor123')
+    refused = {
+        ('put', '/api/non-qualified-calls/options'): {'statuses': state['options']['statuses'], 'teams': state['options']['teams']},
+        ('put', '/api/non-qualified-calls/fields'): {'fields': state['fields']},
+        ('put', '/api/non-qualified-calls/sections'): {'sections': state['sections']},
+        ('put', '/api/non-qualified-calls/status-rules'): {'rules': state['status_rules']},
+        ('put', '/api/non-qualified-calls/root-causes'): {'domains': [], 'categories': [], 'causes': []},
+        ('put', '/api/non-qualified-calls/table-columns'): {'builtin': ['join_id']},
+        ('post', '/api/non-qualified-calls/analysts/assign'): {'assignments': []},
+        ('post', '/api/non-qualified-calls/root-causes/apply-categories'): {'preview': True},
+        ('post', '/api/non-qualified-calls/table-layout/publish'): None,
+    }
+    for (method, path), body in refused.items():
+        response = getattr(client, method)(path, **({'json': body} if body is not None else {}))
+        assert response.status_code == 403 and 'admins and super-admins' in response.text, path
+    assert client.delete('/api/non-qualified-calls/rca').status_code == 403
+    # They see it, locked under a card, and their own table layout.
+    page = client.get('/non-qualified-calls').text
+    assert 'Only admins and super-admins can change the NQ Analysis Configuration.' in page
+    assert 'Only admins and super-admins can change the fields and sections.' in page
+    assert page.count('class="nq-config-fieldset" disabled') >= 8
+    for save in ('nq-options-save', 'nq-fields-save', 'nq-root-save', 'nq-status-rules-save'):
+        assert f'id="{save}" hidden>Save</button>' in page, save
+    assert 'id="nq-columns-open"' in page and 'id="nq-layout-publish"' not in page
+    # Their layout: only for them, from the workspace one, with a CDR column and Priority in the table and in Excel.
+    saved = client.put('/api/non-qualified-calls/table-layout/mine', json={
+        'cdr': ['Cell_ID_A'], 'fields': ['analysis_status', 'priority'], 'excel_fields': ['analysis_status', 'priority', 'comments'],
+        'order': ['field:priority', 'start_time']})
+    assert saved.status_code == 200, saved.text
+    layouts = saved.json()['table_layout']
+    assert layouts['view'] == 'mine' and layouts['effective']['cdr'] == ['Cell_ID_A']
+    assert layouts['effective']['fields'] == ['priority', 'analysis_status'] and layouts['effective']['order'][0] == 'field:priority'
+    assert layouts['workspace'] == state['table_layout']['workspace']
+    assert 'Cell_ID_A' in nq.indexed_cdr_columns(repository)
+    headers = excel_headers(client)
+    assert 'Cell_ID_A' in headers and 'Priority' in headers and 'Findings' not in headers
+    # Workspace: the layout of every user; Mine keeps theirs.
+    switched = client.put('/api/non-qualified-calls/table-layout/view', json={'view': 'workspace'}).json()['table_layout']
+    assert switched['view'] == 'workspace' and switched['mine']['cdr'] == ['Cell_ID_A']
+    assert 'Cell_ID_A' not in excel_headers(client) and 'Findings' in excel_headers(client)
+    # Removing a CDR column keeps it indexed, so the CDRs are not indexed again.
+    client.put('/api/non-qualified-calls/table-layout/mine', json={'cdr': []})
+    assert 'Cell_ID_A' in nq.indexed_cdr_columns(repository)
+    # A user-viewer has their own layout too.
+    login(client, 'viewer', 'viewer123')
+    assert client.put('/api/non-qualified-calls/table-layout/mine', json={'builtin': ['join_id']}).status_code == 200
+    assert client.put('/api/non-qualified-calls/fields', json={'fields': state['fields']}).status_code == 403
+    # Admins save their layout for the workspace: its columns, the Table column and Excel of the fields and the order.
+    login(client)
+    client.put('/api/non-qualified-calls/table-layout/mine', json={'builtin': ['cell_id'], 'fields': ['priority'],
+                                                                   'order': ['operator', 'start_time']})
+    published = client.post('/api/non-qualified-calls/table-layout/publish')
+    assert published.status_code == 200, published.text
+    workspace = published.json()['table_layout']['workspace']
+    assert workspace['builtin'] == ['cell_id'] and workspace['fields'] == ['priority'] and workspace['order'] == ['operator', 'start_time']
+    assert {field['key']: field['in_table'] for field in nq.list_fields(repository)}['priority'] is True
+    # The CDR columns no layout shows any more leave the index with the next change of the workspace columns.
+    assert 'Cell_ID_A' not in nq.indexed_cdr_columns(repository)
+    login(client, 'editor', 'editor123')
+    client.put('/api/non-qualified-calls/table-layout/view', json={'view': 'workspace'})
+    assert client.get('/api/non-qualified-calls/state').json()['table_layout']['effective']['builtin'] == ['cell_id']
+    # Every action is in App Events.
+    assert any(item.startswith('Non-Qualified Calls table layout of editor saved: ') for item in events('nq_table_layout'))
+    assert 'switched to the workspace layout' in events('nq_table_layout_view')[0]
+    assert 'of super saved for the workspace: 1 call columns' in events('nq_table_layout_publish')[0]
+
+
+def test_workspaces_before_the_layouts_get_the_table_of_the_user_layouts(client, tmp_path):
+    setup_calls(client, tmp_path)
+    repository = core.repository
+    with repository.connection() as connection:
+        connection.execute(f'DROP TABLE {nq.NQ_USER_LAYOUTS_TABLE}')
+    repository.set_workspace_state(nq.SCHEMA_STATE_KEY, '2026-10-16.2')
+    nq.ensure_nq_tables(repository)
+    assert nq.save_user_layout(repository, 'super', {'builtin': ['join_id']})['effective']['builtin'] == ['join_id']
+
+
+def test_transfers_take_the_layouts_and_settings_of_the_package(client, tmp_path):
+    setup_calls(client, tmp_path)
+    repository = core.repository
+    # The source: its columns (also for Excel only), a layout of its own, the Priority in the table and first, a
+    # suggestion rule of its own and a root category required to close a call.
+    nq.save_table_columns(repository, ['join_id'], ['Technology'], 'super', ['Vendor'])
+    nq.save_user_layout(repository, 'super', {'builtin': ['cell_id'], 'order': ['operator']})
+    nq.save_user_layout(repository, 'ghost', {'cdr': ['Vendor']})
+    nq.publish_user_layout(repository, 'super')
+    nq.save_user_layout(repository, 'super', {'builtin': ['nr_mode']})
+    fields = nq.list_fields(repository)
+    priority = next(field for field in fields if field['key'] == 'priority')
+    fields = [priority, *(field for field in fields if field['key'] != 'priority')]
+    priority['in_table'], priority['section'] = True, 'analysis'
+    nq._store_fields(repository, fields)
+    rule = {**nq.DEFAULT_ROOT_CAUSE_RULE, 'comments': not nq.DEFAULT_ROOT_CAUSE_RULE['comments']}
+    repository.set_workspace_state(nq.ROOT_CAUSE_RULE_STATE_KEY, json.dumps(rule))
+    root = nq.list_root_causes(repository)
+    nq.save_root_causes(repository, {kind: [{**item, 'previous': item['name']} for item in root[kind]]
+                                     for kind in ('domains', 'categories', 'causes')}, True, 'super')
+    document = nq.export_configuration_document(repository)
+    source = nq.table_layouts(repository, 'super')
+    # The destination has its own of everything.
+    nq.save_table_columns(repository, ['end_time'], [], 'super')
+    nq.save_user_layout(repository, 'super', {'builtin': ['direction'], 'order': []})
+    nq.set_layout_view(repository, 'super', 'workspace')
+    repository.set_workspace_state(nq.COLUMN_ORDER_STATE_KEY, '[]')
+    repository.set_workspace_state(nq.ROOT_CAUSE_RULE_STATE_KEY, json.dumps(nq.DEFAULT_ROOT_CAUSE_RULE))
+    repository.set_workspace_state(nq.ROOT_CAUSE_SETTINGS_STATE_KEY, json.dumps({'require_to_close': False}))
+    nq._store_fields(repository, [{**field, 'in_table': False, 'section': 'general'} if field['key'] == 'priority' else field
+                                  for field in sorted(fields, key=lambda field: field['key'] == 'priority')])
+    # The import takes the package: nothing of the destination stays in its way.
+    nq.import_configuration_document(repository, document)
+    taken = nq.table_layouts(repository, 'super')
+    assert taken['workspace'] == source['workspace'] and taken['mine'] == source['mine'] and taken['view'] == 'mine'
+    assert nq.table_layouts(repository, 'ghost')['mine']['cdr'] == ['Vendor']
+    imported = nq.list_fields(repository)
+    assert imported[0]['key'] == 'priority' and imported[0]['in_table'] is True and imported[0]['section'] == 'analysis'
+    assert json.loads(repository.get_workspace_state(nq.ROOT_CAUSE_RULE_STATE_KEY)) == nq.normalize_root_cause_rule(rule)
+    assert nq.list_root_causes(repository)['require_to_close'] is True
+    assert 'Vendor' in nq.indexed_cdr_columns(repository)
+    assert any('(ghost, super) taken from an imported configuration' in row['details']
+               for row in repository.list_logs() if row['action'] == 'nq_table_layout')
 
 
 def test_root_category_and_cause_are_independent_and_set_the_domain(client, tmp_path):
@@ -986,9 +1124,11 @@ def test_admins_import_the_analyses_of_the_previous_tool_by_join_id(client, tmp_
     assert menu.index('#root-cause-catalog') < menu.rindex('module-sections-separator') < menu.index('#import-ericsson-rca-results')
     # Columns is a button of the table, before Default column order, not an option of the NQ Analysis Configuration.
     assert 'nq-columns-open' not in center and 'additional-columns' not in menu
-    toolbar = page.split('class="nq-toolbar-actions"', 1)[1].split('</div>', 1)[0]
-    assert toolbar.index('id="nq-columns-open"') < toolbar.index('id="nq-column-order-reset"')
-    assert 'for every user of the workspace">Columns</button>' in toolbar
+    # Layout (Mine / Workspace), Save for the workspace (admins) and Default column order, then Columns.
+    toolbar = page.split('class="nq-toolbar-actions"', 1)[1].split('id="nq-export"', 1)[0]
+    assert toolbar.index('data-nq-layout-view="mine"') < toolbar.index('id="nq-layout-publish"') \
+        < toolbar.index('id="nq-column-order-reset"') < toolbar.index('id="nq-columns-open"')
+    assert 'in your own layout (only for you)">Columns</button>' in toolbar
     # The Global Status and the Team / Assignee come before the comments; the calls panel follows the Filters.
     head = page.split('<thead>', 1)[1].split('</thead>', 1)[0]
     assert head.index('data-sort="root_category"') < head.index('data-sort="status"') < head.index('data-sort="team"') \

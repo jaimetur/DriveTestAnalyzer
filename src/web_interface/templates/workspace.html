@@ -179,7 +179,8 @@
     </summary>
     <div class="upload-panel-content">
       <p class="lede">Bring the source files that feed every product workflow into one managed workspace: NetCheck CDR workbooks (Data, Voice and Speech), Smart Orchestrator Logs, and Vodafone UK (VFUK) or Three UK (3UK) Multivendor Mappings. Workspace proposes a type from each filename, lets you confirm it per file and, for CDRs, can apply an existing mapping or one uploaded in the same batch. Batch mappings are processed before their selected CDRs.</p>
-      {% if user.role not in ['user-editor', 'admin', 'super-admin'] %}<p class="form-note workspace-read-only-note">The user-viewer role can explore the workspace datasets and generate jobs, but cannot upload, delete, reprocess or map datasets.</p>{% endif %}
+      {% if user.role not in ['user-editor', 'admin', 'super-admin'] %}<p class="form-note workspace-read-only-note">The user-viewer role can explore the workspace datasets and generate jobs, but cannot delete, reprocess or map datasets.</p>{% endif %}
+      {% if user.role in ['admin', 'super-admin'] %}
       <form class="upload-dropzone" action="/datasets-analysis/upload" method="post" enctype="multipart/form-data" data-background-upload data-workspace-id="{{ active_workspace.id }}" data-workspace-name="{{ active_workspace.name }}" data-upload-type-form data-vodafone-mapping-options='{{ vodafone_mapping_datasets | default([]) | tojson }}' data-three-mapping-options='{{ three_mapping_datasets | default([]) | tojson }}' data-region-mapping-options='{{ region_mapping_datasets | default([]) | tojson }}' data-cluster-mapping-options='{{ cluster_mapping_datasets | default([]) | tojson }}' data-vendor-polygon-options='{{ vendor_polygon_datasets | default([]) | tojson }}' data-network-inventory-count="{{ network_inventory_datasets | default([]) | length }}" data-vendor-source-operators='{{ vendor_source_operators | default({}) | tojson }}' data-operator-options='{{ operator_options | default([]) | tojson }}'{% if datasets | rejectattr('dataset_kind', 'in', ['data', 'voice', 'speech', 'mapping_vodafone', 'mapping_three', 'network_inventory', 'regions', 'clusters', 'vendors', 'smart_orchestrator_logs']) | list %} data-other-datasets{% endif %}>
       <label class="dropzone-field" data-upload-dropzone>
         <span class="dropzone-title">Drop workbooks or browse</span>
@@ -200,6 +201,10 @@
       </section>
       <button type="submit">Upload and process</button>
       </form>
+      {% else %}
+      <div class="role-warning" role="note" data-upload-role-warning><svg class="role-warning-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10.3 4.5a2 2 0 0 1 3.4 0l8 13.5a2 2 0 0 1-1.7 3H4a2 2 0 0 1-1.7-3z"/><path d="M12 9v4m0 4h.01"/></svg>
+        <p><strong>Only admins and super-admins can upload datasets to the workspace.</strong> Ask one of them to upload the CDRs, logs or mappings you need; the datasets of the workspace are still yours to explore.</p></div>
+      {% endif %}
       {% if selected_dataset and selected_dataset.is_ready %}
       <p class="form-note">Workspace opened from cache. Open the processed dataset in <strong>CDR Analysis</strong> to work with filters, KPIs and charts.</p>
       {% endif %}

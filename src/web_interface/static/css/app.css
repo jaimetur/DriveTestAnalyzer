@@ -5557,3 +5557,9 @@ body:has(> .unassigned-values-card:not([hidden], .is-collapsed)) { padding-botto
 .multiselect-option.campaign-preset span { font-style: italic; font-weight: 800; }
 .multiselect-menu:has(.campaign-preset, .ds-campaign-preset) { max-height: min(600px, calc(100vh - 7rem)); }
 @media (max-width: 640px) { .multiselect-menu:has(.campaign-preset, .ds-campaign-preset) { max-height: min(28rem, calc(100dvh - 1rem)); } }
+/* A card that tells what only admins and super-admins can change (dataset uploads, the NQ Analysis Configuration). */
+.role-warning { display: flex; align-items: flex-start; gap: .6rem; margin: 0; padding: .65rem .85rem; border: 1px solid #f2cf95; border-left: 5px solid #e59a2b; border-radius: 12px; background: #fff4e0; color: #7a4a00; font-size: .84rem; text-align: left; }
+.role-warning[hidden] { display: none; }
+.role-warning-icon { flex: 0 0 auto; width: 1.3rem; height: 1.3rem; color: #c77700; }
+.role-warning p { margin: 0; line-height: 1.45; }
+.role-warning strong { color: #5c3700; }
