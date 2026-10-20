@@ -448,7 +448,7 @@ Permitted editors can open the generating template and Auto-Calculated Fields wi
 
 A Dashboard chooses its CDRs from its NR Mode and Campaign in the workspace where it is opened, so an imported Dashboard uses the CDRs of the destination with the same campaigns (Latest campaign, Latest 2, 3 and 4 campaigns and Previous campaign, among its newest ones). Dashboards exported by earlier versions with CDRs of their own take the campaigns of the CDRs of the destination with the same name and type, or else its newest two campaigns; check the inputs after import.
 
-Dashboards have their own Admin export/import/transfer/backup/restore component. Full Workspace and Full Environment include definitions from selected workspaces, with Dashboards listed after Application Config.
+Dashboards have their own Admin export/import/transfer/backup/restore component: an import or transfer replaces the Dashboards the destination has (found by their identity, so one renamed on the source server is renamed there too, or by name and NR Mode) and adds the others, and so does a restore (see [Matching and creators](administrator-config.md#matching-and-creators)). Full Workspace and Full Environment include definitions from selected workspaces, with Dashboards listed after Application Config.
 
 > [!TIP]
 > Verify the template and Campaign after moving a Dashboard to another workspace. Its CDRs do not travel with it: it uses the CDRs of the destination for its campaigns.

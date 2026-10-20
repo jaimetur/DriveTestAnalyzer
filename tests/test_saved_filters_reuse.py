@@ -540,3 +540,33 @@ def test_operator_filters_take_patterns_and_exclusions_when_they_are_calculated(
     saved_filters.update_saved_filter(repository, excluded['id'], pinned=True)
     [entry] = saved_filters.saved_filters_document(repository, favourites_only=True)['saved_filters']
     assert entry['context_filters']['Operator'] == ['Not Three*']
+
+
+def test_an_imported_favourites_filter_replaces_the_name_and_creator_of_the_same_selection(tmp_path):
+    source = _workspace(tmp_path, 'source')
+    ids = _three_cdrs(source, tmp_path / 'source')
+    used, _ = saved_filters.save_saved_filter(source, ids, ['Operator'], 'NSA')
+    saved_filters.update_saved_filter(source, used['id'], name='Imported name', pinned=True, username='ana')
+    document = json.loads(json.dumps(saved_filters.saved_filters_document(source, favourites_only=True)))
+    assert document['saved_filters'][0]['created_by'] == 'ana'
+
+    target = _workspace(tmp_path, 'target')
+    target_ids = _three_cdrs(target, tmp_path / 'target')
+    local, _ = saved_filters.save_saved_filter(target, target_ids, ['Operator'], 'NSA')
+    saved_filters.update_saved_filter(target, local['id'], name='Local name')
+    with target.connection() as connection:
+        connection.execute("UPDATE saved_filters SET created_by = 'bob' WHERE id = ?", (local['id'],))
+    # The creator rule of the import: the creator in the document when that user is active here.
+    assert saved_filters.import_saved_filters(target, document, creator=lambda package, _local: package or 'importer') == 1
+    [replaced] = saved_filters.list_saved_filters(target)
+    assert replaced['id'] == local['id'] and replaced['name'] == 'Imported name' and replaced['pinned']
+    assert replaced['created_by'] == 'ana'
+
+    # A star of the workspace stays with whoever gave it when the imported one has none.
+    saved_filters.update_saved_filter(target, local['id'], name='Starred here', username='bob')
+    with target.connection() as connection:
+        connection.execute("UPDATE saved_filters SET created_by = 'bob' WHERE id = ?", (local['id'],))
+    document['saved_filters'][0].update(pinned=False, name='Unstarred there', created_by='carol')
+    saved_filters.import_saved_filters(target, document, creator=lambda package, _local: package or 'importer')
+    [kept] = saved_filters.list_saved_filters(target)
+    assert kept['name'] == 'Unstarred there' and kept['pinned'] and kept['created_by'] == 'bob'

@@ -181,6 +181,8 @@ def test_query_builder_queries_are_exported_without_cdrs(client) -> None:
     # Neither the library nor a single saved query carry CDRs: they are chosen when the query is used.
     library = app_module._query_builder_queries_payload(app_module.active_workspace)
     exported = next(item for item in library['queries'] if item['name'] == 'With CDRs')
+    # The library carries the identity of each query, which finds it again after a rename in another workspace.
+    assert exported.pop('uid')
     assert exported == {'name': 'With CDRs', 'description': 'Uses two CDRs', 'query_sql': 'SELECT 1', 'created_by': 'admin'}
     single = client.get(f'/api/query-builder/saved/{query_id}/export').json()
     assert single['query'] == exported
@@ -192,31 +194,25 @@ def test_query_builder_queries_are_exported_without_cdrs(client) -> None:
 
 def test_query_builder_restore_saves_queries_without_cdrs(monkeypatch, tmp_path: Path) -> None:
     import src.DriveTestAnalyzer as app_module
-
-    saved_queries = []
-
-    class DatasetRepository:
-        def __init__(self, *_args):
-            pass
-
-        def list_datasets(self):
-            return []
-
-        def save_query_builder_query(self, *args):
-            saved_queries.append(args)
+    from src.modules.repository import Repository
 
     class DestinationWorkspace:
         name = 'Destination'
         database_path = tmp_path / 'destination.db'
 
-    monkeypatch.setattr(app_module, 'Repository', DatasetRepository)
+    destination = Repository(DestinationWorkspace.database_path, tmp_path / 'application.db')
+    destination.initialize()
+    monkeypatch.setattr(app_module, 'Repository', lambda path, *_args, **_kwargs: Repository(path, tmp_path / 'application.db'))
     # Queries are restored without CDRs, also those of packages from earlier versions that named their CDRs.
     payload = json.dumps({'queries': [
         {'name': 'Example', 'query_sql': 'SELECT 1'},
         {'name': 'Earlier', 'query_sql': 'SELECT 2', 'dataset_ids': [19], 'dataset_names': ['missing.csv']},
     ]}).encode('utf-8')
     assert app_module._restore_workspace_query_builder_queries(DestinationWorkspace(), payload) == 2
-    assert saved_queries == [('Example', '', 'SELECT 1', [], 'import'), ('Earlier', '', 'SELECT 2', [], 'import')]
+    saved = {str(row['name']): row for row in destination.list_query_builder_queries()}
+    assert set(saved) == {'Example', 'Earlier'}
+    # Without a creator in the package, they belong to the user who imports them.
+    assert all(row['dataset_ids_json'] == '[]' and row['created_by'] == 'import' for row in saved.values())
 
 
 def test_query_builder_preview_updates_completed_filter_while_another_is_incomplete() -> None:

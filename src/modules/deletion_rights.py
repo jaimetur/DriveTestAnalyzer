@@ -18,6 +18,8 @@ CREATORS_STATE_PREFIX = 'creators:'
 PPT_DASHBOARDS = 'ppt-dashboards'
 SCORING_REPORT_CONFIGURATIONS = 'scoring-report-configurations'
 SCORING_METHODOLOGIES = 'scoring-methodologies'
+# Auto-calculated Fields keep who created them for Import / Export and Transfer only: anyone who edits them deletes them.
+AUTO_CALCULATED_FIELDS = 'auto-calculated-fields'
 # The items without a known creator, or created by the application, belong to the super-admin every deployment starts
 # with (``super``), whether or not the account still exists.
 UNKNOWN_CREATOR_OWNER = DEFAULT_ACCOUNT_USERNAMES[0]
@@ -64,6 +66,22 @@ def record_creator(repository: Any, kind: str, item_id: Any, username: str) -> N
     values = creators(repository, kind)
     if _key(item_id) not in values and str(username or '').strip():
         values[_key(item_id)] = str(username).strip()
+        _store(repository, kind, values)
+
+
+def set_creator(repository: Any, kind: str, item_id: Any, username: str) -> None:
+    """Give an item the creator an import decides (see transfer_identities.imported_creator)."""
+    values = creators(repository, kind)
+    if str(username or '').strip() and values.get(_key(item_id)) != str(username).strip():
+        values[_key(item_id)] = str(username).strip()
+        _store(repository, kind, values)
+
+
+def move_creator(repository: Any, kind: str, item_id: Any, new_item_id: Any) -> None:
+    """An item kept by its name keeps its creator when it is renamed."""
+    values = creators(repository, kind)
+    if _key(item_id) != _key(new_item_id) and _key(item_id) in values:
+        values[_key(new_item_id)] = values.pop(_key(item_id))
         _store(repository, kind, values)
 
 

@@ -379,6 +379,8 @@ Use **Apply** in the field editor to keep an edit in the manager's memory, or **
 
 The main **Save** action persists all applied changes without rebuilding CDR tables; **Save & Materialize** persists them and starts the background materialization job. After either operation succeeds, the manager closes. Both actions remain disabled until a field is added, edited, reordered, duplicated or deleted.
 
+Renaming a field keeps it the same field: its new name reaches the PPT Templates (KPI, filters, splits and legends), the saved Dashboards and the SQL of the saved Query Builder queries of the workspace, where it is a column of the CDR tables (quoted or not; text values and comments are left as they are), and its column in the CDR tables is renamed when they are materialized. An import, transfer or restore that renames a field does the same (see [Matching and creators](administrator-config.md#matching-and-creators)).
+
 Importing JSON or pressing **Re-materialize All Fields**, next to **Edit** and **Export**, also creates a background materialization job; the button is disabled while any CDR table update runs. Workspace remains usable while it runs. The **CDR Tables Updates** card shows one bar per real active task, advances within each table batch and identifies the current table, phase and completed row operations instead of remaining at zero until an entire table finishes.
 
 Fields are applied only to their selected CDR types. The job retains preview-filter fields, fields referenced by rules and the resulting Auto-calculated Fields in the applicable combined table. It removes stale fields from CDR types to which they no longer apply.

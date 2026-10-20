@@ -56,9 +56,9 @@ Available actions:
 
 **New Template** creates a blank NSA definition and opens it for editing. Import accepts a CSV name or derives it from the filename, can convert a legacy catalogue when prompted and requires explicit overwrite confirmation for a case-insensitive name collision.
 
-Renaming saves when you leave the name field or press Enter; the field keeps its previous name and shows an error if the save fails. Duplicate creates `- Copy`; a non-default template can move between NSA and SA when no same-name target exists.
+Renaming saves when you leave the name field or press Enter; the field keeps its previous name and shows an error if the save fails. Each template has an identity that never changes, and each Dashboard refers to its template by it, so a renamed template stays the template of its Dashboards (whose names, when they repeat the template name, follow it too); a duplicate gets its own identity. Duplicate creates `- Copy`; a non-default template can move between NSA and SA when no same-name target exists.
 
-One template can be default for each technology within a workspace. Reporting initially selects that default but does not change it when a user chooses another template for one job. A default template cannot change type or be deleted until another template becomes default. Only admins, super-admins and the user who created a template (with New Template, Import CSV or Duplicate) delete it; for the other users **Delete** is disabled and its tooltip says why. New workspaces start without templates.
+One template can be default for each technology within a workspace. Reporting initially selects that default but does not change it when a user chooses another template for one job. A default template cannot change type or be deleted until another template becomes default. Only admins, super-admins and the user who created a template (with New Template, Import CSV or Duplicate; one brought by Admin Import / Transfer belongs to its creator on the source server when that user is active here, otherwise to whoever imports it) delete it; for the other users **Delete** is disabled and its tooltip says why. New workspaces start without templates.
 
 The row Export action downloads that individual CSV; portable ZIP export is available under Import / Export / Transfer.
 

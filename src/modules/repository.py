@@ -18,6 +18,7 @@ from pathlib import Path
 from threading import Lock, RLock
 from time import monotonic
 from typing import Any, Callable, Iterable, Iterator, Literal
+from uuid import uuid4
 
 import pandas as pd
 
@@ -166,6 +167,7 @@ CREATE TABLE IF NOT EXISTS report_templates (
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_by TEXT NOT NULL DEFAULT '',
     created_by TEXT NOT NULL DEFAULT '',
+    uid TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (technology, name),
     CHECK (technology IN ('nsa', 'sa'))
 );
@@ -695,6 +697,12 @@ class Repository:
         with self.connection() as conn:
             result = conn.execute('DELETE FROM saved_query_builder_queries WHERE id = ?', (query_id,))
             return result.rowcount == 1
+
+    def set_query_builder_query_sql(self, query_id: int, query_sql: str) -> None:
+        """Change only the SQL of a saved query (a renamed column), keeping who saved it."""
+        with self.connection() as conn:
+            conn.execute('UPDATE saved_query_builder_queries SET query_sql = ?, updated_at = ? WHERE id = ?',
+                         (query_sql, local_now_iso(), query_id))
 
     def update_query_builder_query(self, query_id: int, name: str, description: str, query_sql: str, dataset_ids: list[int], username: str) -> bool:
         with self.connection() as conn:
@@ -2296,6 +2304,13 @@ class Repository:
         # Who created each template: only they, admins and super-admins delete it (none for those of before).
         if 'created_by' not in columns:
             conn.execute("ALTER TABLE report_templates ADD COLUMN created_by TEXT NOT NULL DEFAULT ''")
+        # The identity of each template, which never changes: the Dashboards refer to their template by it, and an import
+        # finds it again after a rename (see transfer_identities).
+        if 'uid' not in columns:
+            conn.execute("ALTER TABLE report_templates ADD COLUMN uid TEXT NOT NULL DEFAULT ''")
+        for row in conn.execute("SELECT technology, name FROM report_templates WHERE uid = ''").fetchall():
+            conn.execute("UPDATE report_templates SET uid = ? WHERE technology = ? AND name = ?",
+                         (uuid4().hex, row['technology'], row['name']))
         # Templates written before Operator_Vendor are converted once per workspace.
         conn.execute('CREATE TABLE IF NOT EXISTS workspace_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
         rename_vendor_fields = not conn.execute(
@@ -2339,7 +2354,7 @@ class Repository:
     def list_report_templates(self, technology: str) -> list[sqlite3.Row]:
         with self.connection() as conn:
             return conn.execute(
-                "SELECT technology, name, content, is_default, created_at, updated_at, updated_by, created_by FROM report_templates WHERE technology = ? ORDER BY name COLLATE NOCASE",
+                "SELECT technology, name, content, is_default, created_at, updated_at, updated_by, created_by, uid FROM report_templates WHERE technology = ? ORDER BY name COLLATE NOCASE",
                 (technology,),
             ).fetchall()
 
@@ -2353,8 +2368,8 @@ class Repository:
                 conn.execute("UPDATE report_templates SET is_default = 0 WHERE technology = ?", (technology,))
             now = local_now_iso()
             conn.execute(
-                "INSERT INTO report_templates (technology, name, content, is_default, created_at, updated_at, updated_by, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (technology, name, sqlite3.Binary(normalize_catalog_layouts(content)), int(is_default), now, now, updated_by or '', updated_by or ''),
+                "INSERT INTO report_templates (technology, name, content, is_default, created_at, updated_at, updated_by, created_by, uid) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (technology, name, sqlite3.Binary(normalize_catalog_layouts(content)), int(is_default), now, now, updated_by or '', updated_by or '', uuid4().hex),
             )
 
     def set_report_template_content(self, technology: str, name: str, content: bytes, *, updated_by: str | None = None) -> None:
@@ -2413,6 +2428,24 @@ class Repository:
             conn.execute(
                 "UPDATE report_templates SET updated_at = ?, updated_by = COALESCE(?, updated_by) WHERE technology = ? AND name = ?",
                 (local_now_iso(), updated_by, technology, name),
+            )
+
+    def report_template_uids(self) -> dict[tuple[str, str], str]:
+        """The identity of each template by technology and name, giving one to those that have none."""
+        with self.connection() as conn:
+            for row in conn.execute("SELECT technology, name FROM report_templates WHERE uid = ''").fetchall():
+                conn.execute("UPDATE report_templates SET uid = ? WHERE technology = ? AND name = ?",
+                             (uuid4().hex, row['technology'], row['name']))
+            return {(str(row['technology']), str(row['name'])): str(row['uid'])
+                    for row in conn.execute("SELECT technology, name, uid FROM report_templates").fetchall()}
+
+    def set_report_template_identity(self, technology: str, name: str, *, uid: str = '', created_by: str = '') -> None:
+        """Give a template the identity and the creator an import decides (empty values keep its own)."""
+        with self.connection() as conn:
+            conn.execute(
+                "UPDATE report_templates SET uid = CASE WHEN ? <> '' THEN ? ELSE uid END, "
+                "created_by = CASE WHEN ? <> '' THEN ? ELSE created_by END WHERE technology = ? AND name = ?",
+                (uid, uid, created_by, created_by, technology, name),
             )
 
     def delete_report_template(self, technology: str, name: str) -> None:

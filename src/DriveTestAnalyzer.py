@@ -776,10 +776,33 @@ def calculated_dimension_rename_map(
     return {old_name: new_name for old_name, new_name in renames.items() if old_name != new_name}
 
 
-def rename_calculated_dimension_template_references(renames: dict[str, str]) -> int:
-    """Rename calculated fields in every stored Report Template of the workspace."""
+def keep_calculated_dimension_identities(
+    task_repository: Repository, previous: Iterable[Any], dimensions: Iterable[Any], renames: dict[str, str], username: str,
+) -> None:
+    """A renamed field keeps its identity and its creator (Import / Export and Transfer find it again by them), a new
+    one is created by the user who saves it and a removed one forgets them."""
+    from src.modules.deletion_rights import AUTO_CALCULATED_FIELDS, forget_creator, move_creator, record_creator
+    from src.modules.transfer_identities import AUTO_CALCULATED_FIELDS as FIELD_IDENTITIES, forget_identities, move_identity
+
+    normalize = _normalise_catalogue_dimension_name
+    for old_name, new_name in renames.items():
+        move_identity(task_repository, FIELD_IDENTITIES, normalize(old_name), normalize(new_name))
+        move_creator(task_repository, AUTO_CALCULATED_FIELDS, normalize(old_name), normalize(new_name))
+    previous_keys = {normalize(item.name) for item in previous}
+    current_keys = {normalize(item.name) for item in dimensions}
+    for key in current_keys - previous_keys - {normalize(name) for name in renames.values()}:
+        record_creator(task_repository, AUTO_CALCULATED_FIELDS, key, username)
+    removed = previous_keys - current_keys - {normalize(name) for name in renames}
+    forget_identities(task_repository, FIELD_IDENTITIES, removed)
+    for key in removed:
+        forget_creator(task_repository, AUTO_CALCULATED_FIELDS, key)
+
+
+def rename_calculated_dimension_template_references(renames: dict[str, str], task_repository: Repository | None = None) -> int:
+    """Rename calculated fields in every stored Report Template of the workspace (the active one by default)."""
     if not renames:
         return 0
+    target_repository = task_repository or repository
 
     def renamed_value(value: str, old_name: str, new_name: str) -> str:
         return new_name if _normalise_catalogue_dimension_name(value) == _normalise_catalogue_dimension_name(old_name) else value
@@ -817,7 +840,7 @@ def rename_calculated_dimension_template_references(renames: dict[str, str]) -> 
     pending_writes: dict[tuple[str, str, bool], bytes] = {}
     changed_templates = 0
     for technology in TEMPLATE_NAMES:
-        for template in report_catalogue_options(technology):
+        for template in report_catalogue_options(technology, target_repository):
             entries = parse_catalog_csv(template['content'], technology, validate_filters=False)
             updated_entries = [renamed_entry(entry) for entry in entries]
             if updated_entries == entries:
@@ -833,7 +856,7 @@ def rename_calculated_dimension_template_references(renames: dict[str, str]) -> 
             # Workspace writer while the remaining templates and dashboards
             # still need to be updated, leaving the editor waiting behind its
             # own materialization job.
-            repository.set_report_template_content(technology, name, content)
+            target_repository.set_report_template_content(technology, name, content)
     return changed_templates
 
 
@@ -1020,16 +1043,17 @@ def rename_chart_mapping_dashboard_references(
     return changed_dashboards
 
 
-def rename_calculated_dimension_dashboard_references(renames: dict[str, str]) -> int:
-    """Rename calculated-field references in every saved Dashboard definition."""
+def rename_calculated_dimension_dashboard_references(renames: dict[str, str], task_repository: Repository | None = None) -> int:
+    """Rename calculated-field references in every saved Dashboard definition (of the active workspace by default)."""
     if not renames:
         return 0
 
+    target_repository = task_repository or repository
     state_key = 'ppt_dashboards_v2'
-    stored = repository.get_workspace_state(state_key)
+    stored = target_repository.get_workspace_state(state_key)
     if stored is None:
         state_key = 'ppt_dashboard_sets_v1'
-        stored = repository.get_workspace_state(state_key)
+        stored = target_repository.get_workspace_state(state_key)
     if stored is None:
         return 0
     dashboards = json.loads(stored or '{}')
@@ -1072,8 +1096,25 @@ def rename_calculated_dimension_dashboard_references(renames: dict[str, str]) ->
         updated_dashboards[dashboard_id] = definition
 
     if changed_dashboards:
-        repository.set_workspace_state(state_key, json.dumps(updated_dashboards, ensure_ascii=False))
+        target_repository.set_workspace_state(state_key, json.dumps(updated_dashboards, ensure_ascii=False))
     return changed_dashboards
+
+
+def rename_calculated_dimension_query_references(renames: dict[str, str], task_repository: Repository | None = None) -> int:
+    """Rename calculated fields in the SQL of every saved Query Builder query of the workspace (the active one by
+    default), where they are columns of the CDR tables; returns how many queries changed."""
+    from src.modules.query_builder import rename_identifiers
+
+    if not renames:
+        return 0
+    target_repository = task_repository or repository
+    changed = 0
+    for row in target_repository.list_query_builder_queries():
+        query_sql = rename_identifiers(str(row['query_sql']), renames)
+        if query_sql != str(row['query_sql']):
+            target_repository.set_query_builder_query_sql(int(row['id']), query_sql)
+            changed += 1
+    return changed
 
 
 def load_template_catalogue(catalogue_content: bytes | str, technology: str, *, validate_filters: bool = True, task_repository: Repository | None = None):
@@ -2388,11 +2429,11 @@ def promote_report_template_to_default(
     repository.set_default_report_template(technology, promoted_name, updated_by=updated_by)
 
 
-def report_catalogue_options(technology: str) -> list[dict[str, Any]]:
+def report_catalogue_options(technology: str, task_repository: Repository | None = None) -> list[dict[str, Any]]:
     # Legacy CSVs are imported exactly once while the workspace is activated.
     # Reading the library must stay database-only so a stale or manually
     # recreated compatibility directory cannot silently add templates later.
-    templates = repository.list_report_templates(technology)
+    templates = (task_repository or repository).list_report_templates(technology)
     options: list[dict[str, Any]] = []
     for row in templates:
         identifier = str(row['name'])
@@ -7032,6 +7073,9 @@ def create_recurring_database_backup(
                 if 'report_templates' in components:
                     report_progress(f'Archiving PPT Templates for {workspace.name}', max(5.0, completed_bytes * 96.0 / max(total_bytes, 1)))
                     _archive_workspace_report_templates(archive, workspace, f'{archive_workspace_root}/report-templates', archived_bytes)
+                    # The identity and the creator of each template, which a restore uses as an import does.
+                    archive.writestr(f'{archive_workspace_root}/{REPORT_TEMPLATES_METADATA_NAME}', json.dumps(
+                        {'report_templates': _report_templates_metadata(workspace)}, ensure_ascii=False, indent=2))
                 if 'mappings_reference_data' in components:
                     report_progress(f'Exporting Mappings & Reference Data for {workspace.name}', max(5.0, completed_bytes * 96.0 / max(total_bytes, 1)))
                     _archive_workspace_mappings_reference_data(archive, workspace, archive_workspace_root, archived_bytes)
@@ -7046,7 +7090,8 @@ def create_recurring_database_backup(
                     task_repository = Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path)
                     archive.writestr(
                         f'{archive_workspace_root}/auto-calculated-fields/auto-calculated-fields.json',
-                        json.dumps(task_repository.list_calculated_dimensions(), ensure_ascii=False, indent=2),
+                        json.dumps(_calculated_dimensions_with_identities(task_repository, task_repository.list_calculated_dimensions()),
+                                   ensure_ascii=False, indent=2),
                     )
                 if 'query_builder_queries' in components:
                     report_progress(f'Exporting Query Builder Queries for {workspace.name}', max(5.0, completed_bytes * 96.0 / max(total_bytes, 1)))
@@ -7478,6 +7523,8 @@ def restore_database_backup(
             if chosen_workspaces is None or workspace.name in chosen_workspaces
         }
         total_steps = int('app_database' in selected) + int('users_access' in selected) + int('ticket_center' in selected)
+        # The updates of the CDR tables for the restored Auto-calculated Fields, started at the end.
+        field_jobs: list[Callable[[], Any]] = []
         for workspace_name in workspaces_by_name:
             prefix = f'workspaces/{workspace_name}/'
             for component, member in (
@@ -7567,7 +7614,7 @@ def restore_database_backup(
                 if member in names:
                     if progress_callback:
                         progress_callback(f'Restoring Dashboards for {workspace_name}', completed_steps, total_steps)
-                    _restore_workspace_dashboards(workspace, archive.read(member))
+                    _import_workspace_dashboards(workspace, archive.read(member), importing_user)
                     advance(f'Dashboards restored for {workspace_name}')
             if 'report_templates' in selected:
                 template_members = [name for name in names if name.startswith(f'{prefix}report-templates/')]
@@ -7583,8 +7630,11 @@ def restore_database_backup(
                         destination.parent.mkdir(parents=True, exist_ok=True)
                         destination.write_bytes(archive.read(name))
                         advance(f'Report Template restored for {workspace_name}: {Path(name).name}')
+                    metadata_member = f'{prefix}{REPORT_TEMPLATES_METADATA_NAME}'
                     import_slides_templates_archive(
-                        templates_staging, [workspace.id], includes_dashboards='dashboards' in selected,
+                        templates_staging, [workspace.id],
+                        json.loads(archive.read(metadata_member)) if metadata_member in name_set else None,
+                        includes_dashboards='dashboards' in selected, importing_user=importing_user,
                     )
                     shutil.rmtree(workspace.slides_templates_dir, ignore_errors=True)
                 shutil.rmtree(workspace.database_path.parent / 'slides-templates', ignore_errors=True)
@@ -7607,7 +7657,7 @@ def restore_database_backup(
                 if member in names:
                     if progress_callback:
                         progress_callback(f'Restoring Scoring & GAP Analysis Methodologies for {workspace_name}', completed_steps, total_steps)
-                    _restore_workspace_scoring_configuration(workspace, archive.read(member))
+                    _import_workspace_scoring_configuration(workspace, archive.read(member), importing_user)
                     reports_member = _scoring_report_configurations_member(member)
                     _restore_workspace_scoring_report_configurations(
                         workspace, archive.read(reports_member) if reports_member in names else None)
@@ -7626,22 +7676,18 @@ def restore_database_backup(
                         progress_callback(f'Restoring Auto-calculated Fields for {workspace_name}', completed_steps, total_steps)
                     try:
                         definitions = json.loads(archive.read(member).decode('utf-8'))
-                        parsed = parse_calculated_dimensions(definitions)
+                        parse_calculated_dimensions(definitions)
                     except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
                         raise ValueError(f'Backup fields for "{workspace_name}" are invalid.') from exc
-                    task_repository = Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path)
-                    current = parse_calculated_dimensions(task_repository.list_calculated_dimensions())
-                    # Identical fields need no materialization of the whole workspace.
-                    if calculated_dimensions_json(current) != calculated_dimensions_json(parsed):
-                        task_repository.replace_calculated_dimensions(calculated_dimensions_json(parsed))
-                        task_repository.set_workspace_state('calculated_dimensions_need_materialization', '1')
+                    import_auto_calculated_fields(definitions, [workspace.id], deferred_jobs=field_jobs,
+                                                  importing_user=importing_user)
                     advance(f'Auto-calculated Fields restored for {workspace_name}')
             if 'query_builder_queries' in selected:
                 member = f'{prefix}query-builder-queries/query-builder-queries.json'
                 if member in names:
                     if progress_callback:
                         progress_callback(f'Restoring Query Builder Queries for {workspace_name}', completed_steps, total_steps)
-                    _restore_workspace_query_builder_queries(workspace, archive.read(member))
+                    _restore_workspace_query_builder_queries(workspace, archive.read(member), importing_user)
                     advance(f'Query Builder Queries restored for {workspace_name}')
             if 'network_insights_favourites' in selected:
                 member = f'{prefix}{NI_FAVOURITES_ARCHIVE_NAME}'
@@ -7663,14 +7709,14 @@ def restore_database_backup(
                 if member in names:
                     if progress_callback:
                         progress_callback(f'Restoring Scoring & GAP Favourites Filters for {workspace_name}', completed_steps, total_steps)
-                    _restore_workspace_favourites_filters(workspace, archive.read(member))
+                    _restore_workspace_favourites_filters(workspace, archive.read(member), importing_user)
                     advance(f'Scoring & GAP Favourites Filters restored for {workspace_name}')
             if 'scoring_report_templates' in selected:
                 member = f'{prefix}{SCORING_REPORT_TEMPLATES_ARCHIVE_NAME}'
                 if member in names:
                     if progress_callback:
                         progress_callback(f'Restoring Scoring & GAP Report Templates for {workspace_name}', completed_steps, total_steps)
-                    _import_workspace_scoring_report_templates(workspace, archive.read(member))
+                    _import_workspace_scoring_report_templates(workspace, archive.read(member), importing_user)
                     advance(f'Scoring & GAP Report Templates restored for {workspace_name}')
             if 'scoring_export_panels' in selected:
                 member = f'{prefix}{SCORING_EXPORT_PANELS_ARCHIVE_NAME}'
@@ -7730,6 +7776,9 @@ def restore_database_backup(
                     with archive.open(name) as source, target.open('wb') as output:
                         shutil.copyfileobj(source, output)
                     advance(f'{component.title()} file restored for {workspace_name}: {Path(name).name}')
+        # The CDR tables take the restored Auto-calculated Fields once every part is restored.
+        for start_job in field_jobs:
+            start_job()
         _clear_chart_preview_caches()
 
 
@@ -7908,6 +7957,18 @@ def _archive_workspace_mappings_reference_data(
         progress_callback(len(payload))
 
 
+def active_user_exists(username: str) -> bool:
+    record = repository.get_user(username)
+    return bool(record and record.active)
+
+
+def transfer_creator(package_creator: Any, local_creator: Any, importing_user: str) -> str:
+    """Who an imported item belongs to: its creator on the server of the package when that user is active here,
+    otherwise the user who accepts the transfer or imports the package (see transfer_identities.imported_creator)."""
+    from src.modules.transfer_identities import imported_creator
+    return imported_creator(package_creator, local_creator, importing_user, active_user_exists)
+
+
 def _restore_workspace_mappings_reference_data(workspace: Workspace, payload: bytes) -> None:
     """Replace the Operator and Vendor Maps (with the comments of the Operator names), Spectrum Holdings, Serving Networks, the Campaign Map and the Map Areas of the workspace."""
     try:
@@ -8014,8 +8075,18 @@ def _scoring_configuration_archive_payload(workspace: Workspace) -> bytes:
     )
     profiles = (task_repository.get_scoring_profiles()
                 if task_repository.get_workspace_state(SCORING_CONFIGURATION_STATE_KEY) else None)
+    from src.modules.deletion_rights import SCORING_METHODOLOGIES, creators
     from src.modules.scoring_config import scoring_profiles_document
-    return json.dumps(scoring_profiles_document(profiles), ensure_ascii=False, indent=2).encode('utf-8')
+    document = scoring_profiles_document(profiles)
+    from src.modules.transfer_identities import SCORING_METHODOLOGIES as METHODOLOGY_IDENTITIES, identities
+    # Who created each methodology and, when it replaced one of another server, the ID it came with, for Import /
+    # Export and Transfer.
+    known, uids = creators(task_repository, SCORING_METHODOLOGIES), identities(task_repository, METHODOLOGY_IDENTITIES)
+    document['created_by'] = {profile['id']: known[str(profile['id']).casefold()] for profile in document.get('profiles') or []
+                              if known.get(str(profile['id']).casefold())}
+    document['identities'] = {profile['id']: uids[str(profile['id']).casefold()] for profile in document.get('profiles') or []
+                              if uids.get(str(profile['id']).casefold())}
+    return json.dumps(document, ensure_ascii=False, indent=2).encode('utf-8')
 
 
 def _archive_workspace_scoring_configuration(
@@ -8039,12 +8110,20 @@ SCORING_REPORT_TEMPLATES_ARCHIVE_NAME = 'scoring-report-templates/scoring-report
 
 
 def _scoring_report_templates_archive_payload(workspace: Workspace) -> bytes:
+    from src.modules.deletion_rights import SCORING_REPORT_CONFIGURATIONS, creators
     from src.modules.scoring_reports import load_report_state, report_configurations_document
+    from src.modules.transfer_identities import SCORING_REPORT_CONFIGURATIONS as REPORT_IDENTITIES, portable_identities
     task_repository = Repository(
         workspace.database_path, repository.global_db_path, workspace_registry.registry_path,
     )
-    return json.dumps(report_configurations_document(load_report_state(task_repository)),
-                      ensure_ascii=False, indent=2).encode('utf-8')
+    document = report_configurations_document(load_report_state(task_repository))
+    # Each configuration with its identity and its creator, so the destination finds it again after a rename.
+    names = [item['name'] for item in document['configurations']]
+    uids, known = portable_identities(task_repository, REPORT_IDENTITIES, names), creators(task_repository, SCORING_REPORT_CONFIGURATIONS)
+    document['configurations'] = [{**item, 'uid': uids[item['name']],
+                                   **({'created_by': known[item['name'].casefold()]} if known.get(item['name'].casefold()) else {})}
+                                  for item in document['configurations']]
+    return json.dumps(document, ensure_ascii=False, indent=2).encode('utf-8')
 
 
 def _archive_workspace_scoring_report_templates(
@@ -8057,19 +8136,65 @@ def _archive_workspace_scoring_report_templates(
         progress_callback(len(payload))
 
 
-def _import_workspace_scoring_report_templates(workspace: Workspace, payload: bytes) -> int:
-    """Add the report configurations of a package to a workspace, replacing those with the same name; returns how
-    many it had."""
-    from src.modules.scoring_reports import import_report_configurations, unwrap_report_configurations_document
+def _import_workspace_scoring_report_templates(
+    workspace: Workspace, payload: bytes, importing_user: str = 'import', summary: list[str] | None = None,
+) -> int:
+    """Replace the report configurations of a workspace that a package brings (found by their identity, then by their
+    name) and add the others, each belonging to its creator when that user is active here (otherwise to
+    ``importing_user``). A renamed configuration takes its new name in the Scoring artifacts of the Reporting Jobs;
+    ``summary`` receives the renamed ones. Returns how many the package had."""
+    from src.modules.deletion_rights import SCORING_REPORT_CONFIGURATIONS, creators, move_creator, set_creator
+    from src.modules.report_tasks import rename_definition_values
+    from src.modules.scoring_reports import load_report_state, store_configurations, unwrap_report_configurations_document
+    from src.modules.transfer_identities import (
+        SCORING_REPORT_CONFIGURATIONS as REPORT_IDENTITIES, ItemMatcher, identities, move_identity, set_identities,
+    )
 
     task_repository = Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path)
     try:
         document = json.loads(payload.decode('utf-8'))
-        count = len(unwrap_report_configurations_document(document)['configurations'])
-        import_report_configurations(task_repository, document)
-        return count
+        incoming = unwrap_report_configurations_document(document)['configurations']
     except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
         raise ValueError(f'Scoring & GAP Report Templates for "{workspace.name}" are invalid: {exc}') from exc
+    details = {str(item.get('name') or '').strip()[:80].casefold(): item
+               for item in document.get('configurations') or [] if isinstance(item, dict)}
+    configurations = list(load_report_state(task_repository)['configurations'])
+    local_uids, local_creators = identities(task_repository, REPORT_IDENTITIES), creators(task_repository, SCORING_REPORT_CONFIGURATIONS)
+    matcher = ItemMatcher([(index, item['name'], local_uids.get(item['name'].casefold(), ''))
+                           for index, item in enumerate(configurations)], max_length=80)
+    renames: dict[str, str] = {}
+    imported_uids: dict[str, str] = {}
+    for item in incoming:
+        details_of = details.get(item['name'].casefold(), {})
+        target, name = matcher.match(details_of.get('uid'), item['name'])
+        local_creator = ''
+        if target is None:
+            configurations.append({**item, 'name': name})
+        else:
+            old_name = configurations[target]['name']
+            local_creator = local_creators.get(old_name.casefold(), '')
+            configurations[target] = {**item, 'name': name}
+            if old_name != name:
+                renames[old_name.casefold()] = name
+                move_identity(task_repository, REPORT_IDENTITIES, old_name, name)
+                move_creator(task_repository, SCORING_REPORT_CONFIGURATIONS, old_name, name)
+        imported_uids[name] = str(details_of.get('uid') or '')
+        set_creator(task_repository, SCORING_REPORT_CONFIGURATIONS, name,
+                    transfer_creator(details_of.get('created_by'), local_creator, importing_user))
+    store_configurations(task_repository, configurations)
+    set_identities(task_repository, REPORT_IDENTITIES, imported_uids)
+    if renames:
+        def renamed_reports(definition: dict[str, Any]) -> dict[str, Any]:
+            definition = json.loads(json.dumps(definition))
+            for entry in definition.get('scoring') or []:
+                report = entry.get('report') if isinstance(entry, dict) else None
+                if isinstance(report, dict) and str(report.get('name') or '').casefold() in renames:
+                    report['name'] = renames[str(report['name']).casefold()]
+            return definition
+        rename_definition_values(task_repository, renamed_reports)
+    if summary is not None and matcher.summary():
+        summary.append(f'Scoring & GAP Report Templates of "{workspace.name}": ' + '; '.join(matcher.summary()) + '.')
+    return len(incoming)
 
 
 # The Scoring Export Panels of Workspace Config: the exportable Scoring panels and the operators of each one.
@@ -8130,7 +8255,9 @@ def _restore_workspace_scoring_excluded_calls(workspace: Workspace, payload: byt
 
     task_repository = Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path)
     try:
-        count = import_document(task_repository, payload, importing_user)
+        # Each list belongs to its creator when that user is active here, otherwise to the user who imports it.
+        count = import_document(task_repository, payload, importing_user,
+                                creator=lambda package, local: transfer_creator(package, local, importing_user))
     except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
         raise ValueError(f'Scoring Excluded Calls for "{workspace.name}" are invalid: {exc}') from exc
     if count:
@@ -8180,20 +8307,63 @@ def _restore_workspace_scoring_report_configurations(workspace: Workspace, paylo
         raise ValueError(f'Scoring report configurations for "{workspace.name}" are invalid.') from exc
 
 
-def _restore_workspace_scoring_configuration(workspace: Workspace, payload: bytes) -> None:
+def _import_workspace_scoring_configuration(
+    workspace: Workspace, payload: bytes, importing_user: str, summary: list[str] | None = None,
+) -> None:
+    """Replace the Scoring & GAP Analysis Methodologies of a workspace that a package (or backup) brings and add the
+    others, keeping those only the workspace has and its default methodology (the default of the package is taken by a
+    workspace without methodologies). A methodology is found by its ID (or the ID it came with), then by its name; a
+    replaced one keeps its ID here, so what uses it still finds it. Each belongs to its creator when that user is active
+    here (otherwise to ``importing_user``); ``summary`` receives the renamed ones."""
+    from src.modules.deletion_rights import SCORING_METHODOLOGIES, creators, set_creator
+    from src.modules.scoring_config import unwrap_scoring_profiles_payload
+    from src.modules.transfer_identities import (
+        SCORING_METHODOLOGIES as METHODOLOGY_IDENTITIES, ItemMatcher, identities, set_identities,
+    )
+
+    task_repository = Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path)
     try:
         document = json.loads(payload.decode('utf-8'))
-        from src.modules.scoring_config import unwrap_scoring_profiles_payload
-        profiles = unwrap_scoring_profiles_payload(document)
-        task_repository = Repository(
-            workspace.database_path, repository.global_db_path, workspace_registry.registry_path,
-        )
-        if profiles is None:
-            task_repository.set_workspace_state(SCORING_CONFIGURATION_STATE_KEY, '')
-        else:
-            task_repository.replace_scoring_profiles(profiles)
+        incoming = unwrap_scoring_profiles_payload(document)
+        current = task_repository.get_scoring_profiles() if task_repository.get_workspace_state(SCORING_CONFIGURATION_STATE_KEY) else None
     except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
         raise ValueError(f'Scoring & GAP Analysis Methodologies for "{workspace.name}" are invalid.') from exc
+    if incoming is None:
+        # A package without methodologies leaves those of the workspace.
+        return
+    package_creators = document.get('created_by') if isinstance(document.get('created_by'), dict) else {}
+    package_uids = document.get('identities') if isinstance(document.get('identities'), dict) else {}
+    profiles = list(current['profiles']) if current else []
+    local_uids, known = identities(task_repository, METHODOLOGY_IDENTITIES), creators(task_repository, SCORING_METHODOLOGIES)
+    matcher = ItemMatcher([(index, profile['name'], local_uids.get(str(profile['id']).casefold()) or profile['id'])
+                           for index, profile in enumerate(profiles)], max_length=80)
+    imported_uids: dict[str, str] = {}
+    owners: dict[str, str] = {}
+    for profile in incoming['profiles']:
+        uid = str(package_uids.get(profile['id']) or profile['id'])
+        target, name = matcher.match(uid, profile['name'])
+        if target is None:
+            taken = {str(item['id']) for item in profiles}
+            profile_id = profile['id'] if profile['id'] not in taken else f"{profile['id'][:57]}-{uuid4().hex[:6]}"
+            profiles.append({**profile, 'id': profile_id, 'name': name})
+            local_creator = ''
+        else:
+            profile_id = profiles[target]['id']
+            local_creator = known.get(str(profile_id).casefold(), '')
+            profiles[target] = {**profile, 'id': profile_id, 'name': name}
+        imported_uids[profile_id] = uid
+        owners[profile_id] = transfer_creator(package_creators.get(profile['id']), local_creator, importing_user)
+    active_profile_id = current['active_profile_id'] if current else incoming['active_profile_id']
+    try:
+        task_repository.replace_scoring_profiles({'active_profile_id': active_profile_id, 'profiles': profiles})
+    except ValueError as exc:
+        raise ValueError(f'Scoring & GAP Analysis Methodologies for "{workspace.name}" could not be imported: {exc}') from exc
+    set_identities(task_repository, METHODOLOGY_IDENTITIES, imported_uids)
+    for profile_id, owner in owners.items():
+        set_creator(task_repository, SCORING_METHODOLOGIES, profile_id, owner)
+    if summary is not None and matcher.summary():
+        summary.append(f'Scoring & GAP Analysis Methodologies of "{workspace.name}": ' + '; '.join(matcher.summary()) + '.')
+
 
 def _dashboard_archive_payload(workspace: Workspace) -> bytes:
     """Serialize saved Dashboard definitions only; generated chart caches are excluded."""
@@ -8215,7 +8385,13 @@ def _dashboard_archive_payload(workspace: Workspace) -> bytes:
         {'id': int(row['id']), 'name': str(row['file_name']), 'kind': str(row['dataset_kind'] or '')}
         for row in task_repository.list_datasets() if int(row['id']) in chosen
     ] if chosen else []
-    return json.dumps({'format': 'drivetest-analyzer-dashboards', 'version': 1, 'dashboards': dashboards, 'cdrs': cdrs},
+    from src.modules.deletion_rights import PPT_DASHBOARDS, creators
+    from src.modules.transfer_identities import PPT_DASHBOARDS as DASHBOARD_IDENTITIES, identities
+    # The identity of each Dashboard (its ID, or that of the package it came from) and its creator.
+    uids, known = identities(task_repository, DASHBOARD_IDENTITIES), creators(task_repository, PPT_DASHBOARDS)
+    return json.dumps({'format': 'drivetest-analyzer-dashboards', 'version': 1, 'dashboards': dashboards, 'cdrs': cdrs,
+                       'identities': {key: uids.get(str(key).casefold()) or str(key) for key in dashboards},
+                       'creators': {key: known[str(key).casefold()] for key in dashboards if known.get(str(key).casefold())}},
                       ensure_ascii=False, indent=2).encode('utf-8')
 
 
@@ -8256,7 +8432,20 @@ def _exported_calculated_dimensions(workspace: Workspace) -> list[dict[str, obje
     payload = source_repository.list_calculated_dimensions()
     if not payload and source_repository.get_workspace_state('calculated_dimensions_initialized') != '1':
         return calculated_dimensions_json(parse_calculated_dimensions(default_calculated_dimensions()))
-    return calculated_dimensions_json(parse_calculated_dimensions(payload))
+    return _calculated_dimensions_with_identities(source_repository, calculated_dimensions_json(parse_calculated_dimensions(payload)))
+
+
+def _calculated_dimensions_with_identities(task_repository: Repository, definitions: list[Any]) -> list[Any]:
+    """Each field with its identity and its creator, so the workspace that imports or restores it finds it again
+    after a rename."""
+    from src.modules.deletion_rights import AUTO_CALCULATED_FIELDS, creators
+    from src.modules.transfer_identities import AUTO_CALCULATED_FIELDS as FIELD_IDENTITIES, portable_identities
+
+    keys = [_normalise_catalogue_dimension_name(str(item.get('name') or '')) if isinstance(item, dict) else '' for item in definitions]
+    uids = portable_identities(task_repository, FIELD_IDENTITIES, [key for key in keys if key])
+    known = creators(task_repository, AUTO_CALCULATED_FIELDS)
+    return [{**item, 'uid': uids[key], **({'created_by': known[key]} if known.get(key) else {})} if key else item
+            for item, key in zip(definitions, keys)]
 
 
 def _archive_workspace_dashboards(archive: zipfile.ZipFile, workspace: Workspace, archive_prefix: str, progress_callback: Callable[[int], None] | None = None) -> None:
@@ -8265,19 +8454,49 @@ def _archive_workspace_dashboards(archive: zipfile.ZipFile, workspace: Workspace
     if progress_callback:
         progress_callback(len(payload))
 
-def _restore_workspace_dashboards(workspace: Workspace, payload: bytes) -> None:
+def _import_workspace_dashboards(workspace: Workspace, payload: bytes, importing_user: str) -> list[str]:
+    """Replace the Dashboards of a workspace that a package (or backup) brings and add the others, keeping those only the
+    workspace has, while deliberately retaining generated caches. A Dashboard is found by its identity, then by its name
+    and NR Mode; one renamed on the other server takes its new name here (its references go by ID). Returns the
+    renamed Dashboards."""
+    from src.modules.deletion_rights import PPT_DASHBOARDS, creators, set_creator
+    from src.modules.ppt_dashboards import dashboard_nr_mode
+    from src.modules.transfer_identities import PPT_DASHBOARDS as DASHBOARD_IDENTITIES, ItemMatcher, identities, set_identities
+
     try:
         document = json.loads(payload.decode('utf-8'))
-        dashboards = document.get('dashboards') if isinstance(document, dict) else None
+        incoming = document.get('dashboards') if isinstance(document, dict) else None
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ValueError(f'Dashboard definitions for "{workspace.name}" are invalid.') from exc
-    if not isinstance(dashboards, dict):
+    if not isinstance(incoming, dict):
         raise ValueError(f'Dashboard definitions for "{workspace.name}" are invalid.')
-    # A Dashboard import replaces the saved definitions, just as restoring the
-    # Dashboard component does, while deliberately retaining generated caches.
     task_repository = Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path)
-    dashboards = _dashboards_on_destination_cdrs(dashboards, document.get('cdrs'), task_repository)
-    task_repository.set_workspace_state(DASHBOARD_STATE_KEY, json.dumps(dashboards, ensure_ascii=False))
+    incoming = _dashboards_on_destination_cdrs(incoming, document.get('cdrs'), task_repository)
+    package_uids = document.get('identities') if isinstance(document.get('identities'), dict) else {}
+    package_creators = document.get('creators') if isinstance(document.get('creators'), dict) else {}
+    try:
+        current = json.loads(task_repository.get_workspace_state(DASHBOARD_STATE_KEY) or '{}')
+    except (TypeError, ValueError):
+        current = {}
+    current = current if isinstance(current, dict) else {}
+    local_uids, local_creators = identities(task_repository, DASHBOARD_IDENTITIES), creators(task_repository, PPT_DASHBOARDS)
+    matcher = ItemMatcher([(key, str(item.get('name') or ''), local_uids.get(str(key).casefold()) or str(key), dashboard_nr_mode(item))
+                           for key, item in current.items() if isinstance(item, dict)])
+    imported_uids: dict[str, str] = {}
+    for dashboard_id, definition in incoming.items():
+        if not isinstance(definition, dict):
+            continue
+        uid = str(package_uids.get(dashboard_id) or dashboard_id)
+        target, name = matcher.match(uid, str(definition.get('name') or ''), dashboard_nr_mode(definition))
+        if target is None:
+            target = dashboard_id if dashboard_id not in current else str(uuid4())
+        current[target] = {**definition, 'name': name} if definition.get('name') else definition
+        imported_uids[target] = uid
+        set_creator(task_repository, PPT_DASHBOARDS, target, transfer_creator(
+            package_creators.get(dashboard_id), local_creators.get(str(target).casefold(), ''), importing_user))
+    task_repository.set_workspace_state(DASHBOARD_STATE_KEY, json.dumps(current, ensure_ascii=False))
+    set_identities(task_repository, DASHBOARD_IDENTITIES, imported_uids)
+    return matcher.summary()
 
 
 def _query_builder_queries_payload(workspace: Workspace) -> dict[str, Any]:
@@ -8287,8 +8506,11 @@ def _query_builder_queries_payload(workspace: Workspace) -> dict[str, Any]:
         saved_queries = task_repository.list_query_builder_queries()
     except sqlite3.OperationalError:
         return {'format': 'drivetest-analyzer-query-builder-queries', 'version': 1, 'queries': []}
+    from src.modules.transfer_identities import QUERY_BUILDER_QUERIES, portable_identities
+    # Each query with its identity, so the destination finds it again after a rename.
+    uids = portable_identities(task_repository, QUERY_BUILDER_QUERIES, [str(row['id']) for row in saved_queries])
     return {'format': 'drivetest-analyzer-query-builder-queries', 'version': 1, 'queries': [
-        _portable_query_builder_query(row) for row in saved_queries]}
+        {**_portable_query_builder_query(row), 'uid': uids[str(row['id'])]} for row in saved_queries]}
 
 
 def _portable_query_builder_query(row: Any) -> dict[str, Any]:
@@ -8308,7 +8530,13 @@ def _archive_workspace_query_builder_queries(
         progress_callback(len(payload))
 
 
-def _restore_workspace_query_builder_queries(workspace: Workspace, payload: bytes) -> int:
+def _restore_workspace_query_builder_queries(
+    workspace: Workspace, payload: bytes, importing_user: str = 'import', summary: list[str] | None = None,
+) -> int:
+    """Replace the queries of a workspace that a package brings (found by their identity, then by their name) and add
+    the others; ``summary`` receives the renamed queries. Returns how many the package had."""
+    from src.modules.transfer_identities import QUERY_BUILDER_QUERIES, ItemMatcher, identities, set_identities
+
     try:
         document = json.loads(payload.decode('utf-8'))
         queries = document.get('queries') if isinstance(document, dict) else None
@@ -8326,12 +8554,26 @@ def _restore_workspace_query_builder_queries(workspace: Workspace, payload: byte
         if not name or not query_sql:
             raise ValueError('The Query Builder queries package contains an invalid query.')
         valid_queries.append((item, name, query_sql))
+    rows = task_repository.list_query_builder_queries()
+    local_uids = identities(task_repository, QUERY_BUILDER_QUERIES)
+    local_creators = {int(row['id']): str(row['created_by'] or '') for row in rows}
+    matcher = ItemMatcher([(int(row['id']), str(row['name']), local_uids.get(str(row['id']), '')) for row in rows])
+    imported_uids: dict[str, str] = {}
     # The queries come without CDRs (those of packages from earlier versions are left out): they are chosen when
     # a query is used.
     for item, name, query_sql in valid_queries:
-        task_repository.save_query_builder_query(
-            name, str(item.get('description') or ''), query_sql, [], str(item.get('created_by') or 'import'),
-        )
+        target, name = matcher.match(item.get('uid'), name)
+        creator = transfer_creator(item.get('created_by'), local_creators.get(target, ''), importing_user)
+        if target is None:
+            task_repository.save_query_builder_query(name, str(item.get('description') or ''), query_sql, [], creator)
+            target = next(int(row['id']) for row in task_repository.list_query_builder_queries()
+                          if str(row['name']).casefold() == name.casefold())
+        else:
+            task_repository.update_query_builder_query(target, name, str(item.get('description') or ''), query_sql, [], creator)
+        imported_uids[str(target)] = str(item.get('uid') or '')
+    set_identities(task_repository, QUERY_BUILDER_QUERIES, imported_uids)
+    if summary is not None and matcher.summary():
+        summary.append(f'Query Builder Queries of "{workspace.name}": ' + '; '.join(matcher.summary()) + '.')
     return len(valid_queries)
 
 
@@ -8356,13 +8598,21 @@ def _archive_workspace_network_insights_favourites(
         progress_callback(len(payload))
 
 
-def _restore_workspace_network_insights_favourites(workspace: Workspace, payload: bytes, importing_user: str) -> int:
-    """Add or replace (by name) the Network Insights favourites of a package in a workspace."""
+def _restore_workspace_network_insights_favourites(
+    workspace: Workspace, payload: bytes, importing_user: str, summary: list[str] | None = None,
+) -> int:
+    """Replace (found by their identity, then by their name) or add the Network Insights favourites of a package in a
+    workspace, each belonging to its creator when that user is active here (otherwise to ``importing_user``)."""
     from src.modules.network_insights_favourites import import_document
 
     task_repository = Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path)
+    renamed: list[str] = []
     try:
-        return import_document(task_repository, payload, importing_user)
+        count = import_document(task_repository, payload, importing_user, summary=renamed,
+                                creator=lambda package, local: transfer_creator(package, local, importing_user))
+        if summary is not None and renamed:
+            summary.append(f'Network Insights Favourites of "{workspace.name}": ' + '; '.join(renamed) + '.')
+        return count
     except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
         raise ValueError(f'Network Insights Favourites for "{workspace.name}" are invalid: {exc}') from exc
 
@@ -8392,13 +8642,21 @@ def _archive_workspace_bundle_report_template_favourites(
         progress_callback(len(payload))
 
 
-def _restore_workspace_bundle_report_template_favourites(workspace: Workspace, payload: bytes, importing_user: str) -> int:
-    """Add or replace (by name) the favourite Bundle Report Templates of a package in a workspace."""
+def _restore_workspace_bundle_report_template_favourites(
+    workspace: Workspace, payload: bytes, importing_user: str, summary: list[str] | None = None,
+) -> int:
+    """Replace (found by their identity, then by their name) or add the favourite Bundle Report Templates of a package
+    in a workspace, each belonging to its creator when that user is active here (otherwise to ``importing_user``)."""
     from src.modules.bundle_report_templates import import_favourites_document
 
     task_repository = Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path)
+    renamed: list[str] = []
     try:
-        return import_favourites_document(task_repository, payload, importing_user)
+        count = import_favourites_document(task_repository, payload, importing_user, summary=renamed,
+                                           creator=lambda package, local: transfer_creator(package, local, importing_user))
+        if summary is not None and renamed:
+            summary.append(f'Bundle Report Template Favourites of "{workspace.name}": ' + '; '.join(renamed) + '.')
+        return count
     except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
         raise ValueError(f'Bundle Report Template Favourites for "{workspace.name}" are invalid: {exc}') from exc
 
@@ -8424,14 +8682,16 @@ def _archive_workspace_favourites_filters(
         progress_callback(len(payload))
 
 
-def _restore_workspace_favourites_filters(workspace: Workspace, payload: bytes) -> int:
-    """Add the Favourites Filters of a package to a workspace (they find their CDRs there by file); returns how many were
-    added."""
+def _restore_workspace_favourites_filters(workspace: Workspace, payload: bytes, importing_user: str = 'import') -> int:
+    """Add the Favourites Filters of a package to a workspace (they find their CDRs there by file), each belonging to its
+    creator when that user is active here (otherwise to ``importing_user``); one the workspace already has is replaced
+    by the imported one. Returns how many were added."""
     from src.modules.saved_filters import import_saved_filters
 
     task_repository = Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path)
     try:
-        return import_saved_filters(task_repository, json.loads(payload.decode('utf-8')))
+        return import_saved_filters(task_repository, json.loads(payload.decode('utf-8')),
+                                    creator=lambda package, local: transfer_creator(package, local, importing_user))
     except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
         raise ValueError(f'Scoring & GAP Favourites Filters for "{workspace.name}" are invalid: {exc}') from exc
 
@@ -8829,6 +9089,7 @@ def _build_single_export_archive_file(
                 'ppt-templates', includes_slides_templates=True,
                 workspace_components=archive_workspace_components_for_target(target),
                 source_workspace={'id': source_workspace.id, 'name': source_workspace.name}, archive_path=archive_path,
+                report_templates=_report_templates_metadata(source_workspace),
             )
             archive.writestr('manifest.json', json.dumps(manifest, indent=2, sort_keys=True))
             _archive_workspace_report_templates(archive, source_workspace, archive_path, progress_callback)
@@ -9916,6 +10177,9 @@ def _dashboard_template_references(task_repository: Repository) -> set[tuple[str
         dashboards = {}
     if not isinstance(dashboards, dict):
         return set()
+    from src.modules.ppt_dashboards import follow_template_identities, template_uids
+    # A Dashboard refers to its template by its identity, also when the template was renamed since it was saved.
+    dashboards = follow_template_identities(dashboards, template_uids(task_repository))
     return {
         (str(definition.get('template_technology') or definition.get('technology') or 'nsa').casefold(),
          str(definition.get('template') or '').strip())
@@ -9926,8 +10190,13 @@ def _dashboard_template_references(task_repository: Repository) -> set[tuple[str
 def import_slides_templates_archive(
     staging_root: Path, destination_workspace_ids: Iterable[str] = (),
     manifest: dict[str, Any] | None = None,
-    *, includes_dashboards: bool = False,
+    *, includes_dashboards: bool = False, importing_user: str = 'import', summary: list[str] | None = None,
 ) -> int:
+    """Import (or restore) the PPT Templates of a package into the destination workspaces: those of the package replace
+    the templates of the workspace (found by their identity, then by their name) and the others are added, keeping those
+    only the workspace has. A template used by a Dashboard of the workspace keeps its definition unless the package
+    brings the Dashboards too. ``summary`` receives the renamed templates.
+    """
     templates_payload = staging_root / 'report-templates'
     if not templates_payload.exists():
         raise ValueError('The PPT Templates archive does not contain template files.')
@@ -9957,44 +10226,91 @@ def import_slides_templates_archive(
             'name': name, 'content': content,
             'is_default': relative.parts[0] == 'default' or bool(previous and previous['is_default']),
         }
+    metadata = {
+        (str(item.get('technology') or ''), str(item.get('name') or '').casefold()): item
+        for item in (manifest or {}).get('report_templates') or [] if isinstance(item, dict)
+    }
     for workspace in destinations:
         target_repository = Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path)
         target_repository.initialize_template_registry()
         protected = set() if includes_dashboards else _dashboard_template_references(target_repository)
-        for technology in TEMPLATE_NAMES:
-            existing = target_repository.list_report_templates(technology)
-            by_key: dict[str, list[Any]] = {}
-            for row in existing:
-                by_key.setdefault(str(row['name']).casefold(), []).append(row)
-            for row in existing:
-                name = str(row['name'])
-                key = (technology, name.casefold())
-                if (technology, name) in protected:
-                    continue
-                replacement = incoming.get(key)
-                if replacement is None or replacement['name'] != name:
-                    target_repository.delete_report_template(technology, name)
-            for (source_technology, normalized_name), template in incoming.items():
-                if source_technology != technology:
-                    continue
-                protected_matches = [
-                    row for row in by_key.get(normalized_name, [])
-                    if (technology, str(row['name'])) in protected
-                ]
-                if protected_matches:
-                    # Keep the local definition used by a Dashboard. A matching
-                    # imported name must not create a second visible template.
-                    continue
-                name = str(template['name'])
-                if any(str(row['name']) == name for row in existing):
-                    target_repository.set_report_template_content(technology, name, template['content'])
-                else:
-                    target_repository.add_report_template(technology, name, template['content'], is_default=False)
-                if template['is_default']:
-                    target_repository.set_default_report_template(technology, name)
+        renamed = _merge_report_templates(target_repository, incoming, metadata, protected, importing_user)
+        if summary is not None and renamed:
+            summary.append(f'PPT Templates of "{workspace.name}": ' + '; '.join(renamed) + '.')
         shutil.rmtree(workspace.database_path.parent / 'slides-templates', ignore_errors=True)
     _clear_chart_preview_caches()
     return len(destinations)
+
+
+def _merge_report_templates(
+    target_repository: Repository, incoming: dict[tuple[str, str], dict[str, Any]],
+    metadata: dict[tuple[str, str], dict[str, Any]], protected: set[tuple[str, str]], importing_user: str,
+) -> list[str]:
+    """Replace the templates of a workspace that a package brings (by identity, then name) and add the others; a
+    renamed template keeps its Dashboards. Returns the renamed templates."""
+    from src.modules.ppt_dashboards import rename_template_in_dashboards
+    from src.modules.transfer_identities import ItemMatcher
+
+    try:
+        dashboards = json.loads(target_repository.get_workspace_state(DASHBOARD_STATE_KEY) or '{}')
+    except (TypeError, ValueError):
+        dashboards = {}
+    dashboards = dashboards if isinstance(dashboards, dict) else {}
+    dashboards_changed = False
+    renamed: list[str] = []
+    for technology in TEMPLATE_NAMES:
+        existing = target_repository.list_report_templates(technology)
+        creators = {str(row['name']): str(row['created_by'] or '') for row in existing}
+        local_uids = {str(row['name']): str(row['uid'] or '') for row in existing}
+        matcher = ItemMatcher([(str(row['name']), str(row['name']), str(row['uid'] or '')) for row in existing])
+        has_default = any(bool(row['is_default']) for row in existing)
+        for (source_technology, normalized_name), template in incoming.items():
+            if source_technology != technology:
+                continue
+            details = metadata.get((technology, normalized_name), {})
+            target, name = matcher.match(details.get('uid'), str(template['name']))
+            creator = transfer_creator(details.get('created_by'), creators.get(str(target), '') if target else '', importing_user)
+            if target is None:
+                target_repository.add_report_template(technology, name, template['content'], is_default=False)
+                if template['is_default'] and not has_default:
+                    target_repository.set_default_report_template(technology, name)
+                    has_default = True
+            else:
+                if str(target) != name:
+                    target_repository.rename_report_template(technology, str(target), name)
+                    dashboards_changed = bool(rename_template_in_dashboards(dashboards, technology, str(target), name)) or dashboards_changed
+                # A template a Dashboard of the workspace uses keeps its definition (unless the Dashboards come too).
+                if not any(item[0] == technology and item[1].casefold() in {str(target).casefold(), name.casefold()}
+                           for item in protected):
+                    target_repository.set_report_template_content(technology, name, template['content'])
+            incoming_uid = str(details.get('uid') or '')
+            previous_uid = local_uids.get(str(target), '') if target is not None else ''
+            if incoming_uid and previous_uid and incoming_uid != previous_uid:
+                # It takes the identity of the package: its Dashboards follow it.
+                for key, definition in dashboards.items():
+                    if isinstance(definition, dict) and definition.get('template_uid') == previous_uid:
+                        dashboards[key] = {**definition, 'template_uid': incoming_uid}
+                        dashboards_changed = True
+            target_repository.set_report_template_identity(technology, name, uid=incoming_uid, created_by=creator)
+        renamed += matcher.summary()
+    if dashboards_changed:
+        target_repository.set_workspace_state(DASHBOARD_STATE_KEY, json.dumps(dashboards, ensure_ascii=False))
+    return renamed
+
+
+# Backups keep the identity and the creator of the PPT Templates of each workspace beside their CSV files (packages keep
+# them in their manifest).
+REPORT_TEMPLATES_METADATA_NAME = 'report-templates.json'
+
+
+def _report_templates_metadata(workspace: Workspace) -> list[dict[str, str]]:
+    """The identity and the creator of each PPT Template of a workspace, which its package carries in the manifest."""
+    source_repository = Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path)
+    source_repository.initialize_template_registry()
+    uids = source_repository.report_template_uids()
+    return [{'technology': technology, 'name': str(row['name']), 'uid': uids.get((technology, str(row['name'])), ''),
+             'created_by': str(row['created_by'] or '')}
+            for technology in TEMPLATE_NAMES for row in source_repository.list_report_templates(technology)]
 
 
 # Settings that describe this server (its backup schedule and folder, its worker
@@ -10160,12 +10476,25 @@ def import_auto_calculated_fields(
     progress_callback: Callable[[str, float], None] | None = None,
     parent_task_id: str = '',
     deferred_jobs: list[Callable[[], Any]] | None = None,
+    importing_user: str = 'import',
+    summary: list[str] | None = None,
 ) -> tuple[int, int]:
-    """Replace field definitions and materialize each selected workspace once, as a background task.
+    """Replace the fields of each selected workspace that the package brings (found by their identity, then by their
+    name) and add the others, keeping those only the workspace has. A field renamed on the other server takes its new
+    name in the PPT Templates and Dashboards of the workspace too. The CDR tables of each workspace are updated once,
+    as a background task, only when its fields change; ``summary`` receives the renamed fields.
 
     The materialization of an import of several packages waits in ``deferred_jobs`` until all of them are imported.
     """
+    from src.modules.deletion_rights import AUTO_CALCULATED_FIELDS, creators, move_creator, set_creator
+    from src.modules.transfer_identities import (
+        AUTO_CALCULATED_FIELDS as FIELD_IDENTITIES, ItemMatcher, identities, move_identity, set_identities,
+    )
+
     imported = parse_calculated_dimensions(payload)
+    # The identity and the creator each field of the package comes with.
+    details = {_normalise_catalogue_dimension_name(str(item.get('name') or '')): item
+               for item in payload if isinstance(item, dict)} if isinstance(payload, list) else {}
     available = {workspace.id: workspace for workspace in workspace_registry.list()}
     selected_ids = list(dict.fromkeys(str(workspace_id) for workspace_id in destination_workspace_ids))
     if not selected_ids:
@@ -10180,27 +10509,54 @@ def import_auto_calculated_fields(
             workspace_registry_db_path=workspace_registry.registry_path,
         )
         previous = parse_calculated_dimensions(task_repository.list_calculated_dimensions())
-        saved = parse_calculated_dimensions(calculated_dimensions_json(imported))
-        if calculated_dimensions_json(previous) == calculated_dimensions_json(saved):
-            # Identical fields need no materialization of the whole workspace.
-            continue
-        affected_sources = affected_calculated_dimension_sources(previous, saved)
-        task_repository.replace_calculated_dimensions(calculated_dimensions_json(saved))
-        if affected_sources:
-            previous_by_key = {_normalise_catalogue_dimension_name(item.name): item for item in previous}
-            imported_renames = {
-                previous_by_key[_normalise_catalogue_dimension_name(item.name)].name: item.name
-                for item in saved
-                if _normalise_catalogue_dimension_name(item.name) in previous_by_key
-                and previous_by_key[_normalise_catalogue_dimension_name(item.name)].name != item.name
-            }
-            def materialize(workspace=workspace, previous=previous, saved=saved, renames=imported_renames):
-                return start_auto_calculated_field_job(workspace, previous, saved, renames, 'system',
-                                                       parent_task_id=parent_task_id)
-            if deferred_jobs is not None:
-                deferred_jobs.append(materialize)
+        local_uids, local_creators = identities(task_repository, FIELD_IDENTITIES), creators(task_repository, AUTO_CALCULATED_FIELDS)
+        matcher = ItemMatcher(
+            [(position, item.name, local_uids.get(_normalise_catalogue_dimension_name(item.name), ''))
+             for position, item in enumerate(previous)],
+            normalize=_normalise_catalogue_dimension_name,
+        )
+        merged = list(previous)
+        renames: dict[str, str] = {}
+        field_uids: dict[str, str] = {}
+        field_creators: dict[str, str] = {}
+        for dimension in imported:
+            item = details.get(_normalise_catalogue_dimension_name(dimension.name), {})
+            target, name = matcher.match(item.get('uid'), dimension.name)
+            key = _normalise_catalogue_dimension_name(name)
+            local_creator = ''
+            if target is None:
+                merged.append(replace(dimension, name=name))
             else:
-                materialize()
+                old_name = merged[target].name
+                old_key = _normalise_catalogue_dimension_name(old_name)
+                local_creator = local_creators.get(old_key, '')
+                merged[target] = replace(dimension, name=name)
+                if old_name != name:
+                    renames[old_name] = name
+                    move_identity(task_repository, FIELD_IDENTITIES, old_key, key)
+                    move_creator(task_repository, AUTO_CALCULATED_FIELDS, old_key, key)
+            field_uids[key] = str(item.get('uid') or '')
+            field_creators[key] = transfer_creator(item.get('created_by'), local_creator, importing_user)
+        saved = parse_calculated_dimensions(calculated_dimensions_json(merged))
+        if calculated_dimensions_json(previous) != calculated_dimensions_json(saved):
+            affected_sources = affected_calculated_dimension_sources(previous, saved)
+            task_repository.replace_calculated_dimensions(calculated_dimensions_json(saved))
+            rename_calculated_dimension_template_references(renames, task_repository)
+            rename_calculated_dimension_dashboard_references(renames, task_repository)
+            rename_calculated_dimension_query_references(renames, task_repository)
+            if affected_sources:
+                def materialize(workspace=workspace, previous=previous, saved=saved, renames=renames):
+                    return start_auto_calculated_field_job(workspace, previous, saved, renames, 'system',
+                                                           parent_task_id=parent_task_id)
+                if deferred_jobs is not None:
+                    deferred_jobs.append(materialize)
+                else:
+                    materialize()
+        set_identities(task_repository, FIELD_IDENTITIES, field_uids)
+        for key, creator in field_creators.items():
+            set_creator(task_repository, AUTO_CALCULATED_FIELDS, key, creator)
+        if summary is not None and matcher.summary():
+            summary.append(f'Auto-calculated Fields of "{workspace.name}": ' + '; '.join(matcher.summary()) + '.')
         if progress_callback:
             progress_callback(
                 f'updating workspace {index + 1} of {len(selected_ids)}',
@@ -10218,8 +10574,17 @@ def _apply_import_archive(
     includes_dashboards: bool = False,
     importing_user: str = 'import',
     deferred_jobs: list[Callable[[], Any]] | None = None,
+    details: list[str] | None = None,
 ) -> str:
-    """Apply a disk-backed package and return its user-facing completion message."""
+    """Apply a disk-backed package and return its user-facing completion message. The items it renamed, or imported
+    with another name, are told after the message (in ``details`` for a package of a bundle)."""
+
+    def told(notice: str, changes: list[str]) -> str:
+        if details is not None:
+            details.extend(changes)
+            return notice
+        return ' '.join([notice, *changes])
+
     with zipfile.ZipFile(package_path) as archive, tempfile.TemporaryDirectory(prefix='drivetest-analyzer-import-') as temporary_dir:
         staging_root = Path(temporary_dir)
         kind = manifest.get('kind')
@@ -10243,6 +10608,7 @@ def _apply_import_archive(
                 for entry in packages
             )
             notices: list[str] = []
+            bundle_details: list[str] = []
             # Long updates (the materialization of Auto-calculated Fields) start once every package is imported.
             bundle_jobs: list[Callable[[], Any]] = []
             # The favourite Bundle Report Templates and the Reporting Jobs go last: they find their Dashboards among those of the
@@ -10281,12 +10647,13 @@ def _apply_import_archive(
                     includes_dashboards=bundle_includes_dashboards,
                     importing_user=importing_user,
                     deferred_jobs=bundle_jobs,
+                    details=bundle_details,
                 ))
             for start_job in bundle_jobs:
                 start_job()
             if progress_callback:
                 progress_callback('finalising', 100.0)
-            return f'Import selection completed ({len(notices)} packages).'
+            return ' '.join([f'Import selection completed ({len(notices)} packages).', *bundle_details])
         if kind == 'database-backup':
             components = _backup_archive_components(package_path)
             if progress_callback:
@@ -10345,13 +10712,15 @@ def _apply_import_archive(
             _safe_extract_archive_prefix(archive, staging_root, archive_path, extracted)
             if progress_callback:
                 progress_callback('importing PPT Templates', 90.0)
+            renamed: list[str] = []
             import_slides_templates_archive(
                 staging_root if archive_path == 'report-templates' else staging_root / Path(archive_path).parent,
                 destination_workspace_ids, manifest, includes_dashboards=includes_dashboards,
+                importing_user=importing_user, summary=renamed,
             )
             if progress_callback:
                 progress_callback('finalising', 100.0)
-            return 'PPT Templates imported successfully.'
+            return told('PPT Templates imported successfully.', renamed)
         if kind == 'dashboards':
             member = str(manifest.get('archive_path') or '')
             if member not in archive.namelist() or not re.fullmatch(r'workspaces/[^/]+/dashboards/dashboards\.json', member):
@@ -10366,9 +10735,12 @@ def _apply_import_archive(
             if not destinations:
                 raise ValueError('Select at least one destination workspace.')
             payload = archive.read(member)
+            renamed = []
             for workspace in destinations:
-                _restore_workspace_dashboards(workspace, payload)
-            return f'Imported Dashboards into {len(destinations)} workspaces.'
+                changes = _import_workspace_dashboards(workspace, payload, importing_user)
+                if changes:
+                    renamed.append(f'Dashboards of "{workspace.name}": ' + '; '.join(changes) + '.')
+            return told(f'Imported Dashboards into {len(destinations)} workspaces.', renamed)
         if kind == 'mappings-reference-data':
             member = str(manifest.get('archive_path') or '')
             if (
@@ -10426,15 +10798,12 @@ def _apply_import_archive(
             if not destinations:
                 raise ValueError('Select at least one destination workspace.')
             payload = archive.read(member)
-            reports_member = _scoring_report_configurations_member(member)
-            reports = archive.read(reports_member) if reports_member in archive.namelist() else None
-            filters_member = _saved_filters_member(member)
-            saved_filters = archive.read(filters_member) if filters_member in archive.namelist() else None
+            # The report configurations and Saved Filters that packages of earlier versions carried are left out: they
+            # travel as elements of their own (backups of earlier versions still restore them).
+            renamed: list[str] = []
             for workspace in destinations:
-                _restore_workspace_scoring_configuration(workspace, payload)
-                _restore_workspace_scoring_report_configurations(workspace, reports)
-                _restore_workspace_saved_filters(workspace, saved_filters)
-            return f'Imported Scoring & GAP Analysis Methodologies into {len(destinations)} workspaces.'
+                _import_workspace_scoring_configuration(workspace, payload, importing_user, renamed)
+            return told(f'Imported Scoring & GAP Analysis Methodologies into {len(destinations)} workspaces.', renamed)
         if kind == 'auto-calculated-fields':
             try:
                 member = next((candidate for candidate in (
@@ -10448,10 +10817,12 @@ def _apply_import_archive(
                 definitions = json.loads(archive.read(member).decode('utf-8'))
             except (KeyError, UnicodeDecodeError, json.JSONDecodeError) as exc:
                 raise ValueError('The package does not contain valid auto-calculated fields.') from exc
+            renamed: list[str] = []
             imported_count, workspace_count = import_auto_calculated_fields(
                 definitions, destination_workspace_ids, progress_callback, parent_task_id, deferred_jobs,
+                importing_user=importing_user, summary=renamed,
             )
-            return f'Imported {imported_count} auto-calculated fields into {workspace_count} workspaces.'
+            return told(f'Imported {imported_count} auto-calculated fields into {workspace_count} workspaces.', renamed)
         if kind == 'query-builder-queries':
             member = str(manifest.get('archive_path') or '')
             if (
@@ -10469,8 +10840,10 @@ def _apply_import_archive(
             if not destinations:
                 raise ValueError('Select at least one destination workspace.')
             payload = archive.read(member)
-            imported_count = sum(_restore_workspace_query_builder_queries(workspace, payload) for workspace in destinations)
-            return f'Imported {imported_count} Query Builder queries into {len(destinations)} workspaces.'
+            renamed: list[str] = []
+            imported_count = sum(_restore_workspace_query_builder_queries(workspace, payload, importing_user, renamed)
+                                 for workspace in destinations)
+            return told(f'Imported {imported_count} Query Builder queries into {len(destinations)} workspaces.', renamed)
         if kind == 'network-insights-favourites':
             member = str(manifest.get('archive_path') or '')
             if member not in archive.namelist() or not re.fullmatch(
@@ -10486,9 +10859,10 @@ def _apply_import_archive(
             if not destinations:
                 raise ValueError('Select at least one destination workspace.')
             payload = archive.read(member)
-            imported_count = sum(_restore_workspace_network_insights_favourites(workspace, payload, importing_user)
+            renamed: list[str] = []
+            imported_count = sum(_restore_workspace_network_insights_favourites(workspace, payload, importing_user, renamed)
                                  for workspace in destinations)
-            return f'Imported {imported_count} Network Insights Favourites into {len(destinations)} workspaces.'
+            return told(f'Imported {imported_count} Network Insights Favourites into {len(destinations)} workspaces.', renamed)
         if kind in {'bundle-report-template-favourites', 'scoring-favourites-filters', 'scoring-report-templates', 'scoring-export-panels',
                        'scoring-excluded-calls'}:
             favourites = kind == 'bundle-report-template-favourites'
@@ -10514,17 +10888,19 @@ def _apply_import_archive(
             if not destinations:
                 raise ValueError('Select at least one destination workspace.')
             payload = archive.read(member)
+            renamed: list[str] = []
             imported_count = sum(
-                _restore_workspace_bundle_report_template_favourites(workspace, payload, importing_user) if favourites
-                else _restore_workspace_favourites_filters(workspace, payload) if kind == 'scoring-favourites-filters'
+                _restore_workspace_bundle_report_template_favourites(workspace, payload, importing_user, renamed) if favourites
+                else _restore_workspace_favourites_filters(workspace, payload, importing_user) if kind == 'scoring-favourites-filters'
                 else _restore_workspace_scoring_export_panels(workspace, payload) if kind == 'scoring-export-panels'
                 else _restore_workspace_scoring_excluded_calls(workspace, payload, importing_user) if kind == 'scoring-excluded-calls'
-                else _import_workspace_scoring_report_templates(workspace, payload) for workspace in destinations)
+                else _import_workspace_scoring_report_templates(workspace, payload, importing_user, renamed)
+                for workspace in destinations)
             if kind == 'scoring-export-panels':
                 return f'Imported the {label} into {len(destinations)} workspaces.'
             if kind == 'scoring-excluded-calls':
                 return f'Imported {imported_count} lists of {label} into {len(destinations)} workspaces.'
-            return f'Imported {imported_count} {label} into {len(destinations)} workspaces.'
+            return told(f'Imported {imported_count} {label} into {len(destinations)} workspaces.', renamed)
         if kind == 'reporting-jobs':
             member = str(manifest.get('archive_path') or '')
             if (
@@ -10670,7 +11046,8 @@ def _run_import_job(job_id: str) -> None:
         )
         with IMPORT_JOBS_LOCK:
             job.update({'status': 'ready', 'progress': 100.0, 'notice': notice, 'finished_at': datetime.now(timezone.utc).timestamp()})
-        repository.try_add_log(job['owner'], 'import_package_completed', json.dumps({'job_id': job_id, 'kind': manifest.get('kind')}))
+        repository.try_add_log(job['owner'], 'import_package_completed', json.dumps({
+            'job_id': job_id, 'kind': manifest.get('kind'), 'notice': notice}))
     except InterruptedError as exc:
         with IMPORT_JOBS_LOCK:
             job.update({'status': 'cancelled', 'error': str(exc), 'finished_at': datetime.now(timezone.utc).timestamp()})
@@ -11006,7 +11383,8 @@ def _import_received_transfer(offer_id: str) -> None:
         with TRANSFER_LOCK:
             offer.update({'status': 'ready', 'phase': 'complete', 'progress': 100.0, 'notice': notice, 'finished_at': datetime.now(timezone.utc).timestamp()})
             _save_transfer_offer(offer)
-        repository.try_add_log('system', 'incoming_transfer_import_completed', json.dumps({'offer_id': offer_id, 'content': offer.get('content')}))
+        repository.try_add_log('system', 'incoming_transfer_import_completed', json.dumps({
+            'offer_id': offer_id, 'content': offer.get('content'), 'notice': notice}))
     except InterruptedError as exc:
         with TRANSFER_LOCK:
             offer.update({'status': 'cancelled', 'phase': 'cancelled', 'error': str(exc), 'finished_at': datetime.now(timezone.utc).timestamp()})
@@ -25379,23 +25757,25 @@ async def _save_workspace_dimensions(request: Request, user: SessionUser) -> JSO
             )
             affected_sources = affected_calculated_dimension_sources(previous, dimensions)
             renames = calculated_dimension_rename_map(payload, previous, dimensions)
+            keep_calculated_dimension_identities(repository, previous, dimensions, renames, user.username)
             renamed_templates = rename_calculated_dimension_template_references(renames)
             renamed_dashboards = rename_calculated_dimension_dashboard_references(renames)
+            renamed_queries = rename_calculated_dimension_query_references(renames)
 
             if not materialize:
                 repository.add_log(user.username, 'save_workspace_calculated_dimensions', json.dumps({
                     'workspace': workspace.id, 'count': len(dimensions),
                     'materialization_job': None, 'renamed_templates': renamed_templates,
-                    'renamed_dashboards': renamed_dashboards,
+                    'renamed_dashboards': renamed_dashboards, 'renamed_queries': renamed_queries,
                     'affected_sources': sorted(affected_sources),
                 }))
-                return dimensions, affected_sources, renamed_templates, renamed_dashboards, None
+                return dimensions, affected_sources, renamed_templates, renamed_dashboards, renamed_queries, None
 
             def record_save(job: dict[str, Any]) -> None:
                 repository.add_log(user.username, 'save_workspace_calculated_dimensions', json.dumps({
                     'workspace': workspace.id, 'count': len(dimensions),
                     'materialization_job': job['id'], 'renamed_templates': renamed_templates,
-                    'renamed_dashboards': renamed_dashboards,
+                    'renamed_dashboards': renamed_dashboards, 'renamed_queries': renamed_queries,
                     'affected_sources': sorted(affected_sources),
                 }))
 
@@ -25404,12 +25784,12 @@ async def _save_workspace_dimensions(request: Request, user: SessionUser) -> JSO
                 dimensions, renames, user.username,
                 before_submit=record_save,
             )
-            return dimensions, affected_sources, renamed_templates, renamed_dashboards, job
+            return dimensions, affected_sources, renamed_templates, renamed_dashboards, renamed_queries, job
 
         # Workspace writes may briefly wait for a large CDR transaction. Keep
         # that wait away from the ASGI event loop so the rest of the Dashboard
         # API remains responsive instead of surfacing unrelated 504 errors.
-        dimensions, affected_sources, renamed_templates, renamed_dashboards, job = await run_in_threadpool(save_and_queue)
+        dimensions, affected_sources, renamed_templates, renamed_dashboards, renamed_queries, job = await run_in_threadpool(save_and_queue)
     except (ValueError, TypeError, json.JSONDecodeError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except (OSError, sqlite3.Error) as exc:
@@ -25418,6 +25798,7 @@ async def _save_workspace_dimensions(request: Request, user: SessionUser) -> JSO
         'dimensions': calculated_dimensions_json(dimensions),
         'renamed_templates': renamed_templates,
         'renamed_dashboards': renamed_dashboards,
+        'renamed_queries': renamed_queries,
         'notice': (
             'The fields were saved. Updating applicable CDR tables can take a while and is running in the background.'
             if job and affected_sources else

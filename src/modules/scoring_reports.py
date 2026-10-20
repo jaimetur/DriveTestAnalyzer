@@ -288,6 +288,13 @@ def unwrap_report_configurations_document(document: Any) -> dict[str, Any]:
     return _normalize_state(document)
 
 
+def store_configurations(repository, configurations: list[dict[str, Any]]) -> dict[str, Any]:
+    """Keep these saved configurations (those an import of Scoring & GAP Report Templates leaves), and the last one used."""
+    state = load_report_state(repository)
+    state['configurations'] = configurations
+    return _store(repository, state)
+
+
 def import_report_configurations(repository, document: Any, *, replace: bool = False) -> dict[str, Any]:
     """Add the configurations of a document, replacing those with the same name (or all of them)."""
     incoming = unwrap_report_configurations_document(document)

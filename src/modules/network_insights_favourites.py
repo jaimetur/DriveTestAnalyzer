@@ -8,7 +8,7 @@ of Admin → Import / Export / Transfer, with Full Workspace transfers and with 
 import json
 import sqlite3
 from datetime import datetime
-from typing import Any
+from typing import Any, Callable
 
 FAVOURITES_TABLE = 'network_insights_favourites'
 FAVOURITES_FORMAT = 'drivetest-analyzer-network-insights-favourites'
@@ -116,24 +116,46 @@ def delete_favourite(repository: Any, favourite_id: int) -> dict[str, Any] | Non
 
 
 def export_document(repository: Any) -> bytes:
-    """The favourites of a workspace as a portable document."""
-    favourites = [{'name': item['name'], 'selection': item['selection'], 'created_by': item['created_by']}
-                  for item in list_favourites(repository)]
+    """The favourites of a workspace as a portable document, each with its identity (see transfer_identities)."""
+    from src.modules.transfer_identities import NETWORK_INSIGHTS_FAVOURITES, portable_identities
+
+    items = list_favourites(repository)
+    uids = portable_identities(repository, NETWORK_INSIGHTS_FAVOURITES, [str(item['id']) for item in items])
+    favourites = [{'name': item['name'], 'selection': item['selection'], 'created_by': item['created_by'],
+                   'uid': uids[str(item['id'])]} for item in items]
     return json.dumps({'format': FAVOURITES_FORMAT, 'version': 1, 'favourites': favourites}, ensure_ascii=False,
                       indent=2).encode('utf-8')
 
 
-def import_document(repository: Any, content: bytes | str, username: str) -> int:
-    """Add or replace (by name) the favourites of a portable document; returns how many it had."""
+def import_document(repository: Any, content: bytes | str, username: str,
+                    creator: Callable[[Any, str], str] | None = None, summary: list[str] | None = None) -> int:
+    """Replace the favourites of a portable document that the workspace has (found by their identity, then by their
+    name) and add the others; returns how many it had. ``creator(creator in the document, creator here)`` decides who
+    each one belongs to (without it a new one belongs to ``username`` and a replaced one keeps its creator);
+    ``summary`` receives the renamed favourites."""
+    from src.modules.transfer_identities import NETWORK_INSIGHTS_FAVOURITES, ItemMatcher, identities, set_identities
+
     document = json.loads(content)
     if not isinstance(document, dict) or document.get('format') != FAVOURITES_FORMAT:
         raise ValueError('The file is not a DriveTest Analyzer Network Insights Favourites export.')
-    existing = {item['name'].casefold(): item['id'] for item in list_favourites(repository)}
+    existing = list_favourites(repository)
+    local_uids = identities(repository, NETWORK_INSIGHTS_FAVOURITES)
+    local_creators = {item['id']: item['created_by'] for item in existing}
+    matcher = ItemMatcher([(item['id'], item['name'], local_uids.get(str(item['id']), '')) for item in existing])
+    imported_uids: dict[str, str] = {}
     imported = 0
     for entry in document.get('favourites') or []:
         if not isinstance(entry, dict) or not str(entry.get('name') or '').strip():
             continue
-        name = ' '.join(str(entry['name']).split())[:120]
-        save_favourite(repository, existing.get(name.casefold()), name, entry.get('selection'), username)
+        target, name = matcher.match(entry.get('uid'), ' '.join(str(entry['name']).split())[:120])
+        saved = save_favourite(repository, target, name, entry.get('selection'), username)
+        owner = creator(entry.get('created_by'), local_creators.get(target, '')) if creator else ''
+        if owner and owner != saved['created_by']:
+            with repository.connection() as connection:
+                connection.execute(f'UPDATE {FAVOURITES_TABLE} SET created_by = ? WHERE id = ?', (owner, saved['id']))
+        imported_uids[str(saved['id'])] = str(entry.get('uid') or '')
         imported += 1
+    set_identities(repository, NETWORK_INSIGHTS_FAVOURITES, imported_uids)
+    if summary is not None:
+        summary.extend(matcher.summary())
     return imported

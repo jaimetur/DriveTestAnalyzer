@@ -610,16 +610,22 @@ LEGACY_FAVOURITES_FORMATS = ('drivetest-analyzer-complete-report-favourites', 'd
 def export_entries(repository: Any) -> list[dict[str, Any]]:
     """The favourites as their documents carry them: each Dashboard with its current name and NR Mode, which find it
     in another workspace."""
+    from src.modules.transfer_identities import BUNDLE_REPORT_TEMPLATE_FAVOURITES, portable_identities
+
     dashboards = workspace_dashboards(repository)
+    favourites = list_favourites(repository)
+    # Each favourite with its identity, so the destination finds it again after a rename (see transfer_identities).
+    uids = portable_identities(repository, BUNDLE_REPORT_TEMPLATE_FAVOURITES, [str(item['id']) for item in favourites])
     entries = []
-    for item in list_favourites(repository):
+    for item in favourites:
         definition = item['definition']
         for section in definition['sections']:
             if section['key'] == 'dashboards':
                 for dashboard in section['items']:
                     if dashboard['key'] in dashboards:
                         dashboard['label'], dashboard['nr_mode'] = dashboards[dashboard['key']]
-        entries.append({'name': item['name'], 'definition': definition, 'created_by': item['created_by']})
+        entries.append({'name': item['name'], 'definition': definition, 'created_by': item['created_by'],
+                        'uid': uids[str(item['id'])]})
     return entries
 
 
@@ -634,6 +640,14 @@ def workspace_dashboards(repository: Any) -> dict[str, tuple[str, str]]:
         return {}
     return {str(key): (str(value.get('name') or ''), 'SA' if str(value.get('technology') or '').casefold() == 'sa' else 'NSA')
             for key, value in stored.items() if isinstance(value, dict)}
+
+
+def dashboard_aliases(repository: Any) -> dict[str, str]:
+    """The Dashboards of the workspace by the ID of the Dashboard of another server that an import gave them (see
+    transfer_identities), so what refers to that ID finds them."""
+    from src.modules.transfer_identities import PPT_DASHBOARDS, identities
+    keys = {str(key).casefold(): str(key) for key in workspace_dashboards(repository)}
+    return {uid: keys[key] for key, uid in identities(repository, PPT_DASHBOARDS).items() if key in keys and uid.casefold() != key}
 
 
 def match_dashboards(items: list[dict[str, Any]], dashboards: dict[str, tuple[str, str]], nr_mode: str) -> None:
@@ -666,21 +680,37 @@ def export_favourites_document(repository: Any) -> bytes:
                       ensure_ascii=False, indent=2).encode('utf-8')
 
 
-def import_favourites_document(repository: Any, content: bytes | str, username: str) -> int:
-    """Add or replace (by name) the favourite Bundle Report Templates of a portable document; returns how many it had."""
+def import_favourites_document(repository: Any, content: bytes | str, username: str,
+                               creator: Callable[[Any, str], str] | None = None, summary: list[str] | None = None) -> int:
+    """Replace (found by their identity, then by their name) or add the favourite Bundle Report Templates of a portable
+    document; returns how many it had (see import_entries)."""
     document = json.loads(content)
     if not isinstance(document, dict) or document.get('format') not in {FAVOURITES_FORMAT, *LEGACY_FAVOURITES_FORMATS}:
         raise ValueError('The file is not a DriveTest Analyzer Bundle Report Template Favourites export.')
-    return import_entries(repository, document.get('favourites') or [], username, workspace_dashboards(repository))
+    return import_entries(repository, document.get('favourites') or [], username, workspace_dashboards(repository),
+                          creator=creator, summary=summary)
 
 
 def import_entries(repository: Any, entries: Any, username: str,
-                   dashboards: dict[str, tuple[str, str]] | None = None) -> int:
-    """Add or replace (by name) the favourites of a document. ``dashboards`` are those of this workspace (see
-    workspace_dashboards), so a Dashboard of another workspace is found by its name and NR Mode."""
+                   dashboards: dict[str, tuple[str, str]] | None = None, *,
+                   creator: Callable[[Any, str], str] | None = None, summary: list[str] | None = None) -> int:
+    """Replace the favourites of a document that the workspace has (found by their identity, then by their name) and
+    add the others. ``dashboards`` are those of this workspace (see workspace_dashboards), so a Dashboard of another
+    workspace is found by its name and NR Mode. ``creator(creator in the document, creator here)`` decides who each
+    one belongs to (without it a new one belongs to ``username`` and a replaced one keeps its creator). A renamed
+    favourite renames the jobs based on it, as a rename here does; ``summary`` receives the renamed favourites."""
+    from src.modules.report_tasks import rename_favourite_jobs
+    from src.modules.transfer_identities import BUNDLE_REPORT_TEMPLATE_FAVOURITES, ItemMatcher, identities, set_identities
+
     if not isinstance(entries, list):
         return 0
-    existing = {item['name'].casefold(): item['id'] for item in list_favourites(repository)}
+    existing = list_favourites(repository)
+    local_uids = identities(repository, BUNDLE_REPORT_TEMPLATE_FAVOURITES)
+    local_creators = {item['id']: item['created_by'] for item in existing}
+    local_names = {item['id']: item['name'] for item in existing}
+    matcher = ItemMatcher([(item['id'], item['name'], local_uids.get(str(item['id']), '')) for item in existing])
+    aliases = dashboard_aliases(repository)
+    imported_uids: dict[str, str] = {}
     imported = 0
     for entry in entries:
         if not isinstance(entry, dict) or not str(entry.get('name') or '').strip():
@@ -688,10 +718,23 @@ def import_entries(repository: Any, entries: Any, username: str,
         definition = normalize_definition(entry.get('definition'))
         for section in definition['sections']:
             if section['key'] == 'dashboards':
+                for item in section['items']:
+                    if item['key'] not in (dashboards or {}) and item['key'] in aliases:
+                        item['key'] = aliases[item['key']]
                 match_dashboards(section['items'], dashboards or {}, definition['filters']['nr_mode'])
-        name = ' '.join(str(entry['name']).split())[:120]
-        save_favourite(repository, existing.get(name.casefold()), name, definition, username)
+        target, name = matcher.match(entry.get('uid'), ' '.join(str(entry['name']).split())[:120])
+        saved = save_favourite(repository, target, name, definition, username)
+        if target is not None and local_names.get(target) != name:
+            rename_favourite_jobs(repository, target, local_names[target], name)
+        owner = creator(entry.get('created_by'), local_creators.get(target, '')) if creator else ''
+        if owner and owner != saved['created_by']:
+            with repository.connection() as connection:
+                connection.execute(f'UPDATE {BUNDLE_REPORT_TEMPLATES_TABLE} SET created_by = ? WHERE id = ?', (owner, saved['id']))
+        imported_uids[str(saved['id'])] = str(entry.get('uid') or '')
         imported += 1
+    set_identities(repository, BUNDLE_REPORT_TEMPLATE_FAVOURITES, imported_uids)
+    if summary is not None:
+        summary.extend(matcher.summary())
     return imported
 
 

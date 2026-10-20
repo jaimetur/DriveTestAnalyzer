@@ -214,3 +214,15 @@ def test_vendor_result_filters_filter_their_own_column_and_preserve_exported_col
     # A former Vendor_Only column name filters the result's Vendor column.
     legacy = 'SELECT Vendor AS Vendor_Only, Vendor FROM selected_data ORDER BY source_row_id'
     assert execute_query(database_path, datasets, legacy, column_filters=[{'index': 0, 'values': ['Huawei']}])[1] == [('Huawei', 'Huawei')]
+
+
+def test_renamed_columns_are_renamed_in_saved_sql_but_not_in_strings_or_comments() -> None:
+    from src.modules.query_builder import rename_identifiers
+
+    renames = {'Area kind': 'Area type', 'Zone': 'Zone 2', 'old_col': 'new_col'}
+    query = ("SELECT \"Area kind\", [area KIND], `Zone`, t.old_col, old_col2, 3G, 'old_col' -- old_col\n"
+             "FROM t /* Zone */ WHERE Zone = 'Zone' AND \"x\"\"y\" = 1")
+    assert rename_identifiers(query, renames) == (
+        "SELECT \"Area type\", \"Area type\", \"Zone 2\", t.new_col, old_col2, 3G, 'old_col' -- old_col\n"
+        "FROM t /* Zone */ WHERE \"Zone 2\" = 'Zone' AND \"x\"\"y\" = 1")
+    assert rename_identifiers(query, {}) == query

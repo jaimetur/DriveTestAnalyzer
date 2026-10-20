@@ -1567,15 +1567,20 @@ def saved_filters_document(repository: Repository, *, favourites_only: bool = Fa
             'scoring_profile_id': saved_filter['scoring_profile_id'],
             # Its Geographical Areas & Scoring Trends (Main Cities kept as such).
             'area_summary': saved_filter['area_summary'],
+            # Who it belongs to (who starred it, or who calculates it), for Import / Export and Transfer.
+            'created_by': saved_filter['created_by'],
         })
     return {'format': SAVED_FILTERS_FORMAT, 'version': SAVED_FILTERS_VERSION, 'saved_filters': entries}
 
 
-def import_saved_filters(repository: Repository, document: Any) -> int:
-    """Add the Saved Filters of a document to the workspace (those it already has keep their name, favourite and
-    use). Their CDRs are found by file, except for those with a Campaign choice (Latest campaign…), which take the
-    CDRs it stands for here and need none in the document; until they are processed here, they wait for them.
-    Returns how many were added."""
+def import_saved_filters(repository: Repository, document: Any,
+                         creator: Callable[[Any, str], str] | None = None) -> int:
+    """Add the Saved Filters of a document to the workspace. Their CDRs are found by file, except for those with a
+    Campaign choice (Latest campaign…), which take the CDRs it stands for here and need none in the document; until
+    they are processed here, they wait for them. One the workspace already has (the same selection) takes the name and
+    the creator of the document, and its star if the document has it, without losing its own star (see
+    _resolve_imported_filters). ``creator(creator in the document, '')`` decides who each one belongs to (without it,
+    the application). Returns how many were added."""
     if (not isinstance(document, dict) or document.get('format') != SAVED_FILTERS_FORMAT
             or document.get('version') != SAVED_FILTERS_VERSION or not isinstance(document.get('saved_filters'), list)):
         raise ValueError('The Saved Filters are invalid.')
@@ -1618,19 +1623,24 @@ def import_saved_filters(repository: Repository, document: Any) -> int:
                     'resolved_context_filters': context_filters}
         if area_summary:
             snapshot['area_summary'] = area_summary
+        # Whether the document says who it belongs to (documents of earlier versions do not): only then does a Saved
+        # Filter the workspace has take that creator.
+        snapshot['creator_from_document'] = str(entry.get('created_by') or '').strip().casefold() not in {'', 'system'}
+        created_by = creator(entry.get('created_by'), '') if creator else 'system'
         with repository.connection() as connection:
             if connection.execute(f'SELECT 1 FROM {SAVED_FILTERS_TABLE} WHERE selection_key = ?', (pending_key,)).fetchone():
                 continue
             connection.execute(
                 f"""INSERT INTO {SAVED_FILTERS_TABLE} (
                     selection_key, name, pinned, position, use_count, last_used_at, cdr_refs_json, dataset_ids_json,
-                    source_metadata_json, nr_mode, levels_json, baseline_operator, status, message, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, '[]', ?, ?, ?, ?, 'saved', 'Imported; calculated when it is opened', ?, ?)""",
+                    source_metadata_json, nr_mode, levels_json, baseline_operator, status, message, created_by, created_at,
+                    updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, '[]', ?, ?, ?, ?, 'saved', 'Imported; calculated when it is opened', ?, ?, ?)""",
                 (pending_key, ' '.join(str(entry.get('name') or '').split())[:120], 1 if entry.get('pinned') else 0,
                  next_position if entry.get('pinned') else None,
                  max(1, int(entry.get('use_count') or 1)), str(entry.get('last_used_at') or now),
                  json.dumps(refs, ensure_ascii=False), json.dumps(snapshot, ensure_ascii=False, separators=(',', ':')),
-                 nr_mode, json.dumps(levels, ensure_ascii=False), selection['baseline_operator'], now, now),
+                 nr_mode, json.dumps(levels, ensure_ascii=False), selection['baseline_operator'], created_by or 'system', now, now),
             )
         added += 1
         if entry.get('pinned'):
@@ -1687,14 +1697,20 @@ def _resolve_imported_filters(repository: Repository) -> None:
             existing = connection.execute(f'SELECT * FROM {SAVED_FILTERS_TABLE} WHERE selection_key = ?',
                                           (prepared['selection_key'],)).fetchone()
             if existing is not None:
+                # The same selection: the Saved Filter of the workspace takes the name of the import and its creator
+                # (with the star it brings; a star of the workspace stays with whoever starred it).
+                incoming_creator = str(row['created_by'] or '').strip()
+                incoming_creator = '' if incoming_creator.casefold() in {'', 'system'} else incoming_creator
+                metadata = _decode_json(row['source_metadata_json'], {})
+                from_document = isinstance(metadata, dict) and bool(metadata.get('creator_from_document'))
+                take_creator = bool(incoming_creator) and (bool(row['pinned']) or (from_document and not existing['pinned']))
                 connection.execute(
-                    f"UPDATE {SAVED_FILTERS_TABLE} SET name = CASE WHEN name = '' THEN ? ELSE name END, "
-                    # Starred by the import, it belongs to the user who starred it in the package.
-                    "created_by = CASE WHEN pinned = 0 AND ? = 1 AND ? <> '' THEN ? ELSE created_by END, "
+                    f"UPDATE {SAVED_FILTERS_TABLE} SET name = CASE WHEN ? <> '' THEN ? ELSE name END, "
+                    'created_by = CASE WHEN ? = 1 THEN ? ELSE created_by END, '
                     'pinned = MAX(pinned, ?), use_count = MAX(use_count, ?), '
                     # A Saved Filter of the workspace starred by the import takes the place the import gave it.
                     'position = CASE WHEN pinned = 1 AND position IS NOT NULL THEN position ELSE ? END WHERE id = ?',
-                    (row['name'], row['pinned'], row['created_by'] or '', row['created_by'] or '', row['pinned'],
+                    (row['name'] or '', row['name'] or '', int(take_creator), incoming_creator, row['pinned'],
                      row['use_count'], row['position'] if row['pinned'] else None, existing['id']),
                 )
                 connection.execute(f'DELETE FROM {SAVED_FILTERS_TABLE} WHERE id = ?', (row['id'],))

@@ -602,8 +602,11 @@ def export_document(repository: Any) -> bytes:
                       ensure_ascii=False, indent=2).encode('utf-8')
 
 
-def import_document(repository: Any, content: bytes | str, username: str) -> int:
-    """Add the lists of a portable document, replacing those of the same name; returns how many it had."""
+def import_document(repository: Any, content: bytes | str, username: str,
+                    creator: Callable[[Any, str], str] | None = None) -> int:
+    """Add the lists of a portable document, replacing those of the same name; returns how many it had.
+    ``creator(creator in the document, creator here)`` decides who each list belongs to (without it, the creator in
+    the document)."""
     document = json.loads(content)
     if not isinstance(document, dict) or document.get('format') != EXCLUSIONS_FORMAT:
         raise ValueError('The file is not a DriveTest Analyzer Scoring Excluded Calls export.')
@@ -616,10 +619,13 @@ def import_document(repository: Any, content: bytes | str, username: str) -> int
                  for call in entry.get('calls') or [] if isinstance(call, list) and call]
         name = _name(entry['name'])
         with repository.connection() as connection:
+            local = connection.execute(f'SELECT created_by FROM {LISTS_TABLE} WHERE name = ? COLLATE NOCASE', (name,)).fetchone()
             connection.execute(f'DELETE FROM {LISTS_TABLE} WHERE name = ? COLLATE NOCASE', (name,))
+        created_by = (creator(entry.get('created_by'), str(local['created_by'] or '') if local else '') if creator
+                      else str(entry.get('created_by') or ''))
         create_list(repository, name=name, calls=calls, username=username, file_name=str(entry.get('file_name') or ''),
                     reason=str(entry.get('reason') or ''), cdrs=entry.get('cdrs') or [],
-                    enabled=bool(entry.get('enabled', True)), created_by=str(entry.get('created_by') or ''),
+                    enabled=bool(entry.get('enabled', True)), created_by=created_by,
                     created_at=str(entry.get('created_at') or ''))
     return len(entries)
 

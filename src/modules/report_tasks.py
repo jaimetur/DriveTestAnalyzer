@@ -1190,9 +1190,11 @@ def import_tasks_document(
     mapping = {source_id: destination[name.casefold()] for source_id, name in source_names.items() if name.casefold() in destination}
     existing = {task['name'].casefold(): task['id'] for task in list_tasks(task_repository)}
     # Favourite Bundle Report Templates are matched by name too (they are imported before the jobs, as their own element).
-    from src.modules.bundle_report_templates import list_favourites
+    from src.modules.bundle_report_templates import dashboard_aliases, list_favourites, workspace_dashboards
     favourite_names = {str(key): str(value) for key, value in (document.get('favourite_names') or {}).items()}
     favourites_here = {item['name'].casefold(): str(item['id']) for item in list_favourites(task_repository)}
+    dashboards_here = workspace_dashboards(task_repository)
+    dashboard_aliases_here = {alias: key for alias, key in dashboard_aliases(task_repository).items() if alias not in dashboards_here}
     imported, ordered = 0, []
     for index, item in enumerate(document.get('reporting_jobs') or []):
         if not isinstance(item, dict):
@@ -1203,6 +1205,10 @@ def import_tasks_document(
         definition = json.loads(json.dumps(item.get('definition') or {}))
         _current_provider_keys(definition)  # Jobs exported when Bundle Report Templates had a former name.
         definition = _remap_favourites(_remap_dataset_ids(definition, mapping), favourite_names, favourites_here)
+        for entry in definition.get('dashboards') or []:
+            # A Dashboard an import gave another ID here is found by the ID it had there.
+            if isinstance(entry, dict) and str(entry.get('dashboard_id') or '') in dashboard_aliases_here:
+                entry['dashboard_id'] = dashboard_aliases_here[str(entry['dashboard_id'])]
         source_owner = str(item.get('created_by') or '').strip()
         owner = source_owner if source_owner and user_exists(source_owner) else username
         task = save_task(task_repository, existing.get(str(item.get('name') or '').strip().casefold()),

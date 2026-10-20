@@ -91,6 +91,11 @@ def test_scoring_configuration_export_import_round_trip(client, tmp_path: Path, 
     assert document['format'] == 'drivetest-analyzer-scoring-configuration'
     assert document['version'] == 3
     assert document['active_profile_id'] == expected_profiles['active_profile_id']
+    # The package says who created each methodology it knows the creator of (and the identity of those that replaced
+    # one of another server: none here).
+    assert document.pop('identities') == {}
+    created_by = document.pop('created_by')
+    assert set(created_by) <= {profile['id'] for profile in expected_profiles['profiles']}
     assert document == scoring_profiles_document(expected_profiles)
     assert all(profile['configuration']['title'] == 'Urban Drive Quality'
                for profile in document['profiles'])
@@ -119,7 +124,8 @@ def test_scoring_configuration_export_import_round_trip(client, tmp_path: Path, 
     app_module._apply_import_archive(
         package_path, manifest, destination_workspace_ids=[workspace.id],
     )
-    assert repository.get_scoring_profiles() == expected_profiles
+    # The methodology of the package is added; the workspace keeps its default methodology.
+    assert repository.get_scoring_profiles() == {**expected_profiles, 'active_profile_id': 'netcheck-2026'}
 
 
 def test_partial_backup_restores_only_scoring_configuration(client, tmp_path: Path) -> None:
@@ -153,7 +159,8 @@ def test_partial_backup_restores_only_scoring_configuration(client, tmp_path: Pa
     })
     app_module.restore_database_backup(backup_path, ['scoring_configuration'])
 
-    assert repository.get_scoring_profiles() == expected_profiles
+    # The methodology the workspace lost comes back; the workspace keeps its default methodology.
+    assert repository.get_scoring_profiles() == {**expected_profiles, 'active_profile_id': 'netcheck-2026'}
     # The two methodologies customised above keep their GAP priorities (the other shipped ones keep theirs).
     customised = {expected_profiles['profiles'][0]['id'], 'custom-2024'}
     assert all(
@@ -186,7 +193,7 @@ def test_deleted_walk_environment_survives_json_archive_restore(client):
     assert 'Indoor' in exported['profiles'][0]['configuration']['scope']['environments']
 
     repository.replace_scoring_configuration(scoring_configuration())
-    app_module._restore_workspace_scoring_configuration(workspace, archive_payload)
+    app_module._import_workspace_scoring_configuration(workspace, archive_payload, 'super')
 
     assert repository.get_scoring_profiles() == expected_profiles
     assert 'Walk' not in repository.get_scoring_configuration()['scope']['environments']
@@ -519,18 +526,24 @@ def test_unconfigured_workspace_configuration_backup_round_trip(client):
     repository.set_workspace_state('scoring_configuration', '')
     payload = app_module._scoring_configuration_archive_payload(workspace)
     assert json.loads(payload)['profiles'] is None
+    # A package without methodologies leaves those of the workspace, as every import and restore keeps them.
     repository.replace_scoring_configuration(scoring_configuration())
-    app_module._restore_workspace_scoring_configuration(workspace, payload)
-    assert not repository.get_workspace_state('scoring_configuration')
+    kept = repository.get_scoring_profiles()
+    app_module._import_workspace_scoring_configuration(workspace, payload, 'super')
+    assert repository.get_scoring_profiles() == kept
 
     legacy_empty_payload = json.dumps({
         'format': 'drivetest-analyzer-scoring-configuration',
         'version': 1,
         'configuration': None,
     }).encode('utf-8')
-    repository.replace_scoring_configuration(scoring_configuration())
-    app_module._restore_workspace_scoring_configuration(workspace, legacy_empty_payload)
-    assert not repository.get_workspace_state('scoring_configuration')
+    app_module._import_workspace_scoring_configuration(workspace, legacy_empty_payload, 'super')
+    assert repository.get_scoring_profiles() == kept
+    # A workspace without methodologies takes those of a package.
+    full_payload = app_module._scoring_configuration_archive_payload(workspace)
+    repository.set_workspace_state('scoring_configuration', '')
+    app_module._import_workspace_scoring_configuration(workspace, full_payload, 'super')
+    assert repository.get_scoring_profiles() == kept
 
 
 def test_scoring_configuration_backup_leaves_the_report_configurations_to_their_own_element(client, tmp_path: Path) -> None:

@@ -222,6 +222,48 @@ def identity(value):
     return column_identity(value)
 
 
+def template_uids(task_repository) -> dict[tuple[str, str], str]:
+    """The identity of each PPT Template of a workspace by NR Mode and name."""
+    return task_repository.report_template_uids()
+
+
+def follow_template_identities(dashboards: dict, templates: dict[tuple[str, str], str]) -> dict:
+    """The Dashboards with the identity (``template_uid``) of their PPT Template: one whose template was renamed since,
+    here or by an import, takes its current name, and one without it (saved before, or imported) takes that of the
+    template of its NR Mode it names."""
+    by_uid = {uid: key for key, uid in templates.items() if uid}
+    followed = {}
+    for dashboard_id, definition in dashboards.items():
+        if isinstance(definition, dict) and definition.get('template'):
+            technology = str(definition.get('template_technology') or definition.get('technology') or 'nsa').casefold()
+            current = by_uid.get(str(definition.get('template_uid') or ''))
+            if current and current[0] == technology:
+                if current[1] != definition['template']:
+                    definition = {**definition, 'template': current[1]}
+            elif templates.get((technology, str(definition['template']))):
+                definition = {**definition, 'template_uid': templates[(technology, str(definition['template']))]}
+        followed[dashboard_id] = definition
+    return followed
+
+
+def rename_template_in_dashboards(dashboards: dict, technology: str, previous_template: str, template: str) -> list[str]:
+    """The Dashboards that use a renamed template take its new name, and their names follow it; returns their IDs."""
+    changed: list[str] = []
+    for dashboard_id, raw_definition in dashboards.items():
+        if not isinstance(raw_definition, dict):
+            continue
+        dashboard_technology = str(raw_definition.get('template_technology') or raw_definition.get('technology') or '').casefold()
+        if dashboard_technology != technology or str(raw_definition.get('template') or '') != previous_template:
+            continue
+        updated = dict(raw_definition)
+        updated['template'] = template
+        name = str(updated.get('name') or '')
+        updated['name'] = re.sub(re.escape(previous_template), template, name, flags=re.IGNORECASE)
+        dashboards[dashboard_id] = updated
+        changed.append(dashboard_id)
+    return changed
+
+
 def dashboard_nr_mode(definition) -> str:
     """Return the NR Mode (``NSA``/``SA``) of a Dashboard definition."""
     if isinstance(definition, dict):
@@ -1441,6 +1483,11 @@ def install_dashboard_routes(core):
         if reference_main_cities:
             main_cities = task_repository.list_main_cities()
             migrated = {dashboard_id: main_cities_reference(definition, main_cities) for dashboard_id, definition in migrated.items()}
+        # Each Dashboard refers to its PPT Template by its identity, so a renamed template is still its template.
+        try:
+            migrated = follow_template_identities(migrated, template_uids(task_repository))
+        except (AttributeError, sqlite3.Error):
+            pass
         if migrated != dashboards or reset_defaults or task_repository.get_workspace_state(STATE_KEY) is None:
             task_repository.set_workspace_state(STATE_KEY, json.dumps(migrated))
         if reset_defaults:
@@ -2619,6 +2666,7 @@ def install_dashboard_routes(core):
             saved_definition = migrate_auto_cdrs(normalize_dashboard_filters(definition.model_dump(mode='json')), task_repository)
             # The CDRs are chosen from the NR Mode and Campaign each time: they are not saved.
             saved_definition.pop('datasets', None)
+            saved_definition = follow_template_identities({dashboard_id: saved_definition}, template_uids(task_repository))[dashboard_id]
             dashboards[dashboard_id] = saved_definition
             task_repository.set_workspace_state(STATE_KEY, json.dumps(dashboards))
             if created:
@@ -2682,6 +2730,7 @@ def install_dashboard_routes(core):
             validate(definition, task_repository)
             saved_definition = migrate_auto_cdrs(normalize_dashboard_filters(definition.model_dump(mode='json')), task_repository)
             saved_definition.pop('datasets', None)
+            saved_definition = follow_template_identities({dashboard_id: saved_definition}, template_uids(task_repository))[dashboard_id]
             dashboards[dashboard_id] = saved_definition
             task_repository.set_workspace_state(STATE_KEY, json.dumps(dashboards))
             task_repository.add_log(user.username, 'change_dashboard_template', json.dumps({
@@ -6005,7 +6054,8 @@ def install_dashboard_routes(core):
             except Exception:
                 shared['templates'][template_key] = ''
         return sha256(json.dumps({
-            'definition': definition,
+            # The identity of the template is not an input: its content is.
+            'definition': {key: value for key, value in definition.items() if key != 'template_uid'},
             'template': shared['templates'][template_key],
             'shared': shared['signature'],
         }, sort_keys=True, default=str).encode()).hexdigest()
@@ -6268,22 +6318,11 @@ def install_dashboard_routes(core):
     def rename_template_dashboards(technology: str, previous_template: str, template: str, username: str) -> int:
         """Keep Dashboard template references and display names aligned after a template rename."""
         workspace = workspace_key()
-        changed: list[tuple[str, dict]] = []
         with lock:
             task_repository = bound_repository()
             dashboards = read_dashboards(task_repository)
-            for dashboard_id, raw_definition in dashboards.items():
-                if not isinstance(raw_definition, dict):
-                    continue
-                dashboard_technology = str(raw_definition.get('template_technology') or raw_definition.get('technology') or '').casefold()
-                if dashboard_technology != technology or str(raw_definition.get('template') or '') != previous_template:
-                    continue
-                updated = dict(raw_definition)
-                updated['template'] = template
-                name = str(updated.get('name') or '')
-                updated['name'] = re.sub(re.escape(previous_template), template, name, flags=re.IGNORECASE)
-                dashboards[dashboard_id] = updated
-                changed.append((dashboard_id, updated))
+            changed = [(dashboard_id, dashboards[dashboard_id])
+                       for dashboard_id in rename_template_in_dashboards(dashboards, technology, previous_template, template)]
             if changed:
                 task_repository.set_workspace_state(STATE_KEY, json.dumps(dashboards))
                 task_repository.add_log(username, 'rename_dashboard_template_references', json.dumps({

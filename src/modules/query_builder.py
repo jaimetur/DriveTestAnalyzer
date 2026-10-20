@@ -28,6 +28,67 @@ def _string_literal(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
 
 
+def rename_identifiers(query: str, renames: dict[str, str]) -> str:
+    """A saved query with renamed columns (a renamed Auto-calculated Field): each identifier that names an old column,
+    bare or quoted ("…", […] or `…`, without case differences as SQLite compares them), takes the new name; string
+    literals and comments are left as they are."""
+    targets = {str(old).casefold(): str(new) for old, new in renames.items() if str(old).strip() and str(new).strip()}
+    if not targets:
+        return query
+
+    def renamed(name: str) -> str | None:
+        new = targets.get(name.casefold())
+        return None if new is None else (new if _IDENTIFIER.match(new) else _quote(new))
+
+    parts: list[str] = []
+    index, length = 0, len(query)
+    while index < length:
+        char = query[index]
+        if char == "'" or query.startswith('--', index) or query.startswith('/*', index):
+            # String literals and comments stay as they are.
+            if char == "'":
+                end = index + 1
+                while end < length and not (query[end] == "'" and not query.startswith("''", end)):
+                    end += 2 if query.startswith("''", end) else 1
+                end += 1
+            elif char == '-':
+                end = query.find('\n', index)
+                end = length if end < 0 else end
+            else:
+                end = query.find('*/', index + 2)
+                end = length if end < 0 else end + 2
+            parts.append(query[index:end])
+            index = end
+        elif char in '"[`':
+            closing = {'"': '"', '[': ']', '`': '`'}[char]
+            end = index + 1
+            while end < length and not (query[end] == closing and not (closing == '"' and query.startswith('""', end))):
+                end += 2 if closing == '"' and query.startswith('""', end) else 1
+            inner = query[index + 1:end]
+            name = inner.replace('""', '"') if closing == '"' else inner
+            new = targets.get(name.casefold())
+            parts.append(query[index:end + 1] if new is None else _quote(new))
+            index = end + 1
+        elif char.isdigit():
+            # A number (or a word that starts with one, such as 3G) is not a column name.
+            end = index + 1
+            while end < length and (query[end].isalnum() or query[end] in '_.'):
+                end += 1
+            parts.append(query[index:end])
+            index = end
+        elif char.isalpha() or char == '_':
+            end = index + 1
+            while end < length and (query[end].isalnum() or query[end] == '_'):
+                end += 1
+            word = query[index:end]
+            parts.append(renamed(word) or word)
+            index = end
+        else:
+            parts.append(char)
+            index += 1
+    return ''.join(parts)
+
+
 def normalize_query(query: str) -> str:
     query = str(query or '').strip().rstrip(';').strip()
     if not query:
