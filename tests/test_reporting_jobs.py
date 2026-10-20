@@ -217,10 +217,156 @@ def wait_for_run(client, run_id, timeout=30):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         run = next(item for item in client.get('/api/reporting/state').json()['runs'] if item['id'] == run_id)
-        if run['status'] not in {'queued', 'running'}:
+        if run['status'] not in {'queued', 'running', 'stopping'}:
             return run
         time.sleep(0.1)
     raise AssertionError('The Reporting run did not finish.')
+
+
+def wait_until(condition, timeout=30):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if condition():
+            return
+        time.sleep(0.05)
+    raise AssertionError('The condition was not met in time.')
+
+
+def two_step_job(client, first, second):
+    """A job of two fake modules: ``first`` and ``second`` generate its artifacts (in this order)."""
+    def provider(label, behaviour):
+        def generate(config, folder, stamp, user):
+            behaviour()
+            path = folder / f'{stamp} - {label}.pptx'
+            path.write_bytes(b'fake')
+            return [{'module': label, 'title': label, 'file_name': path.name, 'size': 4, 'status': 'ready', 'details': []}]
+        return generate
+
+    register_report_artifact_provider('fake_first', 'First fake', 'datasets-analysis', provider('First', first))
+    register_report_artifact_provider('fake_second', 'Second fake', 'datasets-analysis', provider('Second', second))
+    created = client.post('/api/reporting/tasks', json={
+        'name': 'Two steps', 'definition': {'modules': {'fake_first': {'enabled': True}, 'fake_second': {'enabled': True}}},
+        'schedule': {'mode': 'manual'},
+    })
+    assert created.status_code == 200, created.text
+    return created.json()['task']
+
+
+def run_row(run_id):
+    return report_tasks.get_run(core.repository, run_id)
+
+
+def test_reporting_runs_stop_rerun_and_delete_from_the_run_history(client):
+    login(client)
+    calls = {'first': 0, 'second': 0}
+    release = __import__('threading').Event()
+
+    def first():
+        calls['first'] += 1
+
+    def second():
+        calls['second'] += 1
+        # A long step that looks whether its run was stopped while it works.
+        while not release.is_set():
+            report_tasks.check_run_stopped()
+            time.sleep(0.05)
+
+    try:
+        task = two_step_job(client, first, second)
+        run_id = client.post(f"/api/reporting/tasks/{task['id']}/run").json()['run_id']
+        wait_until(lambda: calls['second'] == 1)
+        # A running run stops after the step it is on, keeping what it generated, without its email.
+        response = client.post('/api/reporting/runs/stop', json={'ids': [run_id]})
+        assert response.json() == {'stopped': [], 'stopping': [run_id], 'skipped': []}
+        assert run_row(run_id)['status'] in {'stopping', 'stopped'}
+        run = wait_for_run(client, run_id)
+        assert run['status'] == 'stopped' and run['message'] == 'Stopped by super after 1 of 2 steps'
+        assert [item['title'] for item in run['artifacts']] == ['First']
+        # A run that is not queued or running is not stopped; a stopped one is run again from the beginning, in its row.
+        assert client.post('/api/reporting/runs/stop', json={'ids': [run_id]}).json()['skipped'] == [run_id]
+        release.set()
+        assert client.post('/api/reporting/runs/rerun', json={'ids': [run_id]}).json() == {'rerun': [run_id], 'skipped': []}
+        run = wait_for_run(client, run_id)
+        assert run['status'] == 'completed' and [item['title'] for item in run['artifacts']] == ['First', 'Second']
+        assert calls == {'first': 2, 'second': 2} and run['trigger'] == 'manual' and run['requested_by'] == 'super'
+        # A completed run is not run again.
+        assert client.post('/api/reporting/runs/rerun', json={'ids': [run_id]}).json()['skipped'] == [run_id]
+        # A queued run stopped before it starts never starts.
+        queued = report_tasks.create_run(core.repository, report_tasks.get_task(core.repository, task['id']), 'manual', 'super')
+        assert client.post('/api/reporting/runs/stop', json={'ids': [queued]}).json()['stopped'] == [queued]
+        assert run_row(queued)['status'] == 'stopped' and run_row(queued)['message'] == 'Stopped by super before it started'
+        # Several runs are deleted at once, never one that is still active.
+        active = report_tasks.create_run(core.repository, report_tasks.get_task(core.repository, task['id']), 'manual', 'super')
+        result = client.post('/api/reporting/runs/delete', json={'ids': [run_id, queued, active]}).json()
+        assert result == {'deleted': [run_id, queued], 'skipped': [active]}
+        assert run_row(run_id) is None and run_row(active)['status'] == 'queued'
+        # Only editors stop, rerun or delete runs.
+        session(client, 'reader', 'user-viewer')
+        assert client.post('/api/reporting/runs/stop', json={'ids': [active]}).status_code == 403
+        assert client.post('/api/reporting/runs/rerun', json={'ids': [active]}).status_code == 403
+        assert client.post('/api/reporting/runs/delete', json={'ids': [active]}).status_code == 403
+        login(client)
+        # Every action is recorded in App Events.
+        actions = {row['action'] for row in core.repository.list_logs(limit=200)}
+        assert {'stop_reporting_job_run', 'rerun_reporting_job_run', 'delete_reporting_job_run'} <= actions
+    finally:
+        release.set()
+        report_tasks.ARTIFACT_PROVIDERS.pop('fake_first', None)
+        report_tasks.ARTIFACT_PROVIDERS.pop('fake_second', None)
+
+
+def test_reporting_runs_interrupted_by_a_restart_go_on_from_their_step(client):
+    login(client)
+    calls = {'first': 0, 'second': 0}
+    release = __import__('threading').Event()
+
+    def first():
+        calls['first'] += 1
+
+    def second():
+        calls['second'] += 1
+        release.wait(30)
+
+    try:
+        task = two_step_job(client, first, second)
+        run_id = client.post(f"/api/reporting/tasks/{task['id']}/run").json()['run_id']
+        wait_until(lambda: calls['second'] == 1)
+        # What a restart leaves: the run running, after its first step, with what the second one began to write.
+        interrupted = run_row(run_id)
+        assert interrupted['control']['done'] == 1 and [item['title'] for item in interrupted['artifacts']] == ['First']
+        release.set()
+        wait_for_run(client, run_id)
+        with core.repository.connection() as connection:
+            connection.execute("UPDATE report_task_runs SET status = 'running', finished_at = NULL, artifacts_json = ?, "
+                               "control_json = ? WHERE id = ?",
+                               (json.dumps(interrupted['artifacts']), json.dumps(interrupted['control']), run_id))
+        folder = Path(interrupted['output_dir'])
+        second_file = next(path for path in folder.iterdir() if 'Second' in path.name)
+        second_file.write_bytes(b'half written')
+        # Another run interrupted by too many restarts fails, and one being stopped ends as stopped.
+        job = report_tasks.get_task(core.repository, task['id'])
+        too_often = report_tasks.create_run(core.repository, job, 'manual', 'super')
+        stopping = report_tasks.create_run(core.repository, job, 'manual', 'super')
+        with core.repository.connection() as connection:
+            connection.execute("UPDATE report_task_runs SET status = 'running', control_json = ? WHERE id = ?",
+                               (json.dumps({'restarts': report_tasks.MAX_RUN_RESUMES}), too_often))
+            connection.execute("UPDATE report_task_runs SET status = 'stopping', control_json = ? WHERE id = ?",
+                               (json.dumps({'stopped_by': 'super'}), stopping))
+        core.run_due_report_tasks()
+        run = wait_for_run(client, run_id)
+        # The first step is not generated again: the run goes on with the second one in its folder.
+        assert calls == {'first': 1, 'second': 2}
+        assert run['status'] == 'completed' and [item['title'] for item in run['artifacts']] == ['First', 'Second']
+        assert run_row(run_id)['control']['restarts'] == 1
+        assert sorted(path.name for path in folder.iterdir()) == sorted(item['file_name'] for item in run['artifacts'])
+        assert run_row(too_often)['status'] == 'failed' and 'not resumed again' in run_row(too_often)['error']
+        assert run_row(stopping)['status'] == 'stopped' and run_row(stopping)['message'] == 'Stopped by super'
+        actions = {row['action'] for row in core.repository.list_logs(limit=200)}
+        assert {'resume_reporting_job_run', 'fail_interrupted_reporting_job_run', 'stop_interrupted_reporting_job_run'} <= actions
+    finally:
+        release.set()
+        report_tasks.ARTIFACT_PROVIDERS.pop('fake_first', None)
+        report_tasks.ARTIFACT_PROVIDERS.pop('fake_second', None)
 
 
 def test_reporting_job_runs_emails_and_travels_with_exports(client, monkeypatch, tmp_path):

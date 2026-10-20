@@ -196,6 +196,13 @@
   <details class="panel collapsible-panel" open data-panel-state-key="reporting:runs">
     <summary class="collapsible-summary"><div><p class="eyebrow">Executions</p><h2>Run History</h2></div><span class="collapse-chip">Collapse</span></summary>
     <div class="collapsible-panel-body">
+      <div class="rj-bulk rj-runs-bulk" id="rj-runs-bulk" hidden>
+        <label class="rj-select-all"><input type="checkbox" id="rj-runs-select-all"> Select all</label>
+        <button type="button" class="rj-bulk-move" id="rj-rerun-selected" disabled title="Run the selected failed or stopped runs again from the beginning">Rerun</button>
+        <button type="button" class="rj-bulk-move rj-bulk-stop" id="rj-stop-selected" disabled title="Stop the selected queued or running runs">Stop</button>
+        <button type="button" class="rj-bulk-delete" id="rj-delete-runs-selected" disabled title="Delete the selected runs with their artifacts">Delete</button>
+        <p class="form-note" id="rj-runs-status" role="status"></p>
+      </div>
       <div class="table-wrap">
         <table class="reporting-jobs-table" id="rj-runs" data-phone-cards>
           <thead><tr><th>Run</th><th>Reporting Job</th><th>Trigger</th><th>Started</th><th>Status</th><th>Email</th><th>Artifacts</th><th>Size</th><th>Actions</th></tr></thead>

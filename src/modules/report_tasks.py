@@ -12,6 +12,7 @@ another workspace is active runs as soon as its workspace becomes active again.
 """
 
 import calendar
+import hashlib
 import html
 import json
 import math
@@ -24,7 +25,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta
 from io import BytesIO
 from pathlib import Path
-from threading import Event, Lock, Thread
+from threading import Event, Lock, Thread, local
 from typing import Any, Callable
 
 from src.branding import canonical_format
@@ -58,10 +59,16 @@ CDR_ANALYSIS_FILTER_DIMENSIONS = {
     'regions': 'region',
     'clusters': 'cluster', 'cities': 'city', 'campaigns': 'campaign',
 }
-RUN_FINAL_STATUSES = ('sent', 'completed', 'partial', 'failed')
+RUN_FINAL_STATUSES = ('sent', 'completed', 'partial', 'failed', 'stopped')
+# Waiting, generating, or finishing the step it is on after a user stopped it.
+RUN_ACTIVE_STATUSES = ('queued', 'running', 'stopping')
+# The runs Rerun starts again from the beginning.
+RUN_RERUN_STATUSES = ('failed', 'stopped')
 DASHBOARD_JOB_TIMEOUT_SECONDS = 3 * 60 * 60
 SCHEDULER_INTERVAL_SECONDS = 30
 INTERRUPTED_RUN_MESSAGE = 'The run was interrupted by an application restart.'
+# A run interrupted by application restarts goes on from the step it was on, up to this many times.
+MAX_RUN_RESUMES = 3
 MODULE_LABELS = {
     'dataset_analysis': 'CDR Analysis', 'network_insights': 'Network Insights',
     'dashboards': 'Dashboards', 'scoring': 'Scoring',
@@ -138,7 +145,8 @@ CREATE TABLE IF NOT EXISTS {REPORT_TASK_RUNS_TABLE} (
     email_status TEXT NOT NULL DEFAULT '',
     artifacts_json TEXT NOT NULL DEFAULT '[]',
     output_dir TEXT NOT NULL DEFAULT '',
-    last_error TEXT NOT NULL DEFAULT ''
+    last_error TEXT NOT NULL DEFAULT '',
+    control_json TEXT NOT NULL DEFAULT '{{}}'
 );
 CREATE INDEX IF NOT EXISTS idx_report_task_runs_task ON {REPORT_TASK_RUNS_TABLE}(task_id, id);
 """
@@ -191,6 +199,12 @@ def ensure_report_task_tables(task_repository: Any) -> None:
             if database not in _LEGACY_JOBS_STORED:
                 _store_legacy_jobs(connection)
                 _LEGACY_JOBS_STORED.add(database)
+        # How a run is carried on (see execute_run); runs saved before it have none.
+        if 'control_json' not in {row[1] for row in connection.execute(f'PRAGMA table_info({REPORT_TASK_RUNS_TABLE})')}:
+            try:
+                connection.execute(f"ALTER TABLE {REPORT_TASK_RUNS_TABLE} ADD COLUMN control_json TEXT NOT NULL DEFAULT '{{}}'")
+            except sqlite3.OperationalError:  # Added meanwhile by another request.
+                pass
         # The order of the jobs table (dragged by the users); jobs saved before it keep their alphabetical order.
         if 'position' not in {row[1] for row in connection.execute(f'PRAGMA table_info({REPORT_TASKS_TABLE})')}:
             try:
@@ -761,6 +775,7 @@ def run_from_row(row: sqlite3.Row) -> dict[str, Any]:
         'send_email': bool(row['send_email']), 'recipients': _loads(row['recipients_json'], []),
         'email_status': str(row['email_status'] or ''), 'artifacts': _loads(row['artifacts_json'], []),
         'output_dir': str(row['output_dir'] or ''), 'error': str(row['last_error'] or ''),
+        'control': _loads(row['control_json'], {}) if 'control_json' in row.keys() else {},
     }
 
 
@@ -941,11 +956,11 @@ def get_run(task_repository: Any, run_id: int) -> dict[str, Any] | None:
 def update_run(task_repository: Any, run_id: int, **changes: Any) -> None:
     if not changes:
         return
-    columns = {'artifacts': 'artifacts_json', 'recipients': 'recipients_json', 'error': 'last_error'}
+    columns = {'artifacts': 'artifacts_json', 'recipients': 'recipients_json', 'error': 'last_error', 'control': 'control_json'}
     assignments, values = [], []
     for key, value in changes.items():
         column = columns.get(key, key)
-        if column in {'artifacts_json', 'recipients_json'} and not isinstance(value, str):
+        if column in {'artifacts_json', 'recipients_json', 'control_json'} and not isinstance(value, str):
             value = json.dumps(value, ensure_ascii=False)
         assignments.append(f'{column} = ?')
         values.append(value)
@@ -990,17 +1005,100 @@ def claim_due_tasks(task_repository: Any, now: datetime) -> list[dict[str, Any]]
     return due
 
 
-def fail_interrupted_runs(task_repository: Any, active_run_ids: set[int]) -> None:
-    ensure_report_task_tables(task_repository)
-    now = now_local().isoformat()
+# The control of a run as a JSON object: how it is carried on, where a restart interrupted it (the timestamp and folder
+# of its artifacts, a signature of its steps and how many it finished), how many restarts it went on after and who
+# stopped it.
+_CONTROL = "COALESCE(NULLIF(control_json, ''), '{}')"
+
+
+def claim_run(task_repository: Any, run_id: int) -> bool:
+    """Start a queued run; False when it is no longer queued (a user stopped it meanwhile)."""
     with task_repository.connection() as connection:
-        for row in connection.execute(
-            f"SELECT id FROM {REPORT_TASK_RUNS_TABLE} WHERE status IN ('queued', 'running')").fetchall():
-            if int(row['id']) not in active_run_ids:
-                connection.execute(
-                    f"UPDATE {REPORT_TASK_RUNS_TABLE} SET status = 'failed', message = ?, last_error = ?, finished_at = ? WHERE id = ?",
-                    (INTERRUPTED_RUN_MESSAGE, INTERRUPTED_RUN_MESSAGE, now, int(row['id'])),
-                )
+        return bool(connection.execute(
+            f"UPDATE {REPORT_TASK_RUNS_TABLE} SET status = 'running', message = 'Generating artifacts', progress = 1 "
+            "WHERE id = ? AND status = 'queued'", (run_id,)).rowcount)
+
+
+def request_stop(task_repository: Any, run_id: int, username: str) -> str | None:
+    """Stop a queued run at once, or have a running one stop after the step it is on; the status it was in, or None
+    when it was neither."""
+    for _attempt in range(3):
+        run = get_run(task_repository, run_id)
+        if run is None or run['status'] not in {'queued', 'running'}:
+            return None
+        with task_repository.connection() as connection:
+            if run['status'] == 'queued':
+                changed = connection.execute(
+                    f"UPDATE {REPORT_TASK_RUNS_TABLE} SET status = 'stopped', message = ?, finished_at = ?, "
+                    f"control_json = json_set({_CONTROL}, '$.stopped_by', ?) WHERE id = ? AND status = 'queued'",
+                    (f'Stopped by {username} before it started', now_local().isoformat(), username, run_id)).rowcount
+            else:
+                changed = connection.execute(
+                    f"UPDATE {REPORT_TASK_RUNS_TABLE} SET status = 'stopping', control_json = json_set({_CONTROL}, '$.stopped_by', ?) "
+                    "WHERE id = ? AND status = 'running'", (username, run_id)).rowcount
+        if changed:
+            return run['status']
+    return None
+
+
+def update_run_control(task_repository: Any, run_id: int, artifacts: list[dict[str, Any]] | None = None, **values: Any) -> None:
+    """Set keys of the control of a run, keeping the others (such as who stopped it meanwhile), and its artifacts in the
+    same write when given (the artifacts of the steps it finished)."""
+    paths = ', '.join("?, json(?)" for _ in values)
+    with task_repository.connection() as connection:
+        connection.execute(
+            f"UPDATE {REPORT_TASK_RUNS_TABLE} SET control_json = json_set({_CONTROL}, {paths})"
+            + (', artifacts_json = ?' if artifacts is not None else '') + ' WHERE id = ?',
+            (*[part for key, value in values.items() for part in (f'$.{key}', json.dumps(value))],
+             *([json.dumps(artifacts, ensure_ascii=False)] if artifacts is not None else []), run_id))
+
+
+def reset_run(task_repository: Any, run: dict[str, Any], task: dict[str, Any], username: str) -> bool:
+    """Queue a failed or stopped run again as a new manual run of its job; False when it is in another status."""
+    with task_repository.connection() as connection:
+        changed = connection.execute(
+            f"UPDATE {REPORT_TASK_RUNS_TABLE} SET task_name = ?, trigger = 'manual', status = 'queued', progress = 0, "
+            "message = 'Waiting to start', requested_by = ?, created_at = ?, started_at = NULL, finished_at = NULL, send_email = ?, "
+            "recipients_json = ?, email_status = '', artifacts_json = '[]', output_dir = '', last_error = '', control_json = '{}' "
+            f"WHERE id = ? AND status IN ({', '.join('?' for _ in RUN_RERUN_STATUSES)})",
+            (task['name'], username, now_local().isoformat(), int(task['send_email']), json.dumps(task['recipients']),
+             run['id'], *RUN_RERUN_STATUSES)).rowcount
+        if changed:
+            connection.execute(f'UPDATE {REPORT_TASKS_TABLE} SET last_run_id = ? WHERE id = ?', (run['id'], task['id']))
+    return bool(changed)
+
+
+def interrupted_runs(task_repository: Any, active_run_ids: set[int]) -> list[dict[str, Any]]:
+    """The runs left waiting, running or stopping by the previous process: those it was running first."""
+    ensure_report_task_tables(task_repository)
+    with task_repository.connection() as connection:
+        rows = connection.execute(
+            f"SELECT * FROM {REPORT_TASK_RUNS_TABLE} WHERE status IN ({', '.join('?' for _ in RUN_ACTIVE_STATUSES)}) "
+            "ORDER BY status = 'queued', id", RUN_ACTIVE_STATUSES).fetchall()
+    return [run for run in map(run_from_row, rows) if run['id'] not in active_run_ids]
+
+
+class RunStopped(BaseException):
+    """Raised in a Reporting Job run that a user stopped. A BaseException (as asyncio's CancelledError), so the steps
+    that report their own failures as failed artifacts (``except Exception``) let it through."""
+
+
+# The run the thread is generating, so that long steps can stop it (see check_run_stopped).
+_RUN_CONTEXT = local()
+
+
+def check_run_stopped(at_once: bool = False) -> None:
+    """Raise RunStopped in the thread of a Reporting Job run that a user stopped (or deleted); nothing elsewhere.
+
+    Long steps call it while they work or wait; it reads the run at most once a second, unless ``at_once``.
+    """
+    current = getattr(_RUN_CONTEXT, 'run', None)
+    if current is None or (not at_once and time.monotonic() - current['checked'] < 1):
+        return
+    current['checked'] = time.monotonic()
+    run = get_run(current['repository'], current['run_id'])
+    if run is None or run['status'] == 'stopping':
+        raise RunStopped()
 
 
 # ---------------------------------------------------------------------------
@@ -1341,6 +1439,12 @@ def install_report_task_routes(core: Any) -> None:
             if str(row['status']) in {'failed', 'stopped'}:
                 raise RuntimeError(str(row['last_error'] or f"The Dashboard PPT job {row['status']}."))
             update_run(task_repository, run_id, message=f"Waiting for Dashboard PPT job {job_id} ({int(row['progress'] or 0)}%)")
+            try:
+                check_run_stopped()
+            except RunStopped:
+                # (Its Dashboard PPT job stops with it.)
+                tools.stop_job(task_repository, job_id)
+                raise
             time.sleep(3)
         raise RuntimeError('The Dashboard PPT job did not finish within three hours.')
 
@@ -1591,20 +1695,18 @@ def install_report_task_routes(core: Any) -> None:
                                           workspace_registry_db_path=core.workspace_registry.registry_path)
         run = get_run(task_repository, run_id)
         task = get_task(task_repository, run['task_id']) if run else None
+        artifacts: list[dict[str, Any]] = []
+        steps: list[tuple[str, Any]] = []
+        done = 0
         try:
-            if run is None or task is None:
+            # (A run stopped while it waited does not start.)
+            if run is None or task is None or not claim_run(task_repository, run_id):
                 return
-            started = now_local()
-            stamp = started.strftime('%Y%m%d_%H%M%S')
-            folder = output_root() / f"{stamp} - {safe_file_name(task['name'])} - run {run_id}"
-            folder.mkdir(parents=True, exist_ok=True)
-            update_run(task_repository, run_id, status='running', started_at=started.isoformat(), output_dir=str(folder),
-                       message='Generating artifacts', progress=1)
+            _RUN_CONTEXT.run = {'repository': task_repository, 'run_id': run_id, 'checked': 0.0}
             if not core.active_workspace or Path(core.active_workspace.database_path).resolve() != Path(database_path).resolve():
                 raise RuntimeError('The Reporting Job workspace is no longer the active workspace.')
             definition, user = migrate_auto_cdrs(task['definition'], task_repository), run_user(task['created_by'])
             names = dataset_names(task_repository)
-            steps: list[tuple[str, Any]] = []
             # Artifacts of modules the job owner can no longer use are reported, not generated.
             allowed = {module: core.user_has_feature(user, feature) for module, _label, feature in used_modules(definition)}
             for module, label, feature in used_modules(definition):
@@ -1640,12 +1742,38 @@ def install_report_task_routes(core: Any) -> None:
                     steps.append((key, lambda key=key: [failed_artifact(key, key, 'This module no longer provides Reporting artifacts.')]))
                 else:
                     steps.append((provider['label'], lambda provider=provider, config=config, key=key: generate_provider(key, provider, config, folder, stamp, user)))
-            artifacts: list[dict[str, Any]] = []
+            # A run interrupted by a restart goes on in its folder after the last step it finished, unless its job (or what
+            # its owner may generate) changed meanwhile; otherwise it starts again.
+            signature = hashlib.sha256(json.dumps([definition, [label for label, _step in steps]], sort_keys=True,
+                                                  default=str).encode()).hexdigest()
+            control, previous = run['control'], Path(run['output_dir']) if run['output_dir'] else None
+            if control.get('signature') == signature and control.get('stamp') and previous and previous.is_dir() and run['started_at']:
+                started, stamp, folder = datetime.fromisoformat(run['started_at']), str(control['stamp']), previous
+                done, artifacts = int(control.get('done') or 0), list(run['artifacts'])
+                # (What the interrupted step left half written goes.)
+                kept = {item.get('file_name') for item in artifacts}
+                for path in folder.iterdir():
+                    if path.name not in kept:
+                        shutil.rmtree(path, ignore_errors=True) if path.is_dir() else path.unlink(missing_ok=True)
+            else:
+                if previous:
+                    remove_run_folders([str(previous)])
+                started = now_local()
+                stamp = started.strftime('%Y%m%d_%H%M%S')
+                folder = output_root() / f"{stamp} - {safe_file_name(task['name'])} - run {run_id}"
+                folder.mkdir(parents=True, exist_ok=True)
+            update_run(task_repository, run_id, started_at=started.isoformat(), output_dir=str(folder), artifacts=artifacts)
+            update_run_control(task_repository, run_id, stamp=stamp, signature=signature, done=done)
             for index, (label, step) in enumerate(steps):
+                if index < done:
+                    continue
+                check_run_stopped(at_once=True)
                 update_run(task_repository, run_id, message=f'Generating {label} ({index + 1}/{len(steps)})',
                            progress=max(1, round(index * 90 / max(len(steps), 1))))
                 artifacts.extend(step())
-                update_run(task_repository, run_id, artifacts=artifacts)
+                done = index + 1
+                update_run_control(task_repository, run_id, artifacts=artifacts, done=done)
+            check_run_stopped(at_once=True)
             # A file listed as ready must still exist when the run ends; otherwise it failed.
             for item in artifacts:
                 if item['status'] == 'ready' and not (folder / item['file_name']).is_file():
@@ -1683,10 +1811,21 @@ def install_report_task_routes(core: Any) -> None:
                 'task_id': task['id'], 'run_id': run_id, 'status': status, 'artifacts': len(ready), 'email': email_status,
                 'trigger': run['trigger'],
             }))
+        except RunStopped:
+            # What it generated before it was stopped is kept; no email is sent.
+            stopped_by = ((get_run(task_repository, run_id) or {}).get('control') or {}).get('stopped_by') or 'a user'
+            update_run(task_repository, run_id, status='stopped', message=f'Stopped by {stopped_by} after {done} of {len(steps)} steps',
+                       finished_at=now_local().isoformat(), artifacts=artifacts)
+            task_repository.try_add_log(task['created_by'], 'reporting_job_run', json.dumps({
+                'task_id': task['id'], 'run_id': run_id, 'status': 'stopped', 'stopped_by': stopped_by, 'steps_done': done,
+                'steps': len(steps), 'artifacts': len([item for item in artifacts if item.get('status') == 'ready']),
+                'trigger': run['trigger'],
+            }))
         except Exception as exc:
             update_run(task_repository, run_id, status='failed', message='The run failed', progress=100,
                        error=str(exc), finished_at=now_local().isoformat())
         finally:
+            _RUN_CONTEXT.run = None
             with active_lock:
                 active_runs.discard((str(Path(database_path).resolve()), run_id))
 
@@ -1704,7 +1843,10 @@ def install_report_task_routes(core: Any) -> None:
             task_repository = core.Repository(Path(database), global_db_path=core.repository.global_db_path,
                                               workspace_registry_db_path=core.workspace_registry.registry_path)
             run = get_run(task_repository, run_id)
-            if run and run['status'] in {'queued', 'running'}:
+            if run and run['status'] == 'stopping':
+                update_run(task_repository, run_id, status='stopped', finished_at=now_local().isoformat(),
+                           message=f"Stopped by {run['control'].get('stopped_by') or 'a user'}")
+            elif run and run['status'] in {'queued', 'running'}:
                 update_run(task_repository, run_id, status='failed', message='The run failed', progress=100,
                            error=f'The Reporting worker stopped unexpectedly (exit code {exit_code}).',
                            finished_at=now_local().isoformat())
@@ -1712,8 +1854,8 @@ def install_report_task_routes(core: Any) -> None:
             with active_lock:
                 active_runs.discard((database, run_id))
 
-    def start_run(task_repository, task: dict[str, Any], trigger: str, username: str, workspace_id: str | None = None) -> int:
-        run_id = create_run(task_repository, task, trigger, username)
+    def enqueue_run(task_repository, run_id: int, workspace_id: str | None = None) -> None:
+        """Generate a queued run: in this process for the active workspace, otherwise in a worker process."""
         database = str(Path(task_repository.db_path).resolve())
         with active_lock:
             active_runs.add((database, run_id))
@@ -1722,7 +1864,38 @@ def install_report_task_routes(core: Any) -> None:
             worker_executor.submit(run_in_worker, workspace_id, database, run_id)
         else:
             executor.submit(execute_run, database, run_id)
+
+    def start_run(task_repository, task: dict[str, Any], trigger: str, username: str, workspace_id: str | None = None) -> int:
+        run_id = create_run(task_repository, task, trigger, username)
+        enqueue_run(task_repository, run_id, workspace_id)
         return run_id
+
+    def resume_interrupted_runs(task_repository, workspace_id: str) -> None:
+        """After a restart, the runs the previous process left go on from the step they were on (those it was stopping
+        end as stopped), unless restarts interrupted them too many times already."""
+        database = str(Path(task_repository.db_path).resolve())
+        with active_lock:
+            running = {run_id for run_database, run_id in active_runs if run_database == database}
+        for run in interrupted_runs(task_repository, running):
+            control, now = run['control'], now_local().isoformat()
+            details = {'run_id': run['id'], 'task_id': run['task_id'], 'name': run['task_name'], 'status': run['status'],
+                       'steps_done': int(control.get('done') or 0), 'restarts': int(control.get('restarts') or 0)}
+            if run['status'] == 'stopping':
+                update_run(task_repository, run['id'], status='stopped', finished_at=now,
+                           message=f"Stopped by {control.get('stopped_by') or 'a user'}")
+                task_repository.try_add_log('system', 'stop_interrupted_reporting_job_run', json.dumps(details, ensure_ascii=False))
+            elif (job_gone := get_task(task_repository, run['task_id']) is None) or details['restarts'] >= MAX_RUN_RESUMES:
+                error = (INTERRUPTED_RUN_MESSAGE if job_gone else
+                         f'The run was interrupted by {details["restarts"] + 1} application restarts, so it is not resumed again.')
+                update_run(task_repository, run['id'], status='failed', message='The run failed', progress=100, error=error,
+                           finished_at=now)
+                task_repository.try_add_log('system', 'fail_interrupted_reporting_job_run', json.dumps(
+                    {**details, 'error': error}, ensure_ascii=False))
+            else:
+                update_run(task_repository, run['id'], status='queued', message='Resuming after an application restart')
+                update_run_control(task_repository, run['id'], restarts=details['restarts'] + 1)
+                enqueue_run(task_repository, run['id'], workspace_id)
+                task_repository.try_add_log('system', 'resume_reporting_job_run', json.dumps(details, ensure_ascii=False))
 
     def run_due_tasks(now: datetime | None = None) -> list[int]:
         """Start every due job of every workspace, open or not; returns the new run IDs."""
@@ -1737,9 +1910,7 @@ def install_report_task_routes(core: Any) -> None:
                                               workspace_registry_db_path=core.workspace_registry.registry_path)
             database = str(Path(task_repository.db_path).resolve())
             if database not in recovered_databases:
-                with active_lock:
-                    running = {run_id for run_database, run_id in active_runs if run_database == database}
-                fail_interrupted_runs(task_repository, running)
+                resume_interrupted_runs(task_repository, workspace.id)
                 recovered_databases.add(database)
             started += [start_run(task_repository, task, 'schedule', task['created_by'], workspace.id)
                         for task in claim_due_tasks(task_repository, now or now_local())]
@@ -2133,18 +2304,75 @@ def install_report_task_routes(core: Any) -> None:
         }))
         return FileResponse(path, filename=path.name)
 
+    def delete_run(task_repository, run, user) -> None:
+        with task_repository.connection() as connection:
+            connection.execute(f'DELETE FROM {REPORT_TASK_RUNS_TABLE} WHERE id = ?', (run['id'],))
+        if run['output_dir']:
+            remove_run_folders([run['output_dir']])
+        task_repository.try_add_log(user.username, 'delete_reporting_job_run', json.dumps({
+            'run_id': run['id'], 'name': run['task_name'], 'status': run['status'],
+        }, ensure_ascii=False))
+
     @app.delete('/api/reporting/runs/{run_id}')
     def reporting_jobs_delete_run(run_id: int, user=Depends(editor_user)):
         task_repository = reporting_repository(user)
         run = run_or_404(task_repository, run_id)
-        if run['status'] in {'queued', 'running'}:
-            raise HTTPException(409, 'Wait for the run to finish before deleting it.')
-        with task_repository.connection() as connection:
-            connection.execute(f'DELETE FROM {REPORT_TASK_RUNS_TABLE} WHERE id = ?', (run_id,))
-        path = Path(run['output_dir']).resolve() if run['output_dir'] else None
-        if path and output_root().resolve() in path.parents:
-            shutil.rmtree(path, ignore_errors=True)
-        task_repository.try_add_log(user.username, 'delete_reporting_job_run', json.dumps({
-            'run_id': run_id, 'name': run['task_name'],
-        }))
+        if run['status'] in RUN_ACTIVE_STATUSES:
+            raise HTTPException(409, 'Stop the run or wait for it to finish before deleting it.')
+        delete_run(task_repository, run, user)
         return JSONResponse({'deleted': run_id})
+
+    def checked_runs(task_repository, ids: list[int]) -> list[dict[str, Any]]:
+        return [run for run in (get_run(task_repository, int(run_id)) for run_id in dict.fromkeys(ids)) if run is not None]
+
+    @app.post('/api/reporting/runs/delete')
+    def reporting_jobs_delete_runs(payload: OrderPayload, user=Depends(editor_user)):
+        """Delete the checked runs that are not waiting or running, with their artifacts."""
+        task_repository = reporting_repository(user)
+        deleted, skipped = [], []
+        for run in checked_runs(task_repository, payload.ids):
+            if run['status'] in RUN_ACTIVE_STATUSES:
+                skipped.append(run['id'])
+                continue
+            delete_run(task_repository, run, user)
+            deleted.append(run['id'])
+        return {'deleted': deleted, 'skipped': skipped}
+
+    @app.post('/api/reporting/runs/stop')
+    def reporting_jobs_stop_runs(payload: OrderPayload, user=Depends(editor_user)):
+        """Stop the checked runs: a queued one at once, a running one after the step it is on."""
+        task_repository = reporting_repository(user)
+        stopped, stopping, skipped = [], [], []
+        for run in checked_runs(task_repository, payload.ids):
+            previous = request_stop(task_repository, run['id'], user.username)
+            if previous is None:
+                skipped.append(run['id'])
+                continue
+            (stopped if previous == 'queued' else stopping).append(run['id'])
+            task_repository.try_add_log(user.username, 'stop_reporting_job_run', json.dumps({
+                'run_id': run['id'], 'task_id': run['task_id'], 'name': run['task_name'], 'status': previous,
+                'outcome': 'stopped before it started' if previous == 'queued' else 'stops after the step it is on',
+                'step': run['message'],
+            }, ensure_ascii=False))
+        return {'stopped': stopped, 'stopping': stopping, 'skipped': skipped}
+
+    @app.post('/api/reporting/runs/rerun')
+    def reporting_jobs_rerun_runs(payload: OrderPayload, user=Depends(editor_user)):
+        """Run the checked failed or stopped runs again from the beginning, each in its own row, with what its job
+        generates now; what they generated before goes."""
+        task_repository = reporting_repository(user)
+        rerun, skipped = [], []
+        for run in checked_runs(task_repository, payload.ids):
+            task = get_task(task_repository, run['task_id'])
+            if task is None or run['status'] not in RUN_RERUN_STATUSES or not reset_run(task_repository, run, task, user.username):
+                skipped.append(run['id'])
+                continue
+            if run['output_dir']:
+                remove_run_folders([run['output_dir']])
+            enqueue_run(task_repository, run['id'])
+            rerun.append(run['id'])
+            task_repository.try_add_log(user.username, 'rerun_reporting_job_run', json.dumps({
+                'run_id': run['id'], 'task_id': task['id'], 'name': task['name'], 'previous_status': run['status'],
+                'previous_error': run['error'] or run['message'], 'previous_trigger': run['trigger'],
+            }, ensure_ascii=False))
+        return {'rerun': rerun, 'skipped': skipped}

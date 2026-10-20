@@ -13205,10 +13205,10 @@ def _workspace_background_tasks(workspace: Workspace) -> list[dict[str, Any]]:
                 recent = (datetime.now().astimezone() - timedelta(seconds=5)).isoformat()
                 for row in connection.execute(
                     "SELECT id, task_name, status, progress, message, created_at, started_at, finished_at FROM report_task_runs "
-                    "WHERE status IN ('queued', 'running') OR (finished_at IS NOT NULL AND finished_at >= ?) ORDER BY id",
+                    "WHERE status IN ('queued', 'running', 'stopping') OR (finished_at IS NOT NULL AND finished_at >= ?) ORDER BY id",
                     (recent,),
                 ).fetchall():
-                    finished = str(row['status']) not in {'queued', 'running'}
+                    finished = str(row['status']) not in {'queued', 'running', 'stopping'}
                     timestamps = {}
                     for key, column in (('queued_at', 'created_at'), ('started_at', 'started_at'), ('completed_at', 'finished_at')):
                         try:
@@ -13220,7 +13220,8 @@ def _workspace_background_tasks(workspace: Workspace) -> list[dict[str, Any]]:
                         'label': f'Reporting Job: {row["task_name"]}',
                         'detail': str(row['message'] or row['status']).strip() or 'Running',
                         'status': 'ready' if finished and str(row['status']) in {'sent', 'completed', 'partial'} else
-                                  ('failed' if finished else ('processing' if str(row['status']) == 'running' else 'queued')),
+                                  ('stopped' if str(row['status']) == 'stopped' else 'failed') if finished else
+                                  ({'running': 'processing', 'stopping': 'stopping'}.get(str(row['status']), 'queued')),
                         'progress': max(0, min(100, int(row['progress'] or 0))),
                         **timestamps,
                     })
@@ -19332,7 +19333,10 @@ def _completed_scenario_calculation(task_repository: Repository, base: dict[str,
         if (saved_filter is None or saved_filter['status'] == 'failed'
                 or (saved_filter['status'] == 'completed' and not map_pending) or time_module.monotonic() > deadline):
             break
-        # An identical calculation (or its Points Lost Map) is still running: wait for it.
+        # An identical calculation (or its Points Lost Map) is still running: wait for it (unless the Reporting Job run
+        # generating the report is stopped).
+        from src.modules.report_tasks import check_run_stopped
+        check_run_stopped()
         time_module.sleep(2)
     if saved_filter is None or saved_filter['status'] != 'completed':
         detail = (saved_filter or {}).get('error') or 'the calculation did not finish'

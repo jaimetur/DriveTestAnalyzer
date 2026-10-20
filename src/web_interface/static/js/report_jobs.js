@@ -13,7 +13,12 @@
   const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   const NETWORK_FILTERS = [['operators', 'Operator'], ['operator_vendors', 'Operator_Vendor'], ['vendor_operators', 'Vendor_Operator'], ['vendors', 'Vendor'],
     ['regions', 'Region'], ['clusters', 'Cluster'], ['cities', 'City'], ['campaigns', 'Campaign']];
-  const STATUS_LABELS = {queued: 'Queued', running: 'Running', sent: 'Sent', completed: 'Completed', partial: 'Partial', failed: 'Failed'};
+  const STATUS_LABELS = {queued: 'Queued', running: 'Running', stopping: 'Stopping', sent: 'Sent', completed: 'Completed',
+    partial: 'Partial', failed: 'Failed', stopped: 'Stopped'};
+  // Runs waiting, running or finishing the step they are on after a user stopped them; those Stop and Rerun act on.
+  const ACTIVE_RUN_STATUSES = ['queued', 'running', 'stopping'];
+  const STOPPABLE_RUN_STATUSES = ['queued', 'running'];
+  const RERUN_STATUSES = ['failed', 'stopped'];
 
   let state = {tasks: [], runs: [], can_edit: false};
   let options = null;
@@ -44,8 +49,9 @@
     setTimeout(stopFollowing, 15000);
   }
 
-  const status = (message, tone = '') => {
-    const element = $('rj-status');
+  // (In the toolbar of the jobs, or in the bar of the Run History with target 'rj-runs-status'.)
+  const status = (message, tone = '', target = 'rj-status') => {
+    const element = $(target);
     element.textContent = message || '';
     element.dataset.tone = tone;
   };
@@ -1695,16 +1701,21 @@
     if (!state.runs.length) {
       emptyRow(body, 'No runs yet.', 9);
       syncRunsHeight();
+      syncRunsBulk();
       return;
     }
     body.replaceChildren(...state.runs.map((run) => {
       const row = node('tr');
+      row.dataset.runId = run.id;
       const statusCell = node('td');
       statusCell.append(statusBadge(run));
       const duration = runDuration(run);
-      if (['queued', 'running'].includes(run.status)) statusCell.append(node('small', ` ${run.progress}% · ${run.message}`));
+      const active = ACTIVE_RUN_STATUSES.includes(run.status);
+      if (active) statusCell.append(node('small', ` ${run.progress}% · ${run.message}`));
       else if (duration) statusCell.append(node('small', ` in ${duration}`, 'rj-duration'));
-      if (!['queued', 'running'].includes(run.status) && run.error) statusCell.append(node('small', ` ${run.error}`, 'rj-error'));
+      // (Who stopped it, and when.)
+      if (run.status === 'stopped' && run.message) statusCell.append(node('small', ` ${run.message}`));
+      if (!active && run.error) statusCell.append(node('small', ` ${run.error}`, 'rj-error'));
       const artifacts = node('ul', undefined, 'rj-artifacts');
       // Grouped like the jobs table: one line per entry with its formats, "NSA LTE (PPT/Word)", where each
       // format is the download link of its file; failed files follow with their error.
@@ -1747,17 +1758,25 @@
       })));
       const actions = node('div', undefined, 'table-actions');
       if (run.artifacts.some((item) => item.status === 'ready' && item.available !== false)) actions.append(downloadLink(run));
-      if (state.can_edit && !['queued', 'running'].includes(run.status)) {
-        actions.append(actionButton('×', 'Delete this run and its artifacts', async () => {
-          if (!await confirmDelete('Delete Run', `
-            <p>Run <strong>#${run.id}</strong> of <strong>${escapeText(run.task_name)}</strong> and its
-            <strong>${run.artifacts.length}</strong> artifact${run.artifacts.length === 1 ? '' : 's'} will be deleted permanently.</p>
-            <p>The Reporting Job and its other runs are kept. This cannot be undone.</p>`,
-          'Delete Run', `Delete run ${run.id} of ${run.task_name} and its artifacts?`)) return;
-          await api(`/api/reporting/runs/${run.id}`, {method: 'DELETE'}); await refresh();
-        }, 'danger-button icon-action'));
+      if (state.can_edit && RERUN_STATUSES.includes(run.status)) {
+        actions.append(actionButton('↻', 'Rerun: run it again from the beginning', onRuns(rerunRuns, run), 'icon-action rj-rerun'));
       }
-      const cells = [node('td', String(run.id)), node('td', run.task_name), node('td', run.trigger === 'schedule' ? 'Schedule' : `Manual · ${run.requested_by}`),
+      if (state.can_edit && STOPPABLE_RUN_STATUSES.includes(run.status)) {
+        actions.append(actionButton('■', run.status === 'queued' ? 'Stop: it does not start' : 'Stop after the step it is on',
+          onRuns(stopRuns, run), 'icon-action rj-stop'));
+      }
+      if (state.can_edit && !active) {
+        actions.append(actionButton('×', 'Delete this run and its artifacts', onRuns(deleteRuns, run), 'danger-button icon-action'));
+      }
+      // The run as its job: the labels of the job above its name, as in the Reporting Jobs table.
+      const task = state.tasks.find((item) => item.id === run.task_id);
+      const jobCell = node('td', undefined, 'rj-run-job');
+      for (const labels of task ? [scopeTabs(task), moduleLine(task), campaignTags(task)] : []) if (labels) jobCell.append(labels);
+      jobCell.append(node('span', run.task_name, 'rj-task-name'));
+      const runCell = node('td', undefined, 'rj-run-id');
+      if (state.can_edit) runCell.append(runCheck(run));
+      runCell.append(String(run.id));
+      const cells = [runCell, jobCell, node('td', run.trigger === 'schedule' ? 'Schedule' : `Manual · ${run.requested_by}`),
         node('td', localTime(run.started_at || run.created_at)), statusCell, node('td', run.send_email ? (run.email_status || 'Pending') : 'No email')];
       // What all the artifacts of the run take on disk.
       const size = node('td', run.artifacts_size ? formatSize(run.artifacts_size) : '—', 'rj-size');
@@ -1766,6 +1785,116 @@
       return row;
     }));
     syncRunsHeight();
+    syncRunsBulk();
+  }
+
+  // -- several runs at once -------------------------------------------------------
+  // Editors check runs (or Select all) to run again those that failed or were stopped, stop those queued or running,
+  // or delete those that are not, together; each button counts the checked runs it acts on.
+  const checkedRunIds = new Set();
+  let actingOnCheckedRuns = false;
+  const runsBody = $('rj-runs').tBodies[0];
+  const selectAllRuns = $('rj-runs-select-all');
+  const rerunCheckedRuns = $('rj-rerun-selected');
+  const stopCheckedRuns = $('rj-stop-selected');
+  const deleteCheckedRuns = $('rj-delete-runs-selected');
+  function runCheck(run) {
+    const holder = node('label', undefined, 'rj-run-check');
+    holder.title = 'Select this run to rerun, stop or delete it with the buttons above the table';
+    const box = node('input');
+    box.type = 'checkbox';
+    box.dataset.runCheck = run.id;
+    box.checked = checkedRunIds.has(run.id);
+    box.setAttribute('aria-label', `Select run ${run.id} of ${run.task_name}`);
+    holder.append(box);
+    return holder;
+  }
+  const checkedRuns = (statuses) => state.runs.filter((run) => checkedRunIds.has(run.id) && statuses(run.status));
+  function syncRunsBulk() {
+    const ids = state.runs.map((run) => run.id);
+    for (const id of [...checkedRunIds]) if (!ids.includes(id)) checkedRunIds.delete(id);
+    $('rj-runs-bulk').hidden = !state.can_edit || !ids.length;
+    selectAllRuns.checked = ids.length > 0 && checkedRunIds.size === ids.length;
+    selectAllRuns.indeterminate = checkedRunIds.size > 0 && checkedRunIds.size < ids.length;
+    for (const [button, label, statuses] of [
+      [rerunCheckedRuns, 'Rerun', (value) => RERUN_STATUSES.includes(value)],
+      [stopCheckedRuns, 'Stop', (value) => STOPPABLE_RUN_STATUSES.includes(value)],
+      [deleteCheckedRuns, 'Delete', (value) => !ACTIVE_RUN_STATUSES.includes(value)],
+    ]) {
+      const count = checkedRuns(statuses).length;
+      button.textContent = count ? `${label} (${count})` : label;
+      button.disabled = actingOnCheckedRuns || !count;
+    }
+  }
+  runsBody.addEventListener('change', (event) => {
+    const box = event.target.closest('[data-run-check]');
+    if (!box) return;
+    if (box.checked) checkedRunIds.add(Number(box.dataset.runCheck));
+    else checkedRunIds.delete(Number(box.dataset.runCheck));
+    syncRunsBulk();
+  });
+  selectAllRuns.addEventListener('change', () => {
+    checkedRunIds.clear();
+    if (selectAllRuns.checked) state.runs.forEach((run) => checkedRunIds.add(run.id));
+    runsBody.querySelectorAll('[data-run-check]').forEach((box) => { box.checked = checkedRunIds.has(Number(box.dataset.runCheck)); });
+    syncRunsBulk();
+  });
+  // (The buttons of a row tell their errors in the bar of the Run History.)
+  const onRuns = (action, run) => async () => {
+    try { await action([run]); } catch (error) { status(error.message, 'error', 'rj-runs-status'); }
+  };
+  const runList = (runs) => `<ul>${runs.map((run) => `<li>Run <strong>#${run.id}</strong> of <strong>${escapeText(run.task_name)}</strong></li>`).join('')}</ul>`;
+  const runsText = (count) => `${count} run${count === 1 ? '' : 's'}`;
+  // Failed (also interrupted) and stopped runs start again from the beginning, each in its own row, with what their
+  // job generates now.
+  async function rerunRuns(runs) {
+    const result = await api('/api/reporting/runs/rerun', {method: 'POST', body: JSON.stringify({ids: runs.map((run) => run.id)})});
+    const skipped = (result.skipped || []).length;
+    status(`${runsText((result.rerun || []).length)} queued again.${skipped ? ` ${runsText(skipped)} could not be run again.` : ''}`,
+      'done', 'rj-runs-status');
+    await refresh();
+  }
+  // A queued run does not start; a running one stops after the step it is on, keeping what it generated.
+  async function stopRuns(runs) {
+    const count = runs.length;
+    if (!await confirmDelete(count === 1 ? 'Stop Run' : `Stop ${count} Runs`, `
+      <p>${count === 1 ? 'This run' : `These ${count} runs`} will be stopped:</p>${runList(runs)}
+      <p>A queued run does not start; a running run stops after the step it is on and keeps the artifacts it generated,
+      without sending its email. Rerun runs it again from the beginning.</p>`,
+    count === 1 ? 'Stop Run' : `Stop ${count} Runs`, `Stop ${runsText(count)}?`)) return;
+    const result = await api('/api/reporting/runs/stop', {method: 'POST', body: JSON.stringify({ids: runs.map((run) => run.id)})});
+    const stopping = (result.stopping || []).length;
+    status(`${runsText((result.stopped || []).length + stopping)} stopped${stopping ? ` (${stopping} after the step ${stopping === 1 ? 'it is' : 'they are'} on)` : ''}.`,
+      'done', 'rj-runs-status');
+    await refresh();
+  }
+  async function deleteRuns(runs) {
+    const count = runs.length;
+    const artifacts = runs.reduce((total, run) => total + run.artifacts.length, 0);
+    if (!await confirmDelete(count === 1 ? 'Delete Run' : `Delete ${count} Runs`, `
+      <p>${count === 1 ? 'This run' : `These ${count} runs`} and ${count === 1 ? 'its' : 'their'} <strong>${artifacts}</strong>
+      artifact${artifacts === 1 ? '' : 's'} will be deleted permanently:</p>${runList(runs)}
+      <p>The Reporting Jobs and their other runs are kept. This cannot be undone.</p>`,
+    count === 1 ? 'Delete Run' : `Delete ${count} Runs`, `Delete ${runsText(count)} and their artifacts?`)) return;
+    const result = await api('/api/reporting/runs/delete', {method: 'POST', body: JSON.stringify({ids: runs.map((run) => run.id)})});
+    (result.deleted || []).forEach((id) => checkedRunIds.delete(id));
+    status(`${runsText((result.deleted || []).length)} deleted.`, 'done', 'rj-runs-status');
+    await refresh();
+  }
+  for (const [button, action, statuses] of [
+    [rerunCheckedRuns, rerunRuns, (value) => RERUN_STATUSES.includes(value)],
+    [stopCheckedRuns, stopRuns, (value) => STOPPABLE_RUN_STATUSES.includes(value)],
+    [deleteCheckedRuns, deleteRuns, (value) => !ACTIVE_RUN_STATUSES.includes(value)],
+  ]) {
+    button.addEventListener('click', async () => {
+      const runs = checkedRuns(statuses);
+      if (!runs.length || actingOnCheckedRuns) return;
+      actingOnCheckedRuns = true;
+      syncRunsBulk();
+      try { await action(runs); } catch (error) { status(error.message, 'error', 'rj-runs-status'); }
+      actingOnCheckedRuns = false;
+      syncRunsBulk();
+    });
   }
 
   // Run History shows the latest 10 runs; the older ones are reached by scrolling its table.
@@ -1805,7 +1934,7 @@
     renderTasks();
     renderRuns();
     clearTimeout(pollTimer);
-    const active = state.runs.some((run) => ['queued', 'running'].includes(run.status));
+    const active = state.runs.some((run) => ACTIVE_RUN_STATUSES.includes(run.status));
     pollTimer = setTimeout(() => { void refresh().catch((error) => status(error.message, 'error')); }, active ? 4000 : 30000);
   }
 

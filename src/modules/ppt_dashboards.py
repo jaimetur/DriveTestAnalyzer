@@ -2019,6 +2019,12 @@ def install_dashboard_routes(core):
         }))
         return job_id
 
+    def stop_reporting_dashboard_job(task_repository, job_id) -> None:
+        """Stop the Dashboard PPT job a Reporting Job run waits for, when the run is stopped."""
+        row = dashboard_ppt_job(task_repository, job_id)
+        if row is not None and str(row['status']) in {'queued', 'processing'}:
+            update_dashboard_ppt_job(task_repository, job_id, status='stopped', finished_at=datetime.now(timezone.utc).isoformat())
+
     # Reporting Jobs and Bundle Report Templates generate Dashboard PPTs through the PPT jobs.
     core.dashboard_reporting = SimpleNamespace(
         definition_model=DashboardDefinition,
@@ -2029,6 +2035,7 @@ def install_dashboard_routes(core):
         ),
         job=dashboard_ppt_job,
         serialize_job=lambda row: serialize_dashboard_ppt_job(row),
+        stop_job=stop_reporting_dashboard_job,
     )
 
     def prepare_and_render_dashboard_ppt_job(

@@ -113,17 +113,25 @@ Times use the application timezone set in Application Config. The scheduler chec
 
 ## Run history
 
-**Run History** shows each run with its trigger, start time, status (with how long the run took once it finishes), email result, artifacts and **Size** (what all its artifacts take on disk), the artifacts grouped by module as in the jobs table: one line per entry with its formats, such as `NSA LTE (PPT/Word)`, where each format links to its file. A run lists only the files it generated that still exist; a file that could not be kept appears with its error instead of a link. ⬇ downloads them all as a ZIP. The table shows the latest 10 runs; scroll it to see the older ones.
+**Run History** shows each run with its trigger, start time, status (with how long the run took once it finishes), email result, artifacts and **Size** (what all its artifacts take on disk), the artifacts grouped by module as in the jobs table: one line per entry with its formats, such as `NSA LTE (PPT/Word)`, where each format links to its file. Above the name of its job, each run has the labels of the job in the **Reporting Jobs** table: the areas its artifacts filter, its modules and NR Modes, and its campaigns. A run lists only the files it generated that still exist; a file that could not be kept appears with its error instead of a link. ⬇ downloads them all as a ZIP. The table shows the latest 10 runs; scroll it to see the older ones.
 
 | Status | Meaning |
 | --- | --- |
 | Queued, Running | The run is waiting or generating; progress and the current step are shown |
+| Stopping | A user stopped the run, which finishes the step it is on |
 | Sent | Every artifact was generated and emailed |
 | Completed | Every artifact was generated; the job does not send email |
 | Partial | Some artifacts failed; the others were emailed |
 | Failed | No artifact was generated, or the email could not be sent |
+| Stopped | A user stopped the run: it shows who and after how many of its steps |
 
-Runs interrupted by an application restart are marked as failed. Artifacts are stored in `output/reports/reporting-jobs/` of the workspace, one folder per run.
+Editors stop and run again the runs from their row, or several at once: the box before the number of a run (or **Select all**) checks it, and the bar above the table acts on the checked runs that allow it, counting them in each button.
+
+- **■ Stop** (Queued or Running): a queued run does not start; a running run becomes **Stopping**, stops after the step it is on (a Dashboard PPT it waits for stops with it, and Scoring and Bundle Report Templates stop as soon as they can) and keeps the artifacts it generated, without sending its email.
+- **↻ Rerun** (Failed, also interrupted, or Stopped): the run starts again from the beginning in its own row, as a manual run of the user who reran it, with what its job generates now; what it generated before is deleted.
+- **× Delete** (any run that is not queued, running or stopping): deletes the run and its artifacts after a confirmation.
+
+A run interrupted by an application restart goes on when the application starts again, at the first check of the scheduler: it keeps what it generated and goes on from the step it was on (it starts again when its job was edited meanwhile), and a run being stopped ends as stopped. A run interrupted by more than three restarts fails instead, so that a run that brings the application down does not run again and again; **Rerun** runs it again. Every stop, rerun, deletion and resumption is recorded in App Events. Artifacts are stored in `output/reports/reporting-jobs/` of the workspace, one folder per run.
 
 ## Portability
 
