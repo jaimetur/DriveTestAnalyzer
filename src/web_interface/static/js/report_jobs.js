@@ -1756,7 +1756,7 @@
           return line;
         }),
       })));
-      const actions = node('div', undefined, 'table-actions');
+      const actions = node('div', undefined, 'table-actions rj-task-actions');
       if (run.artifacts.some((item) => item.status === 'ready' && item.available !== false)) actions.append(downloadLink(run));
       if (state.can_edit && RERUN_STATUSES.includes(run.status)) {
         actions.append(actionButton('↻', 'Rerun: run it again from the beginning', onRuns(rerunRuns, run), 'icon-action rj-rerun'));
@@ -1766,7 +1766,7 @@
           onRuns(stopRuns, run), 'icon-action rj-stop'));
       }
       if (state.can_edit && !active) {
-        actions.append(actionButton('×', 'Delete this run and its artifacts', onRuns(deleteRuns, run), 'danger-button icon-action'));
+        actions.append(actionButton('×', 'Delete this run and its artifacts', onRuns(deleteRuns, run), 'icon-action rj-run-delete'));
       }
       // The run as its job: the labels of the job above its name, as in the Reporting Jobs table.
       const task = state.tasks.find((item) => item.id === run.task_id);
@@ -1781,7 +1781,7 @@
       // What all the artifacts of the run take on disk.
       const size = node('td', run.artifacts_size ? formatSize(run.artifacts_size) : '—', 'rj-size');
       size.title = 'Size of all the artifacts of this run';
-      row.append(...cells, cellWith(artifacts), size, cellWith(actions));
+      row.append(...cells, cellWith(artifacts), size, actions.childElementCount ? cellWith(actions) : node('td'));
       return row;
     }));
     syncRunsHeight();

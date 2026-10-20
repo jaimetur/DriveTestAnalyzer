@@ -78,16 +78,13 @@
 .report-jobs #rj-runs th:nth-child(3), .report-jobs #rj-runs th:nth-child(4) { width: 8%; }
 .report-jobs #rj-runs th:nth-child(5) { width: 16%; }
 .report-jobs #rj-runs th:nth-child(6) { width: 9%; }
-.report-jobs #rj-runs th:nth-child(7) { width: 21%; }
+.report-jobs #rj-runs th:nth-child(7) { width: 17%; }
 .report-jobs #rj-runs th:nth-child(8) { width: 5%; }
-.report-jobs #rj-runs th:nth-child(9) { width: 7%; }
+.report-jobs #rj-runs th:nth-child(9) { width: 11%; }
 /* The box that selects a run (for editors), before its number. */
 .report-jobs #rj-runs td.rj-run-id { white-space: nowrap; }
 .report-jobs .rj-run-check { display: inline-flex; align-items: center; margin: 0 .4rem 0 0; vertical-align: -.12rem; cursor: pointer; }
 .report-jobs .rj-run-check input { width: 1rem; height: 1rem; margin: 0; cursor: pointer; }
-/* Rerun and Stop of a run. */
-.report-jobs .table-actions .rj-rerun { border: 1px solid #9db7e3; background: #e2ecff; color: #234d9a; }
-.report-jobs .table-actions .rj-stop { border: 1px solid #e7b37f; background: #ffead8; color: #8a4511; font-size: .8rem; }
 .report-jobs #rj-runs td.rj-size { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .report-jobs #rj-runs small { display: block; margin-top: .2rem; }
 /* Every field of an artifact entry on one row on wide screens. */
@@ -135,20 +132,23 @@
 .report-jobs .rj-multi .workspace-user-picker-menu label.rj-multi-preset { margin-bottom: .2rem; border: 1px solid rgba(31, 95, 58, .25); background: #f1f9f4; color: #1f5f3a; }
 .report-jobs .rj-multi .workspace-user-picker-menu label.rj-multi-option:has(input:disabled) { opacity: .45; cursor: default; }
 
-/* Saved jobs: every action on one row, in a light toolbar of icon buttons (each icon drawn in the colour of its action,
-   which tints its button on hover; the label stays for screen readers and tooltips), and the dates of Next Run and Last
-   Run above their times, so Artifacts takes the room. */
+/* Saved jobs and their runs: every action on one row, in a light toolbar of icon buttons (each icon drawn in the colour of
+   its action, which tints its button on hover; the label stays for screen readers and tooltips), and the dates of Next
+   Run and Last Run above their times, so Artifacts takes the room. */
 .reporting-jobs-table .table-actions.rj-task-actions { display: inline-flex; flex-wrap: nowrap; gap: .15rem; padding: .2rem; border: 1px solid #dbe3e8; border-radius: 10px; background: #fff; box-shadow: 0 1px 2px rgba(16, 24, 40, .06); white-space: nowrap; }
-.report-jobs #rj-tasks .rj-task-actions .icon-action { --rj-action: #475467; --rj-action-tint: #eef2f6; display: inline-grid; place-items: center; box-sizing: border-box; width: 1.75rem; min-width: 1.75rem; height: 1.75rem; min-height: 0; padding: 0; border: 0; border-radius: 7px; background: transparent; color: var(--rj-action); box-shadow: none; font-size: 0 !important; line-height: 0; text-decoration: none; transform: none; transition: background-color .15s ease, color .15s ease; }
-.report-jobs #rj-tasks .rj-task-actions .icon-action:hover:not(:disabled), .report-jobs #rj-tasks .rj-task-actions .icon-action:focus-visible { background: var(--rj-action-tint); color: var(--rj-action); box-shadow: none; transform: none; }
-.report-jobs #rj-tasks .rj-task-actions .icon-action:focus-visible { outline: 2px solid color-mix(in srgb, var(--rj-action) 45%, transparent); outline-offset: 1px; }
-.report-jobs #rj-tasks .rj-task-actions .icon-action:disabled { opacity: .35; cursor: not-allowed; }
-.report-jobs #rj-tasks .rj-task-actions .icon-action::before { content: ''; width: 1rem; height: 1rem; background: currentColor; -webkit-mask: var(--rj-icon) center / contain no-repeat; mask: var(--rj-icon) center / contain no-repeat; }
+.report-jobs :is(#rj-tasks, #rj-runs) .rj-task-actions .icon-action { --rj-action: #475467; --rj-action-tint: #eef2f6; display: inline-grid; place-items: center; box-sizing: border-box; width: 1.75rem; min-width: 1.75rem; height: 1.75rem; min-height: 0; padding: 0; border: 0; border-radius: 7px; background: transparent; color: var(--rj-action); box-shadow: none; font-size: 0 !important; line-height: 0; text-decoration: none; transform: none; transition: background-color .15s ease, color .15s ease; }
+.report-jobs :is(#rj-tasks, #rj-runs) .rj-task-actions .icon-action:hover:not(:disabled), .report-jobs :is(#rj-tasks, #rj-runs) .rj-task-actions .icon-action:focus-visible { background: var(--rj-action-tint); color: var(--rj-action); box-shadow: none; transform: none; }
+.report-jobs :is(#rj-tasks, #rj-runs) .rj-task-actions .icon-action:focus-visible { outline: 2px solid color-mix(in srgb, var(--rj-action) 45%, transparent); outline-offset: 1px; }
+.report-jobs :is(#rj-tasks, #rj-runs) .rj-task-actions .icon-action:disabled { opacity: .35; cursor: not-allowed; }
+.report-jobs :is(#rj-tasks, #rj-runs) .rj-task-actions .icon-action::before { content: ''; width: 1rem; height: 1rem; background: currentColor; -webkit-mask: var(--rj-icon) center / contain no-repeat; mask: var(--rj-icon) center / contain no-repeat; }
 .report-jobs #rj-tasks .rj-task-actions [aria-label="Run now"] { --rj-action: #1f7a4d; --rj-action-tint: #e3f3e9; }
-.report-jobs #rj-tasks .rj-task-actions .rj-download { --rj-action: #1f5f9e; --rj-action-tint: #e3f0fc; }
+.report-jobs :is(#rj-tasks, #rj-runs) .rj-task-actions .rj-download { --rj-action: #1f5f9e; --rj-action-tint: #e3f0fc; }
 .report-jobs #rj-tasks .rj-task-actions [aria-label="Delete the job and its runs"] { --rj-action: #b42318; --rj-action-tint: #fdecec; }
 .report-jobs #rj-tasks .rj-task-actions [aria-label="Run now"] { --rj-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7 4.6v10.8l8.6-5.4z' fill='black'/%3E%3C/svg%3E"); }
-.report-jobs #rj-tasks .rj-task-actions .rj-download { --rj-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10 3.5v9M6.2 8.9 10 12.7l3.8-3.8M4.5 16.2h11'/%3E%3C/svg%3E"); }
+.report-jobs :is(#rj-tasks, #rj-runs) .rj-task-actions .rj-download { --rj-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10 3.5v9M6.2 8.9 10 12.7l3.8-3.8M4.5 16.2h11'/%3E%3C/svg%3E"); }
+.report-jobs #rj-runs .rj-task-actions .rj-rerun { --rj-action: #1f7a4d; --rj-action-tint: #e3f3e9; --rj-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M15.6 10.2a5.6 5.6 0 1 1-1.7-4.1'/%3E%3Cpath d='M15.4 3.6v3.6h-3.6'/%3E%3C/svg%3E"); }
+.report-jobs #rj-runs .rj-task-actions .rj-stop { --rj-action: #b54708; --rj-action-tint: #fef0e6; --rj-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='5.4' y='5.4' width='9.2' height='9.2' rx='2' fill='black'/%3E%3C/svg%3E"); }
+.report-jobs #rj-runs .rj-task-actions .rj-run-delete { --rj-action: #b42318; --rj-action-tint: #fdecec; --rj-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5.6 5.6 8.8 8.8M14.4 5.6l-8.8 8.8' stroke-width='2.5'/%3E%3C/svg%3E"); }
 .report-jobs #rj-tasks .rj-task-actions [aria-label="Edit"] { --rj-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12.8 4.2a1.8 1.8 0 0 1 2.6 0l.4.4a1.8 1.8 0 0 1 0 2.6l-8.4 8.4-3.6.9.9-3.6z'/%3E%3Cpath d='m11.4 5.6 3 3'/%3E%3C/svg%3E"); }
 .report-jobs #rj-tasks .rj-task-actions [aria-label="Duplicate (disabled copy)"] { --rj-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='7.2' y='7.2' width='9.3' height='9.3' rx='2'/%3E%3Cpath d='M12.8 4.3H5.4a1.1 1.1 0 0 0-1.1 1.1v7.4'/%3E%3C/svg%3E"); }
 .report-jobs #rj-tasks .rj-task-actions [aria-label="Delete the job and its runs"] { --rj-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5.6 5.6 8.8 8.8M14.4 5.6l-8.8 8.8' stroke-width='2.5'/%3E%3C/svg%3E"); }
