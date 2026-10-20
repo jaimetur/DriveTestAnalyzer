@@ -517,6 +517,9 @@
   const savedFiltersSelectAll = root.querySelector('[data-saved-filters-select-all]');
   const savedFiltersUseNewer = root.querySelector('[data-saved-filters-use-newer]');
   const savedFiltersDelete = root.querySelector('[data-saved-filters-delete]');
+  const savedFiltersMove = [...root.querySelectorAll('[data-saved-filters-move]')];
+  // The orders of the Saved Filters are saved one after the other, so the last move is the one kept.
+  let savedFilterOrderRequest = Promise.resolve();
   let updatingSavedFiltersCdrs = false;
   let deletingCheckedSavedFilters = false;
   let savedFiltersRenderPending = false;
@@ -2086,6 +2089,13 @@
     savedFiltersBulk.hidden = !listed.length;
     savedFiltersSelectAll.checked = listed.length > 0 && checkedSavedFilterIds.size === listed.length;
     savedFiltersSelectAll.indeterminate = checkedSavedFilterIds.size > 0 && checkedSavedFilterIds.size < listed.length;
+    const order = starredSavedFilterOrder();
+    for (const button of savedFiltersMove) {
+      // Readers cannot move Saved Filters; a button is off when no checked Saved Filter can move that way.
+      button.hidden = !canReorderSavedFilters;
+      const step = button.dataset.savedFiltersMove === 'up' ? -1 : 1;
+      button.disabled = deletingCheckedSavedFilters || movedSavedFilterOrder(order, step).join() === order.join();
+    }
     const withNewer = savedFiltersWithNewerCdrs();
     savedFiltersUseNewer.textContent = withNewer.length ? `Use newer CDRs (${withNewer.length})` : 'Use newer CDRs';
     savedFiltersUseNewer.disabled = updatingSavedFiltersCdrs || !withNewer.length;
@@ -2100,6 +2110,24 @@
   function savedFiltersWithNewerCdrs() {
     return savedFilters.filter(savedFilter => checkedSavedFilterIds.has(savedFilterIdOf(savedFilter))
       && (savedFilter.newer_cdrs || []).length && !isActive(savedFilter));
+  }
+
+  // The starred Saved Filters in the order of their list.
+  function starredSavedFilterOrder() {
+    return sortedSavedFilters(savedFilters).filter(savedFilter => savedFilter.pinned).map(savedFilterIdOf);
+  }
+
+  // The order of the starred Saved Filters with each checked one a place up (step -1) or down (step 1): a checked one
+  // trades places with the unchecked one next to it, so checked ones side by side move together and stop at the end.
+  function movedSavedFilterOrder(order, step) {
+    const moved = [...order];
+    const indexes = moved.map((_, index) => index);
+    for (const index of step < 0 ? indexes.slice(1) : indexes.slice(0, -1).reverse()) {
+      if (checkedSavedFilterIds.has(moved[index]) && !checkedSavedFilterIds.has(moved[index + step])) {
+        [moved[index], moved[index + step]] = [moved[index + step], moved[index]];
+      }
+    }
+    return moved;
   }
 
   if (savedFilterPanelList && savedFiltersBulk) {
@@ -2120,6 +2148,21 @@
       }
       syncSavedFiltersBulk();
     });
+    // Move Up and Move Down move the checked Saved Filters one place in the list, as dragging them would.
+    for (const button of savedFiltersMove) {
+      button.addEventListener('click', () => {
+        const step = button.dataset.savedFiltersMove === 'up' ? -1 : 1;
+        const order = movedSavedFilterOrder(starredSavedFilterOrder(), step);
+        saveSavedFilterOrder(order);
+        // The moved card that leads the way stays in view while the list scrolls.
+        const moved = order.filter(id => checkedSavedFilterIds.has(id));
+        const leading = step < 0 ? moved[0] : moved[moved.length - 1];
+        if (leading) {
+          savedFilterPanelList.querySelector(`.saved-filter-row[data-saved-filter-row="${CSS.escape(leading)}"]`)
+            ?.scrollIntoView({block: 'nearest'});
+        }
+      });
+    }
     // Each checked Saved Filter with newer CDRs is updated with them and calculated again in the background; the one
     // being looked at stays open.
     savedFiltersUseNewer.addEventListener('click', async () => {
@@ -2192,10 +2235,9 @@
     });
   }
 
-  // Dragging a starred Saved Filter in the Saved Filters panel moves it in the list; its place is saved for every user of
-  // the workspace.
-  async function saveSavedFilterOrder() {
-    const order = [...savedFilterPanelList.querySelectorAll('.saved-filter-row')].map(row => row.dataset.savedFilterRow);
+  // Dragging a starred Saved Filter in the Saved Filters panel (or Move Up and Move Down, which give the ``order``) moves
+  // it in the list; its place is saved for every user of the workspace.
+  async function saveSavedFilterOrder(order = [...savedFilterPanelList.querySelectorAll('.saved-filter-row')].map(row => row.dataset.savedFilterRow)) {
     const previous = sortedSavedFilters(savedFilters).filter(savedFilter => savedFilter.pinned).map(savedFilterIdOf);
     if (order.join() === previous.join()) return;
     order.forEach((id, index) => {
@@ -2203,8 +2245,12 @@
       if (record) record.position = index + 1;
     });
     renderSavedFilters();
+    const request = savedFilterOrderRequest.then(() => requestJson(`${savedFiltersUrl}/order`, {
+      method: 'POST', body: JSON.stringify({filter_ids: order.map(Number)}),
+    }));
+    savedFilterOrderRequest = request.catch(() => {});
     try {
-      await requestJson(`${savedFiltersUrl}/order`, {method: 'POST', body: JSON.stringify({filter_ids: order.map(Number)})});
+      await request;
     } catch (error) {
       setMessage(error.message || 'The order of the Saved Filters could not be saved.', 'error');
       refreshSavedFilters();

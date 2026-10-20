@@ -273,6 +273,10 @@
   .saved-filter-use-newer { min-height: 1.55rem; padding: .18rem .55rem; border: 1px solid #e0a23a; border-radius: 999px; background: #fff3d6; color: #8a5300; font-size: .72rem; font-weight: 800; box-shadow: none; }
   .saved-filter-use-newer:hover { background: #ffe7b0; box-shadow: none; transform: none; }
   .saved-filter-use-newer:disabled { border-color: #d8dee3; background: #f1f4f6; color: #8796a1; cursor: not-allowed; }
+  /* Move the checked Saved Filters one place up or down, before Use newer CDRs. */
+  .saved-filters-move { min-height: 1.55rem; padding: .18rem .55rem; border: 1px solid #c9d6de; border-radius: 999px; background: #f4f8fa; color: #46606d; font-size: .72rem; font-weight: 800; box-shadow: none; }
+  .saved-filters-move:hover:not(:disabled) { border-color: #8fa9b8; background: #e8f0f4; color: #23404f; box-shadow: none; transform: none; }
+  .saved-filters-move:disabled { border-color: #d8dee3; background: #f1f4f6; color: #8796a1; cursor: not-allowed; }
   /* Delete the checked Saved Filters, in red beside Use newer CDRs. */
   .saved-filters-delete-selected { min-height: 1.55rem; padding: .18rem .55rem; border: 1px solid #e4a1a1; border-radius: 999px; background: #fdecec; color: #a42828; font-size: .72rem; font-weight: 800; box-shadow: none; }
   .saved-filters-delete-selected:hover { background: #f9d6d6; box-shadow: none; transform: none; }
@@ -1796,6 +1800,8 @@
       <div class="section-head tight-head"><div><p class="eyebrow">Reusable selections</p><h3>Favourites Filters</h3></div><span class="pill" data-saved-filter-count>0 Favourites Filters</span></div>
       <div class="saved-filters-bulk" data-saved-filters-bulk hidden>
         <label class="saved-filters-select-all"><input type="checkbox" data-saved-filters-select-all> Select all</label>
+        <button type="button" class="saved-filters-move" data-saved-filters-move="up" disabled title="Move the selected Saved Filters one place up in the list">Move Up</button>
+        <button type="button" class="saved-filters-move" data-saved-filters-move="down" disabled title="Move the selected Saved Filters one place down in the list">Move Down</button>
         <button type="button" class="saved-filter-use-newer" data-saved-filters-use-newer disabled title="Update the selected Saved Filters that have newer CDRs and calculate them again">Use newer CDRs</button>
         <button type="button" class="saved-filters-delete-selected" data-saved-filters-delete disabled title="Delete the selected Saved Filters and their results (their CDRs and the Scoring History stay)">Delete</button>
       </div>

@@ -402,3 +402,31 @@ def test_cdrs_used_show_four_cdrs_of_each_type_before_they_scroll():
     assert "const bottom = items[3].getBoundingClientRect().bottom - list.getBoundingClientRect().top + list.scrollTop;" in script
     assert "list.style.maxHeight = 'none';" in script
     assert 'new MutationObserver(fitAutoCdrLists).observe(autoCdrGroups, {childList: true, subtree: true});' in script
+
+
+def test_move_up_and_down_move_the_checked_favourites_filters_one_place():
+    template = SCORING_TEMPLATE.read_text(encoding='utf-8')
+    bulk = template.split('data-saved-filters-bulk', 1)[1].split('</div>', 1)[0]
+    # Move Up and Move Down come before Use newer CDRs.
+    assert bulk.index('data-saved-filters-move="up"') < bulk.index('data-saved-filters-move="down"') \
+        < bulk.index('data-saved-filters-use-newer')
+    script = SCORING_SCRIPT.read_text(encoding='utf-8')
+    program = r"""
+const vm = require('node:vm');
+const payload = JSON.parse(require('node:fs').readFileSync(0, 'utf8'));
+const context = {checkedSavedFilterIds: new Set()};
+vm.createContext(context);
+vm.runInContext(payload.snippets.join('\n') + `
+  const order = ['1', '2', '3', '4', '5'];
+  const move = (checked, step) => { checkedSavedFilterIds.clear(); checked.forEach(id => checkedSavedFilterIds.add(id)); return movedSavedFilterOrder(order, step); };
+  globalThis.orders = [
+    move(['3'], -1), move(['3'], 1), move(['2', '3'], -1), move(['1', '3'], -1), move(['5'], 1), move(['2', '4'], 1),
+  ];`, context);
+process.stdout.write(JSON.stringify(context.orders));
+"""
+    orders = _run_node_json(program, {'snippets': [_function_source(script, 'movedSavedFilterOrder')]})
+    assert orders == [
+        ['1', '3', '2', '4', '5'], ['1', '2', '4', '3', '5'], ['2', '3', '1', '4', '5'],
+        # The first one cannot go up and the last one cannot go down; the others still move.
+        ['1', '3', '2', '4', '5'], ['1', '2', '3', '4', '5'], ['1', '3', '2', '5', '4'],
+    ]

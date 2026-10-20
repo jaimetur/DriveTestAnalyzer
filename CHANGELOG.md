@@ -10,6 +10,7 @@
 #### 🌟 New Features:
 
 #### 🚀 Enhancements:
+- **Move Up and Move Down in the Favourites Filters:** the **Favourites Filters** panel of Scoring & GAP Analysis has **Move Up** and **Move Down** buttons before **Use newer CDRs** that move every checked Saved Filter one place up or down in the list (those side by side together), keeping the order for every user of the workspace as dragging does and recording it in App Events; readers do not see them.
 
 #### 🐛 Bug fixes:
 
