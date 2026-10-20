@@ -2598,7 +2598,8 @@
     });
     if (!choice) return;
     // NSA vs SA: the document shows each NR Mode as the results of the page do (NSA vs SA and NSA & SA charts).
-    const nrViews = selection.nr_mode === 'NSA+SA' ? {nr_layout: selectedNrLayout, nr_charts: selectedNrCharts} : {};
+    const nrViews = selection.nr_mode === 'NSA+SA' && typeof selectedNrLayout !== 'undefined'
+      ? {nr_layout: selectedNrLayout, nr_charts: selectedNrCharts} : {};
     await downloadScoringDocument(`/api/scoring/report/${choice.action}`,
       choice.action === 'word' ? 'Word' : 'PowerPoint', {
         method: 'POST', headers: {'Content-Type': 'application/json'},
@@ -2700,7 +2701,7 @@
     const operators = scoringExportOperators();
     if (Object.keys(operators).length) url.searchParams.set('operators', JSON.stringify(operators));
     // NSA vs SA results: the document shows each NR Mode as the page does (NSA vs SA and NSA & SA charts).
-    if (nrLayoutControl && !nrLayoutControl.hidden) {
+    if (typeof nrLayoutControl !== 'undefined' && nrLayoutControl && !nrLayoutControl.hidden) {
       url.searchParams.set('nr_layout', selectedNrLayout);
       url.searchParams.set('nr_charts', selectedNrCharts);
     }

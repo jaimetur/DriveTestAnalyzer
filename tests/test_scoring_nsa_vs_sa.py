@@ -478,5 +478,6 @@ def test_bundle_report_templates_show_each_nr_mode_as_chosen(monkeypatch, tmp_pa
     assert 'nr_layout: nrLayout.input.value, nr_charts: nrCharts.input.value' in script
     # The Scoring page sends the choices of its results with both exports.
     page = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/scoring.js').read_text(encoding='utf-8')
-    assert "const nrViews = selection.nr_mode === 'NSA+SA' ? {nr_layout: selectedNrLayout, nr_charts: selectedNrCharts} : {};" in page
+    assert "const nrViews = selection.nr_mode === 'NSA+SA' && typeof selectedNrLayout !== 'undefined'" in page
+    assert "if (typeof nrLayoutControl !== 'undefined' && nrLayoutControl && !nrLayoutControl.hidden) {" in page
     assert "url.searchParams.set('nr_layout', selectedNrLayout);" in page
