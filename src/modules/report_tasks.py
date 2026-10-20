@@ -676,14 +676,14 @@ def favourite_jobs(task_repository: Any, favourite_id: int) -> dict[str, list[st
 
 
 def rename_favourite_jobs(task_repository: Any, favourite_id: int, old_name: str, name: str) -> list[dict[str, Any]]:
-    """A renamed favourite Bundle Report Template renames the jobs based on it that have its former name (a job from a
-    favourite takes its name); returns them: [{'id', 'name', 'old_name'}]."""
+    """A renamed favourite Bundle Report Template renames every job based on it (a job from a favourite takes its name,
+    also when it was given another one); returns them: [{'id', 'name', 'old_name'}]."""
     value, renamed = str(favourite_id), []
     if old_name == name:
         return renamed
     now = now_local().isoformat()
     for task in list_tasks(task_repository):
-        if (task['name'].casefold() == old_name.casefold() and based_on_favourite(task['definition'])
+        if (task['name'] != name[:160] and based_on_favourite(task['definition'])
                 and _chosen_favourites(task['definition']) == [value]):
             with task_repository.connection() as connection:
                 connection.execute(f'UPDATE {REPORT_TASKS_TABLE} SET name = ?, updated_at = ? WHERE id = ?', (name[:160], now, task['id']))
@@ -1934,9 +1934,13 @@ def install_report_task_routes(core: Any) -> None:
         task = get_task(task_repository, task_id)
         if task is None:
             raise HTTPException(404, 'Reporting Job not found.')
+        enabled = bool(body.get('enabled'))
         payload = ReportTaskPayload(name=task['name'], definition=task['definition'], send_email=task['send_email'],
-                                    recipients=task['recipients'], schedule=task['schedule'], enabled=bool(body.get('enabled')))
-        return save_route(task_id, payload, user)
+                                    recipients=task['recipients'], schedule=task['schedule'], enabled=enabled)
+        saved = save_route(task_id, payload, user)
+        task_repository.try_add_log(user.username, 'enable_reporting_job' if enabled else 'disable_reporting_job', json.dumps(
+            {'task_id': task_id, 'name': task['name'], 'reason': 'Enable/Disable switch of the Reporting Jobs table'}))
+        return saved
 
     def run_or_404(task_repository, run_id):
         run = get_run(task_repository, run_id)

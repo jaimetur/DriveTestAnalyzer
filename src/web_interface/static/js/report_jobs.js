@@ -1387,7 +1387,7 @@
     if (draggedRow) return;
     const body = $('rj-tasks').tBodies[0];
     if (!state.tasks.length) {
-      emptyRow(body, 'No Reporting Jobs yet.', 9);
+      emptyRow(body, 'No Reporting Jobs yet.', 10);
       placeEditor();
       return;
     }
@@ -1422,10 +1422,6 @@
             await api(`/api/reporting/tasks/${task.id}/duplicate`, {method: 'POST'});
             status(`${task.name} duplicated.`, 'done'); await refresh();
           }),
-          actionButton(task.enabled ? '⏸' : '⏵', task.enabled ? 'Disable the schedule' : 'Enable the schedule', async () => {
-            await api(`/api/reporting/tasks/${task.id}/enabled`, {method: 'POST', body: JSON.stringify({enabled: !task.enabled})});
-            await refresh();
-          }),
           actionButton('×', 'Delete the job and its runs', async () => {
             const runs = state.runs.filter((run) => run.task_id === task.id).length;
             if (!await confirmDelete('Delete Reporting Job', `
@@ -1442,6 +1438,28 @@
           }, 'danger-button icon-action'),
         );
       }
+      // Enable/Disable: an enabled job runs on its schedule (▶ Run now works either way), without editing it.
+      const switchLabel = node('label', undefined, 'rj-enabled-switch rj-table-switch');
+      switchLabel.title = task.enabled ? 'Enabled: the job runs on its schedule. Switch it off to disable it'
+        : 'Disabled: the job never runs on its schedule. Switch it on to enable it';
+      const switchBox = node('input');
+      switchBox.type = 'checkbox';
+      switchBox.checked = Boolean(task.enabled);
+      switchBox.disabled = !state.can_edit;
+      switchBox.setAttribute('aria-label', `${task.enabled ? 'Disable' : 'Enable'} ${task.name}`);
+      const switchTrack = node('span', undefined, 'rj-switch');
+      switchTrack.setAttribute('aria-hidden', 'true');
+      switchLabel.append(switchBox, switchTrack, node('span', task.enabled ? 'Enabled' : 'Disabled', 'rj-table-switch-text'));
+      switchBox.addEventListener('change', async () => {
+        switchBox.disabled = true;
+        try {
+          await api(`/api/reporting/tasks/${task.id}/enabled`, {method: 'POST', body: JSON.stringify({enabled: switchBox.checked})});
+          status(`${task.name} ${switchBox.checked ? 'enabled' : 'disabled'}.`, 'done');
+        } catch (error) {
+          status(error.message, 'error');
+        }
+        await refresh();
+      });
       const nameCell = node('td', undefined, 'rj-task-name-cell');
       if (state.can_edit) nameCell.append(dragHandle());
       nameCell.append(node('span', task.name, 'rj-task-name'));
@@ -1449,7 +1467,7 @@
         nameCell, cellWith(artifacts), basedOn,
         node('td', task.recurrence), node('td', task.enabled ? localTime(task.next_run_at) : 'Disabled'),
         node('td', task.send_email ? `Yes · ${task.recipients.length} recipient${task.recipients.length === 1 ? '' : 's'}` : 'No'),
-        lastCell, statusCell, cellWith(actions),
+        lastCell, statusCell, cellWith(switchLabel), cellWith(actions),
       );
       row.cells[5].title = task.recipients.join(', ');
       return row;

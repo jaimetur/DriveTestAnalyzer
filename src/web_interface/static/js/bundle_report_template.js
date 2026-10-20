@@ -650,13 +650,12 @@
     }
   });
 
-  // Renaming keeps what the favourite saved (not the changes of the panel); the jobs based on it with its name take
-  // the new one.
+  // Renaming keeps what the favourite saved (not the changes of the panel); every job based on it takes the new name.
   $('brt-rename').addEventListener('click', async () => {
     const selected = favourites.find((item) => String(item.id) === $('brt-favourite').value);
     if (!selected) return;
-    const named = (await jobsOf(selected)).based_on.filter((name) => name.toLocaleLowerCase() === selected.name.toLocaleLowerCase());
-    const note = named.length ? `The Reporting Job${named.length === 1 ? '' : 's'} based on it with its name will take the new one.` : '';
+    const named = (await jobsOf(selected)).based_on;
+    const note = named.length ? `The Reporting Job${named.length === 1 ? '' : 's'} based on it will take the new name: ${named.join(', ')}.` : '';
     const answer = typeof showTextInputDialog === 'function'
       ? await showTextInputDialog('New name', {title: 'Rename Favourite', value: selected.name, maxLength: 120, confirmLabel: 'Rename', cancelLabel: 'Cancel', note})
       : window.prompt('New name of the favourite Bundle Report Template', selected.name);

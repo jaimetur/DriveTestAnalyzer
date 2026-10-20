@@ -168,6 +168,11 @@
 .report-jobs .rj-enabled-switch input:checked + .rj-switch::after { transform: translateX(1.22rem); }
 .report-jobs .rj-enabled-switch input:focus-visible + .rj-switch { outline: 3px solid rgba(47, 138, 87, .35); outline-offset: 2px; }
 .report-jobs .rj-enabled-text { display: grid; gap: .1rem; }
+/* The Enable/Disable switch of each job in the Reporting Jobs table. */
+.report-jobs label.rj-table-switch { gap: .5rem; padding: .2rem 0; border: 0; background: transparent; white-space: nowrap; }
+.report-jobs .rj-table-switch-text { color: var(--muted); font-size: .84rem; font-weight: 700; }
+.report-jobs .rj-table-switch input:checked ~ .rj-table-switch-text { color: #1f6b44; }
+.report-jobs .rj-table-switch:has(input:disabled) { cursor: default; opacity: .7; }
 .report-jobs .rj-enabled-text strong { color: #174d31; font-size: 1rem; }
 .report-jobs .rj-enabled-text small { color: var(--muted); font-weight: 500; }
 .report-jobs .rj-enabled-switch:has(input:not(:checked)) .rj-enabled-text strong { color: #8a3b2e; }

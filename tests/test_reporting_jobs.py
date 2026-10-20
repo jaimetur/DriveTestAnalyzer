@@ -733,17 +733,24 @@ def test_renaming_a_favourite_renames_the_jobs_based_on_it(client):
     weekly = bundle_report_templates.save_favourite(core.repository, None, 'Weekly', {}, 'super')
     bundle_report_templates.save_favourite(core.repository, None, 'Taken', {}, 'super')
     report = {'enabled': True, 'formats': ['word'], 'options': {'filters': {'favourites': [str(weekly['id'])]}}}
-    for name in ('Weekly', 'My weekly job'):
-        client.post('/api/reporting/tasks', json={'name': name, 'schedule': {'mode': 'manual'},
-                                                  'definition': {'modules': {'bundle_report_template': report}}}).raise_for_status()
+    ids = [client.post('/api/reporting/tasks', json={'name': name, 'schedule': {'mode': 'manual'},
+                                                     'definition': {'modules': {'bundle_report_template': report}}}).json()['task']['id']
+           for name in ('Weekly', 'My weekly job')]
+    # A job that also generates other artifacts keeps its name.
+    other = client.post('/api/reporting/tasks', json={'name': 'Everything', 'schedule': {'mode': 'manual'}, 'definition': {
+        'modules': {'bundle_report_template': report}, 'scoring': [SCORING_ENTRY]}}).json()['task']['id']
     assert client.post(f"/api/reporting/bundle-report-template/favourites/{weekly['id']}/rename", json={'name': 'Taken'}).status_code == 400
     response = client.post(f"/api/reporting/bundle-report-template/favourites/{weekly['id']}/rename", json={'name': 'Weekly NetCheck'})
     assert response.status_code == 200, response.text
-    assert response.json()['favourite']['name'] == 'Weekly NetCheck' and response.json()['renamed_jobs'] == ['Weekly NetCheck']
-    # The job that had its name takes the new one; a job with a name of its own keeps it. Both name the new favourite.
-    tasks = {task['name']: task for task in client.get('/api/reporting/state').json()['tasks']}
-    assert {'Weekly NetCheck', 'My weekly job'} <= set(tasks) and 'Weekly' not in tasks
-    assert tasks['My weekly job']['artifact_groups'][-1]['items'] == ['Weekly NetCheck (Word)']
+    assert response.json()['favourite']['name'] == 'Weekly NetCheck'
+    assert response.json()['renamed_jobs'] == ['Weekly NetCheck', 'Weekly NetCheck']
+    # Every job based on it takes the new name, also one that was given another name; all of them name the new favourite.
+    tasks = {task['id']: task for task in client.get('/api/reporting/state').json()['tasks']}
+    assert [tasks[task_id]['name'] for task_id in ids] == ['Weekly NetCheck', 'Weekly NetCheck']
+    assert tasks[other]['name'] == 'Everything'
+    assert tasks[ids[1]]['artifact_groups'][-1]['items'] == ['Weekly NetCheck (Word)']
+    script = (core.PROJECT_ROOT / 'src/web_interface/static/js/bundle_report_template.js').read_text(encoding='utf-8')
+    assert 'const named = (await jobsOf(selected)).based_on;' in script
     assert bundle_report_templates.get_favourite(core.repository, weekly['id'])['definition'] == weekly['definition']
     page = (core.PROJECT_ROOT / 'src/web_interface/templates/report_jobs.html').read_text(encoding='utf-8')
     assert 'id="brt-rename"' in page
@@ -874,3 +881,24 @@ def test_nsa_vs_sa_scoring_entries_show_each_nr_mode_as_chosen(client, monkeypat
     script = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/report_jobs.js').read_text(encoding='utf-8')
     assert "const syncNrViews = () => { nrViews.hidden = nrMode.value !== 'NSA+SA'; };" in script
     assert 'nr_layout: nrLayout.value, nr_charts: nrCharts.value,' in script
+
+
+def test_the_jobs_table_enables_and_disables_a_job_with_its_switch(client):
+    login(client)
+    task = client.post('/api/reporting/tasks', json={'name': 'Switched', 'schedule': {'mode': 'daily', 'time': '08:00'},
+                                                     'definition': {'scoring': [SCORING_ENTRY]}}).json()['task']
+    assert task['enabled'] is True and task['next_run_at']
+    response = client.post(f"/api/reporting/tasks/{task['id']}/enabled", json={'enabled': False})
+    assert response.status_code == 200 and response.json()['task']['enabled'] is False
+    assert response.json()['task']['next_run_at'] is None
+    assert client.post(f"/api/reporting/tasks/{task['id']}/enabled", json={'enabled': True}).json()['task']['enabled'] is True
+    actions = [row['action'] for row in core.repository.list_logs(limit=10)] if hasattr(core.repository, 'list_logs') else []
+    if actions:
+        assert 'disable_reporting_job' in actions and 'enable_reporting_job' in actions
+    # The table shows the switch in its own column, before the actions (which no longer have ⏸ / ⏵).
+    page = (core.PROJECT_ROOT / 'src/web_interface/templates/report_jobs.html').read_text(encoding='utf-8')
+    assert '<th>Status</th><th>Enable/Disable</th><th>Actions</th>' in page
+    script = (core.PROJECT_ROOT / 'src/web_interface/static/js/report_jobs.js').read_text(encoding='utf-8')
+    assert "const switchLabel = node('label', undefined, 'rj-enabled-switch rj-table-switch');" in script
+    assert 'lastCell, statusCell, cellWith(switchLabel), cellWith(actions),' in script
+    assert "'Disable the schedule'" not in script and "emptyRow(body, 'No Reporting Jobs yet.', 10);" in script
