@@ -112,3 +112,12 @@ def test_only_admins_upload_datasets_and_the_other_roles_see_why(client):
     _viewer(client, 'manager', 'admin')
     page = client.get('/workspace').text
     assert '<form class="upload-dropzone"' in page and 'Only admins and super-admins can upload datasets' not in page
+
+
+def test_only_admins_change_in_combined(client, tmp_path):
+    dataset_id = _ready_cdr(tmp_path)
+    _viewer(client, 'editor', 'user-editor')
+    changed = client.post(f'/workspace/datasets/{dataset_id}/in-combined', json={'in_combined': 'no'})
+    assert changed.status_code == 403 and 'Only admins and super-admins can change In Combined' in changed.text
+    _viewer(client, 'manager', 'admin')
+    assert client.post(f'/workspace/datasets/{dataset_id}/in-combined', json={'in_combined': 'no'}).status_code == 200

@@ -12446,7 +12446,8 @@ function syncCombinedInclusion(row, included, reason, choice) {
   const note = cell.querySelector('[data-combined-reason]');
   if (note) note.textContent = reason || '';
   const select = cell.querySelector('[data-dataset-combined-select]');
-  if (select instanceof HTMLSelectElement && choice && document.activeElement !== select && !select.disabled) select.value = choice;
+  // A select locked for the role still shows the choice an admin made.
+  if (select instanceof HTMLSelectElement && choice && document.activeElement !== select && (!select.disabled || 'roleLocked' in select.dataset)) select.value = choice;
 }
 
 // The label of a CDR Stage: Final, Weekly or Daily.

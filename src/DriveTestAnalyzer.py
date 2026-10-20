@@ -5514,6 +5514,13 @@ def dataset_upload_user(user: SessionUser = Depends(current_user)) -> SessionUse
     return user
 
 
+def combined_choice_user(user: SessionUser = Depends(current_user)) -> SessionUser:
+    """In Combined of a CDR, which recalculates the combined tables and indexes the calls again: admins and super-admins."""
+    if user.role not in {'admin', 'super-admin'}:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Only admins and super-admins can change In Combined: it recalculates the combined tables and indexes the calls again.')
+    return user
+
+
 def config_editor_user(user: SessionUser = Depends(current_user)) -> SessionUser:
     if user.role not in {'user-editor', 'admin', 'super-admin'}:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Configuration access required')
@@ -20673,7 +20680,7 @@ class DatasetInCombinedUpdate(BaseModel):
 
 @app.post('/workspace/datasets/{dataset_id}/in-combined')
 def update_dataset_in_combined(
-    dataset_id: int, payload: DatasetInCombinedUpdate, user: SessionUser = Depends(workspace_editor_user),
+    dataset_id: int, payload: DatasetInCombinedUpdate, user: SessionUser = Depends(combined_choice_user),
 ) -> JSONResponse:
     """Choose whether the combined CDR tables include one CDR: Auto, Yes or No."""
     if active_workspace:

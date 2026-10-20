@@ -189,7 +189,7 @@ The **Lifecycle & Phases** panel follows the filtered calls through their follow
 > [!TIP]
 > **Show Empty Status**, above the phase cards, is unchecked by default. Check it to add the calls without a value (**Empty**) and give the shares of every call; **Export PPT** and **Export Word** follow it, and the Reporting artifact leaves them out.
 
-**Status Rules** (for `user-editor` accounts and above; only admins and super-admins change them) opens the rules from the panel.
+**Status Rules** (for every user; only admins and super-admins change them) opens the rules from the panel.
 
 The PowerPoint, Word and Reporting artifact show the Lifecycle & Phases as the page does, each slide saying what it shows in its subtitle: the indicators and the **NQ Call Status Pipeline** (the Open frame around the phase statuses and the rules of each status), the **Phases** in one row (a field with more than 12 values on a slide of its own, its values in columns), the **Time in Each Status and Most Frequent Moves**, and the **Stalled Open Calls** that fit.
 
@@ -297,10 +297,10 @@ Admins and super-admins can delete the history: the **×** of a change deletes t
 
 ## NQ Analysis Configuration
 
-**NQ Analysis Configuration**, beside the [Sections bar](#sections-bar) (for `user-editor` accounts and above; only its icon on a phone), opens on hover, or with a click, the configuration of the workspace, shared by every user, each option with the icon it has in the sections menu of the tab:
+**NQ Analysis Configuration**, beside the [Sections bar](#sections-bar) (for every user; only its icon on a phone), opens on hover, or with a click, the configuration of the workspace, shared by every user, each option with the icon it has in the sections menu of the tab:
 
 > [!IMPORTANT]
-> **Only admins and super-admins change the NQ Analysis Configuration.** `user-editor` accounts open every option to see it: a card at the top of the menu and of each option says that only admins and super-admins can change it, its controls are locked and there is no Save. They keep following up the calls (status, team, assignee, root category and cause, fields, comments and bulk changes) and their own [table layout](#table-layouts).
+> **Only admins and super-admins change the NQ Analysis Configuration.** The other roles open every option to see it, from the button beside the Sections bar or the sections menu of the tab: a card at the top of the menu and of each option says that only admins and super-admins can change it, its controls are locked and there is no Save. `user-editor` accounts keep following up the calls (status, team, assignee, root category and cause, fields, comments and bulk changes), and every role arranges its own [table layout](#table-layouts).
 
 
 | Option | What it configures |
@@ -310,7 +310,7 @@ Admins and super-admins can delete the history: the **×** of a change deletes t
 | [Status Rules](#status-rules) | How the status follows the Analysis, Implementation and Planning fields. |
 | [Root Cause Catalog](#root-cause-catalog) | Domains, Root Categories and Root Causes, with their keywords, and the suggestion rule. |
 | **Import Ericsson RCA Results** | The results of the Ericsson RCA, by `JOIN_ID` (see [Ericsson RCA results](#ericsson-rca-results)). |
-| **Import Previous NQ Analyses** | The analyses made with the previous tool, by `JOIN_ID`, for admins and super-admins only; the other accounts see it dimmed, with the reason as its tooltip (see [Previous NQ Analyses](#previous-nq-analyses)). |
+| **Import Previous NQ Analyses** | The analyses made with the previous tool, by `JOIN_ID`: admins and super-admins import them, and the other accounts open it read-only (see [Previous NQ Analyses](#previous-nq-analyses)). |
 | **Analysts / Reviewers → Asignees** | Links each Analyst and Reviewer to their user account: its name in the Analyst and Reviewer of the calls and the Asignee of those they analysed (see [Analysts / Reviewers → Asignees](#analysts-reviewers-asignees)). |
 
 The imports and Analysts / Reviewers → Asignees come after a line. The sections menu of the Non-Qualified Calls tab lists the **NQ Analysis Configuration** too, after a line, with every option: choosing one opens it on the page.
@@ -481,7 +481,7 @@ The dialog lists the imported files with their results, date and user.
 
 ## Previous NQ Analyses
 
-**Import Previous NQ Analyses**, in the **NQ Analysis Configuration** menu for admins and super-admins, brings the analyses made with the previous tool into the follow-up of the calls of the workspace without losing any of them. The file is a CSV or an Excel workbook (`.xlsx` or `.xlsm`): every visible sheet with a `JOIN_ID` (or `Call Key`) column in its first three rows is read; hidden sheets and sheets without it are left out.
+**Import Previous NQ Analyses**, in the **NQ Analysis Configuration** menu, brings the analyses made with the previous tool into the follow-up of the calls of the workspace without losing any of them. Only admins and super-admins import them: the other roles open it read-only, under a card that says so, and can download the template and the equivalences the import uses, but not choose a file, upload or forget equivalences, preview or import. The file is a CSV or an Excel workbook (`.xlsx` or `.xlsm`): every visible sheet with a `JOIN_ID` (or `Call Key`) column in its first three rows is read; hidden sheets and sheets without it are left out.
 
 ### Import the analyses
 

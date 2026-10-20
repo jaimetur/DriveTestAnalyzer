@@ -124,7 +124,7 @@ Every CDR is a **Final** CDR, delivered after its measurement campaign, or a **W
 
 The **CDR Stage** selector of the Final, Weekly and Daily CDR tables (Final in teal, Weekly in violet, Daily in orange) changes it without reprocessing the CDR, moves the CDR to the table of its stage and is recorded in App Logs. The CDRs used that Scoring & GAP Analysis, Network Insights and PPT Dashboards list highlight the Weekly (violet) and Daily (orange) CDRs with a dashed outline, as the upload does.
 
-The **In Combined?** column holds the choice (**Auto**, the default, **Yes** or **No**) and, below it, whether the combined CDR tables include the CDR (**Yes** or **No**) and why. Each CDR shows one reason, the first of these that applies:
+The **In Combined?** column holds the choice (**Auto**, the default, **Yes** or **No**; only admins and super-admins change it, because it recalculates the combined tables and indexes the calls again: for the other roles it is locked, with the reason as its tooltip) and, below it, whether the combined CDR tables include the CDR (**Yes** or **No**) and why. Each CDR shows one reason, the first of these that applies:
 
 | Reason | When it applies | Included |
 |---|---|---|

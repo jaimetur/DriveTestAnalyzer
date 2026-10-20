@@ -252,7 +252,7 @@ def test_only_admins_change_the_configuration_and_every_user_has_a_table_layout(
         ('put', '/api/non-qualified-calls/status-rules'): {'rules': state['status_rules']},
         ('put', '/api/non-qualified-calls/root-causes'): {'domains': [], 'categories': [], 'causes': []},
         ('put', '/api/non-qualified-calls/table-columns'): {'builtin': ['join_id']},
-        ('post', '/api/non-qualified-calls/analysts/assign'): {'assignments': []},
+        ('post', '/api/non-qualified-calls/analysts/assign'): {'assignments': {}},
         ('post', '/api/non-qualified-calls/root-causes/apply-categories'): {'preview': True},
         ('post', '/api/non-qualified-calls/table-layout/publish'): None,
     }
@@ -287,10 +287,21 @@ def test_only_admins_change_the_configuration_and_every_user_has_a_table_layout(
     # Removing a CDR column keeps it indexed, so the CDRs are not indexed again.
     client.put('/api/non-qualified-calls/table-layout/mine', json={'cdr': []})
     assert 'Cell_ID_A' in nq.indexed_cdr_columns(repository)
-    # A user-viewer has their own layout too.
+    # A user-viewer has their own layout too, and opens the configuration to see it like the editors.
     login(client, 'viewer', 'viewer123')
     assert client.put('/api/non-qualified-calls/table-layout/mine', json={'builtin': ['join_id']}).status_code == 200
     assert client.put('/api/non-qualified-calls/fields', json={'fields': state['fields']}).status_code == 403
+    page = client.get('/non-qualified-calls').text
+    assert 'id="nq-config-toggle"' in page and 'Only admins and super-admins can change the NQ Analysis Configuration.' in page
+    for dialog in ('nq-options-dialog', 'nq-fields-dialog', 'nq-root-dialog', 'nq-status-rules-dialog', 'nq-rca-dialog',
+                   'nq-assign-analysts-dialog', 'nq-analyses-dialog'):
+        assert f'id="{dialog}"' in page, dialog
+    assert page.count('class="nq-config-fieldset" disabled') >= 10 and 'data-nq-status-rules-open title=' in page
+    for path in ('/api/non-qualified-calls/analysts', '/api/non-qualified-calls/analyses/template',
+                 '/api/non-qualified-calls/analyses/equivalences'):
+        assert client.get(path).status_code == 200, path
+    assert client.post('/api/non-qualified-calls/analysts/assign', json={'assignments': {}}).status_code == 403
+    assert client.post('/api/non-qualified-calls/analysts/assign', json={'assignments': {}, 'preview': True}).status_code == 200
     # Admins save their layout for the workspace: its columns, the Table column and Excel of the fields and the order.
     login(client)
     client.put('/api/non-qualified-calls/table-layout/mine', json={'builtin': ['cell_id'], 'fields': ['priority'],
@@ -1164,15 +1175,22 @@ def test_admins_import_the_analyses_of_the_previous_tool_by_join_id(client, tmp_
                    'data-nq-option-defaults="statuses"', 'data-nq-option-defaults="teams"', 'id="nq-status-rules-default"',
                    'id="nq-rule-default"', 'data-nq-analyses-equivalences-reset'):
         assert button in page, button
-    token = 'analyses-editor'
-    core.SESSIONS[token] = core.SessionUser(username='editor', role='user-editor')
-    client.cookies.set(core.SESSION_COOKIE, token)
+    workspace_user('editor', 'user-editor')
+    login(client, 'editor', 'editor123')
     assert send(preview='1').status_code == 403
-    # Editors see the entry dimmed, with the reason as its tooltip, and without its dialog.
+    # Editors open it to see it, under its card, with the file, equivalences and mode locked and no Preview or Import;
+    # they download the template and the equivalences the import uses, but cannot upload or forget them.
     page = client.get('/non-qualified-calls').text
-    assert 'id="nq-rca-open"' in page and 'id="nq-analyses-dialog"' not in page
-    assert ('id="nq-analyses-open" aria-disabled="true" title="Only admins and super-admins can import the analyses of the previous tool"'
-            in page)
+    assert '<button type="button" role="menuitem" id="nq-analyses-open">' in page
+    dialog = page.split('id="nq-analyses-dialog"', 1)[1].split('</dialog>', 1)[0]
+    assert 'Only admins and super-admins can import the analyses of the previous tool.' in dialog
+    assert dialog.count('class="nq-config-fieldset" disabled') == 2 and '<fieldset class="nq-analyses-mode" disabled>' in dialog
+    assert 'data-nq-analyses-preview disabled' in dialog and dialog.count(' hidden>Preview</button>') == 1
+    assert dialog.count(' hidden>Import Analyses</button>') == 1
+    assert client.get('/api/non-qualified-calls/analyses/template').status_code == 200
+    assert client.get('/api/non-qualified-calls/analyses/equivalences').status_code == 200
+    assert client.delete('/api/non-qualified-calls/analyses/equivalences').status_code == 403
+    assert client.put('/api/non-qualified-calls/analyses/equivalences', files={'file': ('rules.xlsx', io.BytesIO(b'x'))}).status_code == 403
 
 
 def mtl_workbook() -> bytes:

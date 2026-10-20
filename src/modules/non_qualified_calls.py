@@ -7670,7 +7670,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         return user
 
     @core.app.get('/api/non-qualified-calls/analyses/template')
-    def nq_analyses_template(user=Depends(analyses_user)) -> Response:
+    def nq_analyses_template(user=Depends(core.current_user)) -> Response:
         return Response(analyses_template(workspace_repository(user)), media_type='text/csv',
                         headers={'Content-Disposition': 'attachment; filename="NQ_analyses_template.csv"'})
 
@@ -7729,7 +7729,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
                         headers={'Content-Disposition': 'attachment; filename="NQ_analyses_equivalences.xlsx"'})
 
     @core.app.get('/api/non-qualified-calls/analyses/equivalences')
-    def nq_analyses_rules_download(user=Depends(analyses_user)) -> Response:
+    def nq_analyses_rules_download(user=Depends(core.current_user)) -> Response:
         """The equivalences the import uses (the rules of the tool and those of the workspace), to review and upload back."""
         repository = workspace_repository(user)
         workbook = analyses_equivalences_workbook(repository, None, '', set(workspace_users()))
@@ -7925,7 +7925,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
                                                                defaults=payload.defaults)))
 
     @core.app.get('/api/non-qualified-calls/analysts')
-    def nq_analysts(user=Depends(editor_user)) -> JSONResponse:
+    def nq_analysts(user=Depends(core.current_user)) -> JSONResponse:
         """The analysts and reviewers of the calls with their calls and assignees, and the users of the workspace."""
         repository = workspace_repository(user)
         users, names = workspace_users(), user_names()
@@ -7933,9 +7933,11 @@ def install_non_qualified_calls_routes(core: Any) -> None:
                              'users': users, 'user_names': names})
 
     @core.app.post('/api/non-qualified-calls/analysts/assign')
-    def nq_assign_analysts(payload: AnalystAssignmentsPayload, user=Depends(config_user)) -> JSONResponse:
+    def nq_assign_analysts(payload: AnalystAssignmentsPayload, user=Depends(core.current_user)) -> JSONResponse:
         """The calls of each analyst assigned to the user chosen for them, and the Analyst and Reviewer of the calls
-        named as their users (``preview`` counts them)."""
+        named as their users (``preview`` counts them, for every role; admins and super-admins apply them)."""
+        if not payload.preview:
+            config_user(user)
         repository = workspace_repository(user)
         return JSONResponse(translate(lambda: assign_analysts(
             repository, payload.assignments, user.username, set(workspace_users()), names=user_names(),

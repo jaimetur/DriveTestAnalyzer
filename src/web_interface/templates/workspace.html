@@ -304,7 +304,7 @@
             </td>
             <td data-label="In Combined?" data-queue-combined data-queue-sort-value="{{ '1' if dataset.combined_included else '0' }}" data-queue-sort-cell="combined">
               <div class="queue-combined-cell">
-                <select class="queue-combined-select" data-dataset-combined-select data-dataset-id="{{ dataset.id }}" data-update-url="/workspace/datasets/{{ dataset.id }}/in-combined" aria-label="In Combined? for {{ dataset.file_name }}" title="Auto: Final CDRs are included, Daily CDRs until a Final CDR of their campaign arrives">
+                <select class="queue-combined-select" data-dataset-combined-select data-dataset-id="{{ dataset.id }}" data-update-url="/workspace/datasets/{{ dataset.id }}/in-combined" aria-label="In Combined? for {{ dataset.file_name }}"{% if user.role in ['admin', 'super-admin'] %} title="Auto: Final CDRs are included, Daily CDRs until a Final CDR of their campaign arrives"{% else %} title="Only admins and super-admins change In Combined: it recalculates the combined tables and indexes the calls again" disabled data-role-locked{% endif %}>
                   {% for value, label in in_combined_options %}<option value="{{ value }}"{% if dataset.in_combined == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
                 </select>
                 <span class="queue-combined-state {{ 'is-included' if dataset.combined_included else 'is-excluded' }}" data-combined-state title="{{ dataset.combined_reason }}">{{ 'Yes' if dataset.combined_included else 'No' }}</span>

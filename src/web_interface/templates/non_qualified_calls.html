@@ -2,7 +2,7 @@
 {% block content %}
 {# What only admins and super-admins change: a card at the top of each configuration for the other roles, whose controls
    are locked by a disabled fieldset (also those the script adds). #}
-{% macro role_warning(what) %}<div class="role-warning nq-role-warning" role="note"><svg class="role-warning-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10.3 4.5a2 2 0 0 1 3.4 0l8 13.5a2 2 0 0 1-1.7 3H4a2 2 0 0 1-1.7-3z"/><path d="M12 9v4m0 4h.01"/></svg><p><strong>Only admins and super-admins can change {{ what }}.</strong> You can see it, but not change it.</p></div>{% endmacro %}
+{% macro role_warning(what, verb='change') %}<div class="role-warning nq-role-warning" role="note"><svg class="role-warning-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10.3 4.5a2 2 0 0 1 3.4 0l8 13.5a2 2 0 0 1-1.7 3H4a2 2 0 0 1-1.7-3z"/><path d="M12 9v4m0 4h.01"/></svg><p><strong>Only admins and super-admins can {{ verb }} {{ what }}.</strong> You can see it, but not change it.</p></div>{% endmacro %}
 {% set config_lock = '' if nq_can_configure else ' disabled' %}
 <link rel="stylesheet" href="{{ static_path('css/non_qualified_calls.css') }}?v={{ asset_version('css/non_qualified_calls.css') }}">
 <section class="dashboard-stack spacious-stack non-qualified-calls" id="non-qualified-calls" data-nq-can-edit="{{ 'true' if nq_can_edit else 'false' }}">
@@ -31,7 +31,7 @@
     <a href="#section-lifecycle-phases" title="Lifecycle &amp; Phases"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.9-4M4 13a8 8 0 0 0 14.9 4"/><path d="M5 3v4h4M19 21v-4h-4"/></svg>Lifecycle</a>
     <a href="#section-progress-view" title="Progress View"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 17 6-6 4 4 8-8"/><path d="M14 7h7v7"/></svg>Progress</a>
   </nav>
-  {% if nq_can_edit %}<div class="nq-menu-wrap nq-center-wrap">
+  <div class="nq-menu-wrap nq-center-wrap">
     <button type="button" class="nq-center-toggle nq-menu-toggle" id="nq-config-toggle" aria-haspopup="menu" aria-expanded="false" aria-controls="nq-config-menu" aria-label="NQ Analysis Configuration" title="Configure the analysis of the Non-Qualified Calls of this workspace"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg><span>NQ Analysis Configuration</span></button>
     <div class="nq-menu" id="nq-config-menu" role="menu" hidden>
       {% if not nq_can_configure %}{{ role_warning('the NQ Analysis Configuration') }}{% endif %}
@@ -43,10 +43,10 @@
          editor; only admins and super-admins can use it). #}
       <div class="nq-menu-separator" role="separator"></div>
       <button type="button" role="menuitem" id="nq-rca-open" data-nq-rca-open><svg class="nq-menu-icon" viewBox="0 0 24 24" aria-hidden="true">{{ section_icons['upload'] | safe }}</svg><strong>Import Ericsson RCA Results</strong><span>The results of the Ericsson RCA, by JOIN_ID</span></button>
-      <button type="button" role="menuitem" id="nq-analyses-open"{% if not nq_can_import_analyses %} aria-disabled="true" title="Only admins and super-admins can import the analyses of the previous tool"{% endif %}><svg class="nq-menu-icon" viewBox="0 0 24 24" aria-hidden="true">{{ section_icons['upload'] | safe }}</svg><strong>Import Previous NQ Analyses</strong><span>The analyses made with the previous tool, by JOIN_ID (admins and super-admins)</span></button>
+      <button type="button" role="menuitem" id="nq-analyses-open"><svg class="nq-menu-icon" viewBox="0 0 24 24" aria-hidden="true">{{ section_icons['upload'] | safe }}</svg><strong>Import Previous NQ Analyses</strong><span>The analyses made with the previous tool, by JOIN_ID (admins and super-admins)</span></button>
       <button type="button" role="menuitem" id="nq-assign-analysts-open"><svg class="nq-menu-icon" viewBox="0 0 24 24" aria-hidden="true">{{ section_icons['user-plus'] | safe }}</svg><strong>Analysts / Reviewers → Asignees</strong><span>Link each Analyst and Reviewer to their user account: its name in the calls and the Asignee of those they analysed</span></button>
     </div>
-  </div>{% endif %}
+  </div>
   </div>
 
   <details class="panel collapsible-panel nq-filters-panel" open data-panel-state-key="non-qualified-calls:filters">
@@ -242,7 +242,7 @@
       <div class="nq-active-filters" data-nq-active-filters hidden></div>
       <div class="nq-progress-head">
         <p class="nq-hint">Where the filtered calls are in their follow-up: the NQ Call Status pipeline, each status with the Status Rules that set it, whether each status follows the rules or was set by hand, the RCA identification and the values of the phase fields (Analysis, Implementation and Planning), how long calls stay in each status, the most frequent moves and the open calls without changes for a while. Click a status, a value or a card to drill down into its calls.</p>
-        {% if nq_can_edit %}<button type="button" class="nq-secondary-action" data-nq-status-rules-open title="How the NQ Call Status is set from the phase fields">Status Rules</button>{% endif %}
+        <button type="button" class="nq-secondary-action" data-nq-status-rules-open title="How the NQ Call Status is set from the phase fields">Status Rules</button>
       </div>
       <div class="nq-kpis" id="nq-life-kpis"></div>
       <section class="nq-progress-section"><h3>NQ Call Status Pipeline</h3><div class="nq-pipeline" id="nq-life-pipeline"></div></section>
@@ -350,7 +350,6 @@
   </div>
 </aside>
 
-{% if nq_can_edit %}
 <dialog class="nq-options-dialog" id="nq-options-dialog" aria-labelledby="nq-options-title">
   <form method="dialog" class="nq-options-form" id="nq-options-form">
     <header><h2 id="nq-options-title">Statuses &amp; Teams</h2><p class="form-note">Shared by every user of this workspace. The NQ Call Status of each call follows the Status Rules (the first status when no rule applies) unless it is set by hand; statuses marked Closed count as closed in the summary. Renaming a value updates every call and the Status Rules; a value in use cannot be removed, but a team can be merged into another one (⤳): its calls and members move there.</p></header>
@@ -459,7 +458,6 @@
     <footer><span class="nq-rule-spacer"></span><button type="button" class="nq-secondary-action" id="nq-assign-analysts-cancel">Close</button><button type="submit" class="nq-primary-action" id="nq-assign-analysts-apply" disabled{% if not nq_can_configure %} hidden{% endif %}>Apply</button></footer>
   </form>
 </dialog>
-{% endif %}
 <dialog class="nq-options-dialog nq-columns-dialog" id="nq-columns-dialog" aria-labelledby="nq-columns-title">
   <form method="dialog" class="nq-options-form" id="nq-columns-form">
     <header><h2 id="nq-columns-title">Columns</h2><p class="form-note">Your own layout of the Calls table and of your Excel export: only you see it, and <strong>Layout</strong> beside Columns switches between it and the layout of the workspace. Each field of the Analysis Center can be a column of the table (<strong>Table</strong>) and of the Excel (<strong>Excel</strong>), which keeps the catalog order. CDR columns show the value of the CDR version shown for each call: those of the table are exported too, and more can be exported to Excel only. A CDR column no layout showed before indexes the calls again.</p>
@@ -473,24 +471,25 @@
     <footer><button type="button" class="nq-secondary-action" id="nq-columns-default" title="The columns of a new workspace: no call or CDR columns, and the Analysis Center fields it shows; Save applies it">Default Columns</button><button type="button" class="nq-secondary-action" id="nq-columns-copy" title="Start your layout again from that of the workspace: its columns, Excel and order; Save applies it">Copy Workspace Layout</button><span class="nq-rule-spacer"></span><button type="button" class="nq-secondary-action" id="nq-columns-cancel">Cancel</button><button type="submit" class="nq-primary-action" id="nq-columns-save">Save</button></footer>
   </form>
 </dialog>
-{% if nq_can_import_analyses %}
-{# The analyses made with the previous tool, imported into the follow-up of the calls (admins and super-admins). #}
+{# The analyses made with the previous tool, imported into the follow-up of the calls by admins and super-admins; the
+   other roles open it to see it. #}
 <dialog class="nq-options-dialog nq-analyses-dialog" id="nq-analyses-dialog" aria-labelledby="nq-analyses-title">
   <form class="nq-options-form nq-analyses-import-form" data-nq-analyses-form>
     <header><h2 id="nq-analyses-title">Previous NQ Analyses</h2>
       <p class="form-note">Bring the analyses made with the previous tool into the calls of this workspace: every visible sheet with a <code>JOIN_ID</code> column (several JOIN_IDs in a cell share the analysis), its columns named as in the Analysis Center or as in the analysis workbooks of the previous tool (or the Excel export of Non-Qualified Calls). Columns without a field travel in an import note of each call, and calls not loaded yet keep their analysis for when their CDR is added. Preview the file, then import it: the equivalences of the workbooks of the previous tool are built in, and Equivalences below changes them for this workspace.</p>
       <div class="nq-fields-import"><a class="nq-secondary-action" href="/api/non-qualified-calls/analyses/template" download>Download Template</a>
-        <label class="nq-secondary-action nq-file-action">Choose File<input type="file" name="file" accept=".csv,.txt,.xlsx,.xlsm" hidden data-nq-analyses-file></label>
+        <fieldset class="nq-config-fieldset"{{ config_lock }}><label class="nq-secondary-action nq-file-action">Choose File<input type="file" name="file" accept=".csv,.txt,.xlsx,.xlsm" hidden data-nq-analyses-file></label></fieldset>
         <span class="nq-muted" data-nq-analyses-name>No file chosen</span></div>
     </header>
+    {% if not nq_can_import_analyses %}{{ role_warning('the analyses of the previous tool', 'import') }}{% endif %}
     <div class="nq-analyses-equivalences" data-nq-analyses-equivalences>
       <p class="form-note">Equivalences: what each value of the analysis workbooks becomes. The tool has those of the workbooks of the previous tool; to change them for this workspace, download them (with a file chosen, every value of that file), review Maps to and the Domain (each cell lists the values it takes) and upload the workbook.</p>
       <div class="nq-fields-import"><button type="button" class="nq-secondary-action" data-nq-analyses-equivalences-download title="The equivalences the import uses: the rules of the tool and those of this workspace">Download Equivalences</button>
-        <label class="nq-secondary-action nq-file-action">Upload Equivalences<input type="file" accept=".xlsx" hidden data-nq-analyses-equivalences-file></label>
-        <button type="button" class="nq-secondary-action" data-nq-analyses-equivalences-reset title="Forget the equivalences uploaded for this workspace: the import uses only those of the tool">Default Equivalences</button>
+        <fieldset class="nq-config-fieldset"{{ config_lock }}><label class="nq-secondary-action nq-file-action">Upload Equivalences<input type="file" accept=".xlsx" hidden data-nq-analyses-equivalences-file></label>
+        <button type="button" class="nq-secondary-action" data-nq-analyses-equivalences-reset title="Forget the equivalences uploaded for this workspace: the import uses only those of the tool">Default Equivalences</button></fieldset>
         <span class="nq-muted" data-nq-analyses-equivalences-status></span></div>
     </div>
-    <fieldset class="nq-analyses-mode">
+    <fieldset class="nq-analyses-mode"{{ config_lock }}>
       <legend>Values the calls already have</legend>
       <label><input type="radio" name="overwrite" value="0" checked> Keep them: fill only the empty values (the import note keeps the others)</label>
       <label><input type="radio" name="overwrite" value="1"> Replace them with the values of the file</label>
@@ -498,8 +497,8 @@
     <div class="nq-analyses-summary" data-nq-analyses-summary hidden></div>
     <p class="nq-options-error" role="alert" data-nq-analyses-error></p>
     <footer><span class="nq-rule-spacer"></span><button type="button" class="nq-secondary-action" data-nq-analyses-close>Close</button>
-      <button type="button" class="nq-primary-action" data-nq-analyses-preview disabled title="Choose a file first: Preview reads it without changing anything">Preview</button>
-      <button type="submit" class="nq-primary-action" data-nq-analyses-import disabled title="Preview the file first: its preview enables the import">Import Analyses</button></footer>
+      <button type="button" class="nq-primary-action" data-nq-analyses-preview disabled title="Choose a file first: Preview reads it without changing anything"{% if not nq_can_import_analyses %} hidden{% endif %}>Preview</button>
+      <button type="submit" class="nq-primary-action" data-nq-analyses-import disabled title="Preview the file first: its preview enables the import"{% if not nq_can_import_analyses %} hidden{% endif %}>Import Analyses</button></footer>
   </form>
   <div class="nq-analyses-progress" data-nq-analyses-progress hidden>
     <div class="nq-analyses-progress-card" role="status" aria-live="polite">
@@ -520,7 +519,6 @@
       <button type="button" class="nq-primary-action" data-nq-analyses-done-close>Done</button></footer>
   </div>
 </dialog>
-{% endif %}
 <dialog class="nq-options-dialog nq-rule-dialog" id="nq-rule-dialog" aria-labelledby="nq-rule-title">
   <form method="dialog" class="nq-options-form" id="nq-rule-form">
     <header><h2 id="nq-rule-title">Root Cause Suggestion Rule</h2><p class="form-note">How every call of this workspace gets its suggested root cause from the keywords of the domains and causes. Everybody can see it and only admins and super-admins change it; a change applies at once to the suggestions, the Root Cause Analysis and Apply suggestions, and never changes the root causes already set.</p><p class="form-note nq-rule-readonly" id="nq-rule-readonly" hidden>Read only: ask an admin or super-admin to change the rule.</p></header>
