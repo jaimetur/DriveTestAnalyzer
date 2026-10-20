@@ -3928,6 +3928,22 @@
     }).join(' · ') : column?.label || '');
   }
 
+  // The label of a band of the hierarchy axis in ``width``: across, in up to two lines, at the largest size from 14px
+  // down to 9px that shows it whole, else shortened at 9px; turned 90° in the height of its row (``height``) when its
+  // band is too narrow even for three characters across.
+  function hierarchyBandLabelLayout(value, width, height = 32) {
+    const text = String(value);
+    const across = size => Math.min(34, Math.floor((width - 6) / (size * .6)));
+    for (let size = 14; size >= 9; size -= 1) {
+      if (across(size) < Math.min(3, text.length)) break;
+      const lines = fittedSvgLabelLines(text, across(size), 2);
+      if (!lines.some(line => line.endsWith('…'))) return {size, lines, rotated: false};
+    }
+    if (across(9) >= Math.min(3, text.length)) return {size: 9, lines: fittedSvgLabelLines(text, across(9), 2), rotated: false};
+    const size = Math.max(6, Math.min(12, Math.floor(width * .8)));
+    return {size, lines: fittedSvgLabelLines(text, Math.max(1, Math.floor((height - 4) / (size * .6))), 1), rotated: true};
+  }
+
   function appendHierarchyAxisBands(svg, categories, levels, columnsById, categoryStarts, step, baselineY, left, right) {
     if (!levels.length || !categories.length) return;
     const rowHeight = 32;
@@ -3957,19 +3973,24 @@
         const entry = firstColumn ? hierarchyPathEntry(firstColumn, depth, levels) : {level: levels[depth], value: ''};
         const value = entry.value || 'Not specified';
         const groupWidth = x2 - x1;
-        const maxCharacters = Math.max(3, Math.min(34, Math.floor((groupWidth - 8) / 8.5)));
-        const lines = fittedSvgLabelLines(value, maxCharacters, 2);
+        const layout = hierarchyBandLabelLayout(value, groupWidth, rowHeight);
+        const centerX = x1 + groupWidth / 2;
         const label = svgElement(svg, 'text', {
-          x: x1 + groupWidth / 2,
-          y: y + rowHeight / 2 + (lines.length > 1 ? -4 : 5),
+          x: centerX,
+          y: layout.rotated ? y + rowHeight / 2 : y + rowHeight / 2 + (layout.lines.length > 1 ? -4 : 5) * layout.size / 14,
           'text-anchor': 'middle',
           class: 'scoring-chart-hierarchy-label',
           'aria-label': `${entry.level}: ${value}`,
         });
+        if (layout.size !== 14) label.style.fontSize = `${layout.size}px`;
+        if (layout.rotated) {
+          label.setAttribute('dominant-baseline', 'central');
+          label.setAttribute('transform', `rotate(-90 ${centerX} ${y + rowHeight / 2})`);
+        }
         label.setAttribute('fill', '#334b58');
         label.setAttribute('pointer-events', 'auto');
-        lines.forEach((line, lineIndex) => {
-          const span = svgElement(svg, 'tspan', {x: x1 + groupWidth / 2, dy: lineIndex ? '15' : '0'});
+        layout.lines.forEach((line, lineIndex) => {
+          const span = svgElement(svg, 'tspan', {x: centerX, dy: lineIndex ? String(Math.round(layout.size * 15 / 14)) : '0'});
           span.textContent = line;
           label.append(span);
         });
@@ -4947,21 +4968,40 @@
     }, 0);
   }
 
-  // Up to 16 bars (four operators of four campaigns) are drawn, narrower, in the width of ten, so the chart fits its card
-  // at the height it has with ten; more keep their width and widen the chart (see fitBestNetworkChartWidth).
+  // Every bar is drawn in the width of ten, so the chart fits its card at the height it has with ten bars and never
+  // scrolls sideways: more bars are narrower (their totals and labels smaller or turned 90°), and the gaps between their
+  // groups (``groupGap`` at most) shrink to fit them too.
   function bestNetworkHorizontalGeometry(count, groupTransitions = 0, groupGap = 0) {
     const left = 110, right = 36;
-    const bars = count > 10 && count <= 16 ? 10 : count;
-    const width = Math.max(980, bars * 85 + 128 + groupTransitions * groupGap);
-    const step = Math.max(1, (width - left - right - groupTransitions * groupGap) / Math.max(count, 1));
-    return {width, left, right, step, barWidth: Math.min(120, step * .7)};
+    const width = Math.max(980, Math.min(count, 10) * 85 + 128);
+    const inner = width - left - right;
+    const gap = groupTransitions ? Math.min(groupGap, inner * .2 / groupTransitions) : 0;
+    const step = Math.max(1, (inner - groupTransitions * gap) / Math.max(count, 1));
+    return {width, left, right, step, barWidth: Math.min(120, step * .7), groupGap: gap};
   }
 
-  // Up to 16 bars fill the width of the card (see bestNetworkHorizontalGeometry); more widen the chart, ten bars a card.
-  function fitBestNetworkChartWidth(svg, positions, count, width, right) {
-    const visibleWidth = count > 16 ? positions[10] + right : width;
-    svg.style.width = `${100 * width / visibleWidth}%`;
+  // The chart takes the width of its card (see bestNetworkHorizontalGeometry).
+  function fitBestNetworkChartWidth(svg) {
+    svg.style.width = '100%';
     svg.style.minWidth = '0';
+  }
+
+  // The total over a bar: across (up to its 26px) when the bar is wide enough for it at 11px, else turned 90°, reading
+  // upwards from the top of the bar, as wide as the bar, so the totals of narrow bars do not run into each other.
+  function placeBarTotal(label, centerX, barTop, step, offset) {
+    const across = Math.floor(step * .94 / Math.max(1, String(label.textContent).length * .6));
+    label.setAttribute('x', String(centerX));
+    if (across >= 11) {
+      label.setAttribute('y', String(barTop - offset));
+      if (across < 26) label.style.fontSize = `${across}px`;
+      return;
+    }
+    const y = barTop - 6;
+    label.setAttribute('y', String(y));
+    label.setAttribute('text-anchor', 'start');
+    label.setAttribute('dominant-baseline', 'central');
+    label.setAttribute('transform', `rotate(-90 ${centerX} ${y})`);
+    label.style.fontSize = `${Math.max(7, Math.min(16, Math.floor(step * .9)))}px`;
   }
 
   // The size of the total over a bar, smaller than its 26px when the bar is too narrow for it (``step``: the width of a
@@ -4999,8 +5039,10 @@
     const bestNetworkGeometry = stacked
       ? bestNetworkHorizontalGeometry(categories.length, groupTransitions, categoryGroupGap) : null;
     const requestedChartWidth = Number(options.fitWidth);
+    // A Breakdown with a hierarchy fits the width of its card too (``fitWidth``, else 1180), its bars narrower.
     const clusteredHierarchyWidth = !stacked && hasHierarchyAxis
-      ? categories.length * (series.length * 84 + 28) + 138 : 0;
+      ? Math.min(categories.length * (series.length * 84 + 28) + 138, Number.isFinite(requestedChartWidth) && requestedChartWidth > 0
+        ? Math.max(720, Math.floor(requestedChartWidth)) : 1180) : 0;
     const width = bestNetworkGeometry?.width || clusteredHierarchyWidth || (Number.isFinite(requestedChartWidth) && requestedChartWidth > 0
       ? Math.max(720, Math.floor(requestedChartWidth))
       : Math.max(1180, categories.length * Math.max(168, series.length * 38 + 22) + 150));
@@ -5017,10 +5059,11 @@
     const scale = scoringChartScale(stacked ? configuredChartMaximum(operatorTable) : 0, maxValue);
     const scaleMaximum = scale.maximum;
     const step = bestNetworkGeometry?.step ?? Math.max(1, (width - left - right) / Math.max(categories.length, 1));
+    const groupGap = bestNetworkGeometry ? bestNetworkGeometry.groupGap : categoryGroupGap;
     const categoryStarts = new Map();
     let categoryCursor = left;
     categories.forEach((category, index) => {
-      if (index && groupKeys[index] && groupKeys[index - 1] && groupKeys[index] !== groupKeys[index - 1]) categoryCursor += categoryGroupGap;
+      if (index && groupKeys[index] && groupKeys[index - 1] && groupKeys[index] !== groupKeys[index - 1]) categoryCursor += groupGap;
       categoryStarts.set(String(category), categoryCursor);
       categoryCursor += step;
     });
@@ -5045,7 +5088,7 @@
     svg.setAttribute('class', 'scoring-chart-svg');
     svg.setAttribute('role', 'img');
     svg.setAttribute('aria-label', title);
-    if (stacked) fitBestNetworkChartWidth(svg, categories.map(category => categoryStarts.get(String(category))), categories.length, width, right);
+    if (stacked) fitBestNetworkChartWidth(svg);
 
     legendRows.forEach((row, rowIndex) => {
       let x = stacked ? left + Math.max(0, (width - left - right - (row.width - 22)) / 2) : left;
@@ -5172,13 +5215,10 @@
           svg.append(unavailable);
         } else {
           const totalLabel = document.createElementNS(svg.namespaceURI, 'text');
-          totalLabel.setAttribute('x', String(x + barWidth / 2));
-          totalLabel.setAttribute('y', String(stackY - 10));
           totalLabel.setAttribute('text-anchor', 'middle');
           totalLabel.setAttribute('class', 'scoring-chart-value scoring-best-network-total');
           totalLabel.textContent = `${formatChartNumber(total, {minimumFractionDigits: 1, maximumFractionDigits: 1})}${complete ? '' : '*'}`;
-          const totalSize = bestNetworkTotalSize(totalLabel.textContent, step);
-          if (totalSize < 26) totalLabel.style.fontSize = `${totalSize}px`;
+          placeBarTotal(totalLabel, x + barWidth / 2, stackY, step, 10);
           styleIncompleteValue(totalLabel);
           const hierarchyColumn = hierarchyColumnsById.get(String(category));
           const operatorName = hierarchyColumn
@@ -5239,19 +5279,36 @@
         setChartTooltip(rect, tooltipParts.join('\n'), true);
         const value = document.createElementNS(svg.namespaceURI, 'text');
         value.setAttribute('x', String(x + barWidth / 2));
-        value.setAttribute('y', String(Math.max(top + 14, barTop - 7 - (seriesIndex % 2) * 22)));
         value.setAttribute('text-anchor', 'middle'); value.setAttribute('class', 'scoring-chart-value');
         value.textContent = `${formatChartNumber(row.value, {maximumFractionDigits: Number.isInteger(row.value) ? 0 : 2})}${row.complete === false ? '*' : ''}`;
+        // Every other value a row higher, each has the width of two bars: smaller up to 9px, then turned 90° above its
+        // bar, as wide as the bar; under 6px it is left to the tooltip of the bar.
+        const valueSize = Math.floor(Math.min(15, (slotWidth * 2 - 4) / Math.max(1, value.textContent.length * .6)));
+        if (valueSize >= 9) {
+          value.setAttribute('y', String(Math.max(top + 14, barTop - 7 - (seriesIndex % 2) * 22)));
+          if (valueSize < 15) value.style.fontSize = `${valueSize}px`;
+        } else {
+          const valueY = barTop - 5;
+          value.setAttribute('y', String(valueY));
+          value.setAttribute('text-anchor', 'start');
+          value.setAttribute('dominant-baseline', 'central');
+          value.setAttribute('transform', `rotate(-90 ${x + barWidth / 2} ${valueY})`);
+          value.style.fontSize = `${Math.min(12, Math.floor(slotWidth * .9))}px`;
+        }
         styleIncompleteValue(value);
         setChartTooltip(value, tooltipParts.join('\n'));
-        svg.append(rect, value);
+        svg.append(rect);
+        if (valueSize >= 9 || slotWidth >= 6) svg.append(value);
       });
       }
       if (!hasHierarchyAxis || !stacked) {
         const lines = [];
         const visibleCategory = options.categoryLabels?.[category] || category;
         const fullCategory = options.categoryTooltips?.[category] || visibleCategory;
-        lines.push(...wrappedSvgLabelLines(visibleCategory, stacked ? 24 : 22, stacked ? 4 : 2));
+        // The categories of a Breakdown with a hierarchy share the width of the card: shortened to their width.
+        lines.push(...(!stacked && hasHierarchyAxis
+          ? fittedSvgLabelLines(visibleCategory, Math.max(4, Math.min(22, Math.floor((step - 8) / 9))), 2)
+          : wrappedSvgLabelLines(visibleCategory, stacked ? 24 : 22, stacked ? 4 : 2)));
         const label = document.createElementNS(svg.namespaceURI, 'text');
         const categoryStart = categoryStarts.get(String(category)) ?? left + step * categoryIndex;
         const labelX = categoryStart + step / 2;
@@ -5688,10 +5745,11 @@
       legendEntries: clusteredLegend,
       hierarchyLevels: tableData.hierarchy_levels,
       hierarchyColumns: columns,
+      fitWidth: chartFitWidth(pane),
     });
+    // It takes the width of its card, never wider (see makeSvgChart).
     clusteredChart.style.minWidth = '0';
-    const clusteredWidth = clusteredChart.viewBox.baseVal.width;
-    clusteredChart.style.width = `${100 * Math.max(clusteredWidth, chartFitWidth(pane)) / chartFitWidth(pane)}%`;
+    clusteredChart.style.width = '100%';
     clusteredChart.style.maxWidth = 'none';
     pane.append(makeExpandableChartCard(
       `${scoringLabel()} Scoring per Category (Breakdown)`, contextLabel(tableData.context, {environmentPrefix: false}), clusteredChart,
@@ -5772,7 +5830,7 @@
       ? groupKeys.slice(1).filter((key, index) => key && groupKeys[index] && key !== groupKeys[index]).length : 0;
     const categoryGroupGap = hasHierarchyAxis ? 14 : 0;
     const geometry = bestNetworkHorizontalGeometry(data.operators.length, groupTransitions, categoryGroupGap);
-    const {width, left, right, step, barWidth} = geometry;
+    const {width, left, right, step, barWidth, groupGap} = geometry;
     const fallbackColors = ['#14867d', '#df7a45', '#5a82aa', '#8b63b1'];
     const barColors = new Map(data.operators.map((operator, index) => {
       const mapped = operatorPresentation(tableData, operator);
@@ -5820,14 +5878,14 @@
     const categoryStarts = new Map();
     let categoryCursor = left;
     data.operators.forEach((operator, index) => {
-      if (index && groupKeys[index] && groupKeys[index - 1] && groupKeys[index] !== groupKeys[index - 1]) categoryCursor += categoryGroupGap;
+      if (index && groupKeys[index] && groupKeys[index - 1] && groupKeys[index] !== groupKeys[index - 1]) categoryCursor += groupGap;
       categoryStarts.set(operator, categoryCursor);
       categoryCursor += step;
     });
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
     svg.setAttribute('class', 'scoring-chart-svg scoring-best-network-bars');
-    fitBestNetworkChartWidth(svg, data.operators.map(operator => categoryStarts.get(operator)), data.operators.length, width, right);
+    fitBestNetworkChartWidth(svg);
     svg.style.maxWidth = 'none';
     svg.style.minHeight = '0';
     svg.setAttribute('role', 'img');
@@ -5905,10 +5963,9 @@
         }
         stackY = segmentY;
       }
-      const totalLabel = svgElement(svg, 'text', {x: x + barWidth / 2, y: stackY - 12, 'text-anchor': 'middle', class: 'scoring-chart-value scoring-best-network-total'});
+      const totalLabel = svgElement(svg, 'text', {'text-anchor': 'middle', class: 'scoring-chart-value scoring-best-network-total'});
       totalLabel.textContent = hasPoints ? `${formatChartNumber(totalPoints, {minimumFractionDigits: 1, maximumFractionDigits: 1})}${complete ? '' : '*'}` : 'N/A';
-      const totalSize = bestNetworkTotalSize(totalLabel.textContent, geometry.step);
-      if (totalSize < 26) totalLabel.style.fontSize = `${totalSize}px`;
+      placeBarTotal(totalLabel, x + barWidth / 2, stackY, geometry.step, 12);
       styleIncompleteValue(totalLabel);
       setChartTooltip(totalLabel, [
         hasHierarchyAxis ? `Hierarchy: ${presentation.fullLabel}` : `Operator: ${presentation.fullLabel}`,

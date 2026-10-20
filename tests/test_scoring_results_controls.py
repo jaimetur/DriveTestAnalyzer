@@ -76,7 +76,8 @@ def test_best_network_chart_keeps_its_intrinsic_width_on_narrow_cards():
         r'[^}]*max-width:\s*none;[^}]*min-height:\s*0;', template,
     )
     assert "svg.style.minWidth = '0';" in script
-    assert "svg.style.width = `${100 * width / visibleWidth}%`;" in script
+    # It takes the width of its card, however many bars it has.
+    assert "svg.style.width = '100%';" in _function_source(script, 'fitBestNetworkChartWidth')
     assert "svg.style.maxWidth = 'none';" in script
     assert "scroll.className = 'scoring-chart-scroll';" in script
     assert 'const baseHeight = 620;' in script
@@ -526,7 +527,7 @@ def test_scoring_chart_pairs_render_five_operator_two_category_views():
         'wrappedSvgLabelLines', 'fittedSvgLabelLines', 'setChartTooltip', 'formattedChartPoints',
         'chartEnvironmentName', 'categoryLegendGray', 'chartCategoryLegend', 'chartLegendTextWidth',
         'chartLegendRows', 'categoryLegendTextLines', 'categoryLegendTextColor',
-        'formatChartNumber', 'bestNetworkHorizontalGeometry',
+        'formatChartNumber', 'bestNetworkHorizontalGeometry', 'placeBarTotal', 'hierarchyBandLabelLayout',
         'fitBestNetworkChartWidth', 'makeSvgChart', 'makeBestNetworkBars', 'lightenHexColor',
         'hierarchyColumnOperator', 'hierarchyColumnIsReference', 'chartOperatorLegend',
         'makeExpandableChartCard', 'effectiveScoring', 'scoringLabel',
@@ -759,12 +760,10 @@ process.stdout.write(JSON.stringify({
         assert top['unavailable'] == 0
         assert bottom['unavailable'] == expected_missing
         assert set(bottom['barFills']) == set(result['palette'])
-        if charts is result['wideHierarchy']:
-            assert bottom['viewBoxWidth'] >= 7 * 10 * 70
-            assert float(bottom['widthStyle'].removesuffix('%')) > 100
-        else:
-            assert bottom['viewBoxWidth'] <= 1000
-            assert bottom['widthStyle'] == '100%'
+        # Every chart fits its card: the Breakdown of 70 bars takes the width of its 1000px pane, its bars narrower.
+        assert bottom['viewBoxWidth'] == (944 if charts is result['wideHierarchy'] else bottom['viewBoxWidth'])
+        assert bottom['viewBoxWidth'] <= 1000
+        assert bottom['widthStyle'] == '100%'
         assert bottom['minWidthStyle'] == '0'
 
     for comparison in result['sharedGeometry']:
@@ -847,6 +846,51 @@ process.stdout.write(JSON.stringify({
     assert result['oneCity'] == 2
     assert result['operatorFirst'] == ['EE'] * 2 + ['O2 UK'] * 2 + ['EE'] * 2 + ['O2 UK'] * 2
     assert result['missing'] == ''
+
+
+def test_scoring_charts_fit_their_card_with_every_bar():
+    script = SCORING_SCRIPT.read_text(encoding='utf-8')
+    names = ('bestNetworkHorizontalGeometry', 'placeBarTotal', 'fittedSvgLabelLines', 'hierarchyBandLabelLayout')
+    payload = {'snippets': [_function_source(script, name) for name in names]}
+    program = r"""
+const vm = require('node:vm');
+const payload = JSON.parse(require('node:fs').readFileSync(0, 'utf8'));
+const context = {};
+vm.createContext(context);
+vm.runInContext(payload.snippets.join('\n') + '\nglobalThis.chart = {bestNetworkHorizontalGeometry, placeBarTotal, hierarchyBandLabelLayout};', context);
+const {bestNetworkHorizontalGeometry, placeBarTotal, hierarchyBandLabelLayout} = context.chart;
+const total = (text, step) => {
+  const label = {textContent: text, attributes: {}, style: {}, setAttribute(name, value) { this.attributes[name] = String(value); }};
+  placeBarTotal(label, 100, 300, step, 12);
+  return {...label.attributes, fontSize: label.style.fontSize || ''};
+};
+const geometry = [10, 24, 84].map(count => {
+  const transitions = count === 84 ? 20 : 2;
+  const value = bestNetworkHorizontalGeometry(count, transitions, 14);
+  return {...value, used: value.step * count + value.groupGap * transitions};
+});
+process.stdout.write(JSON.stringify({
+  geometry,
+  wide: total('955.3', 80), narrow: total('955.3', 20),
+  city: hierarchyBandLabelLayout('London', 200), campaign: hierarchyBandLabelLayout('2026-Q1', 33),
+  operator: hierarchyBandLabelLayout('Vodafone UK', 6),
+}));
+"""
+    result = _run_node_json(program, payload)
+
+    # Every bar in the width of ten, whatever their number: the chart never widens past its card.
+    for value in result['geometry']:
+        assert value['width'] == 980 and value['used'] == pytest.approx(980 - 110 - 36)
+        assert 0 < value['groupGap'] <= 14 and value['barWidth'] <= 120
+    assert result['geometry'][2]['groupGap'] < 14
+    # Totals across while they fit, else turned 90° above the bar, as wide as it.
+    assert 'transform' not in result['wide'] and result['wide']['y'] == '288'
+    assert result['narrow']['transform'] == 'rotate(-90 100 294)' and result['narrow']['text-anchor'] == 'start'
+    assert result['narrow']['fontSize'] == '16px'
+    # Band labels: whole and large when they fit, smaller in two lines, turned 90° in very narrow bands.
+    assert result['city'] == {'size': 14, 'lines': ['London'], 'rotated': False}
+    assert result['campaign'] == {'size': 9, 'lines': ['2026-', 'Q1'], 'rotated': False}
+    assert result['operator']['rotated'] is True and result['operator']['size'] == 6
 
 
 def test_reference_header_uses_operator_mapping_accent_without_yellow_marker():
