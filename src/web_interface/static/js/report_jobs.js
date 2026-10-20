@@ -691,7 +691,18 @@
     const nameRow = node('div', undefined, 'rj-grid rj-one-row');
     nameRow.append(field('Name in the email', label));
     head.append(field('NR Mode', nrMode), campaigns.field, field('GAP reference operator', baseline), field('Methodology', methodology), remove);
-    nrMode.addEventListener('change', () => campaigns.refresh());
+    // NSA vs SA: how the document shows each NR Mode, as the NSA vs SA and NSA & SA charts of the Scoring & GAP Analysis
+    // results (offered while NR Mode is NSA vs SA).
+    const nrLayout = select(options.nr_layouts || [], entry.nr_layout || 'interleaved');
+    const nrCharts = select(options.nr_charts || [], entry.nr_charts || 'same');
+    const nrViews = node('div', undefined, 'rj-grid rj-one-row rj-nr-views');
+    nrViews.append(field('NSA vs SA', nrLayout), field('NSA & SA charts', nrCharts));
+    nrViews.children[0].title = 'Each panel of NSA followed by the same panel of SA, or every panel of NSA and then every panel of SA';
+    nrViews.children[1].title = 'The Scoring Charts and Scoring Trends with NSA and SA in the same chart (the trends on one axis of '
+      + 'quarters, SA dashed) or with the charts of each NR Mode on their own';
+    const syncNrViews = () => { nrViews.hidden = nrMode.value !== 'NSA+SA'; };
+    syncNrViews();
+    nrMode.addEventListener('change', () => { campaigns.refresh(); syncNrViews(); });
     const formats = node('div', undefined, 'rj-formats');
     formatChoices(formats, `rj-scoring-${scoringFormatId += 1}`, entry.formats || ['powerpoint'], ['powerpoint', 'word']);
     // The report scenarios (filters and aggregation) and content, edited with the Scoring & GAP
@@ -726,10 +737,11 @@
     reportRow.append(node('span', 'Report content:', 'rj-inline-label'), reportSummary, configure);
     describeReport();
     card.append(entryHead(card, 'Scoring', () => [nrMode.selectedOptions[0]?.textContent, label.value.trim()].filter(Boolean).join(' · ')),
-      formats, nameRow, head, campaigns.preview, reportRow);
+      formats, nameRow, head, nrViews, campaigns.preview, reportRow);
     card.getValue = () => ({
       label: label.value.trim(), nr_mode: nrMode.value, auto_cdrs: true, campaigns: campaigns.getValue(), formats: formats.getValue(),
       scoring_profile_id: methodology.value, baseline_operator: baseline.value.trim() || 'EE', report,
+      nr_layout: nrLayout.value, nr_charts: nrCharts.value,
     });
     return card;
   }

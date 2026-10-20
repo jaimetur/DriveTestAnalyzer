@@ -351,3 +351,132 @@ process.stdout.write(JSON.stringify({quarters, series: series.map(item => [item.
     assert result['quarters'] == ['26-Q2', '26-Q3']
     assert result['series'] == [['EE NSA', [930, 915], False], ['EE SA', [905, 910], True], ['VF NSA', [860, 830], False],
                                 ['VF SA', [None, 820], True], ['VF SM SA', [800, None], True]]
+
+
+def _nr_mode_slides(content: bytes) -> list[tuple[str, str]]:
+    from io import BytesIO
+    from pptx import Presentation
+    from src.modules.scoring_exports import SECTION_TAG_PREFIX
+    return [(str(slide._element.cSld.get('name') or '')[len(SECTION_TAG_PREFIX):],
+             slide.shapes.title.text_frame.paragraphs[0].text if slide.shapes.title is not None else '')
+            for slide in Presentation(BytesIO(content)).slides]
+
+
+def test_documents_show_each_nr_mode_as_the_results_of_the_page(tmp_path):
+    from src.modules.scoring_exports import export_scoring_report
+    from src.modules.scoring_reports import normalize_report_configuration
+    repository, ids = _workspace(tmp_path)
+    saved, _ = saved_filters.save_saved_filter(repository, [*ids['NSA'], *ids['SA']], ['Operator'], NSA_VS_SA,
+                                               area_summary={'time_split': 'Campaign', 'breakdown': 'Region', 'cities': []})
+    calculated = saved_filters.calculate_saved_filter(repository, saved['id'])
+    assert calculated['status'] == 'completed', calculated['error']
+    report = normalize_report_configuration({'scenarios': [{'name': 'NSA vs SA'}], 'nr_layout': 'interleaved'})
+    # NSA & SA in the same chart unless chosen otherwise; without nr_layout, the whole result as it is.
+    assert (report['nr_layout'], report['nr_charts']) == ('interleaved', 'same')
+    assert 'nr_layout' not in normalize_report_configuration({'scenarios': [{'name': 'NSA vs SA'}], 'nr_layout': 'other'})
+    template = Path(__file__).resolve().parents[1] / 'assets/powerpoint-templates/Template_VodafoneThree.pptx'
+    entries = [{'scenario': report['scenarios'][0], 'job': calculated, 'result': calculated['result']}]
+    whole = _nr_mode_slides(export_scoring_report(entries, template, []))
+    assert not [title for _tag, title in whole if title.startswith(('NSA · ', 'SA · '))]
+
+    def titles(slides, section):
+        return [title for tag, title in slides if tag == section]
+    # Each panel of NSA followed by the same panel of SA, each tagged; the covers once and, in the same chart, the Scoring
+    # Charts of the whole result.
+    interleaved = _nr_mode_slides(export_scoring_report(entries, template, [], nr_layout='interleaved', nr_charts='same'))
+    assert titles(interleaved, 'cover') == titles(whole, 'cover')
+    assert titles(interleaved, 'tables') == ['NSA · Scoring Tables — Summary', 'SA · Scoring Tables — Summary',
+                                             'NSA · Scoring Tables — Breakdown', 'SA · Scoring Tables — Breakdown']
+    assert titles(interleaved, 'charts') == titles(whole, 'charts')
+    summary = titles(interleaved, 'summary')
+    assert summary[:2] == ['NSA · How the measurements ran', 'SA · How the measurements ran']
+    # Every panel of NSA, then every one of SA; in separate charts, the Scoring Charts of each NR Mode.
+    grouped = _nr_mode_slides(export_scoring_report(entries, template, [], nr_layout='grouped', nr_charts='separate'))
+    charts = titles(grouped, 'charts')
+    half = len(charts) // 2
+    assert charts and [title.split(' · ', 1)[0] for title in charts] == ['NSA'] * half + ['SA'] * half
+    assert [title.split(' · ', 1)[1] for title in charts[:half]] == [title.split(' · ', 1)[1] for title in charts[half:]]
+    assert titles(grouped, 'tables') == ['NSA · Scoring Tables — Summary', 'NSA · Scoring Tables — Breakdown',
+                                         'SA · Scoring Tables — Summary', 'SA · Scoring Tables — Breakdown']
+    # Export Selected Scoring Report follows the NSA vs SA and NSA & SA charts of the page too.
+    from src.modules.scoring_exports import export_scoring_powerpoint
+    single = _nr_mode_slides(export_scoring_powerpoint(calculated, calculated['result'], template, [],
+                                                       nr_layout='interleaved', nr_charts='separate'))
+    assert titles(single, 'tables')[:2] == ['NSA · Scoring Tables — Summary', 'SA · Scoring Tables — Summary']
+    assert {title.split(' · ', 1)[0] for title in titles(single, 'charts')} == {'NSA', 'SA'}
+    assert not [title for _tag, title in _nr_mode_slides(export_scoring_powerpoint(calculated, calculated['result'], template, []))
+                if title.startswith(('NSA · ', 'SA · '))]
+
+
+def test_documents_draw_the_nsa_and_sa_trends_on_one_axis_of_quarters():
+    from io import BytesIO
+    from pptx import Presentation
+    from src.modules.scoring_exports import _nr_mode_area_summaries, _nr_mode_trends, _remove_all_slides, _slide
+    from src.modules.scoring_insight_slides import add_trend_slides
+    nsa = [{'environment': 'Combined', 'title': '', 'campaigns': ['2026-Q2', '2026-Q3'], 'maximum': 1000,
+            'series': [{'label': 'EE', 'operator': 'EE', 'points': [500.0, 520.0]}]}]
+    sa = [{'environment': 'Combined', 'title': '', 'campaigns': ['2026-Q3-SA'], 'maximum': 1000,
+           'series': [{'label': 'EE', 'operator': 'EE', 'points': [610.0]}, {'label': 'VF', 'operator': 'VF', 'points': [400.0]}]}]
+    [trend] = _nr_mode_trends(nsa, sa)
+    # 2026-Q3 and 2026-Q3-SA are one point; each operator has its NSA line and its dashed SA line.
+    assert trend['campaigns'] == ['2026-Q2', '2026-Q3']
+    assert [(series['label'], series['points'], series['dashed']) for series in trend['series']] == [
+        ('EE NSA', [500.0, 520.0], False), ('EE SA', [None, 610.0], True), ('VF SA', [None, 400.0], True)]
+    areas = [{'environment': 'Combined', 'campaigns': ['2026-Q3'], 'previous_campaign': None, 'scaled': False,
+              'areas': [{'label': 'National', 'rows': [{'label': 'EE', 'trend': [500.0]}]}]}]
+    sa_areas = [{'environment': 'Combined', 'campaigns': ['2026-Q3-SA'], 'previous_campaign': None, 'scaled': False,
+                 'areas': [{'label': 'National', 'rows': [{'label': 'EE', 'trend': [610.0]}]},
+                           {'label': 'London', 'rows': [{'label': 'EE', 'trend': [590.0]}]}]}]
+    [summary] = _nr_mode_area_summaries(areas, sa_areas)
+    assert summary['campaigns'] == ['2026-Q3'] and summary['latest_campaign'] == 'latest campaign'
+    assert [(area['label'], [row['label'] for row in area['rows']]) for area in summary['areas']] == [
+        ('National', ['EE NSA', 'EE SA']), ('London', ['EE SA'])]
+    template = Path(__file__).resolve().parents[1] / 'assets/powerpoint-templates/Template_VodafoneThree.pptx'
+    presentation = Presentation(template)
+    _remove_all_slides(presentation)
+    add_trend_slides(presentation, [trend], scoring_label='Best Network', subtitle='', new_slide=_slide)
+    output = BytesIO()
+    presentation.save(output)
+    [chart] = [shape.chart for shape in Presentation(BytesIO(output.getvalue())).slides[0].shapes if shape.has_chart]
+    assert [bool(series.format.line.dash_style) for series in chart.series] == [False, True, True]
+
+
+def test_bundle_report_templates_show_each_nr_mode_as_chosen(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    from src.modules import bundle_report_templates, scoring_selection
+    definition = bundle_report_templates.normalize_definition({'sections': [
+        {'key': 'scoring', 'options': {'nsa_vs_sa': True, 'nr_layout': 'grouped', 'nr_charts': 'unknown'}}]})
+    [scoring] = [section for section in definition['sections'] if section['key'] == 'scoring']
+    # Each panel: NSA then SA and NSA & SA in the same chart by default, as the page.
+    assert (scoring['options']['nr_layout'], scoring['options']['nr_charts']) == ('grouped', 'same')
+    assert 'NSA vs SA (All NSA, then all SA, NSA & SA in the same chart)' in bundle_report_templates.section_lines(scoring)[1]
+    defaults = bundle_report_templates.default_options('scoring')
+    assert (defaults['nr_layout'], defaults['nr_charts']) == ('interleaved', 'same')
+    captured = []
+
+    def build(_repository, base, report, _username):
+        captured.append((base, report))
+        return b'deck', 'scoring.pptx', {}
+    monkeypatch.setattr(scoring_selection, 'expand_scoring_campaigns', lambda *_args: ['UK_Q3_NSA_2026', 'UK_Q3_SA_2026'])
+    monkeypatch.setattr(bundle_report_templates, 'complete_campaign_cdrs', lambda *_args: ([1, 2], []))
+    core = SimpleNamespace(build_scoring_report_document=build)
+    generator = bundle_report_templates.SectionGenerator(core, SimpleNamespace(), SimpleNamespace(username='super'),
+                                                         definition, tmp_path)
+    generator.scoring(scoring)
+    scoring['options']['nsa_vs_sa'] = False
+    monkeypatch.setattr(bundle_report_templates, 'resolve_campaign_filter', lambda *_args: [])
+    generator.scoring(scoring)
+    (nsa_vs_sa_base, nsa_vs_sa_report), (_base, report) = captured
+    assert nsa_vs_sa_base['nr_mode'] == NSA_VS_SA
+    assert (nsa_vs_sa_report['nr_layout'], nsa_vs_sa_report['nr_charts']) == ('grouped', 'same')
+    # Without NSA vs SA, the report has a single NR Mode.
+    assert 'nr_layout' not in report
+    # The editor offers both choices below Compare NSA vs SA while it is checked.
+    script = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/bundle_report_template.js').read_text(encoding='utf-8')
+    assert "selectField('NSA vs SA', brtOptions.nr_layouts || [], saved.nr_layout)" in script
+    assert "selectField('NSA & SA charts', brtOptions.nr_charts || [], saved.nr_charts)" in script
+    assert 'nr_layout: nrLayout.input.value, nr_charts: nrCharts.input.value' in script
+    # The Scoring page sends the choices of its results with both exports.
+    page = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/scoring.js').read_text(encoding='utf-8')
+    assert "const nrViews = selection.nr_mode === 'NSA+SA' ? {nr_layout: selectedNrLayout, nr_charts: selectedNrCharts} : {};" in page
+    assert "url.searchParams.set('nr_layout', selectedNrLayout);" in page

@@ -35,6 +35,12 @@ DEFAULT_AREA_SUMMARY = {'enabled': True, 'time_split': 'Campaign', 'breakdown': 
 # The time split of the area summary: every selected CDR in one value, per campaign or per period of the tests' start time.
 AREA_SUMMARY_TIME_SPLITS = ('All', 'Campaign', 'Daily', 'Weekly', 'Monthly', 'Quarterly', 'Yearly')
 MAX_SCENARIOS = 20
+# NSA vs SA (see scoring_exports._add_nr_mode_block): each panel of NSA followed by the same panel of SA, or every panel
+# of NSA then every one of SA; and NSA and SA in the same Scoring Charts and Scoring Trends, or in separate ones.
+NR_LAYOUTS = ('interleaved', 'grouped')
+NR_CHARTS = ('same', 'separate')
+NR_LAYOUT_LABELS = {'interleaved': 'Each panel: NSA then SA', 'grouped': 'All NSA, then all SA'}
+NR_CHARTS_LABELS = {'same': 'NSA & SA in the same chart', 'separate': 'NSA & SA in separate charts'}
 MAX_SAVED_CONFIGURATIONS = 50
 # The slides of each scoring, in the groups (and order) of the results tabs.
 _OPTION_DEFAULTS = {
@@ -169,6 +175,10 @@ def normalize_report_configuration(raw: Any) -> dict[str, Any]:
     # all_operators, the Focus Operators panels show every operator (see scoring_export_panels).
     configuration: dict[str, Any] = {'scenarios': normalized, 'theme': normalize_theme(raw.get('theme')),
                                      'all_operators': bool(raw.get('all_operators'))}
+    # NSA vs SA shown as the results of the page show it (without them, the whole result as it is).
+    if raw.get('nr_layout') in NR_LAYOUTS:
+        configuration['nr_layout'] = raw['nr_layout']
+        configuration['nr_charts'] = raw['nr_charts'] if raw.get('nr_charts') in NR_CHARTS else 'same'
     # The saved configuration (or Default) it was chosen from, shown again in the editor's selector.
     name = str(raw.get('name') or '').strip()[:80]
     if name:
@@ -188,6 +198,12 @@ def _empty_state() -> dict[str, Any]:
     return {'configurations': [], 'last': None}
 
 
+def _stored_configuration(raw: Any) -> dict[str, Any]:
+    """A configuration as the workspace keeps it: NSA vs SA is chosen where the report is made (the results of the page,
+    a Scoring artifact of a Reporting Job or the Scoring section of a Bundle Report Template), not by the configuration."""
+    return {key: value for key, value in normalize_report_configuration(raw).items() if key not in {'nr_layout', 'nr_charts'}}
+
+
 def _normalize_state(raw: Any) -> dict[str, Any]:
     raw = raw if isinstance(raw, dict) else {}
     configurations = []
@@ -199,7 +215,7 @@ def _normalize_state(raw: Any) -> dict[str, Any]:
         if not name or name.casefold() in seen:
             continue
         try:
-            configuration = normalize_report_configuration(item.get('configuration'))
+            configuration = _stored_configuration(item.get('configuration'))
         except ValueError:
             continue
         seen.add(name.casefold())
@@ -208,7 +224,7 @@ def _normalize_state(raw: Any) -> dict[str, Any]:
     last = None
     if raw.get('last') is not None:
         try:
-            last = normalize_report_configuration(raw.get('last'))
+            last = _stored_configuration(raw.get('last'))
         except ValueError:
             last = None
     return {'configurations': configurations[:MAX_SAVED_CONFIGURATIONS], 'last': last}

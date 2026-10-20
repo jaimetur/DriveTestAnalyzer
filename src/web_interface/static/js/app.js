@@ -6874,7 +6874,8 @@ if (window.location.pathname === '/workspace') {
 // Every single <select> of the application opens the application's own list below the field instead of the browser's
 // (which macOS opens over the field). The select stays the field, with its look, value, events and disabled state, so
 // the modules need nothing: its list is built from its options each time it opens. Phones keep their own pickers, and
-// a select (or an element around it) with data-native-select keeps the browser's list.
+// a select (or an element around it) with data-native-select keeps the browser's list; with data-menu-fit, its list is
+// as wide as its longest option.
 function setupNativeSelectMenus() {
   if (document.documentElement.dataset.nativeSelectMenus === '1') return;
   document.documentElement.dataset.nativeSelectMenus = '1';
@@ -6940,6 +6941,7 @@ function setupNativeSelectMenus() {
     close({focus: false});
     const menu = document.createElement('div');
     menu.className = 'native-select-menu';
+    if (select.closest('[data-menu-fit]')) menu.classList.add('is-fit');
     menu.setAttribute('role', 'listbox');
     menu.tabIndex = -1;
     const label = select.getAttribute('aria-label') || select.labels?.[0]?.textContent?.trim() || '';

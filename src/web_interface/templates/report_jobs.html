@@ -12,7 +12,7 @@
     <summary class="collapsible-summary"><div><p class="eyebrow">One report from several modules</p><h2>Bundle Report Templates</h2></div><span class="collapse-chip">Collapse</span></summary>
     <div class="collapsible-panel-body">
       <div class="brt-toolbar">
-        <label class="brt-field brt-favourite-field">Favourite<select id="brt-favourite" aria-label="Favourite Bundle Report Template"><option value="">New Bundle Report Template</option></select></label>
+        <label class="brt-field brt-favourite-field">Favourite<select id="brt-favourite" aria-label="Favourite Bundle Report Template" data-menu-fit><option value="">New Bundle Report Template</option></select></label>
         <label class="brt-field brt-name-field">Name<input type="text" id="brt-name" maxlength="120" placeholder="Name of the favourite"></label>
         <div class="brt-favourite-actions">
           <button type="button" class="brt-secondary" id="brt-save" title="Save this Bundle Report Template as a favourite to use it again"><span aria-hidden="true">★</span> Save as favourite</button>
@@ -29,14 +29,14 @@
       <div class="brt-cover-fields">
         <label class="brt-field brt-title-field">Title on the cover<input type="text" id="brt-title" maxlength="160" placeholder="The name of the favourite, or Drive Test Analyzer Report"></label>
         <label class="brt-field brt-subtitle-field">Subtitle<input type="text" id="brt-subtitle" maxlength="200" placeholder="Optional, under the title of the cover"></label>
-        <label class="brt-field brt-theme-field" title="The colours and slide titles of every section that supports themes: Scoring &amp; GAP Analysis, Network Insights and PPT Dashboards">Theme<select id="brt-theme" aria-label="Colour theme of the Bundle Report Template"></select></label>
+        <label class="brt-field brt-theme-field" title="The colours and slide titles of every module that supports themes: Scoring &amp; GAP Analysis, Network Insights and PPT Dashboards">Theme<select id="brt-theme" aria-label="Colour theme of the Bundle Report Template"></select></label>
       </div>
       <h3 class="brt-heading">Common filters</h3>
-      <p class="form-note">They apply to every section and replace the saved filters of the Dashboards; empty filters include every value. The NR Mode also lists the Dashboards, and each section has its own Campaigns, which choose its CDRs.</p>
+      <p class="form-note">They apply to every module and replace the saved filters of the Dashboards; empty filters include every value. The NR Mode also lists the Dashboards, and each module has its own Campaigns, which choose its CDRs.</p>
       <div class="brt-filters" id="brt-filters"><p class="form-note">Loading the filters…</p></div>
-      <h3 class="brt-heading">Sections</h3>
-      <p class="form-note">Check the sections, sub-modules, charts and tables to include, and drag them by their handle (or move them with the arrow keys) to order them. In Word, each page holds as many components of a section as fit, in this order, and a component never spans two pages.</p>
-      <ol class="brt-sections" id="brt-sections" aria-label="Sections of the Bundle Report Template"></ol>
+      <h3 class="brt-heading">Modules</h3>
+      <p class="form-note">Check the modules, sub-modules, charts and tables to include, and drag them by their handle (or move them with the arrow keys) to order them. In Word, each page holds as many components of a module as fit, in this order, and a component never spans two pages.</p>
+      <ol class="brt-sections" id="brt-sections" aria-label="Modules of the Bundle Report Template"></ol>
     </div>
   </details>
   <dialog class="brt-dialog" id="brt-dialog" aria-labelledby="brt-dialog-title">

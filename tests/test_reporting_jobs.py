@@ -839,3 +839,38 @@ def test_jobs_saved_before_store_one_theme(tmp_path):
     assert 'theme' not in stored['Legacy']['network_insights'][0] and 'theme' not in stored['Legacy']['scoring'][0]['report']
     assert stored['Chosen']['theme'] == 'midnight'
     assert stored['Former']['modules'] == {'bundle_report_template': {'enabled': True, 'formats': ['word']}}
+
+
+def test_nsa_vs_sa_scoring_entries_show_each_nr_mode_as_chosen(client, monkeypatch):
+    definition = normalize_definition({'scoring': [
+        {**SCORING_ENTRY, 'nr_mode': 'NSA+SA', 'nr_layout': 'grouped', 'nr_charts': 'separate',
+         'report': {**default_report_configuration(), 'nr_layout': 'interleaved'}},
+        {**SCORING_ENTRY, 'nr_layout': 'other'}]})
+    nsa_vs_sa, nsa = definition['scoring']
+    assert (nsa_vs_sa['nr_layout'], nsa_vs_sa['nr_charts']) == ('grouped', 'separate')
+    # Each panel: NSA then SA and NSA & SA in the same chart by default; the entry chooses them, not its report.
+    assert (nsa['nr_layout'], nsa['nr_charts']) == ('interleaved', 'same') and 'nr_layout' not in nsa_vs_sa['report']
+    reports = []
+    monkeypatch.setattr(report_tasks, 'complete_campaign_cdrs', lambda *_args: ([11, 12, 13], []))
+
+    def build(repository, base, report, username):
+        reports.append((base['nr_mode'], report))
+        return b'pptx', 'Scoring.pptx', {'dataset_ids': base['dataset_ids'], 'nr_mode': base['nr_mode']}
+
+    monkeypatch.setattr(core, 'build_scoring_report_document', build)
+    login(client)
+    payload = {'name': 'NSA vs SA views', 'schedule': {'mode': 'manual'}, 'definition': {'scoring': [
+        {**SCORING_ENTRY, 'nr_mode': 'NSA+SA', 'auto_cdrs': True, 'nr_layout': 'grouped', 'nr_charts': 'separate'},
+        {**SCORING_ENTRY, 'auto_cdrs': True}]}}
+    created = client.post('/api/reporting/tasks', json=payload)
+    assert created.status_code == 200, created.text
+    wait_for_run(client, client.post(f"/api/reporting/tasks/{created.json()['task']['id']}/run").json()['run_id'])
+    (mode, report), (_mode, single) = reports
+    assert mode == 'NSA+SA' and (report['nr_layout'], report['nr_charts']) == ('grouped', 'separate')
+    assert 'nr_layout' not in single
+    options = client.get('/api/reporting/options').json()
+    assert options['nr_layouts'] == [['interleaved', 'Each panel: NSA then SA'], ['grouped', 'All NSA, then all SA']]
+    # The editor offers both choices while NR Mode is NSA vs SA.
+    script = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/report_jobs.js').read_text(encoding='utf-8')
+    assert "const syncNrViews = () => { nrViews.hidden = nrMode.value !== 'NSA+SA'; };" in script
+    assert 'nr_layout: nrLayout.value, nr_charts: nrCharts.value,' in script

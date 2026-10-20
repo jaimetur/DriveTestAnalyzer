@@ -61,6 +61,7 @@ select[multiple] { min-height: 10rem; border-radius: 18px; padding-right: 0.55re
 .native-select-search { position: sticky; top: -.4rem; z-index: 1; box-sizing: border-box; width: 100%; min-height: 2.25rem; margin: -.4rem 0 .25rem; padding: .45rem .7rem; border: 1px solid var(--line); border-radius: 12px; background: #fff; box-shadow: 0 0 0 .4rem rgba(255, 253, 250, .99); color: var(--text); font: inherit; font-weight: 500; }
 .native-select-group { padding: .5rem .7rem .15rem 1.85rem; color: var(--muted); font-size: .68rem; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
 .native-select-group.is-divided { margin-top: .3rem; border-top: 1px solid var(--line, #dbe3e7); padding-top: .55rem; }
+.native-select-menu.is-fit { max-width: calc(100vw - 1rem); }
 .native-select-option { display: flex; align-items: baseline; gap: .45rem; padding: .38rem .8rem .38rem .55rem; border-radius: 10px; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .native-select-option::before { content: ''; flex: 0 0 .9rem; color: var(--brand); font-weight: 900; text-align: center; }
 .native-select-option[aria-selected="true"] { color: var(--brand); font-weight: 800; }

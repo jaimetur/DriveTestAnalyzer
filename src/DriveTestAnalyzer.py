@@ -18914,10 +18914,16 @@ def scoring_saved_filter_export(
     environments: list[str] | None = Query(default=None),
     operators: str | None = None,
     all_operators: bool = False,
+    nr_layout: str | None = None,
+    nr_charts: str | None = None,
     user: SessionUser = Depends(current_user),
 ) -> Response:
     if table_mode is not None and table_mode not in {'expanded', 'summary'}:
         raise HTTPException(status_code=400, detail='Table mode must be expanded or summary.')
+    # NSA vs SA: each NR Mode on its own, as the results of the page show it (see scoring_exports.export_scoring_report).
+    from src.modules.scoring_reports import NR_CHARTS, NR_LAYOUTS
+    if (nr_layout is not None and nr_layout not in NR_LAYOUTS) or (nr_charts is not None and nr_charts not in NR_CHARTS):
+        raise HTTPException(status_code=400, detail='NSA vs SA must be interleaved or grouped, and NSA & SA charts same or separate.')
     # The operators each section of the page has enabled ({section: [operators]}), so the PowerPoint and Word show
     # the same ones.
     operator_choices: dict[str, list[str]] = {}
@@ -18961,6 +18967,7 @@ def scoring_saved_filter_export(
             **({'environments': export_environments} if export_kind in {'ppt', 'word'} and export_environments else {}),
             **({'operators': operator_choices} if export_kind in {'ppt', 'word'} and operator_choices else {}),
             **({'all_operators': True} if export_kind in {'ppt', 'word'} and all_operators else {}),
+            **({'nr_layout': nr_layout, 'nr_charts': nr_charts or 'same'} if export_kind in {'ppt', 'word'} and nr_layout else {}),
         }))
         return response
     from src.modules.scoring_views import normalize_result_gaps
@@ -19061,6 +19068,7 @@ def scoring_saved_filter_export(
                 show_gap_values=show_gap_values,
                 split_charts=split_charts, theme=export_theme,
                 scorings=export_scorings, environments=export_environments,
+                nr_layout=nr_layout, nr_charts=nr_charts or 'same',
             )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -19226,6 +19234,7 @@ def build_scoring_report_document(task_repository: Repository, base: dict[str, A
     content = export_scoring_report(
         entries, template, operator_mapping_groups, split_charts=split_charts,
         vendor_mapping_groups=task_repository.list_vendor_mapping_groups(), theme=report['theme'],
+        nr_layout=report.get('nr_layout'), nr_charts=report.get('nr_charts') or 'same',
     )
     first = entries[0]['job']
     if len(entries) == 1:
@@ -19254,6 +19263,9 @@ class ScoringReportRequest(BaseModel):
     context_filters: dict[str, list[str]] | None = None
     aggregation_levels: list[str] | None = None
     area_summary: dict[str, Any] | None = None
+    # NSA vs SA: how the results of the page show each NR Mode, which the document follows.
+    nr_layout: str | None = None
+    nr_charts: str | None = None
 
 
 class ScoringReportConfigurationRequest(BaseModel):
@@ -19269,8 +19281,11 @@ def scoring_report(export_kind: str, payload: ScoringReportRequest, user: Sessio
         raise HTTPException(status_code=404, detail='Unknown scoring report format.')
     if not payload.dataset_ids:
         raise HTTPException(status_code=400, detail='Select the CDRs of the report in the Calculation panel.')
+    from src.modules.scoring_reports import NR_CHARTS, NR_LAYOUTS, remember_last_configuration
+    if (payload.nr_layout is not None and payload.nr_layout not in NR_LAYOUTS) or (
+            payload.nr_charts is not None and payload.nr_charts not in NR_CHARTS):
+        raise HTTPException(status_code=400, detail='NSA vs SA must be interleaved or grouped, and NSA & SA charts same or separate.')
     task_repository = scoring_repository(user)
-    from src.modules.scoring_reports import remember_last_configuration
     base = {'dataset_ids': list(payload.dataset_ids), 'nr_mode': payload.nr_mode,
             'baseline_operator': payload.baseline_operator.strip() or 'EE',
             'scoring_profile_id': payload.scoring_profile_id or None}
@@ -19284,6 +19299,10 @@ def scoring_report(export_kind: str, payload: ScoringReportRequest, user: Sessio
         }
         configuration = {**configuration, 'scenarios': [{**scenario, **page_scope} for scenario in configuration.get('scenarios') or []
                                                         if isinstance(scenario, dict)]}
+    # (Not part of the configuration the report editor remembers: the page chooses them.)
+    configuration = {key: value for key, value in configuration.items() if key not in {'nr_layout', 'nr_charts'}}
+    if payload.nr_layout:
+        configuration.update({'nr_layout': payload.nr_layout, 'nr_charts': payload.nr_charts or 'same'})
     try:
         # The configuration in use (as chosen) is remembered when the document is requested, not when it is ready.
         remember_last_configuration(task_repository, payload.configuration)
@@ -19303,6 +19322,7 @@ def scoring_report(export_kind: str, payload: ScoringReportRequest, user: Sessio
         media_type = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
     task_repository.try_add_log(user.username, f'export_scoring_report_{export_kind}', json.dumps({
         'file': filename, 'datasets': len(payload.dataset_ids), 'nr_mode': payload.nr_mode,
+        **({'nr_layout': payload.nr_layout, 'nr_charts': payload.nr_charts or 'same'} if payload.nr_layout else {}),
     }))
     return Response(content, media_type=media_type, headers={
         'Content-Disposition': f"attachment; filename*=UTF-8''{quote(filename)}",

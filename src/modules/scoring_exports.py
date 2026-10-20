@@ -4,6 +4,7 @@ from __future__ import annotations
 from copy import deepcopy
 import csv
 import json
+import re
 from io import BytesIO, StringIO
 from math import ceil, floor, isclose, isfinite, log10
 from pathlib import Path
@@ -25,6 +26,8 @@ from src.modules.cdr_reporting import (
 )
 from src.modules.column_names import campaign_sort_key, compact_campaign_value
 from src.modules import report_structure
+from src.modules.nr_mode import NR_MODES, NSA_VS_SA, SAME_OPERATOR_NSA, normalize_scoring_nr_mode
+from src.modules.pptx_compose import PAGE_SUFFIX
 from src.modules.scoring import most_reliable_result
 from src.modules.operator_roles import focus_operators
 from src.modules.scoring_points_loss import map_background, map_boundaries
@@ -52,7 +55,8 @@ from src.modules.scoring_act_slides import (
 )
 from src.modules.scoring_vendors import normalize_scoring_vendor_result
 from src.modules.scoring_views import (
-    THRESHOLD_COLORS, _hierarchy_display_value, gap_priority_order_key, latest_campaign_columns, build_scoring_views, refresh_baseline_warning, scoring_coverage_notes,
+    THRESHOLD_COLORS, _hierarchy_display_value, gap_priority_order_key, latest_campaign_columns, build_scoring_views, nr_mode_result,
+    refresh_baseline_warning, scoring_coverage_notes,
 )
 from src.modules.scoring_pptx_allocation import (
     _environment_display_label, add_maximum_allocation_donut, category_maximum_allocations,
@@ -2760,9 +2764,15 @@ def _add_scoring_block(presentation, job: dict[str, Any], result: dict[str, Any]
                        table_mode: str, gap_layout: str, environment: str, show_gap_values: bool,
                        split_charts: bool, vendor_mapping_groups: list[dict[str, Any]] | None,
                        options: dict | None = None, section_cover: bool = True,
-                       environments: list[str] | None = None, level: int = 1) -> None:
+                       environments: list[str] | None = None, level: int = 1,
+                       cover: tuple[dict[str, Any], dict[str, Any]] | None = None,
+                       trend_parts: list[tuple[dict[str, Any], dict[str, Any]]] | None = None) -> None:
     """Add the charts, tables and GAP slides of one scoring; scoring is None when the job has only Best Network.
     Its cover is a transition of ``level``, and each environment one of the level below it.
+
+    ``cover`` is the job and result its covers name (NSA vs SA: the whole result, for each NR Mode on its own).
+    ``trend_parts`` (NSA vs SA with NSA & SA in the same chart): the job and result of each NR Mode, whose Scoring Trends
+    and National & Geographical Areas Trends are drawn together, on one axis of quarters.
 
     ``options`` are the content options of a report scenario: All Environments only or
     a block per environment, and the charts, tables and GAP slides to include.
@@ -2829,8 +2839,9 @@ def _add_scoring_block(presentation, job: dict[str, Any], result: dict[str, Any]
                 for name, scope in configuration.get('scope', {}).get('environments', {}).items()
             }
     environment_level = level
+    cover_job, cover_result = cover or (job, result)
     if scoring is not None and section_cover:
-        _add_scoring_intro_slides(presentation, job, result, scoring=scoring, level=level)
+        _add_scoring_intro_slides(presentation, cover_job, cover_result, scoring=scoring, level=level)
         environment_level = level + 1
     # Each slide is named after its section (summary, charts, tables, geographical_areas, gap, points, comparison).
     untagged = [len(presentation.slides)]
@@ -2858,11 +2869,24 @@ def _add_scoring_block(presentation, job: dict[str, Any], result: dict[str, Any]
         job, result, operator_mapping_groups, vendor_mapping_groups=vendor_mapping_groups,
         include_operator=None if areas_base is _all_operators else areas_base,
     )
+    if trend_parts:
+        # The trends of each NR Mode, as an NSA or an SA calculation gives them, on one axis of quarters.
+        part_trends, part_summaries = [], []
+        for part_job, part_result in trend_parts:
+            part_views = _export_environment_views(
+                build_scoring_views(part_job, part_result, operator_mapping_groups, vendor_mapping_groups=vendor_mapping_groups),
+                environment)
+            part_trends.append((part_views.get('insights') or {}).get('campaign_trends') or [])
+            part_summaries.append(build_area_summary(
+                part_job, part_result, operator_mapping_groups, vendor_mapping_groups=vendor_mapping_groups,
+                include_operator=None if areas_base is _all_operators else areas_base))
+        views.setdefault('insights', {})['campaign_trends'] = _nr_mode_trends(*part_trends)
+        area_summaries = _nr_mode_area_summaries(*part_summaries)
 
     def environment_cover(environment_name: str) -> None:
         # With All Environments only, the scoring cover already introduces the block; the Summary follows it.
         if not combined_only:
-            _add_scoring_intro_slides(presentation, job, result, environment=environment_name, scoring=scoring,
+            _add_scoring_intro_slides(presentation, cover_job, cover_result, environment=environment_name, scoring=scoring,
                                       level=environment_level)
         _add_insight_slides(presentation, views, environment_name, scoring, configuration, stage='summary', options=options,
                             focus=focus)
@@ -2992,6 +3016,320 @@ def _add_scoring_block(presentation, job: dict[str, Any], result: dict[str, Any]
         _text(slide, 'No scoring measurements are available for this saved job.', 1.8, height=1, size=16)
 
 
+
+# NSA vs SA (see the results of the Scoring & GAP Analysis page): each NR Mode on its own, in the colour of its tag.
+NR_MODE_COLORS = {'NSA': '#1D4ED8', 'SA': '#BE185D'}
+# The results tabs in the order of a scoring block (see _add_scoring_block) and the content groups of a report scenario.
+_SECTION_ORDER = ('summary', 'charts', 'tables', 'comparison', 'geographical_areas', 'trends', 'gap', 'points')
+_OPTION_GROUPS = ('summary', 'charts', 'tables', 'geographical_areas', 'trends', 'gap', 'points')
+_NR_MODE_TOKEN = re.compile(r'(^|[_\- ])(NSA|SA)(?=$|[_\- ])', re.IGNORECASE)
+
+
+def _nr_mode_quarter(label: Any) -> str:
+    """The quarter (or period) of a campaign without its NR Mode: 2026-Q2 and 2026-Q2-SA are one point of the axis."""
+    return re.sub(r'[_\- ]+$', '', _NR_MODE_TOKEN.sub('', str(label if label is not None else ''), count=1)).strip()
+
+
+def _nr_mode_quarters(*lists: list[Any]) -> list[str]:
+    return sorted(dict.fromkeys(_nr_mode_quarter(value) for values in lists for value in values), key=campaign_sort_key)
+
+
+def _nr_mode_series(nsa_items: list[dict], sa_items: list[dict], campaigns_of: dict[str, list[Any]],
+                    quarters: list[str], points_key: str) -> list[dict]:
+    """The lines of both NR Modes on ``quarters``: each operator with its NSA line, then its dashed SA line."""
+    def remap(item: dict, mode: str) -> dict:
+        at = {_nr_mode_quarter(campaign): index for index, campaign in enumerate(campaigns_of[mode])}
+        values = item.get(points_key) or []
+        return {**item, 'label': f"{item.get('label')} {mode}", 'nr_mode': mode, 'dashed': mode == 'SA',
+                points_key: [values[at[quarter]] if at.get(quarter, len(values)) < len(values) else None
+                             for quarter in quarters]}
+    series = []
+    sa_left = list(sa_items)
+    for item in nsa_items:
+        series.append(remap(item, 'NSA'))
+        twin = next((other for other in sa_left if other.get('label') == item.get('label')), None)
+        if twin is not None:
+            sa_left.remove(twin)
+            series.append(remap(twin, 'SA'))
+    return [*series, *(remap(item, 'SA') for item in sa_left)]
+
+
+def _nr_mode_trends(nsa_trends: list[dict], sa_trends: list[dict]) -> list[dict]:
+    """The Scoring Trends of both NR Modes, each trend of NSA with the same one of SA in one chart."""
+    def by_key(items: list[dict]) -> dict[str, dict]:
+        return {f"{item.get('environment')}|{item.get('title') or ''}": item for item in items}
+    nsa, sa = by_key(nsa_trends), by_key(sa_trends)
+    trends = []
+    for key in dict.fromkeys([*nsa, *sa]):
+        first, second = nsa.get(key), sa.get(key)
+        base = first or second
+        campaigns_of = {'NSA': (first or {}).get('campaigns') or [], 'SA': (second or {}).get('campaigns') or []}
+        quarters = _nr_mode_quarters(campaigns_of['NSA'], campaigns_of['SA'])
+        trends.append({**base, 'campaigns': quarters,
+                       'title': ' · '.join(part for part in (base.get('title'), 'NSA solid and SA dashed lines') if part),
+                       'series': _nr_mode_series((first or {}).get('series') or [], (second or {}).get('series') or [],
+                                                 campaigns_of, quarters, 'points'),
+                       'maximum': max(float((first or {}).get('maximum') or 0), float((second or {}).get('maximum') or 0))
+                       or base.get('maximum')})
+    return trends
+
+
+def _nr_mode_area_summaries(nsa_summaries: list[dict], sa_summaries: list[dict]) -> list[dict]:
+    """The National & Geographical Areas Trends of both NR Modes: each area with the rows of NSA and SA (each row the
+    latest campaign of its NR Mode and its change from the previous one of that NR Mode)."""
+    nsa = {str(item.get('environment')): item for item in nsa_summaries}
+    sa = {str(item.get('environment')): item for item in sa_summaries}
+    summaries = []
+    for key in dict.fromkeys([*nsa, *sa]):
+        first, second = nsa.get(key) or {}, sa.get(key) or {}
+        base = first or second
+        campaigns_of = {'NSA': first.get('campaigns') or [], 'SA': second.get('campaigns') or []}
+        quarters = _nr_mode_quarters(campaigns_of['NSA'], campaigns_of['SA'])
+        sa_areas = {area.get('label'): area for area in second.get('areas') or []}
+        areas = [{**area, 'rows': _nr_mode_series(area.get('rows') or [], (sa_areas.get(area.get('label')) or {}).get('rows') or [],
+                                                   campaigns_of, quarters, 'trend')}
+                 for area in first.get('areas') or []]
+        known = {area.get('label') for area in areas}
+        areas += [{**area, 'rows': _nr_mode_series([], area.get('rows') or [], campaigns_of, quarters, 'trend')}
+                  for area in second.get('areas') or [] if area.get('label') not in known]
+        summaries.append({**base, 'campaigns': quarters, 'areas': areas, 'latest_campaign': 'latest campaign',
+                          'previous_campaign': 'previous campaign' if first.get('previous_campaign')
+                          or second.get('previous_campaign') else None,
+                          'scaled': bool(first.get('scaled') or second.get('scaled'))})
+    return summaries
+
+
+def nr_mode_parts(job: dict[str, Any], result: dict[str, Any]) -> list[dict[str, Any]]:
+    """NSA vs SA: the job and result of each NR Mode, as an NSA or an SA calculation of the same campaigns gives them
+    (with its Most Reliable scoring); none unless both NR Modes have results."""
+    if normalize_scoring_nr_mode(job.get('nr_mode')) != NSA_VS_SA:
+        return []
+    baseline = str(job.get('baseline_operator') or 'EE')
+    parts = []
+    for mode in NR_MODES:
+        part_result = nr_mode_result(result, mode)
+        if not part_result.get('totals'):
+            continue
+        # (The settings of the export, such as the panels and their operators, stay as they are.)
+        part_job = {**nr_mode_result({key: value for key, value in job.items() if not key.startswith('_')}, mode),
+                    **{key: value for key, value in job.items() if key.startswith('_')}, 'nr_mode': mode}
+        parts.append({'nr_mode': mode, 'job': part_job, 'result': part_result,
+                      'reliable': most_reliable_result(part_result, baseline, part_job.get('configuration'))})
+    return parts if len(parts) > 1 else []
+
+
+def _options_of_groups(options: dict, groups: set[str], *, keep: bool) -> dict:
+    """The content options with only ``groups`` (``keep``) or without them (every option of a group left out off)."""
+    from src.modules.scoring_reports import _OPTION_DEFAULTS
+    return {**options, **{group: {name: False for name in {**_OPTION_DEFAULTS[group], **(options.get(group) or {})}}
+                          for group in _OPTION_GROUPS if (group in groups) != keep}}
+
+
+def _every_option(show_gap_values: bool) -> dict:
+    """The content options of an export without a report scenario: every slide, a block per environment, the KPI values
+    left out and the GAP values as chosen (as ``options`` None gives them)."""
+    from src.modules.scoring_reports import _OPTION_DEFAULTS
+    options = {'enabled': True, 'environments': 'split',
+               **{group: {name: True for name in _OPTION_DEFAULTS[group]} for group in _OPTION_GROUPS}}
+    options['tables'].update({'kpi_values': False, 'gap_values': show_gap_values})
+    return options
+
+
+def _slide_section(slide) -> str:
+    name = str(slide._element.cSld.get('name') or '')
+    return name[len(SECTION_TAG_PREFIX):] if name.startswith(SECTION_TAG_PREFIX) else ''
+
+
+def _slide_title(slide) -> str:
+    shape = slide.shapes.title
+    if shape is None or not shape.has_text_frame or not shape.text_frame.paragraphs:
+        return ''
+    return ' '.join(shape.text_frame.paragraphs[0].text.split())
+
+
+def _tag_nr_mode_slide(slide, mode: str) -> None:
+    """``NSA ·`` or ``SA ·`` before the title of a slide of one NR Mode, in the colour of its tag."""
+    shape = slide.shapes.title
+    if shape is None or not shape.has_text_frame or not shape.text_frame.paragraphs:
+        return
+    paragraph = shape.text_frame.paragraphs[0]
+    runs = paragraph.runs
+    run = paragraph.add_run()
+    if runs:
+        if runs[0]._r.rPr is not None:
+            run._r.insert(0, deepcopy(runs[0]._r.rPr))
+        runs[0]._r.addprevious(run._r)
+    run.text = f'{mode} · '
+    run.font.bold = True
+    run.font.color.rgb = _theme_rgb(NR_MODE_COLORS.get(mode, TITLE_BLUE))
+    _fit_slide_title_on_one_line(shape, paragraph)
+
+
+def _nr_mode_panels(slides: list) -> list[tuple[tuple[str, int], list]]:
+    """The panels of a tab (a chart or table, with the slides it continues on), keyed by their title without page
+    numbers or NR Mode and its place among those of the same title."""
+    panels: list[tuple[str, list]] = []
+    for slide in slides:
+        base = PAGE_SUFFIX.sub('', _slide_title(slide)).strip()
+        name = _NR_MODE_TOKEN.sub(r'\1', base)
+        if panels and panels[-1][0] == name and PAGE_SUFFIX.search(_slide_title(slide) + ' ' + _slide_subtitle(slide)):
+            panels[-1][1].append(slide)
+        else:
+            panels.append((name, [slide]))
+    seen: dict[str, int] = {}
+    keyed = []
+    for name, panel in panels:
+        seen[name] = seen.get(name, 0) + 1
+        keyed.append(((name, seen[name]), panel))
+    return keyed
+
+
+def _slide_subtitle(slide) -> str:
+    shape = slide.shapes.title
+    if shape is None or not shape.has_text_frame:
+        return ''
+    return ' · '.join(' '.join(paragraph.text.split()) for paragraph in shape.text_frame.paragraphs[1:] if paragraph.text.strip())
+
+
+def _interleave_nr_mode_panels(nsa: list, sa: list) -> list:
+    """Each panel of NSA followed by the same panel of SA; a panel of SA without one of NSA goes after the SA panel
+    before it."""
+    nsa_panels, sa_panels = _nr_mode_panels(nsa), _nr_mode_panels(sa)
+    sa_by_key = dict(sa_panels)
+    merged: list[list] = []
+    placed: set[tuple[str, int]] = set()
+    for key, panel in nsa_panels:
+        merged.append(panel)
+        if key in sa_by_key:
+            merged.append(sa_by_key[key])
+            placed.add(key)
+    for index, (key, panel) in enumerate(sa_panels):
+        if key in placed:
+            continue
+        previous = sa_panels[index - 1][1] if index else None
+        position = next((number + 1 for number, other in enumerate(merged) if other is previous), 0 if index == 0 else len(merged))
+        merged.insert(position, panel)
+    return [slide for panel in merged for slide in panel]
+
+
+def _drop_slides(presentation, slides: list) -> None:
+    slide_ids = presentation.slides._sldIdLst
+    elements = {int(element.id): element for element in slide_ids}
+    for slide in slides:
+        element = elements[slide.slide_id]
+        presentation.part.drop_rel(element.rId)
+        slide_ids.remove(element)
+
+
+def _arrange_nr_mode_slides(presentation, ranges: list[tuple[str | None, list]], layout: str) -> None:
+    """Put the slides of the whole result (``None``) and of each NR Mode of a scoring together: one copy of each cover,
+    then each tab of the results (Summary, Scoring Charts…) with the panels of the whole result and those of the NR Modes,
+    each panel of NSA followed by the same panel of SA (``interleaved``) or every panel of NSA then every one of SA."""
+    segments: dict[tuple[str, int], dict[str, Any]] = {}
+    order: list[tuple[str, int]] = []
+    duplicates = []
+    for mode, slides in ranges:
+        seen: dict[str, int] = {}
+        key = ('', 0)
+        for slide in slides:
+            if _slide_section(slide) == 'cover':
+                title = _slide_title(slide)
+                seen[title] = seen.get(title, 0) + 1
+                key = (title, seen[title])
+                if key in segments and segments[key]['cover'] is not None:
+                    duplicates.append(slide)
+                    continue
+                segments.setdefault(key, {'cover': None, 'content': {}})['cover'] = slide
+                if key not in order:
+                    order.append(key)
+                continue
+            segment = segments.setdefault(key, {'cover': None, 'content': {}})
+            if key not in order:
+                order.append(key)
+            segment['content'].setdefault(mode, []).append(slide)
+    modes = [mode for mode, _slides in ranges if mode is not None]
+    arranged = []
+    for key in order:
+        segment = segments[key]
+        if segment['cover'] is not None:
+            arranged.append(segment['cover'])
+        content = segment['content']
+        sections = list(dict.fromkeys([*(name for name in _SECTION_ORDER),
+                                       *(_slide_section(slide) for slides in content.values() for slide in slides)]))
+        for name in sections:
+            arranged.extend(slide for slide in content.get(None, []) if _slide_section(slide) == name)
+            parts = [[slide for slide in content.get(mode, []) if _slide_section(slide) == name] for mode in modes]
+            if layout == 'interleaved' and len(parts) == 2:
+                arranged.extend(_interleave_nr_mode_panels(*parts))
+            else:
+                arranged.extend(slide for part in parts for slide in part)
+    _drop_slides(presentation, duplicates)
+    slide_ids = presentation.slides._sldIdLst
+    elements = {int(element.id): element for element in slide_ids}
+    # The slides of the block are the last ones of the document: they go back in their new order.
+    for slide in arranged:
+        element = elements[slide.slide_id]
+        slide_ids.remove(element)
+        slide_ids.append(element)
+
+
+def _add_nr_mode_block(presentation, job: dict[str, Any], result: dict[str, Any], parts: list[dict[str, Any]],
+                       operator_mapping_groups: list[dict[str, Any]] | None, *, scoring: str | None, options: dict | None,
+                       layout: str, charts: str, **block: Any) -> None:
+    """NSA vs SA as the results of the page show it: each tab with the panels of NSA and those of SA (each tagged with
+    its NR Mode), each panel of NSA followed by the same panel of SA (``layout`` interleaved) or every panel of NSA then
+    every one of SA (grouped). With ``charts`` same, the Scoring Charts are those of the whole result (each operator with
+    its NSA and SA bars) and the Scoring Trends show the NSA and SA lines of each operator on one axis of quarters; the
+    GAP of Same operator in NSA is that of the whole result."""
+    if options is None:
+        options = _every_option(bool(block.get('show_gap_values', True)))
+    together = charts == 'same'
+    whole = {*(['charts'] if together else []), *(['gap'] if str(job.get('baseline_operator') or '') == SAME_OPERATOR_NSA else [])}
+    merged = {'trends'} if together else set()
+    reliable = scoring == MOST_RELIABLE_SCORING
+
+    # (A scenario of a report with several keeps its name on every slide.)
+    scenario = {key: value for key, value in job.items() if key.startswith('_scenario')}
+    scenario_name = (job.get('configuration') or {}).get('_scenario_name')
+
+    def part_of(part: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]] | None:
+        if reliable and part['reliable'] is None:
+            return None
+        part_result = part['reliable'] if reliable else part['result']
+        configuration = dict((part_result if reliable else part['job']).get('configuration') or {})
+        if scenario_name:
+            configuration['_scenario_name'] = scenario_name
+        return {**part['job'], **scenario, 'configuration': configuration}, part_result
+    ranges: list[tuple[str | None, list]] = []
+
+    def add(mode: str | None, block_job: dict, block_result: dict, block_options: dict, **extra: Any) -> None:
+        first = len(presentation.slides)
+        try:
+            _add_scoring_block(presentation, block_job, block_result, operator_mapping_groups, scoring=scoring,
+                               options=block_options, cover=(job, result), **block, **extra)
+        except ValueError as exc:
+            # An NR Mode without the chosen environments is left out (the whole result has them all).
+            if mode is None or not any(text in str(exc) for text in ('None of the selected environments',
+                                                                      'The selected environment is not available')):
+                raise
+            _drop_slides(presentation, list(presentation.slides)[first:])
+            return
+        slides = list(presentation.slides)[first:]
+        if mode is not None:
+            for slide in slides:
+                if _slide_section(slide) != 'cover':
+                    _tag_nr_mode_slide(slide, mode)
+        ranges.append((mode, slides))
+    if whole or merged:
+        trend_parts = [found for found in (part_of(part) for part in parts) if found] if merged else None
+        add(None, job, result, _options_of_groups(options, whole | merged, keep=True), trend_parts=trend_parts)
+    for part in parts:
+        found = part_of(part)
+        if found is not None:
+            add(part['nr_mode'], *found, _options_of_groups(options, whole | merged, keep=False))
+    _arrange_nr_mode_slides(presentation, ranges, layout)
+
+
 def export_scoring_powerpoint(job: dict[str, Any], result: dict[str, Any], template_path: Path,
                              operator_mapping_groups: list[dict[str, Any]] | None = None,
                              *, table_mode: str = 'expanded', gap_layout: str = 'end',
@@ -2999,24 +3337,28 @@ def export_scoring_powerpoint(job: dict[str, Any], result: dict[str, Any], templ
                              split_charts: bool = True,
                              vendor_mapping_groups: list[dict[str, Any]] | None = None,
                              theme: str = DEFAULT_THEME, scorings: list[str] | None = None,
-                             environments: list[str] | None = None) -> bytes:
+                             environments: list[str] | None = None, nr_layout: str | None = None,
+                             nr_charts: str = 'same') -> bytes:
     """Export saved points as comparison matrices, charts and prioritized gaps, in the colours of ``theme``.
 
     ``scorings`` (best_network, most_reliable) and ``environments`` (Combined for All Environments, or the names of
-    the environments) keep only those blocks; without them, every scoring and environment is exported.
+    the environments) keep only those blocks; without them, every scoring and environment is exported. ``nr_layout``
+    and ``nr_charts`` show each NR Mode of an NSA vs SA result on its own (see export_scoring_report).
     """
     with use_theme(theme):
         return _export_scoring_powerpoint(
             job, result, template_path, operator_mapping_groups, table_mode=table_mode, gap_layout=gap_layout,
             environment=environment, show_gap_values=show_gap_values, split_charts=split_charts,
-            vendor_mapping_groups=vendor_mapping_groups, scorings=scorings, environments=environments)
+            vendor_mapping_groups=vendor_mapping_groups, scorings=scorings, environments=environments,
+            nr_layout=nr_layout, nr_charts=nr_charts)
 
 
 def _export_scoring_powerpoint(job: dict[str, Any], result: dict[str, Any], template_path: Path,
                                operator_mapping_groups: list[dict[str, Any]] | None, *, table_mode: str,
                                gap_layout: str, environment: str, show_gap_values: bool, split_charts: bool,
                                vendor_mapping_groups: list[dict[str, Any]] | None, scorings: list[str] | None = None,
-                               environments: list[str] | None = None) -> bytes:
+                               environments: list[str] | None = None, nr_layout: str | None = None,
+                               nr_charts: str = 'same') -> bytes:
     if not template_path.is_file():
         raise ValueError('The configured CDR PowerPoint template is missing.')
     if table_mode not in {'expanded', 'summary'}:
@@ -3041,15 +3383,18 @@ def _export_scoring_powerpoint(job: dict[str, Any], result: dict[str, Any], temp
             raise ValueError('This Saved Filter has no Most Reliable scoring.')
         if reliable is not None:
             blocks = [block for block in blocks if block[0] in scorings]
+    parts = nr_mode_parts(job, result) if nr_layout else []
     for scoring, block_job, block_result in blocks:
         # The cover keeps the notes of the first scoring.
         first_slide = len(presentation.slides) if block_result is not result else 0
-        _add_scoring_block(
-            presentation, block_job, block_result, operator_mapping_groups, scoring=scoring,
-            table_mode=table_mode, gap_layout=gap_layout, environment=environment,
-            show_gap_values=show_gap_values, split_charts=split_charts,
-            vendor_mapping_groups=vendor_mapping_groups, environments=environments,
-        )
+        block = {'table_mode': table_mode, 'gap_layout': gap_layout, 'environment': environment,
+                 'show_gap_values': show_gap_values, 'split_charts': split_charts,
+                 'vendor_mapping_groups': vendor_mapping_groups, 'environments': environments}
+        if parts:
+            _add_nr_mode_block(presentation, block_job, block_result, parts, operator_mapping_groups, scoring=scoring,
+                               options=None, layout=nr_layout, charts=nr_charts, **block)
+        else:
+            _add_scoring_block(presentation, block_job, block_result, operator_mapping_groups, scoring=scoring, **block)
         notes = '\n'.join(_scoring_slide_notes(block_result))
         for index, slide in enumerate(presentation.slides):
             if index >= first_slide:
@@ -3064,21 +3409,27 @@ def export_scoring_report(entries: list[dict[str, Any]], template_path: Path,
                           operator_mapping_groups: list[dict[str, Any]] | None = None, *,
                           gap_layout: str = 'end', split_charts: bool = True,
                           vendor_mapping_groups: list[dict[str, Any]] | None = None,
-                          theme: str = DEFAULT_THEME) -> bytes:
+                          theme: str = DEFAULT_THEME, nr_layout: str | None = None, nr_charts: str = 'same') -> bytes:
     """One document with the scenarios of a scoring report, in the colours of ``theme``.
 
     Each entry has a normalized ``scenario`` and the completed ``job`` and ``result`` of
     its filters and aggregation. Every scenario adds, for each scoring it includes, a
     cover with its filters followed by the slides its options choose.
+
+    With ``nr_layout`` (interleaved or grouped), an NSA vs SA result shows each NR Mode on its own, as the results of the
+    page do, and ``nr_charts`` (same or separate) whether NSA and SA share the Scoring Charts and Scoring Trends (see
+    _add_nr_mode_block); without it, the whole result as it is.
     """
     with use_theme(theme):
         return _export_scoring_report(entries, template_path, operator_mapping_groups, gap_layout=gap_layout,
-                                      split_charts=split_charts, vendor_mapping_groups=vendor_mapping_groups)
+                                      split_charts=split_charts, vendor_mapping_groups=vendor_mapping_groups,
+                                      nr_layout=nr_layout, nr_charts=nr_charts)
 
 
 def _export_scoring_report(entries: list[dict[str, Any]], template_path: Path,
                            operator_mapping_groups: list[dict[str, Any]] | None, *, gap_layout: str,
-                           split_charts: bool, vendor_mapping_groups: list[dict[str, Any]] | None) -> bytes:
+                           split_charts: bool, vendor_mapping_groups: list[dict[str, Any]] | None,
+                           nr_layout: str | None = None, nr_charts: str = 'same') -> bytes:
     if not template_path.is_file():
         raise ValueError('The configured CDR PowerPoint template is missing.')
     if not entries:
@@ -3107,6 +3458,7 @@ def _export_scoring_report(entries: list[dict[str, Any]], template_path: Path,
             _add_scenario_transition(presentation, scenario['name'], job)
         baseline = str(job.get('baseline_operator') or 'EE')
         blocks = [(BEST_NETWORK_SCORING, job, result)]
+        parts = nr_mode_parts(job, result) if nr_layout else []
         reliable = most_reliable_result(result, baseline, job.get('configuration'))
         if reliable is not None:
             blocks.append((MOST_RELIABLE_SCORING, {**job, 'configuration': reliable['configuration']}, reliable))
@@ -3120,13 +3472,15 @@ def _export_scoring_report(entries: list[dict[str, Any]], template_path: Path,
                 configuration['_scenario_name'] = scenario['name']
                 block_job['configuration'] = configuration
             first_slide = len(presentation.slides)
-            _add_scoring_block(
-                presentation, block_job, block_result, operator_mapping_groups, scoring=scoring,
-                table_mode='expanded', gap_layout=gap_layout, environment='all',
-                show_gap_values=False, split_charts=split_charts,
-                vendor_mapping_groups=vendor_mapping_groups, options=options,
-                environments=options.get('environment_names') or None, level=2 if several else 1,
-            )
+            block = {'table_mode': 'expanded', 'gap_layout': gap_layout, 'environment': 'all', 'show_gap_values': False,
+                     'split_charts': split_charts, 'vendor_mapping_groups': vendor_mapping_groups,
+                     'environments': options.get('environment_names') or None, 'level': 2 if several else 1}
+            if parts:
+                _add_nr_mode_block(presentation, block_job, block_result, parts, operator_mapping_groups, scoring=scoring,
+                                   options=options, layout=nr_layout, charts=nr_charts, **block)
+            else:
+                _add_scoring_block(presentation, block_job, block_result, operator_mapping_groups, scoring=scoring,
+                                   options=options, **block)
             notes = '\n'.join(_scoring_slide_notes(block_result))
             for index, slide in enumerate(presentation.slides):
                 if index >= first_slide or index == 0:

@@ -167,7 +167,8 @@
     const renderCampaigns = (selected) => {
       const field = multiField('Campaigns', campaignValues(), selected, {exclusive: presets});
       field.classList.add('brt-campaigns-field');
-      if (campaigns?.isConnected) campaigns.replaceWith(field);
+      // (Replaced in its row even before the section is on the page: Scoring lists its own NR Mode as it is drawn.)
+      if (campaigns?.parentNode) campaigns.replaceWith(field);
       else row.prepend(field);
       campaigns = field;
     };
@@ -260,9 +261,19 @@
     const nrModes = node('fieldset', undefined, 'brt-choice-group');
     nrModes.append(node('legend', 'NR Mode'));
     const nsaVsSa = check('Compare NSA vs SA', saved.nsa_vs_sa);
-    nsaVsSa.title = 'Score the NSA and SA CDRs of the campaigns of this section side by side (always split by Campaign); '
-      + 'the other sections keep the NR Mode of the report';
-    nrModes.append(nsaVsSa);
+    nsaVsSa.title = 'Score the NSA and SA CDRs of the campaigns of this module side by side (always split by Campaign); '
+      + 'the other modules keep the NR Mode of the report';
+    // How the document shows each NR Mode, as the NSA vs SA and NSA & SA charts of the Scoring & GAP Analysis results.
+    const nrLayout = selectField('NSA vs SA', brtOptions.nr_layouts || [], saved.nr_layout);
+    nrLayout.title = 'Each panel of NSA followed by the same panel of SA, or every panel of NSA and then every panel of SA';
+    const nrCharts = selectField('NSA & SA charts', brtOptions.nr_charts || [], saved.nr_charts);
+    nrCharts.title = 'The Scoring Charts and Scoring Trends with NSA and SA in the same chart (the trends on one axis of quarters, '
+      + 'SA dashed) or with the charts of each NR Mode on their own';
+    const nrViews = node('div', undefined, 'brt-option-grid brt-nr-views');
+    nrViews.append(nrLayout, nrCharts);
+    const syncNrViews = () => { nrViews.hidden = !nsaVsSa.box.checked; };
+    syncNrViews();
+    nrModes.append(nsaVsSa, nrViews);
     nrModes.hidden = !saved.nsa_vs_sa && !((options.campaigns?.NSA || []).length && (options.campaigns?.SA || []).length);
     box.nrMode = () => (nsaVsSa.box.checked ? 'NSA+SA' : nrMode());
     const sameOperatorOption = [...reference.input.options].find((option) => option.value === sameOperator);
@@ -283,8 +294,8 @@
     const trendHost = node('div', undefined, 'brt-trend-campaigns');
     let trendCampaigns = null;
     const renderTrendCampaigns = (selected) => {
-      trendCampaigns = multiField('Campaigns', campaignValues(), selected, {exclusive: presets, allLabel: 'Same as the section'});
-      trendCampaigns.title = 'The campaigns of the Scoring Trend and the National & Geographical Areas Trends (none: the campaigns of the section)';
+      trendCampaigns = multiField('Campaigns', campaignValues(), selected, {exclusive: presets, allLabel: 'Same as the module'});
+      trendCampaigns.title = 'The campaigns of the Scoring Trend and the National & Geographical Areas Trends (none: the campaigns of the module)';
       trendCampaigns.classList.add('brt-campaigns-field');
       trendHost.replaceChildren(trendCampaigns);
     };
@@ -293,7 +304,7 @@
       renderTrendCampaigns((trendCampaigns?.getValue?.() || []).filter((value) => presets.some(([key]) => key === value)));
     };
     nrModeHandlers.push(refreshTrendCampaigns);
-    nsaVsSa.box.addEventListener('change', () => { syncReference(); refreshTrendCampaigns(); box.onNrModeChange?.(); });
+    nsaVsSa.box.addEventListener('change', () => { syncReference(); syncNrViews(); refreshTrendCampaigns(); box.onNrModeChange?.(); });
     trends.title = 'Always the whole country: the Region, Cluster and City filters do not apply to Geographical Areas and Scoring Trends';
     const area = node('fieldset', undefined, 'brt-choice-group brt-area');
     area.append(node('legend', 'Geographical Areas'));
@@ -322,7 +333,7 @@
     box.scopeFields = [reference, methodology];
     box.append(scorings, environments, tables, operatorChoices, nrModes, trends);
     box.collect = () => ({
-      nsa_vs_sa: nsaVsSa.box.checked,
+      nsa_vs_sa: nsaVsSa.box.checked, nr_layout: nrLayout.input.value, nr_charts: nrCharts.input.value,
       scorings: scoringBoxes.filter((item) => item.checked).map((item) => item.value),
       environments: environmentBoxes.filter((item) => item.checked).map((item) => item.value),
       kpi_values: kpiValues.box.checked, gap_values: gapValues.box.checked, all_operators: allOperators.box.checked,
@@ -464,7 +475,7 @@
     collapse.type = 'button';
     head.append(handleButton('brt-section-handle', title), enabled, summary, collapse);
     const body = node('div', undefined, 'brt-section-body');
-    if (!allowed) body.append(node('p', 'Your account cannot use this module: the section is left out.', 'form-note'));
+    if (!allowed) body.append(node('p', 'Your account cannot use this module: it is left out.', 'form-note'));
     // (The Scoring section can compare NSA vs SA: its campaigns follow its own NR Mode then.)
     let sectionMode = nrMode;
     const scope = scopeFields(saved.options || {}, () => sectionMode());
@@ -480,7 +491,6 @@
       list.append(node('li', 'There are no saved Dashboards in this workspace.', 'form-note brt-empty'));
     }
     sortable(list, '.brt-item', '.brt-item-handle', changed);
-    body.append(list);
     const optionsBox = saved.key === 'scoring' ? scoringOptions(saved.options)
       : saved.key === 'network_insights' ? networkOptions(saved.options)
         : saved.key === 'non_qualified_calls' ? callsOptions(saved.options) : null;
@@ -490,11 +500,15 @@
       scope.refresh(true);
       optionsBox.onNrModeChange = () => { scope.refresh(); changed(); };
     }
+    // Below the Campaigns, the Options of the module and then its sub-modules (or Dashboards), each in a subpanel.
     if (optionsBox) {
-      const optionsWrap = node('div', undefined, 'brt-section-options');
+      const optionsWrap = node('div', undefined, 'brt-subpanel brt-section-options');
       optionsWrap.append(node('h4', 'Options'), optionsBox);
       body.append(optionsWrap);
     }
+    const itemsWrap = node('div', undefined, 'brt-subpanel brt-section-items');
+    itemsWrap.append(node('h4', saved.key === 'dashboards' ? 'Dashboards' : 'Sub-modules'), list);
+    body.append(itemsWrap);
     card.append(head, body);
     const empty = node('li', '', 'form-note brt-empty');
     const refresh = () => {

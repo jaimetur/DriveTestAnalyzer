@@ -84,6 +84,8 @@
 .report-jobs .rj-one-row { grid-auto-flow: column; grid-template-columns: none; grid-auto-columns: minmax(0, 1fr); align-items: end; }
 .report-jobs .rj-one-row > label[hidden] { display: none; }
 .report-jobs .rj-one-row > .icon-action { justify-self: end; align-self: end; margin-bottom: .35rem; }
+/* NSA vs SA: how a Scoring artifact shows each NR Mode, while its NR Mode is NSA vs SA. */
+.report-jobs .rj-nr-views { grid-auto-columns: minmax(0, 18rem); }
 .report-jobs .rj-one-row > label { min-width: 0; font-size: .86rem; }
 @media (max-width: 1100px) { .report-jobs .rj-one-row { grid-auto-flow: row; grid-template-columns: repeat(auto-fill, minmax(min(100%, 13rem), 1fr)); } }
 /* CDRs in one card per type with Select All/None, as in Network Insights. */
@@ -390,12 +392,16 @@
 .brt-components { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 17rem), 1fr)); gap: .3rem 1rem; padding: .3rem .2rem .2rem 2.2rem; }
 .brt-components .brt-check { font-weight: 500; font-size: .86rem; align-items: flex-start; }
 .brt-empty { padding: .4rem 0; }
-.brt-section-options { display: grid; gap: .5rem; padding-top: .6rem; border-top: 1px dashed rgba(31, 95, 58, .3); }
-.brt-section-options h4 { margin: 0; color: #1f5f3a; font-size: .9rem; }
+/* The Options and the sub-modules of a section, each in a subpanel below its Campaigns. */
+.brt-subpanel { display: grid; gap: .5rem; padding: .6rem .7rem .7rem; border: 1px solid rgba(31, 95, 58, .2); border-radius: 14px; background: rgba(255, 255, 255, .55); }
+.brt-subpanel > h4 { margin: 0; color: #1f5f3a; font-size: .9rem; }
 .brt-options { display: grid; gap: .7rem; }
 .brt-option-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 13rem), 1fr)); gap: .7rem; align-items: end; }
 .brt-choice-group { display: flex; flex-wrap: wrap; gap: .4rem 1.1rem; margin: 0; padding: .5rem .7rem .6rem; border: 1px solid var(--line); border-radius: 12px; background: rgba(255, 255, 255, .7); }
 .brt-choice-group legend { padding: 0 .3rem; color: var(--muted); font-size: .8rem; font-weight: 700; }
+/* NSA vs SA: how the document shows each NR Mode, below Compare NSA vs SA while it is checked. */
+.brt-nr-views { flex: 1 1 100%; grid-template-columns: repeat(auto-fill, minmax(min(100%, 16rem), 18rem)); }
+.brt-nr-views[hidden] { display: none; }
 .brt-area { align-items: end; }
 .brt-area .brt-field { min-width: 11rem; }
 /* The Scoring Trends hold their campaigns and, inside them, the National & Geographical Areas Trends. */
@@ -406,7 +412,7 @@
 .brt-trends-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .7rem; }
 .brt-trends-columns > .brt-area { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: end; }
 .brt-trends-columns > .brt-area .brt-field, .brt-trends-columns .brt-trend-campaigns { min-width: 0; max-width: none; }
-@media (max-width: 900px) { .brt-trends-columns, .brt-scope { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 900px) { .brt-trends-columns { grid-template-columns: minmax(0, 1fr); } }
 .brt-area > legend .brt-check, .brt-area > legend label { color: var(--text); font-weight: 700; }
 .brt-inline { display: flex; flex-wrap: wrap; gap: .4rem 1.2rem; }
 .brt-dialog { width: min(1180px, calc(100vw - 2rem)); max-height: calc(100vh - 2rem); padding: 0; border: 0; border-radius: 18px; box-shadow: 0 30px 70px rgba(10, 25, 18, .35); overflow: hidden; }
@@ -447,8 +453,9 @@
 }
 .brt-badge { padding: .1rem .45rem; border-radius: 6px; background: #eef2f6; color: #3d4b55; font-size: .72rem; font-weight: 800; letter-spacing: .03em; }
 .brt-focus-tag { margin-left: .4rem; background: #e3edfb; color: #1f4f8f; }
-/* The Campaigns of each section, above its sub-modules. */
-.brt-scope { display: grid; grid-template-columns: minmax(0, 20rem) minmax(0, 11rem) minmax(0, 14rem) minmax(20rem, 1fr); gap: .7rem; align-items: end; padding-bottom: .7rem; border-bottom: 1px dashed rgba(31, 95, 58, .3); }
+/* The Campaigns of each section, above its sub-modules (in Scoring, then the GAP reference and the Methodology). */
+.brt-scope { display: grid; grid-template-columns: minmax(0, 20rem) minmax(0, 14rem) minmax(20rem, 1fr); gap: .7rem; align-items: end; padding-bottom: .7rem; border-bottom: 1px dashed rgba(31, 95, 58, .3); }
+@media (max-width: 900px) { .brt-scope { grid-template-columns: minmax(0, 1fr); } }
 .bundle-report-template-panel .brt-reuse { margin-right: .3rem; font-size: .86rem; color: var(--muted); }
 /* Ready, the preview takes almost the whole screen: the sections and pages on the left, the chosen page on the right
    with its zoom (wheel, rectangle and buttons). */

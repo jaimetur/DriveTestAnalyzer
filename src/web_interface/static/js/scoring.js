@@ -2597,6 +2597,8 @@
       actions: [['word', 'Generate Word'], ['ppt', 'Generate PowerPoint']],
     });
     if (!choice) return;
+    // NSA vs SA: the document shows each NR Mode as the results of the page do (NSA vs SA and NSA & SA charts).
+    const nrViews = selection.nr_mode === 'NSA+SA' ? {nr_layout: selectedNrLayout, nr_charts: selectedNrCharts} : {};
     await downloadScoringDocument(`/api/scoring/report/${choice.action}`,
       choice.action === 'word' ? 'Word' : 'PowerPoint', {
         method: 'POST', headers: {'Content-Type': 'application/json'},
@@ -2606,7 +2608,7 @@
           context_filters: selection.context_filters, aggregation_levels: selection.aggregation_levels,
           area_summary: selection.area_summary,
           nr_mode: selection.nr_mode, baseline_operator: selection.baseline_operator,
-          scoring_profile_id: selection.scoring_profile_id || null,
+          scoring_profile_id: selection.scoring_profile_id || null, ...nrViews,
         }),
       });
   }
@@ -2697,6 +2699,11 @@
     // The operators enabled in each section of the page: the document shows the same ones.
     const operators = scoringExportOperators();
     if (Object.keys(operators).length) url.searchParams.set('operators', JSON.stringify(operators));
+    // NSA vs SA results: the document shows each NR Mode as the page does (NSA vs SA and NSA & SA charts).
+    if (nrLayoutControl && !nrLayoutControl.hidden) {
+      url.searchParams.set('nr_layout', selectedNrLayout);
+      url.searchParams.set('nr_charts', selectedNrCharts);
+    }
     await downloadScoringDocument(url.href, choice === 'secondary' ? 'Word' : 'PowerPoint');
   }
 

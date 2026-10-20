@@ -35,6 +35,7 @@ from src.modules.cdr_auto_selection import (
 )
 from src.modules.column_names import compact_campaign_value
 from src.modules.nr_mode import NSA_VS_SA, normalize_scoring_nr_mode, nr_mode_label
+from src.modules.scoring_reports import NR_CHARTS, NR_CHARTS_LABELS, NR_LAYOUT_LABELS, NR_LAYOUTS
 from src.modules.output_layout import REPORTING_JOBS_FOLDER, module_output_dir
 from src.modules.scoring_themes import DEFAULT_THEME, normalize_theme, themes_payload
 
@@ -421,9 +422,14 @@ def normalize_definition(raw: Any) -> dict[str, Any]:
             'baseline_operator': str(entry.get('baseline_operator') or 'EE').strip() or 'EE',
             # PowerPoint and/or Word; jobs saved before Word was offered keep PowerPoint.
             'formats': [value for value in _formats(entry.get('formats')) if value in {'powerpoint', 'word'}] or ['powerpoint'],
+            # NSA vs SA: each panel of NSA then the same panel of SA (or every NSA panel, then every SA one), and NSA and
+            # SA in the same Scoring Charts and Scoring Trends (or in separate ones), as the results of the page.
+            'nr_layout': entry['nr_layout'] if entry.get('nr_layout') in NR_LAYOUTS else NR_LAYOUTS[0],
+            'nr_charts': entry['nr_charts'] if entry.get('nr_charts') in NR_CHARTS else NR_CHARTS[0],
             # Scenarios (filters and aggregation) and content of the report.
-            # The theme is that of the job (see execute_run).
-            'report': {key: value for key, value in _scoring_report(entry.get('report')).items() if key != 'theme'},
+            # The theme is that of the job (see execute_run); NSA vs SA is chosen by the entry.
+            'report': {key: value for key, value in _scoring_report(entry.get('report')).items()
+                       if key not in {'theme', 'nr_layout', 'nr_charts'}},
         })
     if not (definition['dataset_analysis']['enabled'] or definition['network_insights']
             or definition['dashboards'] or definition['scoring'] or definition['modules']):
@@ -1279,6 +1285,9 @@ def install_report_task_routes(core: Any) -> None:
         return [f"NR Mode: {nr_mode_label(job.get('nr_mode')) or '—'}",
                 f"CDRs: {', '.join(names.get(int(value), str(value)) for value in job.get('dataset_ids') or []) or '—'}",
                 f"GAP reference: {job.get('baseline_operator') or entry.get('baseline_operator') or 'EE'}",
+                *([f"NSA vs SA: {NR_LAYOUT_LABELS[entry.get('nr_layout') or NR_LAYOUTS[0]]} · "
+                   f"{NR_CHARTS_LABELS[entry.get('nr_charts') or NR_CHARTS[0]]}"]
+                  if normalize_scoring_nr_mode(job.get('nr_mode') or entry.get('nr_mode')) == NSA_VS_SA else []),
                 f"Report scenarios: {', '.join(scenarios) or '—'}"]
 
     def campaigns_of_cdrs(task_repository, dataset_ids, compact: bool = False) -> list[str]:
@@ -1424,6 +1433,10 @@ def install_report_task_routes(core: Any) -> None:
             dataset_ids = scoring_cdrs(task_repository, entry) if entry.get('auto_cdrs') else entry.get('dataset_ids') or automatic_cdrs(
                 task_repository, entry['nr_mode'], entry.get('cdr_selection') or 'newest')
             report = entry['report']
+            if normalize_scoring_nr_mode(entry['nr_mode']) == NSA_VS_SA:
+                # Each NR Mode on its own, as the entry chooses.
+                report = {**report, 'nr_layout': entry.get('nr_layout') or NR_LAYOUTS[0],
+                          'nr_charts': entry.get('nr_charts') or NR_CHARTS[0]}
             update_run(task_repository, run_id, message=f'Calculating {title}')
             base = {'dataset_ids': dataset_ids, 'nr_mode': entry['nr_mode'],
                     'baseline_operator': entry.get('baseline_operator') or 'EE',
@@ -1720,6 +1733,8 @@ def install_report_task_routes(core: Any) -> None:
             # The campaigns of the CDRs of each NR Mode, and the choices that follow the newest ones.
             'campaigns': {nr_mode: campaign_values(task_repository, nr_mode) for nr_mode in ('NSA', 'SA', NSA_VS_SA)},
             'campaign_presets': CAMPAIGN_PRESET_LABELS,
+            # NSA vs SA: how a Scoring artifact shows each NR Mode, as the results of the Scoring & GAP Analysis page.
+            'nr_layouts': list(NR_LAYOUT_LABELS.items()), 'nr_charts': list(NR_CHARTS_LABELS.items()),
             'values': mapped(catalogue),
             # The filter values of each CDR, so every entry lists only the values of the CDRs it uses.
             'values_by_dataset': {

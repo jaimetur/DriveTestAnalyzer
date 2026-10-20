@@ -40,6 +40,7 @@ from src.modules.output_layout import BUNDLE_REPORTS_FOLDER, module_output_dir
 from src.modules.scoring_area_summary import normalize_trend_campaigns
 from src.modules.scoring_export_panels import EXPORT_PANELS, load_export_panels, normalize_export_panels
 from src.modules.scoring_methodologies import BY_CAMPAIGN
+from src.modules.scoring_reports import NR_CHARTS, NR_CHARTS_LABELS, NR_LAYOUT_LABELS, NR_LAYOUTS
 from src.modules.scoring_themes import DEFAULT_THEME, normalize_theme
 from src.modules.slide_titles import fit_slide_title
 
@@ -163,6 +164,8 @@ def _module_options(section: str) -> dict[str, Any]:
         # all_operators: every operator in the Focus Operators panels (see scoring_export_panels).
         return {'scorings': ['best_network'], 'environments': [COMBINED_ENVIRONMENT], 'kpi_values': False, 'gap_values': False,
                 'all_operators': False, 'nsa_vs_sa': False,
+                # NSA vs SA: each panel of NSA then the same panel of SA, and NSA and SA in the same charts, as the page.
+                'nr_layout': NR_LAYOUTS[0], 'nr_charts': NR_CHARTS[0],
                 'baseline_operator': 'EE', 'methodology': BY_CAMPAIGN,
                 # The Geographical Areas & Scoring Trends: the Breakdown and Separate cities of both tabs (London or the
                 # Main Cities at each export), the campaigns of the trends (All available campaigns by default; none: those
@@ -198,6 +201,8 @@ def _normalize_options(section: str, raw: Any, legacy_campaigns: Any = None) -> 
             'all_operators': bool(raw.get('all_operators')),
             # Scored NSA vs SA (the NSA and SA CDRs of its campaigns side by side), whatever the NR Mode of the report.
             'nsa_vs_sa': bool(raw.get('nsa_vs_sa')),
+            'nr_layout': raw['nr_layout'] if raw.get('nr_layout') in NR_LAYOUTS else NR_LAYOUTS[0],
+            'nr_charts': raw['nr_charts'] if raw.get('nr_charts') in NR_CHARTS else NR_CHARTS[0],
             # (Same operator in NSA is a reference of NSA vs SA only.)
             'baseline_operator': (str(raw.get('baseline_operator') or 'EE').strip()[:80] or 'EE'
                                   if raw.get('nsa_vs_sa') or raw.get('baseline_operator') != SAME_OPERATOR_NSA else 'EE'),
@@ -376,13 +381,14 @@ def _option_lines(section: dict[str, Any], dashboard_names: dict[str, str] | Non
             'By campaign' if options['methodology'] == BY_CAMPAIGN else options['methodology'])
         area = options['area_summary']
         trend_campaigns = ', '.join(CAMPAIGN_PRESET_LABELS.get(value) or format_campaign(value) or value
-                                    for value in area.get('campaigns') or []) or 'the campaigns of the section'
+                                    for value in area.get('campaigns') or []) or 'the campaigns of the module'
         cities = ', '.join([*(['Main Cities'] if area.get('main_cities') else []), *(area.get('cities') or [])])
         rows = ' and '.join(part for part in ('' if area['breakdown'] == 'None' else 'each ' + area['breakdown'], cities) if part)
         areas = (f" · Geographical Areas: {rows or 'each Region and London'}"
                  f" · time split {'All selected CDRs' if area['time_split'] == 'All' else area['time_split']}")
         every = ' · All Operators in the Focus Operators panels' if options.get('all_operators') else ''
-        every += ' · NSA vs SA' if options.get('nsa_vs_sa') else ''
+        every += (f" · NSA vs SA ({NR_LAYOUT_LABELS[options['nr_layout']]}, {NR_CHARTS_LABELS[options['nr_charts']]})"
+                  if options.get('nsa_vs_sa') else '')
         return [f"{scorings} · Environments: {environments}{every}",
                 f"Methodology: {methodology} · GAP reference: "
                 f"{SAME_OPERATOR_NSA_LABEL if options['baseline_operator'] == SAME_OPERATOR_NSA else options['baseline_operator']}",
@@ -1237,7 +1243,10 @@ class SectionGenerator:
             return scenario_options
 
         context_filters = {column: list(self.filters[name]) for name, column in SCORING_FILTERS.items() if self.filters[name]}
-        report = {'theme': self.definition['theme'], 'all_operators': options['all_operators'], 'scenarios': [{
+        report = {'theme': self.definition['theme'], 'all_operators': options['all_operators'],
+                  # NSA vs SA: each NR Mode on its own, as the results of the page show it.
+                  **({'nr_layout': options['nr_layout'], 'nr_charts': options['nr_charts']} if options.get('nsa_vs_sa') else {}),
+                  'scenarios': [{
             'name': report_title(self.definition), 'context_filters': context_filters,
             'main_cities': self.filters['main_cities'], 'aggregation_levels': ['Operator', 'Campaign'],
             'scorings': {kind: content(kind) for kind, _label in SCORINGS},
@@ -1793,6 +1802,7 @@ def install_bundle_report_template_routes(core: Any) -> None:
             'scorings': [{'value': key, 'label': label} for key, label in SCORINGS],
             'network_technologies': NI_TECHNOLOGIES, 'network_groupings': NI_GROUPINGS,
             'nq_granularities': NQ_GRANULARITIES,
+            'nr_layouts': list(NR_LAYOUT_LABELS.items()), 'nr_charts': list(NR_CHARTS_LABELS.items()),
             'area_summary_breakdowns': list(AREA_SUMMARY_BREAKDOWNS), 'area_summary_time_splits': list(AREA_SUMMARY_TIME_SPLITS),
             'can_edit': user.role in {'user-editor', 'admin', 'super-admin'},
             # Open last report opens it, also after a restart.

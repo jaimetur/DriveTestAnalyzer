@@ -1142,3 +1142,14 @@ def test_favourites_travel_with_every_option_of_their_scoring_section(client):
     options = next(section for section in imported['definition']['sections'] if section['key'] == 'scoring')['options']
     assert 'compared_operators' not in options and options['area_summary'] == scoring['options']['area_summary']
     assert imported['definition']['filters']['main_cities'] and imported['definition']['filters']['operators'] == ['Not Lebara']
+
+
+def test_each_section_shows_one_campaigns_field():
+    script = (core.PROJECT_ROOT / 'src/web_interface/static/js/bundle_report_template.js').read_text(encoding='utf-8')
+    # Scoring lists the campaigns of its own NR Mode while it is drawn, before the section is on the page: its Campaigns
+    # field is replaced in its row, never added a second time.
+    assert 'if (campaigns?.parentNode) campaigns.replaceWith(field);' in script and 'campaigns?.isConnected' not in script
+    css = (core.PROJECT_ROOT / 'src/web_interface/static/css/report_jobs.css').read_text(encoding='utf-8')
+    # Campaigns, GAP reference and Methodology in a row, one below the other on narrow screens.
+    assert '.brt-scope { display: grid; grid-template-columns: minmax(0, 20rem) minmax(0, 14rem) minmax(20rem, 1fr);' in css
+    assert css.index('.brt-scope { display: grid;') < css.index('@media (max-width: 900px) { .brt-scope {')

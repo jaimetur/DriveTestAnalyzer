@@ -11,6 +11,7 @@ from typing import Any, Callable
 
 from pptx.chart.data import CategoryChartData
 from pptx.dml.color import RGBColor
+from pptx.enum.dml import MSO_LINE_DASH_STYLE
 from pptx.enum.chart import XL_CHART_TYPE, XL_DATA_LABEL_POSITION, XL_TICK_MARK
 from pptx.enum.shapes import MSO_SHAPE
 from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
@@ -660,6 +661,9 @@ def add_trend_slides(presentation, trends: list[dict[str, Any]], *, scoring_labe
             color = series.get('color') or FALLBACK_COLORS[index % len(FALLBACK_COLORS)]
             plot_series.format.line.color.rgb = _rgb(color)
             plot_series.format.line.width = Pt(3 if series.get('is_reference') else 2.25)
+            # (NSA vs SA with NSA & SA in the same chart: the SA line of each operator is dashed.)
+            if series.get('dashed'):
+                plot_series.format.line.dash_style = MSO_LINE_DASH_STYLE.DASH
             plot_series.smooth = False
             plot_series.marker.size = 6
             plot_series.marker.format.fill.solid()
@@ -894,9 +898,11 @@ def _area_summary_chart(slide, area: dict[str, Any], campaigns: list[str], *, le
         plot_series.smooth = False
         plot_series.format.line.color.rgb = _rgb(color)
         plot_series.format.line.width = Pt(1.75)
+        if item.get('dashed'):
+            plot_series.format.line.dash_style = MSO_LINE_DASH_STYLE.DASH
         plot_series.marker.size = 4
         plot_series.marker.format.fill.solid()
-        plot_series.marker.format.fill.fore_color.rgb = _rgb(color)
+        plot_series.marker.format.fill.fore_color.rgb = _rgb('#FFFFFF' if item.get('dashed') else color)
         plot_series.marker.format.line.color.rgb = _rgb(color)
         # The latest points labelled at the end of each line, as the Crowd charts do.
         last = max((position for position, value in enumerate(item['trend']) if value is not None), default=None)

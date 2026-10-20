@@ -314,3 +314,27 @@ def test_report_api_remembers_the_configuration_when_the_document_is_requested(s
     # Remembered before the document is built, so also when it is not ready (or never is).
     last = client.get('/api/scoring/report-configurations').json()['last']
     assert last['name'] == 'Weekly' and last['scenarios'][0]['name'] == 'London'
+
+
+def test_report_api_shows_each_nr_mode_as_the_page_chooses_without_remembering_it(scoring_api, monkeypatch):
+    import src.DriveTestAnalyzer as core
+    built = []
+
+    def build(_repository, _base, configuration, *_args, **_kwargs):
+        built.append(configuration)
+        raise ValueError('Stop here.')
+
+    monkeypatch.setattr(core, 'build_scoring_report_document', build)
+    client = scoring_api['client']
+    configuration = {'name': 'Weekly', 'scenarios': [default_scenario(name='London')], 'nr_layout': 'grouped'}
+    request = {'configuration': configuration, 'dataset_ids': scoring_api['complete_dataset_ids'], 'nr_mode': 'NSA+SA'}
+    # NSA vs SA and NSA & SA charts of the page; the configuration chosen in the report editor never carries them.
+    assert client.post('/api/scoring/report/ppt', json={**request, 'nr_layout': 'grouped', 'nr_charts': 'separate'}).status_code == 400
+    assert client.post('/api/scoring/report/ppt', json=request).status_code == 400
+    assert [(item.get('nr_layout'), item.get('nr_charts')) for item in built] == [('grouped', 'separate'), (None, None)]
+    assert 'nr_layout' not in client.get('/api/scoring/report-configurations').json()['last']
+    for wrong in ({'nr_layout': 'other'}, {'nr_layout': 'grouped', 'nr_charts': 'other'}):
+        response = client.post('/api/scoring/report/ppt', json={**request, **wrong})
+        assert response.status_code == 400 and 'NSA vs SA must be' in response.json()['detail']
+    response = client.get('/scoring/saved-filters/1/export/ppt?nr_layout=other')
+    assert response.status_code == 400 and 'NSA vs SA must be' in response.json()['detail']

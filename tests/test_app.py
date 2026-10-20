@@ -11197,6 +11197,11 @@ def test_every_single_select_opens_the_application_list_below_its_field():
     assert 'setupCustomMultiSelects();\nsetupNativeSelectMenus();' in script
     assert '.native-select-menu { position: fixed; z-index: 2147483000;' in stylesheet
     assert 'text-overflow: ellipsis; white-space: nowrap; }' in stylesheet
+    # data-menu-fit opens a list as wide as its longest option (the Favourite Bundle Report Templates).
+    assert "if (select.closest('[data-menu-fit]')) menu.classList.add('is-fit');" in component
+    assert '.native-select-menu.is-fit { max-width: calc(100vw - 1rem); }' in stylesheet
+    page = (root / 'src/web_interface/templates/report_jobs.html').read_text(encoding='utf-8')
+    assert 'aria-label="Favourite Bundle Report Template" data-menu-fit>' in page
     # The lists of the multiple choices are as wide as their values and open towards the left near the screen edge.
     assert 'left: 0; right: auto; box-sizing: border-box; width: max-content; min-width: 100%; max-width: min(36rem, calc(100vw - 1rem));' in stylesheet
     assert ':is(.multiselect-menu, .searchable-select-menu, .workspace-user-picker-menu).aligns-right { left: auto; right: 0; }' in stylesheet
