@@ -242,6 +242,8 @@ Every name of a column header (for example *Service*, *Result*, *Team* or *Assig
 - The fields of the Analysis Center, grouped by section (the same choice as **Table column** in Fields & Sections).
 - The columns of the CDRs (for example `Cellname_A`, `Region_A` or `Auto_RCA_Category_A`), which show the value of the CDR version shown for each call. Each CDR column can go to the **Table** (up to 12), and then also to the Excel export, or to **Excel** only (up to 100 more). Choosing CDR columns indexes the calls again.
 
+**Default Columns** returns to the columns of a new workspace (no optional or CDR columns, and the Analysis Center fields of the [default catalog](#default-catalog) that are table columns: Analysis Status and Implementation Status), and **Save** applies it.
+
 Every optional column sorts the table and has its filter: Region and Cluster use their filters of the Filters panel, `JOIN_ID`, NR Mode, Cell ID, Direction, Session Type, End Time and CDR (which chooses CDRs) add theirs under **Additional Columns Filters**, and the CDR columns filter from their header only; every one offers **Empty** for the calls without a value. The Filters panel shows the **General Filters**, then the **NQ Analysis Fields Filters** and the **Additional Columns Filters**.
 
 ### Bulk changes
@@ -298,6 +300,9 @@ Admins and super-admins can delete the history: the **×** of a change deletes t
 
 The imports and Analysts / Reviewers → Asignees come after a line. The sections menu of the Non-Qualified Calls tab lists the **NQ Analysis Configuration** too, after a line, with every option: choosing one opens it on the page.
 
+> [!TIP]
+> **Every configuration can go back to the values of a new workspace:** **Default Fields & Sections**, **Default Statuses** and **Default Teams**, **Default Rules** (Status Rules), **Default Catalog** and **Default Rule** (Root Cause Catalog and its Suggestion Rule), **Default Columns** (Columns of the table) and **Default Equivalences** (Previous NQ Analyses). Each one fills its dialog and **Save** applies it, except Default Equivalences, which applies once confirmed; values still used by a call are never removed.
+
 ## Fields and sections
 
 **Fields & Sections** (for `user-editor` accounts and above, in the NQ Analysis Configuration menu) configures the catalog of fields every call is followed up with, shared by every user, in the order of the Excel export. **Sections** renames and recolours the six sections (their tabs, the colours of the table headers and of the Excel; by default General blue, RCA yellow, Failure Details red, Analysis purple, Implementation green and Planning a darker green); chips above the fields show the fields of one section, and a filter finds them by name.
@@ -316,6 +321,8 @@ Each field can be a **Table column**, go to **Excel** (every field by default), 
 
 > [!WARNING]
 > Renaming a list value updates every call that uses it and the Status Rules; a value or a field still used by a call cannot be removed, and the type and source of a field with values cannot change.
+
+**Default Fields & Sections** leaves only the sections and fields of the [default catalog](#default-catalog), in their order, names, colours, settings and list values (a field keeps its values and a list value with the same name its calls), and **Save** applies it; a field or a value that is not a default one and is still used by a call cannot be removed, so Save names it to clear or rename first.
 
 ### Default catalog
 
@@ -399,7 +406,7 @@ Each root cause can be mapped to its root category: choosing a cause for a call 
 > [!TIP]
 > Each value has **keywords**, separated by commas, that map the NetCheck and Ericsson RCA values and the comments onto the catalog; `a+b` needs both words (`coverage+lte` matches *DL coverage problems* of an LTE call, not of an NR one).
 
-Values are tried from top to bottom, so their order (↑ ↓) sets the priority when several match. **Add missing defaults** adds the default domains, categories and causes that are not in the catalog and keeps the existing ones with their keywords. Renaming a value updates every call that uses it; a value still used by a call cannot be removed.
+Values are tried from top to bottom, so their order (↑ ↓) sets the priority when several match. **Add missing defaults** adds the default domains, categories and causes that are not in the catalog and keeps the existing ones with their keywords. **Default Catalog** leaves only the default domains, categories and causes, with their keywords and colours, and clears **Require a root category to close a call**; **Save** applies it (a value with the same name keeps its calls). Renaming a value updates every call that uses it; a value still used by a call cannot be removed.
 
 > [!WARNING]
 > **Require a root category to close a call** refuses closing a call while it has no root category, whether its status is chosen by hand or a change of its fields makes the rules close it.
@@ -505,7 +512,7 @@ Values are checked as if they were chosen in the call, after the reviewed equiva
 
 The equivalences of the analysis workbooks of the previous tool, as the analysts reviewed them, are built into the import (the **rules of the tool**: the teams, root categories and causes with their domains, and the values of the lists those workbooks write otherwise), so every workspace imports them without uploading anything. **Download Equivalences** gives them as a workbook: without a file, every equivalence the import uses; with a file chosen, every value of its follow-up and list columns, its rows and what it becomes (**Maps to**).
 
-The workbook tells how each value was decided (a rule of the tool, reviewed in this workspace, the same value, a value of the catalog, by the direction of the call, a new value, a suggestion of the keywords of the catalog to check, or a new Root Category or Root Cause whose **Domain** to choose), and its Maps to and Domain cells list the values each one takes (those of the catalog and those the equivalences add; a new name can be typed). Change Maps to (empty leaves the value out of its field, in the note) and the Domain, then **Upload Equivalences**: the rows that differ from the rules of the tool are kept in the workspace, before the rules, for its next imports, and travel with its configuration.
+The workbook tells how each value was decided (a rule of the tool, reviewed in this workspace, the same value, a value of the catalog, by the direction of the call, a new value, a suggestion of the keywords of the catalog to check, or a new Root Category or Root Cause whose **Domain** to choose), and its Maps to and Domain cells list the values each one takes (those of the catalog and those the equivalences add; a new name can be typed). Change Maps to (empty leaves the value out of its field, in the note) and the Domain, then **Upload Equivalences**: the rows that differ from the rules of the tool are kept in the workspace, before the rules, for its next imports, and travel with its configuration. **Default Equivalences** forgets, after confirming, every equivalence uploaded for the workspace, so the import uses only the rules of the tool again.
 
 ## Analysts / Reviewers → Asignees
 

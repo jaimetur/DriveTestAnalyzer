@@ -1496,7 +1496,7 @@ def indexed_cdr_columns(repository: Any) -> list[str]:
 
 
 def save_table_columns(repository: Any, builtin: Any, cdr: Any, username: str, export_cdr: Any = (), *,
-                       imported: bool = False) -> dict[str, list[str]]:
+                       imported: bool = False, defaults: bool = False) -> dict[str, list[str]]:
     unknown = [column for column in _strings(builtin) if column not in OPTIONAL_COLUMNS]
     if unknown:
         raise ValueError(f'Unknown columns: {", ".join(unknown)}.')
@@ -1512,7 +1512,8 @@ def save_table_columns(repository: Any, builtin: Any, cdr: Any, username: str, e
         {'builtin': _strings(builtin), 'cdr': cdr_columns, 'export_cdr': export_columns}))
     if hasattr(repository, 'try_add_log'):
         repository.try_add_log(username, 'nq_table_columns', 'Non-Qualified Calls table columns taken from an imported '
-                               'configuration.' if imported else 'Non-Qualified Calls table columns updated.')
+                               'configuration.' if imported else 'Non-Qualified Calls table columns restored to the default '
+                               'columns.' if defaults else 'Non-Qualified Calls table columns updated.')
     return table_columns(repository)
 
 
@@ -2125,7 +2126,7 @@ def _store_fields(task_repository: Any, fields: list[dict[str, Any]]) -> None:
         )
 
 
-def save_fields(task_repository: Any, items: Any, username: str) -> list[dict[str, Any]]:
+def save_fields(task_repository: Any, items: Any, username: str, *, defaults: bool = False) -> list[dict[str, Any]]:
     """Replace the field catalog; renamed list values follow on every call and in the status rules, values in use
     cannot be removed, and the follow-up fields (status, team, assignee…) stay."""
     existing = {field['key']: field for field in list_fields(task_repository)}
@@ -2184,7 +2185,8 @@ def save_fields(task_repository: Any, items: Any, username: str) -> list[dict[st
     task_repository.set_workspace_state(STATUS_RULES_STATE_KEY, json.dumps(rules, ensure_ascii=False))
     recompute_statuses(task_repository, username)
     if hasattr(task_repository, 'try_add_log'):
-        task_repository.try_add_log(username, 'nq_analysis_fields', 'Non-Qualified Calls field catalog updated.')
+        task_repository.try_add_log(username, 'nq_analysis_fields', 'Non-Qualified Calls field catalog restored to the default '
+                                    'fields.' if defaults else 'Non-Qualified Calls field catalog updated.')
     return list_fields(task_repository)
 
 
@@ -2244,11 +2246,12 @@ def add_field_option(task_repository: Any, key: str, name: Any, username: str) -
             'added': found is None}
 
 
-def save_sections(task_repository: Any, items: Any, username: str) -> list[dict[str, str]]:
+def save_sections(task_repository: Any, items: Any, username: str, *, defaults: bool = False) -> list[dict[str, str]]:
     sections = nq_catalog.normalize_sections(items if isinstance(items, list) else [])
     task_repository.set_workspace_state(SECTIONS_STATE_KEY, json.dumps(sections, ensure_ascii=False))
     if hasattr(task_repository, 'try_add_log'):
-        task_repository.try_add_log(username, 'nq_sections', 'Non-Qualified Calls sections updated.')
+        task_repository.try_add_log(username, 'nq_sections', 'Non-Qualified Calls sections restored to the default sections.'
+                                    if defaults else 'Non-Qualified Calls sections updated.')
     return sections
 
 
@@ -2595,7 +2598,8 @@ def domain_of(catalog: dict[str, Any], category: str, cause: str) -> str:
     return ''
 
 
-def save_root_causes(task_repository: Any, catalog: Any, require_to_close: bool, username: str) -> dict[str, Any]:
+def save_root_causes(task_repository: Any, catalog: Any, require_to_close: bool, username: str, *,
+                     defaults: bool = False) -> dict[str, Any]:
     """Replace the root cause catalog; renamed values follow on every call, removed ones must be unused."""
     current = list_root_causes(task_repository)
     normalized = nq_catalog.normalize_root_catalog(catalog)
@@ -2621,7 +2625,8 @@ def save_root_causes(task_repository: Any, catalog: Any, require_to_close: bool,
         _refresh_root_domains(connection, normalized)
     task_repository.set_workspace_state(ROOT_CAUSE_SETTINGS_STATE_KEY, json.dumps({'require_to_close': bool(require_to_close)}))
     if hasattr(task_repository, 'try_add_log'):
-        task_repository.try_add_log(username, 'nq_root_causes', 'Non-Qualified Calls root cause catalog updated.')
+        task_repository.try_add_log(username, 'nq_root_causes', 'Non-Qualified Calls root cause catalog restored to the default '
+                                    'catalog.' if defaults else 'Non-Qualified Calls root cause catalog updated.')
     return list_root_causes(task_repository)
 
 
@@ -5084,6 +5089,13 @@ def _save_equivalences(task_repository: Any, equivalences: dict[str, dict[str, d
                                         json.dumps(_normalize_equivalences(equivalences), ensure_ascii=False))
 
 
+def reset_analyses_equivalences(task_repository: Any) -> dict[str, int]:
+    """Forget the equivalences the workspace reviewed (Default Equivalences): the import uses those of the tool again."""
+    forgotten = sum(len(values) for values in workspace_equivalences(task_repository).values())
+    _save_equivalences(task_repository, {})
+    return {'forgotten': forgotten}
+
+
 class _AnalysesTranslator:
     """Turns the values of the analyses into values of the Analysis Center: the reviewed equivalences first, then the
     values of the catalog (same name or same letters), the old names of some values, and new values where the catalog
@@ -6964,6 +6976,8 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         categories: list[dict[str, Any]] = Field(default_factory=list)
         causes: list[dict[str, Any]] = Field(default_factory=list)
         require_to_close: bool = False
+        # Saved after Default Catalog: App Events says so.
+        defaults: bool = False
 
     class ApplyCategoriesPayload(BaseModel):
         preview: bool = False
@@ -6975,6 +6989,8 @@ def install_non_qualified_calls_routes(core: Any) -> None:
 
     class SectionsPayload(BaseModel):
         sections: list[dict[str, Any]] = Field(default_factory=list)
+        # Saved after Default Fields & Sections: App Events says so.
+        defaults: bool = False
 
     class StatusRulesPayload(BaseModel):
         rules: list[dict[str, Any]] = Field(default_factory=list)
@@ -7000,6 +7016,8 @@ def install_non_qualified_calls_routes(core: Any) -> None:
 
     class FieldsPayload(BaseModel):
         fields: list[dict[str, Any]] = Field(default_factory=list)
+        # Saved after Default Fields & Sections: App Events says so.
+        defaults: bool = False
 
     class FieldOptionPayload(BaseModel):
         name: str = ''
@@ -7008,6 +7026,8 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         builtin: list[str] = Field(default_factory=list)
         cdr: list[str] = Field(default_factory=list)
         export_cdr: list[str] = Field(default_factory=list)
+        # Saved after Default Columns: App Events says so.
+        defaults: bool = False
 
     def workspace_repository(user):
         if not core.active_workspace:
@@ -7252,7 +7272,8 @@ def install_non_qualified_calls_routes(core: Any) -> None:
             'saved_filters': _mapped_filters(repository, saved_filters(repository)),
             'root_causes': list_root_causes(repository), 'root_cause_defaults': nq_catalog.default_root_catalog(),
             'root_cause_rule_fields': RULE_FIELDS, 'default_root_cause_rule': DEFAULT_ROOT_CAUSE_RULE,
-            'fields': list_fields(repository), 'field_types': FIELD_TYPES, 'field_sources': nq_catalog.FIELD_SOURCES,
+            'fields': list_fields(repository), 'default_fields': nq_catalog.default_fields(), 'field_types': FIELD_TYPES,
+            'field_sources': nq_catalog.FIELD_SOURCES,
             'tracking_refs': nq_catalog.TRACKING_REFS, 'rca_refs': nq_catalog.RCA_REFS, 'call_fields': list(CATALOG_CALL_FIELDS),
             'sections': list_sections(repository), 'default_sections': nq_catalog.default_sections(), 'call_section': CALL_SECTION,
             'value_filter_fields': list(VALUE_FILTER_FIELDS),
@@ -7284,7 +7305,8 @@ def install_non_qualified_calls_routes(core: Any) -> None:
     def nq_save_fields(payload: FieldsPayload, user=Depends(editor_user)) -> JSONResponse:
         """The analysis fields of the workspace (user-editor and above)."""
         repository = workspace_repository(user)
-        return JSONResponse({'fields': translate(lambda: save_fields(repository, payload.fields, user.username))})
+        return JSONResponse({'fields': translate(lambda: save_fields(repository, payload.fields, user.username,
+                                                                     defaults=payload.defaults))})
 
     @core.app.post('/api/non-qualified-calls/fields/{key}/options')
     def nq_add_field_option(key: str, payload: FieldOptionPayload, user=Depends(editor_user)) -> JSONResponse:
@@ -7306,7 +7328,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
     def nq_save_sections(payload: SectionsPayload, user=Depends(editor_user)) -> JSONResponse:
         """The names and colours of the six sections (user-editor and above)."""
         repository = workspace_repository(user)
-        return JSONResponse({'sections': save_sections(repository, payload.sections, user.username)})
+        return JSONResponse({'sections': save_sections(repository, payload.sections, user.username, defaults=payload.defaults)})
 
     @core.app.put('/api/non-qualified-calls/status-rules')
     def nq_save_status_rules(payload: StatusRulesPayload, user=Depends(editor_user)) -> JSONResponse:
@@ -7456,6 +7478,14 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         except Exception as exc:  # noqa: BLE001 - an unreadable file is a user error.
             raise HTTPException(400, f'The equivalences workbook could not be read: {exc}') from exc
 
+    @core.app.delete('/api/non-qualified-calls/analyses/equivalences')
+    def nq_analyses_equivalences_reset(user=Depends(analyses_user)) -> JSONResponse:
+        """Forget the equivalences of the workspace (Default Equivalences): the import uses those of the tool."""
+        repository = workspace_repository(user)
+        result = reset_analyses_equivalences(repository)
+        log_action(repository, user, 'nq_analyses_equivalences_reset', result)
+        return JSONResponse(result)
+
     @core.app.delete('/api/non-qualified-calls/rca')
     def nq_rca_clear(user=Depends(editor_user)) -> JSONResponse:
         repository = workspace_repository(user)
@@ -7475,7 +7505,8 @@ def install_non_qualified_calls_routes(core: Any) -> None:
     def nq_save_table_columns(payload: TableColumnsPayload, user=Depends(editor_user)) -> JSONResponse:
         """The optional columns of the Calls table: built-in ones and CDR columns (indexed again)."""
         repository = workspace_repository(user)
-        columns = translate(lambda: save_table_columns(repository, payload.builtin, payload.cdr, user.username, payload.export_cdr))
+        columns = translate(lambda: save_table_columns(repository, payload.builtin, payload.cdr, user.username, payload.export_cdr,
+                                                       defaults=payload.defaults))
         # New CDR columns are indexed in the background.
         start_nq_index(repository, core.submit_background_task)
         return JSONResponse({'table_columns': columns, 'sync': nq_index_status(repository)})
@@ -7586,7 +7617,8 @@ def install_non_qualified_calls_routes(core: Any) -> None:
     def nq_save_root_causes(payload: RootCausesPayload, user=Depends(editor_user)) -> JSONResponse:
         repository = workspace_repository(user)
         catalog = {'domains': payload.domains, 'categories': payload.categories, 'causes': payload.causes}
-        return JSONResponse(translate(lambda: save_root_causes(repository, catalog, payload.require_to_close, user.username)))
+        return JSONResponse(translate(lambda: save_root_causes(repository, catalog, payload.require_to_close, user.username,
+                                                               defaults=payload.defaults)))
 
     @core.app.get('/api/non-qualified-calls/analysts')
     def nq_analysts(user=Depends(editor_user)) -> JSONResponse:

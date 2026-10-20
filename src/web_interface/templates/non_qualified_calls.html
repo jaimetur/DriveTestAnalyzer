@@ -378,7 +378,8 @@
     <div class="nq-root-mapping nq-catalog-list" id="nq-root-mapping" data-nq-catalog-list="mapping" hidden></div>
     <div class="nq-root-actions">
       <span><button type="button" class="nq-secondary-action" id="nq-root-add">Add Root Category</button>
-      <button type="button" class="nq-secondary-action" id="nq-root-defaults" title="Add the default domains, root categories and root causes that are missing; existing values and keywords stay">Add missing defaults</button></span>
+      <button type="button" class="nq-secondary-action" id="nq-root-defaults" title="Add the default domains, root categories and root causes that are missing; existing values and keywords stay">Add missing defaults</button>
+      <button type="button" class="nq-secondary-action" id="nq-root-default-catalog" title="Leave only the default domains, root categories and root causes, with their keywords, and do not require a root category to close a call; Save applies it">Default Catalog</button></span>
       <label class="nq-toggle"><input type="checkbox" id="nq-root-require"> Require a root category to close a call</label>
     </div>
     <p class="nq-options-error" id="nq-root-error" role="alert"></p>
@@ -398,7 +399,8 @@
     <section class="nq-sections-editor"><h3>Sections</h3><div class="nq-sections-grid" id="nq-sections-editor"></div></section>
     <div class="nq-field-toolbar"><div class="nq-section-chips" id="nq-field-section-chips" role="tablist" aria-label="Show the fields of a section"></div><input type="search" id="nq-field-filter" placeholder="Filter fields…" aria-label="Filter fields"></div>
     <ul class="nq-field-defs" id="nq-field-defs"></ul>
-    <div class="nq-root-actions"><button type="button" class="nq-secondary-action" id="nq-fields-add">Add Field</button></div>
+    <div class="nq-root-actions"><span><button type="button" class="nq-secondary-action" id="nq-fields-add">Add Field</button>
+      <button type="button" class="nq-secondary-action" id="nq-fields-default" title="Leave only the sections and fields of a new workspace, with their settings and list values; Save applies it">Default Fields &amp; Sections</button></span></div>
     <p class="nq-options-error" id="nq-fields-error" role="alert"></p>
     <footer><button type="button" class="nq-secondary-action" id="nq-fields-cancel">Cancel</button><button type="submit" class="nq-primary-action" id="nq-fields-save">Save</button></footer>
   </form>
@@ -412,7 +414,7 @@
       <section><h3>CDR columns <small id="nq-columns-count"></small></h3><input type="search" id="nq-columns-search" placeholder="Filter CDR columns…" aria-label="Filter CDR columns"><div class="nq-cdr-column-head" aria-hidden="true"><span>Column</span><span>Table</span><span>Excel</span></div><div class="nq-cdr-columns" id="nq-columns-cdr"></div></section>
     </div>
     <p class="nq-options-error" id="nq-columns-error" role="alert"></p>
-    <footer><button type="button" class="nq-secondary-action" id="nq-columns-cancel">Cancel</button><button type="submit" class="nq-primary-action" id="nq-columns-save">Save</button></footer>
+    <footer><button type="button" class="nq-secondary-action" id="nq-columns-default" title="The columns of a new workspace: no call or CDR columns, and the Analysis Center fields it shows; Save applies it">Default Columns</button><span class="nq-rule-spacer"></span><button type="button" class="nq-secondary-action" id="nq-columns-cancel">Cancel</button><button type="submit" class="nq-primary-action" id="nq-columns-save">Save</button></footer>
   </form>
 </dialog>
 <dialog class="nq-options-dialog nq-status-rules-dialog" id="nq-status-rules-dialog" aria-labelledby="nq-status-rules-title">
@@ -468,6 +470,7 @@
       <p class="form-note">Equivalences: what each value of the analysis workbooks becomes. The tool has those of the workbooks of the previous tool; to change them for this workspace, download them (with a file chosen, every value of that file), review Maps to and the Domain (each cell lists the values it takes) and upload the workbook.</p>
       <div class="nq-fields-import"><button type="button" class="nq-secondary-action" data-nq-analyses-equivalences-download title="The equivalences the import uses: the rules of the tool and those of this workspace">Download Equivalences</button>
         <label class="nq-secondary-action nq-file-action">Upload Equivalences<input type="file" accept=".xlsx" hidden data-nq-analyses-equivalences-file></label>
+        <button type="button" class="nq-secondary-action" data-nq-analyses-equivalences-reset title="Forget the equivalences uploaded for this workspace: the import uses only those of the tool">Default Equivalences</button>
         <span class="nq-muted" data-nq-analyses-equivalences-status></span></div>
     </div>
     <fieldset class="nq-analyses-mode">

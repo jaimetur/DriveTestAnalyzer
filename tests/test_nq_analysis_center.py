@@ -172,6 +172,62 @@ def test_default_statuses_replace_statuses_the_rules_gave_but_not_those_set_by_h
     assert {item['join_id']: item for item in query(client)['calls']}['0xA1']['status'] in statuses
 
 
+def test_each_configuration_goes_back_to_the_values_of_a_new_workspace(client, tmp_path):
+    calls = setup_calls(client, tmp_path)
+    repository = core.repository
+    events = lambda action: [row['details'] for row in repository.list_logs() if row['action'] == action]
+    state = client.get('/api/non-qualified-calls/state').json()
+    defaults = state['default_fields']
+    assert [field['key'] for field in defaults] == [field['key'] for field in nq_catalog.default_fields()]
+    # Default Columns: no optional or CDR columns.
+    assert client.put('/api/non-qualified-calls/table-columns', json={'builtin': ['join_id'], 'cdr': ['City']}).status_code == 200
+    reset = client.put('/api/non-qualified-calls/table-columns', json={'builtin': [], 'cdr': [], 'defaults': True})
+    assert reset.json()['table_columns'] == {'builtin': [], 'cdr': [], 'export_cdr': []}
+    assert events('nq_table_columns')[0] == 'Non-Qualified Calls table columns restored to the default columns.'
+    # Default Fields & Sections: a field that is not a default one stays while a call uses it.
+    fields = [*state['fields'], {'label': 'Custom Note', 'section': 'analysis', 'type': 'text', 'source': 'user', 'options': []}]
+    assert client.put('/api/non-qualified-calls/fields', json={'fields': fields}).status_code == 200
+    patch(client, calls['0xA1'], {'fields': {'custom_note': 'Kept'}})
+    sections = [{**section, 'label': f"{section['label']} X"} for section in state['default_sections']]
+    assert client.put('/api/non-qualified-calls/sections', json={'sections': sections}).status_code == 200
+    refused = client.put('/api/non-qualified-calls/fields', json={'fields': defaults, 'defaults': True})
+    assert refused.status_code == 400 and 'Custom Note' in refused.text
+    patch(client, calls['0xA1'], {'fields': {'custom_note': ''}})
+    assert client.put('/api/non-qualified-calls/fields', json={'fields': defaults, 'defaults': True}).status_code == 200
+    assert client.put('/api/non-qualified-calls/sections', json={'sections': state['default_sections'], 'defaults': True}).status_code == 200
+    after = client.get('/api/non-qualified-calls/state').json()
+    assert [field['key'] for field in after['fields']] == [field['key'] for field in defaults]
+    assert after['sections'] == state['default_sections']
+    assert events('nq_analysis_fields')[0] == 'Non-Qualified Calls field catalog restored to the default fields.'
+    assert events('nq_sections')[0] == 'Non-Qualified Calls sections restored to the default sections.'
+    # Default Catalog: a root category that is not a default one stays while a call uses it.
+    root = client.get('/api/non-qualified-calls/root-causes').json()
+    root['categories'] = [*({**item, 'previous': item['name']} for item in root['categories']),
+                          {'name': 'Custom Category', 'domain': '', 'keywords': ''}]
+    assert client.put('/api/non-qualified-calls/root-causes', json={**root, 'require_to_close': True}).status_code == 200
+    patch(client, calls['0xA1'], {'root_category': 'Custom Category'})
+    catalog = {**state['root_cause_defaults'], 'require_to_close': False, 'defaults': True}
+    refused = client.put('/api/non-qualified-calls/root-causes', json=catalog)
+    assert refused.status_code == 400 and 'Custom Category' in refused.text
+    patch(client, calls['0xA1'], {'root_category': ''})
+    saved = client.put('/api/non-qualified-calls/root-causes', json=catalog)
+    assert saved.status_code == 200, saved.text
+    assert [item['name'] for item in saved.json()['categories']] == [item['name'] for item in state['root_cause_defaults']['categories']]
+    assert saved.json()['require_to_close'] is False
+    assert events('nq_root_causes')[0] == 'Non-Qualified Calls root cause catalog restored to the default catalog.'
+    # Default Equivalences: the import uses only those of the tool again.
+    repository.set_workspace_state(nq.ANALYSES_EQUIVALENCES_STATE_KEY, json.dumps(
+        {'field:analysis_status': {'done': {'value': 'Done', 'to': 'Finished', 'domain': ''}}}))
+    assert client.delete('/api/non-qualified-calls/analyses/equivalences').json() == {'forgotten': 1}
+    assert nq.workspace_equivalences(repository) == {}
+    assert json.loads(events('nq_analyses_equivalences_reset')[0]) == {'forgotten': 1}
+    # Only admins and super-admins import analyses and forget their equivalences.
+    token = 'defaults-editor'
+    core.SESSIONS[token] = core.SessionUser(username='editor', role='user-editor')
+    client.cookies.set(core.SESSION_COOKIE, token)
+    assert client.delete('/api/non-qualified-calls/analyses/equivalences').status_code == 403
+
+
 def test_root_category_and_cause_are_independent_and_set_the_domain(client, tmp_path):
     call = setup_calls(client, tmp_path)['0xA1']
     updated = patch(client, call, {'root_category': 'Poor Coverage LTE', 'root_cause': 'Tunnel Issue'})
@@ -963,6 +1019,11 @@ def test_admins_import_the_analyses_of_the_previous_tool_by_join_id(client, tmp_
     rules_dialog = page.split('id="nq-status-rules-dialog"', 1)[1].split('</dialog>', 1)[0]
     assert rules_dialog.index('class="nq-rules-warning"') < rules_dialog.index('id="nq-status-rules"')
     assert 'can completely change how the calls are classified' in rules_dialog
+    # Every configuration has its button to go back to the values of a new workspace.
+    for button in ('id="nq-columns-default"', 'id="nq-fields-default"', 'id="nq-root-default-catalog"', 'id="nq-root-defaults"',
+                   'data-nq-option-defaults="statuses"', 'data-nq-option-defaults="teams"', 'id="nq-status-rules-default"',
+                   'id="nq-rule-default"', 'data-nq-analyses-equivalences-reset'):
+        assert button in page, button
     token = 'analyses-editor'
     core.SESSIONS[token] = core.SessionUser(username='editor', role='user-editor')
     client.cookies.set(core.SESSION_COOKIE, token)

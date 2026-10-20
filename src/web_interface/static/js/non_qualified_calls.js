@@ -2747,6 +2747,7 @@
       state.datasets = payload.datasets || [];
       state.mainCities = payload.main_cities || [];
       state.fields = payload.fields || [];
+      state.defaultFields = payload.default_fields || [];
       state.fieldTypes = payload.field_types || {};
       state.fieldSources = payload.field_sources || {};
       state.trackingRefs = payload.tracking_refs || {};
@@ -4582,9 +4583,11 @@
     iconButtons(row, row, () => { row.remove(); refreshDomainSelects(); countCatalog(); });
     return row;
   };
+  // Whether Default Catalog was used since the dialog opened (App Events says so).
+  let catalogDefaults = false;
   const saveCatalog = () => api('/api/non-qualified-calls/root-causes', {
     method: 'PUT', body: JSON.stringify({domains: collectCatalogRows('domains'), categories: collectCatalogRows('categories'),
-      causes: collectCatalogRows('causes'), require_to_close: $('nq-root-require').checked}),
+      causes: collectCatalogRows('causes'), require_to_close: $('nq-root-require').checked, defaults: catalogDefaults}),
   });
   // Saves the catalog, then gives the calls with a root cause and no root category the category of their cause.
   const applyCauseCategories = async (button) => {
@@ -4721,6 +4724,7 @@
       $('nq-root-rule-text').textContent = ruleText(state.rootCauses.rule);
       fillCatalog(state.rootCauses);
       $('nq-root-require').checked = Boolean(state.rootCauses.require_to_close);
+      catalogDefaults = false;
       $('nq-root-error').textContent = '';
       $('nq-root-search').value = '';
       selectCatalogTab('categories');
@@ -4754,6 +4758,28 @@
       $('nq-root-error').style.color = 'var(--nq-muted)';
       $('nq-root-error').textContent = added ? `${added} default values added: review them and Save.` : 'Every default value is already in the catalog.';
     });
+    // Only the default domains, root categories and root causes, with their keywords (a value with the same name keeps
+    // its calls), and no root category required to close a call; Save refuses to remove a value still used by a call.
+    $('nq-root-default-catalog').addEventListener('click', () => {
+      const defaults = state.rootCauseDefaults || {domains: [], categories: [], causes: []};
+      let added = 0;
+      const removed = [];
+      ['domains', 'categories', 'causes'].forEach((kind) => {
+        const current = [...$(CATALOG_LISTS[kind]).querySelectorAll('.nq-root-name')].map((input) => input.value.trim()).filter(Boolean);
+        const names = new Set((defaults[kind] || []).map((item) => item.name.toLowerCase()));
+        const kept = new Set(current.map((name) => name.toLowerCase()));
+        added += (defaults[kind] || []).filter((item) => !kept.has(item.name.toLowerCase())).length;
+        removed.push(...current.filter((name) => !names.has(name.toLowerCase())));
+      });
+      fillCatalog(defaults);
+      $('nq-root-require').checked = false;
+      catalogDefaults = true;
+      selectCatalogTab(catalogTab);
+      $('nq-root-error').style.color = 'var(--nq-muted)';
+      $('nq-root-error').textContent = `The default catalog is back (${added} added`
+        + (removed.length ? `, ${removed.length} removed: ${removed.slice(0, 8).join(', ')}${removed.length > 8 ? '…' : ''}` : '')
+        + '). Save to apply; a value still used by a call cannot be removed.';
+    });
     $('nq-root-add').addEventListener('click', () => {
       const row = catalogTab === 'domains' ? domainRow() : entryRow(catalogTab);
       $(CATALOG_LISTS[catalogTab]).append(row);
@@ -4782,6 +4808,8 @@
   // -- fields & sections dialog ---------------------------------------------------------------
   const fieldsDialog = $('nq-fields-dialog');
   let fieldSection = '';
+  // Whether Default Fields & Sections was used since the dialog opened (App Events says so).
+  let fieldsDefaults = false;
   // The sections as edited in the dialog (name and colour), in their fixed order.
   const editedSections = () => [...$('nq-sections-editor').querySelectorAll('[data-section-key]')].map((row) => ({
     key: row.dataset.sectionKey, label: row.querySelector('input[type="text"]').value.trim() || row.dataset.sectionKey,
@@ -5063,6 +5091,7 @@
   if (fieldsDialog) {
     $('nq-fields-open').addEventListener('click', () => {
       fieldSection = '';
+      fieldsDefaults = false;
       fillFieldsDialog();
       $('nq-catalog-preview').hidden = true;
       $('nq-fields-error').textContent = '';
@@ -5076,6 +5105,31 @@
       $('nq-field-defs').append(block);
       filterFieldDefs();
       block.querySelector('.nq-root-name').focus();
+    });
+    // The sections and fields of a new workspace, with their settings and list values: a field keeps its key (a follow-up
+    // field, the one of its follow-up value) and a value of the same name its calls; Save refuses to remove a field or
+    // value still used by a call.
+    $('nq-fields-default').addEventListener('click', () => {
+      const current = [...$('nq-field-defs').children].map((block) => ({key: block.dataset.key,
+        label: block.querySelector(':scope > .nq-option-row .nq-root-name').value.trim()}));
+      const fields = state.defaultFields.map((field) => {
+        const existing = state.fields.find((item) => (field.source === 'tracking'
+          ? item.source === 'tracking' && item.source_ref === field.source_ref : item.key === field.key));
+        return {...field, key: existing?.key || field.key};
+      });
+      const keys = new Set(fields.map((field) => field.key));
+      const shown = new Set(current.map((field) => field.key).filter(Boolean));
+      const added = fields.filter((field) => !shown.has(field.key)).length;
+      const removed = current.filter((field) => !keys.has(field.key)).map((field) => field.label || 'a new field');
+      fillSectionsEditor(state.defaultSections);
+      $('nq-field-defs').replaceChildren(...fields.map((field) => fieldDefinition(field)));
+      fieldSection = '';
+      filterFieldDefs();
+      fieldsDefaults = true;
+      $('nq-fields-error').style.color = 'var(--nq-muted)';
+      $('nq-fields-error').textContent = `The default sections and fields are back (${added} added`
+        + (removed.length ? `, ${removed.length} removed: ${removed.slice(0, 8).join(', ')}${removed.length > 8 ? '…' : ''}` : '')
+        + '). Save to apply; a field or value still used by a call cannot be removed.';
     });
     $('nq-fields-workbook').addEventListener('change', async (event) => {
       const file = event.target.files?.[0];
@@ -5106,9 +5160,9 @@
       try {
         const sections = editedSections();
         if (JSON.stringify(sections) !== JSON.stringify(state.sections.map(({key, label, color}) => ({key, label, color})))) {
-          await api('/api/non-qualified-calls/sections', {method: 'PUT', body: JSON.stringify({sections})});
+          await api('/api/non-qualified-calls/sections', {method: 'PUT', body: JSON.stringify({sections, defaults: fieldsDefaults})});
         }
-        await api('/api/non-qualified-calls/fields', {method: 'PUT', body: JSON.stringify({fields: collectFields()})});
+        await api('/api/non-qualified-calls/fields', {method: 'PUT', body: JSON.stringify({fields: collectFields(), defaults: fieldsDefaults})});
         fieldsDialog.close();
         toast('Fields and sections saved.');
         await loadState();
@@ -5123,6 +5177,8 @@
   }
   // -- table columns dialog -------------------------------------------------------------------
   const columnsDialog = $('nq-columns-dialog');
+  // Whether Default Columns was used since the dialog opened (App Events says so).
+  let columnsDefaults = false;
   const syncColumnCount = () => {
     const tableBoxes = [...columnsDialog.querySelectorAll('#nq-columns-cdr input[data-target="table"]')];
     const chosen = tableBoxes.filter((box) => box.checked).length;
@@ -5188,10 +5244,23 @@
       if (!names.length) $('nq-columns-cdr').append(node('p', 'No CDR is indexed yet.', 'form-note'));
       $('nq-columns-search').value = '';
       $('nq-columns-error').textContent = '';
+      columnsDefaults = false;
       syncColumnCount();
       columnsDialog.showModal();
     });
     $('nq-columns-cdr').addEventListener('change', syncColumnCount);
+    // The columns of a new workspace: no call or CDR columns, and the Analysis Center fields it shows in the table.
+    $('nq-columns-default').addEventListener('click', () => {
+      const inTable = new Set(state.defaultFields.filter((field) => field.in_table).map((field) => field.key));
+      $('nq-columns-builtin').querySelectorAll('input').forEach((box) => { box.checked = false; });
+      $('nq-columns-fields').querySelectorAll('input').forEach((box) => { box.checked = inTable.has(box.value); });
+      $('nq-columns-cdr').querySelectorAll('input').forEach((box) => { box.checked = false; box.disabled = false; });
+      syncColumnCount();
+      columnsDefaults = true;
+      $('nq-columns-error').style.color = 'var(--nq-muted)';
+      $('nq-columns-error').textContent = 'The default columns are back: no call or CDR columns, and the Analysis Center fields '
+        + 'of a new workspace. Save to apply.';
+    });
     $('nq-columns-search').addEventListener('input', () => {
       const query = $('nq-columns-search').value.trim().toLowerCase();
       $('nq-columns-cdr').querySelectorAll('.nq-cdr-column-row').forEach((row) => {
@@ -5209,6 +5278,7 @@
           cdr: [...$('nq-columns-cdr').querySelectorAll('input[data-target="table"]:checked')].map((box) => box.value),
           export_cdr: [...$('nq-columns-cdr').querySelectorAll('input[data-target="excel"]:checked')]
             .filter((box) => !box.closest('.nq-cdr-column-row').querySelector('input[data-target="table"]').checked).map((box) => box.value),
+          defaults: columnsDefaults,
         })});
         // The catalog fields chosen as columns are saved with the field catalog.
         const shown = new Set([...$('nq-columns-fields').querySelectorAll('input:checked')].map((box) => box.value));
@@ -5223,6 +5293,7 @@
         toast('Additional columns saved.');
         await loadState();
       } catch (error) {
+        $('nq-columns-error').style.color = '';
         $('nq-columns-error').textContent = error.message;
       } finally {
         save.disabled = false;
@@ -5736,6 +5807,31 @@
         error.textContent = exc.message;
       } finally {
         equivalencesFile.value = '';
+      }
+    });
+    // Forgets the equivalences uploaded for the workspace: the import uses those of the tool again.
+    const resetEquivalences = form.querySelector('[data-nq-analyses-equivalences-reset]');
+    resetEquivalences.addEventListener('click', async () => {
+      const message = 'Forget the equivalences uploaded for this workspace? The import then uses only the equivalences of the tool.';
+      const accepted = typeof window.showConfirmDialog === 'function'
+        ? await window.showConfirmDialog(message, {title: 'Default Equivalences', confirmLabel: 'Forget'}) : window.confirm(message);
+      if (!accepted) return;
+      error.textContent = '';
+      resetEquivalences.disabled = true;
+      try {
+        const result = await api('/api/non-qualified-calls/analyses/equivalences', {method: 'DELETE'});
+        if (!result.forgotten) {
+          equivalencesStatus.textContent = 'This workspace had no equivalences of its own: the import already uses those of the tool.';
+          return;
+        }
+        equivalencesStatus.textContent = `${count(result.forgotten, 'equivalence')} of this workspace forgotten: the import uses those `
+          + 'of the tool. Preview the file again.';
+        importReady(false, 'Preview the file again: the equivalences changed');
+        summary.hidden = true;
+      } catch (exc) {
+        error.textContent = exc.message;
+      } finally {
+        resetEquivalences.disabled = false;
       }
     });
     const send = async (preview) => {
