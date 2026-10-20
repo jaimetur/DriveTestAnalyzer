@@ -59,10 +59,10 @@
 .report-jobs .reporting-jobs-table { table-layout: auto; min-width: 60rem; }
 .report-jobs .reporting-jobs-table td, .report-jobs .reporting-jobs-table th { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
 .report-jobs #rj-tasks th:nth-child(1) { width: 14%; }
-.report-jobs #rj-tasks th:nth-child(2) { width: 30%; }
+.report-jobs #rj-tasks th:nth-child(2) { width: 38%; }
 .report-jobs #rj-tasks th:nth-child(3) { width: 8%; }
-.report-jobs #rj-tasks th:nth-child(4), .report-jobs #rj-tasks th:nth-child(5), .report-jobs #rj-tasks th:nth-child(6) { width: 11%; }
-.report-jobs #rj-tasks th:nth-child(7) { width: 9%; }
+.report-jobs #rj-tasks th:nth-child(4), .report-jobs #rj-tasks th:nth-child(6) { width: 9%; }
+.report-jobs #rj-tasks th:nth-child(5), .report-jobs #rj-tasks th:nth-child(7) { width: 6%; }
 .report-jobs .reporting-jobs-table .table-actions { display: flex; flex-wrap: wrap; gap: .3rem; }
 .rj-kinds { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr)); gap: .8rem; }
 .rj-kind-group { display: grid; gap: .25rem; align-content: start; }
@@ -125,12 +125,32 @@
 .report-jobs .rj-multi .workspace-user-picker-menu label.rj-multi-preset { margin-bottom: .2rem; border: 1px solid rgba(31, 95, 58, .25); background: #f1f9f4; color: #1f5f3a; }
 .report-jobs .rj-multi .workspace-user-picker-menu label.rj-multi-option:has(input:disabled) { opacity: .45; cursor: default; }
 
-/* Saved jobs: every action on one row. */
-.reporting-jobs-table .table-actions.rj-task-actions { flex-wrap: nowrap; gap: .4rem; white-space: nowrap; }
+/* Saved jobs: every action on one row, in a light toolbar of icon buttons (each icon drawn in the colour of its action,
+   which tints its button on hover; the label stays for screen readers and tooltips), and the dates of Next Run and Last
+   Run above their times, so Artifacts takes the room. */
+.reporting-jobs-table .table-actions.rj-task-actions { display: inline-flex; flex-wrap: nowrap; gap: .15rem; padding: .2rem; border: 1px solid #dbe3e8; border-radius: 10px; background: #fff; box-shadow: 0 1px 2px rgba(16, 24, 40, .06); white-space: nowrap; }
+.report-jobs #rj-tasks .rj-task-actions .icon-action { --rj-action: #475467; --rj-action-tint: #eef2f6; display: inline-grid; place-items: center; box-sizing: border-box; width: 1.75rem; min-width: 1.75rem; height: 1.75rem; min-height: 0; padding: 0; border: 0; border-radius: 7px; background: transparent; color: var(--rj-action); box-shadow: none; font-size: 0 !important; line-height: 0; text-decoration: none; transform: none; transition: background-color .15s ease, color .15s ease; }
+.report-jobs #rj-tasks .rj-task-actions .icon-action:hover:not(:disabled), .report-jobs #rj-tasks .rj-task-actions .icon-action:focus-visible { background: var(--rj-action-tint); color: var(--rj-action); box-shadow: none; transform: none; }
+.report-jobs #rj-tasks .rj-task-actions .icon-action:focus-visible { outline: 2px solid color-mix(in srgb, var(--rj-action) 45%, transparent); outline-offset: 1px; }
+.report-jobs #rj-tasks .rj-task-actions .icon-action:disabled { opacity: .35; cursor: not-allowed; }
+.report-jobs #rj-tasks .rj-task-actions .icon-action::before { content: ''; width: 1rem; height: 1rem; background: currentColor; -webkit-mask: var(--rj-icon) center / contain no-repeat; mask: var(--rj-icon) center / contain no-repeat; }
+.report-jobs #rj-tasks .rj-task-actions [aria-label="Run now"] { --rj-action: #1f7a4d; --rj-action-tint: #e3f3e9; }
+.report-jobs #rj-tasks .rj-task-actions .rj-download { --rj-action: #1f5f9e; --rj-action-tint: #e3f0fc; }
+.report-jobs #rj-tasks .rj-task-actions [aria-label="Delete the job and its runs"] { --rj-action: #b42318; --rj-action-tint: #fdecec; }
+.report-jobs #rj-tasks .rj-task-actions [aria-label="Run now"] { --rj-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7 4.6v10.8l8.6-5.4z' fill='black'/%3E%3C/svg%3E"); }
+.report-jobs #rj-tasks .rj-task-actions .rj-download { --rj-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10 3.5v9M6.2 8.9 10 12.7l3.8-3.8M4.5 16.2h11'/%3E%3C/svg%3E"); }
+.report-jobs #rj-tasks .rj-task-actions [aria-label="Edit"] { --rj-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12.8 4.2a1.8 1.8 0 0 1 2.6 0l.4.4a1.8 1.8 0 0 1 0 2.6l-8.4 8.4-3.6.9.9-3.6z'/%3E%3Cpath d='m11.4 5.6 3 3'/%3E%3C/svg%3E"); }
+.report-jobs #rj-tasks .rj-task-actions [aria-label="Duplicate (disabled copy)"] { --rj-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='7.2' y='7.2' width='9.3' height='9.3' rx='2'/%3E%3Cpath d='M12.8 4.3H5.4a1.1 1.1 0 0 0-1.1 1.1v7.4'/%3E%3C/svg%3E"); }
+.report-jobs #rj-tasks .rj-task-actions [aria-label="Delete the job and its runs"] { --rj-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5.6 5.6 8.8 8.8M14.4 5.6l-8.8 8.8' stroke-width='2.5'/%3E%3C/svg%3E"); }
+.report-jobs #rj-tasks .rj-time-cell > span { display: block; white-space: nowrap; }
+/* (Recurrence and Email wrap between words, never inside one, when Artifacts takes the room.) */
+.report-jobs #rj-tasks td:nth-child(4), .report-jobs #rj-tasks td:nth-child(6) { overflow-wrap: normal; }
 /* Network Insights: its seven filters share one row on wide screens. */
 .report-jobs .rj-filters.rj-filters-one-row { grid-template-columns: repeat(auto-fit, minmax(min(100%, 8.5rem), 1fr)); }
 /* Saved jobs: narrow Name and Email columns so Last Run and Status keep one line. */
-#rj-tasks th:nth-child(1), #rj-tasks td:nth-child(1) { width: 9rem; overflow-wrap: anywhere; }
+#rj-tasks th:nth-child(1), #rj-tasks td:nth-child(1) { width: 18rem; overflow-wrap: anywhere; }
+/* (The artifacts keep a readable width on narrow screens, where the table scrolls sideways.) */
+#rj-tasks td:nth-child(2) > .rj-artifacts { min-width: 15rem; }
 #rj-tasks th:nth-child(6), #rj-tasks td:nth-child(6) { width: 5.5rem; }
 #rj-tasks th:nth-child(7), #rj-tasks td:nth-child(7) { white-space: nowrap; }
 #rj-tasks th:nth-child(8), #rj-tasks td:nth-child(8) { width: 1%; white-space: nowrap; }
@@ -287,13 +307,52 @@
 .report-jobs .rj-artifact-section { color: var(--text); font-weight: 600; }
 .report-jobs .rj-artifact-missing { margin: .15rem 0 .1rem; color: #b42318; font-size: .82rem; font-weight: 700; }
 /* Jobs ordered by dragging their handle. */
-.report-jobs .rj-drag-handle { display: inline-block; width: auto; min-width: 0; margin: 0 .35rem 0 0; padding: 0 .2rem; border: 0; border-radius: 4px; background: none; box-shadow: none; color: #7a8794; font: inherit; font-size: 1rem; line-height: 1.2; cursor: grab; user-select: none; touch-action: none; }
-.report-jobs .rj-drag-handle:hover, .report-jobs .rj-drag-handle:focus-visible { color: #1f5f3a; background: #e3f3e9; outline: none; }
+/* The tab on the left of the name of a job (for editors), as on the cards of the Favourites Filters of Scoring & GAP
+   Analysis: its box on top selects the job, the rest of the tab drags it (or moves it with the up and down arrow keys). */
+.report-jobs #rj-tasks td.rj-task-name-cell.is-editable { position: relative; padding-left: 2.15rem; }
+.report-jobs .rj-drag-handle { position: absolute; top: .55rem; bottom: .55rem; left: .4rem; width: 1.35rem; min-width: 0; height: auto; min-height: 0; margin: 0; padding: 0; border: 1px solid #a9bccb; border-radius: 9px; background: #d7e3ec url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 6 14'%3E%3Cg fill='%233f5466'%3E%3Ccircle cx='1.5' cy='2' r='1'/%3E%3Ccircle cx='4.5' cy='2' r='1'/%3E%3Ccircle cx='1.5' cy='7' r='1'/%3E%3Ccircle cx='4.5' cy='7' r='1'/%3E%3Ccircle cx='1.5' cy='12' r='1'/%3E%3Ccircle cx='4.5' cy='12' r='1'/%3E%3C/g%3E%3C/svg%3E") center calc(50% + .95rem) / .45rem auto no-repeat; box-shadow: none; color: transparent; font-size: 0 !important; cursor: grab; user-select: none; touch-action: none; transform: none; }
+.report-jobs .rj-drag-handle:hover, .report-jobs .rj-drag-handle:focus-visible { background-color: #c4d5e2; border-color: #7f98ab; box-shadow: none; transform: none; outline: none; }
+.report-jobs .rj-drag-handle:active, .report-jobs #rj-tasks tr.rj-dragging .rj-drag-handle { cursor: grabbing; }
+.report-jobs .rj-task-check-box { position: absolute; z-index: 1; top: .55rem; left: .4rem; display: flex; align-items: center; justify-content: center; box-sizing: border-box; width: 1.35rem; height: 1.9rem; margin: 0; border: 1px solid #a9bccb; border-bottom-color: #c4d5e2; border-radius: 9px 9px 0 0; background: #fff; cursor: pointer; }
+.report-jobs .rj-task-check-box:hover { background: #e6f3f1; }
+.report-jobs .rj-task-check-box:has(input:checked) { border-color: #2f8a57; background: #dff1ee; }
 .report-jobs #rj-tasks tr.rj-dragging { opacity: .45; outline: 2px dashed #2f8a57; outline-offset: -2px; }
+/* Select all, Move Up, Move Down and Delete for the checked jobs, as on the Favourites Filters of Scoring & GAP Analysis;
+   the bar stays at the top, under the bar of the sections, while the table is scrolled. */
+.report-jobs .rj-bulk { position: sticky; top: calc(var(--module-tabs-offset, 0px) + var(--section-top-offset, 0px)); z-index: 4; display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; margin: 0 0 .6rem; padding: .4rem 0; background: #fbf9f4; }
+.report-jobs .rj-bulk[hidden] { display: none; }
+/* Held at the top, a solid band as wide as the panel covers the page from the top of the window (below the tabs of the
+   modules) down to below the bar, so the jobs scroll under it and the bar of the sections stays on top. */
+.report-jobs .rj-bulk.is-stuck::before { content: ''; position: absolute; top: calc(-1 * var(--section-top-offset, 0px)); right: -1.55rem; bottom: -.45rem; left: -1.55rem; z-index: -1; background: #fbf9f4; box-shadow: 0 1px 0 #d8dee3, 0 10px 18px rgba(18, 31, 43, .12); pointer-events: none; }
+/* (Its panel clips as before without being a scroll container, which would keep the bar from staying at the top.) */
+.report-jobs details.collapsible-panel:has(> .collapsible-panel-body > .rj-bulk) { overflow: clip; }
+.report-jobs .rj-select-all { display: inline-flex; align-items: center; gap: .35rem; margin: 0; color: #46606d; font-size: .78rem; font-weight: 800; cursor: pointer; }
+.report-jobs .rj-select-all input, .report-jobs .rj-task-check { width: 1rem; height: 1rem; margin: 0; cursor: pointer; }
+/* (Between the modules and the NR Modes of a job.) */
+.report-jobs .rj-task-separator { flex: 0 0 auto; width: 2px; height: 1.05rem; margin: 0 .3rem; border-radius: 1px; background: #7b8794; }
+.report-jobs .rj-bulk-move, .report-jobs .rj-bulk-delete { width: auto; min-height: 1.55rem; padding: .18rem .55rem; border: 1px solid #c9d6de; border-radius: 999px; background: #f4f8fa; color: #46606d; font-size: .72rem; font-weight: 800; box-shadow: none; }
+.report-jobs .rj-bulk-move:hover:not(:disabled) { border-color: #8fa9b8; background: #e8f0f4; color: #23404f; box-shadow: none; transform: none; }
+.report-jobs .rj-bulk-delete { border-color: #e4a1a1; background: #fdecec; color: #a42828; }
+.report-jobs .rj-bulk-delete:hover:not(:disabled) { background: #f9d6d6; box-shadow: none; transform: none; }
+.report-jobs .rj-bulk-move:disabled, .report-jobs .rj-bulk-delete:disabled { border-color: #d8dee3; background: #f1f4f6; color: #8796a1; cursor: not-allowed; }
+/* The jobs just moved with Move Up or Move Down light up in amber for a moment where they land. */
+@keyframes rj-moved { 0%, 40% { box-shadow: inset 0 0 0 3px #f59e0b; background-color: #fff4dc; } }
+.report-jobs #rj-tasks tr.rj-moved > td { animation: rj-moved 1.6s ease-out; }
+/* The first line of the name of a job: its box and its modules, abbreviated in the colours of their artifact panels,
+   always on one line. */
+.report-jobs .rj-task-modules { display: flex; flex-wrap: nowrap; align-items: center; gap: .22rem; margin: 0 0 .3rem; white-space: nowrap; }
+.report-jobs .rj-task-modules .rj-task-mode { padding: .05rem .38rem; border-radius: 5px; font-size: .66rem; }
+.report-jobs .rj-task-module { --rj-accent: #1f5f3a; flex: 0 0 auto; padding: .05rem .34rem; border: 1px solid color-mix(in srgb, var(--rj-accent) 55%, white); border-radius: 5px; background: color-mix(in srgb, var(--rj-accent) 10%, white); color: var(--rj-accent); font-size: .66rem; font-weight: 850; line-height: 1.25; letter-spacing: .03em; }
+.report-jobs .rj-task-module[data-module="scoring"] { --rj-accent: #176e77; }
+.report-jobs .rj-task-module[data-module="network_insights"] { --rj-accent: #4338ca; }
+.report-jobs .rj-task-module[data-module="non_qualified_calls"] { --rj-accent: #a3204c; }
+.report-jobs .rj-task-module[data-module="dashboards"] { --rj-accent: #5b3f99; }
+.report-jobs .rj-task-module[data-module="dataset_analysis"] { --rj-accent: #0c4c8c; }
 /* The labels on top of the name of a job (scopeTabs in report_jobs.js), in the colours of those of the Favourites Filters of
    Scoring & GAP Analysis: the area of each artifact in the colour of its field, and the NR Modes outlined. */
 .report-jobs .rj-task-tabs { display: flex; flex-wrap: wrap; gap: .25rem; margin: 0 0 .35rem; }
-.report-jobs .rj-task-scope, .report-jobs .rj-task-mode { box-sizing: border-box; max-width: 100%; padding: .1rem .5rem; border: 1px solid; border-radius: 6px; font-size: .72rem; font-weight: 850; line-height: 1.25; letter-spacing: .01em; overflow-wrap: anywhere; }
+/* (Each on one line: the column widens for the longest, up to a limit beyond which the end of its values shows on hover.) */
+.report-jobs .rj-task-scope, .report-jobs .rj-task-mode { box-sizing: border-box; max-width: 22rem; padding: .1rem .5rem; border: 1px solid; border-radius: 6px; font-size: .72rem; font-weight: 850; line-height: 1.25; letter-spacing: .01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .report-jobs .rj-task-scope { color: #fff; }
 .report-jobs .rj-task-scope[data-dimension="all"] { border-color: #34495e; background: #34495e; }
 .report-jobs .rj-task-scope[data-dimension="region"] { border-color: #c2185b; background: #c2185b; }
@@ -301,6 +360,9 @@
 .report-jobs .rj-task-scope[data-dimension="city"] { border-color: #b06d00; background: #b06d00; }
 .report-jobs .rj-task-scope[data-dimension="operator"] { border-color: #2458a6; background: #2458a6; }
 .report-jobs .rj-task-scope[data-dimension="vendor"] { border-color: #6941a5; background: #6941a5; }
+/* The campaigns of the job, on a line of their own below them, outlined in slate. */
+.report-jobs .rj-task-campaigns { display: flex; flex-wrap: wrap; gap: .25rem; margin: 0 0 .35rem; }
+.report-jobs .rj-task-campaign { box-sizing: border-box; max-width: 22rem; padding: .1rem .5rem; border: 1px solid #94a3b8; border-radius: 6px; background: #f1f5f9; color: #334155; font-size: .72rem; font-weight: 750; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .report-jobs .rj-task-mode { flex: 0 0 auto; border-color: #1d4ed8; background: #fff; color: #1d4ed8; letter-spacing: .02em; white-space: nowrap; }
 .report-jobs .rj-task-mode[data-nr-mode="sa"] { border-color: #be185d; color: #be185d; }
 .report-jobs .rj-task-mode[data-nr-mode="nsa-vs-sa"] { border-color: #6d3fb0; color: #4b5563; }

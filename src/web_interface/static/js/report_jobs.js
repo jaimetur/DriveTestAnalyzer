@@ -66,6 +66,16 @@
     const parsed = new Date(value);
     return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toLocaleString(undefined, {dateStyle: 'medium', timeStyle: 'short'});
   };
+  // A cell with a date and its time on the line below, which keeps the Next Run and Last Run columns of the jobs narrow.
+  const timeCell = (value) => {
+    const parsed = value ? new Date(value) : null;
+    if (!parsed || Number.isNaN(parsed.getTime())) return node('td', value ? String(value) : '—');
+    const cell = node('td', undefined, 'rj-time-cell');
+    cell.title = localTime(value);
+    cell.append(node('span', parsed.toLocaleDateString(undefined, {dateStyle: 'medium'})),
+      node('span', parsed.toLocaleTimeString(undefined, {timeStyle: 'short'})));
+    return cell;
+  };
 
   // -- reusable pickers ---------------------------------------------------
   // A filterable multi-select dropdown; getValue() returns the checked values.
@@ -1389,9 +1399,55 @@
     void saveOrder();
   });
 
-  // On top of the name of a job, as on the cards of the Favourites Filters of Scoring & GAP Analysis: the only Region,
-  // Cluster, City, Operator or Vendor each of its artifacts filters (All when none), once each, in the colour of the
-  // field, and its NR Modes outlined (see job_scope).
+  // The box that selects a job (for editors), on top of the tab on the left of its name by which it is dragged, as the
+  // cards of the Favourites Filters of Scoring & GAP Analysis.
+  function taskCheck(task) {
+    const holder = node('label', undefined, 'rj-task-check-box');
+    holder.title = 'Select this job to move or delete it with the buttons above the table';
+    const box = node('input', undefined, 'rj-task-check');
+    box.type = 'checkbox';
+    box.dataset.taskCheck = task.id;
+    box.checked = checkedTaskIds.has(task.id);
+    box.setAttribute('aria-label', `Select ${task.name}`);
+    holder.append(box);
+    return holder;
+  }
+
+  // Below the areas of a job, always on one line: the modules it generates artifacts of, abbreviated in the colours of
+  // their artifact panels (see job_modules), and after a separator its NR Modes, outlined.
+  const MODULE_TAGS = {scoring: 'SCO', network_insights: 'NI', non_qualified_calls: 'NQ', dashboards: 'PPT', dataset_analysis: 'CDR'};
+  function moduleLine(task) {
+    const line = node('div', undefined, 'rj-task-modules');
+    (task.modules || []).forEach((key) => {
+      const tag = node('span', MODULE_TAGS[key] || key.slice(0, 3).toUpperCase(), 'rj-task-module');
+      tag.dataset.module = key;
+      tag.title = ARTIFACT_MODULE_LABELS[key] || key;
+      line.append(tag);
+    });
+    const modes = (task.nr_modes || []).map(modeLabel);
+    if (modes.length && line.childElementCount) line.append(node('span', undefined, 'rj-task-separator'));
+    line.append(...modes);
+    return line.childElementCount ? line : null;
+  }
+
+  // On a line of their own, the campaigns of the job (see job_campaigns): each choice once, after the modules that make
+  // it when its modules choose differently (SCO · PPT: Latest 2 campaigns).
+  function campaignTags(task) {
+    const choices = task.campaigns || [];
+    if (!choices.length) return null;
+    const line = node('div', undefined, 'rj-task-campaigns');
+    choices.forEach((choice) => {
+      const modules = choices.length > 1 ? choice.modules.map((key) => MODULE_TAGS[key] || key.slice(0, 3).toUpperCase()).join(' · ') : '';
+      const label = node('span', modules ? `${modules}: ${choice.campaigns}` : choice.campaigns, 'rj-task-campaign');
+      label.title = `Campaigns of ${choice.modules.map((key) => ARTIFACT_MODULE_LABELS[key] || key).join(', ')}: ${choice.campaigns}`;
+      line.append(label);
+    });
+    return line;
+  }
+
+  // The first line of the name of a job, as the labels of the cards of the Favourites Filters of Scoring & GAP Analysis:
+  // the only Region, Cluster, City, Operator or Vendor each of its artifacts filters (Nationwide when none), once each,
+  // in the colour of the field (see job_scope).
   function scopeTabs(task) {
     const tabs = node('div', undefined, 'rj-task-tabs');
     (task.scopes || []).forEach((scope) => {
@@ -1400,20 +1456,21 @@
       label.title = scope.title;
       tabs.append(label);
     });
-    (task.nr_modes || []).forEach((mode) => {
-      const label = node('span', mode === 'NSA+SA' ? undefined : mode, 'rj-task-mode');
-      label.dataset.nrMode = mode === 'NSA+SA' ? 'nsa-vs-sa' : mode.toLowerCase();
-      label.title = `NR Mode: ${mode === 'NSA+SA' ? 'NSA vs SA' : mode}`;
-      if (mode === 'NSA+SA') {
-        for (const [part, partMode] of [['NSA', 'nsa'], [' vs ', ''], ['SA', 'sa']]) {
-          const piece = node('span', part);
-          if (partMode) piece.dataset.nrMode = partMode;
-          label.append(piece);
-        }
-      }
-      tabs.append(label);
-    });
     return tabs.childElementCount ? tabs : null;
+  }
+  // An NR Mode of the job, outlined in its colour (NSA vs SA in both).
+  function modeLabel(mode) {
+    const label = node('span', mode === 'NSA+SA' ? undefined : mode, 'rj-task-mode');
+    label.dataset.nrMode = mode === 'NSA+SA' ? 'nsa-vs-sa' : mode.toLowerCase();
+    label.title = `NR Mode: ${mode === 'NSA+SA' ? 'NSA vs SA' : mode}`;
+    if (mode === 'NSA+SA') {
+      for (const [part, partMode] of [['NSA', 'nsa'], [' vs ', ''], ['SA', 'sa']]) {
+        const piece = node('span', part);
+        if (partMode) piece.dataset.nrMode = partMode;
+        label.append(piece);
+      }
+    }
+    return label;
   }
 
   function renderTasks() {
@@ -1424,6 +1481,7 @@
     if (!state.tasks.length) {
       emptyRow(body, 'No Reporting Jobs yet.', 10);
       placeEditor();
+      syncBulk();
       return;
     }
     body.replaceChildren(...state.tasks.map((task) => {
@@ -1439,7 +1497,7 @@
       const basedOn = cellWith(node('span', fromFavourite ? 'Bundle Report Template' : 'Manual Artifacts', `rj-based-on${fromFavourite ? ' rj-based-on-favourite' : ''}`));
       basedOn.title = fromFavourite ? 'The job generates a favourite Bundle Report Template' : 'The artifacts of the job were chosen in the Job Editor';
       const last = task.last_run;
-      const lastCell = node('td', last ? localTime(last.started_at || last.created_at) : '—');
+      const lastCell = timeCell(last ? last.started_at || last.created_at : '');
       const statusCell = node('td');
       statusCell.append(statusBadge(last));
       const actions = node('div', undefined, 'table-actions rj-task-actions');
@@ -1495,14 +1553,18 @@
         }
         await refresh();
       });
-      const nameCell = node('td', undefined, 'rj-task-name-cell');
+      const nameCell = node('td', undefined, `rj-task-name-cell${state.can_edit ? ' is-editable' : ''}`);
+      if (state.can_edit) nameCell.append(dragHandle(), taskCheck(task));
       const tabs = scopeTabs(task);
       if (tabs) nameCell.append(tabs);
-      if (state.can_edit) nameCell.append(dragHandle());
+      const modules = moduleLine(task);
+      if (modules) nameCell.append(modules);
+      const campaigns = campaignTags(task);
+      if (campaigns) nameCell.append(campaigns);
       nameCell.append(node('span', task.name, 'rj-task-name'));
       row.append(
         nameCell, cellWith(artifacts), basedOn,
-        node('td', task.recurrence), node('td', task.enabled ? localTime(task.next_run_at) : 'Disabled'),
+        node('td', task.recurrence), task.enabled ? timeCell(task.next_run_at) : node('td', 'Disabled'),
         node('td', task.send_email ? `Yes · ${task.recipients.length} recipient${task.recipients.length === 1 ? '' : 's'}` : 'No'),
         lastCell, statusCell, cellWith(switchLabel), cellWith(actions),
       );
@@ -1510,7 +1572,121 @@
       return row;
     }));
     placeEditor();
+    syncBulk();
   }
+
+  // -- several jobs at once ---------------------------------------------------
+  // Editors check jobs (or Select all) to move them one place up or down together, as dragging them would, or to delete
+  // them together, as the Favourites Filters of Scoring & GAP Analysis.
+  const checkedTaskIds = new Set();
+  let deletingCheckedTasks = false;
+  const selectAllTasks = $('rj-select-all');
+  const moveTaskButtons = [...document.querySelectorAll('[data-rj-move]')];
+  const deleteCheckedTasks = $('rj-delete-selected');
+  // The order of the jobs with each checked one a place up (step -1) or down (step 1): a checked one trades places with
+  // the unchecked one next to it, so checked ones side by side move together and stop at the end.
+  function movedTaskOrder(order, step) {
+    const moved = [...order];
+    const indexes = moved.map((_, index) => index);
+    for (const index of step < 0 ? indexes.slice(1) : indexes.slice(0, -1).reverse()) {
+      if (checkedTaskIds.has(moved[index]) && !checkedTaskIds.has(moved[index + step])) {
+        [moved[index], moved[index + step]] = [moved[index + step], moved[index]];
+      }
+    }
+    return moved;
+  }
+  function syncBulk() {
+    const ids = state.tasks.map((task) => task.id);
+    for (const id of [...checkedTaskIds]) if (!ids.includes(id)) checkedTaskIds.delete(id);
+    $('rj-bulk').hidden = !state.can_edit || !ids.length;
+    selectAllTasks.checked = ids.length > 0 && checkedTaskIds.size === ids.length;
+    selectAllTasks.indeterminate = checkedTaskIds.size > 0 && checkedTaskIds.size < ids.length;
+    // A button is off when no checked job can move that way.
+    for (const button of moveTaskButtons) {
+      const step = button.dataset.rjMove === 'up' ? -1 : 1;
+      button.disabled = deletingCheckedTasks || movedTaskOrder(ids, step).join() === ids.join();
+    }
+    deleteCheckedTasks.textContent = checkedTaskIds.size ? `Delete (${checkedTaskIds.size})` : 'Delete';
+    deleteCheckedTasks.disabled = deletingCheckedTasks || !checkedTaskIds.size;
+  }
+  // The bar is held at the top while the table is scrolled; then a band behind it hides the page above it.
+  const syncBulkStuck = () => {
+    const bar = $('rj-bulk');
+    const top = parseFloat(getComputedStyle(bar).top) || 0;
+    bar.classList.toggle('is-stuck', !bar.hidden && bar.getBoundingClientRect().top <= top + 1
+      && $('rj-tasks').getBoundingClientRect().top < top + bar.offsetHeight);
+  };
+  window.addEventListener('scroll', syncBulkStuck, {passive: true});
+  window.addEventListener('resize', syncBulkStuck);
+  tasksBody.addEventListener('change', (event) => {
+    const box = event.target.closest('[data-task-check]');
+    if (!box) return;
+    if (box.checked) checkedTaskIds.add(Number(box.dataset.taskCheck));
+    else checkedTaskIds.delete(Number(box.dataset.taskCheck));
+    syncBulk();
+  });
+  selectAllTasks.addEventListener('change', () => {
+    checkedTaskIds.clear();
+    if (selectAllTasks.checked) state.tasks.forEach((task) => checkedTaskIds.add(task.id));
+    tasksBody.querySelectorAll('[data-task-check]').forEach((box) => { box.checked = checkedTaskIds.has(Number(box.dataset.taskCheck)); });
+    syncBulk();
+  });
+  // Move Up and Move Down save the new order as dragging does; the moved jobs light up where they land, and the one that
+  // leads the way stays in view below the bar of these buttons, which stays at the top while the table is scrolled.
+  moveTaskButtons.forEach((button) => button.addEventListener('click', () => {
+    const step = button.dataset.rjMove === 'up' ? -1 : 1;
+    const order = state.tasks.map((task) => task.id);
+    const moved = movedTaskOrder(order, step);
+    if (moved.join() === order.join()) return;
+    const rows = new Map(taskRows().map((row) => [Number(row.dataset.taskId), row]));
+    orderBefore = JSON.stringify(order);
+    moved.forEach((id) => tasksBody.append(rows.get(id)));
+    void saveOrder();
+    syncBulk();
+    const lit = moved.filter((id) => checkedTaskIds.has(id)).map((id) => rows.get(id));
+    lit.forEach((row) => { row.classList.remove('rj-moved'); void row.offsetWidth; row.classList.add('rj-moved'); });
+    const leading = step < 0 ? lit[0] : lit[lit.length - 1];
+    if (leading) {
+      const bar = $('rj-bulk');
+      const clear = (parseFloat(getComputedStyle(bar).top) || 0) + bar.offsetHeight + 12;
+      const box = leading.getBoundingClientRect();
+      if (box.top < clear) window.scrollBy({top: box.top - clear, behavior: 'auto'});
+      else if (box.bottom > window.innerHeight - 12) window.scrollBy({top: box.bottom - window.innerHeight + 12, behavior: 'auto'});
+    }
+  }));
+  // The checked jobs are deleted together after one confirmation, each as its own Delete would (with its runs and their
+  // artifacts, and recorded in App Events); those that cannot be deleted are named.
+  deleteCheckedTasks.addEventListener('click', async () => {
+    const targets = state.tasks.filter((task) => checkedTaskIds.has(task.id));
+    if (!targets.length || deletingCheckedTasks) return;
+    const count = targets.length;
+    const plural = count === 1 ? '' : 's';
+    const runs = state.runs.filter((run) => targets.some((task) => task.id === run.task_id)).length;
+    if (!await confirmDelete(`Delete ${count} Reporting Job${plural}`, `
+      <p>${count === 1 ? 'This Reporting Job' : `These ${count} Reporting Jobs`} will be deleted permanently:</p>
+      <ul>${targets.map((task) => `<li><strong>${escapeText(task.name)}</strong></li>`).join('')}</ul>
+      <p>Together with ${count === 1 ? 'its' : 'their'} schedule and email delivery, ${runs ? `<strong>${runs}</strong> run${runs === 1 ? '' : 's'} in the Run History` : 'the run history'} and every artifact generated by those runs.</p>
+      <p>This cannot be undone. To keep a job without running it, disable it instead.</p>`,
+    count === 1 ? 'Delete Job' : `Delete ${count} Jobs`, `Delete ${count} Reporting Job${plural}, their run history and artifacts?`)) return;
+    deletingCheckedTasks = true;
+    syncBulk();
+    status(`Deleting ${count} Reporting Job${plural}…`);
+    const failures = [];
+    for (const task of targets) {
+      try {
+        await api(`/api/reporting/tasks/${task.id}`, {method: 'DELETE'});
+        checkedTaskIds.delete(task.id);
+        if (editingId === task.id) closeEditor();
+      } catch (error) {
+        failures.push(`${task.name}: ${error.message}`);
+      }
+    }
+    deletingCheckedTasks = false;
+    const deleted = count - failures.length;
+    if (failures.length) status(`Deleted ${deleted} of ${count} Reporting Jobs. ${failures.join(' ')}`, 'error');
+    else status(`${deleted} Reporting Job${plural} deleted.`, 'done');
+    await refresh();
+  });
 
   function renderRuns() {
     const body = $('rj-runs').tBodies[0];

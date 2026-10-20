@@ -1934,7 +1934,7 @@
     const filtered = ['Region', 'Cluster', 'City', 'Operator', 'Vendor']
       .map(level => ({level, values: savedSavedFilterValues(savedFilter, level)}))
       .filter(item => item.values.length);
-    if (!filtered.length) return {dimension: 'all', text: 'All', title: 'No Region, Cluster, City, Operator or Vendor is filtered'};
+    if (!filtered.length) return {dimension: 'all', text: 'Nationwide', title: 'No Region, Cluster, City, Operator or Vendor is filtered'};
     if (filtered.length > 1) return null;
     const [{level, values}] = filtered;
     return {dimension: level.toLowerCase(), text: values.join(', '), title: `${level}: ${values.join(', ')}`};

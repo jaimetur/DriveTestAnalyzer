@@ -30,7 +30,7 @@ from typing import Any, Callable
 from src.branding import canonical_format
 from src.modules.value_maps import ValueMapper
 from src.modules.cdr_auto_selection import (
-    CAMPAIGN_PRESET_LABELS, LATEST_CAMPAIGN, campaign_presets, campaign_values, cdr_campaigns, complete_campaign_cdrs, describe_cdrs,
+    ALL_CAMPAIGNS, CAMPAIGN_PRESET_LABELS, LATEST_CAMPAIGN, campaign_presets, campaign_values, cdr_campaigns, complete_campaign_cdrs, describe_cdrs,
     resolve_campaign_filter, resolve_cdrs, sort_campaigns,
 )
 from src.modules.column_names import compact_campaign_value
@@ -630,9 +630,63 @@ def job_scope(definition: dict[str, Any], favourite_filters: dict[str, dict[str,
     for field, values in (item for item in scopes if item is not None):
         labels.setdefault((field, frozenset(value.casefold() for value in values)), {
             'dimension': field.lower(), 'text': ', '.join(values), 'title': f"{field}: {', '.join(values)}",
-        } if field else {'dimension': 'all', 'text': 'All', 'title': 'No Region, Cluster, City, Operator or Vendor is filtered'})
+        } if field else {'dimension': 'all', 'text': 'Nationwide', 'title': 'No Region, Cluster, City, Operator or Vendor is filtered'})
     found = {normalize_scoring_nr_mode(value) for value in modes}
     return {'scopes': list(labels.values()), 'nr_modes': [mode for mode in ('NSA', 'SA', NSA_VS_SA) if mode in found]}
+
+
+# The modules of the labels of a job, in the order of the sections of the Bundle Report Templates (CDR Analysis last).
+JOB_MODULES = ('scoring', 'network_insights', 'non_qualified_calls', 'dashboards', 'dataset_analysis')
+
+
+def job_modules(definition: dict[str, Any], favourite_modules: dict[str, list[str]] | None = None) -> list[str]:
+    """The modules a job generates artifacts of, in JOB_MODULES order: those of its own artifacts and the sections of the
+    favourite Bundle Report Templates it generates (every favourite when it chooses none; ``favourite_modules`` by ID)."""
+    found = {key for key in ('network_insights', 'dashboards', 'scoring') if definition.get(key)}
+    if (definition.get('dataset_analysis') or {}).get('enabled'):
+        found.add('dataset_analysis')
+    for key in definition.get('modules') or {}:
+        if key != 'bundle_report_template':
+            found.add(key)
+            continue
+        for value in _chosen_favourites(definition) or list(favourite_modules or {}):
+            found.update((favourite_modules or {}).get(value) or ())
+    return [key for key in JOB_MODULES if key in found] + sorted(found - set(JOB_MODULES))
+
+
+def _campaigns_label(values: Any) -> str:
+    """A choice of campaigns as a label: its automatic choice (Latest 2 campaigns) or its campaigns (2026-Q2, 2026-Q3),
+    All campaigns when it chooses none."""
+    labels = ['All campaigns' if value == ALL_CAMPAIGNS else CAMPAIGN_PRESET_LABELS.get(value) or compact_campaign_value(value)
+              for value in _strings(values)]
+    return ', '.join(dict.fromkeys(labels)) or 'All campaigns'
+
+
+def job_campaigns(definition: dict[str, Any], favourite_campaigns: dict[str, list[tuple[str, Any]]] | None = None) -> list[dict[str, Any]]:
+    """The campaigns of a job as labels, once each choice with the modules that make it ({'campaigns', 'modules'}, the
+    modules in JOB_MODULES order): those of its artifacts and of the sections of the favourite Bundle Report Templates it
+    generates (every favourite when it chooses none; ``favourite_campaigns`` by ID, (section, campaigns) each)."""
+    choices: list[tuple[str, Any]] = []
+    analysis = definition.get('dataset_analysis') or {}
+    if analysis.get('enabled'):
+        choices.append(('dataset_analysis', analysis.get('campaigns')))
+    choices += [('network_insights', (entry.get('selection') or {}).get('campaigns')) for entry in definition.get('network_insights') or []]
+    choices += [('dashboards', (entry.get('filters') or {}).get('Campaign')) for entry in definition.get('dashboards') or []]
+    choices += [('scoring', entry.get('campaigns')) for entry in definition.get('scoring') or []]
+    for key, config in (definition.get('modules') or {}).items():
+        if key != 'bundle_report_template':
+            choices.append((key, ((config.get('options') or {}).get('filters') or {}).get('campaign')))
+            continue
+        for value in _chosen_favourites(definition) or list(favourite_campaigns or {}):
+            choices += (favourite_campaigns or {}).get(value) or []
+    labels: dict[str, set[str]] = {}
+    for module, values in choices:
+        labels.setdefault(_campaigns_label(values), set()).add(module)
+    # In the order of their modules (that of the first one of each).
+    order = {key: index for index, key in enumerate(JOB_MODULES)}
+    rank = lambda key: (order.get(key, len(order)), key)  # noqa: E731
+    return sorted(({'campaigns': label, 'modules': sorted(modules, key=rank)} for label, modules in labels.items()),
+                  key=lambda choice: rank(choice['modules'][0]))
 
 
 def based_on_favourite(definition: dict[str, Any]) -> bool:
@@ -1832,12 +1886,13 @@ def install_report_task_routes(core: Any) -> None:
                 'settings': list(provider.get('settings') or ()), 'values': values}
 
     def serialize_task(task, runs_by_id, dashboard_names, favourite_names=None, favourite_contents=None,
-                       favourite_filters=None) -> dict[str, Any]:
+                       favourite_filters=None, favourite_modules=None, favourite_campaigns=None) -> dict[str, Any]:
         last = runs_by_id.get(task['last_run_id']) if task['last_run_id'] else None
         return {**task, 'artifacts': artifact_labels(task['definition'], dashboard_names, favourite_names),
                 'artifact_groups': artifact_groups(task['definition'], dashboard_names, favourite_names, favourite_contents),
                 'based_on': 'favourite' if based_on_favourite(task['definition']) else 'artifacts', 'last_run': last,
-                **job_scope(task['definition'], favourite_filters)}
+                **job_scope(task['definition'], favourite_filters), 'modules': job_modules(task['definition'], favourite_modules),
+                'campaigns': job_campaigns(task['definition'], favourite_campaigns)}
 
     # -- routes -------------------------------------------------------------
     @app.get('/reporting', response_class=HTMLResponse)
@@ -1859,14 +1914,19 @@ def install_report_task_routes(core: Any) -> None:
                            if isinstance(value, dict)} if tools is not None else {}
         # The jobs that generate favourite Bundle Report Templates name them and list what each one includes.
         try:
-            from src.modules.bundle_report_templates import favourite_contents as contents_of, list_favourites
+            from src.modules.bundle_report_templates import enabled_sections, favourite_contents as contents_of, list_favourites
             favourites = list_favourites(task_repository)
             favourite_names = {str(item['id']): item['name'] for item in favourites}
             favourite_contents = {str(item['id']): contents_of(item['definition'], dashboard_names) for item in favourites}
-            # Their common filters, which give the labels of the jobs (see job_scope).
+            # Their common filters and the modules and campaigns of their sections, which give the labels of the jobs (see
+            # job_scope, job_modules and job_campaigns).
             favourite_filters = {str(item['id']): item['definition']['filters'] for item in favourites}
+            favourite_modules = {str(item['id']): [section['key'] for section in enabled_sections(item['definition'])]
+                                 for item in favourites}
+            favourite_campaigns = {str(item['id']): [(section['key'], section['options'].get('campaigns'))
+                                                     for section in enabled_sections(item['definition'])] for item in favourites}
         except Exception:  # noqa: BLE001 - without them the jobs still list their artifacts.
-            favourite_names, favourite_contents, favourite_filters = {}, {}, {}
+            favourite_names, favourite_contents, favourite_filters, favourite_modules, favourite_campaigns = {}, {}, {}, {}, {}
         # Run History links only the files that still exist, and shows how much its artifacts take.
         for run in runs:
             folder = Path(run['output_dir']) if run.get('output_dir') else None
@@ -1883,8 +1943,8 @@ def install_report_task_routes(core: Any) -> None:
         # Jobs saved when CDRs were chosen by hand open with the campaigns of those CDRs.
         tasks = [{**task, 'definition': migrate_auto_cdrs(task['definition'], task_repository)} for task in list_tasks(task_repository)]
         return {
-            'tasks': [serialize_task(task, runs_by_id, dashboard_names, favourite_names, favourite_contents, favourite_filters)
-                      for task in tasks],
+            'tasks': [serialize_task(task, runs_by_id, dashboard_names, favourite_names, favourite_contents, favourite_filters,
+                                     favourite_modules, favourite_campaigns) for task in tasks],
             'runs': runs, 'can_edit': user.role in {'user-editor', 'admin', 'super-admin'},
             'workspace_id': core.active_workspace.id if core.active_workspace else '',
         }

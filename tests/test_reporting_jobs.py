@@ -662,7 +662,7 @@ def test_jobs_are_labelled_with_the_area_and_nr_modes_of_their_artifacts(client)
     assert report_tasks.job_scope(london, favourites) == {
         'scopes': [{'dimension': 'city', 'text': 'London', 'title': 'City: London'}], 'nr_modes': ['NSA']}
     every = report_tasks.job_scope({'modules': {'bundle_report_template': {'enabled': True, 'options': {}}}}, favourites)
-    assert [scope['text'] for scope in every['scopes']] == ['London', 'Vendor A, VMO2 North', 'All']
+    assert [scope['text'] for scope in every['scopes']] == ['London', 'Vendor A, VMO2 North', 'Nationwide']
     assert every['nr_modes'] == ['NSA', 'SA']
     # Manual artifacts: each Network Insights entry, Dashboard, Scoring scenario (Main Cities a City) and module gives its
     # area once (whatever the case), none when it filters several fields, and the NR Modes of the job (NSA vs SA too).
@@ -674,7 +674,7 @@ def test_jobs_are_labelled_with_the_area_and_nr_modes_of_their_artifacts(client)
               'modules': {'non_qualified_calls': {'enabled': True, 'options': {'filters': {'nr_mode': ['NSA'], 'region': ['Vendor B']}}}}}
     result = report_tasks.job_scope(manual)
     assert [(scope['dimension'], scope['text']) for scope in result['scopes']] == [
-        ('city', 'London'), ('all', 'All'), ('city', 'Main Cities'), ('region', 'Vendor B')]
+        ('city', 'London'), ('all', 'Nationwide'), ('city', 'Main Cities'), ('region', 'Vendor B')]
     assert result['nr_modes'] == ['NSA', 'SA', 'NSA+SA']
     # The jobs table receives them with each job and shows them on top of its name.
     login(client)
@@ -685,7 +685,71 @@ def test_jobs_are_labelled_with_the_area_and_nr_modes_of_their_artifacts(client)
     script = (core.PROJECT_ROOT / 'src/web_interface/static/js/report_jobs.js').read_text(encoding='utf-8')
     styles = (core.PROJECT_ROOT / 'src/web_interface/static/css/report_jobs.css').read_text(encoding='utf-8')
     assert 'const tabs = scopeTabs(task);' in script and "label.dataset.nrMode = mode === 'NSA+SA' ? 'nsa-vs-sa' : mode.toLowerCase();" in script
+    # The NR Modes on the line of the modules, after a separator.
+    assert "if (modes.length && line.childElementCount) line.append(node('span', undefined, 'rj-task-separator'));" in script
     assert '.report-jobs .rj-task-scope[data-dimension="city"] { border-color: #b06d00; background: #b06d00; }' in styles
+
+
+def test_jobs_name_their_modules_abbreviated_and_move_or_delete_several_at_once(client):
+    # The modules a job generates artifacts of: its own and the sections of the favourites it generates (every favourite
+    # when it chooses none), in the order of the sections, CDR Analysis last.
+    favourites = {'7': ['network_insights', 'scoring'], '8': ['dashboards']}
+    favourite = {'modules': {'bundle_report_template': {'enabled': True, 'options': {'filters': {'favourites': ['7']}}}}}
+    assert report_tasks.job_modules(favourite, favourites) == ['scoring', 'network_insights']
+    every = {'modules': {'bundle_report_template': {'enabled': True, 'options': {}}}}
+    assert report_tasks.job_modules(every, favourites) == ['scoring', 'network_insights', 'dashboards']
+    manual = {'dataset_analysis': {'enabled': True}, 'dashboards': [{'dashboard_id': 'a'}], 'scoring': [SCORING_ENTRY],
+              'modules': {'non_qualified_calls': {'enabled': True}}}
+    assert report_tasks.job_modules(manual) == ['scoring', 'non_qualified_calls', 'dashboards', 'dataset_analysis']
+    login(client)
+    client.post('/api/reporting/tasks', json={'name': 'Modules', 'schedule': {'mode': 'manual'},
+                                              'definition': {'scoring': [SCORING_ENTRY]}}).raise_for_status()
+    task = next(item for item in client.get('/api/reporting/state').json()['tasks'] if item['name'] == 'Modules')
+    assert task['modules'] == ['scoring']
+    page = (core.PROJECT_ROOT / 'src/web_interface/templates/report_jobs.html').read_text(encoding='utf-8')
+    script = (core.PROJECT_ROOT / 'src/web_interface/static/js/report_jobs.js').read_text(encoding='utf-8')
+    styles = (core.PROJECT_ROOT / 'src/web_interface/static/css/report_jobs.css').read_text(encoding='utf-8')
+    # On the first line of the name, always on one line: the box of the job and its modules abbreviated.
+    assert "const MODULE_TAGS = {scoring: 'SCO', network_insights: 'NI', non_qualified_calls: 'NQ', dashboards: 'PPT', dataset_analysis: 'CDR'};" in script
+    assert '.report-jobs .rj-task-modules { display: flex; flex-wrap: nowrap;' in styles
+    assert '#rj-tasks th:nth-child(1), #rj-tasks td:nth-child(1) { width: 18rem;' in styles
+    # The box that selects a job sits on top of the tab on the left of its name, by which it is dragged.
+    assert "if (state.can_edit) nameCell.append(dragHandle(), taskCheck(task));" in script
+    assert '.report-jobs .rj-drag-handle { position: absolute; top: .55rem; bottom: .55rem;' in styles
+    assert '.report-jobs .rj-task-check-box { position: absolute; z-index: 1; top: .55rem;' in styles
+    # The area labels stay on one line too (the column widens for them), and the campaigns of the job follow on a line of
+    # their own: each choice once, after the modules that make it when they choose differently.
+    assert 'text-overflow: ellipsis; white-space: nowrap; }' in styles.split('.report-jobs .rj-task-scope, .report-jobs .rj-task-mode {', 1)[1].split('\n', 1)[0]
+    campaigns = {'7': [('scoring', ['@latest-2-campaigns']), ('network_insights', ['@latest-campaign']),
+                       ('non_qualified_calls', []), ('dashboards', ['@latest-2-campaigns'])]}
+    assert report_tasks.job_campaigns(favourite, campaigns) == [
+        {'campaigns': 'Latest 2 campaigns', 'modules': ['scoring', 'dashboards']},
+        {'campaigns': 'Latest campaign', 'modules': ['network_insights']},
+        {'campaigns': 'All campaigns', 'modules': ['non_qualified_calls']}]
+    assert report_tasks.job_campaigns({'scoring': [{'campaigns': ['@all-campaigns']}, {'campaigns': []}],
+                                       'dashboards': [{'filters': {'Campaign': ['UK_Q2_2026', 'UK_Q3_2026']}}]}) == [
+        {'campaigns': 'All campaigns', 'modules': ['scoring']}, {'campaigns': '2026-Q2, 2026-Q3', 'modules': ['dashboards']}]
+    assert task['campaigns'] == [{'campaigns': 'Latest campaign', 'modules': ['scoring']}]
+    assert "const modules = choices.length > 1 ? choice.modules.map((key) => MODULE_TAGS[key] || key.slice(0, 3).toUpperCase()).join(' · ') : '';" in script
+    # The actions in a light toolbar of icon buttons (an icon of its own for each, in the colour of its action), and the
+    # times of Next Run and Last Run below their dates, leave the room to Artifacts.
+    assert '.reporting-jobs-table .table-actions.rj-task-actions { display: inline-flex; flex-wrap: nowrap;' in styles
+    assert 'width: 1.75rem; min-width: 1.75rem; height: 1.75rem; min-height: 0; padding: 0; border: 0; border-radius: 7px; background: transparent;' in styles
+    assert all(f'.report-jobs #rj-tasks .rj-task-actions {selector} {{ --rj-icon: url("data:image/svg+xml,' in styles for selector in (
+        '[aria-label="Run now"]', '.rj-download', '[aria-label="Edit"]', '[aria-label="Duplicate (disabled copy)"]',
+        '[aria-label="Delete the job and its runs"]'))
+    assert "const lastCell = timeCell(last ? last.started_at || last.created_at : '');" in script
+    assert "task.enabled ? timeCell(task.next_run_at) : node('td', 'Disabled')" in script
+    assert '.report-jobs #rj-tasks th:nth-child(2) { width: 38%; }' in styles
+    # Select all, Move Up, Move Down and Delete, as on the Favourites Filters, in a bar that stays at the top.
+    assert '<input type="checkbox" id="rj-select-all"> Select all' in page
+    assert 'data-rj-move="up"' in page and 'data-rj-move="down"' in page and 'id="rj-delete-selected"' in page
+    assert 'function movedTaskOrder(order, step) {' in script and 'void saveOrder();' in script
+    assert '.report-jobs .rj-bulk { position: sticky;' in styles and '.report-jobs .rj-bulk.is-stuck::before {' in styles
+    assert '.report-jobs details.collapsible-panel:has(> .collapsible-panel-body > .rj-bulk) { overflow: clip; }' in styles
+    # Each checked job is deleted as its own Delete would, after one confirmation that names them.
+    assert "await api(`/api/reporting/tasks/${task.id}`, {method: 'DELETE'});" in script
+    assert "deleteCheckedTasks.textContent = checkedTaskIds.size ? `Delete (${checkedTaskIds.size})` : 'Delete';" in script
 
 
 def test_reporting_page_keeps_its_scroll_position_when_reloaded():

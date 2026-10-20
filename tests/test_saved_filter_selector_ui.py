@@ -237,7 +237,7 @@ process.stdout.write(JSON.stringify(context.scopes));
 """
     scopes = _run_node_json(program, {'snippets': snippets})
     assert [scope and [scope['dimension'], scope['text']] for scope in scopes] == [
-        ['all', 'All'], ['city', 'London'], ['region', 'Vendor A'], ['city', 'Leeds, London'], None, ['all', 'All'],
+        ['all', 'Nationwide'], ['city', 'London'], ['region', 'Vendor A'], ['city', 'Leeds, London'], None, ['all', 'Nationwide'],
     ]
     assert scopes[2]['title'] == 'Region: Vendor A'
     template = SCORING_TEMPLATE.read_text(encoding='utf-8')
