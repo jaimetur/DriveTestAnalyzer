@@ -384,7 +384,7 @@ def test_result_tabs_stay_at_the_top_while_the_results_are_scrolled():
     # Under the bar of the sections, within the results only; held there, drawn on the colour of the panel.
     assert '.scoring-result-tabs { position: sticky; top: calc(var(--module-tabs-offset, 0px) + var(--section-top-offset, 0px)); z-index: 6; }' in template
     assert '.scoring-result-tabs.is-stuck::before {' in template
-    assert "resultTabsBar.classList.toggle('is-stuck', box.height > 0 && start < top - 1 && box.top <= top + 1);" in script
+    assert "bar.classList.toggle('is-stuck', box.height > 0 && start < top - 1 && box.top <= top + 1);" in script
     # A tab chosen while the results are scrolled opens at its start.
     assert 'if (start < top) window.scrollBy({top: start - top, behavior: \'auto\'});' in script
     # The button that downloads a chart as an image stays below it, in light blue.
@@ -410,7 +410,12 @@ def test_move_up_and_down_move_the_checked_favourites_filters_one_place():
     # Move Up and Move Down come before Use newer CDRs.
     assert bulk.index('data-saved-filters-move="up"') < bulk.index('data-saved-filters-move="down"') \
         < bulk.index('data-saved-filters-use-newer')
+    # The bar stays at the top while the panel is scrolled, and the moved cards light up where they land.
+    assert '.saved-filters-bulk { position: sticky; top: calc(var(--module-tabs-offset, 0px) + var(--section-top-offset, 0px));' in template
+    assert '.saved-filters-panel .saved-filter-row.is-moved .saved-filter-item { animation: saved-filter-moved' in template
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
+    assert "root.querySelector('[data-saved-filters-bulk]')].filter(Boolean);" in script
+    assert "rows.forEach(row => row.classList.add('is-moved'));" in script
     program = r"""
 const vm = require('node:vm');
 const payload = JSON.parse(require('node:fs').readFileSync(0, 'utf8'));

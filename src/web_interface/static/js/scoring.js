@@ -289,17 +289,19 @@
   }, {passive: true});
   window.addEventListener('pagehide', persistScoringViewState);
 
-  // The tab bar of the results stays at the top while they are scrolled (scoring.html): marked then, to draw it with the
-  // colour of the panel behind it.
+  // The tab bar of the results stays at the top while they are scrolled (scoring.html), and so does the bar of Select all
+  // to Delete while the Favourites Filters are: marked then, to draw them with the colour of the panel behind them.
   const resultTabsBar = root.querySelector('.scoring-result-tabs');
+  const stickyBars = [resultTabsBar, root.querySelector('[data-saved-filters-bulk]')].filter(Boolean);
   let resultTabsFrame = 0;
   function syncResultTabsStuck() {
     resultTabsFrame = 0;
-    if (!resultTabsBar) return;
-    const top = parseFloat(getComputedStyle(resultTabsBar).top) || 0;
-    const box = resultTabsBar.getBoundingClientRect();
-    const start = resultTabsBar.parentElement.getBoundingClientRect().top;
-    resultTabsBar.classList.toggle('is-stuck', box.height > 0 && start < top - 1 && box.top <= top + 1);
+    for (const bar of stickyBars) {
+      const top = parseFloat(getComputedStyle(bar).top) || 0;
+      const box = bar.getBoundingClientRect();
+      const start = bar.parentElement.getBoundingClientRect().top;
+      bar.classList.toggle('is-stuck', box.height > 0 && start < top - 1 && box.top <= top + 1);
+    }
   }
   window.addEventListener('scroll', () => {
     if (!resultTabsFrame) resultTabsFrame = window.requestAnimationFrame(syncResultTabsStuck);
@@ -2154,12 +2156,17 @@
         const step = button.dataset.savedFiltersMove === 'up' ? -1 : 1;
         const order = movedSavedFilterOrder(starredSavedFilterOrder(), step);
         saveSavedFilterOrder(order);
-        // The moved card that leads the way stays in view while the list scrolls.
-        const moved = order.filter(id => checkedSavedFilterIds.has(id));
-        const leading = step < 0 ? moved[0] : moved[moved.length - 1];
+        // The moved cards light up where they land, and the one that leads the way stays in view below this bar, which
+        // stays at the top while the panel is scrolled.
+        const rows = [...savedFilterPanelList.querySelectorAll('.saved-filter-row')]
+          .filter(row => checkedSavedFilterIds.has(row.dataset.savedFilterRow));
+        rows.forEach(row => row.classList.add('is-moved'));
+        const leading = step < 0 ? rows[0] : rows[rows.length - 1];
         if (leading) {
-          savedFilterPanelList.querySelector(`.saved-filter-row[data-saved-filter-row="${CSS.escape(leading)}"]`)
-            ?.scrollIntoView({block: 'nearest'});
+          const clear = (parseFloat(getComputedStyle(savedFiltersBulk).top) || 0) + savedFiltersBulk.offsetHeight + 12;
+          const box = leading.getBoundingClientRect();
+          if (box.top < clear) window.scrollBy({top: box.top - clear, behavior: 'auto'});
+          else if (box.bottom > window.innerHeight - 12) window.scrollBy({top: box.bottom - window.innerHeight + 12, behavior: 'auto'});
         }
       });
     }
