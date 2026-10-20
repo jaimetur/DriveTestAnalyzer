@@ -18765,7 +18765,14 @@ class SavedFilterUpdate(BaseModel):
 def saved_filters_update(filter_id: int, payload: SavedFilterUpdate,
                                     user: SessionUser = Depends(workspace_editor_user)) -> dict[str, Any]:
     """Rename a Saved Filter or pin it at the top of the list."""
+    from src.modules.deletion_rights import can_delete
     task_repository = scoring_repository(user)
+    # Unstarred, it goes once another one is used: only admins, super-admins and the user who starred it unstar it.
+    if payload.pinned is False:
+        current = get_saved_filter(task_repository, filter_id)
+        if current is not None and current.get('pinned') and not can_delete(user, current.get('created_by')):
+            raise HTTPException(status_code=403, detail='Only admins and super-admins, or the user who starred it, '
+                                                        'can unstar this Saved Filter.')
     try:
         saved_filter = update_saved_filter(task_repository, filter_id, name=payload.name, pinned=payload.pinned,
                                            username=user.username)

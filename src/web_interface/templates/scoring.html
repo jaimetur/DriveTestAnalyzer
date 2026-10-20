@@ -269,7 +269,9 @@
   .saved-filter-delete:focus-visible { outline: 3px solid rgba(164,61,47,.25); outline-offset: 2px; }
   .saved-filter-pin, .saved-filter-rename, .saved-filter-duplicate { border-color: #c9d6de; background: #f4f8fa; color: #46606d; }
   .saved-filter-pin[aria-pressed="true"] { border-color: #e2b23a; background: #fff6d8; color: #a26b00; }
-  .saved-filter-pin:hover, .saved-filter-rename:hover, .saved-filter-duplicate:hover { border-color: #8fa9b8; background: #e8f0f4; color: #23404f; box-shadow: none; transform: none; }
+  /* Starred by another user: only admins, super-admins and that user unstar it. */
+  .saved-filter-pin:disabled { opacity: .55; cursor: not-allowed; }
+  .saved-filter-pin:hover:not(:disabled), .saved-filter-rename:hover, .saved-filter-duplicate:hover { border-color: #8fa9b8; background: #e8f0f4; color: #23404f; box-shadow: none; transform: none; }
   .saved-filter-use-newer { min-height: 1.55rem; padding: .18rem .55rem; border: 1px solid #e0a23a; border-radius: 999px; background: #fff3d6; color: #8a5300; font-size: .72rem; font-weight: 800; box-shadow: none; }
   .saved-filter-use-newer:hover { background: #ffe7b0; box-shadow: none; transform: none; }
   .saved-filter-use-newer:disabled { border-color: #d8dee3; background: #f1f4f6; color: #8796a1; cursor: not-allowed; }

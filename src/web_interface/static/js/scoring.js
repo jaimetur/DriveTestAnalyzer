@@ -2603,6 +2603,11 @@
         : 'Star this Saved Filter to keep it in the list of Saved Filters (first; drag it to move it)';
       pin.setAttribute('aria-label', `${savedFilter.pinned ? 'Unpin' : 'Pin'} Saved Filter ${id}`);
       pin.setAttribute('aria-pressed', String(Boolean(savedFilter.pinned)));
+      // Only admins, super-admins and the user who starred it unstar it.
+      if (savedFilter.pinned && !(window.canDeleteShared?.(savedFilter.created_by) ?? true)) {
+        pin.disabled = true;
+        pin.title = 'Only admins and super-admins, or the user who starred it, can unstar this Saved Filter';
+      }
       // The identifier of the Saved Filter (as App Events name it), before its buttons.
       const idBadge = document.createElement('span');
       idBadge.className = 'saved-filter-id';

@@ -105,6 +105,13 @@ def test_a_saved_filter_belongs_to_the_user_who_starred_it(client):
     assert client.patch(f'/api/scoring/saved-filters/{starred}', json={'pinned': True}).status_code == 200
     assert owner(starred) == 'alice'
     assert client.delete(f'/api/scoring/saved-filters/{starred}').status_code == 403
+    # Nor does bob unstar it (unstarred, it would go once another one is used); an admin does.
+    refused = client.patch(f'/api/scoring/saved-filters/{starred}', json={'pinned': False})
+    assert refused.status_code == 403 and 'who starred it' in refused.json()['detail']
+    assert saved_filters.get_saved_filter(repository, starred)['pinned']
+    login(client, 'boss', 'boss123')
+    assert client.patch(f'/api/scoring/saved-filters/{starred}', json={'pinned': False}).status_code == 200
+    assert not saved_filters.get_saved_filter(repository, starred)['pinned']
 
 
 def test_report_configurations_are_deleted_by_whoever_saved_or_imported_them(client):
