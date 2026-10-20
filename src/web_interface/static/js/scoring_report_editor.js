@@ -801,9 +801,19 @@
       };
       // Scenarios that no saved configuration (nor Default) has are unsaved changes.
       const hasUnsavedChanges = () => !matchingConfiguration();
+      // Only admins, super-admins and the user who saved a configuration delete it: Delete is locked for the others.
+      let deleteButton = null;
+      const syncDelete = () => {
+        if (!deleteButton) return;
+        const item = savedConfigurations.find((entry) => entry.name === current);
+        const deletable = !item || (window.canDeleteShared?.(item.created_by) ?? true);
+        deleteButton.disabled = !deletable;
+        deleteButton.title = deletable ? 'Delete the chosen saved configuration' : window.sharedDeleteRefusal('report configuration');
+      };
       const syncSelector = () => {
         current = matchingConfiguration();
         saved.value = current;
+        syncDelete();
       };
       const refreshSaved = (payload) => {
         savedConfigurations = payload?.configurations || [];
@@ -909,7 +919,7 @@
         load(wanted);
       });
       button('Save as…', saveAs, 'save', 'Save these scenarios with a name in the workspace');
-      button('Delete', async () => {
+      deleteButton = button('Delete', async () => {
         if (!current) { setStatus('Choose a saved configuration to delete.', 'error'); return; }
         if (current === DEFAULT_VALUE) { setStatus('The Default configuration cannot be deleted.', 'error'); return; }
         if (!await ask(dialog, {title: 'Delete report configuration', copy: `Delete the saved report configuration “${current}”?`,
@@ -919,6 +929,7 @@
           setStatus('Configuration deleted.', 'success');
         } catch (error) { setStatus(error.message, 'error'); }
       }, 'delete', 'Delete the chosen saved configuration');
+      syncDelete();
       button('Export JSON', () => { window.location.href = '/api/scoring/report-configurations/export'; }, 'export',
         'Download every saved report configuration');
       const importInput = el('input');

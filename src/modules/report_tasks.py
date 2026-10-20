@@ -1972,7 +1972,11 @@ def install_report_task_routes(core: Any) -> None:
 
     @app.delete('/api/reporting/tasks/{task_id}')
     def reporting_jobs_delete(task_id: int, user=Depends(editor_user)):
+        from src.modules.deletion_rights import can_delete, deletion_refusal
         task_repository = reporting_repository(user)
+        task = get_task(task_repository, task_id)
+        if task is not None and not can_delete(user, task.get('created_by')):
+            raise HTTPException(403, deletion_refusal('Reporting Job'))
         try:
             folders = delete_task(task_repository, task_id)
         except ValueError as exc:

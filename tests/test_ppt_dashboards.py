@@ -2695,7 +2695,9 @@ def test_dashboard_state_migrates_from_legacy_storage(client):
     result = client.get('/api/ppt-dashboards')
     assert result.status_code == 200
     assert result.json()['legacy']['name'] == 'Comparison'
-    assert json.loads(core.repository.get_workspace_state('ppt_dashboards_v2')) == result.json()
+    # Listed with who created it (nobody known here): only admins and super-admins delete it.
+    listed = {key: {**definition, 'created_by': ''} for key, definition in json.loads(core.repository.get_workspace_state('ppt_dashboards_v2')).items()}
+    assert listed == result.json()
 
 
 def test_dashboard_migrates_all_saved_definitions_to_current_default_filters(client):
@@ -2720,7 +2722,7 @@ def test_dashboard_migrates_all_saved_definitions_to_current_default_filters(cli
     }
     assert 'datasets' not in migrated and migrated['auto_cdrs'] is True
     assert core.repository.get_workspace_state('ppt_dashboard_default_filters_v6') == '1'
-    assert json.loads(core.repository.get_workspace_state('ppt_dashboards_v2'))['legacy'] == migrated
+    assert {**json.loads(core.repository.get_workspace_state('ppt_dashboards_v2'))['legacy'], 'created_by': ''} == migrated
 
 
 def test_dashboard_custom_fields_and_snapshot_filters(client):

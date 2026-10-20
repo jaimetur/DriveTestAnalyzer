@@ -989,16 +989,18 @@ def _prepare_saved_selection(repository: Repository, saved_filter: dict[str, Any
 
 
 def _queue_calculation(connection: Any, filter_id: int, prepared: dict[str, Any], username: str, now: str) -> None:
-    """Queue the calculation of a Saved Filter with today's CDRs and methodology."""
+    """Queue the calculation of a Saved Filter with today's CDRs and methodology; it belongs to the user who calculates
+    it (the application, ``system``, keeps its owner)."""
     snapshot = prepared['snapshot']
     connection.execute(
         f"""UPDATE {SAVED_FILTERS_TABLE} SET status = 'queued', progress = 0,
            message = 'Waiting to calculate scoring', result_json = NULL, last_error = NULL, started_at = NULL,
-           finished_at = NULL, updated_at = ?, created_by = ?, source_metadata_json = ?, result_key = ?,
+           finished_at = NULL, updated_at = ?, created_by = CASE WHEN ? = 'system' THEN created_by ELSE ? END,
+           source_metadata_json = ?, result_key = ?,
            method_version = ?, source_fingerprint = ?, dataset_ids_json = ?, levels_json = ?, nr_mode = ?,
            baseline_operator = ?, cdr_refs_json = '[]'
            WHERE id = ?""",
-        (now, str(username or 'system'), json.dumps(snapshot, ensure_ascii=False, separators=(',', ':')),
+        (now, str(username or 'system'), str(username or 'system'), json.dumps(snapshot, ensure_ascii=False, separators=(',', ':')),
          prepared['result_key'], prepared['method_version'], prepared['source_fingerprint'],
          json.dumps(prepared['dataset_ids']), json.dumps(prepared['levels'], ensure_ascii=False), prepared['nr_mode'],
          prepared['baseline_operator'], int(filter_id)),

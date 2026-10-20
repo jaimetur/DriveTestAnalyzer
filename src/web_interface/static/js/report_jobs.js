@@ -1262,6 +1262,14 @@
   const confirmDelete = async (title, copyHtml, confirmLabel, fallback) => (typeof window.showConfirmDialog === 'function'
     ? Boolean(await window.showConfirmDialog('', {title, copyHtml, confirmLabel, cancelLabel: 'Cancel'}))
     : window.confirm(fallback));
+  // Only admins, super-admins and the user who created a job delete it: Delete is locked for the others.
+  const lockedForOthers = (button, createdBy, label) => {
+    if (!(window.canDeleteShared?.(createdBy) ?? true)) {
+      button.disabled = true;
+      button.title = window.sharedDeleteRefusal(label);
+    }
+    return button;
+  };
   const actionButton = (label, title, handler, className = 'icon-action') => {
     const button = node('button', label, className);
     button.type = 'button'; button.title = title; button.setAttribute('aria-label', title);
@@ -1449,7 +1457,7 @@
             await api(`/api/reporting/tasks/${task.id}/duplicate`, {method: 'POST'});
             status(`${task.name} duplicated.`, 'done'); await refresh();
           }),
-          actionButton('×', 'Delete the job and its runs', async () => {
+          lockedForOthers(actionButton('×', 'Delete the job and its runs', async () => {
             const runs = state.runs.filter((run) => run.task_id === task.id).length;
             if (!await confirmDelete('Delete Reporting Job', `
               <p>The Reporting Job <strong>${escapeText(task.name)}</strong> will be deleted permanently, together with:</p>
@@ -1462,7 +1470,7 @@
             'Delete Job', `Delete ${task.name}, its run history and artifacts?`)) return;
             await api(`/api/reporting/tasks/${task.id}`, {method: 'DELETE'});
             status(`${task.name} deleted.`, 'done'); await refresh();
-          }, 'danger-button icon-action'),
+          }, 'danger-button icon-action'), task.created_by, 'Reporting Job'),
         );
       }
       // Enable/Disable: an enabled job runs on its schedule (▶ Run now works either way), without editing it.

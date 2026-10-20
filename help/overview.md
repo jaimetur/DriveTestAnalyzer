@@ -352,7 +352,7 @@ The complete authoring specification, examples and supported chart catalogue are
 | Role | Typical permissions |
 | --- | --- |
 | `user-viewer` | Explore the permitted workspace features, datasets and App Logs, and generate jobs (Dashboard PPTs with any filters, Scoring calculations, Network Insights analyses and exports, queries and reports). Cannot change the workspace: no uploading, deleting, reprocessing, stopping, mapping or clearing datasets, editing NR Modes, recreating combined tables, saving, renaming or deleting Dashboards, saved queries or Scoring jobs, and no access to Application Config or Workspace Config. |
-| `user-editor` | Use permitted workspace features and App Logs; edit Application Config and Workspace Config when a workspace is open. |
+| `user-editor` | Use permitted workspace features and App Logs; edit Application Config and Workspace Config when a workspace is open; delete only the Dashboards, templates, Saved Filters, methodologies, report configurations, Reporting Jobs and favourites they created (see [Deleting shared items](super-admin.md#deleting-shared-items)). |
 | `admin` | Edit Application Config and Workspace Config, upload datasets, and in Admin export and transfer accessible workspaces and manage datasets (no import, no Super Admin). |
 | `super-admin` | Everything an admin does, import packages, and in Super Admin the users and their access, Interface Settings, databases and backups; full-environment portability and incoming transfer approval. |
 

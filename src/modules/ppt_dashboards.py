@@ -27,6 +27,9 @@ from uuid import uuid4
 import pandas as pd
 from src.modules.column_names import campaign_sort_key, column_identity, compact_campaign_value, sort_vendor_values, vendor_filter_column, vendor_filter_value, vendor_filter_values, vendor_match_values
 from src.modules import report_structure
+from src.modules.deletion_rights import (
+    PPT_DASHBOARDS, can_delete, creator_of, creators, deletion_refusal, forget_creator, record_creator,
+)
 from src.modules.scoring_themes import THEMES, dashboard_chart_style, load_user_theme, normalize_theme, save_user_theme, themes_payload, use_theme
 from src.modules.theme_titles import style_title
 from src.modules.value_maps import ValueMapper, field_kind
@@ -1825,14 +1828,18 @@ def install_dashboard_routes(core):
     def list_dashboards(user=Depends(dashboard_user)):
         workspace = workspace_key()
         with lock:
-            dashboards = read_dashboards(bound_repository())
+            task_repository = bound_repository()
+            dashboards = read_dashboards(task_repository)
+            known = creators(task_repository, PPT_DASHBOARDS)
         # Covers existing Dashboards created before automatic warm-up was
         # introduced.  The scheduler de-duplicates each Dashboard per process.
         for dashboard_id, raw_definition in dashboards.items():
             if isinstance(raw_definition, dict):
                 schedule_dashboard_warmup(workspace, dashboard_id, raw_definition, user.username)
+        # Each Dashboard with who created it: only they, admins and super-admins delete it.
         return JSONResponse(
-                dashboards,
+                {dashboard_id: {**definition, 'created_by': known.get(str(dashboard_id).casefold(), '')}
+                 if isinstance(definition, dict) else definition for dashboard_id, definition in dashboards.items()},
             headers={'Cache-Control': 'no-store, max-age=0, must-revalidate'},
         )
 
@@ -2600,12 +2607,15 @@ def install_dashboard_routes(core):
             validate(definition, task_repository)
             dashboards = read_dashboards(task_repository)
             ensure_unique_dashboard_name(dashboards, dashboard_id, definition.name, definition.technology)
+            created = dashboard_id not in dashboards
             definition.name = definition.name.strip()
             saved_definition = migrate_auto_cdrs(normalize_dashboard_filters(definition.model_dump(mode='json')), task_repository)
             # The CDRs are chosen from the NR Mode and Campaign each time: they are not saved.
             saved_definition.pop('datasets', None)
             dashboards[dashboard_id] = saved_definition
             task_repository.set_workspace_state(STATE_KEY, json.dumps(dashboards))
+            if created:
+                record_creator(task_repository, PPT_DASHBOARDS, dashboard_id, user.username)
             task_repository.add_log(user.username, 'save_dashboard', json.dumps({'id': dashboard_id, 'name': definition.name}))
         # Saving a Dashboard may change template filters, so refresh its three
         # canonical automatic universes even when it was warmed previously.
@@ -2683,8 +2693,11 @@ def install_dashboard_routes(core):
             dashboards = read_dashboards(task_repository)
             if dashboard_id not in dashboards:
                 raise HTTPException(404, 'Dashboard not found.')
+            if not can_delete(user, creator_of(task_repository, PPT_DASHBOARDS, dashboard_id)):
+                raise HTTPException(403, deletion_refusal('Dashboard'))
             del dashboards[dashboard_id]
             task_repository.set_workspace_state(STATE_KEY, json.dumps(dashboards))
+            forget_creator(task_repository, PPT_DASHBOARDS, dashboard_id)
             task_repository.add_log(user.username, 'delete_dashboard', json.dumps({'id': dashboard_id}))
         return {'deleted': True}
 

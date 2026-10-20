@@ -2409,6 +2409,7 @@ def report_catalogue_options(technology: str) -> list[dict[str, Any]]:
             'created_at': row['created_at'],
             'updated_at': row['updated_at'],
             'updated_by': str(row['updated_by'] or '') if 'updated_by' in row.keys() else '',
+            'created_by': str(row['created_by'] or '') if 'created_by' in row.keys() else '',
         })
     return options
 
@@ -2669,6 +2670,15 @@ def activate_workspace(workspace_id: str, *, initialize: bool = True) -> Workspa
                 seed_starter_content(repository)
             except Exception as exc:  # noqa: BLE001 - starter content never blocks opening a workspace
                 repository.try_add_log('system', 'starter_content_failed', json.dumps({'error': str(exc)}))
+            # What has no known creator, or was created by the application, belongs to UNKNOWN_CREATOR_OWNER.
+            try:
+                from src.modules.deletion_rights import UNKNOWN_CREATOR_OWNER, assign_unknown_creators
+                assigned = assign_unknown_creators(repository)
+                if assigned:
+                    repository.try_add_log('system', 'assign_unknown_creators', json.dumps(
+                        {'owner': UNKNOWN_CREATOR_OWNER, 'items': assigned}))
+            except Exception as exc:  # noqa: BLE001 - never blocks opening a workspace
+                repository.try_add_log('system', 'assign_unknown_creators_failed', json.dumps({'error': str(exc)}))
         inconsistent_ids = repository.fail_inconsistent_ready_datasets()
         if inconsistent_ids:
             repository.try_add_log('system', 'recover_inconsistent_datasets', json.dumps({'dataset_ids': inconsistent_ids}))
@@ -18912,7 +18922,11 @@ def saved_filters_boundaries(filter_id: int, field: str, user: SessionUser = Dep
 
 @app.delete('/api/scoring/saved-filters/{filter_id}')
 def saved_filters_delete(filter_id: int, user: SessionUser = Depends(workspace_editor_user)) -> dict[str, Any]:
+    from src.modules.deletion_rights import can_delete, deletion_refusal
     task_repository = scoring_repository(user)
+    saved_filter = get_saved_filter(task_repository, filter_id)
+    if saved_filter is not None and not can_delete(user, saved_filter.get('created_by')):
+        raise HTTPException(status_code=403, detail=deletion_refusal('Saved Filter'))
     if not delete_saved_filter(task_repository, filter_id):
         raise HTTPException(status_code=404, detail='Saved Filter not found.')
     task_repository.try_add_log(user.username, 'delete_saved_filter', json.dumps({'filter_id': filter_id}))
@@ -18928,7 +18942,14 @@ def saved_filters_delete_many(payload: SavedFiltersDeleteRequest,
                               user: SessionUser = Depends(workspace_editor_user)) -> dict[str, Any]:
     """Delete the Saved Filters checked in the Favourites Filters panel, with their results; their CDRs and the
     Scoring History stay."""
+    from src.modules.deletion_rights import can_delete, deletion_refusal
     task_repository = scoring_repository(user)
+    # Nothing is deleted while one of them belongs to another user (for the roles below admin).
+    refused = [saved_filter.get('name') or f"#{saved_filter.get('id')}" for saved_filter in (
+        get_saved_filter(task_repository, int(value)) for value in dict.fromkeys(payload.ids))
+        if saved_filter is not None and not can_delete(user, saved_filter.get('created_by'))]
+    if refused:
+        raise HTTPException(status_code=403, detail=deletion_refusal('Saved Filter', refused))
     deleted: list[dict[str, Any]] = []
     missing: list[int] = []
     for filter_id in dict.fromkeys(int(value) for value in payload.ids):
@@ -19438,16 +19459,26 @@ def scoring_report(export_kind: str, payload: ScoringReportRequest, user: Sessio
     })
 
 
+def scoring_report_state_with_creators(task_repository: Repository, state: dict[str, Any]) -> dict[str, Any]:
+    """The saved report configurations, each with who created it (the pages offer Delete to admins and to them)."""
+    from src.modules.deletion_rights import SCORING_REPORT_CONFIGURATIONS, creators
+    known = creators(task_repository, SCORING_REPORT_CONFIGURATIONS)
+    return {**state, 'configurations': [{**item, 'created_by': known.get(item['name'].casefold(), '')}
+                                        for item in state.get('configurations') or []]}
+
+
 @app.get('/api/scoring/report-configurations')
 def scoring_report_configurations(user: SessionUser = Depends(current_user)) -> dict[str, Any]:
     from src.modules.scoring_reports import load_report_state
-    return load_report_state(scoring_repository(user))
+    task_repository = scoring_repository(user)
+    return scoring_report_state_with_creators(task_repository, load_report_state(task_repository))
 
 
 @app.post('/api/scoring/report-configurations')
 def scoring_report_configuration_save(
     payload: ScoringReportConfigurationRequest, user: SessionUser = Depends(workspace_editor_user),
 ) -> dict[str, Any]:
+    from src.modules.deletion_rights import SCORING_REPORT_CONFIGURATIONS, record_creator
     from src.modules.repository import local_now_iso
     from src.modules.scoring_reports import save_named_configuration
     task_repository = scoring_repository(user)
@@ -19456,8 +19487,10 @@ def scoring_report_configuration_save(
                                          updated_at=local_now_iso())
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    # A new name is created by the user; one saved again keeps who created it.
+    record_creator(task_repository, SCORING_REPORT_CONFIGURATIONS, str(payload.name).strip()[:80], user.username)
     task_repository.try_add_log(user.username, 'save_scoring_report_configuration', json.dumps({'name': payload.name}))
-    return state
+    return scoring_report_state_with_creators(task_repository, state)
 
 
 @app.put('/api/scoring/report-configurations/last')
@@ -19478,11 +19511,15 @@ def scoring_report_configuration_last(
 def scoring_report_configuration_delete(
     name: str, user: SessionUser = Depends(workspace_editor_user),
 ) -> dict[str, Any]:
+    from src.modules.deletion_rights import SCORING_REPORT_CONFIGURATIONS, can_delete, creator_of, deletion_refusal, forget_creator
     from src.modules.scoring_reports import delete_named_configuration
     task_repository = scoring_repository(user)
+    if not can_delete(user, creator_of(task_repository, SCORING_REPORT_CONFIGURATIONS, name)):
+        raise HTTPException(status_code=403, detail=deletion_refusal('report configuration'))
     state = delete_named_configuration(task_repository, name)
+    forget_creator(task_repository, SCORING_REPORT_CONFIGURATIONS, name)
     task_repository.try_add_log(user.username, 'delete_scoring_report_configuration', json.dumps({'name': name}))
-    return state
+    return scoring_report_state_with_creators(task_repository, state)
 
 
 @app.get('/api/scoring/report-configurations/export')
@@ -19504,22 +19541,40 @@ async def scoring_report_configurations_import(
     package: UploadFile = File(...), replace: bool = Form(False),
     user: SessionUser = Depends(workspace_editor_user),
 ) -> dict[str, Any]:
-    from src.modules.scoring_reports import import_report_configurations
+    from src.modules.deletion_rights import (
+        SCORING_REPORT_CONFIGURATIONS, can_delete, creators, deletion_refusal, forget_creator, record_creator,
+    )
+    from src.modules.scoring_reports import import_report_configurations, load_report_state, unwrap_report_configurations_document
     task_repository = scoring_repository(user)
     try:
         payload = await package.read(2 * 1024 * 1024 + 1)
         if len(payload) > 2 * 1024 * 1024:
             raise ValueError('Scoring report configurations JSON must not exceed 2 MiB.')
-        state = import_report_configurations(task_repository, json.loads(payload.decode('utf-8')),
-                                             replace=replace)
+        document = json.loads(payload.decode('utf-8'))
+        incoming = {item['name'].casefold() for item in unwrap_report_configurations_document(document)['configurations']}
+        before = [item['name'] for item in load_report_state(task_repository)['configurations']]
+        known = creators(task_repository, SCORING_REPORT_CONFIGURATIONS)
+        # Replacing them all deletes those the file does not have: only those the user may delete.
+        removed = [name for name in before if replace and name.casefold() not in incoming]
+        refused = [name for name in removed if not can_delete(user, known.get(name.casefold(), ''))]
+        if refused:
+            raise HTTPException(status_code=403, detail=deletion_refusal('report configuration', refused))
+        state = import_report_configurations(task_repository, document, replace=replace)
     except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     finally:
         await package.close()
+    for name in removed:
+        forget_creator(task_repository, SCORING_REPORT_CONFIGURATIONS, name)
+    # The configurations the file adds are created by the user who imports them.
+    existing = {name.casefold() for name in before}
+    for item in state['configurations']:
+        if item['name'].casefold() in incoming and item['name'].casefold() not in existing:
+            record_creator(task_repository, SCORING_REPORT_CONFIGURATIONS, item['name'], user.username)
     task_repository.try_add_log(user.username, 'import_scoring_report_configurations', json.dumps({
         'file': package.filename or '', 'replace': replace,
     }))
-    return state
+    return scoring_report_state_with_creators(task_repository, state)
 
 
 @app.get('/api/ppt-reporting-old/jobs')
@@ -22022,6 +22077,40 @@ def get_workspace_scoring_profiles(
     return JSONResponse(profiles, headers={'Cache-Control': 'no-store'})
 
 
+def methodology_changes(task_repository: Repository, user: SessionUser, profiles: Any) -> tuple[list[str], list[str]]:
+    """The ids of the Scoring Methodologies a save removes and adds; it is refused when it removes one the user may
+    not delete (only admins, super-admins and the user who created it delete a methodology)."""
+    from src.modules.deletion_rights import SCORING_METHODOLOGIES, can_delete, creators, deletion_refusal
+    try:
+        current = task_repository.get_scoring_profiles()['profiles'] if task_repository.get_workspace_state(SCORING_CONFIGURATION_STATE_KEY) else []
+    except ValueError:
+        current = []
+    after = {str(profile.get('id')) for profile in (profiles or []) if isinstance(profile, dict)}
+    removed = [profile for profile in current if str(profile['id']) not in after]
+    known = creators(task_repository, SCORING_METHODOLOGIES)
+    refused = [str(profile.get('name') or profile['id']) for profile in removed
+               if not can_delete(user, known.get(str(profile['id']).casefold(), ''))]
+    if refused:
+        raise HTTPException(status_code=403, detail=deletion_refusal('Scoring Methodology', refused))
+    before = {str(profile['id']) for profile in current}
+    return [str(profile['id']) for profile in removed], [profile_id for profile_id in after if profile_id not in before]
+
+
+def record_methodology_changes(task_repository: Repository, username: str, removed: list[str], added: list[str]) -> None:
+    from src.modules.deletion_rights import SCORING_METHODOLOGIES, forget_creator, record_creator
+    for profile_id in removed:
+        forget_creator(task_repository, SCORING_METHODOLOGIES, profile_id)
+    for profile_id in added:
+        record_creator(task_repository, SCORING_METHODOLOGIES, profile_id, username)
+
+
+@app.get('/api/workspace-config/scoring-methodology-creators')
+def scoring_methodology_creators(user: SessionUser = Depends(config_editor_user)) -> JSONResponse:
+    """Who created each Scoring Methodology, by its id: the page offers Delete to admins and to them."""
+    from src.modules.deletion_rights import SCORING_METHODOLOGIES, creators
+    return JSONResponse(creators(scoring_repository(user), SCORING_METHODOLOGIES), headers={'Cache-Control': 'no-store'})
+
+
 @app.put('/api/workspace-config/scoring-profiles')
 async def save_workspace_scoring_profiles(
     request: Request,
@@ -22030,9 +22119,11 @@ async def save_workspace_scoring_profiles(
     task_repository = scoring_repository(user)
     try:
         payload = await request.json()
+        removed, added = methodology_changes(task_repository, user, payload.get('profiles') if isinstance(payload, dict) else None)
         profiles = task_repository.replace_scoring_profiles(payload)
     except (json.JSONDecodeError, UnicodeDecodeError, TypeError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc) or 'The scoring methodologies are invalid.') from exc
+    record_methodology_changes(task_repository, user.username, removed, added)
     task_repository.try_add_log(user.username, 'save_scoring_profiles', json.dumps({
         'active_profile_id': profiles['active_profile_id'],
         'profile_count': len(profiles['profiles']),
@@ -22109,6 +22200,8 @@ async def import_workspace_scoring_configuration(
                 merged = [incoming.pop(profile['id'], profile) for profile in current['profiles']]
                 merged.extend(incoming.values())
                 profiles = {'active_profile_id': current['active_profile_id'], 'profiles': merged}
+        # Replacing them deletes those the file does not have: only those the user may delete.
+        removed, added = methodology_changes(task_repository, user, profiles['profiles'] if profiles else [])
         if profiles is None:
             task_repository.set_workspace_state(SCORING_CONFIGURATION_STATE_KEY, '')
             result: dict[str, Any] = {'active_profile_id': None, 'profiles': []}
@@ -22118,6 +22211,7 @@ async def import_workspace_scoring_configuration(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     finally:
         await package.close()
+    record_methodology_changes(task_repository, user.username, removed, added)
     task_repository.try_add_log(user.username, 'import_scoring_configuration', json.dumps({
         'profile_count': len(result['profiles']),
         'active_profile_id': result['active_profile_id'],
@@ -24311,9 +24405,12 @@ def delete_report_catalogue(
     technology = technology.strip().lower()
     if technology not in TEMPLATE_NAMES:
         raise HTTPException(status_code=404, detail='Report technology not found')
+    from src.modules.deletion_rights import can_delete, deletion_refusal
     catalogue = _named_catalogue(technology, catalogue_id)
     if not catalogue:
         return render_workspace_config_template(request, user, error='Report Template not found.', status_code=404)
+    if not can_delete(user, catalogue.get('created_by')):
+        return render_workspace_config_template(request, user, error=deletion_refusal('PPT Template'), status_code=403)
     if catalogue['active']:
         return render_workspace_config_template(request, user, error='The default template cannot be deleted.', status_code=400)
     repository.delete_report_template(technology, catalogue_id)

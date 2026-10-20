@@ -296,9 +296,19 @@ if (typeof module !== 'undefined' && module.exports) module.exports = globalThis
     nextKpiNumber = normalizeNextKpiNumber(configuration);
     renderEnvironmentOptions();
     renderProfileControls();
+    refreshMethodologyCreators();
   };
 
   const loadProfiles = () => requestJson(profilesEndpoint);
+
+  // Who created each methodology (by id): only admins, super-admins and its creator delete it.
+  let methodologyCreators = null;
+  const deletableProfile = () => !methodologyCreators || !currentProfile()
+    || (window.canDeleteShared?.(methodologyCreators[String(activeProfileId).trim().toLowerCase()]) ?? true);
+  const refreshMethodologyCreators = () => requestJson('/api/workspace-config/scoring-methodology-creators').then((loaded) => {
+    methodologyCreators = loaded || {};
+    renderProfileControls();
+  }).catch(() => {});
 
   const environmentSaveSignature = (collection) => JSON.stringify(collection.profiles.map(profile => [
     profile.id, Object.entries(profile.configuration.scope.environments).map(([name, scope]) => [
@@ -1312,8 +1322,12 @@ if (typeof module !== 'undefined' && module.exports) module.exports = globalThis
     }
     const hasProfile = Boolean(currentProfile());
     profileActions.forEach((button) => {
-      button.disabled = !hasProfile || (button.dataset.scoringProfileAction === 'delete' && ((profileCollection?.profiles?.length || 0) <= 1 || activeProfileId === profileCollection?.active_profile_id))
+      button.disabled = !hasProfile || (button.dataset.scoringProfileAction === 'delete' && ((profileCollection?.profiles?.length || 0) <= 1 || activeProfileId === profileCollection?.active_profile_id || !deletableProfile()))
         || (button.dataset.scoringProfileAction === 'default' && activeProfileId === profileCollection?.active_profile_id);
+      if (button.dataset.scoringProfileAction === 'delete') {
+        if (deletableProfile()) button.removeAttribute('title');
+        else button.title = window.sharedDeleteRefusal('Scoring Methodology');
+      }
     });
   };
 
@@ -1798,7 +1812,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = globalThis
     if (profileSelect) profileSelect.disabled = disabled || !profileCollection?.profiles?.length;
     profileActions.forEach((button) => {
       button.disabled = disabled || !currentProfile()
-        || (button.dataset.scoringProfileAction === 'delete' && (profileCollection.profiles.length <= 1 || activeProfileId === profileCollection.active_profile_id))
+        || (button.dataset.scoringProfileAction === 'delete' && (profileCollection.profiles.length <= 1 || activeProfileId === profileCollection.active_profile_id || !deletableProfile()))
         || (button.dataset.scoringProfileAction === 'default' && activeProfileId === profileCollection?.active_profile_id);
     });
   };

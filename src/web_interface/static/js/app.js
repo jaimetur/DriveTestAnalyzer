@@ -1,3 +1,14 @@
+// Who deletes what the users of a workspace share (PPT Dashboards and Templates, Scoring Saved Filters, Methodologies and
+// report configurations, Reporting Jobs and Bundle Report Template favourites): admins and super-admins everything, the
+// other roles only what they created. The pages lock Delete for the others; the server refuses it too.
+window.canDeleteShared = (createdBy) => {
+  const role = document.body?.dataset.authenticatedRole || '';
+  if (role === 'admin' || role === 'super-admin') return true;
+  const creator = String(createdBy || '').trim().toLowerCase();
+  return Boolean(creator) && creator === String(document.body?.dataset.authenticatedUser || '').toLowerCase();
+};
+window.sharedDeleteRefusal = (label) => `Only admins and super-admins, or the user who created it, can delete this ${label}`;
+
 // Errors answered by a proxy in front of the server, or by a server failure, are
 // not JSON. They are given a JSON detail naming the cause, so every page that shows
 // the detail of a failed request explains it instead of a generic message.

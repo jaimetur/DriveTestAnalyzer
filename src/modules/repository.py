@@ -165,6 +165,7 @@ CREATE TABLE IF NOT EXISTS report_templates (
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_by TEXT NOT NULL DEFAULT '',
+    created_by TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (technology, name),
     CHECK (technology IN ('nsa', 'sa'))
 );
@@ -2292,6 +2293,9 @@ class Repository:
             conn.execute("ALTER TABLE report_templates ADD COLUMN updated_at TEXT")
         if 'updated_by' not in columns:
             conn.execute("ALTER TABLE report_templates ADD COLUMN updated_by TEXT NOT NULL DEFAULT ''")
+        # Who created each template: only they, admins and super-admins delete it (none for those of before).
+        if 'created_by' not in columns:
+            conn.execute("ALTER TABLE report_templates ADD COLUMN created_by TEXT NOT NULL DEFAULT ''")
         # Templates written before Operator_Vendor are converted once per workspace.
         conn.execute('CREATE TABLE IF NOT EXISTS workspace_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
         rename_vendor_fields = not conn.execute(
@@ -2335,7 +2339,7 @@ class Repository:
     def list_report_templates(self, technology: str) -> list[sqlite3.Row]:
         with self.connection() as conn:
             return conn.execute(
-                "SELECT technology, name, content, is_default, created_at, updated_at, updated_by FROM report_templates WHERE technology = ? ORDER BY name COLLATE NOCASE",
+                "SELECT technology, name, content, is_default, created_at, updated_at, updated_by, created_by FROM report_templates WHERE technology = ? ORDER BY name COLLATE NOCASE",
                 (technology,),
             ).fetchall()
 
@@ -2349,8 +2353,8 @@ class Repository:
                 conn.execute("UPDATE report_templates SET is_default = 0 WHERE technology = ?", (technology,))
             now = local_now_iso()
             conn.execute(
-                "INSERT INTO report_templates (technology, name, content, is_default, created_at, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (technology, name, sqlite3.Binary(normalize_catalog_layouts(content)), int(is_default), now, now, updated_by or ''),
+                "INSERT INTO report_templates (technology, name, content, is_default, created_at, updated_at, updated_by, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (technology, name, sqlite3.Binary(normalize_catalog_layouts(content)), int(is_default), now, now, updated_by or '', updated_by or ''),
             )
 
     def set_report_template_content(self, technology: str, name: str, content: bytes, *, updated_by: str | None = None) -> None:

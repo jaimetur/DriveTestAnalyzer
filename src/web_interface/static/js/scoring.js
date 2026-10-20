@@ -2629,7 +2629,10 @@
       remove.textContent = '×';
       remove.title = 'Delete this Saved Filter and its result';
       remove.setAttribute('aria-label', `Delete Saved Filter ${id}`);
-      remove.disabled = deletingSavedFilterIds.has(id);
+      // Only admins, super-admins and the user who created it delete it.
+      const deletable = window.canDeleteShared?.(savedFilter.created_by) ?? true;
+      remove.disabled = deletingSavedFilterIds.has(id) || !deletable;
+      if (!deletable) remove.title = window.sharedDeleteRefusal('Saved Filter');
       actions.append(cdrButton, idBadge, rename, duplicate, pin, remove);
       // Use Filter makes it the Saved Filter of the module and opens its Scoring; the one in use (selected at the top of
       // the module, with its results shown) has the In Use label instead.

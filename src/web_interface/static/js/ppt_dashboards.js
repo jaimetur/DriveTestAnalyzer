@@ -1378,7 +1378,14 @@
       // user-viewer generates PPTs and explores filters but cannot change stored Dashboards.
       if (config.can_manage) action('Duplicate Dashboard', '⧉', async () => { if (await confirmDiscard()) await duplicateDashboard(id); });
       action('Export Dashboard', '', () => exportDashboard(id, item), 'ds-dashboard-export');
-      if (config.can_manage) action('Delete Dashboard', '×', async () => { await deleteDashboard(id); }, 'danger-button');
+      if (config.can_manage) {
+        const remove = action('Delete Dashboard', '×', async () => { await deleteDashboard(id); }, 'danger-button');
+        // Only admins, super-admins and the user who created it delete it.
+        if (!(window.canDeleteShared?.(item.created_by) ?? true)) {
+          remove.disabled = true;
+          remove.title = window.sharedDeleteRefusal('Dashboard');
+        }
+      }
       const cell = node('td'); cell.dataset.label = 'Actions'; cell.append(actions); row.append(cell); body.append(row);
       if (filtersAreOpen && !compactLibraryFiltersQuery.matches) {
         filterRowCell.append($('ds-filter-home'));

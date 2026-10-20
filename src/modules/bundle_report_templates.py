@@ -1863,8 +1863,12 @@ def install_bundle_report_template_routes(core: Any) -> None:
 
     @app.delete('/api/reporting/bundle-report-template/favourites/{favourite_id}')
     def bundle_report_template_favourite_delete(favourite_id: int, user=Depends(editor_user)):
+        from src.modules.deletion_rights import can_delete, deletion_refusal
         from src.modules.report_tasks import forget_favourite
         repository = repository_for(user)
+        existing = get_favourite(repository, favourite_id)
+        if existing is not None and not can_delete(user, existing.get('created_by')):
+            raise HTTPException(403, deletion_refusal('favourite Bundle Report Template'))
         favourite = delete_favourite(repository, favourite_id)
         if favourite is None:
             raise HTTPException(404, 'The favourite Bundle Report Template no longer exists.')

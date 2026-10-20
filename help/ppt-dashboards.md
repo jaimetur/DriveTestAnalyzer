@@ -52,7 +52,7 @@ An existing or imported Dashboard **RF Quality (RSRP & SINR)** can use the works
 | **Generate PPT** | Open the export selection dialog |
 | **Duplicate** | Create an independent definition |
 | **Export Dashboard** | Download a versioned ZIP accepted by Admin Import |
-| **Delete** | Remove the definition after confirmation |
+| **Delete** | Remove the definition after confirmation; only admins, super-admins and the user who created the Dashboard delete it |
 
 **Close** leaves the active definition without deleting it. Deleting a Dashboard does not delete its CDRs, template or generated PPT jobs.
 

@@ -595,9 +595,15 @@
       select.append(option);
     });
     select.value = selected && favourites.some((item) => String(item.id) === String(selected)) ? String(selected) : '';
-    $('brt-delete').disabled = !select.value || !brtOptions.can_edit;
-    $('brt-rename').disabled = $('brt-delete').disabled;
+    lockFavouriteActions(favourites.find((item) => String(item.id) === select.value));
     $('brt-save').disabled = !brtOptions.can_edit;
+  }
+  // Only admins and super-admins, or the user who created it, delete a favourite.
+  function lockFavouriteActions(favourite) {
+    const deletable = !favourite || (window.canDeleteShared?.(favourite.created_by) ?? true);
+    $('brt-rename').disabled = !favourite || !brtOptions.can_edit;
+    $('brt-delete').disabled = $('brt-rename').disabled || !deletable;
+    $('brt-delete').title = deletable ? 'Delete the chosen favourite' : window.sharedDeleteRefusal('favourite Bundle Report Template');
   }
   // The Reporting Jobs follow the favourites they generate.
   const favouritesChanged = () => document.dispatchEvent(new CustomEvent('bundle-report-template:favourites-changed'));
@@ -611,8 +617,7 @@
     const favourite = favourites.find((item) => String(item.id) === $('brt-favourite').value);
     definition = clone(favourite ? favourite.definition : brtOptions.defaults);
     $('brt-name').value = favourite ? favourite.name : '';
-    $('brt-delete').disabled = !favourite || !brtOptions.can_edit;
-    $('brt-rename').disabled = $('brt-delete').disabled;
+    lockFavouriteActions(favourite);
     render();
     changed();
     status(favourite ? `${favourite.name} loaded.` : '');
