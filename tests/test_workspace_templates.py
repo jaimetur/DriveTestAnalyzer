@@ -234,21 +234,21 @@ def test_template_export_pins_source_when_active_workspace_changes(client, tmp_p
     assert {item['identifier'] for item in app_module.report_catalogue_options('nsa')} == starter
 
 
-def test_inspection_preselects_only_matching_workspace_and_requires_access(client, tmp_path, monkeypatch):
+def test_inspection_preselects_only_matching_workspace_and_is_for_super_admins(client, tmp_path, monkeypatch):
     source = app_module.active_workspace
     package, _name = app_module.build_export_archive('ppt-templates')
+    other = app_module.workspace_registry.create('Other')
+    # Only super-admins import packages.
     client.post('/login', data={'username': 'admin', 'password': 'admin123'}, follow_redirects=False)
-    other = app_module.workspace_registry.create('Restricted')
+    assert client.post('/admin/import-export/inspect/upload', content=package,
+                       headers={'Content-Type': 'application/zip'}).status_code == 403
+    assert client.post('/admin/import-export/import/jobs', data={'upload_id': 'x', 'confirmed_import': 'true'}).status_code == 403
+    client.post('/login', data={'username': 'super', 'password': 'super123'}, follow_redirects=False)
     result = client.post('/admin/import-export/inspect/upload', content=package,
                          headers={'Content-Type': 'application/zip'})
     assert result.status_code == 200, result.text
     assert result.json()['selected_workspace_ids'] == [source.id]
-    assert other.id not in [item['id'] for item in result.json()['destination_workspaces']]
-    upload_id = result.headers['X-Import-Upload-Id']
-    denied = client.post('/admin/import-export/import/jobs', data={
-        'upload_id': upload_id, 'confirmed_import': 'true', 'workspace_ids': other.id,
-    })
-    assert denied.status_code == 403
+    assert other.id in [item['id'] for item in result.json()['destination_workspaces']]
 
 
 def test_workspace_archive_and_duplicate_include_templates(client, tmp_path):
@@ -327,7 +327,7 @@ def test_auto_field_package_preselects_source_workspace(client):
     other = app_module.workspace_registry.create('Additional destination')
     app_module.repository.grant_all_workspace_access(other.id)
     package, _name = app_module.build_export_archive('auto-calculated-fields')
-    client.post('/login', data={'username': 'admin', 'password': 'admin123'}, follow_redirects=False)
+    client.post('/login', data={'username': 'super', 'password': 'super123'}, follow_redirects=False)
     response = client.post('/admin/import-export/inspect/upload', content=package,
                            headers={'Content-Type': 'application/zip'})
     assert response.status_code == 200
@@ -344,8 +344,9 @@ def test_database_management_groups_template_registry_with_workspace_tables(clie
     with app_module.repository.global_connection() as conn:
         conn.execute('CREATE TABLE IF NOT EXISTS report_templates (name TEXT)')
         conn.execute("INSERT INTO report_templates (name) VALUES ('Legacy global')")
-    client.post('/login', data={'username': 'admin', 'password': 'admin123'}, follow_redirects=False)
-    response = client.get('/admin')
+    # Database Management is in Super Admin.
+    client.post('/login', data={'username': 'super', 'password': 'super123'}, follow_redirects=False)
+    response = client.get('/super-admin')
     assert response.status_code == 200
     groups = dict(re.findall(r'<optgroup label="([^"]+)">(.*?)</optgroup>', response.text, re.S))
     assert 'value="report_templates"' in groups['Workspace Tables']

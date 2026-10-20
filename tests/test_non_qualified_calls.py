@@ -376,7 +376,7 @@ def test_nq_tables_appear_in_database_management(client, tmp_path):
     enable_module()
     login(client)
     client.get('/api/non-qualified-calls/state')
-    page = client.get('/admin').text
+    page = client.get('/super-admin').text
     for title in ('NQ Calls', 'NQ Call Tracking', 'NQ Call Comments', 'NQ Call History', 'NQ Call Options', 'NQ Call Sources'):
         assert f'>{title}<' in page or f'"{title}"' in page, title
 
@@ -624,7 +624,7 @@ def test_root_cause_taxonomy_imports_with_the_tracking_and_shows_in_exports(clie
     # The Lifecycle & Phases of the page: its pipeline with the rules, its phases, its times and moves and its stalled calls.
     assert {('Lifecycle & Phases', 'NQ Call Status Pipeline'), ('Lifecycle & Phases', 'Phases'),
             ('Lifecycle & Phases', 'Time in Each Status and Most Frequent Moves')} <= subtitles
-    page = client.get('/admin').text
+    page = client.get('/super-admin').text
     assert '>NQ Root Catalog<' in page or '"NQ Root Catalog"' in page
 
 

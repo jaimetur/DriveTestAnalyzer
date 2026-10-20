@@ -3,7 +3,7 @@
 Use **PPT Reporting (old) → NetCheck CDR Reports** to create a persistent PowerPoint Report or standalone Chart Set from processed CDR-Data, CDR-Voice and CDR-Speech datasets.
 
 > [!NOTE]
-> **Restricted classic workflow.** PPT Reporting (old) is available only to the super-admins without a Modules Profile and to the users whose Modules Profile includes it (Admin → Modules Profiles; it is in no profile of a new deployment). PPT Dashboards and the scheduled [Reporting](reporting.md) jobs are the main workflows.
+> **Restricted classic workflow.** PPT Reporting (old) is available only to the super-admins without a Modules Profile and to the users whose Modules Profile includes it (Super Admin → Modules Profiles; it is in no profile of a new deployment). PPT Dashboards and the scheduled [Reporting](reporting.md) jobs are the main workflows.
 
 > [!WARNING]
 > **Missing CDR types.** A non-empty CDR selection is enough to generate a job, but charts requiring an unselected source type show an unavailable placeholder.

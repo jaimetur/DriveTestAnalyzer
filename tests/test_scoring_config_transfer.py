@@ -474,7 +474,11 @@ def test_legacy_migration_does_not_collide_with_an_existing_sequential_custom_co
 
 @pytest.mark.parametrize('collection_format', [False, True], ids=['legacy-v1', 'profiles-v3'])
 def test_admin_importer_accepts_scoring_configuration_json(client, collection_format):
+    # Only super-admins import packages.
     _login(client)
+    assert client.post('/admin/import-export/inspect', files={'package': ('x.json', b'{}', 'application/json')}).status_code == 403
+    response = client.post('/login', data={'username': 'super', 'password': 'super123'}, follow_redirects=False)
+    assert response.status_code == 303
     configuration = scoring_configuration()
     configuration['title'] = 'Admin Import Methodology'
     configuration['scope']['environments']['DriveCity']['source_filters']['G_Level_2'] = 'City QA'

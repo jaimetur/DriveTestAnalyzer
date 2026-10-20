@@ -265,7 +265,9 @@ def test_the_panel_imports_changes_and_deletes_lists_and_records_them_in_app_eve
     assert response.status_code == 200 and response.json()['lists'][0]['enabled'] is False
     download = client.get(f"/api/scoring/excluded-calls/{item['id']}/calls")
     assert download.text.splitlines() == ['JOIN_ID,Reason', '0xAEE0000,Phone reset', '0xAEE0001,']
-    assert 'Scoring Exclusion Lists' in client.get('/admin').text
+    # Database Management, in Super Admin, lists the tables.
+    assert client.post('/login', data={'username': 'super', 'password': 'super123'}, follow_redirects=False).status_code == 303
+    assert 'Scoring Exclusion Lists' in client.get('/super-admin').text
     response = client.delete(f"/api/scoring/excluded-calls/{item['id']}")
     assert response.status_code == 200 and response.json()['lists'] == []
     assert client.delete(f"/api/scoring/excluded-calls/{item['id']}").status_code == 404

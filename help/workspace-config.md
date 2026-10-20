@@ -511,9 +511,9 @@ Every City selector — Dashboard filters, the PowerPoint export, Scoring, Netwo
 
 ## Portable operations
 
-Administrators use Admin's existing **Import / Export / Transfer** and **Backup Protection** controls to move or restore workspace settings. Main Cities is a portable component alongside Report Templates and Mappings & Reference Data; full-workspace packages and database backups also retain the setting. The Mappings & Reference Data package (`mappings-reference-data/mappings-reference-data.json`) contains the Operator and Vendor Maps, Spectrum Holdings and Campaign Maps, and importing it replaces all of them in the destination workspace.
+Administrators use Admin's **Import / Export / Transfer** and Super Admin's **Backup Protection** controls to move or restore workspace settings. Main Cities is a portable component alongside Report Templates and Mappings & Reference Data; full-workspace packages and database backups also retain the setting. The Mappings & Reference Data package (`mappings-reference-data/mappings-reference-data.json`) contains the Operator and Vendor Maps, Spectrum Holdings and Campaign Maps, and importing it replaces all of them in the destination workspace.
 
-For global runtime settings, see [Application Config](app-config.md). Admin's [Database Viewer](administrator-config.md#database-viewer) documents the underlying Operator and Vendor mapping tables.
+For global runtime settings, see [Application Config](app-config.md). Super Admin's [Database Viewer](super-admin.md#database-viewer) documents the underlying Operator and Vendor mapping tables.
 
 ## Scoring & GAP Analysis Setup
 

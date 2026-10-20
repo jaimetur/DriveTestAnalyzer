@@ -35,7 +35,8 @@ Help Navigation groups chapters under General, Main Modules, Administrative Modu
 | Building ad-hoc SQL queries with guided controls | [Query Builder](query-builder.md) |
 | Reporting a bug, suggesting an improvement or asking for a new feature, and following it | [Ticket Center](ticket-center.md) |
 | Authoring templates | [Workspace Config](workspace-config.md), including the [Report Template reference](workspace-config.md#report-template-reference) |
-| Managing users and transfers | [Administrator Config](administrator-config.md) |
+| Managing users, their access and the databases | [Super Admin](super-admin.md) |
+| Importing, exporting and transferring packages and managing datasets | [Administrator Config](administrator-config.md) |
 | Changing application-wide runtime settings | [Application Config](app-config.md) |
 | Managing templates and chart mappings for a workspace | [Workspace Config](workspace-config.md) |
 | Reviewing application and workspace activity | [App Logs](app-logs.md) |
@@ -59,7 +60,8 @@ Help Navigation groups chapters under General, Main Modules, Administrative Modu
 - [App Logs](app-logs.md) — workspace events and live server output.
 - [Application Config](app-config.md) — application-wide runtime settings and their effect.
 - [Workspace Config](workspace-config.md) — workspace-owned templates, Main Cities, chart mappings and scoring methodologies.
-- [Administrator Config](administrator-config.md) — users, portability, databases and datasets.
+- [Administrator Config](administrator-config.md) — portability and datasets.
+- [Super Admin](super-admin.md) — users and their access, Interface Settings and databases.
 - [Project Structure](project-structure.md) — source/browser layers, database ownership, persistent storage, caches and generated output.
 - [Roadmap](roadmap.md) — current limitations and planned work.
 

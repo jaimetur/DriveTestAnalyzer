@@ -176,7 +176,7 @@ def test_the_database_viewer_shows_screenshots_as_their_size_and_does_not_edit_t
     assert row['content'] == f'[binary data, {len(PNG):,} bytes]'
     with pytest.raises(ValueError, match='Binary values'):
         core.repository.update_database_table_row('ticket_attachments', int(row['__database_rowid__']), {'content': 'x'})
-    admin = client.get('/admin').text
+    admin = client.get('/super-admin').text
     assert 'data-type="Ticket Center"' in admin and '>Ticket Attachments<' in admin
 
 

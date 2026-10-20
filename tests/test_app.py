@@ -2347,7 +2347,7 @@ def test_new_environment_creates_the_three_bootstrap_roles(client) -> None:
 def test_admin_can_create_user_editor_and_legacy_user_becomes_viewer(client) -> None:
     import src.DriveTestAnalyzer as app_module
 
-    login(client)
+    login_super(client)
     created = client.post('/admin/users', data={
         'username': 'config-editor', 'password': 'editor-password', 'role': 'user-editor',
     }, follow_redirects=False)
@@ -2435,6 +2435,8 @@ def test_login_username_is_case_insensitive_and_rejects_case_duplicates(client) 
     app_module.repository.set_user_workspace_access(int(demo['id']), ['default'])
     assert app_module.repository.user_has_workspace_access('DeMo', 'default')
 
+    # Users are created in Super Admin.
+    login_super(client)
     duplicate = client.post(
         '/admin/users',
         data={'username': 'ADMIN', 'password': 'other-password', 'role': 'user'},
@@ -2487,7 +2489,8 @@ def test_workspace_content_of_exports_and_backups_is_grouped_by_module_in_menu_o
     login_super(client)
     # A module renamed in Interface Settings names its subgroup.
     app_module.repository.set_application_state(MODULE_LABELS_STATE_KEY, json.dumps({'scoring': {'title': 'Benchmark'}}))
-    page = client.get('/admin').text
+    # Exports in Admin, backups in the Database Management of Super Admin.
+    page = client.get('/admin').text + client.get('/super-admin').text
 
     def group(label: str, start: str) -> str:
         text = page[page.index(start):]
@@ -2536,7 +2539,7 @@ def test_admin_import_export_packages_detect_configuration_and_workspaces(client
     assert 'name="export_target" multiple size="1" data-export-target-select data-multiselect-groups="true"' in admin_response.text
     assert '<optgroup label="Configuration Content">' in admin_response.text
     assert '<optgroup label="Current Workspace Content">' in admin_response.text
-    assert '<optgroup label="Workspace Content"' in admin_response.text
+    assert '<optgroup label="Workspace Content"' in client.get('/super-admin').text
     assert '<optgroup label="Full Workspace" data-group-note="Includes the Input and Output folders, optional on export">' in admin_response.text
     assert '<optgroup label="Full Environment">' in admin_response.text
     assert admin_response.text.index('<optgroup label="Full Workspace"') < admin_response.text.index('<optgroup label="Full Environment">')
@@ -2546,14 +2549,16 @@ def test_admin_import_export_packages_detect_configuration_and_workspaces(client
     assert admin_response.text.index('Main Cities (from active workspace)</option>') < admin_response.text.index('Mappings &amp; Reference Data (from active workspace)</option>')
     assert 'Scoring &amp; GAP Analysis Methodologies (from active workspace)' in admin_response.text
     assert 'Full Environment (Application Config + Dashboards + PPT Templates + Main Cities + Mappings &amp; Reference Data + Scoring &amp; GAP Analysis Methodologies + Auto-calculated Fields + Query Builder Queries + Network Insights Favourites + Bundle Report Template Favourites + Scoring &amp; GAP Favourites Filters + Scoring &amp; GAP Report Templates + Scoring Export Panels + Scoring Excluded Calls + Reporting Jobs + NQ Call Tracking + Selected Workspaces)' in admin_response.text
-    assert admin_response.text.index('Main Cities (workspace city selection)') < admin_response.text.index('Mappings &amp; Reference Data (Operator and Vendor aliases, order and theme colors')
-    assert 'Scoring &amp; GAP Analysis Methodologies (KPI methodology profiles and GAP KPI priorities)' in admin_response.text
-    assert "main_cities: 'Main Cities', mappings_reference_data: 'Mappings & Reference Data', scoring_configuration: 'Scoring & GAP Analysis Methodologies'" in admin_response.text
-    assert "['Workspace Content', ['workspace_database', 'dashboards', 'report_templates', 'main_cities', 'mappings_reference_data', 'scoring_configuration'" in admin_response.text
+    # The backups, in the Database Management of Super Admin.
+    backups_page = client.get('/super-admin').text
+    assert backups_page.index('Main Cities (workspace city selection)') < backups_page.index('Mappings &amp; Reference Data (Operator and Vendor aliases, order and theme colors')
+    assert 'Scoring &amp; GAP Analysis Methodologies (KPI methodology profiles and GAP KPI priorities)' in backups_page
+    assert "main_cities: 'Main Cities', mappings_reference_data: 'Mappings & Reference Data', scoring_configuration: 'Scoring & GAP Analysis Methodologies'" in backups_page
+    assert "['Workspace Content', ['workspace_database', 'dashboards', 'report_templates', 'main_cities', 'mappings_reference_data', 'scoring_configuration'" in backups_page
     assert {'main_cities', 'scoring_configuration'} <= set(app_module.recurring_backup_settings()['components'])
-    assert 'value="main_cities" selected' in admin_response.text
-    assert 'value="scoring_configuration" selected' in admin_response.text
-    assert 'Workspace: Default' in admin_response.text
+    assert 'value="main_cities" selected' in backups_page
+    assert 'value="scoring_configuration" selected' in backups_page
+    assert 'Workspace: Default' in backups_page
     stylesheet = app_module.PROJECT_ROOT.joinpath('src/web_interface/static/css/app.css').read_text(encoding='utf-8')
     app_script = app_module.PROJECT_ROOT.joinpath('src/web_interface/static/js/app.js').read_text(encoding='utf-8')
     assert '.multiselect-shell { position: relative; min-width: 0; max-width: 100%; }' in stylesheet
@@ -4535,7 +4540,9 @@ def test_admin_dataset_rows_can_be_reordered_in_descending_order_and_all_ids_are
     assert dataset_table.count('data-admin-dataset-move=') == 6
     assert 'data-admin-dataset-apply-changes' in admin_page.text
     assert 'data-admin-dataset-draft-body' in dataset_table
-    individual_tables = admin_page.text.split('<optgroup label="Individual Datasets">', 1)[1].split('</optgroup>', 1)[0]
+    # The tables of the datasets are listed in the Database Management of Super Admin.
+    login_super(client)
+    individual_tables = client.get('/super-admin').text.split('<optgroup label="Individual Datasets">', 1)[1].split('</optgroup>', 1)[0]
     assert individual_tables.index('value="dataset_rows_3"') < individual_tables.index('value="dataset_rows_2"') < individual_tables.index('value="dataset_rows_1"')
     assert 'Individual dataset rows' not in admin_page.text
     app_script = client.get('/static/js/app.js').text
@@ -4544,7 +4551,7 @@ def test_admin_dataset_rows_can_be_reordered_in_descending_order_and_all_ids_are
 
 
 def test_database_management_orders_individual_dataset_tables_by_numeric_id_descending(client) -> None:
-    login(client)
+    login_super(client)
     import src.DriveTestAnalyzer as app_module
 
     for dataset_number in range(1, 13):
@@ -4555,7 +4562,7 @@ def test_database_management_orders_individual_dataset_tables_by_numeric_id_desc
         )
         app_module.repository.replace_dataset_rows(dataset_id, pd.DataFrame({'value': [dataset_number]}))
 
-    page = client.get('/admin')
+    page = client.get('/super-admin')
     individual_tables = page.text.split('<optgroup label="Individual Datasets">', 1)[1].split('</optgroup>', 1)[0]
     positions = [individual_tables.index(f'value="dataset_rows_{dataset_id}"') for dataset_id in range(12, 0, -1)]
 
@@ -4822,7 +4829,7 @@ def test_workspace_management_save_updates_name_and_user_access(client) -> None:
     assert 'class="workspace-action-save icon-action"' in workspace_page.text
     assert 'title="Save workspace changes"' in workspace_page.text
     assert 'data-workspace-row-open' in workspace_page.text
-    users_page = client.get('/admin')
+    users_page = client.get('/super-admin')
     demo_row = users_page.text.split(f'aria-label="Filter the workspaces of {demo["username"]}"', 1)[1].split('</details>', 1)[0]
     assert f'value="{germany.id}"' in demo_row
     assert 'checked' in demo_row
@@ -5612,7 +5619,7 @@ def test_backup_removes_snapshot_folders_left_by_killed_backups(client, tmp_path
 def test_backup_list_marks_zips_cut_short_as_incomplete(client) -> None:
     import src.DriveTestAnalyzer as app_module
 
-    login(client)
+    login_super(client)
     backup_root = app_module.application_data_dir / 'scheduled-backups'
     backup_root.mkdir(parents=True, exist_ok=True)
     complete = backup_root / 'drivetest-analyzer-backup-20260101-060000.zip'
@@ -6778,18 +6785,18 @@ def test_admin_panel_is_available_for_admin(client) -> None:
     login(client)
     response = client.get("/admin")
     assert response.status_code == 200
-    assert "Administrator Config" in response.text
-    assert '<span class="user-role-locked" aria-label="Role for super: super-admin" title="Only super-admins can modify a super-admin role">super-admin</span>' in response.text
-    assert 'type="text" value="super-admin" aria-label="Role for super"' not in response.text
-    assert 'name="username" value="super" form="user-update-1" autocomplete="off" readonly data-user-autofill-guard required aria-label="Username of super" disabled' in response.text
-    assert 'name="password" value="" placeholder="••••••••" autocomplete="off" spellcheck="false" readonly form="user-update-1" aria-label="New password of super" data-user-password data-user-autofill-guard' in response.text
+    assert "Administrator Config" in response.text and 'Import / Export / Transfer' in response.text
+    # Users are in Super Admin, for super-admins only.
+    assert 'id="users"' not in response.text and client.get('/super-admin').status_code == 403
+    login_super(client)
+    response = client.get('/super-admin')
+    assert response.status_code == 200 and 'id="users"' in response.text
     assert 'data-user-password-toggle' in response.text
     assert 'data-create-user-password-toggle' in response.text
     assert 'protectAdminFields' in response.text
     assert '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.2 12' in response.text
     assert 'Keep current' not in response.text
     assert 'restoreUsersFromServerMarkup' in response.text
-    assert 'form="user-update-1" disabled title="Only super-admins can modify super-admin accounts">Save</button>' not in response.text
 
 
 def test_admin_operator_mapping_panel_groups_and_edits_aliases(client) -> None:
@@ -7036,7 +7043,7 @@ def test_paginated_dataset_viewers_preserve_the_exact_horizontal_scroll_offset()
 def test_admin_recurring_backup_settings_are_persisted(client) -> None:
     import src.DriveTestAnalyzer as app_module
 
-    login(client)
+    login_super(client)
     saved = client.post('/admin/database/backups', data={
         'enabled': 'true', 'components': ['app_database', 'report_templates'],
         'workspace_ids': ['default'],
@@ -7058,7 +7065,7 @@ def test_admin_recurring_backup_settings_are_persisted(client) -> None:
         row['action'] == 'save_scheduled_backup_settings'
         for row in app_module.repository.list_logs()
     )
-    page = client.get('/admin')
+    page = client.get('/super-admin')
     assert 'Backup Protection' in page.text
     assert 'database-view-subpanel' in page.text
     assert 'Retention backups' in page.text
@@ -7106,7 +7113,7 @@ def test_scheduled_backup_records_automatic_lifecycle_in_app_logs(client, monkey
 def test_manual_database_backup_uses_current_form_selection_without_enabling_schedule(client, monkeypatch) -> None:
     import src.DriveTestAnalyzer as app_module
 
-    login(client)
+    login_super(client)
     captured: dict[str, object] = {}
     schedule_enabled_before = app_module.recurring_backup_settings()['enabled']
 
@@ -7134,9 +7141,9 @@ def test_manual_database_backup_uses_current_form_selection_without_enabling_sch
 
 
 def test_backup_notices_render_in_backup_protection_not_database_view(client) -> None:
-    login(client)
+    login_super(client)
 
-    page = client.get('/admin?database_notice=Manual+backup+started.')
+    page = client.get('/super-admin?database_notice=Manual+backup+started.')
 
     assert 'class="alert backup-notice">Manual backup started.' in page.text
     assert 'class="alert database-cleanup-notice">Manual backup started.' not in page.text
@@ -7280,7 +7287,7 @@ def test_main_cities_backup_supports_selective_restore(client, tmp_path: Path) -
 def test_backup_restore_keeps_the_workspaces_left_out(client) -> None:
     import src.DriveTestAnalyzer as app_module
 
-    login(client)
+    login_super(client)
     app_module.repository.set_main_cities(['London'])
     archive_path = app_module.create_recurring_database_backup({
         'components': ['main_cities'],
@@ -7315,13 +7322,14 @@ def test_login_and_admin_remain_available_after_closing_the_active_workspace(cli
     admin = client.get('/admin')
     assert admin.status_code == 200
     assert 'Open a workspace from Workspace Management before managing its datasets.' in admin.text
-    assert 'Open a workspace from Workspace Management before viewing or editing its database.' in admin.text
+    login_super(client)
+    assert 'Open a workspace from Workspace Management before viewing or editing its database.' in client.get('/super-admin').text
 
 
 def test_admin_database_management_lists_and_updates_active_workspace_tables(client) -> None:
     import src.DriveTestAnalyzer as app_module
 
-    login(client)
+    login_super(client)
     client.post(
         "/admin/users",
         data={"username": "database-editor", "password": "start123", "role": "user"},
@@ -7332,7 +7340,7 @@ def test_admin_database_management_lists_and_updates_active_workspace_tables(cli
     with app_module.repository.connection() as conn:
         conn.execute("INSERT INTO dashboard_filter_selections (cache_key) VALUES ('database-viewer-test')")
     assert app_module.repository.dataset_rows_table_exists(987)
-    admin = client.get("/admin")
+    admin = client.get("/super-admin")
     assert admin.status_code == 200
     assert "Database Management" in admin.text
     assert 'data-database-table-select' in admin.text
@@ -8959,7 +8967,7 @@ def test_dashboard_data_filters_follow_source_operator_vendor_location_then_test
 
 
 def test_admin_can_update_user_identity_fields(client) -> None:
-    login(client)
+    login_super(client)
 
     create_response = client.post(
         "/admin/users",
@@ -9016,7 +9024,7 @@ def test_automatic_user_field_update_preserves_the_canonical_username(client) ->
 
 
 def test_admin_can_delete_user(client) -> None:
-    login(client)
+    login_super(client)
 
     create_response = client.post(
         "/admin/users",
@@ -9058,13 +9066,13 @@ def test_password_reset_uses_the_expected_account_defaults(client) -> None:
         assert app_module.verify_password(expected_password, app_module.repository.get_user(username).password_hash)
 
 
-def test_admin_cannot_delete_current_signed_in_user(client) -> None:
-    login(client)
+def test_super_admin_cannot_delete_current_signed_in_user(client) -> None:
+    login_super(client)
 
     import src.DriveTestAnalyzer as app_module
 
-    admin_row = next(row for row in app_module.repository.list_users() if row["username"] == "admin")
-    response = client.post(f"/admin/users/{admin_row['id']}/delete")
+    super_row = next(row for row in app_module.repository.list_users() if row["username"] == "super")
+    response = client.post(f"/admin/users/{super_row['id']}/delete")
     assert response.status_code == 400
     assert "You cannot delete the current signed-in admin user" in response.text
 
@@ -9090,7 +9098,7 @@ def test_super_admin_cannot_demote_or_deactivate_last_active_super_admin(client)
     assert "At least one active super-admin must remain" in response.text
 
 
-def test_admin_cannot_delete_super_admin_even_if_not_current_user(client) -> None:
+def test_admins_change_no_account_not_even_their_own(client) -> None:
     login_super(client)
 
     import src.DriveTestAnalyzer as app_module
@@ -9113,44 +9121,36 @@ def test_admin_cannot_delete_super_admin_even_if_not_current_user(client) -> Non
     )
     assert switch_session.status_code == 303
 
+    # Users are in Super Admin: an admin changes no account, not even its own.
     disable_backup = client.post(
         f"/admin/users/{backup_admin['id']}/update",
         data={"username": "backup-admin", "password": "", "role": "admin"},
         follow_redirects=False,
     )
-    assert disable_backup.status_code == 303
+    assert disable_backup.status_code == 403
 
     response = client.post(f"/admin/users/{admin_row['id']}/delete")
     assert response.status_code == 403
-    assert "Only super-admins can assign or modify super-admin accounts" in response.text
+    assert "Super-admin access required" in response.text
 
 
-def test_admin_cannot_assign_or_modify_super_admin_roles(client) -> None:
+def test_admins_cannot_create_or_modify_accounts(client) -> None:
     login(client)
 
+    import src.DriveTestAnalyzer as app_module
+
+    # Users are in Super Admin: an admin creates, promotes, changes and deletes no account.
     create_super = client.post(
         "/admin/users",
         data={"username": "forbidden-super", "password": "password123", "role": "super-admin"},
     )
-    assert create_super.status_code == 400
-    assert "Only super-admins can create super-admin users" in create_super.text
-
+    assert create_super.status_code == 403 and "Super-admin access required" in create_super.text
     created = client.post(
         "/admin/users",
         data={"username": "managed-user", "password": "password123", "role": "user"},
         follow_redirects=False,
     )
-    assert created.status_code == 303
-
-    import src.DriveTestAnalyzer as app_module
-
-    managed_user = next(row for row in app_module.repository.list_users() if row["username"] == "managed-user")
-    promoted = client.post(
-        f"/admin/users/{managed_user['id']}/update",
-        data={"username": "managed-user", "password": "", "role": "super-admin", "active": "1"},
-    )
-    assert promoted.status_code == 403
-    assert "Only super-admins can assign or modify super-admin accounts" in promoted.text
+    assert created.status_code == 403 and app_module.repository.get_user('managed-user') is None
 
     super_row = next(row for row in app_module.repository.list_users() if row["username"] == "super")
     modified_super = client.post(
@@ -9158,14 +9158,12 @@ def test_admin_cannot_assign_or_modify_super_admin_roles(client) -> None:
         data={"username": "renamed-super", "password": "forbidden-password", "role": "admin", "active": "1"},
     )
     assert modified_super.status_code == 403
-    assert "Only super-admins can assign or modify super-admin accounts" in modified_super.text
     assert app_module.repository.get_user('renamed-super') is None
     assert app_module.repository.get_user('super') is not None
     assert app_module.verify_password('super123', app_module.repository.get_user('super').password_hash)
 
     deleted_super = client.post(f"/admin/users/{super_row['id']}/delete")
     assert deleted_super.status_code == 403
-    assert "Only super-admins can assign or modify super-admin accounts" in deleted_super.text
 
 
 def test_top_navigation_shows_document_links(client) -> None:
@@ -9873,6 +9871,7 @@ def test_docs_routes_expose_readme_changelog_and_help(client) -> None:
         'app-config.md',
         'workspace-config.md',
         'administrator-config.md',
+        'super-admin.md',
         'project-structure.md',
         'roadmap.md',
     ]
@@ -10945,22 +10944,22 @@ def test_cdr_analysis_export_keeps_each_cdf_visible_range(client) -> None:
 
 def test_module_stage_labels_can_be_hidden_only_by_super_admins(client) -> None:
     login(client)
-    admin_page = client.get('/admin').text
-    assert 'id="interface-settings"' not in admin_page
+    # Interface Settings is in Super Admin, which admins do not open.
+    assert 'id="interface-settings"' not in client.get('/admin').text and client.get('/super-admin').status_code == 403
     assert client.post('/admin/interface-settings', data={}, follow_redirects=False).status_code == 403
     # The labels are off by default.
     assert 'module-tab-new' not in client.get('/workspace').text
 
     client.post('/logout', follow_redirects=False)
     login_super(client)
-    assert 'name="show_module_stage_labels" value="true" data-no-persist >' in client.get('/admin').text
+    assert 'name="show_module_stage_labels" value="true" data-no-persist >' in client.get('/super-admin').text
     shown = client.post('/admin/interface-settings', data={'show_module_stage_labels': 'true'}, follow_redirects=False)
     assert shown.status_code == 303
     page = client.get('/workspace').text
     # Stable modules carry no label text: only the modules in development are labelled.
     assert 'class="module-tab-new module-tab-new-network-insights"' in page
     assert 'module-tab-new-workspace' not in page and '>STABLE</text>' not in page
-    assert 'name="show_module_stage_labels" value="true" data-no-persist checked' in client.get('/admin').text
+    assert 'name="show_module_stage_labels" value="true" data-no-persist checked' in client.get('/super-admin').text
 
     client.post('/admin/interface-settings', data={}, follow_redirects=False)
     assert 'module-tab-new' not in client.get('/workspace').text
@@ -10971,7 +10970,7 @@ def test_module_labels_are_configured_per_module_by_super_admins(client) -> None
     import src.DriveTestAnalyzer as app_module
 
     login_super(client)
-    admin_page = client.get('/admin').text
+    admin_page = client.get('/super-admin').text
     assert 'name="label__scoring" value="NEW"' in admin_page and 'data-module-label-icons' in admin_page
     form = {'show_module_stage_labels': 'true'}
     for module, _name in app_module.MAIN_MODULES:
@@ -10997,7 +10996,7 @@ def test_module_tabs_take_order_title_icon_and_colour_from_interface_settings(cl
     import src.DriveTestAnalyzer as app_module
 
     login_super(client)
-    admin_page = client.get('/admin').text
+    admin_page = client.get('/super-admin').text
     assert 'name="title__scoring" value="Scoring &amp; GAP Analysis"' in admin_page and 'data-module-tab-icons' in admin_page
     order = ['workspace', 'network-insights', 'datasets-analysis', 'ppt-dashboards', 'ppt-reporting-old', 'scoring',
              'non-qualified-calls', 'reporting', 'builders', 'ticket-center']
@@ -11044,7 +11043,7 @@ def test_module_tabs_take_order_title_icon_and_colour_from_interface_settings(cl
     assert {'readme', 'changelog'} <= set(index['icons'])
     assert all(item.get('icon') for item in index['documents'] if item['relative_path'] in {'reporting.md', 'app-logs.md', 'chart-builder.md', 'overview.md', 'docker-deployment.md', 'roadmap.md'})
     # The module chips of every Modules Profile follow the order of the tabs.
-    admin_page = client.get('/admin').text
+    admin_page = client.get('/super-admin').text
     first_profile = re.search(r'form="(modules-profile-\d+)"', admin_page).group(1)
     assert re.findall(rf'name="modules" value="([a-z-]+)" form="{first_profile}"', admin_page) == order
 
@@ -11091,7 +11090,7 @@ def test_every_tab_lists_its_sections_with_icons_in_the_colour_of_its_module(cli
     login_super(client)
     page = client.get('/scoring').text
     menus = dict(re.findall(r'<nav class="module-sections-menu[^"]*" popover="manual" data-module-sections-for="([^"]+)"[^>]*>(.*?)</nav>', page, re.S))
-    for key in ('readme', 'changelog', 'help', 'app-logs', 'admin', 'workspace', 'datasets-analysis', 'ppt-dashboards',
+    for key in ('readme', 'changelog', 'help', 'app-logs', 'admin', 'super-admin', 'workspace', 'datasets-analysis', 'ppt-dashboards',
                 'scoring', 'network-insights', 'reporting'):
         assert key in menus, key
         assert f'data-module-sections="{key}"' in page, key
@@ -11126,7 +11125,7 @@ def test_every_tab_lists_its_sections_with_icons_in_the_colour_of_its_module(cli
              'ppt-reporting-old': 'reporting.html', 'scoring': 'scoring.html', 'network-insights': 'network_insights.html',
              'non-qualified-calls': 'non_qualified_calls.html', 'reporting': 'report_jobs.html',
              'chart-builder': 'chart_builder.html', 'query-builder': 'query_builder.html', 'app-logs': 'app_logs.html',
-             'admin': 'admin.html', 'ticket-center': 'ticket_center.html'}
+             'admin': 'admin.html', 'super-admin': 'admin.html', 'ticket-center': 'ticket_center.html'}
     def page_text(name):
         text = (templates / name).read_text(encoding='utf-8')
         # The panels of the templates it includes (the Excluded Calls of Scoring) are panels of the page too.

@@ -4908,26 +4908,28 @@ window.addEventListener('keydown', (event) => {
   }
 });
 const logTypeFilter = document.querySelector('[data-log-type-filter]');
-const persistencePathnames = new Set(['/datasets-analysis', '/admin']);
+const persistencePathnames = new Set(['/datasets-analysis', '/admin', '/super-admin']);
 const activeDatasetStateKey = 'drivetest-analyzer:active-dataset';
-const adminScrollRestoreKey = 'drivetest-analyzer:/admin:scroll-restore';
+// Admin and Super Admin come back to where they were scrolled after a form reloads them, each page apart.
+const adminScrollPages = new Set(['/admin', '/super-admin']);
+const adminScrollRestoreKey = () => `drivetest-analyzer:${window.location.pathname}:scroll-restore`;
 let hasPendingLocationRestore = false;
 
 function preserveAdminScrollPosition() {
-  if (window.location.pathname !== '/admin') return;
+  if (!adminScrollPages.has(window.location.pathname)) return;
   try {
-    window.sessionStorage.setItem(adminScrollRestoreKey, String(window.scrollY));
+    window.sessionStorage.setItem(adminScrollRestoreKey(), String(window.scrollY));
   } catch (_error) {
     // A blocked storage area only affects the convenience restoration.
   }
 }
 
 function restoreAdminScrollPosition() {
-  if (window.location.pathname !== '/admin') return;
+  if (!adminScrollPages.has(window.location.pathname)) return;
   try {
-    const value = window.sessionStorage.getItem(adminScrollRestoreKey);
+    const value = window.sessionStorage.getItem(adminScrollRestoreKey());
     if (value === null) return;
-    window.sessionStorage.removeItem(adminScrollRestoreKey);
+    window.sessionStorage.removeItem(adminScrollRestoreKey());
     const top = Number(value);
     // A section chosen in a menu (#section-…) opens the page there instead.
     if (Number.isFinite(top) && top > 0 && !window.location.hash) {
@@ -6197,6 +6199,7 @@ function setupPagePanelNavigator() {
     'module-tab-app-logs': 'logs',
     'module-tab-config': 'config',
     'module-tab-admin': 'admin',
+    'module-tab-super-admin': 'admin',
   };
   navigator.dataset.theme = Object.entries(themeClasses).find(([className]) => activeTab?.classList.contains(className))?.[1]
     || (window.location.pathname.startsWith('/datasets/') ? 'datasets' : 'utility');
@@ -8358,7 +8361,7 @@ document.querySelectorAll('[data-export-package-form]').forEach((form) => {
         }),
       });
     } catch (_error) { /* Told again by the next poll. */ }
-    if (choice === 'access-requests') window.location.href = told?.access_requests_url || '/admin#users';
+    if (choice === 'access-requests') window.location.href = told?.access_requests_url || '/super-admin#users';
     else if (choice === 'ticket-center') window.location.href = told?.ticket_center_url || '/tickets';
   };
   const render = () => {

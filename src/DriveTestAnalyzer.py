@@ -470,6 +470,7 @@ HELP_NAVIGATION_DOCUMENTS = (
     'app-config.md',
     'workspace-config.md',
     'administrator-config.md',
+    'super-admin.md',
     'project-structure.md',
     'roadmap.md',
 )
@@ -536,8 +537,13 @@ def feature_for_path(path: str) -> str | None:
 
 # The pages of the administrative modules and of Workspace outside its main page, by module (App Events tells where an
 # event ran by the page that sent it).
-ADMINISTRATIVE_MODULES = (('admin', 'Admin'), ('config', 'Config'), ('app-logs', 'App Logs'), ('help', 'Help'))
+ADMINISTRATIVE_MODULES = (('admin', 'Admin'), ('super-admin', 'Super Admin'), ('config', 'Config'), ('app-logs', 'App Logs'),
+                          ('help', 'Help'))
 MODULE_PATH_PREFIXES = (
+    # Super Admin first: its panels keep their addresses under /admin.
+    ('super-admin', ('/super-admin', '/admin/users', '/admin/modules-profiles', '/admin/workspace-groups',
+                     '/admin/interface-settings', '/admin/database', '/api/admin/backup-files', '/api/admin/backup-status',
+                     '/api/admin/backup-directories', '/admin/reset-application')),
     ('admin', ('/admin', '/api/admin', '/api/import-export')),
     ('config', ('/workspace-config', '/api/workspace-config', '/application-config', '/api/mapping-assignments')),
     ('app-logs', ('/app-logs', '/api/app-logs')),
@@ -5648,7 +5654,7 @@ def render_template(request: Request, template_name: str, context: dict[str, Any
         'tab_sections': {
             **{key: section_links(href, key) for key, href in (
                 ('chart-builder', '/chart-builder'), ('query-builder', '/query-builder'), ('app-logs', '/app-logs'),
-                ('admin', '/admin'))},
+                ('admin', '/admin'), ('super-admin', '/super-admin'))},
             **document_tab_sections(template_user, module_settings),
         },
         'section_icons': SECTION_ICONS,
@@ -5759,7 +5765,7 @@ def document_tab_sections(user: Any, module_settings: dict[str, dict[str, Any]])
             groups[''].append(('/documents/view/help', 'Help Home', SECTION_ICONS['home'], ADMINISTRATIVE_ICONS['help']['color']))
             continue
         group = ('Main Modules' if relative_path in module_documents
-                 else 'Administrative Modules' if relative_path in {'app-logs.md', 'app-config.md', 'workspace-config.md', 'administrator-config.md'}
+                 else 'Administrative Modules' if relative_path in {'app-logs.md', 'app-config.md', 'workspace-config.md', 'administrator-config.md', 'super-admin.md'}
                  else 'Reference' if relative_path in {'project-structure.md', 'roadmap.md'} else 'General')
         label = renamed.get(relative_path) or HELP_DOCUMENT_LABELS.get(relative_path, help_document_label(relative_path))
         icon = icons.get(relative_path, {})
@@ -11460,8 +11466,10 @@ def would_remove_required_super_admin(target_user, normalized_role: str, will_be
 
 def render_admin_template(
     request: Request, user: SessionUser, error: str | None = None, status_code: int = 200,
-    workspace_config_page: bool = False,
+    workspace_config_page: bool = False, admin_page: str = 'admin',
 ) -> HTMLResponse:
+    """Admin (Import / Export / Transfer and Datasets Management), Super Admin (users, profiles, groups, interface
+    settings and databases) or the Workspace Config page."""
     embedded_template_editor = request.query_params.get('embedded_template_editor') == '1'
     selected_technology = request.query_params.get('catalogue_technology') or None
     selected_catalogue = request.query_params.get('catalogue_id') or None
@@ -11665,6 +11673,7 @@ def render_admin_template(
         {
             'user': user,
             'workspace_config_page': workspace_config_page,
+            'admin_page': admin_page,
             'embedded_template_editor': embedded_template_editor,
             'users': admin_users,
             'modules_profiles': repository.list_modules_profiles(),
@@ -12495,7 +12504,8 @@ def create_access_request(request: Request, payload: AccessRequestPayload) -> JS
         f'Modules Profile: {profile_text}',
         *previous,
         f'Requested on: {requested}',
-        f"Server: {str(request.base_url).rstrip('/')}/admin",
+        # Super Admin, where the users are activated.
+        f"Server: {str(request.base_url).rstrip('/')}/super-admin",
         '',
         'Thank you,',
         username,
@@ -21755,6 +21765,12 @@ def admin_panel(request: Request, user: SessionUser = Depends(admin_user)) -> HT
     return render_admin_template(request, user)
 
 
+@app.get('/super-admin', response_class=HTMLResponse)
+def super_admin_panel(request: Request, user: SessionUser = Depends(super_admin_user)) -> HTMLResponse:
+    """Users, Modules Profiles, Workspace Groups, Interface Settings and Database Management: super-admins only."""
+    return render_admin_template(request, user, admin_page='super-admin')
+
+
 APP_RESET_CONFIRMATION = 'RESET APPLICATION'
 
 
@@ -21863,12 +21879,12 @@ def reset_application(username: str) -> None:
 
 @app.post('/admin/reset-application')
 def reset_application_route(
-    request: Request, confirmation: str = Form(default=''), user: SessionUser = Depends(admin_user),
+    request: Request, confirmation: str = Form(default=''), user: SessionUser = Depends(super_admin_user),
 ) -> Response:
     if user.role != 'super-admin':
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Only super-admins can reset the application.')
     if confirmation.strip() != APP_RESET_CONFIRMATION:
-        return render_admin_template(request, user, error=f'Type {APP_RESET_CONFIRMATION} to reset the application.', status_code=400)
+        return render_admin_template(request, user, admin_page='super-admin', error=f'Type {APP_RESET_CONFIRMATION} to reset the application.', status_code=400)
     reset_application(user.username)
     response = RedirectResponse('/login?reset=1', status_code=status.HTTP_303_SEE_OTHER)
     response.delete_cookie(SESSION_COOKIE)
@@ -22136,7 +22152,7 @@ def save_recurring_backup_settings(
     monthly_day: int = Form(1),
     max_backups: int = Form(30),
     backup_path: str = Form(''),
-    user: SessionUser = Depends(admin_user),
+    user: SessionUser = Depends(super_admin_user),
 ) -> Response:
     recurrence = recurrence.strip().lower()
     if recurrence not in {'hourly', 'daily', 'weekly', 'monthly'}:
@@ -22180,7 +22196,7 @@ def save_recurring_backup_settings(
     }))
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
         return JSONResponse({'message': 'Scheduler settings saved.'})
-    return RedirectResponse('/admin?backup_notice=Scheduler+settings+saved.', status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse('/super-admin?backup_notice=Scheduler+settings+saved.', status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.post('/admin/database/backups/selection')
@@ -22189,7 +22205,7 @@ def save_recurring_backup_selection(
     components: list[str] = Form(default=[]),
     workspace_ids: list[str] = Form(default=[]),
     backup_path: str = Form(''),
-    user: SessionUser = Depends(admin_user),
+    user: SessionUser = Depends(super_admin_user),
 ) -> JSONResponse:
     """Persist immediate Backup panel choices without modifying scheduler timing.
 
@@ -22229,7 +22245,7 @@ def run_manual_database_backup(
     workspace_ids: list[str] = Form(default=[]),
     max_backups: int = Form(30),
     backup_path: str = Form(''),
-    user: SessionUser = Depends(admin_user),
+    user: SessionUser = Depends(super_admin_user),
 ) -> Response:
     """Queue an immediate backup using the current form selection and path."""
     selected_components = backup_components(components)
@@ -22263,11 +22279,11 @@ def run_manual_database_backup(
             'job_id': job['id'],
             'message': 'The backup is running in the background and appears in the floating background-task card.',
         })
-    return RedirectResponse('/admin?backup_notice=Manual+backup+started.', status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse('/super-admin?backup_notice=Manual+backup+started.', status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.get('/api/admin/backup-files')
-def backup_files(backup_path: str = Query(default=''), user: SessionUser = Depends(admin_user)) -> JSONResponse:
+def backup_files(backup_path: str = Query(default=''), user: SessionUser = Depends(super_admin_user)) -> JSONResponse:
     """List restoreable ZIP files in one server-visible backup directory."""
     root = ensure_backup_path_is_within_config(recurring_backup_path({'backup_path': backup_path}))
     files = []
@@ -22284,13 +22300,13 @@ def backup_files(backup_path: str = Query(default=''), user: SessionUser = Depen
 
 
 @app.get('/api/admin/backup-status')
-def backup_status(user: SessionUser = Depends(admin_user)) -> JSONResponse:
+def backup_status(user: SessionUser = Depends(super_admin_user)) -> JSONResponse:
     """Return live backup status without reloading the Administration page."""
     return JSONResponse(recurring_backup_status(recurring_backup_settings()), headers={'Cache-Control': 'no-store'})
 
 
 @app.post('/api/admin/backup-files/inspect')
-def inspect_backup_file(backup_path: str = Form(''), backup_file: str = Form(''), user: SessionUser = Depends(admin_user)) -> JSONResponse:
+def inspect_backup_file(backup_path: str = Form(''), backup_file: str = Form(''), user: SessionUser = Depends(super_admin_user)) -> JSONResponse:
     archive_path = _backup_archive_file(backup_path, backup_file)
     workspaces = _backup_archive_workspaces(archive_path)
     server_workspaces = {workspace.name for workspace in workspace_registry.list()}
@@ -22308,7 +22324,7 @@ def run_manual_database_restore(
     backup_file: str = Form(''),
     components: list[str] = Form(default=[]),
     workspaces: list[str] | None = Form(default=None),
-    user: SessionUser = Depends(admin_user),
+    user: SessionUser = Depends(super_admin_user),
 ) -> Response:
     archive_path = _backup_archive_file(backup_path, backup_file)
     selected = [item for item in components if item in {*APPLICATION_BACKUP_COMPONENTS, *WORKSPACE_ARCHIVE_COMPONENTS}]
@@ -22329,7 +22345,7 @@ def run_manual_database_restore(
 
 
 @app.get('/api/admin/backup-directories')
-def backup_directories(path: str | None = Query(default=None), user: SessionUser = Depends(admin_user)) -> JSONResponse:
+def backup_directories(path: str | None = Query(default=None), user: SessionUser = Depends(super_admin_user)) -> JSONResponse:
     """List server-visible directories for the recurring-backup path picker."""
     candidate = recurring_backup_path({'backup_path': path}) if path else backup_config_root()
     try:
@@ -22351,7 +22367,7 @@ def backup_directories(path: str | None = Query(default=None), user: SessionUser
 
 @app.post('/api/admin/backup-directories')
 def create_backup_directory(
-    parent_path: str = Form(...), name: str = Form(...), user: SessionUser = Depends(admin_user),
+    parent_path: str = Form(...), name: str = Form(...), user: SessionUser = Depends(super_admin_user),
 ) -> JSONResponse:
     """Create one folder in the server-visible backup path picker."""
     normalized_name = name.strip()
@@ -22755,7 +22771,7 @@ def list_admin_notices(user: SessionUser = Depends(super_admin_user)) -> JSONRes
             'reported_by': people.get(item['created_by'], {}).get('name', item['created_by']),
             'reported_at': format_local_timestamp(item['created_at'])[:16],
         } for item in notices['tickets']],
-        'access_requests_url': '/admin?users=access-requests#users',
+        'access_requests_url': '/super-admin?users=access-requests#users',
         'ticket_center_url': '/tickets?status=new#section-tickets', 'ticket_center_title': ticket_center_title(),
     }, headers={'Cache-Control': 'no-store'})
 
@@ -23088,7 +23104,7 @@ def download_admin_export_job(job_id: str, user: SessionUser = Depends(admin_use
 @app.post('/admin/import-export/inspect')
 async def inspect_admin_import_package(
     package: UploadFile = File(...),
-    user: SessionUser = Depends(admin_user),
+    user: SessionUser = Depends(super_admin_user),
 ) -> JSONResponse:
     """Compatibility endpoint for multipart clients.
 
@@ -23199,7 +23215,7 @@ def _retain_import_upload(upload_id: str, package_path: Path, user: SessionUser,
 @app.post('/admin/import-export/inspect/upload')
 async def inspect_admin_import_package_stream(
     request: Request,
-    user: SessionUser = Depends(admin_user),
+    user: SessionUser = Depends(super_admin_user),
 ) -> JSONResponse:
     """Receive an import ZIP directly to its retained disk path.
 
@@ -23231,7 +23247,7 @@ async def inspect_admin_import_package_stream(
 
 
 @app.delete('/admin/import-export/import/uploads/{upload_id}')
-def discard_admin_import_upload(upload_id: str, user: SessionUser = Depends(admin_user)) -> Response:
+def discard_admin_import_upload(upload_id: str, user: SessionUser = Depends(super_admin_user)) -> Response:
     with IMPORT_JOBS_LOCK:
         upload = IMPORT_UPLOADS.get(upload_id)
         if not upload or upload.get('owner') != user.username:
@@ -23249,7 +23265,7 @@ def create_admin_import_job(
     upload_id: str = Form(...),
     confirmed_import: bool = Form(False),
     workspace_ids: list[str] | None = Form(None),
-    user: SessionUser = Depends(admin_user),
+    user: SessionUser = Depends(super_admin_user),
 ) -> JSONResponse:
     if not confirmed_import:
         raise HTTPException(status_code=400, detail='Confirm the import warning before applying this package.')
@@ -23280,7 +23296,7 @@ def create_admin_import_job(
 
 
 @app.get('/admin/import-export/import/jobs/{job_id}')
-def get_admin_import_job(job_id: str, user: SessionUser = Depends(admin_user)) -> JSONResponse:
+def get_admin_import_job(job_id: str, user: SessionUser = Depends(super_admin_user)) -> JSONResponse:
     if not (payload := import_job_payload(job_id, user)):
         raise HTTPException(status_code=404, detail='The import job no longer exists.')
     return JSONResponse(payload)
@@ -23290,7 +23306,7 @@ def get_admin_import_job(job_id: str, user: SessionUser = Depends(admin_user)) -
 async def import_admin_package(
     package: UploadFile = File(...),
     confirmed_import: bool = Form(False),
-    user: SessionUser = Depends(admin_user),
+    user: SessionUser = Depends(super_admin_user),
 ) -> Response:
     package_dir = export_package_dir()
     package_dir.mkdir(parents=True, exist_ok=True)
@@ -23328,10 +23344,10 @@ async def import_admin_package(
 
 
 @app.post('/admin/database/cleanup')
-def cleanup_admin_database(user: SessionUser = Depends(admin_user)) -> Response:
+def cleanup_admin_database(user: SessionUser = Depends(super_admin_user)) -> Response:
     if not active_workspace:
         return RedirectResponse(
-            f'/admin?{urlencode({"database_notice": "Open a workspace before cleaning its database."})}',
+            f'/super-admin?{urlencode({"database_notice": "Open a workspace before cleaning its database."})}',
             status_code=status.HTTP_303_SEE_OTHER,
         )
     removed_tables = repository.remove_orphaned_dataset_row_tables()
@@ -23341,7 +23357,7 @@ def cleanup_admin_database(user: SessionUser = Depends(admin_user)) -> Response:
         'reporting_rows': removed_rows,
     }))
     return RedirectResponse(
-        f'/admin?{urlencode({"database_notice": f"Database cleanup complete: {len(removed_tables)} stale tables and {removed_rows} combined rows removed."})}',
+        f'/super-admin?{urlencode({"database_notice": f"Database cleanup complete: {len(removed_tables)} stale tables and {removed_rows} combined rows removed."})}',
         status_code=status.HTTP_303_SEE_OTHER,
     )
 
@@ -23352,7 +23368,7 @@ def admin_database_table(
     offset: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=250),
     filters: str = Query('{}'),
-    user: SessionUser = Depends(admin_user),
+    user: SessionUser = Depends(super_admin_user),
 ) -> JSONResponse:
     if not active_workspace:
         raise HTTPException(status_code=409, detail='Open a workspace before viewing its database.')
@@ -23366,7 +23382,7 @@ def admin_database_table(
 
 
 @app.post('/admin/database/table/query')
-async def query_admin_database_table(request: Request, user: SessionUser = Depends(admin_user)) -> JSONResponse:
+async def query_admin_database_table(request: Request, user: SessionUser = Depends(super_admin_user)) -> JSONResponse:
     if not active_workspace:
         raise HTTPException(status_code=409, detail='Open a workspace before viewing its database.')
     try:
@@ -23398,7 +23414,7 @@ def admin_database_table_values(
     column: str = Query(...),
     filters: str = Query('{}'),
     search: str = Query(''),
-    user: SessionUser = Depends(admin_user),
+    user: SessionUser = Depends(super_admin_user),
 ) -> JSONResponse:
     if not active_workspace:
         raise HTTPException(status_code=409, detail='Open a workspace before viewing its database.')
@@ -23412,7 +23428,7 @@ def admin_database_table_values(
 
 
 @app.post('/admin/database/table')
-async def update_admin_database_table(request: Request, user: SessionUser = Depends(admin_user)) -> JSONResponse:
+async def update_admin_database_table(request: Request, user: SessionUser = Depends(super_admin_user)) -> JSONResponse:
     if not active_workspace:
         raise HTTPException(status_code=409, detail='Open a workspace before editing its database.')
     try:
@@ -23936,7 +23952,7 @@ def move_admin_chart_mapping_group(
 
 
 @app.post('/admin/database/table/delete')
-async def delete_admin_database_table_row(request: Request, user: SessionUser = Depends(admin_user)) -> JSONResponse:
+async def delete_admin_database_table_row(request: Request, user: SessionUser = Depends(super_admin_user)) -> JSONResponse:
     if not active_workspace:
         raise HTTPException(status_code=409, detail='Open a workspace before editing its database.')
     try:
@@ -24686,7 +24702,7 @@ def create_user(
     modules_profile_id: str = Form(''),
     workspace_group_ids: list[int] = Form(default=[]),
     workspace_ids: list[str] = Form(default=[]),
-    user: SessionUser = Depends(admin_user),
+    user: SessionUser = Depends(super_admin_user),
 ) -> HTMLResponse:
     try:
         normalized_role = role.strip().lower()
@@ -24707,9 +24723,9 @@ def create_user(
         repository.add_log(user.username, 'create_user', json.dumps({
             'user_id': user_id, **user_account_state(repository.get_user_by_id(user_id)),
         }))
-        return RedirectResponse('/admin', status_code=status.HTTP_303_SEE_OTHER)
+        return RedirectResponse('/super-admin', status_code=status.HTTP_303_SEE_OTHER)
     except Exception as exc:
-        return render_admin_template(request, user, error=str(exc), status_code=400)
+        return render_admin_template(request, user, admin_page='super-admin', error=str(exc), status_code=400)
 
 
 def user_account_state(row: Any) -> dict[str, Any]:
@@ -24741,7 +24757,7 @@ def update_user_account(
     workspace_group_ids: list[int] = Form(default=[]),
     workspaces_submitted: str = Form(default=''),
     edited_field: str = Form(default=''),
-    user: SessionUser = Depends(admin_user),
+    user: SessionUser = Depends(super_admin_user),
 ) -> Response:
     def wants_json() -> bool:
         return request.headers.get('X-Requested-With') == 'XMLHttpRequest'
@@ -24764,7 +24780,7 @@ def update_user_account(
     def failure(message: str, status_code: int, row=None) -> Response:
         if wants_json():
             return JSONResponse({'detail': message, 'user': payload_for(row)}, status_code=status_code)
-        return render_admin_template(request, user, error=message, status_code=status_code)
+        return render_admin_template(request, user, admin_page='super-admin', error=message, status_code=status_code)
 
     normalized_role = role.strip().lower()
     if normalized_role == 'user':
@@ -24824,7 +24840,7 @@ def update_user_account(
         )
         if wants_json():
             return JSONResponse({'ok': True, 'user': payload_for(updated_user)})
-        return RedirectResponse('/admin', status_code=status.HTTP_303_SEE_OTHER)
+        return RedirectResponse('/super-admin', status_code=status.HTTP_303_SEE_OTHER)
     except Exception as exc:
         return failure(str(exc), 400, repository.get_user_by_id(target_user_id))
 
@@ -24837,7 +24853,7 @@ def bulk_update_users(
     user_ids: list[int] = Form(default=[]),
     action: str = Form(''),
     value: str = Form(''),
-    user: SessionUser = Depends(admin_user),
+    user: SessionUser = Depends(super_admin_user),
 ) -> JSONResponse:
     """Apply one change to several accounts: a Modules Profile, joining or leaving a Workspace Group, a role, or the
     active status. Accounts the administrator cannot change, and changes that would leave no active admin or
@@ -24905,11 +24921,11 @@ def bulk_update_users(
 def delete_user_account(
     request: Request,
     target_user_id: int,
-    user: SessionUser = Depends(admin_user),
+    user: SessionUser = Depends(super_admin_user),
 ) -> Response:
     target_user = repository.get_user_by_id(target_user_id)
     if not target_user:
-        return render_admin_template(request, user, error='User not found', status_code=404)
+        return render_admin_template(request, user, admin_page='super-admin', error='User not found', status_code=404)
     if user.role != 'super-admin' and target_user['role'] == 'super-admin':
         return render_admin_template(
             request,
@@ -24918,7 +24934,7 @@ def delete_user_account(
             status_code=403,
         )
     if target_user['username'] == user.username:
-        return render_admin_template(request, user, error='You cannot delete the current signed-in admin user', status_code=400)
+        return render_admin_template(request, user, admin_page='super-admin', error='You cannot delete the current signed-in admin user', status_code=400)
     if target_user['role'] == 'super-admin' and repository.count_super_admin_users() <= 1:
         return render_admin_template(
             request,
@@ -24950,9 +24966,9 @@ def delete_user_account(
             'delete_user',
             json.dumps({'user_id': target_user_id, **deleted}),
         )
-        return RedirectResponse('/admin', status_code=status.HTTP_303_SEE_OTHER)
+        return RedirectResponse('/super-admin', status_code=status.HTTP_303_SEE_OTHER)
     except Exception as exc:
-        return render_admin_template(request, user, error=str(exc), status_code=400)
+        return render_admin_template(request, user, admin_page='super-admin', error=str(exc), status_code=400)
 
 
 def profile_member_choices(user: SessionUser) -> set[int]:
@@ -24995,19 +25011,19 @@ def create_modules_profile(
     modules: list[str] = Form(default=[]),
     color: str = Form(''),
     member_ids: list[int] = Form(default=[]),
-    user: SessionUser = Depends(admin_user),
+    user: SessionUser = Depends(super_admin_user),
 ) -> Response:
     try:
         profile_id = repository.save_modules_profile(None, name, description, modules, color or None)
         repository.set_users_modules_profile([member for member in member_ids if member in profile_member_choices(user)], profile_id)
     except ValueError as exc:
-        return render_admin_template(request, user, error=str(exc), status_code=400)
+        return render_admin_template(request, user, admin_page='super-admin', error=str(exc), status_code=400)
     invalidate_module_access_cache()
     repository.add_log(user.username, 'create_modules_profile', json.dumps({
         'profile_id': profile_id, 'name': name.strip(), 'modules': modules, 'member_ids': member_ids,
         'members': usernames_of(member_ids),
     }))
-    return RedirectResponse('/admin#modules-profiles', status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse('/super-admin#modules-profiles', status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.post('/admin/modules-profiles/{profile_id}/update')
@@ -25019,7 +25035,7 @@ def update_modules_profile(
     color: str = Form(''),
     member_ids: list[int] = Form(default=[]),
     initial_member_ids: list[int] = Form(default=[]),
-    user: SessionUser = Depends(admin_user),
+    user: SessionUser = Depends(super_admin_user),
 ) -> JSONResponse:
     """Save one Modules Profile: its name, description, colour, modules and users. A user added to it leaves its previous
     profile, and a user only removed from it gets the default profile (a super-admin, every module); users changed
@@ -25044,7 +25060,7 @@ def update_modules_profile(
 
 
 @app.post('/admin/modules-profiles/{profile_id}/default')
-def make_default_modules_profile(profile_id: int, user: SessionUser = Depends(admin_user)) -> JSONResponse:
+def make_default_modules_profile(profile_id: int, user: SessionUser = Depends(super_admin_user)) -> JSONResponse:
     """Make a profile the one of users without a profile."""
     try:
         repository.set_default_modules_profile(profile_id)
@@ -25058,15 +25074,15 @@ def make_default_modules_profile(profile_id: int, user: SessionUser = Depends(ad
 
 
 @app.post('/admin/modules-profiles/{profile_id}/delete', response_class=HTMLResponse)
-def delete_modules_profile(request: Request, profile_id: int, user: SessionUser = Depends(admin_user)) -> Response:
+def delete_modules_profile(request: Request, profile_id: int, user: SessionUser = Depends(super_admin_user)) -> Response:
     deleted = modules_profile_state(profile_id)
     try:
         repository.delete_modules_profile(profile_id)
     except ValueError as exc:
-        return render_admin_template(request, user, error=str(exc), status_code=400)
+        return render_admin_template(request, user, admin_page='super-admin', error=str(exc), status_code=400)
     invalidate_module_access_cache()
     repository.add_log(user.username, 'delete_modules_profile', json.dumps({'profile_id': profile_id, 'name': deleted.get('name')}))
-    return RedirectResponse('/admin#modules-profiles', status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse('/super-admin#modules-profiles', status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.post('/admin/workspace-groups', response_class=HTMLResponse)
@@ -25076,18 +25092,18 @@ def create_workspace_group(
     description: str = Form(''),
     workspace_ids: list[str] = Form(default=[]),
     member_ids: list[int] = Form(default=[]),
-    user: SessionUser = Depends(admin_user),
+    user: SessionUser = Depends(super_admin_user),
 ) -> Response:
     try:
         group_id = repository.save_workspace_group(None, name, description, granted_workspace_group_workspaces(user, [], workspace_ids))
         repository.change_workspace_group_members(group_id, add=member_ids)
     except ValueError as exc:
-        return render_admin_template(request, user, error=str(exc), status_code=400)
+        return render_admin_template(request, user, admin_page='super-admin', error=str(exc), status_code=400)
     repository.add_log(user.username, 'create_workspace_group', json.dumps({
         'group_id': group_id, 'name': name.strip(), 'workspace_ids': workspace_ids, 'member_ids': member_ids,
         'workspaces': workspace_group_state(group_id).get('workspaces'), 'members': usernames_of(member_ids),
     }))
-    return RedirectResponse('/admin#workspace-groups', status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse('/super-admin#workspace-groups', status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.post('/admin/workspace-groups/{group_id}/update')
@@ -25098,7 +25114,7 @@ def update_workspace_group(
     workspace_ids: list[str] = Form(default=[]),
     member_ids: list[int] = Form(default=[]),
     initial_member_ids: list[int] = Form(default=[]),
-    user: SessionUser = Depends(admin_user),
+    user: SessionUser = Depends(super_admin_user),
 ) -> JSONResponse:
     """Save one Workspace Group: its name, description, workspaces and members. Members added or removed
     elsewhere since the page loaded are left as they are."""
@@ -25122,14 +25138,14 @@ def update_workspace_group(
 
 
 @app.post('/admin/workspace-groups/{group_id}/delete', response_class=HTMLResponse)
-def delete_workspace_group(request: Request, group_id: int, user: SessionUser = Depends(admin_user)) -> Response:
+def delete_workspace_group(request: Request, group_id: int, user: SessionUser = Depends(super_admin_user)) -> Response:
     deleted = workspace_group_state(group_id)
     try:
         repository.delete_workspace_group(group_id)
     except ValueError as exc:
-        return render_admin_template(request, user, error=str(exc), status_code=404)
+        return render_admin_template(request, user, admin_page='super-admin', error=str(exc), status_code=404)
     repository.add_log(user.username, 'delete_workspace_group', json.dumps({'group_id': group_id, 'name': deleted.get('name')}))
-    return RedirectResponse('/admin#workspace-groups', status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse('/super-admin#workspace-groups', status_code=status.HTTP_303_SEE_OTHER)
 
 
 def module_stage_labels_visible() -> bool:
@@ -25163,21 +25179,21 @@ async def save_interface_settings(request: Request, user: SessionUser = Depends(
         'show_module_stage_labels': show_labels, 'module_labels': labels,
         'changes': changed_values(before, {'show_module_stage_labels': show_labels, 'module_labels': labels}),
     }))
-    return RedirectResponse('/admin#interface-settings', status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse('/super-admin#interface-settings', status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.post('/admin/users/{target_user_id}/reset-password', response_class=HTMLResponse)
 def reset_user_password(
     request: Request,
     target_user_id: int,
-    user: SessionUser = Depends(admin_user),
+    user: SessionUser = Depends(super_admin_user),
 ) -> Response:
     wants_json = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
 
     def failure(message: str, status_code: int) -> Response:
         if wants_json:
             return JSONResponse({'detail': message}, status_code=status_code)
-        return render_admin_template(request, user, error=message, status_code=status_code)
+        return render_admin_template(request, user, admin_page='super-admin', error=message, status_code=status_code)
 
     target_user = repository.get_user_by_id(target_user_id)
     if not target_user:
@@ -25194,7 +25210,7 @@ def reset_user_password(
     repository.add_log(user.username, 'reset_user_password', json.dumps({'user_id': target_user_id, 'username': target_user['username']}))
     if wants_json:
         return JSONResponse({'ok': True, 'user': {'id': int(target_user['id']), 'username': target_user['username']}})
-    return RedirectResponse('/admin', status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse('/super-admin', status_code=status.HTTP_303_SEE_OTHER)
 
 
 def _catalogue_slide_blocks(entries: list[CatalogEntry]) -> list[list[CatalogEntry]]:

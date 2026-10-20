@@ -12,12 +12,14 @@ def login(client, username='super', password='super123'):
 
 def test_only_super_admins_see_and_use_reset_application(client):
     login(client, 'admin', 'admin123')
-    assert 'data-app-reset-open' not in client.get('/admin').text
+    assert 'data-app-reset-open' not in client.get('/admin').text and client.get('/super-admin').status_code == 403
     response = client.post('/admin/reset-application', data={'confirmation': 'RESET APPLICATION'}, follow_redirects=False)
     assert response.status_code == 403
 
+    # Reset Application is in Super Admin.
     login(client)
-    page = client.get('/admin').text
+    assert 'data-app-reset-open' not in client.get('/admin').text
+    page = client.get('/super-admin').text
     assert 'data-app-reset-open' in page and 'data-app-reset-dialog' in page
     assert str(app_module.application_data_dir.resolve()) in page
     # Without the exact confirmation phrase nothing is deleted.

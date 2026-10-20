@@ -3,7 +3,7 @@
 Use **Reporting** to build a **Bundle Report Template**, one PowerPoint or Word document with the parts you choose of PPT Dashboards, Scoring & GAP Analysis, Network Insights and Non-Qualified Calls, and to collect artifacts from several modules in one **Reporting Job**, run it on demand or on a schedule, and email the artifacts with a clear description of each one and its filters.
 
 > [!NOTE]
-> **Module access.** **Reporting** is in every Modules Profile of a new deployment. Admins and super-admins choose who sees it in **Admin → Modules Profiles**. Creating, editing and running jobs, and saving or deleting favourite Bundle Report Templates, requires `user-editor`, `admin` or `super-admin`. A Bundle Report Template only includes the sections of the modules activated for the account that generates it.
+> **Module access.** **Reporting** is in every Modules Profile of a new deployment. Super-admins choose who sees it in **Super Admin → Modules Profiles**. Creating, editing and running jobs, and saving or deleting favourite Bundle Report Templates, requires `user-editor`, `admin` or `super-admin`. A Bundle Report Template only includes the sections of the modules activated for the account that generates it.
 
 ## In this guide
 

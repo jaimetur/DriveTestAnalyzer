@@ -81,11 +81,16 @@ def test_super_admins_see_every_module_and_admins_do_not_change_them(client):
     boss_id = next(int(row['id']) for row in core.repository.list_users() if row['username'] == 'boss')
     _viewer(client, 'plainadmin', 'admin')
     admin_id = next(int(row['id']) for row in core.repository.list_users() if row['username'] == 'plainadmin')
-    assert 'id="modules-profiles"' in client.get('/admin').text
+    # Admins keep Admin; users, Modules Profiles and Workspace Groups are in Super Admin, for super-admins only.
+    assert client.get('/admin').status_code == 200 and client.get('/super-admin').status_code == 403
+    assert client.post('/admin/users/bulk', data={'user_ids': [boss_id], 'action': 'deactivate'}).status_code == 403
+    client.cookies.clear()
+    assert client.post('/login', data={'username': 'boss', 'password': 'boss123'}, follow_redirects=False).status_code == 303
+    assert 'id="modules-profiles"' in client.get('/super-admin').text
     # A profile without Reporting removes it from its users, admins included, but never from super-admins.
     profile_id = core.repository.save_modules_profile(None, 'Workspace only', '', ['workspace'])
     response = client.post(f'/admin/modules-profiles/{profile_id}/update', data={
-        'name': 'Workspace only', 'modules': ['workspace'], 'member_ids': [admin_id, boss_id], 'initial_member_ids': [],
+        'name': 'Workspace only', 'modules': ['workspace'], 'member_ids': [admin_id], 'initial_member_ids': [],
     })
     assert response.status_code == 200
     profiles = response.json()['profiles']
@@ -93,11 +98,6 @@ def test_super_admins_see_every_module_and_admins_do_not_change_them(client):
     assert all(boss_id not in profile['member_ids'] for profile in profiles)
     assert not core.user_has_feature(core.SessionUser(username='plainadmin', role='admin'), 'reporting')
     assert core.user_has_feature(core.SessionUser(username='boss', role='super-admin'), 'reporting')
-    # The selection bar of an admin leaves super-admin accounts as they are.
-    response = client.post('/admin/users/bulk', data={'user_ids': [boss_id], 'action': 'deactivate'})
-    assert response.status_code == 200
-    assert response.json() == {'updated': [], 'skipped': ['boss: only super-admins can change super-admin accounts']}
-    assert client.post('/admin/users/bulk', data={'user_ids': [admin_id], 'action': 'role', 'value': 'super-admin'}).status_code == 403
 
 
 def test_only_admins_upload_datasets_and_the_other_roles_see_why(client):

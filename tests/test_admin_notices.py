@@ -77,9 +77,9 @@ def test_each_super_admin_is_told_once_of_each_access_request(client):
     assert payload['tickets'] == []
     assert [(item['username'], item['name'], item['role']) for item in payload['access_requests']] == [('EABCDEF', 'Ana García', 'user-editor')]
     assert payload['access_requests'][0]['requested_at'][:4].isdigit()
-    assert payload['access_requests_url'] == '/admin?users=access-requests#users'
-    # The Users table lists the pending request with its own status filter.
-    page = client.get('/admin').text
+    assert payload['access_requests_url'] == '/super-admin?users=access-requests#users'
+    # The Users table of Super Admin lists the pending request with its own status filter.
+    page = client.get('/super-admin').text
     assert '<option value="access-request">Pending access requests</option>' in page
     assert 'data-username="EABCDEF"' in page and 'data-access-request="1"' in page
     assert acknowledge(client, payload, 'access-requests') == {'access_requests': 1, 'tickets': 0}
@@ -165,10 +165,10 @@ def test_the_dialog_and_its_links_are_in_the_pages(client):
     assert "new CustomEvent('drivetest-analyzer:admin-notices'" in script and 'Administrator notice' in script
     assert "get('status')" in (root / 'ticket_center.js').read_text(encoding='utf-8')
     login(client)
-    assert "get('users') === 'access-requests'" in client.get('/admin').text
+    assert "get('users') === 'access-requests'" in client.get('/super-admin').text
     # The table is listed in Database Management.
     assert core.database_table_type('admin_notices_seen')[0] == 'Application'
-    assert 'Admin Notices Seen' in client.get('/admin').text
+    assert 'Admin Notices Seen' in client.get('/super-admin').text
 
 
 def test_the_poll_of_the_pages_tells_super_admins_while_signed_in(client):

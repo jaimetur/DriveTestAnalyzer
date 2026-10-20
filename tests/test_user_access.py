@@ -97,7 +97,7 @@ def test_profile_and_group_cards_save_each_change(client):
     assert response.status_code == 200, response.text
     saved = next(profile for profile in response.json()['profiles'] if profile['id'] == nq)
     assert (saved['name'], saved['modules'], saved['member_ids']) == ('NQ Team', ['workspace', 'non-qualified-calls'], [user_id('ana'), user_id('ben')])
-    assert saved['color'] == '#12AB9F' and 'style="--profile-color: #12AB9F"' in client.get('/admin').text
+    assert saved['color'] == '#12AB9F' and 'style="--profile-color: #12AB9F"' in client.get('/super-admin').text
     client.post(f'/admin/modules-profiles/{nq}/update', data={
         'name': 'NQ Team', 'modules': ['workspace'], 'member_ids': [user_id('ben')], 'initial_member_ids': [user_id('ana'), user_id('ben'), user_id('cris')],
     })
@@ -117,26 +117,29 @@ def test_profile_and_group_cards_save_each_change(client):
     assert response.status_code == 200
     saved = next(item for item in response.json()['groups'] if item['id'] == group)
     assert (saved['workspace_ids'], saved['member_ids']) == ([core.active_workspace.id], [user_id('ana')])
-    page = client.get('/admin').text
+    page = client.get('/super-admin').text
     assert 'data-access-card="profile"' in page and 'data-access-card="group"' in page
     assert 'class="access-chip"' in page and f'data-update-url="/admin/workspace-groups/{group}/update"' in page
 
 
-def test_admins_change_only_the_workspaces_they_open(client):
+def test_admins_change_neither_users_nor_workspace_groups(client):
     hidden = core.workspace_registry.create('Hidden')
     core.repository.create_user('boss', 'boss123', 'admin')
     core.repository.set_user_workspace_access(user_id('boss'), [core.active_workspace.id])
     group = core.repository.save_workspace_group(None, 'Mixed', '', [hidden.id])
     core.repository.create_user('field', 'field123', 'user-viewer')
     core.repository.set_user_workspace_access(user_id('field'), [hidden.id])
+    # Users and Workspace Groups are in Super Admin: an admin changes nothing there.
     login(client, 'boss', 'boss123')
-    client.post(f'/admin/workspace-groups/{group}/update', data={'name': 'Mixed', 'workspace_ids': [core.active_workspace.id]})
-    assert next(item for item in core.repository.list_workspace_groups() if item['id'] == group)['workspace_ids'] == sorted([hidden.id, core.active_workspace.id])
+    assert client.get('/super-admin').status_code == 403
+    response = client.post(f'/admin/workspace-groups/{group}/update', data={'name': 'Mixed', 'workspace_ids': [core.active_workspace.id]})
+    assert response.status_code == 403
+    assert next(item for item in core.repository.list_workspace_groups() if item['id'] == group)['workspace_ids'] == [hidden.id]
     response = client.post(f"/admin/users/{user_id('field')}/update", data={
         'username': 'field', 'role': 'user-viewer', 'active': '1', 'workspaces_submitted': '1', 'workspace_ids': [core.active_workspace.id],
     }, headers={'X-Requested-With': 'XMLHttpRequest'})
-    assert response.status_code == 200
-    assert core.repository.list_user_workspace_ids(user_id('field')) == sorted([hidden.id, core.active_workspace.id])
+    assert response.status_code == 403
+    assert core.repository.list_user_workspace_ids(user_id('field')) == [hidden.id]
 
 
 def test_the_selection_bar_changes_several_users_at_once(client):
@@ -160,7 +163,7 @@ def test_the_selection_bar_changes_several_users_at_once(client):
     assert response.json() == {'updated': ['ben'], 'skipped': ['super: you cannot deactivate your own account']}
     assert client.post('/admin/users/bulk', data={'user_ids': ids, 'action': 'modules_profile', 'value': '999'}).status_code == 400
     assert client.post('/admin/users/bulk', data={'action': 'activate'}).status_code == 400
-    page = client.get('/admin').text
+    page = client.get('/super-admin').text
     assert 'data-users-bulk' in page and 'data-users-filter="profile"' in page and 'id="user-create"' in page
 
 
@@ -176,7 +179,7 @@ def test_a_super_admin_sees_every_module_until_it_is_given_a_profile(client):
     assert response.json()['user']['modules_profile_id'] == all_modules
     core.invalidate_module_access_cache()
     assert not core.user_has_feature(boss, 'ppt-reporting-old') and core.user_has_feature(boss, 'scoring')
-    assert 'value="all" class="user-profile-full-access" >Full Access</option><hr>' in client.get('/admin').text
+    assert 'value="all" class="user-profile-full-access" >Full Access</option><hr>' in client.get('/super-admin').text
     # Full Access returns it to every module.
     response = client.post(f"/admin/users/{user_id('boss')}/update", data={**update, 'modules_profile_id': 'all'},
                            headers={'X-Requested-With': 'XMLHttpRequest'})
@@ -189,14 +192,13 @@ def test_a_super_admin_sees_every_module_until_it_is_given_a_profile(client):
                                                              'modules_profile_id': str(all_modules)},
                 headers={'X-Requested-With': 'XMLHttpRequest'})
     assert profile_of('ana') is None
-    # Admins do not change the profile of super-admins, on the cards either.
+    # Admins do not change Modules Profiles: they are in Super Admin.
     core.repository.create_user('plain', 'plain123', 'admin')
     login(client, 'plain', 'plain123')
     response = client.post(f'/admin/modules-profiles/{all_modules}/update', data={
         'name': 'All Modules', 'modules': ['workspace'], 'member_ids': [user_id('boss')], 'initial_member_ids': [],
     })
-    assert user_id('boss') not in next(profile for profile in response.json()['profiles'] if profile['id'] == all_modules)['member_ids']
-
+    assert response.status_code == 403
 
 def test_the_create_row_gives_names_profile_and_workspaces(client):
     login(client)
@@ -258,7 +260,8 @@ def test_users_access_exports_and_imports_users_profiles_and_groups(client):
     ana = next(item for item in payload['users'] if item['username'] == 'ana')
     assert (ana['first_name'], ana['modules_profile'], ana['workspace_groups']) == ('Ana', 'Non-Qualified Calls', ['UK'])
     assert next(item for item in payload['workspace_groups'] if item['name'] == 'UK')['workspaces'] == [core.active_workspace.name]
-    assert 'Users & Access' in client.get('/admin').text
+    # Exported from Admin, backed up from the Database Management of Super Admin.
+    assert 'value="users-access"' in client.get('/admin').text and 'Users & Access' in client.get('/super-admin').text
 
     # Here the user and its profile change, a workspace only this server has joins the group, and a user only this
     # server has exists.
@@ -335,8 +338,8 @@ def test_lists_of_users_show_names_with_the_default_users_first(client):
             '</span></td>') in events
     logs = client.get('/api/app-logs').json()['logs']
     assert next(log for log in logs if log['action'] == 'change_password')['user_name'] == 'Ana García'
-    # The pickers of Admin and Workspace: names, the default users tagged, a line before the others, the username searchable.
-    admin = client.get('/admin').text
+    # The pickers of Super Admin and Workspace: names, the default users tagged, a line before the others, the username searchable.
+    admin = client.get('/super-admin').text
     assert '<label class="user-choice-divider">' in admin
     assert '<span>Ana García</span><span class="sr-only">EZZZZZZ</span>' in admin and '<span class="user-choice-tag">default user</span>' in admin
     workspace = client.get('/workspace').text

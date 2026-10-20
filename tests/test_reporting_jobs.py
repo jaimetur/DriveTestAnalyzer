@@ -132,9 +132,12 @@ def test_modules_profiles_control_the_modules_of_each_user(client):
     session(client, 'analyst', 'user-viewer')
     assert client.get('/workspace').status_code == 403
     assert client.get('/reporting').status_code == 200
-    # Admins see Modules Profiles; viewers and editors do not change them.
+    # Super-admins see Modules Profiles in Super Admin; admins, viewers and editors do not change them.
     session(client, 'someone', 'admin')
-    assert 'id="modules-profiles"' in client.get('/admin').text
+    assert client.get('/super-admin').status_code == 403
+    assert client.post(f'/admin/modules-profiles/{profile_id}/update', data={'name': 'x'}).status_code == 403
+    session(client, 'boss', 'super-admin')
+    assert 'id="modules-profiles"' in client.get('/super-admin').text
     session(client, 'writer', 'user-editor')
     assert client.post(f'/admin/modules-profiles/{profile_id}/update', data={'name': 'x'}).status_code == 403
 
@@ -478,7 +481,7 @@ def test_workspace_access_by_workspace_group_and_user(client):
                                                         'member_ids': [field_id]}, follow_redirects=False).status_code == 303
     group_id = next(group['id'] for group in core.repository.list_workspace_groups() if group['name'] == 'Field')
     assert core.repository.user_has_workspace_access('field', workspace_id)
-    assert 'id="workspace-groups"' in client.get('/admin').text
+    assert 'id="workspace-groups"' in client.get('/super-admin').text
     # Its card removes the user; a user granted the workspace individually still opens it.
     response = client.post(f'/admin/workspace-groups/{group_id}/update', data={
         'name': 'Field', 'workspace_ids': [workspace_id], 'member_ids': [], 'initial_member_ids': [field_id],
@@ -514,7 +517,7 @@ def test_users_table_sets_profile_workspace_groups_and_names(client):
     user = response.json()['user']
     assert (user['first_name'], user['last_name'], user['modules_profile_id'], user['workspace_group_ids']) == ('Ana', 'García', profile_id, [group_id])
     assert core.repository.user_has_workspace_access('analyst', workspace.id)
-    page = client.get('/admin').text
+    page = client.get('/super-admin').text
     assert '<th>User</th><th>Password</th><th>Role</th><th>Modules Profile</th><th>Active</th><th>Workspaces</th>' in page
     assert 'name="first_name" value="Ana"' in page and '>AG</span>' in page
     # A form without the workspace selector keeps the memberships, the names and the profile.

@@ -122,9 +122,12 @@ ADMINISTRATIVE_ICONS: dict[str, dict[str, str]] = {
     'app-logs': {'d': '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/>', 'color': '#B07A12'},
     'config': {'d': '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>', 'color': '#08736D'},
     'admin': {'d': '<path d="M12 3 5 6v5c0 4.5 3 8 7 10 4-2 7-5.5 7-10V6z"/><path d="m9 12 2 2 4-4"/>', 'color': '#B84343'},
+    # A shield with a star, in the darker red of Admin.
+    'super-admin': {'d': '<path d="M12 3 5 6v5c0 4.5 3 8 7 10 4-2 7-5.5 7-10V6z"/><path d="m12 8 1.2 2.4 2.6.4-1.9 1.8.5 2.6L12 14l-2.4 1.2.5-2.6-1.9-1.8 2.6-.4z"/>',
+                    'color': '#861919'},
 }
 ADMINISTRATIVE_HELP_ICONS = {'app-logs.md': 'app-logs', 'app-config.md': 'config', 'workspace-config.md': 'config',
-                             'administrator-config.md': 'admin'}
+                             'administrator-config.md': 'admin', 'super-admin.md': 'super-admin'}
 # Icons of the General and Reference Help chapters, in the colour of Readme and Changelog.
 DOCUMENT_HELP_ICONS: dict[str, str] = {
     'overview.md': '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5h.01"/>',
@@ -406,10 +409,11 @@ MODULE_SECTIONS: dict[str, list[tuple[Any, ...] | None]] = {
     'query-builder': [('Selected CDR tables', 'Query editor', 'code'), ('Saved queries', 'Saved queries', 'bookmark'),
                       ('Query output', 'Results', 'table')],
     'app-logs': [('App Events', 'App Events', 'activity'), ('Execution Log', 'Execution Log', 'log')],
-    'admin': [('Users', 'Users', 'users'), ('Modules Profiles', 'Modules Profiles', 'toggle'),
-              ('Workspace Groups', 'Workspace Groups', 'folder'), ('Interface Settings', 'Interface Settings', 'sliders'),
-              ('Import / Export / Transfer', 'Import / Export / Transfer', 'transfer'),
-              ('Database Management', 'Database Management', 'database'), ('Datasets Management', 'Datasets Management', 'table')],
+    'admin': [('Import / Export / Transfer', 'Import / Export / Transfer', 'transfer'),
+              ('Datasets Management', 'Datasets Management', 'table')],
+    'super-admin': [('Users', 'Users', 'users'), ('Modules Profiles', 'Modules Profiles', 'toggle'),
+                    ('Workspace Groups', 'Workspace Groups', 'folder'), ('Interface Settings', 'Interface Settings', 'sliders'),
+                    ('Database Management', 'Database Management', 'database')],
 }
 
 

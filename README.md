@@ -49,7 +49,7 @@ After login, the application opens **Help Home** by default.
 - Track meaningful user/system events in App Logs.
 - Follow workspace-scoped background work from floating task cards and stop eligible jobs safely.
 - Export, import or transfer configuration, templates and workspaces.
-- Manage workspace and global SQLite tables, create or schedule scoped ZIP backups, and restore detected backup content from the Admin interface.
+- Manage workspace and global SQLite tables, create or schedule scoped ZIP backups, and restore detected backup content from Super Admin.
 
 ## Modules and sections
 
@@ -86,7 +86,7 @@ See [PPT Dashboards Help](help/ppt-dashboards.md) for the operational workflow a
 
 ### Reporting
 
-Reporting schedules **Reporting Jobs** that collect a Summary CDR Analysis, a Summary Network Insights, Dashboard PPTs and Scoring PPTs, each configured with the options of its own module, run them once or daily, weekly or monthly and email the artifacts with a description of each one and its filters. SMTP delivery is configured in Application Config → Email Delivery. Reporting is available to every user; restrict it for roles, user groups or users in Admin → Features Activation.
+Reporting schedules **Reporting Jobs** that collect a Summary CDR Analysis, a Summary Network Insights, Dashboard PPTs and Scoring PPTs, each configured with the options of its own module, run them once or daily, weekly or monthly and email the artifacts with a description of each one and its filters. SMTP delivery is configured in Application Config → Email Delivery. Reporting is available to the users whose Modules Profile includes it (Super Admin → Modules Profiles).
 
 ### PPT Reporting (old)
 
@@ -149,10 +149,19 @@ Report the bugs of the tool, suggest improvements and ask for new features in ti
 
 ### Administrator Config (Admin tab)
 
-- **Users**, **Modules Profiles** and **Workspace Groups**: accounts (name, role, password and status), the main modules each one sees and the workspaces it opens, also for several users at once.
-- **Import / Export / Transfer**: portable ZIP jobs, Full Environment workspace selection, server-to-server transfer and recovered packages.
-- **Database Management**: **Backup Protection** for granular on-demand/scheduled backups and overwrite-confirmed restore, plus **Database Viewer** for grouped application, workspace and combined-CDR tables, including the Operator Mappings, Vendor Mappings and Chart mapping groups tables, with server-side filters, editing and cleanup.
+For `admin` and `super-admin` roles:
+
+- **Import / Export / Transfer**: portable ZIP jobs, Full Environment workspace selection, server-to-server transfer and recovered packages; only super-admins import packages.
 - **Datasets Management**: inspect and rename workspace datasets.
+
+### Super Admin (Super Admin tab)
+
+For the `super-admin` role only:
+
+- **Users**, **Modules Profiles** and **Workspace Groups**: accounts (name, role, password and status), the main modules each one sees and the workspaces it opens, also for several users at once.
+- **Interface Settings**: the order, titles, icons, colours and labels of the main tabs.
+- **Database Management**: **Backup Protection** for granular on-demand/scheduled backups and overwrite-confirmed restore, plus **Database Viewer** for grouped application, workspace and combined-CDR tables, including the Operator Mappings, Vendor Mappings and Chart mapping groups tables, with server-side filters, editing and cleanup.
+- **Reset Application**: start again as a new deployment.
 
 ### Documentation tabs
 
@@ -423,5 +432,6 @@ DriveTestAnalyzer/
 - [Application Config](help/app-config.md)
 - [Workspace Config](help/workspace-config.md)
 - [Administrator Config](help/administrator-config.md)
+- [Super Admin](help/super-admin.md)
 - [Project structure](help/project-structure.md)
 - [Roadmap](help/roadmap.md)

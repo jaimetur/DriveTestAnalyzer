@@ -21,19 +21,20 @@
     <div class="section-head tight-head">
       <div>
         <p class="eyebrow">Administration</p>
-        <h2>Administrator Config</h2>
+        <h2>{{ 'Super Admin' if admin_page == 'super-admin' else 'Administrator Config' }}</h2>
       </div>
-      {% if user.role == 'super-admin' %}
+      {% if user.role == 'super-admin' and admin_page == 'super-admin' %}
       <button type="button" class="app-reset-button" data-app-reset-open title="Delete every database, workspace and the config and data folders">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 22 20H2Z"></path><path d="M12 10v4.5"></path><circle cx="12" cy="17.2" r=".6"></circle></svg>
         <span>Reset Application</span>
       </button>
       {% endif %}
     </div>
-    <p class="lede">Manage user access, portable packages, backups, databases and datasets for the active workspace.</p>
+    {% if admin_page == 'super-admin' %}<p class="lede">Manage the users and their access (Modules Profiles and Workspace Groups), the tabs and labels of the modules, and the databases and backups of the application.</p>
+    {% else %}<p class="lede">Import, export and transfer portable packages, and manage the datasets of the active workspace.</p>{% endif %}
     {% if error %}<span hidden data-admin-error>{{ error }}</span>{% endif %}
   </article>
-  {% if user.role == 'super-admin' %}
+  {% if user.role == 'super-admin' and admin_page == 'super-admin' %}
   <dialog class="app-reset-dialog" data-app-reset-dialog aria-labelledby="app-reset-title">
     <form method="post" action="/admin/reset-application" class="app-reset-card" data-app-reset-form>
       <div class="app-reset-hazard" aria-hidden="true"></div>
@@ -90,6 +91,8 @@
   </details>
   {%- endmacro %}
 
+  {# Users, Modules Profiles, Workspace Groups, Interface Settings and Database Management are in Super Admin. #}
+  {% if admin_page == 'super-admin' %}
   <details class="panel collapsible-panel" id="users" open data-panel-state-key="admin:identity">
     <summary class="collapsible-summary">
       <div>
@@ -219,6 +222,7 @@
       </table>
     </div>
   </details>
+  {% endif %}
 
   {% set usernames = {} %}{% for entry in user_choices() %}{% set _ = usernames.update({user_rows[entry.username]['id']: entry.name}) %}{% endfor %}
   {% macro member_pills(member_ids) -%}
@@ -226,6 +230,7 @@
   {%- endmacro %}
   {% set folder_icon = '<path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H9l2 2h7.5A2.5 2.5 0 0 1 21 9.5v7a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 16.5z"/>' %}
 
+  {% if admin_page == 'super-admin' %}
   <details class="panel collapsible-panel access-panel" id="modules-profiles" open data-panel-state-key="admin:modules-profiles">
     <summary class="collapsible-summary">
       <div>
@@ -274,7 +279,9 @@
       </form>
     </div>
   </details>
+  {% endif %}
 
+  {% if admin_page == 'super-admin' %}
   <details class="panel collapsible-panel access-panel" id="workspace-groups" open data-panel-state-key="admin:workspace-groups">
     <summary class="collapsible-summary">
       <div>
@@ -321,10 +328,11 @@
       </form>
     </div>
   </details>
+  {% endif %}
 
   {% if user.role in ['admin', 'super-admin'] %}
 
-  {% if user.role == 'super-admin' %}
+  {% if user.role == 'super-admin' and admin_page == 'super-admin' %}
   <details id="interface-settings" class="panel collapsible-panel" open data-panel-state-key="admin:interface-settings">
     <summary class="collapsible-summary">
       <div>
@@ -659,6 +667,8 @@
   {% endif %}
 
   {% if not embedded_template_editor %}
+  {# Import / Export / Transfer and Datasets Management are in Admin. #}
+  {% if admin_page != 'super-admin' %}
   <details class="panel collapsible-panel import-export-panel" open data-panel-state-key="admin:import-export">
     <summary class="collapsible-summary">
       <div>
@@ -672,6 +682,7 @@
     {% if import_export_notice %}<div class="alert import-export-notice">{{ import_export_notice }}</div>{% endif %}
     {% if import_export_error %}<div class="alert import-export-error">{{ import_export_error }}</div>{% endif %}
     <div class="import-export-grid">
+      {% if user.role == 'super-admin' %}
       <form class="form-stack transfer-card transfer-card-import" action="/admin/import-export/import" method="post" enctype="multipart/form-data" data-import-package-form>
         <header class="transfer-card-head">
           <span class="transfer-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 15V4m0 0L7.5 8.5M12 4l4.5 4.5"/><path d="M4 14v4.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V14"/></svg></span>
@@ -686,6 +697,16 @@
         <p class="form-note">A ZIP package or a Scoring &amp; GAP Analysis Methodologies JSON document. Its content is identified automatically. Workspace configuration packages ask which destination workspaces should receive their definitions before the background import starts.</p>
         <div class="import-export-actions"><button type="submit" class="import-export-action">Import ZIP / JSON</button></div>
       </form>
+      {% else %}
+      <section class="form-stack transfer-card transfer-card-import">
+        <header class="transfer-card-head">
+          <span class="transfer-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 15V4m0 0L7.5 8.5M12 4l4.5 4.5"/><path d="M4 14v4.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V14"/></svg></span>
+          <div><h3>Import</h3><p>Bring in a package exported here or on another server.</p></div>
+        </header>
+        <div class="role-warning" role="note" data-import-role-warning><svg class="role-warning-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10.3 4.5a2 2 0 0 1 3.4 0l8 13.5a2 2 0 0 1-1.7 3H4a2 2 0 0 1-1.7-3z"/><path d="M12 9v4m0 4h.01"/></svg>
+          <p><strong>Only super-admins can import packages.</strong> Ask one of them to import it; you can still export and transfer.</p></div>
+      </section>
+      {% endif %}
       <form class="form-stack transfer-card transfer-card-export" action="/admin/import-export/export/jobs" method="post" data-export-package-form data-loading-label="Preparing export package" data-loading-copy="Please wait while DriveTest Analyzer creates the selected export package. You can keep this page open while it runs.">
         <header class="transfer-card-head">
           <span class="transfer-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5"/><path d="M4 14v4.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V14"/></svg></span>
@@ -788,6 +809,8 @@
     </div>
   </div>
 
+  {% endif %}
+  {% if admin_page == 'super-admin' %}
   <details class="panel collapsible-panel database-management-panel" open data-panel-state-key="admin:database-management">
     <summary class="collapsible-summary">
       <div>
@@ -935,7 +958,9 @@
       </section>
     </div>
   </details>
+  {% endif %}
 
+  {% if admin_page != 'super-admin' %}
   <details class="panel collapsible-panel" open data-panel-state-key="admin:datasets">
     <summary class="collapsible-summary">
       <div>
@@ -1141,9 +1166,11 @@
   </dialog>
 
   {% endif %}
+  {% endif %}
 </section>
 {% endblock %}
 {% block extra_scripts %}
+{% if admin_page == 'super-admin' %}
 <script>
 (() => {
   const form = document.querySelector('.database-backup-form');
@@ -1391,6 +1418,8 @@
   refreshBackupSummary();
 })();
 </script>
+{% endif %}
+{% if admin_page == 'super-admin' %}
 <script>
 (() => {
   const panel = document.querySelector('[data-database-view]');
@@ -1675,6 +1704,8 @@
   });
 })();
 </script>
+{% endif %}
+{% if admin_page != 'super-admin' %}
 <script>
 (() => {
   const dialog = document.querySelector('[data-admin-vendor-mapping-dialog]');
@@ -1707,6 +1738,8 @@
   });
 })();
 </script>
+{% endif %}
+{% if admin_page != 'super-admin' %}
 <script>
 (() => {
   const dialog = document.querySelector('[data-admin-vendor-clearing-dialog]');
@@ -1732,6 +1765,8 @@
   });
 })();
 </script>
+{% endif %}
+{% if admin_page != 'super-admin' %}
 <script>
 (() => {
   const dialog = document.querySelector('[data-admin-dataset-reprocess-dialog]');
@@ -1779,6 +1814,8 @@
   updateSelection();
 })();
 </script>
+{% endif %}
+{% if admin_page != 'super-admin' %}
 <script>
 (() => {
   const table = document.querySelector('.admin-datasets-table');
@@ -1806,6 +1843,7 @@
   window.addEventListener('resize', sizeNameColumn);
 })();
 </script>
+{% endif %}
 <script>
 (() => {
   const error = document.querySelector('[data-admin-error]');
@@ -1813,6 +1851,7 @@
   showInfoDialog(error.textContent.trim(), {title: 'User management warning', tone: 'warning'});
 })();
 </script>
+{% if admin_page == 'super-admin' %}
 <script>
 (() => {
   const forms = document.querySelectorAll('form[data-user-auto-save]');
@@ -2230,6 +2269,7 @@
   });
 })();
 </script>
+{% endif %}
 {% if catalogue_editor and embedded_template_editor %}
 <script>
   // An explicit template selection must take precedence over a previously
@@ -2238,6 +2278,7 @@
 </script>
 {% endif %}
 
+{% if admin_page == 'super-admin' %}
 <script>
 (() => {
   // Role, group and user pickers: while open, the menu moves to <body> so no
@@ -2319,6 +2360,8 @@
   window.addEventListener('scroll', reposition, true);
 })();
 </script>
+{% endif %}
+{% if admin_page == 'super-admin' %}
 <script>
 (() => {
   // Modules Profile and Workspace Group cards save each change at once; the other cards and the Users table follow.
@@ -2465,6 +2508,8 @@
   });
 })();
 </script>
+{% endif %}
+{% if admin_page == 'super-admin' %}
 <script>
 (() => {
   // The table picker of the Database Viewer: the groups of tables, each with its kinds of tables in their colour.
@@ -2581,6 +2626,8 @@
   showSelected();
 })();
 </script>
+{% endif %}
+{% if admin_page != 'super-admin' %}
 <script>
 (() => {
   // Import: the package dropped on the zone or chosen in it, with its size.
@@ -2603,4 +2650,5 @@
   });
 })();
 </script>
+{% endif %}
 {% endblock %}

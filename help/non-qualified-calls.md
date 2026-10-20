@@ -5,7 +5,7 @@ Follow up every call and test that did not complete. Non-Qualified Calls brings 
 > [!NOTE]
 > **The calls need no extra input.** Every ready Voice, Speech and Data CDR of the workspace is indexed in the background, and each call keeps its follow-up by its NetCheck `JOIN_ID`. The Ericsson RCA results and the analyses of the previous tool are optional imports that complete the root causes and the follow-up.
 
-The module is in development, so its main tab can show a red **ALPHA** label (see Interface Settings). On a new deployment it is in the Non-Qualified Calls and All Modules profiles; admins and super-admins choose who sees it in [Admin → Modules Profiles](administrator-config.md#modules-profiles).
+The module is in development, so its main tab can show a red **ALPHA** label (see Interface Settings). On a new deployment it is in the Non-Qualified Calls and All Modules profiles; super-admins choose who sees it in [Super Admin → Modules Profiles](super-admin.md#modules-profiles).
 
 ## Choose your task
 
@@ -569,7 +569,7 @@ Reporting Jobs include a **Non-Qualified Calls** artifact with the Executive Sum
 
 ## Storage and portability
 
-The module stores its data in the workspace database, visible in [Admin → Database Management](administrator-config.md):
+The module stores its data in the workspace database, visible in [Super Admin → Database Management](super-admin.md#database-management):
 
 | Table | Content |
 | --- | --- |

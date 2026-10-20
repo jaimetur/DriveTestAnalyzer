@@ -28,6 +28,7 @@ DriveTest Analyzer turns processed CDR datasets into interactive KPI analysis, r
 | Ticket Center | [Open section](#ticket-center) |
 | App Logs | [Open section](#app-logs) |
 | Administrator Config | [Open section](#administrator-config) |
+| Super Admin | [Open section](#super-admin) |
 | Roles at a glance | [Open section](#roles-at-a-glance) |
 
 ## End-to-end workflow
@@ -204,11 +205,11 @@ The operational guide is [PPT Dashboards](ppt-dashboards.md). Template creation,
 
 ## Non-Qualified Calls
 
-Non-Qualified Calls follows Scoring & GAP Analysis in the main tabs. It lists every Voice and Speech call and every Data test whose result is not Completed (Failed, Dropped, Cutoff…) in the ready CDRs of the workspace, summarises them by service, result, status, team, failure classification and Operator with drill-down into the calls, shows the NQ rate of each campaign and operator, and is an NQ Analysis Center: the teams follow each call up through its General (activity), RCA, Failure Details, Analysis, Implementation and Planning sections, with a Root Category and Root Cause recommended from the NetCheck RCA, the Ericsson RCA results and previous decisions, a status that follows the phases by customizable rules or is set by hand, a responsible team, an assignee, the workspace's own customizable fields and lists and a shared, traceable comment thread, while dashboards follow the lifecycle, the phases and the agreement of the root cause sources. Each call is identified by its `JOIN_ID`, so its analysis is shared by the Daily and Final CDRs that contain it. The follow-up exports to Excel and travels with workspace packages, transfers and backups. On a new deployment it is in the NQ Calls and All Modules profiles, and Admin → Modules Profiles chooses who sees it. See [Non-Qualified Calls](non-qualified-calls.md).
+Non-Qualified Calls follows Scoring & GAP Analysis in the main tabs. It lists every Voice and Speech call and every Data test whose result is not Completed (Failed, Dropped, Cutoff…) in the ready CDRs of the workspace, summarises them by service, result, status, team, failure classification and Operator with drill-down into the calls, shows the NQ rate of each campaign and operator, and is an NQ Analysis Center: the teams follow each call up through its General (activity), RCA, Failure Details, Analysis, Implementation and Planning sections, with a Root Category and Root Cause recommended from the NetCheck RCA, the Ericsson RCA results and previous decisions, a status that follows the phases by customizable rules or is set by hand, a responsible team, an assignee, the workspace's own customizable fields and lists and a shared, traceable comment thread, while dashboards follow the lifecycle, the phases and the agreement of the root cause sources. Each call is identified by its `JOIN_ID`, so its analysis is shared by the Daily and Final CDRs that contain it. The follow-up exports to Excel and travels with workspace packages, transfers and backups. On a new deployment it is in the NQ Calls and All Modules profiles, and Super Admin → Modules Profiles chooses who sees it. See [Non-Qualified Calls](non-qualified-calls.md).
 
 ## Reporting
 
-**Reporting** builds bundle reports from **Bundle Report Templates**, one PowerPoint or Word document with the chosen parts of PPT Dashboards, Scoring & GAP Analysis, Network Insights and Non-Qualified Calls, under common filters and with the Campaigns of each section, previewed before the download and saved as favourites, and schedules **Reporting Jobs** that collect a Summary CDR Analysis, a Summary Network Insights, Dashboard PPTs and Scoring PPTs, each with its own filters, run once or on a daily, weekly or monthly schedule and email the artifacts with a description of each one. It is available to every user unless Admin → Features Activation restricts it, and it can also include the Non-Qualified Calls Executive Summary and Progress Status. See [Reporting](reporting.md).
+**Reporting** builds bundle reports from **Bundle Report Templates**, one PowerPoint or Word document with the chosen parts of PPT Dashboards, Scoring & GAP Analysis, Network Insights and Non-Qualified Calls, under common filters and with the Campaigns of each section, previewed before the download and saved as favourites, and schedules **Reporting Jobs** that collect a Summary CDR Analysis, a Summary Network Insights, Dashboard PPTs and Scoring PPTs, each with its own filters, run once or on a daily, weekly or monthly schedule and email the artifacts with a description of each one. It is available to every user whose Modules Profile includes it (Super Admin → Modules Profiles), and it can also include the Non-Qualified Calls Executive Summary and Progress Status. See [Reporting](reporting.md).
 
 ## PPT Reporting (old)
 
@@ -290,7 +291,11 @@ App Logs displays workspace events and live output from the running server. It s
 
 ## Administrator Config
 
-The **Admin** tab opens Administrator Config for `admin` and `super-admin` roles, with permission-sensitive actions.
+The **Admin** tab opens Administrator Config for `admin` and `super-admin` roles: Import / Export / Transfer (only super-admins import packages) and Datasets Management. See [Administrator Config](administrator-config.md).
+
+## Super Admin
+
+The **Super Admin** tab, for the `super-admin` role only, manages the users and their access, Interface Settings and Database Management, and resets the application. See [Super Admin](super-admin.md).
 
 ### User management
 
@@ -348,7 +353,7 @@ The complete authoring specification, examples and supported chart catalogue are
 | --- | --- |
 | `user-viewer` | Explore the permitted workspace features, datasets and App Logs, and generate jobs (Dashboard PPTs with any filters, Scoring calculations, Network Insights analyses and exports, queries and reports). Cannot change the workspace: no uploading, deleting, reprocessing, stopping, mapping or clearing datasets, editing NR Modes, recreating combined tables, saving, renaming or deleting Dashboards, saved queries or Scoring jobs, and no access to Application Config or Workspace Config. |
 | `user-editor` | Use permitted workspace features and App Logs; edit Application Config and Workspace Config when a workspace is open. |
-| `admin` | Manage users within policy, edit Application Config and Workspace Config, and use accessible-workspace portability and database administration. |
-| `super-admin` | Full account/workspace access management, Application Config and Workspace Config, full-environment portability and incoming transfer approval. |
+| `admin` | Edit Application Config and Workspace Config, upload datasets, and in Admin export and transfer accessible workspaces and manage datasets (no import, no Super Admin). |
+| `super-admin` | Everything an admin does, import packages, and in Super Admin the users and their access, Interface Settings, databases and backups; full-environment portability and incoming transfer approval. |
 
 For the detailed Workspace/Data Ingestion workflow, continue with [Workspace Management](workspace-management.md). For storage rules, calculated fields, filter syntax, reporting semantics and migration behaviour, continue with [Technical considerations](technical-considerations.md).

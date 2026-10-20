@@ -31,7 +31,7 @@ def test_deleting_a_workspace_is_recorded_in_the_open_workspace(client) -> None:
 
 
 def test_creating_a_backup_folder_is_recorded(client) -> None:
-    login(client)
+    login_super(client)
     parent = client.get('/api/admin/backup-directories').json()['path']
 
     created = client.post('/api/admin/backup-directories', data={'parent_path': parent, 'name': 'audited-folder'})
@@ -209,7 +209,7 @@ def test_events_of_the_application_belong_to_system(client) -> None:
 
 
 def test_app_event_details_say_what_changed_once(client) -> None:
-    login(client)
+    login_super(client)
     core.repository.create_user('ELUILEY', 'secret123', 'user-viewer')
     target = next(row for row in core.repository.list_users() if row['username'] == 'ELUILEY')
     core.repository.update_user(int(target['id']), 'ELUILEY', 'user-viewer', False)
@@ -282,7 +282,7 @@ def test_an_open_app_events_filter_list_keeps_its_menu_while_the_table_refreshes
 
 
 def test_every_field_changed_in_a_user_is_recorded_once_per_save(client) -> None:
-    login(client)
+    login_super(client)
     workspace = core.active_workspace
     profiles = {profile['name']: profile['id'] for profile in core.repository.list_modules_profiles()}
     first_profile, second_profile = list(profiles)[:2]
@@ -363,7 +363,7 @@ def test_executed_by_tells_where_each_event_ran(client) -> None:
     import io
     import zipfile
 
-    login(client)
+    login_super(client)
     with core.repository.connection() as conn:
         conn.execute('DELETE FROM audit_logs')
     # A change made from a page records its module; the server's work and earlier events are told by their action.
@@ -371,20 +371,20 @@ def test_executed_by_tells_where_each_event_ran(client) -> None:
     client.post(f"/admin/users/{target['id']}/update", data={'username': 'demo', 'role': 'user-viewer', 'active': '1', 'first_name': 'Demo'},
                 headers={'X-Requested-With': 'XMLHttpRequest'})
     stored = {row['action']: row['origin'] for row in core.repository.list_logs(limit=None)}
-    assert stored['update_user'] == 'module:admin'
+    assert stored['update_user'] == 'module:super-admin'
     core.repository.add_log('system', 'process_dataset', '{"dataset_id": 1}')
     with core.repository.connection() as conn:
         conn.execute("INSERT INTO audit_logs (username, action, details, created_at) VALUES ('admin', 'nq_call_update', '{}', ?)",
                      ('2026-10-01T10:00:00.000000+02:00',))
     view = client.get('/api/app-logs').json()
     places = {log['action']: (log['executed_by'], log['executor_name'], log['executor_tag']) for log in view['logs']}
-    assert places['update_user'] == ('module:admin', 'Admin', 'module')
+    assert places['update_user'] == ('module:super-admin', 'Super Admin', 'module')
     assert places['process_dataset'] == ('server:background', 'Server', 'Background job')
     assert places['nq_call_update'] == ('module:non-qualified-calls', 'Non-Qualified Calls', 'module')
     # The filter lists the server first, then the modules in their order, a line between the groups; it takes several.
     assert [(entry['value'], entry['divider']) for entry in view['executor_choices']] == [
-        ('server:background', False), ('module:non-qualified-calls', True), ('module:admin', False)]
-    chosen = client.get('/api/app-logs?executor=server:background&executor=module:admin').json()
+        ('server:background', False), ('module:non-qualified-calls', True), ('module:super-admin', False)]
+    chosen = client.get('/api/app-logs?executor=server:background&executor=module:super-admin').json()
     assert {log['action'] for log in chosen['logs']} == {'update_user', 'process_dataset'}
     page = client.get('/app-logs').text
     assert ('<td><span class="app-log-place app-log-place-server">Server <span class="user-choice-tag app-log-badge user-choice-tag-origin '
@@ -394,11 +394,11 @@ def test_executed_by_tells_where_each_event_ran(client) -> None:
     with zipfile.ZipFile(io.BytesIO(package)) as archive:
         manifest = json.loads(archive.read('manifest.json'))
         document = json.loads(archive.read(manifest['archive_path']))
-    assert {event['action']: event['origin'] for event in document['events']}['update_user'] == 'module:admin'
+    assert {event['action']: event['origin'] for event in document['events']}['update_user'] == 'module:super-admin'
     with core.repository.connection() as conn:
         conn.execute("DELETE FROM audit_logs WHERE action = 'update_user'")
     core._restore_workspace_app_events(core.workspace_registry.get(core.active_workspace.id), json.dumps(document).encode('utf-8'))
-    assert {row['action']: row['origin'] for row in core.repository.list_logs(limit=None)}['update_user'] == 'module:admin'
+    assert {row['action']: row['origin'] for row in core.repository.list_logs(limit=None)}['update_user'] == 'module:super-admin'
 
 
 def test_public_pages_and_sign_in_are_where_their_events_ran(client) -> None:

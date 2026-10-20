@@ -120,6 +120,8 @@
           {% endif %}
           {% if user.role in ['admin', 'super-admin'] %}<a class="module-tab module-tab-admin{% if request.url.path == '/admin' %} active{% endif %}" href="/admin" title="Open Admin" data-module-sections="admin">{{ tab_icon('admin') }}<span>Admin</span></a>
           {{ sections_menu('admin', 'Admin', tab_sections.admin, administrative_icons['admin'].color) }}{% endif %}
+          {% if user.role == 'super-admin' %}<a class="module-tab module-tab-super-admin{% if request.url.path == '/super-admin' %} active{% endif %}" href="/super-admin" title="Open Super Admin" data-module-sections="super-admin">{{ tab_icon('super-admin') }}<span>Super Admin</span></a>
+          {{ sections_menu('super-admin', 'Super Admin', tab_sections['super-admin'], administrative_icons['super-admin'].color) }}{% endif %}
         </div>
         <div class="module-tabs-primary">
           {% for tab in module_tabs %}{% if features[tab.key] %}
@@ -169,6 +171,7 @@
               {% if user.role in ['user-editor', 'admin', 'super-admin'] %}{% for page_href, page_title, sections in config_pages %}
               {{ tree_module(page_href, page_title, tab_icon('config', 'module-navigator-icon', administrative_icons['config'].color), sections, request.url.path == page_href, page_href) }}{% endfor %}{% endif %}
               {% if user.role in ['admin', 'super-admin'] %}{{ tree_module('/admin', 'Administrator Config', tab_icon('admin', 'module-navigator-icon', administrative_icons['admin'].color), tab_sections.admin, request.url.path == '/admin') }}{% endif %}
+              {% if user.role == 'super-admin' %}{{ tree_module('/super-admin', 'Super Admin', tab_icon('super-admin', 'module-navigator-icon', administrative_icons['super-admin'].color), tab_sections['super-admin'], request.url.path == '/super-admin') }}{% endif %}
             </nav>
           </section>
           <section class="module-navigator-category" aria-labelledby="module-navigator-documentation-title">
