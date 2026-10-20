@@ -1694,6 +1694,7 @@
     const body = $('rj-runs').tBodies[0];
     if (!state.runs.length) {
       emptyRow(body, 'No runs yet.', 9);
+      syncRunsHeight();
       return;
     }
     body.replaceChildren(...state.runs.map((run) => {
@@ -1764,7 +1765,31 @@
       row.append(...cells, cellWith(artifacts), size, cellWith(actions));
       return row;
     }));
+    syncRunsHeight();
   }
+
+  // Run History shows the latest 10 runs; the older ones are reached by scrolling its table.
+  const RUN_HISTORY_ROWS = 10;
+  function syncRunsHeight() {
+    const table = $('rj-runs');
+    const wrapper = table.closest('.table-wrap');
+    requestAnimationFrame(() => {
+      // (A collapsed panel has nothing to measure: it is measured again when opened.)
+      if (!wrapper.offsetParent) return;
+      const rows = Array.from(table.tBodies[0].rows);
+      // (Phones show each run as a card, one under the other.)
+      if (rows.length <= RUN_HISTORY_ROWS || window.matchMedia('(max-width: 640px)').matches) {
+        wrapper.style.maxHeight = '';
+        return;
+      }
+      const rowsHeight = rows.slice(0, RUN_HISTORY_ROWS).reduce((height, row) => height + row.getBoundingClientRect().height, 0);
+      // (Borders and a horizontal scrollbar are kept out of the rows.)
+      const frame = wrapper.offsetHeight - wrapper.clientHeight;
+      wrapper.style.maxHeight = `${Math.ceil(table.tHead.getBoundingClientRect().height + rowsHeight + frame)}px`;
+    });
+  }
+  $('rj-runs').closest('details').addEventListener('toggle', syncRunsHeight);
+  window.addEventListener('resize', syncRunsHeight);
 
   const formatSize = (bytes) => {
     const units = ['B', 'KB', 'MB', 'GB'];

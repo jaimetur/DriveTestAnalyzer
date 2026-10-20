@@ -10002,7 +10002,8 @@
     const box = root.querySelector('[data-notice-box]');
     const list = root.querySelector('[data-notice-list]');
     if (!box || !list) return;
-    const items = (Array.isArray(notices) ? notices : []).map(String).filter(Boolean);
+    // (Results saved before the methodologies told a shared notice once repeat it.)
+    const items = [...new Set((Array.isArray(notices) ? notices : []).map(String).filter(Boolean))];
     list.replaceChildren(...items.map(text => Object.assign(document.createElement('li'), {textContent: text})));
     box.hidden = !items.length;
   }

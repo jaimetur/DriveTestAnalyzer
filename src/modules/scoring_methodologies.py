@@ -196,7 +196,12 @@ def merge_results(parts: list[tuple[dict[str, Any], dict[str, Any]]]) -> dict[st
         (f"{group['profile_name']} ({', '.join(format_campaign(value) or value for value in group['campaigns'])}): {warning}"
          if str(warning).startswith(WARNING_PREFIXES) else warning)
         for group, result in parts for warning in result.get('warnings') or []))
-    merged['notices'] = [notice for _group, result in parts for notice in result.get('notices') or []]
+    # The same scaling in every methodology is told once; a different one names the methodology it concerns.
+    notices = [list(result.get('notices') or []) for _group, result in parts]
+    merged['notices'] = list(dict.fromkeys(
+        (notice if all(other == notices[0] for other in notices)
+         else f"{group['profile_name']} ({', '.join(format_campaign(value) or value for value in group['campaigns'])}): {notice}")
+        for (group, _result), group_notices in zip(parts, notices) for notice in group_notices))
     merged['campaigns'] = sorted({campaign for _group, result in parts for campaign in result.get('campaigns') or []},
                                  key=lambda value: (campaign_sort_key(value), value))
     from src.modules.scoring import environment_scaling

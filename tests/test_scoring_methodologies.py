@@ -95,6 +95,21 @@ def test_results_of_each_methodology_keep_their_rows_and_split_back():
     assert part['configuration'] == groups[1]['configuration']
 
 
+def test_the_same_scaling_notice_of_every_methodology_is_told_once():
+    profiles = two_methodologies({'to': '2026-Q2'}, {'from': '2026-Q3'})
+    groups = methodology_groups(profiles, ['2026-Q2', '2026-Q3'])
+
+    def merged_notices(*notices):
+        return merge_results([(group, {'scoring': [], 'totals': [], 'campaigns': group['campaigns'], 'notices': items})
+                              for group, items in zip(groups, notices)])['notices']
+    scaled = 'Scaled to the maximum scoring: Drive - Connecting Roads has no results.'
+    assert merged_notices([scaled], [scaled]) == [scaled]
+    # A scaling of one methodology only, or a different one, names the methodology and campaigns it concerns.
+    assert merged_notices([scaled], []) == [f'NetCheck 2026 (2026-Q2): {scaled}']
+    assert merged_notices([scaled], ['Other scaling.']) == [f'NetCheck 2026 (2026-Q2): {scaled}',
+                                                             'NetCheck 2026-Q3 (2026-Q3): Other scaling.']
+
+
 def add_campaign_dataset(repository: Repository, name: str, campaign: str, kind: str = 'data') -> int:
     source = Path(repository.db_path).parent / name
     source.write_text('source', encoding='utf-8')

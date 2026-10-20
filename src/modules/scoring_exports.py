@@ -806,7 +806,7 @@ def _add_scoring_intro_slides(
     if level is not None:
         report_structure.mark(slide, level)
     # Combined scores scaled because environments have no results are announced in orange, above the line.
-    notices = [str(notice) for notice in result.get('notices') or []]
+    notices = list(dict.fromkeys(str(notice) for notice in result.get('notices') or []))
     if notices and (environment is None or str(environment).casefold() in {'combined', 'all', 'all environments'}):
         notice_shape = _text(slide, ' '.join(notices), 4.75, left=.52, width=12.29, height=.6,
                              size=12, color=_SCALING_NOTICE_COLOR)
@@ -2444,7 +2444,7 @@ def _scoring_slide_notes(result: dict[str, Any]) -> list[str]:
     coverage_notes = scoring_coverage_notes(result)
     coverage_details = [f"{'All Environments' if environment == 'Combined' else environment} — {note}"
                         for environment, notes in coverage_notes.items() for note in notes]
-    slide_warnings = [str(notice) for notice in result.get('notices', [])]
+    slide_warnings = list(dict.fromkeys(str(notice) for notice in result.get('notices', [])))
     slide_warnings.extend(str(warning) for warning in result.get('warnings', [])
                           if str(warning) != _LEGACY_CAMPAIGN_WARNING)
     slide_warnings.extend(coverage_details)

@@ -14,7 +14,8 @@
 .rj-status-sent, .rj-status-completed { background: #d9f2e3; color: #1f6b44; }
 .rj-status-partial { background: #fff1c7; color: #7a5300; }
 .rj-status-failed { background: #ffe0dc; color: #a12b1d; }
-.rj-status-running, .rj-status-queued { background: #e2ecff; color: #234d9a; }
+.rj-status-running { background: #e2ecff; color: #234d9a; }
+.rj-status-queued { background: #edf0f3; color: #5b6770; }
 .rj-error { color: #a12b1d; }
 .rj-download { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
 .report-jobs-form { display: grid; gap: 1rem; }
