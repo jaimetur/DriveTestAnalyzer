@@ -121,7 +121,7 @@
           ? `<span style="height:${share}%;width:${view.classes[index].width / widest * 86}%;background:${fills[index]}" title="${escapeHtml(view.classes[index].label)}: ${Number(share).toFixed(1)}%"></span>` : '')).join('')}</div>
         <p><b style="color:${groupColours[column.group] || 'inherit'}">${escapeHtml(column.group)}</b> <span class="${column === leader ? 'is-leader' : ''}">${column.wide_share ?? '–'}% at 100 MHz+</span></p>
       </div>`).join('')}</div>
-    </div>${legend(view.classes.map(item => item.label), fills, 'Width, MHz:')}<p class="ni-finding-note">${escapeHtml(view.note || '')}</p>`;
+    </div>${legend(view.classes.map(item => item.label), fills, 'Primary bandwidth, MHz:')}<p class="ni-finding-note">${escapeHtml(view.note || '')}</p>`;
   };
 
   const body = (view, colours, groupColours) => {

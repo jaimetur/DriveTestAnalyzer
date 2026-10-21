@@ -51,7 +51,7 @@ from src.modules.serving_cells import load_serving_networks, serving_families
 NETWORK_INSIGHTS_KINDS = ('data', 'voice', 'speech')
 # Bump when the normalised samples or the analysis payload change shape.
 SAMPLES_CACHE_VERSION = 10
-ANALYSIS_CACHE_VERSION = 29
+ANALYSIS_CACHE_VERSION = 30
 # Analyses kept in the workspace cache (each a few MB) and in memory, to show them again without calculating them.
 ANALYSES_KEPT = 500
 ANALYSES_IN_MEMORY = 24
@@ -784,7 +784,7 @@ def observed_spectrum(samples: pd.DataFrame) -> list[dict[str, Any]]:
 
 # Download tests carry DL in their name (FDTT HTTP DL MT, FDFS HTTPS DL ST); uploads, pings and browsing do not.
 DOWNLOAD_TEST = re.compile(r'(?<![A-Za-z0-9])DL(?![A-Za-z0-9])', re.I)
-# The total downlink bandwidth of a test, LTE and NR together, in the classes of benchmark reports, widest first:
+# The primary downlink bandwidth of a test, LTE and NR together, in the classes of benchmark reports, widest first:
 # (label, lower MHz, upper MHz, colour, block width). A block is as wide as its class midpoint.
 BANDWIDTH_CLASSES = (
     ('200+ MHz', 200.0, None, '#1E6B3A', 225.0),
@@ -796,16 +796,17 @@ BANDWIDTH_CLASSES = (
     ('Under 25 MHz', 0.0, 25.0, '#B5132B', 12.5),
 )
 NARROW_BANDWIDTH_MHZ = 25.0
-# The share of tests with this total bandwidth or more is labelled under each ladder.
+# The share of tests with this primary bandwidth or more is labelled under each ladder.
 WIDE_BANDWIDTH_MHZ = 100.0
-# The title the total bandwidth chart carries on the page and in the summaries.
-BANDWIDTH_LADDER_TITLE = 'Bandwidth of each test: LTE + NR'
+# The title the primary bandwidth chart carries on the page and in the summaries: the CDRs report the bandwidth of the
+# NR primary cell only, so it is not the total bandwidth of the test.
+BANDWIDTH_LADDER_TITLE = 'Primary bandwidth of each test: LTE + NR'
 BANDWIDTH_SCOPES = {'download': 'Download tests', 'all': 'All Data tests'}
 ALL_ENVIRONMENTS = 'All environments'
 
 
 def total_bandwidth(samples: pd.DataFrame) -> pd.Series:
-    """The DL bandwidth of each test, LTE and NR together (MHz); NaN when the test reports neither.
+    """The primary DL bandwidth of each test, LTE and NR together (MHz); NaN when the test reports neither.
 
     LTE is the mean bandwidth of the test over its aggregated carriers (else its PCell bandwidth) rounded up to 5 MHz,
     as the Reporting field LTE DL Aggregated BW (MHz); NR is the bandwidth of its NR PCell, since the CDRs do not
@@ -822,7 +823,7 @@ def total_bandwidth(samples: pd.DataFrame) -> pd.Series:
 
 
 def bandwidth_classes(totals: pd.Series) -> pd.Series:
-    """The position in :data:`BANDWIDTH_CLASSES` of each known total bandwidth."""
+    """The position in :data:`BANDWIDTH_CLASSES` of each known primary bandwidth."""
     values = totals.dropna().to_numpy(dtype=float)
     positions = np.full(len(values), len(BANDWIDTH_CLASSES) - 1)
     for index in range(len(BANDWIDTH_CLASSES) - 2, -1, -1):
@@ -2110,7 +2111,7 @@ def install_network_insights_routes(core: Any) -> None:
             return order
 
         group_order = ordered_by(groups)
-        # The groups of the views with the environments as rows (the total bandwidth, Latency & Interactivity): the
+        # The groups of the views with the environments as rows (the primary bandwidth, Latency & Interactivity): the
         # grouping fields other than the environment.
         column_groups = [field for field in groups if field != 'environment']
         if column_groups:
@@ -2216,9 +2217,9 @@ def install_network_insights_routes(core: Any) -> None:
             }
 
         def bandwidth_payload() -> dict[str, Any]:
-            """Samples per band and bandwidth, and the total bandwidth (LTE + NR) of the CDR Data tests per group
+            """Samples per band and bandwidth, and the primary bandwidth (LTE + NR) of the CDR Data tests per group
             and environment, for the download tests and for every test."""
-            # The environment makes the rows of the total bandwidth, so the columns are the other grouping fields.
+            # The environment makes the rows of the primary bandwidth, so the columns are the other grouping fields.
             columns, column_order = group_columns, group_column_order
             band_order = {name: index for index, name in enumerate(BAND_CATALOGUE)}
             data = filtered['kind'].eq('Data')

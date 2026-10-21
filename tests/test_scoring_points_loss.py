@@ -187,14 +187,15 @@ def test_the_web_map_links_the_ranking_and_the_areas():
     assert "title.className = 'scoring-loss-map-operator';" in script
     # Its figures are National points (the part of the National loss in each place), as those of the performance owners.
     assert "bold('National points'), ': the part of the National loss in the tests of each place, not its own score" in script
-    assert "'National points lost', 'Share']" in script and "document.createTextNode(' National points lost')" in script
+    assert "'National points lost',\n      ...(rated ? ['Per 1,000 tests'] : []), 'Share']" in script
+    assert "document.createTextNode(' National points lost')" in script
     assert 'function lossMapSelection(card, svg, rows, initialLinks)' in script and 'selection.zoom.fit({x, y, width, height});' in script
     # Every area keeps its colour: choosing rows or areas only dims the others.
     assert "marks.forEach(mark => mark.classList.toggle('is-dimmed', !lit.has(mark.dataset.area)));" in script
     # One choice above the maps, the city or route that loses most by default; changing it keeps the chosen rows.
     assert "for (const [value, text] of [['top', 'Points of the city or route that loses most in each area']," in script
     assert "cards.forEach(card => card.setColourMode?.(modeSelect.value));" in script
-    assert "mode = real && insightSelections.get('points-loss-colour') === 'losses' ? 'losses' : 'top';" in script
+    assert "mode = real && rank === 'points' && insightSelections.get('points-loss-colour') === 'losses' ? 'losses' : 'top';" in script
     assert 'if (event.shiftKey && onSelect) onSelect(area, event); else apply(area);' in script
     # All Environments names the environments of each area.
     assert "...(withEnvironments ? ['Type'] : [])" in script
@@ -283,3 +284,43 @@ def test_exports_include_the_reference_operator_only_when_it_is_a_focus_operator
     assert any(title.startswith('KPI GAP Profile — Vodafone UK vs EE') for title in titles)
     titles = export(['Vodafone UK'])
     assert not any(title.startswith('Points lost per KPI — ') and 'EE' in title.split(' | ')[0] for title in titles)
+
+
+def test_places_rank_by_their_points_lost_per_1000_tests(monkeypatch):
+    from src.modules import scoring_insights
+
+    monkeypatch.setattr(scoring_insights, 'MIN_RATE_TESTS', 35)
+    job, result = _result()
+    maps = build_scoring_views(job, result)['insights']['points_loss_maps']
+    of = {item['field']: item for item in maps if item['operator'] == 'Vodafone UK' and item['environment'] == 'Combined'}
+    assert of['City']['rate_tests'] == 1000 and of['City']['rate_minimum'] == 35
+    cities = {area['name']: area for area in of['City']['areas']}
+    # 40 calls in each city: its points per 1,000 of them; the 30 calls of the road are under the minimum.
+    assert cities['Leeds']['tests'] == 40
+    assert cities['Leeds']['rate'] == pytest.approx(cities['Leeds']['points'] / 40 * 1000)
+    assert cities['Sheffield to Leeds']['tests'] == 30 and cities['Sheffield to Leeds']['rate'] is None
+    # The map areas have no tests of their own.
+    assert 'rate_tests' not in of['Area'] and 'rate' not in of['Area']['areas'][0]
+    # The PowerPoint follows each map by its per 1,000 tests slide, which leaves the road out.
+    content = export_scoring_powerpoint(job, result, TEMPLATE)
+    titles = _titles(content)
+    position = titles.index('Points Lost per City — Vodafone UK')
+    assert titles[position + 1] == 'Points Lost per City, per 1,000 tests — Vodafone UK'
+    deck = Presentation(BytesIO(content))
+    slide = [slide for slide in deck.slides if slide.shapes.title is not None][position + 1]
+    texts = ' '.join(shape.text_frame.text for shape in slide.shapes if shape.has_text_frame)
+    assert 'loses per 1,000 tests' in texts and '(35 tests or more) hold' in texts
+    bars = next(shape for shape in slide.shapes if shape.name == 'Scoring Points Lost Bars').chart
+    assert 'Sheffield to Leeds' not in ' '.join(bars.plots[0].categories)
+
+
+def test_results_without_the_tests_of_each_place_keep_one_ranking():
+    job, result = _result()
+    for entry in result['points_loss']['serving_tests']:
+        for field in ('City', 'Region', 'Cluster'):
+            entry['counts'].pop(field, None)
+    maps = build_scoring_views(job, result)['insights']['points_loss_maps']
+    city = next(item for item in maps if item['operator'] == 'Vodafone UK' and item['field'] == 'City')
+    assert 'rate_tests' not in city and 'rate' not in city['areas'][0]
+    titles = _titles(export_scoring_powerpoint(job, result, TEMPLATE))
+    assert 'Points Lost per City — Vodafone UK' in titles and not any('per 1,000 tests' in title for title in titles)

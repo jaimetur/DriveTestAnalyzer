@@ -224,7 +224,7 @@ def test_network_insights_slides_are_named_after_their_panel_and_component():
     assert ni.report_component('Serving Cells · NR cell of the NSA samples') == 'serving.nr_leg'
     assert ni.report_component('5G Availability · Sites with the most samples without NR') == 'nr_availability.sites_without_nr'
     assert ni.report_component('RF Quality · LTE') == 'rf_quality.cdfs'
-    assert ni.report_component('Bandwidth of each test: LTE + NR') == 'spectrum.bandwidth'
+    assert ni.report_component('Primary bandwidth of each test: LTE + NR') == 'spectrum.bandwidth'
     assert ni.report_component('Under 25 MHz by location (Download tests)') == 'spectrum.bandwidth_splits'
     keys = {f'{panel}.{component}' for panel, _title, components in ni.REPORT_PANELS for component, _label in components}
     assert {key for _start, key in ni._COMPONENT_TITLES if not key.startswith('selection.')} <= keys

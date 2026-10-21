@@ -269,10 +269,11 @@ def _losses_by_scope(result: dict[str, Any] | None, formulas: dict[str, str], we
                      ) -> dict[tuple, dict[str, dict[str, Any]]]:
     """The points each operator loses in the latest campaign on Voice and Data, by kind (see scoring_insights.loss_kind),
     from the KPI rows of every environment measured, its places added up by their share of the tests: per scope, per
-    operator, ``{service: {kind: points, kpis, failed_kpis, below_kpis}}``. All environments count in the points of All
+    operator, ``{service: {kind: points, kpis, failed_kpis, below_kpis}}`` (failed: not completed or below the minimum of
+    the Reliable KPIs, see scoring_insights.FAILED_KINDS). All environments count in the points of All
     Environments: ``combined_weight(campaign, KPI code, environment)`` gives what one point of an environment is worth
     there."""
-    from src.modules.scoring_insights import campaign_sort_key, loss_kind
+    from src.modules.scoring_insights import FAILED_KINDS, LOSS_KINDS, campaign_sort_key, loss_kind
 
     rows = [row for row in (result or {}).get('scoring') or [] if row.get('kpi_code')]
     campaigns = sorted({row.get('campaign') for row in rows if row.get('campaign')}, key=campaign_sort_key)
@@ -295,10 +296,9 @@ def _losses_by_scope(result: dict[str, Any] | None, formulas: dict[str, str], we
         scope = tuple(sorted((field, row.get(field)) for field in fields))
         service = 'Data' if str(row.get('dataset_type') or row.get('source_kind') or '').casefold() == 'data' else 'Voice'
         kind = loss_kind(row, formulas)
-        entry = scopes.setdefault(scope, {}).setdefault(str(row.get('operator')), {}).setdefault(service, {
-            'failed': 0.0, 'below_par': 0.0, 'quality': 0.0})
+        entry = scopes.setdefault(scope, {}).setdefault(str(row.get('operator')), {}).setdefault(service, dict.fromkeys(LOSS_KINDS, 0.0))
         entry[kind] += lost
-        for key in ('kpis', 'failed_kpis' if kind == 'failed' else 'below_kpis'):
+        for key in ('kpis', 'failed_kpis' if kind in FAILED_KINDS else 'below_kpis'):
             totals = kpis.setdefault((scope, str(row.get('operator')), service, key), {})
             totals[str(row.get('kpi'))] = totals.get(str(row.get('kpi')), 0.0) + lost
     for (scope, operator, service, key), totals in kpis.items():
@@ -338,7 +338,7 @@ def act_plans(result: dict[str, Any] | None, formulas: dict[str, str], styles: d
               environment: str = COMBINED, combined_weight: Callable[[Any, Any, Any], float] | None = None,
               ) -> list[dict[str, Any]]:
     """The themes that hold the points lost of each operator, with what to do and where to look further."""
-    from src.modules.scoring_insights import campaign_sort_key
+    from src.modules.scoring_insights import FAILED_KINDS, LOSS_KINDS, campaign_sort_key
 
     items = []
     sites_of: dict[str, list[dict[str, Any]]] = {}
@@ -355,13 +355,13 @@ def act_plans(result: dict[str, Any] | None, formulas: dict[str, str], styles: d
             style = styles.get(name) or {}
             operator = {'operator': name, 'label': style.get('label') or name, 'color': style.get('color'),
                         'is_reference': style.get('is_reference'),
-                        'lost': sum(sum(_number(values.get(kind)) for kind in ('failed', 'below_par', 'quality'))
+                        'lost': sum(sum(_number(values.get(kind)) for kind in LOSS_KINDS)
                                     for values in services.values())}
             voice, data = services.get('Voice') or {}, services.get('Data') or {}
             rows = []
-            voice_points = sum(_number(voice.get(kind)) for kind in ('failed', 'below_par', 'quality'))
+            voice_points = sum(_number(voice.get(kind)) for kind in LOSS_KINDS)
             if voice_points > 0:
-                failed = _number(voice.get('failed'))
+                failed = sum(_number(voice.get(kind)) for kind in FAILED_KINDS)
                 kpis = voice.get('kpis') or []
                 parts = ([('Cut voice failures: failed calls cost ', False), (f"{failed:.1f} of the {voice_points:.1f} points", True)]
                          if failed >= voice_points / 2 else
@@ -369,7 +369,7 @@ def act_plans(result: dict[str, Any] | None, formulas: dict[str, str], styles: d
                 parts += [('; first ', False), *_kpi_parts(kpis), ('.', False)] if kpis else [('.', False)]
                 rows.append({'theme': 'Voice calls', 'points': voice_points, **_action(parts),
                              **_deep_dive(('Points lost per KPI (Voice)', 'points-kpi'))})
-            failed_data = _number(data.get('failed'))
+            failed_data = sum(_number(data.get(kind)) for kind in FAILED_KINDS)
             if failed_data > 0:
                 kpis = data.get('failed_kpis') or []
                 rows.append({'theme': 'Failed data tests', 'points': failed_data,

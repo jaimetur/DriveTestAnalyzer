@@ -1154,7 +1154,7 @@ def render_points_loss_choropleth(boundaries: dict[str, list[list[list[float]]]]
     return output.getvalue()
 
 
-def _loss_scale(slide, left: float, top: float, width: float, low: float, high: float) -> None:
+def _loss_scale(slide, left: float, top: float, width: float, low: float, high: float, *, digits: int = 1) -> None:
     """Colour scale under the map, from the smallest to the largest loss of an area."""
     scale = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(left + .55), Inches(top), Inches(width - 1.1), Inches(.13))
     scale.name = 'Scoring Points Lost Scale'
@@ -1165,13 +1165,14 @@ def _loss_scale(slide, left: float, top: float, width: float, low: float, high: 
     stops[0].color.rgb, stops[1].color.rgb = (RGBColor(*color) for color in _loss_ramp())
     scale.line.fill.background()
     scale.shadow.inherit = False
-    for text, position, align in ((_points(low, 1), left, PP_ALIGN.RIGHT), (_points(high, 1), left + width - .5, PP_ALIGN.LEFT)):
+    for text, position, align in ((_points(low, digits), left, PP_ALIGN.RIGHT), (_points(high, digits), left + width - .5, PP_ALIGN.LEFT)):
         label = slide.shapes.add_textbox(Inches(position), Inches(top - .06), Inches(.5), Inches(.25))
         label.text_frame.margin_left = label.text_frame.margin_right = 0
         _write(label.text_frame, [(text, 8, False, '#6B7A85')], align=align)
 
 
-def _loss_bars(slide, bars: list[dict[str, Any]], *, left: float, top: float, width: float, height: float) -> None:
+def _loss_bars(slide, bars: list[dict[str, Any]], *, left: float, top: float, width: float, height: float,
+               digits: int = 1) -> None:
     from pptx.chart.data import CategoryChartData
 
     data = CategoryChartData()
@@ -1192,7 +1193,7 @@ def _loss_bars(slide, bars: list[dict[str, Any]], *, left: float, top: float, wi
     plot = chart.plots[0]
     plot.gap_width = 35
     plot.has_data_labels = True
-    plot.data_labels.number_format = '0.0'
+    plot.data_labels.number_format = '0.' + '0' * digits if digits else '0'
     plot.data_labels.number_format_is_linked = False
     plot.data_labels.font.size = Pt(7)
     plot.data_labels.position = XL_DATA_LABEL_POSITION.OUTSIDE_END
@@ -1227,8 +1228,6 @@ def add_points_loss_slides(presentation, maps: list[dict[str, Any]], background:
     map areas the cities are bubbles on the test locations. Clusters and Regions with polygons get
     their own slide.
     """
-    from io import BytesIO
-
     boundaries = boundaries or (lambda _field: {})
     outlines = outlines or (lambda _field: [])
     by_series: dict[tuple, dict[str, dict[str, Any]]] = {}
@@ -1245,81 +1244,119 @@ def add_points_loss_slides(presentation, maps: list[dict[str, Any]], background:
             if fields.get(field) is not None and boundaries(field):
                 slides.append((fields[field], field, fields[field]))
     for ranking, field, layer in slides[:MAX_LOSS_MAPS]:
-        context = _context_text(ranking['context'])
-        level = LOSS_FIELD_TITLES.get(field, field)
-        slide = new_slide(presentation, f"Points Lost per {level} — {ranking['label']}",
-                          ' · '.join(part for part in (_with_scope(subtitle, scope, ranking['context']), context) if part))
-        bars = [area for area in ranking['areas'] if area['name'] != 'Not specified'][:MAX_LOSS_BARS]
-        # All environments: each city or route names the environments where it loses points (not per Region or Cluster).
-        labels = environment_labels or {}
-        bars = [{**area, 'name': f"{area['name']} ({', '.join(_short_environment(labels.get(name, name)) for name in area['environments'])})"}
-                if area.get('environments') and field == 'City' else area for area in bars]
-        share = sum(area['points'] for area in bars) / ranking['total'] if ranking['total'] else 0
-        plural = {'City': 'cities and routes', 'Cluster': 'clusters', 'Region': 'regions'}.get(field, 'areas')
-        by_rows = layer is not None and layer['field'] == 'Area' and field == 'City'
-        area_label = (layer or {}).get('area_label') or LOSS_FIELD_TITLES.get((layer or {}).get('field'), 'area')
-        map_text = f"The map colours each {area_label} by the National points " if layer is not None else 'The map shows where '
-        # The operator, large and in its colour, above the map and the ranking.
-        heading = slide.shapes.add_textbox(Inches(.45), Inches(1.35), Inches(12.4), Inches(.5))
-        heading.name = 'Scoring Points Lost Operator'
-        _write(heading.text_frame, [(str(ranking['label']), 24, True, ranking.get('color') or '#17232D')])
-        intro = slide.shapes.add_textbox(Inches(.45), Inches(1.85), Inches(12.4), Inches(.5))
-        intro.text_frame.word_wrap = True
-        _write_runs(intro.text_frame, [
-            (map_text, False, None), (ranking['label'], True, ranking.get('color') or None),
-            # The points lost and the share of the listed rows are bold, as on the web page.
-            *([(' loses in the city or route that loses most among those measured in it (', False, None),
-               (f"{_points(ranking['total'], 1)} {scoring_label} points", True, None),
-               (' of its National score lost in total). ', False, None)]
-              if by_rows else
-              [(' loses in it (', False, None), (f"{_points(ranking['total'], 1)} {scoring_label} points", True, None),
-               (' of its National score lost in total). ', False, None)] if layer is not None
-              else [(f' loses its National {scoring_label} points (', False, None), (_points(ranking['total'], 1), True, None),
-                    (' in total). ', False, None)]),
-            (f'The {len(bars)} {plural} listed', True, None),
-            (' account for ', False, None), (f'{share * 100:.0f}%', True, None), (' of them.', False, None),
-        ], size=11, color='#17232D')
-        # The points of the operator's National score lost in the tests of each place (they add up to its National loss),
-        # not the score of each place on its own tests, which the National & Geographical Areas Trends show.
-        national = slide.shapes.add_textbox(Inches(6.55), Inches(6.98), Inches(6.35), Inches(.4))
-        national.name = 'Scoring Points Lost National Note'
-        national.text_frame.word_wrap = True
-        _write_runs(national.text_frame, [
-            ('National points', True, None),
-            (f": the part of {ranking['label']}'s National loss in the tests of each place (they add up to it), not the "
-             "place's own score, which the National & Geographical Areas Trends show.", False, None),
-        ], size=8.5, color='#4A5B65')
-        map_top, map_height, map_width = 2.35, 4.5, 6.0
-        if layer is not None:
-            # As the web map does by default: the points of the city or route that loses most among those
-            # measured in each area.
-            from src.modules.scoring_points_loss import row_area_links, row_area_values
-            values = (row_area_values(ranking['areas']) if by_rows else
-                      {area['name']: area['points'] for area in layer['areas'] if area['name'] != 'Not specified'})
-            # The cities and routes that lose most are labelled once, on their main area.
-            if by_rows:
-                links = row_area_links(ranking['areas'])
-                places = [(area['name'], links[area['name']][0]) for area in ranking['areas'] if links.get(area['name'])]
-            else:
-                places = None
-            image = render_points_loss_choropleth(boundaries(layer['field']), values, places=places,
-                                                  outlines=outlines(layer['field']))
+        # Every place by its National points lost and, when the result counted the tests of each place and some have
+        # enough of them, by the points it loses per 1,000 of its tests (the places with few tests left out).
+        rated = any(area.get('rate') is not None for area in ranking['areas'] if area['name'] != 'Not specified')
+        for per_tests in ((False, True) if rated else (False,)):
+            _points_loss_slide(presentation, ranking, field, layer, per_tests, background,
+                               scoring_label=scoring_label, subtitle=subtitle, new_slide=new_slide, boundaries=boundaries,
+                               environment_labels=environment_labels, outlines=outlines, scope=scope)
+
+
+def _points_loss_slide(presentation, ranking: dict[str, Any], field: str, layer: dict[str, Any] | None, per_tests: bool,
+                       background: list[list[float]], *, scoring_label: str, subtitle: str, new_slide: Callable,
+                       boundaries: Callable[[str], dict], environment_labels: dict[str, str] | None,
+                       outlines: Callable[[str], list], scope: ScopeLabels | None) -> None:
+    """One slide of :func:`add_points_loss_slides`; ``per_tests`` ranks the places by the points they lose per 1,000
+    of their tests instead of their National points lost."""
+    from io import BytesIO
+
+    if per_tests:
+        # ``points`` holds the rate, so the map and the bars follow it; ``national`` the National points lost.
+        ranking = {**ranking, 'areas': sorted(({**area, 'points': area['rate'], 'national': area['points']}
+                                               for area in ranking['areas']
+                                               if area.get('rate') is not None and area['name'] != 'Not specified'),
+                                              key=lambda area: -area['points'])}
+    context = _context_text(ranking['context'])
+    level = LOSS_FIELD_TITLES.get(field, field)
+    slide = new_slide(presentation, f"Points Lost per {level}{', per 1,000 tests' if per_tests else ''} — {ranking['label']}",
+                      ' · '.join(part for part in (_with_scope(subtitle, scope, ranking['context']), context) if part))
+    bars = [area for area in ranking['areas'] if area['name'] != 'Not specified'][:MAX_LOSS_BARS]
+    # All environments: each city or route names the environments where it loses points (not per Region or Cluster).
+    labels = environment_labels or {}
+    bars = [{**area, 'name': f"{area['name']} ({', '.join(_short_environment(labels.get(name, name)) for name in area['environments'])})"}
+            if area.get('environments') and field == 'City' else area for area in bars]
+    share = sum(area.get('national', area['points']) for area in bars) / ranking['total'] if ranking['total'] else 0
+    plural = {'City': 'cities and routes', 'Cluster': 'clusters', 'Region': 'regions'}.get(field, 'areas')
+    by_rows = layer is not None and layer['field'] == 'Area' and field == 'City'
+    area_label = (layer or {}).get('area_label') or LOSS_FIELD_TITLES.get((layer or {}).get('field'), 'area')
+    map_text = f"The map colours each {area_label} by the National points " if layer is not None else 'The map shows where '
+    # The operator, large and in its colour, above the map and the ranking.
+    heading = slide.shapes.add_textbox(Inches(.45), Inches(1.35), Inches(12.4), Inches(.5))
+    heading.name = 'Scoring Points Lost Operator'
+    _write(heading.text_frame, [(str(ranking['label']), 24, True, ranking.get('color') or '#17232D')])
+    intro = slide.shapes.add_textbox(Inches(.45), Inches(1.85), Inches(12.4), Inches(.5))
+    intro.text_frame.word_wrap = True
+    _write_runs(intro.text_frame, [
+        (map_text, False, None), (ranking['label'], True, ranking.get('color') or None),
+        (' loses per 1,000 tests in the city or route that loses most per 1,000 tests among those measured in it. ' if by_rows
+         else ' loses per 1,000 of its tests. ' if layer is not None else ' loses most National points per 1,000 tests. ', False, None),
+        (f'The {len(bars)} {plural} listed', True, None),
+        (f" ({ranking.get('rate_minimum') or 0:,} tests or more) hold ", False, None), (f'{share * 100:.0f}%', True, None),
+        (' of its ', False, None), (f"{_points(ranking['total'], 1)} {scoring_label} points", True, None), (' lost.', False, None),
+    ] if per_tests else [
+        (map_text, False, None), (ranking['label'], True, ranking.get('color') or None),
+        # The points lost and the share of the listed rows are bold, as on the web page.
+        *([(' loses in the city or route that loses most among those measured in it (', False, None),
+           (f"{_points(ranking['total'], 1)} {scoring_label} points", True, None),
+           (' of its National score lost in total). ', False, None)]
+          if by_rows else
+          [(' loses in it (', False, None), (f"{_points(ranking['total'], 1)} {scoring_label} points", True, None),
+           (' of its National score lost in total). ', False, None)] if layer is not None
+          else [(f' loses its National {scoring_label} points (', False, None), (_points(ranking['total'], 1), True, None),
+                (' in total). ', False, None)]),
+        (f'The {len(bars)} {plural} listed', True, None),
+        (' account for ', False, None), (f'{share * 100:.0f}%', True, None), (' of them.', False, None),
+    ], size=11, color='#17232D')
+    # The points of the operator's National score lost in the tests of each place (they add up to its National loss),
+    # not the score of each place on its own tests, which the National & Geographical Areas Trends show.
+    national = slide.shapes.add_textbox(Inches(6.55), Inches(6.98), Inches(6.35), Inches(.4))
+    national.name = 'Scoring Points Lost National Note'
+    national.text_frame.word_wrap = True
+    _write_runs(national.text_frame, [
+        ('Per 1,000 tests', True, None),
+        (": the National points lost in the tests of each place per 1,000 of its Voice calls and Data tests, so a place "
+         "does not rank high only because it was measured more.", False, None),
+    ] if per_tests else [
+        ('National points', True, None),
+        (f": the part of {ranking['label']}'s National loss in the tests of each place (they add up to it), not the "
+         "place's own score, which the National & Geographical Areas Trends show.", False, None),
+    ], size=8.5, color='#4A5B65')
+    map_top, map_height, map_width = 2.35, 4.5, 6.0
+    if layer is not None:
+        # As the web map does by default: the points of the city or route that loses most among those
+        # measured in each area.
+        from src.modules.scoring_points_loss import row_area_links, row_area_values
+        values = (row_area_values(ranking['areas']) if by_rows else
+                  {area['name']: area['points'] for area in (ranking if layer['field'] == field else layer)['areas']
+                   if area['name'] != 'Not specified'})
+        # The cities and routes that lose most are labelled once, on their main area.
+        if by_rows:
+            links = row_area_links(ranking['areas'])
+            places = [(area['name'], links[area['name']][0]) for area in ranking['areas'] if links.get(area['name'])]
         else:
-            image = render_points_loss_map(ranking['areas'], background)
-        from PIL import Image
-        with Image.open(BytesIO(image)) as opened:
-            ratio = opened.width / opened.height
-        width = min(map_width, map_height * ratio)
-        height = width / ratio
-        picture = slide.shapes.add_picture(BytesIO(image), Inches(.45 + (map_width - width) / 2), Inches(map_top),
-                                           Inches(width), Inches(height))
-        picture.name = 'Scoring Points Lost Map'
-        _loss_bars(slide, bars, left=6.55, top=2.4, width=6.35, height=4.55)
-        if layer is not None and values:
-            positive = [value for value in values.values() if value > 0]
-            _loss_scale(slide, .45, 6.95, map_width, min(positive), max(positive))
-        else:
-            legend = slide.shapes.add_textbox(Inches(.45), Inches(6.9), Inches(6.0), Inches(.3))
-            legend.text_frame.margin_left = 0
-            _write(legend.text_frame, [('Bubbles are cities and dots the Connecting Roads routes; colour and size grow '
-                                        'with the points lost. Grey: test locations.', 8, False, '#6B7A85')])
+            places = None
+        image = render_points_loss_choropleth(boundaries(layer['field']), values, places=places,
+                                              outlines=outlines(layer['field']))
+    else:
+        image = render_points_loss_map(ranking['areas'], background)
+    from PIL import Image
+    with Image.open(BytesIO(image)) as opened:
+        ratio = opened.width / opened.height
+    width = min(map_width, map_height * ratio)
+    height = width / ratio
+    picture = slide.shapes.add_picture(BytesIO(image), Inches(.45 + (map_width - width) / 2), Inches(map_top),
+                                       Inches(width), Inches(height))
+    picture.name = 'Scoring Points Lost Map'
+    # The rates take the decimals their size needs (small rates two).
+    peak = max((area['points'] for area in bars), default=0)
+    digits = (2 if peak < 10 else 1 if peak < 100 else 0) if per_tests else 1
+    _loss_bars(slide, bars, left=6.55, top=2.4, width=6.35, height=4.55, digits=digits)
+    if layer is not None and values:
+        positive = [value for value in values.values() if value > 0]
+        _loss_scale(slide, .45, 6.95, map_width, min(positive), max(positive), digits=digits)
+    else:
+        legend = slide.shapes.add_textbox(Inches(.45), Inches(6.9), Inches(6.0), Inches(.3))
+        legend.text_frame.margin_left = 0
+        _write(legend.text_frame, [('Bubbles are cities and dots the Connecting Roads routes; colour and size grow '
+                                    'with the points lost. Grey: test locations.', 8, False, '#6B7A85')])

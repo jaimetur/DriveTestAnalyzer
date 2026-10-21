@@ -365,7 +365,7 @@ def _ladder(slide, view: dict[str, Any], groups: list[str], colours: dict[str, A
               [(f"{column['group']}  ", {'bold': True, 'colour': colour}),
                (f"{column['wide_share']:g}% at 100 MHz+" if column.get('wide_share') is not None else '',
                 {'bold': column is leader})], 10.5, colours['ink'], PP_ALIGN.CENTER, MSO_ANCHOR.MIDDLE)
-    _legend(slide, [item['label'] for item in classes], fills, LEFT, legend_top, WIDTH * 0.72, colours, prefix='Width, MHz:')
+    _legend(slide, [item['label'] for item in classes], fills, LEFT, legend_top, WIDTH * 0.72, colours, prefix='Primary bandwidth, MHz:')
     if view.get('note'):
         _text(slide, LEFT + WIDTH * 0.74, legend_top, WIDTH * 0.26, 0.2, view['note'], 8.5, colours['muted'], anchor=MSO_ANCHOR.MIDDLE)
 

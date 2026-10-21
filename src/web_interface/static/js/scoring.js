@@ -8349,9 +8349,10 @@
     const item = inScope[0];
     const section = insightSection(pane, `Where the points go${item.campaign ? ` — ${item.campaign}` : ''}`, 'scoring-stake-card', context);
     section.append(insightControls(scopeControl));
-    const kinds = item.kinds;
-    const [failedColour, belowColour, qualityColour] = activeTheme.stake || ['#a51c30', '#e8414f', '#f4a3aa'];
-    const colours = {failed: failedColour, below_par: belowColour, quality: qualityColour};
+    // The kinds that hold KPIs or points (Most Reliable scores only the Reliable KPIs).
+    const kinds = item.kinds.filter(kind => (kind.kpis || [null]).length || item.operators.some(row => row.parts[kind.key]));
+    const [notCompletedColour, minimumColour, belowColour, qualityColour] = activeTheme.stake || ['#6e1222', '#a51c30', '#e8414f', '#f4a3aa'];
+    const colours = {not_completed: notCompletedColour, below_minimum: minimumColour, below_par: belowColour, quality: qualityColour};
     const peak = Math.max(...item.operators.map(row => row.lost), 1);
     const list = document.createElement('div');
     list.className = 'scoring-stake';
@@ -8387,10 +8388,22 @@
     const wrap = document.createElement('div');
     wrap.className = 'scoring-insight-table-wrap';
     wrap.append(table);
-    section.append(list, legend, wrap, insightParagraph('scoring-insight-note',
-      'Failed tests: the points of the Reliable KPIs (calls and tests that did not complete, POLQA below 1.6, the lowest throughputs); ',
-      'below the threshold: the tests that passed but under the threshold of a KPI (setup over 10 s, under 5, 20 or 100 Mbit/s…); ',
-      'quality shortfall: what the averages, medians and 90th percentiles miss of their best score. Hover a bar for the KPIs that lose most.'));
+    // What each kind counts and the KPIs of the methodology it holds, each kind in its colour as in the bars (dark text
+    // on the light colours).
+    const textOn = colour => {
+      const [red, green, blue] = [1, 3, 5].map(index => parseInt(String(colour).slice(index, index + 2), 16) / 255);
+      return .2126 * red + .7152 * green + .0722 * blue > .55 ? '#17232d' : '#fff';
+    };
+    const definitions = insightTable(['Kind of loss', 'What it counts', 'KPIs'], kinds.map(kind => [
+      {text: kind.label, className: 'scoring-loss-kind-label',
+        style: {background: colours[kind.key], color: textOn(colours[kind.key]), fontWeight: 800}},
+      {text: kind.description || '', className: 'scoring-loss-kind-text'},
+      {text: (kind.kpis || []).join(', ') || '—', className: 'scoring-loss-kind-text'}]));
+    const definitionsWrap = document.createElement('div');
+    definitionsWrap.className = 'scoring-insight-table-wrap scoring-loss-kinds';
+    definitionsWrap.append(definitions);
+    section.append(list, legend, wrap, definitionsWrap, insightParagraph('scoring-insight-note',
+      'Each KPI loses its points in one kind. Hover a bar for the KPIs that lose most.'));
   }
 
   function servingNotice(section, pending) {
@@ -8491,7 +8504,7 @@
     }
     if (!listed.length) return;
     section.append(insightParagraph('scoring-insight-note', `High: ${insightNumber(listed[0].priority_points, 0)}+ points lost and losses on the same site in an earlier campaign; Medium: one of the two; Low: neither. `,
-      'Failed tests: the calls and tests that missed the Reliable KPIs. Please review their cells: configuration, alarms and changes on the days of the measurements.'));
+      'Failed tests: the calls and tests that missed the Reliable KPIs (not completed, or completed below the minimum). Please review their cells: configuration, alarms and changes on the days of the measurements.'));
   }
 
   function renderRouteStretches(pane, payload, environment, pending) {
@@ -8938,6 +8951,21 @@
     }
     selectors.append(viewControl);
     const candidates = inScope.filter(item => item.entry.title === view).map(item => item.entry);
+    // Rank the places by their National points lost or by the points they lose per 1,000 of their tests, so a place does
+    // not rank high only because it was measured more (results calculated before keep no tests per place).
+    const counted = candidates.find(entry => entry.ranking.rate_tests);
+    const rated = candidates.some(entry => entry.ranking.areas.some(area => area.rate !== null && area.rate !== undefined));
+    const {wrapper: rankControl, value: storedRank} = insightSelect('points-loss-rank',
+      [['points', 'National points lost'], ['rate', 'Points lost per 1,000 tests']], 'Rank by');
+    const rank = rated && storedRank === 'rate' ? 'rate' : 'points';
+    const rankSelect = rankControl.querySelector('select');
+    rankSelect.value = rank;
+    if (!rated) {
+      rankSelect.options[1].disabled = true;
+      rankSelect.options[1].title = counted ? `No place has ${insightNumber(counted.ranking.rate_minimum, 0)} tests or more`
+        : 'Calculate the scoring again to count the tests of each place';
+    }
+    selectors.append(rankControl);
     // Per City on map areas, one choice for every map: the points of the city or route that loses most among those
     // measured in each area (the default), or the real points lost there by the city or route that loses most there.
     // The colours of the areas never change with the chosen rows or areas, and changing the choice keeps them chosen.
@@ -8957,19 +8985,21 @@
         option.textContent = text;
         modeSelect.append(option);
       }
-      mode = real && insightSelections.get('points-loss-colour') === 'losses' ? 'losses' : 'top';
+      mode = real && rank === 'points' && insightSelections.get('points-loss-colour') === 'losses' ? 'losses' : 'top';
       modeSelect.value = mode;
-      if (!real) {
+      if (!real || rank === 'rate') {
         modeSelect.options[1].disabled = true;
-        modeSelect.options[1].title = 'Calculate the scoring again to keep the points each city or route loses in each area';
+        modeSelect.options[1].title = rank === 'rate' ? 'The points lost per 1,000 tests colour each area by its city or route'
+          : 'Calculate the scoring again to keep the points each city or route loses in each area';
       }
+      if (rank === 'rate') modeSelect.options[0].textContent = 'Points per 1,000 tests of the city or route that loses most in each area';
       modeControl.append(modeSelect);
       selectors.append(modeControl);
     }
     const grid = document.createElement('div');
     grid.className = `scoring-loss-map-grid${chosen.length > 1 ? ' is-multiple' : ''}`;
     const cards = candidates.filter(item => chosen.includes(item.ranking.operator))
-      .map(entry => pointsLossMapCard(entry, payload, savedFilterId, chosen.length > 1, mode));
+      .map(entry => pointsLossMapCard(entry, payload, savedFilterId, chosen.length > 1, mode, rank));
     grid.append(...cards);
     modeSelect?.addEventListener('change', () => {
       insightSelections.set('points-loss-colour', modeSelect.value);
@@ -8991,16 +9021,23 @@
   }
 
   // One operator's map with the note and the ranking of the areas where it loses most points.
-  function pointsLossMapCard(entry, payload, savedFilterId, compact, mode = 'top') {
+  function pointsLossMapCard(entry, payload, savedFilterId, compact, mode = 'top', rank = 'points') {
     const {ranking, layer} = entry;
+    // Per 1,000 tests: the places with enough tests by the points they lose per 1,000 of their tests; ``points`` holds
+    // that rate (the map and the bars follow it) and ``national`` their National points lost.
+    const perTests = rank === 'rate' && Boolean(ranking.rate_tests);
+    const areas = perTests ? ranking.areas.filter(area => area.rate !== null && area.rate !== undefined)
+      .map(area => ({...area, points: area.rate, national: area.points})).sort((left, right) => right.points - left.points)
+      : ranking.areas;
+    const sameLayer = !layer || layer === ranking || layer.field === ranking.field;
     const card = document.createElement('article');
     card.className = 'scoring-loss-map-card';
     // The operator of the column, large and in its colour.
     const title = document.createElement('h5');
     title.className = 'scoring-loss-map-operator';
     title.textContent = ranking.label;
-    const bars = ranking.areas.filter(area => area.name !== 'Not specified').slice(0, maxLossBars);
-    const listed = bars.reduce((sum, area) => sum + area.points, 0);
+    const bars = areas.filter(area => area.name !== 'Not specified').slice(0, maxLossBars);
+    const listed = bars.reduce((sum, area) => sum + (area.national ?? area.points), 0);
     const note = document.createElement('p');
     note.className = 'scoring-insight-note';
     const operator = document.createElement('strong');
@@ -9024,6 +9061,16 @@
     // the score of each place on its own tests, which the National & Geographical Areas Trends show.
     const writeNote = colourMode => {
       note.replaceChildren();
+      if (perTests) {
+        note.append(byRows ? `The map colours each ${areaLabel} by the National points `
+          : `The map colours each ${entry.title.toLowerCase()} by the National points `, operator,
+        byRows ? ' loses per 1,000 tests in the city or route that loses most per 1,000 tests among those measured in it '
+          : ' loses per 1,000 of its tests ', ...total());
+        note.append(listedText, ` (those with ${insightNumber(ranking.rate_minimum, 0)} tests or more) rank by the points lost per 1,000 of their Voice calls and Data tests, so a place does not rank high only because it was measured more; they hold `,
+          bold(`${ranking.total ? Math.round(listed / ranking.total * 100) : 0}%`), ' of the points lost. ',
+          bold('National points'), ': the part of the National loss in the tests of each place, not its own score (see the National & Geographical Areas Trends in Scoring Trends).');
+        return;
+      }
       if (byRows && colourMode === 'losses' && realData) {
         note.append(`The map colours each ${areaLabel} by the National points lost in it by the city or route of `, operator,
           ' that loses most there ', ...total());
@@ -9046,14 +9093,23 @@
     // All environments: beside each city or route, the environments where it loses points (most first).
     // Regions and Clusters hold tests of every environment, so they leave the column out.
     const withEnvironments = entry.title === 'City' && bars.some(area => area.environments?.length);
-    const table = insightTable(['Area', ...(withEnvironments ? ['Type'] : []), 'National points lost', 'Share'], bars.map(area => [area.name,
+    // Both figures of each place: the bar on the one it is ranked by.
+    const rated = Boolean(ranking.rate_tests);
+    const rateCell = area => ({text: area.rate === null || area.rate === undefined ? '—' : insightNumber(area.rate, 2),
+      className: 'scoring-insight-number', title: `${insightNumber(area.tests || 0, 0)} tests`});
+    const nationalOf = area => area.national ?? area.points;
+    const tested = bars.reduce((sum, area) => sum + (Number(area.tests) || 0), 0);
+    const table = insightTable(['Area', ...(withEnvironments ? ['Type'] : []), 'National points lost',
+      ...(rated ? ['Per 1,000 tests'] : []), 'Share'], bars.map(area => [area.name,
       ...(withEnvironments ? [{text: (area.environments || []).map(name => shortEnvironmentLabel(name)).join(', '),
         title: (area.environments || []).map(name => environmentLabel(name)).join(', '),
         className: 'scoring-loss-environment'}] : []),
-      gapBarCell(area.points, peak, {loss: true, total: true}),
+      perTests ? {text: insightNumber(area.national, 2), className: 'scoring-insight-number'} : gapBarCell(area.points, peak, {loss: true, total: true}),
+      ...(rated ? [perTests ? {...gapBarCell(area.points, peak, {loss: true, total: true}), title: `${insightNumber(area.tests || 0, 0)} tests`} : rateCell(area)] : []),
       {text: `${insightNumber(area.share * 100, 1)}%`, className: 'scoring-insight-number'}]),
     {total: [insightTotalLabel(`Total of the ${bars.length} listed`, withEnvironments ? 2 : 1),
-      insightTotalCell(bars.reduce((sum, area) => sum + (Number(area.points) || 0), 0), {digits: 2}),
+      insightTotalCell(bars.reduce((sum, area) => sum + (Number(nationalOf(area)) || 0), 0), {digits: 2}),
+      ...(rated ? [insightTotalCell(tested ? bars.reduce((sum, area) => sum + (Number(area.tests) ? Number(nationalOf(area)) || 0 : 0), 0) / tested * 1000 : null, {digits: 2})] : []),
       insightTotalCell(bars.reduce((sum, area) => sum + (Number(area.share) || 0), 0) * 100, {digits: 1, suffix: '%'})]});
     const tableBox = document.createElement('div');
     tableBox.className = 'scoring-insight-table-wrap';
@@ -9063,7 +9119,7 @@
     hint.textContent = 'Click a row or an area to show it alone; Ctrl/⌘-click adds more, Shift+click chooses the rows in between and Shift+drag selects several areas. Click it again or Esc to show all.';
     content.append(mapBox, tableBox);
     card.append(title, note, content, hint);
-    const values = Object.fromEntries((layer || ranking).areas.filter(area => area.name !== 'Not specified')
+    const values = Object.fromEntries((sameLayer ? areas : layer.areas).filter(area => area.name !== 'Not specified')
       .map(area => [area.name, area.points]));
     const rows = [...table.querySelectorAll('tbody tr')];
     rows.forEach((row, index) => {
@@ -9074,21 +9130,22 @@
       // Each colouring: each city or route with its map areas (the share of its tests in each, or the points it
       // loses in each one) and the colour of every area.
       const colourings = {};
-      for (const colourMode of byRows ? (realData ? ['top', 'losses'] : ['top']) : ['top']) {
+      const unit = perTests ? 'points lost per 1,000 tests' : 'points lost';
+      for (const colourMode of byRows ? (realData && !perTests ? ['top', 'losses'] : ['top']) : ['top']) {
         const real = colourMode === 'losses';
-        const links = lossAreaLinks(ranking, layer, real);
-        const rowAreas = byRows ? lossRowValues(ranking.areas, links, real) : null;
+        const links = lossAreaLinks({...ranking, areas}, layer, real);
+        const rowAreas = byRows ? lossRowValues(areas, links, real) : null;
         const describe = name => {
-          if (!rowAreas) return `${name}: ${insightNumber(values[name] || 0, 2)} points lost`;
+          if (!rowAreas) return `${name}: ${insightNumber(values[name] || 0, 2)} ${unit}`;
           const lines = rowAreas.rows[name] || [];
-          const lost = values[name] ? ` (${insightNumber(values[name], 2)} points lost in this area)` : '';
-          return lines.length ? `${name}${lost}\n${lines.slice(0, 4).map(([row, points]) => `${row}: ${insightNumber(points, 2)} points lost${real ? ' here' : ''}`).join('\n')}`
+          const lost = values[name] && !perTests ? ` (${insightNumber(values[name], 2)} points lost in this area)` : '';
+          return lines.length ? `${name}${lost}\n${lines.slice(0, 4).map(([row, points]) => `${row}: ${insightNumber(points, 2)} ${unit}${real ? ' here' : ''}`).join('\n')}`
             : `${name}: no listed city or route`;
         };
         colourings[colourMode] = {links, values: rowAreas ? rowAreas.values : values, describe};
       }
       const current = colourings[mode] || colourings.top;
-      const svg = lossMapSvg(layer ? boundaries : {}, current.values, ranking.areas,
+      const svg = lossMapSvg(layer ? boundaries : {}, current.values, areas,
         payload?.views?.insights?.points_loss_background || [], (name) => current.describe(name), outlines);
       mapBox.replaceChildren(svg);
       const select = lossMapSelection(card, svg, rows, current.links);

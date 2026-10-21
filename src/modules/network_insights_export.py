@@ -18,6 +18,7 @@ from pptx import Presentation
 from pptx.util import Inches, Pt
 
 from src.modules.exports import MUTED, ORANGE, _add_textbox
+from src.modules.network_insights import BANDWIDTH_LADDER_TITLE
 from src.modules.network_insights_findings import VIEW_TITLES
 from src.modules.network_insights_findings_slides import add_band_share_slides, add_finding_slides, ladder_colours, palette
 from src.modules.scoring_themes import active_theme
@@ -33,8 +34,8 @@ TABLE_ROWS_PER_SLIDE = 12
 REPORT_PANELS: tuple[tuple[str, str, tuple[tuple[str, str], ...]], ...] = (
     ('overview', 'Overview', (('cards', 'Overview cards'),)),
     ('findings', 'Key Findings', (('lte_signal', 'LTE signal at the test'), ('nr_signal', '5G signal at the test'),
-                                  ('bandwidth_spread', 'Bandwidth: spread and narrow tests'), ('technology', 'Technology in use'),
-                                  ('bands', 'Bands in use'), ('total_bandwidth', 'Total bandwidth'))),
+                                  ('bandwidth_spread', 'Primary bandwidth: spread and narrow tests'), ('technology', 'Technology in use'),
+                                  ('bands', 'Bands in use'), ('total_bandwidth', 'Primary bandwidth'))),
     ('maps', 'Coverage & Interference Maps', (('maps', 'Coverage and interference maps with their weakest areas'),
                                               ('cell_status', 'Cell status near the weak areas'))),
     ('rf_quality', 'RF Quality', (('cdfs', 'RSRP and SINR distributions with their classes'),
@@ -55,11 +56,13 @@ REPORT_PANELS: tuple[tuple[str, str, tuple[tuple[str, str], ...]], ...] = (
                                         ('density', 'Inventory snapshot density'))),
     ('spectrum', 'Spectrum', (('observed', 'Observed spectrum'), ('licensed', 'Licensed spectrum'),
                               ('deployed', 'Deployed in the inventory snapshot'), ('nr_duplex', 'NR sites by duplex mode'),
-                              ('bandwidth', 'Bandwidth per band and total bandwidth of the tests'),
+                              ('bandwidth', 'Bandwidth per band and primary bandwidth of the tests'),
                               ('bandwidth_splits', 'Bandwidth per kind of site, RAN Vendor and location'))),
 )
 # Slide titles (their start) and the panel and component they belong to; the first match wins.
 _COMPONENT_TITLES: tuple[tuple[str, str], ...] = (
+    # The primary bandwidth chart of the Spectrum starts as the Primary bandwidth Key Finding.
+    (BANDWIDTH_LADDER_TITLE, 'spectrum.bandwidth'),
     *((title, f'findings.{key}') for key, title in VIEW_TITLES.items()),
     ('Analysis Selection', 'selection.selection'), ('Analysis Notes', 'selection.notes'),
     ('Overview', 'overview.cards'), ('Coverage & Interference Maps', 'maps.maps'),
@@ -82,7 +85,7 @@ REPORT_SECTION_PREFIX = 'section:'
 
 
 def report_component(title: str) -> str:
-    """The panel and component (``panel.component``) a slide title belongs to; the total bandwidth chart, whose title
+    """The panel and component (``panel.component``) a slide title belongs to; the primary bandwidth chart, whose title
     follows the page, and the tables by location are Spectrum."""
     for start, key in _COMPONENT_TITLES:
         if title.startswith(start):
@@ -219,7 +222,7 @@ def _megahertz(value: Any) -> str:
 
 
 def bandwidth_tables(analysis: dict[str, Any], scope: str = 'download') -> list[tuple[str, list[str], list[list[str]]]]:
-    """Bandwidth per band and total bandwidth (LTE + NR) per group and environment, as on the page."""
+    """Bandwidth per band and primary bandwidth (LTE + NR) per group and environment, as on the page."""
     bandwidth, view, label = _bandwidth_view(analysis, scope)
     group = analysis.get('group_label') or 'Group'
     tables = []
@@ -246,7 +249,7 @@ def bandwidth_tables(analysis: dict[str, Any], scope: str = 'download') -> list[
              _megahertz(cell['median_mhz']) if cell.get('median_mhz') is not None else '—']
             for cell in ladders.get('cells') or [] if cell.get('known')]
     if rows:
-        tables.append((f'Spectrum · Total bandwidth, LTE and NR ({label})',
+        tables.append((f'Spectrum · Primary bandwidth, LTE and NR ({label})',
                        [bandwidth.get('column_label') or 'Group', 'Environment', 'Tests', *[item['label'] for item in classes],
                         f"At {bandwidth.get('wide_from_mhz', 100):g} MHz+", f"Below {bandwidth.get('narrow_below_mhz', 25):g} MHz", 'Median'], rows))
     # The ladders split by the kind of site and the RAN Vendor of the serving cell.
@@ -312,20 +315,21 @@ def nr_band_tables(analysis: dict[str, Any]) -> list[tuple[str, list[str], list[
 
 
 def bandwidth_title(analysis: dict[str, Any]) -> str:
-    """The title of the total bandwidth chart, as on the page."""
-    return str((_bandwidth_view(analysis, 'download')[0]).get('title') or 'Bandwidth of each test: LTE + NR')
+    """The title of the primary bandwidth chart, as on the page."""
+    return BANDWIDTH_LADDER_TITLE
 
 
 def bandwidth_caption(analysis: dict[str, Any], scope: str = 'download') -> str:
-    """The line under the title of the total bandwidth ladders, as on the page: what the ladders and their number show and
+    """The line under the title of the primary bandwidth ladders, as on the page: what the ladders and their number show and
     the group with the most tests under 25 MHz in each environment."""
     bandwidth, view, _label = _bandwidth_view(analysis, scope)
     narrow = f"{bandwidth.get('narrow_below_mhz', 25):g}"
     tests = 'download tests' if scope == 'download' else 'CDR Data tests'
     highlights = (view.get('ladders') or {}).get('highlights') or []
     wide = f"{bandwidth.get('wide_from_mhz', 100):g}"
-    text = (f'Each ladder splits the {tests} with a known bandwidth by their total width (LTE + NR), widest at the bottom; '
-            f'the number beside it is the share under {narrow} MHz (dark red) and the one below it the share at {wide} MHz or more.')
+    text = (f'Each ladder splits the {tests} with a known bandwidth by their primary bandwidth (the LTE carriers and the NR '
+            f'primary cell; the CDRs do not report the NR secondary carriers), widest at the bottom; the number beside it is '
+            f'the share under {narrow} MHz (dark red) and the one below it the share at {wide} MHz or more.')
     if highlights:
         text += f" Most under {narrow} MHz: " + '; '.join(
             f"{item['environment']}, {item['column']} ({item['narrow_share']:.0f}%)" for item in highlights) + '.'
@@ -337,7 +341,7 @@ LADDER_ASPECT = 2.6
 
 
 def bandwidth_ladder_image(analysis: dict[str, Any], scope: str = 'download') -> BytesIO | None:
-    """The total bandwidth ladders of the page as a PNG: per group (column) and environment (row), one block per
+    """The primary bandwidth ladders of the page as a PNG: per group (column) and environment (row), one block per
     bandwidth class, widest at the bottom, as wide as the class midpoint and as tall as its share of the tests."""
     from PIL import ImageDraw
 
@@ -419,7 +423,7 @@ def bandwidth_ladder_image(analysis: dict[str, Any], scope: str = 'download') ->
                 draw.text((centre, base + 34), f"{cell.get('wide_share') or 0:.0f}% at {wide} MHz+", fill='#1F2433' if is_most else '#3B4060',
                           font=figure_font if is_most else wide_font, anchor='mm')
     legend_top = len(bands) * band_height + 44
-    draw.text((24, legend_top), 'Width, MHz (LTE + NR)', fill='#1F2433', font=text_font, anchor='lm')
+    draw.text((24, legend_top), 'Primary bandwidth, MHz (LTE + NR)', fill='#1F2433', font=text_font, anchor='lm')
     for item, left, line in legend:
         top = legend_top + line * 48
         draw.rectangle([(left, top - 16), (left + 32, top + 16)], fill=item['colour'])
@@ -1180,8 +1184,8 @@ def export_network_insights_powerpoint(destination: Path, analysis: dict[str, An
             presentation, title, columns, rows, scope_for(title, selection)))
     ladder = bandwidth_ladder_image(analysis)
     for title, columns, rows in bandwidth_tables(analysis):
-        # The total bandwidth ladders, then their figures.
-        if title.startswith('Spectrum · Total bandwidth,') and ladder is not None:
+        # The primary bandwidth ladders, then their figures.
+        if title.startswith('Spectrum · Primary bandwidth,') and ladder is not None:
             # As a benchmark slide: the chart title, with its scope and the line that explains it under it.
             emitted(title, lambda: _visual_slides(presentation, bandwidth_title(analysis), [('', ladder, '', None)],
                                                   subtitle=measured, footnote=bandwidth_caption(analysis)))

@@ -3,7 +3,7 @@
 Every view compares the groups of the analysis (the Operators, or the grouping chosen without the environment) on one
 value per Data test, as benchmark reports do: the LTE and 5G signal at the test per environment, the spread of the total
 bandwidth of the downloads and their share under 40 MHz, how often 5G was used (drive and walk apart), the main 4G band
-and 5G on 3.5 GHz, and the total bandwidth ladder. Each one carries a headline written from its figures, what it means,
+and 5G on 3.5 GHz, and the primary bandwidth ladder. Each one carries a headline written from its figures, what it means,
 its basis and a footnote; the page and the PowerPoint and Word exports draw them in the colours of the chosen theme.
 """
 from __future__ import annotations
@@ -36,10 +36,10 @@ NUMBER_WORDS = ('zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', '
 VIEW_TITLES = {
     'lte_signal': 'LTE signal at the test: RSRP and SINR',
     'nr_signal': '5G signal at the test: RSRP and quality (SINR)',
-    'bandwidth_spread': 'Bandwidth: spread and narrow tests',
+    'bandwidth_spread': 'Primary bandwidth: spread and narrow tests',
     'technology': 'Technology in use',
     'bands': 'Bands in use',
-    'total_bandwidth': 'Total bandwidth',
+    'total_bandwidth': 'Primary bandwidth',
 }
 
 
@@ -284,7 +284,7 @@ def _spread_view(tests: pd.DataFrame, groups: pd.Series, order: list[str]) -> di
     fewest = ranked[0] if ranked else None
     top = widest[0]
     narrow_of = {row['group']: row['share'] for row in narrow}
-    headline = f"{_possessive(top['group'])} median {noun[:-1]} had {top['median']:g} MHz in total"
+    headline = f"{_possessive(top['group'])} median {noun[:-1]} had {top['median']:g} MHz of primary bandwidth"
     if len(widest) > 1:
         headline += f" ({widest[1]['group']} {widest[1]['median']:g})"
     if fewest is not None and fewest['group'] == top['group'] and len(ranked) > 1:
@@ -304,14 +304,15 @@ def _spread_view(tests: pd.DataFrame, groups: pd.Series, order: list[str]) -> di
     return {
         'kind': 'spread', 'headline': headline, 'meaning': meaning,
         'panels': [
-            {'title': '4G and 5G together, MHz (wider is better)', 'rows': spread,
+            {'title': 'Primary bandwidth, 4G and 5G together, MHz (wider is better)', 'rows': spread,
              'note': 'Left number: P10; above the mark: the median; right: P90 (narrowest to widest tenth).'},
             {'title': f'{noun.title()} under {NARROW_DOWNLOAD_MHZ:g} MHz, % (lower is better)', 'rows': narrow,
              'note': f'Colour: the fewest of the {_words(len(ranked))} in the best colour of the scale, the most in the worst.'
              if len(ranked) > 1 else ''},
         ],
-        'basis': 'the total downlink bandwidth of each test: LTE as the mean width of its aggregated carriers, 5G as the '
-                 'width of its primary cell, added up.',
+        'basis': 'the primary downlink bandwidth of each test: LTE as the mean width of its aggregated carriers, 5G as the '
+                 'width of its primary cell, added up (the CDRs do not report the 5G secondary carriers, so 5G carrier '
+                 'aggregation is not included).',
         'footnote': f'{len(known):,} {noun} with a known width' + (f' ({unknown:,} left out).' if unknown else '.'),
         'tests': int(len(known)),
     }
@@ -528,7 +529,7 @@ def _ladder_view(tests: pd.DataFrame, groups: pd.Series, order: list[str]) -> di
     leader = max(eligible, key=lambda column: column['wide_share'] or 0)
     count = _words(len(eligible))
     headline = (f"{_percent(leader['wide_share'])} of {_possessive(leader['group'])} {noun} had {WIDE_DOWNLOAD_MHZ:g} MHz or more "
-                f"in 4G and 5G together" + (f', the most of the {count}' if len(eligible) > 1 else ''))
+                f"of primary bandwidth (4G and 5G)" + (f', the most of the {count}' if len(eligible) > 1 else ''))
     modes, values = _modes(downloads)
     mode_leaders = set()
     for mode in modes:
@@ -555,7 +556,8 @@ def _ladder_view(tests: pd.DataFrame, groups: pd.Series, order: list[str]) -> di
         'kind': 'ladder', 'classes': [{'label': label, 'width': width} for label, _lower, _upper, _colour, width in BANDWIDTH_CLASSES],
         'columns': columns, 'headline': headline, 'meaning': meaning, 'note': 'Bar width grows with the bandwidth.',
         'basis': '',
-        'footnote': (f'{noun.title()}: 4G and 5G carriers of each test added up'
+        'footnote': (f'{noun.title()}: primary bandwidth, the 4G carriers of each test (aggregated) plus its 5G primary cell; '
+                     'the CDRs do not report the 5G secondary carriers'
                      + (f'; {int(totals.isna().sum()):,} of {len(totals):,} without a known width left out.'
                         if totals.isna().any() else '.')),
         'tests': int(len(known)),

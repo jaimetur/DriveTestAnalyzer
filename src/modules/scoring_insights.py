@@ -86,14 +86,36 @@ def operator_styles(score_tables: list[dict[str, Any]]) -> dict[str, Any]:
     return styles
 
 
+# The points each City, Region or Cluster loses per 1,000 of its tests (Voice calls and Data tests) rank it apart from
+# how much it was measured; the places with fewer tests are left out of that ranking.
+RATE_TESTS = 1000
+MIN_RATE_TESTS = 500
+
+
+def _series_tests(document: dict[str, Any], keys: list[str]) -> dict[tuple, dict[str, dict[str, int]]]:
+    """The tests of each series and environment (None: all of them) per Vendor, Site Type, City, Region and Cluster."""
+    tests: dict[tuple, dict[str, dict[str, int]]] = {}
+    for entry in document.get('serving_tests') or []:
+        identity = tuple(entry.get(key) for key in keys)
+        environment = str(entry.get('environment') or '')
+        for target in (tests.setdefault((identity, None), {}), tests.setdefault((identity, environment), {})):
+            for field, counts in (entry.get('counts') or {}).items():
+                into = target.setdefault(field, {})
+                for name, count in counts.items():
+                    into[name] = into.get(name, 0) + int(count)
+    return tests
+
+
 def _points_loss_maps(result: dict[str, Any] | None, score_tables: list[dict[str, Any]],
                       combined_weight: Callable[[Any, Any, Any], float] | None = None) -> tuple[list, list]:
-    """Points lost per area of each operator series, with the area locations to draw them."""
+    """Points lost per area of each operator series, with the area locations to draw them and, per City, Region and
+    Cluster, the tests of each place and the points it loses per 1,000 of them (when the result counted them)."""
     from src.modules.scoring_points_loss import ENTRY_FIELDS, points_loss_maps
     document = (result or {}).get('points_loss')
     if not isinstance(document, dict) or not document.get('shares'):
         return [], []
     keys = [key for key in document['shares'][0] if key not in ENTRY_FIELDS]
+    tests = _series_tests(document, keys)
     styles = operator_styles(score_tables)
     references = {table.get('baseline_operator') for table in score_tables}
     geometry = document.get('areas') or {}
@@ -110,10 +132,17 @@ def _points_loss_maps(result: dict[str, Any] | None, score_tables: list[dict[str
         operator = context.get('operator')
         style = styles.get(operator) or {}
         located = geometry.get(item['field']) or {}
+        identity = tuple(context.get(key) for key in keys)
+        counted = ((tests.get((identity, item.get('environment'))) or {}).get(item['field'])
+                   if item['field'] in LOCATION_LEVELS else None)
         areas = []
         for name, points in sorted(item['areas'].items(), key=lambda entry: -entry[1]):
             place = located.get(name) or {}
+            measured = (counted or {}).get(name)
             areas.append({'name': name, 'points': points, 'share': points / item['total'] if item['total'] else 0,
+                          # Its tests and the points it loses per 1,000 of them (None for the places with few tests).
+                          **({'tests': measured or 0, 'rate': points / measured * RATE_TESTS
+                              if measured and measured >= MIN_RATE_TESTS else None} if counted else {}),
                           'latitude': place.get('latitude'), 'longitude': place.get('longitude'),
                           'kind': place.get('kind', 'place'), 'route': place.get('points') or [],
                           # The map areas holding its tests and how many, and the points it loses in each one:
@@ -130,6 +159,7 @@ def _points_loss_maps(result: dict[str, Any] | None, score_tables: list[dict[str
             'context': {field: value for field, value in context.items()
                         if field != 'operator' and value not in (None, '')},
             'areas': areas, 'total': item['total'],
+            **({'rate_tests': RATE_TESTS, 'rate_minimum': MIN_RATE_TESTS} if counted else {}),
             **({'area_label': area_label, 'unmapped_countries': unmapped} if item['field'] == 'Area' else {}),
             **{key: item[key] for key in ('failures', 'city_losses') if item.get(key)},
         })
@@ -595,8 +625,29 @@ MAX_STRETCH_ROUTES = 6
 MAX_ROUTE_STRETCHES = 8
 # A site is High priority with this many points lost and losses in an earlier campaign too, Medium with one of them.
 SITE_PRIORITY_POINTS = 1.0
-LOSS_KINDS = ('failed', 'below_par', 'quality')
-LOSS_KIND_LABELS = {'failed': 'Failed tests', 'below_par': 'Below the threshold', 'quality': 'Quality shortfall'}
+# How a KPI loses its points (see loss_kind), from the most to the least severe.
+LOSS_KINDS = ('not_completed', 'below_minimum', 'below_par', 'quality')
+LOSS_KIND_LABELS = {'not_completed': 'Not completed (NQ)', 'below_minimum': 'Below the minimum',
+                    'below_par': 'Below the threshold', 'quality': 'Quality shortfall'}
+LOSS_KIND_DESCRIPTIONS = {
+    'not_completed': 'Calls and tests whose result is not Completed (failed, dropped…): the Non-Qualified Calls of the NQ '
+                     'module, and the Multi RAB data transfers that did not succeed.',
+    'below_minimum': 'Completed, but under the minimum quality of the Reliable KPIs (such as POLQA of 1.6 or less, downloads '
+                     'of 2 Mbit/s or less, uploads of 1 Mbit/s or less). Not Non-Qualified Calls.',
+    'below_par': 'Completed above that minimum, but under the threshold of a KPI (such as setup over 10 s, disturbed and '
+                 'impaired calls, 5, 20 or 100 Mbit/s or less, slow or irritating video). Not Non-Qualified Calls.',
+    'quality': 'What the averages, medians, 90th percentiles and the packet error ratio miss of their best score (times, '
+               'POLQA, P90 throughput, round trip). Not counted per test.',
+}
+# The kinds that miss the Reliable KPIs: the failed calls and tests of Where to act and of the sites to review.
+FAILED_KINDS = ('not_completed', 'below_minimum')
+# A success ratio counts the calls or tests whose result is Completed (or Successful): those that miss it did not complete.
+_RESULT_FIELDS = r'(?:Call_Status|Test_Result|Test_Status|Session_Status|Result)'
+_RESULTS = r'"(?:Completed|Successful|Success)"'
+_SUCCESS_RATIO = re.compile(
+    rf'(?:100 \* )?(?:SUM|COUNT)\(\s*(?:{_RESULT_FIELDS}\s*==\s*{_RESULTS}|CONTAINS\(\s*{_RESULT_FIELDS}\s*,\s*{_RESULTS}\s*\))\s*\)'
+    r' / (?:SUM|COUNT)\(\w+\)', re.IGNORECASE)
+_UNIT = re.compile(r'\s*\[[^\]]*\]?\s*$')
 SERVICE_ORDER = ('Data', 'Voice')
 SERVICES = ('Voice', 'Data', 'Overall')
 _AGGREGATE_FORMULA = re.compile(r'(AVG|MEDIAN|PCT90)\(\w+\)')
@@ -881,14 +932,28 @@ def _levers(scopes, levels: list[str], environment: str) -> list[dict[str, Any]]
 
 
 def loss_kind(row: dict[str, Any], formulas: dict[str, str]) -> str:
-    """How a KPI loses its points: on failed tests (Reliable KPIs), on tests below its threshold (the other ratios) or
-    as a quality shortfall (averages, medians, percentiles and packet loss)."""
+    """How a KPI loses its points: on calls and tests that did not complete (the success ratios: the Non-Qualified
+    Calls), on completed ones below the minimum of the other Reliable KPIs (POLQA 1.6 or less, the lowest throughputs),
+    on completed ones below the threshold of the other ratios, or as a quality shortfall (averages, medians,
+    percentiles and packet loss)."""
+    formula = (formulas.get(str(row.get('kpi_code'))) or '').strip()
+    if _SUCCESS_RATIO.fullmatch(formula) or (not formula and 'SUCCESS' in str(row.get('kpi') or '').upper()):
+        return 'not_completed'
     if str(row.get('kpi_type') or '').casefold() == 'reliable':
-        return 'failed'
-    formula = formulas.get(str(row.get('kpi_code'))) or ''
+        return 'below_minimum'
     if not formula or _AGGREGATE_FORMULA.fullmatch(formula) or 'totalpacketlost' in formula:
         return 'quality'
     return 'below_par'
+
+
+def loss_kinds(table: dict[str, Any], formulas: dict[str, str]) -> list[dict[str, Any]]:
+    """Each kind of loss with what it counts and the KPIs of the table (the scored ones) it holds."""
+    names: dict[str, dict[str, None]] = {kind: {} for kind in LOSS_KINDS}
+    for row in _kpi_rows(table):
+        if (_number(row.get('max_points')) or 0) > 0:
+            names[loss_kind(row, formulas)].setdefault(_UNIT.sub('', str(row.get('kpi') or row['kpi_code'])), None)
+    return [{'key': kind, 'label': LOSS_KIND_LABELS[kind], 'description': LOSS_KIND_DESCRIPTIONS[kind],
+             'kpis': list(names[kind])} for kind in LOSS_KINDS]
 
 
 def _losses(table: dict[str, Any], operator: str, formulas: dict[str, str]) -> tuple[dict[str, float], dict[str, list]]:
@@ -909,7 +974,8 @@ def _losses(table: dict[str, Any], operator: str, formulas: dict[str, str]) -> t
 
 def _service_losses(table: dict[str, Any], operator: str, formulas: dict[str, str]) -> dict[str, dict[str, Any]]:
     """The points lost on Voice and on Data by kind, with the KPIs that lose most: every kind of Voice (``kpis``), the
-    failed Data tests (``failed_kpis``) and the Data below the thresholds or short of quality (``below_kpis``)."""
+    failed Data tests, not completed or below the minimum (``failed_kpis``), and the Data below the thresholds or short of
+    quality (``below_kpis``)."""
     services: dict[str, dict[str, Any]] = {}
     for row in _kpi_rows(table):
         maximum = _number(row.get('max_points')) or 0.0
@@ -921,7 +987,7 @@ def _service_losses(table: dict[str, Any], operator: str, formulas: dict[str, st
         entry[kind] += lost
         kpi = {'kpi': row.get('kpi'), 'lost': lost, 'kind': kind}
         entry['kpis'].append(kpi)
-        entry['failed_kpis' if kind == 'failed' else 'below_kpis'].append(kpi)
+        entry['failed_kpis' if kind in FAILED_KINDS else 'below_kpis'].append(kpi)
     for entry in services.values():
         for key in ('kpis', 'failed_kpis', 'below_kpis'):
             entry[key] = sorted(entry[key], key=lambda item: -item['lost'])[:3]
@@ -929,8 +995,9 @@ def _service_losses(table: dict[str, Any], operator: str, formulas: dict[str, st
 
 
 def _points_at_stake(scopes, levels: list[str], environment: str, formulas: dict[str, str]) -> list[dict[str, Any]]:
-    """Per scope (its latest campaign): the points each operator lost, on failed tests, on tests below the KPI
-    thresholds and as a quality shortfall, in all environments and in each one."""
+    """Per scope (its latest campaign): the points each operator lost on calls and tests not completed, below the
+    minimum of the Reliable KPIs, below the KPI thresholds and as a quality shortfall, in all environments and in each
+    one, with what each kind counts and its KPIs."""
     items = []
     for members in _scope_groups(scopes, environment):
         latest = members[-1]
@@ -955,7 +1022,7 @@ def _points_at_stake(scopes, levels: list[str], environment: str, formulas: dict
             'title': _group_label(context, levels, {'Campaign'}),
             'campaign': _display('Campaign', context.get('campaign')) if context.get('campaign') else None,
             'maximum': _number((table.get('total') or {}).get('max_points')), 'operators': operators,
-            'kinds': [{'key': kind, 'label': LOSS_KIND_LABELS[kind]} for kind in LOSS_KINDS],
+            'kinds': loss_kinds(table, formulas),
         })
     return items
 
@@ -1134,16 +1201,7 @@ def _serving_views(maps: list[dict[str, Any]], result: dict[str, Any] | None) ->
     places = (document.get('areas') or {}).get('City') or {}
     keys = [key for key in (document.get('shares') or [{}])[0]
             if key not in {'environment', 'kpi_code', 'areas', 'weight', 'tests'}]
-    # The tests of each series and environment (None: all of them) per Vendor and Site Type.
-    tests: dict[tuple, dict[str, dict[str, int]]] = {}
-    for entry in document.get('serving_tests') or []:
-        identity = tuple(entry.get(key) for key in keys)
-        environment = str(entry.get('environment') or '')
-        for target in (tests.setdefault((identity, None), {}), tests.setdefault((identity, environment), {})):
-            for field, counts in (entry.get('counts') or {}).items():
-                into = target.setdefault(field, {})
-                for name, count in counts.items():
-                    into[name] = into.get(name, 0) + int(count)
+    tests = _series_tests(document, keys)
     # sites_unidentified: the operators none of whose serving cells is in the cell inventories, so no site of theirs can
     # be reviewed.
     views: dict[str, list[dict[str, Any]]] = {'vendor_losses': [], 'site_type_losses': [], 'sites_to_review': [],

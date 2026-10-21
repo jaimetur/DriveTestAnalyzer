@@ -73,7 +73,7 @@ def test_findings_compare_the_groups_with_headlines_from_their_figures() -> None
     assert all(abs(sum(row['shares']) - 100) < 0.5 for block in rsrp['environments'] for row in block['rows'])
     assert views['nr_signal']['headline'].startswith("A's 5G quality is the best of the two")
     spread = views['bandwidth_spread']
-    assert spread['headline'] == "A's median download had 160 MHz in total (B 25); 0.0% under 40 MHz, the fewest"
+    assert spread['headline'] == "A's median download had 160 MHz of primary bandwidth (B 25); 0.0% under 40 MHz, the fewest"
     narrow = {row['group']: row for row in spread['panels'][1]['rows']}
     assert narrow['A']['share'] == 0 and narrow['A']['rank'] == 0 and narrow['B']['rank'] == 1
     technology = views['technology']
@@ -87,7 +87,7 @@ def test_findings_compare_the_groups_with_headlines_from_their_figures() -> None
     assert bands['headline'].startswith("4G mostly on 2600 MHz, the most on A's downloads (100%)")
     assert bands['side']['title'] == '5G on 3.5 GHz'
     ladder = views['total_bandwidth']
-    assert ladder['headline'] == "100% of A's downloads had 100 MHz or more in 4G and 5G together, the most of the two"
+    assert ladder['headline'] == "100% of A's downloads had 100 MHz or more of primary bandwidth (4G and 5G), the most of the two"
     assert [item['label'] for item in ladder['classes']][0] == '200+ MHz'
 
 
@@ -134,9 +134,9 @@ def test_finding_slides_are_drawn_with_shapes_in_the_theme() -> None:
 def test_key_findings_are_a_panel_of_the_export_after_the_overview(tmp_path) -> None:
     assert [key for key, _title, _items in REPORT_PANELS][:2] == ['overview', 'findings']
     assert report_component('LTE signal at the test: RSRP and SINR') == 'findings.lte_signal'
-    assert report_component('Total bandwidth · 1/2') == 'findings.total_bandwidth'
-    assert report_component('Bandwidth: spread and narrow tests') == 'findings.bandwidth_spread'
-    assert report_component('Bandwidth of each test: LTE + NR') == 'spectrum.bandwidth'
+    assert report_component('Primary bandwidth · 1/2') == 'findings.total_bandwidth'
+    assert report_component('Primary bandwidth: spread and narrow tests') == 'findings.bandwidth_spread'
+    assert report_component('Primary bandwidth of each test: LTE + NR') == 'spectrum.bandwidth'
     analysis = {'rf_rows': [], 'maps': {}, 'spectrum': {}, 'charts': {}, 'findings': _findings()}
     output = tmp_path / 'findings.pptx'
     export_network_insights_powerpoint(output, analysis, {}, {'campaigns': ['2026-Q3']}, _png, template=TEMPLATE)

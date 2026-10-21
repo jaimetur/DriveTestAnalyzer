@@ -503,7 +503,7 @@ def calculate_scoring(
                         loss_shares.append({**metadata, 'kpi_code': metric['code'], 'areas': shares,
                                             'weight': round(float(weights.sum()), 4),
                                             'tests': points_loss.counts_tests(metric)})
-            served = points_loss.serving_counts(group)
+            served = points_loss.serving_counts(group, areas=kind != 'speech')
             if served:
                 serving_tests.append({**metadata, 'counts': served})
         geometry.add(frame[valid])
@@ -617,7 +617,7 @@ def calculate_points_loss(
                     loss_shares.append({**metadata, 'kpi_code': metric['code'], 'areas': shares,
                                         'weight': round(float(weights.sum()), 4),
                                         'tests': points_loss.counts_tests(metric)})
-            served = points_loss.serving_counts(group)
+            served = points_loss.serving_counts(group, areas=kind != 'speech')
             if served:
                 serving_tests.append({**metadata, 'counts': served})
         geometry.add(frame[valid])

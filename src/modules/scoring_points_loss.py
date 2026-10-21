@@ -374,11 +374,12 @@ def _category_shares(frame: pd.DataFrame, weights: pd.Series, total: float) -> d
     return shares
 
 
-def serving_counts(frame: pd.DataFrame) -> dict[str, dict[str, int]]:
+def serving_counts(frame: pd.DataFrame, *, areas: bool = True) -> dict[str, dict[str, int]]:
     """The tests of a scoring group per Vendor and per Site Type of their serving cell, to compare each one's share of
-    the tests with its share of the points lost."""
+    the tests with its share of the points lost, and, with ``areas`` (the calls and tests, not the samples of Speech),
+    per City, Region and Cluster, for the points each place loses per 1,000 of its tests."""
     counts: dict[str, dict[str, int]] = {}
-    for field in (VENDOR, SITE_TYPE):
+    for field in (VENDOR, SITE_TYPE, *(AREA_FIELDS if areas else ())):
         column = SHARE_COLUMN.format(field)
         if column in frame:
             values = frame[column].value_counts()

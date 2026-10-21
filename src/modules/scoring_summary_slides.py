@@ -31,7 +31,7 @@ LOSS_COLOR = '#E8414F'
 GAIN_COLOR = '#4CA65A'
 # The position of an operator: green for the first, light green for the second, light red in between, red for the last.
 RANK_COLORS = ('#2F8A3E', '#7CBF73', '#F0868E', '#E8414F')
-STAKE_COLORS = {'failed': '#A51C30', 'below_par': '#E8414F', 'quality': '#F4A3AA'}
+STAKE_COLORS = {'not_completed': '#6E1222', 'below_minimum': '#A51C30', 'below_par': '#E8414F', 'quality': '#F4A3AA'}
 MAX_SCOPE_SLIDES = 6
 MAX_OPERATOR_SLIDES = 4
 MAX_TABLE_ROWS = 22
@@ -580,19 +580,27 @@ def add_gap_parts_slides(presentation, items: list[dict[str, Any]], *, subtitle:
 
 
 # ---- Points Lost ------------------------------------------------------------------------------------------------------
+def shown_loss_kinds(item: dict[str, Any]) -> list[dict[str, Any]]:
+    """The kinds of loss of a Where the points go item that hold KPIs or points (Most Reliable scores only the Reliable
+    KPIs, so the other kinds are left out)."""
+    return [kind for kind in item['kinds']
+            if kind.get('kpis', True) or any(row['parts'].get(kind['key']) for row in item['operators'])]
+
+
 def add_points_at_stake_slides(presentation, items: list[dict[str, Any]], *, subtitle: str, new_slide: Callable,
                                scope: ScopeLabels | None = None) -> None:
-    """Where the points go: the points each operator lost on failed tests, on tests below the KPI thresholds and as a
-    quality shortfall."""
+    """Where the points go: the points each operator lost on calls and tests not completed, below the minimum of the
+    Reliable KPIs, below the KPI thresholds and as a quality shortfall, with what each kind counts and its KPIs."""
     for item in items[:3]:
         slide = new_slide(presentation, 'Points Lost — where the points go',
                           _subtitle(subtitle, scope, item['context'], item.get('title') or '', item.get('campaign') or ''))
         operators = item['operators']
+        kinds = shown_loss_kinds(item)
         data = CategoryChartData()
         data.categories = [row['label'] for row in reversed(operators)]
-        for kind in item['kinds']:
+        for kind in kinds:
             data.add_series(kind['label'], [round(row['parts'][kind['key']], 1) for row in reversed(operators)])
-        height = min(3.4, .55 + .5 * len(operators))
+        height = min(2.3, .5 + .36 * len(operators))
         chart_shape = slide.shapes.add_chart(XL_CHART_TYPE.BAR_STACKED, Inches(.45), Inches(CONTENT_TOP), Inches(12.45),
                                              Inches(height), data)
         chart_shape.name = 'Scoring Points At Stake Chart'
@@ -613,27 +621,50 @@ def add_points_at_stake_slides(presentation, items: list[dict[str, Any]], *, sub
         plot.data_labels.font.size = Pt(8)
         plot.data_labels.font.color.rgb = _rgb('#FFFFFF')
         plot.data_labels.position = XL_DATA_LABEL_POSITION.CENTER
-        for series, kind in zip(chart.series, item['kinds']):
+        for series, kind in zip(chart.series, kinds):
             series.format.fill.solid()
             series.format.fill.fore_color.rgb = _rgb(STAKE_COLORS[kind['key']])
-        top = CONTENT_TOP + height + .15
-        headers = ['Operator', *[kind['label'] for kind in item['kinds']], 'Points lost', 'Points', 'KPIs that lose most']
-        widths = [1.7, 1.45, 1.45, 1.45, 1.2, 1.0, 4.2]
-        row_height = min(.36, (CONTENT_BOTTOM - top - .3) / (len(operators) + 1))
+        top = CONTENT_TOP + height + .1
+        headers = ['Operator', *[kind['label'] for kind in kinds], 'Points lost', 'Points', 'KPIs that lose most']
+        kind_width = 5.0 / max(1, len(kinds)) if len(kinds) > 3 else 1.45
+        widths = [1.5, *[kind_width] * len(kinds), 1.05, .95]
+        widths.append(12.45 - sum(widths))
+        row_height = min(.28, (CONTENT_BOTTOM - top - 1.75) / (len(operators) + 1))
         shape, table = _table(slide, len(operators) + 1, len(headers), .45, top, 12.45, row_height, widths)
         shape.name = 'Scoring Points At Stake Table'
         _header(table, headers, size=8.5)
         for row_index, row in enumerate(operators, start=1):
             _cell(table.cell(row_index, 0), row['label'], size=8.5, bold=True, color=_color(row.get('color'), row_index))
-            for column, kind in enumerate(item['kinds'], start=1):
+            for column, kind in enumerate(kinds, start=1):
                 _cell(table.cell(row_index, column), f"{row['parts'][kind['key']]:,.1f}", size=8.5, align=PP_ALIGN.RIGHT)
-            _cell(table.cell(row_index, 4), f"{row['lost']:,.1f}", size=8.5, bold=True, align=PP_ALIGN.RIGHT)
-            _cell(table.cell(row_index, 5), f"{row['points']:,.1f}", size=8.5, align=PP_ALIGN.RIGHT)
+            _cell(table.cell(row_index, len(kinds) + 1), f"{row['lost']:,.1f}", size=8.5, bold=True, align=PP_ALIGN.RIGHT)
+            _cell(table.cell(row_index, len(kinds) + 2), f"{row['points']:,.1f}", size=8.5, align=PP_ALIGN.RIGHT)
             worst = sorted((kpi for kpis in (row.get('kpis') or {}).values() for kpi in kpis), key=lambda kpi: -kpi['lost'])[:2]
-            _cell(table.cell(row_index, 6), ' · '.join(f"{kpi['kpi']} {kpi['lost']:,.1f}" for kpi in worst), size=7.5)
-        _text(slide, 'Failed tests: the Reliable KPIs; below the threshold: tests that passed under the threshold of a KPI; '
-                     'quality shortfall: what the averages, medians and 90th percentiles miss of their best score.',
-              .45, CONTENT_BOTTOM - .22, 12.4, .25, size=8, color=MUTED)
+            _cell(table.cell(row_index, len(kinds) + 3), ' · '.join(f"{kpi['kpi']} {kpi['lost']:,.1f}" for kpi in worst), size=7.5)
+        _loss_kinds_table(slide, kinds, top + row_height * (len(operators) + 1) + .12)
+
+
+def _loss_kinds_table(slide, kinds: list[dict[str, Any]], top: float) -> None:
+    """What each kind of loss counts and the KPIs of the methodology it holds, under the points of Where the points go."""
+    rows = [kind for kind in kinds if kind.get('description')]
+    if not rows:
+        return
+    row_height = min(.42, (CONTENT_BOTTOM - top) / (len(rows) + .6))
+    widths = [1.5, 4.85, 6.1]
+    shape, table = _table(slide, len(rows) + 1, 3, .45, top, 12.45, row_height, widths)
+    shape.name = 'Scoring Points At Stake Kinds'
+    _header(table, ['Kind of loss', 'What it counts', 'KPIs'], size=7.5, numeric_from=3)
+    table.rows[0].height = Inches(row_height * .6)
+    for index, kind in enumerate(rows, start=1):
+        # The kind in its colour, as in the chart (dark text on the light colours of the theme).
+        fill = STAKE_COLORS.get(kind['key'], '#E9ECEF')
+        red, green, blue = (int(themed(fill).lstrip('#')[start:start + 2], 16) / 255 for start in (0, 2, 4))
+        _cell(table.cell(index, 0), kind['label'], size=7.5, bold=True, fill=fill,
+              color=INK if .2126 * red + .7152 * green + .0722 * blue > .55 else '#FFFFFF')
+        _cell(table.cell(index, 1), kind['description'], size=6.5, color=MUTED)
+        _cell(table.cell(index, 2), ', '.join(kind.get('kpis') or []) or '—', size=6.5, color=MUTED)
+        for column in (1, 2):
+            table.cell(index, column).text_frame.word_wrap = True
 
 
 def latest_campaign_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:

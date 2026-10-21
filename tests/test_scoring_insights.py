@@ -366,3 +366,36 @@ def test_kpi_gap_profile_slides_cover_every_selected_city():
     assert [(item['context']['city'], item['operator']) for item in kept] == [
         (city, operator) for city in cities for operator in ('VF', 'EE', '3')]
     assert MAX_PROFILE_SCOPES == 12
+
+
+@pytest.mark.parametrize(('code', 'kpi_type', 'formula', 'kind'), [
+    ('K1', 'Reliable', '100 * SUM(Call_Status == "Completed") / COUNT(Call_Status)', 'not_completed'),
+    ('K12', 'Reliable', '100 * SUM(CONTAINS(Test_Result, "Completed")) / COUNT(Test_Result)', 'not_completed'),
+    # Multi RAB is a Diff KPI, but its transfers that did not succeed did not complete.
+    ('K11', 'Diff', '100 * SUM(Test_Status == "Successful") / COUNT(Call_Status)', 'not_completed'),
+    ('K4', 'Reliable', '100 * SUM(LQ <= 1.6) / COUNT(Session_Type)', 'below_minimum'),
+    ('K16', 'Reliable', '100 * COUNT(Mean_Data_Rate > 2) / COUNT(Mean_Data_Rate)', 'below_minimum'),
+    # Disturbed and impaired calls completed: below the threshold, not a call that did not complete.
+    ('K6', 'Diff', '100 * SUM(Call_Status == "Completed" AND Disturbed_and_Impaired_Call == "Yes") / COUNT(Call_Status)', 'below_par'),
+    ('K17', 'Diff', '100 * COUNT(Mean_Data_Rate > 5) / COUNT(Mean_Data_Rate)', 'below_par'),
+    ('K2', 'Diff', 'AVG(Call_Setup_Time)', 'quality'),
+    ('K20', 'Diff', 'PCT90(Mean_Data_Rate)', 'quality'),
+    ('K31', 'Diff', '100 * SUM(totalpacketlost) / SUM(Packets_Sent)', 'quality'),
+])
+def test_each_kpi_loses_its_points_in_one_kind(code, kpi_type, formula, kind):
+    from src.modules.scoring_insights import loss_kind
+
+    assert loss_kind({'kpi_code': code, 'kpi_type': kpi_type, 'kpi': code}, {code: formula}) == kind
+
+
+def test_where_the_points_go_says_what_each_kind_counts():
+    _job, _result, insights = _insights(levels=('Operator',))
+    stake = _combined(insights['points_at_stake'])[0]
+    kinds = {kind['key']: kind for kind in stake['kinds']}
+    assert kinds['not_completed']['label'] == 'Not completed (NQ)' and 'Non-Qualified Calls' in kinds['not_completed']['description']
+    assert kinds['below_minimum']['label'] == 'Below the minimum'
+    # The KPIs of the methodology each kind holds, without their units, once each.
+    every = [name for kind in stake['kinds'] for name in kind['kpis']]
+    assert every and len(every) == len(set(every)) and not any(name.endswith(']') for name in every)
+    for row in stake['operators']:
+        assert sum(row['parts'].values()) == pytest.approx(row['lost'])

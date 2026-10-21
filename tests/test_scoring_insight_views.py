@@ -129,7 +129,7 @@ def test_operators_without_identified_sites_are_listed_apart_from_the_sites_to_r
 def test_points_at_stake_share_every_point_lost(national):
     _job, _result, insights = national
     stake = _combined(insights['points_at_stake'])[0]
-    assert [kind['key'] for kind in stake['kinds']] == ['failed', 'below_par', 'quality']
+    assert [kind['key'] for kind in stake['kinds']] == ['not_completed', 'below_minimum', 'below_par', 'quality']
     for row in stake['operators']:
         assert sum(row['parts'].values()) == pytest.approx(row['lost'])
         assert row['lost'] + row['points'] == pytest.approx(stake['maximum'])

@@ -757,10 +757,10 @@
       <td class="num">${row.typical_bandwidth_mhz ? `${number(row.typical_bandwidth_mhz, 0)} MHz` : '—'}</td></tr>`).join('')}</tbody>`;
     renderBandwidth();
   };
-  // Bandwidth per band and total bandwidth (LTE + NR) of the CDR Data tests: the download tests or every test.
+  // Bandwidth per band and primary bandwidth (LTE + NR) of the CDR Data tests: the download tests or every test.
   const bandwidthWidth = value => `${Number(value).toLocaleString('en-US', {maximumFractionDigits: 1})} MHz`;
-  // The total bandwidth chart carries its own title and, under it, the line that explains its figures, as a slide does.
-  const ladderTitle = config.bandwidth_title || 'Bandwidth of each test: LTE + NR';
+  // The primary bandwidth chart carries its own title and, under it, the line that explains its figures, as a slide does.
+  const ladderTitle = config.bandwidth_title || 'Primary bandwidth of each test: LTE + NR';
   const ladderFrame = (body, caption = '', attributes = '') => `<div class="ni-ladder"${attributes}><div class="ni-ladder-head"><h3 class="ni-ladder-title">${escapeHtml(ladderTitle)}</h3>${caption ? `<p class="ni-ladder-caption">${escapeHtml(caption)}</p>` : ''}</div>${body}</div>`;
   const renderBandwidth = () => {
     const bandwidth = analysis?.spectrum?.bandwidth;
@@ -830,7 +830,7 @@
           return `<td class="num ni-strip-cell${few ? ' is-few' : ''}" style="--ni-strip:${colour};--ni-strip-share:${Math.min(1, cell[key] / peak)}" title="${escapeHtml(`${row.column} · ${city}: ${number(cell[key])}% of ${integer(key === 'narrow_share' ? cell.known : cell.judged)} download tests${few ? ` (under ${locations.min_tests} tests)` : ''}`)}">${number(cell[key], 0)}%</td>`;
         }).join('')}</tr>`).join('')}</tbody></table></div><p class="form-note">${escapeHtml(note)}</p></div>`;
     };
-    host.innerHTML = strip('narrow_share', `Share of the download tests under ${locations.narrow_below_mhz} MHz (LTE + NR)`, '181,19,43',
+    host.innerHTML = strip('narrow_share', `Share of the download tests under ${locations.narrow_below_mhz} MHz of primary bandwidth (LTE + NR)`, '181,19,43',
       'Of the tests with a known bandwidth. Hatched: under the minimum of tests.')
       + strip('slow_share', `Share of the download tests failed or at ${locations.slow_mbps} Mbit/s or less`, '232,65,79',
         'Failed: the result is not completed; slow: the mean data rate of the test. Hatched: under the minimum of tests.');
@@ -840,10 +840,10 @@
   const ladderCaption = (bandwidth, ladders, scope) => {
     const narrow = bandwidth.narrow_below_mhz;
     const highlights = ladders.highlights || [];
-    return `Each ladder splits the ${scope === 'download' ? 'download tests' : 'CDR Data tests'} with a known bandwidth by their total width (LTE + NR), widest at the bottom; the number beside it is the share under ${narrow} MHz (dark red) and the one below it the share at ${bandwidth.wide_from_mhz ?? 100} MHz or more.${highlights.length
+    return `Each ladder splits the ${scope === 'download' ? 'download tests' : 'CDR Data tests'} with a known bandwidth by their primary bandwidth (the LTE carriers and the NR primary cell; the CDRs do not report the NR secondary carriers), widest at the bottom; the number beside it is the share under ${narrow} MHz (dark red) and the one below it the share at ${bandwidth.wide_from_mhz ?? 100} MHz or more.${highlights.length
       ? ` Most under ${narrow} MHz: ${highlights.map(item => `${item.environment}, ${item.column} (${number(item.narrow_share, 0)}%)`).join('; ')}.` : ''}`;
   };
-  // Total bandwidth: per group (column) and environment (row), one block per bandwidth class, widest at the bottom,
+  // Primary bandwidth: per group (column) and environment (row), one block per bandwidth class, widest at the bottom,
   // as wide as the class midpoint and as tall as its share of the tests; the figure is the share below 25 MHz.
   const renderLadders = (host, bandwidth, ladders, scope, splitLabel = '') => {
     if (!ladders.cells.some(cell => cell.known)) {
@@ -905,8 +905,8 @@
     // The legend, widest class first, under the ladders.
     const legendTop = header + rows.length * rowHeight + 22;
     // The classes follow the legend title, which is wider than the row labels.
-    let legendX = Math.max(labelWidth, 12 + 'Width, MHz (LTE + NR)'.length * 8.6 + 18);
-    parts.push(`<text class="ni-ladder-legend-title" x="12" y="${legendTop + 6}" dominant-baseline="middle">Width, MHz (LTE + NR)</text>`);
+    let legendX = Math.max(labelWidth, 12 + 'Primary bandwidth, MHz (LTE + NR)'.length * 8.6 + 18);
+    parts.push(`<text class="ni-ladder-legend-title" x="12" y="${legendTop + 6}" dominant-baseline="middle">Primary bandwidth, MHz (LTE + NR)</text>`);
     classes.forEach(item => {
       parts.push(`<rect x="${legendX}" y="${legendTop - 2}" width="16" height="16" rx="2" fill="${item.colour}"></rect><text class="ni-ladder-legend" x="${legendX + 22}" y="${legendTop + 6}" dominant-baseline="middle">${escapeHtml(item.label)}</text>`);
       legendX += 34 + item.label.length * 8.2;

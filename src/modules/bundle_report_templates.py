@@ -374,10 +374,19 @@ def report_title(definition: dict[str, Any], name: str = '') -> str:
     return definition.get('title') or name or DEFAULT_TITLE
 
 
+def _filter_values_text(values: list[str]) -> str:
+    """The values of a common filter as the covers show them: those that only leave values out (-Three) as All except."""
+    from src.modules.value_patterns import excluded, is_exclusion
+
+    if values and all(is_exclusion(value) for value in values):
+        return f"All except {', '.join(excluded(value) for value in values)}"
+    return ', '.join(values)
+
+
 def filter_lines(definition: dict[str, Any]) -> list[str]:
     """The common filters as the cover shows them."""
     filters = definition['filters']
-    chosen = [f"{FILTER_LABELS[name]}: {', '.join(filters[name])}" for name in FILTER_FIELDS if filters[name]]
+    chosen = [f"{FILTER_LABELS[name]}: {_filter_values_text(list(filters[name]))}" for name in FILTER_FIELDS if filters[name]]
     if filters['main_cities']:
         chosen.append('Main Cities')
     return [f"NR Mode: {filters['nr_mode']}", ' · '.join(chosen) if chosen else 'Every Operator, Vendor and area']
@@ -391,7 +400,7 @@ def common_filter_items(definition: dict[str, Any]) -> list[str]:
         values = list(filters[name])
         if name == 'cities' and filters['main_cities']:
             values = ['Main Cities', *values]
-        items.append(f"{FILTER_LABELS[name]}: {', '.join(values) or 'All'}")
+        items.append(f"{FILTER_LABELS[name]}: {_filter_values_text(values) or 'All'}")
     return items
 
 
