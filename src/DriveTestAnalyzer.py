@@ -13530,6 +13530,13 @@ def access_request_options_endpoint() -> JSONResponse:
 
 # Roles whose access a request can change; administrators change theirs in Admin.
 ACCESS_REQUEST_ROLES = ('user-viewer', 'user-editor')
+# Copied on the email of every access request: any of them approves it before the administrator activates the user.
+ACCESS_REQUEST_APPROVERS = (
+    ('Kleber Gomes', 'kleber.gomes@ericsson.com'),
+    ('Angelo Reis', 'angelo.reis@ericsson.com'),
+    ('Mohammadreza Rajabi', 'mohammadreza.rajabi@ericsson.com'),
+    ('Alfonso Alvarez J', 'alfonso.j.alvarez@ericsson.com'),
+)
 
 
 @app.get('/api/access-requests/users/{username}')
@@ -13547,7 +13554,7 @@ def create_access_request(request: Request, payload: AccessRequestPayload) -> JS
     """Create the requested user, inactive until an administrator activates it: an editor in the chosen Workspace Groups
     with the chosen Modules Profile. For a user that already exists (with its current password) its Workspace Groups and
     Modules Profile are replaced and it is deactivated until an administrator activates it again.
-    Returns the email that asks for the activation."""
+    Returns the email, to the administrator and copied to the approvers, that asks for the approval and the activation."""
     from src.modules.repository import local_now_iso
 
     signum = payload.username.strip()
@@ -13615,13 +13622,18 @@ def create_access_request(request: Request, payload: AccessRequestPayload) -> JS
         'modules_profile': profile['name'],
     }))
     opening = (f'I have requested a change of the access of my user to {__app_name__}. The new access has been applied and my '
-               'user is inactive until you review it: please activate it again in Admin › Users.' if record else
-               f'I have requested access to {__app_name__}. My user has been created but it is not active yet: please review '
-               'the request and activate it in Admin › Users.')
+               'user is inactive until it is activated again.' if record else
+               f'I have requested access to {__app_name__}. My user has been created but it is not active yet.')
+    administrator = __author__.split()[0]
+    approvers = [name.split()[0] for name, _ in ACCESS_REQUEST_APPROVERS]
     body = '\n'.join([
-        f"Hello {__author__.split()[0]},",
+        f"Hello {', '.join([administrator, *approvers[:-1]])} and {approvers[-1]},",
         '',
         opening,
+        '',
+        f"{', '.join(approvers[:-1])} or {approvers[-1]}: please review the request and approve it by replying to all.",
+        f"{administrator}: once one of them has approved it, please {'activate my user again' if record else 'activate my user'} "
+        'in Super Admin › Users.',
         '',
         f'User: {username}',
         f'Name: {first_name} {last_name}',
@@ -13640,7 +13652,7 @@ def create_access_request(request: Request, payload: AccessRequestPayload) -> JS
     return JSONResponse({
         'username': username, 'name': f'{first_name} {last_name}', 'role': role, 'existing': record is not None,
         'workspaces': workspaces, 'modules_profile': profile_text,
-        'email': {'to': __author_email__, 'subject': subject, 'body': body},
+        'email': {'to': __author_email__, 'cc': [email for _, email in ACCESS_REQUEST_APPROVERS], 'subject': subject, 'body': body},
     }, status_code=status.HTTP_201_CREATED)
 
 

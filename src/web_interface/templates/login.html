@@ -67,7 +67,7 @@
     <button type="button" class="login-request-access" data-access-request-open>Request Access</button>
   </article>
 </section>
-{# A new user asks for access: the user is created inactive and the administrator is asked by email to activate it. #}
+{# A new user asks for access: the user is created inactive, and the approvers are asked by email to approve it and the administrator to activate it. #}
 <dialog class="access-request-dialog" data-access-request-dialog aria-labelledby="access-request-title">
   <form class="access-request-form" data-access-request-form novalidate>
     <header class="access-request-head">
@@ -111,7 +111,7 @@
       <span class="access-request-icon access-request-icon-done" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></span>
       <div>
         <h3 data-access-request-done-title>User Created</h3>
-        <p class="form-note"><span data-access-request-done-note>Your user has been created but it is not active yet: ask the administrator to activate it.</span> <strong>Request Activation</strong> opens an email to the administrator with your request.</p>
+        <p class="form-note"><span data-access-request-done-note>Your user has been created but it is not active yet: ask the administrator to activate it.</span> <strong>Request Activation</strong> opens an email with your request to the administrator, copied to the approvers: one of them approves it and the administrator then activates your user.</p>
       </div>
     </header>
     <dl class="access-request-summary" data-access-request-summary></dl>
@@ -136,7 +136,7 @@
   });
 })();
 // Access requests: the workspaces (Workspace Groups) and modules (Modules Profiles) to choose, the new
-// inactive user, and the email that asks the administrator to activate it.
+// inactive user, and the email that asks the approvers to approve it and the administrator to activate it.
 (() => {
   const dialog = document.querySelector('[data-access-request-dialog]');
   const open = document.querySelector('[data-access-request-open]');
@@ -315,7 +315,8 @@
   dialog.querySelector('[data-access-request-mail]').addEventListener('click', () => {
     if (!email) return;
     const encode = (text) => encodeURIComponent(text.replace(/\r?\n/g, '\r\n'));
-    window.location.href = `mailto:${email.to}?subject=${encode(email.subject)}&body=${encode(email.body)}`;
+    const cc = (email.cc || []).map(encodeURIComponent).join(',');
+    window.location.href = `mailto:${email.to}?${cc ? `cc=${cc}&` : ''}subject=${encode(email.subject)}&body=${encode(email.body)}`;
   });
 })();
 </script>

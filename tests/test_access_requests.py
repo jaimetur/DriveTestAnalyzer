@@ -56,7 +56,13 @@ def test_access_request_creates_an_inactive_editor_with_the_chosen_access(client
     assert (result['username'], result['name']) == ('EABCDEF', 'Ana García')
     assert result['modules_profile'] == 'Non-Qualified Calls (Workspace, Non-Qualified Calls, Reporting, Builders, Ticket Center)'
     assert result['email']['to'] == 'jaime.tur@ericsson.com' and result['email']['subject'].endswith('access request: EABCDEF')
+    # Copied to the approvers: any of them approves the request before the administrator activates the user.
+    assert result['email']['cc'] == ['kleber.gomes@ericsson.com', 'angelo.reis@ericsson.com', 'mohammadreza.rajabi@ericsson.com',
+                                     'alfonso.j.alvarez@ericsson.com']
     body = result['email']['body']
+    assert body.startswith('Hello Jaime, Kleber, Angelo, Mohammadreza and Alfonso,')
+    assert 'Kleber, Angelo, Mohammadreza or Alfonso: please review the request and approve it by replying to all.' in body
+    assert 'Jaime: once one of them has approved it, please activate my user in Super Admin › Users.' in body
     assert 'User: EABCDEF' in body and 'Name: Ana García' in body and f'Workspaces: UK ({core.active_workspace.name})' in body
     record = core.repository.get_user('eabcdef')
     assert (record.username, record.role, record.active) == ('EABCDEF', 'user-editor', False)
@@ -99,7 +105,8 @@ def test_access_request_of_an_existing_user_changes_its_access_until_it_is_activ
     assert response.status_code == 201, response.text
     result = response.json()
     assert result['existing'] and (result['username'], result['role']) == ('EFGHIJK', 'user-viewer')
-    assert result['email']['subject'].endswith('access change request: EFGHIJK')
+    assert result['email']['subject'].endswith('access change request: EFGHIJK') and len(result['email']['cc']) == 4
+    assert 'please activate my user again in Super Admin › Users.' in result['email']['body']
     assert 'Previous workspaces: UK' in result['email']['body'] and 'Previous modules profile: Non-Qualified Calls' in result['email']['body']
     # Its Workspace Groups and profile are replaced, its group without workspaces kept, its name updated,
     # and it waits for the administrator.
