@@ -287,7 +287,9 @@
   // The description shows the guide of the type chosen.
   createForm?.querySelectorAll('input[name="ticket_type"]').forEach((radio) => radio.addEventListener('change', () => {
     const description = createForm.querySelector('[data-ticket-description]');
-    if (description && radio.checked) description.placeholder = radio.dataset.guide;
+    if (!description || !radio.checked) return;
+    description.placeholder = radio.dataset.guide;
+    description.richText?.setPlaceholder(radio.dataset.guide);
   }));
   createForm?.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -389,8 +391,10 @@
       const editor = document.createElement('form');
       editor.className = 'ticket-comment-editor';
       editor.innerHTML = '<textarea name="body" rows="4" maxlength="20000"></textarea><div class="tickets-form-actions"><button type="button" class="ticket-ghost-button">Cancel</button><button type="submit" class="tickets-primary-button">Save</button></div>';
-      // The comment as written, not as it reads with its bullets.
+      // The comment as written, edited as it reads (rich_text.js).
       editor.body.value = text ? (text.dataset.raw ?? text.textContent) : '';
+      editor.body.setAttribute('aria-label', 'Comment');
+      window.RichText?.attach(editor.body, {docClass: 'ticket-text'});
       editor.querySelector('.ticket-ghost-button').addEventListener('click', () => { editor.remove(); if (text) text.hidden = false; });
       editor.addEventListener('submit', async (event) => {
         event.preventDefault();

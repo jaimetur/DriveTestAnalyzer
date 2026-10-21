@@ -17784,7 +17784,7 @@ def ticket_center_page(request: Request, user: SessionUser | None = Depends(opti
 @app.get('/tickets/{ticket_id:int}', response_class=HTMLResponse)
 def ticket_page(request: Request, ticket_id: int, user: SessionUser | None = Depends(optional_user)) -> HTMLResponse:
     from src.modules.ticket_center import (
-        FIELD_LABELS, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_PER_UPLOAD, PRIORITIES, STATUSES, TEXT_GUIDES, TICKET_TYPES, rich_text_html,
+        FIELD_LABELS, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_PER_UPLOAD, PRIORITIES, STATUSES, TEXT_GUIDES, TICKET_TYPES,
     )
 
     modules = ticket_modules()
@@ -17796,8 +17796,6 @@ def ticket_page(request: Request, ticket_id: int, user: SessionUser | None = Dep
 
         # A super-admin who has opened the ticket is not told of it after signing in.
         mark_seen(repository, user.username, tickets=[ticket['uid']])
-    # The description and the comments read with their bullets, nested, and their headings.
-    ticket['description_html'] = rich_text_html(ticket['description'])
 
     def change_value(field: str, value: str) -> str:
         if field == 'status':
@@ -17815,7 +17813,6 @@ def ticket_page(request: Request, ticket_id: int, user: SessionUser | None = Dep
         return value
     for comment in ticket['comments']:
         comment['username_name'] = people.get(str(comment['username']), {}).get('name', str(comment['username']))
-        comment['body_html'] = rich_text_html(comment['body'])
         comment['date'] = str(comment['created_at'])[:16].replace('T', ' ')
         comment['change_lines'] = [
             {'field': FIELD_LABELS.get(field, field), 'long': field == 'description',

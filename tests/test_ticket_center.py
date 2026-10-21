@@ -3,6 +3,7 @@ attention, the dashboard, access, the former addresses and portability."""
 import io
 import json
 import zipfile
+from pathlib import Path
 
 import pytest
 
@@ -180,24 +181,23 @@ def test_the_database_viewer_shows_screenshots_as_their_size_and_does_not_edit_t
     assert 'data-type="Ticket Center"' in admin and '>Ticket Attachments<' in admin
 
 
-def test_descriptions_and_comments_read_with_nested_bullets_and_titles(client):
-    from src.modules.ticket_center import rich_text_html
-
-    text = 'Problem:\n- item1\n  - Item2\n    * item3\n- item4:\n  · under\n  goes on\n\nA plain line - not a bullet\nResolution: done.\n<b>x</b>'
-    assert str(rich_text_html(text)) == (
-        '<p class="ticket-text-heading">Problem:</p>'
-        '<ul><li>item1<ul><li>Item2<ul><li>item3</li></ul></li></ul></li>'
-        '<li><span class="ticket-text-heading">item4:</span><ul><li>under<br>goes on</li></ul></li></ul>'
-        '<p>A plain line - not a bullet<br>Resolution: done.<br>&lt;b&gt;x&lt;/b&gt;</p>'
-    )
+def test_descriptions_and_comments_are_markdown_shown_and_edited_by_the_rich_text_script(client):
     login(client)
     ticket_id = open_ticket(client, screenshots=())
-    client.post(f'/api/tickets/{ticket_id}/comments', data={'body': 'Cause:\n- One\n  - Two'})
+    client.post(f'/api/tickets/{ticket_id}/comments', data={'body': 'Cause\n- One\n  - Two\n<b>x</b>'})
     page = client.get(f'/tickets/{ticket_id}').text
-    # The comment reads with its bullets and keeps how it was written, to edit it.
-    assert '<p class="ticket-text-heading">Cause:</p><ul><li>One<ul><li>Two</li></ul></li></ul>' in page
-    assert 'data-raw="Cause:\n- One\n  - Two"' in page
-    assert 'placeholder="Problem:\n- What you did and what happened' in page
+    # The texts are kept as written (escaped) for rich_text.js, which shows them; the text areas become its editors.
+    assert 'data-rich-text data-raw="Cause\n- One\n  - Two\n&lt;b&gt;x&lt;/b&gt;"' in page
+    assert '<div class="ticket-text" data-rich-text data-raw="It fails.">It fails.</div>' in page
+    assert 'js/rich_text.js' in page and 'css/rich_text.css' in page
+    assert page.index('js/rich_text.js') < page.index('js/ticket_center.js')
+    assert page.count('data-rich-editor data-rich-class="ticket-text"') == 2
+    assert 'data-rich-files="form"' in page
+    assert 'placeholder="Problem\n- What you did and what happened' in page
+    assert 'rich_text_html' not in Path(core.__file__).read_text(encoding='utf-8')
+    new_ticket = client.get('/tickets').text
+    assert 'data-ticket-description data-rich-editor data-rich-class="ticket-text" data-rich-files="form"' in new_ticket
+    assert 'js/rich_text.js' in new_ticket and 'css/rich_text.css' in new_ticket
 
 
 def test_anyone_reads_tickets_without_signing_in_but_only_signed_in_users_change_them(client):
@@ -281,7 +281,7 @@ def test_a_ticket_has_a_type_that_only_super_admins_change(client):
     assert 'changed Type from <em>Improvement</em> to <em>New Feature</em>' in page
     assert '<select name="ticket_type">' in page and '<option value="new_feature" selected>New Feature</option>' in page
     # The guide of its type shows in the empty comment.
-    assert 'placeholder="Need:\n- What you want to do and why' in page
+    assert 'placeholder="Need\n- What you want to do and why' in page
 
 
 def test_the_tickets_of_earlier_versions_become_bugs(client):

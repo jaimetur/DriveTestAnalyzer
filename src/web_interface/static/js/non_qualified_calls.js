@@ -1524,9 +1524,11 @@
       commentButton.append(bubble);
       if (call.last_comment) {
         const preview = node('span', undefined, 'nq-comment-preview');
-        preview.append(node('strong', call.last_comment.created_by), node('span', call.last_comment.body));
+        // The comment without its Markdown.
+        const words = window.RichText.toPlainText(call.last_comment.body);
+        preview.append(node('strong', call.last_comment.created_by), node('span', words));
         commentButton.append(preview);
-        commentButton.title = `${call.last_comment.created_by} · ${exactTime(call.last_comment.created_at)}\n${call.last_comment.body}`;
+        commentButton.title = `${call.last_comment.created_by} · ${exactTime(call.last_comment.created_at)}\n${words}`;
       } else {
         commentButton.append(node('span', state.user.can_edit ? 'Add a comment' : 'No comments', 'nq-comment-preview nq-muted'));
       }
@@ -3418,7 +3420,7 @@
     if (comment.deleted_at) {
       bubble.append(node('p', `Comment deleted by ${comment.deleted_by} · ${exactTime(comment.deleted_at)}`, 'nq-muted'));
     } else {
-      const body = node('p', comment.body, 'nq-comment-body');
+      const body = window.RichText.render(comment.body, {className: 'nq-comment-body'});
       bubble.append(body);
       if (canChangeComment(comment)) {
         const actions = node('div', undefined, 'nq-comment-actions');
@@ -3441,6 +3443,7 @@
     area.value = comment.body;
     area.rows = Math.min(10, Math.max(3, comment.body.split('\n').length + 1));
     area.maxLength = 5000;
+    area.setAttribute('aria-label', 'Comment');
     const save = node('button', 'Save', 'nq-primary-action');
     const cancel = node('button', 'Cancel', 'nq-link-action');
     save.type = 'submit';
@@ -3449,6 +3452,8 @@
     buttons.append(cancel, save);
     editor.append(area, buttons);
     body.replaceWith(editor);
+    // Edited as it reads (rich_text.js); Ctrl+Enter saves it.
+    window.RichText.attach(area, {docClass: 'nq-comment-body', onSubmit: () => editor.requestSubmit()});
     area.focus();
     cancel.addEventListener('click', () => { editor.replaceWith(body); actions.hidden = false; });
     editor.addEventListener('submit', async (event) => {
@@ -3585,96 +3590,46 @@
       $('nq-fields').append(row);
     }
   };
-  // A long text read as bullets: each line a bullet (without the -, • or * typed before it), nested under the line
-  // above it as deep as it is indented (with spaces or tabs); a short line ending with a colon, not indented and without
-  // a bullet, the heading of the lines below it; a line of dashes (------Jorge------) a divider with its text; and a
-  // text of one line a paragraph.
-  const bulletList = (text) => {
-    const host = node('div', undefined, 'nq-bullets');
-    const lines = String(text || '').split(/\r?\n/).filter((line) => line.trim());
-    if (lines.length === 1 && !/:$/.test(lines[0].trim())) {
-      host.append(node('p', lines[0].trim()));
-      return host;
-    }
-    // The open lists, the deepest last, each with the indent of its items.
-    let levels = [];
-    lines.forEach((raw) => {
-      const indent = raw.match(/^\s*/)[0].replace(/\t/g, '    ').length;
-      const line = raw.trim();
-      const marked = /^[-•*·]\s+/.test(line);
-      const divider = line.match(/^[-=_*]{3,}\s*(.*?)\s*[-=_*]{3,}$/) || line.match(/^[-=_*]{3,}$/);
-      if (divider) {
-        host.append(node('p', divider[1] || '', 'nq-bullet-divider'));
-        levels = [];
-        return;
-      }
-      if (!indent && !marked && /:$/.test(line) && line.length <= 80) {
-        host.append(node('p', line, 'nq-bullet-heading'));
-        levels = [];
-        return;
-      }
-      while (levels.length && indent < levels[levels.length - 1].indent) levels.pop();
-      const current = levels[levels.length - 1];
-      if (!current || indent > current.indent) {
-        const list = node('ul');
-        // A deeper list belongs to the item above it.
-        (current?.list.lastElementChild || current?.list || host).append(list);
-        levels.push({indent, list});
-      }
-      levels[levels.length - 1].list.append(node('li', line.replace(/^[-•*·]\s+/, '')));
-    });
-    return host;
-  };
-  // How to write a long text so it reads as bullets: shown in grey while it is empty, never part of it.
+  // A long text read as bullets (rich_text.js): each line a bullet, nested as deep as it is indented, but for a title
+  // (a short line ending with a colon, or followed by a list); and its Markdown: numbered lists, headings, bold,
+  // italic, cards, code and dividers (------Jorge------).
+  const bulletList = (text) => window.RichText.render(text, {implicitBullets: true, className: 'nq-bullets'});
+  // How to write a long text: shown as it reads, in grey, while it is empty; never part of it.
   const LONG_TEXT_GUIDE = [
-    'Heading ending with a colon:',
+    'Heading ending with a colon, or followed by a list',
     '- Each line is a bullet',
-    '  - Two spaces before it nest it in the line above',
-    '    - Four spaces make a third level',
+    '  - Tab nests it in the line above',
+    '1. Numbered steps, and 1.1. for their sub-steps',
+    '**Bold**, *italic*, ==highlight==, `# heading` and `> [!TIP]` cards',
     '------ A name between dashes divides the text ------',
   ].join('\n');
-  // A long text of the analysts reads as bullets until it is edited: a click, Enter or Space opens the text, and
-  // leaving it shows the bullets again (an empty text is open to write in, with the guide).
+  // A long text of the analysts is edited as it reads: a click places the caret in it, and its toolbar shows while it
+  // has the focus (rich_text.js); the Markdown travels in its text area, saved with the other fields.
   const longTextInput = (field, value) => {
     const wrapper = node('div', undefined, 'nq-long-text');
+    wrapper.dataset.longText = field.key;
     const editor = node('textarea');
     editor.rows = 8;
     editor.maxLength = 20000;
     editor.value = value;
     editor.dataset.fieldKey = field.key;
     editor.dataset.original = value;
-    editor.disabled = !state.user.can_edit;
     editor.setAttribute('aria-label', field.label);
-    if (state.user.can_edit) editor.placeholder = LONG_TEXT_GUIDE;
-    const view = node('div', undefined, 'nq-long-text-view');
-    view.dataset.longText = field.key;
-    if (state.user.can_edit) {
-      view.tabIndex = 0;
-      view.setAttribute('role', 'button');
-      view.title = `Edit ${field.label}`;
+    editor.placeholder = LONG_TEXT_GUIDE;
+    if (!state.user.can_edit) {
+      editor.hidden = true;
+      editor.disabled = true;
+      const view = node('div', undefined, 'nq-long-text-view');
+      view.append(value.trim() ? bulletList(value) : node('span', '—', 'nq-muted'));
+      wrapper.append(view, editor);
+      wrapper.setValue = () => {};
+      return wrapper;
     }
-    const read = () => {
-      const empty = !editor.value.trim();
-      view.replaceChildren(empty ? node('span', '—', 'nq-muted') : bulletList(editor.value));
-      view.hidden = empty && state.user.can_edit;
-      editor.hidden = !view.hidden;
-    };
-    const open = (event) => {
-      if (!state.user.can_edit) return;
-      event.preventDefault();
-      view.hidden = true;
-      editor.hidden = false;
-      editor.focus();
-    };
-    view.addEventListener('click', open);
-    view.addEventListener('keydown', (event) => { if (event.key === 'Enter' || event.key === ' ') open(event); });
-    editor.addEventListener('blur', read);
-    read();
-    wrapper.append(view, editor);
+    wrapper.append(editor);
+    const rich = window.RichText.attach(editor, {implicitBullets: true, docClass: 'nq-bullets', toolbar: 'focus', placeholder: LONG_TEXT_GUIDE, label: field.label});
     wrapper.setValue = (text) => {
-      editor.value = text;
+      rich.setValue(text);
       editor.dispatchEvent(new Event('change', {bubbles: true}));
-      read();
     };
     return wrapper;
   };
@@ -3745,7 +3700,8 @@
   };
   const fieldBlock = (field, call) => {
     const editable = field.source === 'user';
-    const wrapper = node(editable ? 'label' : 'div', undefined, `nq-analysis-field is-${field.type}${editable ? '' : ' is-readonly'}`);
+    // A long text is edited in place: a label would send its clicks to the hidden text area.
+    const wrapper = node(editable && field.type !== 'long_text' ? 'label' : 'div', undefined, `nq-analysis-field is-${field.type}${editable ? '' : ' is-readonly'}`);
     const title = node('span', field.label, 'nq-field-title');
     if (!editable) title.append(node('small', SOURCE_TAGS[field.source] || field.source, `nq-source-tag is-${field.source}`));
     if (field.required_to_close) title.append(node('small', 'required to close', 'nq-required-tag'));
@@ -4559,9 +4515,8 @@
     }
   };
   composer.addEventListener('submit', (event) => { event.preventDefault(); postComment(); });
-  composerBody.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { event.preventDefault(); postComment(); }
-  });
+  // The comment is written as it reads (rich_text.js); Ctrl+Enter posts it.
+  window.RichText.attach(composerBody, {docClass: 'nq-comment-body', onSubmit: postComment, label: 'Comment'});
   composerBody.addEventListener('input', () => {
     const length = composerBody.value.length;
     $('nq-composer-note').textContent = length > 4500 ? `${5000 - length} characters left` : '';
@@ -6590,7 +6545,7 @@
   window.setInterval(() => {
     if (document.visibilityState !== 'visible' || state.busy) return;
     const active = document.activeElement;
-    if (active && active.closest?.('#nq-table select, #nq-drawer textarea, #nq-drawer select, #nq-drawer input, .nq-comment-editor')) return;
+    if (active && active.closest?.('#nq-table select, #nq-drawer textarea, #nq-drawer select, #nq-drawer input, #nq-drawer [contenteditable="true"], .nq-comment-editor')) return;
     if (Object.keys(changedFields()).length) return;
     if (rootPicker || document.querySelector('dialog[open]')) return;
     loadCalls({quiet: true});

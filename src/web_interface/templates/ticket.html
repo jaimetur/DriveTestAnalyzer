@@ -2,6 +2,7 @@
 {% from 'ticket_center_macros.html' import priority_pill, status_pill, module_chip, screenshots_zone, screenshot_gallery, type_badge %}
 {% block content %}
 <link rel="stylesheet" href="{{ static_path('css/ticket_center.css') }}?v={{ asset_version('css/ticket_center.css') }}">
+<link rel="stylesheet" href="{{ static_path('css/rich_text.css') }}?v={{ asset_version('css/rich_text.css') }}">
 <section class="dashboard-stack spacious-stack ticket-center ticket-page" data-ticket-page="{{ ticket.id }}" data-ticket-center-title="{{ ticket_center_title }}">
   <nav class="ticket-breadcrumb" aria-label="Back to the list"><a class="ticket-back-link" href="/tickets#section-tickets"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M11 18l-6-6 6-6"/></svg>Back to Tickets</a><span class="ticket-breadcrumb-id">{{ ticket_center_title }} · Ticket #{{ ticket.id }}</span></nav>
 
@@ -22,14 +23,14 @@
         {% if not ticket_can_manage %}<label class="tickets-field">Module
           <select name="module">{% for module in ticket_modules %}<option value="{{ module.key }}"{% if module.key == ticket.module %} selected{% endif %}>{{ module.title }}</option>{% endfor %}</select>
         </label>{% endif %}
-        <label class="tickets-field">Description<textarea name="description" rows="8" maxlength="20000" placeholder="{{ ticket_text_guide }}">{{ ticket.description }}</textarea></label>
+        <label class="tickets-field">Description<textarea name="description" rows="8" maxlength="20000" placeholder="{{ ticket_text_guide }}" data-rich-editor data-rich-class="ticket-text">{{ ticket.description }}</textarea></label>
         <div class="tickets-form-actions"><button type="button" class="ticket-ghost-button" data-ticket-edit-cancel>Cancel</button><button type="submit" class="tickets-primary-button">Save changes</button></div>
       </form>
       {% endif %}
 
       <article class="panel ticket-card ticket-description">
         <h3>Description</h3>
-        {% if ticket.description %}<div class="ticket-text">{{ ticket.description_html }}</div>{% else %}<p class="ticket-muted">No description.</p>{% endif %}
+        {% if ticket.description %}<div class="ticket-text" data-rich-text data-raw="{{ ticket.description }}">{{ ticket.description }}</div>{% else %}<p class="ticket-muted">No description.</p>{% endif %}
         {{ screenshot_gallery(ticket.attachments, user, removable=ticket_can_edit) }}
         {% if ticket_can_edit %}
         <form class="ticket-add-shots" data-ticket-shots-form novalidate>
@@ -55,7 +56,7 @@
               <header><strong>{{ entry.username_name }}</strong><time>{{ entry.date }}{% if entry.edited_at %} · edited{% endif %}</time>
                 {% if user and (entry.username | lower == user.username | lower or ticket_can_manage) %}<span class="ticket-comment-actions">{% if entry.username | lower == user.username | lower %}<button type="button" data-ticket-comment-edit>Edit</button>{% endif %}<button type="button" data-ticket-comment-delete>Delete</button></span>{% endif %}
               </header>
-              {% if entry.body %}<div class="ticket-text" data-ticket-comment-text data-raw="{{ entry.body }}">{{ entry.body_html }}</div>{% endif %}
+              {% if entry.body %}<div class="ticket-text" data-ticket-comment-text data-rich-text data-raw="{{ entry.body }}">{{ entry.body }}</div>{% endif %}
               {{ screenshot_gallery(entry.attachments, user, removable=user is not none) }}
             </div>
           </li>
@@ -64,7 +65,7 @@
         </ol>
         {% if user %}
         <form class="ticket-comment-form" data-ticket-comment-form novalidate>
-          <label class="tickets-field">Add a comment<textarea name="body" rows="5" maxlength="20000" placeholder="{{ ticket_text_guide }}"></textarea></label>
+          <label class="tickets-field">Add a comment<textarea name="body" rows="5" maxlength="20000" placeholder="{{ ticket_text_guide }}" data-rich-editor data-rich-class="ticket-text" data-rich-files="form"></textarea></label>
           {{ screenshots_zone(ticket_max_screenshots, ticket_max_screenshot_mb) }}
           <div class="tickets-form-actions"><button type="submit" class="tickets-primary-button">Comment</button></div>
         </form>
@@ -128,5 +129,6 @@
 </section>
 {% endblock %}
 {% block extra_scripts %}
+<script src="{{ static_path('js/rich_text.js') }}?v={{ asset_version('js/rich_text.js') }}"></script>
 <script src="{{ static_path('js/ticket_center.js') }}?v={{ asset_version('js/ticket_center.js') }}"></script>
 {% endblock %}

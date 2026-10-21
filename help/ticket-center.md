@@ -45,19 +45,35 @@ The top of the page sums up every ticket; each count, bar and cell lists its tic
 
 ### Writing descriptions and comments
 
-Descriptions and comments are saved as written and read with their structure (the empty field shows a grey guide):
+Descriptions and comments are written in Markdown and read the same while they are written: the editor shows every line as the page shows it (an empty one shows the guide of the type of the ticket in grey). Use the toolbar above the text or its keys (⌘ instead of Ctrl on a Mac), or type the Markdown, which takes its format as you write it:
 
-- A line starting with `-`, `*` or `·` is a bullet; indent it (with spaces or a tab) to nest it under the bullet above it, as many levels as needed. An indented line without a marker goes on in the bullet above it.
-- A line ending with a colon, such as `Problem:`, is a title in blue; a bullet ending with one is shown in blue too.
-- A line of dashes (`----- Notes -----`) is a divider with its text.
-- Every other line is a paragraph, and an empty line separates paragraphs and lists.
+| Write | It reads as |
+|---|---|
+| `# Heading`, `## Heading`, `### Heading` (up to six `#`) | A heading, larger with fewer `#` (**Ctrl+Alt+1**, **2** and **3**) |
+| A short line ending with a colon (`Problem:`), or followed by a list (`Steps to reproduce`) | A title in blue; a bullet ending with a colon is in blue too |
+| `- item` (also `*`, `+`, `·` or `•`) | A bullet (**Ctrl+Shift+8**) |
+| `1. item`, `1) item`, `a) item`, `A) item` or `1.1. item` | A numbered item (**Ctrl+Shift+7**), numbered from the first number of its list; a `1.1.` item takes the numbers of the items above it |
+| `- [ ] task` or `- [x] done` | A task (**Ctrl+Shift+9**); a click on its box ticks it |
+| A text between two asterisks, one asterisk, two tildes, two equal signs or backticks | Bold (**Ctrl+B**), italic (**Ctrl+I**), strikethrough (**Ctrl+Shift+X**), highlight (**Ctrl+Shift+H**) and code (**Ctrl+E**) |
+| `[text](https://…)` or a web address | A link (**Ctrl+K**); in the editor, Ctrl and a click open it |
+| `> [!TIP] Title` and its lines starting with `>` | A card with its title (or the name of its kind): **NOTE**, **INFO**, **TIP**, **SUCCESS**, **QUESTION**, **IMPORTANT**, **WARNING**, **CAUTION** or **ERROR** |
+| `> text` | A quote |
+| A line of three backticks, the code, and another line of three backticks | A code block, as written |
+| `---` or `----- Notes -----` | A divider, with its text |
+| Any other line | Text; an indented line under a bullet goes on in it |
+
+In the editor, **Enter** goes on with a list at the level of the item above (a bullet, a number or a task), and on an empty item goes up a level and then out of the list (or out of a card); **Shift+Enter** goes on in the same item; **Tab** and **Shift+Tab** nest an item under the one above it or bring it back; **Backspace** at the start of an item takes it up a level and then makes it text. Pasted text is read as Markdown, copied text keeps its Markdown, and **Ctrl+Z** and **Ctrl+Shift+Z** undo and redo. **Edit the Markdown** shows the text as it is saved, to change it as such, and **How to write it** sums up this table. **Ctrl+Enter** posts a comment or saves the description.
 
 ```text
-Problem:
-- The export never ends
-  - Only with 3 campaigns
+Steps to reproduce
+1. Open Scoring & GAP Analysis
+2. Export to PowerPoint
+   a) With 3 campaigns
 Expected:
 - The PowerPoint downloads
+
+> [!WARNING]
+> It only fails with **NSA** campaigns
 ```
 
 ## Tickets

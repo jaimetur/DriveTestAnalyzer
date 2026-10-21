@@ -2,6 +2,7 @@
 {% from 'ticket_center_macros.html' import priority_pill, status_pill, module_chip, screenshots_zone, type_badge, type_icon %}
 {% block content %}
 <link rel="stylesheet" href="{{ static_path('css/ticket_center.css') }}?v={{ asset_version('css/ticket_center.css') }}">
+<link rel="stylesheet" href="{{ static_path('css/rich_text.css') }}?v={{ asset_version('css/rich_text.css') }}">
 {% set board = ticket_dashboard %}
 <section class="dashboard-stack spacious-stack ticket-center" data-ticket-center data-ticket-center-title="{{ ticket_center_title }}">
   <article class="panel tickets-hero">
@@ -159,7 +160,7 @@
         </div>
       </fieldset>
       <label class="tickets-field tickets-field-wide">Description
-        <textarea name="description" rows="8" maxlength="20000" placeholder="{{ ticket_text_guide }}" data-ticket-description></textarea>
+        <textarea name="description" rows="8" maxlength="20000" placeholder="{{ ticket_text_guide }}" data-ticket-description data-rich-editor data-rich-class="ticket-text" data-rich-files="form"></textarea>
       </label>
       <div class="tickets-field tickets-field-wide">{{ screenshots_zone(ticket_max_screenshots, ticket_max_screenshot_mb) }}</div>
       <div class="tickets-form-actions tickets-field-wide">
@@ -242,5 +243,6 @@
 </section>
 {% endblock %}
 {% block extra_scripts %}
+<script src="{{ static_path('js/rich_text.js') }}?v={{ asset_version('js/rich_text.js') }}"></script>
 <script src="{{ static_path('js/ticket_center.js') }}?v={{ asset_version('js/ticket_center.js') }}"></script>
 {% endblock %}

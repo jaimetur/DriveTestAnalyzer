@@ -254,7 +254,8 @@ body:has(.nq-drawer.is-open) .back-to-top { visibility: hidden; }
 .nq-comment-actions { display: flex; gap: .1rem; margin-left: auto; opacity: .35; transition: opacity .15s; }
 .nq-comment-actions[hidden] { display: none; }
 .nq-comment:hover .nq-comment-actions, .nq-comment:focus-within .nq-comment-actions { opacity: 1; }
-.nq-comment-body { margin: .3rem 0 0; color: var(--nq-text); font-size: .9rem; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+.nq-comment-body { color: var(--nq-text); font-size: .9rem; line-height: 1.45; overflow-wrap: anywhere; }
+.nq-comment > .nq-comment-body { margin: .3rem 0 0; }
 .nq-event-comment.is-deleted .nq-comment { border-style: dashed; background: #fff; }
 .nq-event-comment.is-deleted .nq-avatar { opacity: .45; }
 .nq-event-comment.is-deleted .nq-comment p { margin: .3rem 0 0; font-size: .82rem; font-style: italic; }
@@ -264,6 +265,8 @@ body:has(.nq-drawer.is-open) .back-to-top { visibility: hidden; }
 .nq-composer { position: sticky; bottom: -1.2rem; margin: 0 -1.2rem -1.2rem; padding: .8rem 1.2rem 1.2rem; border-top: 1px solid var(--nq-border); background: #fff; }
 .nq-composer textarea, .nq-comment-editor textarea { box-sizing: border-box; width: 100%; padding: .6rem .75rem; border: 1px solid var(--nq-border); border-radius: 10px; font: inherit; font-size: .9rem; resize: vertical; }
 .nq-composer textarea:focus, .nq-comment-editor textarea:focus { border-color: var(--nq-color); outline: 3px solid rgba(176, 35, 79, .18); }
+/* The comments are written as they read (rich_text.js), in a frame like the long texts. */
+.nq-composer .rt-frame, .nq-comment-editor .rt-frame { min-height: 4.6rem; max-height: 22rem; border-color: var(--nq-border); border-radius: 10px; }
 .nq-comment-editor { margin-top: .4rem; }
 .nq-composer-actions { display: flex; align-items: center; justify-content: flex-end; gap: .6rem; }
 .nq-composer-note { margin-right: auto; color: var(--nq-muted); font-size: .78rem; }
@@ -987,35 +990,29 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 .nq-drawer .nq-phase-panel .nq-phase-step { flex: 1 1 0; flex-direction: column; align-items: flex-start; justify-content: center; gap: .3rem; padding: .45rem .6rem; background: var(--nq-softer); }
 .nq-drawer .nq-phase-panel .nq-phase-step .nq-pill { max-width: 100%; overflow: visible; font-size: .78rem; line-height: 1.25; white-space: normal; text-overflow: clip; overflow-wrap: anywhere; }
 .nq-phase-panel .nq-phase-arrow { align-self: center; }
-/* Long texts (Proposed Measure, Findings…) are tall from the start, framed like the other fields. */
+/* The Markdown of a long text (Edit the Markdown, in its toolbar) is tall from the start, framed like the other fields. */
 .nq-drawer .nq-analysis-field textarea { min-height: 11rem; padding: .6rem .75rem; border: 1px solid var(--nq-border); border-radius: 12px; line-height: 1.4; resize: vertical; }
 /* The Description and the Findings, the longest, are taller; the Proposed Measure is two lines. */
 .nq-drawer .nq-analysis-field textarea:is([data-field-key="description"], [data-field-key="findings"]) { min-height: 17rem; }
 .nq-drawer .nq-analysis-field textarea[data-field-key="proposed_measure"] { height: 4.1rem; min-height: 4.1rem; }
 .nq-drawer .nq-analysis-field textarea:focus { border-color: var(--nq-color); outline: 3px solid rgba(176, 35, 79, .15); }
-/* The long texts read as bullets until they are edited (non_qualified_calls.js, longTextInput), in the font of the page. */
+/* In the font of the page. */
 .nq-drawer .nq-long-text textarea { font-family: inherit; font-size: .88rem; font-weight: 500; }
 /* The guide of an empty long text, in grey and tall enough to read it whole (also in the short Proposed Measure). */
 .nq-drawer .nq-long-text textarea::placeholder { color: var(--nq-muted); opacity: .7; }
 .nq-drawer .nq-analysis-field .nq-long-text textarea:placeholder-shown { min-height: 8.8rem; }
 .nq-long-text [hidden] { display: none !important; }
-.nq-long-text-view { box-sizing: border-box; min-height: 4.1rem; max-height: 28rem; overflow-y: auto; padding: .6rem .8rem; border: 1px solid var(--nq-border); border-radius: 12px; background: #fff; cursor: text; }
-.nq-long-text-view:not([tabindex]) { cursor: default; }
-.nq-long-text-view[tabindex]:is(:hover, :focus-visible) { border-color: var(--nq-color); outline: none; }
+/* A long text is edited as it reads (rich_text.js): in the frame of its view, taller while it has the focus (the
+   Description and the Findings the tallest, the Proposed Measure two lines), its toolbar above it. */
+:is(.nq-long-text .rt-frame, .nq-long-text-view) { box-sizing: border-box; min-height: 4.1rem; max-height: 28rem; overflow-y: auto; padding: .6rem .8rem; border: 1px solid var(--nq-border); border-radius: 12px; background: #fff; }
+.nq-long-text .rt-frame:hover { border-color: var(--nq-color); }
+.nq-long-text .rt-frame:focus-within { min-height: 11rem; }
+.nq-long-text:is([data-long-text="description"], [data-long-text="findings"]) .rt-frame:focus-within { min-height: 17rem; }
+.nq-long-text[data-long-text="proposed_measure"] .rt-frame:focus-within { min-height: 4.1rem; }
+.nq-drawer .rt-editor { --rt-focus: var(--nq-color); --rt-focus-ring: rgba(176, 35, 79, .15); }
+/* Long texts and comments (rich_text.css): bullets and numbers in the colour of Non-Qualified Calls. */
+:is(.nq-bullets, .nq-comment-body) { --rt-accent: var(--nq-color); --rt-title: var(--nq-dark); --rt-heading: var(--nq-dark); --rt-muted: var(--nq-muted); --rt-rule: var(--nq-border); }
 .nq-bullets { color: var(--nq-text); font-size: .88rem; font-weight: 500; line-height: 1.45; overflow-wrap: anywhere; }
-.nq-bullets p { margin: 0 0 .35rem; }
-.nq-bullets ul { margin: 0 0 .45rem; padding-left: 1.15rem; }
-.nq-bullets li { margin: .15rem 0; }
-.nq-bullets li::marker { color: var(--nq-color); }
-/* Nested bullets: a circle at the second level, a square below it. */
-.nq-bullets li > ul { margin: .1rem 0 .15rem; padding-left: 1.1rem; list-style-type: circle; }
-.nq-bullets li > ul li > ul { list-style-type: square; }
-.nq-bullets .nq-bullet-heading { margin: .45rem 0 .15rem; color: var(--nq-dark); font-weight: 800; }
-.nq-bullets .nq-bullet-divider { display: flex; align-items: center; gap: .6rem; margin: .5rem 0; color: var(--nq-muted); font-size: .76rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
-.nq-bullets .nq-bullet-divider::before, .nq-bullets .nq-bullet-divider::after { content: ''; flex: 1; border-top: 1px solid var(--nq-border); }
-.nq-bullets .nq-bullet-divider:empty::after { display: none; }
-.nq-bullets > :first-child { margin-top: 0; }
-.nq-bullets > :last-child { margin-bottom: 0; }
 /* The coloured pickers of lists, statuses, teams and assignees: every choice as a pill in its colour. */
 :is(.non-qualified-calls, .nq-drawer) .nq-choice { width: 100%; text-align: left; }
 .nq-choice-field { display: grid; }
