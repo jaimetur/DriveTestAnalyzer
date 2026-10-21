@@ -54,11 +54,13 @@ def test_figures_of_the_workspaces_are_read_and_added_up(client):
     add_dataset(repository, 'vodafone.csv', 'mapping_vodafone', 5)
     figures = presentations.workspace_figures(core.active_workspace.database_path)
     assert (figures['cdrs'], figures['cdr_rows'], figures['inventory_rows'], figures['mapping_rows']) == (3, 60, 7, 5)
+    # The calls are those of the Data and Voice CDRs, not of the Speech one.
+    assert figures['cdr_calls'] == 50
     assert figures['campaigns'] == ['UK_Q1_2026', 'UK_Q2_2026']
     # With no workspace chosen, the figures are those of the workspace with the most CDR rows.
     totals = presentations.presentation_figures(core)
     assert totals['workspaces'] == [core.active_workspace.name]
-    assert (totals['cdrs'], totals['cdr_rows'], totals['campaigns']) == (3, 60, 2)
+    assert (totals['cdrs'], totals['cdr_calls'], totals['campaigns']) == (3, 50, 2)
     assert totals['users'] >= 1 and totals['roles'].get('super-admin', 0) >= 1
     assert totals['help_chapters'] > 20 and totals['releases'] > 1 and totals['tests'] > 100
     # A change of a figure gives another key, which generates them again.

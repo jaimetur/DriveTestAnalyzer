@@ -105,7 +105,7 @@ function heading(slide, plain, focus, subtitle, size) {
 // The figures of the slides: those of the workspaces chosen in Super Admin, which the server passes in the JSON
 // file named by PRESENTATION_FIGURES when it generates the presentations (src/modules/presentations.py); these otherwise.
 const DEFAULT_FIGURES = {
-  workspaces: ['UK'], month: 'October 2026', cdr_rows: 7549867, cdrs: 27, campaigns: 9, inventory_rows: 519133,
+  workspaces: ['UK'], month: 'October 2026', cdr_calls: 3762827, cdrs: 27, campaigns: 9, inventory_rows: 519133,
   mapping_rows: 1095986, nq_calls: 48138, nq_calls_total: 4032603, nq_followed: 2357, nq_rca: 2129, nq_comments: 3371,
   users: 16, roles: { 'super-admin': 2, admin: 1, 'user-editor': 12, 'user-viewer': 1 }, help_chapters: 25, tests: 1895,
   releases: 24, workspace_list: [{ name: 'UK', campaigns: 9 }, { name: 'DE', campaigns: 1 }],
@@ -120,7 +120,7 @@ const plural = (count, word) => `${exact(count)} ${word}${Number(count) === 1 ? 
 const names = FIGURES.workspaces.length > 1
   ? `${FIGURES.workspaces.slice(0, -1).join(', ')} and ${FIGURES.workspaces[FIGURES.workspaces.length - 1]}` : FIGURES.workspaces[0] || '';
 const STATS = {
-  rows: compact(FIGURES.cdr_rows), cdrs: exact(FIGURES.cdrs), campaigns: exact(FIGURES.campaigns), nq: compact(FIGURES.nq_calls),
+  calls: compact(FIGURES.cdr_calls), cdrs: exact(FIGURES.cdrs), campaigns: exact(FIGURES.campaigns), nq: compact(FIGURES.nq_calls),
   nqExact: exact(FIGURES.nq_calls), tracked: exact(FIGURES.nq_followed), rca: exact(FIGURES.nq_rca), comments: exact(FIGURES.nq_comments),
   inventory: compact(FIGURES.inventory_rows), mappings: compact(FIGURES.mapping_rows), users: exact(FIGURES.users),
   tests: exact(FIGURES.tests), releases: exact(FIGURES.releases), chapters: exact(FIGURES.help_chapters),
@@ -174,7 +174,7 @@ async function platform(pres) {
   }
   text(slide, 'DATASETS IT INGESTS', { x: 0.6, y: 4.0, w: 6, h: 0.3, fontSize: 11, bold: true, color: K.grey, charSpacing: 1 });
   const datasets = [
-    ['TbFileAnalytics', K.deep, 'CDRs', 'Data, Voice & Speech, NSA & SA, by campaign', STATS.rows, `rows in ${STATS.cdrs} CDRs`],
+    ['TbFileAnalytics', K.deep, 'CDRs', 'Data, Voice & Speech, NSA & SA, by campaign', STATS.calls, `calls in ${STATS.cdrs} CDRs`],
     ['TbBuildingBroadcastTower', '0C9B5B', 'Network Inventories', 'Cells of any operator, tables or KMZ cell configuration', STATS.inventory, 'inventory rows'],
     ['TbArrowsShuffle', 'E07800', 'Vendor Mappings', 'Multivendor VFUK & 3UK, and vendor polygons', STATS.mappings, 'mapping rows'],
     ['TbPolygon', '8C60A8', 'Geographical', 'Regions & Clusters as polygons, for splits and maps', '2 levels', 'Region & Cluster'],
@@ -996,7 +996,7 @@ async function oneSlider(pres, files, masterName = 'SINGLE', sectionTitle = 'Dri
   // The data that comes in, with the volumes of the workspaces of the figures.
   const hub = { x: 6.62, y: 3.72 };
   const datasets = [
-    ['TbFileAnalytics', K.deep, 'CDRs', STATS.rows, `rows · ${STATS.cdrs} CDRs`],
+    ['TbFileAnalytics', K.deep, 'CDRs', STATS.calls, `calls · ${STATS.cdrs} CDRs`],
     ['TbBuildingBroadcastTower', '0C9B5B', 'Network Inventories', STATS.inventory, 'cell rows'],
     ['TbArrowsShuffle', 'E07800', 'Vendor Mappings', STATS.mappings, 'mapping rows'],
     ['TbPolygon', '8C60A8', 'Geographical', '2 levels', 'Region & Cluster'],
@@ -1082,7 +1082,7 @@ async function oneSlider(pres, files, masterName = 'SINGLE', sectionTitle = 'Dri
     await badge(slide, pres, milestone.pin, milestone.x - 0.16, milestone.y - 0.16, 0.32, milestone.color);
     text(slide, milestone.text, { x: milestone.x - 0.6, y: 6.66, w: 1.2, h: 0.4, fontSize: 10, bold: true, align: 'center', valign: 'top' });
   }
-  slide.addNotes(`DriveTest Analyzer in one slide. Data in: CDRs (${STATS.rows} rows in ${STATS.cdrs} CDRs of `
+  slide.addNotes(`DriveTest Analyzer in one slide. Data in: CDRs (${STATS.calls} Data and Voice calls in ${STATS.cdrs} CDRs of `
     + `${plural(FIGURES.campaigns, 'campaign')} of ${STATS.where}), network inventories, vendor mappings and regions and clusters. `
     + 'On one shared workspace, eight modules: CDR Analysis, PPT Dashboards, Scoring & GAP Analysis, Network Insights, '
     + `Non-Qualified Calls (${STATS.nqExact} NQ calls), Reporting, the Builders and the Ticket Center. They serve `
@@ -1112,13 +1112,13 @@ async function applyTheme(file, theme) {
 // slide by section, which the slide viewer shows on its left.
 const PRESENTATIONS = [
   { id: 'overview', title: 'DriveTest Analyzer — Overview', file: 'overview.pptx', download: 'DriveTest Analyzer - Overview.pptx',
-    description: 'The tool, a slide per module in the order of the tool, the teams it serves, its platform and its roadmap, closing with the one-slider.',
+    description: 'The tool, the teams it serves and its platform, a slide per module in the order of the tool and its roadmap, closing with the one-slider.',
     sections: [
       { title: 'Introduction', slides: ['DriveTest Analyzer', 'One platform, from CDRs to decisions'] },
-      { title: 'Modules', slides: ['Eight modules, one shared workspace', 'CDR Analysis', 'PPT Dashboards', 'Scoring & GAP Analysis — who wins',
-        'Scoring & GAP Analysis — where to win the points back', 'Network Insights', 'NQ Calls', 'Reporting', 'Builders', 'Ticket Center'] },
       { title: 'Teams', slides: ['Built for every team'] },
       { title: 'Platform', slides: ['Enterprise-ready'] },
+      { title: 'Modules', slides: ['Eight modules, one shared workspace', 'CDR Analysis', 'PPT Dashboards', 'Scoring & GAP Analysis — who wins',
+        'Scoring & GAP Analysis — where to win the points back', 'Network Insights', 'NQ Calls', 'Reporting', 'Builders', 'Ticket Center'] },
       { title: 'Roadmap', slides: ['Roadmap'] },
       { title: 'In one slide', slides: ['DriveTest Analyzer in one slide'] },
     ] },
@@ -1153,6 +1153,10 @@ async function main() {
   deck.addSection({ title: 'Introduction' });
   await cover(deck, files);
   await platform(deck);
+  deck.addSection({ title: 'Teams' });
+  await teams(deck);
+  deck.addSection({ title: 'Platform' });
+  await enterprise(deck);
   deck.addSection({ title: 'Modules' });
   await modules(deck);
   await cdrAnalysis(deck, files);
@@ -1164,10 +1168,6 @@ async function main() {
   await reporting(deck);
   await builders(deck);
   await ticketCenter(deck);
-  deck.addSection({ title: 'Teams' });
-  await teams(deck);
-  deck.addSection({ title: 'Platform' });
-  await enterprise(deck);
   deck.addSection({ title: 'Roadmap' });
   await roadmap(deck, files);
   deck.addSection({ title: 'In one slide' });

@@ -33,6 +33,8 @@ SLIDE_DPI = 144
 THUMB_DPI = 45
 GENERATION_TIMEOUT_SECONDS = 600
 CDR_KINDS = ('data', 'voice', 'speech')
+# The CDRs whose rows the presentations count as calls (a Speech CDR measures calls of the Voice one).
+CALL_KINDS = ('data', 'voice')
 MAPPING_KINDS = ('mapping_vodafone', 'mapping_three', 'vendors')
 GEOGRAPHICAL_KINDS = ('regions', 'clusters')
 # Where Node usually is when the application does not run from a shell (a launcher of macOS, for example).
@@ -42,10 +44,10 @@ NODE_CANDIDATES = ('/opt/homebrew/bin/node', '/usr/local/bin/node', '/usr/bin/no
 # -- figures ---------------------------------------------------------------------------------------------------------
 
 def workspace_figures(database_path: Path | str) -> dict[str, Any]:
-    """The figures of one workspace, read without changing its database: its ready datasets by type, the campaigns of
-    its CDRs and its Non-Qualified calls with their follow-up."""
+    """The figures of one workspace, read without changing its database: its ready datasets by type, the calls of its
+    Data and Voice CDRs, the campaigns of its CDRs and its Non-Qualified calls with their follow-up."""
     figures: dict[str, Any] = dict.fromkeys((
-        'cdr_rows', 'cdrs', 'inventory_rows', 'mapping_rows', 'geographical_datasets', 'nq_calls', 'nq_calls_total',
+        'cdr_rows', 'cdr_calls', 'cdrs', 'inventory_rows', 'mapping_rows', 'geographical_datasets', 'nq_calls', 'nq_calls_total',
         'nq_followed', 'nq_rca', 'nq_comments'), 0)
     campaigns: set[str] = set()
     try:
@@ -58,6 +60,8 @@ def workspace_figures(database_path: Path | str) -> dict[str, Any]:
                     if kind in CDR_KINDS:
                         figures['cdrs'] += count
                         figures['cdr_rows'] += rows
+                        if kind in CALL_KINDS:
+                            figures['cdr_calls'] += rows
                     elif kind == 'network_inventory':
                         figures['inventory_rows'] += rows
                     elif kind in MAPPING_KINDS:
@@ -146,7 +150,7 @@ def presentation_figures(core: Any) -> dict[str, Any]:
         roles[str(row['role'])] = roles.get(str(row['role']), 0) + 1
     return {
         'workspaces': [workspace.name for workspace in selected], 'month': datetime.now().strftime('%B %Y'),
-        **{key: totals.get(key, 0) for key in ('cdr_rows', 'cdrs', 'inventory_rows', 'mapping_rows', 'nq_calls', 'nq_calls_total',
+        **{key: totals.get(key, 0) for key in ('cdr_rows', 'cdr_calls', 'cdrs', 'inventory_rows', 'mapping_rows', 'nq_calls', 'nq_calls_total',
                                                'nq_followed', 'nq_rca', 'nq_comments')},
         'campaigns': len(campaigns), 'users': len(users), 'roles': roles,
         'workspace_list': [{'name': workspace.name, 'campaigns': len(workspace_figures(workspace.database_path)['campaigns'])}
